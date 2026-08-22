@@ -3509,7 +3509,7 @@ body.cv-hc.light #cv2-terrain { --cv-bg:#fff; --cv-sf:#fff; --cv-sf2:#eef2f8; --
         </span>
         <span id="b-l1-fresh-tail" class="b-l1-tail"></span>
       </div>
-      <span id="b-of-verdict" title="Tier B order-flow verdict" style="max-width:10rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">—</span>
+      <span id="b-of-verdict" title="Reconstructed L1 only. TIMESALE UNAVAILABLE. Native aggressor UNAVAILABLE." style="max-width:14rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">—</span>
       <div id="data-price-freshness" title="Age of last fast quote"></div>
       <div id="streaming-source-badge" title="Quote authority: Schwab L1 stream vs REST">—</div>
     </div>
@@ -7270,14 +7270,22 @@ function renderTierBLight(d, fullRenderSource) {
   const of = d.order_flow || {};
   const ofv = $('b-of-verdict');
   if (ofv) {
+    var tapeClass = of.tape_completeness || of.tape_pressure_classification || '';
+    var tsStatus = of.timesale_service_status || 'UNAVAILABLE';
+    var aggAvail = of.native_aggressor_available === true;
+    var tasAvail = of.native_time_and_sales_available === true;
     if (of.order_flow_verdict) {
       ofv.textContent = String(of.order_flow_verdict).slice(0, 32);
       ofv.style.color = 'var(--text3)';
     } else {
-      ofv.textContent = '—';
+      ofv.textContent = tasAvail ? 'T&S' : 'L1 recon · T&S ' + String(tsStatus);
       ofv.style.color = 'var(--text3)';
     }
-    var ovTitle = 'Order-flow verdict (snapshot)';
+    var ovTitle = 'Reconstructed L1 observation — not native time-and-sales';
+    ovTitle += ' · TIMESALE ' + String(tsStatus);
+    ovTitle += ' · native aggressor ' + (aggAvail ? 'AVAILABLE' : 'UNAVAILABLE');
+    if (tapeClass) ovTitle += ' · ' + String(tapeClass);
+    if (of.tape_limitations) ovTitle += ' · ' + String(of.tape_limitations);
     if (Number.isFinite(ofAge)) ovTitle += ' · OF age ' + l1FormatAgeCompact(ofAge);
     if (d.order_flow_stale === true) ovTitle += ' · STALE snapshot (not same timeline as live quote)';
     ofv.title = ovTitle;

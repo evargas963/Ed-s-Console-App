@@ -3452,9 +3452,8 @@ async def _broadcast_snapshot(data: dict) -> None:
 
 # REST fallback: Cum Delta proxy (polling-based) when streamer unavailable.
 # Accumulates per ticker, resets at open. Streamer value takes precedence.
-_rest_cum_delta: dict = {}        # ticker -> running sum
-_rest_cum_delta_session: Optional[str] = None  # ET date "YYYY-MM-DD"
-_rest_cum_delta_last_print: dict = {}  # ticker -> (lastPrice, lastSize, tradeTime)
+# REST Lee-Ready CVD retired: second producer of signed flow. Canonical
+# cum_delta_proxy is PROXY_RECONSTRUCTED_L1_TICK from l1_trade_observation only.
 
 # User prediction override — per ticker: {direction, source}
 # direction: "up" | "flat" | "down", source: "user" | "manual"
@@ -5554,49 +5553,8 @@ def _parse_quote_node_session_fields(node: dict) -> dict[str, Any]:
 
 
 def _update_rest_cum_delta(ticker: str, quote: dict, now_et: datetime) -> float | None:
-    """
-    Update and return REST-based cum_delta accumulator for ticker.
-    Resets at 9:30 ET on RTH open (not midnight). Pre-market trades do not carry into RTH.
-    """
-    global _rest_cum_delta, _rest_cum_delta_session, _rest_cum_delta_last_print
-    try:
-        hour, minute = now_et.hour, now_et.minute
-        mins = hour * 60 + minute
-        in_rth = RTH_OPEN_MINS <= mins < RTH_CLOSE_MINS and now_et.weekday() < 5
-        date_str = now_et.strftime("%Y-%m-%d")
-        session_key = date_str if in_rth else f"{date_str}-premarket"
-        if session_key != _rest_cum_delta_session:
-            _rest_cum_delta.clear()
-            _rest_cum_delta_last_print.clear()
-            _rest_cum_delta_session = session_key
-    except Exception as e:
-        log.debug(f"REST cum_delta session check failed: {e}")
-    last_price = _safe_float_quote(quote.get("lastPrice"))
-    last_size = _safe_float_quote(quote.get("lastSize"))
-    bid_price = _safe_float_quote(quote.get("bidPrice"))
-    ask_price = _safe_float_quote(quote.get("askPrice"))
-    if last_price is None or last_size is None or last_size <= 0:
-        return _rest_cum_delta.get(ticker)
-    trade_time = (
-        quote.get("tradeTime")
-        or quote.get("tradeTimeInLong")
-        or quote.get("lastTimestamp")
-        or quote.get("quoteTime")
-    )
-    ident = (last_price, last_size, trade_time)
-    if _rest_cum_delta_last_print.get(ticker) == ident:
-        return _rest_cum_delta.get(ticker)
-    _rest_cum_delta_last_print[ticker] = ident
-    delta = 0.0
-    if ask_price is not None and last_price >= ask_price:
-        delta = last_size
-    elif bid_price is not None and last_price <= bid_price:
-        delta = -last_size
-    cur = _rest_cum_delta.get(ticker)
-    if cur is None:
-        cur = 0.0
-    _rest_cum_delta[ticker] = cur + delta
-    return _rest_cum_delta[ticker]
+    """Retired second CVD producer. Always None. Do not compute Lee-Ready here."""
+    return None
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -7651,12 +7609,6 @@ def _fetch_state(
             pass
     except Exception as _ofd_e:
         log.debug(f"Order flow data build: {_ofd_e}")
-
-    # REST fallback: Cum Delta accumulator (polling-based) when streamer has no tape.
-    # Update each poll; inject into ms after build_market_state if engine returns None.
-    _quote_for_cum = dict(_order_flow_data.get("extended") or {})
-    _quote_for_cum.update(_order_flow_data.get("quote") or {})
-    _update_rest_cum_delta(ticker, _quote_for_cum, now_et)
 
     # Candle volume priority: 1) Price history candles.*.volume (primary), 2) accumulator (secondary)
     # Use 1m price history to match canonical (1m) bar timestamps.

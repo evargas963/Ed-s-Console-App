@@ -232,7 +232,8 @@ def test_rth_open_mins_constant_exists_and_used():
     assert server.RTH_OPEN_MINS == 570
     src = _fn_src("_update_rest_cum_delta")
     assert "9 * 60 + 30" not in src
-    assert "RTH_OPEN_MINS" in src
+    assert "Retired second CVD producer" in src
+    assert "last_price >= ask_price" not in src
 
 
 # FIND-SERVERPY-5

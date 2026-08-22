@@ -78,6 +78,15 @@ _ORDER_FLOW_KEYS = (
     "book_imbalance_5",
     "cum_delta_proxy",
     "tape_pressure_30s",
+    "tape_pressure_classification",
+    "cum_delta_classification",
+    "tape_identity_convention",
+    "tape_native_event_id",
+    "tape_completeness",
+    "tape_limitations",
+    "native_aggressor_available",
+    "native_time_and_sales_available",
+    "timesale_service_status",
     "order_flow_score",
 )
 

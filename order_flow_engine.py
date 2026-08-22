@@ -24,6 +24,17 @@ from typing import Any, Optional
 import math as _of_math
 
 from math_exposure import MISSING_GREEK_SENTINEL
+from l1_trade_observation import (
+    TAPE_CLASSIFICATION,
+    TAPE_IDENTITY_CONVENTION,
+    TAPE_LIMITATIONS,
+    TAPE_NATIVE_EVENT_ID,
+    canonical_tape_prints,
+    compute_cum_delta_proxy as _canonical_cum_delta,
+    compute_tape_pressure as _canonical_tape_pressure,
+    iter_signed_cum_points,
+    source_contract as l1_source_contract,
+)
 
 log = logging.getLogger(__name__)
 
@@ -35,21 +46,10 @@ OF_TAPE_WINDOW_2M_SEC: float = 120.0
 OF_TAPE_WINDOW_5M_SEC: float = 300.0
 # RC-461: OF_CUM_DELTA_NORM_DIVISOR retired — 10000 had no provenance.
 OF_OPTIONS_DELTA_NORM_DIVISOR: float = 50000.0
-TAPE_PRESSURE_CLASSIFICATION = "PROXY_RECONSTRUCTED_L1_TICK"
-CUM_DELTA_CLASSIFICATION = "PROXY_RECONSTRUCTED_L1_TICK"
-# L1 TRADE_TIME + LAST_PRICE + LAST_SIZE is an observation key, not a native
-# event/sequence id. Two legitimate same-ms/same-price/same-size prints cannot
-# be distinguished from a restated LEVELONE heartbeat (RC-463 / RC-468).
-TAPE_IDENTITY_CONVENTION = "L1_OBSERVATION_RESTATEMENT"
-TAPE_NATIVE_EVENT_ID = False
+TAPE_PRESSURE_CLASSIFICATION = TAPE_CLASSIFICATION
+CUM_DELTA_CLASSIFICATION = TAPE_CLASSIFICATION
 BOOK_HISTORY_CLASSIFICATION = "ROLLING_SNAPSHOT_WINDOW"
 BOOK_HISTORY_MAX_SNAPSHOTS = 20
-TAPE_LIMITATIONS = (
-    "Reconstructed L1 tick-rule from LAST_PRICE, LAST_SIZE, TRADE_TIME_MILLIS. "
-    "Identical triples are suppressed as restatements under this convention. "
-    "Distinct observed same-ms triples are preserved. No native event or "
-    "sequence id. No aggressor. Not a unique trade identifier."
-)
 # RC-456: OF_ABSORPTION_PRICE_EPS retired with the false absorption ratio.
 # Book-depth ladder for the canonical book producer: top of book, shallow, deep.
 OF_BOOK_DEPTH_TOP: int = 1
@@ -189,44 +189,19 @@ def _iter_asks_levels(content_item: dict) -> list[tuple[float, float]]:
 
 
 def _iter_tape_prints(content_items: list) -> list[dict]:
-    """
-    Extract tape prints (LAST_PRICE, LAST_SIZE, TRADE_TIME_MILLIS) from content.
-    """
-    out = []
-    for c in content_items:
-        if not isinstance(c, dict):
-            continue
-        lp = c.get("LAST_PRICE")
-        ls = c.get("LAST_SIZE")
-        tt = c.get("TRADE_TIME_MILLIS")
-        if lp is not None or ls is not None or tt is not None:
-            out.append({
-                "price": _safe_float(lp),
-                "size": _safe_int(ls),
-                "time_millis": _safe_int(tt),
-            })
-    return out
+    """Extract tape prints in list/receive order. ONE FAUCET: l1_trade_observation."""
+    from l1_trade_observation import iter_content_prints
+    return iter_content_prints(content_items)
 
 
 def _normalize_tape_prints(prints: list[dict]) -> list[dict]:
-    """Suppress identical L1 observation restatements; keep distinct same-ms triples.
+    """Adjacent restatement filter. ONE FAUCET: l1_trade_observation.
 
-    Convention: TRADE_TIME + LAST_PRICE + LAST_SIZE is an observation key, not a
-    native event id. Schwab LEVELONE can repeat the last print on quote
-    heartbeats. Counting each restatement as a new print inflates tape pressure
-    and cum-delta. Distinct same-ms observations (different price or size) are
-    kept. Two legitimate same-ms/same-price/same-size prints cannot be
-    distinguished from a restatement without a vendor sequence id.
+    Does not sort. Does not treat a later identical triple as a duplicate of an
+    earlier non-adjacent print. Same vendor-ms + different price/size is kept.
     """
-    seen: set[tuple[Any, ...]] = set()
-    out: list[dict] = []
-    for p in prints:
-        key = (p.get("time_millis"), p.get("price"), p.get("size"))
-        if key in seen:
-            continue
-        seen.add(key)
-        out.append(p)
-    return out
+    from l1_trade_observation import filter_adjacent_restatements
+    return filter_adjacent_restatements(prints)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -703,50 +678,9 @@ def compute_book_microstructure(data: dict, *, now_ts: Optional[float] = None,
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _compute_tape_pressure(data: dict, window_sec: float) -> Optional[float]:
-    """PROXY reconstructed L1 tick-rule pressure, not a native aggressor tape.
-
-    Classification: PROXY_RECONSTRUCTED_L1_TICK.
-    Direction is inferred from LAST_PRICE vs the previous print. Schwab LEVELONE
-    does not provide aggressor side. Identical L1 triples are treated as
-    restatements, not unique trades. Distinct same-ms triples are kept.
-    Uses: content.*.LAST_PRICE, LAST_SIZE, TRADE_TIME_MILLIS.
-    """
-    prints = _normalize_tape_prints(_iter_tape_prints(_iter_content(data)))
-    if not prints:
-        return None
-    times = [p.get("time_millis") for p in prints if p.get("time_millis") is not None]
-    now_ms = max(times) if times else 0
-    cutoff_ms = now_ms - int(window_sec * 1000)
-    total_delta = 0.0
-    total_sz = 0
-    prev_price = None
-    for p in sorted(prints, key=lambda x: x.get("time_millis") if x.get("time_millis") is not None else 0):
-        t = p.get("time_millis")
-        price = p.get("price")
-        # Out-of-window prints still seed prev_price so the first in-window
-        # print can be classified vs the most recent prior trade price.
-        if t is not None and t < cutoff_ms:
-            if price is not None:
-                prev_price = price
-            continue
-        size = p.get("size")
-        if size is None or size <= 0:
-            # No size to add to volume, but the price is still a real trade
-            # — keep it as the comparison anchor for the next sized print.
-            if price is not None:
-                prev_price = price
-            continue
-        if prev_price is not None and price is not None:
-            if price > prev_price:
-                total_delta += size
-            elif price < prev_price:
-                total_delta -= size
-        total_sz += size
-        if price is not None:
-            prev_price = price
-    if total_sz <= 0:
-        return None
-    return total_delta / total_sz if total_sz else None
+    """PROXY reconstructed L1 tick-rule pressure. ONE FAUCET: l1_trade_observation."""
+    prints = canonical_tape_prints(_iter_content(data))
+    return _canonical_tape_pressure(prints, window_sec)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -754,84 +688,21 @@ def _compute_tape_pressure(data: dict, window_sec: float) -> Optional[float]:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _compute_cum_delta_proxy(data: dict) -> Optional[float]:
-    """PROXY reconstructed L1 tick-rule signed size sum. Not native CVD.
-
-    Classification: PROXY_RECONSTRUCTED_L1_TICK. No aggressor flag. No
-    proven normalization divisor (the former 10000 constant is retired).
-    Returns None when no print contributed a positive Schwab size.
-    """
-    prints = _normalize_tape_prints(_iter_tape_prints(_iter_content(data)))
-    if not prints:
-        return None
-    total = 0.0
-    saw_size = False
-    prev_price = None
-    for p in sorted(prints, key=lambda x: x.get("time_millis") if x.get("time_millis") is not None else 0):
-        price = p.get("price")
-        size = p.get("size")
-        if size is None or size <= 0:
-            # No size to count, but the price still anchors the next comparison.
-            if price is not None:
-                prev_price = price
-            continue
-        saw_size = True
-        if prev_price is not None and price is not None:
-            if price > prev_price:
-                total += size
-            elif price < prev_price:
-                total -= size
-        if price is not None:
-            prev_price = price
-    return total if saw_size else None
+    """PROXY reconstructed L1 tick-rule signed size sum. ONE FAUCET: l1_trade_observation."""
+    prints = canonical_tape_prints(_iter_content(data))
+    return _canonical_cum_delta(prints)
 
 
 def _compute_cum_delta_slope(data: dict, window_sec: float = 60.0) -> Optional[float]:
-    """
-    Slope of cumulative delta over time (simple linear regression).
-    Direction is inferred from LAST_PRICE movement vs the previous print's price.
-    """
-    prints = _normalize_tape_prints(_iter_tape_prints(_iter_content(data)))
-    if len(prints) < 2:
-        return None
-    sorted_prints = sorted(
-        [p for p in prints if p.get("time_millis") is not None],
-        key=lambda x: x.get("time_millis") or 0,
-    )
-    if len(sorted_prints) < 2:
-        return None
-    cutoff = (sorted_prints[-1].get("time_millis") or 0) - int(window_sec * 1000)
-    points = []
-    cum = 0.0
-    prev_price = None
-    for p in sorted_prints:
-        t = p.get("time_millis") or 0
-        price = p.get("price")
-        # Out-of-window prints still seed prev_price.
-        if t < cutoff:
-            if price is not None:
-                prev_price = price
-            continue
-        size = p.get("size")
-        if size is None or size <= 0:
-            if price is not None:
-                prev_price = price
-            continue
-        if prev_price is not None and price is not None:
-            if price > prev_price:
-                cum += size
-            elif price < prev_price:
-                cum -= size
-        if price is not None:
-            prev_price = price
-        points.append((t / 1000.0, cum))
+    """Slope of PROXY cum-delta in receive order. ONE signed-size walk: l1_trade_observation."""
+    prints = canonical_tape_prints(_iter_content(data))
+    points = iter_signed_cum_points(prints, window_sec)
     if len(points) < 2:
         return None
     if np is not None:
         xs = np.array([p[0] for p in points])
         ys = np.array([p[1] for p in points])
-        slope = float(np.polyfit(xs, ys, 1)[0])
-        return slope
-    # fallback: (last - first) / time_span
+        return float(np.polyfit(xs, ys, 1)[0])
     t0, y0 = points[0]
     t1, y1 = points[-1]
     dt = t1 - t0
@@ -873,7 +744,7 @@ def _compute_book_tape_batch_geometry(data: dict) -> dict[str, Optional[float]]:
         bid_delta = bids_later - bids_earlier
         ask_delta = asks_later - asks_earlier
 
-    prints = _normalize_tape_prints(_iter_tape_prints(items))
+    prints = canonical_tape_prints(items)
     sizes = [p["size"] for p in prints if p.get("size") is not None and p["size"] > 0]
     prices = [p.get("price") for p in prints if p.get("price") is not None]
     size_sum = float(sum(sizes)) if sizes else None
@@ -1233,6 +1104,7 @@ class OrderFlowEngine:
             "tape_identity_convention": TAPE_IDENTITY_CONVENTION,
             "tape_native_event_id": TAPE_NATIVE_EVENT_ID,
             "tape_limitations": TAPE_LIMITATIONS,
+            **l1_source_contract(),
             "book_history_classification": BOOK_HISTORY_CLASSIFICATION,
             "book_history_max_snapshots": BOOK_HISTORY_MAX_SNAPSHOTS,
             "cum_delta_proxy": cum_delta_proxy,
@@ -1294,6 +1166,7 @@ class OrderFlowEngine:
             "tape_identity_convention": TAPE_IDENTITY_CONVENTION,
             "tape_native_event_id": TAPE_NATIVE_EVENT_ID,
             "tape_limitations": TAPE_LIMITATIONS,
+            **l1_source_contract(),
             "book_history_classification": BOOK_HISTORY_CLASSIFICATION,
             "book_history_max_snapshots": BOOK_HISTORY_MAX_SNAPSHOTS,
             "cum_delta_proxy": None,

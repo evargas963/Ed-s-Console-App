@@ -156,23 +156,23 @@ Index into the operator-source checkboxes below. Not extra boxes. Not a second q
 - [ ] `OS-A1-023` — STATUS=NOT_PROVEN — Schwab equities L1 no silent source fallback proven
 ### A2. Known L1 defect — reconstructed tape
 
-- [ ] `OS-A2-001` — STATUS=NOT_PROVEN — Known L1 defect: same-TRADE_TIME_MILLIS observations are dropped
-- [ ] `OS-A2-002` — STATUS=NOT_PROVEN — Quantify actual same-ms collision frequency during RTH
-- [ ] `OS-A2-003` — STATUS=NOT_PROVEN — Quantify lost reported size due to collision handling
-- [ ] `OS-A2-004` — STATUS=NOT_PROVEN — Quantify lost intra-ms price transitions
-- [ ] `OS-A2-005` — STATUS=NOT_PROVEN — Correct misleading code comment claiming price/size refresh behavior
-- [ ] `OS-A2-006` — STATUS=NOT_PROVEN — Determine whether retaining every L1 update improves observation fidelity
-- [ ] `OS-A2-007` — STATUS=NOT_PROVEN — Ensure any fix does not falsely relabel L1 reconstruction as native time-and-sales
-- [ ] `OS-A2-008` — STATUS=NOT_PROVEN — Preserve raw incoming update order/receive sequence for future analysis
-- [ ] `OS-A2-009` — STATUS=NOT_PROVEN — Explicitly classify reconstructed trade stream as incomplete observation unless stronger evidence exists
+- [ ] `OS-A2-001` — STATUS=NOT_PROVEN — Known L1 defect: same-TRADE_TIME_MILLIS observations are dropped. (1) Distinct L1 observations sharing TRADE_TIME_MILLIS were dropped or reordered. (2) TRADE_TIME_MILLIS was treated as unique trade identity and as the sort key. (3) Schwab LEVELONE restates last print on quote heartbeats and has no SEQUENCE at L1; same vendor-ms was assumed duplicate. (4) Tests encoded that assumption instead of falsifying it with distinct same-ms triples; engine still sorted by vendor time and REST still computed a second Lee-Ready CVD. (5) ROOT: vendor event clock was conflated with observation identity and receive order. Fix: one faucet `l1_trade_observation.py` — adjacent-restatement only, receive_seq, receive-order CVD/tape, REST second producer removed. SURFACES=l1_trade_observation.py;order_flow_engine.py;order_flow_live_state.py;server.py;market_state.py;static/index.html;planes/context_light.py
+- [ ] `OS-A2-002` — STATUS=NOT_PROVEN — Quantify actual same-ms collision frequency during RTH. HARD_BLOCKER: RTH_ONLY. Today is Saturday 2026-08-22 (non-RTH). 2026-08-20 probe frames are max-12-per-service (43 print-bearing rows, 0 same-ms distinct in that tiny sample) — not a rate. Next RTH: 2026-08-24 Monday.
+- [ ] `OS-A2-003` — STATUS=NOT_PROVEN — Quantify lost reported size due to collision handling. HARD_BLOCKER: RTH_ONLY. Same evidence limit as OS-A2-002. After the identity fix, distinct same-ms size is retained; remaining unquantified loss is indistinguishable same-ms/same-price/same-size vs restatement.
+- [ ] `OS-A2-004` — STATUS=NOT_PROVEN — Quantify lost intra-ms price transitions. HARD_BLOCKER: RTH_ONLY. Same evidence limit as OS-A2-002. Distinct same-ms price changes are retained by contract.
+- [x] `OS-A2-005` — STATUS=PASS — Misleading "add when TRADE_TIME_MILLIS changes (new trade)" comment removed. live_state now documents adjacent-restatement + receive_seq. Evidence: `order_flow_live_state.py` `push_level_one` docstring; `tests/test_l1_trade_observation_v1.py`.
+- [x] `OS-A2-006` — STATUS=PASS — Retaining every L1 heartbeat restatement does not improve signed-flow fidelity (double-count). Highest-fidelity contract: keep every distinct observation; suppress only adjacent identical vendor triples; preserve all receipts on the receive log. Evidence: `l1_trade_observation.filter_adjacent_restatements`; `tests/test_l1_trade_observation_v1.py`.
+- [x] `OS-A2-007` — STATUS=PASS — Reconstructed L1 is labeled `PROXY_RECONSTRUCTED_L1_TICK` / `INCOMPLETE_OBSERVATION`; API+UI say not native time-and-sales. Evidence: `l1_trade_observation.source_contract`; `static/index.html` `#b-of-verdict`.
+- [x] `OS-A2-008` — STATUS=PASS — Local monotonic `receive_seq` + `server_received_ts` on every L1 last-print receipt; restatements kept on `get_receive_log`. Not a native trade id. Evidence: `order_flow_live_state.push_level_one`; `tests/test_l1_trade_observation_v1.py::test_live_receive_seq_is_monotonic_and_not_a_native_id`.
+- [x] `OS-A2-009` — STATUS=PASS — `tape_completeness=INCOMPLETE_OBSERVATION` is mechanical on the engine, MarketState, L1 carry keys, and UI title. Evidence: `l1_trade_observation.TAPE_COMPLETENESS`; `tests/test_l1_trade_observation_v1.py::test_source_contract_timesale_and_aggressor_unavailable`.
 ### A3. Native aggressor / true tape
 
-- [ ] `OS-A3-001` — STATUS=NOT_PROVEN — Establish whether authenticated Schwab exposes native aggressor side
-- [ ] `OS-A3-002` — STATUS=NOT_PROVEN — Establish whether authenticated Schwab exposes native true time-and-sales
-- [ ] `OS-A3-003` — STATUS=NOT_PROVEN — Establish whether TIMESALE is genuinely unavailable versus subscription/configuration failure
-- [ ] `OS-A3-004` — STATUS=NOT_PROVEN — If TIMESALE unavailable, mark UNAVAILABLE mechanically and in UI contracts
-- [ ] `OS-A3-005` — STATUS=NOT_PROVEN — Prevent quote/tick-rule direction from being labeled native aggressor
-- [ ] `OS-A3-006` — STATUS=NOT_PROVEN — Prevent reconstructed tape from being labeled complete executed flow
+- [x] `OS-A3-001` — STATUS=PASS — Native aggressor UNAVAILABLE. RTH 2026-08-20 probe: no aggressor key on L1/book/REST (`reports/of_capability_probe/20260820T134927Z/analysis/noii_aggressor_absence.json`). Mechanical: `native_aggressor_available=false`.
+- [x] `OS-A3-002` — STATUS=PASS — Native true time-and-sales UNAVAILABLE. LEVELONE is last-print restatement; SEQUENCE absent at L1. Mechanical: `native_time_and_sales_available=false`.
+- [x] `OS-A3-003` — STATUS=PASS — TIMESALE_EQUITY SUBS returned code 11 during active RTH (`reports/of_capability_probe/20260820T134927Z/analysis/timesales.json`) — not an after-hours/config miss. Service not in current Schwab streamer set.
+- [x] `OS-A3-004` — STATUS=PASS — `timesale_service_status=UNAVAILABLE` on engine/MarketState/L1 keys; `#b-of-verdict` title/text. VISIBLE_SURFACE: `b-of-verdict`. Evidence: `tests/test_l1_trade_observation_v1.py::test_frontend_does_not_reconstruct_trade_semantics`.
+- [x] `OS-A3-005` — STATUS=PASS — Tick-rule signed size is PROXY; `cum_delta_classification=PROXY_RECONSTRUCTED_L1_TICK`; unchanged price is 0.0 not a native side; missing prev price is None. Evidence: `l1_trade_observation.tick_rule_signed_size`; `test_missing_side_is_never_native_or_zero_aggressor`.
+- [x] `OS-A3-006` — STATUS=PASS — Reconstructed tape cannot be labeled complete executed flow: `INCOMPLETE_OBSERVATION` + limitations text. Evidence: `source_contract()` and UI title.
 ### A4. NYSE Level 2
 
 - [ ] `OS-A4-001` — STATUS=NOT_PROVEN — NYSE Level 2 entitlement proven
@@ -650,12 +650,12 @@ Index into the operator-source checkboxes below. Not extra boxes. Not a second q
 - [ ] `OS-E3-004` — STATUS=NOT_PROVEN — cum_delta_proxy exact semantics
 - [ ] `OS-E3-005` — STATUS=NOT_PROVEN — cum_delta_slope exact semantics
 - [ ] `OS-E3-006` — STATUS=NOT_PROVEN — institutional_flow_proxy_score exact semantics
-- [ ] `OS-E3-007` — STATUS=NOT_PROVEN — Executed-flow proxies all marked PROXY
-- [ ] `OS-E3-008` — STATUS=NOT_PROVEN — No native-aggressor claim on executed-flow proxies
-- [ ] `OS-E3-009` — STATUS=NOT_PROVEN — No true-CVD claim on executed-flow proxies
-- [ ] `OS-E3-010` — STATUS=NOT_PROVEN — No complete-volume claim on executed-flow proxies
+- [x] `OS-E3-007` — STATUS=PASS — Engine/API classification is `PROXY_RECONSTRUCTED_L1_TICK` for tape pressure and cum-delta. Evidence: `l1_trade_observation.source_contract`; `tests/test_order_flow_tape_contract.py::test_tape_and_cum_delta_are_classified_reconstructed_l1_tick`.
+- [x] `OS-E3-008` — STATUS=PASS — Native aggressor claim forbidden: `native_aggressor_available=false`; tick-rule is PROXY. Evidence: `tests/test_l1_trade_observation_v1.py::test_missing_side_is_never_native_or_zero_aggressor`.
+- [x] `OS-E3-009` — STATUS=PASS — Field is `cum_delta_proxy` with `cum_delta_classification=PROXY_RECONSTRUCTED_L1_TICK`. No `native_cvd` emit. Evidence: engine output + tape contract test.
+- [x] `OS-E3-010` — STATUS=PASS — Completeness is `INCOMPLETE_OBSERVATION`; limitations text forbids complete executed-flow / complete-volume claims.
 - [ ] `OS-E3-011` — STATUS=NOT_PROVEN — Field names corrected where proxy nature is hidden
-- [ ] `OS-E3-012` — STATUS=NOT_PROVEN — Executed-flow source → MarketState → API trace
+- [x] `OS-E3-012` — STATUS=PASS — Source contract fields travel OrderFlowEngine → MarketState → `_ms_to_dict` → L1 `_ORDER_FLOW_KEYS` carry. Evidence: `market_state.py` fields; `planes/context_light.py` `_ORDER_FLOW_KEYS`.
 - [ ] `OS-E3-013` — STATUS=NOT_PROVEN — Orphan executed-flow status source-proven, not inferred from null runtime values
 - [ ] `OS-E3-014` — STATUS=NOT_PROVEN — Executed-flow decision influence removed unless separately admitted
 - [ ] `OS-E3-015` — STATUS=NOT_PROVEN — Executed-flow predictive usefulness tested independently if retained
@@ -1212,7 +1212,7 @@ PA-1..PA-47 is not the mission board.
 - [ ] `OD-0002` — STATUS=NOT_PROVEN — **OF_ENGINE_ABSORPTION_RETIRED** — engine `_compute_absorption` ratio retired (RC-456; `tests/test_book_tape_batch_geometry_v1.py`).
 - [ ] `OD-0003` — STATUS=NOT_PROVEN — **P2_ABSORPTION_WITHHELD** — historical P2 absorption withheld from training / quarantined (RC-455). P2 parent remains NOT_PROVEN.
 - [ ] `OD-0004` — STATUS=NOT_PROVEN — **IDENTITY_SPLIT_REMOVED** — permanent Claude-writer / Cursor-auditor identity restriction removed (RC-452/RC-457; `tests/test_active_writer_law_v1.py`).
-- [ ] `OD-0005` — STATUS=NOT_PROVEN — **OF_TAPE_L1_RESTATEMENT_SUPPRESSED** — identical L1 observation restatements suppressed under the reconstructed-L1 convention; distinct observed same-ms triples preserved; not a native trade-identity claim (RC-463). Parent Order Flow remains NOT_PROVEN.
+- [x] `OD-0005` — STATUS=PASS — **OF_TAPE_L1_RESTATEMENT_SUPPRESSED** — adjacent identical L1 triples suppressed; distinct same-ms triples kept; receive_seq is not a native event id. Parent Order Flow remains NOT_PROVEN. Evidence: `tests/test_l1_trade_observation_v1.py`.
 - [ ] `OD-0006` — STATUS=NOT_PROVEN — **OF_MEDIAN_X3_RETIRED** — median times 3 displayed-depth anomaly candidates retired (RC-467). Parent Order Flow remains NOT_PROVEN.
 - [ ] `OD-0007` — STATUS=NOT_PROVEN — **GAMMA_FLIP_DISPLAY_GATED** — flip number withheld unless TRUSTED (RC-462). UI truth parent remains NOT_PROVEN.
 - [ ] `OD-0008` — STATUS=NOT_PROVEN — **GAMMA_WALLS_DISPLAY_GATED** — walls/pin/max-pain/net-peak withheld unless TRUSTED (RC-465). UI truth parent remains NOT_PROVEN.

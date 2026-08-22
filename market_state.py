@@ -393,6 +393,15 @@ class MarketState:
     book_imbalance_5:              Optional[float] = None
     cum_delta_proxy:               Optional[float] = None
     tape_pressure_30s:             Optional[float] = None  # RC-404: canonical L2 producer carries every published OF field
+    tape_pressure_classification:  Optional[str]   = None
+    cum_delta_classification:      Optional[str]   = None
+    tape_identity_convention:      Optional[str]   = None
+    tape_native_event_id:          Optional[bool]  = None
+    tape_completeness:             Optional[str]   = None
+    tape_limitations:              Optional[str]   = None
+    native_aggressor_available:    Optional[bool]  = None
+    native_time_and_sales_available: Optional[bool] = None
+    timesale_service_status:       Optional[str]   = None
     options_flow_score:            Optional[float] = None
     institutional_flow_proxy_score: Optional[float] = None
     # Flow Verdict (composite headline)
@@ -1128,6 +1137,15 @@ def build_market_state(
             ms.book_imbalance_5              = _of_result.get("book_imbalance_5")
             ms.cum_delta_proxy               = _of_result.get("cum_delta_proxy")
             ms.tape_pressure_30s             = _of_result.get("tape_pressure_30s")
+            ms.tape_pressure_classification  = _of_result.get("tape_pressure_classification")
+            ms.cum_delta_classification      = _of_result.get("cum_delta_classification")
+            ms.tape_identity_convention      = _of_result.get("tape_identity_convention")
+            ms.tape_native_event_id          = _of_result.get("tape_native_event_id")
+            ms.tape_completeness             = _of_result.get("tape_completeness")
+            ms.tape_limitations              = _of_result.get("tape_limitations")
+            ms.native_aggressor_available    = _of_result.get("native_aggressor_available")
+            ms.native_time_and_sales_available = _of_result.get("native_time_and_sales_available")
+            ms.timesale_service_status       = _of_result.get("timesale_service_status")
             ms.options_flow_score            = _of_result.get("options_flow_score")
             ms.institutional_flow_proxy_score = _of_result.get("institutional_flow_proxy_score")
             ms.order_flow_verdict             = _of_result.get("order_flow_verdict")

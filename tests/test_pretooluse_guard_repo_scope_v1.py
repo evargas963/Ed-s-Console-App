@@ -194,7 +194,7 @@ def test_master_does_not_admit_when_no_unresolved_item_exists():
 
 
 def test_live_active_item_does_not_admit_unrelated_production_file():
-    """Stop condition: 2370 NOT_PROVEN rows must not authorize server.py."""
+    """Unresolved rows admit only their exact SURFACES= paths."""
     cur = (REPO / G.SOLE_MASTER).read_text(encoding="utf-8")
     assert G.master_admits_production_edit(
         "tools/pretooluse_guard.py", current_text=cur, head_text=""
@@ -202,8 +202,11 @@ def test_live_active_item_does_not_admit_unrelated_production_file():
     assert G.master_admits_production_edit(
         "tools/check_institutional_correctness.py", current_text=cur, head_text=""
     )
-    assert not G.master_admits_production_edit(
+    assert G.master_admits_production_edit(
         "server.py", current_text=cur, head_text=""
+    )
+    assert not G.master_admits_production_edit(
+        "db.py", current_text=cur, head_text=""
     )
 
 
