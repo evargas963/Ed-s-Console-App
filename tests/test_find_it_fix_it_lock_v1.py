@@ -895,7 +895,18 @@ def test_live_unproven_and_open_rc_rows_are_frozen_and_historically_mapped():
     reg = (ROOT / "governance" / "unproven_register.md").read_text(encoding="utf-8")
     rc = (ROOT / "governance" / "root_cause_log.md").read_text(encoding="utf-8")
     assert C.parse_live_unproven_rows(reg) == []
-    assert not any(ln.startswith("| RC-") for ln in rc.splitlines())
+    live_rc = []
+    for ln in rc.splitlines():
+        if not ln.startswith("| RC-"):
+            continue
+        cells = [c.strip() for c in ln.strip().strip("|").split("|")]
+        live_rc.append(cells)
+    work = [c[0] for c in live_rc if len(c) > 1 and c[1] in ("OPEN", "PARTIAL")]
+    assert work == [], f"live RC log carries current-work rows: {work}"
+    for cells in live_rc:
+        assert len(cells) > 1 and cells[1] == "REMEDIATED", (
+            f"live | RC- row must be citation-index REMEDIATED, not work: {cells[:3]}"
+        )
     assert C.unmapped_live_unproven_rows(reg, master) == []
     assert C.unmapped_open_rc_ids(rc, master) == []
     for oid in ("OD-1276", "OD-1277", "OD-1278", "OD-1279", "OD-1280", "OD-1281"):
