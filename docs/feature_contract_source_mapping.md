@@ -17,8 +17,8 @@ Coercion rules live in `features/mvp_source_coercion.py` (strict: missing ≠ in
 | `structure.net_gamma` | `net_gamma` | `net_gamma` | Net gamma exposure snapshot. |
 | `anchor.vwap_side` | `vwap_side` (flat; **not** `spot_anchors`) | `vwap_side` | Position of spot vs session VWAP (`above` / `below`). |
 | `anchor.vwap_dist_pts` | `dist_to_vwap_pts` | `vwap_dist_pts` | Spot − VWAP in **points** (signed). |
-| `liquidity.range_imbalance_stall_score` | `liquidity_summary['range_imbalance_stall_score']` | `range_imbalance_stall_score` | Range×imbalance stall (RC-455). Historical `absorption_score` is a different era and is never mapped. |
-| `liquidity.range_imbalance_push_score` | `liquidity_summary['range_imbalance_push_score']` | `range_imbalance_push_score` | Range×imbalance push (RC-455). Historical `continuation_score` is never mapped. |
+| `liquidity.range_imbalance_stall_score` | `liquidity_summary['range_imbalance_stall_score']` | `range_imbalance_stall_score` | RETIRED stall/push product (RC-460). Live producer emits None. Historical `absorption_score` is never mapped. |
+| `liquidity.range_imbalance_push_score` | `liquidity_summary['range_imbalance_push_score']` | `range_imbalance_push_score` | RETIRED stall/push product (RC-460). Live producer emits None. Historical `continuation_score` is never mapped. |
 
 ### Live-only nesting
 
