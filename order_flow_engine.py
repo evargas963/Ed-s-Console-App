@@ -1232,11 +1232,7 @@ class OrderFlowEngine:
         # fallback `book_imbalance_5 = top_book_pressure`, which conflated the two under one name.)
         top_book_pressure, top_book_pressure_source = _compute_top_book_pressure(data)
 
-        # Use 5-level for scoring when available (preserve measured 0.0 — FIND-OF1)
-        book_for_score = next(
-            (v for v in (book_imbalance_5, book_imbalance_3, book_imbalance_1) if v is not None),
-            None,
-        )
+        # (RC-450: the retired composite's book/tape leg selection was removed with the score.)
         spread_d = _compute_spread(data)
         spread_pts = spread_d.get("spread_pts")
 
@@ -1244,10 +1240,6 @@ class OrderFlowEngine:
         tape_pressure_30s = _compute_tape_pressure(data, OF_TAPE_WINDOW_30S_SEC)
         tape_pressure_2m = _compute_tape_pressure(data, OF_TAPE_WINDOW_2M_SEC)
         tape_pressure_5m = _compute_tape_pressure(data, OF_TAPE_WINDOW_5M_SEC)
-        tape_for_score = next(
-            (v for v in (tape_pressure_2m, tape_pressure_30s, tape_pressure_5m) if v is not None),
-            None,
-        )
 
         # Cumulative delta
         cum_delta_proxy = _compute_cum_delta_proxy(data)
@@ -1278,54 +1270,26 @@ class OrderFlowEngine:
         # (mission TRUTH_V1): both are non-directional MAGNITUDES (a density; relative volume).
         # absorption is still emitted below for advisory/PROXY display; rvol feeds `_readiness`
         # (its legitimate conviction role) below.
-        order_flow_score = _compute_order_flow_score(
-            book_for_score,
-            tape_for_score,
-            cum_delta_proxy,
-            options_flow_score,
-        )
-        order_flow_direction = _direction(order_flow_score)
-        order_flow_regime = order_flow_direction
-        order_flow_readiness = (
-            "red" if order_flow_score is None else _readiness(order_flow_score, rvol)
-        )
-        _order_flow_readiness_rvol = (
-            "unavailable" if rvol is None and order_flow_score is not None else None
-        )
-
-        # Flow Verdict (composite headline) + field arrows/labels
-        try:
-            from math_exposure import (
-                compute_order_flow_verdict,
-                order_flow_score_label,
-                order_flow_book_label,
-                order_flow_opt_label,
-                order_flow_field_arrow,
-            )
-            verdict_d = compute_order_flow_verdict(
-                order_flow_score,
-                book_imbalance_5,
-                cum_delta_proxy,
-                options_flow_score,
-            )
-            of_verdict = verdict_d["verdict"]
-            of_verdict_color = verdict_d["verdict_color"]
-            of_arrow = verdict_d["arrow"]
-            of_agreement = verdict_d["agreement"]
-            of_score_arrow = order_flow_field_arrow(order_flow_score)
-            of_score_label = order_flow_score_label(order_flow_score)
-            of_book_arrow = order_flow_field_arrow(book_imbalance_5, use_book=True)
-            of_book_label = order_flow_book_label(book_imbalance_5)
-            of_delta_arrow = order_flow_field_arrow(cum_delta_proxy)
-            of_opt_arrow = order_flow_field_arrow(options_flow_score)
-            of_opt_label = order_flow_opt_label(options_flow_score)
-        except ImportError:
-            of_verdict = None
-            of_verdict_color = None
-            of_arrow = None
-            of_agreement = "unavailable"
-            of_score_arrow = of_book_arrow = of_delta_arrow = of_opt_arrow = None
-            of_score_label = of_book_label = of_opt_label = None
+        # RETIRED (mission TRUTH_V1, RC-450): order_flow_score / _direction / _regime / _readiness
+        # and the order_flow_verdict headline are RETIRED. The composite had no fitted weights or
+        # OOS validation and was withheld from Decide (of_vote=0); compute_order_flow_verdict
+        # additionally DOUBLE-COUNTED book/cum-delta/options (already inside the score) to emit the
+        # false operator claim BUYING/SELLING PRESSURE. No defensible measurable semantic exists, so
+        # the composite and its verdict are not produced. The canonical primitives (book_imbalance_*,
+        # spread, microprice, tape_pressure_*, cum_delta_proxy, options_flow_score, book_microstructure)
+        # remain individually. These fields are emitted as None so no downstream consumer sees a
+        # value; the score-family fields are dropped from the payload where possible below.
+        order_flow_score = None
+        order_flow_direction = None
+        order_flow_regime = None
+        order_flow_readiness = None
+        _order_flow_readiness_rvol = None
+        of_verdict = None
+        of_verdict_color = None
+        of_arrow = None
+        of_agreement = "unavailable"
+        of_score_arrow = of_book_arrow = of_delta_arrow = of_opt_arrow = None
+        of_score_label = of_book_label = of_opt_label = None
 
         return {
             "book_imbalance_1": book_imbalance_1,

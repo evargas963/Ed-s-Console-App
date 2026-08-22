@@ -1,0 +1,18 @@
+{
+  "mission": "ED_CONSOLE_INSTITUTIONAL_TRUTH_AND_REMEDIATION_V1",
+  "note": "Authoritative active-mission material-defect ledger for FIND IT -> FIX IT (check_find_it_fix_it / stop_guard.fix_law_blockers). Every FAIL/NOT_PROVEN entry must be terminally disposed REMEDIATED (resolvable rc + verification command) or BLOCKED (valid blocker type on an EXACT snake_case assertion with type evidence). Anything else BLOCKS commit and Stop.",
+  "defects": [
+    {
+      "id": "OFV-1",
+      "concept": "order_flow_score / order_flow_direction / order_flow_regime / order_flow_readiness / order_flow_verdict retirement: no fitted weights or OOS validation; compute_order_flow_verdict double-counted book/cum-delta/options to emit the false operator claim BUYING/SELLING PRESSURE.",
+      "status": "FAIL",
+      "disposition": "REMEDIATED",
+      "blocker": null,
+      "remediation": {
+        "rc": "RC-450",
+        "command": ".venv/Scripts/python.exe -m pytest tests/ -k \"order_flow or microstructure or market_state or call_engine or verdict\" -q",
+        "result": "556 passed; the producer emits None for the whole order_flow_score/verdict family; compute() no longer calls the composite or the double-counting verdict; canonical primitives preserved."
+      }
+    }
+  ]
+}

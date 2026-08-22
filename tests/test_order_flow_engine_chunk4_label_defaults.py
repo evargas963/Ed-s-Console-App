@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from unittest.mock import patch
-
 from math_exposure import (
     _of_sign,
     compute_order_flow_verdict,
@@ -49,27 +47,16 @@ def test_compute_order_flow_verdict_score_only_nonzero_in_band_has_verdict():
     assert out["verdict"] != ""
 
 
-def test_compute_e2e_exact_zero_score_withholds_direction_and_verdict():
-    with (
-        patch(
-            "order_flow_engine.compute_book_microstructure",
-            return_value={
-                "depth": {
-                    "1": {"imbalance": 0.0},
-                    "3": {"imbalance": 0.0},
-                    "5": {"imbalance": 0.0},
-                }
-            },
-        ),
-        patch("order_flow_engine._compute_tape_pressure", return_value=0.0),
-        patch("order_flow_engine._compute_cum_delta_proxy", return_value=None),
-        patch("order_flow_engine._compute_options_flow", return_value=(None, None, None, None, None)),
-        patch("order_flow_engine._compute_rvol", return_value=(None, "current_volume_unavailable")),
-    ):
-        out = OrderFlowEngine().compute({"quote": {}})
-    assert out["order_flow_score"] is not None
-    assert abs(out["order_flow_score"]) < 1e-9
-    assert out["order_flow_direction"] is None
-    assert out["order_flow_regime"] is None
-    assert out["order_flow_score_label"] is None
-    assert out["order_flow_verdict"] is None
+def test_order_flow_score_verdict_family_is_retired():
+    # TRUTH_V1 / RC-450: the order_flow composite score, direction, regime, readiness and the
+    # double-counting verdict are RETIRED (no fitted weights, no OOS validation, and the verdict
+    # double-counted book/cum-delta/options to emit a false BUYING/SELLING PRESSURE claim). The
+    # producer must emit None for the whole family; the canonical primitives remain.
+    out = OrderFlowEngine().compute({"quote": {}})
+    for k in ("order_flow_score", "order_flow_direction", "order_flow_regime",
+              "order_flow_readiness", "order_flow_verdict", "order_flow_verdict_color",
+              "order_flow_score_label"):
+        assert out.get(k) is None, f"{k} must be retired (None), got {out.get(k)!r}"
+    # canonical primitives are preserved individually
+    assert "book_imbalance_5" in out
+    assert "options_flow_score" in out

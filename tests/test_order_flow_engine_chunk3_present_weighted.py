@@ -94,12 +94,13 @@ def test_compute_options_only_no_streaming_score_is_none():
         "quote": {},
     }
     out = OrderFlowEngine().compute(data)
-    assert out["options_flow_score"] is not None
+    assert out["options_flow_score"] is not None  # canonical primitive preserved
     assert out["rvol"] is None
+    # TRUTH_V1 / RC-450: the composite score family is retired -> all None (was "red" readiness).
     assert out["order_flow_score"] is None
     assert out["order_flow_direction"] is None
     assert out["order_flow_regime"] is None
-    assert out["order_flow_readiness"] == "red"
+    assert out["order_flow_readiness"] is None
 
 
 def test_weighted_mean_present_helper_respects_min_present():

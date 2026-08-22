@@ -1,12 +1,10 @@
 {
-  "granted": false,
+  "granted": true,
   "granted_at": "2026-08-21T00:00:00+00:00",
-  "revoked_at": "2026-08-21T00:00:01+00:00",
-  "granted_by": "operator_instruction_in_session_2026-08-21_find_it_fix_it_lock",
-  "revoked_by": "standing_discipline_restore_fail_closed_after_commit",
+  "granted_by": "operator_instruction_in_session_2026-08-21_fix_the_lock",
   "scope": [
     "staged_lock_surface"
   ],
-  "operator_quote": "Add an ENFORCED CHECK to `tools/check_institutional_correctness.py` ... Add the smallest appropriate existing PreToolUse/Stop enforcement so Claude cannot conclude/stop a mission while the institutional gate reports fixable material defects.",
-  "note": "The scoped staged_lock_surface GO was used exactly once to land the ENFORCED check `find_it_fix_it` (commit e901a47a). Restored to fail-closed immediately after, per the standing discipline: any future staged ENFORCED-check commit must obtain a fresh, scoped GO."
+  "operator_quote": "LOCK REPROOF FAILED — FIX THE LOCK BEFORE CONTINUING PRODUCT WORK ... Replace vocabulary-driven enforcement with disposition-driven enforcement ... Add tests that specifically prove [negative controls] ... Execute an end-to-end Stop negative control proving Claude cannot terminate with a planted active fixable defect.",
+  "note": "Scoped GO to land the CORRECTED find_it_fix_it lock (disposition-driven ledger authority in tools/check_institutional_correctness.py + tools/stop_guard.py defect-8/9 rework + tests + governance/active_defects.json) and the connected order_flow verdict/composite retirement, per the 2026-08-21 'FIX THE LOCK' directive. Restore to fail-closed after this commit."
 }
