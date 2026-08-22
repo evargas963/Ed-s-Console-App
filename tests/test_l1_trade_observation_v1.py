@@ -93,19 +93,35 @@ def test_slope_uses_same_signed_size_walk():
     content = _prints((500.0, 10, 1000), (500.1, 4, 2000), (499.9, 6, 3000))
     prints = l1.canonical_tape_prints(content)
     points = l1.iter_signed_cum_points(prints)
+    # Independent walk: first print anchors (signed None), then +4, then -6.
     assert points[-1][1] == l1.compute_cum_delta_proxy(prints) == 4 - 6
+    # Points at t=1,2,3s with cum 0, +4, -2. Least-squares slope is -1.0.
+    assert [(round(t, 6), c) for t, c in points] == [(1.0, 0.0), (2.0, 4.0), (3.0, -2.0)]
     slope = ofe._compute_cum_delta_slope({"content": content}, window_sec=60.0)
-    assert slope is not None
+    assert slope == -1.0
 
 
 def test_replay_matches_live_receive_order_semantics():
+    """Live push path and engine replay of the same receive-order list must agree.
+
+    Comparing ``_compute_cum_delta_proxy`` to itself on ``list(rows)`` is a
+    tautology — it cannot detect a live/replay split. Drive live_state, then
+    replay the original vendor rows through the engine faucet.
+    """
+    sym = "REPLAY1"
+    live_state.clear_symbol(sym)
     rows = [
-        {"LAST_PRICE": 1.0, "LAST_SIZE": 1, "TRADE_TIME_MILLIS": 30},
-        {"LAST_PRICE": 1.1, "LAST_SIZE": 2, "TRADE_TIME_MILLIS": 10},
+        {"key": sym, "LAST_PRICE": 1.0, "LAST_SIZE": 1, "TRADE_TIME_MILLIS": 30},
+        {"key": sym, "LAST_PRICE": 1.1, "LAST_SIZE": 2, "TRADE_TIME_MILLIS": 10},
     ]
-    live = ofe._compute_cum_delta_proxy({"content": rows})
-    replay = ofe._compute_cum_delta_proxy({"content": list(rows)})
-    assert live == replay == 2
+    for r in rows:
+        live_state.push_level_one(sym, r)
+    live_cvd = ofe._compute_cum_delta_proxy({"content": live_state.get_content_for_symbol(sym)})
+    replay_cvd = ofe._compute_cum_delta_proxy({"content": rows})
+    assert live_cvd == replay_cvd == 2
+    # Vendor-time sort would flip receive order and change the signed walk.
+    vendor_sorted = sorted(rows, key=lambda r: r["TRADE_TIME_MILLIS"])
+    assert ofe._compute_cum_delta_proxy({"content": vendor_sorted}) != live_cvd
 
 
 def test_engine_does_not_sort_by_vendor_time():
@@ -169,3 +185,33 @@ def test_contract_identical_across_symbols():
     assert len(a) == len(b) == 2
     assert ofe._compute_cum_delta_proxy({"content": _prints((100.0, 1, 1), (100.1, 2, 1))}) == 2
     assert ofe._compute_cum_delta_proxy({"content": _prints((200.0, 1, 1), (200.1, 2, 1))}) == 2
+
+
+def test_tick_rule_sign_flip_and_missing_size_are_detected():
+    """BREAK THE INVARIANT: bullish/bearish swap or missing→0 must fail these."""
+    assert l1.tick_rule_signed_size(500.0, 500.1, 10) == 10.0
+    assert l1.tick_rule_signed_size(500.1, 500.0, 10) == -10.0
+    assert l1.tick_rule_signed_size(500.0, 500.0, 10) == 0.0
+    assert l1.tick_rule_signed_size(500.0, 500.1, None) is None
+    assert l1.tick_rule_signed_size(None, 500.1, 10) is None
+    assert l1.extract_vendor_print({"LAST_SIZE": 10, "TRADE_TIME_MILLIS": 1}) is None
+    assert l1.compute_cum_delta_proxy([]) is None
+    assert l1.compute_cum_delta_proxy([{"price": 1.0, "size": None, "time_millis": 1}]) is None
+
+
+def test_mutation_first_per_ms_disagrees_with_current_same_ms_keep():
+    """Old first-per-TRADE_TIME_MILLIS is a surviving mutation of the identity rule."""
+    content = _prints((500.0, 10, 1000), (500.1, 4, 1000))
+    current = l1.canonical_tape_prints(content)
+    seen: set[int] = set()
+    old = []
+    for p in l1.iter_content_prints(content):
+        ms = p["time_millis"]
+        if ms in seen:
+            continue
+        seen.add(ms)
+        old.append(p)
+    assert len(current) == 2
+    assert len(old) == 1
+    assert ofe._compute_cum_delta_proxy({"content": content}) == 4
+    assert l1.compute_cum_delta_proxy(old) == 0.0  # lone first print has no prev side

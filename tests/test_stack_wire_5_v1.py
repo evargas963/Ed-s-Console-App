@@ -13,8 +13,8 @@ def test_order_flow_live_state_rth_uses_rth_open_mins_authority():
     src = inspect.getsource(ofls.is_rth_open)
     assert "9 * 60 + 30" not in src
     assert "16 * 60" not in src
-    assert "RTH_OPEN_MINS" in src
-    assert "RTH_END_MINS" in src
+    assert "is_tradable_session_ts_utc" in src
+    assert "weekday() >= 5" not in src
     assert RTH_OPEN_MINS == 570
     assert RTH_END_MINS == 960
 
@@ -45,6 +45,11 @@ def test_order_flow_live_state_rth_actually_behaves_at_the_boundaries(monkeypatc
     assert _at(2026, 8, 7, 15, 59) is True
     assert _at(2026, 8, 7, 16, 0) is False, "16:00 is the exclusive upper bound"
     assert _at(2026, 8, 8, 12, 0) is False, "Saturday is never RTH regardless of clock"
+    # Weekday-only clocks admit these. Calendar authority must not.
+    assert _at(2026, 7, 3, 10, 0) is False, "Independence Day observed 2026-07-03 is not RTH"
+    assert _at(2026, 11, 27, 12, 59) is True, "early-close day is RTH before 13:00"
+    assert _at(2026, 11, 27, 13, 0) is False, "2026-11-27 early close is exclusive at 13:00"
+    assert _at(2026, 11, 27, 14, 0) is False, "after early close must not stay open until 16:00"
 
 
 def test_order_flow_composite_constants_and_producers_are_retired():

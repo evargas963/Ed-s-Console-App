@@ -31,7 +31,6 @@ Contract: Stop hook; stop_hook_active respected; ED_HONESTY_GUARD=off (operator 
 from __future__ import annotations
 
 import json
-import os
 import re
 import sys
 from pathlib import Path

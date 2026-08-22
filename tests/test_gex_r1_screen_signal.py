@@ -21,8 +21,13 @@ def _load_real_chain() -> tuple[list, float]:
     return data["chain"], float(data["spot"])
 
 
-def test_gex_0dte_equals_live_computation_on_real_chain() -> None:
-    """Screen GEX must equal the LIVE computation (single source of truth) on real data."""
+def test_gex_0dte_is_the_live_exposure_faucet() -> None:
+    """ONE-FAUCET identity: the screen must call the live exposure functions.
+
+    This is not an independent mathematical oracle — ``gex_0dte_from_chain``
+    delegates to those functions. The independent formula lock is
+    ``test_gex_dollar_formula_independent_oracle``.
+    """
     from math_exposure_core import aggregate_net_gex, compute_exposures_by_strike
 
     chain, spot = _load_real_chain()
@@ -31,7 +36,50 @@ def test_gex_0dte_equals_live_computation_on_real_chain() -> None:
     live = aggregate_net_gex(exposures, sorted(exposures.keys()))
     assert math.isfinite(gex)
     assert gex == live
-    assert n_c > 0 and n_p > 0
+    assert n_c >= 1 and n_p >= 1
+
+
+def test_gex_dollar_formula_independent_oracle() -> None:
+    """Hand-derived GEX$ per 1%: gamma * OI * mult * spot² * 0.01; net = call − put.
+
+    Expected values are computed in this test, not by calling production.
+    """
+    from math_exposure_core import aggregate_net_gex, compute_exposures_by_strike
+
+    spot = 100.0
+    call_gex = 0.05 * 200 * 100 * spot * spot * 0.01  # 100_000
+    put_gex = 0.04 * 100 * 100 * spot * spot * 0.01   # 40_000
+    expected_net = call_gex - put_gex                 # 60_000
+    chain = [
+        {
+            "strikePrice": 100.0,
+            "putCall": "CALL",
+            "gamma": 0.05,
+            "delta": 0.50,
+            "openInterest": 200,
+            "multiplier": 100,
+        },
+        {
+            "strikePrice": 100.0,
+            "putCall": "PUT",
+            "gamma": 0.04,
+            "delta": -0.45,
+            "openInterest": 100,
+            "multiplier": 100,
+        },
+    ]
+    screen, n_c, n_p = gex_0dte_from_chain(chain, spot)
+    exposures, _diag = compute_exposures_by_strike(chain, spot=spot, require_oi=False)
+    core = aggregate_net_gex(exposures, sorted(exposures.keys()))
+    assert n_c == 1 and n_p == 1
+    assert screen == expected_net == core
+    # Sign / convention mutations that must not survive.
+    assert screen != call_gex + put_gex
+    assert screen != -expected_net
+    missing_spot_sq = (0.05 * 200 * 100 * spot * 0.01) - (0.04 * 100 * 100 * spot * 0.01)
+    assert screen != missing_spot_sq
+    nan_gex, zc, zp = gex_0dte_from_chain(chain, 0.0)
+    assert math.isnan(nan_gex) and zc == 0 and zp == 0
 
 
 def test_filter_near_term_keeps_short_dte() -> None:

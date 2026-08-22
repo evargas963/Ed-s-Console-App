@@ -10,7 +10,7 @@ import logging
 import threading
 from collections import deque
 from typing import Any, Optional
-from time_et import now_et, RTH_END_MINS, RTH_OPEN_MINS
+from time_et import is_tradable_session_ts_utc, now_et
 from instrument_identity import ticker_storage_key
 from l1_trade_observation import (
     TAPE_COMPLETENESS,
@@ -39,14 +39,15 @@ _last_rth_date: str = ""
 
 
 def is_rth_open() -> bool:
-    """Return True if current ET time is between 09:30:00 and 16:00:00 Monday-Friday."""
+    """True iff the current ET instant is a tradable RTH minute.
+
+    ONE faucet: ``time_et.is_tradable_session_ts_utc`` (ET weekday + holiday /
+    early-close calendar + session close). A weekday-only 09:30–16:00 clock
+    admits Independence Day observed and stays open after 13:00 on early-close
+    days. Fail-closed on clock errors — never guess the session is open.
+    """
     try:
-        now = now_et()
-        if now.weekday() >= 5:  # Saturday=5, Sunday=6
-            return False
-        hour, minute = now.hour, now.minute
-        mins = hour * 60 + minute
-        return RTH_OPEN_MINS <= mins < RTH_END_MINS
+        return is_tradable_session_ts_utc(now_et().timestamp())
     except Exception:
         return False
 

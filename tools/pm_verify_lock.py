@@ -30,7 +30,6 @@ Escape: `# pm-verify-ok: <reason>` (operator-reviewed), and ED_PM_VERIFY_LOCK=of
 from __future__ import annotations
 
 import json
-import os
 import re
 import time
 from pathlib import Path

@@ -266,3 +266,37 @@ def test_compute_call_directional_passes_when_admitted(monkeypatch, tmp_path):
         f"blocker={call.wait_blocker!r}"
     )
     assert call.wait_blocker is None
+
+
+def test_mutation_skipping_admission_lets_empty_registry_emit_long(monkeypatch):
+    """If compute_call stopped consulting the gate, empty-registry WAIT is a lie."""
+    from decision_gate import AdmissionVerdict
+    import call_engine
+
+    monkeypatch.setattr(
+        call_engine,
+        "evaluate_decision_path_admission",
+        lambda *a, **k: AdmissionVerdict(
+            admitted=True, registry_state=STATE_ADMITTED, detail="mutated-always-admit"
+        ),
+    )
+    call = _would_be_long_call(monkeypatch, _DEFAULT_REGISTRY_PATH)
+    assert call.signal == "long"
+    assert call.wait_blocker is None
+
+
+def test_mutation_forcing_not_admitted_blocks_an_admitted_registry(monkeypatch, tmp_path):
+    from decision_gate import AdmissionVerdict
+    import call_engine
+
+    monkeypatch.setattr(
+        call_engine,
+        "evaluate_decision_path_admission",
+        lambda *a, **k: AdmissionVerdict(
+            admitted=False, registry_state=STATE_EMPTY, detail="mutated-never-admit"
+        ),
+    )
+    call = _would_be_long_call(monkeypatch, _write_registry(tmp_path, [_admitted_record()]))
+    assert call.signal == "wait"
+    assert call.wait_blocker["reason"] == "decision_path_admission"
+    assert call.wait_blocker["gated_signal"] == "long"
