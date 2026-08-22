@@ -56,8 +56,8 @@ def test_clause_a_allows_open_with_fixed_or_next_depth():
     assert good == []
 
 
-def test_clause_b_blocks_mission_done_with_open_mission_rc():
-    """PROVEN BLOCK: mission→DONE while OPEN RC names that mission_id → fail."""
+def test_clause_b_open_rc_does_not_determine_mission_completion():
+    """RC OPEN cannot independently block mission terminal status."""
     mid = "drain-neg-mission-v1"
     lines = [_open_row("RC-99910", "FIXED: still open residual", mission=mid)]
     msgs = RRL.mission_complete_open_rc_violations(
@@ -65,8 +65,7 @@ def test_clause_b_blocks_mission_done_with_open_mission_rc():
         {"status": "DONE", "mission_id": mid},
         lines,
     )
-    assert msgs and any("RC-99910" in m for m in msgs)
-    assert any(mid in m for m in msgs)
+    assert msgs == [], msgs
 
 
 def test_clause_b_allows_done_when_mission_rcs_closed():

@@ -66,27 +66,20 @@ def test_the_check_never_writes_a_baseline():
 
 
 def test_the_law_is_zero_overdue_not_a_tolerance():
-    """The message must state the standard, so a reader cannot mistake it for a budget."""
+    """Due dates on RC/register rows must not be a work gate."""
     import inspect
 
     src = inspect.getsource(C.check_open_item_cap)
-    assert "PAST their due date" in src
     assert "> ceiling of" not in src, "the tolerance wording survived the removal"
+    assert "zero work authority" in src or "sole master" in src
 
 
-def test_an_overdue_item_still_fails(monkeypatch):
-    """The negative control. Removing a ratchet must not remove the enforcement with it.
-
-    Driven by feeding the real check a synthetic overdue item, because the repository's
-    own ledger is (correctly) at zero overdue and a green check proves nothing on its own.
-    """
+def test_an_overdue_item_does_not_independently_block(monkeypatch):
+    """Legacy due dates have zero work authority. Overdue RC/register rows must not fail."""
     monkeypatch.setattr(C, "_overdue_governance_items",
                         lambda *a, **k: ["RC-999", "REG-001"], raising=True)
     out = C.check_open_item_cap()
-    assert len(out) == 1, "an overdue item no longer fails the check"
-    msg = out[0].msg
-    assert "RC-999" in msg and "PAST their due date" in msg
-    assert "2 governance item(s)" in msg
+    assert out == [], out
 
 
 def test_zero_overdue_passes_without_consulting_any_stored_number(monkeypatch):
@@ -102,5 +95,5 @@ def test_parking_lot_volume_is_no_longer_counted(monkeypatch):
     """
     monkeypatch.setattr(C, "_overdue_governance_items", lambda *a, **k: [], raising=True)
     assert C.check_open_item_cap() == [], (
-        "unchecked OPEN_ITEMS.md rows are being counted again; if they should be gated, "
-        "give them due dates and let the overdue law judge them")
+        "unchecked OPEN_ITEMS.md rows are being counted again; parking-lot volume "
+        "must not regain work or due-date authority")

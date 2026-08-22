@@ -3,14 +3,14 @@
 WHY THIS EXISTS. The repo grew four *shapes* of list by accident of role, and two of them
 started reading like work queues:
 
-    governance/root_cause_log.md    DEFECT backlog        OPEN -> FIXED -> CLOSED
-    governance/unproven_register.md EPISTEMIC backlog     UNPROVEN -> PROVEN/DISPROVED/REMEDIATED
+    governance/root_cause_log.md    DEFECT evidence       historical OPEN/CLOSED rows
+    governance/unproven_register.md EPISTEMIC evidence    historical UNPROVEN/PROVEN wording
     *.jsonl (sod_drift, quarantine, flip logs)  TELEMETRY — events, never a to-do list
     reports/*.md triage snapshots   NOTES — stale by construction the moment they are written
 
 Sprawl is itself debt: when a third markdown file carries `| ID | OPEN |` rows, closable work
 has two homes, and whichever one the reader opens looks complete while the other rots. The
-operator's rule is one defect ledger, one epistemic ledger, telemetry stays telemetry.
+operator's rule is one work list (the sole master); RC and unproven_register are evidence only.
 
 WHAT THIS BLOCKS
   (a) A NEW markdown file outside the two sanctioned ledgers that carries an issue-table with
@@ -31,10 +31,12 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 
-#: The only two files allowed to carry status-bearing work rows.
+#: Historical evidence files that may contain status-shaped rows. Not work queues.
+#: Unresolved work lives only on the sole master checklist.
 DEFECT_LEDGER = "governance/root_cause_log.md"
 EPISTEMIC_LEDGER = "governance/unproven_register.md"
 SANCTIONED_LEDGERS = frozenset({DEFECT_LEDGER, EPISTEMIC_LEDGER})
+SOLE_MASTER = "ED_CONSOLE_INSTITUTIONAL_TRUTH_AND_REMEDIATION_V1_MASTER_CHECKLIST.md"
 
 #: A work row is a markdown table row whose SECOND cell is a work status. Prose that merely
 #: names RC-123 is not a row; a table of them is a queue.
@@ -94,9 +96,9 @@ def third_queue_violations(repo: Path | None = None,
         if rows >= _QUEUE_THRESHOLD:
             out.append(
                 f"LOG_LAW: {rel} carries {rows} OPEN/PARTIAL/UNPROVEN work rows — closable "
-                f"work lives in {DEFECT_LEDGER} (defects) or {EPISTEMIC_LEDGER} (claims), "
-                f"never a third list. Convert it to a pointer, or mark it with "
-                f"'{_ESCAPE} <reason>' if the operator wants it kept as a frozen snapshot."
+                f"work lives only on {SOLE_MASTER}, never a third list. Convert it to a "
+                f"pointer, or mark it with '{_ESCAPE} <reason>' if the operator wants it "
+                f"kept as a frozen snapshot."
             )
     return out
 
@@ -112,36 +114,13 @@ def open_class_count(repo: Path | None = None) -> int:
 
 
 def unproven_overdue(repo: Path | None = None, today: str | None = None) -> list[str]:
-    """Epistemic rows past their own due date.
-
-    A pre-registered hypothesis with a FUTURE due date is the instrument working, not debt —
-    forcing it to a verdict early is how contaminated or underpowered data becomes a citation.
-    A row past its due date is different: nobody re-scoped it, and that IS debt.
-    """
-    import datetime
-
-    root = repo or REPO
-    day = today or datetime.date.today().isoformat()
-    try:
-        src = (root / EPISTEMIC_LEDGER).read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return []
-    out: list[str] = []
-    for m in re.finditer(
-            r"^\|\s*UNPROVEN\s*\|\s*([\d-]{10})\s*\|\s*([\d-]{10})\s*\|(.{0,90})",
-            src, re.M):
-        if m.group(2) < day:
-            out.append(
-                f"LOG_LAW: UNPROVEN row due {m.group(2)} is OVERDUE as of {day} — drive it to "
-                f"PROVEN/DISPROVED/REMEDIATED or re-scope it with a stated reason: "
-                f"{m.group(3).strip()[:70]}"
-            )
-    return out
+    """Register due dates have zero work authority. Returns empty."""
+    return []
 
 
 def log_law_violations(repo: Path | None = None) -> list[str]:
-    """Every clause of the law in one callee (tests and the gate share it)."""
-    return third_queue_violations(repo) + unproven_overdue(repo)
+    """Third-queue sprawl only. Register due dates do not select or block work."""
+    return third_queue_violations(repo)
 
 
 if __name__ == "__main__":

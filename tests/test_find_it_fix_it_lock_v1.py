@@ -776,10 +776,15 @@ def test_second_authority_prose_flags_binding_queue_and_agents_defect_authority(
     off = FIF.second_authority_prose_violations(extra_texts=[
         (".cursor/rules/zz.mdc", "Find & Prove queue is binding. Execute ACTIVE_PROGRAM.md NEXT."),
         ("AGENTS.md", "One defect authority: governance/root_cause_log.md"),
+        ("tools/stop_guard.py", "unproven_register: no UNPROVEN/DISPROVED claim past its due date"),
+        ("governance/PM_MANDATE.md", "Reject mission COMPLETE while OPEN RC names that mission"),
+        ("tools/check_institutional_correctness.py", "closable work has exactly TWO homes"),
     ])
     assert any("queue-is-binding" in why or "execute-next" in why or "F&P" in why
                for _, why in off)
     assert any("defect-authority" in why for _, why in off)
+    assert any("due-date" in why or "completion-block" in why or "second-list" in why
+               for _, why in off)
 
 
 def test_live_instruction_surfaces_have_zero_second_authority_grants():
@@ -825,3 +830,80 @@ def test_ticker_specific_implementation_scope_fails_tests_remain_allowed():
     assert allowed == [], allowed
     live = FIF.ticker_specific_fix_scope_violations()
     assert live == [], live
+
+
+def test_live_unproven_and_open_rc_rows_are_mapped_to_master():
+    import tools.check_institutional_correctness as C
+
+    master = (ROOT / "ED_CONSOLE_INSTITUTIONAL_TRUTH_AND_REMEDIATION_V1_MASTER_CHECKLIST.md").read_text(
+        encoding="utf-8"
+    )
+    reg = (ROOT / "governance" / "unproven_register.md").read_text(encoding="utf-8")
+    rc = (ROOT / "governance" / "root_cause_log.md").read_text(encoding="utf-8")
+    live = C.parse_live_unproven_rows(reg)
+    assert live, "expected historical UNPROVEN wording to still exist"
+    assert C.unmapped_live_unproven_rows(reg, master) == []
+    assert C.unmapped_open_rc_ids(rc, master) == []
+
+
+def test_register_unproven_and_disproved_do_not_block_or_select(tmp_path, monkeypatch):
+    """Future-due UNPROVEN, overdue UNPROVEN, and DISPROVED rows have zero work authority."""
+    import tools.check_institutional_correctness as C
+
+    g = tmp_path / "governance"
+    g.mkdir()
+    body = (
+        "| status | opened | due | claim | evidence |\n"
+        "|---|---|---|---|---|\n"
+        "| UNPROVEN | 2026-08-22 | 2099-01-01 | synthetic future claim | none |\n"
+        "| UNPROVEN | 2026-08-01 | 2000-01-01 | synthetic overdue claim | none |\n"
+        "| DISPROVED | 2026-08-22 | 2099-01-01 | synthetic disproved claim | none |\n"
+    )
+    p = g / "unproven_register.md"
+    p.write_text(body, encoding="utf-8")
+    monkeypatch.setattr(C, "_UNPROVEN_REGISTER", p)
+    assert C.check_unproven_register() == []
+    assert C.check_open_item_cap() == []
+    assert FIF.legacy_pointer_selected_work("governance/unproven_register.md", body) == []
+    assert FIF.derive_active_obligations(body) == []
+
+
+def test_open_rc_state_alone_does_not_select_or_block_completion():
+    """OPEN/ACTIVE RC evidence rows are not work-state."""
+    import tools.check_institutional_correctness as C
+
+    assert C.check_open_item_cap() == []
+    assert FIF.derive_active_obligations(
+        (ROOT / "governance" / "root_cause_log.md").read_text(encoding="utf-8")
+    ) == []
+    assert C.unmapped_open_rc_ids(
+        (ROOT / "governance" / "root_cause_log.md").read_text(encoding="utf-8"),
+        (ROOT / "ED_CONSOLE_INSTITUTIONAL_TRUTH_AND_REMEDIATION_V1_MASTER_CHECKLIST.md").read_text(
+            encoding="utf-8"
+        ),
+    ) == []
+
+
+def test_master_unresolved_still_blocks_when_register_does_not():
+    payload = {
+        "_skip_second_work_list": True,
+        "_requirement_tree": {
+            "items": [
+                {"id": "OF_PARENT", "execution": "ACTIVE", "proof": "NOT_PROVEN", "children": []}
+            ]
+        },
+        "last_assistant_text": "all work is done, mission complete, no HARD_BLOCKER",
+    }
+    assert FIF.active_parent_obligation_violations(payload)
+
+
+def test_broken_rc_evidence_structure_still_fails():
+    """Evidence-integrity validation remains for a shallow why-chain."""
+    import tools.check_institutional_correctness as C
+
+    log = ROOT / "governance" / "root_cause_log.md"
+    bad = C._rc_row_violations(
+        log, 1, "RC-99999", "OPEN",
+        ["RC-99999", "OPEN", "2026-08-22", "2026-09-22", "d", "shallow", "FIXED: x"],
+    )
+    assert bad, "shallow RC why-chain must still fail evidence integrity"

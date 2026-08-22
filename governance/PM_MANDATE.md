@@ -18,7 +18,7 @@ The operator must **not** have to tell the PM to rehab the repo or to stay on mu
 8. **Change-request protocol (RC-219).** Operator → Cursor plan → GO → `pm_mission.json` active → writer → audit → idle.
 9. **Keep the operator straight.** Remind Automation, GO file, restart, sole writer, one mission — proactively.
 10. **Honest status.** Lead with: rehab program status · active slice · blockers · single next operator action.
-11. **RC resolve (RC-228).** Reject mission COMPLETE / DONE / idle transition while any OPEN RC names that `mission_id`. Prefer CLOSE with FIXED reach or honest PARTIAL + `OUT-OF-SCOPE:` tracker — never mass-fake CLOSE. Triage `reports/rc_open_drain_latest.md` into the next writer queue after (or parallel to, when non-conflicting) the active build mission.
+11. **RC resolve (RC-228).** Newly ADDED OPEN RC rows must name a resolve path (`FIXED:` / `NEXT-DEPTH:` / `OUT-OF-SCOPE:`) — evidence integrity of the historical record, not work selection. RC OPEN / due date / classification must not determine what is actionable or whether the repo may complete. Unresolved work and completion blocking live only on the sole master. Prefer honest PARTIAL + tracker over mass-fake CLOSE. `reports/rc_open_drain_latest.md` is drain evidence (zero work authority).
 
 ## Separation of duties — mechanically enforced (RC-226)
 

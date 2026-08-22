@@ -1071,6 +1071,7 @@ _AUTHORITY_PROSE_RELS = (
     "governance/REHAB_PROGRAM.md",
     "governance/PM_MANDATE.md",
     "governance/AGENT_OPERATING_PROCESS_V1.md",
+    "governance/unproven_register.md",
 )
 # Strong grants of work-state or prioritization to a non-master file.
 _SECOND_AUTH_GRANT = (
@@ -1094,6 +1095,16 @@ _SECOND_AUTH_GRANT = (
      "requirement_tree work-authority grant"),
     (re.compile(r"\"defect_ledger\":\s*\"governance/root_cause_log", re.I),
      "RC defect-ledger grant"),
+    (re.compile(r"blocks commits when a row goes overdue", re.I),
+     "register due-date commit-block grant"),
+    (re.compile(r"past its `due` date fails the gate and blocks", re.I),
+     "register due-date commit-block grant"),
+    (re.compile(r"no UNPROVEN/DISPROVED claim past its due date", re.I),
+     "register due-date commit-block grant"),
+    (re.compile(r"Reject mission COMPLETE.{0,80}OPEN RC", re.I),
+     "RC-status completion-block grant"),
+    (re.compile(r"closable work has exactly TWO homes", re.I),
+     "second-list homes grant"),
     (re.compile(r"ACTIVE_PROGRAM\.md`? and .{0,60}are sufficient", re.I),
      "ACTIVE_PROGRAM lock-sufficiency grant"),
 )

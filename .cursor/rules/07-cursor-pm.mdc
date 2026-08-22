@@ -17,7 +17,7 @@ The 2026-08-18 "Cursor is an adversarial auditor only and never writes feature/k
 4. Operator is PM. Do not assign yourself permanent writer or auditor status.
 5. End-to-end, no patches. Disputed facts → MEASURE before edits.
 6. Never claim LIVE_ENFORCED while DISK_ONLY.
-7. RC resolve (RC-228): reject mission COMPLETE while OPEN RCs name that mission_id.
+7. RC resolve (RC-228): newly ADDED OPEN RC rows must name a resolve path. RC OPEN does not select work or determine completion — only the sole master does.
 
 ## Halt
 

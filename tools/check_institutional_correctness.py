@@ -19,8 +19,9 @@ Registered checks (see CHECKS at the bottom — that list is the authority):
     - no_swallowed_test_failures : a helper that PRINTS a failure must also cause one.
     - no_silent_swallow            : exceptions are handled, never quietly discarded.
     - no_todo_without_tracking_id  : every TODO carries a tracking id.
-    - unproven_register            : no UNPROVEN/DISPROVED claim past its due date
-                                     (governance/unproven_register.md).
+    - unproven_register            : evidence-integrity only for
+                                     governance/unproven_register.md (zero work /
+                                     due-date / commit-block authority).
 
   ADVISORY (visible debt on the ratchet — driven to zero, then flipped to enforced)
     - tests_missing_explicit_assert, function_complexity, function_length,
@@ -538,9 +539,9 @@ def check_root_cause_log() -> list[Violation]:
     genuinely half-traced, and no complete chain was falsely flagged.
 
     Operator law 2026-07-19: a cause found at why-2 is not the root -- it is a new defect
-    that gets its own five whys. An entry stays OPEN until the chain terminates with no new
-    defect AND the fix is verified. This blocks commits on any OPEN entry past its due date,
-    so a half-traced defect cannot be quietly parked as "surface fixed".
+    that gets its own five whys. Evidence-integrity validation remains (five-why depth,
+    CLOSED-row proof, parseable dates). RC OPEN / due date / classification has zero
+    work-state authority and does not independently block completion.
 
     See governance/root_cause_log.md for the rules and the row format.
     """
@@ -550,7 +551,6 @@ def check_root_cause_log() -> list[Violation]:
         out.append(Violation(log_path, 0, "governance/root_cause_log.md is missing - every "
                                           "defect must be traced to a root cause there"))
         return out
-    today = datetime.date.today()
     for n, line in enumerate(log_path.read_text(encoding="utf-8").splitlines(), start=1):
         if not line.startswith("| RC-"):
             continue
@@ -560,25 +560,10 @@ def check_root_cause_log() -> list[Violation]:
         rc_id, status, _opened, due = cells[0], cells[1], cells[2], cells[3]
 
         out.extend(_rc_row_violations(log_path, n, rc_id, status, cells))
-        if status != "OPEN":
-            continue
         try:
-            due_date = datetime.date.fromisoformat(due)
+            datetime.date.fromisoformat(due)
         except ValueError:
             out.append(Violation(log_path, n, f"{rc_id} has an unparseable due date {due!r}"))
-            continue
-        if due_date < today:
-            master = REPO / "ED_CONSOLE_INSTITUTIONAL_TRUTH_AND_REMEDIATION_V1_MASTER_CHECKLIST.md"
-            try:
-                master_txt = master.read_text(encoding="utf-8")
-            except OSError:
-                master_txt = ""
-            if rc_id in master_txt:
-                continue
-            out.append(Violation(log_path, n,
-                                 f"{rc_id} is OPEN past its due date ({due}) - the why-chain is "
-                                 f"incomplete or the fix is unverified; finish it or re-date it "
-                                 f"with a reason"))
     return out
 
 
@@ -845,7 +830,7 @@ def _open_root_causes(path) -> list[str]:
 
 
 def _open_register_claims(path) -> list[str]:
-    """Register rows still UNPROVEN or DISPROVED (the two non-terminal states)."""
+    """Historical UNPROVEN/DISPROVED wording. Not a work queue."""
     if not path.exists():
         return []
     out = []
@@ -869,25 +854,18 @@ def _is_overdue(due: str) -> bool:
 
 
 def _overdue_governance_items(rc_path, reg_path) -> list[str]:
-    """RC-65: items that have actually ROTTED — open past their own due date.
+    """Measurement only: historical RC/register rows whose due date has passed.
 
-    Root-cause columns: id | status | opened | due | ...   (due = cells[3])
-    Register columns:   status | opened | due | claim | ... (due = cells[2])
+    Zero work / due-date / commit-block authority. Unresolved work lives only
+    on the sole master. Root-cause due = cells[3]; register due = cells[2].
     """
     out: list[str] = []
-    master = REPO / "ED_CONSOLE_INSTITUTIONAL_TRUTH_AND_REMEDIATION_V1_MASTER_CHECKLIST.md"
-    try:
-        master_txt = master.read_text(encoding="utf-8")
-    except OSError:
-        master_txt = ""
     if rc_path.exists():
         for line in rc_path.read_text(encoding="utf-8").splitlines():
             if not line.startswith("| RC-"):
                 continue
             cells = [c.strip() for c in line.strip("|").split("|")]
             if len(cells) > 3 and cells[1] == "OPEN" and _is_overdue(cells[3]):
-                if cells[0] in master_txt:
-                    continue
                 out.append(cells[0])
     if reg_path.exists():
         for line in reg_path.read_text(encoding="utf-8").splitlines():
@@ -895,14 +873,17 @@ def _overdue_governance_items(rc_path, reg_path) -> list[str]:
                 continue
             cells = [c.strip() for c in line.strip("|").split("|")]
             if len(cells) > 3 and cells[0] in ("UNPROVEN", "DISPROVED") and _is_overdue(cells[2]):
-                if "Former `unproven_register.md`" in master_txt or cells[3][:40] in master_txt:
-                    continue
                 out.append(f"register:{cells[3][:40]}")
     return out
 
 
 def check_open_item_cap() -> list[Violation]:
-    """Governance ledgers must burn DOWN. The open count may never rise.
+    """Legacy RC/register due dates have zero work authority.
+
+    Unresolved work lives only on the sole master. This named check remains so
+    the ratchet file cannot return; it never blocks on due dates.
+
+    Historical note: Governance ledgers must burn DOWN. The open count may never rise.
 
     Operator 2026-07-19: the ledgers must resolve, not accumulate.
 
@@ -955,13 +936,10 @@ def check_open_item_cap() -> list[Violation]:
     # due date, so they were pure parking-lot volume -- the quantity a ratchet measures and a
     # law cannot. Requiring a due date on every parked row is the honest successor and is a
     # separate change, not something to smuggle in here.
-    if open_items:
-        out.append(Violation(
-            rc, 0,
-            f"{len(open_items)} governance item(s) are PAST their due date: "
-            f"{', '.join(open_items[:8])}{'...' if len(open_items) > 8 else ''}. "
-            f"Finish it, or re-date it with the reason stated in the row. A due date that "
-            f"passes silently is a deferral wearing a schedule."))
+    # RC / register due dates have zero work authority (operator 2026-08-22).
+    # Unresolved work and completion blocking live only on the sole master.
+    # The helper `_overdue_governance_items` remains as a measurement, not a gate.
+    del open_items
     return out
 
 
@@ -1959,25 +1937,64 @@ def check_mypy_types() -> list[Violation]:
 
 
 _UNPROVEN_REGISTER = REPO / "governance" / "unproven_register.md"
-UNPROVEN_STALE_DAYS = 14
+UNPROVEN_STALE_DAYS = 14  # retained as historical constant; not a work gate
 
 
 _OPEN_STATUSES = {"UNPROVEN", "DISPROVED"}
 _TERMINAL_STATUSES = {"PROVEN", "REMEDIATED"}
 
 
-def check_unproven_register() -> list[Violation]:
-    """Every claim ends at PROVEN or at a landed fix (REMEDIATED).
+def parse_live_unproven_rows(text: str) -> list[dict[str, str]]:
+    """UNPROVEN/DISPROVED register rows (evidence wording). Not a work queue."""
+    out: list[dict[str, str]] = []
+    for ln in (text or "").splitlines():
+        if not ln.startswith("|"):
+            continue
+        cells = [c.strip() for c in ln.strip().strip("|").split("|")]
+        if len(cells) >= 4 and cells[0] in _OPEN_STATUSES:
+            out.append({
+                "status": cells[0],
+                "due": cells[2] if len(cells) > 2 else "",
+                "claim": cells[3],
+            })
+    return out
 
-    UNPROVEN = not yet evidenced. DISPROVED = we were wrong; an OPEN DEFECT that must be
-    fixed, not parked. Both are open states: past their `due` date they fail the gate and
-    block commits. Missing register = fail-closed.
+
+def unmapped_live_unproven_rows(reg_text: str, master_text: str) -> list[str]:
+    """Claims whose first 40 claim characters are absent from the sole master."""
+    out: list[str] = []
+    for row in parse_live_unproven_rows(reg_text):
+        snippet = row["claim"][:40]
+        if snippet and snippet in (master_text or ""):
+            continue
+        out.append(snippet or row["claim"][:40])
+    return out
+
+
+def unmapped_open_rc_ids(rc_text: str, master_text: str) -> list[str]:
+    """OPEN/PARTIAL RC ids that do not appear on the sole master."""
+    out: list[str] = []
+    for ln in (rc_text or "").splitlines():
+        if not ln.startswith("| RC-"):
+            continue
+        cells = [c.strip() for c in ln.strip().strip("|").split("|")]
+        if len(cells) > 1 and cells[1] in ("OPEN", "PARTIAL") and cells[0] not in (master_text or ""):
+            out.append(cells[0])
+    return out
+
+
+def check_unproven_register() -> list[Violation]:
+    """Evidence-integrity only. Zero work-state / due-date / commit-block authority.
+
+    The register may preserve historical PROVEN/REMEDIATED/UNPROVEN/DISPROVED wording.
+    Missing file or an unparseable date on a register row is a broken evidence record.
+    UNPROVEN / DISPROVED / a due date must not select work or block completion — that
+    authority lives only on the sole master.
     """
     if not _UNPROVEN_REGISTER.exists():
         return [Violation(_UNPROVEN_REGISTER, 1,
-                          "unproven register missing — claims must be evidenced or registered")]
+                          "unproven register missing — historical evidence file is required")]
     out: list[Violation] = []
-    today = datetime.date.today()
     for i, ln in enumerate(_UNPROVEN_REGISTER.read_text(encoding="utf-8").splitlines(), 1):
         s = ln.strip()
         if not s.startswith("|"):
@@ -1988,27 +2005,11 @@ def check_unproven_register() -> list[Violation]:
         status = cells[0].upper()
         if status not in _OPEN_STATUSES | _TERMINAL_STATUSES:
             continue
-        if status in _TERMINAL_STATUSES:
-            continue
         try:
-            due = datetime.date.fromisoformat(cells[2])
+            datetime.date.fromisoformat(cells[2])
         except ValueError:
             out.append(Violation(_UNPROVEN_REGISTER, i,
                                  f"{status} row has an unparseable due date (want YYYY-MM-DD)"))
-            continue
-        overdue = (today - due).days
-        if overdue > 0:
-            master = REPO / "ED_CONSOLE_INSTITUTIONAL_TRUTH_AND_REMEDIATION_V1_MASTER_CHECKLIST.md"
-            try:
-                master_txt = master.read_text(encoding="utf-8")
-            except OSError:
-                master_txt = ""
-            if "Former `unproven_register.md`" in master_txt or cells[3][:40] in master_txt:
-                continue
-            what = ("OPEN DEFECT — fix it and move to REMEDIATED"
-                    if status == "DISPROVED" else "prove or disprove it")
-            out.append(Violation(_UNPROVEN_REGISTER, i,
-                                 f"{status} is {overdue}d past due ({cells[2]}) — {what}: {cells[3][:80]}"))
     return out
 
 
@@ -4679,7 +4680,8 @@ def check_phase2a_single_level_computation() -> list[Violation]:
 
 
 def check_log_law() -> list[Violation]:
-    """LOG LAW (operator/PM 2026-08-04, RC-237): closable work has exactly TWO homes.
+    """LOG LAW (operator/PM 2026-08-04, RC-237): closable work has exactly ONE home
+    (the sole master). The two historical ledgers are evidence, not work queues.
 
     OBSERVED (RC-237, measured 2026-08-04): five markdown files outside the two ledgers
     carried status-bearing work rows — `reports/rc_open_drain_latest.md` 21 rows,
@@ -4693,9 +4695,7 @@ def check_log_law() -> list[Violation]:
     mentions RC ids, on the two sanctioned ledgers, or on telemetry .jsonl/.log (events are
     explicitly not debt). The threshold is three work rows because two reads as discussion
     rather than a queue; frozen dated snapshots keep an operator escape (`# log-law-ok:`).
-    The overdue-epistemic clause was likewise prototyped: it fires on a lapsed due date and
-    stays silent on a future-dated pre-registered hypothesis, since forcing an early verdict
-    is how contaminated data becomes a citation. 10 negative controls in
+    Register due dates have zero work authority and do not participate. 10 negative controls in
     tests/test_log_law_v1.py, plus a wiring assertion (RC-238) that this registration is
     ENFORCED rather than merely present. Delegates to tools/log_law.py so the gate, the
     tests and the CLI all judge by ONE implementation.
@@ -4915,7 +4915,7 @@ CHECKS = [
     ("verdicts_declare_their_power", check_verdicts_declare_their_power, True),  # provenance, not the word "MEASURED" (RC-6)
     ("snapshots_read_names_the_timeframe", check_snapshots_read_names_the_timeframe, True),  # query PLAN, not code shape
     ("shutdown_is_bounded", check_shutdown_is_bounded, True),  # Ctrl+C must always work
-    ("unproven_register", check_unproven_register, True),  # claims: evidenced or registered
+    ("unproven_register", check_unproven_register, True),  # evidence integrity only; zero work authority
     ("venv_parity", check_venv_parity, True),  # one interpreter — .venv only (CI exempt)
     ("credential_leak", check_credential_leak, True),  # staged secrets / home paths
     ("sqlite_wal_contract", check_sqlite_wal_contract, True),  # WAL + timeout on connects

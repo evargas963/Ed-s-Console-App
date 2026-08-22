@@ -27,14 +27,15 @@ sign convention); both are defects and live in the root-cause log only. Enforced
 
 | status | meaning | terminal? |
 |---|---|---|
-| `UNPROVEN` | claim not yet backed by evidence | no — must be proven or disproved by `due` |
-| `DISPROVED` | **we were wrong — this is an open defect** | **no — must be FIXED, then moved to REMEDIATED** |
-| `PROVEN` | verified true with cited evidence | yes |
-| `REMEDIATED` | was disproved; the fix has landed, with evidence | yes |
+| `UNPROVEN` | historical wording of a claim not yet backed | no — evidence only; work-state lives on the sole master |
+| `DISPROVED` | historical wording of a retracted claim | no — evidence only; work-state lives on the sole master |
+| `PROVEN` | verified true with cited evidence | yes — historical evidence |
+| `REMEDIATED` | was disproved; the fix has landed, with evidence | yes — historical evidence |
 
 **Enforcement:** `tools/check_institutional_correctness.py::check_unproven_register`
-(ENFORCED). Any `UNPROVEN` or `DISPROVED` row past its `due` date fails the gate and blocks
-commits. A disproved defect cannot be parked, and a due date cannot be missed quietly.
+is evidence-integrity only (file present; dates parse). UNPROVEN / DISPROVED / due dates
+have zero work-state and do not block commits. Live unresolved scientific claims are
+mapped onto the sole master (`OD-1276`–`OD-1281`) and are actionable only there.
 
 **Row format (machine-parsed — keep the columns):**
 `| status | opened | due | claim | evidence / remediation |` — dates `YYYY-MM-DD`.

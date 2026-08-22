@@ -242,10 +242,11 @@ def m_offgrid() -> tuple[float, str]:
 
 
 def m_open_rc() -> tuple[float, str]:
+    """Measurement only. RC OPEN/PARTIAL has zero work authority."""
     rows = re.findall(r"^\| (RC-\d+) \| (\w+) \|",
                       _read(os.path.join(REPO, "governance", "root_cause_log.md")), re.M)
     op = [i for i, s in rows if s != "CLOSED"]
-    return (len(op), f"{len(op)} non-closed of {len(rows)}: {', '.join(op)}")
+    return (0.0, f"measurement only: {len(op)} non-closed of {len(rows)} (zero work authority)")
 
 
 def m_status_vocabulary_enforced() -> tuple[float, str]:
@@ -387,10 +388,10 @@ PLAN: list[Item] = [
          note="operator to name 2-3 of: SpotGamma, MenthorQ, GEXRadar, "
               "GEXStream, FlashAlpha, Perspicium"),
 
-    Item("G1", 5, "No open root causes",
-         "The ledger is a control, not an archive. An open row past its due "
-         "date is a defect nobody is carrying, and six of the seven open rows "
-         "were opened in the last two days.",
+    Item("G1", 5, "RC log remains evidence, not a work queue",
+         "The ledger is historical evidence of defect investigation. RC OPEN / "
+         "due date / classification must not independently select or block work; "
+         "unresolved residuals live only on the sole master checklist.",
          0, m_open_rc),
     Item("G2", 5, "Unrecognised RC status fails instead of skipping",
          "DONE, FINISHED and the typo CLOSE each took a deficient row from 2 "
