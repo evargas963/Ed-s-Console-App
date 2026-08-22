@@ -118,6 +118,9 @@ def test_displayed_depth_anomaly_candidates_are_retired():
     assert "wall_candidates" not in m
     assert not hasattr(ofe, "OF_BOOK_WALL_MEDIAN_MULT")
     assert not hasattr(ofe, "_book_wall_candidates")
+    assert m["book_history_classification"] == "ROLLING_SNAPSHOT_WINDOW"
+    assert m["book_history_max_snapshots"] == 20
+    assert any("durable_l2" in d for d in m["deferred"])
 
 
 def test_microprice_fail_closes_on_crossed_and_invalid():

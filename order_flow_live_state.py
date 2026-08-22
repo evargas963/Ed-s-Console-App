@@ -231,6 +231,16 @@ def get_l1_stream_input_probe(symbol: str) -> tuple[Any, ...]:
     return (bl, tl, last_ms, tb, ta)
 
 
+def clear_all_live_state() -> None:
+    """Drop tape/book/top/prev-print identity for every symbol.
+
+    Required on stream disconnect/reconnect. Leaving the last window resident
+    mixes pre-disconnect restatements with the new session (RC-469).
+    """
+    with _lock:
+        _clear_all_session_state_unlocked()
+
+
 def _clear_all_session_state_unlocked() -> None:
     """Drop every symbol's tape/book/top/prev-print identity. Caller holds _lock."""
     for _k in list(_tape.keys()):

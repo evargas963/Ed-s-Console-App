@@ -42,6 +42,8 @@ CUM_DELTA_CLASSIFICATION = "PROXY_RECONSTRUCTED_L1_TICK"
 # be distinguished from a restated LEVELONE heartbeat (RC-463 / RC-468).
 TAPE_IDENTITY_CONVENTION = "L1_OBSERVATION_RESTATEMENT"
 TAPE_NATIVE_EVENT_ID = False
+BOOK_HISTORY_CLASSIFICATION = "ROLLING_SNAPSHOT_WINDOW"
+BOOK_HISTORY_MAX_SNAPSHOTS = 20
 TAPE_LIMITATIONS = (
     "Reconstructed L1 tick-rule from LAST_PRICE, LAST_SIZE, TRADE_TIME_MILLIS. "
     "Identical triples are suppressed as restatements under this convention. "
@@ -637,6 +639,7 @@ def _microstructure_structural(cb: dict) -> dict:
             "depth_pressure": "DERIVED", "book_slope": "DERIVED",
             "liquidity_concentration": "DERIVED",
             "displayed_depth_anomaly_candidates": "RETIRED (no median-multiple candidate)",
+            "book_history": BOOK_HISTORY_CLASSIFICATION,
             "ages.book_age_sec": "DERIVED", "ages.quote_age_sec": "DERIVED",
             "provenance.book_time_ms": "NATIVE", "provenance.exchange_quote_ts": "NATIVE",
             "provenance.server_received_ts": "DERIVED",
@@ -646,7 +649,10 @@ def _microstructure_structural(cb: dict) -> dict:
             "native_cvd (engine emits PROXY_RECONSTRUCTED_L1_TICK only)",
             "absorption / replenishment (RETIRED — not measured)",
             "institutional_flow (RETIRED unvalidated composite)",
+            "durable_l2_timeseries (in-memory last-N snapshots only; not a time series)",
         ],
+        "book_history_classification": BOOK_HISTORY_CLASSIFICATION,
+        "book_history_max_snapshots": BOOK_HISTORY_MAX_SNAPSHOTS,
     }
 
 
@@ -1227,6 +1233,8 @@ class OrderFlowEngine:
             "tape_identity_convention": TAPE_IDENTITY_CONVENTION,
             "tape_native_event_id": TAPE_NATIVE_EVENT_ID,
             "tape_limitations": TAPE_LIMITATIONS,
+            "book_history_classification": BOOK_HISTORY_CLASSIFICATION,
+            "book_history_max_snapshots": BOOK_HISTORY_MAX_SNAPSHOTS,
             "cum_delta_proxy": cum_delta_proxy,
             "cum_delta_slope": cum_delta_slope,
             "cum_delta_classification": CUM_DELTA_CLASSIFICATION,
@@ -1286,6 +1294,8 @@ class OrderFlowEngine:
             "tape_identity_convention": TAPE_IDENTITY_CONVENTION,
             "tape_native_event_id": TAPE_NATIVE_EVENT_ID,
             "tape_limitations": TAPE_LIMITATIONS,
+            "book_history_classification": BOOK_HISTORY_CLASSIFICATION,
+            "book_history_max_snapshots": BOOK_HISTORY_MAX_SNAPSHOTS,
             "cum_delta_proxy": None,
             "cum_delta_slope": None,
             "cum_delta_classification": CUM_DELTA_CLASSIFICATION,

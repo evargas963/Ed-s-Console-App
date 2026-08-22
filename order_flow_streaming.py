@@ -19,7 +19,12 @@ import time
 from typing import Any, Callable, Optional
 from instrument_identity import ticker_storage_key
 
-from order_flow_live_state import forget_unsubscribed_symbols, push_book, push_level_one
+from order_flow_live_state import (
+    clear_all_live_state,
+    forget_unsubscribed_symbols,
+    push_book,
+    push_level_one,
+)
 
 import live_market_plane as _lmp
 
@@ -360,6 +365,7 @@ def _run_stream_loop(
     async def _async_run() -> None:
         global _stream_running, _stream_client, _streaming_logged_in
         global _stream_shutdown_event, _stream_resubscribe_lock, _pending_post_login_ticker
+        global _streaming_last_update_ts, _subscribed_equity_syms, _active_streaming_ticker
 
         _stream_shutdown_event = asyncio.Event()
         _stream_resubscribe_lock = asyncio.Lock()
@@ -455,6 +461,10 @@ def _run_stream_loop(
             _stream_running = False
             _stream_shutdown_event = None
             _stream_resubscribe_lock = None
+            _streaming_last_update_ts = None
+            _subscribed_equity_syms = []
+            _active_streaming_ticker = None
+            clear_all_live_state()
             log.info("Order flow streaming stopped")
 
     _stream_loop = asyncio.new_event_loop()

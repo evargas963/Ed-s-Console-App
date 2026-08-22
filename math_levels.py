@@ -1244,6 +1244,45 @@ def displayable_trusted_level(value: float | None, confidence: str | None) -> fl
     return out
 
 
+def level_at_captured_edge(
+    value: float | None,
+    strike_lo: float | None,
+    strike_hi: float | None,
+    *,
+    eps: float = 1e-6,
+) -> bool:
+    """True when the picked level sits on the captured-strike window edge.
+
+    TRUSTED (span +/- GAMMA_FLIP_MIN_SPAN_PCT) is a flip-coverage gate, not proof
+    that a max-in-window wall/pin/peak is interior. A 20-strike or just-trusted
+    book can place the largest remaining gamma at the last fetched strike.
+    """
+    try:
+        if value is None or strike_lo is None or strike_hi is None:
+            return False
+        v, lo, hi = float(value), float(strike_lo), float(strike_hi)
+    except (TypeError, ValueError):
+        return False
+    if v != v or lo != lo or hi != hi:
+        return False
+    return abs(v - lo) <= eps or abs(v - hi) <= eps
+
+
+def displayable_interior_trusted_level(
+    value: float | None,
+    confidence: str | None,
+    strike_lo: float | None,
+    strike_hi: float | None,
+) -> float | None:
+    """TRUSTED plus interior-of-window. Edge extrema are not displayed as walls."""
+    shown = displayable_trusted_level(value, confidence)
+    if shown is None:
+        return None
+    if level_at_captured_edge(shown, strike_lo, strike_hi):
+        return None
+    return shown
+
+
 def displayable_gamma_flip(flip: float | None, confidence: str | None) -> float | None:
     """Operator-visible flip number. Narrow/unavailable chains must not look precise."""
     return displayable_trusted_level(flip, confidence)

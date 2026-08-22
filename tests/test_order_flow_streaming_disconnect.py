@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+from pathlib import Path
 
 import order_flow_streaming as ofs
 
@@ -37,6 +38,22 @@ def test_streaming_l1_cache_usable_requires_recent_tick():
     assert ofs.streaming_l1_cache_usable("SPY") is False
     # Authority may still read "streaming" until STREAMING_STALE_MS (25s); fast-quote must not use cache.
     assert ofs.get_plane_authority_for_ticker("SPY") == "streaming"
+
+
+def test_clear_all_live_state_drops_tape_and_prev_trade():
+    import order_flow_live_state as ols
+    ols.push_level_one("SPY", {
+        "LAST_PRICE": 500.0, "LAST_SIZE": 10, "TRADE_TIME_MILLIS": 1_000,
+    })
+    assert ols.get_stats()["tape"].get("SPY", 0) >= 1
+    ols.clear_all_live_state()
+    assert ols.get_stats()["tape"].get("SPY", 0) == 0
+
+
+def test_stream_stop_clears_live_state_and_freshness():
+    src = Path(ofs.__file__).read_text(encoding="utf-8")
+    assert "clear_all_live_state()" in src
+    assert "_streaming_last_update_ts = None" in src
 
 
 def test_get_plane_authority_rest_only_when_logged_out():

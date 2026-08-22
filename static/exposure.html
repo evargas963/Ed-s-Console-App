@@ -596,7 +596,8 @@ function draw() {
     const v = seriesLine(p => p.vwap, PAL.orange, 1, 2);
     vwbDrawn = a || v;
   }
-  const flip = terrain && terrain.gamma_flip;
+  const flipTrusted = terrain && (terrain.confidence === 'TRUSTED' || terrain.kl_gamma_flip_confidence === 'TRUSTED');
+  const flip = flipTrusted ? terrain.gamma_flip : null;
   if (flip != null && flip >= lo && flip <= hi) {
     g.strokeStyle = PAL.tx; g.setLineDash([7, 5]);
     g.beginPath(); g.moveTo(PADL, y(flip)); g.lineTo(W - PADR, y(flip)); g.stroke();

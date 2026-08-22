@@ -4900,6 +4900,12 @@ function edTrustedChainLevel(d, key) {
   const conf = d.kl_gamma_flip_confidence || d.confidence;
   if (conf !== 'TRUSTED') return null;
   const keys = ED_CHAIN_GATED_KEYS[key] || [key + '_display', key];
+  const displayKey = keys.find(k => k.endsWith('_display'));
+  if (displayKey && Object.prototype.hasOwnProperty.call(d, displayKey)) {
+    const v = d[displayKey];
+    const n = Number(v);
+    return (v == null || Number.isNaN(n)) ? null : n;
+  }
   let v = null;
   for (const k of keys) {
     if (d[k] != null) { v = d[k]; break; }
@@ -6379,30 +6385,12 @@ function renderDecisionCommandRail(d) {
   domIf('dr-lvl-vah', el => { el.textContent = pxTxt(d.today_vah); });
   domIf('dr-lvl-val', el => { el.textContent = pxTxt(d.today_val); });
 
-  // Order flow compact operator read.
-  const ofDirRaw = d.order_flow_direction;
-  const ofDir = ofDirRaw != null ? String(ofDirRaw).toLowerCase() : '';
-  const ofScore = d.order_flow_score;
-  const ofBiasTxt = ofDir === 'buying' || ofDir === 'bullish' ? 'BUYING' : ofDir === 'selling' || ofDir === 'bearish' ? 'SELLING' : (ofDirRaw == null ? '—' : 'NEUTRAL');
-  domIf('dr-of-bias', el => {
-    el.textContent = ofBiasTxt;
-    el.style.color = ofBiasTxt === 'BUYING' ? 'var(--green)' : ofBiasTxt === 'SELLING' ? 'var(--red)' : 'var(--text2)';
-  });
-  domIf('dr-of-strength', el => { el.textContent = (ofScore == null || Number.isNaN(Number(ofScore))) ? '—' : `${Math.round(Number(ofScore) * 100)}%`; });
-  const ofConfirm = (() => {
-    const pDir = String(d.charm_direction || '').toLowerCase();
-    if ((ofBiasTxt === 'BUYING' && pDir === 'buying') || (ofBiasTxt === 'SELLING' && pDir === 'selling')) return 'CONFIRM';
-    if ((ofBiasTxt === 'BUYING' && pDir === 'selling') || (ofBiasTxt === 'SELLING' && pDir === 'buying')) return 'DIVERGENCE';
-    return 'MIXED';
-  })();
-  domIf('dr-of-confirm', el => {
-    el.textContent = ofConfirm;
-    el.style.color = ofConfirm === 'CONFIRM' ? 'var(--green)' : ofConfirm === 'DIVERGENCE' ? 'var(--amber)' : 'var(--text2)';
-  });
-  domIf('dr-of-line', el => {
-    const line = String(d.order_flow_regime || d.of_interpretation || '').trim();
-    el.textContent = line || 'No dominant flow edge';
-  });
+  // RC-454: order_flow_score / direction / regime / verdict are retired. Absence
+  // is the honest state — do not reconstruct a composite or color it as confidence.
+  domIf('dr-of-bias', el => { el.textContent = '—'; el.style.color = 'var(--text2)'; });
+  domIf('dr-of-strength', el => { el.textContent = '—'; });
+  domIf('dr-of-confirm', el => { el.textContent = '—'; el.style.color = 'var(--text2)'; });
+  domIf('dr-of-line', el => { el.textContent = 'Composite retired — primitives only'; });
 
   // Liquidity path (prices/ranges explicit).
   const voids = Array.isArray(d.kl_gamma_voids) ? d.kl_gamma_voids : [];
@@ -6437,10 +6425,10 @@ function renderDecisionCommandRail(d) {
   domIf('lp-below', el => { el.textContent = supR !== '—' ? `${supR}${belowVoid !== '—' ? ` | void ${belowVoid}` : ''}` : belowVoid; });
   domIf('lp-upper', el => { el.textContent = pxTxt(d.kl_em_upper); });
   domIf('lp-lower', el => { el.textContent = pxTxt(d.kl_em_lower); });
-  domIf('of-bias-new', el => { el.textContent = ofBiasTxt; el.style.color = ofBiasTxt === 'BUYING' ? 'var(--green)' : ofBiasTxt === 'SELLING' ? 'var(--red)' : 'var(--text2)'; });
-  domIf('of-strength-new', el => { el.textContent = (ofScore == null || Number.isNaN(Number(ofScore))) ? '—' : `${Math.round(Number(ofScore) * 100)}%`; });
-  domIf('of-confirm-new', el => { el.textContent = ofConfirm; el.style.color = ofConfirm === 'CONFIRM' ? 'var(--green)' : ofConfirm === 'DIVERGENCE' ? 'var(--amber)' : 'var(--text2)'; });
-  domIf('of-read-new', el => { el.textContent = String(d.order_flow_regime || d.of_interpretation || '').trim() || 'No dominant flow edge'; });
+  domIf('of-bias-new', el => { el.textContent = '—'; el.style.color = 'var(--text2)'; });
+  domIf('of-strength-new', el => { el.textContent = '—'; });
+  domIf('of-confirm-new', el => { el.textContent = '—'; el.style.color = 'var(--text2)'; });
+  domIf('of-read-new', el => { el.textContent = 'Composite retired — primitives only'; });
 
   // Per-horizon panels
   const hp = (d.horizon_prob_bars && typeof d.horizon_prob_bars === 'object') ? d.horizon_prob_bars : {};
@@ -7075,13 +7063,12 @@ function l1TierBSemanticSignatureFromPaintInputs(d, paintIn) {
   }
   const of = d.order_flow || {};
   const verdict = of.order_flow_verdict != null ? String(of.order_flow_verdict) : '';
-  const vcol = of.order_flow_verdict_color != null ? String(of.order_flow_verdict_color) : '';
   const zone = (d.zone_label != null || d.zone != null) ? String(d.zone_label != null ? d.zone_label : d.zone) : '';
   const bias = d.bias_signal != null ? String(d.bias_signal) : '';
   const pin = d.pin_strength != null ? String(d.pin_strength) : '';
   const nd = d.nd_disp != null ? String(d.nd_disp) : '';
   const ng = d.net_gamma != null ? String(d.net_gamma) : '';
-  return [paintIn.freshSig, zone, bias, pin, nd, ng, verdict, vcol].join('\x1e');
+  return [paintIn.freshSig, zone, bias, pin, nd, ng, verdict].join('\x1e');
 }
 
 /** Tier B — GET /api/analytics/light; merges onto _lastData, updates regime strip + OF headline. */
@@ -7243,8 +7230,7 @@ function renderTierBLight(d, fullRenderSource) {
   if (ofv) {
     if (of.order_flow_verdict) {
       ofv.textContent = String(of.order_flow_verdict).slice(0, 32);
-      const c = of.order_flow_verdict_color;
-      ofv.style.color = c === 'green' ? 'var(--green)' : c === 'red' ? 'var(--red)' : 'var(--gold)';
+      ofv.style.color = 'var(--text3)';
     } else {
       ofv.textContent = '—';
       ofv.style.color = 'var(--text3)';

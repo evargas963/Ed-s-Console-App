@@ -11145,14 +11145,31 @@ def _terrain_kl_overlay(md: dict, ticker: str) -> None:
     md["kl_call_gamma_wall"] = _g("call_wall")
     md["kl_put_gamma_wall"] = _g("put_wall")
     md["kl_gamma_flip"] = _g("gamma_flip")
-    from math_levels import displayable_gamma_flip, displayable_trusted_level
+    from math_levels import (
+        displayable_gamma_flip,
+        displayable_interior_trusted_level,
+        displayable_trusted_level,
+    )
     _conf = _g("confidence")
+    _diag = _g("flip_diag") if isinstance(_g("flip_diag"), dict) else {}
+    _lo, _hi = _diag.get("strike_lo"), _diag.get("strike_hi")
+    md["kl_flip_diag"] = _diag
     md["kl_gamma_flip_display"] = displayable_gamma_flip(_g("gamma_flip"), _conf)
-    md["kl_call_gamma_wall_display"] = displayable_trusted_level(_g("call_wall"), _conf)
-    md["kl_put_gamma_wall_display"] = displayable_trusted_level(_g("put_wall"), _conf)
-    md["kl_gamma_pin_display"] = displayable_trusted_level(_g("gamma_pin"), _conf)
-    md["kl_hvl_display"] = displayable_trusted_level(_g("net_gex_peak"), _conf)
-    md["kl_max_pain_display"] = displayable_trusted_level(_g("max_pain"), _conf)
+    md["kl_call_gamma_wall_display"] = displayable_interior_trusted_level(
+        _g("call_wall"), _conf, _lo, _hi
+    )
+    md["kl_put_gamma_wall_display"] = displayable_interior_trusted_level(
+        _g("put_wall"), _conf, _lo, _hi
+    )
+    md["kl_gamma_pin_display"] = displayable_interior_trusted_level(
+        _g("gamma_pin"), _conf, _lo, _hi
+    )
+    md["kl_hvl_display"] = displayable_interior_trusted_level(
+        _g("net_gex_peak"), _conf, _lo, _hi
+    )
+    md["kl_max_pain_display"] = displayable_interior_trusted_level(
+        _g("max_pain"), _conf, _lo, _hi
+    )
     md["kl_gsf_display"] = displayable_trusted_level(_g("gsf"), _conf)
     md["kl_grc_display"] = displayable_trusted_level(_g("grc"), _conf)
     md["kl_gamma_pin"] = _g("gamma_pin")
@@ -14906,22 +14923,32 @@ def _liquidity_fusion_from_cache(
         spot_f = float(spot_v) if spot_v is not None else None
     except (TypeError, ValueError):
         spot_f = None
-    from math_levels import displayable_trusted_level
+    from math_levels import displayable_interior_trusted_level, displayable_trusted_level
     conf = d.get("kl_gamma_flip_confidence") or d.get("confidence")
+    _diag = d.get("kl_flip_diag") or d.get("flip_diag") or {}
+    if not isinstance(_diag, dict):
+        _diag = {}
+    _lo, _hi = _diag.get("strike_lo"), _diag.get("strike_hi")
+
+    def _chain_lvl(display_key, raw_key):
+        if display_key in d:
+            return d.get(display_key)
+        return displayable_interior_trusted_level(d.get(raw_key), conf, _lo, _hi)
+
     pairs = [
-        (displayable_trusted_level(d.get("kl_call_gamma_wall"), conf), "GAMMA_CALL_WALL"),
-        (displayable_trusted_level(d.get("kl_put_gamma_wall"), conf), "GAMMA_PUT_WALL"),
+        (_chain_lvl("kl_call_gamma_wall_display", "kl_call_gamma_wall"), "GAMMA_CALL_WALL"),
+        (_chain_lvl("kl_put_gamma_wall_display", "kl_put_gamma_wall"), "GAMMA_PUT_WALL"),
         (displayable_trusted_level(d.get("kl_call_delta_wall"), conf), "DELTA_CALL_WALL"),
         (displayable_trusted_level(d.get("kl_put_delta_wall"), conf), "DELTA_PUT_WALL"),
         (d.get("kl_call_oi_wall"), "OI_CALL_WALL"),
         (d.get("kl_put_oi_wall"), "OI_PUT_WALL"),
         (d.get("kl_gamma_inflection"), "GAMMA_INFLECTION"),
         (d.get("kl_delta_inflection"), "DELTA_INFLECTION"),
-        (displayable_trusted_level(d.get("kl_gamma_pin"), conf), "GAMMA_PIN"),
+        (_chain_lvl("kl_gamma_pin_display", "kl_gamma_pin"), "GAMMA_PIN"),
         # RC-134: kl_hvl is the NET book (RC-124); the tag must not say HVL, since that
         # name means total gamma, which is the pin.
-        (displayable_trusted_level(d.get("kl_hvl"), conf), "NET_GEX_PEAK"),
-        (displayable_trusted_level(d.get("kl_max_pain"), conf), "MAX_PAIN"),
+        (_chain_lvl("kl_hvl_display", "kl_hvl"), "NET_GEX_PEAK"),
+        (_chain_lvl("kl_max_pain_display", "kl_max_pain"), "MAX_PAIN"),
         (displayable_trusted_level(d.get("kl_gamma_flip"), conf), "GAMMA_FLIP"),
         (d.get("kl_oi_center"), "OI_CENTER"),
         (d.get("kl_em_upper"), "EM_UPPER"),
