@@ -98,6 +98,13 @@ def test_spy_only_prompt_content_blocks_and_universal_allows():
     )
     assert U.spy_only_content_violation(waived) is None
 
+    assert U.ticker_specific_implementation_scope_violation(
+        "implement a ticker-specific repair for timestamps", rel="AGENTS.md"
+    )
+    assert U.ticker_specific_implementation_scope_violation(
+        "if ticker == \"SPY\": special_fix()", rel="tests/test_rep.py"
+    ) is None
+
 
 def test_check_universal_ticker_scope_screams_on_injected_tool(tmp_path, monkeypatch):
     """Full check path: a SPY-only liquidity tool under a fake repo must produce >=1 violation."""

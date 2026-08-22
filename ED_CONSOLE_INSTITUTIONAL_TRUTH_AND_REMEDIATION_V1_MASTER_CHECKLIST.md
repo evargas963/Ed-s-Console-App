@@ -111,7 +111,7 @@ Index into the operator-source checkboxes below. Not extra boxes. Not a second q
 ### Parent / closure law
 
 - [ ] `OS-PREAMBLE-001` — STATUS=NOT_PROVEN — Parent status is NOT_PROVEN until every material money-path item is PASS or legitimately UNAVAILABLE and mechanically prevented from being represented as available or decision-grade
-- [ ] `OS-PREAMBLE-002` — STATUS=NOT_PROVEN — Allowed closure statuses are only PASS / FAIL / NOT_PROVEN / UNAVAILABLE
+- [ ] `OS-PREAMBLE-002` — STATUS=NOT_PROVEN — Allowed closure statuses are exactly PASS / FAIL / NOT_PROVEN / UNAVAILABLE / NOT_APPLICABLE
 - [ ] `OS-PREAMBLE-003` — STATUS=NOT_PROVEN — Separate classification NATIVE / DERIVED / HEURISTIC / PROXY is required for operator-visible and model-facing concepts
 - [ ] `OS-PREAMBLE-004` — STATUS=NOT_PROVEN — A checked box requires complete current-repo proof plus required runtime/live proof plus downstream consumer proof plus any required predictive proof
 - [ ] `OS-PREAMBLE-005` — STATUS=NOT_PROVEN — A child PASS may never close a parent item by itself

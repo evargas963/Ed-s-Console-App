@@ -1,5 +1,5 @@
 # institutional-synthetic-ok: inject incomplete active views and fake blockers.
-"""FIND IT → FIX IT — one RC-log authority, derived active view (RC-453)."""
+"""FIND IT → FIX IT — sole master authority; RC log has zero execution authority."""
 from __future__ import annotations
 
 import json
@@ -757,3 +757,71 @@ def test_unresolved_master_item_blocks_completion():
     }
     off = FIF.active_parent_obligation_violations(payload)
     assert off, "unresolved ACTIVE master parent must block completion"
+
+
+def test_active_program_next_cannot_select_work():
+    text = "NEXT: do the leftover\n- [ ] hidden obligation\n"
+    assert FIF.legacy_pointer_selected_work("ACTIVE_PROGRAM.md", text) == []
+    assert FIF.derive_active_obligations(text, today=TODAY, mission=MISSION) == []
+
+
+def test_open_items_and_requirement_tree_cannot_select_work():
+    assert FIF.legacy_pointer_selected_work("OPEN_ITEMS.md", "NEXT: x") == []
+    assert FIF.legacy_pointer_selected_work(
+        "governance/requirement_tree.json", '{"execution":"ACTIVE"}'
+    ) == []
+
+
+def test_second_authority_prose_flags_binding_queue_and_agents_defect_authority():
+    off = FIF.second_authority_prose_violations(extra_texts=[
+        (".cursor/rules/zz.mdc", "Find & Prove queue is binding. Execute ACTIVE_PROGRAM.md NEXT."),
+        ("AGENTS.md", "One defect authority: governance/root_cause_log.md"),
+    ])
+    assert any("queue-is-binding" in why or "execute-next" in why or "F&P" in why
+               for _, why in off)
+    assert any("defect-authority" in why for _, why in off)
+
+
+def test_live_instruction_surfaces_have_zero_second_authority_grants():
+    off = FIF.second_authority_prose_violations()
+    assert off == [], off
+
+
+def test_stale_four_status_fails_and_five_status_passes():
+    bad = FIF.five_status_authority_violations(extra_texts=[
+        ("note.md", "Allowed statuses are only PASS / FAIL / NOT_PROVEN / UNAVAILABLE"),
+    ])
+    assert bad, "four-status authority text must FAIL"
+    good = FIF.five_status_authority_violations(extra_texts=[
+        ("note.md", "PASS / FAIL / NOT_PROVEN / UNAVAILABLE / NOT_APPLICABLE"),
+    ])
+    assert good == [], good
+    live = FIF.five_status_authority_violations()
+    assert live == [], live
+
+
+def test_three_iteration_method_pivot_enforced():
+    bad = FIF.three_iteration_method_pivot_violations({
+        "last_assistant_text": "fourth variation of the same method, trying again",
+    })
+    assert bad, "fourth same-method attempt without pivot must FAIL"
+    good = FIF.three_iteration_method_pivot_violations({
+        "last_assistant_text": (
+            "fourth variation of the same method is forbidden; "
+            "change method / method-pivot to the same required outcome"
+        ),
+    })
+    assert good == [], good
+
+
+def test_ticker_specific_implementation_scope_fails_tests_remain_allowed():
+    off = FIF.ticker_specific_fix_scope_violations(extra_texts=[
+        ("AGENTS.md", "implement a ticker-specific repair for the timestamp defect"),
+    ])
+    assert off, "ticker-specific implementation scope must FAIL"
+    allowed = FIF.ticker_specific_fix_scope_violations(extra_texts=[
+        ("tests/test_rep.py", "if ticker == \"SPY\": special_fix()  # representative fixture"),
+    ])
+    assert allowed == [], allowed
+    live = FIF.ticker_specific_fix_scope_violations()
+    assert live == [], live

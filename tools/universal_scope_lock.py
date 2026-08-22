@@ -59,10 +59,50 @@ _PROMPT_PATH_HINT = re.compile(
 )
 
 
+_TICKER_FIX_SCOPE = re.compile(
+    r"(?:"
+    r"ticker-specific\s+(?:repair|fix|implementation)|"
+    r"SPY-only\s+implementation|"
+    r"(?:base-three|sentinel)\s+implementation\s+scope|"
+    r"fix\s+SPY(?:\s+timestamp|\s+only)|"
+    r"if\s+ticker\s*==\s*['\"]SPY['\"]\s*:\s*(?:special_fix|repair)"
+    r")",
+    re.I,
+)
+
+
+def ticker_specific_implementation_scope_violation(
+    text: str,
+    *,
+    rel: str = "",
+) -> str | None:
+    """Implementation scoped to a ticker symbol FAILs. Representative tests may use tickers."""
+    r = (rel or "").replace("\\", "/").lstrip("./")
+    if r.startswith("tests/"):
+        return None
+    if not text:
+        return None
+    m = _TICKER_FIX_SCOPE.search(text)
+    if not m:
+        return None
+    sent_start = text.rfind(".", 0, m.start()) + 1
+    sentence = text[sent_start:m.end() + 40]
+    if re.search(
+        r"^\s*(?:[-*•]|\d+\.)?\s*(?:\*\*)?(?:No|Not|Never|Do not|Forbidden)\b",
+        sentence,
+        re.I,
+    ):
+        return None
+    return (
+        f"ticker-specific implementation scope ({m.group(0)!r}) for a universal "
+        f"defect — derive behavior from input semantics/contracts, not symbol names"
+    )
+
+
 def is_prompt_or_agent_instruction_path(rel: str) -> bool:
     """Paths whose Write/Edit content is gated for SPY-only framing."""
     r = rel.replace("\\", "/").lstrip("./")
-    if r in ("AGENTS.md", "CLAUDE.md", "ACTIVE_PROGRAM.md"):
+    if r in ("AGENTS.md", "CLAUDE.md", "ACTIVE_PROGRAM.md", "MEMORY.md"):
         return True
     if r.startswith(".cursor/rules/"):
         return True

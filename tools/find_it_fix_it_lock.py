@@ -1050,6 +1050,195 @@ def reconcile_active_view(
     return out
 
 
+VALID_CHECKBOX_STATUS = frozenset({
+    "PASS", "FAIL", "NOT_PROVEN", "UNAVAILABLE", "NOT_APPLICABLE",
+})
+LEGACY_POINTER_RELS = frozenset({
+    "ACTIVE_PROGRAM.md",
+    "OPEN_ITEMS.md",
+    "governance/root_cause_log.md",
+    "governance/unproven_register.md",
+    "governance/requirement_tree.json",
+})
+_AUTHORITY_PROSE_RELS = (
+    "AGENTS.md",
+    "CLAUDE.md",
+    "MEMORY.md",
+    "ACTIVE_PROGRAM.md",
+    "OPEN_ITEMS.md",
+    "tools/stop_guard.py",
+    "tools/requirement_proof.py",
+    "governance/REHAB_PROGRAM.md",
+    "governance/PM_MANDATE.md",
+    "governance/AGENT_OPERATING_PROCESS_V1.md",
+)
+# Strong grants of work-state or prioritization to a non-master file.
+_SECOND_AUTH_GRANT = (
+    (re.compile(r"queue is binding", re.I), "queue-is-binding grant"),
+    (re.compile(r"Find & Prove queue is binding", re.I), "legacy F&P queue grant"),
+    (re.compile(r"Execute\s+`?ACTIVE_PROGRAM", re.I), "ACTIVE_PROGRAM execute-next grant"),
+    (re.compile(r"ACTIVE_PROGRAM\.md`?\s+queue", re.I), "ACTIVE_PROGRAM queue grant"),
+    (re.compile(r"(?:One )?defect authority:\s*`?governance/root_cause_log", re.I),
+     "RC defect-authority grant"),
+    (re.compile(r"Active program state\s+is always", re.I),
+     "ACTIVE_PROGRAM state-authority grant"),
+    (re.compile(r"Portable rules live in .{0,120}ACTIVE_PROGRAM", re.I),
+     "ACTIVE_PROGRAM rules-authority grant"),
+    (re.compile(r"ACTIVE_PROGRAM\.md`?\s+[—-]\s+current epic", re.I),
+     "ACTIVE_PROGRAM deferred-work grant"),
+    (re.compile(r"root-cause row opened (?:TODAY|THAT DAY) is still", re.I),
+     "RC Stop-eligibility grant"),
+    (re.compile(r"open the next highest P[0-9] from", re.I),
+     "census/rehab work-selection grant"),
+    (re.compile(r"requirement_tree\.json`? is the machine master", re.I),
+     "requirement_tree work-authority grant"),
+    (re.compile(r"\"defect_ledger\":\s*\"governance/root_cause_log", re.I),
+     "RC defect-ledger grant"),
+    (re.compile(r"ACTIVE_PROGRAM\.md`? and .{0,60}are sufficient", re.I),
+     "ACTIVE_PROGRAM lock-sufficiency grant"),
+)
+_FOUR_STATUS_PROSE = re.compile(
+    r"PASS\s*/\s*FAIL\s*/\s*NOT_PROVEN\s*/\s*UNAVAILABLE(?!\s*/\s*NOT_APPLICABLE)",
+    re.I,
+)
+_FOUR_STATUS_SET = re.compile(
+    r"""\{\s*["']PASS["']\s*,\s*["']FAIL["']\s*,\s*["']NOT_PROVEN["']\s*,"""
+    r"""\s*["']UNAVAILABLE["']\s*\}"""
+)
+_FOURTH_SAME_METHOD = re.compile(
+    r"fourth\s+(?:variation|attempt|try|iteration)\s+of\s+the\s+same\s+method",
+    re.I,
+)
+_METHOD_PIVOT = re.compile(
+    r"method-pivot|change method|different path to the same required outcome",
+    re.I,
+)
+_THREE_PIVOT_CONTRACT = re.compile(
+    r"THREE-ITERATION METHOD-PIVOT|three materially similar attempts",
+    re.I,
+)
+
+
+def legacy_pointer_selected_work(rel: str, text: str = "") -> list[str]:
+    """ACTIVE_PROGRAM / OPEN_ITEMS / RC log / requirement_tree never select work."""
+    return []
+
+
+def _authority_prose_paths(repo: Path) -> list[Path]:
+    out: list[Path] = []
+    for rel in _AUTHORITY_PROSE_RELS:
+        p = repo / rel
+        if p.is_file():
+            out.append(p)
+    rules = repo / ".cursor" / "rules"
+    if rules.is_dir():
+        out.extend(sorted(rules.glob("*.mdc")))
+        out.extend(sorted(rules.glob("*.md")))
+    claude = repo / ".claude"
+    if claude.is_dir():
+        out.extend(sorted(claude.rglob("*.md")))
+        out.extend(sorted(claude.rglob("*.mdc")))
+        settings = claude / "settings.json"
+        if settings.is_file():
+            out.append(settings)
+    seen: set[str] = set()
+    uniq: list[Path] = []
+    for p in out:
+        key = str(p.resolve())
+        if key in seen:
+            continue
+        seen.add(key)
+        uniq.append(p)
+    return uniq
+
+
+def second_authority_prose_violations(
+    *,
+    repo: Path | None = None,
+    extra_texts: Iterable[tuple[str, str]] | None = None,
+) -> list[tuple[str, str]]:
+    """Prose that grants work-state or prioritization to a non-master file FAILs."""
+    repo = repo or REPO
+    out: list[tuple[str, str]] = []
+    blobs: list[tuple[str, str]] = []
+    for path in _authority_prose_paths(repo):
+        try:
+            blobs.append((
+                str(path.relative_to(repo)).replace("\\", "/"),
+                path.read_text(encoding="utf-8", errors="replace"),
+            ))
+        except OSError:
+            continue
+    if extra_texts:
+        blobs.extend((str(n), str(t)) for n, t in extra_texts)
+    for rel, text in blobs:
+        for cre, why in _SECOND_AUTH_GRANT:
+            if cre.search(text):
+                out.append((rel, why))
+    return out
+
+
+def five_status_authority_violations(
+    *,
+    repo: Path | None = None,
+    extra_texts: Iterable[tuple[str, str]] | None = None,
+) -> list[tuple[str, str]]:
+    """Stale four-status authority/parser text FAILs; five-status is required."""
+    repo = repo or REPO
+    out: list[tuple[str, str]] = []
+    blobs: list[tuple[str, str]] = []
+    for rel in (
+        SOLE_MASTER_REL,
+        "tools/requirement_proof.py",
+        "AGENTS.md",
+        "MEMORY.md",
+    ):
+        p = repo / rel
+        if p.is_file():
+            try:
+                blobs.append((rel, p.read_text(encoding="utf-8", errors="replace")))
+            except OSError:
+                continue
+    if extra_texts:
+        blobs.extend((str(n), str(t)) for n, t in extra_texts)
+    for rel, text in blobs:
+        if _FOUR_STATUS_PROSE.search(text) or _FOUR_STATUS_SET.search(text):
+            out.append((
+                rel,
+                "stale four-status vocabulary — required "
+                "PASS|FAIL|NOT_PROVEN|UNAVAILABLE|NOT_APPLICABLE",
+            ))
+    return out
+
+
+def three_iteration_method_pivot_violations(
+    payload: dict | None = None,
+    *,
+    repo: Path | None = None,
+) -> list[tuple[str, str]]:
+    """Fourth same-method variation without a method pivot FAILs. Not permission to stop."""
+    repo = repo or REPO
+    out: list[tuple[str, str]] = []
+    agents = repo / "AGENTS.md"
+    if agents.is_file():
+        try:
+            text = agents.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            text = ""
+        if text and not _THREE_PIVOT_CONTRACT.search(text):
+            out.append((
+                "AGENTS.md",
+                "three-iteration method-pivot contract missing from agent authority",
+            ))
+    scan = _assistant_scan_text(payload)
+    if _FOURTH_SAME_METHOD.search(scan) and not _METHOD_PIVOT.search(scan):
+        out.append((
+            "(turn)",
+            "fourth variation of the same method without method-pivot — change method",
+        ))
+    return out
+
+
 def load_optional_derived_view(path: Path | None = None) -> list[str] | None:
     """If active_defects.json exists it is a derived view, not an authority."""
     p = path or ACTIVE_DEFECTS_PATH
@@ -1091,7 +1280,46 @@ def active_obligation_offenders(
     out.extend(active_parent_obligation_violations(payload))
     out.extend(second_work_list_violations(payload, repo=repo))
     out.extend(discovery_omission_violations(payload, rc_text))
+    if not (payload and payload.get("_skip_second_work_list")):
+        out.extend(second_authority_prose_violations(repo=repo))
+        out.extend(five_status_authority_violations(repo=repo))
+        out.extend(three_iteration_method_pivot_violations(payload, repo=repo))
+        out.extend(ticker_specific_fix_scope_violations(repo=repo))
     # RC CLASS:ACTIVE / PASSIVE and RC OPEN rows are not work-state.
+    return out
+
+
+def ticker_specific_fix_scope_violations(
+    *,
+    repo: Path | None = None,
+    extra_texts: Iterable[tuple[str, str]] | None = None,
+) -> list[tuple[str, str]]:
+    """Ticker-specific implementation scope for a universal defect FAILs."""
+    try:
+        from tools.universal_scope_lock import (
+            ticker_specific_implementation_scope_violation,
+        )
+    except ImportError:
+        from universal_scope_lock import (  # type: ignore
+            ticker_specific_implementation_scope_violation,
+        )
+    repo = repo or REPO
+    out: list[tuple[str, str]] = []
+    blobs: list[tuple[str, str]] = []
+    for path in _authority_prose_paths(repo):
+        try:
+            blobs.append((
+                str(path.relative_to(repo)).replace("\\", "/"),
+                path.read_text(encoding="utf-8", errors="replace"),
+            ))
+        except OSError:
+            continue
+    if extra_texts:
+        blobs.extend((str(n), str(t)) for n, t in extra_texts)
+    for rel, text in blobs:
+        why = ticker_specific_implementation_scope_violation(text, rel=rel)
+        if why:
+            out.append((rel, why))
     return out
 
 

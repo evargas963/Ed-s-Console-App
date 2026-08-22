@@ -31,7 +31,7 @@ Charter restated: piece-by-piece, fix-by-fix, **end-to-end** — dual paths die 
 
 ## Active slice
 
-See `governance/pm_mission.json` — **levels-tierb-session-collapse-v1** (RH-F1 census #2–5) armed behind quiet-window PASS (`log_progressed=true`). When idle after that slice LIVE/PARTIAL+restart-owed, PM’s next act is: open the next highest P1 from `reports/multi_faucet_census_latest.md` (clocks #7 or charm #6) — not wait for operator to invent work.
+See `governance/pm_mission.json` for the operator-selected mission. Rehab / multi-faucet census reports are recommend-only evidence. Unresolved work and execution priority come only from `ED_CONSOLE_INSTITUTIONAL_TRUTH_AND_REMEDIATION_V1_MASTER_CHECKLIST.md`. Do not open, prioritize, or select work from `reports/multi_faucet_census_latest.md`.
 
 ## Anti-patterns (PM must refuse)
 

@@ -21,4 +21,4 @@ The 2026-08-18 "Cursor is an adversarial auditor only and never writes feature/k
 
 ## Halt
 
-Operator `STOP` / `PAUSE` / `HANG IT UP` / `DO NOT CONTINUE` ends the queue.
+Operator `STOP` / `PAUSE` / `HANG IT UP` / `DO NOT CONTINUE` ends further execution.

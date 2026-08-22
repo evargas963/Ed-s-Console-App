@@ -3840,6 +3840,7 @@ def check_universal_ticker_scope() -> list[Violation]:
         is_prompt_or_agent_instruction_path,
         spy_only_content_violation,
         spy_only_ticker_default_violations,
+        ticker_specific_implementation_scope_violation,
     )
 
     out: list[Violation] = []
@@ -3875,9 +3876,11 @@ def check_universal_ticker_scope() -> list[Violation]:
             # Prefer ADDED text (binds new prompt framing); fall back to whole file for new files.
             text = added if added.strip() else whole
             reason = spy_only_content_violation(text)
-            if reason is None:
-                continue
-            out.append(Violation(path, 0, reason))
+            if reason is not None:
+                out.append(Violation(path, 0, reason))
+            fix_scope = ticker_specific_implementation_scope_violation(text, rel=rel)
+            if fix_scope is not None:
+                out.append(Violation(path, 0, fix_scope))
 
     return out
 

@@ -8,7 +8,7 @@ Derived machine view: governance/requirement_tree.json
 Derived proof: reports/requirement_proof_latest.json
 RC log is historical evidence, not a work queue.
 
-Proof status (PASS/FAIL/NOT_PROVEN/UNAVAILABLE) is not execution state.
+Proof status (PASS/FAIL/NOT_PROVEN/UNAVAILABLE/NOT_APPLICABLE) is not execution state.
 A child PASS never closes a parent.
 """
 from __future__ import annotations
@@ -21,7 +21,9 @@ REPO = Path(__file__).resolve().parent.parent
 SOLE_MASTER = REPO / "ED_CONSOLE_INSTITUTIONAL_TRUTH_AND_REMEDIATION_V1_MASTER_CHECKLIST.md"
 TREE_PATH = REPO / "governance" / "requirement_tree.json"
 DERIVED_PATH = REPO / "reports" / "requirement_proof_latest.json"
-VALID_PROOF = frozenset({"PASS", "FAIL", "NOT_PROVEN", "UNAVAILABLE"})
+VALID_PROOF = frozenset({
+    "PASS", "FAIL", "NOT_PROVEN", "UNAVAILABLE", "NOT_APPLICABLE",
+})
 
 _REQ_RE = re.compile(
     r"<!--\s*REQ\s+id=(?P<id>\S+)\s+proof=(?P<proof>\S+)\s+"
@@ -106,7 +108,10 @@ def compute_item_proof(item: dict, by_id: dict[str, dict], *, _stack: frozenset[
         return "NOT_PROVEN"
     if any(p == "UNAVAILABLE" for p in child_proofs):
         return "UNAVAILABLE"
-    if all(p == "PASS" for p in child_proofs):
+    applicable = [p for p in child_proofs if p != "NOT_APPLICABLE"]
+    if not applicable:
+        return "NOT_APPLICABLE"
+    if all(p == "PASS" for p in applicable):
         if item.get("closable") is False:
             return "NOT_PROVEN"
         return "PASS"
@@ -131,7 +136,7 @@ def compute_proof_state(tree: dict | None = None) -> dict:
         })
     return {
         "authority": "ED_CONSOLE_INSTITUTIONAL_TRUTH_AND_REMEDIATION_V1_MASTER_CHECKLIST.md",
-        "defect_ledger": "governance/root_cause_log.md",
+        "historical_evidence": "governance/root_cause_log.md",
         "items": derived_items,
     }
 

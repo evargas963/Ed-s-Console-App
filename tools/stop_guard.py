@@ -10,11 +10,9 @@ This runs as a Stop hook. Exit 2 BLOCKS the stop and feeds stderr back to the ag
 keeps working instead of ending the turn.
 
 Contract:
-  * BLOCKS when a root-cause row opened TODAY is still `OPEN` and its fix cell says the work is
-    unfinished ("IN PROGRESS" / "VERIFICATION PENDING" / "NOT FIXED").
-  * Does NOT block on rows opened on earlier days: those are a real backlog with due dates, and
-    `check_root_cause_log` already fails a commit on an overdue one. This guard is about work
-    started and abandoned WITHIN a session.
+  * BLOCKS unfinished-turn obligations from `tools/find_it_fix_it_lock.py` reading the sole
+    master (`ED_CONSOLE_INSTITUTIONAL_TRUTH_AND_REMEDIATION_V1_MASTER_CHECKLIST.md`), never
+    from `governance/root_cause_log.md` OPEN / ACTIVE rows (zero execution authority).
   * Respects `stop_hook_active`: if the guard already blocked once and the agent is still going,
     it does not block again. Without this the turn could never end — a guard that cannot be
     satisfied is a hang, not a control.
