@@ -43,6 +43,12 @@ from signal_types import (
 
 log = logging.getLogger(__name__)
 
+
+def order_flow_stack_vote() -> int:
+    """RC-454: unvalidated order-flow composite is withheld from Decide. Always 0."""
+    return 0
+
+
 # ── STACK-WIRE-3: named thresholds (Phase 6 ablation surface) ──
 # Stack threshold (event-risk vs default)
 STACK_THRESHOLD_DEFAULT: int = 2
@@ -1540,7 +1546,7 @@ def compute_call(
 
     # Order-flow composite is RETIRED (RC-454): no fitted weights / OOS validation.
     # WITHHELD from Decide — do not map a retired direction into a stack vote.
-    of_vote = 0
+    of_vote = order_flow_stack_vote()
 
     # Live-horizon fusion retained for MC/risk/sizing — not a separate stack vote (Phase 3).
     _fus_dir = getattr(fusion, 'fusion_dominant_direction', None) or getattr(fusion, 'dominant_direction', 'flat') if _fusion_available else "flat"

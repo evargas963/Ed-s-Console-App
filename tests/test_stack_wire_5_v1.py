@@ -69,11 +69,12 @@ def test_order_flow_direction_is_withheld_from_the_decision_vote():
     import call_engine
 
     src = inspect.getsource(call_engine.compute_call)
-    assert "of_vote = 0" in src
     assert "of_vote = 1 if" not in src
     assert "WITHHELD" in src
     assert "_compute_order_flow_score" not in src
     assert "OrderFlowEngine" not in src
+    assert call_engine.order_flow_stack_vote() == 0
+    assert "order_flow_stack_vote()" in src
 
 
 def test_server_of_freshness_independent_from_decision_generation():

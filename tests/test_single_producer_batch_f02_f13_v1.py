@@ -93,9 +93,12 @@ def test_rc345_frontend_never_writes_the_regime_field() -> None:
 
 
 def test_rc345_gamma_regime_sign_threshold_has_one_authority() -> None:
-    """F07: exactly one production site maps signed dealer gamma to LONG/SHORT. Consumers
-    (institutional_behavior) must delegate to terrain_read.regime_from_signed_gamma rather
-    than re-derive `net_gamma > 0`."""
+    """F07: exactly one production site maps signed dealer gamma to LONG/SHORT.
+
+    RC-460 retired institutional_behavior as a second gamma-regime book — that
+    module now emits body_ratio / signed flow_imbalance primitives only. It must
+    not re-derive `net_gamma > 0` and must not grow a second classifier.
+    """
     import terrain_read
 
     assert hasattr(terrain_read, "regime_from_signed_gamma")
@@ -105,13 +108,13 @@ def test_rc345_gamma_regime_sign_threshold_has_one_authority() -> None:
     assert terrain_read.regime_from_signed_gamma(None) is None
 
     ib = _read("institutional_behavior.py")
-    assert "regime_from_signed_gamma" in ib, (
-        "institutional_behavior must consume the canonical sign authority")
-    # No local sign classification of net_gamma (comments are allowed; code is not).
     code = "\n".join(ln for ln in ib.splitlines() if not ln.lstrip().startswith("#"))
+    assert "regime_from_signed_gamma" not in code, (
+        "institutional_behavior must not classify gamma regime after RC-460; "
+        "terrain_read.regime_from_signed_gamma is the one authority")
     assert not re.search(r"\bng\s*[<>]\s*0", code), (
-        "institutional_behavior re-derives the gamma sign locally (`ng > 0`); it must "
-        "carry terrain_read.regime_from_signed_gamma instead (F07/RC-345).")
+        "institutional_behavior re-derives the gamma sign locally (`ng > 0`)")
+    assert code.count("def regime_from_signed_gamma") == 0
 
 
 # ------------------------------------------------------------------------- F10 candle direction
@@ -415,8 +418,11 @@ def test_rc345_relative_volume_variants_are_distinct_and_fail_closed() -> None:
     assert 'part.relative_volume' not in mlt, (
         "the ML feature path must not consume the signal-layer RVOL variant (F12/RC-345)")
     ofe = _read("order_flow_engine.py")
-    assert "_compute_rvol(data)" in ofe and "rvol > OF_RVOL_READINESS_OK" in ofe, (
-        "order-flow readiness must consume its own session-vs-daily rvol (F12/RC-345)")
+    assert "_compute_rvol(data)" in ofe and '"rvol": rvol' in ofe, (
+        "order-flow must still produce its own session-vs-daily rvol (F12/RC-345)")
+    assert "OF_RVOL_READINESS_OK" not in ofe, (
+        "RC-454 retired the unvalidated order_flow_readiness composite; "
+        "do not restore OF_RVOL_READINESS_OK")
     assert "volume_ratio" not in ofe and "part.relative_volume" not in ofe, (
         "order-flow must not consume the other RVOL variants (F12/RC-345)")
 
@@ -831,18 +837,19 @@ def test_rc345_terrain_materializes_one_pinned_gamma_profile() -> None:
 # ------------------------------------------------------------------ F07 gamma regime authorities
 def test_rc345_gamma_regime_one_classifier_two_named_books() -> None:
     """F07: the regime SIGN is classified by exactly one function, regime_from_signed_gamma.
-    terrain (_regime_for over gamma_at_spot, the repriced profile book) and institutional
-    (over net_gamma, the vendor-aggregate book) BOTH delegate to it. The two books are named
-    distinctly — terrain emits `regime`, institutional emits `gamma_regime_hint` — so 'gamma
-    regime' is never a generic interchangeable value."""
+
+    RC-460 retired the institutional second book (`gamma_regime_hint`). terrain_read
+    remains the one classifier; institutional_behavior must not grow another.
+    """
     ib = _read("institutional_behavior.py")
     tr = _read("terrain_read.py")
-    assert "regime_from_signed_gamma" in ib and "regime_from_signed_gamma" in tr
-    assert "gamma_regime_hint" in ib, "institutional book must be named as a hint"
-    # neither re-derives the sign threshold locally
-    for src in (ib, tr):
-        code = "\n".join(l for l in src.splitlines() if not l.lstrip().startswith("#"))
-        assert code.count("def regime_from_signed_gamma") <= 1
+    assert "def regime_from_signed_gamma" in tr
+    ib_code = "\n".join(l for l in ib.splitlines() if not l.lstrip().startswith("#"))
+    assert "regime_from_signed_gamma" not in ib_code
+    assert "gamma_regime_hint" not in ib_code, (
+        "institutional_behavior must not emit a second gamma-regime book after RC-460")
+    tr_code = "\n".join(l for l in tr.splitlines() if not l.lstrip().startswith("#"))
+    assert tr_code.count("def regime_from_signed_gamma") == 1
 
     # F07 (reopened) tools/backtest: the regime SIGN is routed through the one authority,
     # not a local `gex > 0` reconstruction under the LONG_GAMMA/SHORT_GAMMA research vocab.

@@ -4884,34 +4884,24 @@ function fmtScore01(x) {
 }
 /** RC-462/RC-465: chain-derived levels are operator-visible only when confidence is TRUSTED. */
 const ED_CHAIN_GATED_KEYS = {
-  kl_gamma_flip: ['kl_gamma_flip_display', 'kl_gamma_flip', 'gamma_flip'],
-  kl_call_gamma_wall: ['kl_call_gamma_wall_display', 'kl_call_gamma_wall', 'call_wall'],
-  kl_put_gamma_wall: ['kl_put_gamma_wall_display', 'kl_put_gamma_wall', 'put_wall'],
-  kl_gamma_pin: ['kl_gamma_pin_display', 'kl_gamma_pin', 'gamma_pin'],
-  kl_hvl: ['kl_hvl_display', 'kl_hvl', 'net_gex_peak'],
-  kl_max_pain: ['kl_max_pain_display', 'kl_max_pain', 'max_pain'],
-  kl_gsf: ['kl_gsf_display', 'kl_gsf', 'gsf'],
-  kl_grc: ['kl_grc_display', 'kl_grc', 'grc'],
-  kl_call_delta_wall: ['kl_call_delta_wall', 'call_delta_wall'],
-  kl_put_delta_wall: ['kl_put_delta_wall', 'put_delta_wall'],
+  kl_gamma_flip: ['kl_gamma_flip_display', 'kl_gamma_flip'],
+  kl_call_gamma_wall: ['kl_call_gamma_wall_display', 'kl_call_gamma_wall'],
+  kl_put_gamma_wall: ['kl_put_gamma_wall_display', 'kl_put_gamma_wall'],
+  kl_gamma_pin: ['kl_gamma_pin_display', 'kl_gamma_pin'],
+  kl_hvl: ['kl_hvl_display', 'kl_hvl'],
+  kl_max_pain: ['kl_max_pain_display', 'kl_max_pain'],
+  kl_gsf: ['kl_gsf_display', 'kl_gsf'],
+  kl_grc: ['kl_grc_display', 'kl_grc'],
+  kl_call_delta_wall: ['kl_call_delta_wall'],
+  kl_put_delta_wall: ['kl_put_delta_wall'],
   kl_gamma_inflection: ['kl_gamma_inflection'],
   kl_delta_inflection: ['kl_delta_inflection'],
-  call_wall: ['kl_call_gamma_wall_display', 'call_wall'],
-  put_wall: ['kl_put_gamma_wall_display', 'put_wall'],
-  gamma_pin: ['kl_gamma_pin_display', 'gamma_pin', 'kl_gamma_pin'],
-  max_pain: ['kl_max_pain_display', 'max_pain', 'kl_max_pain'],
-  net_gex_peak: ['kl_hvl_display', 'net_gex_peak', 'kl_hvl'],
-  gsf: ['kl_gsf_display', 'gsf'],
-  grc: ['kl_grc_display', 'grc'],
-  call_charm_wall: ['call_charm_wall'],
-  put_charm_wall: ['put_charm_wall'],
-  key_delta_strike: ['key_delta_strike'],
-  hvp: ['hvp'],
-  lvp: ['lvp'],
 };
 function edTrustedChainLevel(d, key) {
   if (!d || typeof d !== 'object') return null;
-  const conf = d.kl_gamma_flip_confidence || d.confidence;
+  const conf = (String(key).indexOf('kl_') === 0)
+    ? d.kl_gamma_flip_confidence
+    : d.confidence;
   if (conf !== 'TRUSTED') return null;
   const keys = ED_CHAIN_GATED_KEYS[key] || [key + '_display', key];
   const displayKey = keys.find(k => k.endsWith('_display'));
@@ -4928,7 +4918,7 @@ function edTrustedChainLevel(d, key) {
   return (v == null || Number.isNaN(n)) ? null : n;
 }
 function edTrustedGammaFlip(d) {
-  return edTrustedChainLevel(d, 'kl_gamma_flip');
+  return edTrustedChainLevel(d, 'gamma_flip');
 }
 function edKlLevelValue(d, key) {
   if (ED_CHAIN_GATED_KEYS[key]) return edTrustedChainLevel(d, key);
@@ -12734,7 +12724,7 @@ function edLevelSet(d) {
       tip: 'OI-implied expiry magnet. Evidence supports pinning only ON expiration day — advisory the rest of the time.' },
     // RC-132 (A2): the old tip defined the pin on the NET book — the pre-RC-124 definition
     // the producer no longer computes. The tip now states the producer's actual metric.
-    { t: 'GAMMA PIN',  v: edTrustedChainLevel(d, 'kl_gamma_pin'),    c: 'tv-c-pin',   g: '◆', note: 'pin',
+    { t: 'GAMMA PIN',  v: edTrustedChainLevel(d, 'gamma_pin'),    c: 'tv-c-pin',   g: '◆', note: 'pin',
       tip: 'Largest TOTAL gamma strike (|call|+|put| GEX$) — SpotGamma Absolute Gamma, the sticky-pin magnet; strongest into expiry. Structure fact: close-prediction is unproven.' },
     { t: 'KEY DELTA',  v: edTrustedChainLevel(d, 'key_delta_strike'), c: 'tv-c-kds',  g: '◈', note: 'delta magnet',
       tip: 'Largest total delta notional on the board. The biggest hedge inventory — crossing it forces the most dealer rebalancing.' },

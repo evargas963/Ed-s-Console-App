@@ -562,11 +562,14 @@ def test_net_definition_pin_tip_injection_is_caught():
 
 
 def test_gamma_pin_ladder_binds_kl_ssot_not_unstamped_gamma_pin() -> None:
-    """RC-292: the console GAMMA PIN row must paint the terrain total-gamma key."""
+    """RC-292: the console GAMMA PIN row must paint the terrain total-gamma key
+    through the trusted faucet — not an unstamped raw field."""
     src = CONSOLE.read_text(encoding="utf-8")
-    m = re.search(r"\{ t: 'GAMMA PIN',\s*v:\s*([^,]+)", src)
-    assert m is not None and "kl_gamma_pin" in m.group(1), (
-        f"GAMMA PIN ladder binds {m.group(1) if m else 'nothing'} — must be d.kl_gamma_pin"
+    m = re.search(r"\{ t: 'GAMMA PIN',\s*v:\s*(.+?)(?=\s*,\s*c:)", src)
+    bind = (m.group(1) if m else "").strip()
+    assert "edTrustedChainLevel(d, 'gamma_pin')" in bind, (
+        f"GAMMA PIN ladder binds {bind or 'nothing'} — must be "
+        "edTrustedChainLevel(d, 'gamma_pin') on the terrain deck"
     )
 
 

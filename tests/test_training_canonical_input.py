@@ -114,7 +114,9 @@ def _make_snapshots_db(tmp_path, rows_per_ticker: dict) -> str:
         "spot REAL, spread REAL, zone TEXT, "
         "nearest_above_dist REAL, nearest_below_dist REAL, net_gamma REAL, "
         "vwap_side TEXT, vwap_dist_pts REAL, "
-        "absorption_score REAL, continuation_score REAL)"
+        "absorption_score REAL, continuation_score REAL, "
+        "range_imbalance_stall_score REAL, range_imbalance_push_score REAL, "
+        "range_imbalance_label TEXT)"
     )
     for ticker, rows in rows_per_ticker.items():
         for ts, row_overrides in enumerate(rows, start=1):

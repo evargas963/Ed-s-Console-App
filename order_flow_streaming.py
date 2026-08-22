@@ -522,11 +522,13 @@ def stop_order_flow_stream(*, join_timeout: float = STREAM_THREAD_JOIN_TIMEOUT_S
 
     Must be called from app shutdown **before** the process exits or the main event loop closes.
     """
-    global _stream_running, _stream_shutdown_event, _stream_loop, _stream_thread, _streaming_logged_in
+    global _stream_running, _stream_shutdown_event, _stream_loop, _stream_thread, _streaming_logged_in, _streaming_last_update_ts
 
     _log_stream("STREAM_THREAD_JOIN_START", join_timeout_sec=join_timeout)
     _stream_running = False
     _streaming_logged_in = False
+    _streaming_last_update_ts = None
+    clear_all_live_state()
     loop = _stream_loop
     ev = _stream_shutdown_event
     if loop is not None and ev is not None:

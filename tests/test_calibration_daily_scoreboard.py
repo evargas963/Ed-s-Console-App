@@ -891,15 +891,15 @@ def test_qc_does_not_change_scored_math(tmp_path):
 
 def test_qc_board_and_purpose_linkage_present():
     """Required 8: purpose statement + QUALITY_CIRCLE_SIGNAL_REFINEMENT_V1
-    dependency linkage exist in the module docstring and OPEN_ITEMS.md."""
+    dependency linkage exist in the module docstring and the sole master."""
     import calibration.daily_scoreboard as ds
 
     assert "QUALITY CIRCLE PURPOSE" in (ds.__doc__ or "")
-    board = Path(__file__).resolve().parent.parent.joinpath("OPEN_ITEMS.md").read_text(
-        encoding="utf-8"
-    )
-    assert "QUALITY_CIRCLE_SIGNAL_REFINEMENT_V1" in board
-    assert "DEPENDS ON DAILY_SCOREBOARD_DENOMINATOR_FIRST_V1" in board
+    master = Path(__file__).resolve().parent.parent.joinpath(
+        "ED_CONSOLE_INSTITUTIONAL_TRUTH_AND_REMEDIATION_V1_MASTER_CHECKLIST.md"
+    ).read_text(encoding="utf-8")
+    assert "QUALITY_CIRCLE_SIGNAL_REFINEMENT_V1" in master
+    assert "DEPENDS ON DAILY_SCOREBOARD_DENOMINATOR_FIRST_V1" in master
 
 
 def test_qc_trust_split_threshold(tmp_path):
@@ -1606,10 +1606,12 @@ def test_forensic_packet_lane_purity():
 
 
 def test_board_row_lane_language_purity():
-    """Package truth: the board row states the Lane-A patch ships HEAD backfill
+    """Package truth: the sole-master row states the Lane-A patch ships HEAD backfill
     behavior and carries no identity-first-implemented claim for Lane A."""
-    board = Path(__file__).resolve().parent.parent.joinpath("OPEN_ITEMS.md").read_text(encoding="utf-8")
-    row = next(l for l in board.splitlines() if "SCOREBOARD-TARGET-TRUTH " in l)
+    board = Path(__file__).resolve().parent.parent.joinpath(
+        "ED_CONSOLE_INSTITUTIONAL_TRUTH_AND_REMEDIATION_V1_MASTER_CHECKLIST.md"
+    ).read_text(encoding="utf-8")
+    row = next(l for l in board.splitlines() if "SCOREBOARD-TARGET-TRUTH" in l)
     assert "HEAD backfill behavior only" in row
     assert "FORWARD_IDENTITY_FIRST_DESIGN = LOCALLY_IMPLEMENTED" not in row
     assert "LOCALLY_PROVEN_PENDING_PR" not in row

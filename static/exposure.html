@@ -597,7 +597,7 @@ function draw() {
     vwbDrawn = a || v;
   }
   // # ui-mockup-ok: fail-closed TRUSTED flip only; not a redesign
-  const flipTrusted = terrain && (terrain.confidence === 'TRUSTED' || terrain.kl_gamma_flip_confidence === 'TRUSTED');
+  const flipTrusted = terrain && terrain.confidence === 'TRUSTED';
   const flip = flipTrusted ? terrain.gamma_flip : null;
   if (flip != null && flip >= lo && flip <= hi) {
     g.strokeStyle = PAL.tx; g.setLineDash([7, 5]);

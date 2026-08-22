@@ -532,7 +532,17 @@ def test_meta_manifest_reader_legacy_absence_never_upgrades(tmp_path):
 
 # Golden schema identity: names+order+contract version. Changing the contract
 # REQUIRES regenerating this constant in the same governance-reviewed diff.
-MVP_SCHEMA_GOLDEN_SHA256 = "e2c132ed09390c5a5a531ebeda6a9c58811a942d782f60d0cab33e71f27fd5d3"
+#
+# ACCOUNT 2026-08-22 (RC-455 rename already on HEAD; golden was left on main):
+#   VERSION  v1_1m_mvp → v1_1m_range_imbalance
+#   DEPARTURE  liquidity.absorption_score (quarantined semantic era; never mapped)
+#   DEPARTURE  liquidity.continuation_score (quarantined semantic era; never mapped)
+#   ARRIVAL    liquidity.range_imbalance_stall_score
+#   ARRIVAL    liquidity.range_imbalance_push_score
+# Train/infer moved together: features/db_feature_adapter.py and
+# features/live_feature_adapter.py already read the stall/push columns / liquidity_summary
+# keys (not absorption/continuation). Hash is sha256(json.dumps({version, names}, sort_keys=True)).
+MVP_SCHEMA_GOLDEN_SHA256 = "c484e7226d8aaa10df2b999ce08585fe1c7484dbdcea467152ce65a3f25d800f"
 
 _GOLDEN_DB_ROW = {
     "spot": 512.34, "spread": 0.02, "zone": "breakout",

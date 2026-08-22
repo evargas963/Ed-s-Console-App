@@ -21,6 +21,8 @@ from __future__ import annotations
 import math
 from typing import Any
 
+from numeric_contract import float_finite_or_none
+
 BODY_IMBALANCE_SEMANTIC_ERA = "ohlcv_body_imbalance_primitives_v1"
 RANGE_IMBALANCE_SEMANTIC_ERA = BODY_IMBALANCE_SEMANTIC_ERA  # retired alias
 LEGACY_ABSORPTION_SEMANTIC_ERA = "ohlcv_imbalance_absorption_v0_quarantined"
@@ -30,15 +32,7 @@ _EPS = 1e-12
 
 
 def _f(v: Any) -> float | None:
-    try:
-        if v is None:
-            return None
-        out = float(v)
-    except (TypeError, ValueError):
-        return None
-    if out != out:  # NaN
-        return None
-    return out
+    return float_finite_or_none(v)
 
 
 def _clip01(v: float) -> float:

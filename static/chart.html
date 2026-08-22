@@ -337,7 +337,7 @@ let feedFresh = false;    // newest canonical 1m bar ≤900s (livedot + lastdot)
 /** RC-465: chain-derived terrain levels paint only when coverage confidence is TRUSTED. # ui-mockup-ok: fail-closed TRUSTED paint, not a redesign */
 function edTrustedTerrainLevel(T, key) {
   if (!T || typeof T !== 'object') return null;
-  if ((T.confidence || T.kl_gamma_flip_confidence) !== 'TRUSTED') return null;
+  if (T.confidence !== 'TRUSTED') return null;
   const displayKey = key + '_display';
   if (Object.prototype.hasOwnProperty.call(T, displayKey)) {
     const dv = T[displayKey];
@@ -347,7 +347,7 @@ function edTrustedTerrainLevel(T, key) {
   const v = T[key];
   const n = Number(v);
   if (v == null || Number.isNaN(n)) return null;
-  const diag = T.flip_diag || T.kl_flip_diag || {};
+  const diag = T.flip_diag || {};
   const lo = Number(diag.strike_lo);
   const hi = Number(diag.strike_hi);
   const edgeKeys = {call_wall:1, put_wall:1, gamma_pin:1, net_gex_peak:1, max_pain:1, hvl:1};
