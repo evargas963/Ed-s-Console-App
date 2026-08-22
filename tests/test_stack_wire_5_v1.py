@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import inspect
-import re
 
 import order_flow_engine as ofe
 import order_flow_live_state as ofls
@@ -48,25 +47,17 @@ def test_order_flow_live_state_rth_actually_behaves_at_the_boundaries(monkeypatc
     assert _at(2026, 8, 8, 12, 0) is False, "Saturday is never RTH regardless of clock"
 
 
-def test_order_flow_engine_composite_constants_exist_and_used():
-    assert ofe.OF_COMPOSITE_WEIGHT_BOOK == 0.25
-    assert ofe.OF_DIRECTION_BULLISH_THRESHOLD == 0.15
-    assert ofe.OF_COMPOSITE_MIN_LEGS == 2
-
+def test_order_flow_composite_constants_and_producers_are_retired():
+    # RC-451: the composite score/verdict is retired; its producers and now-unused weight/threshold
+    # constants were deleted. Nothing may reconstruct the unvalidated composite.
+    for c in ("OF_COMPOSITE_WEIGHT_BOOK", "OF_COMPOSITE_WEIGHT_TAPE", "OF_COMPOSITE_WEIGHT_CUM_DELTA",
+              "OF_COMPOSITE_WEIGHT_OPTIONS", "OF_COMPOSITE_MIN_LEGS", "OF_DIRECTION_BULLISH_THRESHOLD",
+              "OF_DIRECTION_BEARISH_THRESHOLD"):
+        assert not hasattr(ofe, c), f"retired composite constant {c} must be deleted"
     body = inspect.getsource(ofe)
-    # STACK-WIRE-5-CAND-TEST-SLICE-TIGHTEN fix: cover the full _compute_order_flow_score
-    # body (not just the ~4 closing lines between min_present= and def _direction).
-    tail = body[
-        body.index("def _compute_order_flow_score") : body.index("def _direction")
-    ]
-    banned = [
-        r"(?<![\w.])0\.25(?![\w.])",
-        r"(?<![\w.])0\.20(?![\w.])",
-        r"(?<![\w.])0\.15(?![\w.])",
-        r"(?<![\w.])0\.05(?![\w.])",
-    ]
-    for pat in banned:
-        assert re.search(pat, tail) is None, f"literal still in _compute_order_flow_score: {pat}"
+    assert "def _compute_order_flow_score" not in body
+    assert "def _direction" not in body
+    assert "def _readiness" not in body
 
 
 def test_order_flow_direction_is_withheld_from_the_decision_vote():
@@ -109,8 +100,9 @@ def test_order_flow_engine_residual_magics_named():
     assert ofe.OF_BOOK_DEPTH_TOP == 1
     assert ofe.OF_BOOK_DEPTH_SHALLOW == 3
     assert ofe.OF_BOOK_DEPTH_DEEP == 5
-    assert ofe.OF_RVOL_NEUTRAL_CENTER == 1.0
     assert ofe.OF_WEIGHTED_MEAN_DEFAULT_MIN_PRESENT == 2
+    # RC-451: OF_RVOL_NEUTRAL_CENTER belonged to the retired composite and is deleted.
+    assert not hasattr(ofe, "OF_RVOL_NEUTRAL_CENTER")
 
     # _compute_institutional_flow_proxy and OrderFlowEngine.compute use the named depths,
     # not bare integers.
@@ -135,16 +127,11 @@ def test_order_flow_engine_residual_magics_named():
     assert "_compute_book_imbalance(data, 3)" not in src_compute
     assert "_compute_book_imbalance(data, 5)" not in src_compute
 
-    # TRUTH_V1: the RVOL leg was REMOVED from the composite (relative volume is a participation
-    # magnitude, not a direction). The score body must no longer reference rvol at all — rvol's
-    # conviction role lives only in `_readiness`. This locks that a magnitude-as-direction leg is
-    # not silently re-introduced.
+    # RC-451: the composite score/direction producers are RETIRED (deleted), so their source bodies
+    # no longer exist — nothing can reintroduce a magnitude-as-direction leg.
     body = inspect.getsource(ofe)
-    score_body = body[
-        body.index("def _compute_order_flow_score") : body.index("def _direction")
-    ]
-    assert "rvol" not in score_body
-    assert "OF_RVOL_NEUTRAL_CENTER" not in score_body
+    assert "def _compute_order_flow_score" not in body
+    assert "def _direction" not in body
 
     # _weighted_mean_present default uses the named constant, not bare 2.
     wm_src = inspect.getsource(ofe._weighted_mean_present)

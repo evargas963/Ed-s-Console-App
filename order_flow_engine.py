@@ -27,32 +27,12 @@ from math_exposure import MISSING_GREEK_SENTINEL
 
 log = logging.getLogger(__name__)
 
-# ── STACK-WIRE-5: named thresholds (Phase 6 ablation surface) ──
-OF_COMPOSITE_WEIGHT_BOOK: float = 0.25
-OF_COMPOSITE_WEIGHT_TAPE: float = 0.20
-OF_COMPOSITE_WEIGHT_CUM_DELTA: float = 0.20
-# NOTE (mission TRUTH_V1): the former OF_COMPOSITE_WEIGHT_ABSORPTION leg was REMOVED. Two defects:
-# (1) `_compute_absorption` returns a NON-NEGATIVE volume/price-range density, so feeding it as a
-#     SIGNED [-1,1] leg injected a near-constant BULLISH bias (magnitude used as direction); and
-# (2) absorption is NOT_ADMITTED (proxy, dual-authored, no predictive evidence) — a signal with no
-#     out-of-sample evidence may not influence the composite/verdict. Present-weight renormalization
-#     means no re-weighting of the remaining legs is required.
-OF_COMPOSITE_WEIGHT_OPTIONS: float = 0.15
-# DEPRECATED (mission TRUTH_V1): the RVOL composite leg was removed. Relative volume is a
-# participation MAGNITUDE, not a direction (high/low volume is not bullish/bearish) — the same
-# magnitude-as-direction defect as the removed absorption leg. RVOL's conviction role stays in
-# `_readiness`. These three constants are retained only as historical record, no longer a leg.
-OF_COMPOSITE_WEIGHT_RVOL: float = 0.05
-OF_COMPOSITE_MIN_LEGS: int = 2
+# RETIRED (mission TRUTH_V1, RC-450/RC-451): the order_flow composite score / direction / readiness /
+# verdict and their weight + ±threshold constants (OF_COMPOSITE_WEIGHT_*, OF_COMPOSITE_MIN_LEGS,
+# OF_DIRECTION_*, OF_READINESS_*, OF_RVOL_TERM_*/READINESS_OK/NEUTRAL_CENTER) were DELETED — no fitted
+# weights, no OOS validation. Only the generic normalization range survives.
 OF_CLIP_LOW: float = -1.0
 OF_CLIP_HIGH: float = 1.0
-OF_RVOL_TERM_LOW: float = -0.5
-OF_RVOL_TERM_HIGH: float = 0.5
-OF_DIRECTION_BULLISH_THRESHOLD: float = 0.15
-OF_DIRECTION_BEARISH_THRESHOLD: float = -0.15
-OF_READINESS_STRONG_ABS: float = 0.25
-OF_READINESS_MODERATE_ABS: float = 0.1
-OF_RVOL_READINESS_OK: float = 1.2
 OF_TAPE_WINDOW_30S_SEC: float = 30.0
 OF_TAPE_WINDOW_2M_SEC: float = 120.0
 OF_TAPE_WINDOW_5M_SEC: float = 300.0
@@ -63,8 +43,6 @@ OF_ABSORPTION_PRICE_EPS: float = 0.01
 OF_BOOK_DEPTH_TOP: int = 1
 OF_BOOK_DEPTH_SHALLOW: int = 3
 OF_BOOK_DEPTH_DEEP: int = 5
-# RVOL neutral center: RVOL = 1.0 means realized volume == average; the composite uses (rvol - center).
-OF_RVOL_NEUTRAL_CENTER: float = 1.0
 # Default minimum legs for _weighted_mean_present when callers omit min_present.
 # (Composite scoring explicitly passes OF_COMPOSITE_MIN_LEGS; this is a safe-default fallback.)
 OF_WEIGHTED_MEAN_DEFAULT_MIN_PRESENT: int = 2
@@ -1133,69 +1111,12 @@ def _weighted_mean_present(
     return sum((w / total_w) * v for w, v in present)
 
 
-def _compute_order_flow_score(
-    book_imbalance: Optional[float],
-    tape_pressure: Optional[float],
-    cum_delta: Optional[float],
-    options_flow: Optional[float],
-) -> Optional[float]:
-    """
-    Composite score over present SIGNED, DIRECTIONAL legs only; None when fewer than
-    OF_COMPOSITE_MIN_LEGS legs. Present weights renormalize to 1.0.
-    TRUTH_V1: two magnitude-as-direction legs were removed — absorption (non-negative density)
-    and RVOL (relative volume is a participation MAGNITUDE, not a direction: high/low volume is
-    not bullish/bearish). RVOL's legitimate role is conviction and is retained in `_readiness`.
-    NOTE: the surviving legs (book/tape/cum_delta/options) are directional PROXIES; the composite
-    itself has NO out-of-sample validation (weights/thresholds were chosen, never fit), so it is
-    NOT_ADMITTED as a decision authority — it is withheld from the call_engine vote and kept
-    ADVISORY only.
-    """
-    return _weighted_mean_present(
-        [
-            (OF_COMPOSITE_WEIGHT_BOOK, book_imbalance, OF_CLIP_LOW, OF_CLIP_HIGH),
-            (OF_COMPOSITE_WEIGHT_TAPE, tape_pressure, OF_CLIP_LOW, OF_CLIP_HIGH),
-            (OF_COMPOSITE_WEIGHT_CUM_DELTA, cum_delta, OF_CLIP_LOW, OF_CLIP_HIGH),
-            (OF_COMPOSITE_WEIGHT_OPTIONS, options_flow, OF_CLIP_LOW, OF_CLIP_HIGH),
-        ],
-        min_present=OF_COMPOSITE_MIN_LEGS,
-    )
-
-
-def _direction(score: Optional[float]) -> Optional[str]:
-    """score > 0.15 → bullish, < -0.15 → bearish, else neutral; None when unavailable or exactly zero."""
-    if score is None:
-        return None
-    if score == 0.0:
-        return None
-    if score > OF_DIRECTION_BULLISH_THRESHOLD:
-        return "bullish"
-    if score < OF_DIRECTION_BEARISH_THRESHOLD:
-        return "bearish"
-    return "neutral"
-
-
-def _readiness(score: Optional[float], rvol: Optional[float]) -> str:
-    """
-    green: score strong and rvol > 1.2
-    yellow: score moderate, or strong with rvol unknown/unconfirmed (rvol is None)
-    red: weak score, or composite unavailable
-
-    When rvol is None, strong readings downgrade to yellow (no fabricated rvol_ok).
-    """
-    if score is None:
-        return "red"
-    strong = abs(score) > OF_READINESS_STRONG_ABS
-    moderate = OF_READINESS_MODERATE_ABS <= abs(score) <= OF_READINESS_STRONG_ABS
-    if rvol is None:
-        if strong or moderate:
-            return "yellow"
-        return "red"
-    rvol_ok = rvol > OF_RVOL_READINESS_OK
-    if strong and rvol_ok:
-        return "green"
-    if moderate or (strong and not rvol_ok):
-        return "yellow"
-    return "red"
+# RETIRED (mission TRUTH_V1, RC-450/RC-451): the composite producers _compute_order_flow_score,
+# _direction and _readiness were DELETED — no fitted weights, no OOS validation; they only ever fed
+# the retired order_flow_score/direction/regime/readiness family and the double-counting verdict.
+# No executable path reconstructs them (locked by tests/test_order_flow_engine_chunk2_or_fallthrough
+# and test_stack_wire_5_v1). The canonical primitives (book_imbalance_*, spread, microprice,
+# tape_pressure_*, cum_delta_proxy, options_flow_score, book_microstructure) remain individually.
 
 
 # ─────────────────────────────────────────────────────────────────────────────
