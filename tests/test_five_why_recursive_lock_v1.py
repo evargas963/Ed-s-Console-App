@@ -197,6 +197,28 @@ def test_front_loaded_new_rc_row_does_not_admit(monkeypatch):
     )
     v = cic.check_recursive_five_why_front_loaded()
     assert v, "a new RC row must not admit a production edit"
+    assert "server.py" in v[0].msg
+
+
+def test_front_loaded_one_covered_file_does_not_launder_uncovered(monkeypatch):
+    import tools.pretooluse_guard as G
+
+    def admit(rel, **_k):
+        return rel.replace("\\", "/") == "server.py"
+
+    monkeypatch.setattr(G, "master_admits_production_edit", admit)
+    cic = _install_fake_git(monkeypatch, ["server.py", "prediction_engine.py"])
+    v = cic.check_recursive_five_why_front_loaded()
+    assert v, "one covered file must not authorize an uncovered sibling"
+    assert "uncovered path(s): prediction_engine.py" in v[0].msg
+    assert "uncovered path(s): server.py" not in v[0].msg
+
+
+def test_front_loaded_both_independently_covered(monkeypatch):
+    import tools.pretooluse_guard as G
+    monkeypatch.setattr(G, "master_admits_production_edit", lambda *a, **k: True)
+    cic = _install_fake_git(monkeypatch, ["server.py", "prediction_engine.py"])
+    assert cic.check_recursive_five_why_front_loaded() == []
 
 
 # ── RC-54: RTH-only market measurement (market-closed rows bias every statistic) ──

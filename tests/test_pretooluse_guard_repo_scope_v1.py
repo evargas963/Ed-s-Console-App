@@ -129,21 +129,79 @@ def test_negative_control_every_production_suffix_still_governed_in_repo(
     capsys.readouterr()
 
 
-def test_master_admits_existing_unresolved_item_naming_file():
-    cur = "- [ ] `OD-1` — STATUS=NOT_PROVEN — repair tools/pretooluse_guard.py admission\n"
-    assert G.master_admits_production_edit(
-        "tools/pretooluse_guard.py", current_text=cur, head_text=""
+def _item(oid: str, body: str, *, checked: bool = False, status: str = "NOT_PROVEN") -> str:
+    mark = "x" if checked else " "
+    return f"- [{mark}] `{oid}` — STATUS={status} — {body}\n"
+
+
+def test_unrelated_new_master_item_does_not_admit_server_py():
+    head = _item("OD-1", "old obligation")
+    cur = head + _item("OD-2", "newly discovered unrelated defect")
+    assert not G.master_admits_production_edit("server.py", current_text=cur, head_text=head)
+
+
+def test_unrelated_modified_master_item_does_not_admit_server_py():
+    head = _item("OD-1", "old obligation")
+    cur = _item("OD-1", "old obligation, wording changed")
+    assert not G.master_admits_production_edit("server.py", current_text=cur, head_text=head)
+
+
+def test_existing_unrelated_not_proven_item_does_not_admit_server_py():
+    cur = _item("OD-1", "mentions server.py in prose only")
+    assert not G.master_admits_production_edit("server.py", current_text=cur, head_text=cur)
+
+
+def test_exact_surfaces_field_admits_only_listed_path():
+    cur = _item("OD-1", "universal timestamp contract SURFACES=server.py")
+    assert G.master_admits_production_edit("server.py", current_text=cur, head_text="")
+    assert not G.master_admits_production_edit(
+        "prediction_engine.py", current_text=cur, head_text=""
     )
 
 
-def test_master_admits_new_unresolved_id_even_if_file_not_named():
-    head = "- [ ] `OD-1` — STATUS=NOT_PROVEN — old obligation\n"
-    cur = head + "- [ ] `OD-2` — STATUS=NOT_PROVEN — newly discovered universal defect\n"
-    assert G.master_admits_production_edit("server.py", current_text=cur, head_text=head)
+def test_surfaces_foo_server_does_not_admit_bar_server():
+    cur = _item("OD-1", "SURFACES=foo/server.py")
+    assert G.master_admits_production_edit("foo/server.py", current_text=cur, head_text="")
+    assert not G.master_admits_production_edit("bar/server.py", current_text=cur, head_text="")
+    assert not G.master_admits_production_edit("server.py", current_text=cur, head_text="")
+
+
+def test_basename_and_prose_substring_are_not_admission():
+    prose = _item("OD-1", "repair tools/pretooluse_guard.py admission")
+    assert not G.master_admits_production_edit(
+        "tools/pretooluse_guard.py", current_text=prose, head_text=""
+    )
+    basename = _item("OD-1", "SURFACES=pretooluse_guard.py")
+    assert not G.master_admits_production_edit(
+        "tools/pretooluse_guard.py", current_text=basename, head_text=""
+    )
+
+
+def test_new_rc_row_without_surface_bound_master_item_does_not_admit(monkeypatch, capsys):
+    monkeypatch.setattr(G, "_has_admitted_master_obligation", lambda rel: False, raising=True)
+    monkeypatch.setattr(G, "_has_new_rc_row", lambda: True, raising=True)
+    code = G.decide(_payload(str(REPO / "server.py")))
+    assert code == 2
+    assert "PRODUCTION file" in capsys.readouterr().err
 
 
 def test_master_does_not_admit_when_no_unresolved_item_exists():
-    head = "- [x] `OD-1` — STATUS=PASS — (1) a (2) b (3) c (4) d (5) ROOT: done\n"
+    head = _item("OD-1", "(1) a (2) b (3) c (4) d (5) ROOT: done",
+                 checked=True, status="PASS")
     assert not G.master_admits_production_edit(
         "server.py", current_text=head, head_text=head
+    )
+
+
+def test_live_active_item_does_not_admit_unrelated_production_file():
+    """Stop condition: 2370 NOT_PROVEN rows must not authorize server.py."""
+    cur = (REPO / G.SOLE_MASTER).read_text(encoding="utf-8")
+    assert G.master_admits_production_edit(
+        "tools/pretooluse_guard.py", current_text=cur, head_text=""
+    )
+    assert G.master_admits_production_edit(
+        "tools/check_institutional_correctness.py", current_text=cur, head_text=""
+    )
+    assert not G.master_admits_production_edit(
+        "server.py", current_text=cur, head_text=""
     )

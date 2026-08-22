@@ -16,10 +16,12 @@ This runs as a PreToolUse hook on Edit/Write/NotebookEdit. Exit 2 BLOCKS the too
 Scope: the whole continuum — backend .py, frontend .html/.js/.css, SQL, config.
 
 Contract:
-  * Editing a PRODUCTION file requires an admitted unresolved master requirement
-    representing the material defect being fixed (new/modified unresolved master
-    item this working tree, or an existing unresolved item that names the file).
-  * A newly discovered defect is added to the sole master first, then the edit runs.
+  * Editing a PRODUCTION file requires an unresolved master item whose
+    SURFACES= field lists that exact repo-relative path.
+  * A newly discovered defect is added to the sole master first (with SURFACES=),
+    then the edit runs. Blast-radius growth amends the same item before the new file.
+  * A new/modified unrelated master item does not admit an uncovered path.
+  * Basename-only and prose-substring matches are not admission.
   * Editing the sole master, governance/, docs/, reports/, or tests/ is how you comply.
   * RC-160 UNIVERSAL ticker scope: Write/Edit of prompt / agent-instruction paths is BLOCKED when
     the new content frames SPY-only / sentinel-complete work without UNIVERSAL or OUT-OF-SCOPE
@@ -51,6 +53,7 @@ SOLE_MASTER = "ED_CONSOLE_INSTITUTIONAL_TRUTH_AND_REMEDIATION_V1_MASTER_CHECKLIS
 _UNRESOLVED_MASTER_RE = re.compile(
     r"^\s*[-*]\s+\[\s\]\s+`([^`]+)`\s+—\s+STATUS=(NOT_PROVEN|FAIL)\b"
 )
+_SURFACES_RE = re.compile(r"\bSURFACES=([^\s]+)")
 
 #: Editing these is how you COMPLY (admit the master obligation, write the test, record
 #: evidence) — never blocked by the RC-66 production-surface rule. RC-160/RC-163 still gate
@@ -185,6 +188,23 @@ def parse_unresolved_master_items(text: str) -> list[dict[str, str]]:
     return out
 
 
+def parse_master_surfaces(line: str) -> frozenset[str]:
+    """Exact repo-relative paths from SURFACES=a.py;b.py on one master item."""
+    out: set[str] = set()
+    for m in _SURFACES_RE.finditer(line or ""):
+        for raw in m.group(1).split(";"):
+            p = raw.strip().replace("\\", "/").lstrip("./")
+            if not p or any(ch in p for ch in " `'\"()[],"):
+                continue
+            if "/" in p or p.endswith(PRODUCTION_SUFFIXES):
+                out.add(p)
+    return frozenset(out)
+
+
+def _norm_rel(rel: str) -> str:
+    return (rel or "").replace("\\", "/").lstrip("./")
+
+
 def _master_texts() -> tuple[str, str]:
     try:
         cur = (REPO / SOLE_MASTER).read_text(encoding="utf-8", errors="replace")
@@ -200,32 +220,25 @@ def master_admits_production_edit(
     current_text: str | None = None,
     head_text: str | None = None,
 ) -> bool:
-    """True when an unresolved master item admits this production edit.
+    """True only when an unresolved master item lists this exact repo-relative path.
 
-    Admission is: a newly added unresolved master item, a modified unresolved
-    master item, or an existing unresolved item that names the file. A new
-    `| RC-` row is never admission.
+    Admission is SURFACES=<repo-relative>;... on an unresolved (`- [ ]`,
+    STATUS=NOT_PROVEN|FAIL) master item. A new or modified unrelated item is
+    not admission. Basename-only and prose-substring matches are not admission.
+    A `| RC-` row is never admission. `head_text` is accepted for callers and
+    unused: HEAD novelty is not a grant.
     """
-    if current_text is None or head_text is None:
-        cur, head = _master_texts()
-        if current_text is None:
-            current_text = cur
+    if current_text is None:
+        current_text, head_from_git = _master_texts()
         if head_text is None:
-            head_text = head
-    items = parse_unresolved_master_items(current_text or "")
-    if not items:
+            head_text = head_from_git
+    rel_n = _norm_rel(rel)
+    if not rel_n:
         return False
-    rel_n = (rel or "").replace("\\", "/")
-    base = Path(rel_n).name
-    for it in items:
-        if rel_n and (rel_n in it["line"] or (base and base in it["line"])):
+    for it in parse_unresolved_master_items(current_text or ""):
+        if rel_n in parse_master_surfaces(it["line"]):
             return True
-    head_items = parse_unresolved_master_items(head_text or "")
-    head_ids = {i["id"] for i in head_items}
-    if {i["id"] for i in items} - head_ids:
-        return True
-    head_lines = {i["id"]: i["line"] for i in head_items}
-    return any(it["id"] in head_lines and it["line"] != head_lines[it["id"]] for it in items)
+    return False
 
 
 def _has_admitted_master_obligation(rel: str) -> bool:
@@ -444,7 +457,10 @@ def decide(payload: dict) -> int:
         "  2. If genuinely absent, add one atomic universal `- [ ]` master item\n"
         "     (STATUS=NOT_PROVEN) with the bedrock cause and blast radius. Tickers are\n"
         "     fixtures only — never a ticker-specific requirement.\n"
-        "  3. Then make this edit, and ship a test that locks it.\n\n"
+        "  3. Bind this exact repo-relative path on that same item:\n"
+        "     SURFACES=<path>[;<path>...]. Basename and prose mentions are not enough.\n"
+        "     If blast radius grows, amend the same item before editing the new file.\n"
+        "  4. Then make this edit, and ship a test that locks it.\n\n"
         "This mirrors check_recursive_five_why_front_loaded at EDIT time.\n"
     )
     return 2                             # exit 2 = block the tool call

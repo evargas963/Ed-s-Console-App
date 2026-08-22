@@ -2721,10 +2721,12 @@ def check_recursive_five_why_front_loaded() -> list[Violation]:
     ledger. Admission is now an unresolved sole-master requirement. Root-cause / five-why
     reasoning remains mandatory on that same master item. A new RC row does not admit work.
 
-    Rule: any commit that stages a real change to a PRODUCTION file MUST be admitted by
-    an unresolved master item (newly added, modified, or already naming the file).
-    Tests/governance/docs/reports edits are how you comply and do not themselves require
-    a new master item. Escapes NONE by design for production files.
+    Rule: every staged PRODUCTION file must independently resolve to an unresolved
+    master item whose SURFACES= field lists that exact repo-relative path.
+    One covered file does not admit an uncovered sibling. A new/modified unrelated
+    master item is not admission. Tests/governance/docs/reports edits are how you
+    comply and do not themselves require a SURFACES= bind. Escapes NONE by design
+    for production files.
     """
     try:
         from tools.pretooluse_guard import (
@@ -2763,16 +2765,21 @@ def check_recursive_five_why_front_loaded() -> list[Violation]:
         cur = ""
     head_lines = _git_output_lines(["show", f"HEAD:{SOLE_MASTER}"])
     head_txt = "\n".join(head_lines) if head_lines is not None else ""
-    if any(master_admits_production_edit(f, current_text=cur, head_text=head_txt)
-           for f in prod_code):
+    uncovered = [
+        f for f in prod_code
+        if not master_admits_production_edit(f, current_text=cur, head_text=head_txt)
+    ]
+    if not uncovered:
         return []
     return [Violation(
-        REPO / prod_code[0], 0,
-        "Production changed (" + ", ".join(prod_code[:5]) +
-        (" …" if len(prod_code) > 5 else "") + ") with NO admitted unresolved master "
-        "obligation. Search the sole master for the universal requirement; if absent, "
-        "add one atomic `- [ ]` item there first. Do not open a current RC debt row. "
-        "Root-cause / five-why evidence belongs on that same master item.")]
+        REPO / uncovered[0], 0,
+        "Production changed with uncovered path(s): " + ", ".join(uncovered) +
+        ". Every staged production file must independently bind to an unresolved "
+        "master item via SURFACES=<repo-relative-path>. One covered file does not "
+        "admit an uncovered sibling. Search the sole master; if absent, add one "
+        "atomic `- [ ]` item and bind the exact paths on that same item. Do not "
+        "open a current RC debt row. Root-cause / five-why evidence belongs on "
+        "that same master item.")]
 
 
 def check_adversarial_audit_test_lock() -> list[Violation]:
