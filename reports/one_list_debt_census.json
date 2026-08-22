@@ -1,6 +1,6 @@
 {
   "classification": "SEMANTIC CENSUS EVIDENCE. Zero work authority.",
-  "CONTENT_HEAD": "4c2290f2af43778a8b8f58fcc947b890bb0109a5",
+  "CONTENT_HEAD": "81f27e23d00a7e662ec1856edf4469eb34ca60c0",
   "DIRTY": false,
   "TRACKED_FILES_TOTAL": 2878,
   "TEXT_FILES_INSPECTED": 2632,
@@ -11,18 +11,20 @@
   "DEBT_CANDIDATES_EXACT_DUPLICATES": 0,
   "DEBT_CANDIDATES_NOT_ACTIONABLE": 24,
   "UNMAPPED_LEGITIMATE_DEBT": 0,
-  "MASTER_TOTAL": 2370,
+  "MASTER_TOTAL": 2371,
   "MASTER_PASS": 0,
   "MASTER_FAIL": 0,
-  "MASTER_NOT_PROVEN": 2369,
+  "MASTER_NOT_PROVEN": 2370,
   "MASTER_UNAVAILABLE": 0,
   "MASTER_NOT_APPLICABLE": 1,
   "MASTER_STATUS_MISSING": 0,
   "MASTER_CHECKED": 1,
   "TICKER_SPECIFIC_FIX_REQUIREMENTS": 0,
-  "status_sum": 2370,
+  "status_sum": 2371,
   "unmapped": [],
-  "note": "27 scanner hits are archive/history/reports/tests/lock-detector artifacts. None are a second actionable list.",
+  "note": "Living RC/unproven current-work rows are 0 after the method pivot. Historical mapping remains at git 1fbd62f6 (6 UNPROVEN -> OD-1276..OD-1281; 146 OPEN/PARTIAL RC rows, UNMAPPED=0).",
   "UNMAPPED_LIVE_UNPROVEN_ROWS": 0,
-  "UNMAPPED_LIVE_RC_OBLIGATIONS": 0
+  "UNMAPPED_LIVE_RC_OBLIGATIONS": 0,
+  "ROOT_CAUSE_LOG_LIVE_WORK_ROWS": 0,
+  "UNPROVEN_REGISTER_LIVE_WORK_ROWS": 0
 }
