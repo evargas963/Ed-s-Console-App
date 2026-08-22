@@ -7818,7 +7818,6 @@ def _fetch_state(
             atr=_atr,
             candle_range_pts=_c_range,
             candle_body_pts=_candle_body,
-            order_flow_score=ms.order_flow_score,
         )
     except Exception as _lb_e:
         log.debug("liquidity_behavior: %s", _lb_e)

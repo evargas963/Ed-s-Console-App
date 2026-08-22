@@ -867,49 +867,12 @@ def _earliest_book_snapshot(items: list) -> Optional[dict]:
     return None
 
 
-def _compute_absorption(data: dict) -> tuple[Optional[float], Optional[float], Optional[str]]:
-    """PROXY density metrics — semantically NOT_ADMITTED as absorption/replenishment (ADVISORY).
-
-    This does NOT detect absorption in the microstructure sense: it never ties traded volume to
-    a specific resting price level, and `price_range` is the whole-buffer max-min of print prices,
-    not per-level price displacement. What it ACTUALLY computes (label must match measurement):
-      absorption_score    = total_traded_size / (price_range + OF_ABSORPTION_PRICE_EPS)
-                            -> a whole-buffer volume-per-price-range DENSITY (effort/result). PROXY.
-      replenishment_score = midpoint of (bid_depth_change + ask_depth_change) between the earliest
-                            and latest buffered book snapshot (source tag
-                            'derived_bid_ask_depth_change_midpoint') -> a 2-snapshot net depth delta.
-      direction           = sign of which side's aggregate DISPLAYED depth grew more.
-    No temporal window (uses whatever the deques currently hold); needs >=2 distinct book snapshots
-    AND >=1 sized print, else fail-closed (None,None,None). NOT_ADMITTED: no evidence ties these to
-    real absorption/replenishment, and a SECOND producer
-    (institutional_behavior.compute_liquidity_behavior_row) computes the model-facing
-    absorption_score — this is not a validated nor a sole authority. Do not present as native.
-    Uses aggregated per-level TOTAL_VOLUME (NOT nested per-source BID_VOLUME/ASK_VOLUME) plus
-    LAST_PRICE, LAST_SIZE, TRADE_TIME_MILLIS.
-    """
-    items = _iter_content(data)
-    earlier = _earliest_book_snapshot(items)
-    later = _latest_book_snapshot(items)
-    if not earlier or not later or earlier is later:
-        return None, None, None
-    bids_earlier = sum(v for _, v in _iter_bids_levels(earlier))
-    asks_earlier = sum(v for _, v in _iter_asks_levels(earlier))
-    bids_later = sum(v for _, v in _iter_bids_levels(later))
-    asks_later = sum(v for _, v in _iter_asks_levels(later))
-    bid_change = bids_later - bids_earlier if bids_earlier else 0
-    ask_change = asks_later - asks_earlier if asks_earlier else 0
-    replenishment = (bid_change + ask_change) / 2.0 if (bids_earlier or asks_earlier) else 0.0
-    # PROXY density: traded size over whole-buffer price range. NOT level-based absorption.
-    prints = _iter_tape_prints(items)
-    if not prints:
-        return None, None, None
-    total_sz = sum(p["size"] for p in prints if p.get("size") is not None and p["size"] > 0)
-    prices = [p.get("price") for p in prints if p.get("price") is not None]
-    price_range = max(prices) - min(prices) if len(prices) >= 2 else 0.0
-    # volume-per-price-range density (effort/result); eps guards div-by-zero, not a level test
-    absorption = (total_sz / (price_range + OF_ABSORPTION_PRICE_EPS)) if total_sz > 0 else 0.0
-    direction = "bid" if bid_change > ask_change else ("ask" if ask_change > bid_change else "neutral")
-    return absorption, replenishment, direction
+# RETIRED (mission TRUTH_V1): _compute_absorption (P1) was a whole-buffer volume/price-range density
+# mislabeled "absorption" — never level-based, no validity evidence. It was removed from the composite
+# and its output keys (absorption_score/replenishment_score/absorption_direction) were dropped at the
+# L1 boundary with zero executable consumers, so the function is deleted rather than kept as dead code.
+# The model/UI-facing absorption_score is the separate institutional_behavior producer (P2), the sole
+# remaining authority for that name (ONE FAUCET).
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1290,8 +1253,10 @@ class OrderFlowEngine:
         cum_delta_proxy = _compute_cum_delta_proxy(data)
         cum_delta_slope = _compute_cum_delta_slope(data)
 
-        # Absorption
-        absorption_score, replenishment_score, absorption_direction = _compute_absorption(data)
+        # TRUTH_V1: the legacy _compute_absorption (P1) was RETIRED — it computed a volume/price-range
+        # density (never level-based absorption), was removed from the composite, and its output keys
+        # were dropped at the L1 boundary (zero executable consumers). The model/UI-facing
+        # absorption_score is the separate institutional_behavior producer, not this one.
 
         # Options flow
         (
@@ -1383,14 +1348,6 @@ class OrderFlowEngine:
             "tape_pressure_5m": tape_pressure_5m,
             "cum_delta_proxy": cum_delta_proxy,
             "cum_delta_slope": cum_delta_slope,
-            "absorption_score": absorption_score,
-            "replenishment_score": replenishment_score,
-            "replenishment_score_source": (
-                "derived_bid_ask_depth_change_midpoint"
-                if replenishment_score is not None
-                else None
-            ),
-            "absorption_direction": absorption_direction,
             "options_flow_score": options_flow_score,
             "options_flow_direction": options_flow_direction,
             "call_put_flow_ratio": call_put_flow_ratio,
@@ -1437,10 +1394,6 @@ class OrderFlowEngine:
             "tape_pressure_5m": None,
             "cum_delta_proxy": None,
             "cum_delta_slope": None,
-            "absorption_score": None,
-            "replenishment_score": None,
-            "replenishment_score_source": None,
-            "absorption_direction": None,
             "options_flow_score": None,
             "options_flow_direction": None,
             "call_put_flow_ratio": None,

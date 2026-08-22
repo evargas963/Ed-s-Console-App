@@ -63,7 +63,6 @@ def test_compute_e2e_exact_zero_score_withholds_direction_and_verdict():
         ),
         patch("order_flow_engine._compute_tape_pressure", return_value=0.0),
         patch("order_flow_engine._compute_cum_delta_proxy", return_value=None),
-        patch("order_flow_engine._compute_absorption", return_value=(None, None, None)),
         patch("order_flow_engine._compute_options_flow", return_value=(None, None, None, None, None)),
         patch("order_flow_engine._compute_rvol", return_value=(None, "current_volume_unavailable")),
     ):
