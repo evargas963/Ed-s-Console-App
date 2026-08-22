@@ -38,11 +38,11 @@
   "SECOND_LIST_VIOLATIONS": [],
   "MISSING_ATOM_IDS": [],
   "CENSUS": {
-    "text_inspected": 2636,
-    "historical_inspected": 1472,
+    "text_inspected": 2640,
+    "historical_inspected": 1475,
     "non_text": 232,
-    "live_inspected": 1164,
-    "tracked": 2868
+    "live_inspected": 1165,
+    "tracked": 2872
   },
   "NOTE": "ONE-LIST PASS is not claimed. Operator/assistant determines PASS.",
   "OLD_MASTER_UNMAPPED_NAMES": []
