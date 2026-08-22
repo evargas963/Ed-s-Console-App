@@ -54,12 +54,11 @@ _SECOND_LIST_VENDOR_PREFIX = (
     ".venv/",
     "__pycache__/",
 )
+# reports/ + tests/ may hold evidence or fixtures. docs/, .claude/, and .cursor/
+# are scanned for live queues — historical-looking paths are not a hide.
 _SECOND_LIST_HISTORICAL_PREFIX = (
     "reports/",
     "tests/",
-    "docs/",
-    ".claude/",
-    ".cursor/",
     "governance/register_slices/",
     "governance/archive/",
     "governance/design_history/",
@@ -682,6 +681,70 @@ def second_work_list_violations(
         if _UNRESOLVED_BOX.search(text):
             out.append((rel_n, "unchecked work box outside the sole master — one-list law"))
     return out
+
+
+_TODO_LINE = re.compile(r"(?i)\b(TODO|FIXME)\b")
+_JSON_UNRESOLVED_STATE = re.compile(
+    r'(?i)"(status|state|disposition)"\s*:\s*"(OPEN|QUEUED|NEXT|UNRESOLVED)"'
+)
+_RC_OPEN_ROW = re.compile(r"(?im)^\|\s*RC-\d+\s*\|\s*OPEN\s*\|")
+_WORK_LANG_NO_TODO = re.compile(
+    r"(?i)(still remains to (?:be )?(?:fixed|proven)|what remains to fix|"
+    r"this obligation is unfinished)"
+)
+
+
+def collect_outside_master_debt_candidates(
+    repo: Path | None = None,
+) -> list[dict[str, str]]:
+    """Scanner for omitted debt outside the sole master. Zero work authority.
+
+    Detects queue marks, TODO/FIXME comments, JSON unresolved state, open-defect
+    records, frontend TODOs, and differently worded obligations with no TODO token.
+    Used for one-list completeness / negative controls — not a second board.
+    """
+    repo = repo or REPO
+    master_rel = SOLE_MASTER_REL
+    try:
+        listed = subprocess.check_output(
+            ["git", "ls-files"],
+            cwd=str(repo),
+            text=True,
+        ).splitlines()
+    except (OSError, subprocess.CalledProcessError):
+        return []
+    found: list[dict[str, str]] = []
+    for rel in listed:
+        rel_n = rel.replace("\\", "/")
+        if rel_n == master_rel:
+            continue
+        if any(rel_n.startswith(p) for p in _SECOND_LIST_VENDOR_PREFIX):
+            continue
+        if not _is_text_like_work_file(rel_n):
+            continue
+        path = repo / rel_n
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        kinds: list[str] = []
+        if _UNRESOLVED_BOX.search(text):
+            kinds.append("UNCHECKED_BOX")
+        if _UNRESOLVED_MARK.search(text):
+            kinds.append("UNRESOLVED_MARK")
+        if _has_second_queue_table(text):
+            kinds.append("QUEUE_TABLE")
+        if _TODO_LINE.search(text):
+            kinds.append("TODO_COMMENT")
+        if _JSON_UNRESOLVED_STATE.search(text):
+            kinds.append("JSON_OPEN_STATE")
+        if _RC_OPEN_ROW.search(text):
+            kinds.append("OPEN_DEFECT_RECORD")
+        if _WORK_LANG_NO_TODO.search(text) and not _TODO_LINE.search(text):
+            kinds.append("WORDING_NO_TODO")
+        for kind in kinds:
+            found.append({"path": rel_n, "kind": kind})
+    return found
 
 
 def _unresolved_active_parents(items: list[dict[str, Any]]) -> list[dict[str, Any]]:

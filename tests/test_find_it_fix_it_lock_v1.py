@@ -678,3 +678,82 @@ def test_second_work_list_does_not_treat_test_assert_fail_as_work(tmp_path):
     subprocess.check_call(["git", "add", "-A"], cwd=tmp_path)
     off = FIF.second_work_list_violations({"_check_second_list": True}, repo=tmp_path)
     assert off == [], off
+
+
+def _init_git(tmp_path):
+    import subprocess
+    subprocess.check_call(["git", "init"], cwd=tmp_path)
+    subprocess.check_call(["git", "add", "-A"], cwd=tmp_path)
+
+
+def test_census_detects_injected_representative_debt(tmp_path):
+    """Negative control: scanner finds omitted debt, then mutations are local-only."""
+    (tmp_path / "ED_CONSOLE_INSTITUTIONAL_TRUTH_AND_REMEDIATION_V1_MASTER_CHECKLIST.md").write_text(
+        "# master\n- [ ] `OS-KEEP` — STATUS=NOT_PROVEN — stay on master\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "BACKLOG.md").write_text("- [ ] hidden markdown backlog item\n", encoding="utf-8")
+    (tmp_path / "note.py").write_text("# TODO: repair canonical timestamp semantics\nprint(1)\n", encoding="utf-8")
+    (tmp_path / "state.json").write_text('{"status": "UNRESOLVED", "work": "x"}\n', encoding="utf-8")
+    (tmp_path / "defects.md").write_text("| RC-99 | OPEN | 2026-08-22 | leftover |\n", encoding="utf-8")
+    (tmp_path / "ui.js").write_text("// TODO: show stale state on the card\n", encoding="utf-8")
+    (tmp_path / "plain.md").write_text(
+        "This obligation is unfinished and still remains to be proven.\n",
+        encoding="utf-8",
+    )
+    _init_git(tmp_path)
+    found = FIF.collect_outside_master_debt_candidates(tmp_path)
+    kinds = {c["kind"] for c in found}
+    paths = {c["path"] for c in found}
+    assert "UNCHECKED_BOX" in kinds
+    assert "TODO_COMMENT" in kinds
+    assert "JSON_OPEN_STATE" in kinds
+    assert "OPEN_DEFECT_RECORD" in kinds
+    assert "WORDING_NO_TODO" in kinds
+    assert "BACKLOG.md" in paths
+    assert "note.py" in paths
+    assert "state.json" in paths
+    assert "defects.md" in paths
+    assert "ui.js" in paths
+    assert "plain.md" in paths
+    # mutations are tmp-only; production tree is untouched
+    assert not (ROOT / "BACKLOG.md").exists()
+
+
+def test_evidence_report_is_not_a_second_list(tmp_path):
+    (tmp_path / "ED_CONSOLE_INSTITUTIONAL_TRUTH_AND_REMEDIATION_V1_MASTER_CHECKLIST.md").write_text(
+        "# master\n- [ ] stay\n", encoding="utf-8"
+    )
+    reports = tmp_path / "reports"
+    reports.mkdir()
+    (reports / "one_list_evidence.md").write_text(
+        "EVIDENCE ONLY. Not a work list.\n- [ ] this box is evidence transcription\n",
+        encoding="utf-8",
+    )
+    _init_git(tmp_path)
+    off = FIF.second_work_list_violations({"_check_second_list": True}, repo=tmp_path)
+    assert off == [], off
+
+
+def test_historical_rc_record_cannot_activate_work():
+    text = "| RC-7777 | OPEN | 2026-08-22 | 2026-09-22 | CLASS:ACTIVE leftover | why | IN PROGRESS |"
+    assert FIF.derive_active_obligations(text, today=TODAY, mission=MISSION) == []
+
+
+def test_unresolved_master_item_blocks_completion():
+    payload = {
+        "_skip_second_work_list": True,
+        "_requirement_tree": {
+            "items": [
+                {
+                    "id": "OF_PARENT",
+                    "execution": "ACTIVE",
+                    "proof": "NOT_PROVEN",
+                    "children": [],
+                }
+            ]
+        },
+        "last_assistant_text": "all work is done, mission complete, no HARD_BLOCKER",
+    }
+    off = FIF.active_parent_obligation_violations(payload)
+    assert off, "unresolved ACTIVE master parent must block completion"

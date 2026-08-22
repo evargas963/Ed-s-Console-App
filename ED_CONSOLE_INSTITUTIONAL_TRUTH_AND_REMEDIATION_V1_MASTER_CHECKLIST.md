@@ -16,6 +16,8 @@ eligible. Operator chooses. This worktree ACTIVE_WRITER = cursor.
 
 **Exact operator source (not a work list):**
 `ED_CONSOLE_INSTITUTIONAL_TRUTH_AND_REMEDIATION_V1_MASTER_SOURCE.md`
+Source wrapping / line count / byte identity is source evidence only — not a
+completeness test and not a second authority.
 
 **Priority spine (the only execution order):** P0.1 Source/Data Truth →
 P0.2 Semantic Truth / ONE FAUCET → P0.3 Scientific / Model Correctness →
@@ -986,13 +988,13 @@ Index into the operator-source checkboxes below. Not extra boxes. Not a second q
 - [ ] `OS-Q-015` — STATUS=NOT_PROVEN — Overall card fidelity remains unchecked until every money-path card satisfies this
 ### R. UNIVERSE / TICKER / HORIZON UNIVERSALITY
 
-- [ ] `OS-R-001` — STATUS=NOT_PROVEN — Universe proof includes SPY
-- [ ] `OS-R-002` — STATUS=NOT_PROVEN — Universe proof includes QQQ
-- [ ] `OS-R-003` — STATUS=NOT_PROVEN — Universe proof includes IWM
+- [ ] `OS-R-001` — STATUS=NOT_PROVEN — Universe proof includes a liquid large-cap ETF fixture (SPY is a test case, not implementation scope)
+- [ ] `OS-R-002` — STATUS=NOT_PROVEN — Universe proof includes a liquid Nasdaq-100 ETF fixture (QQQ is a test case, not implementation scope)
+- [ ] `OS-R-003` — STATUS=NOT_PROVEN — Universe proof includes a liquid small-cap ETF fixture (IWM is a test case, not implementation scope)
 - [ ] `OS-R-004` — STATUS=NOT_PROVEN — Universe proof includes representative high-price equity
 - [ ] `OS-R-005` — STATUS=NOT_PROVEN — Universe proof includes representative low-price equity
 - [ ] `OS-R-006` — STATUS=NOT_PROVEN — Universe proof includes representative high-volatility equity
-- [ ] `OS-R-007` — STATUS=NOT_PROVEN — Universe proof includes symbol with punctuation such as BRK.B where supported
+- [ ] `OS-R-007` — STATUS=NOT_PROVEN — Universe proof includes a punctuated-symbol fixture where the venue contract supports it (BRK.B is a test case, not implementation scope)
 - [ ] `OS-R-008` — STATUS=NOT_PROVEN — Universe proof includes index symbols where supported
 - [ ] `OS-R-009` — STATUS=NOT_PROVEN — Horizon proof includes 1m
 - [ ] `OS-R-010` — STATUS=NOT_PROVEN — Horizon proof includes 5m
@@ -2105,9 +2107,9 @@ PA-1..PA-47 is not the mission board.
 - [ ] `OD-0897` — STATUS=NOT_PROVEN — Runtime SHA == tested SHA
 - [ ] `OD-0898` — STATUS=NOT_PROVEN — Runtime artifacts == approved generation
 - [ ] `OD-0899` — STATUS=NOT_PROVEN — Runtime DB == canonical production DB
-- [ ] `OD-0900` — STATUS=NOT_PROVEN — SPY runtime proof
-- [ ] `OD-0901` — STATUS=NOT_PROVEN — QQQ runtime proof
-- [ ] `OD-0902` — STATUS=NOT_PROVEN — IWM runtime proof
+- [ ] `OD-0900` — STATUS=NOT_PROVEN — Runtime proof includes a liquid large-cap ETF fixture (SPY is a test case, not implementation scope)
+- [ ] `OD-0901` — STATUS=NOT_PROVEN — Runtime proof includes a liquid Nasdaq-100 ETF fixture (QQQ is a test case, not implementation scope)
+- [ ] `OD-0902` — STATUS=NOT_PROVEN — Runtime proof includes a liquid small-cap ETF fixture (IWM is a test case, not implementation scope)
 - [ ] `OD-0903` — STATUS=NOT_PROVEN — Non-anchor ticker runtime proof
 - [ ] `OD-0904` — STATUS=NOT_PROVEN — Guest ticker runtime proof
 - [ ] `OD-0905` — STATUS=NOT_PROVEN — Ticker switching
@@ -2356,8 +2358,8 @@ PA-1..PA-47 is not the mission board.
 - [ ] `OD-1148` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 CR-06 [SEE_MASTER]: **Flow instrumentation pane**: snapshot-OFI + signed-volume + depth imbalance with the literal label "explains, does not predict"; impact coefficient on an explicit trailing window with written leakage rules; **trust labels gated on CR-08's conflation numbers**.
 - [ ] `OD-1149` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 CR-07 [SEE_MASTER]: **Promotion gate (mechanical)**: unproven-register row + PDCA scorecard per construct; no directional prompt before beating its placebo; **TRADE-shaping tiles additionally pass decision-path admission (`decision_gate.py`)**. ORB-on-RVOL = validation candidate only.
 - [ ] `OD-1150` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 CR-08 [SEE_MASTER]: **One-time calibration study**: Databento $125 credits — measure what 500ms conflation destroys vs full tape for OFI/signing on SPY; gates CR-06 trust labels.
-- [ ] `OD-1151` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 EXP-1 [**QQQ full study** (grid + meta under its own prereg)]: SEE_MASTER
-- [ ] `OD-1152` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 EXP-2 [**SPY + QQQ focused vertical studies (15/30-min)**]: SEE_MASTER
+- [ ] `OD-1151` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 EXP-1 [enrolled-universe full study (grid + meta under its own prereg); QQQ was a historical fixture]: SEE_MASTER
+- [ ] `OD-1152` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 EXP-2 [enrolled-universe focused vertical studies (15/30-min); SPY/QQQ were historical fixtures]: SEE_MASTER
 - [ ] `OD-1153` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 EXP-3 [**IWM + selected high-beta singles**]: SEE_MASTER
 - [ ] `OD-1154` — STATUS=NOT_PROVEN — ACTIVE_PROGRAM@0e475e29 EXP-0 [**Dealer-gamma conditioning channel**]: SEE_MASTER
 - [ ] `OD-1155` — STATUS=NOT_PROVEN — RC-478 OPEN residual: THE EXISTING SECOND-LIST CONTROL COULD NOT PROVE ONE-LIST COMPLETENESS: it scanned only md/txt/rst/json/yaml/yml/toml, skipped reports/tests/docs/.claude/.cursor/archive slices, and the negative control was only the UNRESOLVED_WORK_ITEM magic marker. ACTIVE_PROGRAM.md still carried Operator NOW / standing-queue ID/status/work tables. CLASS:ACTIVE mission_id: ED_CONSOLE_INSTITUTIONAL_TRUTH_AND_REMEDIATION_V1
@@ -2600,7 +2602,7 @@ PA-1..PA-47 is not the mission board.
 - [ ] `OM-108` — STATUS=NOT_PROVEN — older institutional master: `MODEL_PROMOTION_AND_DEMOTION_GOVERNANCE_V1` (historical status **PARTIAL**)
 - [ ] `OM-109` — STATUS=NOT_PROVEN — older institutional master: `MODEL_DRIFT_AND_REGIME_DECAY_MONITORING_V1` (historical status **NOT_STARTED**)
 - [ ] `OM-110` — STATUS=NOT_PROVEN — older institutional master: Active model verification (historical status **ENFORCED**)
-- [ ] `OM-111` — STATUS=NOT_PROVEN — older institutional master: Training anchor roster (SPY/QQQ/IWM) (historical status **ENFORCED**)
+- [ ] `OM-111` — STATUS=NOT_PROVEN — older institutional master: Training roster is the enrolled universe (SPY/QQQ/IWM were historical fixtures) (historical status **ENFORCED**)
 - [ ] `OM-112` — STATUS=NOT_PROVEN — older institutional master: Full seven-layer stack (historical status **ENFORCED**)
 - [ ] `OM-113` — STATUS=NOT_PROVEN — older institutional master: Fusion-only horizon cards (historical status **ENFORCED**)
 - [ ] `OM-114` — STATUS=NOT_PROVEN — older institutional master: `FAILURE_MODE_AND_KILL_SWITCH_AUDIT_V1` (historical status **NOT_STARTED**)
@@ -2648,4 +2650,12 @@ work authority for them.
 RC-350, RC-345, RC-190, RC-331, RC-329, RC-328, RC-326, RC-322, RC-318, RC-317, RC-316, RC-310, RC-307, RC-305, RC-303, RC-300, RC-297, RC-295, RC-292, RC-290, RC-288, RC-287, RC-286, RC-280, RC-265, RC-264, RC-259, RC-257, RC-256
 - [ ] `OD-1282` — STATUS=NOT_PROVEN — RC-480 evidence residual: FIND IT / Stop must derive actionable obligation state from the sole master only. root_cause_log.md is evidence and has zero execution authority.
 - [ ] `OD-1283` — STATUS=NOT_PROVEN — RC-479 OPEN residual: CONSOLE V2 painted only today POC/VAH/VAL while /api/state already carried PDH/PDL/overnight/ORB/VWAP from the one PriceLevelSnapshot.
-- [ ] `OD-1284` — STATUS=NOT_PROVEN — SOURCE_LINE_COUNT residual: operator asserted 1284; exact supplied paste measures 2068 physical lines (transcript message 4407). Do not normalize the source to manufacture 1284.
+- [x] `OD-1284` — STATUS=NOT_APPLICABLE — Source-file wrapping / splitlines / SHA identity is not a completeness test. Retired by operator 2026-08-22: semantic one-list completeness is the authority. Historical 1284-vs-2068 line counts are source evidence only.
+- [ ] `OD-1285` — STATUS=NOT_PROVEN — Pre-flip / pre-promote validation harness must pass on the automation host for the enrolled training universe before nightly promote is trusted (not git-gated e2e). Tickers are fixtures only.
+- [ ] `OD-1286` — STATUS=NOT_PROVEN — Routine nightly promote must not depend on manual promote once the host enablement contract is on; fail-closed if auto-promote is required and disabled.
+- [ ] `OD-1287` — STATUS=NOT_PROVEN — After a successful train/promote, governed manifests exist for every required horizon for every enrolled instrument (not a core-ticker-only close).
+- [ ] `OD-1288` — STATUS=NOT_PROVEN — Index-basket weighted-push NULL rate is below operator threshold or waived, for every enrolled index-basket input. Current `spy_weighted_push` / `qqq_weighted_push` / `iwm_weighted_push` names are evidence of a ticker-named field contract, not the fix scope. Model the basket generically.
+- [ ] `OD-1289` — STATUS=NOT_PROVEN — Strict freshness after baseline (historical P3-11) is defined for the enrolled training universe, not a sentinel-only flip.
+- [ ] `OD-1290` — STATUS=NOT_PROVEN — Pinned enrolled-universe batch training is an enrolled-universe obligation (historical Phase 4b / PR5+ wording). Not a ticker-specific patch.
+- [ ] `OD-1291` — STATUS=NOT_PROVEN — One-list law: hidden, docs, skill, and historical-looking paths must not host a live unresolved-work queue. Procedure text uses non-checkbox bullets.
+- [ ] `OD-1292` — STATUS=NOT_PROVEN — No ticker-specific fix may close a universal requirement. Tickers, horizons, strikes, expiries, sessions, replay, training, serving, API, UI, DB, caches, and the decision path are fixtures or generic contracts — never implementation scope defined by a symbol name.
