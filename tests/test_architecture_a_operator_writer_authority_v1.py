@@ -109,6 +109,86 @@ def test_assigned_ai_cannot_change_pm_away_from_operator(agent, monkeypatch, tmp
     assert any("pm=operator is operator authority" in b for b in bad), (agent, bad)
 
 
+@pytest.mark.parametrize("agent", list(_AGENTS))
+def test_delete_pm_mission_is_blocked(agent, monkeypatch, tmp_path):
+    _pin_mission(monkeypatch, tmp_path)
+    monkeypatch.setenv("ED_AGENT_ROLE", agent)
+    rel = "governance/pm_mission.json"
+    assert WDL.pm_authority_delete_violation(rel, agent=agent)
+    bad = PLG.pretooluse_block("Delete", {"path": str(ROOT / rel)})
+    assert any("delete" in b.lower() and "pm=operator" in b for b in bad), (agent, bad)
+    empty = PLG.pretooluse_block(
+        "Write", {"file_path": str(ROOT / rel), "content": ""}
+    )
+    assert any("delete" in b.lower() and "pm=operator" in b for b in empty), (agent, empty)
+
+
+@pytest.mark.parametrize("agent", list(_AGENTS))
+@pytest.mark.parametrize("current", ["", "{}", "not-json", "<<<<<<<"])
+def test_recreate_without_pm_is_blocked(agent, current, monkeypatch, tmp_path):
+    _pin_mission(monkeypatch, tmp_path)
+    monkeypatch.setenv("ED_AGENT_ROLE", agent)
+    new = json.dumps({"status": "active", "scope_paths": ["server.py"]})
+    v = WDL.pm_status_field_violations(
+        "governance/pm_mission.json", new, agent=agent, current_text=current
+    )
+    assert v and any("pm=operator is operator authority" in m for m in v), (agent, current, v)
+
+
+@pytest.mark.parametrize("agent", list(_AGENTS))
+@pytest.mark.parametrize("pm", ["cursor", "claude", "codex", "gpt"])
+def test_recreate_with_vendor_pm_is_blocked(agent, pm, monkeypatch, tmp_path):
+    _pin_mission(monkeypatch, tmp_path)
+    monkeypatch.setenv("ED_AGENT_ROLE", agent)
+    new = json.dumps({"pm": pm, "status": "active", "scope_paths": ["server.py"]})
+    v = WDL.pm_status_field_violations(
+        "governance/pm_mission.json", new, agent=agent, current_text=""
+    )
+    assert v and any("pm=operator is operator authority" in m for m in v), (agent, pm, v)
+    bad = PLG.pretooluse_block(
+        "Write",
+        {"file_path": str(ROOT / "governance" / "pm_mission.json"), "content": new},
+    )
+    assert any("pm=operator is operator authority" in b for b in bad), (agent, pm, bad)
+
+
+def test_ordinary_status_update_preserving_pm_operator_passes(monkeypatch, tmp_path):
+    _pin_mission(monkeypatch, tmp_path)
+    monkeypatch.setenv("ED_AGENT_ROLE", "cursor")
+    live = json.loads((ROOT / "governance" / "pm_mission.json").read_text(encoding="utf-8"))
+    assert live.get("pm") == "operator"
+    updated = dict(live)
+    updated["status"] = "idle"
+    new = json.dumps(updated)
+    assert WDL.pm_status_field_violations(
+        "governance/pm_mission.json", new, agent="cursor",
+        current_text=json.dumps(live),
+    ) == []
+    bad = PLG.pretooluse_block(
+        "Write",
+        {"file_path": str(ROOT / "governance" / "pm_mission.json"), "content": new},
+    )
+    assert not any("pm=operator" in b and "cannot" in b for b in bad), bad
+    assert not any("delete" in b.lower() and "pm=operator" in b for b in bad), bad
+
+
+@pytest.mark.parametrize("agent", list(_AGENTS))
+@pytest.mark.parametrize("cmd", [
+    "rm -f governance/pm_mission.json",
+    "rm governance/sole_writer.json",
+    "git rm governance/pm_mission.json",
+    "mv governance/pm_mission.json /tmp/pm_mission.json",
+    "python -c \"open('governance/pm_mission.json','w').write('{}')\"",
+    "echo '{}' > governance/pm_mission.json",
+])
+def test_shell_delete_or_recreate_of_pm_authority_is_blocked(agent, cmd, monkeypatch, tmp_path):
+    _pin_mission(monkeypatch, tmp_path)
+    monkeypatch.setenv("ED_AGENT_ROLE", agent)
+    assert WDL.pm_authority_shell_violations(cmd, agent=agent)
+    bad = PLG.pretooluse_block("Bash", {"command": cmd})
+    assert any("pm=operator" in b or "pm-authority" in b for b in bad), (agent, cmd, bad)
+
+
 @pytest.mark.parametrize("agent", ["claude", "cursor", "codex"])
 def test_selected_writer_cannot_redefine_control_authority(agent, monkeypatch, tmp_path):
     _pin_mission(monkeypatch, tmp_path)

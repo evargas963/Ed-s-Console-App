@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 from pathlib import Path
 
@@ -66,6 +67,27 @@ PM_STATUS_FIELDS = frozenset({
     "approved_by", "approved_via", "approved_at",
 })
 
+#: Files that carry pm=operator. Assigned AIs may not delete them or write them
+#: without pm=operator, including when the current file is missing or corrupt.
+PM_AUTHORITY_FILES = frozenset({
+    "governance/pm_mission.json",
+    "governance/sole_writer.json",
+})
+_PM_AUTHORITY_PATH_RE = re.compile(
+    r"governance[/\\]+(?:pm_mission|sole_writer)\.json",
+    re.I,
+)
+_PM_AUTHORITY_SHELL_DELETE_RE = re.compile(
+    r"\b(?:rm|unlink|del|erase|rmdir|Remove-Item|git\s+rm|os\.remove|os\.unlink)\b"
+    r"|\.unlink\(|\bshutil\.rmtree\b|\bmv\b|\bMove-Item\b|\btruncate\b",
+    re.I,
+)
+_PM_AUTHORITY_SHELL_WRITE_RE = re.compile(
+    r"(?:>>?|\btee\b|\bSet-Content\b|\bOut-File\b|\bAdd-Content\b|\bNew-Item\b"
+    r"|write_text|write_bytes|\.write\(|open\([^)]*['\"]w)",
+    re.I,
+)
+
 #: Files that define CI/merge/hook/assignment rails. Derived from actual call
 #: paths (hooks.json, settings.json, required workflows, assignment JSON).
 CONTROL_AUTHORITY_EXACT = frozenset({
@@ -102,16 +124,52 @@ def hard_denylist_violation(rel: str, *, agent: str | None = None,
     return control_authority_violation(rel, agent=agent)
 
 
+def pm_authority_delete_violation(rel: str, *, agent: str | None = None) -> str | None:
+    """BLOCK assigned-AI deletion of the files that carry pm=operator."""
+    agent = (agent or current_agent_role()).strip().lower()
+    if not agent:
+        return None
+    rel = _norm(rel)
+    if rel not in PM_AUTHORITY_FILES:
+        return None
+    return (
+        f"SOD_DRIFT: {rel} delete — pm=operator is operator authority and cannot "
+        f"be removed by agent={agent!r}."
+    )
+
+
+def pm_authority_shell_violations(cmd: str, *, agent: str | None = None) -> list[str]:
+    """BLOCK shell delete/recreate of pm-authority files by an assigned AI."""
+    agent = (agent or current_agent_role()).strip().lower()
+    if not agent or not cmd:
+        return []
+    if not _PM_AUTHORITY_PATH_RE.search(cmd):
+        return []
+    out: list[str] = []
+    if _PM_AUTHORITY_SHELL_DELETE_RE.search(cmd):
+        out.append(
+            f"SOD_DRIFT: shell deletes/moves a pm-authority file — pm=operator is "
+            f"operator authority and cannot be removed by agent={agent!r}."
+        )
+    if _PM_AUTHORITY_SHELL_WRITE_RE.search(cmd):
+        out.append(
+            f"SOD_DRIFT: shell recreates/writes a pm-authority file — use Edit/Write; "
+            f"pm=operator is required and cannot be omitted by agent={agent!r}."
+        )
+    return out
+
+
 def pm_status_field_violations(rel: str, new_text: str, *, agent: str | None = None,
                                current_text: str | None = None) -> list[str]:
     """Leftover mission JSON: assigned agents may not steal pm or expand scope.
 
     writer/auditor flips are not authorization and are not blocked here — setting
     writer to self must not grant control-authority privilege (proven at the rail seam).
-    pm=operator is operator authority and cannot be changed by an assigned AI.
+    pm=operator is operator authority: an assigned AI cannot omit or replace it,
+    even when the current file is missing, empty, or malformed.
     """
     rel = _norm(rel)
-    if rel not in ("governance/pm_mission.json", "governance/sole_writer.json"):
+    if rel not in PM_AUTHORITY_FILES:
         return []
     agent = (agent or current_agent_role()).strip().lower()
     try:
@@ -132,12 +190,12 @@ def pm_status_field_violations(rel: str, new_text: str, *, agent: str | None = N
     except (ValueError, json.JSONDecodeError):
         cur_doc = {}
     out: list[str] = []
-    cur_pm = str(cur_doc.get("pm") or "").strip().lower()
     new_pm = str(new_doc.get("pm") or "").strip().lower()
-    if cur_pm == "operator" and new_pm != "operator":
+    if new_pm != "operator":
         out.append(
-            f"SOD_DRIFT: {rel} changes pm={cur_pm!r} to {new_pm!r} — "
-            f"pm=operator is operator authority and cannot be reassigned by agent={agent!r}."
+            f"SOD_DRIFT: {rel} writes pm={new_pm!r} — "
+            f"pm=operator is operator authority and cannot be omitted or reassigned "
+            f"by agent={agent!r}."
         )
     old_scope = set(map(str, cur_doc.get("scope_paths") or []))
     new_scope = set(map(str, new_doc.get("scope_paths") or []))

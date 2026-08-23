@@ -78,9 +78,14 @@ def pretooluse_block(tool: str, tool_input: dict) -> list[str]:
             auth = WDL.control_authority_violation(rel)
             if auth:
                 out.append(auth)
-            # LOCK-1/3 (RC-232): pm/sole role files — Cursor status-fields-only.
+            # LOCK-1/3 (RC-232) + RC-454: pm-authority files. Delete or empty overwrite
+            # removes pm=operator; Write must keep pm=operator even if the file is gone.
             new_text = _tool_new_text(tool_input)
-            if new_text:
+            if tool == "Delete" or (rel in WDL.PM_AUTHORITY_FILES and tool == "Write" and not new_text):
+                gone = WDL.pm_authority_delete_violation(rel)
+                if gone:
+                    out.append(gone)
+            elif new_text:
                 out.extend(WDL.pm_status_field_violations(rel, new_text))
             # LOCK-7 (RC-232): assigned principals creating NEW governance mandate prose
             # while a mission runs is process-md theater unless explicitly waived.
@@ -109,6 +114,7 @@ def pretooluse_block(tool: str, tool_input: dict) -> list[str]:
         # LOCK-2 (RC-231): the tree-destructive git CLASS blocks BEFORE the tree is touched —
         # three 2026-08-03 wipes used soft forms the old --hard-literal ban never matched.
         out.extend(OPL.reset_guard_violations(cmd))
+        out.extend(WDL.pm_authority_shell_violations(cmd))
     return out
 
 
