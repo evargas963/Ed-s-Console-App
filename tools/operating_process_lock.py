@@ -6,7 +6,7 @@ The charter is operator-facing; THIS module BLOCKs — .md alone is not a lock.
 Child of RC-215 (index≠WT stash-strip), RC-216 (DISK_ONLY vs LIVE), RC-210 (dual-writer thrash).
 
 Minimum BLOCK surfaces:
-  (a) Write/Edit protected paths when sole_writer ≠ current agent
+  (a) Write/Edit control-authority surfaces when ED_AGENT_ROLE is set (RC-454)
   (b) Stop on COMPLETE/LIVE/one-intentional-tree claims while index≠WT or live PID predates db.py gate
   (c) git commit when index≠WT on staged enforcement paths or staged CHECKS not on HEAD without operator GO
 """
@@ -26,8 +26,9 @@ REPO = Path(__file__).resolve().parent.parent
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
-SOLE_WRITER_PATH = REPO / "governance" / "sole_writer.json"
+SOLE_WRITER_PATH = REPO / "governance" / "sole_writer.json"  # NON-AUTHORITATIVE tombstone (RC-456)
 OPERATOR_GO_PATH = REPO / "governance" / "operator_go.json"
+# NON-AUTHORITATIVE Git template. Executable mission is tools.pm_authority.
 PM_MISSION_PATH = REPO / "governance" / "pm_mission.json"
 CHECKER_REL = "tools/check_institutional_correctness.py"
 DB_REL = "db.py"
@@ -127,7 +128,8 @@ def reset_guard_violations(command: str) -> list[str]:
     if not _RESET_GUARD_RE.search(cmd) or _RESET_GUARD_SAFE_RE.search(cmd):
         return []
     touched = [p for p in PROTECTED_PATHS + PRODUCT_WIPE_PROTECTED if p in cmd]
-    mission = _load_json(PM_MISSION_PATH) or {}
+    from tools.pm_authority import executable_mission
+    mission = executable_mission()
     for sp in (mission.get("scope_paths") or []):
         if isinstance(sp, str) and sp.strip("*/") and sp in cmd:
             touched.append(sp)
@@ -238,8 +240,8 @@ def _load_json(path: Path) -> dict | None:
 
 
 def sole_writer_record() -> dict:
-    doc = _load_json(SOLE_WRITER_PATH)
-    return doc if isinstance(doc, dict) else {}
+    """Tombstone only (RC-454/RC-456). Not executable authorization."""
+    return {"_authority": "NON-AUTHORITATIVE", "pm": "operator", "retired": True}
 
 
 def operator_go_record() -> dict:
@@ -640,8 +642,9 @@ def live_collect_disk_only(repo: Path | None = None, port: int = 8000) -> str | 
 
 
 def pm_mission_record() -> dict:
-    doc = _load_json(PM_MISSION_PATH)
-    return doc if isinstance(doc, dict) else {}
+    """Executable PM mission. Git-tracked template is never the fallback."""
+    from tools.pm_authority import executable_mission
+    return executable_mission()
 
 
 def _mission_gates_path(rel: str) -> bool:
@@ -673,31 +676,25 @@ def _mission_scope_allows(rel: str, scope_paths: list) -> bool:
 
 
 def pm_mission_edit_violation(rel: str, agent: str | None = None) -> str | None:
-    """RC-219 + RC-226: product edits need an in-progress mission; non-writer cannot touch scope."""
+    """RC-219 + RC-454: gated product edits need an in-progress mission + scope.
+
+    Persisted writer/auditor fields are not authorization. `agent` is accepted for
+    API compatibility and is not used to privilege a vendor.
+    """
+    del agent  # RC-454: operator-selected work is not gated on persisted writer
     rel = rel.replace("\\", "/")
     if rel in PROCESS_ALLOWED_PREFIXES or WDL.is_pm_allowlisted(rel):
         return None
+    from tools.pm_authority import authority_unavailable_reasons
+    unavailable = authority_unavailable_reasons()
     mission = pm_mission_record()
     status = str(mission.get("status") or "idle").strip().lower()
-    agent = (agent or current_agent_role()).lower()
-    writer = str(mission.get("writer") or sole_writer_record().get("writer") or "").strip().lower()
     scopes = mission.get("scope_paths") or ["*"]
     if not isinstance(scopes, list):
         scopes = ["*"]
-    in_prog = WDL.mission_in_progress(mission)
+    in_prog = (not unavailable) and WDL.mission_in_progress(mission)
 
-    # RC-226: in-progress mission — non-writer blocked on scope_paths (and gated product).
-    if in_prog and writer and agent != writer:
-        if WDL.path_in_mission_scope(rel, scopes) or _mission_gates_path(rel):
-            return (
-                f"SOD_DRIFT: {writer} is sole writer — WRITER-DRIFT BLOCK: "
-                f"mission writer={writer!r} but agent={agent!r} — "
-                f"path {rel} blocked (mission_id={mission.get('mission_id')!r}; "
-                f"status={status!r}). Cursor=PM/auditor; sole writer owns scope_paths."
-            )
-        return None
-
-    # Idle / not in-progress: block mission-gated product for everyone (RC-219).
+    # Idle / not in-progress / missing external authority: block gated product.
     if not in_prog:
         if rel.startswith("tests/") or rel.startswith("reports/"):
             return None
@@ -705,9 +702,23 @@ def pm_mission_edit_violation(rel: str, agent: str | None = None) -> str | None:
             return None
         if not _mission_gates_path(rel):
             return None
+        if unavailable:
+            # DEGRADED / NON-ENFORCING (Architecture A clean landing): no external
+            # PM-authority boundary is provisioned on THIS host — a dev clone, CI,
+            # Windows, or the cloud VM before install. Do NOT brick ordinary product
+            # edits: the operator-selected AI may work (invariant: selected AI does
+            # product work). The capability boundary that stops the AI from MUTATING
+            # executable PM authority is the OS (root-owned file + narrow sudo) plus
+            # the control-authority rails (control_authority_violation) — NEITHER
+            # depends on this reader. The AI cannot induce this state on a provisioned
+            # host: it cannot delete or corrupt the root-owned authority file. See
+            # measure_report()['pm_authority_mode'] == 'degraded' for the signpost.
+            return None
+        # Provisioned host, external authority present, mission idle: the legitimate
+        # PM-workflow gate still applies.
         return (
-            f"PM-FIRST BLOCK: no in-progress mission (governance/pm_mission.json status={status!r}) — "
-            f"run change requests through Cursor PM; do not edit {rel} until a mission is opened"
+            f"PM-FIRST BLOCK: no in-progress mission (external authority status={status!r}) — "
+            f"run change requests through the operator PM; do not edit {rel} until a mission is opened"
         )
 
     # Named writer on in-progress mission: stay inside scope_paths for gated surfaces.
@@ -725,32 +736,8 @@ def pm_mission_edit_violation(rel: str, agent: str | None = None) -> str | None:
 
 
 def sole_writer_edit_violation(rel: str, agent: str | None = None) -> str | None:
-    rel = rel.replace("\\", "/")
-    pm_msg = pm_mission_edit_violation(rel, agent=agent)
-    if pm_msg:
-        return pm_msg
-    if rel in PROCESS_ALLOWED_PREFIXES or rel.startswith("tests/"):
-        return None
-    if rel.startswith("governance/") and rel not in PROTECTED_PATHS:
-        return None
-    if rel.startswith("reports/"):
-        return None
-    writer = str(sole_writer_record().get("writer") or "").strip().lower()
-    if not writer:
-        return None
-    agent = (agent or current_agent_role()).lower()
-    if agent == writer:
-        return None
-    if rel not in PROTECTED_PATHS and not any(
-        rel == p or rel.startswith(p.rstrip("/") + "/") for p in PROTECTED_PATHS
-    ):
-        # Prefix match for calibration/*
-        if not rel.startswith("calibration/repair_"):
-            return None
-    return (
-        f"sole_writer={writer!r} but current agent={agent!r} — "
-        f"protected path {rel} is dual-edit BLOCKED (governance/sole_writer.json)"
-    )
+    """Product dual-writer privilege retired (RC-454). Idle-mission gate remains."""
+    return pm_mission_edit_violation(rel, agent=agent)
 
 
 def _git_diff_names(root: Path, a: str | None, b: str | None) -> list[str]:
@@ -1005,7 +992,7 @@ def commit_violations(repo: Path | None = None) -> list[str]:
     if staged_head and not operator_go_granted("staged_lock_surface"):
         out.extend(f"commit BLOCKED: {msg} — set governance/operator_go.json granted=true" for msg in staged_head)
     out.extend(precommit_orphan_patch_warnings(root))
-    # RC-226: non-writer staging scope_paths → commit BLOCK (Shell-bypass backstop).
+    # RC-454: assigned principal staging control-authority rails → commit BLOCK.
     out.extend(
         WDL.live_writer_drift_violations(
             root, agent=current_agent_role(), staged_only=True
@@ -1032,10 +1019,18 @@ def measure_report(repo: Path | None = None) -> dict:
             "head": head_hash,
             "index_eq_wt": idx == wt if idx and wt else None,
         })
+    from tools.pm_authority import authority_unavailable_reasons
+    _auth_unavail = authority_unavailable_reasons()
     return {
         "sole_writer": sole_writer_record(),
         "operator_go": operator_go_record(),
         "pm_mission": pm_mission_record(),
+        # Architecture A signpost: 'enforcing' only when a real external PM-authority
+        # boundary is present on this host; 'degraded' (non-enforcing PM-workflow gate,
+        # product edits allowed) everywhere it is not provisioned. The AI cannot flip
+        # this on a provisioned host — it cannot write the root-owned authority file.
+        "pm_authority_mode": "degraded" if _auth_unavail else "enforcing",
+        "pm_authority_unavailable_reasons": _auth_unavail,
         "index_worktree_mismatches": index_worktree_mismatches(root),
         "staged_checks_not_on_head": staged_enforced_checks_not_on_head(root),
         "live_collect_disk_only": live_collect_disk_only(root),

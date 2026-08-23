@@ -16,6 +16,32 @@
 # Guard/lock entrypoints and the institutional gate
 /tools/*_guard.py @evargas963
 /tools/*_lock.py @evargas963
+# Package init runs inside the guard/hook process on every `import tools.*`;
+# protect it so a poisoned __init__ cannot neuter the rails via monkeypatch.
+/tools/__init__.py @evargas963
+
+# Hook import closure: every repo module the PreToolUse/Stop hooks import runs
+# inside the guard process, so a poisoned module = guard code execution / poisoned
+# production enforcement. Require operator review to merge any of them. A test
+# recomputes the closure and fails if a new hook import is not covered.
+/tools/check_*.py @evargas963
+/tools/data_faucet_audit.py @evargas963
+/tools/find_prove_locks.py @evargas963
+/tools/log_law.py @evargas963
+/tools/plus_player_locks.py @evargas963
+/tools/turn_self_audit.py @evargas963
+/time_et.py @evargas963
+# pytest collection runs EVERY conftest under tests/ (incl. subdir + archive);
+# a poisoned one could monkeypatch a guard/reader so the suite passes green.
+/tests/conftest.py @evargas963
+/tests/**/conftest.py @evargas963
+# Pre-commit wrappers decide gate exit codes inside the commit process; the
+# backstop test proves the wrapper propagates non-zero — protect it from removal.
+/tools/run_with_repo_venv.py @evargas963
+/tools/bootstrap_worktree_venv.py @evargas963
+/tools/duplication_audit.py @evargas963
+/tools/rehab_daily_scan.py @evargas963
+/tests/test_venv_wrapper_propagates_exit_v1.py @evargas963
 /tools/operating_process_lock.py @evargas963
 /tools/check_institutional_correctness.py @evargas963
 /tools/check_delta_adds_no_debt.py @evargas963
@@ -23,6 +49,9 @@
 /tools/check_market_correctness.py @evargas963
 /tools/check_institutional_closure_gate.py @evargas963
 /tools/check_no_grep_subprocess.py @evargas963
+/tools/pm_authority.py @evargas963
+/tools/pm_authority_helper.py @evargas963
+/tools/install_pm_authority_host.sh @evargas963
 
 # Grant / GO rails (assignment JSON is field-locked in process; not listed here
 # so routine mission status updates do not require operator review)
@@ -33,3 +62,5 @@
 /tests/test_architecture_a_bypass_class_v1.py @evargas963
 /tests/test_writer_drift_lock_v1.py @evargas963
 /tests/test_control_authority_surfaces_v1.py @evargas963
+/tests/test_architecture_a_operator_writer_authority_v1.py @evargas963
+/tests/test_pm_authority_external_v1.py @evargas963

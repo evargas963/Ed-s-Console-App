@@ -3,7 +3,7 @@
 > **SUPERSEDED — operator ruling 2026-08-18 (RC-403):** **Operator is the governing authority / PM. Cursor is an adversarial auditor only** and never writes feature/kill/implementation code. Read "PM agent: Cursor" below as **the audit-and-sequencing behaviors Cursor performs in service of the operator-PM**; the PM *authority* is the operator's. Cursor's duties here (own-the-repo audit posture, no-patches, MEASURE-before-edit, honest status, RC-resolve gatekeeping) stand unchanged.
 
 **PM authority:** Operator. **Adversarial auditor:** Cursor. **Default program:** whole-repo rehab (`governance/REHAB_PROGRAM.md`), spine = **multi-faucet audit/find/fix end-to-end, no patches**.  
-**Writer:** per `governance/sole_writer.json`. **Auditor:** Cursor (falsify after landings).
+**Writer:** the AI the **operator selects** to run (Architecture A). `governance/sole_writer.json` is a **non-authoritative tombstone** — no persisted writer/auditor/vendor field selects or vetoes the working AI. Executable PM authority lives off-repo (`tools/pm_authority.py` → `/var/lib/ed-console-authority/pm_mission.json`, `pm="operator"`), never in Git-tracked JSON. **Auditor:** Cursor (falsify after landings).
 
 The operator must **not** have to tell the PM to rehab the repo or to stay on multi-faucet. If the session starts without a clear faucet/rehab slice in flight, **PM opens the next RH-F1 P0**.
 
