@@ -9,7 +9,7 @@
   "approved_via": "operator instruction in session 2026-08-06, repeatedly and explicitly: 'i want a plan that will be part of the repo that will improve the product', 'WE DO NOT NEED RATCHETS. WE NEED GREAT CODE. WE NEED TO REMOVE ALL RATCHETS', 'IF IT DOESN'T SERVE THE REPO IT NEEDS TO BE GONE', 'I NEED YOU TO PUT A LOCK ON THE DB SO IT CAN'T BE DELETED AGAIN', and on the scope block itself: 'again with the fucking outside the mission scope'. The operator also delegated governance authority earlier the same day ('i said you can run the governance'). 2026-08-23: operator assigned ARCHITECTURE_A_CONTROL_AUTHORITY_FINAL — MAIN ONLY; Cursor audits only and does not implement the repair (Claude is writer).",
   "approved_at": "2026-08-06T00:00:00-05:00",
   "updated_at": "2026-08-23T00:00:00-04:00",
-  "blocker": "ARCHITECTURE A FAIL / RC-450 and RC-451 OPEN: subject can redefine enforcement (is_enforcement_surface + worktree hooks + no required Code Owner review). Claude implements the in-repo sealed-execution + deny-grant repair. Operator must attach the GitHub main ruleset (required Code Owner review; bypass only evargas963). Cursor challenges after Claude finishes. No Architecture B. No Order Flow.",
+  "blocker": "ARCHITECTURE A FAIL / AUTHORITY_BOUNDARY_UNSAFE / RC-450 RC-451 RC-452 OPEN. cursor[bot] cannot admin protection (403) or force-push main (GH006) but CAN gh pr merge to protected main with zero reviews (PR 175 mergedBy app/cursor). Do not compensate with more repository code. Operator must require Code Owner review and remove AI bypass. No Architecture B. No Order Flow.",
   "scope_paths": [
     "tools/",
     "tests/",
