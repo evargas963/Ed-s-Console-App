@@ -101,22 +101,27 @@ def test_lock1_hard_denylist_blocks_cursor_on_chart_and_server(monkeypatch):
     assert WDL.hard_denylist_violation("server.py", agent="claude", mission=mission, sole=sole) is None
 
 
-def test_lock1_lock_modules_gated_by_cursor_lock_encode_ok(monkeypatch):
-    monkeypatch.delenv("ED_WRITER_DRIFT_GUARD", raising=False)
+def test_lock1_lock_modules_are_auditor_surfaces_without_json_grant(monkeypatch):
+    """Architecture A: Cursor may encode lock modules without cursor_lock_encode_ok."""
     mission = {"status": "active", "writer": "claude", "mission_id": "m1"}
     sole = {"writer": "claude"}
-    msg = WDL.hard_denylist_violation(
-        "tools/check_institutional_correctness.py", agent="cursor", mission=mission, sole=sole)
-    assert msg and "cursor_lock_encode_ok" in msg
-    mission_ok = dict(mission, cursor_lock_encode_ok=True)
     assert WDL.hard_denylist_violation(
-        "tools/check_institutional_correctness.py", agent="cursor",
-        mission=mission_ok, sole=sole) is None
+        "tools/check_institutional_correctness.py", agent="cursor", mission=mission, sole=sole
+    ) is None
+    assert WDL.writer_drift_violations(
+        ["tools/writer_drift_lock.py"],
+        agent="cursor",
+        mission=dict(mission, scope_paths=["tools/"]),
+        sole_writer=sole,
+    ) == []
+    assert WDL.hard_denylist_violation(
+        "server.py", agent="cursor", mission=mission, sole=sole
+    )
 
 
 def test_lock1_pm_status_fields_only_for_cursor():
     """LOCK-1/3: role flips, scope expansion and remaining[] deletion BLOCK; status-field
-    changes pass; the operator escape marker passes."""
+    changes pass; a comment marker cannot authorize a role flip."""
     cur = ('{"writer": "claude", "pm": "cursor", "auditor": "cursor", "status": "active", '
            '"scope_paths": ["tools/"], "remaining": [{"id": "X"}], "note": "n"}')
     flip = cur.replace('"writer": "claude"', '"writer": "cursor"')
@@ -135,8 +140,8 @@ def test_lock1_pm_status_fields_only_for_cursor():
     assert not WDL.pm_status_field_violations("governance/pm_mission.json", status_only,
                                               agent="cursor", current_text=cur)
     escaped = flip.replace('"note": "n"', '"note": "# sod-role-ok: operator order"')
-    assert not WDL.pm_status_field_violations("governance/pm_mission.json", escaped,
-                                              agent="cursor", current_text=cur)
+    assert WDL.pm_status_field_violations("governance/pm_mission.json", escaped,
+                                         agent="cursor", current_text=cur)
 
 
 def test_lock4_self_heal_owed_blocks_until_rc_exists(tmp_path, monkeypatch):

@@ -10,7 +10,9 @@ Fires:
   - commit / pre-commit via writer_drift_violations on dirty paths
   - check_writer_no_drift in check_institutional_correctness.py
 
-Escape: ED_WRITER_DRIFT_GUARD=off (operator only, visible).
+Architecture A (RC-450): this control is not subject-disableable. ED_WRITER_DRIFT_GUARD
+and cursor_edit_ok / cursor_lock_encode_ok / # sod-role-ok: cannot authorize a bypass.
+Auditor may edit enforcement surfaces without becoming writer.
 """
 from __future__ import annotations
 
@@ -84,9 +86,7 @@ HARD_DENYLIST_TEST_MARKERS = (
     "tests/test_collect_window_law_v1.py",
 )
 
-#: LOCK-1 (RC-232): lock modules + the institutional checker are CURSOR-editable only when
-#: the mission explicitly grants "cursor_lock_encode_ok": true (default false) — encoding
-#: locks is the writer's job under the standing SoD law.
+#: Architecture A: lock/guard modules are auditor enforcement surfaces, not a JSON grant.
 LOCK_ENCODE_PATHS = frozenset({
     "tools/check_institutional_correctness.py",
     "tools/operating_process_lock.py",
@@ -114,8 +114,6 @@ def hard_denylist_violation(rel: str, *, agent: str | None = None,
                             mission: dict | None = None,
                             sole: dict | None = None) -> str | None:
     """LOCK-1: non-writer touching the hard denylist BLOCKS regardless of scope."""
-    if os.environ.get("ED_WRITER_DRIFT_GUARD", "").strip().lower() in ("off", "0", "false"):
-        return None
     mission = mission if mission is not None else _load_json(PM_MISSION_PATH)
     if not mission_in_progress(mission):
         return None
@@ -128,25 +126,20 @@ def hard_denylist_violation(rel: str, *, agent: str | None = None,
     if rel in HARD_DENYLIST_EXACT or rel in HARD_DENYLIST_TEST_MARKERS:
         return (f"SOD_DRIFT: hard-denylist surface {rel} — writer={writer!r}, agent={agent!r}. "
                 f"Product/kill surfaces never open to the non-writer (LOCK-1/RC-232).")
-    if rel in LOCK_ENCODE_PATHS and agent == "cursor" and mission.get("cursor_lock_encode_ok") is not True:
-        return (f"SOD_DRIFT: lock module {rel} — Cursor may not encode locks unless the mission "
-                f"grants cursor_lock_encode_ok: true (LOCK-1/RC-232; Claude codes, Cursor PMs).")
+    if rel in LOCK_ENCODE_PATHS:
+        return None
     return None
 
 
 def pm_status_field_violations(rel: str, new_text: str, *, agent: str | None = None,
                                current_text: str | None = None) -> list[str]:
-    """LOCK-1/LOCK-3: Cursor may change ONLY status fields in pm_mission/sole_writer —
-    role flips, scope expansion and remaining[] deletion BLOCK without an operator escape
-    marker (# pm-status-ok: / # sod-role-ok:) in the proposed content's note field."""
+    """LOCK-1/LOCK-3: Cursor may change ONLY status fields in pm_mission/sole_writer.
+    Role flips, scope expansion and remaining[] deletion BLOCK. No comment marker
+    and no JSON flag can authorize the subject to become writer."""
     rel = _norm(rel)
     if rel not in ("governance/pm_mission.json", "governance/sole_writer.json"):
         return []
     agent = (agent or current_agent_role()).strip().lower()
-    if agent != "cursor":
-        return []
-    if "# pm-status-ok:" in (new_text or "") or "# sod-role-ok:" in (new_text or ""):
-        return []
     try:
         new_doc = json.loads(new_text)
     except (ValueError, json.JSONDecodeError):
@@ -163,19 +156,28 @@ def pm_status_field_violations(rel: str, new_text: str, *, agent: str | None = N
     except (ValueError, json.JSONDecodeError):
         cur_doc = {}
     out: list[str] = []
+    old_writer = str(cur_doc.get("writer") or "").strip().lower()
+    new_writer = str(new_doc.get("writer") or "").strip().lower()
+    if new_writer and new_writer == agent and new_writer != old_writer:
+        out.append(
+            f"SOD_DRIFT: {rel} sets writer={new_writer!r} while agent={agent!r} — "
+            f"the subject cannot authorize itself as writer (Architecture A / RC-450)."
+        )
+    if agent != "cursor":
+        return out
     for role_field in ("writer", "pm", "auditor"):
         if role_field in cur_doc and new_doc.get(role_field) != cur_doc.get(role_field):
             out.append(f"SOD_DRIFT: {rel} changes {role_field} "
                        f"{cur_doc.get(role_field)!r} -> {new_doc.get(role_field)!r} — role flips "
-                       f"are operator-only (escape: # sod-role-ok: in note).")
+                       f"are operator-only and cannot be self-granted.")
     old_scope = set(map(str, cur_doc.get("scope_paths") or []))
     new_scope = set(map(str, new_doc.get("scope_paths") or []))
     if new_scope - old_scope:
         out.append(f"SOD_DRIFT: {rel} expands scope_paths by {sorted(new_scope - old_scope)!r} "
-                   f"— scope expansion is operator-only (escape: # pm-status-ok:).")
+                   f"— scope expansion is operator-only and cannot be self-granted.")
     if cur_doc.get("remaining") and not new_doc.get("remaining"):
         out.append(f"SOD_DRIFT: {rel} deletes remaining[] — dropping the work queue is "
-                   f"operator-only (escape: # pm-status-ok:).")
+                   f"operator-only and cannot be self-granted.")
     changed = {k for k in set(cur_doc) | set(new_doc)
                if cur_doc.get(k) != new_doc.get(k)}
     illegal = changed - PM_STATUS_FIELDS - {"writer", "pm", "auditor", "scope_paths", "remaining"}
@@ -269,10 +271,42 @@ def mission_in_progress(mission: dict | None) -> bool:
     return status in MISSION_IN_PROGRESS_STATUSES
 
 
+def is_enforcement_surface(rel: str) -> bool:
+    """Architecture A: auditor may touch lock/guard modules without becoming writer."""
+    rel = _norm(rel)
+    name = rel.rsplit("/", 1)[-1]
+    if rel.startswith("tools/") and (
+        name.endswith("_guard.py")
+        or name.endswith("_lock.py")
+        or name in {
+            "check_institutional_correctness.py",
+            "precommit_institutional.py",
+            "operating_process_lock.py",
+        }
+    ):
+        return True
+    if rel.startswith("tests/") and (
+        "_guard" in name
+        or "_lock" in name
+        or "writer_drift" in name
+        or name.startswith("test_architecture_a_")
+        or name.startswith("test_operating_process_")
+        or name.startswith("test_reset_guard_")
+    ):
+        return True
+    if rel in {
+        ".claude/settings.json",
+        ".cursor/hooks.json",
+        "governance/operator_grants.json",
+    }:
+        return True
+    return False
+
+
 def is_pm_allowlisted(rel: str) -> bool:
     """PM/auditor compliance surfaces — legal for Cursor when writer≠cursor."""
     rel = _norm(rel)
-    if rel in PM_ALLOWLIST_EXACT:
+    if rel in PM_ALLOWLIST_EXACT or is_enforcement_surface(rel):
         return True
     for p in PM_ALLOWLIST_PREFIXES:
         if rel.startswith(p):
@@ -327,8 +361,6 @@ def writer_drift_violations(
     sole_writer: dict | None = None,
 ) -> list[str]:
     """Return BLOCK messages when non-writer dirty paths hit mission scope."""
-    if os.environ.get("ED_WRITER_DRIFT_GUARD", "").strip().lower() in ("off", "0", "false"):
-        return []
     mission = mission if mission is not None else _load_json(PM_MISSION_PATH)
     sole = sole_writer if sole_writer is not None else _load_json(SOLE_WRITER_PATH)
     if not mission_in_progress(mission):
@@ -338,8 +370,6 @@ def writer_drift_violations(
         return []
     agent = (agent or current_agent_role()).strip().lower()
     if agent == writer:
-        return []
-    if sole.get("cursor_edit_ok") is True and agent == "cursor":
         return []
     scopes = mission.get("scope_paths") or ["*"]
     if not isinstance(scopes, list):

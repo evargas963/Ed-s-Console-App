@@ -28,14 +28,12 @@ Contract:
   * RC-186 mockup-before-code: Write/Edit of a surface listed in
     governance/ui_mockup_approvals.json is BLOCKED until the operator has approved a rendered
     mockup variant there (status='approved') — escape `# ui-mockup-ok: <reason>` for
-    non-redesign bug fixes, ED_UI_MOCKUP_LOCK=off for the operator.
-  * ED_PRETOOLUSE_GUARD=off disables it. That is deliberate and visible: an operator may switch it
-    off, an agent may not silently route around it.
+    non-redesign bug fixes.
+  * Architecture A (RC-450): ED_PRETOOLUSE_GUARD / ED_UI_MOCKUP_LOCK cannot disable this control.
 """
 from __future__ import annotations
 
 import json
-import os
 import subprocess
 import sys
 from pathlib import Path
@@ -300,8 +298,6 @@ def _block_unapproved_ui_redesign(rel: str, tool_input: dict) -> int | None:
 
 
 def main() -> int:
-    if os.environ.get("ED_PRETOOLUSE_GUARD", "").strip().lower() in ("off", "0", "false"):
-        return 0
     try:
         payload = json.load(sys.stdin)
     except (json.JSONDecodeError, ValueError):

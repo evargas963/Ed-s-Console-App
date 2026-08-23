@@ -15,7 +15,7 @@ When `pm_mission.json` is in-progress (`active` / `ready_for_claude` / `ready_fo
 
 - `tools/writer_drift_lock.py` + `pm_mission_edit_violation` via `process_lock_guard.py` (PreToolUse — deny message starts `SOD_DRIFT:`)
 - `check_writer_no_drift` in `tools/check_institutional_correctness.py` (staged scope by non-writer → BLOCK)
-- Escape: `ED_WRITER_DRIFT_GUARD=off` / `ED_PM_MISSION_GUARD=off` (operator only, visible)
+- Architecture A (RC-450): `ED_WRITER_DRIFT_GUARD` / `ED_PM_MISSION_GUARD` cannot disable these controls.
 
 ## Self-heal (no operator prompt required)
 

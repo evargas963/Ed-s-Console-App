@@ -119,13 +119,10 @@ def _strip_command_payloads(cmd: str) -> str:
 def reset_guard_violations(command: str) -> list[str]:
     """LOCK-2: BLOCK tree-destructive git against protected/product scope (RC-231/RC-252).
 
-    Escapes: ED_RESET_GUARD=off (operator, visible) or operator_go scope git_reset_product.
+    Architecture A (RC-450): not subject-disableable. ED_RESET_GUARD and
+    operator_go scope git_reset_product cannot authorize a wipe.
     `git restore --staged` (index-only), `git stash list`, `git checkout -b` stay legal.
     """
-    if os.environ.get("ED_RESET_GUARD", "").strip().lower() in ("off", "0", "false"):
-        return []
-    if operator_go_granted("git_reset_product"):
-        return []
     cmd = _strip_command_payloads(command or "")
     if not _RESET_GUARD_RE.search(cmd) or _RESET_GUARD_SAFE_RE.search(cmd):
         return []
@@ -139,8 +136,8 @@ def reset_guard_violations(command: str) -> list[str]:
         return [
             "RESET_GUARD (LOCK-2/RC-231): tree-destructive git "
             f"({'paths: ' + ', '.join(sorted(set(touched))[:4]) if touched else 'bare/whole-tree form'}) "
-            "— three 2026-08-03 wipes used exactly this class. Escape: ED_RESET_GUARD=off "
-            "(operator) or operator_go scope git_reset_product."
+            "— three 2026-08-03 wipes used exactly this class. Not subject-disableable "
+            "(Architecture A / RC-450)."
         ]
     return []
 
@@ -680,8 +677,6 @@ def _mission_scope_allows(rel: str, scope_paths: list) -> bool:
 
 def pm_mission_edit_violation(rel: str, agent: str | None = None) -> str | None:
     """RC-219 + RC-226: product edits need an in-progress mission; non-writer cannot touch scope."""
-    if os.environ.get("ED_PM_MISSION_GUARD", "").strip().lower() in ("off", "0", "false"):
-        return None
     rel = rel.replace("\\", "/")
     if rel in PROCESS_ALLOWED_PREFIXES or WDL.is_pm_allowlisted(rel):
         return None
@@ -696,8 +691,6 @@ def pm_mission_edit_violation(rel: str, agent: str | None = None) -> str | None:
 
     # RC-226: in-progress mission — non-writer blocked on scope_paths (and gated product).
     if in_prog and writer and agent != writer:
-        if sole_writer_record().get("cursor_edit_ok") is True and agent == "cursor":
-            return None
         if WDL.path_in_mission_scope(rel, scopes) or _mission_gates_path(rel):
             return (
                 f"SOD_DRIFT: {writer} is sole writer — WRITER-DRIFT BLOCK: "
@@ -757,8 +750,6 @@ def sole_writer_edit_violation(rel: str, agent: str | None = None) -> str | None
         # Prefix match for calibration/*
         if not rel.startswith("calibration/repair_"):
             return None
-    if sole_writer_record().get("cursor_edit_ok") is True and agent == "cursor":
-        return None
     return (
         f"sole_writer={writer!r} but current agent={agent!r} — "
         f"protected path {rel} is dual-edit BLOCKED (governance/sole_writer.json)"

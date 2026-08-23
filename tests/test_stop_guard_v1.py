@@ -72,12 +72,18 @@ def test_guard_honours_stop_hook_active_so_a_turn_can_always_end(monkeypatch):
     assert sg.main() == 0
 
 
-def test_operator_escape_is_explicit(monkeypatch):
+def test_env_off_does_not_disable_unfinished_row_block(tmp_path, monkeypatch):
     import io
 
+    _write_log(tmp_path, [
+        f"| RC-90 | OPEN | {TODAY} | 2099-01-01 | d | (1)->(5) ROOT: x | IN PROGRESS: half built |",
+    ], monkeypatch)
     monkeypatch.setenv("ED_STOP_GUARD", "off")
+    monkeypatch.setattr(sg, "faucet_violations", lambda: [])
+    monkeypatch.setattr(sg, "freshness_blockers", lambda: [])
+    monkeypatch.setattr(sg, "close_contract_blockers", lambda: [])
     monkeypatch.setattr(sg.sys, "stdin", io.StringIO('{"stop_hook_active": false}'))
-    assert sg.main() == 0
+    assert sg.main() == 2
 
 
 # ---------------------------------------------------------------------------

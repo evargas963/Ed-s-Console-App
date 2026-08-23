@@ -77,10 +77,10 @@ def test_unlisted_surface_is_not_gated(tmp_path):
     assert mockup_approval_violation("static/index.html", "x", repo=tmp_path) is None
 
 
-def test_operator_env_escape_flows(tmp_path, monkeypatch):
+def test_operator_env_escape_does_not_flow(tmp_path, monkeypatch):
     _write_registry(tmp_path, "design_pending", None)
     monkeypatch.setenv("ED_UI_MOCKUP_LOCK", "off")
-    assert mockup_approval_violation("static/chart.html", "x", repo=tmp_path) is None
+    assert mockup_approval_violation("static/chart.html", "x", repo=tmp_path)
 
 
 def test_missing_registry_gates_nothing(tmp_path):

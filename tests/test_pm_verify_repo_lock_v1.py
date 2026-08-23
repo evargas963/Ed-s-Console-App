@@ -97,9 +97,9 @@ def test_operator_escape(tmp_path):
         repo=tmp_path) == []
 
 
-def test_env_kill_switch(tmp_path, monkeypatch):
+def test_env_kill_switch_does_not_disable(tmp_path, monkeypatch):
     monkeypatch.setenv("ED_PM_VERIFY_LOCK", "off")
-    assert pm_verify_repo_violations(VERDICT_ON_REPO, repo=tmp_path) == []
+    assert pm_verify_repo_violations(VERDICT_ON_REPO, repo=tmp_path)
 
 
 def test_claimed_fields_are_named_so_the_block_is_actionable():

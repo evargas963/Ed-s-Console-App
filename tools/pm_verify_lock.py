@@ -25,12 +25,12 @@ accepting the writer's narration). The general shape underneath is one thing: th
 the reviewed sharing a single source of truth, the chat. So this binds the CLAIM SHAPE rather
 than any one artifact.
 
-Escape: `# pm-verify-ok: <reason>` (operator-reviewed), and ED_PM_VERIFY_LOCK=off.
+Hedge path: `[UNVERIFIED]` / "Claude reports". `# pm-verify-ok:` remains a visible
+text marker. Architecture A (RC-450): ED_PM_VERIFY_LOCK cannot disable this control.
 """
 from __future__ import annotations
 
 import json
-import os
 import re
 import time
 from pathlib import Path
@@ -106,8 +106,6 @@ def pm_verify_repo_violations(
     now: float | None = None,
 ) -> list[str]:
     """BLOCK a repo-state VERDICT that carries no same-turn measurement (RC-242)."""
-    if os.environ.get("ED_PM_VERIFY_LOCK", "").strip().lower() in ("off", "0", "false"):
-        return []
     t = text or ""
     if not t or _ESCAPE in t:
         return []

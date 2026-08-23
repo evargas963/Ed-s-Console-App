@@ -30,7 +30,7 @@ SoD is not chat advice. When a mission is **in-progress** (`active` / `ready_for
 - **Mirror:** when `writer` is Cursor, Claude is blocked the same way.
 - PreToolUse: `pm_mission_edit_violation` via `process_lock_guard.py` (deny prefix `SOD_DRIFT:`).
 - **Self-heal:** on own drift / false-green / forcing operator to PM — STOP feature writes, restore SoD, open RC, tighten lock if gap (no prompt required). See `.cursor/rules/08-no-writer-drift.mdc`.
-- Escape: `ED_WRITER_DRIFT_GUARD=off` / `ED_PM_MISSION_GUARD=off` (operator only, visible).
+- Architecture A (RC-450): `ED_WRITER_DRIFT_GUARD` / `ED_PM_MISSION_GUARD` cannot disable these controls.
 
 ## Daily rehab automation
 
