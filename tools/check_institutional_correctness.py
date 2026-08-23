@@ -4700,8 +4700,8 @@ def check_writer_no_drift() -> list[Violation]:
     """
     out: list[Violation] = []
     import os as _os
-    if _os.environ.get("ED_AGENT_ROLE", "").strip().lower() not in ("cursor", "claude"):
-        return out  # identity gate: PreToolUse carries enforcement for identity-less contexts
+    if not _os.environ.get("ED_AGENT_ROLE", "").strip():
+        return out  # identity gate: empty role = operator/CI; do not invent a vendor
     try:
         from tools.writer_drift_lock import live_writer_drift_violations
     except ImportError:

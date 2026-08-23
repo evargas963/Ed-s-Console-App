@@ -10,9 +10,10 @@ Fires:
   - commit / pre-commit via writer_drift_violations on dirty paths
   - check_writer_no_drift in check_institutional_correctness.py
 
-Architecture A (RC-450): this control is not subject-disableable. ED_WRITER_DRIFT_GUARD
-and cursor_edit_ok / cursor_lock_encode_ok / # sod-role-ok: cannot authorize a bypass.
-Auditor may edit enforcement surfaces without becoming writer.
+Architecture A (RC-450/RC-453): not subject-disableable. Privilege follows the current
+assignment (writer / auditor), not a vendor string. Any assigned principal — including
+the writer — cannot rewrite control-authority surfaces. Empty ED_AGENT_ROLE is
+operator/CI (abstain), never a guessed vendor.
 """
 from __future__ import annotations
 
@@ -36,8 +37,8 @@ MISSION_IN_PROGRESS_STATUSES = frozenset({
     "in-progress",
 })
 
-#: Cursor (PM/auditor) may touch these while writer is another agent.
-#: Product / scope_paths outside this list → WRITER-DRIFT BLOCK.
+#: Non-writer may touch operational metadata only. Lock/guard/hook/CI files are
+#: NOT on this list — those are control-authority surfaces denied to every agent.
 PM_ALLOWLIST_EXACT = frozenset({
     "governance/AGENT_OPERATING_PROCESS_V1.md",
     "governance/PM_MANDATE.md",
@@ -50,17 +51,7 @@ PM_ALLOWLIST_EXACT = frozenset({
     "reports/rehab_latest.md",
     "reports/rehab_latest.json",
     "reports/rehab_queue.jsonl",
-    "tests/test_operating_process_lock_v1.py",
-    "tests/test_rehab_daily_scan_v1.py",
-    "tests/test_writer_drift_lock_v1.py",
-    "tools/operating_process_lock.py",
-    "tools/process_lock_guard.py",
-    "tools/pretooluse_guard.py",
     "tools/rehab_daily_scan.py",
-    "tools/writer_drift_lock.py",
-    "tools/rc_resolve_lock.py",
-    "tools/check_institutional_correctness.py",
-    "tests/test_rc_document_without_resolve_v1.py",
     ".cursor/rules/07-cursor-pm.mdc",
     ".cursor/rules/08-no-writer-drift.mdc",
     "ACTIVE_PROGRAM.md",
@@ -86,24 +77,35 @@ HARD_DENYLIST_TEST_MARKERS = (
     "tests/test_collect_window_law_v1.py",
 )
 
-#: Architecture A: lock/guard modules are auditor enforcement surfaces, not a JSON grant.
-LOCK_ENCODE_PATHS = frozenset({
-    "tools/check_institutional_correctness.py",
-    "tools/operating_process_lock.py",
-    "tools/process_lock_guard.py",
-    "tools/writer_drift_lock.py",
-    "tools/rc_resolve_lock.py",
-    "tools/operator_law_guard.py",
-    "tools/honesty_guard.py",
-    "tools/pretooluse_guard.py",
-})
-
-#: LOCK-1/LOCK-3: the ONLY pm_mission/sole_writer fields Cursor may change while
-#: writer != cursor (status machinery — never the role split or the scope).
+#: LOCK-1/LOCK-3: the ONLY pm_mission/sole_writer fields a non-operator principal
+#: may change (status machinery — never the role split or the scope).
 PM_STATUS_FIELDS = frozenset({
     "status", "note", "blocker", "updated_at", "held_commit",
     "approved_by", "approved_via", "approved_at",
 })
+
+#: Files that define CI/merge/hook/assignment rails. Derived from actual call
+#: paths (hooks.json, settings.json, required workflows, assignment JSON).
+CONTROL_AUTHORITY_EXACT = frozenset({
+    ".github/CODEOWNERS",
+    ".pre-commit-config.yaml",
+    ".cursor/hooks.json",
+    ".claude/settings.json",
+    "governance/operator_go.json",
+    "governance/operator_grants.json",
+    "tools/check_institutional_correctness.py",
+    "tools/check_delta_adds_no_debt.py",
+    "tools/precommit_institutional.py",
+    "tools/check_market_correctness.py",
+    "tools/check_institutional_closure_gate.py",
+    "tools/check_no_grep_subprocess.py",
+    "tests/test_architecture_a_bypass_class_v1.py",
+    "tests/test_writer_drift_lock_v1.py",
+    "tests/test_control_authority_surfaces_v1.py",
+})
+CONTROL_AUTHORITY_PREFIXES = (
+    ".github/workflows/",
+)
 
 #: LOCK-4 (RC-232): every SOD_DRIFT denial is recorded here; a denial without a same-window
 #: OPEN RC row naming the mission_id + SOD_DRIFT owes a self-heal and BLOCKS further writes.
@@ -113,21 +115,26 @@ SOD_DRIFT_EVENTS_PATH = REPO / "governance" / "sod_drift_events.jsonl"
 def hard_denylist_violation(rel: str, *, agent: str | None = None,
                             mission: dict | None = None,
                             sole: dict | None = None) -> str | None:
-    """LOCK-1: non-writer touching the hard denylist BLOCKS regardless of scope."""
+    """LOCK-1: non-writer touching the hard denylist BLOCKS regardless of scope.
+
+    Control-authority surfaces BLOCK every assigned principal, including the writer.
+    """
+    agent = (agent or current_agent_role()).strip().lower()
+    rel = _norm(rel)
+    if agent:
+        auth = control_authority_violation(rel, agent=agent)
+        if auth:
+            return auth
     mission = mission if mission is not None else _load_json(PM_MISSION_PATH)
     if not mission_in_progress(mission):
         return None
     sole = sole if sole is not None else _load_json(SOLE_WRITER_PATH)
     writer = resolved_writer(mission, sole)
-    agent = (agent or current_agent_role()).strip().lower()
-    if not writer or agent == writer:
+    if not writer or not agent or agent == writer:
         return None
-    rel = _norm(rel)
     if rel in HARD_DENYLIST_EXACT or rel in HARD_DENYLIST_TEST_MARKERS:
         return (f"SOD_DRIFT: hard-denylist surface {rel} — writer={writer!r}, agent={agent!r}. "
                 f"Product/kill surfaces never open to the non-writer (LOCK-1/RC-232).")
-    if rel in LOCK_ENCODE_PATHS:
-        return None
     return None
 
 
@@ -158,13 +165,13 @@ def pm_status_field_violations(rel: str, new_text: str, *, agent: str | None = N
     out: list[str] = []
     old_writer = str(cur_doc.get("writer") or "").strip().lower()
     new_writer = str(new_doc.get("writer") or "").strip().lower()
+    if not agent:
+        return []
     if new_writer and new_writer == agent and new_writer != old_writer:
         out.append(
             f"SOD_DRIFT: {rel} sets writer={new_writer!r} while agent={agent!r} — "
             f"the subject cannot authorize itself as writer (Architecture A / RC-450)."
         )
-    if agent != "cursor":
-        return out
     for role_field in ("writer", "pm", "auditor"):
         if role_field in cur_doc and new_doc.get(role_field) != cur_doc.get(role_field):
             out.append(f"SOD_DRIFT: {rel} changes {role_field} "
@@ -182,8 +189,9 @@ def pm_status_field_violations(rel: str, new_text: str, *, agent: str | None = N
                if cur_doc.get(k) != new_doc.get(k)}
     illegal = changed - PM_STATUS_FIELDS - {"writer", "pm", "auditor", "scope_paths", "remaining"}
     if illegal:
-        out.append(f"SOD_DRIFT: {rel} changes non-status fields {sorted(illegal)!r} — Cursor "
-                   f"may touch status fields only ({sorted(PM_STATUS_FIELDS)!r}).")
+        out.append(f"SOD_DRIFT: {rel} changes non-status fields {sorted(illegal)!r} — "
+                   f"assigned principals may touch status fields only "
+                   f"({sorted(PM_STATUS_FIELDS)!r}).")
     return out
 
 
@@ -271,9 +279,18 @@ def mission_in_progress(mission: dict | None) -> bool:
     return status in MISSION_IN_PROGRESS_STATUSES
 
 
-def is_enforcement_surface(rel: str) -> bool:
-    """Architecture A: auditor may touch lock/guard modules without becoming writer."""
+def is_control_authority_surface(rel: str) -> bool:
+    """True for files that define CI/merge/hook/assignment rails.
+
+    Derived from hook entrypoints, required workflow paths, and assignment JSON.
+    Any assigned principal rewriting these can defeat the constraint.
+    """
     rel = _norm(rel)
+    if rel in CONTROL_AUTHORITY_EXACT:
+        return True
+    for p in CONTROL_AUTHORITY_PREFIXES:
+        if rel.startswith(p):
+            return True
     name = rel.rsplit("/", 1)[-1]
     if rel.startswith("tools/") and (
         name.endswith("_guard.py")
@@ -282,31 +299,36 @@ def is_enforcement_surface(rel: str) -> bool:
             "check_institutional_correctness.py",
             "precommit_institutional.py",
             "operating_process_lock.py",
+            "check_delta_adds_no_debt.py",
+            "check_market_correctness.py",
+            "check_institutional_closure_gate.py",
+            "check_no_grep_subprocess.py",
         }
     ):
-        return True
-    if rel.startswith("tests/") and (
-        "_guard" in name
-        or "_lock" in name
-        or "writer_drift" in name
-        or name.startswith("test_architecture_a_")
-        or name.startswith("test_operating_process_")
-        or name.startswith("test_reset_guard_")
-    ):
-        return True
-    if rel in {
-        ".claude/settings.json",
-        ".cursor/hooks.json",
-        "governance/operator_grants.json",
-    }:
         return True
     return False
 
 
-def is_pm_allowlisted(rel: str) -> bool:
-    """PM/auditor compliance surfaces — legal for Cursor when writer≠cursor."""
+def control_authority_violation(rel: str, *, agent: str | None = None) -> str | None:
+    """BLOCK when an assigned principal touches a control-authority surface."""
+    agent = (agent or current_agent_role()).strip().lower()
+    if not agent:
+        return None
     rel = _norm(rel)
-    if rel in PM_ALLOWLIST_EXACT or is_enforcement_surface(rel):
+    if not is_control_authority_surface(rel):
+        return None
+    return (
+        f"SOD_DRIFT: control-authority surface {rel} — agent={agent!r} cannot "
+        f"redefine the rails that constrain assigned principals (Architecture A / RC-453)."
+    )
+
+
+def is_pm_allowlisted(rel: str) -> bool:
+    """Operational metadata the non-writer may touch. Not a control-authority grant."""
+    rel = _norm(rel)
+    if is_control_authority_surface(rel):
+        return False
+    if rel in PM_ALLOWLIST_EXACT:
         return True
     for p in PM_ALLOWLIST_PREFIXES:
         if rel.startswith(p):
@@ -347,10 +369,8 @@ def resolved_writer(mission: dict | None = None, sole: dict | None = None) -> st
 
 
 def current_agent_role() -> str:
-    role = os.environ.get("ED_AGENT_ROLE", "").strip().lower()
-    if role in ("cursor", "claude"):
-        return role
-    return "cursor"
+    """Current principal from ED_AGENT_ROLE. Empty = operator/CI, not a vendor guess."""
+    return os.environ.get("ED_AGENT_ROLE", "").strip().lower()
 
 
 def writer_drift_violations(
@@ -369,7 +389,7 @@ def writer_drift_violations(
     if not writer:
         return []
     agent = (agent or current_agent_role()).strip().lower()
-    if agent == writer:
+    if not agent:
         return []
     scopes = mission.get("scope_paths") or ["*"]
     if not isinstance(scopes, list):
@@ -378,7 +398,15 @@ def writer_drift_violations(
     out: list[str] = []
     for raw in changed_paths:
         rel = _norm(raw)
-        if not rel or is_pm_allowlisted(rel):
+        if not rel:
+            continue
+        auth = control_authority_violation(rel, agent=agent)
+        if auth:
+            out.append(auth)
+            continue
+        if agent == writer:
+            continue
+        if is_pm_allowlisted(rel):
             continue
         if path_in_mission_scope(rel, scopes):
             sod = (
@@ -388,8 +416,8 @@ def writer_drift_violations(
             )
             out.append(
                 f"{sod} — WRITER-DRIFT BLOCK: mission writer={writer!r} but agent={agent!r} "
-                f"touched scope path {rel} (mission_id={mid!r}) — Cursor=PM/auditor only; "
-                f"sole writer owns scope_paths"
+                f"touched scope path {rel} (mission_id={mid!r}) — assignment owns "
+                f"scope_paths; privilege is not a vendor name"
             )
     return out
 

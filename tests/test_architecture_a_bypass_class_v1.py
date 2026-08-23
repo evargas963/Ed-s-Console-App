@@ -85,6 +85,13 @@ def test_writer_drift_env_disable_still_blocks(value, monkeypatch):
     assert msgs, f"ED_WRITER_DRIFT_GUARD={value!r} disabled the control"
 
 
+def test_assigned_writer_cannot_rewrite_the_writer_guard():
+    msgs = WDL.writer_drift_violations(
+        ["tools/writer_drift_lock.py"], agent="claude", mission=_MISSION, sole_writer=_SOLE
+    )
+    assert msgs and any("control-authority" in m for m in msgs)
+
+
 def test_assigned_writer_works_without_disabling_any_guard(monkeypatch):
     monkeypatch.delenv("ED_WRITER_DRIFT_GUARD", raising=False)
     monkeypatch.delenv("ED_PM_MISSION_GUARD", raising=False)

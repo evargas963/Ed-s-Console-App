@@ -226,11 +226,8 @@ def _rel(p: str | Path) -> str:
 
 
 def current_agent_role() -> str:
-    """Cursor hooks default to cursor; Claude should set ED_AGENT_ROLE=claude."""
-    role = os.environ.get("ED_AGENT_ROLE", "").strip().lower()
-    if role in ("cursor", "claude"):
-        return role
-    return "cursor"
+    """Delegate to writer_drift_lock: empty = operator/CI, never a vendor guess."""
+    return WDL.current_agent_role()
 
 
 def _load_json(path: Path) -> dict | None:
