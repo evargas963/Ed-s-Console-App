@@ -2,8 +2,15 @@
 
 THE ONLY production computation of executable PM state.
 
-Authoritative path (host-owned, not Git):
-    /var/lib/ed-console-authority/pm_mission.json
+Authoritative path (host-owned, not Git) — OS-dependent, never in the repo:
+    POSIX   : /var/lib/ed-console-authority/pm_mission.json   (root-owned dir)
+    Windows : %ProgramData%\\ed-console-authority\\pm_mission.json
+              (BUILTIN\\Administrators-owned; the AI account holds ReadAndExecute only)
+
+The Windows host boundary is OWNERSHIP, not merely a deny ACE: an object's OWNER always
+retains WRITE_DAC, so an AI-owned directory can be re-ACLed by the AI even when a deny
+rule is present (measured 2026-08-23). tools/install_pm_authority_host.ps1 therefore
+assigns ownership to Administrators and grants the AI read-only.
 
 Git-tracked ``governance/pm_mission.json`` and ``governance/sole_writer.json``
 are NON-AUTHORITATIVE. This module never reads them as a fallback.
@@ -25,7 +32,22 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 
-CANONICAL_DIR = Path("/var/lib/ed-console-authority")
+
+def _default_canonical_dir() -> Path:
+    """Host-owned authority directory for THIS OS. Never inside the Git checkout.
+
+    Windows uses %ProgramData% (ProgramData is the system-wide, non-user location an
+    Administrator can own while the AI account holds read-only); POSIX keeps
+    /var/lib. No environment variable can redirect this at runtime on POSIX, and on
+    Windows only the OS-provided ProgramData root is consulted — never a repo path.
+    """
+    if os.name == "nt":
+        base = os.environ.get("ProgramData") or r"C:\ProgramData"
+        return Path(base) / "ed-console-authority"
+    return Path("/var/lib/ed-console-authority")
+
+
+CANONICAL_DIR = _default_canonical_dir()
 CANONICAL_AUTHORITY_PATH = CANONICAL_DIR / "pm_mission.json"
 REPO_PM_MISSION_TEMPLATE = REPO / "governance" / "pm_mission.json"
 REPO_SOLE_WRITER_TOMBSTONE = REPO / "governance" / "sole_writer.json"

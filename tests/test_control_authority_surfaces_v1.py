@@ -106,29 +106,78 @@ def test_empty_role_abstains_on_product_paths():
 
 
 def test_codeowners_covers_control_authority_set():
+    """CODEOWNERS must own the MINIMUM DURABLE authority set (RC-459).
+
+    Durable = can flip the required CI verdict or the review policy itself, so a
+    boundary-broken state could merge CI-green with no operator review. Local-only
+    hook wiring and pre-commit wrappers are DEFENSE-IN-DEPTH and are deliberately NOT
+    required here (operator-ratified narrowing 2026-08-23) — see
+    test_codeowners_is_minimal_no_defense_in_depth_padding.
+    """
     owners = (ROOT / ".github" / "CODEOWNERS").read_text(encoding="utf-8")
     required = (
+        # review policy + required CI definitions
         "/.github/workflows/",
         "/.github/CODEOWNERS",
-        "/.cursor/hooks.json",
-        "/.claude/settings.json",
+        # PM-authority mechanism (both host provisioners)
+        "/tools/pm_authority.py",
+        "/tools/pm_authority_helper.py",
+        "/tools/install_pm_authority_host.sh",
+        "/tools/install_pm_authority_host.ps1",
+        # import-time injection surface inside every gate process
+        "/tools/__init__.py",
+        # CI hardening-gate closure (guards/locks retained by operator ratification)
         "/tools/*_guard.py",
         "/tools/*_lock.py",
         "/tools/check_institutional_correctness.py",
+        "/tools/check_delta_adds_no_debt.py",
+        # pytest verdict-injection points
+        "/tests/conftest.py",
+        "/tests/**/conftest.py",
+        # grant rail
         "/governance/operator_go.json",
+        # tests that DEFINE Architecture A PASS
         "/tests/test_architecture_a_bypass_class_v1.py",
         "/tests/test_control_authority_surfaces_v1.py",
         "/tests/test_architecture_a_operator_writer_authority_v1.py",
         "/tests/test_pm_authority_external_v1.py",
-        "/tools/pm_authority.py",
-        "/tools/pm_authority_helper.py",
-        "/tools/install_pm_authority_host.sh",
-        "/tools/__init__.py",
+        "/tests/test_pm_authority_windows_boundary_v1.py",
     )
     missing = [p for p in required if p not in owners]
     assert missing == [], missing
-    for banned in ("/server.py", "/signals.py", "/static/"):
+    # Ordinary product work stays autonomous — never operator-review-gated.
+    for banned in ("/server.py", "/signals.py", "/static/", "/db.py"):
         assert banned not in owners, banned
+
+
+def test_codeowners_is_minimal_no_defense_in_depth_padding():
+    """The narrowing must STAY narrow (RC-459).
+
+    These paths are local-only enforcement: poisoning one, if merged, changes local
+    behaviour, not the required CI verdict or the OS boundary. Operator review of them
+    would tax ordinary work without closing a merge-time hole, so they must NOT reappear
+    as owned patterns. (The five law/honesty guards are retained deliberately and are
+    covered by the /tools/*_guard.py rule above.)
+    """
+    owners = (ROOT / ".github" / "CODEOWNERS").read_text(encoding="utf-8")
+    owned_patterns = {
+        line.strip().split()[0]
+        for line in owners.splitlines()
+        if line.strip() and not line.strip().startswith("#")
+    }
+    must_not_be_owned = {
+        "/.pre-commit-config.yaml",
+        "/.cursor/hooks.json",
+        "/.claude/settings.json",
+        "/tools/run_with_repo_venv.py",
+        "/tools/bootstrap_worktree_venv.py",
+        "/tools/precommit_institutional.py",
+        "/tools/check_*.py",          # the sweeping glob the narrowing replaced
+        "/tools/rehab_daily_scan.py",
+        "/tools/duplication_audit.py",
+    }
+    regressed = sorted(owned_patterns & must_not_be_owned)
+    assert regressed == [], f"defense-in-depth padding reappeared in CODEOWNERS: {regressed}"
 
 
 def test_mutation_vendor_default_role_is_detected():
@@ -185,6 +234,18 @@ _HOOK_ENTRYPOINTS = (
     "tools/pretooluse_guard.py", "tools/process_lock_guard.py",
     "tools/stop_guard.py", "tools/proof_only_guard.py",
     "tools/honesty_guard.py", "tools/operator_law_guard.py",
+)
+
+#: The BLOCKING gate scripts the required `hardening` workflow invokes. Their import
+#: closure is DURABLE: the delta gate detects a REMOVED enforced check, but a check whose
+#: detection LOGIC is silently weakened keeps its name and reports <= base, so a weakened
+#: gate merges CI-green. Operator review at merge is the only control that sees it.
+_CI_GATE_SCRIPTS = (
+    "tools/check_delta_adds_no_debt.py",
+    "tools/check_institutional_correctness.py",
+    "tools/check_market_correctness.py",
+    "tools/check_institutional_closure_gate.py",
+    "tools/check_no_grep_subprocess.py",
 )
 
 
@@ -269,13 +330,13 @@ def test_enforcement_execution_closure_is_codeowned_and_hooks_railed():
     railed (raises the local bar) but the authoritative assertion is CODEOWNERS."""
     owners = (ROOT / ".github" / "CODEOWNERS").read_text(encoding="utf-8")
     hook_closure = _import_closure(_HOOK_ENTRYPOINTS)
-    precommit_closure = _import_closure(_precommit_entrypoints())
-    execution_closure = hook_closure | precommit_closure
-    assert len(execution_closure) >= 25, execution_closure  # sanity: actually computed
+    ci_closure = _import_closure(_CI_GATE_SCRIPTS)
+    assert len(ci_closure) >= 20, ci_closure  # sanity: actually computed
 
-    # DURABLE boundary: the entire execution closure must require operator review to merge.
-    not_owned = sorted(m for m in execution_closure if not _codeowners_covers(m, owners))
-    assert not_owned == [], f"enforcement-execution modules NOT CODEOWNERS-covered: {not_owned}"
+    # DURABLE boundary (RC-459): every module executed by a REQUIRED CI gate must need
+    # operator review to merge, because a silently-weakened check merges green.
+    not_owned = sorted(m for m in ci_closure if not _codeowners_covers(m, owners))
+    assert not_owned == [], f"CI-verdict gate modules NOT CODEOWNERS-covered: {not_owned}"
 
     # Every conftest under tests/ runs at collection and can fake the suite green.
     conftests = [str(p.relative_to(ROOT)).replace("\\", "/") for p in ROOT.glob("tests/**/conftest.py")]

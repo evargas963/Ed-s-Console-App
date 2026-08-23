@@ -95,22 +95,76 @@ those are the irreducible operator actions below.
 they are asserted by the HOST ACCEPTANCE PROOF below, not by the in-process tests.
 
 ## Repository proof already run (this SHA, off-host)
-`pytest tests/test_pm_authority_external_v1.py tests/test_architecture_a_operator_writer_authority_v1.py tests/test_control_authority_surfaces_v1.py tests/test_architecture_a_bypass_class_v1.py tests/test_writer_drift_lock_v1.py tests/test_operating_process_lock_v1.py tests/test_pm_full_coverage_lock_v1.py tests/test_pm_verify_repo_lock_v1.py`
-→ **193 passed, 1 skipped** (symlink case skips on Windows).
+`pytest tests/test_pm_authority_external_v1.py tests/test_pm_authority_windows_boundary_v1.py tests/test_architecture_a_operator_writer_authority_v1.py tests/test_control_authority_surfaces_v1.py tests/test_architecture_a_bypass_class_v1.py tests/test_writer_drift_lock_v1.py tests/test_operating_process_lock_v1.py tests/test_pm_full_coverage_lock_v1.py tests/test_pm_verify_repo_lock_v1.py`
+→ **201 passed, 1 skipped** (symlink case skips on Windows). The Windows host negative
+controls (unauthorized mutation DENIED) and the positive control (operator-authorized
+mutation ACCEPTED) are in `tests/test_pm_authority_windows_boundary_v1.py`.
 
-Helper SOURCE SHA-256 (recompute on the merged SHA before install):
-`e7ced32cd01d13b082b0047915a8a6f540a0da1c56195f69ce36a0f1ccf02f79`
+Helper SOURCE SHA-256 — DERIVE IT from the reviewed commit in operator-owned staging
+(commands below). Never quote a stored value and never hash the live AI-writable checkout.
 
-## THE ONE REMAINING ACTION — operator/root, on the Linux runtime
+## SEQUENCE — REVIEW → PROVISION → MERGE (RC-459)
+The earlier procedure said "provision from the operator-reviewed MERGED commit", which
+CONTRADICTED the fail-closed gate: with RC-458, an unprovisioned host BLOCKS agent edits
+to mission-gated product, so provisioning must happen BEFORE the merge, not after.
+
+The fix is to decouple REVIEWED from MERGED. The trust anchor only ever needed an
+IMMUTABLE, CONTENT-ADDRESSED commit the operator has reviewed — and the PR HEAD commit is
+exactly that, and it exists on the remote before merge. There is no circular trust: the
+SHA names its own content, the AI cannot alter what that SHA contains, and the operator
+materializes it into a staging tree the AI cannot write.
+
+    1. REVIEW  PR #181 at its HEAD commit C (this document's FINAL SHA).
+    2. PROVISION the host boundary FROM C, fetched from the remote into operator-owned
+       staging (POSIX or Windows block below). C is a PR-head commit, NOT a merge commit.
+    3. MERGE PR #181.
+
+Provisioning before merge is also the SAFE order in the other direction: if the merge
+landed first on an unprovisioned host, every agent edit to db.py / server.py / static/ /
+calibration/ / the math+liquidity engines would fail closed until step 2 completed.
+
+## THE ONE REMAINING ACTION — operator, on the runtime host
 A capability boundary is by definition a principal the AI does not hold; the AI
 cannot create it without holding it, so this step is irreducibly the operator's.
 
+### Windows host (the actual coding host)
+MEASURED 2026-08-23 on the real Windows host — ownership is the load-bearing fact:
+with the authority directory owned by the AI account, a read-only grant DENIED
+overwrite / WriteAllText / open-for-write / delete / rename / plant-sibling, but
+`icacls <dir> /grant <ai>:(F)` still SUCCEEDED, because an OWNER always retains
+WRITE_DAC. A deny ACE does not fix it (and a deny containing `W` also denies READ,
+which would break the reader). The boundary is therefore: **Administrators OWNS the
+authority; the AI account holds ReadAndExecute only and is NOT an Administrator.**
+
+```powershell
+# Run ELEVATED (Administrator). $C is the REVIEWED PR-HEAD commit, not a merge commit.
+$C = '<reviewed PR #181 HEAD SHA>'
+git clone <remote-url> C:\ProgramData\ed-console-staging
+git -C C:\ProgramData\ed-console-staging checkout --detach $C
+if ((git -C C:\ProgramData\ed-console-staging rev-parse HEAD) -ne $C) { throw 'staging != reviewed commit' }
+# derive the pin FROM THE REVIEWED COMMIT in operator-owned staging (never the live checkout):
+$PIN = (Get-FileHash C:\ProgramData\ed-console-staging\tools\pm_authority_helper.py -Algorithm SHA256).Hash.ToLower()
+
+C:\ProgramData\ed-console-staging\tools\install_pm_authority_host.ps1 `
+    -ExpectedHelperSha256 $PIN -ReviewCommit $C `
+    -AiAccount '<DOMAIN\the-account-the-AI-runs-as>' -Confirm 'ed-console-authority-host'
+
+# HOST ACCEPTANCE PROOF (run AS THE AI ACCOUNT, unelevated):
+Get-Content C:\ProgramData\ed-console-authority\pm_mission.json          # -> readable, pm=operator
+Set-Content C:\ProgramData\ed-console-authority\pm_mission.json '{}'     # -> UnauthorizedAccessException
+Remove-Item C:\ProgramData\ed-console-authority\pm_mission.json          # -> denied
+icacls C:\ProgramData\ed-console-authority /grant "$env:USERNAME:(F)"     # -> DENIED (AI is not the owner)
+(Get-Acl C:\ProgramData\ed-console-authority).Owner                       # -> BUILTIN\Administrators
+```
+
+### POSIX host (unchanged mechanism; same REVIEWED-commit anchor)
+
 ```sh
-# 0) TRUST ANCHOR — materialize the OPERATOR-REVIEWED, MERGED commit from the REMOTE
+# 0) TRUST ANCHOR — materialize the OPERATOR-REVIEWED PR-HEAD commit from the REMOTE
 #    into a ROOT-OWNED staging tree. Root never runs the AI-writable checkout, and the
 #    pin is derived from the reviewed commit (not the live checkout). C is the commit
 #    the operator reviewed on PR #181 (immutable, content-addressed).
-C=<operator-reviewed merged commit SHA of PR #181>
+C=<REVIEWED PR #181 HEAD SHA>   # PR-head, NOT a merge commit — provision BEFORE merge
 sudo rm -rf /srv/ed-console-staging
 sudo git clone --no-local <remote-url> /srv/ed-console-staging   # from the remote, not the AI checkout
 sudo git -C /srv/ed-console-staging checkout --detach "$C"
@@ -150,7 +204,8 @@ sudo rm -rf /path/to/checkout && echo '{"pm":"operator"}' | sudo /usr/local/sbin
   checks for the protected paths. This is what makes the merge-review boundary real — the
   repo defines the owned set; GitHub enforces it. The AI cannot set this.
 
-Until (1)–(4), the landing, and branch protection are in place, the boundary is **not
-proven** and the parent mission stays NOT_PROVEN. The repository side owes nothing further:
+Until provisioning (step 2 of REVIEW -> PROVISION -> MERGE), the merge, and branch
+protection are in place, the boundary is **not proven** and the parent mission stays
+NOT_PROVEN. The repository side owes nothing further:
 the code, tests (193 pass), self-falsification (2 bypasses found+fixed, class-closure
 completed), and the exact host/platform steps are all delivered.

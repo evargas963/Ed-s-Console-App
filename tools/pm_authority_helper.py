@@ -33,9 +33,16 @@ import sys
 import json
 import os
 
-# Compiled-in canonical destination. Linux host path; this privileged helper only
-# ever runs on the provisioned host, never on a developer/Windows checkout.
-CANONICAL_AUTHORITY_PATH = "/var/lib/ed-console-authority/pm_mission.json"
+# Compiled-in canonical destination, resolved for the host OS at import time. The
+# value is NEVER taken from argv/stdin; on Windows only the OS-provided ProgramData
+# root is consulted. This privileged helper runs only on the provisioned host.
+if os.name == "nt":
+    CANONICAL_AUTHORITY_PATH = os.path.join(
+        os.environ.get("ProgramData") or r"C:\ProgramData",
+        "ed-console-authority", "pm_mission.json",
+    )
+else:
+    CANONICAL_AUTHORITY_PATH = "/var/lib/ed-console-authority/pm_mission.json"
 REQUIRED_PM = "operator"
 
 

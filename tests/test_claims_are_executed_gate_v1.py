@@ -210,11 +210,29 @@ def test_the_module_scope_blind_spot_is_measured_not_silent():
     source-text proxy because every security property it touched is asserted
     behaviorally (self-containment / stdin-only / non-isolated refusal), so the
     behaviour is asserted and that entry leaves the census on its own — net +1.
+
+    268 -> 269 (RC-459 Windows host boundary), one net arrival, named:
+    `test_windows_installer_moves_ownership_away_from_the_ai` ARRIVED.
+    INHERENTLY STRUCTURAL: it asserts that `tools/install_pm_authority_host.ps1`
+    ASSIGNS OWNERSHIP of the authority objects to the BUILTIN Administrators group
+    SID S-1-5-32-544) and grants the AI account ReadAndExecute only. Ownership
+    assignment is an ELEVATED Windows operation against a host path; no runtime call
+    in this environment can execute it — CI runs unelevated on Linux, where the
+    Win32 security APIs do not exist at all — exactly like the CODEOWNERS ownership-map
+    and the POSIX installer entries above. The property is also not optional: MEASURED
+    on the real host 2026-08-23, a read-only grant alone left `icacls <dir> /grant
+    <ai>:(F)` SUCCEEDING because an OWNER always retains WRITE_DAC, so ownership is the
+    load-bearing fact and a source assertion is the only way to pin it in CI.
+    The ACCESS half of the same boundary IS asserted behaviorally (real `icacls` +
+    real denied writes/deletes/renames) in
+    `test_windows_negative_controls_read_only_authority`, and the authorized-mutation
+    path in `test_windows_operator_authorized_mutation_succeeds`; both execute the
+    behaviour and therefore do NOT enter this census.
     """
     fns = C.source_text_only_functions()
-    assert len(fns) == 268, (
-        f"the per-function source-text-only count moved from the 268 measured on "
-        f"2026-08-23 to {len(fns)}. This figure is not a defect count, so do not simply "
+    assert len(fns) == 269, (
+        f"the per-function source-text-only count moved from the 269 measured on "
+        f"2026-08-23 (RC-459) to {len(fns)}. This figure is not a defect count, so do not simply "
         f"re-baseline it. ACCOUNT for the move: name each function that arrived or left. "
         f"An arrival stays only if its property is INHERENTLY STRUCTURAL — uniqueness, "
         f"duplication or absence in the repository, which no runtime call can express. If "

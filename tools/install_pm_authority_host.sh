@@ -8,6 +8,10 @@
 #
 # Integrity model — the bootstrap is ANCHORED to an immutable operator-reviewed commit,
 # NOT to the AI-writable checkout:
+#   SEQUENCE (RC-459): REVIEW the PR head -> PROVISION from that reviewed SHA -> MERGE.
+#   The anchor is the reviewed PR-HEAD commit (immutable, content-addressed, on the remote
+#   before merge), never a merge commit — provisioning must precede the merge because the
+#   RC-458 fail-closed gate BLOCKS agent product edits on an unprovisioned host.
 #   - This script REFUSES to run unless the tree it runs from is ROOT-OWNED and not
 #     group/other-writable (the AI's own checkout is AI-owned, so running from it aborts),
 #     AND that tree's git HEAD equals ED_PM_REVIEW_COMMIT (the exact commit the operator
@@ -19,7 +23,7 @@
 #
 # Usage — the operator MATERIALIZES THE REVIEWED COMMIT FROM THE REMOTE INTO ROOT-OWNED
 # STAGING FIRST, then runs THIS script from there (never from the AI-writable checkout):
-#   C=<operator-reviewed merged commit SHA of PR #181>
+#   C=<REVIEWED PR #181 HEAD SHA>   # PR-head, NOT a merge commit: provision BEFORE merge
 #   sudo git clone --no-local <remote-url> /srv/ed-console-staging
 #   sudo git -C /srv/ed-console-staging checkout --detach "$C"
 #   sudo env EXPECTED_HELPER_SHA256=<pin derived from the reviewed commit> \

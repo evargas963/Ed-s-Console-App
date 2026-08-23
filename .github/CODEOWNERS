@@ -1,66 +1,79 @@
-# Control-authority surfaces only (Architecture A / RC-453).
-# Derived from hook entrypoints, required CI workflows, and grant/assignment rails.
-# Routine product paths are intentionally NOT listed so the assigned AI can land
-# ordinary work after required checks without the operator becoming a reviewer.
-# Require review from Code Owners on protected main for THESE paths only.
+# DURABLE control-authority surfaces only (Architecture A / RC-453 / RC-459).
+#
+# "Durable" = a file that can flip the required CI verdict (the only two required
+# gates, .github/workflows/hardening.yml + pytest.yml) or the review policy itself,
+# such that a boundary-broken state could merge CI-green with NO operator review.
+# That is: the import closure of the hardening gate scripts (a weakened check merges
+# green — the delta gate detects a REMOVED check, not silently-weakened logic), every
+# conftest.py (a poisoned one fakes the whole suite green), the PM-authority mechanism,
+# tools/__init__.py, and the Architecture-A definition tests.
+#
+# NARROWED (RC-459, operator-ratified 2026-08-23): local-only hook wiring
+# (.cursor/hooks.json, .claude/settings.json, .pre-commit-config.yaml), pre-commit
+# wrappers, and ~20 standalone non-hardening check_*.py are DEFENSE-IN-DEPTH, not the
+# durable boundary — poisoning them, if merged, changes only local behavior, not the CI
+# verdict or the OS boundary — so they are intentionally NOT listed and do not force
+# operator review. Ordinary product paths (server.py, db.py, static/, signals.py,
+# models) are likewise NOT listed so the assigned AI lands ordinary work autonomously.
+# A self-maintaining test (tests/test_control_authority_surfaces_v1.py) recomputes the
+# CI-verdict closure and FAILS if a gate script gains an un-owned import.
 
-# Required CI definitions
+# Review policy + required CI definitions (define what runs / who reviews)
 /.github/workflows/ @evargas963
 /.github/CODEOWNERS @evargas963
-/.pre-commit-config.yaml @evargas963
 
-# Hook wiring (worktree copies are not the merge root of trust)
-/.cursor/hooks.json @evargas963
-/.claude/settings.json @evargas963
+# PM-authority mechanism — the executable authority installed on the host
+/tools/pm_authority.py @evargas963
+/tools/pm_authority_helper.py @evargas963
+/tools/install_pm_authority_host.sh @evargas963
+/tools/install_pm_authority_host.ps1 @evargas963
 
-# Guard/lock entrypoints and the institutional gate
-/tools/*_guard.py @evargas963
-/tools/*_lock.py @evargas963
-# Package init runs inside the guard/hook process on every `import tools.*`;
-# protect it so a poisoned __init__ cannot neuter the rails via monkeypatch.
+# Import-time injection surface: tools/__init__.py runs on every `import tools.*`
+# inside the CI gate scripts and pytest collection.
 /tools/__init__.py @evargas963
 
-# Hook import closure: every repo module the PreToolUse/Stop hooks import runs
-# inside the guard process, so a poisoned module = guard code execution / poisoned
-# production enforcement. Require operator review to merge any of them. A test
-# recomputes the closure and fails if a new hook import is not covered.
-/tools/check_*.py @evargas963
+# CI hardening-gate code closure — a weakened check merges green, so every module the
+# gate scripts import is durable. Guards + locks are RETAINED here (operator law
+# enforcement, ratified 2026-08-23): keeping them costs zero ordinary-product autonomy.
+/tools/*_guard.py @evargas963
+/tools/*_lock.py @evargas963
+/time_et.py @evargas963
+/tools/check_credential_leak.py @evargas963
+/tools/check_delta_adds_no_debt.py @evargas963
+/tools/check_eol_style_invariant.py @evargas963
+/tools/check_institutional_closure_gate.py @evargas963
+/tools/check_institutional_correctness.py @evargas963
+/tools/check_market_correctness.py @evargas963
+/tools/check_no_grep_subprocess.py @evargas963
+/tools/check_schwab_market_field_semantics.py @evargas963
+/tools/check_ui_data_integration.py @evargas963
+/tools/check_vendor_field_coercion.py @evargas963
+/tools/check_venv_parity.py @evargas963
 /tools/data_faucet_audit.py @evargas963
 /tools/find_prove_locks.py @evargas963
 /tools/log_law.py @evargas963
 /tools/plus_player_locks.py @evargas963
 /tools/turn_self_audit.py @evargas963
-/time_et.py @evargas963
-# pytest collection runs EVERY conftest under tests/ (incl. subdir + archive);
-# a poisoned one could monkeypatch a guard/reader so the suite passes green.
+
+# pytest verdict-injection points (a poisoned conftest fakes the whole suite green)
 /tests/conftest.py @evargas963
 /tests/**/conftest.py @evargas963
-# Pre-commit wrappers decide gate exit codes inside the commit process; the
-# backstop test proves the wrapper propagates non-zero — protect it from removal.
-/tools/run_with_repo_venv.py @evargas963
-/tools/bootstrap_worktree_venv.py @evargas963
-/tools/duplication_audit.py @evargas963
-/tools/rehab_daily_scan.py @evargas963
-/tests/test_venv_wrapper_propagates_exit_v1.py @evargas963
-/tools/operating_process_lock.py @evargas963
-/tools/check_institutional_correctness.py @evargas963
-/tools/check_delta_adds_no_debt.py @evargas963
-/tools/precommit_institutional.py @evargas963
-/tools/check_market_correctness.py @evargas963
-/tools/check_institutional_closure_gate.py @evargas963
-/tools/check_no_grep_subprocess.py @evargas963
-/tools/pm_authority.py @evargas963
-/tools/pm_authority_helper.py @evargas963
-/tools/install_pm_authority_host.sh @evargas963
 
-# Grant / GO rails (assignment JSON is field-locked in process; not listed here
-# so routine mission status updates do not require operator review)
+# Grant / GO rail (a forged self-grant would unlock the rails)
 /governance/operator_go.json @evargas963
 /governance/operator_grants.json @evargas963
 
-# Tests that define Architecture A PASS
+# Tests that DEFINE Architecture A PASS
 /tests/test_architecture_a_bypass_class_v1.py @evargas963
 /tests/test_writer_drift_lock_v1.py @evargas963
 /tests/test_control_authority_surfaces_v1.py @evargas963
 /tests/test_architecture_a_operator_writer_authority_v1.py @evargas963
 /tests/test_pm_authority_external_v1.py @evargas963
+/tests/test_pm_authority_windows_boundary_v1.py @evargas963
+
+# Retained law/honesty guards' tests (operator-ratified 2026-08-23): the guards are
+# defense-in-depth, but the operator elected to keep them + their tests review-gated.
+/tests/test_honesty_guard_v1.py @evargas963
+/tests/test_operator_law_guard_repo_scope_v1.py @evargas963
+/tests/test_stop_guard_v1.py @evargas963
+/tests/test_operating_process_lock_v1.py @evargas963
