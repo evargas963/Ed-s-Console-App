@@ -18,14 +18,12 @@ Contract:
   * Respects `stop_hook_active`: if the guard already blocked once and the agent is still going,
     it does not block again. Without this the turn could never end — a guard that cannot be
     satisfied is a hang, not a control.
-  * ED_STOP_GUARD=off disables it. Deliberate and visible: an operator may switch it off; an
-    agent may not silently route around it.
+  * Architecture A (RC-450): ED_STOP_GUARD cannot disable this control.
 """
 from __future__ import annotations
 
 import datetime
 import json
-import os
 import re
 import sys
 from pathlib import Path
@@ -139,8 +137,6 @@ def close_contract_blockers() -> list[str]:
 
 
 def main() -> int:
-    if os.environ.get("ED_STOP_GUARD", "").strip().lower() in ("off", "0", "false"):
-        return 0
     try:
         payload = json.load(sys.stdin)
     except (json.JSONDecodeError, ValueError):

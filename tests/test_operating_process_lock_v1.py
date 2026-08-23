@@ -254,16 +254,16 @@ def test_reset_guard_permits_safe_git(monkeypatch, tmp_path):
         assert not OPL.reset_guard_violations(cmd), f"reset guard false-fired on: {cmd}"
 
 
-def test_reset_guard_escapes(monkeypatch, tmp_path):
-    """LOCK-2 escapes: ED_RESET_GUARD=off and operator_go scope git_reset_product."""
+def test_reset_guard_escapes_do_not_disable(monkeypatch, tmp_path):
+    """Architecture A: ED_RESET_GUARD=off and operator_go git_reset_product still BLOCK."""
     go = tmp_path / "go.json"
     go.write_text('{"granted": true, "scope": ["git_reset_product"]}', encoding="utf-8")
     monkeypatch.setattr(OPL, "OPERATOR_GO_PATH", go)
     monkeypatch.delenv("ED_RESET_GUARD", raising=False)
-    assert not OPL.reset_guard_violations("git restore -- static/chart.html")
+    assert OPL.reset_guard_violations("git restore -- static/chart.html")
     go.write_text('{"granted": false, "scope": []}', encoding="utf-8")
     monkeypatch.setenv("ED_RESET_GUARD", "off")
-    assert not OPL.reset_guard_violations("git restore -- static/chart.html")
+    assert OPL.reset_guard_violations("git restore -- static/chart.html")
 
 
 def test_lock5_quiet_pass_required_blocks_complete_claim(monkeypatch, tmp_path):

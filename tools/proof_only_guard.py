@@ -29,13 +29,11 @@ Contract:
   * Honours `stop_hook_active` — a guard that cannot be satisfied is a hang, not a control.
   * Reads the transcript at `transcript_path`; if that is unavailable the guard reports the
     failure rather than passing silently (RC-57: unmeasurable is never a pass).
-  * ED_PROOF_ONLY_GUARD=off disables it. Deliberate and visible: an operator may switch it off;
-    an agent may not silently route around it.
+  * Architecture A (RC-450): ED_PROOF_ONLY_GUARD cannot disable this control.
 """
 from __future__ import annotations
 
 import json
-import os
 import re
 import sys
 from pathlib import Path
@@ -207,8 +205,6 @@ def violations(text: str) -> list[str]:
 
 
 def main() -> int:
-    if os.environ.get("ED_PROOF_ONLY_GUARD", "").strip().lower() in ("off", "0", "false"):
-        return 0
     try:
         payload = json.load(sys.stdin)
     except (json.JSONDecodeError, ValueError):

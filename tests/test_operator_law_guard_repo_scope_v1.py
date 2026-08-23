@@ -467,17 +467,12 @@ def test_universal_protections_fire_in_this_repository(cmd, needle):
     assert any(needle in v for v in out), (cmd, out)
 
 
-def test_rc360_head_grant_governs_no_verify_in_this_repository():
-    """RC-367 repair of a stale expectation: since RC-360, a commit/push no-verify
-    segment is allowed in THIS repository iff the HEAD-ratified operator grant covers
-    it — the guard's verdict must agree with the grant reader either way. The
-    revoke/worktree-inert paths are locked by the RC-360 tests above; the
-    lock-disable env case stays unconditionally blocked (separate param)."""
+def test_rc360_head_grant_cannot_authorize_no_verify_in_this_repository():
+    """Architecture A: --no-verify is never authorized, grant file or not."""
     cmd = "git commit --no-verify -m x"
-    covered = G._no_verify_grant_covers(cmd)
+    assert not hasattr(G, "_no_verify_grant_covers")
     out = G.bash_violations(cmd, [], payload_cwd=str(REPO))
-    fired = any("disables a mechanical lock" in v for v in out)
-    assert fired == (not covered), (covered, out)
+    assert any("disables a mechanical lock" in v for v in out), out
 
 
 @pytest.mark.parametrize("cmd,needle", [
@@ -513,7 +508,7 @@ def test_non_commit_commands_are_unaffected_by_repository_scoping():
 
 def test_operator_escape_remains_operator_only():
     src = (REPO / "tools" / "operator_law_guard.py").read_text(encoding="utf-8")
-    assert 'os.environ.get("ED_OPERATOR_LAW_GUARD"' in src
+    assert 'os.environ.get("ED_OPERATOR_LAW_GUARD"' not in src
     out = G.bash_violations("ED_OPERATOR_LAW_GUARD=off python x.py", [], payload_cwd=str(REPO))
     assert any("disables a mechanical lock" in v for v in out), out
 
@@ -769,59 +764,35 @@ def test_moving_reference_lock_rejects_only_its_target():
 # ── RC-360: the operator no-verify grant — HEAD-ratified, narrowly scoped ────────
 
 
-def test_rc360_grant_is_head_ratified_and_narrow(tmp_path, monkeypatch):
-    """The grant covers git commit/push --no-verify ONLY when committed at HEAD;
-    a worktree-only grant (agent-writable) is IGNORED; lock-disables stay blocked."""
-    import subprocess as sp
-
-    # build a scratch repo with the grant COMMITTED at HEAD
-    repo = tmp_path
-    (repo / "governance").mkdir()
-    grant = {"grants": {"claude_no_verify_checkpoints": {"granted": True}}}
-    (repo / "governance" / "operator_grants.json").write_text(json.dumps(grant), encoding="utf-8")
-    for cmd in (["git", "init", "-q"], ["git", "add", "-A"],
-                ["git", "-c", "user.email=a@b", "-c", "user.name=t",
-                 "commit", "-q", "--no-verify", "-m", "grant"]):
-        sp.run(cmd, cwd=repo, check=True, capture_output=True)
-
-    # point the guard's repo-root discovery at the scratch repo
-    monkeypatch.setattr(G.os.path, "abspath", lambda p: str(repo / "tools" / "operator_law_guard.py"))
-    assert G._no_verify_grant_covers("git commit --no-verify -m x") is True
-    assert G._no_verify_grant_covers("git add a && git commit --no-verify -m x && git push --no-verify") is True
-    # OUTSIDE scope: --no-verify not attached to git commit/push
-    assert G._no_verify_grant_covers("some_tool --no-verify") is False
-    # lock-disable rides along -> still blocked even with the grant
-    assert G._no_verify_grant_covers("ED_UI_MOCKUP_LOCK=off git commit --no-verify -m x") is False
-
-    # revoke at HEAD -> no coverage
-    (repo / "governance" / "operator_grants.json").write_text(
-        json.dumps({"grants": {"claude_no_verify_checkpoints": {"granted": False}}}),
-        encoding="utf-8")
-    sp.run(["git", "add", "-A"], cwd=repo, check=True, capture_output=True)
-    sp.run(["git", "-c", "user.email=a@b", "-c", "user.name=t",
-            "commit", "-q", "--no-verify", "-m", "revoke"],
-           cwd=repo, check=True, capture_output=True)
-    assert G._no_verify_grant_covers("git commit --no-verify -m x") is False
-
-
-def test_rc360_worktree_only_grant_is_inert(tmp_path, monkeypatch):
-    """Self-grant hole closed: a grant present ONLY in the worktree (never committed)
-    provides no coverage — the guard reads HEAD, not the file on disk."""
-    import subprocess as sp
-
-    repo = tmp_path
-    (repo / "governance").mkdir()
-    (repo / "governance" / "keep.txt").write_text("x", encoding="utf-8")
-    for cmd in (["git", "init", "-q"], ["git", "add", "-A"],
-                ["git", "-c", "user.email=a@b", "-c", "user.name=t",
-                 "commit", "-q", "--no-verify", "-m", "base"]):
-        sp.run(cmd, cwd=repo, check=True, capture_output=True)
-    # grant written to the WORKTREE only — exactly what an agent could do alone
-    (repo / "governance" / "operator_grants.json").write_text(
+def test_rc360_grant_file_cannot_authorize_no_verify(tmp_path):
+    """Architecture A: a committed granted:true file is not an authority surface."""
+    (tmp_path / "governance").mkdir()
+    (tmp_path / "governance" / "operator_grants.json").write_text(
         json.dumps({"grants": {"claude_no_verify_checkpoints": {"granted": True}}}),
-        encoding="utf-8")
-    monkeypatch.setattr(G.os.path, "abspath", lambda p: str(repo / "tools" / "operator_law_guard.py"))
-    assert G._no_verify_grant_covers("git commit --no-verify -m x") is False
+        encoding="utf-8",
+    )
+    src = (REPO / "tools" / "operator_law_guard.py").read_text(encoding="utf-8")
+    assert "claude_no_verify_checkpoints" not in src
+    assert "git show HEAD:governance/operator_grants.json" not in src
+    for cmd in (
+        "git commit --no-verify -m x",
+        "git add a && git commit --no-verify -m x && git push --no-verify",
+        "some_tool --no-verify",
+        "ED_UI_MOCKUP_LOCK=off git commit --no-verify -m x",
+    ):
+        out = G.bash_violations(cmd, [], payload_cwd=str(REPO))
+        assert any("disables a mechanical lock" in v for v in out), (cmd, out)
+
+
+def test_rc360_worktree_only_grant_is_inert(tmp_path):
+    """A worktree-only grant file still cannot authorize --no-verify (capability removed)."""
+    (tmp_path / "governance").mkdir()
+    (tmp_path / "governance" / "operator_grants.json").write_text(
+        json.dumps({"grants": {"claude_no_verify_checkpoints": {"granted": True}}}),
+        encoding="utf-8",
+    )
+    out = G.bash_violations("git commit --no-verify -m x", [], payload_cwd=str(tmp_path))
+    assert any("disables a mechanical lock" in v for v in out), out
 
 
 # ── RC-367: the RC-350 one-app launch lock gets an owning suite ──────────────────────────

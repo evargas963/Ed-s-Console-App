@@ -118,8 +118,6 @@ def mockup_approval_violation(rel: str, new_text: str = "",
     declaration is honoured only when it appears THERE, so the waiver travels with the change
     that claims it.
     """
-    if os.environ.get("ED_UI_MOCKUP_LOCK", "").strip().lower() in ("off", "0", "false"):
-        return None
     entry = mockup_gated_entry(rel, repo)
     if entry is None:
         return None

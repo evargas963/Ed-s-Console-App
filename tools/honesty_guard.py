@@ -26,12 +26,11 @@ WHAT THIS BLOCKS (exit 2 on Stop):
   (c) Claiming a mechanical lock via .md/.mdc, or claiming 10/10 while soft_partial remains.
   (d) Treating soft_partial registration as a lock.
 
-Contract: Stop hook; stop_hook_active respected; ED_HONESTY_GUARD=off (operator only).
+Contract: Stop hook; stop_hook_active respected. Architecture A: ED_HONESTY_GUARD cannot disable this control.
 """
 from __future__ import annotations
 
 import json
-import os
 import re
 import sys
 from pathlib import Path
@@ -167,8 +166,6 @@ def honesty_violations(user_text: str | None, assistant_text: str) -> list[str]:
 
 
 def main() -> int:
-    if os.environ.get("ED_HONESTY_GUARD", "").strip().lower() in ("off", "0", "false"):
-        return 0
     try:
         payload = json.load(sys.stdin)
     except (json.JSONDecodeError, ValueError):
@@ -188,12 +185,11 @@ def main() -> int:
     bad = honesty_violations(last_user_text(tp), text)
     # RC-233 (PM full-prompt coverage): both agents' Stop hooks run this file, so the
     # coverage law holds on the whole continuum with no separate Cursor wiring.
-    if os.environ.get("ED_PM_COVERAGE_GUARD", "").strip().lower() not in ("off", "0", "false"):
-        try:
-            from tools.operating_process_lock import pm_coverage_violations
-        except ImportError:
-            from operating_process_lock import pm_coverage_violations  # type: ignore
-        bad.extend(pm_coverage_violations(last_user_text(tp), text))
+    try:
+        from tools.operating_process_lock import pm_coverage_violations
+    except ImportError:
+        from operating_process_lock import pm_coverage_violations  # type: ignore
+    bad.extend(pm_coverage_violations(last_user_text(tp), text))
     # RC-242 LOCK-PM-VERIFY: a verdict about REPO STATE must carry a reading OF the repo.
     # Wired here because .claude/settings.json and .cursor/hooks.json BOTH run honesty_guard
     # at Stop, so the PM seat and the writer seat are bound by one implementation — parity by

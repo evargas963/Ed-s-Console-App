@@ -1,12 +1,11 @@
 """Front-end hook for operating_process_lock (RC-217 / RC-226).
 
 Runs on PreToolUse (Edit/Write/StrReplace/Bash) and Stop. Exit 2 BLOCKS.
-Escape: ED_PROCESS_LOCK_GUARD=off (operator only).
+Architecture A (RC-450): ED_PROCESS_LOCK_GUARD cannot disable this control.
 """
 from __future__ import annotations
 
 import json
-import os
 import re
 import sys
 from pathlib import Path
@@ -134,8 +133,6 @@ def stop_block(payload: dict) -> list[str]:
 
 
 def main() -> int:
-    if os.environ.get("ED_PROCESS_LOCK_GUARD", "").strip().lower() in ("off", "0", "false"):
-        return 0
     try:
         payload = json.load(sys.stdin)
     except (json.JSONDecodeError, ValueError):
