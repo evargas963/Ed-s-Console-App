@@ -32,11 +32,14 @@ def _init_repo(tmp_path: Path) -> Path:
     return tmp_path
 
 
-def test_sole_writer_blocks_cursor_on_db():
-    msg = OPL.sole_writer_edit_violation("db.py", agent="cursor")
-    assert msg and (
-        "sole_writer" in msg or "PM-FIRST" in msg or "WRITER-DRIFT" in msg or "SOD_DRIFT" in msg
+def test_stale_writer_does_not_block_cursor_on_db(monkeypatch, tmp_path):
+    mission = tmp_path / "pm_mission.json"
+    mission.write_text(
+        '{"status": "active", "writer": "claude", "scope_paths": ["*"], "mission_id": "t"}',
+        encoding="utf-8",
     )
+    monkeypatch.setattr(OPL, "PM_MISSION_PATH", mission)
+    assert OPL.sole_writer_edit_violation("db.py", agent="cursor") is None
 
 
 def test_sole_writer_allows_writer_agent(monkeypatch, tmp_path):
@@ -163,13 +166,18 @@ def test_live_claim_requires_disk_only_token_when_disk_only(monkeypatch):
     assert not any("LIVE_ENFORCED" in x for x in ok)
 
 
-def test_pretooluse_hook_blocks_sole_writer_edit(monkeypatch):
-    # Pin the role: the block is for the NON-writer. Ambient env now declares the real
-    # agent (ED_AGENT_ROLE=claude in .claude/settings.json), so the test must not inherit it.
+def test_pretooluse_hook_permits_operator_selected_product_edit(monkeypatch, tmp_path):
+    """RC-454: leftover writer=claude must not veto cursor on ordinary product."""
     monkeypatch.setenv("ED_AGENT_ROLE", "cursor")
+    mission = tmp_path / "pm_mission.json"
+    mission.write_text(
+        '{"status": "active", "writer": "claude", "scope_paths": ["*"], "mission_id": "t"}',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(OPL, "PM_MISSION_PATH", mission)
     bad = PLG.pretooluse_block("Write", {"file_path": str(ROOT / "db.py")})
-    assert bad and any(
-        "sole_writer" in b or "PM-FIRST" in b or "WRITER-DRIFT" in b or "SOD_DRIFT" in b
+    assert not any(
+        "sole writer" in b.lower() or "WRITER-DRIFT" in b or "PM-FIRST" in b
         for b in bad
     )
 

@@ -1,30 +1,28 @@
-"""Writer no-drift mechanical lock (RC-226).
+"""Architecture A control-authority lock (RC-226 remnant; RC-454 operator-writer).
 
-When an in-progress PM mission (or sole_writer) assigns writer≠current agent,
-the non-writer must not modify mission scope_paths. Cursor=PM/auditor;
-Claude=sole writer is the standing model — drift into writer work is a BLOCK,
-not a chat reminder.
+Operator selects the working AI at the workflow boundary (which AI they run).
+Persisted writer/auditor fields are history, not authorization.
+
+This module BLOCKs only control-authority rewrites by an assigned principal
+(ED_AGENT_ROLE set). Ordinary product paths are not vendor-gated.
 
 Fires:
-  - PreToolUse via operating_process_lock.pm_mission_edit_violation
-  - commit / pre-commit via writer_drift_violations on dirty paths
+  - PreToolUse via process_lock_guard / control_authority_violation
+  - commit / pre-commit via writer_drift_violations on dirty rails
   - check_writer_no_drift in check_institutional_correctness.py
 
-Architecture A (RC-450/RC-453): not subject-disableable. Privilege follows the current
-assignment (writer / auditor), not a vendor string. Any assigned principal — including
-the writer — cannot rewrite control-authority surfaces. Empty ED_AGENT_ROLE is
-operator/CI (abstain), never a guessed vendor.
+Empty ED_AGENT_ROLE is operator/CI (abstain), never a guessed vendor.
 """
 from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 
-SOLE_WRITER_PATH = REPO / "governance" / "sole_writer.json"
 PM_MISSION_PATH = REPO / "governance" / "pm_mission.json"
 
 #: Statuses that bind SoD — not only literal "active".
@@ -62,27 +60,33 @@ PM_ALLOWLIST_PREFIXES = (
     ".cursor/rules/",
 )
 
-#: LOCK-1 HARD DENYLIST (RC-232): ALWAYS blocked for the non-writer while a mission is in
-#: progress — regardless of scope_paths. These are the product/kill surfaces the 2026-08-03
-#: pipeline collision destroyed.
-HARD_DENYLIST_EXACT = frozenset({
-    "static/chart.html",
-    "server.py",
-    "market_context.py",
-    "db.py",
-})
-HARD_DENYLIST_TEST_MARKERS = (
-    "tests/test_levels_single_producer_v1.py",
-    "tests/test_market_context_fetch_fail_closed.py",
-    "tests/test_collect_window_law_v1.py",
-)
-
-#: LOCK-1/LOCK-3: the ONLY pm_mission/sole_writer fields a non-operator principal
-#: may change (status machinery — never the role split or the scope).
+#: Status-only keys an assigned principal may change on leftover mission JSON.
+#: writer/auditor are not authorization; flipping them must not grant rails.
 PM_STATUS_FIELDS = frozenset({
     "status", "note", "blocker", "updated_at", "held_commit",
     "approved_by", "approved_via", "approved_at",
 })
+
+#: Files that carry pm=operator. Assigned AIs may not delete them or write them
+#: without pm=operator, including when the current file is missing or corrupt.
+PM_AUTHORITY_FILES = frozenset({
+    "governance/pm_mission.json",
+    "governance/sole_writer.json",
+})
+_PM_AUTHORITY_PATH_RE = re.compile(
+    r"governance[/\\]+(?:pm_mission|sole_writer)\.json",
+    re.I,
+)
+_PM_AUTHORITY_SHELL_DELETE_RE = re.compile(
+    r"\b(?:rm|unlink|del|erase|rmdir|Remove-Item|git\s+rm|os\.remove|os\.unlink)\b"
+    r"|\.unlink\(|\bshutil\.rmtree\b|\bmv\b|\bMove-Item\b|\btruncate\b",
+    re.I,
+)
+_PM_AUTHORITY_SHELL_WRITE_RE = re.compile(
+    r"(?:>>?|\btee\b|\bSet-Content\b|\bOut-File\b|\bAdd-Content\b|\bNew-Item\b"
+    r"|write_text|write_bytes|\.write\(|open\([^)]*['\"]w)",
+    re.I,
+)
 
 #: Files that define CI/merge/hook/assignment rails. Derived from actual call
 #: paths (hooks.json, settings.json, required workflows, assignment JSON).
@@ -102,6 +106,7 @@ CONTROL_AUTHORITY_EXACT = frozenset({
     "tests/test_architecture_a_bypass_class_v1.py",
     "tests/test_writer_drift_lock_v1.py",
     "tests/test_control_authority_surfaces_v1.py",
+    "tests/test_architecture_a_operator_writer_authority_v1.py",
 })
 CONTROL_AUTHORITY_PREFIXES = (
     ".github/workflows/",
@@ -115,36 +120,63 @@ SOD_DRIFT_EVENTS_PATH = REPO / "governance" / "sod_drift_events.jsonl"
 def hard_denylist_violation(rel: str, *, agent: str | None = None,
                             mission: dict | None = None,
                             sole: dict | None = None) -> str | None:
-    """LOCK-1: non-writer touching the hard denylist BLOCKS regardless of scope.
+    """Product hard-denylist retired (RC-454). Rails still BLOCK via control_authority."""
+    return control_authority_violation(rel, agent=agent)
 
-    Control-authority surfaces BLOCK every assigned principal, including the writer.
+
+def pm_authority_delete_violation(rel: str, *, agent: str | None = None) -> str | None:
+    """BLOCK assigned-AI deletion of the files that carry pm=operator."""
+    agent = (agent or current_agent_role()).strip().lower()
+    if not agent:
+        return None
+    rel = _norm(rel)
+    if rel not in PM_AUTHORITY_FILES:
+        return None
+    return (
+        f"SOD_DRIFT: {rel} delete — pm=operator is operator authority and cannot "
+        f"be removed by agent={agent!r}."
+    )
+
+
+def pm_authority_shell_violations(cmd: str, *, agent: str | None = None) -> list[str]:
+    """Leftover command-text filter. Not a closed shell class and not the invariant.
+
+    PreToolUse Bash receives only ``tool_input.command`` text. A finite spelling
+    match cannot prove that ``governance/pm_mission.json`` /
+    ``governance/sole_writer.json`` cannot become deleted, empty, malformed, or
+    ``pm != operator`` under arbitrary same-uid (or sudo) execution. Do not grow
+    this regex. See RC-455 / reports/architecture_a_pm_authority_not_sufficient.md.
     """
     agent = (agent or current_agent_role()).strip().lower()
-    rel = _norm(rel)
-    if agent:
-        auth = control_authority_violation(rel, agent=agent)
-        if auth:
-            return auth
-    mission = mission if mission is not None else _load_json(PM_MISSION_PATH)
-    if not mission_in_progress(mission):
-        return None
-    sole = sole if sole is not None else _load_json(SOLE_WRITER_PATH)
-    writer = resolved_writer(mission, sole)
-    if not writer or not agent or agent == writer:
-        return None
-    if rel in HARD_DENYLIST_EXACT or rel in HARD_DENYLIST_TEST_MARKERS:
-        return (f"SOD_DRIFT: hard-denylist surface {rel} — writer={writer!r}, agent={agent!r}. "
-                f"Product/kill surfaces never open to the non-writer (LOCK-1/RC-232).")
-    return None
+    if not agent or not cmd:
+        return []
+    if not _PM_AUTHORITY_PATH_RE.search(cmd):
+        return []
+    out: list[str] = []
+    if _PM_AUTHORITY_SHELL_DELETE_RE.search(cmd):
+        out.append(
+            f"SOD_DRIFT: shell deletes/moves a pm-authority file — pm=operator is "
+            f"operator authority and cannot be removed by agent={agent!r}."
+        )
+    if _PM_AUTHORITY_SHELL_WRITE_RE.search(cmd):
+        out.append(
+            f"SOD_DRIFT: shell recreates/writes a pm-authority file — use Edit/Write; "
+            f"pm=operator is required and cannot be omitted by agent={agent!r}."
+        )
+    return out
 
 
 def pm_status_field_violations(rel: str, new_text: str, *, agent: str | None = None,
                                current_text: str | None = None) -> list[str]:
-    """LOCK-1/LOCK-3: Cursor may change ONLY status fields in pm_mission/sole_writer.
-    Role flips, scope expansion and remaining[] deletion BLOCK. No comment marker
-    and no JSON flag can authorize the subject to become writer."""
+    """Leftover mission JSON: assigned agents may not steal pm or expand scope.
+
+    writer/auditor flips are not authorization and are not blocked here — setting
+    writer to self must not grant control-authority privilege (proven at the rail seam).
+    pm=operator is operator authority: an assigned AI cannot omit or replace it,
+    even when the current file is missing, empty, or malformed.
+    """
     rel = _norm(rel)
-    if rel not in ("governance/pm_mission.json", "governance/sole_writer.json"):
+    if rel not in PM_AUTHORITY_FILES:
         return []
     agent = (agent or current_agent_role()).strip().lower()
     try:
@@ -152,6 +184,8 @@ def pm_status_field_violations(rel: str, new_text: str, *, agent: str | None = N
     except (ValueError, json.JSONDecodeError):
         return [f"SOD_DRIFT: {rel} proposed content is not valid JSON — a corrupt role file "
                 f"is how three mid-write deaths poisoned SoD on 2026-08-03."]
+    if not agent:
+        return []
     cur_text = current_text
     if cur_text is None:
         try:
@@ -163,20 +197,13 @@ def pm_status_field_violations(rel: str, new_text: str, *, agent: str | None = N
     except (ValueError, json.JSONDecodeError):
         cur_doc = {}
     out: list[str] = []
-    old_writer = str(cur_doc.get("writer") or "").strip().lower()
-    new_writer = str(new_doc.get("writer") or "").strip().lower()
-    if not agent:
-        return []
-    if new_writer and new_writer == agent and new_writer != old_writer:
+    new_pm = str(new_doc.get("pm") or "").strip().lower()
+    if new_pm != "operator":
         out.append(
-            f"SOD_DRIFT: {rel} sets writer={new_writer!r} while agent={agent!r} — "
-            f"the subject cannot authorize itself as writer (Architecture A / RC-450)."
+            f"SOD_DRIFT: {rel} writes pm={new_pm!r} — "
+            f"pm=operator is operator authority and cannot be omitted or reassigned "
+            f"by agent={agent!r}."
         )
-    for role_field in ("writer", "pm", "auditor"):
-        if role_field in cur_doc and new_doc.get(role_field) != cur_doc.get(role_field):
-            out.append(f"SOD_DRIFT: {rel} changes {role_field} "
-                       f"{cur_doc.get(role_field)!r} -> {new_doc.get(role_field)!r} — role flips "
-                       f"are operator-only and cannot be self-granted.")
     old_scope = set(map(str, cur_doc.get("scope_paths") or []))
     new_scope = set(map(str, new_doc.get("scope_paths") or []))
     if new_scope - old_scope:
@@ -185,13 +212,6 @@ def pm_status_field_violations(rel: str, new_text: str, *, agent: str | None = N
     if cur_doc.get("remaining") and not new_doc.get("remaining"):
         out.append(f"SOD_DRIFT: {rel} deletes remaining[] — dropping the work queue is "
                    f"operator-only and cannot be self-granted.")
-    changed = {k for k in set(cur_doc) | set(new_doc)
-               if cur_doc.get(k) != new_doc.get(k)}
-    illegal = changed - PM_STATUS_FIELDS - {"writer", "pm", "auditor", "scope_paths", "remaining"}
-    if illegal:
-        out.append(f"SOD_DRIFT: {rel} changes non-status fields {sorted(illegal)!r} — "
-                   f"assigned principals may touch status fields only "
-                   f"({sorted(PM_STATUS_FIELDS)!r}).")
     return out
 
 
@@ -362,12 +382,6 @@ def path_in_mission_scope(rel: str, scope_paths: list | None) -> bool:
     return False
 
 
-def resolved_writer(mission: dict | None = None, sole: dict | None = None) -> str:
-    m = mission if mission is not None else _load_json(PM_MISSION_PATH)
-    s = sole if sole is not None else _load_json(SOLE_WRITER_PATH)
-    return str(m.get("writer") or s.get("writer") or "").strip().lower()
-
-
 def current_agent_role() -> str:
     """Current principal from ED_AGENT_ROLE. Empty = operator/CI, not a vendor guess."""
     return os.environ.get("ED_AGENT_ROLE", "").strip().lower()
@@ -380,21 +394,13 @@ def writer_drift_violations(
     mission: dict | None = None,
     sole_writer: dict | None = None,
 ) -> list[str]:
-    """Return BLOCK messages when non-writer dirty paths hit mission scope."""
-    mission = mission if mission is not None else _load_json(PM_MISSION_PATH)
-    sole = sole_writer if sole_writer is not None else _load_json(SOLE_WRITER_PATH)
-    if not mission_in_progress(mission):
-        return []
-    writer = resolved_writer(mission, sole)
-    if not writer:
-        return []
+    """BLOCK control-authority rewrites by an assigned principal.
+
+    mission/sole_writer writer fields are ignored — stale assignment metadata
+    must not veto operator-selected ordinary product work (RC-454).
+    """
+    del mission, sole_writer  # not authorization
     agent = (agent or current_agent_role()).strip().lower()
-    if not agent:
-        return []
-    scopes = mission.get("scope_paths") or ["*"]
-    if not isinstance(scopes, list):
-        scopes = ["*"]
-    mid = mission.get("mission_id")
     out: list[str] = []
     for raw in changed_paths:
         rel = _norm(raw)
@@ -403,22 +409,6 @@ def writer_drift_violations(
         auth = control_authority_violation(rel, agent=agent)
         if auth:
             out.append(auth)
-            continue
-        if agent == writer:
-            continue
-        if is_pm_allowlisted(rel):
-            continue
-        if path_in_mission_scope(rel, scopes):
-            sod = (
-                f"SOD_DRIFT: {writer} is sole writer"
-                if writer and agent != writer
-                else "SOD_DRIFT: wrong-role edit"
-            )
-            out.append(
-                f"{sod} — WRITER-DRIFT BLOCK: mission writer={writer!r} but agent={agent!r} "
-                f"touched scope path {rel} (mission_id={mid!r}) — assignment owns "
-                f"scope_paths; privilege is not a vendor name"
-            )
     return out
 
 
@@ -460,13 +450,6 @@ def live_writer_drift_violations(
     sole_writer: dict | None = None,
 ) -> list[str]:
     root = repo or REPO
-    # Load mission/sole from the target repo so tmp-repo tests and alternate trees
-    # do not inherit the ambient live pm_mission.json.
-    if mission is None:
-        mission = _load_json(root / "governance" / "pm_mission.json")
-    if sole_writer is None:
-        sole_writer = _load_json(root / "governance" / "sole_writer.json")
+    del mission, sole_writer  # RC-454: persisted assignment is not authorization
     paths = git_changed_paths(root, staged_only=staged_only)
-    return writer_drift_violations(
-        paths, agent=agent, mission=mission, sole_writer=sole_writer
-    )
+    return writer_drift_violations(paths, agent=agent)
