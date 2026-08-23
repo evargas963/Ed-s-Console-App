@@ -1,30 +1,42 @@
 ---
-description: Cursor must not absorb sole-writer work — SoD is mechanically enforced (RC-226)
+description: Architecture A — operator selects the working AI; rails stay denied to every assigned principal (RC-454)
 alwaysApply: true
 ---
 
-# No writer drift (RC-226)
+# Operator writer selection (RC-454; RC-226 remnant)
 
-Standing model: privilege follows the **current assignment** in `sole_writer.json` / `pm_mission.json` (`writer`, `auditor`), not a vendor name. The operator may set `writer` to any principal without changing lock code.
+The operator exclusively chooses which AI does the current work by running that AI.
+The repository must not permanently privilege Claude, Cursor, Codex, GPT, or any
+other vendor. Persisted `writer` / `auditor` fields are history, not authorization.
 
 ## Law
 
-When `pm_mission.json` is in-progress (`active` / `ready_for_claude` / `ready_for_writer` / `in_progress`) and `writer` ≠ the current `ED_AGENT_ROLE`, **do not Edit/Write/StrReplace mission `scope_paths`**. Operational metadata only: `governance/pm_mission.json` status fields, RC log, rehab, audit/handoff reports. Control-authority surfaces (guards, hooks, required workflows, CODEOWNERS) are denied to every assigned principal.
+1. Ordinary authorized product work is not vendor-gated. Stale `pm_mission.json`
+   or leftover assignment metadata must not veto the operator's newly selected AI.
+2. Switching AI does not require changing policy code and does not require the
+   operator to review routine product changes.
+3. Control-authority surfaces (guards, hooks, required workflows, CODEOWNERS,
+   Architecture A tests) are denied to every assigned principal (`ED_AGENT_ROLE`
+   set). Becoming the selected product writer does not grant rails privilege.
+4. Empty `ED_AGENT_ROLE` is operator/CI (abstain), never a guessed vendor.
 
 ## Mechanical enforcers (not this `.mdc`)
 
-- `tools/writer_drift_lock.py` + `pm_mission_edit_violation` via `process_lock_guard.py` (PreToolUse — deny message starts `SOD_DRIFT:`)
-- `check_writer_no_drift` in `tools/check_institutional_correctness.py` (staged scope by non-writer → BLOCK)
-- Architecture A (RC-450): `ED_WRITER_DRIFT_GUARD` / `ED_PM_MISSION_GUARD` cannot disable these controls.
+- `tools/writer_drift_lock.py` `control_authority_violation` via
+  `process_lock_guard.py` (PreToolUse — deny prefix `SOD_DRIFT:`)
+- `check_writer_no_drift` in `tools/check_institutional_correctness.py`
+  (staged rails by an assigned principal → BLOCK)
+- Architecture A (RC-450): `ED_WRITER_DRIFT_GUARD` / `ED_PM_MISSION_GUARD`
+  cannot disable these controls.
 
 ## Self-heal (no operator prompt required)
 
-On detecting own role drift, false-green claims, or making the operator act as PM:
+On detecting vendor privilege, stale-metadata veto, or self-grant of rails:
 
-1. **STOP** writing features / faucet kills immediately.
-2. Restore SoD (`sole_writer.json` / `pm_mission.json` roles; hand implementation to the named writer).
+1. **STOP** restoring a standing writer name in repository metadata.
+2. Keep operator selection at the workflow boundary; keep rails denied to all AIs.
 3. Open or amend an RC row naming the drift.
-4. Tighten the lock if a detection gap remains (mandate-to-mechanism — same turn).
+4. Tighten the lock if a detection gap remains — same turn.
 
 ## Halt
 

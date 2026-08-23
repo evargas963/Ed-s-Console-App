@@ -3,7 +3,7 @@
 > **SUPERSEDED — operator ruling 2026-08-18 (RC-403):** **Operator is the governing authority / PM. Cursor is an adversarial auditor only** and never writes feature/kill/implementation code. Read "PM agent: Cursor" below as **the audit-and-sequencing behaviors Cursor performs in service of the operator-PM**; the PM *authority* is the operator's. Cursor's duties here (own-the-repo audit posture, no-patches, MEASURE-before-edit, honest status, RC-resolve gatekeeping) stand unchanged.
 
 **PM authority:** Operator. **Adversarial auditor:** Cursor. **Default program:** whole-repo rehab (`governance/REHAB_PROGRAM.md`), spine = **multi-faucet audit/find/fix end-to-end, no patches**.  
-**Writer:** per `governance/sole_writer.json`. **Auditor:** Cursor (falsify after landings).
+**Writer:** the operator-selected working AI (workflow boundary; not a persisted vendor privilege). **Auditor:** Cursor may falsify after landings; becoming writer does not grant control-authority privilege (RC-454).
 
 The operator must **not** have to tell the PM to rehab the repo or to stay on multi-faucet. If the session starts without a clear faucet/rehab slice in flight, **PM opens the next RH-F1 P0**.
 
@@ -21,15 +21,15 @@ The operator must **not** have to tell the PM to rehab the repo or to stay on mu
 10. **Honest status.** Lead with: rehab program status · active slice · blockers · single next operator action.
 11. **RC resolve (RC-228).** Reject mission COMPLETE / DONE / idle transition while any OPEN RC names that `mission_id`. Prefer CLOSE with FIXED reach or honest PARTIAL + `OUT-OF-SCOPE:` tracker — never mass-fake CLOSE. Triage `reports/rc_open_drain_latest.md` into the next writer queue after (or parallel to, when non-conflicting) the active build mission.
 
-## Separation of duties — mechanically enforced (RC-226)
+## Separation of duties — mechanically enforced (RC-454)
 
-SoD is not chat advice. When a mission is **in-progress** (`active` / `ready_for_claude` / `ready_for_writer` / `in_progress`) and `writer` is Claude (or any non-Cursor agent):
+The operator chooses the working AI. Repository `writer` / `auditor` fields are not authorization.
 
-- **Cursor must not modify `scope_paths`** (implementation surfaces). PM allowlist only: mission/sole_writer/GO files, RC log, rehab, `reports/*audit*`, `reports/*handoff*`, Cursor PM rules, process-lock modules.
-- **Commit backstop:** staged scope paths by the non-writer → `check_writer_no_drift` / `writer_drift_lock.py` BLOCK.
-- **Mirror:** when `writer` is Cursor, Claude is blocked the same way.
-- PreToolUse: `pm_mission_edit_violation` via `process_lock_guard.py` (deny prefix `SOD_DRIFT:`).
-- **Self-heal:** on own drift / false-green / forcing operator to PM — STOP feature writes, restore SoD, open RC, tighten lock if gap (no prompt required). See `.cursor/rules/08-no-writer-drift.mdc`.
+- Ordinary product work is not vendor-gated. Stale assignment metadata must not veto the AI the operator is running.
+- Control-authority surfaces stay denied to every assigned principal. Selecting a writer does not grant rails privilege.
+- Commit backstop: staged rails by an assigned principal → `check_writer_no_drift` / `writer_drift_lock.py` BLOCK.
+- PreToolUse: `control_authority_violation` via `process_lock_guard.py` (deny prefix `SOD_DRIFT:`). Idle-mission gated-product still needs an open mission (RC-219).
+- **Self-heal:** on vendor privilege or stale-metadata veto — STOP restoring a standing writer name, open RC, tighten the lock. See `.cursor/rules/08-no-writer-drift.mdc`.
 - Architecture A (RC-450): `ED_WRITER_DRIFT_GUARD` / `ED_PM_MISSION_GUARD` cannot disable these controls.
 
 ## Daily rehab automation

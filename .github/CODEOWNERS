@@ -33,3 +33,4 @@
 /tests/test_architecture_a_bypass_class_v1.py @evargas963
 /tests/test_writer_drift_lock_v1.py @evargas963
 /tests/test_control_authority_surfaces_v1.py @evargas963
+/tests/test_architecture_a_operator_writer_authority_v1.py @evargas963
