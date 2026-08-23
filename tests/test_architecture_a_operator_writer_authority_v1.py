@@ -20,6 +20,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 import tools.operating_process_lock as OPL  # noqa: E402
+import tools.pm_authority as PA  # noqa: E402
 import tools.process_lock_guard as PLG  # noqa: E402
 import tools.writer_drift_lock as WDL  # noqa: E402
 
@@ -29,6 +30,8 @@ _RAILS = (
     ".github/CODEOWNERS",
     ".github/workflows/hardening.yml",
     "tests/test_architecture_a_operator_writer_authority_v1.py",
+    "tools/pm_authority.py",
+    "tests/test_pm_authority_external_v1.py",
 )
 _AGENTS = ("claude", "cursor", "codex", "gpt")
 
@@ -50,6 +53,7 @@ def _pin_mission(monkeypatch, tmp_path, mission: dict | None = None) -> None:
     path.write_text(json.dumps(mission or _stale_writer_fixture()), encoding="utf-8")
     monkeypatch.setattr(OPL, "PM_MISSION_PATH", path)
     monkeypatch.setattr(WDL, "PM_MISSION_PATH", path)
+    monkeypatch.setattr(PA, "CANONICAL_AUTHORITY_PATH", path)
 
 
 def _writer_veto(messages: list[str]) -> list[str]:
@@ -97,31 +101,33 @@ def test_assigned_ai_cannot_change_pm_away_from_operator(agent, monkeypatch, tmp
         new = json.dumps({"pm": new_pm, "status": "active", "scope_paths": ["server.py"]}) if new_pm else (
             json.dumps({"status": "active", "scope_paths": ["server.py"]})
         )
-        v = WDL.pm_status_field_violations(
+        from tools.pm_authority import validate_pm_authority_document
+        v = validate_pm_authority_document(new, current_text=cur)
+        assert v, (agent, new_pm, v)
+        assert WDL.pm_status_field_violations(
             "governance/pm_mission.json", new, agent=agent, current_text=cur
-        )
-        assert v and any("pm=operator is operator authority" in m for m in v), (agent, new_pm, v)
-    live = (ROOT / "governance" / "pm_mission.json").read_text(encoding="utf-8")
-    stolen = live.replace('"pm": "operator"', '"pm": "cursor"')
+        ) == []
+    stolen = json.dumps({"pm": "cursor", "status": "active", "scope_paths": ["server.py"]})
     bad = PLG.pretooluse_block(
         "Write",
-        {"file_path": str(ROOT / "governance" / "pm_mission.json"), "content": stolen},
+        {"file_path": str(tmp_path / "pm_mission.json"), "content": stolen},
     )
-    assert any("pm=operator is operator authority" in b for b in bad), (agent, bad)
+    assert any("PM_AUTHORITY" in b or "required exactly" in b for b in bad), (agent, bad)
 
 
 @pytest.mark.parametrize("agent", list(_AGENTS))
-def test_delete_pm_mission_is_blocked(agent, monkeypatch, tmp_path):
+def test_delete_executable_authority_is_blocked(agent, monkeypatch, tmp_path):
+    path = tmp_path / "pm_mission.json"
     _pin_mission(monkeypatch, tmp_path)
     monkeypatch.setenv("ED_AGENT_ROLE", agent)
-    rel = "governance/pm_mission.json"
-    assert WDL.pm_authority_delete_violation(rel, agent=agent)
-    bad = PLG.pretooluse_block("Delete", {"path": str(ROOT / rel)})
-    assert any("delete" in b.lower() and "pm=operator" in b for b in bad), (agent, bad)
+    assert WDL.pm_authority_delete_violation(str(path), agent=agent)
+    bad = PLG.pretooluse_block("Delete", {"path": str(path)})
+    assert any("executable PM authority delete" in b for b in bad), (agent, bad)
     empty = PLG.pretooluse_block(
-        "Write", {"file_path": str(ROOT / rel), "content": ""}
+        "Write", {"file_path": str(path), "content": ""}
     )
-    assert any("delete" in b.lower() and "pm=operator" in b for b in empty), (agent, empty)
+    assert any("executable PM authority delete" in b for b in empty), (agent, empty)
+    assert WDL.pm_authority_delete_violation("governance/pm_mission.json", agent=agent) is None
 
 
 @pytest.mark.parametrize("agent", list(_AGENTS))
@@ -130,111 +136,46 @@ def test_recreate_without_pm_is_blocked(agent, current, monkeypatch, tmp_path):
     _pin_mission(monkeypatch, tmp_path)
     monkeypatch.setenv("ED_AGENT_ROLE", agent)
     new = json.dumps({"status": "active", "scope_paths": ["server.py"]})
-    v = WDL.pm_status_field_violations(
-        "governance/pm_mission.json", new, agent=agent, current_text=current
-    )
-    assert v and any("pm=operator is operator authority" in m for m in v), (agent, current, v)
+    from tools.pm_authority import validate_pm_authority_document
+    v = validate_pm_authority_document(new, current_text=current, current_exists=False)
+    assert v and any("pm is missing" in m for m in v), (agent, current, v)
 
 
 @pytest.mark.parametrize("agent", list(_AGENTS))
 @pytest.mark.parametrize("pm", ["cursor", "claude", "codex", "gpt"])
 def test_recreate_with_vendor_pm_is_blocked(agent, pm, monkeypatch, tmp_path):
+    path = tmp_path / "pm_mission.json"
     _pin_mission(monkeypatch, tmp_path)
     monkeypatch.setenv("ED_AGENT_ROLE", agent)
     new = json.dumps({"pm": pm, "status": "active", "scope_paths": ["server.py"]})
-    v = WDL.pm_status_field_violations(
-        "governance/pm_mission.json", new, agent=agent, current_text=""
-    )
-    assert v and any("pm=operator is operator authority" in m for m in v), (agent, pm, v)
+    from tools.pm_authority import validate_pm_authority_document
+    v = validate_pm_authority_document(new, current_text="", current_exists=False)
+    assert v, (agent, pm, v)
     bad = PLG.pretooluse_block(
         "Write",
-        {"file_path": str(ROOT / "governance" / "pm_mission.json"), "content": new},
+        {"file_path": str(path), "content": new},
     )
-    assert any("pm=operator is operator authority" in b for b in bad), (agent, pm, bad)
+    assert any("PM_AUTHORITY" in b or "required exactly" in b for b in bad), (agent, pm, bad)
 
 
 def test_ordinary_status_update_preserving_pm_operator_passes(monkeypatch, tmp_path):
+    path = tmp_path / "pm_mission.json"
     _pin_mission(monkeypatch, tmp_path)
     monkeypatch.setenv("ED_AGENT_ROLE", "cursor")
     cur = {"pm": "operator", "status": "active", "scope_paths": ["server.py"]}
     new_doc = {"pm": "operator", "status": "idle", "scope_paths": ["server.py"]}
     new = json.dumps(new_doc)
-    assert WDL.pm_status_field_violations(
-        "governance/pm_mission.json", new, agent="cursor",
-        current_text=json.dumps(cur),
-    ) == []
+    from tools.pm_authority import validate_pm_authority_document
+    assert validate_pm_authority_document(new, current_text=json.dumps(cur)) == []
     bad = PLG.pretooluse_block(
         "Write",
-        {"file_path": str(ROOT / "governance" / "pm_mission.json"), "content": new},
+        {"file_path": str(path), "content": new},
     )
-    assert not any("pm=operator" in b and "cannot" in b for b in bad), bad
-    assert not any("delete" in b.lower() and "pm=operator" in b for b in bad), bad
-
-
-# Literal-path leftovers the text filter still matches. Not a closed class.
-_SHELL_TEXT_FILTER_HITS = (
-    "rm -f governance/pm_mission.json",
-    "rm governance/sole_writer.json",
-    "git rm governance/pm_mission.json",
-    "mv governance/pm_mission.json /tmp/pm_mission.json",
-    "python -c \"open('governance/pm_mission.json','w').write('{}')\"",
-    "echo '{}' > governance/pm_mission.json",
-)
-
-# Falsification examples. Empty PreToolUse result proves text classification
-# cannot protect the resource. Several omit the contiguous pathname.
-_SHELL_TEXT_FILTER_MISSES = (
-    "cd governance && rm pm_mission.json",
-    "cd governance && echo '{}' > pm_mission.json",
-    "cp bad.json governance/pm_mission.json",
-    "sed -i 's/operator/cursor/' governance/pm_mission.json",
-    "Clear-Content governance/pm_mission.json",
-    "python -c \"from pathlib import Path; p=Path('governance')/'pm'+'_mission.json'; p.write_text('{}')\"",
-    "python -c \"import os; os.remove('governance/'+'pm_mission'+'.json')\"",
-    "D=governance; F=pm_mission.json; rm -f $D/$F",
-    "python -c \"import shutil; shutil.copy('bad.json','governance/pm_mission.json')\"",
-)
-
-
-@pytest.mark.parametrize("agent", list(_AGENTS))
-@pytest.mark.parametrize("cmd", list(_SHELL_TEXT_FILTER_HITS))
-def test_leftover_shell_text_filter_still_matches_some_literal_spellings(
-    agent, cmd, monkeypatch, tmp_path
-):
-    """Leftover filter matches a few literal forms. This is not the invariant."""
-    _pin_mission(monkeypatch, tmp_path)
-    monkeypatch.setenv("ED_AGENT_ROLE", agent)
-    assert WDL.pm_authority_shell_violations(cmd, agent=agent)
-    bad = PLG.pretooluse_block("Bash", {"command": cmd})
-    assert any("pm=operator" in b or "pm-authority" in b for b in bad), (agent, cmd, bad)
-
-
-@pytest.mark.parametrize("agent", list(_AGENTS))
-@pytest.mark.parametrize("cmd", list(_SHELL_TEXT_FILTER_MISSES))
-def test_leftover_shell_text_filter_misses_nonliteral_and_unlisted_mutations(
-    agent, cmd, monkeypatch, tmp_path
-):
-    """PreToolUse classifies command text. These resource mutations are not seen."""
-    _pin_mission(monkeypatch, tmp_path)
-    monkeypatch.setenv("ED_AGENT_ROLE", agent)
-    assert WDL.pm_authority_shell_violations(cmd, agent=agent) == []
-    bad = PLG.pretooluse_block("Bash", {"command": cmd})
-    assert not any("pm=operator" in b or "pm-authority" in b for b in bad), (agent, cmd, bad)
-
-
-def test_at_least_one_noncontiguous_path_attack_is_unseen_by_pretooluse(monkeypatch, tmp_path):
-    _pin_mission(monkeypatch, tmp_path)
-    monkeypatch.setenv("ED_AGENT_ROLE", "cursor")
-    noncontig = [c for c in _SHELL_TEXT_FILTER_MISSES if "governance/pm_mission.json" not in c]
-    assert noncontig, "suite must include a nonliteral-path attack"
-    for cmd in noncontig:
-        assert WDL.pm_authority_shell_violations(cmd, agent="cursor") == []
-        bad = PLG.pretooluse_block("Bash", {"command": cmd})
-        assert not any("pm=operator" in b or "pm-authority" in b for b in bad), cmd
+    assert not any("PM_AUTHORITY" in b and "required exactly" in b for b in bad), bad
 
 
 def test_same_uid_sandbox_completes_prohibited_pm_authority_transitions(tmp_path):
-    """No capability split: the test principal can finish the banned post-states."""
+    """Host privilege is absent in this checkout: the test principal can mutate a tmp copy."""
     p = tmp_path / "pm_mission.json"
     p.write_bytes(b'{"pm": "operator", "status": "active"}')
     p.write_bytes(b"")
@@ -328,9 +269,8 @@ def test_negative_mutations_against_protected_control_surfaces_fail(monkeypatch,
         "scope_paths": ["server.py"],
         "remaining": [{"id": "X"}],
     })
-    assert WDL.pm_status_field_violations(
-        "governance/pm_mission.json", grow, agent="cursor", current_text=cur
-    )
+    from tools.pm_authority import validate_pm_authority_document
+    assert validate_pm_authority_document(grow, current_text=cur)
     for rel in _RAILS:
         assert WDL.writer_drift_violations([rel], agent="cursor")
     no_verify = __import__(
@@ -342,6 +282,7 @@ def test_negative_mutations_against_protected_control_surfaces_fail(monkeypatch,
 def test_idle_mission_still_blocks_gated_product(monkeypatch, tmp_path):
     _pin_mission(monkeypatch, tmp_path, {
         "status": "idle",
+        "pm": "operator",
         "writer": "claude",
         "scope_paths": ["*"],
     })

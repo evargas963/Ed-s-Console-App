@@ -26,8 +26,9 @@ REPO = Path(__file__).resolve().parent.parent
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
-SOLE_WRITER_PATH = REPO / "governance" / "sole_writer.json"
+SOLE_WRITER_PATH = REPO / "governance" / "sole_writer.json"  # NON-AUTHORITATIVE tombstone (RC-456)
 OPERATOR_GO_PATH = REPO / "governance" / "operator_go.json"
+# NON-AUTHORITATIVE Git template. Executable mission is tools.pm_authority.
 PM_MISSION_PATH = REPO / "governance" / "pm_mission.json"
 CHECKER_REL = "tools/check_institutional_correctness.py"
 DB_REL = "db.py"
@@ -127,7 +128,8 @@ def reset_guard_violations(command: str) -> list[str]:
     if not _RESET_GUARD_RE.search(cmd) or _RESET_GUARD_SAFE_RE.search(cmd):
         return []
     touched = [p for p in PROTECTED_PATHS + PRODUCT_WIPE_PROTECTED if p in cmd]
-    mission = _load_json(PM_MISSION_PATH) or {}
+    from tools.pm_authority import executable_mission
+    mission = executable_mission()
     for sp in (mission.get("scope_paths") or []):
         if isinstance(sp, str) and sp.strip("*/") and sp in cmd:
             touched.append(sp)
@@ -238,8 +240,8 @@ def _load_json(path: Path) -> dict | None:
 
 
 def sole_writer_record() -> dict:
-    doc = _load_json(SOLE_WRITER_PATH)
-    return doc if isinstance(doc, dict) else {}
+    """Tombstone only (RC-454/RC-456). Not executable authorization."""
+    return {"_authority": "NON-AUTHORITATIVE", "pm": "operator", "retired": True}
 
 
 def operator_go_record() -> dict:
@@ -640,8 +642,9 @@ def live_collect_disk_only(repo: Path | None = None, port: int = 8000) -> str | 
 
 
 def pm_mission_record() -> dict:
-    doc = _load_json(PM_MISSION_PATH)
-    return doc if isinstance(doc, dict) else {}
+    """Executable PM mission. Git-tracked template is never the fallback."""
+    from tools.pm_authority import executable_mission
+    return executable_mission()
 
 
 def _mission_gates_path(rel: str) -> bool:
@@ -682,14 +685,16 @@ def pm_mission_edit_violation(rel: str, agent: str | None = None) -> str | None:
     rel = rel.replace("\\", "/")
     if rel in PROCESS_ALLOWED_PREFIXES or WDL.is_pm_allowlisted(rel):
         return None
+    from tools.pm_authority import authority_unavailable_reasons
+    unavailable = authority_unavailable_reasons()
     mission = pm_mission_record()
     status = str(mission.get("status") or "idle").strip().lower()
     scopes = mission.get("scope_paths") or ["*"]
     if not isinstance(scopes, list):
         scopes = ["*"]
-    in_prog = WDL.mission_in_progress(mission)
+    in_prog = (not unavailable) and WDL.mission_in_progress(mission)
 
-    # Idle / not in-progress: block mission-gated product for everyone (RC-219).
+    # Idle / not in-progress / missing external authority: block gated product.
     if not in_prog:
         if rel.startswith("tests/") or rel.startswith("reports/"):
             return None
@@ -697,8 +702,13 @@ def pm_mission_edit_violation(rel: str, agent: str | None = None) -> str | None:
             return None
         if not _mission_gates_path(rel):
             return None
+        if unavailable:
+            return (
+                f"PM-FIRST BLOCK: executable PM authority unavailable ({unavailable[0]}) — "
+                f"do not edit {rel}; do not use governance/pm_mission.json as fallback"
+            )
         return (
-            f"PM-FIRST BLOCK: no in-progress mission (governance/pm_mission.json status={status!r}) — "
+            f"PM-FIRST BLOCK: no in-progress mission (external authority status={status!r}) — "
             f"run change requests through Cursor PM; do not edit {rel} until a mission is opened"
         )
 

@@ -12,12 +12,14 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 import tools.operating_process_lock as OPL  # noqa: E402
+import tools.pm_authority as PA  # noqa: E402
 import tools.writer_drift_lock as WDL  # noqa: E402
 
 
 def _mission_claude_scope() -> dict:
     return {
         "status": "ready_for_claude",
+        "pm": "operator",
         "writer": "claude",
         "mission_id": "drift-neg-v1",
         "scope_paths": ["static/chart.html", "server.py", "tools/", "tests/"],
@@ -75,6 +77,7 @@ def test_pretooluse_ready_for_claude_allows_cursor_product(monkeypatch, tmp_path
     mission.write_text(json.dumps(_mission_claude_scope()), encoding="utf-8")
     monkeypatch.setattr(OPL, "PM_MISSION_PATH", mission)
     monkeypatch.setattr(WDL, "PM_MISSION_PATH", mission)
+    monkeypatch.setattr(PA, "CANONICAL_AUTHORITY_PATH", mission)
     assert OPL.pm_mission_edit_violation("static/chart.html", agent="cursor") is None
 
 
@@ -83,6 +86,7 @@ def test_pretooluse_ready_for_claude_allows_claude_writer(monkeypatch, tmp_path)
     mission = tmp_path / "pm_mission.json"
     mission.write_text(json.dumps(_mission_claude_scope()), encoding="utf-8")
     monkeypatch.setattr(OPL, "PM_MISSION_PATH", mission)
+    monkeypatch.setattr(PA, "CANONICAL_AUTHORITY_PATH", mission)
     assert OPL.pm_mission_edit_violation("static/chart.html", agent="claude") is None
 
 
@@ -126,16 +130,14 @@ def test_lock1_pm_status_scope_and_remaining_still_blocked():
     assert not WDL.pm_status_field_violations("governance/pm_mission.json", flip,
                                               agent="cursor", current_text=cur)
     steal_pm = cur.replace('"pm": "operator"', '"pm": "cursor"')
-    v_pm = WDL.pm_status_field_violations("governance/pm_mission.json", steal_pm,
-                                         agent="cursor", current_text=cur)
-    assert v_pm and any("pm=operator is operator authority" in m for m in v_pm)
+    from tools.pm_authority import validate_pm_authority_document
+    v_pm = validate_pm_authority_document(steal_pm, current_text=cur)
+    assert v_pm and any("required exactly 'operator'" in m for m in v_pm)
     grow = cur.replace('["tools/"]', '["tools/", "server.py"]')
-    v2 = WDL.pm_status_field_violations("governance/pm_mission.json", grow,
-                                        agent="cursor", current_text=cur)
+    v2 = validate_pm_authority_document(grow, current_text=cur)
     assert v2 and any("expands scope_paths" in m for m in v2)
     drop = cur.replace('"remaining": [{"id": "X"}], ', '"remaining": [], ')
-    v3 = WDL.pm_status_field_violations("governance/pm_mission.json", drop,
-                                        agent="cursor", current_text=cur)
+    v3 = validate_pm_authority_document(drop, current_text=cur)
     assert v3 and any("remaining" in m for m in v3)
     status_only = cur.replace('"status": "active"', '"status": "idle"')
     assert not WDL.pm_status_field_violations("governance/pm_mission.json", status_only,
@@ -194,6 +196,7 @@ def test_cursor_strreplace_product_path_allowed(monkeypatch, tmp_path):
     mission.write_text(json.dumps(_mission_claude_scope()), encoding="utf-8")
     monkeypatch.setattr(OPL, "PM_MISSION_PATH", mission)
     monkeypatch.setattr(WDL, "PM_MISSION_PATH", mission)
+    monkeypatch.setattr(PA, "CANONICAL_AUTHORITY_PATH", mission)
     bad = PLG.pretooluse_block(
         "StrReplace",
         {"path": str(ROOT / "static" / "chart.html"), "old_string": "a", "new_string": "b"},
@@ -210,6 +213,7 @@ def test_cursor_strreplace_pm_path_allowed(monkeypatch, tmp_path):
     mission = tmp_path / "pm_mission.json"
     mission.write_text(json.dumps(_mission_claude_scope()), encoding="utf-8")
     monkeypatch.setattr(OPL, "PM_MISSION_PATH", mission)
+    monkeypatch.setattr(PA, "CANONICAL_AUTHORITY_PATH", mission)
     bad = PLG.pretooluse_block(
         "StrReplace",
         {"path": str(ROOT / "governance" / "pm_mission.json")},

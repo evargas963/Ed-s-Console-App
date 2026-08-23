@@ -17,12 +17,12 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import subprocess
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 
+# NON-AUTHORITATIVE Git template. Executable mission: tools.pm_authority.
 PM_MISSION_PATH = REPO / "governance" / "pm_mission.json"
 
 #: Statuses that bind SoD — not only literal "active".
@@ -67,26 +67,9 @@ PM_STATUS_FIELDS = frozenset({
     "approved_by", "approved_via", "approved_at",
 })
 
-#: Files that carry pm=operator. Assigned AIs may not delete them or write them
-#: without pm=operator, including when the current file is missing or corrupt.
-PM_AUTHORITY_FILES = frozenset({
-    "governance/pm_mission.json",
-    "governance/sole_writer.json",
-})
-_PM_AUTHORITY_PATH_RE = re.compile(
-    r"governance[/\\]+(?:pm_mission|sole_writer)\.json",
-    re.I,
-)
-_PM_AUTHORITY_SHELL_DELETE_RE = re.compile(
-    r"\b(?:rm|unlink|del|erase|rmdir|Remove-Item|git\s+rm|os\.remove|os\.unlink)\b"
-    r"|\.unlink\(|\bshutil\.rmtree\b|\bmv\b|\bMove-Item\b|\btruncate\b",
-    re.I,
-)
-_PM_AUTHORITY_SHELL_WRITE_RE = re.compile(
-    r"(?:>>?|\btee\b|\bSet-Content\b|\bOut-File\b|\bAdd-Content\b|\bNew-Item\b"
-    r"|write_text|write_bytes|\.write\(|open\([^)]*['\"]w)",
-    re.I,
-)
+# Git-tracked copies are NON-AUTHORITATIVE (RC-456). File-tool delete/write
+# of those paths is not an executable-authority mutation.
+PM_AUTHORITY_FILES = frozenset()
 
 #: Files that define CI/merge/hook/assignment rails. Derived from actual call
 #: paths (hooks.json, settings.json, required workflows, assignment JSON).
@@ -107,6 +90,9 @@ CONTROL_AUTHORITY_EXACT = frozenset({
     "tests/test_writer_drift_lock_v1.py",
     "tests/test_control_authority_surfaces_v1.py",
     "tests/test_architecture_a_operator_writer_authority_v1.py",
+    "tests/test_pm_authority_external_v1.py",
+    "tools/pm_authority.py",
+    "tools/pm_authority_helper.py",
 })
 CONTROL_AUTHORITY_PREFIXES = (
     ".github/workflows/",
@@ -125,94 +111,40 @@ def hard_denylist_violation(rel: str, *, agent: str | None = None,
 
 
 def pm_authority_delete_violation(rel: str, *, agent: str | None = None) -> str | None:
-    """BLOCK assigned-AI deletion of the files that carry pm=operator."""
+    """BLOCK assigned-AI file-tool deletion of the executable (external) authority file."""
+    from tools.pm_authority import is_canonical_authority_path
     agent = (agent or current_agent_role()).strip().lower()
     if not agent:
         return None
-    rel = _norm(rel)
-    if rel not in PM_AUTHORITY_FILES:
+    if not is_canonical_authority_path(rel) and not is_canonical_authority_path(
+        str(REPO / _norm(rel))
+    ):
         return None
     return (
-        f"SOD_DRIFT: {rel} delete — pm=operator is operator authority and cannot "
-        f"be removed by agent={agent!r}."
+        f"SOD_DRIFT: executable PM authority delete — pm=operator cannot "
+        f"be removed by agent={agent!r}; use the privileged helper."
     )
-
-
-def pm_authority_shell_violations(cmd: str, *, agent: str | None = None) -> list[str]:
-    """Leftover command-text filter. Not a closed shell class and not the invariant.
-
-    PreToolUse Bash receives only ``tool_input.command`` text. A finite spelling
-    match cannot prove that ``governance/pm_mission.json`` /
-    ``governance/sole_writer.json`` cannot become deleted, empty, malformed, or
-    ``pm != operator`` under arbitrary same-uid (or sudo) execution. Do not grow
-    this regex. See RC-455 / reports/architecture_a_pm_authority_not_sufficient.md.
-    """
-    agent = (agent or current_agent_role()).strip().lower()
-    if not agent or not cmd:
-        return []
-    if not _PM_AUTHORITY_PATH_RE.search(cmd):
-        return []
-    out: list[str] = []
-    if _PM_AUTHORITY_SHELL_DELETE_RE.search(cmd):
-        out.append(
-            f"SOD_DRIFT: shell deletes/moves a pm-authority file — pm=operator is "
-            f"operator authority and cannot be removed by agent={agent!r}."
-        )
-    if _PM_AUTHORITY_SHELL_WRITE_RE.search(cmd):
-        out.append(
-            f"SOD_DRIFT: shell recreates/writes a pm-authority file — use Edit/Write; "
-            f"pm=operator is required and cannot be omitted by agent={agent!r}."
-        )
-    return out
 
 
 def pm_status_field_violations(rel: str, new_text: str, *, agent: str | None = None,
                                current_text: str | None = None) -> list[str]:
-    """Leftover mission JSON: assigned agents may not steal pm or expand scope.
+    """Validate a file-tool write only when the target is the executable authority path.
 
-    writer/auditor flips are not authorization and are not blocked here — setting
-    writer to self must not grant control-authority privilege (proven at the rail seam).
-    pm=operator is operator authority: an assigned AI cannot omit or replace it,
-    even when the current file is missing, empty, or malformed.
+    Git-tracked governance/pm_mission.json and sole_writer.json are NON-AUTHORITATIVE
+    (RC-456) and are not validated here. writer/auditor remain non-authorization.
     """
-    rel = _norm(rel)
-    if rel not in PM_AUTHORITY_FILES:
-        return []
+    from tools.pm_authority import (
+        is_canonical_authority_path,
+        validate_pm_authority_document,
+    )
     agent = (agent or current_agent_role()).strip().lower()
-    try:
-        new_doc = json.loads(new_text)
-    except (ValueError, json.JSONDecodeError):
-        return [f"SOD_DRIFT: {rel} proposed content is not valid JSON — a corrupt role file "
-                f"is how three mid-write deaths poisoned SoD on 2026-08-03."]
+    if not is_canonical_authority_path(rel) and not is_canonical_authority_path(
+        str(REPO / _norm(rel))
+    ):
+        return []
     if not agent:
         return []
-    cur_text = current_text
-    if cur_text is None:
-        try:
-            cur_text = (REPO / rel).read_text(encoding="utf-8")
-        except OSError:
-            cur_text = "{}"
-    try:
-        cur_doc = json.loads(cur_text)
-    except (ValueError, json.JSONDecodeError):
-        cur_doc = {}
-    out: list[str] = []
-    new_pm = str(new_doc.get("pm") or "").strip().lower()
-    if new_pm != "operator":
-        out.append(
-            f"SOD_DRIFT: {rel} writes pm={new_pm!r} — "
-            f"pm=operator is operator authority and cannot be omitted or reassigned "
-            f"by agent={agent!r}."
-        )
-    old_scope = set(map(str, cur_doc.get("scope_paths") or []))
-    new_scope = set(map(str, new_doc.get("scope_paths") or []))
-    if new_scope - old_scope:
-        out.append(f"SOD_DRIFT: {rel} expands scope_paths by {sorted(new_scope - old_scope)!r} "
-                   f"— scope expansion is operator-only and cannot be self-granted.")
-    if cur_doc.get("remaining") and not new_doc.get("remaining"):
-        out.append(f"SOD_DRIFT: {rel} deletes remaining[] — dropping the work queue is "
-                   f"operator-only and cannot be self-granted.")
-    return out
+    return validate_pm_authority_document(new_text, current_text=current_text)
 
 
 def record_sod_drift(messages: list[str], *, agent: str | None = None,
@@ -222,7 +154,9 @@ def record_sod_drift(messages: list[str], *, agent: str | None = None,
         return
     if os.environ.get("PYTEST_CURRENT_TEST"):
         return  # synthetic test denials must never pollute the real self-heal ledger
-    mission = mission if mission is not None else _load_json(PM_MISSION_PATH)
+    if mission is None:
+        from tools.pm_authority import executable_mission
+        mission = executable_mission()
     try:
         import time as _t
         with SOD_DRIFT_EVENTS_PATH.open("a", encoding="utf-8") as fh:
@@ -323,6 +257,8 @@ def is_control_authority_surface(rel: str) -> bool:
             "check_market_correctness.py",
             "check_institutional_closure_gate.py",
             "check_no_grep_subprocess.py",
+            "pm_authority.py",
+            "pm_authority_helper.py",
         }
     ):
         return True

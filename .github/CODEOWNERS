@@ -23,6 +23,8 @@
 /tools/check_market_correctness.py @evargas963
 /tools/check_institutional_closure_gate.py @evargas963
 /tools/check_no_grep_subprocess.py @evargas963
+/tools/pm_authority.py @evargas963
+/tools/pm_authority_helper.py @evargas963
 
 # Grant / GO rails (assignment JSON is field-locked in process; not listed here
 # so routine mission status updates do not require operator review)
@@ -34,3 +36,4 @@
 /tests/test_writer_drift_lock_v1.py @evargas963
 /tests/test_control_authority_surfaces_v1.py @evargas963
 /tests/test_architecture_a_operator_writer_authority_v1.py @evargas963
+/tests/test_pm_authority_external_v1.py @evargas963

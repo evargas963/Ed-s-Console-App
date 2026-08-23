@@ -1,4 +1,6 @@
 {
+  "_authority": "NON-AUTHORITATIVE",
+  "_authority_note": "Executable PM state is /var/lib/ed-console-authority/pm_mission.json (RC-456). This Git-tracked file is a template/report only. Production enforcement must not read it.",
   "status": "active",
   "mission_id": "repo-rehab-institutional-v1",
   "title": "Repo rehab: measure the product against external standards, remove what does not serve the repo, and protect what cannot be recovered",

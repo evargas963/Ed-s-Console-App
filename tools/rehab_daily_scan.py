@@ -526,23 +526,30 @@ def _collect_findings(measure: dict, status: dict) -> list[dict]:
             }
         )
 
-    sole = REPO / "governance" / "sole_writer.json"
-    if sole.is_file():
-        try:
-            sw = json.loads(sole.read_text(encoding="utf-8"))
-        except json.JSONDecodeError:
-            sw = {}
-        if str(sw.get("pm", "")).lower() != "operator":
-            findings.append(
-                {
-                    "id": "rehab.pm_not_operator",
-                    "severity": "P1",
-                    "facet": "process",
-                    "summary": "sole_writer.pm is not 'operator'",
-                    "recommendation": "Set governance/sole_writer.json pm=operator (operator 2026-08-18: operator is the governing authority/PM; Cursor is an adversarial auditor only; supersedes the RC-218 PM assignment).",
-                    "evidence": {"pm": sw.get("pm")},
-                }
-            )
+    from tools.pm_authority import load_pm_authority
+    loaded = load_pm_authority()
+    if not loaded.ok:
+        findings.append(
+            {
+                "id": "rehab.pm_authority_unavailable",
+                "severity": "P1",
+                "facet": "process",
+                "summary": "executable PM authority missing or invalid (external path; no repo fallback)",
+                "recommendation": "Operator/host: install /var/lib/ed-console-authority via tools/install_pm_authority_host.sh. Do not treat governance/sole_writer.json or governance/pm_mission.json as executable authority.",
+                "evidence": {"violations": loaded.violations[:3]},
+            }
+        )
+    elif loaded.doc.get("pm") != "operator":
+        findings.append(
+            {
+                "id": "rehab.pm_not_operator",
+                "severity": "P1",
+                "facet": "process",
+                "summary": "external PM authority pm is not 'operator'",
+                "recommendation": "Replace executable authority via the privileged helper only.",
+                "evidence": {"pm": loaded.doc.get("pm")},
+            }
+        )
 
     # Code-health BLOCKING (best-effort; may be slow)
     py = REPO / ".venv" / "Scripts" / "python.exe"

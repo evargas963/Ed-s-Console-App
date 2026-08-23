@@ -74,10 +74,12 @@ def test_assigned_agent_cannot_reassign_pm():
     cur = json.dumps({"writer": "claude", "pm": "operator", "auditor": "cursor", "note": "n"})
     steal = json.dumps({"writer": "claude", "pm": "cursor", "auditor": "cursor", "note": "n"})
     for agent in ("claude", "cursor", "codex", "gpt"):
-        v = WDL.pm_status_field_violations(
+        from tools.pm_authority import validate_pm_authority_document
+        v = validate_pm_authority_document(steal, current_text=cur)
+        assert v and any("pm=" in m and "operator" in m for m in v), agent
+        assert WDL.pm_status_field_violations(
             "governance/pm_mission.json", steal, agent=agent, current_text=cur
-        )
-        assert v and any("pm=operator is operator authority" in m for m in v), agent
+        ) == []
 
 
 def test_writer_cannot_redefine_lock_or_hooks():
@@ -88,6 +90,8 @@ def test_writer_cannot_redefine_lock_or_hooks():
         ".github/workflows/hardening.yml",
         "tests/test_architecture_a_bypass_class_v1.py",
         "tests/test_architecture_a_operator_writer_authority_v1.py",
+        "tools/pm_authority.py",
+        "tests/test_pm_authority_external_v1.py",
     ):
         msgs = WDL.writer_drift_violations(
             [rel], agent="claude", mission=_MISSION, sole_writer=_SOLE
@@ -115,6 +119,9 @@ def test_codeowners_covers_control_authority_set():
         "/tests/test_architecture_a_bypass_class_v1.py",
         "/tests/test_control_authority_surfaces_v1.py",
         "/tests/test_architecture_a_operator_writer_authority_v1.py",
+        "/tests/test_pm_authority_external_v1.py",
+        "/tools/pm_authority.py",
+        "/tools/pm_authority_helper.py",
     )
     missing = [p for p in required if p not in owners]
     assert missing == [], missing

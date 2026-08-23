@@ -12,6 +12,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 import tools.operating_process_lock as OPL  # noqa: E402
+import tools.pm_authority as PA  # noqa: E402
 import tools.process_lock_guard as PLG  # noqa: E402
 
 
@@ -35,10 +36,11 @@ def _init_repo(tmp_path: Path) -> Path:
 def test_stale_writer_does_not_block_cursor_on_db(monkeypatch, tmp_path):
     mission = tmp_path / "pm_mission.json"
     mission.write_text(
-        '{"status": "active", "writer": "claude", "scope_paths": ["*"], "mission_id": "t"}',
+        '{"status": "active", "pm": "operator", "writer": "claude", "scope_paths": ["*"], "mission_id": "t"}',
         encoding="utf-8",
     )
     monkeypatch.setattr(OPL, "PM_MISSION_PATH", mission)
+    monkeypatch.setattr(PA, "CANONICAL_AUTHORITY_PATH", mission)
     assert OPL.sole_writer_edit_violation("db.py", agent="cursor") is None
 
 
@@ -48,10 +50,11 @@ def test_sole_writer_allows_writer_agent(monkeypatch, tmp_path):
     # inherit ambient state (same defect class as ambient ED_AGENT_ROLE).
     mission = tmp_path / "pm_mission.json"
     mission.write_text(
-        '{"status": "active", "writer": "claude", "scope_paths": ["*"], "mission_id": "t"}',
+        '{"status": "active", "pm": "operator", "writer": "claude", "scope_paths": ["*"], "mission_id": "t"}',
         encoding="utf-8",
     )
     monkeypatch.setattr(OPL, "PM_MISSION_PATH", mission)
+    monkeypatch.setattr(PA, "CANONICAL_AUTHORITY_PATH", mission)
     assert OPL.sole_writer_edit_violation("db.py", agent="claude") is None
 
 
@@ -171,10 +174,11 @@ def test_pretooluse_hook_permits_operator_selected_product_edit(monkeypatch, tmp
     monkeypatch.setenv("ED_AGENT_ROLE", "cursor")
     mission = tmp_path / "pm_mission.json"
     mission.write_text(
-        '{"status": "active", "writer": "claude", "scope_paths": ["*"], "mission_id": "t"}',
+        '{"status": "active", "pm": "operator", "writer": "claude", "scope_paths": ["*"], "mission_id": "t"}',
         encoding="utf-8",
     )
     monkeypatch.setattr(OPL, "PM_MISSION_PATH", mission)
+    monkeypatch.setattr(PA, "CANONICAL_AUTHORITY_PATH", mission)
     bad = PLG.pretooluse_block("Write", {"file_path": str(ROOT / "db.py")})
     assert not any(
         "sole writer" in b.lower() or "WRITER-DRIFT" in b or "PM-FIRST" in b
@@ -188,10 +192,11 @@ def test_pretooluse_hook_permits_sole_writer_edit(monkeypatch, tmp_path):
     monkeypatch.setenv("ED_AGENT_ROLE", "claude")
     mission = tmp_path / "pm_mission.json"
     mission.write_text(
-        '{"status": "active", "writer": "claude", "scope_paths": ["*"], "mission_id": "t"}',
+        '{"status": "active", "pm": "operator", "writer": "claude", "scope_paths": ["*"], "mission_id": "t"}',
         encoding="utf-8",
     )
     monkeypatch.setattr(OPL, "PM_MISSION_PATH", mission)
+    monkeypatch.setattr(PA, "CANONICAL_AUTHORITY_PATH", mission)
     bad = PLG.pretooluse_block("Write", {"file_path": str(ROOT / "db.py")})
     assert not [b for b in bad if "sole_writer" in b or "PM-FIRST" in b]
 
@@ -200,8 +205,9 @@ def test_pm_mission_idle_blocks_product_edit(monkeypatch, tmp_path):
     monkeypatch.setenv("ED_AGENT_ROLE", "claude")
     monkeypatch.delenv("ED_PM_MISSION_GUARD", raising=False)
     mission = tmp_path / "pm_mission.json"
-    mission.write_text('{"status": "idle", "writer": "claude", "scope_paths": ["*"]}', encoding="utf-8")
+    mission.write_text('{"status": "idle", "pm": "operator", "writer": "claude", "scope_paths": ["*"]}', encoding="utf-8")
     monkeypatch.setattr(OPL, "PM_MISSION_PATH", mission)
+    monkeypatch.setattr(PA, "CANONICAL_AUTHORITY_PATH", mission)
     msg = OPL.pm_mission_edit_violation("db.py", agent="claude")
     assert msg and "PM-FIRST" in msg and "idle" in msg
 
@@ -213,6 +219,7 @@ def test_pm_mission_active_allows_scoped_writer(monkeypatch, tmp_path):
         json.dumps(
             {
                 "status": "active",
+                "pm": "operator",
                 "writer": "claude",
                 "scope_paths": ["static/"],
                 "mission_id": "ui-test",
@@ -221,6 +228,7 @@ def test_pm_mission_active_allows_scoped_writer(monkeypatch, tmp_path):
         encoding="utf-8",
     )
     monkeypatch.setattr(OPL, "PM_MISSION_PATH", mission)
+    monkeypatch.setattr(PA, "CANONICAL_AUTHORITY_PATH", mission)
     assert OPL.pm_mission_edit_violation("static/index.html", agent="claude") is None
     assert OPL.pm_mission_edit_violation("db.py", agent="claude") is not None
 
@@ -240,6 +248,7 @@ def test_reset_guard_blocks_destructive_git_on_product(monkeypatch, tmp_path):
     mission = tmp_path / "mission.json"
     mission.write_text('{"mission_id": "empty", "scope_paths": []}', encoding="utf-8")
     monkeypatch.setattr(OPL, "PM_MISSION_PATH", mission)
+    monkeypatch.setattr(PA, "CANONICAL_AUTHORITY_PATH", mission)
     for cmd in ("git restore -- static/chart.html",
                 "git checkout -- server.py",
                 "git restore -- math_levels.py",
