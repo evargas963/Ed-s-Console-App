@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -101,6 +102,89 @@ def test_windows_installer_moves_ownership_away_from_the_ai():
     # The AI must not be handed a writing right anywhere in the granted set.
     assert "FullControl', $inherit" not in src.replace('"', "'") or "aiSid" not in src.split("ReadAndExecute")[0][-400:], \
         "the AI account must never be granted FullControl"
+
+
+def test_windows_installer_parses_under_windows_powershell():
+    """RC-460 - MECHANICAL parse proof: hand the ACTUAL committed .ps1 to the REAL
+    PowerShell parser and require zero errors. No string/regex inspection.
+
+    WHY THIS EXISTS (host acceptance FAILED on 24965187), root cause BISECTED:
+    the file shipped as UTF-8 with NO BOM and carried U+2014 em dashes inside
+    DOUBLE-QUOTED STRING LITERALS in code (lines 65/81/87/99/102/114/136/161). Windows
+    PowerShell 5.1 decodes a BOM-less .ps1 as ANSI/CP1252, so each `-` (U+2014, bytes
+    E2 80 94) became three CP1252 characters ending in U+201D - a character PowerShell
+    accepts as a DOUBLE-QUOTE STRING DELIMITER. That closed each string early and
+    desynchronized the tokenizer, surfacing as "missing string terminator" at line 182
+    and cascading "missing closing '}'" at 134 and 83.
+
+    MEASURED bisect on the committed bytes: removing ONLY the U+2500 box-rules (which
+    live in line comments) still FAILED; removing ONLY the U+2014 characters PARSED OK;
+    prepending a UTF-8 BOM also PARSED OK - confirming the decode path, and confirming
+    that non-ASCII inside a *comment* is harmless while non-ASCII inside a *string* is
+    fatal. The installer is nonetheless kept pure ASCII (the conservative invariant, see
+    test_windows_installer_bytes_are_encoding_agnostic) so no future edit has to reason
+    about which position is safe.
+
+    pwsh 7 defaults BOM-less files to UTF-8 and parsed the broken file clean, so
+    verifying with pwsh certified a file Windows PowerShell could not run. This test
+    therefore prefers powershell.exe.
+
+    This test therefore prefers `powershell.exe` (Windows PowerShell, the host the
+    operator actually runs) and additionally checks `pwsh` when present.
+    """
+    if not PS1.is_file():
+        pytest.fail("tools/install_pm_authority_host.ps1 is missing")
+
+    hosts = [h for h in ("powershell.exe", "pwsh") if shutil.which(h)]
+    if not hosts:
+        pytest.skip("no PowerShell host available to parse the installer")
+
+    # Parse via the PowerShell AST parser and print structured errors. Read the script
+    # path from an environment variable so no quoting/escaping of the path is involved.
+    prog = (
+        "$p = $env:ED_PS1_UNDER_TEST; "
+        "$errors = $null; $tokens = $null; "
+        "$null = [System.Management.Automation.Language.Parser]::ParseFile("
+        "$p, [ref]$tokens, [ref]$errors); "
+        "if ($errors -and $errors.Count -gt 0) { "
+        "  foreach ($e in $errors) { "
+        "    Write-Output (\"PARSE_ERROR line \" + $e.Extent.StartLineNumber + \": \" + $e.Message) } "
+        "  exit 1 } "
+        "else { Write-Output (\"PARSE_OK \" + $tokens.Count); exit 0 }"
+    )
+
+    env = dict(os.environ, ED_PS1_UNDER_TEST=str(PS1))
+    for host in hosts:
+        r = subprocess.run(
+            [host, "-NoProfile", "-NonInteractive", "-Command", prog],
+            capture_output=True, text=True, env=env, timeout=180,
+        )
+        combined = (r.stdout or "") + (r.stderr or "")
+        assert "PARSE_ERROR" not in combined, (
+            f"{host} FAILED to parse tools/install_pm_authority_host.ps1:\n{combined.strip()}"
+        )
+        assert r.returncode == 0 and "PARSE_OK" in combined, (
+            f"{host} did not report a clean parse (rc={r.returncode}):\n{combined.strip()}"
+        )
+
+
+def test_windows_installer_bytes_are_encoding_agnostic():
+    """RC-460 - the ROOT-CAUSE invariant, checkable on every OS (incl. Linux CI, which
+    has no `powershell.exe` and whose `pwsh` cannot reproduce the 5.1 decode).
+
+    A pure-ASCII .ps1 decodes IDENTICALLY as ASCII, UTF-8 and every ANSI codepage, so no
+    host can mis-decode it into stray string delimiters. Any non-ASCII byte reintroduces
+    the exact class that broke host acceptance on 24965187.
+    """
+    raw = PS1.read_bytes()
+    non_ascii = sorted({b for b in raw if b > 127})
+    assert not non_ascii, (
+        "tools/install_pm_authority_host.ps1 contains non-ASCII bytes "
+        f"{[hex(b) for b in non_ascii[:8]]}. Windows PowerShell 5.1 decodes a BOM-less "
+        ".ps1 as ANSI/CP1252, which turns multi-byte UTF-8 into characters including "
+        "U+201D that PowerShell treats as STRING DELIMITERS - the RC-460 parse failure. "
+        "Keep the installer pure ASCII."
+    )
 
 
 def test_installer_refuses_when_the_ai_is_the_installing_principal():
