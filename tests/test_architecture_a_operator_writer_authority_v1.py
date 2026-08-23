@@ -77,6 +77,7 @@ def test_stale_writer_fixture_cannot_veto_operator_selected_work(agent, monkeypa
         "live pm_mission.json still carries writer/auditor — that is stale production "
         "metadata, not a test fixture"
     )
+    assert live.get("pm") == "operator"
     fixture = _stale_writer_fixture()
     assert fixture["writer"] == "claude"
     _pin_mission(monkeypatch, tmp_path, fixture)
@@ -155,14 +156,12 @@ def test_recreate_with_vendor_pm_is_blocked(agent, pm, monkeypatch, tmp_path):
 def test_ordinary_status_update_preserving_pm_operator_passes(monkeypatch, tmp_path):
     _pin_mission(monkeypatch, tmp_path)
     monkeypatch.setenv("ED_AGENT_ROLE", "cursor")
-    live = json.loads((ROOT / "governance" / "pm_mission.json").read_text(encoding="utf-8"))
-    assert live.get("pm") == "operator"
-    updated = dict(live)
-    updated["status"] = "idle"
-    new = json.dumps(updated)
+    cur = {"pm": "operator", "status": "active", "scope_paths": ["server.py"]}
+    new_doc = {"pm": "operator", "status": "idle", "scope_paths": ["server.py"]}
+    new = json.dumps(new_doc)
     assert WDL.pm_status_field_violations(
         "governance/pm_mission.json", new, agent="cursor",
-        current_text=json.dumps(live),
+        current_text=json.dumps(cur),
     ) == []
     bad = PLG.pretooluse_block(
         "Write",
