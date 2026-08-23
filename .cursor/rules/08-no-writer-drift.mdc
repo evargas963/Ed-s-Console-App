@@ -5,11 +5,11 @@ alwaysApply: true
 
 # No writer drift (RC-226)
 
-Standing model: **Cursor = PM/auditor**, **Claude = sole writer** (unless `sole_writer.json` / `pm_mission.json` explicitly names `writer: cursor`).
+Standing model: privilege follows the **current assignment** in `sole_writer.json` / `pm_mission.json` (`writer`, `auditor`), not a vendor name. The operator may set `writer` to any principal without changing lock code.
 
 ## Law
 
-When `pm_mission.json` is in-progress (`active` / `ready_for_claude` / `ready_for_writer` / `in_progress`) and `writer` ≠ cursor, **do not Edit/Write/StrReplace mission `scope_paths`**. PM-only surfaces: `governance/pm_mission.json`, `sole_writer.json`, RC log, rehab, audit/handoff reports, Cursor PM rules, process-lock modules.
+When `pm_mission.json` is in-progress (`active` / `ready_for_claude` / `ready_for_writer` / `in_progress`) and `writer` ≠ the current `ED_AGENT_ROLE`, **do not Edit/Write/StrReplace mission `scope_paths`**. Operational metadata only: `governance/pm_mission.json` status fields, RC log, rehab, audit/handoff reports. Control-authority surfaces (guards, hooks, required workflows, CODEOWNERS) are denied to every assigned principal.
 
 ## Mechanical enforcers (not this `.mdc`)
 

@@ -1,55 +1,35 @@
-# Money-path / governance ownership (hardening 2026-06-03).
-# Mirrors AGENTS.md §Money-path module roster + authority modules. Changes to these require
-# operator review (combine with branch protection: required reviews on protected branch).
+# Control-authority surfaces only (Architecture A / RC-453).
+# Derived from hook entrypoints, required CI workflows, and grant/assignment rails.
+# Routine product paths are intentionally NOT listed so the assigned AI can land
+# ordinary work after required checks without the operator becoming a reviewer.
+# Require review from Code Owners on protected main for THESE paths only.
 
-# --- Money-path decision roster (AGENTS.md §Money-path module roster) ---
-/signals.py                         @evargas963
-/call_engine.py                     @evargas963
-/prediction_engine.py               @evargas963
-/realized_contract_eval.py          @evargas963
-/bayesian_fusion.py                 @evargas963
-/mc_fusion_adjustment.py            @evargas963
-/market_state.py                    @evargas963
-/live_decision_bundle.py            @evargas963
-/features/signal_layer_v1.py        @evargas963
-/features/inference_snapshot.py     @evargas963
-/features/fusion_policy_contract.py @evargas963
+# Required CI definitions
+/.github/workflows/ @evargas963
+/.github/CODEOWNERS @evargas963
+/.pre-commit-config.yaml @evargas963
 
-# --- Authority modules ---
-/time_et.py                         @evargas963
-/numeric_contract.py                @evargas963
-/fusion_contract.py                 @evargas963
-/replay_hold_bars.py                @evargas963
-/position_sizing_policy.py          @evargas963
+# Hook wiring (worktree copies are not the merge root of trust)
+/.cursor/hooks.json @evargas963
+/.claude/settings.json @evargas963
 
-# --- ML training / ablation core (model outputs feed the money path) ---
-/ml_train.py                        @evargas963
-/ml_predict.py                      @evargas963
-/lstm_model.py                      @evargas963
-/transformer_train.py               @evargas963
-/monte_carlo.py                     @evargas963
-/rules_engine.py                    @evargas963
-/feature_contracts.py               @evargas963
-/governed_stack_contract.py         @evargas963
-/tools/feature_curation_gate.py     @evargas963
+# Guard/lock entrypoints and the institutional gate
+/tools/*_guard.py @evargas963
+/tools/*_lock.py @evargas963
+/tools/operating_process_lock.py @evargas963
+/tools/check_institutional_correctness.py @evargas963
+/tools/check_delta_adds_no_debt.py @evargas963
+/tools/precommit_institutional.py @evargas963
+/tools/check_market_correctness.py @evargas963
+/tools/check_institutional_closure_gate.py @evargas963
+/tools/check_no_grep_subprocess.py @evargas963
 
-# --- Governance + the hardening enforcement surface itself ---
-/governance/                        @evargas963
-/AGENTS.md                          @evargas963
-/CLAUDE.md                          @evargas963
-/.cursor/rules/                     @evargas963
-/.github/workflows/                 @evargas963
-/.github/CODEOWNERS                 @evargas963
-/tools/                             @evargas963
-/server.py                          @evargas963
-/signals.py                         @evargas963
-/decision_record.py                 @evargas963
-/override_registry.py               @evargas963
-/trade_impacting_gate.py            @evargas963
-/tests/adversarial/                 @evargas963
-/tests/decision_reconstruction/     @evargas963
-/tests/release_object/              @evargas963
-/tests/test_governance_consolidation.py @evargas963
-/tests/test_agent_preload_contract.py   @evargas963
-/.pre-commit-config.yaml            @evargas963
-/pyproject.toml                     @evargas963
+# Grant / GO rails (assignment JSON is field-locked in process; not listed here
+# so routine mission status updates do not require operator review)
+/governance/operator_go.json @evargas963
+/governance/operator_grants.json @evargas963
+
+# Tests that define Architecture A PASS
+/tests/test_architecture_a_bypass_class_v1.py @evargas963
+/tests/test_writer_drift_lock_v1.py @evargas963
+/tests/test_control_authority_surfaces_v1.py @evargas963

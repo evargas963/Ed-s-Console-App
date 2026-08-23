@@ -101,19 +101,25 @@ def test_lock1_hard_denylist_blocks_cursor_on_chart_and_server(monkeypatch):
     assert WDL.hard_denylist_violation("server.py", agent="claude", mission=mission, sole=sole) is None
 
 
-def test_lock1_lock_modules_are_auditor_surfaces_without_json_grant(monkeypatch):
-    """Architecture A: Cursor may encode lock modules without cursor_lock_encode_ok."""
-    mission = {"status": "active", "writer": "claude", "mission_id": "m1"}
+def test_lock1_lock_modules_are_not_agent_writable(monkeypatch):
+    """Architecture A: no assigned principal may rewrite control-authority rails."""
+    mission = {"status": "active", "writer": "claude", "mission_id": "m1", "scope_paths": ["tools/"]}
     sole = {"writer": "claude"}
     assert WDL.hard_denylist_violation(
         "tools/check_institutional_correctness.py", agent="cursor", mission=mission, sole=sole
-    ) is None
+    )
     assert WDL.writer_drift_violations(
         ["tools/writer_drift_lock.py"],
         agent="cursor",
-        mission=dict(mission, scope_paths=["tools/"]),
+        mission=mission,
         sole_writer=sole,
-    ) == []
+    )
+    assert WDL.writer_drift_violations(
+        ["tools/writer_drift_lock.py"],
+        agent="claude",
+        mission=mission,
+        sole_writer=sole,
+    )
     assert WDL.hard_denylist_violation(
         "server.py", agent="cursor", mission=mission, sole=sole
     )
