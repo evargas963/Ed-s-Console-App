@@ -8,7 +8,11 @@ def test_tape_prints_preserve_missing_size_instead_of_zero():
         {"LAST_PRICE": 500.0, "TRADE_TIME_MILLIS": 1_000}
     ])
 
-    assert prints == [{"price": 500.0, "size": None, "time_millis": 1_000}]
+    assert len(prints) == 1
+    assert prints[0]["price"] == 500.0
+    assert prints[0]["size"] is None
+    assert prints[0]["time_millis"] == 1_000
+    assert prints[0]["native_event_id"] is False
 
 
 def test_cum_delta_proxy_skips_missing_print_size():
