@@ -271,10 +271,14 @@ def test_shell_text_filter_is_not_a_security_function():
     assert not hasattr(WDL, "pm_authority_shell_violations")
 
 
-def test_helper_source_is_not_claimed_as_the_boundary():
-    src = (ROOT / "tools" / "pm_authority_helper.py").read_text(encoding="utf-8")
-    assert "NOT THE SECURITY BOUNDARY" in src
-    assert "NO arbitrary output path" in src or "no output path" in src.lower()
+# NOTE (RC-308): the former `test_helper_source_is_not_claimed_as_the_boundary`
+# was a source-text proxy that only asserted the helper's docstring contained a
+# disclaimer string. Every SECURITY property it touched is asserted behaviorally
+# elsewhere — self-containment (`test_helper_is_self_contained_stdlib_only`),
+# stdin-only / no output path (`test_o_arbitrary_path_injection_impossible`, real
+# `-I` subprocess), and non-isolated refusal (`test_helper_cli_refuses_non_isolated
+# _invocation`). Per the module-scope gate, the behavior is asserted so the entry
+# leaves the census; no security coverage is lost.
 
 
 # ---------------------------------------------------------------------------

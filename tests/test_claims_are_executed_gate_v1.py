@@ -198,10 +198,22 @@ def test_the_module_scope_blind_spot_is_measured_not_silent():
     ownership map; no runtime call can express which paths GitHub will treat as
     owned. Behaviour of the assignment lock is executed in
     `tests/test_control_authority_surfaces_v1.py` and does not add this entry.
+
+    267 -> 268 (Architecture A external PM authority, PR #181), one net arrival, named:
+    `test_install_script_refuses_untrusted_checkout_and_smoke_tests` ARRIVED.
+    INHERENTLY STRUCTURAL: `tools/install_pm_authority_host.sh` is a host-side shell
+    script run as root off-repo; its hardening — hash-verify against an operator pin,
+    self-containment smoke test, `env_reset` sudoers, no `NOPASSWD: ALL` — cannot be
+    exercised by any Python runtime call in this environment, exactly like the
+    CODEOWNERS ownership-map entry above. The candidate also briefly carried
+    `test_helper_source_is_not_claimed_as_the_boundary`; it was REMOVED as a redundant
+    source-text proxy because every security property it touched is asserted
+    behaviorally (self-containment / stdin-only / non-isolated refusal), so the
+    behaviour is asserted and that entry leaves the census on its own — net +1.
     """
     fns = C.source_text_only_functions()
-    assert len(fns) == 267, (
-        f"the per-function source-text-only count moved from the 267 measured on "
+    assert len(fns) == 268, (
+        f"the per-function source-text-only count moved from the 268 measured on "
         f"2026-08-23 to {len(fns)}. This figure is not a defect count, so do not simply "
         f"re-baseline it. ACCOUNT for the move: name each function that arrived or left. "
         f"An arrival stays only if its property is INHERENTLY STRUCTURAL — uniqueness, "
