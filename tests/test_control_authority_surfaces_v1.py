@@ -64,6 +64,20 @@ def test_operator_unassigned_may_edit_leftover_assignment_json():
     assert WDL.pm_status_field_violations(
         "governance/sole_writer.json", new, agent="", current_text=cur
     ) == []
+    steal = json.dumps({"writer": "claude", "pm": "cursor", "auditor": "cursor", "note": "n"})
+    assert WDL.pm_status_field_violations(
+        "governance/sole_writer.json", steal, agent="", current_text=cur
+    ) == []
+
+
+def test_assigned_agent_cannot_reassign_pm():
+    cur = json.dumps({"writer": "claude", "pm": "operator", "auditor": "cursor", "note": "n"})
+    steal = json.dumps({"writer": "claude", "pm": "cursor", "auditor": "cursor", "note": "n"})
+    for agent in ("claude", "cursor", "codex", "gpt"):
+        v = WDL.pm_status_field_violations(
+            "governance/pm_mission.json", steal, agent=agent, current_text=cur
+        )
+        assert v and any("pm=operator is operator authority" in m for m in v), agent
 
 
 def test_writer_cannot_redefine_lock_or_hooks():

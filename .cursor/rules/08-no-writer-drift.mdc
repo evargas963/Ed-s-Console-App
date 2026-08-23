@@ -11,8 +11,9 @@ other vendor. Persisted `writer` / `auditor` fields are history, not authorizati
 
 ## Law
 
-1. Ordinary authorized product work is not vendor-gated. Stale `pm_mission.json`
-   or leftover assignment metadata must not veto the operator's newly selected AI.
+1. Ordinary authorized product work is not vendor-gated. Stale `writer` /
+   `auditor` metadata must not veto the operator's newly selected AI.
+   `pm=operator` is operator authority and no assigned AI may change it.
 2. Switching AI does not require changing policy code and does not require the
    operator to review routine product changes.
 3. Control-authority surfaces (guards, hooks, required workflows, CODEOWNERS,

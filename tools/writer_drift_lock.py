@@ -104,10 +104,11 @@ def hard_denylist_violation(rel: str, *, agent: str | None = None,
 
 def pm_status_field_violations(rel: str, new_text: str, *, agent: str | None = None,
                                current_text: str | None = None) -> list[str]:
-    """Leftover mission JSON: assigned agents may not expand scope or drop remaining[].
+    """Leftover mission JSON: assigned agents may not steal pm or expand scope.
 
     writer/auditor flips are not authorization and are not blocked here — setting
     writer to self must not grant control-authority privilege (proven at the rail seam).
+    pm=operator is operator authority and cannot be changed by an assigned AI.
     """
     rel = _norm(rel)
     if rel not in ("governance/pm_mission.json", "governance/sole_writer.json"):
@@ -131,6 +132,13 @@ def pm_status_field_violations(rel: str, new_text: str, *, agent: str | None = N
     except (ValueError, json.JSONDecodeError):
         cur_doc = {}
     out: list[str] = []
+    cur_pm = str(cur_doc.get("pm") or "").strip().lower()
+    new_pm = str(new_doc.get("pm") or "").strip().lower()
+    if cur_pm == "operator" and new_pm != "operator":
+        out.append(
+            f"SOD_DRIFT: {rel} changes pm={cur_pm!r} to {new_pm!r} — "
+            f"pm=operator is operator authority and cannot be reassigned by agent={agent!r}."
+        )
     old_scope = set(map(str, cur_doc.get("scope_paths") or []))
     new_scope = set(map(str, new_doc.get("scope_paths") or []))
     if new_scope - old_scope:

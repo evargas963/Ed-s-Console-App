@@ -6,7 +6,7 @@ The charter is operator-facing; THIS module BLOCKs — .md alone is not a lock.
 Child of RC-215 (index≠WT stash-strip), RC-216 (DISK_ONLY vs LIVE), RC-210 (dual-writer thrash).
 
 Minimum BLOCK surfaces:
-  (a) Write/Edit protected paths when sole_writer ≠ current agent
+  (a) Write/Edit control-authority surfaces when ED_AGENT_ROLE is set (RC-454)
   (b) Stop on COMPLETE/LIVE/one-intentional-tree claims while index≠WT or live PID predates db.py gate
   (c) git commit when index≠WT on staged enforcement paths or staged CHECKS not on HEAD without operator GO
 """

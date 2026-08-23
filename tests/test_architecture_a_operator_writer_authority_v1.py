@@ -1,14 +1,15 @@
-# institutional-synthetic-ok: drive the live PreToolUse seam against leftover
-# assignment metadata to prove RC-454 operator-writer authority.
+# institutional-synthetic-ok: drive the live PreToolUse seam against a temporary
+# stale-writer fixture to prove RC-454 operator-writer authority.
 """Architecture A — operator selects the working AI; rails stay denied.
 
 These tests exercise process_lock_guard.pretooluse_block, not a constructed
-authorization dictionary. Live pm_mission.json may still say writer=claude;
-that leftover must not veto the AI the operator is running.
+authorization dictionary. Stale writer=claude is a temporary fixture, not live
+production metadata.
 """
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -29,23 +30,24 @@ _RAILS = (
     ".github/workflows/hardening.yml",
     "tests/test_architecture_a_operator_writer_authority_v1.py",
 )
+_AGENTS = ("claude", "cursor", "codex", "gpt")
 
 
-def _active_mission_with_stale_writer() -> dict:
-    live = json.loads((ROOT / "governance" / "pm_mission.json").read_text(encoding="utf-8"))
+def _stale_writer_fixture() -> dict:
+    """Temporary leftover assignment. Must not exist on live pm_mission.json."""
     return {
         "status": "active",
-        "writer": live.get("writer") or "claude",
+        "writer": "claude",
         "pm": "operator",
         "auditor": "cursor",
-        "mission_id": "rc454-authority",
+        "mission_id": "rc454-stale-writer-fixture",
         "scope_paths": ["*"],
     }
 
 
 def _pin_mission(monkeypatch, tmp_path, mission: dict | None = None) -> None:
     path = tmp_path / "pm_mission.json"
-    path.write_text(json.dumps(mission or _active_mission_with_stale_writer()), encoding="utf-8")
+    path.write_text(json.dumps(mission or _stale_writer_fixture()), encoding="utf-8")
     monkeypatch.setattr(OPL, "PM_MISSION_PATH", path)
     monkeypatch.setattr(WDL, "PM_MISSION_PATH", path)
 
@@ -55,7 +57,7 @@ def _writer_veto(messages: list[str]) -> list[str]:
     return [m for m in messages if any(n in m for n in needles)]
 
 
-@pytest.mark.parametrize("agent", ["claude", "cursor", "codex", "gpt"])
+@pytest.mark.parametrize("agent", list(_AGENTS))
 def test_ordinary_product_not_intrinsically_vendor_only(agent, monkeypatch, tmp_path):
     _pin_mission(monkeypatch, tmp_path)
     monkeypatch.setenv("ED_AGENT_ROLE", agent)
@@ -67,24 +69,44 @@ def test_ordinary_product_not_intrinsically_vendor_only(agent, monkeypatch, tmp_
         assert not any("control-authority" in b for b in bad), (agent, rel, bad)
 
 
-def test_live_stale_assignment_cannot_veto_operator_selected_work(monkeypatch, tmp_path):
+@pytest.mark.parametrize("agent", list(_AGENTS))
+def test_stale_writer_fixture_cannot_veto_operator_selected_work(agent, monkeypatch, tmp_path):
+    """Temporary writer=claude must not veto Cursor/Claude/Codex/GPT ordinary work."""
     live = json.loads((ROOT / "governance" / "pm_mission.json").read_text(encoding="utf-8"))
-    assert live.get("writer") == "claude", (
-        "this proof requires the live leftover writer=claude metadata; "
-        "do not flip it to the currently selected agent"
+    assert "writer" not in live and "auditor" not in live, (
+        "live pm_mission.json still carries writer/auditor — that is stale production "
+        "metadata, not a test fixture"
     )
-    _pin_mission(monkeypatch, tmp_path, {
-        "status": "active",
-        "writer": live["writer"],
-        "pm": live.get("pm") or "operator",
-        "mission_id": "rc454-live-stale",
-        "scope_paths": ["*"],
-    })
-    monkeypatch.setenv("ED_AGENT_ROLE", "cursor")
+    fixture = _stale_writer_fixture()
+    assert fixture["writer"] == "claude"
+    _pin_mission(monkeypatch, tmp_path, fixture)
+    monkeypatch.setenv("ED_AGENT_ROLE", agent)
     for rel in ("server.py", "db.py"):
-        assert OPL.sole_writer_edit_violation(rel, agent="cursor") is None, rel
+        assert OPL.sole_writer_edit_violation(rel, agent=agent) is None, rel
         bad = PLG.pretooluse_block("Write", {"file_path": str(ROOT / rel), "content": "x"})
-        assert not _writer_veto(bad), (rel, bad)
+        assert not _writer_veto(bad), (agent, rel, bad)
+
+
+@pytest.mark.parametrize("agent", list(_AGENTS))
+def test_assigned_ai_cannot_change_pm_away_from_operator(agent, monkeypatch, tmp_path):
+    _pin_mission(monkeypatch, tmp_path)
+    monkeypatch.setenv("ED_AGENT_ROLE", agent)
+    cur = json.dumps({"pm": "operator", "status": "active", "scope_paths": ["server.py"]})
+    for new_pm in ("cursor", "claude", "codex", "gpt", ""):
+        new = json.dumps({"pm": new_pm, "status": "active", "scope_paths": ["server.py"]}) if new_pm else (
+            json.dumps({"status": "active", "scope_paths": ["server.py"]})
+        )
+        v = WDL.pm_status_field_violations(
+            "governance/pm_mission.json", new, agent=agent, current_text=cur
+        )
+        assert v and any("pm=operator is operator authority" in m for m in v), (agent, new_pm, v)
+    live = (ROOT / "governance" / "pm_mission.json").read_text(encoding="utf-8")
+    stolen = live.replace('"pm": "operator"', '"pm": "cursor"')
+    bad = PLG.pretooluse_block(
+        "Write",
+        {"file_path": str(ROOT / "governance" / "pm_mission.json"), "content": stolen},
+    )
+    assert any("pm=operator is operator authority" in b for b in bad), (agent, bad)
 
 
 @pytest.mark.parametrize("agent", ["claude", "cursor", "codex"])
@@ -148,12 +170,14 @@ def test_negative_mutations_against_protected_control_surfaces_fail(monkeypatch,
     grow = json.dumps({
         "status": "active",
         "writer": "cursor",
+        "pm": "operator",
         "scope_paths": ["server.py", "tools/"],
         "remaining": [{"id": "X"}],
     })
     cur = json.dumps({
         "status": "active",
         "writer": "claude",
+        "pm": "operator",
         "scope_paths": ["server.py"],
         "remaining": [{"id": "X"}],
     })
@@ -177,3 +201,47 @@ def test_idle_mission_still_blocks_gated_product(monkeypatch, tmp_path):
     monkeypatch.setenv("ED_AGENT_ROLE", "cursor")
     msg = OPL.pm_mission_edit_violation("db.py", agent="cursor")
     assert msg and "PM-FIRST" in msg
+
+
+def test_no_executable_reader_uses_persisted_writer_or_auditor_as_auth():
+    """Repo-wide: production Python must not read writer/auditor as a write gate."""
+    import ast
+
+    tracked = subprocess.check_output(
+        ["git", "ls-files", "*.py"],
+        cwd=str(ROOT),
+        text=True,
+        encoding="utf-8",
+    ).splitlines()
+    hits: list[str] = []
+    for rel in tracked:
+        if rel.startswith("tests/") or rel.startswith("scratchpad/"):
+            continue
+        src = (ROOT / rel).read_text(encoding="utf-8")
+        try:
+            tree = ast.parse(src)
+        except SyntaxError:
+            continue
+        for node in ast.walk(tree):
+            key = None
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "get"
+                and node.args
+                and isinstance(node.args[0], ast.Constant)
+                and node.args[0].value in ("writer", "auditor")
+            ):
+                key = node.args[0].value
+            elif (
+                isinstance(node, ast.Subscript)
+                and isinstance(node.slice, ast.Constant)
+                and node.slice.value in ("writer", "auditor")
+            ):
+                key = node.slice.value
+            if key:
+                hits.append(f"{rel}:{getattr(node, 'lineno', 0)} reads persisted {key!r}")
+    assert hits == [], (
+        "executable reader still uses persisted writer/auditor — "
+        + "; ".join(hits)
+    )

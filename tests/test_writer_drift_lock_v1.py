@@ -125,6 +125,10 @@ def test_lock1_pm_status_scope_and_remaining_still_blocked():
     flip = cur.replace('"writer": "claude"', '"writer": "cursor"')
     assert not WDL.pm_status_field_violations("governance/pm_mission.json", flip,
                                               agent="cursor", current_text=cur)
+    steal_pm = cur.replace('"pm": "operator"', '"pm": "cursor"')
+    v_pm = WDL.pm_status_field_violations("governance/pm_mission.json", steal_pm,
+                                         agent="cursor", current_text=cur)
+    assert v_pm and any("pm=operator is operator authority" in m for m in v_pm)
     grow = cur.replace('["tools/"]', '["tools/", "server.py"]')
     v2 = WDL.pm_status_field_violations("governance/pm_mission.json", grow,
                                         agent="cursor", current_text=cur)
