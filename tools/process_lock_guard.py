@@ -78,17 +78,24 @@ def pretooluse_block(tool: str, tool_input: dict) -> list[str]:
             auth = WDL.control_authority_violation(rel)
             if auth:
                 out.append(auth)
-            # LOCK-1/3 (RC-232): pm/sole role files — Cursor status-fields-only.
+            # LOCK-1/3 (RC-232) + RC-454: pm-authority files. Delete or empty overwrite
+            # removes pm=operator; Write must keep pm=operator even if the file is gone.
             new_text = _tool_new_text(tool_input)
-            if new_text:
-                out.extend(WDL.pm_status_field_violations(rel, new_text))
-            # LOCK-7 (RC-232): Cursor creating NEW governance mandate prose while a mission
-            # runs with writer!=cursor is process-md theater unless explicitly waived.
+            if tool == "Delete" or (tool == "Write" and not new_text):
+                gone = WDL.pm_authority_delete_violation(fp)
+                if gone:
+                    out.append(gone)
+            elif new_text:
+                out.extend(WDL.pm_status_field_violations(fp, new_text))
+            # LOCK-7 (RC-232): assigned principals creating NEW governance mandate prose
+            # while a mission runs is process-md theater unless explicitly waived.
+            # Not a vendor-writer check (RC-454).
+            from tools.pm_authority import authority_unavailable_reasons, executable_mission
+            _auth_fail = bool(authority_unavailable_reasons())
             if (rel.startswith("governance/") and rel.endswith((".md", ".mdc"))
                     and not (REPO / rel).exists()
                     and WDL.current_agent_role()
-                    and WDL.current_agent_role() != WDL.resolved_writer()
-                    and WDL.mission_in_progress(WDL._load_json(WDL.PM_MISSION_PATH))
+                    and (_auth_fail or WDL.mission_in_progress(executable_mission()))
                     and "# process-doc-ok:" not in (new_text or "")):
                 out.append(
                     f"SOD_DRIFT: new governance mandate file {rel} — prose is never a lock "

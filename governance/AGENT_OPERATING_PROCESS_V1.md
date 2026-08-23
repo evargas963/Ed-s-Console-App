@@ -13,17 +13,18 @@
 - Every multi-agent or “what next” turn: Cursor states **mission · blockers · single next operator action**.
 - **Change requests:** operator → Cursor PM → plan → operator GO → Cursor sets `governance/pm_mission.json` `status=active` → writer executes → Cursor audits → mission `idle`.
 - Product edits without an in-progress mission are **BLOCKED** (`pm_mission_edit_violation`).
-- **Writer no-drift (RC-226):** non-writer staged `scope_paths` → BLOCK (`writer_drift_lock.py` / `check_writer_no_drift`). Cursor=auditor only while Claude writes.
+- **Operator writer selection (RC-454):** persisted `writer` fields are not authorization. Control-authority rails stay denied to every assigned AI (`writer_drift_lock.py` / `check_writer_no_drift`).
 - One active mission; Collect/lock vs UI polish are sequenced windows, not a free-for-all.
 - Daily rehab: `tools/rehab_daily_scan.py` → `reports/rehab_latest.md` (recommend only).
-- **DONE when:** `sole_writer.json` has `"pm": "operator"` (operator 2026-08-18; auditor `"cursor"`); `pm_mission.json` reflects the only approved active work.
+- **DONE when:** `sole_writer.json` has `"pm": "operator"` (operator 2026-08-18; RC-454 tombstone — not write authorization); `pm_mission.json` reflects the only approved active work.
 
-## 1. SOLE_WRITER
+## 1. OPERATOR SELECTS THE WORKING AI (RC-454)
 
-- **Before** editing collect seam, checker, or lock modules: read `governance/sole_writer.json`.
-- **DONE when:** `writer` names exactly one agent; `pm` is `operator` (operator 2026-08-18); Cursor is auditor-only for protected paths.
-- **Cursor:** do not Edit/Write protected paths (see enforcer `PROTECTED_PATHS`) while `writer` ≠ `cursor`.
-- **Operator clears** by setting `writer` to the active agent or deleting the file.
+- The operator chooses the active AI by running that AI. The repository must not privilege Claude, Cursor, Codex, GPT, or any other vendor.
+- `governance/sole_writer.json` is a tombstone (`pm=operator` only). It is not write authorization.
+- `pm_mission.json` `writer` / `auditor` fields are history. They must not veto ordinary product work.
+- Control-authority surfaces stay denied to every assigned principal. Becoming the selected writer does not grant rails privilege.
+- Switching AI does not require a policy-code edit.
 
 ## 2. MEASURE before claim
 
@@ -81,7 +82,7 @@
 | Measure | `.venv/Scripts/python.exe tools/operating_process_lock.py --measure` |
 | Pre-commit gate | `.venv/Scripts/python.exe tools/operating_process_lock.py --pre-commit` |
 | Commit check | `.venv/Scripts/python.exe tools/operating_process_lock.py --commit-check` |
-| Set sole writer | Edit `governance/sole_writer.json` (`writer`, `auditor`, `updated_at`) |
+| Select working AI | Run that AI. Do not restore a standing writer privilege in `sole_writer.json`. |
 | Grant held commit | Edit `governance/operator_go.json` (`granted`, `scope`) |
 
 **Operator-only:** `ED_PROCESS_LOCK_GUARD=off` disables the hook (visible, not silent).

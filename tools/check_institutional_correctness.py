@@ -4683,20 +4683,15 @@ def check_log_law() -> list[Violation]:
 
 
 def check_writer_no_drift() -> list[Violation]:
-    """LOCK-1 commit backstop (RC-232): staged changes must come from the mission's
-    resolved writer — the maker-checker split enforced at commit, delegating to
-    tools/writer_drift_lock.py.
+    """Architecture A commit backstop (RC-454): staged control-authority surfaces
+    cannot be rewritten by an assigned principal. Delegates to
+    tools/writer_drift_lock.py. Persisted writer/auditor fields are not authorization.
 
-    IDENTITY GATE (measured limitation): pre-commit hook processes do not reliably carry
-    ED_AGENT_ROLE, and the role helper fails closed to 'cursor' — which made the WRITER'S
-    own landing read as drift (4 false blocks measured on the RC-232 landing commit).
-    When the env carries no identity, this backstop stays silent and the PreToolUse layer
-    (which always has identity via each agent's hook env) carries the enforcement.
+    IDENTITY GATE: when ED_AGENT_ROLE is empty this backstop abstains (operator/CI).
+    It must not invent a vendor. PreToolUse carries identity when an agent is assigned.
 
-    HOW VALIDATED: prototyped against the RC-232 landing — with identity absent the old
-    form false-blocked the sole writer's own commit; with identity present (Cursor env)
-    the negative controls in tests/test_writer_drift_lock_v1.py prove BLOCK on
-    chart.html/server.py and ALLOW on the PM allowlist.
+    HOW VALIDATED: tests/test_architecture_a_operator_writer_authority_v1.py exercises
+    the real PreToolUse seam — ordinary product is vendor-agnostic; rails stay blocked.
     """
     out: list[Violation] = []
     import os as _os
