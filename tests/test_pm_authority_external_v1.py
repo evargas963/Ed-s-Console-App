@@ -369,7 +369,10 @@ def test_helper_ignores_hostile_pythonpath_stdlib_shadow(tmp_path):
 
 
 def test_install_script_refuses_untrusted_checkout_and_smoke_tests():
-    """Defect #2/#15 close (source-level): install hash-verifies + self-containment smoke-tests."""
+    """Defect #2/#6/#15 close (source-level): the installer is anchored to an immutable
+    operator-reviewed commit, hash-verifies + self-containment smoke-tests, and never runs
+    from the AI-writable checkout. Behavioral OS-permission proof is the host acceptance
+    proof; these are the mechanically-testable repository-side properties."""
     src = (ROOT / "tools" / "install_pm_authority_host.sh").read_text(encoding="utf-8")
     assert "EXPECTED_HELPER_SHA256" in src, "install must require an operator-supplied hash pin"
     assert "sha256sum" in src and "hash mismatch" in src, "install must verify the helper hash"
@@ -379,6 +382,27 @@ def test_install_script_refuses_untrusted_checkout_and_smoke_tests():
     # The GRANT form 'NOPASSWD: ALL' (sudoers syntax, with the space) must never appear;
     # the prose reminder 'NOPASSWD:ALL' (no space) in the closing message is fine.
     assert "NOPASSWD: ALL" not in src, "install must not grant NOPASSWD: ALL"
+
+    # --- BOOTSTRAP TRUST ANCHOR (defect #6): root must not execute an unverified installer
+    # from the AI-writable checkout, and the pin must not be derived from the same mutable
+    # source it authenticates.
+    assert "ED_PM_REVIEW_COMMIT" in src, "installer must require the operator-reviewed commit anchor"
+    # (1) refuse unless the tree it runs from is root-owned and not AI/group/other-writable
+    assert "stat -c '%U'" in src and "not root" in src, "installer must refuse a non-root-owned tree (the AI checkout)"
+    assert "& 022" in src, "installer must refuse a group/other-writable tree"
+    # (2) bind the staging content to the exact reviewed commit
+    assert "rev-parse HEAD" in src and 'ED_PM_REVIEW_COMMIT' in src, "installer must verify HEAD == reviewed commit"
+
+    # The host procedure must derive the pin from the REVIEWED COMMIT in root-owned staging,
+    # never from `sha256sum tools/pm_authority_helper.py` of the live AI-writable checkout,
+    # and must run the installer from staging, not the checkout.
+    report = (ROOT / "reports" / "pm_authority_external_implementation.md").read_text(encoding="utf-8")
+    assert "sha256sum tools/pm_authority_helper.py" not in report, (
+        "the host procedure must NOT derive the pin from the live checkout (circular anchor)")
+    assert "ED_PM_REVIEW_COMMIT" in report and "staging" in report, (
+        "the host procedure must materialize the reviewed commit into root-owned staging")
+    assert "git clone" in report and "checkout --detach" in report, (
+        "the host procedure must fetch the reviewed commit from the remote into staging")
 
 
 def test_file_tool_delete_of_repo_template_is_not_authority_block(monkeypatch, tmp_path):

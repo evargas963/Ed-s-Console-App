@@ -6,20 +6,26 @@
 # the HOST ACCEPTANCE PROOF (reports/pm_authority_external_implementation.md) is
 # measured on the exact SHA.
 #
-# Integrity model (why this script does not trust the AI-writable checkout):
-#   - It FREEZES the helper source to a root-owned scratch copy ONCE, then hashes,
-#     smoke-tests, and installs THAT SAME frozen copy. The AI-writable path is never
-#     re-read after the freeze, so a check-then-swap (TOCTOU) race cannot substitute
-#     a different file between verification and install.
-#   - After install it RE-HASHES the installed file and aborts on any mismatch.
-#   - PATH and the interpreter are fixed to root-owned locations; the caller's
-#     environment (incl. PYTHONPATH / a planted ED_PM_PYTHON) cannot steer root.
+# Integrity model — the bootstrap is ANCHORED to an immutable operator-reviewed commit,
+# NOT to the AI-writable checkout:
+#   - This script REFUSES to run unless the tree it runs from is ROOT-OWNED and not
+#     group/other-writable (the AI's own checkout is AI-owned, so running from it aborts),
+#     AND that tree's git HEAD equals ED_PM_REVIEW_COMMIT (the exact commit the operator
+#     reviewed). Root therefore never executes an unverified installer from the AI checkout.
+#   - EXPECTED_HELPER_SHA256 is the operator's pin derived from the REVIEWED COMMIT (from the
+#     remote, not the live checkout); it is re-checked here against the staged helper.
+#   - It then FREEZES the helper to a root-owned scratch copy, re-hashes the INSTALLED file,
+#     and pins PATH + a root-owned interpreter (defense-in-depth on top of the anchor).
 #
-# Usage (as root on the host that runs the assigned AI — do NOT pass `sudo -E`):
-#   EXPECTED_HELPER_SHA256=<pin from operator review of tools/pm_authority_helper.py> \
-#   CONFIRM=ed-console-authority-host \
-#   ED_AI_USER=<the-uid-the-AI-runs-as> \
-#   sudo sh tools/install_pm_authority_host.sh
+# Usage — the operator MATERIALIZES THE REVIEWED COMMIT FROM THE REMOTE INTO ROOT-OWNED
+# STAGING FIRST, then runs THIS script from there (never from the AI-writable checkout):
+#   C=<operator-reviewed merged commit SHA of PR #181>
+#   sudo git clone --no-local <remote-url> /srv/ed-console-staging
+#   sudo git -C /srv/ed-console-staging checkout --detach "$C"
+#   sudo env EXPECTED_HELPER_SHA256=<pin derived from the reviewed commit> \
+#        ED_PM_REVIEW_COMMIT="$C" CONFIRM=ed-console-authority-host \
+#        ED_AI_USER=<the-uid-the-AI-runs-as> \
+#        sh /srv/ed-console-staging/tools/install_pm_authority_host.sh   # NOT sudo -E
 
 set -eu
 
@@ -57,6 +63,36 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 REPO_ROOT=$(CDPATH= cd -- "${SCRIPT_DIR}/.." && pwd)
 HELPER_SRC="${REPO_ROOT}/tools/pm_authority_helper.py"
 TEMPLATE="${REPO_ROOT}/governance/pm_mission.json"
+
+# ── BOOTSTRAP TRUST ANCHOR (operator review 2026-08-23) ──────────────────────────
+# Root must NEVER execute this installer from the AI-writable checkout, and the pin
+# must be anchored to an IMMUTABLE operator-reviewed commit, not derived from the same
+# mutable source. The operator materializes the reviewed commit from the remote into a
+# ROOT-OWNED staging tree and runs this script from THERE; the checks below refuse
+# anything else. Freeze-once (below) hardens the install step; THESE checks establish
+# trust in the installer/helper themselves before any privileged action.
+[ -n "${ED_PM_REVIEW_COMMIT:-}" ] || fail "set ED_PM_REVIEW_COMMIT to the operator-reviewed commit SHA and run from a root-owned staging checkout of it (see reports/pm_authority_external_implementation.md); refusing to trust the live checkout"
+
+# (1) The tree this script runs from must be root-owned and not group/other-writable.
+# The AI's own checkout is owned by the AI uid, so running from it REFUSES here.
+for _p in "${SCRIPT_DIR}" "${REPO_ROOT}" "$0" "${HELPER_SRC}"; do
+  _own=$(stat -c '%U' "${_p}" 2>/dev/null || echo "?")
+  _mode=$(stat -c '%a' "${_p}" 2>/dev/null || echo "777")
+  [ "${_own}" = "root" ] || fail "refusing: ${_p} is owned by '${_own}', not root — run from a ROOT-OWNED staging checkout of the reviewed commit, never the AI-writable checkout"
+  [ "$(( 0${_mode} & 022 ))" -eq 0 ] || fail "refusing: ${_p} is group/other-writable (mode ${_mode}) — staging must not be writable by the AI"
+done
+
+# (2) The staging content must be EXACTLY the operator-reviewed commit. A commit SHA is
+# content-addressed, so the AI cannot change what ED_PM_REVIEW_COMMIT contains, and it
+# cannot write the root-owned staging. This binds the installer AND the helper to the
+# reviewed version.
+command -v git >/dev/null 2>&1 || fail "git required to verify the reviewed commit"
+_head=$(git -C "${REPO_ROOT}" rev-parse HEAD 2>/dev/null || echo "")
+[ "${_head}" = "${ED_PM_REVIEW_COMMIT}" ] || fail "refusing: staging HEAD ('${_head:-none}') != operator-reviewed ED_PM_REVIEW_COMMIT ('${ED_PM_REVIEW_COMMIT}') — materialize the exact reviewed commit from the remote"
+# HEAD names the commit; a clean working tree binds the FILES ON DISK to that commit's
+# tree, so the installer/helper it actually reads are byte-for-byte the reviewed content
+# (not a HEAD-matching-but-modified checkout).
+git -C "${REPO_ROOT}" diff --quiet HEAD -- 2>/dev/null || fail "refusing: staging working tree is dirty vs ${ED_PM_REVIEW_COMMIT} — the on-disk files do not match the reviewed commit"
 
 [ -f "${HELPER_SRC}" ] || fail "missing helper source ${HELPER_SRC}"
 [ -n "${EXPECTED_HELPER_SHA256:-}" ] || fail "set EXPECTED_HELPER_SHA256 to the operator-reviewed pin of tools/pm_authority_helper.py"

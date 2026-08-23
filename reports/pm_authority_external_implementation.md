@@ -34,6 +34,7 @@ capability boundary the AI does not hold — not a shell-regex blacklist.
 | 3 | PR #180 stacked on rejected #179 history | this branch is a **single clean commit off `main`** (`db6ca607`); no #179/#180 ancestry. |
 | 4 | guard bricked every mission-gated path when the external file was absent (every unprovisioned host incl. Windows/`C:\var\lib\…`) | **degraded mode**: absence of the external boundary is non-enforcing for the PM-workflow product gate (the AI can't induce it on a provisioned host); rails still hard. `measure_report()['pm_authority_mode']` signposts `enforcing`/`degraded`. (`test_c_…product_degraded_not_bricked`) |
 | 5 | repo `pm_mission.json` field-flip left unguarded while it was still read | repo files are **non-authoritative**; `pm_mission_record()`/`sole_writer_record()` never read them as authority (`test_i`, `test_j`); the flip gains the AI nothing. |
+| 6 | **bootstrap trust chain was circular** — the pin was derived from `sha256sum` of the same live checkout, and root ran the installer directly from that AI-writable checkout, so root executed unverified AI code *before* any freeze/hash could protect it | the bootstrap is now **anchored to an immutable operator-reviewed commit**: the operator materializes the reviewed commit from the REMOTE into ROOT-OWNED staging; the installer **refuses to run unless its tree is root-owned + not AI-writable AND its git HEAD == `ED_PM_REVIEW_COMMIT`**, and the pin is derived from the reviewed commit, never the live checkout. Root never executes the AI-writable installer. (`test_install_script_refuses_untrusted_checkout_and_smoke_tests`) |
 
 ## Self-falsification — bypasses FOUND by adversarial agents and FIXED in this pass
 A five-agent adversarial sweep attacked each class against the actual code. It found
@@ -105,12 +106,26 @@ A capability boundary is by definition a principal the AI does not hold; the AI
 cannot create it without holding it, so this step is irreducibly the operator's.
 
 ```sh
-# 1) Provision the boundary (root, on the host that runs the assigned AI):
+# 0) TRUST ANCHOR — materialize the OPERATOR-REVIEWED, MERGED commit from the REMOTE
+#    into a ROOT-OWNED staging tree. Root never runs the AI-writable checkout, and the
+#    pin is derived from the reviewed commit (not the live checkout). C is the commit
+#    the operator reviewed on PR #181 (immutable, content-addressed).
+C=<operator-reviewed merged commit SHA of PR #181>
+sudo rm -rf /srv/ed-console-staging
+sudo git clone --no-local <remote-url> /srv/ed-console-staging   # from the remote, not the AI checkout
+sudo git -C /srv/ed-console-staging checkout --detach "$C"
+[ "$(sudo git -C /srv/ed-console-staging rev-parse HEAD)" = "$C" ] || { echo "staging != reviewed commit"; exit 1; }
+# derive the pin from the REVIEWED commit in root-owned staging (never the live checkout):
+PIN="$(sudo sha256sum /srv/ed-console-staging/tools/pm_authority_helper.py | awk '{print $1}')"
+
+# 1) Provision the boundary by running the installer FROM ROOT-OWNED STAGING (it refuses
+#    to run from any AI-writable tree or a tree whose HEAD != C):
 sudo env \
-  EXPECTED_HELPER_SHA256="$(sha256sum tools/pm_authority_helper.py | awk '{print $1}')" \
+  EXPECTED_HELPER_SHA256="$PIN" \
+  ED_PM_REVIEW_COMMIT="$C" \
   CONFIRM=ed-console-authority-host \
   ED_AI_USER=<the-uid-the-AI-runs-as> \
-  sh tools/install_pm_authority_host.sh   # NOT sudo -E; the script fixes PATH/interpreter itself
+  sh /srv/ed-console-staging/tools/install_pm_authority_host.sh   # NOT sudo -E
 
 # 2) Remove the AI user's general sudo / NOPASSWD:ALL (host config, not this repo).
 
