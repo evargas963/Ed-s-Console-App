@@ -91,9 +91,10 @@ def pretooluse_block(tool: str, tool_input: dict) -> list[str]:
             # while a mission runs is process-md theater unless explicitly waived.
             # Not a vendor-writer check (RC-454).
             from tools.pm_authority import executable_mission
-            # Fire only on a genuine in-progress mission (provisioned host). In
-            # degraded mode (no external boundary) executable_mission() is {} so
-            # mission_in_progress is False — do NOT brick new governance md off-host.
+            # LOCK-7 fires only on a genuine in-progress mission. When executable PM
+            # authority is unavailable, executable_mission() is {} so mission_in_progress
+            # is False — new governance-md creation is not a mission-scoped product edit
+            # and is governed separately (RC-232), not by this reader.
             if (rel.startswith("governance/") and rel.endswith((".md", ".mdc"))
                     and not (REPO / rel).exists()
                     and WDL.current_agent_role()

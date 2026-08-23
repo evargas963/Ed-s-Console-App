@@ -57,7 +57,7 @@ def test_b_repo_json_cannot_become_executable_fallback(monkeypatch):
     assert OPL.pm_mission_record() == {}
 
 
-def test_c_external_state_missing_read_fail_closed_but_product_degraded_not_bricked(
+def test_c_external_state_missing_fails_closed_and_blocks_mission_gated_product(
     monkeypatch, tmp_path
 ):
     path = tmp_path / "absent.json"
@@ -69,14 +69,12 @@ def test_c_external_state_missing_read_fail_closed_but_product_degraded_not_bric
     assert any("missing" in m for m in loaded.violations)
     assert OPL.pm_mission_record() == {}
     monkeypatch.setenv("ED_AGENT_ROLE", "cursor")
-    # DEGRADED MODE (no external boundary provisioned on this host — dev/CI/Windows):
-    # ordinary product editing is NOT bricked. PR #180 blocked every mission-gated
-    # path on any unprovisioned host; that made the repo un-editable for everyone off
-    # the production host. The clean landing allows the operator-selected AI to work.
-    assert OPL.pm_mission_edit_violation("server.py", agent="cursor") is None
-    # The capability boundary that actually matters does NOT degrade: control-authority
-    # rails still deny rewriting the enforcement / reader / privileged-helper source,
-    # and this check does not depend on the (unavailable) reader.
+    # FAIL CLOSED: with executable PM authority unavailable, a mission-gated product edit
+    # BLOCKS — it must never return None and never fall back to the Git-tracked JSON.
+    msg = OPL.pm_mission_edit_violation("server.py", agent="cursor")
+    assert msg and "PM-FIRST BLOCK" in msg and "unavailable" in msg
+    # The control-authority rails also still deny rewriting the enforcement / reader /
+    # privileged-helper source, independent of the (unavailable) reader.
     assert WDL.control_authority_violation("tools/pm_authority.py", agent="cursor")
     assert WDL.control_authority_violation("tools/pm_authority_helper.py", agent="cursor")
 

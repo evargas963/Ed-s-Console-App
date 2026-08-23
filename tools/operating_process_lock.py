@@ -703,17 +703,14 @@ def pm_mission_edit_violation(rel: str, agent: str | None = None) -> str | None:
         if not _mission_gates_path(rel):
             return None
         if unavailable:
-            # DEGRADED / NON-ENFORCING (Architecture A clean landing): no external
-            # PM-authority boundary is provisioned on THIS host — a dev clone, CI,
-            # Windows, or the cloud VM before install. Do NOT brick ordinary product
-            # edits: the operator-selected AI may work (invariant: selected AI does
-            # product work). The capability boundary that stops the AI from MUTATING
-            # executable PM authority is the OS (root-owned file + narrow sudo) plus
-            # the control-authority rails (control_authority_violation) — NEITHER
-            # depends on this reader. The AI cannot induce this state on a provisioned
-            # host: it cannot delete or corrupt the root-owned authority file. See
-            # measure_report()['pm_authority_mode'] == 'degraded' for the signpost.
-            return None
+            # FAIL CLOSED: external executable PM authority is missing / unreadable /
+            # invalid. A mission-gated product edit must BLOCK — never fall back to the
+            # Git-tracked pm_mission.json and never permit the edit. See
+            # measure_report()['pm_authority_mode'] == 'unavailable_fail_closed'.
+            return (
+                f"PM-FIRST BLOCK: executable PM authority unavailable ({unavailable[0]}) — "
+                f"fail closed; do not edit {rel}; do not use governance/pm_mission.json as fallback"
+            )
         # Provisioned host, external authority present, mission idle: the legitimate
         # PM-workflow gate still applies.
         return (
@@ -1025,11 +1022,10 @@ def measure_report(repo: Path | None = None) -> dict:
         "sole_writer": sole_writer_record(),
         "operator_go": operator_go_record(),
         "pm_mission": pm_mission_record(),
-        # Architecture A signpost: 'enforcing' only when a real external PM-authority
-        # boundary is present on this host; 'degraded' (non-enforcing PM-workflow gate,
-        # product edits allowed) everywhere it is not provisioned. The AI cannot flip
-        # this on a provisioned host — it cannot write the root-owned authority file.
-        "pm_authority_mode": "degraded" if _auth_unavail else "enforcing",
+        # Architecture A signpost: 'enforcing' when a real external PM-authority boundary
+        # is present on this host; 'unavailable_fail_closed' when it is missing / unreadable
+        # / invalid — mission-gated product edits BLOCK (no fallback to Git-tracked JSON).
+        "pm_authority_mode": "unavailable_fail_closed" if _auth_unavail else "enforcing",
         "pm_authority_unavailable_reasons": _auth_unavail,
         "index_worktree_mismatches": index_worktree_mismatches(root),
         "staged_checks_not_on_head": staged_enforced_checks_not_on_head(root),
