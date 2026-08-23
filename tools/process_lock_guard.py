@@ -114,6 +114,7 @@ def pretooluse_block(tool: str, tool_input: dict) -> list[str]:
         # LOCK-2 (RC-231): the tree-destructive git CLASS blocks BEFORE the tree is touched —
         # three 2026-08-03 wipes used soft forms the old --hard-literal ban never matched.
         out.extend(OPL.reset_guard_violations(cmd))
+        # Leftover command-text filter only. Not a capability boundary (RC-455).
         out.extend(WDL.pm_authority_shell_violations(cmd))
     return out
 

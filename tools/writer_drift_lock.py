@@ -139,7 +139,14 @@ def pm_authority_delete_violation(rel: str, *, agent: str | None = None) -> str 
 
 
 def pm_authority_shell_violations(cmd: str, *, agent: str | None = None) -> list[str]:
-    """BLOCK shell delete/recreate of pm-authority files by an assigned AI."""
+    """Leftover command-text filter. Not a closed shell class and not the invariant.
+
+    PreToolUse Bash receives only ``tool_input.command`` text. A finite spelling
+    match cannot prove that ``governance/pm_mission.json`` /
+    ``governance/sole_writer.json`` cannot become deleted, empty, malformed, or
+    ``pm != operator`` under arbitrary same-uid (or sudo) execution. Do not grow
+    this regex. See RC-455 / reports/architecture_a_pm_authority_not_sufficient.md.
+    """
     agent = (agent or current_agent_role()).strip().lower()
     if not agent or not cmd:
         return []
