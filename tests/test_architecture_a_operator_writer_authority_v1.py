@@ -3,8 +3,8 @@
 """Architecture A — operator selects the working AI; rails stay denied.
 
 These tests exercise process_lock_guard.pretooluse_block, not a constructed
-authorization dictionary. Stale writer=claude is a temporary fixture, not live
-production metadata.
+authorization dictionary. Stale writer=claude is a synthetic leftover-writer
+fixture, not live production metadata.
 """
 from __future__ import annotations
 
