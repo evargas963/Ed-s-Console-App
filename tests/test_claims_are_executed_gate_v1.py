@@ -190,11 +190,19 @@ def test_the_module_scope_blind_spot_is_measured_not_silent():
     cannot prove the DOM ids are the ones named in the F15 port. The stamp itself
     is asserted by extending `test_state_level_family_serves_raw_not_rounded`
     (already in the census) and does not add a function.
+
+    266 -> 267 (RC-453 CODEOWNERS rails), one entry, named:
+    `test_codeowners_covers_control_authority_set` ARRIVED.
+    INHERENTLY STRUCTURAL: `.github/CODEOWNERS` must name the control-authority
+    paths and must not name routine product (`/server.py`). That is a repository
+    ownership map; no runtime call can express which paths GitHub will treat as
+    owned. Behaviour of the assignment lock is executed in
+    `tests/test_control_authority_surfaces_v1.py` and does not add this entry.
     """
     fns = C.source_text_only_functions()
-    assert len(fns) == 266, (
-        f"the per-function source-text-only count moved from the 266 measured on "
-        f"2026-08-19 to {len(fns)}. This figure is not a defect count, so do not simply "
+    assert len(fns) == 267, (
+        f"the per-function source-text-only count moved from the 267 measured on "
+        f"2026-08-23 to {len(fns)}. This figure is not a defect count, so do not simply "
         f"re-baseline it. ACCOUNT for the move: name each function that arrived or left. "
         f"An arrival stays only if its property is INHERENTLY STRUCTURAL — uniqueness, "
         f"duplication or absence in the repository, which no runtime call can express. If "
