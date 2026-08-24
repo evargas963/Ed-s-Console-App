@@ -14,10 +14,9 @@ Scope: the whole continuum — backend .py, frontend .html/.js/.css, SQL, config
 because the violation that triggered this was in the frontend.
 
 Contract:
-  * Editing a PRODUCTION file requires a root-cause row opened in THIS working tree first
-    (a `| RC-` line in governance/root_cause_log.md that is not in HEAD).
-  * Editing governance/, docs/, reports/, or tests/ is always allowed for the RC-66 rule — that
-    is HOW you open the row and lock the fix.
+  * RC-470/RC-471: the RC-66 lane (a root-cause row required before editing a PRODUCTION
+    file) is RETIRED — governance/retired_checks.md; feature-branch edits are autonomous
+    (operator ruling 2026-08-24). The content gates below are what this guard still blocks.
   * RC-160 UNIVERSAL ticker scope: Write/Edit of prompt / agent-instruction paths is BLOCKED when
     the new content frames SPY-only / sentinel-complete work without UNIVERSAL or OUT-OF-SCOPE
     language — even under otherwise-allowed prefixes (reports/, .claude/).
@@ -163,28 +162,8 @@ def _git(args: list[str]) -> str | None:
     return r.stdout if r.returncode == 0 else None
 
 
-def _has_new_rc_row() -> bool:
-    """True when the working tree adds a `| RC-` row not present at HEAD.
-
-    Covers staged AND unstaged, because the row is written the moment a defect is found —
-    long before anything is staged.
-    """
-    head = _git(["show", f"HEAD:{RC_LOG}"])
-    if head is None:
-        return True                      # no git context / new repo -> never a false block
-    head_ids = {ln.split("|")[1].strip() for ln in head.splitlines()
-                if ln.startswith("| RC-") and "|" in ln[2:]}
-    try:
-        cur = (REPO / RC_LOG).read_text(encoding="utf-8", errors="ignore")
-    except OSError:
-        return True
-    cur_ids = {ln.split("|")[1].strip() for ln in cur.splitlines()
-               if ln.startswith("| RC-") and "|" in ln[2:]}
-    if cur_ids - head_ids:
-        return True                      # a brand-new RC id exists
-    # A REOPENED row (status flipped back to OPEN) also counts as opening a root cause.
-    diff = _git(["diff", "HEAD", "--", RC_LOG]) or ""
-    return any(ln.startswith("+| RC-") for ln in diff.splitlines())
+# RC-471: _has_new_rc_row removed — its only caller was the RC-66 edit-time lane,
+# retired under RC-470 (governance/retired_checks.md).
 
 
 def _tool_new_text(tool_input: dict) -> str:

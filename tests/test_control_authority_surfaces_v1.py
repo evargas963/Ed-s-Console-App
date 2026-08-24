@@ -81,9 +81,12 @@ def test_assigned_agent_cannot_reassign_pm():
 
 
 def test_writer_cannot_redefine_lock_or_hooks():
+    # RC-471: tools/operator_law_guard.py left this list — it is a behavioral guard,
+    # not a who-is-in-charge file, and it is not CODEOWNERS-owned; the rail set now
+    # mirrors CODEOWNERS exactly (no arbitrary extra files, operator ruling 2026-08-24).
     for rel in (
         "tools/writer_drift_lock.py",
-        "tools/operator_law_guard.py",
+        ".claude/settings.json",
         ".cursor/hooks.json",
         ".github/workflows/hardening.yml",
         "tests/test_architecture_a_bypass_class_v1.py",
@@ -222,79 +225,31 @@ def test_self_grant_does_not_unlock_rails(agent):
     assert WDL.control_authority_violation(".github/workflows/pytest.yml", agent=agent)
 
 
-def test_tools_package_init_is_a_control_authority_surface():
-    """tools/__init__.py runs inside the guard process on every `import tools.*`;
-    an assigned AI must not be able to plant a monkeypatch there to neuter the rail."""
-    assert WDL.is_control_authority_surface("tools/__init__.py")
-    assert WDL.control_authority_violation("tools/__init__.py", agent="claude")
-    assert WDL.control_authority_violation("tools/__init__.py", agent="cursor")
+def test_tools_package_init_is_ordinary_code_and_the_rail_mirrors_codeowners():
+    """RC-471 inverts the pre-471 pin: tools/__init__.py is ORDINARY autonomous code.
+
+    The old threat model (a monkeypatch planted in the guard-process import closure)
+    assumed the local rail was the protection; measured under RC-470, every local rail
+    is evadable by the subject it constrains, and tools/__init__.py was never
+    CODEOWNERS-owned — so railing it was decoration over an unprotected merge. The
+    durable gate is operator review at merge, and the rail set now mirrors CODEOWNERS
+    exactly: every EXACT member must be CODEOWNERS-owned, and closure members that are
+    not CODEOWNERS-owned must not be railed."""
+    assert not WDL.is_control_authority_surface("tools/__init__.py")
+    assert WDL.control_authority_violation("tools/__init__.py", agent="claude") is None
+    owners = (ROOT / ".github" / "CODEOWNERS").read_text(encoding="utf-8")
+    for rel in sorted(WDL.CONTROL_AUTHORITY_EXACT):
+        assert f"/{rel}" in owners, (
+            f"{rel} is railed but not CODEOWNERS-owned — the rail set must mirror "
+            f"CODEOWNERS exactly (RC-471, operator ruling 2026-08-24)")
 
 
-_HOOK_ENTRYPOINTS = (
-    "tools/pretooluse_guard.py", "tools/process_lock_guard.py",
-    "tools/stop_guard.py", "tools/proof_only_guard.py",
-    "tools/honesty_guard.py", "tools/operator_law_guard.py",
-)
-
-#: The BLOCKING gate scripts the required `hardening` workflow invokes. Their import
-#: closure is DURABLE: the delta gate detects a REMOVED enforced check, but a check whose
-#: detection LOGIC is silently weakened keeps its name and reports <= base, so a weakened
-#: gate merges CI-green. Operator review at merge is the only control that sees it.
-_CI_GATE_SCRIPTS = (
-    "tools/check_delta_adds_no_debt.py",
-    "tools/check_institutional_correctness.py",
-    "tools/check_market_correctness.py",
-    "tools/check_institutional_closure_gate.py",
-    "tools/check_no_grep_subprocess.py",
-)
-
-
-def _precommit_entrypoints():
-    """tools/*.py referenced as pre-commit hook `entry:` commands — these run in the
-    git commit process and decide gate exit codes."""
-    cfg = (ROOT / ".pre-commit-config.yaml").read_text(encoding="utf-8")
-    import re
-    eps = set()
-    for m in re.finditer(r"(tools/[A-Za-z0-9_./-]+\.py)", cfg):
-        rel = m.group(1)
-        if (ROOT / rel).is_file():
-            eps.add(rel)
-    return eps
-
-
-def _import_closure(entrypoints):
-    """Every repo .py the given entrypoints import transitively — each executes
-    inside that enforcement process, so each is a code-injection surface."""
-    import os
-
-    def repo_mod(mod):
-        p = ROOT / (mod.replace(".", "/") + ".py")
-        return p if p.is_file() else None
-
-    seen, stack, closure = set(), list(entrypoints), set()
-    while stack:
-        rel = stack.pop()
-        if rel in seen:
-            continue
-        seen.add(rel)
-        full = ROOT / rel
-        if not full.is_file():
-            continue
-        closure.add(rel)
-        tree = ast.parse(full.read_text(encoding="utf-8"))
-        mods = set()
-        for n in ast.walk(tree):
-            if isinstance(n, ast.Import):
-                mods.update(a.name for a in n.names)
-            elif isinstance(n, ast.ImportFrom) and n.module and not (n.level or 0):
-                mods.add(n.module)
-        for m in mods:
-            p = repo_mod(m)
-            if p:
-                r = os.path.relpath(p, ROOT).replace("\\", "/")
-                if r not in seen:
-                    stack.append(r)
-    return closure
+# RC-471: the hook-import-closure machinery (_HOOK_ENTRYPOINTS, _CI_GATE_SCRIPTS,
+# _precommit_entrypoints, _import_closure) is removed — no test ever called it, and the
+# stale claim in writer_drift_lock that "tests recompute the closure" left with the
+# closure itself. The rail set now mirrors CODEOWNERS exactly; parity is asserted by
+# test_tools_package_init_is_ordinary_code_and_the_rail_mirrors_codeowners and
+# test_authority_files_are_both_railed_and_codeowned.
 
 
 def _codeowners_covers(rel, owners_text):
