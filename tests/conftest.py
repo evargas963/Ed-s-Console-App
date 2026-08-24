@@ -299,10 +299,56 @@ def repo_index() -> RepoIndex:
 # fixture redirects the module's ledger path to tmp for EVERY test whenever `server` is
 # imported — per-file fixtures kept missing writers (measured: ZZQ rows landed from a
 # file with no redirect). Costs nothing for tests that never import server.
+#
+# LATE-IMPORT HARDENING (operator-named hole, 2026-08-24): the redirect above only fires
+# when `server` is ALREADY imported at fixture setup. A test that imports server inside
+# its own body gets an unpatched TERRAIN_QUARANTINE_LEDGER and writes the real tracked
+# file. The fixture therefore also snapshots the tracked file's byte length before every
+# test; if the file GREW during the test, it is truncated back to the snapshot FIRST
+# (the tracked file must never stay polluted) and the test then FAILS naming the hole.
+# Proven end-to-end by tests/test_terrain_ledger_isolation_v1.py.
+_TRACKED_TERRAIN_LEDGER = (
+    Path(__file__).resolve().parent.parent / "reports" / "terrain_quarantine_ledger.jsonl"
+)
+
+
 @pytest.fixture(autouse=True)
 def _terrain_ledger_to_tmp(tmp_path, monkeypatch):
+    try:
+        size_before = _TRACKED_TERRAIN_LEDGER.stat().st_size
+    except OSError:
+        size_before = None                       # tracked file absent — creation is growth too
     srv = sys.modules.get("server")
     if srv is not None and hasattr(srv, "TERRAIN_QUARANTINE_LEDGER"):
         monkeypatch.setattr(srv, "TERRAIN_QUARANTINE_LEDGER",
                             tmp_path / "terrain_quarantine_ledger.jsonl")
     yield
+    try:
+        size_after = _TRACKED_TERRAIN_LEDGER.stat().st_size
+    except OSError:
+        size_after = None
+    if size_after is None:
+        return
+    grew = size_after - (size_before or 0)
+    if size_before is None:
+        _TRACKED_TERRAIN_LEDGER.unlink()         # restore first: it did not exist before
+        pytest.fail(
+            "TERRAIN LEDGER LATE-IMPORT HOLE: this test CREATED the tracked "
+            f"{_TRACKED_TERRAIN_LEDGER.name} ({grew} bytes) — server was imported after "
+            "fixture setup, so TERRAIN_QUARANTINE_LEDGER was never redirected to tmp. "
+            "The file has been removed to restore the tracked state; import server before "
+            "the write (or patch server.TERRAIN_QUARANTINE_LEDGER inside the test)."
+        )
+    if size_after > size_before:
+        with open(_TRACKED_TERRAIN_LEDGER, "r+b") as fh:   # restore first, then fail loud
+            fh.truncate(size_before)
+        pytest.fail(
+            "TERRAIN LEDGER LATE-IMPORT HOLE: the tracked "
+            f"{_TRACKED_TERRAIN_LEDGER.name} GREW by {grew} bytes during this test. The "
+            "usual cause: server was imported after fixture setup (a mid-test `import "
+            "server`), so TERRAIN_QUARANTINE_LEDGER was never redirected to tmp and the "
+            "quarantine write landed in the real operator audit file (an external writer "
+            "touching the tracked file mid-test trips this too). It has been truncated "
+            f"back to its pre-test length ({size_before} bytes); import server before "
+            "the write (or patch server.TERRAIN_QUARANTINE_LEDGER inside the test)."
+        )
