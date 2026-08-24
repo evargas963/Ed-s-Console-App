@@ -33,7 +33,6 @@ def compute_liquidity_behavior_row(
     atr: Optional[float],
     candle_range_pts: Optional[float],
     candle_body_pts: Optional[float],
-    order_flow_score: Optional[float],
 ) -> dict[str, Any]:
     """
     Return JSON-safe dict for MarketState.liquidity_behavior and snapshot flattening.
@@ -64,12 +63,12 @@ def compute_liquidity_behavior_row(
         except (TypeError, ValueError):
             vol_n = 0.0
 
-    ofs_n = 0.0
-    if order_flow_score is not None:
-        try:
-            ofs_n = _clip01(float(order_flow_score) / 100.0)
-        except (TypeError, ValueError):
-            ofs_n = 0.0
+    # TRUTH_V1: order_flow_score was REMOVED as an input here. It is an unvalidated composite
+    # (weights/thresholds never fit; withheld from Decide), and it entered via `/ 100.0` while its
+    # domain is -1..1 — so `ofs_n` was pinned to ~0 and the `(0.7 + 0.3*ofs_n)` modulation never
+    # functioned (stuck at 0.7). Collapsing those factors to their effective constants removes the
+    # unvalidated input and the /100 scale defect together, with no material change to the feature
+    # value (the modulation was already inert).
 
     range_pct = (rng / sp) if (rng is not None and sp) else None
     body_ratio = (body / rng) if (body is not None and rng and rng > 1e-12) else None
@@ -82,8 +81,8 @@ def compute_liquidity_behavior_row(
     stall = _clip01((1.0 - br) * tight)
     push = _clip01(br * wide)
 
-    abs_core = _clip01((imb_a / 0.52) * stall * (0.55 + 0.45 * vol_n) * (0.7 + 0.3 * ofs_n))
-    cont_core = _clip01((imb_a / 0.48) * push * (0.5 + 0.5 * vol_n) * (0.65 + 0.35 * ofs_n))
+    abs_core = _clip01((imb_a / 0.52) * stall * (0.55 + 0.45 * vol_n) * 0.7)
+    cont_core = _clip01((imb_a / 0.48) * push * (0.5 + 0.5 * vol_n) * 0.65)
 
     # RC-345 / F07: the SIGN of dealer gamma is classified in exactly one place —
     # terrain_read.regime_from_signed_gamma. This module carries that verdict; it does not

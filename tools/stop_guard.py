@@ -77,20 +77,60 @@ def unfinished_rows_opened_today(today: str | None = None) -> list[tuple[str, st
 # retired - governance/retired_checks.md). The surviving substance - a why-chain and
 # measured evidence on every CLOSED row - is enforced by check_root_cause_log and
 # closed_rows_ship_their_code at commit and in CI.
+# RC-472/473 (FIND IT → FIX IT) is NOT part of the RC-470 retirement set: it landed after
+# the right-sizing census and shares its single authority with the commit gate, so it
+# carries no duplicate computation — only the ledger read below.
+
+
+def fix_law_blockers() -> list[str]:
+    """FIND IT → FIX IT (operator law 2026-08-21, corrected 2026-08-21): the turn may not end while
+    an active material defect (status FAIL/NOT_PROVEN in governance/active_defects.json) is not
+    terminally disposed REMEDIATED (with evidence) or BLOCKED (valid exact-assertion blocker with
+    type evidence). Calls the SAME `active_defect_offenders` authority the CI gate uses, so agent-time
+    and commit-time cannot enforce different definitions. Fail-closed: a broken/absent authority or
+    ledger is a loud block, not a wave-through."""
+    try:
+        from tools.check_institutional_correctness import (
+            active_defect_offenders,
+            load_active_defects,
+        )
+        rc_log = RC_LOG.read_text(encoding="utf-8", errors="ignore")
+        return [f"{did} — {why}" for did, why in active_defect_offenders(load_active_defects(), rc_log)]
+    except Exception as e:  # noqa: BLE001 — a broken FIND-IT-FIX-IT authority must scream, not pass
+        return [f"FIND-IT-FIX-IT authority could not run ({type(e).__name__}: {e}) — "
+                f"fix the lock before ending the turn"]
 
 
 def main() -> int:
     try:
         payload = json.load(sys.stdin)
     except (json.JSONDecodeError, ValueError):
-        return 0                      # unreadable hook input is never a block
-    # Already blocked once this turn and the agent is still working — never loop forever.
-    if payload.get("stop_hook_active") is True:
-        return 0
+        payload = {}                  # DEFECT 9: unreadable input must NOT wave the FIND-IT-FIX-IT law through
+    stop_active = payload.get("stop_hook_active") is True
+
+    # FIND IT → FIX IT is SATISFIABLE (dispose the ledger entry), so it is NOT exempted on a repeat
+    # Stop the way the other guards are — a second Stop with the SAME undisposed offenders must still
+    # BLOCK (DEFECT 8), and an unreadable payload cannot excuse it (DEFECT 9). The anti-hang is that
+    # the agent can always satisfy it by REMEDIATING or attaching a valid exact-assertion blocker.
+    fixlaw = fix_law_blockers()
+    if stop_active:
+        if fixlaw:
+            sys.stderr.write(
+                "BLOCKED (FIND IT → FIX IT): active material defects are still undisposed, and a "
+                "repeat Stop does not grant permission to end while they remain.\n\n"
+                + "\n".join(f"    {f}" for f in fixlaw)
+                + "\n\nDispose each in governance/active_defects.json: set disposition REMEDIATED "
+                "(with a resolvable rc + verification command) once fixed, or BLOCKED with a valid "
+                "blocker TYPE bound to an EXACT snake_case assertion and its required evidence. "
+                "Large migration / atomicity / turn budget is NOT a hard blocker.\n"
+            )
+            return 2
+        return 0                      # the other, possibly-unsatisfiable guards stay exempt on repeat
 
     rows = unfinished_rows_opened_today()
-    if not rows:
+    if not rows and not fixlaw:
         return 0
+    rows = rows + [(f.split(" — ", 1)[0], f.split(" — ", 1)[-1]) for f in fixlaw]
 
     listed = "\n".join(f"    {rc} — fix cell still says {why!r}" for rc, why in rows)
     sys.stderr.write(

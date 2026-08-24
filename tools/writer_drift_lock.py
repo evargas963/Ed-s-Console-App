@@ -6,8 +6,14 @@ tracked file grants permission to anything.
 
 The single rule this module enforces: while an AI is acting (ED_AGENT_ROLE is set), it
 may not edit the files that decide who is in charge. The operator (empty ED_AGENT_ROLE)
-is unconstrained, and operator review at merge (CODEOWNERS + branch protection) is what
-makes the rule durable.
+is unconstrained.
+
+RC-475 (operator ruling 2026-08-24, "simple: I call the shots, I can say go"): the
+operator's explicit GO - given in conversation - IS the approval for an authority
+change; there is no review ceremony, no bot account, no extra step. CODEOWNERS remains
+the declared list of who-is-in-charge files (CONTROL_AUTHORITY_EXACT below mirrors it
+exactly, test-asserted), and changes to those files proceed only on the operator's GO.
+Required CI (pytest-full + hardening) stays the only machine gate at merge.
 
 This module BLOCKs only control-authority rewrites by an assigned principal
 (ED_AGENT_ROLE set). Ordinary product paths are not vendor-gated.
@@ -15,9 +21,7 @@ This module BLOCKs only control-authority rewrites by an assigned principal
 Fires:
   - PreToolUse via process_lock_guard / control_authority_violation (in-process
     defense-in-depth). RC-470/RC-471: the commit-time backstop (check_writer_no_drift)
-    is retired - the durable, subject-independent gate is operator review at MERGE
-    (CODEOWNERS + require_code_owner_reviews + enforce_admins), and
-    CONTROL_AUTHORITY_EXACT below mirrors CODEOWNERS exactly.
+    is retired.
 
 Empty ED_AGENT_ROLE is operator/CI (abstain), never a guessed vendor.
 """

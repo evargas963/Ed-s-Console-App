@@ -35,23 +35,12 @@ from l1_trade_observation import (
 
 log = logging.getLogger(__name__)
 
-# ── STACK-WIRE-5: named thresholds (Phase 6 ablation surface) ──
-OF_COMPOSITE_WEIGHT_BOOK: float = 0.25
-OF_COMPOSITE_WEIGHT_TAPE: float = 0.20
-OF_COMPOSITE_WEIGHT_CUM_DELTA: float = 0.20
-OF_COMPOSITE_WEIGHT_ABSORPTION: float = 0.15
-OF_COMPOSITE_WEIGHT_OPTIONS: float = 0.15
-OF_COMPOSITE_WEIGHT_RVOL: float = 0.05
-OF_COMPOSITE_MIN_LEGS: int = 2
+# RETIRED (mission TRUTH_V1, RC-473/RC-474): the order_flow composite score / direction / readiness /
+# verdict and their weight + ±threshold constants (OF_COMPOSITE_WEIGHT_*, OF_COMPOSITE_MIN_LEGS,
+# OF_DIRECTION_*, OF_READINESS_*, OF_RVOL_TERM_*/READINESS_OK/NEUTRAL_CENTER) were DELETED — no fitted
+# weights, no OOS validation. Only the generic normalization range survives.
 OF_CLIP_LOW: float = -1.0
 OF_CLIP_HIGH: float = 1.0
-OF_RVOL_TERM_LOW: float = -0.5
-OF_RVOL_TERM_HIGH: float = 0.5
-OF_DIRECTION_BULLISH_THRESHOLD: float = 0.15
-OF_DIRECTION_BEARISH_THRESHOLD: float = -0.15
-OF_READINESS_STRONG_ABS: float = 0.25
-OF_READINESS_MODERATE_ABS: float = 0.1
-OF_RVOL_READINESS_OK: float = 1.2
 OF_TAPE_WINDOW_30S_SEC: float = 30.0
 OF_TAPE_WINDOW_2M_SEC: float = 120.0
 OF_TAPE_WINDOW_5M_SEC: float = 300.0
@@ -62,8 +51,6 @@ OF_ABSORPTION_PRICE_EPS: float = 0.01
 OF_BOOK_DEPTH_TOP: int = 1
 OF_BOOK_DEPTH_SHALLOW: int = 3
 OF_BOOK_DEPTH_DEEP: int = 5
-# RVOL neutral center: RVOL = 1.0 means realized volume == average; the composite uses (rvol - center).
-OF_RVOL_NEUTRAL_CENTER: float = 1.0
 # Default minimum legs for _weighted_mean_present when callers omit min_present.
 # (Composite scoring explicitly passes OF_COMPOSITE_MIN_LEGS; this is a safe-default fallback.)
 OF_WEIGHTED_MEAN_DEFAULT_MIN_PRESENT: int = 2
@@ -741,37 +728,12 @@ def _earliest_book_snapshot(items: list) -> Optional[dict]:
     return None
 
 
-def _compute_absorption(data: dict) -> tuple[Optional[float], Optional[float], Optional[str]]:
-    """
-    Absorption: large size at a level that doesn't move price.
-    Replenishment: bid/ask depth rebuild after a fill.
-    Uses: content.*.BIDS, ASKS with aggregated per-level TOTAL_VOLUME
-          (NOT the nested per-source BID_VOLUME/ASK_VOLUME, which this does
-          not read), plus content.*.LAST_PRICE, LAST_SIZE, TRADE_TIME_MILLIS.
-    """
-    items = _iter_content(data)
-    earlier = _earliest_book_snapshot(items)
-    later = _latest_book_snapshot(items)
-    if not earlier or not later or earlier is later:
-        return None, None, None
-    bids_earlier = sum(v for _, v in _iter_bids_levels(earlier))
-    asks_earlier = sum(v for _, v in _iter_asks_levels(earlier))
-    bids_later = sum(v for _, v in _iter_bids_levels(later))
-    asks_later = sum(v for _, v in _iter_asks_levels(later))
-    bid_change = bids_later - bids_earlier if bids_earlier else 0
-    ask_change = asks_later - asks_earlier if asks_earlier else 0
-    replenishment = (bid_change + ask_change) / 2.0 if (bids_earlier or asks_earlier) else 0.0
-    # Absorption: when volume trades but price doesn't move much (simplified)
-    prints = _iter_tape_prints(items)
-    if not prints:
-        return None, None, None
-    total_sz = sum(p["size"] for p in prints if p.get("size") is not None and p["size"] > 0)
-    prices = [p.get("price") for p in prints if p.get("price") is not None]
-    price_range = max(prices) - min(prices) if len(prices) >= 2 else 0.0
-    # absorption = high volume, low price movement
-    absorption = (total_sz / (price_range + OF_ABSORPTION_PRICE_EPS)) if total_sz > 0 else 0.0
-    direction = "bid" if bid_change > ask_change else ("ask" if ask_change > bid_change else "neutral")
-    return absorption, replenishment, direction
+# RETIRED (mission TRUTH_V1): _compute_absorption (P1) was a whole-buffer volume/price-range density
+# mislabeled "absorption" — never level-based, no validity evidence. It was removed from the composite
+# and its output keys (absorption_score/replenishment_score/absorption_direction) were dropped at the
+# L1 boundary with zero executable consumers, so the function is deleted rather than kept as dead code.
+# The model/UI-facing absorption_score is the separate institutional_behavior producer (P2), the sole
+# remaining authority for that name (ONE FAUCET).
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1032,71 +994,12 @@ def _weighted_mean_present(
     return sum((w / total_w) * v for w, v in present)
 
 
-def _compute_order_flow_score(
-    book_imbalance: Optional[float],
-    tape_pressure: Optional[float],
-    cum_delta: Optional[float],
-    absorption: Optional[float],
-    options_flow: Optional[float],
-    rvol: Optional[float],
-) -> Optional[float]:
-    """
-    Composite score over present legs only (FIND-OF3/OF4 / STACK-WIRE-5 weights).
-    Uses OF_COMPOSITE_WEIGHT_* constants; None when fewer than OF_COMPOSITE_MIN_LEGS legs.
-    """
-    return _weighted_mean_present(
-        [
-            (OF_COMPOSITE_WEIGHT_BOOK, book_imbalance, OF_CLIP_LOW, OF_CLIP_HIGH),
-            (OF_COMPOSITE_WEIGHT_TAPE, tape_pressure, OF_CLIP_LOW, OF_CLIP_HIGH),
-            (OF_COMPOSITE_WEIGHT_CUM_DELTA, cum_delta, OF_CLIP_LOW, OF_CLIP_HIGH),
-            (OF_COMPOSITE_WEIGHT_ABSORPTION, absorption, OF_CLIP_LOW, OF_CLIP_HIGH),
-            (OF_COMPOSITE_WEIGHT_OPTIONS, options_flow, OF_CLIP_LOW, OF_CLIP_HIGH),
-            (
-                OF_COMPOSITE_WEIGHT_RVOL,
-                (rvol - OF_RVOL_NEUTRAL_CENTER) if rvol is not None else None,
-                OF_RVOL_TERM_LOW,
-                OF_RVOL_TERM_HIGH,
-            ),
-        ],
-        min_present=OF_COMPOSITE_MIN_LEGS,
-    )
-
-
-def _direction(score: Optional[float]) -> Optional[str]:
-    """score > 0.15 → bullish, < -0.15 → bearish, else neutral; None when unavailable or exactly zero."""
-    if score is None:
-        return None
-    if score == 0.0:
-        return None
-    if score > OF_DIRECTION_BULLISH_THRESHOLD:
-        return "bullish"
-    if score < OF_DIRECTION_BEARISH_THRESHOLD:
-        return "bearish"
-    return "neutral"
-
-
-def _readiness(score: Optional[float], rvol: Optional[float]) -> str:
-    """
-    green: score strong and rvol > 1.2
-    yellow: score moderate, or strong with rvol unknown/unconfirmed (rvol is None)
-    red: weak score, or composite unavailable
-
-    When rvol is None, strong readings downgrade to yellow (no fabricated rvol_ok).
-    """
-    if score is None:
-        return "red"
-    strong = abs(score) > OF_READINESS_STRONG_ABS
-    moderate = OF_READINESS_MODERATE_ABS <= abs(score) <= OF_READINESS_STRONG_ABS
-    if rvol is None:
-        if strong or moderate:
-            return "yellow"
-        return "red"
-    rvol_ok = rvol > OF_RVOL_READINESS_OK
-    if strong and rvol_ok:
-        return "green"
-    if moderate or (strong and not rvol_ok):
-        return "yellow"
-    return "red"
+# RETIRED (mission TRUTH_V1, RC-473/RC-474): the composite producers _compute_order_flow_score,
+# _direction and _readiness were DELETED — no fitted weights, no OOS validation; they only ever fed
+# the retired order_flow_score/direction/regime/readiness family and the double-counting verdict.
+# No executable path reconstructs them (locked by tests/test_order_flow_engine_chunk2_or_fallthrough
+# and test_stack_wire_5_v1). The canonical primitives (book_imbalance_*, spread, microprice,
+# tape_pressure_*, cum_delta_proxy, options_flow_score, book_microstructure) remain individually.
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1133,11 +1036,7 @@ class OrderFlowEngine:
         # fallback `book_imbalance_5 = top_book_pressure`, which conflated the two under one name.)
         top_book_pressure, top_book_pressure_source = _compute_top_book_pressure(data)
 
-        # Use 5-level for scoring when available (preserve measured 0.0 — FIND-OF1)
-        book_for_score = next(
-            (v for v in (book_imbalance_5, book_imbalance_3, book_imbalance_1) if v is not None),
-            None,
-        )
+        # (RC-473: the retired composite's book/tape leg selection was removed with the score.)
         spread_d = _compute_spread(data)
         spread_pts = spread_d.get("spread_pts")
 
@@ -1145,17 +1044,15 @@ class OrderFlowEngine:
         tape_pressure_30s = _compute_tape_pressure(data, OF_TAPE_WINDOW_30S_SEC)
         tape_pressure_2m = _compute_tape_pressure(data, OF_TAPE_WINDOW_2M_SEC)
         tape_pressure_5m = _compute_tape_pressure(data, OF_TAPE_WINDOW_5M_SEC)
-        tape_for_score = next(
-            (v for v in (tape_pressure_2m, tape_pressure_30s, tape_pressure_5m) if v is not None),
-            None,
-        )
 
         # Cumulative delta
         cum_delta_proxy = _compute_cum_delta_proxy(data)
         cum_delta_slope = _compute_cum_delta_slope(data)
 
-        # Absorption
-        absorption_score, replenishment_score, absorption_direction = _compute_absorption(data)
+        # TRUTH_V1: the legacy _compute_absorption (P1) was RETIRED — it computed a volume/price-range
+        # density (never level-based absorption), was removed from the composite, and its output keys
+        # were dropped at the L1 boundary (zero executable consumers). The model/UI-facing
+        # absorption_score is the separate institutional_behavior producer, not this one.
 
         # Options flow
         (
@@ -1173,57 +1070,30 @@ class OrderFlowEngine:
         institutional_flow_proxy_score = _compute_institutional_flow_proxy(
             data, book_imbalance_5=book_imbalance_5)
 
-        # Composite score and regime
-        order_flow_score = _compute_order_flow_score(
-            book_for_score,
-            tape_for_score,
-            cum_delta_proxy,
-            absorption_score,
-            options_flow_score,
-            rvol,
-        )
-        order_flow_direction = _direction(order_flow_score)
-        order_flow_regime = order_flow_direction
-        order_flow_readiness = (
-            "red" if order_flow_score is None else _readiness(order_flow_score, rvol)
-        )
-        _order_flow_readiness_rvol = (
-            "unavailable" if rvol is None and order_flow_score is not None else None
-        )
-
-        # Flow Verdict (composite headline) + field arrows/labels
-        try:
-            from math_exposure import (
-                compute_order_flow_verdict,
-                order_flow_score_label,
-                order_flow_book_label,
-                order_flow_opt_label,
-                order_flow_field_arrow,
-            )
-            verdict_d = compute_order_flow_verdict(
-                order_flow_score,
-                book_imbalance_5,
-                cum_delta_proxy,
-                options_flow_score,
-            )
-            of_verdict = verdict_d["verdict"]
-            of_verdict_color = verdict_d["verdict_color"]
-            of_arrow = verdict_d["arrow"]
-            of_agreement = verdict_d["agreement"]
-            of_score_arrow = order_flow_field_arrow(order_flow_score)
-            of_score_label = order_flow_score_label(order_flow_score)
-            of_book_arrow = order_flow_field_arrow(book_imbalance_5, use_book=True)
-            of_book_label = order_flow_book_label(book_imbalance_5)
-            of_delta_arrow = order_flow_field_arrow(cum_delta_proxy)
-            of_opt_arrow = order_flow_field_arrow(options_flow_score)
-            of_opt_label = order_flow_opt_label(options_flow_score)
-        except ImportError:
-            of_verdict = None
-            of_verdict_color = None
-            of_arrow = None
-            of_agreement = "unavailable"
-            of_score_arrow = of_book_arrow = of_delta_arrow = of_opt_arrow = None
-            of_score_label = of_book_label = of_opt_label = None
+        # absorption_score and rvol are non-directional MAGNITUDES (a density; relative
+        # volume): absorption is emitted below for advisory/PROXY display; rvol is emitted
+        # as a primitive with an explicit unavailable reason (its readiness consumer is
+        # retired with the composite below).
+        # RETIRED (mission TRUTH_V1, RC-473): order_flow_score / _direction / _regime / _readiness
+        # and the order_flow_verdict headline are RETIRED. The composite had no fitted weights or
+        # OOS validation and was withheld from Decide (of_vote=0); compute_order_flow_verdict
+        # additionally DOUBLE-COUNTED book/cum-delta/options (already inside the score) to emit the
+        # false operator claim BUYING/SELLING PRESSURE. No defensible measurable semantic exists, so
+        # the composite and its verdict are not produced. The canonical primitives (book_imbalance_*,
+        # spread, microprice, tape_pressure_*, cum_delta_proxy, options_flow_score, book_microstructure)
+        # remain individually. These fields are emitted as None so no downstream consumer sees a
+        # value; the score-family fields are dropped from the payload where possible below.
+        order_flow_score = None
+        order_flow_direction = None
+        order_flow_regime = None
+        order_flow_readiness = None
+        _order_flow_readiness_rvol = None
+        of_verdict = None
+        of_verdict_color = None
+        of_arrow = None
+        of_agreement = "unavailable"
+        of_score_arrow = of_book_arrow = of_delta_arrow = of_opt_arrow = None
+        of_score_label = of_book_label = of_opt_label = None
 
         return {
             "book_imbalance_1": book_imbalance_1,
@@ -1246,14 +1116,6 @@ class OrderFlowEngine:
             "tape_pressure_5m": tape_pressure_5m,
             "cum_delta_proxy": cum_delta_proxy,
             "cum_delta_slope": cum_delta_slope,
-            "absorption_score": absorption_score,
-            "replenishment_score": replenishment_score,
-            "replenishment_score_source": (
-                "derived_bid_ask_depth_change_midpoint"
-                if replenishment_score is not None
-                else None
-            ),
-            "absorption_direction": absorption_direction,
             "options_flow_score": options_flow_score,
             "options_flow_direction": options_flow_direction,
             "call_put_flow_ratio": call_put_flow_ratio,
@@ -1301,10 +1163,6 @@ class OrderFlowEngine:
             "tape_pressure_5m": None,
             "cum_delta_proxy": None,
             "cum_delta_slope": None,
-            "absorption_score": None,
-            "replenishment_score": None,
-            "replenishment_score_source": None,
-            "absorption_direction": None,
             "options_flow_score": None,
             "options_flow_direction": None,
             "call_put_flow_ratio": None,

@@ -1538,9 +1538,16 @@ def compute_call(
     qqq_basket_vote = _index_basket_vote(inp.qqq_weighted_push, inp.qqq_chg_pct)
     iwm_basket_vote = _index_basket_vote(inp.iwm_weighted_push, inp.iwm_chg_pct)
 
-    # Order flow direction from SignalInput (stack layer)
-    _of_dir = (inp.order_flow_direction or "").strip().lower()
-    of_vote = 1 if _of_dir in ("bullish", "call", "long") else (-1 if _of_dir in ("bearish", "put", "short") else 0)
+    # Order flow direction from SignalInput (stack layer).
+    # WITHHELD from the decision (mission TRUTH_V1): order_flow_direction is the sign of
+    # order_flow_score, a composite whose weights and ±0.15 direction thresholds were never
+    # empirically fit or out-of-sample validated (introduced whole by git a645a894; STACK-WIRE-5 /
+    # FIND-OF3-5 are magic-number-naming and None-handling refactors, not fitting), and two of its
+    # legs were magnitude-as-direction defects (absorption, rvol). Per the repo's own rule — a
+    # signal with no out-of-sample evidence may not influence the decision — order flow casts NO
+    # directional vote until it earns predictive admission. It remains an ADVISORY UI verdict.
+    # Fail-closed neutral (the existing missing-direction behavior), so the tally shape is unchanged.
+    of_vote = 0
 
     # Live-horizon fusion retained for MC/risk/sizing — not a separate stack vote (Phase 3).
     _fus_dir = getattr(fusion, 'fusion_dominant_direction', None) or getattr(fusion, 'dominant_direction', 'flat') if _fusion_available else "flat"

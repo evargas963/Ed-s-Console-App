@@ -270,11 +270,33 @@ def test_the_module_scope_blind_spot_is_measured_not_silent():
     entry above. The mechanism's BEHAVIOUR (parser rows, undeclared-removal blocking,
     fail-closed missing manifest) IS asserted behaviourally by the three sibling
     RC-468 tests in the same suite, which do not enter this census.
+
+    269 -> 272 (TRUTH_V1 order-flow retirement merge, RC-472/473/474), four arrivals
+    and one departure, named:
+    `test_engine_no_longer_calls_the_retired_composite` (chunk2),
+    `test_engine_does_not_reference_the_retired_producers` (chunk4) and
+    `test_order_flow_direction_is_withheld_from_the_decision_vote` (stack_wire_5)
+    ARRIVED. INHERENTLY STRUCTURAL: each asserts the ABSENCE of the retired
+    composite's producers/consumption (`_compute_order_flow_score`, `_direction`,
+    `_readiness`, `compute_order_flow_verdict`, the OF_* constants, the of_vote leg)
+    from the repository - a deleted name has no runtime call one could execute; only
+    the source carries the negative. The engine's surviving BEHAVIOUR (primitives
+    emitted, None composite fields) IS asserted behaviourally by the sibling chunk
+    tests, which do not enter this census.
+    `test_stop_guard_uses_the_same_authority_as_the_gate` ARRIVED.
+    INHERENTLY STRUCTURAL WIRING: the Stop hook is a bare subprocess script, and the
+    property is that it binds THE gate's `active_defect_offenders` - one authority,
+    not a lookalike. The authority's behaviour (offender verdicts, fail-closed
+    ledger) IS executed by the other tests in the same file, which do not enter this
+    census. `test_call_engine_consumes_order_flow_direction_not_second_score` LEFT:
+    its subject (the direction consumer) was retired with the composite and the
+    withheld-from-vote arrival above replaced it.
     """
     fns = C.source_text_only_functions()
-    assert len(fns) == 269, (
-        f"the per-function source-text-only count moved from the 269 measured on "
-        f"2026-08-24 (RC-468) to {len(fns)}. This figure is not a defect count, so do not simply "
+    assert len(fns) == 272, (
+        f"the per-function source-text-only count moved from the 272 measured on "
+        f"2026-08-24 (TRUTH_V1 merge; RC-468 baseline 269) to {len(fns)}. "
+        f"This figure is not a defect count, so do not simply "
         f"re-baseline it. ACCOUNT for the move: name each function that arrived or left. "
         f"An arrival stays only if its property is INHERENTLY STRUCTURAL — uniqueness, "
         f"duplication or absence in the repository, which no runtime call can express. If "

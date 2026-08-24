@@ -88,89 +88,11 @@ def _verdict_unavailable() -> dict:
     }
 
 
-def compute_order_flow_verdict(
-    score: float | None,
-    book_imb: float | None,
-    cum_delta: float | None,
-    opt_flow: float | None,
-) -> dict:
-    """
-    Compute Flow Verdict composite and metadata.
-    Returns dict: verdict, verdict_color, arrow, agreement (all None + agreement unavailable when no inputs).
-    """
-    if all(x is None for x in (score, book_imb, cum_delta, opt_flow)):
-        return _verdict_unavailable()
-
-    composite = 0.0
-    weight_sum = 0.0
-    if score is not None:
-        composite += float(score) * OF_VERDICT_W_SCORE
-        weight_sum += OF_VERDICT_W_SCORE
-    if book_imb is not None:
-        composite += float(book_imb) * OF_VERDICT_W_BOOK
-        weight_sum += OF_VERDICT_W_BOOK
-    c_sign = _of_sign(cum_delta)
-    if c_sign is not None:
-        composite += c_sign * OF_VERDICT_W_CUM
-        weight_sum += OF_VERDICT_W_CUM
-    if opt_flow is not None:
-        composite += float(opt_flow) * OF_VERDICT_W_OPT
-        weight_sum += OF_VERDICT_W_OPT
-
-    if weight_sum <= 0:
-        return _verdict_unavailable()
-    composite /= weight_sum
-
-    if abs(composite) < 1e-12:
-        return _verdict_unavailable()
-
-    if composite >= OF_VERDICT_BUYING:
-        verdict = "BUYING PRESSURE"
-        color = "green"
-        arrow = "▲"
-    elif composite >= OF_VERDICT_MILD_BUY:
-        verdict = "MILD BUY FLOW"
-        color = "green-dim"
-        arrow = "▲"
-    elif composite > OF_VERDICT_NEUTRAL_HI:
-        verdict = "FLOW NEUTRAL"
-        color = "gray"
-        arrow = "→"
-    elif composite > OF_VERDICT_MILD_SELL:
-        verdict = "MILD SELL FLOW"
-        color = "red-dim"
-        arrow = "▼"
-    else:
-        verdict = "SELLING PRESSURE"
-        color = "red"
-        arrow = "▼"
-
-    # Agreement: count only inputs that were present (no fabricated neutral votes)
-    dirs: list[str] = []
-    for d in (_of_direction(score), _book_direction(book_imb), _of_direction(opt_flow)):
-        if d is not None:
-            dirs.append(d)
-    if c_sign is not None and c_sign > 0:
-        dirs.append("bullish")
-    elif c_sign is not None and c_sign < 0:
-        dirs.append("bearish")
-
-    if not dirs:
-        agreement = "unavailable"
-    else:
-        bull = sum(1 for d in dirs if d == "bullish")
-        bear = sum(1 for d in dirs if d == "bearish")
-        neut = sum(1 for d in dirs if d == "neutral")
-        best = max(bull, bear, neut)
-        n = len(dirs)
-        if n >= 4 and best >= 4:
-            agreement = "strong | confirming"
-        elif n >= 3 and best >= 3:
-            agreement = "moderate | mixed"
-        else:
-            agreement = "weak | conflicted"
-
-    return {"verdict": verdict, "verdict_color": color, "arrow": arrow, "agreement": agreement}
+# RETIRED (mission TRUTH_V1, RC-473/RC-474): compute_order_flow_verdict was DELETED. It
+# STRUCTURALLY DOUBLE-COUNTED — `score` already contained book/cum-delta/options, then the verdict
+# re-added book, sign(cum-delta) and options over arbitrary unvalidated weights to emit the false
+# operator claim BUYING/SELLING PRESSURE. It had no measurable semantic and no OOS validation, so it
+# is removed, not repaired. No executable path reconstructs it (locked by the order-flow tests).
 
 
 def _book_direction(v: float | None) -> str | None:

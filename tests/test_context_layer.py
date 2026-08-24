@@ -24,7 +24,6 @@ def test_liquidity_behavior_scores():
         atr=1.2,
         candle_range_pts=0.5,
         candle_body_pts=0.05,
-        order_flow_score=55.0,
     )
     assert "absorption_score" in d and "continuation_score" in d
     assert 0.0 <= d["absorption_score"] <= 1.0

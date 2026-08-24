@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from dataclasses import fields
 
+import math_exposure as me
 from market_state import MarketState
 from math_exposure import (
-    compute_order_flow_verdict,
     order_flow_book_label,
     order_flow_opt_label,
     _book_direction,
@@ -14,18 +14,9 @@ from math_exposure import (
 from order_flow_engine import OrderFlowEngine
 
 
-def test_compute_order_flow_verdict_all_none_is_unavailable():
-    out = compute_order_flow_verdict(None, None, None, None)
-    assert out["verdict"] is None
-    assert out["verdict_color"] is None
-    assert out["arrow"] is None
-    assert out["agreement"] == "unavailable"
-
-
-def test_compute_order_flow_verdict_with_score_only_not_flow_neutral_default():
-    out = compute_order_flow_verdict(0.5, None, None, None)
-    assert out["verdict"] is not None
-    assert out["verdict"] != ""
+def test_compute_order_flow_verdict_producer_is_retired():
+    # RC-473/RC-474: the double-counting verdict that emitted BUYING/SELLING PRESSURE is deleted.
+    assert not hasattr(me, "compute_order_flow_verdict")
 
 
 def test_order_flow_engine_empty_result_no_flow_neutral():
