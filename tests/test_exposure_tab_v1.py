@@ -61,6 +61,21 @@ def test_charm_is_payload_driven_never_vote_gated():
         assert key in ssrc, f"/api/forces no longer serves {key}"
 
 
+def test_charm_error_is_stated_on_the_charm_line():
+    """RC-305: /api/forces serves `charm_error` — the qualifier that says WHY charm is
+    absent — and this surface rendered a FAILED charm exactly like fields never served.
+    The gates line now states the served error (same `charm failed:` phrasing as the
+    chart's forces_provenance idiom), and absence stays honest: no error served means the
+    plain not-served line, never a fabricated failure."""
+    src = _src()
+    assert "charm_error" in src, "the exposure surface never reads the served charm_error"
+    assert "charm failed:" in src, "a failed charm does not say so on the gates line"
+    assert "fields not served" in src, (
+        "the no-error absence state was lost — absence must stay distinct from failure")
+    ssrc = (REPO / "server.py").read_text(encoding="utf-8", errors="replace")
+    assert '"charm_error"' in ssrc, "/api/forces no longer serves charm_error"
+
+
 def test_theme_is_the_shared_cv2_system():
     src = _src()
     assert "ed_theme" in src and "body.light" in src, "theme does not follow the app"

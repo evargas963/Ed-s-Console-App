@@ -657,6 +657,21 @@ function renderProxMenu() {
     });
   }
 }
+/* # ui-mockup-ok: RC-305 qualifier delivery, no redesign — /api/levels serves two
+   QUALIFIERS on every row's provenance — session_scope (RTH vs extended-hours measurement
+   window) and vendor_basis (which vendor tape produced the value) — and this surface
+   rendered the prices while both went unread. They ride each level's tooltip in the
+   manager (the same title idiom the manager already uses). Absence reads as absence: an
+   unserved qualifier says "unknown", never a fabricated default. */
+function levelProvenanceTitle(title, prov) {
+  const p = (prov && typeof prov === 'object') ? prov : null;
+  const sess = p && p.session_scope != null && String(p.session_scope).trim()
+    ? String(p.session_scope).trim() : null;
+  const basis = p && p.vendor_basis != null && String(p.vendor_basis).trim()
+    ? String(p.vendor_basis).trim() : null;
+  return `${title} · ${sess ? sess + ' session' : 'session scope unknown'}`
+    + ` · ${basis ? 'basis: ' + basis : 'vendor basis unknown'}`;
+}
 function renderEngineLevels(ls, tk, err) {
   // Phase 2A: `ls` is the /api/levels payload — the canonical snapshot, serialized.
   // Values are READ by id and drawn; nothing here derives a price.
@@ -680,7 +695,8 @@ function renderEngineLevels(ls, tk, err) {
     // # ui-mockup-ok: v6.2 audit finding — a zero PRICE is a placeholder, never a level,
     // and the old card drew "VAH 0.00" the same way. Absence reads as absence.
     if (!isFinite(v) || v <= 0) continue;
-    rawLevelDefs.push({ tag, title, v, id, fam: RL_FAM[id] || 'va' });
+    rawLevelDefs.push({ tag, title: levelProvenanceTitle(title, row.provenance),
+                        v, id, fam: RL_FAM[id] || 'va' });
   }
   rawLevelsMsg = rawLevelDefs.length ? '' : ('no structure levels for ' + tk + ' yet');
   renderLvlMenu();
@@ -692,6 +708,18 @@ function renderEngineLevels(ls, tk, err) {
    from /api/forces (banked chains). RC-199: the charm vote-gate was REVOKED by the operator —
    charm renders real numbers here. */
 let forcesBank = null;
+/* # ui-mockup-ok: RC-305 qualifier delivery, no redesign — today_side_sums carries
+   spot_basis: the exact spot the SERVER bucketed the GEX/OV side sums against (the
+   "spot ref" a desk quotes beside any below/above split). The strip renders those sums
+   around a live spot pill from a DIFFERENT binding, so the qualifier must ride the rows
+   it conditions. Absent basis reads as unknown, never a number invented here; absent
+   sums render no text at all. */
+function sideSumsBasisText(ss) {
+  if (!ss) return '';
+  const b = ss.spot_basis;
+  return (b != null && isFinite(Number(b))) ? ` · spot ref ${fmt(Number(b))}`
+                                            : ' · spot ref unknown';
+}
 function renderForces() {
   const grid = document.getElementById('f-grid'), src = document.getElementById('f-src'),
         rd = document.getElementById('f-reading');
@@ -724,7 +752,10 @@ function renderForces() {
       + `<div class="fb">${c(below, bcol)}</div>` + mid
       + `<div>${c(above, acol)}</div><div class="fsrc">${esc(srcTxt)}</div>`;
   };
-  const liveSrc = rows.length ? `live · ${rows.length} strikes` : 'live cache empty — says so';
+  // # ui-mockup-ok: RC-305 qualifier delivery, no redesign — the server's aggregation
+  // spot rides the rows it qualifies (see sideSumsBasisText).
+  const basisTxt = sideSumsBasisText(ss);
+  const liveSrc = rows.length ? `live · ${rows.length} strikes${basisTxt}` : 'live cache empty — says so';
   // # ui-mockup-ok: RC-304 correctness fix, no redesign — ONE label said "banked older→newer"
   // for all three banked rows, and only ΔOI spans two captures. DEX and CHARM are summed on
   // the newer capture alone, and charm additionally carries the book it covered
@@ -737,7 +768,7 @@ function renderForces() {
   grid.innerHTML =
     rowH('gex', 'GEX $', gB, gA, sgn(gB), sgn(gA), liveSrc,
          'Net dealer gamma dollars per 1% move, summed per side of spot from the live per-strike book.')
-    + rowH('ov', 'OPT VOL', vB, vA, '#ffc400', '#ffc400', 'live session',
+    + rowH('ov', 'OPT VOL', vB, vA, '#ffc400', '#ffc400', 'live session' + basisTxt,
            'Option contracts traded this session, summed per side of spot. Activity fact only.')
     + rowH('doi', '&Delta;OI', fz && fz.available ? fz.doi_below : null,
            fz && fz.available ? fz.doi_above : null,

@@ -565,6 +565,80 @@ def test_strikes_payload_carries_server_side_sums(monkeypatch):
     assert ss["spot_basis"] == 100.0, "sums must be computed against the payload's own spot"
 
 
+def test_chart_level_titles_carry_session_scope_and_vendor_basis():
+    """RC-305: /api/levels serves session_scope and vendor_basis on every row's provenance
+    and the chart rendered the prices with neither qualifier. EXECUTED against the REAL
+    `levelProvenanceTitle` extracted from chart.html (the RC-355 extract-and-run idiom):
+    a served scope/basis ride the level tooltip; an absent one reads "unknown", never a
+    fabricated default. The server half is already behavioural in this file
+    (test_api_levels_b1_contract_single_session_prior_day asserts
+    provenance.session_scope == "RTH" on a real get_levels payload, and
+    test_api_levels_truncated_accumulator_falls_through_to_banked asserts the PDL
+    vendor_basis)."""
+    import re
+    import subprocess
+
+    m = re.search(r"function levelProvenanceTitle\(title, prov\) \{.*?\n\}", _CHART, re.S)
+    assert m, "levelProvenanceTitle must exist in chart.html"
+    assert "levelProvenanceTitle(title, row.provenance)" in _CHART, (
+        "renderEngineLevels no longer routes the tooltip through the qualifier builder")
+    assert 'title="${esc(r.title)}"' in _CHART, (
+        "the manager span lost its title binding — the qualifier reaches no DOM surface")
+    driver = (
+        m.group(0) + "\n"
+        "const full = levelProvenanceTitle('prior-day low',"
+        " {session_scope: 'RTH', vendor_basis: '1m bars (bars1m); schwab pricehistory'});\n"
+        "if (!full.includes('RTH session')) throw new Error('scope missing: ' + full);\n"
+        "if (!full.includes('basis: 1m bars (bars1m); schwab pricehistory'))"
+        " throw new Error('basis missing: ' + full);\n"
+        "const bare = levelProvenanceTitle('prior-day low', null);\n"
+        "if (!bare.includes('session scope unknown') || !bare.includes('vendor basis unknown'))"
+        " throw new Error('absence not honest: ' + bare);\n"
+        "if (bare.includes('RTH')) throw new Error('fabricated default scope: ' + bare);\n"
+        "const half = levelProvenanceTitle('overnight high', {session_scope: 'extended'});\n"
+        "if (!half.includes('extended session') || !half.includes('vendor basis unknown'))"
+        " throw new Error('partial provenance mishandled: ' + half);\n"
+        "console.log('LEVEL QUALIFIERS OK');\n"
+    )
+    p = subprocess.run(["node", "-e", driver], capture_output=True, text=True,
+                       encoding="utf-8", errors="replace", timeout=60)
+    assert p.returncode == 0, f"level qualifier builder failed: {p.stderr[:400]}"
+    assert "LEVEL QUALIFIERS OK" in p.stdout
+
+
+def test_strip_states_the_server_spot_basis():
+    """RC-305: today_side_sums carries spot_basis — the exact spot the SERVER bucketed the
+    GEX/OV side sums against — and the strip rendered the sums with no spot ref while a
+    differently-bound live pill sat between them. EXECUTED against the REAL
+    `sideSumsBasisText` extracted from chart.html: a served basis renders as the row's
+    spot ref; an absent one reads "unknown" with no number invented; absent sums render
+    no text. The server half is test_strikes_payload_carries_server_side_sums above."""
+    import re
+    import subprocess
+
+    m = re.search(r"function sideSumsBasisText\(ss\) \{.*?\n\}", _CHART, re.S)
+    assert m, "sideSumsBasisText must exist in chart.html"
+    assert "${basisTxt}" in _CHART and "'live session' + basisTxt" in _CHART, (
+        "the GEX/OV strip rows no longer carry the server spot ref")
+    driver = (
+        "const fmt = (x, d = 2) => x == null ? '-' : Number(x).toFixed(d);\n"
+        + m.group(0) + "\n"
+        "const ref = sideSumsBasisText({gex_below: 1, spot_basis: 645.2});\n"
+        "if (!ref.includes('spot ref') || !ref.includes('645.20'))"
+        " throw new Error('served basis not stated: ' + ref);\n"
+        "const missing = sideSumsBasisText({gex_below: 1});\n"
+        "if (!missing.includes('spot ref unknown'))"
+        " throw new Error('absent basis not honest: ' + missing);\n"
+        "if (/[0-9]/.test(missing)) throw new Error('a number was invented: ' + missing);\n"
+        "if (sideSumsBasisText(null) !== '') throw new Error('no sums must render no text');\n"
+        "console.log('SPOT BASIS OK');\n"
+    )
+    p = subprocess.run(["node", "-e", driver], capture_output=True, text=True,
+                       encoding="utf-8", errors="replace", timeout=60)
+    assert p.returncode == 0, f"spot basis builder failed: {p.stderr[:400]}"
+    assert "SPOT BASIS OK" in p.stdout
+
+
 def test_price_levels_route_retired_410():
     """B6: the second HTTP surface hard-fails with a pointer — never a silent alias."""
     import json
