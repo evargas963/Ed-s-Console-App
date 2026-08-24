@@ -101,3 +101,18 @@ def test_charm_filter_skips_missing_schwab_days_to_expiration_when_expiry_date_a
     result = compute_net_charm([contract], 500.0, "2099-05-05")
 
     assert result["contracts_used"] == 0
+
+
+def test_contract_context_breakeven_consumes_the_one_resolver_vendor_first():
+    """ONE FAUCET (RC-388 follow-through): the context string's BE binds the SAME
+    resolver as the A2 breakeven leaf. Vendor chains.*.breakEven present -> the display
+    shows the vendor value (deliberately != strike+mid); absent -> strike+mid fallback."""
+    vendor = _contract(mark=1.25, breakEven=501.31)
+    ctx = _build_contract_context_ms(_MarketStateStub(), [vendor])
+    assert "BE≈501.31 (vendor)" in ctx, ctx
+    assert "501.25" not in ctx, ctx
+
+    fallback = _contract(mark=1.25)
+    fallback.pop("breakEven", None)
+    ctx2 = _build_contract_context_ms(_MarketStateStub(), [fallback])
+    assert "BE≈501.25" in ctx2 and "(vendor)" not in ctx2, ctx2

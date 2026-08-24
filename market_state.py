@@ -554,6 +554,10 @@ def _oe_chain_row_snapshot(ct: dict | None) -> dict | None:
         "highPrice",
         "lowPrice",
         "closePrice",
+        # RC-388: vendor-computed per-contract breakeven (chains.*.breakEven,
+        # first seen 2026-08-15). Preserved so A2 can serve the Schwab value
+        # instead of its strike +/- mid approximation.
+        "breakEven",
         "bidSize",
         "askSize",
         "bidAskSize",
@@ -942,9 +946,24 @@ def _build_contract_context_ms(ms: "MarketState", contracts: list) -> str:
     parts = [leg]
     if mid is not None and spot_f is not None:
         fk = float(k)
-        be = fk + mid if side == "CALL" else fk - mid
+        # ONE FAUCET (RC-388 follow-through): the display consumes the SAME breakeven
+        # resolver as the A2 leaf — vendor chains.*.breakEven first, strike±mid fallback —
+        # never a second inline computation of the semantic.
+        from v2_decision.a2_option_expression import _resolve_breakeven
+        row = next(
+            (ct for ct in contracts or []
+             if str(ct.get("putCall", "")).upper().strip() == side
+             and (_sp := _f_ms(ct.get("strikePrice"))) is not None
+             and abs(_sp - fk) < 0.01),
+            {},
+        )
+        be, be_src = _resolve_breakeven(row, fk, side, mid)
         src = f" ({mid_source})" if mid_source else ""
-        parts.append(f"mid≈{mid:.2f}{src} → BE≈{be:.2f} vs spot {spot_f:.2f}")
+        if be is not None:
+            be_tag = " (vendor)" if be_src == "vendor_breakEven" else ""
+            parts.append(f"mid≈{mid:.2f}{src} → BE≈{be:.2f}{be_tag} vs spot {spot_f:.2f}")
+        else:
+            parts.append(f"mid≈{mid:.2f}{src} (breakeven unresolved)")
     elif bid is not None and ask is not None:
         parts.append(f"bid/ask {bid:.2f}/{ask:.2f} (mid needed for breakeven)")
     else:
@@ -1021,6 +1040,9 @@ def build_market_state(
     charm_drift_toward: float | None = None,
     charm_magnitude: Optional[str] = None,
     charm_top_drivers: list | None = None,
+    # RC-292/RC-295: terrain SSOT absolute-gamma strike (full book), read by the server
+    # from the terrain cache (fail-closed None when stale) and passed in like charm.
+    absolute_gamma_strike: float | None = None,
     # IV direction — computed by server from _IVTracker
     iv_direction: Optional[str] = None,
     # VOL_INPUT_CONTRACT 1.0.0 (lane V1): per-cycle market-vol context computed
@@ -1353,6 +1375,9 @@ def build_market_state(
                 net_gamma=_net_gamma, net_delta=_net_delta_sig, net_vanna=_net_vanna,
                 charm_net=_charm_net, charm_direction=_charm_dir,
                 charm_drift_toward=_charm_toward,
+                # RC-295 NEXT-DEPTH: the terrain full-book concentration, so no pinning
+                # read ever again borrows charm_drift_toward as its only strike.
+                absolute_gamma_strike=absolute_gamma_strike,
                 charm_magnitude=charm_magnitude,      # use function param — ms.charm_magnitude not set yet at this point
                 dex_magnitude=ms.dex_magnitude,
                 iv_level=_iv_level, iv_direction=iv_direction,
