@@ -115,12 +115,14 @@ def test_check_chart_intent_and_next_rth_screams_on_staged_added(tmp_path, monke
     )
     monkeypatch.setattr(C, "REPO", tmp_path)
 
+    # SIMPLICITY REHAB 2026-08-24 (T2-5): reports/** is UNGATED now; the gated surface
+    # this control drives is an explicit handoff file, where the claims actually land.
     def fake_git(args: list[str]) -> list[str] | None:
         if args[:3] == ["diff", "--cached", "--name-only"]:
-            return ["reports/zz_chart_intent_bad.md"]
+            return ["zz_chart_intent_handoff.md"]
         if args[:3] == ["diff", "--cached", "-U0"]:
             return [
-                "+++ b/reports/zz_chart_intent_bad.md",
+                "+++ b/zz_chart_intent_handoff.md",
                 "+Collect slice Done / ACCEPT.",
                 "+OUT-OF-SCOPE: Chart paint / yellow bars.",
                 "+Monday proof tomorrow.",
@@ -144,10 +146,11 @@ def test_pretooluse_blocks_chart_intent_and_monday_proof_write(monkeypatch):
     monkeypatch.setenv("ED_PRETOOLUSE_GUARD", "on")
 
     def run(content: str) -> tuple[int, str]:
+        # T2-5: reports/** is ungated; a prompt-named file at a gated location drives it.
         payload = {
             "tool_name": "Write",
             "tool_input": {
-                "file_path": str(ROOT / "reports" / "zz_chart_intent_prompt.md"),
+                "file_path": str(ROOT / "zz_chart_intent_prompt.md"),
                 "content": content,
             },
         }

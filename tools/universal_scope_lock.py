@@ -60,17 +60,20 @@ _PROMPT_PATH_HINT = re.compile(
 
 
 def is_prompt_or_agent_instruction_path(rel: str) -> bool:
-    """Paths whose Write/Edit content is gated for SPY-only framing."""
+    """Paths whose Write/Edit content is gated for SPY-only framing.
+
+    SIMPLICITY REHAB 2026-08-24 (T2-5): reports/** and .claude/** are DROPPED from the
+    gated surface — policing report prose and agent scratch for framing words was
+    2026-07-30 program-era scope; the law binds where instruction actually flows
+    (charter files, cursor rules, explicit prompt files). Code-side SPY-only defaults
+    stay separately enforced by spy_only_ticker_default_violations."""
     r = rel.replace("\\", "/").lstrip("./")
     if r in ("AGENTS.md", "CLAUDE.md", "ACTIVE_PROGRAM.md"):
         return True
     if r.startswith(".cursor/rules/"):
         return True
-    if r.startswith(".claude/") and r.endswith((".md", ".mdc", ".txt")):
-        return True
-    if r.startswith("reports/") and _PROMPT_PATH_HINT.search(Path(r).name):
-        return True
-    if "prompt" in Path(r).name.lower() and r.endswith((".md", ".mdc", ".txt")):
+    if "prompt" in Path(r).name.lower() and r.endswith((".md", ".mdc", ".txt")) \
+            and not r.startswith(("reports/", ".claude/")):
         return True
     return False
 

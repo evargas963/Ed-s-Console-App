@@ -30,18 +30,21 @@ _PROMPT_PATH_HINT = re.compile(
 
 
 def is_residual_language_path(rel: str) -> bool:
-    """Paths whose Write/Edit / staged ADDED text is gated for Chart-intent + next-RTH."""
+    """Paths whose Write/Edit / staged ADDED text is gated for Chart-intent + next-RTH.
+
+    SIMPLICITY REHAB 2026-08-24 (T2-5): reports/** and .claude/** DROPPED from the
+    gated surface — policing every report and agent-scratch markdown for Done-framing
+    was 2026-07-30 program-era scope. The law still binds where the claims land:
+    charter files, cursor rules, the ledger, and explicit handoff/prompt files."""
     r = rel.replace("\\", "/").lstrip("./")
     if r in ("AGENTS.md", "CLAUDE.md", "ACTIVE_PROGRAM.md"):
         return True
     if r.startswith(".cursor/rules/"):
         return True
-    if r.startswith(".claude/") and r.endswith((".md", ".mdc", ".txt")):
-        return True
     if r == "governance/root_cause_log.md":
         return True
-    if r.startswith("reports/") and r.endswith((".md", ".txt")):
-        return True
+    if r.startswith(("reports/", ".claude/")):
+        return False
     if "handoff" in Path(r).name.lower() and r.endswith((".md", ".txt")):
         return True
     if _PROMPT_PATH_HINT.search(Path(r).name) and r.endswith((".md", ".mdc", ".txt")):
