@@ -9,7 +9,7 @@
     "ED_PROOF_ONLY_GUARD": "on",
     "ED_HONESTY_GUARD": "on"
   },
-  "_comment_hook_chains": "PREPARED, NOT YET WIRED (SIMPLICITY REHAB 2026-08-24, operator to flip): tools/stop_chain.py and tools/pretooluse_chain.py run these SAME guard modules in ONE process each — measured 300ms per event vs 2,815ms (Stop, five interpreters; +3,180ms for process_lock_guard's Stop path, whose dereg is PR #187's proposal) and 1,704ms (Edit chain). No predicate weakened; a block from any member still blocks. To adopt: replace each hook list below with the matching chain command (roster stays visible as argv, e.g. 'tools/stop_chain.py tools/stop_guard.py tools/proof_only_guard.py tools/honesty_guard.py tools/operator_law_guard.py') and mirror .cursor/hooks.json. The wiring edit was classifier-denied for the agent this session.",
+  "_comment_hook_chains": "WIRED (SIMPLICITY REHAB, operator GO 2026-08-24): tools/stop_chain.py and tools/pretooluse_chain.py run the SAME guard modules in ONE process each — measured 300ms per event vs 2,815ms (Stop, four interpreters after RC-471) and 1,704ms (Edit chain, three interpreters). The roster stays visible as argv on each command line, so this file remains the reviewable authority over exactly which guards run; a block from any member still blocks, and a crashing member blocks (never passes). .cursor/hooks.json mirrors this wiring.",
   "hooks": {
     "PreToolUse": [
       {
@@ -17,15 +17,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": ".venv/Scripts/python.exe tools/pretooluse_guard.py"
-          },
-          {
-            "type": "command",
-            "command": ".venv/Scripts/python.exe tools/operator_law_guard.py"
-          },
-          {
-            "type": "command",
-            "command": ".venv/Scripts/python.exe tools/process_lock_guard.py"
+            "command": ".venv/Scripts/python.exe tools/pretooluse_chain.py tools/pretooluse_guard.py tools/operator_law_guard.py tools/process_lock_guard.py"
           }
         ]
       },
@@ -34,11 +26,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": ".venv/Scripts/python.exe tools/operator_law_guard.py"
-          },
-          {
-            "type": "command",
-            "command": ".venv/Scripts/python.exe tools/process_lock_guard.py"
+            "command": ".venv/Scripts/python.exe tools/pretooluse_chain.py tools/operator_law_guard.py tools/process_lock_guard.py"
           }
         ]
       }
@@ -48,19 +36,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": ".venv/Scripts/python.exe tools/stop_guard.py"
-          },
-          {
-            "type": "command",
-            "command": ".venv/Scripts/python.exe tools/proof_only_guard.py"
-          },
-          {
-            "type": "command",
-            "command": ".venv/Scripts/python.exe tools/honesty_guard.py"
-          },
-          {
-            "type": "command",
-            "command": ".venv/Scripts/python.exe tools/operator_law_guard.py"
+            "command": ".venv/Scripts/python.exe tools/stop_chain.py tools/stop_guard.py tools/proof_only_guard.py tools/honesty_guard.py tools/operator_law_guard.py"
           }
         ]
       }
