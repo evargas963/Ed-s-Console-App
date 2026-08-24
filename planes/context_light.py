@@ -60,7 +60,12 @@ _STRUCTURAL_KEYS = (
     "charm_net",
     "charm_direction_display",
     "charm_drift_toward",
-    "kl_gamma_pin",
+    # RC-292: renamed from kl_gamma_pin (the raw value carries its metric's name); the
+    # qualified pin claim travels beside it, blockers included, so the plane sees WHY a
+    # pin claim is absent rather than a bare null.
+    "kl_absolute_gamma_strike",
+    "kl_pin_candidate",
+    "kl_pin_candidate_blockers",
     "kl_hvl",
     "kl_max_pain",
     "kl_net_gex",

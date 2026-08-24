@@ -596,7 +596,7 @@ function famLiveValues(fam) {
   const out = [];
   const push = v => { if (v != null && isFinite(Number(v))) out.push(Number(v)); };
   if (fam === 'wall') { push(T.call_wall); if (T.put_wall !== T.call_wall) push(T.put_wall); }
-  else if (fam === 'pin') push(T.gamma_pin);
+  else if (fam === 'pin') push(T.absolute_gamma_strike);
   else if (fam === 'flip') push(T.gamma_flip);
   else if (fam === 'netpeak') push(T.net_gex_peak);
   else if (fam === 'maxpain') push(T.max_pain);
@@ -1163,16 +1163,17 @@ function draw() {
     // v6 # ui-mockup-ok: no mid-chart text — the wall becomes an axis tag; the two-sided case
     // is ONE combined chip, and the pin merges in when it shares the strike (one tag, never
     // an overlap). The full sentence (name, box, lean, hold rates) lives in the hover tip.
-    const pinHere = T.gamma_pin != null && Number(T.gamma_pin) === Number(level);
+    const pinHere = T.absolute_gamma_strike != null && Number(T.absolute_gamma_strike) === Number(level);
     // # ui-mockup-ok: RC-124 information-loss BUG FIX, not a redesign — the merged axis tag
-    // restores the decisiveness the standalone PIN label already renders. Measured live: pin
-    // 750 coincident with the put wall rendered "750.00 PWALL·PIN" while the payload carried
-    // gamma_pin_strength_pct 19.8, so a near-tie pin and a decisive one looked identical —
-    // the same information-deleting merge RC-115 was opened for. Absent strength renders
-    // nothing (no fabricated %), exactly as the standalone label does.
-    const _pinSp = Number(T.gamma_pin_strength_pct);
+    // restores the decisiveness the standalone ABS-GAMMA label already renders. Measured
+    // live: the strike at 750 coincident with the put wall rendered "750.00 PWALL·PIN"
+    // while the payload carried a strength of 19.8%, so a near-tie leader and a decisive
+    // one looked identical — the same information-deleting merge RC-115 was opened for.
+    // Absent strength renders nothing (no fabricated %), exactly as the standalone label
+    // does. RC-292: tag says ABSΓ — the metric, not an unearned pin claim.
+    const _pinSp = Number(T.absolute_gamma_strength_pct);
     const _pinTag = pinHere
-      ? '·PIN' + (Number.isFinite(_pinSp) ? ` ${_pinSp}%` : '')
+      ? '·ABSΓ' + (Number.isFinite(_pinSp) ? ` ${_pinSp}%` : '')
       : '';
     const tagTxt = kind === 'both' ? `⬌WALL${_pinTag}`
       : (sell ? 'CWALL' : 'PWALL') + _pinTag;
@@ -1257,7 +1258,11 @@ function draw() {
     ['gsf', 'GSF', '#fb923c', 'Gamma Support Floor — dealer positive-gamma cushion half-spent below spot; support effectively ends HERE, above the flip.', [5, 4]],
     ['grc', 'GRC', '#38bdf8', 'Gamma Resistance Ceiling — vol-suppression half-spent above spot; beyond it dealer selling stops dampening rallies (often at/beyond the call wall).', [5, 4]],
     // # ui-mockup-ok: RC-352 nomenclature label fix only (PIN -> ABS GAMMA), no design change
-    ['gamma_pin', 'ABS GAMMA', '#c792ff', 'Absolute Gamma Strike (SpotGamma): largest TOTAL gamma (calls+puts) — the sticky-pin/magnet level; hedging magnitude pins price regardless of net sign, strongest into expiry. Lead % = margin over the runner-up strike (a 1% lead is a coin flip). Our own touch-study on the OLD net-based pin tested NULL; this standard measure displays as structure until re-proven.', []],
+    // RC-292/RC-315: payload key renamed absolute_gamma_strike; the refuted "magnitude pins
+    // regardless of net sign" sentence is REPLACED — magnitude sizes the hedging flow, the
+    // unobservable dealer sign decides pin vs repel.
+    ['absolute_gamma_strike', 'ABS GAMMA', '#c792ff', 'Absolute Gamma Strike (SpotGamma): largest TOTAL gamma (calls+puts) — the biggest dealer hedging concentration and a pin CANDIDATE, not a proven magnet: magnitude sizes the hedging flow while the unobservable dealer sign decides pin vs repel (RC-315). Lead % = margin over the runner-up strike (a 1% lead is a coin flip). Our own touch-study on the OLD net-based pin tested NULL; this measure displays as structure until re-proven.', []],
+    ['pin_candidate', 'PIN CAND', '#e0b0ff', 'Pin Candidate (RC-292): the Absolute Gamma strike shown ONLY when all five qualification gates pass — dealers net long gamma at spot, strike within 0.5% of spot, front expiry ≤1 day, pin score above negligible, magnitude bundle complete. Absent = at least one gate failed.', [3, 3]],
     ['net_gex_peak', 'NET Γ PEAK', '#33aaff', 'Largest |net| dealer GEX strike (calls minus puts) — where the SIGNED book peaks. This was previously labeled PIN; renamed because no originating vendor defines the pin on the net book (RC-124).', []],
     ['max_pain', 'MAX PAIN', '#ff66cc', 'Strike minimizing option-holder value — expiry-day context only.', []],
     ['key_delta_strike', 'KDS', '#00e5ff', 'Biggest total delta strike — hedging magnet candidate (unproven).', []],
@@ -1287,12 +1292,12 @@ function draw() {
       lvp: 'Most positive gamma strike — structure fact; damping lean withheld.',
     };
     const tipWhy = (withholdLean && leanTips[key]) || why;
-    // RC-124: the pin label carries its decisiveness — the leader's margin over the
+    // RC-124: the ABS GAMMA label carries its decisiveness — the leader's margin over the
     // runner-up on total gamma. Absent strength renders nothing (no fabricated %).
     // E-35: fnum() is an index.html helper that does NOT exist on this page — calling it
     // here killed draw() before the candles. Chart-native Number check only.
-    const _sp = Number(T.gamma_pin_strength_pct);
-    const _lead = (key === 'gamma_pin' && Number.isFinite(_sp)) ? ` · lead ${_sp}%` : '';
+    const _sp = Number(T.absolute_gamma_strength_pct);
+    const _lead = (key === 'absolute_gamma_strike' && Number.isFinite(_sp)) ? ` · lead ${_sp}%` : '';
     lvlItems.push({ v, text: `${lab} ${fmt(v)}${_lead}`, col, dash,
       lw: key === 'gamma_flip' ? 2 : 1.25, side: 'right',
       tipHtml: `<b>${lab} ${fmt(v)}${_lead}</b><br>${tipWhy}` });

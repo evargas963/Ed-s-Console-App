@@ -1190,8 +1190,12 @@ def test_rc345_adversarial_residuals_real_paths() -> None:
     # `charmTarget = institutional_ready && kl_gamma_pin>0 ? kl_gamma_pin : charm_drift_toward`.
     charm_block = html[html.index("// Charm Drift row"):]
     charm_block = charm_block[: charm_block.index("// Gamma Void Zones")]
-    assert "d.kl_gamma_pin" not in charm_block and "pinStrike" not in charm_block, (
-        "Charm Drift must NOT consume the gamma pin as its target (F18/RC-345)")
+    # RC-292 rename: the retired kl_gamma_pin AND its successors are all forbidden here —
+    # the raw concentration, the qualified candidate, and any pin-shaped local.
+    for banned in ("d.kl_gamma_pin", "d.kl_absolute_gamma_strike", "d.kl_pin_candidate",
+                   "pinStrike"):
+        assert banned not in charm_block, (
+            f"Charm Drift must NOT consume {banned} as its target (F18/RC-345/RC-292)")
     assert "kl_institutional_ready" not in charm_block, (
         "Charm Drift must not switch to the institutional pin (F18/RC-345)")
     assert "const charmTarget = (d.charm_drift_toward != null" in charm_block, (

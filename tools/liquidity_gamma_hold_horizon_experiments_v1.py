@@ -389,8 +389,12 @@ def _levels_from_snap(ticker: str, spot: float, chain_raw: str) -> dict | None:
         levels["PUT_WALL"] = float(snap.put_wall)
     if snap.gamma_flip is not None and math.isfinite(float(snap.gamma_flip)):
         levels["GAMMA_FLIP"] = float(snap.gamma_flip)
-    if snap.gamma_pin is not None and math.isfinite(float(snap.gamma_pin)):
-        levels["GAMMA_PIN"] = float(snap.gamma_pin)
+    # RC-292: terrain field renamed absolute_gamma_strike (total-gamma concentration, a
+    # pin candidate). The tool's OWN level kind stays "GAMMA_PIN": it is this experiment's
+    # historical taxonomy (LEVEL_KINDS, direction logic, banked outputs) — a label, not a
+    # claim.
+    if snap.absolute_gamma_strike is not None and math.isfinite(float(snap.absolute_gamma_strike)):
+        levels["GAMMA_PIN"] = float(snap.absolute_gamma_strike)
     return {
         "levels": levels,
         "regime": regime,

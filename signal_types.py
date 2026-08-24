@@ -81,6 +81,14 @@ class SignalInput:
     charm_net:          Optional[float] = None
     charm_direction:    Optional[str]   = None   # 'buying', 'selling', 'neutral'
     charm_drift_toward: Optional[float] = None
+    #: RC-292/RC-295 NEXT-DEPTH: terrain's max-TOTAL-gamma strike (FULL BOOK, the SSOT
+    #: absolute-gamma concentration), plumbed so a pinning read never again has to score
+    #: against charm_drift_toward — a selected-expiry net-GEX peak with no pinning
+    #: semantics. Fail-closed None when the terrain cache is absent/stale. NOTE (RC-315):
+    #: this is a pin CANDIDATE input, not a magnet; rebuilding the pinning-score point on
+    #: it is owed as its own RC row with a validated directional mechanism — do not
+    #: re-add the geometric +1 just because the field now exists.
+    absolute_gamma_strike: Optional[float] = None
     charm_magnitude:    Optional[str] = None   # 'large', 'moderate', 'small', 'negligible'
     dex_magnitude:      Optional[str] = None   # 'large', 'moderate', 'small', 'negligible'
     iv_level:           Optional[float] = None  # implied vol decimal (0.18 = 18%; ms_dict/DB iv_level stay percent)

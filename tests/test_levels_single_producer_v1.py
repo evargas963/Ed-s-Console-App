@@ -136,23 +136,29 @@ def _overlay(cache_entry, monkeypatch):
     monkeypatch.setattr(S, "_terrain_cache",
                         {"SPY": entry} if entry is not None else {})
     md = {"kl_call_gamma_wall": 111.0, "kl_put_gamma_wall": 222.0, "kl_gamma_flip": 333.0,
-          "kl_gamma_pin": 444.0, "kl_hvl": 555.0, "kl_max_pain": 666.0,
+          "kl_absolute_gamma_strike": 444.0, "kl_hvl": 555.0, "kl_max_pain": 666.0,
           "kl_call_gamma_str": "$9.9M/pt", "kl_put_gamma_str": "$8.8M/pt"}
     S._terrain_kl_overlay(md, "SPY")
     return md
 
 
 def test_fresh_terrain_overlays_every_gamma_family_level(monkeypatch):
-    # RC-124: kl_gamma_pin carries the STANDARD pin (+ strength passthrough); kl_hvl carries
-    # the net-GEX peak under its historical key — the row label says what it is.
+    # RC-124/RC-292: kl_absolute_gamma_strike carries the total-gamma concentration
+    # (+ strength passthrough); kl_pin_candidate carries the QUALIFIED pin claim with its
+    # blockers; kl_hvl carries the net-GEX peak under its historical key — the row label
+    # says what it is.
     md = _overlay({"call_wall": 745.0, "put_wall": 740.0, "gamma_flip": 746.5,
-                   "gamma_pin": 741.0, "gamma_pin_strength_pct": 32.5,
+                   "absolute_gamma_strike": 741.0, "absolute_gamma_strength_pct": 32.5,
+                   "pin_candidate": 741.0, "pin_candidate_blockers": [],
                    "net_gex_peak": 735.0, "max_pain": 742.0,
                    "levels_stale": False}, monkeypatch)
     assert md["kl_call_gamma_wall"] == 745.0 and md["kl_put_gamma_wall"] == 740.0
-    assert md["kl_gamma_flip"] == 746.5 and md["kl_gamma_pin"] == 741.0
-    assert md["gamma_pin"] == 741.0, "payload gamma_pin must be the terrain total-gamma SSOT (RC-292)"
-    assert md["kl_gamma_pin_strength_pct"] == 32.5, "the pin's decisiveness must travel"
+    assert md["kl_gamma_flip"] == 746.5 and md["kl_absolute_gamma_strike"] == 741.0
+    assert md["absolute_gamma_strike"] == 741.0, (
+        "payload absolute_gamma_strike must be the terrain total-gamma SSOT (RC-292)")
+    assert md["kl_absolute_gamma_strength_pct"] == 32.5, "the leader's decisiveness must travel"
+    assert md["kl_pin_candidate"] == 741.0 and md["kl_pin_candidate_blockers"] == [], (
+        "RC-292: the qualified pin claim and its (empty) blocker list must travel")
     assert md["kl_hvl"] == 735.0, "kl_hvl now carries net_gex_peak (RC-124 remap)"
     assert md["kl_max_pain"] == 742.0
     assert md["kl_levels_source"] == "terrain_wide_chain"
@@ -165,8 +171,8 @@ def test_stale_terrain_blanks_rather_than_serving_the_narrow_book(monkeypatch):
     md = _overlay({"call_wall": 745.0, "put_wall": 740.0, "confidence": "TRUSTED",
                    "levels_stale": True}, monkeypatch)
     for k in ("kl_call_gamma_wall", "kl_put_gamma_wall", "kl_gamma_flip",
-              "kl_gamma_pin", "kl_hvl", "kl_max_pain", "kl_gamma_flip_confidence",
-              "gamma_pin"):
+              "kl_absolute_gamma_strike", "kl_pin_candidate", "kl_hvl", "kl_max_pain",
+              "kl_gamma_flip_confidence", "absolute_gamma_strike"):
         assert md[k] is None, f"{k} survived a stale terrain — the second book is back"
     assert "withheld" in md["kl_levels_source"]
 
@@ -174,25 +180,29 @@ def test_stale_terrain_blanks_rather_than_serving_the_narrow_book(monkeypatch):
 def test_absent_terrain_blanks_rather_than_serving_the_narrow_book(monkeypatch):
     md = _overlay(None, monkeypatch)
     assert md["kl_call_gamma_wall"] is None and md["kl_gamma_flip"] is None
-    assert md["gamma_pin"] is None
+    assert md["absolute_gamma_strike"] is None
     assert "withheld" in md["kl_levels_source"]
 
 
 def test_overlay_overwrites_payload_gamma_pin_with_terrain_total(monkeypatch):
-    """RC-292: analytics net-GEX peak (743 on the SPY 0DTE fixture) must not survive overlay."""
+    """RC-292: analytics net-GEX peak (743 on the SPY 0DTE fixture) must not survive overlay.
+
+    The payload key is absolute_gamma_strike after the RC-292 rename; the invariant is
+    unchanged — whatever value occupies it before overlay, the terrain SSOT overwrites it.
+    """
     import time
 
     import server as S
     monkeypatch.setattr(S, "_terrain_cache", {
         "SPY": {
-            "gamma_pin": 745.0,
-            "gamma_pin_strength_pct": 59.4,
+            "absolute_gamma_strike": 745.0,
+            "absolute_gamma_strength_pct": 59.4,
             "computed_ts_utc": time.time(),
         },
     })
-    md = {"gamma_pin": 743.0, "kl_gamma_pin": 743.0}
+    md = {"absolute_gamma_strike": 743.0, "kl_absolute_gamma_strike": 743.0}
     S._terrain_kl_overlay(md, "SPY")
-    assert md["gamma_pin"] == 745.0 and md["kl_gamma_pin"] == 745.0
+    assert md["absolute_gamma_strike"] == 745.0 and md["kl_absolute_gamma_strike"] == 745.0
 
 
 def test_pin_score_and_snapshot_use_terrain_ssot_pin_not_consensus_net():
@@ -201,8 +211,8 @@ def test_pin_score_and_snapshot_use_terrain_ssot_pin_not_consensus_net():
     chunk = src[i:i + 1400]
     assert "terrain_cache_get" in chunk
     assert "getattr(consensus_summary" not in chunk
-    assert "gamma_pin_gex_dollars" in chunk
-    assert "gamma_pin_oi" in chunk
+    assert "absolute_gamma_gex_dollars" in chunk
+    assert "absolute_gamma_oi" in chunk
     assert "book_oi_total" in chunk
     assert "exposures.get(float(_pin_strike)" not in chunk
     assert "_pin_bkt" not in chunk
@@ -226,7 +236,9 @@ def test_pin_score_and_snapshot_use_terrain_ssot_pin_not_consensus_net():
 # not overridden; this lock fails the day any second writer returns, wherever it is placed.
 
 SSOT_KEYS = (
-    "kl_call_gamma_wall", "kl_put_gamma_wall", "kl_gamma_flip", "kl_gamma_pin", "kl_hvl",
+    "kl_call_gamma_wall", "kl_put_gamma_wall", "kl_gamma_flip", "kl_absolute_gamma_strike",
+    # RC-292: the qualified pin claim and its blockers ride the same single writer.
+    "kl_pin_candidate", "kl_pin_candidate_blockers", "kl_hvl",
     "kl_max_pain", "kl_call_delta_wall", "kl_put_delta_wall", "kl_call_oi_wall",
     "kl_put_oi_wall", "kl_call_vanna_wall", "kl_put_vanna_wall", "kl_em_upper",
     "kl_em_lower", "kl_gamma_inflection", "kl_delta_inflection", "kl_oi_center",
@@ -349,7 +361,7 @@ def test_overlay_owns_the_full_concept_set(monkeypatch):
 
     gen_ts = time.time()
     md = _overlay({"call_wall": 745.0, "put_wall": 740.0, "gamma_flip": 746.5,
-                   "gamma_pin": 741.0, "gamma_pin_strength_pct": 32.5,
+                   "absolute_gamma_strike": 741.0, "absolute_gamma_strength_pct": 32.5,
                    "net_gex_peak": 735.0, "max_pain": 742.0,
                    "call_delta_wall": 747.0, "put_delta_wall": 738.0,
                    "implied_1d_move": {"points": 8.5}, "spot": 741.0,
@@ -756,16 +768,19 @@ def test_backfill_typical_price_vwap_substitution_hard_fails():
 
 
 def test_rc124_merged_pin_tag_keeps_its_decisiveness():
-    """RC-124 (2026-08-04): when the pin is coincident with a wall the axis tag MERGES, and
-    the merge used to drop the lead % — measured live as `750.00 PWALL·PIN` while the payload
-    carried gamma_pin_strength_pct 19.8. A near-tie pin and a decisive one must never render
-    identically; absent strength still renders nothing rather than a fabricated number."""
-    assert "const _pinSp = Number(T.gamma_pin_strength_pct);" in _CHART, (
-        "the merged wall/pin tag no longer reads the pin's strength from the payload"
+    """RC-124 (2026-08-04): when the abs-gamma strike is coincident with a wall the axis tag
+    MERGES, and the merge used to drop the lead % — measured live as `750.00 PWALL·PIN`
+    while the payload carried a strength of 19.8%. A near-tie leader and a decisive one must
+    never render identically; absent strength still renders nothing rather than a fabricated
+    number. RC-292: field renamed absolute_gamma_strength_pct, tag renamed ABSΓ."""
+    assert "const _pinSp = Number(T.absolute_gamma_strength_pct);" in _CHART, (
+        "the merged wall/abs-gamma tag no longer reads the leader's strength from the payload"
     )
-    assert "'·PIN' + (Number.isFinite(_pinSp) ? ` ${_pinSp}%` : '')" in _CHART, (
+    assert "'·ABSΓ' + (Number.isFinite(_pinSp) ? ` ${_pinSp}%` : '')" in _CHART, (
         "the merged tag must append the strength when present and NOTHING when absent"
     )
     # the bare merge (decisiveness deleted) must not come back in either wall shape
-    assert "`⬌WALL${pinHere ? '·PIN' : ''}`" not in _CHART
-    assert "(sell ? 'CWALL' : 'PWALL') + (pinHere ? '·PIN' : '')" not in _CHART
+    assert "`⬌WALL${pinHere ? '·ABSΓ' : ''}`" not in _CHART
+    assert "(sell ? 'CWALL' : 'PWALL') + (pinHere ? '·ABSΓ' : '')" not in _CHART
+    # and the pre-rename payload field must not be read anywhere on the chart
+    assert "T.gamma_pin" not in _CHART, "a chart read of the retired gamma_pin field returned"

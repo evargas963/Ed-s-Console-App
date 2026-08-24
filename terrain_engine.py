@@ -53,7 +53,10 @@ from terrain_read import build_terrain_read
 
 #: Payload schema version — bump on any field change so the UI can fail closed.
 #: v2 (2026-07-21): + net_gex_at_spot, key_delta_strike, hvp, lvp.
-TERRAIN_SCHEMA_VERSION = 2
+#: v3 (2026-08-24, RC-292): gamma_pin* renamed absolute_gamma_* (total-gamma concentration
+#: under its metric's name, not a pin claim); + pin_candidate / pin_candidate_blockers
+#: (the qualified pin claim, fail-closed with reasons).
+TERRAIN_SCHEMA_VERSION = 3
 
 
 @dataclass(frozen=True)
@@ -71,27 +74,45 @@ class TerrainSnapshot:
     headline: str = ""
     lines: list[str] = field(default_factory=list)
 
-    # levels
+    # levels — chain scope for every level in this dataclass: FULL_BOOK (the wide
+    # multi-expiry capture chain). The analytics summary_rows carry the SELECTED_EXPIRY
+    # scope; the two scopes never share a payload field (RC-292/RC-303).
     gamma_flip: float | None = None
     call_wall: float | None = None
     put_wall: float | None = None
-    #: RC-124: THE standard pin — max TOTAL gamma (SpotGamma Absolute Gamma / sticky pin;
-    #: Avellaneda–Lipkin magnitude mechanism). Strength = leader's margin over the runner-up
-    #: on the same metric (a 1% lead is a coin flip; the label says so).
-    gamma_pin: float | None = None
-    gamma_pin_strength_pct: float | None = None
-    #: RC-413: GEX$ / OI at gamma_pin plus book OI, from the SAME exposures book that
-    #: picked the pin. pin_score reads these so strike and magnitude cannot split onto
-    #: the analytics selected-expiry book. None = fail-closed (absent/stale/undollarized).
-    gamma_pin_gex_dollars: float | None = None
-    gamma_pin_oi: float | None = None
+    #: RC-124/RC-292/RC-315: max TOTAL gamma — |call GEX$| + |put GEX$| — over the full
+    #: book. A GROSS GAMMA CONCENTRATION (SpotGamma's "Absolute Gamma" measure): where the
+    #: most dealer re-hedging activity sits. It is a pin CANDIDATE input, NOT a demonstrated
+    #: magnet — magnitude sets the SIZE of the hedging flow while the unobservable dealer
+    #: SIGN decides pin vs repel (RC-315). Renamed from `gamma_pin` per the operator's
+    #: RC-292 disposition: the raw value carries the metric's name; the word "pin" is
+    #: reserved for `pin_candidate` below, which must earn it. Strength = leader's margin
+    #: over the runner-up on the same metric (a 1% lead is a coin flip; the label says so).
+    absolute_gamma_strike: float | None = None
+    absolute_gamma_strength_pct: float | None = None
+    #: RC-413: GEX$ / OI at absolute_gamma_strike plus book OI, from the SAME exposures
+    #: book that picked the strike. pin_score reads these so strike and magnitude cannot
+    #: split onto the analytics selected-expiry book. None = fail-closed
+    #: (absent/stale/undollarized).
+    absolute_gamma_gex_dollars: float | None = None
+    absolute_gamma_oi: float | None = None
     book_oi_total: float | None = None
+    #: RC-292 operator disposition: `pin_candidate` is absolute_gamma_strike published as a
+    #: candidate pin ONLY after regime, proximity, DTE, liquidity and completeness
+    #: qualification (qualify_pin_candidate below). None = one or more gates failed;
+    #: pin_candidate_blockers records WHICH, so absence renders with its reason, never as
+    #: an unexplained dash (RC-128 pattern).
+    pin_candidate: float | None = None
+    pin_candidate_blockers: list[str] = field(default_factory=list)
     #: RC-124: the former "pin" — max |net GEX$| (calls minus puts) — kept under its honest
-    #: name; a real measure of where the SIGNED book peaks, distinct from the magnet.
+    #: name; a real measure of where the SIGNED book peaks, distinct from the concentration.
+    #: Scope: FULL_BOOK here; ExposureRow.net_gex_peak is the SAME definition over the
+    #: SELECTED_EXPIRY chain (declared, distinct surface — RC-303).
     net_gex_peak: float | None = None
-    #: RC-134: terrain `hvl` REMOVED — it equaled gamma_pin by construction (same total-GEX$
-    #: metric as pick_hvl_strike / pick_pin_and_strength). Total-gamma renders once as
-    #: GAMMA PIN. Analytics `kl_hvl` remains a DIFFERENT book (net_gex_peak → "Net Γ peak").
+    #: RC-134: terrain `hvl` REMOVED — it equaled the absolute-gamma strike by construction
+    #: (same total-GEX$ metric as pick_hvl_strike / pick_pin_and_strength). Total-gamma
+    #: renders once as ABS GAMMA. Analytics `kl_hvl` remains a DIFFERENT book
+    #: (net_gex_peak → "Net Γ peak").
     max_pain: float | None = None
     call_charm_wall: float | None = None
     put_charm_wall: float | None = None
@@ -543,6 +564,90 @@ def wall_geometry_state(spot: float | None, wall: float | None,
     raise ValueError(f"side must be 'call' or 'put', got {side!r}")
 
 
+#: RC-292 pin-candidate qualification thresholds. Hardwired, not configurable. Each cites
+#: its source; neither is a new invention:
+#: — proximity: strike within 0.5% of spot — the "strike near spot" cut of the operator's
+#:   pinning framework as committed in tools/study_pin_residence_v1.py (`near`, 0.005).
+PIN_CANDIDATE_PROXIMITY_MAX_FRAC = 0.005
+#: — DTE: pinning is an expiration effect (expiration-date clustering turns on positioning
+#:   into expiry — Ni, Pearson & Poteshman, JFE 2005, doi:10.1016/j.jfineco.2004.08.005);
+#:   the framework's committed cut is dte <= 1 (tools/study_pin_residence_v1.py `exp`).
+PIN_CANDIDATE_DTE_MAX = 1.0
+
+
+def qualify_pin_candidate(
+    *,
+    spot: float | None,
+    absolute_gamma_strike: float | None,
+    absolute_gamma_strength_pct: float | None,
+    absolute_gamma_gex_dollars: float | None,
+    absolute_gamma_oi: float | None,
+    book_oi_total: float | None,
+    net_gex_at_spot: float | None,
+    front_dte: float | None,
+) -> tuple[float | None, list[str]]:
+    """RC-292 operator disposition: publish `pin_candidate` ONLY after regime, proximity,
+    DTE, liquidity and completeness qualification.
+
+    The raw absolute-gamma strike is a gross gamma concentration — a pin CANDIDATE input,
+    never a demonstrated magnet (RC-315: magnitude sizes the hedging flow; the unobservable
+    dealer sign decides pin vs repel). This gate is the difference between the metric and
+    the claim. Gates, each fail-closed (missing input = gate failed, never assumed passed):
+
+    — completeness: the RC-413 magnitude bundle (strike, strength, GEX$, OI, book OI) is
+      present from the SAME book that picked the strike.
+    — regime: dealers net LONG gamma at spot (net_gex_at_spot > 0). A long-gamma dealer
+      sells rallies and buys dips, which pins; short gamma repels (RC-315). The framework
+      cut committed in tools/study_pin_residence_v1.py (`lng`).
+    — proximity: |strike − spot| / spot <= PIN_CANDIDATE_PROXIMITY_MAX_FRAC.
+    — DTE: front expiry of THIS book within PIN_CANDIDATE_DTE_MAX days (pinning is an
+      expiration effect); unknown maturity fails, never passes (RC-290).
+    — liquidity: the committed pin-score thresholds (math_probabilities.compute_pin_score,
+      GEX magnitude × OI concentration) grade the strike above "negligible". No new
+      threshold is invented here — the gate reuses the one already on the operator's
+      screen as PIN SCORE.
+
+    Returns (pin_candidate, blockers): the strike with an EMPTY blockers list when every
+    gate passes, else (None, [failed gate names]) so absence renders with its reason.
+    """
+    from math_probabilities import compute_pin_score
+
+    blockers: list[str] = []
+    complete = not (
+        spot is None
+        or absolute_gamma_strike is None
+        or absolute_gamma_strength_pct is None
+        or absolute_gamma_gex_dollars is None
+        or absolute_gamma_oi is None
+        or book_oi_total is None
+        or book_oi_total <= 0
+    )
+    if not complete:
+        blockers.append("completeness")
+    if net_gex_at_spot is None or net_gex_at_spot <= 0:
+        blockers.append("regime")
+    if spot is not None and spot > 0 and absolute_gamma_strike is not None:
+        if abs(float(absolute_gamma_strike) - float(spot)) / float(spot) > \
+                PIN_CANDIDATE_PROXIMITY_MAX_FRAC:
+            blockers.append("proximity")
+    elif "completeness" not in blockers:
+        blockers.append("completeness")
+    if front_dte is None or float(front_dte) > PIN_CANDIDATE_DTE_MAX:
+        blockers.append("dte")
+    if complete:
+        score = compute_pin_score(
+            absolute_gamma_gex_dollars,
+            (float(absolute_gamma_oi) / float(book_oi_total)),
+        )
+        if score.get("label") in (None, "negligible", "missing_oi"):
+            blockers.append("liquidity")
+    else:
+        blockers.append("liquidity")
+    if blockers:
+        return None, blockers
+    return float(absolute_gamma_strike), []
+
+
 def compute_terrain(ticker: str, contracts: list[dict] | None,
                     spot: float | None) -> TerrainSnapshot:
     """Full terrain for one ticker. Fails closed — never invents a level.
@@ -571,14 +676,15 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
     )
     (call_wall, _cw_str), (put_wall, _pw_str) = pick_gamma_wall_strikes(exposures, strikes)
     hvp, lvp = pick_volatility_point_strikes(exposures, strikes)
-    _pin, _pin_strength = pick_pin_and_strength(exposures, strikes)   # RC-124: the standard pin
+    # RC-124/RC-292: max TOTAL gamma — the absolute-gamma concentration, full book.
+    _abs_gamma_strike, _abs_gamma_strength = pick_pin_and_strength(exposures, strikes)
     # RC-413: pin_score GEX/OI from THIS same exposures book — never a second analytics book.
-    _pin_gex_dollars = None
-    _pin_oi = None
+    _abs_gamma_gex_dollars = None
+    _abs_gamma_oi = None
     _book_oi_total = None
     _oi_acc = 0.0
     _oi_seen = False
-    _pin_bucket = None
+    _abs_gamma_bucket = None
     for _k, _v in exposures.items():
         if not isinstance(_v, dict):
             continue
@@ -591,24 +697,24 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
                 _oi_seen = True
             except (TypeError, ValueError):
                 pass
-        if _pin is not None:
+        if _abs_gamma_strike is not None:
             try:
-                if float(_k) == float(_pin):
-                    _pin_bucket = _v
+                if float(_k) == float(_abs_gamma_strike):
+                    _abs_gamma_bucket = _v
             except (TypeError, ValueError):
                 pass
     if _oi_seen:
         _book_oi_total = _oi_acc
-    if _pin_bucket is not None:
-        _pin_gex_dollars = total_gex_dollars_at_strike(_pin_bucket)
-        _co, _po = _pin_bucket.get("call_oi"), _pin_bucket.get("put_oi")
+    if _abs_gamma_bucket is not None:
+        _abs_gamma_gex_dollars = total_gex_dollars_at_strike(_abs_gamma_bucket)
+        _co, _po = _abs_gamma_bucket.get("call_oi"), _abs_gamma_bucket.get("put_oi")
         if _co is not None or _po is not None:
             try:
-                _pin_oi = (float(_co) if _co is not None else 0.0) + (
+                _abs_gamma_oi = (float(_co) if _co is not None else 0.0) + (
                     float(_po) if _po is not None else 0.0
                 )
             except (TypeError, ValueError):
-                _pin_oi = None
+                _abs_gamma_oi = None
     # RC-128 (One Levels Faucet): the SSOT producer owns the delta walls too — same wide
     # chain, same exposures, one book. OI/vanna walls stay unowned and therefore BLANK on
     # every operator surface until this producer computes them.
@@ -638,6 +744,24 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
     charm_by_strike = compute_charm_by_strike(contracts, spot, now=_terrain_now)
     call_charm_wall, put_charm_wall = pick_charm_wall_strikes(charm_by_strike)
 
+    # RC-292: the front expiry of THIS book (nearest readable DTE; RC-290 — a contract
+    # that does not state its maturity is dropped, never defaulted) feeds the DTE gate.
+    _front_dte = min(
+        (d for d in (_dte_of(c) for c in contracts if isinstance(c, dict))
+         if d is not None),
+        default=None,
+    )
+    _pin_candidate, _pin_candidate_blockers = qualify_pin_candidate(
+        spot=float(spot),
+        absolute_gamma_strike=_abs_gamma_strike,
+        absolute_gamma_strength_pct=_abs_gamma_strength,
+        absolute_gamma_gex_dollars=_abs_gamma_gex_dollars,
+        absolute_gamma_oi=_abs_gamma_oi,
+        book_oi_total=_book_oi_total,
+        net_gex_at_spot=flip_diag.get("gamma_at_spot"),
+        front_dte=_front_dte,
+    )
+
     read = build_terrain_read(
         spot=spot, flip=flip, flip_confidence=confidence,
         put_wall=put_wall, call_wall=call_wall,
@@ -656,14 +780,16 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
         gamma_flip=flip,
         call_wall=call_wall,
         put_wall=put_wall,
-        # RC-124: gamma_pin is THE standard pin — max TOTAL gamma (SpotGamma Absolute
-        # Gamma / sticky pin) with its decisiveness; the old net-argmax lives on honestly
-        # as net_gex_peak. Assigned below from _pin/_pin_strength.
-        gamma_pin=_pin,
-        gamma_pin_strength_pct=_pin_strength,
-        gamma_pin_gex_dollars=_pin_gex_dollars,
-        gamma_pin_oi=_pin_oi,
+        # RC-124/RC-292: the max-TOTAL-gamma concentration under its metric's name with
+        # its decisiveness; the old net-argmax lives on honestly as net_gex_peak. The pin
+        # CLAIM is pin_candidate, and only qualification can publish it.
+        absolute_gamma_strike=_abs_gamma_strike,
+        absolute_gamma_strength_pct=_abs_gamma_strength,
+        absolute_gamma_gex_dollars=_abs_gamma_gex_dollars,
+        absolute_gamma_oi=_abs_gamma_oi,
         book_oi_total=_book_oi_total,
+        pin_candidate=_pin_candidate,
+        pin_candidate_blockers=_pin_candidate_blockers,
         net_gex_peak=pick_net_gex_peak_strike(exposures, strikes, institutional=True),
         key_delta_strike=pick_key_delta_strike(exposures, strikes),
         hvp=hvp,
