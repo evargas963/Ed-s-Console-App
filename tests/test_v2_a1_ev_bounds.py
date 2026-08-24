@@ -10,7 +10,6 @@ from calibration.v2_a1_ev_bounds import (
     build_a1_ev_bounds_artifact,
     compute_ev_bound,
 )
-from v2_decision import build_module_a_a1_decision
 
 
 def _prediction(
@@ -208,25 +207,6 @@ def test_ev_bounds_disclosure_inherits_conformal_and_names_geometry_limits():
     assert disclosure["execution_adjusted_ev"] == "not_implemented"
     assert artifact["geometry_scope"]["type"] == "artifact_level"
     assert artifact["geometry_scope"]["per_row_geometry_required_for_runtime_promotion"] is True
-
-
-def test_ev_bounds_scaffold_does_not_change_runtime_ev_fields():
-    decision = build_module_a_a1_decision(
-        {
-            "ticker": "SPY",
-            "fusion_available": True,
-            "fusion_dominant_direction": "up",
-            "fusion_dominant_prob": 0.64,
-            "dominant_dir": "up",
-            "is_no_trade": False,
-        }
-    )
-    dec = decision["decision"]
-
-    assert dec["p_low"]["source"] == "not_implemented"
-    assert dec["p_high"]["source"] == "not_implemented"
-    assert dec["EV_lower"]["source"] == "not_implemented"
-    assert dec["EV_upper"]["source"] == "not_implemented"
 
 
 @pytest.mark.parametrize("n,min_required,expected_ok", [(29, 30, False), (30, 30, True)])

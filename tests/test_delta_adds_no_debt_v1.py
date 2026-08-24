@@ -11,6 +11,7 @@ first control plants a regression and demands a FAIL.
 """
 from __future__ import annotations
 
+import ast
 import importlib.util
 import os
 import sys
@@ -646,3 +647,83 @@ def test_the_precommit_seam_refuses_when_no_base_trunk_resolves(monkeypatch):
         assert "cannot resolve a base trunk" in str(exc), str(exc)
     else:
         raise AssertionError("an unmeasurable commit was allowed to proceed")
+# ── RC-466: the BASE-SIDE CACHE must never trade correctness for speed ──────────────
+# The base measurement is a pure function of (base commit, driver bytes, local evidence,
+# interpreter); the cache key must cover EVERY one of those inputs, a corrupt or stale
+# cache must fall back to a fresh measurement, and the candidate side is never cached.
+
+
+def test_rc466_cache_roundtrip_and_wrong_key_miss(tmp_path, monkeypatch):
+    """A written entry is returned for ITS key only; any other key recomputes."""
+    monkeypatch.setattr(GATE, "_base_cache_path", lambda: tmp_path / "cache.json")
+    counts = {"root_cause_log": 3}
+    GATE._write_base_cache("k1", counts, "abc1234", {"root_cause_log", "log_law"})
+    hit = GATE._read_base_cache("k1")
+    assert hit is not None
+    got_counts, got_sha, got_roster = hit
+    assert got_counts == counts and got_sha == "abc1234"
+    assert got_roster == {"root_cause_log", "log_law"}
+    assert GATE._read_base_cache("k2") is None, "a stale key must MISS, never serve"
+    assert GATE._read_base_cache(None) is None
+
+
+def test_rc466_corrupt_cache_falls_back_to_fresh(tmp_path, monkeypatch):
+    """Fail-open on the CACHE, never on the gate: garbage on disk means recompute."""
+    f = tmp_path / "cache.json"
+    monkeypatch.setattr(GATE, "_base_cache_path", lambda: f)
+    for garbage in (b"not-json", b"{}", b'{"key": "k1"}',
+                    b'{"key": "k1", "counts": "wrong-shape", "sha": 1, "roster": 2}'):
+        f.write_bytes(garbage)
+        assert GATE._read_base_cache("k1") is None, garbage
+
+
+def test_rc466_key_covers_changed_evidence_and_unresolvable_ref(tmp_path, monkeypatch):
+    """The key must change when an input the base measurement depends on changes -
+    otherwise a stale hit could silently serve wrong counts."""
+    # Pin the evidence input to a controlled tmp file. An ABSOLUTE member wins the
+    # `REPO / rel` join, so the real repo (and its git) stays untouched.
+    ev = tmp_path / "evidence.jsonl"
+    ev.write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(GATE, "_LOCAL_EVIDENCE", (str(ev),))
+    k1 = GATE._base_cache_key("HEAD")
+    assert k1, "a real ref must produce a key"
+    ev.write_text('{"changed": true}', encoding="utf-8")
+    k2 = GATE._base_cache_key("HEAD")
+    assert k2 and k1 != k2, "changed local evidence must invalidate the cache"
+    # An unresolvable ref yields NO key (never a guessable one, never a stale hit).
+    assert GATE._base_cache_key("no-such-ref-xyz") is None
+
+
+def test_rc466_different_commits_never_share_a_key():
+    """Two different base commits must produce different keys (content-addressed)."""
+    k_head = GATE._base_cache_key("HEAD")
+    k_prev = GATE._base_cache_key("HEAD~1")
+    assert k_head, "a real ref must produce a key"
+    assert k_prev, "this repo has history; HEAD~1 must resolve"
+    assert k_head != k_prev
+
+
+def test_rc466_candidate_side_is_never_cached():
+    """Only the BASE lookup consults the cache; the candidate is measured every run."""
+    import inspect
+    src_main = inspect.getsource(GATE.main)
+    assert "_read_base_cache" in src_main, "base side must consult the cache"
+    # The candidate measurement must be an UNCONDITIONAL statement: exactly one call,
+    # not nested under any cache branch.
+    tree = ast.parse(src_main)
+    fn = tree.body[0]
+    candidate_calls = [
+        n for n in ast.walk(fn)
+        if isinstance(n, ast.Call)
+        and getattr(n.func, "id", "") == "enforced_counts"
+        and any(k.arg == "stage_delta" for k in n.keywords)
+    ]
+    assert len(candidate_calls) == 1, "exactly one candidate measurement"
+    # It must live directly in main's top-level body (not inside an if/else guard).
+    top_level_assign_calls = [
+        n for stmt in fn.body if isinstance(stmt, ast.Assign)
+        for n in ast.walk(stmt)
+        if isinstance(n, ast.Call) and getattr(n.func, "id", "") == "enforced_counts"
+        and any(k.arg == "stage_delta" for k in n.keywords)
+    ]
+    assert top_level_assign_calls, "candidate measurement must be unconditional"
