@@ -36,3 +36,10 @@ exclude_dirs = ["tests", "node_modules", ".venv", "venv", "models"]
 [tool.coverage.run]
 branch = true
 omit = ["tests/*", "*/node_modules/*", "models/*"]
+
+# Single pytest config surface (no pytest.ini). Discovery stays pytest defaults
+# (`test_*.py`); do not add a global timeout — the required pytest-full job already
+# bounds wall time. https://docs.pytest.org/en/stable/reference/customize.html
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = ["-ra", "--tb=short"]
