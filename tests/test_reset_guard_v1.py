@@ -19,10 +19,9 @@ import tools.process_lock_guard as PLG  # noqa: E402
 
 
 def _no_escape(monkeypatch, tmp_path):
+    # 2026-08-24 teardown: the operator_go grant file is GONE — the only residual
+    # escape vector is the env var, which must also not disarm the guard.
     monkeypatch.delenv("ED_RESET_GUARD", raising=False)
-    go = tmp_path / "go.json"
-    go.write_text('{"granted": false, "scope": []}', encoding="utf-8")
-    monkeypatch.setattr(OPL, "OPERATOR_GO_PATH", go)
 
 
 def test_spec_case_reset_double_dash_chart_blocks(monkeypatch, tmp_path):
@@ -64,12 +63,10 @@ def test_safe_forms_allow(monkeypatch, tmp_path):
 
 
 def test_escapes_are_explicit(monkeypatch, tmp_path):
-    go = tmp_path / "go.json"
-    monkeypatch.setattr(OPL, "OPERATOR_GO_PATH", go)
-    go.write_text('{"granted": true, "scope": ["git_reset_product"]}', encoding="utf-8")
+    """No grant file exists any more (2026-08-24 teardown) and the env token never
+    disarmed the guard (RC-450) — both directions still BLOCK."""
     monkeypatch.delenv("ED_RESET_GUARD", raising=False)
     assert OPL.reset_guard_violations("git reset -- static/chart.html")
-    go.write_text('{"granted": false, "scope": []}', encoding="utf-8")
     monkeypatch.setenv("ED_RESET_GUARD", "off")
     assert OPL.reset_guard_violations("git reset -- static/chart.html")
 
