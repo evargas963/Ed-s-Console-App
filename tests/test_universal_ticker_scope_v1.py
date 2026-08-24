@@ -141,10 +141,12 @@ def test_pretooluse_blocks_spy_only_prompt_write(monkeypatch):
     monkeypatch.setenv("ED_PRETOOLUSE_GUARD", "on")
 
     def run(content: str) -> tuple[int, str]:
+        # T2-5 (SIMPLICITY REHAB 2026-08-24): reports/** is ungated now; a prompt-named
+        # file at a gated location (repo root) drives the same front-end clause.
         payload = {
             "tool_name": "Write",
             "tool_input": {
-                "file_path": str(ROOT / "reports" / "zz_cursor_prompt_spy.md"),
+                "file_path": str(ROOT / "zz_cursor_prompt_spy.md"),
                 "content": content,
             },
         }
