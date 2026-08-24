@@ -11,6 +11,13 @@ const { test, expect } = require('@playwright/test');
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => { window.__ED_E2E__ = true; });
   await page.goto('/', { waitUntil: 'domcontentloaded' });
+  // RC-466 flake close: the tests below dereference #expiry-select inside evaluate().
+  // The element is STATIC in index.html, so after a real app load it exists at
+  // domcontentloaded — but if '/' raced the server's startup-exception window and served
+  // an error page, the deref died as `Cannot set properties of null` mid-test (CI,
+  // 2026-08-24, run 32716032624). Waiting for the element makes the setup deterministic
+  // and turns any real load failure into a CLEAR selector timeout instead.
+  await page.waitForSelector('#expiry-select');
 });
 
 test('ticker switch resets expiry scope and clears the stale select', async ({ page }) => {

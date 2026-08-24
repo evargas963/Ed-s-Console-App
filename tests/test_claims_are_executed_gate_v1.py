@@ -247,11 +247,22 @@ def test_the_module_scope_blind_spot_is_measured_not_silent():
     `test_codeowners_covers_control_authority_set` REMAINS (its line moved only): the
     CODEOWNERS ownership map is still inherently structural - no runtime call can
     express which paths GitHub will treat as owned.
+
+    267 -> 268 (RC-466 delta-gate base cache), one arrival, named:
+    `test_rc466_candidate_side_is_never_cached` ARRIVED.
+    INHERENTLY STRUCTURAL: it asserts the ABSENCE of a cache branch around the
+    candidate-side measurement in the delta gate's main() - that the candidate is
+    measured unconditionally, never served from cache. A runtime call cannot prove a
+    negative of this shape: no cache key is ever derived for the candidate, so there is
+    no hit one could construct to observe behaviourally; only the source structure
+    carries the property. The cache's BEHAVIOUR (roundtrip, stale-key miss, corruption
+    fail-open, key sensitivity) IS asserted behaviourally by the four sibling RC-466
+    tests in the same suite, which do not enter this census.
     """
     fns = C.source_text_only_functions()
-    assert len(fns) == 267, (
-        f"the per-function source-text-only count moved from the 267 measured on "
-        f"2026-08-23 (RC-461) to {len(fns)}. This figure is not a defect count, so do not simply "
+    assert len(fns) == 268, (
+        f"the per-function source-text-only count moved from the 268 measured on "
+        f"2026-08-24 (RC-466) to {len(fns)}. This figure is not a defect count, so do not simply "
         f"re-baseline it. ACCOUNT for the move: name each function that arrived or left. "
         f"An arrival stays only if its property is INHERENTLY STRUCTURAL — uniqueness, "
         f"duplication or absence in the repository, which no runtime call can express. If "
