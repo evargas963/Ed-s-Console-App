@@ -15,9 +15,11 @@ test.beforeEach(async ({ page }) => {
   // The element is STATIC in index.html, so after a real app load it exists at
   // domcontentloaded — but if '/' raced the server's startup-exception window and served
   // an error page, the deref died as `Cannot set properties of null` mid-test (CI,
-  // 2026-08-24, run 32716032624). Waiting for the element makes the setup deterministic
-  // and turns any real load failure into a CLEAR selector timeout instead.
-  await page.waitForSelector('#expiry-select');
+  // 2026-08-24, run 32716032624). Wait for ATTACHED, not the default visible: the empty
+  // select is hidden until expiries populate (never, in CI offline mode), so a
+  // visibility wait times out for every test in this file — measured on run 32716925350,
+  // 3 failed / e2e 7.4m. Attached is exactly what the derefs need.
+  await page.waitForSelector('#expiry-select', { state: 'attached' });
 });
 
 test('ticker switch resets expiry scope and clears the stale select', async ({ page }) => {
