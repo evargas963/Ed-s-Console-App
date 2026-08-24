@@ -30,7 +30,6 @@ from calibration.paths import DEFAULT_DB, ensure_artifacts_dir
 # Import governed loader from phase6 (same population contract)
 from calibration.phase6_edge_discovery_governed_v1 import HORIZONS, load_rows, _session_bucket
 
-RNG_MASTER = random.Random(42)
 
 # ── Frozen protocol (Phase 6.5) ─────────────────────────────────────────────
 FROZEN = {

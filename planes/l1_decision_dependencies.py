@@ -91,11 +91,6 @@ def get_all_decision_dependency_keys() -> frozenset[str]:
     return frozenset(out)
 
 
-def get_fingerprint_material_key_paths() -> frozenset[str]:
-    """Paths included in SHA fingerprint input; must match build_l1_material_dict_for_fingerprint."""
-    return get_all_decision_dependency_keys()
-
-
 # Top-level keys that may appear on L1 payloads but are intentionally non-fingerprint
 # (timing, diagnostics, duplicates, HTTP cache metadata). Update when build_l1_context / server adds keys.
 L1_KNOWN_NON_MATERIAL_TOP_LEVEL_KEYS: Final[frozenset[str]] = frozenset(

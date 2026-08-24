@@ -75,8 +75,6 @@ SEED = 20260730
 
 HORIZONS = (30, 60)  # minutes after outcome start
 TOP_QUINTILE = 0.20  # top 20% = quintile 1 (rank percentile ≥ 0.80)
-VOL_NOT_TOP = 0.80   # bottom 80% of volume = not top quintile (= "low/mid")
-GEX_NOT_TOP = 0.80
 MIN_BAND_STRIKES = 10
 MIN_POST_BARS = 25
 MIN_CLASS_N = 30     # descriptive underpowered gate (still report)

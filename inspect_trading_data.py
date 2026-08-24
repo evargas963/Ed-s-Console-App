@@ -63,32 +63,6 @@ MS_FIELDS = [
     "live_on",
 ]
 
-# ── SnapshotRow fields passed from server _snapshot_kwargs ────────────────────
-SNAP_FIELDS_FROM_MS = [
-    "zone", "vwap_side", "nearest_above_name", "nearest_above_val", "nearest_above_dist",
-    "nearest_below_name", "nearest_below_val", "nearest_below_dist",
-    "net_gamma", "net_delta", "iv_direction",
-    "rules_signal", "rules_conviction", "entry", "stop", "target", "rules_headline",
-    "up_prob_3c", "down_prob_3c", "flat_prob_3c",
-    "up_prob_5c", "down_prob_5c", "flat_prob_5c",
-    "up_prob_8c", "down_prob_8c", "flat_prob_8c",
-    "up_prob_13c", "down_prob_13c", "flat_prob_13c",
-    "up_prob_15c", "down_prob_15c", "flat_prob_15c",
-    "model_version", "confidence", "samples_used", "dominant_dir", "dominant_prob",
-    "call_signal", "call_conviction", "rules_pred_agree",
-    "regime_primary", "regime_confidence", "regime_score",
-    "fusion_dominant", "fusion_dominant_prob", "fusion_confidence",
-    "fusion_breakout", "fusion_pinning", "fusion_continuation", "fusion_reversal",
-    "fusion_vol_expansion", "fusion_mean_reversion",
-    "fusion_model_agreement", "fusion_n_models_active",
-    "mc_efe", "mc_eae", "mc_containment", "mc_expansion",
-    "mc_upper_50", "mc_lower_50", "mc_paths", "mc_horizon",
-    "mc_vol_source", "mc_sigma_value",
-    "session_high", "session_low", "last_sweep_type", "last_sweep_level",
-    "last_sweep_held", "n_sweeps_today",
-    "validation_passed", "structure_valid", "probability_valid", "risk_valid",
-    "validation_summary", "r_units", "execution_mode",
-]
 
 # ── Category mapping (field -> source category) ──────────────────────────────
 def build_category_map():

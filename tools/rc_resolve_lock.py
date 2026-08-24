@@ -17,14 +17,11 @@ Architecture A (RC-450): ED_RC_RESOLVE_GUARD cannot disable this control.
 """
 from __future__ import annotations
 
-import json
 import re
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 
-RC_LOG_REL = "governance/root_cause_log.md"
-PM_MISSION_REL = "governance/pm_mission.json"
 
 RESOLVE_MARKERS = ("FIXED:", "NEXT-DEPTH:", "OUT-OF-SCOPE:")
 PARKING_FIXES = frozenset({
@@ -183,10 +180,3 @@ def staged_rc_resolve_violations(
     ))
     return out
 
-
-def load_json(path: Path) -> dict:
-    try:
-        doc = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError, json.JSONDecodeError):
-        return {}
-    return doc if isinstance(doc, dict) else {}

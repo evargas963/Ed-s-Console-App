@@ -992,25 +992,6 @@ def switch_tier_flags(ticker: str) -> dict[str, bool]:
     }
 
 
-def derive_guest_incomplete_reason(
-    payload: dict[str, Any] | None,
-    *,
-    selected_ticker: str,
-) -> Optional[str]:
-    if not is_guest_ticker(selected_ticker):
-        return None
-    p = payload if isinstance(payload, dict) else {}
-    if p.get("analytics_pending_shell"):
-        return "guest_analytics_pending_shell"
-    rows = p.get("mhap_rows")
-    if not (isinstance(rows, list) and rows):
-        return "guest_mhap_missing"
-    trust = p.get("guest_trust_class") or ticker_trust_class(selected_ticker)
-    if trust == TRUST_GUEST_UNPROVEN:
-        return "guest_capture_unproven"
-    return None
-
-
 def derive_switch_operator_state(session: dict[str, Any]) -> dict[str, Any]:
     """Transport-only switch label — never implies model direction is wrong."""
     db_state = str(session.get("db_contention_state_at_switch") or "OK")

@@ -97,14 +97,6 @@ def _dict_literal_keys(node: ast.Dict) -> set[str]:
     return keys
 
 
-
-
-
-
-
-
-
-
 def check_single_spot_authority() -> list[Violation]:
     """Spot may be read through exactly ONE function.
 
@@ -182,8 +174,6 @@ def _living_test_files():
             yield tf, ast.parse(tf.read_text(encoding="utf-8", errors="replace"), filename=str(tf))
         except (OSError, SyntaxError):
             continue
-
-
 
 
 def _rc_row_violations(log_path, n: int, rc_id: str, status: str,
@@ -821,34 +811,6 @@ def _self_comparison(test: ast.AST) -> str | None:
     if both_static and ast.dump(test.left) == ast.dump(test.comparators[0]):
         return "compares a value to itself"
     return None
-
-
-def _open_root_causes(path) -> list[str]:
-    """RC ids whose status is OPEN."""
-    if not path.exists():
-        return []
-    out = []
-    for line in path.read_text(encoding="utf-8").splitlines():
-        if not line.startswith("| RC-"):
-            continue
-        cells = [c.strip() for c in line.strip("|").split("|")]
-        if len(cells) > 1 and cells[1] == "OPEN":
-            out.append(cells[0])
-    return out
-
-
-def _open_register_claims(path) -> list[str]:
-    """Register rows still UNPROVEN or DISPROVED (the two non-terminal states)."""
-    if not path.exists():
-        return []
-    out = []
-    for line in path.read_text(encoding="utf-8").splitlines():
-        if not line.startswith("|"):
-            continue
-        cells = [c.strip() for c in line.strip("|").split("|")]
-        if cells and cells[0] in ("UNPROVEN", "DISPROVED"):
-            out.append(f"register:{cells[3][:40] if len(cells) > 3 else '?'}")
-    return out
 
 
 def _is_overdue(due: str) -> bool:
@@ -1943,7 +1905,6 @@ def check_mypy_types() -> list[Violation]:
 
 
 _UNPROVEN_REGISTER = REPO / "governance" / "unproven_register.md"
-UNPROVEN_STALE_DAYS = 14
 
 
 _OPEN_STATUSES = {"UNPROVEN", "DISPROVED"}
@@ -3857,8 +3818,6 @@ def check_universal_ticker_scope() -> list[Violation]:
             out.append(Violation(path, 0, reason))
 
     return out
-
-
 
 
 def check_chart_intent_and_next_rth() -> list[Violation]:

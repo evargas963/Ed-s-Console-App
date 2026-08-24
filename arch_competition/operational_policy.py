@@ -66,7 +66,6 @@ ROUTING_URGENT = "urgent"
 ROUTING_GOVERNANCE = "governance"
 
 ACTION_REVIEW_GOVERNANCE = "Review governance panel and lineage; do not promote until artifacts valid."
-ACTION_REVIEW_ROLLBACK = "Consider rollback checkpoint; verify active vs candidate parity."
 ACTION_RETRAIN = "Schedule governed retrain + full evaluation; refresh manifests before promotion."
 ACTION_REVIEW_DRIFT = "Review live drift artifact; compare recent slice to baseline manifest."
 ACTION_REVIEW_AUDIT = "Review governance_audit.jsonl failure record; retry manual action or escalate."

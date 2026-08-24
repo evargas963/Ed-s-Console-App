@@ -32,8 +32,6 @@ W_VWAP_ROLL = 60
 W_VOL_PART = 20
 W_RANGE = 20
 W_RV = 30
-W_MTF5 = 30   # 30×1m ≈ 30m for 5m-like aggregation
-W_MTF15 = 45  # 15×1m bars aggregated as 15m proxy
 
 # Multi-horizon momentum lookbacks (1m bars). Intraday time-series momentum:
 # Moskowitz/Ooi/Pedersen (2012, JFE); Gao/Han/Li/Zhou (2018, JFE) intraday momentum.

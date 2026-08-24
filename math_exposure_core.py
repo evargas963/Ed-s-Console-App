@@ -1261,7 +1261,6 @@ def greek_bias(net_delta: float | None, charm_direction: str | None,
 
 # ── Beta / returns ────────────────────────────────────────────────────────────
 
-BETA_LOOKBACK_DAYS = 20
 
 def compute_beta(ticker_returns: list, spy_returns: list) -> dict:
     """Compute beta from paired daily returns via OLS regression.

@@ -171,16 +171,6 @@ def evaluate_switch_event(ev: dict[str, Any]) -> list[str]:
     return fails
 
 
-def classify_switch_pair(old_t: str, new_t: str) -> str:
-    core = {"SPY", "QQQ", "IWM"}
-    o, n = old_t.upper(), new_t.upper()
-    if o in core and n in core:
-        return "CORE_SWITCH_SLA_PASS" if False else "CORE_SWITCH_SLA_FAIL"
-    if n in {"$VIX", "SPX", "$SPX", "VIX"} or o in {"$VIX", "SPX", "$SPX", "VIX"}:
-        return "SPECIAL_INDEX_SWITCH_PASS" if False else "SPECIAL_INDEX_SWITCH_FAIL"
-    return "GUEST_SWITCH_SLA_PASS" if False else "GUEST_SWITCH_SLA_FAIL"
-
-
 def build_dry_run_report(
     *,
     harness: str,

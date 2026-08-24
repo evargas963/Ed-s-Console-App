@@ -88,15 +88,6 @@ def all_functions_in_file(repo_root: Path, rel: str) -> list[FunctionRef]:
     return _walk_functions(tree, rel=rel)
 
 
-def module_functions(repo_root: Path, rel: str) -> list[tuple[str, int, bool]]:
-    """Backward-compatible module-level-only listing."""
-    return [
-        (fn.qualified_name, fn.line, not fn.qualified_name.startswith("_"))
-        for fn in all_functions_in_file(repo_root, rel)
-        if fn.scope == "module"
-    ]
-
-
 def assert_inventory_covers_all_functions(
     repo_root: Path,
     section_files: frozenset[str],
@@ -158,45 +149,6 @@ def assert_inventory_covers_all_functions(
             )
 
     assert not errors, "Section inventory coverage gaps:\n" + "\n".join(errors)
-
-
-def assert_traceable_inventory_covers_all_functions(
-    repo_root: Path,
-    section_files: frozenset[str],
-    inventory: tuple,
-    *,
-    derivation_attr: str = "derivation",
-    file_attr: str = "file",
-) -> None:
-    """AST coverage gate + TraceableDerivation schema validation."""
-    from governance.traceable_derivation import TraceableDerivation, assert_inventory_is_traceable
-
-    assert_inventory_covers_all_functions(
-        repo_root,
-        section_files,
-        inventory,
-        derivation_attr=derivation_attr,
-        file_attr=file_attr,
-    )
-    rows = tuple(
-        r for r in inventory if isinstance(r, TraceableDerivation)
-    )
-    if len(rows) != len(inventory):
-        raise AssertionError(
-            "inventory must be tuple[TraceableDerivation, ...]; "
-            "legacy DerivationRecord is archived"
-        )
-    assert_inventory_is_traceable(rows)
-
-
-# Backward-compatible alias (module-level only — prefer assert_inventory_covers_all_functions)
-def assert_inventory_covers_module_functions(
-    repo_root: Path,
-    section_files: frozenset[str],
-    inventory: tuple,
-    **kwargs: object,
-) -> None:
-    assert_inventory_covers_all_functions(repo_root, section_files, inventory, **kwargs)
 
 
 _NONE_STUB_JUSTIFICATION = (
@@ -275,35 +227,3 @@ def rewrite_mega_inventory_tuple(
         encoding="utf-8",
     )
 
-
-def sync_all_mega_inventories(repo_root: Path | None = None) -> dict[str, int]:
-    """Sync Mega 1–4 inventory tuples to current AST coverage (NONE stubs for new defs)."""
-    root = repo_root or Path(__file__).resolve().parent.parent
-    from governance import (
-        mega1_traceable_inventory as m1,
-        mega2_traceable_inventory as m2,
-        mega3_traceable_inventory as m3,
-        mega4_traceable_inventory as m4,
-    )
-
-    specs = (
-        ("mega1", m1, "MEGA1_TRACEABLE_INVENTORY", "Mega1TraceableDerivation"),
-        ("mega2", m2, "MEGA2_TRACEABLE_INVENTORY", "Mega2TraceableDerivation"),
-        ("mega3", m3, "MEGA3_TRACEABLE_INVENTORY", "Mega3TraceableDerivation"),
-        ("mega4", m4, "MEGA4_TRACEABLE_INVENTORY", "Mega4TraceableDerivation"),
-    )
-    counts: dict[str, int] = {}
-    for label, mod, inv_attr, cls_name in specs:
-        n = label[-1]
-        files = getattr(mod, f"MEGA{n}_FILES")
-        inventory = getattr(mod, inv_attr)
-        row_class = getattr(mod, cls_name)
-        synced = sync_traceable_inventory_to_ast(root, files, inventory, row_class)
-        rewrite_mega_inventory_tuple(
-            root / "governance" / f"{label}_traceable_inventory.py",
-            inventory_attr=inv_attr,
-            row_class_name=cls_name,
-            rows=synced,
-        )
-        counts[label] = len(synced)
-    return counts

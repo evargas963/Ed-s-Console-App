@@ -36,7 +36,6 @@ REPLAY_BUNDLE_MIN_JSON_LENGTH: int = 10
 
 _RC_OK = f"replay_context_json IS NOT NULL AND length(replay_context_json) > {REPLAY_BUNDLE_MIN_JSON_LENGTH}"
 _OC_OK = f"option_chain_json IS NOT NULL AND length(option_chain_json) > {REPLAY_BUNDLE_MIN_JSON_LENGTH}"
-_FULL = f"({_RC_OK}) AND ({_OC_OK})"
 
 
 def _connect(db_path: Path) -> sqlite3.Connection:
