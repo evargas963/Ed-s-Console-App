@@ -28,7 +28,7 @@ if str(REPO) not in sys.path:
 
 SOLE_WRITER_PATH = REPO / "governance" / "sole_writer.json"  # NON-AUTHORITATIVE tombstone (RC-456)
 OPERATOR_GO_PATH = REPO / "governance" / "operator_go.json"
-# NON-AUTHORITATIVE Git template. Executable mission is tools.pm_authority.
+# Mission COORDINATION metadata only (RC-461) - never authorization.
 PM_MISSION_PATH = REPO / "governance" / "pm_mission.json"
 CHECKER_REL = "tools/check_institutional_correctness.py"
 DB_REL = "db.py"
@@ -128,11 +128,6 @@ def reset_guard_violations(command: str) -> list[str]:
     if not _RESET_GUARD_RE.search(cmd) or _RESET_GUARD_SAFE_RE.search(cmd):
         return []
     touched = [p for p in PROTECTED_PATHS + PRODUCT_WIPE_PROTECTED if p in cmd]
-    from tools.pm_authority import executable_mission
-    mission = executable_mission()
-    for sp in (mission.get("scope_paths") or []):
-        if isinstance(sp, str) and sp.strip("*/") and sp in cmd:
-            touched.append(sp)
     bare = not any(tok in cmd for tok in (" -- ", ".py", ".html", ".json"))
     if touched or bare:
         return [
@@ -642,99 +637,25 @@ def live_collect_disk_only(repo: Path | None = None, port: int = 8000) -> str | 
 
 
 def pm_mission_record() -> dict:
-    """Executable PM mission. Git-tracked template is never the fallback."""
-    from tools.pm_authority import executable_mission
-    return executable_mission()
+    """Mission COORDINATION metadata (RC-461) - NOT authorization.
 
-
-def _mission_gates_path(rel: str) -> bool:
-    rel = rel.replace("\\", "/")
-    for p in MISSION_GATED_PREFIXES:
-        if p.endswith("/"):
-            if rel.startswith(p):
-                return True
-        elif rel == p:
-            return True
-    if rel in PROTECTED_PATHS or rel.startswith("calibration/repair_"):
-        return True
-    return False
-
-
-def _mission_scope_allows(rel: str, scope_paths: list) -> bool:
-    if not scope_paths:
-        return False
-    norms = [str(s).replace("\\", "/").strip() for s in scope_paths if str(s).strip()]
-    if "*" in norms or "all" in {s.lower() for s in norms}:
-        return True
-    for s in norms:
-        if s.endswith("/"):
-            if rel.startswith(s):
-                return True
-        elif rel == s or rel.startswith(s.rstrip("/") + "/"):
-            return True
-    return False
-
-
-def pm_mission_edit_violation(rel: str, agent: str | None = None) -> str | None:
-    """RC-219 + RC-454: gated product edits need an in-progress mission + scope.
-
-    Persisted writer/auditor fields are not authorization. `agent` is accepted for
-    API compatibility and is not used to privilege a vendor.
+    governance/pm_mission.json is ordinary coordination state. It supplies mission_id
+    for the RC-228 linkage check and nothing else: no writer/auditor/vendor field in it
+    grants authority, and no gate consults it to decide what an agent may edit. Authority
+    is CODEOWNERS + branch protection (durable) plus the control-authority rail
+    (tools/writer_drift_lock.control_authority_violation, in-process defense-in-depth).
     """
-    del agent  # RC-454: operator-selected work is not gated on persisted writer
-    rel = rel.replace("\\", "/")
-    if rel in PROCESS_ALLOWED_PREFIXES or WDL.is_pm_allowlisted(rel):
-        return None
-    from tools.pm_authority import authority_unavailable_reasons
-    unavailable = authority_unavailable_reasons()
-    mission = pm_mission_record()
-    status = str(mission.get("status") or "idle").strip().lower()
-    scopes = mission.get("scope_paths") or ["*"]
-    if not isinstance(scopes, list):
-        scopes = ["*"]
-    in_prog = (not unavailable) and WDL.mission_in_progress(mission)
-
-    # Idle / not in-progress / missing external authority: block gated product.
-    if not in_prog:
-        if rel.startswith("tests/") or rel.startswith("reports/"):
-            return None
-        if rel.startswith("governance/") and not _mission_gates_path(rel):
-            return None
-        if not _mission_gates_path(rel):
-            return None
-        if unavailable:
-            # FAIL CLOSED: external executable PM authority is missing / unreadable /
-            # invalid. A mission-gated product edit must BLOCK — never fall back to the
-            # Git-tracked pm_mission.json and never permit the edit. See
-            # measure_report()['pm_authority_mode'] == 'unavailable_fail_closed'.
-            return (
-                f"PM-FIRST BLOCK: executable PM authority unavailable ({unavailable[0]}) — "
-                f"fail closed; do not edit {rel}; do not use governance/pm_mission.json as fallback"
-            )
-        # Provisioned host, external authority present, mission idle: the legitimate
-        # PM-workflow gate still applies.
-        return (
-            f"PM-FIRST BLOCK: no in-progress mission (external authority status={status!r}) — "
-            f"run change requests through the operator PM; do not edit {rel} until a mission is opened"
-        )
-
-    # Named writer on in-progress mission: stay inside scope_paths for gated surfaces.
-    if rel.startswith("tests/") or rel.startswith("reports/"):
-        if WDL.path_in_mission_scope(rel, scopes) or not _mission_gates_path(rel):
-            return None
-    if not _mission_gates_path(rel) and not WDL.path_in_mission_scope(rel, scopes):
-        return None
-    if not _mission_scope_allows(rel, scopes):
-        return (
-            f"PM-FIRST BLOCK: {rel} outside mission scope_paths={scopes!r} "
-            f"(mission_id={mission.get('mission_id')!r})"
-        )
-    return None
+    return _load_json(PM_MISSION_PATH) or {}
 
 
-def sole_writer_edit_violation(rel: str, agent: str | None = None) -> str | None:
-    """Product dual-writer privilege retired (RC-454). Idle-mission gate remains."""
-    return pm_mission_edit_violation(rel, agent=agent)
+# RC-461: the PM-mission EDIT GATE (pm_mission_edit_violation / sole_writer_edit_violation
+# and their _mission_gates_path / _mission_scope_allows helpers) is REMOVED. The operator
+# requirement is that the coding AI does ordinary repo work AUTONOMOUSLY; gating product
+# edits on an in-progress mission was the overbuilt half of Architecture A and it depended
+# on the deleted external authority reader. What remains constrains AUTHORITY only:
+# writer_drift_lock.control_authority_violation denies an assigned principal any edit to
+# the files that decide who may do what, and CODEOWNERS + branch protection make that
+# durable at merge.
 
 
 def _git_diff_names(root: Path, a: str | None, b: str | None) -> list[str]:
@@ -1016,17 +937,10 @@ def measure_report(repo: Path | None = None) -> dict:
             "head": head_hash,
             "index_eq_wt": idx == wt if idx and wt else None,
         })
-    from tools.pm_authority import authority_unavailable_reasons
-    _auth_unavail = authority_unavailable_reasons()
     return {
         "sole_writer": sole_writer_record(),
         "operator_go": operator_go_record(),
         "pm_mission": pm_mission_record(),
-        # Architecture A signpost: 'enforcing' when a real external PM-authority boundary
-        # is present on this host; 'unavailable_fail_closed' when it is missing / unreadable
-        # / invalid — mission-gated product edits BLOCK (no fallback to Git-tracked JSON).
-        "pm_authority_mode": "unavailable_fail_closed" if _auth_unavail else "enforcing",
-        "pm_authority_unavailable_reasons": _auth_unavail,
         "index_worktree_mismatches": index_worktree_mismatches(root),
         "staged_checks_not_on_head": staged_enforced_checks_not_on_head(root),
         "live_collect_disk_only": live_collect_disk_only(root),

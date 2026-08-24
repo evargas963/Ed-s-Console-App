@@ -22,7 +22,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 
-# NON-AUTHORITATIVE Git template. Executable mission: tools.pm_authority.
+# Mission COORDINATION metadata only (RC-461) - never authorization.
 PM_MISSION_PATH = REPO / "governance" / "pm_mission.json"
 
 #: Statuses that bind SoD — not only literal "active".
@@ -67,10 +67,6 @@ PM_STATUS_FIELDS = frozenset({
     "approved_by", "approved_via", "approved_at",
 })
 
-# Git-tracked copies are NON-AUTHORITATIVE (RC-456). File-tool delete/write
-# of those paths is not an executable-authority mutation.
-PM_AUTHORITY_FILES = frozenset()
-
 #: Files that define CI/merge/hook/assignment rails. Derived from actual call
 #: paths (hooks.json, settings.json, required workflows, assignment JSON).
 CONTROL_AUTHORITY_EXACT = frozenset({
@@ -90,10 +86,6 @@ CONTROL_AUTHORITY_EXACT = frozenset({
     "tests/test_writer_drift_lock_v1.py",
     "tests/test_control_authority_surfaces_v1.py",
     "tests/test_architecture_a_operator_writer_authority_v1.py",
-    "tests/test_pm_authority_external_v1.py",
-    "tools/pm_authority.py",
-    "tools/pm_authority_helper.py",
-    "tools/install_pm_authority_host.sh",
     # tools/__init__.py executes on every `import tools.*` INSIDE the guard/hook
     # process. Left unprotected, an assigned AI could plant code there to monkeypatch
     # control_authority_violation -> None and forge pm=operator in-process, neutering
@@ -150,43 +142,6 @@ def hard_denylist_violation(rel: str, *, agent: str | None = None,
     return control_authority_violation(rel, agent=agent)
 
 
-def pm_authority_delete_violation(rel: str, *, agent: str | None = None) -> str | None:
-    """BLOCK assigned-AI file-tool deletion of the executable (external) authority file."""
-    from tools.pm_authority import is_canonical_authority_path
-    agent = (agent or current_agent_role()).strip().lower()
-    if not agent:
-        return None
-    if not is_canonical_authority_path(rel) and not is_canonical_authority_path(
-        str(REPO / _norm(rel))
-    ):
-        return None
-    return (
-        f"SOD_DRIFT: executable PM authority delete — pm=operator cannot "
-        f"be removed by agent={agent!r}; use the privileged helper."
-    )
-
-
-def pm_status_field_violations(rel: str, new_text: str, *, agent: str | None = None,
-                               current_text: str | None = None) -> list[str]:
-    """Validate a file-tool write only when the target is the executable authority path.
-
-    Git-tracked governance/pm_mission.json and sole_writer.json are NON-AUTHORITATIVE
-    (RC-456) and are not validated here. writer/auditor remain non-authorization.
-    """
-    from tools.pm_authority import (
-        is_canonical_authority_path,
-        validate_pm_authority_document,
-    )
-    agent = (agent or current_agent_role()).strip().lower()
-    if not is_canonical_authority_path(rel) and not is_canonical_authority_path(
-        str(REPO / _norm(rel))
-    ):
-        return []
-    if not agent:
-        return []
-    return validate_pm_authority_document(new_text, current_text=current_text)
-
-
 def record_sod_drift(messages: list[str], *, agent: str | None = None,
                      mission: dict | None = None) -> None:
     """LOCK-4: persist every drift denial so the owed self-heal is checkable."""
@@ -195,8 +150,13 @@ def record_sod_drift(messages: list[str], *, agent: str | None = None,
     if os.environ.get("PYTEST_CURRENT_TEST"):
         return  # synthetic test denials must never pollute the real self-heal ledger
     if mission is None:
-        from tools.pm_authority import executable_mission
-        mission = executable_mission()
+        # RC-461: there is no executable mission any more. Before the simplification this
+        # resolved executable_mission(), which returned {} on every host that lacked the
+        # (now deleted) off-repo authority - i.e. mission_id was always None here. Keep
+        # that exact behaviour: reading the coordination JSON instead would hand LOCK-4 a
+        # real mission id and silently make the lock STRICTER than it was, which is a
+        # governance change, not a simplification. Callers may still pass one explicitly.
+        mission = {}
     try:
         import time as _t
         with SOD_DRIFT_EVENTS_PATH.open("a", encoding="utf-8") as fh:
@@ -297,8 +257,6 @@ def is_control_authority_surface(rel: str) -> bool:
             "check_market_correctness.py",
             "check_institutional_closure_gate.py",
             "check_no_grep_subprocess.py",
-            "pm_authority.py",
-            "pm_authority_helper.py",
         }
     ):
         return True

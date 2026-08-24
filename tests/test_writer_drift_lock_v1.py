@@ -12,7 +12,6 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 import tools.operating_process_lock as OPL  # noqa: E402
-import tools.pm_authority as PA  # noqa: E402
 import tools.writer_drift_lock as WDL  # noqa: E402
 
 
@@ -69,25 +68,26 @@ def test_writer_drift_idle_mission_no_scope_drift():
     assert msgs == []
 
 
-def test_pretooluse_ready_for_claude_allows_cursor_product(monkeypatch, tmp_path):
-    monkeypatch.setenv("ED_AGENT_ROLE", "cursor")
-    monkeypatch.delenv("ED_PM_MISSION_GUARD", raising=False)
-    monkeypatch.delenv("ED_WRITER_DRIFT_GUARD", raising=False)
+def test_ordinary_product_is_autonomous_for_every_assigned_agent(monkeypatch, tmp_path):
+    """RC-461: the coding AI does ordinary repo work WITHOUT operator approval.
+
+    The PM-mission edit gate is gone. Whatever a mission file happens to say - even a
+    mission naming a different writer with a narrow scope - ordinary product paths stay
+    open to every assigned principal. Only AUTHORITY files are denied.
+    """
     mission = tmp_path / "pm_mission.json"
     mission.write_text(json.dumps(_mission_claude_scope()), encoding="utf-8")
     monkeypatch.setattr(OPL, "PM_MISSION_PATH", mission)
     monkeypatch.setattr(WDL, "PM_MISSION_PATH", mission)
-    monkeypatch.setattr(PA, "CANONICAL_AUTHORITY_PATH", mission)
-    assert OPL.pm_mission_edit_violation("static/chart.html", agent="cursor") is None
-
-
-def test_pretooluse_ready_for_claude_allows_claude_writer(monkeypatch, tmp_path):
-    monkeypatch.setenv("ED_AGENT_ROLE", "claude")
-    mission = tmp_path / "pm_mission.json"
-    mission.write_text(json.dumps(_mission_claude_scope()), encoding="utf-8")
-    monkeypatch.setattr(OPL, "PM_MISSION_PATH", mission)
-    monkeypatch.setattr(PA, "CANONICAL_AUTHORITY_PATH", mission)
-    assert OPL.pm_mission_edit_violation("static/chart.html", agent="claude") is None
+    for agent in ("cursor", "claude", "codex", "gpt"):
+        for rel in ("static/chart.html", "server.py", "db.py", "signals.py"):
+            assert WDL.control_authority_violation(rel, agent=agent) is None, (agent, rel)
+        assert WDL.writer_drift_violations(
+            ["static/chart.html", "server.py", "db.py"], agent=agent
+        ) == [], agent
+    # ...and the gate that used to block them no longer exists at all.
+    assert not hasattr(OPL, "pm_mission_edit_violation")
+    assert not hasattr(OPL, "sole_writer_edit_violation")
 
 
 def test_hard_denylist_no_longer_vendor_gates_product(monkeypatch):
@@ -122,26 +122,29 @@ def test_lock1_lock_modules_are_not_agent_writable(monkeypatch):
     assert WDL.hard_denylist_violation("server.py", agent="cursor", mission=mission, sole=sole) is None
 
 
-def test_lock1_pm_status_scope_and_remaining_still_blocked():
-    """Scope expansion and remaining[] deletion BLOCK; writer flip is not authorization."""
-    cur = ('{"writer": "claude", "pm": "operator", "auditor": "cursor", "status": "active", '
-           '"scope_paths": ["tools/"], "remaining": [{"id": "X"}], "note": "n"}')
-    flip = cur.replace('"writer": "claude"', '"writer": "cursor"')
-    assert not WDL.pm_status_field_violations("governance/pm_mission.json", flip,
-                                              agent="cursor", current_text=cur)
-    steal_pm = cur.replace('"pm": "operator"', '"pm": "cursor"')
-    from tools.pm_authority import validate_pm_authority_document
-    v_pm = validate_pm_authority_document(steal_pm, current_text=cur)
-    assert v_pm and any("required exactly 'operator'" in m for m in v_pm)
-    grow = cur.replace('["tools/"]', '["tools/", "server.py"]')
-    v2 = validate_pm_authority_document(grow, current_text=cur)
-    assert v2 and any("expands scope_paths" in m for m in v2)
-    drop = cur.replace('"remaining": [{"id": "X"}], ', '"remaining": [], ')
-    v3 = validate_pm_authority_document(drop, current_text=cur)
-    assert v3 and any("remaining" in m for m in v3)
-    status_only = cur.replace('"status": "active"', '"status": "idle"')
-    assert not WDL.pm_status_field_violations("governance/pm_mission.json", status_only,
-                                              agent="cursor", current_text=cur)
+def test_persisted_metadata_grants_no_authority(monkeypatch, tmp_path):
+    """RC-461: no writer/auditor/vendor/pm field in a repo JSON grants authority.
+
+    An agent may freely rewrite coordination metadata - including naming ITSELF writer,
+    or writing pm=<itself> - and gains NOTHING by it: the control-authority rail still
+    denies every authority file, because the rail reads the operator-assigned principal,
+    never a field the agent can type.
+    """
+    mission = tmp_path / "pm_mission.json"
+    monkeypatch.setattr(OPL, "PM_MISSION_PATH", mission)
+    monkeypatch.setattr(WDL, "PM_MISSION_PATH", mission)
+    for agent in ("cursor", "claude", "codex"):
+        mission.write_text(json.dumps({
+            "status": "active", "writer": agent, "auditor": agent,
+            "pm": agent, "mission_id": "m1", "scope_paths": ["*"],
+        }), encoding="utf-8")
+        # Self-declared pm/writer buys no authority.
+        for rel in (".github/CODEOWNERS", ".claude/settings.json",
+                    "tools/writer_drift_lock.py", "governance/operator_grants.json",
+                    ".github/workflows/pytest.yml"):
+            assert WDL.control_authority_violation(rel, agent=agent), (agent, rel)
+        # ...and ordinary product remains open regardless of what the file claims.
+        assert WDL.control_authority_violation("server.py", agent=agent) is None
 
 
 def test_lock4_self_heal_owed_blocks_until_rc_exists(tmp_path, monkeypatch):
@@ -196,7 +199,6 @@ def test_cursor_strreplace_product_path_allowed(monkeypatch, tmp_path):
     mission.write_text(json.dumps(_mission_claude_scope()), encoding="utf-8")
     monkeypatch.setattr(OPL, "PM_MISSION_PATH", mission)
     monkeypatch.setattr(WDL, "PM_MISSION_PATH", mission)
-    monkeypatch.setattr(PA, "CANONICAL_AUTHORITY_PATH", mission)
     bad = PLG.pretooluse_block(
         "StrReplace",
         {"path": str(ROOT / "static" / "chart.html"), "old_string": "a", "new_string": "b"},
@@ -213,7 +215,11 @@ def test_cursor_strreplace_pm_path_allowed(monkeypatch, tmp_path):
     mission = tmp_path / "pm_mission.json"
     mission.write_text(json.dumps(_mission_claude_scope()), encoding="utf-8")
     monkeypatch.setattr(OPL, "PM_MISSION_PATH", mission)
-    monkeypatch.setattr(PA, "CANONICAL_AUTHORITY_PATH", mission)
+    # This test asserts a PATH-CLASSIFICATION property. Pin the LOCK-4 ledger to tmp so an
+    # unhealed denial in the developer's working tree cannot fail it: that would be ambient
+    # state, not the behaviour under test. LOCK-4 is unchanged and is exercised on its own
+    # in test_lock4_self_heal_owed_blocks_until_rc_exists.
+    monkeypatch.setattr(WDL, "SOD_DRIFT_EVENTS_PATH", tmp_path / "sod_drift_events.jsonl")
     bad = PLG.pretooluse_block(
         "StrReplace",
         {"path": str(ROOT / "governance" / "pm_mission.json")},

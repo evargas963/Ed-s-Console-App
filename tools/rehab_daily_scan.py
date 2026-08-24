@@ -526,31 +526,6 @@ def _collect_findings(measure: dict, status: dict) -> list[dict]:
             }
         )
 
-    from tools.pm_authority import load_pm_authority
-    loaded = load_pm_authority()
-    if not loaded.ok:
-        findings.append(
-            {
-                "id": "rehab.pm_authority_unavailable",
-                "severity": "P1",
-                "facet": "process",
-                "summary": "executable PM authority missing or invalid (external path; no repo fallback)",
-                "recommendation": "Operator/host: install /var/lib/ed-console-authority via tools/install_pm_authority_host.sh. Do not treat governance/sole_writer.json or governance/pm_mission.json as executable authority.",
-                "evidence": {"violations": loaded.violations[:3]},
-            }
-        )
-    elif loaded.doc.get("pm") != "operator":
-        findings.append(
-            {
-                "id": "rehab.pm_not_operator",
-                "severity": "P1",
-                "facet": "process",
-                "summary": "external PM authority pm is not 'operator'",
-                "recommendation": "Replace executable authority via the privileged helper only.",
-                "evidence": {"pm": loaded.doc.get("pm")},
-            }
-        )
-
     # Code-health BLOCKING (best-effort; may be slow)
     py = REPO / ".venv" / "Scripts" / "python.exe"
     exe = str(py) if py.is_file() else sys.executable

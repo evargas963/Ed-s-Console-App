@@ -12,7 +12,6 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 import tools.operating_process_lock as OPL  # noqa: E402
-import tools.pm_authority as PA  # noqa: E402
 import tools.process_lock_guard as PLG  # noqa: E402
 
 
@@ -33,33 +32,28 @@ def _init_repo(tmp_path: Path) -> Path:
     return tmp_path
 
 
-def test_stale_writer_does_not_block_cursor_on_db(monkeypatch, tmp_path):
+def test_ordinary_product_needs_no_mission_and_no_writer(monkeypatch, tmp_path):
+    """RC-461: ordinary product work is autonomous for every assigned principal.
+
+    No mission status, scope list, or persisted writer field can gate db.py. The
+    sole-writer / PM-mission edit gate that used to do so is deleted outright.
+    """
+    import tools.writer_drift_lock as WDL
     mission = tmp_path / "pm_mission.json"
-    mission.write_text(
-        '{"status": "active", "pm": "operator", "writer": "claude", "scope_paths": ["*"], "mission_id": "t"}',
-        encoding="utf-8",
-    )
     monkeypatch.setattr(OPL, "PM_MISSION_PATH", mission)
-    monkeypatch.setattr(PA, "CANONICAL_AUTHORITY_PATH", mission)
-    assert OPL.sole_writer_edit_violation("db.py", agent="cursor") is None
-
-
-def test_sole_writer_allows_writer_agent(monkeypatch, tmp_path):
-    # Pin the mission: the live pm_mission.json scopes the writer to the CURRENT mission's
-    # paths, so this permits-check must supply its own all-scope mission rather than
-    # inherit ambient state (same defect class as ambient ED_AGENT_ROLE).
-    mission = tmp_path / "pm_mission.json"
-    mission.write_text(
-        '{"status": "active", "pm": "operator", "writer": "claude", "scope_paths": ["*"], "mission_id": "t"}',
-        encoding="utf-8",
-    )
-    monkeypatch.setattr(OPL, "PM_MISSION_PATH", mission)
-    monkeypatch.setattr(PA, "CANONICAL_AUTHORITY_PATH", mission)
-    assert OPL.sole_writer_edit_violation("db.py", agent="claude") is None
-
-
-def test_sole_writer_allows_governance_process_files():
-    assert OPL.sole_writer_edit_violation("governance/sole_writer.json", agent="cursor") is None
+    monkeypatch.setattr(WDL, "PM_MISSION_PATH", mission)
+    for status in ("idle", "active", "ready_for_claude"):
+        mission.write_text(
+            '{"status": "%s", "pm": "operator", "writer": "claude", '
+            '"scope_paths": ["static/"], "mission_id": "t"}' % status,
+            encoding="utf-8",
+        )
+        for agent in ("cursor", "claude", "codex"):
+            # db.py is OUTSIDE scope_paths and the writer may be someone else: still open.
+            assert WDL.control_authority_violation("db.py", agent=agent) is None, (status, agent)
+            assert WDL.writer_drift_violations(["db.py"], agent=agent) == [], (status, agent)
+    assert not hasattr(OPL, "sole_writer_edit_violation")
+    assert not hasattr(OPL, "pm_mission_edit_violation")
 
 
 def test_index_worktree_mismatch_detected(tmp_path, monkeypatch):
@@ -178,7 +172,6 @@ def test_pretooluse_hook_permits_operator_selected_product_edit(monkeypatch, tmp
         encoding="utf-8",
     )
     monkeypatch.setattr(OPL, "PM_MISSION_PATH", mission)
-    monkeypatch.setattr(PA, "CANONICAL_AUTHORITY_PATH", mission)
     bad = PLG.pretooluse_block("Write", {"file_path": str(ROOT / "db.py")})
     assert not any(
         "sole writer" in b.lower() or "WRITER-DRIFT" in b or "PM-FIRST" in b
@@ -196,41 +189,33 @@ def test_pretooluse_hook_permits_sole_writer_edit(monkeypatch, tmp_path):
         encoding="utf-8",
     )
     monkeypatch.setattr(OPL, "PM_MISSION_PATH", mission)
-    monkeypatch.setattr(PA, "CANONICAL_AUTHORITY_PATH", mission)
     bad = PLG.pretooluse_block("Write", {"file_path": str(ROOT / "db.py")})
     assert not [b for b in bad if "sole_writer" in b or "PM-FIRST" in b]
 
 
-def test_pm_mission_idle_blocks_product_edit(monkeypatch, tmp_path):
-    monkeypatch.setenv("ED_AGENT_ROLE", "claude")
-    monkeypatch.delenv("ED_PM_MISSION_GUARD", raising=False)
-    mission = tmp_path / "pm_mission.json"
-    mission.write_text('{"status": "idle", "pm": "operator", "writer": "claude", "scope_paths": ["*"]}', encoding="utf-8")
-    monkeypatch.setattr(OPL, "PM_MISSION_PATH", mission)
-    monkeypatch.setattr(PA, "CANONICAL_AUTHORITY_PATH", mission)
-    msg = OPL.pm_mission_edit_violation("db.py", agent="claude")
-    assert msg and "PM-FIRST" in msg and "idle" in msg
+def test_idle_mission_does_not_block_product_edit(monkeypatch, tmp_path):
+    """RC-461 INVERSE of the retired rule: an idle mission must NOT block product work.
 
-
-def test_pm_mission_active_allows_scoped_writer(monkeypatch, tmp_path):
+    This assertion is deliberately the opposite of the pre-RC-461 test. Gating ordinary
+    edits on mission status was the overbuilt half of Architecture A; the operator
+    requirement is that the coding AI works autonomously and only AUTHORITY is gated.
+    """
+    import tools.writer_drift_lock as WDL
     monkeypatch.setenv("ED_AGENT_ROLE", "claude")
     mission = tmp_path / "pm_mission.json"
     mission.write_text(
-        json.dumps(
-            {
-                "status": "active",
-                "pm": "operator",
-                "writer": "claude",
-                "scope_paths": ["static/"],
-                "mission_id": "ui-test",
-            }
-        ),
+        '{"status": "idle", "pm": "operator", "writer": "claude", "scope_paths": ["*"]}',
         encoding="utf-8",
     )
     monkeypatch.setattr(OPL, "PM_MISSION_PATH", mission)
-    monkeypatch.setattr(PA, "CANONICAL_AUTHORITY_PATH", mission)
-    assert OPL.pm_mission_edit_violation("static/index.html", agent="claude") is None
-    assert OPL.pm_mission_edit_violation("db.py", agent="claude") is not None
+    monkeypatch.setattr(WDL, "PM_MISSION_PATH", mission)
+    bad = PLG.pretooluse_block("Write", {"file_path": str(ROOT / "db.py"),
+                                         "content": "# edit\n"})
+    assert not [b for b in bad if "PM-FIRST" in b], bad
+    # But an AUTHORITY file is still denied to the same agent.
+    denied = PLG.pretooluse_block("Write", {"file_path": str(ROOT / ".github" / "CODEOWNERS"),
+                                            "content": "x\n"})
+    assert any("control-authority" in b for b in denied), denied
 
 
 def test_reset_guard_blocks_destructive_git_on_product(monkeypatch, tmp_path):
@@ -248,7 +233,6 @@ def test_reset_guard_blocks_destructive_git_on_product(monkeypatch, tmp_path):
     mission = tmp_path / "mission.json"
     mission.write_text('{"mission_id": "empty", "scope_paths": []}', encoding="utf-8")
     monkeypatch.setattr(OPL, "PM_MISSION_PATH", mission)
-    monkeypatch.setattr(PA, "CANONICAL_AUTHORITY_PATH", mission)
     for cmd in ("git restore -- static/chart.html",
                 "git checkout -- server.py",
                 "git restore -- math_levels.py",

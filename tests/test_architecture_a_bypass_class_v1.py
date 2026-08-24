@@ -103,18 +103,17 @@ def test_assigned_writer_works_without_disabling_any_guard(monkeypatch):
 
 
 def test_self_set_writer_does_not_unlock_rails():
-    cur = json.dumps({"writer": "claude", "pm": "operator", "auditor": "cursor", "note": "n"})
-    new = json.dumps({
-        "writer": "cursor",
-        "pm": "operator",
-        "auditor": "cursor",
-        "note": "# sod-role-ok: I assign myself",
-    })
-    v = WDL.pm_status_field_violations(
-        "governance/sole_writer.json", new, agent="cursor", current_text=cur
-    )
-    assert v == []
+    """RC-461: self-assignment in a repo JSON is inert; the rails stay shut.
+
+    The agent may write anything it likes into the coordination file - including naming
+    itself writer and waving a '# sod-role-ok' note at it - and no rail opens, because
+    authority is never read from the tree.
+    """
+    assert WDL.control_authority_violation(
+        "governance/sole_writer.json", agent="cursor") is None
     assert WDL.control_authority_violation("tools/writer_drift_lock.py", agent="cursor")
+    assert WDL.control_authority_violation(".claude/settings.json", agent="cursor")
+    assert WDL.control_authority_violation("governance/operator_grants.json", agent="cursor")
 
 
 def test_cursor_edit_ok_json_cannot_authorize_rails_rewrite():

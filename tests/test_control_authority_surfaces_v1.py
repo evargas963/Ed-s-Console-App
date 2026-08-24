@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import ast
-import json
 import sys
 from pathlib import Path
 
@@ -48,38 +47,37 @@ def test_switch_working_ai_without_changing_policy_code():
 
 
 def test_writer_field_flip_is_not_authorization():
-    cur = json.dumps({"writer": "claude", "pm": "operator", "auditor": "cursor", "note": "n"})
-    new = json.dumps({"writer": "codex", "pm": "operator", "auditor": "cursor", "note": "n"})
+    """RC-461: writer/auditor are coordination text, never authorization.
+
+    An agent may rewrite them freely - and gains nothing, because the rail reads the
+    OPERATOR-ASSIGNED principal, never a field the agent can type.
+    """
     for agent in ("claude", "cursor", "codex", "gpt"):
-        v = WDL.pm_status_field_violations(
-            "governance/sole_writer.json", new, agent=agent, current_text=cur
-        )
-        assert v == [], f"{agent} writer-field flip must not be an authorization decision"
-        assert WDL.control_authority_violation(".github/CODEOWNERS", agent=agent)
+        assert WDL.control_authority_violation(
+            "governance/sole_writer.json", agent=agent) is None, agent
+        assert WDL.control_authority_violation(".github/CODEOWNERS", agent=agent), agent
 
 
 def test_operator_unassigned_may_edit_leftover_assignment_json():
-    cur = json.dumps({"writer": "claude", "pm": "operator", "auditor": "cursor", "note": "n"})
-    new = json.dumps({"writer": "codex", "pm": "operator", "auditor": "cursor", "note": "n"})
-    assert WDL.pm_status_field_violations(
-        "governance/sole_writer.json", new, agent="", current_text=cur
-    ) == []
-    steal = json.dumps({"writer": "claude", "pm": "cursor", "auditor": "cursor", "note": "n"})
-    assert WDL.pm_status_field_violations(
-        "governance/sole_writer.json", steal, agent="", current_text=cur
-    ) == []
+    """Empty ED_AGENT_ROLE is the OPERATOR (or CI): no rail constrains them."""
+    for rel in ("governance/sole_writer.json", "governance/pm_mission.json",
+                ".github/CODEOWNERS", ".claude/settings.json",
+                "tools/writer_drift_lock.py", "governance/operator_grants.json"):
+        assert WDL.control_authority_violation(rel, agent="") is None, rel
 
 
 def test_assigned_agent_cannot_reassign_pm():
-    cur = json.dumps({"writer": "claude", "pm": "operator", "auditor": "cursor", "note": "n"})
-    steal = json.dumps({"writer": "claude", "pm": "cursor", "auditor": "cursor", "note": "n"})
+    """RC-461: 'pm' in a repo JSON is INERT - writing pm=<self> grants nothing.
+
+    Authority is not a value stored in the tree, so there is nothing to forge. It is the
+    operator's assignment plus operator review at merge.
+    """
     for agent in ("claude", "cursor", "codex", "gpt"):
-        from tools.pm_authority import validate_pm_authority_document
-        v = validate_pm_authority_document(steal, current_text=cur)
-        assert v and any("pm=" in m and "operator" in m for m in v), agent
-        assert WDL.pm_status_field_violations(
-            "governance/pm_mission.json", steal, agent=agent, current_text=cur
-        ) == []
+        assert WDL.control_authority_violation(
+            "governance/pm_mission.json", agent=agent) is None, agent
+        for rel in (".github/CODEOWNERS", ".claude/settings.json",
+                    "governance/operator_grants.json", "tools/writer_drift_lock.py"):
+            assert WDL.control_authority_violation(rel, agent=agent), (agent, rel)
 
 
 def test_writer_cannot_redefine_lock_or_hooks():
@@ -90,8 +88,6 @@ def test_writer_cannot_redefine_lock_or_hooks():
         ".github/workflows/hardening.yml",
         "tests/test_architecture_a_bypass_class_v1.py",
         "tests/test_architecture_a_operator_writer_authority_v1.py",
-        "tools/pm_authority.py",
-        "tests/test_pm_authority_external_v1.py",
     ):
         msgs = WDL.writer_drift_violations(
             [rel], agent="claude", mission=_MISSION, sole_writer=_SOLE
@@ -106,78 +102,82 @@ def test_empty_role_abstains_on_product_paths():
 
 
 def test_codeowners_covers_control_authority_set():
-    """CODEOWNERS must own the MINIMUM DURABLE authority set (RC-459).
+    """CODEOWNERS must own exactly the TRUE AUTHORITY files (RC-461).
 
-    Durable = can flip the required CI verdict or the review policy itself, so a
-    boundary-broken state could merge CI-green with no operator review. Local-only
-    hook wiring and pre-commit wrappers are DEFENSE-IN-DEPTH and are deliberately NOT
-    required here (operator-ratified narrowing 2026-08-23) — see
-    test_codeowners_is_minimal_no_defense_in_depth_padding.
+    Authority = the files that decide WHO MAY DO WHAT: the review policy and required
+    checks, the operator's AI assignment, the rail that enforces it, the operator grant
+    rails, and the tests that prove those rules. Nothing else.
     """
     owners = (ROOT / ".github" / "CODEOWNERS").read_text(encoding="utf-8")
     required = (
-        # review policy + required CI definitions
-        "/.github/workflows/",
         "/.github/CODEOWNERS",
-        # PM-authority mechanism (both host provisioners)
-        "/tools/pm_authority.py",
-        "/tools/pm_authority_helper.py",
-        "/tools/install_pm_authority_host.sh",
-        "/tools/install_pm_authority_host.ps1",
-        # import-time injection surface inside every gate process
-        "/tools/__init__.py",
-        # CI hardening-gate closure (guards/locks retained by operator ratification)
-        "/tools/*_guard.py",
-        "/tools/*_lock.py",
-        "/tools/check_institutional_correctness.py",
-        "/tools/check_delta_adds_no_debt.py",
-        # pytest verdict-injection points
-        "/tests/conftest.py",
-        "/tests/**/conftest.py",
-        # grant rail
+        "/.github/workflows/",
+        "/.claude/settings.json",
+        "/.cursor/hooks.json",
+        "/tools/writer_drift_lock.py",
+        "/tools/process_lock_guard.py",
+        "/tools/operating_process_lock.py",
         "/governance/operator_go.json",
-        # tests that DEFINE Architecture A PASS
-        "/tests/test_architecture_a_bypass_class_v1.py",
+        "/governance/operator_grants.json",
         "/tests/test_control_authority_surfaces_v1.py",
+        "/tests/test_writer_drift_lock_v1.py",
+        "/tests/test_architecture_a_bypass_class_v1.py",
         "/tests/test_architecture_a_operator_writer_authority_v1.py",
-        "/tests/test_pm_authority_external_v1.py",
-        "/tests/test_pm_authority_windows_boundary_v1.py",
     )
     missing = [p for p in required if p not in owners]
     assert missing == [], missing
-    # Ordinary product work stays autonomous — never operator-review-gated.
+    # Ordinary product work stays autonomous - never operator-review-gated.
     for banned in ("/server.py", "/signals.py", "/static/", "/db.py"):
         assert banned not in owners, banned
 
 
 def test_codeowners_is_minimal_no_defense_in_depth_padding():
-    """The narrowing must STAY narrow (RC-459).
+    """The authority set must STAY minimal (RC-461).
 
-    These paths are local-only enforcement: poisoning one, if merged, changes local
-    behaviour, not the required CI verdict or the OS boundary. Operator review of them
-    would tax ordinary work without closing a merge-time hole, so they must NOT reappear
-    as owned patterns. (The five law/honesty guards are retained deliberately and are
-    covered by the /tools/*_guard.py rule above.)
+    These are quality/process surfaces, not authority: owning them would make the
+    operator a reviewer of ordinary engineering without closing an authority hole.
+    The removed host-boundary files must never reappear either.
     """
     owners = (ROOT / ".github" / "CODEOWNERS").read_text(encoding="utf-8")
-    owned_patterns = {
+    owned = {
         line.strip().split()[0]
         for line in owners.splitlines()
         if line.strip() and not line.strip().startswith("#")
     }
     must_not_be_owned = {
+        "/tools/*_guard.py", "/tools/*_lock.py", "/tools/check_*.py",
+        "/tools/__init__.py", "/time_et.py",
+        "/tests/conftest.py", "/tests/**/conftest.py",
         "/.pre-commit-config.yaml",
-        "/.cursor/hooks.json",
-        "/.claude/settings.json",
-        "/tools/run_with_repo_venv.py",
-        "/tools/bootstrap_worktree_venv.py",
+        "/tools/run_with_repo_venv.py", "/tools/bootstrap_worktree_venv.py",
         "/tools/precommit_institutional.py",
-        "/tools/check_*.py",          # the sweeping glob the narrowing replaced
-        "/tools/rehab_daily_scan.py",
-        "/tools/duplication_audit.py",
+        "/tools/check_institutional_correctness.py", "/tools/check_delta_adds_no_debt.py",
+        # deleted host-boundary architecture - must not return
+        "/tools/pm_authority.py", "/tools/pm_authority_helper.py",
+        "/tools/install_pm_authority_host.sh", "/tools/install_pm_authority_host.ps1",
+        "/tests/test_pm_authority_external_v1.py",
+        "/tests/test_pm_authority_windows_boundary_v1.py",
     }
-    regressed = sorted(owned_patterns & must_not_be_owned)
-    assert regressed == [], f"defense-in-depth padding reappeared in CODEOWNERS: {regressed}"
+    regressed = sorted(owned & must_not_be_owned)
+    assert regressed == [], f"non-authority padding in CODEOWNERS: {regressed}"
+
+
+def test_removed_host_boundary_architecture_stays_removed():
+    """RC-461: the OS sandbox / privileged helper / host provisioning is GONE.
+
+    The operator ruled it overbuilt. If any of these files return, the simplification has
+    silently regressed and the repo is carrying an authority story it does not need.
+    """
+    for rel in ("tools/pm_authority.py", "tools/pm_authority_helper.py",
+                "tools/install_pm_authority_host.sh", "tools/install_pm_authority_host.ps1",
+                "tests/test_pm_authority_external_v1.py",
+                "tests/test_pm_authority_windows_boundary_v1.py",
+                "reports/pm_authority_external_implementation.md"):
+        assert not (ROOT / rel).exists(), f"removed host-boundary file is back: {rel}"
+    # No production module may import the deleted reader.
+    for mod in ("tools/operating_process_lock.py", "tools/writer_drift_lock.py",
+                "tools/process_lock_guard.py", "tools/rehab_daily_scan.py"):
+        assert "pm_authority" not in (ROOT / mod).read_text(encoding="utf-8"), mod
 
 
 def test_mutation_vendor_default_role_is_detected():
@@ -212,12 +212,9 @@ def test_mutation_enforcement_allowlist_is_gone():
 
 @pytest.mark.parametrize("agent", ["cursor", "claude", "codex"])
 def test_self_grant_does_not_unlock_rails(agent):
-    cur = json.dumps({"writer": "other", "pm": "operator", "auditor": "cursor"})
-    new = json.dumps({"writer": agent, "pm": "operator", "auditor": "cursor"})
-    v = WDL.pm_status_field_violations(
-        "governance/sole_writer.json", new, agent=agent, current_text=cur
-    )
-    assert v == []
+    """Naming yourself writer unlocks nothing (RC-461)."""
+    assert WDL.control_authority_violation(
+        "governance/sole_writer.json", agent=agent) is None
     assert WDL.control_authority_violation("tools/writer_drift_lock.py", agent=agent)
     assert WDL.control_authority_violation(".github/workflows/pytest.yml", agent=agent)
 
@@ -311,42 +308,34 @@ def _codeowners_covers(rel, owners_text):
     return False
 
 
-def test_enforcement_execution_closure_is_codeowned_and_hooks_railed():
-    """Self-maintaining DURABLE boundary (merge review).
+def test_authority_files_are_both_railed_and_codeowned():
+    """RC-461: every authority file is protected TWICE, and product is protected neither.
 
-    Every repo module executed inside an enforcement process — the PreToolUse/Stop
-    hooks AND the pre-commit hook wrappers — is a code-injection surface: a poisoned
-    module runs with the enforcer's privileges and, if merged, poisons production
-    enforcement. The DURABLE boundary against that is operator review at merge
-    (CODEOWNERS + branch protection), so EVERY member of the combined execution
-    closure must be CODEOWNERS-covered. If a guard/wrapper gains a new repo import
-    without coverage, this test FAILS — the class cannot silently reopen.
-
-    NOTE ON THE IN-PROCESS RAIL: control_authority_violation blocking the Edit/Write
-    tools is DEFENSE-IN-DEPTH, not the boundary — an assigned AI with shell access can
-    rewrite any checkout file via cp/mv/sed/tee, which the in-process guards do not
-    (and cannot exhaustively) intercept. The capability boundary is the OS PM-authority
-    ownership + non-root AI + this merge review. We still assert the hook closure is
-    railed (raises the local bar) but the authoritative assertion is CODEOWNERS."""
+    CODEOWNERS + branch protection is the DURABLE boundary (operator approval at merge).
+    The in-process control-authority rail is defense-in-depth (it denies the edit locally).
+    An authority file missing from either side is a hole; an ordinary product file present
+    on either side is a tax on autonomous work.
+    """
     owners = (ROOT / ".github" / "CODEOWNERS").read_text(encoding="utf-8")
-    hook_closure = _import_closure(_HOOK_ENTRYPOINTS)
-    ci_closure = _import_closure(_CI_GATE_SCRIPTS)
-    assert len(ci_closure) >= 20, ci_closure  # sanity: actually computed
-
-    # DURABLE boundary (RC-459): every module executed by a REQUIRED CI gate must need
-    # operator review to merge, because a silently-weakened check merges green.
-    not_owned = sorted(m for m in ci_closure if not _codeowners_covers(m, owners))
-    assert not_owned == [], f"CI-verdict gate modules NOT CODEOWNERS-covered: {not_owned}"
-
-    # Every conftest under tests/ runs at collection and can fake the suite green.
-    conftests = [str(p.relative_to(ROOT)).replace("\\", "/") for p in ROOT.glob("tests/**/conftest.py")]
-    conftests_uncovered = sorted(c for c in conftests if not _codeowners_covers(c, owners))
-    assert conftests_uncovered == [], f"conftest execution surfaces NOT CODEOWNERS-covered: {conftests_uncovered}"
-
-    # Defense-in-depth: the PreToolUse/Stop hook closure is also blocked from the
-    # Edit/Write file tools (raises the local bar; not the boundary — see docstring).
-    not_railed = sorted(m for m in hook_closure if not WDL.is_control_authority_surface(m))
-    assert not_railed == [], f"hook-closure modules NOT railed (defense-in-depth gap): {not_railed}"
+    authority = [
+        ".github/CODEOWNERS",
+        ".github/workflows/pytest.yml",
+        ".github/workflows/hardening.yml",
+        ".claude/settings.json",
+        ".cursor/hooks.json",
+        "tools/writer_drift_lock.py",
+        "tools/process_lock_guard.py",
+        "tools/operating_process_lock.py",
+        "governance/operator_go.json",
+        "governance/operator_grants.json",
+    ]
+    for rel in authority:
+        assert _codeowners_covers(rel, owners), f"authority file NOT codeowned: {rel}"
+        assert WDL.is_control_authority_surface(rel), f"authority file NOT railed: {rel}"
+    for rel in ("server.py", "db.py", "signals.py", "static/index.html",
+                "math_levels.py", "tests/test_ml_feature_provenance.py"):
+        assert not _codeowners_covers(rel, owners), f"product file is codeowned: {rel}"
+        assert not WDL.is_control_authority_surface(rel), f"product file is railed: {rel}"
 
 
 def test_tools_package_init_has_no_executable_code():

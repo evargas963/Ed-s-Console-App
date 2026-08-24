@@ -1,79 +1,42 @@
-# DURABLE control-authority surfaces only (Architecture A / RC-453 / RC-459).
+# TRUE AUTHORITY FILES ONLY (RC-461).
 #
-# "Durable" = a file that can flip the required CI verdict (the only two required
-# gates, .github/workflows/hardening.yml + pytest.yml) or the review policy itself,
-# such that a boundary-broken state could merge CI-green with NO operator review.
-# That is: the import closure of the hardening gate scripts (a weakened check merges
-# green — the delta gate detects a REMOVED check, not silently-weakened logic), every
-# conftest.py (a poisoned one fakes the whole suite green), the PM-authority mechanism,
-# tools/__init__.py, and the Architecture-A definition tests.
+# Operator requirement: the human operator retains control of AI ASSIGNMENT and AUTHORITY
+# changes. The coding AI does ordinary repo work autonomously, but may not make itself
+# operator, grant itself authority, or change the durable authority rules without operator
+# approval. CODEOWNERS + branch protection IS that approval gate.
 #
-# NARROWED (RC-459, operator-ratified 2026-08-23): local-only hook wiring
-# (.cursor/hooks.json, .claude/settings.json, .pre-commit-config.yaml), pre-commit
-# wrappers, and ~20 standalone non-hardening check_*.py are DEFENSE-IN-DEPTH, not the
-# durable boundary — poisoning them, if merged, changes only local behavior, not the CI
-# verdict or the OS boundary — so they are intentionally NOT listed and do not force
-# operator review. Ordinary product paths (server.py, db.py, static/, signals.py,
-# models) are likewise NOT listed so the assigned AI lands ordinary work autonomously.
-# A self-maintaining test (tests/test_control_authority_surfaces_v1.py) recomputes the
-# CI-verdict closure and FAILS if a gate script gains an un-owned import.
+# A file belongs here only if changing it would let the AI decide WHO MAY DO WHAT.
+# Ordinary product code (server.py, db.py, static/, signals.py, math/liquidity engines),
+# ordinary tests, and quality-gate scripts are deliberately NOT listed - they are the
+# autonomous surface, and listing them would make the operator a reviewer of routine work.
+#
+# There is no OS sandbox, no separate account, no ProgramData authority service, no
+# privileged helper and no host provisioning: that architecture was removed as overbuilt.
 
-# Review policy + required CI definitions (define what runs / who reviews)
-/.github/workflows/ @evargas963
+# 1. Review policy + the required checks that give branch protection its teeth
 /.github/CODEOWNERS @evargas963
+/.github/workflows/ @evargas963
 
-# PM-authority mechanism — the executable authority installed on the host
-/tools/pm_authority.py @evargas963
-/tools/pm_authority_helper.py @evargas963
-/tools/install_pm_authority_host.sh @evargas963
-/tools/install_pm_authority_host.ps1 @evargas963
+# 2. The operator's AI ASSIGNMENT. ED_AGENT_ROLE is declared here; an AI that edits these
+#    files re-labels itself, which is self-promotion.
+/.claude/settings.json @evargas963
+/.cursor/hooks.json @evargas963
 
-# Import-time injection surface: tools/__init__.py runs on every `import tools.*`
-# inside the CI gate scripts and pytest collection.
-/tools/__init__.py @evargas963
+# 3. The authority rail itself and the entrypoints that execute it. writer_drift_lock
+#    defines the control-authority set and resolves the acting principal; the other two
+#    invoke it on edits and on commit. Editing any of them removes the AI's own restraint.
+/tools/writer_drift_lock.py @evargas963
+/tools/process_lock_guard.py @evargas963
+/tools/operating_process_lock.py @evargas963
 
-# CI hardening-gate code closure — a weakened check merges green, so every module the
-# gate scripts import is durable. Guards + locks are RETAINED here (operator law
-# enforcement, ratified 2026-08-23): keeping them costs zero ordinary-product autonomy.
-/tools/*_guard.py @evargas963
-/tools/*_lock.py @evargas963
-/time_et.py @evargas963
-/tools/check_credential_leak.py @evargas963
-/tools/check_delta_adds_no_debt.py @evargas963
-/tools/check_eol_style_invariant.py @evargas963
-/tools/check_institutional_closure_gate.py @evargas963
-/tools/check_institutional_correctness.py @evargas963
-/tools/check_market_correctness.py @evargas963
-/tools/check_no_grep_subprocess.py @evargas963
-/tools/check_schwab_market_field_semantics.py @evargas963
-/tools/check_ui_data_integration.py @evargas963
-/tools/check_vendor_field_coercion.py @evargas963
-/tools/check_venv_parity.py @evargas963
-/tools/data_faucet_audit.py @evargas963
-/tools/find_prove_locks.py @evargas963
-/tools/log_law.py @evargas963
-/tools/plus_player_locks.py @evargas963
-/tools/turn_self_audit.py @evargas963
-
-# pytest verdict-injection points (a poisoned conftest fakes the whole suite green)
-/tests/conftest.py @evargas963
-/tests/**/conftest.py @evargas963
-
-# Grant / GO rail (a forged self-grant would unlock the rails)
+# 4. Operator grants. A forged grant is self-authorization.
 /governance/operator_go.json @evargas963
 /governance/operator_grants.json @evargas963
 
-# Tests that DEFINE Architecture A PASS
-/tests/test_architecture_a_bypass_class_v1.py @evargas963
-/tests/test_writer_drift_lock_v1.py @evargas963
+# 5. The tests that PROVE the rules above still hold. Deleting the proof is how a rule
+#    dies quietly, so the proof needs the same approval as the rule.
 /tests/test_control_authority_surfaces_v1.py @evargas963
+/tests/test_writer_drift_lock_v1.py @evargas963
+/tests/test_architecture_a_bypass_class_v1.py @evargas963
 /tests/test_architecture_a_operator_writer_authority_v1.py @evargas963
-/tests/test_pm_authority_external_v1.py @evargas963
-/tests/test_pm_authority_windows_boundary_v1.py @evargas963
-
-# Retained law/honesty guards' tests (operator-ratified 2026-08-23): the guards are
-# defense-in-depth, but the operator elected to keep them + their tests review-gated.
-/tests/test_honesty_guard_v1.py @evargas963
-/tests/test_operator_law_guard_repo_scope_v1.py @evargas963
-/tests/test_stop_guard_v1.py @evargas963
 /tests/test_operating_process_lock_v1.py @evargas963

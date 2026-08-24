@@ -63,9 +63,6 @@ def pretooluse_block(tool: str, tool_input: dict) -> list[str]:
         fp = _edit_path(tool_input)
         if fp:
             rel = _rel(fp)
-            msg = OPL.sole_writer_edit_violation(rel)
-            if msg:
-                out.append(msg)
             # Isolated-worktree boundary (operator 2026-08-20): claude-role edits inside the
             # PRODUCTION (primary) checkout are BLOCKED; Claude edits only its -Claude worktree.
             iso = OPL.claude_isolated_edit_violation(fp)
@@ -78,27 +75,17 @@ def pretooluse_block(tool: str, tool_input: dict) -> list[str]:
             auth = WDL.control_authority_violation(rel)
             if auth:
                 out.append(auth)
-            # LOCK-1/3 (RC-232) + RC-454: pm-authority files. Delete or empty overwrite
-            # removes pm=operator; Write must keep pm=operator even if the file is gone.
+            # RC-461: the off-repo PM-authority file is gone, so its delete/write
+            # validators are gone with it. governance/pm_mission.json is ordinary
+            # COORDINATION metadata - it grants nothing, so writing it needs no validator.
             new_text = _tool_new_text(tool_input)
-            if tool == "Delete" or (tool == "Write" and not new_text):
-                gone = WDL.pm_authority_delete_violation(fp)
-                if gone:
-                    out.append(gone)
-            elif new_text:
-                out.extend(WDL.pm_status_field_violations(fp, new_text))
             # LOCK-7 (RC-232): assigned principals creating NEW governance mandate prose
-            # while a mission runs is process-md theater unless explicitly waived.
-            # Not a vendor-writer check (RC-454).
-            from tools.pm_authority import executable_mission
-            # LOCK-7 fires only on a genuine in-progress mission. When executable PM
-            # authority is unavailable, executable_mission() is {} so mission_in_progress
-            # is False — new governance-md creation is not a mission-scoped product edit
-            # and is governed separately (RC-232), not by this reader.
+            # while a mission runs is process-md theater unless explicitly waived. The
+            # mission is read from coordination metadata, never from authority.
             if (rel.startswith("governance/") and rel.endswith((".md", ".mdc"))
                     and not (REPO / rel).exists()
                     and WDL.current_agent_role()
-                    and WDL.mission_in_progress(executable_mission())
+                    and WDL.mission_in_progress(OPL.pm_mission_record())
                     and "# process-doc-ok:" not in (new_text or "")):
                 out.append(
                     f"SOD_DRIFT: new governance mandate file {rel} — prose is never a lock "
