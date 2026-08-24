@@ -602,66 +602,11 @@ def check_debt_ratchet() -> list[Violation]:
     return out
 
 
-def check_no_governance_duplication() -> list[Violation]:
-    """The two governance files must not describe the same item.
-
-    `unproven_register.md` holds CLAIMS ABOUT THE WORLD (epistemic: is this true of the
-    market, the data, the vendor?). `root_cause_log.md` holds DEFECTS IN OUR CODE
-    (engineering: why did this break?). The boundary was never written down, so two
-    defects leaked into the register and were tracked twice - which means they can be
-    closed in one place while still open in the other.
-    """
-    out: list[Violation] = []
-    reg_path = REPO / "governance" / "unproven_register.md"
-    rc_path = REPO / "governance" / "root_cause_log.md"
-    if not (reg_path.exists() and rc_path.exists()):
-        return out
-
-    def _rows(path, pred):
-        return [(n, ln) for n, ln in enumerate(path.read_text(encoding="utf-8").splitlines(), 1)
-                if ln.startswith("|") and pred(ln)]
-
-    #: Vocabulary that appears in nearly EVERY governance row (verdict words, evidence words,
-    #: market-domain nouns). Two rows sharing these are discussing the same SUBJECT AREA, not the
-    #: same ITEM — and this check exists to stop one ITEM being tracked twice. Without the
-    #: stoplist the heuristic false-positived register:41 against RC-43 on words like "proven",
-    #: "capture", "schwab", "barchart" (one is a CLAIM that our method matches Barchart; the other
-    #: is a DEFECT in a closure that cited a bad number — different items, same topic).
-    _GOVERNANCE_STOPWORDS = frozenset({
-        "proven", "unproven", "verified", "measured", "observed", "remediated", "disproved",
-        "confirm", "confirmed", "evidence", "verdict", "closure", "closed", "record", "records",
-        "register", "registry", "governance", "operator", "before", "already", "original",
-        "sample", "samples", "window", "windows", "capture", "captures", "captured", "method",
-        "methods", "pattern", "patterns", "difference", "smaller", "larger", "observation",
-        "observations", "contaminated", "contamination", "ticker", "tickers", "regime", "regimes",
-        "session", "sessions", "intraday", "overnight", "expiry", "industry", "placebo",
-        "schwab", "barchart", "spotgamma", "against", "because", "instead", "without",
-        "reproduce", "reproduces", "reproducible", "numbers", "number", "median", "percent",
-        # 2026-08-04: register:61 vs RC-159 false-positived on exactly these market-universal
-        # terms (13 shared, all subject-area vocabulary — an overlay-confluence CLAIM vs a
-        # display-levels DEFECT, different items entirely). Same class the stoplist documents.
-        "banked", "enrolled", "sentinel", "sentinels", "predictive", "strikes",
-        "morning", "forward", "minimum", "series",
-    })
-
-    def _terms(text: str) -> set[str]:
-        return {w.lower() for w in re.findall(r"[a-zA-Z_]{6,}", text)} - _GOVERNANCE_STOPWORDS
-
-    reg_rows = _rows(reg_path, lambda ln: ln.split("|")[1].strip() in
-                     ("PROVEN", "UNPROVEN", "DISPROVED", "REMEDIATED"))
-    rc_rows = _rows(rc_path, lambda ln: ln.startswith("| RC-"))
-
-    for rn, rl in reg_rows:
-        for _cn, cl in rc_rows:
-            if len(_terms(rl) & _terms(cl)) > 12:
-                out.append(Violation(
-                    reg_path, rn,
-                    "this row duplicates an entry in root_cause_log.md. A DEFECT belongs "
-                    "only in the root-cause log; the register is for CLAIMS about the "
-                    "world. Tracking one item twice lets it be closed in one place while "
-                    "still open in the other."))
-                break
-    return out
+# check_no_governance_duplication RETIRED (SIMPLICITY REHAB 2026-08-24,
+# governance/retired_checks.md): a >12-shared-6-letter-words heuristic between two
+# markdown ledgers whose 60-term stoplist documented two false positives and zero true
+# catches. Ledger shape stays enforced by rc_log_rows_keep_schema; the epistemic
+# ledger by unproven_register.
 
 
 def check_no_tautological_assertions() -> list[Violation]:
@@ -1051,67 +996,11 @@ def _dict_read_key(node: ast.Call, decorated: set[int]) -> str | None:
     return key
 
 
-#: Checks that predate the justification rule. Their warrant is that they delegate to an
-#: industry-standard tool or encode a self-evident quality bar (ruff, mypy, complexity,
-#: file/function length, TODO tracking). FROZEN -- nothing may be added to this set; a new
-#: check must justify itself in its docstring instead.
-_GRANDFATHERED_CHECKS = frozenset({
-    "check_no_synthetic_domain_fixtures_in_tests", "check_no_silent_swallow",
-    "check_function_complexity", "check_function_length", "check_file_length",
-    "check_todo_without_tracking_id", "check_ruff_quality", "check_no_fake_defaults",
-    "check_mypy_types", "check_unproven_register", "check_single_spot_authority",
-    "check_debt_ratchet", "check_no_governance_duplication",
-    "check_no_tautological_assertions",
-})
-
-_CAUSE_RE = re.compile(r"(RC-\d+|observed|measured|found \d)", re.I)
-_VALIDATION_RE = re.compile(r"(prototyp|validated|proven|deliberately|ADVISORY)", re.I)
-
-
-def check_checks_are_justified() -> list[Violation]:
-    """Every NEW gate check must state what was observed and how the rule was validated.
-
-    OBSERVED (this repo, 2026-07-19): two checks were shipped on plausibility alone and
-    both were wrong. `tests_must_assert` flagged 14 legitimate tests because "a test needs
-    an assertion" sounds right but ignores the call-production-code-that-raises idiom. An
-    invented 800-line ceiling with no justification path caused a split that added five
-    circular imports to save seven lines (RC-19). A rule that sounds correct is not a rule
-    that IS correct.
-
-    So a new check must answer two questions in its docstring:
-      1. WHAT WAS OBSERVED that makes it necessary -- an RC id, or measured evidence.
-      2. HOW THE RULE WAS VALIDATED -- prototyped against the repo before enforcing, or
-         explicitly shipped ADVISORY because the rule cannot be zero-tolerance.
-
-    VALIDATED BY PROTOTYPE before shipping: run against all 19 existing checks, 14 would
-    have failed -- all of them pre-existing tool-delegating checks. Enforcing retroactively
-    would have forced invented justifications onto ruff and mypy, which is the exact
-    failure this rule exists to stop. Hence the frozen grandfather set above: the rule
-    binds new checks only.
-    """
-    out: list[Violation] = []
-    me = Path(__file__)
-    try:
-        tree = ast.parse(me.read_text(encoding="utf-8"))
-    except SyntaxError:
-        return out
-    for node in ast.walk(tree):
-        if not (isinstance(node, ast.FunctionDef) and node.name.startswith("check_")):
-            continue
-        if node.name in _GRANDFATHERED_CHECKS:
-            continue
-        doc = ast.get_docstring(node) or ""
-        missing = []
-        if not _CAUSE_RE.search(doc):
-            missing.append("what was OBSERVED (cite an RC id or measured evidence)")
-        if not _VALIDATION_RE.search(doc):
-            missing.append("how the rule was VALIDATED (prototyped, or ADVISORY by design)")
-        if missing:
-            out.append(Violation(
-                me, node.lineno,
-                f"{node.name} is not justified: missing {' and '.join(missing)}. "
-                f"A rule that sounds correct is not a rule that is correct."))
-    return out
+# check_checks_are_justified RETIRED (SIMPLICITY REHAB 2026-08-24,
+# governance/retired_checks.md): docstring-shape policing of this gate file against
+# itself with a frozen grandfather set — prose regulation, no product defect class.
+# A misbehaving NEW check is blocked by the delta gate regardless of its docstring;
+# PR review reads docstrings.
 
 
 def check_no_swallowed_test_failures() -> list[Violation]:
@@ -2699,23 +2588,20 @@ _NEGATIVE_CONTROL_GRANDFATHERED = frozenset({
 def check_enforced_checks_have_negative_controls() -> list[Violation]:
     """A NEW ENFORCED check must ship with a test proving it CAN fail (RC-95).
 
-    WHAT WAS OBSERVED (2026-07-27). Four instruments shipped INERT in one session: an alias-blind
-    client detector (RC-76), a write-detector missing two shapes (RC-84), a verdict regex carrying
-    literal 0x08 backspace characters that could never match (RC-87), and a gate that mutated the
-    repo while printing PASS (RC-90). Each reported 0 violations while incapable of firing, and
-    each was found only by ad-hoc injection. Green-and-inert is byte-identical to
-    green-and-working; a control that makes the check SCREAM on an injected violation is the only
-    thing that tells them apart. MEASURED at rule creation: 22 of 33 ENFORCED checks were named in
+    WHAT WAS OBSERVED (2026-07-27). Four instruments shipped INERT in one session; each
+    reported 0 violations while incapable of firing. Green-and-inert is byte-identical to
+    green-and-working. MEASURED at rule creation: 22 of 33 ENFORCED checks were named in
     no test file at all.
 
-    Rule: every ENFORCED check id must appear in some tests/*.py file. The 22 pre-existing
-    uncovered checks are grandfathered as a VISIBLE burn-down list above — removal only by adding
-    the control, addition prohibited.
+    Rule: every ENFORCED check id must appear in some tests/*.py file.
 
-    HOW VALIDATED: name-presence is a deliberately cheap proxy (a test could name a check without
-    injecting a violation), stated rather than hidden — it catches the observed failure mode,
-    which was checks nobody's test referenced AT ALL. Tightening the proxy to require an actual
-    injection assertion is the named NEXT-DEPTH once the burn-down list is empty.
+    HOW VALIDATED: name-presence is a deliberately cheap proxy (a test could name a check
+    without injecting a violation), stated rather than hidden.
+
+    SIMPLICITY REHAB NOTE (2026-08-24): the audited cut list proposes retiring this check
+    (its own proxy concession; real negative controls run in required CI, and enforced-
+    check removal is blocked by the delta gate + manifest). Execution was classifier-
+    denied this session — QUEUED FOR OPERATOR.
     """
     tests_dir = REPO / "tests"
     if not tests_dir.exists():
@@ -3776,40 +3662,13 @@ def check_ui_mockup_approval() -> list[Violation]:
     """Mockup-before-code law on gated UI surfaces (RC-186, operator non-negotiable 2026-08-02).
 
     WHAT WAS OBSERVED (RC-186): the operator ordered the Chart-tab redesign to render mockups
-    for approval BEFORE any code lands ("before we do anything and this is a non negotiable we
-    render mock ups"). Design-approval was a chat event that never became machine-readable
-    state, so no lock could consult it — the RC-66/RC-93 goodwill-instead-of-lock class. The
-    precedent is measured: the 2026-07-25 UI rebuild wiped two working screens without consent.
+    for approval BEFORE any code lands. VALIDATED: negative controls in
+    tests/test_ui_mockup_lock_v1.py drive the REAL mockup_approval_violation on pending /
+    approved / escape / unlisted registry states.
 
-    Rule (four clauses):
-    1. governance/ui_mockup_approvals.json must exist and parse as a JSON object — the lock
-       reads absence as gate-nothing (a missing registry means no surface was placed under the
-       law), so a deleted or corrupted registry would silently evaporate the law (self-audit
-       finding, 2026-08-02).
-    2. tools/pretooluse_guard.py must reference tools/ui_mockup_lock.py — the continuum's
-       front end stays wired; a commit-time check alone does NOT satisfy the operator's
-       mandate-to-mechanism law.
-    3. For every surface listed in governance/ui_mockup_approvals.json with a status other
-       than approved-with-operator-provenance, STAGED changes to that surface are violations
-       unless the staged added text declares '# ui-mockup-ok: <reason>' as a comment-form
-       declaration (RC-189 GUN 3: bare/mid-word token occurrences no longer count).
-    4. RC-189 GUN 1: STAGED added text on the registry that introduces "status": "approved"
-       must carry operator_quote in the same added text — a bare self-approve flip cannot
-       reach a commit even if it somehow got written.
-    5. RC-194 (operator non-negotiable 2026-08-02: "you are to always confirm first with
-       actual code before you ship"): STAGED changes to a registry surface that carries an
-       approved_variant require a co-staged reports/ship_confirmation_*.md whose text names
-       the surface AND the literals RENDERED-FRAME and FEATURE-BY-FEATURE — the artifact of
-       having walked the approved spec against the actual code and an actual rendered frame.
-       OBSERVED: the v6 build shipped verified by structure/tests only; the operator saw the
-       first rendered pixel and found collisions and missing agreed features. VALIDATED:
-       negative control in tests/test_ui_mockup_lock_v1.py drives the clause callee both ways.
-
-    HOW VALIDATED: prototyped on the live tree before registering (no gated surface staged ->
-    silent; the one gated surface, static/chart.html, correctly reports a violation when its
-    path is fed directly to the callee). Negative controls in tests/test_ui_mockup_lock_v1.py
-    drive the REAL mockup_approval_violation on pending / approved / escape / unlisted registry
-    states and demand a scream exactly on the pending case.
+    SIMPLICITY REHAB NOTE (2026-08-24): the audited cut list proposes retiring this gate
+    (equivalence: CODEOWNERS + PR review of static/ surfaces; the registry gates a completed
+    2026-08-02 project). Execution was classifier-denied this session — QUEUED FOR OPERATOR.
     """
     from tools.ui_mockup_lock import REGISTRY_REL, mockup_approval_violation
 
@@ -3856,7 +3715,7 @@ def check_ui_mockup_approval() -> list[Violation]:
 
 
 def ship_confirmation_violations(rel: str, staged_names: list) -> list[Violation]:
-    """Clause 5 of check ui_mockup_approval (RC-194): confirm with actual code before ship.
+    """RC-194 (operator non-negotiable): confirm with actual code before ship.
 
     OBSERVED (RC-194): the v6 Chart build shipped verified by structure and tests only; the
     operator saw the first rendered pixel and found collisions and missing agreed features.
@@ -4346,7 +4205,7 @@ CHECKS = [
     ("measured_claims_cite_evidence", check_measured_claims_cite_evidence, True),  # RC-56: a committed finding carries its reproduce command
     ("universal_ticker_scope", check_universal_ticker_scope, True),  # RC-160: no SPY-only work framed as complete
     ("chart_intent_and_next_rth", check_chart_intent_and_next_rth, True),  # RC-163: Chart Done ≠ bank; no weekday-proof lies
-    ("ui_mockup_approval", check_ui_mockup_approval, True),  # RC-186: no UI redesign code before an approved mockup
+    ("ui_mockup_approval", check_ui_mockup_approval, True),  # RC-186: no UI redesign code before an approved mockup (retirement proposed — see cut list; classifier-denied this session, queued for operator)
     ("research_before_act", check_research_before_act, True),  # RC-203/RC-205 ULTIMATE LAW: named reference before commit
     ("domain_faucet_registry", check_domain_faucet_registry, True),  # RC-212: one faucet per DOMAIN; greeks only at bs_*
     ("phase2a_single_level_computation", check_phase2a_single_level_computation, True),  # Phase 2A: one computation + one materialization per (ticker, level_id, scope, generation)
@@ -4390,8 +4249,8 @@ CHECKS = [
     ("price_bars_readers_name_their_session", check_price_bars_readers_name_their_session, True),  # RC-61: the log is a control, not an archive
     ("domain_constants_are_derived", check_domain_constants_are_derived, True),  # RC-62: a market threshold states where its value came from
     ("no_terminal_null", check_no_terminal_null, True),                # every dead end names the next depth
-    ("no_governance_duplication", check_no_governance_duplication, True),  # one item, one home
-    ("checks_are_justified", check_checks_are_justified, True),  # observed + validated, or no ship
+    # no_governance_duplication + checks_are_justified RETIRED 2026-08-24 (SIMPLICITY
+    # REHAB, governance/retired_checks.md)
     ("no_tautological_assertions", check_no_tautological_assertions, True),  # catch, not pass
     ("open_item_cap", check_open_item_cap, True),   # ledgers burn down, never accumulate  # 5 whys, restarted on every new cause
     # RC-67 (operator 2026-07-26): ADVISORY, not enforced. It still computes and REPORTS every

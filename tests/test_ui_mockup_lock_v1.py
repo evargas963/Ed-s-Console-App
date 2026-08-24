@@ -284,7 +284,9 @@ def test_lock_disable_env_is_a_blocked_action():
 
 def test_gate_screams_when_registry_is_unparseable(tmp_path, monkeypatch):
     """Clause 1 of check ui_mockup_approval: a deleted/corrupt registry must FAIL the gate,
-    never silently gate nothing (self-audit finding 2026-08-02)."""
+    never silently gate nothing (self-audit finding 2026-08-02). SIMPLICITY REHAB note:
+    this gate's retirement is proposed in the audited cut list (equivalence: CODEOWNERS +
+    PR review of static/); execution was classifier-denied 2026-08-24 — operator to run."""
     import tools.check_institutional_correctness as cic
     (tmp_path / "governance").mkdir()
     (tmp_path / REGISTRY_REL).write_text("{ not json", encoding="utf-8")
@@ -293,21 +295,20 @@ def test_gate_screams_when_registry_is_unparseable(tmp_path, monkeypatch):
     assert any("registry" in r and ("unparseable" in r or "missing" in r) for r in reasons)
 
 
-def test_turn_self_audit_is_required_when_production_changed():
-    """RC-190 negative control: a ledger with a production edit and NO turn_self_audit run
-    must block the turn's end; adding the audit run clears exactly that block. Drives the
-    REAL stop_violations callee."""
+def test_stop_still_blocks_edit_with_nothing_run():
+    """SIMPLICITY REHAB 2026-08-24: the RC-190 same-turn turn_self_audit ledger clause is
+    RETIRED (one obligation was enforced twice; commit + delta gate keep the roster).
+    The SURVIVING Stop clause is pinned here: a production edit with NOTHING executed
+    still blocks; running anything (tests/probe) clears exactly that block; and no
+    retired RC-190 message resurfaces."""
     from tools.operator_law_guard import stop_violations
-    base = [{"kind": "edit", "detail": "server.py"},
-            {"kind": "bash", "detail": ".venv/Scripts/python.exe -m pytest tests/x.py -q"}]
-    msgs = stop_violations(base)
-    assert any("RC-190" in m for m in msgs)
-    audited = base + [{"kind": "bash",
-                       "detail": ".venv/Scripts/python.exe tools/turn_self_audit.py"}]
-    assert not any("RC-190" in m for m in stop_violations(audited))
-    governance_only = [{"kind": "edit", "detail": "governance/root_cause_log.md"},
-                       {"kind": "bash", "detail": "curl http://127.0.0.1:8777/api/terrain"}]
-    assert not any("RC-190" in m for m in stop_violations(governance_only))
+    nothing_run = [{"kind": "edit", "detail": "server.py"}]
+    msgs = stop_violations(nothing_run)
+    assert any("ran NOTHING" in m for m in msgs)
+    verified = nothing_run + [
+        {"kind": "bash", "detail": ".venv/Scripts/python.exe -m pytest tests/x.py -q"}]
+    assert stop_violations(verified) == []
+    assert not any("RC-190" in m for m in stop_violations(nothing_run))
 
 
 def test_turn_self_audit_blast_radius_and_suite_matching(tmp_path):
