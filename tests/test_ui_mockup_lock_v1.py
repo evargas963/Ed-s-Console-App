@@ -138,15 +138,20 @@ def test_gun1_grant_var_cannot_be_minted_into_settings():
 
 
 def test_gun1_shell_channel_to_registry_or_grant_blocks():
-    """RC-189 GUN 1: shell access to the registry or the grant var is refused on the RAW
-    command — heredoc and -c payload writes were the dodge around the Edit/Write hook."""
+    """RC-189 GUN 1: shell WRITE access to the registry or grant-var minting is refused
+    on the RAW command — heredoc and -c payload writes were the dodge around the
+    Edit/Write hook. SIMPLICITY REHAB 2026-08-24 (T2-7): the ban is WRITE-scoped — the
+    fragment-only form blocked pure READS twice in one measured session (a json.load of
+    the registry; a commit message naming the gate). Reads are legal; writes and
+    grant-sets still block."""
     from tools.operator_law_guard import bash_violations
     assert any("RC-189" in v for v in bash_violations(
         "python -c \"open('governance/ui_mockup_approvals.json','w').write('x')\"", []))
     assert any("RC-189" in v for v in bash_violations(
-        "cat governance/ui_mockup_approvals.json", []))
-    assert any("RC-189" in v for v in bash_violations(
         "$env:ED_UI_MOCKUP_APPROVE='1'; git commit", []))
+    # READS of the registry are legal now — the risk this gun guards is the WRITE.
+    assert not any("RC-189" in v for v in bash_violations(
+        "cat governance/ui_mockup_approvals.json", []))
     assert not any("RC-189" in v for v in bash_violations("git status", []))
 
 

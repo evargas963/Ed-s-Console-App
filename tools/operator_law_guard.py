@@ -414,10 +414,23 @@ _APPROVAL_ALLOWED_SPELLINGS = re.compile(
     r"(?:tools[/\\])?(?:test_)?ui_mockup_lock(?:_v1)?(?:\.py)?", re.I)
 _APPROVAL_FRAGMENT = re.compile(
     r"ui_mockup|mockup_approv|approvals\.json|ED_UI_MOCKUP", re.I)
+#: SIMPLICITY REHAB 2026-08-24 (T2-7): the fragment ban alone blocked READS — measured
+#: twice in one session (a json.load of the registry; a git commit whose MESSAGE named
+#: the gate). The registry-forge risk is a WRITE risk, so the fragment must co-occur
+#: with a write verb before it blocks. Constructed-write bans below still backstop
+#: deep-concatenation forgeries regardless of spelling.
+_APPROVAL_WRITE_VERB = re.compile(
+    r">{1,2}|Set-Content|Out-File|Add-Content|json\.dump|write_text|write_bytes|"
+    r"\bopen\s*\([^)]*['\"](?:w|a)", re.I)
+#: Setting the grant variable IS a write (grant-minting), whatever the shell spelling.
+_APPROVAL_GRANT_SET = re.compile(r"ED_UI_MOCKUP\w*\s*[:=]", re.I)
 
 
 def _approval_channel_violation(raw: str) -> bool:
-    return bool(_APPROVAL_FRAGMENT.search(_APPROVAL_ALLOWED_SPELLINGS.sub("", raw)))
+    stripped = _APPROVAL_ALLOWED_SPELLINGS.sub("", raw)
+    if _APPROVAL_GRANT_SET.search(stripped):
+        return True
+    return bool(_APPROVAL_FRAGMENT.search(stripped) and _APPROVAL_WRITE_VERB.search(stripped))
 
 
 def _safe_data_target(target: str) -> bool:
@@ -507,7 +520,22 @@ def _heredoc_write_violation(raw: str) -> bool:
 #: v19: `cat > foo.py <<EOF` writes source through the SHELL itself — no interpreter involved,
 #: so the heredoc rule never saw it. Any shell redirect INTO a .py file is the same banned
 #: action (writing source outside Edit/Write); .py targets only, so log/json redirects stay legal.
-_SHELL_REDIRECT_SOURCE = re.compile(r"(?:^|[^&\d])>{1,2}\s*[^\s;|&<>]+\.py\b")
+_SHELL_REDIRECT_SOURCE = re.compile(r"(?:^|[^&\d])>{1,2}\s*([^\s;|&<>]+\.py)\b")
+
+
+def _redirect_source_violation(cmd: str) -> bool:
+    """SIMPLICITY REHAB 2026-08-24 (T2-8): the bare regex blocked writing a scratch
+    analyzer to the session TEMP directory — outside any repository, not repo source,
+    not the law's stated subject. The ban now binds only targets that resolve INSIDE a
+    git repository (relative targets count: the working directory is a repo checkout);
+    an absolute .py target outside every repo is scratch tooling and stays legal."""
+    for m in _SHELL_REDIRECT_SOURCE.finditer(cmd):
+        target = m.group(1).strip("'\"")
+        if not _ABS_RE.match(_msys_to_windows(target)):
+            return True                   # relative → lands in the repo checkout
+        if repo_root_of(Path(_msys_to_windows(target)).parent):
+            return True
+    return False
 
 
 def _has_verification_any(ledger: list[dict]) -> bool:
@@ -637,7 +665,7 @@ def bash_violations(cmd: str, ledger: list[dict], payload_cwd: str = "") -> list
                    "string-LITERAL data target (.md/.json/.jsonl/.txt/.csv/.log). Variable "
                    "paths and source files are refused — the variable-path escape broke a test "
                    "file the same day it was written down as a boundary. Use Edit/Write.")
-    if _SHELL_REDIRECT_SOURCE.search(cmd):
+    if _redirect_source_violation(cmd):
         out.append("ACTION BLOCKED: shell redirect into a .py file writes source outside the "
                    "Edit/Write tools (v19: `cat > x.py <<EOF` walked around the heredoc rule). "
                    "Same action, same ban; non-source redirects stay legal.")
