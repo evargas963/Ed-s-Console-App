@@ -1,20 +1,11 @@
 # ACTIVE_PROGRAM.md — what we are doing now
 
-**Updated:** 2026-08-03 — **Cursor = whole-repo rehab PM** (RC-220 / `governance/REHAB_PROGRAM.md`). Daily rehab Automation + `tools/rehab_daily_scan.py` → `reports/rehab_latest.md`.
+**Updated:** 2026-08-24 — Architecture A teardown: **no standing roles** (the PM/writer/auditor table this file carried is retired). The operator directs each session in chat; rehab law lives in `governance/REHAB_PROGRAM.md`. Daily rehab scan: `tools/rehab_daily_scan.py` → `reports/rehab_latest.md` (recommend-only).
 **Charter:** `AGENTS.md` (Collect / Find & Prove / Decide). **Ledger:** `OPEN_ITEMS.md`.
 **Agent stop authority:** only operator `STOP` / `PAUSE` / `HANG IT UP` / `DO NOT CONTINUE`.
 
-## PM binding (Cursor — always — entire repo)
-
-| Role | Agent | Authority |
-|---|---|---|
-| **PM** | Cursor | Whole-repo rehab program; sequence slices; sole-writer; GO/NO-GO; keep operator straight |
-| **Writer** | per `governance/sole_writer.json` | Only agent that edits product paths for the active slice |
-| **Auditor** | Cursor | Falsify claims vs disk/git/live after landings |
-| **Rehab scan** | Cursor Automation + local script | Recommend only — append queue; no auto-edit |
-
 **Rehab spine:** repo-wide **multi-faucet** audit/find/fix end-to-end, no patches (`REHAB_PROGRAM.md` RH-F1 primary).  
-**Active slice:** **levels-tierb-session-collapse-v1** (census concepts 2–5: vwap/ORB/overnight/today VA) — packet in `governance/pm_mission.json`, `pending_go` until quiet-window PASS with `log_progressed=true`, then activate kill. Prior: census `4033a33f`, quiet-gate honesty `af0c4897`, Phase-1 prior_day `91d38623`. OUT-OF-SCOPE this slice: charm, clocks, spot, chart `computeDaily` B3.
+**Active slice:** **levels-tierb-session-collapse-v1** (census concepts 2–5: vwap/ORB/overnight/today VA) — armed behind quiet-window PASS with `log_progressed=true`, then activate kill. Prior: census `4033a33f`, quiet-gate honesty `af0c4897`, Phase-1 prior_day `91d38623`. OUT-OF-SCOPE this slice: charm, clocks, spot, chart `computeDaily` B3.
 
 ## Operator NOW (binding — work this before any other NEXT/QUEUED)
 

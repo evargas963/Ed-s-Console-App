@@ -3,7 +3,8 @@
 Closes the loop on stale-test misses after encoder width/schema changes (afac60b class):
 agents cannot claim green from a hand-picked pytest slice while leaving cone tests red.
 
-Authoritative rule: AGENTS.md § Encoder cone (mandatory pytest cone).
+Authoritative rule: this module's path/glob lists below (the AGENTS.md "Encoder cone"
+section they once mirrored was removed when the charter became one page).
 Paired: tests/test_check_fix_everything_we_touch.py
 """
 from __future__ import annotations
@@ -27,7 +28,7 @@ ENCODER_PRODUCER_PATHS: frozenset[str] = frozenset(
     }
 )
 
-# Test globs under tests/ — kept in sync with AGENTS.md § Encoder cone list.
+# Test globs under tests/ — the cone list of record.
 ENCODER_CONE_TEST_GLOBS: tuple[str, ...] = (
     "test_lstm*.py",
     "test_transformer*.py",

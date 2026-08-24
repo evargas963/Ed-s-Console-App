@@ -1,6 +1,6 @@
 # Repo Rehab Program (standing — RC-220)
 
-**PM:** Operator (operator ruling 2026-08-18, RC-403). **Adversarial auditor:** Cursor. Read the former "PM: Cursor" as Cursor's standing audit/rehab-posture behaviors in service of the operator-PM.
+**Directed by the operator in chat** (2026-08-24 teardown: no standing PM/auditor roles — any agent the operator assigns performs the rehab behaviors below that session).
 
 **Primary charter (operator 2026-08-03):** **repo-wide multi-faucet** — **audit → find → fix end-to-end → no patches.**  
 Not “one endpoint.” Not “leave the old producer as fallback.” Not CLOSED until the second path is dead on disk **and** proven on the live process (or honestly DISK_ONLY with restart owed).
@@ -13,8 +13,8 @@ Charter restated: piece-by-piece, fix-by-fix, **end-to-end** — dual paths die 
 2. Every slice: **census → one authority → kill the second path (remove or hard-fail) → T1 tests → lock → prove LIVE (or DISK_ONLY + restart owed)**. No “delegate later” residue without an OPEN RC.
 3. **No patches:** a fix that leaves the old producer callable as a silent second faucet is incomplete. Mark PARTIAL until the dead path is removed or hard-fails closed.
 4. **Whole continuum:** backend, frontend, SQL, config, governance — same standard (mandate-to-mechanism). Spot, walls, volume, PDL, charm, levels — every named field can have a faucet debt.
-5. **Queue authority:** `reports/rehab_latest.md` + multi-faucet census artifacts + this file. PM triages every session start. After a slice’s LIVE proof, PM opens the **next faucet P0** without waiting to be asked.
-6. Daily scan (`tools/rehab_daily_scan.py` / Automation) is **recommend-only**; PM turns findings into missions.
+5. **Queue authority:** `reports/rehab_latest.md` + multi-faucet census artifacts + this file, triaged at session start. After a slice’s LIVE proof, the next faucet P0 is opened without waiting to be asked.
+6. Daily scan (`tools/rehab_daily_scan.py` / Automation) is **recommend-only**; the operator turns findings into work.
 
 ## Standing facets (hunt these forever)
 
@@ -27,13 +27,13 @@ Charter restated: piece-by-piece, fix-by-fix, **end-to-end** — dual paths die 
 | RH-F5 | Collect fidelity | Window law LIVE; operable surface; contention managed |
 | RH-F6 | Decide hygiene | Admissions empty → WAIT; no unadmitted TRADE influence |
 | RH-F7 | Static quality | BLOCKING 0; TRACKED not regressing unexplained |
-| RH-F8 | Process | PM-first, sole writer, GO, no killed hooks |
+| RH-F8 | Process | measure before claim, no killed hooks |
 
 ## Active slice
 
-See `governance/pm_mission.json` — **levels-tierb-session-collapse-v1** (RH-F1 census #2–5) armed behind quiet-window PASS (`log_progressed=true`). When idle after that slice LIVE/PARTIAL+restart-owed, PM’s next act is: open the next highest P1 from `reports/multi_faucet_census_latest.md` (clocks #7 or charm #6) — not wait for operator to invent work.
+The operator names the active slice in chat (the pm_mission.json coordination file was removed 2026-08-24). Queue source when idle: `reports/multi_faucet_census_latest.md`.
 
-## Anti-patterns (PM must refuse)
+## Anti-patterns (refuse these)
 
 - Soft “we’ll collapse producers later” without OPEN RC + date
 - Second faucet kept as “fallback”
@@ -41,7 +41,7 @@ See `governance/pm_mission.json` — **levels-tierb-session-collapse-v1** (RH-F1
 - Claiming COMPLETE without END-TO-END reach on named victims
 - Running a full `server.py` stem battery (1000+ tests) as the default per-turn proof when a scoped suite already binds the change
 
-## Test tiers (efficiency — PM enforces)
+## Test tiers (efficiency)
 
 | Tier | When | What |
 |------|------|------|
@@ -50,7 +50,7 @@ See `governance/pm_mission.json` — **levels-tierb-session-collapse-v1** (RH-F1
 | **T3 Stem / full** | Nightly Automation or pre-release only | `turn_self_audit` full stem / 1800+ — **not** every mission turn |
 | **T4 Pre-commit** | Every commit | Institutional hooks already run — do not re-run T3 in chat “to be safe” |
 
-**Rule:** red T3 failures that reproduce on pristine HEAD are **rehab backlog**, not blockers for an unrelated mission — unless they are in files this mission touched. PM owns filing them into the queue, not stalling every landing.
+**Rule:** red T3 failures that reproduce on pristine HEAD are **rehab backlog**, not blockers for an unrelated mission — unless they are in files this mission touched. File them into the queue rather than stalling every landing.
 
 ## LIVE closeout / post-restart DONE bar
 

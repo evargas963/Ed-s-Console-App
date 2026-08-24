@@ -28,7 +28,7 @@ Your single job: read the rule surfaces end-to-end and produce a structured repo
 - `MEMORY.md` — thin pointer to AGENTS/ACTIVE_PROGRAM + [OPERATOR-ONLY] archive index
 
 **Process mechanics:**
-- `tools/check_worktree_handoff.py` + `tools/session_closeout.py` (HEAD = Cursor↔Claude sync)
+- `tools/session_closeout.py` (the worktree-handoff checker was removed 2026-08-24)
 - `governance/CURSOR_V4_AGENT_BRIEF.md` (Class A vs Class B commit classes)
 
 **Schwab program:**
