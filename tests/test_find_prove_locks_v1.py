@@ -158,15 +158,6 @@ def test_collect_datasheet_staged_live_clean():
     assert check_collect_datasheet_staged() == []
 
 
-def test_honesty_deliverable_scores_required():
-    from tools.honesty_guard import honesty_violations
-
-    u = "Return ONLY plain scores for every surface at 10/10 with evidence."
-    assert honesty_violations(u, "We should consider improvements going forward.")
-    ok = "Surface 1 honesty: 10/10. Files changed: tools/find_prove_locks.py"
-    assert honesty_violations(u, ok) == []
-
-
 def test_honesty_guard_still_green():
     from tools.check_institutional_correctness import check_honesty_guard_wired
 

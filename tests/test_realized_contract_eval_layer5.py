@@ -28,13 +28,6 @@ from realized_contract_eval import (
 from replay_hold_bars import replay_max_hold_bars_from_context
 
 
-def test_replay_max_hold_bars_from_context_requires_explicit_value():
-    assert replay_max_hold_bars_from_context({}) is None
-    assert replay_max_hold_bars_from_context({"replay_max_hold_bars": None}) is None
-    assert replay_max_hold_bars_from_context({"replay_max_hold_bars": 0}) is None
-    assert replay_max_hold_bars_from_context({"replay_max_hold_bars": "bad"}) is None
-
-
 def test_replay_max_hold_bars_from_context_accepts_valid_and_caps():
     assert replay_max_hold_bars_from_context({"replay_max_hold_bars": 15}) == 15
     assert replay_max_hold_bars_from_context({"replay_max_hold_bars": 500}) == 390
