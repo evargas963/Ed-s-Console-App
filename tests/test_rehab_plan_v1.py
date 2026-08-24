@@ -195,14 +195,29 @@ def test_genuinely_identical_files_are_still_counted(tmp_path, monkeypatch):
     assert count == 1, "a real byte-identical pair must still be reported"
 
 
-def test_main_runs_and_returns_zero():
-    assert P.main(["--json"]) == 0
+@pytest.fixture(scope="module")
+def live_json_run():
+    """ONE live full-plan measurement shared by the shape tests below.
 
-
-def test_json_output_carries_every_item(capsys):
+    P.main measures all 16 items live (repo-wide AST, sha256 of every asset, HTTP
+    probes). Measured: 54.2s + 50.0s + 5×26s when every test re-ran it. The
+    measurement stays live — it runs on every suite execution — it just runs once."""
+    import contextlib
+    import io
     import json
-    P.main(["--json"])
-    payload = json.loads(capsys.readouterr().out)
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        rc = P.main(["--json"])
+    return rc, json.loads(buf.getvalue())
+
+
+def test_main_runs_and_returns_zero(live_json_run):
+    rc, _payload = live_json_run
+    assert rc == 0
+
+
+def test_json_output_carries_every_item(live_json_run):
+    _rc, payload = live_json_run
     assert len(payload) == len(P.PLAN)
     for row in payload:
         for key in ("id", "phase", "title", "state", "value", "target",
@@ -211,8 +226,12 @@ def test_json_output_carries_every_item(capsys):
 
 
 @pytest.mark.parametrize("phase", sorted(P.PHASE_NAMES))
-def test_each_phase_filter_returns_only_that_phase(phase, capsys):
+def test_each_phase_filter_returns_only_that_phase(phase, capsys, monkeypatch):
+    """--phase filters; the SUBJECT here is the filter, not the measurements.
+    Live measurement is exercised once by live_json_run above; stubbing state()
+    keeps these five parametrized runs from re-measuring the repo five times."""
     import json
+    monkeypatch.setattr(P.Item, "state", lambda self: ("DONE", 0.0, "stubbed"))
     P.main(["--json", "--phase", str(phase)])
     payload = json.loads(capsys.readouterr().out)
     assert payload, f"phase {phase} has no items"

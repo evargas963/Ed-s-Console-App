@@ -527,11 +527,9 @@ def _collect_findings(measure: dict, status: dict) -> list[dict]:
         )
 
     # Code-health BLOCKING (best-effort; may be slow)
-    py = REPO / ".venv" / "Scripts" / "python.exe"
-    exe = str(py) if py.is_file() else sys.executable
-    panel = REPO / "tools" / "code_health_panel.py"
-    if panel.is_file():
-        code, out = _run([exe, str(panel), "--check"], timeout=300)
+    code_out = _code_health_check()
+    if code_out is not None:
+        code, out = code_out
         if code != 0:
             findings.append(
                 {
@@ -548,6 +546,20 @@ def _collect_findings(measure: dict, status: dict) -> list[dict]:
         f["scanned_at_utc"] = now
         f["head"] = _head()
     return findings
+
+
+def _code_health_check() -> tuple[int, str] | None:
+    """Run the code-health panel; None when the panel file is absent.
+
+    A seam: tests of the OTHER findings stub this 40s+ subprocess (measured 41.3s warm,
+    96s under xdist contention) instead of paying for it; the panel's own behavior is
+    tested where the panel is the subject."""
+    py = REPO / ".venv" / "Scripts" / "python.exe"
+    exe = str(py) if py.is_file() else sys.executable
+    panel = REPO / "tools" / "code_health_panel.py"
+    if not panel.is_file():
+        return None
+    return _run([exe, str(panel), "--check"], timeout=300)
 
 
 def _write_outputs(findings: list[dict], measure: dict, status: dict) -> dict:
