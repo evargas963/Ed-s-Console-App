@@ -2,27 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Any, TypedDict
+from typing import Any
 
 from features.cascade_stack_contract import CASCADE_STACK_SCHEMA_VERSION, CASCADE_UPSTREAM_BUNDLE_VERSION
-
-
-class CascadeStageProbOutput(TypedDict, total=False):
-    prob_up: float
-    prob_down: float
-    prob_flat: float
-    available: bool
-
-
-class CascadeChallengerRunRecord(TypedDict, total=False):
-    architecture: str  # "cascade"
-    schema_version: str
-    upstream_bundle_version: str
-    stages: dict[str, Any]
-    fusion: dict[str, Any]
-    model_outputs: dict[str, Any]
-    lineage: dict[str, Any]
-    parallel_runtime: bool
 
 
 def build_cascade_challenger_run_metadata(

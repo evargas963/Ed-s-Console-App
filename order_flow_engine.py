@@ -24,10 +24,18 @@ from typing import Any, Optional
 import math as _of_math
 
 from math_exposure import MISSING_GREEK_SENTINEL
+from l1_trade_observation import (
+    canonical_tape_prints,
+    compute_cum_delta_proxy as _canonical_cum_delta,
+    compute_tape_pressure as _canonical_tape_pressure,
+    iter_content_prints,
+    iter_signed_cum_points,
+    source_contract as l1_source_contract,
+)
 
 log = logging.getLogger(__name__)
 
-# RETIRED (mission TRUTH_V1, RC-450/RC-451): the order_flow composite score / direction / readiness /
+# RETIRED (mission TRUTH_V1, RC-473/RC-474): the order_flow composite score / direction / readiness /
 # verdict and their weight + ±threshold constants (OF_COMPOSITE_WEIGHT_*, OF_COMPOSITE_MIN_LEGS,
 # OF_DIRECTION_*, OF_READINESS_*, OF_RVOL_TERM_*/READINESS_OK/NEUTRAL_CENTER) were DELETED — no fitted
 # weights, no OOS validation. Only the generic normalization range survives.
@@ -178,23 +186,8 @@ def _iter_asks_levels(content_item: dict) -> list[tuple[float, float]]:
 
 
 def _iter_tape_prints(content_items: list) -> list[dict]:
-    """
-    Extract tape prints (LAST_PRICE, LAST_SIZE, TRADE_TIME_MILLIS) from content.
-    """
-    out = []
-    for c in content_items:
-        if not isinstance(c, dict):
-            continue
-        lp = c.get("LAST_PRICE")
-        ls = c.get("LAST_SIZE")
-        tt = c.get("TRADE_TIME_MILLIS")
-        if lp is not None or ls is not None or tt is not None:
-            out.append({
-                "price": _safe_float(lp),
-                "size": _safe_int(ls),
-                "time_millis": _safe_int(tt),
-            })
-    return out
+    """Extract tape prints in list/receive order. ONE FAUCET: l1_trade_observation."""
+    return iter_content_prints(content_items)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -693,53 +686,8 @@ def compute_book_microstructure(data: dict, *, now_ts: Optional[float] = None,
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _compute_tape_pressure(data: dict, window_sec: float) -> Optional[float]:
-    """
-    Tape pressure over a time window: sum(uptick_direction * size) / sum(size).
-    Direction is inferred from LAST_PRICE movement vs the previous print's price.
-    Uses: content.*.LAST_PRICE, LAST_SIZE, TRADE_TIME_MILLIS.
-    """
-    prints = _iter_tape_prints(_iter_content(data))
-    if not prints:
-        return None
-    now_ms = None
-    for p in prints:
-        t = p.get("time_millis")
-        if t is not None:
-            now_ms = t
-            break
-    if now_ms is None:
-        now_ms = 0
-    cutoff_ms = now_ms - int(window_sec * 1000)
-    total_delta = 0.0
-    total_sz = 0
-    prev_price = None
-    for p in sorted(prints, key=lambda x: x.get("time_millis") if x.get("time_millis") is not None else 0):
-        t = p.get("time_millis")
-        price = p.get("price")
-        # Out-of-window prints still seed prev_price so the first in-window
-        # print can be classified vs the most recent prior trade price.
-        if t is not None and t < cutoff_ms:
-            if price is not None:
-                prev_price = price
-            continue
-        size = p.get("size")
-        if size is None or size <= 0:
-            # No size to add to volume, but the price is still a real trade
-            # — keep it as the comparison anchor for the next sized print.
-            if price is not None:
-                prev_price = price
-            continue
-        if prev_price is not None and price is not None:
-            if price > prev_price:
-                total_delta += size
-            elif price < prev_price:
-                total_delta -= size
-        total_sz += size
-        if price is not None:
-            prev_price = price
-    if total_sz <= 0:
-        return None
-    return total_delta / total_sz if total_sz else None
+    """PROXY reconstructed L1 tick-rule pressure. ONE FAUCET: l1_trade_observation."""
+    return _canonical_tape_pressure(canonical_tape_prints(_iter_content(data)), window_sec)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -747,84 +695,19 @@ def _compute_tape_pressure(data: dict, window_sec: float) -> Optional[float]:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _compute_cum_delta_proxy(data: dict) -> Optional[float]:
-    """
-    Cumulative delta proxy from tape: sum of (direction * size) across prints.
-    Direction is inferred from LAST_PRICE movement vs the previous print's price.
-    Uses: content.*.LAST_PRICE, LAST_SIZE, TRADE_TIME_MILLIS.
-    Returns None when no print contributed a positive Schwab size.
-    """
-    prints = _iter_tape_prints(_iter_content(data))
-    if not prints:
-        return None
-    total = 0.0
-    saw_size = False
-    prev_price = None
-    for p in sorted(prints, key=lambda x: x.get("time_millis") if x.get("time_millis") is not None else 0):
-        price = p.get("price")
-        size = p.get("size")
-        if size is None or size <= 0:
-            # No size to count, but the price still anchors the next comparison.
-            if price is not None:
-                prev_price = price
-            continue
-        saw_size = True
-        if prev_price is not None and price is not None:
-            if price > prev_price:
-                total += size
-            elif price < prev_price:
-                total -= size
-        if price is not None:
-            prev_price = price
-    return total if saw_size else None
+    """PROXY reconstructed L1 tick-rule signed size sum. ONE FAUCET: l1_trade_observation."""
+    return _canonical_cum_delta(canonical_tape_prints(_iter_content(data)))
 
 
 def _compute_cum_delta_slope(data: dict, window_sec: float = 60.0) -> Optional[float]:
-    """
-    Slope of cumulative delta over time (simple linear regression).
-    Direction is inferred from LAST_PRICE movement vs the previous print's price.
-    """
-    prints = _iter_tape_prints(_iter_content(data))
-    if len(prints) < 2:
-        return None
-    sorted_prints = sorted(
-        [p for p in prints if p.get("time_millis") is not None],
-        key=lambda x: x.get("time_millis") or 0,
-    )
-    if len(sorted_prints) < 2:
-        return None
-    cutoff = (sorted_prints[-1].get("time_millis") or 0) - int(window_sec * 1000)
-    points = []
-    cum = 0.0
-    prev_price = None
-    for p in sorted_prints:
-        t = p.get("time_millis") or 0
-        price = p.get("price")
-        # Out-of-window prints still seed prev_price.
-        if t < cutoff:
-            if price is not None:
-                prev_price = price
-            continue
-        size = p.get("size")
-        if size is None or size <= 0:
-            if price is not None:
-                prev_price = price
-            continue
-        if prev_price is not None and price is not None:
-            if price > prev_price:
-                cum += size
-            elif price < prev_price:
-                cum -= size
-        if price is not None:
-            prev_price = price
-        points.append((t / 1000.0, cum))
+    """Slope of PROXY cum-delta in receive order. ONE signed-size walk: l1_trade_observation."""
+    points = iter_signed_cum_points(canonical_tape_prints(_iter_content(data)), window_sec)
     if len(points) < 2:
         return None
     if np is not None:
         xs = np.array([p[0] for p in points])
         ys = np.array([p[1] for p in points])
-        slope = float(np.polyfit(xs, ys, 1)[0])
-        return slope
-    # fallback: (last - first) / time_span
+        return float(np.polyfit(xs, ys, 1)[0])
     t0, y0 = points[0]
     t1, y1 = points[-1]
     dt = t1 - t0
@@ -1111,7 +994,7 @@ def _weighted_mean_present(
     return sum((w / total_w) * v for w, v in present)
 
 
-# RETIRED (mission TRUTH_V1, RC-450/RC-451): the composite producers _compute_order_flow_score,
+# RETIRED (mission TRUTH_V1, RC-473/RC-474): the composite producers _compute_order_flow_score,
 # _direction and _readiness were DELETED — no fitted weights, no OOS validation; they only ever fed
 # the retired order_flow_score/direction/regime/readiness family and the double-counting verdict.
 # No executable path reconstructs them (locked by tests/test_order_flow_engine_chunk2_or_fallthrough
@@ -1153,7 +1036,7 @@ class OrderFlowEngine:
         # fallback `book_imbalance_5 = top_book_pressure`, which conflated the two under one name.)
         top_book_pressure, top_book_pressure_source = _compute_top_book_pressure(data)
 
-        # (RC-450: the retired composite's book/tape leg selection was removed with the score.)
+        # (RC-473: the retired composite's book/tape leg selection was removed with the score.)
         spread_d = _compute_spread(data)
         spread_pts = spread_d.get("spread_pts")
 
@@ -1187,11 +1070,11 @@ class OrderFlowEngine:
         institutional_flow_proxy_score = _compute_institutional_flow_proxy(
             data, book_imbalance_5=book_imbalance_5)
 
-        # Composite score and regime. absorption_score and rvol are intentionally NOT legs
-        # (mission TRUTH_V1): both are non-directional MAGNITUDES (a density; relative volume).
-        # absorption is still emitted below for advisory/PROXY display; rvol feeds `_readiness`
-        # (its legitimate conviction role) below.
-        # RETIRED (mission TRUTH_V1, RC-450): order_flow_score / _direction / _regime / _readiness
+        # absorption_score and rvol are non-directional MAGNITUDES (a density; relative
+        # volume): absorption is emitted below for advisory/PROXY display; rvol is emitted
+        # as a primitive with an explicit unavailable reason (its readiness consumer is
+        # retired with the composite below).
+        # RETIRED (mission TRUTH_V1, RC-473): order_flow_score / _direction / _regime / _readiness
         # and the order_flow_verdict headline are RETIRED. The composite had no fitted weights or
         # OOS validation and was withheld from Decide (of_vote=0); compute_order_flow_verdict
         # additionally DOUBLE-COUNTED book/cum-delta/options (already inside the score) to emit the
@@ -1256,6 +1139,7 @@ class OrderFlowEngine:
             "order_flow_delta_arrow": of_delta_arrow,
             "order_flow_opt_arrow": of_opt_arrow,
             "order_flow_opt_label": of_opt_label,
+            **l1_source_contract(),
         }
 
     def _empty_result(self) -> dict:
@@ -1303,6 +1187,7 @@ class OrderFlowEngine:
             "order_flow_delta_arrow": None,
             "order_flow_opt_arrow": None,
             "order_flow_opt_label": None,
+            **l1_source_contract(),
         }
 
 

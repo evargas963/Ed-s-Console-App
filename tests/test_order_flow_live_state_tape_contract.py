@@ -19,7 +19,12 @@ def test_live_state_preserves_missing_last_size_for_order_flow_consumers():
     content = live_state.get_content_for_symbol(sym)
     tape = [item for item in content if item.get("TRADE_TIME_MILLIS") == 1_000]
 
-    assert tape == [{"LAST_PRICE": 500.0, "LAST_SIZE": None, "TRADE_TIME_MILLIS": 1_000}]
+    assert len(tape) == 1
+    assert tape[0]["LAST_PRICE"] == 500.0
+    assert tape[0]["LAST_SIZE"] is None
+    assert tape[0]["TRADE_TIME_MILLIS"] == 1_000
+    assert tape[0]["native_event_id"] is False
+    assert tape[0]["receive_seq"] == 1
     assert ofe._compute_cum_delta_proxy({"content": content}) is None
 
 

@@ -75,14 +75,6 @@ def infer_bucket_status(row: dict[str, Any]) -> str:
     return "OPEN"
 
 
-def _non_empty(value: Any) -> bool:
-    if value is None:
-        return False
-    if isinstance(value, str):
-        return bool(value.strip())
-    return True
-
-
 def validate_universality_closure_row(
     row: dict[str, Any],
     *,

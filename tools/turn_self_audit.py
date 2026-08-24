@@ -1061,14 +1061,6 @@ def validate_result(
     return errors
 
 
-def changed_production_files() -> list[str]:
-    """Compatibility API backed by canonical scope; scope failure is never hidden."""
-    scope = discover_scope(REPO)
-    if scope.status != STATUS_PASS:
-        raise RuntimeError("; ".join(scope.errors))
-    return sorted({entry.path for entry in scope.production_entries})
-
-
 def matching_attack_suites(changed: list[str]) -> tuple[list[str], list[str]]:
     """Compatibility API using deterministic imports/metadata, not source substrings."""
     entries = [

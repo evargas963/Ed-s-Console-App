@@ -1,3 +1,11 @@
+# RC-465: hooks run at the pre-commit stage ONLY. This worktree (and any clone that ran
+# `pre-commit install` with extra hook types) had pre-commit + commit-msg + pre-push all
+# installed, and stage-less hooks run at EVERY installed type - the same 9-check battery
+# executed three times per commit+push cycle (~2 min of pure duplication per landing).
+# The header below already declared "the pre-push stage has no hooks"; this line makes
+# the config enforce it. CI (pytest-full + hardening) remains the authority before merge.
+default_stages: [pre-commit]
+
 repos:
   - repo: local
     hooks:

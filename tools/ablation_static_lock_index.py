@@ -15,8 +15,6 @@ from pathlib import Path
 from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_MANIFEST_PATH = REPO_ROOT / "governance" / "artifacts" / "feature_ablation_manifest_leaf.json"
-DEFAULT_DB_PATH = REPO_ROOT / "data" / "ed_console.db"
 
 
 def enriched_rows_for_spec_build(

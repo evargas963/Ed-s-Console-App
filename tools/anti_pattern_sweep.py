@@ -212,14 +212,6 @@ def format_hit(lineno: int, rel: str, variant_id: str, expr: str) -> str:
     return f"{rel}:{lineno}:{variant_id}:{expr_one}"
 
 
-def parse_hit_line(line: str) -> tuple[str, int, str, str]:
-    parts = line.strip().split(":", 3)
-    if len(parts) != 4:
-        raise ValueError(f"bad hit line: {line!r}")
-    rel, lineno_s, variant_id, expr = parts
-    return rel, int(lineno_s), variant_id, expr
-
-
 def hit_is_allowlisted(
     rel: str,
     lineno: int,
@@ -429,23 +421,6 @@ def caps_hit_allowed(rel: str, lineno: int, variant_id: str) -> bool:
     ):
         return True
     return False
-
-
-def caps_register_markdown() -> str:
-    """Markdown table for governance/SCHWAB_DERIVED_FIELD_REPLACEMENT_REGISTER_V1.md."""
-    rows = [
-        "## CAPS allowlist (silent-default substitution family)",
-        "",
-        "<!-- CAPS_ALLOWLIST_START -->",
-        "| file | line | variant | justification |",
-        "|---|---:|---|---|",
-    ]
-    for prefix, justification in CAPS_PREFIX_ALLOWLIST:
-        rows.append(f"| `{prefix}` | * | * | {justification} |")
-    for file, line, variant, justification in CAPS_LINE_ALLOWLIST:
-        rows.append(f"| `{file}` | {line} | {variant} | {justification} |")
-    rows.extend(["<!-- CAPS_ALLOWLIST_END -->", ""])
-    return "\n".join(rows)
 
 
 #: RC-287: the per-line escape, the same shape RC-276 gave the silent-zero gate as

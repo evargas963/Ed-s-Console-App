@@ -190,11 +190,113 @@ def test_the_module_scope_blind_spot_is_measured_not_silent():
     cannot prove the DOM ids are the ones named in the F15 port. The stamp itself
     is asserted by extending `test_state_level_family_serves_raw_not_rounded`
     (already in the census) and does not add a function.
+
+    266 -> 267 (RC-453 CODEOWNERS rails), one entry, named:
+    `test_codeowners_covers_control_authority_set` ARRIVED.
+    INHERENTLY STRUCTURAL: `.github/CODEOWNERS` must name the control-authority
+    paths and must not name routine product (`/server.py`). That is a repository
+    ownership map; no runtime call can express which paths GitHub will treat as
+    owned. Behaviour of the assignment lock is executed in
+    `tests/test_control_authority_surfaces_v1.py` and does not add this entry.
+
+    267 -> 268 (Architecture A external PM authority, PR #181), one net arrival, named:
+    `test_install_script_refuses_untrusted_checkout_and_smoke_tests` ARRIVED.
+    INHERENTLY STRUCTURAL: `tools/install_pm_authority_host.sh` is a host-side shell
+    script run as root off-repo; its hardening — hash-verify against an operator pin,
+    self-containment smoke test, `env_reset` sudoers, no `NOPASSWD: ALL` — cannot be
+    exercised by any Python runtime call in this environment, exactly like the
+    CODEOWNERS ownership-map entry above. The candidate also briefly carried
+    `test_helper_source_is_not_claimed_as_the_boundary`; it was REMOVED as a redundant
+    source-text proxy because every security property it touched is asserted
+    behaviorally (self-containment / stdin-only / non-isolated refusal), so the
+    behaviour is asserted and that entry leaves the census on its own — net +1.
+
+    268 -> 269 (RC-459 Windows host boundary), one net arrival, named:
+    `test_windows_installer_moves_ownership_away_from_the_ai` ARRIVED.
+    INHERENTLY STRUCTURAL: it asserts that `tools/install_pm_authority_host.ps1`
+    ASSIGNS OWNERSHIP of the authority objects to the BUILTIN Administrators group
+    SID S-1-5-32-544) and grants the AI account ReadAndExecute only. Ownership
+    assignment is an ELEVATED Windows operation against a host path; no runtime call
+    in this environment can execute it — CI runs unelevated on Linux, where the
+    Win32 security APIs do not exist at all — exactly like the CODEOWNERS ownership-map
+    and the POSIX installer entries above. The property is also not optional: MEASURED
+    on the real host 2026-08-23, a read-only grant alone left `icacls <dir> /grant
+    <ai>:(F)` SUCCEEDING because an OWNER always retains WRITE_DAC, so ownership is the
+    load-bearing fact and a source assertion is the only way to pin it in CI.
+    The ACCESS half of the same boundary IS asserted behaviorally (real `icacls` +
+    real denied writes/deletes/renames) in
+    `test_windows_negative_controls_read_only_authority`, and the authorized-mutation
+    path in `test_windows_operator_authorized_mutation_succeeds`; both execute the
+    behaviour and therefore do NOT enter this census.
+    269 -> 267 (RC-461 simplification), TWO net departures, both REPAIRS - the count
+    falls because the source-text proxies left with the architecture they described:
+    `test_install_script_refuses_untrusted_checkout_and_smoke_tests` DEPARTED and
+    `test_windows_installer_moves_ownership_away_from_the_ai` DEPARTED, because
+    tests/test_pm_authority_external_v1.py and
+    tests/test_pm_authority_windows_boundary_v1.py were DELETED along with the OS
+    capability boundary, privileged helper and host installers they asserted. The
+    operator ruled that architecture overbuilt: no OS sandbox, no separate account, no
+    ProgramData authority service, no host provisioning. With no host artifact to
+    describe there is no source text to inspect, so both entries leave the census on
+    their own - the RC-308 preferred direction. No behaviour was lost with them: what
+    the repo still promises (operator-controlled assignment, metadata grants nothing,
+    no self-promotion, ordinary product autonomous) is asserted BEHAVIOURALLY through
+    the live rail in tests/test_control_authority_surfaces_v1.py,
+    tests/test_architecture_a_operator_writer_authority_v1.py and
+    tests/test_writer_drift_lock_v1.py, none of which enter this census.
+    `test_codeowners_covers_control_authority_set` REMAINS (its line moved only): the
+    CODEOWNERS ownership map is still inherently structural - no runtime call can
+    express which paths GitHub will treat as owned.
+
+    267 -> 268 (RC-466 delta-gate base cache), one arrival, named:
+    `test_rc466_candidate_side_is_never_cached` ARRIVED.
+    INHERENTLY STRUCTURAL: it asserts the ABSENCE of a cache branch around the
+    candidate-side measurement in the delta gate's main() - that the candidate is
+    measured unconditionally, never served from cache. A runtime call cannot prove a
+    negative of this shape: no cache key is ever derived for the candidate, so there is
+    no hit one could construct to observe behaviourally; only the source structure
+    carries the property. The cache's BEHAVIOUR (roundtrip, stale-key miss, corruption
+    fail-open, key sensitivity) IS asserted behaviourally by the four sibling RC-466
+    tests in the same suite, which do not enter this census.
+
+    268 -> 269 (RC-468 declared-retirement seam in the delta gate), one arrival, named:
+    `test_rc468_declaration_only_touches_removal_accounting` ARRIVED.
+    INHERENTLY STRUCTURAL: it asserts that in the delta gate's main() the retirement
+    manifest is read exactly once and flows ONLY into removal accounting
+    (split_removals), never into the counts comparison - the ABSENCE of any second
+    consumer. A runtime call cannot prove that negative: there is no input one could
+    feed compare() to observe a manifest influence that structurally does not exist;
+    only the call graph carries the property, exactly like the RC-466 candidate-cache
+    entry above. The mechanism's BEHAVIOUR (parser rows, undeclared-removal blocking,
+    fail-closed missing manifest) IS asserted behaviourally by the three sibling
+    RC-468 tests in the same suite, which do not enter this census.
+
+    269 -> 272 (TRUTH_V1 order-flow retirement merge, RC-472/473/474), four arrivals
+    and one departure, named:
+    `test_engine_no_longer_calls_the_retired_composite` (chunk2),
+    `test_engine_does_not_reference_the_retired_producers` (chunk4) and
+    `test_order_flow_direction_is_withheld_from_the_decision_vote` (stack_wire_5)
+    ARRIVED. INHERENTLY STRUCTURAL: each asserts the ABSENCE of the retired
+    composite's producers/consumption (`_compute_order_flow_score`, `_direction`,
+    `_readiness`, `compute_order_flow_verdict`, the OF_* constants, the of_vote leg)
+    from the repository - a deleted name has no runtime call one could execute; only
+    the source carries the negative. The engine's surviving BEHAVIOUR (primitives
+    emitted, None composite fields) IS asserted behaviourally by the sibling chunk
+    tests, which do not enter this census.
+    `test_stop_guard_uses_the_same_authority_as_the_gate` ARRIVED.
+    INHERENTLY STRUCTURAL WIRING: the Stop hook is a bare subprocess script, and the
+    property is that it binds THE gate's `active_defect_offenders` - one authority,
+    not a lookalike. The authority's behaviour (offender verdicts, fail-closed
+    ledger) IS executed by the other tests in the same file, which do not enter this
+    census. `test_call_engine_consumes_order_flow_direction_not_second_score` LEFT:
+    its subject (the direction consumer) was retired with the composite and the
+    withheld-from-vote arrival above replaced it.
     """
     fns = C.source_text_only_functions()
-    assert len(fns) == 266, (
-        f"the per-function source-text-only count moved from the 266 measured on "
-        f"2026-08-19 to {len(fns)}. This figure is not a defect count, so do not simply "
+    assert len(fns) == 272, (
+        f"the per-function source-text-only count moved from the 272 measured on "
+        f"2026-08-24 (TRUTH_V1 merge; RC-468 baseline 269) to {len(fns)}. "
+        f"This figure is not a defect count, so do not simply "
         f"re-baseline it. ACCOUNT for the move: name each function that arrived or left. "
         f"An arrival stays only if its property is INHERENTLY STRUCTURAL — uniqueness, "
         f"duplication or absence in the repository, which no runtime call can express. If "

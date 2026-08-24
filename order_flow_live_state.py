@@ -12,11 +12,16 @@ from collections import deque
 from typing import Any, Optional
 from time_et import now_et, RTH_END_MINS, RTH_OPEN_MINS
 from instrument_identity import ticker_storage_key
+from l1_trade_observation import (
+    TAPE_COMPLETENESS,
+    is_adjacent_restatement,
+    vendor_triple,
+)
+import time as _time
 
 # Limits to prevent unbounded growth
 MAX_BOOK_SNAPSHOTS = 20
 MAX_TAPE_PRINTS = 500
-TAPE_WINDOW_MS = 300_000  # 5 min of prints
 
 log = logging.getLogger(__name__)
 
@@ -24,7 +29,9 @@ _lock = threading.RLock()  # RLock: get_content_for_symbol holds lock and calls 
 _book: dict[str, deque] = {}      # symbol -> deque of book content items
 _tape: dict[str, deque] = {}     # symbol -> deque of tape print dicts
 _top: dict[str, dict] = {}       # symbol -> latest top-of-book
-_prev_trade: dict[str, dict] = {}  # symbol -> {price, time_millis} for tape dedup
+_prev_trade: dict[str, dict] = {}  # symbol -> last accepted vendor triple
+_receive_seq: dict[str, int] = {}  # symbol -> monotonic local receive sequence (not native)
+_receive_log: dict[str, deque] = {}  # symbol -> all L1 last-print receipts (incl. restatements)
 _stream_volume: dict[str, float] = {}  # symbol -> TOTAL_VOLUME from level_one_equity (content.*.TOTAL_VOLUME / VOLUME)
 _stream_chg_pct: dict[str, float] = {}  # symbol -> REGULAR_MARKET_CHANGE_PERCENT or CHANGE_PERCENT from stream
 _last_rth_date: str = ""
@@ -82,11 +89,21 @@ def push_book(symbol: str, content_item: dict) -> None:
         q.append(item)
 
 
+def _get_receive_log(symbol: str) -> deque:
+    with _lock:
+        if symbol not in _receive_log:
+            _receive_log[symbol] = deque(maxlen=MAX_TAPE_PRINTS)
+        return _receive_log[symbol]
+
+
 def push_level_one(symbol: str, content_item: dict) -> None:
     """
     Push level_one_equity update. Extracts:
     - Top-of-book: BID_PRICE, ASK_PRICE, BID_SIZE, ASK_SIZE
-    - Tape print: when TRADE_TIME_MILLIS changes, treat as new trade (LAST_PRICE, LAST_SIZE)
+    - Tape observation: adjacent identical LAST_PRICE+LAST_SIZE+TRADE_TIME_MILLIS
+      restatements are not counted as new prints. Distinct same-ms triples are
+      kept. TRADE_TIME_MILLIS is not a unique trade id. Each receipt gets a
+      local receive_seq (not native identity).
     """
     if not content_item or not isinstance(content_item, dict):
         return
@@ -126,16 +143,9 @@ def push_level_one(symbol: str, content_item: dict) -> None:
                 # (the symbol being pushed). Reassigning `sym` here previously
                 # caused subsequent writes in this call to land on the wrong
                 # symbol when other tickers were already in _top / _book.
-                for _k in list(_tape.keys()):
-                    _tape[_k].clear()
-                for _k in list(_top.keys()):
-                    _top[_k] = {}
-                for _k in list(_book.keys()):
-                    _book[_k].clear()
-                _stream_volume.clear()
-                _stream_chg_pct.clear()
+                _clear_all_session_state_unlocked()
                 _last_rth_date = current_date
-            log.info("RTH open — full state reset (tape + book + top) for all symbols")
+            log.info("RTH open — full state reset (tape + book + top + prev_trade) for all symbols")
     except Exception as e:
         log.debug(f"RTH reset check failed (continuing): {e}")
 
@@ -151,32 +161,41 @@ def push_level_one(symbol: str, content_item: dict) -> None:
     with _lock:
         _top[sym] = top_item
 
-    # Tape print: add when TRADE_TIME_MILLIS changes (new trade)
     trade_ms = content_item.get("TRADE_TIME_MILLIS")
     last_price = content_item.get("LAST_PRICE")
     last_size = content_item.get("LAST_SIZE")
-    if trade_ms is None or last_price is None:
+    if last_price is None:
         return
 
-    prev = _prev_trade.get(sym, {})
-    prev_ms = prev.get("time_millis")
-
-    # New print if time changed or (time same but price/size changed - snapshot refresh)
-    is_new = prev_ms != trade_ms
-    if not is_new and prev_ms is not None:
-        # Same timestamp - could be duplicate, skip unless we're building initial state
-        return
-
-    print_item = {
-        "LAST_PRICE": last_price,
-        "LAST_SIZE": last_size,
-        "TRADE_TIME_MILLIS": trade_ms,
-    }
-
+    curr_key = vendor_triple(trade_ms, last_price, last_size)
+    received_ts = _time.time()
     with _lock:
-        _prev_trade[sym] = {"price": last_price, "time_millis": trade_ms}
-        tape_q = _get_tape(sym)
-        tape_q.append(print_item)
+        seq = _receive_seq.get(sym, 0) + 1
+        _receive_seq[sym] = seq
+        prev = _prev_trade.get(sym)
+        prev_key = None
+        if prev:
+            prev_key = vendor_triple(prev.get("time_millis"), prev.get("price"), prev.get("size"))
+        restatement = is_adjacent_restatement(prev_key, curr_key)
+        receipt = {
+            "LAST_PRICE": last_price,
+            "LAST_SIZE": last_size,
+            "TRADE_TIME_MILLIS": trade_ms,
+            "receive_seq": seq,
+            "server_received_ts": received_ts,
+            "is_restatement": restatement,
+            "completeness": TAPE_COMPLETENESS,
+            "native_event_id": False,
+        }
+        _get_receive_log(sym).append(dict(receipt))
+        if restatement:
+            return
+        _prev_trade[sym] = {
+            "price": last_price,
+            "size": last_size,
+            "time_millis": trade_ms,
+        }
+        _get_tape(sym).append(receipt)
 
 
 def get_content_for_symbol(symbol: str) -> list[dict]:
@@ -233,6 +252,50 @@ def get_l1_stream_input_probe(symbol: str) -> tuple[Any, ...]:
     return (bl, tl, last_ms, tb, ta)
 
 
+def clear_all_live_state() -> None:
+    """Drop tape/book/top/prev-print identity for every symbol.
+
+    Required on stream disconnect/reconnect. Leaving the last window resident
+    mixes pre-disconnect restatements with the new session.
+    """
+    with _lock:
+        _clear_all_session_state_unlocked()
+
+
+def _clear_all_session_state_unlocked() -> None:
+    """Drop every symbol's tape/book/top/prev-print identity. Caller holds _lock."""
+    for _k in list(_tape.keys()):
+        _tape[_k].clear()
+    for _k in list(_top.keys()):
+        _top[_k] = {}
+    for _k in list(_book.keys()):
+        _book[_k].clear()
+    _prev_trade.clear()
+    _receive_seq.clear()
+    for _k in list(_receive_log.keys()):
+        _receive_log[_k].clear()
+    _stream_volume.clear()
+    _stream_chg_pct.clear()
+
+
+def forget_unsubscribed_symbols(old: list[str], new: list[str]) -> None:
+    """Clear live state for symbols leaving the active stream set."""
+    new_keys = {ticker_storage_key(s) for s in new if s}
+    for raw in old:
+        key = ticker_storage_key(raw)
+        if key and key not in new_keys:
+            clear_symbol(key)
+
+
+def get_receive_log(symbol: str) -> list[dict]:
+    """Local receive receipts including restatements. Not a native trade id."""
+    sym = ticker_storage_key(symbol)
+    if not sym:
+        return []
+    with _lock:
+        return [dict(x) for x in _receive_log.get(sym, ())]
+
+
 def clear_symbol(symbol: str) -> None:
     """Clear stored data for a symbol (e.g. on unsubscribe)."""
     sym = ticker_storage_key(symbol)  # RC-345/F25: canonical OF-state key (write+read consistent; idempotent on stream symbols)
@@ -245,6 +308,10 @@ def clear_symbol(symbol: str) -> None:
             del _top[sym]
         if sym in _prev_trade:
             del _prev_trade[sym]
+        if sym in _receive_seq:
+            del _receive_seq[sym]
+        if sym in _receive_log:
+            _receive_log[sym].clear()
         if sym in _stream_volume:
             del _stream_volume[sym]
         if sym in _stream_chg_pct:

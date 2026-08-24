@@ -48,7 +48,7 @@ def test_order_flow_live_state_rth_actually_behaves_at_the_boundaries(monkeypatc
 
 
 def test_order_flow_composite_constants_and_producers_are_retired():
-    # RC-451: the composite score/verdict is retired; its producers and now-unused weight/threshold
+    # RC-474: the composite score/verdict is retired; its producers and now-unused weight/threshold
     # constants were deleted. Nothing may reconstruct the unvalidated composite.
     for c in ("OF_COMPOSITE_WEIGHT_BOOK", "OF_COMPOSITE_WEIGHT_TAPE", "OF_COMPOSITE_WEIGHT_CUM_DELTA",
               "OF_COMPOSITE_WEIGHT_OPTIONS", "OF_COMPOSITE_MIN_LEGS", "OF_DIRECTION_BULLISH_THRESHOLD",
@@ -101,7 +101,7 @@ def test_order_flow_engine_residual_magics_named():
     assert ofe.OF_BOOK_DEPTH_SHALLOW == 3
     assert ofe.OF_BOOK_DEPTH_DEEP == 5
     assert ofe.OF_WEIGHTED_MEAN_DEFAULT_MIN_PRESENT == 2
-    # RC-451: OF_RVOL_NEUTRAL_CENTER belonged to the retired composite and is deleted.
+    # RC-474: OF_RVOL_NEUTRAL_CENTER belonged to the retired composite and is deleted.
     assert not hasattr(ofe, "OF_RVOL_NEUTRAL_CENTER")
 
     # _compute_institutional_flow_proxy and OrderFlowEngine.compute use the named depths,
@@ -127,7 +127,7 @@ def test_order_flow_engine_residual_magics_named():
     assert "_compute_book_imbalance(data, 3)" not in src_compute
     assert "_compute_book_imbalance(data, 5)" not in src_compute
 
-    # RC-451: the composite score/direction producers are RETIRED (deleted), so their source bodies
+    # RC-474: the composite score/direction producers are RETIRED (deleted), so their source bodies
     # no longer exist — nothing can reintroduce a magnitude-as-direction leg.
     body = inspect.getsource(ofe)
     assert "def _compute_order_flow_score" not in body

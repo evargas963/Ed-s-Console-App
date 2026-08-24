@@ -1,55 +1,42 @@
-# Money-path / governance ownership (hardening 2026-06-03).
-# Mirrors AGENTS.md §Money-path module roster + authority modules. Changes to these require
-# operator review (combine with branch protection: required reviews on protected branch).
+# TRUE AUTHORITY FILES ONLY (RC-461).
+#
+# Operator requirement: the human operator retains control of AI ASSIGNMENT and AUTHORITY
+# changes. The coding AI does ordinary repo work autonomously, but may not make itself
+# operator, grant itself authority, or change the durable authority rules without operator
+# approval. CODEOWNERS + branch protection IS that approval gate.
+#
+# A file belongs here only if changing it would let the AI decide WHO MAY DO WHAT.
+# Ordinary product code (server.py, db.py, static/, signals.py, math/liquidity engines),
+# ordinary tests, and quality-gate scripts are deliberately NOT listed - they are the
+# autonomous surface, and listing them would make the operator a reviewer of routine work.
+#
+# There is no OS sandbox, no separate account, no ProgramData authority service, no
+# privileged helper and no host provisioning: that architecture was removed as overbuilt.
 
-# --- Money-path decision roster (AGENTS.md §Money-path module roster) ---
-/signals.py                         @evargas963
-/call_engine.py                     @evargas963
-/prediction_engine.py               @evargas963
-/realized_contract_eval.py          @evargas963
-/bayesian_fusion.py                 @evargas963
-/mc_fusion_adjustment.py            @evargas963
-/market_state.py                    @evargas963
-/live_decision_bundle.py            @evargas963
-/features/signal_layer_v1.py        @evargas963
-/features/inference_snapshot.py     @evargas963
-/features/fusion_policy_contract.py @evargas963
+# 1. Review policy + the required checks that give branch protection its teeth
+/.github/CODEOWNERS @evargas963
+/.github/workflows/ @evargas963
 
-# --- Authority modules ---
-/time_et.py                         @evargas963
-/numeric_contract.py                @evargas963
-/fusion_contract.py                 @evargas963
-/replay_hold_bars.py                @evargas963
-/position_sizing_policy.py          @evargas963
+# 2. The operator's AI ASSIGNMENT. ED_AGENT_ROLE is declared here; an AI that edits these
+#    files re-labels itself, which is self-promotion.
+/.claude/settings.json @evargas963
+/.cursor/hooks.json @evargas963
 
-# --- ML training / ablation core (model outputs feed the money path) ---
-/ml_train.py                        @evargas963
-/ml_predict.py                      @evargas963
-/lstm_model.py                      @evargas963
-/transformer_train.py               @evargas963
-/monte_carlo.py                     @evargas963
-/rules_engine.py                    @evargas963
-/feature_contracts.py               @evargas963
-/governed_stack_contract.py         @evargas963
-/tools/feature_curation_gate.py     @evargas963
+# 3. The authority rail itself and the entrypoints that execute it. writer_drift_lock
+#    defines the control-authority set and resolves the acting principal; the other two
+#    invoke it on edits and on commit. Editing any of them removes the AI's own restraint.
+/tools/writer_drift_lock.py @evargas963
+/tools/process_lock_guard.py @evargas963
+/tools/operating_process_lock.py @evargas963
 
-# --- Governance + the hardening enforcement surface itself ---
-/governance/                        @evargas963
-/AGENTS.md                          @evargas963
-/CLAUDE.md                          @evargas963
-/.cursor/rules/                     @evargas963
-/.github/workflows/                 @evargas963
-/.github/CODEOWNERS                 @evargas963
-/tools/                             @evargas963
-/server.py                          @evargas963
-/signals.py                         @evargas963
-/decision_record.py                 @evargas963
-/override_registry.py               @evargas963
-/trade_impacting_gate.py            @evargas963
-/tests/adversarial/                 @evargas963
-/tests/decision_reconstruction/     @evargas963
-/tests/release_object/              @evargas963
-/tests/test_governance_consolidation.py @evargas963
-/tests/test_agent_preload_contract.py   @evargas963
-/.pre-commit-config.yaml            @evargas963
-/pyproject.toml                     @evargas963
+# 4. Operator grants. A forged grant is self-authorization.
+/governance/operator_go.json @evargas963
+/governance/operator_grants.json @evargas963
+
+# 5. The tests that PROVE the rules above still hold. Deleting the proof is how a rule
+#    dies quietly, so the proof needs the same approval as the rule.
+/tests/test_control_authority_surfaces_v1.py @evargas963
+/tests/test_writer_drift_lock_v1.py @evargas963
+/tests/test_architecture_a_bypass_class_v1.py @evargas963
+/tests/test_architecture_a_operator_writer_authority_v1.py @evargas963
+/tests/test_operating_process_lock_v1.py @evargas963

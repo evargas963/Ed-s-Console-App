@@ -577,19 +577,6 @@ def atomic_column_for_manifest_group(group: dict) -> str | None:
     return None
 
 
-def expected_ingest_members_for_atomic_group(
-    group: dict, registered: dict[str, set[str]] | None = None
-) -> dict[str, list[str]]:
-    """Re-derive ingest-capability from live code cone — audit-time only, not manifest fields."""
-    if registered is None:
-        registered = _registered_ml_columns()
-    col = atomic_column_for_manifest_group(group)
-    if not col:
-        return {"xgb": [], "lstm_5m": [], "lstm_1m": []}
-    xgb, l5, l1 = _atomic_members_from_ingest_cone(col, registered)
-    return {"xgb": xgb, "lstm_5m": l5, "lstm_1m": l1}
-
-
 def resolve_expanded_schwab_ablation_universe(*, write_registry: bool = False) -> dict[str, Any]:
     """Schwab-catalog-first ablation universe: categorize all 2393 leaves, expand pool ≥2× registered cone."""
     registry = load_schwab_ablation_field_registry(write=write_registry)

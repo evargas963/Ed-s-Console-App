@@ -49,7 +49,6 @@ OVERRIDES: dict[tuple[str, str], tuple[str, str, str]] = {
 }
 
 _CALIB_KW = ("calibrat", "conformal", "isotonic", "outcome", "anchor", "audit", "repair")
-_ARCH_KW = ("competition", "promotion", "bundle", "eval", "drift")
 _SCHEMA_KW = ("schema", "validate", "json", "sql", "pragma", "ddl")
 _DATA_KW = ("snapshot", "feature", "spot", "outcome", "probability", "fusion", "signal")
 

@@ -1,4 +1,4 @@
-"""FIND IT → FIX IT lock (operator law 2026-08-21; corrected RC-450) — disposition-driven controls.
+"""FIND IT → FIX IT lock (operator law 2026-08-21; corrected RC-473) — disposition-driven controls.
 
 Enforcer: tools/check_institutional_correctness.check_find_it_fix_it, backed by the shared
 `active_defect_offenders` authority that tools/stop_guard.py also calls. Every active material

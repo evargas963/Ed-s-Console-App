@@ -15,7 +15,7 @@ from order_flow_engine import OrderFlowEngine
 
 
 def test_compute_order_flow_verdict_producer_is_retired():
-    # RC-450/RC-451: the double-counting verdict that emitted BUYING/SELLING PRESSURE is deleted.
+    # RC-473/RC-474: the double-counting verdict that emitted BUYING/SELLING PRESSURE is deleted.
     assert not hasattr(me, "compute_order_flow_verdict")
 
 

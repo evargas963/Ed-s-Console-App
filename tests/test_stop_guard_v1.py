@@ -72,40 +72,18 @@ def test_guard_honours_stop_hook_active_so_a_turn_can_always_end(monkeypatch):
     assert sg.main() == 0
 
 
-def test_operator_escape_is_explicit(monkeypatch):
+def test_env_off_does_not_disable_unfinished_row_block(tmp_path, monkeypatch):
     import io
 
+    _write_log(tmp_path, [
+        f"| RC-90 | OPEN | {TODAY} | 2099-01-01 | d | (1)->(5) ROOT: x | IN PROGRESS: half built |",
+    ], monkeypatch)
     monkeypatch.setenv("ED_STOP_GUARD", "off")
     monkeypatch.setattr(sg.sys, "stdin", io.StringIO('{"stop_hook_active": false}'))
-    assert sg.main() == 0
+    assert sg.main() == 2
 
 
-# ---------------------------------------------------------------------------
-# RC-235 — the auth-latch freshness exemption. The Schwab latch is a LABELED
-# state only the operator can clear (re-auth is a credential flow agents are
-# prohibited from running, RC-227); a live-payload block no row edit can clear
-# would hang every turn — the RC-120 shape. The exemption must be NARROW.
-# ---------------------------------------------------------------------------
-
-def _freshness(monkeypatch, violations):
-    import tools.data_faucet_audit as dfa
-    monkeypatch.setattr(dfa, "freshness_violations", lambda base="x": violations)
-
-
-def test_rc235_auth_latched_staleness_does_not_block(monkeypatch):
-    _freshness(monkeypatch, [{
-        "concept": "per_strike/levels",
-        "detail": ("levels are 5295s old — backing off after 11 consecutive failures — "
-                   "SchwabAuthError: Schwab auth latched after prior token failure"),
-        "refresh_active": True,
-    }])
-    assert sg.freshness_blockers() == []
-
-
-def test_rc235_unlabeled_staleness_still_blocks(monkeypatch):
-    _freshness(monkeypatch, [{
-        "concept": "per_strike/levels",
-        "detail": "levels are 900s old against the delivered 156s cycle",
-        "refresh_active": True,
-    }])
-    assert len(sg.freshness_blockers()) == 1
+# RC-470: the faucet (RC-73), freshness (RC-94/RC-235) and close-contract (RC-106)
+# turn-end duties were removed from the guard with their equivalents named in
+# tools/stop_guard.py and governance/retired_checks.md; their seams left with them.
+# RC-72 - the guard's founding duty - is fully covered above.

@@ -2,28 +2,31 @@
 
 **Authority:** mandatory for Claude and Cursor. **Mechanical enforcer:** `tools/operating_process_lock.py` + `tools/process_lock_guard.py` (PreToolUse / Stop / pre-commit). This file is the checklist; `.py` BLOCKs.
 
-> **SUPERSEDED — operator ruling 2026-08-18:** **Operator is the governing authority / PM. Cursor is an adversarial auditor only** (it audits/falsifies; it never writes feature/kill/implementation code). Everywhere this file and the PM docs say "Cursor is PM / Project Manager", read **"Operator is PM; Cursor audits."** The sequencing/no-patches/MEASURE-before-edit behaviors below are retained; only the PM-role attribution moves to the operator. See RC-403.
+> **NO DESIGNATED ROLES (operator ruling 2026-08-24, RC-462).** The operator is the
+> governing authority. There is no standing writer, auditor or reader: the operator
+> decides what each AI does that session, and the same AI may read one day, write the
+> next and audit the day after. Wherever this file says "Cursor is PM" or names a
+> writer/auditor, read it as a BEHAVIOUR the operator may ask any agent to perform.
 
-**Project Manager:** Operator (adversarial auditor: Cursor) — see `governance/PM_MANDATE.md` and `.cursor/rules/07-cursor-pm.mdc` for the audit behaviors (now the operator-PM + Cursor-auditor process). Sequences missions, stops thrash, triages rehab; does not replace sole-writer for edits.
+**Governing authority:** the operator - see `governance/PM_MANDATE.md` for the sequencing / no-patches / MEASURE-before-edit behaviours. Roles are not assigned in the repo.
 
 ---
 
-## 0. PM (Operator; Cursor = adversarial auditor) + change requests (RC-219)
+## 0. Coordination + change requests (RC-219)
 
 - Every multi-agent or “what next” turn: Cursor states **mission · blockers · single next operator action**.
-- **Change requests:** operator → Cursor PM → plan → operator GO → Cursor sets `governance/pm_mission.json` `status=active` → writer executes → Cursor audits → mission `idle`.
-- Product edits without an in-progress mission are **BLOCKED** (`pm_mission_edit_violation`).
-- **Writer no-drift (RC-226):** non-writer staged `scope_paths` → BLOCK (`writer_drift_lock.py` / `check_writer_no_drift`). Cursor=auditor only while Claude writes.
+- **Change requests:** operator → plan → operator GO → `governance/pm_mission.json` `status=active` (coordination only) → build → audit → mission `idle`.
+- Ordinary product edits need **no** active mission and are never blocked by mission status (RC-461/RC-462).
+- **Authority (RC-226, simplified RC-462; commit backstop retired RC-470):** the files that decide who is in charge (CODEOWNERS, required workflows, agent settings/hooks, operator grant files, the rail modules) reach `main` only through the operator's code-owner review (CODEOWNERS + `require_code_owner_reviews` + `enforce_admins`); in-process rail `writer_drift_lock.control_authority_violation` via `process_lock_guard.py`.
 - One active mission; Collect/lock vs UI polish are sequenced windows, not a free-for-all.
 - Daily rehab: `tools/rehab_daily_scan.py` → `reports/rehab_latest.md` (recommend only).
-- **DONE when:** `sole_writer.json` has `"pm": "operator"` (operator 2026-08-18; auditor `"cursor"`); `pm_mission.json` reflects the only approved active work.
+- **DONE when:** `pm_mission.json` reflects the only approved active work (coordination metadata; it grants nothing).
 
-## 1. SOLE_WRITER
+## 1. WHO MAY DO WHAT
 
-- **Before** editing collect seam, checker, or lock modules: read `governance/sole_writer.json`.
-- **DONE when:** `writer` names exactly one agent; `pm` is `operator` (operator 2026-08-18); Cursor is auditor-only for protected paths.
-- **Cursor:** do not Edit/Write protected paths (see enforcer `PROTECTED_PATHS`) while `writer` ≠ `cursor`.
-- **Operator clears** by setting `writer` to the active agent or deleting the file.
+- There is **no sole writer** and no assigned auditor. The operator says what they want done; the acting AI does it.
+- The one standing limit: an acting AI (`ED_AGENT_ROLE` set) may not edit the files that decide who is in charge. The operator (empty `ED_AGENT_ROLE`) is unconstrained.
+- Durability comes from operator review at merge (CODEOWNERS + branch protection), not from any file in the tree.
 
 ## 2. MEASURE before claim
 
@@ -81,7 +84,6 @@
 | Measure | `.venv/Scripts/python.exe tools/operating_process_lock.py --measure` |
 | Pre-commit gate | `.venv/Scripts/python.exe tools/operating_process_lock.py --pre-commit` |
 | Commit check | `.venv/Scripts/python.exe tools/operating_process_lock.py --commit-check` |
-| Set sole writer | Edit `governance/sole_writer.json` (`writer`, `auditor`, `updated_at`) |
 | Grant held commit | Edit `governance/operator_go.json` (`granted`, `scope`) |
 
 **Operator-only:** `ED_PROCESS_LOCK_GUARD=off` disables the hook (visible, not silent).

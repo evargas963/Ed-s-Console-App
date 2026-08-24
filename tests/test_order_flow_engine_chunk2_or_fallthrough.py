@@ -1,4 +1,4 @@
-"""order_flow_engine chunk-2: the composite order_flow_score is RETIRED (TRUTH_V1 / RC-450).
+"""order_flow_engine chunk-2: the composite order_flow_score is RETIRED (TRUTH_V1 / RC-473).
 
 This file formerly pinned FIND-OF1/OF2 — preserving 0.0 through the book/tape composite score
 selection. That composite (order_flow_score / order_flow_direction / order_flow_regime /

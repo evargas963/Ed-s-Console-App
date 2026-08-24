@@ -1,5 +1,5 @@
 {
-  "_comment_guard_switches": "EMERGENCY BRAKE (RC-379, 2026-08-15). Every guard reads its own env switch and treats 'off'/'0'/'false' as disabled; any other value leaves it ON, so the entries below are a no-op that exists to make the switches DISCOVERABLE. RC-379 was a guard bug that blocked every Stop in the session while naming no unmet obligation, and the operator had no listed way to shut one off without reading source. To disable a guard: change its value here to 'off'. PreToolUse guards are the cheap ones (they redirect a single tool call); the Stop guards are where turn-level cost lives. Turning all six off removes the machinery that catches unmeasured claims and unverified production edits.",
+  "_comment_guard_switches": "DISCOVERABILITY ONLY (RC-450 / Architecture A). These keys remain listed so the mandatory guards are visible. Setting a value to off/0/false does NOT disable the corresponding .py guard — subject-controlled env cannot authorize around a mandatory control. Emergency operator action lives outside the agent-controlled execution path and does not remove required CI/merge protection.",
   "env": {
     "ED_AGENT_ROLE": "claude",
     "ED_PRETOOLUSE_GUARD": "on",

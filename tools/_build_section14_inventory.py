@@ -65,7 +65,6 @@ OVERRIDES: dict[tuple[str, str], tuple[str, str, str]] = {
     ),
 }
 
-_SQL_PREFIX = ("sql_", "get_snapshot_sql")
 _DB_UTIL = ("connect", "pragma", "migrate", "schema", "ensure_", "configure_")
 _DATA_KW = (
     "snapshot",

@@ -1,4 +1,4 @@
-"""order_flow_engine chunk-4: the order_flow verdict + composite family is RETIRED (RC-450/RC-451).
+"""order_flow_engine chunk-4: the order_flow verdict + composite family is RETIRED (RC-473/RC-474).
 
 compute_order_flow_verdict (a structural double-count that emitted the false BUYING/SELLING PRESSURE
 claim) and the composite score/direction/readiness producers were deleted. This file locks the

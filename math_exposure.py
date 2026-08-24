@@ -88,7 +88,7 @@ def _verdict_unavailable() -> dict:
     }
 
 
-# RETIRED (mission TRUTH_V1, RC-450/RC-451): compute_order_flow_verdict was DELETED. It
+# RETIRED (mission TRUTH_V1, RC-473/RC-474): compute_order_flow_verdict was DELETED. It
 # STRUCTURALLY DOUBLE-COUNTED — `score` already contained book/cum-delta/options, then the verdict
 # re-added book, sign(cum-delta) and options over arbitrary unvalidated weights to emit the false
 # operator claim BUYING/SELLING PRESSURE. It had no measurable semantic and no OOS validation, so it

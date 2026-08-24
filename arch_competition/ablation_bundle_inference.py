@@ -155,39 +155,6 @@ def offline_v2_knockout_snapshot_columns(column: str, model_family: str) -> list
     return []
 
 
-def filter_offline_knockout_columns_for_checkpoint(
-    checkpoint: dict,
-    knockout_columns: list[str],
-    model_family: str,
-) -> list[str]:
-    """Keep only snapshot columns that reach post-mask encoder channels on this checkpoint."""
-    from arch_competition.encoder_lineage_v2 import FEATURES_1M_V2, FEATURES_5M_V2
-
-    fam = (model_family or "").strip().lower()
-    out: set[str] = set()
-    if fam == "lstm":
-        cols_5m = [c for c in knockout_columns if c in FEATURES_5M_V2]
-        if cols_5m:
-            m5 = map_knockout_columns_to_encoder_indices(checkpoint, cols_5m, stream="lstm_5m")
-            if m5.get("post_mask_indices"):
-                out.update(cols_5m)
-        cols_1m = [c for c in knockout_columns if c in FEATURES_1M_V2]
-        if cols_1m:
-            m1 = map_knockout_columns_to_encoder_indices(checkpoint, cols_1m, stream="lstm_1m")
-            if m1.get("post_mask_indices"):
-                out.update(cols_1m)
-        return sorted(out)
-    if fam == "transformer":
-        cols = [c for c in knockout_columns if c in FEATURES_5M_V2]
-        if not cols:
-            return []
-        m = map_knockout_columns_to_encoder_indices(checkpoint, cols, stream="transformer_5m")
-        if m.get("post_mask_indices"):
-            return sorted(set(cols))
-        return []
-    return sorted(set(knockout_columns))
-
-
 def validate_ablation_scoring_bundle_meta(meta: dict, family: str) -> tuple[bool, str]:
     """Minimal on-disk bundle checks for offline ablation — not production contract drift."""
     if not isinstance(meta, dict):
@@ -486,7 +453,6 @@ def wire_neutral_xgb_predict_from_row(
         return None
     probs = reg["model"].predict_proba(x_mat)[0]
     return {CLASS_NAMES[i]: round(float(probs[i]), 4) for i in range(3)}
-
 
 
 def wire_neutral_confluence_vector(

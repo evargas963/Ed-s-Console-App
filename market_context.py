@@ -17,7 +17,6 @@ import logging
 log = logging.getLogger(__name__)
 
 
-
 def _positive_float_or_none(value) -> Optional[float]:
     from numeric_contract import float_positive_or_none
 
@@ -106,8 +105,6 @@ IWM_SECTORS = [
     ("XRT",  "Consumer",     0.11),   # Equal-weight retail / consumer disc
 ]
 IWM_SECTOR_WEIGHT_SUM = sum(w for _, _, w in IWM_SECTORS)  # ~0.63
-
-CONTEXT_TICKERS_MARKET = ["SPY", "QQQ", "IWM", "$VIX"]
 
 
 def market_context_panel_symbols_excluding_core(core_upper: frozenset[str]) -> list[str]:

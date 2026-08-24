@@ -95,7 +95,6 @@ INFRA_COLS = frozenset({
     "preprocessing_version", "snapshot_date", "ts_minute_utc",
 })
 
-LEGACY_HORIZONS = ("3c", "8c", "13c")
 LEGACY_LABEL_RE = re.compile(r"_(3c|8c|13c)(_|$)|(^|_)(outcome|pred|fused|valid_dir|threshold_move)_.*(3c|8c|13c)")
 
 

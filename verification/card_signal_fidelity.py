@@ -506,17 +506,6 @@ def classify_stale_feature_risk(
     return float(data_age_seconds) > float(allowed_age_seconds)
 
 
-def extract_blockers(probe: dict[str, Any]) -> dict[str, Any]:
-    wb = probe.get("call_readiness", {}).get("wait_blocker") or probe.get("wait_blocker") or {}
-    return {
-        "wait_reason": probe.get("wait_reason"),
-        "call_signal": probe.get("call_signal"),
-        "suppression_layer": probe.get("suppression_layer"),
-        "wait_blocker": wb if isinstance(wb, dict) else {},
-        "final_tradeable": probe.get("final_tradeable"),
-    }
-
-
 def horizon_card_driver_summary() -> dict[str, str]:
     return {
         hz: (

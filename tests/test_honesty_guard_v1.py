@@ -58,69 +58,17 @@ def test_honesty_deliverable_scores_required():
     assert honesty_violations(u, ok) == []
 
 
-def test_honesty_guard_wired_blocks_missing_cursor_hook():
-    from tools.check_institutional_correctness import check_honesty_guard_wired
-
-    # RC-398: restore BYTES. `write_text` opens with newline=None and translates "\n" to
-    # os.linesep, so this "restore" rewrote .cursor/hooks.json LF-for-CRLF on the Linux
-    # runner while being lossless on Windows — invisible locally, and it tripped
-    # eol_style_invariant on a file the change never touched. A mutation control that
-    # cannot put the tree back byte-for-byte is a mutation, not a control.
-    hooks = REPO / ".cursor" / "hooks.json"
-    raw = hooks.read_bytes()
-    orig = raw.decode("utf-8")
-    broken = orig.replace("honesty_guard.py", "honesty_guard_MISSING.py")
-    try:
-        hooks.write_bytes(broken.encode("utf-8"))
-        v = check_honesty_guard_wired()
-        assert v and any("hooks.json" in str(x.path).replace("\\", "/") for x in v)
-        assert any("honesty_guard.py" in x.msg for x in v)
-    finally:
-        hooks.write_bytes(raw)
-    assert check_honesty_guard_wired() == []
-
-
-def test_honesty_guard_wired_blocks_missing_claude_hook():
-    from tools.check_institutional_correctness import check_honesty_guard_wired
-
-    # RC-398: same byte-exact restore. `.claude/settings.json` is pinned `text eol=lf`, so
-    # git currently absorbs a terminator flip here — but a control must not depend on a
-    # .gitattributes entry it never states, and the pin could move.
-    settings = REPO / ".claude" / "settings.json"
-    raw = settings.read_bytes()
-    orig = raw.decode("utf-8")
-    broken = orig.replace("honesty_guard.py", "honesty_guard_MISSING.py")
-    try:
-        settings.write_bytes(broken.encode("utf-8"))
-        v = check_honesty_guard_wired()
-        assert v and any("settings.json" in str(x.path).replace("\\", "/") for x in v)
-        assert any("honesty_guard.py" in x.msg for x in v)
-    finally:
-        settings.write_bytes(raw)
-    assert check_honesty_guard_wired() == []
-
-
-def test_cursor_hooks_require_honesty():
-    from tools.check_institutional_correctness import plus_player_cursor_hooks_violations
-
-    assert plus_player_cursor_hooks_violations('{"hooks":{}}')
+# RC-470: the wired/catalog controls (honesty_guard_wired x2, cursor_hooks_require_
+# honesty, catalog_bans_soft_partial) left with their retired checks -
+# governance/retired_checks.md. Both hook files are CODEOWNERS-owned, and
+# claude_cursor_guard_parity (KEPT, tested in tests/test_find_prove_locks_v1.py) still
+# asserts honesty_guard.py is named in both agents' hook files. The guard's own
+# behavioral controls above are untouched.
+def test_cursor_hooks_still_name_honesty_guard():
+    """The wiring FACT the retired checks watched, pinned directly: both hook files
+    name honesty_guard.py. (Parity's five-guard assertion covers this too; this keeps
+    a local, obvious statement of the fact beside the guard's own tests.)"""
     assert "honesty_guard.py" in (
-        (REPO / ".cursor" / "hooks.json").read_text(encoding="utf-8")
-    )
-    assert plus_player_cursor_hooks_violations() == []
-
-
-def test_catalog_bans_soft_partial():
-    from tools.plus_player_locks import catalog_completeness_violations
-
-    bad = {
-        "attributes": [{
-            "id": "RES-01",
-            "pillar": "res",
-            "enforcement": "soft_partial",
-            "enforcer": "soft:operator_review",
-            "soft_reason": "theater",
-        }],
-    }
-    v = catalog_completeness_violations(bad)
-    assert any("soft_partial forbidden" in x for x in v)
+        (REPO / ".cursor" / "hooks.json").read_text(encoding="utf-8"))
+    assert "honesty_guard.py" in (
+        (REPO / ".claude" / "settings.json").read_text(encoding="utf-8"))

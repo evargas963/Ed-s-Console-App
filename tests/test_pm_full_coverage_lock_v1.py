@@ -88,7 +88,11 @@ def test_casual_two_token_sentence_does_not_block() -> None:
 
 def test_live_path_honesty_guard_wires_the_predicate() -> None:
     """The Stop wiring must actually call pm_coverage_violations — both agents' hooks
-    run honesty_guard, so this one call site is the whole continuum."""
+    run honesty_guard, so this one call site is the whole continuum.
+
+    Architecture A: the call is unconditional. The former env-off name must not
+    reappear as a subject-disable gate.
+    """
     src = (REPO / "tools" / "honesty_guard.py").read_text(encoding="utf-8")
-    assert "pm_coverage_violations" in src
-    assert "ED_PM_COVERAGE_GUARD" in src
+    assert "pm_coverage_violations(" in src
+    assert "ED_PM_COVERAGE_GUARD" not in src

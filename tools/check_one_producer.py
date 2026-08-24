@@ -57,10 +57,6 @@ REGISTRY = REPO / "governance" / "computation_registry.json"
 _SKIP_PREFIXES = ("tests/", "tools/", "research/", "arch_competition/", "scratchpad/",
                   "governance/", "calibration/")
 
-#: A field is COMPUTED at a site when the site both mentions the defining inputs and
-#: performs an aggregation or arithmetic over them. Mentioning a name is consumption.
-_AGGREGATION = ("sum(", "for ", "+=", "*")
-
 
 def _tracked_python() -> list[str]:
     proc = subprocess.run(["git", "ls-files", "-z", "--", "*.py"],

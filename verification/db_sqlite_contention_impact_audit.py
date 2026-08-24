@@ -21,20 +21,6 @@ BASE_CAPTURE = ROOT / "base_money_path_capture.py"
 NORM_SYNC = ROOT / "normalized_training_sync.py"
 CAL_WRITER = ROOT / "calibration" / "writer.py"
 
-CLASSIFICATION_TAGS = frozenset(
-    {
-        "NO_IMPACT_PROVEN",
-        "LOCK_WAIT_ONLY_BUT_SUCCESSFUL",
-        "LOCK_WAIT_CORRELATES_WITH_STALE",
-        "LOCK_WAIT_CORRELATES_WITH_LOADING",
-        "DATABASE_LOCKED_ERROR_PROVEN",
-        "MISSED_WRITE_RISK",
-        "DELAYED_NORMALIZATION_RISK",
-        "TRANSPORT_FRESHNESS_RISK",
-        "UI_DEGRADED_STATE_MISSING",
-        "INSTRUMENTATION_GAP",
-    }
-)
 
 _LOCK_WAIT_RE = re.compile(
     r"sqlite_tier1_lock_wait\s+op=(?P<op>\S+)\s+ticker=(?P<ticker>\S+)\s+"
@@ -222,8 +208,6 @@ def merge_runtime_metrics(
             metrics.events.append(ev)
     return metrics
 
-
-DB_OPERATOR_STATES = frozenset({"OK", "DB_WAITING", "DB_DEGRADED", "DB_LOCKED"})
 
 _DB_STATE_COPY: dict[str, tuple[str, str]] = {
     "OK": ("", ""),

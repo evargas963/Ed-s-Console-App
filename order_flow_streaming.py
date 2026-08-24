@@ -19,7 +19,12 @@ import time
 from typing import Any, Callable, Optional
 from instrument_identity import ticker_storage_key
 
-from order_flow_live_state import push_book, push_level_one
+from order_flow_live_state import (
+    clear_all_live_state,
+    forget_unsubscribed_symbols,
+    push_book,
+    push_level_one,
+)
 
 import live_market_plane as _lmp
 
@@ -213,6 +218,7 @@ async def _resubscribe_to_ticker(sc: Any, ticker: str) -> None:
     if old == new:
         return
     _log_stream("STREAM_RESUBSCRIBE_START", old=old, new=new)
+    forget_unsubscribed_symbols(old, new)
     try:
         if old:
             await sc.level_one_equity_unsubs(old)
@@ -359,6 +365,7 @@ def _run_stream_loop(
     async def _async_run() -> None:
         global _stream_running, _stream_client, _streaming_logged_in
         global _stream_shutdown_event, _stream_resubscribe_lock, _pending_post_login_ticker
+        global _streaming_last_update_ts, _subscribed_equity_syms, _active_streaming_ticker
 
         _stream_shutdown_event = asyncio.Event()
         _stream_resubscribe_lock = asyncio.Lock()
@@ -454,6 +461,10 @@ def _run_stream_loop(
             _stream_running = False
             _stream_shutdown_event = None
             _stream_resubscribe_lock = None
+            _streaming_last_update_ts = None
+            _subscribed_equity_syms = []
+            _active_streaming_ticker = None
+            clear_all_live_state()
             log.info("Order flow streaming stopped")
 
     _stream_loop = asyncio.new_event_loop()
@@ -511,11 +522,13 @@ def stop_order_flow_stream(*, join_timeout: float = STREAM_THREAD_JOIN_TIMEOUT_S
 
     Must be called from app shutdown **before** the process exits or the main event loop closes.
     """
-    global _stream_running, _stream_shutdown_event, _stream_loop, _stream_thread, _streaming_logged_in
+    global _stream_running, _stream_shutdown_event, _stream_loop, _stream_thread, _streaming_logged_in, _streaming_last_update_ts
 
     _log_stream("STREAM_THREAD_JOIN_START", join_timeout_sec=join_timeout)
     _stream_running = False
     _streaming_logged_in = False
+    _streaming_last_update_ts = None
+    clear_all_live_state()
     loop = _stream_loop
     ev = _stream_shutdown_event
     if loop is not None and ev is not None:

@@ -1,4 +1,4 @@
-"""order_flow_engine chunk-3: the composite score/direction/readiness are RETIRED (RC-450/RC-451).
+"""order_flow_engine chunk-3: the composite score/direction/readiness are RETIRED (RC-473/RC-474).
 
 _compute_order_flow_score, _direction and _readiness were deleted (no fitted weights, no OOS
 validation). The generic `_weighted_mean_present` / `_normalize` helpers survive (used by the
@@ -25,6 +25,6 @@ def test_normalize_clips_to_unit_range():
 
 
 def test_composite_score_direction_readiness_producers_are_deleted():
-    # RC-451: the retired producers must not exist — no executable path can reconstruct the composite.
+    # RC-474: the retired producers must not exist — no executable path can reconstruct the composite.
     for name in ("_compute_order_flow_score", "_direction", "_readiness"):
         assert not hasattr(ofe, name), f"{name} must stay deleted (retired composite producer)"

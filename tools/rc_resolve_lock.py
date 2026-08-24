@@ -12,20 +12,16 @@ Clauses (both ENFORCED via check_rc_document_without_resolve):
      RC row that mentions that mission_id is still OPEN BLOCKs. Honest PARTIAL with
      OUT-OF-SCOPE: + tracker is legal; mass-fake CLOSE is not.
 
-Escape (operator only, visible): `# mission-rc-open-ok: <reason>` in the staged
-pm_mission.json text, or `ED_RC_RESOLVE_GUARD=off`.
+Architecture A (RC-450): ED_RC_RESOLVE_GUARD cannot disable this control.
+`# mission-rc-open-ok:` remains a visible mission-text marker for clause B only.
 """
 from __future__ import annotations
 
-import json
-import os
 import re
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 
-RC_LOG_REL = "governance/root_cause_log.md"
-PM_MISSION_REL = "governance/pm_mission.json"
 
 RESOLVE_MARKERS = ("FIXED:", "NEXT-DEPTH:", "OUT-OF-SCOPE:")
 PARKING_FIXES = frozenset({
@@ -150,8 +146,6 @@ def mission_complete_open_rc_violations(
     staged_mission_text: str = "",
 ) -> list[str]:
     """Clause B: terminal mission while OPEN RCs name that mission_id → violations."""
-    if os.environ.get("ED_RC_RESOLVE_GUARD", "").strip().lower() in ("off", "0", "false"):
-        return []
     if _ESCAPE in (staged_mission_text or ""):
         return []
     if not mission_becoming_terminal(old_mission, new_mission):
@@ -178,8 +172,6 @@ def staged_rc_resolve_violations(
     staged_mission_text: str = "",
 ) -> list[str]:
     """Combine clause A + B for the commit checker / negative controls."""
-    if os.environ.get("ED_RC_RESOLVE_GUARD", "").strip().lower() in ("off", "0", "false"):
-        return []
     out: list[str] = []
     out.extend(added_open_rows_without_resolve(added_rc_lines))
     out.extend(mission_complete_open_rc_violations(
@@ -188,10 +180,3 @@ def staged_rc_resolve_violations(
     ))
     return out
 
-
-def load_json(path: Path) -> dict:
-    try:
-        doc = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError, json.JSONDecodeError):
-        return {}
-    return doc if isinstance(doc, dict) else {}

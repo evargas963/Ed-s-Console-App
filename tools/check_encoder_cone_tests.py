@@ -119,44 +119,11 @@ def check_encoder_cone_tests(staged: set[str], repo_root: Path | None = None) ->
     ]
 
 
-def check_encoder_cone_commit_claim(commit_text: str, staged: set[str]) -> list[str]:
-    """Block commit messages that claim pass/green on encoder work without citing the cone."""
-    if not staged_touches_encoder_cone(staged):
-        return []
-    if not FALSE_GREEN_PASS.search(commit_text):
-        return []
-    lowered = commit_text.lower()
-    if any(marker.lower() in lowered for marker in ENCODER_CONE_CITE_MARKERS):
-        return []
-    if any(p in lowered for p in ("tests/test_lstm", "tests/test_transformer", "tests/test_ml_feature")):
-        return []
-    return [
-        "commit message: claims tests passed/green while encoder paths are staged, "
-        "but does not cite encoder-cone pytest (AGENTS § Encoder cone). "
-        "Include 'encoder-cone' or list tests/test_lstm* … test_feature_contract* files run."
-    ]
-
-
 def main() -> int:
     code, output = run_encoder_cone_pytest()
     if output:
         print(output)
     return code
-
-
-def check_encoder_cone_documentation(repo_root: Path | None = None) -> list[str]:
-    """AGENTS must document the cone rule and list globs."""
-    root = repo_root or REPO_ROOT
-    agents = root / "AGENTS.md"
-    if not agents.is_file():
-        return ["AGENTS.md: missing (Encoder cone section)"]
-    text = agents.read_text(encoding="utf-8", errors="replace")
-    errors: list[str] = []
-    if "Encoder cone" not in text or "ENCODER_CONE_TEST_GLOBS" not in text:
-        errors.append("AGENTS.md: missing § Encoder cone (mandatory pytest cone)")
-    if "check_encoder_cone_tests" not in text:
-        errors.append("AGENTS.md: Encoder cone missing check_encoder_cone_tests registry cite")
-    return errors
 
 
 if __name__ == "__main__":

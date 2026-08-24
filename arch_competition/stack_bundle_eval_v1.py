@@ -726,7 +726,6 @@ def run_stack_bundle_evaluation(
     }
 
 
-WHOLE_STACK_FEATURE_ABLATION_SCHEMA = "1"
 WHOLE_STACK_DECISION_MODE = "full_fusion"
 
 

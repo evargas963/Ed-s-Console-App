@@ -9,7 +9,7 @@
       "disposition": "REMEDIATED",
       "blocker": null,
       "remediation": {
-        "rc": "RC-450",
+        "rc": "RC-473",
         "command": ".venv/Scripts/python.exe -m pytest tests/ -k \"order_flow or microstructure or market_state or call_engine or verdict\" -q",
         "result": "556 passed; the producer emits None for the whole order_flow_score/verdict family; compute() no longer calls the composite or the double-counting verdict; canonical primitives preserved."
       }

@@ -1,4 +1,9 @@
-"""Negative controls for RC-205 Ultimate plus-player mechanical lock."""
+"""Negative controls for the research-before-act continuum (RC-205).
+
+RC-470: the plus_player catalog checks (plus_player_law, plus_player_cursor_hooks) are
+retired - governance/retired_checks.md - and their three negative controls left with
+them. The two research controls below cover research_before_act, which stays ENFORCED.
+"""
 from __future__ import annotations
 
 import json
@@ -12,31 +17,6 @@ REPO = Path(__file__).resolve().parent.parent
 TURN_AUDIT_OWNS = [
     "tools/turn_self_audit.py",
 ]
-
-
-def test_plus_player_law_blocks_incomplete_catalog():
-    from tools.check_institutional_correctness import plus_player_law_violations
-
-    bad = {"version": 1, "attributes": [{"id": "RES-01", "pillar": "research",
-                                         "enforcement": "enforced", "enforcer": "research_before_act",
-                                         "soft_reason": None}]}
-    v = plus_player_law_violations(bad)
-    assert v, "incomplete catalog must BLOCK"
-    assert any("missing CORE" in x or "soft_partial forbidden" in x for x in v)
-
-
-def test_plus_player_law_live_catalog_clean():
-    from tools.check_institutional_correctness import plus_player_law_violations
-
-    assert plus_player_law_violations() == []
-
-
-def test_plus_player_cursor_hooks_blocks_missing():
-    from tools.check_institutional_correctness import plus_player_cursor_hooks_violations
-
-    assert plus_player_cursor_hooks_violations("")
-    assert plus_player_cursor_hooks_violations('{"hooks":{}}')
-    assert plus_player_cursor_hooks_violations() == []
 
 
 def test_research_violation_blocks_unresolved_path():

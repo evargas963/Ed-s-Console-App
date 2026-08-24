@@ -22,12 +22,32 @@ from __future__ import annotations
 
 import ast
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 CHECKER_REL = "tools/check_institutional_correctness.py"
+
+# RC-468: the declared-retirement seam, same contract as check_delta_adds_no_debt.
+# A removal passes only when the STAGED manifest names the check, so the declaration
+# and the removal travel in the same commit; an undeclared removal blocks as before.
+MANIFEST_REL = "governance/retired_checks.md"
+_MANIFEST_ROW_RE = re.compile(r"^\|\s*([a-z][a-z0-9_]*)\s*\|")
+
+
+def _staged_retirements(git_show) -> set[str]:
+    """Check names the STAGED index declares retired; missing manifest declares nothing."""
+    text = git_show(f":{MANIFEST_REL}")
+    if text is None:
+        return set()
+    names: set[str] = set()
+    for line in text.splitlines():
+        m = _MANIFEST_ROW_RE.match(line)
+        if m and m.group(1) != "check":
+            names.add(m.group(1))
+    return names
 
 
 def _neutralize_fabricated_identity() -> None:
@@ -116,11 +136,20 @@ def main() -> int:
         return 1
     removed = sorted(base_roster - cand_roster)
     if removed:
+        declared = _staged_retirements(_git_show)
+        retired = [n for n in removed if n in declared]
+        removed = [n for n in removed if n not in declared]
+        if retired:
+            print(
+                f"institutional gate: {len(retired)} enforced check(s) RETIRED by declaration "
+                f"in {MANIFEST_REL} (RC-468): {', '.join(retired)}")
+    if removed:
         print(
             "institutional gate BLOCKED: the staged change DELETES or DOWNGRADES enforced "
-            f"check(s) the base carried: {', '.join(removed)}. Removing enforcement is the "
-            "single most valuable regression to catch (RC-391); it is refused at commit. The "
-            "whole-tree added-violation delta is proven separately in CI.", file=sys.stderr)
+            f"check(s) the base carried WITHOUT declaring them in {MANIFEST_REL}: "
+            f"{', '.join(removed)}. Removing enforcement silently is the single most valuable "
+            "regression to catch (RC-391); it is refused at commit. The whole-tree "
+            "added-violation delta is proven separately in CI.", file=sys.stderr)
         return 1
     print(
         f"institutional correctness: enforced-check roster intact ({len(cand_roster)} enforced); "

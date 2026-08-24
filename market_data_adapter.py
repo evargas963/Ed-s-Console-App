@@ -18,8 +18,6 @@ from typing import Any, Optional
 
 log = logging.getLogger(__name__)
 
-# Canonical bar keys expected by liquidity_value_engine
-BAR_KEYS = ("timestamp", "open", "high", "low", "close", "volume", "source", "missing_fields")
 
 _OHLC_KEYS = ("open", "high", "low", "close")
 

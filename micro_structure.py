@@ -953,7 +953,6 @@ REGIME_COLORS = {
 # Maps regime constants to directional lean for cross-timeframe comparison
 _REGIME_BULLISH = {R_TREND_UP, R_BOS_UP, R_CHOCH_BULL, R_REVERSAL_UP}
 _REGIME_BEARISH = {R_TREND_DOWN, R_BOS_DOWN, R_CHOCH_BEAR, R_REVERSAL_DN}
-_REGIME_NEUTRAL = {R_COMPRESSION, R_RANGE, R_CHOP, R_UNKNOWN}
 
 def regime_direction(regime: str) -> str:
     """Return 'bullish', 'bearish', or 'neutral' for any regime constant."""

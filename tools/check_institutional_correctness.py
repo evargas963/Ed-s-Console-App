@@ -97,14 +97,6 @@ def _dict_literal_keys(node: ast.Dict) -> set[str]:
     return keys
 
 
-
-
-
-
-
-
-
-
 def check_single_spot_authority() -> list[Violation]:
     """Spot may be read through exactly ONE function.
 
@@ -184,8 +176,6 @@ def _living_test_files():
             continue
 
 
-
-
 def _rc_row_violations(log_path, n: int, rc_id: str, status: str,
                        cells: list[str]) -> list[Violation]:
     """Per-row rules for the root-cause log.
@@ -223,196 +213,14 @@ def _rc_row_violations(log_path, n: int, rc_id: str, status: str,
     return out
 
 
-# ── Five-why recursive lock (operator law 2026-07-24) ─────────────────────────
-# "You must do a mechanical lock on a 5-why layer recursive regime... that which
-# is uncovered at the 5-why layer regime we must then fix end to end. No patches
-# ever." Rows opened before the cutover are grandfathered for the two NEW
-# closure rules only (retro-scan 2026-07-24: 32 rows, one historical fix cell
-# legitimately DESCRIBES removing workarounds - RC-19); ROOT-terminality and
-# reference integrity were already clean across all 32 rows and enforce globally.
+# Cutover date kept for the surviving no-terminal-null rules below (RC-470: the
+# five-why grammar lock that also used it is retired - governance/retired_checks.md).
 FIVE_WHY_LOCK_CUTOVER = "2026-07-24"
 
-#: RC-299 — the RECURSION cutover, separate from the 2026-07-24 structural one because it
-#: adds a NEW requirement and must not retroactively invalidate rows written before the
-#: rule existed. Operator law 2026-08-08: the five whys must be RECURSIVE. Depth and the
-#: literal token ROOT were already enforced; neither asks whether the root is IRREDUCIBLE,
-#: so a chain could name a new defect at why-2 and keep going in prose. RC-298's own why-4
-#: named a defect in the RC-49 gate and spawned nothing, and the lock stayed silent.
-FIVE_WHY_RECURSION_CUTOVER = "2026-08-08"
-_PATCH_BANNED_PHRASES = (
-    "workaround", "band-aid", "bandaid", "stopgap", "quick fix",
-    "temporary fix", "papered over", "route around the",
-)
 
-
-#: RC-106 close contract (operator, 2026-07-28): "the locks check words and proxies, not reach."
-#: Rows opened on/after this date close under a DECLARED-reach schema a checker can walk:
-#: FIXED: named victims; no pending vocabulary (PARTIAL status exists for honest incompleteness);
-#: VISIBLE_SURFACE: for DOM-id defects, with the id existing in static/ AND bound by a test;
-#: OUT-OF-SCOPE: only with a tracker. Free-prose blast radius is exactly what let three closes
-#: wear the END-TO-END label while Kalman, the visible #cv2 chip, and the RTH regex stayed broken.
-CLOSE_CONTRACT_CUTOVER = "2026-07-28"
-#: A CLOSED stamp may not defer its own proof — that is what PARTIAL is for. No escape marker.
-_CLOSE_PENDING_PHRASES = (
-    "pending", "proof owed", "awaiting", "closed for the code path", "code path only",
-)
-#: RC-144: matched as WHOLE WORDS. As bare substrings, "pending" fired inside "depending",
-#: "impending" and "suspending" — MEASURED 2026-07-30 when a row stating that a metric "stops
-#: depending on how the caller was launched" was flagged for deferring its own proof. The only
-#: ways out of a false positive are rewording true evidence until the regex is satisfied, or
-#: weakening the rule; both are worse than the bug, and the first is the citation theater
-#: RC-136 was opened for. Word boundaries keep the rule's strength and drop the accidents.
-_CLOSE_PENDING_RES = tuple(
-    (p, re.compile(r"\b" + re.escape(p) + r"\b")) for p in _CLOSE_PENDING_PHRASES
-)
-#: The DOM-id net matches hyphenated ids only (#cv2-kl-trust) — the hyphen requirement keeps
-#: hex colors and markdown anchors out.
-
-
-def _five_why_lock_violations(
-    lines: list[str], log_path,
-    static_corpus: str | None = None,
-    tests_corpus: str | None = None,
-) -> list[Violation]:
-    """Pure row validator for the recursive 5-why lock (unit-testable).
-
-    `static_corpus` / `tests_corpus` are the concatenated static/*.html and tests/**/*.py
-    contents used by the RC-106 close contract; None skips those existence checks (pure
-    unit tests can inject tiny corpora).
-    """
-    import re as _re
-
-    parsed: list[tuple[int, list[str]]] = []
-    ids: set[str] = set()
-    for n, line in enumerate(lines, start=1):
-        if not line.startswith("| RC-"):
-            continue
-        cells = [c.strip() for c in line.strip().strip("|").split("|")]
-        if len(cells) < 7:
-            continue
-        parsed.append((n, cells))
-        ids.add(cells[0])
-    out: list[Violation] = []
-    for n, cells in parsed:
-        rc_id, status, opened = cells[0], cells[1], cells[2]
-        why, fix = cells[5], cells[6]
-        if "ROOT" not in why.upper():
-            out.append(Violation(
-                log_path, n,
-                f"{rc_id}: why-chain never terminates in a named ROOT. A chain without "
-                f"a ROOT is a symptom list - keep asking why until the root is named."))
-        for ref in _re.findall(r"RC-\d+", f"{why} {fix}"):
-            if ref not in ids:
-                out.append(Violation(
-                    log_path, n,
-                    f"{rc_id}: references {ref} which has no row. A why that names a new "
-                    f"defect SPAWNS that defect's own five-why entry - dangling children "
-                    f"break the recursive regime."))
-        # RC-299: RECURSION. Depth and the token ROOT were already required; neither asks
-        # whether the root is IRREDUCIBLE. A chain ending "ROOT: the repo does not enforce
-        # X" reads terminal while X is plainly another defect with its own causes. The row
-        # format had no way to say which, so both were written identically. Now the author
-        # must declare at the terminus: bedrock WITH a reason, or the child it points at.
-        if opened >= FIVE_WHY_RECURSION_CUTOVER:
-            up_why = why.upper()
-            has_terminal = "ROOT: TERMINAL" in up_why
-            spawns = _re.findall(r"ROOT:\s*SPAWNS\s+(RC-\d+)", why, _re.I)
-            if not has_terminal and not spawns:
-                out.append(Violation(
-                    log_path, n,
-                    f"{rc_id}: the why-chain names a ROOT but does not say whether it is "
-                    f"BEDROCK or a POINTER. Recursion is not optional (operator law "
-                    f"2026-08-08): end the chain with 'ROOT: TERMINAL — <why it cannot be "
-                    f"reduced further>' or 'ROOT: SPAWNS RC-nnn — <the child defect>'. A "
-                    f"cause found at why-2 is not a root, it is a new defect that gets its "
-                    f"own five whys (RC-299)."))
-            for child in spawns:
-                if child not in ids:
-                    out.append(Violation(
-                        log_path, n,
-                        f"{rc_id}: ROOT SPAWNS {child}, which has no row. A spawned child "
-                        f"must carry its own five whys — that is what makes the regime "
-                        f"recursive rather than a chain of promises (RC-299)."))
-            if has_terminal:
-                seg = why[up_why.find("ROOT: TERMINAL") + len("ROOT: TERMINAL"):]
-                if len(seg.strip(" —-:").strip()) < 40:
-                    out.append(Violation(
-                        log_path, n,
-                        f"{rc_id}: ROOT declared TERMINAL with no justification. Bedrock is "
-                        f"a claim and it is the one place the recursion stops, so it must "
-                        f"say WHY no further why exists — otherwise TERMINAL is just the "
-                        f"word ROOT again (RC-299)."))
-
-        if opened < FIVE_WHY_LOCK_CUTOVER:
-            continue
-        low_fix = fix.lower()
-        for phrase in _PATCH_BANNED_PHRASES:
-            if phrase in low_fix:
-                out.append(Violation(
-                    log_path, n,
-                    f"{rc_id}: fix cell contains banned patch vocabulary ({phrase!r}). "
-                    f"No patches ever - fix the architectural cause end to end. There is "
-                    f"deliberately NO escape marker for this rule."))
-        if status == "CLOSED" and "END-TO-END" not in fix.upper():
-            out.append(Violation(
-                log_path, n,
-                f"{rc_id}: CLOSED without an END-TO-END declaration. Closure requires the "
-                f"fix cell to state 'END-TO-END: <producer -> consumer scope>' proving the "
-                f"repair reached the root's full blast radius, not the symptom site."))
-        # ── RC-106 close contract: declared, checkable reach ─────────────────────────────
-        if status == "CLOSED" and opened >= CLOSE_CONTRACT_CUTOVER:
-            up_fix = fix.upper()
-            if "FIXED:" not in up_fix:
-                out.append(Violation(
-                    log_path, n,
-                    f"{rc_id}: CLOSED without 'FIXED: <named victims>'. The close contract "
-                    f"(RC-106) requires the repaired consumers to be ENUMERATED so coverage "
-                    f"is checkable — free prose is how three closes wore END-TO-END while "
-                    f"named victims stayed broken."))
-            # Use vs mention: a row that DESCRIBES the pending rule (in backticks) is not
-            # deferring proof — the same backtick convention every guard already uses.
-            low_fix_used = _re.sub(r"`[^`]*`", "", low_fix)
-            for phrase, rx in _CLOSE_PENDING_RES:
-                if rx.search(low_fix_used):
-                    out.append(Violation(
-                        log_path, n,
-                        f"{rc_id}: CLOSED while the fix cell defers its own proof "
-                        f"({phrase!r}). A CLOSED stamp may not owe evidence — use status "
-                        f"PARTIAL until the proof lands (RC-106). No escape marker."))
-            dom_ids = sorted(set(_re.findall(
-                r"#[a-z][a-z0-9]*(?:-[a-z0-9]+)+",
-                f"{cells[4]} {why} {fix}".lower())))
-            if dom_ids:
-                if "VISIBLE_SURFACE:" not in up_fix:
-                    out.append(Violation(
-                        log_path, n,
-                        f"{rc_id}: names DOM id(s) {dom_ids} but declares no "
-                        f"'VISIBLE_SURFACE: #<id>'. A UI close must name the surface the "
-                        f"operator SEES so the checker (and the test) can bind it — the "
-                        f"hidden-chip close is the defect this contract exists for."))
-                for did in dom_ids:
-                    if static_corpus is not None and did[1:] not in static_corpus:
-                        out.append(Violation(
-                            log_path, n,
-                            f"{rc_id}: VISIBLE_SURFACE names {did} but no such id exists "
-                            f"in static/ — a surface that does not exist cannot have been "
-                            f"verified."))
-                    if tests_corpus is not None and did[1:] not in tests_corpus:
-                        out.append(Violation(
-                            log_path, n,
-                            f"{rc_id}: no test binds {did}. The close contract requires a "
-                            f"test that asserts the VISIBLE consumer, not a substring "
-                            f"anywhere in the file (RC-102's test passed while the visible "
-                            f"chip stayed blind)."))
-            if "OUT-OF-SCOPE:" in up_fix:
-                seg = fix[up_fix.index("OUT-OF-SCOPE:"):]
-                if "RC-" not in seg and "register" not in seg.lower():
-                    out.append(Violation(
-                        log_path, n,
-                        f"{rc_id}: OUT-OF-SCOPE without a tracker. Deferral is legal only "
-                        f"with an RC id or register entry — otherwise it is the banned "
-                        f"third state (flagged, not fixed, forgotten)."))
-    return out
+# RC-470: _five_why_lock_violations (the recursive five-why grammar validator) is
+# retired with its check - governance/retired_checks.md. The surviving ledger
+# substance lives in _rc_row_violations (why-chain depth + CLOSED evidence) below.
 
 
 # Operator law 2026-07-24 (second clause of the lock): "There is no terminal
@@ -503,33 +311,12 @@ def check_no_terminal_null() -> list[Violation]:
     return out
 
 
-def check_five_why_recursive_lock() -> list[Violation]:
-    """Mechanical lock: recursive 5-why regime + end-to-end fixes, no patches ever.
-
-    Operator law 2026-07-24, machine-forced per the standing rule that goodwill fails.
-    OBSERVED need: RC-14 was closed on code shape and the live bug survived into RC-15
-    and RC-16 (three rows, one defect); the same week, mechanical verification (the P1
-    parity machine) found in 8.5s an undocumented production convention that two days
-    of code reading missed - checks catch what narrative cannot. VALIDATED against the
-    live log 2026-07-24: 32 rows, ROOT-terminality and RC-reference integrity clean on
-    all of them (enforced globally); the two closure rules (patch-vocabulary ban,
-    END-TO-END declaration) bind rows opened on/after the cutover so one historical fix
-    cell that legitimately DESCRIBES removing workarounds (RC-19) is not retro-flagged.
-    """
-    log_path = REPO / "governance" / "root_cause_log.md"
-    if not log_path.exists():
-        return [Violation(log_path, 0, "governance/root_cause_log.md is missing")]
-    lines = log_path.read_text(encoding="utf-8").splitlines()
-    static_corpus = "".join(
-        _read_or_empty(p)
-        for p in sorted((REPO / "static").glob("*.html"))) if (REPO / "static").exists() else ""
-    tests_corpus = "".join(
-        _read_or_empty(p)
-        for p in sorted((REPO / "tests").rglob("*.py"))) if (REPO / "tests").exists() else ""
-    return _five_why_lock_violations(lines, log_path, static_corpus, tests_corpus)
+# RC-470: check_five_why_recursive_lock retired with its helper (_five_why_lock_violations,
+# governance/retired_checks.md); check_root_cause_log + closed_rows_ship_their_code keep the
+# substance. The FIND IT → FIX IT lock below post-dates that census and is NOT retired.
 
 
-# ── FIND IT → FIX IT (operator law 2026-08-21, RC-449; corrected RC-450) ──────────────────────
+# ── FIND IT → FIX IT (operator law 2026-08-21, RC-472; corrected RC-473) ──────────────────────
 # DISPOSITION-DRIVEN, not vocabulary-driven (review DEFECTs 1/2/6): the authoritative active-mission
 # defect state is the structured ledger governance/active_defects.json. Prose RC `status` is only
 # OPEN/CLOSED and cannot machine-encode FAIL/NOT_PROVEN or per-assertion blocker EVIDENCE, so the
@@ -630,14 +417,14 @@ def load_active_defects() -> dict:
 
 
 def check_find_it_fix_it() -> list[Violation]:
-    """FIND IT → FIX IT operator law (disposition-driven; RC-449 installed, RC-450 corrected): every
+    """FIND IT → FIX IT operator law (disposition-driven; RC-472 installed, RC-473 corrected): every
     active material defect (status FAIL/NOT_PROVEN in governance/active_defects.json) must be
     terminally disposed REMEDIATED (with a resolvable rc + cited command) or BLOCKED (a valid blocker
     type bound to an EXACT snake_case assertion with type-specific machine-resolvable evidence).
     Anything else BLOCKS. tools/stop_guard.py imports the same `active_defect_offenders`, so
     agent-time and CI cannot diverge.
 
-    OBSERVED (RC-450): the first (RC-449) implementation was vocabulary-driven and let a bare OPEN
+    OBSERVED (RC-473): the first (RC-472) implementation was vocabulary-driven and let a bare OPEN
     FAIL with no laundering word pass, never parsed FAIL/NOT_PROVEN, was today-only, and accepted a
     syntactically-pretty blocker with no evidence — proven by the agent ending a turn with the Order
     Flow verdict retirement declared a fixable unblocked FAIL. VALIDATED: negative controls in
@@ -941,34 +728,6 @@ def _self_comparison(test: ast.AST) -> str | None:
     if both_static and ast.dump(test.left) == ast.dump(test.comparators[0]):
         return "compares a value to itself"
     return None
-
-
-def _open_root_causes(path) -> list[str]:
-    """RC ids whose status is OPEN."""
-    if not path.exists():
-        return []
-    out = []
-    for line in path.read_text(encoding="utf-8").splitlines():
-        if not line.startswith("| RC-"):
-            continue
-        cells = [c.strip() for c in line.strip("|").split("|")]
-        if len(cells) > 1 and cells[1] == "OPEN":
-            out.append(cells[0])
-    return out
-
-
-def _open_register_claims(path) -> list[str]:
-    """Register rows still UNPROVEN or DISPROVED (the two non-terminal states)."""
-    if not path.exists():
-        return []
-    out = []
-    for line in path.read_text(encoding="utf-8").splitlines():
-        if not line.startswith("|"):
-            continue
-        cells = [c.strip() for c in line.strip("|").split("|")]
-        if cells and cells[0] in ("UNPROVEN", "DISPROVED"):
-            out.append(f"register:{cells[3][:40] if len(cells) > 3 else '?'}")
-    return out
 
 
 def _is_overdue(due: str) -> bool:
@@ -1828,45 +1587,6 @@ def check_one_producer() -> list[Violation]:
     return out
 
 
-def check_five_why_reaches_bedrock() -> list[Violation]:
-    """RC-321 — a five-why terminates on a DEFECT, never on an EXPLANATION.
-
-    OPERATOR LAW (2026-08-09, non-negotiable): "we do 5 whys to bedrock."
-
-    WHAT WAS OBSERVED. RC-315's chain was five levels deep, ended `ROOT: TERMINAL` with a
-    real justification, and PASSED `five_why_recursive_lock` — while its level (4) read
-    "because the operator's instruction ... removed the one check that had been catching
-    me". An outside audit rejected it in one line: being asked to decide never suspended the
-    evidence-before-assertion law.
-
-    WHY THE EXISTING LOCK CANNOT SEE IT. `five_why_recursive_lock` enforces a chain's SHAPE
-    — five levels, a terminal root with a justification or a spawned child that exists — and
-    all of it held. Shape was enforced; OWNERSHIP of the cause was not.
-
-    THE RULE. A why-step may not hand causation to another actor's instruction, request or
-    message. Those are circumstances, not defects this repository can repair. Quoting a
-    blame-shift in order to REJECT it is required of a corrected row, so a rejection marker
-    in the same cell clears it.
-
-    VALIDATED BEFORE WIRING: 290 rows scanned; a first pattern matched bare "time pressure"
-    and produced one FALSE POSITIVE (RC-290 uses pressure to describe an incentive gradient
-    and its root correctly names my own defect), so the RULE was narrowed rather than the
-    ROW exempted. Zero on merit. Fires on RC-315 as first written, recovered with
-    `git show e1bc6793:governance/root_cause_log.md`, and stays silent on it as corrected.
-    """
-    out: list[Violation] = []
-    try:
-        sys.path.insert(0, str(REPO / "tools"))
-        from check_five_why_reaches_bedrock import violations as _v
-        for msg in _v():
-            out.append(Violation(REPO / "governance" / "root_cause_log.md", 0, msg))
-    except Exception as exc:                                        # noqa: BLE001
-        out.append(Violation(REPO / "tools" / "check_five_why_reaches_bedrock.py", 0,
-                             f"checker unavailable ({type(exc).__name__}: {exc}) — a gate "
-                             f"that cannot run is not a gate"))
-    return out
-
-
 def check_rc_mechanism_claims_cite_a_source() -> list[Violation]:
     """RC-319 — a claim about how the MARKET behaves must be checkable by a reader.
 
@@ -2063,7 +1783,6 @@ def check_mypy_types() -> list[Violation]:
 
 
 _UNPROVEN_REGISTER = REPO / "governance" / "unproven_register.md"
-UNPROVEN_STALE_DAYS = 14
 
 
 _OPEN_STATUSES = {"UNPROVEN", "DISPROVED"}
@@ -2808,57 +2527,11 @@ def check_closed_rows_ship_their_code() -> list[Violation]:
     return out
 
 
-def check_recursive_five_why_front_loaded() -> list[Violation]:
-    """UNIVERSAL front-end of the recursive-5-why law: a code change ships with its root cause.
-
-    OBSERVED (2026-07-26, RC-41): the five_why_recursive_lock validated the CONTENT of rows
-    that already existed but never the ACT of opening one, so an entire session of fixes (charm
-    RC-35, coercion RC-38 and their children) shipped with zero root-cause rows and the gate
-    stayed green. Per the log's Rule 5, "I didn't do the 5-why" is a symptom whose real defect
-    is a MISSING mechanical check — the law depended on goodwill at discovery time, and goodwill
-    fails. The law is UNIVERSAL ("with everything we do", operator 2026-07-19) — this check is
-    deliberately NOT scoped to a subsystem.
-
-    Rule: any commit that stages a real change to a tracked .py file MUST co-stage a real
-    '| RC-' row in governance/root_cause_log.md. A cosmetic touch of the log does not satisfy it
-    (an added '| RC-' line is required), and the row's quality is separately enforced by
-    five_why_recursive_lock — so a fix cannot reach a commit without a ROOT-terminal recursive
-    entry. Front-end law: open the row at DISCOVERY, before the fix.
-
-    VALIDATED: prototyped against this repo before enforcing — fires when a .py change is staged
-    with no RC row, passes when a real row is co-staged, and no-ops (returns []) outside a git
-    commit context so unit-test imports never false-block. Escapes NONE by design.
-    """
-    staged = _git_output_lines(["diff", "--cached", "--name-only"])
-    if staged is None:
-        return []  # not a commit context — never a false block
-    staged_set = {s.strip().replace("\\", "/") for s in staged if s.strip()}
-    if not staged_set:
-        return []
-    log_rel = "governance/root_cause_log.md"
-    changed_code = sorted(
-        f for f in staged_set if f.endswith(".py") and _staged_has_real_change(f)
-    )
-    if not changed_code:
-        return []
-    if log_rel not in staged_set:
-        return [Violation(
-            REPO / changed_code[0], 0,
-            "Code changed (" + ", ".join(changed_code[:5]) +
-            (" …" if len(changed_code) > 5 else "") + ") with NO co-staged root-cause row. "
-            "The recursive-5-why law is UNIVERSAL and FRONT-LOADED (operator 2026-07-19): the "
-            "moment you find an issue you OPEN its RC-<n> row in governance/root_cause_log.md and "
-            "drive each cause to its ROOT before fixing. Every code change ships with its "
-            "recursive root cause — co-stage a real '| RC-' row (its quality is enforced by "
-            "five_why_recursive_lock). This scope is not narrowable.")]
-    log_diff = _git_output_lines(["diff", "--cached", "-U0", "--", log_rel]) or []
-    if not any(l.startswith("+| RC-") for l in log_diff):
-        return [Violation(
-            REPO / log_rel, 0,
-            "governance/root_cause_log.md is staged but no '| RC-<n>' row was added or changed "
-            "alongside a code change — a real recursive-5-why entry is required, not a cosmetic "
-            "touch. Open the RC at discovery, drive to ROOT, fix end-to-end.")]
-    return []
+# RC-470: check_recursive_five_why_front_loaded retired (governance/retired_checks.md).
+# It required a co-staged RC row for EVERY staged .py change, which turned ordinary
+# feature work into ledger essays (measured: 430 rows / 1.4MB / 124 OPEN at census).
+# Defect rows and their quality stay enforced by root_cause_log; closures stay bound
+# to real code by closed_rows_ship_their_code.
 
 
 def check_adversarial_audit_test_lock() -> list[Violation]:
@@ -3009,7 +2682,7 @@ def check_root_cause_recurrence_declared() -> list[Violation]:
 #: is prohibited — that is the entire point of the law.
 _NEGATIVE_CONTROL_GRANDFATHERED = frozenset({
     "no_synthetic_domain_fixtures_in_tests", "no_swallowed_test_failures",
-    "five_why_recursive_lock", "recursive_five_why_front_loaded", "single_faucet_provenance",
+    "single_faucet_provenance",
     "root_cause_recurrence_declared", "fix_crosswalks_to_violated_lock",
     "domain_constants_are_derived", "no_terminal_null", "no_governance_duplication",
     "checks_are_justified", "no_tautological_assertions", "open_item_cap",
@@ -3979,8 +3652,6 @@ def check_universal_ticker_scope() -> list[Violation]:
     return out
 
 
-
-
 def check_chart_intent_and_next_rth() -> list[Violation]:
     """Chart-intent soft-out + next-RTH weekday lies in residual prose (RC-163).
 
@@ -4304,107 +3975,11 @@ def check_research_before_act() -> list[Violation]:
     return [Violation(REPO / "reports" / "turn_self_audit_log.jsonl", 0, r) for r in reasons]
 
 
-def _plus_player_known_enforcers() -> set[str]:
-    names = {name for name, _fn, _en in CHECKS}
-    names.update({
-        "guard:proof_only_guard", "guard:operator_law_guard", "guard:stop_guard",
-        "guard:turn_self_audit", "runtime:decision_gate",
-        "soft:operator_review", "soft:operator_review+catalog",
-    })
-    return names
-
-
-def plus_player_law_violations(catalog: dict | None = None) -> list[str]:
-    """Callee for check_plus_player_law — injectable for negative controls."""
-    try:
-        from tools.plus_player_locks import (
-            catalog_completeness_violations, load_catalog,
-        )
-    except ImportError:
-        from plus_player_locks import (  # type: ignore
-            catalog_completeness_violations, load_catalog,
-        )
-    out = list(catalog_completeness_violations(catalog))
-    try:
-        data = catalog if catalog is not None else load_catalog()
-    except Exception as e:
-        return out or [f"catalog load failed: {e}"]
-    known = _plus_player_known_enforcers()
-    # plus_player_* checks are registered below; allow forward refs
-    known.update({
-        "plus_player_law", "plus_player_cursor_hooks", "research_before_act",
-        "honesty_guard_wired", "find_prove_significance_substance",
-        "admission_evidence_resolves", "purged_cv_research",
-        "prereg_before_confirmatory", "decision_path_wired",
-        "claude_cursor_guard_parity", "collect_datasheet_staged",
-    })
-    for a in data.get("attributes") or []:
-        enf = str(a.get("enforcer") or "")
-        if not enf:
-            continue
-        if enf.startswith("soft:"):
-            out.append(f"{a.get('id')}: soft: enforcer banned (RC-208)")
-            continue
-        if enf.startswith("guard:") or enf.startswith("runtime:"):
-            continue
-        if enf not in known:
-            out.append(f"{a.get('id')}: unknown enforcer {enf!r} (not a CHECK id)")
-    return out
-
-
-def check_plus_player_law() -> list[Violation]:
-    """Ultimate plus-player catalog: ENFORCED-only, soft_partial banned (RC-205/RC-209).
-
-    WHAT WAS OBSERVED: Soft-registered \"until CHECK ships\" rows were treated as locks;
-    operator ruled Soft theater unacceptable for non-negotiables. An .md scorecard is not
-    a lock. Catalog may list only attributes with real CHECK/guard/runtime enforcers.
-
-    Rule: governance/plus_player_attributes.json — every row enforcement==enforced with a
-    known enforcer; soft_partial/soft: forbidden; CORE_ENFORCED_IDS must be present.
-
-    HOW VALIDATED: tests/test_plus_player_law_v1.py + test_honesty_guard_v1.py inject
-    incomplete/soft catalogs -> BLOCK; live catalog must return [].
-    """
-    rel = "governance/plus_player_attributes.json"
-    reasons = plus_player_law_violations()
-    return [Violation(REPO / rel, 0, r) for r in reasons]
-
-
-def plus_player_cursor_hooks_violations(hooks_text: str | None = None) -> list[str]:
-    """Callee for check_plus_player_cursor_hooks."""
-    p = REPO / ".cursor" / "hooks.json"
-    if hooks_text is None:
-        if not p.is_file():
-            return [".cursor/hooks.json missing — Cursor continuum cannot invoke .py guards (RC-205)"]
-        hooks_text = p.read_text(encoding="utf-8", errors="replace")
-    need = (
-        "operator_law_guard.py",
-        "pretooluse_guard.py",
-        "stop_guard.py",
-        "proof_only_guard.py",
-        "honesty_guard.py",
-    )
-    missing = [n for n in need if n not in hooks_text]
-    if missing:
-        return [f".cursor/hooks.json must invoke {', '.join(missing)} (same .py as Claude)"]
-    return []
-
-
-def check_plus_player_cursor_hooks() -> list[Violation]:
-    """Cursor must invoke the same .py guards as Claude (RC-205/RC-208 continuum).
-
-    WHAT WAS OBSERVED: Claude hooks lived in .claude/settings.json while Cursor had only
-    soft .mdc rules; meta-check only required two of five Stop/PreToolUse scripts, so
-    honesty/proof/stop could silently unwired.
-
-    Rule: .cursor/hooks.json names pretooluse_guard, operator_law_guard, stop_guard,
-    proof_only_guard, honesty_guard.
-
-    HOW VALIDATED: tests/test_plus_player_law_v1.py / test_honesty_guard_v1.py drive
-    plus_player_cursor_hooks_violations with empty/partial text -> BLOCK; live file must pass.
-    """
-    reasons = plus_player_cursor_hooks_violations()
-    return [Violation(REPO / ".cursor" / "hooks.json", 0, r) for r in reasons]
+# RC-470: the plus_player catalog checks (plus_player_law, plus_player_cursor_hooks)
+# and their callees are retired - governance/retired_checks.md. Roster demotions are
+# caught by the delta-gate roster comparison + declared-retirement manifest; the wiring
+# files are CODEOWNERS-owned. claude_cursor_guard_parity REMAINS enforced and carries
+# the five-guard wiring assertion for both agents' hook files.
 
 
 def check_find_prove_significance_substance() -> list[Violation]:
@@ -4614,32 +4189,10 @@ def check_collect_datasheet_staged() -> list[Violation]:
     return out
 
 
-def check_honesty_guard_wired() -> list[Violation]:
-    """Honesty guard must be on Claude AND Cursor Stop continuum (RC-209).
-
-    WHAT WAS OBSERVED: operator asked whether a lock bans lying/omission/dodging — answer was
-    no; agents kept writing .md briefs as if they were locks. Without a Stop .py on BOTH
-    continua, the law is goodwill. Institutional analogues: PCAOB AS 1215 (no omission of
-    inconsistent info); Simmons et al. 2011 (disclose flexibility); Peng 2011 (reproducible
-    claims).
-
-    Rule: .claude/settings.json AND .cursor/hooks.json Stop hooks must invoke
-    tools/honesty_guard.py.
-
-    HOW VALIDATED: tests/test_honesty_guard_v1.py asserts both continua + honesty_violations BLOCK.
-    """
-    out: list[Violation] = []
-    for rel in (".claude/settings.json", ".cursor/hooks.json"):
-        p = REPO / rel
-        try:
-            text = p.read_text(encoding="utf-8")
-        except OSError:
-            out.append(Violation(p, 0, f"{rel} missing — honesty Stop continuum unwired (RC-209)"))
-            continue
-        if "honesty_guard.py" not in text:
-            out.append(Violation(
-                p, 0, f"{rel} Stop continuum missing honesty_guard.py (RC-209)"))
-    return out
+# RC-470: check_honesty_guard_wired retired (governance/retired_checks.md) - the two
+# wiring files are CODEOWNERS-owned so an unwiring cannot merge without operator
+# approval, and claude_cursor_guard_parity (KEPT) still asserts honesty_guard.py is
+# named in both agents' hook files. The honesty guard itself stays on Stop.
 
 
 #: RC-212 (operator law 2026-08-02: "tighten up the one faucet mechanical lock so this
@@ -4772,90 +4325,22 @@ def check_phase2a_single_level_computation() -> list[Violation]:
     return out
 
 
-def check_log_law() -> list[Violation]:
-    """LOG LAW (operator/PM 2026-08-04, RC-237): closable work has exactly TWO homes.
-
-    OBSERVED (RC-237, measured 2026-08-04): five markdown files outside the two ledgers
-    carried status-bearing work rows — `reports/rc_open_drain_latest.md` 21 rows,
-    `reports/zero_debt_work_law_v1.md` 10, and three audit reports 3–7 each — beside the
-    real ledger's own open class. Closable work therefore had more than one home, and
-    whichever list a reader opened looked authoritative while the other rotted; a drain
-    measured against the wrong list reports progress the defect ledger does not have.
-
-    VALIDATED BY PROTOTYPE before enforcing: run against the whole tree first, it found
-    exactly those five files and nothing else — no false positive on prose that merely
-    mentions RC ids, on the two sanctioned ledgers, or on telemetry .jsonl/.log (events are
-    explicitly not debt). The threshold is three work rows because two reads as discussion
-    rather than a queue; frozen dated snapshots keep an operator escape (`# log-law-ok:`).
-    The overdue-epistemic clause was likewise prototyped: it fires on a lapsed due date and
-    stays silent on a future-dated pre-registered hypothesis, since forcing an early verdict
-    is how contaminated data becomes a citation. 10 negative controls in
-    tests/test_log_law_v1.py, plus a wiring assertion (RC-238) that this registration is
-    ENFORCED rather than merely present. Delegates to tools/log_law.py so the gate, the
-    tests and the CLI all judge by ONE implementation.
-    """
-    try:
-        from tools.log_law import log_law_violations
-    except ImportError:  # pragma: no cover - import shape differs under the hook runner
-        from log_law import log_law_violations  # type: ignore
-    return [Violation(REPO / "governance" / "root_cause_log.md", 0, m)
-            for m in log_law_violations(REPO)]
+# RC-470: check_log_law retired (governance/retired_checks.md); tools/log_law.py is
+# deleted with it. Ledger topology stays covered by no_governance_duplication,
+# rc_log_rows_keep_schema and unproven_register.
 
 
-def check_writer_no_drift() -> list[Violation]:
-    """LOCK-1 commit backstop (RC-232): staged changes must come from the mission's
-    resolved writer — the maker-checker split enforced at commit, delegating to
-    tools/writer_drift_lock.py.
-
-    IDENTITY GATE (measured limitation): pre-commit hook processes do not reliably carry
-    ED_AGENT_ROLE, and the role helper fails closed to 'cursor' — which made the WRITER'S
-    own landing read as drift (4 false blocks measured on the RC-232 landing commit).
-    When the env carries no identity, this backstop stays silent and the PreToolUse layer
-    (which always has identity via each agent's hook env) carries the enforcement.
-
-    HOW VALIDATED: prototyped against the RC-232 landing — with identity absent the old
-    form false-blocked the sole writer's own commit; with identity present (Cursor env)
-    the negative controls in tests/test_writer_drift_lock_v1.py prove BLOCK on
-    chart.html/server.py and ALLOW on the PM allowlist.
-    """
-    out: list[Violation] = []
-    import os as _os
-    if _os.environ.get("ED_AGENT_ROLE", "").strip().lower() not in ("cursor", "claude"):
-        return out  # identity gate: PreToolUse carries enforcement for identity-less contexts
-    try:
-        from tools.writer_drift_lock import live_writer_drift_violations
-    except ImportError:
-        try:
-            from writer_drift_lock import live_writer_drift_violations  # type: ignore
-        except ImportError:
-            return out
-    for reason in live_writer_drift_violations(REPO, staged_only=True):
-        out.append(Violation(REPO / "governance" / "pm_mission.json", 0, str(reason)))
-    return out
+# RC-470: check_writer_no_drift retired (governance/retired_checks.md, operator ruling
+# 2026-08-24: authority approval binds at MERGE via CODEOWNERS +
+# require_code_owner_reviews + enforce_admins, verified live). Measured before
+# retiring: the commit hook never ran this check (RC-406) and clears ED_AGENT_ROLE;
+# CI deliberately sets no role (RC-396); it fired only in local verification shells.
+# The in-process rail (writer_drift_lock via process_lock_guard at PreToolUse) is
+# unchanged by this retirement.
 
 
-def check_rc_document_without_resolve() -> list[Violation]:
-    """RC-228/RC-230 (LOCK-6): newly ADDED OPEN/PARTIAL RC rows must carry a resolve path
-    (FIXED:/NEXT-DEPTH:/OUT-OF-SCOPE: with tracker) — a row documented without one is the
-    backlog-growth defect RC-228 measured (23 open-class rows by 2026-08-04). Delegates to
-    tools/rc_resolve_lock.py, the module RC-228 shipped; registered ENFORCED under RC-230.
-
-    HOW VALIDATED: prototyped against the live ledger — the RC-232 landing's own row was
-    caught missing the literal FIXED: token (real block, fixed in place); negative controls
-    in tests/test_rc_document_without_resolve_v1.py inject an added OPEN row without a
-    resolve path and assert >= 1 violation through this registered wrapper.
-    """
-    out: list[Violation] = []
-    try:
-        from tools.rc_resolve_lock import added_open_rows_without_resolve
-    except ImportError:
-        from rc_resolve_lock import added_open_rows_without_resolve  # type: ignore
-    rc_path = REPO / "governance" / "root_cause_log.md"
-    added = _git_output_lines(["diff", "--cached", "-U0", "--", "governance/root_cause_log.md"]) or []
-    added_lines = [ln[1:] for ln in added if ln.startswith("+") and not ln.startswith("+++")]
-    for reason in added_open_rows_without_resolve(added_lines):
-        out.append(Violation(rc_path, 0, str(reason)))
-    return out
+# RC-470: check_rc_document_without_resolve retired (governance/retired_checks.md) -
+# backlog growth stays enforced by open_item_cap and stop_guard's RC-72 turn block.
 
 
 CHECKS = [
@@ -4863,10 +4348,12 @@ CHECKS = [
     ("no_synthetic_domain_fixtures_in_tests", check_no_synthetic_domain_fixtures_in_tests, True),
     ("no_swallowed_test_failures", check_no_swallowed_test_failures, True),  # printed failure must fail the run
     ("root_cause_log", check_root_cause_log, True),
-    ("five_why_recursive_lock", check_five_why_recursive_lock, True),  # end-to-end fixes, no patches ever
     ("find_it_fix_it", check_find_it_fix_it, True),  # 2026-08-21 operator law: fixable defect must be fixed or hard-blocked, never queued
-
-    ("recursive_five_why_front_loaded", check_recursive_five_why_front_loaded, True),  # UNIVERSAL: any code change ships a root-cause row
+    # RC-470 (operator-approved retirement, 2026-08-24): five_why_recursive_lock and
+    # recursive_five_why_front_loaded RETIRED - see governance/retired_checks.md for
+    # each retired check's equivalence. root_cause_log (why-chain + measured evidence
+    # on every defect row) and closed_rows_ship_their_code (closures point at real
+    # code) keep the substance; the retired checks policed ledger-prose grammar.
     ("adversarial_audit_test_lock", check_adversarial_audit_test_lock, True),  # RC-49: every fix ships a locking test (audit's output)
     ("rth_only_market_measurement", check_rth_only_market_measurement, True),  # RC-54: market-closed rows bias every statistic
     ("measured_claims_cite_evidence", check_measured_claims_cite_evidence, True),  # RC-56: a committed finding carries its reproduce command
@@ -4876,17 +4363,25 @@ CHECKS = [
     ("research_before_act", check_research_before_act, True),  # RC-203/RC-205 ULTIMATE LAW: named reference before commit
     ("domain_faucet_registry", check_domain_faucet_registry, True),  # RC-212: one faucet per DOMAIN; greeks only at bs_*
     ("phase2a_single_level_computation", check_phase2a_single_level_computation, True),  # Phase 2A: one computation + one materialization per (ticker, level_id, scope, generation)
-    ("rc_document_without_resolve", check_rc_document_without_resolve, True),  # RC-228/RC-230 LOCK-6: added OPEN rows must carry a resolve path
-    ("writer_no_drift", check_writer_no_drift, True),  # RC-232 LOCK-1: staged paths must come from the mission's resolved writer
-    # LOG LAW (RC-237) — ARMED under the PM GO of 2026-08-04T18:58Z, scope staged_lock_surface
-    # (governance/operator_go.json, granted_by cursor_pm). One defect ledger, one epistemic
-    # ledger, telemetry stays telemetry: a THIRD markdown work queue or an OVERDUE epistemic
-    # row now BLOCKS pre-commit. RC-238 records the window in which this line sat commented —
-    # a proven-but-unwired lock reads as enforced to anyone who only runs the tests.
-    ("log_law", check_log_law, True),
-    ("plus_player_law", check_plus_player_law, True),  # RC-205: attribute catalog complete + bound
-    ("plus_player_cursor_hooks", check_plus_player_cursor_hooks, True),  # RC-205/208: Cursor invokes same .py guards
-    ("honesty_guard_wired", check_honesty_guard_wired, True),  # RC-209: Stop honesty_guard.py present
+    # RC-470: rc_document_without_resolve RETIRED (governance/retired_checks.md) -
+    # backlog growth stays enforced by open_item_cap; same-day unfinished rows still
+    # block turn end (stop_guard RC-72).
+    # RC-470: writer_no_drift RETIRED (governance/retired_checks.md, operator ruling
+    # 2026-08-24: authority approval binds at MERGE). Measured before retiring: the
+    # commit hook never ran it (RC-406) and even clears ED_AGENT_ROLE; CI deliberately
+    # sets no role (RC-396) so it abstained there; it fired only in local verification
+    # shells. The durable, subject-independent protection for every who-is-in-charge
+    # file is .github/CODEOWNERS + require_code_owner_reviews + enforce_admins, both
+    # verified live. The in-process rail (writer_drift_lock via process_lock_guard at
+    # PreToolUse) is unchanged by this retirement.
+    # RC-470: log_law RETIRED (governance/retired_checks.md) - a third queue describing
+    # the same item stays blocked by no_governance_duplication, ledger schema by
+    # rc_log_rows_keep_schema, epistemic closure by unproven_register.
+    # RC-470: plus_player_law, plus_player_cursor_hooks and honesty_guard_wired RETIRED
+    # (governance/retired_checks.md) - roster demotions are caught by the delta-gate
+    # roster comparison + declared-retirement manifest; the wiring files
+    # (.claude/settings.json, .cursor/hooks.json) are CODEOWNERS-owned, so an unwiring
+    # cannot merge without operator approval; honesty_guard.py itself stays on Stop.
     ("find_prove_significance_substance", check_find_prove_significance_substance, True),  # RC-210: HLZ/DSR n_trials
     ("admission_evidence_resolves", check_admission_evidence_resolves, True),  # RC-210: SR 11-7 evidence paths
     ("purged_cv_research", check_purged_cv_research, True),  # RC-210: AFML no plain KFold
@@ -4929,9 +4424,9 @@ CHECKS = [
     ("rc_numeric_claims_cite_a_command", check_rc_numeric_claims_cite_a_command, True),
     # RC-319: numbers had to cite a command; a MECHANISM claim could say anything.
     ("rc_mechanism_claims_cite_a_source", check_rc_mechanism_claims_cite_a_source, True),
-    # RC-321: the depth rule measured how FAR a chain went, never whose action was at the
-    # bottom of it. Five levels ending on the operator's instruction is not bedrock.
-    ("five_why_reaches_bedrock", check_five_why_reaches_bedrock, True),
+    # RC-470: five_why_reaches_bedrock RETIRED with the five-why grammar family
+    # (governance/retired_checks.md) - it regex-judged chain-ending terminology; chain
+    # presence and depth stay enforced by root_cause_log.
     # RC-325 SP-01: one authorized production producer per canonical concept. ENFORCED
     # because an unregistered gate enforces nothing — it sat at zero registrations while
     # being reported as a lock.
@@ -5006,7 +4501,7 @@ _MAX_PRINT = 15  # cap advisory output; full count is always reported
 #: every check at full strength.
 RC_GRANDFATHER_CUTOFF = 227
 _GRANDFATHERED_ROW_CHECKS = frozenset({
-    "five_why_recursive_lock", "closed_rows_ship_their_code",
+    "closed_rows_ship_their_code",
     "verdicts_declare_their_power", "rc_numeric_claims_cite_a_command",
     "rc_citations_resolve", "root_cause_recurrence_declared",
     "fix_crosswalks_to_violated_lock",

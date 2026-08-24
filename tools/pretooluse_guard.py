@@ -28,14 +28,12 @@ Contract:
   * RC-186 mockup-before-code: Write/Edit of a surface listed in
     governance/ui_mockup_approvals.json is BLOCKED until the operator has approved a rendered
     mockup variant there (status='approved') — escape `# ui-mockup-ok: <reason>` for
-    non-redesign bug fixes, ED_UI_MOCKUP_LOCK=off for the operator.
-  * ED_PRETOOLUSE_GUARD=off disables it. That is deliberate and visible: an operator may switch it
-    off, an agent may not silently route around it.
+    non-redesign bug fixes.
+  * Architecture A (RC-450): ED_PRETOOLUSE_GUARD / ED_UI_MOCKUP_LOCK cannot disable this control.
 """
 from __future__ import annotations
 
 import json
-import os
 import subprocess
 import sys
 from pathlib import Path
@@ -300,8 +298,6 @@ def _block_unapproved_ui_redesign(rel: str, tool_input: dict) -> int | None:
 
 
 def main() -> int:
-    if os.environ.get("ED_PRETOOLUSE_GUARD", "").strip().lower() in ("off", "0", "false"):
-        return 0
     try:
         payload = json.load(sys.stdin)
     except (json.JSONDecodeError, ValueError):
@@ -354,33 +350,13 @@ def decide(payload: dict) -> int:
     if blocked is not None:
         return blocked
 
-    # RC-66 scope comes from the path authority. `rc66_exempt` is the compliance-lane
-    # question; the suffix test stays separate from `facts.production` on purpose — RC-66
-    # governs every production-suffix file in the tree, including scratchpad/, which is
-    # exempt from the PRODUCT surface but is not an RC-66 compliance lane.
-    if facts.rc66_exempt:
-        return 0
-    if not rel.endswith(PRODUCTION_SUFFIXES):
-        return 0
-    if _has_new_rc_row():
-        return 0
-
-    sys.stderr.write(
-        "BLOCKED by the front-loaded recursive-5-why law (RC-66).\n\n"
-        f"  You are editing PRODUCTION file: {rel}\n"
-        "  No new root-cause row exists in governance/root_cause_log.md.\n\n"
-        "The law is FRONT-LOADED (operator, non-negotiable): the INSTANT you find an issue you\n"
-        "open its RC row FIRST, recurse each cause to a named ROOT, then fix end-to-end. A row\n"
-        "written after the fix is retroactive paperwork, not analysis — and the fix is usually a\n"
-        "patch, which is separately banned.\n\n"
-        "Do this instead:\n"
-        "  1. Add a `| RC-<n> | OPEN | <today> | <due> | defect | (1)->(2)->(3)->(4)->(5) ROOT: ... | plan |`\n"
-        "     row to governance/root_cause_log.md (that file is never blocked).\n"
-        "  2. Then make this edit, and ship a test that locks it.\n\n"
-        "This mirrors check_recursive_five_why_front_loaded, but at EDIT time rather than commit\n"
-        "time — the whole continuum, backend and frontend.\n"
-    )
-    return 2                             # exit 2 = block the tool call
+    # RC-470: the RC-66 edit-time block (an RC row required before editing any
+    # production file - the edit-time mirror of check_recursive_five_why_front_loaded)
+    # is retired with that check - governance/retired_checks.md. Operator ruling
+    # 2026-08-24: feature-branch edits are autonomous; defect rows are still required
+    # for defects (root_cause_log at commit/CI) but ordinary work is not a defect.
+    # The RC-160 / RC-163 / RC-186 content gates above are unchanged.
+    return 0
 
 
 if __name__ == "__main__":

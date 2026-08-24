@@ -32,28 +32,28 @@ def _init_repo(tmp_path: Path) -> Path:
     return tmp_path
 
 
-def test_sole_writer_blocks_cursor_on_db():
-    msg = OPL.sole_writer_edit_violation("db.py", agent="cursor")
-    assert msg and (
-        "sole_writer" in msg or "PM-FIRST" in msg or "WRITER-DRIFT" in msg or "SOD_DRIFT" in msg
-    )
+def test_ordinary_product_needs_no_mission_and_no_writer(monkeypatch, tmp_path):
+    """RC-461: ordinary product work is autonomous for every assigned principal.
 
-
-def test_sole_writer_allows_writer_agent(monkeypatch, tmp_path):
-    # Pin the mission: the live pm_mission.json scopes the writer to the CURRENT mission's
-    # paths, so this permits-check must supply its own all-scope mission rather than
-    # inherit ambient state (same defect class as ambient ED_AGENT_ROLE).
+    No mission status, scope list, or persisted writer field can gate db.py. The
+    sole-writer / PM-mission edit gate that used to do so is deleted outright.
+    """
+    import tools.writer_drift_lock as WDL
     mission = tmp_path / "pm_mission.json"
-    mission.write_text(
-        '{"status": "active", "writer": "claude", "scope_paths": ["*"], "mission_id": "t"}',
-        encoding="utf-8",
-    )
     monkeypatch.setattr(OPL, "PM_MISSION_PATH", mission)
-    assert OPL.sole_writer_edit_violation("db.py", agent="claude") is None
-
-
-def test_sole_writer_allows_governance_process_files():
-    assert OPL.sole_writer_edit_violation("governance/sole_writer.json", agent="cursor") is None
+    monkeypatch.setattr(WDL, "PM_MISSION_PATH", mission)
+    for status in ("idle", "active", "ready_for_claude"):
+        mission.write_text(
+            '{"status": "%s", "pm": "operator", "writer": "claude", '
+            '"scope_paths": ["static/"], "mission_id": "t"}' % status,
+            encoding="utf-8",
+        )
+        for agent in ("cursor", "claude", "codex"):
+            # db.py is OUTSIDE scope_paths and the writer may be someone else: still open.
+            assert WDL.control_authority_violation("db.py", agent=agent) is None, (status, agent)
+            assert WDL.writer_drift_violations(["db.py"], agent=agent) == [], (status, agent)
+    assert not hasattr(OPL, "sole_writer_edit_violation")
+    assert not hasattr(OPL, "pm_mission_edit_violation")
 
 
 def test_index_worktree_mismatch_detected(tmp_path, monkeypatch):
@@ -163,13 +163,18 @@ def test_live_claim_requires_disk_only_token_when_disk_only(monkeypatch):
     assert not any("LIVE_ENFORCED" in x for x in ok)
 
 
-def test_pretooluse_hook_blocks_sole_writer_edit(monkeypatch):
-    # Pin the role: the block is for the NON-writer. Ambient env now declares the real
-    # agent (ED_AGENT_ROLE=claude in .claude/settings.json), so the test must not inherit it.
+def test_pretooluse_hook_permits_operator_selected_product_edit(monkeypatch, tmp_path):
+    """RC-454: leftover writer=claude must not veto cursor on ordinary product."""
     monkeypatch.setenv("ED_AGENT_ROLE", "cursor")
+    mission = tmp_path / "pm_mission.json"
+    mission.write_text(
+        '{"status": "active", "pm": "operator", "writer": "claude", "scope_paths": ["*"], "mission_id": "t"}',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(OPL, "PM_MISSION_PATH", mission)
     bad = PLG.pretooluse_block("Write", {"file_path": str(ROOT / "db.py")})
-    assert bad and any(
-        "sole_writer" in b or "PM-FIRST" in b or "WRITER-DRIFT" in b or "SOD_DRIFT" in b
+    assert not any(
+        "sole writer" in b.lower() or "WRITER-DRIFT" in b or "PM-FIRST" in b
         for b in bad
     )
 
@@ -180,7 +185,7 @@ def test_pretooluse_hook_permits_sole_writer_edit(monkeypatch, tmp_path):
     monkeypatch.setenv("ED_AGENT_ROLE", "claude")
     mission = tmp_path / "pm_mission.json"
     mission.write_text(
-        '{"status": "active", "writer": "claude", "scope_paths": ["*"], "mission_id": "t"}',
+        '{"status": "active", "pm": "operator", "writer": "claude", "scope_paths": ["*"], "mission_id": "t"}',
         encoding="utf-8",
     )
     monkeypatch.setattr(OPL, "PM_MISSION_PATH", mission)
@@ -188,33 +193,29 @@ def test_pretooluse_hook_permits_sole_writer_edit(monkeypatch, tmp_path):
     assert not [b for b in bad if "sole_writer" in b or "PM-FIRST" in b]
 
 
-def test_pm_mission_idle_blocks_product_edit(monkeypatch, tmp_path):
-    monkeypatch.setenv("ED_AGENT_ROLE", "claude")
-    monkeypatch.delenv("ED_PM_MISSION_GUARD", raising=False)
-    mission = tmp_path / "pm_mission.json"
-    mission.write_text('{"status": "idle", "writer": "claude", "scope_paths": ["*"]}', encoding="utf-8")
-    monkeypatch.setattr(OPL, "PM_MISSION_PATH", mission)
-    msg = OPL.pm_mission_edit_violation("db.py", agent="claude")
-    assert msg and "PM-FIRST" in msg and "idle" in msg
+def test_idle_mission_does_not_block_product_edit(monkeypatch, tmp_path):
+    """RC-461 INVERSE of the retired rule: an idle mission must NOT block product work.
 
-
-def test_pm_mission_active_allows_scoped_writer(monkeypatch, tmp_path):
+    This assertion is deliberately the opposite of the pre-RC-461 test. Gating ordinary
+    edits on mission status was the overbuilt half of Architecture A; the operator
+    requirement is that the coding AI works autonomously and only AUTHORITY is gated.
+    """
+    import tools.writer_drift_lock as WDL
     monkeypatch.setenv("ED_AGENT_ROLE", "claude")
     mission = tmp_path / "pm_mission.json"
     mission.write_text(
-        json.dumps(
-            {
-                "status": "active",
-                "writer": "claude",
-                "scope_paths": ["static/"],
-                "mission_id": "ui-test",
-            }
-        ),
+        '{"status": "idle", "pm": "operator", "writer": "claude", "scope_paths": ["*"]}',
         encoding="utf-8",
     )
     monkeypatch.setattr(OPL, "PM_MISSION_PATH", mission)
-    assert OPL.pm_mission_edit_violation("static/index.html", agent="claude") is None
-    assert OPL.pm_mission_edit_violation("db.py", agent="claude") is not None
+    monkeypatch.setattr(WDL, "PM_MISSION_PATH", mission)
+    bad = PLG.pretooluse_block("Write", {"file_path": str(ROOT / "db.py"),
+                                         "content": "# edit\n"})
+    assert not [b for b in bad if "PM-FIRST" in b], bad
+    # But an AUTHORITY file is still denied to the same agent.
+    denied = PLG.pretooluse_block("Write", {"file_path": str(ROOT / ".github" / "CODEOWNERS"),
+                                            "content": "x\n"})
+    assert any("control-authority" in b for b in denied), denied
 
 
 def test_reset_guard_blocks_destructive_git_on_product(monkeypatch, tmp_path):
@@ -254,16 +255,16 @@ def test_reset_guard_permits_safe_git(monkeypatch, tmp_path):
         assert not OPL.reset_guard_violations(cmd), f"reset guard false-fired on: {cmd}"
 
 
-def test_reset_guard_escapes(monkeypatch, tmp_path):
-    """LOCK-2 escapes: ED_RESET_GUARD=off and operator_go scope git_reset_product."""
+def test_reset_guard_escapes_do_not_disable(monkeypatch, tmp_path):
+    """Architecture A: ED_RESET_GUARD=off and operator_go git_reset_product still BLOCK."""
     go = tmp_path / "go.json"
     go.write_text('{"granted": true, "scope": ["git_reset_product"]}', encoding="utf-8")
     monkeypatch.setattr(OPL, "OPERATOR_GO_PATH", go)
     monkeypatch.delenv("ED_RESET_GUARD", raising=False)
-    assert not OPL.reset_guard_violations("git restore -- static/chart.html")
+    assert OPL.reset_guard_violations("git restore -- static/chart.html")
     go.write_text('{"granted": false, "scope": []}', encoding="utf-8")
     monkeypatch.setenv("ED_RESET_GUARD", "off")
-    assert not OPL.reset_guard_violations("git restore -- static/chart.html")
+    assert OPL.reset_guard_violations("git restore -- static/chart.html")
 
 
 def test_lock5_quiet_pass_required_blocks_complete_claim(monkeypatch, tmp_path):
@@ -291,15 +292,15 @@ def test_lock5_quiet_pass_required_blocks_complete_claim(monkeypatch, tmp_path):
 def test_measure_report_has_enforcement_hashes():
     rep = OPL.measure_report()
     assert "enforcement_hashes" in rep
-    assert "sole_writer" in rep
     assert "pm_mission" in rep
+    # RC-462: no role record is reported, because the repo stores no roles.
+    assert "sole_writer" not in rep
 
 
 def test_main_precommit_exits_zero_on_clean_repo(tmp_path, monkeypatch):
     repo = _init_repo(tmp_path)
     monkeypatch.chdir(repo)
     monkeypatch.setattr(OPL, "REPO", repo)
-    monkeypatch.setattr(OPL, "SOLE_WRITER_PATH", repo / "governance" / "sole_writer.json")
     monkeypatch.setattr(OPL, "OPERATOR_GO_PATH", repo / "governance" / "operator_go.json")
     rc = OPL.main(["--pre-commit"])
     assert rc == 0
