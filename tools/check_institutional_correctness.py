@@ -3426,8 +3426,8 @@ def check_ui_mockup_approval() -> list[Violation]:
     approved / escape / unlisted registry states.
 
     SIMPLICITY REHAB NOTE (2026-08-24): the audited cut list proposes retiring this gate
-    (equivalence: CODEOWNERS + PR review of static/ surfaces; the registry gates a completed
-    2026-08-02 project). Execution was classifier-denied this session — QUEUED FOR OPERATOR.
+    (the registry gates a completed 2026-08-02 project; PR review covers static/ surfaces).
+    Execution was classifier-denied this session — QUEUED FOR OPERATOR.
     """
     from tools.ui_mockup_lock import REGISTRY_REL, mockup_approval_violation
 
@@ -3512,9 +3512,9 @@ def ship_confirmation_violations(rel: str, staged_names: list) -> list[Violation
 
 # RC-470: the plus_player catalog checks (plus_player_law, plus_player_cursor_hooks)
 # and their callees are retired - governance/retired_checks.md. Roster demotions are
-# caught by the delta-gate roster comparison + declared-retirement manifest; the wiring
-# files are CODEOWNERS-owned (claude_cursor_guard_parity retired on that equivalence,
-# SIMPLICITY REHAB 2026-08-24).
+# caught by the delta-gate roster comparison + declared-retirement manifest; hook-wiring
+# changes are reviewed by the operator at merge (RC-475 — the CODEOWNERS equivalence the
+# retirement rows cited was superseded when the authority model was torn down).
 
 
 def check_find_prove_significance_substance() -> list[Violation]:
@@ -3661,9 +3661,10 @@ def check_decision_path_wired() -> list[Violation]:
 
 
 # claude_cursor_guard_parity RETIRED (declared governance/retired_checks.md 2026-08-24;
-# executed in the SIMPLICITY REHAB): both wiring files are CODEOWNERS-owned, so hook
-# parity is a merge-review property. The declared-but-still-enforced state this replaces
-# was itself the manifest lying — the defect class RC-468's seam exists to catch.
+# executed in the SIMPLICITY REHAB): hook parity is an operator merge-review property
+# (RC-475 superseded the CODEOWNERS equivalence the row cited). The
+# declared-but-still-enforced state this replaces was itself the manifest lying — the
+# defect class RC-468's seam exists to catch.
 
 
 def check_collect_datasheet_staged() -> list[Violation]:
@@ -3711,10 +3712,9 @@ def check_collect_datasheet_staged() -> list[Violation]:
     return out
 
 
-# RC-470: check_honesty_guard_wired retired (governance/retired_checks.md) - the two
-# wiring files are CODEOWNERS-owned so an unwiring cannot merge without operator
-# approval (claude_cursor_guard_parity retired on the same equivalence). The honesty
-# guard itself stays on Stop.
+# RC-470: check_honesty_guard_wired retired (governance/retired_checks.md) - an
+# unwiring of the hook files is reviewed by the operator at merge (RC-475 superseded
+# the CODEOWNERS equivalence the row cited). The honesty guard itself stays on Stop.
 
 
 #: RC-212 (operator law 2026-08-02: "tighten up the one faucet mechanical lock so this
@@ -3852,13 +3852,12 @@ def check_phase2a_single_level_computation() -> list[Violation]:
 # rc_log_rows_keep_schema and unproven_register.
 
 
-# RC-470: check_writer_no_drift retired (governance/retired_checks.md, operator ruling
-# 2026-08-24: authority approval binds at MERGE via CODEOWNERS +
-# require_code_owner_reviews + enforce_admins, verified live). Measured before
-# retiring: the commit hook never ran this check (RC-406) and clears ED_AGENT_ROLE;
-# CI deliberately sets no role (RC-396); it fired only in local verification shells.
-# The in-process rail (writer_drift_lock via process_lock_guard at PreToolUse) is
-# unchanged by this retirement.
+# RC-470: check_writer_no_drift retired (governance/retired_checks.md). Measured before
+# retiring: the commit hook never ran this check (RC-406); CI deliberately set no role
+# (RC-396); it fired only in local verification shells. 2026-08-24 teardown: the whole
+# writer/role machinery (writer_drift_lock, CODEOWNERS, ED_AGENT_ROLE) was then removed
+# with Architecture A — authority changes are approved by the operator's word in chat
+# (RC-475), with required CI as the machine gate at merge.
 
 
 # RC-470: check_rc_document_without_resolve retired (governance/retired_checks.md) -
@@ -3897,22 +3896,17 @@ CHECKS = [
     # RC-470: rc_document_without_resolve RETIRED (governance/retired_checks.md) -
     # backlog growth stays enforced by open_item_cap; same-day unfinished rows still
     # block turn end (stop_guard RC-72).
-    # RC-470: writer_no_drift RETIRED (governance/retired_checks.md, operator ruling
-    # 2026-08-24: authority approval binds at MERGE). Measured before retiring: the
-    # commit hook never ran it (RC-406) and even clears ED_AGENT_ROLE; CI deliberately
-    # sets no role (RC-396) so it abstained there; it fired only in local verification
-    # shells. The durable, subject-independent protection for every who-is-in-charge
-    # file is .github/CODEOWNERS + require_code_owner_reviews + enforce_admins, both
-    # verified live. The in-process rail (writer_drift_lock via process_lock_guard at
-    # PreToolUse) is unchanged by this retirement.
+    # RC-470: writer_no_drift RETIRED (governance/retired_checks.md). Measured before
+    # retiring: the commit hook never ran it (RC-406); CI deliberately set no role
+    # (RC-396); it fired only in local verification shells. The role machinery it
+    # policed was removed entirely in the 2026-08-24 Architecture A teardown.
     # RC-470: log_law RETIRED (governance/retired_checks.md) - a third queue describing
     # the same item stays blocked by no_governance_duplication, ledger schema by
     # rc_log_rows_keep_schema, epistemic closure by unproven_register.
     # RC-470: plus_player_law, plus_player_cursor_hooks and honesty_guard_wired RETIRED
     # (governance/retired_checks.md) - roster demotions are caught by the delta-gate
-    # roster comparison + declared-retirement manifest; the wiring files
-    # (.claude/settings.json, .cursor/hooks.json) are CODEOWNERS-owned, so an unwiring
-    # cannot merge without operator approval; honesty_guard.py itself stays on Stop.
+    # roster comparison + declared-retirement manifest; hook-wiring changes are
+    # operator-reviewed at merge (RC-475); honesty_guard.py itself stays on Stop.
     ("find_prove_significance_substance", check_find_prove_significance_substance, True),  # RC-210: HLZ/DSR n_trials
     ("admission_evidence_resolves", check_admission_evidence_resolves, True),  # RC-210: SR 11-7 evidence paths
     ("purged_cv_research", check_purged_cv_research, True),  # RC-210: AFML no plain KFold
@@ -3960,11 +3954,10 @@ CHECKS = [
     ("schwab_market_field_semantics", check_schwab_market_field_semantics, True),  # RC-440 M4/M5: NUM_* not order-count; exchange_quote_ts not a wall clock
     # REMOVED 2026-07-25 (operator: "i don't want you on separate instances"): the
     # agent_worktree_boundary check required ED_AGENT_ROLE to be set and blocked all
-    # commits from a single-instance workflow (fail-closed on unset role). Single
-    # working tree in EdWebConsole is the supported model again; the sibling -Claude
-    # worktree was removed. Dormant helpers (check_worktree_handoff.py,
-    # agent_worktree_policy.json, db_authority claude routing) remain inert — they only
-    # activate if ED_AGENT_ROLE is explicitly set — and can be fully purged later.
+    # commits from a single-instance workflow (fail-closed on unset role). 2026-08-24
+    # teardown: its dormant helpers (check_worktree_handoff.py,
+    # agent_worktree_policy.json, ED_AGENT_ROLE itself) were fully purged; db_authority
+    # keeps the ONE-DB property with no role fork.
     # ADVISORY (visible debt, driven to zero, then flipped to enforced — the ratchet):
     # RC-67: PROMOTED to directly ENFORCED for the same reason as no_fake_defaults — a test that
     # cannot fail on regression is not a test, and this was only blocking via the retired counter.

@@ -150,15 +150,5 @@ def test_the_timestamp_path_supplies_the_date_itself():
     assert market_session_from_ts_utc(fri) == "rth"
 
 
-# ─────────────────────────────────── the scope wildcard must not come back ────
-
-def test_the_mission_scope_is_not_a_wildcard():
-    """Cursor ruled `"*"` self-serving: it removed the exact blocker I had hit."""
-    import json
-
-    mission = json.loads((REPO / "governance" / "pm_mission.json").read_text(encoding="utf-8"))
-    scopes = mission.get("scope_paths") or []
-    assert scopes, "scope_paths is empty — that permits nothing or everything depending on caller"
-    assert "*" not in scopes and "all" not in {str(s).lower() for s in scopes}, (
-        "mission scope is a wildcard again; a whole-repo PROGRAM does not require an "
-        "unbounded implementation mission")
+# ── the mission-scope wildcard control was removed with governance/pm_mission.json
+#    (2026-08-24 Architecture A teardown): there is no mission file left to widen.

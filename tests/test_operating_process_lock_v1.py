@@ -2,7 +2,6 @@
 """Operating process lock — negative controls + quiet paths (RC-217)."""
 from __future__ import annotations
 
-import json
 import subprocess
 import sys
 from pathlib import Path
@@ -32,28 +31,15 @@ def _init_repo(tmp_path: Path) -> Path:
     return tmp_path
 
 
-def test_ordinary_product_needs_no_mission_and_no_writer(monkeypatch, tmp_path):
-    """RC-461: ordinary product work is autonomous for every assigned principal.
-
-    No mission status, scope list, or persisted writer field can gate db.py. The
-    sole-writer / PM-mission edit gate that used to do so is deleted outright.
-    """
-    import tools.writer_drift_lock as WDL
-    mission = tmp_path / "pm_mission.json"
-    monkeypatch.setattr(OPL, "PM_MISSION_PATH", mission)
-    monkeypatch.setattr(WDL, "PM_MISSION_PATH", mission)
-    for status in ("idle", "active", "ready_for_claude"):
-        mission.write_text(
-            '{"status": "%s", "pm": "operator", "writer": "claude", '
-            '"scope_paths": ["static/"], "mission_id": "t"}' % status,
-            encoding="utf-8",
-        )
-        for agent in ("cursor", "claude", "codex"):
-            # db.py is OUTSIDE scope_paths and the writer may be someone else: still open.
-            assert WDL.control_authority_violation("db.py", agent=agent) is None, (status, agent)
-            assert WDL.writer_drift_violations(["db.py"], agent=agent) == [], (status, agent)
-    assert not hasattr(OPL, "sole_writer_edit_violation")
-    assert not hasattr(OPL, "pm_mission_edit_violation")
+def test_edit_tools_are_not_gated_by_this_guard():
+    """2026-08-24 teardown: the role/mission/authority edit rails are GONE. The guard's
+    Edit branch must not block ordinary product edits — nor resurrect a role denylist."""
+    bad = PLG.pretooluse_block("Write", {"file_path": str(ROOT / "db.py"),
+                                         "content": "# edit\n"})
+    assert bad == [], bad
+    assert not hasattr(OPL, "claude_isolated_edit_violation")
+    assert not hasattr(OPL, "operator_go_granted")
+    assert not hasattr(OPL, "pm_mission_record")
 
 
 def test_index_worktree_mismatch_detected(tmp_path, monkeypatch):
@@ -84,60 +70,6 @@ def test_staged_checks_not_on_head_flags_delta(tmp_path, monkeypatch):
     assert v and "new_lock" in v[0]
 
 
-def test_operator_go_suppresses_staged_check_block(tmp_path, monkeypatch):
-    repo = _init_repo(tmp_path)
-    go = repo / "governance" / "operator_go.json"
-    go.write_text(
-        json.dumps({"granted": True, "scope": ["staged_lock_surface"]}),
-        encoding="utf-8",
-    )
-    checker = repo / "tools" / "check_institutional_correctness.py"
-    checker.write_text(
-        'CHECKS = [\n    ("brand_new", None, True),\n]\n',
-        encoding="utf-8",
-    )
-    subprocess.run(["git", "add", checker], cwd=repo, check=True, capture_output=True)
-    monkeypatch.setattr(OPL, "OPERATOR_GO_PATH", go)
-    assert OPL.operator_go_granted("staged_lock_surface")
-    assert OPL.commit_violations(repo) == [] or not any("brand_new" in x for x in OPL.commit_violations(repo))
-
-
-def test_operator_go_grant_does_not_leak_to_unrelated_scopes(tmp_path, monkeypatch):
-    """RC-402: a grant of staged_lock_surface must NOT permit every other scope.
-
-    This is the deny-side control the predicate never had. Before the fix,
-    `staged_lock_surface` in the grant made every scope query return True, which
-    silently disarmed reset_guard_violations("git_reset_product").
-    """
-    go = tmp_path / "operator_go.json"
-    go.write_text(
-        json.dumps({"granted": True, "scope": ["rc_status_vocabulary", "staged_lock_surface"]}),
-        encoding="utf-8",
-    )
-    monkeypatch.setattr(OPL, "OPERATOR_GO_PATH", go)
-    # ALLOW side: the two granted scopes resolve True.
-    assert OPL.operator_go_granted("staged_lock_surface")
-    assert OPL.operator_go_granted("rc_status_vocabulary")
-    # DENY side: scopes the operator never granted must be False.
-    assert not OPL.operator_go_granted("git_reset_product")
-    assert not OPL.operator_go_granted("bogus")
-    assert not OPL.operator_go_granted("all")
-
-
-def test_reset_guard_is_not_disarmed_by_the_staged_lock_grant(tmp_path, monkeypatch):
-    """RC-402: the concrete blast radius — LOCK-2 must still fire under this grant."""
-    go = tmp_path / "operator_go.json"
-    go.write_text(
-        json.dumps({"granted": True, "scope": ["rc_status_vocabulary", "staged_lock_surface"]}),
-        encoding="utf-8",
-    )
-    monkeypatch.setattr(OPL, "OPERATOR_GO_PATH", go)
-    monkeypatch.delenv("ED_RESET_GUARD", raising=False)
-    protected = OPL.PROTECTED_PATHS[0]
-    v = OPL.reset_guard_violations(f"git reset --hard HEAD -- {protected}")
-    assert v, "reset guard was waved through despite only a staged_lock_surface grant"
-
-
 def test_completion_claim_blocks_on_index_mismatch(tmp_path, monkeypatch):
     repo = _init_repo(tmp_path)
     checker = repo / "tools" / "check_institutional_correctness.py"
@@ -163,76 +95,12 @@ def test_live_claim_requires_disk_only_token_when_disk_only(monkeypatch):
     assert not any("LIVE_ENFORCED" in x for x in ok)
 
 
-def test_pretooluse_hook_permits_operator_selected_product_edit(monkeypatch, tmp_path):
-    """RC-454: leftover writer=claude must not veto cursor on ordinary product."""
-    monkeypatch.setenv("ED_AGENT_ROLE", "cursor")
-    mission = tmp_path / "pm_mission.json"
-    mission.write_text(
-        '{"status": "active", "pm": "operator", "writer": "claude", "scope_paths": ["*"], "mission_id": "t"}',
-        encoding="utf-8",
-    )
-    monkeypatch.setattr(OPL, "PM_MISSION_PATH", mission)
-    bad = PLG.pretooluse_block("Write", {"file_path": str(ROOT / "db.py")})
-    assert not any(
-        "sole writer" in b.lower() or "WRITER-DRIFT" in b or "PM-FIRST" in b
-        for b in bad
-    )
-
-
-def test_pretooluse_hook_permits_sole_writer_edit(monkeypatch, tmp_path):
-    # The named writer is NOT blocked on the same protected path (RC-217 negative control).
-    # Role AND mission both pinned — ambient env/mission state must not leak in.
-    monkeypatch.setenv("ED_AGENT_ROLE", "claude")
-    mission = tmp_path / "pm_mission.json"
-    mission.write_text(
-        '{"status": "active", "pm": "operator", "writer": "claude", "scope_paths": ["*"], "mission_id": "t"}',
-        encoding="utf-8",
-    )
-    monkeypatch.setattr(OPL, "PM_MISSION_PATH", mission)
-    bad = PLG.pretooluse_block("Write", {"file_path": str(ROOT / "db.py")})
-    assert not [b for b in bad if "sole_writer" in b or "PM-FIRST" in b]
-
-
-def test_idle_mission_does_not_block_product_edit(monkeypatch, tmp_path):
-    """RC-461 INVERSE of the retired rule: an idle mission must NOT block product work.
-
-    This assertion is deliberately the opposite of the pre-RC-461 test. Gating ordinary
-    edits on mission status was the overbuilt half of Architecture A; the operator
-    requirement is that the coding AI works autonomously and only AUTHORITY is gated.
-    """
-    import tools.writer_drift_lock as WDL
-    monkeypatch.setenv("ED_AGENT_ROLE", "claude")
-    mission = tmp_path / "pm_mission.json"
-    mission.write_text(
-        '{"status": "idle", "pm": "operator", "writer": "claude", "scope_paths": ["*"]}',
-        encoding="utf-8",
-    )
-    monkeypatch.setattr(OPL, "PM_MISSION_PATH", mission)
-    monkeypatch.setattr(WDL, "PM_MISSION_PATH", mission)
-    bad = PLG.pretooluse_block("Write", {"file_path": str(ROOT / "db.py"),
-                                         "content": "# edit\n"})
-    assert not [b for b in bad if "PM-FIRST" in b], bad
-    # But an AUTHORITY file is still denied to the same agent.
-    denied = PLG.pretooluse_block("Write", {"file_path": str(ROOT / ".github" / "CODEOWNERS"),
-                                            "content": "x\n"})
-    assert any("control-authority" in b for b in denied), denied
-
-
 def test_reset_guard_blocks_destructive_git_on_product(monkeypatch, tmp_path):
     """LOCK-2 (RC-231): soft tree-destructive git against product scope BLOCKS.
 
-    RC-252 pins PM_MISSION_PATH to an EMPTY scope. This test used to leave it pointed at the
-    live mission file, so it asserted the guard AND today's configuration together — and passed
-    for weeks only because the missions of those weeks happened to name these paths. With an
-    empty mission, the only thing that can satisfy it is the guard's own static inventory.
-    """
+    The guard's own static inventory (PRODUCT_WIPE_PROTECTED) is the only thing that can
+    satisfy it — no mission scope, no grant file (both gone, 2026-08-24 teardown)."""
     monkeypatch.delenv("ED_RESET_GUARD", raising=False)
-    go = tmp_path / "go.json"
-    go.write_text('{"granted": false, "scope": []}', encoding="utf-8")
-    monkeypatch.setattr(OPL, "OPERATOR_GO_PATH", go)
-    mission = tmp_path / "mission.json"
-    mission.write_text('{"mission_id": "empty", "scope_paths": []}', encoding="utf-8")
-    monkeypatch.setattr(OPL, "PM_MISSION_PATH", mission)
     for cmd in ("git restore -- static/chart.html",
                 "git checkout -- server.py",
                 "git restore -- math_levels.py",
@@ -246,23 +114,16 @@ def test_reset_guard_blocks_destructive_git_on_product(monkeypatch, tmp_path):
 def test_reset_guard_permits_safe_git(monkeypatch, tmp_path):
     """LOCK-2 negative control: index-only and read-only git stays legal."""
     monkeypatch.delenv("ED_RESET_GUARD", raising=False)
-    go = tmp_path / "go.json"
-    go.write_text('{"granted": false, "scope": []}', encoding="utf-8")
-    monkeypatch.setattr(OPL, "OPERATOR_GO_PATH", go)
     for cmd in ("git status", "git log --oneline -3",
                 "git restore --staged governance/root_cause_log.md",
                 "git stash list", "git checkout -b feature/x"):
         assert not OPL.reset_guard_violations(cmd), f"reset guard false-fired on: {cmd}"
 
 
-def test_reset_guard_escapes_do_not_disable(monkeypatch, tmp_path):
-    """Architecture A: ED_RESET_GUARD=off and operator_go git_reset_product still BLOCK."""
-    go = tmp_path / "go.json"
-    go.write_text('{"granted": true, "scope": ["git_reset_product"]}', encoding="utf-8")
-    monkeypatch.setattr(OPL, "OPERATOR_GO_PATH", go)
+def test_reset_guard_escapes_do_not_disable(monkeypatch):
+    """RC-450: ED_RESET_GUARD=off must not disarm the wipe block."""
     monkeypatch.delenv("ED_RESET_GUARD", raising=False)
     assert OPL.reset_guard_violations("git restore -- static/chart.html")
-    go.write_text('{"granted": false, "scope": []}', encoding="utf-8")
     monkeypatch.setenv("ED_RESET_GUARD", "off")
     assert OPL.reset_guard_violations("git restore -- static/chart.html")
 
@@ -292,16 +153,16 @@ def test_lock5_quiet_pass_required_blocks_complete_claim(monkeypatch, tmp_path):
 def test_measure_report_has_enforcement_hashes():
     rep = OPL.measure_report()
     assert "enforcement_hashes" in rep
-    assert "pm_mission" in rep
-    # RC-462: no role record is reported, because the repo stores no roles.
+    # 2026-08-24 teardown: no role/GO/mission records — the repo stores none of them.
     assert "sole_writer" not in rep
+    assert "pm_mission" not in rep
+    assert "operator_go" not in rep
 
 
 def test_main_precommit_exits_zero_on_clean_repo(tmp_path, monkeypatch):
     repo = _init_repo(tmp_path)
     monkeypatch.chdir(repo)
     monkeypatch.setattr(OPL, "REPO", repo)
-    monkeypatch.setattr(OPL, "OPERATOR_GO_PATH", repo / "governance" / "operator_go.json")
     rc = OPL.main(["--pre-commit"])
     assert rc == 0
 
@@ -343,49 +204,6 @@ def test_rc234_pipe_ok_escape_allows():
 def test_rc234_live_path_wired_into_bash_branch():
     src = (Path(PLG.__file__)).read_text(encoding="utf-8")
     assert "commit_pipe_violations" in src
-
-
-# ---------------------------------------------------------------------------
-# RC-241 — a commit that CLAIMS the GO was closed must actually ship it closed.
-# I reported "operator_go.json closed back to false in this commit" while the
-# committed blob carried granted=true; the PM caught it, no lock did.
-# ---------------------------------------------------------------------------
-
-def _repo_with_staged_go(tmp_path: Path, granted: bool) -> Path:
-    repo = _init_repo(tmp_path)
-    gov = repo / "governance"
-    gov.mkdir(exist_ok=True)
-    (gov / "operator_go.json").write_text(
-        json.dumps({"granted": granted, "scope": [], "note": "fixture"}), encoding="utf-8")
-    subprocess.run(["git", "add", "governance/operator_go.json"], cwd=str(repo), check=True)
-    return repo
-
-
-def test_rc241_claim_while_go_still_granted_blocks(tmp_path):
-    repo = _repo_with_staged_go(tmp_path, granted=True)
-    bad = OPL.go_closeout_violations(
-        "Landed the thing. GO consumed; operator_go closed back to false per protocol.", repo)
-    assert bad and bad[0].startswith("GO_CLOSEOUT:")
-
-
-def test_rc241_claim_with_go_actually_closed_allows(tmp_path):
-    repo = _repo_with_staged_go(tmp_path, granted=False)
-    assert OPL.go_closeout_violations(
-        "Landed the thing. GO consumed; operator_go closed back to false per protocol.",
-        repo) == []
-
-
-def test_rc241_no_claim_leaves_an_open_go_alone(tmp_path):
-    """Leaving a GO open without saying otherwise is a PM process matter, not a lie —
-    this lock only judges the CLAIM against the artifact."""
-    repo = _repo_with_staged_go(tmp_path, granted=True)
-    assert OPL.go_closeout_violations("Ordinary landing with no claim about the gate.",
-                                      repo) == []
-
-
-def test_rc241_live_path_wired_into_the_commit_branch():
-    src = (Path(PLG.__file__)).read_text(encoding="utf-8")
-    assert "go_closeout_violations" in src
 
 
 def test_rc438_process_start_epoch_reads_via_psutil_not_powershell():

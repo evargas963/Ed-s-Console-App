@@ -290,8 +290,8 @@ def test_lock_disable_env_is_a_blocked_action():
 def test_gate_screams_when_registry_is_unparseable(tmp_path, monkeypatch):
     """Clause 1 of check ui_mockup_approval: a deleted/corrupt registry must FAIL the gate,
     never silently gate nothing (self-audit finding 2026-08-02). SIMPLICITY REHAB note:
-    this gate's retirement is proposed in the audited cut list (equivalence: CODEOWNERS +
-    PR review of static/); execution was classifier-denied 2026-08-24 — operator to run."""
+    this gate's retirement is proposed in the audited cut list (PR review covers static/);
+    execution was classifier-denied 2026-08-24 — operator to run."""
     import tools.check_institutional_correctness as cic
     (tmp_path / "governance").mkdir()
     (tmp_path / REGISTRY_REL).write_text("{ not json", encoding="utf-8")

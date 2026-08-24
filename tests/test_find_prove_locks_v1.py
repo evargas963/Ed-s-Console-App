@@ -102,8 +102,8 @@ def test_decision_path_wired_live():
 def test_claude_cursor_guard_parity_is_retired():
     """SIMPLICITY REHAB 2026-08-24: the parity check was DECLARED retired
     (governance/retired_checks.md, 2026-08-24 row) yet stayed registered — the manifest
-    lied. Both hook files are CODEOWNERS-owned, so guard-wiring parity is a merge-review
-    property. This pin keeps the retirement executed: a resurrection must delete it."""
+    lied. Guard-wiring parity is an operator merge-review property (RC-475).
+    This pin keeps the retirement executed: a resurrection must delete it."""
     import tools.check_institutional_correctness as cic
     import tools.find_prove_locks as fpl
 

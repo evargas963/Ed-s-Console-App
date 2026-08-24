@@ -1,9 +1,10 @@
-# institutional-synthetic-ok: inject leftover writer metadata + env/grant payloads to prove
-# Architecture A rejects the actual prohibited bypass actions (RC-450 / RC-454).
-"""Architecture A — mandatory controls are not subject-disableable.
+"""Guard bypass class — mandatory controls are not subject-disableable (RC-450/RC-454).
 
-These tests attempt the prohibited action and require the real boundary to reject it.
-A function-exists assertion is not enough.
+Carried forward from the Architecture A battery when the role/authority machinery was
+torn down (operator, 2026-08-24): the ROLES are gone, but the property that an acting
+agent cannot switch off its own guards is not role machinery — it is what makes the
+remaining small guard surface real. These tests attempt the prohibited action and
+require the real boundary to reject it; a function-exists assertion is not enough.
 """
 from __future__ import annotations
 
@@ -13,27 +14,14 @@ import subprocess
 import sys
 from pathlib import Path
 
-import pytest
-
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 import tools.operator_law_guard as G  # noqa: E402
-import tools.writer_drift_lock as WDL  # noqa: E402
 
-_MISSION = {
-    "status": "active",
-    "writer": "claude",
-    "pm": "operator",
-    "auditor": "cursor",
-    "mission_id": "arch-a-neg-v1",
-    "scope_paths": ["static/chart.html", "server.py", "tools/", "tests/"],
-}
-_SOLE = {"writer": "claude", "pm": "operator", "auditor": "cursor"}
-
+#: Guards whose blocking behaviour must not carry an ED_* env off-switch.
 _MATERIAL_GUARD_FILES = (
-    "tools/writer_drift_lock.py",
     "tools/operating_process_lock.py",
     "tools/process_lock_guard.py",
     "tools/pretooluse_guard.py",
@@ -41,7 +29,6 @@ _MATERIAL_GUARD_FILES = (
     "tools/proof_only_guard.py",
     "tools/honesty_guard.py",
     "tools/operator_law_guard.py",
-    "tools/rc_resolve_lock.py",
     "tools/pm_verify_lock.py",
     "tools/ui_mockup_lock.py",
 )
@@ -69,70 +56,6 @@ def _body_disables(body: list[ast.stmt]) -> bool:
     return False
 
 
-def test_stale_writer_cannot_block_operator_selected_product_work():
-    msgs = WDL.writer_drift_violations(
-        ["server.py"], agent="cursor", mission=_MISSION, sole_writer=_SOLE
-    )
-    assert msgs == []
-
-
-@pytest.mark.parametrize("value", ["off", "0", "false", "OFF", "False", " off ", "FALSE"])
-def test_writer_drift_env_disable_still_blocks_rails(value, monkeypatch):
-    monkeypatch.setenv("ED_WRITER_DRIFT_GUARD", value)
-    msgs = WDL.writer_drift_violations(
-        ["tools/writer_drift_lock.py"], agent="cursor", mission=_MISSION, sole_writer=_SOLE
-    )
-    assert msgs, f"ED_WRITER_DRIFT_GUARD={value!r} disabled the control"
-
-
-def test_assigned_writer_cannot_rewrite_the_writer_guard():
-    msgs = WDL.writer_drift_violations(
-        ["tools/writer_drift_lock.py"], agent="claude", mission=_MISSION, sole_writer=_SOLE
-    )
-    assert msgs and any("control-authority" in m for m in msgs)
-
-
-def test_assigned_writer_works_without_disabling_any_guard(monkeypatch):
-    monkeypatch.delenv("ED_WRITER_DRIFT_GUARD", raising=False)
-    monkeypatch.delenv("ED_PM_MISSION_GUARD", raising=False)
-    for agent in ("claude", "cursor"):
-        msgs = WDL.writer_drift_violations(
-            ["server.py"], agent=agent, mission=_MISSION, sole_writer=_SOLE
-        )
-        assert msgs == [], agent
-
-
-def test_self_set_writer_does_not_unlock_rails():
-    """RC-461: self-assignment in a repo JSON is inert; the rails stay shut.
-
-    The agent may write anything it likes into the coordination file - including naming
-    itself writer and waving a '# sod-role-ok' note at it - and no rail opens, because
-    authority is never read from the tree.
-    """
-    assert WDL.control_authority_violation(
-        "governance/sole_writer.json", agent="cursor") is None
-    assert WDL.control_authority_violation("tools/writer_drift_lock.py", agent="cursor")
-    assert WDL.control_authority_violation(".claude/settings.json", agent="cursor")
-    assert WDL.control_authority_violation("governance/operator_grants.json", agent="cursor")
-
-
-def test_cursor_edit_ok_json_cannot_authorize_rails_rewrite():
-    msgs = WDL.writer_drift_violations(
-        ["server.py"],
-        agent="cursor",
-        mission=_MISSION,
-        sole_writer={**_SOLE, "cursor_edit_ok": True},
-    )
-    assert msgs == []
-    rails = WDL.writer_drift_violations(
-        ["tools/writer_drift_lock.py"],
-        agent="cursor",
-        mission=_MISSION,
-        sole_writer={**_SOLE, "cursor_edit_ok": True},
-    )
-    assert rails and any("control-authority" in m for m in rails)
-
-
 def test_git_commit_no_verify_blocks():
     out = G.bash_violations("git commit --no-verify -m x", [], payload_cwd=str(ROOT))
     assert any("disables a mechanical lock" in v for v in out), out
@@ -150,12 +73,13 @@ def test_hooks_path_bypass_blocks():
     assert any("disables a mechanical lock" in v for v in out), out
 
 
-def test_grant_file_cannot_authorize_no_verify():
+def test_no_grant_machinery_can_authorize_no_verify():
+    """The operator-grants file is GONE with Architecture A; no repo artifact may
+    resurrect a no-verify authorization path inside the guard."""
     src = (ROOT / "tools" / "operator_law_guard.py").read_text(encoding="utf-8")
     assert "_no_verify_grant_covers" not in src
-    assert "git show HEAD:governance/operator_grants.json" not in src
-    grants = json.loads((ROOT / "governance" / "operator_grants.json").read_text(encoding="utf-8"))
-    assert grants.get("grants") == {}
+    assert "operator_grants.json" not in src
+    assert not (ROOT / "governance" / "operator_grants.json").exists()
     out = G.bash_violations("git commit --no-verify -m x", [], payload_cwd=str(ROOT))
     assert any("disables a mechanical lock" in v for v in out), out
 
@@ -164,7 +88,7 @@ def test_hook_entrypoint_rejects_no_verify_with_guard_env_off(monkeypatch):
     """Attempt the real hook process, not a helper-exists check."""
     monkeypatch.setenv("ED_OPERATOR_LAW_GUARD", "off")
     payload = json.dumps({
-        "session_id": "arch-a",
+        "session_id": "bypass-class",
         "tool_name": "Bash",
         "tool_input": {"command": "git commit --no-verify -m x"},
         "cwd": str(ROOT),
@@ -185,7 +109,6 @@ def test_required_ci_does_not_honor_guard_env():
     hardening = (ROOT / ".github" / "workflows" / "hardening.yml").read_text(encoding="utf-8")
     pytest_ci = (ROOT / ".github" / "workflows" / "pytest.yml").read_text(encoding="utf-8")
     for src, name in ((hardening, "hardening.yml"), (pytest_ci, "pytest.yml")):
-        assert "ED_WRITER_DRIFT_GUARD" not in src, name
         assert "ED_OPERATOR_LAW_GUARD=off" not in src, name
         assert "commit --no-verify" not in src, name
     assert "pytest-full" in pytest_ci

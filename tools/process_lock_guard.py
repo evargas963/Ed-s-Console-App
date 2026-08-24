@@ -1,7 +1,10 @@
-"""Front-end hook for operating_process_lock (RC-217 / RC-226).
+"""Front-end hook for operating_process_lock (RC-217).
 
 Runs on PreToolUse (Edit/Write/StrReplace/Bash) and Stop. Exit 2 BLOCKS.
-Architecture A (RC-450): ED_PROCESS_LOCK_GUARD cannot disable this control.
+No env kill-switch: ED_PROCESS_LOCK_GUARD cannot disable this control (RC-450).
+2026-08-24 teardown: the role/authority rails (writer_drift_lock, isolated-worktree
+boundary, mission gating, GO closeout) are gone with Architecture A — what remains is
+process integrity: index parity, LIVE-vs-DISK, destructive-git and piped-commit blocks.
 """
 from __future__ import annotations
 
@@ -27,80 +30,14 @@ _EDIT_TOOLS = (
 )
 
 
-def _tool_new_text(tool_input: dict) -> str:
-    chunks: list[str] = []
-    for key in ("content", "new_string"):
-        v = tool_input.get(key)
-        if isinstance(v, str) and v:
-            chunks.append(v)
-    edits = tool_input.get("edits")
-    if isinstance(edits, list):
-        for ed in edits:
-            if isinstance(ed, dict):
-                ns = ed.get("new_string")
-                if isinstance(ns, str) and ns:
-                    chunks.append(ns)
-    return "\n".join(chunks)
-
-
-def _rel(fp: str) -> str:
-    return OPL._rel(fp)
-
-
-def _edit_path(tool_input: dict) -> str:
-    """Cursor may pass file_path or path depending on tool."""
-    fp = tool_input.get("file_path") or tool_input.get("path") or ""
-    return str(fp) if fp else ""
-
-
 def pretooluse_block(tool: str, tool_input: dict) -> list[str]:
     out: list[str] = []
-    try:
-        import tools.writer_drift_lock as WDL
-    except ImportError:
-        import writer_drift_lock as WDL  # type: ignore
-    if tool in _EDIT_TOOLS:
-        fp = _edit_path(tool_input)
-        if fp:
-            rel = _rel(fp)
-            # Isolated-worktree boundary (operator 2026-08-20): claude-role edits inside the
-            # PRODUCTION (primary) checkout are BLOCKED; Claude edits only its -Claude worktree.
-            iso = OPL.claude_isolated_edit_violation(fp)
-            if iso:
-                out.append(iso)
-            # THE authority rule (RC-462): an acting AI may not edit the files that
-            # decide who is in charge. There is no second, role-based denylist.
-            auth = WDL.control_authority_violation(rel)
-            if auth:
-                out.append(auth)
-            # RC-461: the off-repo PM-authority file is gone, so its delete/write
-            # validators are gone with it. governance/pm_mission.json is ordinary
-            # COORDINATION metadata - it grants nothing, so writing it needs no validator.
-            new_text = _tool_new_text(tool_input)
-            # LOCK-7 (RC-232): assigned principals creating NEW governance mandate prose
-            # while a mission runs is process-md theater unless explicitly waived. The
-            # mission is read from coordination metadata, never from authority.
-            if (rel.startswith("governance/") and rel.endswith((".md", ".mdc"))
-                    and not (REPO / rel).exists()
-                    and WDL.current_agent_role()
-                    and WDL.mission_in_progress(OPL.pm_mission_record())
-                    and "# process-doc-ok:" not in (new_text or "")):
-                out.append(
-                    f"SOD_DRIFT: new governance mandate file {rel} — prose is never a lock "
-                    f"(LOCK-7/RC-232); encode a .py BLOCK or add '# process-doc-ok: <reason>'."
-                )
-        # LOCK-4 (RC-232): unhealed drift denials block further writes until the RC exists.
-        out.extend(WDL.self_heal_owed_violations())
-        if out:
-            WDL.record_sod_drift([m for m in out if m.startswith("SOD_DRIFT:")])
     if tool in ("Bash", "PowerShell", "Shell"):
         cmd = tool_input.get("command") or ""
         if re.search(r"\bgit\s+commit\b", cmd, re.I):
             out.extend(OPL.commit_violations())
             # RC-234: piped commits mask hook failures as exit 0 — block BEFORE it runs.
             out.extend(OPL.commit_pipe_violations(cmd))
-            # RC-241: a message claiming the GO was closed must ship it closed.
-            out.extend(OPL.go_closeout_violations(cmd))
         # LOCK-2 (RC-231): the tree-destructive git CLASS blocks BEFORE the tree is touched —
         # three 2026-08-03 wipes used soft forms the old --hard-literal ban never matched.
         out.extend(OPL.reset_guard_violations(cmd))
@@ -153,9 +90,9 @@ def main() -> int:
     if not bad:
         return 0
     sys.stderr.write(
-        "BLOCKED by operating process lock (RC-217/RC-226 / AGENT_OPERATING_PROCESS_V1).\n\n"
+        "BLOCKED by operating process lock (RC-217 / AGENT_OPERATING_PROCESS_V1).\n\n"
         + "".join(f"  {b}\n" for b in bad)
-        + "\nSee governance/AGENT_OPERATING_PROCESS_V1.md, tools/writer_drift_lock.py, "
+        + "\nSee governance/AGENT_OPERATING_PROCESS_V1.md, "
         + "tools/operating_process_lock.py --measure\n"
     )
     return 2
