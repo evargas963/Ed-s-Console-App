@@ -408,15 +408,19 @@ def test_rc345_relative_volume_variants_are_distinct_and_fail_closed() -> None:
     # named consumer; no consumer accepts a different RVOL semantic:
     #   volume_ratio          -> ML feature      feats["volume_ratio"] = fk_volume_ratio(...)
     #   part.relative_volume  -> signal feature  out["part.relative_volume"]
-    #   rvol                  -> order-flow read  _compute_rvol -> rvol readiness
+    #   rvol                  -> order-flow read  _compute_rvol -> "rvol" payload primitive
+    #     (the readiness composite that consumed rvol is RETIRED, mission TRUTH_V1 RC-473/474;
+    #      rvol stays an emitted primitive with an explicit unavailable reason)
     mlt = _read("ml_train.py")
     assert 'feats["volume_ratio"] = fk_volume_ratio(' in mlt, (
         "the ML feature consumer must take volume_ratio from fk_volume_ratio (F12/RC-345)")
     assert 'part.relative_volume' not in mlt, (
         "the ML feature path must not consume the signal-layer RVOL variant (F12/RC-345)")
     ofe = _read("order_flow_engine.py")
-    assert "_compute_rvol(data)" in ofe and "rvol > OF_RVOL_READINESS_OK" in ofe, (
-        "order-flow readiness must consume its own session-vs-daily rvol (F12/RC-345)")
+    assert "_compute_rvol(data)" in ofe and '"rvol": rvol' in ofe, (
+        "order-flow must emit its own session-vs-daily rvol as a primitive (F12/RC-345)")
+    assert "OF_RVOL_READINESS_OK" not in ofe, (
+        "the retired readiness composite must not reappear as an rvol consumer (RC-474)")
     assert "volume_ratio" not in ofe and "part.relative_volume" not in ofe, (
         "order-flow must not consume the other RVOL variants (F12/RC-345)")
 

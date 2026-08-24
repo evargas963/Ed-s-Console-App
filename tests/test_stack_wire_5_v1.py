@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import inspect
-import re
 
 import order_flow_engine as ofe
 import order_flow_live_state as ofls
@@ -48,32 +47,33 @@ def test_order_flow_live_state_rth_actually_behaves_at_the_boundaries(monkeypatc
     assert _at(2026, 8, 8, 12, 0) is False, "Saturday is never RTH regardless of clock"
 
 
-def test_order_flow_engine_composite_constants_exist_and_used():
-    assert ofe.OF_COMPOSITE_WEIGHT_BOOK == 0.25
-    assert ofe.OF_DIRECTION_BULLISH_THRESHOLD == 0.15
-    assert ofe.OF_COMPOSITE_MIN_LEGS == 2
-
+def test_order_flow_composite_constants_and_producers_are_retired():
+    # RC-474: the composite score/verdict is retired; its producers and now-unused weight/threshold
+    # constants were deleted. Nothing may reconstruct the unvalidated composite.
+    for c in ("OF_COMPOSITE_WEIGHT_BOOK", "OF_COMPOSITE_WEIGHT_TAPE", "OF_COMPOSITE_WEIGHT_CUM_DELTA",
+              "OF_COMPOSITE_WEIGHT_OPTIONS", "OF_COMPOSITE_MIN_LEGS", "OF_DIRECTION_BULLISH_THRESHOLD",
+              "OF_DIRECTION_BEARISH_THRESHOLD"):
+        assert not hasattr(ofe, c), f"retired composite constant {c} must be deleted"
     body = inspect.getsource(ofe)
-    # STACK-WIRE-5-CAND-TEST-SLICE-TIGHTEN fix: cover the full _compute_order_flow_score
-    # body (not just the ~4 closing lines between min_present= and def _direction).
-    tail = body[
-        body.index("def _compute_order_flow_score") : body.index("def _direction")
-    ]
-    banned = [
-        r"(?<![\w.])0\.25(?![\w.])",
-        r"(?<![\w.])0\.20(?![\w.])",
-        r"(?<![\w.])0\.15(?![\w.])",
-        r"(?<![\w.])0\.05(?![\w.])",
-    ]
-    for pat in banned:
-        assert re.search(pat, tail) is None, f"literal still in _compute_order_flow_score: {pat}"
+    assert "def _compute_order_flow_score" not in body
+    assert "def _direction" not in body
+    assert "def _readiness" not in body
 
 
-def test_call_engine_consumes_order_flow_direction_not_second_score():
+def test_order_flow_direction_is_withheld_from_the_decision_vote():
+    """TRUTH_V1: order_flow_direction is the sign of an UNVALIDATED composite (weights/thresholds
+    never fit or OOS-validated; two magnitude-as-direction legs removed). Per the repo's own rule,
+    a signal with no out-of-sample evidence may not influence the decision, so call_engine casts a
+    neutral order-flow vote. This locks that the direction->±1 vote is not silently reinstated, and
+    that call_engine still derives no second OF score."""
     import call_engine
 
     src = inspect.getsource(call_engine.compute_call)
-    assert "order_flow_direction" in src
+    # the vote is hard-neutralized (withheld), not mapped from direction
+    assert "of_vote = 0" in src
+    assert 'of_vote = 1 if' not in src
+    assert "WITHHELD" in src
+    # and call_engine still never re-derives an order-flow score of its own
     assert "_compute_order_flow_score" not in src
     assert "OrderFlowEngine" not in src
 
@@ -100,8 +100,9 @@ def test_order_flow_engine_residual_magics_named():
     assert ofe.OF_BOOK_DEPTH_TOP == 1
     assert ofe.OF_BOOK_DEPTH_SHALLOW == 3
     assert ofe.OF_BOOK_DEPTH_DEEP == 5
-    assert ofe.OF_RVOL_NEUTRAL_CENTER == 1.0
     assert ofe.OF_WEIGHTED_MEAN_DEFAULT_MIN_PRESENT == 2
+    # RC-474: OF_RVOL_NEUTRAL_CENTER belonged to the retired composite and is deleted.
+    assert not hasattr(ofe, "OF_RVOL_NEUTRAL_CENTER")
 
     # _compute_institutional_flow_proxy and OrderFlowEngine.compute use the named depths,
     # not bare integers.
@@ -126,13 +127,11 @@ def test_order_flow_engine_residual_magics_named():
     assert "_compute_book_imbalance(data, 3)" not in src_compute
     assert "_compute_book_imbalance(data, 5)" not in src_compute
 
-    # _compute_order_flow_score uses OF_RVOL_NEUTRAL_CENTER (not bare 1.0) for the rvol term.
+    # RC-474: the composite score/direction producers are RETIRED (deleted), so their source bodies
+    # no longer exist — nothing can reintroduce a magnitude-as-direction leg.
     body = inspect.getsource(ofe)
-    score_body = body[
-        body.index("def _compute_order_flow_score") : body.index("def _direction")
-    ]
-    assert "OF_RVOL_NEUTRAL_CENTER" in score_body
-    assert "(rvol - 1.0)" not in score_body
+    assert "def _compute_order_flow_score" not in body
+    assert "def _direction" not in body
 
     # _weighted_mean_present default uses the named constant, not bare 2.
     wm_src = inspect.getsource(ofe._weighted_mean_present)

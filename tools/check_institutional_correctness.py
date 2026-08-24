@@ -311,6 +311,131 @@ def check_no_terminal_null() -> list[Violation]:
     return out
 
 
+# RC-470: check_five_why_recursive_lock retired with its helper (_five_why_lock_violations,
+# governance/retired_checks.md); check_root_cause_log + closed_rows_ship_their_code keep the
+# substance. The FIND IT → FIX IT lock below post-dates that census and is NOT retired.
+
+
+# ── FIND IT → FIX IT (operator law 2026-08-21, RC-472; corrected RC-473) ──────────────────────
+# DISPOSITION-DRIVEN, not vocabulary-driven (review DEFECTs 1/2/6): the authoritative active-mission
+# defect state is the structured ledger governance/active_defects.json. Prose RC `status` is only
+# OPEN/CLOSED and cannot machine-encode FAIL/NOT_PROVEN or per-assertion blocker EVIDENCE, so the
+# ledger is the required representation. Every active material defect (status FAIL or NOT_PROVEN)
+# must carry EXACTLY ONE terminal disposition, or it BLOCKS:
+#   * REMEDIATED — with a resolvable `rc` (present + `FIXED:` in root_cause_log) AND a cited
+#                  verification `command` (a word is not proof — DEFECT 6); or
+#   * BLOCKED    — a valid blocker TYPE bound to an EXACT snake_case assertion (not a subsystem —
+#                  DEFECT 3-scope) WITH the machine-resolvable evidence that type requires (DEFECT 5).
+# No date window (DEFECT 3): a defect is not abandonable at midnight. There is no NEXT-DEPTH escape
+# (DEFECT 7). A missing/malformed ledger fails CLOSED (DEFECT 4/9). tools/stop_guard.py imports
+# `active_defect_offenders`, so agent-time (Stop) and commit-time (CI) enforce ONE definition.
+FIX_LAW_VALID_BLOCKERS: tuple[str, ...] = (
+    "RTH_ONLY", "EXTERNAL_DATA_UNAVAILABLE", "DESTRUCTIVE_APPROVAL_REQUIRED", "ENVIRONMENT_BLOCKED",
+)
+#: A blocker bound to a bare subsystem word launders a whole subsystem (INVALID: `ORDER_FLOW =
+#: RTH_ONLY`); it must bind an EXACT assertion (e.g. `same_ms_collision_frequency`).
+_FIX_LAW_SUBSYSTEM_WORDS = frozenset({
+    "order_flow", "orderflow", "levels", "options", "absorption", "terrain", "exposure", "model",
+    "models", "ui", "decision", "microstructure", "everything", "all", "subsystem", "the_whole",
+})
+ACTIVE_DEFECTS_PATH = REPO / "governance" / "active_defects.json"
+
+
+def _blocker_evidence_ok(blocker: dict) -> tuple[bool, str]:
+    """A blocker must carry MACHINE-RESOLVABLE evidence appropriate to its type (DEFECT 5) — a
+    syntactically pretty sentence is not proof. Returns (ok, reason_if_not)."""
+    t = str(blocker.get("type") or "")
+    assertion = str(blocker.get("assertion") or "")
+    if t not in FIX_LAW_VALID_BLOCKERS:
+        return False, f"blocker type {t!r} is not one of {FIX_LAW_VALID_BLOCKERS}"
+    if not re.fullmatch(r"[a-z][a-z0-9_]{4,}", assertion) or assertion in _FIX_LAW_SUBSYSTEM_WORDS:
+        return False, (f"assertion {assertion!r} is not an EXACT snake_case assertion "
+                       f"(subsystem-wide is laundering)")
+    if t == "RTH_ONLY":
+        probe = str(blocker.get("probe") or "")
+        if not probe or not (REPO / probe).exists():
+            return False, f"RTH_ONLY requires an EXISTING prepared probe file; {probe!r} not found on disk"
+        if blocker.get("non_rth_remediation_complete") is not True:
+            return False, "RTH_ONLY requires non_rth_remediation_complete=true (all non-RTH work done first)"
+    elif t == "EXTERNAL_DATA_UNAVAILABLE":
+        if not str(blocker.get("capability") or "").strip():
+            return False, "EXTERNAL_DATA_UNAVAILABLE requires the exact unavailable capability/source named"
+    elif t == "DESTRUCTIVE_APPROVAL_REQUIRED":
+        if not str(blocker.get("action") or "").strip():
+            return False, "DESTRUCTIVE_APPROVAL_REQUIRED requires the exact proposed destructive action named"
+    elif t == "ENVIRONMENT_BLOCKED":
+        if not str(blocker.get("prerequisite") or "").strip():
+            return False, "ENVIRONMENT_BLOCKED requires the exact failing prerequisite/evidence named"
+    return True, ""
+
+
+def active_defect_offenders(ledger: dict, rc_log_text: str) -> list[tuple[str, str]]:
+    """THE ONE authority for FIND IT → FIX IT, called by the gate check AND tools/stop_guard.py.
+
+    Every active material defect (status FAIL/NOT_PROVEN) must be terminally disposed REMEDIATED
+    (resolvable rc + cited command) or BLOCKED (valid type + exact assertion + type evidence).
+    Anything else — disposition OPEN/missing, weak evidence, subsystem-wide blocker — is an
+    offender. A missing/malformed ledger is itself an offender (fail-closed). Returns (id, reason)."""
+    if not isinstance(ledger, dict) or not isinstance(ledger.get("defects"), list):
+        return [("(ledger)", "governance/active_defects.json missing or malformed 'defects' list — "
+                             "fail-closed: cannot prove no active fixable defect remains")]
+    out: list[tuple[str, str]] = []
+    for d in ledger["defects"]:
+        if not isinstance(d, dict):
+            out.append(("(entry)", "active_defects entry is not an object"))
+            continue
+        did = str(d.get("id") or "?")
+        status = str(d.get("status") or "").upper()
+        disp = str(d.get("disposition") or "").upper()
+        if status not in ("FAIL", "NOT_PROVEN"):
+            continue                                    # PASS/FIXED are not standing obligations
+        if disp == "REMEDIATED":
+            rem = d.get("remediation") if isinstance(d.get("remediation"), dict) else {}
+            rc = str(rem.get("rc") or "")
+            if not re.fullmatch(r"RC-\d+", rc) or rc not in rc_log_text:
+                out.append((did, f"REMEDIATED but rc {rc!r} does not resolve to a row in root_cause_log"))
+            elif not str(rem.get("command") or "").strip():
+                out.append((did, "REMEDIATED without a cited verification command (a word is not proof)"))
+            continue
+        if disp == "BLOCKED":
+            ok, why = _blocker_evidence_ok(d.get("blocker") if isinstance(d.get("blocker"), dict) else {})
+            if not ok:
+                out.append((did, f"BLOCKED but blocker evidence invalid: {why}"))
+            continue
+        out.append((did, f"active {status} defect with disposition {(disp or 'OPEN')!r} — must be "
+                         f"REMEDIATED (resolvable rc + command) or BLOCKED (valid exact-assertion "
+                         f"blocker with type evidence). FIND IT → FIX IT — large migration / "
+                         f"atomicity / turn budget is NOT a hard blocker."))
+    return out
+
+
+def load_active_defects() -> dict:
+    try:
+        return json.loads(_read_or_empty(ACTIVE_DEFECTS_PATH) or "{}")
+    except (ValueError, TypeError):
+        return {}
+
+
+def check_find_it_fix_it() -> list[Violation]:
+    """FIND IT → FIX IT operator law (disposition-driven; RC-472 installed, RC-473 corrected): every
+    active material defect (status FAIL/NOT_PROVEN in governance/active_defects.json) must be
+    terminally disposed REMEDIATED (with a resolvable rc + cited command) or BLOCKED (a valid blocker
+    type bound to an EXACT snake_case assertion with type-specific machine-resolvable evidence).
+    Anything else BLOCKS. tools/stop_guard.py imports the same `active_defect_offenders`, so
+    agent-time and CI cannot diverge.
+
+    OBSERVED (RC-473): the first (RC-472) implementation was vocabulary-driven and let a bare OPEN
+    FAIL with no laundering word pass, never parsed FAIL/NOT_PROVEN, was today-only, and accepted a
+    syntactically-pretty blocker with no evidence — proven by the agent ending a turn with the Order
+    Flow verdict retirement declared a fixable unblocked FAIL. VALIDATED: negative controls in
+    tests/test_find_it_fix_it_lock_v1.py — bare FAIL/NOT_PROVEN, defect opened earlier, FIXED with no
+    evidence, fake RTH probe, RTH probe with unfinished remediation, and a malformed ledger all
+    BLOCK; only a REMEDIATED-with-evidence or a genuinely-evidenced exact blocker PASS."""
+    rc_log = _read_or_empty(REPO / "governance" / "root_cause_log.md")
+    return [Violation(ACTIVE_DEFECTS_PATH, 0, f"{did}: {why}")
+            for did, why in active_defect_offenders(load_active_defects(), rc_log)]
+
+
 def check_root_cause_log() -> list[Violation]:
     """Every defect gets five whys, and finding a cause RESTARTS the count.
 
@@ -4223,6 +4348,7 @@ CHECKS = [
     ("no_synthetic_domain_fixtures_in_tests", check_no_synthetic_domain_fixtures_in_tests, True),
     ("no_swallowed_test_failures", check_no_swallowed_test_failures, True),  # printed failure must fail the run
     ("root_cause_log", check_root_cause_log, True),
+    ("find_it_fix_it", check_find_it_fix_it, True),  # 2026-08-21 operator law: fixable defect must be fixed or hard-blocked, never queued
     # RC-470 (operator-approved retirement, 2026-08-24): five_why_recursive_lock and
     # recursive_five_why_front_loaded RETIRED - see governance/retired_checks.md for
     # each retired check's equivalence. root_cause_log (why-chain + measured evidence

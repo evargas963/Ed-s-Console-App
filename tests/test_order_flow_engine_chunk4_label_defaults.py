@@ -1,76 +1,34 @@
-"""order_flow_engine chunk-4: FIND-OF6/OF7 — withhold labels at exact-zero composite."""
+"""order_flow_engine chunk-4: the order_flow verdict + composite family is RETIRED (RC-473/RC-474).
 
+compute_order_flow_verdict (a structural double-count that emitted the false BUYING/SELLING PRESSURE
+claim) and the composite score/direction/readiness producers were deleted. This file locks the
+retirement end-to-end: the producers are gone and the engine emits None for the whole family.
+"""
 from __future__ import annotations
 
-from unittest.mock import patch
-
-from math_exposure import (
-    _of_sign,
-    compute_order_flow_verdict,
-    order_flow_score_label,
-)
-from order_flow_engine import OrderFlowEngine, _direction
+import math_exposure as me
+import order_flow_engine as ofe
+from order_flow_engine import OrderFlowEngine
 
 
-def test_direction_exact_zero_is_none_weak_band_still_neutral():
-    assert _direction(0.0) is None
-    assert _direction(0.05) == "neutral"
-    assert _direction(None) is None
+def test_compute_order_flow_verdict_producer_is_deleted():
+    assert not hasattr(me, "compute_order_flow_verdict"), "the double-counting verdict must stay deleted"
 
 
-def test_order_flow_score_label_exact_zero_is_none():
-    assert order_flow_score_label(0.0) is None
-    assert order_flow_score_label(0.05) == "neutral"
+def test_order_flow_score_verdict_family_is_retired():
+    # The producer must emit None for the whole retired family; canonical primitives remain.
+    out = OrderFlowEngine().compute({"quote": {}})
+    for k in ("order_flow_score", "order_flow_direction", "order_flow_regime",
+              "order_flow_readiness", "order_flow_verdict", "order_flow_verdict_color"):
+        assert out.get(k) is None, f"{k} must be retired (None), got {out.get(k)!r}"
+    assert "book_imbalance_5" in out
+    assert "options_flow_score" in out
 
 
-def test_of_sign_zero_is_none_not_neutral_vote():
-    assert _of_sign(0.0) is None
-    assert _of_sign(0.01) == 1.0
-    assert _of_sign(-0.01) == -1.0
+def test_engine_does_not_reference_the_retired_producers():
+    import inspect
 
-
-def test_verdict_with_zero_cum_delta_still_emits_when_score_directional():
-    out = compute_order_flow_verdict(0.5, None, 0.0, None)
-    assert out["verdict"] is not None
-    assert out["agreement"] != "unavailable"
-
-
-def test_compute_order_flow_verdict_score_only_zero_is_unavailable():
-    out = compute_order_flow_verdict(0.0, None, None, None)
-    assert out["verdict"] is None
-    assert out["verdict_color"] is None
-    assert out["arrow"] is None
-    assert out["agreement"] == "unavailable"
-
-
-def test_compute_order_flow_verdict_score_only_nonzero_in_band_has_verdict():
-    out = compute_order_flow_verdict(0.05, None, None, None)
-    assert out["verdict"] is not None
-    assert out["verdict"] != ""
-
-
-def test_compute_e2e_exact_zero_score_withholds_direction_and_verdict():
-    with (
-        patch(
-            "order_flow_engine.compute_book_microstructure",
-            return_value={
-                "depth": {
-                    "1": {"imbalance": 0.0},
-                    "3": {"imbalance": 0.0},
-                    "5": {"imbalance": 0.0},
-                }
-            },
-        ),
-        patch("order_flow_engine._compute_tape_pressure", return_value=0.0),
-        patch("order_flow_engine._compute_cum_delta_proxy", return_value=None),
-        patch("order_flow_engine._compute_absorption", return_value=(None, None, None)),
-        patch("order_flow_engine._compute_options_flow", return_value=(None, None, None, None, None)),
-        patch("order_flow_engine._compute_rvol", return_value=(None, "current_volume_unavailable")),
-    ):
-        out = OrderFlowEngine().compute({"quote": {}})
-    assert out["order_flow_score"] is not None
-    assert abs(out["order_flow_score"]) < 1e-9
-    assert out["order_flow_direction"] is None
-    assert out["order_flow_regime"] is None
-    assert out["order_flow_score_label"] is None
-    assert out["order_flow_verdict"] is None
+    src = inspect.getsource(ofe.OrderFlowEngine.compute)
+    assert "_compute_order_flow_score(" not in src
+    assert "compute_order_flow_verdict(" not in src
+    assert "_readiness(" not in src
