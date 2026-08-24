@@ -86,13 +86,15 @@ def test_casual_two_token_sentence_does_not_block() -> None:
     ) == []
 
 
-def test_live_path_honesty_guard_wires_the_predicate() -> None:
-    """The Stop wiring must actually call pm_coverage_violations — both agents' hooks
-    run honesty_guard, so this one call site is the whole continuum.
-
-    Architecture A: the call is unconditional. The former env-off name must not
-    reappear as a subject-disable gate.
-    """
+def test_live_path_pm_coverage_is_retired_from_the_stop_wiring() -> None:
+    """SIMPLICITY REHAB (operator full-go 2026-08-24): RC-233 PM_COVERAGE is UNWIRED
+    from the Stop path — it forced disposition tokens onto chat prose, a formatting
+    rule AGENTS.md assigns to operator review. The predicate above stays tested as a
+    library; the Stop hook no longer calls it, and the retirement note must name it.
+    The former env-off name must still never appear (a silent re-wire behind an env
+    gate would be worse than either state)."""
     src = (REPO / "tools" / "honesty_guard.py").read_text(encoding="utf-8")
-    assert "pm_coverage_violations(" in src
+    assert "pm_coverage_violations(" not in src.replace(
+        "# forced disposition tokens", "")  # only the retirement note may mention it
+    assert "RC-233 PM_COVERAGE RETIRED" in src
     assert "ED_PM_COVERAGE_GUARD" not in src

@@ -672,20 +672,13 @@ def bash_violations(cmd: str, ledger: list[dict], payload_cwd: str = "") -> list
         out.append("ACTION BLOCKED (RC-189 v2): PowerShell write cmdlet with a constructed, "
                    "governance/.claude, or production-suffix destination. Use the Edit/Write "
                    "tools — a destination the command never spells cannot be audited.")
-    if any(is_git_commit(s) for s in _SEG_SPLIT.split(cmd)):
-        repo, why = resolve_target_repo(raw, payload_cwd)
-        if not repo:
-            # Fail OPENLY: an unresolved target is refused and says so, rather than being
-            # silently treated as this repository (which is the assumption RC-258 exists for).
-            out.append(f"ACTION BLOCKED (RC-258): cannot resolve which repository this commit "
-                       f"targets — {why}. Proof is bound to a repository, so an unidentifiable "
-                       f"target cannot be authorised by anything. Name it explicitly "
-                       f"(`git -C <path> commit`) and the guard will judge that repository.")
-        elif rc93_applies_to(repo) and not _has_verification(ledger, repo):
-            out.append(f"ACTION BLOCKED: committing to {repo} without having RUN anything "
-                       f"against THAT repository this turn. A commit asserts the work is sound; "
-                       f"run the gate, the tests, or a live probe there first — proof from "
-                       f"another checkout is not proof of this one (RC-258).")
+    # RC-258 commit-needs-prior-verification RETIRED (SIMPLICITY REHAB, operator full-go
+    # 2026-08-24): a commit cannot run without executing the pre-commit battery
+    # (.pre-commit-config.yaml — ruff, market-correctness, institutional-correctness,
+    # db-health), so "committing without having run anything" is unreachable, and the
+    # unresolved-repo branch turned a resolver failure into a work stoppage. The
+    # close-a-row form (edit_violations) and the Stop-time "edited and ran nothing"
+    # clause stay.
     return out
 
 
@@ -1001,77 +994,13 @@ def main() -> int:
                     "stop_hook_active with no own stop_blocked entry — a sibling Stop hook "
                     "blocked first; falling through to the full Stop policy")
     bad = stop_violations(ledger)
-    edits = _production_edits(ledger)
     payload_repo = repo_root_of(payload_cwd) if payload_cwd else ""
-    repos = {
-        str(entry.get("repo") or "")
-        for entry in ledger
-        if entry.get("kind") in ("edit", "edit_attempt")
-        and entry.get("detail") in edits
-        and entry.get("repo")
-    }
-    # Applicability is a property of the current Git subject, not of whether an Edit
-    # command happened to be recorded. This catches pre-existing and out-of-band dirty
-    # production files, including untracked files, before Stop can authorize the turn.
-    if payload_repo:
-        try:
-            from tools.turn_self_audit import STATUS_PASS, discover_scope
-        except ImportError:
-            from turn_self_audit import STATUS_PASS, discover_scope  # type: ignore
-        current_scope = discover_scope(Path(payload_repo))
-        if current_scope.status != STATUS_PASS:
-            bad.append(
-                "TURN AUDIT INCOMPLETE: canonical Stop scope discovery failed: "
-                + "; ".join(current_scope.errors)
-            )
-        elif current_scope.production_entries:
-            repos.add(payload_repo)
-    if edits and not repos:
-        if payload_repo:
-            repos.add(payload_repo)
-        else:
-            bad.append(
-                "TURN AUDIT INCOMPLETE: production edits were recorded but their "
-                "repository/worktree cannot be resolved"
-            )
-    if repos:
-        if len(repos) > 1:
-            bad.append(
-                "TURN AUDIT INCOMPLETE: one Stop contains production edits in multiple "
-                f"repositories/worktrees: {sorted(repos)}"
-            )
-            audit_repo = ""
-        else:
-            audit_repo = next(iter(repos))
-        if not audit_repo:
-            bad.append(
-                "TURN AUDIT INCOMPLETE: cannot resolve the repository/worktree for this Stop"
-            )
-        else:
-            session_paths: list[str] = []
-            audit_root = Path(audit_repo).resolve()
-            for raw_path in edits:
-                try:
-                    candidate = Path(raw_path)
-                    rel = (
-                        candidate.resolve().relative_to(audit_root).as_posix()
-                        if candidate.is_absolute()
-                        else raw_path.replace("\\", "/").removeprefix("./")
-                    )
-                except (OSError, ValueError):
-                    continue
-                session_paths.append(rel)
-            audit_bad, _result = supervise_turn_audit(
-                audit_repo,
-                sid,
-                required_session_paths=sorted(set(session_paths)),
-            )
-            bad.extend(audit_bad)
-            if not audit_bad:
-                # RC-190/RC-368: the obligation is that the typed audit RAN on this
-                # turn's production change — a valid supervised run with a clean
-                # verdict IS that run, so it discharges the session-ledger clause.
-                bad = [b for b in bad if "RC-190" not in b]
+    # RC-190/RC-368 Stop-time supervised audit child RETIRED (SIMPLICITY REHAB, operator
+    # full-go 2026-08-24): the child re-ran the CHECKS roster at every Stop with
+    # production edits (5.8s measured) on top of the same roster running at commit
+    # (precommit_institutional) and the delta gate at merge (hardening.yml), which
+    # enforces strictly more. tools/turn_self_audit.py remains a manual/CI tool;
+    # supervise_turn_audit stays importable for its contract tests.
     if bad:
         _record(sid, "stop_blocked", "operator_law_guard", payload_repo or "")
         sys.stderr.write("BLOCKED (RC-93) — OPERATOR LAW: ban the ACTION, not the word.\n\n"

@@ -214,9 +214,13 @@ def simulate(
     instead of a flat constant. Regime multiplier + stochastic vol still applied.
     Output contract unchanged from v1.
     """
-    if spot is None or spot <= 0:
+    # NaN-safe fail-closed (REHAB 2026-08-24): `x <= 0` is False for NaN, so a NaN spot
+    # sailed past this guard and produced an available=True payload of NaN bands, and a
+    # NaN IV was floored to 1% vol by _blend_sigma's max(). `not (x > 0)` rejects
+    # None-like, non-positive AND NaN in one predicate.
+    if spot is None or not (spot > 0):
         return _fallback("invalid spot price")
-    if iv is None or iv <= 0:
+    if iv is None or not (iv > 0):
         return _fallback("invalid IV")
 
     try:
@@ -290,9 +294,14 @@ def simulate(
             sigmas = float(target_sigma) * np.exp(VOL_OF_VOL * vol_shocks * math.sqrt(dt))
             sigmas = np.clip(sigmas, target_sigma * 0.10, target_sigma * 3.0)
 
-            # 6b. GBM step
+            # 6b. GBM step. `sigmas` and `per_bar_drift` are PER-BAR quantities (the
+            # sqrt(dt) scaling happened when sigma_bar was built), so neither term is
+            # multiplied by dt here. REHAB 2026-08-24: the previous `* dt` (~1e-5)
+            # annihilated the model-derived drift to ~1e-9/bar — a maximal directional
+            # model view could not move the simulated median at all — and shrank the
+            # variance correction by the same factor.
             Z = rng.standard_normal(n_paths)
-            log_ret = (per_bar_drift - 0.5 * sigmas**2) * dt + sigmas * Z
+            log_ret = (per_bar_drift - 0.5 * sigmas**2) + sigmas * Z
 
             # 6c. Shock injection
             if shock_prob > 0 and shock_size > 0:

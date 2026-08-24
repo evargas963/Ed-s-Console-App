@@ -161,13 +161,11 @@ def main() -> int:
         )
         return 2
     bad = honesty_violations(last_user_text(tp), text)
-    # RC-233 (PM full-prompt coverage): both agents' Stop hooks run this file, so the
-    # coverage law holds on the whole continuum with no separate Cursor wiring.
-    try:
-        from tools.operating_process_lock import pm_coverage_violations
-    except ImportError:
-        from operating_process_lock import pm_coverage_violations  # type: ignore
-    bad.extend(pm_coverage_violations(last_user_text(tp), text))
+    # RC-233 PM_COVERAGE RETIRED (SIMPLICITY REHAB, operator full-go 2026-08-24): it
+    # forced disposition tokens onto chat prose per detected bullet in the operator's
+    # paste — a response-formatting rule. AGENTS.md's own line governs: live chat prose
+    # is bound by the law itself and operator review, and the operator is present in
+    # the same turn.
     # RC-242 LOCK-PM-VERIFY: a verdict about REPO STATE must carry a reading OF the repo.
     # Wired here because .claude/settings.json and .cursor/hooks.json BOTH run honesty_guard
     # at Stop, so the PM seat and the writer seat are bound by one implementation — parity by

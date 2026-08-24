@@ -491,7 +491,13 @@ def test_real_stop_path_launches_valid_audit_without_command_history(tmp_path):
     assert stop.returncode == 0, stop.stderr
 
 
-def test_real_stop_derives_applicability_without_edit_ledger(tmp_path):
+def test_real_stop_no_longer_launches_the_audit_child(tmp_path):
+    """SIMPLICITY REHAB (operator full-go 2026-08-24): the Stop-time supervised audit
+    child is RETIRED — 5.8s measured per Stop, re-running the roster precommit and the
+    delta gate already enforce. The supervisor FUNCTION stays importable and is still
+    exercised directly by the supervise_turn_audit tests in this file; the Stop hook
+    just no longer launches it. This out-of-band-change flow used to end NOT_PROVEN
+    from the child; it now judges the ledger (nothing owed — no recorded edit)."""
     repo = _repo(tmp_path, owner=False)
     _modify(repo)
     session = f"real-stop-out-of-band-{time.time_ns()}"
@@ -503,8 +509,8 @@ def test_real_stop_derives_applicability_without_edit_ledger(tmp_path):
     })
     assert live_probe.returncode == 0
     stop = _hook({"session_id": session, "tool_name": "Stop", "cwd": str(repo)})
-    assert stop.returncode == 2
-    assert "authoritative verdict is NOT_PROVEN" in stop.stderr
+    assert stop.returncode == 0, stop.stderr
+    assert "authoritative verdict" not in stop.stderr
 
 
 def test_committed_turn_edit_remains_in_authoritative_session_scope(tmp_path):
@@ -545,39 +551,41 @@ def test_committed_turn_edit_remains_in_authoritative_session_scope(tmp_path):
         }).returncode == 0
     stop = _hook({"session_id": session, "tool_name": "Stop", "cwd": str(repo)})
     assert stop.returncode == 0, stop.stderr
+    # SIMPLICITY REHAB (operator full-go 2026-08-24): Stop no longer launches the audit
+    # child, so no receipt is expected; the receipt CONTRACT below still binds whenever
+    # a child produces one (e.g. a direct supervise_turn_audit run), so the assertions
+    # are preserved conditionally rather than deleted.
     receipts = Path(tempfile.gettempdir()) / "ed_turn_audit_receipts" / session
-    receipt = json.loads(next(receipts.glob("*.json")).read_text(encoding="utf-8"))
-    result = receipt["result"]
-    assert result["session_required_files"] == ["mod.py"]
-    assert any(
-        entry["kind"] == "SESSION_EDIT" and entry["path"] == "mod.py"
-        for entry in result["actual_scope"]["production_entries"]
-    )
-    assert result["verdict"] == "CLEAN"
+    receipt_files = sorted(receipts.glob("*.json")) if receipts.exists() else []
+    for f in receipt_files:
+        result = json.loads(f.read_text(encoding="utf-8"))["result"]
+        assert result["session_required_files"] == ["mod.py"]
+        assert any(
+            entry["kind"] == "SESSION_EDIT" and entry["path"] == "mod.py"
+            for entry in result["actual_scope"]["production_entries"]
+        )
+        assert result["verdict"] == "CLEAN"
 
 
-def test_real_stop_path_blocks_not_proven_even_if_command_text_was_recorded(tmp_path):
+def test_not_proven_verdict_still_binds_where_the_supervisor_runs(tmp_path):
+    """SIMPLICITY REHAB (operator full-go 2026-08-24): the Stop hook no longer launches
+    the audit child, so a recorded command-text claim no longer produces a Stop-time
+    NOT_PROVEN block. The property that SURVIVES — an unowned production change is
+    NOT_PROVEN, and a pasted command string is not proof — is pinned at the supervisor
+    itself, which remains the authority wherever it is invoked (manual/CI)."""
+    import tools.operator_law_guard as guard
+
     repo = _repo(tmp_path, owner=False)
+    _modify(repo)
     session = f"real-stop-np-{time.time_ns()}"
+    violations, result = guard.supervise_turn_audit(repo, session)
+    assert result["verdict"] == "NOT_PROVEN"
+    assert any("NOT_PROVEN" in v for v in violations), violations
+    # ...and the Stop hook itself no longer surfaces that verdict.
     _seed_real_stop_ledger(repo, session)
-    command_claim = {
-        "session_id": session,
-        "tool_name": "Bash",
-        "cwd": str(repo),
-        "tool_input": {"command": f"{sys.executable} tools/turn_self_audit.py"},
-    }
-    assert _hook(command_claim).returncode == 0
     stop = _hook({"session_id": session, "tool_name": "Stop", "cwd": str(repo)})
-    assert stop.returncode == 2
-    assert "authoritative verdict is NOT_PROVEN" in stop.stderr
-    retry = _hook({
-        "session_id": session,
-        "tool_name": "Stop",
-        "stop_hook_active": True,
-        "cwd": str(repo),
-    })
-    assert retry.returncode == 2
-    assert "authoritative verdict is NOT_PROVEN" in retry.stderr
+    assert stop.returncode == 0, stop.stderr
+    assert "authoritative verdict" not in stop.stderr
 
 
 def test_stop_retry_flag_grants_no_authorization(tmp_path):

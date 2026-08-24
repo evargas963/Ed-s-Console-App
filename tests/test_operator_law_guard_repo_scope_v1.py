@@ -108,16 +108,18 @@ def test_non_commit_commands_are_not_detected_as_commits(cmd):
     assert not any(G.is_git_commit(s) for s in G._SEG_SPLIT.split(G.shell_executed_part(cmd)))
 
 
-def test_git_dash_c_cannot_bypass_the_commit_law():
-    """RC-258 failure 4: this returned ZERO violations before the fix."""
-    out = G.bash_violations('git -C . commit -m "x"', [], payload_cwd=str(REPO))
-    assert out and any("without having RUN" in v for v in out), out
-
-
-def test_git_dir_and_work_tree_cannot_bypass_the_commit_law():
-    out = G.bash_violations('git --git-dir=.git --work-tree=. commit -m "x"', [],
-                            payload_cwd=str(REPO))
-    assert out and any("without having RUN" in v for v in out), out
+def test_commit_law_is_retired_commits_are_quiet_for_this_guard():
+    """SIMPLICITY REHAB (operator full-go 2026-08-24): the RC-258 commit-needs-prior-
+    verification clause is RETIRED — a commit cannot run without the pre-commit battery,
+    so the guard's re-ask bought nothing and its unresolved-repo branch turned resolver
+    failures into work stoppages. Contract now: git commit is QUIET for this guard in
+    every spelling, and the OTHER bash protections are untouched by commit text."""
+    for cmd in ('git commit -m "x"', 'git -C . commit -m "x"',
+                'git --git-dir=.git --work-tree=. commit -m "x"'):
+        assert G.bash_violations(cmd, [], payload_cwd=str(REPO)) == [], cmd
+    # the universal protections still fire on a commit command line
+    out = G.bash_violations('git add -A && git commit -m "x"', [], payload_cwd=str(REPO))
+    assert out and any("blind staging" in v for v in out), out
 
 
 # ── 2. repository identity resolution, and its adversaries ────────────────────────────────
@@ -249,11 +251,12 @@ def test_no_path_and_no_working_directory_is_unresolved():
     assert repo == "" and "no working directory" in why
 
 
-def test_unresolved_identity_fails_openly_rather_than_assuming_this_repo():
-    """The guard must never silently treat an unidentifiable target as its own repository."""
-    out = G.bash_violations('git commit -m "x"', [], payload_cwd="")
-    assert out and any("cannot resolve which repository" in v for v in out), out
-    assert not any("without having RUN" in v for v in out), "must not judge an unknown target"
+def test_unresolved_identity_no_longer_stops_work():
+    """SIMPLICITY REHAB: the retired RC-258 clause turned an UNRESOLVED repo identity
+    into a hard block — a resolver failure became a work stoppage. Retired contract:
+    quiet. resolve_target_repo itself still answers correctly (tested above) for the
+    surviving close-a-row clause."""
+    assert G.bash_violations('git commit -m "x"', [], payload_cwd="") == []
 
 
 def test_malformed_quoting_does_not_crash_and_does_not_silently_resolve():
@@ -261,35 +264,16 @@ def test_malformed_quoting_does_not_crash_and_does_not_silently_resolve():
     assert repo == ""
 
 
-# ── 3. repository-bound verification ──────────────────────────────────────────────────────
-def test_ed_console_commit_without_ed_console_proof_is_blocked():
-    out = G.bash_violations('git commit -m "x"', [], payload_cwd=str(REPO))
-    assert any("without having RUN" in v for v in out), out
-
-
-def test_ed_console_commit_with_matching_ed_console_proof_is_permitted():
-    ledger = [led("bash", PYTEST_PROOF, ED)]
-    assert G.bash_violations('git commit -m "x"', ledger, payload_cwd=str(REPO)) == []
-
-
-def test_foreign_proof_cannot_authorize_an_ed_console_commit(other_repo):
-    """RC-258 failure 3 — the hole in Ed Console's own protection."""
-    ledger = [led("bash", PROBE_PROOF, G.normalize_repo(other_repo))]
-    out = G.bash_violations('git commit -m "x"', ledger, payload_cwd=str(REPO))
-    assert any("without having RUN" in v for v in out), out
-
-
-def test_unknown_repository_proof_cannot_authorize_an_ed_console_commit():
-    ledger = [led("bash", PYTEST_PROOF, "")]
-    out = G.bash_violations('git commit -m "x"', ledger, payload_cwd=str(REPO))
-    assert any("without having RUN" in v for v in out), out
-
-
-def test_legacy_unscoped_ledger_entry_cannot_authorize_a_scoped_action():
-    """A row written before repo binding existed has no `repo` key at all."""
-    ledger = [{"kind": "bash", "detail": PYTEST_PROOF}]
-    out = G.bash_violations('git commit -m "x"', ledger, payload_cwd=str(REPO))
-    assert any("without having RUN" in v for v in out), out
+# ── 3. repository-bound verification — commit clause RETIRED (SIMPLICITY REHAB) ──────────
+# The repo-scoped proof machinery survives ONLY for edit_violations' close-a-row clause;
+# commits are quiet for this guard regardless of ledger state (pre-commit battery is the
+# enforcement). One contract test replaces the five per-shape blocked-commit controls.
+def test_commit_is_quiet_regardless_of_ledger_proof_state(other_repo):
+    for ledger in ([], [led("bash", PYTEST_PROOF, ED)],
+                   [led("bash", PROBE_PROOF, G.normalize_repo(other_repo))],
+                   [led("bash", PYTEST_PROOF, "")],
+                   [{"kind": "bash", "detail": PYTEST_PROOF}]):
+        assert G.bash_violations('git commit -m "x"', ledger, payload_cwd=str(REPO)) == []
 
 
 def test_ed_console_proof_does_not_authorize_another_repository(other_repo):
@@ -303,12 +287,12 @@ def test_ed_console_proof_does_not_authorize_another_repository(other_repo):
     assert with_ed_proof == with_nothing == []
 
 
-def test_proof_in_one_marked_repo_does_not_authorize_another_marked_repo(marked_repo):
-    """Two repositories both governed by RC-93: proof still may not cross between them."""
+def test_marked_repo_commit_is_also_quiet(marked_repo):
+    """SIMPLICITY REHAB: with the commit clause retired, a commit in another marked repo
+    is equally quiet — its own pre-commit battery is its enforcement."""
     ledger = [led("bash", PYTEST_PROOF, ED)]
-    out = G.bash_violations('git -C "%s" commit -m "x"' % marked_repo, ledger,
-                            payload_cwd=str(REPO))
-    assert any("without having RUN" in v for v in out), out
+    assert G.bash_violations('git -C "%s" commit -m "x"' % marked_repo, ledger,
+                             payload_cwd=str(REPO)) == []
 
 
 # ── 4. applicability is declared, not hardcoded ───────────────────────────────────────────
@@ -544,9 +528,10 @@ def isolated_session(request):
     G._ledger_path(sid).unlink(missing_ok=True)
 
 
-def test_hook_blocks_ed_console_commit_without_proof(isolated_session):
+def test_hook_permits_commit_without_proof(isolated_session):
+    """SIMPLICITY REHAB: commit clause retired — the hook is quiet; pre-commit enforces."""
     rc, err = _hook(isolated_session, "Bash", {"command": 'git commit -m "x"'}, cwd=REPO)
-    assert rc == 2 and "without having RUN" in err
+    assert rc == 0, err
 
 
 def test_hook_permits_ed_console_commit_after_ed_console_proof(isolated_session):
@@ -557,10 +542,12 @@ def test_hook_permits_ed_console_commit_after_ed_console_proof(isolated_session)
     assert rc == 0, err
 
 
-def test_hook_does_not_let_foreign_proof_authorize_ed_console(isolated_session, other_repo):
+def test_hook_commit_quiet_with_foreign_proof_too(isolated_session, other_repo):
+    """SIMPLICITY REHAB: with the commit clause retired the ledger's repo binding no
+    longer gates commits at all — quiet either way."""
     _hook(isolated_session, "Bash", {"command": PROBE_PROOF}, cwd=other_repo)
     rc, err = _hook(isolated_session, "Bash", {"command": 'git commit -m "x"'}, cwd=REPO)
-    assert rc == 2 and "without having RUN" in err
+    assert rc == 0, err
 
 
 def test_hook_does_not_subject_an_unmarked_repository_to_rc93(isolated_session, other_repo):
