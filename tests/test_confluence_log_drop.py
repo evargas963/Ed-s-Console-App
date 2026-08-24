@@ -93,25 +93,17 @@ def test_confluence_log_dataclass_removed_from_db_py_source() -> None:
             )
 
 
-def test_no_external_references_to_confluence_writer() -> None:
+def test_no_external_references_to_confluence_writer(repo_index) -> None:
     """AST sweep: zero references to ConfluenceLog / log_confluence anywhere
     in repo .py files outside db.py."""
     targets = {"ConfluenceLog", "log_confluence"}
-    skip_dirs = {".git", ".venv", "venv", "__pycache__", "node_modules", ".claude",
-                 "build", "dist", ".pytest_cache", ".mypy_cache", ".ruff_cache"}
     hits: list[str] = []
-    for path in REPO_ROOT.rglob("*.py"):
-        rel = path.relative_to(REPO_ROOT)
-        if any(part in skip_dirs for part in rel.parts):
-            continue
+    for rel, text, tree in repo_index.items():
         if rel.parts[-1] == "db.py":
             continue
         if rel.parts[-1] == "test_confluence_log_drop.py":
             continue
-        try:
-            text = path.read_text(encoding="utf-8")
-            tree = ast.parse(text)
-        except (OSError, SyntaxError):
+        if tree is None:
             continue
         for node in ast.walk(tree):
             if isinstance(node, ast.Name) and node.id in targets:

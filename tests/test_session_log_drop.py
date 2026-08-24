@@ -80,25 +80,17 @@ def test_session_log_create_table_removed_from_db_py_source() -> None:
     assert "CREATE TABLE SESSION_LOG" not in upper
 
 
-def test_no_external_references_to_session_writers() -> None:
+def test_no_external_references_to_session_writers(repo_index) -> None:
     """AST sweep: zero references to SessionLog / start_session / end_session /
     update_session_counts anywhere in repo .py files outside db.py."""
     targets = {"SessionLog", "start_session", "end_session", "update_session_counts"}
-    skip_dirs = {".git", ".venv", "venv", "__pycache__", "node_modules", ".claude",
-                 "build", "dist", ".pytest_cache", ".mypy_cache", ".ruff_cache"}
     hits: list[str] = []
-    for path in REPO_ROOT.rglob("*.py"):
-        rel = path.relative_to(REPO_ROOT)
-        if any(part in skip_dirs for part in rel.parts):
-            continue
+    for rel, text, tree in repo_index.items():
         if rel.parts[-1] == "db.py":
             continue
         if rel.parts[-1] == "test_session_log_drop.py":
             continue
-        try:
-            text = path.read_text(encoding="utf-8")
-            tree = ast.parse(text)
-        except (OSError, SyntaxError):
+        if tree is None:
             continue
         for node in ast.walk(tree):
             if isinstance(node, ast.Name) and node.id in targets:
