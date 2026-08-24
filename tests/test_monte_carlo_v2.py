@@ -24,7 +24,7 @@ import math
 
 import pytest
 
-from monte_carlo import ANNUALIZED_HOURS, BAR_MINUTES, simulate
+from monte_carlo import ANNUALIZED_HOURS, BAR_MINUTES, _blend_sigma, simulate
 
 SPOT = 100.0
 IV = 0.20
@@ -234,6 +234,57 @@ def test_garch_sigma_used_only_when_it_covers_the_horizon():
     assert short.assumptions["garch_active"] is False
     assert absent.assumptions["garch_active"] is False
     assert full.available and short.available
+
+
+# ── Sigma unit contract (path-independent reporting) ─────────────────────────
+
+def test_sigma_reporting_fields_agree_across_garch_and_blend_paths():
+    # Same volatility level fed through BOTH source paths: garch_sigma_bars is
+    # constructed FROM the blend sigma (per-bar via sqrt(dt)). Every
+    # sigma-reporting field must then agree across paths — no consumer may see
+    # a number whose unit depends on which path ran.
+    h = 12
+    rv, atr = 0.15, 0.4
+    blend_annual = _blend_sigma(IV, rv, atr, SPOT)
+    bar = _per_bar_sigma(blend_annual)
+    kw = dict(horizon_bars=h, realized_vol=rv, atr=atr, seed=33)
+    garch = _run(garch_sigma_bars=[bar] * h, **kw)
+    blend = _run(**kw)
+    assert garch.assumptions["garch_active"] is True
+    assert blend.assumptions["garch_active"] is False
+    for key in ("blended_sigma", "scaled_sigma", "sigma_annualized", "sigma_bar_avg"):
+        assert garch.assumptions[key] == pytest.approx(blend.assumptions[key], rel=5e-3), key
+
+
+def test_sigma_bar_avg_matches_sigma_annualized_times_sqrt_dt_on_both_paths():
+    # Unit relationship lock: sigma_bar_avg (per-1-minute-bar) must equal
+    # sigma_annualized * sqrt(dt) on the blend path, the GARCH path, and a
+    # regime-scaled run alike.
+    dt = BAR_MINUTES / (ANNUALIZED_HOURS * 60.0)
+    h = 12
+    bar = _per_bar_sigma(IV)
+    for out in (
+        _run(horizon_bars=h, seed=5),                                              # blend path
+        _run(horizon_bars=h, garch_sigma_bars=[bar] * h, seed=5),                  # GARCH path
+        _run(horizon_bars=h, regime="pinning", regime_confidence="high", seed=5),  # regime-scaled blend
+    ):
+        assert out.available is True
+        a = out.assumptions
+        assert a["sigma_bar_avg"] == pytest.approx(a["sigma_annualized"] * math.sqrt(dt), rel=5e-3)
+
+
+def test_garch_path_reports_annualized_not_per_bar_sigma():
+    # Regression lock on the unit defect itself: with a flat GARCH vector at
+    # the per-bar equivalent of 0.20 annualized, the reported sigmas must be at
+    # ANNUALIZED magnitude (~0.20), not per-bar magnitude (~0.0006).
+    h = 10
+    bar = _per_bar_sigma(IV)
+    out = _run(horizon_bars=h, garch_sigma_bars=[bar] * h)
+    assert out.assumptions["garch_active"] is True
+    assert out.assumptions["sigma_annualized"] == pytest.approx(IV, rel=1e-2)
+    assert out.assumptions["scaled_sigma"] == pytest.approx(IV, rel=1e-2)
+    assert out.assumptions["blended_sigma"] == pytest.approx(IV, rel=1e-2)
+    assert out.assumptions["sigma_bar_avg"] == pytest.approx(bar, rel=1e-2)
 
 
 def test_flat_garch_forecast_equal_to_blend_sigma_matches_blend_run():

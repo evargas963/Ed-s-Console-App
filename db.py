@@ -641,7 +641,7 @@ class SnapshotRow:
     mc_paths:               Optional[int]   = None  # MC path count
     mc_horizon:             Optional[int]   = None  # MC horizon (bars)
     mc_vol_source:          Optional[str]   = None  # 'garch' or 'blend'
-    mc_sigma_value:         Optional[float] = None  # scaled/blended sigma
+    mc_sigma_value:         Optional[float] = None  # ANNUALIZED decimal vol, post regime mult (path-independent)
 
     # ── Individual model outputs ──────────────────────────────────────────────
     xgb_available:          Optional[bool]  = None

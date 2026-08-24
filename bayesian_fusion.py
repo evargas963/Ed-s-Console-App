@@ -87,7 +87,7 @@ class FusionPayload:
     mc_paths:              Optional[int]   = None  # path count for interpretability
     mc_horizon:            Optional[int]   = None  # horizon (bars)
     mc_vol_source:         Optional[str]   = None  # 'garch' or 'blend'
-    mc_sigma_value:        Optional[float] = None  # scaled/blended sigma used
+    mc_sigma_value:        Optional[float] = None  # ANNUALIZED decimal vol, post regime mult (path-independent)
 
     # Model agreement (XGB + LSTM + Transformer + MC directional alignment)
     model_agreement:       Optional[float] = None
@@ -759,7 +759,10 @@ def _fuse_impl(
     mc_paths = getattr(mc_out, "n_paths", None) if mc_avail else None
     mc_horizon = getattr(mc_out, "horizon_bars", None) if mc_avail else None
     mc_vol_source = ("garch" if _assum.get("garch_active") else "blend") if mc_avail else None
-    mc_sigma_value = _assum.get("scaled_sigma") or _assum.get("blended_sigma") if mc_avail else None
+    # ANNUALIZED decimal vol, post regime mult — unit is path-independent at the
+    # producer (monte_carlo SIGMA UNIT CONTRACT); legacy keys kept as fallback.
+    mc_sigma_value = (_assum.get("sigma_annualized") or _assum.get("scaled_sigma")
+                      or _assum.get("blended_sigma")) if mc_avail else None
 
     return FusionPayload(
         available=True,

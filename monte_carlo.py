@@ -104,7 +104,7 @@ class MonteCarloOutput:
     path_dispersion:    Optional[float] = None
     # Path-level features for post-fusion context only (not class probabilities)
     expected_move:       Optional[float] = None
-    volatility:          Optional[float] = None
+    volatility:          Optional[float] = None  # PRICE DOLLARS: std of terminal prices (mc_fusion_adjustment normalizes by spot); NOT an annualized/per-bar sigma
     skew:                Optional[float] = None
     tail_risk:           Optional[float] = None
     directional_bias:    Optional[float] = None
@@ -240,34 +240,41 @@ def simulate(
         else:
             eff_mult = r_mult
 
+        # dt: year-fraction of one simulated bar — needed for sigma unit
+        # conversion here and for drift / stochastic-vol calculations below.
+        minutes_per_year = ANNUALIZED_HOURS * 60
+        dt = BAR_MINUTES / minutes_per_year
+        sqrt_dt = math.sqrt(dt)
+
         # Determine sigma source: GARCH per-bar or flat blend
         use_garch = (garch_sigma_bars is not None and
                      len(garch_sigma_bars) >= horizon_bars)
 
+        # SIGMA UNIT CONTRACT (operator defect fix, 2026-08-24): every reported
+        # sigma carries ONE unit regardless of source path.
+        #   base_sigma / scaled_sigma  — ANNUALIZED decimal vol (pre / post regime mult)
+        #   base_sigma_bars / avg_sigma_bar — PER-1-MINUTE-BAR decimal vol (post regime mult)
+        # Previously the GARCH path reported base_sigma/scaled_sigma as PER-BAR
+        # averages while the blend path reported them ANNUALIZED, so consumers
+        # (bayesian_fusion mc_sigma_value -> market_state -> server -> db snapshot)
+        # saw a number whose unit depended on which path ran. Conversion happens
+        # HERE, at the producer; no consumer needs to know the path.
         if use_garch:
             # GARCH provides pre-blended per-bar sigma (already includes IV+RV blend + floor)
             # Apply regime multiplier on top
-            base_sigma_bars = [s * eff_mult for s in garch_sigma_bars[:horizon_bars]]
-            # For reporting, use the average
-            base_sigma = sum(garch_sigma_bars[:horizon_bars]) / horizon_bars
-            scaled_sigma = base_sigma * eff_mult
-            sigma_bar = sum(base_sigma_bars) / len(base_sigma_bars)  # avg for drift calc
+            base_sigma_bars = [s * eff_mult for s in garch_sigma_bars[:horizon_bars]]  # unit: per-1-minute-bar decimal vol, post regime mult
+            avg_garch_bar = sum(garch_sigma_bars[:horizon_bars]) / horizon_bars  # unit: per-1-minute-bar decimal vol, pre regime mult
+            base_sigma = avg_garch_bar / sqrt_dt  # unit: ANNUALIZED decimal vol, pre regime mult (per-bar avg converted at source)
+            scaled_sigma = base_sigma * eff_mult  # unit: ANNUALIZED decimal vol, post regime mult
         else:
             # Fallback: flat blend (v2 behavior)
-            base_sigma = _blend_sigma(iv, realized_vol, atr, spot)
-            scaled_sigma = base_sigma * eff_mult
-
-            minutes_per_year = ANNUALIZED_HOURS * 60
-            dt = BAR_MINUTES / minutes_per_year
-            sigma_bar = scaled_sigma * math.sqrt(dt)
-            base_sigma_bars = [sigma_bar] * horizon_bars  # flat
-
-        # dt needed for drift and stochastic vol calculations
-        minutes_per_year = ANNUALIZED_HOURS * 60
-        dt = BAR_MINUTES / minutes_per_year
+            base_sigma = _blend_sigma(iv, realized_vol, atr, spot)  # unit: ANNUALIZED decimal vol, pre regime mult
+            scaled_sigma = base_sigma * eff_mult  # unit: ANNUALIZED decimal vol, post regime mult
+            sigma_bar = scaled_sigma * sqrt_dt  # unit: per-1-minute-bar decimal vol, post regime mult
+            base_sigma_bars = [sigma_bar] * horizon_bars  # flat; unit: per-1-minute-bar decimal vol, post regime mult
 
         # 4. State-aware drift (uses average sigma for scaling)
-        avg_sigma_bar = sum(base_sigma_bars) / len(base_sigma_bars)
+        avg_sigma_bar = sum(base_sigma_bars) / len(base_sigma_bars)  # unit: per-1-minute-bar decimal vol, post regime mult (== scaled_sigma*sqrt(dt))
         per_bar_drift = _compute_drift(
             regime, model_prob_up, model_prob_down,
             model_confidence, fusion_dominant, avg_sigma_bar,
@@ -369,7 +376,7 @@ def simulate(
             except (TypeError, ValueError, ZeroDivisionError) as ex:
                 log.warning("MC_CONTAINMENT_ERROR: %s", ex)
 
-        dispersion = float(np.std(terminals))
+        dispersion = float(np.std(terminals))  # unit: PRICE DOLLARS (std of terminal prices) — path-derived, not a sigma rate
         mean_t = float(np.mean(terminals))
         std_t = float(dispersion) if dispersion > 1e-12 else 1e-12
         skew = float(np.mean(((terminals - mean_t) / std_t) ** 3))
@@ -409,12 +416,14 @@ def simulate(
             directional_bias=round(dir_bias, 8),
             fallback_used=False, model_version="mc_v3_garch",
             assumptions={
-                "base_iv": round(iv, 4), "blended_sigma": round(base_sigma, 4),
+                "base_iv": round(iv, 4),  # unit: ANNUALIZED decimal IV (input echo)
+                "blended_sigma": round(base_sigma, 4),  # legacy name; unit: ANNUALIZED decimal vol, pre regime mult — both paths
                 "regime": regime,
                 "regime_confidence": regime_confidence,
                 "regime_sigma_mult": round(eff_mult, 2),
-                "scaled_sigma": round(scaled_sigma, 4),
-                "sigma_bar_avg": round(avg_sigma_bar, 6),
+                "scaled_sigma": round(scaled_sigma, 4),  # legacy name; unit: ANNUALIZED decimal vol, post regime mult — both paths
+                "sigma_annualized": round(scaled_sigma, 6),  # canonical; unit: ANNUALIZED decimal vol, post regime mult — path-independent
+                "sigma_bar_avg": round(avg_sigma_bar, 6),  # unit: PER-1-MINUTE-BAR decimal vol, post regime mult (== sigma_annualized*sqrt(dt))
                 "per_bar_drift": round(per_bar_drift, 8),
                 "garch_active": use_garch,
                 "shock_enabled": shock_prob > 0, "shock_prob": shock_prob,
@@ -451,14 +460,18 @@ if __name__ == "__main__":
               f"EAE={r.expected_adverse_excursion:.2f} cont={r.containment_prob:.1%} "
               f"shock={r.assumptions.get('shock_enabled')} drift={r.assumptions.get('per_bar_drift',0):.6f}")
 
-    r_pin = simulate(spot=570.0, iv=0.18, regime="pinning", regime_confidence="high",
+    # REHAB 2026-08-24: horizon_bars became required when the silent 13-bar default was
+    # removed; these two demo calls had crashed ever since.
+    r_pin = simulate(spot=570.0, iv=0.18, horizon_bars=13, regime="pinning",
+                     regime_confidence="high",
                      realized_vol=0.15, atr=0.8, seed=42, n_paths=5000,
                      call_gamma_wall=575.0, put_gamma_wall=565.0,
                      em_upper=573.0, em_lower=567.0)
-    r_brk = simulate(spot=570.0, iv=0.18, regime="breakout", regime_confidence="high",
+    r_brk = simulate(spot=570.0, iv=0.18, horizon_bars=13, regime="breakout",
+                     regime_confidence="high",
                      realized_vol=0.15, atr=0.8, seed=42, n_paths=5000,
                      call_gamma_wall=575.0, put_gamma_wall=565.0,
                      em_upper=573.0, em_lower=567.0)
     assert r_pin.path_dispersion < r_brk.path_dispersion, "pinning < breakout dispersion"
     assert r_pin.containment_prob > r_brk.containment_prob, "pinning > breakout containment"
-    print("\n  ✅ Regime differences verified. PASS")
+    print("\n  Regime differences verified. PASS")  # ASCII: cp1252 consoles choke on emoji

@@ -454,7 +454,7 @@ class MarketState:
     mc_paths:               Optional[int]   = None
     mc_horizon:             Optional[int]   = None
     mc_vol_source:          Optional[str]   = None
-    mc_sigma_value:         Optional[float] = None
+    mc_sigma_value:         Optional[float] = None  # ANNUALIZED decimal vol, post regime mult (path-independent)
     mc_em_anchor:           Optional[str]   = None
     mc_iv_source:           Optional[str]   = None
     # Display-only wall-clock MC excursions (Key Levels); not used for sizing or fusion.
