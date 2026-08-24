@@ -493,18 +493,19 @@ def _load_pci():
 PCI = _load_pci()
 
 
-def test_rc469_staged_retirements_parse_and_missing_manifest_declares_nothing():
-    """The commit-path seam mirrors RC-468: staged manifest rows declare a retirement;
-    an absent manifest declares nothing (fail-closed toward blocking)."""
+def test_base_retirements_parse_and_missing_manifest_declares_nothing():
+    """TEARDOWN 2026-08-24: the commit-path seam reads the BASE manifest (two-step
+    contract); an absent manifest declares nothing (fail-closed toward blocking)."""
     text = ("| check | retired | rationale |\n|---|---|---|\n"
             "| log_law | 2026-08-24 | covered elsewhere |\n")
-    assert PCI._staged_retirements(lambda spec: text) == {"log_law"}
-    assert PCI._staged_retirements(lambda spec: None) == set()
+    assert PCI._base_retirements(lambda spec: text, "origin/main") == {"log_law"}
+    assert PCI._base_retirements(lambda spec: None, "origin/main") == set()
 
 
-def _pci_main_rc(monkeypatch, manifest_text):
+def _pci_main_rc(monkeypatch, base_manifest, staged_manifest="IGNORED-BY-DESIGN"):
     """Drive the real commit gate main() with a simulated base/candidate roster where
-    the candidate drops b_check, and the given staged manifest."""
+    the candidate drops b_check. The BASE manifest is what may legalize it; a STAGED
+    manifest is served too so a regression back to candidate-side reading is caught."""
     base_src = 'CHECKS = [("a_check", check_a, True), ("b_check", check_b, True)]'
     cand_src = 'CHECKS = [("a_check", check_a, True)]'
 
@@ -513,8 +514,10 @@ def _pci_main_rc(monkeypatch, manifest_text):
             return base_src
         if spec == f":{PCI.CHECKER_REL}":
             return cand_src
+        if spec == f"origin/main:{PCI.MANIFEST_REL}":
+            return base_manifest
         if spec == f":{PCI.MANIFEST_REL}":
-            return manifest_text
+            return staged_manifest
         return None
 
     monkeypatch.setattr(PCI, "_base_ref", lambda: "origin/main")
@@ -522,17 +525,30 @@ def _pci_main_rc(monkeypatch, manifest_text):
     return PCI.main()
 
 
-def test_rc469_commit_gate_passes_a_declared_retirement(monkeypatch):
+def test_commit_gate_passes_a_BASE_declared_retirement(monkeypatch):
     manifest = ("| check | retired | rationale |\n|---|---|---|\n"
                 "| b_check | 2026-08-24 | equivalent protection stated |\n")
-    assert _pci_main_rc(monkeypatch, manifest) == 0
+    assert _pci_main_rc(monkeypatch, base_manifest=manifest) == 0
 
 
-def test_rc469_commit_gate_still_blocks_an_undeclared_removal(monkeypatch):
-    """RC-391 preserved on the commit path: no manifest row, no removal."""
-    assert _pci_main_rc(monkeypatch, None) == 1
+def test_commit_gate_still_blocks_an_undeclared_removal(monkeypatch):
+    """RC-391 preserved on the commit path: no BASE manifest row, no removal."""
+    assert _pci_main_rc(monkeypatch, base_manifest=None) == 1
     empty_manifest = "| check | retired | rationale |\n|---|---|---|\n"
-    assert _pci_main_rc(monkeypatch, empty_manifest) == 1
+    assert _pci_main_rc(monkeypatch, base_manifest=empty_manifest) == 1
+
+
+def test_commit_gate_refuses_a_candidate_only_declaration(monkeypatch):
+    """THE SELF-AUTHORIZATION HOLE, closed (operator, 2026-08-24): a commit that both
+    declares b_check retired in its OWN staged manifest and removes it must BLOCK —
+    the declaration is honored only once it is already merged on the base."""
+    candidate_row = ("| check | retired | rationale |\n|---|---|---|\n"
+                     "| b_check | 2026-08-24 | self-serving declaration |\n")
+    assert _pci_main_rc(monkeypatch, base_manifest=None,
+                        staged_manifest=candidate_row) == 1
+    empty = "| check | retired | rationale |\n|---|---|---|\n"
+    assert _pci_main_rc(monkeypatch, base_manifest=empty,
+                        staged_manifest=candidate_row) == 1
 
 
 def test_rc468_declaration_only_touches_removal_accounting():
@@ -552,6 +568,29 @@ def test_rc468_declaration_only_touches_removal_accounting():
                and getattr(arg.func, "id", "") == "declared_retirements"
                for arg in split_calls[0].args), "manifest flows only into split_removals"
     assert "declared_retirements" not in inspect.getsource(GATE.compare)
+
+
+def test_declarations_are_read_from_the_base_never_the_candidate():
+    """THE SELF-AUTHORIZATION HOLE, closed at the CI gate (operator, 2026-08-24): both
+    declaration readers in main() must take the BASE ref (args.base), never the
+    candidate ref — a delta cannot mint the authorization for removing its own
+    protections. Two-step contract: declare on main first, remove in a later delta."""
+    import inspect
+    src_main = inspect.getsource(GATE.main)
+    tree = ast.parse(src_main)
+    fn = tree.body[0]
+    for reader in ("declared_retirements", "declared_folds"):
+        calls = [n for n in ast.walk(fn) if isinstance(n, ast.Call)
+                 and getattr(n.func, "id", "") == reader]
+        assert calls, f"{reader} is no longer consulted by main()"
+        for c in calls:
+            arg = c.args[0]
+            assert (isinstance(arg, ast.Attribute) and arg.attr == "base"
+                    and getattr(arg.value, "id", "") == "args"), (
+                f"{reader} must be called with args.base — a candidate-side read "
+                f"reopens self-authorization")
+    assert "declared_retirements(candidate_ref" not in src_main
+    assert "declared_folds(candidate_ref" not in src_main
 
 
 def test_index_candidate_is_parented_on_head_and_leaves_no_residue(tmp_path, monkeypatch):

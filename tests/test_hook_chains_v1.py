@@ -6,11 +6,25 @@ chains). These controls pin the chain EXECUTOR's contract so the wiring flip the
 operator adopts in .claude/settings.json cannot land on a broken runner:
 any member's block blocks, a crashing member blocks (unmeasurable is never a pass),
 and the argv roster maps hook-file spellings to module names faithfully.
+
+PER-MEMBER BLOCKING EQUIVALENCE (operator-named hole, 2026-08-24): the controls above
+proved argv mapping, rosters, a quiet pass, and crash-blocks — NOT that when an
+individual member would block, the chain blocks with that member's stderr. The
+``*_member_block_equivalence`` tests below drive EVERY member of the Stop roster and of
+the PreToolUse rosters to a real standalone exit-2 block, then run the chain executor
+as a subprocess on the IDENTICAL stdin payload and assert equal exit codes AND the
+member's distinctive stderr marker in the chain output. One further control proves the
+chain keeps running every member after an early block (two members' markers co-appear).
 """
 from __future__ import annotations
 
+import datetime
 import json
+import os
+import shutil
+import subprocess
 import sys
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -18,6 +32,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from tools.stop_chain import STOP_CHAIN, _argv_members, run_chain  # noqa: E402
+import tools.operator_law_guard as olg  # noqa: E402
 import tools.pretooluse_chain as ptc  # noqa: E402
 
 
@@ -51,3 +66,162 @@ def test_any_members_block_blocks_and_all_members_run():
 def test_a_crashing_member_blocks_not_passes():
     payload = json.dumps({"session_id": "chain-test", "tool_name": "Stop"})
     assert run_chain(payload, ("tools.zz_no_such_guard_zz",)) == 2
+
+
+# ---------------------------------------- per-member blocking equivalence --
+
+_ENV = {**os.environ, "PYTHONIOENCODING": "utf-8"}
+
+
+def _pipe(argv: list[str], raw_payload: str, cwd: Path) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(argv, cwd=str(cwd), input=raw_payload, capture_output=True,
+                          text=True, encoding="utf-8", errors="replace", env=_ENV,
+                          timeout=120)
+
+
+def _pair(payload: dict, guard_rel: str, root: Path = ROOT
+          ) -> tuple[subprocess.CompletedProcess[str], subprocess.CompletedProcess[str]]:
+    """The member standalone AND the chain, both subprocesses, IDENTICAL stdin bytes."""
+    raw = json.dumps(payload)
+    standalone = _pipe([sys.executable, str(root / guard_rel)], raw, root)
+    chain = _pipe([sys.executable, str(root / "tools" / "stop_chain.py"), guard_rel],
+                  raw, root)
+    return standalone, chain
+
+
+def _assert_blocking_pair(standalone, chain, markers: tuple[str, ...]) -> None:
+    assert standalone.returncode == 2, (standalone.stderr, standalone.stdout)
+    assert chain.returncode == standalone.returncode, (chain.stderr, chain.stdout)
+    for marker in markers:
+        assert marker in standalone.stderr, standalone.stderr
+        assert marker in chain.stderr, chain.stderr
+
+
+def _mini_stop_repo(tmp_path: Path) -> Path:
+    """A hermetic checkout carrying the REAL executor and the REAL stop guard.
+
+    stop_guard resolves its ledger from its own file location (REPO/governance/
+    root_cause_log.md), so planting a same-day unfinished row without touching the
+    tracked governance log requires giving the guard a repo of its own. Executor and
+    guard are byte-identical copies of this repo's files (asserted below), so the
+    equivalence proven is about THIS repo's code. check_institutional_correctness is
+    stubbed to report no active defects, so the block under test is EXACTLY the
+    planted RC-72 row and nothing else.
+    """
+    root = tmp_path / "mini"
+    (root / "tools").mkdir(parents=True)
+    (root / "governance").mkdir()
+    for name in ("__init__.py", "stop_chain.py", "stop_guard.py"):
+        shutil.copy(ROOT / "tools" / name, root / "tools" / name)
+        assert (root / "tools" / name).read_bytes() == (ROOT / "tools" / name).read_bytes()
+    (root / "tools" / "check_institutional_correctness.py").write_text(
+        "def load_active_defects():\n    return {}\n\n\n"
+        "def active_defect_offenders(defects, rc_log):\n    return []\n",
+        encoding="utf-8",
+    )
+    today = datetime.date.today().isoformat()
+    (root / "governance" / "root_cause_log.md").write_text(
+        "| id | status | opened | due | defect | why | fix |\n"
+        f"| RC-9901 | OPEN | {today} | 2099-01-01 | d | w | IN PROGRESS: planted for the "
+        "chain-equivalence control |\n",
+        encoding="utf-8",
+    )
+    return root
+
+
+def test_stop_guard_member_block_equivalence(tmp_path):
+    """RC-72 block: a row opened TODAY still IN PROGRESS blocks standalone and in-chain."""
+    root = _mini_stop_repo(tmp_path)
+    payload = {"session_id": "eqv-stop-guard", "stop_hook_active": False}
+    standalone, chain = _pair(payload, "tools/stop_guard.py", root=root)
+    _assert_blocking_pair(standalone, chain, ("(RC-72)", "RC-9901"))
+
+
+def test_proof_only_guard_member_block_equivalence(tmp_path):
+    """RC-87 block: an unreadable transcript_path is a loud block, never a pass."""
+    payload = {"transcript_path": str(tmp_path / "absent_transcript.jsonl"),
+               "stop_hook_active": False}
+    standalone, chain = _pair(payload, "tools/proof_only_guard.py")
+    _assert_blocking_pair(standalone, chain, ("BLOCKED (RC-87)",))
+    # Quiet-side equivalence on the SAME member: no transcript supplied is not a finding.
+    quiet_standalone, quiet_chain = _pair({"stop_hook_active": False},
+                                          "tools/proof_only_guard.py")
+    assert quiet_standalone.returncode == 0, quiet_standalone.stderr
+    assert quiet_chain.returncode == 0, quiet_chain.stderr
+
+
+def test_honesty_guard_member_block_equivalence(tmp_path):
+    """RC-209 block: honesty_guard on an unreadable transcript — unmeasurable never passes."""
+    payload = {"transcript_path": str(tmp_path / "absent_transcript.jsonl"),
+               "stop_hook_active": False}
+    standalone, chain = _pair(payload, "tools/honesty_guard.py")
+    _assert_blocking_pair(standalone, chain, ("BLOCKED (RC-209)",))
+
+
+def test_operator_law_guard_stop_member_block_equivalence(tmp_path):
+    """RC-93 Stop block: a recorded production edit with NOTHING run this turn.
+
+    The ledger is seeded through the guard's own recorder (module seam) into its real
+    per-session temp file; the entry is a legacy-shape `edit` row, which the guard
+    treats as a landed change (RC-57: unmeasurable is never 'nothing happened'). The
+    ledger is re-seeded to the identical single row before each subprocess, because a
+    block appends a `stop_blocked` observability row.
+    """
+    subject = tmp_path / "subject"
+    (subject / ".git").mkdir(parents=True)
+    (subject / "mod.py").write_text("VALUE = 1\n", encoding="utf-8")
+    sid = f"eqv-oplaw-{time.time_ns()}"
+    ledger = olg._ledger_path(sid)
+
+    def seed() -> None:
+        ledger.unlink(missing_ok=True)
+        olg._record(sid, "edit", str(subject / "mod.py"), olg.normalize_repo(subject))
+
+    payload = {"session_id": sid, "tool_name": "Stop", "cwd": str(subject)}
+    raw = json.dumps(payload)
+    try:
+        seed()
+        standalone = _pipe([sys.executable, str(ROOT / "tools" / "operator_law_guard.py")],
+                           raw, ROOT)
+        seed()
+        chain = _pipe([sys.executable, str(ROOT / "tools" / "stop_chain.py"),
+                       "tools/operator_law_guard.py"], raw, ROOT)
+    finally:
+        ledger.unlink(missing_ok=True)
+    _assert_blocking_pair(standalone, chain, ("BLOCKED (RC-93)", "ran NOTHING"))
+
+
+def test_pretooluse_guard_member_block_equivalence():
+    """RC-160 block: SPY-only framing written into an agent-instruction path (EDIT roster)."""
+    payload = {"tool_name": "Write",
+               "tool_input": {"file_path": str(ROOT / "AGENTS.md"),
+                              "content": "SPY-only coverage is complete."}}
+    standalone, chain = _pair(payload, "tools/pretooluse_guard.py")
+    _assert_blocking_pair(standalone, chain, ("RC-160",))
+
+
+def test_process_lock_guard_member_block_equivalence():
+    """LOCK-2 block: bare tree-destructive git (Bash roster member), through BOTH entrypoints.
+
+    The same payload is also driven through tools/pretooluse_chain.py with an explicit
+    roster, because that is the file .claude/settings.json actually wires for
+    PreToolUse — both entrypoints share run_chain, and this pins it.
+    """
+    payload = {"tool_name": "Bash", "tool_input": {"command": "git reset --hard"}}
+    standalone, chain = _pair(payload, "tools/process_lock_guard.py")
+    _assert_blocking_pair(standalone, chain, ("RESET_GUARD", "operating process lock"))
+    ptu_chain = _pipe([sys.executable, str(ROOT / "tools" / "pretooluse_chain.py"),
+                       "tools/process_lock_guard.py"], json.dumps(payload), ROOT)
+    assert ptu_chain.returncode == 2, ptu_chain.stderr
+    assert "RESET_GUARD" in ptu_chain.stderr, ptu_chain.stderr
+
+
+def test_chain_runs_all_members_even_after_an_early_block(tmp_path):
+    """Two blocking members' distinctive markers CO-APPEAR: an early block skips nobody."""
+    payload = json.dumps({"transcript_path": str(tmp_path / "absent_transcript.jsonl"),
+                          "stop_hook_active": False})
+    chain = _pipe([sys.executable, str(ROOT / "tools" / "stop_chain.py"),
+                   "tools/proof_only_guard.py", "tools/honesty_guard.py"], payload, ROOT)
+    assert chain.returncode == 2, chain.stderr
+    assert "BLOCKED (RC-87)" in chain.stderr, chain.stderr
+    assert "BLOCKED (RC-209)" in chain.stderr, chain.stderr

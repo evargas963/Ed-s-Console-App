@@ -302,14 +302,17 @@ def removed_enforced_checks(base_roster: set[str], head_roster: set[str]) -> lis
     return sorted(base_roster - head_roster)
 
 
-# ── DECLARED RETIREMENT (RC-468) ────────────────────────────────────────────────────
+# ── DECLARED RETIREMENT (RC-468; BASE-SIDE since the teardown, 2026-08-24) ──────────
 # The roster comparison above refuses SILENT removal (RC-391). Before RC-468 it also
 # refused DELIBERATE removal, which made the enforced set append-only forever — the
-# governance surface could only grow, never be right-sized. The operator's 2026-08-24
-# mandate requires both properties at once: no check disappears quietly, AND a reviewed
-# retirement is possible. The seam: a removal passes only when the SAME candidate tree
-# ships a manifest row naming the check in governance/retired_checks.md, so the name and
-# the reason travel with the removal and an undeclared removal blocks exactly as before.
+# governance surface could only grow, never be right-sized. RC-468's seam read the
+# manifest from the CANDIDATE, which the operator identified as self-authorization: the
+# same delta could declare a protection retired AND spend that declaration to pass this
+# gate. The declaration is therefore honored ONLY from the BASE (origin/main): retiring
+# a check is two operator-merged steps — (1) an ordinary delta adds the manifest row
+# (nothing is removed yet, the row is plainly visible in review), (2) a later delta
+# removes the check, legalized by the row that is ALREADY on main. A candidate-side row
+# excuses nothing.
 _RETIREMENT_MANIFEST = "governance/retired_checks.md"
 _MANIFEST_ROW_RE = re.compile(r"^\|\s*([a-z][a-z0-9_]*)\s*\|")
 
@@ -327,10 +330,10 @@ def parse_retirements(text: str) -> set[str]:
 
 
 def declared_retirements(ref: str) -> set[str]:
-    """Names the CANDIDATE tree at `ref` declares retired.
-
-    Read from the ref itself — not the working tree — so the declaration ships WITH the
-    removal it excuses; a missing manifest declares nothing (fail-closed toward blocking)."""
+    """Names the tree at `ref` declares retired. Callers MUST pass the BASE ref: a
+    declaration is honored only once it is already merged on main (two-step contract —
+    see the section comment above). A missing manifest declares nothing (fail-closed
+    toward blocking)."""
     proc = _run(["git", "show", f"{ref}:{_RETIREMENT_MANIFEST}"], cwd=REPO)
     if proc.returncode != 0:
         return set()
@@ -358,9 +361,9 @@ _FOLD_DECL_RE = re.compile(r"folded into ([a-z][a-z0-9_]*)")
 
 def declared_folds(ref: str) -> dict[str, str]:
     """{retired check: declared survivor} from manifest rows whose rationale declares the
-    substance 'folded into <survivor>'. Read from the candidate ref, exactly like
-    declared_retirements; a missing manifest (or a row with no fold phrase) declares
-    nothing — fail-closed toward blocking."""
+    substance 'folded into <survivor>'. Callers MUST pass the BASE ref, exactly like
+    declared_retirements (two-step contract); a missing manifest (or a row with no fold
+    phrase) declares nothing — fail-closed toward blocking."""
     proc = _run(["git", "show", f"{ref}:{_RETIREMENT_MANIFEST}"], cwd=REPO)
     if proc.returncode != 0:
         return {}
@@ -498,11 +501,14 @@ def main(argv: list[str] | None = None) -> int:
         base_counts, base_sha, base_roster = enforced_counts(args.base)
         _write_base_cache(cache_key, base_counts, base_sha, base_roster)
     head_counts, head_sha, head_roster = enforced_counts(candidate_ref, stage_delta=True)
+    # TEARDOWN 2026-08-24: declarations are read from the BASE, never the candidate —
+    # a delta cannot mint the authorization for its own protection-removal (two-step
+    # contract: declare on main first, remove in a later delta).
     retired, removed = split_removals(
         removed_enforced_checks(base_roster, head_roster),
-        declared_retirements(candidate_ref))
+        declared_retirements(args.base))
     base_counts, folded_moves = refold_base_counts(
-        base_counts, declared_folds(candidate_ref), set(retired), head_roster)
+        base_counts, declared_folds(args.base), set(retired), head_roster)
     added, improved = compare(base_counts, head_counts)
 
     print(f"base {args.base} ({base_sha}): {sum(base_counts.values())} enforced "

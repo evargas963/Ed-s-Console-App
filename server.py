@@ -10909,7 +10909,12 @@ _terrain_skip_lock = threading.Lock()
 TERRAIN_QUARANTINE_HARD_FAILS: int = 3
 TERRAIN_QUARANTINE_SOFT_BASE_SEC: float = 60.0
 TERRAIN_QUARANTINE_SOFT_MAX_SEC: float = 900.0
-TERRAIN_QUARANTINE_LEDGER = Path(APP_DIR) / "reports" / "terrain_quarantine_ledger.jsonl"
+#: Env override exists for TESTS ONLY (set in tests/conftest.py before any import, so a
+#: lazy mid-test `import server` can never write the tracked operator audit file — the
+#: class CI's ledger firewall caught 2026-08-24). Production never sets the variable.
+TERRAIN_QUARANTINE_LEDGER = Path(
+    os.environ.get("ED_TERRAIN_QUARANTINE_LEDGER")
+    or (Path(APP_DIR) / "reports" / "terrain_quarantine_ledger.jsonl"))
 
 _terrain_quarantine: dict[str, dict] = {}
 _terrain_consecutive_fails: dict[str, int] = {}

@@ -5,10 +5,15 @@ of an enforced check (RC-391: deleting the check that fails is not paying the de
 this manifest existed it also refused DELIBERATE removal, which made the enforced set
 append-only forever - governance could only grow, never be right-sized.
 
-A removal is legal when, and only when, the same delta ships a row here naming the check.
-The gate reads this file from the CANDIDATE tree, so the declaration travels with the
-removal and review sees the name and the reason in one place. An undeclared removal still
-blocks exactly as before. Rows are append-only history; never delete one.
+TWO-STEP CONTRACT (operator, 2026-08-24 teardown — closes the self-authorization hole):
+a removal is legal when, and only when, a row here naming the check is ALREADY ON MAIN
+before the removing delta. Both gates (check_delta_adds_no_debt and the commit seam in
+precommit_institutional) read this file from the BASE ref, never the candidate — so a
+change can no longer declare a protection retired and spend that declaration in the same
+delta. Step 1: an ordinary delta adds the row (nothing removed; the row is plainly
+visible in review). Step 2: a later delta removes the check, legalized by the merged
+row. An undeclared removal still blocks exactly as before. Rows are append-only
+history; never delete one.
 
 Ledger-scale figures quoted in rationales below were measured 2026-08-24 (433 rows, 124
 OPEN, 1412 KiB at declaration time; the rounded pre-RC-467 census read 430 / 124 / 1.4MB).
@@ -41,3 +46,12 @@ over *.py, *.yaml, *.mdc, tools/, tests/ and AGENTS.md (zero referencing files =
 | adversarial_audits_are_answered | 2026-08-24 | SIMPLICITY REHAB T2-2. same file, one validator — substance folded into root_cause_log, which now runs adversarial_audits_are_answered's validation as _adversarial_audits_are_answered_violations |
 | verdicts_declare_their_power | 2026-08-24 | SIMPLICITY REHAB T2-3. same file, one validator — substance folded into measured_claims_cite_evidence, which now runs verdicts_declare_their_power's validation as _verdicts_declare_their_power_violations |
 | unproven_register | 2026-08-24 | SIMPLICITY REHAB T2-3. same file, one validator — substance folded into measured_claims_cite_evidence, which now runs unproven_register's validation as _unproven_register_violations |
+| find_it_fix_it | 2026-08-24 | ARCHITECTURE TEARDOWN (operator, 2026-08-24 evening): the ledger+gate framework built around the fix-what-you-find principle was itself overbuilt governance. The PRINCIPLE survives as a plain instruction in AGENTS.md; enforcement is operator review in session + required CI (pytest-full, hardening) at merge. governance/active_defects.json is deleted with it |
+| research_before_act | 2026-08-24 | ARCHITECTURE TEARDOWN. Commit-time policing of a research-artifact token in a per-turn scratch log; measured abstaining in CI by construction (RC-396) and fabricating findings on clean checkouts (PR #127). Research-then-act survives as instruction; operator review in session + CI at merge |
+| adversarial_audit_test_lock | 2026-08-24 | ARCHITECTURE TEARDOWN. Required every fix to co-ship a named locking test — mandate-to-mechanism machinery that overlaps ordinary engineering hygiene the operator reviews in session; CI (pytest-full) remains the regression authority |
+| agents_laws_name_their_enforcer | 2026-08-24 | ARCHITECTURE TEARDOWN. Forced every bold AGENTS.md law heading to name a mechanical enforcer — the exact governance-regrowth recipe the operator ordered removed ("law/mandate/non-negotiable requires a lock" rebuilds the sprawl). Laws are instructions; the charter is prose the operator owns |
+| enforced_checks_have_negative_controls | 2026-08-24 | ARCHITECTURE TEARDOWN. Substring name-presence proxy over a concatenated tests corpus (its own docstring conceded it proves nothing about injection); the actual negative controls run in required CI, and enforced-check removal is blocked by the delta gate + this manifest (base-side, two-step) |
+
+TEARDOWN NOTES (2026-08-24, appended — rows above are append-only history):
+- Rows at lines 32-35 cite `require_code_owner_reviews`/`enforce_admins` as live equivalences; SUPERSEDED by RC-475 (operator ruling): the review requirement was removed by the operator, and the operator's conversational GO is the approval channel. The surviving machine gate at merge is required CI (pytest-full + hardening).
+- Rows citing CODEOWNERS ownership as an equivalence (lines 32-34): CODEOWNERS is removed with the Architecture A authority model; those equivalences now rest on the operator's conversational control of each session plus required CI.
