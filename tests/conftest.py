@@ -289,3 +289,20 @@ class RepoIndex:
 @pytest.fixture(scope="session")
 def repo_index() -> RepoIndex:
     return RepoIndex(Path(__file__).resolve().parent.parent)
+
+
+# ------------------------------------------------- tracked-ledger firewall --
+# REHAB 2026-08-24: reports/terrain_quarantine_ledger.jsonl is a TRACKED operator audit
+# file, and tests exercising the quarantine machinery (scorecard file, silent-zero file,
+# and any future caller of server._note_terrain_failure / _terrain_quarantine_blocks)
+# were appending ZZTEST*/ZZQ fixture rows to it on every suite run. This GLOBAL autouse
+# fixture redirects the module's ledger path to tmp for EVERY test whenever `server` is
+# imported — per-file fixtures kept missing writers (measured: ZZQ rows landed from a
+# file with no redirect). Costs nothing for tests that never import server.
+@pytest.fixture(autouse=True)
+def _terrain_ledger_to_tmp(tmp_path, monkeypatch):
+    srv = sys.modules.get("server")
+    if srv is not None and hasattr(srv, "TERRAIN_QUARANTINE_LEDGER"):
+        monkeypatch.setattr(srv, "TERRAIN_QUARANTINE_LEDGER",
+                            tmp_path / "terrain_quarantine_ledger.jsonl")
+    yield
