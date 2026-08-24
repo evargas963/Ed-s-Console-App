@@ -17,7 +17,7 @@
 - Every multi-agent or “what next” turn: Cursor states **mission · blockers · single next operator action**.
 - **Change requests:** operator → plan → operator GO → `governance/pm_mission.json` `status=active` (coordination only) → build → audit → mission `idle`.
 - Ordinary product edits need **no** active mission and are never blocked by mission status (RC-461/RC-462).
-- **Authority (RC-226, simplified RC-462):** while an AI is acting it may not edit the files that decide who is in charge (CODEOWNERS, required workflows, agent settings/hooks, operator grant files, the rail modules) → BLOCK (`writer_drift_lock.control_authority_violation` / `check_writer_no_drift`).
+- **Authority (RC-226, simplified RC-462; commit backstop retired RC-470):** the files that decide who is in charge (CODEOWNERS, required workflows, agent settings/hooks, operator grant files, the rail modules) reach `main` only through the operator's code-owner review (CODEOWNERS + `require_code_owner_reviews` + `enforce_admins`); in-process rail `writer_drift_lock.control_authority_violation` via `process_lock_guard.py`.
 - One active mission; Collect/lock vs UI polish are sequenced windows, not a free-for-all.
 - Daily rehab: `tools/rehab_daily_scan.py` → `reports/rehab_latest.md` (recommend only).
 - **DONE when:** `pm_mission.json` reflects the only approved active work (coordination metadata; it grants nothing).

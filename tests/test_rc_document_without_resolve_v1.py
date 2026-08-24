@@ -1,5 +1,11 @@
 # institutional-synthetic-ok: inject OPEN RC parking lots + mission COMPLETE to prove RC-228 BLOCKs.
-"""RC document-without-resolve lock — negative controls (RC-228)."""
+"""rc_resolve_lock library controls (RC-228).
+
+RC-470: the commit-time registration (check_rc_document_without_resolve) is retired -
+governance/retired_checks.md - so the three registration-wrapper tests left with it.
+The library stays: operating_process_lock's mission-completion clause still consumes it,
+and these controls pin the library's behavior.
+"""
 from __future__ import annotations
 
 import sys
@@ -121,36 +127,3 @@ def test_staged_combine_blocks_parking_lot():
         rc_file_lines=[],
     )
     assert msgs and any("RC-99920" in m for m in msgs)
-
-
-def test_check_rc_document_without_resolve_name_present():
-    """RC-95: ENFORCED check id must appear in tests."""
-    from tools.check_institutional_correctness import check_rc_document_without_resolve
-
-    assert callable(check_rc_document_without_resolve)
-    assert "rc_document_without_resolve" in (
-        "rc_document_without_resolve"  # name-presence for enforced_checks_have_negative_controls
-    )
-
-
-def test_check_registered_enforced_in_checks():
-    """LOCK-6 (RC-230): the check is REGISTERED in CHECKS as ENFORCED — a module with an
-    unregistered check is green-and-inert by construction."""
-    from tools.check_institutional_correctness import CHECKS
-
-    entry = [(n, e) for n, _fn, e in CHECKS if n == "rc_document_without_resolve"]
-    assert entry == [("rc_document_without_resolve", True)], (
-        "rc_document_without_resolve missing from CHECKS or not ENFORCED"
-    )
-
-
-def test_registered_check_blocks_on_injected_open_row(monkeypatch):
-    """Negative control on the REGISTERED wrapper: an added OPEN row with no resolve path
-    must produce >= 1 violation through check_rc_document_without_resolve itself."""
-    import tools.check_institutional_correctness as m
-
-    bad_row = ("| RC-999 | OPEN | 2026-08-04 | 2026-08-05 | synthetic defect for the negative "
-               "control | (1)->(2)->(3)->(4)->(5) ROOT: synthetic | investigating, will fix later |")
-    monkeypatch.setattr(m, "_git_output_lines", lambda args: ["+" + bad_row])
-    v = m.check_rc_document_without_resolve()
-    assert v, "registered check stayed silent on an added OPEN row without a resolve path"

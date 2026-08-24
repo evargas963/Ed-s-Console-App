@@ -695,8 +695,9 @@ def test_ci_never_fabricates_an_agent_identity():
     MEASURED: with the invented identity the required job reported
     `writer_no_drift: 0 -> 27`, reading an entire PR as the wrong agent's drift.
 
-    `check_writer_no_drift` abstains when no identity is present and lets the PreToolUse
-    layer (which always carries a REAL identity) enforce. Absence is the truthful input.
+    RC-470: check_writer_no_drift is retired (governance/retired_checks.md), so the
+    abstention half of this control left with it; the workflow half below still pins
+    that CI never exports an invented actor.
     """
     import re as _re
 
@@ -709,28 +710,6 @@ def test_ci_never_fabricates_an_agent_identity():
                 f"{wf.name} exports a fabricated agent identity ED_AGENT_ROLE="
                 f"{m.group(1)!r}. CI is not an agent; an invented actor makes every "
                 f"identity-sensitive verdict a lie about who acted (RC-240/RC-396).")
-
-    # …and the abstention it relies on must be real, not assumed: with no identity the
-    # drift backstop returns nothing rather than judging an invented actor.
-    import importlib.util
-    import os as _os
-
-    spec = importlib.util.spec_from_file_location(
-        "cic_identity", REPO / "tools" / "check_institutional_correctness.py")
-    cic = importlib.util.module_from_spec(spec)
-    try:
-        spec.loader.exec_module(cic)
-    except SystemExit:
-        pass
-    prior = _os.environ.get("ED_AGENT_ROLE")
-    try:
-        _os.environ.pop("ED_AGENT_ROLE", None)
-        assert cic.check_writer_no_drift() == [], (
-            "with NO identity the drift backstop still judged — it would convict whoever "
-            "CI pretended to be")
-    finally:
-        if prior is not None:
-            _os.environ["ED_AGENT_ROLE"] = prior
 
 
 def test_the_precommit_seam_refuses_when_no_base_trunk_resolves(monkeypatch):

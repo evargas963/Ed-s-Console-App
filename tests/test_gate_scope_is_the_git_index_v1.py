@@ -121,8 +121,11 @@ def test_the_remaining_filesystem_scanners_are_measured_not_forgotten():
     sight: the number is asserted, so the next person to add one has to come here.
     """
     found = _filesystem_enumerating_scanners()
-    assert len(found) == 44, (
-        f"the filesystem-enumerating scanner count moved from the 44 measured under RC-307 "
+    # 44 -> 43 (RC-470): check_five_why_recursive_lock's tests/**/*.py rglob corpus scan
+    # left the tree with its retired check (governance/retired_checks.md) — a scanner
+    # REMOVED, not index-scoped.
+    assert len(found) == 43, (
+        f"the filesystem-enumerating scanner count moved from the 43 measured under RC-470 "
         f"to {len(found)}. If you FIXED some, lower this number and say so in the row. If "
         f"you ADDED one, use `git ls-files` instead — this is the RC-274 -> RC-286 loop.\n"
         + "\n".join(found))

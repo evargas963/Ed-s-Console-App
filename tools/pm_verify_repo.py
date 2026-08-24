@@ -33,8 +33,8 @@ ON_HEAD_PROBES: dict[str, tuple[str, str]] = {
     "pm_coverage": ("pm_coverage_violations", "tools/operating_process_lock.py"),
     "go_closeout": ("go_closeout_violations", "tools/operating_process_lock.py"),
     "commit_pipe": ("commit_pipe_violations", "tools/operating_process_lock.py"),
-    "log_law_enforced": ('("log_law", check_log_law, True)',
-                         "tools/check_institutional_correctness.py"),
+    # RC-470: the log_law_enforced probe left with check_log_law (retired -
+    # governance/retired_checks.md).
     "pm_verify_repo": ("pm_verify_repo_violations", "tools/pm_verify_lock.py"),
     "writer_drift": ("control_authority_violation", "tools/writer_drift_lock.py"),
     "reset_guard": ("reset_guard_violations", "tools/operating_process_lock.py"),

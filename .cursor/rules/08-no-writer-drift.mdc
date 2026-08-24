@@ -26,8 +26,10 @@ other vendor. Persisted `writer` / `auditor` fields are history, not authorizati
 
 - `tools/writer_drift_lock.py` `control_authority_violation` via
   `process_lock_guard.py` (PreToolUse — deny prefix `SOD_DRIFT:`)
-- `check_writer_no_drift` in `tools/check_institutional_correctness.py`
-  (staged rails by an assigned principal → BLOCK)
+- MERGE gate: `.github/CODEOWNERS` + `require_code_owner_reviews` +
+  `enforce_admins` — the durable, server-side protection (RC-470: the
+  commit-time `check_writer_no_drift` backstop is retired,
+  `governance/retired_checks.md`).
 - Architecture A (RC-450): `ED_WRITER_DRIFT_GUARD` / `ED_PM_MISSION_GUARD`
   cannot disable these controls.
 

@@ -23,8 +23,6 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-import pytest
-
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / "tools"))
 
@@ -82,34 +80,20 @@ def test_negative_control_foreign_test_file_is_allowed(tmp_path, capsys):
     assert "PRODUCTION file" not in capsys.readouterr().err
 
 
-def test_negative_control_our_production_file_still_blocks_without_a_row(monkeypatch, capsys):
-    """The rule this guard exists for must survive the fix.
-
-    Without this, 'stop over-reaching' would silently become 'stop enforcing'.
-    """
-    monkeypatch.setattr(G, "_has_new_rc_row", lambda: False, raising=True)
-    code = G.decide(_payload(str(REPO / "server.py")))
-    assert code == 2, "an in-repo production edit with no RC row must still BLOCK"
-    assert "PRODUCTION file" in capsys.readouterr().err
+# RC-470: the RC-66 production-file-needs-a-row lane is retired with its commit-time
+# twin (governance/retired_checks.md), and the four blocking-behavior negative controls
+# left with it. The repo-scope predicate and the foreign-path controls above are this
+# file's surviving subject; in-repo edits are now ALLOWED regardless of ledger state:
 
 
-def test_negative_control_our_production_file_allowed_with_a_row(monkeypatch):
-    monkeypatch.setattr(G, "_has_new_rc_row", lambda: True, raising=True)
+def test_negative_control_our_production_file_is_allowed_without_a_row(capsys):
+    """RC-470: feature-branch edits are autonomous (operator 2026-08-24) - no ledger
+    row is demanded at edit time. The RC-160/163/186 content gates still apply."""
     assert G.decide(_payload(str(REPO / "server.py"))) == 0
+    assert "PRODUCTION file" not in capsys.readouterr().err
 
 
-def test_negative_control_our_allowlisted_paths_never_block(monkeypatch):
-    """Editing tests/ and governance/ is HOW you comply -- always permitted."""
-    monkeypatch.setattr(G, "_has_new_rc_row", lambda: False, raising=True)
+def test_negative_control_our_allowlisted_paths_never_block():
     for rel in ("tests/test_x.py", "governance/root_cause_log.md",
                 "docs/readme.md", "reports/x.md"):
         assert G.decide(_payload(str(REPO / rel))) == 0, rel
-
-
-@pytest.mark.parametrize("suffix", [".py", ".html", ".js", ".css", ".sql"])
-def test_negative_control_every_production_suffix_still_governed_in_repo(
-        monkeypatch, capsys, suffix):
-    """The fix is scoped by REPOSITORY, never by file type."""
-    monkeypatch.setattr(G, "_has_new_rc_row", lambda: False, raising=True)
-    assert G.decide(_payload(str(REPO / f"someplace/thing{suffix}"))) == 2
-    capsys.readouterr()

@@ -158,7 +158,6 @@ def test_collect_datasheet_staged_live_clean():
     assert check_collect_datasheet_staged() == []
 
 
-def test_honesty_guard_still_green():
-    from tools.check_institutional_correctness import check_honesty_guard_wired
-
-    assert check_honesty_guard_wired() == []
+# RC-470: test_honesty_guard_still_green left with check_honesty_guard_wired
+# (retired - governance/retired_checks.md); the parity tests above still assert
+# honesty_guard.py is wired in both agents' hook files.
