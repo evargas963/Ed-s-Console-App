@@ -39,6 +39,17 @@ GATE = _load_gate()
 
 POLICY_KEYS = ("legacy_allowance", "expires_at_utc", "strict_default")
 
+import pytest  # noqa: E402
+
+
+@pytest.fixture(scope="module")
+def live_orphans():
+    """ONE live check_no_orphan_dict_keys() run shared by the pure-read tests below.
+
+    The check sweeps every production file per call (measured ~5-7s); five tests here
+    read the SAME live result. Tests that monkeypatch the gate keep calling it fresh."""
+    return GATE.check_no_orphan_dict_keys()
+
 
 def test_the_policy_file_actually_contains_the_keys_we_claim():
     """Ground the whole row in the artifact, not in the checker's opinion of it."""
@@ -55,17 +66,17 @@ def test_keys_written_in_the_allowlisted_policy_are_harvested():
         assert key in harvested, f"{key} is written in the policy file but was not harvested"
 
 
-def test_the_three_policy_reads_are_no_longer_reported():
+def test_the_three_policy_reads_are_no_longer_reported(live_orphans):
     reported = {
-        str(v.path).replace("\\", "/") for v in GATE.check_no_orphan_dict_keys()
+        str(v.path).replace("\\", "/") for v in live_orphans
     }
     assert not any(p.endswith("active_bundle_contract.py") for p in reported), (
         "the policy-backed reads are still flagged as orphans")
 
 
-def test_the_check_did_not_go_blind_a_genuine_orphan_is_still_reported():
+def test_the_check_did_not_go_blind_a_genuine_orphan_is_still_reported(live_orphans):
     """The load-bearing negative control: widening the SEARCH must not widen the EXEMPTIONS."""
-    violations = GATE.check_no_orphan_dict_keys()
+    violations = live_orphans
     assert len(violations) > 100, (
         f"only {len(violations)} orphans reported — the check has been blinded, not fixed")
 
@@ -115,15 +126,15 @@ def test_data_file_credit_is_scoped_to_the_named_reader():
     assert other == set()
 
 
-def test_calendar_reads_are_no_longer_reported():
+def test_calendar_reads_are_no_longer_reported(live_orphans):
     reported = {
-        str(v.path).replace("\\", "/") for v in GATE.check_no_orphan_dict_keys()
+        str(v.path).replace("\\", "/") for v in live_orphans
     }
     assert not any(p.endswith("a2_session_calendar.py") for p in reported), (
         "the calendar-backed reads are still flagged as orphans")
 
 
-def test_micro_5m_headline_is_a_stale_name_not_a_missing_producer():
+def test_micro_5m_headline_is_a_stale_name_not_a_missing_producer(live_orphans):
     """The 5-minute micro signal ships as rules_headline (headline_5m -> RulesCard.headline)."""
     rules = (REPO / "rules_engine.py").read_text(encoding="utf-8")
     assert "headline=micro.headline_5m" in rules
@@ -132,19 +143,19 @@ def test_micro_5m_headline_is_a_stale_name_not_a_missing_producer():
     assert 'ms.get("micro_5m_headline")' not in adapter
     assert "d.micro_5m_headline" not in html
     reported_keys = []
-    for v in GATE.check_no_orphan_dict_keys():
+    for v in live_orphans:
         if "key '" in v.msg:
             reported_keys.append(v.msg.split("key '", 1)[1].split("'", 1)[0])
     assert "micro_5m_headline" not in reported_keys
 
 
-def test_two_never_written_fallback_spellings_are_gone():
+def test_two_never_written_fallback_spellings_are_gone(live_orphans):
     """Same proof as lstm_1c_sha256: git log -S '\"key\":' empty, so the OR was dead."""
     src = (REPO / "v2_decision" / "a2_option_expression.py").read_text(encoding="utf-8")
     assert 'ms_dict.get("minutes_to_close")' not in src
     assert 'ms_dict.get("timestamp_ms")' not in src
     reported_keys = []
-    for v in GATE.check_no_orphan_dict_keys():
+    for v in live_orphans:
         if "key '" in v.msg:
             reported_keys.append(v.msg.split("key '", 1)[1].split("'", 1)[0])
     assert "minutes_to_close" not in reported_keys
