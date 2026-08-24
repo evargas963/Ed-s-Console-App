@@ -1343,12 +1343,12 @@ def _predict_lstm(
             LEGACY_V2_FEATURES_5M,
             STREAM_5M_LOOKBACK,
             STREAM_1M_LOOKBACK,
-            _safe_float,
             assert_lstm_encoder_checkpoint_compatible,
             canonical_reference_spot_from_merged_window,
             checkpoint_encoder_schema_version,
             encoded_width_5m_for_checkpoint,
             encoded_width_1m_for_checkpoint,
+            micro_reference_spot_from_window,
         )
 
         tf = timeframe or CANONICAL_TIMEFRAME
@@ -1416,7 +1416,9 @@ def _predict_lstm(
             for s in merged_window
         ]
         micro = merged_window[-STREAM_1M_LOOKBACK:]
-        mr = _safe_float(micro[0].get("spot")) or ref_spot
+        # RC-318: single typed-absence producer (None/NaN/<=0 tested -> validated ref_spot;
+        # the old `_safe_float(...) or ref_spot` let a truthy NaN through as the reference).
+        mr = micro_reference_spot_from_window(micro, ref_spot)
         seq_1m = [
             encode_lstm_micro_sequence_bar_for_checkpoint(s, mr, checkpoint) for s in micro
         ]

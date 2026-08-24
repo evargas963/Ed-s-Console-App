@@ -1375,7 +1375,8 @@ def _train_cascade_xgb_lstm_into(
     from ml_train import load_data, train_ticker, engineer_single_snapshot
     from lstm_model import train_lstm
     from lstm_data import (
-        build_lstm_dataset, extract_rth_snapshots, STREAM_5M_LOOKBACK, TARGET_CLASSES, _safe_float,
+        build_lstm_dataset, extract_rth_snapshots, STREAM_5M_LOOKBACK, TARGET_CLASSES,
+        canonical_reference_spot_from_sequence_window_first_bar,
     )
     from timeframe_config import CANONICAL_TIMEFRAME
 
@@ -1409,8 +1410,14 @@ def _train_cascade_xgb_lstm_into(
             current = window[-1]
             if current.get(label_col) not in TARGET_CLASSES:
                 continue
-            ref_spot = _safe_float(window[0].get("spot")) or _safe_float(current.get("spot"))
-            if ref_spot <= 0:
+            # RC-318: this gate exists ONLY to mirror build_lstm_dataset's window eligibility
+            # (xgb_probs_list must align 1:1 with ds samples, checked below). The old
+            # `_safe_float(first) or _safe_float(current)` form used a last-bar fallback the
+            # canonical producer forbids and let NaN through — any divergence silently broke
+            # the alignment and discarded the cascade probs. Use the SAME canonical drop.
+            try:
+                canonical_reference_spot_from_sequence_window_first_bar(window)
+            except ValueError:
                 continue
             X_row = engineer_single_snapshot(
                 prepare_row_for_xgb_features(current),  # RC-340 (no cache var in this scope)
@@ -1461,11 +1468,11 @@ def _build_in_sample_cascade_xgb_lstm_tensor(
         STREAM_1M_LOOKBACK,
         STREAM_5M_LOOKBACK,
         TARGET_CLASSES,
-        _safe_float,
         canonical_reference_spot_from_sequence_window_first_bar,
         encode_snapshot_1m,
         encode_snapshot_5m,
         extract_rth_snapshots,
+        micro_reference_spot_from_window,
     )
     from ml_data_common import confluence_features_for_bar
     from ml_train import engineer_single_snapshot
@@ -1556,7 +1563,8 @@ def _build_in_sample_cascade_xgb_lstm_tensor(
                 for s in lstm_window
             ]
             micro = lstm_window[-STREAM_1M_LOOKBACK:]
-            micro_ref = _safe_float(micro[0].get("spot")) or lstm_ref
+            # RC-318: single typed-absence producer (None/NaN/<=0 tested -> validated lstm_ref).
+            micro_ref = micro_reference_spot_from_window(micro, lstm_ref)
             seq_1m = [
                 encode_snapshot_1m(training_snapshot_for_sequence_encode(s), micro_ref)
                 for s in micro
@@ -1892,9 +1900,9 @@ def train_cascade_candidate(
         STREAM_5M_LOOKBACK,
         STREAM_1M_LOOKBACK,
         CONFLUENCE_FEATURES,
-        _safe_float,
         TARGET_CLASSES,
         canonical_reference_spot_from_sequence_window_first_bar,
+        micro_reference_spot_from_window,
     )
     from ml_data_common import confluence_features_for_bar
 
@@ -2049,10 +2057,13 @@ def train_cascade_candidate(
                 target_str = current.get(label_col)
                 if target_str is None or target_str not in TARGET_CLASSES:
                     continue
-                ref_spot = _safe_float(window[0].get("spot"))
-                if ref_spot <= 0:
-                    ref_spot = _safe_float(current.get("spot"))
-                if ref_spot <= 0:
+                # RC-318: eligibility gate mirrors build_lstm_dataset's canonical window drop
+                # exactly (xgb_probs_list must align 1:1 with ds.n_samples, checked below).
+                # The old two-step _safe_float form used the forbidden last-bar fallback and
+                # let NaN through — either way silently breaking the cascade alignment.
+                try:
+                    canonical_reference_spot_from_sequence_window_first_bar(window)
+                except ValueError:
                     continue
                 X_row = engineer_single_snapshot(
                     prepare_row_for_xgb_features(current, cache=_conf_cache),  # RC-340
@@ -2248,7 +2259,8 @@ def train_cascade_candidate(
                         for s in lstm_window
                     ]
                     micro = lstm_window[-STREAM_1M_LOOKBACK:]
-                    micro_ref = _safe_float(micro[0].get("spot")) or lstm_ref
+                    # RC-318: single typed-absence producer (None/NaN/<=0 -> validated lstm_ref).
+                    micro_ref = micro_reference_spot_from_window(micro, lstm_ref)
                     seq_1m = [
                         encode_snapshot_1m(training_snapshot_for_sequence_encode(s), micro_ref)
                         for s in micro

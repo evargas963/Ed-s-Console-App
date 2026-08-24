@@ -710,13 +710,25 @@ def extract_rth_snapshots(
 # ════════════════════════════════════════════════════════════════════════════════
 
 def _safe_float(v) -> float:
-    """Convert any value to float, returning 0.0 for None/invalid (non-nullable columns only)."""
+    """LEGACY-v2 checkpoint-parity coercion: absent/invalid -> 0.0. Frozen — see RC-318.
+
+    RC-318 scope closure: after the typed-absence sweep, the ONLY production caller is
+    ``_encode_snapshot_v2`` — the frozen encoder for checkpoints trained on the legacy v2
+    schema, whose input distribution was built with exactly this 0.0 coercion. Emitting
+    NaN here would feed NaN into an already-trained torch model that has no imputation
+    lane at inference. New code must use ``_raw_finite_float`` (typed Optional absence)
+    or the canonical reference-spot producers below — never this helper.
+    """
     if v is None:
+        # absence-literal-ok: RC-318 — legacy v2 checkpoint parity only. The trained
+        # legacy checkpoints saw 0.0 for absent non-nullable columns; changing this
+        # silently shifts their serve-time input distribution. Typed absence for the
+        # current lanes lives in _raw_finite_float / micro_reference_spot_from_window.
         return 0.0
     try:
         return float(v)
     except (ValueError, TypeError):
-        return 0.0  # absence-ok: RC-301 — this helper's contract is "non-nullable columns only", so 0.0 is meant to be unreachable rather than a substitute; that contract is ASSERTED by the docstring above and NOT verified by anything, and the sibling _raw_finite_float already returns Optional for the nullable case. Recorded as unverified rather than dressed as safe (RC-296).
+        return 0.0  # absence-ok: RC-318 — legacy v2 checkpoint-parity coercion, frozen for already-trained checkpoints (their training inputs were built with this exact 0.0 fill; NaN at serve would poison a torch model with no imputation lane). Only _encode_snapshot_v2 calls this in production; current lanes use _raw_finite_float / the canonical reference-spot producers instead.
 
 
 def _raw_finite_float(v) -> Optional[float]:
@@ -764,14 +776,33 @@ def canonical_reference_spot_from_sequence_window_first_bar(window: list) -> flo
     """
     if not window:
         raise ValueError("sequence window must be non-empty")
-    r = _safe_float(window[0].get("spot"))
-    if r <= 0:
+    # RC-318 typed absence -> explicit row-drop: absent/unparseable/non-finite spot raises
+    # (every caller catches ValueError and skips the window / abstains). The old _safe_float
+    # form let NaN through the `<= 0` guard and poisoned every ref-normalized feature.
+    r = _raw_finite_float(window[0].get("spot"))
+    if r is None or r <= 0:
         raise ValueError("sequence window first bar must have spot > 0")
     return float(r)
 
 
 # Alias for inference code paths that pass a merged canonical window.
 canonical_reference_spot_from_merged_window = canonical_reference_spot_from_sequence_window_first_bar
+
+
+def micro_reference_spot_from_window(micro_window: list, fallback_ref_spot: float) -> float:
+    """
+    ONE producer for the micro-stream reference spot: first micro bar's ``spot`` when it is
+    finite and positive, else the caller's already-validated window ``ref_spot``.
+
+    RC-318 typed absence: ``_raw_finite_float`` returns None for absent/unparseable/non-finite
+    spot and that None is TESTED here (fallback), never coerced to 0.0. The previous per-call
+    ``_safe_float(...) or ref`` idiom at four sites let NaN (truthy) and negative spots through
+    as the division reference, silently NaN-poisoning every micro dist feature.
+    """
+    r = _raw_finite_float(micro_window[0].get("spot")) if micro_window else None
+    if r is None or r <= 0:
+        return float(fallback_ref_spot)
+    return float(r)
 
 
 def _signed_log(v: float) -> float:
@@ -791,9 +822,18 @@ def _encode_snapshot_v2(
     feature_cols: list[str],
     nullable_cols: frozenset[str],
 ) -> list:
-    """Legacy schema v2 encoder (value + __present masks for nullable numerics)."""
+    """Legacy schema v2 encoder (value + __present masks for nullable numerics).
+
+    absence-literal-ok (RC-318), all five _safe_float uses below: this encoder exists ONLY
+    to reproduce the exact vectors legacy-v2 checkpoints were trained on (dispatched by
+    encode_snapshot_*_for_checkpoint on the checkpoint's schema version). Those training
+    vectors zero-filled absent non-nullable columns via _safe_float, so the coercion is a
+    frozen parity contract: emitting NaN here would feed NaN to an already-trained torch
+    model with no serve-time imputation lane. Typed absence for the CURRENT schema lives in
+    the v3 tabular encoder (median imputation) and the __present masks handled above.
+    """
     features: list[float] = []
-    spot = _safe_float(snap.get("spot"))
+    spot = _safe_float(snap.get("spot"))  # absence-literal-ok: RC-318 legacy parity (see docstring)
 
     for col in feature_cols:
         if col in CATEGORICAL_COLS:
@@ -1141,9 +1181,9 @@ def build_lstm_dataset(
 
                 # ── 1m stream: last 20 bars (micro context) ──────────────
                 micro_window = window[-STREAM_1M_LOOKBACK:]
-                micro_ref = _safe_float(micro_window[0].get("spot"))
-                if micro_ref <= 0:
-                    micro_ref = ref_spot
+                # RC-318: typed absence via the single micro-reference producer (None tested,
+                # falls back to the validated ref_spot — never a coerced 0.0 or NaN reference).
+                micro_ref = micro_reference_spot_from_window(micro_window, ref_spot)
 
                 seq_1m = []
                 for snap in micro_window:
@@ -1200,7 +1240,8 @@ def build_lstm_dataset(
     X_conf = np.array(all_X_conf, dtype=np.float32)
     y = np.array(all_y, dtype=np.int64)
 
-    # Replace any NaN with 0.0 (defensive — should be rare after _safe_float)
+    # Replace any NaN with 0.0 (defensive; the torch lanes have no imputation matrix, so a
+    # stray NaN from the tabular engineer would otherwise poison training gradients).
     nan_before = int(np.isnan(X_5m).sum() + np.isnan(X_1m).sum() + np.isnan(X_conf).sum())
     X_5m = np.nan_to_num(X_5m, nan=0.0)
     X_1m = np.nan_to_num(X_1m, nan=0.0)

@@ -388,6 +388,12 @@ def _categorical_soft_match(row_val: Any, anchor_val: Any) -> float:
     if anchor_val is None:
         return -1.0
     if row_val is None:
+        # absence-literal-ok: RC-318 — a real predicate answer, not a coerced measurement.
+        # The asymmetry is deliberate and consumer-tested (_score_row: `cm < 0.0: continue`):
+        # an absent ANCHOR value skips the dimension entirely (-1.0), while a candidate row
+        # missing the attribute earns zero similarity credit against the anchor's KNOWN
+        # value — "unknown does not match known" is the answer, weight stays in the
+        # denominator as a scored mismatch.
         return 0.0
     return (
         1.0
