@@ -5,10 +5,15 @@ of an enforced check (RC-391: deleting the check that fails is not paying the de
 this manifest existed it also refused DELIBERATE removal, which made the enforced set
 append-only forever - governance could only grow, never be right-sized.
 
-A removal is legal when, and only when, the same delta ships a row here naming the check.
-The gate reads this file from the CANDIDATE tree, so the declaration travels with the
-removal and review sees the name and the reason in one place. An undeclared removal still
-blocks exactly as before. Rows are append-only history; never delete one.
+TWO-STEP CONTRACT (operator, 2026-08-24 teardown — closes the self-authorization hole):
+a removal is legal when, and only when, a row here naming the check is ALREADY ON MAIN
+before the removing delta. Both gates (check_delta_adds_no_debt and the commit seam in
+precommit_institutional) read this file from the BASE ref, never the candidate — so a
+change can no longer declare a protection retired and spend that declaration in the same
+delta. Step 1: an ordinary delta adds the row (nothing removed; the row is plainly
+visible in review). Step 2: a later delta removes the check, legalized by the merged
+row. An undeclared removal still blocks exactly as before. Rows are append-only
+history; never delete one.
 
 Ledger-scale figures quoted in rationales below were measured 2026-08-24 (433 rows, 124
 OPEN, 1412 KiB at declaration time; the rounded pre-RC-467 census read 430 / 124 / 1.4MB).

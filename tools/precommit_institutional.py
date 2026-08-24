@@ -30,16 +30,19 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 CHECKER_REL = "tools/check_institutional_correctness.py"
 
-# RC-468: the declared-retirement seam, same contract as check_delta_adds_no_debt.
-# A removal passes only when the STAGED manifest names the check, so the declaration
-# and the removal travel in the same commit; an undeclared removal blocks as before.
+# RC-468 seam, BASE-SIDE since the teardown (2026-08-24): the staged-manifest read let
+# one commit declare a protection retired AND spend the declaration — self-authorization.
+# The declaration is honored only from the BASE ref, so retiring a check is two
+# operator-merged steps: declare on main first, remove in a later delta. Same contract
+# as check_delta_adds_no_debt.
 MANIFEST_REL = "governance/retired_checks.md"
 _MANIFEST_ROW_RE = re.compile(r"^\|\s*([a-z][a-z0-9_]*)\s*\|")
 
 
-def _staged_retirements(git_show) -> set[str]:
-    """Check names the STAGED index declares retired; missing manifest declares nothing."""
-    text = git_show(f":{MANIFEST_REL}")
+def _base_retirements(git_show, base: str) -> set[str]:
+    """Check names the BASE ref's manifest declares retired; a missing manifest (or a
+    candidate-only row) declares nothing — fail-closed toward blocking."""
+    text = git_show(f"{base}:{MANIFEST_REL}")
     if text is None:
         return set()
     names: set[str] = set()
@@ -136,13 +139,14 @@ def main() -> int:
         return 1
     removed = sorted(base_roster - cand_roster)
     if removed:
-        declared = _staged_retirements(_git_show)
+        declared = _base_retirements(_git_show, base)
         retired = [n for n in removed if n in declared]
         removed = [n for n in removed if n not in declared]
         if retired:
             print(
-                f"institutional gate: {len(retired)} enforced check(s) RETIRED by declaration "
-                f"in {MANIFEST_REL} (RC-468): {', '.join(retired)}")
+                f"institutional gate: {len(retired)} enforced check(s) RETIRED by "
+                f"BASE-declared rows in {MANIFEST_REL} (two-step contract): "
+                f"{', '.join(retired)}")
     if removed:
         print(
             "institutional gate BLOCKED: the staged change DELETES or DOWNGRADES enforced "
