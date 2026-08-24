@@ -101,12 +101,16 @@ def test_hard_denylist_no_longer_vendor_gates_product(monkeypatch):
 
 
 def test_lock1_lock_modules_are_not_agent_writable(monkeypatch):
-    """Architecture A: no assigned principal may rewrite control-authority rails."""
+    """Architecture A: no assigned principal may rewrite control-authority rails.
+
+    RC-471: the catalog (check_institutional_correctness.py) left the rail — quality
+    gates are not authority (operator ruling 2026-08-24) and it is not CODEOWNERS-owned;
+    the rail modules themselves remain railed for every assigned principal."""
     mission = {"status": "active", "writer": "claude", "mission_id": "m1", "scope_paths": ["tools/"]}
     sole = {"writer": "claude"}
     assert WDL.control_authority_violation(
         "tools/check_institutional_correctness.py", agent="cursor"
-    )
+    ) is None
     assert WDL.writer_drift_violations(
         ["tools/writer_drift_lock.py"],
         agent="cursor",

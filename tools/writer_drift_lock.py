@@ -13,9 +13,11 @@ This module BLOCKs only control-authority rewrites by an assigned principal
 (ED_AGENT_ROLE set). Ordinary product paths are not vendor-gated.
 
 Fires:
-  - PreToolUse via process_lock_guard / control_authority_violation
-  - commit / pre-commit via writer_drift_violations on dirty rails
-  - check_writer_no_drift in check_institutional_correctness.py
+  - PreToolUse via process_lock_guard / control_authority_violation (in-process
+    defense-in-depth). RC-470/RC-471: the commit-time backstop (check_writer_no_drift)
+    is retired - the durable, subject-independent gate is operator review at MERGE
+    (CODEOWNERS + require_code_owner_reviews + enforce_admins), and
+    CONTROL_AUTHORITY_EXACT below mirrors CODEOWNERS exactly.
 
 Empty ED_AGENT_ROLE is operator/CI (abstain), never a guessed vendor.
 """
@@ -41,64 +43,30 @@ MISSION_IN_PROGRESS_STATUSES = frozenset({
     "in-progress",
 })
 
-#: Files that define CI/merge/hook/assignment rails. Derived from actual call
-#: paths (hooks.json, settings.json, required workflows, assignment JSON).
+#: RC-471 (operator ruling 2026-08-24): this set mirrors .github/CODEOWNERS EXACTLY —
+#: the files that decide WHO IS IN CHARGE, and nothing else. Approval binds at MERGE
+#: (CODEOWNERS + require_code_owner_reviews + enforce_admins, server-side and
+#: subject-independent); this declaration exists for the in-process PreToolUse rail
+#: and for the tests that assert rail/CODEOWNERS parity. The pre-RC-471 set carried
+#: the whole hook/pre-commit import closure here — quality-gate scripts, guard
+#: helpers, conftest, venv wrappers — but every local rail is evadable by the subject
+#: it constrains (measured under RC-470: the commit hook clears ED_AGENT_ROLE, CI
+#: sets no role, and hooks run the production checkout's guards so worktree edits
+#: never met this list). Quality/test gates are not authority.
 CONTROL_AUTHORITY_EXACT = frozenset({
     ".github/CODEOWNERS",
-    ".pre-commit-config.yaml",
-    ".cursor/hooks.json",
     ".claude/settings.json",
+    ".cursor/hooks.json",
     "governance/operator_go.json",
     "governance/operator_grants.json",
-    "tools/check_institutional_correctness.py",
-    "tools/check_delta_adds_no_debt.py",
-    "tools/precommit_institutional.py",
-    "tools/check_market_correctness.py",
-    "tools/check_institutional_closure_gate.py",
-    "tools/check_no_grep_subprocess.py",
+    "tools/writer_drift_lock.py",
+    "tools/process_lock_guard.py",
+    "tools/operating_process_lock.py",
     "tests/test_architecture_a_bypass_class_v1.py",
     "tests/test_writer_drift_lock_v1.py",
     "tests/test_control_authority_surfaces_v1.py",
     "tests/test_architecture_a_operator_writer_authority_v1.py",
-    # tools/__init__.py executes on every `import tools.*` INSIDE the guard/hook
-    # process. Left unprotected, an assigned AI could plant code there to monkeypatch
-    # control_authority_violation -> None and forge pm=operator in-process, neutering
-    # the whole rail. It is a control-authority surface even though it is not a
-    # *_lock.py / *_guard.py by name.
-    "tools/__init__.py",
-    # HOOK IMPORT CLOSURE (Architecture A self-falsification, RC-453): every repo
-    # module the PreToolUse/Stop hook entrypoints import transitively is EXECUTED
-    # inside the guard process. Planting module-top code in any of them runs it with
-    # the guard's privileges (defeating the in-process rail) and, if merged, poisons
-    # production enforcement. So the whole closure is a control-authority surface —
-    # blocked at PreToolUse for an assigned AI AND operator-review-gated on merge.
-    # The *_guard.py/*_lock.py members are already covered by the name rule below;
-    # these are the remaining closure members. tests/test_control_authority_surfaces
-    # recomputes the closure and fails if a new hook import is not covered here.
-    "tools/check_credential_leak.py",
-    "tools/check_eol_style_invariant.py",
-    "tools/check_schwab_market_field_semantics.py",
-    "tools/check_ui_data_integration.py",
-    "tools/check_vendor_field_coercion.py",
-    "tools/check_venv_parity.py",
-    "tools/data_faucet_audit.py",
-    "tools/find_prove_locks.py",
-    "tools/log_law.py",
-    "tools/plus_player_locks.py",
-    "tools/turn_self_audit.py",
-    "time_et.py",
-    # tests/conftest.py runs at pytest collection and governs EVERY test below it,
-    # including the Architecture A proof. A poisoned conftest could monkeypatch a
-    # guard/reader so the suite passes green while the boundary is defeated — so it
-    # is CI-enforcement integrity and must be operator-review-gated.
-    "tests/conftest.py",
-    # PRE-COMMIT closure: these wrappers run inside the git pre-commit process and
-    # DECIDE gate exit codes (venv-parity / market-correctness / operating-process /
-    # db-health). A poisoned wrapper silently passes those gates. They are not in the
-    # PreToolUse/Stop hook closure but are enforcement-execution surfaces all the same.
-    "tools/run_with_repo_venv.py",
-    "tools/bootstrap_worktree_venv.py",
-    "tests/test_venv_wrapper_propagates_exit_v1.py",
+    "tests/test_operating_process_lock_v1.py",
 })
 CONTROL_AUTHORITY_PREFIXES = (
     ".github/workflows/",
@@ -212,21 +180,9 @@ def is_control_authority_surface(rel: str) -> bool:
     for p in CONTROL_AUTHORITY_PREFIXES:
         if rel.startswith(p):
             return True
-    name = rel.rsplit("/", 1)[-1]
-    if rel.startswith("tools/") and (
-        name.endswith("_guard.py")
-        or name.endswith("_lock.py")
-        or name in {
-            "check_institutional_correctness.py",
-            "precommit_institutional.py",
-            "operating_process_lock.py",
-            "check_delta_adds_no_debt.py",
-            "check_market_correctness.py",
-            "check_institutional_closure_gate.py",
-            "check_no_grep_subprocess.py",
-        }
-    ):
-        return True
+    # RC-471: the *_guard.py/*_lock.py name rule and the check-script name set are
+    # removed — membership is EXACT + the workflows prefix, mirroring CODEOWNERS.
+    # Quality-gate scripts and non-rail guards are ordinary autonomous code.
     return False
 
 
