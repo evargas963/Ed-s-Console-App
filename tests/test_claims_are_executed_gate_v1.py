@@ -258,11 +258,23 @@ def test_the_module_scope_blind_spot_is_measured_not_silent():
     carries the property. The cache's BEHAVIOUR (roundtrip, stale-key miss, corruption
     fail-open, key sensitivity) IS asserted behaviourally by the four sibling RC-466
     tests in the same suite, which do not enter this census.
+
+    268 -> 269 (RC-468 declared-retirement seam in the delta gate), one arrival, named:
+    `test_rc468_declaration_only_touches_removal_accounting` ARRIVED.
+    INHERENTLY STRUCTURAL: it asserts that in the delta gate's main() the retirement
+    manifest is read exactly once and flows ONLY into removal accounting
+    (split_removals), never into the counts comparison - the ABSENCE of any second
+    consumer. A runtime call cannot prove that negative: there is no input one could
+    feed compare() to observe a manifest influence that structurally does not exist;
+    only the call graph carries the property, exactly like the RC-466 candidate-cache
+    entry above. The mechanism's BEHAVIOUR (parser rows, undeclared-removal blocking,
+    fail-closed missing manifest) IS asserted behaviourally by the three sibling
+    RC-468 tests in the same suite, which do not enter this census.
     """
     fns = C.source_text_only_functions()
-    assert len(fns) == 268, (
-        f"the per-function source-text-only count moved from the 268 measured on "
-        f"2026-08-24 (RC-466) to {len(fns)}. This figure is not a defect count, so do not simply "
+    assert len(fns) == 269, (
+        f"the per-function source-text-only count moved from the 269 measured on "
+        f"2026-08-24 (RC-468) to {len(fns)}. This figure is not a defect count, so do not simply "
         f"re-baseline it. ACCOUNT for the move: name each function that arrived or left. "
         f"An arrival stays only if its property is INHERENTLY STRUCTURAL — uniqueness, "
         f"duplication or absence in the repository, which no runtime call can express. If "

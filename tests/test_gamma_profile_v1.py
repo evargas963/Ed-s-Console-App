@@ -79,11 +79,19 @@ def test_profile_uses_dealer_sign_convention() -> None:
 
 
 def test_flip_is_interpolated_within_the_profile_span() -> None:
+    """RC-467: the real chain MUST yield a flip - the old `if flip is not None` guard let
+    a flip-always-None regression pass silently while asserting nothing. MEASURED on this
+    fixture under the pinned session clock: 241 profile points, 2 sign crossings,
+    flip = 761.0, inside the span. Existence is pinned; the exact value is not (it moves
+    with vol/time inputs) - span containment is the invariant."""
     chain, spot = _load_real_chain()
     prof = compute_gamma_profile(chain, spot, span_pct=0.15, steps=240)
     flip = gamma_flip_from_profile(prof)
-    if flip is not None:
-        assert prof[0][0] <= flip <= prof[-1][0]
+    assert flip is not None, (
+        "the real fixture chain has a zero crossing (measured flip 761.0); a None flip "
+        "here means the profile or crossing detection regressed"
+    )
+    assert prof[0][0] <= flip <= prof[-1][0]
 
 
 def test_flip_returns_none_when_no_zero_crossing() -> None:
