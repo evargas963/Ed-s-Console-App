@@ -104,9 +104,9 @@ def _mini_stop_repo(tmp_path: Path) -> Path:
     root_cause_log.md), so planting a same-day unfinished row without touching the
     tracked governance log requires giving the guard a repo of its own. Executor and
     guard are byte-identical copies of this repo's files (asserted below), so the
-    equivalence proven is about THIS repo's code. check_institutional_correctness is
-    stubbed to report no active defects, so the block under test is EXACTLY the
-    planted RC-72 row and nothing else.
+    equivalence proven is about THIS repo's code; the block under test is EXACTLY the
+    planted RC-72 row and nothing else (the guard's only input is the ledger since the
+    2026-08-24 find-it-fix-it teardown).
     """
     root = tmp_path / "mini"
     (root / "tools").mkdir(parents=True)
@@ -114,11 +114,6 @@ def _mini_stop_repo(tmp_path: Path) -> Path:
     for name in ("__init__.py", "stop_chain.py", "stop_guard.py"):
         shutil.copy(ROOT / "tools" / name, root / "tools" / name)
         assert (root / "tools" / name).read_bytes() == (ROOT / "tools" / name).read_bytes()
-    (root / "tools" / "check_institutional_correctness.py").write_text(
-        "def load_active_defects():\n    return {}\n\n\n"
-        "def active_defect_offenders(defects, rc_log):\n    return []\n",
-        encoding="utf-8",
-    )
     today = datetime.date.today().isoformat()
     (root / "governance" / "root_cause_log.md").write_text(
         "| id | status | opened | due | defect | why | fix |\n"
