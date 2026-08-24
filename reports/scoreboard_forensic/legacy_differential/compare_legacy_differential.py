@@ -68,6 +68,10 @@ def flatten(d, pre=""):
 
 def main() -> int:
     base_sha = sys.argv[1]
+    # REHAB 2026-08-24: an optional second argv is the OUTPUT path. Default stays
+    # beside this program (the tracked evidence artifact); the pytest caller passes a
+    # tmp path so suite runs stop dirtying the tracked file on every execution.
+    out_override = Path(sys.argv[2]).resolve() if len(sys.argv) > 2 else None
     root = Path(__file__).resolve().parents[3]
     sys.path.insert(0, str(root))
     sys.path.insert(0, str(root / "tests"))
@@ -125,7 +129,7 @@ def main() -> int:
         "LEGACY_COMPLETE_JSON_BYTE_IDENTITY": "NOT_PROVEN (schema v4 intentionally adds keys)",
         "LEGACY_COMPLETE_OUTPUT_BYTE_IDENTITY": "NOT_PROVEN (HTML semantics are the Lane-A fix)",
     }
-    out = Path(__file__).resolve().parent / "legacy_differential_result.json"
+    out = out_override or (Path(__file__).resolve().parent / "legacy_differential_result.json")
     # RC-400 (completing RC-397): PRESERVE the file's existing terminator.
     #
     # The original bug was `write_text`, which opens newline=None and translates "\n" to

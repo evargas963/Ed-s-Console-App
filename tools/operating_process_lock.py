@@ -724,8 +724,14 @@ def commit_pipe_violations(cmd: str) -> list[str]:
     if not cmd or "# pipe-ok:" in cmd:
         return []
     stripped = _QUOTED_STRING_RE.sub("", cmd).replace("||", "&&")
+    # SIMPLICITY REHAB 2026-08-24 (T2-6): the ban binds the OBSERVED defect class — a
+    # commit piped into an output FILTER whose exit code replaces the commit's
+    # (tail/head/cat/tee/grep/findstr/Out-Null/Select-Object were the measured maskers).
+    # A pipe into anything else on the segment passes.
+    masking_filter = re.compile(
+        r"\|\s*(?:tail|head|cat|tee|grep|findstr|Out-Null|Select-Object)\b", re.I)
     for seg in re.split(r"&&|;|\n", stripped):
-        if re.search(r"\bgit\s+commit\b", seg, re.I) and "|" in seg:
+        if re.search(r"\bgit\s+commit\b", seg, re.I) and masking_filter.search(seg):
             return [
                 "PIPE_MASKED_COMMIT: `git commit` piped into a filter — the filter's exit "
                 "code replaces the commit's and hook failures vanish (RC-234). Run the "

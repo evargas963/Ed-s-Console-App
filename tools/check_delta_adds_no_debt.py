@@ -345,6 +345,66 @@ def split_removals(removed: list[str], declared: set[str]) -> tuple[list[str], l
     return retired, blocked
 
 
+# ── DECLARED FOLD (SIMPLICITY REHAB consolidation, 2026-08-24) ──────────────────────
+# A consolidation retires a check's REGISTRATION while its full validation keeps running
+# inside a surviving check (e.g. rc_numeric_claims_cite_a_command inside root_cause_log).
+# The violations do not go away — they move to the survivor's name — so a pure per-name
+# count comparison reads the exact same standing debt as NEW debt on the survivor and
+# blocks an honest consolidation. The manifest row that legalises the retirement also
+# declares where the substance went ("... folded into <survivor> ..."), so the fold is
+# read from the SAME reviewed declaration and no second registry is introduced.
+_FOLD_DECL_RE = re.compile(r"folded into ([a-z][a-z0-9_]*)")
+
+
+def declared_folds(ref: str) -> dict[str, str]:
+    """{retired check: declared survivor} from manifest rows whose rationale declares the
+    substance 'folded into <survivor>'. Read from the candidate ref, exactly like
+    declared_retirements; a missing manifest (or a row with no fold phrase) declares
+    nothing — fail-closed toward blocking."""
+    proc = _run(["git", "show", f"{ref}:{_RETIREMENT_MANIFEST}"], cwd=REPO)
+    if proc.returncode != 0:
+        return {}
+    folds: dict[str, str] = {}
+    for line in proc.stdout.splitlines():
+        m = _MANIFEST_ROW_RE.match(line)
+        if not m or m.group(1) == "check":
+            continue
+        f = _FOLD_DECL_RE.search(line)
+        if f:
+            folds[m.group(1)] = f.group(1)
+    return folds
+
+
+def refold_base_counts(
+    base_counts: dict[str, int], folds: dict[str, str],
+    retired: set[str], head_roster: set[str],
+) -> tuple[dict[str, int], list[str]]:
+    """Re-attribute the base's STANDING debt of a retired-and-folded check to its declared
+    survivor, so a consolidation reads as the move it is rather than as new debt.
+
+    Guardrails, each fail-closed toward blocking:
+      * only checks actually RETIRED by this delta (removed from the roster AND declared in
+        the manifest) are eligible — a fold phrase on a still-live check moves nothing;
+      * the declared survivor must be ENFORCED on the candidate side — folding into a
+        deleted or advisory check would launder the debt away, so it is refused;
+      * only the BASE side is rebucketed, and only by the exact count the base carried, so
+        any violation the candidate ADDS beyond the moved debt still fails compare().
+    Returns (rebucketed_counts, human lines describing each move).
+    """
+    out = dict(base_counts)
+    moved: list[str] = []
+    for name in sorted(retired):
+        survivor = folds.get(name)
+        if not survivor or survivor not in head_roster:
+            continue
+        count = out.pop(name, 0)
+        if not count:
+            continue
+        out[survivor] = out.get(survivor, 0) + count
+        moved.append(f"  {name}: {count} standing violation(s) re-attributed to {survivor}")
+    return out, moved
+
+
 
 # ── BASE-SIDE CACHE (RC-466) ────────────────────────────────────────────────────────
 # The base measurement is a pure function of: the base COMMIT (content-addressed), THIS
@@ -438,10 +498,12 @@ def main(argv: list[str] | None = None) -> int:
         base_counts, base_sha, base_roster = enforced_counts(args.base)
         _write_base_cache(cache_key, base_counts, base_sha, base_roster)
     head_counts, head_sha, head_roster = enforced_counts(candidate_ref, stage_delta=True)
-    added, improved = compare(base_counts, head_counts)
     retired, removed = split_removals(
         removed_enforced_checks(base_roster, head_roster),
         declared_retirements(candidate_ref))
+    base_counts, folded_moves = refold_base_counts(
+        base_counts, declared_folds(candidate_ref), set(retired), head_roster)
+    added, improved = compare(base_counts, head_counts)
 
     print(f"base {args.base} ({base_sha}): {sum(base_counts.values())} enforced "
           f"across {len(base_counts)} check(s), {len(base_roster)} enforced check(s) declared")
@@ -450,6 +512,11 @@ def main(argv: list[str] | None = None) -> int:
     if improved:
         print("\nPAID DOWN by this delta:")
         print("\n".join(improved))
+    if folded_moves:
+        print("\nFOLDED by consolidation declared in governance/retired_checks.md "
+              "(base-side standing debt re-attributed to the declared survivor — moved, "
+              "not new, and anything ADDED beyond it still fails):")
+        print("\n".join(folded_moves))
     if retired:
         print("\nRETIRED by declaration in governance/retired_checks.md (RC-468):")
         print("\n".join(f"  {name}" for name in retired))

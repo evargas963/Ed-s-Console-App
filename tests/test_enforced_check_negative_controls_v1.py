@@ -386,12 +386,21 @@ def test_closed_row_must_ship_its_code_controls():
     while that file sat uncommitted, so HEAD still had `hvl=pick_hvl_strike` while the ledger
     said otherwise. QUIET on the three legitimate shapes, or the check would block honest
     commits in a shared worktree."""
+    import inspect
+
     from tools.check_institutional_correctness import CHECKS
     from tools.check_institutional_correctness import _closed_row_code_not_shipped as V
+    from tools.check_institutional_correctness import _root_cause_ledger_folded_violations
 
-    assert ("closed_rows_ship_their_code", True) in [(n, e) for n, _f, e in CHECKS], (
-        "closed_rows_ship_their_code is not registered ENFORCED — an unregistered check "
-        "cannot block anything"
+    # Consolidated 2026-08-24 (governance/retired_checks.md): the substance is ENFORCED
+    # through root_cause_log, whose fold table must still run this validator's helper.
+    assert ("root_cause_log", True) in [(n, e) for n, _f, e in CHECKS], (
+        "root_cause_log is not registered ENFORCED — an unregistered check cannot block anything"
+    )
+    assert "_closed_rows_ship_their_code_violations" in inspect.getsource(
+        _root_cause_ledger_folded_violations), (
+        "closed_rows_ship_their_code's validation is no longer folded into root_cause_log — "
+        "the substance was dropped, not consolidated"
     )
 
     def row(status, fix):

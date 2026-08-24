@@ -23,6 +23,10 @@ def test_collect_findings_flags_disk_only_when_present(tmp_path: Path, monkeypat
     # AST complexity. MEASURED on this tree: 315.51s for THIS unit test (CI ~564s)
     # when that callee ran for real. This test asserts only the disk_only flag.
     monkeypatch.setattr(scan, "_product_findings", lambda: [])
+    # Same reasoning for the code-health panel subprocess: 41.3s warm, 96.7s under
+    # xdist contention, and not this test's subject (the seam's wiring is pinned by
+    # test_collect_findings_still_invokes_code_health below).
+    monkeypatch.setattr(scan, "_code_health_check", lambda: (0, ""))
     findings = scan._collect_findings(measure, status)
     ids = {f["id"] for f in findings}
     assert "rehab.live_disk_only" in ids
@@ -43,6 +47,26 @@ def test_product_findings_still_calls_the_existing_scanners() -> None:
         "duplication_audit.py",
     ):
         assert name in src, f"_product_findings no longer invokes {name}"
+
+
+def test_collect_findings_still_invokes_code_health(monkeypatch) -> None:
+    """The stub in the disk-only test must not let the panel call rot: _collect_findings
+    must still route through _code_health_check, and a non-zero panel still becomes the
+    P1 finding."""
+    measure = {"index_worktree_mismatches": [], "staged_checks_not_on_head": []}
+    status = {"porcelain_lines": 0, "staged_ish": 0, "untracked": 0, "modified_ish": 0}
+    monkeypatch.setattr(scan, "_head", lambda: "deadbeef")
+    monkeypatch.setattr(scan, "_product_findings", lambda: [])
+    calls: list[bool] = []
+
+    def _fake_check():
+        calls.append(True)
+        return (2, "BLOCKING: something")
+
+    monkeypatch.setattr(scan, "_code_health_check", _fake_check)
+    findings = scan._collect_findings(measure, status)
+    assert calls, "_collect_findings no longer consults the code-health seam"
+    assert "rehab.code_health_blocking" in {f["id"] for f in findings}
 
 
 def test_write_outputs_appends_queue_and_md(tmp_path: Path, monkeypatch) -> None:

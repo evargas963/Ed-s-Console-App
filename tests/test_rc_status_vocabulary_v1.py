@@ -164,7 +164,18 @@ def test_negative_control_the_original_bypass_is_now_two_sided(tmp_path, monkeyp
 
 
 def test_check_is_registered_and_enforced():
-    """A check nobody runs is a comment."""
+    """A check nobody runs is a comment.
+
+    Consolidated 2026-08-24 (governance/retired_checks.md): the vocabulary validation now
+    runs INSIDE root_cause_log, so the survivor must be registered ENFORCED and its fold
+    table must still name this validator's helper. The injection controls above keep
+    driving the real logic through the check_rc_status_vocabulary wrapper."""
+    import inspect
+
     registered = {name: enforced for name, fn, enforced in K.CHECKS}
-    assert "rc_status_vocabulary" in registered, "check is not registered"
-    assert registered["rc_status_vocabulary"] is True, "check must be ENFORCED"
+    assert "root_cause_log" in registered, "the surviving ledger check is not registered"
+    assert registered["root_cause_log"] is True, "the surviving ledger check must be ENFORCED"
+    assert "_rc_status_vocabulary_violations" in inspect.getsource(
+        K._root_cause_ledger_folded_violations), (
+        "rc_status_vocabulary's validation is no longer folded into root_cause_log — "
+        "the substance was dropped, not consolidated")

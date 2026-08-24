@@ -96,7 +96,7 @@ def test_persist_events_parameter_removed_from_news_sentiment() -> None:
                 )
 
 
-def test_no_persist_events_kwarg_in_any_refresh_and_context_call() -> None:
+def test_no_persist_events_kwarg_in_any_refresh_and_context_call(repo_index) -> None:
     """AST-scan EVERY call to refresh_and_context / refresh_and_context_for_ui
     across the repo — including the news_sentiment.py __main__ probe block
     that the signature-only test missed in the original Pass 8 commit.
@@ -105,18 +105,10 @@ def test_no_persist_events_kwarg_in_any_refresh_and_context_call() -> None:
     will TypeError at runtime when invoked (broken `python news_sentiment.py
     SPY` CLI). Catch it statically.
     """
-    skip_dirs = {".git", ".venv", "venv", "__pycache__", "node_modules", ".claude",
-                 "build", "dist", ".pytest_cache", ".mypy_cache", ".ruff_cache"}
     targets = {"refresh_and_context", "refresh_and_context_for_ui"}
     hits: list[str] = []
-    for path in REPO_ROOT.rglob("*.py"):
-        rel = path.relative_to(REPO_ROOT)
-        if any(part in skip_dirs for part in rel.parts):
-            continue
-        try:
-            text = path.read_text(encoding="utf-8")
-            tree = ast.parse(text)
-        except (OSError, SyntaxError):
+    for rel, text, tree in repo_index.items():
+        if tree is None:
             continue
         for node in ast.walk(tree):
             if not isinstance(node, ast.Call):
@@ -138,23 +130,15 @@ def test_no_persist_events_kwarg_in_any_refresh_and_context_call() -> None:
     )
 
 
-def test_no_external_references_to_news_writer() -> None:
+def test_no_external_references_to_news_writer(repo_index) -> None:
     targets = {"insert_news_event"}
-    skip_dirs = {".git", ".venv", "venv", "__pycache__", "node_modules", ".claude",
-                 "build", "dist", ".pytest_cache", ".mypy_cache", ".ruff_cache"}
     hits: list[str] = []
-    for path in REPO_ROOT.rglob("*.py"):
-        rel = path.relative_to(REPO_ROOT)
-        if any(part in skip_dirs for part in rel.parts):
-            continue
+    for rel, text, tree in repo_index.items():
         if rel.parts[-1] == "db.py":
             continue
         if rel.parts[-1] == "test_news_events_drop.py":
             continue
-        try:
-            text = path.read_text(encoding="utf-8")
-            tree = ast.parse(text)
-        except (OSError, SyntaxError):
+        if tree is None:
             continue
         for node in ast.walk(tree):
             if isinstance(node, ast.Attribute) and node.attr in targets:

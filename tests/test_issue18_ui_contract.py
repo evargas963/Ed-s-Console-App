@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import json
+import re
+import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -14,6 +17,229 @@ CARD_TRUST_CONTRACT = ROOT / "docs" / "CARD_TRUST_CONTRACT.md"
 def _html() -> str:
     p = Path(__file__).resolve().parent.parent / "static" / "index.html"
     return p.read_text(encoding="utf-8", errors="replace")
+
+
+# ── Source-scoping helpers (2026-08-24 audit) ──────────────────────────────
+# Byte-offset windows (`h[idx : idx + N]`) went stale whenever a function grew
+# and silently widened/narrowed the property under test. Every "token X inside
+# region Y" assertion now scopes to the REAL region: a brace-matched function
+# body, a brace-matched block, a CSS rule, or a markdown section — never an
+# arithmetic slice.
+
+
+def _js_skip_template(h: str, j: int) -> int:
+    """``h[j] == '`'``: index just past the closing backtick (handles nested ${…})."""
+    n = len(h)
+    j += 1
+    while j < n:
+        c = h[j]
+        if c == "\\":
+            j += 2
+            continue
+        if c == "`":
+            return j + 1
+        if c == "$" and j + 1 < n and h[j + 1] == "{":
+            j = _js_balanced_end(h, j + 1)
+            continue
+        j += 1
+    raise AssertionError("unterminated template literal")
+
+
+def _js_skip_regex(h: str, j: int) -> int:
+    """``h[j] == '/'`` opening a regex literal: index just past the closing '/'."""
+    n = len(h)
+    j += 1
+    in_class = False
+    while j < n:
+        c = h[j]
+        if c == "\\":
+            j += 2
+            continue
+        if in_class:
+            if c == "]":
+                in_class = False
+        elif c == "[":
+            in_class = True
+        elif c == "/":
+            return j + 1
+        elif c == "\n":
+            return j  # not actually a regex; treat as division and resync
+        j += 1
+    return j
+
+
+def _js_regex_can_start(h: str, j: int) -> bool:
+    """True when a '/' at ``j`` begins a regex literal (prev-token heuristic)."""
+    k = j - 1
+    while k >= 0 and h[k] in " \t\r\n":
+        k -= 1
+    return k < 0 or h[k] in "(,=:[!&|?{};<>+-*%~^"
+
+
+def _js_balanced_end(h: str, start: int) -> int:
+    """Index just past the brace matching the first '{' at/after ``start``.
+
+    Skips string literals, template literals (including nested ${…}), regex
+    literals, and // + /* comments so braces/quotes inside them cannot
+    desynchronize the match.
+    """
+    j = h.index("{", start)
+    depth = 0
+    n = len(h)
+    while j < n:
+        c = h[j]
+        if c == "`":
+            j = _js_skip_template(h, j)
+            continue
+        if c in "'\"":
+            j += 1
+            while j < n:
+                if h[j] == "\\":
+                    j += 2
+                    continue
+                if h[j] == c:
+                    break
+                j += 1
+        elif c == "/" and j + 1 < n and h[j + 1] == "/":
+            j = h.index("\n", j)
+        elif c == "/" and j + 1 < n and h[j + 1] == "*":
+            j = h.index("*/", j) + 1
+        elif c == "/" and _js_regex_can_start(h, j):
+            j = _js_skip_regex(h, j)
+            continue
+        elif c == "{":
+            depth += 1
+        elif c == "}":
+            depth -= 1
+            if depth == 0:
+                return j + 1
+        j += 1
+    raise AssertionError(f"unbalanced braces from offset {start}")
+
+
+def _js_fn(h: str, name: str) -> str:
+    """Full source of a JS function declaration, by name (brace-matched)."""
+    for marker in (f"function {name}(", f"async function {name}("):
+        idx = h.find(marker)
+        if idx != -1:
+            return h[idx : _js_balanced_end(h, idx)]
+    raise AssertionError(f"function {name} missing from static/index.html")
+
+
+def _js_block(h: str, marker: str) -> str:
+    """``marker`` through the end of its following brace-matched block."""
+    idx = h.find(marker)
+    assert idx != -1, f"marker missing from static/index.html: {marker!r}"
+    return h[idx : _js_balanced_end(h, idx)]
+
+
+def _js_stmt(h: str, marker: str) -> str:
+    """``marker`` through the end of its statement (next ';')."""
+    idx = h.find(marker)
+    assert idx != -1, f"marker missing from static/index.html: {marker!r}"
+    return h[idx : h.index(";", idx) + 1]
+
+
+def _css_rule(h: str, selector: str) -> str:
+    """First CSS rule starting at ``selector`` through its closing brace."""
+    idx = h.find(selector)
+    assert idx != -1, f"CSS selector missing from static/index.html: {selector!r}"
+    return h[idx : h.index("}", idx) + 1]
+
+
+def _md_section(body: str, heading: str) -> str:
+    """A markdown section: from ``heading`` to the next '## ' heading."""
+    idx = body.find(heading)
+    assert idx != -1, f"contract section missing: {heading!r}"
+    nxt = body.find("\n## ", idx + 1)
+    return body[idx : nxt if nxt != -1 else len(body)]
+
+
+def _py_def(body: str, marker: str) -> str:
+    """A python def: from ``marker`` to the next top-level def/class."""
+    idx = body.find(marker)
+    assert idx != -1, f"def missing: {marker!r}"
+    ends = [
+        e
+        for e in (
+            body.find("\ndef ", idx + 1),
+            body.find("\nasync def ", idx + 1),
+            body.find("\nclass ", idx + 1),
+        )
+        if e != -1
+    ]
+    return body[idx : min(ends)] if ends else body[idx:]
+
+
+# ── Node execution of the real card-trust functions (2026-08-24 audit) ─────
+# The trust-gate cluster used to assert only that certain STRINGS appeared near
+# `function analyticsCardTrustGate` — a gate that returned the wrong verdict with
+# the right spelling would pass. These helpers extract the REAL functions from
+# static/index.html and run them under node with fixture payloads.
+
+
+def _run_node_script(script: str) -> None:
+    node = shutil.which("node")
+    if not node:
+        pytest.fail("Node.js is required on PATH (executes extracted index.html functions)")
+    r = subprocess.run(
+        [node, "-"],
+        input=script,
+        cwd=str(REPO),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        timeout=60,
+    )
+    assert r.returncode == 0, r.stdout + "\n" + r.stderr
+
+
+_CARD_TRUST_JS_PRELUDE = """
+'use strict';
+const assert = require('assert');
+// Freshness-lane stubs: __freshBlocked drives engineTradeableSetup's T4 veto
+// branch; the real _edMplFreshnessActionabilityBlocked lane has its own tests.
+let __freshBlocked = false;
+let __freshVetoCount = 0;
+function _edMplFreshnessActionabilityBlocked(d) { return __freshBlocked; }
+function _edMplInit() { return { bundle_freshness_state: 'stale' }; }
+function _edMplRecordFreshnessVeto(d, st) { __freshVetoCount++; }
+// Trusted baseline payload: 4 complete horizons, fusion up, nothing stale.
+function healthyPayload() {
+  return {
+    ticker: 'SPY',
+    analytics_stale: false,
+    mhap_rows: [
+      { horizon: '1c' }, { horizon: '5c' }, { horizon: '15c' }, { horizon: '60c' },
+    ],
+    fusion_available: true,
+  };
+}
+"""
+
+
+def _exec_card_trust_js(test_js: str) -> None:
+    """Run ``test_js`` under node against the REAL trust-gate functions."""
+    h = _html()
+    consts = []
+    for name in ("CARD_TRUST_REQUIRED_HORIZON_COUNT", "CARD_TRUST_REQUIRED_HORIZONS"):
+        m = re.search(rf"const {name} =[^;\n]*;", h)
+        assert m, f"{name} missing from static/index.html"
+        consts.append(m.group(0))
+    fns = [
+        _js_fn(h, "analyticsCardTrustGate"),
+        _js_fn(h, "hasOperatorCardMirrorFields"),
+        _js_fn(h, "resolveCardTrustGate"),
+        _js_fn(h, "engineTradeableSetup"),
+    ]
+    _run_node_script(
+        _CARD_TRUST_JS_PRELUDE
+        + "\n".join(consts)
+        + "\n"
+        + "\n\n".join(fns)
+        + "\n"
+        + test_js
+    )
 
 
 # Issue 18 UI contract was authored against the original "THE CALL" card + explicit
@@ -60,9 +286,7 @@ def test_horizon_stack_exec_card_removed_negative_lock():
     assert "Mixed stack, confirmation needed" not in h
     assert "Mixed stack, no clean continuation" not in h
     # ALL pill still owns cross-horizon alignment vocabulary.
-    idx = h.find("function deriveTag(slug, dir)")
-    assert idx != -1
-    chunk = h[idx : idx + 600]
+    chunk = _js_fn(h, "deriveTag")
     assert "alignment_state_display" in chunk
     assert "return 'ALIGNED'" in chunk or "return 'SPLIT'" in chunk
 
@@ -122,13 +346,11 @@ def test_tf_trade_signal_cards_keep_color_under_direction_withhold():
 def test_horizon_direction_decoupled_from_final_tradeable():
     """Per-horizon pills read the resolver's output onto real attributes."""
     h = _html()
-    row_idx = h.find("const visual = resolveHorizonCardVisualState")
-    assert row_idx != -1, "the row renderer no longer calls the resolver"
-    # RC-308: the window was 800 characters and `data-horizon-actionability` now sits at
-    # ~900 — a byte offset is a proxy for "in this renderer", and it went stale when the
-    # renderer grew. Slice to the end of the function instead.
-    end = h.find("\n  }\n", row_idx)
-    block = h[row_idx : end if end != -1 else row_idx + 3000]
+    # 2026-08-24 audit: scope = the real renderer body, brace-matched (the old
+    # "slice to \\n  }\\n" was indentation-pinned and could stop early).
+    block = _js_fn(h, "renderTimeframeSignalRow")
+    assert "const visual = resolveHorizonCardVisualState" in block, (
+        "the row renderer no longer calls the resolver")
     assert "visual.dirAttr" in block, "the direction attribute no longer comes from the resolver"
     assert "data-horizon-direction" in block
     assert "data-horizon-actionability" in block
@@ -148,9 +370,7 @@ def test_individual_horizon_cards_primary_agree_conflict_vocabulary():
     """Per-horizon pills: PRIMARY on clock horizon; AGREE/CONFLICT vs primary; ALL owns synthesis."""
     h = _html()
     assert "Primary horizon pill tagged PRIMARY" in h
-    idx = h.find("function deriveTag(slug, dir)")
-    assert idx != -1
-    chunk = h[idx : idx + 950]
+    chunk = _js_fn(h, "deriveTag")
     assert "return 'PRIMARY'" in chunk
     assert "return 'AGREE'" in chunk
     assert "return 'CONFLICT'" in chunk
@@ -162,16 +382,11 @@ def test_individual_horizon_cards_primary_agree_conflict_vocabulary():
 def test_all_and_plan_trust_engine_final_tradeable_only():
     """ALL/PLAN lighting must follow d.final_tradeable — no UI re-count of mhap rows."""
     h = _html()
-    assert "function engineTradeableSetup" in h
-    idx = h.find("function engineTradeableSetup")
-    assert idx != -1
-    chunk = h[idx : idx + 1400]  # RC-369: window widened past the F05 authority comment
+    chunk = _js_fn(h, "engineTradeableSetup")
     assert "d.final_tradeable" in chunk
     assert "MIN_TRADEABLE_HORIZONS_FOR_ALL_PLAN" not in h
     assert "function alignedDirectionalHorizonCount" not in h
-    idx_plan = h.find("function paintTradePlanCard")
-    assert idx_plan != -1
-    plan_chunk = h[idx_plan : idx_plan + 1600]
+    plan_chunk = _js_fn(h, "paintTradePlanCard")
     assert "engineTradeableSetup" in plan_chunk
     idx_row = h.find("const tradeable = engineTradeableSetup(d)")
     assert idx_row != -1
@@ -181,18 +396,14 @@ def test_all_and_plan_trust_engine_final_tradeable_only():
     # that strengthened it. The guarantee itself is EXECUTED in
     # tests/index_html_contracts_node.mjs, over every slug including consolidated.
     assert h.find("function resolveHorizonCardVisualState") != -1
-    idx_cons = h.find("if (slug === 'consolidated') {\n      if (tradeable)")
-    assert idx_cons != -1
-    cons_chunk = h[idx_cons : idx_cons + 520]
+    cons_chunk = _js_block(h, "if (slug === 'consolidated') {\n      if (tradeable)")
     assert "dir = 'FLAT'" in cons_chunk
 
 
 def test_trade_active_glow_only_on_all_card():
     """Entry-armed / trade-active chrome applies to ALL synthesis card only."""
     h = _html()
-    idx = h.find("const isPrimaryTrade =")
-    assert idx != -1
-    chunk = h[idx : idx + 280]
+    chunk = _js_stmt(h, "const isPrimaryTrade =")
     assert "slug === 'consolidated'" in chunk
     assert "slug === prim" not in chunk
 
@@ -210,8 +421,7 @@ def test_unavailable_reason_code_mapped_to_operator_short_text():
 def test_derive_source_for_horizon_no_implicit_blend_when_fusion_ok():
     """Horizon chip must not read BLEND merely because empirical histogram exists."""
     h = _html()
-    idx = h.find("function deriveSourceForHorizon(d, slug)")
-    body = h[idx : idx + 2200]
+    body = _js_fn(h, "deriveSourceForHorizon")
     assert "if (hzFusionOk && empPresent) return 'BLEND';" not in body
 
 
@@ -244,18 +454,14 @@ def test_institutional_lane_stale_coherence_hooks():
     assert "SYNCING ANALYTICS" in h
     assert "bundleWithinTrustWindow(integrity, ld" in h
     assert "function bundleDirectionWithheld(integrity, d, nowMs)" in h
-    idx = h.find("function bundleDirectionWithheld")
-    chunk = h[idx : idx + 1400]
+    chunk = _js_fn(h, "bundleDirectionWithheld")
     assert "bundleWithinTrustWindow(integrity, ld, nowMs)" in chunk
 
 
 def test_tf_dim_neutral_cards_have_operator_legibility_styles():
     """WAIT/neutral timeframe cards must separate from row chrome (AGENTS legibility gate)."""
     h = _html()
-    assert ".tf-signal-card.tf-state-dim" in h
-    idx = h.find(".tf-signal-card.tf-state-dim {")
-    assert idx != -1
-    chunk = h[idx : idx + 520]
+    chunk = _css_rule(h, ".tf-signal-card.tf-state-dim {")
     assert "box-shadow" in chunk
     assert "#6b9fd4" in chunk
     assert "#334155" not in chunk
@@ -315,14 +521,13 @@ def test_trade_plan_card_sits_beside_all_card_with_same_chrome():
     assert "paintTradePlanCard(loadHint);" in h
     assert "paintTradePlanCard(null);" in h
     # Reads the bundle's plan fields — no parallel derivation.
+    plan_body = _js_fn(h, "paintTradePlanCard")
     for field in ("entry_display_text", "stop_display_text", "targets_display", "invalidation", "size_modifier_display", "entry_state"):
-        idx = h.find("function paintTradePlanCard(loadingHint)")
-        assert f"d.{field}" in h[idx : idx + 4500], f"PLAN card must read d.{field}"
+        assert f"d.{field}" in plan_body, f"PLAN card must read d.{field}"
     # No-wrap contract: plan values stay on one line (ellipsis + title tooltip).
-    plan_css = h.find(".tf-plan-kv .tf-plan-v")
-    assert plan_css != -1
-    assert "white-space: nowrap" in h[plan_css : plan_css + 200]
-    assert "text-overflow: ellipsis" in h[plan_css : plan_css + 200]
+    plan_css = _css_rule(h, ".tf-plan-kv .tf-plan-v")
+    assert "white-space: nowrap" in plan_css
+    assert "text-overflow: ellipsis" in plan_css
     # Direction-withhold coverage: plan values are direction-bearing once armed.
     assert "'tf-signal-plan'," in h
 
@@ -386,9 +591,7 @@ def test_guest_anchor_provisional_chip_vocabulary():
     assert "not ticker-trained" in h
     # Chip paints compact label — long PROVISIONAL · ANCHOR (TICKER) must not be card text.
     assert "sourceChipDisplayText(source, payload)" in h
-    idx = h.find("function sourceChipDisplayText(source, d)")
-    assert idx != -1
-    chunk = h[idx : idx + 420]
+    chunk = _js_fn(h, "sourceChipDisplayText")
     assert "ANCHOR ·" in chunk or "'ANCHOR · '" in chunk
     assert "PROVISIONAL · ANCHOR (" not in chunk
 
@@ -396,13 +599,9 @@ def test_guest_anchor_provisional_chip_vocabulary():
 def test_tf_source_chip_cannot_bleed_across_pill_row():
     """nowrap provenance chips must clip inside each pill — no cross-card purple bar."""
     h = _html()
-    card_idx = h.find(".tf-signal-card {")
-    assert card_idx != -1
-    card_chunk = h[card_idx : card_idx + 520]
+    card_chunk = _css_rule(h, ".tf-signal-card {")
     assert "overflow: hidden" in card_chunk
-    chip_idx = h.find(".tf-source-chip {")
-    assert chip_idx != -1
-    chip_chunk = h[chip_idx : chip_idx + 520]
+    chip_chunk = _css_rule(h, ".tf-source-chip {")
     assert "max-width: 100%" in chip_chunk
     assert "text-overflow: ellipsis" in chip_chunk
 
@@ -412,9 +611,7 @@ def test_loading_shell_clears_new_chip_and_detail_elements():
     (the new elements), not the dormant legacy .tf-source element."""
     h = _html()
     assert "'tf-source-chip tf-source-chip--unavailable'" in h
-    idx = h.find("analyticsLoading && mhap.length === 0")
-    assert idx != -1, "loading-shell guard must be present"
-    chunk = h[idx : idx + 2200]
+    chunk = _js_block(h, "if (analyticsLoading && mhap.length === 0)")
     assert ".tf-source-chip" in chunk
     assert ".tf-source-detail" in chunk
 
@@ -567,9 +764,7 @@ def test_level_test_slot_uniform_height_with_horizon_cards():
     """Operator design: rail card height matches .tf-signal-card min-height
     (148px) for uniform sibling-card aesthetic."""
     h = _html()
-    idx = h.find('#slt-level-test {')
-    assert idx != -1
-    chunk = h[idx : idx + 200]
+    chunk = _css_rule(h, '#slt-level-test {')
     assert 'height: 148px' in chunk
 
 
@@ -601,9 +796,7 @@ def test_decision_rail_stack_chips_restored():
 def test_signals_rail_paint_cycle_wired():
     """Only Level Test fires in the paint cycle (multi-slot variant reverted)."""
     h = _html()
-    idx = h.find('function _updateLiveUiAe(opts)')
-    assert idx != -1
-    chunk = h[idx : idx + 1200]
+    chunk = _js_fn(h, '_updateLiveUiAe')
     assert '_updateLevelTestChip();' in chunk
 
 
@@ -611,9 +804,7 @@ def test_top_stack_row_gap_for_visual_offset():
     """Operator iterated on rail position: 12px (initial) → 60px (rail right)
     → 28px (rail back ~32px / quarter-inch left). Lock to 28px."""
     h = _html()
-    idx = h.find('.top-stack-row {')
-    assert idx != -1
-    chunk = h[idx : idx + 200]
+    chunk = _css_rule(h, '.top-stack-row {')
     assert 'gap: 28px' in chunk
 
 
@@ -647,9 +838,7 @@ def test_ui_latency_contract_nonblocking_tier_c_and_analytics_poll():
     assert "triggerRefresh() { fetchState(false)" in h
     assert "manualFullRefresh() { fetchState(true)" in h
     assert "_lastSsePayloadAcceptedMs < SSE_POLL_SUPPRESS_MS" not in h
-    poll_idx = h.find("function pollStateFallback")
-    assert poll_idx != -1
-    poll_chunk = h[poll_idx : poll_idx + 1600]
+    poll_chunk = _js_fn(h, "pollStateFallback")
     assert "_lastSseAnalyticsPayloadMs" in poll_chunk
     # Step 2 single Tier C owner: pending analytics must NOT un-suppress a healthy
     # SSE transport — the suppress gate keys on sseOpen + payload recency only.
@@ -657,9 +846,7 @@ def test_ui_latency_contract_nonblocking_tier_c_and_analytics_poll():
     assert "ssePollSuppress" in poll_chunk
     assert "await fetchJsonWithTimeout(url, { signal: fetchAbortSignal }, 120000)" not in h
     assert "_slowFetchAc && _slowFetchAc.abort()" not in h
-    tier_idx = h.find("async function _fetchTierCRestAndApply")
-    assert tier_idx != -1
-    tier_chunk = h[tier_idx : tier_idx + 900]
+    tier_chunk = _js_fn(h, "_fetchTierCRestAndApply")
     assert "tierCSignal" in tier_chunk
 
 
@@ -667,9 +854,7 @@ def test_step2_rest_poll_suppressed_while_sse_healthy():
     """LIVE_OPERATOR_MODE_RESET_V1 Step 2 — REST fallback must not compete with healthy SSE."""
     h = _html()
     assert "const SSE_POLL_SUPPRESS_MS = 15000" in h
-    idx = h.find("function _syncAnalyticsPollCadence")
-    assert idx != -1
-    chunk = h[idx : idx + 700]
+    chunk = _js_fn(h, "_syncAnalyticsPollCadence")
     assert "readyState === 1" in chunk
     assert "!sseOpenNow && _analyticsUiPending()" in chunk
     assert "single Tier C owner" in h
@@ -685,9 +870,7 @@ def test_rest_tier_c_backoff_uses_in_scope_force_flag():
     must read the in-scope forceTierC flag; the bare-force form must never return.
     """
     h = _html()
-    start = h.find("async function fetchState(forceOrOpts)")
-    assert start != -1
-    body = h[start : start + 12000]
+    body = _js_fn(h, "fetchState")
     assert "const forceTierC" in body, "fetchState must derive forceTierC from forceOrOpts"
     assert "if (!forceTierC && Date.now() < _tierCBackoffUntilMs)" in h
     assert "if (!force && Date.now() < _tierCBackoffUntilMs)" not in h, (
@@ -702,17 +885,15 @@ def test_sse_force_acquisition_tears_down_both_streams_and_timers():
     and its backoff timer alive across a forced switch. connectSSE's force branch is the
     defense-in-depth copy for force calls that bypass runTickerLiveAcquisition."""
     h = _html()
-    idx = h.find("function runTickerLiveAcquisition")
-    assert idx != -1
-    chunk = h[idx : idx + 2000]
+    chunk = _js_fn(h, "runTickerLiveAcquisition")
     assert "force_preamble" in chunk
     assert "_clearSseReconnectTimer();" in chunk
     assert "_clearL1LightReconnectTimer();" in chunk
     assert "_tearDownEventSource(_eventSource" in chunk
     assert "_tearDownL1LightEventSource(_l1LightEventSource" in chunk
-    force_idx = h.find("} else if (es0 && force) {", h.find("function connectSSE"))
-    assert force_idx != -1
-    force_chunk = h[force_idx : force_idx + 480]
+    connect_sse = _js_fn(h, "connectSSE")
+    assert "} else if (es0 && force) {" in connect_sse
+    force_chunk = _js_block(connect_sse, "} else if (es0 && force)")
     assert "_clearL1LightReconnectTimer();" in force_chunk
     assert "'force replace with main SSE'" in force_chunk
 
@@ -722,9 +903,7 @@ def test_sse_stream_active_diag_logs_pending_url():
     the handshake `_sseStreamUrl || ''` logged an empty sseUrl on every switch — feeding
     misleading records into the switch-diag pipeline and RTH validation reports."""
     h = _html()
-    idx = h.find("function runTickerLiveAcquisition")
-    assert idx != -1
-    chunk = h[idx : idx + 2000]
+    chunk = _js_fn(h, "runTickerLiveAcquisition")
     assert "const pendingSseUrl = _buildSseStreamUrl(activeTicker, activeExpiry)" in chunk
     assert "const pendingL1Url = _buildL1LightSseUrl(activeTicker, activeExpiry)" in chunk
     assert "sseUrl: _sseStreamUrl || pendingSseUrl" in chunk
@@ -742,12 +921,10 @@ def test_sse_stream_urls_commit_on_open_not_at_creation():
     replace it on the next acquisition pass instead of no-oping forever."""
     h = _html()
     for fn, url_var in (
-        ("function connectSSE", "_sseStreamUrl"),
-        ("function connectL1LightSSE", "_l1LightStreamUrl"),
+        ("connectSSE", "_sseStreamUrl"),
+        ("connectL1LightSSE", "_l1LightStreamUrl"),
     ):
-        fn_idx = h.find(fn)
-        assert fn_idx != -1, fn
-        chunk = h[fn_idx : fn_idx + 6000]
+        chunk = _js_fn(h, fn)
         pos_null = chunk.find(f"{url_var} = null;")
         pos_onopen = chunk.find("es.onopen")
         pos_commit = chunk.find(f"{url_var} = wantUrl;")
@@ -766,9 +943,7 @@ def test_sse_stream_urls_commit_on_open_not_at_creation():
 def test_step2_fresh_pill_cannot_override_stale_or_frozen_bundle():
     """FRESH pill follows bundle/actionability truth — never FRESH while stale/frozen/aging."""
     h = _html()
-    idx = h.find("function _updateDecisionBundleAgeUI")
-    assert idx != -1
-    chunk = h[idx : idx + 2600]
+    chunk = _js_fn(h, "_updateDecisionBundleAgeUI")
     assert "bundle_freshness_state" in chunk
     assert "analytics_stale === true" in chunk
     assert "_edMplApplyFreshnessUiLabels(ld)" in chunk
@@ -791,19 +966,13 @@ def test_ui_maximize_contract_sla_warm_and_partial_render():
     assert "analytics_partial_tier_c" in h
     assert "ANALYTICS_PENDING_POLL_MS = 800" in h
     assert "_streamingPostLastTicker" in h
-    partial_idx = h.find("function renderTierCPartialAnalytics")
-    assert partial_idx != -1
-    partial_chunk = h[partial_idx : partial_idx + 2800]
+    partial_chunk = _js_fn(h, "renderTierCPartialAnalytics")
     assert "__renderKeyLevelsLive" in partial_chunk
     assert "renderTimeframeSignalRow" in partial_chunk
     assert "renderKind: 'tier_c_partial_analytics'" in partial_chunk
-    render_idx = h.find("function _renderMoneyPathCore(d, fullRenderSource)")
-    assert render_idx != -1
-    render_chunk = h[render_idx : render_idx + 600]
+    render_chunk = _js_fn(h, "_renderMoneyPathCore")
     assert "renderTierCPartialAnalytics" in render_chunk
-    pending_idx = h.find("function _analyticsUiPending")
-    assert pending_idx != -1
-    pending_chunk = h[pending_idx : pending_idx + 400]
+    pending_chunk = _js_fn(h, "_analyticsUiPending")
     assert "analytics_partial_tier_c" in pending_chunk
 
 
@@ -851,9 +1020,7 @@ def test_card_consumer_contract_execution_separated_from_horizon_in_ui():
     """Registry rule: horizon pills = forecast; execution = final_tradeable + call_state channel."""
     h = _html()
     assert "function engineTradeableSetup" in h
-    assert "function resolveHorizonCardVisualState" in h
-    idx = h.find("function resolveHorizonCardVisualState")
-    chunk = h[idx : idx + 1200]
+    chunk = _js_fn(h, "resolveHorizonCardVisualState")
     assert "nonActionable" in chunk
     assert "isConsolidated" in chunk
     row_idx = h.find("const tradeable = engineTradeableSetup(d)")
@@ -873,15 +1040,28 @@ def test_card_consumer_contract_stale_and_pending_hooks_in_ui():
 
 def test_card_consumer_contract_final_tradeable_gates_all_plan():
     h = _html()
-    idx = h.find("function engineTradeableSetup")
-    assert idx != -1
-    chunk = h[idx : idx + 1400]  # RC-369: window widened past the F05 authority comment
+    chunk = _js_fn(h, "engineTradeableSetup")
     assert "d.final_tradeable" in chunk
     assert "resolveCardTrustGate" in chunk
-    idx_cons = h.find("if (slug === 'consolidated') {\n      if (tradeable)")
-    assert idx_cons != -1
-    cons_chunk = h[idx_cons : idx_cons + 520]
+    cons_chunk = _js_block(h, "if (slug === 'consolidated') {\n      if (tradeable)")
     assert "dir = 'FLAT'" in cons_chunk
+    # EXECUTED (2026-08-24 audit): final_tradeable alone must not arm — the mirror
+    # and card trust gate both have to agree, and WAIT bias never arms.
+    _exec_card_trust_js("""
+const base = Object.assign(healthyPayload(), {
+  operator_card_actionable: true, final_tradeable: true, final_bias: 'LONG',
+});
+assert.strictEqual(engineTradeableSetup(base), true, 'trusted LONG setup must arm');
+assert.strictEqual(
+  engineTradeableSetup(Object.assign({}, base, { final_tradeable: false })), false,
+  'final_tradeable=false armed ALL/PLAN');
+assert.strictEqual(
+  engineTradeableSetup(Object.assign({}, base, { final_bias: 'WAIT' })), false,
+  'WAIT bias armed ALL/PLAN');
+assert.strictEqual(
+  engineTradeableSetup(Object.assign({}, base, { final_bias: 'SHORT' })), true,
+  'trusted SHORT setup must arm');
+""")
 
 
 def test_analytics_card_trust_gate_canonical_function_present():
@@ -889,13 +1069,28 @@ def test_analytics_card_trust_gate_canonical_function_present():
     assert "function analyticsCardTrustGate(d, opts)" in h
     assert "window.analyticsCardTrustGate = analyticsCardTrustGate" in h
     assert "CARD_TRUST_REQUIRED_HORIZON_COUNT = 4" in h
-    idx = h.find("function analyticsCardTrustGate")
-    chunk = h[idx : idx + 2200]
-    assert "analytics_stale" in chunk
-    assert "analytics_pending_shell" in chunk
-    assert "analytics_partial_tier_c" in chunk
-    assert "mhap_incomplete" in chunk
-    assert "client_ticker_cache" in chunk
+    # EXECUTED (2026-08-24 audit): this test used to assert only that the STRINGS
+    # 'analytics_stale' etc. appeared within 2200 bytes of the function header. The
+    # real gate now runs under node and must return the fail-closed verdicts.
+    _exec_card_trust_js("""
+const G = analyticsCardTrustGate;
+assert.strictEqual(G(healthyPayload()).trusted, true, 'healthy bundle must be trusted');
+assert.strictEqual(G(null).trusted, false);
+assert.strictEqual(G(null).reason, 'no_payload');
+assert.strictEqual(G(Object.assign(healthyPayload(), { analytics_stale: true })).reason, 'analytics_stale');
+assert.strictEqual(G(Object.assign(healthyPayload(), { analytics_pending_shell: true })).reason, 'pending_shell');
+assert.strictEqual(G(Object.assign(healthyPayload(), { analytics_partial_tier_c: true })).reason, 'partial_tier_c');
+assert.strictEqual(
+  G(Object.assign(healthyPayload(), { analytics_refresh_in_progress: true, _update_source: 'client_ticker_cache' })).reason,
+  'cache_refresh_in_progress');
+const three = healthyPayload(); three.mhap_rows = three.mhap_rows.slice(0, 3);
+assert.strictEqual(G(three).reason, 'mhap_incomplete');
+const none = healthyPayload(); none.mhap_rows = [];
+assert.strictEqual(G(none).reason, 'mhap_missing');
+const wrong = healthyPayload(); wrong.mhap_rows[3] = { horizon: '90c' };
+assert.strictEqual(G(wrong).reason, 'mhap_horizon_missing_60c');
+assert.strictEqual(G(Object.assign(healthyPayload(), { fusion_available: false })).reason, 'fusion_unavailable');
+""")
 
 
 def test_card_trust_gate_wired_before_trusted_timeframe_paint():
@@ -907,22 +1102,36 @@ def test_card_trust_gate_wired_before_trusted_timeframe_paint():
     assert "paintUntrustedTimeframeCardRow(d, cardTrust.reason)" in h
     assert "tf-signal-card--card-trust-withheld" in h
     assert "tf-signal-card--trade-active" in h
-    untrusted_idx = h.find("function paintUntrustedTimeframeCardRow")
-    untrusted_chunk = h[untrusted_idx : untrusted_idx + 1800]
+    untrusted_chunk = _js_fn(h, "paintUntrustedTimeframeCardRow")
     assert "tf-signal-card--trade-active" not in untrusted_chunk
 
 
 def test_engine_tradeable_setup_requires_card_trust():
     h = _html()
-    idx = h.find("function engineTradeableSetup")
-    chunk = h[idx : idx + 1400]  # RC-369: window widened past the F05 authority comment
+    chunk = _js_fn(h, "engineTradeableSetup")
     assert "resolveCardTrustGate(d, { checkTicker: false }).trusted" in chunk
+    # EXECUTED (2026-08-24 audit): an untrusted bundle must never arm, whatever
+    # final_tradeable says — run the real gate chain.
+    _exec_card_trust_js("""
+const base = Object.assign(healthyPayload(), {
+  operator_card_actionable: true, final_tradeable: true, final_bias: 'LONG',
+});
+assert.strictEqual(engineTradeableSetup(base), true);
+// operator mirror present → it is the authority; flip it false and nothing arms.
+assert.strictEqual(
+  engineTradeableSetup(Object.assign({}, base, { operator_card_actionable: false })), false,
+  'operator_card_actionable=false still armed');
+// freshness veto runs BEFORE trust and blocks unconditionally.
+__freshBlocked = true;
+assert.strictEqual(engineTradeableSetup(base), false, 'stale/frozen bundle still armed');
+assert.strictEqual(__freshVetoCount > 0, true, 'freshness veto was not recorded');
+__freshBlocked = false;
+""")
 
 
 def test_bundle_direction_withheld_uses_card_trust_gate():
     h = _html()
-    idx = h.find("function bundleDirectionWithheld")
-    chunk = h[idx : idx + 900]
+    chunk = _js_fn(h, "bundleDirectionWithheld")
     assert "cardBundleActive" in chunk
     assert "analyticsCardTrustGate(ld, { checkTicker: false })" not in chunk
     assert "resolveCardTrustGate(ld, { checkTicker: false })" in chunk
@@ -930,10 +1139,7 @@ def test_bundle_direction_withheld_uses_card_trust_gate():
 
 def test_decision_rail_withholds_when_card_trust_fails():
     h = _html()
-    idx = h.find("function renderDecisionCommandRail")
-    assert idx != -1
-    nxt = h.find("\nfunction ", idx + 1)
-    chunk = h[idx: nxt if nxt != -1 else None]
+    chunk = _js_fn(h, "renderDecisionCommandRail")
     assert "const cardTrust = resolveCardTrustGate(d)" in chunk
     assert "!cardTrust.trusted" in chunk
 
@@ -946,9 +1152,7 @@ def test_render_exported_for_e2e_full_pipeline():
 def test_quote_plane_fields_absent_from_card_trust_gate():
     """Quote-plane L1 diagnostics must not be card-trust inputs (separate transport)."""
     h = _html()
-    idx = h.find("function analyticsCardTrustGate")
-    assert idx != -1
-    chunk = h[idx : idx + 2600]
+    chunk = _js_fn(h, "analyticsCardTrustGate")
     for token in (
         "plane_quote_authority",
         "streaming_fallback",
@@ -964,11 +1168,7 @@ def test_quote_plane_fields_absent_from_card_trust_gate():
 
 def test_full_render_analytical_path_does_not_consume_plane_diag_for_cards():
     h = _html()
-    render_idx = h.find("function _renderMoneyPathCore(d, fullRenderSource)")
-    assert render_idx != -1
-    render_end = h.find("\n/** Synchronous money-path render", render_idx)
-    assert render_end != -1
-    chunk = h[render_idx:render_end]
+    chunk = _js_fn(h, "_renderMoneyPathCore")
     assert "renderTimeframeSignalRow(d)" in chunk
     assert "renderDecisionCommandRail(d)" in chunk
     assert "_lastPlaneDiag" not in chunk
@@ -976,18 +1176,14 @@ def test_full_render_analytical_path_does_not_consume_plane_diag_for_cards():
 
 def test_live_plane_apply_core_does_not_mutate_card_decision_fields():
     h = _html()
-    idx = h.find("function _livePlaneApplyCore")
-    assert idx != -1
-    chunk = h[idx : idx + 900]
+    chunk = _js_fn(h, "_livePlaneApplyCore")
     for field in ("final_tradeable", "final_bias", "final_confidence", "mhap_rows"):
         assert field not in chunk, f"_livePlaneApplyCore must not write {field}"
 
 
 def test_plane_diag_commit_does_not_touch_last_data_card_fields():
     h = _html()
-    idx = h.find("function _commitPlaneDiagnosticsIfCurrent")
-    assert idx != -1
-    chunk = h[idx : idx + 700]
+    chunk = _js_fn(h, "_commitPlaneDiagnosticsIfCurrent")
     assert "window._lastPlaneDiag = j" in chunk
     assert "window._lastData" not in chunk
     assert "mhap_rows" not in chunk
@@ -1000,11 +1196,9 @@ def test_execution_state_chip_consumer_present():
     assert "function paintExecutionStateChip(d)" in h
     assert "function normalizeExecutionCallState(raw)" in h
     assert "window.paintExecutionStateChip = paintExecutionStateChip" in h
-    idx = h.find("function renderTimeframeSignalRow")
-    row_chunk = h[idx : idx + 400]
+    row_chunk = _js_fn(h, "renderTimeframeSignalRow")
     assert "paintExecutionStateChip(d)" in row_chunk
-    paint_idx = h.find("function paintExecutionStateChip")
-    paint_chunk = h[paint_idx : paint_idx + 2200]
+    paint_chunk = _js_fn(h, "paintExecutionStateChip")
     assert "d.call_state" in paint_chunk
     assert "normalizeExecutionCallState" in paint_chunk
     assert "resolveCardTrustGate" in paint_chunk
@@ -1017,9 +1211,9 @@ def test_execution_state_chip_distinct_from_forecast_direction():
     h = _html()
     assert "tf-exec-chip" in h
     assert "tf-exec-state-bar" in h
-    idx = h.find("function paintExecutionStateChip")
-    chunk = h[max(0, idx - 280) : idx + 400]
-    assert "separate execution channel" in chunk
+    # Doc comment sits directly above paintExecutionStateChip; whole-file presence is
+    # the structural property (the old idx-280 window was offset arithmetic).
+    assert "separate execution channel" in h
     setup_idx = h.find("function setupForecastSentence")
     assert setup_idx != -1
     setup_use = h.count("setupForecastSentence(")
@@ -1120,17 +1314,40 @@ def test_operator_mirror_resolver_present_and_exported():
     assert "function resolveCardTrustGate(d, opts)" in h
     assert "function hasOperatorCardMirrorFields(d)" in h
     assert "window.resolveCardTrustGate = resolveCardTrustGate" in h
-    idx = h.find("function resolveCardTrustGate")
-    chunk = h[idx : idx + 1400]
-    assert "operator_card_actionable" in chunk
-    assert "authority: 'operator_mirror'" in chunk
-    assert "analyticsCardTrustGate(d, opts)" in chunk
+    # EXECUTED (2026-08-24 audit): the mirror is the authority when present, and the
+    # withhold reason precedence (explicit reason > stale codes > trust state >
+    # 'not_actionable') actually resolves that way.
+    _exec_card_trust_js("""
+const R = resolveCardTrustGate;
+const on = R(Object.assign(healthyPayload(), { operator_card_actionable: true }));
+assert.strictEqual(on.trusted, true);
+assert.strictEqual(on.authority, 'operator_mirror');
+const off = { operator_card_actionable: false };
+assert.strictEqual(R(off).trusted, false);
+assert.strictEqual(R(off).reason, 'not_actionable');
+assert.strictEqual(
+  R(Object.assign({}, off, { operator_card_trust_state: 'STALE_WITHHELD' })).reason,
+  'STALE_WITHHELD');
+assert.strictEqual(
+  R(Object.assign({}, off, {
+    operator_card_trust_state: 'STALE_WITHHELD',
+    operator_stale_reason_codes: ['QUOTE_CARRIED_FORWARD', 'X'],
+  })).reason,
+  'QUOTE_CARRIED_FORWARD');
+const full = R(Object.assign({}, off, {
+  operator_card_trust_state: 'STALE_WITHHELD',
+  operator_stale_reason_codes: ['QUOTE_CARRIED_FORWARD'],
+  operator_actionability_reason: '  quote lane frozen  ',
+}));
+assert.strictEqual(full.reason, 'quote lane frozen');
+assert.strictEqual(full.trustState, 'STALE_WITHHELD');
+assert.deepStrictEqual(full.staleReasonCodes, ['QUOTE_CARRIED_FORWARD']);
+""")
 
 
 def test_operator_actionable_false_vetoes_trade_active_class():
     h = _html()
-    idx = h.find("function renderTimeframeSignalRow")
-    chunk = h[idx : idx + 9000]
+    chunk = _js_fn(h, "renderTimeframeSignalRow")
     assert "operatorMirrorVeto" in chunk
     assert "!operatorMirrorVeto &&" in h
     assert "tf-signal-card--trade-active" in h
@@ -1139,8 +1356,7 @@ def test_operator_actionable_false_vetoes_trade_active_class():
 
 def test_operator_actionable_false_vetoes_plan_active_even_when_final_tradeable():
     h = _html()
-    idx = h.find("function paintTradePlanCard")
-    chunk = h[idx : idx + 3200]
+    chunk = _js_fn(h, "paintTradePlanCard")
     assert "engineTradeableSetup(d)" in chunk
     assert "opVeto" in chunk
     assert "tf-signal-card--operator-actionability-veto" in chunk
@@ -1150,9 +1366,7 @@ def test_operator_actionable_false_vetoes_plan_active_even_when_final_tradeable(
 
 def test_operator_actionable_false_preserves_all_bias_with_non_actionable():
     h = _html()
-    idx = h.find("else if (operatorMirrorVeto)")
-    assert idx != -1
-    chunk = h[idx : idx + 400]
+    chunk = _js_block(h, "else if (operatorMirrorVeto)")
     assert "final_bias" in chunk
     assert "tf-signal-card--non-actionable" in h
 
@@ -1167,28 +1381,47 @@ def test_operator_trust_reason_surfaced_in_ui():
 
 def test_mirror_absent_falls_back_to_analytics_card_trust_gate():
     h = _html()
-    idx = h.find("function resolveCardTrustGate")
-    chunk = h[idx : idx + 1600]
+    chunk = _js_fn(h, "resolveCardTrustGate")
     assert "hasOperatorCardMirrorFields(d)" in chunk
     assert "authority: 'analyticsCardTrustGate'" in chunk
     assert "function analyticsCardTrustGate(d, opts)" in h
+    # EXECUTED (2026-08-24 audit): no mirror on the payload → the analytics gate is
+    # the fallback authority, in both verdict directions.
+    _exec_card_trust_js("""
+const ok = resolveCardTrustGate(healthyPayload());
+assert.strictEqual(ok.authority, 'analyticsCardTrustGate');
+assert.strictEqual(ok.trusted, true);
+const stale = resolveCardTrustGate(Object.assign(healthyPayload(), { analytics_stale: true }));
+assert.strictEqual(stale.authority, 'analyticsCardTrustGate');
+assert.strictEqual(stale.trusted, false);
+assert.strictEqual(stale.reason, 'analytics_stale');
+""")
 
 
 def test_final_tradeable_cannot_override_operator_false():
     h = _html()
-    idx = h.find("function engineTradeableSetup")
-    chunk = h[idx : idx + 1400]  # RC-369: window widened past the F05 authority comment
+    chunk = _js_fn(h, "engineTradeableSetup")
     assert "resolveCardTrustGate" in chunk
     assert "d.final_tradeable" in chunk
-    gate_idx = h.find("function resolveCardTrustGate")
-    gate_chunk = h[gate_idx : gate_idx + 1200]
+    gate_chunk = _js_fn(h, "resolveCardTrustGate")
     assert "operator_card_actionable === true" in gate_chunk
+    # EXECUTED (2026-08-24 audit): operator false is FINAL — final_tradeable true,
+    # LONG bias, healthy bundle: still no arm. Mirror ABSENT also withholds.
+    _exec_card_trust_js("""
+const armed = Object.assign(healthyPayload(), { final_tradeable: true, final_bias: 'LONG' });
+assert.strictEqual(
+  engineTradeableSetup(Object.assign({}, armed, { operator_card_actionable: false })), false,
+  'final_tradeable=true overrode operator_card_actionable=false');
+assert.strictEqual(engineTradeableSetup(armed), false,
+  'mirror ABSENT must withhold (frontend never authorizes on its own)');
+assert.strictEqual(
+  engineTradeableSetup(Object.assign({}, armed, { operator_card_actionable: true })), true);
+""")
 
 
 def test_tier_c_fingerprint_includes_operator_mirror_fields():
     h = _html()
-    idx = h.find("function _tierCCardRenderFingerprint")
-    chunk = h[idx : idx + 1800]
+    chunk = _js_fn(h, "_tierCCardRenderFingerprint")
     assert "operator_card_actionable" in chunk
     assert "operator_card_trust_state" in chunk
     assert "operator_stale_reason_codes" in chunk
@@ -1248,8 +1481,7 @@ def test_t0_performance_marks_and_measures_present():
 
 def test_t0_render_coherence_guard_instruments_ts_regression_without_behavior_change():
     h = _html()
-    idx = h.find("function _renderCoherenceGuards")
-    chunk = h[idx : idx + 2200]
+    chunk = _js_fn(h, "_renderCoherenceGuards")
     assert "server_build_ts_regression_seen_count" in chunk
     assert "out_of_order_accept_via_gen_despite_ts_regression_count" in chunk
     assert "decision_generation_accept_count" in chunk
@@ -1259,10 +1491,7 @@ def test_t0_render_coherence_guard_instruments_ts_regression_without_behavior_ch
 
 def test_t0_poll_overlap_instrumentation_present():
     h = _html()
-    idx = h.find("async function pollStateFallback")
-    assert idx != -1
-    fin = h.find("\nfunction startStatePollFallback", idx)
-    chunk = h[idx : fin if fin != -1 else idx + 8000]
+    chunk = _js_fn(h, "pollStateFallback")
     assert "rest_poll_start_count" in chunk
     assert "rest_poll_overlap_count" in chunk
     assert "rest_poll_in_flight" in chunk
@@ -1271,8 +1500,7 @@ def test_t0_poll_overlap_instrumentation_present():
 
 def test_t0_long_task_observer_fail_safe():
     h = _html()
-    idx = h.find("function _edMplInstallLongTaskObserver")
-    chunk = h[idx : idx + 900]
+    chunk = _js_fn(h, "_edMplInstallLongTaskObserver")
     assert "PerformanceObserver" in chunk
     assert "longtask" in chunk
     assert "catch (e)" in chunk
@@ -1283,8 +1511,7 @@ def test_t0_instrumentation_does_not_remove_card_trust_gate():
     assert "function analyticsCardTrustGate(d, opts)" in h
     assert "function resolveCardTrustGate(d, opts)" in h
     assert "function engineTradeableSetup(d)" in h
-    idx = h.find("function engineTradeableSetup")
-    chunk = h[idx : idx + 1400]  # RC-369: window widened past the F05 authority comment
+    chunk = _js_fn(h, "engineTradeableSetup")
     assert "resolveCardTrustGate" in chunk
     assert "d.final_tradeable" in chunk
 
@@ -1299,9 +1526,7 @@ def test_card_trust_contract_documents_t0_instrumentation_lane():
 
 def test_t0_schwab_csv_first_declaration_in_contract():
     body = CARD_TRUST_CONTRACT.read_text(encoding="utf-8")
-    idx = body.find("## 18. T0 money-path latency")
-    assert idx != -1
-    chunk = body[idx : idx + 2800]
+    chunk = _md_section(body, "## 18. T0 money-path latency")
     assert "Schwab CSV authority checked: yes" in chunk
     assert "CSV row(s): NO_SCHWAB_EQUIVALENT" in chunk
     assert "SCHWAB_CSV_CHECKED" in chunk
@@ -1311,17 +1536,15 @@ def test_t0_schwab_csv_first_declaration_in_contract():
 
 def test_t0_sse_transport_result_accounted_once_per_outcome():
     h = _html()
-    idx = h.find("ingestMoneyPathSnapshot(snap, 'sse'")
-    assert idx != -1
-    chunk = h[idx : idx + 500]
+    # Scope: the SSE onmessage handler block (the only caller of the snap ingest).
+    chunk = _js_block(h, "es.onmessage = (event)")
+    assert "ingestMoneyPathSnapshot(snap, 'sse'" in chunk
     assert chunk.count("_edMplOnSseTransportResult") == 1
     assert "_edMplOnSseTransportResult(_didRenderSse)" in chunk
 
 
 def _t1_contract_chunk(body: str) -> str:
-    idx = body.find("## 19. T1 stale-label and latency contract")
-    assert idx != -1, "T1 contract section missing"
-    return body[idx : idx + 6500]
+    return _md_section(body, "## 19. T1 stale-label and latency contract")
 
 
 def test_t1_contract_quote_freshness_thresholds_defined():
@@ -1402,17 +1625,14 @@ def test_t1_contract_no_implementation_of_forbidden_transport_primitives():
 
 
 def _t2_contract_chunk(body: str) -> str:
-    idx = body.find("## 20. T2 rAF latest-wins")
-    assert idx != -1, "T2 contract section missing"
-    return body[idx : idx + 4500]
+    return _md_section(body, "## 20. T2 rAF latest-wins")
 
 
 def test_t2_raf_scheduler_function_exists():
     h = _html()
     assert "function scheduleMoneyPathRender" in h
     assert "function _renderMoneyPathCore" in h
-    idx = h.find("function scheduleMoneyPathRender")
-    chunk = h[idx : idx + 2200]
+    chunk = _js_fn(h, "scheduleMoneyPathRender")
     assert "requestAnimationFrame" in chunk
     assert "raf_latest_wins_supersede_count" in chunk
     assert "raf_coalesce_count" in chunk
@@ -1421,8 +1641,7 @@ def test_t2_raf_scheduler_function_exists():
 
 def test_t2_raf_scheduler_coalesces_and_latest_wins():
     h = _html()
-    idx = h.find("function scheduleMoneyPathRender")
-    chunk = h[idx : idx + 2200]
+    chunk = _js_fn(h, "scheduleMoneyPathRender")
     assert "_edMplRafPending" in chunk
     assert "raf_latest_wins_supersede_count" in chunk
     assert "_renderMoneyPathCore(job.data, job.source)" in chunk
@@ -1431,9 +1650,8 @@ def test_t2_raf_scheduler_coalesces_and_latest_wins():
 
 def test_t2_transport_entry_points_use_scheduler_not_direct_render():
     h = _html()
-    sse_idx = h.find("ingestMoneyPathSnapshot(snap, 'sse'")
-    assert sse_idx != -1
-    sse_chunk = h[sse_idx : sse_idx + 400]
+    sse_chunk = _js_block(h, "es.onmessage = (event)")
+    assert "ingestMoneyPathSnapshot(snap, 'sse'" in sse_chunk
     assert "_edMplOnSseTransportResult" in sse_chunk
     assert "render(data, 'sse')" not in h
     poll_idx = h.find("acceptAndScheduleMoneyPathRender(data, 'rest_poll'")
@@ -1446,8 +1664,7 @@ def test_t2_scheduler_does_not_introduce_forbidden_primitives():
     h = _html()
     assert "sequence_id" not in h
     assert "WebSocket" not in h
-    idx = h.find("function scheduleMoneyPathRender")
-    chunk = h[idx : idx + 2200]
+    chunk = _js_fn(h, "scheduleMoneyPathRender")
     assert "sequence_id" not in chunk
     assert "WebSocket" not in chunk
 
@@ -1457,20 +1674,16 @@ def test_t2_preserves_card_trust_and_fail_closed_surface():
     assert "function analyticsCardTrustGate(d, opts)" in h
     assert "function resolveCardTrustGate(d, opts)" in h
     assert "function engineTradeableSetup(d)" in h
-    idx = h.find("function _renderMoneyPathCore")
-    end = h.find("/** Synchronous money-path render", idx)
-    chunk = h[idx : end if end != -1 else idx + 9000]
+    chunk = _js_fn(h, "_renderMoneyPathCore")
     assert "_renderCoherenceGuards" in chunk
-    idx2 = h.find("function engineTradeableSetup")
-    chunk2 = h[idx2 : idx2 + 1400]  # RC-369: window widened past the F05 authority comment
+    chunk2 = _js_fn(h, "engineTradeableSetup")
     assert "resolveCardTrustGate" in chunk2
     assert "d.final_tradeable" in chunk2
 
 
 def test_t2_raf_t0_diagnostic_fields_initialized():
     h = _html()
-    idx = h.find("function _edMplInit")
-    chunk = h[idx : idx + 1800]
+    chunk = _js_fn(h, "_edMplInit")
     for field in (
         "raf_scheduler_enabled",
         "raf_schedule_count",
@@ -1539,9 +1752,7 @@ def test_t1_contract_still_preserves_t1_non_implementation_list():
 
 
 def _t3_contract_chunk(body: str) -> str:
-    idx = body.find("## 21. T3 monotonic money-path")
-    assert idx != -1, "T3 contract section missing"
-    return body[idx : idx + 4500]
+    return _md_section(body, "## 21. T3 monotonic money-path")
 
 
 def test_t3_monotonic_gate_functions_exist():
@@ -1549,43 +1760,37 @@ def test_t3_monotonic_gate_functions_exist():
     assert "function acceptMoneyPathPayload" in h
     assert "function acceptAndScheduleMoneyPathRender" in h
     assert "function _edMplMonotonicGateEvaluate" in h
-    idx = h.find("function acceptAndScheduleMoneyPathRender")
-    chunk = h[idx : idx + 600]
+    chunk = _js_fn(h, "acceptAndScheduleMoneyPathRender")
     assert "acceptMoneyPathPayload" in chunk
     assert "scheduleMoneyPathRender" in chunk
 
 
 def test_t3_reject_before_raf_schedule():
     h = _html()
-    idx = h.find("function acceptAndScheduleMoneyPathRender")
-    chunk = h[idx : idx + 600]
+    chunk = _js_fn(h, "acceptAndScheduleMoneyPathRender")
     assert chunk.index("acceptMoneyPathPayload") < chunk.index("scheduleMoneyPathRender")
-    gate_idx = h.find("function _edMplMonotonicGateEvaluate")
-    gate_chunk = h[gate_idx : gate_idx + 2200]
+    gate_chunk = _js_fn(h, "_edMplMonotonicGateEvaluate")
     assert "duplicate" in gate_chunk
     assert "gen_regression" in gate_chunk or "ts_regression" in gate_chunk
 
 
 def test_t3_ordering_key_uses_decision_generation_and_server_build_ts():
     h = _html()
-    idx = h.find("function _edMplOrderingKeyFromPayload")
-    chunk = h[idx : idx + 1200]
+    chunk = _js_fn(h, "_edMplOrderingKeyFromPayload")
     assert "decision_generation_id" in chunk
     assert "_server_build_ts" in chunk or "_validServerBuildTs" in chunk
 
 
 def test_t3_missing_key_fallback_defined():
     h = _html()
-    idx = h.find("function _edMplMonotonicGateEvaluate")
-    chunk = h[idx : idx + 2200]
+    chunk = _js_fn(h, "_edMplMonotonicGateEvaluate")
     assert "missing_key_fallback" in chunk
     assert "monotonic_missing_key_count" in chunk
 
 
 def test_t3_monotonic_diagnostic_fields_initialized():
     h = _html()
-    idx = h.find("function _edMplInit")
-    chunk = h[idx : idx + 2200]
+    chunk = _js_fn(h, "_edMplInit")
     for field in (
         "monotonic_gate_enabled",
         "monotonic_accept_count",
@@ -1625,8 +1830,7 @@ def test_t3_does_not_introduce_forbidden_primitives():
     h = _html()
     assert "sequence_id" not in h
     assert "WebSocket" not in h
-    idx = h.find("function acceptAndScheduleMoneyPathRender")
-    chunk = h[idx : idx + 800]
+    chunk = _js_fn(h, "acceptAndScheduleMoneyPathRender")
     assert "sequence_id" not in chunk
 
 
@@ -1663,7 +1867,8 @@ def test_t3_html_schwab_csv_checked_marker_present():
     h = _html()
     idx = h.find("T3 monotonic gate slice")
     assert idx != -1
-    chunk = h[idx : idx + 900]
+    # Declaration comment block: scope to the end of the enclosing /* … */ comment.
+    chunk = h[idx : h.index("*/", idx)]
     assert "Schwab CSV authority checked: yes" in chunk
     assert "NO_SCHWAB_EQUIVALENT" in chunk
     assert "SCHWAB_CSV_CHECKED" in chunk
@@ -1671,15 +1876,14 @@ def test_t3_html_schwab_csv_checked_marker_present():
 
 def test_t3_ticker_switch_resets_monotonic_gate():
     h = _html()
-    idx = h.find("requestGeneration++;")
-    chunk = h[idx : idx + 800]
+    # requestGeneration++ lives in setActiveTicker — the reset must be in the same writer.
+    chunk = _js_fn(h, "setActiveTicker")
+    assert "requestGeneration++;" in chunk
     assert "_edMplMonotonicGateReset" in chunk
 
 
 def _t4_contract_chunk(body: str) -> str:
-    idx = body.find("## 22. T4 unified money_path_snapshot")
-    assert idx != -1, "T4 contract section missing"
-    return body[idx : idx + 6500]
+    return _md_section(body, "## 22. T4 unified money_path_snapshot")
 
 
 def test_t4_extract_money_path_snapshot_envelope_and_legacy():
@@ -1691,24 +1895,20 @@ def test_t4_extract_money_path_snapshot_envelope_and_legacy():
 
 def test_t4_ingest_flows_through_t3_gate_and_t2_scheduler():
     h = _html()
-    idx = h.find("function ingestMoneyPathSnapshot")
-    chunk = h[idx : idx + 900]
+    chunk = _js_fn(h, "ingestMoneyPathSnapshot")
     assert "acceptAndScheduleMoneyPathRender(snapshot, source" in chunk
 
 
 def test_t4_server_broadcast_attaches_snapshot_envelope():
     body = (ROOT / "server.py").read_text(encoding="utf-8")
     assert "def _attach_money_path_snapshot_envelope" in body
-    idx = body.find("async def _broadcast_snapshot")
-    chunk = body[idx : idx + 600]
+    chunk = _py_def(body, "async def _broadcast_snapshot")
     assert "_attach_money_path_snapshot_envelope" in chunk
 
 
 def test_t4_sse_handler_uses_ingest_money_path_snapshot():
     h = _html()
-    start = h.find("es.onmessage = (event)")
-    assert start != -1
-    chunk = h[start : start + 2800]
+    chunk = _js_block(h, "es.onmessage = (event)")
     assert "extractMoneyPathSnapshot(data)" in chunk
     assert "ingestMoneyPathSnapshot(snap, 'sse'" in chunk
 
@@ -1725,14 +1925,12 @@ def test_t4_freshness_threshold_constants():
 def test_t4_freshness_classifiers():
     h = _html()
     assert "function _edMplClassifyQuoteFreshness" in h
-    assert "function _edMplClassifyBundleFreshness" in h
-    assert "return 'frozen'" in h[h.find("function _edMplClassifyBundleFreshness") : h.find("function _edMplClassifyBundleFreshness") + 400]
+    assert "return 'frozen'" in _js_fn(h, "_edMplClassifyBundleFreshness")
 
 
 def test_t4_stale_and_frozen_labels_on_dom():
     h = _html()
-    idx = h.find("function _edMplApplyFreshnessUiLabels")
-    chunk = h[idx : idx + 1800]
+    chunk = _js_fn(h, "_edMplApplyFreshnessUiLabels")
     assert "data-bundle-freshness-state" in chunk
     assert "FROZEN" in chunk
     assert "STALE" in chunk
@@ -1741,8 +1939,7 @@ def test_t4_stale_and_frozen_labels_on_dom():
 
 def test_t4_engine_tradeable_freshness_veto():
     h = _html()
-    idx = h.find("function engineTradeableSetup")
-    chunk = h[idx : idx + 450]
+    chunk = _js_fn(h, "engineTradeableSetup")
     assert "_edMplFreshnessActionabilityBlocked" in chunk
     assert "_edMplRecordFreshnessVeto" in chunk
 
@@ -1769,10 +1966,7 @@ def test_t4_quote_context_cannot_arm_stale_money_path_cards():
     ):
         assert forbidden not in live_quote_chunk, f"live_quote must not call {forbidden}"
 
-    lpc_idx = h.find("function _livePlaneApplyCore")
-    lpc_end = h.find("\n/** True when quote fields should paint", lpc_idx)
-    assert lpc_end != -1
-    lpc_chunk = h[lpc_idx:lpc_end]
+    lpc_chunk = _js_fn(h, "_livePlaneApplyCore")
     assert "scheduleMtmSpotDerivedCardsRefresh()" in lpc_chunk
     for forbidden in (
         "ingestMoneyPathSnapshot",
@@ -1787,15 +1981,13 @@ def test_t4_quote_context_cannot_arm_stale_money_path_cards():
     ):
         assert forbidden not in lpc_chunk, f"_livePlaneApplyCore must not re-arm {forbidden}"
 
-    mtm_idx = h.find("function scheduleMtmSpotDerivedCardsRefresh")
-    mtm_chunk = h[mtm_idx : mtm_idx + 450]
+    mtm_chunk = _js_fn(h, "scheduleMtmSpotDerivedCardsRefresh")
     assert "engineTradeableSetup" not in mtm_chunk
     assert "ingestMoneyPathSnapshot" not in mtm_chunk
     assert "renderTimeframeSignalRow" not in mtm_chunk
     assert "__renderKeyLevelsLive" in mtm_chunk
 
-    ets_idx = h.find("function engineTradeableSetup")
-    ets_chunk = h[ets_idx : ets_idx + 1400]  # RC-369: window widened past the F05 authority comment
+    ets_chunk = _js_fn(h, "engineTradeableSetup")
     fresh_pos = ets_chunk.find("_edMplFreshnessActionabilityBlocked")
     trust_pos = ets_chunk.find("resolveCardTrustGate")
     trade_pos = ets_chunk.find("d.final_tradeable")
@@ -1804,28 +1996,24 @@ def test_t4_quote_context_cannot_arm_stale_money_path_cards():
     fresh_veto = ets_chunk[fresh_pos:trust_pos]
     assert "return false" in fresh_veto
 
-    fresh_block_idx = h.find("function _edMplFreshnessActionabilityBlocked")
-    fresh_block_chunk = h[fresh_block_idx : fresh_block_idx + 400]
+    fresh_block_chunk = _js_fn(h, "_edMplFreshnessActionabilityBlocked")
     assert "bundle_freshness_state" in fresh_block_chunk
     assert "=== 'stale'" in fresh_block_chunk or "== 'stale'" in fresh_block_chunk
     assert "=== 'frozen'" in fresh_block_chunk or "== 'frozen'" in fresh_block_chunk
 
-    age_idx = h.find("function _edMplFreshnessAgeMsFromPayload")
-    age_chunk = h[age_idx : age_idx + 650]
+    age_chunk = _js_fn(h, "_edMplFreshnessAgeMsFromPayload")
     assert "lane === 'quote'" in age_chunk
     assert "_validServerBuildTs" in age_chunk
     assert "_validQuoteLaneTs" in age_chunk
 
-    gate_idx = h.find("function resolveCardTrustGate")
-    gate_chunk = h[gate_idx : gate_idx + 1200]
+    gate_chunk = _js_fn(h, "resolveCardTrustGate")
     assert "operator_card_actionable === true" in gate_chunk
     assert "trusted: actionable" in gate_chunk or "trusted: actionable," in gate_chunk.replace(" ", "")
 
 
 def test_t4_diagnostic_fields_initialized():
     h = _html()
-    idx = h.find("function _edMplInit")
-    chunk = h[idx : idx + 2200]
+    chunk = _js_fn(h, "_edMplInit")
     for field in (
         "money_path_snapshot_seen_count",
         "money_path_snapshot_accept_count",
@@ -1853,8 +2041,7 @@ def test_t4_preserves_t2_t3_scheduler_and_monotonic():
 
 def test_t4_no_websocket_no_transport_cadence_change():
     h = _html()
-    idx = h.find("function ingestMoneyPathSnapshot")
-    chunk = h[idx : idx + 1200]
+    chunk = _js_fn(h, "ingestMoneyPathSnapshot")
     assert "WebSocket" not in chunk
     assert "setInterval" not in chunk
     assert "ANALYTICS_POLL" not in chunk
@@ -1872,7 +2059,8 @@ def test_t4_html_schwab_csv_checked_marker_present():
     h = _html()
     idx = h.find("T4 unified snapshot + freshness fail-closed slice")
     assert idx != -1
-    chunk = h[idx : idx + 900]
+    # Declaration comment block: scope to the end of the enclosing /* … */ comment.
+    chunk = h[idx : h.index("*/", idx)]
     assert "Schwab CSV authority checked: yes" in chunk
     assert "NO_SCHWAB_EQUIVALENT" in chunk
     assert "SCHWAB_CSV_CHECKED" in chunk

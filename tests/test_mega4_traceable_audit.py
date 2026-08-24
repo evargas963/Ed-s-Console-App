@@ -53,11 +53,26 @@ CATEGORICAL_JUST_RE = re.compile(
     r"no single schwab|reads or composes market fields)\b",
     re.I,
 )
+# CLOSED integer ledger for test_mega4_scope_complete (see the named-set conversion below).
 # 1044 — RC-297 inventory drift repair 2026-08-09: +5 (ml_data_common._console_read_conn /
 #        _read_with_retry / _read_one_row_with_retry, ml_predict._never_trained_ticker,
 #        arch_competition/metrics._sklearn_metrics), all NONE and each traced from its own
 #        body rather than from a neighbouring row's wording.
-MEGA4_ROW_COUNT = 1070  # +1 RC-436 model_feature_wall_distance_cols; +4 RC-435 structurally withheld wall-distance serve gates (ml_train)  # +21 (RC-328/332/340/343/345 one-authority consolidations that shipped without inventory rows: active_bundle_contract.artifact_ticker_key; lstm_data encode_zone/_anchor_tolerance_s/_snapshot_ts/_spot_at_minutes_back; ml_data_common confluence_history_lookback_s/fetch_confluence_history/confluence_features_for_bar/prepare_row_for_xgb_features; the twelve ml_train fk_* feature kernels) 2026-08-17  # +1 resolve_live_v2_calibration_tail_action (calibration/v2_live_logging.py) — pre-existing inventory gap in uncommitted live-logging work, closed 2026-07-19 (prior: 1038)
+# 1070 — +1 RC-436 model_feature_wall_distance_cols; +4 RC-435 structurally withheld wall-distance serve gates (ml_train)  # +21 (RC-328/332/340/343/345 one-authority consolidations that shipped without inventory rows: active_bundle_contract.artifact_ticker_key; lstm_data encode_zone/_anchor_tolerance_s/_snapshot_ts/_spot_at_minutes_back; ml_data_common confluence_history_lookback_s/fetch_confluence_history/confluence_features_for_bar/prepare_row_for_xgb_features; the twelve ml_train fk_* feature kernels) 2026-08-17  # +1 resolve_live_v2_calibration_tail_action (calibration/v2_live_logging.py) — pre-existing inventory gap in uncommitted live-logging work, closed 2026-07-19 (prior: 1038)
+#
+# 2026-08-24 (audit T2-4) — NAMED-SET CONVERSION. The integer ledger above is CLOSED
+# HISTORY: the row count is no longer hand-bumped. The inventory's membership now lives in
+# tests/frozen/mega4_inventory_names.txt (one "file.py::qualified_name" per line, sorted),
+# and test_mega4_scope_complete diffs the live inventory against it BY NAME, so a
+# legitimate change shows WHICH row arrived or left instead of forcing integer
+# archaeology. MEGA4_ROW_COUNT stays defined for any reader of this module but is DERIVED
+# from the frozen set — never edit it by hand. MEGA4_FILE_COUNT is untouched by the
+# conversion: file membership is already named by the inv_files == set(MEGA4_FILES) check.
+MEGA4_FROZEN_FILE = ROOT / "tests" / "frozen" / "mega4_inventory_names.txt"
+MEGA4_FROZEN_NAMES = frozenset(
+    ln for ln in MEGA4_FROZEN_FILE.read_text(encoding="utf-8").splitlines() if ln
+)
+MEGA4_ROW_COUNT = len(MEGA4_FROZEN_NAMES)  # derived from the frozen name set
 MEGA4_FILE_COUNT = 88  # +3 arch_competition PR4 modules
 _PRIOR_MEGA_FILES = MEGA1_FILES | MEGA2_FILES | MEGA3_FILES
 
@@ -120,10 +135,30 @@ def test_mega4_inventory_covers_every_function():
 
 
 def test_mega4_scope_complete():
+    """Named-set scope gate (T2-4, 2026-08-24): the inventory equals the frozen name set.
+
+    The exact-count pin this replaces survives as the closed comment ledger above
+    MEGA4_ROW_COUNT; from here on a move is accounted for BY NAME, not by integer.
+    """
     inv_files = {r.file for r in MEGA4_TRACEABLE_INVENTORY}
     assert inv_files == set(MEGA4_FILES)
     assert len(MEGA4_FILES) == MEGA4_FILE_COUNT
-    assert len(MEGA4_TRACEABLE_INVENTORY) == MEGA4_ROW_COUNT
+    current = {f"{r.file}::{r.derivation}" for r in MEGA4_TRACEABLE_INVENTORY}
+    arrived = sorted(current - MEGA4_FROZEN_NAMES)
+    left = sorted(MEGA4_FROZEN_NAMES - current)
+    assert current == MEGA4_FROZEN_NAMES, (
+        f"Mega4 inventory membership moved.\n"
+        f"ARRIVED (in the inventory, not in the frozen set): {arrived}\n"
+        f"LEFT (in the frozen set, no longer in the inventory): {left}\n"
+        f"A legitimate arrival/departure is a one-line edit to "
+        f"tests/frozen/mega4_inventory_names.txt in the same commit, reviewed by name — "
+        f"do not bulk-regenerate."
+    )
+    # Duplicate guard: set equality alone cannot see a repeated (file, derivation) row.
+    assert len(MEGA4_TRACEABLE_INVENTORY) == MEGA4_ROW_COUNT, (
+        "inventory row count differs from the frozen name count while the SETS are equal "
+        "— a duplicate (file, derivation) row exists in MEGA4_TRACEABLE_INVENTORY"
+    )
 
 
 def test_mega4_row_schema_valid():

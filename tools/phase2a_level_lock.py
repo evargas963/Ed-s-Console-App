@@ -105,8 +105,9 @@ def _norm(rel) -> str:
     return str(rel).replace("\\", "/").strip()
 
 
-def _escaped(source: str, lineno: int) -> bool:
-    lines = source.splitlines()
+def _escaped(source: str, lineno: int, lines: list[str] | None = None) -> bool:
+    if lines is None:                     # REHAB: callers on the scan path pass the split once
+        lines = source.splitlines()
     if 1 <= lineno <= len(lines):
         return ESCAPE in lines[lineno - 1]
     return False
@@ -157,19 +158,37 @@ class _AliasResolver(ast.NodeVisitor):
         return None
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
-        self._fn_stack.append(node.name)
-        called: set[str] = set()
-        for n in ast.walk(node):
-            if isinstance(n, ast.Call):
-                name = _call_name(n)
-                if name in CANONICAL_HELPERS or name in self.alias_to_helper:
-                    called.add(self.alias_to_helper.get(name, name))
-        if called:
-            self.wrapper_bodies[node.name] = called
+        # REHAB 2026-08-24: wrapper detection moved to _collect_wrapper_bodies — the
+        # per-def `ast.walk(node)` here re-walked every nested def's subtree once per
+        # enclosing def (measured: 6.4M walk yields, 98.5s for one scan_repo pass).
         self.generic_visit(node)
-        self._fn_stack.pop()
 
     visit_AsyncFunctionDef = visit_FunctionDef  # type: ignore[assignment]
+
+
+def _collect_wrapper_bodies(tree: ast.AST, alias_to_helper: dict[str, str]) -> dict[str, set[str]]:
+    """function name -> canonical helpers called anywhere in its subtree, one post-order pass.
+
+    Same attribution as the walk-per-def it replaces (a nested def's calls count for every
+    enclosing def too), built with the COMPLETE alias map — an alias assigned later in the
+    module now also resolves inside functions defined above it, which can only detect more
+    wrapping, never less."""
+    out: dict[str, set[str]] = {}
+
+    def rec(node: ast.AST) -> set[str]:
+        called: set[str] = set()
+        for child in ast.iter_child_nodes(node):
+            called |= rec(child)
+        if isinstance(node, ast.Call):
+            name = _call_name(node)
+            if name in CANONICAL_HELPERS or name in alias_to_helper:
+                called.add(alias_to_helper.get(name, name))
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and called:
+            out[node.name] = set(called)
+        return called
+
+    rec(tree)
+    return out
 
 
 def _call_name(node: ast.Call) -> str:
@@ -190,24 +209,45 @@ def _enclosing_functions(tree: ast.AST) -> dict[int, str]:
     return owner
 
 
-def level_computation_violations(rel_path: str, source: str) -> list[str]:
+class _FileAnalysis:
+    """Parse + alias-resolve + owner-map a file ONCE for both violation passes.
+
+    REHAB 2026-08-24: the two passes each re-parsed and re-resolved every file
+    (453 = 2 x ~226 calls measured); scan_repo now builds this once per file."""
+
+    def __init__(self, source: str) -> None:
+        self.lines = source.splitlines()
+        try:
+            self.tree: ast.AST | None = ast.parse(source)
+            self.error: SyntaxError | None = None
+        except SyntaxError as e:
+            self.tree, self.error = None, e
+            self.alias: dict[str, str] = {}
+            self.wrapper_bodies: dict[str, set[str]] = {}
+            self.owner: dict[int, str] = {}
+            return
+        resolver = _AliasResolver()
+        resolver.visit(self.tree)
+        self.alias = resolver.alias_to_helper
+        self.wrapper_bodies = _collect_wrapper_bodies(self.tree, self.alias)
+        self.owner = _enclosing_functions(self.tree)
+
+
+def level_computation_violations(rel_path: str, source: str,
+                                 pre: _FileAnalysis | None = None) -> list[str]:
     """Every invocation of a Phase 2A helper outside the declared producer sites."""
     rel = _norm(rel_path)
     if rel in SKIP_FILES:
         return []
-    try:
-        tree = ast.parse(source)
-    except SyntaxError as e:
-        return [f"{rel}: unparseable, the Phase 2A computation lock cannot see it ({e})"]
-
-    resolver = _AliasResolver()
-    resolver.visit(tree)
-    owner = _enclosing_functions(tree)
+    pre = pre or _FileAnalysis(source)
+    if pre.tree is None:
+        return [f"{rel}: unparseable, the Phase 2A computation lock cannot see it ({pre.error})"]
+    tree, owner, lines = pre.tree, pre.owner, pre.lines
     # A wrapper that forwards to a helper is itself an invocation of that helper — that
     # is the "same helper under another function name" evasion. A DECLARED producer is
     # not a wrapper: calling it is carriage of the one computation, which is the point.
-    alias = dict(resolver.alias_to_helper)
-    for wrapper, helpers in resolver.wrapper_bodies.items():
+    alias = dict(pre.alias)
+    for wrapper, helpers in pre.wrapper_bodies.items():
         if (rel, wrapper) in ALLOWED_COMPUTATION_SITES:
             continue
         if wrapper not in alias and helpers:
@@ -224,7 +264,7 @@ def level_computation_violations(rel_path: str, source: str) -> list[str]:
         fn = owner.get(node.lineno, "<module>")
         if (rel, fn) in ALLOWED_COMPUTATION_SITES:
             continue
-        if _escaped(source, node.lineno):
+        if _escaped(source, node.lineno, lines):
             continue
         under = "" if name == helper else f" (aliased as {name!r})"
         out.append(
@@ -265,7 +305,8 @@ def _string_constant_aliases(tree: ast.AST) -> dict[str, str]:
     return out
 
 
-def level_alias_value_violations(rel_path: str, source: str) -> list[str]:
+def level_alias_value_violations(rel_path: str, source: str,
+                                 pre: _FileAnalysis | None = None) -> list[str]:
     """Numeric values attached to a Phase 2A id must be CARRIED, not produced.
 
     Walks INTO list literals, so `levels: [{"id": "VWAP", "price": <expr>}]` is scanned
@@ -275,14 +316,12 @@ def level_alias_value_violations(rel_path: str, source: str) -> list[str]:
     rel = _norm(rel_path)
     if rel in SKIP_FILES:
         return []
-    try:
-        tree = ast.parse(source)
-    except SyntaxError:
+    pre = pre or _FileAnalysis(source)
+    if pre.tree is None:
         return []
+    tree, owner, lines = pre.tree, pre.owner, pre.lines
     const_alias = _string_constant_aliases(tree)
-    owner = _enclosing_functions(tree)
-    resolver = _AliasResolver()
-    resolver.visit(tree)
+    alias_to_helper = pre.alias
 
     out: list[str] = []
     for node in ast.walk(tree):
@@ -296,7 +335,7 @@ def level_alias_value_violations(rel_path: str, source: str) -> list[str]:
             val = _dict_key_value(node, value_key)
             if val is None:
                 continue
-            if _escaped(source, getattr(val, "lineno", node.lineno)):
+            if _escaped(source, getattr(val, "lineno", node.lineno), lines):
                 continue
             expr = ast.unparse(val) if hasattr(ast, "unparse") else ""
             if any(tok in expr for tok in CARRIAGE_TOKENS):
@@ -308,9 +347,9 @@ def level_alias_value_violations(rel_path: str, source: str) -> list[str]:
                 for sub in ast.walk(val):
                     if isinstance(sub, ast.Call):
                         nm = _call_name(sub)
-                        if resolver.alias_to_helper.get(nm):
+                        if alias_to_helper.get(nm):
                             reason = (f"a live call to "
-                                      f"{resolver.alias_to_helper[nm]} (as {nm!r})")
+                                      f"{alias_to_helper[nm]} (as {nm!r})")
                             break
             if reason is None:
                 continue
@@ -412,8 +451,9 @@ def scan_repo(repo: Path | None = None) -> list[str]:
             src = path.read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
-        out.extend(level_computation_violations(rel, src))
-        out.extend(level_alias_value_violations(rel, src))
+        pre = _FileAnalysis(src)          # REHAB: one parse/resolve shared by both passes
+        out.extend(level_computation_violations(rel, src, pre))
+        out.extend(level_alias_value_violations(rel, src, pre))
     static_dir = root / "static"
     if static_dir.is_dir():
         for path in sorted(static_dir.glob("*.html")):

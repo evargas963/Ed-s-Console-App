@@ -244,3 +244,65 @@ def fresh_ablation_static_lock_index():
     reset_ablation_static_lock_index_for_tests()
     yield
     reset_ablation_static_lock_index_for_tests()
+
+
+# ---------------------------------------------------------------- repo index --
+# REHAB 2026-08-24: ~33 test files each independently rglob'd + read + ast.parse'd the
+# whole repository (one warm pass measured 6.8s; the duplicated passes cost 400-700s of
+# CPU per suite run). This is ONE live pass per session (per xdist worker), shared by the
+# repo-sweep tests. The measurement stays live — it is rebuilt on every suite run from
+# the working tree, never stored (RC-268) — only the I/O is shared.
+
+_REPO_INDEX_SKIP_DIRS = frozenset({
+    ".git", ".venv", "venv", "__pycache__", "node_modules", ".claude",
+    "build", "dist", ".pytest_cache", ".mypy_cache", ".ruff_cache",
+})
+
+
+class RepoIndex:
+    """rel_path -> (source_text, ast_tree_or_None) over every repo .py file."""
+
+    def __init__(self, root: Path) -> None:
+        import ast as _ast
+        self.root = root
+        self.files: dict[Path, tuple[str, object | None]] = {}
+        for path in sorted(root.rglob("*.py")):
+            rel = path.relative_to(root)
+            if any(part in _REPO_INDEX_SKIP_DIRS for part in rel.parts):
+                continue
+            try:
+                text = path.read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError):
+                continue
+            try:
+                tree = _ast.parse(text)
+            except SyntaxError:
+                tree = None
+            self.files[rel] = (text, tree)
+
+    def items(self):
+        """(rel_path, source_text, tree_or_None), sorted by path."""
+        for rel, (text, tree) in self.files.items():
+            yield rel, text, tree
+
+
+@pytest.fixture(scope="session")
+def repo_index() -> RepoIndex:
+    return RepoIndex(Path(__file__).resolve().parent.parent)
+
+
+# ------------------------------------------------- tracked-ledger firewall --
+# REHAB 2026-08-24: reports/terrain_quarantine_ledger.jsonl is a TRACKED operator audit
+# file, and tests exercising the quarantine machinery (scorecard file, silent-zero file,
+# and any future caller of server._note_terrain_failure / _terrain_quarantine_blocks)
+# were appending ZZTEST*/ZZQ fixture rows to it on every suite run. This GLOBAL autouse
+# fixture redirects the module's ledger path to tmp for EVERY test whenever `server` is
+# imported — per-file fixtures kept missing writers (measured: ZZQ rows landed from a
+# file with no redirect). Costs nothing for tests that never import server.
+@pytest.fixture(autouse=True)
+def _terrain_ledger_to_tmp(tmp_path, monkeypatch):
+    srv = sys.modules.get("server")
+    if srv is not None and hasattr(srv, "TERRAIN_QUARANTINE_LEDGER"):
+        monkeypatch.setattr(srv, "TERRAIN_QUARANTINE_LEDGER",
+                            tmp_path / "terrain_quarantine_ledger.jsonl")
+    yield

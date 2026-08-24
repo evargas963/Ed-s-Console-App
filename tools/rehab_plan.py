@@ -261,12 +261,19 @@ def m_status_vocabulary_enforced() -> tuple[float, str]:
         import check_institutional_correctness as K
     except Exception as exc:                                    # noqa: BLE001
         return (1.0, f"checker unimportable: {type(exc).__name__}")
+    # Consolidated 2026-08-24 (governance/retired_checks.md): the vocabulary validation
+    # runs INSIDE root_cause_log, so registration is read on the survivor and the fold
+    # table must still carry the helper; the wrapper still measures the violation count.
+    import inspect
     entry = [(n, e) for n, _fn, e in getattr(K, "CHECKS", [])
-             if n == "rc_status_vocabulary"]
+             if n == "root_cause_log"]
     if not entry:
-        return (1.0, "rc_status_vocabulary is not registered")
+        return (1.0, "root_cause_log (carrier of rc_status_vocabulary) is not registered")
     if not entry[0][1]:
-        return (1.0, "rc_status_vocabulary is registered but NOT enforced")
+        return (1.0, "root_cause_log (carrier of rc_status_vocabulary) is NOT enforced")
+    fold = getattr(K, "_root_cause_ledger_folded_violations", None)
+    if fold is None or "_rc_status_vocabulary_violations" not in inspect.getsource(fold):
+        return (1.0, "rc_status_vocabulary's validation is not folded into root_cause_log")
     violations = len(K.check_rc_status_vocabulary())
     if violations:
         return (float(violations), f"{violations} undeclared status token(s) in the ledger")

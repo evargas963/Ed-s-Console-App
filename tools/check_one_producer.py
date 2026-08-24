@@ -97,7 +97,38 @@ def _inputs_for(name: str, spec: dict) -> tuple[str, ...]:
     return tuple(dict.fromkeys(toks))
 
 
-def computing_sites(field: str, spec: dict) -> list[str]:
+def build_scan_corpus() -> list[tuple[str, str, list[tuple[ast.AST, str]]]]:
+    """One live pass over the tracked production files: (rel, src, [(fn_node, fn_text)]).
+
+    Built fresh on every evaluation — the measurement stays live (RC-268: no stored
+    answers) — but built ONCE and shared across all registered fields. The previous shape
+    re-ran `git ls-files`, re-read and re-parsed every file PER FIELD, and called
+    `ast.get_source_segment` per function (which re-splits the whole file each call —
+    measured 17.5s of a 22.1s field pass). The per-function text here is a lineno..
+    end_lineno slice: at worst slightly WIDER than the exact segment, which can only admit
+    extra candidates into the precise arithmetic AST check below — never hide one.
+    """
+    corpus: list[tuple[str, str, list[tuple[ast.AST, str]]]] = []
+    for rel in _tracked_python():
+        path = REPO / rel
+        if not path.exists():
+            continue
+        src = path.read_text(encoding="utf-8", errors="replace")
+        try:
+            tree = ast.parse(src)
+        except SyntaxError:
+            continue
+        lines = src.split("\n")
+        fns = [(fn, "\n".join(lines[fn.lineno - 1:fn.end_lineno]))
+               for fn in ast.walk(tree)
+               if isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef))]
+        corpus.append((rel, src, fns))
+    return corpus
+
+
+def computing_sites(field: str, spec: dict,
+                    corpus: list[tuple[str, str, list[tuple[ast.AST, str]]]] | None = None,
+                    ) -> list[str]:
     """Every tracked production function that appears to COMPUTE `field`."""
     """CONFIRMED sites only — a site that performs ARITHMETIC on the defining inputs.
 
@@ -112,21 +143,10 @@ def computing_sites(field: str, spec: dict) -> list[str]:
     if not inputs:
         return []
     out: list[str] = []
-    for rel in _tracked_python():
-        path = REPO / rel
-        if not path.exists():
-            continue
-        src = path.read_text(encoding="utf-8", errors="replace")
+    for rel, src, fns in (corpus if corpus is not None else build_scan_corpus()):
         if not all(t in src for t in inputs):
             continue
-        try:
-            tree = ast.parse(src)
-        except SyntaxError:
-            continue
-        for fn in ast.walk(tree):
-            if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                continue
-            seg = ast.get_source_segment(src, fn) or ""
+        for fn, seg in fns:
             if not all(t in seg for t in inputs):
                 continue
             if _joins_inputs_arithmetically(fn, inputs):
@@ -174,9 +194,10 @@ def evaluate() -> tuple[list[str], list[str], int]:
     reg = load_registry()
     fields = reg.get("fields") or {}
     failures: list[str] = []
+    corpus = build_scan_corpus()          # one live pass, shared by every field
     for field, spec in fields.items():
         producer = spec.get("producer") or ""
-        sites = computing_sites(field, spec)
+        sites = computing_sites(field, spec, corpus)
         if not sites:
             continue                      # nothing recognisable computes it; not a duplicate
         declared = producer.replace(".py:", ".py:")

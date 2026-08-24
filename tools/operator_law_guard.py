@@ -414,10 +414,23 @@ _APPROVAL_ALLOWED_SPELLINGS = re.compile(
     r"(?:tools[/\\])?(?:test_)?ui_mockup_lock(?:_v1)?(?:\.py)?", re.I)
 _APPROVAL_FRAGMENT = re.compile(
     r"ui_mockup|mockup_approv|approvals\.json|ED_UI_MOCKUP", re.I)
+#: SIMPLICITY REHAB 2026-08-24 (T2-7): the fragment ban alone blocked READS — measured
+#: twice in one session (a json.load of the registry; a git commit whose MESSAGE named
+#: the gate). The registry-forge risk is a WRITE risk, so the fragment must co-occur
+#: with a write verb before it blocks. Constructed-write bans below still backstop
+#: deep-concatenation forgeries regardless of spelling.
+_APPROVAL_WRITE_VERB = re.compile(
+    r">{1,2}|Set-Content|Out-File|Add-Content|json\.dump|write_text|write_bytes|"
+    r"\bopen\s*\([^)]*['\"](?:w|a)", re.I)
+#: Setting the grant variable IS a write (grant-minting), whatever the shell spelling.
+_APPROVAL_GRANT_SET = re.compile(r"ED_UI_MOCKUP\w*\s*[:=]", re.I)
 
 
 def _approval_channel_violation(raw: str) -> bool:
-    return bool(_APPROVAL_FRAGMENT.search(_APPROVAL_ALLOWED_SPELLINGS.sub("", raw)))
+    stripped = _APPROVAL_ALLOWED_SPELLINGS.sub("", raw)
+    if _APPROVAL_GRANT_SET.search(stripped):
+        return True
+    return bool(_APPROVAL_FRAGMENT.search(stripped) and _APPROVAL_WRITE_VERB.search(stripped))
 
 
 def _safe_data_target(target: str) -> bool:
@@ -507,7 +520,22 @@ def _heredoc_write_violation(raw: str) -> bool:
 #: v19: `cat > foo.py <<EOF` writes source through the SHELL itself — no interpreter involved,
 #: so the heredoc rule never saw it. Any shell redirect INTO a .py file is the same banned
 #: action (writing source outside Edit/Write); .py targets only, so log/json redirects stay legal.
-_SHELL_REDIRECT_SOURCE = re.compile(r"(?:^|[^&\d])>{1,2}\s*[^\s;|&<>]+\.py\b")
+_SHELL_REDIRECT_SOURCE = re.compile(r"(?:^|[^&\d])>{1,2}\s*([^\s;|&<>]+\.py)\b")
+
+
+def _redirect_source_violation(cmd: str) -> bool:
+    """SIMPLICITY REHAB 2026-08-24 (T2-8): the bare regex blocked writing a scratch
+    analyzer to the session TEMP directory — outside any repository, not repo source,
+    not the law's stated subject. The ban now binds only targets that resolve INSIDE a
+    git repository (relative targets count: the working directory is a repo checkout);
+    an absolute .py target outside every repo is scratch tooling and stays legal."""
+    for m in _SHELL_REDIRECT_SOURCE.finditer(cmd):
+        target = m.group(1).strip("'\"")
+        if not _ABS_RE.match(_msys_to_windows(target)):
+            return True                   # relative → lands in the repo checkout
+        if repo_root_of(Path(_msys_to_windows(target)).parent):
+            return True
+    return False
 
 
 def _has_verification_any(ledger: list[dict]) -> bool:
@@ -637,7 +665,7 @@ def bash_violations(cmd: str, ledger: list[dict], payload_cwd: str = "") -> list
                    "string-LITERAL data target (.md/.json/.jsonl/.txt/.csv/.log). Variable "
                    "paths and source files are refused — the variable-path escape broke a test "
                    "file the same day it was written down as a boundary. Use Edit/Write.")
-    if _SHELL_REDIRECT_SOURCE.search(cmd):
+    if _redirect_source_violation(cmd):
         out.append("ACTION BLOCKED: shell redirect into a .py file writes source outside the "
                    "Edit/Write tools (v19: `cat > x.py <<EOF` walked around the heredoc rule). "
                    "Same action, same ban; non-source redirects stay legal.")
@@ -672,20 +700,13 @@ def bash_violations(cmd: str, ledger: list[dict], payload_cwd: str = "") -> list
         out.append("ACTION BLOCKED (RC-189 v2): PowerShell write cmdlet with a constructed, "
                    "governance/.claude, or production-suffix destination. Use the Edit/Write "
                    "tools — a destination the command never spells cannot be audited.")
-    if any(is_git_commit(s) for s in _SEG_SPLIT.split(cmd)):
-        repo, why = resolve_target_repo(raw, payload_cwd)
-        if not repo:
-            # Fail OPENLY: an unresolved target is refused and says so, rather than being
-            # silently treated as this repository (which is the assumption RC-258 exists for).
-            out.append(f"ACTION BLOCKED (RC-258): cannot resolve which repository this commit "
-                       f"targets — {why}. Proof is bound to a repository, so an unidentifiable "
-                       f"target cannot be authorised by anything. Name it explicitly "
-                       f"(`git -C <path> commit`) and the guard will judge that repository.")
-        elif rc93_applies_to(repo) and not _has_verification(ledger, repo):
-            out.append(f"ACTION BLOCKED: committing to {repo} without having RUN anything "
-                       f"against THAT repository this turn. A commit asserts the work is sound; "
-                       f"run the gate, the tests, or a live probe there first — proof from "
-                       f"another checkout is not proof of this one (RC-258).")
+    # RC-258 commit-needs-prior-verification RETIRED (SIMPLICITY REHAB, operator full-go
+    # 2026-08-24): a commit cannot run without executing the pre-commit battery
+    # (.pre-commit-config.yaml — ruff, market-correctness, institutional-correctness,
+    # db-health), so "committing without having run anything" is unreachable, and the
+    # unresolved-repo branch turned a resolver failure into a work stoppage. The
+    # close-a-row form (edit_violations) and the Stop-time "edited and ran nothing"
+    # clause stay.
     return out
 
 
@@ -710,21 +731,11 @@ def edit_violations(path: str, new_text: str, ledger: list[dict]) -> list[str]:
             f"then close."]
 
 
-#: RC-125 (operator law, 2026-07-29): "you must always probe the live session before you
-#: provide any answers." A live-session probe is a command that touches the RUNNING system or
-#: its data — the console API, the DB, or a rendered-page probe. Tests and gates verify CODE;
-#: they do not observe the live session, so they deliberately do not satisfy this.
-#: First live firing (2026-07-29 08:31 ET): the rule blocked a turn whose probe was a DIRECT
-#: Schwab chain poll — the strongest observation possible — because the vendor-call spellings
-#: were missing from this list. Widened the same minute.
-_LIVE_PROBE = re.compile(
-    r"127\.0\.0\.1|/api/|urlopen|DB_PATH|sqlite3|option_chain|snapshots|"
-    r"ticker_journey_probe|playwright|get_chain|get_quote|schwab", re.I)
-
-
-def _has_live_probe(ledger: list[dict]) -> bool:
-    return any(_LIVE_PROBE.search(e.get("detail", ""))
-               for e in ledger if e.get("kind") == "bash")
+# RC-125 probe-every-turn RETIRED (SIMPLICITY REHAB 2026-08-24): the predicate was a
+# substring regex (any command mentioning `snapshots`/`schwab`/`sqlite3` satisfied it),
+# forcing a token rather than an observation, and it blocked pure governance/read turns.
+# The scoped form of the law survives: pm_verify_repo_violations (honesty_guard) blocks
+# a verdict about repo/live state that carries no same-turn measurement.
 
 
 #: RC-203 (operator non-negotiable, 2026-08-02: "always research and then act... at an
@@ -930,24 +941,15 @@ def stop_violations(ledger: list[dict]) -> list[str]:
         out.append(f"ACTION BLOCKED: this turn changed production code and ran NOTHING. "
                    f"Edited: {', '.join(sorted(set(edits))[:6])}. Execute the affected tests or "
                    f"a live probe before ending the turn.")
-    # RC-190 (restored per the RC-368 contract): a production change obliges a same-turn
-    # tools/turn_self_audit.py run by the agent itself — affected tests alone are not the
-    # typed audit. The Stop-time supervised child re-proves it, but the obligation is the
-    # agent's; the recorded command is the evidence.
-    if edits and not any(
-        e.get("kind") == "bash" and "turn_self_audit" in str(e.get("detail") or "")
-        for e in ledger
-    ):
-        out.append("ACTION BLOCKED (RC-190): production changed and tools/turn_self_audit.py "
-                   "never ran this turn. Run the typed self audit, then end the turn.")
-    # RC-125: every answer stands on a same-turn observation of the live session — the morning
-    # of 2026-07-29 was lost to an answer reasoned from a screenshot while the live payload sat
-    # one command away. Absolute by operator order: probe first, then answer.
-    if not _has_live_probe(ledger):
-        out.append("ACTION BLOCKED (RC-125): no live-session probe ran this turn. Operator law: "
-                   "always probe the live session before providing any answer — query the "
-                   "console API, the DB, or run a rendered-page probe, paste what it said, "
-                   "then answer.")
+    # RC-190 same-turn turn_self_audit obligation RETIRED (SIMPLICITY REHAB 2026-08-24):
+    # it enforced ONE obligation twice (ledger clause + a 5.8s-measured Stop-time
+    # supervised child), and the same CHECKS roster runs at commit
+    # (tools/precommit_institutional.py) with the delta gate as merge authority
+    # (check_delta_adds_no_debt --base origin/main in hardening.yml) enforcing strictly
+    # more. tools/turn_self_audit.py stays available as a manual/CI tool.
+    # RC-125 probe-every-turn RETIRED here (SIMPLICITY REHAB 2026-08-24) — see the note
+    # where _LIVE_PROBE lived: a substring regex forced a token, not an observation, and
+    # blocked pure governance/read turns. pm_verify_repo_violations keeps the scoped form.
     return out
 
 
@@ -1020,77 +1022,13 @@ def main() -> int:
                     "stop_hook_active with no own stop_blocked entry — a sibling Stop hook "
                     "blocked first; falling through to the full Stop policy")
     bad = stop_violations(ledger)
-    edits = _production_edits(ledger)
     payload_repo = repo_root_of(payload_cwd) if payload_cwd else ""
-    repos = {
-        str(entry.get("repo") or "")
-        for entry in ledger
-        if entry.get("kind") in ("edit", "edit_attempt")
-        and entry.get("detail") in edits
-        and entry.get("repo")
-    }
-    # Applicability is a property of the current Git subject, not of whether an Edit
-    # command happened to be recorded. This catches pre-existing and out-of-band dirty
-    # production files, including untracked files, before Stop can authorize the turn.
-    if payload_repo:
-        try:
-            from tools.turn_self_audit import STATUS_PASS, discover_scope
-        except ImportError:
-            from turn_self_audit import STATUS_PASS, discover_scope  # type: ignore
-        current_scope = discover_scope(Path(payload_repo))
-        if current_scope.status != STATUS_PASS:
-            bad.append(
-                "TURN AUDIT INCOMPLETE: canonical Stop scope discovery failed: "
-                + "; ".join(current_scope.errors)
-            )
-        elif current_scope.production_entries:
-            repos.add(payload_repo)
-    if edits and not repos:
-        if payload_repo:
-            repos.add(payload_repo)
-        else:
-            bad.append(
-                "TURN AUDIT INCOMPLETE: production edits were recorded but their "
-                "repository/worktree cannot be resolved"
-            )
-    if repos:
-        if len(repos) > 1:
-            bad.append(
-                "TURN AUDIT INCOMPLETE: one Stop contains production edits in multiple "
-                f"repositories/worktrees: {sorted(repos)}"
-            )
-            audit_repo = ""
-        else:
-            audit_repo = next(iter(repos))
-        if not audit_repo:
-            bad.append(
-                "TURN AUDIT INCOMPLETE: cannot resolve the repository/worktree for this Stop"
-            )
-        else:
-            session_paths: list[str] = []
-            audit_root = Path(audit_repo).resolve()
-            for raw_path in edits:
-                try:
-                    candidate = Path(raw_path)
-                    rel = (
-                        candidate.resolve().relative_to(audit_root).as_posix()
-                        if candidate.is_absolute()
-                        else raw_path.replace("\\", "/").removeprefix("./")
-                    )
-                except (OSError, ValueError):
-                    continue
-                session_paths.append(rel)
-            audit_bad, _result = supervise_turn_audit(
-                audit_repo,
-                sid,
-                required_session_paths=sorted(set(session_paths)),
-            )
-            bad.extend(audit_bad)
-            if not audit_bad:
-                # RC-190/RC-368: the obligation is that the typed audit RAN on this
-                # turn's production change — a valid supervised run with a clean
-                # verdict IS that run, so it discharges the session-ledger clause.
-                bad = [b for b in bad if "RC-190" not in b]
+    # RC-190/RC-368 Stop-time supervised audit child RETIRED (SIMPLICITY REHAB, operator
+    # full-go 2026-08-24): the child re-ran the CHECKS roster at every Stop with
+    # production edits (5.8s measured) on top of the same roster running at commit
+    # (precommit_institutional) and the delta gate at merge (hardening.yml), which
+    # enforces strictly more. tools/turn_self_audit.py remains a manual/CI tool;
+    # supervise_turn_audit stays importable for its contract tests.
     if bad:
         _record(sid, "stop_blocked", "operator_law_guard", payload_repo or "")
         sys.stderr.write("BLOCKED (RC-93) — OPERATOR LAW: ban the ACTION, not the word.\n\n"

@@ -33,17 +33,26 @@ MONEY_PATH = {
 }
 
 
-def _money_path_violations() -> list[str]:
+import pytest  # noqa: E402
+
+
+@pytest.fixture(scope="module")
+def live_orphans():
+    """ONE live repo sweep shared by both consumers below (~6s per call measured)."""
+    return check_no_orphan_dict_keys()
+
+
+def _money_path_violations(violations) -> list[str]:
     out = []
-    for v in check_no_orphan_dict_keys():
+    for v in violations:
         rel = str(v).strip().split(":")[0].strip().replace("\\", "/")
         if rel in MONEY_PATH:
             out.append(str(v).strip())
     return out
 
 
-def test_money_path_has_no_undeclared_dict_keys():
-    bad = _money_path_violations()
+def test_money_path_has_no_undeclared_dict_keys(live_orphans):
+    bad = _money_path_violations(live_orphans)
     assert not bad, (
         "a money-path dict read has no writer and no '# external-key-ok: <source>' declaration. "
         "Either the name is wrong (a silent None reaching a decision — RC-15/RC-20/RC-85), or it "
@@ -51,14 +60,14 @@ def test_money_path_has_no_undeclared_dict_keys():
     )
 
 
-def test_the_declarations_are_actually_load_bearing():
+def test_the_declarations_are_actually_load_bearing(live_orphans):
     """Guard against the test passing because the CHECK is inert rather than the code clean.
 
     Three instruments shipped silently broken on 2026-07-27 (an alias-blind detector, a
     write-detector missing two shapes, a regex containing literal backspace characters). A count
     of zero from a checker that cannot fire is worthless, so this asserts the checker still finds
     the wider backlog it is supposed to see."""
-    total = len(check_no_orphan_dict_keys())
+    total = len(live_orphans)
     assert total > 0, (
         "check_no_orphan_dict_keys reported ZERO violations repo-wide. That is a checker failure, "
         "not perfection — the repo has a known backlog outside the money path."

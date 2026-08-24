@@ -33,13 +33,17 @@ def ensure_venv(
     repo: Path | None = None,
     *,
     install_requirements: bool = True,
+    with_pip: bool = True,
 ) -> Path:
-    """Create .venv if missing; optionally pip-install requirements*.txt."""
+    """Create .venv if missing; optionally pip-install requirements*.txt.
+
+    with_pip=False skips ensurepip (~27s measured) — only for callers that assert
+    interpreter creation and install nothing; requirements installs need pip."""
     root = (repo or REPO).resolve()
     vpy = venv_python(root)
     if not vpy.is_file():
         print(f"bootstrap_worktree_venv: creating {root / '.venv'} …")
-        venv.EnvBuilder(with_pip=True, clear=False, upgrade=False).create(
+        venv.EnvBuilder(with_pip=with_pip, clear=False, upgrade=False).create(
             str(root / ".venv")
         )
     if not vpy.is_file():

@@ -1,8 +1,18 @@
 """
 Issue 27 — cold start → live: authority state machine + generation acceptance.
 
-Mirrors client rules in static/index.html (renderTierBLight, l1GetAuthority, l1SetAuthority)
-and static/js/l1_sse_guards.js (l1ApplyTierBLightMonotonic). Proves:
+EXECUTES the shipped client logic (2026-08-24 audit: the previous version of this file
+re-implemented renderTierBLight + l1ApplyTierBLightMonotonic in Python and tested the
+COPY, so drift in the real JS could never fail it — same defect class fixed in
+tests/test_l1_no_flicker.py). tests/l1_tier_b_no_flicker_node.mjs extracts the REAL
+functions from static/index.html (renderTierBLight, l1GetAuthority/l1SetAuthority,
+paint-input + semantic-signature helpers) plus the real static/js/l1_sse_guards.js
+monotonic guard, drives the cold-start scenarios below through the real renderer with
+DOM-paint stubs only, and prints one JSON map; this file asserts on the cold_* traces.
+
+Each trace records per step: real renderer outcome ("painted" | "deduped" | "rejected"),
+the l1_generation sent, and the post-step authority string + accepted-generation store
+for scope 'SPY|'. Proves, on the shipped code:
 
 - No HTTP overwrite after SSE_LIVE (HTTP fully ignored).
 - No generation regression vs lastAcceptedGeneration (monotonic store).
@@ -10,184 +20,81 @@ and static/js/l1_sse_guards.js (l1ApplyTierBLightMonotonic). Proves:
 """
 from __future__ import annotations
 
-import math
-from typing import Dict, Literal, Optional, Tuple
+import functools
+import json
+import shutil
+import subprocess
+from pathlib import Path
 
 import pytest
 
-AuthorityState = Literal["INIT", "HTTP_INIT", "SSE_LIVE"]
+REPO = Path(__file__).resolve().parent.parent
+HARNESS = REPO / "tests" / "l1_tier_b_no_flicker_node.mjs"
+
+ACCEPTED = ("painted", "deduped")
 
 
-def _apply_tier_b_monotonic(
-    scope_key: str,
-    g: float,
-    gen_store: Dict[str, float],
-    server_ts: float,
-    ts_store: Dict[str, float],
-) -> bool:
-    """EdL1SseGuards.l1ApplyTierBLightMonotonic (in-process, mutates stores)."""
-    if g is None or not isinstance(g, (int, float)) or not math.isfinite(g):
-        return True
-    prev = gen_store.get(scope_key)
-    last_ts = ts_store.get(scope_key) if ts_store and scope_key in ts_store else float("nan")
-    if not math.isfinite(last_ts):
-        last_ts = float("nan")
-    if prev is not None and g < prev:
-        return False
-    if prev is not None and g == prev:
-        if math.isfinite(server_ts) and math.isfinite(last_ts) and server_ts < last_ts:
-            return False
-    gen_store[scope_key] = max(prev or 0, g)
-    if ts_store is not None and math.isfinite(server_ts):
-        base = last_ts if math.isfinite(last_ts) else 0.0
-        ts_store[scope_key] = max(base, server_ts)
-    return True
+@functools.lru_cache(maxsize=1)
+def _outcomes() -> dict:
+    node = shutil.which("node")
+    if not node:
+        pytest.fail("Node.js is required on PATH (runs tests/l1_tier_b_no_flicker_node.mjs)")
+    r = subprocess.run(
+        [node, str(HARNESS)],
+        cwd=str(REPO),
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert r.returncode == 0, r.stdout + "\n" + r.stderr
+    return json.loads(r.stdout)
 
 
-def try_accept_tier_b_render(
-    scope_key: str,
-    authority_by_scope: Dict[str, AuthorityState],
-    full_render_source: str,
-    g: Optional[float],
-    server_ts: float,
-    gen_store: Dict[str, float],
-    ts_store: Dict[str, float],
-) -> Tuple[bool, Dict[str, AuthorityState]]:
-    """
-    Single acceptance step matching renderTierBLight (Tier B L1).
-
-    Returns (accepted, new_authority_map).
-    """
-    is_sse = full_render_source == "l1_sse"
-    if is_sse and (
-        g is None
-        or not isinstance(g, (int, float))
-        or not math.isfinite(g)
-    ):
-        return False, dict(authority_by_scope)
-
-    auth = authority_by_scope.get(scope_key, "INIT")
-    if auth == "SSE_LIVE" and not is_sse:
-        return False, dict(authority_by_scope)
-
-    if g is not None and isinstance(g, (int, float)) and math.isfinite(g):
-        prev_accepted = gen_store.get(scope_key)
-        if not _apply_tier_b_monotonic(scope_key, g, gen_store, server_ts, ts_store):
-            return False, dict(authority_by_scope)
-        if is_sse:
-            last_acc = prev_accepted if prev_accepted is not None else 0.0
-            assert g >= last_acc, "SSE l1_generation must be >= lastAcceptedGeneration"
-
-    new_auth = dict(authority_by_scope)
-    if is_sse:
-        new_auth[scope_key] = "SSE_LIVE"
-    elif new_auth.get(scope_key, "INIT") == "INIT":
-        new_auth[scope_key] = "HTTP_INIT"
-
-    return True, new_auth
-
-
-@pytest.fixture
-def scope() -> str:
-    return "SPY|"
-
-
-def test_a_http_to_sse_transition_then_http_blocked(scope: str):
+def test_a_http_to_sse_transition_then_http_blocked():
     """HTTP loads (gen=1), SSE (gen=2) becomes authority; later HTTP ignored."""
-    auth: Dict[str, AuthorityState] = {}
-    gen_store: Dict[str, float] = {}
-    ts_store: Dict[str, float] = {}
-
-    ok1, auth = try_accept_tier_b_render(scope, auth, "rest_manual", 1.0, 100.0, gen_store, ts_store)
-    assert ok1 is True
-    assert auth[scope] == "HTTP_INIT"
-    assert gen_store[scope] == 1.0
-
-    ok2, auth = try_accept_tier_b_render(scope, auth, "l1_sse", 2.0, 200.0, gen_store, ts_store)
-    assert ok2 is True
-    assert auth[scope] == "SSE_LIVE"
-    assert gen_store[scope] == 2.0
-
-    ok3, auth = try_accept_tier_b_render(scope, auth, "rest_manual", 99.0, 300.0, gen_store, ts_store)
-    assert ok3 is False
-    assert auth[scope] == "SSE_LIVE"
-    assert gen_store[scope] == 2.0
+    t = _outcomes()["cold_a"]
+    assert t["outcomes"] == ["painted", "painted", "rejected"]
+    assert t["auth"] == ["HTTP_INIT", "SSE_LIVE", "SSE_LIVE"]
+    assert t["gen"] == [1, 2, 2]
 
 
-def test_b_late_stale_http_rejected_after_sse(scope: str):
-    """SSE gen=10 accepted; late HTTP gen=9 rejected (monotonic)."""
-    auth: Dict[str, AuthorityState] = {}
-    gen_store: Dict[str, float] = {}
-    ts_store: Dict[str, float] = {}
-
-    try_accept_tier_b_render(scope, auth, "rest_manual", 1.0, 10.0, gen_store, ts_store)
-    _, auth = try_accept_tier_b_render(scope, auth, "l1_sse", 10.0, 50.0, gen_store, ts_store)
-    assert auth[scope] == "SSE_LIVE"
-    assert gen_store[scope] == 10.0
-
-    ok_late, auth = try_accept_tier_b_render(scope, auth, "rest_manual", 9.0, 60.0, gen_store, ts_store)
-    assert ok_late is False
-    assert gen_store[scope] == 10.0
+def test_b_late_stale_http_rejected_after_sse():
+    """SSE gen=10 accepted; late HTTP gen=9 rejected; accepted store stays 10."""
+    t = _outcomes()["cold_b"]
+    assert t["outcomes"] == ["painted", "painted", "rejected"]
+    assert t["auth"][1:] == ["SSE_LIVE", "SSE_LIVE"]
+    assert t["gen"][1:] == [10, 10]
 
 
-def test_c_no_oscillation_http_higher_gen_still_ignored(scope: str):
+def test_c_no_oscillation_http_higher_gen_still_ignored():
     """After SSE_LIVE, HTTP with higher gen=3 must still be ignored (hard HTTP block)."""
-    auth: Dict[str, AuthorityState] = {}
-    gen_store: Dict[str, float] = {}
-    ts_store: Dict[str, float] = {}
-
-    try_accept_tier_b_render(scope, auth, "rest_manual", 1.0, 1.0, gen_store, ts_store)
-    _, auth = try_accept_tier_b_render(scope, auth, "l1_sse", 2.0, 2.0, gen_store, ts_store)
-    assert auth[scope] == "SSE_LIVE"
-
-    ok, auth = try_accept_tier_b_render(scope, auth, "rest_manual", 3.0, 3.0, gen_store, ts_store)
-    assert ok is False
-    assert auth[scope] == "SSE_LIVE"
-    assert gen_store[scope] == 2.0
+    t = _outcomes()["cold_c"]
+    assert t["outcomes"] == ["painted", "painted", "rejected"]
+    assert t["auth"] == ["HTTP_INIT", "SSE_LIVE", "SSE_LIVE"]
+    assert t["gen"][-1] == 2
 
 
-def test_d_strict_monotonic_rendered_generations(scope: str):
+def test_d_strict_monotonic_rendered_generations():
     """Accepted sequence must never decrease l1_generation."""
-    auth: Dict[str, AuthorityState] = {}
-    gen_store: Dict[str, float] = {}
-    ts_store: Dict[str, float] = {}
-    rendered: list[float] = []
-
-    steps = [
-        ("rest_manual", 1.0, 10.0),
-        ("l1_sse", 2.0, 20.0),
-        ("l1_sse", 3.0, 30.0),
-        ("rest_manual", 50.0, 99.0),
-    ]
-    for src, g, ts in steps:
-        ok, auth = try_accept_tier_b_render(scope, auth, src, g, ts, gen_store, ts_store)
-        if ok:
-            rendered.append(g)
-
-    assert rendered == [1.0, 2.0, 3.0]
+    t = _outcomes()["cold_d"]
+    rendered = [g for g, o in zip(t["sent"], t["outcomes"]) if o in ACCEPTED]
+    assert rendered == [1, 2, 3]
     for i in range(1, len(rendered)):
         assert rendered[i] >= rendered[i - 1]
+    assert t["gen"] == sorted(t["gen"])  # accepted-generation store is monotonic too
 
 
-def test_sse_never_reverts_authority(scope: str):
+def test_sse_never_reverts_authority():
     """Once SSE_LIVE, authority string never goes back to HTTP_INIT."""
-    auth: Dict[str, AuthorityState] = {}
-    gen_store: Dict[str, float] = {}
-    ts_store: Dict[str, float] = {}
-
-    try_accept_tier_b_render(scope, auth, "rest_manual", 1.0, 1.0, gen_store, ts_store)
-    _, auth = try_accept_tier_b_render(scope, auth, "l1_sse", 2.0, 2.0, gen_store, ts_store)
-    assert auth[scope] == "SSE_LIVE"
-    try_accept_tier_b_render(scope, auth, "rest_manual", 1.0, 9.0, gen_store, ts_store)
-    assert auth[scope] == "SSE_LIVE"
+    t = _outcomes()["cold_e"]
+    assert t["auth"][1] == "SSE_LIVE"
+    assert t["auth"][2] == "SSE_LIVE"
+    assert t["outcomes"][2] == "rejected"
 
 
-def test_init_to_http_init_without_generation(scope: str):
-    """HTTP payload with no l1_generation still promotes INIT → HTTP_INIT (matches client)."""
-    auth: Dict[str, AuthorityState] = {}
-    gen_store: Dict[str, float] = {}
-    ts_store: Dict[str, float] = {}
-
-    ok, auth = try_accept_tier_b_render(scope, auth, "rest_manual", None, float("nan"), gen_store, ts_store)
-    assert ok is True
-    assert auth[scope] == "HTTP_INIT"
+def test_init_to_http_init_without_generation():
+    """HTTP payload with no l1_generation still promotes INIT → HTTP_INIT (real client)."""
+    t = _outcomes()["cold_f"]
+    assert t["outcomes"] == ["painted"]
+    assert t["auth"] == ["HTTP_INIT"]
+    assert t["gen"] == [None]  # nothing entered the accepted-generation store

@@ -291,18 +291,43 @@ def test_the_module_scope_blind_spot_is_measured_not_silent():
     census. `test_call_engine_consumes_order_flow_direction_not_second_score` LEFT:
     its subject (the direction consumer) was retired with the composite and the
     withheld-from-vote arrival above replaced it.
+
+    272 (2026-08-24, audit T2-4) — NAMED-SET CONVERSION. The integer ledger above is
+    CLOSED HISTORY: the census is now frozen BY NAME in
+    tests/frozen/claims_source_text_only_names.txt (one "tests/file.py::test_name" per
+    line, sorted; line numbers deliberately stripped so line drift cannot churn the
+    file), and this test diffs the live census against that set, printing ARRIVED and
+    LEFT names. The accounting rules above are UNCHANGED — an arrival stays only if its
+    property is inherently structural, a behaviour proxy is rewritten and leaves on its
+    own (RC-308) — they now govern a one-line frozen-file edit instead of an integer
+    bump.
     """
     fns = C.source_text_only_functions()
-    assert len(fns) == 272, (
-        f"the per-function source-text-only count moved from the 272 measured on "
-        f"2026-08-24 (TRUTH_V1 merge; RC-468 baseline 269) to {len(fns)}. "
-        f"This figure is not a defect count, so do not simply "
-        f"re-baseline it. ACCOUNT for the move: name each function that arrived or left. "
-        f"An arrival stays only if its property is INHERENTLY STRUCTURAL — uniqueness, "
-        f"duplication or absence in the repository, which no runtime call can express. If "
-        f"the property is behaviour, assert the behaviour and the entry leaves on its own; "
-        f"that is RC-308. If you REPAIRED some, lower this number and say so in the row.\n"
-        + "\n".join(fns[:20]))
+    current = set()
+    for entry in fns:  # "tests/file.py:LINE test_name" -> "tests/file.py::test_name"
+        rel_line, name = entry.rsplit(" ", 1)
+        current.add(f"{rel_line.rsplit(':', 1)[0]}::{name}")
+    assert len(current) == len(fns), (
+        "two census entries collapsed onto one file::name key — disambiguate before "
+        "freezing:\n" + "\n".join(sorted(fns)))
+    frozen = frozenset(
+        ln for ln in (REPO / "tests" / "frozen" / "claims_source_text_only_names.txt")
+        .read_text(encoding="utf-8").splitlines() if ln)
+    arrived = sorted(current - frozen)
+    left = sorted(frozen - current)
+    assert current == frozen, (
+        f"the per-function source-text-only census moved (frozen 2026-08-24, TRUTH_V1 "
+        f"merge; RC-468 baseline 269 entries).\n"
+        f"ARRIVED (in the census, not in the frozen set): {arrived}\n"
+        f"LEFT (in the frozen set, no longer in the census): {left}\n"
+        f"This census is not a defect list, so do not simply re-baseline it. ACCOUNT for "
+        f"the move by name: an arrival stays only if its property is INHERENTLY "
+        f"STRUCTURAL — uniqueness, duplication or absence in the repository, which no "
+        f"runtime call can express. If the property is behaviour, assert the behaviour "
+        f"and the entry leaves on its own; that is RC-308. A legitimate "
+        f"arrival/departure is a one-line edit to "
+        f"tests/frozen/claims_source_text_only_names.txt in the same commit, reviewed by "
+        f"name — do not bulk-regenerate.")
     # The two RC-308 repairs that became executable in PYTHON are out of the list and must
     # stay out. The other four kept a source-text half on purpose — a correct function nobody
     # calls paints nothing, so the WIRING stays a source check — and moved their behavioural

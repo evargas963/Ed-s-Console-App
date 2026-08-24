@@ -10,7 +10,6 @@ Performance must exceed MIT / Bloomberg / institutional quant **at all times**. 
 **This `.mdc` is not the lock.** Mechanical enforcers (`.py` that BLOCK):
 
 - `check_research_before_act` — commit-time resolvable research
-- `check_claude_cursor_guard_parity` — Claude+Cursor guard parity (both hook files CODEOWNERS-owned)
 - `tools/operator_law_guard.py` — Edit/Write ledger + Stop research_violation
 - `tools/turn_self_audit.py` — `research_violation` (path/URL must resolve)
 

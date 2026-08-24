@@ -16,10 +16,28 @@ from pathlib import Path
 
 os.environ.setdefault("PYTEST_CURRENT_TEST", "boot")
 
+import pytest  # noqa: E402
+
 import server  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 CHART = ROOT / "static" / "chart.html"
+
+
+@pytest.fixture(autouse=True)
+def _quarantine_ledger_to_tmp(tmp_path, monkeypatch):
+    """RC-255 class: reports/terrain_quarantine_ledger.jsonl is a TRACKED operator audit
+    file, and the quarantine tests here were appending their ZZTEST* fixture tickers to it
+    on every suite run (found dirty in git status 2026-08-24). Same defect shape RC-255
+    fixed for the TQM queue: the producer's path is real, tests redirect it."""
+    redirected = tmp_path / "terrain_quarantine_ledger.jsonl"
+    monkeypatch.setattr(server, "TERRAIN_QUARANTINE_LEDGER", redirected)
+    tracked = ROOT / "reports" / "terrain_quarantine_ledger.jsonl"
+    before = tracked.stat().st_size if tracked.exists() else None
+    yield
+    after = tracked.stat().st_size if tracked.exists() else None
+    assert after == before, (
+        "a test wrote to the tracked quarantine ledger despite the redirect")
 
 
 def _age(s: str | None) -> int | None:
