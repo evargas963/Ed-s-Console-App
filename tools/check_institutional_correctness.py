@@ -450,12 +450,18 @@ def check_root_cause_log() -> list[Violation]:
     so a half-traced defect cannot be quietly parked as "surface fixed".
 
     See governance/root_cause_log.md for the rules and the row format.
+
+    SIMPLICITY REHAB T2-2 (2026-08-24, governance/retired_checks.md): this is now the ONE
+    enforced validator for the root-cause ledger. The nine other ledger checks run inside it
+    via _root_cause_ledger_folded_violations — same file, one validator, no predicate
+    weakened; their public check_* wrappers stay importable for the negative controls.
     """
     out: list[Violation] = []
     log_path = REPO / "governance" / "root_cause_log.md"
     if not log_path.exists():
         out.append(Violation(log_path, 0, "governance/root_cause_log.md is missing - every "
                                           "defect must be traced to a root cause there"))
+        out.extend(_root_cause_ledger_folded_violations())
         return out
     today = datetime.date.today()
     for n, line in enumerate(log_path.read_text(encoding="utf-8").splitlines(), start=1):
@@ -479,7 +485,86 @@ def check_root_cause_log() -> list[Violation]:
                                  f"{rc_id} is OPEN past its due date ({due}) - the why-chain is "
                                  f"incomplete or the fix is unverified; finish it or re-date it "
                                  f"with a reason"))
+    out.extend(_root_cause_ledger_folded_violations())
     return out
+
+
+def _root_cause_ledger_folded_violations() -> list[Violation]:
+    """SIMPLICITY REHAB T2-2 (2026-08-24, governance/retired_checks.md): the nine other
+    root-cause-ledger validators run INSIDE check_root_cause_log — one enforced check for
+    the whole ledger, every predicate intact. Each retired registration's substance lives
+    in the private helper named here; the public check_<name> wrappers stay importable so
+    the negative controls keep driving the real logic. The forward-only grandfather is
+    applied under each ORIGINAL name (RC-227 cutoff, _GRANDFATHERED_ROW_CHECKS unchanged),
+    so consolidation moves no violation on or off the surface."""
+    out: list[Violation] = []
+    for folded_name, helper in (
+        ("rc_citations_resolve", _rc_citations_resolve_violations),
+        ("rc_status_vocabulary", _rc_status_vocabulary_violations),
+        ("rc_log_rows_keep_schema", _rc_log_rows_keep_schema_violations),
+        ("rc_numeric_claims_cite_a_command", _rc_numeric_claims_cite_a_command_violations),
+        ("rc_mechanism_claims_cite_a_source", _rc_mechanism_claims_cite_a_source_violations),
+        ("root_cause_recurrence_declared", _root_cause_recurrence_declared_violations),
+        ("fix_crosswalks_to_violated_lock", _fix_crosswalks_to_violated_lock_violations),
+        ("closed_rows_ship_their_code", _closed_rows_ship_their_code_violations),
+        ("adversarial_audits_are_answered", _adversarial_audits_are_answered_violations),
+    ):
+        out.extend(_apply_forward_only_grandfather(folded_name, helper()))
+    return out
+
+
+def check_rc_citations_resolve() -> list[Violation]:
+    """Wrapper kept importable for the negative controls; the substance runs inside
+    check_root_cause_log (retired registration, governance/retired_checks.md)."""
+    return _rc_citations_resolve_violations()
+
+
+def check_rc_status_vocabulary() -> list[Violation]:
+    """Wrapper kept importable for the negative controls; the substance runs inside
+    check_root_cause_log (retired registration, governance/retired_checks.md)."""
+    return _rc_status_vocabulary_violations()
+
+
+def check_rc_log_rows_keep_schema() -> list[Violation]:
+    """Wrapper kept importable for the negative controls; the substance runs inside
+    check_root_cause_log (retired registration, governance/retired_checks.md)."""
+    return _rc_log_rows_keep_schema_violations()
+
+
+def check_rc_numeric_claims_cite_a_command() -> list[Violation]:
+    """Wrapper kept importable for the negative controls; the substance runs inside
+    check_root_cause_log (retired registration, governance/retired_checks.md)."""
+    return _rc_numeric_claims_cite_a_command_violations()
+
+
+def check_rc_mechanism_claims_cite_a_source() -> list[Violation]:
+    """Wrapper kept importable for the negative controls; the substance runs inside
+    check_root_cause_log (retired registration, governance/retired_checks.md)."""
+    return _rc_mechanism_claims_cite_a_source_violations()
+
+
+def check_root_cause_recurrence_declared() -> list[Violation]:
+    """Wrapper kept importable for the negative controls; the substance runs inside
+    check_root_cause_log (retired registration, governance/retired_checks.md)."""
+    return _root_cause_recurrence_declared_violations()
+
+
+def check_fix_crosswalks_to_violated_lock() -> list[Violation]:
+    """Wrapper kept importable for the negative controls; the substance runs inside
+    check_root_cause_log (retired registration, governance/retired_checks.md)."""
+    return _fix_crosswalks_to_violated_lock_violations()
+
+
+def check_closed_rows_ship_their_code() -> list[Violation]:
+    """Wrapper kept importable for the negative controls; the substance runs inside
+    check_root_cause_log (retired registration, governance/retired_checks.md)."""
+    return _closed_rows_ship_their_code_violations()
+
+
+def check_adversarial_audits_are_answered() -> list[Violation]:
+    """Wrapper kept importable for the negative controls; the substance runs inside
+    check_root_cause_log (retired registration, governance/retired_checks.md)."""
+    return _adversarial_audits_are_answered_violations()
 
 
 def _ratchet_may_write() -> bool:
@@ -1476,7 +1561,7 @@ def check_one_producer() -> list[Violation]:
     return out
 
 
-def check_rc_mechanism_claims_cite_a_source() -> list[Violation]:
+def _rc_mechanism_claims_cite_a_source_violations() -> list[Violation]:
     """RC-319 — a claim about how the MARKET behaves must be checkable by a reader.
 
     WHAT WAS OBSERVED (2026-08-09). "Hedging MAGNITUDE pins price regardless of net sign"
@@ -1678,7 +1763,7 @@ _OPEN_STATUSES = {"UNPROVEN", "DISPROVED"}
 _TERMINAL_STATUSES = {"PROVEN", "REMEDIATED"}
 
 
-def check_unproven_register() -> list[Violation]:
+def _unproven_register_violations() -> list[Violation]:
     """Every claim ends at PROVEN or at a landed fix (REMEDIATED).
 
     UNPROVEN = not yet evidenced. DISPROVED = we were wrong; an OPEN DEFECT that must be
@@ -1829,7 +1914,7 @@ _VERDICT_POWER_GRANDFATHERED = frozenset({
 })
 
 
-def check_verdicts_declare_their_power() -> list[Violation]:
+def _verdicts_declare_their_power_violations() -> list[Violation]:
     """A recorded KILL / RETIRED / PROVEN must state the n and an interval it was decided on.
 
     WHAT WAS OBSERVED (2026-07-27). 'GEX-R1 RETIRED BY MEASUREMENT' was cited as settled fact for
@@ -1883,7 +1968,7 @@ def check_verdicts_declare_their_power() -> list[Violation]:
     return out
 
 
-def check_rc_numeric_claims_cite_a_command() -> list[Violation]:
+def _rc_numeric_claims_cite_a_command_violations() -> list[Violation]:
     """A row that asserts numbers must say how to reproduce them.
 
     WHAT WAS OBSERVED (2026-07-20): RC-6's why-chain quoted 5.96 / 5.78 / 1.03 / 0.92 GB
@@ -2304,7 +2389,7 @@ def _closed_row_code_not_shipped(
     return out
 
 
-def check_closed_rows_ship_their_code() -> list[Violation]:
+def _closed_rows_ship_their_code_violations() -> list[Violation]:
     """A CLOSED row must be backed by a real code change where it says one exists.
 
     Three shapes are blocked, each measured on this repo before enforcing:
@@ -2503,7 +2588,7 @@ _RECURRENCE_CLASSES = (
 )
 
 
-def check_root_cause_recurrence_declared() -> list[Violation]:
+def _root_cause_recurrence_declared_violations() -> list[Violation]:
     """A new root cause that REPEATS a known class must say why this time is different.
 
     WHAT WAS OBSERVED (2026-07-26, RC-61): the operator asked what we actually DO with the
@@ -2724,7 +2809,7 @@ def check_price_bars_readers_name_their_session() -> list[Violation]:
     return out
 
 
-def check_rc_citations_resolve() -> list[Violation]:
+def _rc_citations_resolve_violations() -> list[Violation]:
     """Every RC-N cited in code must resolve to a real row (RC-99).
 
     WHAT WAS OBSERVED (2026-07-27). The operator's adversarial audit found RC-96 cited in a
@@ -2777,7 +2862,7 @@ def check_rc_citations_resolve() -> list[Violation]:
     ]
 
 
-def check_adversarial_audits_are_answered() -> list[Violation]:
+def _adversarial_audits_are_answered_violations() -> list[Violation]:
     """The newest adversarial audit must be CITED in the ledger (RC-118).
 
     WHAT WAS OBSERVED (2026-07-28). Audit v14 landed between agent turns and was never
@@ -2830,7 +2915,7 @@ DECLARED_RC_STATUSES: frozenset[str] = frozenset({"OPEN", "CLOSED", "REMEDIATED"
 CLOSED_CLASS_RC_STATUSES: frozenset[str] = frozenset({"CLOSED"})
 
 
-def check_rc_status_vocabulary() -> list[Violation]:
+def _rc_status_vocabulary_violations() -> list[Violation]:
     """An unrecognised RC status must FAIL, never fall through (RC-257).
 
     WHAT WAS MEASURED (2026-08-05, reproduced and widened 2026-08-06). Six
@@ -2888,7 +2973,7 @@ def check_rc_status_vocabulary() -> list[Violation]:
     return out
 
 
-def check_rc_log_rows_keep_schema() -> list[Violation]:
+def _rc_log_rows_keep_schema_violations() -> list[Violation]:
     """Every RC row in the governance log keeps the 7-cell schema (RC-105).
 
     WHAT WAS OBSERVED (2026-07-28). While re-closing RC-31 its row had drifted to ELEVEN cells:
@@ -3057,7 +3142,7 @@ def check_agents_laws_name_their_enforcer() -> list[Violation]:
     return out
 
 
-def check_fix_crosswalks_to_violated_lock() -> list[Violation]:
+def _fix_crosswalks_to_violated_lock_violations() -> list[Violation]:
     """A CLOSED root cause must name the LOCK that failed to prevent it, and the tightening.
 
     OPERATOR DIRECTIVE (2026-07-27): "i just don't want the fix. you then have to cross walk the
@@ -3303,7 +3388,7 @@ _CLAIM_WORDS = re.compile(
 _UNVERIFIED_TAG = re.compile(r"\[UNVERIFIED\]|\[HYPOTHESIS\]|UNPROVEN", re.I)
 
 
-def check_measured_claims_cite_evidence() -> list[Violation]:
+def _measured_claims_cite_evidence_own_violations() -> list[Violation]:
     """A quantitative FINDING added to the governance record must cite how to reproduce it.
 
     WHAT WAS OBSERVED (2026-07-26, RC-53/RC-56): I asserted "far-OTM strikes carry large open
@@ -3364,6 +3449,43 @@ def check_measured_claims_cite_evidence() -> list[Violation]:
                 "tag the line [UNVERIFIED]."))
             break   # one violation per file is enough to block; do not spam
     return out
+
+
+def check_measured_claims_cite_evidence() -> list[Violation]:
+    """The evidence gate, consolidated (SIMPLICITY REHAB T2-3, 2026-08-24).
+
+    One enforced check now runs every surviving evidence predicate:
+      * the staged-governance-claims rule above (_measured_claims_cite_evidence_own_violations,
+        RC-56 — a committed numeric finding carries its reproduce command or [UNVERIFIED]);
+      * the verdict-power rule (_verdicts_declare_their_power_violations, RC-6 — a recorded
+        KILL/RETIRED/PROVEN states n= and a CI/power figure);
+      * the unproven-register rule (_unproven_register_violations — claims are evidenced or
+        registered, overdue rows block, missing register fails closed).
+
+    The two folded registrations are declared retired in governance/retired_checks.md; their
+    public check_* wrappers stay importable so the negative controls keep driving the real
+    logic, and NO predicate was weakened. The forward-only grandfather is applied under each
+    ORIGINAL name so consolidation moves no violation on or off the surface.
+    """
+    out = _measured_claims_cite_evidence_own_violations()
+    for folded_name, helper in (
+        ("verdicts_declare_their_power", _verdicts_declare_their_power_violations),
+        ("unproven_register", _unproven_register_violations),
+    ):
+        out.extend(_apply_forward_only_grandfather(folded_name, helper()))
+    return out
+
+
+def check_verdicts_declare_their_power() -> list[Violation]:
+    """Wrapper kept importable for the negative controls; the substance runs inside
+    check_measured_claims_cite_evidence (retired registration, governance/retired_checks.md)."""
+    return _verdicts_declare_their_power_violations()
+
+
+def check_unproven_register() -> list[Violation]:
+    """Wrapper kept importable for the negative controls; the substance runs inside
+    check_measured_claims_cite_evidence (retired registration, governance/retired_checks.md)."""
+    return _unproven_register_violations()
 
 
 #: RC-54 — market-data measurement must be scoped to trading sessions.
@@ -4193,6 +4315,14 @@ CHECKS = [
     # ENFORCED (must be zero — block pre-commit):
     ("no_synthetic_domain_fixtures_in_tests", check_no_synthetic_domain_fixtures_in_tests, True),
     ("no_swallowed_test_failures", check_no_swallowed_test_failures, True),  # printed failure must fail the run
+    # SIMPLICITY REHAB T2-2 (2026-08-24, governance/retired_checks.md): root_cause_log is
+    # the ONE enforced ledger validator. The nine other ledger registrations
+    # (rc_citations_resolve, rc_status_vocabulary, rc_log_rows_keep_schema,
+    # rc_numeric_claims_cite_a_command, rc_mechanism_claims_cite_a_source,
+    # root_cause_recurrence_declared, fix_crosswalks_to_violated_lock,
+    # closed_rows_ship_their_code, adversarial_audits_are_answered) are RETIRED as
+    # registrations only — their full validation now runs INSIDE check_root_cause_log via
+    # _root_cause_ledger_folded_violations, and their check_* wrappers stay importable.
     ("root_cause_log", check_root_cause_log, True),
     ("find_it_fix_it", check_find_it_fix_it, True),  # 2026-08-21 operator law: fixable defect must be fixed or hard-blocked, never queued
     # RC-470 (operator-approved retirement, 2026-08-24): five_why_recursive_lock and
@@ -4202,6 +4332,10 @@ CHECKS = [
     # code) keep the substance; the retired checks policed ledger-prose grammar.
     ("adversarial_audit_test_lock", check_adversarial_audit_test_lock, True),  # RC-49: every fix ships a locking test (audit's output)
     ("rth_only_market_measurement", check_rth_only_market_measurement, True),  # RC-54: market-closed rows bias every statistic
+    # SIMPLICITY REHAB T2-3 (2026-08-24, governance/retired_checks.md): the ONE enforced
+    # evidence validator. verdicts_declare_their_power and unproven_register are RETIRED as
+    # registrations only — their full validation runs INSIDE
+    # check_measured_claims_cite_evidence, and their check_* wrappers stay importable.
     ("measured_claims_cite_evidence", check_measured_claims_cite_evidence, True),  # RC-56: a committed finding carries its reproduce command
     ("universal_ticker_scope", check_universal_ticker_scope, True),  # RC-160: no SPY-only work framed as complete
     ("chart_intent_and_next_rth", check_chart_intent_and_next_rth, True),  # RC-163: Chart Done ≠ bank; no weekday-proof lies
@@ -4236,15 +4370,9 @@ CHECKS = [
     ("collect_datasheet_staged", check_collect_datasheet_staged, True),  # RC-210: Gebru datasheets
     ("chain_width_single_faucet", check_chain_width_single_faucet, True),  # RC-59: one strike-count authority
     ("single_faucet_provenance", check_single_faucet_provenance, True),  # RC-73: measured, not asserted
-    ("root_cause_recurrence_declared", check_root_cause_recurrence_declared, True),
-    ("fix_crosswalks_to_violated_lock", check_fix_crosswalks_to_violated_lock, True),
     ("enforced_checks_have_negative_controls", check_enforced_checks_have_negative_controls, True),
     ("agents_laws_name_their_enforcer", check_agents_laws_name_their_enforcer, True),
     ("scheduled_producers_are_not_inert", check_scheduled_producers_are_not_inert, True),
-    ("rc_citations_resolve", check_rc_citations_resolve, True),
-    ("rc_status_vocabulary", check_rc_status_vocabulary, True),  # RC-257: unknown status must fail, not skip
-    ("rc_log_rows_keep_schema", check_rc_log_rows_keep_schema, True),
-    ("adversarial_audits_are_answered", check_adversarial_audits_are_answered, True),
     ("collect_window_single_law", check_collect_window_single_law, True),  # RC-183: 08:15-15:15 CT at the ONE write seam
     ("price_bars_readers_name_their_session", check_price_bars_readers_name_their_session, True),  # RC-61: the log is a control, not an archive
     ("domain_constants_are_derived", check_domain_constants_are_derived, True),  # RC-62: a market threshold states where its value came from
@@ -4266,9 +4394,6 @@ CHECKS = [
     ("single_spot_authority", check_single_spot_authority, True),  # one faucet (RC-14)
     ("no_silent_swallow", check_no_silent_swallow, True),           # driven to zero 2026-07-17
     ("no_todo_without_tracking_id", check_todo_without_tracking_id, True),
-    ("rc_numeric_claims_cite_a_command", check_rc_numeric_claims_cite_a_command, True),
-    # RC-319: numbers had to cite a command; a MECHANISM claim could say anything.
-    ("rc_mechanism_claims_cite_a_source", check_rc_mechanism_claims_cite_a_source, True),
     # RC-470: five_why_reaches_bedrock RETIRED with the five-why grammar family
     # (governance/retired_checks.md) - it regex-judged chain-ending terminology; chain
     # presence and depth stay enforced by root_cause_log.
@@ -4276,12 +4401,8 @@ CHECKS = [
     # because an unregistered gate enforces nothing — it sat at zero registrations while
     # being reported as a lock.
     ("one_producer", check_one_producer, True),
-    # RC-137: a CLOSED row must ship the code it names (the ledger cannot outrun HEAD).
-    ("closed_rows_ship_their_code", check_closed_rows_ship_their_code, True),
-    ("verdicts_declare_their_power", check_verdicts_declare_their_power, True),  # provenance, not the word "MEASURED" (RC-6)
     ("snapshots_read_names_the_timeframe", check_snapshots_read_names_the_timeframe, True),  # query PLAN, not code shape
     ("shutdown_is_bounded", check_shutdown_is_bounded, True),  # Ctrl+C must always work
-    ("unproven_register", check_unproven_register, True),  # claims: evidenced or registered
     ("venv_parity", check_venv_parity, True),  # one interpreter — .venv only (CI exempt)
     ("credential_leak", check_credential_leak, True),  # staged secrets / home paths
     ("sqlite_wal_contract", check_sqlite_wal_contract, True),  # WAL + timeout on connects

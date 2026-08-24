@@ -114,8 +114,14 @@ def test_the_registers_are_in_scope():
 
 
 def test_the_gate_is_registered_as_enforced():
+    """Consolidated 2026-08-24 (governance/retired_checks.md): the mechanism-claims
+    validation now runs INSIDE root_cause_log, so the survivor must be registered
+    ENFORCED and its fold table must still run this validator's helper."""
     src = (REPO / "tools" / "check_institutional_correctness.py").read_text(
         encoding="utf-8", errors="replace")
+    assert '("root_cause_log", check_root_cause_log, True)' in src, (
+        "the surviving ledger check is not registered ENFORCED in the institutional gate")
     assert ('("rc_mechanism_claims_cite_a_source", '
-            'check_rc_mechanism_claims_cite_a_source, True)') in src, (
-        "the check is not registered ENFORCED in the institutional gate")
+            '_rc_mechanism_claims_cite_a_source_violations)') in src, (
+        "rc_mechanism_claims_cite_a_source's validation is no longer folded into "
+        "root_cause_log — the substance was dropped, not consolidated")

@@ -419,6 +419,67 @@ def test_rc468_missing_manifest_declares_nothing(monkeypatch):
         stderr = "fatal: path does not exist"
     monkeypatch.setattr(GATE, "_run", lambda *a, **k: _P())
     assert GATE.declared_retirements("HEAD") == set()
+    assert GATE.declared_folds("HEAD") == {}
+
+
+_FOLD_MANIFEST = (
+    "| check | retired | rationale |\n|---|---|---|\n"
+    "| plain_retirement | 2026-08-24 | equivalent protection stated elsewhere |\n"
+    "| rc_numeric | 2026-08-24 | same file, one validator — substance folded into "
+    "root_cause_log, which now runs it as a helper |\n")
+
+
+def test_fold_declaration_is_parsed_from_the_manifest_rationale(monkeypatch):
+    """A row that declares 'folded into <survivor>' maps retired -> survivor; a plain
+    retirement row (no fold phrase) declares no fold."""
+    class _P:
+        returncode = 0
+        stdout = _FOLD_MANIFEST
+        stderr = ""
+    monkeypatch.setattr(GATE, "_run", lambda *a, **k: _P())
+    assert GATE.declared_folds("HEAD") == {"rc_numeric": "root_cause_log"}
+
+
+def test_fold_moves_exactly_the_base_standing_debt_to_the_survivor():
+    """QUIET control: a consolidation is a MOVE, not new debt. The retired check's base
+    count lands on the declared survivor, so identical total debt compares clean."""
+    base = {"rc_numeric": 22, "root_cause_log": 52}
+    folds = {"rc_numeric": "root_cause_log"}
+    out, moved = GATE.refold_base_counts(
+        base, folds, retired={"rc_numeric"}, head_roster={"root_cause_log"})
+    assert out == {"root_cause_log": 74}
+    assert len(moved) == 1 and "rc_numeric" in moved[0] and "root_cause_log" in moved[0]
+    added, improved = GATE.compare(out, {"root_cause_log": 74})
+    assert added == [] and improved == []
+
+
+def test_fold_cannot_excuse_debt_added_beyond_the_moved_count():
+    """FIRE control: anything the candidate adds beyond the exact moved debt still fails."""
+    out, _ = GATE.refold_base_counts(
+        {"rc_numeric": 22, "root_cause_log": 52}, {"rc_numeric": "root_cause_log"},
+        retired={"rc_numeric"}, head_roster={"root_cause_log"})
+    added, _ = GATE.compare(out, {"root_cause_log": 75})
+    assert added == ["  root_cause_log: 74 -> 75  (+1)"], added
+
+
+def test_fold_is_refused_for_undeclared_or_unretired_or_unenforced_targets():
+    """FIRE controls, each fail-closed toward blocking: a fold phrase on a check that was
+    not actually retired moves nothing; a retired check with no fold phrase moves nothing;
+    a survivor absent from the candidate's enforced roster moves nothing."""
+    base = {"rc_numeric": 22, "root_cause_log": 52}
+    folds = {"rc_numeric": "root_cause_log"}
+    # not retired (still on the candidate roster) -> no move
+    out, moved = GATE.refold_base_counts(base, folds, retired=set(),
+                                         head_roster={"root_cause_log", "rc_numeric"})
+    assert out == base and moved == []
+    # retired but no fold declared -> no move (reads as added debt on the survivor)
+    out, moved = GATE.refold_base_counts(base, {}, retired={"rc_numeric"},
+                                         head_roster={"root_cause_log"})
+    assert out == base and moved == []
+    # declared survivor is not enforced on the candidate side -> refuse the move
+    out, moved = GATE.refold_base_counts(base, folds, retired={"rc_numeric"},
+                                         head_roster={"open_item_cap"})
+    assert out == base and moved == []
 
 
 def _load_pci():

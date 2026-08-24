@@ -10,7 +10,8 @@ static/js/l1_sse_guards.js monotonic guard, runs the scenarios below through the
 renderer with DOM-paint stubs only, and prints one JSON outcome map.
 
 Outcome vocabulary unchanged: "rejected" | "deduped" | "painted".
-Same authority + monotonic rules as test_l1_cold_start_transition.py (must stay aligned).
+tests/test_l1_cold_start_transition.py drives the same harness (cold_* keys), so both
+files exercise the identical shipped authority + monotonic pipeline by construction.
 """
 from __future__ import annotations
 

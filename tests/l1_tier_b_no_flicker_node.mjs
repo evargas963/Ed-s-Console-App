@@ -1,14 +1,16 @@
 /**
- * Issue 25 / no-flicker — Tier B accept/dedupe/reject contract, EXECUTED on the SHIPPED JS.
+ * Issue 25 / no-flicker + Issue 27 / cold start — Tier B contract, EXECUTED on the SHIPPED JS.
  *
- * tests/test_l1_no_flicker.py used to re-implement the client logic in Python
- * ("Mirrors client logic in static/index.html") and test the COPY, so drift in the
- * shipped `renderTierBLight` pipeline could never fail it. This harness extracts the
- * REAL functions from static/index.html (and loads the real static/js/l1_sse_guards.js),
- * runs the same scenarios through the real `renderTierBLight`, and prints a JSON map of
- * outcomes for the pytest side to assert on.
+ * tests/test_l1_no_flicker.py and tests/test_l1_cold_start_transition.py used to
+ * re-implement the client logic in Python ("Mirrors client logic in static/index.html")
+ * and test the COPY, so drift in the shipped `renderTierBLight` pipeline could never fail
+ * them. This harness extracts the REAL functions from static/index.html (and loads the
+ * real static/js/l1_sse_guards.js), runs the same scenarios through the real
+ * `renderTierBLight`, and prints a JSON map of outcomes for the pytest side to assert on:
+ *   - a_* .. f_* keys → tests/test_l1_no_flicker.py (Issue 25 dedupe/no-flicker)
+ *   - cold_* keys     → tests/test_l1_cold_start_transition.py (Issue 27 authority machine)
  *
- * Outcome vocabulary matches the old Python mirror: "rejected" | "deduped" | "painted".
+ * Outcome vocabulary matches the old Python mirrors: "rejected" | "deduped" | "painted".
  * ("deduped" is the real renderer returning true after logging its Issue 25
  * "SKIP duplicate semantic Tier B paint" DIAG warn — the repaint was skipped.)
  *
@@ -251,6 +253,77 @@ resetState();
   const p2 = { ticker: 'SPY', selected_exp: null, l1_generation: 2, _server_build_ts: 20.0, l1_payload_fingerprint: 'h'.repeat(32) };
   results.f_monotonic_stale = [step('SPY', p3, 'l1_sse'), step('SPY', p2, 'l1_sse')];
 }
+
+// ── Issue 27 — cold start → live: authority state machine + generation acceptance ──
+// Scenarios for tests/test_l1_cold_start_transition.py. Each trace records, per step:
+// the real renderer outcome, the l1_generation SENT, and (post-step) the authority
+// string + accepted-generation store for the active scope key 'SPY|'.
+const COLD_SCOPE = 'SPY|';
+let coldFpSeq = 0;
+
+/** Payload for the cold-start lane; omit gen/ts by passing undefined (fresh fingerprint each call). */
+function coldPayload(gen, serverTs) {
+  const p = { ticker: 'SPY', selected_exp: null };
+  if (gen !== undefined) p.l1_generation = gen;
+  if (serverTs !== undefined) p._server_build_ts = serverTs;
+  p.l1_payload_fingerprint = 'cold' + String(coldFpSeq++).padStart(28, '0');
+  return p;
+}
+
+/** Drive [source, payload] steps through the real renderTierBLight from a fresh state. */
+function runColdStart(steps) {
+  resetState();
+  const trace = { outcomes: [], sent: [], auth: [], gen: [] };
+  for (const [source, payload] of steps) {
+    trace.sent.push(payload.l1_generation !== undefined ? payload.l1_generation : null);
+    trace.outcomes.push(step('SPY', payload, source));
+    trace.auth.push((globalThis._l1AuthorityByScope || {})[COLD_SCOPE] || 'INIT');
+    const gAcc = (globalThis._l1GenByScope || {})[COLD_SCOPE];
+    trace.gen.push(gAcc !== undefined ? gAcc : null);
+  }
+  return trace;
+}
+
+// cold_a — HTTP (gen=1) loads, SSE (gen=2) becomes authority; later HTTP ignored.
+results.cold_a = runColdStart([
+  ['rest_manual', coldPayload(1, 100.0)],
+  ['l1_sse', coldPayload(2, 200.0)],
+  ['rest_manual', coldPayload(99, 300.0)],
+]);
+
+// cold_b — SSE gen=10 accepted; late stale HTTP gen=9 rejected; store stays 10.
+results.cold_b = runColdStart([
+  ['rest_manual', coldPayload(1, 10.0)],
+  ['l1_sse', coldPayload(10, 50.0)],
+  ['rest_manual', coldPayload(9, 60.0)],
+]);
+
+// cold_c — after SSE_LIVE, HTTP with HIGHER gen=3 still ignored (hard HTTP block).
+results.cold_c = runColdStart([
+  ['rest_manual', coldPayload(1, 1.0)],
+  ['l1_sse', coldPayload(2, 2.0)],
+  ['rest_manual', coldPayload(3, 3.0)],
+]);
+
+// cold_d — accepted sequence must never decrease l1_generation.
+results.cold_d = runColdStart([
+  ['rest_manual', coldPayload(1, 10.0)],
+  ['l1_sse', coldPayload(2, 20.0)],
+  ['l1_sse', coldPayload(3, 30.0)],
+  ['rest_manual', coldPayload(50, 99.0)],
+]);
+
+// cold_e — once SSE_LIVE, authority string never goes back to HTTP_INIT.
+results.cold_e = runColdStart([
+  ['rest_manual', coldPayload(1, 1.0)],
+  ['l1_sse', coldPayload(2, 2.0)],
+  ['rest_manual', coldPayload(1, 9.0)],
+]);
+
+// cold_f — HTTP payload with no l1_generation still promotes INIT → HTTP_INIT.
+results.cold_f = runColdStart([
+  ['rest_manual', coldPayload(undefined, undefined)],
+]);
 
 console.warn = realWarn;
 console.assert = realAssert;
