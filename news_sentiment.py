@@ -23,7 +23,6 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, Optional
 log = logging.getLogger(__name__)
@@ -105,18 +104,6 @@ def classify_headline_impact(headline: str) -> str:
     if n == 1:
         return "MEDIUM"
     return "LOW"
-
-
-@dataclass
-class NewsEvent:
-    timestamp: str
-    source: str
-    headline: str
-    ticker: Optional[str]
-    sentiment_score: Optional[float]
-    impact_level: str
-    url: str
-    raw: dict
 
 
 def _http_timeout_sec() -> float:

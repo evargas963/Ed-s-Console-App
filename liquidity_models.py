@@ -177,14 +177,6 @@ def zone_class_for_type(zone_type: ZoneType) -> str:
 
 
 @dataclass
-class PriceLevel:
-    """Single price level with source tag."""
-    label: str
-    value: float
-    source_tag: str = ""   # e.g. "PDH", "VWAP", "ORB_HIGH"
-
-
-@dataclass
 class Zone:
     """Clustered zone built from one or more price levels."""
     zone_type: ZoneType

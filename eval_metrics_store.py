@@ -24,10 +24,6 @@ def arch_eval_proof_path() -> Path:
     return Path(__file__).resolve().parent / "models" / "arch_eval_proof.json"
 
 
-# Stable copy for auditors / docs (real proof is arch_eval_proof.json after a train run).
-ARCH_EVAL_PROOF_SAMPLE_NAME = "arch_eval_proof.sample.json"
-
-
 def load_arch_eval_proof() -> dict[str, Any]:
     p = arch_eval_proof_path()
     if not p.is_file():

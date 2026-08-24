@@ -14,7 +14,6 @@ from db import DB_PATH as DEFAULT_DB  # noqa: F401,E402  (intentional re-export 
 CANONICAL_CONSOLE_DB_FILE = canonical_console_db_path()
 
 ARTIFACTS_DIR = PROJECT_ROOT / "models" / "calibration_runs"
-DOCS_DIR = PROJECT_ROOT / "docs"
 
 
 def ensure_artifacts_dir() -> Path:

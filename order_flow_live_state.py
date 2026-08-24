@@ -22,7 +22,6 @@ import time as _time
 # Limits to prevent unbounded growth
 MAX_BOOK_SNAPSHOTS = 20
 MAX_TAPE_PRINTS = 500
-TAPE_WINDOW_MS = 300_000  # 5 min of prints
 
 log = logging.getLogger(__name__)
 

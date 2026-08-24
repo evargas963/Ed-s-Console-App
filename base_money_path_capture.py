@@ -18,16 +18,6 @@ LOGGER_SOURCE_UI_SSE = "ui_sse"
 LOGGER_SOURCE_UI_REST = "ui_rest"
 LOGGER_SOURCE_MANUAL = "manual_backfill"
 
-ALL_LOGGER_SOURCES = frozenset(
-    {
-        LOGGER_SOURCE_BASE_MONEY_PATH,
-        LOGGER_SOURCE_BACKGROUND,
-        LOGGER_SOURCE_UI_SSE,
-        LOGGER_SOURCE_UI_REST,
-        LOGGER_SOURCE_MANUAL,
-    }
-)
-
 
 def resolve_logger_source_from_update_source(update_source: Optional[str]) -> Optional[str]:
     """Map Tier C update_source tags to persisted snapshot logger_source."""

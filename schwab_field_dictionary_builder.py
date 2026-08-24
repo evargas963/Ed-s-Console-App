@@ -33,18 +33,6 @@ SUMMARY_CSV = INPUT_DIR / "schwab_field_inventory_summary.csv"
 # Known ticker symbols (from inventory) — strip these prefixes
 KNOWN_TICKERS = {"SPY", "QQQ", "AAPL", "NVDA", "IWM", "TSLA", "$VIX"}
 
-# Categories for classification
-CATEGORIES = [
-    "price", "bid_ask", "size_depth", "volume", "time", "volatility", "greeks",
-    "options_chain", "market_hours", "movers", "instrument_fundamentals",
-    "streaming_quote", "streaming_book", "chart_bar", "unknown",
-]
-
-# Likely use values
-LIKELY_USES = [
-    "direct_order_flow", "order_flow_proxy", "regime_detection", "key_levels",
-    "risk_model", "prediction_model", "ui_only", "unknown",
-]
 
 # Field → category mapping (keyword-based)
 CATEGORY_PATTERNS = [

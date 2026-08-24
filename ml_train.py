@@ -45,9 +45,6 @@ TARGET_COL = DEFAULT_TRAINING_LABEL_COLUMN  # Default tabular label; training us
 TARGET_MODE_TRICLASS = "triclass"
 TARGET_MODE_DIR = "dir"
 TARGET_MODE_MOVE = "move"
-# Empirical pred_{hz}_* may exist on DB training rows (fusion / histogram outputs). They must not be
-# copied into engineered XGB columns — that created same-tick circular dependence (stack → overlay → XGB).
-N_SPLITS    = 5
 CLASS_MAP   = {"up": 0, "down": 1, "flat": 2}
 CLASS_NAMES = ["up", "down", "flat"]
 DIR_CLASS_MAP = {"up": 0, "down": 1}
@@ -272,7 +269,6 @@ CATEGORICALS = [
     "liquidity_behavior_label",
 ]
 
-NUMERIC_FEATURES     = ALL_DB_COLS
 CATEGORICAL_FEATURES = CATEGORICALS
 
 

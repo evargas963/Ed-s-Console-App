@@ -193,36 +193,6 @@ def validate_replaced_perf_bindings(
     return collect_replaced_perf_violations(register_csv, perf_dir)
 
 
-def collect_v4_a_violations(register_csv: Path, operator_register_md: Path) -> list[str]:
-    if not register_csv.is_file():
-        return []
-    text = operator_register_md.read_text(encoding="utf-8")
-    bad: list[str] = []
-    with register_csv.open(newline="", encoding="utf-8") as f:
-        for row in csv.DictReader(f):
-            disp = (row.get("disposition") or "").strip()
-            if not disp.startswith("GOVERNED_EXCEPTION"):
-                continue
-            rid = (row.get("register_id") or "").strip()
-            dm = DISP_OXX.search(disp)
-            if not dm:
-                bad.append(rid)
-                continue
-            disp_id = dm.group(1).upper()
-            gref = (row.get("governed_ref") or "").strip()
-            m = OXX_TAG.search(gref)
-            if not m:
-                bad.append(rid)
-                continue
-            oid = m.group(1).upper()
-            if oid != disp_id:
-                bad.append(rid)
-                continue
-            if not oxx_narrative_valid(text, oid):
-                bad.append(rid)
-    return bad
-
-
 def validate_register_messages(
     register_csv: Path,
     operator_register_md: Path,

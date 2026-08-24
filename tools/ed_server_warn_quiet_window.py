@@ -64,12 +64,6 @@ def is_quiet_window_fail_line(line: str) -> bool:
     return bool(_FAIL_LINE_RE.search(line))
 
 
-# Back-compat alias for older call sites / imports.
-def is_ed_server_warning_line(line: str) -> bool:
-    """Deprecated alias — same as is_quiet_window_fail_line (any logger, WARNING+)."""
-    return is_quiet_window_fail_line(line)
-
-
 def collect_fail_lines_from_text(text: str) -> list[str]:
     """Return matching failure-signal lines from a text blob."""
     out: list[str] = []
@@ -78,11 +72,6 @@ def collect_fail_lines_from_text(text: str) -> list[str]:
         if is_quiet_window_fail_line(line):
             out.append(line)
     return out
-
-
-def collect_warnings_from_text(text: str) -> list[str]:
-    """Deprecated alias for collect_fail_lines_from_text."""
-    return collect_fail_lines_from_text(text)
 
 
 def probe_health(url: str, *, timeout_sec: float = 5.0) -> dict[str, Any]:

@@ -67,8 +67,6 @@ OVERRIDES: dict[tuple[str, str], tuple[str, str, str]] = {
     ),
 }
 
-_CONTRACT_KW = ("contract", "schema", "threshold", "canonical", "timeframe", "horizon", "tier3")
-_AUDIT_KW = ("audit", "verify", "inspect", "readiness", "diagnostic")
 _DATA_KW = ("snapshot", "feature", "model", "artifact", "row", "sql")
 
 

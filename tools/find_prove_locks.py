@@ -43,7 +43,6 @@ _BANNED_CV = frozenset({
     "KFold", "StratifiedKFold", "train_test_split",
     "ShuffleSplit", "StratifiedShuffleSplit", "GroupKFold",
 })
-_PATH_LIKE = re.compile(r"^[\w./\\-]+\.(?:py|md|json|html|sql)$")
 
 
 def _path_resolves(ref: str) -> bool:

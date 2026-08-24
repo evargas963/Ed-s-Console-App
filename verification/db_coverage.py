@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import csv
 import io
-import json
 import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
@@ -155,9 +154,3 @@ def db_coverage_report(
         "json": machine,
     }
 
-
-def print_db_coverage(tickers: list[str]) -> None:
-    r = db_coverage_report(tickers)
-    print(r["human_summary"])
-    print("--- machine JSON ---")
-    print(json.dumps(r["machine"], indent=2, default=str))

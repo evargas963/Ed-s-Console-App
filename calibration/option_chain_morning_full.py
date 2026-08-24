@@ -257,10 +257,6 @@ def et_date_and_mins(ts_utc: float | None = None) -> tuple[str, int]:
     return dt.strftime("%Y-%m-%d"), int(dt.hour * 60 + dt.minute)
 
 
-def _et_date_and_mins(ts_utc: float | None = None) -> tuple[str, int]:
-    return et_date_and_mins(ts_utc)
-
-
 def has_morning_full_capture(
     db_path: Path | str, ticker: str, et_date: str
 ) -> bool:

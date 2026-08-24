@@ -92,16 +92,6 @@ def flatten_json(obj: Any, prefix: str = "", sep: str = ".") -> set[str]:
     return out
 
 
-def safe_json_parse(data: bytes | str) -> dict | list:
-    """Parse JSON with error handling. Returns empty dict on failure."""
-    try:
-        if isinstance(data, bytes):
-            return json.loads(data.decode("utf-8", errors="replace"))
-        return json.loads(data) if isinstance(data, str) else {}
-    except json.JSONDecodeError:
-        return {}
-
-
 # ═══════════════════════════════════════════════════════════════════════════════
 # INVENTORY RUNNER
 # ═══════════════════════════════════════════════════════════════════════════════

@@ -549,11 +549,6 @@ def ablation_scoring_groups(manifest: dict, *, db_path: str | None = None) -> li
     return out
 
 
-def ablation_captured_cone_groups(manifest: dict) -> list[dict]:
-    """Backward-compatible alias — scoring universe is in_cone only."""
-    return ablation_scoring_groups(manifest)
-
-
 def ablation_whole_stack_feature_cell_specs(
     manifest: dict,
     tickers: list[str] | None = None,
@@ -1111,11 +1106,6 @@ def ablation_stack_authority_cell_specs(manifest: dict) -> list[dict]:
     return cells
 
 
-def ablation_stack_layer_cell_specs(manifest: dict) -> list[dict]:
-    """Backward-compatible alias for stack authority grid specs."""
-    return ablation_stack_authority_cell_specs(manifest)
-
-
 def _repo_models_dir() -> Path:
     return Path(__file__).resolve().parent.parent / "models"
 
@@ -1184,11 +1174,6 @@ def _resolve_model_dir_for_stack_eval(ticker: str, horizon_slug: str) -> Path | 
     if active and _bundle_has_scorable_base_artifacts(t, hz, active):
         return active
     return active or (parallel if parallel.is_dir() else None)
-
-
-def _active_model_dir_for_stack_eval(ticker: str, horizon_slug: str) -> Path | None:
-    """Resolve bundle dir for stack_bundle_eval (active or parallel fallback)."""
-    return _resolve_model_dir_for_stack_eval(ticker, horizon_slug)
 
 
 def _ablation_eval_options():
@@ -2213,25 +2198,6 @@ def build_stack_authority_ablation_section(
     return section
 
 
-def build_stack_layer_ablation_section(
-    manifest: dict,
-    *,
-    db_path: str,
-    dry_run: bool = False,
-    tickers: list[str] | None = None,
-    horizons: list[str] | None = None,
-) -> dict:
-    """Backward-compatible alias."""
-    return build_stack_authority_ablation_section(
-        manifest,
-        db_path=db_path,
-        dry_run=dry_run,
-        tickers=tickers,
-        horizons=horizons,
-    )
-
-
-
 def _per_model_cell_key(anchor: str, model: str, horizon: str, group_id: str) -> str:
     return f"{ticker_storage_key(anchor)}|{model}|{horizon}|{group_id}"  # RC-345/F25: canonical identity in the key-builder itself
 
@@ -2508,7 +2474,6 @@ def ablation_confirm_drop_group_ids(survivor_summary: dict) -> list[str]:
         if g.get("recommendation") == "DROP_CANDIDATE":
             out.append(str(g["group_id"]))
     return sorted(set(out))
-
 
 
 def ablation_confirm_drops_by_model_horizon(survivor_summary: dict) -> dict:
@@ -4316,7 +4281,6 @@ SURVIVOR_INFERENCE_BACKTEST_PATH = Path("governance/artifacts/survivor_inference
 SURVIVOR_STACK_REFIT_BACKTEST_PATH = Path(
     "governance/artifacts/survivor_stack_refit_backtest.json"
 )
-LEAF_ABLATION_MANIFEST_PATH = Path("governance/artifacts/feature_ablation_manifest_leaf.json")
 SURVIVOR_EDGE_MCC_MIN = 0.01
 # Powered holdout floor for survivor quality gates (NOT "p<0.05" — use bootstrap CI in backtest).
 SURVIVOR_MIN_PAIRED_ROWS_POWERED = 400
@@ -4329,13 +4293,6 @@ FULL_STACK_LAYERS_SCORED = (
     "fusion_without_mc",
     "full_fusion",
 )
-
-
-def expand_ablation_manifest_to_leaf_groups(manifest: dict) -> dict:
-    """DEPRECATED — use resolve_expanded_schwab_ablation_universe() instead."""
-    from tools.build_feature_assignment_matrix_v2 import resolve_expanded_schwab_ablation_universe
-
-    return resolve_expanded_schwab_ablation_universe()
 
 
 def write_leaf_ablation_manifest(manifest_path: Path | None = None) -> Path:
@@ -4411,44 +4368,6 @@ def _holdout_multiclass_log_loss_transformer(prepared: dict) -> tuple[float | No
         return ll, int(len(y_val))
     except Exception:
         return None, int(len(y_val))
-
-
-def _paired_log_loss_bootstrap(
-    y_true,
-    proba_full,
-    proba_surv,
-    *,
-    n_bootstrap: int = 500,
-    rng: np.random.Generator | None = None,
-) -> dict:
-    """Paired row bootstrap on multiclass log_loss(full) - log_loss(surv); positive => survivor better."""
-    from sklearn.metrics import log_loss
-
-    rng = rng or np.random.default_rng(42)
-    yt = np.asarray(y_true).astype(int)
-    n = len(yt)
-    if n < 30 or proba_full is None or proba_surv is None:
-        return {"n": n, "ci95_low": None, "ci95_high": None, "significant_at_95": False}
-    deltas: list[float] = []
-    idx = np.arange(n)
-    for _ in range(n_bootstrap):
-        samp = rng.choice(idx, size=n, replace=True)
-        try:
-            ll_f = float(log_loss(yt[samp], np.asarray(proba_full)[samp], labels=[0, 1, 2]))
-            ll_s = float(log_loss(yt[samp], np.asarray(proba_surv)[samp], labels=[0, 1, 2]))
-            deltas.append(ll_f - ll_s)
-        except Exception:
-            continue
-    if len(deltas) < 100:
-        return {"n": n, "ci95_low": None, "ci95_high": None, "significant_at_95": False}
-    low, high = float(np.percentile(deltas, 2.5)), float(np.percentile(deltas, 97.5))
-    return {
-        "n": n,
-        "ci95_low": round(low, 6),
-        "ci95_high": round(high, 6),
-        "significant_at_95": bool(low > 0),
-        "median_delta_log_loss": round(float(np.median(deltas)), 6),
-    }
 
 
 def run_survivor_stack_refit_backtest(

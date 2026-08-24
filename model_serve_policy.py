@@ -55,7 +55,6 @@ DIRECT_SERVE_BLOCKING_STATUSES = frozenset({SERVE_TEMPORARILY_WITHHELD, NOT_PROV
 
 _PRE_CORRECTNESS_END = date(2026, 5, 28)      # exclusive floor of the band
 _REVALIDATION_BAND_END = date(2026, 5, 31)    # inclusive
-_POST_CORRECTNESS_START = date(2026, 6, 1)
 
 # Operator-approved base bundles (2026-07-10): post-correctness anchors. SINGLE AUTHORITY —
 # imported from money_path_ticker_tiers so the serving gate and the training/regime base

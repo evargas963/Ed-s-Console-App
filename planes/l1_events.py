@@ -26,11 +26,6 @@ _timer_lock = threading.Lock()
 _rebuild_quote_fn: Optional[Callable[[str], None]] = None
 
 
-def set_quote_rebuild_handler(fn: Optional[Callable[[str], None]]) -> None:
-    global _rebuild_quote_fn
-    _rebuild_quote_fn = fn
-
-
 def notify_quote_updated(ticker: str) -> None:
     """Call when L0 quote row changes (stream or REST plane). Debounced per ticker."""
     t = ticker_storage_key(ticker)  # RC-345/F25: canonical L1 key (write+read consistent; idempotent on stream symbols)

@@ -22,12 +22,6 @@ def step(name: str, ticker: str = ""):
         log.info(f"[DIAG] {name}{ctx}")
 
 
-def step_start(name: str, ticker: str = ""):
-    if _diag:
-        ctx = f" [{ticker}]" if ticker else ""
-        log.info(f"[DIAG] {name} START{ctx}")
-
-
 def step_done(name: str, ticker: str = ""):
     if _diag:
         ctx = f" [{ticker}]" if ticker else ""
