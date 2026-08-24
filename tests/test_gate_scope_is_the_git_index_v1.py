@@ -19,6 +19,7 @@ from __future__ import annotations
 import ast
 import subprocess
 import sys
+from collections import Counter
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
@@ -119,6 +120,15 @@ def test_the_remaining_filesystem_scanners_are_measured_not_forgotten():
     the filesystem — `check_credential_leak` legitimately asks about UNTRACKED files, a
     question the index cannot answer. What it does is refuse to let the count drift out of
     sight: the number is asserted, so the next person to add one has to come here.
+
+    2026-08-24 (audit T2-4) — NAMED-SET CONVERSION. The integer pin is CLOSED HISTORY
+    (its ledger stays in the comments below): the census is now frozen BY NAME in
+    tests/frozen/filesystem_scanner_files.txt, one "path.py::N" per line where N is that
+    file's count of .py-rglob sites. Line numbers are deliberately stripped so line
+    drift cannot churn the file, but N keeps a NEW site inside an already-listed file
+    visible as a one-line diff (tools/check_institutional_correctness.py holds 5 sites
+    today; a set of bare file names would absorb a 6th silently). A move now shows WHICH
+    file gained or lost a scanner instead of forcing integer archaeology.
     """
     found = _filesystem_enumerating_scanners()
     # 44 -> 43 (RC-470): check_five_why_recursive_lock's tests/**/*.py rglob corpus scan
@@ -128,11 +138,23 @@ def test_the_remaining_filesystem_scanners_are_measured_not_forgotten():
     # (test_news_events_drop x2, test_session_log_drop, test_confluence_log_drop —
     # converted to the shared session RepoIndex), one ARRIVED (tests/conftest.py
     # RepoIndex builder, the single live pass those tests now consume).
-    assert len(found) == 40, (
-        f"the filesystem-enumerating scanner count moved from the 40 measured in the "
-        f"SIMPLICITY REHAB (RC-470 baseline 43) "
-        f"to {len(found)}. If you FIXED some, lower this number and say so in the row. If "
-        f"you ADDED one, use `git ls-files` instead — this is the RC-274 -> RC-286 loop.\n"
+    per_file = Counter(rel.rsplit(":", 1)[0] for rel in found)
+    current = {f"{rel}::{n}" for rel, n in per_file.items()}
+    frozen = frozenset(
+        ln for ln in (REPO / "tests" / "frozen" / "filesystem_scanner_files.txt")
+        .read_text(encoding="utf-8").splitlines() if ln)
+    arrived = sorted(current - frozen)
+    left = sorted(frozen - current)
+    assert current == frozen, (
+        f"the filesystem-enumerating scanner set moved (frozen 2026-08-24 at the "
+        f"SIMPLICITY REHAB's 40 sites; RC-470 baseline 43).\n"
+        f"ARRIVED (scanning now, not in the frozen set): {arrived}\n"
+        f"LEFT (in the frozen set, not scanning now): {left}\n"
+        f"A changed ::N for the same file means a scanner site was added or removed "
+        f"INSIDE it. If you FIXED one, its line leaves the frozen file — a one-line edit "
+        f"to tests/frozen/filesystem_scanner_files.txt in the same commit, reviewed by "
+        f"name; do not bulk-regenerate. If you ADDED one, use `git ls-files` instead — "
+        f"this is the RC-274 -> RC-286 loop.\n"
         + "\n".join(found))
     # RC-307: the number moved from 21 to 48 because the SCOPE moved, not because 27
     # scanners appeared. RC-286 counted `(REPO / "tools").glob("*.py")` and the same shape

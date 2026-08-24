@@ -49,7 +49,21 @@ CATEGORICAL_JUST_RE = re.compile(
     r"no single schwab|reads or composes market fields)\b",
     re.I,
 )
-MEGA3_ROW_COUNT = 153  # inventory sync @ VOL_INPUT_CONTRACT 1.0.0 V1: +1 _replay_vol_decimal (replay_signal_input_v1.py)
+# CLOSED integer ledger for test_mega3_scope_complete (see the named-set conversion below).
+#   153 — inventory sync @ VOL_INPUT_CONTRACT 1.0.0 V1: +1 _replay_vol_decimal (replay_signal_input_v1.py)
+#
+# 2026-08-24 (audit T2-4) — NAMED-SET CONVERSION. The integer ledger above is CLOSED
+# HISTORY: the row count is no longer hand-bumped. The inventory's membership now lives in
+# tests/frozen/mega3_inventory_names.txt (one "file.py::qualified_name" per line, sorted),
+# and test_mega3_scope_complete diffs the live inventory against it BY NAME, so a
+# legitimate change shows WHICH row arrived or left instead of forcing integer
+# archaeology. MEGA3_ROW_COUNT stays defined for any reader of this module but is DERIVED
+# from the frozen set — never edit it by hand.
+MEGA3_FROZEN_FILE = ROOT / "tests" / "frozen" / "mega3_inventory_names.txt"
+MEGA3_FROZEN_NAMES = frozenset(
+    ln for ln in MEGA3_FROZEN_FILE.read_text(encoding="utf-8").splitlines() if ln
+)
+MEGA3_ROW_COUNT = len(MEGA3_FROZEN_NAMES)  # derived from the frozen name set
 _PRIOR_MEGA_FILES = MEGA1_FILES | MEGA2_FILES
 
 
@@ -110,9 +124,29 @@ def test_mega3_inventory_covers_every_function():
 
 
 def test_mega3_scope_complete():
+    """Named-set scope gate (T2-4, 2026-08-24): the inventory equals the frozen name set.
+
+    The exact-count pin this replaces survives as the closed comment ledger above
+    MEGA3_ROW_COUNT; from here on a move is accounted for BY NAME, not by integer.
+    """
     inv_files = {r.file for r in MEGA3_TRACEABLE_INVENTORY}
     assert inv_files == set(MEGA3_FILES)
-    assert len(MEGA3_TRACEABLE_INVENTORY) == MEGA3_ROW_COUNT
+    current = {f"{r.file}::{r.derivation}" for r in MEGA3_TRACEABLE_INVENTORY}
+    arrived = sorted(current - MEGA3_FROZEN_NAMES)
+    left = sorted(MEGA3_FROZEN_NAMES - current)
+    assert current == MEGA3_FROZEN_NAMES, (
+        f"Mega3 inventory membership moved.\n"
+        f"ARRIVED (in the inventory, not in the frozen set): {arrived}\n"
+        f"LEFT (in the frozen set, no longer in the inventory): {left}\n"
+        f"A legitimate arrival/departure is a one-line edit to "
+        f"tests/frozen/mega3_inventory_names.txt in the same commit, reviewed by name — "
+        f"do not bulk-regenerate."
+    )
+    # Duplicate guard: set equality alone cannot see a repeated (file, derivation) row.
+    assert len(MEGA3_TRACEABLE_INVENTORY) == MEGA3_ROW_COUNT, (
+        "inventory row count differs from the frozen name count while the SETS are equal "
+        "— a duplicate (file, derivation) row exists in MEGA3_TRACEABLE_INVENTORY"
+    )
 
 
 def test_mega3_row_schema_valid():

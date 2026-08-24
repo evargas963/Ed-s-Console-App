@@ -47,7 +47,7 @@ CATEGORICAL_JUST_RE = re.compile(
     re.I,
 )
 CLOSING_DISPOSITIONS = frozenset({"SCHWAB_LEAF", "REPLACED", "ALLOWLISTED"})
-# Strict row count for test_mega2_scope_complete — bump when adding Mega2TraceableDerivation rows.
+# CLOSED integer ledger for test_mega2_scope_complete (see the named-set conversion below).
 #   201 — baseline (1ece9b3)
 #   205 — +3 (1fc5ce7): _strike_total_oi, _verdict_unavailable, _iwm_confluence_unavailable
 #         +1 (a00e78e): _sector_strength_unavailable
@@ -61,11 +61,24 @@ CLOSING_DISPOSITIONS = frozenset({"SCHWAB_LEAF", "REPLACED", "ALLOWLISTED"})
 #         math_levels.bs_vanna, math_exposure_core.compute_net_charm._tte_memo, and RC-124's
 #         two successors pick_pin_and_strength / pick_net_gex_peak_strike), −1 (the retired
 #         pick_gamma_pin_strike, whose single name carried both of those metrics).
-MEGA2_ROW_COUNT = 262  # -5 TRUTH_V1 retirement (RC-473/474) 2026-08-24: compute_order_flow_verdict, _compute_absorption, _compute_order_flow_score, _direction, _readiness DELETED with the unvalidated composite  # +5 ORDER_FLOW_TRUSTED_VERTICAL_SLICE_1 receive-order identity: _get_receive_log, clear_all_live_state, _clear_all_session_state_unlocked, forget_unsubscribed_symbols, get_receive_log 2026-08-23  # +12 ORDER_FLOW_MARKET_MICROSTRUCTURE_V1 canonical book faucet (RC-445/446/447): order_flow_engine.py _book_side_depth_total, _book_imbalance_from_totals, _sorted_valid_levels, _extract_canonical_book, _canonical_book_identity, _microprice, _book_pressure_curve, _book_slope, _book_concentration, _book_wall_candidates, _microstructure_structural, compute_book_microstructure 2026-08-21  # -2 _pick_wall_abs/_pick_wall_pos deleted (RC-422 CONSENSUS OI/vanna withheld) 2026-08-19  # -1 build_walls_rows.strikes_for deleted (RC-421 CONSENSUS-only walls table) 2026-08-19  # +1 consensus_walls_bind_terrain_ssot (RC-420 CONSENSUS gamma/delta walls bind to terrain SSOT) 2026-08-19  # -1 _pick_gamma_pin deleted (RC-417: ExposureRow.net_gex_peak calls pick_net_gex_peak_strike) 2026-08-19  # +1 flow_imbalance_label_from_normalized (F11/RC-411 one label authority) 2026-08-19  # +9 (RC-354/RC-357..RC-362 desk metrics that shipped without inventory rows: compute_net_vanna, compute_net_dex_dollars, compute_delta_oi_walls, compute_zero_dte_gamma_share, _interp_profile_at, compute_gamma_support_levels + nested _cross, snap_level_to_shelf_strike, compute_25d_risk_reversal) 2026-08-17  # +2 (compute_exposures_by_strike._tte_memo NONE memo-cache; compute_pin_width_pts DERIVED RC-345/F20 pin-width one-producer) 2026-08-14 RC-350 reconciliation  # +4 -1 (added pick_key_delta_strike + nested _total_dex + pick_volatility_point_strikes + _dealer_sign; removed compute_net_charm._resolve_T which was deleted by the intraday-T single-source RC-42) 2026-07-26  # +2 strike-width derivation (infer_strike_increment, required_strike_count) 2026-07-20  # +1 gamma_at_price (regime from gamma sign at spot, RC-11) 2026-07-19 (prior: 223)
+#   262 — -5 TRUTH_V1 retirement (RC-473/474) 2026-08-24: compute_order_flow_verdict, _compute_absorption, _compute_order_flow_score, _direction, _readiness DELETED with the unvalidated composite  # +5 ORDER_FLOW_TRUSTED_VERTICAL_SLICE_1 receive-order identity: _get_receive_log, clear_all_live_state, _clear_all_session_state_unlocked, forget_unsubscribed_symbols, get_receive_log 2026-08-23  # +12 ORDER_FLOW_MARKET_MICROSTRUCTURE_V1 canonical book faucet (RC-445/446/447): order_flow_engine.py _book_side_depth_total, _book_imbalance_from_totals, _sorted_valid_levels, _extract_canonical_book, _canonical_book_identity, _microprice, _book_pressure_curve, _book_slope, _book_concentration, _book_wall_candidates, _microstructure_structural, compute_book_microstructure 2026-08-21  # -2 _pick_wall_abs/_pick_wall_pos deleted (RC-422 CONSENSUS OI/vanna withheld) 2026-08-19  # -1 build_walls_rows.strikes_for deleted (RC-421 CONSENSUS-only walls table) 2026-08-19  # +1 consensus_walls_bind_terrain_ssot (RC-420 CONSENSUS gamma/delta walls bind to terrain SSOT) 2026-08-19  # -1 _pick_gamma_pin deleted (RC-417: ExposureRow.net_gex_peak calls pick_net_gex_peak_strike) 2026-08-19  # +1 flow_imbalance_label_from_normalized (F11/RC-411 one label authority) 2026-08-19  # +9 (RC-354/RC-357..RC-362 desk metrics that shipped without inventory rows: compute_net_vanna, compute_net_dex_dollars, compute_delta_oi_walls, compute_zero_dte_gamma_share, _interp_profile_at, compute_gamma_support_levels + nested _cross, snap_level_to_shelf_strike, compute_25d_risk_reversal) 2026-08-17  # +2 (compute_exposures_by_strike._tte_memo NONE memo-cache; compute_pin_width_pts DERIVED RC-345/F20 pin-width one-producer) 2026-08-14 RC-350 reconciliation  # +4 -1 (added pick_key_delta_strike + nested _total_dex + pick_volatility_point_strikes + _dealer_sign; removed compute_net_charm._resolve_T which was deleted by the intraday-T single-source RC-42) 2026-07-26  # +2 strike-width derivation (infer_strike_increment, required_strike_count) 2026-07-20  # +1 gamma_at_price (regime from gamma sign at spot, RC-11) 2026-07-19 (prior: 223)
 #         _contract_inputs, compute_gamma_profile, gamma_flip_from_profile; compute_gamma_flip
 #         removed and its row reused by compute_gamma_flip_v2)
 #         +1 gamma_is_plausible (math_exposure_core.py) — pre-existing inventory gap from the
 #         greek-sanitization work, closed 2026-07-19
+#
+# 2026-08-24 (audit T2-4) — NAMED-SET CONVERSION. The integer ledger above is CLOSED
+# HISTORY: the row count is no longer hand-bumped. The inventory's membership now lives in
+# tests/frozen/mega2_inventory_names.txt (one "file.py::qualified_name" per line, sorted),
+# and test_mega2_scope_complete diffs the live inventory against it BY NAME, so a
+# legitimate change shows WHICH row arrived or left instead of forcing integer
+# archaeology. MEGA2_ROW_COUNT stays defined for any reader of this module but is DERIVED
+# from the frozen set — never edit it by hand.
+MEGA2_FROZEN_FILE = ROOT / "tests" / "frozen" / "mega2_inventory_names.txt"
+MEGA2_FROZEN_NAMES = frozenset(
+    ln for ln in MEGA2_FROZEN_FILE.read_text(encoding="utf-8").splitlines() if ln
+)
+MEGA2_ROW_COUNT = len(MEGA2_FROZEN_NAMES)  # derived from the frozen name set
 
 
 def _mega_bundles() -> tuple[MegaInventoryBundle, ...]:
@@ -124,9 +137,29 @@ def test_mega2_inventory_covers_every_function():
 
 
 def test_mega2_scope_complete():
+    """Named-set scope gate (T2-4, 2026-08-24): the inventory equals the frozen name set.
+
+    The exact-count pin this replaces survives as the closed comment ledger above
+    MEGA2_ROW_COUNT; from here on a move is accounted for BY NAME, not by integer.
+    """
     inv_files = {r.file for r in MEGA2_TRACEABLE_INVENTORY}
     assert inv_files == set(MEGA2_FILES)
-    assert len(MEGA2_TRACEABLE_INVENTORY) == MEGA2_ROW_COUNT
+    current = {f"{r.file}::{r.derivation}" for r in MEGA2_TRACEABLE_INVENTORY}
+    arrived = sorted(current - MEGA2_FROZEN_NAMES)
+    left = sorted(MEGA2_FROZEN_NAMES - current)
+    assert current == MEGA2_FROZEN_NAMES, (
+        f"Mega2 inventory membership moved.\n"
+        f"ARRIVED (in the inventory, not in the frozen set): {arrived}\n"
+        f"LEFT (in the frozen set, no longer in the inventory): {left}\n"
+        f"A legitimate arrival/departure is a one-line edit to "
+        f"tests/frozen/mega2_inventory_names.txt in the same commit, reviewed by name — "
+        f"do not bulk-regenerate."
+    )
+    # Duplicate guard: set equality alone cannot see a repeated (file, derivation) row.
+    assert len(MEGA2_TRACEABLE_INVENTORY) == MEGA2_ROW_COUNT, (
+        "inventory row count differs from the frozen name count while the SETS are equal "
+        "— a duplicate (file, derivation) row exists in MEGA2_TRACEABLE_INVENTORY"
+    )
 
 
 def test_mega2_row_schema_valid():
