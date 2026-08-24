@@ -327,44 +327,6 @@ def test_turn_self_audit_blast_radius_and_suite_matching(tmp_path):
     assert suites2 == [] and uncovered2 == [ghost]
 
 
-def test_research_before_act_blocks_unnamed_reference():
-    """RC-203 negative control (operator law: research THEN act, institutional, universal):
-    a production change with no named reference FAILS the audit; a concrete artifact (path/
-    §section/URL) clears exactly that failure. Drives the REAL callee."""
-    from tools.turn_self_audit import research_violation
-    assert research_violation("", ["static/exposure.html"]) is not None
-    assert research_violation("thought hard about it", ["static/exposure.html"]) is not None
-    assert research_violation(
-        "static/chart.html clampView §486 settles overscroll semantics",
-        ["static/exposure.html"],
-    ) is None
-    assert research_violation("", []) is None  # governance-only turns need no reference
-
-
-def test_research_before_act_stop_clause_reads_the_audit_record(tmp_path):
-    """RC-203 front end: the Stop guard blocks a production-edit turn whose latest audit
-    record carries no research field; a named reference (or a stale/other-day record, which
-    RC-190 already covers) does not fire this clause. Drives the REAL callee."""
-    import time as _t
-
-    from tools.operator_law_guard import _latest_audit_lacks_research
-    log = tmp_path / "turn_self_audit_log.jsonl"
-    log.write_text(json.dumps({"ts_utc": _t.time(), "changed": ["server.py"],
-                               "research": ""}) + "\n", encoding="utf-8")
-    assert _latest_audit_lacks_research(log) is True
-    # RC-373: the resolvable reference must be a COMMITTED artifact — the old fixture
-    # cited an untracked report that existed only in the author's worktree, so the
-    # control failed on every clean checkout.
-    log.write_text(json.dumps({
-        "ts_utc": _t.time(), "changed": ["server.py"],
-        "research": "docs/CARD_TRUST_CONTRACT.md §card truth",
-    }) + "\n", encoding="utf-8")
-    assert _latest_audit_lacks_research(log) is False
-    log.write_text(json.dumps({"ts_utc": _t.time() - 13 * 3600, "changed": ["server.py"],
-                               "research": ""}) + "\n", encoding="utf-8")
-    assert _latest_audit_lacks_research(log) is False  # stale record is RC-190's problem
-
-
 def test_domain_faucet_lock_blocks_second_faucets():
     """RC-212 negative controls (operator: two faucets 'in any other way they can
     manifest' are strictly prohibited). Drives the REAL callee six ways."""
@@ -392,48 +354,6 @@ def test_domain_faucet_lock_blocks_second_faucets():
     assert domain_faucet_violations("server.py", ok_route, "{broken")
     # math_levels itself is the faucet -> silent
     assert domain_faucet_violations("math_levels.py", greek, reg) == []
-
-
-def test_research_before_act_commit_gate(tmp_path):
-    """RC-205 negative control: the ENFORCED commit clause screams on staged production
-    changes without a same-day research-bearing audit record, and stays silent for a
-    concrete same-day record or governance-only staging. Drives the REAL callee."""
-    import time as _t
-
-    from tools.check_institutional_correctness import research_before_act_violations
-    log = tmp_path / "turn_self_audit_log.jsonl"
-    # (a) RC-396: NO LOG FILE AT ALL is EVIDENCE-ABSENT, not evidence-failing, so it
-    # abstains. This log is deliberately untracked per-turn scratch — a clean checkout has
-    # never held one. The required CI runner stages the candidate (so staged-scope checks
-    # can see it) while being structurally incapable of holding the log, which made every
-    # production PR score a fabricated violation: MEASURED as `research_before_act: 0 -> 1`
-    # on PR #127. Enforcement there belongs to the local PreToolUse/Stop layer, exactly as
-    # check_writer_no_drift already resolves the identity-absent case.
-    assert research_before_act_violations(["server.py"], log) == []
-    # (a2) …and that abstention is NARROW. The moment the operator context exists the law
-    # bites again: an existing-but-EMPTY log is context — the turn ran and recorded nothing.
-    log.write_text("", encoding="utf-8")
-    assert research_before_act_violations(["server.py"], log), (
-        "an existing-but-empty audit log stopped screaming — the abstention widened from "
-        "'no context' into 'no research', which is the law itself")
-    # (a3) a record from ANOTHER DAY is context too; yesterday's research is not this
-    # change's research, so stale evidence must still scream.
-    log.write_text(json.dumps({"ts_utc": _t.time() - 48 * 3600,
-                               "research": "static/chart.html clampView §486"}) + "\n",
-                   encoding="utf-8")
-    assert research_before_act_violations(["server.py"], log), (
-        "a stale record stopped screaming — research must be same-day (RC-205)")
-    # (b) empty research today -> scream
-    log.write_text(json.dumps({"ts_utc": _t.time(), "research": ""}) + "\n", encoding="utf-8")
-    assert research_before_act_violations(["static/exposure.html"], log)
-    # (c) concrete same-day research with RESOLVABLE path -> silent (RC-205)
-    log.write_text(json.dumps({"ts_utc": _t.time(),
-                               "research": "static/chart.html clampView §486 settled overscroll"})
-                   + "\n", encoding="utf-8")
-    assert research_before_act_violations(["static/exposure.html"], log) == []
-    # (d) governance/tests-only staging -> silent even with no record
-    assert research_before_act_violations(
-        ["governance/root_cause_log.md", "tests/test_x.py"], tmp_path / "missing.jsonl") == []
 
 
 def test_operator_law_guard_wired_for_edit_tools():

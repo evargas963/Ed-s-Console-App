@@ -738,42 +738,6 @@ def edit_violations(path: str, new_text: str, ledger: list[dict]) -> list[str]:
 # a verdict about repo/live state that carries no same-turn measurement.
 
 
-#: RC-203 (operator non-negotiable, 2026-08-02: "always research and then act... at an
-#: institutional/mit/bloomberg manner... universal throughout the entire repo"): the audit
-#: record of a production-editing turn must NAME the reference researched before acting.
-#: The drag-clamp defect shipped because view machinery was invented while the reference
-#: implementation (chart.html clampView) sat in the same repo; the bubble layer shipped
-#: against the recorded spec (direction doc §3.3) without re-reading it. Research is an
-#: ACTION with an artifact — the named reference in the audit ledger — so it can be forced.
-def _latest_audit_lacks_research(log: Path | None = None) -> bool:
-    """True when latest same-turn audit fails full research_violation (RC-203/RC-205).
-
-    Empty string used to be the only test; a non-resolving vibe string must also BLOCK."""
-    if log is None:
-        log = Path(__file__).resolve().parent.parent / "reports" / "turn_self_audit_log.jsonl"
-    try:
-        lines = log.read_text(encoding="utf-8", errors="replace").strip().splitlines()
-    except OSError:
-        return False
-    if not lines:
-        return False
-    try:
-        rec = json.loads(lines[-1])
-    except ValueError:
-        return False
-    import time as _time
-    if _time.time() - float(rec.get("ts_utc", 0) or 0) > 12 * 3600:
-        return False
-    changed = list(rec.get("changed") or [])
-    if not changed:
-        return False
-    try:
-        from tools.turn_self_audit import research_violation
-    except ImportError:
-        from turn_self_audit import research_violation  # type: ignore
-    return research_violation(str(rec.get("research", "") or ""), changed) is not None
-
-
 def _supervisor_incomplete(message: str) -> dict:
     """A typed parent-owned result for a child that produced no valid audit result."""
     return {

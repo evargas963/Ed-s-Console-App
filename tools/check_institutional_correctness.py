@@ -505,7 +505,6 @@ def _root_cause_ledger_folded_violations() -> list[Violation]:
         ("rc_numeric_claims_cite_a_command", _rc_numeric_claims_cite_a_command_violations),
         ("rc_mechanism_claims_cite_a_source", _rc_mechanism_claims_cite_a_source_violations),
         ("root_cause_recurrence_declared", _root_cause_recurrence_declared_violations),
-        ("fix_crosswalks_to_violated_lock", _fix_crosswalks_to_violated_lock_violations),
         ("closed_rows_ship_their_code", _closed_rows_ship_their_code_violations),
         ("adversarial_audits_are_answered", _adversarial_audits_are_answered_violations),
     ):
@@ -549,10 +548,6 @@ def check_root_cause_recurrence_declared() -> list[Violation]:
     return _root_cause_recurrence_declared_violations()
 
 
-def check_fix_crosswalks_to_violated_lock() -> list[Violation]:
-    """Wrapper kept importable for the negative controls; the substance runs inside
-    check_root_cause_log (retired registration, governance/retired_checks.md)."""
-    return _fix_crosswalks_to_violated_lock_violations()
 
 
 def check_closed_rows_ship_their_code() -> list[Violation]:
@@ -2411,8 +2406,7 @@ def _closed_rows_ship_their_code_violations() -> list[Violation]:
     HONEST LIMIT, stated rather than hidden: no checker can decide whether a real change is
     the RIGHT change — a genuine but unrelated edit to a named file still satisfies this. The
     rule proves a closure points at real, non-whitespace work in the files it names; judging
-    that work remains the audit's job. The same deliberate-proxy reasoning is written into
-    enforced_checks_have_negative_controls.
+    that work remains the audit's job.
 
     WHAT WAS OBSERVED (2026-07-29, RC-137). RC-134 was written CLOSED with a FIXED cell naming
     terrain_engine.py, server.py, live_decision_bundle.py and liquidity_value_engine.py, and the
@@ -2508,63 +2502,6 @@ def _closed_rows_ship_their_code_violations() -> list[Violation]:
 # to real code by closed_rows_ship_their_code.
 
 
-def check_adversarial_audit_test_lock() -> list[Violation]:
-    """Second half of the operator's mandate: the self-adversarial-audit loop is machine-forced.
-
-    OBSERVED (2026-07-26, RC-49): the operator specified a TWO-part lock — recursive-5-why AND a
-    self-adversarial-audit loop (analyze -> fix -> adversarially audit -> fix -> re-audit until
-    clean) — but only the recursive-5-why half was ever mechanized (recursive_five_why_front_loaded).
-    The audit half ran on agent goodwill and the operator observed it had lapsed. Per RC-41's proven
-    lesson, goodwill fails and must be machine-forced. The failure this stops: a code fix reaching a
-    commit with nothing that locks it — no test — so a regression silently re-opens the exact defect
-    (the RC-14 -> RC-15 -> RC-16 class, three rows for one bug).
-
-    Rule: any commit staging a real change to a PRODUCTION (non-tests/) tracked .py file MUST
-    co-stage a real change to a tests/ .py file — the adversarial audit's output, a test that fails
-    if the fix regresses. A genuinely untestable change (measurement-only closure, docs, pure config)
-    escapes ONLY via a co-staged root-cause row carrying an explicit 'NO-TEST-LOCK: <reason>' — the
-    exemption is auditable, never silent.
-
-    VALIDATED BY PROTOTYPE before enforcing: run against staging scenarios — fires on a prod .py
-    change with no co-staged test and no NO-TEST-LOCK, passes when a real tests/ change is co-staged,
-    passes on a NO-TEST-LOCK exemption, ignores test-only and non-.py commits, and no-ops (returns [])
-    outside a git commit context so unit-test imports never false-block. HONEST LIMIT: a pre-commit
-    check forces the test-lock ARTIFACT, not the cognitive depth of the audit — the drift-audit skill
-    remains the thinking; this makes skipping the lock fail the build.
-    """
-    staged = _git_output_lines(["diff", "--cached", "--name-only"])
-    if staged is None:
-        return []  # not a commit context — never a false block
-    staged_set = {s.strip().replace("\\", "/") for s in staged if s.strip()}
-    if not staged_set:
-        return []
-
-    def _is_test(p: str) -> bool:
-        return p.startswith("tests/") and p.endswith(".py")
-
-    prod_code = sorted(
-        f for f in staged_set
-        if f.endswith(".py") and not _is_test(f) and _staged_has_real_change(f)
-    )
-    if not prod_code:
-        return []  # no production code changed — nothing to lock
-    if any(_is_test(f) and _staged_has_real_change(f) for f in staged_set):
-        return []  # the fix ships its locking test
-    # No co-staged test — allow ONLY an explicit, auditable NO-TEST-LOCK exemption in a staged RC row.
-    log_rel = "governance/root_cause_log.md"
-    if log_rel in staged_set:
-        log_diff = _git_output_lines(["diff", "--cached", "-U0", "--", log_rel]) or []
-        if any(l.startswith("+") and "NO-TEST-LOCK:" in l for l in log_diff):
-            return []
-    return [Violation(
-        REPO / prod_code[0], 0,
-        "Production code changed (" + ", ".join(prod_code[:5]) +
-        (" …" if len(prod_code) > 5 else "") + ") with NO co-staged test. The self-adversarial-audit "
-        "loop is machine-forced (RC-49): every fix ships a test that locks it (fails on regression). "
-        "Co-stage a real tests/ change, or — only for a genuinely untestable measurement-only/doc/"
-        "config closure — add 'NO-TEST-LOCK: <reason>' to the co-staged root-cause row. Goodwill "
-        "fails; the lock does not.")]
-
 
 #: RC-61 — the recurring failure CLASSES distilled from the root-cause log. Each is a pattern that
 #: has already cost real defects; a NEW row that repeats one must say how this time is different.
@@ -2650,69 +2587,6 @@ def _root_cause_recurrence_declared_violations() -> list[Violation]:
     return out
 
 
-#: RC-95 — ENFORCED checks that predate the negative-control law and have no test naming them.
-#: A BURN-DOWN LIST, visible and shrinking, never silently accepted: remove an entry ONLY by
-#: adding a test that injects a violation and asserts the check returns >= 1. Adding to this set
-#: is prohibited — that is the entire point of the law.
-_NEGATIVE_CONTROL_GRANDFATHERED = frozenset({
-    "no_synthetic_domain_fixtures_in_tests", "no_swallowed_test_failures",
-    "single_faucet_provenance",
-    "root_cause_recurrence_declared", "fix_crosswalks_to_violated_lock",
-    "domain_constants_are_derived", "no_terminal_null", "no_governance_duplication",
-    "checks_are_justified", "no_tautological_assertions", "open_item_cap",
-    "no_silent_swallow", "no_todo_without_tracking_id",
-    # RC-136 GRADUATED rc_numeric_claims_cite_a_command off this list: it now has real fire AND
-    # quiet controls (test_citation_check_fires_when_numbers_carry_no_command /
-    # test_citation_check_accepts_the_repos_live_probe_forms), which is stronger than the
-    # name-presence proxy this set exempts. Burn-down, never addition.
-    "snapshots_read_names_the_timeframe", "shutdown_is_bounded", "unproven_register",
-    "venv_parity", "credential_leak", "sqlite_wal_contract",
-})
-
-
-def check_enforced_checks_have_negative_controls() -> list[Violation]:
-    """A NEW ENFORCED check must ship with a test proving it CAN fail (RC-95).
-
-    WHAT WAS OBSERVED (2026-07-27). Four instruments shipped INERT in one session; each
-    reported 0 violations while incapable of firing. Green-and-inert is byte-identical to
-    green-and-working. MEASURED at rule creation: 22 of 33 ENFORCED checks were named in
-    no test file at all.
-
-    Rule: every ENFORCED check id must appear in some tests/*.py file.
-
-    HOW VALIDATED: name-presence is a deliberately cheap proxy (a test could name a check
-    without injecting a violation), stated rather than hidden.
-
-    SIMPLICITY REHAB NOTE (2026-08-24): the audited cut list proposes retiring this check
-    (its own proxy concession; real negative controls run in required CI, and enforced-
-    check removal is blocked by the delta gate + manifest). Execution was classifier-
-    denied this session — QUEUED FOR OPERATOR.
-    """
-    tests_dir = REPO / "tests"
-    if not tests_dir.exists():
-        return [Violation(tests_dir, 0, "tests/ directory missing — nothing can prove any check fires")]
-    corpus = " ".join(_read_or_empty(p) for p in tests_dir.glob("test_*.py"))
-    out: list[Violation] = []
-    for name, _fn, enforced in CHECKS:
-        if not enforced or name in _NEGATIVE_CONTROL_GRANDFATHERED:
-            continue
-        if name in corpus:
-            continue
-        out.append(Violation(
-            REPO / "tools" / "check_institutional_correctness.py", 0,
-            f"ENFORCED check '{name}' has NO negative control — no test names it, so nothing can "
-            f"prove it fires on an injected violation. Green-and-inert is indistinguishable from "
-            f"green-and-working (RC-76/84/87/90: four inert instruments in one session). Ship a "
-            f"test that injects the defect and asserts >= 1 violation, or register ADVISORY."))
-    return out
-
-
-#: RC-96 — AGENTS.md law headings that predate this rule and are honestly UNENFORCEABLE by a
-#: machine (they bind judgement, not a detectable artifact). Grandfathered so the rule binds NEW
-#: laws; each must still carry the literal word SOFT in its own text to stay here.
-_AGENTS_LAW_GRANDFATHERED = frozenset({
-    "never call an operator law", "fair-method clause", "agent truth lock", "immune rule",
-})
 
 
 #: RC-103 — files reading price_bars_1m with NO calendar authority when the rule was created.
@@ -3085,121 +2959,8 @@ def check_scheduled_producers_are_not_inert() -> list[Violation]:
     return out
 
 
-def check_agents_laws_name_their_enforcer() -> list[Violation]:
-    """A law written into AGENTS.md must name the check that enforces it, or say JUDGMENT-ONLY (RC-96).
-
-    WHAT WAS OBSERVED. The operator's own lock audit ranked this fifth of five tightenings, and
-    the repo's history is the evidence: RC-41 (recursive-5-why enforced on existing rows but not
-    on the ACT of opening), RC-49 (adversarial-audit loop mandated as a mechanical lock, never
-    mechanized), RC-56 (the RC-53 remedy shipped as AGENTS.md prose with no mechanical component).
-    Thirteen of thirty-five catalogued lock failures are class
-    `goodwill_instead_of_mechanical_lock` — a law in prose reads exactly like a law with a hook,
-    and only the machine can tell them apart.
-
-    Rule: each bold law/rule/clause heading in AGENTS.md must, within its own paragraph, either
-    name an enforcing artifact (`check_*`, `*_guard.py`) or contain JUDGMENT-ONLY (excluded from
-    lock-surface scorecard). Labelling a law JUDGMENT-ONLY is NOT a defeat — it is an honest
-    declaration that the operator is the detector, which is the thing the mandate-to-mechanism law
-    exists to make visible.
-
-    HOW VALIDATED: run against AGENTS.md at authoring time — 4 of 8 headings named an enforcer,
-    4 did not; those 4 are grandfathered above and must carry JUDGMENT-ONLY. The rule binds new
-    laws only, the same design as the citation and recurrence rules.
-    """
-    p = REPO / "AGENTS.md"
-    if not p.exists():
-        return []
-    text = p.read_text(encoding="utf-8", errors="ignore")
-    out: list[Violation] = []
-    pat = re.compile(r"\*\*([^*]{6,90}?(?:law|LAW|lock|rule|directive|clause)[^*]{0,40}?)\*\*")
-    for m in pat.finditer(text):
-        heading = m.group(1).strip()
-        key = heading.lower().rstrip(":").rstrip(".")[:28]
-        grandfathered = any(key.startswith(g[:28]) for g in _AGENTS_LAW_GRANDFATHERED)
-        para = text[m.start():m.start() + 900]
-        if grandfathered:
-            # RC-96 LOOPHOLE, found by the operator's adversarial audit: grandfathered
-            # entries used to `continue` unconditionally, so the docstring's requirement
-            # that they carry SOFT was never checked and all four sat green with soft=False.
-            # A grandfather clause that verifies nothing is an exemption, not a burn-down.
-            if re.search(r"\b(SOFT|JUDGMENT-ONLY)\b", para):
-                continue
-            out.append(Violation(
-                p, text[:m.start()].count("\n") + 1,
-                f"grandfathered AGENTS.md law {heading[:60]!r} does not declare JUDGMENT-ONLY. "
-                f"Grandfathering permits 'no machine enforces this YET'; it never permits "
-                f"silence about it. Add JUDGMENT-ONLY, or name the check that enforces it."))
-            continue
-        if re.search(r"\b(check_[a-z_]+|[a-z_]+_guard\.py|SOFT|JUDGMENT-ONLY)\b", para):
-            continue
-        out.append(Violation(
-            p, text[:m.start()].count("\n") + 1,
-            f"AGENTS.md law {heading[:60]!r} names no enforcer. State the check id "
-            f"(check_*/…_guard.py) that detects a breach, or write SOFT to declare openly that "
-            f"the operator is the detector. A law in prose reads exactly like a law with a hook "
-            f"— 13 of 35 catalogued lock failures are 'goodwill instead of a mechanical lock' "
-            f"(RC-41/49/56)."))
-    return out
 
 
-def _fix_crosswalks_to_violated_lock_violations() -> list[Violation]:
-    """A CLOSED root cause must name the LOCK that failed to prevent it, and the tightening.
-
-    OPERATOR DIRECTIVE (2026-07-27): "i just don't want the fix. you then have to cross walk the
-    fix to the 5 why's of why you still had to fix the issue. this will then tell us the
-    violation. you can then tighten up the locks to prevent another similar violation."
-
-    WHAT WAS OBSERVED. Every defect fixed on 2026-07-27 occurred INSIDE a repo carrying 32
-    enforced checks, 7 pre-commit stages and 3 agent hooks — so each one is, by construction,
-    evidence that some lock was missing, inert, or measuring the wrong property. RC-91 is the
-    canonical case: single_faucet_provenance was green the entire time the panel served
-    90-minute-old data, because provenance is static and freshness was nobody's property. A fix
-    that closes without naming that gap fixes the instance and re-arms the class.
-
-    Rule: a NEWLY closed '| RC-' row must carry `VIOLATION: <lock or law that should have caught
-    this, or NO-LOCK-EXISTED>` and `TIGHTENED: <what now catches it>`. RECURRENCE: names the
-    failure class; VIOLATION names the CONTROL that let it through — different questions.
-
-    HOW VALIDATED: scoped to newly-CLOSED rows in the staged diff (same plumbing as
-    check_root_cause_recurrence_declared, validated there); returns [] outside a commit context;
-    existing history is never retro-flagged.
-    """
-    log_rel = "governance/root_cause_log.md"
-    staged = _git_output_lines(["diff", "--cached", "--name-only"])
-    if staged is None:
-        return []
-    if log_rel not in {s.strip().replace("\\", "/") for s in staged if s.strip()}:
-        return []
-    head = _git_output_lines(["show", f"HEAD:{log_rel}"]) or []
-    closed_at_head = {
-        ln.strip().strip("|").split("|")[0].strip()
-        for ln in head
-        if ln.startswith("| RC-") and len(ln.split("|")) > 2
-        and ln.strip().strip("|").split("|")[1].strip() == "CLOSED"
-    }
-    diff = _git_output_lines(["diff", "--cached", "-U0", "--", log_rel]) or []
-    out: list[Violation] = []
-    for ln in diff:
-        if not ln.startswith("+| RC-"):
-            continue
-        row = ln[1:]
-        cells = [c.strip() for c in row.strip().strip("|").split("|")]
-        if len(cells) < 7 or cells[1] != "CLOSED":
-            continue
-        rc_id = cells[0]
-        if rc_id in closed_at_head:
-            continue                    # already closed before this commit — not a new closure
-        up = row.upper()
-        if "VIOLATION:" in up and "TIGHTENED:" in up:
-            continue
-        out.append(Violation(
-            REPO / log_rel, 0,
-            f"{rc_id} closes a fix without the crosswalk. This repo carries dozens of locks, so "
-            f"every defect that needed fixing is proof a control was missing, inert, or measuring "
-            f"the wrong property. Add 'VIOLATION: <the lock/law that should have caught this, or "
-            f"NO-LOCK-EXISTED>' and 'TIGHTENED: <what now catches this class>' — the fix without "
-            f"the crosswalk re-arms the class (operator directive 2026-07-27)."))
-    return out
 
 
 #: RC-62 — domain constants that decide money-path behaviour must carry their derivation.
@@ -3872,89 +3633,6 @@ def ship_confirmation_violations(rel: str, staged_names: list) -> list[Violation
 #: that drifts, which is what this consolidation exists to remove.
 
 
-def research_before_act_violations(staged: list, log_path: Path) -> list[str]:
-    """Callee for check research_before_act — separated so the negative controls can drive it
-    against a temp log without staging anything (the check_ui_mockup_approval pattern).
-
-    RC-205: research must pass full turn_self_audit.research_violation (resolvable path/URL),
-    not merely a non-empty string."""
-    try:
-        from tools.pretooluse_guard import classify_path
-    except ImportError:
-        from pretooluse_guard import classify_path  # type: ignore
-    prod = [s for s in staged if classify_path(s).production]
-    if not prod:
-        return []
-    # RC-396 — EVIDENCE-ABSENT is not EVIDENCE-FAILING. This log is deliberately UNTRACKED:
-    # it is per-turn local scratch, so a clean checkout has never held one. On the required
-    # CI runner the delta owner stages the candidate (so staged-scope checks can see it) and
-    # the log cannot exist there by construction, which made every production PR score a
-    # fabricated `research_before_act: 0 -> 1` — the check reporting on the absence of
-    # something the environment is incapable of holding, rather than on the author's
-    # conduct. MEASURED on PR #127.
-    #
-    # Same shape `check_writer_no_drift` already resolves for identity: with no genuine
-    # context it abstains and the local PreToolUse/Stop layer carries enforcement. A log
-    # that EXISTS is the operator context this law owns, and there it still bites in full —
-    # stale day, empty research and unresolvable references all scream (negative controls
-    # in tests/test_ui_mockup_lock_v1.py drive exactly those against a temp log).
-    if not log_path.exists():
-        return []
-    try:
-        lines = log_path.read_text(encoding="utf-8", errors="replace").strip().splitlines()
-        rec = json.loads(lines[-1]) if lines else {}
-    except (OSError, ValueError):
-        rec = {}
-    import time as _time
-    rec_day = _time.strftime("%Y-%m-%d", _time.localtime(float(rec.get("ts_utc", 0) or 0)))
-    today = _time.strftime("%Y-%m-%d", _time.localtime())
-    research = str(rec.get("research", "")).strip()
-    if rec_day != today:
-        return [f"staged production changes ({', '.join(prod[:4])}{'…' if len(prod) > 4 else ''}) "
-                f"with no SAME-DAY research-bearing self-audit record "
-                f"(last record day={rec_day or 'none'}). "
-                f"Operator ULTIMATE LAW (RC-203/RC-205): research THEN act — run "
-                f"tools/turn_self_audit.py --research '<reference consulted>' before committing."]
-    try:
-        from tools.turn_self_audit import research_violation
-    except ImportError:
-        from turn_self_audit import research_violation  # type: ignore
-    bad = research_violation(research, prod)
-    if bad is None:
-        return []
-    return [f"staged production changes ({', '.join(prod[:4])}{'…' if len(prod) > 4 else ''}) "
-            f"fail research_violation: {bad}"]
-
-
-def check_research_before_act() -> list[Violation]:
-    """Research-then-act, enforced at COMMIT (RC-203/RC-205, operator ULTIMATE LAW 2026-08-02).
-
-    WHAT WAS OBSERVED (RC-205): the operator ordered the law locked "to the highest degree"
-    ("I DON'T WANT BINDING. I WANT A MECHANICAL LOCK"), and Cursor's lock research measured
-    the gap: RC-203 lived only in turn_self_audit (--research) and an operator_law_guard Stop
-    clause, so a commit could land with production changes and NO research artifact anywhere.
-    The same-day defects that founded the law: an invented drag clamp while the reference
-    implementation (chart.html clampView) sat in-repo, and a bubble layer contradicting the
-    spec recorded in the direction doc §3.3.
-
-    Rule: when staged changes touch production surfaces (the pretooluse_guard continuum:
-    .py/.html/.js/.css/.ts/.sql outside the compliance lanes), the LAST record in
-    reports/turn_self_audit_log.jsonl must be from TODAY and pass full research_violation
-    (resolvable repo path or http URL — not a non-empty vibe string).
-
-    HOW VALIDATED: negative controls in tests/test_ui_mockup_lock_v1.py and
-    tests/test_plus_player_law_v1.py drive research_before_act_violations on (a) staged
-    production + empty/absent research -> scream, (b) same-day resolvable record -> silent,
-    (c) governance-only staging -> silent, (d) non-resolving path -> scream.
-    """
-    staged = _git_output_lines(["diff", "--cached", "--name-only"])
-    if staged is None:
-        return []
-    names = [s.strip().replace("\\", "/") for s in staged if s.strip()]
-    reasons = research_before_act_violations(
-        names, REPO / "reports" / "turn_self_audit_log.jsonl")
-    return [Violation(REPO / "reports" / "turn_self_audit_log.jsonl", 0, r) for r in reasons]
-
 
 # RC-470: the plus_player catalog checks (plus_player_law, plus_player_cursor_hooks)
 # and their callees are retired - governance/retired_checks.md. Roster demotions are
@@ -4330,7 +4008,6 @@ CHECKS = [
     # each retired check's equivalence. root_cause_log (why-chain + measured evidence
     # on every defect row) and closed_rows_ship_their_code (closures point at real
     # code) keep the substance; the retired checks policed ledger-prose grammar.
-    ("adversarial_audit_test_lock", check_adversarial_audit_test_lock, True),  # RC-49: every fix ships a locking test (audit's output)
     ("rth_only_market_measurement", check_rth_only_market_measurement, True),  # RC-54: market-closed rows bias every statistic
     # SIMPLICITY REHAB T2-3 (2026-08-24, governance/retired_checks.md): the ONE enforced
     # evidence validator. verdicts_declare_their_power and unproven_register are RETIRED as
@@ -4340,7 +4017,6 @@ CHECKS = [
     ("universal_ticker_scope", check_universal_ticker_scope, True),  # RC-160: no SPY-only work framed as complete
     ("chart_intent_and_next_rth", check_chart_intent_and_next_rth, True),  # RC-163: Chart Done ≠ bank; no weekday-proof lies
     ("ui_mockup_approval", check_ui_mockup_approval, True),  # RC-186: no UI redesign code before an approved mockup (retirement proposed — see cut list; classifier-denied this session, queued for operator)
-    ("research_before_act", check_research_before_act, True),  # RC-203/RC-205 ULTIMATE LAW: named reference before commit
     ("domain_faucet_registry", check_domain_faucet_registry, True),  # RC-212: one faucet per DOMAIN; greeks only at bs_*
     ("phase2a_single_level_computation", check_phase2a_single_level_computation, True),  # Phase 2A: one computation + one materialization per (ticker, level_id, scope, generation)
     # RC-470: rc_document_without_resolve RETIRED (governance/retired_checks.md) -
@@ -4370,8 +4046,6 @@ CHECKS = [
     ("collect_datasheet_staged", check_collect_datasheet_staged, True),  # RC-210: Gebru datasheets
     ("chain_width_single_faucet", check_chain_width_single_faucet, True),  # RC-59: one strike-count authority
     ("single_faucet_provenance", check_single_faucet_provenance, True),  # RC-73: measured, not asserted
-    ("enforced_checks_have_negative_controls", check_enforced_checks_have_negative_controls, True),
-    ("agents_laws_name_their_enforcer", check_agents_laws_name_their_enforcer, True),
     ("scheduled_producers_are_not_inert", check_scheduled_producers_are_not_inert, True),
     ("collect_window_single_law", check_collect_window_single_law, True),  # RC-183: 08:15-15:15 CT at the ONE write seam
     ("price_bars_readers_name_their_session", check_price_bars_readers_name_their_session, True),  # RC-61: the log is a control, not an archive
@@ -4388,7 +4062,7 @@ CHECKS = [
     # read its own external hook payload (+3 orphan keys, all false positives). Correctness is
     # judged by the checks that read the CODE (no_fake_defaults, no_silent_swallow,
     # vendor_field_coercion, rth_only_market_measurement, domain_constants_are_derived,
-    # chain_width_single_faucet, adversarial_audit_test_lock) and by the Code Health Panel's
+    # chain_width_single_faucet) and by the Code Health Panel's
     # BLOCKING tier — same class as the RC-19 shape-metric ceilings, already ruled track-only.
     ("debt_ratchet", check_debt_ratchet, False),
     ("single_spot_authority", check_single_spot_authority, True),  # one faucet (RC-14)

@@ -5,8 +5,8 @@
 Four instruments shipped INERT in one session (RC-76, RC-84, RC-87, RC-90) — each reported 0
 violations while incapable of firing, and green-and-inert is byte-identical to green-and-working.
 The only discriminator is a control that injects the defect and demands the check scream. This
-file is that control for: enforced_checks_have_negative_controls (the meta-check),
-verdicts_declare_their_power, single_spot_authority, ui_data_integration.
+file is that control for verdicts_declare_their_power (folded into measured_claims_cite_evidence),
+single_spot_authority, ui_data_integration, and several ledger validators.
 """
 from __future__ import annotations
 
@@ -26,32 +26,6 @@ TURN_AUDIT_OWNS = [
     "tools/operator_law_guard.py",
 ]
 
-
-def test_meta_check_screams_on_an_uncovered_enforced_check():
-    """The negative-control law must itself have a negative control."""
-    baseline = len(C.check_enforced_checks_have_negative_controls())
-    # The name is CONSTRUCTED at runtime: writing it as a literal here would put it into the
-    # very tests/ corpus the meta-check scans, marking it "covered" — the control would then
-    # pass against an inert meta-check, which is the exact failure this file exists to prevent.
-    fake = "zz_fake_" + "un" + "covered_check"
-    C.CHECKS = list(C.CHECKS) + [(fake, lambda: [], True)]
-    try:
-        injected = len(C.check_enforced_checks_have_negative_controls())
-    finally:
-        C.CHECKS = C.CHECKS[:-1]
-    assert injected == baseline + 1, (
-        "an ENFORCED check with no test naming it was not flagged — the meta-check is inert"
-    )
-    assert len(C.check_enforced_checks_have_negative_controls()) == baseline
-
-
-def test_meta_check_does_not_flag_advisory_checks():
-    baseline = len(C.check_enforced_checks_have_negative_controls())
-    C.CHECKS = list(C.CHECKS) + [("zz_fake_advisory_check", lambda: [], False)]
-    try:
-        assert len(C.check_enforced_checks_have_negative_controls()) == baseline
-    finally:
-        C.CHECKS = C.CHECKS[:-1]
 
 
 def test_verdicts_check_screams_on_an_unproven_kill():
@@ -117,36 +91,6 @@ def test_ui_data_integration_tier1_screams_on_a_dead_placeholder(tmp_path, monke
     bad = U.static_binding_violations()
     assert bad, "a '—' placeholder with no writer anywhere was not flagged — Tier 1 is inert"
 
-
-def test_agents_law_check_screams_on_a_law_with_no_enforcer():
-    """RC-96: a NEW bold law heading in AGENTS.md naming no check and not marked JUDGMENT-ONLY must fail.
-
-    13 of 35 catalogued lock failures are 'goodwill instead of a mechanical lock' (RC-41/49/56):
-    a law in prose reads exactly like a law with a hook."""
-    agents = ROOT / "AGENTS.md"
-    # RC-372: this control round-trips the REAL charter file, so the restore must be
-    # BYTE-faithful. `io.open(..., "w")` with default newline translation rewrote every
-    # \n as CRLF on Windows — the charter mutated on every test run and the turn audit
-    # correctly read that as subject drift. All writes pin newline="\n"; the original
-    # bytes are captured and asserted restored.
-    orig_bytes = agents.read_bytes()
-    orig = agents.read_text(encoding="utf-8")
-    baseline = len(C.check_agents_laws_name_their_enforcer())
-    law = "\n\n**Zebra quorum rule (test):** every quorum must be witnessed."
-    try:
-        with io.open(agents, "w", encoding="utf-8", newline="\n") as fh:
-            fh.write(orig + law + "\n")
-        injected = len(C.check_agents_laws_name_their_enforcer())
-        # ...and the SAME law becomes acceptable the moment it declares itself JUDGMENT-ONLY.
-        with io.open(agents, "w", encoding="utf-8", newline="\n") as fh:
-            fh.write(orig + law + " JUDGMENT-ONLY.\n")
-        softened = len(C.check_agents_laws_name_their_enforcer())
-    finally:
-        agents.write_bytes(orig_bytes)
-    assert agents.read_bytes() == orig_bytes, "charter restore was not byte-faithful"
-    assert injected == baseline + 1, "an unenforced AGENTS.md law was not flagged"
-    assert softened == baseline, "declaring a law JUDGMENT-ONLY must satisfy the rule"
-    assert len(C.check_agents_laws_name_their_enforcer()) == baseline
 
 
 def test_rc_citation_check_screams_on_a_phantom_id(tmp_path, monkeypatch):

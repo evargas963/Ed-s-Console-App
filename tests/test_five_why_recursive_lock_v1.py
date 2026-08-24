@@ -55,69 +55,6 @@ def test_null_reports_require_next_depth_post_cutover():
 # ── RC-49: adversarial-audit test-lock (every fix ships a locking test) ────────
 
 
-def _fake_git(name_only, log_diff=None):
-    """Simulate the staged-diff git seam: name-only listing + optional log -U0 diff."""
-    def fake(args):
-        if args[:3] == ["diff", "--cached", "--name-only"]:
-            return name_only
-        if args[:3] == ["diff", "--cached", "-U0"]:
-            return log_diff or []
-        return []
-    return fake
-
-
-def _install_fake_git(monkeypatch, name_only, log_diff=None):
-    import tools.check_institutional_correctness as cic
-    monkeypatch.setattr(cic, "_git_output_lines", _fake_git(name_only, log_diff))
-    monkeypatch.setattr(cic, "_staged_has_real_change", lambda rel: True)
-    return cic
-
-
-def test_adversarial_lock_fires_on_prod_change_without_test(monkeypatch):
-    cic = _install_fake_git(monkeypatch, ["server.py"])
-    v = cic.check_adversarial_audit_test_lock()
-    assert len(v) == 1 and "NO co-staged test" in v[0].msg
-
-
-def test_adversarial_lock_passes_with_costaged_test(monkeypatch):
-    cic = _install_fake_git(monkeypatch, ["server.py", "tests/test_server_gate.py"])
-    assert cic.check_adversarial_audit_test_lock() == []
-
-
-def test_adversarial_lock_passes_with_no_test_lock_exemption(monkeypatch):
-    cic = _install_fake_git(
-        monkeypatch,
-        ["scoreboard_report.py", "governance/root_cause_log.md"],
-        log_diff=["+| RC-99 | CLOSED | 2026-07-26 | 2026-08-02 | d | (1)->(2)->(3)->(4)->(5) ROOT: x | "
-                  "MEASURED, VERIFIED. END-TO-END: a->b. NO-TEST-LOCK: measurement-only closure, no code path |"],
-    )
-    assert cic.check_adversarial_audit_test_lock() == []
-
-
-def test_adversarial_lock_exemption_requires_the_marker_not_just_a_staged_log(monkeypatch):
-    # Log staged but the added row carries NO 'NO-TEST-LOCK:' marker -> still fires.
-    cic = _install_fake_git(
-        monkeypatch,
-        ["scoreboard_report.py", "governance/root_cause_log.md"],
-        log_diff=["+| RC-99 | CLOSED | 2026-07-26 | 2026-08-02 | d | why | fix without the marker |"],
-    )
-    v = cic.check_adversarial_audit_test_lock()
-    assert len(v) == 1 and "NO co-staged test" in v[0].msg
-
-
-def test_adversarial_lock_ignores_test_only_and_non_py_commits(monkeypatch):
-    cic = _install_fake_git(monkeypatch, ["tests/test_x.py", "README.md", "config.json"])
-    assert cic.check_adversarial_audit_test_lock() == []
-
-
-def test_adversarial_lock_noops_outside_a_commit_context(monkeypatch):
-    import tools.check_institutional_correctness as cic
-    monkeypatch.setattr(cic, "_git_output_lines", lambda args: None)
-    assert cic.check_adversarial_audit_test_lock() == []
-
-
-# ── RC-54: RTH-only market measurement (market-closed rows bias every statistic) ──
-
 
 def _rth_scan(tmp_path, monkeypatch, name: str, src: str):
     """Run the real detector over a single synthetic file."""

@@ -617,7 +617,7 @@ def test_measurement_worktrees_do_not_inherit_the_caller_s_git_bindings():
 
     A git hook runs with repository bindings exported, and children inherit them. With the
     seam wired in, `git diff --cached` executed INSIDE a freshly materialised measurement
-    worktree read the CALLER'S index: `research_before_act` then reported the caller's
+    worktree read the CALLER'S index: a staged-scope check then reported the caller's
     staged files and the candidate scored +1 against its own base — contamination that
     reads as NEW DEBT and blocks honest commits. The clean detached worktree IS the
     isolation this tool rests on; an inherited GIT_INDEX_FILE silently dissolves it.
@@ -691,22 +691,6 @@ def test_the_candidate_worktree_presents_the_change_as_STAGED(tmp_path, monkeypa
             _git(repo, "rev-parse", "HEAD").strip(), "HEAD must sit at the candidate's parent"
     finally:
         _git(repo, "worktree", "remove", "--force", str(wt))
-
-
-def test_local_evidence_the_checks_read_is_carried_into_the_worktree(tmp_path, monkeypatch):
-    """`research_before_act` reads a GITIGNORED log; absent, it fires on every candidate."""
-    assert "reports/turn_self_audit_log.jsonl" in GATE._LOCAL_EVIDENCE, GATE._LOCAL_EVIDENCE
-
-    repo = tmp_path / "src"
-    (repo / "reports").mkdir(parents=True)
-    (repo / "reports" / "turn_self_audit_log.jsonl").write_text('{"a":1}\n', encoding="utf-8")
-    wt = tmp_path / "wt"
-    wt.mkdir()
-    monkeypatch.setattr(GATE, "REPO", repo)
-    GATE._copy_local_evidence(wt)
-
-    copied = wt / "reports" / "turn_self_audit_log.jsonl"
-    assert copied.is_file() and copied.read_text(encoding="utf-8") == '{"a":1}\n'
 
 
 def test_the_precommit_seam_measures_the_check_roster_not_the_whole_tree_delta():
@@ -862,20 +846,11 @@ def test_rc466_corrupt_cache_falls_back_to_fresh(tmp_path, monkeypatch):
         assert GATE._read_base_cache("k1") is None, garbage
 
 
-def test_rc466_key_covers_changed_evidence_and_unresolvable_ref(tmp_path, monkeypatch):
-    """The key must change when an input the base measurement depends on changes -
-    otherwise a stale hit could silently serve wrong counts."""
-    # Pin the evidence input to a controlled tmp file. An ABSOLUTE member wins the
-    # `REPO / rel` join, so the real repo (and its git) stays untouched.
-    ev = tmp_path / "evidence.jsonl"
-    ev.write_text("{}", encoding="utf-8")
-    monkeypatch.setattr(GATE, "_LOCAL_EVIDENCE", (str(ev),))
-    k1 = GATE._base_cache_key("HEAD")
-    assert k1, "a real ref must produce a key"
-    ev.write_text('{"changed": true}', encoding="utf-8")
-    k2 = GATE._base_cache_key("HEAD")
-    assert k2 and k1 != k2, "changed local evidence must invalidate the cache"
-    # An unresolvable ref yields NO key (never a guessable one, never a stale hit).
+def test_rc466_key_refuses_an_unresolvable_ref():
+    """An unresolvable ref yields NO key (never a guessable one, never a stale hit).
+    (The gitignored local-evidence input this key once also covered was removed with
+    `research_before_act` — 2026-08-24 teardown; the key now hashes ref + parser + python.)"""
+    assert GATE._base_cache_key("HEAD"), "a real ref must produce a key"
     assert GATE._base_cache_key("no-such-ref-xyz") is None
 
 
