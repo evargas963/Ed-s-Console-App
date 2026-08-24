@@ -697,6 +697,7 @@ lstm_data.py::encoded_width_1m_for_checkpoint
 lstm_data.py::encoded_width_5m
 lstm_data.py::encoded_width_5m_for_checkpoint
 lstm_data.py::extract_rth_snapshots
+lstm_data.py::micro_reference_spot_from_window
 lstm_data.py::refresh_sequence_feature_lists
 lstm_data.py::sequence_encoder_checkpoint_issues
 lstm_model.py::DualStreamLSTM.build_model.__init__
