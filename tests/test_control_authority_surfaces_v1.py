@@ -204,10 +204,13 @@ def test_mutation_enforcement_allowlist_is_gone():
     assert "if agent != \"cursor\"" not in src
     tree = ast.parse(src)
     for node in ast.walk(tree):
-        if isinstance(node, ast.FunctionDef) and node.name == "is_pm_allowlisted":
+        if isinstance(node, ast.FunctionDef) and node.name == "control_authority_violation":
             dumped = ast.dump(node)
-            assert "is_enforcement_surface" not in dumped
+            # RC-462: the decision must rest on the ACTING PRINCIPAL and the path, never
+            # on a role/writer/auditor field that an agent could type into a file.
             assert "is_control_authority_surface" in dumped
+            for role_field in ("writer", "auditor", "sole_writer", "scope_paths"):
+                assert role_field not in dumped, role_field
 
 
 @pytest.mark.parametrize("agent", ["cursor", "claude", "codex"])

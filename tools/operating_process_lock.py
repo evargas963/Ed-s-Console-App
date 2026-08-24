@@ -26,7 +26,6 @@ REPO = Path(__file__).resolve().parent.parent
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
-SOLE_WRITER_PATH = REPO / "governance" / "sole_writer.json"  # NON-AUTHORITATIVE tombstone (RC-456)
 OPERATOR_GO_PATH = REPO / "governance" / "operator_go.json"
 # Mission COORDINATION metadata only (RC-461) - never authorization.
 PM_MISSION_PATH = REPO / "governance" / "pm_mission.json"
@@ -139,54 +138,12 @@ def reset_guard_violations(command: str) -> list[str]:
     return []
 
 #: Process-lock edits to governance process files are always allowed (compliance path).
-PROCESS_ALLOWED_PREFIXES = (
-    "governance/AGENT_OPERATING_PROCESS_V1.md",
-    "governance/PM_MANDATE.md",
-    "governance/REHAB_PROGRAM.md",
-    "governance/sole_writer.json",
-    "governance/operator_go.json",
-    "governance/pm_mission.json",
-    "governance/root_cause_log.md",
-    "reports/process_mechanical_locks_v1.md",
-    "reports/rehab_latest.md",
-    "reports/rehab_latest.json",
-    "reports/rehab_queue.jsonl",
-    "tests/test_operating_process_lock_v1.py",
-    "tests/test_rehab_daily_scan_v1.py",
-    "tests/test_writer_drift_lock_v1.py",
-    "tools/operating_process_lock.py",
-    "tools/process_lock_guard.py",
-    "tools/pretooluse_guard.py",
-    "tools/rehab_daily_scan.py",
-    "tools/writer_drift_lock.py",
-    "tools/rc_resolve_lock.py",
-    "tools/check_institutional_correctness.py",
-    "tests/test_rc_document_without_resolve_v1.py",
-    ".cursor/rules/07-cursor-pm.mdc",
-    ".cursor/rules/08-no-writer-drift.mdc",
-    "ACTIVE_PROGRAM.md",
-    "AGENTS.md",
-)
+# RC-462: PROCESS_ALLOWED_PREFIXES and MISSION_GATED_PREFIXES are gone. They
+# described which paths a 'non-writer' could touch and which needed an in-progress
+# mission - both concepts are retired. There are no designated roles: the operator
+# says what they want done, and the only standing rule is that an acting AI cannot
+# edit the files that decide who is in charge.
 
-#: Product paths that require an active PM mission (RC-219) in addition to sole_writer.
-MISSION_GATED_PREFIXES = (
-    "db.py",
-    "server.py",
-    "time_et.py",
-    "static/",
-    "calibration/",
-    "tools/check_institutional_correctness.py",
-    "tools/honesty_guard.py",
-    "tools/plus_player_locks.py",
-    "tools/find_prove_locks.py",
-    "tools/ui_mockup_lock.py",
-    "tools/pretooluse_guard.py",
-    "tools/operator_law_guard.py",
-    "math_exposure_core.py",
-    "math_levels.py",
-    "liquidity_value_engine.py",
-    "liquidity_models.py",
-)
 
 _COMPLETION_CLAIM = re.compile(
     r"\b("
@@ -232,11 +189,6 @@ def _load_json(path: Path) -> dict | None:
         return json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError, json.JSONDecodeError):
         return None
-
-
-def sole_writer_record() -> dict:
-    """Tombstone only (RC-454/RC-456). Not executable authorization."""
-    return {"_authority": "NON-AUTHORITATIVE", "pm": "operator", "retired": True}
 
 
 def operator_go_record() -> dict:
@@ -874,10 +826,8 @@ def completion_claim_violations(text: str, repo: Path | None = None) -> list[str
     if disk and _LIVE_RC_CLAIM.search(text) and not _DISK_ONLY_TOKEN.search(text):
         out.append(f"completion claim LIVE_ENFORCED while {disk}")
     # (LOCK-5 runs above via _quiet_pass_required_violations — independent trigger.)
-    staged_head = staged_enforced_checks_not_on_head(root)
-    if staged_head and re.search(r"\b(iceberg ready|ready to commit|one intentional tree)\b", text, re.I):
-        if not operator_go_granted("staged_lock_surface"):
-            out.extend(staged_head)
+    # RC-463: saying "ready to commit" while a lock surface is staged is no longer a
+    # blocked claim - the assistant commits its own work, so there is nothing to grant.
     # RC-228: COMPLETE claims while the active mission still owns OPEN RC rows.
     if re.search(r"\b(mission\s+complete|done_criteria|COMPLETE(?:/CLOSED)?)\b", text, re.I):
         try:
@@ -906,16 +856,10 @@ def commit_violations(repo: Path | None = None) -> list[str]:
     mism = index_worktree_mismatches(root, only_staged=True)
     if mism:
         out.append("commit BLOCKED: staged enforcement path index≠WT — " + "; ".join(mism))
-    staged_head = staged_enforced_checks_not_on_head(root)
-    if staged_head and not operator_go_granted("staged_lock_surface"):
-        out.extend(f"commit BLOCKED: {msg} — set governance/operator_go.json granted=true" for msg in staged_head)
     out.extend(precommit_orphan_patch_warnings(root))
-    # RC-454: assigned principal staging control-authority rails → commit BLOCK.
-    out.extend(
-        WDL.live_writer_drift_violations(
-            root, agent=current_agent_role(), staged_only=True
-        )
-    )
+    # RC-463: no PERMISSION gate here. Who may change the authority files is decided by
+    # operator review at merge (CODEOWNERS + branch protection on main), not by a second
+    # copy of that rule inside the commit hook. Only mechanical integrity is checked above.
     return out
 
 
@@ -938,7 +882,6 @@ def measure_report(repo: Path | None = None) -> dict:
             "index_eq_wt": idx == wt if idx and wt else None,
         })
     return {
-        "sole_writer": sole_writer_record(),
         "operator_go": operator_go_record(),
         "pm_mission": pm_mission_record(),
         "index_worktree_mismatches": index_worktree_mismatches(root),
@@ -952,17 +895,8 @@ def measure_report(repo: Path | None = None) -> dict:
 def all_precommit_violations(repo: Path | None = None) -> list[str]:
     root = repo or REPO
     out = index_worktree_mismatches(root)
-    out.extend(
-        staged_enforced_checks_not_on_head(root)
-        if not operator_go_granted("staged_lock_surface")
-        else []
-    )
     out.extend(precommit_orphan_patch_warnings(root))
-    out.extend(
-        WDL.live_writer_drift_violations(
-            root, agent=current_agent_role(), staged_only=True
-        )
-    )
+    # RC-463: permission is a merge-review question, not a pre-commit question.
     return out
 
 
@@ -980,9 +914,7 @@ def main(argv: list[str] | None = None) -> int:
     elif args.pre_commit:
         v = all_precommit_violations(REPO)
     else:
-        v = index_worktree_mismatches(REPO) + staged_enforced_checks_not_on_head(REPO)
-        if not operator_go_granted("staged_lock_surface"):
-            pass
+        v = index_worktree_mismatches(REPO)
         disk = live_collect_disk_only(REPO)
         if disk:
             v.append(disk)

@@ -62,7 +62,7 @@ def test_ordinary_product_not_intrinsically_vendor_only(agent, monkeypatch, tmp_
     _pin_mission(monkeypatch, tmp_path)
     monkeypatch.setenv("ED_AGENT_ROLE", agent)
     for rel in _PRODUCT:
-        assert WDL.hard_denylist_violation(rel, agent=agent) is None, rel
+        assert WDL.control_authority_violation(rel, agent=agent) is None, rel
         bad = PLG.pretooluse_block("Edit", {"file_path": str(ROOT / rel)})
         assert not _writer_veto(bad), (agent, rel, bad)
         assert not any("control-authority" in b for b in bad), (agent, rel, bad)

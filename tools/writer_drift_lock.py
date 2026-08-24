@@ -1,7 +1,13 @@
-"""Architecture A control-authority lock (RC-226 remnant; RC-454 operator-writer).
+"""The one authority rule (RC-462).
 
-Operator selects the working AI at the workflow boundary (which AI they run).
-Persisted writer/auditor fields are history, not authorization.
+There are NO designated writers, auditors or readers. The operator decides what an AI
+does that day by asking it - the repo stores no role for anyone, and no field in any
+tracked file grants permission to anything.
+
+The single rule this module enforces: while an AI is acting (ED_AGENT_ROLE is set), it
+may not edit the files that decide who is in charge. The operator (empty ED_AGENT_ROLE)
+is unconstrained, and operator review at merge (CODEOWNERS + branch protection) is what
+makes the rule durable.
 
 This module BLOCKs only control-authority rewrites by an assigned principal
 (ED_AGENT_ROLE set). Ordinary product paths are not vendor-gated.
@@ -33,38 +39,6 @@ MISSION_IN_PROGRESS_STATUSES = frozenset({
     "ready_for_cursor",
     "in_progress",
     "in-progress",
-})
-
-#: Non-writer may touch operational metadata only. Lock/guard/hook/CI files are
-#: NOT on this list — those are control-authority surfaces denied to every agent.
-PM_ALLOWLIST_EXACT = frozenset({
-    "governance/AGENT_OPERATING_PROCESS_V1.md",
-    "governance/PM_MANDATE.md",
-    "governance/REHAB_PROGRAM.md",
-    "governance/sole_writer.json",
-    "governance/operator_go.json",
-    "governance/pm_mission.json",
-    "governance/root_cause_log.md",
-    "reports/process_mechanical_locks_v1.md",
-    "reports/rehab_latest.md",
-    "reports/rehab_latest.json",
-    "reports/rehab_queue.jsonl",
-    "tools/rehab_daily_scan.py",
-    ".cursor/rules/07-cursor-pm.mdc",
-    ".cursor/rules/08-no-writer-drift.mdc",
-    "ACTIVE_PROGRAM.md",
-    "AGENTS.md",
-})
-
-PM_ALLOWLIST_PREFIXES = (
-    ".cursor/rules/",
-)
-
-#: Status-only keys an assigned principal may change on leftover mission JSON.
-#: writer/auditor are not authorization; flipping them must not grant rails.
-PM_STATUS_FIELDS = frozenset({
-    "status", "note", "blocker", "updated_at", "held_commit",
-    "approved_by", "approved_via", "approved_at",
 })
 
 #: Files that define CI/merge/hook/assignment rails. Derived from actual call
@@ -133,13 +107,6 @@ CONTROL_AUTHORITY_PREFIXES = (
 #: LOCK-4 (RC-232): every SOD_DRIFT denial is recorded here; a denial without a same-window
 #: OPEN RC row naming the mission_id + SOD_DRIFT owes a self-heal and BLOCKS further writes.
 SOD_DRIFT_EVENTS_PATH = REPO / "governance" / "sod_drift_events.jsonl"
-
-
-def hard_denylist_violation(rel: str, *, agent: str | None = None,
-                            mission: dict | None = None,
-                            sole: dict | None = None) -> str | None:
-    """Product hard-denylist retired (RC-454). Rails still BLOCK via control_authority."""
-    return control_authority_violation(rel, agent=agent)
 
 
 def record_sod_drift(messages: list[str], *, agent: str | None = None,
@@ -275,45 +242,6 @@ def control_authority_violation(rel: str, *, agent: str | None = None) -> str | 
         f"SOD_DRIFT: control-authority surface {rel} — agent={agent!r} cannot "
         f"redefine the rails that constrain assigned principals (Architecture A / RC-453)."
     )
-
-
-def is_pm_allowlisted(rel: str) -> bool:
-    """Operational metadata the non-writer may touch. Not a control-authority grant."""
-    rel = _norm(rel)
-    if is_control_authority_surface(rel):
-        return False
-    if rel in PM_ALLOWLIST_EXACT:
-        return True
-    for p in PM_ALLOWLIST_PREFIXES:
-        if rel.startswith(p):
-            return True
-    if rel.startswith("reports/"):
-        name = rel.lower()
-        if (
-            "audit" in name
-            or "handoff" in name
-            or "/rehab_" in name
-            or "rc_open_drain" in name
-            or name.endswith("rehab_queue.jsonl")
-        ):
-            return True
-    return False
-
-
-def path_in_mission_scope(rel: str, scope_paths: list | None) -> bool:
-    rel = _norm(rel)
-    if not scope_paths:
-        return False
-    norms = [str(s).replace("\\", "/").strip() for s in scope_paths if str(s).strip()]
-    if "*" in norms or "all" in {s.lower() for s in norms}:
-        return True
-    for s in norms:
-        if s.endswith("/"):
-            if rel.startswith(s):
-                return True
-        elif rel == s or rel.startswith(s.rstrip("/") + "/"):
-            return True
-    return False
 
 
 def current_agent_role() -> str:

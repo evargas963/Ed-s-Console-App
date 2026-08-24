@@ -96,16 +96,16 @@ def test_hard_denylist_no_longer_vendor_gates_product(monkeypatch):
     mission = {"status": "active", "writer": "claude", "mission_id": "m1", "scope_paths": ["tools/"]}
     sole = {"writer": "claude"}
     for rel in ("static/chart.html", "server.py", "market_context.py", "db.py"):
-        assert WDL.hard_denylist_violation(rel, agent="cursor", mission=mission, sole=sole) is None
-        assert WDL.hard_denylist_violation(rel, agent="claude", mission=mission, sole=sole) is None
+        assert WDL.control_authority_violation(rel, agent="cursor") is None
+        assert WDL.control_authority_violation(rel, agent="claude") is None
 
 
 def test_lock1_lock_modules_are_not_agent_writable(monkeypatch):
     """Architecture A: no assigned principal may rewrite control-authority rails."""
     mission = {"status": "active", "writer": "claude", "mission_id": "m1", "scope_paths": ["tools/"]}
     sole = {"writer": "claude"}
-    assert WDL.hard_denylist_violation(
-        "tools/check_institutional_correctness.py", agent="cursor", mission=mission, sole=sole
+    assert WDL.control_authority_violation(
+        "tools/check_institutional_correctness.py", agent="cursor"
     )
     assert WDL.writer_drift_violations(
         ["tools/writer_drift_lock.py"],
@@ -119,7 +119,7 @@ def test_lock1_lock_modules_are_not_agent_writable(monkeypatch):
         mission=mission,
         sole_writer=sole,
     )
-    assert WDL.hard_denylist_violation("server.py", agent="cursor", mission=mission, sole=sole) is None
+    assert WDL.control_authority_violation("server.py", agent="cursor") is None
 
 
 def test_persisted_metadata_grants_no_authority(monkeypatch, tmp_path):

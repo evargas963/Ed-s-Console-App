@@ -292,15 +292,15 @@ def test_lock5_quiet_pass_required_blocks_complete_claim(monkeypatch, tmp_path):
 def test_measure_report_has_enforcement_hashes():
     rep = OPL.measure_report()
     assert "enforcement_hashes" in rep
-    assert "sole_writer" in rep
     assert "pm_mission" in rep
+    # RC-462: no role record is reported, because the repo stores no roles.
+    assert "sole_writer" not in rep
 
 
 def test_main_precommit_exits_zero_on_clean_repo(tmp_path, monkeypatch):
     repo = _init_repo(tmp_path)
     monkeypatch.chdir(repo)
     monkeypatch.setattr(OPL, "REPO", repo)
-    monkeypatch.setattr(OPL, "SOLE_WRITER_PATH", repo / "governance" / "sole_writer.json")
     monkeypatch.setattr(OPL, "OPERATOR_GO_PATH", repo / "governance" / "operator_go.json")
     rc = OPL.main(["--pre-commit"])
     assert rc == 0

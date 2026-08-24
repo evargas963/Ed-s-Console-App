@@ -68,10 +68,8 @@ def pretooluse_block(tool: str, tool_input: dict) -> list[str]:
             iso = OPL.claude_isolated_edit_violation(fp)
             if iso:
                 out.append(iso)
-            # LOCK-1 (RC-232) + RC-453: hard denylist and control-authority rails.
-            hd = WDL.hard_denylist_violation(rel)
-            if hd:
-                out.append(hd)
+            # THE authority rule (RC-462): an acting AI may not edit the files that
+            # decide who is in charge. There is no second, role-based denylist.
             auth = WDL.control_authority_violation(rel)
             if auth:
                 out.append(auth)

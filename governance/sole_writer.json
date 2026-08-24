@@ -1,7 +1,0 @@
-{
-  "_authority": "NON-AUTHORITATIVE",
-  "pm": "operator",
-  "updated_at": "2026-08-23T00:00:00-05:00",
-  "standing_law": "The operator exclusively chooses the active working AI at the workflow boundary (which AI they run). This file is not write authorization. No vendor is privileged. Persisted writer fields must not authorize product writes (RC-454).",
-  "note": "RC-454/RC-456 tombstone. Retired as executable authority. writer/auditor removed. rehab_daily_scan reads the external PM-authority path, not this file. Do not restore a standing writer privilege."
-}
