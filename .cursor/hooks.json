@@ -1,19 +1,13 @@
 {
   "version": 1,
   "_comment_rc208": "Cursor continuum must match Claude Stop/PreToolUse .py guards. MD is never a lock.",
-  "_comment_chains": "PREPARED, NOT YET WIRED (SIMPLICITY REHAB 2026-08-24, operator to flip): tools/pretooluse_chain.py and tools/stop_chain.py run these same guards in one process each (~300ms vs 2,815-5,995ms measured). See .claude/settings.json _comment_hook_chains for the adoption command lines.",
+  "_comment_chains": "WIRED (SIMPLICITY REHAB, operator GO 2026-08-24): one process per event via tools/pretooluse_chain.py and tools/stop_chain.py, roster visible as argv (~300ms vs 1,704-2,815ms measured). No predicate weakened; any member's block still blocks. Mirrors .claude/settings.json. Note: Cursor's stop list here previously carried process_lock_guard; the chain roster matches Claude's post-RC-471 battery (process_lock stays on preToolUse, where its rails bind).",
   "hooks": {
     "preToolUse": [
-      {"command": ".venv/Scripts/python.exe tools/pretooluse_guard.py"},
-      {"command": ".venv/Scripts/python.exe tools/operator_law_guard.py"},
-      {"command": ".venv/Scripts/python.exe tools/process_lock_guard.py"}
+      {"command": ".venv/Scripts/python.exe tools/pretooluse_chain.py tools/pretooluse_guard.py tools/operator_law_guard.py tools/process_lock_guard.py"}
     ],
     "stop": [
-      {"command": ".venv/Scripts/python.exe tools/stop_guard.py"},
-      {"command": ".venv/Scripts/python.exe tools/proof_only_guard.py"},
-      {"command": ".venv/Scripts/python.exe tools/honesty_guard.py"},
-      {"command": ".venv/Scripts/python.exe tools/operator_law_guard.py"},
-      {"command": ".venv/Scripts/python.exe tools/process_lock_guard.py"}
+      {"command": ".venv/Scripts/python.exe tools/stop_chain.py tools/stop_guard.py tools/proof_only_guard.py tools/honesty_guard.py tools/operator_law_guard.py"}
     ]
   }
 }
