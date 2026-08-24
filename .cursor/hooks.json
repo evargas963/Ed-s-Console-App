@@ -1,6 +1,7 @@
 {
   "version": 1,
   "_comment_rc208": "Cursor continuum must match Claude Stop/PreToolUse .py guards. MD is never a lock.",
+  "_comment_chains": "PREPARED, NOT YET WIRED (SIMPLICITY REHAB 2026-08-24, operator to flip): tools/pretooluse_chain.py and tools/stop_chain.py run these same guards in one process each (~300ms vs 2,815-5,995ms measured). See .claude/settings.json _comment_hook_chains for the adoption command lines.",
   "hooks": {
     "preToolUse": [
       {"command": ".venv/Scripts/python.exe tools/pretooluse_guard.py"},
