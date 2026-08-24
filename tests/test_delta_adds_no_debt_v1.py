@@ -421,6 +421,59 @@ def test_rc468_missing_manifest_declares_nothing(monkeypatch):
     assert GATE.declared_retirements("HEAD") == set()
 
 
+def _load_pci():
+    spec = importlib.util.spec_from_file_location(
+        "precommit_institutional", REPO / "tools" / "precommit_institutional.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+PCI = _load_pci()
+
+
+def test_rc469_staged_retirements_parse_and_missing_manifest_declares_nothing():
+    """The commit-path seam mirrors RC-468: staged manifest rows declare a retirement;
+    an absent manifest declares nothing (fail-closed toward blocking)."""
+    text = ("| check | retired | rationale |\n|---|---|---|\n"
+            "| log_law | 2026-08-24 | covered elsewhere |\n")
+    assert PCI._staged_retirements(lambda spec: text) == {"log_law"}
+    assert PCI._staged_retirements(lambda spec: None) == set()
+
+
+def _pci_main_rc(monkeypatch, manifest_text):
+    """Drive the real commit gate main() with a simulated base/candidate roster where
+    the candidate drops b_check, and the given staged manifest."""
+    base_src = 'CHECKS = [("a_check", check_a, True), ("b_check", check_b, True)]'
+    cand_src = 'CHECKS = [("a_check", check_a, True)]'
+
+    def fake_show(spec):
+        if spec == f"origin/main:{PCI.CHECKER_REL}":
+            return base_src
+        if spec == f":{PCI.CHECKER_REL}":
+            return cand_src
+        if spec == f":{PCI.MANIFEST_REL}":
+            return manifest_text
+        return None
+
+    monkeypatch.setattr(PCI, "_base_ref", lambda: "origin/main")
+    monkeypatch.setattr(PCI, "_git_show", fake_show)
+    return PCI.main()
+
+
+def test_rc469_commit_gate_passes_a_declared_retirement(monkeypatch):
+    manifest = ("| check | retired | rationale |\n|---|---|---|\n"
+                "| b_check | 2026-08-24 | equivalent protection stated |\n")
+    assert _pci_main_rc(monkeypatch, manifest) == 0
+
+
+def test_rc469_commit_gate_still_blocks_an_undeclared_removal(monkeypatch):
+    """RC-391 preserved on the commit path: no manifest row, no removal."""
+    assert _pci_main_rc(monkeypatch, None) == 1
+    empty_manifest = "| check | retired | rationale |\n|---|---|---|\n"
+    assert _pci_main_rc(monkeypatch, empty_manifest) == 1
+
+
 def test_rc468_declaration_only_touches_removal_accounting():
     """A manifest row must not be able to excuse an ADDED violation: main() feeds
     declared_retirements exclusively into split_removals, and compare() never sees it."""
