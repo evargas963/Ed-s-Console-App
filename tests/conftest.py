@@ -33,6 +33,16 @@ os.environ.setdefault("SCHWAB_API_KEY", "ci-placeholder-api-key")
 os.environ.setdefault("SCHWAB_APP_SECRET", "ci-placeholder-app-secret")
 os.environ.setdefault("SCHWAB_CALLBACK_URL", "https://127.0.0.1:8182")
 
+# TEARDOWN 2026-08-24: the tracked terrain quarantine ledger can never be a test's
+# write target, REGARDLESS of when server is imported — the env override is read at
+# server import time, and this line runs before any test module can import server
+# (CI caught a lazy mid-test import writing the real file; the autouse firewall
+# fixture below remains the byte-level backstop).
+import tempfile as _tempfile  # noqa: E402
+os.environ.setdefault(
+    "ED_TERRAIN_QUARANTINE_LEDGER",
+    str(Path(_tempfile.mkdtemp(prefix="ed-pytest-ledger-")) / "terrain_quarantine_ledger.jsonl"))
+
 
 def pytest_configure(config) -> None:
     """xdist workers must not share one console DB file.

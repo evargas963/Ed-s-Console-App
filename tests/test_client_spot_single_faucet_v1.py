@@ -15,6 +15,13 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+# audit_client() imports server lazily MID-TEST; under xdist distributions where this
+# file runs first, the conftest ledger firewall could not pre-patch
+# server.TERRAIN_QUARANTINE_LEDGER and a quarantine write landed in the tracked audit
+# file (caught by the firewall in CI, 2026-08-24: +479 bytes, truncated back). Import
+# server at module top so the autouse fixture always patches it before the test body.
+import server  # noqa: F401
+
 from tools.data_faucet_audit import CLIENT_CONCEPTS, _js_function_at, audit_client
 
 STATIC = Path(__file__).resolve().parent.parent / "static"

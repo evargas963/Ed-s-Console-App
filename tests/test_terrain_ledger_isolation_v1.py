@@ -1,21 +1,20 @@
-"""TERRAIN LEDGER LATE-IMPORT firewall — end-to-end proof (operator-named hole, 2026-08-24).
+"""TERRAIN LEDGER firewall — end-to-end proof of BOTH layers (operator-named hole, 2026-08-24).
 
-tests/conftest.py's autouse ``_terrain_ledger_to_tmp`` redirects
-server.TERRAIN_QUARANTINE_LEDGER to tmp — but only when ``server`` is already imported at
-fixture SETUP. A test that imports server inside its own body used to write quarantine rows
-into the real tracked reports/terrain_quarantine_ledger.jsonl with nothing detecting it.
+Layer 1 — PREVENTION (env kill-switch): tests/conftest.py sets ED_TERRAIN_QUARANTINE_LEDGER
+before any test module can import server, and server.py reads it at import time — so a lazy
+mid-test ``import server`` can never bind the tracked reports/terrain_quarantine_ledger.jsonl
+at all, regardless of import order or xdist distribution. (CI caught exactly this class on
+2026-08-24: audit_client's lazy import wrote +479 bytes from a worker where nothing had
+imported server yet.)
 
-The hardened fixture snapshots the tracked file's byte length before every test and, after
-the test, truncates any growth back (restore first — the tracked file must never stay
-polluted) and FAILS the test naming the hole. This file proves that mechanism with a REAL
-inner pytest run: a synthetic test (written to tmp) imports server only inside the test
-body and drives server._note_terrain_failure to a permanent quarantine (3 hard failures =
-TERRAIN_QUARANTINE_HARD_FAILS), which appends to the unpatched tracked ledger. The inner
-run must FAIL with the guard's message, and the tracked ledger must be byte-identical
-before and after the whole exercise.
+Layer 2 — DETECTION (byte firewall): the autouse ``_terrain_ledger_to_tmp`` fixture
+snapshots the tracked file's byte length before every test and, after the test, truncates
+any growth back (restore FIRST — the tracked audit file must never stay polluted) and FAILS
+the test naming the hole. With Layer 1 in place this backstop guards against EXTERNAL
+writers (a spawned tool, a subprocess with a scrubbed env) rather than import order.
 
-The inner run loads THIS repo's tests/conftest.py (via ``-p tests.conftest`` with the repo
-as cwd and rootdir), so the fixture exercised is the real one — not a copy.
+Both proofs run a REAL inner pytest against THIS repo's conftest (``-p tests.conftest``,
+repo cwd/rootdir), so the mechanisms exercised are the real ones — not copies.
 """
 from __future__ import annotations
 
@@ -26,59 +25,88 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 TRACKED_LEDGER = ROOT / "reports" / "terrain_quarantine_ledger.jsonl"
 
-#: The synthetic offender. Imports server ONLY inside the test body — after the autouse
-#: fixture's setup ran with `server` absent from sys.modules — then earns a permanent
-#: quarantine, whose ledger append lands in the real tracked file (the hole).
-_SYNTHETIC_TEST = '''\
-def test_mid_test_server_import_writes_the_real_ledger():
+#: Layer-1 prover: imports server ONLY inside the test body (after fixture setup ran with
+#: `server` absent from sys.modules) and earns a permanent quarantine. With the env
+#: kill-switch, the append lands in the env-pointed tmp file — the inner test PASSES and
+#: asserts so itself.
+_LATE_IMPORT_TEST = '''\
+import os
+from pathlib import Path
+
+
+def test_mid_test_server_import_cannot_bind_the_tracked_ledger():
     import server                                     # LATE import: after fixture setup
 
+    override = os.environ.get("ED_TERRAIN_QUARANTINE_LEDGER")
+    assert override, "conftest must set the ledger kill-switch before any server import"
+    assert str(server.TERRAIN_QUARANTINE_LEDGER) == override, (
+        f"server bound {server.TERRAIN_QUARANTINE_LEDGER}, not the env override")
     for _ in range(server.TERRAIN_QUARANTINE_HARD_FAILS):
         server._note_terrain_failure(
             "ZZLATEIMPORT", "synthetic hard rejection (isolation prover)", "hard")
     entry = server.terrain_quarantine_state("ZZLATEIMPORT")
-    assert entry.get("permanent") is True, entry      # the write that must NOT stick
+    assert entry.get("permanent") is True, entry
+    text = Path(override).read_text(encoding="utf-8") if Path(override).exists() else ""
+    assert "ZZLATEIMPORT" in text, "the quarantine write did not land in the override file"
 '''
 
-
-def test_late_server_import_is_caught_and_the_tracked_ledger_is_restored(tmp_path):
-    bytes_before = TRACKED_LEDGER.read_bytes()
-
-    synthetic = tmp_path / "test_zz_late_import_synthetic.py"
-    synthetic.write_text(_SYNTHETIC_TEST, encoding="utf-8")
-
-    inner = subprocess.run(
+def _run_inner(test_file: Path) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
         [
-            sys.executable, "-m", "pytest", str(synthetic), "-q",
+            sys.executable, "-m", "pytest", str(test_file), "-q",
             "-p", "tests.conftest",          # the REAL repo conftest, not a copy
             "-p", "no:cacheprovider",
             "--rootdir", str(ROOT),
         ],
-        cwd=str(ROOT),                       # repo cwd → `tests.conftest` imports from here
+        cwd=str(ROOT),
         capture_output=True,
         text=True,
         encoding="utf-8",
         errors="replace",
         timeout=420,
     )
+
+
+def test_late_server_import_is_prevented_by_the_env_kill_switch(tmp_path):
+    """Layer 1: the late import binds the env override, the write lands in tmp, the
+    tracked file never changes, and the inner test PASSES (prevention, not detection)."""
+    bytes_before = TRACKED_LEDGER.read_bytes()
+    synthetic = tmp_path / "test_zz_late_import_synthetic.py"
+    synthetic.write_text(_LATE_IMPORT_TEST, encoding="utf-8")
+
+    inner = _run_inner(synthetic)
     out = (inner.stdout or "") + (inner.stderr or "")
 
-    bytes_after = TRACKED_LEDGER.read_bytes()
-    assert bytes_after == bytes_before, (
-        "the tracked terrain ledger changed across the exercise — the fixture failed to "
-        f"restore it (before {len(bytes_before)} bytes, after {len(bytes_after)} bytes)"
-    )
+    assert TRACKED_LEDGER.read_bytes() == bytes_before, (
+        "the tracked terrain ledger changed — the env kill-switch did not bind:\n" + out)
+    assert inner.returncode == 0, (
+        "the inner run FAILED — with the kill-switch the late import must be harmless:\n"
+        + out)
+    assert b"ZZLATEIMPORT" not in TRACKED_LEDGER.read_bytes()
 
+
+def test_external_writer_is_detected_truncated_back_and_failed(tmp_path):
+    """Layer 2: growth on the tracked path from a writer the env override cannot reach
+    is truncated back FIRST and the offending test FAILS naming the hole."""
+    bytes_before = TRACKED_LEDGER.read_bytes()
+    synthetic = tmp_path / "test_zz_external_writer_synthetic.py"
+    synthetic.write_text(
+        "from pathlib import Path\n\n\n"
+        "def test_external_process_appends_to_the_tracked_ledger():\n"
+        f"    tracked = Path({str(TRACKED_LEDGER)!r})\n"
+        "    with tracked.open('a', encoding='utf-8') as fh:\n"
+        "        fh.write('{\"event\": \"zz-external-writer-probe\"}\\n')\n",
+        encoding="utf-8")
+
+    inner = _run_inner(synthetic)
+    out = (inner.stdout or "") + (inner.stderr or "")
+
+    assert TRACKED_LEDGER.read_bytes() == bytes_before, (
+        "the tracked ledger was not restored byte-for-byte:\n" + out)
     assert inner.returncode != 0, (
-        "the inner pytest run PASSED — the late-import guard never fired:\n" + out
-    )
+        "the inner run PASSED — the byte firewall never fired on an external write:\n" + out)
     assert "TERRAIN LEDGER LATE-IMPORT HOLE" in out, (
-        "the inner run failed for some other reason than the late-import guard:\n" + out
-    )
-    assert "GREW by" in out and "truncated back" in out, (
-        "the guard's message must name the offending growth and the restore:\n" + out
-    )
-    # The offending row itself must not survive anywhere in the tracked file. (The file
-    # still carries pre-hardening ZZTEST*/ZZQ residue from before this firewall existed;
-    # cleaning THAT is an operator-reviewed act on a tracked audit file, not a test's.)
-    assert b"ZZLATEIMPORT" not in bytes_after
+        "the inner run failed for some other reason than the firewall:\n" + out)
+    assert "truncated back" in out, (
+        "the firewall's message must name the restore:\n" + out)
+    assert b"zz-external-writer-probe" not in TRACKED_LEDGER.read_bytes()
