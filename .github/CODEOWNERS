@@ -1,35 +1,42 @@
-# Control-authority surfaces only (Architecture A / RC-453).
-# Derived from hook entrypoints, required CI workflows, and grant/assignment rails.
-# Routine product paths are intentionally NOT listed so the assigned AI can land
-# ordinary work after required checks without the operator becoming a reviewer.
-# Require review from Code Owners on protected main for THESE paths only.
+# TRUE AUTHORITY FILES ONLY (RC-461).
+#
+# Operator requirement: the human operator retains control of AI ASSIGNMENT and AUTHORITY
+# changes. The coding AI does ordinary repo work autonomously, but may not make itself
+# operator, grant itself authority, or change the durable authority rules without operator
+# approval. CODEOWNERS + branch protection IS that approval gate.
+#
+# A file belongs here only if changing it would let the AI decide WHO MAY DO WHAT.
+# Ordinary product code (server.py, db.py, static/, signals.py, math/liquidity engines),
+# ordinary tests, and quality-gate scripts are deliberately NOT listed - they are the
+# autonomous surface, and listing them would make the operator a reviewer of routine work.
+#
+# There is no OS sandbox, no separate account, no ProgramData authority service, no
+# privileged helper and no host provisioning: that architecture was removed as overbuilt.
 
-# Required CI definitions
-/.github/workflows/ @evargas963
+# 1. Review policy + the required checks that give branch protection its teeth
 /.github/CODEOWNERS @evargas963
-/.pre-commit-config.yaml @evargas963
+/.github/workflows/ @evargas963
 
-# Hook wiring (worktree copies are not the merge root of trust)
-/.cursor/hooks.json @evargas963
+# 2. The operator's AI ASSIGNMENT. ED_AGENT_ROLE is declared here; an AI that edits these
+#    files re-labels itself, which is self-promotion.
 /.claude/settings.json @evargas963
+/.cursor/hooks.json @evargas963
 
-# Guard/lock entrypoints and the institutional gate
-/tools/*_guard.py @evargas963
-/tools/*_lock.py @evargas963
+# 3. The authority rail itself and the entrypoints that execute it. writer_drift_lock
+#    defines the control-authority set and resolves the acting principal; the other two
+#    invoke it on edits and on commit. Editing any of them removes the AI's own restraint.
+/tools/writer_drift_lock.py @evargas963
+/tools/process_lock_guard.py @evargas963
 /tools/operating_process_lock.py @evargas963
-/tools/check_institutional_correctness.py @evargas963
-/tools/check_delta_adds_no_debt.py @evargas963
-/tools/precommit_institutional.py @evargas963
-/tools/check_market_correctness.py @evargas963
-/tools/check_institutional_closure_gate.py @evargas963
-/tools/check_no_grep_subprocess.py @evargas963
 
-# Grant / GO rails (assignment JSON is field-locked in process; not listed here
-# so routine mission status updates do not require operator review)
+# 4. Operator grants. A forged grant is self-authorization.
 /governance/operator_go.json @evargas963
 /governance/operator_grants.json @evargas963
 
-# Tests that define Architecture A PASS
-/tests/test_architecture_a_bypass_class_v1.py @evargas963
-/tests/test_writer_drift_lock_v1.py @evargas963
+# 5. The tests that PROVE the rules above still hold. Deleting the proof is how a rule
+#    dies quietly, so the proof needs the same approval as the rule.
 /tests/test_control_authority_surfaces_v1.py @evargas963
+/tests/test_writer_drift_lock_v1.py @evargas963
+/tests/test_architecture_a_bypass_class_v1.py @evargas963
+/tests/test_architecture_a_operator_writer_authority_v1.py @evargas963
+/tests/test_operating_process_lock_v1.py @evargas963

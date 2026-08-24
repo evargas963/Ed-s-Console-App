@@ -6,7 +6,7 @@ The charter is operator-facing; THIS module BLOCKs — .md alone is not a lock.
 Child of RC-215 (index≠WT stash-strip), RC-216 (DISK_ONLY vs LIVE), RC-210 (dual-writer thrash).
 
 Minimum BLOCK surfaces:
-  (a) Write/Edit protected paths when sole_writer ≠ current agent
+  (a) Write/Edit control-authority surfaces when ED_AGENT_ROLE is set (RC-454)
   (b) Stop on COMPLETE/LIVE/one-intentional-tree claims while index≠WT or live PID predates db.py gate
   (c) git commit when index≠WT on staged enforcement paths or staged CHECKS not on HEAD without operator GO
 """
@@ -26,8 +26,8 @@ REPO = Path(__file__).resolve().parent.parent
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
-SOLE_WRITER_PATH = REPO / "governance" / "sole_writer.json"
 OPERATOR_GO_PATH = REPO / "governance" / "operator_go.json"
+# Mission COORDINATION metadata only (RC-461) - never authorization.
 PM_MISSION_PATH = REPO / "governance" / "pm_mission.json"
 CHECKER_REL = "tools/check_institutional_correctness.py"
 DB_REL = "db.py"
@@ -127,10 +127,6 @@ def reset_guard_violations(command: str) -> list[str]:
     if not _RESET_GUARD_RE.search(cmd) or _RESET_GUARD_SAFE_RE.search(cmd):
         return []
     touched = [p for p in PROTECTED_PATHS + PRODUCT_WIPE_PROTECTED if p in cmd]
-    mission = _load_json(PM_MISSION_PATH) or {}
-    for sp in (mission.get("scope_paths") or []):
-        if isinstance(sp, str) and sp.strip("*/") and sp in cmd:
-            touched.append(sp)
     bare = not any(tok in cmd for tok in (" -- ", ".py", ".html", ".json"))
     if touched or bare:
         return [
@@ -142,54 +138,12 @@ def reset_guard_violations(command: str) -> list[str]:
     return []
 
 #: Process-lock edits to governance process files are always allowed (compliance path).
-PROCESS_ALLOWED_PREFIXES = (
-    "governance/AGENT_OPERATING_PROCESS_V1.md",
-    "governance/PM_MANDATE.md",
-    "governance/REHAB_PROGRAM.md",
-    "governance/sole_writer.json",
-    "governance/operator_go.json",
-    "governance/pm_mission.json",
-    "governance/root_cause_log.md",
-    "reports/process_mechanical_locks_v1.md",
-    "reports/rehab_latest.md",
-    "reports/rehab_latest.json",
-    "reports/rehab_queue.jsonl",
-    "tests/test_operating_process_lock_v1.py",
-    "tests/test_rehab_daily_scan_v1.py",
-    "tests/test_writer_drift_lock_v1.py",
-    "tools/operating_process_lock.py",
-    "tools/process_lock_guard.py",
-    "tools/pretooluse_guard.py",
-    "tools/rehab_daily_scan.py",
-    "tools/writer_drift_lock.py",
-    "tools/rc_resolve_lock.py",
-    "tools/check_institutional_correctness.py",
-    "tests/test_rc_document_without_resolve_v1.py",
-    ".cursor/rules/07-cursor-pm.mdc",
-    ".cursor/rules/08-no-writer-drift.mdc",
-    "ACTIVE_PROGRAM.md",
-    "AGENTS.md",
-)
+# RC-462: PROCESS_ALLOWED_PREFIXES and MISSION_GATED_PREFIXES are gone. They
+# described which paths a 'non-writer' could touch and which needed an in-progress
+# mission - both concepts are retired. There are no designated roles: the operator
+# says what they want done, and the only standing rule is that an acting AI cannot
+# edit the files that decide who is in charge.
 
-#: Product paths that require an active PM mission (RC-219) in addition to sole_writer.
-MISSION_GATED_PREFIXES = (
-    "db.py",
-    "server.py",
-    "time_et.py",
-    "static/",
-    "calibration/",
-    "tools/check_institutional_correctness.py",
-    "tools/honesty_guard.py",
-    "tools/plus_player_locks.py",
-    "tools/find_prove_locks.py",
-    "tools/ui_mockup_lock.py",
-    "tools/pretooluse_guard.py",
-    "tools/operator_law_guard.py",
-    "math_exposure_core.py",
-    "math_levels.py",
-    "liquidity_value_engine.py",
-    "liquidity_models.py",
-)
 
 _COMPLETION_CLAIM = re.compile(
     r"\b("
@@ -235,11 +189,6 @@ def _load_json(path: Path) -> dict | None:
         return json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError, json.JSONDecodeError):
         return None
-
-
-def sole_writer_record() -> dict:
-    doc = _load_json(SOLE_WRITER_PATH)
-    return doc if isinstance(doc, dict) else {}
 
 
 def operator_go_record() -> dict:
@@ -640,117 +589,25 @@ def live_collect_disk_only(repo: Path | None = None, port: int = 8000) -> str | 
 
 
 def pm_mission_record() -> dict:
-    doc = _load_json(PM_MISSION_PATH)
-    return doc if isinstance(doc, dict) else {}
+    """Mission COORDINATION metadata (RC-461) - NOT authorization.
+
+    governance/pm_mission.json is ordinary coordination state. It supplies mission_id
+    for the RC-228 linkage check and nothing else: no writer/auditor/vendor field in it
+    grants authority, and no gate consults it to decide what an agent may edit. Authority
+    is CODEOWNERS + branch protection (durable) plus the control-authority rail
+    (tools/writer_drift_lock.control_authority_violation, in-process defense-in-depth).
+    """
+    return _load_json(PM_MISSION_PATH) or {}
 
 
-def _mission_gates_path(rel: str) -> bool:
-    rel = rel.replace("\\", "/")
-    for p in MISSION_GATED_PREFIXES:
-        if p.endswith("/"):
-            if rel.startswith(p):
-                return True
-        elif rel == p:
-            return True
-    if rel in PROTECTED_PATHS or rel.startswith("calibration/repair_"):
-        return True
-    return False
-
-
-def _mission_scope_allows(rel: str, scope_paths: list) -> bool:
-    if not scope_paths:
-        return False
-    norms = [str(s).replace("\\", "/").strip() for s in scope_paths if str(s).strip()]
-    if "*" in norms or "all" in {s.lower() for s in norms}:
-        return True
-    for s in norms:
-        if s.endswith("/"):
-            if rel.startswith(s):
-                return True
-        elif rel == s or rel.startswith(s.rstrip("/") + "/"):
-            return True
-    return False
-
-
-def pm_mission_edit_violation(rel: str, agent: str | None = None) -> str | None:
-    """RC-219 + RC-226: product edits need an in-progress mission; non-writer cannot touch scope."""
-    rel = rel.replace("\\", "/")
-    if rel in PROCESS_ALLOWED_PREFIXES or WDL.is_pm_allowlisted(rel):
-        return None
-    mission = pm_mission_record()
-    status = str(mission.get("status") or "idle").strip().lower()
-    agent = (agent or current_agent_role()).lower()
-    writer = str(mission.get("writer") or sole_writer_record().get("writer") or "").strip().lower()
-    scopes = mission.get("scope_paths") or ["*"]
-    if not isinstance(scopes, list):
-        scopes = ["*"]
-    in_prog = WDL.mission_in_progress(mission)
-
-    # RC-226: in-progress mission — non-writer blocked on scope_paths (and gated product).
-    if in_prog and writer and agent != writer:
-        if WDL.path_in_mission_scope(rel, scopes) or _mission_gates_path(rel):
-            return (
-                f"SOD_DRIFT: {writer} is sole writer — WRITER-DRIFT BLOCK: "
-                f"mission writer={writer!r} but agent={agent!r} — "
-                f"path {rel} blocked (mission_id={mission.get('mission_id')!r}; "
-                f"status={status!r}). Cursor=PM/auditor; sole writer owns scope_paths."
-            )
-        return None
-
-    # Idle / not in-progress: block mission-gated product for everyone (RC-219).
-    if not in_prog:
-        if rel.startswith("tests/") or rel.startswith("reports/"):
-            return None
-        if rel.startswith("governance/") and not _mission_gates_path(rel):
-            return None
-        if not _mission_gates_path(rel):
-            return None
-        return (
-            f"PM-FIRST BLOCK: no in-progress mission (governance/pm_mission.json status={status!r}) — "
-            f"run change requests through Cursor PM; do not edit {rel} until a mission is opened"
-        )
-
-    # Named writer on in-progress mission: stay inside scope_paths for gated surfaces.
-    if rel.startswith("tests/") or rel.startswith("reports/"):
-        if WDL.path_in_mission_scope(rel, scopes) or not _mission_gates_path(rel):
-            return None
-    if not _mission_gates_path(rel) and not WDL.path_in_mission_scope(rel, scopes):
-        return None
-    if not _mission_scope_allows(rel, scopes):
-        return (
-            f"PM-FIRST BLOCK: {rel} outside mission scope_paths={scopes!r} "
-            f"(mission_id={mission.get('mission_id')!r})"
-        )
-    return None
-
-
-def sole_writer_edit_violation(rel: str, agent: str | None = None) -> str | None:
-    rel = rel.replace("\\", "/")
-    pm_msg = pm_mission_edit_violation(rel, agent=agent)
-    if pm_msg:
-        return pm_msg
-    if rel in PROCESS_ALLOWED_PREFIXES or rel.startswith("tests/"):
-        return None
-    if rel.startswith("governance/") and rel not in PROTECTED_PATHS:
-        return None
-    if rel.startswith("reports/"):
-        return None
-    writer = str(sole_writer_record().get("writer") or "").strip().lower()
-    if not writer:
-        return None
-    agent = (agent or current_agent_role()).lower()
-    if agent == writer:
-        return None
-    if rel not in PROTECTED_PATHS and not any(
-        rel == p or rel.startswith(p.rstrip("/") + "/") for p in PROTECTED_PATHS
-    ):
-        # Prefix match for calibration/*
-        if not rel.startswith("calibration/repair_"):
-            return None
-    return (
-        f"sole_writer={writer!r} but current agent={agent!r} — "
-        f"protected path {rel} is dual-edit BLOCKED (governance/sole_writer.json)"
-    )
+# RC-461: the PM-mission EDIT GATE (pm_mission_edit_violation / sole_writer_edit_violation
+# and their _mission_gates_path / _mission_scope_allows helpers) is REMOVED. The operator
+# requirement is that the coding AI does ordinary repo work AUTONOMOUSLY; gating product
+# edits on an in-progress mission was the overbuilt half of Architecture A and it depended
+# on the deleted external authority reader. What remains constrains AUTHORITY only:
+# writer_drift_lock.control_authority_violation denies an assigned principal any edit to
+# the files that decide who may do what, and CODEOWNERS + branch protection make that
+# durable at merge.
 
 
 def _git_diff_names(root: Path, a: str | None, b: str | None) -> list[str]:
@@ -969,10 +826,8 @@ def completion_claim_violations(text: str, repo: Path | None = None) -> list[str
     if disk and _LIVE_RC_CLAIM.search(text) and not _DISK_ONLY_TOKEN.search(text):
         out.append(f"completion claim LIVE_ENFORCED while {disk}")
     # (LOCK-5 runs above via _quiet_pass_required_violations — independent trigger.)
-    staged_head = staged_enforced_checks_not_on_head(root)
-    if staged_head and re.search(r"\b(iceberg ready|ready to commit|one intentional tree)\b", text, re.I):
-        if not operator_go_granted("staged_lock_surface"):
-            out.extend(staged_head)
+    # RC-463: saying "ready to commit" while a lock surface is staged is no longer a
+    # blocked claim - the assistant commits its own work, so there is nothing to grant.
     # RC-228: COMPLETE claims while the active mission still owns OPEN RC rows.
     if re.search(r"\b(mission\s+complete|done_criteria|COMPLETE(?:/CLOSED)?)\b", text, re.I):
         try:
@@ -1001,16 +856,10 @@ def commit_violations(repo: Path | None = None) -> list[str]:
     mism = index_worktree_mismatches(root, only_staged=True)
     if mism:
         out.append("commit BLOCKED: staged enforcement path index≠WT — " + "; ".join(mism))
-    staged_head = staged_enforced_checks_not_on_head(root)
-    if staged_head and not operator_go_granted("staged_lock_surface"):
-        out.extend(f"commit BLOCKED: {msg} — set governance/operator_go.json granted=true" for msg in staged_head)
     out.extend(precommit_orphan_patch_warnings(root))
-    # RC-226: non-writer staging scope_paths → commit BLOCK (Shell-bypass backstop).
-    out.extend(
-        WDL.live_writer_drift_violations(
-            root, agent=current_agent_role(), staged_only=True
-        )
-    )
+    # RC-463: no PERMISSION gate here. Who may change the authority files is decided by
+    # operator review at merge (CODEOWNERS + branch protection on main), not by a second
+    # copy of that rule inside the commit hook. Only mechanical integrity is checked above.
     return out
 
 
@@ -1033,7 +882,6 @@ def measure_report(repo: Path | None = None) -> dict:
             "index_eq_wt": idx == wt if idx and wt else None,
         })
     return {
-        "sole_writer": sole_writer_record(),
         "operator_go": operator_go_record(),
         "pm_mission": pm_mission_record(),
         "index_worktree_mismatches": index_worktree_mismatches(root),
@@ -1047,17 +895,8 @@ def measure_report(repo: Path | None = None) -> dict:
 def all_precommit_violations(repo: Path | None = None) -> list[str]:
     root = repo or REPO
     out = index_worktree_mismatches(root)
-    out.extend(
-        staged_enforced_checks_not_on_head(root)
-        if not operator_go_granted("staged_lock_surface")
-        else []
-    )
     out.extend(precommit_orphan_patch_warnings(root))
-    out.extend(
-        WDL.live_writer_drift_violations(
-            root, agent=current_agent_role(), staged_only=True
-        )
-    )
+    # RC-463: permission is a merge-review question, not a pre-commit question.
     return out
 
 
@@ -1075,9 +914,7 @@ def main(argv: list[str] | None = None) -> int:
     elif args.pre_commit:
         v = all_precommit_violations(REPO)
     else:
-        v = index_worktree_mismatches(REPO) + staged_enforced_checks_not_on_head(REPO)
-        if not operator_go_granted("staged_lock_surface"):
-            pass
+        v = index_worktree_mismatches(REPO)
         disk = live_collect_disk_only(REPO)
         if disk:
             v.append(disk)

@@ -63,32 +63,27 @@ def pretooluse_block(tool: str, tool_input: dict) -> list[str]:
         fp = _edit_path(tool_input)
         if fp:
             rel = _rel(fp)
-            msg = OPL.sole_writer_edit_violation(rel)
-            if msg:
-                out.append(msg)
             # Isolated-worktree boundary (operator 2026-08-20): claude-role edits inside the
             # PRODUCTION (primary) checkout are BLOCKED; Claude edits only its -Claude worktree.
             iso = OPL.claude_isolated_edit_violation(fp)
             if iso:
                 out.append(iso)
-            # LOCK-1 (RC-232) + RC-453: hard denylist and control-authority rails.
-            hd = WDL.hard_denylist_violation(rel)
-            if hd:
-                out.append(hd)
+            # THE authority rule (RC-462): an acting AI may not edit the files that
+            # decide who is in charge. There is no second, role-based denylist.
             auth = WDL.control_authority_violation(rel)
             if auth:
                 out.append(auth)
-            # LOCK-1/3 (RC-232): pm/sole role files — Cursor status-fields-only.
+            # RC-461: the off-repo PM-authority file is gone, so its delete/write
+            # validators are gone with it. governance/pm_mission.json is ordinary
+            # COORDINATION metadata - it grants nothing, so writing it needs no validator.
             new_text = _tool_new_text(tool_input)
-            if new_text:
-                out.extend(WDL.pm_status_field_violations(rel, new_text))
-            # LOCK-7 (RC-232): Cursor creating NEW governance mandate prose while a mission
-            # runs with writer!=cursor is process-md theater unless explicitly waived.
+            # LOCK-7 (RC-232): assigned principals creating NEW governance mandate prose
+            # while a mission runs is process-md theater unless explicitly waived. The
+            # mission is read from coordination metadata, never from authority.
             if (rel.startswith("governance/") and rel.endswith((".md", ".mdc"))
                     and not (REPO / rel).exists()
                     and WDL.current_agent_role()
-                    and WDL.current_agent_role() != WDL.resolved_writer()
-                    and WDL.mission_in_progress(WDL._load_json(WDL.PM_MISSION_PATH))
+                    and WDL.mission_in_progress(OPL.pm_mission_record())
                     and "# process-doc-ok:" not in (new_text or "")):
                 out.append(
                     f"SOD_DRIFT: new governance mandate file {rel} — prose is never a lock "

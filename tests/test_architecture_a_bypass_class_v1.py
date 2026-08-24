@@ -1,5 +1,5 @@
-# institutional-synthetic-ok: inject writer≠agent + fake env/grant payloads to prove
-# Architecture A rejects the actual prohibited bypass actions (RC-450).
+# institutional-synthetic-ok: inject leftover writer metadata + env/grant payloads to prove
+# Architecture A rejects the actual prohibited bypass actions (RC-450 / RC-454).
 """Architecture A — mandatory controls are not subject-disableable.
 
 These tests attempt the prohibited action and require the real boundary to reject it.
@@ -69,18 +69,18 @@ def _body_disables(body: list[ast.stmt]) -> bool:
     return False
 
 
-def test_writer_action_while_not_writer_blocks():
+def test_stale_writer_cannot_block_operator_selected_product_work():
     msgs = WDL.writer_drift_violations(
         ["server.py"], agent="cursor", mission=_MISSION, sole_writer=_SOLE
     )
-    assert msgs and any("SOD_DRIFT: claude is sole writer" in m for m in msgs)
+    assert msgs == []
 
 
 @pytest.mark.parametrize("value", ["off", "0", "false", "OFF", "False", " off ", "FALSE"])
-def test_writer_drift_env_disable_still_blocks(value, monkeypatch):
+def test_writer_drift_env_disable_still_blocks_rails(value, monkeypatch):
     monkeypatch.setenv("ED_WRITER_DRIFT_GUARD", value)
     msgs = WDL.writer_drift_violations(
-        ["server.py"], agent="cursor", mission=_MISSION, sole_writer=_SOLE
+        ["tools/writer_drift_lock.py"], agent="cursor", mission=_MISSION, sole_writer=_SOLE
     )
     assert msgs, f"ED_WRITER_DRIFT_GUARD={value!r} disabled the control"
 
@@ -95,34 +95,42 @@ def test_assigned_writer_cannot_rewrite_the_writer_guard():
 def test_assigned_writer_works_without_disabling_any_guard(monkeypatch):
     monkeypatch.delenv("ED_WRITER_DRIFT_GUARD", raising=False)
     monkeypatch.delenv("ED_PM_MISSION_GUARD", raising=False)
-    msgs = WDL.writer_drift_violations(
-        ["server.py"], agent="claude", mission=_MISSION, sole_writer=_SOLE
-    )
-    assert msgs == []
+    for agent in ("claude", "cursor"):
+        msgs = WDL.writer_drift_violations(
+            ["server.py"], agent=agent, mission=_MISSION, sole_writer=_SOLE
+        )
+        assert msgs == [], agent
 
 
-def test_cursor_cannot_self_grant_writer():
-    cur = json.dumps({"writer": "claude", "pm": "operator", "auditor": "cursor", "note": "n"})
-    new = json.dumps({
-        "writer": "cursor",
-        "pm": "operator",
-        "auditor": "cursor",
-        "note": "# sod-role-ok: I assign myself",
-    })
-    v = WDL.pm_status_field_violations(
-        "governance/sole_writer.json", new, agent="cursor", current_text=cur
-    )
-    assert v and any("cannot authorize itself as writer" in m or "writer" in m for m in v)
+def test_self_set_writer_does_not_unlock_rails():
+    """RC-461: self-assignment in a repo JSON is inert; the rails stay shut.
+
+    The agent may write anything it likes into the coordination file - including naming
+    itself writer and waving a '# sod-role-ok' note at it - and no rail opens, because
+    authority is never read from the tree.
+    """
+    assert WDL.control_authority_violation(
+        "governance/sole_writer.json", agent="cursor") is None
+    assert WDL.control_authority_violation("tools/writer_drift_lock.py", agent="cursor")
+    assert WDL.control_authority_violation(".claude/settings.json", agent="cursor")
+    assert WDL.control_authority_violation("governance/operator_grants.json", agent="cursor")
 
 
-def test_cursor_edit_ok_json_cannot_authorize_product_write():
+def test_cursor_edit_ok_json_cannot_authorize_rails_rewrite():
     msgs = WDL.writer_drift_violations(
         ["server.py"],
         agent="cursor",
         mission=_MISSION,
         sole_writer={**_SOLE, "cursor_edit_ok": True},
     )
-    assert msgs and any("SOD_DRIFT" in m for m in msgs)
+    assert msgs == []
+    rails = WDL.writer_drift_violations(
+        ["tools/writer_drift_lock.py"],
+        agent="cursor",
+        mission=_MISSION,
+        sole_writer={**_SOLE, "cursor_edit_ok": True},
+    )
+    assert rails and any("control-authority" in m for m in rails)
 
 
 def test_git_commit_no_verify_blocks():

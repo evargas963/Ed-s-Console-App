@@ -1,5 +1,5 @@
-# institutional-synthetic-ok: inject writer≠agent + fake scope dirty paths to prove RC-226 BLOCKs.
-"""Writer no-drift lock — negative controls (RC-226)."""
+# institutional-synthetic-ok: inject assigned principals + dirty rails to prove RC-454 BLOCKs.
+"""Architecture A control-authority lock — negative controls (RC-454)."""
 from __future__ import annotations
 
 import json
@@ -18,45 +18,44 @@ import tools.writer_drift_lock as WDL  # noqa: E402
 def _mission_claude_scope() -> dict:
     return {
         "status": "ready_for_claude",
+        "pm": "operator",
         "writer": "claude",
         "mission_id": "drift-neg-v1",
         "scope_paths": ["static/chart.html", "server.py", "tools/", "tests/"],
     }
 
 
-def test_writer_drift_blocks_cursor_on_scope_path():
-    """PROVEN BLOCK: writer=claude + cursor agent + dirty scope path → violations."""
+def test_stale_writer_metadata_cannot_block_cursor_on_product():
+    """PROVEN: writer=claude leftover + cursor agent + dirty product → no writer veto."""
     msgs = WDL.writer_drift_violations(
         ["static/chart.html"],
         agent="cursor",
         mission=_mission_claude_scope(),
-        sole_writer={"writer": "claude", "pm": "cursor"},
+        sole_writer={"writer": "claude", "pm": "operator"},
     )
-    assert msgs, "expected WRITER-DRIFT BLOCK on scope path"
-    assert any("SOD_DRIFT: claude is sole writer" in m for m in msgs)
-    assert any("WRITER-DRIFT" in m for m in msgs)
-    assert any("static/chart.html" in m for m in msgs)
+    assert msgs == []
 
 
 def test_writer_drift_allows_pm_governance_touch():
-    """Governance / PM allowlist under mission → PASS for Cursor."""
+    """Governance / leftover assignment JSON under mission → PASS for Cursor."""
     msgs = WDL.writer_drift_violations(
         ["governance/pm_mission.json", "governance/sole_writer.json", "reports/cursor_desk_audit_v1.md"],
         agent="cursor",
         mission=_mission_claude_scope(),
-        sole_writer={"writer": "claude", "pm": "cursor"},
+        sole_writer={"writer": "claude", "pm": "operator"},
     )
     assert msgs == []
 
 
-def test_writer_drift_allows_named_writer():
-    msgs = WDL.writer_drift_violations(
-        ["static/chart.html"],
-        agent="claude",
-        mission=_mission_claude_scope(),
-        sole_writer={"writer": "claude"},
-    )
-    assert msgs == []
+def test_writer_drift_allows_any_assigned_product_agent():
+    for agent in ("claude", "cursor", "codex", "gpt"):
+        msgs = WDL.writer_drift_violations(
+            ["static/chart.html"],
+            agent=agent,
+            mission=_mission_claude_scope(),
+            sole_writer={"writer": "claude"},
+        )
+        assert msgs == [], agent
 
 
 def test_writer_drift_idle_mission_no_scope_drift():
@@ -69,44 +68,44 @@ def test_writer_drift_idle_mission_no_scope_drift():
     assert msgs == []
 
 
-def test_pretooluse_ready_for_claude_blocks_cursor_product(monkeypatch, tmp_path):
-    monkeypatch.setenv("ED_AGENT_ROLE", "cursor")
-    monkeypatch.delenv("ED_PM_MISSION_GUARD", raising=False)
-    monkeypatch.delenv("ED_WRITER_DRIFT_GUARD", raising=False)
+def test_ordinary_product_is_autonomous_for_every_assigned_agent(monkeypatch, tmp_path):
+    """RC-461: the coding AI does ordinary repo work WITHOUT operator approval.
+
+    The PM-mission edit gate is gone. Whatever a mission file happens to say - even a
+    mission naming a different writer with a narrow scope - ordinary product paths stay
+    open to every assigned principal. Only AUTHORITY files are denied.
+    """
     mission = tmp_path / "pm_mission.json"
     mission.write_text(json.dumps(_mission_claude_scope()), encoding="utf-8")
     monkeypatch.setattr(OPL, "PM_MISSION_PATH", mission)
     monkeypatch.setattr(WDL, "PM_MISSION_PATH", mission)
-    msg = OPL.pm_mission_edit_violation("static/chart.html", agent="cursor")
-    assert msg and "SOD_DRIFT: claude is sole writer" in msg and "WRITER-DRIFT" in msg
+    for agent in ("cursor", "claude", "codex", "gpt"):
+        for rel in ("static/chart.html", "server.py", "db.py", "signals.py"):
+            assert WDL.control_authority_violation(rel, agent=agent) is None, (agent, rel)
+        assert WDL.writer_drift_violations(
+            ["static/chart.html", "server.py", "db.py"], agent=agent
+        ) == [], agent
+    # ...and the gate that used to block them no longer exists at all.
+    assert not hasattr(OPL, "pm_mission_edit_violation")
+    assert not hasattr(OPL, "sole_writer_edit_violation")
 
 
-def test_pretooluse_ready_for_claude_allows_claude_writer(monkeypatch, tmp_path):
-    monkeypatch.setenv("ED_AGENT_ROLE", "claude")
-    mission = tmp_path / "pm_mission.json"
-    mission.write_text(json.dumps(_mission_claude_scope()), encoding="utf-8")
-    monkeypatch.setattr(OPL, "PM_MISSION_PATH", mission)
-    assert OPL.pm_mission_edit_violation("static/chart.html", agent="claude") is None
-
-
-def test_lock1_hard_denylist_blocks_cursor_on_chart_and_server(monkeypatch):
-    """LOCK-1 spec case: Cursor touching chart.html/server.py under writer=claude BLOCKS
-    with the SOD_DRIFT prefix, regardless of scope_paths."""
+def test_hard_denylist_no_longer_vendor_gates_product(monkeypatch):
+    """Product hard-denylist retired: chart/server/db are not writer-gated."""
     monkeypatch.delenv("ED_WRITER_DRIFT_GUARD", raising=False)
     mission = {"status": "active", "writer": "claude", "mission_id": "m1", "scope_paths": ["tools/"]}
     sole = {"writer": "claude"}
     for rel in ("static/chart.html", "server.py", "market_context.py", "db.py"):
-        msg = WDL.hard_denylist_violation(rel, agent="cursor", mission=mission, sole=sole)
-        assert msg and msg.startswith("SOD_DRIFT:"), f"hard denylist silent on {rel}"
-    assert WDL.hard_denylist_violation("server.py", agent="claude", mission=mission, sole=sole) is None
+        assert WDL.control_authority_violation(rel, agent="cursor") is None
+        assert WDL.control_authority_violation(rel, agent="claude") is None
 
 
 def test_lock1_lock_modules_are_not_agent_writable(monkeypatch):
     """Architecture A: no assigned principal may rewrite control-authority rails."""
     mission = {"status": "active", "writer": "claude", "mission_id": "m1", "scope_paths": ["tools/"]}
     sole = {"writer": "claude"}
-    assert WDL.hard_denylist_violation(
-        "tools/check_institutional_correctness.py", agent="cursor", mission=mission, sole=sole
+    assert WDL.control_authority_violation(
+        "tools/check_institutional_correctness.py", agent="cursor"
     )
     assert WDL.writer_drift_violations(
         ["tools/writer_drift_lock.py"],
@@ -120,34 +119,32 @@ def test_lock1_lock_modules_are_not_agent_writable(monkeypatch):
         mission=mission,
         sole_writer=sole,
     )
-    assert WDL.hard_denylist_violation(
-        "server.py", agent="cursor", mission=mission, sole=sole
-    )
+    assert WDL.control_authority_violation("server.py", agent="cursor") is None
 
 
-def test_lock1_pm_status_fields_only_for_cursor():
-    """LOCK-1/3: role flips, scope expansion and remaining[] deletion BLOCK; status-field
-    changes pass; a comment marker cannot authorize a role flip."""
-    cur = ('{"writer": "claude", "pm": "cursor", "auditor": "cursor", "status": "active", '
-           '"scope_paths": ["tools/"], "remaining": [{"id": "X"}], "note": "n"}')
-    flip = cur.replace('"writer": "claude"', '"writer": "cursor"')
-    v = WDL.pm_status_field_violations("governance/pm_mission.json", flip,
-                                       agent="cursor", current_text=cur)
-    assert v and any("writer" in m and m.startswith("SOD_DRIFT:") for m in v)
-    grow = cur.replace('["tools/"]', '["tools/", "server.py"]')
-    v2 = WDL.pm_status_field_violations("governance/pm_mission.json", grow,
-                                        agent="cursor", current_text=cur)
-    assert v2 and any("expands scope_paths" in m for m in v2)
-    drop = cur.replace('"remaining": [{"id": "X"}], ', '"remaining": [], ')
-    v3 = WDL.pm_status_field_violations("governance/pm_mission.json", drop,
-                                        agent="cursor", current_text=cur)
-    assert v3 and any("remaining" in m for m in v3)
-    status_only = cur.replace('"status": "active"', '"status": "idle"')
-    assert not WDL.pm_status_field_violations("governance/pm_mission.json", status_only,
-                                              agent="cursor", current_text=cur)
-    escaped = flip.replace('"note": "n"', '"note": "# sod-role-ok: operator order"')
-    assert WDL.pm_status_field_violations("governance/pm_mission.json", escaped,
-                                         agent="cursor", current_text=cur)
+def test_persisted_metadata_grants_no_authority(monkeypatch, tmp_path):
+    """RC-461: no writer/auditor/vendor/pm field in a repo JSON grants authority.
+
+    An agent may freely rewrite coordination metadata - including naming ITSELF writer,
+    or writing pm=<itself> - and gains NOTHING by it: the control-authority rail still
+    denies every authority file, because the rail reads the operator-assigned principal,
+    never a field the agent can type.
+    """
+    mission = tmp_path / "pm_mission.json"
+    monkeypatch.setattr(OPL, "PM_MISSION_PATH", mission)
+    monkeypatch.setattr(WDL, "PM_MISSION_PATH", mission)
+    for agent in ("cursor", "claude", "codex"):
+        mission.write_text(json.dumps({
+            "status": "active", "writer": agent, "auditor": agent,
+            "pm": agent, "mission_id": "m1", "scope_paths": ["*"],
+        }), encoding="utf-8")
+        # Self-declared pm/writer buys no authority.
+        for rel in (".github/CODEOWNERS", ".claude/settings.json",
+                    "tools/writer_drift_lock.py", "governance/operator_grants.json",
+                    ".github/workflows/pytest.yml"):
+            assert WDL.control_authority_violation(rel, agent=agent), (agent, rel)
+        # ...and ordinary product remains open regardless of what the file claims.
+        assert WDL.control_authority_violation("server.py", agent=agent) is None
 
 
 def test_lock4_self_heal_owed_blocks_until_rc_exists(tmp_path, monkeypatch):
@@ -158,8 +155,6 @@ def test_lock4_self_heal_owed_blocks_until_rc_exists(tmp_path, monkeypatch):
     monkeypatch.setattr(WDL, "PM_MISSION_PATH", tmp_path / "pm_mission.json")
     (tmp_path / "pm_mission.json").write_text(
         '{"status": "active", "writer": "claude", "mission_id": "m-heal"}', encoding="utf-8")
-    # Write the event directly: record_sod_drift deliberately refuses to write under
-    # pytest (real-ledger pollution guard) — this test targets self_heal_owed_violations.
     import json as _json
     ledger.write_text(_json.dumps({
         "ts": 1.0, "agent": "cursor", "mission_id": "m-heal",
@@ -178,7 +173,7 @@ def test_check_writer_no_drift_name_present_for_negative_control():
     assert callable(check_writer_no_drift)
 
 
-def test_mirror_blocks_claude_when_writer_is_cursor():
+def test_stale_cursor_assignment_cannot_block_claude_on_product():
     msgs = WDL.writer_drift_violations(
         ["server.py"],
         agent="claude",
@@ -190,12 +185,11 @@ def test_mirror_blocks_claude_when_writer_is_cursor():
         },
         sole_writer={"writer": "cursor"},
     )
-    assert msgs and any("WRITER-DRIFT" in m for m in msgs)
-    assert any("SOD_DRIFT: cursor is sole writer" in m for m in msgs)
+    assert msgs == []
 
 
-def test_cursor_strreplace_path_field_blocked(monkeypatch, tmp_path):
-    """Cursor continuum: StrReplace + tool_input.path must BLOCK (not only Claude file_path)."""
+def test_cursor_strreplace_product_path_allowed(monkeypatch, tmp_path):
+    """Cursor continuum: StrReplace + tool_input.path on ordinary product must ALLOW."""
     import tools.process_lock_guard as PLG
 
     monkeypatch.setenv("ED_AGENT_ROLE", "cursor")
@@ -209,17 +203,23 @@ def test_cursor_strreplace_path_field_blocked(monkeypatch, tmp_path):
         "StrReplace",
         {"path": str(ROOT / "static" / "chart.html"), "old_string": "a", "new_string": "b"},
     )
-    assert bad and any("SOD_DRIFT" in b for b in bad)
+    assert not any("WRITER-DRIFT" in b or "sole writer" in b.lower() for b in bad)
+    assert not any("control-authority" in b for b in bad)
 
 
 def test_cursor_strreplace_pm_path_allowed(monkeypatch, tmp_path):
-    """PM-only path via Cursor StrReplace must ALLOW while writer=claude."""
+    """Leftover mission JSON via Cursor StrReplace must ALLOW (not a rail)."""
     import tools.process_lock_guard as PLG
 
     monkeypatch.setenv("ED_AGENT_ROLE", "cursor")
     mission = tmp_path / "pm_mission.json"
     mission.write_text(json.dumps(_mission_claude_scope()), encoding="utf-8")
     monkeypatch.setattr(OPL, "PM_MISSION_PATH", mission)
+    # This test asserts a PATH-CLASSIFICATION property. Pin the LOCK-4 ledger to tmp so an
+    # unhealed denial in the developer's working tree cannot fail it: that would be ambient
+    # state, not the behaviour under test. LOCK-4 is unchanged and is exercised on its own
+    # in test_lock4_self_heal_owed_blocks_until_rc_exists.
+    monkeypatch.setattr(WDL, "SOD_DRIFT_EVENTS_PATH", tmp_path / "sod_drift_events.jsonl")
     bad = PLG.pretooluse_block(
         "StrReplace",
         {"path": str(ROOT / "governance" / "pm_mission.json")},
@@ -228,13 +228,7 @@ def test_cursor_strreplace_pm_path_allowed(monkeypatch, tmp_path):
 
 
 def test_rc240_precommit_wrapper_never_fabricates_an_agent_identity():
-    """RC-240: the pre-commit wrapper must not INVENT the actor.
-
-    It used to run `os.environ["ED_AGENT_ROLE"] = "cursor"` unconditionally, so the
-    identity-sensitive backstop judged the sole writer's own commit against an invented
-    agent and blocked it ("mission writer='claude' but agent='cursor'"). A check whose
-    verdict depends on who is acting may be given the real identity or none — never a guess.
-    """
+    """RC-240: the pre-commit wrapper must not INVENT the actor."""
     src = (ROOT / "tools" / "precommit_institutional.py").read_text(encoding="utf-8")
     for forged in ('ED_AGENT_ROLE"] = "cursor"', "ED_AGENT_ROLE'] = 'cursor'",
                    'ED_AGENT_ROLE"] = "claude"', "ED_AGENT_ROLE'] = 'claude'"):
@@ -242,7 +236,6 @@ def test_rc240_precommit_wrapper_never_fabricates_an_agent_identity():
             f"the pre-commit wrapper assigns a literal agent role ({forged!r}) — a "
             f"fabricated identity is what RC-240 was opened for"
         )
-    # and it must actively CLEAR an unusable value rather than pass junk through
     assert 'os.environ.pop("ED_AGENT_ROLE", None)' in src, (
         "the wrapper must leave identity ABSENT when the environment carries none, so the "
         "backstop abstains instead of judging under a wrong actor"
@@ -250,14 +243,7 @@ def test_rc240_precommit_wrapper_never_fabricates_an_agent_identity():
 
 
 def test_rc240_gate_entry_actually_clears_a_fabricated_role_in_process(monkeypatch):
-    """RC-240 behavioral: source presence can rot; prove the gate entry EXECUTES the clear.
-
-    RC-406 relocated the whole-tree catalog off the commit path and rewrote this wrapper; the
-    seam guarantee (never carry a fabricated actor into the gate's own process) is independent
-    of what runs behind it, so it is asserted by BEHAVIOR — set a forged role, run the
-    neutralizer, and confirm the process no longer carries it. Mirrors the RC-406 lesson that a
-    'the seam does not do X' proof must exercise the seam, not grep its text.
-    """
+    """RC-240 behavioral: prove the gate entry EXECUTES the clear."""
     import tools.precommit_institutional as PI
 
     monkeypatch.setenv("ED_AGENT_ROLE", "cursor")

@@ -198,11 +198,60 @@ def test_the_module_scope_blind_spot_is_measured_not_silent():
     ownership map; no runtime call can express which paths GitHub will treat as
     owned. Behaviour of the assignment lock is executed in
     `tests/test_control_authority_surfaces_v1.py` and does not add this entry.
+
+    267 -> 268 (Architecture A external PM authority, PR #181), one net arrival, named:
+    `test_install_script_refuses_untrusted_checkout_and_smoke_tests` ARRIVED.
+    INHERENTLY STRUCTURAL: `tools/install_pm_authority_host.sh` is a host-side shell
+    script run as root off-repo; its hardening — hash-verify against an operator pin,
+    self-containment smoke test, `env_reset` sudoers, no `NOPASSWD: ALL` — cannot be
+    exercised by any Python runtime call in this environment, exactly like the
+    CODEOWNERS ownership-map entry above. The candidate also briefly carried
+    `test_helper_source_is_not_claimed_as_the_boundary`; it was REMOVED as a redundant
+    source-text proxy because every security property it touched is asserted
+    behaviorally (self-containment / stdin-only / non-isolated refusal), so the
+    behaviour is asserted and that entry leaves the census on its own — net +1.
+
+    268 -> 269 (RC-459 Windows host boundary), one net arrival, named:
+    `test_windows_installer_moves_ownership_away_from_the_ai` ARRIVED.
+    INHERENTLY STRUCTURAL: it asserts that `tools/install_pm_authority_host.ps1`
+    ASSIGNS OWNERSHIP of the authority objects to the BUILTIN Administrators group
+    SID S-1-5-32-544) and grants the AI account ReadAndExecute only. Ownership
+    assignment is an ELEVATED Windows operation against a host path; no runtime call
+    in this environment can execute it — CI runs unelevated on Linux, where the
+    Win32 security APIs do not exist at all — exactly like the CODEOWNERS ownership-map
+    and the POSIX installer entries above. The property is also not optional: MEASURED
+    on the real host 2026-08-23, a read-only grant alone left `icacls <dir> /grant
+    <ai>:(F)` SUCCEEDING because an OWNER always retains WRITE_DAC, so ownership is the
+    load-bearing fact and a source assertion is the only way to pin it in CI.
+    The ACCESS half of the same boundary IS asserted behaviorally (real `icacls` +
+    real denied writes/deletes/renames) in
+    `test_windows_negative_controls_read_only_authority`, and the authorized-mutation
+    path in `test_windows_operator_authorized_mutation_succeeds`; both execute the
+    behaviour and therefore do NOT enter this census.
+    269 -> 267 (RC-461 simplification), TWO net departures, both REPAIRS - the count
+    falls because the source-text proxies left with the architecture they described:
+    `test_install_script_refuses_untrusted_checkout_and_smoke_tests` DEPARTED and
+    `test_windows_installer_moves_ownership_away_from_the_ai` DEPARTED, because
+    tests/test_pm_authority_external_v1.py and
+    tests/test_pm_authority_windows_boundary_v1.py were DELETED along with the OS
+    capability boundary, privileged helper and host installers they asserted. The
+    operator ruled that architecture overbuilt: no OS sandbox, no separate account, no
+    ProgramData authority service, no host provisioning. With no host artifact to
+    describe there is no source text to inspect, so both entries leave the census on
+    their own - the RC-308 preferred direction. No behaviour was lost with them: what
+    the repo still promises (operator-controlled assignment, metadata grants nothing,
+    no self-promotion, ordinary product autonomous) is asserted BEHAVIOURALLY through
+    the live rail in tests/test_control_authority_surfaces_v1.py,
+    tests/test_architecture_a_operator_writer_authority_v1.py and
+    tests/test_writer_drift_lock_v1.py, none of which enter this census.
+    `test_codeowners_covers_control_authority_set` REMAINS (its line moved only): the
+    CODEOWNERS ownership map is still inherently structural - no runtime call can
+    express which paths GitHub will treat as owned.
     """
     fns = C.source_text_only_functions()
     assert len(fns) == 267, (
         f"the per-function source-text-only count moved from the 267 measured on "
-        f"2026-08-23 to {len(fns)}. This figure is not a defect count, so do not simply "
+        f"2026-08-23 (RC-461) to {len(fns)}. This figure is not a defect count, so do not simply "
         f"re-baseline it. ACCOUNT for the move: name each function that arrived or left. "
         f"An arrival stays only if its property is INHERENTLY STRUCTURAL — uniqueness, "
         f"duplication or absence in the repository, which no runtime call can express. If "

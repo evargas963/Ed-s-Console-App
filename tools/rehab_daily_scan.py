@@ -526,24 +526,6 @@ def _collect_findings(measure: dict, status: dict) -> list[dict]:
             }
         )
 
-    sole = REPO / "governance" / "sole_writer.json"
-    if sole.is_file():
-        try:
-            sw = json.loads(sole.read_text(encoding="utf-8"))
-        except json.JSONDecodeError:
-            sw = {}
-        if str(sw.get("pm", "")).lower() != "operator":
-            findings.append(
-                {
-                    "id": "rehab.pm_not_operator",
-                    "severity": "P1",
-                    "facet": "process",
-                    "summary": "sole_writer.pm is not 'operator'",
-                    "recommendation": "Set governance/sole_writer.json pm=operator (operator 2026-08-18: operator is the governing authority/PM; Cursor is an adversarial auditor only; supersedes the RC-218 PM assignment).",
-                    "evidence": {"pm": sw.get("pm")},
-                }
-            )
-
     # Code-health BLOCKING (best-effort; may be slow)
     py = REPO / ".venv" / "Scripts" / "python.exe"
     exe = str(py) if py.is_file() else sys.executable
