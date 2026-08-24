@@ -302,6 +302,49 @@ def removed_enforced_checks(base_roster: set[str], head_roster: set[str]) -> lis
     return sorted(base_roster - head_roster)
 
 
+# ── DECLARED RETIREMENT (RC-468) ────────────────────────────────────────────────────
+# The roster comparison above refuses SILENT removal (RC-391). Before RC-468 it also
+# refused DELIBERATE removal, which made the enforced set append-only forever — the
+# governance surface could only grow, never be right-sized. The operator's 2026-08-24
+# mandate requires both properties at once: no check disappears quietly, AND a reviewed
+# retirement is possible. The seam: a removal passes only when the SAME candidate tree
+# ships a manifest row naming the check in governance/retired_checks.md, so the name and
+# the reason travel with the removal and an undeclared removal blocks exactly as before.
+_RETIREMENT_MANIFEST = "governance/retired_checks.md"
+_MANIFEST_ROW_RE = re.compile(r"^\|\s*([a-z][a-z0-9_]*)\s*\|")
+
+
+def parse_retirements(text: str) -> set[str]:
+    """Check names declared retired in manifest TEXT: the first cell of each table row.
+    The header cell ("check") is excluded by name; the separator row cannot match the
+    catalog's lowercase snake_case name shape, so no further allowlist is kept."""
+    names: set[str] = set()
+    for line in text.splitlines():
+        m = _MANIFEST_ROW_RE.match(line)
+        if m and m.group(1) != "check":
+            names.add(m.group(1))
+    return names
+
+
+def declared_retirements(ref: str) -> set[str]:
+    """Names the CANDIDATE tree at `ref` declares retired.
+
+    Read from the ref itself — not the working tree — so the declaration ships WITH the
+    removal it excuses; a missing manifest declares nothing (fail-closed toward blocking)."""
+    proc = _run(["git", "show", f"{ref}:{_RETIREMENT_MANIFEST}"], cwd=REPO)
+    if proc.returncode != 0:
+        return set()
+    return parse_retirements(proc.stdout)
+
+
+def split_removals(removed: list[str], declared: set[str]) -> tuple[list[str], list[str]]:
+    """(retired, still_blocked). Declaration affects ONLY removal accounting — the counts
+    comparison never consults it, so a manifest row cannot excuse a violation being ADDED."""
+    retired = [n for n in removed if n in declared]
+    blocked = [n for n in removed if n not in declared]
+    return retired, blocked
+
+
 
 # ── BASE-SIDE CACHE (RC-466) ────────────────────────────────────────────────────────
 # The base measurement is a pure function of: the base COMMIT (content-addressed), THIS
@@ -396,7 +439,9 @@ def main(argv: list[str] | None = None) -> int:
         _write_base_cache(cache_key, base_counts, base_sha, base_roster)
     head_counts, head_sha, head_roster = enforced_counts(candidate_ref, stage_delta=True)
     added, improved = compare(base_counts, head_counts)
-    removed = removed_enforced_checks(base_roster, head_roster)
+    retired, removed = split_removals(
+        removed_enforced_checks(base_roster, head_roster),
+        declared_retirements(candidate_ref))
 
     print(f"base {args.base} ({base_sha}): {sum(base_counts.values())} enforced "
           f"across {len(base_counts)} check(s), {len(base_roster)} enforced check(s) declared")
@@ -405,17 +450,23 @@ def main(argv: list[str] | None = None) -> int:
     if improved:
         print("\nPAID DOWN by this delta:")
         print("\n".join(improved))
+    if retired:
+        print("\nRETIRED by declaration in governance/retired_checks.md (RC-468):")
+        print("\n".join(f"  {name}" for name in retired))
     if not added and not removed:
+        tail = ("every removed check is declared retired in the manifest"
+                if retired else "removes no enforced check")
         print(f"\n[PASS] this delta adds no enforced violation the base did not already "
-              f"carry, and removes no enforced check.")
+              f"carry, and {tail}.")
         return 0
     if added:
         print("\n[FAIL] this delta ADDS enforced violations — not done, whatever the "
               "hand-written tests say:")
         print("\n".join(f"  {a.strip()}" for a in added))
     if removed:
-        print("\n[FAIL] this delta REMOVES enforced check(s) from the CHECKS roster. "
-              "Deleting the check that fails is not paying the debt:")
+        print("\n[FAIL] this delta REMOVES enforced check(s) from the CHECKS roster "
+              "without declaring them in governance/retired_checks.md. Deleting the "
+              "check that fails is not paying the debt:")
         print("\n".join(f"  {name}" for name in removed))
     print("\nThese checks are already owned by the repo and encode failure modes this "
           "change's own tests did not imagine. Fix them, then re-run.")
