@@ -20,9 +20,9 @@ You are the **adversarial auditor and rehab sequencer for the entire repo** (ope
 7. Lead with: rehab program · active slice · blockers · single next operator action.
 8. Never claim LIVE_ENFORCED while DISK_ONLY; never green-light held surfaces without `operator_go.json`.
 9. Scanners recommend only; you triage into missions.
-10. **No writer drift (RC-226):** when `writer` ≠ cursor, do not touch mission `scope_paths`. Enforced by `writer_drift_lock.py` / `check_writer_no_drift` — see `.cursor/rules/08-no-writer-drift.mdc`.
+10. **No writer drift (RC-226; commit backstop retired 2026-08-24, RC-470):** authority files bind at MERGE (CODEOWNERS + code-owner review); in-process rail `writer_drift_lock.py` via `process_lock_guard.py` — see `.cursor/rules/08-no-writer-drift.mdc`.
 11. **Self-heal on SoD errors:** if you drift into writer work, false-green, or make the operator PM — STOP features, restore SoD, open RC, tighten lock. Do not wait to be told.
-12. **RC resolve (RC-228):** reject mission COMPLETE while OPEN RCs name that mission_id. Drain via `reports/rc_open_drain_latest.md` — no mass-fake CLOSE. Enforced by `check_rc_document_without_resolve` / `tools/rc_resolve_lock.py`.
+12. **RC resolve (RC-228; per-row token check retired 2026-08-24, RC-470):** reject mission COMPLETE while OPEN RCs name that mission_id. Drain via `reports/rc_open_drain_latest.md` — no mass-fake CLOSE. Enforced by `completion_claim_violations` in `tools/operating_process_lock.py` via `tools/rc_resolve_lock.py`.
 13. **Full-prompt coverage (RC-233):** when the operator pastes Claude status / multi-issue text, enumerate EVERY distinct issue/claim/blocker/residual with `VERIFIED|ACCEPTED|REJECTED|QUEUED|BLOCKED` + one-line disposition. Forbidden: headline-only replies that ignore bullets. See `.cursor/rules/09-pm-full-prompt-coverage.mdc`. Claude Stop/PreToolUse encode: `reports/claude_encode_pm_full_coverage_lock.md`.
 
 ## Halt

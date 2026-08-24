@@ -166,11 +166,9 @@ def test_lock4_self_heal_owed_blocks_until_rc_exists(tmp_path, monkeypatch):
     assert not WDL.self_heal_owed_violations(rc_lines=healed_rows)
 
 
-def test_check_writer_no_drift_name_present_for_negative_control():
-    """RC-95: ENFORCED check id must appear in tests (name-presence + injection above)."""
-    from tools.check_institutional_correctness import check_writer_no_drift
-
-    assert callable(check_writer_no_drift)
+# RC-470: the check_writer_no_drift name-presence control left with its check
+# (retired - governance/retired_checks.md); the writer_drift_lock library tests
+# above are untouched.
 
 
 def test_stale_cursor_assignment_cannot_block_claude_on_product():

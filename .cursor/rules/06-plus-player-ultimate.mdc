@@ -9,12 +9,11 @@ Performance must exceed MIT / Bloomberg / institutional quant **at all times**. 
 
 **This `.mdc` is not the lock.** Mechanical enforcers (`.py` that BLOCK):
 
-- `check_plus_player_law` — ENFORCED-only attribute catalog bound to CHECK ids
 - `check_research_before_act` — commit-time resolvable research
-- `check_plus_player_cursor_hooks` — Cursor continuum wired
-- `check_claude_cursor_guard_parity` — Claude+Cursor guard parity
+- `check_claude_cursor_guard_parity` — Claude+Cursor guard parity (both hook files CODEOWNERS-owned)
 - `tools/operator_law_guard.py` — Edit/Write ledger + Stop research_violation
 - `tools/turn_self_audit.py` — `research_violation` (path/URL must resolve)
-- `governance/plus_player_attributes.json` — every attribute ENFORCED with a real enforcer
 
+RC-470 (operator right-sizing 2026-08-24): `check_plus_player_law` and
+`check_plus_player_cursor_hooks` retired — `governance/retired_checks.md`.
 Strength is proven by ENFORCED check callees — not an `.md` scorecard.

@@ -141,12 +141,14 @@ def test_negative_control_the_original_bypass_is_now_two_sided(tmp_path, monkeyp
     cells_strict = [c.strip() for c in strict.strip().strip(PIPE).split(PIPE)]
     cells_bypass = [c.strip() for c in bypass.strip().strip(PIPE).split(PIPE)]
 
-    strict_hits = (len(K._five_why_lock_violations([strict], K.REPO))
-                   + len(K._rc_row_violations(K.REPO, 1, cells_strict[0],
-                                              cells_strict[1], cells_strict)))
-    bypass_hits = (len(K._five_why_lock_violations([bypass], K.REPO))
-                   + len(K._rc_row_violations(K.REPO, 1, cells_bypass[0],
-                                              cells_bypass[1], cells_bypass)))
+    # RC-470: the five-why grammar validator is retired (governance/retired_checks.md);
+    # _rc_row_violations is the surviving row-content authority and it alone still
+    # exhibits RC-257's asymmetry - the literal-CLOSED evidence clause catches the
+    # deficient strict row and skips the unknown richer token.
+    strict_hits = len(K._rc_row_violations(K.REPO, 1, cells_strict[0],
+                                           cells_strict[1], cells_strict))
+    bypass_hits = len(K._rc_row_violations(K.REPO, 1, cells_bypass[0],
+                                           cells_bypass[1], cells_bypass))
     assert strict_hits > 0, "the deficient CLOSED row must still be caught"
     assert bypass_hits == 0, (
         "documenting the surviving hole: the close-contract clauses still key "
