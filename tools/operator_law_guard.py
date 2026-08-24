@@ -710,21 +710,11 @@ def edit_violations(path: str, new_text: str, ledger: list[dict]) -> list[str]:
             f"then close."]
 
 
-#: RC-125 (operator law, 2026-07-29): "you must always probe the live session before you
-#: provide any answers." A live-session probe is a command that touches the RUNNING system or
-#: its data — the console API, the DB, or a rendered-page probe. Tests and gates verify CODE;
-#: they do not observe the live session, so they deliberately do not satisfy this.
-#: First live firing (2026-07-29 08:31 ET): the rule blocked a turn whose probe was a DIRECT
-#: Schwab chain poll — the strongest observation possible — because the vendor-call spellings
-#: were missing from this list. Widened the same minute.
-_LIVE_PROBE = re.compile(
-    r"127\.0\.0\.1|/api/|urlopen|DB_PATH|sqlite3|option_chain|snapshots|"
-    r"ticker_journey_probe|playwright|get_chain|get_quote|schwab", re.I)
-
-
-def _has_live_probe(ledger: list[dict]) -> bool:
-    return any(_LIVE_PROBE.search(e.get("detail", ""))
-               for e in ledger if e.get("kind") == "bash")
+# RC-125 probe-every-turn RETIRED (SIMPLICITY REHAB 2026-08-24): the predicate was a
+# substring regex (any command mentioning `snapshots`/`schwab`/`sqlite3` satisfied it),
+# forcing a token rather than an observation, and it blocked pure governance/read turns.
+# The scoped form of the law survives: pm_verify_repo_violations (honesty_guard) blocks
+# a verdict about repo/live state that carries no same-turn measurement.
 
 
 #: RC-203 (operator non-negotiable, 2026-08-02: "always research and then act... at an
@@ -930,24 +920,15 @@ def stop_violations(ledger: list[dict]) -> list[str]:
         out.append(f"ACTION BLOCKED: this turn changed production code and ran NOTHING. "
                    f"Edited: {', '.join(sorted(set(edits))[:6])}. Execute the affected tests or "
                    f"a live probe before ending the turn.")
-    # RC-190 (restored per the RC-368 contract): a production change obliges a same-turn
-    # tools/turn_self_audit.py run by the agent itself — affected tests alone are not the
-    # typed audit. The Stop-time supervised child re-proves it, but the obligation is the
-    # agent's; the recorded command is the evidence.
-    if edits and not any(
-        e.get("kind") == "bash" and "turn_self_audit" in str(e.get("detail") or "")
-        for e in ledger
-    ):
-        out.append("ACTION BLOCKED (RC-190): production changed and tools/turn_self_audit.py "
-                   "never ran this turn. Run the typed self audit, then end the turn.")
-    # RC-125: every answer stands on a same-turn observation of the live session — the morning
-    # of 2026-07-29 was lost to an answer reasoned from a screenshot while the live payload sat
-    # one command away. Absolute by operator order: probe first, then answer.
-    if not _has_live_probe(ledger):
-        out.append("ACTION BLOCKED (RC-125): no live-session probe ran this turn. Operator law: "
-                   "always probe the live session before providing any answer — query the "
-                   "console API, the DB, or run a rendered-page probe, paste what it said, "
-                   "then answer.")
+    # RC-190 same-turn turn_self_audit obligation RETIRED (SIMPLICITY REHAB 2026-08-24):
+    # it enforced ONE obligation twice (ledger clause + a 5.8s-measured Stop-time
+    # supervised child), and the same CHECKS roster runs at commit
+    # (tools/precommit_institutional.py) with the delta gate as merge authority
+    # (check_delta_adds_no_debt --base origin/main in hardening.yml) enforcing strictly
+    # more. tools/turn_self_audit.py stays available as a manual/CI tool.
+    # RC-125 probe-every-turn RETIRED here (SIMPLICITY REHAB 2026-08-24) — see the note
+    # where _LIVE_PROBE lived: a substring regex forced a token, not an observation, and
+    # blocked pure governance/read turns. pm_verify_repo_violations keeps the scoped form.
     return out
 
 

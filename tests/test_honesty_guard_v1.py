@@ -60,10 +60,10 @@ def test_honesty_deliverable_scores_required():
 
 # RC-470: the wired/catalog controls (honesty_guard_wired x2, cursor_hooks_require_
 # honesty, catalog_bans_soft_partial) left with their retired checks -
-# governance/retired_checks.md. Both hook files are CODEOWNERS-owned, and
-# claude_cursor_guard_parity (KEPT, tested in tests/test_find_prove_locks_v1.py) still
-# asserts honesty_guard.py is named in both agents' hook files. The guard's own
-# behavioral controls above are untouched.
+# governance/retired_checks.md. Both hook files are CODEOWNERS-owned
+# (claude_cursor_guard_parity retired on the same equivalence, 2026-08-24); the
+# wiring FACT stays pinned directly below. The guard's own behavioral controls
+# above are untouched.
 def test_cursor_hooks_still_name_honesty_guard():
     """The wiring FACT the retired checks watched, pinned directly: both hook files
     name honesty_guard.py. (Parity's five-guard assertion covers this too; this keeps

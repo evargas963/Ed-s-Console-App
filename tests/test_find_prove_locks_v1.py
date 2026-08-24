@@ -99,17 +99,19 @@ def test_decision_path_wired_live():
     assert check_decision_path_wired() == []
 
 
-def test_claude_cursor_guard_parity_blocks_drift():
-    from tools.find_prove_locks import claude_cursor_parity_violations
+def test_claude_cursor_guard_parity_is_retired():
+    """SIMPLICITY REHAB 2026-08-24: the parity check was DECLARED retired
+    (governance/retired_checks.md, 2026-08-24 row) yet stayed registered — the manifest
+    lied. Both hook files are CODEOWNERS-owned, so guard-wiring parity is a merge-review
+    property. This pin keeps the retirement executed: a resurrection must delete it."""
+    import tools.check_institutional_correctness as cic
+    import tools.find_prove_locks as fpl
 
-    assert claude_cursor_parity_violations('{"hooks":{}}', '{"hooks":{}}')
-    assert claude_cursor_parity_violations() == []
-
-
-def test_claude_cursor_guard_parity_check():
-    from tools.check_institutional_correctness import check_claude_cursor_guard_parity
-
-    assert check_claude_cursor_guard_parity() == []
+    assert not hasattr(cic, "check_claude_cursor_guard_parity")
+    assert not hasattr(fpl, "claude_cursor_parity_violations")
+    assert "claude_cursor_guard_parity" not in {name for name, _fn, _enf in cic.CHECKS}
+    manifest = (REPO / "governance" / "retired_checks.md").read_text(encoding="utf-8")
+    assert "claude_cursor_guard_parity" in manifest
 
 
 def test_find_prove_significance_substance_screams_on_staged_bad_report(

@@ -23,8 +23,14 @@ to the operator. When asked \"is there a lock against lying?\" nothing forced a 
 WHAT THIS BLOCKS (exit 2 on Stop):
   (a) Yes/no asks without Yes/No in the final assistant text.
   (b) Score asks without an N/10 score.
-  (c) Claiming a mechanical lock via .md/.mdc, or claiming 10/10 while soft_partial remains.
-  (d) Treating soft_partial registration as a lock.
+  (c) Claiming a mechanical lock via .md/.mdc, or a lock claim naming no mechanism.
+  (d) A repo-state verdict with no same-turn reading of the repo (pm_verify_lock).
+SIMPLICITY REHAB 2026-08-24: the soft_partial catalog branches were removed — their
+subject file (governance/plus_player_attributes.json) left the tree with the retired
+plus_player checks (RC-470), which made those branches permanently unreachable. RC-233
+PM_COVERAGE (per-item disposition tokens on chat prose) was retired: AGENTS.md already
+rules that live chat prose is bound by the law itself and operator review — the
+operator is present in the same turn and is the detector.
 
 Contract: Stop hook; stop_hook_active respected. Architecture A: ED_HONESTY_GUARD cannot disable this control.
 """
@@ -48,12 +54,6 @@ HAS_SCORE = re.compile(r"\b(\d{1,2})\s*/\s*10\b|\bscore[:\s]+(\d{1,2})\b", re.I)
 MD_AS_LOCK = re.compile(
     r"\b(mechanical lock|locked|enforced)\b[^.!\n]{0,80}\b\.(md|mdc)\b|"
     r"\b\.(md|mdc)\b[^.!\n]{0,80}\b(mechanical lock|is the lock|as the lock)\b",
-    re.I,
-)
-TEN_CLAIM = re.compile(r"\b(10\s*/\s*10|strength[:\s]+10)\b", re.I)
-SOFT_OK_CLAIM = re.compile(
-    r"\bsoft_partial\b[^.!\n]{0,60}\b(fine|acceptable|enough|counts as|is (?:a )?lock)\b|"
-    r"\bsoft\b[^.!\n]{0,40}\b(not a gap|owned|registered)\b[^.!\n]{0,40}\block",
     re.I,
 )
 DELIVERABLE_ASK = re.compile(
@@ -90,18 +90,6 @@ def last_user_text(transcript_path: str) -> str | None:
     return _lut(transcript_path)
 
 
-def catalog_has_soft_partial() -> bool:
-    p = REPO / "governance" / "plus_player_attributes.json"
-    try:
-        data = json.loads(p.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return False
-    for a in data.get("attributes") or []:
-        if str(a.get("enforcement") or "") == "soft_partial":
-            return True
-    return False
-
-
 def honesty_violations(user_text: str | None, assistant_text: str) -> list[str]:
     """Callee for tests — pure function over user ask + assistant final text."""
     out: list[str] = []
@@ -134,16 +122,6 @@ def honesty_violations(user_text: str | None, assistant_text: str) -> list[str]:
             "claimed 'locked via " + _lock_claim.group(2) + "' without naming a CHECK id "
             "(check_*) or a guard/lock .py — a lock claim that names no mechanism is theater "
             "(LOCK-7/RC-232)"
-        )
-    if TEN_CLAIM.search(a) and catalog_has_soft_partial():
-        out.append(
-            "claimed 10/10 while governance/plus_player_attributes.json still contains "
-            "soft_partial rows — Soft theater is not a lock"
-        )
-    if SOFT_OK_CLAIM.search(a):
-        out.append(
-            "treated soft_partial registration as a lock — non-negotiables must ENFORCE or "
-            "leave the catalog"
         )
     if DELIVERABLE_ASK.search(u):
         if SCORE_ASK.search(u) or "10/10" in u.lower() or "plain scores" in u.lower():

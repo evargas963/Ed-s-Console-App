@@ -188,40 +188,9 @@ def decision_path_wired_violations(source: str | None = None) -> list[str]:
     return []
 
 
-def claude_cursor_parity_violations(
-    cursor_text: str | None = None,
-    claude_text: str | None = None,
-) -> list[str]:
-    """RC-205/209 continuum: Claude Stop/PreToolUse must invoke the same .py guards as Cursor."""
-    need = (
-        "operator_law_guard.py",
-        "pretooluse_guard.py",
-        "stop_guard.py",
-        "proof_only_guard.py",
-        "honesty_guard.py",
-        "process_lock_guard.py",  # RC-217: operating-process lock fires on BOTH agents or neither counts
-    )
-    out: list[str] = []
-    cp = REPO / ".cursor" / "hooks.json"
-    sp = REPO / ".claude" / "settings.json"
-    if cursor_text is None:
-        try:
-            cursor_text = cp.read_text(encoding="utf-8", errors="replace")
-        except OSError:
-            out.append(".cursor/hooks.json missing")
-            cursor_text = ""
-    if claude_text is None:
-        try:
-            claude_text = sp.read_text(encoding="utf-8", errors="replace")
-        except OSError:
-            out.append(".claude/settings.json missing")
-            claude_text = ""
-    for n in need:
-        if n not in cursor_text:
-            out.append(f".cursor/hooks.json missing {n}")
-        if n not in claude_text:
-            out.append(f".claude/settings.json missing {n} (Cursor parity RC-205/209)")
-    return out
+# claude_cursor_parity_violations RETIRED with check_claude_cursor_guard_parity
+# (governance/retired_checks.md 2026-08-24): both hook files are CODEOWNERS-owned,
+# so guard-wiring parity is a merge-review property.
 
 
 _DATASHEET_REQUIRED = frozenset({"motivation", "composition", "collection", "recommended_uses"})

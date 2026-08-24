@@ -3978,8 +3978,8 @@ def check_research_before_act() -> list[Violation]:
 # RC-470: the plus_player catalog checks (plus_player_law, plus_player_cursor_hooks)
 # and their callees are retired - governance/retired_checks.md. Roster demotions are
 # caught by the delta-gate roster comparison + declared-retirement manifest; the wiring
-# files are CODEOWNERS-owned. claude_cursor_guard_parity REMAINS enforced and carries
-# the five-guard wiring assertion for both agents' hook files.
+# files are CODEOWNERS-owned (claude_cursor_guard_parity retired on that equivalence,
+# SIMPLICITY REHAB 2026-08-24).
 
 
 def check_find_prove_significance_substance() -> list[Violation]:
@@ -4125,23 +4125,10 @@ def check_decision_path_wired() -> list[Violation]:
     return [Violation(p, 0, r) for r in reasons]
 
 
-def check_claude_cursor_guard_parity() -> list[Violation]:
-    """Claude and Cursor must invoke the same five .py guards (RC-205/209 continuum).
-
-    WHAT WAS OBSERVED: plus_player_cursor_hooks checked Cursor only; Claude settings could drift
-    unwired while meta-check reported green on half the continuum.
-
-    Rule: .cursor/hooks.json AND .claude/settings.json must name pretooluse_guard, operator_law_guard,
-    stop_guard, proof_only_guard, honesty_guard.
-
-    HOW VALIDATED: tests/test_find_prove_locks_v1.py + test_honesty_guard_v1.py parity controls.
-    """
-    try:
-        from tools.find_prove_locks import claude_cursor_parity_violations
-    except ImportError:
-        from find_prove_locks import claude_cursor_parity_violations  # type: ignore
-    reasons = claude_cursor_parity_violations()
-    return [Violation(REPO / ".cursor" / "hooks.json", 0, r) for r in reasons]
+# claude_cursor_guard_parity RETIRED (declared governance/retired_checks.md 2026-08-24;
+# executed in the SIMPLICITY REHAB): both wiring files are CODEOWNERS-owned, so hook
+# parity is a merge-review property. The declared-but-still-enforced state this replaces
+# was itself the manifest lying — the defect class RC-468's seam exists to catch.
 
 
 def check_collect_datasheet_staged() -> list[Violation]:
@@ -4191,8 +4178,8 @@ def check_collect_datasheet_staged() -> list[Violation]:
 
 # RC-470: check_honesty_guard_wired retired (governance/retired_checks.md) - the two
 # wiring files are CODEOWNERS-owned so an unwiring cannot merge without operator
-# approval, and claude_cursor_guard_parity (KEPT) still asserts honesty_guard.py is
-# named in both agents' hook files. The honesty guard itself stays on Stop.
+# approval (claude_cursor_guard_parity retired on the same equivalence). The honesty
+# guard itself stays on Stop.
 
 
 #: RC-212 (operator law 2026-08-02: "tighten up the one faucet mechanical lock so this
@@ -4387,7 +4374,6 @@ CHECKS = [
     ("purged_cv_research", check_purged_cv_research, True),  # RC-210: AFML no plain KFold
     ("prereg_before_confirmatory", check_prereg_before_confirmatory, True),  # RC-210: Arnott/COS prereg
     ("decision_path_wired", check_decision_path_wired, True),  # RC-210: SR 11-7 AST TRADE gate
-    ("claude_cursor_guard_parity", check_claude_cursor_guard_parity, True),  # RC-205/209 full continuum
     ("collect_datasheet_staged", check_collect_datasheet_staged, True),  # RC-210: Gebru datasheets
     ("chain_width_single_faucet", check_chain_width_single_faucet, True),  # RC-59: one strike-count authority
     ("single_faucet_provenance", check_single_faucet_provenance, True),  # RC-73: measured, not asserted

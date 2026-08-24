@@ -580,45 +580,43 @@ def test_real_stop_path_blocks_not_proven_even_if_command_text_was_recorded(tmp_
     assert "authoritative verdict is NOT_PROVEN" in retry.stderr
 
 
-def test_stop_retry_flag_requires_guard_recorded_predecessor(tmp_path):
+def test_stop_retry_flag_grants_no_authorization(tmp_path):
+    """SIMPLICITY REHAB 2026-08-24: RC-125 (probe-every-turn) is retired, so a Stop
+    with an EMPTY ledger now legitimately passes — nothing was owed. The property that
+    survives this shrink, pinned here: `stop_hook_active` is observability, never
+    authority. The full Stop policy re-runs on a retry, and an unmet obligation (a
+    production edit with nothing executed) blocks the retry exactly like a first Stop."""
     repo = _repo(tmp_path)
-    unearned_session = f"retry-unearned-{time.time_ns()}"
-    unearned = _hook({
-        "session_id": unearned_session,
-        "tool_name": "Stop",
-        "stop_hook_active": True,
-        "cwd": str(repo),
-    })
-    assert unearned.returncode == 2
 
-    earned_session = f"retry-earned-{time.time_ns()}"
-    first = _hook({
-        "session_id": earned_session,
-        "tool_name": "Stop",
-        "cwd": str(repo),
-    })
-    assert first.returncode == 2
-    retry = _hook({
-        "session_id": earned_session,
+    clean_session = f"retry-clean-{time.time_ns()}"
+    clean_retry = _hook({
+        "session_id": clean_session,
         "tool_name": "Stop",
         "stop_hook_active": True,
         "cwd": str(repo),
     })
-    assert retry.returncode == 2
-    live_probe = _hook({
-        "session_id": earned_session,
-        "tool_name": "Bash",
+    assert clean_retry.returncode == 0, (
+        "an empty-ledger retry must pass on the policy's merits (RC-125 retired), "
+        "not deadlock on the flag itself (RC-379)")
+
+    owing_session = f"retry-owing-{time.time_ns()}"
+    edit = {
+        "session_id": owing_session,
+        "tool_name": "Edit",
         "cwd": str(repo),
-        "tool_input": {"command": "curl http://127.0.0.1:8000/api/build"},
-    })
-    assert live_probe.returncode == 0
-    recovered = _hook({
-        "session_id": earned_session,
+        "tool_input": {"file_path": str(repo / "mod.py"), "new_string": "VALUE = 2\n"},
+    }
+    assert _hook(edit).returncode == 0
+    _modify(repo)
+    owing_retry = _hook({
+        "session_id": owing_session,
         "tool_name": "Stop",
         "stop_hook_active": True,
         "cwd": str(repo),
     })
-    assert recovered.returncode == 0
+    assert owing_retry.returncode == 2, (
+        "a retry with an unmet obligation must still block — the flag is not authority")
+    assert "ran NOTHING" in owing_retry.stderr or "TURN AUDIT" in owing_retry.stderr
 
 
 def test_malformed_structured_check_record_blocks_without_validator_crash(tmp_path):

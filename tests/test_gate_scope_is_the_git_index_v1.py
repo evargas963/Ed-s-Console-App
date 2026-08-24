@@ -124,8 +124,13 @@ def test_the_remaining_filesystem_scanners_are_measured_not_forgotten():
     # 44 -> 43 (RC-470): check_five_why_recursive_lock's tests/**/*.py rglob corpus scan
     # left the tree with its retired check (governance/retired_checks.md) — a scanner
     # REMOVED, not index-scoped.
-    assert len(found) == 43, (
-        f"the filesystem-enumerating scanner count moved from the 43 measured under RC-470 "
+    # 43 -> 40 (SIMPLICITY REHAB 2026-08-24): four per-test repo sweeps LEFT
+    # (test_news_events_drop x2, test_session_log_drop, test_confluence_log_drop —
+    # converted to the shared session RepoIndex), one ARRIVED (tests/conftest.py
+    # RepoIndex builder, the single live pass those tests now consume).
+    assert len(found) == 40, (
+        f"the filesystem-enumerating scanner count moved from the 40 measured in the "
+        f"SIMPLICITY REHAB (RC-470 baseline 43) "
         f"to {len(found)}. If you FIXED some, lower this number and say so in the row. If "
         f"you ADDED one, use `git ls-files` instead — this is the RC-274 -> RC-286 loop.\n"
         + "\n".join(found))
