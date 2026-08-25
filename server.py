@@ -6531,7 +6531,7 @@ def _fetch_state(
         if _analytics_bg_shutdown or _log_only_inline_leaf_fetches(log_only):
             c_resp, _chain_gate_wait_sec, _chain_fetch_pure_sec = _gated_safe_get_chain(
                 client, ticker, strike_count=resolve_chain_strike_count(ticker),  # RC-59: one faucet
-                to_date=_chain_to_date_for(ticker),   # RC-494: bound index books' expiry count
+                to_date=_chain_to_date_for(ticker, expiry),   # RC-494: bound index expiry count (keep an explicit far pick)
                 priority=_chain_priority,
             )
             q_resp = _memoized_quote_response(ticker, client=client)   # RC-112/W3-C8: one vendor faucet
@@ -6550,7 +6550,7 @@ def _fetch_state(
             _chain_fut = _cq_pool.submit(
                 _gated_safe_get_chain, client, ticker,
                 strike_count=resolve_chain_strike_count(ticker),   # RC-59: one faucet
-                to_date=_chain_to_date_for(ticker),   # RC-494: bound index books' expiry count
+                to_date=_chain_to_date_for(ticker, expiry),   # RC-494: bound index expiry count (keep an explicit far pick)
                 priority=_chain_priority,
             )
             # RC-112 recurrence 2 (v10 audit, server.py:6228): this pool leaf passed the raw
@@ -10874,10 +10874,16 @@ SCHWAB_CHAIN_CONTRACT_BUDGET: int = 6600
 #: Index option books ($SPX, $VIX, $RUT, $NDX, ...) list expirations out for YEARS (daily +
 #: weekly + monthly + LEAPS), far more than the contract budget allows at any usable strike
 #: width — RC-491 measured $SPX still 502 even at width 33 (33 * 2 * ~150 expiries = 9,900 >
-#: 6,600). RC-494: an index chain is therefore fetched only out to a bounded DTE horizon
-#: (_chain_to_date_for → to_date), which caps the expiry count so a FIXED, generous strike
-#: width fits the budget deterministically (no geometry feedback loop, RC-149). The near-term
-#: surface is what the pin/wall/flip math uses; far-dated LEAPS carry no level signal.
+#: 6,600). RC-494: the _fetch_state chain is therefore fetched only out to a bounded DTE
+#: horizon (_chain_to_date_for → to_date), which caps the expiry count so a FIXED, generous
+#: strike width fits the budget deterministically (no geometry feedback loop, RC-149).
+#: SCOPE (verified 2026-08-25 — SAFE on all six semantics): this bound is correct ONLY for the
+#: _fetch_state path, which slices the chain to a SINGLE (front) expiry before any gamma/flip/
+#: pin/vanna/charm math runs, so the far expiries it drops were already discarded. It must NOT
+#: be wired into the TERRAIN producer (_terrain_refresh_one): terrain is a deliberate
+#: MULTI-EXPIRY aggregate over the FULL book (dealers hedge the whole delta book across weekly/
+#: monthly expiries), so bounding it to 45d WOULD silently drop real gamma/flip/pin/wall/charm
+#: contributions. Terrain keeps its own full→120d→45d ladder (to_date=None first rung).
 #: 60 strikes * 2 * ~34 expiries in 45 days = ~4,080 < 6,600 (safe even at 55 expiries).
 INDEX_CHAIN_DTE_HORIZON_DAYS: int = 45
 INDEX_CHAIN_STRIKE_COUNT: int = 60
@@ -10973,22 +10979,34 @@ def resolve_chain_strike_count(ticker: str) -> int:
 _terrain_strike_count = resolve_chain_strike_count
 
 
-def _chain_to_date_for(ticker: str) -> str | None:
+def _chain_to_date_for(ticker: str, selected_expiry: str | None = None) -> str | None:
     """Bounded chain to_date (ISO YYYY-MM-DD) for index books, None for equities.
 
     RC-494: index option books ($SPX/$VIX/$RUT/...) list expirations out for years; fetching
     the FULL book blows Schwab's contract budget at any usable strike width (the $SPX 502).
     Capping the fetch to the near-term DTE horizon bounds the expiry count so
     resolve_chain_strike_count's fixed index width fits the budget. Equities return None (full
-    book, unchanged). One authority for the index date bound, mirroring the strike-count faucet."""
+    book, unchanged). One authority for the index date bound, mirroring the strike-count faucet.
+
+    If a caller EXPLICITLY selects a far-dated index expiry (beyond the horizon), the fetch is
+    extended to include it — otherwise the downstream slice to that expiry would be empty and
+    error (RC-494 robustness). The auto/default path passes no expiry and gets the near-term
+    horizon. A single selected expiry keeps the book small regardless of how far out it is."""
     tk = (ticker or "").upper().strip()
     if not tk.startswith("$"):
         return None
-    from datetime import timedelta
+    from datetime import date, timedelta
 
     from time_et import now_et
 
     horizon = (now_et() + timedelta(days=INDEX_CHAIN_DTE_HORIZON_DAYS)).date()
+    if selected_expiry:
+        try:
+            sel = date.fromisoformat(str(selected_expiry)[:10])
+            if sel > horizon:
+                return sel.isoformat()
+        except ValueError:
+            pass
     return horizon.isoformat()
 
 _terrain_cache: dict[str, dict] = {}

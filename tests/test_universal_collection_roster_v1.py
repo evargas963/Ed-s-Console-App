@@ -64,6 +64,14 @@ def test_index_book_width_is_fixed_and_date_bounded_under_budget():
     # The index date bound is set; equities fetch the full book (None).
     assert srv._chain_to_date_for("$SPX") is not None
     assert srv._chain_to_date_for("$VIX") is not None
+    # RC-494 robustness: an EXPLICIT far-dated index expiry extends the fetch to include it
+    # (else the downstream single-expiry slice would be empty and error); the auto path stays
+    # near-term.
+    far = "2027-12-17"
+    assert srv._chain_to_date_for("$SPX", far) == far
+    assert srv._chain_to_date_for("$SPX", None) != far
+    # A near expiry inside the horizon does NOT shorten the bound (still the 45-day horizon).
+    assert srv._chain_to_date_for("$SPX", "2020-01-01") == srv._chain_to_date_for("$SPX")
 
 
 def test_equity_width_and_full_book_unchanged():
@@ -73,3 +81,18 @@ def test_equity_width_and_full_book_unchanged():
     assert srv.resolve_chain_strike_count("NEVERSEEN_EQ") == srv.TERRAIN_STRIKE_COUNT_COLD_START
     assert srv._chain_to_date_for("NEVERSEEN_EQ") is None
     assert srv._chain_to_date_for("NVDA") is None
+
+
+def test_tnx_is_yield_only_not_snapshot_enrolled():
+    """RC-495: $TNX (10Y Treasury yield index) has NO options chain, so it can never produce a
+    snapshot — enrolling it made a permanent non-collector against universal collection. It is
+    excluded from the snapshot-enrollment panel; its yield still feeds the bond signal via the
+    independent direct quote fetch."""
+    import market_context as mc
+    from market_context import market_context_panel_symbols_excluding_core
+
+    panel = market_context_panel_symbols_excluding_core(frozenset(["SPY", "QQQ", "IWM"]))
+    assert "$TNX" not in panel, "$TNX has no options chain — must not be snapshot-enrolled"
+    assert "$VIX" in panel, "$VIX is optionable and stays enrolled"
+    assert '_fetch("$TNX")' in open(mc.__file__, encoding="utf-8").read(), (
+        "the yield/bond-signal fetch for $TNX must be preserved")
