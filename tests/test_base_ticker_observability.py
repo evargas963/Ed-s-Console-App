@@ -714,27 +714,24 @@ def _run_logger_fetch(monkeypatch, ticker: str, *, live_mode: bool):
 
 def test_logger_no_longer_hard_skips_non_trio_in_live_operator_mode(monkeypatch):
     """UNIVERSAL COLLECTION (2026-08-25): the per-ticker operator-mode hard skip is
-    retired — contention is governed at the CYCLE level by _operator_mode_cycle_roster
-    (trio + one rotating guest), so a guest that IS in the cycle fetches normally."""
+    retired — a non-trio ticker fetches normally even while a viewer is connected."""
     status, calls = _run_logger_fetch(monkeypatch, "NVDA", live_mode=True)
     assert status == "ok:fetch"
     assert calls == [("NVDA", True)]
 
 
-def test_operator_mode_cycle_roster_is_trio_plus_one_rotating_guest():
+def test_operator_mode_no_longer_throttles_the_background_sweep():
+    """RC-493: universal collection is UNCONDITIONAL — the operator-mode cycle-roster
+    throttle (trio + one rotating guest while viewing) is REMOVED, not left as dead code
+    (RC-474 class). The background logger sweeps the full enrolled roster every cycle."""
+    import inspect
+
     import server as srv
 
-    tickers = list(BASE_MONEY_PATH_TICKERS) + ["AAPL", "WMT", "NVDA"]
-    roster1, idx = srv._operator_mode_cycle_roster(tickers, 0)
-    assert roster1 == list(BASE_MONEY_PATH_TICKERS) + ["AAPL"]
-    roster2, idx = srv._operator_mode_cycle_roster(tickers, idx)
-    assert roster2 == list(BASE_MONEY_PATH_TICKERS) + ["WMT"]
-    roster3, idx = srv._operator_mode_cycle_roster(tickers, idx)
-    assert roster3 == list(BASE_MONEY_PATH_TICKERS) + ["NVDA"]
-    roster4, idx = srv._operator_mode_cycle_roster(tickers, idx)
-    assert roster4 == list(BASE_MONEY_PATH_TICKERS) + ["AAPL"], "rotation wraps"
-    trio_only, idx2 = srv._operator_mode_cycle_roster(list(BASE_MONEY_PATH_TICKERS), idx)
-    assert trio_only == list(BASE_MONEY_PATH_TICKERS) and idx2 == idx
+    assert not hasattr(srv, "_operator_mode_cycle_roster"), "throttle helper must be gone"
+    src = inspect.getsource(srv._logger_loop)
+    assert "_operator_mode_cycle_roster" not in src, "no operator-mode roster shrink remains"
+    assert "list(_logger_tickers)" in src, "the sweep uses the full enrolled roster"
 
 
 def test_logger_trio_full_fetch_unchanged_in_live_operator_mode(monkeypatch):
