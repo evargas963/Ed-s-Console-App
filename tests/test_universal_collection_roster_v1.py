@@ -74,6 +74,48 @@ def test_index_book_width_is_fixed_and_date_bounded_under_budget():
     assert srv._chain_to_date_for("$SPX", "2020-01-01") == srv._chain_to_date_for("$SPX")
 
 
+def test_bare_index_root_gets_index_protections_f1():
+    """Cursor-audit F1: an index root typed/POSTed BARE ('SPX', no $) must get the same $-gated
+    protections as '$SPX'. The analytics/state/warm entry points never canonicalized via
+    ticker_storage_key, so a bare root took the equity path — no width cap, no date bound — and
+    requested the full multi-year book (the RC-491 502). The width/date faucets now normalize
+    their own input, and _fetch_state normalizes at its single chokepoint."""
+    import server as srv
+    from instrument_identity import ticker_storage_key
+
+    for bare, dollar in (("SPX", "$SPX"), ("RUT", "$RUT"), ("VIX", "$VIX"), ("NDX", "$NDX")):
+        assert ticker_storage_key(bare) == dollar
+        assert srv.resolve_chain_strike_count(bare) == srv.INDEX_CHAIN_STRIKE_COUNT, (
+            f"bare {bare} bypassed the fixed index width")
+        assert srv._chain_to_date_for(bare) is not None, f"bare {bare} bypassed the index date bound"
+        assert srv._chain_to_date_for(bare) == srv._chain_to_date_for(dollar)
+    # equities are untouched — full book (no date bound)
+    assert srv._chain_to_date_for("AAPL") is None
+
+
+def test_far_selected_index_expiry_is_single_expiry_window_f2():
+    """Cursor-audit F2: extending to_date to a far selected expiry WITHOUT bounding from_date made
+    Schwab return every expiry from today through that far date (60*2*~150 ≈ 18k contracts, over
+    the 6,600 budget) even though _fetch_state then slices to that one expiry and discards the
+    rest. from_date is now bounded to the same far date, so the window is [sel, sel] — a single
+    expiry (60*2 = 120)."""
+    import server as srv
+
+    far = "2027-12-17"
+    # far pick: BOTH ends bound to the selected expiry -> one expiry, trivially under budget
+    assert srv._chain_to_date_for("$SPX", far) == far
+    assert srv._chain_from_date_for("$SPX", far) == far
+    assert srv.INDEX_CHAIN_STRIKE_COUNT * 2 * 1 <= srv.SCHWAB_CHAIN_CONTRACT_BUDGET
+    # auto path / no expiry: open near end (Schwab defaults to today), bounded far end (horizon)
+    assert srv._chain_from_date_for("$SPX", None) is None
+    assert srv._chain_from_date_for("$SPX") is None
+    # near pick (inside the 45-day window, already budget-safe): near edge stays open
+    assert srv._chain_from_date_for("$SPX", "2020-01-01") is None
+    # equities never get a near bound; bare index root is protected too (F1 composition)
+    assert srv._chain_from_date_for("NVDA", far) is None
+    assert srv._chain_from_date_for("SPX", far) == far
+
+
 def test_equity_width_and_full_book_unchanged():
     import server as srv
 
@@ -96,3 +138,88 @@ def test_tnx_is_yield_only_not_snapshot_enrolled():
     assert "$VIX" in panel, "$VIX is optionable and stays enrolled"
     assert '_fetch("$TNX")' in open(mc.__file__, encoding="utf-8").read(), (
         "the yield/bond-signal fetch for $TNX must be preserved")
+
+
+def test_logger_quarantines_permanently_refused_symbol_f4(monkeypatch):
+    """Cursor-audit F4: the background logger re-requested a PERMANENTLY vendor-refused symbol
+    (SATS returns 404) every cycle, burning one of the two scarce chain-gate slots the healthy book
+    needs — the terrain loop had the quarantine protection, the logger did not. The logger now
+    shares the per-symbol quarantine book: after TERRAIN_QUARANTINE_HARD_FAILS consecutive 4xx it
+    returns 'skipped:quarantined' and issues NO vendor call. A 5xx (transient) must stay a soft
+    backoff, never a permanent quarantine (fail-closed classification)."""
+    import server as srv
+    from fastapi import HTTPException
+    from instrument_identity import ticker_storage_key
+
+    sym = "ZZQTEST"
+    tk = ticker_storage_key(sym)
+    monkeypatch.setattr(srv, "_is_loggable_session", lambda: True)
+
+    def _reset():
+        srv._terrain_quarantine.pop(tk, None)
+        srv._terrain_consecutive_fails.pop(tk, None)
+
+    # 404 (permanent symbol refusal) -> hard -> quarantined after the threshold
+    _reset()
+    monkeypatch.setattr(srv, "_fetch_state",
+                        lambda *a, **k: (_ for _ in ()).throw(
+                            HTTPException(status_code=502, detail="Chain fetch failed [vendor_status=404]")))
+    for _ in range(srv.TERRAIN_QUARANTINE_HARD_FAILS):
+        assert srv._logger_fetch_and_log(sym).startswith("error:")
+    assert srv._logger_fetch_and_log(sym) == "skipped:quarantined", "a 404 symbol must stop being requested"
+    assert srv.terrain_quarantine_reason(sym).startswith("QUARANTINED")
+
+    # 503 (transient venue error) -> soft -> backoff, NEVER a permanent quarantine
+    _reset()
+    monkeypatch.setattr(srv, "_fetch_state",
+                        lambda *a, **k: (_ for _ in ()).throw(
+                            HTTPException(status_code=502, detail="Chain fetch failed [vendor_status=503]")))
+    for _ in range(srv.TERRAIN_QUARANTINE_HARD_FAILS):
+        srv._logger_fetch_and_log(sym)
+    assert not srv.terrain_quarantine_reason(sym).startswith("QUARANTINED"), (
+        "a 5xx transient error must be a soft backoff, not a permanent quarantine")
+    _reset()
+
+
+def test_enrollment_probe_rejects_non_collectors_f5(monkeypatch):
+    """Cursor-audit F5: enrollment must PROVE collectability (quote 200 + option chain 200 with
+    >=1 contract), not merely validate string shape. A yield index with no chain ($TNX-like) and a
+    vendor-refused symbol (SATS-like 404) are rejected; a real optionable symbol passes; and
+    _add_logger_ticker refuses to enroll a probe-failing symbol (no commit)."""
+    import server as srv
+
+    class _Resp:
+        def __init__(self, code, payload=None):
+            self.status_code = code
+            self._p = payload or {}
+
+        def json(self):
+            return self._p
+
+    monkeypatch.setattr(srv, "get_client", lambda: object())
+
+    # SATS-like: the vendor refuses the symbol outright (quote 404)
+    monkeypatch.setattr(srv, "_memoized_quote_response", lambda t, client=None: _Resp(404))
+    ok, why = srv._enrollment_collectability_probe("SATS")
+    assert ok is False and "quote" in why, why
+
+    # $TNX-like: a quote exists, but there is NO option chain (200 with zero contracts)
+    monkeypatch.setattr(srv, "_memoized_quote_response", lambda t, client=None: _Resp(200, {"x": 1}))
+    monkeypatch.setattr(srv, "_gated_safe_get_chain",
+                        lambda *a, **k: (_Resp(200, {"callExpDateMap": {}, "putExpDateMap": {}}), 0.0, 0.0))
+    ok, why = srv._enrollment_collectability_probe("$TNX")
+    assert ok is False and ("chain" in why or "contract" in why), why
+
+    # a real optionable symbol: quote 200 + chain 200 carrying a contract -> collectable
+    # institutional-synthetic-ok: the probe is unit-tested with a mocked vendor; a minimal
+    # single-contract chain proves the >=1-contract branch without a live Schwab fetch.
+    good = {"callExpDateMap": {"2030-01-18:1200": {"100.0": [{"strikePrice": 100.0, "putCall": "CALL",
+            "openInterest": 10, "multiplier": 100}]}}, "putExpDateMap": {}}
+    monkeypatch.setattr(srv, "_gated_safe_get_chain", lambda *a, **k: (_Resp(200, good), 0.0, 0.0))
+    ok, why = srv._enrollment_collectability_probe("AAPL")
+    assert ok is True, why
+
+    # integration: _add_logger_ticker refuses a probe-failing symbol before any commit
+    monkeypatch.setattr(srv, "_enrollment_collectability_probe", lambda t: (False, "no option chain"))
+    monkeypatch.setattr(srv, "_HAS_SIGNALS", False)
+    assert srv._add_logger_ticker("NOCH", enrollment_source="test") is False

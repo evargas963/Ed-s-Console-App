@@ -690,8 +690,12 @@ def _black_scholes_theta(
         return None
     if spot <= 0 or strike <= 0 or iv <= 0 or time_to_expiry_years <= 0:
         return None
-    sigma = iv / 100.0 if iv > 3 else iv
-    if sigma <= 0:
+    # Cursor-audit A2: call the single IV-conversion authority instead of an inline copy of its
+    # `iv/100 if iv>3 else iv` guard — a copied threshold silently diverges if the authority's ever
+    # changes.
+    from math_exposure_core import schwab_iv_to_sigma
+    sigma = schwab_iv_to_sigma(iv)
+    if sigma is None or sigma <= 0:
         return None
     sqrt_t = math.sqrt(time_to_expiry_years)
     d1 = (

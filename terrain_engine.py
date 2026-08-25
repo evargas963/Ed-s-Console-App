@@ -388,9 +388,15 @@ def compute_implied_one_day_move(contracts: list[dict], spot: float | None) -> d
         side = str(c.get("putCall") or "").upper()
         if strike is None or iv_pct is None or iv_pct <= 0 or side not in ("CALL", "PUT"):
             continue
+        # Cursor-audit A3: single IV-conversion authority (was an unguarded inline /100 that would
+        # mis-scale on a silent Schwab units flip, unlike the guarded charm/levels/vanna paths).
+        from math_exposure_core import schwab_iv_to_sigma
+        _sig = schwab_iv_to_sigma(iv_pct)
+        if _sig is None:
+            continue
         d = abs(strike - float(spot))
         if side not in ivs or d < ivs[side][0]:
-            ivs[side] = (d, iv_pct / 100.0)
+            ivs[side] = (d, _sig)
     if not ivs:
         return None
     sigma = sum(v[1] for v in ivs.values()) / len(ivs)   # ATM call/put mean (straddle IV)

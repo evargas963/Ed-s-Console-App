@@ -831,7 +831,7 @@ def spot_is_a_close(source: str) -> bool:
 
 
 def _gated_safe_get_chain(client, ticker: str, *, strike_count, priority: bool = False,
-                          to_date=None):
+                          to_date=None, from_date=None):
     """safe_get_chain behind the bounded two-slot gate -> (resp, gate_wait_sec, fetch_sec).
 
     Schwab CSV authority checked: yes
@@ -857,8 +857,10 @@ def _gated_safe_get_chain(client, ticker: str, *, strike_count, priority: bool =
     # ticker key (wanting strikeCount=20) and inherited the failure as
     # "Chain fetch failed". Same-ticker different widths are different fetches.
     # RC-127: to_date joins the coalesce key — a full-book fetch and a 45-day rung are
-    # DIFFERENT fetches, same as the strike-width lesson above.
-    key = ((ticker or "").strip().upper(), int(strike_count), str(to_date or ""))
+    # DIFFERENT fetches, same as the strike-width lesson above. Cursor-audit F2: from_date
+    # likewise — a single-expiry window (from=to=sel) and the open-near-end horizon fetch are
+    # different requests and must never coalesce onto each other.
+    key = ((ticker or "").strip().upper(), int(strike_count), str(to_date or ""), str(from_date or ""))
     wait_started = time.monotonic()
     with _chain_inflight_lock:
         holder = _chain_inflight.get(key)
@@ -899,7 +901,7 @@ def _gated_safe_get_chain(client, ticker: str, *, strike_count, priority: bool =
     resp = None
     exc = None
     try:
-        resp = safe_get_chain(client, ticker, strike_count=strike_count, to_date=to_date)
+        resp = safe_get_chain(client, ticker, strike_count=strike_count, to_date=to_date, from_date=from_date)
         return resp, gate_wait_sec, round(time.monotonic() - fetch_started, 3)
     except SchwabAuthError as e:
         exc = e
@@ -4255,10 +4257,44 @@ def _is_loggable_session() -> bool:
     return PRE_MARKET_MINS <= mins <= LOGGER_BUFFER_MINS
 
 
+def _enrollment_collectability_probe(ticker: str) -> tuple[bool, str]:
+    """Cursor-audit F5: prove a symbol can actually PRODUCE a snapshot before enrolling it.
+
+    A snapshot requires BOTH a quote (200) and an option chain (200 with >=1 contract), so a
+    symbol with no options ($TNX, a yield index) or one the vendor refuses (SATS, 404) can never
+    collect. Enrollment previously validated only string SHAPE (is_valid_production_ticker), which
+    conflates "plausible symbol" with "will produce a snapshot" — the exact "visibility is not
+    sufficiency" gap that admitted permanent non-collectors. Returns (ok, reason). Bounded: one
+    quote plus one index-budget-safe gated chain fetch, both through the standard faucets. This
+    is a live one-shot probe: a transient vendor blip rejects the add (the user can retry), which
+    is the safe direction — never admit an un-provable non-collector."""
+    tk = ticker_storage_key(ticker)
+    try:
+        client = get_client()
+        q = _memoized_quote_response(tk, client=client)
+        if q is None or getattr(q, "status_code", None) != 200:
+            return False, f"quote unavailable (vendor status {getattr(q, 'status_code', None)})"
+        c, _gw, _fs = _gated_safe_get_chain(
+            client, tk, strike_count=resolve_chain_strike_count(tk),
+            to_date=_chain_to_date_for(tk, None), from_date=_chain_from_date_for(tk, None),
+        )
+        if c is None or getattr(c, "status_code", None) != 200:
+            return False, f"no option chain (vendor status {getattr(c, 'status_code', None)})"
+        if not flatten_chain_contracts(c.json()):
+            return False, "option chain returned zero contracts"
+        return True, "ok"
+    except Exception as e:
+        return False, f"probe error: {type(e).__name__}: {e}"
+
+
 def _add_logger_ticker(ticker: str, *, enrollment_source: str = "ui_auto") -> bool:
     """
     Add a symbol to the in-memory logger cycle and durable logging_universe (Issue 22).
     Returns True if newly appended to _logger_tickers.
+
+    Cursor-audit F5: a NEW enrollment must first PROVE it can collect (quote + chain) via
+    _enrollment_collectability_probe. Already-enrolled re-adds short-circuit before the probe;
+    core tickers are exempt (always collectable — never gate the spine on a transient blip).
     """
     from production_universe import is_valid_production_ticker, normalize_production_ticker
 
@@ -4281,6 +4317,14 @@ def _add_logger_ticker(ticker: str, *, enrollment_source: str = "ui_auto") -> bo
                         e,
                         exc_info=True,
                     )
+            return False
+    # Cursor-audit F5: a genuinely NEW enrollment must prove collectability before it is committed
+    # (durable upsert + in-memory append + any FIFO eviction). Core tickers are exempt.
+    if ticker not in CORE_TICKERS:
+        _probe_ok, _probe_why = _enrollment_collectability_probe(ticker)
+        if not _probe_ok:
+            log.warning("Background logger: refusing %s — cannot collect a snapshot: %s",
+                        ticker, _probe_why)
             return False
     if _HAS_SIGNALS and ticker not in CORE_TICKERS:
         try:
@@ -4640,14 +4684,24 @@ def _live_operator_mode_active() -> bool:
 def _logger_fetch_and_log(ticker: str) -> str:
     """
     Fetch data for one ticker and log a snapshot to the DB.
-    Returns 'ok:fetch', 'skipped:closed', or 'error:<msg>'.
+    Returns 'ok:fetch', 'skipped:closed', 'skipped:quarantined', or 'error:<msg>'.
     Never raises — always returns a status string.
     (2026-08-25 universal collection: the 'skipped:confluence_quote_only' and
     'skipped:live_operator_mode' statuses are retired — no per-ticker capture skip.)
     """
+    tk = ticker_storage_key(ticker)   # Cursor-audit F4: the shared quarantine book is keyed canonically
     try:
         if not _is_loggable_session():
             return "skipped:closed"
+
+        # Cursor-audit F4: consult the shared per-symbol vendor-health book BEFORE spending a scarce
+        # chain-gate slot. A symbol the vendor PERMANENTLY refuses (SATS 404 -> hard-quarantined after
+        # 3 hits) or is briefly unavailable (soft backoff) is skipped here instead of re-requested
+        # every cycle. The terrain loop already had this protection; the logger — hitting the SAME
+        # 2-slot chain gate — did not, so a dead symbol burned a slot the healthy book needed on
+        # every pass (RC-148 class). One book across both loops: whichever hits the 404 quarantines it.
+        if _terrain_quarantine_blocks(tk):
+            return "skipped:quarantined"
 
         # UNIVERSAL COLLECTION (operator requirement, 2026-08-25, RC-493): the panel_auto
         # confluence-only skip AND the operator-mode throttle are gone — every enrolled
@@ -4686,6 +4740,7 @@ def _logger_fetch_and_log(ticker: str) -> str:
                     exc_info=True,
                 )
 
+        _note_terrain_success(tk)   # Cursor-audit F4: a clean fetch clears any streak/soft hold
         return "ok:fetch"
 
     except Exception as e:
@@ -4694,6 +4749,17 @@ def _logger_fetch_and_log(ticker: str) -> str:
         with _logger_lock:
             _logger_stats.setdefault(ticker, {})
             _logger_stats[ticker]["last_error"] = err
+        # Cursor-audit F4: feed the shared quarantine so a permanently-refused symbol stops being
+        # re-requested every cycle. Parse the vendor status _fetch_state now carries on its detail
+        # (read the FULL detail, not the truncated `err`); unknown -> _classify_chain_failure fails
+        # closed to "soft", so an unrecognised error never earns a wrongful permanent quarantine.
+        _detail = str(getattr(e, "detail", None) or e)
+        _vstatus = None
+        if "vendor_status=" in _detail:
+            _val = _detail.split("vendor_status=", 1)[1].split("]", 1)[0].strip()
+            if _val.isdigit():
+                _vstatus = int(_val)
+        _note_terrain_failure(tk, err, _classify_chain_failure(_vstatus, type(e).__name__))
         return f"error:{err}"
 
 
@@ -5454,7 +5520,7 @@ def _fetch_expiries_light(ticker: str) -> list[str]:
     Option expiries only — quote + option chain, no snapshot insert or MarketState.
     Used by /api/expiries when cache is cold (avoids logging a DB row per dropdown poll).
     """
-    ticker = ticker.upper().strip()
+    ticker = ticker_storage_key(ticker)   # Cursor-audit F1: bare index root ("SPX") -> "$SPX"
     client = get_client()
     # RC-59 chain-width faucet EXEMPTION, declared not accidental: this path reads the EXPIRY
     # DATE LIST only and computes no levels, so strike width is irrelevant to its output — a
@@ -6476,6 +6542,15 @@ def _fetch_state(
     logger_source: Optional[str] = None,
 ) -> dict:
     _fetch_start_mono = time.monotonic()
+    # Cursor-audit F1: canonicalize the ticker at this single chokepoint. Unlike the
+    # terrain/quote/bars endpoints, the analytics/state/warm entry points funnel here WITHOUT
+    # first calling ticker_storage_key — so an index root typed or POSTed bare ("SPX") would
+    # otherwise take the equity branch of resolve_chain_strike_count / _chain_to_date_for and
+    # request the full multi-year book with no strike cap and no date bound (the RC-149/RC-491
+    # budget blowout). Normalizing here gives every downstream call — quote, chain, snapshot
+    # write — the same "$"-gated protections as "$SPX". ticker_storage_key is idempotent and
+    # leaves equities unchanged.
+    ticker = ticker_storage_key(ticker)
     # UI_05 tail attribution (def-free marks, same pattern as _stage_marks):
     # splits _chain_ms so an untraced gap can never hide again.
     _chain_window_marks: list[tuple[str, float]] = []
@@ -6532,6 +6607,7 @@ def _fetch_state(
             c_resp, _chain_gate_wait_sec, _chain_fetch_pure_sec = _gated_safe_get_chain(
                 client, ticker, strike_count=resolve_chain_strike_count(ticker),  # RC-59: one faucet
                 to_date=_chain_to_date_for(ticker, expiry),   # RC-494: bound index expiry count (keep an explicit far pick)
+                from_date=_chain_from_date_for(ticker, expiry),   # Cursor-audit F2: bound near edge for a far pick
                 priority=_chain_priority,
             )
             q_resp = _memoized_quote_response(ticker, client=client)   # RC-112/W3-C8: one vendor faucet
@@ -6551,6 +6627,7 @@ def _fetch_state(
                 _gated_safe_get_chain, client, ticker,
                 strike_count=resolve_chain_strike_count(ticker),   # RC-59: one faucet
                 to_date=_chain_to_date_for(ticker, expiry),   # RC-494: bound index expiry count (keep an explicit far pick)
+                from_date=_chain_from_date_for(ticker, expiry),   # Cursor-audit F2: bound near edge for a far pick
                 priority=_chain_priority,
             )
             # RC-112 recurrence 2 (v10 audit, server.py:6228): this pool leaf passed the raw
@@ -6571,7 +6648,11 @@ def _fetch_state(
         ) from e
     _chain_window_marks.append(("chain_window_leaf_wall_ms", time.monotonic()))
     if c_resp is None or c_resp.status_code != 200:
-        raise HTTPException(status_code=502, detail="Chain fetch failed")
+        # Cursor-audit F4: carry the real vendor status so the background logger's quarantine can
+        # tell a PERMANENT symbol refusal (4xx — e.g. SATS 404) from a transient venue error
+        # (timeout/5xx/429). Detail still starts with "Chain fetch failed" for existing consumers.
+        raise HTTPException(status_code=502,
+                            detail=f"Chain fetch failed [vendor_status={getattr(c_resp, 'status_code', None)}]")
     c_json = c_resp.json()
     contracts     = flatten_chain_contracts(c_json)
     _t_after_chain_mono = time.monotonic()
@@ -6593,7 +6674,8 @@ def _fetch_state(
 
     # Quote fetched in parallel with chain above — parse here after chain JSON work.
     if q_resp is None or q_resp.status_code != 200:
-        raise HTTPException(status_code=502, detail="Quote fetch failed")
+        raise HTTPException(status_code=502,   # Cursor-audit F4: carry vendor status (see chain raise)
+                            detail=f"Quote fetch failed [vendor_status={getattr(q_resp, 'status_code', None)}]")
     q_json = q_resp.json()
     _t_after_quote_mono = time.monotonic()
     _t_after_quote_wall = time.time()
@@ -10948,7 +11030,8 @@ def resolve_chain_strike_count(ticker: str) -> int:
     The MAX is a VENDOR limit, not ours (Schwab 502s above it) — a ticker needing more is fetched
     at the ceiling and its levels self-report LOW_CONFIDENCE_NARROW_CHAIN rather than pretending.
     """
-    tk = (ticker or "").upper().strip()
+    tk = ticker_storage_key(ticker)   # Cursor-audit F1: bare index root ("SPX") -> "$SPX" so the
+    #                                   faucet can't be bypassed by an un-normalized caller.
     if tk.startswith("$"):   # canonical index roots: $SPX/$VIX/$RUT/$NDX/$DJI
         # RC-494: index books are fetched over a bounded DTE horizon (_chain_to_date_for), so a
         # FIXED budget-safe width covers the whole near-term surface. Deterministic on purpose —
@@ -10988,11 +11071,14 @@ def _chain_to_date_for(ticker: str, selected_expiry: str | None = None) -> str |
     resolve_chain_strike_count's fixed index width fits the budget. Equities return None (full
     book, unchanged). One authority for the index date bound, mirroring the strike-count faucet.
 
-    If a caller EXPLICITLY selects a far-dated index expiry (beyond the horizon), the fetch is
-    extended to include it — otherwise the downstream slice to that expiry would be empty and
-    error (RC-494 robustness). The auto/default path passes no expiry and gets the near-term
-    horizon. A single selected expiry keeps the book small regardless of how far out it is."""
-    tk = (ticker or "").upper().strip()
+    If a caller EXPLICITLY selects a far-dated index expiry (beyond the horizon), to_date is
+    extended to it — otherwise the downstream slice to that expiry would be empty and error
+    (RC-494 robustness). Cursor-audit F2: extending to_date ALONE turned a one-expiry request
+    into a today->far multi-expiry sweep (Schwab returns every expiry up to to_date), re-blowing
+    the budget. The companion _chain_from_date_for bounds the NEAR edge to the same far date for
+    that case, so the window is [sel, sel] — a single expiry (60*2=120 contracts). The auto/default
+    path passes no expiry and gets the open-near-end horizon."""
+    tk = ticker_storage_key(ticker)   # Cursor-audit F1: bare index root ("SPX") -> "$SPX"
     if not tk.startswith("$"):
         return None
     from datetime import date, timedelta
@@ -11008,6 +11094,33 @@ def _chain_to_date_for(ticker: str, selected_expiry: str | None = None) -> str |
         except ValueError:
             pass
     return horizon.isoformat()
+
+
+def _chain_from_date_for(ticker: str, selected_expiry: str | None = None) -> str | None:
+    """Chain fetch from_date (ISO YYYY-MM-DD) — the NEAR edge of the window, normally None so
+    Schwab defaults it to today.
+
+    Cursor-audit F2: paired with _chain_to_date_for. When an operator explicitly selects an index
+    expiry BEYOND the 45-day horizon, _chain_to_date_for pushes to_date out to it; without also
+    bounding the near edge Schwab returns EVERY expiry from today through that far date
+    (60 strikes * 2 * ~150 expiries = ~18,000 contracts >> SCHWAB_CHAIN_CONTRACT_BUDGET), the
+    RC-491 502 — even though _fetch_state then slices to that ONE expiry and discards the rest.
+    Bounding from_date to the same far date pulls only that expiry's strikes (60*2=120). Fires ONLY
+    for a far index pick; equities, the auto path, and near picks (already inside the bounded
+    horizon window) keep the open near end unchanged."""
+    tk = ticker_storage_key(ticker)   # Cursor-audit F1: bare index root ("SPX") -> "$SPX"
+    if not tk.startswith("$") or not selected_expiry:
+        return None
+    from datetime import date, timedelta
+
+    from time_et import now_et
+
+    horizon = (now_et() + timedelta(days=INDEX_CHAIN_DTE_HORIZON_DAYS)).date()
+    try:
+        sel = date.fromisoformat(str(selected_expiry)[:10])
+    except ValueError:
+        return None
+    return sel.isoformat() if sel > horizon else None
 
 _terrain_cache: dict[str, dict] = {}
 _terrain_cache_lock = threading.Lock()
@@ -12660,15 +12773,14 @@ def get_terrain_strikes(ticker: str = Query(default=DEFAULT_TICKER)):
             out.sort(key=lambda r: r[0])
             return out
 
-        def _dte(ct) -> float:
-            # single source: finite DTE; NaN/±inf/junk -> None -> 999.0 (sorts as far-dated,
-            # same as a missing DTE) instead of a raw NaN poisoning the sort key.
-            from numeric_contract import float_finite_or_none as _fin
-            d = _fin(ct.get("daysToExpiration"))
-            return d if d is not None else 999.0
-
-        near = [c for c in contracts if _dte(c) <= 7]
-        far = [c for c in contracts if _dte(c) > 7]
+        # Cursor-audit F8: unknown DTE must belong to NEITHER near nor far, not silently to far.
+        # This endpoint carried its own near/far splitter with the old 999.0 sentinel — a duplicate
+        # of the RC-290-fixed canonical _dte_of, which drops an unreadable DTE from BOTH sides. With
+        # 999.0 a parse-failed 0-DTE was rendered in the prior-day MONTHLY+ (far) chip and omitted
+        # from the ≤7DTE (near) chip. Use the ONE canonical splitter so the two can't diverge again.
+        from terrain_engine import _dte_of
+        near = [c for c in contracts if (d := _dte_of(c)) is not None and d <= 7]
+        far = [c for c in contracts if (d := _dte_of(c)) is not None and d > 7]
         return {"all": _scope(contracts), "near": _scope(near), "far": _scope(far)}
 
     import sqlite3 as _sq
@@ -15412,7 +15524,7 @@ def get_liquidity_playbook_state(
 def debug_charm(ticker: str = DEFAULT_TICKER):
     """Diagnose why charm is not computing."""
     try:
-        ticker = (ticker or DEFAULT_TICKER).upper().strip()
+        ticker = ticker_storage_key(ticker or DEFAULT_TICKER)   # Cursor-audit F1: bare "SPX" -> "$SPX"
         # TICKER-PREVIEW-NO-ENROLL: charm diagnostic is a VIEW — touch last-seen only.
         _touch_tracked_ticker_view(ticker)
         from math_exposure import compute_net_charm
@@ -15420,7 +15532,10 @@ def debug_charm(ticker: str = DEFAULT_TICKER):
         cl       = get_client()
         # RC-59: charm IS level math — the debug view must see the same width the product
         # computes on, or it debugs a different chain than the one that produced the number.
-        c_resp   = safe_get_chain(cl, ticker, strike_count=resolve_chain_strike_count(ticker))
+        # Cursor-audit A1: and the same index DATE bound — without to_date this fetched the full
+        # multi-year $SPX book (no cap) and 502'd on the budget, unlike the product's bounded path.
+        c_resp   = safe_get_chain(cl, ticker, strike_count=resolve_chain_strike_count(ticker),
+                                  to_date=_chain_to_date_for(ticker, None))
         if c_resp is None or c_resp.status_code != 200:
             return {"error": f"Chain fetch failed: status={getattr(c_resp, 'status_code', 'None')}"}
         chain_json = c_resp.json()

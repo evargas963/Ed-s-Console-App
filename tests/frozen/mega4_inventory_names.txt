@@ -770,6 +770,7 @@ ml_predict.py::_artifact_registry_entry_stale
 ml_predict.py::_artifact_reverify_ttl_seconds
 ml_predict.py::_bundle_ticker_for_artifacts
 ml_predict.py::_cascade_challenger_inference_scope
+ml_predict.py::_enforce_active_serve_policy
 ml_predict.py::_ensemble_parallel_probs
 ml_predict.py::_fmt
 ml_predict.py::_load_lstm

@@ -50,6 +50,9 @@ def test_second_registration_does_not_remove_first_ticker(monkeypatch, tmp_path)
     monkeypatch.setattr(srv, "_HAS_SIGNALS", True)
     monkeypatch.setattr(srv, "_run_legacy_logger_json_migration", lambda _db: None)
     monkeypatch.delenv("ED_LOGGING_UNIVERSE_FIFO_EVICTION", raising=False)
+    # Cursor-audit F5: this test exercises in-memory enrollment retention, not vendor
+    # collectability — mock the enrollment probe as passing for the synthetic ALFA/BETA.
+    monkeypatch.setattr(srv, "_enrollment_collectability_probe", lambda t: (True, "ok"))
     prev = list(srv.CORE_TICKERS)
     try:
         srv.CORE_TICKERS[:] = ["SPY"]

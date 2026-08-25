@@ -348,6 +348,9 @@ def test_issue22_add_logger_evicts_only_oldest_user_persisted(monkeypatch, tmp_p
     monkeypatch.setattr(srv, "MAX_USER_PERSISTED_LOGGING_TICKERS", 2)
     monkeypatch.setenv("ED_LOGGING_UNIVERSE_FIFO_EVICTION", "1")
     monkeypatch.setattr(srv, "_run_legacy_logger_json_migration", lambda _db: None)
+    # Cursor-audit F5: this test exercises FIFO eviction, not vendor collectability — mock the
+    # enrollment probe as passing so the synthetic UNEWO enrolls without a live Schwab round-trip.
+    monkeypatch.setattr(srv, "_enrollment_collectability_probe", lambda t: (True, "ok"))
     edb.logging_universe_sync_core(["SPY"], t0)
     edb.logging_universe_upsert_pinned("PINK", "s", t0 + 0.5)
     edb.logging_universe_upsert_user_persisted("UOLD", "s", t0 + 1)
@@ -378,6 +381,8 @@ def test_issue22_add_logger_no_eviction_when_fifo_disabled(monkeypatch, tmp_path
     monkeypatch.setattr(srv, "MAX_USER_PERSISTED_LOGGING_TICKERS", 2)
     monkeypatch.delenv("ED_LOGGING_UNIVERSE_FIFO_EVICTION", raising=False)
     monkeypatch.setattr(srv, "_run_legacy_logger_json_migration", lambda _db: None)
+    # Cursor-audit F5: eviction test — mock the enrollment collectability probe as passing.
+    monkeypatch.setattr(srv, "_enrollment_collectability_probe", lambda t: (True, "ok"))
     edb.logging_universe_sync_core(["SPY"], t0)
     edb.logging_universe_upsert_user_persisted("UOLD", "s", t0 + 1)
     edb.logging_universe_upsert_user_persisted("UMID", "s", t0 + 2)
