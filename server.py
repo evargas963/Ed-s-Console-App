@@ -12704,15 +12704,14 @@ def get_terrain_strikes(ticker: str = Query(default=DEFAULT_TICKER)):
             out.sort(key=lambda r: r[0])
             return out
 
-        def _dte(ct) -> float:
-            # single source: finite DTE; NaN/±inf/junk -> None -> 999.0 (sorts as far-dated,
-            # same as a missing DTE) instead of a raw NaN poisoning the sort key.
-            from numeric_contract import float_finite_or_none as _fin
-            d = _fin(ct.get("daysToExpiration"))
-            return d if d is not None else 999.0
-
-        near = [c for c in contracts if _dte(c) <= 7]
-        far = [c for c in contracts if _dte(c) > 7]
+        # Cursor-audit F8: unknown DTE must belong to NEITHER near nor far, not silently to far.
+        # This endpoint carried its own near/far splitter with the old 999.0 sentinel — a duplicate
+        # of the RC-290-fixed canonical _dte_of, which drops an unreadable DTE from BOTH sides. With
+        # 999.0 a parse-failed 0-DTE was rendered in the prior-day MONTHLY+ (far) chip and omitted
+        # from the ≤7DTE (near) chip. Use the ONE canonical splitter so the two can't diverge again.
+        from terrain_engine import _dte_of
+        near = [c for c in contracts if (d := _dte_of(c)) is not None and d <= 7]
+        far = [c for c in contracts if (d := _dte_of(c)) is not None and d > 7]
         return {"all": _scope(contracts), "near": _scope(near), "far": _scope(far)}
 
     import sqlite3 as _sq

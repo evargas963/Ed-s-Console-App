@@ -13570,7 +13570,16 @@ function edCheckRadarAlerts(rows) {
     }
     T('cv2-g-dex', money(fnum(s.net_delta)) || fstr(s.dex_magnitude));
     T('cv2-g-charm', n2(fnum(s.charm_drift_toward)) || fstr(s.charm_direction_display));
-    T('cv2-g-vanna', fstr(s.iv_skew_interp));
+    // Cursor-audit F3: this ν tile is labeled "Vanna" but was bound to s.iv_skew_interp (the ATM
+    // put/call IV-SKEW string) — IV skew shown under a Vanna label. It now shows the real net
+    // dealer vanna ($/vol-pt, the same value as the KL "Net Vanna" tile). The IV-skew interpretation,
+    // whose ONLY prior UI surface was this mislabeled tile, is preserved honestly in the tooltip.
+    T('cv2-g-vanna', money(fnum(s.kl_vanna_net_dollars)));
+    (function () {
+      var _t = el('cv2-g-vanna'); var _tile = _t && _t.closest ? _t.closest('.cv-gk') : null;
+      if (_tile) _tile.title = 'Net dealer vanna: $ of delta re-hedged per 1-pt IV move (+call/−put).'
+        + (s.iv_skew_interp ? '  ATM IV skew: ' + fstr(s.iv_skew_interp) + '.' : '');
+    })();
     var emu = fnum(s.kl_em_upper), eml = fnum(s.kl_em_lower);
     T('cv2-kl-em', (eml !== null && emu !== null) ? (eml.toFixed(1) + ' – ' + emu.toFixed(1)) : null);
     // RC-345 / F06: the UI actually READS kl_em_source and reflects the real methodology in
