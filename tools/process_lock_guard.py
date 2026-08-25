@@ -1,6 +1,7 @@
 """Front-end hook for operating_process_lock (RC-217).
 
-Runs on PreToolUse (Edit/Write/StrReplace/Bash) and Stop. Exit 2 BLOCKS.
+Runs on PreToolUse (Edit/Write/StrReplace/Bash). RC-471 removed the Stop registration;
+stop_block() is retained for manual/test use. Exit 2 BLOCKS.
 No env kill-switch: ED_PROCESS_LOCK_GUARD cannot disable this control (RC-450).
 2026-08-24 teardown: the role/authority rails (writer_drift_lock, isolated-worktree
 boundary, mission gating, GO closeout) are gone with Architecture A — what remains is
@@ -30,8 +31,73 @@ _EDIT_TOOLS = (
 )
 
 
+#: Keys across the two continua that carry an edit target path.
+_EDIT_TARGET_KEYS = ("file_path", "notebook_path", "path")
+
+
+def _primary_worktree_root(repo: Path) -> Path | None:
+    """The PRIMARY working tree root when `repo` is a LINKED worktree; None when `repo`
+    IS the primary (its .git is a directory) or the layout is unreadable.
+
+    Pure file logic, no subprocess: a linked worktree's `.git` is a FILE reading
+    `gitdir: <primary>/.git/worktrees/<name>`; the primary root is the path above `.git`.
+    """
+    dotgit = repo / ".git"
+    if not dotgit.is_file():
+        return None
+    try:
+        text = dotgit.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    m = re.search(r"^gitdir:\s*(.+?)\s*$", text, re.M)
+    if not m:
+        return None
+    gitdir = Path(m.group(1))
+    # <primary>/.git/worktrees/<name> -> <primary>
+    for parent in gitdir.parents:
+        if parent.name == ".git":
+            return parent.parent
+    return None
+
+
+def cross_checkout_edit_violations(tool_input: dict, repo: Path = REPO) -> list[str]:
+    """RC-442(a), restored role-free (RC-477): a session running in a LINKED worktree may not
+    Edit/Write a file inside the PRIMARY working tree — that is the live/production checkout,
+    and endangering it from a side checkout is the exact 2026-08-20 hazard. The 2026-08-24
+    teardown removed the role-based form of this rail with Architecture A; this form reads
+    only the filesystem topology (which checkout am I, where does the target resolve) and
+    names no agent. The primary session editing a linked worktree is not blocked — that is
+    the operator-visible direction. Fail-open on unresolvable paths: this rail blocks only
+    on an affirmative cross-checkout hit."""
+    primary = _primary_worktree_root(repo)
+    if primary is None:
+        return []
+    out: list[str] = []
+    for key in _EDIT_TARGET_KEYS:
+        raw = tool_input.get(key)
+        if not raw or not isinstance(raw, str):
+            continue
+        try:
+            target = Path(raw)
+            if not target.is_absolute():
+                target = repo / target
+            resolved = target.resolve()
+            resolved.relative_to(primary.resolve())
+        except (OSError, ValueError):
+            continue
+        out.append(
+            f"CROSS_CHECKOUT_EDIT (RC-442/RC-477): this session runs in the linked worktree "
+            f"{repo} but targets {resolved} inside the PRIMARY working tree {primary} — the "
+            f"live checkout. Edit it from its own session, or hand the change over via "
+            f"branch/PR."
+        )
+    return out
+
+
 def pretooluse_block(tool: str, tool_input: dict) -> list[str]:
     out: list[str] = []
+    if tool in _EDIT_TOOLS:
+        out.extend(cross_checkout_edit_violations(tool_input))
     if tool in ("Bash", "PowerShell", "Shell"):
         cmd = tool_input.get("command") or ""
         if re.search(r"\bgit\s+commit\b", cmd, re.I):

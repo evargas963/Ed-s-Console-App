@@ -14,7 +14,6 @@ from money_path_ticker_tiers import (
     is_base_money_path_ticker,
     is_guest_ticker,
     load_base_ticker_contract,
-    should_skip_background_full_snapshot,
     ticker_trust_class,
 )
 from verification.base_ticker_observability import (
@@ -95,13 +94,13 @@ def test_replay_probe_imports_base_tier_helpers():
     assert is_base_money_path_ticker("IWM")
 
 
-def test_base_tickers_never_skipped_for_panel_auto():
-    """Base anchors must not be downgraded to confluence-only guest capture."""
-    panel = frozenset({"SPY", "QQQ", "IWM", "WMT"})
-    for anchor in BASE_MONEY_PATH_TICKERS:
-        assert should_skip_background_full_snapshot(anchor, panel) is False
-    assert should_skip_background_full_snapshot("WMT", panel) is True
-    assert should_skip_background_full_snapshot("NVDA", frozenset()) is False
+def test_the_tier_skip_predicate_is_gone_not_neutered():
+    """UNIVERSAL COLLECTION (operator, 2026-08-25): the panel_auto confluence-only carve-out
+    is RETIRED. An always-False shim would repeat RC-474 (dead producer left behind to be
+    re-wired), so the predicate is deleted outright — importing it must fail."""
+    import money_path_ticker_tiers as tiers
+
+    assert not hasattr(tiers, "should_skip_background_full_snapshot")
 
 
 def test_filter_tickers_for_background_logging_keeps_base_anchors(tmp_path: Path):
@@ -118,7 +117,9 @@ def test_filter_tickers_for_background_logging_keeps_base_anchors(tmp_path: Path
     )
     for anchor in BASE_MONEY_PATH_TICKERS:
         assert anchor in tickers
-    assert "WMT" not in tickers
+    # UNIVERSAL COLLECTION (2026-08-25): panel_auto enrollment no longer drops a ticker
+    # from the full-snapshot roster.
+    assert "WMT" in tickers
     assert "NVDA" in tickers
 
 
@@ -711,10 +712,29 @@ def _run_logger_fetch(monkeypatch, ticker: str, *, live_mode: bool):
     return status, calls
 
 
-def test_logger_skips_non_trio_full_fetch_in_live_operator_mode(monkeypatch):
+def test_logger_no_longer_hard_skips_non_trio_in_live_operator_mode(monkeypatch):
+    """UNIVERSAL COLLECTION (2026-08-25): the per-ticker operator-mode hard skip is
+    retired — contention is governed at the CYCLE level by _operator_mode_cycle_roster
+    (trio + one rotating guest), so a guest that IS in the cycle fetches normally."""
     status, calls = _run_logger_fetch(monkeypatch, "NVDA", live_mode=True)
-    assert status == "skipped:live_operator_mode"
-    assert calls == []
+    assert status == "ok:fetch"
+    assert calls == [("NVDA", True)]
+
+
+def test_operator_mode_cycle_roster_is_trio_plus_one_rotating_guest():
+    import server as srv
+
+    tickers = list(BASE_MONEY_PATH_TICKERS) + ["AAPL", "WMT", "NVDA"]
+    roster1, idx = srv._operator_mode_cycle_roster(tickers, 0)
+    assert roster1 == list(BASE_MONEY_PATH_TICKERS) + ["AAPL"]
+    roster2, idx = srv._operator_mode_cycle_roster(tickers, idx)
+    assert roster2 == list(BASE_MONEY_PATH_TICKERS) + ["WMT"]
+    roster3, idx = srv._operator_mode_cycle_roster(tickers, idx)
+    assert roster3 == list(BASE_MONEY_PATH_TICKERS) + ["NVDA"]
+    roster4, idx = srv._operator_mode_cycle_roster(tickers, idx)
+    assert roster4 == list(BASE_MONEY_PATH_TICKERS) + ["AAPL"], "rotation wraps"
+    trio_only, idx2 = srv._operator_mode_cycle_roster(list(BASE_MONEY_PATH_TICKERS), idx)
+    assert trio_only == list(BASE_MONEY_PATH_TICKERS) and idx2 == idx
 
 
 def test_logger_trio_full_fetch_unchanged_in_live_operator_mode(monkeypatch):

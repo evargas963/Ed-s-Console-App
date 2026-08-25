@@ -199,7 +199,10 @@ def _rc_row_violations(log_path, n: int, rc_id: str, status: str,
             f"{rc_id} has a why-chain only {depth + 1} level(s) deep. Five whys are "
             f"required BEFORE the row is written - a shallow chain is how a symptom "
             f"gets recorded as a root cause."))
-    if status == "CLOSED":
+    if status in ("CLOSED", "REMEDIATED"):
+        # REMEDIATED joined the evidence gate 2026-08-25 (audit round 2 red-team):
+        # OPEN->REMEDIATED used to terminate an overdue row with no evidence and no
+        # re-date reason — the same silencing CLOSED is gated against.
         evidence = cells[6] if len(cells) >= 7 else ""
         has_number = any(ch.isdigit() for ch in evidence)
         has_proof = any(w in evidence.upper()
@@ -207,7 +210,7 @@ def _rc_row_violations(log_path, n: int, rc_id: str, status: str,
         if not (has_number and has_proof):
             out.append(Violation(
                 log_path, n,
-                f"{rc_id} is CLOSED without observed evidence. A closed root cause must "
+                f"{rc_id} is {status} without observed evidence. A terminal root cause must "
                 f"cite a measured value (numbers) and say it was proven/verified/measured "
                 f"- describing the code change is not proof that it works."))
     return out
@@ -322,8 +325,12 @@ def check_root_cause_log() -> list[Violation]:
 
     Operator law 2026-07-19: a cause found at why-2 is not the root -- it is a new defect
     that gets its own five whys. An entry stays OPEN until the chain terminates with no new
-    defect AND the fix is verified. This blocks commits on any OPEN entry past its due date,
-    so a half-traced defect cannot be quietly parked as "surface fixed".
+    defect AND the fix is verified. An OPEN entry past its due date is an enforced
+    violation. Since RC-406 it binds at merge via the CI delta gate, which blocks only
+    violations NEW relative to origin/main -- rows that age into overdue on both sides
+    pass, and a re-date clears the violation; the REDATE_LOCK in
+    tools/operating_process_lock.py is what forces every re-date to carry its reason
+    and lineage in the row.
 
     See governance/root_cause_log.md for the rules and the row format.
 

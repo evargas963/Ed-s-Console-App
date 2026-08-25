@@ -33,13 +33,184 @@ def _init_repo(tmp_path: Path) -> Path:
 
 def test_edit_tools_are_not_gated_by_this_guard():
     """2026-08-24 teardown: the role/mission/authority edit rails are GONE. The guard's
-    Edit branch must not block ordinary product edits — nor resurrect a role denylist."""
+    Edit branch must not block ordinary product edits — nor resurrect a role denylist.
+    The one surviving Edit rail is RC-442/RC-477's cross-checkout topology check, which
+    names no agent and fires only on a linked-worktree session targeting the primary
+    working tree (tested below); an in-checkout edit like this one stays unblocked."""
     bad = PLG.pretooluse_block("Write", {"file_path": str(ROOT / "db.py"),
                                          "content": "# edit\n"})
     assert bad == [], bad
     assert not hasattr(OPL, "claude_isolated_edit_violation")
     assert not hasattr(OPL, "operator_go_granted")
     assert not hasattr(OPL, "pm_mission_record")
+
+
+def _linked_worktree_layout(tmp_path: Path) -> tuple[Path, Path]:
+    """A primary checkout (.git directory) and a linked worktree (.git FILE pointing at
+    primary/.git/worktrees/wt) — pure file topology, exactly what the rail reads."""
+    primary = tmp_path / "primary"
+    (primary / ".git").mkdir(parents=True)
+    (primary / ".git" / "worktrees" / "wt").mkdir(parents=True)
+    (primary / "db.py").write_text("# live\n", encoding="utf-8")
+    wt = tmp_path / "wt"
+    wt.mkdir()
+    (wt / ".git").write_text(f"gitdir: {primary / '.git' / 'worktrees' / 'wt'}\n",
+                             encoding="utf-8")
+    (wt / "own.py").write_text("# mine\n", encoding="utf-8")
+    return primary, wt
+
+
+def test_cross_checkout_edit_into_primary_blocks(tmp_path):
+    """RC-442(a)/RC-477: a linked-worktree session editing the PRIMARY working tree is the
+    2026-08-20 hazard — the rail must fire on that exact topology."""
+    primary, wt = _linked_worktree_layout(tmp_path)
+    bad = PLG.cross_checkout_edit_violations(
+        {"file_path": str(primary / "db.py")}, repo=wt)
+    assert len(bad) == 1 and "CROSS_CHECKOUT_EDIT" in bad[0], bad
+
+
+def test_own_worktree_edit_stays_unblocked(tmp_path):
+    primary, wt = _linked_worktree_layout(tmp_path)
+    assert PLG.cross_checkout_edit_violations(
+        {"file_path": str(wt / "own.py")}, repo=wt) == []
+    # Relative paths resolve against the session checkout, not the primary.
+    assert PLG.cross_checkout_edit_violations({"file_path": "own.py"}, repo=wt) == []
+
+
+def test_primary_session_is_never_gated_by_the_rail(tmp_path):
+    """The primary checkout editing anywhere (including a linked worktree) is the
+    operator-visible direction — the rail is inert when .git is a directory."""
+    primary, wt = _linked_worktree_layout(tmp_path)
+    assert PLG.cross_checkout_edit_violations(
+        {"file_path": str(wt / "own.py")}, repo=primary) == []
+    assert PLG.cross_checkout_edit_violations(
+        {"file_path": str(primary / "db.py")}, repo=primary) == []
+
+
+def test_rail_fails_open_on_unreadable_topology(tmp_path):
+    """A malformed .git file must never block (the rail blocks only on an affirmative
+    cross-checkout hit)."""
+    wt = tmp_path / "wt2"
+    wt.mkdir()
+    (wt / ".git").write_text("not a gitdir line\n", encoding="utf-8")
+    assert PLG.cross_checkout_edit_violations(
+        {"file_path": str(tmp_path / "anything.py")}, repo=wt) == []
+
+
+# ── REDATE_LOCK (audit rounds 2-3, 2026-08-25): a promised due date moves only when the
+# row is BLOCKED on something outside the repository, declared as BLOCKED_ON_<CLASS> with
+# specifics (operator: fixable defects get fixed, not administratively postponed).
+# Measured basis: 67 historical due-cell moves, 61 on already-overdue rows, 2 with no
+# reason anywhere.
+
+_ROW = "| RC-900 | {status} | 2026-08-01 | {due} | defect text | why -> chain | {fix} |"
+
+
+def _ledger_repo(tmp_path, head_due="2026-08-10", head_status="OPEN"):
+    repo = _init_repo(tmp_path)
+    led = repo / "governance" / "root_cause_log.md"
+    led.write_text(_ROW.format(status=head_status, due=head_due, fix="FIXED: x") + "\n",
+                   encoding="utf-8")
+    subprocess.run(["git", "add", "-A"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(["git", "commit", "-m", "ledger"], cwd=repo, check=True,
+                   capture_output=True)
+    return repo, led
+
+
+def _stage(repo, led, row_text):
+    led.write_text(row_text + "\n", encoding="utf-8")
+    subprocess.run(["git", "add", str(led)], cwd=repo, check=True, capture_output=True)
+
+
+def test_redate_lock_blocks_a_silent_due_move(tmp_path):
+    repo, led = _ledger_repo(tmp_path)
+    _stage(repo, led, _ROW.format(status="OPEN", due="2026-09-10", fix="FIXED: x"))
+    out = OPL.rc_redate_violations(repo)
+    assert out and "REDATE_LOCK" in out[0] and "RC-900" in out[0], out
+
+
+def test_redate_lock_passes_with_a_declared_blocker_class(tmp_path):
+    repo, led = _ledger_repo(tmp_path)
+    _stage(repo, led, _ROW.format(
+        status="OPEN", due="2026-09-10",
+        fix="FIXED: x RE-DATED 2026-08-10->2026-09-10: BLOCKED_ON_DATA_ACCRUAL — "
+            "wide-capture n reaches 30 sessions on 2026-09-10"))
+    assert OPL.rc_redate_violations(repo) == []
+
+
+def test_redate_lock_blocks_a_free_text_reason(tmp_path):
+    """Operator round 3 (2026-08-25): a reason alone no longer legitimizes postponement —
+    'need more time' is exactly the administrative deferral the requirement bans."""
+    repo, led = _ledger_repo(tmp_path)
+    _stage(repo, led, _ROW.format(
+        status="OPEN", due="2026-09-10",
+        fix="FIXED: x RE-DATED 2026-08-10->2026-09-10: need more time on this"))
+    out = OPL.rc_redate_violations(repo)
+    assert out and "administratively postponed" in out[0], out
+
+
+def test_redate_lock_blocks_a_bare_blocker_class_with_no_specifics(tmp_path):
+    repo, led = _ledger_repo(tmp_path)
+    _stage(repo, led, _ROW.format(
+        status="OPEN", due="2026-09-10",
+        fix="FIXED: x RE-DATED 2026-08-10->2026-09-10: BLOCKED_ON_OPERATOR"))
+    assert OPL.rc_redate_violations(repo), "the class without WHAT is awaited is a rubber stamp"
+
+
+def test_redate_lock_blocks_an_empty_reason(tmp_path):
+    repo, led = _ledger_repo(tmp_path)
+    _stage(repo, led, _ROW.format(
+        status="OPEN", due="2026-09-10",
+        fix="FIXED: x RE-DATED 2026-08-10->2026-09-10: "))
+    assert OPL.rc_redate_violations(repo), "an empty reason is not a reason"
+
+
+def test_redate_lock_blocks_wrong_lineage(tmp_path):
+    repo, led = _ledger_repo(tmp_path)
+    _stage(repo, led, _ROW.format(
+        status="OPEN", due="2026-09-10",
+        fix="FIXED: x RE-DATED 2026-08-09->2026-09-10: reason with wrong old date"))
+    assert OPL.rc_redate_violations(repo), "lineage must name the actual old due date"
+
+
+def test_redate_lock_exempts_a_closing_row(tmp_path):
+    repo, led = _ledger_repo(tmp_path)
+    _stage(repo, led, _ROW.format(status="CLOSED", due="2026-08-25",
+                                  fix="FIXED and VERIFIED: 3 tests"))
+    assert OPL.rc_redate_violations(repo) == []
+
+
+def test_redate_lock_ignores_new_rows_and_non_due_edits(tmp_path):
+    repo, led = _ledger_repo(tmp_path)
+    _stage(repo, led,
+           _ROW.format(status="OPEN", due="2026-08-10", fix="FIXED: x plus more detail")
+           + "\n| RC-901 | OPEN | 2026-08-25 | 2026-09-30 | new defect | why -> chain | NEXT-DEPTH: y |")
+    assert OPL.rc_redate_violations(repo) == []
+
+
+def test_redate_lock_quiet_on_untouched_ledger(tmp_path):
+    repo, _led = _ledger_repo(tmp_path)
+    assert OPL.rc_redate_violations(repo) == []
+
+
+def test_quiet_pass_must_be_fresher_than_change(tmp_path):
+    """R11: a PASS measured before the claimed server.py/db.py change is not the live
+    quiet bar for that change (a 200-day-old PASS used to satisfy a fresh claim)."""
+    import os
+    import time
+    repo = _init_repo(tmp_path)
+    (repo / "reports").mkdir(exist_ok=True)
+    qp = repo / "reports" / "ed_server_warn_quiet_window_latest.json"
+    qp.write_text('{"verdict": "PASS"}', encoding="utf-8")
+    # db.py is TRACKED by _init_repo, so a worktree write lands in the touched set.
+    (repo / "db.py").write_text("# RC-183\nis_collect_window_bar_end_ts_utc\n# fresh\n",
+                                encoding="utf-8")
+    old = time.time() - 200 * 86400
+    os.utime(qp, (old, old))
+    out = OPL.completion_claim_violations("Mission COMPLETE: quiet bar met.", repo)
+    assert any("STALE_PASS" in v for v in out), out
+    os.utime(qp, None)
+    assert OPL.completion_claim_violations("Mission COMPLETE: quiet bar met.", repo) == []
 
 
 def test_index_worktree_mismatch_detected(tmp_path, monkeypatch):

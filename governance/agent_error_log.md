@@ -1,10 +1,17 @@
 # Agent Error Log
 
-Every agent error, one row. Rendered by `tools/agent_error_report.py` (daily, or ad hoc on
-operator request). This file is the INPUT; the report maps each error to the lock that caught it,
-or records that **nothing did** — which is the list that tells us what lock to build next.
+> **HISTORICAL RECORD (banner added 2026-08-25).** Rows E-01..E-39 are the July-2026 error
+> record. The error-to-lock derivation program described below was RETIRED in the 2026-08-24
+> Architecture A teardown: recurring failure classes are named to the operator, and a new lock
+> is added only when the operator asks for one — automatic lock-manufacture is the sprawl
+> recipe that teardown removed. The rows remain valuable as a record of what actually went
+> wrong; the "what lock to build next" column is read as history, not as a work order.
 
-**Why this exists (operator, 2026-07-27):** "we are going to use this to then figure out what
+Every agent error, one row. Rendered on request by `tools/agent_error_report.py` (no scheduled
+job runs it). This file is the INPUT; the report maps each error to the lock that caught it,
+or records that **nothing did**.
+
+**Why this existed (operator, 2026-07-27):** "we are going to use this to then figure out what
 mechanical locks you need in order to produce a pristine, error free, patch free, dead code free
 repo." An error with no lock is not a lesson; it is a scheduled recurrence.
 

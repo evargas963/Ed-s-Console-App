@@ -19,6 +19,12 @@ Contract:
     it does not block again. Without this the turn could never end — a guard that cannot be
     satisfied is a hang, not a control.
   * No env kill-switch: ED_STOP_GUARD cannot disable this control (RC-450).
+  * HONEST LIMIT: this guard detects only the marker vocabulary the agent itself writes
+    into a fix cell; unfinished work described in prose that avoids these exact substrings
+    passes. That gap is inherent — prose cannot be machine-proven finished or unfinished —
+    and the commit-time ledger checks (five-why depth, measured evidence on CLOSED rows,
+    due dates on OPEN rows) are the backstop. Do not grow this list beyond observed
+    variants: a longer synonym list is the same shape check with more false confidence.
 """
 from __future__ import annotations
 
@@ -36,7 +42,8 @@ if str(REPO) not in sys.path:
 RC_LOG = REPO / "governance" / "root_cause_log.md"
 
 #: Phrases the agent itself writes into a fix cell to mean "not done yet".
-UNFINISHED_MARKERS = ("IN PROGRESS", "VERIFICATION PENDING", "NOT FIXED", "PARTIALLY FIXED")
+UNFINISHED_MARKERS = ("IN PROGRESS", "VERIFICATION PENDING", "PENDING VERIFICATION",
+                      "NOT FIXED", "PARTIALLY FIXED", "NOT DONE")
 
 
 def unfinished_rows_opened_today(today: str | None = None) -> list[tuple[str, str]]:
@@ -87,7 +94,7 @@ def main() -> int:
     try:
         payload = json.load(sys.stdin)
     except (json.JSONDecodeError, ValueError):
-        payload = {}                  # DEFECT 9: unreadable input must NOT wave the FIND-IT-FIX-IT law through
+        payload = {}                  # unreadable input must NOT wave the RC-72 check through
     if payload.get("stop_hook_active") is True:
         return 0                      # already blocked once; a guard that cannot end is a hang
 

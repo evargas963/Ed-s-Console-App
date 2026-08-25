@@ -460,7 +460,30 @@ def _hook(payload: dict) -> subprocess.CompletedProcess[str]:
     )
 
 
-def _seed_real_stop_ledger(repo: Path, session: str) -> None:
+def _success_transcript(dir_path: Path, commands: list[str]) -> str:
+    """A transcript proving each command RAN WITHOUT ERROR this turn (result-binding
+    contract, operator 2026-08-25). operator_law_guard's Stop clause now counts a seeded
+    verification only when the same command appears in the transcript with a non-error
+    tool_result — issuance alone is not proof. Shape: a user-text boundary, then one
+    assistant Bash tool_use per command, each paired with an is_error=false tool_result."""
+    lines = [json.dumps({"type": "user", "message": {"role": "user",
+             "content": [{"type": "text", "text": "do the turn's work"}]}})]
+    for i, cmd in enumerate(commands):
+        tid = f"cmd{i}"
+        lines.append(json.dumps({"type": "assistant", "message": {"role": "assistant",
+            "content": [{"type": "tool_use", "id": tid, "name": "Bash",
+                         "input": {"command": cmd}}]}}))
+        lines.append(json.dumps({"type": "user", "message": {"role": "user",
+            "content": [{"type": "tool_result", "tool_use_id": tid, "is_error": False}]}}))
+    p = dir_path / f"transcript_{time.time_ns()}.jsonl"
+    p.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return str(p)
+
+
+def _seed_real_stop_ledger(repo: Path, session: str) -> str:
+    """Seed a production edit plus a passing verification, and return the transcript path
+    that proves the verification succeeded (needed by the Stop payload under the
+    result-binding contract). Returns the transcript_path to pass at Stop."""
     edit = {
         "session_id": session,
         "tool_name": "Edit",
@@ -469,11 +492,12 @@ def _seed_real_stop_ledger(repo: Path, session: str) -> None:
     }
     assert _hook(edit).returncode == 0
     _modify(repo)
-    for command in (
+    commands = [
         f"{sys.executable} -m pytest tests/test_mod.py -q",
         f"{sys.executable} -c \"import urllib.request; "
         "urllib.request.urlopen('http://127.0.0.1:8000/api/build')\"",
-    ):
+    ]
+    for command in commands:
         payload = {
             "session_id": session,
             "tool_name": "Bash",
@@ -481,13 +505,15 @@ def _seed_real_stop_ledger(repo: Path, session: str) -> None:
             "tool_input": {"command": command},
         }
         assert _hook(payload).returncode == 0
+    return _success_transcript(repo, commands)
 
 
 def test_real_stop_path_launches_valid_audit_without_command_history(tmp_path):
     repo = _repo(tmp_path)
     session = f"real-stop-{time.time_ns()}"
-    _seed_real_stop_ledger(repo, session)
-    stop = _hook({"session_id": session, "tool_name": "Stop", "cwd": str(repo)})
+    transcript = _seed_real_stop_ledger(repo, session)
+    stop = _hook({"session_id": session, "tool_name": "Stop", "cwd": str(repo),
+                  "transcript_path": transcript})
     assert stop.returncode == 0, stop.stderr
 
 
@@ -539,17 +565,20 @@ def test_committed_turn_edit_remains_in_authoritative_session_scope(tmp_path):
         cwd=repo,
     )
     assert committed.returncode == 0
-    for command in (
+    commands = [
         f"{sys.executable} -m pytest tests/test_mod.py -q",
         "curl http://127.0.0.1:8000/api/build",
-    ):
+    ]
+    for command in commands:
         assert _hook({
             "session_id": session,
             "tool_name": "Bash",
             "cwd": str(repo),
             "tool_input": {"command": command},
         }).returncode == 0
-    stop = _hook({"session_id": session, "tool_name": "Stop", "cwd": str(repo)})
+    transcript = _success_transcript(repo, commands)
+    stop = _hook({"session_id": session, "tool_name": "Stop", "cwd": str(repo),
+                  "transcript_path": transcript})
     assert stop.returncode == 0, stop.stderr
     # SIMPLICITY REHAB (operator full-go 2026-08-24): Stop no longer launches the audit
     # child, so no receipt is expected; the receipt CONTRACT below still binds whenever
@@ -582,8 +611,9 @@ def test_not_proven_verdict_still_binds_where_the_supervisor_runs(tmp_path):
     assert result["verdict"] == "NOT_PROVEN"
     assert any("NOT_PROVEN" in v for v in violations), violations
     # ...and the Stop hook itself no longer surfaces that verdict.
-    _seed_real_stop_ledger(repo, session)
-    stop = _hook({"session_id": session, "tool_name": "Stop", "cwd": str(repo)})
+    transcript = _seed_real_stop_ledger(repo, session)
+    stop = _hook({"session_id": session, "tool_name": "Stop", "cwd": str(repo),
+                  "transcript_path": transcript})
     assert stop.returncode == 0, stop.stderr
     assert "authoritative verdict" not in stop.stderr
 
@@ -624,7 +654,8 @@ def test_stop_retry_flag_grants_no_authorization(tmp_path):
     })
     assert owing_retry.returncode == 2, (
         "a retry with an unmet obligation must still block — the flag is not authority")
-    assert "ran NOTHING" in owing_retry.stderr or "TURN AUDIT" in owing_retry.stderr
+    assert ("RAN WITHOUT ERROR" in owing_retry.stderr
+            or "TURN AUDIT" in owing_retry.stderr)
 
 
 def test_malformed_structured_check_record_blocks_without_validator_crash(tmp_path):

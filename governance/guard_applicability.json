@@ -6,6 +6,7 @@
   "mechanisms": [
     {
       "governing_mechanism_id": "ED-OPERATOR-LAW-GUARD/RC-93-COMMIT-BEFORE-PROOF",
+      "retired": "2026-08-25 — the commit-before-proof rule this entry scoped was retired 2026-08-24 (SIMPLICITY REHAB: the pre-commit battery is the commit enforcement, so the guard's re-ask bought nothing); the guard's scoping machinery (rc93_applies_to) was deleted with it in the round-2 audit. Entry kept as append-only history; the UNIVERSAL-SAFETY mechanism below is unaffected and live.",
       "governing_authority": "Operator, 2026-07-27: 'i don't want you to ban the terms i want you to ban the actions. non negotiable.' Recorded as RC-93 in governance/root_cause_log.md.",
       "applicable_repositories": {
         "human_name": "EdWebConsole",

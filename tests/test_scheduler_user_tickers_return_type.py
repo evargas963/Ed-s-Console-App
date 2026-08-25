@@ -151,36 +151,14 @@ def test_verify_active_tickers_excludes_panel_auto(monkeypatch, tmp_path):
     assert tickers == ["SPY"]
 
 
-def test_filter_tickers_for_background_logging_excludes_panel_auto():
-    import db as _db_mod
+def test_filter_tickers_for_background_logging_is_universal():
+    """UNIVERSAL COLLECTION (operator requirement, restated 2026-08-25): panel_auto
+    enrollment no longer excludes a ticker from the full-snapshot roster — the filter
+    passes the roster through unchanged (RC-482)."""
+    from scheduler_user_tickers import filter_tickers_for_background_logging
 
-    class _Row:
-        def __init__(self, ticker: str, category: str):
-            self._d = {"ticker": ticker, "category": category}
-
-        def get(self, key, default=None):
-            return self._d.get(key, default)
-
-    class _EdDB:
-        def __init__(self, _path):
-            pass
-
-        def logging_universe_list_rows(self):
-            return [
-                _Row("SPY", "core"),
-                _Row("PSCI", "panel_auto"),
-                _Row("QQQ", "core"),
-            ]
-
-    orig = _db_mod.EdDB
-    _db_mod.EdDB = _EdDB
-    try:
-        from scheduler_user_tickers import filter_tickers_for_background_logging
-
-        out = filter_tickers_for_background_logging(["SPY", "PSCI", "QQQ"], ":memory:")
-    finally:
-        _db_mod.EdDB = orig
-    assert out == ["SPY", "QQQ"]
+    out = filter_tickers_for_background_logging(["SPY", "PSCI", "QQQ"], ":memory:")
+    assert out == ["SPY", "PSCI", "QQQ"]
 
 
 def test_missing_confluence_weighted_pushes_detects_qqq_gap():

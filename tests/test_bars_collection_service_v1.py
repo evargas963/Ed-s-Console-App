@@ -36,9 +36,20 @@ def test_price_bars_has_exactly_one_writer():
     )
 
 
-def test_the_one_writer_lives_in_the_collection_service():
-    seg = _fn_src("_bars_collect_one")
-    assert "upsert_1m_bars(" in seg, "the single bar writer must be the collection service"
+def test_the_one_writer_is_the_single_faucet_and_both_producers_route_through_it():
+    """RC-69 single faucet, extended for RC-484: the ONE ``upsert_1m_bars(`` call lives in
+    the dedicated writer ``_persist_1m_bars``, and BOTH bar producers persist through it —
+    the live collection service (``_bars_collect_one``) and the day-1 enrollment history
+    seed (``_enrollment_history_seed``). Before the seed existed there was one producer and
+    the write lived inline in the collector; now there are two legitimate producers, so the
+    faucet is extracted rather than duplicated. The render path stays barred
+    (test_render_path_does_not_persist_bars)."""
+    assert "upsert_1m_bars(" in _fn_src("_persist_1m_bars"), \
+        "the single bar writer must be _persist_1m_bars"
+    assert "_persist_1m_bars(" in _fn_src("_bars_collect_one"), \
+        "the collection service must persist through the single faucet"
+    assert "_persist_1m_bars(" in _fn_src("_enrollment_history_seed"), \
+        "the enrollment seed must persist through the single faucet, not a second writer"
 
 
 def test_render_path_does_not_persist_bars():

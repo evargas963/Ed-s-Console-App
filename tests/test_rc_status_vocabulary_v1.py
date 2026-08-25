@@ -163,6 +163,16 @@ def test_negative_control_the_original_bypass_is_now_two_sided(tmp_path, monkeyp
         "the bypass token must now be refused by the vocabulary lock")
 
 
+def test_remediated_rows_carry_the_same_evidence_gate_as_closed():
+    """Audit round 2 red-team (2026-08-25): OPEN->REMEDIATED used to terminate an overdue
+    row with NO evidence — the exact silencing CLOSED is gated against. REMEDIATED now
+    shares the terminal-evidence clause."""
+    deficient = _row("REMEDIATED")
+    cells = [c.strip() for c in deficient.strip().strip(PIPE).split(PIPE)]
+    hits = K._rc_row_violations(K.REPO, 1, cells[0], cells[1], cells)
+    assert hits and any("without observed evidence" in str(h) for h in hits), hits
+
+
 def test_check_is_registered_and_enforced():
     """A check nobody runs is a comment.
 

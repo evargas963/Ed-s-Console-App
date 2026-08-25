@@ -1,6 +1,10 @@
-# PASTE TO CLAUDE — FIX EVERYTHING (zero debt)
+# HISTORICAL (2026-08-02) — was: paste to Claude, fix everything (zero debt)
 
-**OPERATOR GO — NON-NEGOTIABLE. No soft-stop. No LOCKED UI. No museum parks.**
+> **HISTORICAL RECORD (stamped 2026-08-25). Do not paste; the GO below expired with its
+> session.** Under the 2026-08-24 operating model the operator directs each session in chat —
+> no standing prompt file carries a GO.
+
+**OPERATOR GO (2026-08-02, expired) — original text follows.**
 
 Halt words only: `STOP` / `PAUSE` / `HANG IT UP` / `DO NOT CONTINUE`.
 

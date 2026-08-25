@@ -16,5 +16,5 @@ Failure mode: SPY-only (or sentinel-only) prompts, experiments, Chart features, 
 
 ## Enforcers
 
-- `check_universal_ticker_scope` in `tools/check_institutional_correctness.py` (commit BLOCK)
+- `check_universal_ticker_scope` in `tools/check_institutional_correctness.py` (enforced check; since RC-406 the catalog runs in required CI — `.github/workflows/hardening.yml` — on every PR, not at commit)
 - `tools/pretooluse_guard.py` + `tools/universal_scope_lock.py` (Edit/Write BLOCK on prompt / agent-instruction paths)

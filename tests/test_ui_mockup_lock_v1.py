@@ -309,10 +309,14 @@ def test_stop_still_blocks_edit_with_nothing_run():
     from tools.operator_law_guard import stop_violations
     nothing_run = [{"kind": "edit", "detail": "server.py"}]
     msgs = stop_violations(nothing_run)
-    assert any("ran NOTHING" in m for m in msgs)
-    verified = nothing_run + [
-        {"kind": "bash", "detail": ".venv/Scripts/python.exe -m pytest tests/x.py -q"}]
-    assert stop_violations(verified) == []
+    assert any("RAN WITHOUT ERROR" in m for m in msgs)
+    cmd = ".venv/Scripts/python.exe -m pytest tests/x.py -q"
+    verified = nothing_run + [{"kind": "bash", "detail": cmd}]
+    # RESULT, NOT ISSUANCE (operator 2026-08-25): the seeded verification clears the block
+    # only when it also ran WITHOUT ERROR (present in the successful-command set).
+    assert stop_violations(verified, frozenset({cmd})) == []
+    # Issued but not proven-successful (no transcript / errored) still blocks.
+    assert stop_violations(verified, frozenset()) != []
     assert not any("RC-190" in m for m in stop_violations(nothing_run))
 
 

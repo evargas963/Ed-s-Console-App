@@ -131,6 +131,7 @@ mc_fusion_adjustment.py::fuse_payload_apply_mc_adjustment
 mc_fusion_adjustment.py::normalize_mc
 monte_carlo.py::MonteCarloOutput.mc_feature_dict
 monte_carlo.py::_blend_sigma
+monte_carlo.py::mc_sigma_unit_for_row
 monte_carlo.py::_compute_drift
 monte_carlo.py::_fallback
 monte_carlo.py::simulate

@@ -261,8 +261,9 @@ def _build_tqm_queue(adv: dict) -> dict:
         "top_items": top,
         "cap": TQM_MAX_ITEMS,
         "note": (
-            "TRIAGE stage of the TQM loop. Work ONLY these items. Mass-rewriting the advisory "
-            "backlog is banned: every change needs a reproduce command and a test."
+            "TRIAGE stage of the TQM loop. Recommended next ACT cycle (max 5) — the operator "
+            "picks in chat. Mass-rewriting the advisory backlog is banned: every change needs "
+            "a reproduce command and a test."
         ),
     }
 
@@ -521,7 +522,7 @@ def _collect_findings(measure: dict, status: dict) -> list[dict]:
                 "severity": "P2",
                 "facet": "worktree_hygiene",
                 "summary": f"Dirty tree sprawl: {status.get('porcelain_lines')} porcelain lines",
-                "recommendation": "PM: sequence landings; avoid multi-mission dirt; path-limited commits only.",
+                "recommendation": "Sequence landings; avoid multi-mission dirt; path-limited commits only.",
                 "evidence": status,
             }
         )
@@ -584,7 +585,7 @@ def _write_outputs(findings: list[dict], measure: dict, status: dict) -> dict:
     lines = [
         f"# Rehab latest — {now}",
         "",
-        f"**HEAD:** `{payload['head']}` · **PM:** Operator · **Auditor:** Cursor · **Mode:** recommend only (no auto-edit)",
+        f"**HEAD:** `{payload['head']}` · **Mode:** recommend only (no auto-edit); the operator triages findings in chat and assigns the session",
         "",
         f"Findings: **{len(findings)}**",
         "",
@@ -599,7 +600,7 @@ def _write_outputs(findings: list[dict], measure: dict, status: dict) -> dict:
             f"{str(f.get('recommendation', '')).replace('|', '/')} |"
         )
     if not findings:
-        lines.append("| — | — | — | No findings this scan | Keep PM cadence |")
+        lines.append("| — | — | — | No findings this scan | — |")
 
     # RC-251: the report a human or agent acts from. Totals answer "how much", hotspots answer
     # "where", delta answers "is it getting better", and the TQM queue answers "what next" —
@@ -665,9 +666,9 @@ def _write_outputs(findings: list[dict], measure: dict, status: dict) -> dict:
             "",
             "## Operator next",
             "",
-            "1. Operator (PM) triages this table; Cursor audits/advises.",
-            "2. Operator green-lights one mission.",
-            "3. Sole writer executes; Cursor audits.",
+            "1. The operator triages this table in chat (recommend-only scan; no standing roles).",
+            "2. The operator green-lights one slice and assigns the session.",
+            "3. The assigned agent executes; verification per AGENTS.md.",
             "",
             f"Queue log: `{_display_path(QUEUE_PATH)}`",
             "",

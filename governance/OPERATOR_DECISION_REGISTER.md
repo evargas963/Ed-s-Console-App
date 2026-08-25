@@ -13,7 +13,7 @@
 
 **Authority:** This register is the authoritative record for the binding operator decisions listed below. Any external consensus notes are non-authoritative unless their decisions are explicitly approved and recorded here.
 
-**Pointer note (2026-07-16 reconciliation):** several documents cited in the **Source** column were retired in the 2026-07 repository slimming (INF phase plans, `GOVERNANCE_EVENT_MODEL.md`, `GOVERNANCE_MERGE_GATE.md`, the Schwab V4 program files). The decision rows remain authoritative on their own text; retired Source citations are historical provenance, not live references. Where an archived copy exists it is cited in place.
+**Pointer note (2026-07-16 reconciliation; extended 2026-08-25):** several documents cited in the **Source** column were retired in the 2026-07 repository slimming (INF phase plans, `GOVERNANCE_EVENT_MODEL.md`, `GOVERNANCE_MERGE_GATE.md`, the Schwab V4 program files). The decision rows remain authoritative on their own text; retired Source citations are historical provenance, not live references. Where an archived copy exists it resolves under `governance/archive/` (contract paths archived 2026-06-11 included). The "Register upstream" paragraph below is likewise historical — `PHASE_PLAN_INFRASTRUCTURE.md` was retired with its program; this register stands alone.
 
 | Rule | Statement |
 |------|-----------|

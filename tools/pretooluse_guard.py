@@ -1,12 +1,9 @@
-"""FRONT-END enforcement of the mechanical locks — blocks the EDIT, not just the commit (RC-66).
+"""FRONT-END content gates — blocks the EDIT, not just the commit.
 
-WHY THIS EXISTS. Every lock in tools/check_institutional_correctness.py runs at PRE-COMMIT. The
-operator's law is explicitly FRONT-LOADED: "the RC row is opened at DISCOVERY, before the fix...
-this law lives on the front end of coding and fixing end to end, not on the back end." Enforcing
-at commit means the wrong change is already written by the time anything objects, and the RC row
-degrades into retroactive paperwork. On 2026-07-26 that gap let a CSS patch land on static/
-index.html with no root-cause row and no root-cause analysis — the patch did not even work — and
-only the operator caught it. `.claude/settings.json` had `"hooks": {}`: nothing ran before a tool.
+HISTORY: born as the RC-66 lane (a root-cause row demanded before editing any production
+file, after a 2026-07-26 unanalyzed CSS patch); that lane was retired with its commit-time
+twin under RC-470 (governance/retired_checks.md). What survives here are the RC-160/RC-163/
+RC-186 content gates listed in the contract below.
 
 This runs as a PreToolUse hook on Edit/Write/NotebookEdit. Exit 2 BLOCKS the tool call.
 
@@ -39,10 +36,9 @@ from pathlib import Path
 from typing import NamedTuple
 
 REPO = Path(__file__).resolve().parent.parent
-RC_LOG = "governance/root_cause_log.md"
 
 #: Editing these is how you COMPLY (open the row, write the test, record evidence) — never blocked
-#: by the RC-66 production-surface rule. RC-160/RC-163 still gate residual/prompt content.
+#: by path class. RC-160/RC-163 still gate residual/prompt content.
 ALWAYS_ALLOWED_PREFIXES = (
     "governance/", "docs/", "reports/", "tests/", ".claude/", "calibration/",
 )

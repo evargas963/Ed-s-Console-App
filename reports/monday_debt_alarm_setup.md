@@ -1,5 +1,12 @@
 # Monday debt alarm — setup / status
 
+> **HISTORICAL RECORD (stamped 2026-08-25, audit round 2).** This one-shot 2026-08-03 alarm's
+> work orders are dead (RC-166 CLOSED; RC-180/181 have no ledger rows; the cited playbook file
+> no longer exists). The repo-side wake machinery (`tools/monday_debt_wake.py`,
+> `tools/run_monday_debt_wake.ps1`, `reports/_wake/`) was deleted the same day. **Operator
+> action still owed:** delete the host task — `schtasks /Delete /TN "EdMondayDebtWake" /F` —
+> which only the operator can do; `governance/host_scheduled_jobs.md` carries the same note.
+
 **Written:** 2026-08-02 (Sunday).  
 **Target fire:** **2026-08-03 Monday 08:25 CT** (America/Chicago wall clock; ~5 min before 08:30 CT RTH open).  
 **Prompt injected:** `reports/monday_debt_wake_prompt.md`.

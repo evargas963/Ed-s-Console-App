@@ -104,6 +104,34 @@ def compute_atr_pair(db_path: str, ticker: str) -> AtrPair:
     )
 
 
+def compute_atr_from_daily_candles(candles: list) -> float | None:
+    """Daily ATR from vendor DAILY candles (RC-484 radar fallback, 2026-08-25).
+
+    A freshly enrolled ticker has <15 sessions of local 1m bars, so the daily leg of
+    compute_atr_pair is None for ~3 weeks while its chain walls exist from minute one —
+    the radar stayed blind. Vendor daily candles carry the same OHLC truth immediately;
+    this converts the Schwab payload shape into compute_atr's bucket shape. Pure and
+    fail-closed: malformed rows are dropped, and fewer than period+1 clean candles
+    return None rather than a guess."""
+    rows = []
+    for c in candles or []:
+        if not isinstance(c, dict):
+            continue
+        try:
+            ts_raw = float(c["datetime"])   # ms epoch from Schwab; s epoch also accepted
+            rows.append({
+                "ts": ts_raw / (1000.0 if ts_raw > 1e11 else 1.0),
+                "open": float(c["open"]), "high": float(c["high"]),
+                "low": float(c["low"]), "close": float(c["close"]),
+            })
+        except (KeyError, TypeError, ValueError):
+            continue
+    rows.sort(key=lambda r: r["ts"])
+    buckets = [{"open": r["open"], "high": r["high"], "low": r["low"], "close": r["close"]}
+               for r in rows]
+    return compute_atr(buckets, period=ATR_PERIOD)
+
+
 def ring_for(distance_pts: float | None, daily_atr: float | None) -> str | None:
     """Classify a distance into a radar ring, or None when it is out of range.
 

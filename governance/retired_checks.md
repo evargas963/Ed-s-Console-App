@@ -53,6 +53,10 @@ over *.py, *.yaml, *.mdc, tools/, tests/ and AGENTS.md (zero referencing files =
 | enforced_checks_have_negative_controls | 2026-08-24 | ARCHITECTURE TEARDOWN. Substring name-presence proxy over a concatenated tests corpus (its own docstring conceded it proves nothing about injection); the actual negative controls run in required CI, and enforced-check removal is blocked by the delta gate + this manifest (base-side, two-step) |
 
 TEARDOWN NOTES (2026-08-24, appended — rows above are append-only history):
+- MEASURED 2026-08-25 (`gh api repos/evargas963/Ed-s-Console-App/branches/main/protection`):
+  `enforce_admins=true`, required checks pytest-full + hardening, and PR reviews REQUIRED —
+  the RC-475 note below ("the review requirement was removed by the operator") does not match
+  the live settings as of this measurement; recorded here rather than editing the note.
 - Rows at lines 32-35 cite `require_code_owner_reviews`/`enforce_admins` as live equivalences; SUPERSEDED by RC-475 (operator ruling): the review requirement was removed by the operator, and the operator's conversational GO is the approval channel. The surviving machine gate at merge is required CI (pytest-full + hardening).
 - Rows citing CODEOWNERS ownership as an equivalence (lines 32-34): CODEOWNERS is removed with the Architecture A authority model; those equivalences now rest on the operator's conversational control of each session plus required CI.
 - fix_crosswalks_to_violated_lock (line 44): the folded validator `_fix_crosswalks_to_violated_lock_violations` was REMOVED ENTIRELY in the 2026-08-24 teardown, not merely folded — it required every fix row to name a violated lock plus a "TIGHTENED:" statement, which is the mandate-to-mechanism regrowth recipe the operator ordered out. Fix rows still require the five-why chain, measured evidence, and shipped code (root_cause_log).

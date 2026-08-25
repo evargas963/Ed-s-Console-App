@@ -1,5 +1,7 @@
 # A1 Calibrated Probability Provenance Contract
 
+> Path note (2026-08-25): companion lifecycle/production contract documents referenced below now resolve under `governance/archive/`.
+
 **Status:** Draft provenance contract
 **Date:** 2026-05-06
 **Module:** A - short-horizon directional trading

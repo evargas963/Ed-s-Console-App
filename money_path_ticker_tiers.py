@@ -76,12 +76,10 @@ def base_money_path_capture_interval_sec() -> float:
     return DEFAULT_BASE_CAPTURE_INTERVAL_SEC
 
 
-def should_skip_background_full_snapshot(
-    ticker: str,
-    panel_auto_symbols: frozenset[str],
-) -> bool:
-    """Base money-path tickers always receive full _fetch_state snapshot logging."""
-    t = ticker_storage_key(ticker)  # RC-345/F25: canonical — matches panel_auto_ticker_set's canonical keys
-    if is_base_money_path_ticker(t):
-        return False
-    return t in panel_auto_symbols
+# UNIVERSAL COLLECTION (operator requirement, restated 2026-08-25): `should_skip_background_
+# full_snapshot` is DELETED, not neutered. It encoded the panel_auto confluence-only carve-out
+# that left 17 enrolled tickers with ZERO snapshots over 5 measured trading days (RC-482). Once
+# the operator ruled universal collection the standard, the predicate had no true branch and no
+# caller; keeping an always-False shim would repeat RC-474 exactly — a producer removed at the
+# call site while its dead body stays behind to be re-wired by someone who trusts the name.
+# The surviving authority is the roster itself: every enrolled ticker enters the sweep.

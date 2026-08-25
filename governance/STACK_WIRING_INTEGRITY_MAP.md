@@ -2,7 +2,7 @@
 
 # STACK_WIRING_INTEGRITY_MAP
 
-**Program:** STACK-WIRING-INTEGRITY (OPEN_ITEMS rider @ `0a2e5ee` L148+)  
+**Program:** STACK-WIRING-INTEGRITY (historical rider — the OPEN_ITEMS rows closed; see `git log -S STACK-WIRE OPEN_ITEMS.md`)  
 **Phase 0 seed:** STACK-WIRE-0 @ AUDIT-CAND-SERVER-PY-FULL-READ code `05c48d8`  
 **Phase 1 seed:** STACK-WIRE-1 @ producer cone trace (FIND-WIRE1-1..6)  
 **Authority:** One row per `surface × field` wiring concern. Phases 1–4 extend this file; sign-off requires money-path roster complete.
@@ -109,7 +109,7 @@
 
 ## Live-UI direction transports (LIVE-UI-1, Phase 2)
 
-**Authority:** [OPEN_ITEMS.md `LIVE-UI-1`](../OPEN_ITEMS.md#LIVE-UI-1) (scope + SLO target) + `LIVE-UI-2` (five-transport evidence) + closed precursors `LIVE-UI-A/E + LIVE-UI-D extension (LIVE_UI_INTEGRITY_V1)` @ `5994aeb`. **Drafted by Claude** under standing drafting-authority direction (memory `feedback_cursor_drafts_claude_verifies` updated 2026-05-24).
+**Authority (historical — the LIVE-UI rows have since closed and left OPEN_ITEMS; see `git log -S LIVE-UI-1 OPEN_ITEMS.md`):** `LIVE-UI-1` (scope + SLO target) + `LIVE-UI-2` (five-transport evidence) + closed precursors `LIVE-UI-A/E + LIVE-UI-D extension (LIVE_UI_INTEGRITY_V1)` @ `5994aeb`. **Drafted by Claude** under standing drafting-authority direction (memory `feedback_cursor_drafts_claude_verifies` updated 2026-05-24).
 
 **Purpose:** Inventory every **direction-bearing** field on the live operator surface — producer module → carrier key → transport → client clock → withhold rule. This is the read-only SLO baseline `FIND-LIVEUI-6` (Phase 2) consumes when it implements the `quoteAhead || genStale || pending` direction-withhold rule. Price DOM (spot / bid / ask / spread) is explicitly **not** withheld by FIND-LIVEUI-6; only direction-bearing surfaces are.
 

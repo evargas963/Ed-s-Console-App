@@ -95,6 +95,30 @@ def test_d():
     assert calls > 0, "a subject call placed before the assertion was not counted"
 
 
+def test_a_prose_only_file_cannot_hide_behind_a_local_name_or_helper():
+    """RC-317 (independent audit, fixed 2026-08-25): the gate's founding bypass.
+
+    Text bound to a local the fixed name list never heard of, through a helper call,
+    scored (0 prose, 1 subject) and PASSED the enforced lane — the exact shape RC-317
+    recorded and re-executed. Taint now follows the assignment (`blob` is file text) and
+    a helper whose arguments carry that taint is a text transform, not subject execution.
+    """
+    src = '''
+import inspect
+import math_levels
+def _norm(s):
+    return " ".join(s.split())
+def test_a():
+    blob = _norm(inspect.getdoc(math_levels.bs_charm))
+    assert "calls sell" in blob
+    assert "puts buy" in blob
+    assert "sign" in blob
+'''
+    prose, calls = C.analyse(ast.parse(src))
+    assert prose >= 3, f"tainted-local prose assertions were not counted: {prose}"
+    assert calls == 0, f"a text-transform helper was miscounted as subject execution: {calls}"
+
+
 def test_builtins_do_not_count_as_exercising_the_subject():
     """`len(...)` in an assertion is not evidence the code under test ran."""
     src = '''
@@ -292,6 +316,17 @@ def test_the_module_scope_blind_spot_is_measured_not_silent():
     census. `test_call_engine_consumes_order_flow_direction_not_second_score` LEFT:
     its subject (the direction consumer) was retired with the composite and the
     withheld-from-vote arrival above replaced it.
+
+    Audit round 2 (2026-08-25) — one arrival, one replacement, accounted by name:
+    `test_completion_claim_battery_wired_at_stop` ARRIVED (INHERENTLY STRUCTURAL
+    WIRING: honesty_guard must bind completion_claim_violations + turn_slice at Stop —
+    the RC-471 dereg left that battery caller-less; the battery's BEHAVIOUR is executed
+    by the redate/quiet tests in test_operating_process_lock_v1.py, which do not enter
+    this census). `test_applicability_declaration_carries_all_ten_fields` LEFT and
+    `test_applicability_declaration_marks_the_rc93_entry_retired` REPLACED it (the
+    rc93 applicability machinery was deleted with its retired rule; the successor pins
+    the retirement marker in guard_applicability.json — a repository-artifact property
+    with no runtime form).
 
     272 (2026-08-24, audit T2-4) — NAMED-SET CONVERSION. The integer ledger above is
     CLOSED HISTORY: the census is now frozen BY NAME in

@@ -1,9 +1,10 @@
 # Console Rebuild Plan — CR v1.2 (2026-07-21)
 
-**Status: PLAN v1.2 — consensus round 2 objections (P1, P4, P5, P9, P10 — all stale
-prose contradicting v1.1 laws) resolved with Cursor's exact conversion edits.
-Round 3 = co-sign request. No code written. Implementation awaits operator GO on a
-consensus-stamped version.**
+**Status: DESIGN RECORD. Operator GO was given on the v1.2 spine (2026-07-21) and execution
+began — CR-01 in progress. Live execution status lives in `ACTIVE_PROGRAM.md` §CR, the single
+status authority; this document is the design record and its consensus history. (Status header
+corrected 2026-08-25: it still read "Implementation awaits operator GO", contradicting the
+program ledger.)**
 Program ledger: `ACTIVE_PROGRAM.md` §CR. Research provenance: four-track deep review
 2026-07-21 (free order-flow sources / intraday signal evidence / OSS console architecture /
 options + cross-asset evidence), every load-bearing claim fetch-verified same day.
@@ -208,7 +209,7 @@ messages ONLY. No tile, chip, tooltip, or program-table row may cite a paper's r
 through CR-07. Mechanism words are allowed ("closing price pressure tends to revert
 overnight — measuring ours"); borrowed numbers are not.
 
-## 10. Consensus protocol (operator directive 2026-07-21: "no confirmed daylight")
+## 10. Consensus protocol (HISTORICAL — the consensus completed and GO was granted 2026-07-21/22; future plan changes are approved by the operator in chat)
 
 The plan reaches CONSENSUS status only through this loop:
 

@@ -57,9 +57,20 @@ def test_edit_and_bash_rosters_carry_the_ledger_guard():
     assert "tools.pretooluse_guard" not in ptc.BASH_CHAIN
 
 
-def test_any_members_block_blocks_and_all_members_run():
-    payload = json.dumps({"session_id": "chain-test", "tool_name": "Stop"})
-    # a quiet roster passes
+def test_any_members_block_blocks_and_all_members_run(tmp_path):
+    # a quiet roster passes — with a readable, benign transcript (audit round 2:
+    # a MISSING transcript_path now fails closed rather than passing silently)
+    tp = tmp_path / "quiet.jsonl"
+    tp.write_text(
+        json.dumps({"type": "user", "message": {"role": "user",
+                                                "content": [{"type": "text", "text": "hi"}]}})
+        + "\n"
+        + json.dumps({"type": "assistant",
+                      "message": {"role": "assistant",
+                                  "content": [{"type": "text", "text": "reading the file now."}]}})
+        + "\n", encoding="utf-8")
+    payload = json.dumps({"session_id": "chain-test", "tool_name": "Stop",
+                          "transcript_path": str(tp)})
     assert run_chain(payload, ("tools.proof_only_guard",)) == 0
 
 
@@ -138,11 +149,11 @@ def test_proof_only_guard_member_block_equivalence(tmp_path):
                "stop_hook_active": False}
     standalone, chain = _pair(payload, "tools/proof_only_guard.py")
     _assert_blocking_pair(standalone, chain, ("BLOCKED (RC-87)",))
-    # Quiet-side equivalence on the SAME member: no transcript supplied is not a finding.
-    quiet_standalone, quiet_chain = _pair({"stop_hook_active": False},
+    # Fail-closed equivalence on the SAME member (audit round 2): a payload with NO
+    # transcript_path is an unmeasurable turn and blocks in both forms.
+    noref_standalone, noref_chain = _pair({"stop_hook_active": False},
                                           "tools/proof_only_guard.py")
-    assert quiet_standalone.returncode == 0, quiet_standalone.stderr
-    assert quiet_chain.returncode == 0, quiet_chain.stderr
+    _assert_blocking_pair(noref_standalone, noref_chain, ("BLOCKED (RC-87)",))
 
 
 def test_honesty_guard_member_block_equivalence(tmp_path):
@@ -183,7 +194,8 @@ def test_operator_law_guard_stop_member_block_equivalence(tmp_path):
                        "tools/operator_law_guard.py"], raw, ROOT)
     finally:
         ledger.unlink(missing_ok=True)
-    _assert_blocking_pair(standalone, chain, ("BLOCKED (RC-93)", "ran NOTHING"))
+    _assert_blocking_pair(standalone, chain,
+                          ("BLOCKED (RC-93)", "RAN WITHOUT ERROR"))
 
 
 def test_pretooluse_guard_member_block_equivalence():

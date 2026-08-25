@@ -10,14 +10,16 @@ the 2026-07-25 UI rebuild that wiped two working screens without consent.
 STATE. `governance/ui_mockup_approvals.json` maps repo-relative surface paths to entries:
   status='design_pending'  -> edits BLOCKED until the operator approves a mockup variant
   status='approved' + approved_variant -> edits flow
-Surfaces not listed are not gated by this lock (RC-66 and the other locks still apply).
+Surfaces not listed are not gated by this lock (the other content locks still apply; the
+RC-66 edit-time lane is retired — governance/retired_checks.md).
 
 CONTINUUM. Front end: tools/pretooluse_guard.py calls `mockup_approval_violation` and blocks
 the Edit/Write. Back end: check `ui_mockup_approval` in tools/check_institutional_correctness.py
 runs the same callee over staged files and blocks the commit.
 
 ESCAPES (deliberate and visible, never silent): a non-redesign bug fix declares
-`# ui-mockup-ok: <reason>` in the edited text; the operator may set ED_UI_MOCKUP_LOCK=off.
+`# ui-mockup-ok: <reason>` in the edited text. RC-450 (Architecture A): ED_UI_MOCKUP_LOCK
+is inert — no code reads it; env cannot disable this control.
 """
 from __future__ import annotations
 

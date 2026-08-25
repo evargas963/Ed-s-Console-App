@@ -71,3 +71,57 @@ def test_cursor_hooks_still_name_honesty_guard():
         (REPO / ".cursor" / "hooks.json").read_text(encoding="utf-8"))
     assert "honesty_guard.py" in (
         (REPO / ".claude" / "settings.json").read_text(encoding="utf-8"))
+
+
+# ── audit round 2 (2026-08-25): shape checks made honest, wiring restored ──────────────
+
+def test_token_laced_dodge_blocks_and_answer_position_counts():
+    """R9: 'no' buried mid-sentence is not an answer; 'Correct -' in answer position is."""
+    from tools.honesty_guard import honesty_violations
+
+    bad = honesty_violations(
+        "is there a lock against lying? yes or no.",
+        "There is not one simple way to summarize the guard situation across surfaces.")
+    assert bad and any("yes/no" in b for b in bad), bad
+    assert honesty_violations(
+        "am i right that db.py owns this?",
+        "Correct - that is the right file: db.py line 4120 owns the gate.") == []
+
+
+def test_md_as_lock_negation_citation_not_blocked():
+    """F3: the HONEST sentence ('no longer enforced; see the .md history') must pass."""
+    from tools.honesty_guard import honesty_violations
+
+    assert honesty_violations(
+        None,
+        "That rule is no longer enforced; see governance/retired_checks.md for the history.",
+    ) == []
+    bad = honesty_violations(None, "the law is enforced by AGENTS.md")
+    assert bad and any(".md" in b for b in bad), bad
+
+
+def test_lock7_readme_convention_nouns():
+    from tools.honesty_guard import honesty_violations
+
+    bad = honesty_violations(
+        "is it locked?",
+        "Yes - it is locked via the README convention we adopted last month.")
+    assert any("LOCK-7" in b for b in bad), bad
+
+
+def test_wait_posture_ending_blocks_and_next_step_passes():
+    """R10: the narrow end-anchored banned-endings shapes, and only those."""
+    from tools.honesty_guard import honesty_violations
+
+    bad = honesty_violations(None, "Fixed the gate. Want me to also update the docs?")
+    assert any("wait-posture" in b for b in bad), bad
+    assert honesty_violations(
+        None, "Your next step: pull the production checkout to main.") == []
+
+
+def test_completion_claim_battery_wired_at_stop():
+    """R3: RC-471's dereg left completion_claim_violations with no caller; honesty_guard
+    now runs it on the Stop path (claim-gated — zero cost on non-claim turns)."""
+    src = (REPO / "tools" / "honesty_guard.py").read_text(encoding="utf-8")
+    assert "completion_claim_violations" in src
+    assert "turn_slice" in src
