@@ -111,6 +111,14 @@ jobs:
           # ED_CI_OFFLINE + config.is_schwab_ci_offline_mode() block live API calls.
           SCHWAB_API_KEY: "ci-not-live-placeholder"
           SCHWAB_APP_SECRET: "ci-not-live-placeholder"
+          # The E2E webServer uvicorn runs CONCURRENTLY with the pytest wave (see the
+          # `npm run test:e2e &` overlap below) and pytest's conftest env cannot reach
+          # it. Offline hard-failures made that server quarantine its ticker mid-wave,
+          # appending ~480B to the TRACKED reports/terrain_quarantine_ledger.jsonl —
+          # the byte firewall then failed whichever innocent test's window caught it
+          # (runs 32794981545, 32796571126). CI must never write a tracked operator
+          # audit file: point every process in this job at a scratch ledger.
+          ED_TERRAIN_QUARANTINE_LEDGER: /tmp/ci-terrain-quarantine-ledger.jsonl
         run: |
           # MEASURED on required pytest-full 32234684073: nproc=4 and
           # os.cpu_count()=4 but `pytest -n auto` still created 2/2 workers
