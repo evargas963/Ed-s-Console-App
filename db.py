@@ -1694,10 +1694,13 @@ class EdDB:
 
     def logging_universe_sync_panel_auto(self, panel_candidates: list[str], now_ts: float) -> dict[str, Any]:
         """
-        Upsert ``panel_auto`` rows — cross-instrument panel symbols for confluence quotes.
-
-        These symbols use the thin ``confluence_quote_ticks`` path (last + chg_pct) via
-        ``fetch_market_context``; they do NOT run the full option-chain snapshot logger.
+        Upsert ``panel_auto`` rows — cross-instrument panel symbols discovered from the
+        market-context panel. The ``panel_auto`` CATEGORY records how a ticker was enrolled
+        (auto, from the panel) — not how much data it gets: since 2026-08-25 (RC-482/RC-483,
+        universal collection) panel_auto tickers take full option-chain snapshot rotation on
+        the same terms as every other enrolled ticker (the roster loops in server.py include
+        them). They also still feed the thin ``confluence_quote_ticks`` path via
+        ``fetch_market_context``.
 
         Does not alter existing ``core`` / ``user_persisted`` / ``pinned`` rows. Drops ``panel_auto``
         rows no longer in the desired panel list (e.g. holdings table refresh).

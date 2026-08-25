@@ -35,10 +35,12 @@ from monte_carlo import (  # noqa: E402
 
 #: Every tracked .py allowed to mention mc_sigma_value: the live write chain
 #: (monte_carlo -> bayesian_fusion -> market_state -> server -> db), the two
-#: diagnostics, the tests, and the mega3 derivation inventory whose row for
+#: diagnostics, the tests, the mega3 derivation inventory whose row for
 #: monte_carlo.mc_sigma_unit_for_row names the column it classifies (a documentation
-#: MENTION, not a historical-row reader — it derives nothing, RC-478). Measured
-#: 2026-08-25 (see module docstring).
+#: MENTION, not a historical-row reader — it derives nothing, RC-478), and the RC-478
+#: normalization migration + its test (a LEGITIMATE historical reader — it classifies
+#: each row with mc_sigma_unit_for_row and derives the single-unit mc_sigma_annualized
+#: column, exactly what this census requires of a new reader). Measured 2026-08-25.
 READER_CENSUS = frozenset({
     "bayesian_fusion.py",
     "db.py",
@@ -48,7 +50,9 @@ READER_CENSUS = frozenset({
     "server.py",
     "verify_snapshot_pipeline.py",
     "governance/mega3_traceable_inventory.py",
+    "tools/mc_sigma_normalize_history_v1.py",
     "tests/test_bayesian_fusion_v2.py",
+    "tests/test_mc_sigma_normalize_history_v1.py",
     "tests/test_mc_sigma_unit_quarantine_v1.py",
 })
 

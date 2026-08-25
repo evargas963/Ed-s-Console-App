@@ -1762,6 +1762,12 @@ def _idle_seed_cache(srv, monkeypatch, entries):
             cache[key] = {"ts": now - age, "ms_dict": {"ticker": key[0]}}
     monkeypatch.setattr(srv, "_state_cache", cache)
     monkeypatch.setattr(srv, "_analytics_inflight", set())
+    # RC-483: the idle standing producer now keeps only ENROLLED cards warm (an un-enrolled
+    # viewed-once card must not be resurrected — the CRM/DKS defect). These tests exercise the
+    # selection MECHANICS (oldest-first, rate-bound, owner-exclusion), so their seeded tickers
+    # are enrolled here; the enrollment-scoping itself is pinned in
+    # tests/test_idle_producer_enrolled_only_v1.py.
+    monkeypatch.setattr(srv, "_logger_tickers", [k[0] for k in entries], raising=False)
 
 
 def test_idle_refresh_selects_nonviewed_stale_key(monkeypatch):

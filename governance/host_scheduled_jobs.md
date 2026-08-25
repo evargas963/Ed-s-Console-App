@@ -19,6 +19,32 @@ absolute operator-home paths never appear in tracked files (credential-leak hook
 | `EdRehabDailyScan` | Daily 18:30 | `powershell.exe -NoProfile -ExecutionPolicy Bypass -File "<REPO>\tools\run_rehab_daily.ps1"` (repo launcher, venv parity + non-zero exit surfaced inside it) | `reports/rehab_latest.md` + `reports/tqm_queue_latest.json` + `reports/advisory_debt_latest.json` | 2026-08-05 — registered by the PM; **PROVEN BY EXECUTION, not by registration**: triggered on demand, Last Result **0**, LastRunTime 04:53:24, and all three artifacts advanced 04:10 → 04:59 with the queue reading 3367/prior 3367/delta 0 across 5 items |
 | `EdRthCompletenessCheck` | daily | `<REPO>\.venv\Scripts\python.exe <REPO>\tools\rth_completeness_check_v1.py --db <REPO>\data\ed_console.db --backfill` (measured 2026-08-25 via `Get-ScheduledTask`, state Ready) | per-script | 2026-08-25 — command measured; 2026-08-04 Last Result was **3221225786** |
 
+## Owed 2026-08-25 — console + producer liveness watch (RC-481 / RC-479)
+
+`tools/console_liveness_check.py` reads the production DB read-only and, during a trading
+day inside 09:30-close+15min ET, ALERTs (non-zero exit + a line in
+`reports/console_liveness_run.log`) when EITHER the console is down/stalled (newest
+`snapshots.ts_utc` older than 10 min) OR the model producer is dead (collection live but
+`mc_paths` NULL across the last 15 min — the RC-479 signature, distinguished from designed
+abstention). Validated on demand 2026-08-25: against the live DB it returns the DEAD
+PRODUCER alert, matching the measured mc_* outage. This is stronger than the `/api/health`
+ping (whose `logger_running` flag is True even when every fetch fails), because it measures
+COLLECTION, not process existence — no in-process change, no heartbeat table, no framework.
+
+| Task | Schedule | Command | Log | State |
+|---|---|---|---|---|
+| `EdConsoleLivenessWatch` | **not created** | `<REPO>\.venv\Scripts\python.exe <REPO>\tools\console_liveness_check.py --db <REPO>\data\ed_console.db` | `reports/console_liveness_run.log` (scanned by `check_scheduled_producers_are_not_inert`) | **ABSENT from the host** — registering a Windows task is an operator action; agents do not create host schedules |
+
+Operator registration (every 5 min across the window; then this row moves to the table above with a verified date):
+
+```powershell
+schtasks /Create /TN "EdConsoleLivenessWatch" /TR "'<REPO>\.venv\Scripts\python.exe' '<REPO>\tools\console_liveness_check.py' --db '<REPO>\data\ed_console.db'" /SC MINUTE /MO 5 /F
+```
+
+Same-day visibility comes from the task's own non-zero `Last Result` (the re-verify one-liner
+at the bottom of this file) and the fatal line in the run log; the existing
+`check_scheduled_producers_are_not_inert` gate is the commit-time backstop.
+
 ### Terminated-mid-run reading (measured 2026-08-04, not diagnosed)
 
 Three rows that read Last Result **0** on 2026-07-27 now read **3221225786** = `0xC000013A`

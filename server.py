@@ -4127,7 +4127,11 @@ def _load_persisted_tickers() -> list[str]:
             log.warning("Issue 22: logging_universe prune failed: %s", e)
         _sync_market_context_panel_into_logging_universe(db, logging_universe_sync_wall_ts)
         for row in db.logging_universe_list_rows():
-            if row.get("category") in ("user_persisted", "pinned"):
+            # UNIVERSAL COLLECTION (RC-482/RC-483, 2026-08-25): panel_auto is in the roster.
+            # Neutering filter_tickers_for_background_logging was necessary but NOT sufficient
+            # — this construction loop was the real gate; it silently dropped every panel_auto
+            # ticker (all 17 dark since 2026-05-27) while the docstring claimed full rotation.
+            if row.get("category") in ("user_persisted", "pinned", "panel_auto"):
                 t = ticker_storage_key(row.get("ticker"))  # RC-345/F25: canonical enrolled-ticker identity
                 if t and t not in tickers:
                     tickers.append(t)
@@ -4157,7 +4161,8 @@ def _load_persisted_tickers() -> list[str]:
 
 
 def _hydrate_logger_tickers_from_db() -> None:
-    """Re-merge CORE + user_persisted + pinned from DB (startup / heal drift). Issue 22."""
+    """Re-merge CORE + user_persisted + pinned + panel_auto from DB (startup / heal drift).
+    Issue 22; panel_auto added 2026-08-25 for universal collection (RC-482/RC-483)."""
     global _logger_tickers, _LOGGING_UNIVERSE_DB_LOAD_COUNT
     if not _HAS_SIGNALS:
         return
@@ -4176,7 +4181,8 @@ def _hydrate_logger_tickers_from_db() -> None:
         _sync_market_context_panel_into_logging_universe(db, logging_universe_sync_wall_ts)
         merged = [ticker_storage_key(t) for t in CORE_TICKERS]  # RC-345/F25: canonical logger hydration
         for row in db.logging_universe_list_rows():
-            if row.get("category") in ("user_persisted", "pinned"):
+            # UNIVERSAL COLLECTION (RC-482/RC-483): panel_auto joins the roster here too.
+            if row.get("category") in ("user_persisted", "pinned", "panel_auto"):
                 t = ticker_storage_key(row.get("ticker"))  # RC-345/F25: canonical (legacy bare rows resolve on-read)
                 if t and t not in merged:
                     merged.append(t)
@@ -10872,6 +10878,15 @@ _strike_expiry_count: dict[str, int] = {}
 #: Deliberately conservative: a 502 returns NO chain at all, while a slightly narrower request
 #: still delivers far more than the span bar needs (SPY at 94 still spans ~±31% of spot).
 SCHWAB_CHAIN_CONTRACT_BUDGET: int = 6600
+#: Index option books ($SPX, $VIX, $RUT, $NDX, ...) list far more expiries than equities
+#: (~60-100 vs ~35), so the equity cold-start width blows the contract budget on the FIRST
+#: fetch (40 * 2 * 98 = 7,840 > 6,600) — a 502 that prevents geometry from EVER being learned,
+#: which is exactly why $SPX went permanently dark after a restart on 2026-07-26 (RC-483:
+#: 12,190 rows then zero). A $-prefixed index therefore gets a budget-safe COLD START assuming
+#: a conservative expiry count, so the first fetch succeeds and the measured per-ticker budget
+#: cap below takes over from real geometry. 6600 // (2*100) = 33 keeps 98-expiry $SPX at
+#: 33*2*98 = 6,468 < 6,600.
+INDEX_COLD_START_ASSUMED_EXPIRIES: int = 100
 
 
 def _learn_strike_geometry(ticker: str, contracts: list | None, spot: float | None,
@@ -10934,10 +10949,17 @@ def resolve_chain_strike_count(ticker: str) -> int:
     at the ceiling and its levels self-report LOW_CONFIDENCE_NARROW_CHAIN rather than pretending.
     """
     tk = (ticker or "").upper().strip()
+    is_index_book = tk.startswith("$")   # canonical index roots: $SPX/$VIX/$RUT/$NDX/$DJI
     with _strike_geometry_lock:
         geom = _strike_geometry.get(tk)
         n_exp = _strike_expiry_count.get(tk)
     if geom is None:
+        if is_index_book:
+            # RC-483: budget-safe cold start so a many-expiry index book's FIRST fetch stays
+            # under the vendor's contract budget and can succeed, learn geometry, and recover —
+            # instead of 502-ing forever on the equity cold-start width.
+            return max(TERRAIN_STRIKE_COUNT_MIN,
+                       SCHWAB_CHAIN_CONTRACT_BUDGET // (2 * INDEX_COLD_START_ASSUMED_EXPIRIES))
         return TERRAIN_STRIKE_COUNT_COLD_START
     need = required_strike_count(geom[0], geom[1])
     if need is None:
@@ -14150,11 +14172,22 @@ def _select_idle_stale_keys(owned_keys: set, max_keys: int) -> list[tuple]:
     driven — identical for sentinel, guest, or any expiry; no ticker literal
     exists. Rate-bounded by max_keys; inflight keys are skipped (the scheduler's
     dedupe is the second guard). Never raises.
+
+    ENROLLED-ONLY (RC-483, 2026-08-25): the idle producer keeps only ENROLLED cards
+    warm. Viewing a ticker does not enroll it (TICKER-PREVIEW-NO-ENROLL) but does
+    populate _state_cache, and the cache has no time eviction — so before this filter a
+    glanced-at, un-enrolled ticker (measured: CRM, DKS) became a permanent
+    idle_key_refresh snapshot writer for the rest of the process, making the collecting
+    universe disagree with the enrolled universe. A live viewer still refreshes its own
+    ticker through the owner path regardless of enrollment; only the STANDING producer
+    for cards nobody is viewing is scoped to the enrolled set.
     """
     if max_keys <= 0:
         return []
     try:
         owned_tickers = {k[0] for k in owned_keys if isinstance(k, tuple) and k}
+        with _logger_lock:
+            enrolled = set(_logger_tickers)   # in-process mirror of the enrolled universe
         stale_after = float(CACHE_TTL) * ANALYTICS_STALE_GRACE_CYCLES
         now = time.time()
         candidates: list[tuple[float, tuple]] = []
@@ -14163,6 +14196,8 @@ def _select_idle_stale_keys(owned_keys: set, max_keys: int) -> list[tuple]:
                 continue
             if key[0] in owned_tickers:
                 continue
+            if key[0] not in enrolled:
+                continue   # RC-483: an un-enrolled viewed card ages out, never resurrected
             if not isinstance(entry, dict) or not entry.get("ms_dict"):
                 continue
             ts = entry.get("ts")
