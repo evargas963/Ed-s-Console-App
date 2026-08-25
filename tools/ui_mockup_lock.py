@@ -17,7 +17,8 @@ the Edit/Write. Back end: check `ui_mockup_approval` in tools/check_institutiona
 runs the same callee over staged files and blocks the commit.
 
 ESCAPES (deliberate and visible, never silent): a non-redesign bug fix declares
-`# ui-mockup-ok: <reason>` in the edited text; the operator may set ED_UI_MOCKUP_LOCK=off.
+`# ui-mockup-ok: <reason>` in the edited text. RC-450 (Architecture A): ED_UI_MOCKUP_LOCK
+is inert — no code reads it; env cannot disable this control.
 """
 from __future__ import annotations
 

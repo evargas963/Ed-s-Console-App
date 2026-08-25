@@ -92,7 +92,17 @@ def analyse(tree: ast.AST) -> tuple[int, int]:
     and then asserts on the returned dict — the ordinary shape of a good test. The question
     this checker asks is "does this file exercise the code at all", and where the call sits
     relative to the assertion is not part of that question.
+
+    RC-317 (audit reopen 2026-08-25): the original form keyed prose detection on a FIXED
+    name list, so `blob = _norm(inspect.getdoc(x)); assert 'claim' in blob` scored
+    (0 prose, 1 subject) — the gate's own founding file passed it. Both counters now follow
+    the taint that `_names_holding_file_text` already computed for the RC-311 lane: an
+    assert on any name bound (transitively) from a text reader is prose, and a call whose
+    arguments carry that taint is a text transform, not subject execution. MEASURED before
+    landing: zero additional files flagged on the whole tracked test corpus, and the RC-317
+    probe flips from (0, 1)-pass to (3, 0)-caught.
     """
+    tainted = _names_holding_file_text(tree)
     prose_asserts = 0
     subject_calls = 0
     for node in ast.walk(tree):
@@ -101,13 +111,21 @@ def analyse(tree: ast.AST) -> tuple[int, int]:
                 if isinstance(sub, ast.Attribute) and sub.attr in _TEXT_SOURCES:
                     prose_asserts += 1
                     break
-                if isinstance(sub, ast.Name) and sub.id in (
-                        "DOC", "SRC", "src", "doc", "text", "html", "ui"):
+                if isinstance(sub, ast.Name) and (
+                        sub.id in tainted or sub.id in (
+                            "DOC", "SRC", "src", "doc", "text", "html", "ui")):
                     prose_asserts += 1
                     break
         elif isinstance(node, ast.Call):
             name = getattr(node.func, "attr", None) or getattr(node.func, "id", None)
-            if name and name not in _TEXT_SOURCES and name not in _NEUTRAL_CALLS:
+            if not name or name in _TEXT_SOURCES or name in _NEUTRAL_CALLS:
+                continue
+            carries_taint = any(
+                (isinstance(s, ast.Name) and s.id in tainted)
+                or (isinstance(s, ast.Attribute) and s.attr in _TEXT_READERS)
+                for a in list(node.args) + [k.value for k in node.keywords]
+                for s in ast.walk(a))
+            if not carries_taint:
                 subject_calls += 1
     return prose_asserts, subject_calls
 

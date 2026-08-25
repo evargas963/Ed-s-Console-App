@@ -28,6 +28,6 @@ P0/CHART_CONSUMER residual; (2) writing "Monday proof" when next RTH is not Mond
 
 ## Enforcers
 
-- `check_chart_intent_and_next_rth` in `tools/check_institutional_correctness.py` (commit BLOCK)
+- `check_chart_intent_and_next_rth` in `tools/check_institutional_correctness.py` (enforced check; since RC-406 the catalog runs in required CI — `.github/workflows/hardening.yml` — on every PR, not at commit)
 - `tools/pretooluse_guard.py` + `tools/chart_intent_lock.py` (Edit/Write BLOCK on residual /
   handoff / RC / prompt paths)

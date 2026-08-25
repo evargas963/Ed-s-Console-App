@@ -7,13 +7,13 @@
 **Rehab spine:** repo-wide **multi-faucet** audit/find/fix end-to-end, no patches (`REHAB_PROGRAM.md` RH-F1 primary).  
 **Active slice:** **levels-tierb-session-collapse-v1** (census concepts 2–5: vwap/ORB/overnight/today VA) — armed behind quiet-window PASS with `log_progressed=true`, then activate kill. Prior: census `4033a33f`, quiet-gate honesty `af0c4897`, Phase-1 prior_day `91d38623`. OUT-OF-SCOPE this slice: charm, clocks, spot, chart `computeDaily` B3.
 
-## Operator NOW (binding — work this before any other NEXT/QUEUED)
+## Operator NOW (top of the backlog — the operator directs when it runs)
 
 | ID | Status | Work item |
 |---|---|---|
 | LP-01 | NEXT | **Institutional session liquidity / value levels (not SMC “pools”).** (1) Fix volume-profile construction: distribute bar volume across `[L,H]` (or tick VP), not typical-price dump — POC/VAH/VAL must match AMT/VP practice. (2) Fix overnight window to prior **trading** session close→open (Monday must include Friday after 16:00). (3) Relabel / demote `sell_side_liquidity`/`buy_side_liquidity` until equal-extreme stop-cluster levels exist and are tested — do not claim “liquidity pools.” (4) Surface **raw** levels (POC/VAH/VAL, PDH/PDL, ORB, VWAP ±σ) on Chart and/or Console v2 — Liquidity Map today lives in hidden `#main` (`display:none`). (5) Find & Prove gate: touch→5/15/30m forward returns vs time-of-day base rate, no lookahead; until PASS, display as structure context only (not Decide). Authority: `liquidity_value_engine.py` / `liquidity_models.py` / `/api/liquidity-snapshot`. Ledger: `OPEN_ITEMS.md` **LP-01**. |
 
-## Find & Prove standing queue (law until operator STOP)
+## Find & Prove queue (operator-directed backlog — statuses are record, not standing authority)
 
 Status values: `DONE` | `NEXT` | `QUEUED` | `BLOCKED`.
 
@@ -81,13 +81,13 @@ Status values: `DONE` | `NEXT` | `QUEUED` | `BLOCKED`.
 | FP-60 | DONE | **Edge-search collaboration brief for Claude** (operator ask). Strategic step-back + full method inventory + ask for joint redesign. Letter: `reports/fp_claude_edge_collaboration_letter.md`. No new study. |
 | FP-61 | BLOCKED | **Week-1 G-LABEL card (Claude triage A).** Placeholder thresholds confirmed; freeze models. Card: `reports/fp_week1_label_card_v1.md`. Reply: `reports/fp_claude_edge_reply.md`. Execute only on operator `GO WEEK1 LABEL`. |
 | FP-62 | DONE | **GEX-R1-SCREEN (§9).** Harness economic gate NULL_OR_WEAK — **not** a mechanism null. Claude independent ER verify: mechanism CONFIRMED (`reports/gex_r1_claude_independent_verify.md`). SPY “inverted” reconciled: GEX build OK; sign-check used wrong metric (`reports/gex_r1_spy_reconcile_note.md`). Reclass: **SIGNAL_PRESENT / HARVEST_UNPROVEN**. |
-| FP-63 | QUEUED | **Monday collector gate (blocking for forward GEX n) — demoted 2026-07-27 under LP-01.** Before counting capture days: prove live server is running **and** loaded code with `maybe_persist_morning_full_chain`; after ~10:00 ET prove `option_chain_morning_full` rows for SPY/QQQ/IWM. Checklist: `reports/gex_r1_monday_collector_gate.md`. Result file required: `reports/gex_r1_monday_collector_gate_result.json`. Resume after LP-01 unless operator says otherwise. |
+| FP-63 | QUEUED | **Monday collector gate (blocking for forward GEX n) — demoted 2026-07-27 under LP-01.** Before counting capture days: prove live server is running **and** loaded code with `maybe_persist_morning_full_chain`; after ~10:00 ET prove `option_chain_morning_full` rows for SPY/QQQ/IWM. Checklist: `reports/gex_r1_monday_collector_gate.md`. Result file required: `reports/gex_r1_monday_collector_gate_result.json` — SATISFIED 2026-07-22 (file records `et_date=2026-07-22, verdict=PASS`; the 2026-07-20-dated always-on Cursor rule that restated this gate was removed 2026-08-25 as obsolete). Forward-capture accounting stays operator-directed. |
 | FP-64 | QUEUED | **GEX harvest redesign (after FP-63).** Tail-selective + defensive: fade strong long-gamma, stand aside / momentum on strong short-gamma, abstain mid; size by GEX level; re-run §8.6 with abstention/avoided-loss accounting. Not edge until economic gate + Claude verify. |
 | FP-65 | DONE | **FIND-GREEK-SANITIZATION-V1.** `gamma_is_plausible` in `math_exposure_core.py`; wired into exposures, charm reader, probabilities, server debug counts, GEX-R1 signal. Rejects negative / >1 / deep-delta non-zero gamma. Tests: `tests/test_greek_sanitization_v1.py`. |
 | FP-66 | DONE | **FIND-GAMMA-FULLCHAIN-STRIKES-V1.** Morning capture uses dedicated `_gated_safe_get_chain(..., strike_count=150)` after `has_morning_full_capture` skip; UI `CHAIN_STRIKE_COUNT=20` unchanged. Tests: `tests/test_gamma_fullchain_strikes_v1.py`. |
 | FP-67 | DONE | **FIND-GAMMA-FLIP-METHOD-V1.** Cumulative-aggregate zero-crossing was **DISPROVED** on a real SPY reference chain 2026-07-19 (corr 0.086, never crosses zero, 2.19e9 divergence). Canonical method is now `compute_gamma_profile` — dealer gamma recomputed at each hypothetical spot — exposed via `compute_gamma_flip_v2` with a mandatory confidence flag; `compute_gamma_flip` and its tests are deleted. Tests: `tests/test_gamma_profile_v1.py`. Remaining proof: wide-chain agreement with Barchart (register row due 2026-07-21). |
 
-**Agent rule:** execute **Operator NOW** (`LP-01`) first. While LP-01 is `NEXT` and operator has not said STOP/PAUSE, do not end a work turn with prose-only wrap-up on other queues. FP-09 scoreboard is not a stop. Other FP/TU/CR/EXP rows stay queued behind LP-01 unless operator expands scope.
+**Queue rule (2026-08-24 teardown):** statuses record candidate work and its evidence; they are not standing execution authority. The operator directs each session's work in chat — no agent self-assigns the next `NEXT`/`QUEUED` row. LP-01 stays at the top of the backlog for when the operator points a session at it; FP-09's scoreboard remains not-a-verdict either way.
 
 ## Terrain upgrade program — TU (2026-07-21 research synthesis)
 

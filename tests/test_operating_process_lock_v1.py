@@ -33,13 +33,68 @@ def _init_repo(tmp_path: Path) -> Path:
 
 def test_edit_tools_are_not_gated_by_this_guard():
     """2026-08-24 teardown: the role/mission/authority edit rails are GONE. The guard's
-    Edit branch must not block ordinary product edits — nor resurrect a role denylist."""
+    Edit branch must not block ordinary product edits — nor resurrect a role denylist.
+    The one surviving Edit rail is RC-442/RC-477's cross-checkout topology check, which
+    names no agent and fires only on a linked-worktree session targeting the primary
+    working tree (tested below); an in-checkout edit like this one stays unblocked."""
     bad = PLG.pretooluse_block("Write", {"file_path": str(ROOT / "db.py"),
                                          "content": "# edit\n"})
     assert bad == [], bad
     assert not hasattr(OPL, "claude_isolated_edit_violation")
     assert not hasattr(OPL, "operator_go_granted")
     assert not hasattr(OPL, "pm_mission_record")
+
+
+def _linked_worktree_layout(tmp_path: Path) -> tuple[Path, Path]:
+    """A primary checkout (.git directory) and a linked worktree (.git FILE pointing at
+    primary/.git/worktrees/wt) — pure file topology, exactly what the rail reads."""
+    primary = tmp_path / "primary"
+    (primary / ".git").mkdir(parents=True)
+    (primary / ".git" / "worktrees" / "wt").mkdir(parents=True)
+    (primary / "db.py").write_text("# live\n", encoding="utf-8")
+    wt = tmp_path / "wt"
+    wt.mkdir()
+    (wt / ".git").write_text(f"gitdir: {primary / '.git' / 'worktrees' / 'wt'}\n",
+                             encoding="utf-8")
+    (wt / "own.py").write_text("# mine\n", encoding="utf-8")
+    return primary, wt
+
+
+def test_cross_checkout_edit_into_primary_blocks(tmp_path):
+    """RC-442(a)/RC-477: a linked-worktree session editing the PRIMARY working tree is the
+    2026-08-20 hazard — the rail must fire on that exact topology."""
+    primary, wt = _linked_worktree_layout(tmp_path)
+    bad = PLG.cross_checkout_edit_violations(
+        {"file_path": str(primary / "db.py")}, repo=wt)
+    assert len(bad) == 1 and "CROSS_CHECKOUT_EDIT" in bad[0], bad
+
+
+def test_own_worktree_edit_stays_unblocked(tmp_path):
+    primary, wt = _linked_worktree_layout(tmp_path)
+    assert PLG.cross_checkout_edit_violations(
+        {"file_path": str(wt / "own.py")}, repo=wt) == []
+    # Relative paths resolve against the session checkout, not the primary.
+    assert PLG.cross_checkout_edit_violations({"file_path": "own.py"}, repo=wt) == []
+
+
+def test_primary_session_is_never_gated_by_the_rail(tmp_path):
+    """The primary checkout editing anywhere (including a linked worktree) is the
+    operator-visible direction — the rail is inert when .git is a directory."""
+    primary, wt = _linked_worktree_layout(tmp_path)
+    assert PLG.cross_checkout_edit_violations(
+        {"file_path": str(wt / "own.py")}, repo=primary) == []
+    assert PLG.cross_checkout_edit_violations(
+        {"file_path": str(primary / "db.py")}, repo=primary) == []
+
+
+def test_rail_fails_open_on_unreadable_topology(tmp_path):
+    """A malformed .git file must never block (the rail blocks only on an affirmative
+    cross-checkout hit)."""
+    wt = tmp_path / "wt2"
+    wt.mkdir()
+    (wt / ".git").write_text("not a gitdir line\n", encoding="utf-8")
+    assert PLG.cross_checkout_edit_violations(
+        {"file_path": str(tmp_path / "anything.py")}, repo=wt) == []
 
 
 def test_index_worktree_mismatch_detected(tmp_path, monkeypatch):

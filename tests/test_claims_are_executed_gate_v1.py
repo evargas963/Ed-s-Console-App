@@ -95,6 +95,30 @@ def test_d():
     assert calls > 0, "a subject call placed before the assertion was not counted"
 
 
+def test_a_prose_only_file_cannot_hide_behind_a_local_name_or_helper():
+    """RC-317 (independent audit, fixed 2026-08-25): the gate's founding bypass.
+
+    Text bound to a local the fixed name list never heard of, through a helper call,
+    scored (0 prose, 1 subject) and PASSED the enforced lane — the exact shape RC-317
+    recorded and re-executed. Taint now follows the assignment (`blob` is file text) and
+    a helper whose arguments carry that taint is a text transform, not subject execution.
+    """
+    src = '''
+import inspect
+import math_levels
+def _norm(s):
+    return " ".join(s.split())
+def test_a():
+    blob = _norm(inspect.getdoc(math_levels.bs_charm))
+    assert "calls sell" in blob
+    assert "puts buy" in blob
+    assert "sign" in blob
+'''
+    prose, calls = C.analyse(ast.parse(src))
+    assert prose >= 3, f"tainted-local prose assertions were not counted: {prose}"
+    assert calls == 0, f"a text-transform helper was miscounted as subject execution: {calls}"
+
+
 def test_builtins_do_not_count_as_exercising_the_subject():
     """`len(...)` in an assertion is not evidence the code under test ran."""
     src = '''
