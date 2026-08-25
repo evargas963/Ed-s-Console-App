@@ -297,6 +297,8 @@ def test_vanna_uses_the_single_iv_conversion_authority_f7():
     from math_exposure_core import compute_exposures_by_strike
 
     def one(iv):
+        # institutional-synthetic-ok: a units-flip discriminator needs the SAME contract with IV in
+        # percent vs decimal form — a captured real chain cannot pin that controlled pair.
         return {"strikePrice": 100.0, "expirationDate": "2030-01-18", "gamma": 0.05,
                 "delta": 0.5, "volatility": iv, "openInterest": 100, "multiplier": 100,
                 "daysToExpiration": 30, "vega": 0.11, "bidSize": 1, "askSize": 1,

@@ -211,6 +211,8 @@ def test_enrollment_probe_rejects_non_collectors_f5(monkeypatch):
     assert ok is False and ("chain" in why or "contract" in why), why
 
     # a real optionable symbol: quote 200 + chain 200 carrying a contract -> collectable
+    # institutional-synthetic-ok: the probe is unit-tested with a mocked vendor; a minimal
+    # single-contract chain proves the >=1-contract branch without a live Schwab fetch.
     good = {"callExpDateMap": {"2030-01-18:1200": {"100.0": [{"strikePrice": 100.0, "putCall": "CALL",
             "openInterest": 10, "multiplier": 100}]}}, "putExpDateMap": {}}
     monkeypatch.setattr(srv, "_gated_safe_get_chain", lambda *a, **k: (_Resp(200, good), 0.0, 0.0))

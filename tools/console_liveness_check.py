@@ -66,7 +66,15 @@ LOG_PATH = REPO / "reports" / "console_liveness_run.log"
 def _emit(status: str, message: str) -> None:
     stamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     line = f"{stamp} {status} {message}"
-    print(line)
+    # Unobtrusive-run hardening (2026-08-25): the scheduled task runs under pythonw.exe (no console
+    # window — it was flashing a CMD window every 5 min). pythonw has no console stdout, so a bare
+    # print() can raise (None/lost stdout). Guard it so the console line is best-effort while the
+    # FILE log below — the task's actual evidence, scanned by check_scheduled_producers_are_not_inert
+    # — and the process exit status are unaffected. Interactive `python tools/...` still prints.
+    try:
+        print(line, flush=True)
+    except (OSError, ValueError, AttributeError, RuntimeError):
+        pass
     try:
         LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
         with LOG_PATH.open("a", encoding="utf-8") as fh:
