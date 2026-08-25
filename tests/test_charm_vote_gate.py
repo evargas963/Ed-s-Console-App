@@ -60,12 +60,16 @@ def test_charm_research_surfaces_preserved():
     assert "charm_drift_toward" in ui
 
 
-def test_vanna_proxy_labeled_honestly_in_ui():
-    """P1B + RC-352: the vanna strike labels use the institutional name and the tip
-    discloses the vega/(S·IV) proxy formula ("Vanna Wall" is not a vendor level class)."""
+def test_vanna_labeled_honestly_in_ui():
+    """P1B + RC-352: the vanna strike labels use the institutional name and the tip discloses
+    the ACTUAL formula ("Vanna Wall" is not a vendor level class). Cursor-audit A1: RC-211 switched
+    the per-strike vanna from the vega/(S·IV) proxy to exact Black-Scholes bs_vanna but left the
+    tips still claiming the retired proxy — the tips now name the exact computation, and the stale
+    'proxy' wording must not reappear."""
     ui = (_REPO / "static" / "index.html").read_text(encoding="utf-8", errors="replace")
     assert "label: 'Largest Vanna Strike (Call)'" in ui
     assert "label: 'Largest Vanna Strike (Put)'" in ui
-    assert ui.count("vega/(S·IV) proxy") >= 2  # proxy disclosed in both tips
+    assert ui.count("exact Black-Scholes vanna") >= 2   # true formula disclosed in both strike tips
+    assert "vega/(S·IV) proxy" not in ui                # the retired, wrong description is gone
     assert "label: 'Vanna Wall Call'" not in ui
     assert "label: 'Vanna Wall Put'" not in ui

@@ -284,3 +284,29 @@ def test_vanna_is_identical_for_calls_and_puts_in_the_bucket_path():
         f"call/put vanna split at equal OI: {b['call_vanna']} vs {b['put_vanna']} — "
         f"the math invented a split parity forbids")
     assert b["call_vanna"] > 0, "strike above spot (100 > 98) must have positive vanna"
+
+
+def test_vanna_uses_the_single_iv_conversion_authority_f7():
+    """Cursor-audit F7: the per-strike vanna must convert Schwab IV through schwab_iv_to_sigma
+    (the ONE authority, which keeps a value already <=3.0 as-is), NOT an inline _iv/100.0 that
+    divides unconditionally. Proof: two contracts identical except IV expressed as PERCENT (20.0)
+    vs DECIMAL (0.20) must yield the SAME vanna — the authority maps both to sigma 0.20. Under the
+    retired inline /100 they'd differ (0.20 vs 0.002), the exact silent-corruption a vendor units
+    flip would cause (and which charm/levels already guard against by routing through the same
+    authority)."""
+    from math_exposure_core import compute_exposures_by_strike
+
+    def one(iv):
+        return {"strikePrice": 100.0, "expirationDate": "2030-01-18", "gamma": 0.05,
+                "delta": 0.5, "volatility": iv, "openInterest": 100, "multiplier": 100,
+                "daysToExpiration": 30, "vega": 0.11, "bidSize": 1, "askSize": 1,
+                "totalVolume": 10, "putCall": "CALL"}
+
+    per_pct, _ = compute_exposures_by_strike([one(20.0)], spot=98.0)
+    per_dec, _ = compute_exposures_by_strike([one(0.20)], spot=98.0)
+    v_pct = per_pct[100.0]["call_vanna"]
+    v_dec = per_dec[100.0]["call_vanna"]
+    assert v_pct not in (None, 0.0), "percent-form vanna did not compute"
+    assert abs(v_pct - v_dec) < 1e-9, (
+        f"IV conversion authority should map 20.0% and 0.20 to the same sigma; got {v_pct} vs "
+        f"{v_dec} — an inline /100 would have divided the decimal form again")

@@ -8228,8 +8228,8 @@ function renderTierALive(d, fullRenderSource) {
   const KL_REFERENCE = [
     { key: 'kl_call_oi_wall', strKey: 'kl_call_oi_str', label: 'Call OI Wall', proxColor: '#aaaaaa', tip: 'Strike with the most call open interest, positioning concentration above.' },
     { key: 'kl_put_oi_wall', strKey: 'kl_put_oi_str', label: 'Put OI Wall', proxColor: '#aaaaaa', tip: 'Strike with the most put open interest, positioning concentration below.' },
-    { key: 'kl_call_vanna_wall', strKey: 'kl_call_vanna_str', label: 'Largest Vanna Strike (Call)', proxColor: '#aaaaaa', tip: 'Strike with the largest call vanna (computed via vega/(S·IV) proxy): how dealer delta shifts when IV moves. Matters on IV spikes. Formerly "Vanna Wall Call".' },
-    { key: 'kl_put_vanna_wall', strKey: 'kl_put_vanna_str', label: 'Largest Vanna Strike (Put)', proxColor: '#aaaaaa', tip: 'Strike with the largest put vanna (vega/(S·IV) proxy). Matters on IV spikes. Formerly "Vanna Wall Put".' },
+    { key: 'kl_call_vanna_wall', strKey: 'kl_call_vanna_str', label: 'Largest Vanna Strike (Call)', proxColor: '#aaaaaa', tip: 'Strike with the largest call vanna (exact Black-Scholes vanna, OI-weighted): how dealer delta shifts when IV moves. Matters on IV spikes. Formerly "Vanna Wall Call".' },
+    { key: 'kl_put_vanna_wall', strKey: 'kl_put_vanna_str', label: 'Largest Vanna Strike (Put)', proxColor: '#aaaaaa', tip: 'Strike with the largest put vanna (exact Black-Scholes vanna, OI-weighted). Matters on IV spikes. Formerly "Vanna Wall Put".' },
     { key: 'kl_oi_center', strKey: null, label: 'OI-Weighted Center', sr: 'pin', srLabel: 'Center', proxColor: '#aaaaaa', tip: 'Open-interest-weighted center strike. Not Max Pain (different computation). Formerly "OI Center".' },
   ];
 
@@ -8355,7 +8355,7 @@ function renderTierALive(d, fullRenderSource) {
       const vv = vnOk ? Number(vn) : null;
       const fmtV = (n) => { const a = Math.abs(n); const s = n >= 0 ? '+' : '−';
         return a >= 1e9 ? `${s}$${(a/1e9).toFixed(2)}B` : a >= 1e6 ? `${s}$${(a/1e6).toFixed(1)}M` : `${s}$${(a/1e3).toFixed(0)}K`; };
-      html += `<div class="kl-grid" title="Net Vanna: how many dollars of delta dealers must re-hedge per 1-point IV move (vega/(S·IV) proxy, +call/−put convention). Positive: an IV CRUSH forces dealer BUYING — the vanna-tailwind rally mechanic; an IV spike forces selling. Sizes the vol-driven hedge flow beside GEX (spot-driven) and DEX (inventory).">
+      html += `<div class="kl-grid" title="Net Vanna: how many dollars of delta dealers must re-hedge per 1-point IV move (exact Black-Scholes vanna, +call/−put convention). Positive: an IV CRUSH forces dealer BUYING — the vanna-tailwind rally mechanic; an IV spike forces selling. Sizes the vol-driven hedge flow beside GEX (spot-driven) and DEX (inventory).">
         <div class="kl-prox" style="background:transparent"></div>
         <div class="kl-name">Net Vanna</div>
         <div class="kl-price">${vnOk ? fmtV(vv) + '/vol-pt' : '—'}</div>

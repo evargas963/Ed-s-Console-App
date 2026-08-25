@@ -294,7 +294,12 @@ def compute_exposures_by_strike(
                 _T = _tte_memo(ct.get("expirationDate"))
                 if _iv_ok and _T is not None and _T > 0:
                     from math_levels import bs_vanna as _bsv
-                    _vn = _bsv(spt, float(strike), _T, _iv / 100.0)
+                    # Cursor-audit F7: route through the ONE IV-conversion authority instead of an
+                    # inline _iv/100.0. Charm (compute_net_charm) and levels (_contract_inputs)
+                    # already use schwab_iv_to_sigma; vanna alone re-encoded the raw conversion,
+                    # breaking the single-authority guarantee and lacking the >3.0 units-flip guard.
+                    _sig = schwab_iv_to_sigma(_iv)
+                    _vn = _bsv(spt, float(strike), _T, _sig) if _sig is not None else None
                     if _vn is not None:
                         b["call_vanna"] += _vn * oi * mult
         elif side == "PUT":
@@ -320,7 +325,9 @@ def compute_exposures_by_strike(
                 _T = _tte_memo(ct.get("expirationDate"))
                 if _iv_ok and _T is not None and _T > 0:
                     from math_levels import bs_vanna as _bsv
-                    _vn = _bsv(spt, float(strike), _T, _iv / 100.0)
+                    # Cursor-audit F7: single IV-conversion authority (see CALL side above).
+                    _sig = schwab_iv_to_sigma(_iv)
+                    _vn = _bsv(spt, float(strike), _T, _sig) if _sig is not None else None
                     if _vn is not None:
                         b["put_vanna"] += _vn * oi * mult
         else:
@@ -451,7 +458,7 @@ def compute_net_vanna(exposures: dict, spot: float | None) -> dict | None:
 
     Same naive dealer-sign model (dealer +calls/−puts): net vanna Δ-shares per 1.00 vol
     = Σ call_vanna − Σ put_vanna over the ONE exposures book (per-strike values are the
-    vega/(S·IV) proxy, accumulated ·OI·mult at parse time). Per VOL-POINT = /100;
+    exact Black-Scholes bs_vanna since RC-211, accumulated ·OI·mult at parse time). Per VOL-POINT = /100;
     dollars per vol-pt = × spot. Positive net: IV UP forces dealer delta up → they SELL
     into vol spikes; IV DOWN (crush) → they BUY, the vanna-tailwind rally mechanic.
     FAIL-CLOSED: None on an empty/valueless book or missing spot.
