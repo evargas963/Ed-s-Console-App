@@ -720,6 +720,22 @@ def _model_probs_to_ui_output(p: Optional[dict], approved: bool) -> dict:
     }
 
 
+def _enforce_active_serve_policy(bt: str, hz: str, bundle_dir: Path) -> None:
+    """Cursor-audit F10: the MODEL-04 vintage gate. Raise FileNotFoundError if the active bundle at
+    bundle_dir is serve-blocked (WITHHELD / NOT_PROVEN provenance). Applied on EVERY path that serves
+    the active canonical bundle — strict AND relaxed — so ED_XGB_STRICT_ACTIVE_ONLY=0 can no longer
+    serve a policy-withheld vintage (its bytes hash-verify against their own manifest, so Layer-2
+    integrity alone would pass it). Never a silent substitute: the block carries the explicit reason."""
+    from model_serve_policy import bundle_serve_eligibility
+
+    _elig = bundle_serve_eligibility(bt, hz, bundle_dir)
+    if _elig["direct_serve_blocked"]:
+        raise FileNotFoundError(
+            f"MODEL_SERVE_POLICY {_elig['status']} for {bt} hz={hz} at {bundle_dir}: "
+            f"{_elig['reason']}"
+        )
+
+
 def _model_dir_for_ticker(ticker: str) -> Path:
     """Resolve bundle dir: strict active, live ablation experiment (parallel), or offline scoring pass."""
     bt = _bundle_ticker_for_artifacts(ticker)
@@ -752,21 +768,21 @@ def _model_dir_for_ticker(ticker: str) -> Path:
                 f"ED_XGB_STRICT_ACTIVE_ONLY=1: no complete active model bundle for {bt} hz={hz} "
                 f"at canonical {canonical} (requires xgb+lstm+transformer+meta_stack per active_bundle_contract)"
             )
-        # MODEL-04 serve policy (operator-approved 2026-07-10): a complete
-        # bundle must ALSO be serve-eligible by manifest vintage. Withheld or
-        # unproven provenance fails closed with the explicit policy reason —
-        # never a silent substitute (anchor routing resolves upstream via
-        # _bundle_ticker_for_artifacts and is unchanged by this gate).
-        from model_serve_policy import bundle_serve_eligibility
-
-        _elig = bundle_serve_eligibility(bt, hz, canonical)
-        if _elig["direct_serve_blocked"]:
-            raise FileNotFoundError(
-                f"MODEL_SERVE_POLICY {_elig['status']} for {bt} hz={hz} at {canonical}: "
-                f"{_elig['reason']}"
-            )
+        # MODEL-04 serve policy (operator-approved 2026-07-10): a complete bundle must ALSO be
+        # serve-eligible by manifest vintage. Withheld/unproven provenance fails closed with the
+        # explicit reason (anchor routing resolves upstream via _bundle_ticker_for_artifacts).
+        _enforce_active_serve_policy(bt, hz, canonical)
         return canonical
-    return _model_dir_for_ticker_relaxed(bt, hz)
+    # Cursor-audit F10: the MODEL-04 vintage gate is NOT strict-mode-only. With
+    # ED_XGB_STRICT_ACTIVE_ONLY=0 the relaxed resolver can STILL land on the active canonical bundle
+    # (models/active/*), whose bytes hash-verify against their own manifest — so a policy-WITHHELD or
+    # NOT_PROVEN vintage would load and serve real direction signals with no block. Apply the same
+    # gate whenever the resolved dir IS the active bundle; parallel/cascade/flat dev experiments (the
+    # flag's intended probing use) are not the active bundle and are untouched.
+    resolved = _model_dir_for_ticker_relaxed(bt, hz)
+    if str(resolved).startswith(str(MODEL_DIR / "active")):
+        _enforce_active_serve_policy(bt, hz, resolved)
+    return resolved
 
 
 def _model_dir_for_ticker_relaxed(ticker: str, hz: str) -> Path:
