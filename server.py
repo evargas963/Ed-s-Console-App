@@ -6531,6 +6531,7 @@ def _fetch_state(
         if _analytics_bg_shutdown or _log_only_inline_leaf_fetches(log_only):
             c_resp, _chain_gate_wait_sec, _chain_fetch_pure_sec = _gated_safe_get_chain(
                 client, ticker, strike_count=resolve_chain_strike_count(ticker),  # RC-59: one faucet
+                to_date=_chain_to_date_for(ticker),   # RC-494: bound index books' expiry count
                 priority=_chain_priority,
             )
             q_resp = _memoized_quote_response(ticker, client=client)   # RC-112/W3-C8: one vendor faucet
@@ -6549,6 +6550,7 @@ def _fetch_state(
             _chain_fut = _cq_pool.submit(
                 _gated_safe_get_chain, client, ticker,
                 strike_count=resolve_chain_strike_count(ticker),   # RC-59: one faucet
+                to_date=_chain_to_date_for(ticker),   # RC-494: bound index books' expiry count
                 priority=_chain_priority,
             )
             # RC-112 recurrence 2 (v10 audit, server.py:6228): this pool leaf passed the raw
@@ -10869,15 +10871,16 @@ _strike_expiry_count: dict[str, int] = {}
 #: Deliberately conservative: a 502 returns NO chain at all, while a slightly narrower request
 #: still delivers far more than the span bar needs (SPY at 94 still spans ~±31% of spot).
 SCHWAB_CHAIN_CONTRACT_BUDGET: int = 6600
-#: Index option books ($SPX, $VIX, $RUT, $NDX, ...) list far more expiries than equities
-#: (~60-100 vs ~35), so the equity cold-start width blows the contract budget on the FIRST
-#: fetch (40 * 2 * 98 = 7,840 > 6,600) — a 502 that prevents geometry from EVER being learned,
-#: which is exactly why $SPX went permanently dark after a restart on 2026-07-26 (RC-483:
-#: 12,190 rows then zero). A $-prefixed index therefore gets a budget-safe COLD START assuming
-#: a conservative expiry count, so the first fetch succeeds and the measured per-ticker budget
-#: cap below takes over from real geometry. 6600 // (2*100) = 33 keeps 98-expiry $SPX at
-#: 33*2*98 = 6,468 < 6,600.
-INDEX_COLD_START_ASSUMED_EXPIRIES: int = 100
+#: Index option books ($SPX, $VIX, $RUT, $NDX, ...) list expirations out for YEARS (daily +
+#: weekly + monthly + LEAPS), far more than the contract budget allows at any usable strike
+#: width — RC-491 measured $SPX still 502 even at width 33 (33 * 2 * ~150 expiries = 9,900 >
+#: 6,600). RC-494: an index chain is therefore fetched only out to a bounded DTE horizon
+#: (_chain_to_date_for → to_date), which caps the expiry count so a FIXED, generous strike
+#: width fits the budget deterministically (no geometry feedback loop, RC-149). The near-term
+#: surface is what the pin/wall/flip math uses; far-dated LEAPS carry no level signal.
+#: 60 strikes * 2 * ~34 expiries in 45 days = ~4,080 < 6,600 (safe even at 55 expiries).
+INDEX_CHAIN_DTE_HORIZON_DAYS: int = 45
+INDEX_CHAIN_STRIKE_COUNT: int = 60
 
 
 def _learn_strike_geometry(ticker: str, contracts: list | None, spot: float | None,
@@ -10940,17 +10943,16 @@ def resolve_chain_strike_count(ticker: str) -> int:
     at the ceiling and its levels self-report LOW_CONFIDENCE_NARROW_CHAIN rather than pretending.
     """
     tk = (ticker or "").upper().strip()
-    is_index_book = tk.startswith("$")   # canonical index roots: $SPX/$VIX/$RUT/$NDX/$DJI
+    if tk.startswith("$"):   # canonical index roots: $SPX/$VIX/$RUT/$NDX/$DJI
+        # RC-494: index books are fetched over a bounded DTE horizon (_chain_to_date_for), so a
+        # FIXED budget-safe width covers the whole near-term surface. Deterministic on purpose —
+        # letting learned geometry drive the width recreated the RC-149 full-book feedback loop
+        # that kept $SPX 502-ing. Paired with the to_date bound this is always well under budget.
+        return INDEX_CHAIN_STRIKE_COUNT
     with _strike_geometry_lock:
         geom = _strike_geometry.get(tk)
         n_exp = _strike_expiry_count.get(tk)
     if geom is None:
-        if is_index_book:
-            # RC-483: budget-safe cold start so a many-expiry index book's FIRST fetch stays
-            # under the vendor's contract budget and can succeed, learn geometry, and recover —
-            # instead of 502-ing forever on the equity cold-start width.
-            return max(TERRAIN_STRIKE_COUNT_MIN,
-                       SCHWAB_CHAIN_CONTRACT_BUDGET // (2 * INDEX_COLD_START_ASSUMED_EXPIRIES))
         return TERRAIN_STRIKE_COUNT_COLD_START
     need = required_strike_count(geom[0], geom[1])
     if need is None:
@@ -10969,6 +10971,25 @@ def resolve_chain_strike_count(ticker: str) -> int:
 
 #: Back-compat alias — terrain's original name for the same authority.
 _terrain_strike_count = resolve_chain_strike_count
+
+
+def _chain_to_date_for(ticker: str) -> str | None:
+    """Bounded chain to_date (ISO YYYY-MM-DD) for index books, None for equities.
+
+    RC-494: index option books ($SPX/$VIX/$RUT/...) list expirations out for years; fetching
+    the FULL book blows Schwab's contract budget at any usable strike width (the $SPX 502).
+    Capping the fetch to the near-term DTE horizon bounds the expiry count so
+    resolve_chain_strike_count's fixed index width fits the budget. Equities return None (full
+    book, unchanged). One authority for the index date bound, mirroring the strike-count faucet."""
+    tk = (ticker or "").upper().strip()
+    if not tk.startswith("$"):
+        return None
+    from datetime import timedelta
+
+    from time_et import now_et
+
+    horizon = (now_et() + timedelta(days=INDEX_CHAIN_DTE_HORIZON_DAYS)).date()
+    return horizon.isoformat()
 
 _terrain_cache: dict[str, dict] = {}
 _terrain_cache_lock = threading.Lock()

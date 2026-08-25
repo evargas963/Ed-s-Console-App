@@ -49,22 +49,27 @@ def test_panel_auto_enters_the_background_roster(monkeypatch, tmp_path):
     assert {"SPY", "AUD1", "AUDP"} <= roster    # the pre-existing categories still present
 
 
-def test_index_book_cold_start_is_budget_safe():
+def test_index_book_width_is_fixed_and_date_bounded_under_budget():
+    """RC-494: index books get a FIXED width (deterministic — no geometry feedback loop) and
+    a bounded DTE horizon (to_date), so width x 2 x (expiries in the window) stays under the
+    vendor contract budget. This replaces the RC-491 cold-start width, which was still too
+    wide for $SPX's full book (>100 expiries)."""
     import server as srv
 
-    # A $-prefixed index with NO learned geometry (cold start). The width must keep the first
-    # chain request under the vendor contract budget for a many-expiry book.
-    width = srv.resolve_chain_strike_count("$NEVERSEEN_IDX")
-    contracts_at_100_expiries = width * 2 * srv.INDEX_COLD_START_ASSUMED_EXPIRIES
-    assert contracts_at_100_expiries <= srv.SCHWAB_CHAIN_CONTRACT_BUDGET, (
-        f"index cold start {width} blows the {srv.SCHWAB_CHAIN_CONTRACT_BUDGET} budget")
-    # $SPX's real ~98-expiry book must also fit at this cold-start width.
-    assert width * 2 * 98 <= srv.SCHWAB_CHAIN_CONTRACT_BUDGET
+    w = srv.resolve_chain_strike_count("$SPX")
+    assert w == srv.INDEX_CHAIN_STRIKE_COUNT
+    # The 45-day horizon bounds SPX to ~34 expiries; even a conservative 55 stays under budget.
+    assert w * 2 * 55 <= srv.SCHWAB_CHAIN_CONTRACT_BUDGET, (
+        f"index width {w} x 55 expiries blows the {srv.SCHWAB_CHAIN_CONTRACT_BUDGET} budget")
+    # The index date bound is set; equities fetch the full book (None).
+    assert srv._chain_to_date_for("$SPX") is not None
+    assert srv._chain_to_date_for("$VIX") is not None
 
 
-def test_equity_cold_start_is_unchanged():
+def test_equity_width_and_full_book_unchanged():
     import server as srv
 
-    # A non-index symbol with no geometry still gets the equity cold-start default (not the
-    # narrower index width) — the fix is scoped to index books only.
+    # A non-index symbol keeps the equity cold-start width and full-book fetch (no date bound).
     assert srv.resolve_chain_strike_count("NEVERSEEN_EQ") == srv.TERRAIN_STRIKE_COUNT_COLD_START
+    assert srv._chain_to_date_for("NEVERSEEN_EQ") is None
+    assert srv._chain_to_date_for("NVDA") is None
