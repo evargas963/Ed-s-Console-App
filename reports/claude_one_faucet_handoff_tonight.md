@@ -1,6 +1,10 @@
-# Claude — one-faucet-closeout-v1 (PASTE / EXECUTE)
+# Claude — one-faucet-closeout-v1 — HISTORICAL (do not paste or execute)
 
-**YOU = sole writer. Cursor = PM/auditor only. No reset. No kill-path edits by Cursor.**
+> **HISTORICAL RECORD (stamped 2026-08-25, audit round 2).** A dated session prompt from the
+> retired sole-writer/PM role model; its coordination files were deleted in the 2026-08-24
+> teardown. The operator directs each session in chat.
+
+**(original text follows) YOU = sole writer. Cursor = PM/auditor only. No reset. No kill-path edits by Cursor.**
 
 ## Roles / files
 - `governance/sole_writer.json`: writer=claude · pm=cursor · auditor=cursor

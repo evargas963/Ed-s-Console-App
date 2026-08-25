@@ -199,7 +199,10 @@ def _rc_row_violations(log_path, n: int, rc_id: str, status: str,
             f"{rc_id} has a why-chain only {depth + 1} level(s) deep. Five whys are "
             f"required BEFORE the row is written - a shallow chain is how a symptom "
             f"gets recorded as a root cause."))
-    if status == "CLOSED":
+    if status in ("CLOSED", "REMEDIATED"):
+        # REMEDIATED joined the evidence gate 2026-08-25 (audit round 2 red-team):
+        # OPEN->REMEDIATED used to terminate an overdue row with no evidence and no
+        # re-date reason — the same silencing CLOSED is gated against.
         evidence = cells[6] if len(cells) >= 7 else ""
         has_number = any(ch.isdigit() for ch in evidence)
         has_proof = any(w in evidence.upper()
@@ -207,7 +210,7 @@ def _rc_row_violations(log_path, n: int, rc_id: str, status: str,
         if not (has_number and has_proof):
             out.append(Violation(
                 log_path, n,
-                f"{rc_id} is CLOSED without observed evidence. A closed root cause must "
+                f"{rc_id} is {status} without observed evidence. A terminal root cause must "
                 f"cite a measured value (numbers) and say it was proven/verified/measured "
                 f"- describing the code change is not proof that it works."))
     return out

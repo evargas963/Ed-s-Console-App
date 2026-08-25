@@ -1,4 +1,9 @@
-# Claude — settle dirty tree, then rebuild (2026-08-03)
+# Claude — settle dirty tree, then rebuild (2026-08-03) — HISTORICAL (do not execute)
+
+> **HISTORICAL RECORD (stamped 2026-08-25, audit round 2).** A dated session prompt from the
+> retired sole-writer/PM role model; its coordination files (`governance/sole_writer.json`,
+> `governance/pm_mission.json`) were deleted in the 2026-08-24 teardown. The operator directs
+> each session in chat — no standing prompt file is a work order.
 
 **Audience:** Claude (sole writer)  
 **Author:** Cursor PM (halted — will not reset / checkout product paths)  

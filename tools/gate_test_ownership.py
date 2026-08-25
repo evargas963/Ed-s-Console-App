@@ -36,8 +36,8 @@ FULL_BUNDLE = "FULL_BUNDLE"
 SELF_PROTECTED_PATHS: tuple[str, ...] = (
     "tools/gate_test_ownership.py",
     "tools/governance_gate_cache.py",
-    "tools/check_fix_everything_we_touch.py",
-    "tools/enforce_all_rules.py",
+    # (check_fix_everything_we_touch.py and enforce_all_rules.py were retired with
+    # their stacks — removed from this set 2026-08-25, audit round 2.)
     "tools/check_institutional_closure_gate.py",
     ".pre-commit-config.yaml",
     "tests/conftest.py",

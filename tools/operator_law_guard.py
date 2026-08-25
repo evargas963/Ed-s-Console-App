@@ -291,8 +291,12 @@ _VERIFICATION = re.compile(
 #: feed, `git grep` in any form (it always searches the tree, never stdin), or bare
 #: `rg` at pipeline head (its default IS a recursive cwd search). Filtering another
 #: command's stdout — later pipeline stage, no file operand — stays legal. A
-#: downstream pipe never launders a file search.
-_SEARCHERS = frozenset({"grep", "egrep", "fgrep", "rg"})
+#: downstream pipe never launders a file search. PowerShell's native searcher
+#: (Select-String / sls) is in the set — the agent shell on this host IS PowerShell
+#: (red-team 2026-08-25). HONEST LIMIT: `cat *.py | grep foo` rides the stdout-filter
+#: carve-out while cat does the codebase read — an accepted, unmechanized bypass
+#: (detecting it means classifying every upstream stage; operator review covers it).
+_SEARCHERS = frozenset({"grep", "egrep", "fgrep", "rg", "select-string", "sls"})
 
 
 def _repo_search_violation(cmd: str) -> bool:
@@ -593,7 +597,10 @@ def _verification_ran(detail: str) -> bool:
             script = next((a for a in args if not a.startswith("-")), "")
             if script:
                 cands.append(script)
-            if "-m" in args:
+            # A `-m <module>` is executed only when no `-c` precedes it: a -c payload
+            # consumes the interpreter and a following -m is inert argv (red-team
+            # 2026-08-25: `python -c "pass" -m pytest` never runs pytest).
+            if "-m" in args and not ("-c" in args and args.index("-c") < args.index("-m")):
                 i = args.index("-m")
                 cands.extend(args[i + 1:i + 2])
         if any(_VERIFICATION.search(c) for c in cands):

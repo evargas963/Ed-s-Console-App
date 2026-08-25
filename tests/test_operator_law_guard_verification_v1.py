@@ -42,6 +42,28 @@ def test_real_verifications_still_count(cmd):
     assert G._verification_ran(cmd) is True, cmd
 
 
+def test_inert_dash_m_after_dash_c_does_not_mint_proof():
+    """Red-team round: `python -c "pass" -m pytest` runs the -c payload and passes
+    '-m pytest' as inert argv — pytest never executes, so it is not issued proof."""
+    assert G._verification_ran('python -c "pass" -m pytest') is False
+    assert G._verification_ran("python -m pytest -q") is True
+
+
+@pytest.mark.parametrize("cmd", [
+    "Select-String foo math_levels.py",
+    "sls foo *.py",
+    "Select-String -Pattern foo -Path server.py",
+])
+def test_powershell_native_search_blocks(cmd):
+    """Red-team round: the agent shell IS PowerShell; its native searcher with a repo-file
+    operand is the same banned action as grep."""
+    assert G._repo_search_violation(cmd) is True, cmd
+
+
+def test_powershell_stdout_filter_stays_legal():
+    assert G._repo_search_violation("Get-Process | Select-String python") is False
+
+
 def test_close_a_row_needs_issued_not_spelled_proof():
     path = str(REPO / "governance" / "root_cause_log.md")
     echo_only = [{"kind": "bash", "detail": "echo pytest all green",

@@ -93,7 +93,7 @@ PROMISED_RC = re.compile(
 
 #: Correcting or voiding a remembered claim is the CURE, never the disease.
 CORRECTING = re.compile(
-    r"\b(i was wrong|disproves|disproven|correcting|correction|retract|reclassif|"
+    r"\b(i was wrong|disproves|disproven|correcting|correction|retract|reclassif\w*|"
     r"void(?:ing)? (?:that|this|the)|no longer (?:cite|claim)|stop citing|"
     r"unproven|cannot be cited|not settled|insufficient (?:power|evidence))\b", re.I)
 

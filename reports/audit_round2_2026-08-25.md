@@ -97,14 +97,19 @@ GEX architecture (finding 4 blast): morning full-chain capture is alive and exte
 strike_count=100 since 07-20) + `option_chain_accrual` 50,802 rows since 07-31 at 38–45
 tickers/day, window 09:15–16:15. The deleted July-20 rule lost nothing.
 
-Deterministic evidence scripts (session scratchpad, re-runnable next RTH):
-`coverage_audit.py, coverage_verdicts.py, snap_only.py, readiness_matrix.py,
-followup_probe.py, aug17_probe.py, gex_capture_audit.py, q1.py, q4.py, q5.py`.
+Deterministic evidence scripts — the four load-bearing ones are COMMITTED at
+`reports/audit_round2_scripts/` (`readiness_matrix.py`, `coverage_verdicts.py`,
+`snap_only.py`, `gex_capture_audit.py`; DB path via `ED_CONSOLE_DB_RO`, default
+`file:data/ed_console.db?mode=ro`), so RC-481's next-RTH rerun is reproducible from the
+tree. The remaining one-shot probes (`coverage_audit.py, followup_probe.py,
+aug17_probe.py, q1.py, q4.py, q5.py`) were session scratch whose findings the committed
+four supersede.
 
 ## 4. The 48 closes — complete-set answer (finding 9)
 
-Evidence-class scan over all 48 fix cells (command in RC-480's report trail): 46 cite
-direct execution evidence; the only 2 mechanism-only closes (RC-326, RC-329) were already
+Evidence-class scan over all 48 fix cells — reproduce:
+`python -c "import pathlib,re; ids='RC-257 RC-286 RC-287 RC-290 RC-295 RC-297 RC-307 RC-310 RC-316 RC-317 RC-322 RC-326 RC-328 RC-329 RC-345 RC-352 RC-353 RC-356 RC-357 RC-358 RC-361 RC-362 RC-363 RC-364 RC-365 RC-366 RC-369 RC-371 RC-372 RC-373 RC-374 RC-375 RC-382 RC-391 RC-392 RC-396 RC-401 RC-402 RC-403 RC-442 RC-450 RC-453 RC-454 RC-455 RC-456 RC-472 RC-473 RC-474'.split(); rows={m.group(1):m.group(0) for m in re.finditer(r'^\| (RC-\d+) \|.*$',pathlib.Path('governance/root_cause_log.md').read_text(encoding='utf-8'),re.M)}; ex=re.compile(r'pytest|test_[a-z0-9_]+\.py|RAN|--measure|python -m|\.venv',re.I); mech=re.compile(r'check_[a-z_]+|_guard\b|guard\.py|pm_verify|honesty|stop_hook|delta gate|negative control',re.I); import collections; c=collections.Counter(('exec' if ex.search(rows[i].rsplit('|',2)[-2]) else 'mech-only' if mech.search(rows[i].rsplit('|',2)[-2]) else 'neither') for i in ids); print(c)"`
+→ 46 cite direct execution evidence; the only 2 mechanism-only closes (RC-326, RC-329) were already
 reopened in round 1. Under the taint-fixed claims analyser the tracked test corpus holds
 ZERO prose-only files, so no close rests on a prose-shaped test. Round 1's four batches
 re-executed the cited suites independently. Remaining epistemic residue: none identified.

@@ -254,7 +254,8 @@ def _render_markdown(report: dict[str, Any], md_path: Path) -> None:
     lines.append("- `tests/test_live_ui_integrity_v1.py`")
     lines.append(f"- `{md_path.name}`")
     lines.extend(["", "## Objective audit", ""])
-    lines.append("Run: `python tools/enforce_all_rules.py --objective-audit`")
+    # enforce_all_rules.py retired 2026-07-16; the live catalog is the objective audit.
+    lines.append("Run: `python tools/check_institutional_correctness.py`")
     lines.extend(["", "## Recommended fix branches", ""])
     for row in report.get("recommended_fix_branches") or []:
         lines.append(f"- `{row.get('branch')}` — {row.get('reason')}")

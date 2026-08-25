@@ -580,7 +580,13 @@ def rc_redate_violations(repo: Path | None = None) -> list[str]:
     rows, 2 with no reason recorded anywhere (4ecb1cb7 RC-210, b13b117b RC-257).
     Deliberately NO extension ceiling and NO re-date count cap (RC-280: no ratchets) —
     a thrice-re-dated row visibly carries all three RE-DATED entries for operator review.
-    Fail-closed: an unreadable staged side refuses the commit."""
+    Fail-closed: an unreadable staged side refuses the commit.
+    HONEST LIMITS (red-team 2026-08-25): (a) binds at local pre-commit only — commits
+    from unhooked checkouts or the GitHub web UI bypass it, and CI does not re-check
+    lineage; (b) the close-then-reopen two-commit dance can move a due date without
+    lineage — partially mitigated because the transient terminal row must satisfy the
+    ledger's terminal-evidence gate; (c) governance/unproven_register.md due dates are
+    out of scope. Extending any of these is the operator's call, not an auto-hardening."""
     root = repo or REPO
     rel = "governance/root_cause_log.md"
     sr = _git(["diff", "--cached", "--name-only", "--", rel], cwd=root)
