@@ -4257,10 +4257,44 @@ def _is_loggable_session() -> bool:
     return PRE_MARKET_MINS <= mins <= LOGGER_BUFFER_MINS
 
 
+def _enrollment_collectability_probe(ticker: str) -> tuple[bool, str]:
+    """Cursor-audit F5: prove a symbol can actually PRODUCE a snapshot before enrolling it.
+
+    A snapshot requires BOTH a quote (200) and an option chain (200 with >=1 contract), so a
+    symbol with no options ($TNX, a yield index) or one the vendor refuses (SATS, 404) can never
+    collect. Enrollment previously validated only string SHAPE (is_valid_production_ticker), which
+    conflates "plausible symbol" with "will produce a snapshot" — the exact "visibility is not
+    sufficiency" gap that admitted permanent non-collectors. Returns (ok, reason). Bounded: one
+    quote plus one index-budget-safe gated chain fetch, both through the standard faucets. This
+    is a live one-shot probe: a transient vendor blip rejects the add (the user can retry), which
+    is the safe direction — never admit an un-provable non-collector."""
+    tk = ticker_storage_key(ticker)
+    try:
+        client = get_client()
+        q = _memoized_quote_response(tk, client=client)
+        if q is None or getattr(q, "status_code", None) != 200:
+            return False, f"quote unavailable (vendor status {getattr(q, 'status_code', None)})"
+        c, _gw, _fs = _gated_safe_get_chain(
+            client, tk, strike_count=resolve_chain_strike_count(tk),
+            to_date=_chain_to_date_for(tk, None), from_date=_chain_from_date_for(tk, None),
+        )
+        if c is None or getattr(c, "status_code", None) != 200:
+            return False, f"no option chain (vendor status {getattr(c, 'status_code', None)})"
+        if not flatten_chain_contracts(c.json()):
+            return False, "option chain returned zero contracts"
+        return True, "ok"
+    except Exception as e:
+        return False, f"probe error: {type(e).__name__}: {e}"
+
+
 def _add_logger_ticker(ticker: str, *, enrollment_source: str = "ui_auto") -> bool:
     """
     Add a symbol to the in-memory logger cycle and durable logging_universe (Issue 22).
     Returns True if newly appended to _logger_tickers.
+
+    Cursor-audit F5: a NEW enrollment must first PROVE it can collect (quote + chain) via
+    _enrollment_collectability_probe. Already-enrolled re-adds short-circuit before the probe;
+    core tickers are exempt (always collectable — never gate the spine on a transient blip).
     """
     from production_universe import is_valid_production_ticker, normalize_production_ticker
 
@@ -4283,6 +4317,14 @@ def _add_logger_ticker(ticker: str, *, enrollment_source: str = "ui_auto") -> bo
                         e,
                         exc_info=True,
                     )
+            return False
+    # Cursor-audit F5: a genuinely NEW enrollment must prove collectability before it is committed
+    # (durable upsert + in-memory append + any FIFO eviction). Core tickers are exempt.
+    if ticker not in CORE_TICKERS:
+        _probe_ok, _probe_why = _enrollment_collectability_probe(ticker)
+        if not _probe_ok:
+            log.warning("Background logger: refusing %s — cannot collect a snapshot: %s",
+                        ticker, _probe_why)
             return False
     if _HAS_SIGNALS and ticker not in CORE_TICKERS:
         try:
@@ -4642,14 +4684,24 @@ def _live_operator_mode_active() -> bool:
 def _logger_fetch_and_log(ticker: str) -> str:
     """
     Fetch data for one ticker and log a snapshot to the DB.
-    Returns 'ok:fetch', 'skipped:closed', or 'error:<msg>'.
+    Returns 'ok:fetch', 'skipped:closed', 'skipped:quarantined', or 'error:<msg>'.
     Never raises — always returns a status string.
     (2026-08-25 universal collection: the 'skipped:confluence_quote_only' and
     'skipped:live_operator_mode' statuses are retired — no per-ticker capture skip.)
     """
+    tk = ticker_storage_key(ticker)   # Cursor-audit F4: the shared quarantine book is keyed canonically
     try:
         if not _is_loggable_session():
             return "skipped:closed"
+
+        # Cursor-audit F4: consult the shared per-symbol vendor-health book BEFORE spending a scarce
+        # chain-gate slot. A symbol the vendor PERMANENTLY refuses (SATS 404 -> hard-quarantined after
+        # 3 hits) or is briefly unavailable (soft backoff) is skipped here instead of re-requested
+        # every cycle. The terrain loop already had this protection; the logger — hitting the SAME
+        # 2-slot chain gate — did not, so a dead symbol burned a slot the healthy book needed on
+        # every pass (RC-148 class). One book across both loops: whichever hits the 404 quarantines it.
+        if _terrain_quarantine_blocks(tk):
+            return "skipped:quarantined"
 
         # UNIVERSAL COLLECTION (operator requirement, 2026-08-25, RC-493): the panel_auto
         # confluence-only skip AND the operator-mode throttle are gone — every enrolled
@@ -4688,6 +4740,7 @@ def _logger_fetch_and_log(ticker: str) -> str:
                     exc_info=True,
                 )
 
+        _note_terrain_success(tk)   # Cursor-audit F4: a clean fetch clears any streak/soft hold
         return "ok:fetch"
 
     except Exception as e:
@@ -4696,6 +4749,17 @@ def _logger_fetch_and_log(ticker: str) -> str:
         with _logger_lock:
             _logger_stats.setdefault(ticker, {})
             _logger_stats[ticker]["last_error"] = err
+        # Cursor-audit F4: feed the shared quarantine so a permanently-refused symbol stops being
+        # re-requested every cycle. Parse the vendor status _fetch_state now carries on its detail
+        # (read the FULL detail, not the truncated `err`); unknown -> _classify_chain_failure fails
+        # closed to "soft", so an unrecognised error never earns a wrongful permanent quarantine.
+        _detail = str(getattr(e, "detail", None) or e)
+        _vstatus = None
+        if "vendor_status=" in _detail:
+            _val = _detail.split("vendor_status=", 1)[1].split("]", 1)[0].strip()
+            if _val.isdigit():
+                _vstatus = int(_val)
+        _note_terrain_failure(tk, err, _classify_chain_failure(_vstatus, type(e).__name__))
         return f"error:{err}"
 
 
@@ -6584,7 +6648,11 @@ def _fetch_state(
         ) from e
     _chain_window_marks.append(("chain_window_leaf_wall_ms", time.monotonic()))
     if c_resp is None or c_resp.status_code != 200:
-        raise HTTPException(status_code=502, detail="Chain fetch failed")
+        # Cursor-audit F4: carry the real vendor status so the background logger's quarantine can
+        # tell a PERMANENT symbol refusal (4xx — e.g. SATS 404) from a transient venue error
+        # (timeout/5xx/429). Detail still starts with "Chain fetch failed" for existing consumers.
+        raise HTTPException(status_code=502,
+                            detail=f"Chain fetch failed [vendor_status={getattr(c_resp, 'status_code', None)}]")
     c_json = c_resp.json()
     contracts     = flatten_chain_contracts(c_json)
     _t_after_chain_mono = time.monotonic()
@@ -6606,7 +6674,8 @@ def _fetch_state(
 
     # Quote fetched in parallel with chain above — parse here after chain JSON work.
     if q_resp is None or q_resp.status_code != 200:
-        raise HTTPException(status_code=502, detail="Quote fetch failed")
+        raise HTTPException(status_code=502,   # Cursor-audit F4: carry vendor status (see chain raise)
+                            detail=f"Quote fetch failed [vendor_status={getattr(q_resp, 'status_code', None)}]")
     q_json = q_resp.json()
     _t_after_quote_mono = time.monotonic()
     _t_after_quote_wall = time.time()

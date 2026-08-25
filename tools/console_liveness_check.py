@@ -14,6 +14,12 @@ Both are answered by the snapshot clock in the production DB, read-only:
     recent snapshots with mc_paths present -> producer alive (a WAIT is honest); recent
     snapshots but mc_paths NULL across the board -> producer dead, surfaced instead of
     silently mistaken for abstention.
+  * PER-TICKER LIVENESS (Cursor-audit F6): the two checks above are AGGREGATE — a single
+    live ticker (SPY) keeps MAX(ts_utc) and COUNT(mc_paths) fresh while a SPECIFIC enrolled
+    ticker is dark. So each enrolled collecting-category ticker's own last successful
+    collection clock (logging_universe.last_background_log_ts_utc) must also be within
+    STALE_LIMIT_SECS. A never-collected (NULL) ticker is excluded — fresh enrollment or a
+    quarantined non-collector is not a regression; a WAS-collecting-now-dark ticker is.
 
 No new governance, no in-process change, no heartbeat table: this is one read-only query
 against snapshots.ts_utc / snapshots.mc_paths, meant to run as a small scheduled host task
@@ -120,8 +126,33 @@ def check(db_path: str) -> int:
                            f"but mc_paths is NULL across the last {RECENT_MC_WINDOW_SECS//60}min "
                            f"— the model stack is fail-closed, not abstaining")
             return 1
-        _emit("OK", f"collecting (newest {age:.0f}s old) and producer live "
-                    f"({mc_live} mc_paths rows in last {RECENT_MC_WINDOW_SECS//60}min)")
+        # Per-ticker liveness (Cursor-audit F6): the aggregate MAX(ts_utc) above stays fresh on SPY
+        # alone while a SPECIFIC enrolled ticker is dark — the exact "liveness green while a ticker is
+        # dark" blind spot. Flag any enrolled collecting-category ticker whose last SUCCESSFUL
+        # background collection (logging_universe.last_background_log_ts_utc) is older than
+        # STALE_LIMIT_SECS. A ticker that has NEVER collected (NULL) is excluded: it may be freshly
+        # enrolled this cycle, or a quarantined non-collector (a known-dead symbol the logger correctly
+        # stopped requesting) — neither is a regression. The defect is a ticker that WAS collecting and
+        # went dark. Degrades to a silent skip (never a false ALERT) if the enrollment table is absent.
+        try:
+            roster = con.execute(
+                "SELECT ticker, last_background_log_ts_utc FROM logging_universe "
+                "WHERE category IN ('core','pinned','panel_auto','user_persisted')"
+            ).fetchall()
+        except sqlite3.Error:
+            roster = None
+        if roster:
+            dark = [(tk, now_ts - float(ts)) for tk, ts in roster
+                    if ts is not None and (now_ts - float(ts)) > STALE_LIMIT_SECS]
+            if dark:
+                dark.sort(key=lambda x: -x[1])
+                names = ", ".join(f"{tk}({a:.0f}s)" for tk, a in dark[:10])
+                _emit("ALERT", f"PARTIAL-DARK (F6): {len(dark)} enrolled ticker(s) stopped collecting "
+                               f"while overall collection is live (newest {age:.0f}s): {names}")
+                return 1
+        _emit("OK", f"collecting (newest {age:.0f}s old), producer live "
+                    f"({mc_live} mc_paths rows/{RECENT_MC_WINDOW_SECS//60}min), "
+                    f"every enrolled ticker within {STALE_LIMIT_SECS//60}min")
         return 0
     except sqlite3.Error as e:
         _emit("ALERT", f"liveness query failed: {e}")
