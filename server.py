@@ -14709,6 +14709,29 @@ def _canonical_price_level_bars(tk: str, session_date) -> tuple[list, str, list]
                  "close": r[4], "volume": r[5]} for r in reversed(rows)
             ])
             bar_source = "banked_price_bars_1m"
+            # AUDIT ROUND 2 (2026-08-25): the >=LEVELS_PRIOR_SESSION_MIN_BARS coverage
+            # check existed only on the accumulator path, and this fallback fires
+            # precisely WHEN coverage is low — so truncated banked tapes (measured: MTA
+            # sessions banked at 188/236/316 of 390 RTH bars) served PDH/PDL as
+            # prior-day fact with up to half the session missing. A low banked count is
+            # ambiguous (thin trading vs collection gap), so the levels still serve but
+            # the prior_day family is stamped degraded with the measured count — never
+            # silently.
+            _b_prior = prior_trading_session_date(bars_norm, session_date)
+            if _b_prior is not None:
+                from liquidity_value_engine import _bar_dt_et as _bde2
+                _n_banked = sum(
+                    1 for b in bars_norm
+                    if (lambda d: d is not None and d.date() == _b_prior)(_bde2(b))
+                )
+                if _n_banked < LEVELS_PRIOR_SESSION_MIN_BARS:
+                    degraded.append({
+                        "family": "prior_day",
+                        "reason": (f"banked prior session {_b_prior} holds only "
+                                   f"{_n_banked} of >= {LEVELS_PRIOR_SESSION_MIN_BARS} "
+                                   f"RTH bars — thin trading or a collection gap; "
+                                   f"prior-day levels derive from a partial tape"),
+                        "last_good_ts_utc": None})
         except Exception as e:
             degraded.append({"family": "prior_day",
                              "reason": f"banked bar read failed: {str(e)[:80]}",

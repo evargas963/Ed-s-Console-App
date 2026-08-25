@@ -16,9 +16,9 @@ Chain members (each file is the lock; this list is the wiring contract the tests
     tools/honesty_guard.py
     tools/operator_law_guard.py
 process_lock_guard is deliberately NOT in the Stop chain: its Stop path measured 3.18s
-(the bulk of the whole chain) and PR #187 already proposes exactly this dereg —
-process_lock_guard remains on every PreToolUse, where its sole-writer and commit
-protections actually bind.
+(the bulk of the whole chain) and the dereg landed (PR #187 / RC-471) —
+process_lock_guard remains on every PreToolUse, where its process-integrity rails
+(cross-checkout protection, destructive/piped git) actually bind.
 """
 from __future__ import annotations
 

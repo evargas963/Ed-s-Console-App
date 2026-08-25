@@ -97,6 +97,100 @@ def test_rail_fails_open_on_unreadable_topology(tmp_path):
         {"file_path": str(tmp_path / "anything.py")}, repo=wt) == []
 
 
+# ── REDATE_LOCK (audit round 2, 2026-08-25): a promised due date moves only with its
+# reason in the row. Measured basis: 67 historical due-cell moves, 61 on already-overdue
+# rows, 2 with no reason anywhere.
+
+_ROW = "| RC-900 | {status} | 2026-08-01 | {due} | defect text | why -> chain | {fix} |"
+
+
+def _ledger_repo(tmp_path, head_due="2026-08-10", head_status="OPEN"):
+    repo = _init_repo(tmp_path)
+    led = repo / "governance" / "root_cause_log.md"
+    led.write_text(_ROW.format(status=head_status, due=head_due, fix="FIXED: x") + "\n",
+                   encoding="utf-8")
+    subprocess.run(["git", "add", "-A"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(["git", "commit", "-m", "ledger"], cwd=repo, check=True,
+                   capture_output=True)
+    return repo, led
+
+
+def _stage(repo, led, row_text):
+    led.write_text(row_text + "\n", encoding="utf-8")
+    subprocess.run(["git", "add", str(led)], cwd=repo, check=True, capture_output=True)
+
+
+def test_redate_lock_blocks_a_silent_due_move(tmp_path):
+    repo, led = _ledger_repo(tmp_path)
+    _stage(repo, led, _ROW.format(status="OPEN", due="2026-09-10", fix="FIXED: x"))
+    out = OPL.rc_redate_violations(repo)
+    assert out and "REDATE_LOCK" in out[0] and "RC-900" in out[0], out
+
+
+def test_redate_lock_passes_with_token_and_reason(tmp_path):
+    repo, led = _ledger_repo(tmp_path)
+    _stage(repo, led, _ROW.format(
+        status="OPEN", due="2026-09-10",
+        fix="FIXED: x RE-DATED 2026-08-10->2026-09-10: wide-capture n still accruing"))
+    assert OPL.rc_redate_violations(repo) == []
+
+
+def test_redate_lock_blocks_an_empty_reason(tmp_path):
+    repo, led = _ledger_repo(tmp_path)
+    _stage(repo, led, _ROW.format(
+        status="OPEN", due="2026-09-10",
+        fix="FIXED: x RE-DATED 2026-08-10->2026-09-10: "))
+    assert OPL.rc_redate_violations(repo), "an empty reason is not a reason"
+
+
+def test_redate_lock_blocks_wrong_lineage(tmp_path):
+    repo, led = _ledger_repo(tmp_path)
+    _stage(repo, led, _ROW.format(
+        status="OPEN", due="2026-09-10",
+        fix="FIXED: x RE-DATED 2026-08-09->2026-09-10: reason with wrong old date"))
+    assert OPL.rc_redate_violations(repo), "lineage must name the actual old due date"
+
+
+def test_redate_lock_exempts_a_closing_row(tmp_path):
+    repo, led = _ledger_repo(tmp_path)
+    _stage(repo, led, _ROW.format(status="CLOSED", due="2026-08-25",
+                                  fix="FIXED and VERIFIED: 3 tests"))
+    assert OPL.rc_redate_violations(repo) == []
+
+
+def test_redate_lock_ignores_new_rows_and_non_due_edits(tmp_path):
+    repo, led = _ledger_repo(tmp_path)
+    _stage(repo, led,
+           _ROW.format(status="OPEN", due="2026-08-10", fix="FIXED: x plus more detail")
+           + "\n| RC-901 | OPEN | 2026-08-25 | 2026-09-30 | new defect | why -> chain | NEXT-DEPTH: y |")
+    assert OPL.rc_redate_violations(repo) == []
+
+
+def test_redate_lock_quiet_on_untouched_ledger(tmp_path):
+    repo, _led = _ledger_repo(tmp_path)
+    assert OPL.rc_redate_violations(repo) == []
+
+
+def test_quiet_pass_must_be_fresher_than_change(tmp_path):
+    """R11: a PASS measured before the claimed server.py/db.py change is not the live
+    quiet bar for that change (a 200-day-old PASS used to satisfy a fresh claim)."""
+    import os
+    import time
+    repo = _init_repo(tmp_path)
+    (repo / "reports").mkdir(exist_ok=True)
+    qp = repo / "reports" / "ed_server_warn_quiet_window_latest.json"
+    qp.write_text('{"verdict": "PASS"}', encoding="utf-8")
+    # db.py is TRACKED by _init_repo, so a worktree write lands in the touched set.
+    (repo / "db.py").write_text("# RC-183\nis_collect_window_bar_end_ts_utc\n# fresh\n",
+                                encoding="utf-8")
+    old = time.time() - 200 * 86400
+    os.utime(qp, (old, old))
+    out = OPL.completion_claim_violations("Mission COMPLETE: quiet bar met.", repo)
+    assert any("STALE_PASS" in v for v in out), out
+    os.utime(qp, None)
+    assert OPL.completion_claim_violations("Mission COMPLETE: quiet bar met.", repo) == []
+
+
 def test_index_worktree_mismatch_detected(tmp_path, monkeypatch):
     repo = _init_repo(tmp_path)
     checker = repo / "tools" / "check_institutional_correctness.py"

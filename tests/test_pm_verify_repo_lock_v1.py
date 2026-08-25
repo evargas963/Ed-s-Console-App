@@ -96,3 +96,34 @@ def test_live_wiring_into_the_stop_path():
     for hooks in (".claude/settings.json", ".cursor/hooks.json"):
         cfg = (REPO / hooks).read_text(encoding="utf-8")
         assert "honesty_guard.py" in cfg, f"{hooks} does not run honesty_guard at Stop"
+
+
+# ── audit round 2 (2026-08-25): evidence must be ISSUED, hedges scope per paragraph ─────
+
+def test_mentioned_git_without_issuing_blocks(tmp_path):
+    """R4: when the Stop path supplies this turn's commands, a git read merely MENTIONED
+    in prose is not a reading."""
+    text = ("VERIFIED on HEAD: `git rev-parse HEAD` -> "
+            "3e46caf726c10cd5bcf30f41c36818d12c0e185f. open-class = 3.")
+    assert pm_verify_repo_violations(text, repo=tmp_path, executed=[])
+    assert pm_verify_repo_violations(
+        text, repo=tmp_path, executed=["git rev-parse HEAD"]) == []
+
+
+def test_bare_invocation_without_value_blocks_head_sha_claim(tmp_path):
+    """P2 shape: the sha precedes the citation and no value follows it — pasted output
+    naturally follows the invocation; a bare command mention does not."""
+    text = ("VERIFIED: RC-450 is ON HEAD at abc1234def. "
+            "I ran `git rev-parse HEAD` to confirm.")
+    assert pm_verify_repo_violations(
+        text, repo=tmp_path, executed=["git rev-parse HEAD"])
+
+
+def test_hedge_is_paragraph_scoped(tmp_path):
+    """One hedge about an unrelated topic must not neutralize a separate verdict block."""
+    text = ("VERIFIED on HEAD: open-class = 3, log_law ENFORCED.\n\n"
+            "Separately, the charm question stays [UNVERIFIED] pending the wide capture.")
+    assert pm_verify_repo_violations(text, repo=tmp_path, executed=[])
+    hedged_inline = ("Open-class on HEAD: ACCEPTED as claim, [UNVERIFIED] — "
+                     "open-class = 3 per the writer's report.")
+    assert pm_verify_repo_violations(hedged_inline, repo=tmp_path, executed=[]) == []

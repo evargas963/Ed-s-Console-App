@@ -49,10 +49,18 @@ YES_NO_ASK = re.compile(
     re.I,
 )
 SCORE_ASK = re.compile(r"\b(score|how strong|/10|out of (?:ten|10)|rating)\b", re.I)
-HAS_YES_NO = re.compile(r"\b(yes|no)\b", re.I)
+#: Answer-POSITION tokens: start of a line or right after sentence punctuation. An
+#: incidental quantifier ('there is no single file…') is not an answer; 'Correct' IS a
+#: yes in operator dialect (both directions measured 2026-08-25). HONEST LIMIT: this
+#: forces an answer TOKEN in answer position, not a correct or responsive answer.
+HAS_YES_NO = re.compile(
+    r"(?im)(?:^\s*|[.!?:;—-]\s+)(?:yes|no|correct|right|affirmative|negative)\b")
 HAS_SCORE = re.compile(r"\b(\d{1,2})\s*/\s*10\b|\bscore[:\s]+(\d{1,2})\b", re.I)
+#: Affirmative linkage required (audit 2026-08-25): 'no longer enforced; see foo.md for
+#: the history' is the HONEST sentence and used to block. The claim shape is
+#: 'locked/enforced BY/VIA a .md', not '.md near the word enforced'.
 MD_AS_LOCK = re.compile(
-    r"\b(mechanical lock|locked|enforced)\b[^.!\n]{0,80}\b\.(md|mdc)\b|"
+    r"\b(?:(?:mechanical )?lock|enforced|locked)\s+(?:by|via|in|through|is)\b[^.!\n]{0,60}\b\.(md|mdc)\b|"
     r"\b\.(md|mdc)\b[^.!\n]{0,80}\b(mechanical lock|is the lock|as the lock)\b",
     re.I,
 )
@@ -115,7 +123,7 @@ def honesty_violations(user_text: str | None, assistant_text: str) -> list[str]:
     import re as _re
     _lock_claim = _re.search(
         r"\b(locked|encoded|enforced)\s+(?:via|in|by|through)\s+(?:the\s+)?"
-        r"(rule|mandate|process\s+doc|charter|memo|agreement|standing\s+law)\b",
+        r"(rule|mandate|process\s+doc|charter|memo|agreement|standing\s+law|readme|convention|policy|note|plan)\b",
         a, _re.I)
     if _lock_claim and not _re.search(r"\bcheck_\w+\b|\b\w+_guard\.py\b|\b\w+_lock\.py\b", a):
         out.append(
@@ -140,6 +148,18 @@ def honesty_violations(user_text: str | None, assistant_text: str) -> list[str]:
                 "deflection phrase without the requested deliverable (scores/paths) — "
                 "answer the question asked (AS 1215 / instruction fidelity)"
             )
+    # Banned end-of-turn phrases (operator 2026-05-27). ONLY the narrow end-anchored
+    # interrogative shapes are mechanized — a general option-menu detector would
+    # mis-call the REQUIRED 'state the operator's next step' behavior; everything
+    # beyond these exact shapes stays operator review (accepted, not mechanized).
+    tail = a[-200:]
+    if re.search(r"(?:^|[.!?]\s+)(?:Want me to|Should I|Shall I)\b[^.!?\n]{0,80}\?", tail) \
+            or re.search(r"\bjust say the word\b", tail, re.I):
+        out.append(
+            "banned end-of-turn phrase — the turn ends on a wait-posture question "
+            "('Want me to…?' / 'Should I…?' / 'Shall I…?'). State the operator's next "
+            "step and end the turn (operator law 2026-05-27)."
+        )
     return out
 
 
@@ -172,16 +192,28 @@ def main() -> int:
     # construction rather than by two files agreeing.
     try:
         from tools.pm_verify_lock import pm_verify_repo_violations
+        from tools.proof_only_guard import turn_slice
+        from tools.operating_process_lock import completion_claim_violations
     except ImportError:
         from pm_verify_lock import pm_verify_repo_violations  # type: ignore
-    bad.extend(pm_verify_repo_violations(text))
+        from proof_only_guard import turn_slice  # type: ignore
+        from operating_process_lock import completion_claim_violations  # type: ignore
+    _turn_text, executed = turn_slice(tp)
+    bad.extend(pm_verify_repo_violations(text, executed=executed))
+    # RC-471 dereg left completion_claim_violations DEAD: process_lock_guard left Stop
+    # because its rails bind at PreToolUse, but stop_block() — the only caller of the
+    # completion-claim battery — is unreachable from PreToolUse. Rewired here. Cost ~0
+    # on non-claim turns: its git subprocesses run only after the claim regex matches.
+    # (The unconditional Stop-time index-parity/LIVE-vs-DISK battery stays retired per
+    # RC-471; only these claim-gated forms return.)
+    bad.extend(completion_claim_violations(text))
     if not bad:
         return 0
     sys.stderr.write(
         "BLOCKED (RC-209) — OPERATOR LAW: no lie, no omission, no dodge; .md is not a lock.\n\n"
         + "\n".join(f"    {b}" for b in bad)
         + "\n\nAnswer the question plainly (Yes/No or N/10). Do not substitute a report file "
-          "for a .py BLOCK. Remove soft_partial theater or stop claiming 10/10.\n"
+          "for a .py BLOCK.\n"
     )
     return 2
 

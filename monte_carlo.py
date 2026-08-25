@@ -56,6 +56,37 @@ ANNUALIZED_HOURS    = 252 * 6.5
 BAR_MINUTES         = 1
 SEED                = None
 
+# ── mc_sigma_value HISTORICAL UNIT ERAS (RC-478; measured 2026-08-25,
+# reports/mc_sigma_blast_area_2026-08-25.md) ─────────────────────────────────
+# The stored snapshot column mc_sigma_value carries THREE incompatible unit
+# eras (~310x apart), because before the 2026-08-24 producer fix the recorded
+# value was whatever scale the active vol path produced. Rows are NOT
+# comparable across eras and the pre-cutover garch era is NOT convertible
+# per-row (its bar cadence changed mid-era and the producing code predates
+# repo history). Any reader of HISTORICAL mc_sigma_value must classify rows
+# with mc_sigma_unit_for_row and either filter to one era or convert only the
+# per_bar_1m era (x sqrt(ANNUALIZED_HOURS*60/BAR_MINUTES)). The reader census
+# is pinned by tests/test_mc_sigma_unit_quarantine_v1.py — a new consumer
+# must confront this contract to get past it.
+#: 5869081f (2026-07-08): garch bar cadence flipped per-5-minute -> per-1-minute.
+MC_SIGMA_BAR_CADENCE_CUTOVER_TS = 1783651965.0
+#: Last mixed-unit write (snapshots rowid 341304); all later garch-path rows are
+#: NULL until the fixed producer runs, then annualized per the contract below.
+MC_SIGMA_LEGACY_LAST_WRITE_TS = 1786047287.027
+
+
+def mc_sigma_unit_for_row(ts_utc: float | None, mc_vol_source: str | None) -> str:
+    """Unit class of one stored mc_sigma_value row: 'annualized' (matches the
+    current contract), 'per_bar_1m' (convertible), or 'legacy_unverified'
+    (mixed cadence — unusable for cross-row comparison; quarantine)."""
+    if mc_vol_source == "blend":
+        return "annualized"
+    if ts_utc is None or ts_utc <= MC_SIGMA_BAR_CADENCE_CUTOVER_TS:
+        return "legacy_unverified"
+    if ts_utc <= MC_SIGMA_LEGACY_LAST_WRITE_TS:
+        return "per_bar_1m"
+    return "annualized"
+
 # Regime sigma multipliers
 REGIME_SIGMA_MULT = {
     "pinning": 0.60, "mean_reversion": 0.75, "vol_compression": 0.70,

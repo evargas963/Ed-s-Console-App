@@ -1,12 +1,13 @@
 # RC open-class drain — LIVE POINTER (not a queue)
 
-`# log-law-ok: this file is a POINTER to the live ledger and deliberately holds no work rows.`
+`# this file is a POINTER to the live ledger and deliberately holds no work rows.`
 
-**LOG LAW (operator/PM 2026-08-04, enforced by `tools/log_law.py`):** closable work has exactly
-two homes. This file previously carried 21 `| RC-… | OPEN |` rows — a third work queue that went
-stale the moment it was written, so whichever list a reader opened looked authoritative while the
-other rotted. It is now a pointer, and the lock BLOCKS it (or any other markdown) from becoming a
-queue again.
+**LOG LAW (operator 2026-08-04; the `tools/log_law.py` mechanism was retired 2026-08-24 —
+`governance/retired_checks.md` — the principle survives as this pointer):** closable work has
+exactly two homes. This file previously carried 21 `| RC-… | OPEN |` rows — a third work queue
+that went stale the moment it was written, so whichever list a reader opened looked
+authoritative while the other rotted. It is now a pointer. Overdue-OPEN rows are blocked
+mechanically by `check_root_cause_log` + `check_open_item_cap`.
 
 | Kind of work | Sole home | Vocabulary |
 |---|---|---|

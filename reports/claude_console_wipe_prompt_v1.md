@@ -1,4 +1,4 @@
-# Claude prompt — console wipe pack
+# Claude prompt — console wipe pack — HISTORICAL (stamped 2026-08-25; a dated session prompt, not a standing work order)
 
 CONTEXT: Inventory in `reports/console_error_inventory_v1.md`. Stale capture counts from `151702.txt`. Live :8000 is external cmd — do not claim wiped without tee/sample after restart.
 

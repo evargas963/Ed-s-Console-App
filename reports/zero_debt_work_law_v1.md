@@ -1,10 +1,9 @@
-# Zero-Debt Work Law v1
+# Zero-Debt Work Law v1 — HISTORICAL RECORD (2026-08-02)
 
-`# log-law-ok: frozen 2026-08-02 work-law snapshot — superseded as a MECHANISM by tools/log_law.py
-(prose is never a lock); kept as the dated record of the law's wording, not as a work queue.`
-
-**Cite this file:** `reports/zero_debt_work_law_v1.md`  
-Open items, RC rows, handoffs, prompts, and closeout prose that park broken work should point here.
+> **Not a standing binding MD (stamped 2026-08-25).** The live law is AGENTS.md
+> "Find something broken → fix it"; the `tools/log_law.py` mechanism this file once cited is
+> retired (`governance/retired_checks.md`). Kept as the dated record of the law's original
+> wording — do NOT cite this file as authority; cite AGENTS.md.
 
 | | |
 |---|---|

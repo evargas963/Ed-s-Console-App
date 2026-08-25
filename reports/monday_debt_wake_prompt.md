@@ -1,4 +1,9 @@
-# Monday debt wake prompt — paste into Cursor or Claude
+# Monday debt wake prompt — HISTORICAL (do not paste)
+
+> **HISTORICAL RECORD (stamped 2026-08-25).** This was the 2026-08-03 one-shot wake prompt;
+> its targets are dead and its cited authority (`reports/zero_debt_work_law_v1.md`) is itself
+> historical. Under the 2026-08-24 operating model the operator directs each session in chat —
+> no standing prompt file is a work order.
 
 **When:** Mon 2026-08-03 at/after ~08:25 CT (RTH open 08:30 CT / 09:30 ET).  
 **Authority:** `reports/zero_debt_work_law_v1.md` + `.cursor/rules/01-find-prove-no-soft-stop.mdc`.  

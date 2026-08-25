@@ -9,8 +9,11 @@ behaviour is untouched. Worse, it fired on its own author for DOCUMENTING the li
 have suppressed the lock inventory the operator had just asked for.
 
 WHAT AN ACTION BAN LOOKS LIKE. The laws are about doing things without proof, so the enforcement
-is: the ACTION cannot proceed unless the PROOF already ran. That requires knowing what ran, so this
-guard keeps a per-turn LEDGER of every command executed, written at PreToolUse and cleared at Stop.
+is: the ACTION cannot proceed unless a proof-shaped command was ISSUED this turn — the ledger is
+written at PreToolUse and observes no exit status, so "ran and passed" is not knowable here; a
+failed or interrupted verification still counts. (The smallest true fix would be a PostToolUse
+lane stamping exit codes — a new governance surface, the operator's call, not this audit's.)
+The guard keeps that per-turn LEDGER of every command executed, cleared at Stop.
 
   PreToolUse(Bash|PowerShell)
       * records the command in the turn ledger
@@ -260,54 +263,11 @@ def resolve_target_repo(cmd: str, payload_cwd: str = "") -> tuple[str, str]:
     return "", "no repository identity in the command and no working directory supplied"
 
 
-# ── applicability declaration (IEOS SPECIFICATION.md §3.3 ten-field model) ─────────────────
-#: Global WIRING is not a declaration of universal applicability (§3.3). RC-93 is an Ed Console
-#: law; it is declared here rather than hardcoded, and repositories are identified by CONTENT
-#: MARKERS so a clone, a rename, or a worktree at another path is still the same repository.
-_APPLICABILITY_REL = "governance/guard_applicability.json"
-_RC93_MECHANISM_ID = "ED-OPERATOR-LAW-GUARD/RC-93-COMMIT-BEFORE-PROOF"
-
-
-def _load_applicability(repo_for_lookup: str = "") -> dict:
-    for base in (Path(repo_for_lookup) if repo_for_lookup else None, REPO):
-        if base is None:
-            continue
-        try:
-            doc = json.loads((Path(base) / _APPLICABILITY_REL).read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            continue
-        if isinstance(doc, dict):
-            return doc
-    return {}
-
-
-def _mechanism(doc: dict, mech_id: str) -> dict:
-    for m in doc.get("mechanisms") or []:
-        if isinstance(m, dict) and m.get("governing_mechanism_id") == mech_id:
-            return m
-    return {}
-
-
-def rc93_applies_to(repo: str) -> bool:
-    """True when the declaration says RC-93 governs this repository.
-
-    A repository matches when EVERY declared identity marker exists inside it. Absent or
-    unreadable declaration -> the mechanism governs nothing, which is the §3.3 rule that an
-    undeclared scope is NOT_PROVEN rather than assumed universal.
-    """
-    if not repo:
-        return False
-    mech = _mechanism(_load_applicability(repo), _RC93_MECHANISM_ID)
-    spec = (mech.get("applicable_repositories") or {}) if mech else {}
-    markers = [str(x) for x in (spec.get("identity_markers") or []) if str(x).strip()]
-    if not markers:
-        return False
-    try:
-        root = Path(repo)
-        return all((root / m).exists() for m in markers)
-    except (OSError, ValueError):
-        return False
-
+# ── applicability machinery: REMOVED 2026-08-25 (independent-audit round 2) ────────────────
+# rc93_applies_to/_load_applicability/_mechanism scoped the RC-93 commit-before-proof rule,
+# which was retired 2026-08-24 (SIMPLICITY REHAB — see the commit-clause notes below). The
+# machinery had no production callers left; governance/guard_applicability.json marks the
+# ED-OPERATOR-LAW-GUARD/RC-93-COMMIT-BEFORE-PROOF entry retired.
 
 # ── what counts as PROOF HAVING RUN ───────────────────────────────────────────────────────
 #: A command that produces evidence about this repo's behaviour: the test suite, a gate, a
@@ -322,10 +282,53 @@ _VERIFICATION = re.compile(
 #: producer waiting to be picked up. The one authority is
 #: tools/pretooluse_guard.classify_path, reached through turn_self_audit.is_production_path.
 
-_GREP_AGAINST_FILES = re.compile(
-    r"(?:^|[|;&]\s*)(?:grep|rg|egrep|fgrep)\b(?![^|;&\n]*\|)[^|;&\n]*?"
-    r"(?:\*\.|\.py\b|\.md\b|\.html\b|\.js\b|\.json\b|\.yaml\b|-r\b|-R\b|--include|"
-    r"-t\s+\w+|--type|--glob|\s\.$|\s\./)", re.I)
+#: The no-grep law (2026-05-22) as an ACTION predicate, replacing a spelling test that
+#: flipped on file extensions, downstream pipes and wrappers (audit 2026-08-25:
+#: 'grep foo x.py | head' passed, 'git grep -r foo .' passed, bare 'rg foo' passed,
+#: while 'grep foo config.yaml' blocked and 'grep foo config.yml' passed). Violation =
+#: a searcher (grep/egrep/fgrep/rg, incl. `git grep`) with a positional file/dir
+#: operand beyond the pattern, a recursive/--include/--type/--glob form, an xargs
+#: feed, `git grep` in any form (it always searches the tree, never stdin), or bare
+#: `rg` at pipeline head (its default IS a recursive cwd search). Filtering another
+#: command's stdout — later pipeline stage, no file operand — stays legal. A
+#: downstream pipe never launders a file search.
+_SEARCHERS = frozenset({"grep", "egrep", "fgrep", "rg"})
+
+
+def _repo_search_violation(cmd: str) -> bool:
+    for stmt in re.split(r"&&|\|\||;|\n", cmd):
+        for idx, stage in enumerate(stmt.split("|")):
+            toks = [t.strip("\"'") for t in _tokens(stage.strip())]
+            fed_by_xargs = False
+            while toks and Path(toks[0]).name.lower().removesuffix(".exe") in (
+                    "time", "env", "nice", "sudo", "xargs"):
+                fed_by_xargs |= Path(toks[0]).name.lower().removesuffix(".exe") == "xargs"
+                toks = toks[1:]
+            if not toks:
+                continue
+            name = Path(toks[0]).name.lower().removesuffix(".exe")
+            args = toks[1:]
+            if name == "git":
+                if any(a == "grep" for a in args):
+                    return True
+                continue
+            if name not in _SEARCHERS:
+                continue
+            flags = [a for a in args if a.startswith("-")]
+            positionals = [a for a in args if not a.startswith("-")]
+            recursive = any(
+                a in ("-r", "-R", "--recursive", "-t") or
+                a.startswith(("--include", "--type", "--glob")) or
+                (len(a) > 1 and a[1] != "-" and ("r" in a[1:] or "R" in a[1:]))
+                for a in flags)
+            if positionals[1:] or recursive or fed_by_xargs:
+                return True
+            if name == "rg" and idx == 0:
+                return True
+    return False
+#: Deliberate split with operating_process_lock.reset_guard_violations (both stay firing):
+#: THIS regex bans the universal hard forms anywhere on the host; LOCK-2 over there bans the
+#: full reset/restore/checkout--/clean/stash verb class on protected/bare targets.
 _DESTRUCTIVE_GIT = re.compile(
     r"\bgit\s+(?:reset\s+--hard|checkout\s+--\s|clean\s+-[a-z]*f|push\s+--force(?!-with-lease))", re.I)
 #: RC-273 — the trees that are gitignored and therefore UNRECOVERABLE.
@@ -346,7 +349,11 @@ _DESTRUCTIVE_GIT = re.compile(
 #: binding lock has to be here, in the agent channel that actually failed.
 #:
 #: Destructive is defined by the TARGET's recoverability, never by the verb.
-_PROTECTED_TREE = r"(?:data|backups|models)[\\/]"
+#: Path-SEGMENT anchored (audit 2026-08-25): the bare substring matched 'AppData/' in
+#: every Windows temp/scratchpad path, misreading scratch redirects as truncation under
+#: data/. The lookbehind refuses a word character before the tree name: foo/data/,
+#: "data/, >data/ still match; AppData/, mydata/, _data/ do not.
+_PROTECTED_TREE = r"(?<![A-Za-z0-9_.-])(?:data|backups|models)[\\/]"
 _PROTECTED_DESTRUCTIVE = re.compile(
     r"(?:\brm\b|\bdel\b|\berase\b|\brmdir\b|Remove-Item|\bunlink\b|shutil\.rmtree"
     r"|os\.remove|os\.unlink|\.unlink\(|\btruncate\b)"
@@ -394,7 +401,7 @@ def _protected_path_violation(raw: str) -> bool:
 _SKIP_HOOKS = re.compile(
     r"--no-verify"
     r"|hooksPath"
-    r"|\bgit\s+(?:commit|push)\b[^\n]*?(?:\s-n\b)"
+    r"|\bgit\s+commit\b[^\n]*?(?:\s-n\b)"
     r"|(?:\$\{?env:)?ED_[A-Z_]*(?:_GUARD|_LOCK)(?![A-Z0-9_])['\"\s\]\}]*=\s*"
     r"(?:['\"]?\s*(?:off|false|0)\b|\()"
     r"|(?:Set-Item|New-Item|SetEnvironmentVariable|PSVariable)[^\n]{0,80}?"
@@ -451,8 +458,25 @@ def _safe_data_target(target: str) -> bool:
 _C_PAYLOAD = re.compile(r"-c\s+(['\"])((?:\\.|(?!\1).)*)\1", re.S)
 
 
+_INTERPRETER_HEADS = frozenset({
+    "python", "python3", "py", "pwsh", "powershell", "sh", "bash", "zsh",
+    "node", "perl", "ruby"})
+
+
 def _payload_write_violation(raw: str) -> bool:
+    # A commit/tag MESSAGE that DESCRIBES a payload write is data, not a write — the
+    # same lesson _protected_path_violation already applies for RC-273 incidents.
+    raw = re.sub(r"-m\s+(['\"])(?:\\.|(?!\1).)*\1", " -m MESSAGE ", raw, flags=re.S)
     for pm in _C_PAYLOAD.finditer(raw):
+        # -c is an interpreter payload only when an INTERPRETER launches it (grep -c
+        # is a counter, sqlite3 -c is config; blocking those stopped honest work).
+        seg_start = max((raw.rfind(ch, 0, pm.start()) for ch in ";|&\n"), default=-1) + 1
+        head_toks = _tokens(raw[seg_start:pm.start()])
+        if not head_toks:
+            continue
+        exe = Path(head_toks[0].strip("\"'")).name.lower().removesuffix(".exe")
+        if exe not in _INTERPRETER_HEADS and not exe.startswith("python"):
+            continue
         body = pm.group(2)
         for m in _HEREDOC_WRITE_SITE.finditer(body):
             if m.group(3):
@@ -538,9 +562,48 @@ def _redirect_source_violation(cmd: str) -> bool:
     return False
 
 
+_EMITTERS = frozenset({"echo", "printf", "rem", "write-host", "write-output"})
+_VERIF_WRAPPERS = ("time", "env", "nice", "xargs", "sudo")
+_PROBE_TOKEN = re.compile(r"\burllib\.request\b|\b127\.0\.0\.1:8000\b", re.I)
+
+
+def _verification_ran(detail: str) -> bool:
+    """A proof-shaped token counts only where it could EXECUTE (audit 2026-08-25):
+    scanned against shell_executed_part (so -m messages, -c payloads and heredoc bodies
+    are data), in a segment whose head is not an output emitter ('echo pytest all
+    green' used to mint proof), and in COMMAND position — the head token pair, or the
+    script/module argument of a python interpreter. Probe URLs may ride as arguments
+    of a non-emitter command (curl/Invoke-WebRequest). HONEST LIMIT: this proves a
+    verification command was ISSUED this turn, never that it completed or passed — the
+    ledger is written at PreToolUse and carries no exit status."""
+    for seg in _SEG_SPLIT.split(shell_executed_part(detail or "")):
+        toks = [t.strip("\"'") for t in _tokens(seg.strip())]
+        while toks and Path(toks[0]).name.lower().removesuffix(".exe") in _VERIF_WRAPPERS:
+            toks = toks[1:]
+        if not toks:
+            continue
+        head = Path(toks[0]).name.lower().removesuffix(".exe")
+        if head in _EMITTERS:
+            continue
+        if _PROBE_TOKEN.search(seg):
+            return True
+        cands = [" ".join(toks[:2])]     # 'ruff check', 'node --check', 'pytest -q', 'tools/x_audit.py'
+        if head.startswith("python") or head == "py":
+            args = toks[1:]
+            script = next((a for a in args if not a.startswith("-")), "")
+            if script:
+                cands.append(script)
+            if "-m" in args:
+                i = args.index("-m")
+                cands.extend(args[i + 1:i + 2])
+        if any(_VERIFICATION.search(c) for c in cands):
+            return True
+    return False
+
+
 def _has_verification_any(ledger: list[dict]) -> bool:
     """Session-wide proof — the Stop clauses' question, which is about the TURN, not a repo."""
-    return any(_VERIFICATION.search(e.get("detail", "")) for e in ledger if e.get("kind") == "bash")
+    return any(_verification_ran(e.get("detail", "")) for e in ledger if e.get("kind") == "bash")
 
 
 def _has_verification(ledger: list[dict], repo: str = "") -> bool:
@@ -557,7 +620,7 @@ def _has_verification(ledger: list[dict], repo: str = "") -> bool:
             continue
         if (e.get("repo") or "") != repo:
             continue
-        if _VERIFICATION.search(e.get("detail", "")):
+        if _verification_ran(e.get("detail", "")):
             return True
     return False
 
@@ -669,10 +732,11 @@ def bash_violations(cmd: str, ledger: list[dict], payload_cwd: str = "") -> list
         out.append("ACTION BLOCKED: shell redirect into a .py file writes source outside the "
                    "Edit/Write tools (v19: `cat > x.py <<EOF` walked around the heredoc rule). "
                    "Same action, same ban; non-source redirects stay legal.")
-    if _GREP_AGAINST_FILES.search(cmd):
+    if _repo_search_violation(cmd):
         out.append("ACTION BLOCKED: shell grep/rg pointed at repo FILES. Standing law "
                    "(2026-05-22): read files end-to-end or use structural/AST analysis. Filtering "
-                   "a command's own stdout is allowed; searching the codebase is not.")
+                   "a command's own stdout is allowed; searching the codebase is not. "
+                   "Piping a search into head/wc does not make it a stdout filter.")
     if _DESTRUCTIVE_GIT.search(cmd):
         out.append("ACTION BLOCKED: destructive git can discard operator work. Hand it to the "
                    "operator.")

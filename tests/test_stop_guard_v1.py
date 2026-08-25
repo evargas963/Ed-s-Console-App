@@ -42,6 +42,16 @@ def test_recognises_every_unfinished_marker(tmp_path, monkeypatch):
     assert {r[0] for r in sg.unfinished_rows_opened_today(TODAY)} == {"RC-91", "RC-92", "RC-93"}
 
 
+def test_pending_verification_word_order_detected(tmp_path, monkeypatch):
+    """R14 (audit round 2, 2026-08-25): observed marker variants — the reversed word
+    order and NOT DONE — must not slip past the vocabulary."""
+    _write_log(tmp_path, [
+        f"| RC-97 | OPEN | {TODAY} | 2099-01-01 | d | w | PENDING VERIFICATION on restart |",
+        f"| RC-98 | OPEN | {TODAY} | 2099-01-01 | d | w | NOT DONE - resumes tomorrow |",
+    ], monkeypatch)
+    assert {r[0] for r in sg.unfinished_rows_opened_today(TODAY)} == {"RC-97", "RC-98"}
+
+
 def test_does_not_block_on_closed_or_finished_rows(tmp_path, monkeypatch):
     _write_log(tmp_path, [
         f"| RC-94 | CLOSED | {TODAY} | 2099-01-01 | d | w | MEASURED 5 tests. END-TO-END: a->b |",

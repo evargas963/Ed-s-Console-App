@@ -322,8 +322,12 @@ def check_root_cause_log() -> list[Violation]:
 
     Operator law 2026-07-19: a cause found at why-2 is not the root -- it is a new defect
     that gets its own five whys. An entry stays OPEN until the chain terminates with no new
-    defect AND the fix is verified. This blocks commits on any OPEN entry past its due date,
-    so a half-traced defect cannot be quietly parked as "surface fixed".
+    defect AND the fix is verified. An OPEN entry past its due date is an enforced
+    violation. Since RC-406 it binds at merge via the CI delta gate, which blocks only
+    violations NEW relative to origin/main -- rows that age into overdue on both sides
+    pass, and a re-date clears the violation; the REDATE_LOCK in
+    tools/operating_process_lock.py is what forces every re-date to carry its reason
+    and lineage in the row.
 
     See governance/root_cause_log.md for the rules and the row format.
 

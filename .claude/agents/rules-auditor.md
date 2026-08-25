@@ -1,6 +1,6 @@
 ---
 name: rules-auditor
-description: Reviews the repo's governance / rules surface end-to-end and proposes additions, consolidations, or enforcement gaps to capture the true intent of a clean, correct, quality repo. Use when the operator asks to "audit rules", "review governance", "check for missing rules", "find rule gaps", or proactively after major rule changes land. Read-only — proposes, never edits.
+description: Reviews the repo's governance / rules surface end-to-end and proposes additions, consolidations, or enforcement gaps to capture the true intent of a clean, correct, quality repo. Use when the operator asks to "audit rules", "review governance", "check for missing rules", or "find rule gaps". Read-only — proposes, never edits.
 tools: Read, Glob, Bash
 model: opus
 ---
@@ -101,7 +101,7 @@ One of:
 
 ## Hard rules for the report
 
-- **No "Want me to…?" / "Should I…?" / end-of-turn menus** — banned end-of-turn phrases (operator 2026-05-27, enforced by `tools/operator_law_guard.py`).
+- **No "Want me to…?" / "Should I…?" / end-of-turn menus** — banned end-of-turn phrases (operator law 2026-05-27; the end-anchored 'Want me to…?'/'Should I…?'/'Shall I…?' shapes are checked by `tools/honesty_guard.py`; the general menu norm is operator review).
 - **No deferral scheduling language** — a found gap gets its proposed rule now; do not propose postponing it (`AGENTS.md` "Find something broken → fix it").
 - **Cite file:line on every claim.** No "based on what I've seen" generalizations.
 - **Anti-sprawl bias** is non-negotiable: a proposal that creates a new file when an existing one would do is rejection-grade. Re-check before submitting.

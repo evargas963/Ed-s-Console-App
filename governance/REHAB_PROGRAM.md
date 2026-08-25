@@ -1,4 +1,4 @@
-# Repo Rehab Program (standing — RC-220)
+# Repo Rehab Program (operator-invoked — RC-220)
 
 **Directed by the operator in chat** (2026-08-24 teardown: no standing PM/auditor roles — any agent the operator assigns performs the rehab behaviors below that session).
 
@@ -9,11 +9,11 @@ Charter restated: piece-by-piece, fix-by-fix, **end-to-end** — dual paths die 
 
 ## Law
 
-1. Rehab is the **default program**. The spine is **RH-F1 multi-faucet** across the whole continuum. Named missions (levels Phase 1, FORCES, DB) are **slices of that spine**, never a substitute for the program.
+1. When the operator directs a session at rehab, **RH-F1 multi-faucet** is the spine of that work, across the whole continuum. Named missions (levels Phase 1, FORCES, DB) are **slices of that spine**, never a substitute for the program.
 2. Every slice: **census → one authority → kill the second path (remove or hard-fail) → T1 tests → lock → prove LIVE (or DISK_ONLY + restart owed)**. No “delegate later” residue without an OPEN RC.
 3. **No patches:** a fix that leaves the old producer callable as a silent second faucet is incomplete. Mark PARTIAL until the dead path is removed or hard-fails closed.
-4. **Whole continuum:** backend, frontend, SQL, config, governance — same standard (mandate-to-mechanism). Spot, walls, volume, PDL, charm, levels — every named field can have a faucet debt.
-5. **Queue authority:** `reports/rehab_latest.md` + multi-faucet census artifacts + this file, triaged at session start. After a slice’s LIVE proof, the next faucet P0 is opened without waiting to be asked.
+4. **Whole continuum:** backend, frontend, SQL, config, governance — same standard. Spot, walls, volume, PDL, charm, levels — every named field can have a faucet debt.
+5. **Queue sources:** `reports/rehab_latest.md` + multi-faucet census artifacts + this file — RECORDS for the operator's triage; the operator opens each slice in chat; nothing self-opens.
 6. Daily scan (`tools/rehab_daily_scan.py` / Automation) is **recommend-only**; the operator turns findings into work.
 
 ## Standing facets (hunt these forever)
@@ -31,7 +31,7 @@ Charter restated: piece-by-piece, fix-by-fix, **end-to-end** — dual paths die 
 
 ## Active slice
 
-The operator names the active slice in chat (the pm_mission.json coordination file was removed 2026-08-24). Queue source when idle: `reports/multi_faucet_census_latest.md`.
+The operator names the active slice in chat (the pm_mission.json coordination file was removed 2026-08-24). Candidate-slice record for the operator's triage: `reports/multi_faucet_census_latest.md`.
 
 ## Anti-patterns (refuse these)
 

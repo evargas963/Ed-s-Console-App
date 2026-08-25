@@ -1,6 +1,6 @@
 ---
 description: Run the Code Health Panel (BLOCKING / TRACKED / FROZEN) and drive the quality circle
-allowed-tools: Bash(*), Read, Edit, Grep, Glob
+allowed-tools: Bash(*), Read, Edit, Glob
 ---
 
 # Code Health Panel + Quality Circle
@@ -56,8 +56,11 @@ Then confirm the app and money path still import:
 .venv/Scripts/python.exe -c "import os; os.environ['PYTEST_CURRENT_TEST']='boot'; import server, call_engine, rules_engine, bayesian_fusion, liquidity_value_engine; print('money path imports OK')"
 ```
 
-If a fix introduced an `F821 undefined-name`, **revert that file to HEAD** rather than patching
-blind — a cosmetic warning is never worth a money-path regression.
+If a fix introduced an `F821 undefined-name`, restore the file's HEAD content rather than patching
+blind — a cosmetic warning is never worth a money-path regression. Recovery must be guard-legal:
+read the content with `git show HEAD:<file>` (read-only) and write it back with the Write tool.
+The destructive-git verb class (`reset` / `restore` / `checkout --` / shell redirects into `.py`)
+is blocked by LOCK-2 and must not be attempted.
 
 ## Step 4 — Loop
 

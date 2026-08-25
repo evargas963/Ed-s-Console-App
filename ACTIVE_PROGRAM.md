@@ -4,8 +4,8 @@
 **Charter:** `AGENTS.md` (Collect / Find & Prove / Decide). **Ledger:** `OPEN_ITEMS.md`.
 **Agent stop authority:** only operator `STOP` / `PAUSE` / `HANG IT UP` / `DO NOT CONTINUE`.
 
-**Rehab spine:** repo-wide **multi-faucet** audit/find/fix end-to-end, no patches (`REHAB_PROGRAM.md` RH-F1 primary).  
-**Active slice:** **levels-tierb-session-collapse-v1** (census concepts 2–5: vwap/ORB/overnight/today VA) — armed behind quiet-window PASS with `log_progressed=true`, then activate kill. Prior: census `4033a33f`, quiet-gate honesty `af0c4897`, Phase-1 prior_day `91d38623`. OUT-OF-SCOPE this slice: charm, clocks, spot, chart `computeDaily` B3.
+**Rehab spine:** repo-wide **multi-faucet** audit/find/fix end-to-end, no patches (`REHAB_PROGRAM.md` RH-F1 primary; operator-invoked).  
+**Last rehab slice worked (2026-08-24):** **levels-tierb-session-collapse-v1** (census concepts 2–5: vwap/ORB/overnight/today VA) — was armed behind quiet-window PASS with `log_progressed=true`; prior: census `4033a33f`, quiet-gate honesty `af0c4897`, Phase-1 prior_day `91d38623`; OUT-OF-SCOPE that slice: charm, clocks, spot, chart `computeDaily` B3. The operator names any next slice in chat.
 
 ## Operator NOW (top of the backlog — the operator directs when it runs)
 
@@ -16,6 +16,8 @@
 ## Find & Prove queue (operator-directed backlog — statuses are record, not standing authority)
 
 Status values: `DONE` | `NEXT` | `QUEUED` | `BLOCKED`.
+
+Verdicts recorded in rows FP-03..FP-25 are ERA-CONTAMINATED (`OPEN_ITEMS.md` Standing truths, operator 2026-08-01) — kept as history, citable in neither direction until a clean-protocol re-run.
 
 | ID | Status | Work item |
 |---|---|---|
@@ -28,7 +30,7 @@ Status values: `DONE` | `NEXT` | `QUEUED` | `BLOCKED`.
 | FP-06 | DONE | **Study #7 — Kalman + logistic.** `NO_SIGNAL_DETECTED` **0 PASS / 12 FAIL**. Report: `reports/kalman_eval/latest.json`. |
 | FP-07 | DONE | **Study #8 — HAR-RV.** `NO_SIGNAL_DETECTED` **0 PASS / 12 FAIL** (QQQ MCC≈0.11–0.13 still dies under baselines/Holm; nonflat secondary weak). Report: `reports/har_rv_eval/latest.json`. |
 | FP-08 | DONE | **Study #9 — quantile.** `NO_SIGNAL_DETECTED` **0 PASS / 12 FAIL**. Report: `reports/quantile_eval/latest.json`. |
-| FP-09 | DONE | **Hang-up gate (scoreboard only).** Shortlist #1–#9: **0 PASS cells**. Cost-aware NOT_RUN (no survivors). Money-path stays closed. Evidence: `reports/fp09_hangup_gate_latest.json`. **Not permission to idle** — residual leads continue below unless operator says STOP. |
+| FP-09 | DONE | **Hang-up gate (scoreboard only).** Shortlist #1–#9: **0 PASS cells**. Cost-aware NOT_RUN (no survivors). Money-path stays closed. Evidence: `reports/fp09_hangup_gate_latest.json`. Residual leads below are recorded candidates; the operator directs any resumption in chat. |
 | FP-10 | DONE | **Schwab rehydration.** `historical_backfill_enrolled_1m_v1` SUCCESS: **125,487** bars upserted; SPY/QQQ/IWM bars **81,658/65,113/59,573 → 101,696/89,655/76,769**. Decision backfill tol=29: attached **70,304 → 70,349** (+45); residual **10,614 → 10,571**. Dominant skip: `skipped_no_candidate_in_tol=11,444` (missing snapshots near decisions — not fillable by bars alone). Evidence: `reports/fp10_rehydration_latest.json`. |
 | FP-11 | DONE | **Study #10 — survival / competing-risks.** `NO_SIGNAL_DETECTED` **0 PASS / 12 FAIL**. QQQ MCC high (≤0.338) but fails `beats_all_baselines` (persistence). Report: `reports/survival_eval/latest.json`. |
 | FP-12 | DONE | **Study #11 — cost-aware.** No existence PASSes. Hard screen on faint leads: HAR QQQ 1c/5c/15c + survival QQQ:60c **KILL**; **har_rv QQQ:60c SURVIVE_ECONOMIC** at 1bp (mean_net≈0.35bp, CI excludes 0, n_trades=358). Not admission — existence FAIL stands. Report: `reports/cost_aware_eval/latest.json`. |
@@ -81,11 +83,11 @@ Status values: `DONE` | `NEXT` | `QUEUED` | `BLOCKED`.
 | FP-60 | DONE | **Edge-search collaboration brief for Claude** (operator ask). Strategic step-back + full method inventory + ask for joint redesign. Letter: `reports/fp_claude_edge_collaboration_letter.md`. No new study. |
 | FP-61 | BLOCKED | **Week-1 G-LABEL card (Claude triage A).** Placeholder thresholds confirmed; freeze models. Card: `reports/fp_week1_label_card_v1.md`. Reply: `reports/fp_claude_edge_reply.md`. Execute only on operator `GO WEEK1 LABEL`. |
 | FP-62 | DONE | **GEX-R1-SCREEN (§9).** Harness economic gate NULL_OR_WEAK — **not** a mechanism null. Claude independent ER verify: mechanism CONFIRMED (`reports/gex_r1_claude_independent_verify.md`). SPY “inverted” reconciled: GEX build OK; sign-check used wrong metric (`reports/gex_r1_spy_reconcile_note.md`). Reclass: **SIGNAL_PRESENT / HARVEST_UNPROVEN**. |
-| FP-63 | QUEUED | **Monday collector gate (blocking for forward GEX n) — demoted 2026-07-27 under LP-01.** Before counting capture days: prove live server is running **and** loaded code with `maybe_persist_morning_full_chain`; after ~10:00 ET prove `option_chain_morning_full` rows for SPY/QQQ/IWM. Checklist: `reports/gex_r1_monday_collector_gate.md`. Result file required: `reports/gex_r1_monday_collector_gate_result.json` — SATISFIED 2026-07-22 (file records `et_date=2026-07-22, verdict=PASS`; the 2026-07-20-dated always-on Cursor rule that restated this gate was removed 2026-08-25 as obsolete). Forward-capture accounting stays operator-directed. |
-| FP-64 | QUEUED | **GEX harvest redesign (after FP-63).** Tail-selective + defensive: fade strong long-gamma, stand aside / momentum on strong short-gamma, abstain mid; size by GEX level; re-run §8.6 with abstention/avoided-loss accounting. Not edge until economic gate + Claude verify. |
+| FP-63 | DONE | **Monday collector gate — SATISFIED (gate PASS on file since 2026-07-22; forward capture since proven: `option_chain_morning_full` 951 rows 2026-07-20→2026-08-24, sentinels 20/20 capture days — `reports/mc_sigma_blast_area_2026-08-25.md` companion scripts).** Before counting capture days: prove live server is running **and** loaded code with `maybe_persist_morning_full_chain`; after ~10:00 ET prove `option_chain_morning_full` rows for SPY/QQQ/IWM. Checklist: `reports/gex_r1_monday_collector_gate.md`. Result file required: `reports/gex_r1_monday_collector_gate_result.json` — SATISFIED 2026-07-22 (file records `et_date=2026-07-22, verdict=PASS`; the 2026-07-20-dated always-on Cursor rule that restated this gate was removed 2026-08-25 as obsolete). Forward-capture accounting stays operator-directed. |
+| FP-64 | QUEUED | **GEX harvest redesign (FP-63 satisfied 2026-07-22; capture n accruing — 20 days × ~40 tickers wide chains + intraday accrual since 2026-07-31).** Tail-selective + defensive: fade strong long-gamma, stand aside / momentum on strong short-gamma, abstain mid; size by GEX level; re-run §8.6 with abstention/avoided-loss accounting. Not edge until economic gate + Claude verify. |
 | FP-65 | DONE | **FIND-GREEK-SANITIZATION-V1.** `gamma_is_plausible` in `math_exposure_core.py`; wired into exposures, charm reader, probabilities, server debug counts, GEX-R1 signal. Rejects negative / >1 / deep-delta non-zero gamma. Tests: `tests/test_greek_sanitization_v1.py`. |
-| FP-66 | DONE | **FIND-GAMMA-FULLCHAIN-STRIKES-V1.** Morning capture uses dedicated `_gated_safe_get_chain(..., strike_count=150)` after `has_morning_full_capture` skip; UI `CHAIN_STRIKE_COUNT=20` unchanged. Tests: `tests/test_gamma_fullchain_strikes_v1.py`. |
-| FP-67 | DONE | **FIND-GAMMA-FLIP-METHOD-V1.** Cumulative-aggregate zero-crossing was **DISPROVED** on a real SPY reference chain 2026-07-19 (corr 0.086, never crosses zero, 2.19e9 divergence). Canonical method is now `compute_gamma_profile` — dealer gamma recomputed at each hypothetical spot — exposed via `compute_gamma_flip_v2` with a mandatory confidence flag; `compute_gamma_flip` and its tests are deleted. Tests: `tests/test_gamma_profile_v1.py`. Remaining proof: wide-chain agreement with Barchart (register row due 2026-07-21). |
+| FP-66 | DONE | **FIND-GAMMA-FULLCHAIN-STRIKES-V1.** Morning capture uses dedicated `_gated_safe_get_chain(..., strike_count=GEX_FULL_CHAIN_STRIKE_COUNT)` (150 at landing; 100 since 2026-07-20, `calibration/option_chain_morning_full.py:50`, after Schwab 502s at 200) after `has_morning_full_capture` skip; UI `CHAIN_STRIKE_COUNT=20` unchanged. Tests: `tests/test_gamma_fullchain_strikes_v1.py`. |
+| FP-67 | DONE | **FIND-GAMMA-FLIP-METHOD-V1.** Cumulative-aggregate zero-crossing was **DISPROVED** on a real SPY reference chain 2026-07-19 (corr 0.086, never crosses zero, 2.19e9 divergence). Canonical method is now `compute_gamma_profile` — dealer gamma recomputed at each hypothetical spot — exposed via `compute_gamma_flip_v2` with a mandatory confidence flag; `compute_gamma_flip` and its tests are deleted. Tests: `tests/test_gamma_profile_v1.py`. Barchart wide-chain agreement PROVEN (`governance/unproven_register.md` rows 2026-07-19/20). |
 
 **Queue rule (2026-08-24 teardown):** statuses record candidate work and its evidence; they are not standing execution authority. The operator directs each session's work in chat — no agent self-assigns the next `NEXT`/`QUEUED` row. LP-01 stays at the top of the backlog for when the operator points a session at it; FP-09's scoreboard remains not-a-verdict either way.
 
@@ -178,7 +180,7 @@ DOM eye-candy at minutes horizons.
 2. **Quarantine purge** — after one clean trading session + operator purge word (`OPEN_ITEMS.md` RECON-02).
 3. **Phase 4 — decision-path gate** — done on `main` (`decision_gate.py` + admissions registry + tests).
 4. **Phase 5 — restructure** — deliberate directory reorganization; no functional changes mixed in; **after** Find & Prove queue is moving (do not use restructure as a reason to pause FP-01+).
-5. **Find & Prove** — queue table above is authoritative.
+5. **Find & Prove** — the queue table above is the record of candidate work and evidence (per the 2026-08-24 Queue rule, the operator directs execution in chat).
 
 ## F2 expansion roadmap (operator directive 2026-07-24)
 
@@ -220,6 +222,6 @@ Lock: `tools/check_ml_pipeline_efficiency.py` via `tests/test_ml_feature_schema_
 
 ## Known risks
 
-- `enforce_admins=false` on branch protection — admin direct-push channel open (operator settings decision; `OPEN_ITEMS.md` GOV-REMOTE-ENFORCEMENT).
+- Branch protection MEASURED 2026-08-25 (`gh api repos/evargas963/Ed-s-Console-App/branches/main/protection`): `enforce_admins=true`, required checks pytest-full + hardening, PR reviews required — the earlier "admin direct-push channel open" risk row no longer reproduces (`OPEN_ITEMS.md` GOV-REMOTE-ENFORCEMENT updated same day).
 - Ten guest tickers serve pre-correctness 2026-04-30 model vintages; guests route through governed anchors on the observed path (`OPEN_ITEMS.md` MODEL-04, operator decision held).
 - `data/ed_console.db` is the live DB; scheduled host jobs (scoreboard 15:35) write to it — see `OPEN_ITEMS.md` FIND-SCHEDULED-JOBS-VISIBILITY.

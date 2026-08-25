@@ -317,6 +317,17 @@ def test_the_module_scope_blind_spot_is_measured_not_silent():
     its subject (the direction consumer) was retired with the composite and the
     withheld-from-vote arrival above replaced it.
 
+    Audit round 2 (2026-08-25) — one arrival, one replacement, accounted by name:
+    `test_completion_claim_battery_wired_at_stop` ARRIVED (INHERENTLY STRUCTURAL
+    WIRING: honesty_guard must bind completion_claim_violations + turn_slice at Stop —
+    the RC-471 dereg left that battery caller-less; the battery's BEHAVIOUR is executed
+    by the redate/quiet tests in test_operating_process_lock_v1.py, which do not enter
+    this census). `test_applicability_declaration_carries_all_ten_fields` LEFT and
+    `test_applicability_declaration_marks_the_rc93_entry_retired` REPLACED it (the
+    rc93 applicability machinery was deleted with its retired rule; the successor pins
+    the retirement marker in guard_applicability.json — a repository-artifact property
+    with no runtime form).
+
     272 (2026-08-24, audit T2-4) — NAMED-SET CONVERSION. The integer ledger above is
     CLOSED HISTORY: the census is now frozen BY NAME in
     tests/frozen/claims_source_text_only_names.txt (one "tests/file.py::test_name" per

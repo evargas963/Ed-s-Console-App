@@ -11,11 +11,20 @@ count, a control being ENFORCED/ON HEAD, quiet PASS/FAIL, BARS_WORKERS, a kill l
 while the same turn contains no measurement of that state.
 
 WHAT SATISFIES IT (either one):
-  1. Inline git evidence in the same text — a `git rev-parse` / `git show` / `git grep`
-     invocation together with the value it returned. Pasting what the repo said IS the law.
+  1. Inline git evidence — a git READ invocation with the value it returned nearby, and
+     (when the Stop path supplies this turn's command list) a git READ actually ISSUED this
+     turn. HONEST LIMIT: the guard checks that the text contains invocation-plus-value and
+     that a git read ran; it cannot prove the pasted value is what the command returned,
+     that the reading is current, or that it SUPPORTS the claim — that residue is inherent
+     to prose and accepted; the hedge path plus operator review is the real backstop.
   2. Hedged reporting — `[UNVERIFIED]`, "Claude reports", "ACCEPTED as claim", "pending
-     verification". Saying you have not measured is always legal; that is the honest path and
-     it must never be blocked, or the guard would push toward false confidence.
+     verification" — judged per paragraph: a hedge covers its own paragraph, never every
+     verdict in the message. Saying you have not measured is always legal; that is the
+     honest path and it must never be blocked, or the guard would push toward false
+     confidence.
+BY DESIGN: only the ALL-CAPS verdict register binds (re.I would flood on ordinary
+'completed/accepted' prose). A lowercase or reworded verdict is out of scope of
+wording-shape detection and is caught by operator review, not by this lock.
 (The third path — a fresh reports/pm_verify_latest.json from the PM verify runner — was
 removed with the runner in the 2026-08-24 teardown.)
 
@@ -65,6 +74,28 @@ _HEDGE_RE = re.compile(
 _GIT_EVIDENCE_RE = re.compile(
     r"\bgit\s+(?:rev-parse|show|grep|log|ls-tree|cat-file|diff)\b", re.I)
 
+#: Reading commands that count as a repo read when actually ISSUED this turn.
+_GIT_READ_RE = re.compile(
+    r"\bgit\s+(?:rev-parse|show|grep|log|ls-tree|cat-file|diff|status)\b", re.I)
+_HEX_RE = re.compile(r"\b[0-9a-f]{7,40}\b", re.I)
+
+
+def _git_evidence(t: str, fields: list[str], executed: list[str] | None) -> bool:
+    """Inline git evidence, two conditions instead of one:
+    (1) when the caller supplies this turn's executed commands, a git READ must have
+        actually been ISSUED this turn — the mere mention of `git log` in prose is not
+        a reading (executed=None = legacy caller: mention suffices, as before);
+    (2) a head-sha claim must show a hex value within 200 chars after the cited
+        invocation — pasted output naturally satisfies this; a bare command does not."""
+    m = _GIT_EVIDENCE_RE.search(t)
+    if not m:
+        return False
+    if executed is not None and not any(_GIT_READ_RE.search(c) for c in executed):
+        return False
+    if "head_sha" in fields and not _HEX_RE.search(t[m.end():m.end() + 200]):
+        return False
+    return True
+
 
 def claimed_repo_fields(text: str) -> list[str]:
     """Which repo-state facts this text asserts."""
@@ -76,27 +107,39 @@ def pm_verify_repo_violations(
     *,
     repo: Path | None = None,
     now: float | None = None,
+    executed: list[str] | None = None,
 ) -> list[str]:
-    """BLOCK a repo-state VERDICT that carries no same-turn measurement (RC-242)."""
+    """BLOCK a repo-state VERDICT that carries no same-turn measurement (RC-242).
+
+    Verdict, claim and hedge are judged PER PARAGRAPH (split on blank lines): one hedge
+    about an unrelated topic used to neutralize every verdict in the message. Evidence
+    stays text-global — pasted git output legitimately sits in its own block."""
     t = text or ""
     if not t or _ESCAPE in t:
         return []
-    if not _VERDICT_RE.search(t):
-        return []                      # no verdict published — nothing to earn
-    fields = claimed_repo_fields(t)
-    if not fields:
-        return []                      # a verdict about prose, not about the tree
-    if _HEDGE_RE.search(t):
-        return []                      # saying "I did not measure this" is always legal
-    if _GIT_EVIDENCE_RE.search(t):
-        return []                      # the reading is pasted inline
-    return [
-        "PM_VERIFY_REPO: claim without same-turn repo measure — this text publishes a verdict "
-        f"({', '.join(sorted(set(_VERDICT_RE.findall(t))))[:60]}) about repo state "
-        f"({', '.join(fields)}) with no measurement behind it. Paste the git output you "
-        "read, or mark the claim [UNVERIFIED]. Prose from another agent is not evidence "
-        f"(RC-242). Escape: '{_ESCAPE} <reason>'."
-    ]
+    fields_all = claimed_repo_fields(t)
+    if not fields_all:
+        return []
+    evidence_ok = _git_evidence(t, fields_all, executed)
+    for para in re.split(r"\n\s*\n", t):
+        if not _VERDICT_RE.search(para):
+            continue
+        fields = claimed_repo_fields(para)
+        if not fields:
+            continue
+        if _HEDGE_RE.search(para):
+            continue               # saying "I did not measure this" is always legal
+        if evidence_ok:
+            continue               # a reading was pasted inline AND issued this turn
+        return [
+            "PM_VERIFY_REPO: claim without same-turn repo measure — this text publishes a "
+            f"verdict ({', '.join(sorted(set(_VERDICT_RE.findall(para))))[:60]}) about repo "
+            f"state ({', '.join(fields)}) with no measurement behind it. Paste the git "
+            "output you read (a git READ issued this turn), or mark the claim "
+            f"[UNVERIFIED]. Prose from another agent is not evidence (RC-242). "
+            f"Escape: '{_ESCAPE} <reason>'."
+        ]
+    return []
 
 
 if __name__ == "__main__":

@@ -1824,14 +1824,18 @@ class EdDB:
                         (now_ts, t),
                     )
                 else:
+                    # Provenance is WRITE-ONCE (audit round 2, 2026-08-25): re-upserting an
+                    # existing row used to overwrite enrollment_source, so a later touch —
+                    # measured: a pytest healer stamped its own name onto the 13 newest user
+                    # enrollments — destroyed the when/how of every real enrollment. Only
+                    # last_seen moves on re-upsert; the original source stands.
                     conn.execute(
                         """
                         UPDATE logging_universe SET
-                            last_seen_ts_utc = ?,
-                            enrollment_source = ?
+                            last_seen_ts_utc = ?
                         WHERE ticker = ? COLLATE NOCASE AND category = 'user_persisted'
                         """,
-                        (now_ts, enrollment_source, t),
+                        (now_ts, t),
                     )
 
         _do()

@@ -45,7 +45,8 @@ ENFORCEMENT_PATHS: tuple[str, ...] = (
     "calibration/repair_canonical_1m_bars_for_outcomes.py",
 )
 
-#: Sole-writer dual-edit race — Cursor must not touch while another agent holds writer.
+#: Wipe-protected paths (LOCK-2 reach): enforcement surfaces plus the calibration
+#: producers below — role-free since the 2026-08-24 teardown.
 PROTECTED_PATHS: tuple[str, ...] = ENFORCEMENT_PATHS + (
     "calibration/build_trusted_anchor_proof_dataset.py",
     "calibration/run_production_accumulation_validation.py",
@@ -55,6 +56,9 @@ PROTECTED_PATHS: tuple[str, ...] = ENFORCEMENT_PATHS + (
 #: 2026-08-03 (RC-210 x2, RC-229) used soft forms the literal-match ban never saw. A command
 #: matching a destructive verb AND touching a protected/product path (or bare, whole-tree
 #: forms) BLOCKS at PreToolUse in EVERY session wired to process_lock_guard.
+#: Deliberate split with operator_law_guard._DESTRUCTIVE_GIT (both stay firing): that regex
+#: bans the universal hard forms anywhere on the host; THIS class rule covers the full
+#: reset/restore/checkout--/clean/stash verb family on protected/bare targets.
 _RESET_GUARD_RE = __import__("re").compile(
     r"\bgit\s+(?:-\S+\s+)*(reset\b|restore\b|checkout\s+(?:\S+\s+)*--\s|clean\b|stash\b)",
     __import__("re").I)
@@ -67,7 +71,7 @@ _RESET_GUARD_SAFE_RE = __import__("re").compile(
 #: scope_paths — so protection contracted whenever a mission narrowed, which is what a good
 #: mission does. Under axiom-brand-landing-v1 that left `git restore -- static/chart.html`,
 #: `git checkout -- server.py` and `git restore -- math_levels.py` all silent. Mission scope
-#: is still consulted below, but only ever ADDS reach; it can no longer define it.
+#: is gone (2026-08-24 teardown); this static inventory alone defines LOCK-2 reach.
 PRODUCT_WIPE_PROTECTED: tuple[str, ...] = (
     "db.py",
     "server.py",
@@ -519,15 +523,27 @@ def _quiet_pass_required_violations(text: str, root: Path) -> list[str]:
         _git_diff_names(root, None, None))
     if not ({"server.py", "db.py"} & touched):
         return []
+    qp = root / "reports" / "ed_server_warn_quiet_window_latest.json"
     try:
-        qj = json.loads((root / "reports" /
-                         "ed_server_warn_quiet_window_latest.json").read_text(
-                             encoding="utf-8"))
+        qj = json.loads(qp.read_text(encoding="utf-8"))
         verdict = str(qj.get("verdict") or "")
     except (OSError, ValueError, json.JSONDecodeError):
         verdict = "MISSING"
     if verdict == "PASS":
-        return []
+        # A PASS measured BEFORE the claimed server.py/db.py change is not the live
+        # quiet bar for that change (audit 2026-08-25: a 200-day-old PASS satisfied a
+        # fresh claim). Comparator = the changed files' own worktree mtimes — no window
+        # constant. Unreadable mtimes keep the PASS (fail-open HERE only; the
+        # MISSING/FAIL branches below stay fail-closed).
+        try:
+            newest = max((root / rel).stat().st_mtime
+                         for rel in ({"server.py", "db.py"} & touched)
+                         if (root / rel).exists())
+            if qp.stat().st_mtime >= newest:
+                return []
+            verdict = "STALE_PASS (quiet json predates the claimed server.py/db.py change)"
+        except (OSError, ValueError):
+            return []
     return [
         f"QUIET_PASS_REQUIRED: completion claim with server.py/db.py touched but "
         f"ed_server_warn_quiet_window_latest.json verdict={verdict!r} (LOCK-5/RC-232) — "
@@ -535,6 +551,66 @@ def _quiet_pass_required_violations(text: str, root: Path) -> list[str]:
     ]
 
 
+
+
+_RC_ROW_RE = re.compile(r"^\| (RC-\d+) \|")
+
+
+def _rc_row_map(text: str) -> dict[str, tuple[str, str, str]]:
+    """rc_id -> (status, due, full_row) for every RC row in a ledger text."""
+    out: dict[str, tuple[str, str, str]] = {}
+    for line in text.splitlines():
+        m = _RC_ROW_RE.match(line)
+        if not m:
+            continue
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        if len(cells) >= 4:
+            out[m.group(1)] = (cells[1], cells[3], line)
+    return out
+
+
+def rc_redate_violations(repo: Path | None = None) -> list[str]:
+    """REDATE_LOCK: a due date the ledger already promised may move only with the move
+    and its reason recorded IN THE ROW: 'RE-DATED <old>-><new>: <reason>'.
+    Staged index vs HEAD — the same seam as the rest of this lock. New rows are free
+    (opening a defect with a due date is honest tracking, RC-65); a row leaving OPEN is
+    free (closing defers nothing). Repeat re-dates accumulate a visible chain in the row.
+    This forces the reason to EXIST with correct lineage; it cannot prove the reason TRUE.
+    MEASURED basis (audit 2026-08-25): 67 due-cell moves in history, 61 on already-overdue
+    rows, 2 with no reason recorded anywhere (4ecb1cb7 RC-210, b13b117b RC-257).
+    Deliberately NO extension ceiling and NO re-date count cap (RC-280: no ratchets) —
+    a thrice-re-dated row visibly carries all three RE-DATED entries for operator review.
+    Fail-closed: an unreadable staged side refuses the commit."""
+    root = repo or REPO
+    rel = "governance/root_cause_log.md"
+    sr = _git(["diff", "--cached", "--name-only", "--", rel], cwd=root)
+    if sr.returncode != 0:
+        return [f"REDATE_LOCK: git diff --cached unavailable for {rel} — refusing an "
+                f"unverifiable ledger edit"]
+    if rel not in sr.stdout:
+        return []
+    head = _git(["show", f"HEAD:{rel}"], cwd=root)
+    staged = _git(["show", f":{rel}"], cwd=root)
+    if head.returncode != 0:
+        return []  # ledger new at HEAD — nothing already promised
+    if staged.returncode != 0:
+        return [f"REDATE_LOCK: cannot read staged {rel} — refusing an unverifiable ledger edit"]
+    old_rows, new_rows = _rc_row_map(head.stdout), _rc_row_map(staged.stdout)
+    out: list[str] = []
+    for rc in sorted(set(old_rows) & set(new_rows)):
+        _old_status, old_due, _ = old_rows[rc]
+        new_status, new_due, new_line = new_rows[rc]
+        if old_due == new_due or new_status != "OPEN":
+            continue
+        token = f"RE-DATED {old_due}->{new_due}:"
+        i = new_line.find(token)
+        if i < 0 or not new_line[i + len(token):].split("|", 1)[0].strip():
+            out.append(
+                f"REDATE_LOCK: {rc} due {old_due} -> {new_due} without "
+                f"'{token} <reason>' in the row. A promised date moves only with the "
+                f"move and its reason recorded in the row itself (61 of 67 historical "
+                f"re-dates were on already-overdue rows).")
+    return out
 
 
 _QUOTED_STRING_RE = re.compile(r"\"(?:[^\"\\]|\\.)*\"|'(?:[^'\\]|\\.)*'")
@@ -640,6 +716,7 @@ def all_precommit_violations(repo: Path | None = None) -> list[str]:
     root = repo or REPO
     out = index_worktree_mismatches(root)
     out.extend(precommit_orphan_patch_warnings(root))
+    out.extend(rc_redate_violations(root))
     # RC-463: permission is a merge-review question, not a pre-commit question.
     return out
 

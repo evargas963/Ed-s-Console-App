@@ -1,9 +1,9 @@
 ---
-description: Agent truth + follow-through lock (no lies, no sloppy estimates, no false completion)
+description: Agent truth + follow-through rule (no lies, no sloppy estimates, no false completion)
 alwaysApply: true
 ---
 
-# Agent truth and follow-through (lean lock)
+# Agent truth and follow-through (lean rule)
 
 Failure mode this prevents: overclaiming work, soft-stopping mid-promise, and presenting estimates as facts.
 
@@ -14,7 +14,7 @@ Failure mode this prevents: overclaiming work, soft-stopping mid-promise, and pr
 3. **No misleading quantities.** Never present `MAX(rowid)`, samples, approximations, or recycled prior numbers as exact counts. Exact = `COUNT(*)` (or a previously verified exact figure cited with its source). Approximations must be prefixed `APPROX:` in the same sentence.
 4. **No model-family bait-and-switch.** “Incumbent recorded outputs scored” is not “Elastic Net / TCN / HMM / … tested.” Name the exact object scored.
 5. **The queue is a record, not a work order (2026-08-24 teardown).** `ACTIVE_PROGRAM.md` statuses (`NEXT`/`QUEUED`) document candidate work and its evidence; they grant no standing execution authority. The operator directs each session's work in chat — do not self-assign queue items. During an operator-directed run, `STOP` / `PAUSE` / `HANG IT UP` / `DO NOT CONTINUE` ends it immediately.
-6. **No governance/test/code bloat for this lock.** Do not add new gate scripts, CI jobs, or allowlist sprawl to enforce these laws. This rule + `ACTIVE_PROGRAM.md` + `AGENTS.md` pointer are sufficient. Prefer fixing data/code over adding process files.
+6. **No governance/test/code bloat for this rule.** Do not add new gate scripts, CI jobs, or allowlist sprawl to enforce these laws. This rule + `ACTIVE_PROGRAM.md` + `AGENTS.md` pointer are sufficient. Prefer fixing data/code over adding process files.
 
 ## Status line (only when reporting mid-queue)
 

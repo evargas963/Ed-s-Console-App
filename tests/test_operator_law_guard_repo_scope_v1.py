@@ -295,29 +295,21 @@ def test_marked_repo_commit_is_also_quiet(marked_repo):
                              payload_cwd=str(REPO)) == []
 
 
-# ── 4. applicability is declared, not hardcoded ───────────────────────────────────────────
-def test_rc93_applies_to_this_repository():
-    assert G.rc93_applies_to(ED) is True
+# ── 4. applicability machinery retired with its rule (audit round 2, 2026-08-25) ──────────
+def test_rc93_applicability_machinery_is_gone():
+    """The commit-before-proof rule the applicability declaration scoped was retired
+    2026-08-24; its scoping machinery had no production callers and is deleted. This lock
+    keeps it deleted (the resurrection would be dead code shading back into authority)."""
+    for name in ("rc93_applies_to", "_load_applicability", "_mechanism", "_RC93_MECHANISM_ID"):
+        assert not hasattr(G, name), name
 
 
-def test_rc93_does_not_apply_to_a_repository_without_the_markers(other_repo):
-    assert G.rc93_applies_to(G.normalize_repo(other_repo)) is False
-
-
-def test_rc93_applies_to_a_clone_at_a_different_path(marked_repo):
-    """Identity is content, not location — no hardcoded absolute path anywhere."""
-    assert G.rc93_applies_to(G.normalize_repo(marked_repo)) is True
-
-
-def test_applicability_declaration_carries_all_ten_fields():
+def test_applicability_declaration_marks_the_rc93_entry_retired():
     doc = json.loads((REPO / "governance" / "guard_applicability.json").read_text(encoding="utf-8"))
-    mech = G._mechanism(doc, G._RC93_MECHANISM_ID)
-    for field in ("governing_mechanism_id", "governing_authority", "applicable_repositories",
-                  "applicable_mission_classes", "applicable_components_or_paths",
-                  "triggering_conditions", "exclusions", "precedence", "conflict_behavior",
-                  "expiration_or_review_conditions"):
-        assert mech.get(field), field
-    assert mech["product_owner_determination"]["determination"]
+    mechs = {m.get("governing_mechanism_id"): m for m in doc.get("mechanisms") or []}
+    rc93 = mechs.get("ED-OPERATOR-LAW-GUARD/RC-93-COMMIT-BEFORE-PROOF")
+    assert rc93 is not None, "the historical declaration row must stay (append-only history)"
+    assert rc93.get("retired"), "the entry must be marked retired with its date/reason"
 
 
 def test_no_hardcoded_repository_exception_in_the_guard():
@@ -350,16 +342,8 @@ def test_no_hardcoded_repository_exception_in_the_guard():
     assert paths == [], paths
 
 
-def test_absent_declaration_means_the_mechanism_governs_nothing(tmp_path, monkeypatch):
-    """§3.3: an undeclared scope is NOT_PROVEN, never assumed universal."""
-    d = tmp_path / "NoDecl"
-    (d / ".git").mkdir(parents=True)
-    (d / "tools").mkdir()
-    (d / "governance").mkdir()
-    (d / "tools" / "operator_law_guard.py").write_text("x", encoding="utf-8")
-    (d / "governance" / "root_cause_log.md").write_text("x", encoding="utf-8")
-    monkeypatch.setattr(G, "REPO", d)
-    assert G.rc93_applies_to(G.normalize_repo(d)) is False
+# (test_absent_declaration_means_the_mechanism_governs_nothing removed 2026-08-25 with the
+# rc93 applicability machinery it exercised — the retirement lock above owns this ground.)
 
 
 # ── 5. attempted versus executed lifecycle ────────────────────────────────────────────────
@@ -623,7 +607,7 @@ def test_negative_control_pre_fix_had_no_repository_resolution():
     post-fix state and the control failed on its own success. A negative
     control that expires when the thing it guards is fixed is not a control.
     """
-    for name in ("resolve_target_repo", "normalize_repo", "repo_root_of", "rc93_applies_to"):
+    for name in ("resolve_target_repo", "normalize_repo", "repo_root_of"):
         assert hasattr(G, name), name
 
     introduced = subprocess.run(

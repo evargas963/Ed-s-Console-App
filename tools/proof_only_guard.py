@@ -13,12 +13,19 @@ propagating through the agent's reasoning for days because a memory line said "R
 The failure is structural, not incidental: a conclusion inherits the confidence of its LABEL
 instead of the quality of its INPUTS, and prose is the one surface with no gate on it.
 
-WHAT THIS BLOCKS. The agent's final message of a turn, when it
+WHAT THIS BLOCKS. The turn's assistant text (every text block after the last user message,
+not just the final record), when it
   (a) cites remembered/prior knowledge as the basis of a claim — "per my memory", "we established",
-      "the standing verdict", "as I recorded", "previously proven" — or
-  (b) states a hard verdict (KILL / PROVEN / RETIRED / CONFIRMED / DISPROVEN) without an
-      accompanying same-turn proof: a runnable command in backticks, or an n= with a confidence
-      interval.
+      "the standing verdict", "as I recorded", "previously proven". HONEST LIMIT: the memory
+      lexicon is a deterrent over KNOWN phrasings — paraphrase escapes it; memory-as-evidence
+      cannot be detected semantically. The operator law it enforces is model-side discipline
+      with a tripwire, not a proof. Or
+  (b) states a hard verdict (KILL / PROVEN / RETIRED / CONFIRMED / DISPROVEN) without the SHAPE
+      of same-turn proof: a backticked command that actually RAN this turn (cross-checked
+      against the transcript's tool calls), or an n= with a confidence interval. HONEST LIMIT:
+      it cannot verify the numbers are real or the statistics adequate — a weak measurement
+      stated with its stats passes, by design (the guard's own founding story, n=66 at 43%
+      power recorded as a kill, would pass this check); adequacy review stays with the operator.
 
 WHAT IT DOES NOT BLOCK. Reporting a measurement made THIS turn; quoting a memory in order to
 CORRECT or void it (the correction verbs are recognised); ordinary work. The point is not to
@@ -48,14 +55,24 @@ MEMORY_CITATION = re.compile(
     r"we (?:established|determined|concluded|proved|already know)|"
     r"the standing verdict|standing verdict|as (?:i )?recorded|previously (?:proven|established|measured)|"
     r"it (?:was|is) already (?:proven|established|settled)|"
-    r"(?:my|the) (?:memory|record) (?:file )?(?:says|states)|"
-    r"by your own standing verdict|according to (?:my|the) (?:notes|memory|record)"
+    r"(?:my|the) (?:memory|record) (?:file )?(?:says|states|notes)|"
+    r"by your own standing verdict|according to (?:my|the) (?:notes|memory|record)|"
+    r"MEMORY\.md\b[^.\n]{0,60}\b(?:says|records|notes|states|shows)|"
+    r"(?:the|our|an?) (?:earlier|prior|previous) (?:audit|study|run|measurement|analysis|verdict)\b"
+    r"[^.\n]{0,40}\b(?:showed|established|proved|found|settled)|"
+    r"as established\b|you(?:'ll| will) recall|known[- ](?:dead|good|settled|retired)"
     r")\b", re.I)
 
 #: Hard verdicts. Stating one is a claim of settled fact and must carry this turn's evidence.
+#: Single-word verdicts stay CAPS-ONLY on purpose (re.I floods: 'killed the process',
+#: 'settled on a design') — a verdict smuggled into lowercase prose is out of reach of
+#: wording-shape detection; only the low-collision multiword phrases are case-insensitive.
 VERDICT = re.compile(
     r"\b(KILL(?:ED|S)?|RETIRED|PROVEN|DISPROVEN|CONFIRMED|SETTLED|VOID(?:ED)?|"
-    r"NULL RESULT|NO EFFECT|does not replicate|failed to replicate)\b")
+    r"NO EFFECT|(?i:NULL RESULT|does not replicate|failed to replicate))\b")
+
+#: Affirmative verdicts assert NEW settled fact; they can never ride a correction.
+AFFIRMATIVE_VERDICT = re.compile(r"\b(KILL(?:ED|S)?|RETIRED|PROVEN|CONFIRMED|SETTLED)\b")
 
 #: Same-turn proof. A runnable command, or a sample size beside an interval.
 #: E-36 follow-up: curl / live-URL probes ARE proof commands — the first control run of the
@@ -70,8 +87,9 @@ CI = re.compile(r"(95%\s*CI|confidence interval|\bpower\b|\bp\s*=\s*0?\.\d+)", r
 #: the operator found the gap. stop_guard.py cannot see it, because it only inspects rows that
 #: EXIST — work promised but never opened leaves nothing to inspect. RC-87 gated CLAIMS made in
 #: prose; this gates PROMISES made in prose, which is the same unguarded surface.
-PROMISED_RC = re.compile(r"\b(?:open(?:ing)?|fil(?:e|ing)|creat(?:e|ing))\b[^.\n]{0,40}?\b(RC-\d+)",
-                         re.I)
+PROMISED_RC = re.compile(
+    r"\b(?:open(?:ed|ing)?|fil(?:e|ed|ing)|creat(?:e|ed|ing)|log(?:ged|ging)?|"
+    r"add(?:ed|ing)?|record(?:ed|ing)?)\b[^.\n]{0,40}?\b(RC-\d+)", re.I)
 
 #: Correcting or voiding a remembered claim is the CURE, never the disease.
 CORRECTING = re.compile(
@@ -110,6 +128,86 @@ def last_assistant_text(transcript_path: str) -> str | None:
     except OSError:
         return None
     return last
+
+
+def turn_slice(transcript_path: str) -> tuple[str | None, list[str]]:
+    """(assistant text of THIS turn, shell commands actually ISSUED this turn).
+
+    The turn boundary is the LAST user record carrying real text (tool_result records
+    are user-role but carry no text block). Assistant text is every text block after
+    that boundary concatenated — judging only the final assistant record let a verdict
+    hide behind a bland 'Done.' tail record. Commands are the input.command of every
+    Bash/PowerShell tool_use block after the boundary; command-carrying tools only —
+    a Read file_path is not an executed command.
+    """
+    p = Path(transcript_path)
+    if not p.exists():
+        return None, []
+    records: list[tuple[str, list[str], list[str]]] = []
+    try:
+        with p.open(encoding="utf-8", errors="ignore") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    rec = json.loads(line)
+                except (json.JSONDecodeError, ValueError):
+                    continue
+                msg = rec.get("message") or {}
+                role = rec.get("type") if rec.get("type") in ("user", "assistant") else msg.get("role")
+                if role not in ("user", "assistant"):
+                    continue
+                content = msg.get("content")
+                texts: list[str] = []
+                cmds: list[str] = []
+                if isinstance(content, str):
+                    if content.strip():
+                        texts.append(content)
+                elif isinstance(content, list):
+                    for c in content:
+                        if not isinstance(c, dict):
+                            continue
+                        if c.get("type") == "text" and c.get("text", "").strip():
+                            texts.append(c["text"])
+                        elif c.get("type") == "tool_use" and c.get("name") in ("Bash", "PowerShell", "Shell"):
+                            cmd = (c.get("input") or {}).get("command")
+                            if isinstance(cmd, str) and cmd.strip():
+                                cmds.append(cmd)
+                records.append((role, texts, cmds))
+    except OSError:
+        return None, []
+    boundary = -1
+    for i, (role, texts, _c) in enumerate(records):
+        if role == "user" and texts:
+            boundary = i
+    texts_out: list[str] = []
+    cmds_out: list[str] = []
+    for role, texts, cmds in records[boundary + 1:]:
+        if role == "assistant":
+            texts_out.extend(texts)
+            cmds_out.extend(cmds)
+    return ("\n".join(texts_out) if texts_out else None), cmds_out
+
+
+def _norm_ws(s: str) -> str:
+    return " ".join(s.split())
+
+
+def has_executed_command(text: str, executed: list[str]) -> bool:
+    """True when a backticked command-shaped snippet in `text` matches a command that
+    actually RAN this turn (whitespace-normalized bidirectional substring). A command
+    string in prose is proof-SHAPED; only one that was issued is proof. Restricting the
+    match set to Bash/PowerShell commands (never Read file_paths) keeps a merely-
+    mentioned filename from becoming proof again."""
+    if not executed:
+        return False
+    ran = [_norm_ws(c) for c in executed]
+    for m in COMMAND.finditer(text):
+        snippet = _norm_ws(m.group(0).strip("`"))
+        if snippet and any(snippet in c or c in snippet for c in ran):
+            return True
+    return False
 
 
 def last_user_text(transcript_path: str) -> str | None:
@@ -153,13 +251,17 @@ DEFECT_REPORT = re.compile(
     re.I)
 
 
-def defect_report_needs_probe(user_text: str | None, assistant_text: str) -> str | None:
+def defect_report_needs_probe(user_text: str | None, assistant_text: str,
+                              executed: list[str] | None = None) -> str | None:
     """When the triggering message alleges a broken surface, the reply must CARRY a same-turn
     probe artifact (a runnable command in backticks / fenced output) — explanation without
-    measurement is the E-36 class regardless of whether the explanation is correct."""
+    measurement is the E-36 class regardless of whether the explanation is correct.
+    When the caller supplies this turn's executed commands, the cited probe must have RUN."""
     if not user_text or not DEFECT_REPORT.search(user_text):
         return None
-    if COMMAND.search(assistant_text):
+    probed = (COMMAND.search(assistant_text) if executed is None
+              else has_executed_command(assistant_text, executed))
+    if probed:
         return None
     return ("the operator reported a broken surface and this reply carries NO same-turn probe "
             "artifact. Measure first: probe the live system, paste the output, then explain. "
@@ -175,7 +277,7 @@ def rc_rows_present() -> set[str]:
         return set()
 
 
-def violations(text: str) -> list[str]:
+def violations(text: str, executed: list[str] | None = None) -> list[str]:
     """Memory-as-evidence, verdicts with no same-turn proof, and promises with no artifact."""
     out: list[str] = []
     # RC-86: a row the turn says it is opening must EXIST by the time the turn ends.
@@ -187,20 +289,32 @@ def violations(text: str) -> list[str]:
                 f"this turn says it is opening/filing {rc}, but no '| {rc} ' row exists in "
                 f"governance/root_cause_log.md — a promise that never became an artifact")
     correcting = bool(CORRECTING.search(text))
-    has_command = bool(COMMAND.search(text))
+    # A cited command is proof only when it actually RAN this turn (tool_use
+    # cross-check). executed=None = legacy caller with no transcript: presence-only.
+    has_command = (bool(COMMAND.search(text)) if executed is None
+                   else has_executed_command(text, executed))
     has_stats = bool(INTERVAL.search(text) and CI.search(text))
 
     for m in MEMORY_CITATION.finditer(text):
-        if correcting:
+        # A correction exempts a memory citation only when it is ABOUT that citation —
+        # same neighbourhood (±200 chars), not anywhere in the message: one hedged
+        # aside used to disable the whole guard.
+        lo, hi = max(0, m.start() - 200), m.end() + 200
+        if CORRECTING.search(text[lo:hi]):
             continue          # quoting memory in order to void it is the fix, not the fault
         out.append(f"memory cited as evidence: {m.group(0)!r}")
 
-    if not (has_command or has_stats or correcting):
-        for m in VERDICT.finditer(text):
+    if not (has_command or has_stats):
+        aff = AFFIRMATIVE_VERDICT.search(text)
+        m = aff or VERDICT.search(text)
+        # A correction may carry a correction-class verdict (DISPROVEN/VOID/...); an
+        # AFFIRMATIVE verdict (CONFIRMED/PROVEN/KILLED/RETIRED/SETTLED) needs this
+        # turn's command or stats no matter what else the message hedges about.
+        if m is not None and (aff is not None or not correcting):
             out.append(
                 f"verdict {m.group(0)!r} stated with no same-turn proof "
-                f"(no runnable command in backticks, no n= with an interval/power)")
-            break
+                f"(no backticked command that actually RAN this turn, no n= with an "
+                f"interval/power)")
     return out
 
 
@@ -214,8 +328,12 @@ def main() -> int:
 
     tp = payload.get("transcript_path")
     if not tp:
-        return 0                              # nothing to inspect — not a finding
-    text = last_assistant_text(tp)
+        sys.stderr.write(
+            "BLOCKED (RC-87): the Stop payload carries no transcript_path, so the "
+            "proof-only guard cannot tell whether this turn cited memory as evidence. "
+            "A check that cannot run is reported, never treated as a pass (RC-57).\n")
+        return 2
+    text, executed = turn_slice(tp)
     if text is None:
         sys.stderr.write(
             "BLOCKED (RC-87): the proof-only guard could not read the transcript at "
@@ -223,8 +341,8 @@ def main() -> int:
             "cannot run is reported, never treated as a pass.\n")
         return 2
 
-    bad = violations(text)
-    probe_gap = defect_report_needs_probe(last_user_text(tp), text)
+    bad = violations(text, executed)
+    probe_gap = defect_report_needs_probe(last_user_text(tp), text, executed)
     if probe_gap:
         bad.append(probe_gap)
     if not bad:

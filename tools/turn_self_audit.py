@@ -1,8 +1,9 @@
-"""Typed, identity-bound per-turn audit transaction (RC-330).
+"""Typed, identity-bound audit transaction (RC-330) — manual/CI tool.
 
-The authoritative result is the JSON document returned to the Stop supervisor
-for that supervisor's own child process.  Command history and repository JSONL
-files are telemetry only and never authorize Stop.
+Formerly the Stop supervisor's child; the Stop wiring was retired 2026-08-24.
+The authoritative result is the JSON document this tool returns to its caller;
+validate_result/supervise_turn_audit remain for the contract tests. Command
+history and repository JSONL files are telemetry only.
 """
 from __future__ import annotations
 

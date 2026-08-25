@@ -1,6 +1,7 @@
 """Front-end hook for operating_process_lock (RC-217).
 
-Runs on PreToolUse (Edit/Write/StrReplace/Bash) and Stop. Exit 2 BLOCKS.
+Runs on PreToolUse (Edit/Write/StrReplace/Bash). RC-471 removed the Stop registration;
+stop_block() is retained for manual/test use. Exit 2 BLOCKS.
 No env kill-switch: ED_PROCESS_LOCK_GUARD cannot disable this control (RC-450).
 2026-08-24 teardown: the role/authority rails (writer_drift_lock, isolated-worktree
 boundary, mission gating, GO closeout) are gone with Architecture A — what remains is

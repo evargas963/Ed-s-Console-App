@@ -6,7 +6,7 @@ are removed, not accumulated; the pre-slimming ledger is preserved at tag-time i
 (`git log --follow OPEN_ITEMS.md`).
 
 **Last rewritten:** 2026-07-16 — post-slimming reconciliation (PR #44 merged @ `8f4c922`).
-**Operator NOW (2026-07-27):** **LP-01** is the top open item — see `ACTIVE_PROGRAM.md` Operator NOW table. Work this before residual GEX/F2 queue rows.
+**Operator NOW (2026-07-27):** **LP-01** is the top of the backlog — see `ACTIVE_PROGRAM.md` Operator NOW table. The operator directs when it runs (2026-08-24 teardown: statuses are record, not standing authority).
 
 ---
 
@@ -28,14 +28,14 @@ This is the single ruling standard. Everything specific is a CHECK under it, nev
 
 1. **ONE app.** `start_ed_console.bat` → `python -m uvicorn` → `server.py` is the app. The `.ps1`/`.bat` for retrain/scoreboard/research are OFFLINE JOBS against the same DB, not separate apps. There is no "research app."
 2. **ONE computation.** Every job (research/backtest/training/scoreboard) IMPORTS and CALLS the live functions (`compute_exposures_by_strike` → `aggregate_net_gex` / `math_levels.*`); it must NEVER reimplement them. "Validated in research" = "runs live" by construction. First unification DONE 2026-07-17: `research/gex_r1_screen_v1/signal.py::gex_0dte_from_chain` now delegates to the live `compute_exposures_by_strike`→`aggregate_net_gex` (numerically identical, ratio 1.0000, tests green, screen unchanged at 204 signals). Sweep the rest of research/training for the same pattern next.
-3. **ONE lock = the Institutional Correctness gate — BUILT 2026-07-17: `tools/check_institutional_correctness.py`.** Institutional = logic + math + fidelity + single-source, repo-wide. New correctness requirements are REGISTERED AS CHECKS inside this one gate — never a new lock. Check 1 live: `no_synthetic_domain_fixtures_in_tests` (AST — inline option-chain contracts in tests must load REAL data from `tests/fixtures/`, or declare `# institutional-synthetic-ok: <reason>` for genuine fail-closed/edge cases; `tests/archive/` out of scope). **DONE 2026-07-17: found systemic (44 violations across 20 files) and driven to ZERO — gate PASSES, 213 touched tests green, correctness tests moved to a real captured chain (`tests/fixtures/real_spy_0dte_chain_with_poison.json`), fail-closed tests justified in-line, nothing weakened to pass. WIRED as blocking pre-commit (`.pre-commit-config.yaml` id: institutional-correctness).** Each check is ENFORCED (must be zero, blocks pre-commit) or ADVISORY (visible debt → drive to zero → flip to enforced; the ratchet). Whole-codebase baseline: `python tools/check_institutional_correctness.py`. Registered 2026-07-17 (9 checks; inventory `reports/institutional_debt_inventory.md`): **ENFORCED (block commits, all 0)** = no_synthetic_domain_fixtures, no_silent_swallow (3 sites justified), no_todo_without_tracking_id. **ADVISORY debt to drive down** = function_complexity 455, function_length 393, file_length 38, ruff_quality 1147, no_fake_defaults 10, mypy_types (DORMANT until mypy installed). single-source stays review-enforced (a general auto-detector cries wolf; the GEX reimplementation was fixed manually). Worst file by far: `server.py` (81 items). Fix plan = batches, worst-file-first, WITH operator review + tests — NOT autonomous. NOTE: Layer 1 mechanical is ~complete; Layer 2 (design) partly mechanical + partly review; Layer 3 (real-fix-vs-workaround / elegance) is human by definition — not mechanizable, never claim otherwise.
+3. **ONE lock = the Institutional Correctness gate — BUILT 2026-07-17: `tools/check_institutional_correctness.py`.** Institutional = logic + math + fidelity + single-source, repo-wide. New correctness requirements are REGISTERED AS CHECKS inside this one gate — never a new lock. Check 1 live: `no_synthetic_domain_fixtures_in_tests` (AST — inline option-chain contracts in tests must load REAL data from `tests/fixtures/`, or declare `# institutional-synthetic-ok: <reason>` for genuine fail-closed/edge cases; `tests/archive/` out of scope). **DONE 2026-07-17: found systemic (44 violations across 20 files) and driven to ZERO — gate PASSES, 213 touched tests green, correctness tests moved to a real captured chain (`tests/fixtures/real_spy_0dte_chain_with_poison.json`), fail-closed tests justified in-line, nothing weakened to pass. WIRED as blocking pre-commit (`.pre-commit-config.yaml` id: institutional-correctness).** Each check is ENFORCED (must be zero, blocks pre-commit) or ADVISORY (visible debt → drive to zero → flip to enforced; the ratchet). Whole-codebase baseline: `python tools/check_institutional_correctness.py`. Current roster = the CHECKS registry in `tools/check_institutional_correctness.py` plus `governance/retired_checks.md` (42 enforced / 7 advisory, measured 2026-08-25 — reproduce: `python tools/check_delta_adds_no_debt.py --base origin/main --index` prints the declared-roster banner). The single-source family is machine-enforced today (one_producer / single_faucet checks); the 2026-07-17 launch census this row once carried lives in git history. Worst file by far: `server.py` (81 items). Fix plan = batches, worst-file-first, WITH operator review + tests — NOT autonomous. NOTE: Layer 1 mechanical is ~complete; Layer 2 (design) partly mechanical + partly review; Layer 3 (real-fix-vs-workaround / elegance) is human by definition — not mechanizable, never claim otherwise.
 
 ## Now — post-slimming sequence
 
 - [ ] **LP-01 Institutional session liquidity / value levels** — **TOP OF QUEUE (operator 2026-07-27).** Not SMC “liquidity pools.” Fix VP (volume across bar range, not typical-price dump); overnight = prior trading close→open; demote sell/buy-side liquidity labels until stop-cluster levels are proven; surface POC/VAH/VAL + PDH/PDL + ORB + VWAP on Chart and/or Console v2 (Liquidity Map is in hidden `#main`); touch→forward-return proof vs TOD base rate before any Decide influence. Code: `liquidity_value_engine.py`, `liquidity_models.py`, `/api/liquidity-snapshot`. Program row: `ACTIVE_PROGRAM.md` LP-01. Related residual: UI-04 P1D (PDH walk-back — prior trading day already fixed; overnight still calendar-blind).
 - [x] **RECON-01 Operator-doc reconciliation** — `OPEN_ITEMS.md` + `ACTIVE_PROGRAM.md` rebuilt against the charter; stale pointers in `governance/OPERATOR_DECISION_REGISTER.md` fixed. Closed @ `5c5f239` (PR #45).
 - [ ] **RECON-02 Disk-cleanup purge** — ~53.3 GB quarantined (moved, not deleted) 2026-07-15/16. Purge only after one clean trading session AND the operator gives the purge word. Separately: `_backup_pre_exec_identity_v1_20260713.db` (19.29 GB) holds until ~5 clean trading days after the slimming merge. **UPDATE 2026-07-26: the slimming merge landed — RC-6 blob-dedup slimmed the live DB 29.74 → 22.06 GB (verified on a copy, swapped live; original preserved as `data/ed_console.pre_rc6_20260726.db`). The 5-clean-day clock for the pre_exec backup now RUNS from 2026-07-26.** Full purge candidate set + gates: `reports/fp_db_deletion_gating_latest.json`.
-- [ ] **OPS-OPERABLE-SURFACE-JOB** — ALSO covers (2026-07-20, operator-approved): daily terrain scorecard at 15:30 CT — `python tools/terrain_backtest_report_v1.py` → `reports/terrain_backtest_latest.md`; host task to be registered by the operator with this row as its visible record (`schtasks /Create /SC DAILY /TN EdTerrainScorecard /TR "cmd /c cd /d C:\Users\evarg\Documents\Trading\EdWebConsole && python tools\terrain_backtest_report_v1.py" /ST 15:30`). Recurring Collect job not yet registered on the host: `python -m tools.run_operable_surface_ops --db data/ed_console.db` (production backfill tol=29 + gate). Optional end-of-day: `--refresh-outcomes --repair59 --quarantine`. Durable gate: `python -m tools.operable_surface_gate --db data/ed_console.db --write-report`. Do not create a silent Windows task without an operator-visible inventory row (see FIND-SCHEDULED-JOBS-VISIBILITY).
+- [ ] **OPS-OPERABLE-SURFACE-JOB** — the daily terrain scorecard host task is REGISTERED (`EdTerrainScorecard`, weekdays 16:45 ET — job record: `governance/host_scheduled_jobs.md`, the sole host-job inventory). Still not registered on the host — the recurring Collect job: `python -m tools.run_operable_surface_ops --db data/ed_console.db` (production backfill tol=29 + gate). Optional end-of-day: `--refresh-outcomes --repair59 --quarantine`. Durable gate: `python -m tools.operable_surface_gate --db data/ed_console.db --write-report`. Do not create a silent Windows task without an operator-visible inventory row (see FIND-SCHEDULED-JOBS-VISIBILITY).
 - [x] **OPS-GEX-MORNING-FULL-MONDAY-GATE** — CLOSED 2026-08-01. The row's ask was "confirm live collector is up on code that includes `option_chain_morning_full` before counting forward GEX days." Confirmed by query: the table carries fresh daily captures — 2026-07-27 through 2026-07-31 at 37–38 tickers/day (`select et_date,count(*) from option_chain_morning_full group by et_date order by et_date desc limit 5`). The collector is demonstrably up and writing on current code (wide-capture writer landed pre-`6c47b89b`; RC-162 @ `202237c7` reads the same pipeline). The forward-counting question the gate protected is itself moot: GEX-R1's day-level bet was KILLED on certified greeks (§8.6), so no forward GEX days are being counted.
 - [x] **PHASE-4 decision-path gate** — `decision_gate.py` + empty admissions + `call_engine.compute_call` gate + `tests/test_decision_gate.py` merged to the mainline. Closed @ `e009aa2` (PR #46). Runtime: directional calls stay `WAIT — decision path not admitted` until Find & Prove earns the first admission. (Board-reconciled 2026-08-16 from frozen f31-pdc-note-556d board; SHA verified ancestor of main.)
 - [ ] **PHASE-5 Restructure** — deliberate directory reorganization for a legible repo. After Phase 4; no functional changes mixed in.
@@ -72,8 +72,7 @@ additive or research-only.
 studies returned 0 PASS cells, and GEX-R1 was retired at −0.02 (p=0.88) on certified greeks. No row
 here may be described as edge until it clears a placebo. All of them start `UNPROVEN`.
 
-- [ ] **DIR-01 (ONE open item — sub-points a–g are facets of it, deliberately not separate rows;
-  the ledger is over its cap and may only shrink).**
+- [ ] **DIR-01 (ONE open item — sub-points a–g are facets of it, deliberately not separate rows).**
 
   **a) DEX as the tie-breaker (the direct answer to the operator's question).** GEX ≈ ∂DEX/∂S:
   DEX is the *level* of the dealer hedge book in shares, GEX is its *slope* per point of spot. The
@@ -194,11 +193,11 @@ earlier ~30-null battery is already VOID for the corrupted era). Contamination b
 certified greeks (`greeks_recomputed_v1`) only · repaired-bar era only · placebo mandatory ·
 pre-registered.
 
-**Unapproved inventory (probed 2026-08-01; each item tracked in its own home, listed here so the
-set is visible in one place):** register `governance/unproven_register.md` — 6 UNPROVEN rows,
-one (intraday flip-drift magnitude) OVERDUE since 2026-07-31 · root-cause log — RC-58, RC-107,
-RC-168 OPEN and RC-102/110/115/117/124/165/166 PARTIAL · charm — near-expiry T-convention faucet
-open; the charm VOTE stays UNAPPROVED until it closes.
+**Unapproved inventory (probed 2026-08-01 — a dated snapshot; every per-row status has since
+moved, so read live status in each home, never this paragraph):** register
+`governance/unproven_register.md` · root-cause log `governance/root_cause_log.md` (PARTIAL is no
+longer a ledger status) · charm rows in the same ledger. The charm-VOTE approval question remains
+the operator's.
 
 ## Find & Prove queue
 
@@ -234,7 +233,7 @@ open; the charm VOTE stays UNAPPROVED until it closes.
 - [ ] **ECON-01 replay-context residuals** — denominator defect fixed and locked; parent stays open on calibration-version pinning, purged/embargo execution, broader LSTM/Transformer point-in-time windowing, RTH producer-guard observation.
 - [ ] **MODEL-04 stale-model serving policy** — evidence delivered (per-ticker vintage table 2026-07-10; ten tickers on pre-correctness 2026-04-30 bundles; guests route through governed anchors). Serve/unserve/retrain policy = operator decision, held.
 - [ ] **BUILD-IDENTITY git_sha semantics** — `/api/build.git_sha` reads repo HEAD at request time, not the running process. `process_identity` block (startup SHA + PID) is the working method. Remaining: flip legacy top-level `git_sha` to process identity — operator call.
-- [ ] **GOV-REMOTE-ENFORCEMENT** — branch protection verified (PR + required checks + no force-push) but `enforce_admins=false` leaves the admin direct-push channel open. Operator settings decision.
+- [x] **GOV-REMOTE-ENFORCEMENT** — RESOLVED BY MEASUREMENT 2026-08-25: `gh api repos/evargas963/Ed-s-Console-App/branches/main/protection` returns `enforce_admins=true`, required checks pytest-full + hardening, PR reviews required. The admin direct-push channel this row tracked is closed on the live settings.
 - [ ] **UI-EXPLAIN orphan payload surfaces** — design approved, not rendered: `pred_headline` → explanation rail; `reversal_risk`/`reversal_label` → paired risk chip; closes with rendered DOM + RTH proof for all dispositioned fields. Universal RTH runtime proof (all enrolled tickers, browser DOM, live transport) remains open behind an RTH session window.
 
 ---
@@ -255,10 +254,12 @@ back as a new row with fresh evidence.*
 > (OPEN / FAIL / BLOCKED / NOT_PROVEN / HISTORICAL / GAP / unproven acceptance target).
 >
 > **Governing mission:** SEARCH → FIND → PROVE → FIX → TEST → IMPROVE → NEXT. Work the repo, not the
-> board. The board is durable memory of everything that still needs technical proof. This is NOT a
-> governance project; parent closure requires every material child closed. SPY/QQQ/IWM are anchors,
-> not scope boundaries — all fixes repo-wide and ticker-universal unless a proven economic reason
-> requires otherwise.
+> board. The board is durable memory of everything that still needs technical proof — statuses here
+> are record; the operator directs each session (AGENTS.md Operating model). Retention scoping: the
+> top-of-file ledger removes closed rows (history in git); THIS Project A board is append-only
+> durable record. This is NOT a governance project; parent closure requires every material child
+> closed. SPY/QQQ/IWM are anchors, not scope boundaries — all fixes repo-wide and ticker-universal
+> unless a proven economic reason requires otherwise.
 
 ## PA-1 — UNIVERSALITY (HARD PARENT REQUIREMENT)
 The repository is universal. SPY/QQQ/IWM are anchors, not scope boundaries.
@@ -347,7 +348,7 @@ The repository is universal. SPY/QQQ/IWM are anchors, not scope boundaries.
 - [x] **F17** — Realized volatility cadence (`bar_minutes` required; no silent default) — CLOSED_WITH_EVIDENCE
 - [x] **F18** — Charm drift target (not substituted with pin/net-GEX; governed absence; real UI path fixed) — CLOSED_WITH_EVIDENCE
 - [ ] **F16** — Reserved/disputed VIX-regime row — HISTORICAL / NOT_PROVEN (identity reconciled; producer `vix_bucket`/`vix_level`; consumers/missingness/fallback/universality/defect-status unproven)
-- [ ] **F19** — Reserved/disputed freshness/actionability row — HISTORICAL / NOT_PROVEN (actionability F05 closed; freshness → RC-282 OPEN)
+- [ ] **F19** — Reserved/disputed freshness/actionability row — HISTORICAL / NOT_PROVEN (actionability F05 closed; freshness — state: root_cause_log RC-282)
 - [x] **F20** — Pin width (one authority; market_state + server delegate) — CLOSED_WITH_EVIDENCE
 - [x] **F21** — VWAP side (one `derive_vwap_side`; consumers delegate) — CLOSED_WITH_EVIDENCE
 - [x] **F22** — Dominant direction (one triplet authority; DB+UI delegate; missing guarded) — CLOSED_WITH_EVIDENCE, latent hardening verification retained
@@ -364,9 +365,9 @@ The repository is universal. SPY/QQQ/IWM are anchors, not scope boundaries.
 - [ ] **F31** — Price-level snapshot fallback — OPEN (Phase 2A)
   - [ ] Canonical population + producer; pre-open/RTH/replay semantics; stale-cache; input fingerprint; mutual exclusion; governed fallback; no second truth; universality; runtime proof
   - [ ] Collect-display fail-closed (bound DOM consumers) — CLOSED-ON-OLD-LINE @ `16faa71...` (#83) + pdc @ `2a1e496...` (#84), MECHANISM NOT IN LIVE TREE (RC-364): `stamp_price_level_fields` / `F31_LEVEL_KEYS` / `fail_closed_price_levels` absent from the canonical tree; live carries its own Phase 2A canonical `PriceLevelSnapshot` (RC-322/RC-323, `tests/test_phase2a_price_level_snapshot_v1.py`). Do NOT port the old mechanism — re-verify the fail-closed display property against the Phase 2A path and close on that evidence. Old-line residuals to carry: pdc consumer semantics; `PRICE_LEVELS_CACHE_SEC` stale-cache question stays with RC-282.
-- [ ] **F32** — Confluence `cf_*` authority — NOT_PROVEN (Cursor refuses upgrade while RC-328 OPEN)
+- [ ] **F32** — Confluence `cf_*` authority — NOT_PROVEN (state: root_cause_log RC-328; board acceptance children below)
   - [x] Canonical `confluence_features_for_bar` exists; current code routes train/serve through it; wall-clock windows
-  - [ ] RC-328 OPEN conflict reconciled; train+serve population parity proven; caller fallback semantics; universality; ledger contradiction eliminated
+  - [ ] RC-328 ledger reconciliation (state: root_cause_log); train+serve population parity proven; caller fallback semantics; universality; ledger contradiction eliminated
 - [x] **F33** — `net_gamma_prev` (raw prior 1m; batch+serve unified; inline producer removed) — CLOSED_WITH_EVIDENCE (RC-342)
 - [x] **F34** — XGB pre-engineering enrichment (five scheduler routes use canonical preparer) — CLOSED_WITH_EVIDENCE (RC-340)
 - [ ] **F35** — Training/serving DB identity — children CLOSED_WITH_EVIDENCE; broader DB-authority parent NOT_PROVEN
@@ -391,8 +392,8 @@ The repository is universal. SPY/QQQ/IWM are anchors, not scope boundaries.
   - [ ] Persisted `gamma_pin` made consistent with the bound semantic — CLOSED-ON-OLD-LINE @ `d71bb5e`, NOT IN LIVE TREE (RC-364): no `gamma_pin_semantic` marker exists in the canonical tree; `db.py` still carries `pin_score`/`gamma_pin` columns without the semantic column.
   - [ ] Backward-safe migration for persisted values — CLOSED-ON-OLD-LINE @ `d71bb5e` + `053251e`, NOT IN LIVE TREE (RC-364): the `gamma_pin_semantic=net_gex_peak` ALTER is absent from the canonical tree. PORT NEEDED if the persisted-semantic split still matters on live.
   - [ ] Behavioral + mutation lock in place — CLOSED-ON-OLD-LINE @ `0e304f6`, NOT TREE-VERIFIED (RC-364): live locks engine semantics only.
-- [ ] **RC-282** — Freshness / stale actionability (semantic; live+UI impact; stale cannot remain actionable; fallback; universal; root fix; runtime) — OPEN
-- [ ] **RC-285** — model published `LIVE, edge=0` fabricated zero (semantic; live path; root cause; fix; proof; universality) — OPEN / NOT_PROVEN DETAILS
+- [ ] **RC-282** — Freshness / stale actionability (semantic; live+UI impact; stale cannot remain actionable; fallback; universal; root fix; runtime) — state: root_cause_log RC-282
+- [ ] **RC-285** — model published `LIVE, edge=0` fabricated zero (semantic; live path; root cause; fix; proof; universality) — state: root_cause_log RC-285
   - [x] Semantic of the fabricated-zero defect defined — Closed @ `1117f19`. Absent metric ≠ measured zero. (Board-reconciled 2026-08-16 from frozen f31 board; SHAs verified ancestors of main.)
   - [x] Live path characterized — Closed @ `1117f19`. `_fetch_state` → `model_health` → `/api/state`. Tests: `tests/test_model_edge_absent_is_not_zero_v1.py`.
   - [x] Root cause identified — Closed @ `1117f19`. Unread field; `.get(..., 0)` / `float(raw or 0)` / literal `"edge": 0`.
@@ -404,13 +405,13 @@ The repository is universal. SPY/QQQ/IWM are anchors, not scope boundaries.
   - [x] LSTM `edge_key` is `edge_pp`, not `val_accuracy` — tree cite: the lstm registration line in server.py passes "edge_pp"; source+AST locked.
   - [x] LSTM `val_accuracy` prints under its own name — tree cite: payload fields `val_accuracy` + `metric_name` stamped in both LIVE and UNSCORED returns.
   - [x] Operator never sees accuracy in the edge slot — tree cite: the model-health render paints model+status only (nothing paints `edge`); LSTM-with-only-val_accuracy becomes UNSCORED and does not count toward "approved"; the no-consumer tripwire test (`test_the_field_still_has_no_consumer_and_that_is_recorded`) fires the day a surface starts painting `m.edge`.
-- [ ] **RC-297** — derivation inventory drifted from code (semantic; live path; root; fix; proof; universality) — OPEN / NOT_PROVEN DETAILS
+- [ ] **RC-297** — derivation inventory drifted from code (semantic; live path; root; fix; proof; universality) — state: root_cause_log RC-297
   - [x] Semantic of the inventory-drift defect defined — Closed @ `8ca1f18`. Drift = inventory AST mismatch in `MEGA2_FILES`. (Board-reconciled 2026-08-16.)
   - [x] Live path characterized — Closed @ `8ca1f18`. Gate is `tests/test_mega2_traceable_audit.py` (offline).
   - [x] Root cause identified — Closed @ `8ca1f18`. Hand-maintained register; out-of-scope file uninventoried.
   - [x] Fix landed — Closed @ `1e09445259b1c0b1392cccdaa7b5b26d922af8d0`. Tree-fed `uninventoried_engine_modules(git ls-files)`. Filename token `engine` is not the producer class; parent stays OPEN.
   - [x] Proof recorded — Closed @ `1e09445259b1c0b1392cccdaa7b5b26d922af8d0`. Measured on `origin/main`: `uninventoried_engine_modules(...) == []`; `test_real_planted_engine_file_is_rejected_by_tree_scan` passed.
-- [ ] **RC-301** — absence-coerced-to-a-value as a CLASS (semantic; live path; root; fix; proof; universality) — OPEN / NOT_PROVEN DETAILS
+- [ ] **RC-301** — absence-coerced-to-a-value as a CLASS (semantic; live path; root; fix; proof; universality) — state: root_cause_log RC-301
   - [x] Semantic of the absence-coercion class defined — Closed @ `5d68d93`. `-> float` + except literal. (Board-reconciled 2026-08-16.)
   - [x] Live path characterized — Closed @ `5d68d93`. `parity_f_minus_spot_from_contracts` + `tools/check_absence_has_a_type.py` in hardening.
   - [x] Root cause identified — Closed @ `5d68d93`. Return type forecloses `None`.
@@ -422,10 +423,10 @@ The repository is universal. SPY/QQQ/IWM are anchors, not scope boundaries.
   - [x] Root cause identified — Closed @ `bb85651`. No registry linking payload key to semantic.
   - [ ] Fix landed — CLOSED-ON-OLD-LINE @ `1e09445...`, NOT IN LIVE TREE (RC-364): `KEY_LEVEL_CONSUMER_REGISTRY` / `hardcoded_kl_row_labels` absent; live carries its own KL row tables (`KL_PRIMARY`/`KL_CONDITIONAL`/`KL_REFERENCE` in `static/index.html`, institutional names per RC-352/353). Re-verify the defect (payload-key→semantic binding) against live's mechanism; port the registry idea only if live's tables leave the gap open.
   - [ ] Proof recorded — reopened with the fix child (RC-364); old-line proof does not transfer across mechanisms.
-- [ ] **RC-328** — Confluence train/serve population (verify current code closes original defect; canonical/train/serve population; window semantics; time-based lookback; missingness; universal; reconcile F32; close ledger honestly) — OPEN
+- [ ] **RC-328** — Confluence train/serve population (verify current code closes original defect; canonical/train/serve population; window semantics; time-based lookback; missingness; universal; reconcile F32; close ledger honestly) — state: root_cause_log RC-328
 
 ### RC-324 — Price-Level Snapshot Identity / Atomic Materialization
-> CODE_APPEARS_FIXED != CLOSED_WITH_EVIDENCE — RC-324 stays OPEN in the ledger even though current code looks repaired.
+> CODE_APPEARS_FIXED != CLOSED_WITH_EVIDENCE — the ledger closed RC-324 on 2026-08-09 (state: root_cause_log RC-324); the unchecked acceptance children below are this BOARD's own outstanding proof asks, not a ledger status claim.
 - [ ] RC-324 formally CLOSED_WITH_EVIDENCE
 - [x] Snapshot input fingerprint includes full material OHLCV/time content
 - [x] Interior bar-data changes alter the fingerprint
@@ -1300,7 +1301,7 @@ The repository is universal. SPY/QQQ/IWM are anchors, not scope boundaries.
 - [ ] Board updated immediately after material proof
 - [ ] **BOARD_INTEGRITY_STATUS = PASS**
 
-## PA-46 — CURRENT TOP ACTIVE EXECUTION QUEUE (priority items, not the whole board)
+## PA-46 — Open technical parents (board index — no priority or execution claim; the operator directs each session)
 - [ ] F10 — candle-direction host retrain
 - [ ] F15 — POC/VAH/VAL
 - [ ] F25 — ticker/artifact identity
@@ -1356,9 +1357,9 @@ The repository is universal. SPY/QQQ/IWM are anchors, not scope boundaries.
 - [ ] **PROJECT A = CLOSED_WITH_EVIDENCE**
 
 # OPEN ROOT-CAUSE LEDGER DENOMINATOR
-> Technical state preservation only — do NOT turn this into process work. Measured OPEN RC denominator = **72** OPEN rows in `governance/root_cause_log.md` (counted 2026-08-12; of which 55 are past due). If an OPEN RC proves a real technical defect, fix it; if it proves already technically fixed, verify and close with evidence; if non-material/process-only, classify it and move on.
+> Technical state preservation only — do NOT turn this into process work. Measured OPEN RC denominator = **81** OPEN rows in `governance/root_cause_log.md`, 0 past due (counted 2026-08-25; reproduce: `python -c "import re,pathlib; t=pathlib.Path('governance/root_cause_log.md').read_text(encoding='utf-8'); rows=re.findall(r'^\| (RC-\d+) \| (\w+)',t,re.M); print(len(rows), sum(1 for _,s in rows if s=='OPEN'))"`). If an OPEN RC proves a real technical defect, fix it; if it proves already technically fixed, verify and close with evidence; if non-material/process-only, classify it and move on.
 - [ ] Enumerate every currently OPEN RC row in `governance/root_cause_log.md`
-- [ ] Record current measured OPEN RC denominator (= 72 as of 2026-08-12)
+- [x] Record current measured OPEN RC denominator (= 81 as of 2026-08-25, command above)
 - [ ] Recompute denominator when the ledger changes
 - [ ] Classify each OPEN RC into exactly one category (MATERIAL_TECHNICAL, DUPLICATE_CHILD, SUPERSEDED_WITH_EVIDENCE, STALE_LEDGER_AFTER_PROVEN_FIX, PROCESS_ONLY, EXTERNAL_BOUNDARY, NOT_PROVEN)
 - [ ] Every MATERIAL_TECHNICAL RC appears explicitly on this Project A master board

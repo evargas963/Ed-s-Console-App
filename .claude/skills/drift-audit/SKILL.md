@@ -1,6 +1,6 @@
 ---
 name: drift-audit
-description: Self-administered MIT-professor audit protocol. Run BEFORE signing off ANY audit, stage acceptance, or "MET/clean/verified" claim — especially when auditing Cursor's work. Forces drift-check, AST scan, the known failure-class checklist, and a completeness critic, then self-corrects (direct Cursor + set a rule + mechanize). Invoke whenever about to claim work is correct/complete.
+description: Self-administered MIT-professor audit protocol. Run BEFORE signing off ANY audit, stage acceptance, or "MET/clean/verified" claim — especially when auditing another agent's work. Forces drift-check, AST scan, the known failure-class checklist, and a completeness critic, then proposes corrections to the operator. Invoke whenever about to claim work is correct/complete.
 ---
 
 > **Classification:** Operator Runbook | **Scope:** Drift-audit skill protocol for agent sign-off gates.
@@ -10,12 +10,12 @@ description: Self-administered MIT-professor audit protocol. Run BEFORE signing 
 A sign-off ("MET", "clean", "verified", "no callers break", "100%", "stage passes") is INVALID unless every phase below was executed this turn with cited command output. Lazy = regex/eyeballing/trusting the report. Rigorous = this protocol.
 
 ## Phase 1 — Intent & drift
-- Restate what the OPERATOR actually wanted here (not what Cursor reported). Which north-star principle does this touch (zero-bias / data-driven / per model×horizon / fail-closed)?
+- Restate what the OPERATOR actually wanted here (not what the implementing agent reported). Which north-star principle does this touch (zero-bias / data-driven / per model×horizon / fail-closed)?
 - Open the written plan. Does this change still serve it? Did scope or goal slip? Did a stage get marked done that isn't? Is the acceptance GATE actually equal to the principle, or weaker (e.g., presence-only)?
 
 ## Phase 2 — Mechanical scans (MANDATORY — never skip)
-- **AST scan every changed signature/arity/return:** `python tools/enforce_all_rules.py --ast-callsites <FUNC>`. Confirm every call site's binding. (Catches multi-line + two-step unpacks regex misses.)
-- Run the relevant gate(s) + tests **myself** (`--ablation-bias`, pytest) — never cite Cursor's pass count.
+- **AST scan every changed signature/arity/return** with a same-turn `ast.walk` script over every caller (`tools/enforce_all_rules.py` was retired 2026-07-16 — do not cite it); show the script and its output. (Catches multi-line + two-step unpacks regex misses.)
+- Run the relevant gate(s) + tests **myself** (pytest; the ablation contract via `check_zero_bias_ablation_contract` where it applies) — never cite the implementing agent's pass count.
 
 ## Phase 3 — Known failure-class checklist (check EACH explicitly; cite evidence)
 - [ ] **Arity / unpack** — every caller matches the new return shape (AST, not regex).
@@ -33,17 +33,16 @@ A sign-off ("MET", "clean", "verified", "no callers break", "100%", "stage passe
 - [ ] **Patch / gate-relax (no-patches rule)** — does the change make something pass by BYPASSING or WEAKENING a production gate rather than fixing the cause? Env flag that skips a contract (`ED_*_EVAL`), an `if X: skip`/relax branch, a silent slice/prefix/fallback forcing incompatible data through (e.g. legacy-width tensor sliced to load). **Trace the artifact/bundle LOAD lineage** — how each model/bundle is actually loaded for scoring — not just the output. A green gate over a relaxed load is a patch, and "preflight passed" then means "it booted," not "it's correct." Solid fix or fail-closed; never a money-path bypass. (Missed 2026-06-05: the `ED_ABLATION_SCORED_EVAL` + prefix-slice contamination — I audited grid shape/output, never the bundle load path.)
 
 ## Phase 4 — Completeness critic
-- "What failure class did I NOT check? What would an MIT professor still ask? Where is the gate smaller than the goal?" If a new class surfaces, check it AND add it to Phase 3 (this protocol compounds).
+- "What failure class did I NOT check? What would an MIT professor still ask? Where is the gate smaller than the goal?" If a new class surfaces, check it NOW, and PROPOSE its addition to Phase 3 to the operator (the checklist grows only on the operator's word — 2026-08-24 teardown).
 
 ## Phase 5 — Verdict (every claim cites same-turn command/Read output)
 - State CLEAN or list FINDINGS with file:line + evidence. No impression-verdicts.
 
-## Phase 6 — Self-correct loop (if any finding)
-1. Write the precise **Cursor fix directive** (file:line, exact change, acceptance).
-2. Set a **self-directed rule** (AGENTS.md + memory) so this class is caught next time.
-3. **Mechanize** the check if possible (extend `check_zero_bias_ablation_contract` / a detector) so the build catches it, not just me.
+## Phase 6 — Correction loop (if any finding)
+1. Write the precise **fix directive** for whoever the operator has implementing (file:line, exact change, acceptance; paste-ready if that is another agent).
+2. **PROPOSE** to the operator, in one paste-ready paragraph, any rule and (if useful) its mechanization that would catch this class next time. The operator directs any landing — no self-landed AGENTS.md edits, no new locks manufactured from a finding (2026-08-24 teardown).
 
 ## Phase 7 — Sign-off
 - Only after 1–6. State explicitly: "drift-audit run; findings: <…>; corrections: <…>; gate hardened: <y/n>." Then sign off.
 
-**Honest limit:** this guarantees coverage of KNOWN failure classes + forces the completeness critic; it cannot guarantee a novel class. Every novel class found gets added to Phase 3.
+**Honest limit:** this guarantees coverage of KNOWN failure classes + forces the completeness critic; it cannot guarantee a novel class. Every novel class found is checked in-session and proposed to the operator for Phase 3.
