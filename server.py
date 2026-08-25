@@ -831,7 +831,7 @@ def spot_is_a_close(source: str) -> bool:
 
 
 def _gated_safe_get_chain(client, ticker: str, *, strike_count, priority: bool = False,
-                          to_date=None):
+                          to_date=None, from_date=None):
     """safe_get_chain behind the bounded two-slot gate -> (resp, gate_wait_sec, fetch_sec).
 
     Schwab CSV authority checked: yes
@@ -857,8 +857,10 @@ def _gated_safe_get_chain(client, ticker: str, *, strike_count, priority: bool =
     # ticker key (wanting strikeCount=20) and inherited the failure as
     # "Chain fetch failed". Same-ticker different widths are different fetches.
     # RC-127: to_date joins the coalesce key — a full-book fetch and a 45-day rung are
-    # DIFFERENT fetches, same as the strike-width lesson above.
-    key = ((ticker or "").strip().upper(), int(strike_count), str(to_date or ""))
+    # DIFFERENT fetches, same as the strike-width lesson above. Cursor-audit F2: from_date
+    # likewise — a single-expiry window (from=to=sel) and the open-near-end horizon fetch are
+    # different requests and must never coalesce onto each other.
+    key = ((ticker or "").strip().upper(), int(strike_count), str(to_date or ""), str(from_date or ""))
     wait_started = time.monotonic()
     with _chain_inflight_lock:
         holder = _chain_inflight.get(key)
@@ -899,7 +901,7 @@ def _gated_safe_get_chain(client, ticker: str, *, strike_count, priority: bool =
     resp = None
     exc = None
     try:
-        resp = safe_get_chain(client, ticker, strike_count=strike_count, to_date=to_date)
+        resp = safe_get_chain(client, ticker, strike_count=strike_count, to_date=to_date, from_date=from_date)
         return resp, gate_wait_sec, round(time.monotonic() - fetch_started, 3)
     except SchwabAuthError as e:
         exc = e
@@ -5454,7 +5456,7 @@ def _fetch_expiries_light(ticker: str) -> list[str]:
     Option expiries only — quote + option chain, no snapshot insert or MarketState.
     Used by /api/expiries when cache is cold (avoids logging a DB row per dropdown poll).
     """
-    ticker = ticker.upper().strip()
+    ticker = ticker_storage_key(ticker)   # Cursor-audit F1: bare index root ("SPX") -> "$SPX"
     client = get_client()
     # RC-59 chain-width faucet EXEMPTION, declared not accidental: this path reads the EXPIRY
     # DATE LIST only and computes no levels, so strike width is irrelevant to its output — a
@@ -6476,6 +6478,15 @@ def _fetch_state(
     logger_source: Optional[str] = None,
 ) -> dict:
     _fetch_start_mono = time.monotonic()
+    # Cursor-audit F1: canonicalize the ticker at this single chokepoint. Unlike the
+    # terrain/quote/bars endpoints, the analytics/state/warm entry points funnel here WITHOUT
+    # first calling ticker_storage_key — so an index root typed or POSTed bare ("SPX") would
+    # otherwise take the equity branch of resolve_chain_strike_count / _chain_to_date_for and
+    # request the full multi-year book with no strike cap and no date bound (the RC-149/RC-491
+    # budget blowout). Normalizing here gives every downstream call — quote, chain, snapshot
+    # write — the same "$"-gated protections as "$SPX". ticker_storage_key is idempotent and
+    # leaves equities unchanged.
+    ticker = ticker_storage_key(ticker)
     # UI_05 tail attribution (def-free marks, same pattern as _stage_marks):
     # splits _chain_ms so an untraced gap can never hide again.
     _chain_window_marks: list[tuple[str, float]] = []
@@ -6532,6 +6543,7 @@ def _fetch_state(
             c_resp, _chain_gate_wait_sec, _chain_fetch_pure_sec = _gated_safe_get_chain(
                 client, ticker, strike_count=resolve_chain_strike_count(ticker),  # RC-59: one faucet
                 to_date=_chain_to_date_for(ticker, expiry),   # RC-494: bound index expiry count (keep an explicit far pick)
+                from_date=_chain_from_date_for(ticker, expiry),   # Cursor-audit F2: bound near edge for a far pick
                 priority=_chain_priority,
             )
             q_resp = _memoized_quote_response(ticker, client=client)   # RC-112/W3-C8: one vendor faucet
@@ -6551,6 +6563,7 @@ def _fetch_state(
                 _gated_safe_get_chain, client, ticker,
                 strike_count=resolve_chain_strike_count(ticker),   # RC-59: one faucet
                 to_date=_chain_to_date_for(ticker, expiry),   # RC-494: bound index expiry count (keep an explicit far pick)
+                from_date=_chain_from_date_for(ticker, expiry),   # Cursor-audit F2: bound near edge for a far pick
                 priority=_chain_priority,
             )
             # RC-112 recurrence 2 (v10 audit, server.py:6228): this pool leaf passed the raw
@@ -10948,7 +10961,8 @@ def resolve_chain_strike_count(ticker: str) -> int:
     The MAX is a VENDOR limit, not ours (Schwab 502s above it) — a ticker needing more is fetched
     at the ceiling and its levels self-report LOW_CONFIDENCE_NARROW_CHAIN rather than pretending.
     """
-    tk = (ticker or "").upper().strip()
+    tk = ticker_storage_key(ticker)   # Cursor-audit F1: bare index root ("SPX") -> "$SPX" so the
+    #                                   faucet can't be bypassed by an un-normalized caller.
     if tk.startswith("$"):   # canonical index roots: $SPX/$VIX/$RUT/$NDX/$DJI
         # RC-494: index books are fetched over a bounded DTE horizon (_chain_to_date_for), so a
         # FIXED budget-safe width covers the whole near-term surface. Deterministic on purpose —
@@ -10988,11 +11002,14 @@ def _chain_to_date_for(ticker: str, selected_expiry: str | None = None) -> str |
     resolve_chain_strike_count's fixed index width fits the budget. Equities return None (full
     book, unchanged). One authority for the index date bound, mirroring the strike-count faucet.
 
-    If a caller EXPLICITLY selects a far-dated index expiry (beyond the horizon), the fetch is
-    extended to include it — otherwise the downstream slice to that expiry would be empty and
-    error (RC-494 robustness). The auto/default path passes no expiry and gets the near-term
-    horizon. A single selected expiry keeps the book small regardless of how far out it is."""
-    tk = (ticker or "").upper().strip()
+    If a caller EXPLICITLY selects a far-dated index expiry (beyond the horizon), to_date is
+    extended to it — otherwise the downstream slice to that expiry would be empty and error
+    (RC-494 robustness). Cursor-audit F2: extending to_date ALONE turned a one-expiry request
+    into a today->far multi-expiry sweep (Schwab returns every expiry up to to_date), re-blowing
+    the budget. The companion _chain_from_date_for bounds the NEAR edge to the same far date for
+    that case, so the window is [sel, sel] — a single expiry (60*2=120 contracts). The auto/default
+    path passes no expiry and gets the open-near-end horizon."""
+    tk = ticker_storage_key(ticker)   # Cursor-audit F1: bare index root ("SPX") -> "$SPX"
     if not tk.startswith("$"):
         return None
     from datetime import date, timedelta
@@ -11008,6 +11025,33 @@ def _chain_to_date_for(ticker: str, selected_expiry: str | None = None) -> str |
         except ValueError:
             pass
     return horizon.isoformat()
+
+
+def _chain_from_date_for(ticker: str, selected_expiry: str | None = None) -> str | None:
+    """Chain fetch from_date (ISO YYYY-MM-DD) — the NEAR edge of the window, normally None so
+    Schwab defaults it to today.
+
+    Cursor-audit F2: paired with _chain_to_date_for. When an operator explicitly selects an index
+    expiry BEYOND the 45-day horizon, _chain_to_date_for pushes to_date out to it; without also
+    bounding the near edge Schwab returns EVERY expiry from today through that far date
+    (60 strikes * 2 * ~150 expiries = ~18,000 contracts >> SCHWAB_CHAIN_CONTRACT_BUDGET), the
+    RC-491 502 — even though _fetch_state then slices to that ONE expiry and discards the rest.
+    Bounding from_date to the same far date pulls only that expiry's strikes (60*2=120). Fires ONLY
+    for a far index pick; equities, the auto path, and near picks (already inside the bounded
+    horizon window) keep the open near end unchanged."""
+    tk = ticker_storage_key(ticker)   # Cursor-audit F1: bare index root ("SPX") -> "$SPX"
+    if not tk.startswith("$") or not selected_expiry:
+        return None
+    from datetime import date, timedelta
+
+    from time_et import now_et
+
+    horizon = (now_et() + timedelta(days=INDEX_CHAIN_DTE_HORIZON_DAYS)).date()
+    try:
+        sel = date.fromisoformat(str(selected_expiry)[:10])
+    except ValueError:
+        return None
+    return sel.isoformat() if sel > horizon else None
 
 _terrain_cache: dict[str, dict] = {}
 _terrain_cache_lock = threading.Lock()
@@ -15412,7 +15456,7 @@ def get_liquidity_playbook_state(
 def debug_charm(ticker: str = DEFAULT_TICKER):
     """Diagnose why charm is not computing."""
     try:
-        ticker = (ticker or DEFAULT_TICKER).upper().strip()
+        ticker = ticker_storage_key(ticker or DEFAULT_TICKER)   # Cursor-audit F1: bare "SPX" -> "$SPX"
         # TICKER-PREVIEW-NO-ENROLL: charm diagnostic is a VIEW — touch last-seen only.
         _touch_tracked_ticker_view(ticker)
         from math_exposure import compute_net_charm
@@ -15420,7 +15464,10 @@ def debug_charm(ticker: str = DEFAULT_TICKER):
         cl       = get_client()
         # RC-59: charm IS level math — the debug view must see the same width the product
         # computes on, or it debugs a different chain than the one that produced the number.
-        c_resp   = safe_get_chain(cl, ticker, strike_count=resolve_chain_strike_count(ticker))
+        # Cursor-audit A1: and the same index DATE bound — without to_date this fetched the full
+        # multi-year $SPX book (no cap) and 502'd on the budget, unlike the product's bounded path.
+        c_resp   = safe_get_chain(cl, ticker, strike_count=resolve_chain_strike_count(ticker),
+                                  to_date=_chain_to_date_for(ticker, None))
         if c_resp is None or c_resp.status_code != 200:
             return {"error": f"Chain fetch failed: status={getattr(c_resp, 'status_code', 'None')}"}
         chain_json = c_resp.json()

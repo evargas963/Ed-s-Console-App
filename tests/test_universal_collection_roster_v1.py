@@ -74,6 +74,48 @@ def test_index_book_width_is_fixed_and_date_bounded_under_budget():
     assert srv._chain_to_date_for("$SPX", "2020-01-01") == srv._chain_to_date_for("$SPX")
 
 
+def test_bare_index_root_gets_index_protections_f1():
+    """Cursor-audit F1: an index root typed/POSTed BARE ('SPX', no $) must get the same $-gated
+    protections as '$SPX'. The analytics/state/warm entry points never canonicalized via
+    ticker_storage_key, so a bare root took the equity path — no width cap, no date bound — and
+    requested the full multi-year book (the RC-491 502). The width/date faucets now normalize
+    their own input, and _fetch_state normalizes at its single chokepoint."""
+    import server as srv
+    from instrument_identity import ticker_storage_key
+
+    for bare, dollar in (("SPX", "$SPX"), ("RUT", "$RUT"), ("VIX", "$VIX"), ("NDX", "$NDX")):
+        assert ticker_storage_key(bare) == dollar
+        assert srv.resolve_chain_strike_count(bare) == srv.INDEX_CHAIN_STRIKE_COUNT, (
+            f"bare {bare} bypassed the fixed index width")
+        assert srv._chain_to_date_for(bare) is not None, f"bare {bare} bypassed the index date bound"
+        assert srv._chain_to_date_for(bare) == srv._chain_to_date_for(dollar)
+    # equities are untouched — full book (no date bound)
+    assert srv._chain_to_date_for("AAPL") is None
+
+
+def test_far_selected_index_expiry_is_single_expiry_window_f2():
+    """Cursor-audit F2: extending to_date to a far selected expiry WITHOUT bounding from_date made
+    Schwab return every expiry from today through that far date (60*2*~150 ≈ 18k contracts, over
+    the 6,600 budget) even though _fetch_state then slices to that one expiry and discards the
+    rest. from_date is now bounded to the same far date, so the window is [sel, sel] — a single
+    expiry (60*2 = 120)."""
+    import server as srv
+
+    far = "2027-12-17"
+    # far pick: BOTH ends bound to the selected expiry -> one expiry, trivially under budget
+    assert srv._chain_to_date_for("$SPX", far) == far
+    assert srv._chain_from_date_for("$SPX", far) == far
+    assert srv.INDEX_CHAIN_STRIKE_COUNT * 2 * 1 <= srv.SCHWAB_CHAIN_CONTRACT_BUDGET
+    # auto path / no expiry: open near end (Schwab defaults to today), bounded far end (horizon)
+    assert srv._chain_from_date_for("$SPX", None) is None
+    assert srv._chain_from_date_for("$SPX") is None
+    # near pick (inside the 45-day window, already budget-safe): near edge stays open
+    assert srv._chain_from_date_for("$SPX", "2020-01-01") is None
+    # equities never get a near bound; bare index root is protected too (F1 composition)
+    assert srv._chain_from_date_for("NVDA", far) is None
+    assert srv._chain_from_date_for("SPX", far) == far
+
+
 def test_equity_width_and_full_book_unchanged():
     import server as srv
 
