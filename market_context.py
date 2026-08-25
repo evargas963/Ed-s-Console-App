@@ -134,7 +134,11 @@ def market_context_panel_symbols_excluding_core(core_upper: frozenset[str]) -> l
     for sym, _, _ in IWM_SECTORS:
         add(sym)
     add("$VIX")
-    add("$TNX")
+    # $TNX (10-Year Treasury yield index, RC-495) is INTENTIONALLY NOT enrolled here: it has
+    # no options chain, so the snapshot logger can never produce a row for it — enrolling it
+    # made it a permanent "enrolled non-collector" against the universal-collection standard.
+    # Its yield still feeds the bond-signal panel via the direct _fetch("$TNX") below (that
+    # quote path is independent of this snapshot-enrollment list).
     return out
 
 
