@@ -15,11 +15,12 @@ absolute operator-home paths never appear in tracked files (credential-leak hook
 | `EdTerrainScorecard` | Weekdays 16:45 ET | `cmd /c "<REPO>\tools\run_terrain_scorecard.bat"` (quoted-set PYTHONUTF8, venv-parity enforced inside the bat) | `reports/scorecard_run.log` (gitignored; scanned by `check_scheduled_producers_are_not_inert`) | 2026-08-04 — Last Result **3221225786** (was 0 on 2026-07-27); see *Terminated-mid-run reading* below |
 | `EdConsole Stream Capture` | Daily 08:25 ET, 405 min | `cmd /c cd /d <REPO> && python tools\run_stream_capture.py --symbols SPY,QQQ,IWM --duration-min 405` | `data/stream_capture.lock` owner + `reports/stream_capture_status.json` | 2026-08-04 — Last Result **3221225786** (was 0 on 2026-07-27) |
 | `EdWebConsole Daily Scoreboard` | Daily 15:35 ET | `powershell -NoProfile -ExecutionPolicy Bypass -File <REPO>\tools\run_daily_scoreboard.ps1` | per-script | 2026-08-04 — Last Result **3221225786** (was 0 on 2026-07-27) |
-| `EdMondayDebtWake` | weekly wake | `powershell.exe -NoProfile -ExecutionPolicy Bypass -File "<REPO>\tools\run_monday_debt_wake.ps1"` (measured 2026-08-25 via `Get-ScheduledTask`, state Ready) — **RETIREMENT PENDING, operator action owed:** the repo-side script and `reports/_wake/` markers were DELETED 2026-08-25 (audit round 2 — a one-shot 2026-08-03 alarm still re-firing weekly against dead work orders); the operator deletes the task: `schtasks /Delete /TN "EdMondayDebtWake" /F` | `reports/_wake/` (deleted) | 2026-08-25 — command measured; retirement owed |
+| ~~`EdMondayDebtWake`~~ | RETIRED | ~~`powershell.exe ... run_monday_debt_wake.ps1`~~ (repo script + `reports/_wake/` markers deleted 2026-08-25, audit round 2 — a one-shot 2026-08-03 alarm re-firing weekly against dead work orders) | `reports/_wake/` (deleted) | **2026-08-25 — DELETED from host by operator** (`schtasks /Delete /TN "EdMondayDebtWake" /F`); verified ABSENT via `Get-ScheduledTask`. Tombstone kept per this file's honest-record rule. |
 | `EdRehabDailyScan` | Daily 18:30 | `powershell.exe -NoProfile -ExecutionPolicy Bypass -File "<REPO>\tools\run_rehab_daily.ps1"` (repo launcher, venv parity + non-zero exit surfaced inside it) | `reports/rehab_latest.md` + `reports/tqm_queue_latest.json` + `reports/advisory_debt_latest.json` | 2026-08-05 — registered by the PM; **PROVEN BY EXECUTION, not by registration**: triggered on demand, Last Result **0**, LastRunTime 04:53:24, and all three artifacts advanced 04:10 → 04:59 with the queue reading 3367/prior 3367/delta 0 across 5 items |
 | `EdRthCompletenessCheck` | daily | `<REPO>\.venv\Scripts\python.exe <REPO>\tools\rth_completeness_check_v1.py --db <REPO>\data\ed_console.db --backfill` (measured 2026-08-25 via `Get-ScheduledTask`, state Ready) | per-script | 2026-08-25 — command measured; 2026-08-04 Last Result was **3221225786** |
+| `EdConsoleLivenessWatch` | Every 5 min | `<REPO>\.venv\Scripts\python.exe <REPO>\tools\console_liveness_check.py --db <REPO>\data\ed_console.db` | `reports/console_liveness_run.log` (scanned by `check_scheduled_producers_are_not_inert`) | 2026-08-25 — **REGISTERED + verified Ready** via `Get-ScheduledTask`; `LastTaskResult` **267011** = `SCHED_S_TASK_HAS_NOT_RUN` (created, awaiting first 5-min tick — not a failure). Tool proven on-demand same day: returns OK outside the window, DEAD-PRODUCER alert inside it |
 
-## Owed 2026-08-25 — console + producer liveness watch (RC-481 / RC-479)
+## RESOLVED 2026-08-25 — console + producer liveness watch (RC-481 / RC-479)
 
 `tools/console_liveness_check.py` reads the production DB read-only and, during a trading
 day inside 09:30-close+15min ET, ALERTs (non-zero exit + a line in
@@ -33,7 +34,7 @@ COLLECTION, not process existence — no in-process change, no heartbeat table, 
 
 | Task | Schedule | Command | Log | State |
 |---|---|---|---|---|
-| `EdConsoleLivenessWatch` | **not created** | `<REPO>\.venv\Scripts\python.exe <REPO>\tools\console_liveness_check.py --db <REPO>\data\ed_console.db` | `reports/console_liveness_run.log` (scanned by `check_scheduled_producers_are_not_inert`) | **ABSENT from the host** — registering a Windows task is an operator action; agents do not create host schedules |
+| `EdConsoleLivenessWatch` | Every 5 min | `<REPO>\.venv\Scripts\python.exe <REPO>\tools\console_liveness_check.py --db <REPO>\data\ed_console.db` | `reports/console_liveness_run.log` (scanned by `check_scheduled_producers_are_not_inert`) | **REGISTERED 2026-08-25** by the operator (`schtasks /Create ... /SC MINUTE /MO 5 /F`); now Ready — see the live table above. Row kept as the registration record. |
 
 Operator registration (every 5 min across the window; then this row moves to the table above with a verified date):
 
