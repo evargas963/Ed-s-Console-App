@@ -30,8 +30,13 @@ def _text(t: str) -> dict:
     return {"type": "text", "text": t}
 
 
-def _bash(cmd: str) -> dict:
-    return {"type": "tool_use", "name": "Bash", "input": {"command": cmd}}
+def _bash(cmd: str, tid: str = "tu_1") -> dict:
+    return {"type": "tool_use", "id": tid, "name": "Bash", "input": {"command": cmd}}
+
+
+def _result(tid: str = "tu_1", is_error: bool = False) -> dict:
+    return {"type": "tool_result", "tool_use_id": tid, "is_error": is_error,
+            "content": [{"type": "text", "text": "output"}]}
 
 
 def _write_transcript(tmp_path: Path, *lines: str) -> str:
@@ -67,7 +72,34 @@ def test_fake_backticked_command_is_not_proof(tmp_path):
     assert rc == 2 and "no same-turn proof" in err, err
 
 
-def test_the_same_citation_with_the_command_actually_run_passes(tmp_path):
+def test_the_same_citation_with_the_command_run_successfully_passes(tmp_path):
+    tp = _write_transcript(
+        tmp_path,
+        _rec("user", _text("did the gate hold?")),
+        _rec("assistant",
+             _bash("python tools/terrain_backtest_report_v1.py --full"),
+             _text(VERDICT_WITH_FAKE_CMD)),
+        _rec("user", _result("tu_1", is_error=False)))
+    rc, err = _run_main(tp)
+    assert rc == 0, err
+
+
+def test_a_command_that_FAILED_is_not_proof(tmp_path):
+    """RESULT, NOT ISSUANCE (operator, 2026-08-25): issuing `pytest` that then errored
+    cannot ground a verdict — the tool_result carries is_error=true."""
+    tp = _write_transcript(
+        tmp_path,
+        _rec("user", _text("did the gate hold?")),
+        _rec("assistant",
+             _bash("python tools/terrain_backtest_report_v1.py --full"),
+             _text(VERDICT_WITH_FAKE_CMD)),
+        _rec("user", _result("tu_1", is_error=True)))
+    rc, err = _run_main(tp)
+    assert rc == 2 and "no same-turn proof" in err, err
+
+
+def test_a_command_with_no_result_record_is_not_proof(tmp_path):
+    """An interrupted call (tool_use with no tool_result) proves nothing ran to completion."""
     tp = _write_transcript(
         tmp_path,
         _rec("user", _text("did the gate hold?")),
@@ -75,7 +107,7 @@ def test_the_same_citation_with_the_command_actually_run_passes(tmp_path):
              _bash("python tools/terrain_backtest_report_v1.py --full"),
              _text(VERDICT_WITH_FAKE_CMD)))
     rc, err = _run_main(tp)
-    assert rc == 0, err
+    assert rc == 2, err
 
 
 def test_verdict_judged_on_whole_turn_not_last_record(tmp_path):

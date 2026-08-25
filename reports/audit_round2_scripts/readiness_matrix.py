@@ -15,11 +15,16 @@ Requirements measured AT 09:30 ET per (ticker, day):
 """
 import os
 import sqlite3
+import sys
 from datetime import datetime
-from zoneinfo import ZoneInfo
+from pathlib import Path
 
-ET = ZoneInfo("America/New_York")
-DB = os.environ.get("ED_CONSOLE_DB_RO", "file:data/ed_console.db?mode=ro")
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from time_et import ET  # noqa: E402 — the ONE NY-zone authority (COH-SA-2)
+
+DB = os.environ.get("ED_CONSOLE_DB_RO")
+if DB is None:
+    DB = "file:data/ed_console.db?mode=ro"
 CORE = ["SPY", "QQQ", "IWM", "NVDA", "AAPL", "MSFT", "AMZN", "META", "TSLA", "GOOGL", "AVGO"]
 DAYS = ["2026-08-18", "2026-08-19", "2026-08-20", "2026-08-21", "2026-08-24"]
 PREV = {"2026-08-18": "2026-08-17", "2026-08-19": "2026-08-18", "2026-08-20": "2026-08-19",

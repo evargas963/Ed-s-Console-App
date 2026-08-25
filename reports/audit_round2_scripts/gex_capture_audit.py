@@ -3,7 +3,9 @@ ED_CONSOLE_DB_RO overrides the DB. Edit CUT for the window."""
 import os
 import sqlite3
 
-DB = os.environ.get("ED_CONSOLE_DB_RO", "file:data/ed_console.db?mode=ro")
+DB = os.environ.get("ED_CONSOLE_DB_RO")
+if DB is None:
+    DB = "file:data/ed_console.db?mode=ro"
 conn = sqlite3.connect(DB, uri=True)
 cur = conn.cursor()
 

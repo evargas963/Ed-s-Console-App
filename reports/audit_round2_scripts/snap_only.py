@@ -3,11 +3,16 @@ gaps, absent-ticker forensics. Read-only; run from repo root; ED_CONSOLE_DB_RO o
 import os
 import sqlite3
 import statistics
+import sys
 from datetime import datetime
-from zoneinfo import ZoneInfo
+from pathlib import Path
 
-ET = ZoneInfo("America/New_York")
-DB = os.environ.get("ED_CONSOLE_DB_RO", "file:data/ed_console.db?mode=ro")
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from time_et import ET  # noqa: E402 — the ONE NY-zone authority (COH-SA-2)
+
+DB = os.environ.get("ED_CONSOLE_DB_RO")
+if DB is None:
+    DB = "file:data/ed_console.db?mode=ro"
 conn = sqlite3.connect(DB, uri=True)
 conn.row_factory = sqlite3.Row
 DAYS = ["2026-08-18", "2026-08-19", "2026-08-20", "2026-08-21", "2026-08-24"]
@@ -34,9 +39,12 @@ for ds in DAYS:
     firsts = sorted(r["mn"] for r in non)
     by930 = sum(1 for r in non if r["mn"] <= et_ts(ds, 9, 30))
     n_tickers = len(non)
-    med = firsts[len(firsts)//2] if firsts else None
-    print(f"  {ds}: {n_tickers} non-sentinel tickers with snaps; earliest {fmt(firsts[0]) if firsts else '-'} "
-          f"median-first {fmt(med)} latest-first {fmt(firsts[-1]) if firsts else '-'}; snap-by-0930 {by930}/{n_tickers}; "
+    if firsts:
+        earliest, med, latest = fmt(firsts[0]), fmt(firsts[len(firsts) // 2]), fmt(firsts[-1])
+    else:
+        earliest = med = latest = "-"
+    print(f"  {ds}: {n_tickers} non-sentinel tickers with snaps; earliest {earliest} "
+          f"median-first {med} latest-first {latest}; snap-by-0930 {by930}/{n_tickers}; "
           f"sentinel by-0930 {sum(1 for r in rows if r['ticker'] in SENT and r['mn'] <= et_ts(ds,9,30))}/3")
 
 print("\nWhich enrolled tickers have ZERO snapshots across all days:")

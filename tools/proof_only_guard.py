@@ -131,7 +131,7 @@ def last_assistant_text(transcript_path: str) -> str | None:
 
 
 def turn_slice(transcript_path: str) -> tuple[str | None, list[str]]:
-    """(assistant text of THIS turn, shell commands actually ISSUED this turn).
+    """(assistant text of THIS turn, shell commands that RAN WITHOUT ERROR this turn).
 
     The turn boundary is the LAST user record carrying real text (tool_result records
     are user-role but carry no text block). Assistant text is every text block after
@@ -139,11 +139,20 @@ def turn_slice(transcript_path: str) -> tuple[str | None, list[str]]:
     hide behind a bland 'Done.' tail record. Commands are the input.command of every
     Bash/PowerShell tool_use block after the boundary; command-carrying tools only —
     a Read file_path is not an executed command.
+
+    RESULT, NOT ISSUANCE (operator requirement, 2026-08-25): a command counts only when
+    its tool_result exists in the same transcript and does not carry is_error=true —
+    issuing `pytest` that then FAILED is not proof. A command with no result record at
+    all (interrupted mid-call) does not count either. HONEST LIMIT: is_error=false
+    proves the tool call completed without a harness-level error (for Bash, a nonzero
+    exit surfaces as is_error); it cannot judge whether the OUTPUT supports the claim —
+    that residue is the operator's read.
     """
     p = Path(transcript_path)
     if not p.exists():
         return None, []
-    records: list[tuple[str, list[str], list[str]]] = []
+    records: list[tuple[str, list[str], list[tuple[str, str]]]] = []
+    result_error_by_id: dict[str, bool] = {}
     try:
         with p.open(encoding="utf-8", errors="ignore") as fh:
             for line in fh:
@@ -160,7 +169,7 @@ def turn_slice(transcript_path: str) -> tuple[str | None, list[str]]:
                     continue
                 content = msg.get("content")
                 texts: list[str] = []
-                cmds: list[str] = []
+                cmds: list[tuple[str, str]] = []
                 if isinstance(content, str):
                     if content.strip():
                         texts.append(content)
@@ -173,7 +182,11 @@ def turn_slice(transcript_path: str) -> tuple[str | None, list[str]]:
                         elif c.get("type") == "tool_use" and c.get("name") in ("Bash", "PowerShell", "Shell"):
                             cmd = (c.get("input") or {}).get("command")
                             if isinstance(cmd, str) and cmd.strip():
-                                cmds.append(cmd)
+                                cmds.append((str(c.get("id") or ""), cmd))
+                        elif c.get("type") == "tool_result":
+                            tid = str(c.get("tool_use_id") or "")
+                            if tid:
+                                result_error_by_id[tid] = bool(c.get("is_error"))
                 records.append((role, texts, cmds))
     except OSError:
         return None, []
@@ -186,7 +199,10 @@ def turn_slice(transcript_path: str) -> tuple[str | None, list[str]]:
     for role, texts, cmds in records[boundary + 1:]:
         if role == "assistant":
             texts_out.extend(texts)
-            cmds_out.extend(cmds)
+            for tid, cmd in cmds:
+                # RESULT REQUIRED: no result record, or is_error=true -> not proof.
+                if tid and result_error_by_id.get(tid) is False:
+                    cmds_out.append(cmd)
     return ("\n".join(texts_out) if texts_out else None), cmds_out
 
 

@@ -125,22 +125,13 @@ def panel_auto_ticker_set(db_path: str) -> frozenset[str]:
 
 
 def filter_tickers_for_background_logging(tickers: list[str], db_path: str) -> list[str]:
-    """Drop panel_auto from background full-chain snapshot rotation (thin quote path only).
-
-    Base money-path anchors (SPY/QQQ/IWM) are never excluded — they require full capture parity.
-    """
-    skip = panel_auto_ticker_set(db_path) - training_anchor_tickers_upper()
-    if not skip:
-        return list(tickers)
-    out = [t for t in tickers if ticker_storage_key(t) not in skip]  # RC-345/F25: canonical membership
-    excluded = sorted(skip & {ticker_storage_key(t) for t in tickers})
-    if excluded:
-        log.info(
-            "Background logging excludes %d confluence-only (panel_auto) from full snapshots: %s",
-            len(excluded),
-            excluded,
-        )
-    return out
+    """UNIVERSAL COLLECTION (operator requirement, restated 2026-08-25): no ticker is
+    dropped from background full-snapshot rotation — the panel_auto confluence-only
+    carve-out this filter used to apply left 17 enrolled tickers with zero snapshots
+    (RC-482). The function survives as the single roster authority for its callers and
+    now passes the roster through unchanged; `db_path` is accepted and ignored."""
+    del db_path
+    return list(tickers)
 
 
 def filter_tickers_for_ml_training(tickers: list[str], db_path: str) -> list[str]:

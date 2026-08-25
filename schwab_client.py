@@ -551,6 +551,61 @@ def safe_get_price_history(client, ticker: str, *, frequency_minutes: int = 5, p
             )
             return None
 
+def safe_get_daily_price_history(client, ticker: str, *, period_months: int = 2):
+    """Fetch DAILY candles from Schwab. Returns response or None.
+
+    RC-484 (2026-08-25): daily-ATR for a freshly enrolled ticker cannot come from local
+    1m bars (ATR(14) needs 15 sessions of history that do not exist yet), while Schwab
+    serves the daily series immediately — this is the radar-ring fallback's fetch.
+    Schwab CSV authority checked: yes
+    CSV row(s): pricehistory.candles[].* — same leaf family as safe_get_price_history;
+      periodType=month / frequencyType=daily instead of day/minute.
+    Derived-field disposition: none required (no derived field touched).
+    All consumers checked: yes — terrain_atr.compute_atr_from_daily_candles consumes the
+      identical candles payload shape.
+    SCHWAB_CSV_CHECKED
+    """
+    _block_live_schwab_in_ci_offline()
+    _end_anchor = datetime.now()
+    try:
+        import schwab as _schwab
+        PH = _schwab.client.Client.PriceHistory
+        period = {
+            1: PH.Period.ONE_MONTH,
+            2: PH.Period.TWO_MONTHS,
+            3: PH.Period.THREE_MONTHS,
+            6: PH.Period.SIX_MONTHS,
+        }.get(period_months, PH.Period.TWO_MONTHS)
+        return client.get_price_history(
+            ticker,
+            period_type=PH.PeriodType.MONTH,
+            period=period,
+            frequency_type=PH.FrequencyType.DAILY,
+            frequency=PH.Frequency.DAILY,
+            end_datetime=_end_anchor,
+            need_extended_hours_data=False,
+        )
+    except Exception as e_enum:
+        log.debug("safe_get_daily_price_history: enum-API path failed (%s); trying raw kwargs", e_enum)
+        try:
+            return client.get_price_history(
+                ticker,
+                periodType="month",
+                period=period_months,
+                frequencyType="daily",
+                frequency=1,
+                endDate=int(_end_anchor.timestamp() * 1000),
+                needExtendedHoursData=False,
+            )
+        except Exception as e_raw:
+            log.warning(
+                "safe_get_daily_price_history: both enum + raw kwargs failed for ticker=%s "
+                "months=%s (enum_err=%r raw_err=%r); returning None",
+                ticker, period_months, e_enum, e_raw,
+            )
+            return None
+
+
 def safe_get_chain(client, ticker: str, *, strike_count: int = 20, from_date=None, to_date=None):
     # schwab-py supports optional args; we keep them optional to reduce breakage.
     _block_live_schwab_in_ci_offline()

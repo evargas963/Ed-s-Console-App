@@ -64,14 +64,52 @@ def test_powershell_stdout_filter_stays_legal():
     assert G._repo_search_violation("Get-Process | Select-String python") is False
 
 
-def test_close_a_row_needs_issued_not_spelled_proof():
+def test_close_a_row_needs_a_verification_that_ran_without_error():
+    """RESULT, NOT ISSUANCE (operator, 2026-08-25): the ledger row alone no longer closes a
+    row — the same command must appear in the turn's successful-result set (transcript
+    tool_result with is_error false). Issued-but-failed and issued-but-unresulted block."""
     path = str(REPO / "governance" / "root_cause_log.md")
+    cmd = "pytest tests/test_db_safety.py -q"
     echo_only = [{"kind": "bash", "detail": "echo pytest all green",
                   "repo": G.normalize_repo(REPO)}]
-    real = [{"kind": "bash", "detail": "pytest tests/test_db_safety.py -q",
-             "repo": G.normalize_repo(REPO)}]
-    assert G.edit_violations(path, "| RC-1 | CLOSED |", echo_only) != []
-    assert G.edit_violations(path, "| RC-1 | CLOSED |", real) == []
+    real = [{"kind": "bash", "detail": cmd, "repo": G.normalize_repo(REPO)}]
+    ok = frozenset({cmd, "echo pytest all green"})
+    assert G.edit_violations(path, "| RC-1 | CLOSED |", echo_only, ok) != []
+    assert G.edit_violations(path, "| RC-1 | CLOSED |", real, ok) == []
+    # Issued but FAILED (command absent from the successful set) — blocks.
+    assert G.edit_violations(path, "| RC-1 | CLOSED |", real, frozenset()) != []
+    # No transcript at all — unmeasurable is not compliant.
+    assert G.edit_violations(path, "| RC-1 | CLOSED |", real, None) != []
+
+
+def test_stop_clause_requires_successful_verification():
+    edit = [{"kind": "edit_attempt", "detail": str(REPO / "server.py"),
+             "repo": G.normalize_repo(REPO), "mtime_before": None}]
+    cmd = "pytest tests/test_db_safety.py -q"
+    ledger = edit + [{"kind": "bash", "detail": cmd, "repo": G.normalize_repo(REPO)}]
+    assert G.stop_violations(ledger, frozenset({cmd})) == []
+    assert G.stop_violations(ledger, frozenset()) != []       # issued, then errored
+    assert G.stop_violations(ledger, None) != []              # no transcript evidence
+
+
+def test_successful_commands_reads_the_transcript(tmp_path):
+    import json
+    tp = tmp_path / "t.jsonl"
+    recs = [
+        {"type": "user", "message": {"role": "user", "content": [
+            {"type": "text", "text": "go"}]}},
+        {"type": "assistant", "message": {"role": "assistant", "content": [
+            {"type": "tool_use", "id": "a", "name": "Bash",
+             "input": {"command": "pytest -q"}},
+            {"type": "tool_use", "id": "b", "name": "Bash",
+             "input": {"command": "ruff check tools"}}]}},
+        {"type": "user", "message": {"role": "user", "content": [
+            {"type": "tool_result", "tool_use_id": "a", "is_error": False},
+            {"type": "tool_result", "tool_use_id": "b", "is_error": True}]}},
+    ]
+    tp.write_text("\n".join(json.dumps(r) for r in recs) + "\n", encoding="utf-8")
+    assert G._successful_commands(str(tp)) == frozenset({"pytest -q"})
+    assert G._successful_commands("") is None
 
 
 # ── F1: the no-grep ACTION predicate matrix (pins the measured inconsistencies) ────────

@@ -194,7 +194,8 @@ def test_operator_law_guard_stop_member_block_equivalence(tmp_path):
                        "tools/operator_law_guard.py"], raw, ROOT)
     finally:
         ledger.unlink(missing_ok=True)
-    _assert_blocking_pair(standalone, chain, ("BLOCKED (RC-93)", "ran NOTHING"))
+    _assert_blocking_pair(standalone, chain,
+                          ("BLOCKED (RC-93)", "RAN WITHOUT ERROR"))
 
 
 def test_pretooluse_guard_member_block_equivalence():

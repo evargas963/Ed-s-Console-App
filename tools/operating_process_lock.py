@@ -570,12 +570,28 @@ def _rc_row_map(text: str) -> dict[str, tuple[str, str, str]]:
 
 
 def rc_redate_violations(repo: Path | None = None) -> list[str]:
-    """REDATE_LOCK: a due date the ledger already promised may move only with the move
-    and its reason recorded IN THE ROW: 'RE-DATED <old>-><new>: <reason>'.
+    """REDATE_LOCK: a due date the ledger already promised may move only when the row is
+    BLOCKED on something the agent cannot fix in this repository, and the row records
+    which: 'RE-DATED <old>-><new>: BLOCKED_ON_<CLASS> — <specifics>'.
+
+    OPERATOR REQUIREMENT (audit round 3, 2026-08-25): "the real requirement is that
+    fixable defects get fixed, not administratively postponed." A free-text reason no
+    longer passes — 'need more time' and 'deprioritized' are exactly the administrative
+    postponements the requirement bans. If the defect is fixable in-repo, the fix ships
+    and the date never moves; a row that is late stays OVERDUE in plain sight, which is
+    a signal, not something to re-date away. The declared blocker classes each name a
+    dependency outside the agent's reach:
+      BLOCKED_ON_OPERATOR      — needs an operator decision or an operator-run action
+      BLOCKED_ON_LIVE_SESSION  — evidence observable only during a market session
+      BLOCKED_ON_DATA_ACCRUAL  — needs more collected data before it can be judged
+      BLOCKED_ON_EXTERNAL      — vendor/third-party dependency
+    Specifics after the class token are mandatory (WHAT is awaited), so the class cannot
+    become a rubber stamp. This forces the blocker claim to EXIST with correct lineage;
+    it cannot prove the claim TRUE — a false BLOCKED_ON_* is a lie in a reviewed diff.
+
     Staged index vs HEAD — the same seam as the rest of this lock. New rows are free
     (opening a defect with a due date is honest tracking, RC-65); a row leaving OPEN is
     free (closing defers nothing). Repeat re-dates accumulate a visible chain in the row.
-    This forces the reason to EXIST with correct lineage; it cannot prove the reason TRUE.
     MEASURED basis (audit 2026-08-25): 67 due-cell moves in history, 61 on already-overdue
     rows, 2 with no reason recorded anywhere (4ecb1cb7 RC-210, b13b117b RC-257).
     Deliberately NO extension ceiling and NO re-date count cap (RC-280: no ratchets) —
@@ -610,12 +626,20 @@ def rc_redate_violations(repo: Path | None = None) -> list[str]:
             continue
         token = f"RE-DATED {old_due}->{new_due}:"
         i = new_line.find(token)
-        if i < 0 or not new_line[i + len(token):].split("|", 1)[0].strip():
+        rest = "" if i < 0 else new_line[i + len(token):].split("|", 1)[0].strip()
+        m = re.match(
+            r"BLOCKED_ON_(OPERATOR|LIVE_SESSION|DATA_ACCRUAL|EXTERNAL)\b[\s—:-]*(\S.*)?",
+            rest)
+        if i < 0 or m is None or not (m.group(2) or "").strip():
             out.append(
-                f"REDATE_LOCK: {rc} due {old_due} -> {new_due} without "
-                f"'{token} <reason>' in the row. A promised date moves only with the "
-                f"move and its reason recorded in the row itself (61 of 67 historical "
-                f"re-dates were on already-overdue rows).")
+                f"REDATE_LOCK: {rc} due {old_due} -> {new_due} refused. Fixable defects "
+                f"get FIXED, not administratively postponed (operator, 2026-08-25). A "
+                f"promised date moves only when the row is blocked on something outside "
+                f"this repository, recorded in the row as '{token} BLOCKED_ON_OPERATOR|"
+                f"BLOCKED_ON_LIVE_SESSION|BLOCKED_ON_DATA_ACCRUAL|BLOCKED_ON_EXTERNAL "
+                f"— <what is awaited>'. Otherwise ship the fix, or leave the row overdue "
+                f"in plain sight (61 of 67 historical re-dates were on already-overdue "
+                f"rows).")
     return out
 
 

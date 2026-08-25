@@ -9,22 +9,23 @@ behaviour is untouched. Worse, it fired on its own author for DOCUMENTING the li
 have suppressed the lock inventory the operator had just asked for.
 
 WHAT AN ACTION BAN LOOKS LIKE. The laws are about doing things without proof, so the enforcement
-is: the ACTION cannot proceed unless a proof-shaped command was ISSUED this turn — the ledger is
-written at PreToolUse and observes no exit status, so "ran and passed" is not knowable here; a
-failed or interrupted verification still counts. (The smallest true fix would be a PostToolUse
-lane stamping exit codes — a new governance surface, the operator's call, not this audit's.)
+is: the ACTION cannot proceed unless a proof-shaped command RAN WITHOUT ERROR this turn
+(operator requirement 2026-08-25 — issuance is not proof). The ledger written at PreToolUse
+supplies WHICH commands ran and against WHICH repo (RC-258); the transcript on the hook payload
+supplies the OUTCOME (each tool_use paired to its tool_result, is_error judged) — no new
+governance lane, the payload already carries transcript_path at every event. A failed or
+interrupted verification no longer counts. HONEST LIMIT: a non-error result proves the command
+completed; whether its OUTPUT supports the close is the operator's read.
 The guard keeps that per-turn LEDGER of every command executed, cleared at Stop.
 
   PreToolUse(Bash|PowerShell)
       * records the command in the turn ledger
       * BLOCKS: grep/rg against repo files (2026-05-22 law), destructive git, and any command
         that disables a lock
-      * BLOCKS `git commit` when the ledger holds NO verification command this turn — committing
-        without having run the gate or the tests is the action, not the claim about it
   PreToolUse(Edit|Write|MultiEdit)
-      * BLOCKS writing status CLOSED into governance/root_cause_log.md when the ledger holds no
-        verification command this turn. Closing a root cause IS the assertion that it is fixed;
-        the assertion is an action and it needs the evidence to exist first.
+      * BLOCKS writing status CLOSED into governance/root_cause_log.md when no verification
+        command RAN WITHOUT ERROR this turn. Closing a root cause IS the assertion that it is
+        fixed; the assertion is an action and it needs the evidence to exist first.
   Stop
       * BLOCKS ending a turn that CHANGED production code and ran no test/gate at all. Editing
         the money path and stopping without executing anything is the action.
@@ -571,15 +572,40 @@ _VERIF_WRAPPERS = ("time", "env", "nice", "xargs", "sudo")
 _PROBE_TOKEN = re.compile(r"\burllib\.request\b|\b127\.0\.0\.1:8000\b", re.I)
 
 
+def _successful_commands(transcript_path: str) -> frozenset[str] | None:
+    """The commands that RAN WITHOUT ERROR this turn, from the transcript (2026-08-25).
+
+    The ledger is written at PreToolUse and cannot know outcomes; the transcript pairs
+    every tool_use with its tool_result and carries is_error (shape verified live:
+    181/182 Bash tool_use ids in this session's transcript had a paired result, the
+    unpaired one being the in-flight call). ONE producer: tools/proof_only_guard.turn_slice
+    already computes exactly this slice — importing it rather than re-parsing keeps the
+    two guards agreeing on what "ran this turn" means. Returns None when the payload
+    carries no transcript_path at all: unmeasurable, which the callers treat as no proof.
+    """
+    if not transcript_path:
+        return None
+    if str(REPO) not in sys.path:
+        sys.path.insert(0, str(REPO))
+    from tools.proof_only_guard import turn_slice
+    _text, executed = turn_slice(transcript_path)
+    return frozenset(executed)
+
+
+def _result_ok(detail: str, ok_cmds: frozenset[str] | None) -> bool:
+    """True only when THIS ledger command's tool_result exists and is not an error."""
+    return ok_cmds is not None and detail in ok_cmds
+
+
 def _verification_ran(detail: str) -> bool:
     """A proof-shaped token counts only where it could EXECUTE (audit 2026-08-25):
     scanned against shell_executed_part (so -m messages, -c payloads and heredoc bodies
     are data), in a segment whose head is not an output emitter ('echo pytest all
     green' used to mint proof), and in COMMAND position — the head token pair, or the
     script/module argument of a python interpreter. Probe URLs may ride as arguments
-    of a non-emitter command (curl/Invoke-WebRequest). HONEST LIMIT: this proves a
-    verification command was ISSUED this turn, never that it completed or passed — the
-    ledger is written at PreToolUse and carries no exit status."""
+    of a non-emitter command (curl/Invoke-WebRequest). SHAPE ONLY: this classifies the
+    command; whether it ran without error is judged separately (_result_ok against the
+    transcript), so issuing `pytest` that then failed no longer mints proof."""
     for seg in _SEG_SPLIT.split(shell_executed_part(detail or "")):
         toks = [t.strip("\"'") for t in _tokens(seg.strip())]
         while toks and Path(toks[0]).name.lower().removesuffix(".exe") in _VERIF_WRAPPERS:
@@ -608,17 +634,24 @@ def _verification_ran(detail: str) -> bool:
     return False
 
 
-def _has_verification_any(ledger: list[dict]) -> bool:
-    """Session-wide proof — the Stop clauses' question, which is about the TURN, not a repo."""
-    return any(_verification_ran(e.get("detail", "")) for e in ledger if e.get("kind") == "bash")
+def _has_verification_any(ledger: list[dict], ok_cmds: frozenset[str] | None) -> bool:
+    """Session-wide proof — the Stop clauses' question, which is about the TURN, not a repo.
+
+    RESULT, NOT ISSUANCE (operator requirement, 2026-08-25): the issuance entry counts only
+    when the same command's tool_result in the transcript is not an error."""
+    return any(_verification_ran(e.get("detail", "")) and _result_ok(e.get("detail", ""), ok_cmds)
+               for e in ledger if e.get("kind") == "bash")
 
 
-def _has_verification(ledger: list[dict], repo: str = "") -> bool:
-    """Proof that ran AGAINST `repo` (RC-258).
+def _has_verification(ledger: list[dict], repo: str = "",
+                      ok_cmds: frozenset[str] | None = None) -> bool:
+    """Proof that ran AGAINST `repo` (RC-258) and ran WITHOUT ERROR (2026-08-25).
 
     An entry whose `repo` is missing or empty can never satisfy this: legacy unscoped rows and
     commands whose target could not be resolved are inert rather than universally valid, which
-    is the difference between a bearer token and a bound credential.
+    is the difference between a bearer token and a bound credential. An entry whose command has
+    no non-error tool_result in the transcript is equally inert: a verification that FAILED is
+    an argument against closing, not for it.
     """
     if not repo:
         return False
@@ -627,7 +660,7 @@ def _has_verification(ledger: list[dict], repo: str = "") -> bool:
             continue
         if (e.get("repo") or "") != repo:
             continue
-        if _verification_ran(e.get("detail", "")):
+        if _verification_ran(e.get("detail", "")) and _result_ok(e.get("detail", ""), ok_cmds):
             return True
     return False
 
@@ -781,7 +814,8 @@ def bash_violations(cmd: str, ledger: list[dict], payload_cwd: str = "") -> list
     return out
 
 
-def edit_violations(path: str, new_text: str, ledger: list[dict]) -> list[str]:
+def edit_violations(path: str, new_text: str, ledger: list[dict],
+                    ok_cmds: frozenset[str] | None = None) -> list[str]:
     p = (path or "").replace("\\", "/")
     if not p.endswith("governance/root_cause_log.md"):
         return []
@@ -794,11 +828,12 @@ def edit_violations(path: str, new_text: str, ledger: list[dict]) -> list[str]:
         return [f"ACTION BLOCKED (RC-258): cannot resolve which repository owns {p}, so no "
                 f"verification can be matched to it. Closing a row is an assertion about a "
                 f"specific repository's code."]
-    if _has_verification(ledger, repo):
+    if _has_verification(ledger, repo, ok_cmds):
         return []
-    return [f"ACTION BLOCKED: closing a root-cause row in {repo} without having RUN a "
-            f"verification against that repository this turn. Closing IS the assertion that "
-            f"the defect is fixed. Run the test that locks it, or the gate, or a live probe — "
+    return [f"ACTION BLOCKED: closing a root-cause row in {repo} without a verification that "
+            f"RAN WITHOUT ERROR against that repository this turn. Closing IS the assertion "
+            f"that the defect is fixed; a command that was merely issued, or that failed, is "
+            f"not that proof. Run the test that locks it, or the gate, or a live probe — "
             f"then close."]
 
 
@@ -967,15 +1002,16 @@ def supervise_turn_audit(
     return violations, result
 
 
-def stop_violations(ledger: list[dict]) -> list[str]:
+def stop_violations(ledger: list[dict], ok_cmds: frozenset[str] | None = None) -> list[str]:
     out: list[str] = []
     # Stop clauses stay SESSION-scoped and behaviourally unchanged: they ask whether this TURN
     # verified/audited/probed, which is a property of the turn rather than of a repository.
     edits = _production_edits(ledger)
-    if edits and not _has_verification_any(ledger):
-        out.append(f"ACTION BLOCKED: this turn changed production code and ran NOTHING. "
+    if edits and not _has_verification_any(ledger, ok_cmds):
+        out.append(f"ACTION BLOCKED: this turn changed production code without a verification "
+                   f"that RAN WITHOUT ERROR. "
                    f"Edited: {', '.join(sorted(set(edits))[:6])}. Execute the affected tests or "
-                   f"a live probe before ending the turn.")
+                   f"a live probe — and it must complete — before ending the turn.")
     # RC-190 same-turn turn_self_audit obligation RETIRED (SIMPLICITY REHAB 2026-08-24):
     # it enforced ONE obligation twice (ledger clause + a 5.8s-measured Stop-time
     # supervised child), and the same CHECKS roster runs at commit
@@ -1018,7 +1054,8 @@ def main() -> int:
     if tool in ("Edit", "Write", "MultiEdit", "NotebookEdit"):
         path = ti.get("file_path") or ""
         body = ti.get("new_string") or ti.get("content") or ""
-        bad = edit_violations(path, body, ledger)
+        bad = edit_violations(path, body, ledger,
+                              _successful_commands(str(payload.get("transcript_path") or "")))
         if bad:
             sys.stderr.write("BLOCKED (RC-93) — OPERATOR LAW: ban the ACTION, not the word.\n\n"
                              + "\n".join(f"    {b}" for b in bad) + "\n")
@@ -1056,7 +1093,8 @@ def main() -> int:
             _record(sid, "sibling_stop_retry",
                     "stop_hook_active with no own stop_blocked entry — a sibling Stop hook "
                     "blocked first; falling through to the full Stop policy")
-    bad = stop_violations(ledger)
+    bad = stop_violations(ledger,
+                          _successful_commands(str(payload.get("transcript_path") or "")))
     payload_repo = repo_root_of(payload_cwd) if payload_cwd else ""
     # RC-190/RC-368 Stop-time supervised audit child RETIRED (SIMPLICITY REHAB, operator
     # full-go 2026-08-24): the child re-ran the CHECKS roster at every Stop with

@@ -3586,7 +3586,10 @@ def _on_tick_broadcast_sync(symbol: str, main_loop: asyncio.AbstractEventLoop) -
 # Market session boundaries (Eastern, minutes-since-midnight)
 # RTH_OPEN_MINS — single authority in time_et.py (STACK-WIRE-3)
 RTH_CLOSE_MINS:      int   = RTH_END_MINS  # F09: alias of time_et.RTH_END_MINS, not a second close literal
-PRE_MARKET_MINS:     int   = 540    # 9:00 AM ET  (logger session buffer start)
+PRE_MARKET_MINS:     int   = 525    # 8:45 AM ET  (logger session buffer start; widened
+#   from 9:00 on 2026-08-25 for the universal by-9:30 readiness requirement — the full
+#   sweep measured ~43s/ticker, so 61 enrolled tickers need ~44 min; an 08:45 start
+#   finishes the first full-snapshot sweep by ~09:29 ET when the process is up)
 LOGGER_BUFFER_MINS:  int   = 990    # 4:30 PM ET  (logger session buffer end)
 # NOTE: session_label ("RTH"/"Pre-Market"/"After-Hours"/"Closed") is derived ONCE
 # from SPY's quote in market_context._derive_session(), stored on MarketContext.session_label,
@@ -3970,8 +3973,10 @@ _vix_tracker = _VIXTracker()
 #   • ED_DB_SNAPSHOT_THROTTLE (default on): at most one INSERT per ticker per UTC-minute bucket.
 #   • The general logger still rotates mega-caps + user_persisted; cycle length grows with count.
 #   • RTH_ONLY may skip background fetches outside the ET session window.
-#   • Live Operator Mode (Step 1): during RTH with any SSE viewer connected, non-trio
-#     rotation returns skipped:live_operator_mode — see _live_operator_mode_active.
+#   • Live Operator Mode (2026-08-25 universal-collection revision): during RTH with an
+#     SSE viewer connected, the cycle shrinks to trio + one rotating guest
+#     (_operator_mode_cycle_roster) — no per-ticker hard skip; every enrolled ticker
+#     keeps accruing.
 #   • Guest / briefly viewed symbols legitimately have fewer rows — base trio must not.
 #     Gate: ``python tools/check_base_ticker_observability.py --date YYYY-MM-DD``.
 #
@@ -4084,8 +4089,10 @@ def _run_legacy_logger_json_migration(db) -> None:
 def _load_persisted_tickers() -> list[str]:
     """Authoritative enrolled universe: CORE_TICKERS + logging_universe (pinned + user_persisted + panel_auto).
 
-    ``panel_auto`` rows mirror ``market_context.py`` cross-panel quote symbols (excluding core duplicates)
-    for enrollment tracking and thin ``confluence_quote_ticks`` logging — not full snapshot rotation.
+    ``panel_auto`` rows mirror ``market_context.py`` cross-panel quote symbols (excluding core
+    duplicates). UNIVERSAL COLLECTION (operator, 2026-08-25): the category records HOW a ticker
+    was enrolled, never how much data it gets — panel_auto rows take full snapshot rotation on
+    the same terms as every other enrolled ticker (the old confluence-only carve-out is RC-482).
 
     Distinct tickers appearing only in snapshots / normalized tables do not auto-enroll (Issue 22).
     ml_scheduler and train_all bulk paths use the same EdDB authority via scheduler_user_tickers.
@@ -4223,7 +4230,9 @@ def _is_loggable_session() -> bool:
     Background snapshot logging session gate (Issue 22 — explicit product policy).
 
     When RTH_ONLY is True (default): allow ET minutes in [PRE_MARKET_MINS, LOGGER_BUFFER_MINS]
-    (see server.py constants — ≈ 9:00 pre through extended post-market buffer) AND only on a
+    (see server.py constants — 08:45 pre through extended post-market buffer; the pre-market
+    edge widened from 09:00 on 2026-08-25 so the whole enrolled roster is swept by the
+    operator's 09:30 readiness bar, RC-482) AND only on a
     capturable trading calendar day. RC-48: the minute-window alone was weekday/holiday-blind,
     so weekend daytime leaked base-logger rows; AND-ing the one calendar authority
     (time_et.is_capturable_session) closes that leak without changing the window.
@@ -4324,8 +4333,47 @@ def _add_logger_ticker(ticker: str, *, enrollment_source: str = "ui_auto") -> bo
                 ticker,
                 len(_logger_tickers),
             )
+            # RC-484 (operator requirement, 2026-08-25): a fresh enrollment immediately
+            # acquires its available history — one bounded vendor call, off-thread so
+            # the add itself stays instant. Boot rehydration bypasses this function, so
+            # the seed fires only for genuinely NEW enrollments.
+            threading.Thread(
+                target=_enrollment_history_seed, args=(ticker,), daemon=True,
+                name=f"enroll-seed-{ticker}",
+            ).start()
             return True
     return False
+
+
+def _enrollment_history_seed(ticker: str) -> None:
+    """RC-484 (operator requirement 2026-08-25): a newly enrolled ticker immediately
+    acquires its available 1m history — today's tape so the chart is not blank from the
+    enrollment minute, and the prior trading session so PDH/PDL/PDC/POC/VAH/VAL and the
+    overnight window are computable on day 1. One bounded vendor call (period_days=2)
+    upserted into the ONE banked bar table (price_bars_1m) — this feeds the existing
+    single bar input resolved by _canonical_price_level_bars, so the Phase 2A
+    single-faucet invariant is preserved: history acquisition, never a second level
+    producer. The source stays the standard price-history token (the bytes ARE Schwab
+    price history; a new source value would silently widen the classification
+    namespace — the RC-31 classification-by-complement class)."""
+    try:
+        from schwab_client import safe_get_price_history
+
+        client = get_client()
+        resp = safe_get_price_history(client, ticker, frequency_minutes=1, period_days=2)
+        status = getattr(resp, "status_code", None)
+        if resp is None or status != 200:
+            log.warning("enrollment seed: price history unavailable for %s (status=%s)",
+                        ticker, status)
+            return
+        candles = (resp.json() or {}).get("candles") or []
+        if not candles:
+            log.warning("enrollment seed: empty candle payload for %s", ticker)
+            return
+        n = _persist_1m_bars(ticker, candles)
+        log.info("enrollment seed: %s banked %d 1m bars (period_days=2)", ticker, n)
+    except Exception as e:
+        log.warning("enrollment seed failed for %s: %s", ticker, e)
 
 
 def _register_tracked_ticker(ticker: str, *, enrollment_source: str = "ui_auto") -> bool:
@@ -4577,35 +4625,42 @@ def _live_operator_mode_active() -> bool:
         return len(_l1_light_sse_clients) > 0
 
 
+def _operator_mode_cycle_roster(tickers: list[str], rotation_idx: int) -> tuple[list[str], int]:
+    """UNIVERSAL COLLECTION under operator-mode contention (2026-08-25): while a viewer
+    is connected during RTH, the cycle shrinks to the trio plus exactly ONE rotating
+    non-trio ticker instead of hard-skipping every non-trio fetch. Bounded contention
+    (one extra full fetch per cycle) and every enrolled ticker's calibration tape keeps
+    accruing on operator days (the hard skip's measured cost: 52 background rows ALL DAY
+    on 2026-08-20 vs 729-1,414 on neighbor days; XLE/XOM zero-snapshot)."""
+    from money_path_ticker_tiers import is_base_money_path_ticker as _is_trio
+
+    trio = [t for t in tickers if _is_trio(t)]
+    guests = [t for t in tickers if not _is_trio(t)]
+    if not guests:
+        return trio, rotation_idx
+    pick = guests[rotation_idx % len(guests)]
+    return trio + [pick], rotation_idx + 1
+
+
 def _logger_fetch_and_log(ticker: str) -> str:
     """
     Fetch data for one ticker and log a snapshot to the DB.
-    Returns 'ok:fetch', 'skipped:closed', 'skipped:confluence_quote_only',
-    'skipped:live_operator_mode', or 'error:<msg>'.
+    Returns 'ok:fetch', 'skipped:closed', or 'error:<msg>'.
     Never raises — always returns a status string.
+    (2026-08-25 universal collection: the 'skipped:confluence_quote_only' and
+    'skipped:live_operator_mode' statuses are retired — no per-ticker capture skip.)
     """
     try:
         if not _is_loggable_session():
             return "skipped:closed"
 
-        try:
-            from money_path_ticker_tiers import should_skip_background_full_snapshot
-            from scheduler_user_tickers import panel_auto_ticker_set
-
-            if should_skip_background_full_snapshot(
-                ticker, panel_auto_ticker_set(str(get_db().db_path))
-            ):
-                return "skipped:confluence_quote_only"
-        except Exception as e:
-            log.debug("panel_auto logger skip check: %s", e, exc_info=True)
-
-        # LIVE_OPERATOR_MODE_RESET_V1 Step 1 — hard skip: non-trio full capture defers
-        # to no-viewer windows (Research Mode). SPY/QQQ/IWM are never gated here and
-        # keep full rotation capture plus the dedicated base money-path logger.
-        from money_path_ticker_tiers import is_base_money_path_ticker
-
-        if not is_base_money_path_ticker(ticker) and _live_operator_mode_active():
-            return "skipped:live_operator_mode"
+        # UNIVERSAL COLLECTION (operator requirement, restated 2026-08-25): the
+        # panel_auto confluence-only skip and the operator-mode hard skip are gone —
+        # every enrolled ticker collects full snapshots through the session. Operator-
+        # mode contention is now managed at the CYCLE level (_background_logger builds
+        # a trio + one-rotating-guest roster while a viewer is connected) instead of
+        # zeroing the non-trio tape (measured cost of the hard skip: 52 background
+        # rows ALL DAY on 2026-08-20 vs 729–1,414 on neighbor days; XLE/XOM zero).
 
         # Always run the logging fetch each logger cycle (append-only INSERTs).
 
@@ -4672,11 +4727,17 @@ def _logger_loop():
     # competing with 27-ticker logger _fetch_state storms (ED_LOGGER_STARTUP_DELAY_SEC).
     time.sleep(LOGGER_STARTUP_DELAY_SEC)
 
+    operator_mode_rotation_idx = 0
     while _logger_running:
         cycle_start = time.monotonic()
 
         with _logger_lock:
             tickers_this_cycle = list(_logger_tickers)
+
+        if _live_operator_mode_active():
+            tickers_this_cycle, operator_mode_rotation_idx = _operator_mode_cycle_roster(
+                tickers_this_cycle, operator_mode_rotation_idx)
+            log.info(f"Logger cycle (operator mode): {tickers_this_cycle}")
 
         with _cached_mkt_ctx_lock:
             _cached_mkt_ctx_ts = 0.0
@@ -11935,6 +11996,19 @@ _bars_loop_running: bool = False
 _bars_loop_thread: threading.Thread | None = None
 
 
+def _persist_1m_bars(tk: str, bars) -> int:
+    """THE single price_bars_1m writer in server.py (RC-69 single-faucet contract).
+
+    Both producers of banked 1m bars — the live quote->accumulator collection service and
+    the RC-484 enrollment history seed — persist through here, so the console has exactly
+    ONE place that writes the canonical bar table. A second write call site is how
+    collection once drifted into the render path; the audit counts the literal db-write
+    call, so the invariant is that this function is its only occurrence. ``bars`` may be
+    Candle objects (accumulator) or vendor candle dicts (history seed) — the db writer
+    accepts both shapes."""
+    return get_db().upsert_1m_bars(tk, bars)
+
+
 def _bars_collect_one(tk: str) -> str:
     """Quote -> accumulator -> price_bars_1m for ONE ticker. Never raises."""
     try:
@@ -11958,7 +12032,7 @@ def _bars_collect_one(tk: str) -> str:
         bars = _candles_1m.get_bars(tk)
         if not bars:
             return "ok:no_completed_bar"
-        get_db().upsert_1m_bars(tk, bars)
+        _persist_1m_bars(tk, bars)
         return "ok:persisted"
     except Exception as e:
         log.debug("bars collect %s: %s", tk, e)
@@ -12046,6 +12120,36 @@ _radar_atr_lock = threading.Lock()
 _radar_atr_refresh_pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="ed_atr_refresh")
 
 
+#: RC-484 (2026-08-25): vendor daily-ATR fallback cache — one Schwab daily-candle fetch
+#: per (ticker, ET date). Keyed by date so a fresh ticker's radar scale appears today
+#: and refreshes tomorrow, without a per-cycle vendor call.
+_radar_daily_atr_vendor_cache: dict[str, tuple[str, float | None]] = {}
+
+
+def _radar_daily_atr_vendor_fallback(tk: str) -> float | None:
+    """Daily ATR from Schwab DAILY candles when local 1m history spans <15 sessions
+    (RC-484: chain walls exist from minute one but the radar ring stayed blind ~3 weeks
+    for a fresh enrollee). Cached per ticker per ET date; fail-closed to None."""
+    from time_et import now_et as _now_et
+
+    day_key = _now_et().date().isoformat()
+    hit = _radar_daily_atr_vendor_cache.get(tk)
+    if hit and hit[0] == day_key:
+        return hit[1]
+    daily = None
+    try:
+        from schwab_client import safe_get_daily_price_history
+        from terrain_atr import compute_atr_from_daily_candles
+
+        resp = safe_get_daily_price_history(get_client(), tk, period_months=2)
+        if resp is not None and getattr(resp, "status_code", None) == 200:
+            daily = compute_atr_from_daily_candles((resp.json() or {}).get("candles") or [])
+    except Exception as e:
+        log.debug("radar daily-ATR vendor fallback failed for %s: %s", tk, e, exc_info=True)
+    _radar_daily_atr_vendor_cache[tk] = (day_key, daily)
+    return daily
+
+
 def _radar_atr_compute_into_cache(tk: str) -> "AtrPair":
     """Compute one ticker's ATR and publish it. Always clears the in-flight marker."""
     try:
@@ -12053,6 +12157,13 @@ def _radar_atr_compute_into_cache(tk: str) -> "AtrPair":
     except Exception as e:
         log.debug("radar ATR failed for %s: %s", tk, e, exc_info=True)
         pair = AtrPair(None, None)
+    if pair.daily is None:
+        # RC-484: local bars cannot scale a fresh ticker for ~15 sessions; the vendor
+        # daily series can, immediately. m15 stays local-only (it needs today's tape,
+        # which the accumulator provides within minutes anyway).
+        fallback_daily = _radar_daily_atr_vendor_fallback(tk)
+        if fallback_daily is not None:
+            pair = AtrPair(daily=fallback_daily, m15=pair.m15)
     with _radar_atr_lock:
         _radar_atr_cache[tk] = (time.time(), pair)
         _radar_atr_inflight.discard(tk)
@@ -12674,6 +12785,24 @@ def get_bars1m(ticker: str = Query(default=DEFAULT_TICKER),
         con.close()
     bars = [{"t": r[0], "o": r[1], "h": r[2], "l": r[3], "c": r[4], "v": r[5]}
             for r in reversed(rows)]
+    if not bars:
+        # RC-484 (2026-08-25): a PREVIEWED (typed-in, not enrolled) ticker banks no
+        # price_bars_1m — RC-69 made _bars_loop the only banked writer and it serves
+        # enrolled tickers only — so its chart stayed empty all session (measured:
+        # CRWV 2026-08-13, 127 snapshots, 0 bars). Fall through to the live
+        # accumulator's COMPLETED bars, read-only and clearly tagged: display feed,
+        # not a second banked producer (nothing is written).
+        try:
+            acc = _candles_1m.get_bars(tk)
+        except Exception:
+            acc = []
+        bars = [{"t": float(b.ts), "o": float(b.open), "h": float(b.high),
+                 "l": float(b.low), "c": float(b.close),
+                 "v": (float(b.volume) if getattr(b, "volume", None) is not None else None)}
+                for b in list(acc)[-int(limit):]]
+        if bars:
+            return JSONResponse({"ticker": tk, "bars": bars, "n": len(bars),
+                                 "source": "live_accumulator_unbanked"})
     return JSONResponse({"ticker": tk, "bars": bars, "n": len(bars)})
 
 

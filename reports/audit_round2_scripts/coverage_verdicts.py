@@ -12,11 +12,16 @@ FULL_WINDOW: none of the above. Precedence ABSENT>LATE_START>EARLY_STOP>GAPPY.
 """
 import os
 import sqlite3
+import sys
 from datetime import datetime
-from zoneinfo import ZoneInfo
+from pathlib import Path
 
-ET = ZoneInfo("America/New_York")
-DB = os.environ.get("ED_CONSOLE_DB_RO", "file:data/ed_console.db?mode=ro")
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from time_et import ET  # noqa: E402 — the ONE NY-zone authority (COH-SA-2)
+
+DB = os.environ.get("ED_CONSOLE_DB_RO")
+if DB is None:
+    DB = "file:data/ed_console.db?mode=ro"
 conn = sqlite3.connect(DB, uri=True)
 conn.row_factory = sqlite3.Row
 
@@ -47,10 +52,15 @@ for ds in DAYS:
             "SELECT COUNT(*) n, MIN(bar_start_ts_utc) mn, MAX(bar_end_ts_utc) mx "
             "FROM price_bars_1m WHERE ticker=? AND bar_start_ts_utc>=? AND bar_start_ts_utc<?",
             (t, b0, b1)).fetchone()
-        firsts = [x for x in [(s["mn"] if s else None), b["mn"]] if x]
-        lasts = [x for x in [(s["mx"] if s else None), b["mx"]] if x]
-        first, last = (min(firsts) if firsts else None), (max(lasts) if lasts else None)
-        nb, ns = b["n"], (s["n"] if s else 0)
+        if s is None:
+            s_mn, s_mx, ns = None, None, 0
+        else:
+            s_mn, s_mx, ns = s["mn"], s["mx"], s["n"]
+        firsts = [x for x in [s_mn, b["mn"]] if x]
+        lasts = [x for x in [s_mx, b["mx"]] if x]
+        first = min(firsts) if firsts else None
+        last = max(lasts) if lasts else None
+        nb = b["n"]
         by930 = bool(first and first <= et_ts(ds, 9, 30))
         if not ns and not nb:
             v = "ABSENT"

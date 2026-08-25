@@ -394,12 +394,13 @@ def test_stop_raises_no_audit_obligation_for_a_rejected_edit(tmp_path):
 
 def test_stop_still_raises_the_audit_obligation_for_a_real_change(tmp_path):
     # RC-367 repair: the obligation text moved from an RC-190 cite to the plain
-    # "changed production code and ran NOTHING" clause when the supervised audit
-    # took over turn verification — assert the real current clause.
+    # changed-production-code clause when the supervised audit took over turn
+    # verification; 2026-08-25 the clause demands a verification that RAN WITHOUT
+    # ERROR (result, not issuance) — assert the real current clause.
     f = tmp_path / "thing.py"
     f.write_text("x", encoding="utf-8")
     ledger = [_attempt(str(f), f.stat().st_mtime_ns - 1)]
-    assert any("changed production code and ran NOTHING" in v
+    assert any("changed production code without a verification that RAN WITHOUT ERROR" in v
                for v in G.stop_violations(ledger))
 
 
@@ -484,8 +485,13 @@ def test_operator_escape_remains_operator_only():
 # ── 7. root-cause-row closure is bound to its own repository ──────────────────────────────
 def test_closing_a_row_requires_proof_for_that_repository():
     path = str(REPO / "governance" / "root_cause_log.md")
-    assert G.edit_violations(path, "| RC-1 | CLOSED |", []) != []
-    assert G.edit_violations(path, "| RC-1 | CLOSED |", [led("bash", PYTEST_PROOF, ED)]) == []
+    ok = frozenset({PYTEST_PROOF})
+    assert G.edit_violations(path, "| RC-1 | CLOSED |", [], ok) != []
+    assert G.edit_violations(path, "| RC-1 | CLOSED |",
+                             [led("bash", PYTEST_PROOF, ED)], ok) == []
+    # 2026-08-25 tightening: the same ledger row WITHOUT a successful result no longer closes.
+    assert G.edit_violations(path, "| RC-1 | CLOSED |",
+                             [led("bash", PYTEST_PROOF, ED)], frozenset()) != []
 
 
 def test_closing_a_row_rejects_proof_from_another_repository(other_repo):
@@ -838,7 +844,7 @@ def test_rc367_live_path_lock_flags_detached_head(tmp_path, monkeypatch):
 # rather than past it.
 
 FORGERY_MSG = "a caller-controlled retry flag is not authority"
-UNVERIFIED_EDIT_MSG = "changed production code and ran NOTHING"
+UNVERIFIED_EDIT_MSG = "changed production code without a verification that RAN WITHOUT ERROR"
 
 
 def _write_ledger(sid: str, entries: list[dict]) -> Path:

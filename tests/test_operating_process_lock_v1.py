@@ -97,9 +97,11 @@ def test_rail_fails_open_on_unreadable_topology(tmp_path):
         {"file_path": str(tmp_path / "anything.py")}, repo=wt) == []
 
 
-# ── REDATE_LOCK (audit round 2, 2026-08-25): a promised due date moves only with its
-# reason in the row. Measured basis: 67 historical due-cell moves, 61 on already-overdue
-# rows, 2 with no reason anywhere.
+# ── REDATE_LOCK (audit rounds 2-3, 2026-08-25): a promised due date moves only when the
+# row is BLOCKED on something outside the repository, declared as BLOCKED_ON_<CLASS> with
+# specifics (operator: fixable defects get fixed, not administratively postponed).
+# Measured basis: 67 historical due-cell moves, 61 on already-overdue rows, 2 with no
+# reason anywhere.
 
 _ROW = "| RC-900 | {status} | 2026-08-01 | {due} | defect text | why -> chain | {fix} |"
 
@@ -127,12 +129,32 @@ def test_redate_lock_blocks_a_silent_due_move(tmp_path):
     assert out and "REDATE_LOCK" in out[0] and "RC-900" in out[0], out
 
 
-def test_redate_lock_passes_with_token_and_reason(tmp_path):
+def test_redate_lock_passes_with_a_declared_blocker_class(tmp_path):
     repo, led = _ledger_repo(tmp_path)
     _stage(repo, led, _ROW.format(
         status="OPEN", due="2026-09-10",
-        fix="FIXED: x RE-DATED 2026-08-10->2026-09-10: wide-capture n still accruing"))
+        fix="FIXED: x RE-DATED 2026-08-10->2026-09-10: BLOCKED_ON_DATA_ACCRUAL — "
+            "wide-capture n reaches 30 sessions on 2026-09-10"))
     assert OPL.rc_redate_violations(repo) == []
+
+
+def test_redate_lock_blocks_a_free_text_reason(tmp_path):
+    """Operator round 3 (2026-08-25): a reason alone no longer legitimizes postponement —
+    'need more time' is exactly the administrative deferral the requirement bans."""
+    repo, led = _ledger_repo(tmp_path)
+    _stage(repo, led, _ROW.format(
+        status="OPEN", due="2026-09-10",
+        fix="FIXED: x RE-DATED 2026-08-10->2026-09-10: need more time on this"))
+    out = OPL.rc_redate_violations(repo)
+    assert out and "administratively postponed" in out[0], out
+
+
+def test_redate_lock_blocks_a_bare_blocker_class_with_no_specifics(tmp_path):
+    repo, led = _ledger_repo(tmp_path)
+    _stage(repo, led, _ROW.format(
+        status="OPEN", due="2026-09-10",
+        fix="FIXED: x RE-DATED 2026-08-10->2026-09-10: BLOCKED_ON_OPERATOR"))
+    assert OPL.rc_redate_violations(repo), "the class without WHAT is awaited is a rubber stamp"
 
 
 def test_redate_lock_blocks_an_empty_reason(tmp_path):
