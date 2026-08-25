@@ -174,6 +174,7 @@ def build_a2_option_expression(ms_dict: dict[str, Any], a1_decision: dict[str, A
 
     mid, mid_source = resolve_a2_contract_mid(chain_row=chain_row)
     spread, spread_source = resolve_a2_contract_spread(bid=bid, ask=ask)
+    breakeven_value, breakeven_source = _resolve_breakeven(chain_row, strike, option_right, mid)
     underlying_spread_pts, underlying_spread_source = resolve_a2_underlying_spread_pts(
         ms_dict=ms_dict
     )
@@ -352,7 +353,19 @@ def build_a2_option_expression(ms_dict: dict[str, Any], a1_decision: dict[str, A
                 "v2_compliant" if underlying_spread_source else "not_implemented",
             ),
             "max_loss": leaf(None, "policy_object_pending"),
-            "breakeven": leaf(_breakeven(strike, option_right, mid), "v1_approximation" if mid is not None else "not_implemented"),
+            # RC-388: Schwab-first breakeven. Vendor leaf (chains.*.breakEven) is
+            # authoritative when the chain row carries it; the strike +/- mid
+            # derivation stays as the explicitly-labeled fallback. Provenance is
+            # carried on breakeven_source — never a silent mix of the two.
+            "breakeven": leaf(
+                breakeven_value,
+                "v2_compliant" if breakeven_source == "vendor_breakEven"
+                else ("v1_approximation" if breakeven_source == "v1_approximation" else "not_implemented"),
+                detail="schwab_chain_breakEven" if breakeven_source == "vendor_breakEven" else None,
+            ),
+            "breakeven_source": leaf(
+                breakeven_source, "v2_compliant" if breakeven_source else "not_implemented"
+            ),
             # selected_contract_snapshot is the literal Schwab chain row
             # passthrough — every field on it is a Schwab wire leaf.
             "selected_contract_snapshot": leaf(
@@ -753,6 +766,34 @@ def _breakeven(strike: float | None, option_right: str, mid: float | None) -> fl
     if option_right == "PUT":
         return round(strike - mid, 4)
     return None
+
+
+def _resolve_breakeven(
+    chain_row: dict[str, Any],
+    strike: float | None,
+    option_right: str,
+    mid: float | None,
+) -> tuple[float | None, str | None]:
+    """Schwab-first breakeven per RC-388: chains.*.breakEven is authoritative.
+
+    The vendor computes breakeven per contract (chains.callExpDateMap.*.breakEven /
+    putExpDateMap.*.breakEven, first seen 2026-08-15; measured to agree with our
+    derivation to $0.01). FAIL-CLOSED precedence, never a silent mix:
+
+      vendor leaf present and finite -> (vendor value, "vendor_breakEven")
+      vendor absent/None/non-finite  -> (strike +/- mid, "v1_approximation")
+      neither resolvable             -> (None, None)
+
+    Both paths keep their consumer: the approximation is retained as the
+    explicitly-labeled fallback, not deleted.
+    """
+    vendor = _num(chain_row.get("breakEven")) if isinstance(chain_row, dict) else None
+    if vendor is not None:
+        return vendor, "vendor_breakEven"
+    approx = _breakeven(strike, option_right, mid)
+    if approx is not None:
+        return approx, "v1_approximation"
+    return None, None
 
 
 def _resolve_selected_expiry(

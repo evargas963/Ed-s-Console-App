@@ -5,10 +5,9 @@ The charter is operator-facing; THIS module BLOCKs — .md alone is not a lock.
 
 Child of RC-215 (index≠WT stash-strip), RC-216 (DISK_ONLY vs LIVE), RC-210 (dual-writer thrash).
 
-Minimum BLOCK surfaces:
-  (a) Write/Edit control-authority surfaces when ED_AGENT_ROLE is set (RC-454)
-  (b) Stop on COMPLETE/LIVE/one-intentional-tree claims while index≠WT or live PID predates db.py gate
-  (c) git commit when index≠WT on staged enforcement paths or staged CHECKS not on HEAD without operator GO
+Minimum BLOCK surfaces (2026-08-24 teardown: the role/GO/mission rails are gone):
+  (a) Stop on COMPLETE/LIVE/one-intentional-tree claims while index≠WT or live PID predates db.py gate
+  (b) git commit when index≠WT on staged enforcement paths; tree-destructive/piped git blocked at PreToolUse
 """
 from __future__ import annotations
 
@@ -26,14 +25,9 @@ REPO = Path(__file__).resolve().parent.parent
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
-OPERATOR_GO_PATH = REPO / "governance" / "operator_go.json"
-# Mission COORDINATION metadata only (RC-461) - never authorization.
-PM_MISSION_PATH = REPO / "governance" / "pm_mission.json"
 CHECKER_REL = "tools/check_institutional_correctness.py"
 DB_REL = "db.py"
 
-# writer_drift_lock does not import this module (no cycle).
-from tools import writer_drift_lock as WDL  # noqa: E402
 
 #: Paths where index≠WT is catastrophic (enforcement / collect seam / locks).
 ENFORCEMENT_PATHS: tuple[str, ...] = (
@@ -119,8 +113,7 @@ def _strip_command_payloads(cmd: str) -> str:
 def reset_guard_violations(command: str) -> list[str]:
     """LOCK-2: BLOCK tree-destructive git against protected/product scope (RC-231/RC-252).
 
-    Architecture A (RC-450): not subject-disableable. ED_RESET_GUARD and
-    operator_go scope git_reset_product cannot authorize a wipe.
+    Not subject-disableable (RC-450): no env token or repo file can authorize a wipe.
     `git restore --staged` (index-only), `git stash list`, `git checkout -b` stay legal.
     """
     cmd = _strip_command_payloads(command or "")
@@ -179,100 +172,7 @@ def _rel(p: str | Path) -> str:
         return Path(p).as_posix().replace("\\", "/")
 
 
-def current_agent_role() -> str:
-    """Delegate to writer_drift_lock: empty = operator/CI, never a vendor guess."""
-    return WDL.current_agent_role()
 
-
-def _load_json(path: Path) -> dict | None:
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError, json.JSONDecodeError):
-        return None
-
-
-def operator_go_record() -> dict:
-    doc = _load_json(OPERATOR_GO_PATH)
-    return doc if isinstance(doc, dict) else {}
-
-
-def operator_go_granted(scope: str | None = None) -> bool:
-    doc = operator_go_record()
-    if not doc.get("granted"):
-        return False
-    scopes = doc.get("scope") or []
-    if not isinstance(scopes, list):
-        return False
-    if scope is None:
-        return bool(scopes)
-    norm = {str(s).strip().lower() for s in scopes}
-    # RC-402: `staged_lock_surface` is a NORMAL scope token, matched only when a caller
-    # queries it. It used to appear here as a third disjunct — `or 'staged_lock_surface'
-    # in norm` — which made ANY scope query return True whenever the grant carried that
-    # token, silently disarming reset_guard_violations("git_reset_product") and every
-    # other held-surface gate. A grant that includes X must not thereby permit everything.
-    return scope.lower() in norm or "all" in norm
-
-
-_WORKTREE_POLICY_PATH = REPO / "tools" / "agent_worktree_policy.json"
-
-
-def _worktree_policy() -> dict:
-    try:
-        return json.loads(_WORKTREE_POLICY_PATH.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}
-
-
-def claude_isolated_edit_violation(
-    target_path: str,
-    repo: Path | None = None,
-    env: dict | None = None,
-    policy: dict | None = None,
-) -> str | None:
-    """Isolated-worktree boundary (operator 2026-08-20): in `mode: isolated`, a claude-role
-    edit whose TARGET is inside the PRODUCTION (primary) checkout is BLOCKED. Claude mutates
-    application source only in its own `<primary>-Claude` worktree; the primary is
-    production-only. Returns a block message, or None when allowed.
-
-    Shared-root mode (RC-129 legacy) returns None — the boundary is not enforced there.
-    The guard runs from whichever checkout invoked the hook (REPO); when that checkout IS a
-    -Claude worktree, edits under it are allowed (Claude editing its own tree). When the
-    hook runs from the primary, a target under the primary root blocks; a target under the
-    sibling -Claude worktree (not relative to the primary) is allowed.
-    """
-    env = env if env is not None else os.environ
-    policy = policy if policy is not None else _worktree_policy()
-    if str(policy.get("mode") or "isolated").strip().lower() != "isolated":
-        return None
-    role_var = str(policy.get("env_role_var") or "ED_AGENT_ROLE")
-    role = str(env.get(role_var) or "").strip().lower()
-    if role != "claude":
-        return None
-    suffix = str(policy.get("claude_root_suffix") or "-Claude")
-    root = (repo or REPO).resolve()
-    # The hook running FROM a -Claude worktree: edits under it are Claude's own tree → allow.
-    if root.name.endswith(suffix):
-        return None
-    if not target_path:
-        return None
-    try:
-        tgt = Path(target_path)
-        tgt = tgt if tgt.is_absolute() else (root / tgt)
-        tgt = tgt.resolve()
-    except (OSError, ValueError):
-        return None
-    # Under the PRODUCTION checkout (path-component containment, not string prefix, so the
-    # sibling `<primary>-Claude` is correctly excluded) → BLOCK.
-    if tgt == root or tgt.is_relative_to(root):
-        return (
-            f"ACTION BLOCKED (isolated worktree, operator 2026-08-20): ED_AGENT_ROLE=claude "
-            f"may not mutate '{tgt}' inside the PRODUCTION checkout '{root}'. The primary is "
-            f"production-only; edit application source only in the '{root.name}{suffix}' "
-            f"worktree. (RC-125 probe-live runs against the Claude proof server; RC-350 keeps "
-            f"the primary on clean main.)"
-        )
-    return None
 
 
 def enforcement_paths(repo: Path | None = None) -> list[str]:
@@ -588,27 +488,6 @@ def live_collect_disk_only(repo: Path | None = None, port: int = 8000) -> str | 
     return None
 
 
-def pm_mission_record() -> dict:
-    """Mission COORDINATION metadata (RC-461) - NOT authorization.
-
-    governance/pm_mission.json is ordinary coordination state. It supplies mission_id
-    for the RC-228 linkage check and nothing else: no writer/auditor/vendor field in it
-    grants authority, and no gate consults it to decide what an agent may edit. Authority
-    is CODEOWNERS + branch protection (durable) plus the control-authority rail
-    (tools/writer_drift_lock.control_authority_violation, in-process defense-in-depth).
-    """
-    return _load_json(PM_MISSION_PATH) or {}
-
-
-# RC-461: the PM-mission EDIT GATE (pm_mission_edit_violation / sole_writer_edit_violation
-# and their _mission_gates_path / _mission_scope_allows helpers) is REMOVED. The operator
-# requirement is that the coding AI does ordinary repo work AUTONOMOUSLY; gating product
-# edits on an in-progress mission was the overbuilt half of Architecture A and it depended
-# on the deleted external authority reader. What remains constrains AUTHORITY only:
-# writer_drift_lock.control_authority_violation denies an assigned principal any edit to
-# the files that decide who may do what, and CODEOWNERS + branch protection make that
-# durable at merge.
-
 
 def _git_diff_names(root: Path, a: str | None, b: str | None) -> list[str]:
     """Changed path names between two revs (or worktree-vs-HEAD when both None)."""
@@ -656,59 +535,6 @@ def _quiet_pass_required_violations(text: str, root: Path) -> list[str]:
     ]
 
 
-#: RC-241: phrasings that ASSERT the operator GO has been consumed / closed.
-_GO_CLOSED_CLAIM_RE = re.compile(
-    r"\boperator_go\b[^.\n]{0,90}?\b(?:closed|consumed|granted=false|set to false)\b"
-    r"|\bGO\s+(?:consumed|closed)\b"
-    r"|\b(?:closed|consumed)\s+(?:the\s+)?GO\b",
-    re.I,
-)
-
-
-def go_closeout_violations(commit_message: str, repo: Path | None = None) -> list[str]:
-    """RC-241: a commit that CLAIMS the GO was closed must actually ship it closed.
-
-    The GO protocol was enforced only on the way IN (staged ENFORCED checks require
-    granted=true) and nothing checked the way OUT. I told the operator the GO was "closed
-    back to false in this commit" while the committed blob carried granted=true — the claim
-    rested on my discipline, not on a check, and the PM had to catch it. A GO left open on
-    HEAD is a standing authorisation nobody granted for the NEXT commit, which is precisely
-    the self-approval hazard the file exists to prevent.
-
-    Fires ONLY when the message makes the claim: leaving a GO open without saying otherwise
-    is a process matter for the PM, not a lie, and is not this lock's business.
-    """
-    root = repo or REPO
-    if not commit_message or not _GO_CLOSED_CLAIM_RE.search(commit_message):
-        return []
-    try:
-        r = subprocess.run(
-            ["git", "show", ":governance/operator_go.json"],
-            cwd=str(root), capture_output=True, text=True,
-            encoding="utf-8", errors="replace", timeout=30,
-        )
-    except (OSError, subprocess.SubprocessError):
-        return []
-    if r.returncode != 0:
-        return [
-            "GO_CLOSEOUT: the commit message claims the operator GO was closed/consumed, but "
-            "governance/operator_go.json is NOT staged — the claim and the artifact must "
-            "agree at the moment of commit (RC-241)."
-        ]
-    try:
-        granted = bool(json.loads(r.stdout).get("granted"))
-    except (ValueError, json.JSONDecodeError):
-        return [
-            "GO_CLOSEOUT: staged governance/operator_go.json does not parse, so a closure "
-            "claim cannot be verified — unmeasurable is never a pass (RC-241)."
-        ]
-    if granted:
-        return [
-            "GO_CLOSEOUT: the commit message claims the operator GO was closed/consumed while "
-            "the STAGED governance/operator_go.json still reads granted=true (RC-241). Either "
-            "set granted=false and stage it, or stop claiming the closure."
-        ]
-    return []
 
 
 _QUOTED_STRING_RE = re.compile(r"\"(?:[^\"\\]|\\.)*\"|'(?:[^'\\]|\\.)*'")
@@ -741,74 +567,6 @@ def commit_pipe_violations(cmd: str) -> list[str]:
     return []
 
 
-_PM_DISPOSITION_RE = re.compile(r"\b(VERIFIED|ACCEPTED|REJECTED|QUEUED|BLOCKED)\b")
-_PM_ISSUE_BULLET_RE = re.compile(r"^\s*(?:\d+[.)]|[-*•])\s+(\S.{14,})", re.M)
-_PM_ISSUE_LABEL_RE = re.compile(r"\b(ISSUE|BLOCKER|RESIDUAL|P0)\b")
-# Named process tokens from the RC-233 encode addendum. Tokens alone form issue units
-# only when >=3 DISTINCT ones appear — the false-positive control the addendum demands
-# ("single-question operator chats do not BLOCK"): a casual sentence like "after restart
-# it went quiet" carries two tokens but is one question, not a multi-issue paste.
-_PM_PROCESS_TOKEN_RES = {
-    "sole_writer": re.compile(r"\bsole_writer\b"),
-    "operator_go": re.compile(r"\boperator_go\b"),
-    "pm_mission": re.compile(r"\bpm_mission\b"),
-    "PDL": re.compile(r"\bPDL\b"),
-    "PDH": re.compile(r"\bPDH\b"),
-    "DISK_ONLY": re.compile(r"\bDISK_ONLY\b"),
-    "LIVE_ENFORCED": re.compile(r"\bLIVE_ENFORCED\b"),
-    "quiet": re.compile(r"\bquiet\b", re.I),
-    "restart": re.compile(r"\brestart\b", re.I),
-    "lock remainder": re.compile(r"\block remainder\b", re.I),
-    "LOCK-": re.compile(r"\bLOCK-\d"),
-}
-
-
-def pm_coverage_issue_units(user_text: str) -> list[str]:
-    """RC-233: extract distinct issue units from an operator paste. A unit is a
-    substantive bullet/numbered line, an ISSUE/BLOCKER/RESIDUAL/P0-labeled line, or
-    (when >=3 distinct ones appear) a named process token not already inside a unit."""
-    units: list[str] = []
-    for m in _PM_ISSUE_BULLET_RE.finditer(user_text):
-        units.append(m.group(1).strip()[:60])
-    for ln in user_text.splitlines():
-        if _PM_ISSUE_LABEL_RE.search(ln) and not any(
-                ln.strip()[:60].startswith(u[:20]) for u in units):
-            units.append(ln.strip()[:60])
-    tok_hits = [name for name, rx in _PM_PROCESS_TOKEN_RES.items()
-                if rx.search(user_text)]
-    if len(tok_hits) >= 3:
-        covered = "\n".join(units)
-        for name in tok_hits:
-            if not _PM_PROCESS_TOKEN_RES[name].search(covered):
-                units.append(name)
-    return units
-
-
-def pm_coverage_violations(user_text: str | None, assistant_text: str) -> list[str]:
-    """LOCK RC-233 (PM full-prompt coverage, operator law 2026-08-04): a multi-issue
-    operator paste (>=2 distinct units) requires the reply to disposition EVERY unit —
-    VERIFIED/ACCEPTED/REJECTED/QUEUED/BLOCKED, at least one token per unit. Escape:
-    operator '# pm-coverage-ok:' naming the waived items. Deny prefix: PM_COVERAGE:."""
-    u = user_text or ""
-    a = assistant_text or ""
-    if "# pm-coverage-ok:" in u:
-        return []
-    units = pm_coverage_issue_units(u)
-    if len(units) < 2:
-        return []
-    dispositions = len(_PM_DISPOSITION_RE.findall(a))
-    if dispositions >= len(units):
-        return []
-    unaddressed = [s for s in units
-                   if not re.search(re.escape(s.split()[0][:12]), a, re.I)][:5]
-    return [
-        f"PM_COVERAGE: operator paste carries {len(units)} distinct issue units but the "
-        f"reply holds only {dispositions} disposition token(s) "
-        f"(VERIFIED/ACCEPTED/REJECTED/QUEUED/BLOCKED) — every item gets a per-item "
-        f"disposition + one-line note (RC-233). Units with no echo in the reply: "
-        + ("; ".join(unaddressed) if unaddressed else "(all echoed, dispositions missing)")
-        + ". Escape: operator '# pm-coverage-ok:' naming the waived items."
-    ]
 
 
 def completion_claim_violations(text: str, repo: Path | None = None) -> list[str]:
@@ -834,24 +592,6 @@ def completion_claim_violations(text: str, repo: Path | None = None) -> list[str
     # (LOCK-5 runs above via _quiet_pass_required_violations — independent trigger.)
     # RC-463: saying "ready to commit" while a lock surface is staged is no longer a
     # blocked claim - the assistant commits its own work, so there is nothing to grant.
-    # RC-228: COMPLETE claims while the active mission still owns OPEN RC rows.
-    if re.search(r"\b(mission\s+complete|done_criteria|COMPLETE(?:/CLOSED)?)\b", text, re.I):
-        try:
-            from tools.rc_resolve_lock import open_rcs_owned_by_mission
-        except ImportError:
-            from rc_resolve_lock import open_rcs_owned_by_mission  # type: ignore
-        mission = pm_mission_record()
-        mid = str(mission.get("mission_id") or "").strip()
-        rc_path = root / "governance" / "root_cause_log.md"
-        if mid and rc_path.is_file():
-            open_ids = open_rcs_owned_by_mission(
-                mid, rc_path.read_text(encoding="utf-8").splitlines()
-            )
-            if open_ids:
-                out.append(
-                    f"completion claim while OPEN RC(s) still name mission {mid!r}: "
-                    f"{', '.join(open_ids)} (RC-228 — CLOSE or honest PARTIAL+OUT-OF-SCOPE first)"
-                )
     return out
 
 
@@ -863,9 +603,9 @@ def commit_violations(repo: Path | None = None) -> list[str]:
     if mism:
         out.append("commit BLOCKED: staged enforcement path index≠WT — " + "; ".join(mism))
     out.extend(precommit_orphan_patch_warnings(root))
-    # RC-463: no PERMISSION gate here. Who may change the authority files is decided by
-    # operator review at merge (CODEOWNERS + branch protection on main), not by a second
-    # copy of that rule inside the commit hook. Only mechanical integrity is checked above.
+    # RC-463/RC-475: no PERMISSION gate here. Authority changes are approved by the
+    # operator's explicit word in chat; required CI is the machine gate at merge. Only
+    # mechanical integrity is checked above.
     return out
 
 
@@ -888,8 +628,6 @@ def measure_report(repo: Path | None = None) -> dict:
             "index_eq_wt": idx == wt if idx and wt else None,
         })
     return {
-        "operator_go": operator_go_record(),
-        "pm_mission": pm_mission_record(),
         "index_worktree_mismatches": index_worktree_mismatches(root),
         "staged_checks_not_on_head": staged_enforced_checks_not_on_head(root),
         "live_collect_disk_only": live_collect_disk_only(root),

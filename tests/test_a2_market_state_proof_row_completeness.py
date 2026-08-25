@@ -26,6 +26,7 @@ def _rich_contract(**overrides) -> dict:
         "highPrice": 1.4,
         "lowPrice": 0.8,
         "closePrice": 1.1,
+        "breakEven": 501.31,
         "bidSize": 10,
         "askSize": 14,
         "bidAskSize": "10X14",
@@ -120,6 +121,7 @@ def test_oe_chain_row_snapshot_preserves_a2_required_schwab_fields():
         "highPrice",
         "lowPrice",
         "closePrice",
+        "breakEven",
         "bidSize",
         "askSize",
         "bidAskSize",
@@ -151,6 +153,7 @@ def test_oe_chain_row_snapshot_preserves_a2_required_schwab_fields():
     assert snapshot["rho"] == raw["rho"]
     assert snapshot["quoteTimeInLong"] == raw["quoteTimeInLong"]
     assert snapshot["tradeTimeInLong"] == raw["tradeTimeInLong"]
+    assert snapshot["breakEven"] == raw["breakEven"]
     assert "raw" not in snapshot
 
 
@@ -196,6 +199,32 @@ def test_market_state_proof_feeds_schwab_theta_and_quote_timestamp_to_a2():
     }
     assert a2["execution"]["quote_staleness_ms"] == {
         "value": 1000,
+        "source": "v2_compliant",
+    }
+
+
+def test_market_state_proof_feeds_vendor_breakEven_to_a2():
+    """RC-388: the vendor breakeven must survive the proof snapshot and be served by A2
+    as the authoritative value (v2_compliant), not the strike +/- mid approximation."""
+    _, _, proof = recommend_option_expression(
+        contracts=[_rich_contract()],
+        spot=499.5,
+        call_signal="long",
+        walls=None,
+        selected_expiry="2026-05-05",
+    )
+
+    assert proof["winner"]["chain_row"]["breakEven"] == 501.31
+
+    a2 = build_a2_option_expression(_ms_from_proof(proof), _a1_trade())
+
+    assert a2["option_expression"]["breakeven"] == {
+        "value": 501.31,
+        "source": "v2_compliant",
+        "detail": "schwab_chain_breakEven",
+    }
+    assert a2["option_expression"]["breakeven_source"] == {
+        "value": "vendor_breakEven",
         "source": "v2_compliant",
     }
 

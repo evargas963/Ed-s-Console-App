@@ -52,7 +52,6 @@ import hashlib
 import json
 import os
 import re
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -91,7 +90,7 @@ _ROSTER_CODE = (
 #: Variables that BIND git to a specific repository, index or object store. A pre-commit
 #: hook runs with several of them exported, and they are inherited by every child process.
 #: RC-391, measured: with the seam wired in, `git diff --cached` run INSIDE a freshly
-#: materialised measurement worktree read the CALLER'S index, so `research_before_act`
+#: materialised measurement worktree read the CALLER'S index, so a staged-scope check
 #: reported the caller's staged files and the candidate scored +1 against its own base. The
 #: worktrees are the isolation this tool is built on; an inherited GIT_INDEX_FILE silently
 #: dissolves it, and the contamination reads as NEW DEBT, i.e. it blocks honest commits.
@@ -183,19 +182,11 @@ def index_candidate() -> str:
     return made.stdout.strip()
 
 
-#: Evidence the enforced catalogue reads that lives OUTSIDE the tree — gitignored, local,
-#: and therefore absent from any materialised worktree. `research_before_act` reads the turn
-#: audit log; with it missing, that check fires on every candidate no matter what the change
-#: is. Copied in, never written back.
-_LOCAL_EVIDENCE = ("reports/turn_self_audit_log.jsonl",)
-
-
 def _stage_the_delta(wt: Path, ref: str) -> None:
     """Make the candidate's own change appear STAGED inside its worktree.
 
-    RC-391, second order. Several enforced checks — `research_before_act`,
-    `check_recursive_five_why_front_loaded` — ask `git diff --cached` what is being
-    committed. In a materialised worktree HEAD is the candidate and the index matches it, so
+    RC-391, second order. Staged-scope enforced checks ask `git diff --cached` what is
+    being committed. In a materialised worktree HEAD is the candidate and the index matches it, so
     that question answers EMPTY and those checks fall silent on both sides. They would then
     be structurally incapable of failing at the very seam they were written for, which is a
     check removed by accident rather than by edit — the thing the roster comparison exists
@@ -210,15 +201,6 @@ def _stage_the_delta(wt: Path, ref: str) -> None:
     reset = _run(["git", "reset", "--soft", parent.stdout.strip()], cwd=wt)
     if reset.returncode != 0:
         raise RuntimeError(f"cannot stage the delta in the worktree: {reset.stderr[-300:]}")
-
-
-def _copy_local_evidence(wt: Path) -> None:
-    for rel in _LOCAL_EVIDENCE:
-        src = REPO / rel
-        if src.is_file():
-            dst = wt / rel
-            dst.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(src, dst)
 
 
 def enforced_counts(ref: str, stage_delta: bool = False) -> tuple[dict[str, int], str, set[str]]:
@@ -236,7 +218,6 @@ def enforced_counts(ref: str, stage_delta: bool = False) -> tuple[dict[str, int]
         try:
             if stage_delta:
                 _stage_the_delta(wt, ref)
-            _copy_local_evidence(wt)
             proc = _run([sys.executable, "tools/check_institutional_correctness.py",
                          "--enforced-only"], cwd=wt)
             # FAIL CLOSED (Cursor hole audit H1). As first shipped this returned
@@ -437,12 +418,6 @@ def _base_cache_key(base_ref: str) -> str | None:
         h.update(Path(__file__).read_bytes())          # parsing logic lives here
     except OSError:
         return None
-    for rel in _LOCAL_EVIDENCE:                        # copied into the base worktree
-        f = REPO / rel
-        try:
-            h.update(f.read_bytes() if f.is_file() else b"<absent>")
-        except OSError:
-            return None
     h.update(sys.version.encode())
     return h.hexdigest()
 

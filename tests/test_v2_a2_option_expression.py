@@ -116,6 +116,63 @@ def test_a2_option_expression_prefers_schwab_chain_last_over_bid_ask_mid():
     assert a2["option_expression"]["mid_source"]["value"] == "schwab_chain_last"
 
 
+def _ms_with_chain_row(**row_overrides) -> dict:
+    """_ms() with the winner chain_row patched."""
+    w = _winner()
+    w["chain_row"] = {**w["chain_row"], **row_overrides}
+    return _ms(
+        option_chain_selection_proof={
+            "status": "ok",
+            "winner": w,
+            "liquidity_summary": {"any_candidate_passed_liq_gate": True},
+        }
+    )
+
+
+def test_a2_breakeven_uses_vendor_breakEven_when_chain_row_carries_it():
+    """RC-388: chains.*.breakEven present -> vendor value served, provenance-labeled.
+
+    The vendor value (501.31) deliberately differs from strike + mid (501.25) so a
+    silent fall-through to the approximation would fail this test."""
+    a2 = build_a2_option_expression(_ms_with_chain_row(breakEven=501.31), _sample_a1())
+    oe = a2["option_expression"]
+    assert oe["breakeven"] == {
+        "value": 501.31,
+        "source": "v2_compliant",
+        "detail": "schwab_chain_breakEven",
+    }
+    assert oe["breakeven_source"] == {"value": "vendor_breakEven", "source": "v2_compliant"}
+
+
+def test_a2_breakeven_falls_back_to_labeled_approximation_when_vendor_absent():
+    """RC-388 fail-closed: no chains.*.breakEven on the row -> strike +/- mid stays,
+    explicitly labeled v1_approximation — the derivation keeps its consumer."""
+    a2 = build_a2_option_expression(_ms(), _sample_a1())  # _winner row has no breakEven
+    oe = a2["option_expression"]
+    assert oe["breakeven"] == {"value": 501.25, "source": "v1_approximation"}
+    assert oe["breakeven_source"] == {"value": "v1_approximation", "source": "v2_compliant"}
+
+
+def test_a2_breakeven_vendor_none_or_non_finite_fails_closed_to_approximation():
+    """RC-388 fail-closed: a poisoned vendor leaf (None/NaN/inf/garbage) is rejected and
+    the labeled approximation serves — never the poison, never an unlabeled mix."""
+    for poison in (None, float("nan"), float("inf"), float("-inf"), "not-a-number"):
+        a2 = build_a2_option_expression(_ms_with_chain_row(breakEven=poison), _sample_a1())
+        oe = a2["option_expression"]
+        assert oe["breakeven"]["value"] == 501.25, repr(poison)
+        assert oe["breakeven"]["source"] == "v1_approximation", repr(poison)
+        assert oe["breakeven_source"]["value"] == "v1_approximation", repr(poison)
+
+
+def test_a2_breakeven_not_implemented_when_vendor_and_approximation_both_unavailable():
+    """RC-388: no vendor leaf and no resolvable mid -> honest not_implemented, no value."""
+    ms = _ms_with_chain_row(bid=None, ask=None)  # no mark/last on the base row either
+    a2 = build_a2_option_expression(ms, _sample_a1())
+    oe = a2["option_expression"]
+    assert oe["breakeven"] == {"value": None, "source": "not_implemented"}
+    assert oe["breakeven_source"] == {"value": None, "source": "not_implemented"}
+
+
 def test_valid_a2_deterministic_baseline_has_source_indicators():
     """Contract: PILOT_1B_A2_0DTE_CONTRACT.md L237 - valid A2 baseline validates shape."""
     a2 = build_a2_option_expression(_ms(), _sample_a1())
@@ -1124,7 +1181,11 @@ A2_V1_APPROXIMATION_DERIVED_ALLOWLIST: dict[str, str] = {
     "option_expression.strike": "labeled v1_approximation only when resolved from ms.rec_strike with no chain row",
     "option_expression.mid": "derived from mark/last/(bid+ask)/2; no Schwab single-leaf mid",
     "option_expression.spread": "derived from ask-bid; no Schwab single-leaf spread",
-    "option_expression.breakeven": "derived from strike +/- mid; no Schwab leaf",
+    "option_expression.breakeven": (
+        "RC-388: labeled v1_approximation ONLY as the strike +/- mid fallback when "
+        "chains.*.breakEven is absent from the chain row; vendor leaf present -> "
+        "v2_compliant with detail schwab_chain_breakEven"
+    ),
     "option_expression.selection_proof": "app-side selection_proof object; not a Schwab leaf",
     # probability_and_ev: A1 stack probability is derived, not Schwab.
     "probability_and_ev.P_underlying_entry_success": "A1 stack probability; not a Schwab leaf",

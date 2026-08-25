@@ -384,9 +384,11 @@ def test_chart_page_never_calls_console_only_helpers():
 # (`d.kl_call_gamma_wall || t.call_wall`): whichever payload refreshed last wins silently, and
 # two tiles disagree seconds apart. Census 2026-07-29: zero mixed lines exist; this locks it.
 
-_KL_FAMILY = re.compile(r"kl_(?:call_gamma_wall|put_gamma_wall|gamma_flip|gamma_pin|hvl"
+_KL_FAMILY = re.compile(r"kl_(?:call_gamma_wall|put_gamma_wall|gamma_flip"
+                        r"|absolute_gamma_strike|pin_candidate|hvl"
                         r"|max_pain|em_upper|em_lower|call_delta_wall|put_delta_wall)")
-_TERRAIN_FAMILY = re.compile(r"(?<!kl_)\b(?:call_wall|put_wall|gamma_flip|gamma_pin|hvl"
+_TERRAIN_FAMILY = re.compile(r"(?<!kl_)\b(?:call_wall|put_wall|gamma_flip"
+                             r"|absolute_gamma_strike|pin_candidate|hvl"
                              r"|max_pain)\b")
 
 
@@ -540,7 +542,13 @@ def _pin_tips_defining_net(src: str) -> list[tuple[int, str]]:
     row_start = re.compile(r"\{\s*(t|key)\s*:")
     out = []
     for i, line in enumerate(lines):
-        if 'GAMMA PIN' not in line and 'Gamma Pin' not in line:
+        # RC-292: the operator labels are now ABS GAMMA / Absolute Gamma; the retired
+        # GAMMA PIN spellings stay scanned so a resurrected old row is still caught. The
+        # match is on the row's LABEL position, not any mention — the Net GEX Peak row
+        # legitimately SAYS "Distinct from Absolute Gamma" while defining the net book.
+        if not any(lbl in line for lbl in (
+                'GAMMA PIN', 'Gamma Pin',
+                "t: 'ABS GAMMA'", "label: 'Absolute Gamma'", "'ABS GAMMA',")):
             continue
         for j in range(i, min(len(lines), i + 3)):
             if j > i and row_start.search(lines[j]):
@@ -569,11 +577,17 @@ def test_net_definition_pin_tip_injection_is_caught():
 
 
 def test_gamma_pin_ladder_binds_kl_ssot_not_unstamped_gamma_pin() -> None:
-    """RC-292: the console GAMMA PIN row must paint the terrain total-gamma key."""
+    """RC-292: the console ABS GAMMA row (formerly GAMMA PIN) must paint the terrain
+    total-gamma SSOT key, and no ladder row may resurrect the retired GAMMA PIN label."""
     src = CONSOLE.read_text(encoding="utf-8")
-    m = re.search(r"\{ t: 'GAMMA PIN',\s*v:\s*([^,]+)", src)
-    assert m is not None and "kl_gamma_pin" in m.group(1), (
-        f"GAMMA PIN ladder binds {m.group(1) if m else 'nothing'} — must be d.kl_gamma_pin"
+    m = re.search(r"\{ t: 'ABS GAMMA',\s*v:\s*([^,]+)", src)
+    assert m is not None and "kl_absolute_gamma_strike" in m.group(1), (
+        f"ABS GAMMA ladder binds {m.group(1) if m else 'nothing'} — must be "
+        f"d.kl_absolute_gamma_strike"
+    )
+    assert re.search(r"\{ t: 'GAMMA PIN'", src) is None, (
+        "a ladder row under the retired GAMMA PIN label returned — the raw concentration "
+        "must not paint under an unearned pin claim (RC-292)"
     )
 
 

@@ -62,13 +62,14 @@ def test_levels_are_real_strikes_or_absent() -> None:
     snap = compute_terrain("SPY", chain, spot)
     strikes = {float(c["strikePrice"]) for c in chain if c.get("strikePrice") is not None}
 
-    for name in ("call_wall", "put_wall", "gamma_pin",
+    for name in ("call_wall", "put_wall", "absolute_gamma_strike", "pin_candidate",
                  "call_charm_wall", "put_charm_wall"):
         value = getattr(snap, name)
         assert value is None or value in strikes, f"{name}={value} is not a chain strike"
-    # RC-134: dead total-gamma twin removed — pin is the sole terrain total-gamma level.
+    # RC-134: dead total-gamma twin removed — absolute_gamma_strike is the sole terrain
+    # total-gamma level.
     assert "hvl" not in snap.to_dict(), (
-        "terrain must not ship hvl (it equals gamma_pin by construction)"
+        "terrain must not ship hvl (it equals absolute_gamma_strike by construction)"
     )
 
 
@@ -276,27 +277,27 @@ def _book_oi(exposures: dict) -> float | None:
 
 
 def test_pin_score_stamps_match_the_same_exposures_book_as_the_pin() -> None:
-    """RC-413: gamma_pin_gex_dollars / gamma_pin_oi / book_oi_total are the pin book's
-    total GEX$ and OI — the same compute_exposures_by_strike map pick_pin_and_strength used.
+    """RC-413: absolute_gamma_gex_dollars / absolute_gamma_oi / book_oi_total are the same
+    compute_exposures_by_strike map pick_pin_and_strength used (RC-292 renamed the fields).
     """
     from math_exposure_core import compute_exposures_by_strike, total_gex_dollars_at_strike
 
     chain, spot = _real_chain()
     snap = compute_terrain("SPY", chain, spot)
     exposures, _ = compute_exposures_by_strike(chain, spot=spot, require_oi=True)
-    pin = snap.gamma_pin
+    pin = snap.absolute_gamma_strike
     assert pin is not None
     bkt = _bucket_for_pin(exposures, pin)
     assert bkt is not None
-    assert snap.gamma_pin_gex_dollars == total_gex_dollars_at_strike(bkt)
+    assert snap.absolute_gamma_gex_dollars == total_gex_dollars_at_strike(bkt)
     co, po = bkt.get("call_oi"), bkt.get("put_oi")
-    assert snap.gamma_pin_oi == (float(co) if co is not None else 0.0) + (
+    assert snap.absolute_gamma_oi == (float(co) if co is not None else 0.0) + (
         float(po) if po is not None else 0.0
     )
     assert snap.book_oi_total == _book_oi(exposures)
     payload = snap.to_dict()
-    assert payload["gamma_pin_gex_dollars"] == snap.gamma_pin_gex_dollars
-    assert payload["gamma_pin_oi"] == snap.gamma_pin_oi
+    assert payload["absolute_gamma_gex_dollars"] == snap.absolute_gamma_gex_dollars
+    assert payload["absolute_gamma_oi"] == snap.absolute_gamma_oi
     assert payload["book_oi_total"] == snap.book_oi_total
 
 
@@ -308,7 +309,7 @@ def test_pin_score_inputs_follow_the_wide_terrain_book_not_selected_expiry() -> 
     from math_probabilities import compute_pin_score
 
     chain, spot = _real_chain()
-    pin = compute_terrain("SPY", chain, spot).gamma_pin
+    pin = compute_terrain("SPY", chain, spot).absolute_gamma_strike
     assert pin is not None
     extra = []
     for c in chain:
@@ -327,21 +328,21 @@ def test_pin_score_inputs_follow_the_wide_terrain_book_not_selected_expiry() -> 
     terrain = compute_terrain("SPY", wide, spot)
     wide_ex, _ = compute_exposures_by_strike(wide, spot=spot, require_oi=True)
     sel_ex, _ = compute_exposures_by_strike(chain, spot=spot, require_oi=True)
-    assert terrain.gamma_pin == pin
+    assert terrain.absolute_gamma_strike == pin
     wb = _bucket_for_pin(wide_ex, pin)
     sb = _bucket_for_pin(sel_ex, pin)
     assert wb is not None and sb is not None
     wide_gex = total_gex_dollars_at_strike(wb)
     sel_gex = total_gex_dollars_at_strike(sb)
     assert wide_gex != sel_gex
-    assert terrain.gamma_pin_gex_dollars == wide_gex
-    assert terrain.gamma_pin_oi != (
+    assert terrain.absolute_gamma_gex_dollars == wide_gex
+    assert terrain.absolute_gamma_oi != (
         (float(sb.get("call_oi") or 0) + float(sb.get("put_oi") or 0))
     )
     wide_score = compute_pin_score(
-        terrain.gamma_pin_gex_dollars,
-        (terrain.gamma_pin_oi / terrain.book_oi_total)
-        if terrain.gamma_pin_oi is not None and terrain.book_oi_total
+        terrain.absolute_gamma_gex_dollars,
+        (terrain.absolute_gamma_oi / terrain.book_oi_total)
+        if terrain.absolute_gamma_oi is not None and terrain.book_oi_total
         else None,
     )
     sel_score = compute_pin_score(
@@ -358,7 +359,11 @@ def test_pin_score_inputs_follow_the_wide_terrain_book_not_selected_expiry() -> 
 
 def test_unavailable_terrain_does_not_fabricate_pin_score_stamps() -> None:
     snap = compute_terrain("SPY", None, 743.0)
-    assert snap.gamma_pin is None
-    assert snap.gamma_pin_gex_dollars is None
-    assert snap.gamma_pin_oi is None
+    assert snap.absolute_gamma_strike is None
+    assert snap.absolute_gamma_gex_dollars is None
+    assert snap.absolute_gamma_oi is None
     assert snap.book_oi_total is None
+    assert snap.pin_candidate is None, "no chain must never yield a pin claim"
+    assert snap.pin_candidate_blockers == [], (
+        "the unavailable path carries no gate evaluation — blockers stay empty, the whole "
+        "snapshot is the absence")

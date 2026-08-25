@@ -189,8 +189,8 @@ def decision_path_wired_violations(source: str | None = None) -> list[str]:
 
 
 # claude_cursor_parity_violations RETIRED with check_claude_cursor_guard_parity
-# (governance/retired_checks.md 2026-08-24): both hook files are CODEOWNERS-owned,
-# so guard-wiring parity is a merge-review property.
+# (governance/retired_checks.md 2026-08-24): guard-wiring parity is an operator
+# merge-review property (RC-475 superseded the CODEOWNERS equivalence).
 
 
 _DATASHEET_REQUIRED = frozenset({"motivation", "composition", "collection", "recommended_uses"})

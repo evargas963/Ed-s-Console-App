@@ -27,6 +27,7 @@ from lstm_data import (
     STREAM_1M_LOOKBACK,
     STREAM_5M_LOOKBACK,
     canonical_reference_spot_from_merged_window,
+    micro_reference_spot_from_window,
 )
 from ml_horizon import normalize_ml_horizon_slug
 
@@ -303,7 +304,9 @@ def predict_lstm_offline(
     ref_spot = canonical_reference_spot_from_merged_window(merged_window)
     seq_5m = [_encode_structure_bar_for_checkpoint(s, ref_spot, checkpoint) for s in merged_window]
     micro = merged_window[-STREAM_1M_LOOKBACK:]
-    mr = float(micro[0].get("spot") or ref_spot)
+    # RC-318: single typed-absence producer (None/NaN/non-numeric/<=0 -> validated ref_spot;
+    # the old `float(spot or ref)` raised on a non-numeric spot and let NaN through).
+    mr = micro_reference_spot_from_window(micro, ref_spot)
     seq_1m = [_encode_micro_bar_for_checkpoint(s, mr, checkpoint) for s in micro]
 
     X_5m = np.array([seq_5m], dtype=np.float32)

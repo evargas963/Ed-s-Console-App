@@ -148,11 +148,14 @@ def _score_pinning(inp: SignalInput, micro_regime: str, mr: dict, mvp: dict) -> 
     # question, so "charm flow points toward the signed-net peak" is not evidence of pinning,
     # and the support string asserted a relationship the inputs cannot establish.
     #
-    # It is REMOVED rather than repaired because it cannot be repaired here: SignalInput
-    # carries charm_drift_toward, pin_width_pts and the gamma-wall distances but no gamma-pin
-    # field, so this test was scoring against the only strike it happened to have. The right
-    # test — charm flow toward the ACTUAL pinning magnet — needs terrain's max-total-gamma
-    # strike plumbed onto SignalInput, and that field does not exist yet (RC-292).
+    # STATUS AFTER THE RC-292 RENAME BATCH: SignalInput now carries the strike the honest
+    # test needs — `absolute_gamma_strike`, terrain's max-total-gamma concentration over the
+    # full book, plumbed per this row's NEXT-DEPTH. The point stays REMOVED even so, because
+    # existence of the input is not validation of the mechanism: RC-315 established that
+    # absolute gamma is a pin CANDIDATE, not a magnet (magnitude sizes the hedging flow; the
+    # unobservable dealer sign decides pin vs repel), so "charm flow points toward the
+    # absolute-gamma strike" is still an unvalidated directional claim. Rebuilding this
+    # point is owed as its own RC row with an independently validated directional mechanism.
     #
     # A pinning score must not include evidence its inputs cannot support. A lower score that
     # is honest beats a higher one that is not.

@@ -244,9 +244,10 @@ def test_the_module_scope_blind_spot_is_measured_not_silent():
     the live rail in tests/test_control_authority_surfaces_v1.py,
     tests/test_architecture_a_operator_writer_authority_v1.py and
     tests/test_writer_drift_lock_v1.py, none of which enter this census.
-    `test_codeowners_covers_control_authority_set` REMAINS (its line moved only): the
-    CODEOWNERS ownership map is still inherently structural - no runtime call can
-    express which paths GitHub will treat as owned.
+    `test_codeowners_covers_control_authority_set` REMAINED at the time (inherently
+    structural — the ownership map had no runtime form); it LEFT for good in the
+    2026-08-24 Architecture A teardown, when CODEOWNERS and the three rail suites
+    named above were deleted with the authority machinery (commit 54e766dc).
 
     267 -> 268 (RC-466 delta-gate base cache), one arrival, named:
     `test_rc466_candidate_side_is_never_cached` ARRIVED.

@@ -51,8 +51,6 @@ TEXT_ONLY_ALLOWED: tuple[tuple[str, str], ...] = (
      "audits guard source wiring, not a computed value"),
     ("tests/test_enforced_check_negative_controls_v1.py",
      "asserts every enforced check owns a negative control — a property of the check list"),
-    ("tests/test_agents_laws_name_their_enforcer.py",
-     "maps written laws to enforcing modules; there is no value to compute"),
 )
 
 

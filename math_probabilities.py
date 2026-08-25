@@ -311,6 +311,11 @@ def dist_bucket(dist: float | None) -> str | None:
 
 def bucket_lo(bucket: str | None) -> float:
     if bucket is None:
+        # absence-literal-ok: RC-318 — a range BOUND, not a measurement. bucket=None means
+        # "no bucket constraint"; [0.0, 9999.0] is the full nonnegative distance domain, so
+        # the BETWEEN arm matches every valued row. The consumer tests ABSENCE separately:
+        # sql_issue19_tier1_candidate_rows pairs these bounds with an explicit
+        # `(nearest_*_dist IS NULL AND ? IS NULL)` arm carrying the raw anchor value.
         return 0.0
     raw = bucket.split("-")[0]
     return float(raw.rstrip("+"))
@@ -318,6 +323,9 @@ def bucket_lo(bucket: str | None) -> float:
 
 def bucket_hi(bucket: str | None) -> float:
     if bucket is None:
+        # absence-literal-ok: RC-318 — the unbounded upper range BOUND (see bucket_lo);
+        # 9999.0 is also the genuine upper edge of the overflow ("250+") bucket below,
+        # so the value is a real answer in the bound domain either way.
         return 9999.0
     if bucket.endswith("+"):
         return 9999.0

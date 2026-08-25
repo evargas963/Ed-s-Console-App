@@ -763,10 +763,16 @@ function drawLadder() {
     `<b style="font-weight:600; color:${net >= 0 ? 'var(--amber)' : 'var(--vio)'}">${esc(fmtBig(-net))}</b>` +
     `<div class="lz">mechanical hedge flow — never a forecast</div>`;
   const flips = rows.filter((r, i) => i > 0 && rows[i - 1][1] * r[1] < 0).length;
-  // # ui-mockup-ok: RC-199 real keys; absence = fields not served, never a vote gate
+  // # ui-mockup-ok: RC-199 real keys; absence = fields not served, never a vote gate.
+  // # ui-mockup-ok: RC-305 qualifier delivery, no redesign — a served charm_error is
+  // STATED: a FAILED charm used to render exactly like fields never served, hiding the
+  // reason the server reported. Same phrasing as the chart's forces_provenance idiom;
+  // no error served stays the honest absence line.
   const charmTxt = forces && forces.available && forces.charm_below != null
     ? `charm ${fmtBig(forces.charm_below)} / ${fmtBig(forces.charm_above)} sh/day · ${forces.charm_book_scope || 'full_chain_banked'}`
-    : 'charm: fields not served';
+    : (forces && forces.charm_error
+        ? `charm failed: ${String(forces.charm_error).slice(0, 48)}`
+        : 'charm: fields not served');
   $('gates').textContent = `gatekeepers ${flips} · ${charmTxt}`;
 }
 

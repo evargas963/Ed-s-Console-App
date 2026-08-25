@@ -964,10 +964,14 @@ def _compute_institutional_flow_proxy(data: dict, *, book_imbalance_5: Optional[
 # NORMALIZATION & SCORING
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _normalize(val: Optional[float], low: float = -1.0, high: float = 1.0) -> float:
-    """Clip and normalize to [-1, 1] range for scoring."""
-    if val is None:
-        return 0.0
+def _normalize(val: float, low: float = -1.0, high: float = 1.0) -> float:
+    """Clip a PRESENT value to [low, high] for scoring.
+
+    RC-318: absence is not this function's concern — the only caller
+    (_weighted_mean_present) EXCLUDES absent (None) legs before calling, so the old
+    `None -> 0.0` branch was dead code that advertised a fabricated neutral reading.
+    Absent legs must never become 0.0 mass; they are dropped by the consumer.
+    """
     return max(low, min(high, float(val)))
 
 

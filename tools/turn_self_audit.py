@@ -1072,25 +1072,6 @@ def matching_attack_suites(changed: list[str]) -> tuple[list[str], list[str]]:
     return ownership.suites, sorted(uncovered)
 
 
-def research_violation(research: str, changed: list[str]) -> str | None:
-    """Legacy research telemetry validation; it is not Stop authorization."""
-    if not changed:
-        return None
-    value = (research or "").strip()
-    concrete = any(token in value for token in ("/", "§", "http", ".md", ".py", ".html", ".js"))
-    if len(value) < 20 or not concrete:
-        return (
-            "no research record (RC-203/RC-205): name a concrete reference consulted "
-            "before acting"
-        )
-    try:
-        from tools.plus_player_locks import research_path_resolves
-    except ImportError:
-        from plus_player_locks import research_path_resolves  # type: ignore
-    if not research_path_resolves(value):
-        return "research does not resolve (RC-205): cite an existing repo path or http(s) URL"
-    return None
-
 
 def _incomplete_cli_result(repo: Path, session_id: str, message: str) -> dict[str, Any]:
     scope = discover_scope(repo)

@@ -303,8 +303,11 @@ def _gex_levels_from_chain(ticker: str, spot: float, chain_raw: str) -> dict | N
         levels["CALL_WALL"] = float(snap.call_wall)
     if snap.put_wall is not None and math.isfinite(float(snap.put_wall)):
         levels["PUT_WALL"] = float(snap.put_wall)
-    if snap.gamma_pin is not None and math.isfinite(float(snap.gamma_pin)):
-        levels["GAMMA_PIN"] = float(snap.gamma_pin)
+    # RC-292: terrain field renamed absolute_gamma_strike (total-gamma concentration, a
+    # pin candidate). The tool's OWN level kind stays "GAMMA_PIN": it is this experiment's
+    # historical taxonomy (banked outputs, consistency check below) — a label, not a claim.
+    if snap.absolute_gamma_strike is not None and math.isfinite(float(snap.absolute_gamma_strike)):
+        levels["GAMMA_PIN"] = float(snap.absolute_gamma_strike)
     # Also compute via exposures for consistency check (same engine)
     try:
         exposures, _ = compute_exposures_by_strike(contracts, spot=spot, require_oi=True)

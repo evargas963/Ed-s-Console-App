@@ -257,6 +257,7 @@ terrain_engine.py::_unavailable
 terrain_engine.py::compute_implied_one_day_move
 terrain_engine.py::compute_terrain
 terrain_engine.py::compute_wall_value_area
+terrain_engine.py::qualify_pin_candidate
 terrain_engine.py::strongest_strike_storm1
 terrain_engine.py::strongest_strike_storm1._inv_ranks
 terrain_engine.py::wall_geometry_state

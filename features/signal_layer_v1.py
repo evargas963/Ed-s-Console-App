@@ -218,9 +218,14 @@ def _aggregate_bars(bars: Sequence[Mapping[str, Any]], group: int) -> list[dict[
     return out
 
 
-def _sign_trend(slope: Optional[float], eps: float = 1e-8) -> float:
+def _sign_trend(slope: Optional[float], eps: float = 1e-8) -> Optional[float]:
+    # RC-318 typed absence: an unmeasurable slope (None: short/degenerate history) propagates
+    # as None — the layer's contract for absent features — never a fabricated "measured flat"
+    # 0.0. Every consumer of the mtf.* sign keys already tests None (alignment_state calc,
+    # layer_direction_policy, signal_layer_v1_to_direction_probs, pa_* nullable persistence),
+    # and the ML lane median-imputes NULL downstream.
     if slope is None:
-        return 0.0
+        return None
     if slope > eps:
         return 1.0
     if slope < -eps:

@@ -3390,7 +3390,7 @@ body.cv-hc.light #cv2-terrain { --cv-bg:#fff; --cv-sf:#fff; --cv-sf2:#eef2f8; --
           <div class="cv-li"><span class="cv-dim">Gamma flip</span><b class="cv-n cv-ac" id="cv2-kl-flip">—</b></div>
           <div class="cv-li"><span class="cv-dim">Call wall</span><b class="cv-n cv-up" id="cv2-kl-cwall">—</b></div>
           <div class="cv-li"><span class="cv-dim">Put wall</span><b class="cv-n cv-dn" id="cv2-kl-pwall">—</b></div>
-          <div class="cv-li"><span class="cv-dim" title="Absolute Gamma Strike: largest TOTAL gamma (calls+puts) — the sticky-pin magnet. Formerly 'Gamma pin'.">Abs Gamma</span><b class="cv-n" id="cv2-kl-pin">—</b></div>
+          <div class="cv-li"><span class="cv-dim" title="Absolute Gamma Strike: largest TOTAL gamma (calls+puts) — the biggest dealer hedging concentration; a pin candidate, not a proven magnet (RC-315). Formerly 'Gamma pin'.">Abs Gamma</span><b class="cv-n" id="cv2-kl-pin">—</b></div>
           <div class="cv-li"><span class="cv-dim">Expected move</span><b class="cv-n" id="cv2-kl-em">—</b></div>
         </div>
 
@@ -3434,7 +3434,7 @@ body.cv-hc.light #cv2-terrain { --cv-bg:#fff; --cv-sf:#fff; --cv-sf2:#eef2f8; --
         </div>
         <div class="cv-card"><h5 class="cv-h5">Proximity</h5>
           <div class="cv-li"><span class="cv-dim">To flip</span><b class="cv-n cv-ac" id="ct-px-flip">—</b></div>
-          <div class="cv-li"><span class="cv-dim">To pin</span><b class="cv-n cv-up" id="ct-px-pin">—</b></div>
+          <div class="cv-li"><span class="cv-dim">To abs Γ</span><b class="cv-n cv-up" id="ct-px-pin">—</b></div>
           <div class="cv-li"><span class="cv-dim">To call wall</span><b class="cv-n cv-up" id="ct-px-cwall">—</b></div>
           <div class="cv-li"><span class="cv-dim">To put wall</span><b class="cv-n cv-dn" id="ct-px-pwall">—</b></div>
         </div>
@@ -3463,7 +3463,7 @@ body.cv-hc.light #cv2-terrain { --cv-bg:#fff; --cv-sf:#fff; --cv-sf2:#eef2f8; --
             <div class="cv-li"><span class="cv-dim">Call wall</span><b class="cv-n cv-up" id="ct-cwall">—</b></div>
             <div class="cv-li"><span class="cv-dim">Gamma flip</span><b class="cv-n cv-ac" id="ct-flip">—</b></div>
             <div class="cv-li"><span class="cv-dim" title="Net GEX Peak: strike with the largest |net| dealer GEX$ (call minus put gamma). Distinct from Absolute Gamma (total) and the Gamma Flip (zero-crossing).">Net GEX Peak</span><b class="cv-n" id="ct-hvl">—</b></div>
-            <div class="cv-li"><span class="cv-dim" title="Absolute Gamma Strike: largest TOTAL gamma (calls+puts) — the sticky-pin magnet. Formerly 'Gamma pin'.">Abs Gamma</span><b class="cv-n cv-up" id="ct-pin">—</b></div>
+            <div class="cv-li"><span class="cv-dim" title="Absolute Gamma Strike: largest TOTAL gamma (calls+puts) — the biggest dealer hedging concentration; a pin candidate, not a proven magnet (RC-315). Formerly 'Gamma pin'.">Abs Gamma</span><b class="cv-n cv-up" id="ct-pin">—</b></div>
             <div class="cv-li"><span class="cv-dim">Max pain</span><b class="cv-n" id="ct-maxpain">—</b></div>
             <div class="cv-li"><span class="cv-dim">Put wall</span><b class="cv-n cv-dn" id="ct-pwall">—</b></div>
           </div>
@@ -3836,7 +3836,7 @@ body.cv-hc.light #cv2-terrain { --cv-bg:#fff; --cv-sf:#fff; --cv-sf2:#eef2f8; --
               <div class="decision-block">
                 <div class="decision-block-hd"><div class="decision-block-title">Execution levels (chartable)</div></div>
                 <div class="decision-kv">
-                  <div class="decision-k" title="Absolute Gamma Strike (formerly PIN): largest total-gamma strike — the sticky-pin magnet.">ABS Γ</div><div class="decision-v" id="dr-lvl-pin">—</div>
+                  <div class="decision-k" title="Absolute Gamma Strike (formerly PIN): largest total-gamma strike — the biggest dealer hedging concentration; a pin candidate, not a proven magnet (RC-315).">ABS Γ</div><div class="decision-v" id="dr-lvl-pin">—</div>
                   <div class="decision-k">Gamma flip</div><div class="decision-v" id="dr-lvl-gflip">—</div>
                   <div class="decision-k">Support</div><div class="decision-v" id="dr-lvl-support">—</div>
                   <div class="decision-k">Resistance</div><div class="decision-v" id="dr-lvl-resistance">—</div>
@@ -3880,7 +3880,7 @@ body.cv-hc.light #cv2-terrain { --cv-bg:#fff; --cv-sf:#fff; --cv-sf2:#eef2f8; --
             <div class="signal-card-header"><span class="signal-card-title">Execution Levels</span></div>
             <div class="signal-card-body">
               <div class="decision-kv">
-                <div class="decision-k" title="Absolute Gamma Strike (formerly PIN): largest total-gamma strike — the sticky-pin magnet.">ABS Γ</div><div class="decision-v" id="exec-pin">—</div>
+                <div class="decision-k" title="Absolute Gamma Strike (formerly PIN): largest total-gamma strike — the biggest dealer hedging concentration; a pin candidate, not a proven magnet (RC-315).">ABS Γ</div><div class="decision-v" id="exec-pin">—</div>
                 <div class="decision-k">GAMMA FLIP</div><div class="decision-v" id="exec-gflip">—</div>
                 <div class="decision-k">SUPPORT</div><div class="decision-v" id="exec-support">—</div>
                 <div class="decision-k">RESISTANCE</div><div class="decision-v" id="exec-resistance">—</div>
@@ -6213,7 +6213,7 @@ function paintStructureLevelsFromKl(d) {
     if (spotNow != null && mid > spotNow && aboveVoid === '—') aboveVoid = r;
     if (spotNow != null && mid < spotNow) belowVoid = r;
   }
-  domIf('dr-lvl-pin', el => { el.textContent = pxTxt(d.kl_gamma_pin); });
+  domIf('dr-lvl-pin', el => { el.textContent = pxTxt(d.kl_absolute_gamma_strike); });
   domIf('dr-lvl-gflip', el => { el.textContent = pxTxt(d.kl_gamma_flip); });
   domIf('dr-lvl-support', el => { el.textContent = supR; });
   domIf('dr-lvl-resistance', el => { el.textContent = resR; });
@@ -6226,7 +6226,7 @@ function paintStructureLevelsFromKl(d) {
   domIf('dr-liq-below', el => { el.textContent = supR !== '—' ? `${supR}${belowVoid !== '—' ? ` | void ${belowVoid}` : ''}` : belowVoid; });
   domIf('dr-liq-upper', el => { el.textContent = pxTxt(d.kl_em_upper); });
   domIf('dr-liq-lower', el => { el.textContent = pxTxt(d.kl_em_lower); });
-  domIf('exec-pin', el => { el.textContent = pxTxt(d.kl_gamma_pin); });
+  domIf('exec-pin', el => { el.textContent = pxTxt(d.kl_absolute_gamma_strike); });
   domIf('exec-gflip', el => { el.textContent = pxTxt(d.kl_gamma_flip); });
   domIf('exec-support', el => { el.textContent = supR; });
   domIf('exec-resistance', el => { el.textContent = resR; });
@@ -6323,7 +6323,7 @@ function renderDecisionCommandRail(d) {
   const resR = (res != null && d.nearest_above_dist != null && !Number.isNaN(Number(d.nearest_above_dist)))
     ? `${res.toFixed(2)}–${(res + Number(d.nearest_above_dist)).toFixed(2)}`
     : (res != null ? res.toFixed(2) : '—');
-  domIf('dr-lvl-pin', el => { el.textContent = pxTxt(d.kl_gamma_pin); });
+  domIf('dr-lvl-pin', el => { el.textContent = pxTxt(d.kl_absolute_gamma_strike); });
   domIf('dr-lvl-gflip', el => { el.textContent = pxTxt(d.kl_gamma_flip); });
   domIf('dr-lvl-support', el => { el.textContent = supR; });
   domIf('dr-lvl-resistance', el => { el.textContent = resR; });
@@ -6376,7 +6376,7 @@ function renderDecisionCommandRail(d) {
   domIf('dr-liq-upper', el => { el.textContent = pxTxt(d.kl_em_upper); });
   domIf('dr-liq-lower', el => { el.textContent = pxTxt(d.kl_em_lower); });
   // Mirror into new execution-first grid cards.
-  domIf('exec-pin', el => { el.textContent = pxTxt(d.kl_gamma_pin); });
+  domIf('exec-pin', el => { el.textContent = pxTxt(d.kl_absolute_gamma_strike); });
   domIf('exec-gflip', el => { el.textContent = pxTxt(d.kl_gamma_flip); });
   domIf('exec-support', el => { el.textContent = supR; });
   domIf('exec-resistance', el => { el.textContent = resR; });
@@ -8037,7 +8037,7 @@ function renderTierCPartialAnalytics(d, fullRenderSource) {
     });
   }
   if (typeof window.__renderKeyLevelsLive === 'function' && (
-    merged.kl_gamma_pin != null || merged.kl_call_gamma_wall != null || (Array.isArray(merged.summary_rows) && merged.summary_rows.length)
+    merged.kl_absolute_gamma_strike != null || merged.kl_call_gamma_wall != null || (Array.isArray(merged.summary_rows) && merged.summary_rows.length)
   )) {
     try { window.__renderKeyLevelsLive(merged); } catch (e) {}
   }
@@ -8207,7 +8207,8 @@ function renderTierALive(d, fullRenderSource) {
         : d.kl_put_wall_state === 'contains'
           ? 'Put Wall: strike with the largest put gamma. Support while spot holds above it — dealer hedging cushions selloffs there.'
           : 'Put Wall: strike with the largest put gamma. Geometry state unavailable — no containment claim. Formerly "Gamma Wall Put".' },
-    { key: 'kl_gamma_pin', strKey: null, label: 'Absolute Gamma', sr: 'pin', srLabel: 'Pin', proxColor: '#a855f7', tip: 'Absolute Gamma Strike (SpotGamma): the strike with the largest TOTAL gamma (calls+puts) — the sticky-pin/magnet level, strongest into expiry. Lead % on the chart label shows its margin over the runner-up (RC-352; formerly "Gamma Pin").' },
+    { key: 'kl_absolute_gamma_strike', strKey: null, label: 'Absolute Gamma', sr: 'pin', srLabel: 'Abs Γ', proxColor: '#a855f7', tip: 'Absolute Gamma Strike (SpotGamma): the strike with the largest TOTAL gamma (calls+puts) — the biggest concentration of dealer hedging activity. A pin CANDIDATE, not a proven magnet: magnitude sizes the hedging flow, the unobservable dealer sign decides pin vs repel (RC-315). Lead % on the chart label shows its margin over the runner-up (RC-352; formerly "Gamma Pin").' },
+    { key: 'kl_pin_candidate', strKey: null, label: 'Pin Candidate', sr: 'pin', srLabel: 'Pin Cand', proxColor: '#c084fc', tip: 'The Absolute Gamma strike published as a candidate pin ONLY when it passes all five qualification gates: dealers net long gamma at spot (regime), within 0.5% of spot (proximity), front expiry ≤1 day (DTE), pin score above negligible (liquidity), and the full magnitude bundle present (completeness). Blank = one or more gates failed (RC-292).' },
     { key: 'kl_hvl', strKey: 'kl_hvl_str', label: 'Net GEX Peak', sr: 'pin', srLabel: 'Net GEX', proxColor: '#e879f9', tip: 'Strike with the largest |net| dealer GEX$ (call gamma minus put gamma) — where the SIGNED book peaks. Distinct from Absolute Gamma (total) and from the Gamma Flip (zero-crossing). Formerly "Net Γ peak".' },
     { key: 'kl_max_pain', strKey: 'kl_max_pain_str', label: 'Max Pain', sr: 'pin', srLabel: 'OI Magnet', proxColor: '#d946ef', tip: 'Strike where the most options expire worthless. An open-interest magnet into expiration.' },
     { key: 'kl_gamma_flip', strKey: null, label: 'Gamma Flip', sr: 'flip', srLabel: 'Flip Zone', proxColor: '#f97316', tip: 'Zero-gamma level. Above it dealers dampen moves (choppy). Below it dealers amplify moves (trending).' },
@@ -8427,7 +8428,8 @@ function renderTierALive(d, fullRenderSource) {
 
     // Charm Drift row — RC-345 / F18: charm measures DIRECTION (time-decay hedging drift), NOT
     // a target STRIKE. The row consumes ONLY the canonical charm_drift_toward and NEVER borrows
-    // the gamma pin (kl_gamma_pin), any wall, the net-GEX peak, or the institutional pin. When
+    // the absolute-gamma strike (kl_absolute_gamma_strike), any wall, the net-GEX peak, or the
+    // qualified pin candidate. When
     // charm produces no strike it is WITHHELD ('—') — never 0, never a different Greek's strike.
     {
       const charmTarget = (d.charm_drift_toward != null && !Number.isNaN(Number(d.charm_drift_toward)))
@@ -12648,8 +12650,10 @@ function edLevelSet(d) {
       tip: 'OI-implied expiry magnet. Evidence supports pinning only ON expiration day — advisory the rest of the time.' },
     // RC-132 (A2): the old tip defined the pin on the NET book — the pre-RC-124 definition
     // the producer no longer computes. The tip now states the producer's actual metric.
-    { t: 'GAMMA PIN',  v: d.kl_gamma_pin,    c: 'tv-c-pin',   g: '◆', note: 'pin',
-      tip: 'Largest TOTAL gamma strike (|call|+|put| GEX$) — SpotGamma Absolute Gamma, the sticky-pin magnet; strongest into expiry. Structure fact: close-prediction is unproven.' },
+    // RC-292/RC-315: renamed from GAMMA PIN — the metric is a total-gamma concentration
+    // (pin CANDIDATE); the qualified pin claim is kl_pin_candidate on the Key Levels table.
+    { t: 'ABS GAMMA',  v: d.kl_absolute_gamma_strike, c: 'tv-c-pin', g: '◆', note: 'pin candidate',
+      tip: 'Largest TOTAL gamma strike (|call|+|put| GEX$) — SpotGamma Absolute Gamma, the biggest dealer hedging concentration. A pin CANDIDATE, not a proven magnet (RC-315). Structure fact: close-prediction is unproven.' },
     { t: 'KEY DELTA',  v: d.key_delta_strike, c: 'tv-c-kds',  g: '◈', note: 'delta magnet',
       tip: 'Largest total delta notional on the board. The biggest hedge inventory — crossing it forces the most dealer rebalancing.' },
     { t: 'HVP',        v: d.hvp,             c: 'tv-c-hvp',   g: '▣', note: 'most −γ · amplifies',
@@ -13421,7 +13425,7 @@ function edCheckRadarAlerts(rows) {
        wide-strike name (NVDA/TSLA — $5–$10 spacing, big % moves) is NEVER silently dropped;
        min ±13, capped at 55 nearest strikes for readability. Flip shows in the badge when
        it is off this window. */
-    var lvlD = [t && t.call_wall, t && t.put_wall, t && t.gamma_pin]
+    var lvlD = [t && t.call_wall, t && t.put_wall, t && t.absolute_gamma_strike]
       .map(function (v) { return fnum(v); }).filter(function (v) { return v !== null; })
       .map(function (v) { return Math.abs(v - spot); });
     var halfW = Math.max.apply(null, [13].concat(lvlD)) + 2;
@@ -13439,7 +13443,7 @@ function edCheckRadarAlerts(rows) {
     function nearest(p) { var bk = null, bd = 1e9; rows.forEach(function (r) { var d = Math.abs(r.k - p); if (d < bd) { bd = d; bk = r.k; } }); return { k: bk, d: bd }; }
     var lvl = {};
     function tag(name, v) { var p = fnum(v); if (p === null) return; var nr = nearest(p); if (nr.k !== null && nr.d <= tol) { (lvl[nr.k] = lvl[nr.k] || []).push(name); } }
-    if (t) { tag('CALL WALL', t.call_wall); tag('PUT WALL', t.put_wall); tag('PIN', t.gamma_pin); }
+    if (t) { tag('CALL WALL', t.call_wall); tag('PUT WALL', t.put_wall); tag('ABS Γ', t.absolute_gamma_strike); }
     /* only flag FLIP if it actually falls within the plotted strike window — never
        mis-label a window-edge strike when the flip is off-scale (e.g. flip 322 vs a
        279–304 window). Its exact value still shows in the badge above the chart. */
@@ -13490,7 +13494,7 @@ function edCheckRadarAlerts(rows) {
     var pw = fnum(t.put_wall), cw = fnum(t.call_wall);
     T('cv2-kl-cwall', n2(cw));
     T('cv2-kl-pwall', n2(pw));
-    T('cv2-kl-pin', n2(fnum(t.gamma_pin)));
+    T('cv2-kl-pin', n2(fnum(t.absolute_gamma_strike)));
     // RC-102 (reopened, v7 audit): the FIRST staleness wiring only reached the hidden
     // #terrain-view chip — the VISIBLE console said "trusted" over frozen levels. Same law as
     // tv-trust: stale levels can never render as trusted, and the chip says WHY.
@@ -13511,7 +13515,7 @@ function edCheckRadarAlerts(rows) {
       }
     }
     var tags = [n2(fnum(t.gamma_flip)) && ('flip ' + n2(fnum(t.gamma_flip))),
-                n2(fnum(t.gamma_pin)) && ('pin ' + n2(fnum(t.gamma_pin))),
+                n2(fnum(t.absolute_gamma_strike)) && ('absΓ ' + n2(fnum(t.absolute_gamma_strike))),
                 cw !== null && ('call ' + n2(cw)), pw !== null && ('put ' + n2(pw))].filter(Boolean).join(' · ');
     T('cv2-gx-tags', tags || null);
     // RC-117: the footer STATES the data state instead of hardcoding the word 'live' — a
@@ -13902,7 +13906,7 @@ function edCheckRadarAlerts(rows) {
     if (!all || !all.length || spot === null) { box.innerHTML = '<span class="cv-mu" style="font-size:.82em">no per-strike gamma — fail closed</span>'; return; }
     /* window scales with the actionable levels (call/put wall, pin) so wide-strike names
        (NVDA/TSLA) never drop a wall; min ±13, capped at 55 nearest strikes for readability. */
-    var lvlD = [t.call_wall, t.put_wall, t.gamma_pin]
+    var lvlD = [t.call_wall, t.put_wall, t.absolute_gamma_strike]
       .map(function (v) { return fnum(v); }).filter(function (v) { return v !== null; })
       .map(function (v) { return Math.abs(v - spot); });
     var halfW = Math.max.apply(null, [13].concat(lvlD)) + 2;
@@ -13916,10 +13920,11 @@ function edCheckRadarAlerts(rows) {
     var spc = []; for (var sj = 1; sj < rows.length; sj++) spc.push(Math.abs(rows[sj].k - rows[sj - 1].k));
     spc.sort(function (a, b) { return a - b; });
     var tol = spc.length ? Math.max(0.75, spc[Math.floor(spc.length / 2)] * 0.5) : 0.75;
-    /* RC-132 (A3): the HVL tag is deleted — pick_hvl_strike equals the pin's metric (max
-       total GEX$) by construction, so 'HVL' tagged the SAME strike as 'PIN' under a second
-       name. One metric, one name: PIN. (The net book is the KL table's "Net Γ peak".) */
-    var levels = [['CALL WALL', t.call_wall], ['LVP', t.lvp], ['CALL CHARM', t.call_charm_wall], ['KEY DELTA', t.key_delta_strike], ['PIN', t.gamma_pin], ['MAX PAIN', t.max_pain], ['PUT CHARM', t.put_charm_wall], ['PUT WALL', t.put_wall], ['HVP', t.hvp]];
+    /* RC-132 (A3): the HVL tag is deleted — pick_hvl_strike equals the same max-total-GEX$
+       metric by construction, so 'HVL' tagged the SAME strike under a second name. One
+       metric, one name: ABS Γ (RC-292 — the tag says the metric, not an unearned pin
+       claim). (The net book is the KL table's "Net Γ peak".) */
+    var levels = [['CALL WALL', t.call_wall], ['LVP', t.lvp], ['CALL CHARM', t.call_charm_wall], ['KEY DELTA', t.key_delta_strike], ['ABS Γ', t.absolute_gamma_strike], ['MAX PAIN', t.max_pain], ['PUT CHARM', t.put_charm_wall], ['PUT WALL', t.put_wall], ['HVP', t.hvp]];
     function nearestIdx(p) { var bi = -1, bd = 1e9; rows.forEach(function (r, i) { var d = Math.abs(r.k - p); if (d < bd) { bd = d; bi = i; } }); return { i: bi, d: bd }; }
     var flagAt = {};
     levels.forEach(function (x) { var p = fnum(x[1]); if (p === null) return; var nr = nearestIdx(p); if (nr.i >= 0 && nr.d <= tol) { (flagAt[nr.i] = flagAt[nr.i] || []).push(x[0]); } });
@@ -13989,7 +13994,7 @@ function edCheckRadarAlerts(rows) {
     T('ct-cwall', n2(fnum(t.call_wall)));
     T('ct-flip', n2(fnum(t.gamma_flip)));
     T('ct-hvl', n2(fnum(t.net_gex_peak)));   // RC-124: the net-book peak, honestly named
-    T('ct-pin', n2(fnum(t.gamma_pin)));
+    T('ct-pin', n2(fnum(t.absolute_gamma_strike)));
     T('ct-maxpain', n2(fnum(t.max_pain)));
     T('ct-pwall', n2(fnum(t.put_wall)));
     // RC-102 class (v8 audit): EVERY trust chip is fail-closed on levels_stale — this one
@@ -14023,7 +14028,7 @@ function edCheckRadarAlerts(rows) {
 
     function prox(id, lvl, cls) { var e = el(id); if (!e) return; var L = fnum(lvl); if (L === null || spot === null) { e.textContent = '—'; e.className = 'cv-n'; return; } var d = L - spot; e.textContent = (d >= 0 ? '+' : '−') + Math.abs(d).toFixed(2); e.className = 'cv-n ' + cls; }
     prox('ct-px-flip', t.gamma_flip, 'cv-ac');
-    prox('ct-px-pin', t.gamma_pin, 'cv-up');
+    prox('ct-px-pin', t.absolute_gamma_strike, 'cv-up');
     prox('ct-px-cwall', t.call_wall, 'cv-up');
     prox('ct-px-pwall', t.put_wall, 'cv-dn');
 

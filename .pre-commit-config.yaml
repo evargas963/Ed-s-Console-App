@@ -41,6 +41,17 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
+      # RC-382: a file's line-ending style must survive an edit. The checker existed
+      # with its test suite but NOTHING ran it — its own docstring says a human
+      # choosing to look is not a control, and on 2026-08-24 a sed pass flipped
+      # 9 files CRLF->LF and only a diff-stat read caught it. Wired here (2026-08-24)
+      # so the flip blocks at commit; milliseconds on staged paths.
+      - id: eol-style-invariant
+        name: line-ending style survives the edit (RC-382)
+        entry: python tools/check_eol_style_invariant.py
+        language: system
+        pass_filenames: false
+        always_run: true
       - id: venv-parity
         name: virtualenv parity (interpreter must be repo .venv; CI exempt)
         entry: python tools/run_with_repo_venv.py tools/check_venv_parity.py
@@ -79,9 +90,6 @@ repos:
       # check) stay gated at commit by the operating-process hook below.
       - id: institutional-correctness
         name: institutional correctness (one gate — no fake tests, single source of truth)
-        # Local hooks ignore env:; the wrapper passes the AMBIENT ED_AGENT_ROLE through and
-        # leaves it unset when there is none (RC-240 — it used to hardcode 'cursor', which
-        # made the sole writer's own commit read as writer-drift).
         entry: python tools/precommit_institutional.py
         language: system
         pass_filenames: false

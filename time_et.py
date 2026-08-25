@@ -20,6 +20,9 @@ COH_I_A_ET_BACKFILL_CEILING_TS_UTC = COH_I_A_ET_AUTHORITY_TS_UTC + 3600.0
 # ExposureRow.net_gex_peak) to terrain total-gamma pin (`terrain_cache_get` /
 # pick_pin_and_strength). Do NOT ALTER/backfill historical values. The 1h pad matches
 # COH-I-A: rows after git-land until desk restart may still be the old semantic.
+# RC-292 (2026-08-24): the LIVE terrain payload field was renamed absolute_gamma_strike;
+# the persisted quantity is unchanged (still terrain total-gamma), so the rename creates
+# no third era and the boundaries below stand as written.
 SNAPSHOTS_GAMMA_PIN_WRITER_LAND_ISO_UTC = "2026-08-19T14:10:58+00:00"
 SNAPSHOTS_GAMMA_PIN_WRITER_LAND_TS_UTC = datetime.fromisoformat(
     SNAPSHOTS_GAMMA_PIN_WRITER_LAND_ISO_UTC

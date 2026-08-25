@@ -127,12 +127,14 @@ Consequences:
 | Group | Required fields |
 |---|---|
 | Contract identity | `symbol`, `putCall`, `strikePrice`, `expirationDate`, `expirationType`, `settlementType`, `exerciseType`, `lastTradingDay` |
-| Prices and liquidity | `bid`, `ask`, `mark`, `last`, `openPrice`, `highPrice`, `lowPrice`, `closePrice`, `bidSize`, `askSize`, `bidAskSize`, `lastSize`, `totalVolume`, `openInterest` |
+| Prices and liquidity | `bid`, `ask`, `mark`, `last`, `openPrice`, `highPrice`, `lowPrice`, `closePrice`, `breakEven`, `bidSize`, `askSize`, `bidAskSize`, `lastSize`, `totalVolume`, `openInterest` |
 | Greeks and implied vol (`volatility`) | `delta`, `gamma`, `theta`, `vega`, `rho`, `volatility`, `theoreticalVolatility`, `theoreticalOptionValue` |
 | Timestamps | `quoteTimeInLong`, `tradeTimeInLong` |
 | Contract metadata | `multiplier`, `extrinsicValue`, `timeValue`, `intrinsicValue`, `inTheMoney`, `nonStandard`, `mini`, `pennyPilot`, `deliverableNote` |
 
 **Schwab CSV alignment (2026-05-10):** The proof row intentionally omits non-canonical aliases **`expiration`** and **`volume`** — only **`expirationDate`** and **`totalVolume`** have `chains.callExpDateMap.*` dictionary rows. Raw Schwab payloads may still carry aliases; normalization for proof uses canonical leaves only.
+
+**RC-388 addendum (2026-08-24):** `breakEven` (dictionary rows `chains.callExpDateMap.*.breakEven` / `chains.putExpDateMap.*.breakEven`, first seen 2026-08-15) is preserved so A2 serves the vendor breakeven as authoritative; the A2 strike +/- mid derivation remains only as the explicitly-labeled fallback (`breakeven_source = "v1_approximation"`).
 
 The snapshot SHOULD continue to omit the full `raw` payload unless a future contract explicitly authorizes raw passthrough into the proof object. The intended boundary remains normalized Schwab fields first.
 

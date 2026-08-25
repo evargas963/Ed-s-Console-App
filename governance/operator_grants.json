@@ -1,4 +1,0 @@
-{
-  "_doc": "HISTORICAL. RC-360 once authorized git commit --no-verify via a HEAD-ratified grant reader. Architecture A (RC-450) removed that capability. This file is not an executable authority surface. A granted:true value here has no effect; tools/operator_law_guard.py does not read it.",
-  "grants": {}
-}

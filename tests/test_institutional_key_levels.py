@@ -522,13 +522,15 @@ def test_level_density_uses_terrain_bound_walls_not_dead_locals():
     sel_ex, spot, terrain = _wide_vs_selected_wall_books()
     walls = consensus_walls_bind_terrain_ssot(build_walls_rows(sel_ex, spot), terrain)
     assert walls[0].put_gamma_wall == 745.0
-    # Negative: pin-only (pre-fix effective book) → clear.
-    broken = compute_level_density({"gamma_pin": float(terrain["gamma_pin"])}, spot)
+    # Negative: abs-gamma-only (pre-fix effective book) → clear. RC-292: the payload and
+    # density key is absolute_gamma_strike.
+    broken = compute_level_density(
+        {"absolute_gamma_strike": float(terrain["absolute_gamma_strike"])}, spot)
     assert broken["density_label"] == "clear"
     assert broken["count"] == 0
     # Legitimate: terrain-bound walls enter density.
     ok = {
-        "gamma_pin": float(terrain["gamma_pin"]),
+        "absolute_gamma_strike": float(terrain["absolute_gamma_strike"]),
         "call_gamma_wall": float(walls[0].call_gamma_wall),
         "put_gamma_wall": float(walls[0].put_gamma_wall),
     }
@@ -568,7 +570,7 @@ def test_level_density_uses_terrain_iv_sigma_em_not_remaining_risk_em():
     sel_ex, spot, terrain = _wide_vs_selected_wall_books()
     walls = consensus_walls_bind_terrain_ssot(build_walls_rows(sel_ex, spot), terrain)
     base = {
-        "gamma_pin": float(terrain["gamma_pin"]),
+        "absolute_gamma_strike": float(terrain["absolute_gamma_strike"]),
         "call_gamma_wall": float(walls[0].call_gamma_wall),
         "put_gamma_wall": float(walls[0].put_gamma_wall),
     }
@@ -928,9 +930,13 @@ def test_terrain_snapshot_v2_carries_net_gex_and_new_levels():
     )
     snap = compute_terrain("SPY", fx["chain"], float(fx["spot"]))
     d = snap.to_dict()
-    assert TERRAIN_SCHEMA_VERSION == 2 and d["schema_version"] == 2
-    for fld in ("net_gex_at_spot", "key_delta_strike", "hvp", "lvp"):
+    # v3 (RC-292): gamma_pin* renamed absolute_gamma_*; + pin_candidate(+blockers). The
+    # v2 fields this test locks are all still carried.
+    assert TERRAIN_SCHEMA_VERSION == 3 and d["schema_version"] == 3
+    for fld in ("net_gex_at_spot", "key_delta_strike", "hvp", "lvp",
+                "absolute_gamma_strike", "pin_candidate", "pin_candidate_blockers"):
         assert fld in d, fld + " missing from terrain payload"
+    assert "gamma_pin" not in d, "the retired gamma_pin key returned to the terrain payload"
     assert d["net_gex_at_spot"] == (d["flip_diag"] or {}).get("gamma_at_spot")
     exposures, _ = compute_exposures_by_strike(fx["chain"], spot=float(fx["spot"]), require_oi=True)
     strikes = sorted(exposures.keys())

@@ -184,9 +184,10 @@ reports/quantile_eval/
 # fixing the instance instead of the cause. They are regenerated output, never source.
 governance/audits/
 
-# RC-89 pattern: generated lock/stream artifacts embed the absolute repo path, so the
-# credential-leak hook rejects them on every commit. They are regenerable output, never source:
-#   python -m tools.locks_inventory_v1 / locks_violation_audit_v1 / locks_violation_monitor_v1
+# RC-89 pattern: generated stream artifacts embed the absolute repo path, so the
+# credential-leak hook rejects them on every commit. They are regenerable output, never
+# source. (The locks_* audit tools and their reports were removed in the 2026-08-24
+# teardown; the ignore rows keep any stale local outputs unstaged.)
 reports/locks_inventory_v1.json
 reports/locks_violation_audit_v1.json
 reports/locks_violation_monitor_v1.json

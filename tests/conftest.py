@@ -350,15 +350,36 @@ def _terrain_ledger_to_tmp(tmp_path, monkeypatch):
             "the write (or patch server.TERRAIN_QUARANTINE_LEDGER inside the test)."
         )
     if size_after > size_before:
+        # xdist: every worker watches the SAME tracked file, so a concurrent worker's
+        # SELF-RESTORING probe (tests/test_terrain_ledger_isolation_v1.py deliberately
+        # appends to the tracked file and truncates it back inside its own run) can be
+        # observed mid-window by an innocent neighbor — CI 2026-08-24 blamed
+        # test_rc359_oi_banking (a tmp-DB test that touches no server path) for a +479B
+        # window. Re-check briefly: growth that HEALS ITSELF was another worker's probe
+        # completing its restore; growth that PERSISTS is a real writer and fails loud.
+        import time as _time
+        for _ in range(6):
+            _time.sleep(0.25)
+            try:
+                size_after = _TRACKED_TERRAIN_LEDGER.stat().st_size
+            except OSError:
+                size_after = None
+                break
+            if size_after <= size_before:
+                break
+        if size_after is not None and size_after <= size_before:
+            return                                 # transient — the writer restored it
+        grew = (size_after or 0) - size_before
         with open(_TRACKED_TERRAIN_LEDGER, "r+b") as fh:   # restore first, then fail loud
             fh.truncate(size_before)
         pytest.fail(
             "TERRAIN LEDGER LATE-IMPORT HOLE: the tracked "
-            f"{_TRACKED_TERRAIN_LEDGER.name} GREW by {grew} bytes during this test. The "
-            "usual cause: server was imported after fixture setup (a mid-test `import "
-            "server`), so TERRAIN_QUARANTINE_LEDGER was never redirected to tmp and the "
-            "quarantine write landed in the real operator audit file (an external writer "
-            "touching the tracked file mid-test trips this too). It has been truncated "
-            f"back to its pre-test length ({size_before} bytes); import server before "
-            "the write (or patch server.TERRAIN_QUARANTINE_LEDGER inside the test)."
+            f"{_TRACKED_TERRAIN_LEDGER.name} GREW by {grew} bytes during this test and "
+            "STAYED grown across a 1.5s recheck. The usual cause: server was imported "
+            "after fixture setup (a mid-test `import server`), so "
+            "TERRAIN_QUARANTINE_LEDGER was never redirected to tmp and the quarantine "
+            "write landed in the real operator audit file (an external writer touching "
+            "the tracked file mid-test trips this too). It has been truncated back to "
+            f"its pre-test length ({size_before} bytes); import server before the write "
+            "(or patch server.TERRAIN_QUARANTINE_LEDGER inside the test)."
         )

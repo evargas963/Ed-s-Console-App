@@ -261,7 +261,7 @@ def test_repository_project_b_direct_owner_set_is_complete():
         "tests/test_audit_outcome_is_typed_v1.py",
         "tests/test_enforced_check_negative_controls_v1.py",
         "tests/test_operator_law_guard_repo_scope_v1.py",
-        "tests/test_plus_player_law_v1.py",
+        # test_plus_player_law_v1.py deleted with research_before_act (2026-08-24 teardown)
         "tests/test_protected_paths_v1.py",
         "tests/test_turn_self_audit_contract_v1.py",
         "tests/test_ui_mockup_lock_v1.py",

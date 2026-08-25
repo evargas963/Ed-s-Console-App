@@ -6862,7 +6862,8 @@ def _fetch_state(
             _charm_mag     = _charm_raw.get("charm_magnitude")
             # RC-85: the read of "top_drivers" is GONE. compute_net_charm has never emitted that
             # key — it returns call_charm_daily, charm_direction, charm_magnitude, contracts_used,
-            # drift_toward, error, gamma_pin, net_charm_daily, put_charm_daily — so
+            # drift_toward, error, net_charm_daily, put_charm_daily (its duplicate `gamma_pin`
+            # alias was deleted by RC-302) — so
             # `.get("top_drivers", [])` returned [] on every call since the line was written, and
             # charm_top_drivers has been permanently empty. The default was the whole problem: []
             # reads as "computed, no drivers found" when the truth is "never computed", so the
@@ -6870,7 +6871,9 @@ def _fetch_state(
             # which is the same value WITHOUT the claim that a producer was consulted. Populating
             # it needs compute_net_charm to actually rank the contributing strikes; that is a
             # feature, not a rename, and it is not being smuggled in behind a default.
-            log.info(f"Charm: {ticker} ✅ net={_charm_net:.0f} dir={_charm_dir} mag={_charm_mag} pin={_charm_toward} "
+            # RC-292: the log label must not call charm's (withheld) drift target a pin —
+            # a pin claim ships only as pin_candidate after qualification.
+            log.info(f"Charm: {ticker} ✅ net={_charm_net:.0f} dir={_charm_dir} mag={_charm_mag} drift_toward={_charm_toward} "
                      f"({_charm_used} contracts)")
         else:
             from math_exposure_core import charm_compute_unavailable_log_level
@@ -7315,10 +7318,11 @@ def _fetch_state(
 
         # 5. Pin Score — strike AND GEX/OI from the terrain SSOT book (RC-124/RC-292/RC-413).
         # Never consensus_summary.net_gex_peak (analytics |net GEX$| peak) and never analytics
-        # `exposures` for magnitude at that strike.
+        # `exposures` for magnitude at that strike. RC-292 rename: the terrain payload field
+        # is absolute_gamma_strike — the raw total-gamma concentration; pin_score grades it.
         _t_pin_snap = terrain_cache_get(ticker) or {}
         _pin_strike = (
-            _t_pin_snap.get("gamma_pin")
+            _t_pin_snap.get("absolute_gamma_strike")
             if _t_pin_snap and not _t_pin_snap.get("levels_stale")
             else None
         )
@@ -7326,8 +7330,8 @@ def _fetch_state(
         _oi_concentration = None
         if _pin_strike is not None and _t_pin_snap and not _t_pin_snap.get("levels_stale"):
             try:
-                _tg = _t_pin_snap.get("gamma_pin_gex_dollars")
-                _toi = _t_pin_snap.get("gamma_pin_oi")
+                _tg = _t_pin_snap.get("absolute_gamma_gex_dollars")
+                _toi = _t_pin_snap.get("absolute_gamma_oi")
                 _tbook = _t_pin_snap.get("book_oi_total")
                 if _tg is not None and _toi is not None and _tbook is not None:
                     _book_oi = float(_tbook)
@@ -7425,8 +7429,8 @@ def _fetch_state(
         _all_levels = {}
         _t_dens = terrain_cache_get(ticker) or {}
         _dens_fresh = bool(_t_dens) and not _t_dens.get("levels_stale")
-        if _dens_fresh and _t_dens.get("gamma_pin") is not None:
-            _all_levels["gamma_pin"] = float(_t_dens["gamma_pin"])
+        if _dens_fresh and _t_dens.get("absolute_gamma_strike") is not None:
+            _all_levels["absolute_gamma_strike"] = float(_t_dens["absolute_gamma_strike"])
         _w0 = walls[0] if walls else None
         if _w0 is not None:
             for _dn, _attr in (
@@ -7747,6 +7751,9 @@ def _fetch_state(
         charm_drift_toward=_charm_toward,
         charm_magnitude=_charm_mag,
         charm_top_drivers=_charm_drivers,
+        # RC-292/RC-295: terrain SSOT absolute-gamma strike — the same fail-closed read
+        # the pin score uses above (None when the terrain cache is absent or stale).
+        absolute_gamma_strike=_pin_strike,
         iv_direction=_iv_direction,
         em_upper=_em_up,
         em_lower=_em_lo,
@@ -8220,9 +8227,13 @@ def _fetch_state(
                         log.warning("price-action snapshot columns failed (%s): %s", ticker, e)
                         _pa_cols = {}
 
+                    # RC-292/RC-429: the persisted quantity is UNCHANGED — terrain
+                    # total-gamma, read from the renamed payload field. The DB column
+                    # stays `gamma_pin` (historical schema; time_et.py owns its era
+                    # semantics) so no third era is created by the rename.
                     _t_pin_snap = terrain_cache_get(ticker) or {}
                     _ssot_gamma_pin = (
-                        _t_pin_snap.get("gamma_pin")
+                        _t_pin_snap.get("absolute_gamma_strike")
                         if _t_pin_snap and not _t_pin_snap.get("levels_stale")
                         else None
                     )
@@ -11120,9 +11131,11 @@ def _terrain_kl_overlay(md: dict, ticker: str) -> None:
     """
     t = dict(terrain_cache_get(ticker) or {})
     fresh = bool(t) and not t.get("levels_stale")
-    # RC-124: kl_gamma_pin carries the STANDARD pin (total gamma); kl_hvl carries the
-    # net-GEX peak (the former "pin", honestly renamed on the card) — the key name is
-    # historical, the row label and tooltip say what it is.
+    # RC-124/RC-292: kl_absolute_gamma_strike carries the total-gamma concentration under
+    # its metric's name (formerly kl_gamma_pin — a pin claim the metric had not earned);
+    # kl_pin_candidate carries the QUALIFIED pin claim, blank with its blocker names
+    # otherwise; kl_hvl carries the net-GEX peak (the former "pin", honestly renamed on
+    # the card) — that key name is historical, the row label and tooltip say what it is.
     # RC-128 (One Levels Faucet): this helper is THE ONLY WRITER of every SSOT level key on
     # a UI payload. The analytics assignments were DELETED, not overridden — placement was
     # the bug (a write after this call resurrected the dual book). Delta walls joined the
@@ -11136,13 +11149,20 @@ def _terrain_kl_overlay(md: dict, ticker: str) -> None:
     md["kl_call_gamma_wall"] = _g("call_wall")
     md["kl_put_gamma_wall"] = _g("put_wall")
     md["kl_gamma_flip"] = _g("gamma_flip")
-    md["kl_gamma_pin"] = _g("gamma_pin")
-    md["kl_gamma_pin_strength_pct"] = _g("gamma_pin_strength_pct")
-    # RC-292/RC-417: payload `gamma_pin` is the same SSOT total-gamma pin as kl_gamma_pin.
-    # Analytics consensus_summary.net_gex_peak is pick_net_gex_peak_strike (selected-expiry
-    # |net GEX$| peak) and must never occupy this key. MEASURED on the real SPY 0DTE fixture:
-    # total pin 745 vs net peak 743.
-    md["gamma_pin"] = md["kl_gamma_pin"]
+    md["kl_absolute_gamma_strike"] = _g("absolute_gamma_strike")
+    md["kl_absolute_gamma_strength_pct"] = _g("absolute_gamma_strength_pct")
+    # RC-292 operator disposition: the pin CLAIM ships only after regime/proximity/DTE/
+    # liquidity/completeness qualification (terrain_engine.qualify_pin_candidate); the
+    # blocker names ship beside it so absence renders with its reason, never a bare dash.
+    md["kl_pin_candidate"] = _g("pin_candidate")
+    md["kl_pin_candidate_blockers"] = _g("pin_candidate_blockers")
+    # RC-292/RC-417: payload `absolute_gamma_strike` is the same SSOT total-gamma value as
+    # kl_absolute_gamma_strike (top-level key kept so the terrain- and analytics-payload
+    # shapes agree, and so any resurrected analytics writer of this name is overwritten by
+    # the SSOT here). Analytics consensus_summary.net_gex_peak is pick_net_gex_peak_strike
+    # (selected-expiry |net GEX$| peak) and must never occupy this key. MEASURED on the
+    # real SPY 0DTE fixture: total-gamma concentration 745 vs net peak 743.
+    md["absolute_gamma_strike"] = md["kl_absolute_gamma_strike"]
     md["kl_hvl"] = _g("net_gex_peak")
     # RC-354: GSF/GRC ride the same SSOT terrain book (one profile, one producer). The
     # STATE ships beside the prices so the UI can render BELOW SUPPORT as a verdict, never
@@ -14895,9 +14915,12 @@ def _liquidity_fusion_from_cache(
         (d.get("kl_put_oi_wall"), "OI_PUT_WALL"),
         (d.get("kl_gamma_inflection"), "GAMMA_INFLECTION"),
         (d.get("kl_delta_inflection"), "DELTA_INFLECTION"),
-        (d.get("kl_gamma_pin"), "GAMMA_PIN"),
+        # RC-292: the tag says what the metric is — a total-gamma concentration, not a
+        # pin claim (the qualified claim is kl_pin_candidate, not tagged here as a level
+        # because it is the SAME strike when present).
+        (d.get("kl_absolute_gamma_strike"), "ABS_GAMMA"),
         # RC-134: kl_hvl is the NET book (RC-124); the tag must not say HVL, since that
-        # name means total gamma, which is the pin.
+        # name means total gamma (the absolute-gamma concentration).
         (d.get("kl_hvl"), "NET_GEX_PEAK"),
         (d.get("kl_max_pain"), "MAX_PAIN"),
         (d.get("kl_gamma_flip"), "GAMMA_FLIP"),
