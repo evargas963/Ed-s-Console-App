@@ -3973,10 +3973,10 @@ _vix_tracker = _VIXTracker()
 #   • ED_DB_SNAPSHOT_THROTTLE (default on): at most one INSERT per ticker per UTC-minute bucket.
 #   • The general logger still rotates mega-caps + user_persisted; cycle length grows with count.
 #   • RTH_ONLY may skip background fetches outside the ET session window.
-#   • Live Operator Mode (2026-08-25 universal-collection revision): during RTH with an
-#     SSE viewer connected, the cycle shrinks to trio + one rotating guest
-#     (_operator_mode_cycle_roster) — no per-ticker hard skip; every enrolled ticker
-#     keeps accruing.
+#   • UNIVERSAL COLLECTION IS UNCONDITIONAL (operator, 2026-08-25, RC-493): the background
+#     logger sweeps EVERY enrolled ticker every cycle whether or not a viewer is connected.
+#     The former operator-mode throttle (trio + one rotating guest while viewing) is removed;
+#     _live_operator_mode_active now governs only UI-side refresh skips, never the sweep.
 #   • Guest / briefly viewed symbols legitimately have fewer rows — base trio must not.
 #     Gate: ``python tools/check_base_ticker_observability.py --date YYYY-MM-DD``.
 #
@@ -4631,21 +4631,10 @@ def _live_operator_mode_active() -> bool:
         return len(_l1_light_sse_clients) > 0
 
 
-def _operator_mode_cycle_roster(tickers: list[str], rotation_idx: int) -> tuple[list[str], int]:
-    """UNIVERSAL COLLECTION under operator-mode contention (2026-08-25): while a viewer
-    is connected during RTH, the cycle shrinks to the trio plus exactly ONE rotating
-    non-trio ticker instead of hard-skipping every non-trio fetch. Bounded contention
-    (one extra full fetch per cycle) and every enrolled ticker's calibration tape keeps
-    accruing on operator days (the hard skip's measured cost: 52 background rows ALL DAY
-    on 2026-08-20 vs 729-1,414 on neighbor days; XLE/XOM zero-snapshot)."""
-    from money_path_ticker_tiers import is_base_money_path_ticker as _is_trio
-
-    trio = [t for t in tickers if _is_trio(t)]
-    guests = [t for t in tickers if not _is_trio(t)]
-    if not guests:
-        return trio, rotation_idx
-    pick = guests[rotation_idx % len(guests)]
-    return trio + [pick], rotation_idx + 1
+# _operator_mode_cycle_roster REMOVED 2026-08-25 (RC-493): it throttled the background
+# logger to trio + one rotating guest while a viewer was connected, refreshing non-trio
+# tickers only ~once per 30 min — the operator ruled universal collection unconditional, so
+# the throttle is gone (see _logger_loop) rather than left as dead code (RC-474 class).
 
 
 def _logger_fetch_and_log(ticker: str) -> str:
@@ -4660,13 +4649,11 @@ def _logger_fetch_and_log(ticker: str) -> str:
         if not _is_loggable_session():
             return "skipped:closed"
 
-        # UNIVERSAL COLLECTION (operator requirement, restated 2026-08-25): the
-        # panel_auto confluence-only skip and the operator-mode hard skip are gone —
-        # every enrolled ticker collects full snapshots through the session. Operator-
-        # mode contention is now managed at the CYCLE level (_background_logger builds
-        # a trio + one-rotating-guest roster while a viewer is connected) instead of
-        # zeroing the non-trio tape (measured cost of the hard skip: 52 background
-        # rows ALL DAY on 2026-08-20 vs 729–1,414 on neighbor days; XLE/XOM zero).
+        # UNIVERSAL COLLECTION (operator requirement, 2026-08-25, RC-493): the panel_auto
+        # confluence-only skip AND the operator-mode throttle are gone — every enrolled
+        # ticker collects full snapshots every cycle through the session, viewer connected
+        # or not. (Measured cost of the old hard skip: 52 background rows ALL DAY on
+        # 2026-08-20 vs 729–1,414 on neighbor days; XLE/XOM zero-snapshot.)
 
         # Always run the logging fetch each logger cycle (append-only INSERTs).
 
@@ -4733,17 +4720,21 @@ def _logger_loop():
     # competing with 27-ticker logger _fetch_state storms (ED_LOGGER_STARTUP_DELAY_SEC).
     time.sleep(LOGGER_STARTUP_DELAY_SEC)
 
-    operator_mode_rotation_idx = 0
     while _logger_running:
         cycle_start = time.monotonic()
 
         with _logger_lock:
             tickers_this_cycle = list(_logger_tickers)
 
-        if _live_operator_mode_active():
-            tickers_this_cycle, operator_mode_rotation_idx = _operator_mode_cycle_roster(
-                tickers_this_cycle, operator_mode_rotation_idx)
-            log.info(f"Logger cycle (operator mode): {tickers_this_cycle}")
+        # UNIVERSAL COLLECTION IS UNCONDITIONAL (operator requirement, 2026-08-25):
+        # every enrolled ticker collects EVERY cycle, viewer connected or not. The prior
+        # operator-mode throttle (trio + one rotating guest while a viewer was connected)
+        # refreshed non-trio tickers only about once per full rotation (~30 min live-
+        # measured), which the operator ruled out — "every enrolled ticker must collect and
+        # continue through 4:15 ET" carries no while-viewing exception. Viewer/UI contention
+        # is absorbed by the per-ticker stagger and the thread pool, not by dropping tickers
+        # from the sweep. (_live_operator_mode_active still governs the UI-only refresh
+        # skips below and in the terrain loop.)
 
         with _cached_mkt_ctx_lock:
             _cached_mkt_ctx_ts = 0.0
