@@ -85,8 +85,16 @@ def test_guard_honours_stop_hook_active_so_a_turn_can_always_end(monkeypatch):
 def test_env_off_does_not_disable_unfinished_row_block(tmp_path, monkeypatch):
     import io
 
+    # MIDNIGHT-ROLLOVER FIX (2026-08-26): this is the ONLY test here that writes a TODAY-stamped row
+    # and then calls sg.main(), which recomputes date.today() ITSELF. Module-level TODAY is captured
+    # at import, so a suite crossing midnight wrote "yesterday" and asked the guard about "today" —
+    # the row stopped matching and the expected BLOCK silently became a pass, failing the assert.
+    # Observed exactly that: a full run finishing 00:08 failed this test alone, and it passed in
+    # isolation minutes later. Re-derived at call time, so the window is microseconds rather than the
+    # whole suite. The other tests here pass TODAY explicitly into the helper and are self-consistent.
+    today = datetime.date.today().isoformat()
     _write_log(tmp_path, [
-        f"| RC-90 | OPEN | {TODAY} | 2099-01-01 | d | (1)->(5) ROOT: x | IN PROGRESS: half built |",
+        f"| RC-90 | OPEN | {today} | 2099-01-01 | d | (1)->(5) ROOT: x | IN PROGRESS: half built |",
     ], monkeypatch)
     monkeypatch.setenv("ED_STOP_GUARD", "off")
     monkeypatch.setattr(sg.sys, "stdin", io.StringIO('{"stop_hook_active": false}'))
