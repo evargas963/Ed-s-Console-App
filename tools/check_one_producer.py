@@ -578,6 +578,11 @@ def reconstruction_sites(field: str, spec: dict,
         domains = literal_domains(tree)
         guard_names = alias_map_names(tree)
         for fn, _seg in fns:
+            # Cheap reject first: this gate runs in pre-commit, and building a parent map for
+            # every function in a 15,000-line module to find the four that call the producer
+            # doubled the check's cost. Measured: 1,707 ms -> the figure in the test below.
+            if not any(nm in _seg for nm in names):
+                continue
             # Parents must come from the SAME tree the function nodes do. build_scan_corpus()
             # parses its own AST, so a parent map built from a freshly parsed `tree` shares no
             # node identity with `fn` — every ancestor chain came back EMPTY, which made both
