@@ -8735,6 +8735,12 @@ def _fetch_state(
                                         spot=float(spot) if spot is not None else None,
                                         ts_utc=float(_snap_ts),
                                         source=_GEX_SRC,
+                                        # OPTIONS FLOW FOUNDATION: the response ENVELOPE rides this
+                                        # same fetch and was being dropped with `_wj` — it carries
+                                        # the vendor's own interestRate/dividendYield (the r and q
+                                        # our greeks hardcode to 0) and isChainTruncated. Zero extra
+                                        # vendor cost; the persister projects scalars only.
+                                        chain_response=_wj,
                                     )
                     except Exception as _gex_chain_e:
                         log.warning(

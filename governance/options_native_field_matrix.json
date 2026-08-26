@@ -1,0 +1,1060 @@
+{
+ "_dispositions": [
+  "RETAINED_RAW_AND_PROJECTED",
+  "RETAINED_RAW",
+  "DELIBERATELY_EXCLUDED"
+ ],
+ "_forbidden": "NATIVE_AVAILABLE_BUT_NOT_RETAINED",
+ "_generated_by": "tools/options_native_field_matrix_v1.py (dispositions curated from traced evidence)",
+ "_principle": "Raw-native preservation plus canonical typed projections. The vendor payload is stored verbatim so no field can be lost by omission in today's parser; consumers are READERS layered over the raw store, so adding one later is a projection change, never a re-collection. Nothing here infers dealer ownership, and no derived or inferred signal from this surface feeds Decide.",
+ "surfaces": {
+  "levelone_options": {
+   "ASK_PRICE": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json (committed capture) + options_stream_frames.payload_json (verbatim frame store; live subscription is operator-gated and NOT enabled by this change)",
+    "semantics": "NATIVE"
+   },
+   "ASK_SIZE": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json (committed capture) + options_stream_frames.payload_json (verbatim frame store; live subscription is operator-gated and NOT enabled by this change)",
+    "semantics": "NATIVE"
+   },
+   "BID_PRICE": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json (committed capture) + options_stream_frames.payload_json (verbatim frame store; live subscription is operator-gated and NOT enabled by this change)",
+    "semantics": "NATIVE"
+   },
+   "BID_SIZE": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json (committed capture) + options_stream_frames.payload_json (verbatim frame store; live subscription is operator-gated and NOT enabled by this change)",
+    "semantics": "NATIVE"
+   },
+   "CLOSE_PRICE": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json (committed capture) + options_stream_frames.payload_json (verbatim frame store; live subscription is operator-gated and NOT enabled by this change)",
+    "semantics": "NATIVE"
+   },
+   "CONTRACT_TYPE": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json (committed capture) + options_stream_frames.payload_json (verbatim frame store; live subscription is operator-gated and NOT enabled by this change)",
+    "semantics": "NATIVE"
+   },
+   "DAYS_TO_EXPIRATION": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json (committed capture) + options_stream_frames.payload_json (verbatim frame store; live subscription is operator-gated and NOT enabled by this change)",
+    "semantics": "NATIVE"
+   },
+   "DELIVERABLES": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json (committed capture) + options_stream_frames.payload_json (verbatim frame store; live subscription is operator-gated and NOT enabled by this change)",
+    "semantics": "NATIVE"
+   },
+   "DELTA": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json (committed capture) + options_stream_frames.payload_json (verbatim frame store; live subscription is operator-gated and NOT enabled by this change)",
+    "semantics": "NATIVE"
+   },
+   "DESCRIPTION": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json (committed capture) + options_stream_frames.payload_json (verbatim frame store; live subscription is operator-gated and NOT enabled by this change)",
+    "semantics": "NATIVE"
+   },
+   "DIGITS": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json (committed capture) + options_stream_frames.payload_json (verbatim frame store; live subscription is operator-gated and NOT enabled by this change)",
+    "semantics": "NATIVE"
+   },
+   "EXCHANGE_ID": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json (committed capture) + options_stream_frames.payload_json (verbatim frame store; live subscription is operator-gated and NOT enabled by this change)",
+    "semantics": "NATIVE"
+   },
+   "EXCHANGE_NAME": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json (committed capture) + options_stream_frames.payload_json (verbatim frame store; live subscription is operator-gated and NOT enabled by this change)",
+    "semantics": "NATIVE"
+   },
+   "EXERCISE_TYPE": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json (committed capture) + options_stream_frames.payload_json (verbatim frame store; live subscription is operator-gated and NOT enabled by this change)",
+    "semantics": "NATIVE"
+   },
+   "EXPIRATION_DAY": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json (committed capture) + options_stream_frames.payload_json (verbatim frame store; live subscription is operator-gated and NOT enabled by this change)",
+    "semantics": "NATIVE"
+   },
+   "EXPIRATION_MONTH": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json (committed capture) + options_stream_frames.payload_json (verbatim frame store; live subscription is operator-gated and NOT enabled by this change)",
+    "semantics": "NATIVE"
+   },
+   "EXPIRATION_YEAR": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json (committed capture) + options_stream_frames.payload_json (verbatim frame store; live subscription is operator-gated and NOT enabled by this change)",
+    "semantics": "NATIVE"
+   },
+   "GAMMA": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json (committed capture) + options_stream_frames.payload_json (verbatim frame store; live subscription is operator-gated and NOT enabled by this change)",
+    "semantics": "NATIVE"
+   },
+   "HIGH_PRICE": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json (committed capture) + options_stream_frames.payload_json (verbatim frame store; live subscription is operator-gated and NOT enabled by this change)",
+    "semantics": "NATIVE"
+   },
+   "HIGH_PRICE_52_WEEK": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json (committed capture) + options_stream_frames.payload_json (verbatim frame store; live subscription is operator-gated and NOT enabled by this change)",
+    "semantics": "NATIVE"
+   },
+   "IMPLIED_YIELD": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json (committed capture) + options_stream_frames.payload_json (verbatim frame store; live subscription is operator-gated and NOT enabled by this change)",
+    "semantics": "NATIVE"
+   },
+   "INDICATIVE_ASKING_PRICE": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json (committed capture) + options_stream_frames.payload_json (verbatim frame store; live subscription is operator-gated and NOT enabled by this change)",
+    "semantics": "NATIVE"
+   },
+   "INDICATIVE_BID_PRICE": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json (committed capture) + options_stream_frames.payload_json (verbatim frame store; live subscription is operator-gated and NOT enabled by this change)",
+    "semantics": "NATIVE"
+   },
+   "INDICATIVE_QUOTE_TIME": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json (committed capture) + options_stream_frames.payload_json (verbatim frame store; live subscription is operator-gated and NOT enabled by this change)",
+    "semantics": "NATIVE"
+   },
+   "IS_PENNY": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json (committed capture) + options_stream_frames.payload_json (verbatim frame store; live subscription is operator-gated and NOT enabled by this change)",
+    "semantics": "NATIVE"
+   },
+   "LAST_PRICE": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json (committed capture) + options_stream_frames.payload_json (verbatim frame store; live subscription is operator-gated and NOT enabled by this change)",
+    "semantics": "NATIVE"
+   },
+   "LAST_SIZE": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json (committed capture) + options_stream_frames.payload_json (verbatim frame store; live subscription is operator-gated and NOT enabled by this change)",
+    "semantics": "NATIVE"
+   },
+   "LAST_TRADING_DAY": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json (committed capture) + options_stream_frames.payload_json (verbatim frame store; live subscription is operator-gated and NOT enabled by this change)",
+    "semantics": "NATIVE"
+   },
+   "LOW_PRICE": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json (committed capture) + options_stream_frames.payload_json (verbatim frame store; live subscription is operator-gated and NOT enabled by this change)",
+    "semantics": "NATIVE"
+   },
+   "LOW_PRICE_52_WEEK": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json (committed capture) + options_stream_frames.payload_json (verbatim frame store; live subscription is operator-gated and NOT enabled by this change)",
+    "semantics": "NATIVE"
+   },
+   "MARK": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json (committed capture) + options_stream_frames.payload_json (verbatim frame store; live subscription is operator-gated and NOT enabled by this change)",
+    "semantics": "NATIVE"
+   },
+   "MARK_CHANGE": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json (committed capture) + options_stream_frames.payload_json (verbatim frame store; live subscription is operator-gated and NOT enabled by this change)",
+    "semantics": "NATIVE"
+   },
+   "MARK_CHANGE_PERCENT": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json (committed capture) + options_stream_frames.payload_json (verbatim frame store; live subscription is operator-gated and NOT enabled by this change)",
+    "semantics": "NATIVE"
+   },
+   "MONEY_INTRINSIC_VALUE": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json (committed capture) + options_stream_frames.payload_json (verbatim frame store; live subscription is operator-gated and NOT enabled by this change)",
+    "semantics": "NATIVE"
+   },
+   "MULTIPLIER": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json (committed capture) + options_stream_frames.payload_json (verbatim frame store; live subscription is operator-gated and NOT enabled by this change)",
+    "semantics": "NATIVE"
+   },
+   "NET_CHANGE": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json (committed capture) + options_stream_frames.payload_json (verbatim frame store; live subscription is operator-gated and NOT enabled by this change)",
+    "semantics": "NATIVE"
+   },
+   "NET_PERCENT_CHANGE": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json (committed capture) + options_stream_frames.payload_json (verbatim frame store; live subscription is operator-gated and NOT enabled by this change)",
+    "semantics": "NATIVE"
+   },
+   "OPEN_INTEREST": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json (committed capture) + options_stream_frames.payload_json (verbatim frame store; live subscription is operator-gated and NOT enabled by this change)",
+    "semantics": "NATIVE"
+   },
+   "OPEN_PRICE": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json (committed capture) + options_stream_frames.payload_json (verbatim frame store; live subscription is operator-gated and NOT enabled by this change)",
+    "semantics": "NATIVE"
+   },
+   "OPTION_ROOT": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json (committed capture) + options_stream_frames.payload_json (verbatim frame store; live subscription is operator-gated and NOT enabled by this change)",
+    "semantics": "NATIVE"
+   },
+   "QUOTE_TIME_MILLIS": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json (committed capture) + options_stream_frames.payload_json (verbatim frame store; live subscription is operator-gated and NOT enabled by this change)",
+    "semantics": "NATIVE"
+   },
+   "RHO": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json (committed capture) + options_stream_frames.payload_json (verbatim frame store; live subscription is operator-gated and NOT enabled by this change)",
+    "semantics": "NATIVE"
+   },
+   "SECURITY_STATUS": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json (committed capture) + options_stream_frames.payload_json (verbatim frame store; live subscription is operator-gated and NOT enabled by this change)",
+    "semantics": "NATIVE"
+   },
+   "SETTLEMENT_TYPE": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json (committed capture) + options_stream_frames.payload_json (verbatim frame store; live subscription is operator-gated and NOT enabled by this change)",
+    "semantics": "NATIVE"
+   },
+   "STRIKE_TYPE": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json (committed capture) + options_stream_frames.payload_json (verbatim frame store; live subscription is operator-gated and NOT enabled by this change)",
+    "semantics": "NATIVE"
+   },
+   "THEORETICAL_OPTION_VALUE": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json (committed capture) + options_stream_frames.payload_json (verbatim frame store; live subscription is operator-gated and NOT enabled by this change)",
+    "semantics": "NATIVE"
+   },
+   "THETA": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json (committed capture) + options_stream_frames.payload_json (verbatim frame store; live subscription is operator-gated and NOT enabled by this change)",
+    "semantics": "NATIVE"
+   },
+   "TIME_VALUE": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json (committed capture) + options_stream_frames.payload_json (verbatim frame store; live subscription is operator-gated and NOT enabled by this change)",
+    "semantics": "NATIVE"
+   },
+   "TOTAL_VOLUME": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json (committed capture) + options_stream_frames.payload_json (verbatim frame store; live subscription is operator-gated and NOT enabled by this change)",
+    "semantics": "NATIVE"
+   },
+   "TRADE_TIME_MILLIS": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json (committed capture) + options_stream_frames.payload_json (verbatim frame store; live subscription is operator-gated and NOT enabled by this change)",
+    "semantics": "NATIVE"
+   },
+   "UNDERLYING": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json (committed capture) + options_stream_frames.payload_json (verbatim frame store; live subscription is operator-gated and NOT enabled by this change)",
+    "semantics": "NATIVE"
+   },
+   "UNDERLYING_PRICE": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json (committed capture) + options_stream_frames.payload_json (verbatim frame store; live subscription is operator-gated and NOT enabled by this change)",
+    "semantics": "NATIVE"
+   },
+   "UV_EXPIRATION_TYPE": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json (committed capture) + options_stream_frames.payload_json (verbatim frame store; live subscription is operator-gated and NOT enabled by this change)",
+    "semantics": "NATIVE"
+   },
+   "VEGA": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json (committed capture) + options_stream_frames.payload_json (verbatim frame store; live subscription is operator-gated and NOT enabled by this change)",
+    "semantics": "NATIVE"
+   },
+   "VOLATILITY": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json (committed capture) + options_stream_frames.payload_json (verbatim frame store; live subscription is operator-gated and NOT enabled by this change)",
+    "semantics": "NATIVE"
+   },
+   "assetMainType": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json (committed capture) + options_stream_frames.payload_json (verbatim frame store; live subscription is operator-gated and NOT enabled by this change)",
+    "semantics": "NATIVE"
+   },
+   "delayed": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json (committed capture) + options_stream_frames.payload_json (verbatim frame store; live subscription is operator-gated and NOT enabled by this change)",
+    "semantics": "NATIVE"
+   },
+   "key": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json (committed capture) + options_stream_frames.payload_json (verbatim frame store; live subscription is operator-gated and NOT enabled by this change)",
+    "semantics": "NATIVE"
+   }
+  },
+  "options_book_frame": {
+   "ASKS": {
+    "disposition": "RETAINED_RAW",
+    "projection": "calibration.options_stream_frames.project_book_market_makers",
+    "reason": "",
+    "retained_in": "reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json (committed capture) + options_stream_frames.payload_json (verbatim frame store; live subscription is operator-gated and NOT enabled by this change)",
+    "semantics": "NATIVE"
+   },
+   "BIDS": {
+    "disposition": "RETAINED_RAW",
+    "projection": "calibration.options_stream_frames.project_book_market_makers",
+    "reason": "",
+    "retained_in": "reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json (committed capture) + options_stream_frames.payload_json (verbatim frame store; live subscription is operator-gated and NOT enabled by this change)",
+    "semantics": "NATIVE"
+   },
+   "BOOK_TIME": {
+    "disposition": "RETAINED_RAW",
+    "projection": "calibration.options_stream_frames.project_book_market_makers",
+    "reason": "",
+    "retained_in": "reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json (committed capture) + options_stream_frames.payload_json (verbatim frame store; live subscription is operator-gated and NOT enabled by this change)",
+    "semantics": "NATIVE"
+   },
+   "key": {
+    "disposition": "RETAINED_RAW",
+    "projection": "calibration.options_stream_frames.project_book_market_makers",
+    "reason": "",
+    "retained_in": "reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json (committed capture) + options_stream_frames.payload_json (verbatim frame store; live subscription is operator-gated and NOT enabled by this change)",
+    "semantics": "NATIVE"
+   }
+  },
+  "options_book_market_maker": {
+   "ASK_VOLUME": {
+    "disposition": "RETAINED_RAW",
+    "projection": "calibration.options_stream_frames.project_book_market_makers",
+    "reason": "",
+    "retained_in": "reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json (committed capture) + options_stream_frames.payload_json (verbatim frame store; live subscription is operator-gated and NOT enabled by this change)",
+    "semantics": "NATIVE"
+   },
+   "BID_VOLUME": {
+    "disposition": "RETAINED_RAW",
+    "projection": "calibration.options_stream_frames.project_book_market_makers",
+    "reason": "",
+    "retained_in": "reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json (committed capture) + options_stream_frames.payload_json (verbatim frame store; live subscription is operator-gated and NOT enabled by this change)",
+    "semantics": "NATIVE"
+   },
+   "EXCHANGE": {
+    "disposition": "RETAINED_RAW",
+    "projection": "calibration.options_stream_frames.project_book_market_makers",
+    "reason": "",
+    "retained_in": "reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json (committed capture) + options_stream_frames.payload_json (verbatim frame store; live subscription is operator-gated and NOT enabled by this change)",
+    "semantics": "NATIVE"
+   },
+   "SEQUENCE": {
+    "disposition": "RETAINED_RAW",
+    "projection": "calibration.options_stream_frames.project_book_market_makers",
+    "reason": "",
+    "retained_in": "reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json (committed capture) + options_stream_frames.payload_json (verbatim frame store; live subscription is operator-gated and NOT enabled by this change)",
+    "semantics": "NATIVE"
+   }
+  },
+  "options_book_price_level": {
+   "ASKS": {
+    "disposition": "RETAINED_RAW",
+    "projection": "calibration.options_stream_frames.project_book_market_makers",
+    "reason": "",
+    "retained_in": "reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json (committed capture) + options_stream_frames.payload_json (verbatim frame store; live subscription is operator-gated and NOT enabled by this change)",
+    "semantics": "NATIVE"
+   },
+   "ASK_PRICE": {
+    "disposition": "RETAINED_RAW",
+    "projection": "calibration.options_stream_frames.project_book_market_makers",
+    "reason": "",
+    "retained_in": "reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json (committed capture) + options_stream_frames.payload_json (verbatim frame store; live subscription is operator-gated and NOT enabled by this change)",
+    "semantics": "NATIVE"
+   },
+   "BIDS": {
+    "disposition": "RETAINED_RAW",
+    "projection": "calibration.options_stream_frames.project_book_market_makers",
+    "reason": "",
+    "retained_in": "reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json (committed capture) + options_stream_frames.payload_json (verbatim frame store; live subscription is operator-gated and NOT enabled by this change)",
+    "semantics": "NATIVE"
+   },
+   "BID_PRICE": {
+    "disposition": "RETAINED_RAW",
+    "projection": "calibration.options_stream_frames.project_book_market_makers",
+    "reason": "",
+    "retained_in": "reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json (committed capture) + options_stream_frames.payload_json (verbatim frame store; live subscription is operator-gated and NOT enabled by this change)",
+    "semantics": "NATIVE"
+   },
+   "NUM_ASKS": {
+    "disposition": "RETAINED_RAW",
+    "projection": "calibration.options_stream_frames.project_book_market_makers",
+    "reason": "",
+    "retained_in": "reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json (committed capture) + options_stream_frames.payload_json (verbatim frame store; live subscription is operator-gated and NOT enabled by this change)",
+    "semantics": "NATIVE"
+   },
+   "NUM_BIDS": {
+    "disposition": "RETAINED_RAW",
+    "projection": "calibration.options_stream_frames.project_book_market_makers",
+    "reason": "",
+    "retained_in": "reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json (committed capture) + options_stream_frames.payload_json (verbatim frame store; live subscription is operator-gated and NOT enabled by this change)",
+    "semantics": "NATIVE"
+   },
+   "TOTAL_VOLUME": {
+    "disposition": "RETAINED_RAW",
+    "projection": "calibration.options_stream_frames.project_book_market_makers",
+    "reason": "",
+    "retained_in": "reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json (committed capture) + options_stream_frames.payload_json (verbatim frame store; live subscription is operator-gated and NOT enabled by this change)",
+    "semantics": "NATIVE"
+   }
+  },
+  "rest_chain_contract": {
+   "ask": {
+    "disposition": "RETAINED_RAW_AND_PROJECTED",
+    "projection": "server chain window / quote surface",
+    "reason": "",
+    "retained_in": "snapshots.option_chain_json (selected expiry, every poll - 54 keys verbatim); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "semantics": "NATIVE"
+   },
+   "askSize": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "snapshots.option_chain_json (selected expiry, every poll - 54 keys verbatim); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "semantics": "NATIVE"
+   },
+   "bid": {
+    "disposition": "RETAINED_RAW_AND_PROJECTED",
+    "projection": "server chain window / quote surface",
+    "reason": "",
+    "retained_in": "snapshots.option_chain_json (selected expiry, every poll - 54 keys verbatim); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "semantics": "NATIVE"
+   },
+   "bidAskSize": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "snapshots.option_chain_json (selected expiry, every poll - 54 keys verbatim); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "semantics": "NATIVE"
+   },
+   "bidSize": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "snapshots.option_chain_json (selected expiry, every poll - 54 keys verbatim); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "semantics": "NATIVE"
+   },
+   "closePrice": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "snapshots.option_chain_json (selected expiry, every poll - 54 keys verbatim); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "semantics": "NATIVE"
+   },
+   "daysToExpiration": {
+    "disposition": "RETAINED_RAW_AND_PROJECTED",
+    "projection": "terrain_engine._dte_of; 0DTE gamma share",
+    "reason": "",
+    "retained_in": "snapshots.option_chain_json (selected expiry, every poll - 54 keys verbatim); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "semantics": "NATIVE"
+   },
+   "deliverableNote": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "snapshots.option_chain_json (selected expiry, every poll - 54 keys verbatim); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "semantics": "NATIVE"
+   },
+   "delta": {
+    "disposition": "RETAINED_RAW_AND_PROJECTED",
+    "projection": "math_exposure_core.compute_exposures_by_strike",
+    "reason": "",
+    "retained_in": "snapshots.option_chain_json (selected expiry, every poll - 54 keys verbatim); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "semantics": "NATIVE"
+   },
+   "description": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "snapshots.option_chain_json (selected expiry, every poll - 54 keys verbatim); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "semantics": "NATIVE"
+   },
+   "exchangeName": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "snapshots.option_chain_json (selected expiry, every poll - 54 keys verbatim); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "semantics": "NATIVE"
+   },
+   "exerciseType": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "snapshots.option_chain_json (selected expiry, every poll - 54 keys verbatim); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "semantics": "NATIVE"
+   },
+   "expirationDate": {
+    "disposition": "RETAINED_RAW_AND_PROJECTED",
+    "projection": "time_et.time_to_expiry_years via _contract_inputs",
+    "reason": "",
+    "retained_in": "snapshots.option_chain_json (selected expiry, every poll - 54 keys verbatim); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "semantics": "NATIVE"
+   },
+   "expirationType": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "snapshots.option_chain_json (selected expiry, every poll - 54 keys verbatim); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "semantics": "NATIVE"
+   },
+   "extrinsicValue": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "snapshots.option_chain_json (selected expiry, every poll - 54 keys verbatim); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "semantics": "NATIVE"
+   },
+   "gamma": {
+    "disposition": "RETAINED_RAW_AND_PROJECTED",
+    "projection": "math_exposure_core.compute_exposures_by_strike (vendor gamma, plausibility-gated)",
+    "reason": "",
+    "retained_in": "snapshots.option_chain_json (selected expiry, every poll - 54 keys verbatim); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "semantics": "NATIVE"
+   },
+   "high52Week": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "snapshots.option_chain_json (selected expiry, every poll - 54 keys verbatim); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "semantics": "NATIVE"
+   },
+   "highPrice": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "snapshots.option_chain_json (selected expiry, every poll - 54 keys verbatim); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "semantics": "NATIVE"
+   },
+   "inTheMoney": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "snapshots.option_chain_json (selected expiry, every poll - 54 keys verbatim); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "semantics": "NATIVE"
+   },
+   "intrinsicValue": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "snapshots.option_chain_json (selected expiry, every poll - 54 keys verbatim); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "semantics": "NATIVE"
+   },
+   "last": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "snapshots.option_chain_json (selected expiry, every poll - 54 keys verbatim); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "semantics": "NATIVE"
+   },
+   "lastSize": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "snapshots.option_chain_json (selected expiry, every poll - 54 keys verbatim); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "semantics": "NATIVE"
+   },
+   "lastTradingDay": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "snapshots.option_chain_json (selected expiry, every poll - 54 keys verbatim); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "semantics": "NATIVE"
+   },
+   "low52Week": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "snapshots.option_chain_json (selected expiry, every poll - 54 keys verbatim); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "semantics": "NATIVE"
+   },
+   "lowPrice": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "snapshots.option_chain_json (selected expiry, every poll - 54 keys verbatim); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "semantics": "NATIVE"
+   },
+   "mark": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "snapshots.option_chain_json (selected expiry, every poll - 54 keys verbatim); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "semantics": "NATIVE"
+   },
+   "markChange": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "snapshots.option_chain_json (selected expiry, every poll - 54 keys verbatim); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "semantics": "NATIVE"
+   },
+   "markPercentChange": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "snapshots.option_chain_json (selected expiry, every poll - 54 keys verbatim); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "semantics": "NATIVE"
+   },
+   "mini": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "snapshots.option_chain_json (selected expiry, every poll - 54 keys verbatim); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "semantics": "NATIVE"
+   },
+   "multiplier": {
+    "disposition": "RETAINED_RAW_AND_PROJECTED",
+    "projection": "math_exposure_core; math_levels._contract_inputs",
+    "reason": "",
+    "retained_in": "snapshots.option_chain_json (selected expiry, every poll - 54 keys verbatim); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "semantics": "NATIVE"
+   },
+   "netChange": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "snapshots.option_chain_json (selected expiry, every poll - 54 keys verbatim); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "semantics": "NATIVE"
+   },
+   "nonStandard": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "snapshots.option_chain_json (selected expiry, every poll - 54 keys verbatim); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "semantics": "NATIVE"
+   },
+   "openInterest": {
+    "disposition": "RETAINED_RAW_AND_PROJECTED",
+    "projection": "math_exposure_core (require_oi); math_levels._contract_inputs",
+    "reason": "",
+    "retained_in": "snapshots.option_chain_json (selected expiry, every poll - 54 keys verbatim); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "semantics": "NATIVE"
+   },
+   "openPrice": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "snapshots.option_chain_json (selected expiry, every poll - 54 keys verbatim); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "semantics": "NATIVE"
+   },
+   "optionDeliverablesList": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "snapshots.option_chain_json (selected expiry, every poll - 54 keys verbatim); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "semantics": "NATIVE"
+   },
+   "optionDeliverablesList.*": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "snapshots.option_chain_json (selected expiry, every poll - 54 keys verbatim); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "semantics": "NATIVE"
+   },
+   "optionDeliverablesList.*.assetType": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "snapshots.option_chain_json (selected expiry, every poll - 54 keys verbatim); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "semantics": "NATIVE"
+   },
+   "optionDeliverablesList.*.currencyType": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "snapshots.option_chain_json (selected expiry, every poll - 54 keys verbatim); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "semantics": "NATIVE"
+   },
+   "optionDeliverablesList.*.deliverableUnits": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "snapshots.option_chain_json (selected expiry, every poll - 54 keys verbatim); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "semantics": "NATIVE"
+   },
+   "optionDeliverablesList.*.symbol": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "snapshots.option_chain_json (selected expiry, every poll - 54 keys verbatim); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "semantics": "NATIVE"
+   },
+   "optionRoot": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "snapshots.option_chain_json (selected expiry, every poll - 54 keys verbatim); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "semantics": "NATIVE"
+   },
+   "pennyPilot": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "snapshots.option_chain_json (selected expiry, every poll - 54 keys verbatim); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "semantics": "NATIVE"
+   },
+   "percentChange": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "snapshots.option_chain_json (selected expiry, every poll - 54 keys verbatim); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "semantics": "NATIVE"
+   },
+   "putCall": {
+    "disposition": "RETAINED_RAW_AND_PROJECTED",
+    "projection": "math_exposure_core side split",
+    "reason": "",
+    "retained_in": "snapshots.option_chain_json (selected expiry, every poll - 54 keys verbatim); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "semantics": "NATIVE"
+   },
+   "quoteTimeInLong": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "snapshots.option_chain_json (selected expiry, every poll - 54 keys verbatim); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "semantics": "NATIVE"
+   },
+   "rho": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "snapshots.option_chain_json (selected expiry, every poll - 54 keys verbatim); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "semantics": "NATIVE"
+   },
+   "settlementType": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "snapshots.option_chain_json (selected expiry, every poll - 54 keys verbatim); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "semantics": "NATIVE"
+   },
+   "strikePrice": {
+    "disposition": "RETAINED_RAW_AND_PROJECTED",
+    "projection": "math_exposure_core.compute_exposures_by_strike; math_levels._contract_inputs",
+    "reason": "",
+    "retained_in": "snapshots.option_chain_json (selected expiry, every poll - 54 keys verbatim); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "semantics": "NATIVE"
+   },
+   "symbol": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "snapshots.option_chain_json (selected expiry, every poll - 54 keys verbatim); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "semantics": "NATIVE"
+   },
+   "theoreticalOptionValue": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "snapshots.option_chain_json (selected expiry, every poll - 54 keys verbatim); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "semantics": "NATIVE"
+   },
+   "theoreticalVolatility": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "snapshots.option_chain_json (selected expiry, every poll - 54 keys verbatim); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "semantics": "NATIVE"
+   },
+   "theta": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "snapshots.option_chain_json (selected expiry, every poll - 54 keys verbatim); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "semantics": "NATIVE"
+   },
+   "timeValue": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "snapshots.option_chain_json (selected expiry, every poll - 54 keys verbatim); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "semantics": "NATIVE"
+   },
+   "totalVolume": {
+    "disposition": "RETAINED_RAW_AND_PROJECTED",
+    "projection": "math_exposure_core order-flow accumulation",
+    "reason": "",
+    "retained_in": "snapshots.option_chain_json (selected expiry, every poll - 54 keys verbatim); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "semantics": "NATIVE"
+   },
+   "tradeTimeInLong": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "snapshots.option_chain_json (selected expiry, every poll - 54 keys verbatim); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "semantics": "NATIVE"
+   },
+   "vega": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "snapshots.option_chain_json (selected expiry, every poll - 54 keys verbatim); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "semantics": "NATIVE"
+   },
+   "volatility": {
+    "disposition": "RETAINED_RAW_AND_PROJECTED",
+    "projection": "math_exposure_core.schwab_iv_to_sigma (the ONE IV conversion authority)",
+    "reason": "",
+    "retained_in": "snapshots.option_chain_json (selected expiry, every poll - 54 keys verbatim); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "semantics": "NATIVE"
+   }
+  },
+  "rest_chain_envelope": {
+   "assetMainType": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "option_chain_morning_full.chain_envelope_json (NATIVE scalars + underlying block)",
+    "semantics": "NATIVE"
+   },
+   "assetSubType": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "option_chain_morning_full.chain_envelope_json (NATIVE scalars + underlying block)",
+    "semantics": "NATIVE"
+   },
+   "callExpDateMap": {
+    "disposition": "DELIBERATELY_EXCLUDED",
+    "projection": "",
+    "reason": "The expiry MAPS are the contracts themselves, already retained verbatim per-contract in snapshots.option_chain_json (selected expiry, every poll - 54 keys verbatim); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily). Copying them here would duplicate the largest part of the payload without adding any truth.",
+    "retained_in": "",
+    "semantics": "NATIVE"
+   },
+   "daysToExpiration": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "option_chain_morning_full.chain_envelope_json (NATIVE scalars + underlying block)",
+    "semantics": "NATIVE"
+   },
+   "dividendYield": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "option_chain_morning_full.chain_envelope_json (NATIVE scalars + underlying block)",
+    "semantics": "NATIVE"
+   },
+   "interestRate": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "option_chain_morning_full.chain_envelope_json (NATIVE scalars + underlying block)",
+    "semantics": "NATIVE"
+   },
+   "interval": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "option_chain_morning_full.chain_envelope_json (NATIVE scalars + underlying block)",
+    "semantics": "NATIVE"
+   },
+   "isChainTruncated": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "option_chain_morning_full.chain_envelope_json (NATIVE scalars + underlying block)",
+    "semantics": "NATIVE"
+   },
+   "isDelayed": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "option_chain_morning_full.chain_envelope_json (NATIVE scalars + underlying block)",
+    "semantics": "NATIVE"
+   },
+   "isIndex": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "option_chain_morning_full.chain_envelope_json (NATIVE scalars + underlying block)",
+    "semantics": "NATIVE"
+   },
+   "numberOfContracts": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "option_chain_morning_full.chain_envelope_json (NATIVE scalars + underlying block)",
+    "semantics": "NATIVE"
+   },
+   "putExpDateMap": {
+    "disposition": "DELIBERATELY_EXCLUDED",
+    "projection": "",
+    "reason": "The expiry MAPS are the contracts themselves, already retained verbatim per-contract in snapshots.option_chain_json (selected expiry, every poll - 54 keys verbatim); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily). Copying them here would duplicate the largest part of the payload without adding any truth.",
+    "retained_in": "",
+    "semantics": "NATIVE"
+   },
+   "status": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "option_chain_morning_full.chain_envelope_json (NATIVE scalars + underlying block)",
+    "semantics": "NATIVE"
+   },
+   "strategy": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "option_chain_morning_full.chain_envelope_json (NATIVE scalars + underlying block)",
+    "semantics": "NATIVE"
+   },
+   "symbol": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "option_chain_morning_full.chain_envelope_json (NATIVE scalars + underlying block)",
+    "semantics": "NATIVE"
+   },
+   "underlying": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "option_chain_morning_full.chain_envelope_json (NATIVE scalars + underlying block)",
+    "semantics": "NATIVE"
+   },
+   "underlyingPrice": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "option_chain_morning_full.chain_envelope_json (NATIVE scalars + underlying block)",
+    "semantics": "NATIVE"
+   },
+   "volatility": {
+    "disposition": "RETAINED_RAW",
+    "projection": "",
+    "reason": "",
+    "retained_in": "option_chain_morning_full.chain_envelope_json (NATIVE scalars + underlying block)",
+    "semantics": "NATIVE"
+   }
+  }
+ }
+}

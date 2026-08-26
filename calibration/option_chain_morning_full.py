@@ -30,6 +30,10 @@ CREATE TABLE IF NOT EXISTS option_chain_morning_full (
     n_expiries INTEGER,
     max_dte REAL,
     chain_json TEXT NOT NULL,
+    -- NATIVE chain-envelope scalars (interestRate, dividendYield, isChainTruncated, ...) as the
+    -- vendor sent them. Nullable: rows written before 2026-08-26, and any caller that has no
+    -- envelope to give, leave it NULL rather than fabricating one. See ENVELOPE_SCALAR_KEYS.
+    chain_envelope_json TEXT,
     source TEXT NOT NULL DEFAULT 'schwab_chain',
     created_at TEXT DEFAULT (datetime('now')),
     PRIMARY KEY (ticker, et_date)
@@ -243,8 +247,50 @@ def persist_chain_accrual(
             "n_strikes": len(clean), "session_volume": vol_total, "ts_utc": ts}
 
 
+#: Chain-ENVELOPE scalars Schwab returns on every /chains response alongside the two expiry maps.
+#: OPTIONS FLOW FOUNDATION (2026-08-26): these were DISCARDED before any persister saw them — the
+#: capture flattens the response to a contract LIST and the envelope dies with the local variable.
+#: They are NATIVE vendor values, cost ZERO extra vendor calls (they ride the fetch we already make),
+#: and two are load-bearing for questions this repo has already recorded as open:
+#:   * interestRate / dividendYield — the vendor's own r and q. math_levels.bs_gamma ships r=q=0 and
+#:     unproven_register carries "r/q at a full sweep with per-ticker dividends" as NOT_PROVEN.
+#:     Retaining these makes that measurable from data we ALREADY receive.
+#:   * isChainTruncated — the vendor stating outright that it cut the chain. The gamma work INFERS
+#:     delivered span from min/max strike; this is the vendor answering that question natively.
+#: The expiry MAPS are deliberately excluded: contracts already persist in chain_json, and
+#: duplicating them would double the row for nothing.
+#: `underlying` is a nested OBJECT (the vendor's underlying-metadata block), not a scalar — it is
+#: retained whole rather than flattened, because flattening would mean choosing which of its keys
+#: matter today and silently dropping the rest, which is the exact loss this foundation exists to end.
+ENVELOPE_SCALAR_KEYS = (
+    "symbol", "status", "strategy", "interval", "isDelayed", "isIndex",
+    "interestRate", "dividendYield", "volatility", "underlyingPrice",
+    "daysToExpiration", "numberOfContracts", "isChainTruncated",
+    "assetMainType", "assetSubType", "underlying",
+)
+
+
+def envelope_scalars(chain_response: dict | None) -> dict | None:
+    """The NATIVE chain-envelope scalars, or None when the caller has no envelope to give.
+
+    Pure projection — every value is exactly what the vendor sent: no derivation, no defaulting,
+    no unit change. An absent key stays ABSENT rather than becoming 0/None, so a reader can tell
+    "the vendor omitted it" from "the vendor sent zero" (the r=0 confusion this exists to end).
+    """
+    if not isinstance(chain_response, dict):
+        return None
+    out = {k: chain_response[k] for k in ENVELOPE_SCALAR_KEYS if k in chain_response}
+    return out or None
+
+
 def ensure_morning_full_schema(conn: sqlite3.Connection) -> None:
     conn.executescript(TABLE_SQL)
+    # Additive migration: TABLE_SQL is CREATE TABLE IF NOT EXISTS, so an EXISTING database never
+    # gains a new column from it. Add the envelope column in place; chain_json and every current
+    # reader are untouched (load_wide_chains and the studies keep reading the same contract list).
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(option_chain_morning_full)")}
+    if "chain_envelope_json" not in cols:
+        conn.execute("ALTER TABLE option_chain_morning_full ADD COLUMN chain_envelope_json TEXT")
     conn.commit()
 
 
@@ -326,6 +372,7 @@ def maybe_persist_morning_full_chain(
     spot: float | None,
     ts_utc: float | None = None,
     source: str = SOURCE_WIDE,
+    chain_response: dict | None = None,
 ) -> dict[str, Any]:
     """Idempotent: one row per (ticker, et_date) in the capture span 09:30-11:30 ET.
 
@@ -370,8 +417,9 @@ def maybe_persist_morning_full_chain(
         conn.execute(
             """
             INSERT INTO option_chain_morning_full(
-              ticker, et_date, ts_utc, spot, n_contracts, n_expiries, max_dte, chain_json, source
-            ) VALUES (?,?,?,?,?,?,?,?,?)
+              ticker, et_date, ts_utc, spot, n_contracts, n_expiries, max_dte, chain_json,
+              chain_envelope_json, source
+            ) VALUES (?,?,?,?,?,?,?,?,?,?)
             """,
             (
                 ticker_u,
@@ -382,6 +430,8 @@ def maybe_persist_morning_full_chain(
                 len(exps),
                 max(dtes) if dtes else None,
                 json.dumps(near, default=str),
+                # NULL, not "{}", when the caller had no envelope — absence must stay legible.
+                (lambda e: json.dumps(e, default=str) if e else None)(envelope_scalars(chain_response)),
                 str(source),
             ),
         )
