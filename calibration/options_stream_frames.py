@@ -26,11 +26,18 @@ subscribed to, proven deliverable by a committed capture
     what the value domain turns out to mean for attribution is a separate question this module does
     not answer and must not pre-judge.
 
-THE DESIGN IS RAW-FIRST, ON PURPOSE. A frame is stored VERBATIM as the vendor sent it, one row per
-frame. No projection happens at write time, so no field can be lost by an omission in today's
-parser — the thing that cost us the chain envelope. Typed projections are built as READERS over
-this store, so adding a consumer later is a query change and never a re-collection: the history is
-already there. This is deliberately NOT hundreds of columns.
+THE DESIGN IS RAW-FIRST, ON PURPOSE. The DECODED frame is stored whole, one row per frame, with no
+projection at write time — so no field can be lost by an omission in today's parser, which is what
+cost us the chain envelope. Typed projections are READERS over this store, so adding a consumer
+later is a query change and never a re-collection: the history is already there. This is
+deliberately NOT hundreds of columns.
+
+PRECISELY WHAT IS PRESERVED (corrected 2026-08-26 after review — the first draft said "verbatim as
+the vendor sent it", which overstates). This stores the DECODED frame object the streaming client
+hands over, serialised to JSON. It is NOT byte-identical retention of the WebSocket wire message:
+no wire bytes are captured at this layer, and the client library has already parsed the envelope.
+Nothing lossy is applied to the decoded object, and a decoded frame round-trips through JSON
+unchanged (tested). Literal wire fidelity would be a different, unproven claim and is not made.
 
 WHAT THIS MODULE DOES NOT DO. It does not subscribe. Wiring a new subscription changes what the
 live production streamer does, which is the operator's call, not a side effect of adding storage.
@@ -56,18 +63,41 @@ log = logging.getLogger(__name__)
 #: One row per frame, payload verbatim. `service` and `symbol_key` are indexed read keys lifted from
 #: the frame so a reader can find frames without parsing every blob; they are COPIES, never a
 #: replacement for the payload.
+#: CLOCK CONTRACT (corrected 2026-08-26 after review). Schwab frame timestamps are EPOCH
+#: MILLISECONDS — measured on the committed capture: 1787234092900, which is ms, not seconds. Our
+#: receive clock is time.time(), i.e. epoch SECONDS. The first version stored the vendor value in a
+#: column beside the receive clock and promised "vendor-vs-local lag stays measurable", which was
+#: false: subtracting seconds from milliseconds is meaningless and would have read as ~1.79e12 s of
+#: lag. Both clocks are now stored in EXPLICIT MILLISECOND columns with the unit in the name, and the
+#: lag is a stored, checkable quantity rather than a promise left to the reader.
+#:
+#: FRAME-vs-ROW GRAIN. A Schwab frame's `content` is a LIST and may carry MANY contracts at once
+#: (our probe subscribed a single symbol, so every captured frame has exactly one entry — measured:
+#: max content entries = 1 — but that is a property of the probe, not of the service). Indexing a
+#: whole frame by content[0].key would make every contract after the first undiscoverable. The raw
+#: frame is therefore stored ONCE, and a companion index row is written per contained contract.
 TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS options_stream_frames (
-    id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    service      TEXT NOT NULL,          -- LEVELONE_OPTIONS | OPTIONS_BOOK
-    symbol_key   TEXT,                   -- the frame's own `key` (the option symbol), when present
-    frame_ts_utc REAL NOT NULL,          -- vendor frame timestamp (NOT our clock)
-    received_ts_utc REAL NOT NULL,       -- our receive clock, so vendor-vs-local lag stays measurable
-    payload_json TEXT NOT NULL,          -- the frame VERBATIM, no projection
-    created_at   TEXT DEFAULT (datetime('now'))
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    service           TEXT NOT NULL,     -- LEVELONE_OPTIONS | OPTIONS_BOOK
+    frame_ts_ms       INTEGER NOT NULL,  -- VENDOR frame timestamp, epoch MILLISECONDS, as sent
+    received_ts_ms    INTEGER NOT NULL,  -- OUR receive clock, epoch MILLISECONDS
+    ingest_lag_ms     INTEGER,           -- received_ts_ms - frame_ts_ms, computed once, unit-correct
+    n_contracts       INTEGER NOT NULL,  -- len(content); >1 means a multi-contract frame
+    payload_json      TEXT NOT NULL,     -- the DECODED frame as received from the client library
+    created_at        TEXT DEFAULT (datetime('now'))
 );
-CREATE INDEX IF NOT EXISTS idx_osf_service_ts ON options_stream_frames(service, frame_ts_utc);
-CREATE INDEX IF NOT EXISTS idx_osf_symbol_ts  ON options_stream_frames(symbol_key, frame_ts_utc);
+CREATE INDEX IF NOT EXISTS idx_osf_service_ts ON options_stream_frames(service, frame_ts_ms);
+
+-- One row per CONTRACT contained in a frame, so a multi-contract frame stays discoverable for
+-- every contract it carries rather than only its first.
+CREATE TABLE IF NOT EXISTS options_stream_frame_symbols (
+    frame_id     INTEGER NOT NULL REFERENCES options_stream_frames(id),
+    symbol_key   TEXT NOT NULL,
+    content_idx  INTEGER NOT NULL,       -- position within content[], so the entry is addressable
+    PRIMARY KEY (frame_id, content_idx)
+);
+CREATE INDEX IF NOT EXISTS idx_osfs_symbol ON options_stream_frame_symbols(symbol_key);
 """
 
 SERVICE_LEVELONE = "LEVELONE_OPTIONS"
@@ -81,35 +111,60 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
 
 
 def persist_frame(db_path: Path | str, *, service: str, frame: dict[str, Any],
-                  received_ts_utc: float) -> dict[str, Any]:
-    """Store ONE vendor frame verbatim. Returns a small receipt; never raises on bad input.
+                  received_ts_ms: int) -> dict[str, Any]:
+    """Store ONE decoded vendor frame plus a per-contract index. Never raises on bad input.
+
+    `received_ts_ms` is epoch MILLISECONDS — the same unit as the vendor's frame timestamp — so the
+    stored ingest lag is a real quantity. Callers holding time.time() (seconds) must convert; the
+    parameter name carries the unit precisely so the seconds/milliseconds mix that broke the first
+    version cannot be reintroduced silently.
+
+    WHAT "VERBATIM" MEANS HERE, stated exactly: this stores the DECODED frame object handed over by
+    the streaming client, serialised to JSON. It is NOT byte-identical retention of the WebSocket
+    wire message — no raw wire bytes are captured at this layer, key order is not preserved through
+    the dict, and the client library has already parsed the envelope. Nothing lossy is done to the
+    decoded object (no projection, no field selection), but a claim of literal wire fidelity would
+    be false and is not made.
 
     Fails SOFT and says so: a collection path must not take the console down because one frame was
-    malformed. A rejected frame is logged and reported, not silently swallowed.
+    malformed. A rejected frame is logged and reported, never silently swallowed.
     """
     if service not in SUPPORTED_SERVICES:
         return {"status": "rejected", "reason": f"unsupported service {service!r}"}
     if not isinstance(frame, dict):
         return {"status": "rejected", "reason": "frame is not a dict"}
 
-    content = frame.get("content")
-    symbol_key = None
-    if isinstance(content, list) and content and isinstance(content[0], dict):
-        symbol_key = content[0].get("key")
-    frame_ts = frame.get("timestamp")
+    raw_ts = frame.get("timestamp")
     try:
-        frame_ts = float(frame_ts)
+        frame_ts_ms = int(raw_ts)
     except (TypeError, ValueError):
         return {"status": "rejected", "reason": "frame carries no usable vendor timestamp"}
+    try:
+        recv_ms = int(received_ts_ms)
+    except (TypeError, ValueError):
+        return {"status": "rejected", "reason": "received_ts_ms is not an integer millisecond clock"}
+
+    content = frame.get("content")
+    entries = [(i, c.get("key")) for i, c in enumerate(content)
+               if isinstance(c, dict) and c.get("key")] if isinstance(content, list) else []
 
     conn = sqlite3.connect(str(db_path), timeout=30.0)
     try:
         ensure_schema(conn)
-        conn.execute(
+        cur = conn.execute(
             "INSERT INTO options_stream_frames"
-            "(service, symbol_key, frame_ts_utc, received_ts_utc, payload_json) VALUES (?,?,?,?,?)",
-            (service, symbol_key, frame_ts, float(received_ts_utc),
+            "(service, frame_ts_ms, received_ts_ms, ingest_lag_ms, n_contracts, payload_json)"
+            " VALUES (?,?,?,?,?,?)",
+            (service, frame_ts_ms, recv_ms, recv_ms - frame_ts_ms,
+             len(content) if isinstance(content, list) else 0,
              json.dumps(frame, default=str, separators=(",", ":"))),
+        )
+        frame_id = cur.lastrowid
+        # every contained contract, not just the first
+        conn.executemany(
+            "INSERT OR REPLACE INTO options_stream_frame_symbols(frame_id, symbol_key, content_idx)"
+            " VALUES (?,?,?)",
+            [(frame_id, key, idx) for idx, key in entries],
         )
         conn.commit()
     except sqlite3.Error as e:
@@ -117,8 +172,9 @@ def persist_frame(db_path: Path | str, *, service: str, frame: dict[str, Any],
         return {"status": "error", "reason": str(e)}
     finally:
         conn.close()
-    return {"status": "written", "service": service, "symbol_key": symbol_key,
-            "frame_ts_utc": frame_ts}
+    return {"status": "written", "service": service, "frame_id": frame_id,
+            "symbol_keys": [k for _, k in entries], "n_contracts": len(entries),
+            "frame_ts_ms": frame_ts_ms, "ingest_lag_ms": recv_ms - frame_ts_ms}
 
 
 # ── canonical typed PROJECTIONS over the raw store ────────────────────────────────────────────

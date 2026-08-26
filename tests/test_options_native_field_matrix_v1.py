@@ -136,9 +136,23 @@ def test_l1_temporal_identifiers_are_retained():
 
 
 def test_exclusions_are_argued_not_asserted():
+    """NON-VACUOUS by construction. The first version branched on "DELIBERATELY_EXCLUDED" while the
+    real disposition is "DELIBERATELY_EXCLUDED_WITH_PROOF", so the stronger assertion never ran and
+    the test passed green without checking anything. It now asserts that exclusions EXIST before
+    checking them, so the same silent mismatch fails instead of passing."""
+    excluded = [(s, n, e) for s, fields in _matrix()["surfaces"].items()
+                for n, e in fields.items() if e["disposition"].startswith("DELIBERATELY_EXCLUDED")]
+    assert excluded, (
+        "no DELIBERATELY_EXCLUDED* entries found — either the matrix changed vocabulary or nothing "
+        "is excluded; either way this test must not pass vacuously")
+    for surface, name, entry in excluded:
+        assert entry["disposition"] == "DELIBERATELY_EXCLUDED_WITH_PROOF", (
+            f"{surface}.{name}: exclusion must carry proof, got {entry['disposition']}")
+        reason = entry.get("reason", "").strip()
+        assert len(reason) > 40, f"{surface}.{name}: exclusion needs a concrete reason"
+        assert "PROVEN" in reason or "proven" in reason, (
+            f"{surface}.{name}: an exclusion WITH_PROOF must cite the derivation, not just argue")
+
     for surface, fields in _matrix()["surfaces"].items():
         for name, entry in fields.items():
-            if entry["disposition"] == "DELIBERATELY_EXCLUDED":
-                assert len(entry.get("reason", "").strip()) > 40, (
-                    f"{surface}.{name}: exclusion needs a concrete reason, not a token string")
             assert entry["disposition"] in VALID_DISPOSITIONS

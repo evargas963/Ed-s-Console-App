@@ -1,4 +1,5 @@
 {
+ "_census_method": "UNION over EVERY committed capture frame, every content entry, every price level and every nested participant row - not the first of each. Corrected 2026-08-26: first-frame-only would have missed ASKS/ASK_PRICE/NUM_ASKS at price level and ASK_VOLUME at maker level, and could never mechanically catch a new vendor field.",
  "_census_reconciliation_171_vs_148": {
   "difference": 23,
   "earlier_investigation": 171,
@@ -27,7 +28,7 @@
    "totalVolume",
    "tradeTime"
   ],
-  "explanation": "The 23 chains.underlying.* leaves matched NEITHER the depth-1 envelope filter NOR the call/putExpDateMap filter, so the first enumerator dropped them silently. Retaining `underlying` as one JSON object does NOT remove its leaves from the census. They are now their own surface, dispositioned individually. 148 + 23 = 171. The enumerator now RAISES if any chains.* leaf matches no bucket, so this class of silent drop cannot recur.",
+  "explanation": "The 23 chains.underlying.* leaves matched NEITHER the depth-1 envelope filter NOR the call/putExpDateMap filter, so the first enumerator dropped them silently. Retaining `underlying` as one JSON object does NOT remove its leaves from the census. 148 + 23 = 171. The enumerator now RAISES if any chains.* leaf matches no bucket.",
   "first_matrix": 148
  },
  "_dispositions": [
@@ -39,615 +40,761 @@
   "UNAVAILABLE"
  ],
  "_forbidden": "NATIVE_AVAILABLE_BUT_NOT_RETAINED",
- "_generated_by": "tools/options_native_field_matrix_v1.py (dispositions curated from traced evidence)",
- "_principle": "Raw-native preservation plus canonical typed projections. Vendor payloads are stored VERBATIM so no field is lost by omission in today's parser - demonstrated by breakEven and ssid, vendor fields postdating the committed inventory, retained anyway. Consumers are READERS over the raw store, so adding one is a projection change, never a re-collection. Nothing infers dealer ownership; nothing here feeds Decide.",
- "_retained_raw_means": "production RECEIVES AND PERSISTS the field TODAY. Storage code that exists but is never called is RETENTION_PATH_READY_NOT_WIRED.",
+ "_generated_by": "python tools/options_native_field_matrix_v1.py --emit-curated",
+ "_principle": "Raw-native preservation plus canonical typed projections. Vendor payloads are stored whole so no field is lost by omission in today's parser - demonstrated by breakEven and ssid, vendor fields postdating the committed inventory, retained anyway. Consumers are READERS over the raw store. Nothing infers dealer ownership; nothing feeds Decide.",
+ "_retained_raw_means": "production RECEIVES AND PERSISTS the field TODAY, at the cadence stated in temporal_grain. Storage code that exists but is never called is RETENTION_PATH_READY_NOT_WIRED.",
  "surfaces": {
   "levelone_options": {
    "ASK_PRICE": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today. Wiring the subscription changes live streamer behaviour and is the operator's decision.",
+    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
     "retained_in": "writer calibration/options_stream_frames.persist_frame (+ projection project_book_market_makers), tested against REAL captured frames; evidence today: reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json",
-    "semantics": "NATIVE"
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": ""
    },
    "ASK_SIZE": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today. Wiring the subscription changes live streamer behaviour and is the operator's decision.",
+    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
     "retained_in": "writer calibration/options_stream_frames.persist_frame (+ projection project_book_market_makers), tested against REAL captured frames; evidence today: reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json",
-    "semantics": "NATIVE"
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": ""
    },
    "BID_PRICE": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today. Wiring the subscription changes live streamer behaviour and is the operator's decision.",
+    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
     "retained_in": "writer calibration/options_stream_frames.persist_frame (+ projection project_book_market_makers), tested against REAL captured frames; evidence today: reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json",
-    "semantics": "NATIVE"
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": ""
    },
    "BID_SIZE": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today. Wiring the subscription changes live streamer behaviour and is the operator's decision.",
+    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
     "retained_in": "writer calibration/options_stream_frames.persist_frame (+ projection project_book_market_makers), tested against REAL captured frames; evidence today: reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json",
-    "semantics": "NATIVE"
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": ""
    },
    "CLOSE_PRICE": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today. Wiring the subscription changes live streamer behaviour and is the operator's decision.",
+    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
     "retained_in": "writer calibration/options_stream_frames.persist_frame (+ projection project_book_market_makers), tested against REAL captured frames; evidence today: reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json",
-    "semantics": "NATIVE"
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": ""
    },
    "CONTRACT_TYPE": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today. Wiring the subscription changes live streamer behaviour and is the operator's decision.",
+    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
     "retained_in": "writer calibration/options_stream_frames.persist_frame (+ projection project_book_market_makers), tested against REAL captured frames; evidence today: reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json",
-    "semantics": "NATIVE"
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": ""
    },
    "DAYS_TO_EXPIRATION": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today. Wiring the subscription changes live streamer behaviour and is the operator's decision.",
+    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
     "retained_in": "writer calibration/options_stream_frames.persist_frame (+ projection project_book_market_makers), tested against REAL captured frames; evidence today: reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json",
-    "semantics": "NATIVE"
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": ""
    },
    "DELIVERABLES": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today. Wiring the subscription changes live streamer behaviour and is the operator's decision.",
+    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
     "retained_in": "writer calibration/options_stream_frames.persist_frame (+ projection project_book_market_makers), tested against REAL captured frames; evidence today: reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json",
-    "semantics": "NATIVE"
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": ""
    },
    "DELTA": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today. Wiring the subscription changes live streamer behaviour and is the operator's decision.",
+    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
     "retained_in": "writer calibration/options_stream_frames.persist_frame (+ projection project_book_market_makers), tested against REAL captured frames; evidence today: reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json",
-    "semantics": "NATIVE"
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": ""
    },
    "DESCRIPTION": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today. Wiring the subscription changes live streamer behaviour and is the operator's decision.",
+    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
     "retained_in": "writer calibration/options_stream_frames.persist_frame (+ projection project_book_market_makers), tested against REAL captured frames; evidence today: reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json",
-    "semantics": "NATIVE"
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": ""
    },
    "DIGITS": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today. Wiring the subscription changes live streamer behaviour and is the operator's decision.",
+    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
     "retained_in": "writer calibration/options_stream_frames.persist_frame (+ projection project_book_market_makers), tested against REAL captured frames; evidence today: reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json",
-    "semantics": "NATIVE"
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": ""
    },
    "EXCHANGE_ID": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today. Wiring the subscription changes live streamer behaviour and is the operator's decision.",
+    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
     "retained_in": "writer calibration/options_stream_frames.persist_frame (+ projection project_book_market_makers), tested against REAL captured frames; evidence today: reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json",
-    "semantics": "NATIVE"
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": ""
    },
    "EXCHANGE_NAME": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today. Wiring the subscription changes live streamer behaviour and is the operator's decision.",
+    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
     "retained_in": "writer calibration/options_stream_frames.persist_frame (+ projection project_book_market_makers), tested against REAL captured frames; evidence today: reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json",
-    "semantics": "NATIVE"
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": ""
    },
    "EXERCISE_TYPE": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today. Wiring the subscription changes live streamer behaviour and is the operator's decision.",
+    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
     "retained_in": "writer calibration/options_stream_frames.persist_frame (+ projection project_book_market_makers), tested against REAL captured frames; evidence today: reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json",
-    "semantics": "NATIVE"
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": ""
    },
    "EXPIRATION_DAY": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today. Wiring the subscription changes live streamer behaviour and is the operator's decision.",
+    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
     "retained_in": "writer calibration/options_stream_frames.persist_frame (+ projection project_book_market_makers), tested against REAL captured frames; evidence today: reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json",
-    "semantics": "NATIVE"
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": ""
    },
    "EXPIRATION_MONTH": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today. Wiring the subscription changes live streamer behaviour and is the operator's decision.",
+    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
     "retained_in": "writer calibration/options_stream_frames.persist_frame (+ projection project_book_market_makers), tested against REAL captured frames; evidence today: reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json",
-    "semantics": "NATIVE"
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": ""
    },
    "EXPIRATION_YEAR": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today. Wiring the subscription changes live streamer behaviour and is the operator's decision.",
+    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
     "retained_in": "writer calibration/options_stream_frames.persist_frame (+ projection project_book_market_makers), tested against REAL captured frames; evidence today: reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json",
-    "semantics": "NATIVE"
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": ""
    },
    "GAMMA": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today. Wiring the subscription changes live streamer behaviour and is the operator's decision.",
+    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
     "retained_in": "writer calibration/options_stream_frames.persist_frame (+ projection project_book_market_makers), tested against REAL captured frames; evidence today: reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json",
-    "semantics": "NATIVE"
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": ""
    },
    "HIGH_PRICE": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today. Wiring the subscription changes live streamer behaviour and is the operator's decision.",
+    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
     "retained_in": "writer calibration/options_stream_frames.persist_frame (+ projection project_book_market_makers), tested against REAL captured frames; evidence today: reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json",
-    "semantics": "NATIVE"
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": ""
    },
    "HIGH_PRICE_52_WEEK": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today. Wiring the subscription changes live streamer behaviour and is the operator's decision.",
+    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
     "retained_in": "writer calibration/options_stream_frames.persist_frame (+ projection project_book_market_makers), tested against REAL captured frames; evidence today: reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json",
-    "semantics": "NATIVE"
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": ""
    },
    "IMPLIED_YIELD": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today. Wiring the subscription changes live streamer behaviour and is the operator's decision.",
+    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
     "retained_in": "writer calibration/options_stream_frames.persist_frame (+ projection project_book_market_makers), tested against REAL captured frames; evidence today: reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json",
-    "semantics": "NATIVE"
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": ""
    },
    "INDICATIVE_ASKING_PRICE": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today. Wiring the subscription changes live streamer behaviour and is the operator's decision.",
+    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
     "retained_in": "writer calibration/options_stream_frames.persist_frame (+ projection project_book_market_makers), tested against REAL captured frames; evidence today: reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json",
-    "semantics": "NATIVE"
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": ""
    },
    "INDICATIVE_BID_PRICE": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today. Wiring the subscription changes live streamer behaviour and is the operator's decision.",
+    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
     "retained_in": "writer calibration/options_stream_frames.persist_frame (+ projection project_book_market_makers), tested against REAL captured frames; evidence today: reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json",
-    "semantics": "NATIVE"
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": ""
    },
    "INDICATIVE_QUOTE_TIME": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today. Wiring the subscription changes live streamer behaviour and is the operator's decision.",
+    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
     "retained_in": "writer calibration/options_stream_frames.persist_frame (+ projection project_book_market_makers), tested against REAL captured frames; evidence today: reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json",
-    "semantics": "NATIVE"
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": ""
    },
    "IS_PENNY": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today. Wiring the subscription changes live streamer behaviour and is the operator's decision.",
+    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
     "retained_in": "writer calibration/options_stream_frames.persist_frame (+ projection project_book_market_makers), tested against REAL captured frames; evidence today: reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json",
-    "semantics": "NATIVE"
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": ""
    },
    "LAST_PRICE": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today. Wiring the subscription changes live streamer behaviour and is the operator's decision.",
+    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
     "retained_in": "writer calibration/options_stream_frames.persist_frame (+ projection project_book_market_makers), tested against REAL captured frames; evidence today: reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json",
-    "semantics": "NATIVE"
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": ""
    },
    "LAST_SIZE": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today. Wiring the subscription changes live streamer behaviour and is the operator's decision.",
+    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
     "retained_in": "writer calibration/options_stream_frames.persist_frame (+ projection project_book_market_makers), tested against REAL captured frames; evidence today: reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json",
-    "semantics": "NATIVE"
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": ""
    },
    "LAST_TRADING_DAY": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today. Wiring the subscription changes live streamer behaviour and is the operator's decision.",
+    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
     "retained_in": "writer calibration/options_stream_frames.persist_frame (+ projection project_book_market_makers), tested against REAL captured frames; evidence today: reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json",
-    "semantics": "NATIVE"
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": ""
    },
    "LOW_PRICE": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today. Wiring the subscription changes live streamer behaviour and is the operator's decision.",
+    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
     "retained_in": "writer calibration/options_stream_frames.persist_frame (+ projection project_book_market_makers), tested against REAL captured frames; evidence today: reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json",
-    "semantics": "NATIVE"
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": ""
    },
    "LOW_PRICE_52_WEEK": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today. Wiring the subscription changes live streamer behaviour and is the operator's decision.",
+    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
     "retained_in": "writer calibration/options_stream_frames.persist_frame (+ projection project_book_market_makers), tested against REAL captured frames; evidence today: reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json",
-    "semantics": "NATIVE"
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": ""
    },
    "MARK": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today. Wiring the subscription changes live streamer behaviour and is the operator's decision.",
+    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
     "retained_in": "writer calibration/options_stream_frames.persist_frame (+ projection project_book_market_makers), tested against REAL captured frames; evidence today: reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json",
-    "semantics": "NATIVE"
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": ""
    },
    "MARK_CHANGE": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today. Wiring the subscription changes live streamer behaviour and is the operator's decision.",
+    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
     "retained_in": "writer calibration/options_stream_frames.persist_frame (+ projection project_book_market_makers), tested against REAL captured frames; evidence today: reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json",
-    "semantics": "NATIVE"
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": ""
    },
    "MARK_CHANGE_PERCENT": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today. Wiring the subscription changes live streamer behaviour and is the operator's decision.",
+    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
     "retained_in": "writer calibration/options_stream_frames.persist_frame (+ projection project_book_market_makers), tested against REAL captured frames; evidence today: reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json",
-    "semantics": "NATIVE"
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": ""
    },
    "MONEY_INTRINSIC_VALUE": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today. Wiring the subscription changes live streamer behaviour and is the operator's decision.",
+    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
     "retained_in": "writer calibration/options_stream_frames.persist_frame (+ projection project_book_market_makers), tested against REAL captured frames; evidence today: reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json",
-    "semantics": "NATIVE"
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": ""
    },
    "MULTIPLIER": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today. Wiring the subscription changes live streamer behaviour and is the operator's decision.",
+    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
     "retained_in": "writer calibration/options_stream_frames.persist_frame (+ projection project_book_market_makers), tested against REAL captured frames; evidence today: reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json",
-    "semantics": "NATIVE"
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": ""
    },
    "NET_CHANGE": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today. Wiring the subscription changes live streamer behaviour and is the operator's decision.",
+    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
     "retained_in": "writer calibration/options_stream_frames.persist_frame (+ projection project_book_market_makers), tested against REAL captured frames; evidence today: reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json",
-    "semantics": "NATIVE"
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": ""
    },
    "NET_PERCENT_CHANGE": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today. Wiring the subscription changes live streamer behaviour and is the operator's decision.",
+    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
     "retained_in": "writer calibration/options_stream_frames.persist_frame (+ projection project_book_market_makers), tested against REAL captured frames; evidence today: reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json",
-    "semantics": "NATIVE"
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": ""
    },
    "OPEN_INTEREST": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today. Wiring the subscription changes live streamer behaviour and is the operator's decision.",
+    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
     "retained_in": "writer calibration/options_stream_frames.persist_frame (+ projection project_book_market_makers), tested against REAL captured frames; evidence today: reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json",
-    "semantics": "NATIVE"
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": ""
    },
    "OPEN_PRICE": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today. Wiring the subscription changes live streamer behaviour and is the operator's decision.",
+    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
     "retained_in": "writer calibration/options_stream_frames.persist_frame (+ projection project_book_market_makers), tested against REAL captured frames; evidence today: reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json",
-    "semantics": "NATIVE"
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": ""
    },
    "OPTION_ROOT": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today. Wiring the subscription changes live streamer behaviour and is the operator's decision.",
+    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
     "retained_in": "writer calibration/options_stream_frames.persist_frame (+ projection project_book_market_makers), tested against REAL captured frames; evidence today: reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json",
-    "semantics": "NATIVE"
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": ""
    },
    "QUOTE_TIME_MILLIS": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today. Wiring the subscription changes live streamer behaviour and is the operator's decision.",
+    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
     "retained_in": "writer calibration/options_stream_frames.persist_frame (+ projection project_book_market_makers), tested against REAL captured frames; evidence today: reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json",
-    "semantics": "NATIVE"
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": ""
    },
    "RHO": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today. Wiring the subscription changes live streamer behaviour and is the operator's decision.",
+    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
     "retained_in": "writer calibration/options_stream_frames.persist_frame (+ projection project_book_market_makers), tested against REAL captured frames; evidence today: reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json",
-    "semantics": "NATIVE"
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": ""
    },
    "SECURITY_STATUS": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today. Wiring the subscription changes live streamer behaviour and is the operator's decision.",
+    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
     "retained_in": "writer calibration/options_stream_frames.persist_frame (+ projection project_book_market_makers), tested against REAL captured frames; evidence today: reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json",
-    "semantics": "NATIVE"
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": ""
    },
    "SETTLEMENT_TYPE": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today. Wiring the subscription changes live streamer behaviour and is the operator's decision.",
+    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
     "retained_in": "writer calibration/options_stream_frames.persist_frame (+ projection project_book_market_makers), tested against REAL captured frames; evidence today: reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json",
-    "semantics": "NATIVE"
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": ""
    },
    "STRIKE_TYPE": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today. Wiring the subscription changes live streamer behaviour and is the operator's decision.",
+    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
     "retained_in": "writer calibration/options_stream_frames.persist_frame (+ projection project_book_market_makers), tested against REAL captured frames; evidence today: reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json",
-    "semantics": "NATIVE"
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": ""
    },
    "THEORETICAL_OPTION_VALUE": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today. Wiring the subscription changes live streamer behaviour and is the operator's decision.",
+    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
     "retained_in": "writer calibration/options_stream_frames.persist_frame (+ projection project_book_market_makers), tested against REAL captured frames; evidence today: reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json",
-    "semantics": "NATIVE"
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": ""
    },
    "THETA": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today. Wiring the subscription changes live streamer behaviour and is the operator's decision.",
+    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
     "retained_in": "writer calibration/options_stream_frames.persist_frame (+ projection project_book_market_makers), tested against REAL captured frames; evidence today: reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json",
-    "semantics": "NATIVE"
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": ""
    },
    "TIME_VALUE": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today. Wiring the subscription changes live streamer behaviour and is the operator's decision.",
+    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
     "retained_in": "writer calibration/options_stream_frames.persist_frame (+ projection project_book_market_makers), tested against REAL captured frames; evidence today: reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json",
-    "semantics": "NATIVE"
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": ""
    },
    "TOTAL_VOLUME": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today. Wiring the subscription changes live streamer behaviour and is the operator's decision.",
+    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
     "retained_in": "writer calibration/options_stream_frames.persist_frame (+ projection project_book_market_makers), tested against REAL captured frames; evidence today: reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json",
-    "semantics": "NATIVE"
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": ""
    },
    "TRADE_TIME_MILLIS": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today. Wiring the subscription changes live streamer behaviour and is the operator's decision.",
+    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
     "retained_in": "writer calibration/options_stream_frames.persist_frame (+ projection project_book_market_makers), tested against REAL captured frames; evidence today: reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json",
-    "semantics": "NATIVE"
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": ""
    },
    "UNDERLYING": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today. Wiring the subscription changes live streamer behaviour and is the operator's decision.",
+    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
     "retained_in": "writer calibration/options_stream_frames.persist_frame (+ projection project_book_market_makers), tested against REAL captured frames; evidence today: reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json",
-    "semantics": "NATIVE"
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": ""
    },
    "UNDERLYING_PRICE": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today. Wiring the subscription changes live streamer behaviour and is the operator's decision.",
+    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
     "retained_in": "writer calibration/options_stream_frames.persist_frame (+ projection project_book_market_makers), tested against REAL captured frames; evidence today: reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json",
-    "semantics": "NATIVE"
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": ""
    },
    "UV_EXPIRATION_TYPE": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today. Wiring the subscription changes live streamer behaviour and is the operator's decision.",
+    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
     "retained_in": "writer calibration/options_stream_frames.persist_frame (+ projection project_book_market_makers), tested against REAL captured frames; evidence today: reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json",
-    "semantics": "NATIVE"
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": ""
    },
    "VEGA": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today. Wiring the subscription changes live streamer behaviour and is the operator's decision.",
+    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
     "retained_in": "writer calibration/options_stream_frames.persist_frame (+ projection project_book_market_makers), tested against REAL captured frames; evidence today: reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json",
-    "semantics": "NATIVE"
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": ""
    },
    "VOLATILITY": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today. Wiring the subscription changes live streamer behaviour and is the operator's decision.",
+    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
     "retained_in": "writer calibration/options_stream_frames.persist_frame (+ projection project_book_market_makers), tested against REAL captured frames; evidence today: reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json",
-    "semantics": "NATIVE"
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": ""
    },
    "assetMainType": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today. Wiring the subscription changes live streamer behaviour and is the operator's decision.",
+    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
     "retained_in": "writer calibration/options_stream_frames.persist_frame (+ projection project_book_market_makers), tested against REAL captured frames; evidence today: reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json",
-    "semantics": "NATIVE"
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": ""
    },
    "delayed": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today. Wiring the subscription changes live streamer behaviour and is the operator's decision.",
+    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
     "retained_in": "writer calibration/options_stream_frames.persist_frame (+ projection project_book_market_makers), tested against REAL captured frames; evidence today: reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json",
-    "semantics": "NATIVE"
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": ""
    },
    "key": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today. Wiring the subscription changes live streamer behaviour and is the operator's decision.",
+    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
     "retained_in": "writer calibration/options_stream_frames.persist_frame (+ projection project_book_market_makers), tested against REAL captured frames; evidence today: reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json",
-    "semantics": "NATIVE"
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": ""
    }
   },
   "options_book_frame": {
    "ASKS": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today. Wiring the subscription changes live streamer behaviour and is the operator's decision.",
-    "canonical_name": "Ask side: price levels, each holding the nested participant array",
+    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
+    "canonical_name": "Ask side price levels, each holding the nested participant array",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "calibration.options_stream_frames.project_book_market_makers",
     "reason": "",
     "retained_in": "writer calibration/options_stream_frames.persist_frame (+ projection project_book_market_makers), tested against REAL captured frames; evidence today: reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json",
-    "semantics": "NATIVE"
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": ""
    },
    "BIDS": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today. Wiring the subscription changes live streamer behaviour and is the operator's decision.",
-    "canonical_name": "Bid side: price levels, each holding the nested participant array",
+    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
+    "canonical_name": "Bid side price levels, each holding the nested participant array",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "calibration.options_stream_frames.project_book_market_makers",
     "reason": "",
     "retained_in": "writer calibration/options_stream_frames.persist_frame (+ projection project_book_market_makers), tested against REAL captured frames; evidence today: reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json",
-    "semantics": "NATIVE"
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": ""
    },
    "BOOK_TIME": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today. Wiring the subscription changes live streamer behaviour and is the operator's decision.",
+    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
     "canonical_name": "Market Snapshot Time",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "calibration.options_stream_frames.project_book_market_makers",
     "reason": "",
     "retained_in": "writer calibration/options_stream_frames.persist_frame (+ projection project_book_market_makers), tested against REAL captured frames; evidence today: reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json",
-    "semantics": "NATIVE"
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": ""
    },
    "key": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today. Wiring the subscription changes live streamer behaviour and is the operator's decision.",
+    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
     "canonical_name": "Option symbol (frame key)",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "calibration.options_stream_frames.project_book_market_makers",
     "reason": "",
     "retained_in": "writer calibration/options_stream_frames.persist_frame (+ projection project_book_market_makers), tested against REAL captured frames; evidence today: reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json",
-    "semantics": "NATIVE"
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": ""
    }
   },
   "options_book_market_maker": {
    "ASK_VOLUME": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today. Wiring the subscription changes live streamer behaviour and is the operator's decision.",
+    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
     "canonical_name": "Per-market-maker Size (ask)",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "calibration.options_stream_frames.project_book_market_makers",
     "reason": "",
     "retained_in": "writer calibration/options_stream_frames.persist_frame (+ projection project_book_market_makers), tested against REAL captured frames; evidence today: reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json",
-    "semantics": "NATIVE"
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": ""
    },
    "BID_VOLUME": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today. Wiring the subscription changes live streamer behaviour and is the operator's decision.",
+    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
     "canonical_name": "Per-market-maker Size (bid)",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "calibration.options_stream_frames.project_book_market_makers",
     "reason": "",
     "retained_in": "writer calibration/options_stream_frames.persist_frame (+ projection project_book_market_makers), tested against REAL captured frames; evidence today: reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json",
-    "semantics": "NATIVE"
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": ""
    },
    "EXCHANGE": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today. Wiring the subscription changes live streamer behaviour and is the operator's decision.",
-    "canonical_name": "Market Maker ID",
+    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
+    "canonical_name": "Market Maker ID (vendor documented name; observed values are venue codes)",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "calibration.options_stream_frames.project_book_market_makers",
     "reason": "",
     "retained_in": "writer calibration/options_stream_frames.persist_frame (+ projection project_book_market_makers), tested against REAL captured frames; evidence today: reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json",
-    "semantics": "NATIVE"
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": ""
    },
    "SEQUENCE": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today. Wiring the subscription changes live streamer behaviour and is the operator's decision.",
-    "canonical_name": "Per-market-maker Quote Time (RAW decoder name is SEQUENCE; the repo's first-party Schwab citation names it a quote time and the captured values lag BOOK_TIME by 0-604ms rather than counting - raw value preserved so the question stays answerable from stored bytes)",
+    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
+    "canonical_name": "Per-market-maker Quote Time (RAW decoder name SEQUENCE; vendor doc names it a quote time and captured values lag BOOK_TIME by 0-604ms rather than counting)",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "calibration.options_stream_frames.project_book_market_makers",
     "reason": "",
     "retained_in": "writer calibration/options_stream_frames.persist_frame (+ projection project_book_market_makers), tested against REAL captured frames; evidence today: reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json",
-    "semantics": "NATIVE"
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": ""
    }
   },
   "options_book_price_level": {
    "ASKS": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today. Wiring the subscription changes live streamer behaviour and is the operator's decision.",
-    "canonical_name": "Ask side: price levels, each holding the nested participant array",
+    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
+    "canonical_name": "Ask side price levels, each holding the nested participant array",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "calibration.options_stream_frames.project_book_market_makers",
     "reason": "",
     "retained_in": "writer calibration/options_stream_frames.persist_frame (+ projection project_book_market_makers), tested against REAL captured frames; evidence today: reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json",
-    "semantics": "NATIVE"
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": ""
    },
    "ASK_PRICE": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today. Wiring the subscription changes live streamer behaviour and is the operator's decision.",
+    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
     "canonical_name": "Price level (ask)",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "calibration.options_stream_frames.project_book_market_makers",
     "reason": "",
     "retained_in": "writer calibration/options_stream_frames.persist_frame (+ projection project_book_market_makers), tested against REAL captured frames; evidence today: reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json",
-    "semantics": "NATIVE"
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": ""
    },
    "BIDS": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today. Wiring the subscription changes live streamer behaviour and is the operator's decision.",
-    "canonical_name": "Bid side: price levels, each holding the nested participant array",
+    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
+    "canonical_name": "Bid side price levels, each holding the nested participant array",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "calibration.options_stream_frames.project_book_market_makers",
     "reason": "",
     "retained_in": "writer calibration/options_stream_frames.persist_frame (+ projection project_book_market_makers), tested against REAL captured frames; evidence today: reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json",
-    "semantics": "NATIVE"
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": ""
    },
    "BID_PRICE": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today. Wiring the subscription changes live streamer behaviour and is the operator's decision.",
+    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
     "canonical_name": "Price level (bid)",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "calibration.options_stream_frames.project_book_market_makers",
     "reason": "",
     "retained_in": "writer calibration/options_stream_frames.persist_frame (+ projection project_book_market_makers), tested against REAL captured frames; evidence today: reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json",
-    "semantics": "NATIVE"
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": ""
    },
    "NUM_ASKS": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today. Wiring the subscription changes live streamer behaviour and is the operator's decision.",
+    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
     "canonical_name": "Market Maker Count (ask side)",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "calibration.options_stream_frames.project_book_market_makers",
     "reason": "",
     "retained_in": "writer calibration/options_stream_frames.persist_frame (+ projection project_book_market_makers), tested against REAL captured frames; evidence today: reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json",
-    "semantics": "NATIVE"
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": ""
    },
    "NUM_BIDS": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today. Wiring the subscription changes live streamer behaviour and is the operator's decision.",
+    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
     "canonical_name": "Market Maker Count (bid side)",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "calibration.options_stream_frames.project_book_market_makers",
     "reason": "",
     "retained_in": "writer calibration/options_stream_frames.persist_frame (+ projection project_book_market_makers), tested against REAL captured frames; evidence today: reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json",
-    "semantics": "NATIVE"
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": ""
    },
    "TOTAL_VOLUME": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today. Wiring the subscription changes live streamer behaviour and is the operator's decision.",
+    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
     "canonical_name": "Aggregate size at price level",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "calibration.options_stream_frames.project_book_market_makers",
     "reason": "",
     "retained_in": "writer calibration/options_stream_frames.persist_frame (+ projection project_book_market_makers), tested against REAL captured frames; evidence today: reports/of_capability_probe/options_20260820T1354Z/frames/*_raw.json",
-    "semantics": "NATIVE"
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": ""
    }
   },
   "rest_chain_contract": {
@@ -656,456 +803,570 @@
     "disposition": "RETAINED_RAW_AND_PROJECTED",
     "projection": "server chain window / quote surface",
     "reason": "",
-    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict VERBATIM); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
-    "semantics": "NATIVE"
+    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict stored whole); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": "PER_FETCH (snapshots.option_chain_json, selected expiry, every poll) + ONCE_PER_DAY (wide book)"
    },
    "askSize": {
     "blocked_on": "",
     "disposition": "RETAINED_RAW",
     "projection": "",
     "reason": "",
-    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict VERBATIM); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
-    "semantics": "NATIVE"
+    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict stored whole); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": "PER_FETCH (snapshots.option_chain_json, selected expiry, every poll) + ONCE_PER_DAY (wide book)"
    },
    "bid": {
     "blocked_on": "",
     "disposition": "RETAINED_RAW_AND_PROJECTED",
     "projection": "server chain window / quote surface",
     "reason": "",
-    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict VERBATIM); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
-    "semantics": "NATIVE"
+    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict stored whole); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": "PER_FETCH (snapshots.option_chain_json, selected expiry, every poll) + ONCE_PER_DAY (wide book)"
    },
    "bidAskSize": {
     "blocked_on": "",
     "disposition": "RETAINED_RAW",
     "projection": "",
     "reason": "",
-    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict VERBATIM); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
-    "semantics": "NATIVE"
+    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict stored whole); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": "PER_FETCH (snapshots.option_chain_json, selected expiry, every poll) + ONCE_PER_DAY (wide book)"
    },
    "bidSize": {
     "blocked_on": "",
     "disposition": "RETAINED_RAW",
     "projection": "",
     "reason": "",
-    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict VERBATIM); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
-    "semantics": "NATIVE"
+    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict stored whole); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": "PER_FETCH (snapshots.option_chain_json, selected expiry, every poll) + ONCE_PER_DAY (wide book)"
    },
    "closePrice": {
     "blocked_on": "",
     "disposition": "RETAINED_RAW",
     "projection": "",
     "reason": "",
-    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict VERBATIM); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
-    "semantics": "NATIVE"
+    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict stored whole); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": "PER_FETCH (snapshots.option_chain_json, selected expiry, every poll) + ONCE_PER_DAY (wide book)"
    },
    "daysToExpiration": {
     "blocked_on": "",
     "disposition": "RETAINED_RAW_AND_PROJECTED",
     "projection": "terrain_engine._dte_of; 0DTE gamma share",
     "reason": "",
-    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict VERBATIM); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
-    "semantics": "NATIVE"
+    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict stored whole); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": "PER_FETCH (snapshots.option_chain_json, selected expiry, every poll) + ONCE_PER_DAY (wide book)"
    },
    "deliverableNote": {
     "blocked_on": "",
     "disposition": "RETAINED_RAW",
     "projection": "",
     "reason": "",
-    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict VERBATIM); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
-    "semantics": "NATIVE"
+    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict stored whole); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": "PER_FETCH (snapshots.option_chain_json, selected expiry, every poll) + ONCE_PER_DAY (wide book)"
    },
    "delta": {
     "blocked_on": "",
     "disposition": "RETAINED_RAW_AND_PROJECTED",
     "projection": "math_exposure_core.compute_exposures_by_strike",
     "reason": "",
-    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict VERBATIM); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
-    "semantics": "NATIVE"
+    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict stored whole); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": "PER_FETCH (snapshots.option_chain_json, selected expiry, every poll) + ONCE_PER_DAY (wide book)"
    },
    "description": {
     "blocked_on": "",
     "disposition": "RETAINED_RAW",
     "projection": "",
     "reason": "",
-    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict VERBATIM); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
-    "semantics": "NATIVE"
+    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict stored whole); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": "PER_FETCH (snapshots.option_chain_json, selected expiry, every poll) + ONCE_PER_DAY (wide book)"
    },
    "exchangeName": {
     "blocked_on": "",
     "disposition": "RETAINED_RAW",
     "projection": "",
     "reason": "",
-    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict VERBATIM); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
-    "semantics": "NATIVE"
+    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict stored whole); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": "PER_FETCH (snapshots.option_chain_json, selected expiry, every poll) + ONCE_PER_DAY (wide book)"
    },
    "exerciseType": {
     "blocked_on": "",
     "disposition": "RETAINED_RAW",
     "projection": "",
     "reason": "",
-    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict VERBATIM); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
-    "semantics": "NATIVE"
+    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict stored whole); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": "PER_FETCH (snapshots.option_chain_json, selected expiry, every poll) + ONCE_PER_DAY (wide book)"
    },
    "expirationDate": {
     "blocked_on": "",
     "disposition": "RETAINED_RAW_AND_PROJECTED",
     "projection": "time_et.time_to_expiry_years via _contract_inputs",
     "reason": "",
-    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict VERBATIM); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
-    "semantics": "NATIVE"
+    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict stored whole); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": "PER_FETCH (snapshots.option_chain_json, selected expiry, every poll) + ONCE_PER_DAY (wide book)"
    },
    "expirationType": {
     "blocked_on": "",
     "disposition": "RETAINED_RAW",
     "projection": "",
     "reason": "",
-    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict VERBATIM); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
-    "semantics": "NATIVE"
+    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict stored whole); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": "PER_FETCH (snapshots.option_chain_json, selected expiry, every poll) + ONCE_PER_DAY (wide book)"
    },
    "extrinsicValue": {
     "blocked_on": "",
     "disposition": "RETAINED_RAW",
     "projection": "",
     "reason": "",
-    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict VERBATIM); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
-    "semantics": "NATIVE"
+    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict stored whole); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": "PER_FETCH (snapshots.option_chain_json, selected expiry, every poll) + ONCE_PER_DAY (wide book)"
    },
    "gamma": {
     "blocked_on": "",
     "disposition": "RETAINED_RAW_AND_PROJECTED",
     "projection": "math_exposure_core.compute_exposures_by_strike (vendor gamma, plausibility-gated)",
     "reason": "",
-    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict VERBATIM); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
-    "semantics": "NATIVE"
+    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict stored whole); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": "PER_FETCH (snapshots.option_chain_json, selected expiry, every poll) + ONCE_PER_DAY (wide book)"
    },
    "high52Week": {
     "blocked_on": "",
     "disposition": "RETAINED_RAW",
     "projection": "",
     "reason": "",
-    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict VERBATIM); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
-    "semantics": "NATIVE"
+    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict stored whole); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": "PER_FETCH (snapshots.option_chain_json, selected expiry, every poll) + ONCE_PER_DAY (wide book)"
    },
    "highPrice": {
     "blocked_on": "",
     "disposition": "RETAINED_RAW",
     "projection": "",
     "reason": "",
-    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict VERBATIM); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
-    "semantics": "NATIVE"
+    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict stored whole); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": "PER_FETCH (snapshots.option_chain_json, selected expiry, every poll) + ONCE_PER_DAY (wide book)"
    },
    "inTheMoney": {
     "blocked_on": "",
     "disposition": "RETAINED_RAW",
     "projection": "",
     "reason": "",
-    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict VERBATIM); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
-    "semantics": "NATIVE"
+    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict stored whole); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": "PER_FETCH (snapshots.option_chain_json, selected expiry, every poll) + ONCE_PER_DAY (wide book)"
    },
    "intrinsicValue": {
     "blocked_on": "",
     "disposition": "RETAINED_RAW",
     "projection": "",
     "reason": "",
-    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict VERBATIM); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
-    "semantics": "NATIVE"
+    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict stored whole); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": "PER_FETCH (snapshots.option_chain_json, selected expiry, every poll) + ONCE_PER_DAY (wide book)"
    },
    "last": {
     "blocked_on": "",
     "disposition": "RETAINED_RAW",
     "projection": "",
     "reason": "",
-    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict VERBATIM); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
-    "semantics": "NATIVE"
+    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict stored whole); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": "PER_FETCH (snapshots.option_chain_json, selected expiry, every poll) + ONCE_PER_DAY (wide book)"
    },
    "lastSize": {
     "blocked_on": "",
     "disposition": "RETAINED_RAW",
     "projection": "",
     "reason": "",
-    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict VERBATIM); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
-    "semantics": "NATIVE"
+    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict stored whole); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": "PER_FETCH (snapshots.option_chain_json, selected expiry, every poll) + ONCE_PER_DAY (wide book)"
    },
    "lastTradingDay": {
     "blocked_on": "",
     "disposition": "RETAINED_RAW",
     "projection": "",
     "reason": "",
-    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict VERBATIM); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
-    "semantics": "NATIVE"
+    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict stored whole); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": "PER_FETCH (snapshots.option_chain_json, selected expiry, every poll) + ONCE_PER_DAY (wide book)"
    },
    "low52Week": {
     "blocked_on": "",
     "disposition": "RETAINED_RAW",
     "projection": "",
     "reason": "",
-    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict VERBATIM); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
-    "semantics": "NATIVE"
+    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict stored whole); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": "PER_FETCH (snapshots.option_chain_json, selected expiry, every poll) + ONCE_PER_DAY (wide book)"
    },
    "lowPrice": {
     "blocked_on": "",
     "disposition": "RETAINED_RAW",
     "projection": "",
     "reason": "",
-    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict VERBATIM); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
-    "semantics": "NATIVE"
+    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict stored whole); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": "PER_FETCH (snapshots.option_chain_json, selected expiry, every poll) + ONCE_PER_DAY (wide book)"
    },
    "mark": {
     "blocked_on": "",
     "disposition": "RETAINED_RAW",
     "projection": "",
     "reason": "",
-    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict VERBATIM); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
-    "semantics": "NATIVE"
+    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict stored whole); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": "PER_FETCH (snapshots.option_chain_json, selected expiry, every poll) + ONCE_PER_DAY (wide book)"
    },
    "markChange": {
     "blocked_on": "",
     "disposition": "RETAINED_RAW",
     "projection": "",
     "reason": "",
-    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict VERBATIM); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
-    "semantics": "NATIVE"
+    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict stored whole); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": "PER_FETCH (snapshots.option_chain_json, selected expiry, every poll) + ONCE_PER_DAY (wide book)"
    },
    "markPercentChange": {
     "blocked_on": "",
     "disposition": "RETAINED_RAW",
     "projection": "",
     "reason": "",
-    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict VERBATIM); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
-    "semantics": "NATIVE"
+    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict stored whole); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": "PER_FETCH (snapshots.option_chain_json, selected expiry, every poll) + ONCE_PER_DAY (wide book)"
    },
    "mini": {
     "blocked_on": "",
     "disposition": "RETAINED_RAW",
     "projection": "",
     "reason": "",
-    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict VERBATIM); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
-    "semantics": "NATIVE"
+    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict stored whole); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": "PER_FETCH (snapshots.option_chain_json, selected expiry, every poll) + ONCE_PER_DAY (wide book)"
    },
    "multiplier": {
     "blocked_on": "",
     "disposition": "RETAINED_RAW_AND_PROJECTED",
     "projection": "math_exposure_core; math_levels._contract_inputs",
     "reason": "",
-    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict VERBATIM); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
-    "semantics": "NATIVE"
+    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict stored whole); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": "PER_FETCH (snapshots.option_chain_json, selected expiry, every poll) + ONCE_PER_DAY (wide book)"
    },
    "netChange": {
     "blocked_on": "",
     "disposition": "RETAINED_RAW",
     "projection": "",
     "reason": "",
-    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict VERBATIM); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
-    "semantics": "NATIVE"
+    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict stored whole); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": "PER_FETCH (snapshots.option_chain_json, selected expiry, every poll) + ONCE_PER_DAY (wide book)"
    },
    "nonStandard": {
     "blocked_on": "",
     "disposition": "RETAINED_RAW",
     "projection": "",
     "reason": "",
-    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict VERBATIM); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
-    "semantics": "NATIVE"
+    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict stored whole); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": "PER_FETCH (snapshots.option_chain_json, selected expiry, every poll) + ONCE_PER_DAY (wide book)"
    },
    "openInterest": {
     "blocked_on": "",
     "disposition": "RETAINED_RAW_AND_PROJECTED",
     "projection": "math_exposure_core (require_oi); math_levels._contract_inputs",
     "reason": "",
-    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict VERBATIM); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
-    "semantics": "NATIVE"
+    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict stored whole); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": "PER_FETCH (snapshots.option_chain_json, selected expiry, every poll) + ONCE_PER_DAY (wide book)"
    },
    "openPrice": {
     "blocked_on": "",
     "disposition": "RETAINED_RAW",
     "projection": "",
     "reason": "",
-    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict VERBATIM); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
-    "semantics": "NATIVE"
+    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict stored whole); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": "PER_FETCH (snapshots.option_chain_json, selected expiry, every poll) + ONCE_PER_DAY (wide book)"
    },
    "optionDeliverablesList": {
     "blocked_on": "",
     "disposition": "RETAINED_RAW",
     "projection": "",
     "reason": "",
-    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict VERBATIM); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
-    "semantics": "NATIVE"
+    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict stored whole); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": "PER_FETCH (snapshots.option_chain_json, selected expiry, every poll) + ONCE_PER_DAY (wide book)"
    },
    "optionDeliverablesList.*": {
     "blocked_on": "",
     "disposition": "RETAINED_RAW",
     "projection": "",
     "reason": "",
-    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict VERBATIM); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
-    "semantics": "NATIVE"
+    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict stored whole); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": "PER_FETCH (snapshots.option_chain_json, selected expiry, every poll) + ONCE_PER_DAY (wide book)"
    },
    "optionDeliverablesList.*.assetType": {
     "blocked_on": "",
     "disposition": "RETAINED_RAW",
     "projection": "",
     "reason": "",
-    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict VERBATIM); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
-    "semantics": "NATIVE"
+    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict stored whole); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": "PER_FETCH (snapshots.option_chain_json, selected expiry, every poll) + ONCE_PER_DAY (wide book)"
    },
    "optionDeliverablesList.*.currencyType": {
     "blocked_on": "",
     "disposition": "RETAINED_RAW",
     "projection": "",
     "reason": "",
-    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict VERBATIM); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
-    "semantics": "NATIVE"
+    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict stored whole); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": "PER_FETCH (snapshots.option_chain_json, selected expiry, every poll) + ONCE_PER_DAY (wide book)"
    },
    "optionDeliverablesList.*.deliverableUnits": {
     "blocked_on": "",
     "disposition": "RETAINED_RAW",
     "projection": "",
     "reason": "",
-    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict VERBATIM); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
-    "semantics": "NATIVE"
+    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict stored whole); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": "PER_FETCH (snapshots.option_chain_json, selected expiry, every poll) + ONCE_PER_DAY (wide book)"
    },
    "optionDeliverablesList.*.symbol": {
     "blocked_on": "",
     "disposition": "RETAINED_RAW",
     "projection": "",
     "reason": "",
-    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict VERBATIM); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
-    "semantics": "NATIVE"
+    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict stored whole); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": "PER_FETCH (snapshots.option_chain_json, selected expiry, every poll) + ONCE_PER_DAY (wide book)"
    },
    "optionRoot": {
     "blocked_on": "",
     "disposition": "RETAINED_RAW",
     "projection": "",
     "reason": "",
-    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict VERBATIM); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
-    "semantics": "NATIVE"
+    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict stored whole); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": "PER_FETCH (snapshots.option_chain_json, selected expiry, every poll) + ONCE_PER_DAY (wide book)"
    },
    "pennyPilot": {
     "blocked_on": "",
     "disposition": "RETAINED_RAW",
     "projection": "",
     "reason": "",
-    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict VERBATIM); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
-    "semantics": "NATIVE"
+    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict stored whole); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": "PER_FETCH (snapshots.option_chain_json, selected expiry, every poll) + ONCE_PER_DAY (wide book)"
    },
    "percentChange": {
     "blocked_on": "",
     "disposition": "RETAINED_RAW",
     "projection": "",
     "reason": "",
-    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict VERBATIM); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
-    "semantics": "NATIVE"
+    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict stored whole); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": "PER_FETCH (snapshots.option_chain_json, selected expiry, every poll) + ONCE_PER_DAY (wide book)"
    },
    "putCall": {
     "blocked_on": "",
     "disposition": "RETAINED_RAW_AND_PROJECTED",
     "projection": "math_exposure_core side split",
     "reason": "",
-    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict VERBATIM); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
-    "semantics": "NATIVE"
+    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict stored whole); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": "PER_FETCH (snapshots.option_chain_json, selected expiry, every poll) + ONCE_PER_DAY (wide book)"
    },
    "quoteTimeInLong": {
     "blocked_on": "",
     "disposition": "RETAINED_RAW",
     "projection": "",
     "reason": "",
-    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict VERBATIM); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
-    "semantics": "NATIVE"
+    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict stored whole); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": "PER_FETCH (snapshots.option_chain_json, selected expiry, every poll) + ONCE_PER_DAY (wide book)"
    },
    "rho": {
     "blocked_on": "",
     "disposition": "RETAINED_RAW",
     "projection": "",
     "reason": "",
-    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict VERBATIM); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
-    "semantics": "NATIVE"
+    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict stored whole); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": "PER_FETCH (snapshots.option_chain_json, selected expiry, every poll) + ONCE_PER_DAY (wide book)"
    },
    "settlementType": {
     "blocked_on": "",
     "disposition": "RETAINED_RAW",
     "projection": "",
     "reason": "",
-    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict VERBATIM); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
-    "semantics": "NATIVE"
+    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict stored whole); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": "PER_FETCH (snapshots.option_chain_json, selected expiry, every poll) + ONCE_PER_DAY (wide book)"
    },
    "strikePrice": {
     "blocked_on": "",
     "disposition": "RETAINED_RAW_AND_PROJECTED",
     "projection": "math_exposure_core.compute_exposures_by_strike; math_levels._contract_inputs",
     "reason": "",
-    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict VERBATIM); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
-    "semantics": "NATIVE"
+    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict stored whole); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": "PER_FETCH (snapshots.option_chain_json, selected expiry, every poll) + ONCE_PER_DAY (wide book)"
    },
    "symbol": {
     "blocked_on": "",
     "disposition": "RETAINED_RAW",
     "projection": "",
     "reason": "",
-    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict VERBATIM); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
-    "semantics": "NATIVE"
+    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict stored whole); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": "PER_FETCH (snapshots.option_chain_json, selected expiry, every poll) + ONCE_PER_DAY (wide book)"
    },
    "theoreticalOptionValue": {
     "blocked_on": "",
     "disposition": "RETAINED_RAW",
     "projection": "",
     "reason": "",
-    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict VERBATIM); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
-    "semantics": "NATIVE"
+    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict stored whole); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": "PER_FETCH (snapshots.option_chain_json, selected expiry, every poll) + ONCE_PER_DAY (wide book)"
    },
    "theoreticalVolatility": {
     "blocked_on": "",
     "disposition": "RETAINED_RAW",
     "projection": "",
     "reason": "",
-    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict VERBATIM); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
-    "semantics": "NATIVE"
+    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict stored whole); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": "PER_FETCH (snapshots.option_chain_json, selected expiry, every poll) + ONCE_PER_DAY (wide book)"
    },
    "theta": {
     "blocked_on": "",
     "disposition": "RETAINED_RAW",
     "projection": "",
     "reason": "",
-    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict VERBATIM); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
-    "semantics": "NATIVE"
+    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict stored whole); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": "PER_FETCH (snapshots.option_chain_json, selected expiry, every poll) + ONCE_PER_DAY (wide book)"
    },
    "timeValue": {
     "blocked_on": "",
     "disposition": "RETAINED_RAW",
     "projection": "",
     "reason": "",
-    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict VERBATIM); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
-    "semantics": "NATIVE"
+    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict stored whole); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": "PER_FETCH (snapshots.option_chain_json, selected expiry, every poll) + ONCE_PER_DAY (wide book)"
    },
    "totalVolume": {
     "blocked_on": "",
     "disposition": "RETAINED_RAW_AND_PROJECTED",
     "projection": "math_exposure_core order-flow accumulation",
     "reason": "",
-    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict VERBATIM); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
-    "semantics": "NATIVE"
+    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict stored whole); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": "PER_FETCH (snapshots.option_chain_json, selected expiry, every poll) + ONCE_PER_DAY (wide book)"
    },
    "tradeTimeInLong": {
     "blocked_on": "",
     "disposition": "RETAINED_RAW",
     "projection": "",
     "reason": "",
-    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict VERBATIM); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
-    "semantics": "NATIVE"
+    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict stored whole); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": "PER_FETCH (snapshots.option_chain_json, selected expiry, every poll) + ONCE_PER_DAY (wide book)"
    },
    "vega": {
     "blocked_on": "",
     "disposition": "RETAINED_RAW",
     "projection": "",
     "reason": "",
-    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict VERBATIM); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
-    "semantics": "NATIVE"
+    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict stored whole); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": "PER_FETCH (snapshots.option_chain_json, selected expiry, every poll) + ONCE_PER_DAY (wide book)"
    },
    "volatility": {
     "blocked_on": "",
     "disposition": "RETAINED_RAW_AND_PROJECTED",
     "projection": "math_exposure_core.schwab_iv_to_sigma (the ONE IV conversion authority)",
     "reason": "",
-    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict VERBATIM); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
-    "semantics": "NATIVE"
+    "retained_in": "snapshots.option_chain_json (selected expiry, EVERY poll - contract dict stored whole); option_chain_morning_full.chain_json (wide book, DTE<=37, once daily)",
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": "PER_FETCH (snapshots.option_chain_json, selected expiry, every poll) + ONCE_PER_DAY (wide book)"
    }
   },
   "rest_chain_envelope": {
@@ -1115,7 +1376,9 @@
     "projection": "",
     "reason": "",
     "retained_in": "option_chain_morning_full.chain_envelope_json (NATIVE scalars, written by production)",
-    "semantics": "NATIVE"
+    "retention_gap": "MEASURED 2026-08-26 on the production DB: 4374 snapshots carried a chain envelope in 24h while 3 envelope rows were written that day. These are RESPONSE-SPECIFIC values that can change on every fetch (underlyingPrice, volatility, the whole underlying quote block, and potentially interestRate/dividendYield), so one morning copy is NOT a faithful record of what production received. CLOSING IT means writing the envelope per fetch beside snapshots.option_chain_json - a storage-cost decision on a hot table, deliberately NOT taken unilaterally.",
+    "semantics": "NATIVE",
+    "temporal_grain": "ONCE_PER_TICKER_PER_DAY - RECEIVED_MORE_OFTEN_THAN_RETAINED. Written only by the morning wide capture."
    },
    "assetSubType": {
     "blocked_on": "",
@@ -1123,15 +1386,19 @@
     "projection": "",
     "reason": "",
     "retained_in": "option_chain_morning_full.chain_envelope_json (NATIVE scalars, written by production)",
-    "semantics": "NATIVE"
+    "retention_gap": "MEASURED 2026-08-26 on the production DB: 4374 snapshots carried a chain envelope in 24h while 3 envelope rows were written that day. These are RESPONSE-SPECIFIC values that can change on every fetch (underlyingPrice, volatility, the whole underlying quote block, and potentially interestRate/dividendYield), so one morning copy is NOT a faithful record of what production received. CLOSING IT means writing the envelope per fetch beside snapshots.option_chain_json - a storage-cost decision on a hot table, deliberately NOT taken unilaterally.",
+    "semantics": "NATIVE",
+    "temporal_grain": "ONCE_PER_TICKER_PER_DAY - RECEIVED_MORE_OFTEN_THAN_RETAINED. Written only by the morning wide capture."
    },
    "callExpDateMap": {
     "blocked_on": "",
     "disposition": "DELIBERATELY_EXCLUDED_WITH_PROOF",
     "projection": "",
-    "reason": "PROVEN 2026-08-26 by keyset comparison, not assumed: normalised NATIVE per-contract leaves MINUS persisted contract keyset = 0 missing. The persisted keyset additionally contains breakEven and ssid - vendor fields NEWER than the committed inventory, retained anyway because the contract dict is stored verbatim. The maps ARE the contracts; copying them here would duplicate the payload's bulk and add no field.",
+    "reason": "PROVEN by keyset comparison re-derived 2026-08-26 (n_native=56, n_persisted=58): normalised NATIVE per-contract leaves MINUS persisted contract keyset = 0 missing. The persisted set additionally holds breakEven and ssid - vendor fields NEWER than the committed inventory, retained because the contract dict is stored whole. The maps ARE the contracts; copying them here duplicates the payload's bulk and adds no field. Re-derivable: tests/test_options_contract_keyset_no_loss_v1.py",
     "retained_in": "",
-    "semantics": "NATIVE"
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": ""
    },
    "daysToExpiration": {
     "blocked_on": "",
@@ -1139,7 +1406,9 @@
     "projection": "",
     "reason": "",
     "retained_in": "option_chain_morning_full.chain_envelope_json (NATIVE scalars, written by production)",
-    "semantics": "NATIVE"
+    "retention_gap": "MEASURED 2026-08-26 on the production DB: 4374 snapshots carried a chain envelope in 24h while 3 envelope rows were written that day. These are RESPONSE-SPECIFIC values that can change on every fetch (underlyingPrice, volatility, the whole underlying quote block, and potentially interestRate/dividendYield), so one morning copy is NOT a faithful record of what production received. CLOSING IT means writing the envelope per fetch beside snapshots.option_chain_json - a storage-cost decision on a hot table, deliberately NOT taken unilaterally.",
+    "semantics": "NATIVE",
+    "temporal_grain": "ONCE_PER_TICKER_PER_DAY - RECEIVED_MORE_OFTEN_THAN_RETAINED. Written only by the morning wide capture."
    },
    "dividendYield": {
     "blocked_on": "",
@@ -1147,7 +1416,9 @@
     "projection": "",
     "reason": "",
     "retained_in": "option_chain_morning_full.chain_envelope_json (NATIVE scalars, written by production)",
-    "semantics": "NATIVE"
+    "retention_gap": "MEASURED 2026-08-26 on the production DB: 4374 snapshots carried a chain envelope in 24h while 3 envelope rows were written that day. These are RESPONSE-SPECIFIC values that can change on every fetch (underlyingPrice, volatility, the whole underlying quote block, and potentially interestRate/dividendYield), so one morning copy is NOT a faithful record of what production received. CLOSING IT means writing the envelope per fetch beside snapshots.option_chain_json - a storage-cost decision on a hot table, deliberately NOT taken unilaterally.",
+    "semantics": "NATIVE",
+    "temporal_grain": "ONCE_PER_TICKER_PER_DAY - RECEIVED_MORE_OFTEN_THAN_RETAINED. Written only by the morning wide capture."
    },
    "interestRate": {
     "blocked_on": "",
@@ -1155,7 +1426,9 @@
     "projection": "",
     "reason": "",
     "retained_in": "option_chain_morning_full.chain_envelope_json (NATIVE scalars, written by production)",
-    "semantics": "NATIVE"
+    "retention_gap": "MEASURED 2026-08-26 on the production DB: 4374 snapshots carried a chain envelope in 24h while 3 envelope rows were written that day. These are RESPONSE-SPECIFIC values that can change on every fetch (underlyingPrice, volatility, the whole underlying quote block, and potentially interestRate/dividendYield), so one morning copy is NOT a faithful record of what production received. CLOSING IT means writing the envelope per fetch beside snapshots.option_chain_json - a storage-cost decision on a hot table, deliberately NOT taken unilaterally.",
+    "semantics": "NATIVE",
+    "temporal_grain": "ONCE_PER_TICKER_PER_DAY - RECEIVED_MORE_OFTEN_THAN_RETAINED. Written only by the morning wide capture."
    },
    "interval": {
     "blocked_on": "",
@@ -1163,7 +1436,9 @@
     "projection": "",
     "reason": "",
     "retained_in": "option_chain_morning_full.chain_envelope_json (NATIVE scalars, written by production)",
-    "semantics": "NATIVE"
+    "retention_gap": "MEASURED 2026-08-26 on the production DB: 4374 snapshots carried a chain envelope in 24h while 3 envelope rows were written that day. These are RESPONSE-SPECIFIC values that can change on every fetch (underlyingPrice, volatility, the whole underlying quote block, and potentially interestRate/dividendYield), so one morning copy is NOT a faithful record of what production received. CLOSING IT means writing the envelope per fetch beside snapshots.option_chain_json - a storage-cost decision on a hot table, deliberately NOT taken unilaterally.",
+    "semantics": "NATIVE",
+    "temporal_grain": "ONCE_PER_TICKER_PER_DAY - RECEIVED_MORE_OFTEN_THAN_RETAINED. Written only by the morning wide capture."
    },
    "isChainTruncated": {
     "blocked_on": "",
@@ -1171,7 +1446,9 @@
     "projection": "",
     "reason": "",
     "retained_in": "option_chain_morning_full.chain_envelope_json (NATIVE scalars, written by production)",
-    "semantics": "NATIVE"
+    "retention_gap": "MEASURED 2026-08-26 on the production DB: 4374 snapshots carried a chain envelope in 24h while 3 envelope rows were written that day. These are RESPONSE-SPECIFIC values that can change on every fetch (underlyingPrice, volatility, the whole underlying quote block, and potentially interestRate/dividendYield), so one morning copy is NOT a faithful record of what production received. CLOSING IT means writing the envelope per fetch beside snapshots.option_chain_json - a storage-cost decision on a hot table, deliberately NOT taken unilaterally.",
+    "semantics": "NATIVE",
+    "temporal_grain": "ONCE_PER_TICKER_PER_DAY - RECEIVED_MORE_OFTEN_THAN_RETAINED. Written only by the morning wide capture."
    },
    "isDelayed": {
     "blocked_on": "",
@@ -1179,7 +1456,9 @@
     "projection": "",
     "reason": "",
     "retained_in": "option_chain_morning_full.chain_envelope_json (NATIVE scalars, written by production)",
-    "semantics": "NATIVE"
+    "retention_gap": "MEASURED 2026-08-26 on the production DB: 4374 snapshots carried a chain envelope in 24h while 3 envelope rows were written that day. These are RESPONSE-SPECIFIC values that can change on every fetch (underlyingPrice, volatility, the whole underlying quote block, and potentially interestRate/dividendYield), so one morning copy is NOT a faithful record of what production received. CLOSING IT means writing the envelope per fetch beside snapshots.option_chain_json - a storage-cost decision on a hot table, deliberately NOT taken unilaterally.",
+    "semantics": "NATIVE",
+    "temporal_grain": "ONCE_PER_TICKER_PER_DAY - RECEIVED_MORE_OFTEN_THAN_RETAINED. Written only by the morning wide capture."
    },
    "isIndex": {
     "blocked_on": "",
@@ -1187,7 +1466,9 @@
     "projection": "",
     "reason": "",
     "retained_in": "option_chain_morning_full.chain_envelope_json (NATIVE scalars, written by production)",
-    "semantics": "NATIVE"
+    "retention_gap": "MEASURED 2026-08-26 on the production DB: 4374 snapshots carried a chain envelope in 24h while 3 envelope rows were written that day. These are RESPONSE-SPECIFIC values that can change on every fetch (underlyingPrice, volatility, the whole underlying quote block, and potentially interestRate/dividendYield), so one morning copy is NOT a faithful record of what production received. CLOSING IT means writing the envelope per fetch beside snapshots.option_chain_json - a storage-cost decision on a hot table, deliberately NOT taken unilaterally.",
+    "semantics": "NATIVE",
+    "temporal_grain": "ONCE_PER_TICKER_PER_DAY - RECEIVED_MORE_OFTEN_THAN_RETAINED. Written only by the morning wide capture."
    },
    "numberOfContracts": {
     "blocked_on": "",
@@ -1195,15 +1476,19 @@
     "projection": "",
     "reason": "",
     "retained_in": "option_chain_morning_full.chain_envelope_json (NATIVE scalars, written by production)",
-    "semantics": "NATIVE"
+    "retention_gap": "MEASURED 2026-08-26 on the production DB: 4374 snapshots carried a chain envelope in 24h while 3 envelope rows were written that day. These are RESPONSE-SPECIFIC values that can change on every fetch (underlyingPrice, volatility, the whole underlying quote block, and potentially interestRate/dividendYield), so one morning copy is NOT a faithful record of what production received. CLOSING IT means writing the envelope per fetch beside snapshots.option_chain_json - a storage-cost decision on a hot table, deliberately NOT taken unilaterally.",
+    "semantics": "NATIVE",
+    "temporal_grain": "ONCE_PER_TICKER_PER_DAY - RECEIVED_MORE_OFTEN_THAN_RETAINED. Written only by the morning wide capture."
    },
    "putExpDateMap": {
     "blocked_on": "",
     "disposition": "DELIBERATELY_EXCLUDED_WITH_PROOF",
     "projection": "",
-    "reason": "PROVEN 2026-08-26 by keyset comparison, not assumed: normalised NATIVE per-contract leaves MINUS persisted contract keyset = 0 missing. The persisted keyset additionally contains breakEven and ssid - vendor fields NEWER than the committed inventory, retained anyway because the contract dict is stored verbatim. The maps ARE the contracts; copying them here would duplicate the payload's bulk and add no field.",
+    "reason": "PROVEN by keyset comparison re-derived 2026-08-26 (n_native=56, n_persisted=58): normalised NATIVE per-contract leaves MINUS persisted contract keyset = 0 missing. The persisted set additionally holds breakEven and ssid - vendor fields NEWER than the committed inventory, retained because the contract dict is stored whole. The maps ARE the contracts; copying them here duplicates the payload's bulk and adds no field. Re-derivable: tests/test_options_contract_keyset_no_loss_v1.py",
     "retained_in": "",
-    "semantics": "NATIVE"
+    "retention_gap": "",
+    "semantics": "NATIVE",
+    "temporal_grain": ""
    },
    "status": {
     "blocked_on": "",
@@ -1211,7 +1496,9 @@
     "projection": "",
     "reason": "",
     "retained_in": "option_chain_morning_full.chain_envelope_json (NATIVE scalars, written by production)",
-    "semantics": "NATIVE"
+    "retention_gap": "MEASURED 2026-08-26 on the production DB: 4374 snapshots carried a chain envelope in 24h while 3 envelope rows were written that day. These are RESPONSE-SPECIFIC values that can change on every fetch (underlyingPrice, volatility, the whole underlying quote block, and potentially interestRate/dividendYield), so one morning copy is NOT a faithful record of what production received. CLOSING IT means writing the envelope per fetch beside snapshots.option_chain_json - a storage-cost decision on a hot table, deliberately NOT taken unilaterally.",
+    "semantics": "NATIVE",
+    "temporal_grain": "ONCE_PER_TICKER_PER_DAY - RECEIVED_MORE_OFTEN_THAN_RETAINED. Written only by the morning wide capture."
    },
    "strategy": {
     "blocked_on": "",
@@ -1219,7 +1506,9 @@
     "projection": "",
     "reason": "",
     "retained_in": "option_chain_morning_full.chain_envelope_json (NATIVE scalars, written by production)",
-    "semantics": "NATIVE"
+    "retention_gap": "MEASURED 2026-08-26 on the production DB: 4374 snapshots carried a chain envelope in 24h while 3 envelope rows were written that day. These are RESPONSE-SPECIFIC values that can change on every fetch (underlyingPrice, volatility, the whole underlying quote block, and potentially interestRate/dividendYield), so one morning copy is NOT a faithful record of what production received. CLOSING IT means writing the envelope per fetch beside snapshots.option_chain_json - a storage-cost decision on a hot table, deliberately NOT taken unilaterally.",
+    "semantics": "NATIVE",
+    "temporal_grain": "ONCE_PER_TICKER_PER_DAY - RECEIVED_MORE_OFTEN_THAN_RETAINED. Written only by the morning wide capture."
    },
    "symbol": {
     "blocked_on": "",
@@ -1227,7 +1516,9 @@
     "projection": "",
     "reason": "",
     "retained_in": "option_chain_morning_full.chain_envelope_json (NATIVE scalars, written by production)",
-    "semantics": "NATIVE"
+    "retention_gap": "MEASURED 2026-08-26 on the production DB: 4374 snapshots carried a chain envelope in 24h while 3 envelope rows were written that day. These are RESPONSE-SPECIFIC values that can change on every fetch (underlyingPrice, volatility, the whole underlying quote block, and potentially interestRate/dividendYield), so one morning copy is NOT a faithful record of what production received. CLOSING IT means writing the envelope per fetch beside snapshots.option_chain_json - a storage-cost decision on a hot table, deliberately NOT taken unilaterally.",
+    "semantics": "NATIVE",
+    "temporal_grain": "ONCE_PER_TICKER_PER_DAY - RECEIVED_MORE_OFTEN_THAN_RETAINED. Written only by the morning wide capture."
    },
    "underlying": {
     "blocked_on": "",
@@ -1235,7 +1526,9 @@
     "projection": "",
     "reason": "",
     "retained_in": "option_chain_morning_full.chain_envelope_json (NATIVE scalars, written by production)",
-    "semantics": "NATIVE"
+    "retention_gap": "MEASURED 2026-08-26 on the production DB: 4374 snapshots carried a chain envelope in 24h while 3 envelope rows were written that day. These are RESPONSE-SPECIFIC values that can change on every fetch (underlyingPrice, volatility, the whole underlying quote block, and potentially interestRate/dividendYield), so one morning copy is NOT a faithful record of what production received. CLOSING IT means writing the envelope per fetch beside snapshots.option_chain_json - a storage-cost decision on a hot table, deliberately NOT taken unilaterally.",
+    "semantics": "NATIVE",
+    "temporal_grain": "ONCE_PER_TICKER_PER_DAY - RECEIVED_MORE_OFTEN_THAN_RETAINED. Written only by the morning wide capture."
    },
    "underlyingPrice": {
     "blocked_on": "",
@@ -1243,7 +1536,9 @@
     "projection": "",
     "reason": "",
     "retained_in": "option_chain_morning_full.chain_envelope_json (NATIVE scalars, written by production)",
-    "semantics": "NATIVE"
+    "retention_gap": "MEASURED 2026-08-26 on the production DB: 4374 snapshots carried a chain envelope in 24h while 3 envelope rows were written that day. These are RESPONSE-SPECIFIC values that can change on every fetch (underlyingPrice, volatility, the whole underlying quote block, and potentially interestRate/dividendYield), so one morning copy is NOT a faithful record of what production received. CLOSING IT means writing the envelope per fetch beside snapshots.option_chain_json - a storage-cost decision on a hot table, deliberately NOT taken unilaterally.",
+    "semantics": "NATIVE",
+    "temporal_grain": "ONCE_PER_TICKER_PER_DAY - RECEIVED_MORE_OFTEN_THAN_RETAINED. Written only by the morning wide capture."
    },
    "volatility": {
     "blocked_on": "",
@@ -1251,7 +1546,9 @@
     "projection": "",
     "reason": "",
     "retained_in": "option_chain_morning_full.chain_envelope_json (NATIVE scalars, written by production)",
-    "semantics": "NATIVE"
+    "retention_gap": "MEASURED 2026-08-26 on the production DB: 4374 snapshots carried a chain envelope in 24h while 3 envelope rows were written that day. These are RESPONSE-SPECIFIC values that can change on every fetch (underlyingPrice, volatility, the whole underlying quote block, and potentially interestRate/dividendYield), so one morning copy is NOT a faithful record of what production received. CLOSING IT means writing the envelope per fetch beside snapshots.option_chain_json - a storage-cost decision on a hot table, deliberately NOT taken unilaterally.",
+    "semantics": "NATIVE",
+    "temporal_grain": "ONCE_PER_TICKER_PER_DAY - RECEIVED_MORE_OFTEN_THAN_RETAINED. Written only by the morning wide capture."
    }
   },
   "rest_chain_underlying": {
@@ -1260,184 +1557,230 @@
     "disposition": "RETAINED_RAW",
     "projection": "",
     "reason": "",
-    "retained_in": "option_chain_morning_full.chain_envelope_json -> `underlying` object retained WHOLE. The object is stored unflattened so every leaf survives; the leaf is censused INDIVIDUALLY here because raw retention justifies a disposition, never an omission.",
-    "semantics": "NATIVE"
+    "retained_in": "option_chain_morning_full.chain_envelope_json -> `underlying` object retained WHOLE and unflattened; each leaf is censused individually because raw retention justifies a disposition, never an omission",
+    "retention_gap": "MEASURED 2026-08-26 on the production DB: 4374 snapshots carried a chain envelope in 24h while 3 envelope rows were written that day. These are RESPONSE-SPECIFIC values that can change on every fetch (underlyingPrice, volatility, the whole underlying quote block, and potentially interestRate/dividendYield), so one morning copy is NOT a faithful record of what production received. CLOSING IT means writing the envelope per fetch beside snapshots.option_chain_json - a storage-cost decision on a hot table, deliberately NOT taken unilaterally.",
+    "semantics": "NATIVE",
+    "temporal_grain": "ONCE_PER_TICKER_PER_DAY - RECEIVED_MORE_OFTEN_THAN_RETAINED. Written only by the morning wide capture."
    },
    "askSize": {
     "blocked_on": "",
     "disposition": "RETAINED_RAW",
     "projection": "",
     "reason": "",
-    "retained_in": "option_chain_morning_full.chain_envelope_json -> `underlying` object retained WHOLE. The object is stored unflattened so every leaf survives; the leaf is censused INDIVIDUALLY here because raw retention justifies a disposition, never an omission.",
-    "semantics": "NATIVE"
+    "retained_in": "option_chain_morning_full.chain_envelope_json -> `underlying` object retained WHOLE and unflattened; each leaf is censused individually because raw retention justifies a disposition, never an omission",
+    "retention_gap": "MEASURED 2026-08-26 on the production DB: 4374 snapshots carried a chain envelope in 24h while 3 envelope rows were written that day. These are RESPONSE-SPECIFIC values that can change on every fetch (underlyingPrice, volatility, the whole underlying quote block, and potentially interestRate/dividendYield), so one morning copy is NOT a faithful record of what production received. CLOSING IT means writing the envelope per fetch beside snapshots.option_chain_json - a storage-cost decision on a hot table, deliberately NOT taken unilaterally.",
+    "semantics": "NATIVE",
+    "temporal_grain": "ONCE_PER_TICKER_PER_DAY - RECEIVED_MORE_OFTEN_THAN_RETAINED. Written only by the morning wide capture."
    },
    "bid": {
     "blocked_on": "",
     "disposition": "RETAINED_RAW",
     "projection": "",
     "reason": "",
-    "retained_in": "option_chain_morning_full.chain_envelope_json -> `underlying` object retained WHOLE. The object is stored unflattened so every leaf survives; the leaf is censused INDIVIDUALLY here because raw retention justifies a disposition, never an omission.",
-    "semantics": "NATIVE"
+    "retained_in": "option_chain_morning_full.chain_envelope_json -> `underlying` object retained WHOLE and unflattened; each leaf is censused individually because raw retention justifies a disposition, never an omission",
+    "retention_gap": "MEASURED 2026-08-26 on the production DB: 4374 snapshots carried a chain envelope in 24h while 3 envelope rows were written that day. These are RESPONSE-SPECIFIC values that can change on every fetch (underlyingPrice, volatility, the whole underlying quote block, and potentially interestRate/dividendYield), so one morning copy is NOT a faithful record of what production received. CLOSING IT means writing the envelope per fetch beside snapshots.option_chain_json - a storage-cost decision on a hot table, deliberately NOT taken unilaterally.",
+    "semantics": "NATIVE",
+    "temporal_grain": "ONCE_PER_TICKER_PER_DAY - RECEIVED_MORE_OFTEN_THAN_RETAINED. Written only by the morning wide capture."
    },
    "bidSize": {
     "blocked_on": "",
     "disposition": "RETAINED_RAW",
     "projection": "",
     "reason": "",
-    "retained_in": "option_chain_morning_full.chain_envelope_json -> `underlying` object retained WHOLE. The object is stored unflattened so every leaf survives; the leaf is censused INDIVIDUALLY here because raw retention justifies a disposition, never an omission.",
-    "semantics": "NATIVE"
+    "retained_in": "option_chain_morning_full.chain_envelope_json -> `underlying` object retained WHOLE and unflattened; each leaf is censused individually because raw retention justifies a disposition, never an omission",
+    "retention_gap": "MEASURED 2026-08-26 on the production DB: 4374 snapshots carried a chain envelope in 24h while 3 envelope rows were written that day. These are RESPONSE-SPECIFIC values that can change on every fetch (underlyingPrice, volatility, the whole underlying quote block, and potentially interestRate/dividendYield), so one morning copy is NOT a faithful record of what production received. CLOSING IT means writing the envelope per fetch beside snapshots.option_chain_json - a storage-cost decision on a hot table, deliberately NOT taken unilaterally.",
+    "semantics": "NATIVE",
+    "temporal_grain": "ONCE_PER_TICKER_PER_DAY - RECEIVED_MORE_OFTEN_THAN_RETAINED. Written only by the morning wide capture."
    },
    "change": {
     "blocked_on": "",
     "disposition": "RETAINED_RAW",
     "projection": "",
     "reason": "",
-    "retained_in": "option_chain_morning_full.chain_envelope_json -> `underlying` object retained WHOLE. The object is stored unflattened so every leaf survives; the leaf is censused INDIVIDUALLY here because raw retention justifies a disposition, never an omission.",
-    "semantics": "NATIVE"
+    "retained_in": "option_chain_morning_full.chain_envelope_json -> `underlying` object retained WHOLE and unflattened; each leaf is censused individually because raw retention justifies a disposition, never an omission",
+    "retention_gap": "MEASURED 2026-08-26 on the production DB: 4374 snapshots carried a chain envelope in 24h while 3 envelope rows were written that day. These are RESPONSE-SPECIFIC values that can change on every fetch (underlyingPrice, volatility, the whole underlying quote block, and potentially interestRate/dividendYield), so one morning copy is NOT a faithful record of what production received. CLOSING IT means writing the envelope per fetch beside snapshots.option_chain_json - a storage-cost decision on a hot table, deliberately NOT taken unilaterally.",
+    "semantics": "NATIVE",
+    "temporal_grain": "ONCE_PER_TICKER_PER_DAY - RECEIVED_MORE_OFTEN_THAN_RETAINED. Written only by the morning wide capture."
    },
    "close": {
     "blocked_on": "",
     "disposition": "RETAINED_RAW",
     "projection": "",
     "reason": "",
-    "retained_in": "option_chain_morning_full.chain_envelope_json -> `underlying` object retained WHOLE. The object is stored unflattened so every leaf survives; the leaf is censused INDIVIDUALLY here because raw retention justifies a disposition, never an omission.",
-    "semantics": "NATIVE"
+    "retained_in": "option_chain_morning_full.chain_envelope_json -> `underlying` object retained WHOLE and unflattened; each leaf is censused individually because raw retention justifies a disposition, never an omission",
+    "retention_gap": "MEASURED 2026-08-26 on the production DB: 4374 snapshots carried a chain envelope in 24h while 3 envelope rows were written that day. These are RESPONSE-SPECIFIC values that can change on every fetch (underlyingPrice, volatility, the whole underlying quote block, and potentially interestRate/dividendYield), so one morning copy is NOT a faithful record of what production received. CLOSING IT means writing the envelope per fetch beside snapshots.option_chain_json - a storage-cost decision on a hot table, deliberately NOT taken unilaterally.",
+    "semantics": "NATIVE",
+    "temporal_grain": "ONCE_PER_TICKER_PER_DAY - RECEIVED_MORE_OFTEN_THAN_RETAINED. Written only by the morning wide capture."
    },
    "delayed": {
     "blocked_on": "",
     "disposition": "RETAINED_RAW",
     "projection": "",
     "reason": "",
-    "retained_in": "option_chain_morning_full.chain_envelope_json -> `underlying` object retained WHOLE. The object is stored unflattened so every leaf survives; the leaf is censused INDIVIDUALLY here because raw retention justifies a disposition, never an omission.",
-    "semantics": "NATIVE"
+    "retained_in": "option_chain_morning_full.chain_envelope_json -> `underlying` object retained WHOLE and unflattened; each leaf is censused individually because raw retention justifies a disposition, never an omission",
+    "retention_gap": "MEASURED 2026-08-26 on the production DB: 4374 snapshots carried a chain envelope in 24h while 3 envelope rows were written that day. These are RESPONSE-SPECIFIC values that can change on every fetch (underlyingPrice, volatility, the whole underlying quote block, and potentially interestRate/dividendYield), so one morning copy is NOT a faithful record of what production received. CLOSING IT means writing the envelope per fetch beside snapshots.option_chain_json - a storage-cost decision on a hot table, deliberately NOT taken unilaterally.",
+    "semantics": "NATIVE",
+    "temporal_grain": "ONCE_PER_TICKER_PER_DAY - RECEIVED_MORE_OFTEN_THAN_RETAINED. Written only by the morning wide capture."
    },
    "description": {
     "blocked_on": "",
     "disposition": "RETAINED_RAW",
     "projection": "",
     "reason": "",
-    "retained_in": "option_chain_morning_full.chain_envelope_json -> `underlying` object retained WHOLE. The object is stored unflattened so every leaf survives; the leaf is censused INDIVIDUALLY here because raw retention justifies a disposition, never an omission.",
-    "semantics": "NATIVE"
+    "retained_in": "option_chain_morning_full.chain_envelope_json -> `underlying` object retained WHOLE and unflattened; each leaf is censused individually because raw retention justifies a disposition, never an omission",
+    "retention_gap": "MEASURED 2026-08-26 on the production DB: 4374 snapshots carried a chain envelope in 24h while 3 envelope rows were written that day. These are RESPONSE-SPECIFIC values that can change on every fetch (underlyingPrice, volatility, the whole underlying quote block, and potentially interestRate/dividendYield), so one morning copy is NOT a faithful record of what production received. CLOSING IT means writing the envelope per fetch beside snapshots.option_chain_json - a storage-cost decision on a hot table, deliberately NOT taken unilaterally.",
+    "semantics": "NATIVE",
+    "temporal_grain": "ONCE_PER_TICKER_PER_DAY - RECEIVED_MORE_OFTEN_THAN_RETAINED. Written only by the morning wide capture."
    },
    "exchangeName": {
     "blocked_on": "",
     "disposition": "RETAINED_RAW",
     "projection": "",
     "reason": "",
-    "retained_in": "option_chain_morning_full.chain_envelope_json -> `underlying` object retained WHOLE. The object is stored unflattened so every leaf survives; the leaf is censused INDIVIDUALLY here because raw retention justifies a disposition, never an omission.",
-    "semantics": "NATIVE"
+    "retained_in": "option_chain_morning_full.chain_envelope_json -> `underlying` object retained WHOLE and unflattened; each leaf is censused individually because raw retention justifies a disposition, never an omission",
+    "retention_gap": "MEASURED 2026-08-26 on the production DB: 4374 snapshots carried a chain envelope in 24h while 3 envelope rows were written that day. These are RESPONSE-SPECIFIC values that can change on every fetch (underlyingPrice, volatility, the whole underlying quote block, and potentially interestRate/dividendYield), so one morning copy is NOT a faithful record of what production received. CLOSING IT means writing the envelope per fetch beside snapshots.option_chain_json - a storage-cost decision on a hot table, deliberately NOT taken unilaterally.",
+    "semantics": "NATIVE",
+    "temporal_grain": "ONCE_PER_TICKER_PER_DAY - RECEIVED_MORE_OFTEN_THAN_RETAINED. Written only by the morning wide capture."
    },
    "fiftyTwoWeekHigh": {
     "blocked_on": "",
     "disposition": "RETAINED_RAW",
     "projection": "",
     "reason": "",
-    "retained_in": "option_chain_morning_full.chain_envelope_json -> `underlying` object retained WHOLE. The object is stored unflattened so every leaf survives; the leaf is censused INDIVIDUALLY here because raw retention justifies a disposition, never an omission.",
-    "semantics": "NATIVE"
+    "retained_in": "option_chain_morning_full.chain_envelope_json -> `underlying` object retained WHOLE and unflattened; each leaf is censused individually because raw retention justifies a disposition, never an omission",
+    "retention_gap": "MEASURED 2026-08-26 on the production DB: 4374 snapshots carried a chain envelope in 24h while 3 envelope rows were written that day. These are RESPONSE-SPECIFIC values that can change on every fetch (underlyingPrice, volatility, the whole underlying quote block, and potentially interestRate/dividendYield), so one morning copy is NOT a faithful record of what production received. CLOSING IT means writing the envelope per fetch beside snapshots.option_chain_json - a storage-cost decision on a hot table, deliberately NOT taken unilaterally.",
+    "semantics": "NATIVE",
+    "temporal_grain": "ONCE_PER_TICKER_PER_DAY - RECEIVED_MORE_OFTEN_THAN_RETAINED. Written only by the morning wide capture."
    },
    "fiftyTwoWeekLow": {
     "blocked_on": "",
     "disposition": "RETAINED_RAW",
     "projection": "",
     "reason": "",
-    "retained_in": "option_chain_morning_full.chain_envelope_json -> `underlying` object retained WHOLE. The object is stored unflattened so every leaf survives; the leaf is censused INDIVIDUALLY here because raw retention justifies a disposition, never an omission.",
-    "semantics": "NATIVE"
+    "retained_in": "option_chain_morning_full.chain_envelope_json -> `underlying` object retained WHOLE and unflattened; each leaf is censused individually because raw retention justifies a disposition, never an omission",
+    "retention_gap": "MEASURED 2026-08-26 on the production DB: 4374 snapshots carried a chain envelope in 24h while 3 envelope rows were written that day. These are RESPONSE-SPECIFIC values that can change on every fetch (underlyingPrice, volatility, the whole underlying quote block, and potentially interestRate/dividendYield), so one morning copy is NOT a faithful record of what production received. CLOSING IT means writing the envelope per fetch beside snapshots.option_chain_json - a storage-cost decision on a hot table, deliberately NOT taken unilaterally.",
+    "semantics": "NATIVE",
+    "temporal_grain": "ONCE_PER_TICKER_PER_DAY - RECEIVED_MORE_OFTEN_THAN_RETAINED. Written only by the morning wide capture."
    },
    "highPrice": {
     "blocked_on": "",
     "disposition": "RETAINED_RAW",
     "projection": "",
     "reason": "",
-    "retained_in": "option_chain_morning_full.chain_envelope_json -> `underlying` object retained WHOLE. The object is stored unflattened so every leaf survives; the leaf is censused INDIVIDUALLY here because raw retention justifies a disposition, never an omission.",
-    "semantics": "NATIVE"
+    "retained_in": "option_chain_morning_full.chain_envelope_json -> `underlying` object retained WHOLE and unflattened; each leaf is censused individually because raw retention justifies a disposition, never an omission",
+    "retention_gap": "MEASURED 2026-08-26 on the production DB: 4374 snapshots carried a chain envelope in 24h while 3 envelope rows were written that day. These are RESPONSE-SPECIFIC values that can change on every fetch (underlyingPrice, volatility, the whole underlying quote block, and potentially interestRate/dividendYield), so one morning copy is NOT a faithful record of what production received. CLOSING IT means writing the envelope per fetch beside snapshots.option_chain_json - a storage-cost decision on a hot table, deliberately NOT taken unilaterally.",
+    "semantics": "NATIVE",
+    "temporal_grain": "ONCE_PER_TICKER_PER_DAY - RECEIVED_MORE_OFTEN_THAN_RETAINED. Written only by the morning wide capture."
    },
    "last": {
     "blocked_on": "",
     "disposition": "RETAINED_RAW",
     "projection": "",
     "reason": "",
-    "retained_in": "option_chain_morning_full.chain_envelope_json -> `underlying` object retained WHOLE. The object is stored unflattened so every leaf survives; the leaf is censused INDIVIDUALLY here because raw retention justifies a disposition, never an omission.",
-    "semantics": "NATIVE"
+    "retained_in": "option_chain_morning_full.chain_envelope_json -> `underlying` object retained WHOLE and unflattened; each leaf is censused individually because raw retention justifies a disposition, never an omission",
+    "retention_gap": "MEASURED 2026-08-26 on the production DB: 4374 snapshots carried a chain envelope in 24h while 3 envelope rows were written that day. These are RESPONSE-SPECIFIC values that can change on every fetch (underlyingPrice, volatility, the whole underlying quote block, and potentially interestRate/dividendYield), so one morning copy is NOT a faithful record of what production received. CLOSING IT means writing the envelope per fetch beside snapshots.option_chain_json - a storage-cost decision on a hot table, deliberately NOT taken unilaterally.",
+    "semantics": "NATIVE",
+    "temporal_grain": "ONCE_PER_TICKER_PER_DAY - RECEIVED_MORE_OFTEN_THAN_RETAINED. Written only by the morning wide capture."
    },
    "lowPrice": {
     "blocked_on": "",
     "disposition": "RETAINED_RAW",
     "projection": "",
     "reason": "",
-    "retained_in": "option_chain_morning_full.chain_envelope_json -> `underlying` object retained WHOLE. The object is stored unflattened so every leaf survives; the leaf is censused INDIVIDUALLY here because raw retention justifies a disposition, never an omission.",
-    "semantics": "NATIVE"
+    "retained_in": "option_chain_morning_full.chain_envelope_json -> `underlying` object retained WHOLE and unflattened; each leaf is censused individually because raw retention justifies a disposition, never an omission",
+    "retention_gap": "MEASURED 2026-08-26 on the production DB: 4374 snapshots carried a chain envelope in 24h while 3 envelope rows were written that day. These are RESPONSE-SPECIFIC values that can change on every fetch (underlyingPrice, volatility, the whole underlying quote block, and potentially interestRate/dividendYield), so one morning copy is NOT a faithful record of what production received. CLOSING IT means writing the envelope per fetch beside snapshots.option_chain_json - a storage-cost decision on a hot table, deliberately NOT taken unilaterally.",
+    "semantics": "NATIVE",
+    "temporal_grain": "ONCE_PER_TICKER_PER_DAY - RECEIVED_MORE_OFTEN_THAN_RETAINED. Written only by the morning wide capture."
    },
    "mark": {
     "blocked_on": "",
     "disposition": "RETAINED_RAW",
     "projection": "",
     "reason": "",
-    "retained_in": "option_chain_morning_full.chain_envelope_json -> `underlying` object retained WHOLE. The object is stored unflattened so every leaf survives; the leaf is censused INDIVIDUALLY here because raw retention justifies a disposition, never an omission.",
-    "semantics": "NATIVE"
+    "retained_in": "option_chain_morning_full.chain_envelope_json -> `underlying` object retained WHOLE and unflattened; each leaf is censused individually because raw retention justifies a disposition, never an omission",
+    "retention_gap": "MEASURED 2026-08-26 on the production DB: 4374 snapshots carried a chain envelope in 24h while 3 envelope rows were written that day. These are RESPONSE-SPECIFIC values that can change on every fetch (underlyingPrice, volatility, the whole underlying quote block, and potentially interestRate/dividendYield), so one morning copy is NOT a faithful record of what production received. CLOSING IT means writing the envelope per fetch beside snapshots.option_chain_json - a storage-cost decision on a hot table, deliberately NOT taken unilaterally.",
+    "semantics": "NATIVE",
+    "temporal_grain": "ONCE_PER_TICKER_PER_DAY - RECEIVED_MORE_OFTEN_THAN_RETAINED. Written only by the morning wide capture."
    },
    "markChange": {
     "blocked_on": "",
     "disposition": "RETAINED_RAW",
     "projection": "",
     "reason": "",
-    "retained_in": "option_chain_morning_full.chain_envelope_json -> `underlying` object retained WHOLE. The object is stored unflattened so every leaf survives; the leaf is censused INDIVIDUALLY here because raw retention justifies a disposition, never an omission.",
-    "semantics": "NATIVE"
+    "retained_in": "option_chain_morning_full.chain_envelope_json -> `underlying` object retained WHOLE and unflattened; each leaf is censused individually because raw retention justifies a disposition, never an omission",
+    "retention_gap": "MEASURED 2026-08-26 on the production DB: 4374 snapshots carried a chain envelope in 24h while 3 envelope rows were written that day. These are RESPONSE-SPECIFIC values that can change on every fetch (underlyingPrice, volatility, the whole underlying quote block, and potentially interestRate/dividendYield), so one morning copy is NOT a faithful record of what production received. CLOSING IT means writing the envelope per fetch beside snapshots.option_chain_json - a storage-cost decision on a hot table, deliberately NOT taken unilaterally.",
+    "semantics": "NATIVE",
+    "temporal_grain": "ONCE_PER_TICKER_PER_DAY - RECEIVED_MORE_OFTEN_THAN_RETAINED. Written only by the morning wide capture."
    },
    "markPercentChange": {
     "blocked_on": "",
     "disposition": "RETAINED_RAW",
     "projection": "",
     "reason": "",
-    "retained_in": "option_chain_morning_full.chain_envelope_json -> `underlying` object retained WHOLE. The object is stored unflattened so every leaf survives; the leaf is censused INDIVIDUALLY here because raw retention justifies a disposition, never an omission.",
-    "semantics": "NATIVE"
+    "retained_in": "option_chain_morning_full.chain_envelope_json -> `underlying` object retained WHOLE and unflattened; each leaf is censused individually because raw retention justifies a disposition, never an omission",
+    "retention_gap": "MEASURED 2026-08-26 on the production DB: 4374 snapshots carried a chain envelope in 24h while 3 envelope rows were written that day. These are RESPONSE-SPECIFIC values that can change on every fetch (underlyingPrice, volatility, the whole underlying quote block, and potentially interestRate/dividendYield), so one morning copy is NOT a faithful record of what production received. CLOSING IT means writing the envelope per fetch beside snapshots.option_chain_json - a storage-cost decision on a hot table, deliberately NOT taken unilaterally.",
+    "semantics": "NATIVE",
+    "temporal_grain": "ONCE_PER_TICKER_PER_DAY - RECEIVED_MORE_OFTEN_THAN_RETAINED. Written only by the morning wide capture."
    },
    "openPrice": {
     "blocked_on": "",
     "disposition": "RETAINED_RAW",
     "projection": "",
     "reason": "",
-    "retained_in": "option_chain_morning_full.chain_envelope_json -> `underlying` object retained WHOLE. The object is stored unflattened so every leaf survives; the leaf is censused INDIVIDUALLY here because raw retention justifies a disposition, never an omission.",
-    "semantics": "NATIVE"
+    "retained_in": "option_chain_morning_full.chain_envelope_json -> `underlying` object retained WHOLE and unflattened; each leaf is censused individually because raw retention justifies a disposition, never an omission",
+    "retention_gap": "MEASURED 2026-08-26 on the production DB: 4374 snapshots carried a chain envelope in 24h while 3 envelope rows were written that day. These are RESPONSE-SPECIFIC values that can change on every fetch (underlyingPrice, volatility, the whole underlying quote block, and potentially interestRate/dividendYield), so one morning copy is NOT a faithful record of what production received. CLOSING IT means writing the envelope per fetch beside snapshots.option_chain_json - a storage-cost decision on a hot table, deliberately NOT taken unilaterally.",
+    "semantics": "NATIVE",
+    "temporal_grain": "ONCE_PER_TICKER_PER_DAY - RECEIVED_MORE_OFTEN_THAN_RETAINED. Written only by the morning wide capture."
    },
    "percentChange": {
     "blocked_on": "",
     "disposition": "RETAINED_RAW",
     "projection": "",
     "reason": "",
-    "retained_in": "option_chain_morning_full.chain_envelope_json -> `underlying` object retained WHOLE. The object is stored unflattened so every leaf survives; the leaf is censused INDIVIDUALLY here because raw retention justifies a disposition, never an omission.",
-    "semantics": "NATIVE"
+    "retained_in": "option_chain_morning_full.chain_envelope_json -> `underlying` object retained WHOLE and unflattened; each leaf is censused individually because raw retention justifies a disposition, never an omission",
+    "retention_gap": "MEASURED 2026-08-26 on the production DB: 4374 snapshots carried a chain envelope in 24h while 3 envelope rows were written that day. These are RESPONSE-SPECIFIC values that can change on every fetch (underlyingPrice, volatility, the whole underlying quote block, and potentially interestRate/dividendYield), so one morning copy is NOT a faithful record of what production received. CLOSING IT means writing the envelope per fetch beside snapshots.option_chain_json - a storage-cost decision on a hot table, deliberately NOT taken unilaterally.",
+    "semantics": "NATIVE",
+    "temporal_grain": "ONCE_PER_TICKER_PER_DAY - RECEIVED_MORE_OFTEN_THAN_RETAINED. Written only by the morning wide capture."
    },
    "quoteTime": {
     "blocked_on": "",
     "disposition": "RETAINED_RAW",
     "projection": "",
     "reason": "",
-    "retained_in": "option_chain_morning_full.chain_envelope_json -> `underlying` object retained WHOLE. The object is stored unflattened so every leaf survives; the leaf is censused INDIVIDUALLY here because raw retention justifies a disposition, never an omission.",
-    "semantics": "NATIVE"
+    "retained_in": "option_chain_morning_full.chain_envelope_json -> `underlying` object retained WHOLE and unflattened; each leaf is censused individually because raw retention justifies a disposition, never an omission",
+    "retention_gap": "MEASURED 2026-08-26 on the production DB: 4374 snapshots carried a chain envelope in 24h while 3 envelope rows were written that day. These are RESPONSE-SPECIFIC values that can change on every fetch (underlyingPrice, volatility, the whole underlying quote block, and potentially interestRate/dividendYield), so one morning copy is NOT a faithful record of what production received. CLOSING IT means writing the envelope per fetch beside snapshots.option_chain_json - a storage-cost decision on a hot table, deliberately NOT taken unilaterally.",
+    "semantics": "NATIVE",
+    "temporal_grain": "ONCE_PER_TICKER_PER_DAY - RECEIVED_MORE_OFTEN_THAN_RETAINED. Written only by the morning wide capture."
    },
    "symbol": {
     "blocked_on": "",
     "disposition": "RETAINED_RAW",
     "projection": "",
     "reason": "",
-    "retained_in": "option_chain_morning_full.chain_envelope_json -> `underlying` object retained WHOLE. The object is stored unflattened so every leaf survives; the leaf is censused INDIVIDUALLY here because raw retention justifies a disposition, never an omission.",
-    "semantics": "NATIVE"
+    "retained_in": "option_chain_morning_full.chain_envelope_json -> `underlying` object retained WHOLE and unflattened; each leaf is censused individually because raw retention justifies a disposition, never an omission",
+    "retention_gap": "MEASURED 2026-08-26 on the production DB: 4374 snapshots carried a chain envelope in 24h while 3 envelope rows were written that day. These are RESPONSE-SPECIFIC values that can change on every fetch (underlyingPrice, volatility, the whole underlying quote block, and potentially interestRate/dividendYield), so one morning copy is NOT a faithful record of what production received. CLOSING IT means writing the envelope per fetch beside snapshots.option_chain_json - a storage-cost decision on a hot table, deliberately NOT taken unilaterally.",
+    "semantics": "NATIVE",
+    "temporal_grain": "ONCE_PER_TICKER_PER_DAY - RECEIVED_MORE_OFTEN_THAN_RETAINED. Written only by the morning wide capture."
    },
    "totalVolume": {
     "blocked_on": "",
     "disposition": "RETAINED_RAW",
     "projection": "",
     "reason": "",
-    "retained_in": "option_chain_morning_full.chain_envelope_json -> `underlying` object retained WHOLE. The object is stored unflattened so every leaf survives; the leaf is censused INDIVIDUALLY here because raw retention justifies a disposition, never an omission.",
-    "semantics": "NATIVE"
+    "retained_in": "option_chain_morning_full.chain_envelope_json -> `underlying` object retained WHOLE and unflattened; each leaf is censused individually because raw retention justifies a disposition, never an omission",
+    "retention_gap": "MEASURED 2026-08-26 on the production DB: 4374 snapshots carried a chain envelope in 24h while 3 envelope rows were written that day. These are RESPONSE-SPECIFIC values that can change on every fetch (underlyingPrice, volatility, the whole underlying quote block, and potentially interestRate/dividendYield), so one morning copy is NOT a faithful record of what production received. CLOSING IT means writing the envelope per fetch beside snapshots.option_chain_json - a storage-cost decision on a hot table, deliberately NOT taken unilaterally.",
+    "semantics": "NATIVE",
+    "temporal_grain": "ONCE_PER_TICKER_PER_DAY - RECEIVED_MORE_OFTEN_THAN_RETAINED. Written only by the morning wide capture."
    },
    "tradeTime": {
     "blocked_on": "",
     "disposition": "RETAINED_RAW",
     "projection": "",
     "reason": "",
-    "retained_in": "option_chain_morning_full.chain_envelope_json -> `underlying` object retained WHOLE. The object is stored unflattened so every leaf survives; the leaf is censused INDIVIDUALLY here because raw retention justifies a disposition, never an omission.",
-    "semantics": "NATIVE"
+    "retained_in": "option_chain_morning_full.chain_envelope_json -> `underlying` object retained WHOLE and unflattened; each leaf is censused individually because raw retention justifies a disposition, never an omission",
+    "retention_gap": "MEASURED 2026-08-26 on the production DB: 4374 snapshots carried a chain envelope in 24h while 3 envelope rows were written that day. These are RESPONSE-SPECIFIC values that can change on every fetch (underlyingPrice, volatility, the whole underlying quote block, and potentially interestRate/dividendYield), so one morning copy is NOT a faithful record of what production received. CLOSING IT means writing the envelope per fetch beside snapshots.option_chain_json - a storage-cost decision on a hot table, deliberately NOT taken unilaterally.",
+    "semantics": "NATIVE",
+    "temporal_grain": "ONCE_PER_TICKER_PER_DAY - RECEIVED_MORE_OFTEN_THAN_RETAINED. Written only by the morning wide capture."
    }
   }
  }
