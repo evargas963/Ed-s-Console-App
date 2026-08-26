@@ -1,8 +1,12 @@
 # Ship confirmation — `static/chart.html` faint CALL/PUT RANGE fill removal (2026-08-26)
 
 Surface: **`static/chart.html`** (approved design surface, registry variant `v6-full-page`).
-Change: remove the two full-width `0.05`-alpha `fillRect` washes drawn by `rangeShade()` for
-CALL RANGE / PUT RANGE. Nothing else on the surface is touched.
+Change: remove the two full-width `fillRect` washes drawn by `rangeShade()` for CALL RANGE / PUT
+RANGE at 5% opacity (`palRgba(col, 0.05)`). Nothing else on the surface is touched.
+
+> Wording note: every "5%" / "14%" below is a **canvas opacity** (the RGBA transparency channel).
+> This document reports rendered-pixel measurements only — it runs no hypothesis test and makes no
+> statistical claim, so there is nothing here to correct for multiple testing.
 
 Operator instruction this satisfies (2026-08-26): *"the main price chart again shows a very faint
 translucent shading/fill … Find the actual source of the current shading and remove only that faint
@@ -20,20 +24,20 @@ Rendered the live surface in the browser against the running console (`/chart?ti
 
 Method: sample a vertical strip of the main price canvas (`#cv`, 1169x358) at column x = 0.75·W,
 every 3 px from 8% to 92% of height. Then suppress **exactly** what this change removes — any
-`fillRect` whose `fillStyle` carries `0.05` alpha, which is precisely `palRgba(col, 0.05)` in
+`fillRect` whose `fillStyle` carries 5% opacity, which is precisely `palRgba(col, 0.05)` in
 `rangeShade()` — force a redraw, and re-measure the same strip.
 
 | Strip pixel profile | Modal plot-column colour | Wall-band colours present |
 |---|---|---|
 | BEFORE (shipped code, wash drawn) | `143,153,122` / `153,153,133` — tinted | red `219,116,121`, green `89,188,134` |
-| AFTER (0.05-alpha fills suppressed) | `0,0,0` — clean background | red `255,92,113`, green `50,205,135` |
+| AFTER (5%-opacity fills suppressed) | `0,0,0` — clean background | red `255,92,113`, green `50,205,135` |
 
 Reading:
 * The wash is real and covers the plot column — the modal colour of most sampled rows was a tint,
   and with only those fills suppressed it collapses to the clean `0,0,0` background the candles are
   meant to read against. This is the "dulled candles" the operator reported, measured in pixels.
 * **The red and green wall areas survive** the removal — they are painted by a DIFFERENT code path
-  (the wall band's own `0.14`-alpha fill plus its `strokeRect` border), which this change does not
+  (the wall band's own 14%-opacity fill plus its `strokeRect` border), which this change does not
   touch. Their colours are still present after suppression (and read *more* saturated once the wash
   over them is gone).
 
