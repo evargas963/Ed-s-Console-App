@@ -1200,8 +1200,19 @@ def test_rc345_adversarial_residuals_real_paths() -> None:
         "Charm Drift must not switch to the institutional pin (F18/RC-345)")
     assert "const charmTarget = (d.charm_drift_toward != null" in charm_block, (
         "Charm Drift target must derive ONLY from charm_drift_toward (F18/RC-345)")
-    # withholding: tgtStr is '—' when charm_drift_toward is null (never 0, never a strike)
-    assert "? charmTarget.toFixed(2) : '—'" in charm_block
+    # withholding: tgtStr is '—' when charm_drift_toward is null (never 0, never a strike).
+    # This pinned the literal `? charmTarget.toFixed(2) : '—'`, which is the FORMATTER, not the
+    # withholding rule. charm_drift_toward is a real charm STRIKE, so 2026-08-26 it moved onto
+    # the one strike->text producer via the server's label (klLabelOf), with klPx as the
+    # not-a-strike/older-server path. The guarded intent is unchanged and is asserted directly:
+    # the value is withheld as '—', and it is still read only from charmTarget.
+    assert "const tgtStr = (charmTarget != null && charmTarget > 0)" in charm_block, (
+        "the Charm Drift target no longer guards on charmTarget itself (F18/RC-345)")
+    assert ": '—';" in charm_block, (
+        "Charm Drift must WITHHOLD with an em dash when there is no charm strike — never 0, "
+        "never a substituted strike (F18/RC-345)")
+    assert "klLabelOf(d, 'charm_drift_toward')" in charm_block, (
+        "a charm STRIKE must render the server's vendor-true label, not a browser-side format")
     # small quality upgrade: the row reflects the DIRECTION concept, not a fake price target
     assert "'Toward Calls'" in charm_block and "'Toward Puts'" in charm_block
 

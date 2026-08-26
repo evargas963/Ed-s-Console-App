@@ -80,6 +80,27 @@ def options_streaming_enabled() -> bool:
     return str(os.environ.get(ED_OPTIONS_STREAM_ENV, "")).strip().lower() in ("1", "true", "yes", "on")
 
 
+def _options_frame_handler(service: str) -> Callable[[dict], None]:
+    """Hand ONE options frame to the bounded queue and return. O(1), no SQLite here.
+
+    Hoisted to module scope 2026-08-26 so its failure containment can be DRIVEN. It closes
+    over nothing local — `_options_ingest`, `time` and `log` are module globals read at call
+    time — so this is a pure move. It was nested inside _run_stream_loop, which made the
+    property assertable only by reading the function's source text, and RC-308 is explicit:
+    if the property is behaviour, assert the behaviour.
+    """
+    def _handler(msg: dict) -> None:
+        ing = _options_ingest
+        if ing is None:
+            return
+        try:
+            ing.offer(service, msg, received_ts_ms=int(time.time() * 1000.0))
+        except Exception as e:                  # noqa: BLE001
+            # An options storage problem must never propagate into the shared loop.
+            log.debug("options ingest offer (%s): %s", service, e)
+    return _handler
+
+
 def _register_options_handlers(sc: Any, make_handler: Callable[[str], Callable[[dict], None]]) -> None:
     """Attach options handlers to the EXISTING client. Inert until something subscribes.
 
@@ -576,17 +597,6 @@ def _run_stream_loop(
         # tools/measure_options_ingest_capacity_v1.py and reports/options_ingest_capacity_*.
         # Doing the write inline instead would put fsync on the same thread that services
         # LEVELONE_EQUITIES / NASDAQ_BOOK / NYSE_BOOK.
-        def _options_frame_handler(service: str):
-            def _handler(msg: dict) -> None:
-                ing = _options_ingest
-                if ing is None:
-                    return
-                try:
-                    ing.offer(service, msg, received_ts_ms=int(time.time() * 1000.0))
-                except Exception as e:                  # noqa: BLE001
-                    # An options storage problem must never propagate into the shared loop.
-                    log.debug("options ingest offer (%s): %s", service, e)
-            return _handler
 
         try:
             sc.add_nasdaq_book_handler(_book_handler)

@@ -104,23 +104,48 @@ def test_equity_and_book_handlers_are_still_registered_alongside_options():
         "more than one StreamClient is constructed — a second socket is a second source of truth")
 
 
-def test_the_options_handler_swallows_its_own_errors():
+def test_the_options_handler_swallows_its_own_errors(monkeypatch):
     """The handler runs INLINE on the shared message loop. An exception escaping it would
-    propagate into the loop that services equities and books."""
-    import inspect
+    propagate into the loop that services equities and books.
 
-    src = inspect.getsource(ofs._run_stream_loop)
-    i = src.find("def _options_frame_handler")
-    assert i > 0, "the options handler is gone"
-    body = src[i:i + 900]
-    assert "try:" in body and "except Exception" in body, (
-        "the options frame handler does not contain its own failure — a storage error would "
-        "reach the shared stream loop")
-    # It must hand off, not persist inline: no sqlite/commit work on the loop thread.
-    for forbidden in ("sqlite3", "commit(", "persist_frame("):
-        assert forbidden not in body, (
-            f"the options handler does {forbidden} on the stream loop thread — that is the "
-            f"stall this design exists to prevent")
+    DRIVEN, not read. This asserted the presence of `try:`/`except Exception` in the function's
+    SOURCE TEXT, which proves a token is present and not that a failure is contained — and it
+    could not do better while `_options_frame_handler` was nested inside `_run_stream_loop`.
+    The factory is now module-level (a pure move; it closes over module globals only), so the
+    containment is exercised with a storage that actually raises. RC-308: if the property is
+    behaviour, assert the behaviour.
+    """
+    class _Exploding:
+        def __init__(self):
+            self.calls = 0
+
+        def offer(self, *_a, **_k):
+            self.calls += 1
+            raise RuntimeError("storage exploded")
+
+    boom = _Exploding()
+    monkeypatch.setattr(ofs, "_options_ingest", boom, raising=False)
+    handler = ofs._options_frame_handler("LEVELONE_OPTIONS")
+    handler({"key": "SPY   260828C00600000"})          # must not raise
+    assert boom.calls == 1, "the handler never reached storage, so nothing was contained"
+
+    # ...and with no ingest attached at all it must still be inert, not raise.
+    monkeypatch.setattr(ofs, "_options_ingest", None, raising=False)
+    ofs._options_frame_handler("OPTIONS_BOOK")({"key": "SPY"})
+
+    # It must HAND OFF, never persist inline: one bounded-queue offer, no SQLite on this thread.
+    class _Recording:
+        def __init__(self):
+            self.n = 0
+
+        def offer(self, service, msg, received_ts_ms=None):
+            self.n += 1
+            return True
+
+    rec = _Recording()
+    monkeypatch.setattr(ofs, "_options_ingest", rec, raising=False)
+    ofs._options_frame_handler("LEVELONE_OPTIONS")({"key": "SPY"})
+    assert rec.n == 1, "the handler did not hand the frame off exactly once"
 
 
 def test_stopping_options_collection_is_safe_when_nothing_started():

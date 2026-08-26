@@ -344,6 +344,286 @@ def computing_sites(field: str, spec: dict,
     return sorted(set(out))
 
 
+# ── the SECOND half of the law: a consumer CARRIES, it never recomputes ─────────────────────
+#
+# computing_sites answers "how many places DEFINE this computation". That is one half. The
+# operator found the other half unenforced 2026-08-26: a semantic can be produced ONCE, carried
+# under a different name, and then rebuilt from that alias by calling the SAME canonical
+# producer again. Every invocation is a call to the one producer, so definition-counting sees
+# nothing:
+#
+#     payload["strike_labels"]["call_wall"] = P(payload["call_wall"])
+#     md["kl_call_gamma_wall"]              = _g("call_wall")        # alias
+#     md["kl_strike_labels"]["kl_..."]      = P(md["kl_call_gamma_wall"])   # rebuilt
+#
+# WHAT THIS IS NOT. It is NOT "the producer may be called once". Measured on this repo, ONE
+# dict held 8 aliased keys that must carry beside 10 that must produce; and one loop labels 200
+# distinct strikes through a single site, all of it legitimate. Invocation counts are never
+# consulted.
+#
+# THE BAR IS PROOF, AND IT IS DELIBERATELY LOW-YIELD. Three independently-designed detectors
+# were built for this and all three were refuted on measured evidence: each one FAILED this
+# repository's own correct HEAD by reading an if/elif flow-insensitively (driving the shipped
+# assembler with an instrumented producer shows 3 invocations, all first-production, and ZERO
+# for the 8 aliased keys). So a site is reported ONLY when the alias root is proven, the
+# upstream production is proven, and no enclosing branch tests the upstream label's absence.
+# Anything else is NOT_PROVEN and is reported, never failed — the same discipline computing_sites
+# already applies, and the reason RC-290/RC-323 exist.
+
+_CARRY_GUARD_HINTS = ("label", "carried", "_labels")
+
+
+def _producer_names(tree: ast.AST, func: str) -> set[str]:
+    """Local names bound to the producer, so `import X as _fsd` cannot hide an application."""
+    names = {func}
+    for n in ast.walk(tree):
+        if isinstance(n, ast.ImportFrom):
+            for a in n.names:
+                if a.name == func and a.asname:
+                    names.add(a.asname)
+        elif isinstance(n, ast.Assign) and isinstance(n.value, ast.Name) and n.value.id in names:
+            for t in n.targets:
+                if isinstance(t, ast.Name):
+                    names.add(t.id)
+    return names
+
+
+def _const_key(node: ast.AST) -> str | None:
+    """The literal key a read names: d["k"] / d.get("k") -> "k". Anything else -> None."""
+    if isinstance(node, ast.Subscript) and isinstance(node.slice, ast.Constant) \
+            and isinstance(node.slice.value, str):
+        return node.slice.value
+    if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "get" and node.args
+            and isinstance(node.args[0], ast.Constant)
+            and isinstance(node.args[0].value, str)):
+        return node.args[0].value
+    return None
+
+
+def alias_edges(tree: ast.AST) -> dict[str, str]:
+    """`d["target"] = <plain read of "source">` — the carrier edge, and nothing else.
+
+    Arithmetic, comparisons and calls other than a bare `.get("k")` are NOT carriage; a value
+    that was transformed on the way is a different value and must be free to be produced.
+    """
+    out: dict[str, str] = {}
+    for n in ast.walk(tree):
+        if not isinstance(n, ast.Assign) or len(n.targets) != 1:
+            continue
+        tgt = _const_key(n.targets[0])
+        if tgt is None:
+            continue
+        val = n.value
+        if isinstance(val, ast.Call) and isinstance(val.func, ast.Name) and len(val.args) == 1 \
+                and isinstance(val.args[0], ast.Constant) and isinstance(val.args[0].value, str):
+            out[tgt] = val.args[0].value          # a bound getter: _g("call_wall")
+            continue
+        src = _const_key(val)
+        if src is not None:
+            out[tgt] = src
+    return out
+
+
+def literal_domains(tree: ast.AST) -> dict[str, tuple[str, ...]]:
+    """`NAME = ("a", "b", ...)` — the key sets a loop can iterate.
+
+    Without this the detector is INERT, and measurably so: all nine application sites of
+    format_strike_for_display in this repo pass a LOOP VARIABLE (`md[_kk]`, `payload.get(_lk)`,
+    `exposures[k]`), never a literal. A first version of this check resolved literal subscripts
+    only, reported all nine as NOT_PROVEN, and passed the operator's exact bypass twice.
+    """
+    out: dict[str, tuple[str, ...]] = {}
+    for n in ast.walk(tree):
+        tgt = val = None
+        if isinstance(n, ast.Assign) and len(n.targets) == 1:
+            tgt, val = n.targets[0], n.value
+        elif isinstance(n, ast.AnnAssign) and n.value is not None:
+            tgt, val = n.target, n.value
+        if not isinstance(tgt, ast.Name) or not isinstance(val, (ast.Tuple, ast.List)):
+            continue
+        keys = [e.value for e in val.elts
+                if isinstance(e, ast.Constant) and isinstance(e.value, str)]
+        if keys and len(keys) == len(val.elts):
+            out[tgt.id] = tuple(keys)
+    return out
+
+
+def _loop_keys(chain: list[ast.AST], var: str,
+               domains: dict[str, tuple[str, ...]]) -> tuple[str, ...]:
+    """Every key `var` can take, from the enclosing for-loop or comprehension generator."""
+    for node in chain:
+        gens = []
+        if isinstance(node, ast.For):
+            gens = [(node.target, node.iter)]
+        elif isinstance(node, (ast.DictComp, ast.ListComp, ast.SetComp, ast.GeneratorExp)):
+            gens = [(g.target, g.iter) for g in node.generators]
+        for target, it in gens:
+            if not (isinstance(target, ast.Name) and target.id == var):
+                continue
+            if isinstance(it, ast.Name) and it.id in domains:
+                return domains[it.id]
+            if isinstance(it, (ast.Tuple, ast.List)):
+                keys = [e.value for e in it.elts
+                        if isinstance(e, ast.Constant) and isinstance(e.value, str)]
+                if keys and len(keys) == len(it.elts):
+                    return tuple(keys)
+    return ()
+
+
+def _arg_keys(arg: ast.AST, chain: list[ast.AST],
+              domains: dict[str, tuple[str, ...]]) -> tuple[str, ...] | None:
+    """The payload keys an argument expression can read. None = unresolved (NOT_PROVEN)."""
+    lit = _const_key(arg)
+    if lit is not None:
+        return (lit,)
+    var = None
+    if isinstance(arg, ast.Subscript) and isinstance(arg.slice, ast.Name):
+        var = arg.slice.id
+    elif (isinstance(arg, ast.Call) and isinstance(arg.func, ast.Attribute)
+          and arg.func.attr == "get" and arg.args and isinstance(arg.args[0], ast.Name)):
+        var = arg.args[0].id
+    if var is None:
+        return None
+    keys = _loop_keys(chain, var, domains)
+    return keys or None
+
+
+def alias_map_names(tree: ast.AST) -> set[str]:
+    """Names bound to a str->str dict literal — an alias map, e.g. KL_STRIKE_ALIAS_OF."""
+    out: set[str] = set()
+    for n in ast.walk(tree):
+        tgt = val = None
+        if isinstance(n, ast.Assign) and len(n.targets) == 1:
+            tgt, val = n.targets[0], n.value
+        elif isinstance(n, ast.AnnAssign) and n.value is not None:
+            tgt, val = n.target, n.value
+        if not isinstance(tgt, ast.Name) or not isinstance(val, ast.Dict) or not val.keys:
+            continue
+        if all(isinstance(k, ast.Constant) and isinstance(k.value, str)
+               and isinstance(v, ast.Constant) and isinstance(v.value, str)
+               for k, v in zip(val.keys, val.values)):
+            out.add(tgt.id)
+    return out
+
+
+def _test_is_carry_guard(test: ast.AST, guard_names: set[str]) -> bool:
+    """A branch test that separates the carried case from the first-production case."""
+    dumped = ast.dump(test)
+    if any(f"id='{g}'" in dumped for g in guard_names):
+        return True
+    return any(h in dumped.lower() for h in _CARRY_GUARD_HINTS)
+
+
+def _guarded_by_absence(path: list[ast.AST], guard_names: set[str] | None = None) -> bool:
+    """True when this site is reachable only where the produced value is NOT already carried.
+
+    THE FLOW-SENSITIVITY EVERY REFUTED DESIGN LACKED, and it needs two shapes, because both
+    occur in this repo:
+
+      if <upstream label present>:  carry
+      elif ...:                     PRODUCE          <- an ENCLOSING branch
+
+      for k in KEYS:
+          if <k is an alias>: continue               <- a PRECEDING SIBLING branch
+          PRODUCE
+
+    A first version walked ancestors only. It blocked the second shape — a legitimate
+    produce-only loop — which is exactly the false-positive class that got three independently
+    designed detectors refuted, so the sibling form is checked too.
+    """
+    names = guard_names or set()
+    for i, node in enumerate(path):
+        if isinstance(node, ast.If) and _test_is_carry_guard(node.test, names):
+            # WHICH ARM. The `if` body is the PRESENCE arm — the label already exists there, so
+            # producing in it is reconstruction, not first production. Only the else/elif arm
+            # is reached on absence. A first version returned True for either arm, and a probe
+            # that moved the bypass INTO the carry arm went undetected through the enforced
+            # seam: the guard that proves the value is available was being read as proof that
+            # it was not.
+            child = path[i - 1] if i else None
+            if child is not None and any(child is s for s in node.body):
+                continue
+            return True
+        # preceding-sibling early exit inside a loop body
+        if isinstance(node, (ast.For, ast.While)):
+            child = path[i - 1] if i else None
+            for stmt in node.body:
+                if stmt is child:
+                    break
+                if (isinstance(stmt, ast.If) and _test_is_carry_guard(stmt.test, names)
+                        and any(isinstance(s, (ast.Continue, ast.Break)) for s in stmt.body)):
+                    return True
+    return False
+
+
+def reconstruction_sites(field: str, spec: dict,
+                         corpus: list[tuple[str, str, list[tuple[ast.AST, str]]]] | None = None,
+                         ) -> tuple[list[str], list[str]]:
+    """(proven_reconstructions, not_proven_notes) for one registered field."""
+    producer = str(spec.get("producer") or "")
+    if ":" not in producer or str(spec.get("kind")) != "display_transform":
+        return [], []
+    func = producer.split(":", 1)[1]
+    produced_roots: dict[str, str] = {}       # alias root -> where its label was produced
+    applications: list[tuple[str, str, str, bool]] = []   # rel, fn, root, guarded
+    unresolved: list[str] = []
+
+    for rel, src, fns in (corpus if corpus is not None else build_scan_corpus()):
+        if func not in src:
+            continue
+        tree = ast.parse(src)
+        names = _producer_names(tree, func)
+        edges = alias_edges(tree)
+        domains = literal_domains(tree)
+        guard_names = alias_map_names(tree)
+        for fn, _seg in fns:
+            # Parents must come from the SAME tree the function nodes do. build_scan_corpus()
+            # parses its own AST, so a parent map built from a freshly parsed `tree` shares no
+            # node identity with `fn` — every ancestor chain came back EMPTY, which made both
+            # the loop-domain lookup and the guard test silently inert and passed the bypass.
+            parents: dict[ast.AST, ast.AST] = {}
+            for p in ast.walk(fn):
+                for c in ast.iter_child_nodes(p):
+                    parents[c] = p
+            for node in ast.walk(fn):
+                if not (isinstance(node, ast.Call) and node.args):
+                    continue
+                fname = (node.func.id if isinstance(node.func, ast.Name)
+                         else node.func.attr if isinstance(node.func, ast.Attribute) else None)
+                if fname not in names:
+                    continue
+                chain, cur = [], node
+                while cur in parents:
+                    cur = parents[cur]
+                    chain.append(cur)
+                keys = _arg_keys(node.args[0], chain, domains)
+                if keys is None:
+                    unresolved.append(
+                        f"{rel}:{fn.name} (argument reads no statically-known key)")
+                    continue
+                guarded = _guarded_by_absence(chain, guard_names)
+                for key in keys:
+                    root = edges.get(key, key)
+                    applications.append((rel, fn.name, root, guarded))
+                    produced_roots.setdefault(root, f"{rel}:{fn.name}")
+
+    failures: list[str] = []
+    by_root: dict[str, list[tuple[str, str, bool]]] = {}
+    for rel, fnname, root, guarded in applications:
+        by_root.setdefault(root, []).append((rel, fnname, guarded))
+    for root, sites in sorted(by_root.items()):
+        unguarded = [s for s in sites if not s[2]]
+        if len(unguarded) > 1:
+            where = ", ".join(f"{r}:{f}" for r, f, _ in unguarded)
+            failures.append(
+                f"governance/computation_registry.json:0  '{field}' is produced from the SAME "
+                f"value '{root}' at {len(unguarded)} unguarded sites: {where}. The mandate is "
+                f"one producer, many consumers — a consumer CARRIES the produced value, it does "
+                f"not rebuild it from an alias. Read the already-produced text instead (RC-325).")
+    return failures, sorted(set(unresolved))
+
+
 def _joins_inputs_arithmetically(fn: ast.AST, inputs: tuple[str, ...]) -> bool:
     """True when a single BinOp/aug-assign in `fn` combines at least two defining inputs,
     or aggregates the one defining input with sum()/+=.
@@ -384,6 +664,7 @@ def evaluate() -> tuple[list[str], list[str], int]:
     reg = load_registry()
     fields = reg.get("fields") or {}
     failures: list[str] = []
+    not_proven_recon: list[str] = []
     corpus = build_scan_corpus()          # one live pass, shared by every field
     frontend = build_frontend_corpus()    # ...and the browser surfaces, same reason
     for field, spec in fields.items():
@@ -400,7 +681,11 @@ def evaluate() -> tuple[list[str], list[str], int]:
                 f"one producer, many consumers — a consumer CARRIES the value. Delete the "
                 f"competing computation or, if it is genuinely a different quantity, give "
                 f"it its own field id (RC-325).")
-    not_proven = unregistered_payload_fields()
+        # ...and the second half of the same law, over the same corpus and the same seam.
+        recon, unresolved = reconstruction_sites(field, spec, corpus)
+        failures.extend(recon)
+        not_proven_recon.extend(f"{field}: {u}" for u in unresolved)
+    not_proven = unregistered_payload_fields() + not_proven_recon
     return failures, not_proven, len(fields)
 
 
