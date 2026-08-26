@@ -12,8 +12,25 @@ and flattens once the excluded strikes carry no material gamma. The smallest X a
 is tolerably small AND stops improving is the justified span requirement.
 
 Honest limits, stated: the reference is the widest chain WE HAVE (Schwab caps strikeCount, so it
-is not the true full chain) — this measures convergence toward our widest available view, which
-BOUNDS the requirement from below. Trading days only (RC-54), multi-day contracts with real OI.
+is not the true full chain) — this measures convergence toward that view, which BOUNDS the
+requirement from below. Trading days only (RC-54), multi-day contracts with real OI.
+
+CORRECTION 2026-08-26 — "our widest available view" is NO LONGER TRUE for the tickers that matter
+most, which limits how far this result may be pushed. The cohort is option_chain_morning_full, whose
+capture takes GEX_FULL_CHAIN_STRIKE_COUNT strikes CENTERED on spot; for a dense $1-grid ETF that is
+a narrow window, while the LIVE terrain fetch pulls the FULL expiry book and unions far LEAPS
+strikes. Measured the same day: SPY archive 8.9% span / 110 strikes vs LIVE 29.4% / 216; QQQ archive
+9.6% / 123 vs LIVE 29.5% / 216. (Sparse-grid names go the other way — NVDA archive 97.7% vs live
+21.7% — so this is a per-ticker sampling difference, not a uniform bias.)
+Two consequences for reading the output:
+  * A cohort chain narrower than a ladder point is NOT truncated there, so its "windowed" flip IS
+    the reference flip and it contributes ZERO error BY CONSTRUCTION, flattering that point.
+    Measured on the current cohort (n=992 usable): 100% genuinely truncate at +/-5%, but 5.1% pass
+    through at +/-10% and 5.6% at +/-15%.
+  * Because SPY/QQQ archive rows top out near 9%, the +/-10% and +/-15% points are measured
+    predominantly on OTHER tickers, and the 9%->30% region is UNMEASURED for SPY/QQQ.
+To make this study CERTIFY production rather than bound it, widen the archive capture for
+dense-strike ETFs so the reference is at least as wide as the live fetch, then re-run.
 
 Usage:  python tools/study_flip_span_convergence_v1.py [db_path]
 """

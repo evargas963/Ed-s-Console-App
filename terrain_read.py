@@ -204,10 +204,12 @@ def build_terrain_read(
                             spot, flip_confidence, put_wall, call_wall)
     # Gamma audit 2026-08-26: the REGIME is the sign of dealer gamma AT SPOT (see this function's
     # docstring) — it does NOT depend on how precisely the flip LEVEL is placed. Gating it on the
-    # level-trust verdict conflated two different questions and, once TRUSTED was correctly raised to
-    # the measured convergence span, would have dropped the regime for SPY/QQQ (measured medians
-    # 8.49%/8.84%) even though their at-spot sign is perfectly well determined. So the middle tier
-    # LEVEL_APPROX keeps the regime and posture, and discloses the flip LEVEL as approximate below.
+    # level-trust verdict conflates two different questions: coverage wide enough to PLACE the flip
+    # level, versus enough strikes near spot to know its SIGN. (An earlier version of this comment
+    # justified the split with "SPY/QQQ measured 8.49%/8.84%" — that was the ARCHIVE capture, not the
+    # production chain; live spans are ~29%, so no ticker was actually at risk. The split stands on
+    # the semantic argument above, which does not depend on any ticker's current span.)
+    # So the middle tier LEVEL_APPROX keeps the regime and posture, and discloses the LEVEL below.
     # Only a chain too narrow for the at-spot sign itself (NARROW/UNAVAILABLE) stands everything aside.
     if flip_confidence not in (GAMMA_FLIP_TRUSTED, GAMMA_FLIP_LEVEL_APPROX):
         return _unavailable(
