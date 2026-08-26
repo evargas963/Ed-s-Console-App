@@ -47,7 +47,7 @@ import argparse
 import ast
 import json
 import re
-import subprocess
+import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
@@ -59,51 +59,87 @@ _SKIP_PREFIXES = ("tests/", "tools/", "research/", "arch_competition/", "scratch
                   "governance/", "calibration/")
 
 
-#: BROWSER SURFACES ARE PRODUCTION (RC-325 scope repair, 2026-08-26).
+def _inventory():
+    """THE discovery authority, importable however this module was loaded.
+
+    The gate is imported three ways — as `tools.check_one_producer` from tests, as
+    `check_one_producer` from check_institutional_correctness, and run directly — and only one
+    of those puts tools/ on sys.path. Resolving it here keeps every caller on the same authority
+    instead of each arranging its own import (which is how parallel scanners start).
+    """
+    d = str(Path(__file__).resolve().parent)
+    if d not in sys.path:
+        sys.path.insert(0, d)
+    import producer_inventory_v1 as inv
+
+    return inv
+
+
+#: DISCOVERY IS NOT THIS MODULE'S JOB (RC-325 consolidation, 2026-08-26).
 #:
-#: THE ROOT CAUSE THIS CONSTANT FIXES. `computing_sites` counts definition sites inside
-#: `build_scan_corpus()`, and that corpus was built from `git ls-files -- *.py` alone. So
-#: `len(sites)` counted PYTHON sites only, and the gate's FAIL condition (`len(sites) > 1`) was
-#: UNREACHABLE for any duplication that lived in the browser — not by oversight in a rule, but
-#: by construction of the corpus. MEASURED on 2026-08-26: the corpus enumerated 222 files, 100%
-#: of them .py, while 19,224 tracked lines of production frontend were invisible to it.
+#: tools/producer_inventory_v1.py is already THE repo-wide discovery authority: it enumerates
+#: every tracked file, buckets it by executable kind (.py .js .html .sql .mjs .jsx .ts .ipynb
+#: .bat .ps1 .sh), accounts for every excluded extension WITH A REASON, and reports anything it
+#: cannot classify as NOT_PROVEN. RC-327 had already established there that "a derivation in
+#: JavaScript or SQL is a producer".
 #:
-#: That is how one semantic — how a strike is written as text — came to be implemented twice,
-#: once in instrument_identity.format_strike_for_display and once in JavaScript, with this gate
-#: green throughout. The law is ONE COMPUTATION repo-wide; the lock was one computation
-#: per-Python.
-_FRONTEND_GLOBS = ("static/*.html", "static/*.js", "static/js/*.js")
+#: A first repair to this gate grew a SECOND enumeration here (`_FRONTEND_GLOBS`), a SECOND
+#: <script> extractor and a SECOND JS parser — a second producer of "what are this repository's
+#: units", inside the machinery whose whole purpose is forbidding second producers. Worse, that
+#: parallel scanner was NARROWER than the authority it duplicated: static/*.html, static/*.js
+#: and static/js/*.js only, so .sql, .ts, .jsx, .mjs and any JS outside static/ stayed invisible
+#: while the gate claimed to be repo-wide.
+#:
+#: This module now DECIDES; producer_inventory_v1 DISCOVERS. One authority, one decision path.
+def _non_python_production_units() -> list[tuple[str, str, list[tuple[str, str]]]]:
+    """(rel, executable_text, units) for every NON-Python executable production file.
 
+    Scope, kind classification, <script> extraction and unit extraction all come from the
+    discovery authority. Nothing about "what exists" is decided here.
 
-def _tracked_frontend() -> list[str]:
-    """Production browser surfaces, enumerated the same way the Python scope is.
-
-    FIXTURE-AWARE, and deliberately not fail-open in production. The gate's own tests point REPO
-    at a temporary directory that is not a git checkout and monkeypatch `_tracked_python` to a
-    literal list; they cannot know about a second scope function. So when there is no `.git`
-    here, this is a fixture and there is no tracked frontend to enumerate — an honest empty
-    answer. A REAL checkout always has `.git`, so a git failure there still raises rather than
-    silently reporting "no browser surfaces", which would restore the very blind spot this
-    function exists to remove.
+    FIXTURE-AWARE, not fail-open: the gate's own tests point REPO at a temp directory that is
+    not a git checkout and patch only `_tracked_python`. No `.git` means no tracked tree to
+    discover — an honest empty answer. A real checkout always has `.git`, where a discovery
+    failure still raises rather than silently reporting "no other surfaces", which would restore
+    the exact blind spot being removed.
     """
     if not (REPO / ".git").exists():
         return []
-    proc = subprocess.run(["git", "ls-files", "-z", "--", *_FRONTEND_GLOBS],
-                          cwd=REPO, capture_output=True, text=True, check=False)
-    if proc.returncode != 0:
-        raise RuntimeError("git ls-files failed, so the frontend scan scope is unknown: "
-                           + proc.stderr.strip()[:160])
-    return [p for p in proc.stdout.split("\0") if p]
+    inv = _inventory()
+    rec = inv.reconcile(inv.tracked())
+    out: list[tuple[str, str, list[tuple[str, str]]]] = []
+    for kind, rels in rec["buckets"].items():
+        if kind == "python":
+            continue                      # the Python lane is build_scan_corpus's, below
+        for rel in rels:
+            if inv.layer_of(rel) not in inv.PRODUCTION_LAYERS:
+                continue                  # tests/tools/research legitimately recompute
+            p = REPO / rel
+            if not p.exists():
+                continue
+            raw = p.read_text(encoding="utf-8", errors="replace")
+            text = inv.script_text(rel, raw)
+            if not text.strip():
+                continue
+            out.append((rel, text, inv.units_for(rel, raw, kind)))
+    return out
 
 
 def _tracked_python() -> list[str]:
-    proc = subprocess.run(["git", "ls-files", "-z", "--", "*.py"],
-                          cwd=REPO, capture_output=True, text=True, check=False)
-    if proc.returncode != 0:
-        raise RuntimeError("git ls-files failed, so the scan scope is unknown: "
-                           + proc.stderr.strip()[:160])
-    return [p for p in proc.stdout.split("\0")
-            if p and not p.startswith(_SKIP_PREFIXES)]
+    """The Python scan scope, taken from THE discovery authority.
+
+    RC-325 consolidation 2026-08-26: this ran its own `git ls-files -- *.py`, so this module
+    held TWO repository enumerations of its own and the repo held several more. Discovery is
+    producer_inventory_v1's job; deciding is this module's. The name is kept because the gate's
+    own tests monkeypatch it to a literal list — behaviour they still get, from a function that
+    no longer enumerates anything itself.
+
+    _SKIP_PREFIXES stays here because it is a DECISION, not discovery: tests, tools and research
+    legitimately recompute a value in order to check a producer (RC-274/RC-307/RC-312/RC-323).
+    """
+    inv = _inventory()
+    py = inv.reconcile(inv.tracked())["buckets"]["python"]
+    return [p for p in py if not p.startswith(_SKIP_PREFIXES)]
 
 
 class PayloadSurfaceMissing(RuntimeError):
@@ -184,56 +220,6 @@ _TRANSFORM_CALLS = (
 _TRANSFORM_MAX_LINES = 30
 
 
-def _function_blocks_js(src: str) -> list[tuple[str, str]]:
-    """(name, body_text) for every function-ish construct in a browser surface.
-
-    Brace-matched rather than parsed: this repo has no JS parser dependency and adding one to a
-    pre-commit gate is exactly the framework sprawl to avoid. A slightly WIDE body can only
-    admit extra candidates into the checks below, never hide one — the same trade the Python
-    corpus already makes with its lineno..end_lineno slice.
-    """
-    out: list[tuple[str, str]] = []
-    # Four real declaration forms. The SINGLE-PARAM ARROW (`const f = k => ...`) is here
-    # because that is exactly the shape the deleted browser strike formatter used, and a first
-    # version of this extractor required parentheses and matched zero blocks against it — a
-    # detector blind to the very form it exists to catch.
-    pat = re.compile(
-        r"(?:function\s+(?P<f>[A-Za-z_$][\w$]*)\s*\()"
-        r"|(?:(?:const|let|var)\s+(?P<c>[A-Za-z_$][\w$]*)\s*=\s*"
-        r"(?:async\s*)?(?:function\b|\(|[A-Za-z_$][\w$]*\s*=>))")
-    for m in pat.finditer(src):
-        name = m.group("f") or m.group("c")
-        # Body starts at the first '{' after the header, unless the arrow has an EXPRESSION
-        # body (`const f = k => k.toFixed(2);`), which has no brace at all.
-        arrow = src.find("=>", m.start())
-        brace = src.find("{", m.start())
-        semi = src.find(";", m.start())
-        expr_body = (arrow != -1 and (brace == -1 or arrow < brace)
-                     and 0 <= semi < brace if brace != -1 else arrow != -1)
-        if expr_body and 0 <= semi:
-            out.append((name, src[m.start():semi + 1]))
-            continue
-        if brace < 0:
-            continue
-        depth, j = 0, brace
-        while j < len(src):
-            if src[j] == "{":
-                depth += 1
-            elif src[j] == "}":
-                depth -= 1
-                if depth == 0:
-                    break
-            j += 1
-        # HEADER INCLUDED, deliberately, and this is not cosmetic. The Python corpus slices
-        # lineno..end_lineno, which contains the `def name(...)` line, so the token match sees
-        # the function's NAME. A first version here returned the brace body only, and the real
-        # browser duplicate went undetected: `const fmtStrike = k => { Number(k).toFixed(4) }`
-        # never says "strike" in its body — the identity is entirely in the name. Matching the
-        # two runtimes differently is how a cross-runtime duplicate hides.
-        out.append((name, src[m.start():j + 1]))
-    return out
-
-
 def _code_only(text: str) -> str:
     """Strip comments and docstrings so the token match sees CODE, not prose.
 
@@ -274,22 +260,17 @@ def _significant_lines(text: str) -> int:
 
 
 def build_frontend_corpus() -> list[tuple[str, str, list[tuple[str, str]]]]:
-    """(rel, src, [(fn_name, fn_text)]) over the production browser surfaces.
+    """(rel, executable_text, units) for every NON-Python executable production file.
 
-    Included for the same reason the Python files are: a computation implemented here is a
-    computation. Before this existed the gate could not see 19,224 tracked frontend lines, so a
-    second implementation of a registered field was structurally uncountable.
+    A THIN CONSUMER of the discovery authority — scope, kind, <script> extraction and unit
+    extraction all belong to producer_inventory_v1. The name is kept because callers and tests
+    already use it; what changed is that it no longer discovers anything itself.
+
+    "Frontend" undersells it now: this covers every executable kind the authority recognises
+    outside Python (.js .html .sql .mjs .jsx .ts .ipynb .bat .ps1 .sh), not the three static
+    globs the first repair hand-picked.
     """
-    corpus: list[tuple[str, str, list[tuple[str, str]]]] = []
-    for rel in _tracked_frontend():
-        path = REPO / rel
-        if not path.exists():
-            continue
-        src = path.read_text(encoding="utf-8", errors="replace")
-        if rel.endswith(".html"):
-            src = "\n".join(re.findall(r"<script[^>]*>(.*?)</script>", src, re.S))
-        corpus.append((rel, src, _function_blocks_js(src)))
-    return corpus
+    return _non_python_production_units()
 
 
 def _text_joins_inputs(text: str, inputs: tuple[str, ...], *, kind: str = "derived") -> bool:

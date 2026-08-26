@@ -149,6 +149,95 @@ _NONEXEC_REASON = {
 }
 
 
+# ── ADDRESSABLE UNITS — the ONE unit extractor, shared by census and enforcement ────────────
+#
+# RC-325 consolidation 2026-08-26. This module is already THE repo-wide discovery authority: it
+# enumerates every tracked file, buckets it by executable kind, and accounts for every excluded
+# extension with a reason. What it lacked was a way to name the UNIT a finding belongs to in a
+# non-Python file — it reports "line N" — so the enforced gate (tools/check_one_producer.py)
+# grew its own file enumeration, its own <script> extractor and its own JS function parser.
+# That is a second producer of "what are this repository's units", inside the very machinery
+# that exists to forbid second producers.
+#
+# The extraction lives HERE because it is a DISCOVERY concern: what units exist is a property of
+# the repository, not of any one gate's decision rule. The gate consumes it and decides.
+
+def script_text(rel: str, text: str) -> str:
+    """The executable text of a file: for HTML, its <script> blocks; otherwise the file."""
+    if Path(rel).suffix.lower() == ".html":
+        return "\n".join(m.group(1) for m in _SCRIPT_BLOCK.finditer(text))
+    return text
+
+
+_JS_FUNC_HEADER = re.compile(
+    r"(?:function\s+(?P<f>[A-Za-z_$][\w$]*)\s*\()"
+    r"|(?:(?:const|let|var)\s+(?P<c>[A-Za-z_$][\w$]*)\s*=\s*"
+    r"(?:async\s*)?(?:function\b|\(|[A-Za-z_$][\w$]*\s*=>))")
+
+
+def js_function_units(src: str) -> list[tuple[str, str]]:
+    """(name, text) for every function-ish construct in JavaScript.
+
+    Brace-matched rather than parsed: this repo carries no JS parser dependency and adding one
+    to a pre-commit gate is sprawl. A slightly WIDE unit can only admit extra candidates to the
+    caller's check, never hide one — the same trade the Python side makes with its
+    lineno..end_lineno slice.
+
+    TWO PROPERTIES LEARNED THE HARD WAY, both from behavioural controls rather than review:
+      * the SINGLE-PARAM ARROW (`const f = k => {`) must match. A first version required
+        parentheses and matched nothing against the real browser duplicate it existed to catch.
+      * the HEADER must be included, not just the brace body. `const fmtStrike = k => {
+        Number(k).toFixed(4) }` never says "strike" in its body — the identity is entirely in
+        the NAME, and Python's own slice starts at the `def` line. Matching the two runtimes
+        differently is exactly how a cross-runtime duplicate hides.
+    """
+    out: list[tuple[str, str]] = []
+    for m in _JS_FUNC_HEADER.finditer(src):
+        name = m.group("f") or m.group("c")
+        arrow = src.find("=>", m.start())
+        brace = src.find("{", m.start())
+        semi = src.find(";", m.start())
+        # arrow with an EXPRESSION body (`const f = k => k.toFixed(2);`) has no brace at all
+        if arrow != -1 and 0 <= semi and (brace == -1 or (arrow < brace and semi < brace)):
+            out.append((name, src[m.start():semi + 1]))
+            continue
+        if brace < 0:
+            continue
+        depth, j = 0, brace
+        while j < len(src):
+            if src[j] == "{":
+                depth += 1
+            elif src[j] == "}":
+                depth -= 1
+                if depth == 0:
+                    break
+            j += 1
+        out.append((name, src[m.start():j + 1]))
+    return out
+
+
+def units_for(rel: str, text: str, kind: str) -> list[tuple[str, str]]:
+    """(unit_name, unit_text) for any executable file, whatever its language.
+
+    Python gets AST functions; the JS family gets brace-matched functions; everything else
+    executable (sql, shell, notebook) is ONE unit named by its file, so it is still WEIGHED
+    rather than silently skipped. A kind with no unit structure must not become an unscanned
+    hole — that is how "only .py" became invisible in the first place.
+    """
+    if kind == "python":
+        try:
+            tree = ast.parse(text)
+        except SyntaxError:
+            return []
+        lines = text.split("\n")
+        return [(fn.name, "\n".join(lines[fn.lineno - 1:fn.end_lineno]))
+                for fn in ast.walk(tree)
+                if isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef))]
+    if kind in ("js", "html"):
+        return js_function_units(script_text(rel, text))
+    return [(Path(rel).name, text)]
+
+
 def reconcile(all_tracked: list[str]) -> dict:
     """Bucket EVERY tracked file: executable-scanned, executable-unscanned, or excluded."""
     buckets: dict[str, list[str]] = {k: [] for k in

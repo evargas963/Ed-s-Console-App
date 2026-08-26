@@ -18,7 +18,6 @@ from __future__ import annotations
 import ast
 import hashlib
 import re
-import subprocess
 import sys
 from collections import defaultdict
 from pathlib import Path
@@ -37,9 +36,21 @@ SKIP = ("tests/", "research/", "arch_competition/", "scratchpad/", "governance/a
 
 
 def tracked() -> list[str]:
-    out = subprocess.run(["git", "ls-files", "-z", "--", "*.py"],
-                         cwd=REPO, capture_output=True, text=True, check=True).stdout
-    return [p for p in out.split("\0") if p and not p.startswith(SKIP)]
+    """Python files to probe, taken from THE discovery authority.
+
+    RC-325 consolidation 2026-08-26: this ran its own `git ls-files -- *.py`. Repository
+    discovery is producer_inventory_v1's job — it enumerates every tracked file, buckets it by
+    executable kind, and accounts for every exclusion with a reason. A probe that enumerates the
+    repository separately is a second producer of "what files exist": the law this machinery
+    exists to enforce, broken inside the machinery. The probe keeps its own DECISION (structural
+    clone shape); it no longer keeps its own census.
+    """
+    if str(Path(__file__).resolve().parent) not in sys.path:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import producer_inventory_v1 as inv
+
+    py = inv.reconcile(inv.tracked())["buckets"]["python"]
+    return [p for p in py if not p.startswith(SKIP)]
 
 
 class _Norm(ast.NodeTransformer):

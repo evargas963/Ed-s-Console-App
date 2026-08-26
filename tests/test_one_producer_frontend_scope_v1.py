@@ -27,12 +27,17 @@ if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
 from tools.check_one_producer import (  # noqa: E402
-    _function_blocks_js,
     build_frontend_corpus,
     build_scan_corpus,
     computing_sites,
     load_registry,
 )
+
+# The unit extractor lives in the DISCOVERY authority, not in the gate. Importing it from here
+# is itself part of the contract: if it reappears inside check_one_producer, that is a second
+# producer of "what are this repository's units" inside the machinery that forbids second
+# producers, and test_discovery_has_exactly_one_authority below fails.
+from tools.producer_inventory_v1 import js_function_units  # noqa: E402
 
 #: The browser formatter that actually existed, verbatim in shape. Single-param arrow with no
 #: parentheses — the form a first version of the extractor could not match at all.
@@ -54,7 +59,7 @@ SPEC = {
 
 
 def _fake_frontend(js: str, rel: str = "static/injected.html"):
-    return [(rel, js, _function_blocks_js(js))]
+    return [(rel, js, js_function_units(js))]
 
 
 # ── the scope repair itself ─────────────────────────────────────────────────────────────────
@@ -71,9 +76,80 @@ def test_the_corpus_now_contains_the_production_browser_surfaces():
         "actually parsing them, so the scope repair would be cosmetic")
 
 
+def test_discovery_has_exactly_one_authority():
+    """THE ARCHITECTURE. One census, one decision path — enforced, not just intended.
+
+    Repairing this gate the first time introduced a SECOND repository enumeration, a SECOND
+    <script> extractor and a SECOND JS parser inside check_one_producer: a second producer of
+    "what are this repository's units", living inside the machinery whose entire purpose is
+    forbidding second producers. It was also NARROWER than the authority it duplicated —
+    static/*.html, static/*.js and static/js/*.js only — so .sql, .ts, .jsx, .mjs and any
+    JavaScript outside static/ stayed invisible while the gate claimed to be repo-wide.
+
+    producer_inventory_v1 DISCOVERS (it enumerates every tracked file, buckets it by executable
+    kind, and accounts for every exclusion with a reason). check_one_producer DECIDES.
+    """
+    import re
+
+    tools = REPO / "tools"
+    enumerations = {}
+    for rel in ("check_one_producer.py", "deep_duplicate_probe_v1.py",
+                "producer_inventory_v1.py"):
+        src = (tools / rel).read_text(encoding="utf-8")
+        enumerations[rel] = len(re.findall(r'"git"\s*,\s*"ls-files"', src))
+
+    assert enumerations["producer_inventory_v1.py"] == 1, (
+        "the discovery authority must be the one that enumerates the repository")
+    assert enumerations["check_one_producer.py"] == 0, (
+        "the enforced gate is enumerating the repository itself again — discovery belongs to "
+        "producer_inventory_v1; this module decides")
+    assert enumerations["deep_duplicate_probe_v1.py"] == 0, (
+        "the clone probe is enumerating the repository itself again")
+
+    # ...and the unit extractor lives with discovery, not with the decision.
+    # Checked against CODE, not prose: a first version of this assertion matched "<script"
+    # inside the comment that EXPLAINS the removal — the same prose-matching mistake the
+    # detector itself had to be cured of, reproduced one layer up.
+    from tools.check_one_producer import _code_only
+
+    gate = _code_only((tools / "check_one_producer.py").read_text(encoding="utf-8"))
+    assert "def js_function_units" not in gate and "def _function_blocks_js" not in gate, (
+        "a JS parser is back inside the gate — that is a second unit extractor")
+    assert "<script" not in gate, "a second <script> extractor is back inside the gate"
+
+
+def test_the_scope_is_every_executable_kind_not_hand_picked_globs():
+    """REPO-WIDE means the authority's executable set, not three static globs.
+
+    The hand-picked version saw 10 files. The authority sees the .js/.html/.sql/.mjs/.jsx/.bat/
+    .ps1 production surfaces the repository actually has.
+    """
+    import producer_inventory_v1 as inv
+
+    fe = build_frontend_corpus()
+    exts = {Path(rel).suffix.lower() for rel, _t, _u in fe}
+    assert exts - {".html", ".js"}, (
+        f"scope is still only static html/js ({sorted(exts)}) — the authority recognises "
+        f"{sorted(inv._EXEC_EXT)} and the gate should cover the production ones")
+    assert not any(rel.startswith(("tests/", "tools/", "research/")) for rel, _t, _u in fe), (
+        "test/tool/research surfaces are in the enforcement scope; they legitimately recompute")
+
+
+def test_every_tracked_file_is_accounted_for_by_the_authority():
+    """No silent holes: executable, excluded-with-a-reason, or reported NOT_PROVEN."""
+    import producer_inventory_v1 as inv
+
+    rec = inv.reconcile(inv.tracked())
+    counted = (sum(len(v) for v in rec["buckets"].values())
+               + len(rec["excluded"]) + len(rec["unknown"]))
+    assert counted == rec["repository_files_total"], (
+        f"the census loses files: {counted} accounted vs {rec['repository_files_total']} tracked")
+    assert rec["buckets"]["python"] and rec["buckets"]["html"], "buckets look empty"
+
+
 def test_the_extractor_handles_the_form_the_real_duplicate_used():
     """A single-param arrow (`const f = k => {`) is the shape that slipped through."""
-    blocks = _function_blocks_js(DUPLICATE_JS)
+    blocks = js_function_units(DUPLICATE_JS)
     names = [n for n, _b in blocks]
     assert "fmtStrike" in names, (
         f"the single-param arrow form was not extracted (got {names}) — the detector would be "
