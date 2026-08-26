@@ -9947,6 +9947,7 @@ STRIKE_VALUED_PAYLOAD_KEYS: tuple[str, ...] = (
 
 
 
+
 @asynccontextmanager
 async def _app_lifespan(app):
     """Startup and shutdown: logger, order flow, SSE, ML scheduler."""
@@ -11451,6 +11452,41 @@ def _terrain_kl_overlay(md: dict, ticker: str) -> None:
     # counts literal write sites, and a loop-driven write made three honest reads look
     # writerless. Verbosity is the price of a detector that can actually see the writer.
     _g = (lambda k: t.get(k)) if fresh else (lambda k: None)
+    # THE SECOND HALF OF THE LAW. "A consumer CARRIES the produced value; it never recomputes it."
+    # The kl_* namespace is the SAME terrain book re-published under other names, so a kl_ key that
+    # aliases a terrain key already has its display text in payload["strike_labels"]. Producing it
+    # again - even through the one canonical producer - is RECONSTRUCTION of an already-produced
+    # semantic, and the ONE FAUCET lock could not see it: both invocations are calls to the single
+    # producer, and the lock counted DEFINITION sites.
+    #
+    # MEASURED 2026-08-26: 8 of the 18 strike-valued kl_ keys alias a terrain key that is already
+    # labelled; the other 10 exist ONLY in this namespace and are legitimate FIRST production. That
+    # split is exactly why "call the producer only once" is the wrong rule.
+    KL_STRIKE_ALIAS_OF: dict[str, str] = {
+        "kl_call_gamma_wall": "call_wall",
+        "kl_put_gamma_wall": "put_wall",
+        "kl_absolute_gamma_strike": "absolute_gamma_strike",
+        "kl_pin_candidate": "pin_candidate",
+        "kl_hvl": "net_gex_peak",
+        "kl_max_pain": "max_pain",
+        "kl_call_delta_wall": "call_delta_wall",
+        "kl_put_delta_wall": "put_delta_wall",
+    }
+
+    #: Strike-valued keys in the console (kl_) namespace. Those present in KL_STRIKE_ALIAS_OF are
+    #: CARRIED from the terrain labels; the rest are produced here because nothing upstream holds
+    #: them (they exist only in this namespace).
+    KL_STRIKE_VALUED_KEYS: tuple[str, ...] = (
+        "kl_call_gamma_wall", "kl_put_gamma_wall", "kl_absolute_gamma_strike",
+        "kl_pin_candidate", "kl_hvl", "kl_max_pain", "kl_call_delta_wall",
+        "kl_put_delta_wall", "kl_call_oi_wall", "kl_put_oi_wall",
+        "kl_call_vanna_wall", "kl_put_vanna_wall", "kl_gamma_inflection",
+        "kl_delta_inflection", "kl_doi_call_strike", "kl_doi_put_strike",
+        "kl_doi_unwind_strike",
+        # charm_drift_toward is a real CHARM STRIKE (the console withholds it entirely when it is
+        # not one) and carries no kl_ prefix, but obeys the same vendor-truth rule.
+        "charm_drift_toward",
+    )
     md["kl_call_gamma_wall"] = _g("call_wall")
     md["kl_put_gamma_wall"] = _g("put_wall")
     md["kl_gamma_flip"] = _g("gamma_flip")
@@ -11543,30 +11579,16 @@ def _terrain_kl_overlay(md: dict, ticker: str) -> None:
     md["kl_put_vanna_str"] = "—"
     md["kl_levels_source"] = ("terrain_wide_chain" if fresh else
                               "terrain_unavailable — gamma-family levels withheld")
-    # ONE FAUCET, second namespace. The console table reads `kl_*`, which is this same
-    # terrain book re-published under different names, so its strike text must come from the
-    # SAME producer rather than from `v.toFixed(2)` in the browser - that was a second rule,
-    # and it printed 322.50 where the vendor strike is 322.5.
-    # Membership was MEASURED against the live Schwab grid on 2026-08-26 (20 tickers) and, for
-    # the keys that are usually null, taken from what the console itself says each level IS
-    # ("Strike with the largest ..."). kl_gamma_flip, kl_em_upper/lower, kl_gsf and kl_grc are
-    # interpolated prices; kl_oi_center is an OI-WEIGHTED MEAN, so none of them are strikes.
-    md["kl_strike_labels"] = {
-        _kk: format_strike_for_display(md.get(_kk))
-        for _kk in (
-            "kl_call_gamma_wall", "kl_put_gamma_wall", "kl_absolute_gamma_strike",
-            "kl_pin_candidate", "kl_hvl", "kl_max_pain", "kl_call_delta_wall",
-            "kl_put_delta_wall", "kl_call_oi_wall", "kl_put_oi_wall",
-            "kl_call_vanna_wall", "kl_put_vanna_wall", "kl_gamma_inflection",
-            "kl_delta_inflection", "kl_doi_call_strike", "kl_doi_put_strike",
-            "kl_doi_unwind_strike",
-            # charm_drift_toward is a real CHARM STRIKE (the console withholds it
-            # entirely when it is not one), so it obeys the same vendor-truth rule
-            # even though it carries no kl_ prefix.
-            "charm_drift_toward",
-        )
-        if md.get(_kk) is not None
-    }
+    # ONE FAUCET, both halves. Strike text still comes from the single producer, and a kl_ key
+    # that ALIASES an already-labelled terrain key CARRIES that label instead of recomputing it.
+    _carried_labels = _g("strike_labels") or {}
+    md["kl_strike_labels"] = {}
+    for _kk in KL_STRIKE_VALUED_KEYS:
+        _root = KL_STRIKE_ALIAS_OF.get(_kk)
+        if _root is not None and _carried_labels.get(_root) is not None:
+            md["kl_strike_labels"][_kk] = _carried_labels[_root]          # CARRY
+        elif md.get(_kk) is not None:
+            md["kl_strike_labels"][_kk] = format_strike_for_display(md[_kk])   # FIRST PRODUCTION
     for k in ("kl_call_gamma_str", "kl_put_gamma_str", "kl_hvl_str", "kl_max_pain_str"):
         md[k] = "—"
 _terrain_loop_running: bool = False
