@@ -234,6 +234,8 @@ order_flow_streaming.py::_graceful_disconnect_stream_client
 order_flow_streaming.py::_is_stream_disconnect_error
 order_flow_streaming.py::_log_stream
 order_flow_streaming.py::_message_loop_until_shutdown
+order_flow_streaming.py::_options_frame_handler
+order_flow_streaming.py::_options_frame_handler._handler
 order_flow_streaming.py::_register_options_handlers
 order_flow_streaming.py::_resubscribe_coro
 order_flow_streaming.py::_resubscribe_to_ticker
@@ -241,8 +243,6 @@ order_flow_streaming.py::_run_stream_loop
 order_flow_streaming.py::_run_stream_loop._async_run
 order_flow_streaming.py::_run_stream_loop._async_run._book_handler
 order_flow_streaming.py::_run_stream_loop._async_run._level_one_handler
-order_flow_streaming.py::_run_stream_loop._async_run._options_frame_handler
-order_flow_streaming.py::_run_stream_loop._async_run._options_frame_handler._handler
 order_flow_streaming.py::_stale_bucket
 order_flow_streaming.py::_start_options_collection
 order_flow_streaming.py::_stop_options_collection
