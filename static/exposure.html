@@ -7,8 +7,6 @@
 <!-- # ui-mockup-ok: RC-200/RC-201 operator LIVE order 2026-08-02 ("this goes live") + same-day
      "lifeless chart" correction: full interactions, series VWAP bands, seeded red/green
      bubbles, forming candle. Quote recorded in governance/ui_mockup_approvals.json. -->
-<!-- # ui-mockup-ok: THE displayed-strike authority. One producer, every surface consumes it. -->
-<script src="/static/js/strike_format.js"></script>
 <style>
   :root { --bg:#0a0e15; --panel:#111826; --panel2:#181c26; --border:#1f2a3c; --border2:#2a3850;
           --text:#e9eef6; --text2:#c6d0e0; --dim:#93a1b8; --mut:#66748c;
@@ -153,9 +151,19 @@ const fmt = (x, d = 2) => x == null ? '—' : Number(x).toFixed(d);
 // It was invisible on SPY/QQQ/IWM (whole-dollar ladders) and wrong everywhere else: measured live,
 // TSLA/AAPL/META/NVDA trade a 2.5 ladder and XRT/CDE/CIFR/SMCI a 0.5 one.
 //
-// THE PRODUCER IS static/js/strike_format.js, loaded in <head>. Deliberately NOT redefined here:
-// this rule previously existed once per surface and differed between them, which is exactly how
-// three of the four surfaces ended up wrong. window.fmtStrike is the only definition.
+// THE PRODUCER IS THE SERVER — instrument_identity.format_strike_for_display. This page does not
+// compute how a strike is written; it RENDERS what the payload carries: index 3 of a per-strike
+// row IS that strike's label. A browser re-implementation kept in step by a parity test is still a
+// SECOND computation of one semantic, which is how four surfaces ended up with four rules.
+//
+// strikeLabel takes the ROW (not the number) because the label travels with the row. The
+// fallback is the raw strike, so a server not yet carrying labels degrades to the old number
+// rather than to a fabricated one.
+const strikeLabel = row => {
+  if (!row) return '—';
+  if (row[3] != null) return row[3];
+  return row[0] == null ? '—' : String(row[0]);
+};
 const fmtBig = v => { if (v == null) return '—'; const a = Math.abs(v);
   return a >= 1e9 ? (v / 1e9).toFixed(2) + 'B' : a >= 1e6 ? (v / 1e6).toFixed(1) + 'M'
        : a >= 1e3 ? (v / 1e3).toFixed(0) + 'K' : String(Math.round(v)); };
@@ -564,7 +572,7 @@ function draw() {
         g.fillStyle = palRgba(selRow[1] >= 0 ? PAL.amber : PAL.vio, 1);
         g.font = "800 11px 'IBM Plex Mono', monospace";
         // # ui-mockup-ok: strike fidelity 2026-08-26 — this names a STRIKE; rounding invented one.
-        g.fillText(`${selRow[1] >= 0 ? 'PIKA +γ' : 'BARNEY −γ'} ${fmtStrike(selRow[0])} · ${fmtBig(selRow[1])} · ${selRow[1] >= 0 ? 'friction' : 'fuel'}`,
+        g.fillText(`${selRow[1] >= 0 ? 'PIKA +γ' : 'BARNEY −γ'} ${strikeLabel(selRow)} · ${fmtBig(selRow[1])} · ${selRow[1] >= 0 ? 'friction' : 'fuel'}`,
           PADL + 6, laneL(yy + (yy > PADT + 30 ? -11 : 24)));  // # ui-mockup-ok: RC-355 lane de-confliction, no redesign
       }
     }
@@ -585,7 +593,7 @@ function draw() {
     g.strokeRect(PADL, yy - 8 - pulse * 2, W - PADL - PADR, 16 + pulse * 4); g.lineWidth = 1;
     g.fillStyle = PAL.acc; g.font = "800 11px 'IBM Plex Mono', monospace";
     // # ui-mockup-ok: RC-352 nomenclature label fix only (KING -> NET GEX PEAK), no design change
-      g.fillText(`⛁ NET GEX PEAK ${fmtStrike(king[0])} · ${fmtBig(king[1])} · click to inspect`, PADL + 6, laneL(yy - 12 - pulse * 2));  // # ui-mockup-ok: RC-355 lane; strike fidelity 2026-08-26 (the peak IS a strike — rounding named an untradeable level)
+      g.fillText(`⛁ NET GEX PEAK ${strikeLabel(king)} · ${fmtBig(king[1])} · click to inspect`, PADL + 6, laneL(yy - 12 - pulse * 2));  // # ui-mockup-ok: RC-355 lane; strike fidelity 2026-08-26 (the peak IS a strike — rounding named an untradeable level)
   }
   // VWAP + σ bands as SERIES CURVES (RC-198) — mapped bar-time → visible index
   let vwbDrawn = false;
@@ -767,13 +775,13 @@ function drawLadder() {
     g.fillStyle = ladMode === 'VOL' ? PAL.amber : (v >= 0 ? PAL.amber : PAL.vio);
     if (v >= 0) g.fillRect(mid + 1, yy - 2.5, w, 5); else g.fillRect(mid - 1 - w, yy - 2.5, w, 5);
     // # ui-mockup-ok: strike fidelity 2026-08-26 — axis label must state the real strike.
-    if (Math.abs(v) > 0.5 * maxA) { g.fillStyle = PAL.dim; g.fillText(fmtStrike(r[0]), 2, yy + 3); }
+    if (Math.abs(v) > 0.5 * maxA) { g.fillStyle = PAL.dim; g.fillText(strikeLabel(r), 2, yy + 3); }
   }
   // # ui-mockup-ok: RC-201 — ranked rows are CLICKABLE: select + spotlight that strike on the chart
   const ranked = rows.slice().sort((a, b) => Math.abs(b[1]) - Math.abs(a[1])).slice(0, 4);
   $('ranked').innerHTML = ranked.map((r, i) =>
     `<div data-k="${esc(String(r[0]))}" style="cursor:pointer;${selStrike === r[0] ? 'background:var(--panel2);border-radius:5px;' : ''}">` +
-    `L${i} <b style="font-weight:600;${i === 0 ? 'color:var(--accent);' : ''}">${esc(fmtStrike(r[0]))}</b> ` +   // # ui-mockup-ok: strike fidelity 2026-08-26
+    `L${i} <b style="font-weight:600;${i === 0 ? 'color:var(--accent);' : ''}">${esc(strikeLabel(r))}</b> ` +   // # ui-mockup-ok: strike fidelity 2026-08-26
     `<span style="color:${r[1] >= 0 ? 'var(--amber)' : 'var(--vio)'}">${esc(fmtBig(r[1]))}</span></div>`).join('');
   const net = rows.reduce((a, r) => a + r[1], 0);
   $('hedge').innerHTML = `spot +1% &Rightarrow; dealers trade &asymp; ` +
@@ -873,7 +881,7 @@ wrap.addEventListener('mousemove', ev => {
       tipEl.innerHTML =
         `<b>${d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}</b> · ` +
         `O ${fmt(bar.o)} H ${fmt(bar.h)} L ${fmt(bar.l)} C ${fmt(bar.c)}<br>` +
-        `strike <b>${fmtStrike(near[0])}</b> · ${near[1] >= 0
+        `strike <b>${strikeLabel(near)}</b> · ${near[1] >= 0
           ? '<span style="color:var(--amber)">PIKA +γ · friction</span>'
           : '<span style="color:var(--vio)">BARNEY −γ · fuel</span>'}<br>` +
         `net GEX ${fmtBig(near[1])} · vol ${fmtBig(near[2] || 0)}<br>` +

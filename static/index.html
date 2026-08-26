@@ -17,8 +17,6 @@
 <link rel="manifest" href="/static/site.webmanifest">
 <meta name="theme-color" content="#0A1930">
 <script src="/static/rth_clock_authority.js"></script>
-<!-- # ui-mockup-ok: THE displayed-strike authority. One producer, every surface consumes it. -->
-<script src="/static/js/strike_format.js"></script>
 <link rel="stylesheet" href="/static/css/axiom-splash.css">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@300;400;500;600;700&family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -13952,7 +13950,9 @@ function edCheckRadarAlerts(rows) {
       .map(function (v) { return fnum(v); }).filter(function (v) { return v !== null; })
       .map(function (v) { return Math.abs(v - spot); });
     var halfW = Math.max.apply(null, [13].concat(lvlD)) + 2;
-    var rows = all.map(function (r) { return { k: +r[0], g: +r[1] }; })
+    /* index 3 is the strike's DISPLAY TEXT, computed once by the server. Carried through so the
+       row renderer can print it without deriving one. */
+    var rows = all.map(function (r) { return { k: +r[0], g: +r[1], lbl: r[3] }; })
       .filter(function (r) { return isFinite(r.k) && isFinite(r.g) && Math.abs(r.k - spot) <= halfW; });
     if (rows.length > 55) rows.sort(function (a, b) { return Math.abs(a.k - spot) - Math.abs(b.k - spot); });
     rows = rows.slice(0, 55).sort(function (a, b) { return b.k - a.k; });
@@ -13986,9 +13986,11 @@ function edCheckRadarAlerts(rows) {
       var flagCol = isSpot ? 'var(--cv-ac)' : (isFlip ? 'var(--cv-a2)' : (pos ? 'var(--cv-up)' : 'var(--cv-dn)'));
       var cls = 'ct-row' + (isSpot ? ' spot' : '') + (isFlip ? ' flip' : '');
       // # ui-mockup-ok: FIDELITY BUG FIX 2026-08-26. Was `r.k.toFixed(1)`, which TRUNCATES the
-      // second decimal the server explicitly preserves (terrain_engine.py:278 rounds to 2): a
-      // 17.25 strike printed "17.3", a price at which no contract trades. Now the one producer.
-      var label = fmtStrike(r.k);
+      // second decimal the server explicitly preserves: a 17.25 strike printed "17.3", a price at
+      // which no contract trades. This page no longer DERIVES a label — it renders the one the
+      // server computed (row index 3). Fallback is the raw number, so an un-updated server
+      // degrades to the old value rather than to a fabricated one.
+      var label = (r.lbl != null) ? r.lbl : String(r.k);
       html += '<div class="' + cls + '"><span class="ct-strike">' + label + '</span>'
         + '<span class="ct-trk"><span class="ct-zero"></span>'
         + '<span class="ct-bar" style="' + (pos ? 'left:50%' : 'right:50%') + ';width:' + w + '%;background:' + col + ';opacity:' + op + '"></span></span>'

@@ -1,34 +1,37 @@
-"""STRIKE DISPLAY — ONE producer, many consumers, and a displayed strike must exist (2026-08-26).
+"""STRIKE DISPLAY — ONE COMPUTATION, repo-wide. The browser renders; it does not derive.
 
-WHAT WAS FOUND. The rule for turning a strike into text existed once PER SURFACE, and was wrong in
+WHAT WAS FOUND. The rule for turning a strike into text existed once PER SURFACE and was wrong in
 a different way on each:
 
-    static/chart.html     fmt(k, 0)                      322.5 -> "323"     WRONG
-    static/exposure.html  fmt(k, 0)                      322.5 -> "323"     WRONG
-    static/index.html     r.k.toFixed(1)                 17.25 -> "17.3"    WRONG
-    static/chart.html:1634 fmt(r[0], isInt ? 0 : 2)      322.5 -> "322.50"  correct
-    market_state.py x2    str(int(k)) if is_integer()    322.5 -> "322.5"   correct, inlined twice
+    static/chart.html      fmt(k, 0)                    322.5 -> "323"      WRONG
+    static/exposure.html   fmt(k, 0)                    322.5 -> "323"      WRONG
+    static/index.html      r.k.toFixed(1)               17.25 -> "17.3"     WRONG  (terrain map)
+    static/chart.html:1634 fmt(r[0], isInt ? 0 : 2)     322.5 -> "322.50"   correct, and alone
+    market_state.py x2     str(int(k)) if is_integer()  322.5 -> "322.5"    correct, inlined twice
 
-Four browser surfaces, four rules, one right. That is what a duplicated computation buys, so the
-fix is not four corrected copies -- it is ONE PRODUCER: static/js/strike_format.js for the browser
-and instrument_identity.format_strike_for_display for the server, asserted here to agree.
-
-WHY THE ROUNDING MATTERS. toFixed(0) does not drop a decimal, it picks a different number (ECMA-262
-rounds .5 to the larger n). Two harms: FABRICATION -- the console names a price at which no
-contract trades, and this reached the CALL WALL / PUT WALL chips and the NET GEX PEAK banner, not
-just axis ticks; and COLLISION -- on a 0.5 ladder two adjacent real strikes print the same label
-(22.5 and 23.0 both "23"), erasing one from the display.
+WHY ROUNDING IS NOT COSMETIC. toFixed(0) does not drop a decimal, it picks a different number.
+FABRICATION: the console names a price at which no contract trades — this reached the CALL WALL /
+PUT WALL chips and the NET GEX PEAK banner. COLLISION: on a 0.5 ladder two adjacent real strikes
+print the same label, erasing one from the display. Measured on the live CDE ladder (40 strikes):
+the old rule produced 26 distinct labels — 14 real strikes erased — and 16 of 40 named a different
+price.
 
 WHY IT SURVIVED. SPY/QQQ/IWM trade whole-dollar ladders, so on the three tickers everyone watches
-the rounding is invisible. Measured live 2026-08-26: TSLA/AAPL/META/NVDA trade a 2.5 ladder,
-XRT/CDE/CIFR/SMCI/KRE/PCG a 0.5 one. The defect was CORE-TICKER-SHAPED.
+it is invisible. Measured live 2026-08-26: TSLA/AAPL/META/NVDA on 2.5, XRT/CDE/CIFR/SMCI/KRE/PCG on
+0.5. Core-ticker-shaped — right on the anchors, wrong on everything else.
 
-HOW THIS IS TESTED. The shipped functions are EXECUTED -- the JS under node, the Python imported --
-not reimplemented and asserted about. What passes here is the code that runs.
+THE FIX, AND WHY THE FIRST ONE WAS NOT ENOUGH. A first pass gave each surface a corrected
+formatter, then a shared JS module. Both were still a SECOND implementation of one semantic, kept
+in step by a parity test — and a rule that needs a test to stay synchronised is two computations,
+not one. So the browser-side formatter was DELETED. instrument_identity.format_strike_for_display
+is the only implementation repo-wide; the server emits the text (per-strike row index 3, and
+`strike_labels` on the terrain payload) and every surface RENDERS it.
+
+These tests enforce that shape, not merely the arithmetic: a surface that starts computing a label
+again fails here even if its arithmetic is correct.
 """
 from __future__ import annotations
 
-import json
 import re
 import shutil
 import subprocess
@@ -38,16 +41,13 @@ from pathlib import Path
 import pytest
 
 REPO = Path(__file__).resolve().parent.parent
-PRODUCER_JS = REPO / "static" / "js" / "strike_format.js"
+SURFACES = ("static/chart.html", "static/exposure.html", "static/index.html")
 
-#: Every browser surface that renders a strike value must CONSUME the producer, never define one.
-CONSUMER_SURFACES = ("static/chart.html", "static/exposure.html", "static/index.html")
-
-#: Ladders measured live on 2026-08-26, plus finer ones this console has not met yet.
+#: Ladders measured live 2026-08-26, plus finer ones this console has not met yet.
 REAL_LADDERS = [320.0, 322.5, 325.0, 17.25, 7457.69, 0.5, 1.125, 187.5, 2.5, 1180.0, 96.5, 42.0]
 
 needs_node = pytest.mark.skipif(shutil.which("node") is None,
-                                reason="node is required to execute the shipped browser code")
+                                reason="node is required to parse the shipped browser code")
 
 
 def _script(rel: str) -> str:
@@ -55,115 +55,137 @@ def _script(rel: str) -> str:
     return "\n".join(re.findall(r"<script>(.*?)</script>", src, re.S))
 
 
-def _run_node(body: str) -> str:
-    with tempfile.TemporaryDirectory() as d:
-        p = Path(d) / "probe.js"
-        p.write_text(body, encoding="utf-8")
-        r = subprocess.run(["node", str(p)], capture_output=True, text=True, timeout=60)
-        assert r.returncode == 0, f"node failed: {r.stderr[:900]}"
-        return r.stdout
+def _script_no_comments(rel: str) -> str:
+    return re.sub(r"^\s*//.*$", "", _script(rel), flags=re.M)
 
 
-def _js_format(values: list) -> list[str]:
-    """Run the REAL producer file under node against these values."""
-    body = (PRODUCER_JS.read_text(encoding="utf-8")
-            + "\nconst __v = " + json.dumps(values) + ";\n"
-            + "console.log(JSON.stringify(__v.map(v => globalThis.fmtStrike(v))));\n")
-    return json.loads(_run_node(body).strip())
+# ── ONE COMPUTATION ─────────────────────────────────────────────────────────────────────────
+
+def test_no_browser_surface_implements_a_strike_formatter():
+    """THE INVARIANT. Not 'the copies agree' — there must be no copy.
+
+    A JS re-implementation kept in step by a parity test is still a second computation of one
+    semantic. The rule lives once, on the server.
+    """
+    for rel in SURFACES:
+        js = _script_no_comments(rel)
+        assert "fmtStrike" not in js, (
+            f"{rel} references a browser-side strike formatter. The server computes the label "
+            f"(instrument_identity.format_strike_for_display); this page must render it.")
+        # ...and no surface may hand-roll the arithmetic under another name.
+        bad = re.findall(r"\.toFixed\(\s*\d\s*\)\s*[^;\n]{0,40}(?:strike|\br\.k\b)", js)
+        assert not bad, f"{rel} formats a strike numerically again: {bad}"
 
 
-# ── ONE PRODUCER ────────────────────────────────────────────────────────────────────────────
-
-def test_the_browser_producer_exists_and_is_the_only_definition():
-    """No surface may define its own strike formatter — that is how they drifted apart."""
-    assert PRODUCER_JS.is_file(), "the shared strike formatter is gone"
-    for rel in CONSUMER_SURFACES:
-        js = re.sub(r"^\s*//.*$", "", _script(rel), flags=re.M)
-        assert "fmtStrike =" not in js and "function fmtStrike" not in js, (
-            f"{rel} defines its own fmtStrike — one displayed strike is one computation; "
-            f"consume static/js/strike_format.js instead")
+def test_the_browser_producer_file_is_gone():
+    """It existed briefly; leaving it would invite a surface to load it again."""
+    assert not (REPO / "static" / "js" / "strike_format.js").exists(), (
+        "static/js/strike_format.js is back — the browser must not carry a second implementation")
+    for rel in SURFACES:
+        assert "strike_format.js" not in (REPO / rel).read_text(encoding="utf-8"), (
+            f"{rel} still loads the deleted browser formatter")
 
 
-def test_every_consumer_surface_loads_the_producer():
-    """A consumer that renders a strike without loading the producer throws at runtime."""
-    for rel in CONSUMER_SURFACES:
-        src = (REPO / rel).read_text(encoding="utf-8")
-        assert "/static/js/strike_format.js" in src, (
-            f"{rel} renders strikes but does not load the producer")
-        # ...and it must load BEFORE the inline script that calls it.
-        tag = src.index("/static/js/strike_format.js")
-        first_inline = src.index("<script>")
-        assert tag < first_inline, (
-            f"{rel} loads the producer after its inline script — fmtStrike would be undefined")
+def test_the_server_has_exactly_one_implementation():
+    import inspect
+
+    import instrument_identity
+    import market_state
+
+    prod = inspect.getsource(instrument_identity)
+    assert prod.count("def format_strike_for_display") == 1
+
+    for mod, src in (("market_state", inspect.getsource(market_state)),):
+        clean = re.sub(r"^\s*#.*$", "", src, flags=re.M)
+        assert "format_strike_for_display" in clean, f"{mod} no longer uses the one producer"
+        assert not re.search(r"str\(int\([^)]*\)\)\s*if\s+[^\n]*is_integer\(\)", clean), (
+            f"{mod} inlines the strike-to-text rule again — import the producer")
 
 
-@needs_node
-def test_server_and_browser_producers_agree_exactly():
-    """Two runtimes, ONE rule. A shared rule that drifts between them is two rules again."""
-    from instrument_identity import format_strike_for_display
+# ── THE COMPUTATION ITSELF ──────────────────────────────────────────────────────────────────
 
-    js = _js_format(REAL_LADDERS)
-    py = [format_strike_for_display(v) for v in REAL_LADDERS]
-    assert js == py, (
-        f"browser and server disagree about how a strike is written.\n"
-        f"  js: {js}\n  py: {py}")
-
-
-# ── THE INVARIANT ───────────────────────────────────────────────────────────────────────────
-
-@needs_node
 def test_a_displayed_strike_round_trips_to_the_same_number():
-    """Not 'has decimals' -- names the SAME price. That is the honest requirement."""
-    shown = _js_format(REAL_LADDERS)
-    for want, got in zip(REAL_LADDERS, shown, strict=True):
-        assert float(got) == pytest.approx(want), (
-            f"strike {want} displays as {got!r} — a DIFFERENT price; the console would be naming "
-            f"a level that does not exist")
-
-
-@needs_node
-def test_fractional_strikes_are_not_rounded_to_whole_dollars():
-    """The exact reported symptom: 'TSLA appears to show only whole-dollar strikes.'"""
-    assert _js_format([322.5, 327.5, 16.5, 187.5]) == ["322.5", "327.5", "16.5", "187.5"]
-
-
-@needs_node
-def test_adjacent_strikes_on_a_half_dollar_ladder_never_collide():
-    """COLLISION harm: rounding made 22.5 and 23.0 both print '23', erasing a real strike."""
-    ladder = [22.0, 22.5, 23.0, 23.5, 24.0]
-    shown = _js_format(ladder)
-    assert len(set(shown)) == len(ladder), (
-        f"a 0.5 ladder collapses to {shown} — two real strikes share one label, so one vanishes "
-        f"from the display entirely")
-
-
-def test_python_producer_round_trips_and_handles_junk():
+    """Not 'has decimals' — names the SAME price."""
     from instrument_identity import format_strike_for_display
 
     for v in REAL_LADDERS:
-        assert float(format_strike_for_display(v)) == pytest.approx(v)
-    for junk in (None, "", "abc", float("nan"), float("inf")):
-        assert format_strike_for_display(junk) == "—", (
-            f"{junk!r} produced a number — junk must not render as a price")
+        shown = format_strike_for_display(v)
+        assert float(shown) == pytest.approx(v), (
+            f"strike {v} displays as {shown!r} — a DIFFERENT price; the console would name a "
+            f"level that does not exist")
+
+
+def test_fractional_strikes_are_not_rounded_to_whole_dollars():
+    """The reported symptom: 'TSLA appears to show only whole-dollar strikes.'"""
+    from instrument_identity import format_strike_for_display
+
+    assert [format_strike_for_display(k) for k in (322.5, 327.5, 16.5, 187.5)] == \
+        ["322.5", "327.5", "16.5", "187.5"]
+
+
+def test_adjacent_strikes_on_a_half_dollar_ladder_never_collide():
+    """COLLISION harm: rounding made 22.5 and 23.0 both print '23', erasing a real strike."""
+    from instrument_identity import format_strike_for_display
+
+    ladder = [22.0, 22.5, 23.0, 23.5, 24.0]
+    shown = [format_strike_for_display(k) for k in ladder]
+    assert len(set(shown)) == len(ladder), f"a 0.5 ladder collapses to {shown}"
+
+
+def test_junk_never_renders_as_a_price():
+    from instrument_identity import format_strike_for_display
+
+    for junk in (None, "", "abc", float("nan"), float("inf"), float("-inf")):
+        assert format_strike_for_display(junk) == "—"
+
+
+# ── THE WIRE CONTRACT ───────────────────────────────────────────────────────────────────────
+
+def test_the_server_emits_a_label_with_every_per_strike_row():
+    """Index 3 is the contract the surfaces consume. Losing it silently un-labels every ladder."""
+    import inspect
+
+    import server
+
+    src = inspect.getsource(server.get_terrain_strikes)
+    assert "format_strike_for_display" in src, (
+        "/api/terrain/strikes no longer attaches a label to each per-strike row")
+
+
+def test_the_terrain_payload_carries_labels_for_level_scalars():
+    """The wall chips are not rows; they need their own labels from the same producer."""
+    import inspect
+
+    import server
+
+    src = inspect.getsource(server._terrain_refresh_one)
+    assert '"strike_labels"' in src, "the terrain payload no longer carries strike_labels"
+    for key in ("call_wall", "put_wall", "gamma_flip"):
+        assert key in src, f"strike_labels omits {key}"
+
+
+@pytest.mark.parametrize("rel", SURFACES)
+def test_surfaces_consume_the_label_and_fall_back_to_the_raw_value(rel: str):
+    """A missing label must degrade to the raw number, never to a fabricated one or 'undefined'."""
+    js = _script_no_comments(rel)
+    if rel == "static/index.html":
+        assert "r.lbl" in js, f"{rel} does not read the server's label"
+        assert "String(r.k)" in js, f"{rel} has no raw-value fallback"
+    else:
+        assert "strikeLabel" in js or "levelLabel" in js, f"{rel} does not consume a label"
+        assert "String(" in js, f"{rel} has no raw-value fallback"
 
 
 # ── CLASS GUARDS ────────────────────────────────────────────────────────────────────────────
 
-@pytest.mark.parametrize("rel", CONSUMER_SURFACES)
+@pytest.mark.parametrize("rel", SURFACES)
 def test_no_strike_valued_label_goes_through_a_rounding_formatter(rel: str):
-    """Guard the CLASS, not the instances that were fixed.
-
-    fmt(x, 0) is fine for counts and dollar magnitudes; never for a strike.
-    """
-    js = re.sub(r"^\s*//.*$", "", _script(rel), flags=re.M)
+    js = _script_no_comments(rel)
     offenders = re.findall(
         r"fmt\(\s*(k|kk|strike|selRow\[0\]|king\[0\]|near\[0\]|r\[0\]|d\[0\]|row\[0\]|"
         r"T\.call_wall|T\.put_wall|T\.gamma_flip|T\.pin)\s*,\s*0\s*\)", js)
-    assert not offenders, (
-        f"{rel}: strike-valued labels routed through a rounding formatter again: {offenders}")
-    # index.html's terrain map used toFixed(1), which truncates rather than rounds.
-    assert not re.search(r"\br\.k\.toFixed\(", js), (
-        f"{rel}: the terrain strike label is formatting r.k directly again — use fmtStrike")
+    assert not offenders, f"{rel}: strike labels routed through a rounding formatter: {offenders}"
+    assert not re.search(r"\br\.k\.toFixed\(", js), f"{rel}: terrain label formatted directly"
 
 
 def test_the_strike_axis_label_gate_carries_no_instrument_geometry():
@@ -172,16 +194,13 @@ def test_the_strike_axis_label_gate_carries_no_instrument_geometry():
     The original gate labelled only whole-dollar strikes divisible by five below 12px per band:
     a 1.0 ladder fully, a 0.5 ladder one strike in ten.
     """
-    js = re.sub(r"^\s*//.*$", "", _script("static/chart.html"), flags=re.M)
-    assert "%5===0" not in js.replace(" ", ""), (
-        "a multiple-of-five strike rule is back in chart.html — ticker geometry in a label gate")
+    js = _script_no_comments("static/chart.html")
+    assert "%5===0" not in js.replace(" ", ""), "a multiple-of-five strike rule is back"
     assert "gLabelEvery" in js, "the geometric label-thinning stride is gone"
-    assert "measureText" in js, (
-        "label thinning no longer measures the rendered label — the stride would be a guess and "
-        "variable-width labels ('320' vs '322.5') overlap or over-thin")
+    assert "measureText" in js, "label thinning no longer measures the rendered label"
 
 
-@pytest.mark.parametrize("rel", CONSUMER_SURFACES)
+@pytest.mark.parametrize("rel", SURFACES)
 @needs_node
 def test_the_shipped_script_still_parses(rel: str):
     """An unparseable page renders nothing."""
@@ -192,14 +211,17 @@ def test_the_shipped_script_still_parses(rel: str):
         assert r.returncode == 0, f"{rel} script block is not valid JS:\n{r.stderr[:1200]}"
 
 
-def test_the_server_producer_has_no_second_implementation():
-    """market_state inlined this rule twice; nothing may inline it again."""
+def test_the_label_is_not_persisted_into_the_per_strike_row():
+    """A display artifact has no business in option_chain_accrual.
+
+    The label is attached at the API boundary. Putting it in the persisted row would change the
+    stored shape and bloat every banked minute with derivable text.
+    """
     import inspect
 
-    import market_state
+    import terrain_engine
 
-    src = inspect.getsource(market_state)
-    src = re.sub(r"^\s*#.*$", "", src, flags=re.M)
-    assert "format_strike_for_display" in src, "market_state no longer uses the one producer"
-    assert not re.search(r"str\(int\([^)]*\)\)\s*if\s+[^\n]*is_integer\(\)", src), (
-        "the strike-to-text rule is inlined in market_state again — import the producer")
+    src = inspect.getsource(terrain_engine._per_strike_rows)
+    assert "format_strike_for_display" not in src, (
+        "the persisted per-strike row builder is attaching a display label — that belongs at the "
+        "API boundary, not in stored data")

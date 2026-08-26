@@ -4,9 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Ed Chart — terrain on price</title>
-<script src="/static/rth_clock_authority.js"></script>
-<!-- # ui-mockup-ok: THE displayed-strike authority. One producer, every surface consumes it. -->
-<script src="/static/js/strike_format.js"></script> <!-- # ui-mockup-ok: F09 consume served time_et RTH clock; no Chart redesign -->
+<script src="/static/rth_clock_authority.js"></script> <!-- # ui-mockup-ok: F09 consume served time_et RTH clock; no Chart redesign -->
 <style>
   /* v6.2 (RC-195) # ui-mockup-ok: operator "the tabs don't look right, no light/dark, fonts
      don't match" — this is the cv2 SYSTEM the operator actually sees on the Console, ported
@@ -386,10 +384,21 @@ const fmt = (x, d = 2) => x == null ? '—' : Number(x).toFixed(d);
 // XRT/CDE/CIFR/SMCI a 0.5 one. It reached the CALL WALL / PUT WALL chips and the coach lines, so
 // the console was naming levels the operator cannot trade.
 //
-// THE PRODUCER IS static/js/strike_format.js, loaded in <head>. It is deliberately NOT redefined
-// here: this rule previously existed once per surface and was wrong in a different way on each
-// (chart/exposure rounding 322.5 to "323", the terrain map truncating 17.25 to "17.3"), which is
-// what a duplicated computation buys. window.fmtStrike is the only definition in the document.
+// THE PRODUCER IS THE SERVER — instrument_identity.format_strike_for_display. This page does not
+// compute how a strike is written; it RENDERS what the payload already carries. A per-strike row's
+// index 3 IS its label, and /api/terrain carries `strike_labels` for the level scalars.
+//
+// A browser re-implementation kept in step by a parity test is still a SECOND computation of one
+// semantic, which is exactly how four surfaces ended up with four rules and three wrong answers.
+//
+// levelLabel is a LOOKUP with a raw-value fallback, so a server not yet carrying labels degrades
+// to the old number rather than to a fabricated one.
+const levelLabel = (t, key) => {
+  const m = t && t.strike_labels;
+  if (m && m[key] != null) return m[key];
+  const v = t ? t[key] : null;
+  return v == null ? '—' : String(v);
+};
 const j = async u => (await fetch(u)).json();
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => (
   ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]));
@@ -1733,6 +1742,14 @@ function drawGamma() {
   const i1 = Math.min(rows.length, c + gWin.n + gWin.off);
   const vis = rows.slice(i0, i1);
   if (!vis.length) return;
+  // # ui-mockup-ok: ONE FAUCET consumption 2026-08-26. Index 3 of a per-strike row is the strike's
+  // DISPLAY TEXT, computed once by the server (instrument_identity.format_strike_for_display).
+  // This page no longer derives one: it used to, and so did exposure and the terrain map, with
+  // three different rules and three wrong answers. strikeLabel is a LOOKUP, never a computation —
+  // the fallback is the raw value, so a server that has not yet been updated degrades to the old
+  // number rather than to a fabricated one.
+  const _labelOf = new Map(vis.map(r => [r[0], r[3]]));
+  const strikeLabel = k => (_labelOf.get(k) ?? (k == null ? '—' : String(k)));
   const CARDW = W > 980 ? 330 : 0;   // reserve the right rail for the coach cards
   const bandW = (W - 24 - CARDW) / vis.length;
   const xs = i => 12 + i * bandW;
@@ -1778,7 +1795,7 @@ function drawGamma() {
       `<br>${fmtBig(gy)} → ${fmtBig(gx)} (${dG >= 0 ? '+' : ''}${fmtBig(dG)}` +
       (gy < 0 && gx < 0 ? (dG >= 0 ? ' · short gamma shrinking' : ' · short gamma growing') : '') + ')';
     gZones.push({ x0, x1: x0 + bandW,
-      tipHtml: `<b>Strike ${fmtStrike(k)}</b><br>` +
+      tipHtml: `<b>Strike ${strikeLabel(k)}</b><br>` +
         `Dealer gamma today: ${fmtBig(gx)}<br>` +
         `Yesterday: ${gy != null ? fmtBig(gy) : 'no wide capture'}` + story +
         `<br>Option volume today: ${fmtBig(vol)}` });
@@ -1799,13 +1816,13 @@ function drawGamma() {
       // the previous draw call left set and the thinning is wrong.
       const _prevFont = g.font;
       g.font = "600 10px 'IBM Plex Mono', monospace";
-      const _probe = fmtStrike(vis[Math.floor(vis.length / 2)][0]);
+      const _probe = strikeLabel(vis[Math.floor(vis.length / 2)][0]);
       gLabelEvery = Math.max(1, Math.ceil((g.measureText(_probe).width + 8) / Math.max(bandW, 1)));
       g.font = _prevFont;
     }
     if (i % gLabelEvery === 0) {
       g.fillStyle = PAL.dim; g.font = "600 10px 'IBM Plex Mono', monospace";   // # ui-mockup-ok: v6.2
-      const _lbl = fmtStrike(k);
+      const _lbl = strikeLabel(k);
       // centre on the measured width — labels are now variable-length ("320" vs "322.5"), so the
       // old fixed -9px nudge would sit them off-band.
       g.fillText(_lbl, x0 + bandW / 2 - g.measureText(_lbl).width / 2, H - 8);
@@ -1882,8 +1899,8 @@ function drawGamma() {
   _mk(spot, PAL.amber, `SPOT ${fmt(spot)}`, 30, 'spot');
   // # ui-mockup-ok: FIDELITY BUG FIX (2026-08-26) — these are STRIKES, and rounding them named a
   // level the operator cannot trade (a 322.5 call wall rendered "CALL WALL 323").
-  _mk(T.call_wall, PAL.red, `CALL WALL ${fmtStrike(T.call_wall)}`, 46, 'call_wall');
-  _mk(T.put_wall, PAL.green, `PUT WALL ${fmtStrike(T.put_wall)}`, 62, 'put_wall');
+  _mk(T.call_wall, PAL.red, `CALL WALL ${levelLabel(T, 'call_wall')}`, 46, 'call_wall');
+  _mk(T.put_wall, PAL.green, `PUT WALL ${levelLabel(T, 'put_wall')}`, 62, 'put_wall');
 
   // measured migration line: biggest per-strike shifts vs yesterday
   const deltas = vis.filter(r => ghost.get(r[0]) != null)
@@ -1892,7 +1909,7 @@ function drawGamma() {
   if (deltas.length && !CARDW) {
     g.fillStyle = '#c792ff'; g.font = '700 12px system-ui';
     g.fillText('biggest shifts vs yesterday: ' + deltas.map(([k, d]) =>
-      `${fmtStrike(k)} ${d >= 0 ? '+' : ''}${fmtBig(d)}`).join(' · '), 14, 42);   // # ui-mockup-ok: strike fidelity 2026-08-26
+      `${strikeLabel(k)} ${d >= 0 ? '+' : ''}${fmtBig(d)}`).join(' · '), 14, 42);   // # ui-mockup-ok: strike fidelity 2026-08-26
   }
 
   // coach cards (right rail) — every number computed from the data above
@@ -1914,8 +1931,8 @@ function drawGamma() {
     const sorted = withG.map(r => [r[0], r[1] - ghost.get(r[0])])
       .sort((a, b) => b[1] - a[1]);
     // # ui-mockup-ok: strike fidelity 2026-08-26 — coach lines name STRIKES; rounding invented them.
-    const grew = sorted.filter(d => d[1] > 0).slice(0, 2).map(d => fmtStrike(d[0])).join('/');
-    const shrank = sorted.filter(d => d[1] < 0).slice(-2).map(d => fmtStrike(d[0])).join('/');
+    const grew = sorted.filter(d => d[1] > 0).slice(0, 2).map(d => strikeLabel(d[0])).join('/');
+    const shrank = sorted.filter(d => d[1] < 0).slice(-2).map(d => strikeLabel(d[0])).join('/');
     coach1.innerHTML = `<b>Coach: positive gamma mass moved ${dir}</b>` +
       (grew ? `Grew most at ${grew}` : 'No strike grew') +
       (shrank ? `; shrank most at ${shrank}. ` : '. ') +
@@ -1928,7 +1945,7 @@ function drawGamma() {
     const loc = (T.call_wall != null && Math.min(...kk) > T.call_wall) ? 'ABOVE the call wall'
       : (T.put_wall != null && Math.max(...kk) < T.put_wall) ? 'BELOW the put wall'
       : 'inside the wall range';
-    coach2.innerHTML = `<b>Coach: heaviest option trading at ${kk.map(k => fmtStrike(k)).join('–')}</b>` +   // # ui-mockup-ok: strike fidelity 2026-08-26
+    coach2.innerHTML = `<b>Coach: heaviest option trading at ${kk.map(k => strikeLabel(k)).join('–')}</b>` +   // # ui-mockup-ok: strike fidelity 2026-08-26
       `That is ${loc}. Activity fact only — buyer/seller split stays unproven until the ΔOI test.`;
     coach2.style.display = 'block';
   } else coach2.style.display = 'none';

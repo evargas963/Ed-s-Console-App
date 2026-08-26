@@ -224,7 +224,10 @@ from schwab_client import (
     safe_get_price_history,
     SchwabAuthError,
 )
-from instrument_identity import ticker_storage_key   # RC-126: the ONE query-symbol authority
+from instrument_identity import (   # RC-126: the ONE query-symbol authority
+    format_strike_for_display,      # ...and the ONE strike->text computation, repo-wide
+    ticker_storage_key,
+)
 from math_exposure import (
     MISSING_GREEK_SENTINEL,
     gamma_is_plausible,
@@ -12002,6 +12005,18 @@ def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
         _atr = _radar_atr(tk)
         payload["atr_daily"] = round(_atr.daily, 3) if _atr.daily else None
         payload["atr_15m"] = round(_atr.m15, 3) if _atr.m15 else None
+        # ONE FAUCET — the strike->text computation happens HERE, once, and the browser RENDERS
+        # the result. It used to be re-implemented in JavaScript per surface: four surfaces, four
+        # rules, three of them wrong (chart and exposure rounded 322.5 to "323", the terrain map
+        # truncated 17.25 to "17.3"). A second implementation kept in step by a parity test is
+        # still two computations, so the browser now computes nothing about how a strike is
+        # written. Levels absent from the payload get no label rather than a fabricated one.
+        payload["strike_labels"] = {
+            _lk: format_strike_for_display(payload.get(_lk))
+            for _lk in ("call_wall", "put_wall", "gamma_flip", "absolute_gamma_strike",
+                        "key_delta_strike", "call_delta_wall", "put_delta_wall")
+            if payload.get(_lk) is not None
+        }
         # RC-68: carry the LIVE per-strike map into the cache. to_dict() deliberately drops it
         # (hundreds of entries, far too heavy for every poll — same reason `profile` is dropped),
         # so /api/terrain/strikes reads it from the cached snapshot instead of the frozen morning
@@ -12874,8 +12889,14 @@ def get_terrain_strikes(ticker: str = Query(default=DEFAULT_TICKER)):
                     # from a strike measured at flat gamma on the surface used to read dealer
                     # positioning. Hidden here because server.py was allowlisted wholesale.
                     continue
-                out.append([round(float(k), 2), round(float(g), 1),
-                            int(vol_by_k.get(float(k), 0))])
+                # ONE FAUCET: index 3 is the strike's DISPLAY TEXT, computed here once. Every
+                # browser surface renders it instead of re-deriving one — four surfaces used to
+                # carry four different rules and three printed prices that do not trade. The
+                # label is added at the API boundary, NOT in the persisted per-strike row: it is
+                # a display artifact and has no business in option_chain_accrual.
+                _kf = round(float(k), 2)
+                out.append([_kf, round(float(g), 1), int(vol_by_k.get(float(k), 0)),
+                            format_strike_for_display(_kf)])
             out.sort(key=lambda r: r[0])
             return out
 
