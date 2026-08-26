@@ -36,12 +36,17 @@ if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
 from tools.check_one_producer import (  # noqa: E402
+    NOT_PROVEN_BASELINE,
     evaluate,
     load_registry,
     unregistered_payload_fields,
+    violations,
 )
 
-FROZEN = REPO / "tests" / "frozen" / "one_producer_not_proven_names.txt"
+#: The SAME file the enforced seam reads. This test used to own a baseline under tests/frozen/
+#: while `violations()` discarded not_proven entirely — a ratchet in pytest and a green seam,
+#: which is how "the remainder cannot drift" was true of the test and false of the gate.
+FROZEN = NOT_PROVEN_BASELINE
 
 
 def _frozen_names() -> set[str]:
@@ -135,9 +140,33 @@ def test_the_registry_verdict_block_names_this_file():
     """The prose and the lock must refer to each other, or the prose rots again."""
     verdicts = load_registry().get("_verdicts") or {}
     text = str(verdicts.get("NOT_PROVEN", ""))
-    assert "test_one_producer_registry_v1.py" in text, (
-        "the registry's NOT_PROVEN verdict no longer names the file that enforces it")
+    assert "one_producer_not_proven_baseline.txt" in text, (
+        "the registry's NOT_PROVEN verdict no longer names the baseline that enforces it")
     assert FROZEN.is_file(), f"{FROZEN} is missing; the ratchet has no baseline"
+
+
+def test_the_ratchet_is_in_the_ENFORCED_seam_not_only_here():
+    """THE CORRECTION. A pytest ratchet beside a green gate is not an enforced contract.
+
+    `violations()` — what check_institutional_correctness imports — discarded not_proven and
+    returned only `failures`, so 604 unregistered payload fields passed the seam. This asserts
+    the seam itself now carries the rule, so this file can never again be the only thing
+    holding it.
+    """
+    from tools.check_one_producer import not_proven_failures
+
+    assert not_proven_failures(["brand_new_unregistered_probe"]), (
+        "the enforced ratchet does not fire on an arrival")
+    assert not not_proven_failures(sorted(_frozen_names())[:5]), (
+        "the enforced ratchet fires on names already in the baseline")
+    # ...and a note, which is analysis output rather than a payload field, must never fire it.
+    assert not not_proven_failures(["strike_display_text: some unresolved site"]), (
+        "an analysis note was treated as an unregistered payload field")
+
+
+def test_the_seam_is_green_on_head():
+    """HEAD must pass through the real seam, or the gate gets switched off."""
+    assert violations() == [], f"the enforced seam is red on HEAD: {violations()[:3]}"
 
 
 def test_the_frozen_baseline_is_a_measurement_not_a_stub():

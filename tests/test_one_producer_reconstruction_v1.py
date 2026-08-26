@@ -141,6 +141,57 @@ def overlay(md, payload, carried_labels):
     assert fails, "a rebuild placed in the carry arm was treated as first production"
 
 
+def _chain(hops: int) -> str:
+    """A -> B -> ... -> tail, then rebuild the semantic from the tail."""
+    links = ['    md["kl_0"] = payload["call_wall"]']
+    for i in range(1, hops):
+        links.append(f'    md["kl_{i}"] = md["kl_{i - 1}"]')
+    tail = f"kl_{hops - 1}"
+    return (f'\nDOWN = ("{tail}",)\ndef overlay(md, payload):\n' + "\n".join(links) +
+            '\n    md["labels"] = {k: format_strike_for_display(md.get(k)) for k in DOWN '
+            'if md.get(k) is not None}\n')
+
+
+def test_a_chained_alias_is_followed_to_its_origin():
+    """ONE HOP IS NOT ENOUGH. Stopping after a single edge asks for one more assignment.
+
+    Measured before the repair: the 1-hop shape was blocked and the 2-hop shape escaped.
+    """
+    for hops in (1, 2, 4, 8):
+        fails, _ = _verdict(_chain(hops))
+        assert fails, f"a {hops}-hop alias chain escaped the reconstruction check"
+
+
+def test_the_alias_resolution_terminates_on_a_cycle():
+    """A key that carries from itself must not spin the gate."""
+    from tools.check_one_producer import resolve_alias_root
+
+    assert resolve_alias_root("a", {"a": "b", "b": "a"}) in {"a", "b"}
+    assert resolve_alias_root("a", {"a": "a"}) == "a"
+    assert resolve_alias_root("x", {}) == "x"
+
+
+def test_every_registered_field_is_asked_the_question():
+    """NOT ONLY display_transform. The law says a consumer carries — for every field.
+
+    This was gated to `kind == "display_transform"`, so six of the seven registered fields
+    returned ([], []) immediately and were never checked at all.
+    """
+    from tools.check_one_producer import build_scan_corpus
+
+    reg = load_registry()["fields"]
+    corpus = build_scan_corpus()
+    unchecked = []
+    for name, spec in reg.items():
+        fails, unresolved = reconstruction_sites(name, spec, corpus)
+        if not fails and not unresolved:
+            unchecked.append(f"{name} (kind={spec.get('kind')})")
+    assert len(unchecked) < len(reg), (
+        f"no registered field produced a verdict — the check is inert: {unchecked}")
+    assert not [u for u in unchecked if "display_transform" not in u and "derived" in u], (
+        f"a derived field is still never asked the question: {unchecked}")
+
+
 # ── legitimate production must NOT be blocked ───────────────────────────────────────────────
 
 def test_carry_then_produce_passes():

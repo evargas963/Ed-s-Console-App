@@ -4,7 +4,7 @@
   "_verdicts": {
     "PASS": "registered field, exactly one computing site, and it is the declared producer",
     "FAIL": "registered field computed in two or more sites, or in a site that is not the declared producer",
-    "NOT_PROVEN": "field not yet registered. Counted and reported, never silently passed. The count is asserted by tests/test_one_producer_registry_v1.py so the unenforced remainder cannot drift and must shrink."
+    "NOT_PROVEN": "field not yet registered. ENFORCED as a one-way ratchet by tools/check_one_producer.py (not_proven_failures), which both violations() and the CLI apply, against the frozen name set in governance/one_producer_not_proven_baseline.txt. Registering a field always passes; only GROWTH of the unenforced remainder fails. CORRECTED 2026-08-26: this previously said the count was asserted by tests/test_one_producer_registry_v1.py, a file that had never existed in 1,796 commits, while violations() discarded not_proven entirely — so the remainder could and did drift (596 -> 604 in one session) behind a green seam."
   },
   "payload_surfaces": [
     "server.py"

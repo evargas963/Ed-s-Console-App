@@ -557,12 +557,56 @@ def _guarded_by_absence(path: list[ast.AST], guard_names: set[str] | None = None
     return False
 
 
+#: Per-file analysis reused across fields. The corpus is identical for every registered field
+#: and only the producer NAME differs, so re-parsing each module once per field made the check
+#: cost 4,697 ms for seven fields against 1,368 ms for one. Keyed by content length as well as
+#: path so an edited file is never served a stale tree.
+_FILE_ANALYSIS: dict[tuple[str, int], tuple[ast.AST, dict[str, str], dict[str, tuple[str, ...]], set[str]]] = {}
+
+
+def _analyse(rel: str, src: str):
+    key = (rel, len(src))
+    hit = _FILE_ANALYSIS.get(key)
+    if hit is None:
+        tree = ast.parse(src)
+        hit = (tree, alias_edges(tree), literal_domains(tree), alias_map_names(tree))
+        _FILE_ANALYSIS[key] = hit
+    return hit
+
+
+def resolve_alias_root(key: str, edges: dict[str, str]) -> str:
+    """Follow the carrier chain to its ORIGIN, not one hop.
+
+    A -> B -> C -> recompute(C) is the same bypass as A -> B -> recompute(B); stopping after a
+    single edge just asks the author to add one more assignment. Measured on the fixture: the
+    one-hop version BLOCKED the 1-hop shape and let the 2-hop shape through.
+
+    Cycle-guarded: a key that carries from itself resolves to itself rather than looping.
+    """
+    seen = {key}
+    cur = key
+    while True:
+        nxt = edges.get(cur)
+        if nxt is None or nxt in seen:
+            return cur
+        seen.add(nxt)
+        cur = nxt
+
+
 def reconstruction_sites(field: str, spec: dict,
                          corpus: list[tuple[str, str, list[tuple[ast.AST, str]]]] | None = None,
                          ) -> tuple[list[str], list[str]]:
-    """(proven_reconstructions, not_proven_notes) for one registered field."""
+    """(proven_reconstructions, not_proven_notes) for one registered field.
+
+    KIND-AGNOSTIC ON PURPOSE. This was gated to `display_transform`, which meant six of the
+    seven registered fields were never asked the question at all — the law says a consumer
+    CARRIES, and it says so for every field, not only for text. Grouping applications by the
+    alias root of their argument does not depend on what the producer computes. Fields whose
+    producer takes something other than a payload key simply resolve to nothing and are
+    reported NOT_PROVEN, which is the correct answer for them rather than silence.
+    """
     producer = str(spec.get("producer") or "")
-    if ":" not in producer or str(spec.get("kind")) != "display_transform":
+    if ":" not in producer:
         return [], []
     func = producer.split(":", 1)[1]
     produced_roots: dict[str, str] = {}       # alias root -> where its label was produced
@@ -572,11 +616,8 @@ def reconstruction_sites(field: str, spec: dict,
     for rel, src, fns in (corpus if corpus is not None else build_scan_corpus()):
         if func not in src:
             continue
-        tree = ast.parse(src)
+        tree, edges, domains, guard_names = _analyse(rel, src)
         names = _producer_names(tree, func)
-        edges = alias_edges(tree)
-        domains = literal_domains(tree)
-        guard_names = alias_map_names(tree)
         for fn, _seg in fns:
             # Cheap reject first: this gate runs in pre-commit, and building a parent map for
             # every function in a 15,000-line module to find the four that call the producer
@@ -609,7 +650,7 @@ def reconstruction_sites(field: str, spec: dict,
                     continue
                 guarded = _guarded_by_absence(chain, guard_names)
                 for key in keys:
-                    root = edges.get(key, key)
+                    root = resolve_alias_root(key, edges)
                     applications.append((rel, fn.name, root, guarded))
                     produced_roots.setdefault(root, f"{rel}:{fn.name}")
 
@@ -725,12 +766,62 @@ def unregistered_payload_fields() -> list[str]:
     return sorted(k for k in keys if k not in covered)
 
 
+#: The unenforced remainder, frozen BY NAME. Lives beside the registry because it is governance
+#: data that the gate itself reads — an earlier version put it under tests/frozen/, which made a
+#: pre-commit gate reach into the test tree for its contract.
+NOT_PROVEN_BASELINE = REPO / "governance" / "one_producer_not_proven_baseline.txt"
+
+
+def not_proven_arrivals(not_proven: list[str]) -> list[str]:
+    """Unregistered payload fields that are NOT in the frozen baseline — the remainder GREW.
+
+    Registering a field removes it from the live set and is always allowed; the ratchet only
+    fires upward. Notes of the form "<field>: <detail>" are analysis output, not payload fields,
+    and are excluded.
+    """
+    if not NOT_PROVEN_BASELINE.is_file():
+        return []                       # handled as a hard failure by violations(), not here
+    frozen = {ln.strip() for ln in
+              NOT_PROVEN_BASELINE.read_text(encoding="utf-8").splitlines() if ln.strip()}
+    live = {n for n in not_proven if ": " not in n}
+    return sorted(live - frozen)
+
+
+def not_proven_failures(not_proven: list[str]) -> list[str]:
+    """THE ENFORCED CONTRACT FOR NOT_PROVEN, as one rule with two callers.
+
+    `violations()` discarded `not_proven` and returned only `failures`, so 604 unregistered
+    payload fields sat behind a green seam and check_institutional_correctness reported the
+    field satisfied. The registry's verdict block promised the opposite — "counted and reported,
+    never silently passed" — and a pytest ratchet alone does not make that true of the SEAM.
+
+    It lives here rather than inside violations() because `main()` computes evaluate() itself:
+    putting the rule in only one of them gave the CLI and the enforced seam two different
+    answers on the same tree, which is the split brain this repo keeps paying for.
+
+    Registering a field removes it from the live set and always passes. Only GROWTH fails.
+    """
+    rel = NOT_PROVEN_BASELINE.relative_to(REPO).as_posix()
+    if not NOT_PROVEN_BASELINE.is_file():
+        return [f"{rel}:0  the NOT_PROVEN baseline is missing, so the unenforced remainder "
+                f"cannot be ratcheted and any number of unregistered payload fields would pass "
+                f"unseen. Restore it, or regenerate it deliberately (RC-325)."]
+    arrived = not_proven_arrivals(not_proven)
+    if not arrived:
+        return []
+    return [f"governance/computation_registry.json:0  {len(arrived)} payload field(s) arrived "
+            f"UNREGISTERED, so ONE FAUCET is unproven for them and the unenforced remainder "
+            f"GREW: {arrived[:12]}. Register them in the computation registry (preferred), or "
+            f"add each name to {rel} in the same commit with a reason. Do not bulk-regenerate "
+            f"that file (RC-325)."]
+
+
 def violations() -> list[str]:
     try:
-        failures, _not_proven, _n = evaluate()
+        failures, not_proven, _n = evaluate()
     except PayloadSurfaceMissing as exc:
         return [f"governance/computation_registry.json:0  {exc}"]
-    return failures
+    return failures + not_proven_failures(not_proven)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -740,6 +831,9 @@ def main(argv: list[str] | None = None) -> int:
                     help="also print the NOT_PROVEN remainder, which must shrink")
     args = ap.parse_args(argv)
     failures, not_proven, registered = evaluate()
+    # The CLI and the enforced seam must agree on the same tree, so the NOT_PROVEN ratchet is
+    # applied here through the SAME function violations() uses.
+    failures = failures + not_proven_failures(not_proven)
     if args.measure:
         print(f"registered fields: {registered}")
         print(f"NOT_PROVEN (unregistered payload keys): {len(not_proven)}")
