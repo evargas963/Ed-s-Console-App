@@ -32,7 +32,8 @@ import logging
 from dataclasses import dataclass
 
 from features.regime_mvp_context import (
-    mvp_net_gamma,
+    # Cursor-audit F9: mvp_net_gamma (whole-chain structure.net_gamma) removed — the dampen/amplify
+    # regime now reads the at-spot authority (inp.net_gamma_at_spot), not the whole-chain aggregate.
     mvp_nearest_distances_for_regime,
     mvp_spot,
     mvp_vwap_side,
@@ -160,11 +161,16 @@ def _score_pinning(inp: SignalInput, micro_regime: str, mr: dict, mvp: dict) -> 
     # A pinning score must not include evidence its inputs cannot support. A lower score that
     # is honest beats a higher one that is not.
 
-    # Positive gamma = dealers dampening movement
-    ng = mvp_net_gamma(mvp)
+    # Positive gamma = dealers dampening movement.
+    # Cursor-audit F9: the SIGN of the dampen/amplify regime is dealer gamma AT SPOT
+    # (inp.net_gamma_at_spot = gamma_at_price(profile, spot)) — the authority per
+    # math_levels.gamma_at_price (RC-320) and the terrain card — NOT the whole-chain
+    # mvp["structure.net_gamma"] (aggregate_net_gex over ALL strikes), which can differ in sign and
+    # made this score "dampening" while the terrain regime read the opposite.
+    ng = getattr(inp, "net_gamma_at_spot", None)
     if ng is not None and ng > 0:
         score += 1.0
-        support.append("positive gamma — dealers dampening")
+        support.append("positive gamma at spot — dealers dampening")
 
     return score, support, contra
 
@@ -198,13 +204,15 @@ def _score_acceleration(inp: SignalInput, micro_regime: str, mr: dict, mvp: dict
         score += 3.0
         support.append(f"break of structure ({micro_regime})")
 
-    # Negative gamma = dealers amplifying
-    ng = mvp_net_gamma(mvp)
+    # Negative gamma = dealers amplifying.
+    # Cursor-audit F9: at-spot dealer gamma sign (inp.net_gamma_at_spot), the regime authority — not
+    # the whole-chain aggregate (see _score_pinning for the full rationale).
+    ng = getattr(inp, "net_gamma_at_spot", None)
     if ng is not None and ng < 0:
         score += 2.0
-        support.append("negative gamma — dealers amplifying movement")
+        support.append("negative gamma at spot — dealers amplifying movement")
     elif ng is not None and ng > 0:
-        contra.append("positive gamma opposes acceleration")
+        contra.append("positive gamma at spot opposes acceleration")
 
     # VIX elevated supports acceleration
     vb = (inp.vix_bucket or "").lower()

@@ -7896,6 +7896,11 @@ def _fetch_state(
         # RC-292/RC-295: terrain SSOT absolute-gamma strike — the same fail-closed read
         # the pin score uses above (None when the terrain cache is absent or stale).
         absolute_gamma_strike=_pin_strike,
+        # Cursor-audit F9: dealer gamma AT SPOT, from the compute_gamma_flip_v2 diag computed at the
+        # top of this function (server.py:_gamma_flip_diag). This is the regime SIGN authority the
+        # terrain card uses; the Call's dealer-regime note reads it instead of the whole-chain
+        # net_gamma so the two surfaces cannot disagree in sign. Fail-closed None if the diag lacks it.
+        net_gamma_at_spot=(_gamma_flip_diag.get("gamma_at_spot") if isinstance(_gamma_flip_diag, dict) else None),
         iv_direction=_iv_direction,
         em_upper=_em_up,
         em_lower=_em_lo,

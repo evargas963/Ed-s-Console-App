@@ -458,8 +458,15 @@ def _greek_notes(inp: SignalInput) -> list:
     """Translate key Greeks into plain English bullet notes."""
     notes = []
 
-    if inp.net_gamma is not None:
-        if inp.net_gamma > 0:
+    # Cursor-audit F9: the dealer dampen/amplify REGIME is the SIGN of dealer gamma AT SPOT
+    # (net_gamma_at_spot = gamma_at_price(profile, spot)) — the authority per math_levels.gamma_at_price
+    # (RC-320) and the terrain card. inp.net_gamma is the WHOLE-CHAIN aggregate_net_gex (Σ over ALL
+    # strikes) and can differ in sign, so reading it here made the Call print the OPPOSITE regime from
+    # the terrain commentary. Fail-closed: emit no dealer-regime note when the at-spot value is
+    # unavailable (terrain also stands its regime aside then), never fall back to the whole-chain sign.
+    _ng_at_spot = getattr(inp, "net_gamma_at_spot", None)   # getattr: robust to mock inputs
+    if _ng_at_spot is not None:
+        if _ng_at_spot > 0:
             notes.append("Dealers are absorbing moves — chop/fade mode")
         else:
             notes.append("Dealers are amplifying moves — trend/momentum mode")

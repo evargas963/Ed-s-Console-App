@@ -1043,6 +1043,12 @@ def build_market_state(
     # RC-292/RC-295: terrain SSOT absolute-gamma strike (full book), read by the server
     # from the terrain cache (fail-closed None when stale) and passed in like charm.
     absolute_gamma_strike: float | None = None,
+    # Cursor-audit F9: dealer gamma AT SPOT (gamma_at_price(profile, spot)), read by the server from
+    # the compute_gamma_flip_v2 diagnostics it ALREADY computes (_gamma_flip_diag["gamma_at_spot"]).
+    # This is the SIGN authority for the dampen/amplify regime (math_levels.gamma_at_price / RC-320);
+    # net_gamma above (consensus_summary = whole-chain aggregate_net_gex) is a DIFFERENT measure that
+    # can differ in sign, so it must not drive a dealer-regime claim. Fail-closed None when absent.
+    net_gamma_at_spot: float | None = None,
     # IV direction — computed by server from _IVTracker
     iv_direction: Optional[str] = None,
     # VOL_INPUT_CONTRACT 1.0.0 (lane V1): per-cycle market-vol context computed
@@ -1372,7 +1378,8 @@ def build_market_state(
                 nearest_above_dist=_nearest_above_dist,
                 nearest_below_name=_nearest_below_name, nearest_below_val=_nearest_below_val,
                 nearest_below_dist=_nearest_below_dist,
-                net_gamma=_net_gamma, net_delta=_net_delta_sig, net_vanna=_net_vanna,
+                net_gamma=_net_gamma, net_gamma_at_spot=net_gamma_at_spot,  # F9: whole-chain vs at-spot (regime authority)
+                net_delta=_net_delta_sig, net_vanna=_net_vanna,
                 charm_net=_charm_net, charm_direction=_charm_dir,
                 charm_drift_toward=_charm_toward,
                 # RC-295 NEXT-DEPTH: the terrain full-book concentration, so no pinning
