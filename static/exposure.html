@@ -141,6 +141,26 @@ const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => (
   ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]));
 const fmt = (x, d = 2) => x == null ? '—' : Number(x).toFixed(d);
+
+// # ui-mockup-ok: non-redesign FIDELITY BUG FIX (2026-08-26). No layout, encoding or interaction
+// changes — only what a strike-valued label SAYS.
+//
+// WHAT WAS WRONG. Strike labels rendered through fmt(k, 0) — Number(k).toFixed(0) — which ROUNDS.
+// A real 322.5 strike printed as "323", a price at which no contract exists, and it reached the
+// NET GEX PEAK callout and the level list, so the overlay named levels that are not tradeable.
+// It was invisible on SPY/QQQ/IWM (whole-dollar ladders) and wrong everywhere else: measured live,
+// TSLA/AAPL/META/NVDA trade a 2.5 ladder and XRT/CDE/CIFR/SMCI a 0.5 one.
+//
+// THE RULE, carrying no instrument knowledge: show exactly the decimals the number needs.
+// 320 -> "320", 322.5 -> "322.5", 17.25 -> "17.25". No increment, tick size or core-ticker
+// assumption, so any optionable symbol of any geometry formats correctly.
+const fmtStrike = k => {
+  if (k == null) return '—';
+  const n = Number(k);
+  if (!Number.isFinite(n)) return '—';
+  const s = n.toFixed(4);
+  return s.indexOf('.') < 0 ? s : s.replace(/0+$/, '').replace(/\.$/, '');
+};
 const fmtBig = v => { if (v == null) return '—'; const a = Math.abs(v);
   return a >= 1e9 ? (v / 1e9).toFixed(2) + 'B' : a >= 1e6 ? (v / 1e6).toFixed(1) + 'M'
        : a >= 1e3 ? (v / 1e3).toFixed(0) + 'K' : String(Math.round(v)); };
@@ -548,7 +568,8 @@ function draw() {
         g.strokeRect(PADL, yy - 7, W - PADL - PADR, 14);
         g.fillStyle = palRgba(selRow[1] >= 0 ? PAL.amber : PAL.vio, 1);
         g.font = "800 11px 'IBM Plex Mono', monospace";
-        g.fillText(`${selRow[1] >= 0 ? 'PIKA +γ' : 'BARNEY −γ'} ${fmt(selRow[0], 0)} · ${fmtBig(selRow[1])} · ${selRow[1] >= 0 ? 'friction' : 'fuel'}`,
+        // # ui-mockup-ok: strike fidelity 2026-08-26 — this names a STRIKE; rounding invented one.
+        g.fillText(`${selRow[1] >= 0 ? 'PIKA +γ' : 'BARNEY −γ'} ${fmtStrike(selRow[0])} · ${fmtBig(selRow[1])} · ${selRow[1] >= 0 ? 'friction' : 'fuel'}`,
           PADL + 6, laneL(yy + (yy > PADT + 30 ? -11 : 24)));  // # ui-mockup-ok: RC-355 lane de-confliction, no redesign
       }
     }
@@ -569,7 +590,7 @@ function draw() {
     g.strokeRect(PADL, yy - 8 - pulse * 2, W - PADL - PADR, 16 + pulse * 4); g.lineWidth = 1;
     g.fillStyle = PAL.acc; g.font = "800 11px 'IBM Plex Mono', monospace";
     // # ui-mockup-ok: RC-352 nomenclature label fix only (KING -> NET GEX PEAK), no design change
-      g.fillText(`⛁ NET GEX PEAK ${fmt(king[0], 0)} · ${fmtBig(king[1])} · click to inspect`, PADL + 6, laneL(yy - 12 - pulse * 2));  // # ui-mockup-ok: RC-355 lane
+      g.fillText(`⛁ NET GEX PEAK ${fmtStrike(king[0])} · ${fmtBig(king[1])} · click to inspect`, PADL + 6, laneL(yy - 12 - pulse * 2));  // # ui-mockup-ok: RC-355 lane; strike fidelity 2026-08-26 (the peak IS a strike — rounding named an untradeable level)
   }
   // VWAP + σ bands as SERIES CURVES (RC-198) — mapped bar-time → visible index
   let vwbDrawn = false;
@@ -750,13 +771,14 @@ function drawLadder() {
     const v = series(r), w = Math.abs(v) / maxA * half;
     g.fillStyle = ladMode === 'VOL' ? PAL.amber : (v >= 0 ? PAL.amber : PAL.vio);
     if (v >= 0) g.fillRect(mid + 1, yy - 2.5, w, 5); else g.fillRect(mid - 1 - w, yy - 2.5, w, 5);
-    if (Math.abs(v) > 0.5 * maxA) { g.fillStyle = PAL.dim; g.fillText(fmt(r[0], 0), 2, yy + 3); }
+    // # ui-mockup-ok: strike fidelity 2026-08-26 — axis label must state the real strike.
+    if (Math.abs(v) > 0.5 * maxA) { g.fillStyle = PAL.dim; g.fillText(fmtStrike(r[0]), 2, yy + 3); }
   }
   // # ui-mockup-ok: RC-201 — ranked rows are CLICKABLE: select + spotlight that strike on the chart
   const ranked = rows.slice().sort((a, b) => Math.abs(b[1]) - Math.abs(a[1])).slice(0, 4);
   $('ranked').innerHTML = ranked.map((r, i) =>
     `<div data-k="${esc(String(r[0]))}" style="cursor:pointer;${selStrike === r[0] ? 'background:var(--panel2);border-radius:5px;' : ''}">` +
-    `L${i} <b style="font-weight:600;${i === 0 ? 'color:var(--accent);' : ''}">${esc(fmt(r[0], 0))}</b> ` +
+    `L${i} <b style="font-weight:600;${i === 0 ? 'color:var(--accent);' : ''}">${esc(fmtStrike(r[0]))}</b> ` +   // # ui-mockup-ok: strike fidelity 2026-08-26
     `<span style="color:${r[1] >= 0 ? 'var(--amber)' : 'var(--vio)'}">${esc(fmtBig(r[1]))}</span></div>`).join('');
   const net = rows.reduce((a, r) => a + r[1], 0);
   $('hedge').innerHTML = `spot +1% &Rightarrow; dealers trade &asymp; ` +
@@ -856,7 +878,7 @@ wrap.addEventListener('mousemove', ev => {
       tipEl.innerHTML =
         `<b>${d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}</b> · ` +
         `O ${fmt(bar.o)} H ${fmt(bar.h)} L ${fmt(bar.l)} C ${fmt(bar.c)}<br>` +
-        `strike <b>${fmt(near[0], 0)}</b> · ${near[1] >= 0
+        `strike <b>${fmtStrike(near[0])}</b> · ${near[1] >= 0
           ? '<span style="color:var(--amber)">PIKA +γ · friction</span>'
           : '<span style="color:var(--vio)">BARNEY −γ · fuel</span>'}<br>` +
         `net GEX ${fmtBig(near[1])} · vol ${fmtBig(near[2] || 0)}<br>` +

@@ -372,6 +372,28 @@ function toggleTheme() {
 })();
 
 const fmt = (x, d = 2) => x == null ? '—' : Number(x).toFixed(d);
+
+// # ui-mockup-ok: non-redesign FIDELITY BUG FIX (2026-08-26). Not a layout change — the approved
+// v6 variant already specifies "all-strike labels while they fit"; this makes those labels tell the
+// truth about what the strike IS.
+//
+// WHAT WAS WRONG. Every strike-valued label rendered through fmt(k, 0) — Number(k).toFixed(0) —
+// which ROUNDS. A real 322.5 strike printed as "323", a price at which no contract exists. It was
+// invisible on SPY/QQQ/IWM, whose ladders are whole-dollar, and wrong on every instrument with
+// 0.5 / 2.5 / 0.25 geometry: measured live, TSLA/AAPL/META/NVDA all trade a 2.5 ladder and
+// XRT/CDE/CIFR/SMCI a 0.5 one. It reached the CALL WALL / PUT WALL chips and the coach lines, so
+// the console was naming levels the operator cannot trade.
+//
+// THE RULE, with no instrument knowledge in it: show exactly the decimals this number needs.
+// 320 -> "320", 322.5 -> "322.5", 17.25 -> "17.25". Nothing here assumes an increment, a tick
+// size, or which tickers are "core", so a new optionable symbol of any geometry formats correctly.
+const fmtStrike = k => {
+  if (k == null) return '—';
+  const n = Number(k);
+  if (!Number.isFinite(n)) return '—';
+  const s = n.toFixed(4);
+  return s.indexOf('.') < 0 ? s : s.replace(/0+$/, '').replace(/\.$/, '');
+};
 const j = async u => (await fetch(u)).json();
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => (
   ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]));
@@ -1651,6 +1673,9 @@ let gWin = { n: 24, off: 0 };
 let gZones = [];
 let gHover = null;        // hovered strike band index
 let gLayout = null;       // {bandW, count} of the last gamma render
+//: Label thinning stride for the strike axis, recomputed per render from the MEASURED label width
+//: (see the strike-label block). Geometric, not value-based: it privileges no strike class.
+let gLabelEvery = 1;
 
 const fmtBig = v => {
   if (v == null) return '—';
@@ -1757,13 +1782,37 @@ function drawGamma() {
       `<br>${fmtBig(gy)} → ${fmtBig(gx)} (${dG >= 0 ? '+' : ''}${fmtBig(dG)}` +
       (gy < 0 && gx < 0 ? (dG >= 0 ? ' · short gamma shrinking' : ' · short gamma growing') : '') + ')';
     gZones.push({ x0, x1: x0 + bandW,
-      tipHtml: `<b>Strike ${fmt(k)}</b><br>` +
+      tipHtml: `<b>Strike ${fmtStrike(k)}</b><br>` +
         `Dealer gamma today: ${fmtBig(gx)}<br>` +
         `Yesterday: ${gy != null ? fmtBig(gy) : 'no wide capture'}` + story +
         `<br>Option volume today: ${fmtBig(vol)}` });
-    if (bandW >= 12 || (Math.round(k) === k && Math.round(k) % 5 === 0)) {
+    // # ui-mockup-ok: non-redesign FIDELITY BUG FIX (2026-08-26) — the approved v6 variant already
+    // says "all-strike labels while they fit"; this restores that on non-integer ladders.
+    //
+    // The old gate was `bandW >= 12 || (Math.round(k) === k && k % 5 === 0)`. Below 12px per band
+    // it labelled ONLY whole-dollar strikes divisible by five, so a 2.5 ladder (TSLA/AAPL/META)
+    // showed one label in two and a 0.5 ladder (XRT/CDE) one in ten — and every label was rounded.
+    // An operator reading that axis sees a whole-dollar ladder and concludes the chain has no
+    // half-dollar strikes. That is instrument geometry baked into a label rule.
+    //
+    // Replaced with a purely GEOMETRIC thinning: label as many as fit, then every Nth band, where
+    // N comes from the measured label width in pixels. It knows nothing about increments, so a
+    // 0.5, 2.5 or 10.0 ladder all thin out the same way and no strike class is privileged.
+    if (i === 0) {
+      // Measure with the LABEL font actually in effect, or the width is taken from whatever font
+      // the previous draw call left set and the thinning is wrong.
+      const _prevFont = g.font;
+      g.font = "600 10px 'IBM Plex Mono', monospace";
+      const _probe = fmtStrike(vis[Math.floor(vis.length / 2)][0]);
+      gLabelEvery = Math.max(1, Math.ceil((g.measureText(_probe).width + 8) / Math.max(bandW, 1)));
+      g.font = _prevFont;
+    }
+    if (i % gLabelEvery === 0) {
       g.fillStyle = PAL.dim; g.font = "600 10px 'IBM Plex Mono', monospace";   // # ui-mockup-ok: v6.2
-      g.fillText(fmt(k, 0), x0 + bandW / 2 - 9, H - 8);
+      const _lbl = fmtStrike(k);
+      // centre on the measured width — labels are now variable-length ("320" vs "322.5"), so the
+      // old fixed -9px nudge would sit them off-band.
+      g.fillText(_lbl, x0 + bandW / 2 - g.measureText(_lbl).width / 2, H - 8);
     }
   }
   // E-35 follow-up (operator: "yellow bars not rendering"): a zero-volume session start
@@ -1835,8 +1884,10 @@ function drawGamma() {
   // "i don't see the call wall in the gamma panel" must be a machine-checkable assertion)
   const _mk = (p, c, l, yy, key) => { const drew = mark2(p, c, l, yy); _dbgGamma[key] = !!drew; };
   _mk(spot, PAL.amber, `SPOT ${fmt(spot)}`, 30, 'spot');
-  _mk(T.call_wall, PAL.red, `CALL WALL ${fmt(T.call_wall, 0)}`, 46, 'call_wall');
-  _mk(T.put_wall, PAL.green, `PUT WALL ${fmt(T.put_wall, 0)}`, 62, 'put_wall');
+  // # ui-mockup-ok: FIDELITY BUG FIX (2026-08-26) — these are STRIKES, and rounding them named a
+  // level the operator cannot trade (a 322.5 call wall rendered "CALL WALL 323").
+  _mk(T.call_wall, PAL.red, `CALL WALL ${fmtStrike(T.call_wall)}`, 46, 'call_wall');
+  _mk(T.put_wall, PAL.green, `PUT WALL ${fmtStrike(T.put_wall)}`, 62, 'put_wall');
 
   // measured migration line: biggest per-strike shifts vs yesterday
   const deltas = vis.filter(r => ghost.get(r[0]) != null)
@@ -1845,7 +1896,7 @@ function drawGamma() {
   if (deltas.length && !CARDW) {
     g.fillStyle = '#c792ff'; g.font = '700 12px system-ui';
     g.fillText('biggest shifts vs yesterday: ' + deltas.map(([k, d]) =>
-      `${fmt(k, 0)} ${d >= 0 ? '+' : ''}${fmtBig(d)}`).join(' · '), 14, 42);
+      `${fmtStrike(k)} ${d >= 0 ? '+' : ''}${fmtBig(d)}`).join(' · '), 14, 42);   // # ui-mockup-ok: strike fidelity 2026-08-26
   }
 
   // coach cards (right rail) — every number computed from the data above
@@ -1866,8 +1917,9 @@ function drawGamma() {
       : 'with no positive-gamma mass in view';
     const sorted = withG.map(r => [r[0], r[1] - ghost.get(r[0])])
       .sort((a, b) => b[1] - a[1]);
-    const grew = sorted.filter(d => d[1] > 0).slice(0, 2).map(d => fmt(d[0], 0)).join('/');
-    const shrank = sorted.filter(d => d[1] < 0).slice(-2).map(d => fmt(d[0], 0)).join('/');
+    // # ui-mockup-ok: strike fidelity 2026-08-26 — coach lines name STRIKES; rounding invented them.
+    const grew = sorted.filter(d => d[1] > 0).slice(0, 2).map(d => fmtStrike(d[0])).join('/');
+    const shrank = sorted.filter(d => d[1] < 0).slice(-2).map(d => fmtStrike(d[0])).join('/');
     coach1.innerHTML = `<b>Coach: positive gamma mass moved ${dir}</b>` +
       (grew ? `Grew most at ${grew}` : 'No strike grew') +
       (shrank ? `; shrank most at ${shrank}. ` : '. ') +
@@ -1880,7 +1932,7 @@ function drawGamma() {
     const loc = (T.call_wall != null && Math.min(...kk) > T.call_wall) ? 'ABOVE the call wall'
       : (T.put_wall != null && Math.max(...kk) < T.put_wall) ? 'BELOW the put wall'
       : 'inside the wall range';
-    coach2.innerHTML = `<b>Coach: heaviest option trading at ${kk.map(k => fmt(k, 0)).join('–')}</b>` +
+    coach2.innerHTML = `<b>Coach: heaviest option trading at ${kk.map(k => fmtStrike(k)).join('–')}</b>` +   // # ui-mockup-ok: strike fidelity 2026-08-26
       `That is ${loc}. Activity fact only — buyer/seller split stays unproven until the ΔOI test.`;
     coach2.style.display = 'block';
   } else coach2.style.display = 'none';
