@@ -9,6 +9,18 @@ the at-spot SIGN". That was never measured, and the flip-LEVEL convergence study
 
 This measures the missing quantity directly.
 
+WHAT IS AND IS NOT BEING COMPARED — read before quoting any output. BOTH SIDES ARE MODELLED. The
+report answers: does the +call/-put dealer sign computed on a TRUNCATED window match the +call/-put
+sign computed on the FULL DELIVERED chain? The full-chain value is a REFERENCE, not ground truth —
+public open interest cannot establish who owns the contracts — so no output here says whether either
+sign matches real dealer positioning. It bounds TRUNCATION SENSITIVITY of our own modelled sign.
+
+HOW STRONG THE RESULT IS. Rates across the ladder are NOT independent samples: each rung re-windows
+largely the SAME chains, so the observations are paired/reused. An observed rise across rungs is
+therefore SUPPORTING evidence of a trend, not proof of one — adjacent rungs overlap heavily, this
+tool runs no paired test (McNemar or equivalent) and no power analysis. Read a smooth curve through
+a candidate threshold as EVIDENCE AGAINST that threshold being special, never as proof it is absent.
+
 METHOD: for each stored wide chain, compute dealer gamma AT SPOT on the FULL delivered strike set
 (the reference), then recompute using only strikes within +/-X% of spot, and compare the two by
 SIGN. The accumulation replicates `compute_gamma_profile`'s inner loop at the single price s=spot,

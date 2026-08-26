@@ -241,12 +241,16 @@ def build_terrain_read(
     # So the middle tier LEVEL_APPROX keeps the regime and posture, and discloses the LEVEL below.
     # Only a chain below the conservative decline-to-speak floor (NARROW/UNAVAILABLE) stands aside.
     # NOTE (measured 2026-08-26): clearing that floor does NOT mean the at-spot sign is verified.
-    # Wider chains DO read the sign better (79.8% agreement at +/-1% rising to 92.7% at +/-15%), but
-    # the gain is gradual — there is no threshold effect at the floor, so passing it certifies
-    # nothing. Separately, measured AT THE FLOOR ONLY, a nearly balanced book (net/gross < 10%) sat
-    # at ~50% agreement; whether width rescues such a book is UNMEASURED. Recorded in
-    # unproven_register as research-only; deliberately NOT gated on here — changing when advice is
-    # withheld is the operator's call, not a silent threshold edit from one study.
+    # What was measured is agreement between the MODELLED +call/-put sign on a truncated window and
+    # the MODELLED sign on the full delivered chain — both sides modelled, so this bounds truncation
+    # sensitivity, not correctness against real dealer positioning. Agreement improves with width
+    # (79.8% at +/-1% up to 92.7% at +/-15%), but that trend is SUPPORTED, NOT PROVEN: adjacent rungs
+    # overlap, the rungs re-window largely the same chains (paired observations), and no paired test
+    # or power analysis was run. There is no visible threshold effect at the floor, so passing it
+    # certifies nothing. Separately, AT THE FLOOR ONLY, a nearly balanced book (net/gross < 10%) sat
+    # near 50%; whether width rescues such a book is UNMEASURED. Recorded in unproven_register as
+    # research-only; deliberately NOT gated on here — changing when advice is withheld is the
+    # operator's call, not a silent threshold edit from one study.
     if flip_confidence not in (GAMMA_FLIP_TRUSTED, GAMMA_FLIP_LEVEL_APPROX):
         return _unavailable(
             f"Gamma flip is not trustworthy ({flip_confidence}) — the option chain is too "

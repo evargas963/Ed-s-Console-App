@@ -1096,9 +1096,9 @@ GAMMA_FLIP_UNAVAILABLE = "UNAVAILABLE"
 #: CORRECTED 2026-08-26 (second pass): this comment used to add "the regime (sign of gamma AT SPOT)
 #: is sound". THAT WAS NEVER MEASURED and is not implied by the convergence study, which measures a
 #: LEVEL distance, not a sign. Measured now — see GAMMA_FLIP_MIN_SPAN_PCT — reaching this tier does
-#: NOT certify the sign: wider chains do read the sign better, but the improvement is gradual and
-#: nothing special happens at the floor, so clearing it buys no guarantee. The tier means "level not
-#: placed", nothing more.
+#: NOT certify the sign: agreement between the truncated and full-chain MODELLED sign improves with
+#: width, but gradually and with no threshold effect at the floor (a SUPPORTED trend, not a proven
+#: one), so clearing this tier buys no guarantee. The tier means "level not placed", nothing more.
 GAMMA_FLIP_LEVEL_APPROX = "LEVEL_APPROX_NARROW_SPAN"
 #: The live chain-FETCH width, and the FLOOR below which nothing is claimed at all (the verdict is
 #: LOW_CONFIDENCE_NARROW_CHAIN and terrain stands everything aside).
@@ -1111,15 +1111,28 @@ GAMMA_FLIP_LEVEL_APPROX = "LEVEL_APPROX_NARROW_SPAN"
 #: _contract_inputs/_dealer_sign/bs_gamma, counting ONLY genuinely truncated chains):
 #:   sign agreement with the full delivered chain — +/-1% 79.8% (n=233), +/-5% 86.2% (n=253,
 #:   95% CI [0.814, 0.899]), +/-10% 90.2% (n=254), +/-15% 92.7% (n=248).
-#: WHAT THIS PROVES, stated no wider than the data (tightened 2026-08-26 after review):
-#:  (a) SPAN DOES MATTER. Agreement rises monotonically across the ladder and the ends do not
-#:      overlap (79.8% [0.742,0.845] at +/-1% vs 92.7% [0.888,0.954] at +/-15%), so a wider chain
-#:      genuinely reads the sign better. An earlier version of this note said span "barely" governs
-#:      the sign — that was an overstatement in the other direction and is withdrawn.
-#:  (b) WHAT IS DISPROVED IS A SPECIAL THRESHOLD AT 0.05, not the value of span. The curve is
-#:      smooth and 0.05 is unremarkable on it — no cliff, no knee — so the floor marks neither where
-#:      the sign becomes knowable nor a point at which it is certified. At exactly the floor the
-#:      sign still disagrees with the full chain about ONE TIME IN SEVEN.
+#: WHAT IS BEING COMPARED — read this before quoting any number above. Both sides of the comparison
+#: are MODELLED. It measures whether the +call/-put dealer sign computed on a TRUNCATED window
+#: matches the +call/-put dealer sign computed on the FULL DELIVERED chain. The full-chain value is
+#: a reference, NOT ground truth: public OI cannot establish who actually owns the contracts, so
+#: this says nothing about whether either sign matches real dealer positioning. It bounds how much
+#: TRUNCATION perturbs our own modelled sign, and nothing more.
+#: WHAT THIS SUPPORTS, stated no wider than the data (tightened again 2026-08-26 after review — the
+#: previous wording said "WHAT THIS PROVES" and was too strong on both points):
+#:  (a) The monotonic span relationship is SUPPORTED, NOT PROVEN. Agreement rises across the ladder
+#:      and the extreme ends do not overlap (79.8% [0.742,0.845] at +/-1% vs 92.7% [0.888,0.954] at
+#:      +/-15%), which is real evidence of a trend. It falls short of proof because ADJACENT rungs
+#:      overlap heavily, the rungs are NOT independent samples (largely the same chains re-windowed,
+#:      so the observations are paired/reused), NO PAIRED TEST was run, and NO POWER ANALYSIS was
+#:      done. What would settle it: a paired per-chain test across rungs (e.g. McNemar on +/-1% vs
+#:      +/-15% over the same chains) with a pre-registered effect size.
+#:      (An earlier note said span "barely" governs the sign — an overstatement the other way, also
+#:      withdrawn. Neither "barely matters" nor "genuinely reads it better" is established.)
+#:  (b) The data are EVIDENCE AGAINST a special threshold at 0.05 — not proof of its absence. The
+#:      curve is smooth through 0.05 with no visible cliff or knee, and at exactly the floor the
+#:      modelled sign still disagrees with the full-chain modelled sign about ONE TIME IN SEVEN. So
+#:      the floor is not shown to mark where the sign becomes knowable; absence of a threshold is
+#:      not demonstrated to the standard a positive claim would need.
 #: SEPARATELY, and measured ONLY AT THE +/-5% FLOOR: how decisively signed the book is separates the
 #: outcome far more sharply than any two adjacent rungs do. Conditioning those rows on
 #: net/gross = |net gamma at spot| / sum|per-contract contributions|:
