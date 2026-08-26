@@ -1,0 +1,58 @@
+# Datasheet for Datasets (Gebru et al. 2021) — option_chain_response_state
+# The REST chain response envelope, retained at the cadence it arrives.
+
+table: option_chain_response_state
+
+motivation: >
+  Every Schwab chain fetch returns, alongside the contracts, a response envelope and an
+  underlying-quote block describing the state of the world for THAT response. Production received
+  4,209 such responses in 24 hours across 58 tickers and retained the envelope of roughly 39 —
+  the once-per-ticker-per-day morning wide chain. Everything else was parsed for contracts and
+  the envelope discarded. What was being lost is not incidental: interestRate and dividendYield
+  are the vendor's own r and q while our greeks use r = q = 0, and whether that is acceptable is
+  an empirical question no 09:30 sample can answer; underlyingPrice and the 23-field underlying
+  quote are a native spot exactly contemporaneous with the chain the greeks were computed from;
+  volatility is the vendor's underlying-level IV; and isChainTruncated records whether the vendor
+  cut the response, which silently changes what any span or coverage claim means (RC-491 showed
+  truncation is real here).
+
+composition: >
+  One row per RECEIVED chain response. Fourteen high-value envelope scalars are promoted to typed,
+  queryable columns (status, strategy, interval_val, is_delayed, is_index, interest_rate,
+  dividend_yield, volatility, underlying_price, days_to_expiration, number_of_contracts,
+  is_chain_truncated, asset_main_type, asset_sub_type) plus ticker and ts_utc (our receive clock).
+  underlying_json holds the vendor's underlying quote block whole. envelope_extra_json is a
+  catch-all for any top-level key without a typed column, so a field the vendor adds later is
+  retained rather than dropped — the property that let breakEven and ssid survive in the contract
+  store. callExpDateMap/putExpDateMap are deliberately EXCLUDED: those are the contracts, already
+  persisted per-contract elsewhere, and duplicating them would multiply storage by thousands.
+  Market data only — no customer, account, order or position data.
+
+collection: >
+  Written by server._fetch_state at the single per-snapshot chain parse point, once per received
+  response, into ed_console.db beside the chain data it describes. (The RC-6 law that keeps raw
+  STREAM capture out of the operational DB does not apply: this is REST response state, the same
+  class as snapshots.option_chain_json and option_chain_morning_full, which already live there.)
+  Fails soft by construction — a retention failure is logged and the snapshot proceeds.
+  MEASURED COST: the envelope plus underlying block serialises to about 754 bytes; at the measured
+  4,209 responses/day that is 3.17 MB/day, 67 MB/month, 0.80 GB/year. Cheap enough that retention
+  runs at FULL cadence: every response is kept, not a sample, and not only responses where a value
+  changed. Temporal fidelity is not reduced for convenience — a change-only scheme would have been
+  cheaper and would have destroyed the ability to say "we observed this value at this instant".
+
+recommended_uses: >
+  Intended: studying whether the r = q = 0 assumption in the greeks is defensible against what the
+  vendor actually reported minute by minute; recovering the contemporaneous native underlying
+  quote for a past chain; and detecting when a chain was truncated before trusting a span,
+  coverage or flip claim computed from it.
+  NOT intended: these are NATIVE vendor observations, not derived signals and not validated model
+  inputs. Nothing derived from this table may enter Decide without its own validation. The
+  vendor's interestRate/dividendYield are the VENDOR's figures; adopting them into the greeks is a
+  separate change requiring its own measurement.
+
+known_limitations: >
+  Retention began 2026-08-26, so history before that date carries only the morning sample and
+  cannot be reconstructed. ts_utc is OUR receive clock, not an exchange event time. Values are
+  stored exactly as the vendor sent them and are not reconciled against any other spot or IV
+  source; where a numeric arrives unparseable the typed column is NULL and the raw value is kept
+  in envelope_extra_json rather than coerced to zero.

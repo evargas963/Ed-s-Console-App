@@ -6658,6 +6658,30 @@ def _fetch_state(
     _t_after_chain_mono = time.monotonic()
     _chain_window_marks.append(("chain_window_contracts_parse_ms", _t_after_chain_mono))
 
+    # OPTIONS FLOW: retain this response's ENVELOPE at the cadence it arrives.
+    # MEASURED LOSS being closed: production received 4,209 chain responses in 24h and kept the
+    # envelope of ~39 (the morning wide chain only). The rest were parsed for contracts and the
+    # envelope discarded — including the vendor's own interestRate/dividendYield (the r and q our
+    # greeks set to 0), its underlyingPrice and 23-field underlying quote, its volatility, and
+    # isChainTruncated. MEASURED COST: ~754 bytes/response = 3.17 MB/day = 0.80 GB/year, so this
+    # runs at FULL cadence; temporal fidelity is not traded away for convenience.
+    # Fails soft by construction — a retention problem must never break a snapshot.
+    try:
+        from db import DB_PATH as _ocrs_db_path
+        from calibration.option_chain_response_state import persist_response_state
+
+        persist_response_state(_ocrs_db_path, ticker, time.time(), c_json)
+    except Exception as _ocrs_e:                                    # noqa: BLE001
+        # WARN, not debug. The first version logged at debug, and the linter then caught a
+        # NameError in this very block — which the fail-soft wrapper would have swallowed
+        # silently, leaving retention permanently dead while everything looked healthy. Soft
+        # failure must still be VISIBLE, so the first occurrence and every 500th are warned.
+        _n = getattr(_fetch_state, "_ocrs_fail_count", 0) + 1
+        _fetch_state._ocrs_fail_count = _n
+        if _n == 1 or _n % 500 == 0:
+            log.warning("option_chain_response_state retention FAILING (%d occurrence(s)) for "
+                        "%s: %s — chain envelope history is not being kept", _n, ticker, _ocrs_e)
+
     # totalVolume: WebSocket TOTAL_VOLUME preferred; else chain underlying (include_underlying_quote)
     _total_vol = None
     try:
