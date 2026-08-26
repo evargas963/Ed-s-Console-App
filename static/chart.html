@@ -1263,11 +1263,15 @@ function draw() {
       return;
     }
     // v6.1 (RC-194) # ui-mockup-ok: NO on-canvas text and no loud frame — the measured
-    // collision family (range labels over the legend and the time axis). Faint fill + hover
-    // tip only; the mock's canvas carries no mid-chart prose.
+    // collision family (range labels over the legend and the time axis).
+    // OPERATOR 2026-08-26: the faint translucent CALL/PUT RANGE fill is REMOVED (again — it had
+    // been removed once before and returned): a full-width 0.05-alpha wash over most of the price
+    // window dulled the candles, which is the chart's primary read. The RANGE itself is NOT
+    // deleted — it stays fully available as the hover tooltip below (and as the off-scale pin
+    // above when it leaves the window), so the server-computed gamma value area is still one
+    // hover away. NOTHING else changes: wall bands + their stroked red/green boxes, flip/pin/wall
+    // lines, labels and axis tags are untouched.
     const yT = y(Math.min(rg.hi, hi)), yB = y(Math.max(rg.lo, lo));
-    g.fillStyle = palRgba(col, 0.05);   // # ui-mockup-ok: v6.2 theme-derived
-    g.fillRect(PADL, yT, W - PADL - PADR, yB - yT);
     zones.push({ y0: yT, y1: yB, tipHtml: tip });
   };
   rangeShade(T.put_wall_range, 'put');
