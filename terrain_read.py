@@ -13,8 +13,12 @@ Two institutional invariants:
    is what needs a wide chain. So:
      * confidence TRUSTED or LEVEL_APPROX -> regime and posture are issued; at LEVEL_APPROX the
        flip LEVEL is explicitly disclosed as approximate on the line that prints it.
-     * confidence NARROW or UNAVAILABLE -> everything is withheld, with the reason stated. A chain
-       that narrow cannot support even the sign.
+     * confidence NARROW or UNAVAILABLE -> everything is withheld, with the reason stated. This is a
+       conservative DECLINE-TO-SPEAK bound, not a finding about the sign: "a chain that narrow
+       cannot support even the sign" was asserted here and is WITHDRAWN (2026-08-26, second pass) —
+       span was never measured against sign reliability, and when it finally was, no cliff appeared
+       at the floor (see math_levels.GAMMA_FLIP_MIN_SPAN_PCT). Passing this bound means we are
+       willing to speak; it does not mean the sign is verified.
      * missing spot, or BOTH flip and at-spot gamma missing -> withheld for the same reason.
        (Precise, because an earlier version of this line said "or no at-spot gamma" and was WRONG:
        the guard is `flip is None AND gamma_at_spot is None`. With a flip present and gamma_at_spot
@@ -205,8 +209,11 @@ def build_terrain_read(
     gamma_at_spot: float | None = None,
     ticker: str | None = None,
 ) -> TerrainRead:
-    """Deterministic terrain read. Fail-closed on missing spot, or on coverage too narrow to
-    support even the at-spot SIGN (NARROW / UNAVAILABLE).
+    """Deterministic terrain read. Fail-closed on missing spot, or on coverage below the
+    conservative floor at which this repo declines to speak at all (NARROW / UNAVAILABLE).
+
+    That floor is NOT evidence that the sign is otherwise sound — see
+    math_levels.GAMMA_FLIP_MIN_SPAN_PCT for the measurement that withdrew that claim.
 
     NOT "fail-closed on untrusted levels" — corrected 2026-08-26. LEVEL_APPROX is untrusted by
     construction (it is named so no surface can print it as TRUSTED) and it deliberately PASSES:
@@ -232,7 +239,14 @@ def build_terrain_read(
     # production chain; live spans are ~29%, so no ticker was actually at risk. The split stands on
     # the semantic argument above, which does not depend on any ticker's current span.)
     # So the middle tier LEVEL_APPROX keeps the regime and posture, and discloses the LEVEL below.
-    # Only a chain too narrow for the at-spot sign itself (NARROW/UNAVAILABLE) stands everything aside.
+    # Only a chain below the conservative decline-to-speak floor (NARROW/UNAVAILABLE) stands aside.
+    # NOTE (measured 2026-08-26): clearing that floor does NOT mean the at-spot sign is verified.
+    # Wider chains DO read the sign better (79.8% agreement at +/-1% rising to 92.7% at +/-15%), but
+    # the gain is gradual — there is no threshold effect at the floor, so passing it certifies
+    # nothing. Separately, measured AT THE FLOOR ONLY, a nearly balanced book (net/gross < 10%) sat
+    # at ~50% agreement; whether width rescues such a book is UNMEASURED. Recorded in
+    # unproven_register as research-only; deliberately NOT gated on here — changing when advice is
+    # withheld is the operator's call, not a silent threshold edit from one study.
     if flip_confidence not in (GAMMA_FLIP_TRUSTED, GAMMA_FLIP_LEVEL_APPROX):
         return _unavailable(
             f"Gamma flip is not trustworthy ({flip_confidence}) — the option chain is too "

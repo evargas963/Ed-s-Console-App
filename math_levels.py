@@ -1090,14 +1090,48 @@ def snap_level_to_shelf_strike(
 GAMMA_FLIP_TRUSTED = "TRUSTED"
 GAMMA_FLIP_NARROW = "LOW_CONFIDENCE_NARROW_CHAIN"
 GAMMA_FLIP_UNAVAILABLE = "UNAVAILABLE"
-#: Middle tier (gamma audit 2026-08-26): the chain reaches the REGIME floor but not the measured
-#: flip-LEVEL convergence span. The regime (sign of gamma AT SPOT) is sound; the flip LEVEL carries
-#: the ~1.4%-of-spot placement error the convergence study measured. Named so no surface can print
-#: this as TRUSTED.
+#: Middle tier (gamma audit 2026-08-26): the chain reaches GAMMA_FLIP_MIN_SPAN_PCT but not the
+#: measured flip-LEVEL convergence span, so the LEVEL carries the ~1.4%-of-spot placement error the
+#: convergence study measured. Named so no surface can print this as TRUSTED.
+#: CORRECTED 2026-08-26 (second pass): this comment used to add "the regime (sign of gamma AT SPOT)
+#: is sound". THAT WAS NEVER MEASURED and is not implied by the convergence study, which measures a
+#: LEVEL distance, not a sign. Measured now — see GAMMA_FLIP_MIN_SPAN_PCT — reaching this tier does
+#: NOT certify the sign: wider chains do read the sign better, but the improvement is gradual and
+#: nothing special happens at the floor, so clearing it buys no guarantee. The tier means "level not
+#: placed", nothing more.
 GAMMA_FLIP_LEVEL_APPROX = "LEVEL_APPROX_NARROW_SPAN"
-#: The live chain-FETCH width, and the FLOOR below which nothing is claimed at all (a chain that
-#: does not reach this cannot even support the at-spot SIGN, so the verdict is
+#: The live chain-FETCH width, and the FLOOR below which nothing is claimed at all (the verdict is
 #: LOW_CONFIDENCE_NARROW_CHAIN and terrain stands everything aside).
+#: THE SIGN-FLOOR CLAIM IS WITHDRAWN — corrected 2026-08-26 (second pass). This comment used to say
+#: a chain below this "cannot even support the at-spot SIGN". That was ASSERTED, never measured, and
+#: the flip-LEVEL convergence study does NOT establish it: that study measures |windowed flip -
+#: full-chain flip|, a LEVEL distance, and is silent about the SIGN of gamma at spot.
+#: MEASURED 2026-08-26 (the study that was missing; 260 seed-fixed chains from the same
+#: option_chain_morning_full cohort, at-spot gamma recomputed on truncated windows via
+#: _contract_inputs/_dealer_sign/bs_gamma, counting ONLY genuinely truncated chains):
+#:   sign agreement with the full delivered chain — +/-1% 79.8% (n=233), +/-5% 86.2% (n=253,
+#:   95% CI [0.814, 0.899]), +/-10% 90.2% (n=254), +/-15% 92.7% (n=248).
+#: WHAT THIS PROVES, stated no wider than the data (tightened 2026-08-26 after review):
+#:  (a) SPAN DOES MATTER. Agreement rises monotonically across the ladder and the ends do not
+#:      overlap (79.8% [0.742,0.845] at +/-1% vs 92.7% [0.888,0.954] at +/-15%), so a wider chain
+#:      genuinely reads the sign better. An earlier version of this note said span "barely" governs
+#:      the sign — that was an overstatement in the other direction and is withdrawn.
+#:  (b) WHAT IS DISPROVED IS A SPECIAL THRESHOLD AT 0.05, not the value of span. The curve is
+#:      smooth and 0.05 is unremarkable on it — no cliff, no knee — so the floor marks neither where
+#:      the sign becomes knowable nor a point at which it is certified. At exactly the floor the
+#:      sign still disagrees with the full chain about ONE TIME IN SEVEN.
+#: SEPARATELY, and measured ONLY AT THE +/-5% FLOOR: how decisively signed the book is separates the
+#: outcome far more sharply than any two adjacent rungs do. Conditioning those rows on
+#: net/gross = |net gamma at spot| / sum|per-contract contributions|:
+#:   net/gross >= 10% -> 95.5% agreement (n=199, CI [0.916, 0.976])
+#:   net/gross <  10% -> ~50% agreement (n=54) — indistinguishable from chance AT THIS WIDTH.
+#: NOT MEASURED: whether a nearly-balanced book stays near chance at OTHER widths. The concentration
+#: cut was run at the floor only; there is no concentration-x-span cross-tab, so no claim is made
+#: here that width cannot help such a book. That cross-tab is the next measurement (register row).
+#: The floor is therefore retained as a conservative fetch / declare-nothing bound, NOT as evidence
+#: about the sign. Acting on the concentration finding (gating or disclosing a weakly-signed regime)
+#: is an OPERATOR decision, flagged in unproven_register — it changes when advice is withheld, and
+#: rests on one sample against a reference that is itself narrow for SPY/QQQ.
 #: THIS CONSTANT NO LONGER AWARDS "TRUSTED" — corrected 2026-08-26; that is
 #: GAMMA_FLIP_TRUSTED_SPAN_PCT below. Reaching this floor earns at most GAMMA_FLIP_LEVEL_APPROX
 #: (regime stands on the at-spot sign, flip LEVEL disclosed as approximate).
@@ -1297,8 +1331,11 @@ def compute_gamma_flip_v2(
         "min_span_pct": min_span_pct,
     }
     # Gamma audit 2026-08-26: TWO span tests, because they answer two different questions.
-    #  covers_regime — enough strikes around spot for the at-spot gamma SIGN (the regime) to mean
-    #                  anything at all. Below it nothing is claimed.
+    #  covers_regime — reaches the conservative floor below which we decline to claim anything.
+    #                  NOT "enough strikes for the at-spot SIGN to mean anything" — that wording was
+    #                  withdrawn 2026-08-26 as unmeasured; span does not establish the sign (see
+    #                  GAMMA_FLIP_MIN_SPAN_PCT for the measurement). Clearing it means we are willing
+    #                  to speak, not that the sign is verified.
     #  covers_level  — the measured convergence span for the flip LEVEL itself
     #                  (GAMMA_FLIP_TRUSTED_SPAN_PCT; see its provenance block). Only this earns TRUSTED.
     # Previously ONE test (at the fetch-width constant) awarded TRUSTED, so a chain whose flip is
