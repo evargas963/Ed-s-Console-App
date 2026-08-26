@@ -1264,6 +1264,10 @@ function draw() {
     }
     // v6.1 (RC-194) # ui-mockup-ok: NO on-canvas text and no loud frame — the measured
     // collision family (range labels over the legend and the time axis).
+    // # ui-mockup-ok: non-redesign bug fix — the operator reported the faint shading and asked for
+    // that fill ONLY to be removed, explicitly holding every line, label, axis tag and the red/green
+    // boxes unchanged. Nothing is added to the canvas and no layout moves: two fillRect calls are
+    // deleted. RC-186 mockup-before-code governs REDESIGNS; this removes a regression.
     // OPERATOR 2026-08-26: the faint translucent CALL/PUT RANGE fill is REMOVED (again — it had
     // been removed once before and returned): a full-width 0.05-alpha wash over most of the price
     // window dulled the candles, which is the chart's primary read. The RANGE itself is NOT
