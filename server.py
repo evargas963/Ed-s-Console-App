@@ -12785,6 +12785,51 @@ def post_terrain_quarantine_release(ticker: str = Query(...)):
     return JSONResponse(terrain_quarantine_release(ticker))
 
 
+# ── OPTIONS FLOW — native observations read back out of retained raw frames ──────
+# Read-only: no Schwab call, no model stack, no derived analytics. Every value is a field
+# the vendor sent, and every value carries WHEN it was observed, because LEVELONE_OPTIONS
+# is a delta service and a folded field's value is not the same fact as its freshness.
+# Emptiness is always explained — not-subscribed, no-update and dropped mean opposite
+# things, and a surface that conflates them turns our own coverage limit into a market claim.
+@app.get("/api/options-flow/status")
+def get_options_flow_status():
+    from options_flow_api import collection_status
+    return JSONResponse(collection_status())
+
+
+@app.get("/api/options-flow/contracts")
+def get_options_flow_contracts(underlying: str = Query(default=None),
+                               as_of_ms: int = Query(default=None),
+                               service: str = Query(default="LEVELONE_OPTIONS")):
+    from options_flow_api import observable_contracts
+    return JSONResponse(observable_contracts(at_ms=as_of_ms, underlying=underlying,
+                                             service=service))
+
+
+@app.get("/api/options-flow/contract")
+def get_options_flow_contract(symbol: str = Query(...),
+                              as_of_ms: int = Query(default=None),
+                              include_metadata: bool = Query(default=False)):
+    from options_flow_api import contract_state
+    return JSONResponse(contract_state(symbol, as_of_ms=as_of_ms,
+                                       include_metadata=include_metadata))
+
+
+@app.get("/api/options-flow/book")
+def get_options_flow_book(symbol: str = Query(...), as_of_ms: int = Query(default=None)):
+    from options_flow_api import contract_book
+    return JSONResponse(contract_book(symbol, as_of_ms=as_of_ms))
+
+
+@app.get("/api/options-flow/explain-gap")
+def get_options_flow_explain_gap(symbol: str = Query(...),
+                                 at_ms: int = Query(default=None),
+                                 service: str = Query(default="LEVELONE_OPTIONS"),
+                                 window_ms: int = Query(default=60_000)):
+    from options_flow_api import explain_gap
+    return JSONResponse(explain_gap(symbol, at_ms=at_ms, service=service, window_ms=window_ms))
+
+
 # ── CR-03 screen 1 — per-strike gamma/volume bars for the histogram panel ────
 # Feeds the /chart sidebar: today's per-strike dealer gamma + traded volume, plus
 # the PRIOR wide capture's bars (the day-over-day migration ghosts), each in three
@@ -13465,6 +13510,22 @@ def chart_page():
     p = static_dir / "chart.html"
     if not p.exists():
         return HTMLResponse("<p>static/chart.html not found</p>", status_code=404)
+    return HTMLResponse(p.read_text(encoding="utf-8"),
+                        headers={"Cache-Control": "no-store, no-cache, must-revalidate"})
+
+
+@app.get("/options-flow", response_class=HTMLResponse)
+def options_flow_page():
+    """Options Flow — NATIVE observations read back from retained raw stream frames.
+
+    A NEW additive surface: it replaces nothing and removes no working screen. It renders only
+    fields the vendor sent, each beside the instant it was observed, and it leads with collection
+    STATUS rather than data — an empty grid that reads as "no flow" when the truth is "we were
+    not watching" is the failure this page exists to avoid.
+    """
+    p = static_dir / "options_flow.html"
+    if not p.exists():
+        return HTMLResponse("<p>static/options_flow.html not found</p>", status_code=404)
     return HTMLResponse(p.read_text(encoding="utf-8"),
                         headers={"Cache-Control": "no-store, no-cache, must-revalidate"})
 

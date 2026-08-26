@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ed Options Flow — native observations</title>
+<!-- # ui-mockup-ok: NEW additive surface for the Options Flow foundation (2026-08-26). This is
+     not a redesign of a gated screen: it creates static/options_flow.html and edits no existing
+     surface, deletes no working screen, and the mockup registry gates only exposure.html and
+     chart.html. Every panel renders NATIVE vendor fields read back from retained raw frames -
+     no derived analytics, nothing entering Decide. -->
+<style>
+  :root { --bg:#0a0e15; --panel:#111826; --panel2:#181c26; --border:#1f2a3c; --border2:#2a3850;
+          --text:#e9eef6; --text2:#c6d0e0; --dim:#93a1b8; --mut:#66748c;
+          --accent:#37d2dd; --blue:#4b8bff; --green:#2fd08a; --red:#ff5c74; --amber:#f6b73c;
+          --vio:#a78bfa;
+          --mono:'IBM Plex Mono', ui-monospace, Consolas, monospace; }
+  * { box-sizing:border-box; }
+  html, body { height:100%; }
+  body { margin:0; color:var(--text); background:var(--bg); display:flex; flex-direction:column;
+         overflow:auto; font:14px/1.4 ui-sans-serif, system-ui, 'Segoe UI', Roboto, sans-serif; }
+  #top { flex:none; display:flex; gap:10px; align-items:center; padding:8px 14px;
+         border-bottom:1px solid var(--border); flex-wrap:wrap; }
+  #top h1 { font-size:14px; margin:0; font-weight:800; letter-spacing:.02em; }
+  .cv-nav { display:flex; gap:.2em; margin-left:auto; }
+  .cv-tab { padding:.45em .95em; border-radius:.5em; color:var(--dim); font-weight:600;
+            cursor:pointer; border:1px solid transparent; background:none; font:inherit;
+            text-decoration:none; }
+  .cv-tab[aria-selected="true"] { background:var(--panel); color:var(--text);
+                                  border-color:var(--border); }
+  #clocks { flex:none; display:flex; gap:14px; padding:4px 14px; font-size:10.5px;
+            color:var(--mut); border-bottom:1px solid var(--border);
+            font-family:var(--mono); flex-wrap:wrap; }
+  #clocks b { font-weight:600; color:var(--dim); }
+  input, select { background:var(--panel); color:var(--text); border:1px solid var(--border2);
+        border-radius:8px; padding:6px 10px; font-family:var(--mono); font-size:12.5px; }
+  #sym { width:250px; text-transform:uppercase; }
+  button { background:var(--panel2); color:var(--text); border:1px solid var(--border2);
+        border-radius:8px; padding:6px 12px; font-weight:600; cursor:pointer; font-size:12.5px; }
+  button:hover { border-color:var(--accent); }
+  main { padding:12px 14px; display:flex; flex-direction:column; gap:12px; }
+  .card { background:var(--panel); border:1px solid var(--border); border-radius:10px;
+          padding:10px 12px; }
+  .card h2 { font-size:11.5px; margin:0 0 8px; color:var(--dim); font-weight:700;
+             letter-spacing:.06em; text-transform:uppercase; }
+  /* The status banner is deliberately the loudest thing on the page. An empty grid that looks
+     like "no flow" is the failure this surface exists to avoid. */
+  #banner { border-radius:10px; padding:10px 12px; font-size:13px; line-height:1.5;
+            border:1px solid var(--border2); background:var(--panel2); }
+  #banner.off { border-color:var(--amber); background:rgba(246,183,60,.08); color:var(--text); }
+  #banner.on  { border-color:var(--green); background:rgba(47,208,138,.07); }
+  #banner b { font-weight:800; }
+  table { width:100%; border-collapse:collapse; font-family:var(--mono); font-size:11.5px; }
+  th { text-align:left; color:var(--mut); font-weight:600; padding:4px 8px 6px;
+       border-bottom:1px solid var(--border); white-space:nowrap; }
+  td { padding:3px 8px; border-bottom:1px solid rgba(31,42,60,.5); white-space:nowrap; }
+  td.num { text-align:right; }
+  /* Staleness is a first-class visual. On a delta stream a value and its freshness are
+     different facts, and only showing the value is misleading. */
+  .age-fresh { color:var(--green); }
+  .age-warm  { color:var(--amber); }
+  .age-stale { color:var(--red); }
+  .badge { display:inline-block; border:1px solid var(--border2); border-radius:6px;
+           padding:1px 6px; font-size:9.5px; font-family:var(--mono); color:var(--mut);
+           letter-spacing:.04em; }
+  .badge.native { color:var(--accent); border-color:rgba(55,210,221,.4); }
+  .verdict { font-family:var(--mono); font-size:12px; font-weight:700; }
+  .v-OBSERVED { color:var(--green); }
+  .v-NOT_SUBSCRIBED { color:var(--amber); }
+  .v-SUBSCRIBED_NO_UPDATE { color:var(--blue); }
+  .v-SUBSCRIBED_MAYBE_DROPPED { color:var(--red); }
+  .v-NO_CAPTURE_DB { color:var(--mut); }
+  .note { color:var(--dim); font-size:11.5px; line-height:1.5; margin-top:6px; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  @media (max-width:900px){ .grid2 { grid-template-columns:1fr; } }
+  /* On a narrow viewport the field table overflows and the columns that fall off the right
+     edge are the LAST ones - which is where age sits. Age is the honesty mechanism of this
+     page: a folded delta value with no staleness beside it reads as current. So below 720px
+     the absolute observation TIME is dropped instead (it is recoverable from age plus the
+     as-of instant shown in the header) and age is kept. Never the other way round. */
+  @media (max-width:720px){
+    #l1 th:nth-child(3), #l1 td:nth-child(3) { display:none; }
+    /* FIXED layout, not max-width hints. A content-sized table lets one long value (the vendor
+       sends a full DESCRIPTION string) widen the value column and push age off the right edge,
+       which is exactly the column that must never be lost. Fixed columns make that impossible
+       regardless of what the vendor sends. */
+    #l1 { table-layout:fixed; width:100%; }
+    #l1 th:nth-child(1), #l1 td:nth-child(1) { width:44%; }
+    #l1 th:nth-child(2), #l1 td:nth-child(2) { width:31%; }
+    #l1 th:nth-child(4), #l1 td:nth-child(4) { width:25%; }
+    #l1 td { overflow:hidden; text-overflow:ellipsis; }
+  }
+  .kv { display:flex; gap:8px; font-family:var(--mono); font-size:11.5px; padding:2px 0; }
+  .kv span:first-child { color:var(--mut); min-width:190px; }
+</style>
+</head>
+<body>
+<div id="top">
+  <h1>OPTIONS FLOW</h1>
+  <span class="badge native">NATIVE OBSERVATIONS ONLY</span>
+  <nav class="cv-nav">
+    <a class="cv-tab" href="/">Console</a>
+    <a class="cv-tab" href="/chart">Chart</a>
+    <a class="cv-tab" href="/exposure">Exposure</a>
+    <a class="cv-tab" aria-selected="true" href="/options-flow">Options Flow</a>
+  </nav>
+</div>
+<div id="clocks">
+  <span><b>CT</b> <span id="ct">—</span></span>
+  <span><b>as-of</b> <span id="asof">live</span></span>
+  <span><b>source</b> retained raw frames (stream_capture.db)</span>
+</div>
+
+<main>
+  <div id="banner">Loading collection status…</div>
+
+  <div class="card">
+    <h2>Query</h2>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <input id="sym" placeholder="SPY   260826C00767000" spellcheck="false">
+      <input id="asofin" placeholder="as-of epoch ms (blank = now)" style="width:230px">
+      <button id="go">Read</button>
+      <button id="refresh">Refresh status</button>
+    </div>
+    <div class="note">The contract symbol is the vendor's own, padded to six characters
+      (<code>SPY&nbsp;&nbsp;&nbsp;260826C00767000</code>). Leave as-of blank for the latest
+      knowable state; supply an epoch-ms instant to reconstruct what was knowable then.</div>
+  </div>
+
+  <div class="grid2">
+    <div class="card">
+      <h2>Coverage — what was observable</h2>
+      <div id="coverage">—</div>
+      <div class="note">Contract selection is a CAPACITY policy bounded by Schwab's key budget,
+        not the set of interesting contracts. An underlying missing here was not being watched;
+        that is a gap in our coverage, never a statement about the market.</div>
+    </div>
+    <div class="card">
+      <h2>Retention health</h2>
+      <div id="health">—</div>
+      <div class="note">Frames offered must equal written plus dropped. A shortfall that is not
+        attributed would read as "the vendor sent nothing".</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>LEVELONE_OPTIONS — folded state <span class="badge">DELTA STREAM</span></h2>
+    <div id="l1meta" class="note" style="margin:0 0 8px"></div>
+    <div style="overflow:auto;max-height:420px"><table id="l1">
+      <thead><tr><th>native field</th><th class="num">value</th><th class="num">observed (CT)</th>
+      <th class="num">age</th></tr></thead><tbody></tbody></table></div>
+    <div class="note">Later frames carry only what CHANGED, so state is folded forward from
+      earlier frames. A value and the moment it was last observed are different facts — the age
+      column is why this table is honest rather than merely populated.</div>
+  </div>
+
+  <div class="card">
+    <h2>OPTIONS_BOOK <span class="badge">FULL REPLACEMENT</span></h2>
+    <div id="book" class="note" style="margin:0">—</div>
+    <div class="note">The book is re-sent whole on every frame, so the latest frame at-or-before
+      the instant IS the state. Frames are never merged: splicing levels from different instants
+      would render a book that never existed.</div>
+  </div>
+
+  <div class="card">
+    <h2>Why is there no observation?</h2>
+    <div id="gap">—</div>
+    <div class="note">NOT_SUBSCRIBED is our coverage hole; SUBSCRIBED_NO_UPDATE means silence IS
+      the observation; SUBSCRIBED_MAYBE_DROPPED means our ingest shed frames in the window and
+      silence cannot be attributed to the vendor. Drop counters are per-process, so no single
+      symbol can be singled out — hence MAYBE.</div>
+  </div>
+</main>
+
+<script>
+const $ = s => document.querySelector(s);
+const CT = new Intl.DateTimeFormat('en-US', { timeZone:'America/Chicago', hour12:false,
+  hour:'2-digit', minute:'2-digit', second:'2-digit' });
+function ctClock(){ $('#ct').textContent = CT.format(new Date()) + ' CT'; }
+setInterval(ctClock, 1000); ctClock();
+
+function ctOf(ms){ return ms == null ? '—' : CT.format(new Date(ms)) + ' CT'; }
+function ageCls(ms){ if (ms == null) return ''; if (ms < 5000) return 'age-fresh';
+                     if (ms < 120000) return 'age-warm'; return 'age-stale'; }
+function ageTxt(ms){
+  if (ms == null) return '—';
+  if (ms < 1000) return ms + ' ms';
+  if (ms < 90000) return (ms/1000).toFixed(1) + ' s';
+  if (ms < 5400000) return (ms/60000).toFixed(1) + ' min';
+  return (ms/3600000).toFixed(1) + ' h';
+}
+/* A failed fetch must SAY it failed. A page that sits at "Loading…" forever, or renders an
+   empty table because the request died, is the same lie as an empty grid that reads as "no
+   flow": the reader cannot tell absence of data from absence of an answer. */
+async function j(u){
+  const r = await fetch(u);
+  if (!r.ok) throw new Error('HTTP ' + r.status + ' from ' + u);
+  return r.json();
+}
+function fail(el, e, what){
+  el.innerHTML = `<span class="age-stale">COULD NOT READ ${what}: ${e.message}</span>` +
+    `<div class="note">This is a failure to ASK, not an observation. Nothing about the ` +
+    `options market can be concluded from this panel while it is in this state.</div>`;
+}
+
+async function loadStatus(){
+  let s;
+  const b = $('#banner');
+  try { s = await j('/api/options-flow/status'); }
+  catch (e){
+    b.className = 'off';
+    b.innerHTML = `<b>STATUS UNAVAILABLE.</b> ${e.message}. The console did not answer, so ` +
+      `nothing below can be trusted either way — this is not evidence that collection is off ` +
+      `or on.`;
+    fail($('#coverage'), e, 'coverage'); fail($('#health'), e, 'retention health');
+    return;
+  }
+  if (!s.enabled){
+    b.className = 'off';
+    b.innerHTML = '<b>OPTIONS COLLECTION IS OFF.</b> ' + (s.reason || '') +
+      ' Everything below will be empty, and that emptiness is <b>our coverage gap</b> — not a ' +
+      'quiet options market. Nothing on this page is a market claim until collection is enabled.';
+  } else {
+    b.className = 'on';
+    b.innerHTML = '<b>Collecting.</b> ' + (s.subscribed_contracts || 0) +
+      ' contract(s) subscribed on the shared Schwab stream. Values below are native vendor ' +
+      'fields read back from retained raw frames.';
+  }
+  const cov = $('#coverage');
+  if (s.coverage && s.coverage.length){
+    cov.innerHTML = s.coverage.map(c =>
+      `<div class="kv"><span>${c.service}</span><span>${c.contracts} contracts across ` +
+      `${c.underlyings} underlying(s)</span></div>`).join('');
+  } else { cov.innerHTML = '<div class="kv"><span>coverage</span><span>none recorded</span></div>'; }
+
+  const h = $('#health'); const ing = s.ingest;
+  if (ing){
+    const bal = ing.offered === (ing.written + ing.dropped);
+    h.innerHTML =
+      `<div class="kv"><span>offered</span><span>${ing.offered}</span></div>` +
+      `<div class="kv"><span>written</span><span>${ing.written}</span></div>` +
+      `<div class="kv"><span>dropped</span><span class="${ing.dropped ? 'age-stale' : ''}">${ing.dropped}</span></div>` +
+      `<div class="kv"><span>queue depth</span><span>${ing.queue_depth ?? '—'} (max ${ing.max_queue_depth})</span></div>` +
+      `<div class="kv"><span>write errors</span><span>${ing.write_errors}</span></div>` +
+      `<div class="kv"><span>accounting balances</span><span class="${bal ? 'age-fresh' : 'age-stale'}">` +
+      `${bal ? 'yes — every frame attributed' : 'NO — frames unaccounted'}</span></div>`;
+  } else if (s.frames && s.frames.length){
+    h.innerHTML = s.frames.map(f =>
+      `<div class="kv"><span>${f.service}</span><span>${f.frames} frames, last ` +
+      `${ctOf(f.last_ts_ms)}, max ingest lag ${ageTxt(f.max_ingest_lag_ms)}</span></div>`).join('');
+  } else { h.innerHTML = '<div class="kv"><span>ingest</span><span>not running</span></div>'; }
+}
+
+async function loadContract(){
+  const sym = $('#sym').value; if (!sym) return;
+  const asof = $('#asofin').value.trim();
+  $('#asof').textContent = asof ? ctOf(Number(asof)) : 'live';
+  const q = `symbol=${encodeURIComponent(sym)}` + (asof ? `&as_of_ms=${encodeURIComponent(asof)}` : '');
+  try { await readContract(q); }
+  catch (e){
+    fail($('#l1meta'), e, 'contract state');
+    $('#l1 tbody').innerHTML = '';
+    fail($('#book'), e, 'book'); fail($('#gap'), e, 'gap verdict');
+  }
+}
+
+async function readContract(q){
+  const st = await j('/api/options-flow/contract?' + q);
+  $('#l1meta').innerHTML =
+    `coverage <b>${st.coverage}</b> · ${st.field_count || 0} native fields folded from ` +
+    `${st.frames_folded || 0} frame(s)` +
+    (st.max_field_age_ms != null ? ` · oldest field ${ageTxt(st.max_field_age_ms)}` : '') +
+    (st.note ? `<br><span class="age-warm">${st.note}</span>` : '');
+  const tb = $('#l1 tbody'); tb.innerHTML = '';
+  const names = Object.keys(st.fields || {}).sort();
+  for (const n of names){
+    const f = st.fields[n];
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${n}</td><td class="num">${f.value ?? '—'}</td>` +
+      `<td class="num">${ctOf(f.observed_ts_ms)}</td>` +
+      `<td class="num ${ageCls(f.age_ms)}">${ageTxt(f.age_ms)}</td>`;
+    tb.appendChild(tr);
+  }
+  if (!names.length){
+    tb.innerHTML = '<tr><td colspan="4" class="age-warm">no fields — see the coverage verdict below</td></tr>';
+  }
+
+  const bk = await j('/api/options-flow/book?' + q);
+  const lv = (bk.book && (bk.book.BIDS || []).length) || 0;
+  $('#book').innerHTML = `coverage <b>${bk.coverage}</b>` +
+    (bk.observed_ts_ms ? ` · observed ${ctOf(bk.observed_ts_ms)} (age ${ageTxt(bk.age_ms)})` : '') +
+    ` · ${lv} bid level(s)` + (bk.notes && bk.notes.length ? `<br><span class="age-warm">${bk.notes[0]}</span>` : '');
+
+  const g = await j('/api/options-flow/explain-gap?' + q.replace('as_of_ms', 'at_ms'));
+  $('#gap').innerHTML = `<span class="verdict v-${g.verdict}">${g.verdict}</span>` +
+    (g.meaning ? `<div class="note">${g.meaning}</div>` : '') +
+    (g.frames ? `<div class="note">${g.frames} frame(s) in the window</div>` : '');
+}
+
+$('#go').addEventListener('click', loadContract);
+$('#refresh').addEventListener('click', loadStatus);
+$('#sym').addEventListener('keydown', e => { if (e.key === 'Enter') loadContract(); });
+loadStatus();
+</script>
+</body>
+</html>
