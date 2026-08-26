@@ -46,5 +46,6 @@
     }
   },
   "note_earnings_exclusion": "NOT applied \u2014 no earnings calendar held; disclosed as spec deviation, to be added when calendar lands",
-  "note_all_conf_equals_trusted": "terrain_read fail-closed drops non-TRUSTED; ALL_CONF bucket == TRUSTED_ONLY by construction"
+  "note_all_conf_equals_trusted": "terrain_read fail-closed drops non-TRUSTED; ALL_CONF bucket == TRUSTED_ONLY by construction",
+  "note_contract_superseded_2026_08_26": "The line above described terrain_read's contract AT THE TIME THIS REPORT WAS PRODUCED and is NO LONGER TRUE. terrain_read now also issues a regime at LEVEL_APPROX_NARROW_SPAN (the regime is the at-spot gamma SIGN; only the flip LEVEL needs a wide chain), so ALL_CONF and TRUSTED_ONLY are no longer identical by construction. The MEASUREMENTS in this file are left exactly as recorded - only this marker is added - but they were produced under the old two-tier contract and must not be compared row-for-row against a re-run without checking confidence composition."
 }

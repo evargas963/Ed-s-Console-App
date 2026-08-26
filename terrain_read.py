@@ -13,8 +13,15 @@ Two institutional invariants:
    is what needs a wide chain. So:
      * confidence TRUSTED or LEVEL_APPROX -> regime and posture are issued; at LEVEL_APPROX the
        flip LEVEL is explicitly disclosed as approximate on the line that prints it.
-     * confidence NARROW or UNAVAILABLE, or no at-spot gamma -> everything is withheld, with the
-       reason stated. A chain that narrow cannot support even the sign.
+     * confidence NARROW or UNAVAILABLE -> everything is withheld, with the reason stated. A chain
+       that narrow cannot support even the sign.
+     * missing spot, or BOTH flip and at-spot gamma missing -> withheld for the same reason.
+       (Precise, because an earlier version of this line said "or no at-spot gamma" and was WRONG:
+       the guard is `flip is None AND gamma_at_spot is None`. With a flip present and gamma_at_spot
+       None, `_regime_for` deliberately falls back to spot-vs-flip and a regime IS issued. That
+       state is not reachable from any caller in this repo — compute_gamma_flip_v2 returns
+       UNAVAILABLE when the at-spot value is absent — but the invariant must describe the guard
+       that exists, not a stricter one a reader would rely on.)
    It never presents a posture derived from a level we know is unreliable (a narrow chain
    misplaces the flip by ~3.6% — measured 2026-07-19: 770.35 against a full-chain reference of
    745.61), and it never presents a coverage verdict as proof the level is right.
@@ -198,7 +205,14 @@ def build_terrain_read(
     gamma_at_spot: float | None = None,
     ticker: str | None = None,
 ) -> TerrainRead:
-    """Deterministic terrain read. Fail-closed on missing spot or untrusted levels.
+    """Deterministic terrain read. Fail-closed on missing spot, or on coverage too narrow to
+    support even the at-spot SIGN (NARROW / UNAVAILABLE).
+
+    NOT "fail-closed on untrusted levels" — corrected 2026-08-26. LEVEL_APPROX is untrusted by
+    construction (it is named so no surface can print it as TRUSTED) and it deliberately PASSES:
+    its regime and posture are issued, and the flip LEVEL it prints carries an explicit
+    APPROXIMATE disclosure. What fails closed is the SIGN being unsupportable, not the level
+    being uncertified.
 
     The regime comes from the SIGN OF DEALER GAMMA AT SPOT (`gamma_at_spot`), not from
     comparing spot to the flip. Corrected 2026-07-19 (RC-11): requiring a flip meant a
