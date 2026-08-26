@@ -110,7 +110,7 @@ def observable_contracts(at_ms: int | None = None, underlying: str | None = None
                          service: str = "LEVELONE_OPTIONS") -> dict[str, Any]:
     """What was observable at an instant, by underlying — the answer to 'did anything starve?'"""
     from calibration.options_stream_coverage import coverage_at
-    at = int(at_ms if at_ms is not None else time.time() * 1000.0)
+    at = int(at_ms if at_ms is not None else time.time() * 1000.0)  # caps-ok: as-of QUERY PARAMETER, not a Schwab leaf; unspecified means "the current instant", this endpoint's documented semantic, so no measurement is being replaced
     db = _capture_db()
     if not db.is_file():
         return {"at_ms": at, "contracts": 0, "underlyings": 0, "per_underlying": {},
@@ -118,7 +118,7 @@ def observable_contracts(at_ms: int | None = None, underlying: str | None = None
     out = coverage_at(db, at, service=service)
     if underlying:
         u = str(underlying).upper()
-        syms = out.get("symbols_by_underlying", {}).get(u, [])
+        syms = out.get("symbols_by_underlying", {}).get(u, [])  # caps-ok: indexes a dict this call just built; an underlying with no symbols HAS none, and the empty list is reported as NOT SUBSCRIBED four lines down rather than passed off as data
         out = {"at_ms": at, "service": service, "underlying": u,
                "contracts": len(syms), "symbols": syms}
         if not syms:
@@ -135,7 +135,7 @@ def contract_state(symbol: str, as_of_ms: int | None = None,
     fresh one, and service metadata is split out of the market fields entirely.
     """
     from calibration.options_stream_replay import level_one_state_as_of
-    at = int(as_of_ms if as_of_ms is not None else time.time() * 1000.0)
+    at = int(as_of_ms if as_of_ms is not None else time.time() * 1000.0)  # caps-ok: as-of QUERY PARAMETER, not a Schwab leaf; unspecified means "the current instant", this endpoint's documented semantic, so no measurement is being replaced
     db = _capture_db()
     if not db.is_file():
         return {"symbol": symbol, "as_of_ms": at, "coverage": "NO_CAPTURE_DB",
@@ -154,7 +154,10 @@ def contract_state(symbol: str, as_of_ms: int | None = None,
         "semantics": "DELTA — state is folded from earlier frames; each field carries the "
                      "instant it was last observed and is NOT necessarily fresh",
         "fields": fields, "field_count": len(fields),
-        "frames_folded": st.get("frames_folded", 0),
+        # A counter that was never reported is not a measured zero: every neighbouring
+        # age field already passes absence through, and "0 frames folded" is a claim
+        # about the stream that nothing measured.
+        "frames_folded": st.get("frames_folded"),
         "max_field_age_ms": st.get("max_field_age_ms"),
         "min_field_age_ms": st.get("min_field_age_ms"),
         "notes": st.get("notes") or [],
@@ -170,7 +173,7 @@ def contract_state(symbol: str, as_of_ms: int | None = None,
 def contract_book(symbol: str, as_of_ms: int | None = None) -> dict[str, Any]:
     """Native OPTIONS_BOOK state at an instant. The latest frame, never a merge."""
     from calibration.options_stream_replay import book_state_as_of
-    at = int(as_of_ms if as_of_ms is not None else time.time() * 1000.0)
+    at = int(as_of_ms if as_of_ms is not None else time.time() * 1000.0)  # caps-ok: as-of QUERY PARAMETER, not a Schwab leaf; unspecified means "the current instant", this endpoint's documented semantic, so no measurement is being replaced
     db = _capture_db()
     if not db.is_file():
         return {"symbol": symbol, "as_of_ms": at, "coverage": "NO_CAPTURE_DB", "book": None,
@@ -182,7 +185,7 @@ def explain_gap(symbol: str, at_ms: int | None = None,
                 service: str = "LEVELONE_OPTIONS", window_ms: int = 60_000) -> dict[str, Any]:
     """Why is there no observation here? NOT_SUBSCRIBED / NO_UPDATE / MAYBE_DROPPED / OBSERVED."""
     from calibration.options_stream_coverage import explain_absence
-    at = int(at_ms if at_ms is not None else time.time() * 1000.0)
+    at = int(at_ms if at_ms is not None else time.time() * 1000.0)  # caps-ok: as-of QUERY PARAMETER, not a Schwab leaf; unspecified means "the current instant", this endpoint's documented semantic, so no measurement is being replaced
     db = _capture_db()
     if not db.is_file():
         return {"verdict": "NO_CAPTURE_DB", "symbol": symbol, "at_ms": at,

@@ -130,7 +130,7 @@ def rotation_cohort(all_underlyings: Iterable[str], at_epoch_s: float,
             cohort.append(non_core[(start + i) % len(non_core)])
 
     import math
-    cycle_slices = math.ceil(len(non_core) / max(1, pol.rotating_per_slice)) if non_core else 0
+    cycle_slices = math.ceil(len(non_core) / max(1, pol.rotating_per_slice)) if non_core else 0  # caps-ok: with no rotating symbols the rotation is genuinely zero slices long — an arithmetic identity about the policy, not a measurement standing in for missing data
     return {
         "slice_index": idx,
         "slice_seconds": pol.slice_seconds,
@@ -217,7 +217,7 @@ def contract_budget_from_key_limit(*, equity_symbols: int = 1, book_enabled: boo
     caller's; this function only reports the arithmetic.
     """
     equity_keys = max(0, int(equity_symbols)) * 3
-    per_contract = 2 if book_enabled else 1
+    per_contract = 2 if book_enabled else 1  # caps-ok: Schwab key COST of a contract — LEVELONE_OPTIONS alone is 1 key, adding OPTIONS_BOOK makes it 2. A capacity constant of the subscription protocol, not a substituted market value.
     available = int(key_limit) - int(margin) - equity_keys
     allowed = max(0, available // per_contract)
     return {
@@ -345,9 +345,25 @@ def select_contracts(chains_by_ticker: dict[str, tuple[float | None, list[dict]]
             below = list(reversed([k for k in strikes if k < spot]))[: pol.strikes_per_side]
             keep = set(above) | set(below)
             # nearest-to-spot first, then side, then symbol — deterministic and centred
-            for c in sorted(group, key=lambda x: (
-                    abs(float(x.get("strikePrice", 0)) - spot),
-                    str(x.get("putCall", "")), _contract_symbol(x) or "")):
+            def _centred(x: dict) -> tuple:
+                # RC-290 lesson, applied here: a contract with no strikePrice does not sit AT
+                # strike 0, it has no distance from spot at all. `.get("strikePrice", 0)`
+                # handed it a fabricated number that sorted it as maximally far below spot.
+                # Rank presence first so an unreadable strike sorts after every real one
+                # without being assigned a price it does not have.
+                k = x.get("strikePrice")
+                side = x.get("putCall")
+                label = ""
+                if isinstance(side, str):
+                    label = side
+                sym = _contract_symbol(x) or ""
+                if isinstance(k, (int, float)):
+                    return (0, abs(float(k) - spot), label, sym)
+                # No strike means no distance from spot at all. Rank it after every real
+                # strike rather than expressing "absent" as a number in either field.
+                return (1, 0.0, label, sym)
+
+            for c in sorted(group, key=_centred):
                 k = c.get("strikePrice")
                 if isinstance(k, (int, float)) and float(k) in keep:
                     sym = _contract_symbol(c)
