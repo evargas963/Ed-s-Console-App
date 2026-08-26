@@ -188,6 +188,10 @@ class MarketState:
     # ── Options Expression ────────────────────────────────────────────────────
     rec_strike:         Optional[float] = None
     rec_side:           Optional[str]   = None      # "CALL" | "PUT"
+    #: The recommended strike's display text, CARRIED from the one producer that already made
+    #: it at selection time. Without it the leg-name site re-ran format_strike_for_display on a
+    #: strike that had itself been parsed back out of the recommendation string.
+    rec_strike_label:   Optional[str]   = None
     call_option_expiry: Optional[str]   = None      # YYYY-MM-DD from chain (The Call contract)
     call_option_right:  Optional[str]   = None      # CALL | PUT | WAIT
     is_no_trade:        bool            = True
@@ -800,6 +804,9 @@ def recommend_option_expression(
     proof_out["winner"] = {
         "expression": f"{txt} {side}",
         "strike": float(best_strike),
+        # The label this function ALREADY produced, carried as data so no consumer has to
+        # rebuild it — or, as the caller used to, parse it back out of `expression`.
+        "strike_label": txt,
         "side": side,
         "composite_score": round(best_score, 4),
         "win_reasons": best_reasons,
@@ -936,9 +943,19 @@ def _build_contract_context_ms(ms: "MarketState", contracts: list) -> str:
         return ""
     dte = _schwab_days_to_expiration_for_contract(contracts, k, side, expiry=exp)
     dte_part = " · 0DTE" if dte == 0 else (f" · {dte}DTE" if dte is not None and dte > 0 else "")
-    # Same ONE producer as the expression above — the leg name and the expression must never be
-    # able to say different things about the same contract.
-    strike_disp = format_strike_for_display(k)
+    # CARRY, not recompute. This called the producer a second time on a strike the selection
+    # site had already labelled — the comment said "same ONE producer", which is true of the
+    # DEFINITION and was never true of the PRODUCTION. The label travels on the winner now, so
+    # the leg name and the expression cannot say different things because they are the same
+    # text. Falling back to the producer keeps a recommendation that predates the carry (or one
+    # assembled without a winner block) rendering rather than going blank.
+    # getattr with an explicit None: this is typed for MarketState but is also driven by
+    # duck-typed stubs (tests/test_schwab_days_to_expiration_contract.py::_MarketStateStub).
+    # None is not a fabricated value here — it means "nothing carried a label", which is
+    # precisely the case the fallback below exists for.
+    strike_disp = getattr(ms, "rec_strike_label", None)
+    if not strike_disp:
+        strike_disp = format_strike_for_display(k)
     leg = f"{t} {str(exp)[:10]} {strike_disp}{'C' if side == 'CALL' else 'P'}{dte_part}"
     bid, ask, mid, mid_source = _oe_bid_ask_mid(contracts, float(k), side)
     try:
@@ -1886,14 +1903,24 @@ def build_market_state(
             _reco_str      = (_reco or "").strip()
             ms.is_no_trade = _reco_str.upper().startswith("NO TRADE")
             if not ms.is_no_trade:
-                _parts = _reco_str.split()
-                if len(_parts) >= 2:
-                    _strike = float_finite_or_none(_parts[0])
-                    if _strike is None:
-                        ms.is_no_trade = True
-                    else:
-                        ms.rec_strike = _strike
-                        ms.rec_side = _parts[1].upper()
+                # CARRY THE WINNER AS DATA. This split the recommendation TEXT and parsed the
+                # strike back out of it, so ms.rec_strike was the DISPLAY LABEL round-tripped
+                # through float() — and that value drives the DTE lookup, the OE rescoring and
+                # the entry zones below, none of which should be reading a rendered string.
+                # format_strike_for_display emits f"{n:.4f}" rstripped, so any strike finer
+                # than 4dp came back damaged; Schwab supplies at most 2dp today, which makes it
+                # latent rather than live. The producer already publishes both the true float
+                # and the label it produced, so both are read instead of reconstructed.
+                _win = (_oe_proof or {}).get("winner") or {}
+                _strike = float_finite_or_none(_win.get("strike"))
+                _side = str(_win.get("side") or "").upper().strip()
+                if _strike is None or _side not in ("CALL", "PUT"):
+                    ms.is_no_trade = True
+                else:
+                    ms.rec_strike = _strike
+                    ms.rec_side = _side
+                    _lbl = _win.get("strike_label")
+                    ms.rec_strike_label = _lbl if isinstance(_lbl, str) and _lbl else None
         except Exception as _oe_e:
             import logging
             logging.warning(f"market_state: OE recommendation error: {_oe_e}")

@@ -218,6 +218,87 @@ def test_an_unlabelled_root_falls_through_to_production():
 
 # ── the shipped code really does this ───────────────────────────────────────────────────────
 
+# ── the money-path instance: the recommended strike ─────────────────────────────────────────
+#
+# The second live reconstruction, and the one that mattered. market_state.recommend_option_
+# expression produced the label at selection (:797), returned it embedded in a string (:834),
+# and the caller parsed the strike back OUT of that string (`_parts = _reco_str.split()`;
+# `float_finite_or_none(_parts[0])`) into ms.rec_strike — which drives the DTE lookup, the OE
+# rescoring and the entry zones. The leg-name site then re-ran the producer on it.
+#
+# Two defects in one chain: a semantic rebuilt from its own rendered text, and a MONEY-PATH
+# float that was the rendered text parsed back. format_strike_for_display emits f"{n:.4f}"
+# rstripped, so anything finer than 4dp came back damaged. Schwab supplies at most 2dp today,
+# which makes it latent rather than live — recorded as latent, not waved away.
+
+def _winner(strike: float) -> dict:
+    """The winner block as recommend_option_expression publishes it."""
+    txt = format_strike_for_display(strike)
+    return {"expression": f"{txt} CALL", "strike": float(strike),
+            "strike_label": txt, "side": "CALL"}
+
+
+def test_the_winner_block_carries_both_the_value_and_its_label():
+    src = _src_of("market_state.py")
+    i = src.find('proof_out["winner"] = {')
+    assert i > 0, "the winner block is gone"
+    block = src[i:i + 600]
+    assert '"strike": float(best_strike)' in block, "the winner no longer carries the true float"
+    assert '"strike_label": txt' in block, (
+        "the winner does not carry the label the function already produced, so a consumer has "
+        "nothing to carry and must rebuild it")
+
+
+def test_the_caller_reads_the_winner_instead_of_parsing_the_text():
+    src = _src_of("market_state.py")
+    i = src.find("ms.is_no_trade = _reco_str.upper().startswith")
+    assert i > 0, "the recommendation caller is gone"
+    block = src[i:i + 1400]
+    assert '_win.get("strike")' in block, "the caller does not read the winner's strike"
+    assert "_parts[0]" not in block, (
+        "the caller still parses the strike back out of the recommendation TEXT")
+
+
+def test_the_round_trip_no_longer_damages_the_money_path_strike():
+    """The value that reaches the DTE lookup and the entry zones must be the TRUE strike."""
+    damaged = []
+    for k in (600.0, 322.5, 17.25, 599.78, 4567.89125, 1234.56789, 0.12345):
+        w = _winner(k)
+        parsed_back = float(w["expression"].split()[0])     # what the old caller stored
+        carried = float(w["strike"])                        # what it stores now
+        assert carried == k, f"the carried strike is not exact for {k!r}"
+        if parsed_back != k:
+            damaged.append(k)
+    assert damaged, (
+        "the fixture no longer exercises the damage; it must keep a >4dp strike so this test "
+        "still means something")
+
+
+def test_the_leg_name_carries_the_label():
+    """The leg name must not invoke the producer when the label is already on the winner."""
+    producer = _CountingProducer()
+    for k in (600.0, 322.5, 17.25, 599.78):
+        w = _winner(k)
+        label = w.get("strike_label")
+        if not label:
+            label = producer(w["strike"])
+        assert label == format_strike_for_display(k)
+    assert producer.calls == [], (
+        f"the leg name re-ran the producer {len(producer.calls)} time(s) on a strike whose "
+        f"label was already carried")
+
+
+def test_a_recommendation_without_a_winner_still_renders():
+    """Fail-safe: a missing label falls back to production, never to a blank leg name."""
+    producer = _CountingProducer()
+    label = None or producer(322.5)
+    assert label == "322.5" and len(producer.calls) == 1
+
+
+def _src_of(rel: str) -> str:
+    return (REPO / rel).read_text(encoding="utf-8")
+
+
 def test_the_shipped_assembler_carries(  # noqa: D103
 ):
     """Guard the real call site, not just the rule expressed in this file."""
