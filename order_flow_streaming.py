@@ -72,6 +72,13 @@ ED_OPTIONS_STREAM_ENV = "ED_OPTIONS_STREAM"
 _options_ingest: Any = None
 _options_subscribed_syms: list[str] = []
 _options_last_receipt: dict[str, Any] | None = None
+#: The last slice this process applied — what rotated in, what rotated out, and when. Without it
+#: an operator can see that frames are arriving but not that the ROTATION is advancing, which is
+#: the difference between "options collection works" and "the intended architecture is running".
+_options_last_slice: dict[str, Any] | None = None
+#: The rotation task, on the stream's own event loop. Held so the loop's finally can cancel it;
+#: an orphaned rotation would keep subscribing against a client that is being torn down.
+_options_rotation_task: Any = None
 
 
 def options_streaming_enabled() -> bool:
@@ -120,13 +127,196 @@ def _register_options_handlers(sc: Any, make_handler: Callable[[str], Callable[[
             log.warning("registering %s failed: %s", attr, e)
 
 
+def options_desired_for_slice(at_epoch_s: float, *, equity_symbols: int,
+                              book_enabled: bool = True) -> dict[str, Any]:
+    """THE ONE COMPUTATION of "which contracts should be subscribed at this instant".
+
+    Everything downstream — the first subscribe at stream start, every rotation boundary, and
+    the diagnostics surface — asks THIS function and reconciles to its answer. A second place
+    that decided what to subscribe would be a second coverage authority, and the two would
+    disagree the first time either changed.
+
+    The shape it produces is the intended architecture made concrete:
+      * CORE underlyings appear in every slice, so their coverage is continuous rather than
+        sampled; they are the money path.
+      * the remaining budget rotates deterministically over the rest of the enrolled universe,
+        so each non-core underlying gets REAL depth periodically instead of a permanent sliver.
+      * the budget itself is DERIVED from the vendor key limit and the keys the equity path is
+        actually holding right now, so options can never crowd out the stream the console
+        depends on.
+
+    Deterministic and stateless: the cohort is a pure function of the clock and the roster
+    (RotationPolicy.slice_index), so replay can reconstruct which underlyings were eligible at a
+    past instant without consulting anything but those two.
+    """
+    from options_stream_subscription import (
+        RotationPolicy, SelectionPolicy, build_chains_for_selection,
+        contract_budget_from_key_limit, rotation_cohort, select_contracts, split_budget,
+    )
+
+    pol = RotationPolicy()
+    universe = sorted(build_chains_for_selection().keys())
+    cohort = rotation_cohort(universe, at_epoch_s, pol)
+    budget = contract_budget_from_key_limit(
+        equity_symbols=max(1, int(equity_symbols)), book_enabled=book_enabled)
+    split = split_budget(budget["contracts_allowed"], len(cohort["core"]),
+                         len(cohort["rotating"]), pol)
+
+    symbols: list[str] = []
+    per_underlying: dict[str, int] = {}
+    notes: list[str] = []
+    # Core and cohort are selected SEPARATELY so the core's depth cannot be diluted by a large
+    # cohort — select_contracts allocates round-robin within the set it is given, and a single
+    # combined call would spread one ceiling across everything.
+    for label, names, ceiling in (("core", cohort["core"], split["core"]),
+                                  ("rotating", cohort["rotating"], split["rotating"])):
+        if not names or ceiling <= 0:
+            continue
+        chains = build_chains_for_selection(tickers=names)
+        missing = sorted(set(names) - set(chains))
+        if missing:
+            # A NAME WITH NO FRESH CHAIN IS A COVERAGE GAP, not a market observation. Say so
+            # here so the slice record shows it rather than the reader inferring it from absence.
+            notes.append(f"{label}: no fresh chain for {missing} — not subscribed this slice")
+        sel = select_contracts(chains, SelectionPolicy(max_contracts=int(ceiling)))
+        symbols.extend(sel.symbols)
+        for k, v in sel.per_underlying.items():
+            per_underlying[k] = per_underlying.get(k, 0) + v
+        notes.extend(f"{label}: {n}" for n in sel.notes)
+
+    return {
+        "at_epoch_s": float(at_epoch_s),
+        "slice_index": cohort["slice_index"],
+        "slice_seconds": cohort["slice_seconds"],
+        "core": cohort["core"],
+        "rotating": cohort["rotating"],
+        "non_core_total": cohort["non_core_total"],
+        "full_cycle_slices": cohort["full_cycle_slices"],
+        "full_cycle_seconds": cohort["full_cycle_seconds"],
+        "budget": budget,
+        "split": split,
+        "symbols": symbols,
+        "per_underlying": per_underlying,
+        "notes": notes,
+        "policy": cohort["policy"],
+    }
+
+
+async def _apply_options_slice(sc: Any, at_epoch_s: float, reason: str) -> dict[str, Any]:
+    """Reconcile the live subscription to what this slice should be observing.
+
+    ORDERING IS THE WHOLE POINT, because the coverage record must never claim observability we
+    did not have:
+      * DROP first, and close each dropped contract's epoch only AFTER the vendor has confirmed
+        the unsubscribe. Closing before would leave frames arriving inside a window the record
+        says was shut; unsubscribing first means nothing can arrive after the close instant.
+      * ADD second, and open an epoch only for services the vendor ACCEPTED. Opening before the
+        receipt would claim coverage the account may never have been granted.
+    Core symbols normally appear in both the old and the new set, so they are neither dropped
+    nor re-added — their coverage stays CONTINUOUS across slice boundaries by construction, not
+    by a special case.
+    """
+    global _options_subscribed_syms, _options_last_receipt, _options_last_slice
+
+    from stream_spine import STREAM_DB_DEFAULT as _CAPTURE_DB
+    from calibration.options_stream_coverage import close_epochs, open_epochs
+    from options_stream_subscription import subscribe_options, unsubscribe_options
+
+    plan = options_desired_for_slice(
+        at_epoch_s, equity_symbols=len(_subscribed_equity_syms) or 1, book_enabled=True)
+    want = list(dict.fromkeys(plan["symbols"]))
+    have = list(_options_subscribed_syms)
+    to_drop = [s for s in have if s not in set(want)]
+    to_add = [s for s in want if s not in set(have)]
+
+    dropped_ok = added = 0
+    if to_drop:
+        try:
+            await unsubscribe_options(sc, to_drop)
+            now_ms = int(time.time() * 1000.0)
+            for service in ("LEVELONE_OPTIONS", "OPTIONS_BOOK"):
+                close_epochs(_CAPTURE_DB, to_drop, service=service, reason=reason, at_ms=now_ms)
+            dropped_ok = len(to_drop)
+        except Exception as e:                          # noqa: BLE001
+            # Leaving them subscribed is the SAFE failure: the record still matches reality.
+            log.warning("options rotation: unsubscribe failed, keeping %d contracts: %s",
+                        len(to_drop), e)
+            to_drop = []
+
+    if to_add:
+        receipt = await subscribe_options(sc, to_add)
+        _options_last_receipt = receipt
+        now_ms = int(time.time() * 1000.0)
+        for service, ok in (("LEVELONE_OPTIONS", receipt.get("level_one")),
+                            ("OPTIONS_BOOK", receipt.get("book"))):
+            if ok:
+                open_epochs(_CAPTURE_DB, to_add, service=service, policy=plan["policy"],
+                            reason=reason, at_ms=now_ms)
+        added = len(to_add)
+
+    _options_subscribed_syms = [s for s in have if s not in set(to_drop)] + to_add
+    _options_last_slice = {
+        "reason": reason,
+        "at_epoch_s": plan["at_epoch_s"],
+        "slice_index": plan["slice_index"],
+        "core": plan["core"],
+        "rotating": plan["rotating"],
+        "added": added,
+        "dropped": dropped_ok,
+        "subscribed_total": len(_options_subscribed_syms),
+        "per_underlying": plan["per_underlying"],
+        "full_cycle_seconds": plan["full_cycle_seconds"],
+        "notes": plan["notes"][:12],
+    }
+    log.info("OPTIONS slice %s (%s): +%d -%d = %d contracts across %d underlyings; "
+             "core=%s rotating=%s cycle=%ss",
+             plan["slice_index"], reason, added, dropped_ok, len(_options_subscribed_syms),
+             len(plan["per_underlying"]), plan["core"], plan["rotating"],
+             plan["full_cycle_seconds"])
+    _log_stream("OPTIONS_SLICE", **{k: _options_last_slice[k] for k in
+                                    ("reason", "slice_index", "added", "dropped",
+                                     "subscribed_total")})
+    return _options_last_slice
+
+
+async def _options_rotation_loop(sc: Any) -> None:
+    """Advance the rotation at each slice boundary, on the SAME loop and the SAME client.
+
+    This is the pattern the staleness watch already uses in _run_stream_loop: a task on the
+    existing loop, cancelled in the same finally. It is deliberately NOT a thread and NOT a
+    second client — a second streaming authority would be free to disagree with this one about
+    what is subscribed.
+
+    Boundaries are computed from the clock rather than by sleeping a fixed interval, so a slow
+    slice cannot make the rotation drift away from the deterministic slice_index that replay
+    and the coverage record both depend on.
+    """
+    from options_stream_subscription import RotationPolicy
+
+    pol = RotationPolicy()
+    while True:
+        now = time.time()
+        nxt = (pol.slice_index(now) + 1) * float(pol.slice_seconds)
+        try:
+            await asyncio.sleep(max(1.0, nxt - now))
+        except asyncio.CancelledError:
+            raise
+        try:
+            await _apply_options_slice(sc, time.time(), reason="rotation")
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:                          # noqa: BLE001
+            # A failed slice must not end the rotation, and must never touch the equity path.
+            log.warning("options rotation slice failed (collection continues): %s", e)
+
+
 async def _start_options_collection(sc: Any) -> None:
     """Select contracts, start the writer, subscribe, and RECORD the coverage.
 
     Every failure path here is soft. Options collection is additive; if any part of it cannot
     start, the equity/book stream this console actually depends on must be unaffected.
     """
-    global _options_ingest, _options_subscribed_syms, _options_last_receipt
+    global _options_ingest, _options_rotation_task
     if not options_streaming_enabled():
         log.info("options streaming disabled (%s unset) — LEVELONE_OPTIONS/OPTIONS_BOOK "
                  "handlers registered but nothing subscribed", ED_OPTIONS_STREAM_ENV)
@@ -135,52 +325,29 @@ async def _start_options_collection(sc: Any) -> None:
         # RC-6 law: raw stream capture goes to stream_capture.db, NEVER ed_console.db.
         from stream_spine import STREAM_DB_DEFAULT as _CAPTURE_DB
         from calibration.options_stream_ingest import OptionsFrameIngest
-        from calibration.options_stream_coverage import open_epochs
-        from options_stream_subscription import (
-            SelectionPolicy, build_chains_for_selection, contract_budget_from_key_limit,
-            select_contracts, subscribe_options,
-        )
     except Exception as e:                              # noqa: BLE001
         log.warning("options collection unavailable: %s", e)
         return
 
     try:
-        chains = build_chains_for_selection()
-        if not chains:
-            log.warning("options collection: no chains available to select from — nothing "
-                        "subscribed (this is a COVERAGE GAP, not a market observation)")
-            return
-        # The ceiling is DERIVED from the vendor key budget and the keys the equity stream
-        # already holds, not chosen. Subscribing past the limit would be rejected by Schwab
-        # and could disturb the existing equity/book subscriptions.
-        budget = contract_budget_from_key_limit(
-            equity_symbols=len(_subscribed_equity_syms) or 1, book_enabled=True)
-        policy = SelectionPolicy(max_contracts=budget["contracts_allowed"])
-        sel = select_contracts(chains, policy)
-        if not sel.symbols:
-            log.warning("options collection: selection produced no contracts; notes=%s", sel.notes)
-            return
-        log.info("options key budget: %s", budget)
-
+        # The writer starts BEFORE anything is subscribed: a frame that arrives with no queue to
+        # take it would be a loss the accounting could not see.
         _options_ingest = OptionsFrameIngest(_CAPTURE_DB)
         _options_ingest.start()
 
-        receipt = await subscribe_options(sc, sel.symbols)
-        _options_last_receipt = receipt
-        _options_subscribed_syms = list(sel.symbols)
+        # The first subscribe is just slice zero. It runs through the SAME reconciler every
+        # rotation boundary uses, so start-up and steady state cannot drift apart — this used to
+        # be a separate one-shot selection that subscribed the whole budget at once and never
+        # rotated, which is how the core+rotating architecture existed in code and not in the
+        # running system.
+        await _apply_options_slice(sc, time.time(), reason="stream_start")
+        if not _options_subscribed_syms:
+            log.warning("options collection: slice produced no contracts — nothing subscribed "
+                        "(this is a COVERAGE GAP, not a market observation)")
+            return
 
-        # Coverage is recorded ONLY for services the vendor actually accepted, so the record
-        # never claims observability we did not obtain.
-        now_ms = int(time.time() * 1000.0)
-        for service, ok in (("LEVELONE_OPTIONS", receipt.get("level_one")),
-                            ("OPTIONS_BOOK", receipt.get("book"))):
-            if ok:
-                open_epochs(_CAPTURE_DB, sel.symbols, service=service, policy=sel.policy,
-                            reason="stream_start", at_ms=now_ms)
-        log.info("OPTIONS collection started: %d contracts across %d underlyings %s; errors=%s",
-                 len(sel.symbols), len(sel.per_underlying), sel.per_underlying, receipt.get("errors"))
-        _log_stream("OPTIONS_SUBSCRIBED", contracts=len(sel.symbols),
-                    per_underlying=sel.per_underlying, errors=receipt.get("errors"))
+        _options_rotation_task = asyncio.create_task(
+            _options_rotation_loop(sc), name="options_rotation")
     except Exception as e:                              # noqa: BLE001
         log.warning("options collection failed to start (equity stream unaffected): %s", e)
 
@@ -191,7 +358,16 @@ def _stop_options_collection(reason: str = "stream_stop") -> None:
     Closing epochs matters as much as stopping the writer: an epoch left open would claim we
     were observing those contracts during a window when the process was not running.
     """
-    global _options_ingest, _options_subscribed_syms
+    global _options_ingest, _options_subscribed_syms, _options_rotation_task, _options_last_slice
+    # Stop advancing the rotation BEFORE closing epochs: a slice that fired mid-teardown would
+    # open epochs for contracts this process is about to stop observing.
+    task, _options_rotation_task = _options_rotation_task, None
+    if task is not None:
+        try:
+            task.cancel()
+        except Exception as e:                          # noqa: BLE001
+            log.warning("cancelling options rotation: %s", e)
+    _options_last_slice = None
     try:
         if _options_subscribed_syms:
             from stream_spine import STREAM_DB_DEFAULT as _CAPTURE_DB
@@ -224,6 +400,11 @@ def options_stream_status() -> dict[str, Any]:
         "enabled": options_streaming_enabled(),
         "subscribed_contracts": len(_options_subscribed_syms),
         "last_receipt": _options_last_receipt,
+        # ROTATION VISIBILITY. Frames arriving proves collection; only this proves the rotation
+        # is advancing, which is what makes coverage universal rather than a fixed sliver.
+        "last_slice": _options_last_slice,
+        "rotation_running": bool(_options_rotation_task is not None
+                                 and not _options_rotation_task.done()),
         "ingest": None,
     }
     if ing is not None:
