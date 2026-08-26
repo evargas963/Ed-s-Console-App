@@ -6,10 +6,18 @@ can hallucinate a level.
 
 Two institutional invariants:
 
-1. **Fail-closed.** When the flip is missing or its confidence is not TRUSTED, the read
-   withholds the regime and the trading posture and says why. It never presents a posture
-   derived from a level we know is unreliable (a narrow chain misplaces the flip by ~3.6%
-   — measured 2026-07-19: 770.35 against a full-chain reference of 745.61).
+1. **Fail-closed — on the SIGN, which is what a posture rests on.** Corrected 2026-08-26: this
+   invariant used to read "when the confidence is not TRUSTED, the read withholds regime and
+   posture". That is no longer what the code does, and the old wording conflated two questions.
+   The regime is the SIGN of dealer gamma AT SPOT, which needs strikes NEAR spot; the flip LEVEL
+   is what needs a wide chain. So:
+     * confidence TRUSTED or LEVEL_APPROX -> regime and posture are issued; at LEVEL_APPROX the
+       flip LEVEL is explicitly disclosed as approximate on the line that prints it.
+     * confidence NARROW or UNAVAILABLE, or no at-spot gamma -> everything is withheld, with the
+       reason stated. A chain that narrow cannot support even the sign.
+   It never presents a posture derived from a level we know is unreliable (a narrow chain
+   misplaces the flip by ~3.6% — measured 2026-07-19: 770.35 against a full-chain reference of
+   745.61), and it never presents a coverage verdict as proof the level is right.
 2. **Absence reads as absence.** A missing level is reported missing, never defaulted to a
    neutral-looking number.
 
