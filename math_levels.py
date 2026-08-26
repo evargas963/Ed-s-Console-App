@@ -669,11 +669,12 @@ def bs_gamma(spot: float, strike: float, t_years: float, sigma: float,
     MEASUREMENT (n=40 stored wide morning captures, repriced at each snapshot's own instant,
     r=4.5% / q=1.5% vs the shipped r=q=0):
       * flip LEVEL displacement: median 0.081% of spot, p90 0.147%, max 0.201% (n=33 with a flip)
-      * at-spot gamma SIGN changes: 0 of 40 — the dampen/amplify REGIME never inverted
-    READING: the regime verdict is insensitive to r/q at realistic values, so r=q=0 is acceptable
-    for the sign-based product. The LEVEL error it contributes (~0.08-0.20% of spot) is an order of
-    magnitude below the dominant chain-span error (1.38% at ±5%, see GAMMA_FLIP_MIN_SPAN_PCT), but
-    it is the SAME order as the ±10% convergence residual (0.117%) — so at the TRUSTED tier r/q is a
+      * at-spot gamma SIGN changes: 0 of 40 — the sign this function feeds never inverted
+    READING (about THIS FUNCTION'S OUTPUT, not about what price does): the sign of the repriced
+    aggregate is insensitive to r/q at realistic values, so r=q=0 is acceptable wherever only the
+    sign is consumed. The LEVEL error it contributes (~0.08-0.20% of spot) is an order of magnitude
+    below the dominant chain-span error (1.38% at ±5%, see GAMMA_FLIP_MIN_SPAN_PCT), but it is the
+    SAME order as the ±10% convergence residual (0.117%) — so at the TRUSTED tier r/q is a
     comparable error source, not a negligible one.
     STILL NOT_PROVEN: this used one representative (r, q) pair on 40 captures, not a sweep, and no
     per-instrument dividend. A LEAPS-heavy book at a higher r would displace more; long-dated

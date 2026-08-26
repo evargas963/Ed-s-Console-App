@@ -7477,16 +7477,6 @@ def _fetch_state(
             if _t_pin_snap and not _t_pin_snap.get("levels_stale")
             else None
         )
-        # Cursor-audit F9: the dealer dampen/amplify REGIME sign, from the SAME terrain SSOT snapshot
-        # and on the SAME fail-closed terms. net_gex_at_spot IS gamma_at_spot on the wide multi-expiry
-        # book (terrain_engine) — the value the terrain card renders — so the Call/regime consumers and
-        # the card now read ONE number and cannot disagree in sign. A missing or stale terrain snapshot
-        # yields None, and every consumer then withholds its regime claim rather than guessing.
-        _regime_gamma_at_spot = (
-            _t_pin_snap.get("net_gex_at_spot")
-            if _t_pin_snap and not _t_pin_snap.get("levels_stale")
-            else None
-        )
         _gex_at_pin = None
         _oi_concentration = None
         if _pin_strike is not None and _t_pin_snap and not _t_pin_snap.get("levels_stale"):
@@ -7508,6 +7498,19 @@ def _fetch_state(
         except Exception as e:
             log.warning(f"pin_score failed: {e}")
             _pin_score_val = {}
+
+        # Cursor-audit F9 / gamma audit: the dealer dampen/amplify REGIME sign, read from the SAME
+        # terrain SSOT snapshot as the pin above and on the SAME fail-closed terms. net_gex_at_spot
+        # IS gamma_at_spot over the wide multi-expiry book (terrain_engine) — the exact value the
+        # terrain card renders — so the Call/regime consumers and the card read ONE number and cannot
+        # disagree in sign. Sourcing it from the selected-expiry analytics diag (the first cut of this
+        # fix) could disagree, and a one-expiry slice is the wrong basis for a whole-book hedging
+        # claim. Missing or stale snapshot -> None -> every consumer withholds its regime claim.
+        _regime_gamma_at_spot = (
+            _t_pin_snap.get("net_gex_at_spot")
+            if _t_pin_snap and not _t_pin_snap.get("levels_stale")
+            else None
+        )
 
         # 6. Vol Expansion Signal
         _iv_dir_num = 1.0 if _iv_direction == "expanding" else -1.0 if _iv_direction == "contracting" else 0.0
