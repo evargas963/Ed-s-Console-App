@@ -1045,6 +1045,11 @@ def snap_level_to_shelf_strike(
 GAMMA_FLIP_TRUSTED = "TRUSTED"
 GAMMA_FLIP_NARROW = "LOW_CONFIDENCE_NARROW_CHAIN"
 GAMMA_FLIP_UNAVAILABLE = "UNAVAILABLE"
+#: Middle tier (gamma audit 2026-08-26): the chain reaches the REGIME floor but not the measured
+#: flip-LEVEL convergence span. The regime (sign of gamma AT SPOT) is sound; the flip LEVEL carries
+#: the ~1.4%-of-spot placement error the convergence study measured. Named so no surface can print
+#: this as TRUSTED.
+GAMMA_FLIP_LEVEL_APPROX = "LEVEL_APPROX_NARROW_SPAN"
 #: Span a chain must cover around spot before its flip may be called TRUSTED.
 #: PROVENANCE (RC-62, operator challenge "what is scientific about this number?"): the 0.05 was
 #: ASSERTED, never derived — its original comment merely restated it, while it governs both every
@@ -1061,6 +1066,26 @@ GAMMA_FLIP_UNAVAILABLE = "UNAVAILABLE"
 #: cost/latency decision. Re-set it once `python tools/probe_chain_depth_v1.py` establishes the
 #: real vendor ceiling and the cohort is large enough to pin a value.
 GAMMA_FLIP_MIN_SPAN_PCT = 0.05
+#: GAMMA AUDIT 2026-08-26 — the operator's concern: "±5% can still be labeled TRUSTED even though
+#: our own convergence work says ±5% is insufficient." That is CORRECT and is now fixed here.
+#: The 0.05 above was doing DOUBLE DUTY: (a) the live chain-fetch width, a real cost/latency
+#: decision, and (b) the TRUSTED-vs-NARROW verdict on the flip LEVEL. Only (b) is refuted by the
+#: study; conflating them let a fetch-width compromise silently set the trust bar.
+#: This constant governs the flip-LEVEL trust ONLY, and is set at the measured convergence knee:
+#: median error vs the full-chain flip falls from 1.38% of spot at ±5% to 0.117% at ±10% (~10x) and
+#: does not improve at ±15% (0.257%, reference noise).
+#: MEASURED THIS CHANGE (250 stored wide morning captures, ed_console.db, 2026-08-26): 96.0% of
+#: captures deliver >=10% symmetric span, so this bar does NOT dark the board — but SPY (median
+#: 8.49%) and QQQ (8.84%) sit BELOW it, which is exactly why the verdict is graduated rather than
+#: binary: those two would otherwise lose their regime read, and the REGIME does not depend on this
+#: span at all. The regime is the SIGN OF GAMMA AT SPOT (gamma_at_price), which needs strikes NEAR
+#: spot, not a wide wing; only the flip LEVEL needs the wide span. Below this bar but at/above
+#: GAMMA_FLIP_MIN_SPAN_PCT the verdict is GAMMA_FLIP_LEVEL_APPROX: regime stands, level disclosed
+#: as approximate. STILL NOT_PROVEN: the study's justified_span is None (no ladder point reaches
+#: 95% of chains inside the 0.05%-of-spot tolerance on an n=15 cohort measured against our widest
+#: available chain, not a true full chain), so 0.10 is the evidence-backed FLOOR for TRUSTED, not a
+#: certified sufficiency. Pin it with tools/probe_chain_depth_v1.py + a larger cohort.
+GAMMA_FLIP_TRUSTED_SPAN_PCT = 0.10
 
 #: Overshoot on the derived count. Schwab centres `strikeCount` strikes near ATM but not
 #: exactly on it, so a count that exactly equals the span requirement can land asymmetric
@@ -1174,6 +1199,7 @@ def gamma_at_price(profile: List[tuple[float, float]], price: float) -> float | 
 
 def compute_gamma_flip_v2(
     contracts: List[dict], spot: float, *, min_span_pct: float = GAMMA_FLIP_MIN_SPAN_PCT,
+    trusted_span_pct: float = GAMMA_FLIP_TRUSTED_SPAN_PCT,
     now=None, profile: List[tuple[float, float]] | None = None
 ) -> tuple[float | None, str, dict]:
     """Canonical gamma flip (profile zero-crossing) plus an honest confidence verdict.
@@ -1198,7 +1224,21 @@ def compute_gamma_flip_v2(
         "span_above_pct": round((hi - spot) / spot, 4),
         "min_span_pct": min_span_pct,
     }
-    covers = lo <= spot * (1.0 - min_span_pct) and hi >= spot * (1.0 + min_span_pct)
+    # Gamma audit 2026-08-26: TWO span tests, because they answer two different questions.
+    #  covers_regime — enough strikes around spot for the at-spot gamma SIGN (the regime) to mean
+    #                  anything at all. Below it nothing is claimed.
+    #  covers_level  — the measured convergence span for the flip LEVEL itself
+    #                  (GAMMA_FLIP_TRUSTED_SPAN_PCT; see its provenance block). Only this earns TRUSTED.
+    # Previously ONE test (at the fetch-width constant) awarded TRUSTED, so a chain whose flip is
+    # measurably ~1.4% of spot off was presented as trustworthy — the defect the operator flagged.
+    covers_regime = lo <= spot * (1.0 - min_span_pct) and hi >= spot * (1.0 + min_span_pct)
+    covers_level = lo <= spot * (1.0 - trusted_span_pct) and hi >= spot * (1.0 + trusted_span_pct)
+    covers = covers_level          # TRUSTED is earned by the LEVEL span, never the fetch width
+    _verdict = (GAMMA_FLIP_TRUSTED if covers_level
+                else GAMMA_FLIP_LEVEL_APPROX if covers_regime
+                else GAMMA_FLIP_NARROW)
+    diag = {**diag, "trusted_span_pct": trusted_span_pct,
+            "covers_regime_span": covers_regime, "covers_level_span": covers_level}
     # RC-345 / F03: accept a pre-built profile so the caller can materialize the gamma
     # profile ONCE (one producer, one pinned `now`) and share it between the flip and the
     # regime/gamma-at-spot read. When None, build it here (single-call callers). Passing a
@@ -1225,8 +1265,8 @@ def compute_gamma_flip_v2(
         return None, GAMMA_FLIP_UNAVAILABLE, {**diag, "reason": "empty_profile"}
     if flip is None:
         # regime is knowable; the flip level is not
-        return None, (GAMMA_FLIP_TRUSTED if covers else GAMMA_FLIP_NARROW),                {**diag, "reason": "no_zero_crossing_regime_still_defined"}
-    return flip, (GAMMA_FLIP_TRUSTED if covers else GAMMA_FLIP_NARROW), diag
+        return None, _verdict,                {**diag, "reason": "no_zero_crossing_regime_still_defined"}
+    return flip, _verdict, diag
 
 
 # ── HVL — strike with largest total gamma (call + put) ───────────────────────

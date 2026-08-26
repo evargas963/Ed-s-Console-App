@@ -22,7 +22,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from math_levels import GAMMA_FLIP_TRUSTED
+from math_levels import GAMMA_FLIP_LEVEL_APPROX, GAMMA_FLIP_TRUSTED
 from instrument_identity import ticker_storage_key
 
 REGIME_LONG_GAMMA = "LONG_GAMMA_CHOP"
@@ -202,7 +202,14 @@ def build_terrain_read(
     if flip is None and gamma_at_spot is None:
         return _unavailable("Dealer gamma is unavailable, so the regime cannot be determined.",
                             spot, flip_confidence, put_wall, call_wall)
-    if flip_confidence != GAMMA_FLIP_TRUSTED:
+    # Gamma audit 2026-08-26: the REGIME is the sign of dealer gamma AT SPOT (see this function's
+    # docstring) — it does NOT depend on how precisely the flip LEVEL is placed. Gating it on the
+    # level-trust verdict conflated two different questions and, once TRUSTED was correctly raised to
+    # the measured convergence span, would have dropped the regime for SPY/QQQ (measured medians
+    # 8.49%/8.84%) even though their at-spot sign is perfectly well determined. So the middle tier
+    # LEVEL_APPROX keeps the regime and posture, and discloses the flip LEVEL as approximate below.
+    # Only a chain too narrow for the at-spot sign itself (NARROW/UNAVAILABLE) stands everything aside.
+    if flip_confidence not in (GAMMA_FLIP_TRUSTED, GAMMA_FLIP_LEVEL_APPROX):
         return _unavailable(
             f"Gamma flip is not trustworthy ({flip_confidence}) — the option chain is too "
             "narrow to place it reliably.",
@@ -219,16 +226,21 @@ def build_terrain_read(
     if regime in (REGIME_LONG_GAMMA, REGIME_SHORT_GAMMA) and not dealer_sign_is_proven(ticker):
         return _sign_unproven_read(spot, flip, flip_confidence, put_wall, call_wall)
 
+    # Gamma-audit (operator requirement): dealer positioning is MODELLED from public OI under the
+    # +call/-put convention — OI does not reveal who owns the contracts — so the mechanism line says
+    # "modelled net long/short", never a bare "Dealers ARE". The convention is evidence-backed for
+    # the sentinel universe only, and the SIGN-DEMOTION above already withholds the regime entirely
+    # for every other ticker; this wording keeps the remaining claim honest rather than certain.
     if regime == REGIME_LONG_GAMMA:
         headline = "Long gamma — chop regime. Fade the edges, do not chase breakouts."
-        mechanism = ("Dealers are net long gamma: they sell into strength and buy into "
-                     "weakness, damping every move.")
+        mechanism = ("Dealers are modelled net long gamma (from OI, not observed positioning): "
+                     "they sell into strength and buy into weakness, damping every move.")
         action = (f"Fade rallies into {_fmt('call wall', call_wall, spot)} and buy dips toward "
                   f"{_fmt('put wall', put_wall, spot)}; target the middle, stop beyond the wall.")
     else:
         headline = "Short gamma — trend regime. Follow breaks, do not fade."
-        mechanism = ("Dealers are net short gamma: they buy strength and sell weakness, "
-                     "amplifying every move.")
+        mechanism = ("Dealers are modelled net short gamma (from OI, not observed positioning): "
+                     "they buy strength and sell weakness, amplifying every move.")
         action = (f"Trade with a break of {_fmt('put wall', put_wall, spot)} or "
                   f"{_fmt('call wall', call_wall, spot)}; fading here gets run over.")
 
@@ -236,6 +248,13 @@ def build_terrain_read(
         distance_pct = _pct_from(spot, flip) * 100.0
         flip_line = (f"Spot {spot:.2f} vs {_fmt('flip', flip, spot)} — {abs(distance_pct):.2f}% "
                      f"{'above' if spot > flip else 'below'} the regime line.")
+        # Gamma audit: at the middle tier the chain does not reach the measured flip-LEVEL
+        # convergence span, so the LEVEL is approximate (~1.4% of spot in the study) even though the
+        # regime is sound. Say so on the same line the operator reads the number from — a precise
+        # "-0.42%" beside an unqualified level is exactly the overstatement this tier exists to end.
+        if flip_confidence == GAMMA_FLIP_LEVEL_APPROX:
+            flip_line += (" APPROXIMATE: the chain is too narrow to place this level precisely "
+                          "(~1.4% of spot); the regime above does not depend on it.")
     else:
         flip_line = (f"Spot {spot:.2f} — dealer gamma holds one sign across the whole chain, "
                      f"so there is no flip nearby to cross. The regime is unambiguous.")

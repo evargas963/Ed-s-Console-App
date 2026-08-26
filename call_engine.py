@@ -459,17 +459,21 @@ def _greek_notes(inp: SignalInput) -> list:
     notes = []
 
     # Cursor-audit F9: the dealer dampen/amplify REGIME is the SIGN of dealer gamma AT SPOT
-    # (net_gamma_at_spot = gamma_at_price(profile, spot)) — the authority per math_levels.gamma_at_price
-    # (RC-320) and the terrain card. inp.net_gamma is the WHOLE-CHAIN aggregate_net_gex (Σ over ALL
-    # strikes) and can differ in sign, so reading it here made the Call print the OPPOSITE regime from
-    # the terrain commentary. Fail-closed: emit no dealer-regime note when the at-spot value is
-    # unavailable (terrain also stands its regime aside then), never fall back to the whole-chain sign.
-    _ng_at_spot = getattr(inp, "net_gamma_at_spot", None)   # getattr: robust to mock inputs
-    if _ng_at_spot is not None:
-        if _ng_at_spot > 0:
-            notes.append("Dealers are absorbing moves — chop/fade mode")
-        else:
-            notes.append("Dealers are amplifying moves — trend/momentum mode")
+    # (net_gamma_at_spot), per math_levels.gamma_at_price (RC-320) and the terrain card — NOT the
+    # whole-chain aggregate_net_gex this used to read, which can differ in sign.
+    # NARRATIVE CORRECTION (gamma audit, AST-verified): _greek_notes has NO non-test caller, so this
+    # function does not currently reach the operator. The live instance of this defect class was
+    # regime_engine's pinning/acceleration scoring (reached via classify_regime from signals.py);
+    # the fix here is correctness-in-place for a surface that is dormant, not a fixed on-screen bug.
+    # Gamma-audit: use the ONE sign-threshold authority (withholds at exactly 0 instead of letting a
+    # zero fall into "amplifying"), and state the MODELED basis — dealer ownership is inferred from
+    # the +call/-put convention over public OI, which cannot establish who actually owns the contracts.
+    from terrain_read import REGIME_LONG_GAMMA, REGIME_SHORT_GAMMA, regime_from_signed_gamma
+    _reg = regime_from_signed_gamma(getattr(inp, "net_gamma_at_spot", None))  # getattr: mock-safe
+    if _reg == REGIME_LONG_GAMMA:
+        notes.append("Modeled dealer gamma positive at spot — absorbing moves, chop/fade mode")
+    elif _reg == REGIME_SHORT_GAMMA:
+        notes.append("Modeled dealer gamma negative at spot — amplifying moves, trend/momentum mode")
 
     if inp.charm_direction and inp.charm_drift_toward:
         # RC-313: this read "Time decay pushing dealers to {dir} toward {strike}", which

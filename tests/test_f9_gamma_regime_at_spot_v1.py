@@ -2,9 +2,17 @@
 gamma AT SPOT (gamma_at_price(profile, spot)), the authority per math_levels.gamma_at_price / the
 terrain card — NOT the whole-chain aggregate_net_gex (Σ over ALL strikes), which can differ in sign.
 
-Before this fix, call_engine._greek_notes read inp.net_gamma (whole-chain), so the Call could print
-"Dealers are absorbing moves — chop" while the terrain commentary said "Short gamma — amplifying"
-off the at-spot value, on the same screen. The Call now reads net_gamma_at_spot, so the two agree.
+NARRATIVE CORRECTION (gamma audit, AST-verified): an earlier version of this docstring claimed the
+Call was printing a contradictory regime note to the operator "on the same screen". That was
+OVERSTATED — `_greek_notes` has NO non-test caller, so it is dormant on the live path. The LIVE
+instance of this defect class was regime_engine's pinning/acceleration scoring, which reads
+SignalInput and is reached via classify_regime from signals.py; it scored the dampen/amplify regime
+off whole-chain gamma. Both surfaces are fixed here; only the regime_engine one was live.
+
+The value itself is sourced from the TERRAIN SSOT (the wide multi-expiry book the terrain card
+renders as net_gex_at_spot), not the selected-expiry analytics slice — otherwise the two surfaces
+could still disagree in sign. The sign THRESHOLD comes from the one authority
+terrain_read.regime_from_signed_gamma, which withholds at exactly 0.
 """
 from __future__ import annotations
 
@@ -48,3 +56,28 @@ def test_dealer_regime_note_fails_closed_without_at_spot_f9():
     the wrong basis; the terrain regime also stands aside when the at-spot gamma is unavailable)."""
     notes = _greek_notes(_mk(net_gamma=5.0e9, net_gamma_at_spot=None))
     assert not _has(notes, "absorbing moves") and not _has(notes, "amplifying moves"), notes
+
+
+def test_exactly_zero_at_spot_gamma_is_withheld_everywhere_f1():
+    """Gamma-audit F-1: the sign THRESHOLD is terrain_read.regime_from_signed_gamma, the one
+    authority, which returns None at EXACTLY 0. An inline `> 0 else amplifying` would have called a
+    0.0 "amplifying" in the Call while regime_engine withheld — two thresholds for one truth. Both
+    consumers now route through the authority, so 0.0 is withheld on every surface."""
+    from terrain_read import regime_from_signed_gamma
+
+    assert regime_from_signed_gamma(0.0) is None
+    notes = _greek_notes(_mk(net_gamma=5.0e9, net_gamma_at_spot=0.0))
+    assert not _has(notes, "absorbing moves") and not _has(notes, "amplifying moves"), (
+        f"exactly-zero at-spot gamma must withhold the regime claim, got: {notes}")
+
+
+def test_regime_notes_disclose_the_modeled_dealer_sign_f9():
+    """Operator requirement: modeled dealer inventory must not be presented as observed fact. The
+    dealer sign is inferred from the +call/-put convention over public OI, which cannot establish
+    actual ownership — so the note says 'Modeled dealer gamma', not 'Dealers are'."""
+    for at_spot in (2.0e9, -2.0e9):
+        notes = _greek_notes(_mk(net_gamma=1.0, net_gamma_at_spot=at_spot))
+        regime = [n for n in notes if "chop/fade" in n or "trend/momentum" in n]
+        assert regime, f"expected a regime note for at_spot={at_spot}"
+        assert all(n.startswith("Modeled dealer gamma") for n in regime), (
+            f"regime note must disclose the modeled basis, got: {regime}")

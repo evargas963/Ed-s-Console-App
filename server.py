@@ -7394,6 +7394,15 @@ def _fetch_state(
             return None
         return (float(call_oi) if call_oi is not None else 0.0) + (float(put_oi) if put_oi is not None else 0.0)
 
+    # Gamma-audit 2026-08-26 (latent NameError, found tracing the F9 regime source): the terrain-SSOT
+    # reads below live INSIDE this try, whose `except` only logs (server.py: "Section 8 signals calc")
+    # and sets no defaults. Any earlier raise in the block therefore left these names UNDEFINED, and
+    # the later build_market_state(absolute_gamma_strike=_pin_strike, net_gamma_at_spot=...) raised
+    # NameError — caught as a build_market_state crash, so ONE failed sub-computation blanked the
+    # ENTIRE market state instead of degrading a single field. Pre-initialized here so the block
+    # degrades field-wise and fail-closed (None = the consumer withholds its claim), never all-or-nothing.
+    _pin_strike = None
+    _regime_gamma_at_spot = None
     try:
         # Aggregate totals — same full-chain Σ net_gex_1pct as kl_net_gex / ExposureRow CONSENSUS
         _sum_gex = float(aggregate_net_gex(exposures, _cons_strikes) or 0.0)
@@ -7465,6 +7474,16 @@ def _fetch_state(
         _t_pin_snap = terrain_cache_get(ticker) or {}
         _pin_strike = (
             _t_pin_snap.get("absolute_gamma_strike")
+            if _t_pin_snap and not _t_pin_snap.get("levels_stale")
+            else None
+        )
+        # Cursor-audit F9: the dealer dampen/amplify REGIME sign, from the SAME terrain SSOT snapshot
+        # and on the SAME fail-closed terms. net_gex_at_spot IS gamma_at_spot on the wide multi-expiry
+        # book (terrain_engine) — the value the terrain card renders — so the Call/regime consumers and
+        # the card now read ONE number and cannot disagree in sign. A missing or stale terrain snapshot
+        # yields None, and every consumer then withholds its regime claim rather than guessing.
+        _regime_gamma_at_spot = (
+            _t_pin_snap.get("net_gex_at_spot")
             if _t_pin_snap and not _t_pin_snap.get("levels_stale")
             else None
         )
@@ -7896,11 +7915,15 @@ def _fetch_state(
         # RC-292/RC-295: terrain SSOT absolute-gamma strike — the same fail-closed read
         # the pin score uses above (None when the terrain cache is absent or stale).
         absolute_gamma_strike=_pin_strike,
-        # Cursor-audit F9: dealer gamma AT SPOT, from the compute_gamma_flip_v2 diag computed at the
-        # top of this function (server.py:_gamma_flip_diag). This is the regime SIGN authority the
-        # terrain card uses; the Call's dealer-regime note reads it instead of the whole-chain
-        # net_gamma so the two surfaces cannot disagree in sign. Fail-closed None if the diag lacks it.
-        net_gamma_at_spot=(_gamma_flip_diag.get("gamma_at_spot") if isinstance(_gamma_flip_diag, dict) else None),
+        # Cursor-audit F9 (corrected after the gamma audit): dealer gamma AT SPOT — the regime SIGN
+        # authority — read from the TERRAIN SSOT, the same wide-book value the terrain card renders
+        # as net_gex_at_spot (terrain_engine: compute_gamma_profile over the full multi-expiry
+        # capture book). The first cut of this fix sourced _gamma_flip_diag["gamma_at_spot"], which is
+        # computed on contracts_use — the SELECTED-EXPIRY slice — so the Call could still disagree in
+        # sign with the card, and a one-expiry slice is the wrong basis for a claim about dealer
+        # hedging, which spans the whole book. Fail-closed exactly like the pin read above: no terrain
+        # snapshot, or a stale one, yields None and the consumers emit NO regime claim.
+        net_gamma_at_spot=_regime_gamma_at_spot,
         iv_direction=_iv_direction,
         em_upper=_em_up,
         em_lower=_em_lo,
