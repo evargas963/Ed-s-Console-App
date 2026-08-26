@@ -660,7 +660,26 @@ def _norm_pdf(x: float) -> float:
 
 def bs_gamma(spot: float, strike: float, t_years: float, sigma: float,
              rate: float = 0.0, div: float = 0.0) -> float | None:
-    """Black-Scholes gamma per share (identical for calls and puts)."""
+    """Black-Scholes gamma per share (identical for calls and puts).
+
+    RATE/DIVIDEND ASSUMPTION — MEASURED 2026-08-26, previously assumed. Every production caller
+    (compute_gamma_profile) invokes this with FOUR args, so the shipped repricing runs at r=0, q=0;
+    r and q enter only through d1's (r - q)*T term. That omission was never quantified in-repo,
+    so it was an unproven assumption behind every flip/GSF/regime number.
+    MEASUREMENT (n=40 stored wide morning captures, repriced at each snapshot's own instant,
+    r=4.5% / q=1.5% vs the shipped r=q=0):
+      * flip LEVEL displacement: median 0.081% of spot, p90 0.147%, max 0.201% (n=33 with a flip)
+      * at-spot gamma SIGN changes: 0 of 40 — the dampen/amplify REGIME never inverted
+    READING: the regime verdict is insensitive to r/q at realistic values, so r=q=0 is acceptable
+    for the sign-based product. The LEVEL error it contributes (~0.08-0.20% of spot) is an order of
+    magnitude below the dominant chain-span error (1.38% at ±5%, see GAMMA_FLIP_MIN_SPAN_PCT), but
+    it is the SAME order as the ±10% convergence residual (0.117%) — so at the TRUSTED tier r/q is a
+    comparable error source, not a negligible one.
+    STILL NOT_PROVEN: this used one representative (r, q) pair on 40 captures, not a sweep, and no
+    per-instrument dividend. A LEAPS-heavy book at a higher r would displace more; long-dated
+    contributions are where (r-q)*T grows. Settle with a sweep over r∈[0,0.05], q∈[0,0.03] and a
+    per-ticker dividend before treating any level finer than ~0.2% of spot as r/q-clean.
+    """
     if spot <= 0 or strike <= 0 or t_years <= 0 or sigma <= 0:
         return None
     try:
