@@ -769,6 +769,23 @@ def unregistered_payload_fields() -> list[str]:
 #: The unenforced remainder, frozen BY NAME. Lives beside the registry because it is governance
 #: data that the gate itself reads — an earlier version put it under tests/frozen/, which made a
 #: pre-commit gate reach into the test tree for its contract.
+NOT_PROVEN_BASELINE_REL = "governance/one_producer_not_proven_baseline.txt"
+
+
+def not_proven_baseline_path() -> Path:
+    """Resolved against REPO AT CALL TIME, deliberately.
+
+    This was a module-level constant bound at import. tests/test_one_producer_gate_v1.py
+    repoints REPO at a tmp fixture, so the constant and REPO disagreed and
+    `NOT_PROVEN_BASELINE.relative_to(REPO)` RAISED ValueError from inside violations() — the
+    enforced seam crashing instead of failing closed, which is strictly worse than the hole it
+    was added to close. The path is derived where it is used, and the display name is a literal
+    so no relative_to() can throw on a caller's behalf.
+    """
+    return REPO / "governance" / "one_producer_not_proven_baseline.txt"
+
+
+#: Back-compat alias for readers that want the real repo's path.
 NOT_PROVEN_BASELINE = REPO / "governance" / "one_producer_not_proven_baseline.txt"
 
 
@@ -779,10 +796,11 @@ def not_proven_arrivals(not_proven: list[str]) -> list[str]:
     fires upward. Notes of the form "<field>: <detail>" are analysis output, not payload fields,
     and are excluded.
     """
-    if not NOT_PROVEN_BASELINE.is_file():
+    baseline = not_proven_baseline_path()
+    if not baseline.is_file():
         return []                       # handled as a hard failure by violations(), not here
     frozen = {ln.strip() for ln in
-              NOT_PROVEN_BASELINE.read_text(encoding="utf-8").splitlines() if ln.strip()}
+              baseline.read_text(encoding="utf-8").splitlines() if ln.strip()}
     live = {n for n in not_proven if ": " not in n}
     return sorted(live - frozen)
 
@@ -801,8 +819,15 @@ def not_proven_failures(not_proven: list[str]) -> list[str]:
 
     Registering a field removes it from the live set and always passes. Only GROWTH fails.
     """
-    rel = NOT_PROVEN_BASELINE.relative_to(REPO).as_posix()
-    if not NOT_PROVEN_BASELINE.is_file():
+    rel = NOT_PROVEN_BASELINE_REL
+    live = [n for n in not_proven if ": " not in n]
+    if not live:
+        # NOTHING TO RATCHET. A checkout with no unregistered payload fields — a fixture repo,
+        # or the day this reaches zero — needs no baseline, and demanding one there would fail
+        # the gate for having nothing wrong with it. The missing-baseline failure below is for
+        # the case that actually matters: a remainder exists and nothing is guarding it.
+        return []
+    if not not_proven_baseline_path().is_file():
         return [f"{rel}:0  the NOT_PROVEN baseline is missing, so the unenforced remainder "
                 f"cannot be ratcheted and any number of unregistered payload fields would pass "
                 f"unseen. Restore it, or regenerate it deliberately (RC-325)."]

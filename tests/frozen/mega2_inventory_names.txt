@@ -227,6 +227,7 @@ order_flow_live_state.py::get_top_of_book_sizes._to_int
 order_flow_live_state.py::is_rth_open
 order_flow_live_state.py::push_book
 order_flow_live_state.py::push_level_one
+order_flow_streaming.py::_apply_options_slice
 order_flow_streaming.py::_async_staleness_watch
 order_flow_streaming.py::_diag_on_active_l1_tick
 order_flow_streaming.py::_drain_asyncio_tasks
@@ -236,6 +237,7 @@ order_flow_streaming.py::_log_stream
 order_flow_streaming.py::_message_loop_until_shutdown
 order_flow_streaming.py::_options_frame_handler
 order_flow_streaming.py::_options_frame_handler._handler
+order_flow_streaming.py::_options_rotation_loop
 order_flow_streaming.py::_register_options_handlers
 order_flow_streaming.py::_resubscribe_coro
 order_flow_streaming.py::_resubscribe_to_ticker
@@ -251,6 +253,7 @@ order_flow_streaming.py::get_plane_authority_for_ticker
 order_flow_streaming.py::get_stream_thread
 order_flow_streaming.py::get_streaming_diagnostics
 order_flow_streaming.py::is_order_flow_stream_running
+order_flow_streaming.py::options_desired_for_slice
 order_flow_streaming.py::options_stream_status
 order_flow_streaming.py::options_streaming_enabled
 order_flow_streaming.py::set_streaming_active_ticker
