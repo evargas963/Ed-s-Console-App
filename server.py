@@ -9931,6 +9931,21 @@ def _fetch_state(
 # ─────────────────────────────────────────────────────────────────────────────
 from contextlib import asynccontextmanager
 
+# WHICH payload scalars are STRIKES. Classified by MEASUREMENT, not by name: each level was
+# tested against the live Schwab strike grid across 20 tickers on 2026-08-26. All twelve below
+# landed ON the grid 20/20 times. `gamma_flip` (0/11 on-grid), `gsf` (0/14) and `grc` (0/3) are
+# interpolated CONTINUOUS prices and are deliberately absent — they are not vendor strikes and
+# must not be written by the vendor-truth rule. `pin_candidate` is the absolute-gamma strike
+# re-published under qualification gates, so it is a strike by construction.
+# A strike here gets its display text from the ONE producer; anything absent from this set is
+# formatted as an ordinary price by the surface that renders it.
+STRIKE_VALUED_PAYLOAD_KEYS: tuple[str, ...] = (
+    "call_wall", "put_wall", "call_delta_wall", "put_delta_wall",
+    "absolute_gamma_strike", "key_delta_strike", "pin_candidate", "net_gex_peak",
+    "max_pain", "hvp", "lvp", "call_charm_wall", "put_charm_wall",
+)
+
+
 
 @asynccontextmanager
 async def _app_lifespan(app):
@@ -11528,6 +11543,30 @@ def _terrain_kl_overlay(md: dict, ticker: str) -> None:
     md["kl_put_vanna_str"] = "—"
     md["kl_levels_source"] = ("terrain_wide_chain" if fresh else
                               "terrain_unavailable — gamma-family levels withheld")
+    # ONE FAUCET, second namespace. The console table reads `kl_*`, which is this same
+    # terrain book re-published under different names, so its strike text must come from the
+    # SAME producer rather than from `v.toFixed(2)` in the browser - that was a second rule,
+    # and it printed 322.50 where the vendor strike is 322.5.
+    # Membership was MEASURED against the live Schwab grid on 2026-08-26 (20 tickers) and, for
+    # the keys that are usually null, taken from what the console itself says each level IS
+    # ("Strike with the largest ..."). kl_gamma_flip, kl_em_upper/lower, kl_gsf and kl_grc are
+    # interpolated prices; kl_oi_center is an OI-WEIGHTED MEAN, so none of them are strikes.
+    md["kl_strike_labels"] = {
+        _kk: format_strike_for_display(md.get(_kk))
+        for _kk in (
+            "kl_call_gamma_wall", "kl_put_gamma_wall", "kl_absolute_gamma_strike",
+            "kl_pin_candidate", "kl_hvl", "kl_max_pain", "kl_call_delta_wall",
+            "kl_put_delta_wall", "kl_call_oi_wall", "kl_put_oi_wall",
+            "kl_call_vanna_wall", "kl_put_vanna_wall", "kl_gamma_inflection",
+            "kl_delta_inflection", "kl_doi_call_strike", "kl_doi_put_strike",
+            "kl_doi_unwind_strike",
+            # charm_drift_toward is a real CHARM STRIKE (the console withholds it
+            # entirely when it is not one), so it obeys the same vendor-truth rule
+            # even though it carries no kl_ prefix.
+            "charm_drift_toward",
+        )
+        if md.get(_kk) is not None
+    }
     for k in ("kl_call_gamma_str", "kl_put_gamma_str", "kl_hvl_str", "kl_max_pain_str"):
         md[k] = "—"
 _terrain_loop_running: bool = False
@@ -12013,8 +12052,13 @@ def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
         # written. Levels absent from the payload get no label rather than a fabricated one.
         payload["strike_labels"] = {
             _lk: format_strike_for_display(payload.get(_lk))
-            for _lk in ("call_wall", "put_wall", "gamma_flip", "absolute_gamma_strike",
-                        "key_delta_strike", "call_delta_wall", "put_delta_wall")
+            # STRIKES ONLY. `gamma_flip` was in this list and is NOT a strike: it is the
+            # zero-crossing of a continuous gamma profile, interpolated BETWEEN strikes
+            # (measured live 2026-08-26: IWM flip 306.06 and SPY 768.39 on all-integer
+            # chains). Labelling it with the strike formatter put a computed price under a
+            # vendor-truth rule and made one surface print "350.6" where the price
+            # formatter prints "350.60". Continuous prices keep the price format.
+            for _lk in STRIKE_VALUED_PAYLOAD_KEYS
             if payload.get(_lk) is not None
         }
         # RC-68: carry the LIVE per-strike map into the cache. to_dict() deliberately drops it
@@ -12894,7 +12938,15 @@ def get_terrain_strikes(ticker: str = Query(default=DEFAULT_TICKER)):
                 # carry four different rules and three printed prices that do not trade. The
                 # label is added at the API boundary, NOT in the persisted per-strike row: it is
                 # a display artifact and has no business in option_chain_accrual.
-                _kf = round(float(k), 2)
+                # VENDOR TRUTH: the strike is carried through UNROUNDED. This was
+                # `_kf = round(float(k), 2)` with the label computed FROM that, so the one
+                # strike->text producer only ever saw an already-truncated number and
+                # faithfully formatted the damage. Measured over 1,239,960 archived Schwab
+                # contracts, round(k, 2) damages 0 strikes today (Schwab supplies at most
+                # 2dp), so this is a LATENT hazard, not the cause of a live symptom - but a
+                # 3dp adjusted series (post-split/special-dividend) would have been silently
+                # renamed to a price that does not trade.
+                _kf = float(k)
                 out.append([_kf, round(float(g), 1), int(vol_by_k.get(float(k), 0)),
                             format_strike_for_display(_kf)])
             out.sort(key=lambda r: r[0])

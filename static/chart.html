@@ -391,13 +391,17 @@ const fmt = (x, d = 2) => x == null ? '—' : Number(x).toFixed(d);
 // A browser re-implementation kept in step by a parity test is still a SECOND computation of one
 // semantic, which is exactly how four surfaces ended up with four rules and three wrong answers.
 //
-// levelLabel is a LOOKUP with a raw-value fallback, so a server not yet carrying labels degrades
+// strikeText is a LOOKUP with a price-format fallback, so a server not yet carrying labels degrades
 // to the old number rather than to a fabricated one.
-const levelLabel = (t, key) => {
+const strikeText = (t, key, v) => {
   const m = t && t.strike_labels;
-  if (m && m[key] != null) return m[key];
-  const v = t ? t[key] : null;
-  return v == null ? '—' : String(v);
+  // A STRIKE renders the server's label - vendor truth, computed once, in Python.
+  if (m && key && m[key] != null) return m[key];
+  // Not a strike (gamma_flip / gsf / grc are interpolated prices - measured 0/28 on-grid
+  // across 20 live tickers), or a server too old to carry labels: the ORDINARY price format.
+  // Never String(v) - that was a third rule, printing 350.6 where this page prints 350.60.
+  const raw = (v !== undefined && v !== null) ? v : (t ? t[key] : null);
+  return fmt(raw);
 };
 const j = async u => (await fetch(u)).json();
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => (
@@ -1159,11 +1163,13 @@ function draw() {
     return true;
   };
   const lvlVisibleWall = (id, v) => lvlVisible('wall', id, v, 'WALL');
-  const band = (level, kind) => {
+  const band = (level, kind, key) => {
     if (level == null) return;
     // v6 (RC-192) # ui-mockup-ok: walls ride the manager too; AUTO walls fire like any level.
     if (!lvlVisibleWall('wall_' + kind, level)) return;
     const sell = kind === 'call';
+    // The wall IS a strike: its text comes from the server, never from a local rule.
+    const lvlTxt = strikeText(T, key, level);
     // # ui-mockup-ok: v6.2 theme tokens
     const col = kind === 'both' ? PAL.amber : sell ? PAL.red : PAL.green;
     const name = kind === 'both' ? 'PUT + CALL WALL' : sell ? 'CALL WALL' : 'PUT WALL';
@@ -1175,8 +1181,8 @@ function draw() {
     const rangeTxt = half != null
       ? ` · ${fmt(level - half)}–${fmt(level + half)}` : '';
     if (level < lo || level > hi) {
-      offScale.push({ v: level, col, text: name + ' ' + fmt(level) + rangeTxt,
-        tip: name + ' ' + fmt(level) + ' — beyond today\'s traded range; the price axis fits the day\'s bars.' });
+      offScale.push({ v: level, col, text: name + ' ' + lvlTxt + rangeTxt,
+        tip: name + ' ' + lvlTxt + ' — beyond today\'s traded range; the price axis fits the day\'s bars.' });
       return;
     }
     // RC-86: no strike grid -> no band. A line, not an invented width.
@@ -1235,7 +1241,7 @@ function draw() {
       : '';
     const tagTxt = kind === 'both' ? `⬌WALL${_pinTag}`
       : (sell ? 'CWALL' : 'PWALL') + _pinTag;
-    axisTags.push({ v: level, text: `${fmt(level)} ${tagTxt}`, col });
+    axisTags.push({ v: level, text: `${lvlTxt} ${tagTxt}`, col });
     wallLabelYs.push(yTop - 5);
     // Coach numbers are LIVE from the daily scorecard — never a frozen study
     // figure (operator 2026-07-23). Absent scorecard = "measuring", not a
@@ -1268,8 +1274,8 @@ function draw() {
       ? `<br><i>Strike spacing unknown for this chain, so no bucket width is drawn or claimed.</i>`
       : `<br><i>Drawn bucket ±${fmt(half)} = half the chain's median strike spacing (chart ` +
         `resolution, not wall size).</i>`;
-    const title = kind === 'both' ? `Two-sided gamma wall ${fmt(level)}`
-      : `${sell ? 'Call wall' : 'Put wall'} ${fmt(level)}`;
+    const title = kind === 'both' ? `Two-sided gamma wall ${lvlTxt}`
+      : `${sell ? 'Call wall' : 'Put wall'} ${lvlTxt}`;
     zones.push({ y0: yTop, y1: yBot,
       tipHtml: `<b>${title}</b><br>` + leanTip + bucket });
   };
@@ -1312,9 +1318,9 @@ function draw() {
   // but it is still BOTH walls, and the label says so (RC-115: 'GAMMA WALL' alone erased
   // the put/call framing the operator reads).
   if (T.call_wall != null && T.put_wall != null && Number(T.call_wall) === Number(T.put_wall)) {
-    band(T.call_wall, 'both');
+    band(T.call_wall, 'both', 'call_wall');
   } else {
-    band(T.call_wall, 'call'); band(T.put_wall, 'put');
+    band(T.call_wall, 'call', 'call_wall'); band(T.put_wall, 'put', 'put_wall');
   }
 
   // ALL other key levels — bright, labeled, each with a coach tooltip
@@ -1349,7 +1355,8 @@ function draw() {
   for (const [key, lab, col, why, dash] of levels) {
     const v = T[key]; if (v == null) continue;
     if (v < lo || v > hi) {   // RC-110: degrade to an edge marker, never vanish
-      offScale.push({ v, col, text: `${lab} ${fmt(v)}`, tip: `${lab} ${fmt(v)} — ${why}` });
+      const _t = strikeText(T, key, v);
+      offScale.push({ v, col, text: `${lab} ${_t}`, tip: `${lab} ${_t} — ${why}` });
       continue;
     }
     const leanTips = {
@@ -1364,9 +1371,10 @@ function draw() {
     // here killed draw() before the candles. Chart-native Number check only.
     const _sp = Number(T.absolute_gamma_strength_pct);
     const _lead = (key === 'absolute_gamma_strike' && Number.isFinite(_sp)) ? ` · lead ${_sp}%` : '';
-    lvlItems.push({ v, text: `${lab} ${fmt(v)}${_lead}`, col, dash,
+    const _vt = strikeText(T, key, v);
+    lvlItems.push({ v, text: `${lab} ${_vt}${_lead}`, col, dash,
       lw: key === 'gamma_flip' ? 2 : 1.25, side: 'right',
-      tipHtml: `<b>${lab} ${fmt(v)}${_lead}</b><br>${tipWhy}` });
+      tipHtml: `<b>${lab} ${_vt}${_lead}</b><br>${tipWhy}` });
   }
   const _pdEng = enginePD();   // # ui-mockup-ok: RC-213 B3 — same lines, engine-only values
   for (const [k, lab, dash, why] of pdRows) {
@@ -1899,8 +1907,8 @@ function drawGamma() {
   _mk(spot, PAL.amber, `SPOT ${fmt(spot)}`, 30, 'spot');
   // # ui-mockup-ok: FIDELITY BUG FIX (2026-08-26) — these are STRIKES, and rounding them named a
   // level the operator cannot trade (a 322.5 call wall rendered "CALL WALL 323").
-  _mk(T.call_wall, PAL.red, `CALL WALL ${levelLabel(T, 'call_wall')}`, 46, 'call_wall');
-  _mk(T.put_wall, PAL.green, `PUT WALL ${levelLabel(T, 'put_wall')}`, 62, 'put_wall');
+  _mk(T.call_wall, PAL.red, `CALL WALL ${strikeText(T, 'call_wall', T.call_wall)}`, 46, 'call_wall');
+  _mk(T.put_wall, PAL.green, `PUT WALL ${strikeText(T, 'put_wall', T.put_wall)}`, 62, 'put_wall');
 
   // measured migration line: biggest per-strike shifts vs yesterday
   const deltas = vis.filter(r => ghost.get(r[0]) != null)

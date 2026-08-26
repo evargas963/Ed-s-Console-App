@@ -19,6 +19,7 @@ math_exposure.py::order_flow_book_label
 math_exposure.py::order_flow_field_arrow
 math_exposure.py::order_flow_opt_label
 math_exposure.py::order_flow_score_label
+math_exposure_core.py::_accum_measured
 math_exposure_core.py::_f
 math_exposure_core.py::_nearest_strike
 math_exposure_core.py::_pick_strike_max_metric
@@ -89,6 +90,7 @@ math_levels.py::compute_gamma_profile
 math_levels.py::compute_gamma_support_levels
 math_levels.py::compute_gamma_support_levels._cross
 math_levels.py::compute_gamma_void_zones
+math_levels.py::compute_gamma_void_zones._emit
 math_levels.py::compute_gamma_void_zones._get_gex
 math_levels.py::compute_gamma_void_zones._get_oi
 math_levels.py::compute_hvl

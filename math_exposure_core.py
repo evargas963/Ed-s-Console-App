@@ -147,21 +147,29 @@ def _strike_bucket(exposures_by_strike: Dict[float, dict], strike: float) -> dic
             "call_oi_mult": 0.0,
             "put_oi_mult": 0.0,
             # NOTE: These are exposure-scaled buckets (gamma*OI*mult, delta*OI*mult)
-            "call_gamma": 0.0,
-            "put_gamma": 0.0,
+            # RC-274 (repaired 2026-08-26): these four seed None, not 0.0, for the same reason
+            # `call_oi` does eight lines down — a strike where every contract's gamma was
+            # REJECTED must not arrive at the reader as a measured flat zero. Proven on the live
+            # XOM chain: strike 144.0 measures net_gex_1pct = -29,470.7; reject its 8 contracts'
+            # gamma (None, the -999 sentinel, or the key removed) and the terrain panel rendered
+            # [144.0, 0.0, 0] — a bar at exactly zero, on the surface used to read where dealers
+            # are short. The RC-274 guard downstream tested for None at a layer where None could
+            # no longer arrive, because the template had already erased the absence here.
+            "call_gamma": None,
+            "put_gamma": None,
             "call_vanna": 0.0,
             "put_vanna": 0.0,
             "call_delta": 0.0,
             "put_delta": 0.0,
-            "net_gamma": 0.0,
+            "net_gamma": None,
             "net_delta": 0.0,
             # Dollarized (institutional) exposures when spot is provided
             "call_dex_dollars": 0.0,
             "put_dex_dollars": 0.0,
             "net_dex_dollars": 0.0,
-            "call_gex_1pct": 0.0,
-            "put_gex_1pct": 0.0,
-            "net_gex_1pct": 0.0,
+            "call_gex_1pct": None,
+            "put_gex_1pct": None,
+            "net_gex_1pct": None,
             "call_oi_dollars": 0.0,
             "put_oi_dollars": 0.0,
             "total_oi_dollars": 0.0,
@@ -174,6 +182,19 @@ def _strike_bucket(exposures_by_strike: Dict[float, dict], strike: float) -> dic
             "put_ask_size": 0.0,
         }
     return exposures_by_strike[strike]
+
+
+def _accum_measured(bucket: dict, key: str, value: float) -> None:
+    """Add a MEASURED contribution; absence becomes a number only when one actually arrives.
+
+    `+=` against a 0.0 seed cannot express "nothing valid landed here" — it reports the same
+    zero whether the greeks were rejected or the call and put legs genuinely cancelled. This
+    is the discipline `call_oi`/`put_oi` already used inline in this function; the greeks did
+    not, which is how a rejected strike reached the terrain panel as a flat-gamma bar.
+    """
+    prev = bucket.get(key)
+    bucket[key] = value if prev is None else float(prev) + value
+
 
 def compute_exposures_by_strike(
     contracts: List[dict],
@@ -278,14 +299,14 @@ def compute_exposures_by_strike(
             if oi is not None and delta_ok:
                 b["call_delta"] += delta * oi * mult
             if oi is not None and gamma_ok:
-                b["call_gamma"] += gamma * oi * mult
+                _accum_measured(b, "call_gamma", gamma * oi * mult)
             if oi is not None and spot is not None:
                 spt = float(spot)
                 b["call_oi_dollars"] += oi * mult * spt
                 if delta_ok:
                     b["call_dex_dollars"] += delta * oi * mult * spt
                 if gamma_ok:
-                    b["call_gex_1pct"] += gamma * oi * mult * spt * spt * 0.01  # $-GEX per 1% spot move
+                    _accum_measured(b, "call_gex_1pct", gamma * oi * mult * spt * spt * 0.01)  # $-GEX per 1% spot move
                 # RC-211: exact BS vanna from the shared d1/d2 faucet (math_levels.bs_vanna,
                 # independently FD-verified). The prior vega/(S*sigma) shortcut dropped the
                 # -d2 factor: always positive, wrong sign below spot, wrong magnitude.
@@ -310,14 +331,14 @@ def compute_exposures_by_strike(
             if oi is not None and delta_ok:
                 b["put_delta"] += delta * oi * mult
             if oi is not None and gamma_ok:
-                b["put_gamma"] += gamma * oi * mult
+                _accum_measured(b, "put_gamma", gamma * oi * mult)
             if oi is not None and spot is not None:
                 spt = float(spot)
                 b["put_oi_dollars"] += oi * mult * spt
                 if delta_ok:
                     b["put_dex_dollars"] += delta * oi * mult * spt
                 if gamma_ok:
-                    b["put_gex_1pct"] += gamma * oi * mult * spt * spt * 0.01   # $-GEX per 1% spot move
+                    _accum_measured(b, "put_gex_1pct", gamma * oi * mult * spt * spt * 0.01)   # $-GEX per 1% spot move
                 # RC-211: same exact-vanna faucet as the CALL side (vanna is IDENTICAL for
                 # calls and puts at a strike/expiry — any split comes from OI, never math).
                 _iv = _f(ct.get("volatility"))
@@ -334,11 +355,17 @@ def compute_exposures_by_strike(
             continue
 
     for strike, b in exposures.items():
-        b["net_gamma"] = b["call_gamma"] - b["put_gamma"]
+        # A net is a MEASUREMENT only if at least one leg was measured. A strike with calls
+        # and no puts has a true zero contribution on the put side — that is a real net. A
+        # strike where NEITHER leg produced a usable gamma has nothing to report, and the
+        # reader must be told so rather than handed a zero indistinguishable from flat gamma.
+        cg, pg = b.get("call_gamma"), b.get("put_gamma")
+        b["net_gamma"] = None if (cg is None and pg is None) else (cg or 0.0) - (pg or 0.0)
         b["net_delta"] = b["call_delta"] + b["put_delta"]
         # Dollarized net fields (remain 0.0 if spot is None)
         b["net_dex_dollars"] = b.get("call_dex_dollars", 0.0) + b.get("put_dex_dollars", 0.0)
-        b["net_gex_1pct"] = b.get("call_gex_1pct", 0.0) - b.get("put_gex_1pct", 0.0)
+        cx, px = b.get("call_gex_1pct"), b.get("put_gex_1pct")
+        b["net_gex_1pct"] = None if (cx is None and px is None) else (cx or 0.0) - (px or 0.0)
         b["total_oi_dollars"] = b.get("call_oi_dollars", 0.0) + b.get("put_oi_dollars", 0.0)
 
     note = "OK"

@@ -8275,6 +8275,22 @@ function renderTierALive(d, fullRenderSource) {
       return dist > 0 ? 'above' : 'below';
     }
 
+    // Vendor-true text for a STRIKE carried in this payload. Same rule renderRow uses; the
+    // hand-written level rows below (delta-OI builds, gamma voids, charm flow) bypass
+    // renderRow entirely and each had its OWN toFixed - one of them, the gamma void, used
+    // toFixed(0) and printed a 477.5 strike as "478".
+    function klLabelOf(d, key) {
+      // PURE LOOKUP. Deliberately performs NO formatting: the moment a unit that knows about
+      // strikes also formats, it IS a second producer of strike text, and this repo's own
+      // ONE FAUCET gate correctly flagged the earlier version of this helper for exactly that.
+      const m = d && d.kl_strike_labels;
+      return (m && m[key] != null) ? m[key] : null;
+    }
+    function klPx(x) {
+      // Continuous PRICE rendering (gamma flip, EM band, synthetic forward). Knows nothing
+      // about strikes and is only reached when no vendor label exists for the key.
+      return (x == null || Number.isNaN(Number(x))) ? '—' : Number(x).toFixed(2);
+    }
     function renderRow(level, d, dimmed) {
       const v = parseFloat(d[level.key]);
       const isNull = !v;
@@ -8284,6 +8300,15 @@ function renderTierALive(d, fullRenderSource) {
       const sr = level.sr || (isNull ? 'net' : v > (spot||0) ? 'res' : 'sup');
       const srLbl = level.srLabel || (isNull ? '—' : v > (spot||0) ? 'Resistance' : 'Support');
       const pColor = proxColor(v, level);
+      // ONE FAUCET. A STRIKE renders the text the server computed with
+      // instrument_identity.format_strike_for_display; `v.toFixed(2)` was a SECOND rule living
+      // in the browser and it disagreed with every other surface - it printed 322.50 where the
+      // vendor strike is 322.5, and would print 17.25 as 17.25 but 17.3 as 17.30.
+      // Non-strike levels (gamma flip, EM band, OI-weighted centre) are continuous PRICES and
+      // keep the 2dp price format. A server not yet carrying labels degrades to that same
+      // price format - never to a fabricated strike.
+      const _lbl = klLabelOf(d, level.key);
+      const priceTxt = isNull ? '—' : (_lbl !== null ? _lbl : klPx(v));
       // RC-130: a tip may be a function of the payload so wall captions obey the carried
       // geometry state (kl_call_wall_state / kl_put_wall_state) instead of asserting
       // support/resistance the spot contradicts.
@@ -8291,7 +8316,7 @@ function renderTierALive(d, fullRenderSource) {
       return `<div class="kl-grid" title="${tipTxt}">
         <div class="kl-prox" style="background:${pColor}"></div>
         <div class="kl-name${dimmed ? ' dimmed' : ''}">${level.label}</div>
-        <div class="kl-price">${isNull ? '—' : v.toFixed(2)}</div>
+        <div class="kl-price">${priceTxt}</div>
         <div style="text-align:center"><span class="kl-sr ${sr}">${srLbl}</span></div>
         <div class="kl-dist ${distClass(dist)}">${distStr}</div>
         <div class="kl-str${dimmed ? ' dimmed' : ''}">${str}</div>
@@ -8411,7 +8436,7 @@ function renderTierALive(d, fullRenderSource) {
       html += `<div class="kl-grid" title="ΔOI Call Build: the strike where CALL open interest grew most overnight — fresh positioning, a wall with conviction behind it. OI settles overnight, so this is the morning's clean read of whether yesterday's flow built or unwound. 'banking' = fewer than two sessions of OI history exist yet.">
         <div class="kl-prox" style="background:transparent"></div>
         <div class="kl-name">ΔOI Call Build</div>
-        <div class="kl-price">${dcs != null ? Number(dcs).toFixed(2) : '—'}</div>
+        <div class="kl-price">${dcs != null ? (klLabelOf(d, 'kl_doi_call_strike') ?? klPx(dcs)) : '—'}</div>
         <div style="text-align:center"><span class="kl-sr ${dcs != null ? 'res' : 'net'}">${dcs != null ? 'Fresh' : (anyDoi ? '—' : 'banking')}</span></div>
         <div class="kl-dist">—</div>
         <div class="kl-str">${dcs != null ? '+' + fmtOI(d.kl_doi_call_oi) + ' OI' : (anyDoi ? '—' : 'needs 2 sessions')}</div>
@@ -8419,7 +8444,7 @@ function renderTierALive(d, fullRenderSource) {
       html += `<div class="kl-grid" title="ΔOI Put Build: the strike where PUT open interest grew most overnight — fresh downside positioning / hedging demand. 'banking' = fewer than two sessions of OI history exist yet.">
         <div class="kl-prox" style="background:transparent"></div>
         <div class="kl-name">ΔOI Put Build</div>
-        <div class="kl-price">${dps != null ? Number(dps).toFixed(2) : '—'}</div>
+        <div class="kl-price">${dps != null ? (klLabelOf(d, 'kl_doi_put_strike') ?? klPx(dps)) : '—'}</div>
         <div style="text-align:center"><span class="kl-sr ${dps != null ? 'sup' : 'net'}">${dps != null ? 'Fresh' : (anyDoi ? '—' : 'banking')}</span></div>
         <div class="kl-dist">—</div>
         <div class="kl-str">${dps != null ? '+' + fmtOI(d.kl_doi_put_oi) + ' OI' : (anyDoi ? '—' : 'needs 2 sessions')}</div>
@@ -8441,7 +8466,7 @@ function renderTierALive(d, fullRenderSource) {
       // toward puts. Label the actual concept rather than pretending it is a price target.
       const flowLbl = flowBull ? 'Toward Calls' : flowBear ? 'Toward Puts' : (charmNetRaw == null ? '—' : 'Neutral');
       const flowSr = flowBull ? 'bull' : flowBear ? 'bear' : 'net';
-      const tgtStr = (charmTarget != null && charmTarget > 0) ? charmTarget.toFixed(2) : '—';
+      const tgtStr = (charmTarget != null && charmTarget > 0) ? (klLabelOf(d, 'charm_drift_toward') ?? klPx(charmTarget)) : '—';
       const dist = (charmTarget != null && charmTarget > 0 && spot) ? (charmTarget - spot) : null;
       const distStr = dist !== null ? (dist > 0 ? '+' : '') + dist.toFixed(2) : '—';
       const charmAbs = charmNetRaw != null ? Math.abs(charmNetRaw) : 0;
@@ -8493,7 +8518,7 @@ function renderTierALive(d, fullRenderSource) {
       html += `<div class="kl-grid kl-void-row">
         <div class="kl-prox" style="background:#ff8800"></div>
         <div class="kl-name void">Gamma Void (above)</div>
-        <div class="kl-price">${voidAboveOk ? `${alo.toFixed(0)} – ${ahi.toFixed(0)}` : '—'}</div>
+        <div class="kl-price">${voidAboveOk ? `${voidAbove.lower_label != null ? voidAbove.lower_label : alo} – ${voidAbove.upper_label != null ? voidAbove.upper_label : ahi}` : '—'}</div>
         <div style="text-align:center"><span class="kl-sr accel">Accel Zone</span></div>
         <div class="kl-dist above">${distStr}</div>
         <div class="kl-str">${pctStr}</div>
@@ -8519,7 +8544,7 @@ function renderTierALive(d, fullRenderSource) {
       html += `<div class="kl-grid kl-void-row">
         <div class="kl-prox" style="background:#ff8800"></div>
         <div class="kl-name void">Gamma Void (below)</div>
-        <div class="kl-price">${voidBelowOk ? `${blo.toFixed(0)} – ${bhi.toFixed(0)}` : '—'}</div>
+        <div class="kl-price">${voidBelowOk ? `${voidBelow.lower_label != null ? voidBelow.lower_label : blo} – ${voidBelow.upper_label != null ? voidBelow.upper_label : bhi}` : '—'}</div>
         <div style="text-align:center"><span class="kl-sr accel">Accel Zone</span></div>
         <div class="kl-dist below">${distStr}</div>
         <div class="kl-str">${bpctStr}</div>
@@ -13449,7 +13474,11 @@ function edCheckRadarAlerts(rows) {
       .map(function (v) { return fnum(v); }).filter(function (v) { return v !== null; })
       .map(function (v) { return Math.abs(v - spot); });
     var halfW = Math.max.apply(null, [13].concat(lvlD)) + 2;
-    var rows = all.map(function (r) { return { k: +r[0], g: +r[1] }; })
+    /* Index 3 of a per-strike row IS that strike's display text, computed once on the server.
+       This map used to keep only [0] and [1] and then render the NUMBER, so the console
+       re-derived strike text through JS Number->String while every other surface used a
+       different rule. Carry the label; render it verbatim. */
+    var rows = all.map(function (r) { return { k: +r[0], g: +r[1], lbl: (r.length > 3 && r[3] != null) ? r[3] : null }; })
       .filter(function (r) { return isFinite(r.k) && isFinite(r.g) && Math.abs(r.k - spot) <= halfW; });
     if (rows.length > 55) rows.sort(function (a, b) { return Math.abs(a.k - spot) - Math.abs(b.k - spot); });
     rows = rows.slice(0, 55).sort(function (a, b) { return a.k - b.k; });
@@ -13489,7 +13518,7 @@ function edCheckRadarAlerts(rows) {
       b.style.background = r.g < 0 ? 'var(--cv-dn)' : 'var(--cv-up)';
       b.style.opacity = (0.45 + 0.55 * mag).toFixed(2);
       c.appendChild(b);
-      var sl = document.createElement('div'); sl.className = 'cv-sl'; sl.textContent = r.k; c.appendChild(sl);
+      var sl = document.createElement('div'); sl.className = 'cv-sl'; sl.textContent = (r.lbl != null) ? r.lbl : r.k; c.appendChild(sl);
       if (r.k === spotK) { var sp = document.createElement('div'); sp.className = 'cv-spot'; c.appendChild(sp); }
       host.appendChild(c);
     });

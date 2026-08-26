@@ -160,8 +160,21 @@ def test_the_terrain_payload_carries_labels_for_level_scalars():
 
     src = inspect.getsource(server._terrain_refresh_one)
     assert '"strike_labels"' in src, "the terrain payload no longer carries strike_labels"
-    for key in ("call_wall", "put_wall", "gamma_flip"):
-        assert key in src, f"strike_labels omits {key}"
+    # Assert the DECLARED SET, not the function's source text. The emission now iterates
+    # server.STRIKE_VALUED_PAYLOAD_KEYS, so a substring test would pass or fail on where the
+    # list happens to live rather than on what is labelled.
+    keys = set(server.STRIKE_VALUED_PAYLOAD_KEYS)
+    for key in ("call_wall", "put_wall", "absolute_gamma_strike", "key_delta_strike",
+                "net_gex_peak", "max_pain", "hvp", "lvp",
+                "call_charm_wall", "put_charm_wall", "call_delta_wall", "put_delta_wall"):
+        assert key in keys, f"strike_labels omits the strike {key}"
+    # MEASURED 2026-08-26 against the live Schwab grid over 20 tickers: gamma_flip 0/11
+    # on-grid, gsf 0/14, grc 0/3. They are interpolated CONTINUOUS prices, not vendor
+    # strikes, and labelling them put a computed price under the vendor-truth rule -
+    # printing "350.6" where every price on the page prints "350.60".
+    for key in ("gamma_flip", "gsf", "grc"):
+        assert key not in keys, (
+            f"{key} is a continuous price, not a strike; it must not carry a strike label")
 
 
 @pytest.mark.parametrize("rel", SURFACES)
@@ -169,11 +182,19 @@ def test_surfaces_consume_the_label_and_fall_back_to_the_raw_value(rel: str):
     """A missing label must degrade to the raw number, never to a fabricated one or 'undefined'."""
     js = _script_no_comments(rel)
     if rel == "static/index.html":
-        assert "r.lbl" in js, f"{rel} does not read the server's label"
-        assert "String(r.k)" in js, f"{rel} has no raw-value fallback"
+        assert "r.lbl" in js, f"{rel} does not read the server's per-strike label"
+        assert "klLabelOf" in js, f"{rel} does not read the server's level labels"
+        # The lookup must NOT format. A unit that knows about strikes AND renders text is a
+        # second producer - this repo's own ONE FAUCET gate flagged exactly that when these
+        # two jobs shared one helper. Formatting lives in klPx, which knows nothing of strikes.
+        i = js.find("function klLabelOf")
+        body = js[i:js.find("}", i)]
+        assert "toFixed" not in body, (
+            "the strike lookup formats; that makes it a second producer of strike text")
+    elif rel == "static/chart.html":
+        assert "strikeText" in js, f"{rel} does not consume a label"
     else:
-        assert "strikeLabel" in js or "levelLabel" in js, f"{rel} does not consume a label"
-        assert "String(" in js, f"{rel} has no raw-value fallback"
+        assert "strikeLabel" in js, f"{rel} does not consume a label"
 
 
 # ── CLASS GUARDS ────────────────────────────────────────────────────────────────────────────

@@ -62,7 +62,14 @@ def test_corrupt_spy_748p_excluded_from_gamma_sums_oi_kept() -> None:
 
     # (a) corrupt contract excluded from gamma sums
     bad_bucket = exp_bad.get(748.0, {})
-    assert bad_bucket.get("put_gamma", 0.0) == 0.0
+    # RC-274 repair 2026-08-26: this asserted `== 0.0`, which pinned the MECHANISM (an
+    # untouched 0.0 accumulator) rather than this test's stated intent — that the corrupt
+    # contract contributes NOTHING. A 0.0 could not express that: it read identically to a
+    # strike measured at flat gamma, which is how a rejected strike reached the terrain panel
+    # as a real-looking bar at zero. Absence is now None, so the intent is asserted directly
+    # AND the stronger property holds: excluded is distinguishable from measured-flat.
+    assert bad_bucket.get("put_gamma") is None, "a rejected gamma left a fabricated number"
+    assert bad_bucket.get("net_gex_1pct") is None, "rejected greeks produced a measured net"
     # OI-only metrics still record the contract
     assert bad_bucket.get("put_oi") == 21605.0
 

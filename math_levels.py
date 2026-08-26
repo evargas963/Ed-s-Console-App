@@ -1496,6 +1496,7 @@ def compute_gamma_void_zones(
     void_threshold_pct: float = 0.20,
     oi_threshold_pct: float = 0.25,
     min_width_strikes: int = 2,
+    min_width_pct_of_spot: float = 0.10,
 ) -> list:
     """
     Find contiguous strike regions where gamma exposure AND open interest are sparse.
@@ -1505,16 +1506,41 @@ def compute_gamma_void_zones(
     These are acceleration corridors — when price enters a void,
     dealer hedging weakens and price moves fast.
 
+    UNIT REPAIR (option-chain fidelity mission, 2026-08-26). This function GATED in strikes
+    and PUBLISHED in price. Every field it emits — lower, upper, width_pts, dist_to_spot —
+    is a price, but the only admission test was "at least 2 consecutive strikes", a COUNT.
+    A count only means a distance if you assume a strike increment, and that assumption is
+    exactly the core-ticker assumption this mission exists to remove: measured over the 74
+    enrolled chains, the modal increment ranges from 0.22 to 30 points, so the SAME
+    min_width_strikes=2 admitted corridors from 0.130% of spot ($SPX) to 46.168% (MTA) —
+    a 355x spread in the unit the caller actually reads. Run over the real chains it
+    published 404 zones spanning 0.031% of spot (QQQ 599.78-600.00, a 0.22-point
+    "acceleration corridor") to 326% ($VIX 50-100 against a 15.32 spot).
+
+    Two changes, both scale-free — no ticker, increment or precision is assumed:
+
+      GATE  min_width_pct_of_spot, expressed in the unit that is published. At the default
+            0.10% this removes 6 of 402 zones on the live universe, all of them thinner
+            than a tenth of a percent of spot; no ticker loses its last zone. It is
+            deliberately conservative: 0.25% would have deleted 10 of $SPX's 21 including
+            15-point structure, and a level that may be real is not ours to drop.
+
+      SCALE width_pct_of_spot is now published on every zone. The wide ones are REAL — the
+            $VIX book genuinely has no open interest between 50 and 100 — so they are kept,
+            but a consumer can no longer mistake a far-wing emptiness for a near-spot setup.
+
     Args:
-        exposures_by_strike: strike → exposure bucket dict
-        spot:                current spot price
-        void_threshold_pct:  GEX below this fraction of max GEX = "void" (default 20%)
-        oi_threshold_pct:    OI below this fraction of max OI = "void" (default 25%)
-        min_width_strikes:   minimum number of consecutive void strikes to form a zone
+        exposures_by_strike:   strike → exposure bucket dict
+        spot:                  current spot price
+        void_threshold_pct:    GEX below this fraction of max GEX = "void" (default 20%)
+        oi_threshold_pct:      OI below this fraction of max OI = "void" (default 25%)
+        min_width_strikes:     minimum consecutive void strikes (structure: a zone is a region)
+        min_width_pct_of_spot: minimum corridor width as a percent of spot (materiality)
 
     Returns:
         list of dicts: [{"upper": float, "lower": float, "width_pts": float,
-                         "above_spot": bool, "avg_gex_pct": float}]
+                         "width_pct_of_spot": float, "above_spot": bool,
+                         "avg_gex_pct": float}]
         Sorted by proximity to spot (nearest first).
     """
     if not exposures_by_strike:
@@ -1580,69 +1606,60 @@ def compute_gamma_void_zones(
     in_void = False
     zone_start = None
 
+    def _emit(start: int, stop: int) -> None:
+        """Admit and describe ONE void region: strikes[start:stop].
+
+        The mid-chain and end-of-chain regions used to build this dict in two places, with
+        two copies of the width/distance arithmetic and two separately-named avg_gex
+        accumulators. That is one computation written twice inside the function, so the
+        materiality gate would have had to be added twice to hold — the same shape of
+        defect this mission is closing. One emitter now decides and describes.
+        """
+        if stop - start < min_width_strikes:
+            return
+        lower = strikes[start]
+        upper = strikes[stop - 1]
+        width = upper - lower
+        # MATERIALITY, in the unit that is published. A corridor thinner than this cannot be
+        # an acceleration zone at any price level; a COUNT could never express that, because
+        # what a count is worth depends on the increment the vendor happens to use.
+        width_pct = (width / spot * 100.0) if spot > 0 else 0.0
+        if width_pct < min_width_pct_of_spot:
+            return
+        samples = [g for g in (_get_gex(exposures_by_strike.get(strikes[j], {}))
+                               for j in range(start, stop)) if g is not None]
+        avg_gex_pct = (round((sum(samples) / len(samples)) / max_abs_gex * 100, 1)
+                       if samples and max_abs_gex > 0 else None)
+        # A void zone's bounds are ACTUAL CHAIN STRIKES (strikes[start], strikes[stop-1]), so
+        # they carry the vendor-true text from the one producer. The console rendered these
+        # through `alo.toFixed(0)` — measured live 2026-08-26, that prints a 477.5 strike as
+        # "478", a price at which no contract exists, on a row labelled "Accel Zone".
+        from instrument_identity import format_strike_for_display as _fsd
+        zones.append({
+            "lower": lower,
+            "upper": upper,
+            "lower_label": _fsd(lower),
+            "upper_label": _fsd(upper),
+            "width_pts": round(width, 2),
+            "width_pct_of_spot": round(width_pct, 3),
+            "above_spot": lower > spot,
+            "below_spot": upper < spot,
+            "contains_spot": lower <= spot <= upper,
+            "avg_gex_pct": avg_gex_pct,
+            "dist_to_spot": round(min(abs(lower - spot), abs(upper - spot)), 2),
+        })
+
     for i, is_void in enumerate(void_flags):
         if is_void and not in_void:
             zone_start = i
             in_void = True
         elif not is_void and in_void:
-            # End of void region
-            zone_len = i - zone_start
-            if zone_len >= min_width_strikes:
-                lower = strikes[zone_start]
-                upper = strikes[i - 1]
-                # Average GEX in the void as % of max
-                gex_samples = []
-                for j in range(zone_start, i):
-                    bucket = exposures_by_strike.get(strikes[j], {})
-                    gv = _get_gex(bucket)
-                    if gv is not None:
-                        gex_samples.append(gv)
-                avg_gex_pct: float | None = None
-                if gex_samples and max_abs_gex > 0:
-                    avg_gex_pct = round(
-                        (sum(gex_samples) / len(gex_samples)) / max_abs_gex * 100, 1
-                    )
-
-                zones.append({
-                    "lower": lower,
-                    "upper": upper,
-                    "width_pts": round(upper - lower, 2),
-                    "above_spot": lower > spot,
-                    "below_spot": upper < spot,
-                    "contains_spot": lower <= spot <= upper,
-                    "avg_gex_pct": avg_gex_pct,
-                    "dist_to_spot": round(min(abs(lower - spot), abs(upper - spot)), 2),
-                })
+            _emit(zone_start, i)
             in_void = False
 
     # Handle void at end of chain
     if in_void:
-        zone_len = len(strikes) - zone_start
-        if zone_len >= min_width_strikes:
-            lower = strikes[zone_start]
-            upper = strikes[-1]
-            gex_samples_end: list[float] = []
-            for j in range(zone_start, len(strikes)):
-                bucket = exposures_by_strike.get(strikes[j], {})
-                gv = _get_gex(bucket)
-                if gv is not None:
-                    gex_samples_end.append(gv)
-            avg_gex_pct_end: float | None = None
-            if gex_samples_end and max_abs_gex > 0:
-                avg_gex_pct_end = round(
-                    (sum(gex_samples_end) / len(gex_samples_end)) / max_abs_gex * 100, 1
-                )
-
-            zones.append({
-                "lower": lower,
-                "upper": upper,
-                "width_pts": round(upper - lower, 2),
-                "above_spot": lower > spot,
-                "below_spot": upper < spot,
-                "contains_spot": lower <= spot <= upper,
-                "avg_gex_pct": avg_gex_pct_end,
-                "dist_to_spot": round(min(abs(lower - spot), abs(upper - spot)), 2),
-            })
+        _emit(zone_start, len(strikes))
 
     # Sort by proximity to spot
     zones.sort(key=lambda z: z["dist_to_spot"])
