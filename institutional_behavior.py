@@ -87,6 +87,14 @@ def compute_liquidity_behavior_row(
     # RC-345 / F07: the SIGN of dealer gamma is classified in exactly one place —
     # terrain_read.regime_from_signed_gamma. This module carries that verdict; it does not
     # re-derive `ng > 0` locally.
+    # GAMMA AUDIT / F9 DEFERRAL — DO NOT "FIX" THIS TO net_gamma_at_spot WITHOUT A RETRAIN.
+    # `net_gamma` here is the WHOLE-CHAIN aggregate (server passes ms.net_gamma), which is the
+    # wrong AXIS for a dampen/amplify regime — call_engine and regime_engine were moved to the
+    # at-spot value for exactly that reason. This one is deliberately NOT moved: its outputs
+    # (absorption_score / continuation_score / behavior_label) are PERSISTED TRAINED FEATURES, and
+    # net_gamma_at_spot is not a snapshot column, so switching the input would change live feature
+    # VALUES against models trained on the whole-chain axis — serving/training skew, silently.
+    # Closing it needs: snapshot column + backfill + retrain, as one coordinated change.
     _reg = None
     if net_gamma is not None:
         try:

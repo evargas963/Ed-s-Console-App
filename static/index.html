@@ -12495,7 +12495,16 @@ async function edLoadTerrain() {
     tr.textContent = '⚠ STALE' + (mins != null ? ' ' + mins + 'm' : '');
     tr.title = String(d.levels_stale_reason || 'levels are not refreshing');
   } else
-  if (tr) { tr.className = 'tv-chip ' + (trusted ? 'ok' : 'bad'); tr.textContent = (trusted ? '● ' : '⚠') + (d.confidence || '—'); }
+  if (tr) {
+    // Gamma audit: three tiers now. LEVEL_APPROX = the regime is sound (it is the sign of gamma at
+    // spot) but the chain is too narrow to place the flip LEVEL precisely. Render it as its own
+    // state — calling it "narrow" would understate a usable regime, and showing the raw enum is noise.
+    var _lvlApprox = d.confidence === 'LEVEL_APPROX_NARROW_SPAN';
+    tr.className = 'tv-chip ' + (trusted ? 'ok' : _lvlApprox ? 'warn' : 'bad');
+    tr.textContent = (trusted ? '● ' : '⚠') + (_lvlApprox ? 'FLIP LEVEL APPROX' : (d.confidence || '—'));
+    if (_lvlApprox) tr.title = 'Regime is determined (sign of dealer gamma at spot). The flip LEVEL '
+      + 'is approximate: the chain does not reach the measured convergence span (~1.4% of spot error).';
+  }
   set('tv-contracts', (d.contracts_used || 0).toLocaleString() + ' CT · ' + (d.strikes_used || 0) + ' STRIKES');
   d._gexCrossed = false;   // fresh payload re-anchors: server regime and net GEX agree
   edPaintNetGex(d);
@@ -13509,9 +13518,16 @@ function edCheckRadarAlerts(rows) {
         trustEl.className = 'cv-badge cv-dn';
         trustEl.title = String(t.levels_stale_reason || 'levels are not refreshing');
       } else {
-        trustEl.textContent = fstr(t.confidence) ? (trusted ? 'trusted' : 'narrow') : '—';
+        // Gamma audit: the middle tier is NOT "narrow" — the regime is determined; only the flip
+        // LEVEL is approximate. Labeling it "narrow" would understate a usable read.
+        var _cvApprox = fstr(t.confidence) === 'LEVEL_APPROX_NARROW_SPAN';
+        trustEl.textContent = fstr(t.confidence)
+          ? (trusted ? 'trusted' : _cvApprox ? 'level approx' : 'narrow') : '—';
         trustEl.className = 'cv-badge ' + (trusted ? 'cv-up' : 'cv-wn');
-        trustEl.title = '';
+        trustEl.title = _cvApprox
+          ? 'Regime determined from the sign of dealer gamma at spot; the flip LEVEL is approximate '
+            + '(chain below the measured convergence span).'
+          : '';
       }
     }
     var tags = [n2(fnum(t.gamma_flip)) && ('flip ' + n2(fnum(t.gamma_flip))),
