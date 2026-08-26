@@ -156,3 +156,47 @@ def test_exclusions_are_argued_not_asserted():
     for surface, fields in _matrix()["surfaces"].items():
         for name, entry in fields.items():
             assert entry["disposition"] in VALID_DISPOSITIONS
+
+
+def test_56_requested_vs_58_observed_is_reconciled_not_narrowed():
+    """The subscription asks for 56 LEVELONE_OPTIONS fields; the census observes 58.
+
+    That gap must be explained by ARITHMETIC that still holds, not by a note someone wrote once.
+    The reconciliation is re-derived here from the live library enum and the committed census, so
+    a vendor adding a requestable field - or our code quietly narrowing what it asks for - fails
+    here instead of leaving 56-vs-58 as an unexplained shortfall.
+    """
+    from schwab.streaming import StreamClient
+
+    m = _matrix()
+    rec = m.get("_levelone_options_56_vs_58")
+    assert rec, "the 56-vs-58 reconciliation is missing from the matrix"
+
+    lib = {int(x.value): x.name for x in StreamClient.LevelOneOptionFields}
+    observed = set(m["surfaces"]["levelone_options"])
+
+    def norm(s: str) -> str:
+        return "".join(ch for ch in s.upper() if ch.isalnum())
+
+    obs_norm = {norm(k) for k in observed}
+    lib_norm = {norm(v) for v in lib.values()}
+    requestable_observed = [n for n in lib.values() if norm(n) in obs_norm]
+    always_supplied = sorted(k for k in observed if norm(k) not in lib_norm)
+
+    # The arithmetic itself: requestable-and-observed + always-supplied == total observed.
+    assert len(requestable_observed) + len(always_supplied) == len(observed), (
+        f"the census does not decompose: {len(requestable_observed)} requestable-observed + "
+        f"{len(always_supplied)} always-supplied != {len(observed)} observed")
+
+    assert rec["requestable_numbered_fields"] == len(lib), (
+        "the vendor's requestable field count changed; the reconciliation is stale and the "
+        "subscription may now be under-asking")
+    assert sorted(rec["always_supplied_not_requestable"]) == always_supplied
+    assert rec["all_requestable_fields_are_requested"] is True
+
+    # The one requestable field absent from the census must be SYMBOL, which the vendor delivers
+    # under its metadata name 'key'. Any OTHER absentee would be a genuine gap.
+    unobserved = [n for n in lib.values() if norm(n) not in obs_norm]
+    assert unobserved == ["SYMBOL"], (
+        f"a requestable field other than SYMBOL is unaccounted for: {unobserved}")
+    assert "key" in observed, "SYMBOL's delivered spelling ('key') is missing from the census"

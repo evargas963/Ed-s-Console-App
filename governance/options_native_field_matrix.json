@@ -41,12 +41,32 @@
  ],
  "_forbidden": "NATIVE_AVAILABLE_BUT_NOT_RETAINED",
  "_generated_by": "python tools/options_native_field_matrix_v1.py --emit-curated",
+ "_levelone_options_56_vs_58": {
+  "all_requestable_fields_are_requested": true,
+  "always_supplied_explanation": "Service metadata the vendor attaches to every frame. These carry no field number, so they cannot be requested and cannot be omitted. They are retained because the whole decoded frame is stored, and options_flow_api surfaces them separately from market fields so a consumer never counts them as observations.",
+  "always_supplied_not_requestable": [
+   "assetMainType",
+   "delayed",
+   "key"
+  ],
+  "arithmetic": "55 numbered fields observed + SYMBOL delivered as 'key' + 2 always-supplied (delayed, assetMainType) = 58 observed. 56 requestable, all 56 requested. Nothing narrows.",
+  "how_requested": "options_stream_subscription.subscribe_options passes list(LevelOneOptionFields.all_fields()) - the COMPLETE entitled set, never a library default subset. Pinned by tests/test_options_stream_subscription_v1.py::test_level_one_requests_the_COMPLETE_field_surface_not_a_default.",
+  "question": "The subscription requests 56 fields while the census observes 58. Explain the difference exactly; it must not read as an unexplained narrowing.",
+  "requestable_field_number_range": "0-55",
+  "requestable_not_observed_explanation": "Field 0 SYMBOL is requested and IS delivered, but arrives under the vendor's own service-metadata name 'key' rather than as a numbered payload entry. Same field, two spellings - not a loss.",
+  "requestable_not_observed_in_captures": [
+   "SYMBOL"
+  ],
+  "requestable_numbered_fields": 56,
+  "requestable_observed_in_captures": 55,
+  "verified_on": "2026-08-26"
+ },
  "_principle": "Raw-native preservation plus canonical typed projections. Vendor payloads are stored whole so no field is lost by omission in today's parser - demonstrated by breakEven and ssid, vendor fields postdating the committed inventory, retained anyway. Consumers are READERS over the raw store. Nothing infers dealer ownership; nothing feeds Decide.",
  "_retained_raw_means": "production RECEIVES AND PERSISTS the field TODAY, at the cadence stated in temporal_grain. Storage code that exists but is never called is RETENTION_PATH_READY_NOT_WIRED.",
  "surfaces": {
   "levelone_options": {
    "ASK_PRICE": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
+    "blocked_on": "handlers ARE now registered on the sole StreamClient (order_flow_streaming: add_level_one_option_handler / add_options_book_handler) and the bounded ingest path is built and measured, but COLLECTION IS GATED OFF: options_streaming_enabled() requires ED_OPTIONS_STREAM, which is unset. Registration without subscription receives nothing, so no frames are retained in production today. Enabling it is an operator decision because it changes what production streams and adds ~10.4 GB per RTH day at the canary size (measured 1,824 bytes/frame, 243 frames/s at 240 contracts).",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
@@ -56,7 +76,7 @@
     "temporal_grain": ""
    },
    "ASK_SIZE": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
+    "blocked_on": "handlers ARE now registered on the sole StreamClient (order_flow_streaming: add_level_one_option_handler / add_options_book_handler) and the bounded ingest path is built and measured, but COLLECTION IS GATED OFF: options_streaming_enabled() requires ED_OPTIONS_STREAM, which is unset. Registration without subscription receives nothing, so no frames are retained in production today. Enabling it is an operator decision because it changes what production streams and adds ~10.4 GB per RTH day at the canary size (measured 1,824 bytes/frame, 243 frames/s at 240 contracts).",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
@@ -66,7 +86,7 @@
     "temporal_grain": ""
    },
    "BID_PRICE": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
+    "blocked_on": "handlers ARE now registered on the sole StreamClient (order_flow_streaming: add_level_one_option_handler / add_options_book_handler) and the bounded ingest path is built and measured, but COLLECTION IS GATED OFF: options_streaming_enabled() requires ED_OPTIONS_STREAM, which is unset. Registration without subscription receives nothing, so no frames are retained in production today. Enabling it is an operator decision because it changes what production streams and adds ~10.4 GB per RTH day at the canary size (measured 1,824 bytes/frame, 243 frames/s at 240 contracts).",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
@@ -76,7 +96,7 @@
     "temporal_grain": ""
    },
    "BID_SIZE": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
+    "blocked_on": "handlers ARE now registered on the sole StreamClient (order_flow_streaming: add_level_one_option_handler / add_options_book_handler) and the bounded ingest path is built and measured, but COLLECTION IS GATED OFF: options_streaming_enabled() requires ED_OPTIONS_STREAM, which is unset. Registration without subscription receives nothing, so no frames are retained in production today. Enabling it is an operator decision because it changes what production streams and adds ~10.4 GB per RTH day at the canary size (measured 1,824 bytes/frame, 243 frames/s at 240 contracts).",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
@@ -86,7 +106,7 @@
     "temporal_grain": ""
    },
    "CLOSE_PRICE": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
+    "blocked_on": "handlers ARE now registered on the sole StreamClient (order_flow_streaming: add_level_one_option_handler / add_options_book_handler) and the bounded ingest path is built and measured, but COLLECTION IS GATED OFF: options_streaming_enabled() requires ED_OPTIONS_STREAM, which is unset. Registration without subscription receives nothing, so no frames are retained in production today. Enabling it is an operator decision because it changes what production streams and adds ~10.4 GB per RTH day at the canary size (measured 1,824 bytes/frame, 243 frames/s at 240 contracts).",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
@@ -96,7 +116,7 @@
     "temporal_grain": ""
    },
    "CONTRACT_TYPE": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
+    "blocked_on": "handlers ARE now registered on the sole StreamClient (order_flow_streaming: add_level_one_option_handler / add_options_book_handler) and the bounded ingest path is built and measured, but COLLECTION IS GATED OFF: options_streaming_enabled() requires ED_OPTIONS_STREAM, which is unset. Registration without subscription receives nothing, so no frames are retained in production today. Enabling it is an operator decision because it changes what production streams and adds ~10.4 GB per RTH day at the canary size (measured 1,824 bytes/frame, 243 frames/s at 240 contracts).",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
@@ -106,7 +126,7 @@
     "temporal_grain": ""
    },
    "DAYS_TO_EXPIRATION": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
+    "blocked_on": "handlers ARE now registered on the sole StreamClient (order_flow_streaming: add_level_one_option_handler / add_options_book_handler) and the bounded ingest path is built and measured, but COLLECTION IS GATED OFF: options_streaming_enabled() requires ED_OPTIONS_STREAM, which is unset. Registration without subscription receives nothing, so no frames are retained in production today. Enabling it is an operator decision because it changes what production streams and adds ~10.4 GB per RTH day at the canary size (measured 1,824 bytes/frame, 243 frames/s at 240 contracts).",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
@@ -116,7 +136,7 @@
     "temporal_grain": ""
    },
    "DELIVERABLES": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
+    "blocked_on": "handlers ARE now registered on the sole StreamClient (order_flow_streaming: add_level_one_option_handler / add_options_book_handler) and the bounded ingest path is built and measured, but COLLECTION IS GATED OFF: options_streaming_enabled() requires ED_OPTIONS_STREAM, which is unset. Registration without subscription receives nothing, so no frames are retained in production today. Enabling it is an operator decision because it changes what production streams and adds ~10.4 GB per RTH day at the canary size (measured 1,824 bytes/frame, 243 frames/s at 240 contracts).",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
@@ -126,7 +146,7 @@
     "temporal_grain": ""
    },
    "DELTA": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
+    "blocked_on": "handlers ARE now registered on the sole StreamClient (order_flow_streaming: add_level_one_option_handler / add_options_book_handler) and the bounded ingest path is built and measured, but COLLECTION IS GATED OFF: options_streaming_enabled() requires ED_OPTIONS_STREAM, which is unset. Registration without subscription receives nothing, so no frames are retained in production today. Enabling it is an operator decision because it changes what production streams and adds ~10.4 GB per RTH day at the canary size (measured 1,824 bytes/frame, 243 frames/s at 240 contracts).",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
@@ -136,7 +156,7 @@
     "temporal_grain": ""
    },
    "DESCRIPTION": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
+    "blocked_on": "handlers ARE now registered on the sole StreamClient (order_flow_streaming: add_level_one_option_handler / add_options_book_handler) and the bounded ingest path is built and measured, but COLLECTION IS GATED OFF: options_streaming_enabled() requires ED_OPTIONS_STREAM, which is unset. Registration without subscription receives nothing, so no frames are retained in production today. Enabling it is an operator decision because it changes what production streams and adds ~10.4 GB per RTH day at the canary size (measured 1,824 bytes/frame, 243 frames/s at 240 contracts).",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
@@ -146,7 +166,7 @@
     "temporal_grain": ""
    },
    "DIGITS": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
+    "blocked_on": "handlers ARE now registered on the sole StreamClient (order_flow_streaming: add_level_one_option_handler / add_options_book_handler) and the bounded ingest path is built and measured, but COLLECTION IS GATED OFF: options_streaming_enabled() requires ED_OPTIONS_STREAM, which is unset. Registration without subscription receives nothing, so no frames are retained in production today. Enabling it is an operator decision because it changes what production streams and adds ~10.4 GB per RTH day at the canary size (measured 1,824 bytes/frame, 243 frames/s at 240 contracts).",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
@@ -156,7 +176,7 @@
     "temporal_grain": ""
    },
    "EXCHANGE_ID": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
+    "blocked_on": "handlers ARE now registered on the sole StreamClient (order_flow_streaming: add_level_one_option_handler / add_options_book_handler) and the bounded ingest path is built and measured, but COLLECTION IS GATED OFF: options_streaming_enabled() requires ED_OPTIONS_STREAM, which is unset. Registration without subscription receives nothing, so no frames are retained in production today. Enabling it is an operator decision because it changes what production streams and adds ~10.4 GB per RTH day at the canary size (measured 1,824 bytes/frame, 243 frames/s at 240 contracts).",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
@@ -166,7 +186,7 @@
     "temporal_grain": ""
    },
    "EXCHANGE_NAME": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
+    "blocked_on": "handlers ARE now registered on the sole StreamClient (order_flow_streaming: add_level_one_option_handler / add_options_book_handler) and the bounded ingest path is built and measured, but COLLECTION IS GATED OFF: options_streaming_enabled() requires ED_OPTIONS_STREAM, which is unset. Registration without subscription receives nothing, so no frames are retained in production today. Enabling it is an operator decision because it changes what production streams and adds ~10.4 GB per RTH day at the canary size (measured 1,824 bytes/frame, 243 frames/s at 240 contracts).",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
@@ -176,7 +196,7 @@
     "temporal_grain": ""
    },
    "EXERCISE_TYPE": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
+    "blocked_on": "handlers ARE now registered on the sole StreamClient (order_flow_streaming: add_level_one_option_handler / add_options_book_handler) and the bounded ingest path is built and measured, but COLLECTION IS GATED OFF: options_streaming_enabled() requires ED_OPTIONS_STREAM, which is unset. Registration without subscription receives nothing, so no frames are retained in production today. Enabling it is an operator decision because it changes what production streams and adds ~10.4 GB per RTH day at the canary size (measured 1,824 bytes/frame, 243 frames/s at 240 contracts).",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
@@ -186,7 +206,7 @@
     "temporal_grain": ""
    },
    "EXPIRATION_DAY": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
+    "blocked_on": "handlers ARE now registered on the sole StreamClient (order_flow_streaming: add_level_one_option_handler / add_options_book_handler) and the bounded ingest path is built and measured, but COLLECTION IS GATED OFF: options_streaming_enabled() requires ED_OPTIONS_STREAM, which is unset. Registration without subscription receives nothing, so no frames are retained in production today. Enabling it is an operator decision because it changes what production streams and adds ~10.4 GB per RTH day at the canary size (measured 1,824 bytes/frame, 243 frames/s at 240 contracts).",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
@@ -196,7 +216,7 @@
     "temporal_grain": ""
    },
    "EXPIRATION_MONTH": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
+    "blocked_on": "handlers ARE now registered on the sole StreamClient (order_flow_streaming: add_level_one_option_handler / add_options_book_handler) and the bounded ingest path is built and measured, but COLLECTION IS GATED OFF: options_streaming_enabled() requires ED_OPTIONS_STREAM, which is unset. Registration without subscription receives nothing, so no frames are retained in production today. Enabling it is an operator decision because it changes what production streams and adds ~10.4 GB per RTH day at the canary size (measured 1,824 bytes/frame, 243 frames/s at 240 contracts).",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
@@ -206,7 +226,7 @@
     "temporal_grain": ""
    },
    "EXPIRATION_YEAR": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
+    "blocked_on": "handlers ARE now registered on the sole StreamClient (order_flow_streaming: add_level_one_option_handler / add_options_book_handler) and the bounded ingest path is built and measured, but COLLECTION IS GATED OFF: options_streaming_enabled() requires ED_OPTIONS_STREAM, which is unset. Registration without subscription receives nothing, so no frames are retained in production today. Enabling it is an operator decision because it changes what production streams and adds ~10.4 GB per RTH day at the canary size (measured 1,824 bytes/frame, 243 frames/s at 240 contracts).",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
@@ -216,7 +236,7 @@
     "temporal_grain": ""
    },
    "GAMMA": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
+    "blocked_on": "handlers ARE now registered on the sole StreamClient (order_flow_streaming: add_level_one_option_handler / add_options_book_handler) and the bounded ingest path is built and measured, but COLLECTION IS GATED OFF: options_streaming_enabled() requires ED_OPTIONS_STREAM, which is unset. Registration without subscription receives nothing, so no frames are retained in production today. Enabling it is an operator decision because it changes what production streams and adds ~10.4 GB per RTH day at the canary size (measured 1,824 bytes/frame, 243 frames/s at 240 contracts).",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
@@ -226,7 +246,7 @@
     "temporal_grain": ""
    },
    "HIGH_PRICE": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
+    "blocked_on": "handlers ARE now registered on the sole StreamClient (order_flow_streaming: add_level_one_option_handler / add_options_book_handler) and the bounded ingest path is built and measured, but COLLECTION IS GATED OFF: options_streaming_enabled() requires ED_OPTIONS_STREAM, which is unset. Registration without subscription receives nothing, so no frames are retained in production today. Enabling it is an operator decision because it changes what production streams and adds ~10.4 GB per RTH day at the canary size (measured 1,824 bytes/frame, 243 frames/s at 240 contracts).",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
@@ -236,7 +256,7 @@
     "temporal_grain": ""
    },
    "HIGH_PRICE_52_WEEK": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
+    "blocked_on": "handlers ARE now registered on the sole StreamClient (order_flow_streaming: add_level_one_option_handler / add_options_book_handler) and the bounded ingest path is built and measured, but COLLECTION IS GATED OFF: options_streaming_enabled() requires ED_OPTIONS_STREAM, which is unset. Registration without subscription receives nothing, so no frames are retained in production today. Enabling it is an operator decision because it changes what production streams and adds ~10.4 GB per RTH day at the canary size (measured 1,824 bytes/frame, 243 frames/s at 240 contracts).",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
@@ -246,7 +266,7 @@
     "temporal_grain": ""
    },
    "IMPLIED_YIELD": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
+    "blocked_on": "handlers ARE now registered on the sole StreamClient (order_flow_streaming: add_level_one_option_handler / add_options_book_handler) and the bounded ingest path is built and measured, but COLLECTION IS GATED OFF: options_streaming_enabled() requires ED_OPTIONS_STREAM, which is unset. Registration without subscription receives nothing, so no frames are retained in production today. Enabling it is an operator decision because it changes what production streams and adds ~10.4 GB per RTH day at the canary size (measured 1,824 bytes/frame, 243 frames/s at 240 contracts).",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
@@ -256,7 +276,7 @@
     "temporal_grain": ""
    },
    "INDICATIVE_ASKING_PRICE": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
+    "blocked_on": "handlers ARE now registered on the sole StreamClient (order_flow_streaming: add_level_one_option_handler / add_options_book_handler) and the bounded ingest path is built and measured, but COLLECTION IS GATED OFF: options_streaming_enabled() requires ED_OPTIONS_STREAM, which is unset. Registration without subscription receives nothing, so no frames are retained in production today. Enabling it is an operator decision because it changes what production streams and adds ~10.4 GB per RTH day at the canary size (measured 1,824 bytes/frame, 243 frames/s at 240 contracts).",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
@@ -266,7 +286,7 @@
     "temporal_grain": ""
    },
    "INDICATIVE_BID_PRICE": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
+    "blocked_on": "handlers ARE now registered on the sole StreamClient (order_flow_streaming: add_level_one_option_handler / add_options_book_handler) and the bounded ingest path is built and measured, but COLLECTION IS GATED OFF: options_streaming_enabled() requires ED_OPTIONS_STREAM, which is unset. Registration without subscription receives nothing, so no frames are retained in production today. Enabling it is an operator decision because it changes what production streams and adds ~10.4 GB per RTH day at the canary size (measured 1,824 bytes/frame, 243 frames/s at 240 contracts).",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
@@ -276,7 +296,7 @@
     "temporal_grain": ""
    },
    "INDICATIVE_QUOTE_TIME": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
+    "blocked_on": "handlers ARE now registered on the sole StreamClient (order_flow_streaming: add_level_one_option_handler / add_options_book_handler) and the bounded ingest path is built and measured, but COLLECTION IS GATED OFF: options_streaming_enabled() requires ED_OPTIONS_STREAM, which is unset. Registration without subscription receives nothing, so no frames are retained in production today. Enabling it is an operator decision because it changes what production streams and adds ~10.4 GB per RTH day at the canary size (measured 1,824 bytes/frame, 243 frames/s at 240 contracts).",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
@@ -286,7 +306,7 @@
     "temporal_grain": ""
    },
    "IS_PENNY": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
+    "blocked_on": "handlers ARE now registered on the sole StreamClient (order_flow_streaming: add_level_one_option_handler / add_options_book_handler) and the bounded ingest path is built and measured, but COLLECTION IS GATED OFF: options_streaming_enabled() requires ED_OPTIONS_STREAM, which is unset. Registration without subscription receives nothing, so no frames are retained in production today. Enabling it is an operator decision because it changes what production streams and adds ~10.4 GB per RTH day at the canary size (measured 1,824 bytes/frame, 243 frames/s at 240 contracts).",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
@@ -296,7 +316,7 @@
     "temporal_grain": ""
    },
    "LAST_PRICE": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
+    "blocked_on": "handlers ARE now registered on the sole StreamClient (order_flow_streaming: add_level_one_option_handler / add_options_book_handler) and the bounded ingest path is built and measured, but COLLECTION IS GATED OFF: options_streaming_enabled() requires ED_OPTIONS_STREAM, which is unset. Registration without subscription receives nothing, so no frames are retained in production today. Enabling it is an operator decision because it changes what production streams and adds ~10.4 GB per RTH day at the canary size (measured 1,824 bytes/frame, 243 frames/s at 240 contracts).",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
@@ -306,7 +326,7 @@
     "temporal_grain": ""
    },
    "LAST_SIZE": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
+    "blocked_on": "handlers ARE now registered on the sole StreamClient (order_flow_streaming: add_level_one_option_handler / add_options_book_handler) and the bounded ingest path is built and measured, but COLLECTION IS GATED OFF: options_streaming_enabled() requires ED_OPTIONS_STREAM, which is unset. Registration without subscription receives nothing, so no frames are retained in production today. Enabling it is an operator decision because it changes what production streams and adds ~10.4 GB per RTH day at the canary size (measured 1,824 bytes/frame, 243 frames/s at 240 contracts).",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
@@ -316,7 +336,7 @@
     "temporal_grain": ""
    },
    "LAST_TRADING_DAY": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
+    "blocked_on": "handlers ARE now registered on the sole StreamClient (order_flow_streaming: add_level_one_option_handler / add_options_book_handler) and the bounded ingest path is built and measured, but COLLECTION IS GATED OFF: options_streaming_enabled() requires ED_OPTIONS_STREAM, which is unset. Registration without subscription receives nothing, so no frames are retained in production today. Enabling it is an operator decision because it changes what production streams and adds ~10.4 GB per RTH day at the canary size (measured 1,824 bytes/frame, 243 frames/s at 240 contracts).",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
@@ -326,7 +346,7 @@
     "temporal_grain": ""
    },
    "LOW_PRICE": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
+    "blocked_on": "handlers ARE now registered on the sole StreamClient (order_flow_streaming: add_level_one_option_handler / add_options_book_handler) and the bounded ingest path is built and measured, but COLLECTION IS GATED OFF: options_streaming_enabled() requires ED_OPTIONS_STREAM, which is unset. Registration without subscription receives nothing, so no frames are retained in production today. Enabling it is an operator decision because it changes what production streams and adds ~10.4 GB per RTH day at the canary size (measured 1,824 bytes/frame, 243 frames/s at 240 contracts).",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
@@ -336,7 +356,7 @@
     "temporal_grain": ""
    },
    "LOW_PRICE_52_WEEK": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
+    "blocked_on": "handlers ARE now registered on the sole StreamClient (order_flow_streaming: add_level_one_option_handler / add_options_book_handler) and the bounded ingest path is built and measured, but COLLECTION IS GATED OFF: options_streaming_enabled() requires ED_OPTIONS_STREAM, which is unset. Registration without subscription receives nothing, so no frames are retained in production today. Enabling it is an operator decision because it changes what production streams and adds ~10.4 GB per RTH day at the canary size (measured 1,824 bytes/frame, 243 frames/s at 240 contracts).",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
@@ -346,7 +366,7 @@
     "temporal_grain": ""
    },
    "MARK": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
+    "blocked_on": "handlers ARE now registered on the sole StreamClient (order_flow_streaming: add_level_one_option_handler / add_options_book_handler) and the bounded ingest path is built and measured, but COLLECTION IS GATED OFF: options_streaming_enabled() requires ED_OPTIONS_STREAM, which is unset. Registration without subscription receives nothing, so no frames are retained in production today. Enabling it is an operator decision because it changes what production streams and adds ~10.4 GB per RTH day at the canary size (measured 1,824 bytes/frame, 243 frames/s at 240 contracts).",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
@@ -356,7 +376,7 @@
     "temporal_grain": ""
    },
    "MARK_CHANGE": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
+    "blocked_on": "handlers ARE now registered on the sole StreamClient (order_flow_streaming: add_level_one_option_handler / add_options_book_handler) and the bounded ingest path is built and measured, but COLLECTION IS GATED OFF: options_streaming_enabled() requires ED_OPTIONS_STREAM, which is unset. Registration without subscription receives nothing, so no frames are retained in production today. Enabling it is an operator decision because it changes what production streams and adds ~10.4 GB per RTH day at the canary size (measured 1,824 bytes/frame, 243 frames/s at 240 contracts).",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
@@ -366,7 +386,7 @@
     "temporal_grain": ""
    },
    "MARK_CHANGE_PERCENT": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
+    "blocked_on": "handlers ARE now registered on the sole StreamClient (order_flow_streaming: add_level_one_option_handler / add_options_book_handler) and the bounded ingest path is built and measured, but COLLECTION IS GATED OFF: options_streaming_enabled() requires ED_OPTIONS_STREAM, which is unset. Registration without subscription receives nothing, so no frames are retained in production today. Enabling it is an operator decision because it changes what production streams and adds ~10.4 GB per RTH day at the canary size (measured 1,824 bytes/frame, 243 frames/s at 240 contracts).",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
@@ -376,7 +396,7 @@
     "temporal_grain": ""
    },
    "MONEY_INTRINSIC_VALUE": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
+    "blocked_on": "handlers ARE now registered on the sole StreamClient (order_flow_streaming: add_level_one_option_handler / add_options_book_handler) and the bounded ingest path is built and measured, but COLLECTION IS GATED OFF: options_streaming_enabled() requires ED_OPTIONS_STREAM, which is unset. Registration without subscription receives nothing, so no frames are retained in production today. Enabling it is an operator decision because it changes what production streams and adds ~10.4 GB per RTH day at the canary size (measured 1,824 bytes/frame, 243 frames/s at 240 contracts).",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
@@ -386,7 +406,7 @@
     "temporal_grain": ""
    },
    "MULTIPLIER": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
+    "blocked_on": "handlers ARE now registered on the sole StreamClient (order_flow_streaming: add_level_one_option_handler / add_options_book_handler) and the bounded ingest path is built and measured, but COLLECTION IS GATED OFF: options_streaming_enabled() requires ED_OPTIONS_STREAM, which is unset. Registration without subscription receives nothing, so no frames are retained in production today. Enabling it is an operator decision because it changes what production streams and adds ~10.4 GB per RTH day at the canary size (measured 1,824 bytes/frame, 243 frames/s at 240 contracts).",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
@@ -396,7 +416,7 @@
     "temporal_grain": ""
    },
    "NET_CHANGE": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
+    "blocked_on": "handlers ARE now registered on the sole StreamClient (order_flow_streaming: add_level_one_option_handler / add_options_book_handler) and the bounded ingest path is built and measured, but COLLECTION IS GATED OFF: options_streaming_enabled() requires ED_OPTIONS_STREAM, which is unset. Registration without subscription receives nothing, so no frames are retained in production today. Enabling it is an operator decision because it changes what production streams and adds ~10.4 GB per RTH day at the canary size (measured 1,824 bytes/frame, 243 frames/s at 240 contracts).",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
@@ -406,7 +426,7 @@
     "temporal_grain": ""
    },
    "NET_PERCENT_CHANGE": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
+    "blocked_on": "handlers ARE now registered on the sole StreamClient (order_flow_streaming: add_level_one_option_handler / add_options_book_handler) and the bounded ingest path is built and measured, but COLLECTION IS GATED OFF: options_streaming_enabled() requires ED_OPTIONS_STREAM, which is unset. Registration without subscription receives nothing, so no frames are retained in production today. Enabling it is an operator decision because it changes what production streams and adds ~10.4 GB per RTH day at the canary size (measured 1,824 bytes/frame, 243 frames/s at 240 contracts).",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
@@ -416,7 +436,7 @@
     "temporal_grain": ""
    },
    "OPEN_INTEREST": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
+    "blocked_on": "handlers ARE now registered on the sole StreamClient (order_flow_streaming: add_level_one_option_handler / add_options_book_handler) and the bounded ingest path is built and measured, but COLLECTION IS GATED OFF: options_streaming_enabled() requires ED_OPTIONS_STREAM, which is unset. Registration without subscription receives nothing, so no frames are retained in production today. Enabling it is an operator decision because it changes what production streams and adds ~10.4 GB per RTH day at the canary size (measured 1,824 bytes/frame, 243 frames/s at 240 contracts).",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
@@ -426,7 +446,7 @@
     "temporal_grain": ""
    },
    "OPEN_PRICE": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
+    "blocked_on": "handlers ARE now registered on the sole StreamClient (order_flow_streaming: add_level_one_option_handler / add_options_book_handler) and the bounded ingest path is built and measured, but COLLECTION IS GATED OFF: options_streaming_enabled() requires ED_OPTIONS_STREAM, which is unset. Registration without subscription receives nothing, so no frames are retained in production today. Enabling it is an operator decision because it changes what production streams and adds ~10.4 GB per RTH day at the canary size (measured 1,824 bytes/frame, 243 frames/s at 240 contracts).",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
@@ -436,7 +456,7 @@
     "temporal_grain": ""
    },
    "OPTION_ROOT": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
+    "blocked_on": "handlers ARE now registered on the sole StreamClient (order_flow_streaming: add_level_one_option_handler / add_options_book_handler) and the bounded ingest path is built and measured, but COLLECTION IS GATED OFF: options_streaming_enabled() requires ED_OPTIONS_STREAM, which is unset. Registration without subscription receives nothing, so no frames are retained in production today. Enabling it is an operator decision because it changes what production streams and adds ~10.4 GB per RTH day at the canary size (measured 1,824 bytes/frame, 243 frames/s at 240 contracts).",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
@@ -446,7 +466,7 @@
     "temporal_grain": ""
    },
    "QUOTE_TIME_MILLIS": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
+    "blocked_on": "handlers ARE now registered on the sole StreamClient (order_flow_streaming: add_level_one_option_handler / add_options_book_handler) and the bounded ingest path is built and measured, but COLLECTION IS GATED OFF: options_streaming_enabled() requires ED_OPTIONS_STREAM, which is unset. Registration without subscription receives nothing, so no frames are retained in production today. Enabling it is an operator decision because it changes what production streams and adds ~10.4 GB per RTH day at the canary size (measured 1,824 bytes/frame, 243 frames/s at 240 contracts).",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
@@ -456,7 +476,7 @@
     "temporal_grain": ""
    },
    "RHO": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
+    "blocked_on": "handlers ARE now registered on the sole StreamClient (order_flow_streaming: add_level_one_option_handler / add_options_book_handler) and the bounded ingest path is built and measured, but COLLECTION IS GATED OFF: options_streaming_enabled() requires ED_OPTIONS_STREAM, which is unset. Registration without subscription receives nothing, so no frames are retained in production today. Enabling it is an operator decision because it changes what production streams and adds ~10.4 GB per RTH day at the canary size (measured 1,824 bytes/frame, 243 frames/s at 240 contracts).",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
@@ -466,7 +486,7 @@
     "temporal_grain": ""
    },
    "SECURITY_STATUS": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
+    "blocked_on": "handlers ARE now registered on the sole StreamClient (order_flow_streaming: add_level_one_option_handler / add_options_book_handler) and the bounded ingest path is built and measured, but COLLECTION IS GATED OFF: options_streaming_enabled() requires ED_OPTIONS_STREAM, which is unset. Registration without subscription receives nothing, so no frames are retained in production today. Enabling it is an operator decision because it changes what production streams and adds ~10.4 GB per RTH day at the canary size (measured 1,824 bytes/frame, 243 frames/s at 240 contracts).",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
@@ -476,7 +496,7 @@
     "temporal_grain": ""
    },
    "SETTLEMENT_TYPE": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
+    "blocked_on": "handlers ARE now registered on the sole StreamClient (order_flow_streaming: add_level_one_option_handler / add_options_book_handler) and the bounded ingest path is built and measured, but COLLECTION IS GATED OFF: options_streaming_enabled() requires ED_OPTIONS_STREAM, which is unset. Registration without subscription receives nothing, so no frames are retained in production today. Enabling it is an operator decision because it changes what production streams and adds ~10.4 GB per RTH day at the canary size (measured 1,824 bytes/frame, 243 frames/s at 240 contracts).",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
@@ -486,7 +506,7 @@
     "temporal_grain": ""
    },
    "STRIKE_TYPE": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
+    "blocked_on": "handlers ARE now registered on the sole StreamClient (order_flow_streaming: add_level_one_option_handler / add_options_book_handler) and the bounded ingest path is built and measured, but COLLECTION IS GATED OFF: options_streaming_enabled() requires ED_OPTIONS_STREAM, which is unset. Registration without subscription receives nothing, so no frames are retained in production today. Enabling it is an operator decision because it changes what production streams and adds ~10.4 GB per RTH day at the canary size (measured 1,824 bytes/frame, 243 frames/s at 240 contracts).",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
@@ -496,7 +516,7 @@
     "temporal_grain": ""
    },
    "THEORETICAL_OPTION_VALUE": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
+    "blocked_on": "handlers ARE now registered on the sole StreamClient (order_flow_streaming: add_level_one_option_handler / add_options_book_handler) and the bounded ingest path is built and measured, but COLLECTION IS GATED OFF: options_streaming_enabled() requires ED_OPTIONS_STREAM, which is unset. Registration without subscription receives nothing, so no frames are retained in production today. Enabling it is an operator decision because it changes what production streams and adds ~10.4 GB per RTH day at the canary size (measured 1,824 bytes/frame, 243 frames/s at 240 contracts).",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
@@ -506,7 +526,7 @@
     "temporal_grain": ""
    },
    "THETA": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
+    "blocked_on": "handlers ARE now registered on the sole StreamClient (order_flow_streaming: add_level_one_option_handler / add_options_book_handler) and the bounded ingest path is built and measured, but COLLECTION IS GATED OFF: options_streaming_enabled() requires ED_OPTIONS_STREAM, which is unset. Registration without subscription receives nothing, so no frames are retained in production today. Enabling it is an operator decision because it changes what production streams and adds ~10.4 GB per RTH day at the canary size (measured 1,824 bytes/frame, 243 frames/s at 240 contracts).",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
@@ -516,7 +536,7 @@
     "temporal_grain": ""
    },
    "TIME_VALUE": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
+    "blocked_on": "handlers ARE now registered on the sole StreamClient (order_flow_streaming: add_level_one_option_handler / add_options_book_handler) and the bounded ingest path is built and measured, but COLLECTION IS GATED OFF: options_streaming_enabled() requires ED_OPTIONS_STREAM, which is unset. Registration without subscription receives nothing, so no frames are retained in production today. Enabling it is an operator decision because it changes what production streams and adds ~10.4 GB per RTH day at the canary size (measured 1,824 bytes/frame, 243 frames/s at 240 contracts).",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
@@ -526,7 +546,7 @@
     "temporal_grain": ""
    },
    "TOTAL_VOLUME": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
+    "blocked_on": "handlers ARE now registered on the sole StreamClient (order_flow_streaming: add_level_one_option_handler / add_options_book_handler) and the bounded ingest path is built and measured, but COLLECTION IS GATED OFF: options_streaming_enabled() requires ED_OPTIONS_STREAM, which is unset. Registration without subscription receives nothing, so no frames are retained in production today. Enabling it is an operator decision because it changes what production streams and adds ~10.4 GB per RTH day at the canary size (measured 1,824 bytes/frame, 243 frames/s at 240 contracts).",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
@@ -536,7 +556,7 @@
     "temporal_grain": ""
    },
    "TRADE_TIME_MILLIS": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
+    "blocked_on": "handlers ARE now registered on the sole StreamClient (order_flow_streaming: add_level_one_option_handler / add_options_book_handler) and the bounded ingest path is built and measured, but COLLECTION IS GATED OFF: options_streaming_enabled() requires ED_OPTIONS_STREAM, which is unset. Registration without subscription receives nothing, so no frames are retained in production today. Enabling it is an operator decision because it changes what production streams and adds ~10.4 GB per RTH day at the canary size (measured 1,824 bytes/frame, 243 frames/s at 240 contracts).",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
@@ -546,7 +566,7 @@
     "temporal_grain": ""
    },
    "UNDERLYING": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
+    "blocked_on": "handlers ARE now registered on the sole StreamClient (order_flow_streaming: add_level_one_option_handler / add_options_book_handler) and the bounded ingest path is built and measured, but COLLECTION IS GATED OFF: options_streaming_enabled() requires ED_OPTIONS_STREAM, which is unset. Registration without subscription receives nothing, so no frames are retained in production today. Enabling it is an operator decision because it changes what production streams and adds ~10.4 GB per RTH day at the canary size (measured 1,824 bytes/frame, 243 frames/s at 240 contracts).",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
@@ -556,7 +576,7 @@
     "temporal_grain": ""
    },
    "UNDERLYING_PRICE": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
+    "blocked_on": "handlers ARE now registered on the sole StreamClient (order_flow_streaming: add_level_one_option_handler / add_options_book_handler) and the bounded ingest path is built and measured, but COLLECTION IS GATED OFF: options_streaming_enabled() requires ED_OPTIONS_STREAM, which is unset. Registration without subscription receives nothing, so no frames are retained in production today. Enabling it is an operator decision because it changes what production streams and adds ~10.4 GB per RTH day at the canary size (measured 1,824 bytes/frame, 243 frames/s at 240 contracts).",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
@@ -566,7 +586,7 @@
     "temporal_grain": ""
    },
    "UV_EXPIRATION_TYPE": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
+    "blocked_on": "handlers ARE now registered on the sole StreamClient (order_flow_streaming: add_level_one_option_handler / add_options_book_handler) and the bounded ingest path is built and measured, but COLLECTION IS GATED OFF: options_streaming_enabled() requires ED_OPTIONS_STREAM, which is unset. Registration without subscription receives nothing, so no frames are retained in production today. Enabling it is an operator decision because it changes what production streams and adds ~10.4 GB per RTH day at the canary size (measured 1,824 bytes/frame, 243 frames/s at 240 contracts).",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
@@ -576,7 +596,7 @@
     "temporal_grain": ""
    },
    "VEGA": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
+    "blocked_on": "handlers ARE now registered on the sole StreamClient (order_flow_streaming: add_level_one_option_handler / add_options_book_handler) and the bounded ingest path is built and measured, but COLLECTION IS GATED OFF: options_streaming_enabled() requires ED_OPTIONS_STREAM, which is unset. Registration without subscription receives nothing, so no frames are retained in production today. Enabling it is an operator decision because it changes what production streams and adds ~10.4 GB per RTH day at the canary size (measured 1,824 bytes/frame, 243 frames/s at 240 contracts).",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
@@ -586,7 +606,7 @@
     "temporal_grain": ""
    },
    "VOLATILITY": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
+    "blocked_on": "handlers ARE now registered on the sole StreamClient (order_flow_streaming: add_level_one_option_handler / add_options_book_handler) and the bounded ingest path is built and measured, but COLLECTION IS GATED OFF: options_streaming_enabled() requires ED_OPTIONS_STREAM, which is unset. Registration without subscription receives nothing, so no frames are retained in production today. Enabling it is an operator decision because it changes what production streams and adds ~10.4 GB per RTH day at the canary size (measured 1,824 bytes/frame, 243 frames/s at 240 contracts).",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
@@ -596,7 +616,7 @@
     "temporal_grain": ""
    },
    "assetMainType": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
+    "blocked_on": "handlers ARE now registered on the sole StreamClient (order_flow_streaming: add_level_one_option_handler / add_options_book_handler) and the bounded ingest path is built and measured, but COLLECTION IS GATED OFF: options_streaming_enabled() requires ED_OPTIONS_STREAM, which is unset. Registration without subscription receives nothing, so no frames are retained in production today. Enabling it is an operator decision because it changes what production streams and adds ~10.4 GB per RTH day at the canary size (measured 1,824 bytes/frame, 243 frames/s at 240 contracts).",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
@@ -606,7 +626,7 @@
     "temporal_grain": ""
    },
    "delayed": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
+    "blocked_on": "handlers ARE now registered on the sole StreamClient (order_flow_streaming: add_level_one_option_handler / add_options_book_handler) and the bounded ingest path is built and measured, but COLLECTION IS GATED OFF: options_streaming_enabled() requires ED_OPTIONS_STREAM, which is unset. Registration without subscription receives nothing, so no frames are retained in production today. Enabling it is an operator decision because it changes what production streams and adds ~10.4 GB per RTH day at the canary size (measured 1,824 bytes/frame, 243 frames/s at 240 contracts).",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
@@ -616,7 +636,7 @@
     "temporal_grain": ""
    },
    "key": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
+    "blocked_on": "handlers ARE now registered on the sole StreamClient (order_flow_streaming: add_level_one_option_handler / add_options_book_handler) and the bounded ingest path is built and measured, but COLLECTION IS GATED OFF: options_streaming_enabled() requires ED_OPTIONS_STREAM, which is unset. Registration without subscription receives nothing, so no frames are retained in production today. Enabling it is an operator decision because it changes what production streams and adds ~10.4 GB per RTH day at the canary size (measured 1,824 bytes/frame, 243 frames/s at 240 contracts).",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "",
     "reason": "",
@@ -628,7 +648,7 @@
   },
   "options_book_frame": {
    "ASKS": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
+    "blocked_on": "handlers ARE now registered on the sole StreamClient (order_flow_streaming: add_level_one_option_handler / add_options_book_handler) and the bounded ingest path is built and measured, but COLLECTION IS GATED OFF: options_streaming_enabled() requires ED_OPTIONS_STREAM, which is unset. Registration without subscription receives nothing, so no frames are retained in production today. Enabling it is an operator decision because it changes what production streams and adds ~10.4 GB per RTH day at the canary size (measured 1,824 bytes/frame, 243 frames/s at 240 contracts).",
     "canonical_name": "Ask side price levels, each holding the nested participant array",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "calibration.options_stream_frames.project_book_market_makers",
@@ -639,7 +659,7 @@
     "temporal_grain": ""
    },
    "BIDS": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
+    "blocked_on": "handlers ARE now registered on the sole StreamClient (order_flow_streaming: add_level_one_option_handler / add_options_book_handler) and the bounded ingest path is built and measured, but COLLECTION IS GATED OFF: options_streaming_enabled() requires ED_OPTIONS_STREAM, which is unset. Registration without subscription receives nothing, so no frames are retained in production today. Enabling it is an operator decision because it changes what production streams and adds ~10.4 GB per RTH day at the canary size (measured 1,824 bytes/frame, 243 frames/s at 240 contracts).",
     "canonical_name": "Bid side price levels, each holding the nested participant array",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "calibration.options_stream_frames.project_book_market_makers",
@@ -650,7 +670,7 @@
     "temporal_grain": ""
    },
    "BOOK_TIME": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
+    "blocked_on": "handlers ARE now registered on the sole StreamClient (order_flow_streaming: add_level_one_option_handler / add_options_book_handler) and the bounded ingest path is built and measured, but COLLECTION IS GATED OFF: options_streaming_enabled() requires ED_OPTIONS_STREAM, which is unset. Registration without subscription receives nothing, so no frames are retained in production today. Enabling it is an operator decision because it changes what production streams and adds ~10.4 GB per RTH day at the canary size (measured 1,824 bytes/frame, 243 frames/s at 240 contracts).",
     "canonical_name": "Market Snapshot Time",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "calibration.options_stream_frames.project_book_market_makers",
@@ -661,7 +681,7 @@
     "temporal_grain": ""
    },
    "key": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
+    "blocked_on": "handlers ARE now registered on the sole StreamClient (order_flow_streaming: add_level_one_option_handler / add_options_book_handler) and the bounded ingest path is built and measured, but COLLECTION IS GATED OFF: options_streaming_enabled() requires ED_OPTIONS_STREAM, which is unset. Registration without subscription receives nothing, so no frames are retained in production today. Enabling it is an operator decision because it changes what production streams and adds ~10.4 GB per RTH day at the canary size (measured 1,824 bytes/frame, 243 frames/s at 240 contracts).",
     "canonical_name": "Option symbol (frame key)",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "calibration.options_stream_frames.project_book_market_makers",
@@ -674,7 +694,7 @@
   },
   "options_book_market_maker": {
    "ASK_VOLUME": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
+    "blocked_on": "handlers ARE now registered on the sole StreamClient (order_flow_streaming: add_level_one_option_handler / add_options_book_handler) and the bounded ingest path is built and measured, but COLLECTION IS GATED OFF: options_streaming_enabled() requires ED_OPTIONS_STREAM, which is unset. Registration without subscription receives nothing, so no frames are retained in production today. Enabling it is an operator decision because it changes what production streams and adds ~10.4 GB per RTH day at the canary size (measured 1,824 bytes/frame, 243 frames/s at 240 contracts).",
     "canonical_name": "Per-market-maker Size (ask)",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "calibration.options_stream_frames.project_book_market_makers",
@@ -685,7 +705,7 @@
     "temporal_grain": ""
    },
    "BID_VOLUME": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
+    "blocked_on": "handlers ARE now registered on the sole StreamClient (order_flow_streaming: add_level_one_option_handler / add_options_book_handler) and the bounded ingest path is built and measured, but COLLECTION IS GATED OFF: options_streaming_enabled() requires ED_OPTIONS_STREAM, which is unset. Registration without subscription receives nothing, so no frames are retained in production today. Enabling it is an operator decision because it changes what production streams and adds ~10.4 GB per RTH day at the canary size (measured 1,824 bytes/frame, 243 frames/s at 240 contracts).",
     "canonical_name": "Per-market-maker Size (bid)",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "calibration.options_stream_frames.project_book_market_makers",
@@ -696,7 +716,7 @@
     "temporal_grain": ""
    },
    "EXCHANGE": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
+    "blocked_on": "handlers ARE now registered on the sole StreamClient (order_flow_streaming: add_level_one_option_handler / add_options_book_handler) and the bounded ingest path is built and measured, but COLLECTION IS GATED OFF: options_streaming_enabled() requires ED_OPTIONS_STREAM, which is unset. Registration without subscription receives nothing, so no frames are retained in production today. Enabling it is an operator decision because it changes what production streams and adds ~10.4 GB per RTH day at the canary size (measured 1,824 bytes/frame, 243 frames/s at 240 contracts).",
     "canonical_name": "Market Maker ID (vendor documented name; observed values are venue codes)",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "calibration.options_stream_frames.project_book_market_makers",
@@ -707,7 +727,7 @@
     "temporal_grain": ""
    },
    "SEQUENCE": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
+    "blocked_on": "handlers ARE now registered on the sole StreamClient (order_flow_streaming: add_level_one_option_handler / add_options_book_handler) and the bounded ingest path is built and measured, but COLLECTION IS GATED OFF: options_streaming_enabled() requires ED_OPTIONS_STREAM, which is unset. Registration without subscription receives nothing, so no frames are retained in production today. Enabling it is an operator decision because it changes what production streams and adds ~10.4 GB per RTH day at the canary size (measured 1,824 bytes/frame, 243 frames/s at 240 contracts).",
     "canonical_name": "Per-market-maker Quote Time (RAW decoder name SEQUENCE; vendor doc names it a quote time and captured values lag BOOK_TIME by 0-604ms rather than counting)",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "calibration.options_stream_frames.project_book_market_makers",
@@ -720,7 +740,7 @@
   },
   "options_book_price_level": {
    "ASKS": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
+    "blocked_on": "handlers ARE now registered on the sole StreamClient (order_flow_streaming: add_level_one_option_handler / add_options_book_handler) and the bounded ingest path is built and measured, but COLLECTION IS GATED OFF: options_streaming_enabled() requires ED_OPTIONS_STREAM, which is unset. Registration without subscription receives nothing, so no frames are retained in production today. Enabling it is an operator decision because it changes what production streams and adds ~10.4 GB per RTH day at the canary size (measured 1,824 bytes/frame, 243 frames/s at 240 contracts).",
     "canonical_name": "Ask side price levels, each holding the nested participant array",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "calibration.options_stream_frames.project_book_market_makers",
@@ -731,7 +751,7 @@
     "temporal_grain": ""
    },
    "ASK_PRICE": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
+    "blocked_on": "handlers ARE now registered on the sole StreamClient (order_flow_streaming: add_level_one_option_handler / add_options_book_handler) and the bounded ingest path is built and measured, but COLLECTION IS GATED OFF: options_streaming_enabled() requires ED_OPTIONS_STREAM, which is unset. Registration without subscription receives nothing, so no frames are retained in production today. Enabling it is an operator decision because it changes what production streams and adds ~10.4 GB per RTH day at the canary size (measured 1,824 bytes/frame, 243 frames/s at 240 contracts).",
     "canonical_name": "Price level (ask)",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "calibration.options_stream_frames.project_book_market_makers",
@@ -742,7 +762,7 @@
     "temporal_grain": ""
    },
    "BIDS": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
+    "blocked_on": "handlers ARE now registered on the sole StreamClient (order_flow_streaming: add_level_one_option_handler / add_options_book_handler) and the bounded ingest path is built and measured, but COLLECTION IS GATED OFF: options_streaming_enabled() requires ED_OPTIONS_STREAM, which is unset. Registration without subscription receives nothing, so no frames are retained in production today. Enabling it is an operator decision because it changes what production streams and adds ~10.4 GB per RTH day at the canary size (measured 1,824 bytes/frame, 243 frames/s at 240 contracts).",
     "canonical_name": "Bid side price levels, each holding the nested participant array",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "calibration.options_stream_frames.project_book_market_makers",
@@ -753,7 +773,7 @@
     "temporal_grain": ""
    },
    "BID_PRICE": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
+    "blocked_on": "handlers ARE now registered on the sole StreamClient (order_flow_streaming: add_level_one_option_handler / add_options_book_handler) and the bounded ingest path is built and measured, but COLLECTION IS GATED OFF: options_streaming_enabled() requires ED_OPTIONS_STREAM, which is unset. Registration without subscription receives nothing, so no frames are retained in production today. Enabling it is an operator decision because it changes what production streams and adds ~10.4 GB per RTH day at the canary size (measured 1,824 bytes/frame, 243 frames/s at 240 contracts).",
     "canonical_name": "Price level (bid)",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "calibration.options_stream_frames.project_book_market_makers",
@@ -764,7 +784,7 @@
     "temporal_grain": ""
    },
    "NUM_ASKS": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
+    "blocked_on": "handlers ARE now registered on the sole StreamClient (order_flow_streaming: add_level_one_option_handler / add_options_book_handler) and the bounded ingest path is built and measured, but COLLECTION IS GATED OFF: options_streaming_enabled() requires ED_OPTIONS_STREAM, which is unset. Registration without subscription receives nothing, so no frames are retained in production today. Enabling it is an operator decision because it changes what production streams and adds ~10.4 GB per RTH day at the canary size (measured 1,824 bytes/frame, 243 frames/s at 240 contracts).",
     "canonical_name": "Market Maker Count (ask side)",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "calibration.options_stream_frames.project_book_market_makers",
@@ -775,7 +795,7 @@
     "temporal_grain": ""
    },
    "NUM_BIDS": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
+    "blocked_on": "handlers ARE now registered on the sole StreamClient (order_flow_streaming: add_level_one_option_handler / add_options_book_handler) and the bounded ingest path is built and measured, but COLLECTION IS GATED OFF: options_streaming_enabled() requires ED_OPTIONS_STREAM, which is unset. Registration without subscription receives nothing, so no frames are retained in production today. Enabling it is an operator decision because it changes what production streams and adds ~10.4 GB per RTH day at the canary size (measured 1,824 bytes/frame, 243 frames/s at 240 contracts).",
     "canonical_name": "Market Maker Count (bid side)",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "calibration.options_stream_frames.project_book_market_makers",
@@ -786,7 +806,7 @@
     "temporal_grain": ""
    },
    "TOTAL_VOLUME": {
-    "blocked_on": "production subscribes NEITHER LEVELONE_OPTIONS nor OPTIONS_BOOK - order_flow_streaming subscribes LEVELONE_EQUITIES/NASDAQ_BOOK/NYSE_BOOK only, for ONE symbol. Nothing calls the writer, so NOTHING is retained in production today.",
+    "blocked_on": "handlers ARE now registered on the sole StreamClient (order_flow_streaming: add_level_one_option_handler / add_options_book_handler) and the bounded ingest path is built and measured, but COLLECTION IS GATED OFF: options_streaming_enabled() requires ED_OPTIONS_STREAM, which is unset. Registration without subscription receives nothing, so no frames are retained in production today. Enabling it is an operator decision because it changes what production streams and adds ~10.4 GB per RTH day at the canary size (measured 1,824 bytes/frame, 243 frames/s at 240 contracts).",
     "canonical_name": "Aggregate size at price level",
     "disposition": "RETENTION_PATH_READY_NOT_WIRED",
     "projection": "calibration.options_stream_frames.project_book_market_makers",
