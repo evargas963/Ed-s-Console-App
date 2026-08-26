@@ -108,6 +108,62 @@ def test_more_equity_symbols_shrink_the_options_budget():
     assert b < a, "the options ceiling ignores the keys the equity path is holding"
 
 
+# ── USEFUL depth, not merely rotating ───────────────────────────────────────────────────────
+#
+# The operator asked for rotating USEFUL-DEPTH coverage. A rotation that turns but hands each
+# name a sliver is the same permanent-sliver failure it was built to end, wearing the policy's
+# name. MEASURED against real production chains with the ceiling lifted, select_contracts
+# returns 32 contracts for 49 of the 55 enrolled names with a fresh chain — so 32 is what an
+# underlying costs to describe, and the fixed rotating_per_slice=8 delivered 119//8 = 14.
+
+def test_the_fixed_cohort_size_would_have_delivered_a_sliver():
+    """The defect, kept as a measurement so the fix cannot be quietly reverted."""
+    pol = RotationPolicy()
+    budget = contract_budget_from_key_limit(equity_symbols=1, book_enabled=True)
+    sp = split_budget(budget["contracts_allowed"], 3, 8, pol)
+    each_at_fixed_8 = sp["rotating"] // 8
+    assert each_at_fixed_8 < pol.useful_depth_contracts, (
+        f"the fixture no longer reproduces the defect: a fixed 8-per-slice gives "
+        f"{each_at_fixed_8}, which already meets the {pol.useful_depth_contracts} target")
+
+
+def test_the_derived_cohort_delivers_at_least_useful_depth():
+    """Depth is the invariant; the cohort size is what gives way."""
+    pol = RotationPolicy()
+    for book in (True, False):
+        budget = contract_budget_from_key_limit(equity_symbols=1, book_enabled=book)
+        provisional = split_budget(budget["contracts_allowed"], 3, pol.rotating_per_slice, pol)
+        n = pol.cohort_size_for_budget(provisional["rotating"])
+        final = split_budget(budget["contracts_allowed"], 3, n, pol)
+        each = final["rotating"] // max(1, n)
+        assert each >= pol.useful_depth_contracts, (
+            f"book_enabled={book}: each rotating name gets {each} contracts, below the measured "
+            f"useful depth of {pol.useful_depth_contracts} — this is a sliver, not coverage")
+
+
+def test_the_cohort_size_never_collapses_to_zero():
+    """A tiny budget must still rotate ONE name rather than silently stopping."""
+    pol = RotationPolicy()
+    for tiny in (0, 1, 5, 31):
+        assert pol.cohort_size_for_budget(tiny) >= 1, (
+            f"a rotating budget of {tiny} produced a cohort of zero — rotation would halt")
+
+
+def test_the_plan_reports_the_depth_it_actually_delivers(monkeypatch):
+    """The gap must be a KNOWN quantity, visible in the slice record."""
+    import order_flow_streaming as ofs
+
+    monkeypatch.setattr(ofs, "_subscribed_equity_syms", ["SPY"], raising=False)
+    plan = ofs.options_desired_for_slice(0.0, equity_symbols=1, book_enabled=True)
+    for key in ("useful_depth_contracts", "rotating_depth_each", "rotating_per_slice",
+                "full_cycle_seconds"):
+        assert key in plan, f"the slice plan does not report {key}"
+    if plan["rotating"]:
+        assert plan["rotating_depth_each"] >= plan["useful_depth_contracts"], (
+            f"the plan delivers {plan['rotating_depth_each']} per rotating name against a "
+            f"{plan['useful_depth_contracts']} target")
+
+
 # ── the reconciler ──────────────────────────────────────────────────────────────────────────
 
 class _Recorder:

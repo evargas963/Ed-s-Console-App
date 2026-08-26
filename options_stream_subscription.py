@@ -93,7 +93,27 @@ class RotationPolicy:
     core: tuple[str, ...] = CORE_UNDERLYINGS
     core_fraction: float = 0.5          # share of the budget reserved for core, at depth
     slice_seconds: int = DEFAULT_SLICE_SECONDS
-    rotating_per_slice: int = 8         # how many non-core underlyings ride each slice
+    rotating_per_slice: int = 8         # fallback only; cohort_size_for_budget derives the real one
+
+    #: What "useful depth" actually costs, MEASURED rather than nominal. The selection policy
+    #: nominally asks for 3 expiries x 8 strikes/side x {call,put} = 96 contracts, but running
+    #: the real select_contracts against real production chains with the ceiling lifted returns
+    #: 32 for 49 of the 55 enrolled names with a fresh chain (the other six are thinner:
+    #: 16/20/24/26/28/30). So 32 is what an underlying needs to be described, not 96.
+    useful_depth_contracts: int = 32
+
+    def cohort_size_for_budget(self, rotating_budget: int) -> int:
+        """How many non-core underlyings fit in a slice AT USEFUL DEPTH.
+
+        DERIVED, not chosen — the same discipline contract_budget_from_key_limit applies to the
+        contract ceiling. A fixed rotating_per_slice=8 against the real budget hands each name
+        119//8 = 14 contracts, which is a permanent sliver: the exact failure this rotation was
+        built to end, wearing the policy's own name. Depth is the invariant the operator asked
+        for, so breadth-per-slice is what gives way, and the cycle length becomes a REPORTED
+        consequence instead of a hidden one.
+        """
+        depth = max(1, int(self.useful_depth_contracts))
+        return max(1, int(rotating_budget) // depth)
 
     def slice_index(self, at_epoch_s: float) -> int:
         """Which slice an instant falls in. A pure function of the clock, so two processes

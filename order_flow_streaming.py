@@ -154,11 +154,24 @@ def options_desired_for_slice(at_epoch_s: float, *, equity_symbols: int,
         contract_budget_from_key_limit, rotation_cohort, select_contracts, split_budget,
     )
 
-    pol = RotationPolicy()
+    import dataclasses
+
+    base = RotationPolicy()
     universe = sorted(build_chains_for_selection().keys())
-    cohort = rotation_cohort(universe, at_epoch_s, pol)
     budget = contract_budget_from_key_limit(
         equity_symbols=max(1, int(equity_symbols)), book_enabled=book_enabled)
+
+    # THE COHORT SIZE IS DERIVED FROM THE BUDGET, not chosen. Sizing the cohort first and
+    # letting depth fall out of it is how "rotating coverage" becomes a permanent sliver: at
+    # the real budget a fixed 8-per-slice hands each name 14 contracts against a MEASURED
+    # useful depth of 32. Depth is the invariant; breadth-per-slice gives way; the cycle length
+    # is reported below so the gap stays a known quantity.
+    n_core = len([c for c in base.core if c in set(universe)])
+    provisional = split_budget(budget["contracts_allowed"], n_core, base.rotating_per_slice, base)
+    pol = dataclasses.replace(
+        base, rotating_per_slice=base.cohort_size_for_budget(provisional["rotating"]))
+
+    cohort = rotation_cohort(universe, at_epoch_s, pol)
     split = split_budget(budget["contracts_allowed"], len(cohort["core"]),
                          len(cohort["rotating"]), pol)
 
@@ -195,6 +208,13 @@ def options_desired_for_slice(at_epoch_s: float, *, equity_symbols: int,
         "full_cycle_seconds": cohort["full_cycle_seconds"],
         "budget": budget,
         "split": split,
+        # The depth each rotating name actually receives this slice, beside the depth that
+        # makes an underlying describable. If these diverge, coverage is a sliver and the
+        # operator can see it rather than inferring it from thin data months later.
+        "useful_depth_contracts": pol.useful_depth_contracts,
+        "rotating_depth_each": (split["rotating"] // len(cohort["rotating"])
+                                if cohort["rotating"] else 0),
+        "rotating_per_slice": pol.rotating_per_slice,
         "symbols": symbols,
         "per_underlying": per_underlying,
         "notes": notes,
