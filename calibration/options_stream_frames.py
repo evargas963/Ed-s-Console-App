@@ -7,9 +7,24 @@ subscribed to, proven deliverable by a committed capture
   * LEVELONE_OPTIONS — 58 native fields per contract, including a STREAMING greeks/IV surface
     (DELTA/GAMMA/THETA/VEGA/RHO, VOLATILITY, OPEN_INTEREST) and the temporal keys
     QUOTE_TIME_MILLIS / TRADE_TIME_MILLIS that the once-per-cycle REST chain cannot give.
-  * OPTIONS_BOOK — market-maker depth: BOOK_TIME (market snapshot time), per price level
-    TOTAL_VOLUME and NUM_BIDS/NUM_ASKS (market-maker COUNT), and nested per-market-maker
-    EXCHANGE (MM id), BID_VOLUME/ASK_VOLUME (per-MM size) and field 2 (per-MM quote time).
+  * OPTIONS_BOOK — market-maker depth. Field identities are the VENDOR's documented names, not our
+    reading of the payload:
+    # num-semantics-ok: Schwab Trader API Streamer Guide (first-party, login-gated; provenance
+    # preserved in reports/of_capability_probe/schwab_streamer_guide_book_fields_citation.md and
+    # adjudicated PROVEN at the vendor-contract level in
+    # reports/schwab_field_semantic_normalization_ledger_20260820.md, M8) documents the shared
+    # BookFields mapping as: book field 1 = Market Snapshot Time; price-level field 2 = Market Maker
+    # Count; price-level field 3 = Array of Market Makers; nested 0 = Market Maker ID; nested 1 =
+    # Size; nested 2 = Quote Time. Position identity is independently reproduced by three community
+    # decoders and matches our captured frames exactly.
+    BOOK_TIME (Market Snapshot Time), per price level TOTAL_VOLUME and NUM_BIDS/NUM_ASKS (Market
+    Maker Count), and nested EXCHANGE (Market Maker ID), BID_VOLUME/ASK_VOLUME (Size), field 2
+    (Quote Time).
+    ONE HONEST CAVEAT KEPT WITH THE DATA: the vendor NAMES nested 0 "Market Maker ID", but the
+    values our captures actually carry are venue codes (AMEX, BATS, BOSX, CBOE, EDGX, GMNI, ISEX,
+    MEMX, ... 13 distinct in one frame). Vendor naming is authoritative for the field's identity;
+    what the value domain turns out to mean for attribution is a separate question this module does
+    not answer and must not pre-judge.
 
 THE DESIGN IS RAW-FIRST, ON PURPOSE. A frame is stored VERBATIM as the vendor sent it, one row per
 frame. No projection happens at write time, so no field can be lost by an omission in today's
