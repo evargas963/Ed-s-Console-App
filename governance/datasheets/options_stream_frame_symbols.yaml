@@ -1,0 +1,42 @@
+# Datasheet for Datasets (Gebru et al. 2021) — options_stream_frame_symbols
+# Per-contract index over the raw options frame store.
+
+table: options_stream_frame_symbols
+
+motivation: >
+  A Schwab streaming frame's `content` is a LIST and may carry many option contracts at once.
+  Indexing a whole frame by content[0].key — which the first draft of the raw store did — makes
+  every contract after the first undiscoverable, so a frame covering twenty contracts would be
+  findable under one symbol and invisible for the other nineteen. This table exists so a
+  multi-contract frame stays discoverable for EVERY contract it contains, without duplicating the
+  frame payload once per contract.
+
+composition: >
+  One row per contract contained in a stored frame. Columns: frame_id (foreign key to
+  options_stream_frames.id); symbol_key (the contract's own `key` as the vendor sent it, e.g.
+  "SPY   260820C00767000"); content_idx (the contract's position within the frame's content list,
+  so the exact entry is addressable inside the retained payload rather than merely known to exist).
+  Primary key (frame_id, content_idx). Contains market-data identifiers only — no customer,
+  account, order or position data, and no personal information.
+
+collection: >
+  Written by calibration/options_stream_frames.persist_frame in the same transaction as the frame
+  row: the frame is inserted once, then one index row is written for each content entry that
+  carries a key. Entries without a key are skipped rather than given a fabricated one. AS OF
+  2026-08-26 NOTHING CALLS THE WRITER — production subscribes to neither options service — so this
+  table is empty. Verified against a real captured frame duplicated to two contracts: both were
+  indexed at content positions 0 and 1 and both were retrievable by symbol.
+
+recommended_uses: >
+  Intended: locating which stored frames touched a given option contract, and addressing the exact
+  content entry within a retained payload. It is an INDEX — the authoritative data is the raw
+  payload in options_stream_frames, and this table must never be treated as a substitute for it or
+  be allowed to drift into a projection.
+  NOT intended: symbol_key is a vendor contract identifier, not a normalised instrument key; do not
+  join it to internal ticker tables without passing through the instrument-identity authority.
+  Nothing derived from this table may be promoted into Decide.
+
+known_limitations: >
+  Empty until a subscription is wired. Every captured probe frame contained exactly one contract, so
+  the multi-contract path is proven by construction and by a duplicated-frame test rather than by
+  observed multi-contract vendor traffic.

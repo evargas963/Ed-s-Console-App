@@ -1,0 +1,53 @@
+# Datasheet for Datasets (Gebru et al. 2021) — options_stream_frames
+# Raw retention store for Schwab's entitled options streaming services.
+
+table: options_stream_frames
+
+motivation: >
+  Schwab entitles two options streaming services this console has never subscribed to —
+  LEVELONE_OPTIONS (58 native fields per contract, including a streaming greeks/IV surface and the
+  temporal keys QUOTE_TIME_MILLIS / TRADE_TIME_MILLIS) and OPTIONS_BOOK (market-maker depth). Both
+  are proven deliverable by a committed capture (response_code 0; 91 and 90 frames in 90s). None of
+  it was retained. This table exists so that surface can be preserved RAW the moment collection is
+  wired, rather than being re-derived later from history nobody kept — the failure that destroyed
+  the REST chain envelope on every fetch for months. It is the collection substrate for the Options
+  Flow product; it is not a signal, a model input, or a decision surface.
+
+composition: >
+  One row per DECODED vendor frame. Columns: service (LEVELONE_OPTIONS | OPTIONS_BOOK);
+  frame_ts_ms (the VENDOR's frame timestamp, epoch milliseconds, as sent); received_ts_ms (our
+  receive clock, epoch milliseconds — the same unit, deliberately, so lag is a real quantity);
+  ingest_lag_ms (received minus frame, computed once at write); n_contracts (len(content), where
+  greater than 1 marks a multi-contract frame); payload_json (the decoded frame serialised whole,
+  with no projection and no field selection). Per-contract discoverability lives in the companion
+  table options_stream_frame_symbols. Contains market data only — no customer, account, order or
+  position data, and no personal information of any kind.
+
+collection: >
+  Written by calibration/options_stream_frames.persist_frame, one call per received frame. AS OF
+  2026-08-26 NOTHING CALLS IT: production subscribes LEVELONE_EQUITIES / NASDAQ_BOOK / NYSE_BOOK
+  only, so this table is empty and the writer is inert. Wiring a subscription changes live streamer
+  behaviour and is an operator decision, not a side effect of adding storage. The writer fails soft
+  (a malformed frame is rejected with a reason and logged, never allowed to take the console down)
+  and rejects any frame lacking a usable vendor timestamp rather than inventing one.
+  PRESERVATION SCOPE, stated precisely: this stores the DECODED frame object handed over by the
+  streaming client. It is NOT byte-identical retention of the WebSocket wire message — no wire bytes
+  are captured at this layer and the client library has already parsed the envelope. Nothing lossy
+  is applied to the decoded object.
+
+recommended_uses: >
+  Intended: durable raw history for market-maker and liquidity research; reconstructing the options
+  book and the streaming greeks/IV surface at a past instant; measuring vendor-versus-local ingest
+  lag; and serving canonical typed PROJECTIONS built as readers over this store, so adding a
+  consumer later is a query change rather than a re-collection.
+  NOT intended, and explicitly out of scope: inferring dealer ownership or directional attribution
+  from market-maker identifiers — the vendor names nested field 0 "Market Maker ID" while the values
+  our captures carry are venue codes, and what that domain means for attribution is unresolved.
+  Nothing derived from this table may be promoted into Decide without its own validation. Frame
+  timestamps are the vendor's clock and must not be treated as exchange event time.
+
+known_limitations: >
+  Empty until a subscription is wired. Capture evidence exists only for a single option symbol over
+  90 seconds, so per-frame contract counts observed there (max 1) reflect the probe's subscription,
+  not the service's behaviour. Retention/pruning policy is not yet set — unbounded growth is a real
+  consideration once collection begins and should be decided before enabling it.
