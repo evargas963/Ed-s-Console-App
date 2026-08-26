@@ -500,7 +500,13 @@ def run(since: str | None) -> dict:
         "claim": "SHORT_GAMMA_TREND -> above-own-median range; LONG_GAMMA_CHOP -> below",
         "overall": bucket(lambda _r: True),
         "trusted_only": bucket(lambda r: r["confidence"] == "TRUSTED"),
-        "narrow_chain_only": bucket(lambda r: r["confidence"] != "TRUSTED"),
+        # Corrected 2026-08-26: `narrow_chain_only` was `confidence != "TRUSTED"`, which was
+        # accurate when there were only two tiers. There are now three, so that predicate also
+        # swept in LEVEL_APPROX_NARROW_SPAN rows — chains wide enough for a sound at-spot regime,
+        # merely too narrow to place the LEVEL — and reported them under a "LOW_CONFIDENCE" label.
+        # Split so each bucket means what its name says.
+        "level_approx_only": bucket(lambda r: r["confidence"] == "LEVEL_APPROX_NARROW_SPAN"),
+        "narrow_chain_only": bucket(lambda r: r["confidence"] == "LOW_CONFIDENCE_NARROW_CHAIN"),
         "sentinels": bucket(lambda r: r["ticker"] in SENTINELS),
         "single_names": bucket(lambda r: r["ticker"] not in SENTINELS),
         "long_gamma_days": bucket(lambda r: r["regime"] == "LONG_GAMMA_CHOP"),
@@ -597,7 +603,8 @@ def render_md(rep: dict) -> str:
         "",
         "| slice | n | hit% |", "|---|---|---|",
         line("ALL", rep["overall"]),
-        line("TRUSTED only", rep["trusted_only"]),
+        line("coverage OK (TRUSTED span) only", rep["trusted_only"]),
+        line("level-approx only (regime sound, LEVEL not placed)", rep["level_approx_only"]),
         line("narrow-chain only (LOW_CONFIDENCE — caveated)", rep["narrow_chain_only"]),
         line("sentinels (SPY/QQQ/IWM)", rep["sentinels"]),
         line("single names", rep["single_names"]),

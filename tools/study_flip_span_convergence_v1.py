@@ -2,8 +2,13 @@
 
 WHY: `math_levels.GAMMA_FLIP_MIN_SPAN_PCT = 0.05` is a bare magic number — its only
 justification is a comment restating it. It decides (a) how many strikes every live chain fetch
-requests and (b) whether the operator is told the flip is TRUSTED or LOW_CONFIDENCE_NARROW_CHAIN.
-A number with that much authority must be measured.
+requests and (b) — AT THE TIME THIS STUDY WAS WRITTEN — whether the operator was told the flip is
+TRUSTED or LOW_CONFIDENCE_NARROW_CHAIN. A number with that much authority must be measured.
+CLAUSE (b) IS NOW HISTORY (corrected 2026-08-26, partly BECAUSE of this study): the two jobs were
+split. This constant is now only the fetch width and the floor below which nothing is claimed;
+GAMMA_FLIP_TRUSTED_SPAN_PCT (0.10, the knee this study measured) governs the flip-LEVEL verdict,
+and a third tier LEVEL_APPROX_NARROW_SPAN sits between them. The study's purpose is unchanged —
+it is what justified the split — but it no longer describes how the verdict is wired.
 
 METHOD (convergence, the standard way to size a numerical window): for each stored WIDE chain,
 compute the flip on the FULL delivered strike set (the reference), then recompute it using only

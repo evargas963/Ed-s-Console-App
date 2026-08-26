@@ -12,7 +12,12 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from math_levels import GAMMA_FLIP_TRUSTED
+from math_levels import (
+    GAMMA_FLIP_LEVEL_APPROX,
+    GAMMA_FLIP_NARROW,
+    GAMMA_FLIP_TRUSTED,
+    GAMMA_FLIP_UNAVAILABLE,
+)
 from terrain_engine import TERRAIN_SCHEMA_VERSION, compute_terrain
 
 _REAL_CHAIN = Path(__file__).parent / "fixtures" / "real_spy_0dte_chain_with_poison.json"
@@ -73,13 +78,29 @@ def test_levels_are_real_strikes_or_absent() -> None:
     )
 
 
-def test_posture_is_never_issued_without_trusted_levels() -> None:
-    """The core safety property: no trading posture on levels we do not trust."""
+def test_posture_is_never_issued_without_a_supportable_at_spot_sign() -> None:
+    """The core safety property, RESTATED 2026-08-26 to the rule that actually holds.
+
+    This asserted `confidence != TRUSTED -> STAND_ASIDE / UNAVAILABLE`, which encodes a RETIRED
+    invariant: LEVEL_APPROX_NARROW_SPAN deliberately KEEPS regime and posture (the regime is the
+    SIGN of dealer gamma at spot, which needs strikes NEAR spot; only the flip LEVEL needs the wide
+    chain) and instead discloses the level as approximate. The old form passed only because it was
+    vacuous on a wide real chain — it would have FAILED wrongly the first time a chain landed in the
+    middle tier, while meanwhile advertising a safety property the code does not provide.
+
+    What IS load-bearing, and is asserted here: no posture off coverage too narrow to support the
+    at-spot sign, and no silent level at the middle tier.
+    """
     chain, spot = _real_chain()
     snap = compute_terrain("SPY", chain, spot)
-    if snap.confidence != GAMMA_FLIP_TRUSTED:
+    if snap.confidence in (GAMMA_FLIP_NARROW, GAMMA_FLIP_UNAVAILABLE):
         assert snap.posture == "STAND_ASIDE"
         assert snap.regime == "UNAVAILABLE"
+    elif snap.confidence == GAMMA_FLIP_LEVEL_APPROX:
+        # the middle tier MAY issue a posture — but must never present the level as placed
+        assert snap.regime != "UNAVAILABLE"
+        assert "APPROXIMATE" in " ".join(getattr(snap, "lines", []) or []), (
+            "LEVEL_APPROX issued a regime without disclosing the flip level is approximate")
 
 
 def test_narrow_0dte_slice_fails_closed_gate_retained() -> None:

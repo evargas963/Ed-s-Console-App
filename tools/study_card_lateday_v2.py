@@ -7,9 +7,13 @@ specification verbatim — windows must NOT be altered:
 
   Universe:  SPY/QQQ/IWM separate from single names (reported separately, never pooled).
   Regime:    net dealer gamma < 0 at ~10:00 ET; chain-confidence composition DISCLOSED.
-             NOTE: terrain_read fail-closed — only TRUSTED regimes enter scored rows, so
-             SINGLE_NAMES_ALL_CONF is structurally identical to TRUSTED_ONLY until
-             non-TRUSTED regimes are scored into observations (disclosed, not silent).
+             NOTE (corrected 2026-08-26 — the previous note is now FALSE): it read
+             "terrain_read fail-closed — only TRUSTED regimes enter scored rows, so
+             SINGLE_NAMES_ALL_CONF is structurally identical to TRUSTED_ONLY". terrain_read
+             now also issues a regime at LEVEL_APPROX_NARROW_SPAN (the regime is the at-spot
+             SIGN; only the flip LEVEL needs the wide chain), so the two buckets are NO
+             LONGER identical by construction. A re-run must REPORT their composition, not
+             assume it — and must not read a difference between them as a new effect.
   Predictor: 09:30 open -> 15:30 ET return, STRICTLY intraday (overnight gap zeroed).
   Condition: |ret 09:30->15:30| >= 0.75 x 20-day median INTRADAY range.
   Response:  15:30 -> 15:55 ET (MOC auction window excluded).
@@ -148,8 +152,14 @@ def main() -> int:
             [r for r in rows if r["ticker"] not in SENTINELS and r["conf"] == "TRUSTED"]),
         "note_earnings_exclusion": "NOT applied — no earnings calendar held; disclosed "
                                    "as spec deviation, to be added when calendar lands",
-        "note_all_conf_equals_trusted": "terrain_read fail-closed drops non-TRUSTED; "
-                                       "ALL_CONF bucket == TRUSTED_ONLY by construction",
+        "note_all_conf_vs_trusted": "CORRECTED 2026-08-26: this previously asserted "
+                                    "'terrain_read fail-closed drops non-TRUSTED; ALL_CONF == "
+                                    "TRUSTED_ONLY by construction'. That is no longer true — "
+                                    "terrain_read also issues a regime at "
+                                    "LEVEL_APPROX_NARROW_SPAN, so the buckets can differ. The "
+                                    "per-bucket counts in this report are the authority; do not "
+                                    "assume equality, and do not read any gap as a new effect "
+                                    "without re-checking confidence composition.",
     }
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(json.dumps(rep, indent=2), encoding="utf-8")

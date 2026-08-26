@@ -1068,12 +1068,23 @@ def snap_level_to_shelf_strike(
 #: at which the convergence study's error stopped improving (~0.117% of spot residual vs its own
 #: reference). It does NOT assert the level is right in absolute terms — the study's justified_span
 #: is None, and for SPY/QQQ its reference chain is narrower than production (see the block below).
-#: AND THE COVERAGE RESIDUAL IS NOT EVEN THE DOMINANT ERROR: the flip LEVEL drifts intraday.
-#: Measured (unproven_register row 56, 23,718 accrued rows / 99 RTH ticker-sessions): intraday flip
-#: range as % of median spot — SPY median 0.221%, QQQ 6.139%, IWM 8.663%; ALL tickers median 4.176%,
-#: p90 11.991%. That is ~35x the ~0.117% convergence residual this verdict is set by. So a chain can
-#: clear the span bar and its flip still be a moving line within the session; coverage says nothing
-#: about the level's STABILITY. (This is why proximity logic must read the LIVE recomputed flip.)
+#: A SECOND, SEPARATE LIMIT — and it is NOT part of the same error budget. Corrected 2026-08-26
+#: after review: an earlier version of this note said intraday drift is "~35x" the convergence
+#: residual and called the residual "not the dominant error". That was a CATEGORY ERROR. The two
+#: numbers answer different questions and are not commensurable, not summable, and not rankable:
+#:   * ~0.117% of spot — CONVERGENCE RESIDUAL: an ACCURACY error at ONE instant, the gap between
+#:     the flip computed on a truncated strike window and the flip on the full window. It is a
+#:     defect of our estimate; with every strike present it would go to zero.
+#:   * ~4.176% of spot median, p90 ~11.991% (unproven_register row 56, 23,718 rows / 99 RTH
+#:     ticker-sessions; SPY 0.221%, QQQ 6.139%, IWM 8.663%) — INTRADAY DRIFT: the range of the flip
+#:     ACROSS a session. This is NOT an error at all. The level genuinely MOVES, because gamma
+#:     depends on spot, IV and time; a correctly computed flip still moves this much. It would NOT
+#:     go to zero with perfect data.
+#: So drift neither inflates nor excuses the residual. What each one licenses:
+#:   coverage/residual -> "is the number we are showing RIGHT, given the strikes we fetched?"
+#:   drift             -> "will this level still be where it is later?" (a STALENESS question)
+#: This verdict speaks ONLY to the first. It is silent on the second, which is why proximity logic
+#: must read the LIVE recomputed flip rather than a session-open snapshot.
 #: Consumers may gate on it; no surface may render it as proof. The operator-facing strings
 #: deliberately say "chain coverage" and carry the residual, never a bare "trusted".
 GAMMA_FLIP_TRUSTED = "TRUSTED"
@@ -1084,10 +1095,15 @@ GAMMA_FLIP_UNAVAILABLE = "UNAVAILABLE"
 #: the ~1.4%-of-spot placement error the convergence study measured. Named so no surface can print
 #: this as TRUSTED.
 GAMMA_FLIP_LEVEL_APPROX = "LEVEL_APPROX_NARROW_SPAN"
-#: Span a chain must cover around spot before its flip may be called TRUSTED.
+#: The live chain-FETCH width, and the FLOOR below which nothing is claimed at all (a chain that
+#: does not reach this cannot even support the at-spot SIGN, so the verdict is
+#: LOW_CONFIDENCE_NARROW_CHAIN and terrain stands everything aside).
+#: THIS CONSTANT NO LONGER AWARDS "TRUSTED" — corrected 2026-08-26; that is
+#: GAMMA_FLIP_TRUSTED_SPAN_PCT below. Reaching this floor earns at most GAMMA_FLIP_LEVEL_APPROX
+#: (regime stands on the at-spot sign, flip LEVEL disclosed as approximate).
 #: PROVENANCE (RC-62, operator challenge "what is scientific about this number?"): the 0.05 was
-#: ASSERTED, never derived — its original comment merely restated it, while it governs both every
-#: live chain-fetch width and every TRUSTED-vs-LOW_CONFIDENCE verdict.
+#: ASSERTED, never derived — its original comment merely restated it, and AT THAT TIME (now fixed)
+#: it governed both every live chain-fetch width and every TRUSTED-vs-LOW_CONFIDENCE verdict.
 #: MEASURED 2026-07-26 by `python tools/study_flip_span_convergence_v1.py` (convergence against the
 #: flip on each stored wide chain's FULL delivered strike set, trading days only, fixed cohort of
 #: 15 chains that yield a flip at every ladder point): the flip has NOT converged at this value —
@@ -1249,13 +1265,22 @@ def compute_gamma_flip_v2(
     trusted_span_pct: float = GAMMA_FLIP_TRUSTED_SPAN_PCT,
     now=None, profile: List[tuple[float, float]] | None = None
 ) -> tuple[float | None, str, dict]:
-    """Canonical gamma flip (profile zero-crossing) plus an honest confidence verdict.
+    """Canonical gamma flip (profile zero-crossing) plus a CHAIN-COVERAGE verdict.
 
-    Returns (flip | None, confidence, diagnostics). A chain that does not span at least
-    +/-min_span_pct around spot is reported LOW_CONFIDENCE_NARROW_CHAIN: a narrow chain
-    provably misplaces the flip (measured 2026-07-19 - a 40-contract chain returned 770.35
-    against a full-chain reference of 745.61, a 3.6% error). Never present a narrow-chain
-    flip as if it were trustworthy.
+    Returns (flip | None, confidence, diagnostics). The verdict reports how much of the chain
+    around spot was actually delivered — it does NOT certify that the flip level is correct
+    (see the GAMMA_FLIP_TRUSTED block for exactly what it does and does not assert).
+
+    THREE tiers, by delivered span (corrected 2026-08-26 — this docstring previously described
+    only two, and framed the result as trustworthiness rather than coverage):
+      * >= trusted_span_pct              -> GAMMA_FLIP_TRUSTED (coverage reaches the measured
+                                            convergence span; still not proof of the level)
+      * >= min_span_pct, < trusted_span  -> GAMMA_FLIP_LEVEL_APPROX (enough strikes near spot for
+                                            the at-spot SIGN, so the regime stands, but too narrow
+                                            to place the LEVEL — consumers must disclose that)
+      * < min_span_pct                   -> GAMMA_FLIP_NARROW (nothing is claimed)
+    Why the floor exists at all: a narrow chain provably misplaces the flip (measured 2026-07-19 —
+    a 40-contract chain returned 770.35 against a full-chain reference of 745.61, a 3.6% error).
     """
     if not contracts or not spot or spot <= 0:
         return None, GAMMA_FLIP_UNAVAILABLE, {"reason": "no_contracts_or_spot"}
