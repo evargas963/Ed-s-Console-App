@@ -1,26 +1,27 @@
-# Rehab latest — 2026-08-25T13:01:52.225629+00:00
+# Rehab latest — 2026-08-26T22:05:09.158152+00:00
 
-**HEAD:** `dac0c6e8` · **Mode:** recommend only (no auto-edit); the operator triages findings in chat and assigns the session
+**HEAD:** `4b36a5d8` · **Mode:** recommend only (no auto-edit); the operator triages findings in chat and assigns the session
 
-Findings: **3**
+Findings: **4**
 
 | Sev | ID | Facet | Summary | Recommendation |
 |-----|----|-------|---------|----------------|
-| P1 | `rehab.product.complexity` | codebase_quality | 517 function(s) above the CC>15 review threshold; worst is 617 | Median CC under 10, flag above 15 (codeant seven axes). The worst outliers carry the risk, not the median. |
+| P0 | `rehab.product.faucets_disagree` | one_faucet | 5 field(s) disagree across endpoints right now: spot, spread_frac, lo, hi, contracts_used | Two screens can show contradictory numbers with nothing to detect it. One producer per field (RC-262). |
+| P1 | `rehab.product.complexity` | codebase_quality | 528 function(s) above the CC>15 review threshold; worst is 622 | Median CC under 10, flag above 15 (codeant seven axes). The worst outliers carry the risk, not the median. |
 | P1 | `rehab.product.coverage_unmeasured` | codebase_quality | no coverage artefact: test coverage is unmeasured | 544 test files prove tests EXIST, not that they cover anything. Target >=80% on core modules. |
 | P1 | `rehab.code_health_blocking` | static_quality | code_health_panel --check non-zero (BLOCKING defects or unmeasurable) | Run /code-health quality circle; drive BLOCKING to 0. |
 
 ## Advisory debt (P1/RC-246 moved these off the blocking commit path)
 
-**Total: 3364** · prior: 3364 · delta: = 0
+**Total: 3477** · prior: 3364 · delta: ▲ +113
 
 | Check | Count |
 |---|---:|
-| `ruff_quality` | 1360 |
-| `mypy_types` | 832 |
-| `function_complexity` | 535 |
-| `function_length` | 437 |
-| `orphan_dict_keys` | 151 |
+| `ruff_quality` | 1429 |
+| `mypy_types` | 861 |
+| `function_complexity` | 545 |
+| `function_length` | 441 |
+| `orphan_dict_keys` | 152 |
 | `file_length` | 49 |
 | `debt_ratchet` | 0 |
 
@@ -32,8 +33,8 @@ Findings: **3**
 | `server.py` | ruff_quality | 38 |
 | `db.py` | mypy_types | 22 |
 | `features/signal_layer_v1.py` | mypy_types | 22 |
+| `tests/test_a1_conformal_artifact_production.py` | ruff_quality | 22 |
 | `call_engine.py` | ruff_quality | 20 |
-| `arch_competition/stack_bundle_eval_v1.py` | ruff_quality | 11 |
 | `arch_competition/stack_bundle_eval_v1.py` | function_complexity | 10 |
 | `calibration/daily_scoreboard.py` | function_complexity | 10 |
 | `arch_competition/stack_bundle_eval_v1.py` | function_length | 8 |
@@ -67,9 +68,9 @@ Work ONLY these. Mass-rewriting the backlog is banned: every change needs a repr
 - smallest safe change: annotate the single function the error names; do not restructure call sites
 - kill criteria: kill if the annotation forces a runtime change, or if the error is in a vendored/legacy tree scheduled for deletion
 
-**5. [P2] `ruff_quality` → `call_engine.py` (20 finding(s))**
+**5. [P2] `ruff_quality` → `tests/test_a1_conformal_artifact_production.py` (22 finding(s))**
 
-- why now: 20 ruff_quality finding(s) concentrated in one file — a bounded change, not a sweep
+- why now: 22 ruff_quality finding(s) concentrated in one file — a bounded change, not a sweep
 - smallest safe change: ruff --fix on THIS FILE only, then run the file's own test module; commit the autofix alone
 - kill criteria: kill if the file has no test module, or if --fix touches money-path semantics (greeks, levels, decisions) rather than style
 

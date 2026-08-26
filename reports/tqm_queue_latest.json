@@ -1,18 +1,18 @@
 {
-  "advisory_total": 3364,
+  "advisory_total": 3477,
   "cap": 5,
   "checks": {
     "debt_ratchet": 0,
     "file_length": 49,
-    "function_complexity": 535,
-    "function_length": 437,
-    "mypy_types": 832,
-    "orphan_dict_keys": 151,
-    "ruff_quality": 1360
+    "function_complexity": 545,
+    "function_length": 441,
+    "mypy_types": 861,
+    "orphan_dict_keys": 152,
+    "ruff_quality": 1429
   },
-  "delta": 0,
-  "generated_at_iso": "2026-08-25T13:01:52.224640+00:00",
-  "generated_at_utc": 1787662912.224633,
+  "delta": 113,
+  "generated_at_iso": "2026-08-26T22:05:09.156809+00:00",
+  "generated_at_utc": 1787781909.156799,
   "note": "TRIAGE stage of the TQM loop. Recommended next ACT cycle (max 5) \u2014 the operator picks in chat. Mass-rewriting the advisory backlog is banned: every change needs a reproduce command and a test.",
   "prior_total": 3364,
   "top_items": [
@@ -58,13 +58,13 @@
     },
     {
       "check": "ruff_quality",
-      "count": 20,
-      "id": "tqm.ruff_quality.call_engine.py",
+      "count": 22,
+      "id": "tqm.ruff_quality.tests.test_a1_conformal_artifact_production.py",
       "kill_criteria": "kill if the file has no test module, or if --fix touches money-path semantics (greeks, levels, decisions) rather than style",
-      "path": "call_engine.py",
+      "path": "tests/test_a1_conformal_artifact_production.py",
       "severity": "P2",
       "suggested_smallest_change": "ruff --fix on THIS FILE only, then run the file's own test module; commit the autofix alone",
-      "why_now": "20 ruff_quality finding(s) concentrated in one file \u2014 a bounded change, not a sweep"
+      "why_now": "22 ruff_quality finding(s) concentrated in one file \u2014 a bounded change, not a sweep"
     }
   ]
 }
