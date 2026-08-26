@@ -122,3 +122,82 @@ def test_level_one_requests_the_COMPLETE_field_surface_not_a_default():
 def test_subscribe_fails_soft_without_a_client():
     receipt = asyncio.run(subscribe_options(None, ["SPY   260826C00600000"]))
     assert receipt["errors"], "a missing client must be reported, never silently succeed"
+
+
+# ── ROTATION: universal coverage when the budget cannot hold everything at once ──────────────
+# Measured against the real enrolled universe (58 underlyings, 238-contract budget): without
+# rotation every underlying gets 4-5 contracts, which proves a pipeline and describes no flow.
+# With rotation SPY/QQQ/IWM hold 39 each continuously and each non-core underlying gets 14 in
+# its turn, with a full cycle over all 55 non-core in 7 slices (1.8 h).
+
+def _universe(n: int = 58) -> list[str]:
+    from options_stream_subscription import CORE_UNDERLYINGS
+    return list(CORE_UNDERLYINGS) + [f"U{i:03d}" for i in range(n - len(CORE_UNDERLYINGS))]
+
+
+def test_core_underlyings_are_never_rotated_out():
+    """SPY/QQQ/IWM carry the money path. A gap in their options history is a gap in the record
+    for terrain, models and every decision built on them."""
+    from options_stream_subscription import CORE_UNDERLYINGS, RotationPolicy, rotation_cohort
+
+    pol, u = RotationPolicy(), _universe()
+    for s in range(40):
+        c = rotation_cohort(u, s * pol.slice_seconds, pol)
+        for core in CORE_UNDERLYINGS:
+            assert core in c["eligible"], f"{core} was rotated out in slice {s}"
+
+
+def test_every_non_core_underlying_is_covered_within_one_cycle():
+    """Rotation must GUARANTEE a turn, not merely tend towards one. An underlying that can be
+    skipped indefinitely is starved on a longer timescale — the same defect as alphabetical
+    ceiling-filling, just harder to notice."""
+    from options_stream_subscription import RotationPolicy, rotation_cohort
+
+    pol, u = RotationPolicy(), _universe()
+    first = rotation_cohort(u, 0.0, pol)
+    seen: set[str] = set()
+    for s in range(first["full_cycle_slices"]):
+        seen.update(rotation_cohort(u, s * pol.slice_seconds, pol)["rotating"])
+    assert len(seen) == first["non_core_total"], (
+        f"only {len(seen)} of {first['non_core_total']} non-core underlyings got a turn in a "
+        f"full cycle — some are starved on the rotation timescale")
+
+
+def test_rotation_is_deterministic_from_the_clock_alone():
+    """Replay must be able to reconstruct which underlyings were eligible at a past instant
+    without stored scheduler state. Two calls inside one slice must agree, and the boundary must
+    actually move the cohort."""
+    from options_stream_subscription import RotationPolicy, rotation_cohort
+
+    pol, u = RotationPolicy(), _universe()
+    # ALIGN to a slice boundary. An arbitrary epoch sits mid-slice, so "base + slice_seconds - 1"
+    # would cross into the next slice and the test would fail on correct code — which is exactly
+    # what a first run of this did.
+    base = (1_787_000_000 // pol.slice_seconds) * pol.slice_seconds
+    a = rotation_cohort(u, base, pol)
+    b = rotation_cohort(u, base + pol.slice_seconds - 1, pol)
+    c = rotation_cohort(u, base + pol.slice_seconds, pol)
+    assert a["eligible"] == b["eligible"], "cohort changed inside a single slice"
+    assert a["rotating"] != c["rotating"], "cohort did not advance across a slice boundary"
+
+
+def test_rotation_buys_real_depth_rather_than_reshuffling_slivers():
+    """The whole justification. If a rotating underlying's depth were no better than the
+    everything-at-once split, rotation would add gaps for nothing."""
+    from options_stream_subscription import RotationPolicy, rotation_cohort, split_budget
+
+    pol, u = RotationPolicy(), _universe()
+    budget = 238
+    flat_depth = budget // len(u)
+    c = rotation_cohort(u, 0.0, pol)
+    sp = split_budget(budget, len(c["core"]), len(c["rotating"]), pol)
+    core_depth = sp["core"] // max(1, len(c["core"]))
+    rot_depth = sp["rotating"] // max(1, len(c["rotating"]))
+
+    assert rot_depth > flat_depth * 2, (
+        f"rotating depth {rot_depth} is not materially better than the flat split "
+        f"{flat_depth} — the coverage gaps rotation introduces would buy nothing")
+    assert core_depth > flat_depth * 4, (
+        f"core depth {core_depth} vs flat {flat_depth}: the money path is not getting the "
+        f"continuous depth that justifies reserving budget for it")
+    assert sp["core"] + sp["rotating"] == budget, "the budget split loses or invents contracts"

@@ -53,6 +53,114 @@ MAX_STREAMED_CONTRACTS = 240
 DEFAULT_STRIKES_PER_SIDE = 8
 DEFAULT_EXPIRIES = 3
 
+#: Underlyings that are NEVER rotated out. These are the money path: the console's own decision
+#: surface, terrain and models are built on SPY/QQQ/IWM, so a gap in their options history is a
+#: gap in the record for everything that matters most. Everything else shares what remains.
+CORE_UNDERLYINGS = ("SPY", "QQQ", "IWM")
+
+#: How long one rotation slice lasts. Long enough that a slice yields a usable run of observations
+#: for the underlyings it covers (a 60-second slice would produce confetti), short enough that a
+#: full cycle over the enrolled universe completes within a session.
+DEFAULT_SLICE_SECONDS = 900
+
+
+@dataclass(frozen=True)
+class RotationPolicy:
+    """How universal coverage is achieved when the budget cannot hold everything at once.
+
+    THE CONSTRAINT, stated plainly. Schwab bills KEYS (symbol x service) against roughly 500. With
+    both options services on, that is ~238 contracts. The enrolled universe is 58 underlyings.
+    Spreading 238 across 58 gives FOUR contracts each — two strikes, one expiry, both sides. That
+    is enough to prove a pipeline works and nowhere near enough to describe an underlying's flow.
+
+    So breadth and depth cannot both be had at one instant, and pretending otherwise is how a
+    product ends up with a permanently useless strike ladder. The resolution is to make the choice
+    explicit and TIME-VARYING rather than fixed:
+
+      * CORE underlyings are always subscribed, at depth. They are the money path; their history
+        must be continuous, not sampled.
+      * The remaining budget rotates over the rest of the enrolled universe in deterministic
+        slices, so each non-core underlying receives REAL depth periodically instead of a
+        permanent sliver.
+      * Every slice is written to the coverage record, so a reader can always answer "was this
+        contract observable then" rather than inferring it from the presence of rows.
+
+    WHAT THIS DELIBERATELY DOES NOT CLAIM. Rotation does not give universal SIMULTANEOUS coverage;
+    nothing can, under the key budget. It gives universal ELIGIBILITY with recorded, bounded gaps.
+    A study that needs all 58 underlyings at one instant cannot be served by this and should be
+    told so by the coverage record rather than discovering it in the data.
+    """
+    core: tuple[str, ...] = CORE_UNDERLYINGS
+    core_fraction: float = 0.5          # share of the budget reserved for core, at depth
+    slice_seconds: int = DEFAULT_SLICE_SECONDS
+    rotating_per_slice: int = 8         # how many non-core underlyings ride each slice
+
+    def slice_index(self, at_epoch_s: float) -> int:
+        """Which slice an instant falls in. A pure function of the clock, so two processes
+        computing coverage for the same moment agree without coordinating."""
+        return int(at_epoch_s // max(1, int(self.slice_seconds)))
+
+    def describe(self) -> str:
+        return (f"core {'/'.join(self.core)} always-on at {self.core_fraction:.0%} of budget; "
+                f"remaining budget rotates {self.rotating_per_slice} non-core underlyings per "
+                f"{self.slice_seconds}s slice")
+
+
+def rotation_cohort(all_underlyings: Iterable[str], at_epoch_s: float,
+                    policy: RotationPolicy | None = None) -> dict[str, Any]:
+    """Which underlyings are eligible in the slice containing `at_epoch_s`.
+
+    Deterministic and stateless: the cohort is a function of the sorted universe and the slice
+    index, so replay can reconstruct exactly which underlyings were eligible at a past instant
+    without consulting anything but the clock and the roster. The rotation walks the non-core
+    list in order, wrapping — every non-core underlying is guaranteed a turn within
+    ceil(n_non_core / rotating_per_slice) slices, which is reported so the gap is a known
+    quantity rather than an emergent one.
+    """
+    pol = policy or RotationPolicy()
+    core = [u for u in pol.core if u in set(all_underlyings)]
+    non_core = sorted(set(all_underlyings) - set(pol.core))
+    idx = pol.slice_index(at_epoch_s)
+
+    cohort: list[str] = []
+    if non_core:
+        k = max(1, int(pol.rotating_per_slice))
+        start = (idx * k) % len(non_core)
+        for i in range(min(k, len(non_core))):
+            cohort.append(non_core[(start + i) % len(non_core)])
+
+    import math
+    cycle_slices = math.ceil(len(non_core) / max(1, pol.rotating_per_slice)) if non_core else 0
+    return {
+        "slice_index": idx,
+        "slice_seconds": pol.slice_seconds,
+        "core": core,
+        "rotating": cohort,
+        "eligible": core + cohort,
+        "non_core_total": len(non_core),
+        "full_cycle_slices": cycle_slices,
+        "full_cycle_seconds": cycle_slices * pol.slice_seconds,
+        "policy": pol.describe(),
+    }
+
+
+def split_budget(total_contracts: int, n_core: int, n_rotating: int,
+                 policy: RotationPolicy | None = None) -> dict[str, int]:
+    """Split the contract budget between always-on core and the rotating cohort.
+
+    Core gets a reserved share so its depth does not collapse when the cohort is large; the
+    remainder goes to the cohort. Both halves are returned explicitly so the trade-off is visible
+    in the subscription receipt rather than buried in arithmetic.
+    """
+    pol = policy or RotationPolicy()
+    total = max(0, int(total_contracts))
+    if n_core <= 0:
+        return {"core": 0, "rotating": total}
+    core_budget = int(total * float(pol.core_fraction))
+    if n_rotating <= 0:
+        return {"core": total, "rotating": 0}
+    return {"core": core_budget, "rotating": total - core_budget}
+
 
 @dataclass(frozen=True)
 class SelectionPolicy:
