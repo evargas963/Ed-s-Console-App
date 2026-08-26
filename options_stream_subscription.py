@@ -30,10 +30,22 @@ from typing import Any, Iterable
 
 log = logging.getLogger(__name__)
 
-#: Hard ceiling on simultaneously streamed option contracts. Chosen as a STARTING BOUND to be
-#: measured against, not as a proven capacity limit — the message rate, host CPU and write rate at
-#: this size are exactly what the capacity work has to establish. It exists so a policy bug cannot
-#: silently subscribe thousands of symbols before anyone notices.
+#: Schwab's streamer budget is counted in KEYS (symbol x service), not symbols. The repo's own
+#: recorded arithmetic (governance/CONSOLE_REBUILD_PLAN_CR_V1.md S3, "Streamer capacity v1.1"):
+#: 50xL1 + 50xNYSE_BOOK + 50xNASDAQ_BOOK + 450 internals = 600 > 500 — i.e. each service a
+#: symbol is subscribed to consumes its own key against a ~500 ceiling. That document treats 500
+#: as the operative number while noting the real accounting is measured at CR-01, so it is used
+#: here as a DOCUMENTED BOUND, not a verified vendor constant.
+SCHWAB_STREAM_KEY_LIMIT = 500
+
+#: Keep a margin so a selection that is briefly stale, or an equity resubscribe landing at the
+#: same moment, cannot push the account over the limit and disturb the equity/book subscriptions
+#: this console actually depends on.
+KEY_SAFETY_MARGIN = 20
+
+#: Fallback ceiling when the budget cannot be computed. Deliberately small: under uncertainty the
+#: safe error is too little coverage (a measurable gap) rather than a rejected subscription that
+#: could take the shared stream with it.
 MAX_STREAMED_CONTRACTS = 240
 
 #: Per-underlying shape of the selection. Strikes are counted PER SIDE of spot, so a value of 8
@@ -71,6 +83,106 @@ class SelectionResult:
 def _contract_symbol(contract: dict) -> str | None:
     s = contract.get("symbol")
     return s if isinstance(s, str) and s.strip() else None
+
+
+def contract_budget_from_key_limit(*, equity_symbols: int = 1, book_enabled: bool = True,
+                                   key_limit: int = SCHWAB_STREAM_KEY_LIMIT,
+                                   margin: int = KEY_SAFETY_MARGIN) -> dict[str, Any]:
+    """How many option CONTRACTS fit in the remaining streamer key budget.
+
+    The arithmetic, stated so it can be checked rather than trusted:
+      * the equity path holds `equity_symbols` x 3 keys — LEVELONE_EQUITIES, NASDAQ_BOOK and
+        NYSE_BOOK are three separate services on the same symbol;
+      * each option contract costs 1 key for LEVELONE_OPTIONS, plus 1 more for OPTIONS_BOOK
+        when book depth is collected;
+      * a margin is held back so a concurrent equity resubscribe cannot tip the account over.
+
+    WHY THIS REPLACES A CHOSEN NUMBER. The previous ceiling of 240 was an arbitrary starting
+    bound. Under the key model it happens to sit just under the limit when books are on
+    (240x2 + 3 = 483), which is luck, not derivation — and it would have been silently WRONG the
+    moment books were disabled (leaving ~477 keys unused) or the equity path subscribed more
+    symbols. Deriving it means the ceiling tracks the real constraint instead of a guess.
+
+    NOTE ON BOOKS. Collecting OPTIONS_BOOK halves contract coverage for the same budget. The
+    rebuild plan reached the same trade-off for equities and resolved it as "sentinel-first
+    books" — depth on a few names, quotes broadly. The same choice is available here and is the
+    caller's; this function only reports the arithmetic.
+    """
+    equity_keys = max(0, int(equity_symbols)) * 3
+    per_contract = 2 if book_enabled else 1
+    available = int(key_limit) - int(margin) - equity_keys
+    allowed = max(0, available // per_contract)
+    return {
+        "key_limit": int(key_limit),
+        "safety_margin": int(margin),
+        "equity_keys_held": equity_keys,
+        "keys_per_contract": per_contract,
+        "keys_available_for_options": max(0, available),
+        "contracts_allowed": allowed,
+        "book_enabled": bool(book_enabled),
+        "basis": "governance/CONSOLE_REBUILD_PLAN_CR_V1.md S3 streamer-capacity arithmetic "
+                 "(documented bound, real accounting measured at CR-01)",
+    }
+
+
+def build_chains_for_selection(db_path: Any = None, *, max_age_s: float = 86_400.0,
+                               tickers: Iterable[str] | None = None
+                               ) -> dict[str, tuple[float | None, list[dict]]]:
+    """Assemble {ticker: (spot, contracts)} from chains ALREADY FETCHED and persisted.
+
+    Deliberately reads the most recent persisted snapshot per ticker rather than calling the
+    vendor. Selection must not add REST load, and it must not become a second chain-fetch
+    authority beside the one the console already runs — a second fetcher would drift from the
+    first the moment either changed.
+
+    Tickers whose newest snapshot is older than ``max_age_s`` are SKIPPED rather than streamed
+    against a stale strike ladder: subscribing to yesterday's strikes around today's spot would
+    quietly collect the wrong contracts and look like coverage.
+    """
+    import json as _json
+    import sqlite3
+    import time as _time
+
+    if db_path is None:
+        try:
+            from db import DB_PATH as _DB
+            db_path = _DB
+        except Exception:                               # noqa: BLE001
+            return {}
+
+    cutoff = _time.time() - float(max_age_s)
+    out: dict[str, tuple[float | None, list[dict]]] = {}
+    try:
+        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=30.0)
+    except sqlite3.Error as e:
+        log.warning("build_chains_for_selection: cannot open %s: %s", db_path, e)
+        return {}
+    try:
+        rows = conn.execute(
+            "SELECT s.ticker, s.spot, s.option_chain_json FROM snapshots s "
+            "JOIN (SELECT ticker, MAX(ts_utc) AS mx FROM snapshots "
+            "      WHERE option_chain_json IS NOT NULL AND ts_utc >= ? GROUP BY ticker) m "
+            "  ON m.ticker = s.ticker AND m.mx = s.ts_utc "
+            "WHERE s.option_chain_json IS NOT NULL", (cutoff,)).fetchall()
+    except sqlite3.Error as e:
+        log.warning("build_chains_for_selection query failed: %s", e)
+        rows = []
+    finally:
+        conn.close()
+
+    want = {str(t).upper() for t in tickers} if tickers else None
+    for ticker, spot, blob in rows:
+        if want is not None and str(ticker).upper() not in want:
+            continue
+        try:
+            contracts = _json.loads(blob)
+        except (TypeError, ValueError):
+            continue
+        if isinstance(contracts, list) and contracts:
+            out[str(ticker)] = (float(spot) if spot is not None else None, contracts)
+    log.info("build_chains_for_selection: %d ticker(s) with a chain newer than %.0fs",
+             len(out), max_age_s)
+    return out
 
 
 def select_contracts(chains_by_ticker: dict[str, tuple[float | None, list[dict]]],

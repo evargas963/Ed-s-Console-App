@@ -1,0 +1,52 @@
+# Datasheet for Datasets (Gebru et al. 2021) — options_stream_coverage_epochs
+# What was OBSERVABLE on the options stream, and when.
+
+table: options_stream_coverage_epochs
+
+motivation: >
+  A gap in options history has at least three causes that mean opposite things: we never
+  subscribed the contract (our coverage hole); we were subscribed and the vendor sent nothing
+  (silence IS the observation); or we were subscribed, frames arrived, and our own ingest shed
+  them under load. Without a coverage record all three look identical — no rows — and a reader
+  would mistake our subscription ceiling for a market fact. Contract selection is a CAPACITY
+  POLICY bounded by Schwab's ~500-key budget, not the set of interesting contracts, so coverage
+  is deliberately partial and time-varying; this table stores which contracts were observable at
+  any past instant so absence stays interpretable.
+
+composition: >
+  One row per (symbol, service) SUBSCRIPTION INTERVAL. Columns: symbol (vendor option contract
+  symbol exactly as subscribed); underlying (parsed six-character root, NULL when the symbol
+  shape is unexpected — a guess would mis-attribute coverage); service (LEVELONE_OPTIONS |
+  OPTIONS_BOOK); started_ms and ended_ms (epoch MILLISECONDS, the same clock as
+  options_stream_frames, so joins are unit-correct; ended_ms NULL means the interval is still
+  open); policy_json (the selection policy that chose the contract, so a later reader can see
+  what rule produced this coverage); reason (subscribe / rotation / reconnect / stream_stop).
+  Market-data identifiers only — no customer, account, order or position data.
+
+collection: >
+  Written by order_flow_streaming when options collection starts and stops, via
+  calibration/options_stream_coverage.open_epochs / close_epochs. Lives in the dedicated
+  stream_capture.db, NEVER ed_console.db (RC-6 law, governance/CONSOLE_REBUILD_PLAN_CR_V1.md
+  S4) — enforced at construction by coverage_db_path, which resolve()s the path first so that
+  `data/x/../ed_console.db`, symlinks and junctions cannot walk through the guard. Epochs are
+  co-located with the frames they explain because explain_absence joins coverage against frames
+  and ingest health; a cross-database join would silently return nothing. Opening is idempotent
+  per (symbol, service) so a reconnect re-subscribing the same set does not manufacture
+  duplicate coverage. Closing on shutdown is required: an interval left open would claim we were
+  observing contracts during a window when the process was not running. AS OF 2026-08-26 options
+  collection is OFF by default (ED_OPTIONS_STREAM unset), so this table is empty in production.
+
+recommended_uses: >
+  Intended: answering "was this contract observable at time T" before interpreting a gap;
+  reconstructing per-underlying coverage depth at a past instant (the check that no underlying
+  silently starved); and giving replay a truthful account of what was knowable.
+  NOT intended: coverage is not a market claim. That a contract was subscribed says nothing
+  about dealer ownership, inventory sign, aggressor side, or opening/closing intent. Nothing
+  derived from this table may enter Decide.
+
+known_limitations: >
+  Empty until options collection is enabled. `underlying` is parsed from the symbol's padded
+  root and is NULL rather than guessed on an unexpected shape, so per-underlying rollups can
+  under-count if the vendor changes symbology. Drop accounting in options_stream_ingest_health
+  is per-process, not per-symbol, so explain_absence can only report SUBSCRIBED_MAYBE_DROPPED —
+  it cannot prove a specific symbol was the one shed.

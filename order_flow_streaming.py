@@ -62,6 +62,155 @@ STREAM_THREAD_JOIN_TIMEOUT_SEC = 35.0
 _STREAM_DIAG_L1_INFO_INTERVAL_SEC = 5.0
 _diag_l1_last_info_log_ts: float = 0.0
 
+# ── OPTIONS collection (LEVELONE_OPTIONS / OPTIONS_BOOK) on this SAME client ──────────────
+# Off unless explicitly enabled. Enabling changes what production streams and how fast the
+# database grows, so it is a deliberate act rather than a side effect of deploying this file.
+# MEASURED COST at the canary size (240 contracts): 243 frames/s, 1,824 bytes/frame,
+# ~1.59 GB per RTH hour ~= 10.3 GB per RTH day. That is why this starts OFF and why the
+# default scale is a canary/measurement set rather than the full enrolled universe.
+ED_OPTIONS_STREAM_ENV = "ED_OPTIONS_STREAM"
+_options_ingest: Any = None
+_options_subscribed_syms: list[str] = []
+_options_last_receipt: dict[str, Any] | None = None
+
+
+def options_streaming_enabled() -> bool:
+    """True only when the operator has explicitly turned options collection on."""
+    import os
+    return str(os.environ.get(ED_OPTIONS_STREAM_ENV, "")).strip().lower() in ("1", "true", "yes", "on")
+
+
+def _register_options_handlers(sc: Any, make_handler: Callable[[str], Callable[[dict], None]]) -> None:
+    """Attach options handlers to the EXISTING client. Inert until something subscribes.
+
+    Registration is separated from subscription on purpose: a handler with no subscription
+    receives nothing, so this is safe to run unconditionally and keeps the enable/disable
+    decision in exactly one place (_start_options_collection).
+    """
+    for attr, service in (("add_level_one_option_handler", "LEVELONE_OPTIONS"),
+                          ("add_options_book_handler", "OPTIONS_BOOK")):
+        fn = getattr(sc, attr, None)
+        if fn is None:
+            log.warning("stream client has no %s — options %s cannot be collected", attr, service)
+            continue
+        try:
+            fn(make_handler(service))
+        except Exception as e:                          # noqa: BLE001
+            log.warning("registering %s failed: %s", attr, e)
+
+
+async def _start_options_collection(sc: Any) -> None:
+    """Select contracts, start the writer, subscribe, and RECORD the coverage.
+
+    Every failure path here is soft. Options collection is additive; if any part of it cannot
+    start, the equity/book stream this console actually depends on must be unaffected.
+    """
+    global _options_ingest, _options_subscribed_syms, _options_last_receipt
+    if not options_streaming_enabled():
+        log.info("options streaming disabled (%s unset) — LEVELONE_OPTIONS/OPTIONS_BOOK "
+                 "handlers registered but nothing subscribed", ED_OPTIONS_STREAM_ENV)
+        return
+    try:
+        # RC-6 law: raw stream capture goes to stream_capture.db, NEVER ed_console.db.
+        from stream_spine import STREAM_DB_DEFAULT as _CAPTURE_DB
+        from calibration.options_stream_ingest import OptionsFrameIngest
+        from calibration.options_stream_coverage import open_epochs
+        from options_stream_subscription import (
+            SelectionPolicy, build_chains_for_selection, contract_budget_from_key_limit,
+            select_contracts, subscribe_options,
+        )
+    except Exception as e:                              # noqa: BLE001
+        log.warning("options collection unavailable: %s", e)
+        return
+
+    try:
+        chains = build_chains_for_selection()
+        if not chains:
+            log.warning("options collection: no chains available to select from — nothing "
+                        "subscribed (this is a COVERAGE GAP, not a market observation)")
+            return
+        # The ceiling is DERIVED from the vendor key budget and the keys the equity stream
+        # already holds, not chosen. Subscribing past the limit would be rejected by Schwab
+        # and could disturb the existing equity/book subscriptions.
+        budget = contract_budget_from_key_limit(
+            equity_symbols=len(_subscribed_equity_syms) or 1, book_enabled=True)
+        policy = SelectionPolicy(max_contracts=budget["contracts_allowed"])
+        sel = select_contracts(chains, policy)
+        if not sel.symbols:
+            log.warning("options collection: selection produced no contracts; notes=%s", sel.notes)
+            return
+        log.info("options key budget: %s", budget)
+
+        _options_ingest = OptionsFrameIngest(_CAPTURE_DB)
+        _options_ingest.start()
+
+        receipt = await subscribe_options(sc, sel.symbols)
+        _options_last_receipt = receipt
+        _options_subscribed_syms = list(sel.symbols)
+
+        # Coverage is recorded ONLY for services the vendor actually accepted, so the record
+        # never claims observability we did not obtain.
+        now_ms = int(time.time() * 1000.0)
+        for service, ok in (("LEVELONE_OPTIONS", receipt.get("level_one")),
+                            ("OPTIONS_BOOK", receipt.get("book"))):
+            if ok:
+                open_epochs(_CAPTURE_DB, sel.symbols, service=service, policy=sel.policy,
+                            reason="stream_start", at_ms=now_ms)
+        log.info("OPTIONS collection started: %d contracts across %d underlyings %s; errors=%s",
+                 len(sel.symbols), len(sel.per_underlying), sel.per_underlying, receipt.get("errors"))
+        _log_stream("OPTIONS_SUBSCRIBED", contracts=len(sel.symbols),
+                    per_underlying=sel.per_underlying, errors=receipt.get("errors"))
+    except Exception as e:                              # noqa: BLE001
+        log.warning("options collection failed to start (equity stream unaffected): %s", e)
+
+
+def _stop_options_collection(reason: str = "stream_stop") -> None:
+    """Close coverage epochs and drain the writer. Called from the stream loop's finally.
+
+    Closing epochs matters as much as stopping the writer: an epoch left open would claim we
+    were observing those contracts during a window when the process was not running.
+    """
+    global _options_ingest, _options_subscribed_syms
+    try:
+        if _options_subscribed_syms:
+            from stream_spine import STREAM_DB_DEFAULT as _CAPTURE_DB
+            from calibration.options_stream_coverage import close_epochs
+            now_ms = int(time.time() * 1000.0)
+            for service in ("LEVELONE_OPTIONS", "OPTIONS_BOOK"):
+                close_epochs(_CAPTURE_DB, _options_subscribed_syms, service=service,
+                             reason=reason, at_ms=now_ms)
+    except Exception as e:                              # noqa: BLE001
+        log.warning("closing options coverage epochs: %s", e)
+    finally:
+        _options_subscribed_syms = []
+    try:
+        if _options_ingest is not None:
+            stats = _options_ingest.stop(timeout=30.0)
+            log.info("OPTIONS ingest stopped: %s", stats)
+            _log_stream("OPTIONS_INGEST_STOPPED", **{
+                k: stats.get(k) for k in ("offered", "written", "dropped", "write_errors",
+                                          "max_queue_depth", "accounting_complete")})
+    except Exception as e:                              # noqa: BLE001
+        log.warning("stopping options ingest: %s", e)
+    finally:
+        _options_ingest = None
+
+
+def options_stream_status() -> dict[str, Any]:
+    """Live options-collection health, for the diagnostics surface."""
+    ing = _options_ingest
+    out: dict[str, Any] = {
+        "enabled": options_streaming_enabled(),
+        "subscribed_contracts": len(_options_subscribed_syms),
+        "last_receipt": _options_last_receipt,
+        "ingest": None,
+    }
+    if ing is not None:
+        s = ing.stats.snapshot()
+        s["queue_depth"] = ing.queue_depth()
+        out["ingest"] = s
+    return out
+
 
 def _log_stream(phase: str, **kwargs: Any) -> None:
     if kwargs:
@@ -419,10 +568,35 @@ def _run_stream_loop(
                             except Exception as e:
                                 log.debug("Tick callback: %s", e)
 
+        # ── OPTIONS handlers (LEVELONE_OPTIONS / OPTIONS_BOOK) ────────────────────────────
+        # These run INLINE on this loop, exactly like the equity handlers above, so they must
+        # stay O(1). They hand the frame to a bounded queue drained by a separate writer
+        # THREAD and return; no SQLite work happens here. Measured: p50 6 us / p99 32 us per
+        # offer, against a 3,900/s write throughput and a realistic 243 frames/s — see
+        # tools/measure_options_ingest_capacity_v1.py and reports/options_ingest_capacity_*.
+        # Doing the write inline instead would put fsync on the same thread that services
+        # LEVELONE_EQUITIES / NASDAQ_BOOK / NYSE_BOOK.
+        def _options_frame_handler(service: str):
+            def _handler(msg: dict) -> None:
+                ing = _options_ingest
+                if ing is None:
+                    return
+                try:
+                    ing.offer(service, msg, received_ts_ms=int(time.time() * 1000.0))
+                except Exception as e:                  # noqa: BLE001
+                    # An options storage problem must never propagate into the shared loop.
+                    log.debug("options ingest offer (%s): %s", service, e)
+            return _handler
+
         try:
             sc.add_nasdaq_book_handler(_book_handler)
             sc.add_nyse_book_handler(_book_handler)
             sc.add_level_one_equity_handler(_level_one_handler)
+
+            # Registered on the SAME client — no second socket, no second source of truth.
+            # Registering a handler is inert until something subscribes, so this cannot change
+            # existing stream behaviour on its own.
+            _register_options_handlers(sc, _options_frame_handler)
 
             await sc.login()
             _streaming_logged_in = True
@@ -432,6 +606,11 @@ def _run_stream_loop(
                 first = _pending_post_login_ticker or initial_ticker
                 _pending_post_login_ticker = None
             await _resubscribe_to_ticker(sc, first)
+
+            # Options coverage is deliberately NOT tied to the viewer's ticker. Inheriting the
+            # equity path's single-active-symbol behaviour would make options HISTORY a
+            # function of what someone happened to be looking at.
+            await _start_options_collection(sc)
 
             log.info("Order flow streaming connected; active L1 = %s", _active_streaming_ticker)
 
@@ -448,6 +627,12 @@ def _run_stream_loop(
         except Exception as e:
             log.warning("Order flow streaming error: %s", e)
         finally:
+            # Before the socket goes: close coverage epochs and drain the options writer, so
+            # retained history does not claim observability past the end of the session.
+            try:
+                _stop_options_collection("stream_stop")
+            except Exception as e:                      # noqa: BLE001
+                log.warning("OPTIONS_STOP_EXCEPTION err=%s", e)
             try:
                 await _graceful_disconnect_stream_client(sc)
             except Exception as e:

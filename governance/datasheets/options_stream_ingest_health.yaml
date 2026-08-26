@@ -1,0 +1,49 @@
+# Datasheet for Datasets (Gebru et al. 2021) — options_stream_ingest_health
+# Durable proof of what the options ingestion path retained, and what it lost.
+
+table: options_stream_ingest_health
+
+motivation: >
+  Options frames are handed to a bounded in-memory queue drained by a dedicated writer thread,
+  because the stream handlers run INLINE on the sole Schwab message loop and a per-frame SQLite
+  commit there would stall LEVELONE_EQUITIES / NASDAQ_BOOK / NYSE_BOOK. A bounded queue can
+  overflow, and an overflow is a real hole in retained history. Counters that die with the
+  process cannot explain that hole a week later, so they are flushed here. The invariant this
+  table exists to preserve is offered == written + dropped: a shortfall in history must always be
+  attributable, never mysterious. A silent hole is worse than a counted one — it reads as "the
+  vendor sent nothing".
+
+composition: >
+  One row per writer lifetime (flushed when the writer stops). Columns: window_start_ms and
+  window_end_ms (epoch MILLISECONDS); offered (frames handed to the queue by the stream
+  handler); written (frames actually committed); dropped (frames shed on a full queue, PLUS any
+  left undrained at shutdown); write_errors (batch or open failures); max_queue_depth (high-water
+  mark, the basis for sizing the bound from evidence rather than taste); max_ingest_lag_ms
+  (worst received-minus-vendor-timestamp, both in ms); batches; write_ms_total. Operational
+  telemetry only — no market data, no customer, account, order or position data.
+
+collection: >
+  Written by calibration/options_stream_ingest.OptionsFrameIngest into the dedicated
+  stream_capture.db, NEVER ed_console.db (RC-6 law, enforced at construction on a resolve()d
+  path). MEASURED CHARACTERISTICS at the canary size, from
+  tools/measure_options_ingest_capacity_v1.py (reports/options_ingest_capacity_20260826.json):
+  offer() costs p50 ~6 us / p99 ~32 us on the stream loop; write throughput ~3,900 frames/s
+  against a realistic 243 frames/s for 240 contracts (~16x headroom); sustained queue high-water
+  14-26 of 20,000; deliberate overflow drops are fully counted; a writer that cannot open storage
+  is isolated, non-fatal, and still balances the accounting. Storage cost measured at 1,824
+  bytes/frame ~= 1.59 GB per RTH hour ~= 10.4 GB per RTH day at 240 contracts.
+
+recommended_uses: >
+  Intended: proving whether a gap in options history was caused by our own shedding; sizing the
+  queue bound and batch parameters from observed high-water marks; and monitoring whether
+  persistence is keeping up with the stream.
+  NOT intended: drop counts are per-process TOTALS, not per-symbol, so this table can never
+  establish that a particular contract was the one dropped. It carries no market information and
+  nothing derived from it may enter Decide.
+
+known_limitations: >
+  Empty until options collection is enabled (ED_OPTIONS_STREAM unset as of 2026-08-26). One row
+  per writer lifetime rather than per fixed interval, so a long-running session produces a single
+  coarse window; finer-grained periodic flushes are not implemented. max_ingest_lag_ms depends on
+  the vendor stamp being contemporaneous — replaying archived captures against a current clock
+  produces meaningless lag figures and must not be read as a pipeline measurement.

@@ -110,6 +110,60 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
+#: Alias used by the batched ingestion writer. Same function, unambiguous at the import site.
+ensure_options_stream_schema = ensure_schema
+
+
+# ── ONE row shape, shared by both writers ─────────────────────────────────────────────────────
+# There are two write paths into this table: persist_frame (one frame, its own connection) and
+# calibration.options_stream_ingest (batched, on a dedicated writer thread). They MUST produce
+# byte-identical rows. Two writers each building their own INSERT tuple is two sources of truth
+# for one table, and they would drift the first time either is edited — so the row shaping lives
+# here once and both call it.
+
+def frame_row_values(service: str, frame: dict[str, Any],
+                     received_ts_ms: int) -> tuple | None:
+    """Build the options_stream_frames INSERT tuple, or None if the frame is unusable.
+
+    Returning None rather than raising keeps the rejection decision identical on both paths: a
+    malformed frame is skipped and counted, never allowed to abort a batch of good frames or to
+    take the console down.
+    """
+    if service not in SUPPORTED_SERVICES or not isinstance(frame, dict):
+        return None
+    try:
+        frame_ts_ms = int(frame.get("timestamp"))
+        recv_ms = int(received_ts_ms)
+    except (TypeError, ValueError):
+        return None
+    content = frame.get("content")
+    return (
+        service,
+        frame_ts_ms,
+        recv_ms,
+        recv_ms - frame_ts_ms,
+        len(content) if isinstance(content, list) else 0,
+        json.dumps(frame, default=str, separators=(",", ":")),
+    )
+
+
+def frame_contract_entries(frame: dict[str, Any]) -> list[tuple[int, str]]:
+    """(content_idx, symbol_key) for EVERY contract in the frame — not just the first.
+
+    Entries without a key are skipped rather than given a fabricated one.
+    """
+    content = frame.get("content") if isinstance(frame, dict) else None
+    if not isinstance(content, list):
+        return []
+    return [(i, c.get("key")) for i, c in enumerate(content)
+            if isinstance(c, dict) and c.get("key")]
+
+
+def frame_symbol_rows(frame_id: int, frame: dict[str, Any]) -> list[tuple[int, str, int]]:
+    """options_stream_frame_symbols rows for one stored frame."""
+    return [(frame_id, key, idx) for idx, key in frame_contract_entries(frame)]
+
+
 def persist_frame(db_path: Path | str, *, service: str, frame: dict[str, Any],
                   received_ts_ms: int) -> dict[str, Any]:
     """Store ONE decoded vendor frame plus a per-contract index. Never raises on bad input.
@@ -134,9 +188,8 @@ def persist_frame(db_path: Path | str, *, service: str, frame: dict[str, Any],
     if not isinstance(frame, dict):
         return {"status": "rejected", "reason": "frame is not a dict"}
 
-    raw_ts = frame.get("timestamp")
     try:
-        frame_ts_ms = int(raw_ts)
+        int(frame.get("timestamp"))
     except (TypeError, ValueError):
         return {"status": "rejected", "reason": "frame carries no usable vendor timestamp"}
     try:
@@ -144,9 +197,13 @@ def persist_frame(db_path: Path | str, *, service: str, frame: dict[str, Any],
     except (TypeError, ValueError):
         return {"status": "rejected", "reason": "received_ts_ms is not an integer millisecond clock"}
 
-    content = frame.get("content")
-    entries = [(i, c.get("key")) for i, c in enumerate(content)
-               if isinstance(c, dict) and c.get("key")] if isinstance(content, list) else []
+    # Shared row shaping — the batched writer calls exactly these, so both paths agree by
+    # construction rather than by two developers remembering the same column order.
+    values = frame_row_values(service, frame, recv_ms)
+    if values is None:
+        return {"status": "rejected", "reason": "frame could not be shaped into a row"}
+    frame_ts_ms = values[1]
+    entries = frame_contract_entries(frame)
 
     conn = sqlite3.connect(str(db_path), timeout=30.0)
     try:
@@ -155,16 +212,14 @@ def persist_frame(db_path: Path | str, *, service: str, frame: dict[str, Any],
             "INSERT INTO options_stream_frames"
             "(service, frame_ts_ms, received_ts_ms, ingest_lag_ms, n_contracts, payload_json)"
             " VALUES (?,?,?,?,?,?)",
-            (service, frame_ts_ms, recv_ms, recv_ms - frame_ts_ms,
-             len(content) if isinstance(content, list) else 0,
-             json.dumps(frame, default=str, separators=(",", ":"))),
+            values,
         )
         frame_id = cur.lastrowid
         # every contained contract, not just the first
         conn.executemany(
             "INSERT OR REPLACE INTO options_stream_frame_symbols(frame_id, symbol_key, content_idx)"
             " VALUES (?,?,?)",
-            [(frame_id, key, idx) for idx, key in entries],
+            frame_symbol_rows(frame_id, frame),
         )
         conn.commit()
     except sqlite3.Error as e:
