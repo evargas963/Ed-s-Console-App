@@ -22,6 +22,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from canonical_distances import canonical_nearest_distances
+from instrument_identity import format_strike_for_display  # ONE displayed-strike authority
 from math_snapshot_derive import derive_vwap_side  # RC-345/F21: one vwap-side authority
 from math_probabilities import OE_SPREAD_TIGHT_MAX
 from fusion_contract import canonical_provenance_is_tradable, fusion_is_authoritative
@@ -790,7 +791,10 @@ def recommend_option_expression(
             {**proof_out, "reason": "all_candidates_unscorable"},
         )
 
-    txt = str(int(best_strike)) if float(best_strike).is_integer() else str(best_strike)
+    # ONE producer for a displayed strike (instrument_identity.format_strike_for_display). This
+    # rule was inlined here AND again at the leg-string site below; the browser side showed where
+    # duplicating it ends — four surfaces, four rules, three of them wrong.
+    txt = format_strike_for_display(best_strike)
     if not best_reasons:
         best_reasons = ["ATM / ITM candidate with best composite liquidity+gamma score"]
     proof_out["winner"] = {
@@ -932,11 +936,9 @@ def _build_contract_context_ms(ms: "MarketState", contracts: list) -> str:
         return ""
     dte = _schwab_days_to_expiration_for_contract(contracts, k, side, expiry=exp)
     dte_part = " · 0DTE" if dte == 0 else (f" · {dte}DTE" if dte is not None and dte > 0 else "")
-    try:
-        kf = float(k)
-        strike_disp = str(int(kf)) if kf.is_integer() else str(kf)
-    except Exception:
-        strike_disp = str(k)
+    # Same ONE producer as the expression above — the leg name and the expression must never be
+    # able to say different things about the same contract.
+    strike_disp = format_strike_for_display(k)
     leg = f"{t} {str(exp)[:10]} {strike_disp}{'C' if side == 'CALL' else 'P'}{dte_part}"
     bid, ask, mid, mid_source = _oe_bid_ask_mid(contracts, float(k), side)
     try:

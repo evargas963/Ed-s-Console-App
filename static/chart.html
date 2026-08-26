@@ -4,7 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Ed Chart — terrain on price</title>
-<script src="/static/rth_clock_authority.js"></script> <!-- # ui-mockup-ok: F09 consume served time_et RTH clock; no Chart redesign -->
+<script src="/static/rth_clock_authority.js"></script>
+<!-- # ui-mockup-ok: THE displayed-strike authority. One producer, every surface consumes it. -->
+<script src="/static/js/strike_format.js"></script> <!-- # ui-mockup-ok: F09 consume served time_et RTH clock; no Chart redesign -->
 <style>
   /* v6.2 (RC-195) # ui-mockup-ok: operator "the tabs don't look right, no light/dark, fonts
      don't match" — this is the cv2 SYSTEM the operator actually sees on the Console, ported
@@ -384,16 +386,10 @@ const fmt = (x, d = 2) => x == null ? '—' : Number(x).toFixed(d);
 // XRT/CDE/CIFR/SMCI a 0.5 one. It reached the CALL WALL / PUT WALL chips and the coach lines, so
 // the console was naming levels the operator cannot trade.
 //
-// THE RULE, with no instrument knowledge in it: show exactly the decimals this number needs.
-// 320 -> "320", 322.5 -> "322.5", 17.25 -> "17.25". Nothing here assumes an increment, a tick
-// size, or which tickers are "core", so a new optionable symbol of any geometry formats correctly.
-const fmtStrike = k => {
-  if (k == null) return '—';
-  const n = Number(k);
-  if (!Number.isFinite(n)) return '—';
-  const s = n.toFixed(4);
-  return s.indexOf('.') < 0 ? s : s.replace(/0+$/, '').replace(/\.$/, '');
-};
+// THE PRODUCER IS static/js/strike_format.js, loaded in <head>. It is deliberately NOT redefined
+// here: this rule previously existed once per surface and was wrong in a different way on each
+// (chart/exposure rounding 322.5 to "323", the terrain map truncating 17.25 to "17.3"), which is
+// what a duplicated computation buys. window.fmtStrike is the only definition in the document.
 const j = async u => (await fetch(u)).json();
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => (
   ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]));

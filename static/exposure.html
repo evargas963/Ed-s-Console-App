@@ -7,6 +7,8 @@
 <!-- # ui-mockup-ok: RC-200/RC-201 operator LIVE order 2026-08-02 ("this goes live") + same-day
      "lifeless chart" correction: full interactions, series VWAP bands, seeded red/green
      bubbles, forming candle. Quote recorded in governance/ui_mockup_approvals.json. -->
+<!-- # ui-mockup-ok: THE displayed-strike authority. One producer, every surface consumes it. -->
+<script src="/static/js/strike_format.js"></script>
 <style>
   :root { --bg:#0a0e15; --panel:#111826; --panel2:#181c26; --border:#1f2a3c; --border2:#2a3850;
           --text:#e9eef6; --text2:#c6d0e0; --dim:#93a1b8; --mut:#66748c;
@@ -151,16 +153,9 @@ const fmt = (x, d = 2) => x == null ? '—' : Number(x).toFixed(d);
 // It was invisible on SPY/QQQ/IWM (whole-dollar ladders) and wrong everywhere else: measured live,
 // TSLA/AAPL/META/NVDA trade a 2.5 ladder and XRT/CDE/CIFR/SMCI a 0.5 one.
 //
-// THE RULE, carrying no instrument knowledge: show exactly the decimals the number needs.
-// 320 -> "320", 322.5 -> "322.5", 17.25 -> "17.25". No increment, tick size or core-ticker
-// assumption, so any optionable symbol of any geometry formats correctly.
-const fmtStrike = k => {
-  if (k == null) return '—';
-  const n = Number(k);
-  if (!Number.isFinite(n)) return '—';
-  const s = n.toFixed(4);
-  return s.indexOf('.') < 0 ? s : s.replace(/0+$/, '').replace(/\.$/, '');
-};
+// THE PRODUCER IS static/js/strike_format.js, loaded in <head>. Deliberately NOT redefined here:
+// this rule previously existed once per surface and differed between them, which is exactly how
+// three of the four surfaces ended up wrong. window.fmtStrike is the only definition.
 const fmtBig = v => { if (v == null) return '—'; const a = Math.abs(v);
   return a >= 1e9 ? (v / 1e9).toFixed(2) + 'B' : a >= 1e6 ? (v / 1e6).toFixed(1) + 'M'
        : a >= 1e3 ? (v / 1e3).toFixed(0) + 'K' : String(Math.round(v)); };

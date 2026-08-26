@@ -44,3 +44,45 @@ def ticker_storage_key(ticker: str | None) -> str:
     if u in BROKER_INDEX_BARE_ROOTS:
         return "$" + u
     return u
+
+
+#: Decimal places a strike is rendered at before trailing zeros are trimmed. Four is well beyond
+#: any listed increment (.5, .25, .125), and trimming means a whole-dollar strike reads "320"
+#: rather than "320.0000" — the display should look like the ladder, not like a float.
+STRIKE_DISPLAY_DECIMALS = 4
+
+
+def format_strike_for_display(strike) -> str:
+    """THE strike-to-text authority for every server-rendered surface. One producer.
+
+    WHY THIS IS A FUNCTION AND NOT A ONE-LINER AT EACH CALL SITE. The rule
+    ``str(int(k)) if k.is_integer() else str(k)`` was inlined twice in market_state (the option
+    expression and the leg string). Both spellings happened to be correct, but a computation
+    duplicated per call site is how the browser side ended up with FOUR different strike rules,
+    three of them wrong — chart and exposure rounding 322.5 to "323", the terrain map truncating
+    17.25 to "17.3", and exactly one site correct. One displayed strike is one computation.
+
+    WHAT IT GUARANTEES: the text names the SAME price it was given. It is not "print two
+    decimals" — a rounded strike is a price at which no contract trades, and on a 0.5 ladder
+    rounding also collapses two adjacent real strikes onto one label, erasing one from the
+    display entirely.
+
+    Carries no instrument knowledge: no increment, tick size, roster or core-ticker assumption,
+    so a symbol this console has never seen renders correctly with no prior knowledge of it.
+
+    BROWSER COUNTERPART: static/js/strike_format.js ``fmtStrike``. The two must agree, and
+    tests/test_ui_strike_label_fidelity_v1.py executes both and asserts identical output —
+    a shared rule that drifts between runtimes is two rules again.
+    """
+    if strike is None or strike == "":
+        return "—"
+    try:
+        n = float(strike)
+    except (TypeError, ValueError):
+        return "—"
+    if n != n or n in (float("inf"), float("-inf")):    # NaN / inf are not prices
+        return "—"
+    s = f"{n:.{STRIKE_DISPLAY_DECIMALS}f}"
+    if "." not in s:
+        return s
+    return s.rstrip("0").rstrip(".")
