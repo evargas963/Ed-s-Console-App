@@ -49,34 +49,82 @@ def test_every_native_field_carries_a_disposition_and_none_is_forbidden():
 
 def test_the_surface_is_enumerated_from_evidence_not_hand_listed():
     """Guard the guard: if the enumerator silently returned nothing, the test above would pass
-    vacuously. Pin that all six surfaces are non-empty and the count is the real one."""
+    vacuously. Pin all seven surfaces non-empty and the census at the reconciled population."""
     surf = enumerate_surface()
     assert set(surf) == {
-        "rest_chain_envelope", "rest_chain_contract", "levelone_options",
+        "rest_chain_envelope", "rest_chain_underlying", "rest_chain_contract", "levelone_options",
         "options_book_frame", "options_book_price_level", "options_book_market_maker",
     }
     for name, fields in surf.items():
         assert fields, f"{name} enumerated EMPTY — evidence file missing or shape changed"
-    assert sum(len(v) for v in surf.values()) >= 140, "surface shrank unexpectedly; re-check evidence"
+    assert sum(len(v) for v in surf.values()) >= 171, "census shrank below the reconciled population"
 
 
-def test_the_fields_the_operator_named_are_retained_not_excluded():
-    """These are the specific losses the mission was opened over. None may regress to excluded."""
+def test_nested_underlying_leaves_are_censused_not_swallowed_by_raw_retention():
+    """REGRESSION (2026-08-26): the census reported 148 where the investigation found 171, because
+    the 23 chains.underlying.* leaves matched neither the depth-1 envelope filter nor the
+    call/putExpDateMap filter and were silently dropped. Being retained inside a raw nested object
+    justifies a RETAINED disposition; it never justifies absence from the matrix."""
+    surf = enumerate_surface()
+    und = surf["rest_chain_underlying"]
+    assert len(und) >= 23, f"underlying leaves under-censused: {len(und)}"
+    for leaf in ("quoteTime", "tradeTime", "totalVolume", "mark", "symbol"):
+        assert leaf in und, f"chains.underlying.{leaf} missing from the census"
+    m = _matrix()["surfaces"]["rest_chain_underlying"]
+    for leaf in und:
+        assert leaf in m, f"chains.underlying.{leaf} has no disposition"
+
+
+def test_an_inert_writer_cannot_be_counted_as_retention():
+    """The load-bearing honesty rule: LEVELONE_OPTIONS / OPTIONS_BOOK have a tested writer and
+    projection, but production subscribes to NEITHER service, so nothing is retained today. They
+    must NOT read as retained, and their not-wired state must say what is missing."""
+    from tools.options_native_field_matrix_v1 import NOT_RETAINED_STATES
+
     m = _matrix()["surfaces"]
-    must_retain = {
+    for surface in ("levelone_options", "options_book_frame", "options_book_price_level",
+                    "options_book_market_maker"):
+        for name, entry in m[surface].items():
+            assert entry["disposition"] in NOT_RETAINED_STATES, (
+                f"{surface}.{name} claims {entry['disposition']} while production subscribes to "
+                f"neither options service — an inert writer is not retention")
+            assert entry["blocked_on"].strip(), f"{surface}.{name} must state what is not wired"
+
+
+def test_the_chain_fields_the_operator_named_are_retained_in_production_today():
+    """These ride a fetch production already makes, so there is no excuse short of retention."""
+    m = _matrix()["surfaces"]
+    for surface, fields in {
         "rest_chain_envelope": ["interestRate", "dividendYield", "isChainTruncated", "underlying"],
-        "options_book_frame": ["BOOK_TIME"],
-        "options_book_price_level": ["NUM_BIDS", "NUM_ASKS"],
-        "options_book_market_maker": ["EXCHANGE", "BID_VOLUME", "ASK_VOLUME"],
-    }
-    for surface, fields in must_retain.items():
+    }.items():
         for f in fields:
             entry = m.get(surface, {}).get(f)
             assert entry, f"{surface}.{f} is absent from the matrix"
-            assert entry["disposition"] in ("RETAINED_RAW", "RETAINED_RAW_AND_PROJECTED"), (
-                f"{surface}.{f} must be retained (operator named it explicitly); "
-                f"got {entry['disposition']}")
+            assert entry["disposition"].startswith("RETAINED_RAW"), (
+                f"{surface}.{f} must be RETAINED_RAW — production receives and persists it TODAY "
+                f"(operator named it explicitly); got {entry['disposition']}")
             assert entry["retained_in"].strip(), f"{surface}.{f} claims retention but names no store"
+
+
+def test_the_market_maker_fields_the_operator_named_are_ready_and_honestly_labelled():
+    """Market snapshot time, MM count, MM id and per-MM size are the spine of the flow product.
+    Production subscribes to neither options service, so the honest state is READY-NOT-WIRED — never
+    EXCLUDED (that would abandon them) and never RETAINED (that would be an inert-writer lie).
+    Each must also name a projection, so wiring the subscription is the ONLY remaining step."""
+    m = _matrix()["surfaces"]
+    for surface, fields in {
+        "options_book_frame": ["BOOK_TIME"],
+        "options_book_price_level": ["NUM_BIDS", "NUM_ASKS", "TOTAL_VOLUME"],
+        "options_book_market_maker": ["EXCHANGE", "BID_VOLUME", "ASK_VOLUME", "SEQUENCE"],
+    }.items():
+        for f in fields:
+            entry = m.get(surface, {}).get(f)
+            assert entry, f"{surface}.{f} is absent from the matrix"
+            assert entry["disposition"] == "RETENTION_PATH_READY_NOT_WIRED", (
+                f"{surface}.{f}: expected the honest not-wired state, got {entry['disposition']}")
+            assert entry["projection"].strip(), (
+                f"{surface}.{f} must name the projection that will read it once wired")
+            assert entry["blocked_on"].strip(), f"{surface}.{f} must state what is not wired"
 
 
 def test_l1_temporal_identifiers_are_retained():

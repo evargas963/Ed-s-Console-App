@@ -43,23 +43,59 @@ MATRIX_REL = "governance/options_native_field_matrix.json"
 CANONICAL_INVENTORY = REPO / "schwab_field_inventory" / "schwab_canonical_fields.txt"
 PROBE = REPO / "reports" / "of_capability_probe" / "options_20260820T1354Z" / "frames"
 
-VALID_DISPOSITIONS = ("RETAINED_RAW_AND_PROJECTED", "RETAINED_RAW", "DELIBERATELY_EXCLUDED")
+#: DISPOSITIONS — deliberately separate "we keep this today" from "we could keep this".
+#: Corrected 2026-08-26 after review: the first version let LEVELONE_OPTIONS and OPTIONS_BOOK be
+#: called RETAINED_RAW because a writer module EXISTS, while production subscribes to neither
+#: service. That made "zero unretained" reachable with an INERT WRITER, which is exactly the kind of
+#: paper closure this matrix is supposed to prevent. Storage capability is now its own state.
+VALID_DISPOSITIONS = (
+    "RETAINED_RAW_AND_PROJECTED",     # production receives + persists it today AND a typed reader consumes it
+    "RETAINED_RAW",                   # production really receives + persists it today; no consumer yet
+    "RETENTION_PATH_READY_NOT_WIRED", # writer+projection exist and are tested, but production
+                                      # subscribes/calls NOTHING -> the field is NOT retained today
+    "CAPTURE_ONLY",                   # exists solely as committed probe evidence
+    "DELIBERATELY_EXCLUDED_WITH_PROOF",  # not retained, with a concrete reason AND cited proof of no loss
+    "UNAVAILABLE",                    # vendor does not actually deliver it to us
+)
+#: States that do NOT count as retention. RETAINED_RAW means production RECEIVES AND PERSISTS the
+#: field today — never merely that storage code exists for it.
+NOT_RETAINED_STATES = ("RETENTION_PATH_READY_NOT_WIRED", "CAPTURE_ONLY", "UNAVAILABLE")
 FORBIDDEN_DISPOSITION = "NATIVE_AVAILABLE_BUT_NOT_RETAINED"
 
 
-def enumerate_rest_chain() -> tuple[list[str], list[str]]:
-    """(envelope leaves, per-contract leaves) from the committed canonical inventory."""
+def enumerate_rest_chain() -> tuple[list[str], list[str], list[str]]:
+    """(envelope, underlying, per-contract) leaves from the committed canonical inventory.
+
+    EVERY chains.* leaf must land in exactly one bucket. Corrected 2026-08-26 after review: the
+    first version bucketed only depth-1 keys and keys under call/putExpDateMap, so the 23
+    `chains.underlying.*` leaves matched NEITHER filter and vanished from the census entirely —
+    the census reported 148 where the investigation had found 171. Being retained inside a raw
+    nested object justifies a RETAINED disposition; it never justifies being absent from the matrix.
+    A completeness assertion below makes that class of silent drop impossible to reintroduce.
+    """
     lines = [l.strip() for l in CANONICAL_INVENTORY.read_text(encoding="utf-8").splitlines() if l.strip()]
     chains = [l for l in lines if l.startswith("chains.")]
-    envelope = sorted({l.split(".", 1)[1] for l in chains if l.count(".") == 1})
-    contract: set[str] = set()
+    envelope, underlying, contract = set(), set(), set()
+    unbucketed = []
     for c in chains:
         parts = c.split(".")
-        if len(parts) > 2 and parts[1] in ("callExpDateMap", "putExpDateMap"):
+        if len(parts) == 2:
+            envelope.add(parts[1])
+        elif parts[1] == "underlying":
+            underlying.add(".".join(parts[2:]))
+        elif parts[1] in ("callExpDateMap", "putExpDateMap"):
             leaf = ".".join(parts[2:]).lstrip("*").lstrip(".")
+            # the bare "*" is the contract OBJECT placeholder (the expiry->strike map node), not a
+            # vendor field; it is the single accounted-for non-leaf in the inventory.
             if leaf:
                 contract.add(leaf)
-    return envelope, sorted(contract)
+        else:
+            unbucketed.append(c)
+    if unbucketed:
+        raise AssertionError(
+            f"{len(unbucketed)} chains.* leaf/leaves matched no bucket and would have been dropped "
+            f"from the census: {unbucketed[:10]}")
+    return sorted(envelope), sorted(underlying), sorted(contract)
 
 
 def _decoded(name: str) -> dict:
@@ -86,10 +122,11 @@ def enumerate_options_book() -> dict[str, list[str]]:
 
 
 def enumerate_surface() -> dict[str, list[str]]:
-    env, contract = enumerate_rest_chain()
+    env, underlying, contract = enumerate_rest_chain()
     book = enumerate_options_book()
     return {
         "rest_chain_envelope": env,
+        "rest_chain_underlying": underlying,
         "rest_chain_contract": contract,
         "levelone_options": enumerate_levelone_options(),
         "options_book_frame": book["frame"],
@@ -127,14 +164,30 @@ def validate(matrix: dict) -> list[str]:
                     f"requirement forbids as a final state — retain it raw or exclude it with a reason")
             elif d not in VALID_DISPOSITIONS:
                 problems.append(f"{surface}.{name}: unknown disposition {d!r}")
-            if d == "DELIBERATELY_EXCLUDED" and not str((entry or {}).get("reason", "")).strip():
+            if d == "DELIBERATELY_EXCLUDED_WITH_PROOF" and not str((entry or {}).get("reason", "")).strip():
                 problems.append(
-                    f"{surface}.{name}: DELIBERATELY_EXCLUDED without a concrete reason — "
-                    f"exclusion must be argued, not asserted")
-            if d in ("RETAINED_RAW", "RETAINED_RAW_AND_PROJECTED") and not str(
-                    (entry or {}).get("retained_in", "")).strip():
-                problems.append(f"{surface}.{name}: claims retention but names no store")
+                    f"{surface}.{name}: excluded without a concrete reason AND cited proof — "
+                    f"exclusion must be argued and demonstrated, not asserted")
+            if d.startswith("RETAINED_RAW") and not str((entry or {}).get("retained_in", "")).strip():
+                problems.append(
+                    f"{surface}.{name}: claims RETAINED_RAW but names no store. RETAINED_RAW means "
+                    f"production RECEIVES AND PERSISTS it today, not that storage code exists")
+            # A not-yet-wired path must say what is missing, so nobody reads it as retention.
+            if d in NOT_RETAINED_STATES and not str((entry or {}).get("blocked_on", "")).strip():
+                problems.append(
+                    f"{surface}.{name}: {d} must state blocked_on (what is not wired) — otherwise an "
+                    f"inert writer reads as retention")
     return problems
+
+
+def retention_reality(matrix: dict) -> dict[str, int]:
+    """Honest tally: what production actually keeps today vs what is merely ready."""
+    tally: dict[str, int] = {}
+    for fields in matrix.get("surfaces", {}).values():
+        for entry in fields.values():
+            d = (entry or {}).get("disposition", "?")
+            tally[d] = tally.get(d, 0) + 1
+    return tally
 
 
 def surface_counts() -> dict[str, int]:
