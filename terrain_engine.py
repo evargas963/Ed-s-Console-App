@@ -655,8 +655,16 @@ def qualify_pin_candidate(
 
 
 def compute_terrain(ticker: str, contracts: list[dict] | None,
-                    spot: float | None) -> TerrainSnapshot:
+                    spot: float | None, *, now=None) -> TerrainSnapshot:
     """Full terrain for one ticker. Fails closed — never invents a level.
+
+    `now` (gamma audit 2026-08-26): the valuation instant for every time-to-expiry in this
+    snapshot. Live callers omit it and get now_et(). OFFLINE/REPLAY callers MUST pass the
+    SNAPSHOT's time — repricing a stored historical chain against today's clock silently drops
+    every contract whose expiry has since passed (time_to_expiry_years returns None past
+    settlement) and understates T for the rest, so the replay does not reproduce what the live
+    reprice saw. _contract_inputs already documented this contract; compute_terrain had no hook
+    to honor it, which is why tools/terrain_backtest_report_v1.py was scoring on the wrong clock.
 
     SINGLE SOURCE OF TRUTH (RC-33, 2026-07-24): this is the ONE terrain engine;
     /api/analytics/state no longer computes a competing terrain read. It must be
@@ -731,7 +739,7 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
     # profile inside compute_gamma_flip_v2 and this function built a SECOND one, each defaulting
     # `now` to its own wall-clock read — two materializations of the same curve at two instants.
     from time_et import now_et as _now_et
-    _terrain_now = _now_et()
+    _terrain_now = now if now is not None else _now_et()   # gamma audit: replay pins the snapshot instant
     profile = compute_gamma_profile(contracts, spot, now=_terrain_now)
     flip, confidence, flip_diag = compute_gamma_flip_v2(
         contracts, spot, now=_terrain_now, profile=profile)

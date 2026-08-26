@@ -32,7 +32,8 @@ import logging
 from dataclasses import dataclass
 
 from features.regime_mvp_context import (
-    mvp_net_gamma,
+    # Cursor-audit F9: mvp_net_gamma (whole-chain structure.net_gamma) removed — the dampen/amplify
+    # regime now reads the at-spot authority (inp.net_gamma_at_spot), not the whole-chain aggregate.
     mvp_nearest_distances_for_regime,
     mvp_spot,
     mvp_vwap_side,
@@ -41,6 +42,8 @@ from features.regime_mvp_context import (
 )
 from signal_types import SignalInput, RulesCard
 from math_levels import is_pin_zone, APPROACH_PTS
+# Gamma-audit: the ONE gamma-regime sign-threshold authority (withholds at exactly 0).
+from terrain_read import REGIME_LONG_GAMMA, REGIME_SHORT_GAMMA, regime_from_signed_gamma
 
 log = logging.getLogger(__name__)
 
@@ -160,11 +163,18 @@ def _score_pinning(inp: SignalInput, micro_regime: str, mr: dict, mvp: dict) -> 
     # A pinning score must not include evidence its inputs cannot support. A lower score that
     # is honest beats a higher one that is not.
 
-    # Positive gamma = dealers dampening movement
-    ng = mvp_net_gamma(mvp)
-    if ng is not None and ng > 0:
+    # Positive gamma = dealers dampening movement.
+    # Cursor-audit F9: the SIGN of the dampen/amplify regime is dealer gamma AT SPOT
+    # (inp.net_gamma_at_spot = gamma_at_price(profile, spot)) — the authority per
+    # math_levels.gamma_at_price (RC-320) and the terrain card — NOT the whole-chain
+    # mvp["structure.net_gamma"] (aggregate_net_gex over ALL strikes), which can differ in sign and
+    # made this score "dampening" while the terrain regime read the opposite.
+    # Gamma-audit: the sign THRESHOLD is terrain_read.regime_from_signed_gamma (the one authority,
+    # which withholds at exactly 0 rather than defaulting a zero into a regime). An inline `> 0`
+    # here would be a second threshold derivation — the very thing that authority exists to prevent.
+    if regime_from_signed_gamma(getattr(inp, "net_gamma_at_spot", None)) == REGIME_LONG_GAMMA:
         score += 1.0
-        support.append("positive gamma — dealers dampening")
+        support.append("positive gamma at spot — dealers dampening (modeled +call/-put sign)")
 
     return score, support, contra
 
@@ -198,13 +208,16 @@ def _score_acceleration(inp: SignalInput, micro_regime: str, mr: dict, mvp: dict
         score += 3.0
         support.append(f"break of structure ({micro_regime})")
 
-    # Negative gamma = dealers amplifying
-    ng = mvp_net_gamma(mvp)
-    if ng is not None and ng < 0:
+    # Negative gamma = dealers amplifying.
+    # Cursor-audit F9: at-spot dealer gamma sign (inp.net_gamma_at_spot), the regime authority — not
+    # the whole-chain aggregate (see _score_pinning for the full rationale).
+    # Gamma-audit: same single sign-threshold authority as _score_pinning (exactly 0 → withheld).
+    _reg = regime_from_signed_gamma(getattr(inp, "net_gamma_at_spot", None))
+    if _reg == REGIME_SHORT_GAMMA:
         score += 2.0
-        support.append("negative gamma — dealers amplifying movement")
-    elif ng is not None and ng > 0:
-        contra.append("positive gamma opposes acceleration")
+        support.append("negative gamma at spot — dealers amplifying movement (modeled +call/-put sign)")
+    elif _reg == REGIME_LONG_GAMMA:
+        contra.append("positive gamma at spot opposes acceleration")
 
     # VIX elevated supports acceleration
     vb = (inp.vix_bucket or "").lower()

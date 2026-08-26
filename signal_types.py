@@ -76,6 +76,12 @@ class SignalInput:
 
     # ── Greeks (structural forces — medium weight) ────────────────────────────
     net_gamma:          Optional[float] = None
+    #: Cursor-audit F9: dealer gamma AT SPOT (gamma_at_price(profile, spot)) — the SIGN authority
+    #: for the dampen/amplify REGIME per math_levels.gamma_at_price / terrain_read (RC-320). This is
+    #: DISTINCT from net_gamma above, which is the whole-chain aggregate_net_gex (Σ over ALL strikes)
+    #: and can differ in sign. Consumers that state a dealer dampen/amplify regime must read THIS,
+    #: not net_gamma, so the Call agrees with the terrain card instead of contradicting it.
+    net_gamma_at_spot:  Optional[float] = None
     net_delta:          Optional[float] = None
     net_vanna:          Optional[float] = None
     charm_net:          Optional[float] = None

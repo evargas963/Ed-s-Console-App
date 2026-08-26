@@ -169,6 +169,20 @@ def _regime_for_scoring(
     return None
 
 
+def _replay_instant(ts_utc):
+    """The stored snapshot's instant as ET-aware datetime — the valuation clock for a replay.
+
+    Gamma audit 2026-08-26: every reprice in this report must value contracts as of the SNAPSHOT,
+    not as of the run. Returns None when the timestamp is unusable, which makes compute_terrain
+    fall back to now_et() exactly as before — degrade, never crash a report.
+    """
+    from time_et import ET
+    try:
+        return datetime.fromtimestamp(float(ts_utc), tz=ET)
+    except (TypeError, ValueError, OSError, OverflowError):
+        return None
+
+
 def _score_observations(obs: dict, realized: dict) -> list[dict]:
     """Recompute terrain per observation; keep only rows with a definite regime."""
     scored = []
@@ -180,7 +194,13 @@ def _score_observations(obs: dict, realized: dict) -> list[dict]:
             contracts = json.loads(chain_raw)
         except ValueError:
             continue
-        snap = compute_terrain(tk, contracts, float(spot))
+        # Gamma audit 2026-08-26: reprice at the SNAPSHOT's instant, not today's clock. `_ts` was
+        # unpacked and ignored, so every stored chain was revalued against now(): contracts whose
+        # expiry has since passed return T=None and are DROPPED from the profile, and the survivors
+        # get an understated T. The backtest was therefore scoring a chain the live engine never saw
+        # — a validation result computed on the wrong clock is not evidence.
+        _snap_now = _replay_instant(_ts)
+        snap = compute_terrain(tk, contracts, float(spot), now=_snap_now)
         scoring_regime = _regime_for_scoring(
             snap.regime, snap.net_gex_at_spot,
             spot=float(spot), flip=snap.gamma_flip,
@@ -219,7 +239,8 @@ def _score_observations(obs: dict, realized: dict) -> list[dict]:
         if tk not in SENTINELS:
             gp = gamma_at_price(
                 compute_gamma_profile(contracts, float(spot),
-                                      sign_model=SIGN_MODEL_EMPIRICAL_PRIOR),
+                                      sign_model=SIGN_MODEL_EMPIRICAL_PRIOR,
+                                      now=_snap_now),   # gamma audit: snapshot clock, not today's
                 float(spot))
             if gp is not None and gp != 0:
                 regime_prior = "LONG_GAMMA_CHOP" if gp > 0 else "SHORT_GAMMA_TREND"

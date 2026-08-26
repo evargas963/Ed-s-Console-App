@@ -3276,7 +3276,7 @@ body.cv-hc.light #cv2-terrain { --cv-bg:#fff; --cv-sf:#fff; --cv-sf2:#eef2f8; --
       <span class="tv-chip" id="tv-contracts"
             title="Contracts and strikes the engine actually used after fail-closed filtering (OI &gt; 0, plausible greeks). Low counts weaken every level.">&mdash;</span>
       <span class="tv-chip" id="tv-gex"
-            title="Net dealer gamma exposure at spot, dollars per 1% move. POSITIVE: dealers dampen moves (buy dips, sell rips). NEGATIVE: dealers amplify moves. Its sign IS the regime; magnitude is conviction.">&mdash;</span>
+            title="Net dealer gamma exposure at spot, dollars per 1% move. POSITIVE: dealers are modelled to dampen moves (buy dips, sell rips). NEGATIVE: modelled to amplify. Its sign IS the regime; magnitude is conviction. Dealer ownership is MODELLED from open interest under the +call/-put convention — public OI does not reveal who owns the contracts.">&mdash;</span>
       <div class="tv-sp">
         <label title="Master mute: silences terrain alerts AND the voice clock">
           <input type="checkbox" id="tv-alerts-voice" checked
@@ -8211,7 +8211,7 @@ function renderTierALive(d, fullRenderSource) {
     { key: 'kl_pin_candidate', strKey: null, label: 'Pin Candidate', sr: 'pin', srLabel: 'Pin Cand', proxColor: '#c084fc', tip: 'The Absolute Gamma strike published as a candidate pin ONLY when it passes all five qualification gates: dealers net long gamma at spot (regime), within 0.5% of spot (proximity), front expiry ≤1 day (DTE), pin score above negligible (liquidity), and the full magnitude bundle present (completeness). Blank = one or more gates failed (RC-292).' },
     { key: 'kl_hvl', strKey: 'kl_hvl_str', label: 'Net GEX Peak', sr: 'pin', srLabel: 'Net GEX', proxColor: '#e879f9', tip: 'Strike with the largest |net| dealer GEX$ (call gamma minus put gamma) — where the SIGNED book peaks. Distinct from Absolute Gamma (total) and from the Gamma Flip (zero-crossing). Formerly "Net Γ peak".' },
     { key: 'kl_max_pain', strKey: 'kl_max_pain_str', label: 'Max Pain', sr: 'pin', srLabel: 'OI Magnet', proxColor: '#d946ef', tip: 'Strike where the most options expire worthless. An open-interest magnet into expiration.' },
-    { key: 'kl_gamma_flip', strKey: null, label: 'Gamma Flip', sr: 'flip', srLabel: 'Flip Zone', proxColor: '#f97316', tip: 'Zero-gamma level. Above it dealers dampen moves (choppy). Below it dealers amplify moves (trending).' },
+    { key: 'kl_gamma_flip', strKey: null, label: 'Gamma Flip', sr: 'flip', srLabel: 'Flip Zone', proxColor: '#f97316', tip: 'Zero-gamma level — where modelled dealer gamma crosses zero. One side dampens (choppy), the other amplifies (trending); WHICH side is set by the sign of gamma AT SPOT, not by a fixed above/below rule — a book that is long-gamma below and short-gamma above inverts the usual orientation. Dealer ownership is modelled from open interest, not observed.' },
     { key: 'kl_gsf', strKey: 'kl_gsf_state_disp', label: 'Gamma Support Floor', sr: 'flip', srLabel: 'GSF', proxColor: '#fb923c', tip: 'Gamma Support Floor (GSF): the price BELOW spot where the net-gamma profile has decayed to 50% of its at-spot value. Sits at or ABOVE the Gamma Flip by construction, so that decay point is reached before net gamma crosses zero. "BELOW SUPPORT" = already in a negative-gamma regime, so no such level exists. Whether price holds at it is a geometry state and is not implied by the level itself (mechanism UNPROVEN — RC-320; see math_levels.compute_gamma_support_levels).' },
     { key: 'kl_grc', strKey: null, label: 'Gamma Resistance Ceiling', sr: 'flip', srLabel: 'GRC', proxColor: '#38bdf8', tip: 'Gamma Resistance Ceiling (GRC): the first price ABOVE spot where the net-gamma profile has decayed to half its at-spot value. Measured geometry only — whether price holds below it is a state question the profile alone does not answer (mechanism UNPROVEN — RC-320; see math_levels.compute_gamma_support_levels). It frequently sits at or beyond the Call Wall, because the profile often rises into that strike before decaying.' },
     { key: 'kl_em_upper', strKey: null, label: 'EM Upper', sr: 'em', srLabel: 'EM Ceiling', proxColor: '#3b82f6', tip: (d) => emTipFromSource(d, 'ceiling') },
@@ -8321,7 +8321,7 @@ function renderTierALive(d, fullRenderSource) {
       const regimeSr = regime === 'positive' ? 'bull' : regime === 'negative' ? 'bear' : 'net';
       const mag = d.kl_net_gex_mag || 'negligible';
       const magLbl = mag.charAt(0).toUpperCase() + mag.slice(1);
-      html += `<div class="kl-grid" title="Total Net GEX per 1% move: VENDOR AGGREGATE dealer gamma summed across ALL strikes (Schwab-reported gamma). Formerly 'Net GEX · Agg'. Distinct from the theoretical repriced gamma AT SPOT shown in the terrain regime. Positive means dealers stabilize (choppy days); negative means they amplify (trending days). Not a price level.">
+      html += `<div class="kl-grid" title="Total Net GEX per 1% move: VENDOR AGGREGATE dealer gamma summed across ALL strikes (Schwab-reported gamma). Formerly 'Net GEX · Agg'. Distinct from the theoretical repriced gamma AT SPOT shown in the terrain regime. Positive means dealers are modelled to stabilize (choppy days); negative means modelled to amplify (trending days). Dealer ownership is modelled from OI under the +call/-put convention, not observed. Not a price level.">
         <div class="kl-prox" style="background:${regime === 'negative' ? '#ef4444' : regime === 'positive' ? '#22c55e' : 'transparent'}"></div>
         <div class="kl-name">Total Net GEX (per 1%)</div>
         <div class="kl-price">${gexDisp}</div>
@@ -12495,7 +12495,16 @@ async function edLoadTerrain() {
     tr.textContent = '⚠ STALE' + (mins != null ? ' ' + mins + 'm' : '');
     tr.title = String(d.levels_stale_reason || 'levels are not refreshing');
   } else
-  if (tr) { tr.className = 'tv-chip ' + (trusted ? 'ok' : 'bad'); tr.textContent = (trusted ? '● ' : '⚠') + (d.confidence || '—'); }
+  if (tr) {
+    // Gamma audit: three tiers now. LEVEL_APPROX = the regime is sound (it is the sign of gamma at
+    // spot) but the chain is too narrow to place the flip LEVEL precisely. Render it as its own
+    // state — calling it "narrow" would understate a usable regime, and showing the raw enum is noise.
+    var _lvlApprox = d.confidence === 'LEVEL_APPROX_NARROW_SPAN';
+    tr.className = 'tv-chip ' + (trusted ? 'ok' : _lvlApprox ? 'warn' : 'bad');
+    tr.textContent = (trusted ? '● ' : '⚠') + (_lvlApprox ? 'FLIP LEVEL APPROX' : (d.confidence || '—'));
+    if (_lvlApprox) tr.title = 'Regime is determined (sign of dealer gamma at spot). The flip LEVEL '
+      + 'is approximate: the chain does not reach the measured convergence span (~1.4% of spot error).';
+  }
   set('tv-contracts', (d.contracts_used || 0).toLocaleString() + ' CT · ' + (d.strikes_used || 0) + ' STRIKES');
   d._gexCrossed = false;   // fresh payload re-anchors: server regime and net GEX agree
   edPaintNetGex(d);
@@ -12752,7 +12761,7 @@ function edRenderPeriphery(d, trusted) {
      'Sign of net dealer gamma AT SPOT. LONG: dealers dampen (chop). SHORT: dealers amplify (trend). WITHHELD: dealer-sign unproven for this ticker (single names) — levels still stand.'],
     ['NET GEX (1%)', edFmtGex(gas),
      gas == null ? '' : (gas > 0 ? 'var(--tv-blu)' : 'var(--tv-red)'),
-     'Signed net dealer gamma in dollars per 1% move, repriced to the live spot each poll. This number IS the regime; it also breaks the tie when call and put gamma stack on the same strike.',
+     'Signed net dealer gamma in dollars per 1% move, repriced to the live spot each poll. This number IS the regime; it also breaks the tie when call and put gamma stack on the same strike. The dealer sign is MODELLED from open interest (+call/-put convention) — OI cannot establish actual dealer ownership.',
      'tv-dealer-gex'],
     ['CONFIDENCE', trusted ? 'TRUSTED' : (d.confidence || '—'),
      trusted ? 'var(--tv-grn)' : 'var(--tv-amb)',
@@ -13509,9 +13518,16 @@ function edCheckRadarAlerts(rows) {
         trustEl.className = 'cv-badge cv-dn';
         trustEl.title = String(t.levels_stale_reason || 'levels are not refreshing');
       } else {
-        trustEl.textContent = fstr(t.confidence) ? (trusted ? 'trusted' : 'narrow') : '—';
+        // Gamma audit: the middle tier is NOT "narrow" — the regime is determined; only the flip
+        // LEVEL is approximate. Labeling it "narrow" would understate a usable read.
+        var _cvApprox = fstr(t.confidence) === 'LEVEL_APPROX_NARROW_SPAN';
+        trustEl.textContent = fstr(t.confidence)
+          ? (trusted ? 'trusted' : _cvApprox ? 'level approx' : 'narrow') : '—';
         trustEl.className = 'cv-badge ' + (trusted ? 'cv-up' : 'cv-wn');
-        trustEl.title = '';
+        trustEl.title = _cvApprox
+          ? 'Regime determined from the sign of dealer gamma at spot; the flip LEVEL is approximate '
+            + '(chain below the measured convergence span).'
+          : '';
       }
     }
     var tags = [n2(fnum(t.gamma_flip)) && ('flip ' + n2(fnum(t.gamma_flip))),

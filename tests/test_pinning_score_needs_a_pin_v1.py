@@ -74,7 +74,9 @@ def test_the_removal_states_why_and_what_would_replace_it():
 
 def test_the_other_pinning_evidence_survived():
     """Removing one unsound signal must not quietly gut the regime."""
-    for kept in ("tight pin width", "micro regime = ", "positive gamma — dealers dampening"):
+    # Cursor-audit F9: the dampening evidence now reads the AT-SPOT dealer gamma (the regime
+    # authority) — "positive gamma at spot — dealers dampening" — not the whole-chain aggregate.
+    for kept in ("tight pin width", "micro regime = ", "positive gamma at spot — dealers dampening"):
         assert kept in SRC, f"unrelated pinning evidence was lost with the removal: {kept}"
 
 

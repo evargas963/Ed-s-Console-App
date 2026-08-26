@@ -309,6 +309,11 @@ def test_vanna_uses_the_single_iv_conversion_authority_f7():
     v_pct = per_pct[100.0]["call_vanna"]
     v_dec = per_dec[100.0]["call_vanna"]
     assert v_pct not in (None, 0.0), "percent-form vanna did not compute"
-    assert abs(v_pct - v_dec) < 1e-9, (
+    # RELATIVE tolerance: these aggregates are ~1e3-1e4, where one float ULP is ~1e-12 relative but
+    # ~1e-9 ABSOLUTE — an absolute 1e-9 bound is tighter than the arithmetic can hold and failed on
+    # CI's platform while passing locally (got 4731.665262145597 vs 4731.665262144535). The claim
+    # under test is "the same sigma", i.e. equality to floating-point precision, which is a relative
+    # statement; an inline /100 would differ by a FACTOR OF 100, not by 1e-12.
+    assert math.isclose(v_pct, v_dec, rel_tol=1e-9), (
         f"IV conversion authority should map 20.0% and 0.20 to the same sigma; got {v_pct} vs "
         f"{v_dec} — an inline /100 would have divided the decimal form again")
