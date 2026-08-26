@@ -70,7 +70,15 @@ _diag_l1_last_info_log_ts: float = 0.0
 # default scale is a canary/measurement set rather than the full enrolled universe.
 ED_OPTIONS_STREAM_ENV = "ED_OPTIONS_STREAM"
 _options_ingest: Any = None
-_options_subscribed_syms: list[str] = []
+#: SUBSCRIPTION TRUTH, PER SERVICE. LEVELONE_OPTIONS and OPTIONS_BOOK are separate vendor
+#: services that succeed and fail independently — subscribe_options returns a receipt with a
+#: slot for each and reports partial success as the normal case. One service-agnostic list
+#: could not represent that: a contract whose LEVELONE_OPTIONS was accepted and whose
+#: OPTIONS_BOOK was refused was recorded as "subscribed", so the refused service was never in
+#: the next slice's add-set and was never retried, while the coverage record showed one epoch
+#: open and the other absent with nothing to reconcile them.
+OPTIONS_SERVICES: tuple[str, ...] = ("LEVELONE_OPTIONS", "OPTIONS_BOOK")
+_options_subscribed: dict[str, set[str]] = {s: set() for s in OPTIONS_SERVICES}
 _options_last_receipt: dict[str, Any] | None = None
 #: The last slice this process applied — what rotated in, what rotated out, and when. Without it
 #: an operator can see that frames are arriving but not that the ROTATION is advancing, which is
@@ -145,9 +153,22 @@ def options_desired_for_slice(at_epoch_s: float, *, equity_symbols: int,
         actually holding right now, so options can never crowd out the stream the console
         depends on.
 
-    Deterministic and stateless: the cohort is a pure function of the clock and the roster
-    (RotationPolicy.slice_index), so replay can reconstruct which underlyings were eligible at a
-    past instant without consulting anything but those two.
+    THE UNIVERSE IS THE ENROLLMENT ROSTER, NOT WHATEVER HAS A FRESH CHAIN. This asked
+    build_chains_for_selection() for the universe, which is "tickers whose newest chain snapshot
+    is under 86,400s old" — a freshness-derived, time-varying set recorded nowhere. The cohort
+    walks a SORTED list at start = (slice_index * k) % len(non_core), so the length of that list
+    is load-bearing: MEASURED at one fixed instant, removing a single name moved the cohort from
+    U000-U007 to U017-U024 and adding one moved it to U040-U047. Every other name's position
+    shifts when any one name's chain goes stale, which made the determinism this docstring used
+    to claim FALSE in practice — and replay depends on that claim.
+
+    So the roster comes from db.logging_universe_authoritative_tickers(), the sole enrollment
+    authority (Issue 22) that the background logger and ml_scheduler already share. A name with
+    no fresh chain is then a RECORDED GAP for that slice — noted below and visible in the slice
+    record — instead of a silent reshuffle of everyone else.
+
+    With that, the cohort really is a pure function of the clock and a governed roster, so a
+    replay can reconstruct which underlyings were eligible at a past instant from those two.
     """
     from options_stream_subscription import (
         RotationPolicy, SelectionPolicy, build_chains_for_selection,
@@ -157,7 +178,15 @@ def options_desired_for_slice(at_epoch_s: float, *, equity_symbols: int,
     import dataclasses
 
     base = RotationPolicy()
-    universe = sorted(build_chains_for_selection().keys())
+    universe: list[str] = []
+    try:
+        from db import get_db
+        universe = sorted(get_db().logging_universe_authoritative_tickers())
+    except Exception as e:                              # noqa: BLE001
+        log.warning("options rotation: enrollment roster unavailable (%s) — falling back to the "
+                    "fresh-chain set, whose membership varies with staleness", e)
+    if not universe:
+        universe = sorted(build_chains_for_selection().keys())
     budget = contract_budget_from_key_limit(
         equity_symbols=max(1, int(equity_symbols)), book_enabled=book_enabled)
 
@@ -248,7 +277,7 @@ async def _apply_options_slice(sc: Any, at_epoch_s: float, reason: str) -> dict[
     The plan is computed OUTSIDE the lock — it is sqlite and arithmetic, no vendor call — so a
     ticker switch never waits on a chain read. Only the vendor calls are serialized.
     """
-    global _options_subscribed_syms, _options_last_receipt, _options_last_slice
+    global _options_subscribed, _options_last_receipt, _options_last_slice
 
     from stream_spine import STREAM_DB_DEFAULT as _CAPTURE_DB
     from calibration.options_stream_coverage import close_epochs, open_epochs
@@ -280,54 +309,86 @@ async def _apply_options_slice(sc: Any, at_epoch_s: float, reason: str) -> dict[
                 f"to stay inside the key budget")
             want = want[:allowed]
 
-        have = list(_options_subscribed_syms)
-        to_drop = [s for s in have if s not in set(want)]
-        to_add = [s for s in want if s not in set(have)]
-
         return await _reconcile_options_subscription(
-            sc, plan, to_drop, to_add, have, reason,
+            sc, plan, want, reason,
             capture_db=_CAPTURE_DB, close_epochs=close_epochs, open_epochs=open_epochs,
             subscribe_options=subscribe_options, unsubscribe_options=unsubscribe_options)
 
 
-async def _reconcile_options_subscription(sc, plan, to_drop, to_add, have, reason, *,
+async def _reconcile_options_subscription(sc, plan, want, reason, *,
                                           capture_db, close_epochs, open_epochs,
                                           subscribe_options, unsubscribe_options
                                           ) -> dict[str, Any]:
-    """The vendor calls and the coverage writes, in the order the record depends on.
+    """The vendor calls and the coverage writes, PER SERVICE, in the order the record depends on.
 
-    Split out of _apply_options_slice so the ordering can be read — and driven — without the
-    locking and budget re-derivation around it.
+    THE HELPERS REPORT FAILURE IN RECEIPTS, NOT EXCEPTIONS, and an earlier version of this
+    function did not read them. subscribe_options catches per service and returns
+    {level_one, book, errors}; unsubscribe_options did the same and never raised at all, so the
+    try/except around it could not fire. The consequences were not symmetric bookkeeping errors:
+
+      * a FAILED unsubscribe closed the coverage epoch and dropped the contract from our list,
+        while the contract stayed live at the vendor — still sending frames the record placed
+        outside any epoch, and still holding Schwab KEYS nothing would ever release. Rotations
+        leak keys until the account passes its limit and the EQUITY stream is refused.
+      * a PARTIAL subscribe (level_one accepted, book refused) was recorded as subscribed, so
+        the refused service never appeared in a later add-set and was never retried.
+
+    Vendor state, internal state and the coverage record are therefore reconciled INDEPENDENTLY
+    PER SERVICE, and internal state only ever moves on an acknowledged vendor result.
     """
-    global _options_subscribed_syms, _options_last_receipt, _options_last_slice
+    global _options_subscribed, _options_last_receipt, _options_last_slice
     _CAPTURE_DB = capture_db
+    want_set = set(want)
+    now_ms = int(time.time() * 1000.0)
+    per_service: dict[str, dict[str, int]] = {}
 
-    dropped_ok = added = 0
+    # ── DROP, per service. Release internally only what the vendor acknowledged releasing. ──
+    to_drop = sorted({s for svc in OPTIONS_SERVICES for s in _options_subscribed[svc]} - want_set)
     if to_drop:
-        try:
-            await unsubscribe_options(sc, to_drop)
-            now_ms = int(time.time() * 1000.0)
-            for service in ("LEVELONE_OPTIONS", "OPTIONS_BOOK"):
-                close_epochs(_CAPTURE_DB, to_drop, service=service, reason=reason, at_ms=now_ms)
-            dropped_ok = len(to_drop)
-        except Exception as e:                          # noqa: BLE001
-            # Leaving them subscribed is the SAFE failure: the record still matches reality.
-            log.warning("options rotation: unsubscribe failed, keeping %d contracts: %s",
-                        len(to_drop), e)
-            to_drop = []
+        receipt = await unsubscribe_options(sc, to_drop)
+        for service, key in (("LEVELONE_OPTIONS", "level_one"), ("OPTIONS_BOOK", "book")):
+            held = [s for s in to_drop if s in _options_subscribed[service]]
+            if not held:
+                continue
+            if receipt.get(key):
+                close_epochs(_CAPTURE_DB, held, service=service, reason=reason, at_ms=now_ms)
+                _options_subscribed[service] -= set(held)
+                per_service.setdefault(service, {})["dropped"] = len(held)
+            else:
+                # STILL SUBSCRIBED AT THE VENDOR. Keep it in our set so the next slice tries
+                # again and the key it holds is accounted for; do NOT close its epoch, because
+                # frames may still arrive and the record must keep matching reality.
+                plan["notes"].append(
+                    f"{service}: unsubscribe NOT acknowledged for {len(held)} contract(s) — "
+                    f"kept subscribed and epoch left open; errors={receipt.get('errors')}")
+                log.warning("options %s: unsubscribe not acknowledged for %d contracts; "
+                            "keeping them so their keys stay accounted for", service, len(held))
 
-    if to_add:
-        receipt = await subscribe_options(sc, to_add)
+    # ── ADD, per service. A service is subscribed only if its own receipt slot says so. ──
+    for service, key in (("LEVELONE_OPTIONS", "level_one"), ("OPTIONS_BOOK", "book")):
+        missing = [s for s in want if s not in _options_subscribed[service]]
+        if not missing:
+            continue
+        receipt = await subscribe_options(
+            sc, missing, level_one=(service == "LEVELONE_OPTIONS"),
+            book=(service == "OPTIONS_BOOK"))
         _options_last_receipt = receipt
-        now_ms = int(time.time() * 1000.0)
-        for service, ok in (("LEVELONE_OPTIONS", receipt.get("level_one")),
-                            ("OPTIONS_BOOK", receipt.get("book"))):
-            if ok:
-                open_epochs(_CAPTURE_DB, to_add, service=service, policy=plan["policy"],
-                            reason=reason, at_ms=now_ms)
-        added = len(to_add)
+        if receipt.get(key):
+            open_epochs(_CAPTURE_DB, missing, service=service, policy=plan["policy"],
+                        reason=reason, at_ms=now_ms)
+            _options_subscribed[service] |= set(missing)
+            per_service.setdefault(service, {})["added"] = len(missing)
+        else:
+            # NOT subscribed: stays out of the set, so the next slice retries it rather than
+            # recording a service we never obtained.
+            plan["notes"].append(
+                f"{service}: subscribe REFUSED for {len(missing)} contract(s) — will retry next "
+                f"slice; errors={receipt.get('errors')}")
+            log.warning("options %s: subscribe refused for %d contracts; will retry",
+                        service, len(missing))
 
-    _options_subscribed_syms = [s for s in have if s not in set(to_drop)] + to_add
+    dropped_ok = sum(v.get("dropped", 0) for v in per_service.values())
+    added = sum(v.get("added", 0) for v in per_service.values())
     _options_last_slice = {
         "reason": reason,
         "at_epoch_s": plan["at_epoch_s"],
@@ -336,14 +397,20 @@ async def _reconcile_options_subscription(sc, plan, to_drop, to_add, have, reaso
         "rotating": plan["rotating"],
         "added": added,
         "dropped": dropped_ok,
-        "subscribed_total": len(_options_subscribed_syms),
+        # PER SERVICE, because they can legitimately differ. A single total would hide exactly
+        # the partial-success state this reconciler exists to represent.
+        "subscribed_by_service": {s: len(_options_subscribed[s]) for s in OPTIONS_SERVICES},
+        "subscribed_total": len(set().union(*_options_subscribed.values())
+                                if _options_subscribed else set()),
+        "services_in_agreement": len({frozenset(v) for v in _options_subscribed.values()}) == 1,
         "per_underlying": plan["per_underlying"],
         "full_cycle_seconds": plan["full_cycle_seconds"],
         "notes": plan["notes"][:12],
     }
-    log.info("OPTIONS slice %s (%s): +%d -%d = %d contracts across %d underlyings; "
+    log.info("OPTIONS slice %s (%s): +%d -%d; by service %s; %d underlyings; "
              "core=%s rotating=%s cycle=%ss",
-             plan["slice_index"], reason, added, dropped_ok, len(_options_subscribed_syms),
+             plan["slice_index"], reason, added, dropped_ok,
+             _options_last_slice["subscribed_by_service"],
              len(plan["per_underlying"]), plan["core"], plan["rotating"],
              plan["full_cycle_seconds"])
     _log_stream("OPTIONS_SLICE", **{k: _options_last_slice[k] for k in
@@ -414,15 +481,26 @@ async def _start_options_collection(sc: Any) -> None:
         # rotated, which is how the core+rotating architecture existed in code and not in the
         # running system.
         await _apply_options_slice(sc, time.time(), reason="stream_start")
-        if not _options_subscribed_syms:
+        if not any(_options_subscribed.values()):
+            # NOTHING SUBSCRIBED. An earlier version returned here with the writer thread still
+            # running: an ingest with no producer, holding its queue and its sqlite handle for
+            # the life of the process, invisible because options_stream_status only reported
+            # counters that stayed at zero. Tear it back down and say so.
             log.warning("options collection: slice produced no contracts — nothing subscribed "
-                        "(this is a COVERAGE GAP, not a market observation)")
+                        "(this is a COVERAGE GAP, not a market observation); stopping the "
+                        "ingest writer rather than leaving it stranded")
+            _stop_options_collection("start_no_contracts")
             return
 
         _options_rotation_task = asyncio.create_task(
             _options_rotation_loop(sc), name="options_rotation")
     except Exception as e:                              # noqa: BLE001
+        # The same stranding applies to a mid-start failure: the writer may already be running.
         log.warning("options collection failed to start (equity stream unaffected): %s", e)
+        try:
+            _stop_options_collection("start_failed")
+        except Exception as e2:                         # noqa: BLE001
+            log.warning("options collection: cleanup after failed start: %s", e2)
 
 
 def _stop_options_collection(reason: str = "stream_stop") -> None:
@@ -431,7 +509,7 @@ def _stop_options_collection(reason: str = "stream_stop") -> None:
     Closing epochs matters as much as stopping the writer: an epoch left open would claim we
     were observing those contracts during a window when the process was not running.
     """
-    global _options_ingest, _options_subscribed_syms, _options_rotation_task, _options_last_slice
+    global _options_ingest, _options_subscribed, _options_rotation_task, _options_last_slice
     # Stop advancing the rotation BEFORE closing epochs: a slice that fired mid-teardown would
     # open epochs for contracts this process is about to stop observing.
     task, _options_rotation_task = _options_rotation_task, None
@@ -442,17 +520,21 @@ def _stop_options_collection(reason: str = "stream_stop") -> None:
             log.warning("cancelling options rotation: %s", e)
     _options_last_slice = None
     try:
-        if _options_subscribed_syms:
+        if any(_options_subscribed.values()):
             from stream_spine import STREAM_DB_DEFAULT as _CAPTURE_DB
             from calibration.options_stream_coverage import close_epochs
             now_ms = int(time.time() * 1000.0)
-            for service in ("LEVELONE_OPTIONS", "OPTIONS_BOOK"):
-                close_epochs(_CAPTURE_DB, _options_subscribed_syms, service=service,
-                             reason=reason, at_ms=now_ms)
+            # PER SERVICE: close exactly what that service actually held. Closing the union
+            # would write an end for an epoch that was never opened — a shutdown inventing a
+            # coverage window it can then be asked about.
+            for service in OPTIONS_SERVICES:
+                held = sorted(_options_subscribed[service])
+                if held:
+                    close_epochs(_CAPTURE_DB, held, service=service, reason=reason, at_ms=now_ms)
     except Exception as e:                              # noqa: BLE001
         log.warning("closing options coverage epochs: %s", e)
     finally:
-        _options_subscribed_syms = []
+        _options_subscribed = {s: set() for s in OPTIONS_SERVICES}
     try:
         if _options_ingest is not None:
             stats = _options_ingest.stop(timeout=30.0)
@@ -471,7 +553,12 @@ def options_stream_status() -> dict[str, Any]:
     ing = _options_ingest
     out: dict[str, Any] = {
         "enabled": options_streaming_enabled(),
-        "subscribed_contracts": len(_options_subscribed_syms),
+        # Per service AND the union, because a difference between them IS the state an operator
+        # needs to see: one service subscribed and the other refused and retrying.
+        "subscribed_by_service": {s: len(_options_subscribed[s]) for s in OPTIONS_SERVICES},
+        "subscribed_contracts": len(set().union(*_options_subscribed.values())
+                                    if _options_subscribed else set()),
+        "services_in_agreement": len({frozenset(v) for v in _options_subscribed.values()}) == 1,
         "last_receipt": _options_last_receipt,
         # ROTATION VISIBILITY. Frames arriving proves collection; only this proves the rotation
         # is advancing, which is what makes coverage universal rather than a fixed sliver.

@@ -472,14 +472,37 @@ async def subscribe_options(stream_client: Any, symbols: Iterable[str], *,
 
 
 async def unsubscribe_options(stream_client: Any, symbols: Iterable[str]) -> dict[str, Any]:
-    """Drop option subscriptions without touching the equity/book ones."""
+    """Drop option subscriptions without touching the equity/book ones.
+
+    REPORTS PER SERVICE, and that is not cosmetic. This returned only `{requested, errors}` and
+    swallowed every exception into that list, so it NEVER raised — a caller wrapping it in
+    try/except could not detect failure at all, and the one in order_flow_streaming did exactly
+    that: it closed the coverage epochs and dropped the contracts from its own list on a call
+    that had failed at the vendor. The contracts stayed live, kept sending frames the record
+    said were outside any epoch, and above all kept holding Schwab KEYS that nothing would ever
+    release — a slow leak whose end state is the account past its key limit and the equity
+    stream, which is what the console actually depends on, refused.
+
+    `level_one` and `book` are True only when that service's unsubscribe was actually accepted,
+    so a caller can release exactly what the vendor released and retry the rest.
+    """
     syms = [s for s in dict.fromkeys(symbols) if s]
-    out: dict[str, Any] = {"requested": len(syms), "errors": []}
-    if not syms or stream_client is None:
+    out: dict[str, Any] = {"requested": len(syms), "level_one": False, "book": False,
+                           "errors": []}
+    if not syms:
+        out["errors"].append("no symbols to unsubscribe")
         return out
-    for name in ("level_one_option_unsubs", "options_book_unsubs"):
+    if stream_client is None:
+        out["errors"].append("no stream client — cannot unsubscribe")
+        return out
+    for name, key in (("level_one_option_unsubs", "level_one"), ("options_book_unsubs", "book")):
+        fn = getattr(stream_client, name, None)
+        if fn is None:
+            out["errors"].append(f"{name}: stream client has no such method")
+            continue
         try:
-            await getattr(stream_client, name)(syms)
+            await fn(syms)
+            out[key] = True
         except Exception as e:                      # noqa: BLE001
             out["errors"].append(f"{name}: {e}")
     return out

@@ -167,18 +167,39 @@ def test_the_plan_reports_the_depth_it_actually_delivers(monkeypatch):
 # ── the reconciler ──────────────────────────────────────────────────────────────────────────
 
 class _Recorder:
-    """Records the ORDER of vendor calls and coverage writes."""
+    """Records the ORDER of vendor calls and coverage writes, with REAL receipt shapes.
 
-    def __init__(self):
+    The production helpers report failure in the RECEIPT and do not raise — subscribe_options
+    catches per service and returns {level_one, book, errors}, and unsubscribe_options did the
+    same and never raised at all. Negative controls that inject exceptions therefore test a
+    path the vendor never takes; these return receipts instead.
+
+    `refuse` names the services whose calls come back NOT acknowledged.
+    """
+
+    def __init__(self, refuse_subscribe=(), refuse_unsubscribe=()):
         self.events: list[tuple] = []
+        self.refuse_sub = set(refuse_subscribe)
+        self.refuse_unsub = set(refuse_unsubscribe)
 
-    async def subscribe(self, _sc, symbols, **_kw):
-        self.events.append(("subscribe", tuple(symbols)))
-        return {"level_one": True, "book": True, "errors": []}
+    async def subscribe(self, _sc, symbols, *, level_one=True, book=True, **_kw):
+        service = "LEVELONE_OPTIONS" if level_one else "OPTIONS_BOOK"
+        self.events.append(("subscribe", tuple(symbols), service))
+        ok = service not in self.refuse_sub
+        key = "level_one" if level_one else "book"
+        r = {"requested": len(list(symbols)), "level_one": None, "book": None, "errors": []}
+        if ok:
+            r[key] = {"symbols": len(list(symbols))}
+        else:
+            r["errors"].append(f"{service}: refused by fixture")
+        return r
 
     async def unsubscribe(self, _sc, symbols, **_kw):
         self.events.append(("unsubscribe", tuple(symbols)))
-        return {"ok": True}
+        return {"requested": len(list(symbols)),
+                "level_one": "LEVELONE_OPTIONS" not in self.refuse_unsub,
+                "book": "OPTIONS_BOOK" not in self.refuse_unsub,
+                "errors": [f"{s}: refused by fixture" for s in self.refuse_unsub]}
 
     def open_epochs(self, _db, symbols, **kw):
         self.events.append(("open_epochs", tuple(symbols), kw.get("service")))
@@ -190,21 +211,26 @@ class _Recorder:
         return [e[0] for e in self.events]
 
 
-@pytest.fixture()
-def wired(monkeypatch):
-    """Drive _apply_options_slice with fakes; no vendor, no database, no stream."""
+def _wire(monkeypatch, rec):
     import calibration.options_stream_coverage as cov
     import options_stream_subscription as sub
     import order_flow_streaming as ofs
 
-    rec = _Recorder()
     monkeypatch.setattr(sub, "subscribe_options", rec.subscribe, raising=False)
     monkeypatch.setattr(sub, "unsubscribe_options", rec.unsubscribe, raising=False)
     monkeypatch.setattr(cov, "open_epochs", rec.open_epochs, raising=False)
     monkeypatch.setattr(cov, "close_epochs", rec.close_epochs, raising=False)
-    monkeypatch.setattr(ofs, "_options_subscribed_syms", [], raising=False)
+    monkeypatch.setattr(ofs, "_options_subscribed",
+                        {s: set() for s in ofs.OPTIONS_SERVICES}, raising=False)
     monkeypatch.setattr(ofs, "_subscribed_equity_syms", ["SPY"], raising=False)
+    monkeypatch.setattr(ofs, "_stream_resubscribe_lock", None, raising=False)
     return ofs, rec
+
+
+@pytest.fixture()
+def wired(monkeypatch):
+    """Drive _apply_options_slice with fakes; no vendor, no database, no stream."""
+    return _wire(monkeypatch, _Recorder())
 
 
 def _plan(monkeypatch, ofs, symbols, **extra):
@@ -218,17 +244,22 @@ def _plan(monkeypatch, ofs, symbols, **extra):
     return plan
 
 
+def _subscribed_syms(events):
+    return {s for e in events if e[0] == "subscribe" for s in e[1]}
+
+
 def test_the_reconciler_subscribes_only_what_is_new(wired, monkeypatch):
     ofs, rec = wired
     _plan(monkeypatch, ofs, ["A", "B"])
     asyncio.run(ofs._apply_options_slice(object(), 0.0, "stream_start"))
-    assert ("subscribe", ("A", "B")) in rec.events
+    assert _subscribed_syms(rec.events) == {"A", "B"}
     rec.events.clear()
     _plan(monkeypatch, ofs, ["B", "C"])          # A leaves, C arrives, B stays
     asyncio.run(ofs._apply_options_slice(object(), 900.0, "rotation"))
-    assert ("unsubscribe", ("A",)) in rec.events, "a departing contract was not unsubscribed"
-    assert ("subscribe", ("C",)) in rec.events, "an arriving contract was not subscribed"
-    assert not any(e[0] == "subscribe" and "B" in e[1] for e in rec.events), (
+    unsub = {s for e in rec.events if e[0] == "unsubscribe" for s in e[1]}
+    assert "A" in unsub, "a departing contract was not unsubscribed"
+    assert "C" in _subscribed_syms(rec.events), "an arriving contract was not subscribed"
+    assert "B" not in _subscribed_syms(rec.events), (
         "a contract that stayed was re-subscribed — churn the vendor did not need")
 
 
@@ -266,25 +297,106 @@ def test_the_vendor_call_precedes_the_coverage_write(wired, monkeypatch):
         "the account may never have been granted")
 
 
-def test_a_failed_unsubscribe_keeps_the_record_matching_reality(wired, monkeypatch):
-    """The SAFE failure is staying subscribed; closing the epoch anyway would be a false gap."""
-    ofs, rec = wired
-    import options_stream_subscription as sub
+def test_an_unacknowledged_unsubscribe_keeps_the_contract_and_its_epoch(monkeypatch):
+    """THE KEY-LEAK DEFECT, driven by a RECEIPT rather than an exception.
 
+    unsubscribe_options never raises — it catches per service and reports in the receipt. An
+    earlier reconciler wrapped it in try/except, so the except could not fire: it closed the
+    epoch and dropped the contract while the contract stayed LIVE at the vendor, still sending
+    frames the record placed outside any epoch and still holding a Schwab KEY nothing would
+    ever release. Rotations leak keys until the account passes its limit and the EQUITY stream
+    is refused.
+    """
+    ofs, rec = _wire(monkeypatch, _Recorder(refuse_unsubscribe=("LEVELONE_OPTIONS",
+                                                               "OPTIONS_BOOK")))
     _plan(monkeypatch, ofs, ["A"])
     asyncio.run(ofs._apply_options_slice(object(), 0.0, "stream_start"))
     rec.events.clear()
-
-    async def _boom(*_a, **_k):
-        raise RuntimeError("vendor refused")
-
-    monkeypatch.setattr(sub, "unsubscribe_options", _boom, raising=False)
     _plan(monkeypatch, ofs, ["B"])
     asyncio.run(ofs._apply_options_slice(object(), 900.0, "rotation"))
+
     assert "close_epochs" not in rec.kinds(), (
-        "an epoch was closed for a contract that is still subscribed — the record would show a "
-        "gap that did not happen")
-    assert "A" in ofs._options_subscribed_syms, "the still-subscribed contract was forgotten"
+        "an epoch was closed for a contract the vendor did NOT release — the record would show "
+        "a gap that did not happen while frames kept arriving")
+    for svc in ofs.OPTIONS_SERVICES:
+        assert "A" in ofs._options_subscribed[svc], (
+            f"{svc}: the still-subscribed contract was forgotten — its vendor key is now "
+            f"unaccounted for and will never be released")
+
+
+def test_a_partly_acknowledged_unsubscribe_releases_only_that_service(monkeypatch):
+    """Services fail independently; releasing the union would forget a live key."""
+    ofs, rec = _wire(monkeypatch, _Recorder(refuse_unsubscribe=("OPTIONS_BOOK",)))
+    _plan(monkeypatch, ofs, ["A"])
+    asyncio.run(ofs._apply_options_slice(object(), 0.0, "stream_start"))
+    rec.events.clear()
+    _plan(monkeypatch, ofs, ["B"])
+    asyncio.run(ofs._apply_options_slice(object(), 900.0, "rotation"))
+
+    assert "A" not in ofs._options_subscribed["LEVELONE_OPTIONS"], (
+        "the acknowledged service did not release the contract")
+    assert "A" in ofs._options_subscribed["OPTIONS_BOOK"], (
+        "the REFUSED service released the contract anyway — its key is now unaccounted for")
+    closed = [e for e in rec.events if e[0] == "close_epochs"]
+    assert closed and all(e[2] == "LEVELONE_OPTIONS" for e in closed), (
+        f"an epoch was closed for a service that did not acknowledge: {closed}")
+
+
+def test_a_partial_subscribe_is_not_recorded_as_fully_subscribed(monkeypatch):
+    """The RETRY defect. A refused service must stay out of the set so the next slice tries it."""
+    ofs, rec = _wire(monkeypatch, _Recorder(refuse_subscribe=("OPTIONS_BOOK",)))
+    _plan(monkeypatch, ofs, ["A"])
+    asyncio.run(ofs._apply_options_slice(object(), 0.0, "stream_start"))
+
+    assert "A" in ofs._options_subscribed["LEVELONE_OPTIONS"], "the accepted service was lost"
+    assert "A" not in ofs._options_subscribed["OPTIONS_BOOK"], (
+        "a REFUSED subscribe was recorded as subscribed — the service will never be retried "
+        "and the coverage record claims a book we do not have")
+    opened = [e for e in rec.events if e[0] == "open_epochs"]
+    assert opened and all(e[2] == "LEVELONE_OPTIONS" for e in opened), (
+        f"an epoch was opened for a service the vendor refused: {opened}")
+
+
+def test_the_refused_service_is_retried_on_the_next_slice(monkeypatch):
+    """Retry is the whole point of keeping it out of the set."""
+    rec = _Recorder(refuse_subscribe=("OPTIONS_BOOK",))
+    ofs, _ = _wire(monkeypatch, rec)
+    _plan(monkeypatch, ofs, ["A"])
+    asyncio.run(ofs._apply_options_slice(object(), 0.0, "stream_start"))
+    rec.refuse_sub.clear()                       # the vendor recovers
+    rec.events.clear()
+    _plan(monkeypatch, ofs, ["A"])               # same want-set, nothing rotated
+    asyncio.run(ofs._apply_options_slice(object(), 900.0, "rotation"))
+
+    retried = [e for e in rec.events if e[0] == "subscribe" and e[2] == "OPTIONS_BOOK"]
+    assert retried, "the previously refused service was never retried"
+    assert "A" in ofs._options_subscribed["OPTIONS_BOOK"], "the retry did not take effect"
+    assert not [e for e in rec.events
+                if e[0] == "subscribe" and e[2] == "LEVELONE_OPTIONS"], (
+        "the already-subscribed service was re-subscribed — churn the vendor did not need")
+
+
+def test_a_total_subscribe_failure_records_nothing(monkeypatch):
+    """Neither service accepted: no epoch, no internal state, and it retries."""
+    ofs, rec = _wire(monkeypatch, _Recorder(refuse_subscribe=("LEVELONE_OPTIONS",
+                                                             "OPTIONS_BOOK")))
+    _plan(monkeypatch, ofs, ["A"])
+    asyncio.run(ofs._apply_options_slice(object(), 0.0, "stream_start"))
+    assert "open_epochs" not in rec.kinds(), "an epoch was opened with no accepted service"
+    for svc in ofs.OPTIONS_SERVICES:
+        assert not ofs._options_subscribed[svc], f"{svc} recorded a subscription it never got"
+
+
+def test_the_slice_record_shows_when_the_services_disagree(monkeypatch):
+    """Partial state must be VISIBLE, not averaged into one total."""
+    ofs, _ = _wire(monkeypatch, _Recorder(refuse_subscribe=("OPTIONS_BOOK",)))
+    _plan(monkeypatch, ofs, ["A"])
+    asyncio.run(ofs._apply_options_slice(object(), 0.0, "stream_start"))
+    st = ofs.options_stream_status()
+    assert st["subscribed_by_service"]["LEVELONE_OPTIONS"] == 1
+    assert st["subscribed_by_service"]["OPTIONS_BOOK"] == 0
+    assert st["services_in_agreement"] is False, (
+        "the status claims the services agree while one is subscribed and the other is not")
 
 
 def test_the_slice_record_makes_rotation_observable(wired, monkeypatch):
@@ -296,6 +408,77 @@ def test_the_slice_record_makes_rotation_observable(wired, monkeypatch):
     assert st.get("last_slice"), "options_stream_status exposes no slice record"
     assert st["last_slice"]["slice_index"] == 7
     assert "rotation_running" in st, "an operator cannot tell whether rotation is alive"
+
+
+# ── the universe must be the ENROLLMENT ROSTER, not whatever has a fresh chain ──────────────
+#
+# The cohort walks a SORTED non-core list at start = (slice_index * k) % len(non_core), so the
+# LENGTH of that list is load-bearing. This asked build_chains_for_selection() for the universe
+# — "tickers whose newest chain snapshot is under 86,400s old" — a freshness-derived set that
+# is recorded nowhere. MEASURED at one fixed instant: removing a single name moved the cohort
+# from U000-U007 to U017-U024; adding one moved it to U040-U047. So one name's chain going
+# stale reshuffled every other name's position, and the determinism replay depends on was a
+# false claim.
+
+def test_one_name_changing_shifts_the_whole_cohort():
+    """The mechanism, kept as a measurement — it is why the universe must be governed."""
+    pol = RotationPolicy()
+    base = [f"U{i:03d}" for i in range(55)] + list(pol.core)
+    t = 1_787_000_000.0
+    full = rotation_cohort(base, t, pol)["rotating"]
+    minus = rotation_cohort([x for x in base if x != "U000"], t, pol)["rotating"]
+    assert full != minus, (
+        "the fixture no longer reproduces the shift; if rotation_cohort became insensitive to "
+        "roster length this guard is obsolete, but do not delete it without saying so")
+
+
+def test_the_cohort_is_stable_when_only_chain_freshness_changes(monkeypatch):
+    """THE FIX. Same roster, same instant, different fresh-chain sets -> identical cohort."""
+    import order_flow_streaming as ofs
+    import options_stream_subscription as sub
+
+    roster = [f"U{i:03d}" for i in range(55)] + ["SPY", "QQQ", "IWM"]
+
+    class _DB:
+        def logging_universe_authoritative_tickers(self):
+            return list(roster)
+
+    monkeypatch.setattr("db.get_db", lambda: _DB(), raising=False)
+    monkeypatch.setattr(ofs, "_subscribed_equity_syms", ["SPY"], raising=False)
+
+    seen = []
+    for stale in ([], ["U000"], ["U000", "U007", "U031"]):
+        fresh = {t: (100.0, []) for t in roster if t not in stale}
+        monkeypatch.setattr(sub, "build_chains_for_selection",
+                            lambda tickers=None, **_k: (
+                                {t: fresh[t] for t in (tickers or fresh) if t in fresh}),
+                            raising=False)
+        plan = ofs.options_desired_for_slice(1_787_000_000.0, equity_symbols=1)
+        seen.append((tuple(plan["core"]), tuple(plan["rotating"])))
+
+    assert len(set(seen)) == 1, (
+        f"the cohort moved when only chain FRESHNESS changed: {seen} — a stale chain on one "
+        f"name must be a recorded gap, not a reshuffle of every other name's turn")
+
+
+def test_a_name_without_a_fresh_chain_is_recorded_as_a_gap(monkeypatch):
+    """Absence must be stated, not inferred from thin data months later."""
+    import order_flow_streaming as ofs
+    import options_stream_subscription as sub
+
+    roster = ["SPY", "QQQ", "IWM", "U001", "U002"]
+
+    class _DB:
+        def logging_universe_authoritative_tickers(self):
+            return list(roster)
+
+    monkeypatch.setattr("db.get_db", lambda: _DB(), raising=False)
+    monkeypatch.setattr(ofs, "_subscribed_equity_syms", ["SPY"], raising=False)
+    monkeypatch.setattr(sub, "build_chains_for_selection",
+                        lambda tickers=None, **_k: {}, raising=False)
+    plan = ofs.options_desired_for_slice(1_787_000_000.0, equity_symbols=1)
+    assert any("no fresh chain" in n for n in plan["notes"]), (
+        f"an underlying with no fresh chain produced no coverage-gap note: {plan['notes']}")
 
 
 # ── the shared websocket ────────────────────────────────────────────────────────────────────
@@ -344,7 +527,7 @@ def test_the_budget_is_re_derived_under_the_lock(wired, monkeypatch):
     monkeypatch.setattr(sub, "contract_budget_from_key_limit",
                         lambda **_k: {"contracts_allowed": 5}, raising=False)
     asyncio.run(ofs._apply_options_slice(object(), 0.0, "rotation"))
-    subscribed = [s for e in rec.events if e[0] == "subscribe" for s in e[1]]
+    subscribed = {s for e in rec.events if e[0] == "subscribe" for s in e[1]}  # distinct contracts
     assert len(subscribed) <= 5, (
         f"the rotation subscribed {len(subscribed)} contracts against a re-derived allowance of "
         f"5 — it would push the account past the key limit")
@@ -357,6 +540,93 @@ def test_a_null_lock_does_not_silently_mean_unsynchronised(wired, monkeypatch):
     monkeypatch.setattr(ofs, "_stream_resubscribe_lock", None, raising=False)
     asyncio.run(ofs._apply_options_slice(object(), 0.0, "stream_start"))
     assert any(e[0] == "subscribe" for e in rec.events)
+
+
+# ── the helper receipts, at the source ──────────────────────────────────────────────────────
+
+def test_unsubscribe_options_reports_per_service_and_does_not_raise():
+    """The contract the reconciler depends on: failure is in the receipt, never an exception."""
+    import options_stream_subscription as sub
+
+    class _Client:
+        async def level_one_option_unsubs(self, _s):
+            return None                                  # accepted
+
+        async def options_book_unsubs(self, _s):
+            raise RuntimeError("vendor said no")         # refused
+
+    r = asyncio.run(sub.unsubscribe_options(_Client(), ["A"]))
+    assert r["level_one"] is True, "an accepted unsubscribe was not reported True"
+    assert r["book"] is False, "a refused unsubscribe was not reported False"
+    assert any("options_book_unsubs" in e for e in r["errors"]), "the failure was not recorded"
+
+
+def test_unsubscribe_options_flags_a_missing_method():
+    import options_stream_subscription as sub
+
+    class _Bare:
+        async def level_one_option_unsubs(self, _s):
+            return None
+
+    r = asyncio.run(sub.unsubscribe_options(_Bare(), ["A"]))
+    assert r["level_one"] is True and r["book"] is False
+    assert any("no such method" in e for e in r["errors"])
+
+
+# ── startup / teardown must not strand resources ────────────────────────────────────────────
+
+def test_an_empty_initial_collection_stops_the_ingest_writer(monkeypatch):
+    """A start that subscribes nothing must not leave the writer thread running forever."""
+    import order_flow_streaming as ofs
+
+    started, stopped = {"n": 0}, {"n": 0}
+
+    class _Ingest:
+        def start(self):
+            started["n"] += 1
+
+        def stop(self, timeout=None):
+            stopped["n"] += 1
+            return {"offered": 0, "written": 0, "dropped": 0}
+
+        def queue_depth(self):
+            return 0
+
+        class stats:
+            @staticmethod
+            def snapshot():
+                return {}
+
+    monkeypatch.setenv("ED_OPTIONS_STREAM", "1")
+    monkeypatch.setattr(ofs, "OptionsFrameIngest", None, raising=False)
+    monkeypatch.setattr("calibration.options_stream_ingest.OptionsFrameIngest",
+                        lambda *_a, **_k: _Ingest(), raising=False)
+    monkeypatch.setattr(ofs, "_options_subscribed",
+                        {s: set() for s in ofs.OPTIONS_SERVICES}, raising=False)
+
+    async def _empty_slice(*_a, **_k):
+        return {}
+
+    monkeypatch.setattr(ofs, "_apply_options_slice", _empty_slice, raising=False)
+    asyncio.run(ofs._start_options_collection(object()))
+    assert started["n"] == 1, "the writer was never started (nothing to strand — test is moot)"
+    assert stopped["n"] == 1, (
+        "the ingest writer was left running after a start that subscribed nothing — an ingest "
+        "with no producer, holding its queue and sqlite handle for the life of the process")
+
+
+def test_teardown_closes_epochs_only_for_what_each_service_held(monkeypatch):
+    """A shutdown must not write an end for an epoch that was never opened."""
+    ofs, rec = _wire(monkeypatch, _Recorder())
+    monkeypatch.setattr(ofs, "_options_subscribed",
+                        {"LEVELONE_OPTIONS": {"A", "B"}, "OPTIONS_BOOK": {"A"}}, raising=False)
+    monkeypatch.setattr(ofs, "_options_ingest", None, raising=False)
+    ofs._stop_options_collection("stream_stop")
+    closed = {(e[2], s) for e in rec.events if e[0] == "close_epochs" for s in e[1]}
+    assert ("LEVELONE_OPTIONS", "A") in closed and ("LEVELONE_OPTIONS", "B") in closed
+    assert ("OPTIONS_BOOK", "A") in closed
+    assert ("OPTIONS_BOOK", "B") not in closed, (
+        "teardown closed an OPTIONS_BOOK epoch for B, which that service never held")
 
 
 # ── the wiring itself ───────────────────────────────────────────────────────────────────────
