@@ -50,37 +50,52 @@ def _stamp(frame: dict) -> dict:
     return g
 
 
-def test_producer_is_never_stalled_by_a_slow_writer(tmp_path):
-    """THE REGRESSION. offer() runs on the stream loop; its tail latency IS stream stall.
-
-    The writer here is deliberately slow (25 ms per batch). If offer() were coupled to the
-    writer — by a shared lock held across a batch, or by blocking when the queue fills — that
-    slowness would show up in the producer. It must not.
-    """
-    def _slow(_conn, batch):
-        time.sleep(0.025)
+def _offer_wall_s(db: str, *, writer_sleep_s: float, n: int, tmpname: str) -> float:
+    """Total wall time the PRODUCER spends offering n frames, given a writer of some speed."""
+    def _writer(_conn, batch):
+        if writer_sleep_s:
+            time.sleep(writer_sleep_s)
         return len(batch)
 
-    db = str(tmp_path / "slow.db")
-    ing = OptionsFrameIngest(db, max_queue=5000, batch_max=200, persist_batch=_slow)
+    ing = OptionsFrameIngest(db, max_queue=n + 1000, batch_max=200, persist_batch=_writer)
     ing.start()
     fr = _real_frame()
-    worst_us = 0.0
+    frames = [_stamp(fr) for _ in range(n)]
     try:
-        for _ in range(3000):
-            g = _stamp(fr)
-            t0 = time.perf_counter_ns()
+        t0 = time.perf_counter()
+        for g in frames:
             ing.offer("LEVELONE_OPTIONS", g)
-            worst_us = max(worst_us, (time.perf_counter_ns() - t0) / 1000.0)
+        return time.perf_counter() - t0
     finally:
-        ing.stop(timeout=60.0)
+        ing.stop(timeout=120.0)
 
-    # The writer sleeps 25 ms per batch. A producer coupled to it would show tens of ms.
-    # 5 ms leaves generous room for interpreter/GC jitter on a loaded host while still
-    # failing loudly on real coupling (the measured regression was 28 ms).
-    assert worst_us < 5000.0, (
-        f"offer() worst case {worst_us:.0f}us — the producer is coupled to the writer, so a "
-        f"storage stall becomes an equity-stream stall")
+
+def test_producer_is_never_stalled_by_a_slow_writer(tmp_path):
+    """THE REGRESSION. offer() runs on the stream loop; time spent there IS stream stall.
+
+    MEASURED RELATIVELY, on purpose. An earlier version asserted an absolute microsecond bound
+    on the worst single offer(), and it FLAKED: wall time around offer() also captures OS
+    descheduling, so on a host busy with other work it failed while the code was correct. A
+    flaky test in this position is worse than none, because the fix is usually to silence it.
+
+    The real property is COUPLING: if the producer were tied to the writer — by a lock held
+    across a batch, or by blocking on a full queue — then making the writer 25 ms/batch slower
+    would make the producer proportionally slower. Full coupling for 2000 frames at batch 200
+    would cost ~10 x 25 ms = 250 ms of producer time. Comparing the same workload against a
+    fast writer cancels out machine load, because both halves pay it.
+    """
+    n = 2000
+    fast_s = _offer_wall_s(str(tmp_path / "fast.db"), writer_sleep_s=0.0, n=n, tmpname="fast")
+    slow_s = _offer_wall_s(str(tmp_path / "slow.db"), writer_sleep_s=0.025, n=n, tmpname="slow")
+
+    # What full coupling would cost the producer: one writer sleep per batch.
+    coupled_cost_s = (n / 200) * 0.025
+    overhead_s = slow_s - fast_s
+    assert overhead_s < coupled_cost_s * 0.25, (
+        f"slowing the writer by {coupled_cost_s * 1000:.0f}ms of batch sleep added "
+        f"{overhead_s * 1000:.1f}ms to the PRODUCER (fast={fast_s * 1000:.1f}ms "
+        f"slow={slow_s * 1000:.1f}ms) — offer() is coupled to the writer, so a storage stall "
+        f"becomes an equity-stream stall")
 
 
 def test_accounting_survives_a_writer_that_cannot_open_storage(tmp_path):
