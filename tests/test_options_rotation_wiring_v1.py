@@ -298,6 +298,67 @@ def test_the_slice_record_makes_rotation_observable(wired, monkeypatch):
     assert "rotation_running" in st, "an operator cannot tell whether rotation is alive"
 
 
+# ── the shared websocket ────────────────────────────────────────────────────────────────────
+#
+# `_resubscribe_to_ticker` drives level_one_equity / nasdaq_book / nyse_book subs on the SAME
+# StreamClient under `_stream_resubscribe_lock`, and rewrites `_subscribed_equity_syms` AFTER
+# those awaits. A rotation that took neither could interleave its unsubscribe/subscribe with a
+# viewer's ticker switch on one socket, and could size the key budget from an equity count that
+# changed mid-await. Options are additive; the equity/book path is what the console depends on.
+
+def test_the_rotation_waits_for_the_equity_resubscribe_lock(wired, monkeypatch):
+    """DRIVEN, not asserted: hold the lock and prove no vendor call escapes."""
+    ofs, rec = wired
+    _plan(monkeypatch, ofs, ["A"])
+
+    async def scenario():
+        lock = asyncio.Lock()
+        monkeypatch.setattr(ofs, "_stream_resubscribe_lock", lock, raising=False)
+        await lock.acquire()                       # a ticker switch is in flight
+        task = asyncio.create_task(ofs._apply_options_slice(object(), 0.0, "rotation"))
+        await asyncio.sleep(0.05)
+        during = list(rec.events)                  # nothing may have happened yet
+        lock.release()
+        await task
+        return during, list(rec.events)
+
+    during, after = asyncio.run(scenario())
+    assert during == [], (
+        f"the rotation touched the shared socket while the equity resubscribe lock was held: "
+        f"{during}")
+    assert any(e[0] == "subscribe" for e in after), (
+        "the rotation never proceeded after the lock was released — it would stall forever")
+
+
+def test_the_budget_is_re_derived_under_the_lock(wired, monkeypatch):
+    """A plan sized against a stale equity load must be TRIMMED, not sent.
+
+    Sizing options against an equity count that changed mid-await is how a rotation tips the
+    account past the vendor key limit and takes the equity stream down with it.
+    """
+    ofs, rec = wired
+    import options_stream_subscription as sub
+
+    _plan(monkeypatch, ofs, [f"S{i}" for i in range(50)])
+    monkeypatch.setattr(ofs, "_stream_resubscribe_lock", None, raising=False)
+    monkeypatch.setattr(sub, "contract_budget_from_key_limit",
+                        lambda **_k: {"contracts_allowed": 5}, raising=False)
+    asyncio.run(ofs._apply_options_slice(object(), 0.0, "rotation"))
+    subscribed = [s for e in rec.events if e[0] == "subscribe" for s in e[1]]
+    assert len(subscribed) <= 5, (
+        f"the rotation subscribed {len(subscribed)} contracts against a re-derived allowance of "
+        f"5 — it would push the account past the key limit")
+
+
+def test_a_null_lock_does_not_silently_mean_unsynchronised(wired, monkeypatch):
+    """Outside the stream loop there is no shared socket; the slice must still complete."""
+    ofs, rec = wired
+    _plan(monkeypatch, ofs, ["A"])
+    monkeypatch.setattr(ofs, "_stream_resubscribe_lock", None, raising=False)
+    asyncio.run(ofs._apply_options_slice(object(), 0.0, "stream_start"))
+    assert any(e[0] == "subscribe" for e in rec.events)
+
+
 # ── the wiring itself ───────────────────────────────────────────────────────────────────────
 
 def test_production_actually_imports_the_rotation_machinery():

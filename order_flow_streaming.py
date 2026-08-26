@@ -235,19 +235,72 @@ async def _apply_options_slice(sc: Any, at_epoch_s: float, reason: str) -> dict[
     Core symbols normally appear in both the old and the new set, so they are neither dropped
     nor re-added — their coverage stays CONTINUOUS across slice boundaries by construction, not
     by a special case.
+
+    THE ONE WEBSOCKET IS SHARED, AND THAT IS THE DANGEROUS PART. `_resubscribe_to_ticker` drives
+    level_one_equity/nasdaq_book/nyse_book subs on this same client under
+    `_stream_resubscribe_lock`, and rewrites `_subscribed_equity_syms` AFTER those awaits. A
+    first version of this function took neither: a rotation slice could interleave its
+    unsubscribe/subscribe with a viewer's ticker switch on one socket, and could size the key
+    budget from an equity count that changed while it was awaiting. Options are additive; the
+    equity/book path is what the console actually depends on, so the rotation takes the SAME
+    lock and re-derives the budget under it.
+
+    The plan is computed OUTSIDE the lock — it is sqlite and arithmetic, no vendor call — so a
+    ticker switch never waits on a chain read. Only the vendor calls are serialized.
     """
     global _options_subscribed_syms, _options_last_receipt, _options_last_slice
 
     from stream_spine import STREAM_DB_DEFAULT as _CAPTURE_DB
     from calibration.options_stream_coverage import close_epochs, open_epochs
-    from options_stream_subscription import subscribe_options, unsubscribe_options
+    from options_stream_subscription import (contract_budget_from_key_limit, subscribe_options,
+                                             unsubscribe_options)
 
     plan = options_desired_for_slice(
         at_epoch_s, equity_symbols=len(_subscribed_equity_syms) or 1, book_enabled=True)
     want = list(dict.fromkeys(plan["symbols"]))
-    have = list(_options_subscribed_syms)
-    to_drop = [s for s in have if s not in set(want)]
-    to_add = [s for s in want if s not in set(have)]
+
+    lock = _stream_resubscribe_lock
+    if lock is None:
+        # Outside the stream loop (tests, or a teardown race) there is no shared socket to
+        # protect. A null lock must not silently mean "unsynchronised on a live socket", so the
+        # only path that reaches here is one where the loop is not running.
+        import contextlib
+        lock = contextlib.AsyncExitStack()
+
+    async with lock:
+        # RE-DERIVE UNDER THE LOCK. The equity path may have subscribed more symbols while the
+        # plan was being built; sizing options against a stale equity load is how a rotation
+        # tips the account past the vendor key limit and takes the equity stream down with it.
+        fresh = contract_budget_from_key_limit(
+            equity_symbols=len(_subscribed_equity_syms) or 1, book_enabled=True)
+        allowed = int(fresh["contracts_allowed"])
+        if len(want) > allowed:
+            plan["notes"].append(
+                f"equity load changed while planning: trimmed {len(want)} -> {allowed} contracts "
+                f"to stay inside the key budget")
+            want = want[:allowed]
+
+        have = list(_options_subscribed_syms)
+        to_drop = [s for s in have if s not in set(want)]
+        to_add = [s for s in want if s not in set(have)]
+
+        return await _reconcile_options_subscription(
+            sc, plan, to_drop, to_add, have, reason,
+            capture_db=_CAPTURE_DB, close_epochs=close_epochs, open_epochs=open_epochs,
+            subscribe_options=subscribe_options, unsubscribe_options=unsubscribe_options)
+
+
+async def _reconcile_options_subscription(sc, plan, to_drop, to_add, have, reason, *,
+                                          capture_db, close_epochs, open_epochs,
+                                          subscribe_options, unsubscribe_options
+                                          ) -> dict[str, Any]:
+    """The vendor calls and the coverage writes, in the order the record depends on.
+
+    Split out of _apply_options_slice so the ordering can be read — and driven — without the
+    locking and budget re-derivation around it.
+    """
+    global _options_subscribed_syms, _options_last_receipt, _options_last_slice
+    _CAPTURE_DB = capture_db
 
     dropped_ok = added = 0
     if to_drop:
