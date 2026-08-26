@@ -578,54 +578,101 @@ def compute_hedging_flow_score(
     }
 
 
+#: How many strikes each side of spot the gradient samples. A COUNT, not a price window: the
+#: sample must follow the instrument's own ladder rather than assume a dollar scale. Three a side
+#: is enough to average out a single odd strike without reaching into the wings.
+GRADIENT_STRIKES_PER_SIDE = 3
+
+
 def compute_gamma_gradient(
     exposures_by_strike: dict,
     spot: float,
     *,
-    window_pts: float = 5.0,
+    strikes_per_side: int = GRADIENT_STRIKES_PER_SIDE,
 ) -> float | None:
     """
-    Gamma Gradient = d(GEX) / d(Price)
+    Gamma Gradient = d(GEX) / d(Price), the slope of net_gex_1pct across strikes near spot.
 
-    Per Derived Formula Dictionary Section 5:
-    High gradient zones indicate unstable positioning and
-    often precede sharp directional moves.
+    Per Derived Formula Dictionary Section 5: high gradient zones indicate unstable positioning
+    and often precede sharp directional moves.
 
-    Computed as the slope of net_gex_1pct across strikes near spot.
+    ROOT FIX 2026-08-26 — THE SAMPLE FOLLOWS THE LADDER, NOT A DOLLAR CONSTANT.
+    This sampled an absolute ``window_pts = 5.0`` dollars each side and divided by a fixed
+    ``2 * window_pts``. How much of the ladder that captured was set entirely by the
+    instrument's strike step, so one name's "gradient near spot" was a different measurement
+    from another's under the same name:
 
-    Args:
-        exposures_by_strike: strike → bucket dict
-        spot:                current price
-        window_pts:          how far above/below spot to sample
+      * A step of $10 or more cannot place a strike on BOTH sides inside +/-$5, so the
+        `not below or not above` guard fired on every tick. MEASURED on the production DB over
+        the last 10 days: AEIS 21/21 NULL, FN 21/21, STRL 21/21 — 100%. The metric did not
+        exist for wide-ladder instruments, and nothing said so.
+      * A $0.50 step put ~20 strikes inside the window — +/-31% of spot on CIFR — so the same
+        name meant "the whole neighbourhood" there and "two strikes" elsewhere.
+      * The divisor was the WINDOW, not the distance actually sampled. MU (spot 936, $5 ladder)
+        got exactly one strike per side, truly $5 apart, and divided by 10: the reported slope
+        was half the real one.
 
-    Returns gradient (positive = increasing GEX upward), or None.
+    Now: take the ``strikes_per_side`` NEAREST strikes on each side — whatever the ladder is —
+    and divide by the ACTUAL price separation of the two sampled groups. The result is
+    dollars-of-GEX per dollar-of-price on every instrument, comparable across tickers, and
+    computable on a $10 ladder and a $0.50 ladder alike. No dollar constant, no percent-of-spot
+    assumption, no ticker knowledge.
+
+    Returns the gradient (positive = GEX increasing upward), or None when either side has no
+    measured strike — absence stays absence and is never reported as a flat slope.
+
+    KNOWN, SEPARATE, NOT FIXED HERE: consumers clamp this to [-1, 1]
+    (compute_breakout_score line ~654, compute_vol_expansion_signal line ~767) while measured
+    magnitudes run to 2.0e8 — 96.7% of non-null persisted values already exceed 1.0, so the
+    clamp saturates and only NULL-vs-not carries information downstream. That is a scaling
+    defect in the SCORES, not in this measurement, and normalising it changes what those scores
+    mean; it is reported rather than silently altered here.
     """
     if not exposures_by_strike or not spot:
         return None
+    try:
+        s = float(spot)
+    except (TypeError, ValueError):
+        return None
+    if not s > 0:
+        return None
 
-    below_gex = []
-    above_gex = []
-
+    below: list[tuple[float, float]] = []      # (strike, gex)
+    above: list[tuple[float, float]] = []
     for strike, bucket in exposures_by_strike.items():
-        k = float(strike)
+        try:
+            k = float(strike)
+        except (TypeError, ValueError):
+            continue
         gex = bucket_metric(bucket, "net_gex_1pct")
         if gex is None:
             continue
-        if abs(k - spot) > window_pts:
+        try:
+            g = float(gex)
+        except (TypeError, ValueError):
             continue
-        if k < spot:
-            below_gex.append(gex)
-        elif k > spot:
-            above_gex.append(gex)
+        if k < s:
+            below.append((k, g))
+        elif k > s:
+            above.append((k, g))
 
-    if not below_gex or not above_gex:
+    if not below or not above:
         return None
 
-    avg_below = sum(below_gex) / len(below_gex)
-    avg_above = sum(above_gex) / len(above_gex)
+    n = max(1, int(strikes_per_side))
+    below.sort(key=lambda kv: s - kv[0])       # nearest below first
+    above.sort(key=lambda kv: kv[0] - s)       # nearest above first
+    below, above = below[:n], above[:n]
 
-    gradient = (avg_above - avg_below) / (2 * window_pts)
-    return round(gradient, 4)
+    k_below = sum(k for k, _ in below) / len(below)
+    k_above = sum(k for k, _ in above) / len(above)
+    dk = k_above - k_below
+    if not dk > 0:                             # degenerate ladder — no price separation to divide by
+        return None
+
+    g_below = sum(g for _, g in below) / len(below)
+    g_above = sum(g for _, g in above) / len(above)
+    return round((g_above - g_below) / dk, 4)
 
 
 def compute_breakout_score(
