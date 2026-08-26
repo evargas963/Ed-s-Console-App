@@ -1062,6 +1062,20 @@ def snap_level_to_shelf_strike(
     return round(min(candidates, key=lambda k: abs(k - level)), 2)
 
 
+#: WHAT THIS VERDICT ACTUALLY ASSERTS (corrected 2026-08-26 — the word overstated the evidence):
+#: it is a CHAIN-COVERAGE verdict, not a certification that the flip level is correct. It says one
+#: measurable thing: the delivered strikes reach GAMMA_FLIP_TRUSTED_SPAN_PCT around spot, the span
+#: at which the convergence study's error stopped improving (~0.117% of spot residual vs its own
+#: reference). It does NOT assert the level is right in absolute terms — the study's justified_span
+#: is None, and for SPY/QQQ its reference chain is narrower than production (see the block below).
+#: AND THE COVERAGE RESIDUAL IS NOT EVEN THE DOMINANT ERROR: the flip LEVEL drifts intraday.
+#: Measured (unproven_register row 56, 23,718 accrued rows / 99 RTH ticker-sessions): intraday flip
+#: range as % of median spot — SPY median 0.221%, QQQ 6.139%, IWM 8.663%; ALL tickers median 4.176%,
+#: p90 11.991%. That is ~35x the ~0.117% convergence residual this verdict is set by. So a chain can
+#: clear the span bar and its flip still be a moving line within the session; coverage says nothing
+#: about the level's STABILITY. (This is why proximity logic must read the LIVE recomputed flip.)
+#: Consumers may gate on it; no surface may render it as proof. The operator-facing strings
+#: deliberately say "chain coverage" and carry the residual, never a bare "trusted".
 GAMMA_FLIP_TRUSTED = "TRUSTED"
 GAMMA_FLIP_NARROW = "LOW_CONFIDENCE_NARROW_CHAIN"
 GAMMA_FLIP_UNAVAILABLE = "UNAVAILABLE"
@@ -1094,17 +1108,30 @@ GAMMA_FLIP_MIN_SPAN_PCT = 0.05
 #: This constant governs the flip-LEVEL trust ONLY, and is set at the measured convergence knee:
 #: median error vs the full-chain flip falls from 1.38% of spot at ±5% to 0.117% at ±10% (~10x) and
 #: does not improve at ±15% (0.257%, reference noise).
-#: MEASURED THIS CHANGE (250 stored wide morning captures, ed_console.db, 2026-08-26): 96.0% of
-#: captures deliver >=10% symmetric span, so this bar does NOT dark the board — but SPY (median
-#: 8.49%) and QQQ (8.84%) sit BELOW it, which is exactly why the verdict is graduated rather than
-#: binary: those two would otherwise lose their regime read, and the REGIME does not depend on this
-#: span at all. The regime is the SIGN OF GAMMA AT SPOT (gamma_at_price), which needs strikes NEAR
-#: spot, not a wide wing; only the flip LEVEL needs the wide span. Below this bar but at/above
-#: GAMMA_FLIP_MIN_SPAN_PCT the verdict is GAMMA_FLIP_LEVEL_APPROX: regime stands, level disclosed
-#: as approximate. STILL NOT_PROVEN: the study's justified_span is None (no ladder point reaches
-#: 95% of chains inside the 0.05%-of-spot tolerance on an n=15 cohort measured against our widest
-#: available chain, not a true full chain), so 0.10 is the evidence-backed FLOOR for TRUSTED, not a
-#: certified sufficiency. Pin it with tools/probe_chain_depth_v1.py + a larger cohort.
+#: CORRECTED 2026-08-26 (this constant's first note cited the WRONG POPULATION — read this before
+#: quoting any span number). The superseded note said "SPY (median 8.49%) and QQQ (8.84%) sit BELOW
+#: this bar", implying production SPY/QQQ would lose their flip-level trust. Those were
+#: option_chain_morning_full ARCHIVE captures, which are NOT the production terrain chain.
+#: RE-MEASURED against the LIVE fetch (`/api/terrain` flip_diag span_below/above_pct, 2026-08-26):
+#:   SPY 29.4% (216 strikes), QQQ 29.5% (216), IWM 29.8% (87), NVDA 21.7% (44), AAPL 29.4%, TSLA 25.9%
+#: — every sampled production chain clears this bar with ~3x headroom and reads TRUSTED. The
+#: dark-the-board risk the graduated tier was partly justified by DID NOT EXIST at these spans.
+#: The tier is still correct and retained, because it is the honest verdict for a chain that
+#: genuinely lands between GAMMA_FLIP_MIN_SPAN_PCT and this bar (the regime is the SIGN OF GAMMA AT
+#: SPOT, which needs strikes NEAR spot; only the flip LEVEL needs the wide wing) — it simply is not
+#: SPY/QQQ's situation. WHEN MEASURING DELIVERED SPAN, READ THE LIVE TERRAIN FETCH, NOT THE ARCHIVE.
+#: STILL NOT_PROVEN, and now on TWO counts — see GAMMA_FLIP_TRUSTED semantics below:
+#:  (1) the study's justified_span is None (no ladder point reaches 95% of chains inside the
+#:      0.05%-of-spot tolerance) on an n=15 fixed cohort; and
+#:  (2) MEASURED 2026-08-26: for SPY/QQQ the study's own REFERENCE chain (archive: SPY 8.9%/110
+#:      strikes, QQQ 9.6%/123) is ~3x NARROWER than the production chain it is used to certify, so
+#:      the ±10% and ±15% ladder points cannot even truncate those rows (they pass through at
+#:      zero error by construction — 5.1% of the n=992 cohort at ±10%). The knee is therefore
+#:      measured predominantly on non-SPY/QQQ chains, and the 9%->30% region is UNMEASURED for
+#:      exactly the two tickers that matter most.
+#: So 0.10 is an evidence-backed FLOOR, never a certified sufficiency. Settle it by widening the
+#: archive capture for dense-strike ETFs (see calibration/option_chain_morning_full) so the research
+#: reference is at least as wide as production, then re-running the ladder.
 GAMMA_FLIP_TRUSTED_SPAN_PCT = 0.10
 
 #: Overshoot on the derived count. Schwab centres `strikeCount` strikes near ATM but not

@@ -8,11 +8,20 @@ math_levels.GAMMA_FLIP_MIN_SPAN_PCT's provenance) measured the flip error at 1.3
 ROOT CAUSE: one constant did double duty — the chain-FETCH width (a cost/latency decision) and the
 flip-LEVEL trust verdict. Only the latter is refuted by the study.
 
-WHY GRADUATED, NOT JUST RAISED: measured over 250 stored wide morning captures (2026-08-26), 96% of
-captures deliver >=10% span, but SPY (median 8.49%) and QQQ (8.84%) do NOT. A binary raise would
-have dropped the regime read on the two primary instruments. The REGIME is the sign of dealer gamma
-AT SPOT — it needs strikes near spot, not a wide wing — so only the flip LEVEL needs the wide span.
-Hence: regime survives at the middle tier, the LEVEL is disclosed as approximate.
+WHY GRADUATED, NOT JUST RAISED — and a CORRECTION to this docstring's first version, which cited the
+WRONG POPULATION. It claimed "SPY (median 8.49%) and QQQ (8.84%)" fall below the bar, so a binary
+raise would dark the two primary instruments. Those were option_chain_morning_full ARCHIVE captures,
+NOT the production terrain chain. Re-measured against the LIVE fetch (2026-08-26): SPY 29.4%, QQQ
+29.5%, IWM 29.8%, NVDA 21.7% — every production chain clears the bar with ~3x headroom. The
+dark-the-board risk did not exist.
+
+The graduated tier is KEPT anyway, on its own merit: it is the honest verdict for a chain that
+genuinely lands between the floor and the bar, because the REGIME is the sign of dealer gamma AT
+SPOT (it needs strikes near spot, not a wide wing) while only the flip LEVEL needs the wide span.
+That case is real; it simply is not SPY/QQQ's today.
+
+These tests therefore pin the SEMANTICS (which verdict a given span earns, and what each verdict
+permits), not the population — so they stay valid whichever chains production happens to deliver.
 """
 from __future__ import annotations
 

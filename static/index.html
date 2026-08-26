@@ -12501,9 +12501,20 @@ async function edLoadTerrain() {
     // state — calling it "narrow" would understate a usable regime, and showing the raw enum is noise.
     var _lvlApprox = d.confidence === 'LEVEL_APPROX_NARROW_SPAN';
     tr.className = 'tv-chip ' + (trusted ? 'ok' : _lvlApprox ? 'warn' : 'bad');
-    tr.textContent = (trusted ? '● ' : '⚠') + (_lvlApprox ? 'FLIP LEVEL APPROX' : (d.confidence || '—'));
-    if (_lvlApprox) tr.title = 'Regime is determined (sign of dealer gamma at spot). The flip LEVEL '
-      + 'is approximate: the chain does not reach the measured convergence span (~1.4% of spot error).';
+    // Corrected 2026-08-26: this verdict measures CHAIN COVERAGE, not correctness of the flip
+    // level. Printing the bare word "TRUSTED" claimed more than the study established (its
+    // justified span is None, and for SPY/QQQ its reference chain is narrower than production),
+    // so the chip now names what was actually measured and the tooltip carries the residual.
+    tr.textContent = (trusted ? '● ' : '⚠')
+      + (trusted ? 'CHAIN COVERAGE OK' : _lvlApprox ? 'FLIP LEVEL APPROX' : (d.confidence || '—'));
+    tr.title = trusted
+      ? 'Chain coverage clears the measured convergence span around spot (the point where the flip '
+        + 'error stopped improving, ~0.1% of spot residual). This is a COVERAGE check, not proof the '
+        + 'flip level is exact — the study’s sufficient span is still unproven.'
+      : _lvlApprox
+        ? 'Regime is determined (sign of dealer gamma at spot). The flip LEVEL is approximate: the '
+          + 'chain does not reach the measured convergence span (~1.4% of spot error).'
+        : tr.title;
   }
   set('tv-contracts', (d.contracts_used || 0).toLocaleString() + ' CT · ' + (d.strikes_used || 0) + ' STRIKES');
   d._gexCrossed = false;   // fresh payload re-anchors: server regime and net GEX agree
@@ -12763,9 +12774,9 @@ function edRenderPeriphery(d, trusted) {
      gas == null ? '' : (gas > 0 ? 'var(--tv-blu)' : 'var(--tv-red)'),
      'Signed net dealer gamma in dollars per 1% move, repriced to the live spot each poll. This number IS the regime; it also breaks the tie when call and put gamma stack on the same strike. The dealer sign is MODELLED from open interest (+call/-put convention) — OI cannot establish actual dealer ownership.',
      'tv-dealer-gex'],
-    ['CONFIDENCE', trusted ? 'TRUSTED' : (d.confidence || '—'),
+    ['CHAIN COVERAGE', trusted ? 'OK' : (d.confidence === 'LEVEL_APPROX_NARROW_SPAN' ? 'LEVEL APPROX' : (d.confidence || '—')),
      trusted ? 'var(--tv-grn)' : 'var(--tv-amb)',
-     'TRUSTED requires a wide chain covering the required strike span; narrow chains can truncate walls and fake flips.'],
+     'Whether the delivered strikes reach the measured convergence span around spot — a COVERAGE check, not a guarantee the flip level is exact. A narrow chain truncates walls and misplaces the flip (measured: ~1.4% of spot error at ±5% coverage, ~0.1% at ±10%). Two limits kept in view: the provably SUFFICIENT span is still unproven, and the flip LEVEL itself drifts intraday (measured across 99 RTH ticker-sessions: median 4.2% of spot, p90 12.0% — far larger than the coverage residual). Good coverage does not mean a stable level; read the live recomputed flip, never a session-open snapshot.'],
     ['CHAIN SPAN', span, null,
      'Strike coverage each side of spot. The flip needs roughly ±5% to be trustworthy.'],
     ['STRIKES / CT', (d.strikes_used || 0) + ' / ' + (d.contracts_used || 0).toLocaleString(), null,
@@ -13521,13 +13532,17 @@ function edCheckRadarAlerts(rows) {
         // Gamma audit: the middle tier is NOT "narrow" — the regime is determined; only the flip
         // LEVEL is approximate. Labeling it "narrow" would understate a usable read.
         var _cvApprox = fstr(t.confidence) === 'LEVEL_APPROX_NARROW_SPAN';
+        // Corrected 2026-08-26: 'trusted' overstated a COVERAGE check (see the CHAIN COVERAGE row).
         trustEl.textContent = fstr(t.confidence)
-          ? (trusted ? 'trusted' : _cvApprox ? 'level approx' : 'narrow') : '—';
+          ? (trusted ? 'coverage ok' : _cvApprox ? 'level approx' : 'narrow') : '—';
         trustEl.className = 'cv-badge ' + (trusted ? 'cv-up' : 'cv-wn');
-        trustEl.title = _cvApprox
-          ? 'Regime determined from the sign of dealer gamma at spot; the flip LEVEL is approximate '
-            + '(chain below the measured convergence span).'
-          : '';
+        trustEl.title = trusted
+          ? 'Delivered strikes reach the measured convergence span around spot. A coverage check — '
+            + 'not proof the flip level is exact; the provably sufficient span is unproven.'
+          : _cvApprox
+            ? 'Regime determined from the sign of dealer gamma at spot; the flip LEVEL is approximate '
+              + '(chain below the measured convergence span).'
+            : '';
       }
     }
     var tags = [n2(fnum(t.gamma_flip)) && ('flip ' + n2(fnum(t.gamma_flip))),
@@ -14004,9 +14019,17 @@ function edCheckRadarAlerts(rows) {
         ce.className = 'ct-v cv-dn';
         ce.title = String(t.levels_stale_reason || 'levels are not refreshing');
       } else {
-        ce.textContent = conf || '—';
+        // Corrected 2026-08-26: this printed the RAW enum ('TRUSTED' / 'LEVEL_APPROX_NARROW_SPAN').
+        // It is a coverage verdict, so it now reads as one instead of asserting trust.
+        ce.textContent = conf
+          ? (conf === 'TRUSTED' ? 'COVERAGE OK'
+             : conf === 'LEVEL_APPROX_NARROW_SPAN' ? 'LEVEL APPROX' : conf)
+          : '—';
         ce.className = 'ct-v ' + (conf === 'TRUSTED' ? 'cv-up' : (conf ? 'cv-wn' : ''));
-        ce.title = '';
+        ce.title = conf === 'TRUSTED'
+          ? 'Delivered strikes reach the measured convergence span around spot — a coverage check, '
+            + 'not proof the flip level is exact.'
+          : '';
       }
     }
     T('ct-gex', money(negGex));
@@ -14034,9 +14057,17 @@ function edCheckRadarAlerts(rows) {
         tr.className = 'cv-badge cv-dn';
         tr.title = String(t.levels_stale_reason || 'levels are not refreshing');
       } else {
-        tr.textContent = conf ? (trusted ? 'trusted' : 'narrow') : '—';
+        // Corrected 2026-08-26: 'trusted' overstated a coverage check; the middle tier also read
+        // 'narrow' here, which understates a determined regime.
+        tr.textContent = conf
+          ? (trusted ? 'coverage ok'
+             : conf === 'LEVEL_APPROX_NARROW_SPAN' ? 'level approx' : 'narrow')
+          : '—';
         tr.className = 'cv-badge ' + (trusted ? 'cv-up' : 'cv-wn');
-        tr.title = '';
+        tr.title = trusted
+          ? 'Coverage check only — the provably sufficient span is unproven.'
+          : (conf === 'LEVEL_APPROX_NARROW_SPAN'
+             ? 'Regime determined from the sign of gamma at spot; flip LEVEL approximate.' : '');
       }
     }
 
