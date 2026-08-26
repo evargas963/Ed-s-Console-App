@@ -584,7 +584,21 @@ def extract_rth_snapshots(
     from ml_data_common import weekday_where_clause
     weekday_sql = " AND (" + weekday_where_clause() + ")"
 
-    params: list = [ticker, timeframe]
+    # QUOTE-ONLY CAPTURE ROWS ARE NOT TRAINING ROWS - the same exclusion ml_train.load_data
+    # applies, for the same measured reason, imported from the writer so there is ONE definition.
+    # base_money_path_capture writes "Quote-only inserts ... no full _fetch_state stack": ~49 of
+    # 441 columns, every engineered feature NULL. Measured post-June RTH share of those rows:
+    # SPY 52.1% / QQQ 72.8% / IWM 73.9%, and 0% for tickers the capture does not cover.
+    #
+    # It matters MORE here than for the tabular model. A sequence is a WINDOW, so interleaving
+    # feature-null rows does not merely shrink the sample - it corrupts the window, because
+    # encode_tabular fills absent numerics with 0.0 for tensor stability. A 60-bar window drawn
+    # from a 73%-empty stretch encodes as mostly zeros, which the model reads as real
+    # observations of zero rather than as absence.
+    from base_money_path_capture import LOGGER_SOURCE_BASE_MONEY_PATH
+
+    params: list = [ticker, timeframe, LOGGER_SOURCE_BASE_MONEY_PATH]
+    eligibility_sql = " AND (logger_source IS NULL OR logger_source != ?)"
     date_filter_sql = ""
     if allowed_et_dates:
         _dates = sorted({str(d)[:10] for d in allowed_et_dates if d})
@@ -600,7 +614,8 @@ def extract_rth_snapshots(
     rows = conn.execute(
         f"SELECT * FROM {table} "
         "WHERE ticker = ? AND timeframe = ?"
-        + outcome_filter +
+        + eligibility_sql +
+        outcome_filter +
         weekday_sql +
         date_filter_sql +
         min_ts_sql +

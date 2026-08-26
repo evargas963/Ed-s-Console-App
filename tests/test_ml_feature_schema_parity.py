@@ -298,18 +298,23 @@ def test_slice_a_cross_asset_cols_registered_in_scale_invariant():
 def test_price_action_cone_gated_behind_retrain():
     """PA-CONE-V8-RETRAIN [REAL-GATE: training-skew] (2026-06-11): the 27 pa_*
     columns are persisted + ablation candidates, but NOT in the serving cone.
-    Registering them early (94→121 / 88→115 + v8 bump) fail-closed every
-    v7-trained bundle and killed the live stack. The flip lands in the SAME
-    commit as retrained artifacts. This test locks the gated state — when the
-    retrain lands, rewrite it to assert registration + v8 + new widths."""
+    Registering them early fail-closed every v7-trained bundle and killed the
+    live stack. The flip lands in the SAME commit as retrained artifacts.
+
+    STILL GATED after the RC-436 retrain (2026-08-26). That retrain RETIRED four
+    withheld columns and bumped the schema to v8_wall_oi_vanna_retired; it did NOT
+    register pa_*. A retirement and an expansion are separate changes with separate
+    evidence, and bundling them would make neither attributable — so this test keeps
+    locking pa_* OUT of the cone, and no longer pins the version string (which the
+    retrain legitimately moved). PA-CONE remains open."""
     from features.signal_layer_v1 import SNAPSHOT_PRICE_ACTION_COLUMNS
     from ml_train import SCALE_INVARIANT_COLS, tabular_training_feature_names
     from training_provenance import FEATURE_SCHEMA_VERSION
 
     pa_cols = [c for c, _ in SNAPSHOT_PRICE_ACTION_COLUMNS]
     assert len(pa_cols) == 27
-    # Serving cone unchanged — v7 bundles must keep loading.
-    assert FEATURE_SCHEMA_VERSION == "v7_m5_strip"
+    # The pa_* cone is still shut. Version is asserted by the dedicated contract test.
+    assert not FEATURE_SCHEMA_VERSION.startswith("v8_price_action")
     assert not set(pa_cols) & set(SCALE_INVARIANT_COLS)
     assert not [n for n in tabular_training_feature_names() if n.startswith("pa_")]
 
@@ -439,12 +444,81 @@ def test_m5_stripped_symmetric_train_and_serve():
 
 
 def test_feature_schema_version_matches_trained_artifacts():
-    """v7 until PA-CONE-V8-RETRAIN lands: the version flips only WITH retrained
-    artifacts, never ahead of them (2026-06-11 live-stack outage class)."""
+    """The version flips only WITH retrained artifacts, never ahead of them
+    (2026-06-11 live-stack outage class).
+
+    This used to assert a hardcoded version STRING, which pins the wrong thing: a
+    string tells you nobody edited a constant, not that the shipped artifacts can
+    actually be served. The invariant the docstring names is a relationship between
+    the code contract and the artifacts ON DISK, so that is what is checked here.
+
+    WHAT IS AND IS NOT ASSERTED, and why the distinction is load-bearing. A first
+    version demanded that EVERY active meta carry the current feature_schema_version.
+    That over-reaches, and measuring it showed why: 82 of 91 artifacts under
+    models/active declare v4_canonical_1m and fail the contract on
+    LABEL_CONFIG_VERSION — an axis with nothing to do with any feature bump. They
+    were already unservable before this or any other version change (measured: 9 of
+    91 valid under the previous v7 contract too). Folding them into this gate would
+    let a genuinely stranded artifact hide inside a crowd of long-dead ones.
+
+    So the assertion is exact: NO artifact may fail the contract ONLY on
+    feature_schema_version. That is precisely the "you bumped ahead of your
+    artifacts" failure, and it does not conflate with pre-existing label-contract
+    deaths. The dead ones are asserted not to GROW, so this cannot quietly become a
+    licence to strand more."""
+    import json
+    from pathlib import Path
+
+    from model_contract import contract_metadata_dict, validate_artifact_contract
     from training_provenance import FEATURE_SCHEMA_VERSION, PREPROCESSING_VERSION
 
-    assert FEATURE_SCHEMA_VERSION == "v7_m5_strip"
     assert PREPROCESSING_VERSION == "v5_no_m5_lag"
+
+    active = Path(__file__).resolve().parent.parent / "models" / "active"
+    if not active.is_dir():
+        pytest.skip("no models/active tree in this checkout")
+    metas = sorted(active.glob("*/*_meta.json"))
+    if not metas:
+        pytest.skip("models/active has no metas — nothing promoted to check against")
+
+    expected = contract_metadata_dict()
+    stranded: list[str] = []
+    dead_other: list[str] = []
+    valid = 0
+    for m in metas:
+        fam = m.name.split("_", 1)[0]
+        if fam not in ("xgb", "lstm", "transformer"):
+            continue
+        try:
+            meta = json.loads(m.read_text(encoding="utf-8"))
+        except (ValueError, OSError):
+            continue
+        ok, _why = validate_artifact_contract(meta, fam)
+        if ok:
+            valid += 1
+            continue
+        # Does it differ ONLY on the feature schema? Then the bump stranded it.
+        other_axis_mismatch = [k for k, need in expected.items()
+                               if k != "feature_schema_version" and meta.get(k) != need]
+        if not other_axis_mismatch and meta.get("feature_schema_version") != FEATURE_SCHEMA_VERSION:
+            stranded.append(f"{m.parent.name}/{m.name}: "
+                            f"{meta.get('feature_schema_version')!r}")
+        else:
+            dead_other.append(f"{m.parent.name}/{m.name}: {other_axis_mismatch}")
+
+    assert not stranded, (
+        f"FEATURE_SCHEMA_VERSION is {FEATURE_SCHEMA_VERSION!r} and {len(stranded)} artifact(s) "
+        f"match the contract on every OTHER axis — the bump stranded working artifacts. Retrain "
+        f"and promote them in the SAME commit as the bump. Stranded: {stranded[:6]}")
+
+    # A bump must not silently enlarge the graveyard either.
+    assert len(dead_other) <= 82, (
+        f"{len(dead_other)} artifacts are contract-dead on axes other than the feature schema, "
+        f"up from the 82 measured on 2026-08-26. Something took more artifacts out of service; "
+        f"investigate before shipping. Examples: {dead_other[:4]}")
+    assert valid > 0, (
+        "NO artifact under models/active satisfies the contract — the live stack cannot serve "
+        "anything at all")
 
 
 def test_feature_ablation_manifest_matches_engineer_features():
@@ -919,14 +993,23 @@ def test_stage2_sequence_encoder_width_matches_xgb_tabular_universe():
     from ml_train import tabular_training_feature_names
 
     tabular = tabular_training_feature_names()
-    # 94 at v7. Becomes 121 (+27 pa_*) only when PA-CONE-V8-RETRAIN lands
-    # (registration + retrained artifacts in the same commit).
-    assert len(tabular) == 94
+    # 90 at v8_wall_oi_vanna_retired. Was 94 at v7; the RC-436 retrain retired the four
+    # structurally withheld OI/vanna wall distances (94 -> 90 tabular, 88 -> 84 sequence).
+    # Becomes 117 (+27 pa_*) only if PA-CONE-V8-RETRAIN ever lands, in the same commit as
+    # its own retrained artifacts.
+    assert len(tabular) == 90
+    # The retirement is asserted by NAME, not only by count: a width that happens to match
+    # after some other column silently left would otherwise read as a pass.
+    from ml_train import structurally_withheld_wall_distance_feature_names
+
+    assert not set(tabular) & structurally_withheld_wall_distance_feature_names(), (
+        "a structurally withheld OI/vanna wall distance is back in the tabular contract — "
+        "serving would abstain on every live tick (RC-436)")
     assert set(CONFLUENCE_FEATURES).issubset(set(tabular))
     assert LSTM_ENCODER_SCHEMA_VERSION == 3
     assert encoded_width_5m() == len(tabular) - len(CONFLUENCE_FEATURES)
     assert encoded_width_1m() == len(tabular) - len(CONFLUENCE_FEATURES)
-    assert encoded_width_5m() == 88
+    assert encoded_width_5m() == 84
 
 
 def test_xgb_cf_member_in_tabular_universe_and_permute_perturbs(tmp_path):

@@ -199,29 +199,42 @@ DOLLAR_COLS = [
 WALL_DISTANCE_COLS = [
     "dist_call_gamma_wall", "dist_put_gamma_wall",
     "dist_call_delta_wall", "dist_put_delta_wall",
-    # RC-422/F4: CONSENSUS OI/vanna walls are withheld live. These four columns stay
-    # in the train/serve vector so FEATURE_SCHEMA_VERSION / artifact widths do not
-    # break. Live persist writes NULL. RC-435: serve abstains before median/zero fill
-    # (STRUCTURALLY_WITHHELD_WALL_DISTANCE_COLS) — do not fabricate proximity.
-    # RC-436: that abstain disables the live ML fleet until host retrain uses
-    # model_feature_wall_distance_cols() (exclude these four) + schema bump.
-    "dist_call_oi_wall",    "dist_put_oi_wall",
-    "dist_call_vanna_wall", "dist_put_vanna_wall",
+    # RC-436 MIGRATION COMPLETE (2026-08-26). The four CONSENSUS OI/vanna wall distances
+    # (dist_call_oi_wall / dist_put_oi_wall / dist_call_vanna_wall / dist_put_vanna_wall)
+    # WERE listed here and are now RETIRED from the model feature contract.
+    #
+    # The chain that ends here: RC-422 withheld those CONSENSUS walls to kill a second book
+    # -> RC-435 made serve ABSTAIN rather than median/zero-fill the resulting absence
+    # (correct: the quantity is not produced, so it is not missing-at-random) -> RC-436
+    # recorded that the abstain therefore disabled the entire live fleet, and that the only
+    # honest resolution is to retire the four from the contract and RETRAIN — never to
+    # invent a terrain OI/vanna wall to feed old weights that were fit on selected-expiry
+    # medians. Retiring them here is the retrain half of that contract; it co-lands with a
+    # FEATURE_SCHEMA_VERSION bump and the retrained artifacts, because a version that moves
+    # ahead of its artifacts is the 2026-06-11 live-stack outage.
     "dist_gamma_inflection","dist_delta_inflection",
     "pin_width_pts",
 ]
 
 
 def model_feature_wall_distance_cols() -> list[str]:
-    """Wall-distance columns eligible for *new* model feature contracts (RC-436).
+    """Wall-distance columns eligible for model feature contracts (RC-436).
 
-    Excludes STRUCTURALLY_WITHHELD_WALL_DISTANCE_COLS. Not wired into live
-    ``WALL_DISTANCE_COLS`` / ``FEATURES_5M`` until a host retrain co-lands a
-    FEATURE_SCHEMA_VERSION bump — wiring early would shrink encoder widths and
-    fail-close serveable schema-v3 sequence checkpoints mid-flight.
+    MIGRATION COMPLETE: ``WALL_DISTANCE_COLS`` no longer carries the structurally withheld
+    OI/vanna distances, so this returns it unchanged. The filter is KEPT rather than deleted
+    because it is the enforceable statement of the contract — the check below fails loudly if
+    a withheld column is ever re-added to the live vector, which is precisely how the
+    RC-422 -> RC-435 -> RC-436 sequence began.
     """
     withheld = set(STRUCTURALLY_WITHHELD_WALL_DISTANCE_COLS)
-    return [c for c in WALL_DISTANCE_COLS if c not in withheld]
+    eligible = [c for c in WALL_DISTANCE_COLS if c not in withheld]
+    if len(eligible) != len(WALL_DISTANCE_COLS):
+        raise AssertionError(
+            "RC-436 regression: a structurally withheld OI/vanna wall distance is back in "
+            f"WALL_DISTANCE_COLS ({sorted(set(WALL_DISTANCE_COLS) & withheld)}). Serving would "
+            "abstain on every live tick again. Withheld quantities must not be model features."
+        )
+    return eligible
 
 
 SCALE_INVARIANT_COLS = [
@@ -332,11 +345,34 @@ def load_data(
     _extra_dir = ""
     if label_col == directional_label_column(_hz_norm):
         _extra_dir = f" AND CAST(valid_dir_{_hz_norm} AS INTEGER) = 1"
+    # QUOTE-ONLY CAPTURE ROWS ARE NOT TRAINING ROWS (found 2026-08-26 during the RC-436 retrain).
+    # base_money_path_capture writes, by its own docstring, "Quote-only inserts tagged
+    # logger_source=base_money_path - no full _fetch_state stack": ~49 of 441 columns, carrying
+    # quotes/candles/outcomes and NO engineered features. They are a legitimate money-path latency
+    # capture; they are not feature-complete snapshots.
+    #
+    # load_data had no filter, so they were being trained on. MEASURED on the production DB over
+    # post-June RTH rows: SPY 52.1% / QQQ 72.8% / IWM 73.9% of rows come from base_money_path and
+    # 100% of those are feature-NULL, while NVDA and AAPL - which receive no base_money_path rows -
+    # are 0% null. The damage lands precisely on the three anchor tickers that carry the only
+    # promoted models.
+    #
+    # The consequence was not subtle: retraining QQQ 1c across the post-June window put 74 of 90
+    # features over the 30% NaN threshold, leaving a SIXTEEN-feature model where the same ticker
+    # had 84. The incumbent artifacts never exposed this only because they were trained on a
+    # window ending 2026-05-28, before this capture began diluting the table.
+    #
+    # Excluded here rather than at the writer: the capture is wanted, its rows simply are not
+    # training examples. The source name is imported rather than spelled so the writer identity
+    # keeps ONE definition.
+    from base_money_path_capture import LOGGER_SOURCE_BASE_MONEY_PATH
+
     where = (
         f"timeframe = ? AND {training_label_where_clause(label_col)}{_extra_dir} "
-        f"AND ({weekday_where_clause()})"
+        f"AND ({weekday_where_clause()}) "
+        f"AND (logger_source IS NULL OR logger_source != ?)"
     )
-    params: list = [_tf]
+    params: list = [_tf, LOGGER_SOURCE_BASE_MONEY_PATH]
     if ticker:
         where += " AND ticker = ?"
         params.append(ticker)

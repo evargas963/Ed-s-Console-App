@@ -40,10 +40,23 @@ from ml_horizon import (
 log = logging.getLogger("training_provenance")
 
 # ── Version constants (bump when features or preprocessing change) ─────────────
-# v8 ("v8_price_action", +27 pa_* columns) flips ONLY in the same commit as the
-# retrained artifacts — bumping early fail-closed the whole live stack against
-# v7 bundles (2026-06-11 outage). [REAL-GATE: training-skew] PA-CONE-V8-RETRAIN.
-FEATURE_SCHEMA_VERSION: str = "v7_m5_strip"
+# v8_wall_oi_vanna_retired (RC-436, 2026-08-26): the four structurally withheld CONSENSUS
+# OI/vanna wall distances leave the model feature contract. Tabular 94 -> 90, sequence
+# 88 -> 84. This bump SHIPS IN THE SAME COMMIT as the retrained + requalified artifacts;
+# it is a fail-closed axis (model_contract.CONTRACT_FIELDS), so a version that moves ahead
+# of its artifacts darkens the live stack — the 2026-06-11 outage class.
+#
+# WHY THE COLUMNS LEFT, not merely that they did: RC-422 withheld the CONSENSUS OI/vanna
+# walls to eliminate a second book; RC-435 then made serve abstain instead of imputing the
+# absence; RC-436 recorded that this correctly-fail-closed state disabled all 42 serveable
+# artifacts, and that the resolution is retirement + retrain, NOT redefining terrain to
+# manufacture a wall for weights that never saw one.
+#
+# NOT INCLUDED HERE, deliberately: the 27 pa_* price-action columns. That is a separate
+# open item (PA-CONE-V8-RETRAIN, formerly reserving the name "v8_price_action") which ADDS
+# features and carries its own validation burden; bundling an expansion into a retirement
+# would make neither change attributable. It remains open and unregistered.
+FEATURE_SCHEMA_VERSION: str = "v8_wall_oi_vanna_retired"
 # v7 (FEATURE EPIC m5 strip, 2026-06-01): remove m5_* lagged duplicate block from engineer_features /
 # engineer_single_snapshot and load_data; train/serve symmetric via net_gamma_prev only (ΔGEX).
 # v6 (FEATURE EPIC Slice A, 2026-06-01): register tnx_yield/tnx_chg/qqq_vs_spy/spy_iwm_divergence;
