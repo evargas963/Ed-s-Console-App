@@ -439,6 +439,122 @@ def test_a_partial_unsubscribe_failure_still_respects_the_key_budget(monkeypatch
     assert "SPY" in v.lvl and "SPY" in v.book, "core lost under a partial unsubscribe failure"
 
 
+# ── planned vs actually admitted coverage must be truthful ──────────────────────────────────
+#
+# When the key cap admits only part of a planned rotation, last_slice must not report the
+# PLANNED rotating/per_underlying as though they were actual. ADMITTED is derived from what is
+# genuinely held at the vendor now.
+
+def _partial_plan(sym_und, core, rotating, per_underlying):
+    return {"at_epoch_s": 0.0, "roster_ok": True, "slice_index": 3, "slice_seconds": 900,
+            "core": core, "rotating": rotating, "non_core_total": len(rotating),
+            "full_cycle_slices": 1, "full_cycle_seconds": 900, "budget": {}, "split": {},
+            "symbols": list(sym_und), "per_underlying": per_underlying,
+            "symbol_underlying": dict(sym_und), "notes": [], "policy": "p",
+            "useful_depth_contracts": 2, "rotating_depth_each": 2, "rotating_per_slice": 2}
+
+
+def test_last_slice_reports_admitted_not_planned_when_the_cap_bites(monkeypatch):
+    """THE REPORTING BUG. Planned coverage was claimed as actual under a partial cap."""
+    import options_stream_subscription as sub
+
+    ofs = _wire_real_helpers(monkeypatch)
+    v = _VendorState()
+    sym_und = {"SPY1": "SPY", "SPY2": "SPY", "AMD1": "AMD", "AMD2": "AMD",
+               "TSLA1": "TSLA", "TSLA2": "TSLA"}
+    plan = _partial_plan(sym_und, ["SPY"], ["AMD", "TSLA"], {"SPY": 2, "AMD": 2, "TSLA": 2})
+    # ceiling 6 keys = 3 contracts x 2 services; core-first, so SPY(2) + one AMD survive.
+    asyncio.run(ofs._reconcile_options_subscription(
+        v, plan, list(sym_und), "rotation", keys_available=6, capture_db=None,
+        close_epochs=lambda *a, **k: None, open_epochs=lambda *a, **k: None,
+        subscribe_options=sub.subscribe_options, unsubscribe_options=sub.unsubscribe_options))
+    ls = ofs._options_last_slice
+
+    assert ls["rotating_planned"] == ["AMD", "TSLA"], "planned rotating was not preserved"
+    assert ls["per_underlying_planned"] == {"SPY": 2, "AMD": 2, "TSLA": 2}
+    # ...and the admitted values tell the truth about what actually got on.
+    assert "TSLA" not in ls["rotating_admitted"], (
+        f"TSLA was reported admitted but the cap left no room: {ls['rotating_admitted']}")
+    assert ls["per_underlying_admitted"].get("TSLA", 0) == 0, "TSLA has no admitted contracts"
+    assert ls["per_underlying_admitted"].get("SPY") == 2, "core SPY was not fully admitted"
+    assert ls["fully_admitted"] is False, "a partially-admitted slice claimed full admission"
+    # planned and admitted must actually differ here, or the test proves nothing.
+    assert ls["rotating_admitted"] != ls["rotating_planned"]
+
+
+def test_a_fully_admitted_slice_marks_itself_fully_admitted(monkeypatch):
+    """When everything fits, planned == admitted and fully_admitted is True."""
+    import options_stream_subscription as sub
+
+    ofs = _wire_real_helpers(monkeypatch)
+    v = _VendorState()
+    sym_und = {"SPY1": "SPY", "AMD1": "AMD"}
+    plan = _partial_plan(sym_und, ["SPY"], ["AMD"], {"SPY": 1, "AMD": 1})
+    asyncio.run(ofs._reconcile_options_subscription(
+        v, plan, list(sym_und), "rotation", keys_available=100, capture_db=None,
+        close_epochs=lambda *a, **k: None, open_epochs=lambda *a, **k: None,
+        subscribe_options=sub.subscribe_options, unsubscribe_options=sub.unsubscribe_options))
+    ls = ofs._options_last_slice
+    assert ls["fully_admitted"] is True, "a fully-admitted slice was not marked so"
+    assert sorted(ls["rotating_admitted"]) == ["AMD"]
+    assert ls["per_underlying_admitted"] == {"SPY": 1, "AMD": 1}
+
+
+def test_a_partial_subscribe_failure_shows_in_admitted_coverage(monkeypatch):
+    """Admitted must reflect vendor refusals too, not only the key cap."""
+    import options_stream_subscription as sub
+
+    ofs = _wire_real_helpers(monkeypatch)
+
+    class V(_VendorState):
+        async def options_book_subs(self, syms):     # BOOK refuses; LEVELONE accepts
+            self.ops.append(("OPTIONS_BOOK", "SUBS", tuple(syms)))
+            raise RuntimeError("book refused")
+
+    v = V()
+    sym_und = {"AMD1": "AMD"}
+    plan = _partial_plan(sym_und, [], ["AMD"], {"AMD": 1})
+    asyncio.run(ofs._reconcile_options_subscription(
+        v, plan, ["AMD1"], "rotation", keys_available=100, capture_db=None,
+        close_epochs=lambda *a, **k: None, open_epochs=lambda *a, **k: None,
+        subscribe_options=sub.subscribe_options, unsubscribe_options=sub.unsubscribe_options))
+    ls = ofs._options_last_slice
+    # AMD1 is held on LEVELONE only, so it IS observed and counts as admitted once.
+    assert ls["per_underlying_admitted"].get("AMD") == 1
+    assert ls["services_in_agreement"] is False, "one service refused; agreement should be False"
+
+
+def test_a_stranded_symbol_from_a_prior_slice_still_counts_as_coverage(monkeypatch):
+    """An UNDROPPABLE held symbol not in THIS plan's map is recovered from the option root.
+
+    It rotated out of the plan but the vendor refused to unsubscribe it, so it is still live and
+    still real coverage — its underlying must be counted even though this plan never named it.
+    """
+    import options_stream_subscription as sub
+
+    ofs = _wire_real_helpers(monkeypatch)
+
+    class V(_VendorState):
+        async def level_one_option_unsubs(self, syms):   # refuse: the contract strands
+            self.ops.append(("LEVELONE_OPTIONS", "UNSUBS", tuple(syms)))
+            raise RuntimeError("unsub refused")
+
+    v = V()
+    v.lvl = {"XOM   260828C00070000"}
+    ofs._options_subscribed = {"LEVELONE_OPTIONS": {"XOM   260828C00070000"},
+                               "OPTIONS_BOOK": set()}
+    sym_und = {"AMD1": "AMD"}                              # this plan does not mention XOM
+    plan = _partial_plan(sym_und, [], ["AMD"], {"AMD": 1})
+    asyncio.run(ofs._reconcile_options_subscription(
+        v, plan, ["AMD1"], "rotation", keys_available=100, capture_db=None,
+        close_epochs=lambda *a, **k: None, open_epochs=lambda *a, **k: None,
+        subscribe_options=sub.subscribe_options, unsubscribe_options=sub.unsubscribe_options))
+    ls = ofs._options_last_slice
+    assert ls["per_underlying_admitted"].get("XOM") == 1, (
+        f"an undroppable XOM contract was not counted as real coverage: "
+        f"{ls['per_underlying_admitted']}")
+
+
 # ── the roster must fail explicit, not open ─────────────────────────────────────────────────
 
 def test_roster_failure_produces_no_symbols_not_a_fresh_chain_fallback(monkeypatch):

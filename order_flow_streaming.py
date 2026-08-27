@@ -230,6 +230,7 @@ def options_desired_for_slice(at_epoch_s: float, *, equity_symbols: int,
 
     symbols: list[str] = []
     per_underlying: dict[str, int] = {}
+    symbol_underlying: dict[str, str] = {}
     notes: list[str] = []
     # Core and cohort are selected SEPARATELY so the core's depth cannot be diluted by a large
     # cohort — select_contracts allocates round-robin within the set it is given, and a single
@@ -248,6 +249,7 @@ def options_desired_for_slice(at_epoch_s: float, *, equity_symbols: int,
         symbols.extend(sel.symbols)
         for k, v in sel.per_underlying.items():
             per_underlying[k] = per_underlying.get(k, 0) + v
+        symbol_underlying.update(sel.symbol_underlying)
         notes.extend(f"{label}: {n}" for n in sel.notes)
 
     return {
@@ -271,6 +273,7 @@ def options_desired_for_slice(at_epoch_s: float, *, equity_symbols: int,
         "rotating_per_slice": pol.rotating_per_slice,
         "symbols": symbols,
         "per_underlying": per_underlying,
+        "symbol_underlying": symbol_underlying,
         "notes": notes,
         "policy": cohort["policy"],
     }
@@ -465,30 +468,64 @@ async def _reconcile_options_subscription(sc, plan, want, reason, *, keys_availa
 
     dropped_ok = sum(v.get("dropped", 0) for v in per_service.values())
     added = sum(v.get("added", 0) for v in per_service.values())
+
+    # PLANNED vs ADMITTED, made explicit and truthful. The plan's rotating/per_underlying are
+    # what the slice WANTED; the key cap and per-service vendor refusals can admit only part of
+    # it, so reporting the planned values as `rotating`/`per_underlying` claimed coverage that
+    # may not exist. ADMITTED is derived from what is ACTUALLY held at the vendor now: a contract
+    # observed on at least one service. per_underlying_admitted counts held contracts by their
+    # underlying via the plan's symbol->underlying map (a stranded symbol from a prior slice is
+    # not in this plan's map, so its root is recovered from the option symbol rather than dropped
+    # — it is still real coverage and must be counted).
+    sym_und = dict(plan.get("symbol_underlying") or {})
+    held_union = set().union(*_options_subscribed.values()) if _options_subscribed else set()
+
+    def _underlying(sym: str) -> str:
+        u = sym_und.get(sym)
+        if u:
+            return u
+        root = sym.split()[0].strip() if isinstance(sym, str) and sym else ""
+        return root or "UNKNOWN"
+
+    per_underlying_admitted: dict[str, int] = {}
+    for s in held_union:
+        per_underlying_admitted[_underlying(s)] = per_underlying_admitted.get(_underlying(s), 0) + 1
+    admitted_underlyings = set(per_underlying_admitted)
+    rotating_admitted = sorted(u for u in plan["rotating"] if u in admitted_underlyings)
+    core_admitted = sorted(u for u in plan["core"] if u in admitted_underlyings)
+    # Fully admitted only when every planned underlying holds at least its planned depth.
+    fully_admitted = all(
+        per_underlying_admitted.get(u, 0) >= cnt for u, cnt in plan["per_underlying"].items())
+
     _options_last_slice = {
         "reason": reason,
         "at_epoch_s": plan["at_epoch_s"],
         "slice_index": plan["slice_index"],
-        "core": plan["core"],
-        "rotating": plan["rotating"],
+        # PLANNED — what this slice intended to cover.
+        "core_planned": plan["core"],
+        "rotating_planned": plan["rotating"],
+        "per_underlying_planned": plan["per_underlying"],
+        # ADMITTED — what is actually held at the vendor now. This is the truthful coverage.
+        "core_admitted": core_admitted,
+        "rotating_admitted": rotating_admitted,
+        "per_underlying_admitted": per_underlying_admitted,
+        "fully_admitted": fully_admitted,
         "added": added,
         "dropped": dropped_ok,
         # PER SERVICE, because they can legitimately differ. A single total would hide exactly
         # the partial-success state this reconciler exists to represent.
         "subscribed_by_service": {s: len(_options_subscribed[s]) for s in OPTIONS_SERVICES},
-        "subscribed_total": len(set().union(*_options_subscribed.values())
-                                if _options_subscribed else set()),
+        "subscribed_total": len(held_union),
         "services_in_agreement": len({frozenset(v) for v in _options_subscribed.values()}) == 1,
-        "per_underlying": plan["per_underlying"],
         "full_cycle_seconds": plan["full_cycle_seconds"],
         "notes": plan["notes"][:12],
     }
-    log.info("OPTIONS slice %s (%s): +%d -%d; by service %s; %d underlyings; "
-             "core=%s rotating=%s cycle=%ss",
+    log.info("OPTIONS slice %s (%s): +%d -%d; by service %s; ADMITTED %d/%d underlyings "
+             "(fully=%s); core=%s cycle=%ss",
              plan["slice_index"], reason, added, dropped_ok,
              _options_last_slice["subscribed_by_service"],
-             len(plan["per_underlying"]), plan["core"], plan["rotating"],
-             plan["full_cycle_seconds"])
+             len(per_underlying_admitted), len(plan["per_underlying"]), fully_admitted,
+             core_admitted, plan["full_cycle_seconds"])
     _log_stream("OPTIONS_SLICE", **{k: _options_last_slice[k] for k in
                                     ("reason", "slice_index", "added", "dropped",
                                      "subscribed_total")})

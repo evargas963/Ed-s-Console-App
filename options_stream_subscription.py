@@ -203,6 +203,10 @@ class SelectionResult:
     """Chosen symbols plus WHY — recorded so history is interpretable after the fact."""
     symbols: list[str] = field(default_factory=list)
     per_underlying: dict[str, int] = field(default_factory=dict)
+    #: contract symbol -> its underlying root, from the ticker this contract was selected under.
+    #: Carried so a downstream stage can report ADMITTED coverage per underlying truthfully
+    #: (which of the planned symbols actually made it) without re-parsing the option symbol.
+    symbol_underlying: dict[str, str] = field(default_factory=dict)
     policy: str = ""
     truncated: bool = False
     notes: list[str] = field(default_factory=list)
@@ -412,6 +416,7 @@ def select_contracts(chains_by_ticker: dict[str, tuple[float | None, list[dict]]
             chosen.append(sym)
             seen.add(sym)
             res.per_underlying[ticker] = res.per_underlying.get(ticker, 0) + 1
+            res.symbol_underlying[sym] = ticker
         if not progressed:
             break
         idx += 1

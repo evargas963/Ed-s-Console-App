@@ -239,6 +239,7 @@ order_flow_streaming.py::_options_frame_handler
 order_flow_streaming.py::_options_frame_handler._handler
 order_flow_streaming.py::_options_rotation_loop
 order_flow_streaming.py::_reconcile_options_subscription
+order_flow_streaming.py::_reconcile_options_subscription._underlying
 order_flow_streaming.py::_register_options_handlers
 order_flow_streaming.py::_resubscribe_coro
 order_flow_streaming.py::_resubscribe_to_ticker
