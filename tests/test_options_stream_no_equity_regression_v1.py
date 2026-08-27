@@ -26,7 +26,8 @@ REPO = Path(__file__).resolve().parent.parent
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
-import order_flow_streaming as ofs  # noqa: E402
+import order_flow_streaming as ofs  # noqa: E402  — the UI stream (equity/book handlers)
+import options_stream_collect as osc  # noqa: E402  — the daemon-owned options Collect subsystem
 
 
 class _Client:
@@ -52,8 +53,8 @@ class _Client:
 
 def test_options_are_not_subscribed_while_collection_is_disabled(monkeypatch):
     """OFF must mean OFF: no options symbols subscribed, no writer started, no keys spent."""
-    monkeypatch.delenv(ofs.ED_OPTIONS_STREAM_ENV, raising=False)
-    assert ofs.options_streaming_enabled() is False
+    monkeypatch.delenv(osc.ED_OPTIONS_STREAM_ENV, raising=False)
+    assert osc.options_streaming_enabled() is False
 
     calls: list[str] = []
 
@@ -64,10 +65,10 @@ def test_options_are_not_subscribed_while_collection_is_disabled(monkeypatch):
         async def options_book_subs(self, *_a, **_k):
             calls.append("options_book_subs")
 
-    asyncio.run(ofs._start_options_collection(_Sub()))
+    asyncio.run(osc.start_options_collection(_Sub(), equity_symbols=3, equity_key_services=2))
     assert calls == [], f"options were subscribed while collection is disabled: {calls}"
-    assert ofs._options_ingest is None, "a writer was started while collection is disabled"
-    assert ofs.options_stream_status()["subscribed_contracts"] == 0
+    assert osc._options_ingest is None, "a writer was started while collection is disabled"
+    assert osc.options_stream_status()["subscribed_contracts"] == 0
 
 
 def test_registering_options_handlers_cannot_abort_stream_setup():
@@ -78,7 +79,7 @@ def test_registering_options_handlers_cannot_abort_stream_setup():
     """
     c = _Client(fail_options=True)
     # Must not raise.
-    ofs._register_options_handlers(c, lambda service: (lambda msg: None))
+    osc.register_options_handlers(c, lambda service: (lambda msg: None))
     # And a client missing the options methods entirely (older library) must also be tolerated.
 
     class _Old:
@@ -87,21 +88,28 @@ def test_registering_options_handlers_cannot_abort_stream_setup():
                 raise AttributeError(name)
             return lambda *_a, **_k: None
 
-    ofs._register_options_handlers(_Old(), lambda service: (lambda msg: None))
+    osc.register_options_handlers(_Old(), lambda service: (lambda msg: None))
 
 
-def test_equity_and_book_handlers_are_still_registered_alongside_options():
-    """The three services the console depends on must all still be attached."""
+def test_the_ui_stream_registers_equity_handlers_and_does_not_touch_options():
+    """The UI stream is observational: three equity services, ONE client, NO options Collect.
+
+    Options collection moved to the capture daemon (the single stream owner), so the UI loop must
+    register the equity/book handlers the console depends on and touch nothing options.
+    """
     import inspect
 
     src = inspect.getsource(ofs._run_stream_loop)
     for required in ("add_nasdaq_book_handler", "add_nyse_book_handler",
                      "add_level_one_equity_handler"):
         assert required in src, f"{required} is no longer registered — equity path regression"
-    # And options registration must come from the shared helper, not a second client.
-    assert "_register_options_handlers" in src
     assert "StreamClient(" in src and src.count("StreamClient(") == 1, (
         "more than one StreamClient is constructed — a second socket is a second source of truth")
+    for banned in ("register_options_handlers", "start_options_collection",
+                   "stop_options_collection", "_options_frame_handler"):
+        assert banned not in src, (
+            f"the UI stream loop still references {banned!r} — options Collect must live only in "
+            f"the capture daemon, not on the UI socket")
 
 
 def test_the_options_handler_swallows_its_own_errors(monkeypatch):
@@ -124,14 +132,14 @@ def test_the_options_handler_swallows_its_own_errors(monkeypatch):
             raise RuntimeError("storage exploded")
 
     boom = _Exploding()
-    monkeypatch.setattr(ofs, "_options_ingest", boom, raising=False)
-    handler = ofs._options_frame_handler("LEVELONE_OPTIONS")
+    monkeypatch.setattr(osc, "_options_ingest", boom, raising=False)
+    handler = osc._options_frame_handler("LEVELONE_OPTIONS")
     handler({"key": "SPY   260828C00600000"})          # must not raise
     assert boom.calls == 1, "the handler never reached storage, so nothing was contained"
 
     # ...and with no ingest attached at all it must still be inert, not raise.
-    monkeypatch.setattr(ofs, "_options_ingest", None, raising=False)
-    ofs._options_frame_handler("OPTIONS_BOOK")({"key": "SPY"})
+    monkeypatch.setattr(osc, "_options_ingest", None, raising=False)
+    osc._options_frame_handler("OPTIONS_BOOK")({"key": "SPY"})
 
     # It must HAND OFF, never persist inline: one bounded-queue offer, no SQLite on this thread.
     class _Recording:
@@ -143,26 +151,26 @@ def test_the_options_handler_swallows_its_own_errors(monkeypatch):
             return True
 
     rec = _Recording()
-    monkeypatch.setattr(ofs, "_options_ingest", rec, raising=False)
-    ofs._options_frame_handler("LEVELONE_OPTIONS")({"key": "SPY"})
+    monkeypatch.setattr(osc, "_options_ingest", rec, raising=False)
+    osc._options_frame_handler("LEVELONE_OPTIONS")({"key": "SPY"})
     assert rec.n == 1, "the handler did not hand the frame off exactly once"
 
 
 def test_stopping_options_collection_is_safe_when_nothing_started():
-    """Shutdown runs in the stream loop's finally; it must be harmless in every state."""
-    ofs._options_ingest = None
-    ofs._options_subscribed_syms = []
-    ofs._stop_options_collection("test")          # must not raise
-    assert ofs._options_ingest is None
+    """Shutdown runs in the daemon's finally; it must be harmless in every state."""
+    osc._options_ingest = None
+    osc._options_subscribed = {s: set() for s in osc.OPTIONS_SERVICES}
+    osc.stop_options_collection("test")          # must not raise
+    assert osc._options_ingest is None
 
 
 def test_enabling_is_env_gated_and_not_settable_from_a_stale_module_global(monkeypatch):
     """The gate must be read at call time, so an operator turning it on or off is honoured
     without a code path caching the answer from import time."""
-    monkeypatch.setenv(ofs.ED_OPTIONS_STREAM_ENV, "1")
-    assert ofs.options_streaming_enabled() is True
-    monkeypatch.setenv(ofs.ED_OPTIONS_STREAM_ENV, "0")
-    assert ofs.options_streaming_enabled() is False
-    monkeypatch.delenv(ofs.ED_OPTIONS_STREAM_ENV, raising=False)
-    assert ofs.options_streaming_enabled() is False
-    assert os.environ.get(ofs.ED_OPTIONS_STREAM_ENV) is None
+    monkeypatch.setenv(osc.ED_OPTIONS_STREAM_ENV, "1")
+    assert osc.options_streaming_enabled() is True
+    monkeypatch.setenv(osc.ED_OPTIONS_STREAM_ENV, "0")
+    assert osc.options_streaming_enabled() is False
+    monkeypatch.delenv(osc.ED_OPTIONS_STREAM_ENV, raising=False)
+    assert osc.options_streaming_enabled() is False
+    assert os.environ.get(osc.ED_OPTIONS_STREAM_ENV) is None

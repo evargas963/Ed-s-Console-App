@@ -161,6 +161,26 @@ def close_epochs(db_path: Path | str, symbols: Iterable[str] | None, *, service:
         conn.close()
 
 
+def reconcile_open_epochs_on_start(db_path: Path | str, *, services: Iterable[str],
+                                   at_ms: int | None = None,
+                                   reason: str = "startup_reconcile_unclean_exit") -> dict[str, int]:
+    """Close every epoch left OPEN by a prior process, at daemon startup.
+
+    RESTART COVERAGE TRUTH. close_epochs runs on a CLEAN shutdown, but a crash or a kill (the
+    daemon's own last result was a control-C exit code) leaves epochs open with no ended_ms.
+    On the next start those stale epochs still answer was_subscribed()=True across the whole
+    downtime gap — the record claiming observation while nothing was running. This closes them
+    BEFORE the daemon opens any new epoch, stamped at the reconcile instant with a reason that
+    marks the gap as an unclean-exit boundary rather than a real unsubscribe. It is idempotent:
+    a clean prior shutdown left nothing open, so this closes zero.
+    """
+    now = int(at_ms if at_ms is not None else time.time() * 1000.0)
+    out: dict[str, int] = {}
+    for service in services:
+        out[service] = close_epochs(db_path, None, service=service, reason=reason, at_ms=now)
+    return out
+
+
 def was_subscribed(db_path: Path | str, symbol: str, at_ms: int, *,
                    service: str = "LEVELONE_OPTIONS") -> bool:
     """Was `symbol` observable on `service` at `at_ms`? The question replay must ask first."""

@@ -218,13 +218,18 @@ def _contract_symbol(contract: dict) -> str | None:
 
 
 def contract_budget_from_key_limit(*, equity_symbols: int = 1, book_enabled: bool = True,
+                                   equity_key_services: int = 3,
                                    key_limit: int = SCHWAB_STREAM_KEY_LIMIT,
                                    margin: int = KEY_SAFETY_MARGIN) -> dict[str, Any]:
     """How many option CONTRACTS fit in the remaining streamer key budget.
 
     The arithmetic, stated so it can be checked rather than trusted:
-      * the equity path holds `equity_symbols` x 3 keys — LEVELONE_EQUITIES, NASDAQ_BOOK and
-        NYSE_BOOK are three separate services on the same symbol;
+      * the equity path holds `equity_symbols` x `equity_key_services` keys — one key per
+        (symbol, service). The UI stream ran three services (LEVELONE_EQUITIES + NASDAQ_BOOK +
+        NYSE_BOOK); the capture daemon, which owns the ONE Collect stream, runs two
+        (LEVELONE_EQUITIES + CHART_EQUITY). Sizing options against the wrong stream's equity
+        topology is the exact key-accounting error that put options on the UI socket, so the
+        caller passes the services its OWN stream actually holds rather than a hardcoded 3.
       * each option contract costs 1 key for LEVELONE_OPTIONS, plus 1 more for OPTIONS_BOOK
         when book depth is collected;
       * a margin is held back so a concurrent equity resubscribe cannot tip the account over.
@@ -240,7 +245,7 @@ def contract_budget_from_key_limit(*, equity_symbols: int = 1, book_enabled: boo
     books" — depth on a few names, quotes broadly. The same choice is available here and is the
     caller's; this function only reports the arithmetic.
     """
-    equity_keys = max(0, int(equity_symbols)) * 3
+    equity_keys = max(0, int(equity_symbols)) * max(1, int(equity_key_services))
     per_contract = 2 if book_enabled else 1  # caps-ok: Schwab key COST of a contract — LEVELONE_OPTIONS alone is 1 key, adding OPTIONS_BOOK makes it 2. A capacity constant of the subscription protocol, not a substituted market value.
     available = int(key_limit) - int(margin) - equity_keys
     allowed = max(0, available // per_contract)
@@ -248,6 +253,7 @@ def contract_budget_from_key_limit(*, equity_symbols: int = 1, book_enabled: boo
         "key_limit": int(key_limit),
         "safety_margin": int(margin),
         "equity_keys_held": equity_keys,
+        "equity_key_services": max(1, int(equity_key_services)),
         "keys_per_contract": per_contract,
         "keys_available_for_options": max(0, available),
         "contracts_allowed": allowed,

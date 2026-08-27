@@ -62,7 +62,7 @@ def collection_status() -> dict[str, Any]:
         },
     }
     try:
-        from order_flow_streaming import options_stream_status
+        from options_stream_collect import options_stream_status
         st = options_stream_status()
         out["enabled"] = bool(st.get("enabled"))
         out["ingest"] = st.get("ingest")

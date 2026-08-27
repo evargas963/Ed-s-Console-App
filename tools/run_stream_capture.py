@@ -481,6 +481,24 @@ async def _schwab_connect(state, symbols, bus, health, stats, stop):
     print(f"subscribed {len(symbols)} symbols x2 services (key accounting: "
           f"{len(symbols) * 2} keys used)")
 
+    # OPTIONS COLLECTION rides THIS daemon's single stream — the one Collect authority. It was
+    # first built onto the server's UI stream, a second Schwab surface with its own key
+    # accounting and persistence; it belongs here. A recycle is a CLEAN REBUILD (the same law the
+    # equity pump follows), so stop any prior options state, then re-establish on the new stream.
+    # equity_key_services=2 because THIS stream holds two equity services (LEVELONE_EQUITIES +
+    # CHART_EQUITY) — the budget is sized against the stream actually held, not a hardcoded 3.
+    try:
+        from options_stream_collect import (
+            register_options_handlers, _options_frame_handler,
+            start_options_collection, stop_options_collection,
+        )
+        stop_options_collection("stream_recycle")
+        register_options_handlers(stream, _options_frame_handler)
+        await start_options_collection(stream, equity_symbols=len(symbols), equity_key_services=2)
+    except Exception as exc:  # noqa: BLE001 — options is additive; equity capture is unaffected
+        print(f"options collection did not start (equity capture unaffected): "
+              f"{type(exc).__name__}: {exc}")
+
     async def pump() -> None:
         while not stop.is_set():
             await stream.handle_message()
@@ -528,6 +546,13 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
     except (KeyboardInterrupt, asyncio.CancelledError):
         pass
     finally:
+        # Close options coverage epochs and drain the options writer BEFORE the equity shutdown
+        # sequence, so a clean daemon exit leaves no epoch claiming observation past this instant.
+        try:
+            from options_stream_collect import stop_options_collection
+            stop_options_collection("daemon_shutdown")
+        except Exception as exc:  # noqa: BLE001
+            print(f"options shutdown: {type(exc).__name__}: {exc}")
         await _shutdown_sequence(pump_task, writer_task, stop, wsub,
                                  extra_producers=(alpaca_task,))
         writer.close()
