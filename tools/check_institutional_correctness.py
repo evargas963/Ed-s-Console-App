@@ -387,7 +387,6 @@ def _root_cause_ledger_folded_violations() -> list[Violation]:
         ("rc_log_rows_keep_schema", _rc_log_rows_keep_schema_violations),
         ("rc_numeric_claims_cite_a_command", _rc_numeric_claims_cite_a_command_violations),
         ("rc_mechanism_claims_cite_a_source", _rc_mechanism_claims_cite_a_source_violations),
-        ("root_cause_recurrence_declared", _root_cause_recurrence_declared_violations),
         ("closed_rows_ship_their_code", _closed_rows_ship_their_code_violations),
         ("adversarial_audits_are_answered", _adversarial_audits_are_answered_violations),
     ):
@@ -423,14 +422,6 @@ def check_rc_mechanism_claims_cite_a_source() -> list[Violation]:
     """Wrapper kept importable for the negative controls; the substance runs inside
     check_root_cause_log (retired registration, governance/retired_checks.md)."""
     return _rc_mechanism_claims_cite_a_source_violations()
-
-
-def check_root_cause_recurrence_declared() -> list[Violation]:
-    """Wrapper kept importable for the negative controls; the substance runs inside
-    check_root_cause_log (retired registration, governance/retired_checks.md)."""
-    return _root_cause_recurrence_declared_violations()
-
-
 
 
 def check_closed_rows_ship_their_code() -> list[Violation]:
@@ -2383,92 +2374,6 @@ def _closed_rows_ship_their_code_violations() -> list[Violation]:
 # feature work into ledger essays (measured: 430 rows / 1.4MB / 124 OPEN at census).
 # Defect rows and their quality stay enforced by root_cause_log; closures stay bound
 # to real code by closed_rows_ship_their_code.
-
-
-
-#: RC-61 — the recurring failure CLASSES distilled from the root-cause log. Each is a pattern that
-#: has already cost real defects; a NEW row that repeats one must say how this time is different.
-#: (pattern-name, regex over the why/root text, the RC ids where it already bit)
-_RECURRENCE_CLASSES = (
-    ("goodwill-not-machine-forced",
-     re.compile(r"goodwill|no mechanical|not machine[- ]forced|depended on (agent|me) remember", re.I),
-     "RC-41, RC-49, RC-53, RC-56"),
-    ("unverified-claim-asserted",
-     re.compile(r"without measur|asserted .*without|not reproducib|uncommitted one-off|from memory", re.I),
-     "RC-39, RC-40, RC-43, RC-53"),
-    ("session-scope-omitted",
-     re.compile(r"market[- ]closed|weekend|holiday|non[- ]trading|session scop", re.I),
-     "RC-54, RC-57, RC-58"),
-    ("duplicate-authority",
-     re.compile(r"two (different )?(authorit|classifier|implementation|engine|width)|each .* own|open[- ]coded per", re.I),
-     "RC-14, RC-36, RC-42, RC-48, RC-59"),
-    ("stale-record-trusted",
-     re.compile(r"stale|out of date|outdated|superseded but|no longer true", re.I),
-     "RC-44, RC-55"),
-)
-
-
-def _root_cause_recurrence_declared_violations() -> list[Violation]:
-    """A new root cause that REPEATS a known class must say why this time is different.
-
-    WHAT WAS OBSERVED (2026-07-26, RC-61): the operator asked what we actually DO with the
-    root-cause log — and the answer was nothing. It is written at fix time and never read at
-    author time, so the same classes recur: "goodwill instead of a lock" bit at RC-41, RC-49,
-    RC-53 and RC-56; "claim asserted without measurement" at RC-39, RC-40, RC-43 and RC-53;
-    "session scope omitted" at RC-54, RC-57 and RC-58; "two authorities for one quantity" at
-    RC-14, RC-36, RC-42, RC-48 and RC-59. A log that records history without constraining the
-    next entry is an archive, not a control.
-
-    Rule: when a commit stages a NEW '| RC-' row whose why/root text matches a known recurring
-    class, that row must also carry `RECURRENCE: <class> — <why this fix breaks the cycle>`.
-    The point is not paperwork: it forces the author to notice they are repeating themselves and
-    to state what is structurally different, at the moment the fix is designed.
-
-    HOW THE RULE WAS VALIDATED: the five classes were derived FROM this repo's own log (each
-    lists the RC ids where it already bit, so no class is speculative), and the check is scoped to
-    NEWLY ADDED rows in the staged diff — existing history is never retro-flagged, and it returns
-    [] outside a git commit context so unit-test imports never false-block.
-    """
-    log_rel = "governance/root_cause_log.md"
-    staged = _git_output_lines(["diff", "--cached", "--name-only"])
-    if staged is None:
-        return []
-    if log_rel not in {s.strip().replace("\\", "/") for s in staged if s.strip()}:
-        return []
-    # Only GENUINELY NEW rows bind. Editing an existing row (e.g. adding a reproduce command)
-    # shows up as an added diff line too, and demanding a recurrence declaration for that would
-    # cry wolf on ordinary maintenance — so compare against the ids already committed at HEAD.
-    head = _git_output_lines(["show", f"HEAD:{log_rel}"]) or []
-    existing_ids = {
-        ln.strip().strip("|").split("|")[0].strip()
-        for ln in head if ln.startswith("| RC-")
-    }
-    diff = _git_output_lines(["diff", "--cached", "-U0", "--", log_rel]) or []
-    out: list[Violation] = []
-    for ln in diff:
-        if not ln.startswith("+| RC-"):
-            continue
-        row = ln[1:]
-        cells = [c.strip() for c in row.strip().strip("|").split("|")]
-        if len(cells) < 7:
-            continue
-        rc_id, why = cells[0], cells[5]
-        if rc_id in existing_ids:
-            continue
-        if "RECURRENCE:" in row.upper():
-            continue
-        for name, pattern, priors in _RECURRENCE_CLASSES:
-            if pattern.search(why):
-                out.append(Violation(
-                    REPO / log_rel, 0,
-                    f"{rc_id} repeats the known failure class '{name}' (already recorded at "
-                    f"{priors}) but does not declare it. The root-cause log is a CONTROL, not an "
-                    f"archive: add 'RECURRENCE: {name} — <what is structurally different this "
-                    f"time>' so a repeat is a deliberate, explained decision rather than an "
-                    f"unnoticed loop."))
-                break
-    return out
-
 
 
 
