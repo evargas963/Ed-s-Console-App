@@ -469,33 +469,51 @@ async def _reconcile_options_subscription(sc, plan, want, reason, *, keys_availa
     dropped_ok = sum(v.get("dropped", 0) for v in per_service.values())
     added = sum(v.get("added", 0) for v in per_service.values())
 
-    # PLANNED vs ADMITTED, made explicit and truthful. The plan's rotating/per_underlying are
-    # what the slice WANTED; the key cap and per-service vendor refusals can admit only part of
-    # it, so reporting the planned values as `rotating`/`per_underlying` claimed coverage that
-    # may not exist. ADMITTED is derived from what is ACTUALLY held at the vendor now: a contract
-    # observed on at least one service. per_underlying_admitted counts held contracts by their
-    # underlying via the plan's symbol->underlying map (a stranded symbol from a prior slice is
-    # not in this plan's map, so its root is recovered from the option symbol rather than dropped
-    # — it is still real coverage and must be counted).
+    # PLANNED vs ADMITTED, made explicit, truthful and SERVICE-AWARE. The plan's
+    # rotating/per_underlying are what the slice WANTED; the key cap and per-service vendor
+    # refusals can admit only part of it. An earlier version counted admitted coverage over the
+    # UNION of LEVELONE_OPTIONS and OPTIONS_BOOK, so a contract held on LEVELONE alone (its BOOK
+    # subscribe refused) counted as covered and fully_admitted could read True while a whole
+    # service was missing. Both services are requested (book_enabled), so a contract is FULLY
+    # observed only when it is held on EVERY service, and full admission requires the planned
+    # depth on EVERY service — not the union.
     sym_und = dict(plan.get("symbol_underlying") or {})
-    held_union = set().union(*_options_subscribed.values()) if _options_subscribed else set()
 
     def _underlying(sym: str) -> str:
         u = sym_und.get(sym)
         if u:
             return u
+        # A stranded symbol from a prior slice is not in this plan's map; recover its root from
+        # the option symbol rather than dropping it — it is still real coverage.
         root = sym.split()[0].strip() if isinstance(sym, str) and sym else ""
         return root or "UNKNOWN"
 
-    per_underlying_admitted: dict[str, int] = {}
-    for s in held_union:
-        per_underlying_admitted[_underlying(s)] = per_underlying_admitted.get(_underlying(s), 0) + 1
+    def _by_underlying(symbols) -> dict[str, int]:
+        out: dict[str, int] = {}
+        for s in symbols:
+            u = _underlying(s)
+            out[u] = out.get(u, 0) + 1
+        return out
+
+    # GROUND TRUTH, per service.
+    admitted_by_service = {s: _by_underlying(_options_subscribed[s]) for s in OPTIONS_SERVICES}
+    # FULLY-OBSERVED depth per underlying = the depth on the WEAKEST service (min across all).
+    # A contract on only some services contributes only up to the service that holds the fewest.
+    all_underlyings = {u for d in admitted_by_service.values() for u in d}
+    per_underlying_admitted = {
+        u: min(admitted_by_service[s].get(u, 0) for s in OPTIONS_SERVICES)
+        for u in all_underlyings}
+    per_underlying_admitted = {u: c for u, c in per_underlying_admitted.items() if c > 0}
+    # A name is "admitted" only when it is fully observed (present on every service).
     admitted_underlyings = set(per_underlying_admitted)
     rotating_admitted = sorted(u for u in plan["rotating"] if u in admitted_underlyings)
     core_admitted = sorted(u for u in plan["core"] if u in admitted_underlyings)
-    # Fully admitted only when every planned underlying holds at least its planned depth.
+    # FULLY admitted only when every planned underlying holds its planned depth on EVERY service.
     fully_admitted = all(
-        per_underlying_admitted.get(u, 0) >= cnt for u, cnt in plan["per_underlying"].items())
+        admitted_by_service[svc].get(u, 0) >= cnt
+        for svc in OPTIONS_SERVICES
+        for u, cnt in plan["per_underlying"].items())
+    held_union = set().union(*_options_subscribed.values()) if _options_subscribed else set()
 
     _options_last_slice = {
         "reason": reason,
@@ -505,10 +523,13 @@ async def _reconcile_options_subscription(sc, plan, want, reason, *, keys_availa
         "core_planned": plan["core"],
         "rotating_planned": plan["rotating"],
         "per_underlying_planned": plan["per_underlying"],
-        # ADMITTED — what is actually held at the vendor now. This is the truthful coverage.
+        # ADMITTED — what is actually held at the vendor now, per service. per_underlying_admitted
+        # is the FULLY-OBSERVED depth (on every service); admitted_by_service is the per-service
+        # breakdown so a partial (one service short) is visible rather than hidden by a union.
         "core_admitted": core_admitted,
         "rotating_admitted": rotating_admitted,
         "per_underlying_admitted": per_underlying_admitted,
+        "admitted_by_service": admitted_by_service,
         "fully_admitted": fully_admitted,
         "added": added,
         "dropped": dropped_ok,

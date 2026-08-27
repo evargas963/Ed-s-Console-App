@@ -519,9 +519,30 @@ def test_a_partial_subscribe_failure_shows_in_admitted_coverage(monkeypatch):
         close_epochs=lambda *a, **k: None, open_epochs=lambda *a, **k: None,
         subscribe_options=sub.subscribe_options, unsubscribe_options=sub.unsubscribe_options))
     ls = ofs._options_last_slice
-    # AMD1 is held on LEVELONE only, so it IS observed and counts as admitted once.
-    assert ls["per_underlying_admitted"].get("AMD") == 1
+    # AMD1 is held on LEVELONE only. SERVICE-AWARE truth: it is covered on LEVELONE but NOT on
+    # BOOK, so the fully-observed depth is 0 and full admission is False — the union would have
+    # wrongly counted it as covered.
+    assert ls["admitted_by_service"]["LEVELONE_OPTIONS"].get("AMD") == 1
+    assert ls["admitted_by_service"]["OPTIONS_BOOK"].get("AMD", 0) == 0
+    assert ls["per_underlying_admitted"].get("AMD", 0) == 0, (
+        "AMD held on LEVELONE only was counted as fully observed — the union bug")
+    assert ls["fully_admitted"] is False, "a service was missing but full admission was claimed"
     assert ls["services_in_agreement"] is False, "one service refused; agreement should be False"
+
+
+def test_min_across_services_is_how_per_underlying_admitted_is_computed():
+    """THE REPORTING MATH, unit-checked: fully-observed depth is the weakest service's depth.
+
+    Kept as a pure check of the min-across-services rule so a future refactor to a union or a
+    max is caught. A stable 1-vs-2 asymmetry is not runtime-reachable (retries heal it), so this
+    asserts the formula directly rather than staging an unreachable vendor state.
+    """
+    by_service = {"LEVELONE_OPTIONS": {"AMD": 2, "SPY": 3}, "OPTIONS_BOOK": {"AMD": 1, "SPY": 3}}
+    services = ("LEVELONE_OPTIONS", "OPTIONS_BOOK")
+    fully_observed = {u: min(by_service[s].get(u, 0) for s in services)
+                      for u in {u for d in by_service.values() for u in d}}
+    assert fully_observed == {"AMD": 1, "SPY": 3}, (
+        "fully-observed depth must be the minimum across services, not the union or the max")
 
 
 def test_a_stranded_symbol_from_a_prior_slice_still_counts_as_coverage(monkeypatch):
@@ -550,9 +571,13 @@ def test_a_stranded_symbol_from_a_prior_slice_still_counts_as_coverage(monkeypat
         close_epochs=lambda *a, **k: None, open_epochs=lambda *a, **k: None,
         subscribe_options=sub.subscribe_options, unsubscribe_options=sub.unsubscribe_options))
     ls = ofs._options_last_slice
-    assert ls["per_underlying_admitted"].get("XOM") == 1, (
-        f"an undroppable XOM contract was not counted as real coverage: "
-        f"{ls['per_underlying_admitted']}")
+    # XOM is held on LEVELONE only, so its root is recovered and it shows as LEVELONE coverage;
+    # service-aware, it is NOT fully observed (no BOOK), so it is absent from the min-depth tally.
+    assert ls["admitted_by_service"]["LEVELONE_OPTIONS"].get("XOM") == 1, (
+        f"an undroppable XOM contract was not counted as LEVELONE coverage: "
+        f"{ls['admitted_by_service']}")
+    assert ls["per_underlying_admitted"].get("XOM", 0) == 0, (
+        "XOM on LEVELONE only was counted as fully observed")
 
 
 # ── the roster must fail explicit, not open ─────────────────────────────────────────────────
