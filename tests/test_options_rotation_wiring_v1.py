@@ -237,7 +237,11 @@ def _wire_real_helpers(monkeypatch):
 
     monkeypatch.setattr(cov, "open_epochs", lambda *a, **k: None, raising=False)
     monkeypatch.setattr(cov, "close_epochs", lambda *a, **k: None, raising=False)
-    monkeypatch.setattr(ofs, "_options_subscribed",
+    # Reset BOTH states (they are module globals; a prior test would otherwise leak). With epochs
+    # stubbed to succeed, coverage follows vendor exactly, so admitted == vendor-held here.
+    monkeypatch.setattr(ofs, "_vendor_held",
+                        {s: set() for s in ofs.OPTIONS_SERVICES}, raising=False)
+    monkeypatch.setattr(ofs, "_coverage_open",
                         {s: set() for s in ofs.OPTIONS_SERVICES}, raising=False)
     monkeypatch.setattr(ofs, "_equity_symbols", 1, raising=False)
     monkeypatch.setattr(ofs, "_options_lock", None, raising=False)
@@ -328,7 +332,7 @@ def test_a_service_re_establishes_with_subs_after_it_empties(monkeypatch):
     # T01 rotates entirely out and nothing replaces it this slice, emptying the service...
     _plan_real(monkeypatch, ofs, [])
     asyncio.run(ofs.apply_options_slice(v, 900.0, "rotation"))
-    assert not ofs._options_subscribed["LEVELONE_OPTIONS"], "service did not empty"
+    assert not ofs._vendor_held["LEVELONE_OPTIONS"], "service did not empty"
     v.ops.clear()
     # ...then a later slice brings a name back: it must SUBS to re-establish.
     _plan_real(monkeypatch, ofs, ["T09"])
@@ -561,7 +565,9 @@ def test_different_contracts_on_different_services_is_not_full_coverage(monkeypa
     new1, new2 = "AMD   260220C00100000", "AMD   260220C00105000"
     # Seeded prior state: both services on the OLD strikes.
     v.lvl, v.book = {old1, old2}, {old1, old2}
-    ofs._options_subscribed = {"LEVELONE_OPTIONS": {old1, old2}, "OPTIONS_BOOK": {old1, old2}}
+    # Prior state: both the vendor and the durable record hold the OLD strikes (in agreement).
+    ofs._vendor_held = {"LEVELONE_OPTIONS": {old1, old2}, "OPTIONS_BOOK": {old1, old2}}
+    ofs._coverage_open = {"LEVELONE_OPTIONS": {old1, old2}, "OPTIONS_BOOK": {old1, old2}}
     sym_und = {new1: "AMD", new2: "AMD"}
     plan = _partial_plan(sym_und, [], ["AMD"], {"AMD": 2})   # rotate to the new strikes
     asyncio.run(ofs._reconcile_options_subscription(
@@ -599,8 +605,8 @@ def test_a_stranded_symbol_from_a_prior_slice_still_counts_as_coverage(monkeypat
 
     v = V()
     v.lvl = {"XOM   260828C00070000"}
-    ofs._options_subscribed = {"LEVELONE_OPTIONS": {"XOM   260828C00070000"},
-                               "OPTIONS_BOOK": set()}
+    ofs._vendor_held = {"LEVELONE_OPTIONS": {"XOM   260828C00070000"}, "OPTIONS_BOOK": set()}
+    ofs._coverage_open = {"LEVELONE_OPTIONS": {"XOM   260828C00070000"}, "OPTIONS_BOOK": set()}
     sym_und = {"AMD1": "AMD"}                              # this plan does not mention XOM
     plan = _partial_plan(sym_und, [], ["AMD"], {"AMD": 1})
     asyncio.run(ofs._reconcile_options_subscription(
@@ -659,12 +665,13 @@ def test_roster_failure_holds_the_subscription_unchanged(monkeypatch):
             raise RuntimeError("db locked")
 
     monkeypatch.setattr("db.get_db", lambda: _Fail(), raising=False)
-    ofs._options_subscribed = {"LEVELONE_OPTIONS": {"SPY", "T01"}, "OPTIONS_BOOK": {"SPY"}}
+    ofs._vendor_held = {"LEVELONE_OPTIONS": {"SPY", "T01"}, "OPTIONS_BOOK": {"SPY"}}
+    ofs._coverage_open = {"LEVELONE_OPTIONS": {"SPY", "T01"}, "OPTIONS_BOOK": {"SPY"}}
     v = _VendorState()
     v.lvl, v.book = {"SPY", "T01"}, {"SPY"}
-    before = ({k: set(x) for k, x in ofs._options_subscribed.items()}, set(v.lvl), set(v.book))
+    before = ({k: set(x) for k, x in ofs._vendor_held.items()}, set(v.lvl), set(v.book))
     res = asyncio.run(ofs.apply_options_slice(v, 1_787_000_000.0, "rotation"))
-    after = ({k: set(x) for k, x in ofs._options_subscribed.items()}, set(v.lvl), set(v.book))
+    after = ({k: set(x) for k, x in ofs._vendor_held.items()}, set(v.lvl), set(v.book))
     assert res.get("roster_ok") is False
     assert before == after, "a roster failure disturbed the live subscription"
     assert not v.ops, f"the reconciler issued vendor calls on a roster failure: {v.ops}"
@@ -726,7 +733,9 @@ def _wire(monkeypatch, rec):
     monkeypatch.setattr(sub, "unsubscribe_options", rec.unsubscribe, raising=False)
     monkeypatch.setattr(cov, "open_epochs", rec.open_epochs, raising=False)
     monkeypatch.setattr(cov, "close_epochs", rec.close_epochs, raising=False)
-    monkeypatch.setattr(ofs, "_options_subscribed",
+    monkeypatch.setattr(ofs, "_vendor_held",
+                        {s: set() for s in ofs.OPTIONS_SERVICES}, raising=False)
+    monkeypatch.setattr(ofs, "_coverage_open",
                         {s: set() for s in ofs.OPTIONS_SERVICES}, raising=False)
     monkeypatch.setattr(ofs, "_equity_symbols", 1, raising=False)
     monkeypatch.setattr(ofs, "_options_lock", None, raising=False)
@@ -825,7 +834,7 @@ def test_an_unacknowledged_unsubscribe_keeps_the_contract_and_its_epoch(monkeypa
         "an epoch was closed for a contract the vendor did NOT release — the record would show "
         "a gap that did not happen while frames kept arriving")
     for svc in ofs.OPTIONS_SERVICES:
-        assert "A" in ofs._options_subscribed[svc], (
+        assert "A" in ofs._vendor_held[svc], (
             f"{svc}: the still-subscribed contract was forgotten — its vendor key is now "
             f"unaccounted for and will never be released")
 
@@ -839,9 +848,9 @@ def test_a_partly_acknowledged_unsubscribe_releases_only_that_service(monkeypatc
     _plan(monkeypatch, ofs, ["B"])
     asyncio.run(ofs.apply_options_slice(object(), 900.0, "rotation"))
 
-    assert "A" not in ofs._options_subscribed["LEVELONE_OPTIONS"], (
+    assert "A" not in ofs._vendor_held["LEVELONE_OPTIONS"], (
         "the acknowledged service did not release the contract")
-    assert "A" in ofs._options_subscribed["OPTIONS_BOOK"], (
+    assert "A" in ofs._vendor_held["OPTIONS_BOOK"], (
         "the REFUSED service released the contract anyway — its key is now unaccounted for")
     closed = [e for e in rec.events if e[0] == "close_epochs"]
     assert closed and all(e[2] == "LEVELONE_OPTIONS" for e in closed), (
@@ -854,8 +863,8 @@ def test_a_partial_subscribe_is_not_recorded_as_fully_subscribed(monkeypatch):
     _plan(monkeypatch, ofs, ["A"])
     asyncio.run(ofs.apply_options_slice(object(), 0.0, "stream_start"))
 
-    assert "A" in ofs._options_subscribed["LEVELONE_OPTIONS"], "the accepted service was lost"
-    assert "A" not in ofs._options_subscribed["OPTIONS_BOOK"], (
+    assert "A" in ofs._vendor_held["LEVELONE_OPTIONS"], "the accepted service was lost"
+    assert "A" not in ofs._vendor_held["OPTIONS_BOOK"], (
         "a REFUSED subscribe was recorded as subscribed — the service will never be retried "
         "and the coverage record claims a book we do not have")
     opened = [e for e in rec.events if e[0] == "open_epochs"]
@@ -876,7 +885,7 @@ def test_the_refused_service_is_retried_on_the_next_slice(monkeypatch):
 
     retried = [e for e in rec.events if e[0] == "subscribe" and e[2] == "OPTIONS_BOOK"]
     assert retried, "the previously refused service was never retried"
-    assert "A" in ofs._options_subscribed["OPTIONS_BOOK"], "the retry did not take effect"
+    assert "A" in ofs._vendor_held["OPTIONS_BOOK"], "the retry did not take effect"
     assert not [e for e in rec.events
                 if e[0] == "subscribe" and e[2] == "LEVELONE_OPTIONS"], (
         "the already-subscribed service was re-subscribed — churn the vendor did not need")
@@ -890,7 +899,7 @@ def test_a_total_subscribe_failure_records_nothing(monkeypatch):
     asyncio.run(ofs.apply_options_slice(object(), 0.0, "stream_start"))
     assert "open_epochs" not in rec.kinds(), "an epoch was opened with no accepted service"
     for svc in ofs.OPTIONS_SERVICES:
-        assert not ofs._options_subscribed[svc], f"{svc} recorded a subscription it never got"
+        assert not ofs._vendor_held[svc], f"{svc} recorded a subscription it never got"
 
 
 def test_the_slice_record_shows_when_the_services_disagree(monkeypatch):
@@ -899,8 +908,8 @@ def test_the_slice_record_shows_when_the_services_disagree(monkeypatch):
     _plan(monkeypatch, ofs, ["A"])
     asyncio.run(ofs.apply_options_slice(object(), 0.0, "stream_start"))
     st = ofs.options_stream_status()
-    assert st["subscribed_by_service"]["LEVELONE_OPTIONS"] == 1
-    assert st["subscribed_by_service"]["OPTIONS_BOOK"] == 0
+    assert st["vendor_held_by_service"]["LEVELONE_OPTIONS"] == 1
+    assert st["vendor_held_by_service"]["OPTIONS_BOOK"] == 0
     assert st["services_in_agreement"] is False, (
         "the status claims the services agree while one is subscribed and the other is not")
 
@@ -1089,7 +1098,9 @@ def test_an_empty_initial_collection_tears_down_cleanly(monkeypatch):
     import options_stream_collect as ofs
 
     monkeypatch.setenv("ED_OPTIONS_STREAM", "1")
-    monkeypatch.setattr(ofs, "_options_subscribed",
+    monkeypatch.setattr(ofs, "_vendor_held",
+                        {s: set() for s in ofs.OPTIONS_SERVICES}, raising=False)
+    monkeypatch.setattr(ofs, "_coverage_open",
                         {s: set() for s in ofs.OPTIONS_SERVICES}, raising=False)
     monkeypatch.setattr(ofs, "_options_lock", None, raising=False)
     monkeypatch.setattr(ofs, "_options_rotation_task", None, raising=False)
@@ -1105,13 +1116,16 @@ def test_an_empty_initial_collection_tears_down_cleanly(monkeypatch):
     assert ofs._options_bus is None, "bus handle left set after a start that subscribed nothing"
     assert ofs._active_stream is None, "stream handle left set after an empty start"
     assert ofs._options_rotation_task is None, "a rotation task ran with nothing subscribed"
-    assert not any(ofs._options_subscribed.values())
+    assert not any(ofs._vendor_held.values()) and not any(ofs._coverage_open.values())
 
 
 def test_teardown_closes_epochs_only_for_what_each_service_held(monkeypatch):
-    """A shutdown must not write an end for an epoch that was never opened."""
+    """A shutdown must not write an end for an epoch that was never opened. Teardown closes the
+    DURABLE coverage record (_coverage_open), per service."""
     ofs, rec = _wire(monkeypatch, _Recorder())
-    monkeypatch.setattr(ofs, "_options_subscribed",
+    monkeypatch.setattr(ofs, "_coverage_open",
+                        {"LEVELONE_OPTIONS": {"A", "B"}, "OPTIONS_BOOK": {"A"}}, raising=False)
+    monkeypatch.setattr(ofs, "_vendor_held",
                         {"LEVELONE_OPTIONS": {"A", "B"}, "OPTIONS_BOOK": {"A"}}, raising=False)
     monkeypatch.setattr(ofs, "_options_offered", 0, raising=False)
     monkeypatch.setattr(ofs, "_options_written", 0, raising=False)
@@ -1193,7 +1207,9 @@ def test_the_rotation_task_is_cancelled_and_awaited_on_teardown(monkeypatch):
     """
     import options_stream_collect as ofs
 
-    monkeypatch.setattr(ofs, "_options_subscribed",
+    monkeypatch.setattr(ofs, "_vendor_held",
+                        {s: set() for s in ofs.OPTIONS_SERVICES}, raising=False)
+    monkeypatch.setattr(ofs, "_coverage_open",
                         {s: set() for s in ofs.OPTIONS_SERVICES}, raising=False)
     monkeypatch.setattr(ofs, "_options_offered", 0, raising=False)
     monkeypatch.setattr(ofs, "_options_written", 0, raising=False)

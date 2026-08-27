@@ -212,7 +212,12 @@ class CaptureWriter:
         #: lost equity rows to lock contention. The spine stays dependency-free: it never imports the
         #: higher layer; the higher layer injects its writer fn(conn, topic, msg) -> rows_written.
         self._topic_writers: dict[str, Any] = {}
-        self._conn = sqlite3.connect(str(p), timeout=30.0)
+        # check_same_thread=False so the writer's batches can run OFF the event loop (via
+        # asyncio.to_thread) while the SAME single connection is reused. This is safe because
+        # `run` awaits each flush, so the connection is only ever touched by one thread at a time —
+        # never concurrently. Keeping sqlite off the loop is what stops option (and equity)
+        # persistence from blocking the daemon pump that services equity receive.
+        self._conn = sqlite3.connect(str(p), timeout=30.0, check_same_thread=False)
         try:
             # busy_timeout so any OTHER coordinated writer to this WAL file (the options coverage
             # and ingest-health control-plane writes still use their own short-lived connections)
@@ -283,29 +288,43 @@ class CaptureWriter:
             self.insert_errors += 1
             return 0
 
+    def _flush_batch(self, batch: list) -> None:
+        """Insert a whole batch and commit — on a WORKER THREAD (called via asyncio.to_thread).
+
+        The event loop is NOT blocked while this runs, so the daemon pump keeps servicing equity
+        receive during option (and equity) persistence — the crowd-out this fixes. `run` awaits
+        each flush, so this is the only thread touching the connection at any instant."""
+        for topic, msg in batch:
+            self._insert_guarded(topic, msg)
+        self.commit()
+
     async def run(self, sub: Subscription, *, stop: asyncio.Event) -> None:
-        pending = 0
+        # ACCUMULATE on the loop (O(1) list append, no sqlite), FLUSH off the loop. The prior
+        # version called insert()+commit() inline on the event loop, so every batch's disk work
+        # blocked the pump — and adding option frames to the same writer made that stall bite
+        # equity receive. Batches are built here and handed to a worker thread; the loop stays free.
+        batch: list = []
         last_commit = time.monotonic()
         while not stop.is_set():
             timeout = max(self.batch_sec - (time.monotonic() - last_commit), 0.01)
             try:
                 topic, msg = await asyncio.wait_for(sub.get(), timeout=timeout)
-                pending += self._insert_guarded(topic, msg)
+                batch.append((topic, msg))
             except asyncio.TimeoutError:
                 pass
-            if pending and (pending >= self.batch_rows
-                            or time.monotonic() - last_commit >= self.batch_sec):
-                self.commit()
-                pending = 0
+            if batch and (len(batch) >= self.batch_rows
+                          or time.monotonic() - last_commit >= self.batch_sec):
+                await asyncio.to_thread(self._flush_batch, batch)
+                batch = []
                 last_commit = time.monotonic()
         # DRAIN on stop — Cursor review HIGH: stopping must not vaporize up to a full
         # queue of buffered rows. Everything already delivered to the subscription is
         # written and committed before the writer exits.
         while not sub.queue.empty():
             topic, msg = await sub.get()
-            pending += self._insert_guarded(topic, msg)
-        if pending:
-            self.commit()
+            batch.append((topic, msg))
+        if batch:
+            await asyncio.to_thread(self._flush_batch, batch)
 
     def close(self) -> None:
         """Idempotent — the daemon closes in a finally that may run after an inner

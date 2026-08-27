@@ -564,15 +564,24 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
         # Close options coverage epochs and drain the options writer BEFORE the equity shutdown
         # sequence, so a clean daemon exit leaves no epoch claiming observation past this instant.
         try:
-            # The Schwab stream is still LIVE here (the pump is cancelled below, inside
-            # _shutdown_sequence), so unsubscribe the vendor to release option keys before the
-            # socket goes. Awaited: the rotation task is cancelled AND joined as part of this.
-            from options_stream_collect import stop_options_collection
-            await stop_options_collection("daemon_shutdown", unsubscribe=True)
+            # PHASE ONE, while the Schwab stream is still LIVE: cancel+await the rotation and
+            # unsubscribe the vendor (release option keys). This does NOT close coverage yet —
+            # frames just unsubscribed may still be in flight through the pump and writer.
+            from options_stream_collect import quiesce_options_collection
+            await quiesce_options_collection("daemon_shutdown", unsubscribe=True)
         except Exception as exc:  # noqa: BLE001
-            print(f"options shutdown: {type(exc).__name__}: {exc}")
+            print(f"options quiesce: {type(exc).__name__}: {exc}")
+        # Quiesce the pump (no more frames can arrive) and DRAIN the writer (persist in-flight
+        # option frames) BEFORE closing coverage.
         await _shutdown_sequence(pump_task, writer_task, stop, wsub,
                                  extra_producers=(alpaca_task,))
+        try:
+            # PHASE TWO, now that no option frame can arrive: close the coverage record. Ordered
+            # after the drain so an epoch is never closed while an observation is still coming.
+            from options_stream_collect import close_options_coverage
+            close_options_coverage("daemon_shutdown")
+        except Exception as exc:  # noqa: BLE001
+            print(f"options coverage close: {type(exc).__name__}: {exc}")
         writer.close()
         write_status(bus, health, writer, stats, max_qdepth)
         print(json.dumps({

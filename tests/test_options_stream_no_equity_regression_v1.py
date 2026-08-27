@@ -171,7 +171,8 @@ def test_stopping_options_collection_is_safe_when_nothing_started():
     Teardown is async now (it awaits the cancelled rotation task), so it is actually driven here —
     the previous version called it synchronously and left the coroutine un-awaited, a false pass.
     """
-    osc._options_subscribed = {s: set() for s in osc.OPTIONS_SERVICES}
+    osc._vendor_held = {s: set() for s in osc.OPTIONS_SERVICES}
+    osc._coverage_open = {s: set() for s in osc.OPTIONS_SERVICES}
     osc._options_rotation_task = None
     osc._options_offered = 0
     osc._options_written = 0
