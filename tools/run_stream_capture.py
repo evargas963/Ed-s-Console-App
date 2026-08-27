@@ -453,6 +453,18 @@ async def _run_locked(symbols: list[str], duration_min: float, db_path: str | No
     health = HealthRegistry()
     stats = CaptureStats(sample_dir=ROOT / "reports")
     writer = CaptureWriter(db_path) if db_path else CaptureWriter()
+    # OPTIONS PERSISTENCE RIDES THIS ONE WRITER. The options collector publishes option frames onto
+    # the SAME bus; the writer persists them through its OWN connection via the registered
+    # persister — never a second connection to stream_capture.db (the "competing writers" defect).
+    # Additive and soft: a persister that will not import must not stop equity capture.
+    try:
+        from options_stream_collect import make_capture_topic_writer
+        _opt_persist = make_capture_topic_writer()
+        writer.register_topic_writer("optionchain", _opt_persist)
+        writer.register_topic_writer("optionbook", _opt_persist)
+    except Exception as exc:  # noqa: BLE001 — options persistence is additive
+        print(f"options persister not registered (equity capture unaffected): "
+              f"{type(exc).__name__}: {exc}")
     wsub = bus.subscribe("", policy=COUNT_DROPS, maxsize=8192)   # writer sees everything
     _ui_future = bus.subscribe("quote.", policy=COALESCE)        # proves coalesce path live
     stop = asyncio.Event()
@@ -492,9 +504,12 @@ async def _schwab_connect(state, symbols, bus, health, stats, stop):
             register_options_handlers, _options_frame_handler,
             start_options_collection, stop_options_collection,
         )
-        stop_options_collection("stream_recycle")
+        # A recycle means the OLD socket is dead — await the prior teardown (no vendor unsubscribe,
+        # nothing to unsubscribe on a dead socket), then re-establish on the new stream and bus.
+        await stop_options_collection("stream_recycle")
         register_options_handlers(stream, _options_frame_handler)
-        await start_options_collection(stream, equity_symbols=len(symbols), equity_key_services=2)
+        await start_options_collection(stream, bus=bus, equity_symbols=len(symbols),
+                                       equity_key_services=2)
     except Exception as exc:  # noqa: BLE001 — options is additive; equity capture is unaffected
         print(f"options collection did not start (equity capture unaffected): "
               f"{type(exc).__name__}: {exc}")
@@ -549,8 +564,11 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
         # Close options coverage epochs and drain the options writer BEFORE the equity shutdown
         # sequence, so a clean daemon exit leaves no epoch claiming observation past this instant.
         try:
+            # The Schwab stream is still LIVE here (the pump is cancelled below, inside
+            # _shutdown_sequence), so unsubscribe the vendor to release option keys before the
+            # socket goes. Awaited: the rotation task is cancelled AND joined as part of this.
             from options_stream_collect import stop_options_collection
-            stop_options_collection("daemon_shutdown")
+            await stop_options_collection("daemon_shutdown", unsubscribe=True)
         except Exception as exc:  # noqa: BLE001
             print(f"options shutdown: {type(exc).__name__}: {exc}")
         await _shutdown_sequence(pump_task, writer_task, stop, wsub,

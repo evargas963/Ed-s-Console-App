@@ -45,7 +45,22 @@ ED_OPTIONS_STREAM_ENV = "ED_OPTIONS_STREAM"
 #: open and the other absent with nothing to reconcile them.
 OPTIONS_SERVICES: tuple[str, ...] = ("LEVELONE_OPTIONS", "OPTIONS_BOOK")
 
-_options_ingest: Any = None
+#: PERSISTENCE RIDES THE DAEMON'S ONE WRITER. Options frames are PUBLISHED onto the daemon's
+#: MessageBus and persisted by the SAME CaptureWriter connection that writes the equity capture —
+#: never a second sqlite connection to stream_capture.db. Two connections to one WAL file was the
+#: "competing writers" defect that silently lost equity rows to lock contention. So there is no
+#: OptionsFrameIngest in the live path: the frame handler is an O(1) bus publish, and the writer's
+#: registered option persister (make_capture_topic_writer) does the insert on the shared connection.
+_options_bus: Any = None
+#: The stream client options are collecting on, held so a CLEAN teardown can UNSUBSCRIBE the vendor
+#: (release keys) rather than only dropping local state and leaking the subscription until logout.
+_active_stream: Any = None
+#: offered on the loop by the handler, written on the loop by the persister — same thread, no lock.
+#: offered - written (at drain) is the drop count, flushed to options_stream_ingest_health so the
+#: SUBSCRIBED_MAYBE_DROPPED verdict stays answerable after the process exits.
+_options_offered: int = 0
+_options_written: int = 0
+_options_started_ms: int = 0
 _options_subscribed: dict[str, set[str]] = {s: set() for s in OPTIONS_SERVICES}
 _options_last_receipt: dict[str, Any] | None = None
 #: The last slice this process applied — what rotated in, what rotated out, and when. Without it
@@ -71,22 +86,79 @@ def options_streaming_enabled() -> bool:
     return str(os.environ.get(ED_OPTIONS_STREAM_ENV, "")).strip().lower() in ("1", "true", "yes", "on")
 
 
-def _options_frame_handler(service: str) -> Callable[[dict], None]:
-    """Hand ONE options frame to the bounded queue and return. O(1), no SQLite here.
+#: LEVELONE_OPTIONS rides the 'optionchain' topic KIND, OPTIONS_BOOK the 'optionbook' kind. The
+#: kind is what the CaptureWriter dispatches on; the service travels inside the message so the one
+#: persister can shape either row from the vendor's own field names.
+_TOPIC_KIND = {"LEVELONE_OPTIONS": "optionchain", "OPTIONS_BOOK": "optionbook"}
 
-    Failure containment is DRIVEN, not asserted: it closes over module globals only, so a test
-    can point _options_ingest at a raising fake and confirm nothing escapes into the loop.
+
+def _options_frame_handler(service: str) -> Callable[[dict], None]:
+    """PUBLISH one options frame onto the daemon's bus and return. O(1), no SQLite on the loop.
+
+    The frame does not touch storage here — it rides the same bus the equity handlers use, and the
+    daemon's single CaptureWriter persists it on its own task. Failure containment is DRIVEN: the
+    handler closes over module globals only, so a test can point the bus at a raising fake and
+    confirm nothing escapes into the shared message loop.
     """
+    kind = _TOPIC_KIND.get(service, "optionchain")
+
     def _handler(msg: dict) -> None:
-        ing = _options_ingest
-        if ing is None:
+        global _options_offered
+        bus = _options_bus
+        if bus is None:
             return
         try:
-            ing.offer(service, msg, received_ts_ms=int(time.time() * 1000.0))
+            key = ""
+            content = msg.get("content") if isinstance(msg, dict) else None
+            if isinstance(content, list) and content and isinstance(content[0], dict):
+                key = str(content[0].get("key") or "")
+            _options_offered += 1
+            bus.publish(f"{kind}.{key}",
+                        {"service": service, "frame": msg,
+                         "received_ts_ms": int(time.time() * 1000.0)})
         except Exception as e:                  # noqa: BLE001
-            # An options storage problem must never propagate into the shared loop.
-            log.debug("options ingest offer (%s): %s", service, e)
+            # A publish problem must never propagate into the shared loop that services equities.
+            log.debug("options frame publish (%s): %s", service, e)
     return _handler
+
+
+def make_capture_topic_writer() -> Callable[[Any, str, dict], int]:
+    """Build the persister the daemon registers on its CaptureWriter for the option topic kinds.
+
+    fn(conn, topic, msg) -> rows written. It writes options_stream_frames + the per-contract index
+    onto the CaptureWriter's OWN connection — the single writer — so options never opens a second
+    connection to stream_capture.db. Row shaping is the SHARED shaping from options_stream_frames,
+    so this path and any other writer produce byte-identical rows. Schema is ensured lazily on the
+    first frame (the writer's connection is the daemon's, created before any option frame arrives).
+    """
+    from calibration.options_stream_frames import (ensure_options_stream_schema, frame_row_values,
+                                                    frame_symbol_rows)
+    state = {"schema_ready": False}
+
+    def _write(conn: Any, topic: str, msg: dict) -> int:
+        global _options_written
+        if not isinstance(msg, dict):
+            return 0
+        if not state["schema_ready"]:
+            ensure_options_stream_schema(conn)
+            state["schema_ready"] = True
+        service = msg.get("service")
+        frame = msg.get("frame")
+        rx = msg.get("received_ts_ms")
+        vals = frame_row_values(service, frame, rx)
+        if vals is None:
+            return 0
+        cur = conn.execute(
+            "INSERT INTO options_stream_frames (service, frame_ts_ms, received_ts_ms, "
+            "ingest_lag_ms, n_contracts, payload_json) VALUES (?,?,?,?,?,?)", vals)
+        rows = frame_symbol_rows(cur.lastrowid, frame)
+        if rows:
+            conn.executemany(
+                "INSERT OR REPLACE INTO options_stream_frame_symbols (frame_id, symbol_key, "
+                "content_idx) VALUES (?,?,?)", rows)
+        _options_written += 1
+        return 1
+    return _write
 
 
 def register_options_handlers(sc: Any, make_handler: Callable[[str], Callable[[dict], None]]) -> None:
@@ -245,11 +317,18 @@ async def apply_options_slice(sc: Any, at_epoch_s: float, reason: str) -> dict[s
     from options_stream_subscription import (contract_budget_from_key_limit, subscribe_options,
                                              unsubscribe_options)
 
-    plan = options_desired_for_slice(
-        at_epoch_s, equity_symbols=_equity_symbols,
+    # PLANNING OFF THE LOOP. options_desired_for_slice reads the enrollment roster and builds and
+    # selects option chains — sqlite + selection work. Run inline on the daemon's event loop it
+    # would stall the pump that services equity, book and options frames for the whole duration of
+    # the plan (a slow slice becomes a stream stall and dropped frames). Hand it to a worker thread
+    # so the loop keeps reading the socket while the slice is computed. The plan is a pure function
+    # of (clock, equity load, roster); nothing it touches is loop-affine, and the vendor calls that
+    # DO need the loop happen afterwards, under the lock, back on the loop.
+    plan = await asyncio.to_thread(
+        options_desired_for_slice, at_epoch_s, equity_symbols=_equity_symbols,
         equity_key_services=_equity_key_services, book_enabled=_book_enabled)
 
-    if not plan.get("roster_ok", True):
+    if not plan.get("roster_ok", True):   # caps-ok: options_desired_for_slice ALWAYS sets roster_ok; the True default only covers a hand-built plan (tests), and "proceed" is the normal-case reading
         # ROSTER UNAVAILABLE: hold the current subscription EXACTLY as it is rather than
         # reconciling toward an empty want-set (which would UNSUB continuous core on a transient
         # DB read failure). Recorded so the gap is visible.
@@ -302,6 +381,7 @@ async def _reconcile_options_subscription(sc, plan, want, reason, *, keys_availa
     a partial subscribe records only the service that accepted, so the refused one retries.
     """
     global _options_subscribed, _options_last_receipt, _options_last_slice
+    from calibration.options_stream_coverage import CoverageWriteError
     _CAPTURE_DB = capture_db
     want_set = set(want)
     now_ms = int(time.time() * 1000.0)
@@ -316,7 +396,21 @@ async def _reconcile_options_subscription(sc, plan, want, reason, *, keys_availa
             if not held:
                 continue
             if receipt.get(key):
-                close_epochs(_CAPTURE_DB, held, service=service, reason=reason, at_ms=now_ms)
+                try:
+                    close_epochs(_CAPTURE_DB, held, service=service, reason=reason, at_ms=now_ms)
+                except CoverageWriteError as e:
+                    # The vendor released the keys, but the durable epoch close did NOT land.
+                    # Keep these in memory so memory and the still-open epoch AGREE they are
+                    # covered — never let memory drop ahead of the record. Because they stay in
+                    # memory and out of want, the next slice re-drops and RETRIES the close;
+                    # once it lands, memory follows. The transient over-hold self-heals.
+                    plan["notes"].append(
+                        f"{service}: unsubscribe acknowledged but coverage close FAILED for "
+                        f"{len(held)} contract(s) — held in memory to match the open epoch, "
+                        f"will retry next slice ({e})")
+                    log.warning("options %s: coverage close failed after unsubscribe; keeping %d "
+                                "in memory so state matches the record", service, len(held))
+                    continue
                 _options_subscribed[service] -= set(held)
                 per_service.setdefault(service, {})["dropped"] = len(held)
             else:
@@ -366,8 +460,22 @@ async def _reconcile_options_subscription(sc, plan, want, reason, *, keys_availa
             book=(service == "OPTIONS_BOOK"), operation=operation)
         _options_last_receipt = receipt
         if receipt.get(key):
-            open_epochs(_CAPTURE_DB, missing, service=service, policy=plan["policy"],
-                        reason=reason, at_ms=now_ms)
+            try:
+                open_epochs(_CAPTURE_DB, missing, service=service, policy=plan["policy"],
+                            reason=reason, at_ms=now_ms)
+            except CoverageWriteError as e:
+                # The vendor accepted the subscribe, but the durable epoch did NOT open. Do NOT
+                # mark these subscribed in memory: memory must never claim coverage the record
+                # lacks. Leaving them unmarked means the next slice re-adds (idempotent at the
+                # vendor) and retries the epoch open — coverage is UNDER-claimed until it lands,
+                # which is the safe direction (a reader sees NOT_SUBSCRIBED, never a false OK).
+                plan["notes"].append(
+                    f"{service}: subscribe accepted but coverage open FAILED for {len(missing)} "
+                    f"contract(s) — NOT marked subscribed so the record stays authoritative, "
+                    f"will retry next slice ({e})")
+                log.warning("options %s: coverage open failed after subscribe; not advancing "
+                            "memory for %d contracts", service, len(missing))
+                continue
             _options_subscribed[service] |= set(missing)
             per_service.setdefault(service, {})["added"] = len(missing)
         else:
@@ -377,8 +485,8 @@ async def _reconcile_options_subscription(sc, plan, want, reason, *, keys_availa
             log.warning("options %s: subscribe refused for %d contracts; will retry",
                         service, len(missing))
 
-    dropped_ok = sum(v.get("dropped", 0) for v in per_service.values())
-    added = sum(v.get("added", 0) for v in per_service.values())
+    dropped_ok = sum(v.get("dropped", 0) for v in per_service.values())  # caps-ok: per_service is built in THIS function; a service with no drop this slice recorded none, so 0 is the true count
+    added = sum(v.get("added", 0) for v in per_service.values())  # caps-ok: per_service is built in THIS function; a service with no add this slice recorded none, so 0 is the true count
 
     # PLANNED vs ADMITTED, service-aware. per_underlying_admitted is the FULLY-observed depth =
     # the count of contracts held on EVERY service (the intersection of the symbol sets), so
@@ -464,21 +572,55 @@ async def _options_rotation_loop(sc: Any) -> None:
             log.warning("options rotation slice failed (collection continues): %s", e)
 
 
-async def start_options_collection(sc: Any, *, equity_symbols: int, equity_key_services: int = 2,
-                                   book_enabled: bool = True) -> None:
-    """Reconcile any orphaned coverage, start the writer, subscribe slice zero, run the rotation.
+def flush_options_ingest_health(capture_db: Any, *, offered: int, written: int,
+                                started_ms: int, at_ms: int | None = None) -> None:
+    """Record one options_stream_ingest_health window from the live counters.
 
-    Called by the capture daemon after it has subscribed its equity services on the ONE stream.
-    Every failure path is soft: options collection is additive and must never disturb the
-    daemon's equity/book capture. `equity_symbols`/`equity_key_services` describe the DAEMON's
-    equity load so the options budget is sized against the stream that is actually held.
+    offered is counted by the handler as it publishes; written by the persister as it inserts. Any
+    shortfall (offered - written) is a DROP — a frame shed by the bounded bus queue under load, the
+    same measured hole OptionsFrameIngest recorded, kept durable so SUBSCRIBED_MAYBE_DROPPED stays
+    answerable after the process exits. Best-effort: a failed health write must not fail teardown.
     """
-    global _options_ingest, _options_rotation_task
+    try:
+        import sqlite3
+        from calibration.options_stream_ingest import ensure_ingest_health_schema
+        dropped = max(0, int(offered) - int(written))
+        now = int(at_ms if at_ms is not None else time.time() * 1000.0)  # caps-ok: at_ms unspecified means stamp the health window at the current instant (this call's documented default), not a measurement being replaced
+        conn = sqlite3.connect(str(capture_db), timeout=30.0)
+        try:
+            ensure_ingest_health_schema(conn)
+            conn.execute(
+                "INSERT INTO options_stream_ingest_health (window_start_ms, window_end_ms, "
+                "offered, written, dropped, write_errors, max_queue_depth, max_ingest_lag_ms, "
+                "batches, write_ms_total) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                (int(started_ms or now), now, int(offered), int(written), dropped, 0, 0, None, 0, 0.0))
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception as e:                              # noqa: BLE001
+        log.debug("options ingest health flush: %s", e)
+
+
+async def start_options_collection(sc: Any, *, bus: Any, equity_symbols: int,
+                                   equity_key_services: int = 2, book_enabled: bool = True) -> None:
+    """Reconcile any orphaned coverage, wire the bus, subscribe slice zero, run the rotation.
+
+    Called by the capture daemon after it has subscribed its equity services on the ONE stream and
+    registered the option persister on its single CaptureWriter. `bus` is that daemon's MessageBus:
+    option frames publish onto it and are persisted by the shared writer — no second connection.
+    Every failure path is soft: options collection is additive and must never disturb the daemon's
+    equity/book capture. `equity_symbols`/`equity_key_services` describe the DAEMON's equity load so
+    the options budget is sized against the stream that is actually held.
+    """
+    global _options_bus, _active_stream, _options_rotation_task
+    global _options_offered, _options_written, _options_started_ms
     global _equity_symbols, _equity_key_services, _book_enabled, _options_lock
 
     _equity_symbols = max(1, int(equity_symbols))
     _equity_key_services = max(1, int(equity_key_services))
     _book_enabled = bool(book_enabled)
+    _options_bus = bus
+    _active_stream = sc
     if _options_lock is None:
         _options_lock = asyncio.Lock()
 
@@ -489,33 +631,32 @@ async def start_options_collection(sc: Any, *, equity_symbols: int, equity_key_s
     try:
         # RC-6 law: raw stream capture goes to stream_capture.db, NEVER ed_console.db.
         from stream_spine import STREAM_DB_DEFAULT as _CAPTURE_DB
-        from calibration.options_stream_ingest import OptionsFrameIngest
         from calibration.options_stream_coverage import reconcile_open_epochs_on_start
     except Exception as e:                              # noqa: BLE001
         log.warning("options collection unavailable: %s", e)
         return
 
     try:
-        # RESTART COVERAGE TRUTH: close any epoch left open by a prior UNCLEAN exit before opening
-        # a new one, so the record never claims observation across the downtime gap.
+        # RESTART COVERAGE TRUTH: close any epoch left open by a prior UNCLEAN exit at its LAST
+        # OBSERVED instant (never `now`), so the record never claims observation across the
+        # downtime gap. Runs before any new epoch opens.
         closed = reconcile_open_epochs_on_start(_CAPTURE_DB, services=OPTIONS_SERVICES)
         if any(closed.values()):
             log.warning("options coverage: closed orphaned epochs from an unclean prior exit: %s",
                         closed)
 
-        # The writer starts BEFORE anything is subscribed: a frame with no queue to take it would
-        # be a loss the accounting could not see.
-        _options_ingest = OptionsFrameIngest(_CAPTURE_DB)
-        _options_ingest.start()
+        _options_offered = 0
+        _options_written = 0
+        _options_started_ms = int(time.time() * 1000.0)
 
         # Slice zero runs through the SAME reconciler every boundary uses, so start-up and steady
-        # state cannot drift apart.
+        # state cannot drift apart. Frames only arrive after this subscribe, so the bus is wired
+        # (above) before anything can be published.
         await apply_options_slice(sc, time.time(), reason="stream_start")
         if not any(_options_subscribed.values()):
             log.warning("options collection: slice produced no contracts — nothing subscribed "
-                        "(a COVERAGE GAP, not a market observation); stopping the ingest writer "
-                        "rather than leaving it stranded")
-            stop_options_collection("start_no_contracts")
+                        "(a COVERAGE GAP, not a market observation); tearing down cleanly")
+            await stop_options_collection("start_no_contracts")
             return
 
         _options_rotation_task = asyncio.create_task(
@@ -523,30 +664,58 @@ async def start_options_collection(sc: Any, *, equity_symbols: int, equity_key_s
     except Exception as e:                              # noqa: BLE001
         log.warning("options collection failed to start (equity stream unaffected): %s", e)
         try:
-            stop_options_collection("start_failed")
+            await stop_options_collection("start_failed")
         except Exception as e2:                         # noqa: BLE001
             log.warning("options collection: cleanup after failed start: %s", e2)
 
 
-def stop_options_collection(reason: str = "stream_stop") -> None:
-    """Cancel the rotation, close coverage epochs per service, and drain the ingest writer.
+async def stop_options_collection(reason: str = "stream_stop", *, unsubscribe: bool = False,
+                                  timeout_s: float = 10.0) -> None:
+    """Cancel AND AWAIT the rotation, optionally UNSUBSCRIBE the vendor, then close coverage epochs.
 
-    Closing epochs matters as much as stopping the writer: an epoch left open would claim we were
-    observing those contracts during a window when this process was not running.
+    Teardown is a contract, not a fire-and-forget:
+      * the rotation task is cancelled AND AWAITED, so no slice is still mid-flight (opening epochs
+        or driving the socket) when the rest of teardown runs;
+      * on a clean shutdown (`unsubscribe=True`) the vendor is UNSUBSCRIBED so its keys are released
+        rather than leaked until logout — bounded by `timeout_s` so a half-open socket cannot hang
+        the shutdown, and best-effort (a recycle passes a dead socket and simply fails soft);
+      * epochs are closed per service so none is left claiming observation past this instant;
+      * a health window is flushed so the run's drop accounting survives the process.
     """
-    global _options_ingest, _options_subscribed, _options_rotation_task, _options_last_slice
-    # Stop advancing the rotation BEFORE closing epochs: a slice firing mid-teardown would open
-    # epochs for contracts this process is about to stop observing.
+    global _options_bus, _active_stream, _options_subscribed, _options_rotation_task
+    global _options_last_slice, _options_offered, _options_written, _options_started_ms
+
+    # Stop advancing the rotation BEFORE anything else and AWAIT it, so a slice cannot fire into a
+    # half-torn-down state (the previous version cancelled without awaiting — the coroutine could
+    # still be inside a vendor call or an epoch open when teardown proceeded).
     task, _options_rotation_task = _options_rotation_task, None
     if task is not None:
+        task.cancel()
         try:
-            task.cancel()
+            await task
+        except asyncio.CancelledError:
+            pass
         except Exception as e:                          # noqa: BLE001
-            log.warning("cancelling options rotation: %s", e)
+            log.warning("awaiting cancelled options rotation: %s", e)
     _options_last_slice = None
+
+    from stream_spine import STREAM_DB_DEFAULT as _CAPTURE_DB
+
+    # UNSUBSCRIBE the vendor on a clean stop, so held option keys are released rather than leaked.
+    sc = _active_stream
+    if unsubscribe and sc is not None:
+        held = sorted(set().union(*_options_subscribed.values())) if _options_subscribed else []
+        if held:
+            try:
+                from options_stream_subscription import unsubscribe_options
+                await asyncio.wait_for(unsubscribe_options(sc, held), timeout=timeout_s)
+            except Exception as e:                      # noqa: BLE001
+                # A dead/half-open socket (a recycle) or a slow vendor must not hang or fail
+                # teardown — the epoch close below still records that observation ended.
+                log.warning("options unsubscribe on teardown (%s): %s", reason, e)
+
     try:
         if any(_options_subscribed.values()):
-            from stream_spine import STREAM_DB_DEFAULT as _CAPTURE_DB
             from calibration.options_stream_coverage import close_epochs
             now_ms = int(time.time() * 1000.0)
             # PER SERVICE: close exactly what that service actually held. Closing the union would
@@ -554,24 +723,26 @@ def stop_options_collection(reason: str = "stream_stop") -> None:
             for service in OPTIONS_SERVICES:
                 held = sorted(_options_subscribed[service])
                 if held:
-                    close_epochs(_CAPTURE_DB, held, service=service, reason=reason, at_ms=now_ms)
-    except Exception as e:                              # noqa: BLE001
-        log.warning("closing options coverage epochs: %s", e)
+                    try:
+                        close_epochs(_CAPTURE_DB, held, service=service, reason=reason, at_ms=now_ms)
+                    except Exception as e:              # noqa: BLE001
+                        log.warning("closing options coverage epochs (%s): %s", service, e)
     finally:
         _options_subscribed = {s: set() for s in OPTIONS_SERVICES}
-    try:
-        if _options_ingest is not None:
-            stats = _options_ingest.stop(timeout=30.0)
-            log.info("OPTIONS ingest stopped: %s", stats)
-    except Exception as e:                              # noqa: BLE001
-        log.warning("stopping options ingest: %s", e)
-    finally:
-        _options_ingest = None
+
+    # Flush the run's drop accounting (offered - written) before clearing the counters.
+    if _options_offered or _options_written:
+        flush_options_ingest_health(_CAPTURE_DB, offered=_options_offered,
+                                    written=_options_written, started_ms=_options_started_ms)
+    _options_offered = 0
+    _options_written = 0
+    _options_started_ms = 0
+    _options_bus = None
+    _active_stream = None
 
 
 def options_stream_status() -> dict[str, Any]:
     """Live options-collection health, for the daemon's diagnostics surface."""
-    ing = _options_ingest
     out: dict[str, Any] = {
         "enabled": options_streaming_enabled(),
         "subscribed_by_service": {s: len(_options_subscribed[s]) for s in OPTIONS_SERVICES},
@@ -582,10 +753,11 @@ def options_stream_status() -> dict[str, Any]:
         "last_slice": _options_last_slice,
         "rotation_running": bool(_options_rotation_task is not None
                                  and not _options_rotation_task.done()),
-        "ingest": None,
+        # PERSISTENCE rides the daemon's single CaptureWriter, not a private queue. The counters are
+        # the frames handed to the bus (offered) and the frames the shared writer persisted
+        # (written); their difference is the bus-shed drop count.
+        "persistence": "daemon_capture_writer",
+        "ingest": {"offered": _options_offered, "written": _options_written,
+                   "dropped_est": max(0, _options_offered - _options_written)},
     }
-    if ing is not None:
-        s = ing.stats.snapshot()
-        s["queue_depth"] = ing.queue_depth()
-        out["ingest"] = s
     return out

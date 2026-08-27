@@ -405,9 +405,6 @@ CAPS_LINE_ALLOWLIST: tuple[tuple[str, int | str, str, str], ...] = (
     # Log-line labels, not data: `msg.get("src", "?")` fills a DISPLAY string in a diagnostic
     # log record. No decision, model input, or persisted field reads these — absence genuinely
     # is "unknown source" for a log line, so "?" is the honest rendering, not a fabricated value.
-    ("stream_spine.py", 229, "GET_WITH_DEFAULT", "log-line source label only"),
-    ("stream_spine.py", 236, "GET_WITH_DEFAULT", "log-line source label only"),
-    ("stream_spine.py", 243, "GET_WITH_DEFAULT", "log-line source label only"),
 )
 
 

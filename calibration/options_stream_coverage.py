@@ -33,6 +33,19 @@ from typing import Any, Iterable
 
 log = logging.getLogger(__name__)
 
+
+class CoverageWriteError(Exception):
+    """A durable coverage write did not land.
+
+    Raised (not swallowed) by open_epochs/close_epochs so a caller advancing IN-MEMORY
+    subscription state can gate that advance on the DURABLE record actually being written.
+    A write that fails silently and returns 0 would let memory claim coverage the epoch table
+    never recorded — the exact "memory advances while the coverage write fails" divergence this
+    subsystem must not have. Callers that are legitimately best-effort (shutdown, startup
+    reconcile) catch it explicitly; the reconciler does not, so it can decline to advance.
+    """
+
+
 COVERAGE_SQL = """
 -- One row per (symbol, service) SUBSCRIPTION INTERVAL. ended_ms NULL means still open.
 CREATE TABLE IF NOT EXISTS options_stream_coverage_epochs (
@@ -122,8 +135,11 @@ def open_epochs(db_path: Path | str, symbols: Iterable[str], *, service: str,
             conn.commit()
         return len(rows)
     except sqlite3.Error as e:
+        # DO NOT swallow-and-return-0. A caller that reads 0 as "nothing new to open" would then
+        # mark the contract subscribed in memory with no durable epoch behind it. Signal the
+        # failure so the caller can decline to advance.
         log.warning("coverage open_epochs failed: %s", e)
-        return 0
+        raise CoverageWriteError(f"open_epochs({service}) failed: {e}") from e
     finally:
         conn.close()
 
@@ -155,29 +171,90 @@ def close_epochs(db_path: Path | str, symbols: Iterable[str] | None, *, service:
         conn.commit()
         return cur.rowcount or 0
     except sqlite3.Error as e:
+        # Same reasoning as open_epochs: a swallowed failure would let a caller drop the contract
+        # from memory while its epoch is still open in the record — memory claiming LESS coverage
+        # than the durable truth. Signal it; best-effort callers catch.
         log.warning("coverage close_epochs failed: %s", e)
-        return 0
+        raise CoverageWriteError(f"close_epochs({service}) failed: {e}") from e
     finally:
         conn.close()
+
+
+def _last_observed_ms(conn: sqlite3.Connection, symbol: str, service: str,
+                      not_before_ms: int) -> int | None:
+    """The receive-clock time of the LAST frame stored for this symbol on this service at or after
+    the epoch's start. None when the epoch never produced a stored frame.
+
+    This is the honest right-edge of an interrupted epoch: the last instant we can PROVE the
+    contract was observable. Uses received_ts_ms (our clock, the same clock started_ms is stamped
+    on), never frame_ts_ms (the vendor clock), so the closed interval is measured on one ruler.
+    """
+    try:
+        row = conn.execute(
+            "SELECT MAX(f.received_ts_ms) FROM options_stream_frames f "
+            "JOIN options_stream_frame_symbols s ON s.frame_id = f.id "
+            "WHERE s.symbol_key = ? AND f.service = ? AND f.received_ts_ms >= ?",
+            (symbol, service, int(not_before_ms))).fetchone()
+    except sqlite3.Error:
+        # The frames/index tables may not exist yet (reconcile can run before any capture). A
+        # missing observation trail is not an error here — it just means "no proof of observation".
+        return None
+    return int(row[0]) if row and row[0] is not None else None
 
 
 def reconcile_open_epochs_on_start(db_path: Path | str, *, services: Iterable[str],
                                    at_ms: int | None = None,
                                    reason: str = "startup_reconcile_unclean_exit") -> dict[str, int]:
-    """Close every epoch left OPEN by a prior process, at daemon startup.
+    """Close every epoch left OPEN by a prior process, at its LAST OBSERVED instant — NOT now.
 
-    RESTART COVERAGE TRUTH. close_epochs runs on a CLEAN shutdown, but a crash or a kill (the
-    daemon's own last result was a control-C exit code) leaves epochs open with no ended_ms.
-    On the next start those stale epochs still answer was_subscribed()=True across the whole
-    downtime gap — the record claiming observation while nothing was running. This closes them
-    BEFORE the daemon opens any new epoch, stamped at the reconcile instant with a reason that
-    marks the gap as an unclean-exit boundary rather than a real unsubscribe. It is idempotent:
-    a clean prior shutdown left nothing open, so this closes zero.
+    RESTART COVERAGE TRUTH, corrected. close_epochs runs on a CLEAN shutdown, but a crash or a
+    kill (the daemon's own last result was a control-C exit code) leaves epochs open with no
+    ended_ms. On the next start those stale epochs still answer was_subscribed()=True across the
+    whole downtime gap.
+
+    The FIRST fix closed them at the reconcile instant (`now`), which was itself a lie: an epoch
+    that opened at 09:30, crashed at 15:00, and reconciled at 08:25 the next morning would be
+    recorded as observed continuously for ~17 hours — the entire overnight downtime folded into
+    coverage. That is the same "silence read as observation" error the whole module exists to
+    prevent, just relocated to the restart boundary.
+
+    So each orphaned epoch is closed at the receive-time of the LAST FRAME actually stored for
+    that contract (the last instant observation is provable), or — if the epoch produced no stored
+    frame at all — at its own started_ms, a zero-width interval that claims nothing. Never at a
+    time past the last real observation. `at_ms`, when given, is only an upper CAP (a frame clock
+    that somehow ran ahead of the reconcile instant cannot push coverage into the future). It is
+    idempotent: a clean prior shutdown left nothing open, so this closes zero.
     """
-    now = int(at_ms if at_ms is not None else time.time() * 1000.0)
-    out: dict[str, int] = {}
-    for service in services:
-        out[service] = close_epochs(db_path, None, service=service, reason=reason, at_ms=now)
+    cap = int(at_ms if at_ms is not None else time.time() * 1000.0)
+    out: dict[str, int] = {s: 0 for s in services}
+    conn = sqlite3.connect(str(coverage_db_path(db_path)), timeout=30.0)
+    try:
+        ensure_coverage_schema(conn)
+        for service in services:
+            try:
+                open_rows = conn.execute(
+                    "SELECT id, symbol, started_ms FROM options_stream_coverage_epochs "
+                    "WHERE service = ? AND ended_ms IS NULL", (service,)).fetchall()
+            except sqlite3.Error as e:
+                log.warning("reconcile: could not read open epochs for %s: %s", service, e)
+                continue
+            for eid, symbol, started_ms in open_rows:
+                last = _last_observed_ms(conn, symbol, service, started_ms)
+                ended = last if last is not None else int(started_ms)
+                if ended < int(started_ms):
+                    ended = int(started_ms)
+                if ended > cap:
+                    ended = cap
+                try:
+                    conn.execute(
+                        "UPDATE options_stream_coverage_epochs SET ended_ms = ?, reason = ? "
+                        "WHERE id = ?", (ended, reason, eid))
+                    out[service] += 1
+                except sqlite3.Error as e:
+                    log.warning("reconcile: could not close epoch %s (%s): %s", eid, symbol, e)
+            conn.commit()
+    finally:
+        conn.close()
     return out
 
 

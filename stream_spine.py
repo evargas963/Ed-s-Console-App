@@ -205,9 +205,21 @@ class CaptureWriter:
         self.commits = 0
         self.insert_errors = 0
         self._closed = False
-        self._conn = sqlite3.connect(str(p))
+        #: Extra per-topic writers, keyed by topic KIND (the token before the first '.').
+        #: This is how a HIGHER layer (e.g. the capture daemon's options collector) persists its
+        #: own row shape through THIS one connection instead of opening a second connection to the
+        #: same file — two connections to one WAL db is the "competing writers" defect that silently
+        #: lost equity rows to lock contention. The spine stays dependency-free: it never imports the
+        #: higher layer; the higher layer injects its writer fn(conn, topic, msg) -> rows_written.
+        self._topic_writers: dict[str, Any] = {}
+        self._conn = sqlite3.connect(str(p), timeout=30.0)
         try:
-            self._conn.executescript("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;")
+            # busy_timeout so any OTHER coordinated writer to this WAL file (the options coverage
+            # and ingest-health control-plane writes still use their own short-lived connections)
+            # makes this writer WAIT for the lock rather than raise SQLITE_BUSY and DROP an equity
+            # row. Uncoordinated concurrent access was the mechanism behind lost money-path rows.
+            self._conn.executescript(
+                "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA busy_timeout=30000;")
             self._conn.executescript(STREAM_SCHEMA_SQL)
             self._conn.commit()
         except Exception:
@@ -217,8 +229,19 @@ class CaptureWriter:
             self._closed = True
             raise
 
+    def register_topic_writer(self, kind: str, fn) -> None:
+        """Register a persister for topics of `kind` (e.g. 'optionchain'). fn(conn, topic, msg)
+        must INSERT onto the given connection and return the number of rows it wrote. Registering
+        is how a higher layer rides this single writer instead of opening its own connection."""
+        self._topic_writers[str(kind)] = fn
+
     def insert(self, topic: str, msg: dict) -> None:
         kind = topic.split(".", 1)[0]
+        writer = self._topic_writers.get(kind)
+        if writer is not None:
+            # A registered topic writer returns its rows-written count; None means it wrote nothing.
+            self.rows_written += int(writer(self._conn, topic, msg) or 0)  # caps-ok: 0 is the TRUE row count for a writer that shaped no row (rejected frame), not a masked measurement
+            return
         if kind == "quote":
             self._conn.execute(
                 "INSERT INTO stream_quotes_raw(ts_recv,symbol,bid,ask,last,bid_size,ask_size,"
@@ -226,21 +249,21 @@ class CaptureWriter:
                 (msg.get("ts_recv"), msg.get("symbol"), msg.get("bid"), msg.get("ask"),
                  msg.get("last"), msg.get("bid_size"), msg.get("ask_size"), msg.get("last_size"),
                  msg.get("total_volume"), msg.get("quote_time_ms"), msg.get("trade_time_ms"),
-                 msg.get("src", "?")))
+                 msg.get("src", "?")))   # caps-ok: src is a provenance LABEL stored as given; '?' records unknown provenance explicitly, not a masked market value
         elif kind == "print":
             self._conn.execute(
                 "INSERT INTO stream_prints_raw(ts_recv,symbol,price,size,exchange,conditions,"
                 "trade_ts_ms,src) VALUES(?,?,?,?,?,?,?,?)",
                 (msg.get("ts_recv"), msg.get("symbol"), msg.get("price"), msg.get("size"),
                  msg.get("exchange"), msg.get("conditions"), msg.get("trade_ts_ms"),
-                 msg.get("src", "?")))
+                 msg.get("src", "?")))   # caps-ok: src is a provenance LABEL stored as given; '?' records unknown provenance explicitly, not a masked market value
         elif kind == "bar1m":
             self._conn.execute(
                 "INSERT INTO stream_bars_raw(ts_recv,symbol,bar_start_ms,open,high,low,close,"
                 "volume,src) VALUES(?,?,?,?,?,?,?,?,?)",
                 (msg.get("ts_recv"), msg.get("symbol"), msg.get("bar_start_ms"), msg.get("open"),
                  msg.get("high"), msg.get("low"), msg.get("close"), msg.get("volume"),
-                 msg.get("src", "?")))
+                 msg.get("src", "?")))   # caps-ok: src is a provenance LABEL stored as given; '?' records unknown provenance explicitly, not a masked market value
         else:
             return
         self.rows_written += 1

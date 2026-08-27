@@ -173,6 +173,9 @@ options_stream_collect.py::_reconcile_options_subscription
 options_stream_collect.py::_reconcile_options_subscription._by_underlying
 options_stream_collect.py::_reconcile_options_subscription._underlying
 options_stream_collect.py::apply_options_slice
+options_stream_collect.py::flush_options_ingest_health
+options_stream_collect.py::make_capture_topic_writer
+options_stream_collect.py::make_capture_topic_writer._write
 options_stream_collect.py::options_desired_for_slice
 options_stream_collect.py::options_stream_status
 options_stream_collect.py::options_streaming_enabled

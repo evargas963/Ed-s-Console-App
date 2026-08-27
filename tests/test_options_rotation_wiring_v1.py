@@ -1082,44 +1082,30 @@ def test_unsubscribe_options_flags_a_missing_method():
 
 # ── startup / teardown must not strand resources ────────────────────────────────────────────
 
-def test_an_empty_initial_collection_stops_the_ingest_writer(monkeypatch):
-    """A start that subscribes nothing must not leave the writer thread running forever."""
+def test_an_empty_initial_collection_tears_down_cleanly(monkeypatch):
+    """A start that subscribes nothing must reset cleanly — no bus/stream handle left dangling and
+    no rotation task. There is no private writer to strand: persistence rides the daemon's single
+    CaptureWriter, so the failure mode is a leaked handle, not a leaked thread."""
     import options_stream_collect as ofs
 
-    started, stopped = {"n": 0}, {"n": 0}
-
-    class _Ingest:
-        def start(self):
-            started["n"] += 1
-
-        def stop(self, timeout=None):
-            stopped["n"] += 1
-            return {"offered": 0, "written": 0, "dropped": 0}
-
-        def queue_depth(self):
-            return 0
-
-        class stats:
-            @staticmethod
-            def snapshot():
-                return {}
-
     monkeypatch.setenv("ED_OPTIONS_STREAM", "1")
-    monkeypatch.setattr(ofs, "OptionsFrameIngest", None, raising=False)
-    monkeypatch.setattr("calibration.options_stream_ingest.OptionsFrameIngest",
-                        lambda *_a, **_k: _Ingest(), raising=False)
     monkeypatch.setattr(ofs, "_options_subscribed",
                         {s: set() for s in ofs.OPTIONS_SERVICES}, raising=False)
+    monkeypatch.setattr(ofs, "_options_lock", None, raising=False)
+    monkeypatch.setattr(ofs, "_options_rotation_task", None, raising=False)
+    # Do not touch the real capture DB from a unit test.
+    monkeypatch.setattr("calibration.options_stream_coverage.reconcile_open_epochs_on_start",
+                        lambda *_a, **_k: {}, raising=False)
 
     async def _empty_slice(*_a, **_k):
         return {}
 
     monkeypatch.setattr(ofs, "apply_options_slice", _empty_slice, raising=False)
-    asyncio.run(ofs.start_options_collection(object(), equity_symbols=1))
-    assert started["n"] == 1, "the writer was never started (nothing to strand — test is moot)"
-    assert stopped["n"] == 1, (
-        "the ingest writer was left running after a start that subscribed nothing — an ingest "
-        "with no producer, holding its queue and sqlite handle for the life of the process")
+    asyncio.run(ofs.start_options_collection(object(), bus=object(), equity_symbols=1))
+    assert ofs._options_bus is None, "bus handle left set after a start that subscribed nothing"
+    assert ofs._active_stream is None, "stream handle left set after an empty start"
+    assert ofs._options_rotation_task is None, "a rotation task ran with nothing subscribed"
+    assert not any(ofs._options_subscribed.values())
 
 
 def test_teardown_closes_epochs_only_for_what_each_service_held(monkeypatch):
@@ -1127,8 +1113,10 @@ def test_teardown_closes_epochs_only_for_what_each_service_held(monkeypatch):
     ofs, rec = _wire(monkeypatch, _Recorder())
     monkeypatch.setattr(ofs, "_options_subscribed",
                         {"LEVELONE_OPTIONS": {"A", "B"}, "OPTIONS_BOOK": {"A"}}, raising=False)
-    monkeypatch.setattr(ofs, "_options_ingest", None, raising=False)
-    ofs.stop_options_collection("stream_stop")
+    monkeypatch.setattr(ofs, "_options_offered", 0, raising=False)
+    monkeypatch.setattr(ofs, "_options_written", 0, raising=False)
+    monkeypatch.setattr(ofs, "_options_rotation_task", None, raising=False)
+    asyncio.run(ofs.stop_options_collection("stream_stop"))
     closed = {(e[2], s) for e in rec.events if e[0] == "close_epochs" for s in e[1]}
     assert ("LEVELONE_OPTIONS", "A") in closed and ("LEVELONE_OPTIONS", "B") in closed
     assert ("OPTIONS_BOOK", "A") in closed
@@ -1195,10 +1183,34 @@ def test_start_and_rotation_share_one_reconciler():
         f"start-up and rotation do not both go through apply_options_slice: {sorted(callers)}")
 
 
-def test_the_rotation_task_is_cancelled_on_teardown():
-    src = (REPO / "options_stream_collect.py").read_text(encoding="utf-8")
-    i = src.find("def stop_options_collection")
-    block = src[i:i + 1200]
-    assert "_options_rotation_task" in block and "cancel()" in block, (
-        "the rotation task is not cancelled on teardown — it would keep subscribing against a "
-        "client being torn down")
+def test_the_rotation_task_is_cancelled_and_awaited_on_teardown(monkeypatch):
+    """Teardown cancels AND AWAITS the rotation task — behaviourally, not by reading source.
+
+    Fire-and-forget cancellation was the defect: cancel() without awaiting lets a slice still be
+    mid-flight (driving the socket or opening an epoch) when the rest of teardown runs. Here a real
+    task is created, torn down, and proven to have reached a cancelled/terminated state with the
+    module handle cleared.
+    """
+    import options_stream_collect as ofs
+
+    monkeypatch.setattr(ofs, "_options_subscribed",
+                        {s: set() for s in ofs.OPTIONS_SERVICES}, raising=False)
+    monkeypatch.setattr(ofs, "_options_offered", 0, raising=False)
+    monkeypatch.setattr(ofs, "_options_written", 0, raising=False)
+
+    async def _run():
+        started = asyncio.Event()
+
+        async def _never():
+            started.set()
+            await asyncio.sleep(3600)
+
+        task = asyncio.create_task(_never())
+        ofs._options_rotation_task = task
+        await started.wait()                 # ensure it is actually running before teardown
+        await ofs.stop_options_collection("stream_stop")
+        assert ofs._options_rotation_task is None, "the module still holds the rotation task"
+        assert task.done(), "teardown returned before the rotation task terminated (not awaited)"
+        assert task.cancelled(), "the rotation task was not cancelled"
+
+    asyncio.run(_run())
