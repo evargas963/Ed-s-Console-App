@@ -144,3 +144,101 @@ def test_launch_lock_asserts_branch_main_and_head_equals_origin(monkeypatch):
 
     base_ok(); calls["rev-list --count origin/main..HEAD"] = "2"
     assert any("NOT on origin/main" in v for v in clp.violations()) # divergent lineage → BLOCK
+
+
+# ── chained-command laundering: EVERY git invocation is judged on its own (bypass class) ────
+
+def test_prod_checkout_git_move_chained_no_launder_by_harmless_first(tmp_path, monkeypatch):
+    prim = _make_primary(tmp_path)
+    wt = _make_linked(tmp_path, prim)
+    monkeypatch.setattr(plg, "REPO", prim)
+    cwd = str(prim)
+    # A harmless (or elsewhere-aimed) FIRST git must NOT launder a later forbidden git that
+    # TARGETS the production primary — the exact bypass this closes.
+    for cmd in (
+        "git status && git checkout -b cleanup/x",             # harmless first git
+        "git log --oneline -1 ; git switch -c feature",
+        f"git -C {wt} status && git checkout -b feature",      # first git aimed at the dev worktree
+        "git rev-parse HEAD && git commit -m x",
+        "true && git reset --hard HEAD~1",
+        f"git -C {wt} commit -m x && git merge feature",       # later non-ff merge on the primary
+        "git fetch origin && git rebase origin/main",
+    ):
+        assert plg.prod_checkout_git_move_violations(cmd, cwd), f"laundered forbidden git must BLOCK: {cmd}"
+
+
+def test_prod_checkout_git_move_cd_into_primary_from_dev_session_blocks(tmp_path, monkeypatch):
+    prim = _make_primary(tmp_path)
+    wt = _make_linked(tmp_path, prim)
+    # a dev-worktree session that `cd`s into the production primary and branches there → BLOCK
+    monkeypatch.setattr(plg, "REPO", wt)
+    assert plg.prod_checkout_git_move_violations(f"cd {prim} && git checkout -b feature", str(wt))
+    # ...but `cd`-ing the OTHER way (into the dev worktree) to branch is free
+    monkeypatch.setattr(plg, "REPO", prim)
+    assert plg.prod_checkout_git_move_violations(f"cd {wt} && git checkout -b feature", str(prim)) == []
+
+
+def test_prod_checkout_git_move_chained_all_dev_or_allowed_pass(tmp_path, monkeypatch):
+    prim = _make_primary(tmp_path)
+    wt = _make_linked(tmp_path, prim)
+    monkeypatch.setattr(plg, "REPO", prim)
+    for cmd in (
+        "git fetch origin && git merge --ff-only origin/main",  # the production update
+        "git status && git log --oneline -5 && git diff",       # all reads
+        f"git -C {wt} checkout -b feature && git -C {wt} commit -m x",  # all in the dev worktree
+        "git fetch && git checkout main",
+    ):
+        assert plg.prod_checkout_git_move_violations(cmd, str(prim)) == [], f"must ALLOW: {cmd}"
+
+
+# ── materially-equivalent SHELL edits to production app code (not only Edit/Write) ──────────
+
+def test_prod_checkout_shell_app_write_blocks_material_edits(tmp_path, monkeypatch):
+    prim = _make_primary(tmp_path)
+    monkeypatch.setattr(plg, "REPO", prim)
+    (prim / "server.py").write_text("x = 1\n", encoding="utf-8")
+    (prim / "static").mkdir()
+    (prim / "static" / "index.html").write_text("<h1>", encoding="utf-8")
+    cwd = str(prim)
+    for cmd in (
+        "cp /tmp/evil.py server.py",                 # copy over production app code
+        "mv /tmp/x.py server.py",
+        "sed -i 's/x = 1/x = 2/' server.py",         # in-place edit
+        "perl -pi -e 's/a/b/' server.py",
+        "tee server.py",
+        "cat /tmp/x | tee static/index.html",
+        "install -m644 /tmp/x static/index.html",
+        "dd if=/tmp/x of=server.py",
+        "truncate -s 0 server.py",
+        "true && cp /tmp/evil.py server.py",         # a leading no-op cannot launder it
+    ):
+        assert plg.production_checkout_shell_app_write_violations(cmd, cwd), \
+            f"materially-equivalent shell edit to production app code must BLOCK: {cmd}"
+
+
+def test_prod_checkout_shell_app_write_exempts_reads_nonapp_and_worktrees(tmp_path, monkeypatch):
+    prim = _make_primary(tmp_path)
+    wt = _make_linked(tmp_path, prim)
+    (prim / "server.py").write_text("x = 1\n", encoding="utf-8")
+    monkeypatch.setattr(plg, "REPO", prim)
+    for cmd, cwd in (
+        ("cp server.py /tmp/backup.py", str(prim)),      # READING server.py (dest is outside)
+        ("cat server.py", str(prim)),                    # pure read, no write verb
+        ("python server.py", str(prim)),                 # run, not write
+        ("sed -i 's/a/b/' README.md", str(prim)),        # not app code
+        (f"cp /tmp/evil.py {wt}/server.py", str(prim)),  # dest is the DEV worktree
+        ("sed -i 's/a/b/' server.py", str(wt)),          # session cwd is the dev worktree
+    ):
+        assert plg.production_checkout_shell_app_write_violations(cmd, cwd) == [], f"must ALLOW: {cmd}"
+
+
+def test_prod_checkout_shell_app_write_is_target_based_from_any_session(tmp_path, monkeypatch):
+    prim = _make_primary(tmp_path)
+    wt = _make_linked(tmp_path, prim)
+    (prim / "server.py").write_text("x = 1\n", encoding="utf-8")
+    (wt / "server.py").write_text("x = 1\n", encoding="utf-8")
+    # a LINKED-worktree session writing the PRODUCTION primary's app code by absolute path → BLOCK
+    monkeypatch.setattr(plg, "REPO", wt)
+    assert plg.production_checkout_shell_app_write_violations(f"cp /tmp/evil.py {prim}/server.py", str(wt))
+    # ...but writing its OWN worktree's app code is free
+    assert plg.production_checkout_shell_app_write_violations(f"cp /tmp/evil.py {wt}/server.py", str(wt)) == []

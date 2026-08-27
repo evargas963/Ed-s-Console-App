@@ -264,16 +264,17 @@ def resolve_target_repo(cmd: str, payload_cwd: str = "") -> tuple[str, str]:
     return "", "no repository identity in the command and no working directory supplied"
 
 
-def git_target_repo(cmd: str, payload_cwd: str = "") -> str:
-    """Normalized repository root a git command TARGETS — for ANY git verb, not only `commit`
-    (resolve_target_repo above is commit-gated for the RC-258 ledger). Precedence: an explicit
-    `-C` / `--git-dir` / `--work-tree` path on the git invocation, else a `cd` earlier in the
-    same chained command, else the tool payload's working directory. Returns "" when there is no
-    git invocation or the target is outside any repository. Reuses the SAME segmentation and path
-    helpers as resolve_target_repo, so the -C/cwd geometry is defined once (RC-129 one-faucet).
+#: Command heads that wrap another command (its args are the real invocation).
+_CMD_WRAPPERS = frozenset({"env", "time", "nice", "sudo", "xargs", "nohup", "stdbuf"})
 
-    Consumed by process_lock_guard.prod_checkout_git_move_violations to decide whether a git
-    command targets the production/primary checkout, whichever checkout the session runs in."""
+
+def iter_command_segments(cmd: str, payload_cwd: str = ""):
+    """Yield (cwd_in_effect, segment_text) for EACH statement in a chained shell command,
+    tracking `cd`/`pushd` so a later segment's paths resolve against the directory actually in
+    effect when it runs. Heredoc bodies and -c payloads are already stripped as data. This is the
+    single segmenter every per-invocation rule shares (RC-129 one-faucet): so that every git
+    invocation AND every file write in a chain is judged on its own, and a harmless first
+    statement cannot launder a later one."""
     executed = shell_executed_part(cmd or "")
     cur = str(payload_cwd or "")
     for seg in _SEG_SPLIT.split(executed):
@@ -284,8 +285,37 @@ def git_target_repo(cmd: str, payload_cwd: str = "") -> str:
         if m:
             cur = _join_dir(cur, _arg_value(m))
             continue
-        toks = _tokens(seg)
-        if not toks or Path(toks[0].strip("\"'")).name.lower() not in ("git", "git.exe"):
+        yield cur, seg
+
+
+def _segment_head(seg: str) -> tuple[str, list[str]]:
+    """(command head, its tokens) for a segment, skipping leading VAR=val assignments and
+    command wrappers (env/sudo/time/...) so `sudo git checkout` reads as a git invocation and
+    `echo git` does not."""
+    toks = _tokens(seg)
+    i = 0
+    while i < len(toks):
+        t = toks[i].strip("\"'")
+        name = Path(t).name.lower().removesuffix(".exe")
+        if ("=" in t and not t.startswith("-")) or name in _CMD_WRAPPERS:
+            i += 1
+            continue
+        break
+    if i >= len(toks):
+        return "", []
+    return Path(toks[i].strip("\"'")).name.lower(), toks[i:]
+
+
+def iter_git_invocations(cmd: str, payload_cwd: str = ""):
+    """Yield (normalized_target_repo, segment_text) for EVERY git invocation in a chained
+    command — not only the first. A harmless leading git (or a `git -C` aimed elsewhere) cannot
+    launder a later checkout/switch/commit/reset/merge, because each git segment is resolved and
+    yielded independently. Target precedence per segment: an explicit `-C` / `--git-dir` /
+    `--work-tree`, else the cwd in effect at that segment. Reuses the SAME path helpers as
+    resolve_target_repo (RC-129 one-faucet)."""
+    for cur, seg in iter_command_segments(cmd, payload_cwd):
+        head, _toks = _segment_head(seg)
+        if head not in ("git", "git.exe"):
             continue
         target = ""
         for rx in (_GIT_C_RE, _GIT_DIR_RE):
@@ -293,10 +323,7 @@ def git_target_repo(cmd: str, payload_cwd: str = "") -> str:
             if mm:
                 target = _join_dir(cur, _arg_value(mm))
                 break
-        root = repo_root_of(target or cur)
-        if root:
-            return root
-    return repo_root_of(cur) if cur else ""
+        yield repo_root_of(target or cur), seg
 
 
 # ── applicability machinery: REMOVED 2026-08-25 (independent-audit round 2) ────────────────

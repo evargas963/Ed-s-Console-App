@@ -20,8 +20,10 @@ if str(REPO) not in sys.path:
 
 import tools.operating_process_lock as OPL  # noqa: E402
 from tools.operator_law_guard import (  # noqa: E402
+    _msys_to_windows,
     _tokens,
-    git_target_repo,
+    iter_command_segments,
+    iter_git_invocations,
     normalize_repo,
     shell_executed_part,
 )
@@ -169,29 +171,32 @@ def _prod_forbidden_git_reason(cmd: str) -> str | None:
 def prod_checkout_git_move_violations(cmd: str, payload_cwd: str = "") -> list[str]:
     """PREVENT (not merely detect) an assigned agent MOVING or committing to the PRODUCTION
     checkout (live-checkout invariant #1/#4). The production checkout is the PRIMARY working
-    tree of this repo (its `.git` is a directory; linked dev worktrees have a `.git` FILE). This
-    fires whenever a git command TARGETS that primary — whichever checkout the session runs in —
-    and the verb would move HEAD off main, create/re-point a branch, or write history there.
-    Dev worktrees are unconstrained; branch work belongs there. RC-350 caught this divergence
-    only at the next launch — this refuses it at the moment of the command. Not
-    subject-disableable (RC-450)."""
+    tree of this repo (its `.git` is a directory; linked dev worktrees have a `.git` FILE).
+
+    EVERY git invocation in a chained command is judged independently against the production
+    primary: a harmless leading `git status` (or a `git -C <dev-worktree>`) cannot launder a
+    later checkout/switch/branch/commit/merge/reset aimed at the primary. A verb that would move
+    HEAD off main, create/re-point a branch, or write history in the primary BLOCKs; dev
+    worktrees are unconstrained. RC-350 caught this only at the next launch — this refuses it at
+    the moment of the command. Not subject-disableable (RC-450)."""
     primary = _primary_worktree_root(REPO) or REPO
     try:
         primary_norm = normalize_repo(primary)
     except (OSError, ValueError):
         return []
-    target = git_target_repo(cmd or "", payload_cwd or "")
-    if not target or target != primary_norm:
-        return []                        # not targeting the production checkout
-    reason = _prod_forbidden_git_reason(cmd or "")
-    if not reason:
-        return []                        # a read / fetch / ff-update / return-to-main
-    return [
-        f"PROD_CHECKOUT_LOCK (live-checkout invariant / RC-350): {reason} in the PRODUCTION "
-        f"checkout {primary}. That checkout is production ONLY — always main == origin/main. Do "
-        f"this in the separate dev worktree and land via PR; production updates by fast-forward "
-        f"to origin/main. See governance/AGENT_OPERATING_PROCESS_V1.md."
-    ]
+    out: list[str] = []
+    for target, seg in iter_git_invocations(cmd or "", payload_cwd or ""):
+        if not target or target != primary_norm:
+            continue                     # this git invocation targets a dev worktree / elsewhere
+        reason = _prod_forbidden_git_reason(seg)
+        if reason:
+            out.append(
+                f"PROD_CHECKOUT_LOCK (live-checkout invariant / RC-350): {reason} in the "
+                f"PRODUCTION checkout {primary}. That checkout is production ONLY — always "
+                f"main == origin/main. Do this in the separate dev worktree and land via PR; "
+                f"production updates by fast-forward to origin/main. See "
+                f"governance/AGENT_OPERATING_PROCESS_V1.md.")
+    return out
 
 
 def production_checkout_app_edit_violations(tool_input: dict, repo: Path = REPO) -> list[str]:
@@ -233,6 +238,77 @@ def production_checkout_app_edit_violations(tool_input: dict, repo: Path = REPO)
     return out
 
 
+def _shell_write_dest_paths(seg: str) -> list[str]:
+    """Destination file operand(s) a shell segment WRITES via cp/mv/install/rsync/ln/tee/
+    sed -i/perl -i/truncate/dd of= — the material file-mutating verbs the redirect/heredoc/
+    -c-payload source-write bans (operator_law_guard) do not already cover. The caller filters
+    to app code inside the production primary, so a non-app source operand (e.g. a sed script)
+    is harmlessly ignored."""
+    toks = [t.strip("\"'") for t in _tokens(seg)]
+    i = 0
+    while i < len(toks):
+        t = toks[i]
+        name = Path(t).name.lower().removesuffix(".exe")
+        if ("=" in t and not t.startswith("-")) or name in (
+                "env", "time", "nice", "sudo", "xargs", "nohup", "stdbuf"):
+            i += 1
+            continue
+        break
+    if i >= len(toks):
+        return []
+    verb = Path(toks[i]).name.lower().removesuffix(".exe")
+    args = toks[i + 1:]
+    positionals = [a for a in args if not a.startswith("-")]
+    if verb in ("cp", "mv", "install", "rsync", "ln"):
+        return positionals[-1:]                              # DEST is the last operand; sources are reads
+    if verb in ("tee", "truncate"):
+        return positionals
+    if verb in ("sed", "gsed", "perl"):
+        # in-place: -i / -i.bak / a combined short flag carrying 'i' (perl -pi, sed -ni) / --in-place
+        if any((a.startswith("-") and not a.startswith("--") and "i" in a)
+               or a == "--in-place" or a.startswith("--in-place=") for a in args):
+            return positionals                               # in-place edit of every file operand
+        return []
+    if verb == "dd":
+        return [a[3:] for a in args if a.startswith("of=")]
+    return []
+
+
+def production_checkout_shell_app_write_violations(cmd: str, payload_cwd: str = "") -> list[str]:
+    """PREVENT a materially-equivalent SHELL edit to app code in the PRODUCTION checkout — the
+    Bash companion to production_checkout_app_edit_violations (Edit/Write) and to the universal
+    shell source-write bans (redirect/heredoc/-c payload in operator_law_guard). For EACH segment
+    of a chained command (cwd tracked, so a leading `cd` cannot mislocate a later write), blocks
+    cp/mv/install/tee/sed -i/perl -i/truncate/dd whose destination resolves to a production app
+    file (server.py, *.py, static/*.html|*.js) INSIDE the production primary — whichever session
+    runs it. Dev-worktree paths resolve outside and stay free. Not subject-disableable (RC-450)."""
+    primary = _primary_worktree_root(REPO) or REPO
+    try:
+        primary_res = primary.resolve()
+    except (OSError, ValueError):
+        return []
+    out: list[str] = []
+    for cwd, seg in iter_command_segments(cmd or "", payload_cwd or ""):
+        base = _msys_to_windows(cwd) if cwd else str(primary_res)
+        for dest in _shell_write_dest_paths(seg):
+            try:
+                p = Path(_msys_to_windows(dest))
+                if not p.is_absolute():
+                    p = Path(base) / p
+                resolved = p.resolve()
+                resolved.relative_to(primary_res)            # must land inside the production tree
+            except (OSError, ValueError):
+                continue
+            if classify_path(str(resolved), repo=str(primary_res)).production:
+                out.append(
+                    f"PROD_CHECKOUT_APP_EDIT (shell, live-checkout invariant): a shell command "
+                    f"writes {resolved} — app code in the PRODUCTION checkout {primary}. "
+                    f"Development does not modify the live checkout by ANY means; make the change "
+                    f"in the separate dev worktree and land via PR. "
+                    f"See governance/AGENT_OPERATING_PROCESS_V1.md.")
+    return out
+
+
 def pretooluse_block(tool: str, tool_input: dict, payload_cwd: str = "") -> list[str]:
     out: list[str] = []
     if tool in _EDIT_TOOLS:
@@ -251,7 +327,11 @@ def pretooluse_block(tool: str, tool_input: dict, payload_cwd: str = "") -> list
         out.extend(OPL.reset_guard_violations(cmd))
         # Live-checkout invariant #1/#4: PREVENT a git branch-move/commit/reset/merge that
         # TARGETS the production checkout, at the moment of the command (not just at next launch).
+        # Every git invocation in the chain is judged on its own — no laundering by a harmless first.
         out.extend(prod_checkout_git_move_violations(cmd, payload_cwd))
+        # Live-checkout invariant #4: a materially-equivalent SHELL write to production app code
+        # (cp/mv/sed -i/tee/...) is blocked too, not only Edit/Write tool calls.
+        out.extend(production_checkout_shell_app_write_violations(cmd, payload_cwd))
     return out
 
 
