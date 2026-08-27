@@ -8,17 +8,26 @@ echo   Ed Console - Starting...
 echo  ============================================
 echo.
 
-python --version >nul 2>&1
-if errorlevel 1 (
-    echo  ERROR: Python not found. Make sure Python is installed and on your PATH.
+REM RC-497: deterministic interpreter. The desk launches ONLY through the repo
+REM .venv Python. Bare PATH `python`/`pip` is forbidden here: in a spawned or
+REM scheduled context (Start-Process, Task Scheduler) `python` resolves to a
+REM different interpreter with no uvicorn, so the old launcher silently no-opped
+REM (proven 2026-08-27). No launch-time `pip install` either -- installing into an
+REM ambiguous environment at launch is the non-determinism we are removing.
+set "VENV_PY=%~dp0.venv\Scripts\python.exe"
+if not exist "%VENV_PY%" (
+    echo  ERROR: repo virtualenv interpreter not found at "%VENV_PY%".
+    echo  Create it:  python -m venv .venv  then  .venv\Scripts\python -m pip install -r requirements.txt
     pause
     exit /b 1
 )
 
-python -m uvicorn --version >nul 2>&1
+"%VENV_PY%" -m uvicorn --version >nul 2>&1
 if errorlevel 1 (
-    echo  Installing uvicorn...
-    pip install "uvicorn[standard]" fastapi
+    echo  ERROR: uvicorn is not installed in the repo .venv ^("%VENV_PY%"^).
+    echo  Install it:  "%VENV_PY%" -m pip install "uvicorn[standard]" fastapi
+    pause
+    exit /b 1
 )
 
 echo  Starting server at http://localhost:8000
@@ -33,15 +42,30 @@ set ED_CALIBRATION_LOG=1
 
 REM RC-350 ONE-APP LOCK (operator yes 2026-08-14): the desk may only run a committed,
 REM non-divergent build of origin/main. Emergency bypass: set ED_LIVE_PATH_UNLOCKED=1.
-python tools\check_live_path_is_main.py
+"%VENV_PY%" tools\check_live_path_is_main.py
 if errorlevel 1 (
     echo  LAUNCH BLOCKED: the desk is not running origin/main. See RC-350.
     pause
     exit /b 1
 )
 
-REM Stop any prior instance still bound to port 8000 (plain-line for /f — safe batch syntax)
+REM Stop any prior instance still bound to port 8000 (plain-line for /f - safe batch syntax)
 for /f "tokens=5" %%P in ('netstat -ano ^| findstr ":8000" ^| findstr "LISTENING"') do taskkill /F /PID %%P 2>nul
+
+REM RC-497 FAIL CLOSED: the stop above is best-effort (taskkill can fail on a
+REM privileged/foreign-owned PID, or the socket can still be held). Give it a
+REM moment, then PROVE port 8000 is actually free before launching. If anything
+REM still answers on 8000, refuse rather than launch a second uvicorn into an
+REM occupied port and hand the operator an ambiguous "which server am I on?"
+timeout /t 1 /nobreak >nul
+"%VENV_PY%" -c "import socket,sys; s=socket.socket(); s.settimeout(1); sys.exit(1 if s.connect_ex(('127.0.0.1',8000))==0 else 0)"
+if errorlevel 1 (
+    echo  LAUNCH BLOCKED: port 8000 is still occupied after the stop attempt.
+    echo  Refusing to launch a second server into an occupied port. Stop the
+    echo  process holding 8000, then relaunch.  ^(netstat -ano ^| findstr :8000^)
+    pause
+    exit /b 1
+)
 
 set "PF86=%ProgramFiles(x86)%"
 set "EDGE_EXE=%PF86%\Microsoft\Edge\Application\msedge.exe"
@@ -52,7 +76,7 @@ start "" cmd /c "timeout /t 2 /nobreak >nul & "%EDGE_EXE%" http://localhost:8000
 
 REM --timeout-graceful-shutdown: Ctrl+C must terminate even while browser tabs
 REM hold SSE streams open (uvicorn's default waits forever for them to close).
-python -m uvicorn server:app --host 0.0.0.0 --port 8000 --timeout-graceful-shutdown 10
+"%VENV_PY%" -m uvicorn server:app --host 0.0.0.0 --port 8000 --timeout-graceful-shutdown 10
 
 echo.
 echo  Server stopped.
