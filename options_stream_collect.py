@@ -69,6 +69,13 @@ _options_started_ms: int = 0
 #: coverage until its owed close has landed — so a re-subscribe can never erase an unlanded close
 #: and leave one epoch spanning the unsubscribed gap (the "permanent false coverage" defect).
 _coverage_close_owed: dict[str, dict[str, int]] = {s: {} for s in OPTIONS_SERVICES}
+#: REAL RE-SUBSCRIBE TIME, per service: {symbol: return_ms}. When a contract that still owes a close
+#: is re-subscribed at the vendor, we stamp the ACTUAL instant it returned. When its owed close
+#: finally lands (a later slice), the fresh epoch is opened at THAT return time, not at the slice
+#: the close happened to land — so the two epochs are [.., drop] and [return, ..] with no fabricated
+#: NOT_SUBSCRIBED gap between the real return and the (possibly delayed) re-open. Cleared when the
+#: fresh epoch opens, or when the contract is dropped again before it could.
+_coverage_reopen_at: dict[str, dict[str, int]] = {s: {} for s in OPTIONS_SERVICES}
 #: TWO STATES THAT ARE ALLOWED TO DIVERGE, tracked separately because they are different facts and
 #: a single set could only ever be right about one of them:
 #:   _vendor_held  — what the VENDOR has subscribed. This is the KEY-ACCOUNTING truth (each held
@@ -430,6 +437,10 @@ async def _reconcile_options_subscription(sc, plan, want, reason, *, keys_availa
                 continue
             if receipt.get(key):
                 _vendor_held[service] -= set(held)
+                # A dropped contract's pending re-subscribe time is moot — clear it so a stale
+                # return can never later stamp a fresh epoch the contract no longer warrants.
+                for s in held:
+                    _coverage_reopen_at[service].pop(s, None)
             else:
                 plan["notes"].append(
                     f"{service}: unsubscribe NOT acknowledged for {len(held)} contract(s) — key "
@@ -472,6 +483,12 @@ async def _reconcile_options_subscription(sc, plan, want, reason, *, keys_availa
         _options_last_receipt = receipt
         if receipt.get(key):
             _vendor_held[service] |= set(missing)
+            # If a contract that still OWES a close is re-subscribed, stamp the ACTUAL return time
+            # now (first return only), so when its owed close finally lands its fresh epoch opens
+            # here, not at the later slice — no fabricated gap between the real return and re-open.
+            for s in missing:
+                if s in _coverage_close_owed[service] and s not in _coverage_reopen_at[service]:
+                    _coverage_reopen_at[service][s] = now_ms
         else:
             plan["notes"].append(
                 f"{service}: subscribe REFUSED for {len(missing)} contract(s) — will retry next "
@@ -516,31 +533,37 @@ async def _reconcile_options_subscription(sc, plan, want, reason, *, keys_availa
             except CoverageWriteError:
                 pass                     # keep owed at its recorded time; retry next slice
         # (c) OPENS — vendor-held with no current epoch AND no owed close. A contract still owing a
-        #     close is deliberately withheld until (b) closes its stale epoch, so the fresh epoch
-        #     starts cleanly after the gap instead of extending the stale one.
-        #     ACCEPTED SAFE-DIRECTION TRADE: if a close keeps failing across a re-subscribe (a
-        #     compound-rare double sqlite failure), the fresh epoch is withheld until the owed close
-        #     lands and then opens at that later slice — so [return, close-lands] reads as a coverage
-        #     GAP (NOT_SUBSCRIBED) for a contract that was in fact subscribed. That UNDERSTATES
-        #     coverage (the safe direction, an "our gap" reading) rather than the alternative —
-        #     opening a fresh epoch while the stale one is still open, which the idempotent
-        #     open_epochs would refuse and which would leave the stale epoch spanning the gap as
-        #     FALSE coverage. Bounded by the close-retry latency and self-healing; surfaced via
-        #     coverage_close_owed in the slice record.
+        #     close is withheld until (b) closes its stale epoch, so the fresh epoch starts cleanly
+        #     after the gap instead of extending the stale one. A contract that RETURNED while owed
+        #     opens at its REAL re-subscribe time (_coverage_reopen_at), even if its owed close only
+        #     landed a later slice — so the record ends as two TRUTHFUL epochs, [.., drop] and
+        #     [return, ..], with NO fabricated NOT_SUBSCRIBED gap. Contracts with no recorded return
+        #     time (fresh subscriptions this slice) open at now.
+        reopen = _coverage_reopen_at[service]
         need_open = sorted(_vendor_held[service] - _coverage_open[service] - set(owed))
-        if need_open:
+        at_now = [s for s in need_open if s not in reopen]
+        returned = [s for s in need_open if s in reopen]
+        opened: list[str] = []
+        if at_now:
             try:
-                await asyncio.to_thread(open_epochs, _CAPTURE_DB, need_open,
-                                        service=service, policy=plan["policy"],
-                                        reason=reason, at_ms=now_ms)
-                _coverage_open[service] |= set(need_open)
-                per_service.setdefault(service, {})["added"] = len(need_open)
+                await asyncio.to_thread(open_epochs, _CAPTURE_DB, at_now, service=service,
+                                        policy=plan["policy"], reason=reason, at_ms=now_ms)
+                opened.extend(at_now)
             except CoverageWriteError as e:
                 plan["notes"].append(
-                    f"{service}: vendor holds {len(need_open)} contract(s) but coverage open FAILED "
+                    f"{service}: vendor holds {len(at_now)} contract(s) but coverage open FAILED "
                     f"— record left behind, will retry next slice ({e})")
-                log.warning("options %s: coverage open failed for %d vendor-held contracts; retry",
-                            service, len(need_open))
+        for sym in returned:
+            try:
+                await asyncio.to_thread(open_epochs, _CAPTURE_DB, [sym], service=service,
+                                        policy=plan["policy"], reason=reason, at_ms=reopen[sym])
+                opened.append(sym)
+                del reopen[sym]     # consumed: the fresh epoch now carries the real return time
+            except CoverageWriteError:
+                pass                # keep the return time; retry the reopen next slice
+        if opened:
+            _coverage_open[service] |= set(opened)
+            per_service.setdefault(service, {})["added"] = len(opened)
 
     added = sum(v.get("added", 0) for v in per_service.values())  # caps-ok: per_service is built in THIS function; a service with no coverage-open this slice recorded none, so 0 is the true count
     dropped_ok = sum(v.get("dropped", 0) for v in per_service.values())  # caps-ok: per_service is built in THIS function; a service with no coverage-close this slice recorded none, so 0 is the true count
@@ -596,9 +619,10 @@ async def _reconcile_options_subscription(sc, plan, want, reason, *, keys_availa
         "vendor_held_total": len(set().union(*_vendor_held.values())),
         "coverage_matches_vendor": all(_coverage_open[s] == _vendor_held[s]
                                        for s in OPTIONS_SERVICES),
-        # Closes owed but not yet landed (a failed close being retried) — visible so a lingering
-        # divergence is attributable rather than mysterious.
+        # Closes owed but not yet landed (a failed close being retried) and returns whose fresh
+        # epoch is pending — visible so a lingering divergence is attributable, not mysterious.
         "coverage_close_owed": {s: len(_coverage_close_owed[s]) for s in OPTIONS_SERVICES},
+        "coverage_reopen_pending": {s: len(_coverage_reopen_at[s]) for s in OPTIONS_SERVICES},
         "services_in_agreement": len({frozenset(v) for v in _vendor_held.values()}) == 1,
         "full_cycle_seconds": plan["full_cycle_seconds"],
         "notes": plan["notes"][:12],
@@ -828,11 +852,12 @@ def close_options_coverage(reason: str = "stream_stop") -> None:
     ingest health or touch the drop counters — those span the whole daemon run and are flushed ONCE
     at daemon shutdown, after the writer is joined (a recycle must not reset a live writer's counters).
     """
-    global _vendor_held, _coverage_open, _coverage_close_owed, _options_bus, _active_stream
+    global _vendor_held, _coverage_open, _coverage_close_owed, _coverage_reopen_at
+    global _options_bus, _active_stream
 
     from stream_spine import STREAM_DB_DEFAULT as _CAPTURE_DB
     try:
-        from calibration.options_stream_coverage import (close_epochs,
+        from calibration.options_stream_coverage import (close_epochs, open_epochs,
                                                          reconcile_open_epochs_on_start)
         # 1. Honour owed closes at THEIR recorded end time (a failed close being retried), so an
         #    interrupted contract ends at the boundary it left, not at teardown.
@@ -842,7 +867,19 @@ def close_options_coverage(reason: str = "stream_stop") -> None:
                     close_epochs(_CAPTURE_DB, [sym], service=service, reason=reason, at_ms=at)
                 except Exception as e:                  # noqa: BLE001
                     log.warning("teardown owed-close (%s %s): %s", service, sym, e)
-        # 2. Close EVERY remaining open epoch at last proven liveness, floored per-epoch — the SAME
+        # 2. Record any pending RETURN: a contract that re-subscribed while owed but whose fresh
+        #    epoch never opened (the owed close kept failing) gets its fresh epoch opened at the REAL
+        #    return time now, so the return window is on the record. The reconcile below then closes
+        #    it at liveness. open_epochs is idempotent, so a contract whose stale epoch is still open
+        #    is skipped rather than double-opened.
+        for service in OPTIONS_SERVICES:
+            for sym, at in list(_coverage_reopen_at[service].items()):
+                if sym not in _coverage_open[service]:
+                    try:
+                        open_epochs(_CAPTURE_DB, [sym], service=service, reason=reason, at_ms=at)
+                    except Exception as e:              # noqa: BLE001
+                        log.warning("teardown reopen (%s %s): %s", service, sym, e)
+        # 3. Close EVERY remaining open epoch at last proven liveness, floored per-epoch — the SAME
         #    path (and truthfulness) the crash reconcile uses. Reads the db, so it closes even an
         #    epoch that a cancelled slice committed but never recorded in _coverage_open.
         reconcile_open_epochs_on_start(_CAPTURE_DB, services=OPTIONS_SERVICES, reason=reason)
@@ -852,6 +889,7 @@ def close_options_coverage(reason: str = "stream_stop") -> None:
         _vendor_held = {s: set() for s in OPTIONS_SERVICES}
         _coverage_open = {s: set() for s in OPTIONS_SERVICES}
         _coverage_close_owed = {s: {} for s in OPTIONS_SERVICES}
+        _coverage_reopen_at = {s: {} for s in OPTIONS_SERVICES}
         _options_bus = None
         _active_stream = None
 
@@ -881,6 +919,7 @@ def options_stream_status() -> dict[str, Any]:
         "coverage_matches_vendor": all(_coverage_open[s] == _vendor_held[s]
                                        for s in OPTIONS_SERVICES),
         "coverage_close_owed": {s: len(_coverage_close_owed[s]) for s in OPTIONS_SERVICES},
+        "coverage_reopen_pending": {s: len(_coverage_reopen_at[s]) for s in OPTIONS_SERVICES},
         "services_in_agreement": len({frozenset(v) for v in _vendor_held.values()}) == 1,
         "last_receipt": _options_last_receipt,
         "last_slice": _options_last_slice,

@@ -483,6 +483,7 @@ def test_deferred_close_then_resubscribe_does_not_produce_false_coverage(tmp_pat
     monkeypatch.setattr(osc, "_vendor_held", {s: set() for s in osc.OPTIONS_SERVICES}, raising=False)
     monkeypatch.setattr(osc, "_coverage_open", {s: set() for s in osc.OPTIONS_SERVICES}, raising=False)
     monkeypatch.setattr(osc, "_coverage_close_owed", {s: {} for s in osc.OPTIONS_SERVICES}, raising=False)
+    monkeypatch.setattr(osc, "_coverage_reopen_at", {s: {} for s in osc.OPTIONS_SERVICES}, raising=False)
 
     clock = {"t": 1.0}
     monkeypatch.setattr(osc.time, "time", lambda: clock["t"])   # slice A=1s, B=2s, C=3s
@@ -769,3 +770,112 @@ def test_quiesce_waits_for_an_in_flight_slice_before_cancelling(monkeypatch):
         assert task.cancelled(), "quiesce did not cancel the rotation task after acquiring the lock"
 
     asyncio.run(_run())
+
+
+# ── NEGATIVE CONTROL #3: Alpaca (non-Schwab provenance) cannot advance Schwab options liveness ────
+
+def test_alpaca_rows_cannot_advance_schwab_options_liveness(tmp_path):
+    """An orphaned Schwab options epoch must close at the last SCHWAB frame, never later just because
+    a foreign (alpaca_iex) quote/print sits in the shared tables at a later time. Liveness filters on
+    Schwab provenance and excludes the prints table entirely, so historical Alpaca rows cannot extend
+    Schwab coverage — proven with a Schwab quote and LATER Alpaca rows in the same db."""
+    from stream_spine import STREAM_SCHEMA_SQL
+    from calibration.options_stream_coverage import (
+        open_epochs, reconcile_open_epochs_on_start, was_subscribed)
+
+    db = tmp_path / "stream_capture.db"
+    X = "SPY   260820C00600000"
+    started = 1_000_000
+    open_epochs(db, [X], service="LEVELONE_OPTIONS", at_ms=started)
+
+    conn = sqlite3.connect(str(db))
+    conn.executescript(STREAM_SCHEMA_SQL)
+    schwab_ms = started + 5_000
+    alpaca_ms = started + 90_000     # foreign rows arrive MUCH later; must NOT count
+    conn.execute("INSERT INTO stream_quotes_raw (ts_recv, symbol, src) VALUES (?,?,?)",
+                 (schwab_ms / 1000.0, "SPY", "schwab_l1"))
+    conn.execute("INSERT INTO stream_quotes_raw (ts_recv, symbol, src) VALUES (?,?,?)",
+                 (alpaca_ms / 1000.0, "SPY", "alpaca_iex"))
+    conn.execute("INSERT INTO stream_prints_raw (ts_recv, symbol, src) VALUES (?,?,?)",
+                 (alpaca_ms / 1000.0, "SPY", "alpaca_iex"))
+    conn.commit()
+    conn.close()
+
+    reconcile_open_epochs_on_start(db, services=["LEVELONE_OPTIONS"], at_ms=started + 10_000_000)
+
+    assert was_subscribed(db, X, schwab_ms, service="LEVELONE_OPTIONS"), (
+        "coverage was cut before the last Schwab frame")
+    assert not was_subscribed(db, X, schwab_ms + 1_000, service="LEVELONE_OPTIONS"), (
+        "coverage extended past the last SCHWAB frame — an Alpaca (non-Schwab) row advanced liveness")
+    assert not was_subscribed(db, X, alpaca_ms, service="LEVELONE_OPTIONS"), (
+        "coverage reached the Alpaca row's time — a foreign feed extended Schwab options coverage")
+
+
+# ── NEGATIVE CONTROL #4: deferred close + re-subscribe preserves the EXACT real coverage interval ─
+
+def test_deferred_close_then_resubscribe_preserves_the_real_return_time(tmp_path, monkeypatch):
+    """N3, finished. When a close is deferred (keeps failing) ACROSS the re-subscribe slice and only
+    lands later, the fresh epoch must still start at the REAL return time — never at the later slice
+    the close happened to land — so the record is two truthful epochs [.., drop] and [return, ..]
+    with NO fabricated NOT_SUBSCRIBED gap between the real return and the delayed re-open."""
+    from calibration.options_stream_coverage import (
+        CoverageWriteError, close_epochs as real_close, open_epochs as real_open, was_subscribed)
+
+    db = tmp_path / "stream_capture.db"
+    X = "SPY   260820C00600000"
+    for g in ("_vendor_held", "_coverage_open"):
+        monkeypatch.setattr(osc, g, {s: set() for s in osc.OPTIONS_SERVICES}, raising=False)
+    for g in ("_coverage_close_owed", "_coverage_reopen_at"):
+        monkeypatch.setattr(osc, g, {s: {} for s in osc.OPTIONS_SERVICES}, raising=False)
+
+    clock = {"t": 1.0}
+    monkeypatch.setattr(osc.time, "time", lambda: clock["t"])   # A=1s B=2s C=3s D=4s
+
+    # Close fails on the drop slice B (4 calls) AND the return slice C (2 calls); lands at D.
+    calls = {"n": 0}
+
+    def close_flaky(_db, syms, **k):
+        calls["n"] += 1
+        if calls["n"] <= 6:
+            raise CoverageWriteError("sustained lock contention")
+        return real_close(_db, syms, **k)
+
+    plan = {"at_epoch_s": 0.0, "slice_index": 1, "roster_ok": True, "core": ["SPY"], "rotating": [],
+            "per_underlying": {"SPY": 1}, "symbol_underlying": {X: "SPY"}, "policy": "{}",
+            "full_cycle_seconds": 900, "notes": []}
+
+    async def reconcile(want):
+        return await osc._reconcile_options_subscription(
+            object(), dict(plan, notes=[]), want, "test", keys_available=100, capture_db=db,
+            close_epochs=close_flaky, open_epochs=real_open,
+            subscribe_options=_sub_ok, unsubscribe_options=_unsub_ok)
+
+    async def _run():
+        clock["t"] = 1.0
+        await reconcile([X])     # A: subscribe + open at 1000
+        clock["t"] = 2.0
+        await reconcile([])      # B: drop; close FAILS -> owed at 2000
+        clock["t"] = 3.0
+        await reconcile([X])     # C: return; close STILL fails -> reopen_at stamped 3000
+        clock["t"] = 4.0
+        await reconcile([X])     # D: close lands (at 2000); fresh epoch opens at the REAL return 3000
+
+    asyncio.run(_run())
+
+    conn = sqlite3.connect(str(db))
+    try:
+        rows = sorted(conn.execute(
+            "SELECT started_ms, ended_ms FROM options_stream_coverage_epochs "
+            "WHERE symbol=? AND service='LEVELONE_OPTIONS' ORDER BY started_ms", (X,)).fetchall())
+    finally:
+        conn.close()
+    assert rows == [(1000, 2000), (3000, None)], (
+        f"expected two truthful epochs [1000,2000] and [3000,open], got {rows} — the fresh epoch "
+        f"did not start at the REAL return time (3000)")
+    # The [return, close-lands] window [3000,4000] is COVERED (retroactively), not a fabricated gap.
+    assert was_subscribed(db, X, 3500, service="LEVELONE_OPTIONS"), (
+        "the [return, close-lands] window reads NOT_SUBSCRIBED — a fabricated gap for a contract "
+        "that was in fact subscribed")
+    # The real unsubscribed window [2000,3000] is correctly uncovered.
+    assert not was_subscribed(db, X, 2500, service="LEVELONE_OPTIONS"), (
+        "the real unsubscribed window is covered")

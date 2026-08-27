@@ -180,31 +180,40 @@ def close_epochs(db_path: Path | str, symbols: Iterable[str] | None, *, service:
         conn.close()
 
 
-def _last_stream_liveness_ms(conn: sqlite3.Connection) -> int | None:
-    """The last instant the CAPTURE PROCESS was proven alive — the max receive-clock time across
-    the whole capture (options frames AND the equity quote/bar/print tables), all in one WAL db.
+#: Schwab-provenance src tags in the shared capture tables. Options coverage is a SCHWAB fact, so
+#: liveness counts ONLY rows the SCHWAB stream wrote — never a foreign vendor's.
+SCHWAB_QUOTE_SRC = "schwab_l1"
+SCHWAB_BAR_SRC = "schwab_chart"
 
-    This is the honest right-edge for a crashed-open epoch, and it is a STREAM/PROCESS fact, not a
-    per-contract one. A contract that was subscribed but QUIET produced no frames of its own, yet
-    it was still OBSERVABLE for as long as the stream was alive (a frame would have been stored had
-    one come). Closing such an epoch at the contract's own last frame would UNDERSTATE its coverage
-    and, worse, would read the contract's silence as an early un-subscription. Because options ride
-    the daemon's ONE StreamClient alongside the equity services, the equity feed's last frame is a
-    tight, independent proof the socket and process were live at that instant. Milliseconds
-    throughout: options rows are already ms; the equity `ts_recv` columns are epoch SECONDS and are
-    scaled here so the two clocks are compared on one ruler.
+
+def _last_stream_liveness_ms(conn: sqlite3.Connection) -> int | None:
+    """The last instant the SCHWAB capture stream was proven alive — the max receive-clock time
+    across the Schwab options frames and the Schwab-provenance equity quote/bar rows.
+
+    This is the honest right-edge for a crashed-open Schwab options epoch, and it is a STREAM/
+    PROCESS fact, not a per-contract one. A contract that was subscribed but QUIET produced no
+    frames of its own, yet it was OBSERVABLE for as long as the SCHWAB stream was alive (a frame
+    would have been stored had one come). Closing such an epoch at the contract's own last frame
+    would UNDERSTATE its coverage and read its silence as an early un-subscription; the Schwab
+    equity feed's last frame is a tight, independent proof the Schwab socket was live.
+
+    SCHWAB-SPECIFIC BY CONSTRUCTION, not by hoping a foreign feed is off: the equity tables are
+    SHARED (stream_quotes_raw once carried a non-Schwab IEX leg too), so the quote/bar reads FILTER
+    on the Schwab src tag, and the prints table — which Schwab never writes (it dropped TIMESALE);
+    it was exclusively the foreign IEX leg's — is EXCLUDED entirely. A historical non-Schwab row can
+    therefore never extend Schwab options coverage. Milliseconds throughout: options rows are ms;
+    the equity `ts_recv` columns are epoch SECONDS, scaled here onto one ruler.
     """
     best: int | None = None
-    for sql, scale in (
-        ("SELECT MAX(received_ts_ms) FROM options_stream_frames", 1),
-        ("SELECT MAX(ts_recv) FROM stream_quotes_raw", 1000),
-        ("SELECT MAX(ts_recv) FROM stream_bars_raw", 1000),
-        ("SELECT MAX(ts_recv) FROM stream_prints_raw", 1000),
+    for sql, params, scale in (
+        ("SELECT MAX(received_ts_ms) FROM options_stream_frames", (), 1),
+        ("SELECT MAX(ts_recv) FROM stream_quotes_raw WHERE src = ?", (SCHWAB_QUOTE_SRC,), 1000),
+        ("SELECT MAX(ts_recv) FROM stream_bars_raw WHERE src = ?", (SCHWAB_BAR_SRC,), 1000),
     ):
         try:
-            row = conn.execute(sql).fetchone()
+            row = conn.execute(sql, params).fetchone()
         except sqlite3.Error:
-            # A table may not exist (options-only or equity-only capture); absence is not an error.
+            # A table may not exist (options-only capture); absence is not an error.
             continue
         if row and row[0] is not None:
             v = int(float(row[0]) * scale)

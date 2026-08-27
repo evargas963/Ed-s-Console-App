@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 
-from stream_spine import COUNT_DROPS, HealthRegistry, MessageBus
+REPO = Path(__file__).resolve().parent.parent
+
+from stream_spine import COUNT_DROPS, HealthRegistry, MessageBus  # noqa: E402
 from tools.run_stream_capture import (
     CHART_FIELDS,
     LEVELONE_FIELDS,
@@ -82,76 +85,30 @@ def test_capture_stats_p_safe_with_zero_or_one_sample():
     assert s.p(99) == 1.25
 
 
-def test_alpaca_rfc3339_nanoseconds_to_ms():
-    """Alpaca stamps carry 9-digit fractions; fromisoformat takes 6 — trim must hold."""
-    from tools.run_stream_capture import alpaca_rfc3339_to_ms
-    assert alpaca_rfc3339_to_ms("2026-07-22T20:22:23.626206217Z") == 1784751743626
-    assert alpaca_rfc3339_to_ms("2026-07-22T20:22:23Z") == 1784751743000
-    assert alpaca_rfc3339_to_ms(None) is None
-    assert alpaca_rfc3339_to_ms("garbage") is None
+def test_the_canonical_daemon_has_no_alpaca_producer_and_cannot_write_alpaca():
+    """NEGATIVE CONTROL #1: the canonical Schwab Collect daemon cannot start or write Alpaca. The
+    Alpaca leg was MOVED to the isolated alpaca_iex_capture.py, so the daemon module has no Alpaca
+    producer, no alpaca_* function, and does not import the spine's print builder — nothing in it
+    can publish a print/alpaca frame onto the bus."""
+    import ast
 
-
-def test_alpaca_items_flow_through_real_bus_and_writer_to_db(tmp_path):
-    """CR-02 seam: Alpaca-shaped trade + NBBO items -> REAL bus -> REAL CaptureWriter
-    -> rows readable back out of a REAL stream_capture db (src=alpaca_iex)."""
-    import sqlite3
-    from stream_spine import CaptureWriter, MessageBus
-    from tools.run_stream_capture import alpaca_item_to_topic_msg
-
-    async def go():
-        bus = MessageBus()
-        writer = CaptureWriter(tmp_path / "cap.db", batch_sec=0.05)
-        wsub = bus.subscribe("", policy=COUNT_DROPS, maxsize=64)
-        stop = asyncio.Event()
-        for item in (
-            {"T": "t", "S": "SPY", "i": 52983945511779, "x": "V", "p": 748.6, "s": 40,
-             "c": [" ", "T"], "t": "2026-07-22T20:22:23.626206217Z", "z": "B"},
-            {"T": "q", "S": "SPY", "bx": "V", "bp": 748.37, "bs": 80, "ax": "V",
-             "ap": 748.99, "as": 80, "c": ["R"], "t": "2026-07-22T20:31:07.643443439Z",
-             "z": "B"},
-        ):
-            topic, msg = alpaca_item_to_topic_msg(item)
-            bus.publish(topic, msg)
-        task = asyncio.create_task(writer.run(wsub, stop=stop))
-        await asyncio.sleep(0.15)
-        stop.set()
-        await task
-        writer.close()
-
-    asyncio.run(go())
-    con = sqlite3.connect(tmp_path / "cap.db")
-    p = con.execute("SELECT symbol, price, size, exchange, conditions, trade_ts_ms, src "
-                    "FROM stream_prints_raw").fetchall()
-    q = con.execute("SELECT symbol, bid, ask, bid_size, ask_size, src "
-                    "FROM stream_quotes_raw").fetchall()
-    con.close()
-    assert p == [("SPY", 748.6, 40, "V", " ,T", 1784751743626, "alpaca_iex")]
-    assert q == [("SPY", 748.37, 748.99, 80, 80, "alpaca_iex")]
-
-
-def test_alpaca_control_and_bar_frames_are_not_captured():
-    from tools.run_stream_capture import alpaca_item_to_topic_msg
-    assert alpaca_item_to_topic_msg({"T": "success", "msg": "authenticated"}) is None
-    assert alpaca_item_to_topic_msg({"T": "subscription", "trades": ["SPY"]}) is None
-    # bars deliberately excluded: canonical 1m stays Schwab's (sole-bar-authority law)
-    assert alpaca_item_to_topic_msg({"T": "b", "S": "SPY", "o": 1, "c": 2}) is None
-    assert alpaca_item_to_topic_msg({"T": "t", "p": 1.0}) is None  # no symbol -> skip
-
-
-def test_alpaca_pump_skips_cleanly_without_keys(tmp_path, monkeypatch, capsys):
-    """No keys is a SKIP with one printed line — Schwab capture must be unaffected."""
+    src = (REPO / "tools" / "run_stream_capture.py").read_text(encoding="utf-8")
     import tools.run_stream_capture as d
-    monkeypatch.setattr(d, "ALPACA_ENV_PATH", tmp_path / "missing.env")
-    for var in ("ALPACA_API_KEY_ID", "ALPACA_API_SECRET_KEY"):
-        monkeypatch.delenv(var, raising=False)
-    from stream_spine import HealthRegistry, MessageBus
-
-    async def go():
-        stop = asyncio.Event()
-        await d.alpaca_pump(["SPY"], MessageBus(), HealthRegistry(), d.CaptureStats(), stop)
-
-    asyncio.run(go())
-    assert "prints leg skipped" in capsys.readouterr().out
+    # No Alpaca producer/functions/constants survive in the daemon.
+    for banned in ("alpaca_pump", "alpaca_handle_frame", "_alpaca_session",
+                   "alpaca_item_to_topic_msg", "ALPACA_SRC", "ALPACA_WS_URL", "print_msg"):
+        assert not hasattr(d, banned), f"canonical daemon still exposes {banned}"
+    # No print/alpaca topic is ever published, and no alpaca task is created, in the daemon source.
+    tree = ast.parse(src)
+    publishes = [n for n in ast.walk(tree)
+                 if isinstance(n, ast.Call) and getattr(n.func, "attr", "") == "publish"]
+    for call in publishes:
+        first = call.args[0] if call.args else None
+        lit = getattr(first, "value", "") if isinstance(first, ast.Constant) else ""
+        assert not (isinstance(lit, str) and lit.startswith("print.")), (
+            "the daemon publishes a print topic — Alpaca prints must not originate here")
+    assert "alpaca_pump" not in src and "extra_producers=(alpaca_task" not in src, (
+        "the daemon still wires an Alpaca producer task")
 
 
 def test_owner_lock_released_on_every_exit_path(tmp_path, monkeypatch):
@@ -220,41 +177,3 @@ def test_stream_needs_recycle_decision_boundaries():
     assert stream_needs_recycle(stale, True, RECONNECT_COOLDOWN_SEC - 1) is False
     # fresh feed stays connected
     assert stream_needs_recycle(STREAM_STALE_RECONNECT_SEC - 1, True, ok_cool) is False
-
-
-def test_alpaca_session_recycles_on_silent_socket(monkeypatch):
-    """A half-open socket raises NOTHING — the session must return True (recycle)
-    once quiet passes the bar, instead of spinning on timeouts forever."""
-    import json as _json
-
-    import tools.run_stream_capture as m
-
-    monkeypatch.setattr(m, "ALPACA_STALE_RECONNECT_SEC", 0.05)
-
-    class FakeWS:
-        def __init__(self):
-            self.frames = [
-                _json.dumps([{"T": "success", "msg": "connected"}]),
-                _json.dumps([{"T": "success", "msg": "authenticated"}]),
-            ]
-            self.sent = []
-
-        async def recv(self):
-            if self.frames:
-                return self.frames.pop(0)
-            await asyncio.sleep(3600)   # half-open: silent forever, no exception
-            return None                 # unreachable in test; satisfies RET503
-
-        async def send(self, data):
-            self.sent.append(data)
-
-    async def _run():
-        bus = MessageBus()
-        health = HealthRegistry()
-        stats = CaptureStats()
-        stop = asyncio.Event()
-        return await asyncio.wait_for(
-            m._alpaca_session(FakeWS(), ["SPY"], "k", "s", bus, health, stats, stop),
-            timeout=10)
-
-    assert asyncio.run(_run()) is True, "silent socket must signal recycle, not hang"
