@@ -530,19 +530,56 @@ def test_a_partial_subscribe_failure_shows_in_admitted_coverage(monkeypatch):
     assert ls["services_in_agreement"] is False, "one service refused; agreement should be False"
 
 
-def test_min_across_services_is_how_per_underlying_admitted_is_computed():
-    """THE REPORTING MATH, unit-checked: fully-observed depth is the weakest service's depth.
+def test_different_contracts_on_different_services_is_not_full_coverage(monkeypatch):
+    """THE INTERSECTION TRUTH. Fully observed = held on EVERY service as the SAME contract.
 
-    Kept as a pure check of the min-across-services rule so a future refactor to a union or a
-    max is caught. A stable 1-vs-2 asymmetry is not runtime-reachable (retries heal it), so this
-    asserts the formula directly rather than staging an unreachable vendor state.
+    A reachable divergence: BOOK could not drop the OLD strikes (unsub refused) and could not add
+    the NEW ones (add refused), while LEVELONE moved to the new strikes. Same underlying, but no
+    single contract is on both services. min-of-per-underlying-COUNTS would report AMD depth 2
+    fully observed; the truth is that the intersection of held symbols is empty.
     """
-    by_service = {"LEVELONE_OPTIONS": {"AMD": 2, "SPY": 3}, "OPTIONS_BOOK": {"AMD": 1, "SPY": 3}}
-    services = ("LEVELONE_OPTIONS", "OPTIONS_BOOK")
-    fully_observed = {u: min(by_service[s].get(u, 0) for s in services)
-                      for u in {u for d in by_service.values() for u in d}}
-    assert fully_observed == {"AMD": 1, "SPY": 3}, (
-        "fully-observed depth must be the minimum across services, not the union or the max")
+    import options_stream_subscription as sub
+
+    ofs = _wire_real_helpers(monkeypatch)
+
+    class V(_VendorState):
+        async def options_book_unsubs(self, syms):    # BOOK cannot drop the old strikes
+            self.ops.append(("OPTIONS_BOOK", "UNSUBS", tuple(syms)))
+            raise RuntimeError("book unsub refused")
+
+        async def options_book_subs(self, syms):      # ...and cannot add the new ones
+            self.ops.append(("OPTIONS_BOOK", "SUBS", tuple(syms)))
+            raise RuntimeError("book subs refused")
+
+        async def options_book_add(self, syms):
+            self.ops.append(("OPTIONS_BOOK", "ADD", tuple(syms)))
+            raise RuntimeError("book add refused")
+
+    v = V()
+    # OCC-style symbols so the underlying root ('AMD') parses from the space-padded prefix.
+    old1, old2 = "AMD   260116C00090000", "AMD   260116C00095000"
+    new1, new2 = "AMD   260220C00100000", "AMD   260220C00105000"
+    # Seeded prior state: both services on the OLD strikes.
+    v.lvl, v.book = {old1, old2}, {old1, old2}
+    ofs._options_subscribed = {"LEVELONE_OPTIONS": {old1, old2}, "OPTIONS_BOOK": {old1, old2}}
+    sym_und = {new1: "AMD", new2: "AMD"}
+    plan = _partial_plan(sym_und, [], ["AMD"], {"AMD": 2})   # rotate to the new strikes
+    asyncio.run(ofs._reconcile_options_subscription(
+        v, plan, [new1, new2], "rotation", keys_available=100, capture_db=None,
+        close_epochs=lambda *a, **k: None, open_epochs=lambda *a, **k: None,
+        subscribe_options=sub.subscribe_options, unsubscribe_options=sub.unsubscribe_options))
+    ls = ofs._options_last_slice
+    # LEVELONE moved to the new strikes; BOOK is stuck on the old ones.
+    assert v.lvl == {new1, new2}, f"LEVELONE state: {v.lvl}"
+    assert v.book == {old1, old2}, f"BOOK state: {v.book}"
+    # Both services show AMD depth 2 by COUNT, but NO contract is on both.
+    assert ls["admitted_by_service"]["LEVELONE_OPTIONS"].get("AMD") == 2
+    assert ls["admitted_by_service"]["OPTIONS_BOOK"].get("AMD") == 2
+    assert ls["per_underlying_admitted"].get("AMD", 0) == 0, (
+        "different contracts on different services combined into fake full coverage — "
+        "per_underlying_admitted must count the INTERSECTION of held symbols, not min-of-counts")
+    assert ls["rotating_admitted"] == [], "AMD claimed admitted with an empty symbol intersection"
+    assert ls["fully_admitted"] is False, "fake full coverage from non-overlapping contracts"
 
 
 def test_a_stranded_symbol_from_a_prior_slice_still_counts_as_coverage(monkeypatch):

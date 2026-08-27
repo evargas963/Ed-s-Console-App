@@ -497,22 +497,23 @@ async def _reconcile_options_subscription(sc, plan, want, reason, *, keys_availa
 
     # GROUND TRUTH, per service.
     admitted_by_service = {s: _by_underlying(_options_subscribed[s]) for s in OPTIONS_SERVICES}
-    # FULLY-OBSERVED depth per underlying = the depth on the WEAKEST service (min across all).
-    # A contract on only some services contributes only up to the service that holds the fewest.
-    all_underlyings = {u for d in admitted_by_service.values() for u in d}
-    per_underlying_admitted = {
-        u: min(admitted_by_service[s].get(u, 0) for s in OPTIONS_SERVICES)
-        for u in all_underlyings}
-    per_underlying_admitted = {u: c for u, c in per_underlying_admitted.items() if c > 0}
+    # FULLY-OBSERVED contracts = the intersection of the actual SYMBOL SETS across every service.
+    # min-of-per-underlying-COUNTS overstated: LEVELONE holding {AMD1,AMD2} and BOOK holding
+    # {AMD3,AMD4} gives min-count 2 for AMD, yet NO contract is on both services and the true
+    # intersection is empty. Only a contract present on every required service is fully observed,
+    # so the count must be of the intersected symbols, not a min of independent tallies.
+    held_all_services = (set.intersection(*(_options_subscribed[s] for s in OPTIONS_SERVICES))
+                         if OPTIONS_SERVICES else set())
+    per_underlying_admitted = {u: c for u, c in _by_underlying(held_all_services).items() if c > 0}
     # A name is "admitted" only when it is fully observed (present on every service).
     admitted_underlyings = set(per_underlying_admitted)
     rotating_admitted = sorted(u for u in plan["rotating"] if u in admitted_underlyings)
     core_admitted = sorted(u for u in plan["core"] if u in admitted_underlyings)
-    # FULLY admitted only when every planned underlying holds its planned depth on EVERY service.
+    # FULLY admitted only when every planned underlying holds its planned depth in the INTERSECTED
+    # (held-on-every-service) contract set — not merely its planned count on each service, which
+    # different contracts on different services could satisfy without overlapping.
     fully_admitted = all(
-        admitted_by_service[svc].get(u, 0) >= cnt
-        for svc in OPTIONS_SERVICES
-        for u, cnt in plan["per_underlying"].items())
+        per_underlying_admitted.get(u, 0) >= cnt for u, cnt in plan["per_underlying"].items())
     held_union = set().union(*_options_subscribed.values()) if _options_subscribed else set()
 
     _options_last_slice = {
