@@ -42,7 +42,7 @@ import concurrent.futures
 import contextlib
 import threading
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from collections import OrderedDict, defaultdict
 from copy import deepcopy
@@ -11142,8 +11142,8 @@ def resolve_chain_strike_count(ticker: str) -> int:
 _terrain_strike_count = resolve_chain_strike_count
 
 
-def _chain_to_date_for(ticker: str, selected_expiry: str | None = None) -> str | None:
-    """Bounded chain to_date (ISO YYYY-MM-DD) for index books, None for equities.
+def _chain_to_date_for(ticker: str, selected_expiry: str | None = None) -> date | None:
+    """Bounded chain to_date as a `datetime.date` for index books, None for equities.
 
     RC-494: index option books ($SPX/$VIX/$RUT/...) list expirations out for years; fetching
     the FULL book blows Schwab's contract budget at any usable strike width (the $SPX 502).
@@ -11170,14 +11170,20 @@ def _chain_to_date_for(ticker: str, selected_expiry: str | None = None) -> str |
         try:
             sel = date.fromisoformat(str(selected_expiry)[:10])
             if sel > horizon:
-                return sel.isoformat()
+                # RC-496: return the date OBJECT, not `.isoformat()`. schwab-py's
+                # get_option_chain formats the date itself and _assert_type-rejects a
+                # str (ValueError: expected datetime.date, got builtins.str), so the old
+                # ISO-string return crashed every $-index chain fetch at the vendor
+                # boundary. The sibling terrain ladder already passed a `.date()`, which
+                # is why only the _fetch_state/enroll/charm paths went dark, not terrain.
+                return sel
         except ValueError:
             pass
-    return horizon.isoformat()
+    return horizon
 
 
-def _chain_from_date_for(ticker: str, selected_expiry: str | None = None) -> str | None:
-    """Chain fetch from_date (ISO YYYY-MM-DD) — the NEAR edge of the window, normally None so
+def _chain_from_date_for(ticker: str, selected_expiry: str | None = None) -> date | None:
+    """Chain fetch from_date as a `datetime.date` — the NEAR edge of the window, normally None so
     Schwab defaults it to today.
 
     Cursor-audit F2: paired with _chain_to_date_for. When an operator explicitly selects an index
@@ -11200,7 +11206,7 @@ def _chain_from_date_for(ticker: str, selected_expiry: str | None = None) -> str
         sel = date.fromisoformat(str(selected_expiry)[:10])
     except ValueError:
         return None
-    return sel.isoformat() if sel > horizon else None
+    return sel if sel > horizon else None   # RC-496: date object, not `.isoformat()` (vendor formats it)
 
 _terrain_cache: dict[str, dict] = {}
 _terrain_cache_lock = threading.Lock()

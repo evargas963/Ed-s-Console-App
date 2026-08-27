@@ -830,7 +830,34 @@ def test_rc367_live_path_lock_flags_detached_head(tmp_path, monkeypatch):
     g("checkout", "--detach", head)
     monkeypatch.chdir(repo)
     out = violations()
-    assert any("DETACHED HEAD" in v for v in out), out
+    assert any("detached HEAD" in v for v in out), out
+
+
+def test_rc367_live_path_lock_flags_feature_branch_not_main(tmp_path, monkeypatch):
+    # live-checkout invariant #1: production must be on `main`, not merely non-detached. A
+    # feature branch pointed at origin/main used to PASS (the exact 2026-08-26 drift that downed
+    # the desk); it must now be flagged before the desk can launch on it.
+    from tools.check_live_path_is_main import violations
+    repo, g = _lock_scratch_repo(tmp_path)
+    g("checkout", "-b", "cleanup/delete-now-root-stubs")
+    monkeypatch.chdir(repo)
+    out = violations()
+    assert any("not `main`" in v for v in out), out
+
+
+def test_rc367_live_path_lock_flags_behind_origin_main(tmp_path, monkeypatch):
+    # live-checkout invariant #1 is EQUALITY: a desk BEHIND origin/main runs stale code and must
+    # fast-forward (invariant #5) before launch — the old lock only barred being AHEAD.
+    from tools.check_live_path_is_main import violations
+    repo, g = _lock_scratch_repo(tmp_path)
+    (repo / "app.py").write_text("x = 9\n", encoding="utf-8")
+    g("add", "app.py")
+    g("commit", "-m", "released ahead")
+    g("update-ref", "refs/remotes/origin/main", g("rev-parse", "HEAD").stdout.strip())
+    g("reset", "--hard", "HEAD~1")     # HEAD now one commit BEHIND origin/main, clean tree
+    monkeypatch.chdir(repo)
+    out = violations()
+    assert any("BEHIND origin/main" in v for v in out), out
 
 
 # ── RC-379: a sibling hook's Stop block is not this guard's forgery ────────────────────────

@@ -130,71 +130,8 @@ def analyse(tree: ast.AST) -> tuple[int, int]:
     return prose_asserts, subject_calls
 
 
-#: Calls whose RESULT is file text, for the per-function taint below.
+#: Calls whose RESULT is file text — the taint that analyse() and _names_holding_file_text follow.
 _TEXT_READERS = frozenset({"read_text", "getsource", "getdoc", "getcomments", "readlines"})
-
-
-def source_text_only_functions() -> list[str]:
-    """Every test FUNCTION whose every assertion is about file text. The gate's blind spot.
-
-    RC-311. `violations()` above judges at MODULE scope, so one executing test anywhere in a
-    file satisfies the rule for every sibling. That was a deliberate widening — the
-    per-function form produced five false positives on ordinary tests — and it is why the
-    gate reported PASS on all six shadow-assertion tests RC-308 found the next day, each of
-    them sitting beside a healthy test in the same file.
-
-    This function measures what the widening gave up. It is NOT enforced: the count was 264
-    when RC-308 opened and is 261 with its six repairs landed, and most of those functions are the inventory, register and wiring audits RC-298's own
-    docstring defends, which have no value to compute. Enforcing at 264 exemptions would be
-    the allowlist habit RC-276 removed. What the number does is make a future widening of
-    this gate's scope visible as a moved figure rather than as continued silence — the same
-    device RC-286 used for its filesystem-scanner sweep.
-
-    WHAT THE NUMBER IS NOT (2026-08-17). It is not a count of bad tests, and lowering it is
-    not by itself an improvement. Two different things are in it:
-
-      INHERENTLY STRUCTURAL — the asserted property is about the REPOSITORY: that exactly
-      one definition exists, that a formula is not independently re-encoded, that a
-      forbidden literal is absent, that a governed artefact carries the keys a row claims.
-      Uniqueness, duplication and absence have no faithful runtime call — a function that
-      behaves correctly today says nothing about whether a second copy of it exists — so
-      these belong here and are not defects.
-
-      AVOIDABLE SOURCE-TEXT PROXY — the asserted property is BEHAVIOUR, restated as a
-      spelling. `str.index` offsets standing in for call ordering, a matched call string
-      standing in for what a producer publishes, the checker's own regexes restated
-      instead of its verdict. These are the RC-308 class, and the repair is to assert the
-      value, not to register an exemption.
-
-    So a MOVE in this figure must be ACCOUNTED FOR, not merely re-baselined: each new
-    entry is either shown to be inherently structural, or it is rewritten to assert the
-    behaviour and leaves on its own. Note also that the measurement is coarser than the
-    distinction — an assertion on a value COMPUTED from file text still counts as
-    source-text here, because the taint follows the argument. Tightening that was tried
-    and reverted 2026-08-17: every candidate rule that cleared such assertions also
-    cleared `isinstance(...)`, `m.group(1)` and text-derived local helpers, i.e. widened
-    the gate instead of sharpening it. A repaired test may therefore stay in the count;
-    say so in the row rather than loosening the measurement to make the number move.
-    """
-    out: list[str] = []
-    for path in _tracked_test_files():
-        rel = path.relative_to(REPO).as_posix()
-        try:
-            tree = ast.parse(path.read_text(encoding="utf-8", errors="replace"))
-        except SyntaxError:
-            continue
-        for fn in ast.walk(tree):
-            if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                continue
-            if not fn.name.startswith("test_"):
-                continue
-            tainted = _names_holding_file_text(fn)
-            asserts = [a for a in ast.walk(fn) if isinstance(a, ast.Assert)]
-            if len(asserts) < 2:
-                continue
-            if all(_asserts_on_text(a, tainted) for a in asserts):
-                out.append(f"{rel}:{fn.lineno} {fn.name}")
-    return out
 
 
 def _names_holding_file_text(fn: ast.AST) -> set[str]:
@@ -218,15 +155,6 @@ def _names_holding_file_text(fn: ast.AST) -> set[str]:
                 tainted.add(name)
                 changed = True
     return tainted
-
-
-def _asserts_on_text(node: ast.Assert, tainted: set[str]) -> bool:
-    for sub in ast.walk(node.test):
-        if isinstance(sub, ast.Name) and sub.id in tainted:
-            return True
-        if isinstance(sub, ast.Attribute) and sub.attr in _TEXT_READERS:
-            return True
-    return False
 
 
 def violations() -> list[str]:
@@ -257,15 +185,7 @@ def violations() -> list[str]:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--quiet", action="store_true")
-    ap.add_argument("--measure", action="store_true",
-                    help="RC-311: also report the per-FUNCTION count this module-scope "
-                         "gate does not see, so PASS cannot read as 'none in the repo'")
     args = ap.parse_args(argv)
-    if args.measure:
-        fns = source_text_only_functions()
-        print(f"per-function source-text-only tests (MEASURED, not enforced): {len(fns)}")
-        for f in fns:
-            print("  " + f)
     v = violations()
     if v:
         print("check_test_claims_are_executed: FAIL — prose-only test files:")

@@ -1,4 +1,11 @@
-> **Classification:** Policy Specification | **Scope:** Execution plan; binding when ACTIVE_PROGRAM points here.
+> **Classification: RETIRED (2026-08-27) — NON-AUTHORITATIVE, HISTORICAL RECORD.**
+> This 2026-05-23 consolidation/cleanup plan targets a governance architecture (docs/governance/
+> AGENT_SELF_GOVERNANCE.md as an active rule source, a `.cursor` mirror, per-vendor agent roles)
+> that **predates and contradicts the 2026-08-24 Architecture-A teardown**. It was "binding when
+> ACTIVE_PROGRAM points here" — ACTIVE_PROGRAM no longer does. Retained only as history; it
+> governs nothing and must not be executed. Superseded by AGENTS.md "Operating model".
+>
+> **Original classification (obsolete):** Policy Specification | Execution plan; binding when ACTIVE_PROGRAM points here.
 
 # EdWebConsole Governance Consolidation & Repo Cleanup — Final Execution-Ready Plan
 

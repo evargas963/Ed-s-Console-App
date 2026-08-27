@@ -31,15 +31,25 @@ def _init_repo(tmp_path: Path) -> Path:
     return tmp_path
 
 
-def test_edit_tools_are_not_gated_by_this_guard():
-    """2026-08-24 teardown: the role/mission/authority edit rails are GONE. The guard's
-    Edit branch must not block ordinary product edits — nor resurrect a role denylist.
-    The one surviving Edit rail is RC-442/RC-477's cross-checkout topology check, which
-    names no agent and fires only on a linked-worktree session targeting the primary
-    working tree (tested below); an in-checkout edit like this one stays unblocked."""
-    bad = PLG.pretooluse_block("Write", {"file_path": str(ROOT / "db.py"),
-                                         "content": "# edit\n"})
-    assert bad == [], bad
+def test_edit_branch_topology_rails_only_no_role_denylist(tmp_path):
+    """2026-08-24 teardown: the role/mission/authority edit DENYLISTS are GONE and must not
+    resurrect. The Edit branch carries only topology rails that name no agent — RC-442/RC-477
+    cross-checkout (a LINKED worktree editing the primary), and the live-checkout invariant #4
+    (a session that IS the production primary editing its OWN app code). A linked worktree
+    editing its own files stays unblocked: that is where development belongs. Deterministic
+    against a temp topology, so it holds in a primary clone (CI) and a linked worktree alike."""
+    primary, wt = _linked_worktree_layout(tmp_path)
+    (wt / "server.py").write_text("# mine\n", encoding="utf-8")
+    (primary / "notes.md").write_text("# doc\n", encoding="utf-8")
+    # a LINKED-worktree session editing its OWN app code → unblocked (ordinary dev work)
+    assert PLG.production_checkout_app_edit_violations({"file_path": str(wt / "server.py")}, wt) == []
+    assert PLG.cross_checkout_edit_violations({"file_path": str(wt / "server.py")}, wt) == []
+    # a session that IS the production primary editing its OWN app code → BLOCKED (invariant #4)
+    bad = PLG.production_checkout_app_edit_violations({"file_path": str(primary / "db.py")}, primary)
+    assert any("PROD_CHECKOUT_APP_EDIT" in b for b in bad), bad
+    # ...but a non-app file (docs/governance) in the primary is NOT gated
+    assert PLG.production_checkout_app_edit_violations({"file_path": str(primary / "notes.md")}, primary) == []
+    # no role-based denylist resurrected
     assert not hasattr(OPL, "claude_isolated_edit_violation")
     assert not hasattr(OPL, "operator_go_granted")
     assert not hasattr(OPL, "pm_mission_record")
