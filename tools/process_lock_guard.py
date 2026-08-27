@@ -238,12 +238,21 @@ def production_checkout_app_edit_violations(tool_input: dict, repo: Path = REPO)
     return out
 
 
+#: A shell redirect destination — `> file` / `>> file` / `N> file` (the path after the operator);
+#: `2>&1`-style fd dups don't match (their "path" would start with `&`). The universal
+#: source-write ban (operator_law_guard) covers `> *.py` repo-wide but is .py-only; extracting
+#: the redirect destination here lets the caller close the static/*.html|*.js gap in production.
+_REDIRECT_DEST_RE = re.compile(r'(?:^|[^0-9&>])[0-9]*>>?\s*("[^"]+"|\'[^\']+\'|[^\s;|&<>]+)')
+
+
 def _shell_write_dest_paths(seg: str) -> list[str]:
-    """Destination file operand(s) a shell segment WRITES via cp/mv/install/rsync/ln/tee/
-    sed -i/perl -i/truncate/dd of= — the material file-mutating verbs the redirect/heredoc/
-    -c-payload source-write bans (operator_law_guard) do not already cover. The caller filters
-    to app code inside the production primary, so a non-app source operand (e.g. a sed script)
-    is harmlessly ignored."""
+    """Destination file operand(s) a shell segment WRITES: a `>` / `>>` redirect on ANY command
+    (e.g. `printf x > static/index.html`, `echo x > static/app.js`), PLUS the material
+    file-mutating verbs cp/mv/install/rsync/ln/tee/sed -i/perl -i/truncate/dd of=. The caller
+    filters to app code inside the production primary, so a non-app operand (a sed script, a
+    redirect to a .log) is harmlessly ignored. Heredocs and -c payloads stay with their
+    universal source-write bans in operator_law_guard."""
+    dests: list[str] = [m.group(1).strip("\"'") for m in _REDIRECT_DEST_RE.finditer(seg)]
     toks = [t.strip("\"'") for t in _tokens(seg)]
     i = 0
     while i < len(toks):
@@ -255,23 +264,22 @@ def _shell_write_dest_paths(seg: str) -> list[str]:
             continue
         break
     if i >= len(toks):
-        return []
+        return dests
     verb = Path(toks[i]).name.lower().removesuffix(".exe")
     args = toks[i + 1:]
     positionals = [a for a in args if not a.startswith("-")]
     if verb in ("cp", "mv", "install", "rsync", "ln"):
-        return positionals[-1:]                              # DEST is the last operand; sources are reads
-    if verb in ("tee", "truncate"):
-        return positionals
-    if verb in ("sed", "gsed", "perl"):
+        dests += positionals[-1:]                            # DEST is the last operand; sources are reads
+    elif verb in ("tee", "truncate"):
+        dests += positionals
+    elif verb in ("sed", "gsed", "perl"):
         # in-place: -i / -i.bak / a combined short flag carrying 'i' (perl -pi, sed -ni) / --in-place
         if any((a.startswith("-") and not a.startswith("--") and "i" in a)
                or a == "--in-place" or a.startswith("--in-place=") for a in args):
-            return positionals                               # in-place edit of every file operand
-        return []
-    if verb == "dd":
-        return [a[3:] for a in args if a.startswith("of=")]
-    return []
+            dests += positionals                             # in-place edit of every file operand
+    elif verb == "dd":
+        dests += [a[3:] for a in args if a.startswith("of=")]
+    return dests
 
 
 def production_checkout_shell_app_write_violations(cmd: str, payload_cwd: str = "") -> list[str]:
@@ -279,9 +287,11 @@ def production_checkout_shell_app_write_violations(cmd: str, payload_cwd: str = 
     Bash companion to production_checkout_app_edit_violations (Edit/Write) and to the universal
     shell source-write bans (redirect/heredoc/-c payload in operator_law_guard). For EACH segment
     of a chained command (cwd tracked, so a leading `cd` cannot mislocate a later write), blocks
-    cp/mv/install/tee/sed -i/perl -i/truncate/dd whose destination resolves to a production app
-    file (server.py, *.py, static/*.html|*.js) INSIDE the production primary — whichever session
-    runs it. Dev-worktree paths resolve outside and stay free. Not subject-disableable (RC-450)."""
+    a `>`/`>>` redirect or cp/mv/install/tee/sed -i/perl -i/truncate/dd whose destination resolves
+    to a production app file (server.py, *.py, static/*.html|*.js, ...) INSIDE the production
+    primary — whichever session runs it. This closes the redirect-to-static gap the universal
+    .py-only redirect ban misses. Dev-worktree paths resolve outside and stay free. Not
+    subject-disableable (RC-450)."""
     primary = _primary_worktree_root(REPO) or REPO
     try:
         primary_res = primary.resolve()

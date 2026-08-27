@@ -242,3 +242,30 @@ def test_prod_checkout_shell_app_write_is_target_based_from_any_session(tmp_path
     assert plg.production_checkout_shell_app_write_violations(f"cp /tmp/evil.py {prim}/server.py", str(wt))
     # ...but writing its OWN worktree's app code is free
     assert plg.production_checkout_shell_app_write_violations(f"cp /tmp/evil.py {wt}/server.py", str(wt)) == []
+
+
+def test_prod_checkout_shell_redirect_to_static_app_blocks(tmp_path, monkeypatch):
+    # the gap the universal redirect ban (.py-only) misses: ordinary shell redirection to
+    # production static/*.html and static/*.js — materially equivalent to editing them.
+    prim = _make_primary(tmp_path)
+    wt = _make_linked(tmp_path, prim)
+    monkeypatch.setattr(plg, "REPO", prim)
+    (prim / "static").mkdir()
+    for cmd in (
+        "printf x > static/index.html",
+        "echo x > static/app.js",
+        "echo x >> static/index.html",
+        "cat /tmp/x > static/main.css",
+        "echo x > server.py",                       # redirect to .py is caught here too
+        "true && printf x > static/index.html",     # a leading no-op cannot launder it
+    ):
+        assert plg.production_checkout_shell_app_write_violations(cmd, str(prim)), \
+            f"redirect to production app code must BLOCK: {cmd}"
+    # ...a redirect to a non-app file, outside the tree, or into the dev worktree stays free
+    for cmd, cwd in (
+        ("echo x > notes.md", str(prim)),                    # not app code
+        ("echo x > /tmp/out.log", str(prim)),                # outside the production tree
+        (f"echo x > {wt}/static/app.js", str(prim)),         # dev worktree, absolute
+        ("echo x > static/app.js", str(wt)),                 # session cwd is the dev worktree
+    ):
+        assert plg.production_checkout_shell_app_write_violations(cmd, cwd) == [], f"must ALLOW: {cmd}"
