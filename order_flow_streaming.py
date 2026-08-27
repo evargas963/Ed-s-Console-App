@@ -179,14 +179,38 @@ def options_desired_for_slice(at_epoch_s: float, *, equity_symbols: int,
 
     base = RotationPolicy()
     universe: list[str] = []
+    roster_ok = False
+    roster_error: str | None = None
     try:
         from db import get_db
         universe = sorted(get_db().logging_universe_authoritative_tickers())
+        roster_ok = bool(universe)
+        if not universe:
+            roster_error = "enrollment roster is empty"
     except Exception as e:                              # noqa: BLE001
-        log.warning("options rotation: enrollment roster unavailable (%s) — falling back to the "
-                    "fresh-chain set, whose membership varies with staleness", e)
-    if not universe:
-        universe = sorted(build_chains_for_selection().keys())
+        roster_error = f"{type(e).__name__}: {e}"
+
+    if not roster_ok:
+        # FAIL EXPLICIT, NOT OPEN. The old fallback here was build_chains_for_selection() — the
+        # freshness-derived universe this very fix proved reshuffles cohorts. Continuing a
+        # DETERMINISTIC-coverage claim from a known-nondeterministic source is exactly the lie
+        # to avoid, so a plan with no roster carries roster_ok=False and NO symbols, and the
+        # reconciler treats that as "change nothing at the vendor" rather than reconciling the
+        # live subscription toward a garbage universe (which would UNSUB the current set).
+        log.warning("options rotation: enrollment roster unavailable (%s) — holding the current "
+                    "subscription unchanged; no deterministic cohort can be computed", roster_error)
+        return {
+            "at_epoch_s": float(at_epoch_s), "roster_ok": False, "roster_error": roster_error,
+            "slice_index": base.slice_index(at_epoch_s), "slice_seconds": base.slice_seconds,
+            "core": [], "rotating": [], "non_core_total": 0,
+            "full_cycle_slices": 0, "full_cycle_seconds": 0,
+            "budget": {}, "split": {}, "useful_depth_contracts": base.useful_depth_contracts,
+            "rotating_depth_each": 0, "rotating_per_slice": 0,
+            "symbols": [], "per_underlying": {},
+            "notes": [f"roster unavailable ({roster_error}) — subscription held unchanged"],
+            "policy": base.describe(),
+        }
+
     budget = contract_budget_from_key_limit(
         equity_symbols=max(1, int(equity_symbols)), book_enabled=book_enabled)
 
@@ -228,6 +252,7 @@ def options_desired_for_slice(at_epoch_s: float, *, equity_symbols: int,
 
     return {
         "at_epoch_s": float(at_epoch_s),
+        "roster_ok": True,
         "slice_index": cohort["slice_index"],
         "slice_seconds": cohort["slice_seconds"],
         "core": cohort["core"],
@@ -286,6 +311,21 @@ async def _apply_options_slice(sc: Any, at_epoch_s: float, reason: str) -> dict[
 
     plan = options_desired_for_slice(
         at_epoch_s, equity_symbols=len(_subscribed_equity_syms) or 1, book_enabled=True)
+
+    if not plan.get("roster_ok", True):
+        # ROSTER UNAVAILABLE: hold the current subscription EXACTLY as it is. Reconciling toward
+        # an empty want-set would UNSUB everything, including continuous core, on a transient DB
+        # read failure — punishing the money path for a hiccup in a side channel. Changing
+        # nothing is the safe response, and it is recorded so the gap is visible.
+        _options_last_slice = {"reason": reason, "at_epoch_s": plan["at_epoch_s"],
+                               "slice_index": plan["slice_index"], "roster_ok": False,
+                               "added": 0, "dropped": 0,
+                               "subscribed_by_service": {s: len(_options_subscribed[s])
+                                                         for s in OPTIONS_SERVICES},
+                               "notes": plan["notes"][:12]}
+        log.warning("options slice held unchanged: %s", plan["notes"][:1])
+        return _options_last_slice
+
     want = list(dict.fromkeys(plan["symbols"]))
 
     lock = _stream_resubscribe_lock
@@ -369,9 +409,15 @@ async def _reconcile_options_subscription(sc, plan, want, reason, *,
         missing = [s for s in want if s not in _options_subscribed[service]]
         if not missing:
             continue
+        # SUBS ESTABLISHES, ADD EXTENDS. A SUBS sends the whole key list and REPLACES the
+        # service's vendor set, so issuing SUBS(missing) while the service still holds core and
+        # retained contracts would silently drop them (measured: SUBS(['SPY','T01']) then
+        # SUBS(['T02']) leaves only ['T02']). The service's set here is post-DROP, so an empty
+        # set means "establish or re-establish" (SUBS) and a non-empty set means "extend" (ADD).
+        operation = "subs" if not _options_subscribed[service] else "add"
         receipt = await subscribe_options(
             sc, missing, level_one=(service == "LEVELONE_OPTIONS"),
-            book=(service == "OPTIONS_BOOK"))
+            book=(service == "OPTIONS_BOOK"), operation=operation)
         _options_last_receipt = receipt
         if receipt.get(key):
             open_epochs(_CAPTURE_DB, missing, service=service, policy=plan["policy"],

@@ -428,19 +428,31 @@ def select_contracts(chains_by_ticker: dict[str, tuple[float | None, list[dict]]
 
 
 async def subscribe_options(stream_client: Any, symbols: Iterable[str], *,
-                            level_one: bool = True, book: bool = True) -> dict[str, Any]:
-    """Subscribe the given option symbols on the EXISTING client. Never creates one.
+                            level_one: bool = True, book: bool = True,
+                            operation: str = "subs") -> dict[str, Any]:
+    """Subscribe (or ADD) the given option symbols on the EXISTING client. Never creates one.
+
+    SUBS vs ADD IS A CORRECTNESS DISTINCTION, NOT A STYLE CHOICE. Verified against the installed
+    schwab-py: level_one_option_subs issues the streaming command 'SUBS' and options_book_subs
+    likewise, and in the Schwab/TDA protocol a SUBS sends the WHOLE key list and REPLACES that
+    service's subscription set. level_one_option_add / options_book_add issue 'ADD', which
+    appends. So a rotation that called SUBS with only the incoming cohort would silently replace
+    the retained core contracts at the vendor — MEASURED: after SUBS(['SPY','T01']), SUBS(['T02'])
+    leaves the vendor holding only ['T02']. `operation='subs'` ESTABLISHES a service's set (first
+    subscription, or a fresh re-establishment after it emptied); `operation='add'` extends an
+    already-established service without disturbing what it holds.
 
     LEVELONE_OPTIONS is requested with the COMPLETE entitled field set (all_fields()), never a
-    convenient subset: the point of this foundation is that native truth is not lost because
-    today's code did not ask for it. OPTIONS_BOOK carries its full nested structure inherently —
-    the frame is the structure — so there is no field list to widen there.
+    convenient subset. OPTIONS_BOOK carries its full nested structure inherently.
 
-    Returns a receipt describing what was actually requested, including the field COUNT, so a
-    caller can assert the full surface was asked for rather than trusting a default.
+    Returns a receipt: {requested, operation, level_one, book, errors}, with level_one/book set
+    to a dict only when that service's vendor call was accepted.
     """
+    if operation not in ("subs", "add"):
+        raise ValueError(f"operation must be 'subs' or 'add', got {operation!r}")
     syms = [s for s in dict.fromkeys(symbols) if s]
-    receipt: dict[str, Any] = {"requested": len(syms), "level_one": None, "book": None, "errors": []}
+    receipt: dict[str, Any] = {"requested": len(syms), "operation": operation,
+                               "level_one": None, "book": None, "errors": []}
     if not syms:
         receipt["errors"].append("no symbols to subscribe")
         return receipt
@@ -448,25 +460,28 @@ async def subscribe_options(stream_client: Any, symbols: Iterable[str], *,
         receipt["errors"].append("no stream client — options subscription requires the existing one")
         return receipt
 
+    lvl_method = "level_one_option_subs" if operation == "subs" else "level_one_option_add"
+    book_method = "options_book_subs" if operation == "subs" else "options_book_add"
+
     if level_one:
         try:
             fields = list(type(stream_client).LevelOneOptionFields.all_fields())
-            await stream_client.level_one_option_subs(syms, fields=fields)
+            await getattr(stream_client, lvl_method)(syms, fields=fields)
             receipt["level_one"] = {"symbols": len(syms), "fields_requested": len(fields)}
-            log.info("LEVELONE_OPTIONS subscribed: %d symbols, %d fields (complete surface)",
-                     len(syms), len(fields))
+            log.info("LEVELONE_OPTIONS %s: %d symbols, %d fields (complete surface)",
+                     operation.upper(), len(syms), len(fields))
         except Exception as e:                      # noqa: BLE001 - report, never kill the stream
-            receipt["errors"].append(f"level_one_option_subs: {e}")
-            log.warning("LEVELONE_OPTIONS subscribe failed: %s", e)
+            receipt["errors"].append(f"{lvl_method}: {e}")
+            log.warning("LEVELONE_OPTIONS %s failed: %s", operation.upper(), e)
 
     if book:
         try:
-            await stream_client.options_book_subs(syms)
+            await getattr(stream_client, book_method)(syms)
             receipt["book"] = {"symbols": len(syms)}
-            log.info("OPTIONS_BOOK subscribed: %d symbols (full nested depth)", len(syms))
+            log.info("OPTIONS_BOOK %s: %d symbols (full nested depth)", operation.upper(), len(syms))
         except Exception as e:                      # noqa: BLE001
-            receipt["errors"].append(f"options_book_subs: {e}")
-            log.warning("OPTIONS_BOOK subscribe failed: %s", e)
+            receipt["errors"].append(f"{book_method}: {e}")
+            log.warning("OPTIONS_BOOK %s failed: %s", operation.upper(), e)
 
     return receipt
 

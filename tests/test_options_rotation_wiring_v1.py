@@ -164,6 +164,234 @@ def test_the_plan_reports_the_depth_it_actually_delivers(monkeypatch):
             f"{plan['useful_depth_contracts']} target")
 
 
+# ── SUBS replaces, ADD extends: the vendor set must survive rotation ─────────────────────────
+#
+# Verified against the installed schwab-py: level_one_option_subs / options_book_subs issue the
+# streaming command 'SUBS', level_one_option_add / options_book_add issue 'ADD'. In the Schwab
+# protocol a SUBS sends the whole key list and REPLACES that service's subscription set. These
+# controls run the REAL subscribe_options / unsubscribe_options and _apply_options_slice against
+# a fake client that models exactly that per-service state machine — no monkeypatched helpers.
+
+
+class _VendorState:
+    """A StreamClient that models the real SUBS/ADD/UNSUBS semantics per service.
+
+    SUBS replaces the service's key set; ADD appends; UNSUBS removes. This is the behaviour the
+    reconciler must respect, so the fake enforces it and the test reads the resulting set.
+    """
+
+    class LevelOneOptionFields:
+        @staticmethod
+        def all_fields():
+            return list(range(56))
+
+    def __init__(self, refuse_subs=(), refuse_add=(), refuse_unsub=()):
+        self.lvl: set[str] = set()
+        self.book: set[str] = set()
+        self.refuse_subs = set(refuse_subs)
+        self.refuse_add = set(refuse_add)
+        self.refuse_unsub = set(refuse_unsub)
+        self.ops: list[tuple] = []
+
+    async def level_one_option_subs(self, syms, fields=None):
+        self.ops.append(("LEVELONE_OPTIONS", "SUBS", tuple(syms)))
+        if "LEVELONE_OPTIONS" in self.refuse_subs:
+            raise RuntimeError("SUBS refused")
+        self.lvl = set(syms)
+
+    async def level_one_option_add(self, syms, fields=None):
+        self.ops.append(("LEVELONE_OPTIONS", "ADD", tuple(syms)))
+        if "LEVELONE_OPTIONS" in self.refuse_add:
+            raise RuntimeError("ADD refused")
+        self.lvl |= set(syms)
+
+    async def level_one_option_unsubs(self, syms):
+        self.ops.append(("LEVELONE_OPTIONS", "UNSUBS", tuple(syms)))
+        if "LEVELONE_OPTIONS" in self.refuse_unsub:
+            raise RuntimeError("UNSUBS refused")
+        self.lvl -= set(syms)
+
+    async def options_book_subs(self, syms):
+        self.ops.append(("OPTIONS_BOOK", "SUBS", tuple(syms)))
+        if "OPTIONS_BOOK" in self.refuse_subs:
+            raise RuntimeError("SUBS refused")
+        self.book = set(syms)
+
+    async def options_book_add(self, syms):
+        self.ops.append(("OPTIONS_BOOK", "ADD", tuple(syms)))
+        if "OPTIONS_BOOK" in self.refuse_add:
+            raise RuntimeError("ADD refused")
+        self.book |= set(syms)
+
+    async def options_book_unsubs(self, syms):
+        self.ops.append(("OPTIONS_BOOK", "UNSUBS", tuple(syms)))
+        if "OPTIONS_BOOK" in self.refuse_unsub:
+            raise RuntimeError("UNSUBS refused")
+        self.book -= set(syms)
+
+
+def _wire_real_helpers(monkeypatch):
+    """Wire the REAL subscribe/unsubscribe helpers; only epochs and locks are stubbed."""
+    import calibration.options_stream_coverage as cov
+    import order_flow_streaming as ofs
+
+    monkeypatch.setattr(cov, "open_epochs", lambda *a, **k: None, raising=False)
+    monkeypatch.setattr(cov, "close_epochs", lambda *a, **k: None, raising=False)
+    monkeypatch.setattr(ofs, "_options_subscribed",
+                        {s: set() for s in ofs.OPTIONS_SERVICES}, raising=False)
+    monkeypatch.setattr(ofs, "_subscribed_equity_syms", ["SPY"], raising=False)
+    monkeypatch.setattr(ofs, "_stream_resubscribe_lock", None, raising=False)
+    return ofs
+
+
+def _plan_real(monkeypatch, ofs, symbols):
+    plan = {"at_epoch_s": 0.0, "roster_ok": True, "slice_index": 1, "slice_seconds": 900,
+            "core": ["SPY"], "rotating": ["T"], "non_core_total": 1, "full_cycle_slices": 1,
+            "full_cycle_seconds": 900, "budget": {"contracts_allowed": 500},
+            "split": {"core": 250, "rotating": 250}, "symbols": list(symbols),
+            "per_underlying": {}, "notes": [], "policy": "test",
+            "useful_depth_contracts": 32, "rotating_depth_each": 0, "rotating_per_slice": 1}
+    monkeypatch.setattr(ofs, "options_desired_for_slice", lambda *a, **k: plan, raising=False)
+    return plan
+
+
+def test_repeated_subs_would_replace_the_vendor_set():
+    """THE DEFECT, at the helper: a second SUBS drops what the first established."""
+    import options_stream_subscription as sub
+
+    v = _VendorState()
+    asyncio.run(sub.subscribe_options(v, ["SPY", "T01"], operation="subs"))
+    assert v.lvl == {"SPY", "T01"}
+    asyncio.run(sub.subscribe_options(v, ["T02"], operation="subs"))
+    assert v.lvl == {"T02"}, (
+        "SUBS did not replace — the fixture no longer models the protocol this fix depends on")
+
+
+def test_add_extends_the_vendor_set_without_replacing():
+    import options_stream_subscription as sub
+
+    v = _VendorState()
+    asyncio.run(sub.subscribe_options(v, ["SPY", "T01"], operation="subs"))
+    asyncio.run(sub.subscribe_options(v, ["T02"], operation="add"))
+    assert v.lvl == {"SPY", "T01", "T02"}, "ADD did not extend the established set"
+
+
+def test_rotation_preserves_core_at_the_vendor(monkeypatch):
+    """THE DECISIVE CONTROL. Drive the real reconciler; read the real vendor set.
+
+    A rotation that SUBBed the incoming cohort would leave the vendor holding only the cohort,
+    with continuous core silently gone.
+    """
+    ofs = _wire_real_helpers(monkeypatch)
+    v = _VendorState()
+
+    _plan_real(monkeypatch, ofs, ["SPY", "T01"])
+    asyncio.run(ofs._apply_options_slice(v, 0.0, "stream_start"))
+    assert v.lvl == {"SPY", "T01"} and v.book == {"SPY", "T01"}, "establishment failed"
+
+    _plan_real(monkeypatch, ofs, ["SPY", "T02"])         # rotate T01 -> T02, keep core SPY
+    asyncio.run(ofs._apply_options_slice(v, 900.0, "rotation"))
+    assert v.lvl == {"SPY", "T02"}, (
+        f"LEVELONE_OPTIONS vendor set is {sorted(v.lvl)} after rotation — core SPY was dropped "
+        f"or the cohort replaced everything")
+    assert v.book == {"SPY", "T02"}, f"OPTIONS_BOOK vendor set wrong: {sorted(v.book)}"
+
+
+def test_the_first_subscribe_uses_subs_and_later_additions_use_add(monkeypatch):
+    """The operation must be SUBS to establish an empty service, ADD to extend it."""
+    ofs = _wire_real_helpers(monkeypatch)
+    v = _VendorState()
+
+    _plan_real(monkeypatch, ofs, ["SPY", "T01"])
+    asyncio.run(ofs._apply_options_slice(v, 0.0, "stream_start"))
+    establish = [o for o in v.ops if o[0] == "LEVELONE_OPTIONS"]
+    assert establish and establish[0][1] == "SUBS", (
+        f"the first subscription was not a SUBS: {establish[:2]}")
+
+    v.ops.clear()
+    _plan_real(monkeypatch, ofs, ["SPY", "T02"])
+    asyncio.run(ofs._apply_options_slice(v, 900.0, "rotation"))
+    adds = [o for o in v.ops if o[0] == "LEVELONE_OPTIONS" and o[1] == "ADD"]
+    subs = [o for o in v.ops if o[0] == "LEVELONE_OPTIONS" and o[1] == "SUBS"]
+    assert adds and not subs, (
+        f"a rotation that already holds core issued SUBS again: adds={adds} subs={subs}")
+
+
+def test_a_service_re_establishes_with_subs_after_it_empties(monkeypatch):
+    """If a service was fully unsubscribed, the next add must SUBS (its set is empty), not ADD."""
+    ofs = _wire_real_helpers(monkeypatch)
+    v = _VendorState()
+
+    _plan_real(monkeypatch, ofs, ["T01"])
+    asyncio.run(ofs._apply_options_slice(v, 0.0, "stream_start"))
+    v.ops.clear()
+    # T01 rotates entirely out and nothing replaces it this slice, emptying the service...
+    _plan_real(monkeypatch, ofs, [])
+    asyncio.run(ofs._apply_options_slice(v, 900.0, "rotation"))
+    assert not ofs._options_subscribed["LEVELONE_OPTIONS"], "service did not empty"
+    v.ops.clear()
+    # ...then a later slice brings a name back: it must SUBS to re-establish.
+    _plan_real(monkeypatch, ofs, ["T09"])
+    asyncio.run(ofs._apply_options_slice(v, 1800.0, "rotation"))
+    lvl_ops = [o for o in v.ops if o[0] == "LEVELONE_OPTIONS"]
+    assert lvl_ops and lvl_ops[0][1] == "SUBS", (
+        f"re-establishing an empty service did not SUBS: {lvl_ops}")
+    assert v.lvl == {"T09"}
+
+
+# ── the roster must fail explicit, not open ─────────────────────────────────────────────────
+
+def test_roster_failure_produces_no_symbols_not_a_fresh_chain_fallback(monkeypatch):
+    """A failed roster read must NOT fall back to the nondeterministic fresh-chain universe."""
+    import order_flow_streaming as ofs
+
+    class _Fail:
+        def logging_universe_authoritative_tickers(self):
+            raise RuntimeError("db locked")
+
+    monkeypatch.setattr("db.get_db", lambda: _Fail(), raising=False)
+    monkeypatch.setattr(ofs, "_subscribed_equity_syms", ["SPY"], raising=False)
+    plan = ofs.options_desired_for_slice(1_787_000_000.0, equity_symbols=1)
+    assert plan["roster_ok"] is False, "a failed roster read was not flagged"
+    assert plan["symbols"] == [], (
+        "a failed roster read still produced a symbol plan — it fell back to the fresh-chain "
+        "universe this fix proved reshuffles cohorts")
+    assert any("roster unavailable" in n for n in plan["notes"])
+
+
+def test_empty_roster_is_treated_as_failure_not_an_empty_universe(monkeypatch):
+    import order_flow_streaming as ofs
+
+    class _Empty:
+        def logging_universe_authoritative_tickers(self):
+            return []
+
+    monkeypatch.setattr("db.get_db", lambda: _Empty(), raising=False)
+    monkeypatch.setattr(ofs, "_subscribed_equity_syms", ["SPY"], raising=False)
+    plan = ofs.options_desired_for_slice(1_787_000_000.0, equity_symbols=1)
+    assert plan["roster_ok"] is False and plan["symbols"] == []
+
+
+def test_roster_failure_holds_the_subscription_unchanged(monkeypatch):
+    """THE SAFETY PROPERTY. A transient DB hiccup must not UNSUB continuous core."""
+    ofs = _wire_real_helpers(monkeypatch)
+
+    class _Fail:
+        def logging_universe_authoritative_tickers(self):
+            raise RuntimeError("db locked")
+
+    monkeypatch.setattr("db.get_db", lambda: _Fail(), raising=False)
+    ofs._options_subscribed = {"LEVELONE_OPTIONS": {"SPY", "T01"}, "OPTIONS_BOOK": {"SPY"}}
+    v = _VendorState()
+    v.lvl, v.book = {"SPY", "T01"}, {"SPY"}
+    before = ({k: set(x) for k, x in ofs._options_subscribed.items()}, set(v.lvl), set(v.book))
+    res = asyncio.run(ofs._apply_options_slice(v, 1_787_000_000.0, "rotation"))
+    after = ({k: set(x) for k, x in ofs._options_subscribed.items()}, set(v.lvl), set(v.book))
+    assert res.get("roster_ok") is False
+    assert before == after, "a roster failure disturbed the live subscription"
+    assert not v.ops, f"the reconciler issued vendor calls on a roster failure: {v.ops}"
+
+
 # ── the reconciler ──────────────────────────────────────────────────────────────────────────
 
 class _Recorder:
