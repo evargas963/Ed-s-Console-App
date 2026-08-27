@@ -212,6 +212,25 @@ def _last_stream_liveness_ms(conn: sqlite3.Connection) -> int | None:
     return best
 
 
+def last_capture_liveness_ms(db_path: Path | str) -> int | None:
+    """The last instant the capture PROCESS was proven alive, read from the capture db.
+
+    Public wrapper over `_last_stream_liveness_ms` so a teardown (a watchdog recycle, or a clean
+    shutdown) can end open epochs at the last PROVEN observability rather than at a bare `now`. On a
+    recycle the socket has been dead ~90s, so closing at `now` would fold that dead-socket window
+    into coverage — the same "silence as observation" error `reconcile_open_epochs_on_start` avoids.
+    Returns None when the db is absent or holds no frames yet.
+    """
+    try:
+        conn = sqlite3.connect(f"file:{coverage_db_path(db_path)}?mode=ro", uri=True, timeout=30.0)
+    except sqlite3.Error:
+        return None
+    try:
+        return _last_stream_liveness_ms(conn)
+    finally:
+        conn.close()
+
+
 def reconcile_open_epochs_on_start(db_path: Path | str, *, services: Iterable[str],
                                    at_ms: int | None = None,
                                    reason: str = "startup_reconcile_unclean_exit") -> dict[str, int]:
@@ -251,10 +270,10 @@ def reconcile_open_epochs_on_start(db_path: Path | str, *, services: Iterable[st
                 continue
             for eid, symbol, started_ms in open_rows:
                 ended = liveness if liveness is not None else int(started_ms)
-                if ended < int(started_ms):
-                    ended = int(started_ms)
-                if ended > cap:
-                    ended = cap
+                # Clamp cap FIRST, then floor to started, so ended is ALWAYS in [started, cap] and
+                # can never fall below started even if a caller passes at_ms < started (floor last).
+                ended = min(ended, cap)
+                ended = max(ended, int(started_ms))
                 try:
                     conn.execute(
                         "UPDATE options_stream_coverage_epochs SET ended_ms = ?, reason = ? "

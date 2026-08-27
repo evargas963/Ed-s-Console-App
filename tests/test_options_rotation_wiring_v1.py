@@ -1119,23 +1119,39 @@ def test_an_empty_initial_collection_tears_down_cleanly(monkeypatch):
     assert not any(ofs._vendor_held.values()) and not any(ofs._coverage_open.values())
 
 
-def test_teardown_closes_epochs_only_for_what_each_service_held(monkeypatch):
+def test_teardown_closes_epochs_only_for_what_each_service_held(tmp_path, monkeypatch):
     """A shutdown must not write an end for an epoch that was never opened. Teardown closes the
-    DURABLE coverage record (_coverage_open), per service."""
-    ofs, rec = _wire(monkeypatch, _Recorder())
+    DURABLE record by reading the db (reconcile), so it closes exactly the open epochs — an
+    OPTIONS_BOOK epoch for B (which BOOK never held) cannot appear."""
+    import sqlite3
+
+    import options_stream_collect as ofs
+    import stream_spine
+    from calibration.options_stream_coverage import open_epochs
+
+    db = tmp_path / "stream_capture.db"
+    open_epochs(db, ["A", "B"], service="LEVELONE_OPTIONS", at_ms=1_000)
+    open_epochs(db, ["A"], service="OPTIONS_BOOK", at_ms=1_000)
+    monkeypatch.setattr(stream_spine, "STREAM_DB_DEFAULT", db, raising=False)
+    monkeypatch.setattr(ofs.time, "time", lambda: 2.0)
     monkeypatch.setattr(ofs, "_coverage_open",
                         {"LEVELONE_OPTIONS": {"A", "B"}, "OPTIONS_BOOK": {"A"}}, raising=False)
-    monkeypatch.setattr(ofs, "_vendor_held",
-                        {"LEVELONE_OPTIONS": {"A", "B"}, "OPTIONS_BOOK": {"A"}}, raising=False)
-    monkeypatch.setattr(ofs, "_options_offered", 0, raising=False)
-    monkeypatch.setattr(ofs, "_options_written", 0, raising=False)
+    monkeypatch.setattr(ofs, "_vendor_held", {s: set() for s in ofs.OPTIONS_SERVICES}, raising=False)
+    monkeypatch.setattr(ofs, "_coverage_close_owed", {s: {} for s in ofs.OPTIONS_SERVICES}, raising=False)
     monkeypatch.setattr(ofs, "_options_rotation_task", None, raising=False)
     asyncio.run(ofs.stop_options_collection("stream_stop"))
-    closed = {(e[2], s) for e in rec.events if e[0] == "close_epochs" for s in e[1]}
+
+    conn = sqlite3.connect(str(db))
+    try:
+        rows = conn.execute("SELECT service, symbol, ended_ms FROM options_stream_coverage_epochs").fetchall()
+    finally:
+        conn.close()
+    closed = {(r[0], r[1]) for r in rows if r[2] is not None}
+    existing = {(r[0], r[1]) for r in rows}
     assert ("LEVELONE_OPTIONS", "A") in closed and ("LEVELONE_OPTIONS", "B") in closed
     assert ("OPTIONS_BOOK", "A") in closed
-    assert ("OPTIONS_BOOK", "B") not in closed, (
-        "teardown closed an OPTIONS_BOOK epoch for B, which that service never held")
+    assert ("OPTIONS_BOOK", "B") not in existing, (
+        "an OPTIONS_BOOK epoch for B exists, which that service never held")
 
 
 # ── the wiring itself ───────────────────────────────────────────────────────────────────────

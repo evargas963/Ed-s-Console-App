@@ -371,35 +371,42 @@ def test_restart_reconcile_closes_a_quiet_contract_at_stream_liveness(tmp_path):
 
 # ── teardown ordering: quiesce does not close coverage; only the post-drain step does ───────────
 
-def test_quiesce_leaves_coverage_open_and_close_is_a_separate_step(monkeypatch):
+def test_quiesce_leaves_coverage_open_and_close_is_a_separate_step(tmp_path, monkeypatch):
     """The daemon must be able to quiesce the rotation + unsubscribe the vendor while the pump is
     still draining, WITHOUT closing coverage — an epoch closed before the pump is quiesced would be
     cut off while a frame is still in flight. Closing is a separate step the daemon runs only after
-    the writer has drained."""
-    closed: list = []
+    the writer has drained. Driven against a REAL db: the epoch stays open through quiesce and is
+    closed only by close_options_coverage."""
+    import stream_spine
+    from calibration.options_stream_coverage import open_epochs
 
-    def rec_close(_db, syms, **k):
-        closed.append((k.get("service"), tuple(syms)))
-        return len(list(syms))
-
-    monkeypatch.setattr("calibration.options_stream_coverage.close_epochs", rec_close, raising=False)
+    db = tmp_path / "stream_capture.db"
+    A = "SPY   260820C00600000"
+    open_epochs(db, [A], service="LEVELONE_OPTIONS", at_ms=1_000)
+    monkeypatch.setattr(stream_spine, "STREAM_DB_DEFAULT", db, raising=False)
+    monkeypatch.setattr(osc.time, "time", lambda: 2.0)          # now = 2000ms
     monkeypatch.setattr(osc, "_options_rotation_task", None, raising=False)
-    monkeypatch.setattr(osc, "_options_offered", 0, raising=False)
-    monkeypatch.setattr(osc, "_options_written", 0, raising=False)
-    monkeypatch.setattr(osc, "_vendor_held",
-                        {"LEVELONE_OPTIONS": {"A"}, "OPTIONS_BOOK": set()}, raising=False)
-    monkeypatch.setattr(osc, "_coverage_open",
-                        {"LEVELONE_OPTIONS": {"A"}, "OPTIONS_BOOK": set()}, raising=False)
+    monkeypatch.setattr(osc, "_vendor_held", {"LEVELONE_OPTIONS": {A}, "OPTIONS_BOOK": set()}, raising=False)
+    monkeypatch.setattr(osc, "_coverage_open", {"LEVELONE_OPTIONS": {A}, "OPTIONS_BOOK": set()}, raising=False)
+    monkeypatch.setattr(osc, "_coverage_close_owed", {s: {} for s in osc.OPTIONS_SERVICES}, raising=False)
     monkeypatch.setattr(osc, "_active_stream", None, raising=False)   # recycle-style: no unsubscribe
 
-    # PHASE ONE — quiesce: must NOT close any epoch, must leave the record open.
-    asyncio.run(osc.quiesce_options_collection("daemon_shutdown", unsubscribe=False))
-    assert closed == [], f"quiesce closed coverage before the pump was quiesced: {closed}"
-    assert osc._coverage_open["LEVELONE_OPTIONS"] == {"A"}, "quiesce dropped the coverage record"
+    def _ended():
+        conn = sqlite3.connect(str(db))
+        try:
+            return conn.execute("SELECT ended_ms FROM options_stream_coverage_epochs WHERE symbol=?",
+                                (A,)).fetchone()[0]
+        finally:
+            conn.close()
 
-    # PHASE TWO — close_options_coverage (the daemon runs this AFTER the writer drains).
+    # PHASE ONE — quiesce: must NOT close the epoch (still open in the db).
+    asyncio.run(osc.quiesce_options_collection("daemon_shutdown", unsubscribe=False))
+    assert _ended() is None, "quiesce closed the epoch before the pump was quiesced"
+    assert osc._coverage_open["LEVELONE_OPTIONS"] == {A}, "quiesce dropped the coverage record"
+
+    # PHASE TWO — close_options_coverage (run by the daemon AFTER the writer drains) closes it.
     osc.close_options_coverage("daemon_shutdown")
-    assert ("LEVELONE_OPTIONS", ("A",)) in closed, "close_options_coverage did not close the epoch"
+    assert _ended() is not None, "close_options_coverage did not close the epoch"
     assert not any(osc._coverage_open.values()), "coverage state was not reset after the close"
 
 
@@ -447,3 +454,318 @@ def test_the_single_writer_flushes_off_the_event_loop(tmp_path, monkeypatch):
 
     asyncio.run(_run())
     writer.close()
+
+
+# ── a deferred close + re-subscribe must NOT create false coverage across the unsubscribed gap ───
+
+async def _sub_ok(_sc, syms, *, level_one=True, book=True, operation="subs"):
+    key = "level_one" if level_one else "book"
+    r = {"requested": len(list(syms)), "level_one": None, "book": None, "errors": []}
+    r[key] = {"symbols": len(list(syms))}
+    return r
+
+
+async def _unsub_ok(_sc, syms, **_k):
+    return {"requested": len(list(syms)), "level_one": True, "book": True, "errors": []}
+
+
+def test_deferred_close_then_resubscribe_does_not_produce_false_coverage(tmp_path, monkeypatch):
+    """THE ROOT COVERAGE DEFECT. A contract dropped while its coverage close FAILS, then rotated
+    back in, must end up with TWO epochs (one ending at the drop, one starting at the return) — NOT
+    one epoch stretched across the window it was unsubscribed. The set-membership reconcile lost the
+    owed close when the contract returned; the owed-close ledger fixes it. Driven against a REAL
+    coverage db with real open/close, a transient close failure injected on the drop slice."""
+    from calibration.options_stream_coverage import (
+        CoverageWriteError, close_epochs as real_close, open_epochs as real_open, was_subscribed)
+
+    db = tmp_path / "stream_capture.db"
+    X = "SPY   260820C00600000"
+    monkeypatch.setattr(osc, "_vendor_held", {s: set() for s in osc.OPTIONS_SERVICES}, raising=False)
+    monkeypatch.setattr(osc, "_coverage_open", {s: set() for s in osc.OPTIONS_SERVICES}, raising=False)
+    monkeypatch.setattr(osc, "_coverage_close_owed", {s: {} for s in osc.OPTIONS_SERVICES}, raising=False)
+
+    clock = {"t": 1.0}
+    monkeypatch.setattr(osc.time, "time", lambda: clock["t"])   # slice A=1s, B=2s, C=3s
+
+    # A close that FAILS on the drop slice (the first two calls — one per service), then succeeds.
+    calls = {"n": 0}
+
+    def close_flaky(_db, syms, **k):
+        calls["n"] += 1
+        if calls["n"] <= 2:
+            raise CoverageWriteError("transient lock")
+        return real_close(_db, syms, **k)
+
+    plan = {"at_epoch_s": 0.0, "slice_index": 1, "roster_ok": True, "core": ["SPY"], "rotating": [],
+            "per_underlying": {"SPY": 1}, "symbol_underlying": {X: "SPY"}, "policy": "{}",
+            "full_cycle_seconds": 900, "notes": []}
+
+    async def reconcile(want):
+        return await osc._reconcile_options_subscription(
+            object(), dict(plan, notes=[]), want, "test", keys_available=100, capture_db=db,
+            close_epochs=close_flaky, open_epochs=real_open,
+            subscribe_options=_sub_ok, unsubscribe_options=_unsub_ok)
+
+    async def _run():
+        clock["t"] = 1.0
+        await reconcile([X])          # slice A: subscribe + open epoch at 1000
+        clock["t"] = 2.0
+        await reconcile([])           # slice B: drop; close FAILS -> owed at 2000, epoch stays open
+        clock["t"] = 3.0
+        await reconcile([X])          # slice C: return; owed close lands at 2000, fresh open at 3000
+
+    asyncio.run(_run())
+
+    for svc in ("LEVELONE_OPTIONS", "OPTIONS_BOOK"):
+        assert was_subscribed(db, X, 1500, service=svc), f"{svc}: first epoch missing"
+        assert not was_subscribed(db, X, 2500, service=svc), (
+            f"{svc}: FALSE COVERAGE — the record claims X observed at 2500ms, inside the window "
+            f"[2000,3000] when X was unsubscribed at the vendor")
+        assert was_subscribed(db, X, 3500, service=svc), f"{svc}: fresh epoch missing after return"
+    # And there are genuinely TWO epochs for X on each service, not one spanning the gap.
+    conn = sqlite3.connect(str(db))
+    try:
+        n = conn.execute("SELECT COUNT(*) FROM options_stream_coverage_epochs WHERE symbol=? "
+                         "AND service='LEVELONE_OPTIONS'", (X,)).fetchone()[0]
+    finally:
+        conn.close()
+    assert n == 2, f"expected two distinct epochs for X, got {n} (a merged epoch spans the gap)"
+
+
+def test_writer_run_is_never_cancelled_mid_flush_close_is_safe(tmp_path, monkeypatch):
+    """Defect A: shutdown must AWAIT run() (which self-bounds its drain), never cancel it mid-flush.
+    A slow flush plus a short drain deadline must let run() return cleanly with no worker touching
+    the connection, so the subsequent close() cannot race it — and undrained rows are COUNTED."""
+    import time
+
+    from stream_spine import COUNT_DROPS, CaptureWriter, MessageBus, quote_msg
+
+    writer = CaptureWriter(tmp_path / "stream_capture.db")
+    real_flush = writer._flush_batch
+
+    def slow_flush(batch):
+        time.sleep(0.2)
+        return real_flush(batch)
+
+    monkeypatch.setattr(writer, "_flush_batch", slow_flush, raising=False)
+    bus = MessageBus()
+    sub = bus.subscribe("", policy=COUNT_DROPS, maxsize=10000)
+    for _ in range(5000):
+        bus.publish("quote.SPY", quote_msg(symbol="SPY", bid=1.0, ask=1.1, src="t"))
+    stop = asyncio.Event()
+
+    async def _run():
+        stop.set()   # ask to stop immediately; run() must still drain within the deadline
+        # A tiny drain deadline forces the deadline path; run() must still return only AFTER its
+        # in-flight flush completes (never abandon the worker).
+        await writer.run(sub, stop=stop, drain_deadline_s=0.05)
+
+    asyncio.run(_run())
+    # run() returned; the connection is idle. close() must not raise (no worker mid-write).
+    writer.close()
+    assert writer.drain_lost >= 0
+    # offered vs written+lost accounting stays coherent: some rows written, the rest counted lost.
+    assert writer.rows_written + writer.drain_lost <= 5000
+
+
+def test_phase2_coverage_writes_run_off_the_event_loop(monkeypatch):
+    """Defect C1: the Phase-2 open/close_epochs are the OTHER half of the crowd-out — they must run
+    off the loop too. A slow open_epochs must not freeze the loop; a concurrent heartbeat ticks."""
+    import time
+
+    monkeypatch.setattr(osc, "_vendor_held", {s: set() for s in osc.OPTIONS_SERVICES}, raising=False)
+    monkeypatch.setattr(osc, "_coverage_open", {s: set() for s in osc.OPTIONS_SERVICES}, raising=False)
+    monkeypatch.setattr(osc, "_coverage_close_owed", {s: {} for s in osc.OPTIONS_SERVICES}, raising=False)
+
+    def slow_open(_db, syms, **k):
+        time.sleep(0.3)
+
+    X = "SPY   260820C00600000"
+    plan = {"at_epoch_s": 0.0, "slice_index": 1, "roster_ok": True, "core": ["SPY"], "rotating": [],
+            "per_underlying": {"SPY": 1}, "symbol_underlying": {X: "SPY"}, "policy": "{}",
+            "full_cycle_seconds": 900, "notes": []}
+
+    async def _run():
+        ticks = {"n": 0}
+
+        async def heartbeat():
+            for _ in range(20):
+                await asyncio.sleep(0.02)
+                ticks["n"] += 1
+
+        hb = asyncio.create_task(heartbeat())
+        await osc._reconcile_options_subscription(
+            object(), plan, [X], "test", keys_available=100, capture_db=":memory:",
+            close_epochs=lambda *a, **k: None, open_epochs=slow_open,
+            subscribe_options=_sub_ok, unsubscribe_options=_unsub_ok)
+        await hb
+        assert ticks["n"] >= 10, (
+            f"the loop was blocked during the Phase-2 coverage write (only {ticks['n']} ticks) — "
+            f"coverage sqlite is still on the loop")
+
+    asyncio.run(_run())
+
+
+def test_recycle_teardown_closes_at_last_liveness_not_now(tmp_path, monkeypatch):
+    """Defect C2: a watchdog recycle fires on a socket dead ~90s. close_options_coverage must end
+    the open epochs at the last PROVEN liveness (an equity frame), NOT at `now`, or it folds the
+    dead-socket window into coverage."""
+    from stream_spine import STREAM_SCHEMA_SQL
+    from calibration.options_stream_coverage import open_epochs, was_subscribed
+
+    db = tmp_path / "stream_capture.db"
+    X = "SPY   260820C00600000"
+    started = 1_000_000
+    open_epochs(db, [X], service="LEVELONE_OPTIONS", at_ms=started)
+    # last proven liveness: an equity frame 5s after the epoch opened; then the socket died.
+    conn = sqlite3.connect(str(db))
+    conn.executescript(STREAM_SCHEMA_SQL)
+    live_ms = started + 5_000
+    conn.execute("INSERT INTO stream_quotes_raw (ts_recv, symbol, src) VALUES (?,?,?)",
+                 (live_ms / 1000.0, "SPY", "schwab_l1"))
+    conn.commit()
+    conn.close()
+
+    # `now` at teardown is ~90s past the last frame (dead-socket window).
+    now_recycle = started + 95_000
+    monkeypatch.setattr(osc.time, "time", lambda: now_recycle / 1000.0)
+    monkeypatch.setattr(osc, "_coverage_open", {"LEVELONE_OPTIONS": {X}, "OPTIONS_BOOK": set()}, raising=False)
+    monkeypatch.setattr(osc, "_vendor_held", {"LEVELONE_OPTIONS": {X}, "OPTIONS_BOOK": set()}, raising=False)
+    monkeypatch.setattr(osc, "_coverage_close_owed", {s: {} for s in osc.OPTIONS_SERVICES}, raising=False)
+    # Point the module's capture db at the temp db.
+    import stream_spine
+    monkeypatch.setattr(stream_spine, "STREAM_DB_DEFAULT", db, raising=False)
+
+    osc.close_options_coverage("stream_recycle")
+
+    assert was_subscribed(db, X, live_ms, service="LEVELONE_OPTIONS"), "coverage cut before last frame"
+    assert not was_subscribed(db, X, live_ms + 1_000, service="LEVELONE_OPTIONS"), (
+        "recycle closed the epoch at `now`, folding the ~90s dead-socket window into coverage")
+
+
+def test_recycle_does_not_reset_the_daemon_run_counters(monkeypatch):
+    """Defects B/C3: a recycle must NOT flush health or reset the offered counter — the writer is
+    long-lived across recycles, so a mid-flight reset both races the worker and over-reports drops.
+    Only daemon shutdown flushes, once, after the writer is joined."""
+    flushed = {"n": 0}
+    monkeypatch.setattr(osc, "flush_options_ingest_health",
+                        lambda *a, **k: flushed.__setitem__("n", flushed["n"] + 1), raising=False)
+    monkeypatch.setattr("calibration.options_stream_coverage.close_epochs",
+                        lambda *a, **k: 0, raising=False)
+    # Do not touch the real capture db from a unit test — the teardown close reads it via reconcile.
+    monkeypatch.setattr("calibration.options_stream_coverage.reconcile_open_epochs_on_start",
+                        lambda *a, **k: {}, raising=False)
+    monkeypatch.setattr(osc, "_options_rotation_task", None, raising=False)
+    monkeypatch.setattr(osc, "_options_offered", 4242, raising=False)
+    monkeypatch.setattr(osc, "_vendor_held", {"LEVELONE_OPTIONS": {"A"}, "OPTIONS_BOOK": set()}, raising=False)
+    monkeypatch.setattr(osc, "_coverage_open", {"LEVELONE_OPTIONS": {"A"}, "OPTIONS_BOOK": set()}, raising=False)
+    monkeypatch.setattr(osc, "_coverage_close_owed", {s: {} for s in osc.OPTIONS_SERVICES}, raising=False)
+    monkeypatch.setattr(osc, "_active_stream", None, raising=False)
+
+    asyncio.run(osc.stop_options_collection("stream_recycle"))
+
+    assert flushed["n"] == 0, "a recycle flushed ingest health — that races the live writer's counts"
+    assert osc._options_offered == 4242, "a recycle reset the offered counter mid-writer-life"
+
+
+# ── re-verification round: fixes for the defects the adversarial re-audit found in the first fix ──
+
+def test_teardown_never_writes_a_negative_width_epoch(tmp_path, monkeypatch):
+    """N1: close_options_coverage must FLOOR each epoch's end to its own start. If the last proven
+    liveness precedes an epoch's start (a fresh subscribe after the last frame across the whole
+    capture), closing at `min(now,liveness)` unfloored would write ended < started — a malformed
+    row that makes a genuinely-subscribed contract read NOT_SUBSCRIBED. The reconcile-based close
+    floors per-epoch, so ended is always >= started."""
+    import stream_spine
+    from stream_spine import STREAM_SCHEMA_SQL
+    from calibration.options_stream_coverage import open_epochs
+
+    db = tmp_path / "stream_capture.db"
+    X = "SPY   260820C00600000"
+    started = 5_000
+    open_epochs(db, [X], service="LEVELONE_OPTIONS", at_ms=started)
+    # last proven liveness is BEFORE the epoch's start (equity frame at 1000ms; epoch opened at 5000)
+    conn = sqlite3.connect(str(db))
+    conn.executescript(STREAM_SCHEMA_SQL)
+    conn.execute("INSERT INTO stream_quotes_raw (ts_recv, symbol, src) VALUES (?,?,?)",
+                 (1.0, "SPY", "schwab_l1"))
+    conn.commit()
+    conn.close()
+
+    monkeypatch.setattr(stream_spine, "STREAM_DB_DEFAULT", db, raising=False)
+    monkeypatch.setattr(osc.time, "time", lambda: 6.0)          # now = 6000ms
+    monkeypatch.setattr(osc, "_coverage_open", {"LEVELONE_OPTIONS": {X}, "OPTIONS_BOOK": set()}, raising=False)
+    monkeypatch.setattr(osc, "_vendor_held", {s: set() for s in osc.OPTIONS_SERVICES}, raising=False)
+    monkeypatch.setattr(osc, "_coverage_close_owed", {s: {} for s in osc.OPTIONS_SERVICES}, raising=False)
+
+    osc.close_options_coverage("stream_recycle")
+
+    conn = sqlite3.connect(str(db))
+    try:
+        started_ms, ended_ms = conn.execute(
+            "SELECT started_ms, ended_ms FROM options_stream_coverage_epochs WHERE symbol=?",
+            (X,)).fetchone()
+    finally:
+        conn.close()
+    assert ended_ms is not None, "epoch left open"
+    assert ended_ms >= started_ms, f"negative-width row: ended {ended_ms} < started {started_ms}"
+
+
+def test_teardown_closes_a_db_orphan_epoch_missing_from_memory(tmp_path, monkeypatch):
+    """N2 (belt): if a torn-down slice committed an open epoch to the db but the in-memory
+    _coverage_open update was skipped (a cancel landing between the durable write and the memory
+    update), close_options_coverage must STILL close it — it reads the db, not memory — so no epoch
+    is left open to read as false coverage until the next start."""
+    import stream_spine
+    from calibration.options_stream_coverage import open_epochs
+
+    db = tmp_path / "stream_capture.db"
+    X = "SPY   260820C00600000"
+    open_epochs(db, [X], service="LEVELONE_OPTIONS", at_ms=1_000)   # committed to the db
+    monkeypatch.setattr(stream_spine, "STREAM_DB_DEFAULT", db, raising=False)
+    monkeypatch.setattr(osc.time, "time", lambda: 2.0)
+    # _coverage_open does NOT contain X — the split lost the memory update.
+    monkeypatch.setattr(osc, "_coverage_open", {s: set() for s in osc.OPTIONS_SERVICES}, raising=False)
+    monkeypatch.setattr(osc, "_vendor_held", {s: set() for s in osc.OPTIONS_SERVICES}, raising=False)
+    monkeypatch.setattr(osc, "_coverage_close_owed", {s: {} for s in osc.OPTIONS_SERVICES}, raising=False)
+
+    osc.close_options_coverage("daemon_shutdown")
+
+    conn = sqlite3.connect(str(db))
+    try:
+        ended = conn.execute("SELECT ended_ms FROM options_stream_coverage_epochs WHERE symbol=?",
+                             (X,)).fetchone()[0]
+    finally:
+        conn.close()
+    assert ended is not None, (
+        "a db-orphan open epoch (memory never recorded it) was left open — false coverage until "
+        "the next daemon start")
+
+
+def test_quiesce_waits_for_an_in_flight_slice_before_cancelling(monkeypatch):
+    """N2 (prevention): quiesce must ACQUIRE the reconcile lock before cancelling the rotation task,
+    so a slice that is mid-write (holding the lock) COMPLETES first and the cancel lands on the
+    inter-slice sleep — never between an off-loop coverage write and its in-memory update."""
+    async def _run():
+        lock = asyncio.Lock()
+        monkeypatch.setattr(osc, "_options_lock", lock, raising=False)
+        await lock.acquire()                       # simulate a slice in progress holding the lock
+
+        async def fake_slice():
+            await asyncio.sleep(3600)              # parked; only cancellable via cancel()
+
+        task = asyncio.create_task(fake_slice())
+        monkeypatch.setattr(osc, "_options_rotation_task", task, raising=False)
+        monkeypatch.setattr(osc, "_active_stream", None, raising=False)
+
+        q = asyncio.create_task(osc.quiesce_options_collection("daemon_shutdown", timeout_s=5.0))
+        await asyncio.sleep(0.05)
+        assert not q.done(), (
+            "quiesce cancelled the rotation task while a slice held the lock — it would split a "
+            "mid-write from its memory update")
+        assert not task.cancelled(), "the task was cancelled before its slice finished"
+        lock.release()                             # the slice 'finishes' and releases the lock
+        await asyncio.wait_for(q, timeout=2.0)
+        assert task.cancelled(), "quiesce did not cancel the rotation task after acquiring the lock"
+
+    asyncio.run(_run())

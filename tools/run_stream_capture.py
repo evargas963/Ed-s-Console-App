@@ -414,8 +414,11 @@ async def _shutdown_sequence(pump_task, writer_task, stop, wsub,
     1) Quiesce the PRODUCER first — after this await nothing can publish, so the
        writer's drain sees a queue that only shrinks (closes the in-flight
        pump→bus→queue loss window).
-    2) THEN stop the writer with drain time sized to worst-case depth (8192 rows is
-       seconds; 60s is generous) — and a timeout is REPORTED as loss, never silent.
+    2) THEN stop the writer and AWAIT it to completion — never cancel it. `CaptureWriter.run`
+       self-bounds its drain (drain_deadline_s) and always finishes the flush it started, so it
+       returns with NO worker thread touching the connection; cancelling it with a timeout would
+       instead leave a to_thread worker mid-write and race the subsequent close() on the same
+       sqlite handle. Undrained rows past the deadline are counted (writer.drain_lost), not hidden.
     """
     # ALL producers quiesce together — the Alpaca leg is a producer exactly like the
     # Schwab pump, so it must be dead before the writer drain starts (same law).
@@ -430,10 +433,7 @@ async def _shutdown_sequence(pump_task, writer_task, stop, wsub,
             print(f"shutdown: producer ended with {type(exc).__name__}: {exc}")
     stop.set()
     try:
-        await asyncio.wait_for(writer_task, timeout=60)
-    except asyncio.TimeoutError:
-        print(f"shutdown: WRITER DRAIN TIMED OUT — up to {wsub.queue.qsize()} "
-              "queued rows may be lost (counted, not hidden)")
+        await writer_task
     except Exception as exc:  # noqa: BLE001
         print(f"shutdown: writer ended with {type(exc).__name__}: {exc}")
 
@@ -458,10 +458,13 @@ async def _run_locked(symbols: list[str], duration_min: float, db_path: str | No
     # persister — never a second connection to stream_capture.db (the "competing writers" defect).
     # Additive and soft: a persister that will not import must not stop equity capture.
     try:
-        from options_stream_collect import make_capture_topic_writer
+        from options_stream_collect import make_capture_topic_writer, reset_options_ingest_counters
         _opt_persist = make_capture_topic_writer()
         writer.register_topic_writer("optionchain", _opt_persist)
         writer.register_topic_writer("optionbook", _opt_persist)
+        # Reset the drop-accounting window ONCE for the whole daemon run (not per watchdog recycle),
+        # so `offered` and the writer's cumulative option_rows describe the same interval.
+        reset_options_ingest_counters()
     except Exception as exc:  # noqa: BLE001 — options persistence is additive
         print(f"options persister not registered (equity capture unaffected): "
               f"{type(exc).__name__}: {exc}")
@@ -572,9 +575,29 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
         except Exception as exc:  # noqa: BLE001
             print(f"options quiesce: {type(exc).__name__}: {exc}")
         # Quiesce the pump (no more frames can arrive) and DRAIN the writer (persist in-flight
-        # option frames) BEFORE closing coverage.
-        await _shutdown_sequence(pump_task, writer_task, stop, wsub,
-                                 extra_producers=(alpaca_task,))
+        # option frames) BEFORE closing coverage. Guarded so a failure here still runs the coverage
+        # close and the writer close below (an epoch left open self-heals at the next start's
+        # reconcile, but the writer handle must not leak).
+        try:
+            await _shutdown_sequence(pump_task, writer_task, stop, wsub,
+                                     extra_producers=(alpaca_task,))
+        except Exception as exc:  # noqa: BLE001
+            print(f"shutdown sequence: {type(exc).__name__}: {exc}")
+        if getattr(writer, "drain_lost", 0):
+            print(f"shutdown: WRITER DRAIN DEADLINE — {writer.drain_lost} queued rows lost "
+                  "(counted, not hidden)")
+        # Flush the options drop-accounting ONCE, now that the writer is JOINED: `offered` (loop
+        # counter) and the writer's own option_rows describe the whole daemon run, read with no
+        # worker thread live — no cross-thread counter, no mid-flight reset.
+        try:
+            from options_stream_collect import flush_options_ingest_health, options_ingest_window
+            _offered, _win_start = options_ingest_window()
+            if _offered or getattr(writer, "option_rows", 0):
+                flush_options_ingest_health(writer.db_path, offered=_offered,
+                                            written=getattr(writer, "option_rows", 0),
+                                            started_ms=_win_start)
+        except Exception as exc:  # noqa: BLE001
+            print(f"options health flush: {type(exc).__name__}: {exc}")
         try:
             # PHASE TWO, now that no option frame can arrive: close the coverage record. Ordered
             # after the drain so an epoch is never closed while an observation is still coming.

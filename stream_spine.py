@@ -202,8 +202,14 @@ class CaptureWriter:
         self.batch_rows = int(batch_rows)
         self.batch_sec = float(batch_sec)
         self.rows_written = 0
+        #: Rows written for REGISTERED topic kinds (e.g. options), tracked separately so the drop
+        #: accounting can be computed from the WRITER's own count at shutdown — after the writer is
+        #: joined — instead of a module-global counter mutated across the worker/loop boundary.
+        self.option_rows = 0
         self.commits = 0
         self.insert_errors = 0
+        #: Rows still queued when the drain deadline was hit at shutdown — a real, counted hole.
+        self.drain_lost = 0
         self._closed = False
         #: Extra per-topic writers, keyed by topic KIND (the token before the first '.').
         #: This is how a HIGHER layer (e.g. the capture daemon's options collector) persists its
@@ -245,7 +251,9 @@ class CaptureWriter:
         writer = self._topic_writers.get(kind)
         if writer is not None:
             # A registered topic writer returns its rows-written count; None means it wrote nothing.
-            self.rows_written += int(writer(self._conn, topic, msg) or 0)  # caps-ok: 0 is the TRUE row count for a writer that shaped no row (rejected frame), not a masked measurement
+            n = int(writer(self._conn, topic, msg) or 0)  # caps-ok: 0 is the TRUE row count for a writer that shaped no row (rejected frame), not a masked measurement
+            self.rows_written += n
+            self.option_rows += n
             return
         if kind == "quote":
             self._conn.execute(
@@ -298,11 +306,21 @@ class CaptureWriter:
             self._insert_guarded(topic, msg)
         self.commit()
 
-    async def run(self, sub: Subscription, *, stop: asyncio.Event) -> None:
+    async def run(self, sub: Subscription, *, stop: asyncio.Event,
+                  drain_deadline_s: float = 60.0) -> None:
         # ACCUMULATE on the loop (O(1) list append, no sqlite), FLUSH off the loop. The prior
         # version called insert()+commit() inline on the event loop, so every batch's disk work
         # blocked the pump — and adding option frames to the same writer made that stall bite
         # equity receive. Batches are built here and handed to a worker thread; the loop stays free.
+        #
+        # SHUTDOWN IS SELF-BOUNDED HERE, NOT CANCELLED FROM OUTSIDE. The caller MUST `await` this
+        # coroutine (never asyncio.wait_for it with a cancelling timeout): cancelling `run` while an
+        # `await asyncio.to_thread(self._flush_batch, ...)` is in flight leaves the WORKER THREAD
+        # executing on the connection, and a subsequent close()/commit() on the loop thread then
+        # races that worker on the same sqlite handle (ProgrammingError + rows lost after the counts
+        # were already reported). Instead, the drain below stops STARTING new flushes once
+        # drain_deadline_s has elapsed but always awaits the flush it started, so this returns only
+        # when no worker is touching the connection — making close() safe by construction.
         batch: list = []
         last_commit = time.monotonic()
         while not stop.is_set():
@@ -317,14 +335,28 @@ class CaptureWriter:
                 await asyncio.to_thread(self._flush_batch, batch)
                 batch = []
                 last_commit = time.monotonic()
-        # DRAIN on stop — Cursor review HIGH: stopping must not vaporize up to a full
-        # queue of buffered rows. Everything already delivered to the subscription is
-        # written and committed before the writer exits.
-        while not sub.queue.empty():
+        # DRAIN on stop — Cursor review HIGH: stopping must not vaporize up to a full queue of
+        # buffered rows. Everything already delivered is written and committed before the writer
+        # exits, bounded by drain_deadline_s so a pathological per-commit stall cannot hang shutdown.
+        drain_start = time.monotonic()
+        while not sub.queue.empty() and (time.monotonic() - drain_start) < drain_deadline_s:
             topic, msg = await sub.get()
             batch.append((topic, msg))
+            if len(batch) >= self.batch_rows:
+                await asyncio.to_thread(self._flush_batch, batch)
+                batch = []
         if batch:
             await asyncio.to_thread(self._flush_batch, batch)
+        # Whatever the deadline left undrained is a real, COUNTED hole — never silent.
+        remaining = 0
+        while not sub.queue.empty():
+            try:
+                sub.queue.get_nowait()
+                remaining += 1
+            except asyncio.QueueEmpty:
+                break
+        if remaining:
+            self.drain_lost += remaining
 
     def close(self) -> None:
         """Idempotent — the daemon closes in a finally that may run after an inner
