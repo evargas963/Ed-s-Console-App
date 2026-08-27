@@ -339,6 +339,106 @@ def test_a_service_re_establishes_with_subs_after_it_empties(monkeypatch):
     assert v.lvl == {"T09"}
 
 
+# ── actual vendor-held keys must never exceed the budget, even when unsubscribe fails ────────
+#
+# A Schwab key is one (service, symbol). If the vendor REFUSES to unsubscribe the old cohort,
+# those contracts stay live and keep their keys, but rotation still wants to ADD the new cohort.
+# Adding on top of undroppable contracts pushes |LEVELONE| + |BOOK| past the account limit and
+# takes the equity stream with it. The cap must be against ACTUAL post-drop held keys.
+
+def _key_vendor(refuse_unsub=False):
+    class V(_VendorState):
+        async def level_one_option_unsubs(self, syms):
+            self.ops.append(("LEVELONE_OPTIONS", "UNSUBS", tuple(syms)))
+            if refuse_unsub:
+                raise RuntimeError("unsub refused")
+            self.lvl -= set(syms)
+
+        async def options_book_unsubs(self, syms):
+            self.ops.append(("OPTIONS_BOOK", "UNSUBS", tuple(syms)))
+            if refuse_unsub:
+                raise RuntimeError("unsub refused")
+            self.book -= set(syms)
+    return V()
+
+
+def _reconcile(ofs, v, symbols, reason, keys_available):
+    import options_stream_subscription as sub
+
+    plan = {"at_epoch_s": 0.0, "roster_ok": True, "slice_index": 0, "slice_seconds": 900,
+            "core": ["SPY"], "rotating": [], "non_core_total": 1, "full_cycle_slices": 1,
+            "full_cycle_seconds": 900, "budget": {}, "split": {}, "symbols": list(symbols),
+            "per_underlying": {}, "notes": [], "policy": "p", "useful_depth_contracts": 32,
+            "rotating_depth_each": 0, "rotating_per_slice": 1}
+    return asyncio.run(ofs._reconcile_options_subscription(
+        v, plan, list(symbols), reason, keys_available=keys_available, capture_db=None,
+        close_epochs=lambda *a, **k: None, open_epochs=lambda *a, **k: None,
+        subscribe_options=sub.subscribe_options, unsubscribe_options=sub.unsubscribe_options))
+
+
+def test_a_failed_unsubscribe_cannot_push_vendor_keys_over_budget(monkeypatch):
+    """THE CAPACITY BUG. Undroppable old cohort + fresh ADD must stay under the key ceiling."""
+    ofs = _wire_real_helpers(monkeypatch)
+    KEYS = 20                                        # small ceiling: 10 contracts x 2 services
+    v = _key_vendor(refuse_unsub=True)
+
+    old = ["SPY"] + [f"OLD{i}" for i in range(9)]    # 10 contracts -> 20 keys, at the ceiling
+    _reconcile(ofs, v, old, "s0", KEYS)
+    assert len(v.lvl) + len(v.book) == KEYS, "the fixture did not fill the ceiling"
+
+    new = ["SPY"] + [f"NEW{i}" for i in range(9)]    # rotate all OLD out (refused), bring NEW in
+    _reconcile(ofs, v, new, "s1", KEYS)
+    held = len(v.lvl) + len(v.book)
+    assert held <= KEYS, (
+        f"vendor holds {held} keys against a ceiling of {KEYS} — a refused unsubscribe let "
+        f"rotation ADD on top of stranded contracts and blow the key budget")
+    assert "SPY" in v.lvl and "SPY" in v.book, "core was dropped while capping additions"
+
+
+def test_repeated_failed_rotations_never_exceed_budget(monkeypatch):
+    """Stranding must not accumulate past the ceiling over many failed slices."""
+    ofs = _wire_real_helpers(monkeypatch)
+    KEYS = 20
+    v = _key_vendor(refuse_unsub=True)
+    peak = 0
+    for sl in range(6):
+        cohort = ["SPY"] + [f"S{sl}_{i}" for i in range(9)]
+        _reconcile(ofs, v, cohort, f"s{sl}", KEYS)
+        peak = max(peak, len(v.lvl) + len(v.book))
+    assert peak <= KEYS, f"peak vendor keys {peak} exceeded the ceiling {KEYS} across failures"
+    assert "SPY" in v.lvl and "SPY" in v.book, "core lost across repeated failed rotations"
+
+
+def test_a_clean_rotation_still_fills_to_the_budget(monkeypatch):
+    """The cap must not starve a healthy rotation — full turnover fits when drops succeed."""
+    ofs = _wire_real_helpers(monkeypatch)
+    KEYS = 20
+    v = _key_vendor(refuse_unsub=False)
+    _reconcile(ofs, v, ["SPY"] + [f"OLD{i}" for i in range(9)], "s0", KEYS)
+    _reconcile(ofs, v, ["SPY"] + [f"NEW{i}" for i in range(9)], "s1", KEYS)
+    assert len(v.lvl) + len(v.book) == KEYS, "a clean rotation did not refill to the ceiling"
+    assert not any(k.startswith("OLD") for k in v.lvl), "the old cohort was not released"
+
+
+def test_a_partial_unsubscribe_failure_still_respects_the_key_budget(monkeypatch):
+    """One service refuses to drop; its stranded keys still count against the ceiling."""
+    ofs = _wire_real_helpers(monkeypatch)
+    KEYS = 20
+
+    class V(_VendorState):
+        async def options_book_unsubs(self, syms):   # BOOK refuses; LEVELONE drops cleanly
+            self.ops.append(("OPTIONS_BOOK", "UNSUBS", tuple(syms)))
+            raise RuntimeError("book unsub refused")
+
+    v = V()
+    _reconcile(ofs, v, ["SPY"] + [f"OLD{i}" for i in range(9)], "s0", KEYS)
+    _reconcile(ofs, v, ["SPY"] + [f"NEW{i}" for i in range(9)], "s1", KEYS)
+    held = len(v.lvl) + len(v.book)
+    assert held <= KEYS, (
+        f"vendor holds {held} keys; the refused BOOK service's stranded keys were not counted")
+    assert "SPY" in v.lvl and "SPY" in v.book, "core lost under a partial unsubscribe failure"
+
+
 # ── the roster must fail explicit, not open ─────────────────────────────────────────────────
 
 def test_roster_failure_produces_no_symbols_not_a_fresh_chain_fallback(monkeypatch):
@@ -753,7 +853,8 @@ def test_the_budget_is_re_derived_under_the_lock(wired, monkeypatch):
     _plan(monkeypatch, ofs, [f"S{i}" for i in range(50)])
     monkeypatch.setattr(ofs, "_stream_resubscribe_lock", None, raising=False)
     monkeypatch.setattr(sub, "contract_budget_from_key_limit",
-                        lambda **_k: {"contracts_allowed": 5}, raising=False)
+                        lambda **_k: {"contracts_allowed": 5,
+                                      "keys_available_for_options": 10}, raising=False)
     asyncio.run(ofs._apply_options_slice(object(), 0.0, "rotation"))
     subscribed = {s for e in rec.events if e[0] == "subscribe" for s in e[1]}  # distinct contracts
     assert len(subscribed) <= 5, (

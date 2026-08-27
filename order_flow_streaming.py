@@ -350,12 +350,12 @@ async def _apply_options_slice(sc: Any, at_epoch_s: float, reason: str) -> dict[
             want = want[:allowed]
 
         return await _reconcile_options_subscription(
-            sc, plan, want, reason,
+            sc, plan, want, reason, keys_available=int(fresh["keys_available_for_options"]),
             capture_db=_CAPTURE_DB, close_epochs=close_epochs, open_epochs=open_epochs,
             subscribe_options=subscribe_options, unsubscribe_options=unsubscribe_options)
 
 
-async def _reconcile_options_subscription(sc, plan, want, reason, *,
+async def _reconcile_options_subscription(sc, plan, want, reason, *, keys_available,
                                           capture_db, close_epochs, open_epochs,
                                           subscribe_options, unsubscribe_options
                                           ) -> dict[str, Any]:
@@ -404,9 +404,39 @@ async def _reconcile_options_subscription(sc, plan, want, reason, *,
                 log.warning("options %s: unsubscribe not acknowledged for %d contracts; "
                             "keeping them so their keys stay accounted for", service, len(held))
 
+    # ── KEY-BUDGET CAP, against ACTUAL post-drop vendor-held keys. ──
+    # A Schwab key is one (service, symbol). The invariant that protects the equity stream is
+    # |LEVELONE held| + |BOOK held| <= keys_available. The `want` list was pre-trimmed assuming a
+    # clean slate, but whatever is STILL HELD after the drop phase consumes keys — including
+    # contracts the vendor REFUSED to unsubscribe, which stay in _options_subscribed by design.
+    # Adding the full want on top of stranded contracts is how a failed unsubscribe pushes the
+    # account past the limit; MEASURED, an undroppable old cohort plus a fresh ADD exceeds 500.
+    # So additions are admitted one symbol at a time, cheapest-truth first, only while they fit,
+    # and want is CORE-FIRST so core is always funded before any rotating name.
+    held_keys = sum(len(_options_subscribed[svc]) for svc in OPTIONS_SERVICES)
+    projected = held_keys
+    affordable: set[str] = set()
+    for s in want:
+        cost = sum(1 for svc in OPTIONS_SERVICES if s not in _options_subscribed[svc])
+        if cost == 0:                       # already fully held: no new key, always kept
+            affordable.add(s)
+            continue
+        if projected + cost <= keys_available:
+            affordable.add(s)
+            projected += cost
+        # else: cannot afford this symbol's remaining service(s) — skip it this slice. A later
+        # symbol that is already half-held (cost 1) may still fit, so do not break.
+    if len(affordable) < len(want):
+        plan["notes"].append(
+            f"key budget: {held_keys}/{keys_available} keys already held (incl. undroppable "
+            f"contracts); admitted {len(affordable)}/{len(want)} wanted contracts to stay under "
+            f"the limit and protect the equity stream")
+        log.warning("options key budget: %d/%d held, admitting %d/%d wanted contracts",
+                    held_keys, keys_available, len(affordable), len(want))
+
     # ── ADD, per service. A service is subscribed only if its own receipt slot says so. ──
     for service, key in (("LEVELONE_OPTIONS", "level_one"), ("OPTIONS_BOOK", "book")):
-        missing = [s for s in want if s not in _options_subscribed[service]]
+        missing = [s for s in want if s in affordable and s not in _options_subscribed[service]]
         if not missing:
             continue
         # SUBS ESTABLISHES, ADD EXTENDS. A SUBS sends the whole key list and REPLACES the
