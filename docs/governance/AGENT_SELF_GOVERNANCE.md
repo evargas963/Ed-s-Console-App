@@ -1,4 +1,12 @@
-> **Classification:** Active Rule Source | **Scope:** Process alternation, sign-off contract, verification matrix.
+> **Classification: RETIRED (2026-08-27) — NON-AUTHORITATIVE, HISTORICAL RECORD.**
+> This document describes the pre-teardown two-agent operating model (Cursor implements / Claude
+> verifies, 7-artifact sign-off, and an "AGENTS.md § Active agent posture" section) that the
+> **2026-08-24 Architecture-A teardown REMOVED**: there are no standing AI roles, and the
+> agent-posture section it links no longer exists in AGENTS.md — the operator directs each session
+> in chat (see AGENTS.md "Operating model"). Retained only as history; it governs nothing.
+> Superseded by AGENTS.md + `governance/AGENT_OPERATING_PROCESS_V1.md`.
+>
+> **Original classification (obsolete):** Active Rule Source | Process alternation, sign-off contract, verification matrix.
 
 # Agent self-governance (Cursor + Claude)
 

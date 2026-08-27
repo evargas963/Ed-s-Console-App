@@ -1,6 +1,6 @@
 # Agent Operating Process v1 (RC-217)
 
-**Mechanical enforcer:** `tools/operating_process_lock.py` + `tools/process_lock_guard.py` (PreToolUse / pre-commit). This file is the checklist; `.py` BLOCKs.
+**Mechanical enforcer:** `tools/operating_process_lock.py` + `tools/process_lock_guard.py` (PreToolUse / pre-commit) + `tools/check_live_path_is_main.py` (RC-350, launch / pre-push / CI). This file is the checklist; `.py` BLOCKs.
 
 > **2026-08-24 Architecture A teardown.** The role, mission, GO-file and authority-rail
 > machinery this process once carried is REMOVED. The operator directs each session in
@@ -41,6 +41,31 @@
 
 - Quantitative / parity / live claims: **PROVEN** (same-turn command output) or **`[UNVERIFIED]`** — no third form (RC-53).
 
+## 6. LIVE-CHECKOUT INVARIANT (production is main-only; development is isolated)
+
+**Mechanical enforcer:** `tools/check_live_path_is_main.py` (RC-350; launch / pre-push / CI, fail-closed) + `tools/process_lock_guard.py` PreToolUse (prevention at the moment of the command). The canonical `EdWebConsole` checkout is **production only** — development never runs in it.
+
+1. **Production = main == origin/main, always.** The live desk runs branch `main` at HEAD exactly equal to `origin/main` — never a feature branch, never detached, never ahead (a private divergent lineage) or behind (stale code). Asserted at every launch / push / CI (emergency bypass `ED_LIVE_PATH_UNLOCKED=1` for a downed desk only — every use is a logged admission the invariant broke).
+2. **Development happens on the separate dev worktree** — one non-live development surface (`EdWebConsole-dev`, a linked git worktree), never in the production checkout.
+3. **One authorized AI writer at a time.** The dev surface is handed between agents serially; auditors are read-only. There is no per-vendor worktree assignment — the operator directs who writes each session (AGENTS.md operating model).
+4. **Assigned agents cannot change branches or app code in the production checkout.** The PreToolUse guard BLOCKs — at the moment of the command, not only at the next launch — any `git checkout` / `switch` / `branch` / `commit` / `merge` / `reset` / `rebase` / `cherry-pick` that TARGETS the production primary, and any Edit/Write of app code (`server.py`, `*.py`, `static/*.html|*.js`) inside it. Allowed on production: reads, `git fetch`, `git checkout main` (return-to-main), and the fast-forward update in (5). Dev worktrees are unconstrained.
+5. **Merge first, then fast-forward.** Feature work lands via PR to `main`; production then updates ONLY by `git merge --ff-only origin/main` (or `git pull --ff-only`). Production never carries a local commit, so the fast-forward is always clean.
+
+- **DONE when:** `check_live_path_is_main.py` PASSes in the production checkout (branch==main, HEAD==origin/main, no uncommitted app code); dev work is on the dev worktree; production received its change only by fast-forward after the PR merged.
+
+## 7. DEBT-CONVERGENCE LAW (fixable repo debt goes down, not sideways)
+
+**No new machinery** — measured with the EXISTING ledgers/checkers: the open + overdue counts from `tools/check_institutional_correctness.py` (`check_root_cause_log`, `check_open_item_cap`), the merge-time delta gate `tools/check_delta_adds_no_debt.py --base origin/main` (which already BLOCKs NEW/WORSENED enforced debt — the hard "no net new debt" floor), and `git log` on `governance/root_cause_log.md`. This is an operating discipline over those numbers; it adds no queue, ratio ledger, or reporting surface.
+
+- **Recording a newly discovered defect is always allowed and never counts as creating debt** — opening an honest RC row is how discovery is tracked (RC-65), the opposite of the failure mode.
+- **P0 / emergency correctness work is never delayed by the ratio.** Fix it now; the ratio governs only discretionary forward/expansion work.
+- **Discretionary expansion must retire real, pre-existing, FIXABLE engineering debt** in the same body of work. Floor = **2 debt items retired per 1 expansion unit**; normal target **3:1**; a dedicated rehab/cleanup pass targets **≥ 5:1**.
+- **What does NOT count as retired:** re-dating, postponing, moving, relabeling, or closing already-fixed stale paperwork. A retirement is a real fixable defect driven to root and proven fixed (or proven obsolete on the current tree). Bookkeeping reconciliation of stale records is legitimate and required, but it is counted SEPARATELY and never as engineering-debt retirement.
+- **Excluded from the burn denominator:** externally-blocked / data-accrual / operator-blocked rows (a `BLOCKED_ON_*` marker). They are honestly OPEN, not fixable-now — neither debt you must burn nor debt you retired.
+- **Objective: monotonic reduction of actual fixable repo debt** — never status manipulation.
+
+- **DONE when:** across the change, real fixable-debt retired ≥ the ratio for the expansion done, measured against the pre-change open/overdue baseline; stale-record reconciliations are reported separately from engineering-debt retirement.
+
 ---
 
 ## Quick commands
@@ -50,5 +75,6 @@
 | Measure | `.venv/Scripts/python.exe tools/operating_process_lock.py --measure` |
 | Pre-commit gate | `.venv/Scripts/python.exe tools/operating_process_lock.py --pre-commit` |
 | Commit check | `.venv/Scripts/python.exe tools/operating_process_lock.py --commit-check` |
+| Live-checkout lock | `.venv/Scripts/python.exe tools/check_live_path_is_main.py` (production must be branch main == origin/main) |
 
 No env kill-switch: `ED_PROCESS_LOCK_GUARD` cannot disable the hook (RC-450).
