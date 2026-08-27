@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import sys
 import time
+from datetime import date
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
@@ -68,8 +69,10 @@ def test_index_book_width_is_fixed_and_date_bounded_under_budget():
     # (else the downstream single-expiry slice would be empty and error); the auto path stays
     # near-term.
     far = "2027-12-17"
-    assert srv._chain_to_date_for("$SPX", far) == far
-    assert srv._chain_to_date_for("$SPX", None) != far
+    # RC-496: the faucet returns a datetime.date (the type schwab-py requires), not an ISO string.
+    assert srv._chain_to_date_for("$SPX", far) == date.fromisoformat(far)
+    assert type(srv._chain_to_date_for("$SPX", far)) is date
+    assert srv._chain_to_date_for("$SPX", None) != date.fromisoformat(far)
     # A near expiry inside the horizon does NOT shorten the bound (still the 45-day horizon).
     assert srv._chain_to_date_for("$SPX", "2020-01-01") == srv._chain_to_date_for("$SPX")
 
@@ -103,8 +106,9 @@ def test_far_selected_index_expiry_is_single_expiry_window_f2():
 
     far = "2027-12-17"
     # far pick: BOTH ends bound to the selected expiry -> one expiry, trivially under budget
-    assert srv._chain_to_date_for("$SPX", far) == far
-    assert srv._chain_from_date_for("$SPX", far) == far
+    # RC-496: faucets return datetime.date objects (not ISO strings) — what schwab-py wants.
+    assert srv._chain_to_date_for("$SPX", far) == date.fromisoformat(far)
+    assert srv._chain_from_date_for("$SPX", far) == date.fromisoformat(far)
     assert srv.INDEX_CHAIN_STRIKE_COUNT * 2 * 1 <= srv.SCHWAB_CHAIN_CONTRACT_BUDGET
     # auto path / no expiry: open near end (Schwab defaults to today), bounded far end (horizon)
     assert srv._chain_from_date_for("$SPX", None) is None
@@ -113,7 +117,34 @@ def test_far_selected_index_expiry_is_single_expiry_window_f2():
     assert srv._chain_from_date_for("$SPX", "2020-01-01") is None
     # equities never get a near bound; bare index root is protected too (F1 composition)
     assert srv._chain_from_date_for("NVDA", far) is None
-    assert srv._chain_from_date_for("SPX", far) == far
+    assert srv._chain_from_date_for("SPX", far) == date.fromisoformat(far)
+
+
+def test_chain_date_faucets_are_datetime_date_the_vendor_accepts_rc496():
+    """RC-496: the chain date faucets must hand schwab-py a datetime.date, not an ISO string —
+    proven against the REAL installed vendor validator (no network). schwab-py's
+    _format_date_as_day requires datetime.date and raises ValueError on a str, so the old
+    `.isoformat()` return crashed every $-index chain fetch at the vendor boundary. Covers BOTH
+    faucets and BOTH the auto (near-horizon) and explicit far-expiry paths."""
+    import server as srv
+    import pytest
+    from schwab.client.base import BaseClient
+
+    far = "2027-12-17"
+    auto_to = srv._chain_to_date_for("$SPX")            # auto path (near-horizon bound)
+    far_to = srv._chain_to_date_for("$SPX", far)        # explicit far expiry
+    far_from = srv._chain_from_date_for("$SPX", far)    # explicit far expiry, near edge
+    for val in (auto_to, far_to, far_from):
+        assert type(val) is date, f"faucet returned {type(val).__name__}, must be datetime.date"
+
+    vendor = object.__new__(BaseClient)   # skip __init__ -> no session/network, just the validator
+    # what get_option_chain calls on to_date/from_date accepts the faucet outputs:
+    assert BaseClient._format_date_as_day(vendor, "to_date", auto_to) == auto_to.isoformat()
+    assert BaseClient._format_date_as_day(vendor, "to_date", far_to) == far
+    assert BaseClient._format_date_as_day(vendor, "from_date", far_from) == far
+    # ...and REJECTS the old ISO-string form the defect returned (regression guard):
+    with pytest.raises(ValueError):
+        BaseClient._format_date_as_day(vendor, "to_date", far_to.isoformat())
 
 
 def test_equity_width_and_full_book_unchanged():

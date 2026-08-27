@@ -264,6 +264,41 @@ def resolve_target_repo(cmd: str, payload_cwd: str = "") -> tuple[str, str]:
     return "", "no repository identity in the command and no working directory supplied"
 
 
+def git_target_repo(cmd: str, payload_cwd: str = "") -> str:
+    """Normalized repository root a git command TARGETS — for ANY git verb, not only `commit`
+    (resolve_target_repo above is commit-gated for the RC-258 ledger). Precedence: an explicit
+    `-C` / `--git-dir` / `--work-tree` path on the git invocation, else a `cd` earlier in the
+    same chained command, else the tool payload's working directory. Returns "" when there is no
+    git invocation or the target is outside any repository. Reuses the SAME segmentation and path
+    helpers as resolve_target_repo, so the -C/cwd geometry is defined once (RC-129 one-faucet).
+
+    Consumed by process_lock_guard.prod_checkout_git_move_violations to decide whether a git
+    command targets the production/primary checkout, whichever checkout the session runs in."""
+    executed = shell_executed_part(cmd or "")
+    cur = str(payload_cwd or "")
+    for seg in _SEG_SPLIT.split(executed):
+        seg = seg.strip()
+        if not seg:
+            continue
+        m = _CD_RE.match(seg)
+        if m:
+            cur = _join_dir(cur, _arg_value(m))
+            continue
+        toks = _tokens(seg)
+        if not toks or Path(toks[0].strip("\"'")).name.lower() not in ("git", "git.exe"):
+            continue
+        target = ""
+        for rx in (_GIT_C_RE, _GIT_DIR_RE):
+            mm = rx.search(seg)
+            if mm:
+                target = _join_dir(cur, _arg_value(mm))
+                break
+        root = repo_root_of(target or cur)
+        if root:
+            return root
+    return repo_root_of(cur) if cur else ""
+
+
 # ── applicability machinery: REMOVED 2026-08-25 (independent-audit round 2) ────────────────
 # rc93_applies_to/_load_applicability/_mechanism scoped the RC-93 commit-before-proof rule,
 # which was retired 2026-08-24 (SIMPLICITY REHAB — see the commit-clause notes below). The

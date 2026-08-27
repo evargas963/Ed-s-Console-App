@@ -12,12 +12,19 @@ Wire it in three places (all fail-closed):
   3. CI             — the same check runs on every PR.
 
 Checks (all must pass):
-  A. HEAD is NOT detached (you are on a branch or a tag that resolves onto main).
-  B. HEAD has ZERO commits that are not on origin/main
-     (`git rev-list --count origin/main..HEAD` == 0) — i.e. what runs is released,
-     not a private divergent lineage.
+  A. HEAD is on branch `main` — not detached, not a feature branch. The production checkout is
+     the single live lineage; a feature branch or a detached snapshot is never the desk.
+  B. HEAD == origin/main EXACTLY: zero commits ahead (`git rev-list --count origin/main..HEAD`
+     == 0, no private divergent lineage) AND zero behind (`HEAD..origin/main` == 0, no stale
+     desk). Invariant: production is always main == origin/main; land via PR, then fast-forward.
   C. The working tree has no uncommitted APP code (server.py, *.py, static/*.html,
      static/*.js). Docs/reports/scratch are ignored; app code is not.
+
+Prevention, not just detection: A-C run at launch / pre-push / CI (fail-closed). The PreToolUse
+guard (`tools/process_lock_guard.py`) additionally BLOCKs, at the moment of the command, any git
+branch-move / commit / reset / merge or app-code edit that targets the production checkout — so an
+assigned agent cannot move the live checkout onto a feature branch in the first place, rather than
+this check catching the divergence only at the next launch.
 
 Emergency bypass: `ED_LIVE_PATH_UNLOCKED=1` skips the launch abort but STILL prints
 the violation loudly and logs it — use only to recover a downed desk, never as a
@@ -58,25 +65,34 @@ def _is_app_code(path: str) -> bool:
 
 def violations() -> list[str]:
     out: list[str] = []
-    # A. not detached
-    on_branch = subprocess.run(
-        ["git", "symbolic-ref", "-q", "HEAD"], capture_output=True
-    ).returncode == 0
     head = _git("rev-parse", "--short", "HEAD")
-    if not on_branch:
-        # a tag that is an ancestor of origin/main is acceptable (a release point)
-        tag = _git("describe", "--tags", "--exact-match") if not on_branch else ""
-        if not tag:
-            out.append(
-                f"DETACHED HEAD at {head}: the desk is running a snapshot on no branch. "
-                f"Run from `main` or a release tag."
-            )
-    # B. no commits ahead of origin/main (what runs must be released)
+    # A. on branch `main` specifically — not detached, not a feature branch. The production
+    #    checkout is the single live lineage (invariant #1); a feature branch or a detached
+    #    snapshot is never the desk. (RC-350's original check accepted ANY non-detached branch,
+    #    which let a feature-branch checkout pass — the exact drift that downed the desk.)
+    branch = _git("symbolic-ref", "--short", "HEAD")   # "" when detached
+    if branch != "main":
+        where = f"branch '{branch}'" if branch else f"a detached HEAD at {head}"
+        out.append(
+            f"the production checkout is on {where}, not `main`: the live desk runs ONLY "
+            f"branch main == origin/main. Do development on the separate dev worktree and land "
+            f"via PR; return production to main with `git checkout main`."
+        )
+    # B. HEAD == origin/main EXACTLY — zero ahead (no private divergent lineage) AND zero behind
+    #    (no stale desk running code main has already moved past). Invariant #1 is equality;
+    #    invariant #5 is merge-to-main-then-fast-forward.
     ahead = _git("rev-list", "--count", "origin/main..HEAD")
     if ahead and ahead != "0":
         out.append(
             f"{ahead} commit(s) on HEAD are NOT on origin/main: a private divergent "
-            f"lineage is running. Merge them to main; the desk runs only ancestors of main."
+            f"lineage is running. Merge them to main; the desk runs only released commits of main."
+        )
+    behind = _git("rev-list", "--count", "HEAD..origin/main")
+    if behind and behind != "0":
+        out.append(
+            f"HEAD is {behind} commit(s) BEHIND origin/main: the desk is running stale code. "
+            f"Fast-forward production to origin/main (`git merge --ff-only origin/main`) before "
+            f"launch — merge-then-fast-forward is how released code legally reaches the live tree."
         )
     # C. no uncommitted APP code
     porcelain = _git("status", "--porcelain")
