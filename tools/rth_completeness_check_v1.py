@@ -18,7 +18,9 @@ Usage:
   .venv/Scripts/python.exe tools/rth_completeness_check_v1.py --db data/ed_console.db --backfill
 
 Exit codes: 0 = complete (or no session today); 1 = holes found (and backfill not run or
-insufficient); 2 = cannot measure (measurement failure is NEVER reported as a pass — RC-57).
+insufficient); 2 = cannot measure (measurement failure is NEVER reported as a pass — RC-57);
+3 = the verdict was reached but its durable record could not be persisted (a windowless
+pythonw run must never report silent success).
 """
 from __future__ import annotations
 
@@ -218,12 +220,19 @@ def vendor_reconcile(db_path: str, et_date: str, tickers: list[str]) -> dict:
 #: new checker/ledger/registry.
 REPORT_PATH = ROOT / "reports" / "rth_validation" / "rth_completeness_latest.json"
 
+#: Exit code when the DATA verdict was reached but its durable record could NOT be persisted.
+#: Distinct from the data verdicts (0/1/2): under pythonw there is no console, so a 0-verdict run
+#: whose artifact failed to write would be a silent success — Task Scheduler reporting 0 with
+#: nothing to read. Durable-observability failure is therefore itself a non-zero exit.
+PERSIST_FAILED_EXIT = 3
 
-def _write_report(record: dict, report_path: Path) -> None:
+
+def _write_report(record: dict, report_path: Path) -> bool:
     """Persist the final record atomically (temp + rename, so a reader never sees a half file).
 
-    Best-effort: a write failure is logged loudly to stderr but NEVER masks the data verdict's
-    exit code — the scheduled task must still fail closed on a real loss even if the disk is full.
+    Returns True on success, False if the record could NOT be persisted. The failure is NOT
+    swallowed: `finish` escalates it to a non-zero exit so a windowless (pythonw) run can never
+    report silent success. The data verdict is still emitted to stderr/stdout for retention.
     """
     from datetime import datetime, timezone
 
@@ -233,16 +242,20 @@ def _write_report(record: dict, report_path: Path) -> None:
         tmp = report_path.with_name(report_path.name + ".tmp")
         tmp.write_text(json.dumps(record, indent=2), encoding="utf-8")
         tmp.replace(report_path)
+        return True
     except OSError as e:
-        print(f"[rth-completeness] WARN: could not persist report to {report_path}: {e}",
+        print(f"[rth-completeness] FATAL: could not persist the final record to {report_path}: "
+              f"{e} — exiting non-zero so this run is not a silent success",
               file=sys.stderr, flush=True)
+        return False
 
 
 def run(db: str, et_date: str, max_missing: int, backfill: bool, report_path: Path) -> int:
     """Measure -> (optional) backfill -> vendor-reconcile, leaving ONE durable record and simple
     progress. `completion_path` names WHY completion was reached (initial completeness, successful
     backfill, or vendor reconciliation with zero real loss). Returns the fail-closed exit code:
-    0 = complete/no-session; 1 = holes stand or real loss vs vendor; 2 = could not measure.
+    0 = complete/no-session; 1 = holes stand or real loss vs vendor; 2 = could not measure;
+    3 = verdict reached but its durable record could not be persisted (never a silent success).
     """
     record: dict = {"et_date": et_date, "max_missing": max_missing,
                     "backfill_requested": backfill, "steps": []}
@@ -253,14 +266,19 @@ def run(db: str, et_date: str, max_missing: int, backfill: bool, report_path: Pa
         record["steps"].append(msg)
         print(f"[rth-completeness] {msg}", file=sys.stderr, flush=True)
 
-    def finish(exit_code: int, **fields) -> int:
-        record.update(exit_code=exit_code, **fields)
-        _write_report(record, report_path)
-        # the machine-readable FINAL verdict on stdout (not HOLES) for any caller that captures it
-        print(json.dumps({k: record.get(k) for k in
-                          ("final_status", "completion_path", "et_date", "grid_missing",
-                           "lost_vs_vendor", "backfill_exit", "exit_code") if k in record}))
-        return exit_code
+    def finish(data_exit: int, **fields) -> int:
+        record.update(exit_code=data_exit, **fields)
+        persisted = _write_report(record, report_path)
+        # A pass (0) whose durable record did NOT persist must not exit 0 — under pythonw that is a
+        # silent success. A non-zero data verdict already retains itself in the exit code.
+        final_exit = data_exit if (persisted or data_exit != 0) else PERSIST_FAILED_EXIT
+        # the FINAL verdict on stdout, retained even when the durable write failed
+        out = {k: record.get(k) for k in
+               ("final_status", "completion_path", "et_date", "grid_missing",
+                "lost_vs_vendor", "backfill_exit") if k in record}
+        out.update(data_verdict_exit=data_exit, report_persisted=persisted, exit_code=final_exit)
+        print(json.dumps(out))
+        return final_exit
 
     progress(f"measuring session completeness for {et_date} (db={db})")
     try:
