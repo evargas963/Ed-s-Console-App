@@ -98,6 +98,15 @@ LADDER_QUANTILE = 0.25
 #: it, so they are dropped and the rotation is re-measured from the survivors until the set stops
 #: shrinking. Ordinary robust (sigma-clipping style) estimation, not a second alarm.
 MAX_TRIM_PASSES = 5
+#: FAIL-CLOSED: a cluster boundary at or below the quantile read point means the read is inside a
+#: dark group and no honest rotation can be measured. Detected as an anomalous STEP in the ladder.
+#: MEASURED on the live 57-ticker healthy roster: steps median 17.0s, max 67.9s — natural
+#: unevenness tops out at 4.0x the median. The real dark ticker (SATS) creates a step 472,810x the
+#: median. Ten sits between them with margin on both sides; it is a ladder-SHAPE ratio, not a
+#: seconds constant, and it is never used to judge lateness — only whether the ladder is readable.
+CLUSTER_STEP_RATIO = 10.0
+#: A median step needs at least this many steps to be meaningful.
+MIN_STEPS_FOR_SHAPE = 3
 #: Window closes this many minutes after the session close (through 16:15 on a normal day,
 #: 13:15 on an early-close day — session_close_mins_for_et_date handles the calendar).
 WINDOW_END_PAD_MINS = 15
@@ -138,11 +147,26 @@ def rotation_allowance(ages_sorted: list[float]) -> tuple[float, float]:
     clock, the measured rotation collapses to 0, and the flat floor applies.
     """
     if not ages_sorted:
-        return float(STALE_LIMIT_SECS), 0.0
+        return float(STALE_LIMIT_SECS), 0.0, True
+
+    def _read_index(ages):
+        return min(len(ages) - 1, int(len(ages) * LADDER_QUANTILE))
 
     def _measure(ages):
-        idx = min(len(ages) - 1, int(len(ages) * LADDER_QUANTILE))
-        return max(0.0, (ages[idx] - ages[0]) / LADDER_QUANTILE)
+        return max(0.0, (ages[_read_index(ages)] - ages[0]) / LADDER_QUANTILE)
+
+    # FAIL-CLOSED MEASURABILITY. Past the estimator's breakdown point the quantile read point sits
+    # INSIDE the dark group, and the rotation it returns is the dark group's own age — which
+    # silently licenses the outage instead of reporting it. Detect that directly: walk the ladder
+    # steps up to the read point and look for a cluster boundary. A boundary at or below the read
+    # point means everything from there up is a separate population, so there is not enough healthy
+    # ladder left to measure and the caller must ALERT rather than trust a fabricated number.
+    steps = [b - a for a, b in zip(ages_sorted, ages_sorted[1:_read_index(ages_sorted) + 1])]
+    if len(steps) >= MIN_STEPS_FOR_SHAPE:
+        ordered = sorted(steps)
+        median_step = ordered[len(ordered) // 2]
+        if max(steps) > CLUSTER_STEP_RATIO * max(median_step, 1e-9):
+            return None, None, False
 
     # MEMBERSHIP is a tighter question than the VERDICT. A ticker more than ONE full rotation
     # behind the newest is by definition not part of the rotation currently being measured, so the
@@ -158,7 +182,8 @@ def rotation_allowance(ages_sorted: list[float]) -> tuple[float, float]:
             break
         work = keep
         rotation = _measure(work)
-    return ages_sorted[0] + max(float(STALE_LIMIT_SECS), ROTATIONS_ALLOWED * rotation), rotation
+    allowance = ages_sorted[0] + max(float(STALE_LIMIT_SECS), ROTATIONS_ALLOWED * rotation)
+    return allowance, rotation, True
 
 
 def _emit(status: str, message: str) -> None:
@@ -267,7 +292,17 @@ def check(db_path: str) -> int:
             # rather than a fixed number of seconds. A ticker that has NEVER collected (NULL) stays
             # excluded: freshly enrolled, or a quarantined non-collector — neither is a regression.
             # Degrades to a silent skip (never a false ALERT) if the enrollment table is absent.
-            allowance, rotation = rotation_allowance(ages_sorted)
+            allowance, rotation, measurable = rotation_allowance(ages_sorted)
+            if not measurable:
+                # FAIL CLOSED: the ladder no longer has enough healthy structure to measure a
+                # revisit obligation. Never report OK on an unmeasurable roster, and never fall
+                # back to the flat aggregate bound as if it were a per-ticker rule.
+                _emit("ALERT", f"ROSTER LIVENESS UNMEASURABLE: the per-ticker ladder is dominated "
+                               f"by a dark group, so no revisit obligation can be measured "
+                               f"({len(clocked)} clocked ticker(s), newest {ages_sorted[0]:.0f}s, "
+                               f"oldest {ages_sorted[-1]:.0f}s) — overall collection still looks "
+                               f"live (newest snapshot {age:.0f}s)")
+                return 1
             dark = [(tk, a) for tk, a in clocked if a > allowance]
             if dark:
                 dark.sort(key=lambda x: -x[1])

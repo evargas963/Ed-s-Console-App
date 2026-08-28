@@ -76,8 +76,8 @@ def test_allowance_is_derived_from_the_measured_ladder_not_a_constant():
     """The allowance tracks the collector's real rotation, so it scales with roster and fetch cost."""
     slow = sorted(_healthy_ladder(rotation=1000.0))
     fast = sorted(_healthy_ladder(rotation=200.0))
-    a_slow, rot_slow = clc.rotation_allowance(slow)
-    a_fast, rot_fast = clc.rotation_allowance(fast)
+    a_slow, rot_slow, _ = clc.rotation_allowance(slow)
+    a_fast, rot_fast, _ = clc.rotation_allowance(fast)
 
     # the measured rotation recovers the ladder span (p90 of a uniform ladder is ~0.9 of it)
     assert 0.8 * 1000.0 <= rot_slow <= 1000.0
@@ -89,14 +89,14 @@ def test_allowance_is_derived_from_the_measured_ladder_not_a_constant():
 
 def test_a_uniform_offset_does_not_inflate_the_measured_rotation():
     """Outside the window every clock ages together; the LADDER SPAN is what matters, not the offset."""
-    _, rot_now = clc.rotation_allowance(sorted(_healthy_ladder(offset=0.0)))
-    _, rot_off = clc.rotation_allowance(sorted(_healthy_ladder(offset=9000.0)))
+    _, rot_now, _ = clc.rotation_allowance(sorted(_healthy_ladder(offset=0.0)))
+    _, rot_off, _ = clc.rotation_allowance(sorted(_healthy_ladder(offset=9000.0)))
     assert abs(rot_now - rot_off) < 1.0, "rotation must be offset-invariant"
 
 
 def test_one_dark_ticker_cannot_inflate_the_allowance_meant_to_catch_it():
     ages = sorted(_healthy_ladder() + [8_000_000.0])
-    allowance, rotation = clc.rotation_allowance(ages)
+    allowance, rotation, _ = clc.rotation_allowance(ages)
     assert rotation < 2 * ROTATION_SECS, "p90 must exclude the outlier"
     assert allowance < 8_000_000.0, "the outlier must still be flaggable"
 
@@ -105,7 +105,7 @@ def test_small_roster_collapses_to_the_floor_without_a_special_case():
     """On a handful of tickers the q=0.25 index sits at the newest clock, so the measured rotation
     is 0 and the flat aggregate floor applies — no sample-size branch needed."""
     for ages in ([5.0, 1200.0], [5.0, 1200.0, 1200.0]):
-        allowance, rotation = clc.rotation_allowance(sorted(ages))
+        allowance, rotation, _ = clc.rotation_allowance(sorted(ages))
         assert rotation == 0.0
         assert allowance == ages[0] + float(clc.STALE_LIMIT_SECS)
         assert any(a > allowance for a in ages), "a dark ticker must still be flaggable"
@@ -125,7 +125,7 @@ def test_clustered_outage_cannot_hide_itself_across_the_contamination_range():
     for dark_age in (8000.0, 30000.0):
         for d in (1, 3, 6, 9, 12, 17, 23, 29, 35, 40):
             ages = _clustered(ROSTER_N - d, d, dark_age)
-            allowance, rotation = clc.rotation_allowance(ages)
+            allowance, rotation, _ = clc.rotation_allowance(ages)
             assert allowance < dark_age, (
                 f"{d}/{ROSTER_N} dark ({100*d/ROSTER_N:.0f}%) at {dark_age:.0f}s hid itself: "
                 f"rotation={rotation:.0f} allowance={allowance:.0f}")
@@ -138,7 +138,7 @@ def test_trim_uses_membership_not_the_verdict_multiplier():
     at the generous verdict multiplier instead left a 50%-dark group at 8000s hidden behind its own
     inflated allowance."""
     ages = _clustered(ROSTER_N - 29, 29, 8000.0)          # exactly 50% dark
-    allowance, rotation = clc.rotation_allowance(ages)
+    allowance, rotation, _ = clc.rotation_allowance(ages)
     assert rotation < 2 * ROTATION_SECS, f"seed stayed contaminated: {rotation:.0f}"
     assert allowance < 8000.0
 
@@ -161,12 +161,49 @@ def test_clustered_outage_alerts_end_to_end(tmp_path):
     assert "PARTIAL-DARK" in _joined(emitted)
 
 
+# ── FAIL-CLOSED: past the breakdown point the roster must ALERT, never pass ───────────────────
+def test_unmeasurable_ladder_never_reports_ok(tmp_path):
+    """Beyond the estimator's breakdown point the quantile read point sits INSIDE the dark group
+    and the rotation it returns is that group's own age. That must ALERT, not silently pass, and
+    must not fabricate a rotation or fall back to the flat per-ticker bound."""
+    for dark_age in (8000.0, 30000.0):
+        for d in (44, 46, 47, 52, 55, 57):                    # 76% .. 98% of the roster dark
+            ages = _clustered(ROSTER_N - d, d, dark_age)
+            allowance, rotation, measurable = clc.rotation_allowance(ages)
+            assert measurable is False, f"d={d} @{dark_age:.0f}s claimed measurable"
+            assert allowance is None and rotation is None, "must not fabricate an estimate"
+
+            rc, emitted = _run(_db(tmp_path, ages=ages, name=f"u{d}_{int(dark_age)}.db"))
+            assert rc == 1, f"d={d} @{dark_age:.0f}s FAILED OPEN: {_joined(emitted)}"
+            assert "UNMEASURABLE" in _joined(emitted).upper()
+            assert emitted[0][0] == "ALERT"
+
+
+def test_the_whole_dark_fraction_range_alerts_with_no_ok_gap(tmp_path):
+    """Sweep every dark fraction end to end: the verdict may change KIND (partial-dark ->
+    unmeasurable) but must never become OK while a large group is dark."""
+    for d in range(1, ROSTER_N - 1):
+        ages = _clustered(ROSTER_N - d, d, 8000.0)
+        rc, emitted = _run(_db(tmp_path, ages=ages, name=f"s{d}.db"))
+        assert rc == 1, f"{d}/{ROSTER_N} dark returned OK: {_joined(emitted)}"
+
+
+def test_healthy_roster_is_measurable_and_natural_step_unevenness_does_not_trip_it():
+    """MEASURED on the live roster: ladder steps median 17.0s, max 67.9s => natural unevenness is
+    4.0x, far below the 10x cluster-boundary ratio. A healthy ladder must stay measurable."""
+    allowance, rotation, measurable = clc.rotation_allowance(sorted(_healthy_ladder()))
+    assert measurable is True and allowance is not None
+    # a 4x-uneven ladder (the measured live worst case) must still be measurable
+    uneven = sorted([ROTATION_SECS * i / ROSTER_N for i in range(ROSTER_N - 1)] + [ROTATION_SECS])
+    assert clc.rotation_allowance(uneven)[2] is True
+
+
 # ── TOLERANCE: two rotations must cover MEASURED same-ticker revisit jitter ────────────────────
 def test_two_rotations_covers_measured_revisit_jitter_but_not_a_real_hiccup():
     """Derived from 524 same-ticker background-logger revisit INTERVALS (outage hours excluded):
     p50 1391s, p90 2311s, p95 2656s, p99 2723s, max 6893s. The tolerance must absorb jitter up to
     p99 and still flag the 1.9-hour outlier."""
-    allowance, rotation = clc.rotation_allowance(sorted(_healthy_ladder(rotation=1391.0)))
+    allowance, rotation, _ = clc.rotation_allowance(sorted(_healthy_ladder(rotation=1391.0)))
     for label, interval in (("p50", 1391.0), ("p90", 2311.0), ("p95", 2656.0), ("p99", 2723.0)):
         assert interval <= allowance, f"{label} revisit {interval}s false-alarms (allow {allowance:.0f})"
     assert 6893.0 > allowance, "a 1.9-hour RTH gap must still alert"
