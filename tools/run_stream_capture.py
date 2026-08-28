@@ -285,6 +285,15 @@ async def _run_locked(symbols: list[str], duration_min: float, db_path: str | No
     except Exception as exc:  # noqa: BLE001 — options persistence is additive
         print(f"options persister not registered (equity capture unaffected): "
               f"{type(exc).__name__}: {exc}")
+    # EQUITY BOOK-DEPTH PERSISTENCE RIDES THIS SAME ONE WRITER (finding-#1 Section 1). Registering
+    # the 'equitybook' persister is unconditional and inert until something subscribes; the vendor
+    # subscribe is gated in _schwab_connect on ED_EQUITY_BOOK_CAPTURE. Additive and soft.
+    try:
+        from equity_book_collect import make_equity_book_topic_writer
+        writer.register_topic_writer("equitybook", make_equity_book_topic_writer())
+    except Exception as exc:  # noqa: BLE001 — equity book persistence is additive
+        print(f"equity book persister not registered (equity capture unaffected): "
+              f"{type(exc).__name__}: {exc}")
     wsub = bus.subscribe("", policy=COUNT_DROPS, maxsize=8192)   # writer sees everything
     _ui_future = bus.subscribe("quote.", policy=COALESCE)        # proves coalesce path live
     stop = asyncio.Event()
@@ -332,6 +341,21 @@ async def _schwab_connect(state, symbols, bus, health, stats, stop):
                                        equity_key_services=2)
     except Exception as exc:  # noqa: BLE001 — options is additive; equity capture is unaffected
         print(f"options collection did not start (equity capture unaffected): "
+              f"{type(exc).__name__}: {exc}")
+
+    # EQUITY BOOK-DEPTH on THIS one stream (finding-#1 Section 1). Handlers are registered
+    # unconditionally (inert without a subscription); the subscribe is gated on
+    # ED_EQUITY_BOOK_CAPTURE so deploying this changes nothing until the operator enables it.
+    try:
+        from equity_book_collect import (equity_book_capture_enabled,
+                                         register_equity_book_handlers, subscribe_equity_books)
+        register_equity_book_handlers(stream, bus, on_beat=health.beat)
+        if equity_book_capture_enabled():
+            subbed = await subscribe_equity_books(stream, symbols)
+            print(f"equity book-depth subscribed: {subbed} "
+                  f"({len(symbols) * len(subbed)} book keys on this stream)")
+    except Exception as exc:  # noqa: BLE001 — book capture is additive; equity/options unaffected
+        print(f"equity book capture did not start (equity capture unaffected): "
               f"{type(exc).__name__}: {exc}")
 
     async def pump() -> None:
