@@ -54,6 +54,10 @@ READER_CENSUS = frozenset({
     "tests/test_bayesian_fusion_v2.py",
     "tests/test_mc_sigma_normalize_history_v1.py",
     "tests/test_mc_sigma_unit_quarantine_v1.py",
+    # Base-neutral MC proof: writes ONE fresh row through the current producer and reads that same
+    # row back within the test. It never reads historical rows, so no era classification applies —
+    # pinned here because this census is a source-text mention census. Added 2026-08-28.
+    "tests/test_mc_base_neutral_mode_v1.py",
 })
 
 

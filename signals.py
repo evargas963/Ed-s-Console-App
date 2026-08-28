@@ -750,38 +750,68 @@ def _run_model_stack(
                 ml_bundle["mc_model_confidence"] = _m_conf
                 ml_bundle["unified_stack_team_ok"] = _team_ok
                 ml_bundle["unified_stack_team_reason"] = _team_reason
-            if mc_team_should_fail_closed(_team_ok, _mc_src):
-                from monte_carlo import MonteCarloOutput
-
-                mc_out = MonteCarloOutput(
-                    available=False,
-                    model_version=f"blocked (unified_stack_team:{_team_reason})",
-                )
+            # The unified-stack team gate selects Monte Carlo's CONDITIONING MODE — it is not a
+            # prerequisite for MC availability. `monte_carlo.simulate` requires only spot / iv /
+            # horizon_bars; the model_prob_* args are OPTIONAL directional conditioning. Without
+            # them `_compute_drift` returns exactly 0.0 — a DEFINED neutral drift, not an undefined
+            # state — so a dark ML stack still yields a valid base/neutral simulation. Withholding
+            # the whole simulation instead turned an ML outage into NULL mc_* columns and falsified
+            # the producer-liveness contract in tools/console_liveness_check.py ("a live model
+            # stack writes mc_paths even when it decides WAIT").
+            #
+            # "Monte Carlo must not solo-green" is preserved STRUCTURALLY rather than by
+            # withholding: bayesian_fusion carries weight_monte_carlo=0.0 (MC casts no vote) and
+            # every mc_fusion_adjustment step is argmax-preserving, so MC can soften a decision but
+            # can never create or flip one.
+            #
+            # BASE MODE USES NO DIRECTIONAL PRIOR. When the team has not authorized, `_m_up`/`_m_dn`
+            # may still carry PARTIAL-ML probabilities (source `average_available_ml_layers`, from
+            # one or two live layers). Conditioning on those would smuggle in a view the team gate
+            # refused, so base mode passes no probabilities at all and is genuinely neutral.
+            _mc_conditioned = not mc_team_should_fail_closed(_team_ok, _mc_src)
+            if _mc_conditioned:
+                _mc_up, _mc_dn, _mc_conf_in = _m_up, _m_dn, _m_conf
             else:
-                log.debug(
-                    "MC_INPUT em_upper=%s em_lower=%s spot_canonical=%s",
-                    inp.em_upper,
-                    inp.em_lower,
-                    _mc_ctx.get("spot"),
+                _mc_up = _mc_dn = _mc_conf_in = None
+            log.debug(
+                "MC_INPUT em_upper=%s em_lower=%s spot_canonical=%s conditioned=%s src=%s",
+                inp.em_upper,
+                inp.em_lower,
+                _mc_ctx.get("spot"),
+                _mc_conditioned,
+                _mc_src,
+            )
+            mc_out = monte_carlo.simulate(
+                spot=_mc_ctx["spot"],
+                iv=iv,
+                horizon_bars=_mc_bars,
+                call_gamma_wall=_mc_ctx.get("call_gamma_wall"),
+                put_gamma_wall=_mc_ctx.get("put_gamma_wall"),
+                em_upper=_mc_ctx.get("em_upper"),
+                em_lower=_mc_ctx.get("em_lower"),
+                regime=_mc_regime,
+                regime_confidence=_mc_regime_conf,
+                realized_vol=_mc_ctx.get("realized_vol"),
+                atr=_mc_ctx.get("atr"),
+                model_prob_up=_mc_up,
+                model_prob_down=_mc_dn,
+                model_confidence=_mc_conf_in,
+                fusion_dominant=None,
+                garch_sigma_bars=_mc_ctx.get("garch_sigma_bars"),
+            )
+            # Provenance on EXISTING fields (no new schema): a neutral simulation must never read
+            # as ML-conditioned. `assumptions` is this run's own manifest and already carries
+            # per_bar_drift; `model_version` labels the artifact. The observable status for
+            # consumers remains ml_bundle["mc_stack_probability_source"], set above.
+            if getattr(mc_out, "available", False):
+                mc_out.assumptions["mc_conditioning"] = (
+                    "ml_conditioned" if _mc_conditioned else "base_neutral"
                 )
-                mc_out = monte_carlo.simulate(
-                    spot=_mc_ctx["spot"],
-                    iv=iv,
-                    horizon_bars=_mc_bars,
-                    call_gamma_wall=_mc_ctx.get("call_gamma_wall"),
-                    put_gamma_wall=_mc_ctx.get("put_gamma_wall"),
-                    em_upper=_mc_ctx.get("em_upper"),
-                    em_lower=_mc_ctx.get("em_lower"),
-                    regime=_mc_regime,
-                    regime_confidence=_mc_regime_conf,
-                    realized_vol=_mc_ctx.get("realized_vol"),
-                    atr=_mc_ctx.get("atr"),
-                    model_prob_up=_m_up,
-                    model_prob_down=_m_dn,
-                    model_confidence=_m_conf,
-                    fusion_dominant=None,
-                    garch_sigma_bars=_mc_ctx.get("garch_sigma_bars"),
-                )
+                mc_out.assumptions["mc_conditioning_source"] = _mc_src
+                if not _mc_conditioned:
+                    mc_out.model_version = f"{mc_out.model_version}:base_neutral"
+            if isinstance(ml_bundle, dict):
+                ml_bundle["mc_conditioned"] = _mc_conditioned
         if _don():
             _ddone("monte_carlo", ticker)
     except MonteCarloStackInputError as e:
