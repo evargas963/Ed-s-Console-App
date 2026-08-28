@@ -172,3 +172,28 @@ def test_scheduled_task_leaves_readable_artifact_after_process_exits(tmp_path):
     rec = json.loads(report.read_text(encoding="utf-8"))
     assert rec["final_status"] == "NO_SESSION" and rec["exit_code"] == 0
     assert "written_at_utc" in rec
+
+
+def test_persistence_failure_on_a_complete_path_exits_nonzero(tmp_path, monkeypatch, capsys):
+    """The pythonw silent-success hole: a report-write failure on a 0-verdict COMPLETE run must
+    NOT exit 0 — otherwise Task Scheduler reports success with no console and no artifact. Force
+    the atomic write/rename to fail on an otherwise-COMPLETE path and prove the process exits
+    non-zero while still emitting the underlying data verdict."""
+    # a report path whose PARENT is a regular file: mkdir(parents=True, exist_ok=True) raises,
+    # so the temp-write + rename cannot proceed — a real, forced persistence failure.
+    blocker = tmp_path / "parent_is_a_file"
+    blocker.write_text("x", encoding="utf-8")
+    report = blocker / "rth_completeness_latest.json"
+    complete = {"session": True, "total_missing": 0, "tickers": {},
+                "expected_per_ticker": 420, "tickers_with_holes": 0}
+    monkeypatch.setattr(C, "session_completeness", _queued_sessions(complete))
+
+    rc = C.run("db", "2026-08-27", 0, False, report)
+
+    assert rc != 0, "a durable-observability failure must not exit 0 (pythonw silent success)"
+    assert rc == C.PERSIST_FAILED_EXIT
+    assert not report.exists(), "the artifact genuinely could not be persisted"
+    seen = capsys.readouterr()
+    # the underlying data verdict (COMPLETE / data-exit 0) is retained in stderr + stdout
+    assert "COMPLETE" in (seen.out + seen.err)
+    assert '"data_verdict_exit": 0' in seen.out
