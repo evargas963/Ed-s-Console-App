@@ -18,7 +18,9 @@ Usage:
   .venv/Scripts/python.exe tools/rth_completeness_check_v1.py --db data/ed_console.db --backfill
 
 Exit codes: 0 = complete (or no session today); 1 = holes found (and backfill not run or
-insufficient); 2 = cannot measure (measurement failure is NEVER reported as a pass — RC-57).
+insufficient); 2 = cannot measure (measurement failure is NEVER reported as a pass — RC-57);
+3 = the verdict was reached but its durable record could not be persisted (a windowless
+pythonw run must never report silent success).
 """
 from __future__ import annotations
 
@@ -212,6 +214,134 @@ def vendor_reconcile(db_path: str, et_date: str, tickers: list[str]) -> dict:
     return {"tickers": out, "lost_minutes": lost_total}
 
 
+#: Durable final artifact — the operator's readable record AFTER the scheduled window exits.
+#: Written on EVERY exit path so `HOLES` (an intermediate line) is never the last word the
+#: operator sees. This is a run report in the EXISTING rth_validation report location, not a
+#: new checker/ledger/registry.
+REPORT_PATH = ROOT / "reports" / "rth_validation" / "rth_completeness_latest.json"
+
+#: Exit code when the DATA verdict was reached but its durable record could NOT be persisted.
+#: Distinct from the data verdicts (0/1/2): under pythonw there is no console, so a 0-verdict run
+#: whose artifact failed to write would be a silent success — Task Scheduler reporting 0 with
+#: nothing to read. Durable-observability failure is therefore itself a non-zero exit.
+PERSIST_FAILED_EXIT = 3
+
+
+def _write_report(record: dict, report_path: Path) -> bool:
+    """Persist the final record atomically (temp + rename, so a reader never sees a half file).
+
+    Returns True on success, False if the record could NOT be persisted. The failure is NOT
+    swallowed: `finish` escalates it to a non-zero exit so a windowless (pythonw) run can never
+    report silent success. The data verdict is still emitted to stderr/stdout for retention.
+    """
+    from datetime import datetime, timezone
+
+    record = {**record, "written_at_utc": datetime.now(timezone.utc).isoformat()}
+    try:
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = report_path.with_name(report_path.name + ".tmp")
+        tmp.write_text(json.dumps(record, indent=2), encoding="utf-8")
+        tmp.replace(report_path)
+        return True
+    except OSError as e:
+        print(f"[rth-completeness] FATAL: could not persist the final record to {report_path}: "
+              f"{e} — exiting non-zero so this run is not a silent success",
+              file=sys.stderr, flush=True)
+        return False
+
+
+def run(db: str, et_date: str, max_missing: int, backfill: bool, report_path: Path) -> int:
+    """Measure -> (optional) backfill -> vendor-reconcile, leaving ONE durable record and simple
+    progress. `completion_path` names WHY completion was reached (initial completeness, successful
+    backfill, or vendor reconciliation with zero real loss). Returns the fail-closed exit code:
+    0 = complete/no-session; 1 = holes stand or real loss vs vendor; 2 = could not measure;
+    3 = verdict reached but its durable record could not be persisted (never a silent success).
+    """
+    record: dict = {"et_date": et_date, "max_missing": max_missing,
+                    "backfill_requested": backfill, "steps": []}
+
+    def progress(msg: str) -> None:
+        # In the durable record AND on stderr, so a redirected/interactive run shows the sequence
+        # and a windowless (pythonw) run still has the full narrative in the artifact.
+        record["steps"].append(msg)
+        print(f"[rth-completeness] {msg}", file=sys.stderr, flush=True)
+
+    def finish(data_exit: int, **fields) -> int:
+        record.update(exit_code=data_exit, **fields)
+        persisted = _write_report(record, report_path)
+        # A pass (0) whose durable record did NOT persist must not exit 0 — under pythonw that is a
+        # silent success. A non-zero data verdict already retains itself in the exit code.
+        final_exit = data_exit if (persisted or data_exit != 0) else PERSIST_FAILED_EXIT
+        # the FINAL verdict on stdout, retained even when the durable write failed
+        out = {k: record.get(k) for k in
+               ("final_status", "completion_path", "et_date", "grid_missing",
+                "lost_vs_vendor", "backfill_exit") if k in record}
+        out.update(data_verdict_exit=data_exit, report_persisted=persisted, exit_code=final_exit)
+        print(json.dumps(out))
+        return final_exit
+
+    progress(f"measuring session completeness for {et_date} (db={db})")
+    try:
+        rep = session_completeness(db, et_date)
+    except Exception as e:  # a metric that cannot be measured is NEVER a pass (RC-57)
+        progress(f"MEASUREMENT FAILED: {type(e).__name__}: {e}")
+        return finish(2, final_status="MEASUREMENT_FAILED", completion_path="MEASUREMENT_FAILED",
+                      grid_missing=None, lost_vs_vendor=None, error=f"{type(e).__name__}: {e}")
+
+    if not rep["session"]:
+        progress("no session today (non-trading day) — clean no-op")
+        return finish(0, final_status="NO_SESSION", completion_path="NO_SESSION",
+                      grid_missing=0, lost_vs_vendor=0)
+
+    record["grid_missing"] = rep["total_missing"]
+    if rep["total_missing"] <= max_missing:
+        progress(f"COMPLETE at first measure — grid_missing={rep['total_missing']}")
+        return finish(0, final_status="COMPLETE", completion_path="INITIAL_COMPLETENESS",
+                      lost_vs_vendor=0)
+
+    record["worst"] = sorted(((tk, v["missing"]) for tk, v in rep["tickers"].items()
+                              if v["missing"]), key=lambda x: -x[1])[:10]
+    record["tickers_with_holes"] = rep["tickers_with_holes"]
+    progress(f"HOLES grid_missing={rep['total_missing']} across {rep['tickers_with_holes']} "
+             f"tickers — an INTERMEDIATE finding, NOT the verdict; reconciling now")
+
+    if not backfill:
+        progress("backfill not requested (--backfill absent) — holes stand, exit 1")
+        return finish(1, final_status="HOLES", completion_path="HOLES_NO_BACKFILL",
+                      lost_vs_vendor=None)
+
+    progress("running the proven Schwab backfill (lookback 3 days) ...")
+    cmd = [sys.executable, str(ROOT / "tools" / "historical_backfill_enrolled_1m_v1.py"),
+           "--db", db, "--lookback-days", "3"]
+    r = subprocess.run(cmd, capture_output=True, text=True, timeout=3600)
+    record["backfill_exit"] = r.returncode
+    record["backfill_tail"] = (r.stdout or r.stderr or "")[-200:]
+    progress(f"backfill exit={r.returncode}; re-measuring")
+
+    rep2 = session_completeness(db, et_date)
+    record["grid_missing"] = rep2["total_missing"]  # post-backfill grid
+    if rep2["total_missing"] <= max_missing:
+        progress(f"COMPLETE after backfill — grid_missing={rep2['total_missing']}")
+        return finish(0, final_status="COMPLETE", completion_path="SUCCESSFUL_BACKFILL",
+                      lost_vs_vendor=0)
+
+    # Residual grid holes after a successful backfill: reconcile against the vendor. Only
+    # `vendor > ours` is a loss; thin names legitimately print nothing for many minutes.
+    holes = [tk for tk, v in rep2["tickers"].items() if v["missing"] > 0]
+    progress(f"{len(holes)} tickers still short after backfill — reconciling against the vendor")
+    rec = vendor_reconcile(db, et_date, holes)
+    lost = rec["lost_minutes"]
+    record["lost_vs_vendor"] = lost
+    record["reconciliation"] = rec["tickers"]
+    if lost <= max_missing:
+        progress(f"COMPLETE_VS_VENDOR — grid_missing={rep2['total_missing']}, lost_vs_vendor={lost} "
+                 f"(apparent holes are vendor-empty no-trade minutes; ZERO real loss)")
+        return finish(0, final_status="COMPLETE_VS_VENDOR",
+                      completion_path="VENDOR_RECONCILED_ZERO_LOSS")
+    progress(f"LOST_DATA — the vendor holds {lost} minutes we do not; exit 1")
+    return finish(1, final_status="LOST_DATA", completion_path="LOST_DATA")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--db", default=str(ROOT / "data" / "ed_console.db"))
@@ -220,53 +350,11 @@ def main() -> int:
                     help="minutes of total shortfall tolerated before failing (default 0)")
     ap.add_argument("--backfill", action="store_true",
                     help="on shortfall, run the proven Schwab backfill immediately, then re-check")
+    ap.add_argument("--report", default=str(REPORT_PATH),
+                    help="durable final-record path (default: the rth_validation report location)")
     args = ap.parse_args()
-
     et_date = args.date or now_et().date().isoformat()
-    try:
-        rep = session_completeness(args.db, et_date)
-    except Exception as e:
-        print(json.dumps({"status": "MEASUREMENT_FAILED", "error": f"{type(e).__name__}: {e}"}))
-        return 2  # a metric that cannot be measured is never a pass
-
-    if not rep["session"]:
-        print(json.dumps({"status": "NO_SESSION", "et_date": et_date}))
-        return 0
-
-    if rep["total_missing"] <= args.max_missing:
-        print(json.dumps({"status": "COMPLETE", "et_date": et_date,
-                          "total_missing": rep["total_missing"]}))
-        return 0
-
-    worst = sorted(((tk, v["missing"]) for tk, v in rep["tickers"].items() if v["missing"]),
-                   key=lambda x: -x[1])[:10]
-    print(json.dumps({"status": "HOLES", "et_date": et_date,
-                      "total_missing": rep["total_missing"],
-                      "tickers_with_holes": rep["tickers_with_holes"], "worst": worst}))
-
-    if args.backfill:
-        cmd = [sys.executable, str(ROOT / "tools" / "historical_backfill_enrolled_1m_v1.py"),
-               "--db", args.db, "--lookback-days", "3"]
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=3600)
-        print(json.dumps({"backfill_exit": r.returncode,
-                          "backfill_tail": (r.stdout or r.stderr or "")[-200:]}))
-        rep2 = session_completeness(args.db, et_date)
-        if rep2["total_missing"] <= args.max_missing:
-            print(json.dumps({"status_after_backfill": "COMPLETE",
-                              "total_missing_after": rep2["total_missing"]}))
-            return 0
-        # Residual holes after a successful backfill: reconcile against the vendor. Only
-        # `vendor > ours` is a loss; thin names legitimately print nothing for many minutes.
-        holes = [tk for tk, v in rep2["tickers"].items() if v["missing"] > 0]
-        rec = vendor_reconcile(args.db, et_date, holes)
-        lost = rec["lost_minutes"]
-        print(json.dumps({"status_after_backfill":
-                          "COMPLETE_VS_VENDOR" if lost <= args.max_missing else "LOST_DATA",
-                          "grid_missing": rep2["total_missing"],
-                          "lost_vs_vendor": lost,
-                          "reconciliation": rec["tickers"]}))
-        return 0 if lost <= args.max_missing else 1
-    return 1
+    return run(args.db, et_date, args.max_missing, args.backfill, Path(args.report))
 
 
 if __name__ == "__main__":
