@@ -10126,6 +10126,20 @@ async def _app_lifespan(app):
     asyncio.create_task(_l1_light_sse_dispatch_loop())
     log.info("SSE background loop + live quote SSE loop + L1 light SSE dispatch started")
 
+    # finding-#1 Section 2: route the canonical daemon's captured L1 + equity books into the live
+    # plane (gated OFF by default via ED_DAEMON_PLANE_FEED). Opens NO Schwab socket — it READS the
+    # daemon's stream_capture.db and hydrates live_market_plane + order_flow_live_state, so consumers
+    # no longer NEED the UI's own competing Schwab stream. Additive; the UI socket is untouched
+    # (retiring it is a later section). Preserves dynamic viewing (feeds only daemon-captured tickers).
+    try:
+        from daemon_plane_feed import daemon_plane_feed_enabled, run_daemon_plane_feed
+        if daemon_plane_feed_enabled():
+            _cap_db = str(Path(APP_DIR) / "data" / "stream_capture.db")
+            asyncio.create_task(run_daemon_plane_feed(_cap_db))
+            log.info("daemon->plane feed started (ED_DAEMON_PLANE_FEED on): %s", _cap_db)
+    except Exception as e:  # noqa: BLE001 — the feed is additive; its absence must not block startup
+        log.warning("daemon->plane feed not started: %s", e)
+
     _schedule_startup_analytics_warm()
 
     _session_open_anchor_warm_stop.clear()
