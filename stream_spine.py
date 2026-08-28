@@ -202,10 +202,12 @@ class CaptureWriter:
         self.batch_rows = int(batch_rows)
         self.batch_sec = float(batch_sec)
         self.rows_written = 0
-        #: Rows written for REGISTERED topic kinds (e.g. options), tracked separately so the drop
-        #: accounting can be computed from the WRITER's own count at shutdown — after the writer is
-        #: joined — instead of a module-global counter mutated across the worker/loop boundary.
-        self.option_rows = 0
+        #: Rows written PER REGISTERED topic KIND, tracked separately so each higher layer reads
+        #: its OWN count at shutdown — one kind's rows can NEVER inflate another's drop accounting
+        #: (e.g. equitybook rows must not overstate options `written` and hide a real option drop).
+        #: Read from the WRITER's own counts after it is joined, not a module-global counter mutated
+        #: across the worker/loop boundary. `option_rows` (property below) is the options-only view.
+        self.topic_rows: dict[str, int] = {}
         self.commits = 0
         self.insert_errors = 0
         #: Rows still queued when the drain deadline was hit at shutdown — a real, counted hole.
@@ -240,6 +242,14 @@ class CaptureWriter:
             self._closed = True
             raise
 
+    @property
+    def option_rows(self) -> int:
+        """Rows persisted for the OPTIONS topic kinds ONLY (optionchain + optionbook) — the
+        authority for options frames actually written. Other registered kinds (e.g. equitybook)
+        live in their own topic_rows bucket, so a mixed-load writer can never overstate options
+        `written` and mask a real option drop."""
+        return self.topic_rows.get("optionchain", 0) + self.topic_rows.get("optionbook", 0)
+
     def register_topic_writer(self, kind: str, fn) -> None:
         """Register a persister for topics of `kind` (e.g. 'optionchain'). fn(conn, topic, msg)
         must INSERT onto the given connection and return the number of rows it wrote. Registering
@@ -253,7 +263,7 @@ class CaptureWriter:
             # A registered topic writer returns its rows-written count; None means it wrote nothing.
             n = int(writer(self._conn, topic, msg) or 0)  # caps-ok: 0 is the TRUE row count for a writer that shaped no row (rejected frame), not a masked measurement
             self.rows_written += n
-            self.option_rows += n
+            self.topic_rows[kind] = self.topic_rows.get(kind, 0) + n
             return
         if kind == "quote":
             self._conn.execute(

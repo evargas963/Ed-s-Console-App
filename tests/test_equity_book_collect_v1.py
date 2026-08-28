@@ -160,3 +160,66 @@ def test_register_and_subscribe_use_the_two_book_vendor_methods():
     assert set(done) == set(ebc.SERVICES)
     assert c.subscribed == {"NASDAQ_BOOK": ["SPY", "QQQ", "IWM"],
                             "NYSE_BOOK": ["SPY", "QQQ", "IWM"]}
+
+
+def test_equitybook_rows_do_not_contaminate_options_drop_accounting(tmp_path):
+    """Cross-coupling defect 1: CaptureWriter.option_rows must count ONLY the option topic kinds,
+    so equitybook persistence on the SAME single writer can never inflate options `written` (the
+    authority for frames actually persisted) and mask a real option drop."""
+    from stream_spine import CaptureWriter
+
+    def _opt_writer(conn, _topic, _msg):   # a trivial options persister: 1 row per frame
+        conn.execute("CREATE TABLE IF NOT EXISTS _opt(x)")
+        conn.execute("INSERT INTO _opt VALUES (1)")
+        return 1
+
+    w = CaptureWriter(tmp_path / "stream_capture.db")
+    try:
+        w.register_topic_writer("optionchain", _opt_writer)
+        w.register_topic_writer("optionbook", _opt_writer)
+        w.register_topic_writer("equitybook", ebc.make_equity_book_topic_writer())
+
+        w.insert("optionchain.SPY", {"any": 1})
+        w.insert("optionchain.QQQ", {"any": 1})
+        w.insert("optionbook.SPY", {"any": 1})            # 3 option rows
+        frame = _real_book_frame()
+        for _ in range(5):                                # 5 equitybook rows on the SAME writer
+            w.insert("equitybook.QQQ", {"service": "NASDAQ_BOOK", "frame": frame,
+                                        "received_ts_ms": frame["timestamp"] + 1})
+
+        assert w.option_rows == 3, "options `written` was inflated by equitybook rows"
+        assert w.topic_rows.get("equitybook") == 5, "equitybook rows are counted in their own bucket"
+        assert w.rows_written == 8, "the total is options + equitybook, kept separate"
+    finally:
+        w.close()
+
+
+def test_option_budget_reflects_the_book_enabled_stream_load(monkeypatch):
+    """Cross-coupling defect 2: the options key budget must size against the equity services the ONE
+    stream ACTUALLY holds — 4 with equity book-depth on (L1 + chart + NASDAQ_BOOK + NYSE_BOOK), 2 off
+    — or options could over-subscribe past the shared per-account streamer key limit."""
+    import sys as _sys
+    _sys.path.insert(0, str(REPO / "tools"))
+    from run_stream_capture import equity_services_for_budget
+    from options_stream_subscription import contract_budget_from_key_limit
+
+    assert equity_services_for_budget(False) == 2
+    assert equity_services_for_budget(True) == 4
+
+    # composes with the default-off gate: env on -> 4 services budgeted; unset -> 2
+    monkeypatch.setenv(ebc.ED_EQUITY_BOOK_CAPTURE_ENV, "1")
+    assert equity_services_for_budget(ebc.equity_book_capture_enabled()) == 4
+    monkeypatch.delenv(ebc.ED_EQUITY_BOOK_CAPTURE_ENV, raising=False)
+    assert equity_services_for_budget(ebc.equity_book_capture_enabled()) == 2
+
+    # and the budget HONORS the count: books on reserves DOUBLE the equity keys, leaving strictly
+    # fewer option contracts — the actual mechanism that stops over-subscription.
+    n = 3
+    off = contract_budget_from_key_limit(equity_symbols=n,
+                                         equity_key_services=equity_services_for_budget(False))
+    on = contract_budget_from_key_limit(equity_symbols=n,
+                                        equity_key_services=equity_services_for_budget(True))
+    assert off["equity_keys_held"] == n * 2
+    assert on["equity_keys_held"] == n * 4
+    assert on["contracts_allowed"] < off["contracts_allowed"], (
+        "book keys did not shrink the option contract budget")

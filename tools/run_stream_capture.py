@@ -134,6 +134,14 @@ def stream_needs_recycle(age_sec: float | None, seen_data: bool,
             and since_last_reconnect > RECONNECT_COOLDOWN_SEC)
 
 
+def equity_services_for_budget(books_enabled: bool) -> int:
+    """Equity services the daemon's ONE stream holds, for the options key budget. Base is TWO
+    (LEVELONE_EQUITIES + CHART_EQUITY); enabling equity book-depth adds NASDAQ_BOOK + NYSE_BOOK ->
+    FOUR. Options budgeting reserves equity_symbols x THIS many keys, so undercounting it would let
+    options over-subscribe past the shared per-account streamer key limit."""
+    return 4 if books_enabled else 2
+
+
 class CaptureStats:
     def __init__(self, sample_dir: Path | None = None) -> None:
         #: None (tests' default) = record which services were seen, write NO files.
@@ -322,12 +330,20 @@ async def _schwab_connect(state, symbols, bus, health, stats, stop):
     print(f"subscribed {len(symbols)} symbols x2 services (key accounting: "
           f"{len(symbols) * 2} keys used)")
 
-    # OPTIONS COLLECTION rides THIS daemon's single stream — the one Collect authority. It was
-    # first built onto the server's UI stream, a second Schwab surface with its own key
-    # accounting and persistence; it belongs here. A recycle is a CLEAN REBUILD (the same law the
-    # equity pump follows), so stop any prior options state, then re-establish on the new stream.
-    # equity_key_services=2 because THIS stream holds two equity services (LEVELONE_EQUITIES +
-    # CHART_EQUITY) — the budget is sized against the stream actually held, not a hardcoded 3.
+    # The options budget must size against the equity load THIS stream ACTUALLY holds. Base is TWO
+    # equity services (LEVELONE_EQUITIES + CHART_EQUITY); when equity book-depth is enabled the same
+    # stream ALSO holds NASDAQ_BOOK + NYSE_BOOK -> FOUR services. Undercounting held keys would let
+    # options over-subscribe past the shared per-account key limit, so the count FOLLOWS the flag.
+    try:
+        from equity_book_collect import equity_book_capture_enabled
+        _books_enabled = equity_book_capture_enabled()
+    except Exception:  # noqa: BLE001 — books-off budgeting if the collector cannot import
+        _books_enabled = False
+    _equity_services_held = equity_services_for_budget(_books_enabled)
+
+    # OPTIONS COLLECTION rides THIS daemon's single stream — the one Collect authority. A recycle is
+    # a CLEAN REBUILD (the same law the equity pump follows), so stop any prior options state, then
+    # re-establish on the new stream, budgeting against the equity services actually held above.
     try:
         from options_stream_collect import (
             register_options_handlers, _options_frame_handler,
@@ -338,7 +354,7 @@ async def _schwab_connect(state, symbols, bus, health, stats, stop):
         await stop_options_collection("stream_recycle")
         register_options_handlers(stream, _options_frame_handler)
         await start_options_collection(stream, bus=bus, equity_symbols=len(symbols),
-                                       equity_key_services=2)
+                                       equity_key_services=_equity_services_held)
     except Exception as exc:  # noqa: BLE001 — options is additive; equity capture is unaffected
         print(f"options collection did not start (equity capture unaffected): "
               f"{type(exc).__name__}: {exc}")
@@ -347,10 +363,9 @@ async def _schwab_connect(state, symbols, bus, health, stats, stop):
     # unconditionally (inert without a subscription); the subscribe is gated on
     # ED_EQUITY_BOOK_CAPTURE so deploying this changes nothing until the operator enables it.
     try:
-        from equity_book_collect import (equity_book_capture_enabled,
-                                         register_equity_book_handlers, subscribe_equity_books)
+        from equity_book_collect import register_equity_book_handlers, subscribe_equity_books
         register_equity_book_handlers(stream, bus, on_beat=health.beat)
-        if equity_book_capture_enabled():
+        if _books_enabled:
             subbed = await subscribe_equity_books(stream, symbols)
             print(f"equity book-depth subscribed: {subbed} "
                   f"({len(symbols) * len(subbed)} book keys on this stream)")
