@@ -19,10 +19,27 @@ REPO = Path(__file__).resolve().parent.parent
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
+import json  # noqa: E402
+import types  # noqa: E402
+
+import tools.rth_completeness_check_v1 as C  # noqa: E402
 from tools.rth_completeness_check_v1 import (  # noqa: E402
     classify_hole,
     session_completeness,
 )
+
+
+def _queued_sessions(*reports):
+    """A session_completeness stand-in that returns the queued reports in order (measure,
+    then re-measure after backfill)."""
+    it = iter(reports)
+    return lambda db, et_date: next(it)
+
+
+def _holes_report(total=2144):
+    return {"session": True, "total_missing": total, "tickers_with_holes": 1,
+            "expected_per_ticker": 420,
+            "tickers": {"FN": {"expected": 420, "present": 356, "missing": 64}}}
 
 
 def test_classifier_only_calls_vendor_surplus_a_loss():
@@ -70,3 +87,88 @@ def test_census_counts_session_minutes_against_the_grid(tmp_path):
     assert rep["session"] is True
     assert rep["tickers"]["ZZZ"]["present"] == 10
     assert rep["tickers"]["ZZZ"]["missing"] == rep["expected_per_ticker"] - 10
+
+
+# ── Observability (RC-181 follow-up): the durable final record the scheduled task leaves ──
+# The operator saw only "HOLES total_missing=2144" and had no durable way to see it ended a PASS.
+# These bind the four outcomes to a readable artifact + fail-closed exit code.
+
+
+def test_apparent_holes_zero_vendor_loss_leaves_durable_pass(tmp_path, monkeypatch):
+    """Scenario 1: grid holes remain after backfill, but the vendor has no more than us → the
+    artifact says COMPLETE_VS_VENDOR / VENDOR_RECONCILED_ZERO_LOSS and the exit code is 0."""
+    report = tmp_path / "rth_completeness_latest.json"
+    monkeypatch.setattr(C, "session_completeness",
+                        _queued_sessions(_holes_report(2144), _holes_report(2144)))
+    monkeypatch.setattr(C, "vendor_reconcile", lambda db, d, tks: {
+        "tickers": {"FN": {"ours": 356, "vendor": 356, "verdict": "VENDOR_EMPTY"}},
+        "lost_minutes": 0})
+    monkeypatch.setattr(C, "subprocess", types.SimpleNamespace(
+        run=lambda *a, **k: types.SimpleNamespace(returncode=0, stdout="backfilled", stderr="")))
+
+    rc = C.run("db", "2026-08-27", 0, True, report)
+
+    assert rc == 0, "zero real loss must exit 0 (fail-closed preserved)"
+    rec = json.loads(report.read_text(encoding="utf-8"))
+    assert rec["final_status"] == "COMPLETE_VS_VENDOR"
+    assert rec["completion_path"] == "VENDOR_RECONCILED_ZERO_LOSS"
+    assert rec["grid_missing"] == 2144 and rec["lost_vs_vendor"] == 0
+    assert rec["backfill_exit"] == 0 and rec["exit_code"] == 0
+    # HOLES is a recorded step, never the final word
+    assert any("HOLES" in s for s in rec["steps"]) and rec["final_status"] != "HOLES"
+
+
+def test_vendor_has_bars_we_lack_is_durable_lost_data_nonzero_exit(tmp_path, monkeypatch):
+    """Scenario 2: the vendor holds minutes we do not → durable LOST_DATA and a non-zero exit."""
+    report = tmp_path / "rth_completeness_latest.json"
+    monkeypatch.setattr(C, "session_completeness",
+                        _queued_sessions(_holes_report(2144), _holes_report(2144)))
+    monkeypatch.setattr(C, "vendor_reconcile", lambda db, d, tks: {
+        "tickers": {"FN": {"ours": 100, "vendor": 390, "verdict": "LOST"}},
+        "lost_minutes": 290})
+    monkeypatch.setattr(C, "subprocess", types.SimpleNamespace(
+        run=lambda *a, **k: types.SimpleNamespace(returncode=0, stdout="", stderr="")))
+
+    rc = C.run("db", "2026-08-27", 0, True, report)
+
+    assert rc == 1, "real vendor loss must exit non-zero (fail-closed)"
+    rec = json.loads(report.read_text(encoding="utf-8"))
+    assert rec["final_status"] == "LOST_DATA" and rec["completion_path"] == "LOST_DATA"
+    assert rec["lost_vs_vendor"] == 290 and rec["exit_code"] == 1
+
+
+def test_measurement_failure_is_durable_and_exits_2(tmp_path, monkeypatch):
+    """Scenario 3: a measurement error is never a pass — durable MEASUREMENT_FAILED, exit 2."""
+    report = tmp_path / "rth_completeness_latest.json"
+
+    def boom(db, et_date):
+        raise RuntimeError("database is locked")
+
+    monkeypatch.setattr(C, "session_completeness", boom)
+
+    rc = C.run("db", "2026-08-27", 0, True, report)
+
+    assert rc == 2, "unmeasurable is never a pass (RC-57)"
+    rec = json.loads(report.read_text(encoding="utf-8"))
+    assert rec["final_status"] == "MEASUREMENT_FAILED" and rec["exit_code"] == 2
+    assert "database is locked" in rec["error"]
+
+
+def test_scheduled_task_leaves_readable_artifact_after_process_exits(tmp_path):
+    """Scenario 4: run the tool as a real subprocess; the artifact is present + parseable AFTER
+    the process has exited. A non-trading date reaches NO_SESSION without touching a live db."""
+    import subprocess as _sp
+
+    report = tmp_path / "rth_completeness_latest.json"
+    r = _sp.run(
+        [sys.executable, str(REPO / "tools" / "rth_completeness_check_v1.py"),
+         "--db", str(tmp_path / "none.db"), "--date", "2026-08-01",  # a Saturday forever
+         "--report", str(report)],
+        capture_output=True, text=True, timeout=120,
+        env={**os.environ, "PYTEST_CURRENT_TEST": "boot"})
+
+    assert r.returncode == 0, f"NO_SESSION must exit 0; stderr={r.stderr[-400:]}"
+    assert report.exists(), "no durable artifact was left after the process exited"
+    rec = json.loads(report.read_text(encoding="utf-8"))
+    assert rec["final_status"] == "NO_SESSION" and rec["exit_code"] == 0
+    assert "written_at_utc" in rec
