@@ -453,8 +453,9 @@ class MarketState:
     mc_lower_50:            Optional[float] = None
     mc_paths:               Optional[int]   = None
     mc_horizon:             Optional[int]   = None
-    mc_vol_source:          Optional[str]   = None
+    mc_vol_source:          Optional[str]   = None  # VOLATILITY source: 'garch' or 'blend'
     mc_sigma_value:         Optional[float] = None  # ANNUALIZED decimal vol, post regime mult (path-independent)
+    mc_conditioning:        Optional[str]   = None  # DRIFT source: 'ml_conditioned' or 'base_neutral'
     mc_em_anchor:           Optional[str]   = None
     mc_iv_source:           Optional[str]   = None
     # Display-only wall-clock MC excursions (Key Levels); not used for sizing or fusion.
@@ -1811,6 +1812,7 @@ def build_market_state(
             ms.mc_horizon       = getattr(_fusion, 'mc_horizon', None)
             ms.mc_vol_source    = getattr(_fusion, 'mc_vol_source', None)
             ms.mc_sigma_value   = getattr(_fusion, 'mc_sigma_value', None)
+            ms.mc_conditioning  = getattr(_fusion, 'mc_conditioning', None)
 
         _disp_mc = getattr(_sig_out, "mc_display_excursions", None) or {}
         if isinstance(_disp_mc, dict):

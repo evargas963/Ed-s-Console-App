@@ -640,8 +640,14 @@ class SnapshotRow:
     mc_lower_50:            Optional[float] = None  # 12.5th percentile terminal
     mc_paths:               Optional[int]   = None  # MC path count
     mc_horizon:             Optional[int]   = None  # MC horizon (bars)
-    mc_vol_source:          Optional[str]   = None  # 'garch' or 'blend'
+    mc_vol_source:          Optional[str]   = None  # VOLATILITY source: 'garch' or 'blend'
     mc_sigma_value:         Optional[float] = None  # ANNUALIZED decimal vol, post regime mult (path-independent)
+    # DRIFT source: 'ml_conditioned' (unified-stack team authorized a directional prior) or
+    # 'base_neutral' (MC ran with no prior; per_bar_drift == 0). REQUIRED durably: the persisted
+    # xgb/lstm/transformer_available columns store layer `available`, while the team gate keys on
+    # triplet COMPLETENESS — so a base-neutral row can carry three available layers and would
+    # otherwise read as ML-conditioned. NULL on rows written before this column existed.
+    mc_conditioning:        Optional[str]   = None
 
     # ── Individual model outputs ──────────────────────────────────────────────
     xgb_available:          Optional[bool]  = None
@@ -1292,6 +1298,7 @@ class EdDB:
                 mc_horizon               INTEGER,
                 mc_vol_source            TEXT,
                 mc_sigma_value           REAL,
+                mc_conditioning          TEXT,
 
                 -- Individual model outputs
                 xgb_available           INTEGER,
@@ -2788,6 +2795,7 @@ class EdDB:
             ("mc_horizon",              "INTEGER"),
             ("mc_vol_source",           "TEXT"),
             ("mc_sigma_value",          "REAL"),
+            ("mc_conditioning",         "TEXT"),
             # ── Zone recency (no mixed-clock) ──────────────────────────────────
             ("zone_since_bars_1m",      "INTEGER"),   # execution-layer (1m bars)
             ("zone_since_bars_5m",      "INTEGER"),   # structure-layer (5m bars)

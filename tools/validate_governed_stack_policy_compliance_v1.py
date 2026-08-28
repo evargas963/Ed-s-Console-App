@@ -24,9 +24,19 @@ def _read(p: Path) -> str:
 
 def main() -> int:
     violations: list[str] = []
-    signals_txt = _read(ROOT / "signals.py")
-    if "model_prob_up=None" in signals_txt or "model_prob_down=None" in signals_txt:
-        violations.append("signals.py still passes literal None model_prob_* to monte_carlo.simulate")
+
+    # RETIRED: the `model_prob_up=None` / `model_prob_down=None` source-text prohibition.
+    # It was an orphan here — every other check in this file is about policy paths reading
+    # fusion-derived columns rather than legacy XGB movement heads, which is what the module
+    # docstring scopes it to. More importantly it is now FALSE as a rule: signals.py passes no
+    # directional prior to monte_carlo.simulate in base/neutral mode, deliberately and by proven
+    # contract, because conditioning MC on a view the unified-stack team gate refused would be the
+    # actual defect. A string check could only ever be satisfied by writing the same behaviour
+    # through a variable, which hides it rather than preventing it.
+    # The real invariant — an UNAUTHORIZED ML view must never condition Monte Carlo — is behaviour,
+    # not source text, and is locked by executable negative controls in
+    # tests/test_mc_base_neutral_mode_v1.py::test_partial_ml_is_not_smuggled_in_as_conditioning and
+    # ::test_base_mode_does_not_revive_or_fabricate_ml_abstention. No replacement text pin is added.
 
     policy_authority_files = [
         ROOT / "tools" / "run_phase8_calibration_global_v1.py",

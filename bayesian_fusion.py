@@ -86,8 +86,14 @@ class FusionPayload:
     mc_lower_50:           Optional[float] = None
     mc_paths:              Optional[int]   = None  # path count for interpretability
     mc_horizon:            Optional[int]   = None  # horizon (bars)
-    mc_vol_source:         Optional[str]   = None  # 'garch' or 'blend'
+    mc_vol_source:         Optional[str]   = None  # 'garch' or 'blend'  (VOLATILITY source)
     mc_sigma_value:        Optional[float] = None  # ANNUALIZED decimal vol, post regime mult (path-independent)
+    # DRIFT provenance — the sibling axis to mc_vol_source. 'ml_conditioned' when the unified-stack
+    # team authorized a directional prior, 'base_neutral' when MC ran with no prior (drift == 0).
+    # Durable, because every persisted ML column stores layer `available` while the team gate keys
+    # on triplet COMPLETENESS: a base-neutral row can carry three available layers, so without this
+    # a stored row is genuinely ambiguous. See tests/test_mc_base_neutral_mode_v1.py.
+    mc_conditioning:       Optional[str]   = None
 
     # Model agreement (XGB + LSTM + Transformer + MC directional alignment)
     model_agreement:       Optional[float] = None
@@ -763,6 +769,8 @@ def _fuse_impl(
     # producer (monte_carlo SIGMA UNIT CONTRACT); legacy keys kept as fallback.
     mc_sigma_value = (_assum.get("sigma_annualized") or _assum.get("scaled_sigma")
                       or _assum.get("blended_sigma")) if mc_avail else None
+    # Drift provenance rides the producer's own assumption manifest, same as the vol source above.
+    mc_conditioning = _assum.get("mc_conditioning") if mc_avail else None
 
     return FusionPayload(
         available=True,
@@ -798,6 +806,7 @@ def _fuse_impl(
         mc_horizon=mc_horizon,
         mc_vol_source=mc_vol_source,
         mc_sigma_value=mc_sigma_value,
+        mc_conditioning=mc_conditioning,
         model_agreement=round(agreement, 3) if agreement is not None else None,
         model_agreement_label=agree_label,
         prob_up=round(prob_up, 3) if prob_up is not None else None,

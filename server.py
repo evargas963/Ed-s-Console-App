@@ -8568,6 +8568,7 @@ def _fetch_state(
                         mc_horizon=getattr(ms, 'mc_horizon', None),
                         mc_vol_source=getattr(ms, 'mc_vol_source', None),
                         mc_sigma_value=getattr(ms, 'mc_sigma_value', None),
+                        mc_conditioning=getattr(ms, 'mc_conditioning', None),
                         # ── Individual model outputs (stack visibility) ─────────────────
                         xgb_available=getattr(ms, 'xgb_available', None),
                         xgb_dominant=getattr(ms, 'xgb_dominant', None),

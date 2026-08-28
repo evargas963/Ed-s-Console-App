@@ -55,11 +55,26 @@ def _inp(spot: float = 450.0, iv: float = 0.2):
         realized_vol=0.15, atr=1.0, garch_sigma_bars=None)
 
 
-def _layer(available: bool, up: float = 0.34, dn: float = 0.33):
-    """One ML layer's fusion-dict view. available=False => the layer abstained this tick."""
+def _rules():
+    return SimpleNamespace(signal="wait", conviction="low", confidence_label="low")
+
+
+def _regime():
+    return SimpleNamespace(primary="unknown", confidence="low", confidence_label="low")
+
+
+def _layer(available: bool, up: float = 0.34, dn: float = 0.33, flat: float | None = -1.0):
+    """One ML layer's fusion-dict view. available=False => the layer abstained this tick.
+
+    flat=None models a layer that reports available but whose directional TRIPLET is incomplete —
+    the team gate keys on triplet completeness, the persisted column stores only `available`.
+    """
     if not available:
         return {"available": False, "prob_up": None, "prob_down": None, "prob_flat": None}
-    return {"available": True, "prob_up": up, "prob_down": dn, "prob_flat": round(1 - up - dn, 6)}
+    pf = round(1 - up - dn, 6) if flat == -1.0 else flat
+    # confidence_label: bayesian_fusion reads it when building the evidence line for a live layer
+    return {"available": True, "prob_up": up, "prob_down": dn, "prob_flat": pf,
+            "confidence_label": "medium", "dominant": "up" if up >= dn else "down"}
 
 
 def _run_stack(*, layers: dict, spot: float = 450.0, iv: float = 0.2):
@@ -83,7 +98,7 @@ def _run_stack(*, layers: dict, spot: float = 450.0, iv: float = 0.2):
         patch("monte_carlo.simulate", side_effect=spy):
         rbm.return_value = {"fusion": layers, "model_outputs": {}, "stack_probs_15c": None}
         xgb_out, lstm_out, transformer_out, mc_out, ml_bundle = signals._run_model_stack(
-            _inp(spot, iv), SimpleNamespace(signal="wait", conviction="low"),
+            _inp(spot, iv), _rules(),
             SimpleNamespace(primary="unknown", confidence="low"),
             db=MagicMock(), inference_snapshot_v1=inf_v1)
     return SimpleNamespace(xgb=xgb_out, lstm=lstm_out, transformer=transformer_out,
@@ -94,6 +109,11 @@ ALL_DARK = {k: _layer(False) for k in ("xgb", "lstm", "transformer")}
 ALL_LIVE = {"xgb": _layer(True, 0.55, 0.25), "lstm": _layer(True, 0.52, 0.28),
             "transformer": _layer(True, 0.50, 0.30)}
 PARTIAL = {"xgb": _layer(True, 0.60, 0.20), "lstm": _layer(False), "transformer": _layer(False)}
+#: The row that makes durable provenance NECESSARY: all three layers report `available` (the value
+#: the snapshot column stores) but one triplet is incomplete, so the team gate refuses and MC runs
+#: base-neutral. Indistinguishable from ALL_LIVE on the persisted availability columns alone.
+AVAIL_BUT_INCOMPLETE = {"xgb": _layer(True, 0.40, 0.30, flat=None),
+                        "lstm": _layer(True, 0.35, 0.35), "transformer": _layer(True, 0.33, 0.33)}
 
 
 # ── PROOF 1: ML unavailable + valid inputs -> MC RUNS and is explicitly base/neutral ──────────
@@ -215,9 +235,7 @@ def test_persisted_mc_fields_recover_without_claiming_ml():
 
     r = _run_stack(layers=ALL_DARK)
     payload = bayesian_fusion.fuse(
-        SimpleNamespace(primary="unknown", confidence="low"),
-        r.xgb, r.lstm, r.transformer, r.mc,
-        SimpleNamespace(signal="wait", conviction="low"))
+        _regime(), r.xgb, r.lstm, r.transformer, r.mc, _rules())
 
     # the persisted mc_* family is populated again
     assert payload.mc_available is True
@@ -269,3 +287,104 @@ def test_watchdog_still_detects_a_genuinely_dead_mc_producer(tmp_path):
     rc, emitted = _run_liveness(_liveness_db(tmp_path, mc_paths_value=None))
     assert rc == 1, "a dead MC producer must still alert"
     assert any("DEAD PRODUCER" in m for _, m in emitted), emitted
+
+
+# ── PROOF 7: the persisted ML columns are PROVABLY insufficient on their own ───────────────────
+def test_persisted_availability_columns_alone_cannot_carry_the_distinction():
+    """Why a durable field is required, demonstrated rather than asserted.
+
+    The team gate keys on triplet COMPLETENESS; the snapshot columns store layer `available`.
+    So two rows can be byte-identical across xgb/lstm/transformer_available while one simulation
+    was ML-conditioned and the other was base-neutral.
+    """
+    ambiguous = _run_stack(layers=AVAIL_BUT_INCOMPLETE)
+    conditioned = _run_stack(layers=ALL_LIVE)
+
+    def flags(r):
+        return (bool(r.xgb.available), bool(r.lstm.available), bool(r.transformer.available))
+
+    assert flags(ambiguous) == (True, True, True)
+    assert flags(conditioned) == (True, True, True)
+    assert flags(ambiguous) == flags(conditioned), "premise: the stored flags are identical"
+
+    # ...yet the actual conditioning differs
+    assert ambiguous.mc.assumptions["mc_conditioning"] == "base_neutral"
+    assert conditioned.mc.assumptions["mc_conditioning"] == "ml_conditioned"
+    assert ambiguous.bundle["unified_stack_team_ok"] is False
+    assert conditioned.bundle["unified_stack_team_ok"] is True
+
+
+# ── PROOF 8: a DURABLE consumer cannot read a base-neutral row as ML-conditioned ───────────────
+def _persist_and_read_back(tmp_path, run, name: str) -> dict:
+    """Round-trip through the REAL EdDB snapshot writer and read the stored row back."""
+    import bayesian_fusion
+    from db import EdDB, SnapshotRow
+
+    payload = bayesian_fusion.fuse(
+        _regime(), run.xgb, run.lstm, run.transformer, run.mc, _rules())
+    dbp = tmp_path / f"{name}.db"
+    edb = EdDB(str(dbp))
+    edb.insert_snapshot(SnapshotRow(
+        ticker="SPY", timeframe="1m", ts_utc=time.time(), ts_et="2026-08-28 12:00:00",
+        et_hour=12, et_minute=0, market_session="rth", spot=450.0,
+        mc_paths=payload.mc_paths, mc_horizon=payload.mc_horizon,
+        mc_sigma_value=payload.mc_sigma_value, mc_vol_source=payload.mc_vol_source,
+        mc_conditioning=payload.mc_conditioning,
+        xgb_available=bool(run.xgb.available), lstm_available=bool(run.lstm.available),
+        transformer_available=bool(run.transformer.available)))
+    con = sqlite3.connect(str(dbp))
+    con.row_factory = sqlite3.Row
+    row = dict(con.execute(
+        "SELECT mc_paths, mc_conditioning, xgb_available, lstm_available, transformer_available "
+        "FROM snapshots ORDER BY rowid DESC LIMIT 1").fetchone())
+    con.close()
+    return row
+
+
+def test_durable_row_distinguishes_base_neutral_from_ml_conditioned(tmp_path):
+    """The stored row itself answers 'was this ML-conditioned?' — no in-memory state required."""
+    base = _persist_and_read_back(tmp_path, _run_stack(layers=AVAIL_BUT_INCOMPLETE), "base")
+    cond = _persist_and_read_back(tmp_path, _run_stack(layers=ALL_LIVE), "cond")
+
+    # both rows really did run MC, and really are identical on every ML availability column
+    assert base["mc_paths"] and cond["mc_paths"]
+    for col in ("xgb_available", "lstm_available", "transformer_available"):
+        assert base[col] == cond[col] == 1, "premise: availability columns cannot separate these"
+
+    # the durable field separates them, so a base-neutral row can never read as ML-conditioned
+    assert base["mc_conditioning"] == "base_neutral"
+    assert cond["mc_conditioning"] == "ml_conditioned"
+    assert base["mc_conditioning"] != cond["mc_conditioning"]
+
+
+def test_durable_conditioning_is_null_when_mc_did_not_run(tmp_path):
+    """A failed/withheld MC must not claim a conditioning mode it never had."""
+    row = _persist_and_read_back(tmp_path, _run_stack(layers=ALL_DARK, iv=0.0), "dead")
+    assert row["mc_paths"] is None
+    assert row["mc_conditioning"] is None
+
+
+# ── PROOF 9: the retired source-text prohibition is gone, and the validator still works ────────
+def test_governed_stack_validator_passes_and_stale_none_pin_is_retired():
+    """signals.py now passes NO directional prior in base mode — the validator must not forbid it,
+    and must still catch the legacy-substrate violations it actually exists for."""
+    import importlib
+
+    v = importlib.import_module("tools.validate_governed_stack_policy_compliance_v1")
+
+    # the real behaviour the retired pin tried to describe IS present in the source now
+    src = (ROOT / "signals.py").read_text(encoding="utf-8", errors="replace")
+    assert "_mc_up = _mc_dn = _mc_conf_in = None" in src, "base mode must pass no prior"
+
+    assert v.main() == 0, "validator must pass on the proven base-neutral contract"
+
+    # NEGATIVE CONTROL: the checks it is genuinely scoped to still fire
+    real_read = v._read
+
+    def poisoned(p):
+        txt = real_read(p)
+        return txt + "\npred_move_prob_5m = 1\n" if p.name.startswith("run_phase8") else txt
+
+    with patch.object(v, "_read", side_effect=poisoned):
+        # main() returns 0 on PASS and 3 on FAIL
+        assert v.main() == 3, "validator must still detect legacy pred_move_prob_* policy substrate"
