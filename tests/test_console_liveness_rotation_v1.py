@@ -101,17 +101,75 @@ def test_one_dark_ticker_cannot_inflate_the_allowance_meant_to_catch_it():
     assert allowance < 8_000_000.0, "the outlier must still be flaggable"
 
 
-def test_small_roster_falls_back_because_p90_cannot_exclude_an_outlier():
-    """DERIVED guard: p90 sits below the max only when n >= 11 (int(n*0.9) < n-1 <=> 0.1n > 1).
-    Below that a single dark ticker would define the rotation meant to catch it."""
-    for n in range(1, clc.MIN_LADDER_SAMPLE):
-        idx = min(n - 1, int(n * 0.9))
-        assert idx == n - 1, f"at n={n} the p90 index IS the maximum — estimator unusable"
-        allowance, rotation = clc.rotation_allowance([5.0] + [1200.0] * (n - 1))
+def test_small_roster_collapses_to_the_floor_without_a_special_case():
+    """On a handful of tickers the q=0.25 index sits at the newest clock, so the measured rotation
+    is 0 and the flat aggregate floor applies — no sample-size branch needed."""
+    for ages in ([5.0, 1200.0], [5.0, 1200.0, 1200.0]):
+        allowance, rotation = clc.rotation_allowance(sorted(ages))
         assert rotation == 0.0
-        assert allowance == float(clc.STALE_LIMIT_SECS), "must fall back to the aggregate bound"
-    # at the derived threshold the estimator becomes usable
-    assert min(clc.MIN_LADDER_SAMPLE - 1, int(clc.MIN_LADDER_SAMPLE * 0.9)) < clc.MIN_LADDER_SAMPLE - 1
+        assert allowance == ages[0] + float(clc.STALE_LIMIT_SECS)
+        assert any(a > allowance for a in ages), "a dark ticker must still be flaggable"
+
+
+# ── CONTAMINATION: a clustered outage must not enlarge the allowance enough to hide itself ─────
+def _clustered(n_healthy, d_dark, dark_age, span=ROTATION_SECS):
+    ages = [span * i / max(1, n_healthy - 1) for i in range(n_healthy)]
+    ages += [dark_age + 3.0 * j for j in range(d_dark)]   # went dark together => tight cluster
+    return sorted(ages)
+
+
+def test_clustered_outage_cannot_hide_itself_across_the_contamination_range():
+    """The attack that broke the previous p90 reading at 6/58 (10%). Sweep the dark fraction well
+    past the 10% boundary, at two dark ages, and require the measured rotation to stay UNcontaminated
+    (i.e. the estimator recovers the healthy cycle, it does not merely happen to still flag)."""
+    for dark_age in (8000.0, 30000.0):
+        for d in (1, 3, 6, 9, 12, 17, 23, 29, 35, 40):
+            ages = _clustered(ROSTER_N - d, d, dark_age)
+            allowance, rotation = clc.rotation_allowance(ages)
+            assert allowance < dark_age, (
+                f"{d}/{ROSTER_N} dark ({100*d/ROSTER_N:.0f}%) at {dark_age:.0f}s hid itself: "
+                f"rotation={rotation:.0f} allowance={allowance:.0f}")
+            assert rotation < 2 * ROTATION_SECS, (
+                f"rotation contaminated at d={d}, dark_age={dark_age:.0f}: {rotation:.0f}")
+
+
+def test_trim_uses_membership_not_the_verdict_multiplier():
+    """A ticker more than ONE rotation behind is not part of the rotation being measured. Trimming
+    at the generous verdict multiplier instead left a 50%-dark group at 8000s hidden behind its own
+    inflated allowance."""
+    ages = _clustered(ROSTER_N - 29, 29, 8000.0)          # exactly 50% dark
+    allowance, rotation = clc.rotation_allowance(ages)
+    assert rotation < 2 * ROTATION_SECS, f"seed stayed contaminated: {rotation:.0f}"
+    assert allowance < 8000.0
+
+
+def test_the_previous_p90_reading_would_have_hidden_a_ten_percent_outage():
+    """Negative control on the DEFECT: pin why p90 had to be replaced, not merely retuned."""
+    ages = _clustered(ROSTER_N - 6, 6, 8000.0)
+    p90 = ages[min(len(ages) - 1, int(len(ages) * 0.9))]
+    old_rotation = p90 - ages[0]
+    old_allowance = ages[0] + max(float(clc.STALE_LIMIT_SECS),
+                                  clc.ROTATIONS_ALLOWED * old_rotation)
+    assert old_allowance >= 8000.0, "premise: p90 absorbed the cluster at 6/58"
+    # the shipped estimator does not
+    assert clc.rotation_allowance(ages)[0] < 8000.0
+
+
+def test_clustered_outage_alerts_end_to_end(tmp_path):
+    rc, emitted = _run(_db(tmp_path, ages=_clustered(ROSTER_N - 9, 9, 8000.0)))
+    assert rc == 1
+    assert "PARTIAL-DARK" in _joined(emitted)
+
+
+# ── TOLERANCE: two rotations must cover MEASURED same-ticker revisit jitter ────────────────────
+def test_two_rotations_covers_measured_revisit_jitter_but_not_a_real_hiccup():
+    """Derived from 524 same-ticker background-logger revisit INTERVALS (outage hours excluded):
+    p50 1391s, p90 2311s, p95 2656s, p99 2723s, max 6893s. The tolerance must absorb jitter up to
+    p99 and still flag the 1.9-hour outlier."""
+    allowance, rotation = clc.rotation_allowance(sorted(_healthy_ladder(rotation=1391.0)))
+    for label, interval in (("p50", 1391.0), ("p90", 2311.0), ("p95", 2656.0), ("p99", 2723.0)):
+        assert interval <= allowance, f"{label} revisit {interval}s false-alarms (allow {allowance:.0f})"
+    assert 6893.0 > allowance, "a 1.9-hour RTH gap must still alert"
 
 
 def test_two_ticker_roster_with_a_20_minute_dark_ticker_still_alerts(tmp_path):
