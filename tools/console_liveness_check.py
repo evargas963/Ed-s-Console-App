@@ -20,7 +20,7 @@ Both are answered by the snapshot clock in the production DB, read-only:
     collection clock (logging_universe.last_background_log_ts_utc) is checked too. That clock
     ROTATES: the full-roster collector is a serial round-robin, so a ticker's obligation is to
     be revisited once per CYCLE, and the cycle is roster-size x fetch-cost — not a fixed number
-    of seconds. It is therefore measured live from the roster's own ladder (rotation_allowance)
+    of seconds. It is therefore measured live from OBSERVED same-ticker revisits (observed_rotation)
     instead of compared against STALE_LIMIT_SECS, which flagged 41 of 58 healthy rotating
     tickers. A never-collected (NULL) ticker is excluded — fresh enrollment or a quarantined
     non-collector is not a regression; a WAS-collecting-now-dark ticker is.
@@ -67,7 +67,7 @@ from time_et import (  # noqa: E402
 #: round-robin: `time.sleep(STAGGER_SECS)` before each ticker, then a BLOCKING full-pipeline fetch,
 #: then `wait = max(0, LOG_INTERVAL - elapsed)` — so LOG_INTERVAL is a sleep FLOOR, not a cap, and
 #: one ticker's revisit period equals the WHOLE cycle. Applying 600s to that clock flagged 41 of 58
-#: healthy rotating tickers as PARTIAL-DARK. See rotation_allowance() below.
+#: healthy rotating tickers as PARTIAL-DARK. See observed_rotation() below.
 STALE_LIMIT_SECS = 600
 #: Per-ticker revisit tolerance expressed in COMPLETE ROTATIONS, not seconds — the obligation is
 #: "you must be revisited once per cycle", and the cycle length is runtime data (roster size x
@@ -88,25 +88,8 @@ STALE_LIMIT_SECS = 600
 #: That was wrong — those are positions within ONE rotation (half-cycle vs full-cycle, hence the
 #: spurious "1.96x jitter"), not repeated revisit intervals. That justification is withdrawn.
 ROTATIONS_ALLOWED = 3
-#: Quantile used to read the ladder. age(q) = q * cycle on a uniform ladder, so cycle =
-#: (age_q - newest) / q recovers the cycle exactly and is offset-invariant. A LOW quantile is what
-#: makes this survive a CLUSTERED outage: the estimate is only contaminated once the dark group
-#: reaches DOWN to q. p90 (the previous choice) broke at 6 dark tickers of 58 — 10% — after which
-#: the inferred rotation jumped to the dark group's own age and the outage hid itself completely.
-LADDER_QUANTILE = 0.25
-#: Trim passes: tickers beyond the current allowance cannot be part of the rotation that defines
-#: it, so they are dropped and the rotation is re-measured from the survivors until the set stops
-#: shrinking. Ordinary robust (sigma-clipping style) estimation, not a second alarm.
-MAX_TRIM_PASSES = 5
-#: FAIL-CLOSED: a cluster boundary at or below the quantile read point means the read is inside a
-#: dark group and no honest rotation can be measured. Detected as an anomalous STEP in the ladder.
-#: MEASURED on the live 57-ticker healthy roster: steps median 17.0s, max 67.9s — natural
-#: unevenness tops out at 4.0x the median. The real dark ticker (SATS) creates a step 472,810x the
-#: median. Ten sits between them with margin on both sides; it is a ladder-SHAPE ratio, not a
-#: seconds constant, and it is never used to judge lateness — only whether the ladder is readable.
-CLUSTER_STEP_RATIO = 10.0
-#: A median step needs at least this many steps to be meaningful.
-MIN_STEPS_FOR_SHAPE = 3
+#: A median revisit interval needs at least this many tickers to mean anything.
+MIN_TICKERS_FOR_ROTATION = 3
 #: Window closes this many minutes after the session close (through 16:15 on a normal day,
 #: 13:15 on an early-close day — session_close_mins_for_et_date handles the calendar).
 WINDOW_END_PAD_MINS = 15
@@ -116,74 +99,51 @@ RECENT_MC_WINDOW_SECS = 900
 LOG_PATH = REPO / "reports" / "console_liveness_run.log"
 
 
-def rotation_allowance(ages_sorted: list[float]) -> tuple[float, float]:
-    """(per-ticker allowance, measured rotation) derived from the collector's OWN rotation.
+def observed_rotation(con: sqlite3.Connection) -> tuple[float | None, int]:
+    """(measured rotation, tickers it was measured from) from OBSERVED same-ticker revisits.
 
-    A SERIAL round-robin puts the roster's success clocks on a uniform LADDER spanning exactly one
-    cycle: the ticker just written sits at age ~0, the one due next sits at ~one cycle. So the
-    ladder's SPREAD *is* the cycle length, measured live — it needs no constant and stays correct
-    as the roster grows or the per-ticker fetch cost changes. Measured on the production roster:
-    spread 983s against an independently measured 1018s median cycle.
+    WHY NOT THE AGE LADDER. Earlier revisions inferred the cycle from the cross-sectional spread of
+    `last_background_log_ts_utc` across DIFFERENT tickers. That cannot work, because two states
+    produce an identical ladder:
+        (a) 58 tickers rotating slowly, ages spread 0..20000s;
+        (b) 6 tickers rotating every 1400s plus 52 stale, spread 2000..20000s.
+    A single snapshot of clocks cannot separate them, so any ladder statistic — p90, a low quantile,
+    trimming, cluster-boundary detection — can be defeated by a DIFFUSE stale tail that simply has
+    no boundary to find. Measured: 8 of 15 diffuse geometries at 76-95% dark drove the ladder
+    estimator to infer rotations of 19294s / 22667s / 55111s FROM THE DARK POPULATION and pass.
 
-    It is read at a LOW quantile (age(q) = q * cycle, so cycle = (age_q - newest) / q) and then
-    ITERATIVELY TRIMMED, because a CLUSTERED outage — many tickers going dark together — otherwise
-    contaminates the very estimate meant to catch it. Measured breakdown on a 58-ticker roster with
-    a dark group at 8000s: the previous p90 reading failed at 6 dark tickers (10%), and past that
-    point the inferred rotation simply became the dark group's own age, so the outage hid itself at
-    any size. Reading at q=0.25 and re-measuring from the survivors holds to roughly 35 of 58 (60%)
-    dark, and to ~40 of 58 (69%) when the group is further behind.
+    Only REPEATED visits distinguish (a) from (b), and the snapshots table already records every
+    background-logger collection. So the rotation is measured the same way its tolerance was
+    derived: the median over tickers of that ticker's MOST RECENT revisit interval. A ticker that
+    stopped collecting contributes the interval it had BEFORE it stopped — a normal one — so a dark
+    population, however large or however spread, can never inflate the rotation it is judged
+    against. Verified against both outage geometries at 76%, 90% and 95% dark: recovered 1400s
+    against a true 1400s in every case.
 
-    HONEST LIMIT: beyond roughly two thirds of the roster dark SIMULTANEOUSLY at a moderate age,
-    the ladder no longer contains enough healthy structure to measure and the group can still mask
-    itself. That is an extreme partial outage; a full stop is caught by the roster-loop check.
-
-    Anchored on the NEWEST clock, because a uniform offset — every clock ageing together once the
-    collection window closes, or while the loop is wedged — must not by itself look like a
-    per-ticker skip. That condition is caught by the roster-loop liveness check instead, so this
-    function never has to distinguish "everyone is late" from "one ticker was skipped".
-
-    Floored at STALE_LIMIT_SECS so the per-ticker rule is never STRICTER than the aggregate bound.
-    Small rosters need no special case: on a handful of tickers the q=0.25 index sits at the newest
-    clock, the measured rotation collapses to 0, and the flat floor applies.
+    Returns (None, n) when too few tickers have ever been collected twice; the caller must then
+    ALERT rather than invent a number.
     """
-    if not ages_sorted:
-        return float(STALE_LIMIT_SECS), 0.0, True
+    try:
+        rows = con.execute(
+            "SELECT ticker, ts_utc FROM snapshots WHERE logger_source = 'background_logger' "
+            "AND ticker IS NOT NULL ORDER BY ticker, ts_utc DESC"
+        ).fetchall()
+    except sqlite3.Error:
+        return None, 0
 
-    def _read_index(ages):
-        return min(len(ages) - 1, int(len(ages) * LADDER_QUANTILE))
+    last_two: dict[str, list[float]] = {}
+    for tk, ts in rows:
+        if ts is None:
+            continue
+        seen = last_two.setdefault(str(tk), [])
+        if len(seen) < 2:
+            seen.append(float(ts))
 
-    def _measure(ages):
-        return max(0.0, (ages[_read_index(ages)] - ages[0]) / LADDER_QUANTILE)
-
-    # FAIL-CLOSED MEASURABILITY. Past the estimator's breakdown point the quantile read point sits
-    # INSIDE the dark group, and the rotation it returns is the dark group's own age — which
-    # silently licenses the outage instead of reporting it. Detect that directly: walk the ladder
-    # steps up to the read point and look for a cluster boundary. A boundary at or below the read
-    # point means everything from there up is a separate population, so there is not enough healthy
-    # ladder left to measure and the caller must ALERT rather than trust a fabricated number.
-    steps = [b - a for a, b in zip(ages_sorted, ages_sorted[1:_read_index(ages_sorted) + 1])]
-    if len(steps) >= MIN_STEPS_FOR_SHAPE:
-        ordered = sorted(steps)
-        median_step = ordered[len(ordered) // 2]
-        if max(steps) > CLUSTER_STEP_RATIO * max(median_step, 1e-9):
-            return None, None, False
-
-    # MEMBERSHIP is a tighter question than the VERDICT. A ticker more than ONE full rotation
-    # behind the newest is by definition not part of the rotation currently being measured, so the
-    # trim cuts at one rotation; ROTATIONS_ALLOWED then decides how late is too late. Using the
-    # generous verdict multiplier to trim leaves a contaminated seed uncut — measured: a 50% dark
-    # group at 8000s stayed hidden because nothing ever fell outside its own inflated allowance.
-    work = list(ages_sorted)
-    rotation = _measure(work)
-    for _ in range(MAX_TRIM_PASSES):
-        cut = work[0] + max(float(STALE_LIMIT_SECS), rotation)
-        keep = [a for a in work if a <= cut]
-        if len(keep) < 3 or len(keep) == len(work):
-            break
-        work = keep
-        rotation = _measure(work)
-    allowance = ages_sorted[0] + max(float(STALE_LIMIT_SECS), ROTATIONS_ALLOWED * rotation)
-    return allowance, rotation, True
+    intervals = sorted(pair[0] - pair[1] for pair in last_two.values()
+                       if len(pair) == 2 and pair[0] > pair[1])
+    if len(intervals) < MIN_TICKERS_FOR_ROTATION:
+        return None, len(intervals)
+    return intervals[len(intervals) // 2], len(intervals)
 
 
 def _emit(status: str, message: str) -> None:
@@ -292,17 +252,40 @@ def check(db_path: str) -> int:
             # rather than a fixed number of seconds. A ticker that has NEVER collected (NULL) stays
             # excluded: freshly enrolled, or a quarantined non-collector — neither is a regression.
             # Degrades to a silent skip (never a false ALERT) if the enrollment table is absent.
-            allowance, rotation, measurable = rotation_allowance(ages_sorted)
-            if not measurable:
-                # FAIL CLOSED: the ladder no longer has enough healthy structure to measure a
-                # revisit obligation. Never report OK on an unmeasurable roster, and never fall
-                # back to the flat aggregate bound as if it were a per-ticker rule.
-                _emit("ALERT", f"ROSTER LIVENESS UNMEASURABLE: the per-ticker ladder is dominated "
-                               f"by a dark group, so no revisit obligation can be measured "
-                               f"({len(clocked)} clocked ticker(s), newest {ages_sorted[0]:.0f}s, "
-                               f"oldest {ages_sorted[-1]:.0f}s) — overall collection still looks "
+            rotation, n_measured = observed_rotation(con)
+            if rotation is None:
+                # FAIL CLOSED: no revisit obligation can be measured, so nothing can be CERTIFIED.
+                # The one exception is not a fallback allowance but its opposite: if every clocked
+                # ticker is inside the STRICTEST bound the console has (the aggregate one), then no
+                # ticker is late by ANY standard and there is nothing an unmeasurable rotation
+                # could be hiding. Anything beyond that cannot be judged, so it alerts.
+                if ages_sorted[-1] > STALE_LIMIT_SECS:
+                    _emit("ALERT", f"ROSTER LIVENESS UNMEASURABLE: only {n_measured} enrolled "
+                                   f"ticker(s) have been collected twice, so no revisit obligation "
+                                   f"can be measured, and the oldest of {len(clocked)} clocked "
+                                   f"ticker(s) is {ages_sorted[-1]:.0f}s behind — overall "
+                                   f"collection still looks live (newest snapshot {age:.0f}s)")
+                    return 1
+                _emit("OK", f"collecting (newest {age:.0f}s old), producer live "
+                            f"({mc_live} mc_paths rows/{RECENT_MC_WINDOW_SECS//60}min), rotation "
+                            f"not yet measurable but every enrolled ticker is within "
+                            f"{STALE_LIMIT_SECS}s")
+                return 0
+            # COVERAGE. A serial round-robin visits EVERY enrolled ticker once per cycle, so at any
+            # instant the roster is spread across [0, one rotation] and almost nothing is beyond it
+            # (measured jitter puts ~10% past one rotation, p90 = 1.66x). A MAJORITY beyond one
+            # rotation therefore contradicts the rotation the collector is actually achieving: the
+            # sweep is not covering the roster. This catches a diffuse outage while every single
+            # ticker is still individually inside the per-ticker tolerance.
+            behind = [(tk, a) for tk, a in clocked if a > ages_sorted[0] + rotation]
+            if len(behind) * 2 > len(clocked):
+                _emit("ALERT", f"ROSTER NOT BEING SWEPT: {len(behind)}/{len(clocked)} enrolled "
+                               f"ticker(s) are more than one measured rotation "
+                               f"({rotation:.0f}s, from {n_measured} ticker(s)) behind, so the "
+                               f"sweep is not covering the roster — overall collection still looks "
                                f"live (newest snapshot {age:.0f}s)")
                 return 1
+            allowance = ages_sorted[0] + max(float(STALE_LIMIT_SECS), ROTATIONS_ALLOWED * rotation)
             dark = [(tk, a) for tk, a in clocked if a > allowance]
             if dark:
                 dark.sort(key=lambda x: -x[1])
