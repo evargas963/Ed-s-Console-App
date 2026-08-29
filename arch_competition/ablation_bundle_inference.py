@@ -558,7 +558,7 @@ def score_unified_ablation_fusion_from_wire_row(
         unified_stack_team_can_authorize,
     )
     from mc_fusion_adjustment import fuse_payload_apply_mc_adjustment
-    from ml_predict import stack_probs_bundle_key
+    from ml_predict import stack_probs_bundle_key, stack_probs_composition_record
     from numeric_contract import float_finite_or_none
     from regime_engine import classify_regime
     from rules_engine import compute_rules
@@ -699,6 +699,20 @@ def score_unified_ablation_fusion_from_wire_row(
             # SAME MC CONDITIONING AUTHORITY as production. Without this the ablation leg
             # conditioned on a composition production would refuse, so it measured a
             # differently-conditioned stack than the one it is meant to compare against.
+            #
+            # The record must be BUILT here. Reading it off `ml_bundle` returned None on every
+            # row — nothing in this function ever wrote that key — so the gate was hardwired to
+            # (False, 'composition_unknown'): every ablation row silently ran base-neutral while
+            # the production leg it is measured against ran ML-conditioned, reintroducing exactly
+            # the conditioning skew this call was added to remove.
+            ml_bundle["stack_probs_composition"] = stack_probs_composition_record(
+                tku,
+                hz,
+                # Same contributor semantics as production: at 5c the runtime blend is
+                # xgb_plus_transformer, so LSTM is not a contributor to that triplet.
+                ({"xgb": xgb_p, "transformer": tr_p} if hz == "5c"
+                 else {"xgb": xgb_p, "lstm": lstm_p, "transformer": tr_p}),
+            )
             _team_ok, _team_reason = unified_stack_team_can_authorize(
                 xgb_out=xgb_out,
                 lstm_out=lstm_out,

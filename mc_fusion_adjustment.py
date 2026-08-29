@@ -600,22 +600,64 @@ def fuse_payload_apply_mc_adjustment(fusion: Any, mc_out: Any, spot_price: Optio
     # second argmax guard (the existing one below is untouched) and it neither reads nor tunes the
     # thresholds. It matches the engine's own written policy, multi_horizon_decision.py:5 —
     # "downgrades/blocks are allowed; synthetic conviction is not."
-    _pre_sorted = sorted(pre, reverse=True)
+    # WHY A CAP AND NOT A VETO. The first version of this guard DISCARDED the whole adjustment
+    # whenever either scalar rose. That was wrong in both directions, measured on this tree:
+    #   * It BLOCKED genuine downgrades. Over 20,775 exact-sum-1 triplets driven by the real
+    #     feature keys (mc_volatility / mc_tail_risk / mc_bias), 73.7% of adjustments were
+    #     discarded and 211 (1.02%) of those discards RESTORED tradeability that MC had removed —
+    #     e.g. pre=(0.25,0.39,0.36) (dom .39, margin .03 => tradeable) softened by MC to
+    #     (0.2301,0.3999,0.3700) (margin .0299 => WAIT) was thrown away because dominance rose,
+    #     so the tradeable original was stored. That is the veto manufacturing conviction.
+    #   * Its comparison was not like-for-like. `pre` comes from bayesian_fusion, which rounds each
+    #     leg to 3dp INDEPENDENTLY, so it often sums to 0.999/1.001, while apply_mc_adjustment
+    #     normalises. A completely NEUTRAL MC then "raised" dominance: pre=(0.298,0.325,0.376)
+    #     -> post=(0.298298,0.325325,0.376376). Worse, reverting stored the un-normalised tuple,
+    #     which line ~616 renormalises anyway — so the STORED dominance (0.376376) exceeded pre's
+    #     (0.376000) and the veto violated its own invariant on the value actually written.
+    #
+    # The cap blends the adjusted triplet toward uniform by the SMALLEST lambda that restores both
+    # ceilings. Blending toward uniform is the engine's own softening primitive: it preserves
+    # argmax and moves dominance and margin monotonically DOWN, so lambda solves in closed form.
+    # When the adjustment is already no more authoritative than pre, lambda is exactly 0 and the
+    # adjustment passes through untouched — a softening can never be reverted.
+    #
+    # Admission safety is preserved and is now provable: multi_horizon tradeability is
+    # `dom >= TRADEABLE_DOM_MIN AND margin >= TRADEABLE_MARGIN_MIN`. Since post <= pre on BOTH
+    # scalars, post admissible implies pre admissible — MC can never carry an inadmissible state
+    # across. No threshold is read or tuned here.
+    _pre_n = _triplet(pre) or pre
+    _pre_sorted = sorted(_pre_n, reverse=True)
     _post_sorted = sorted((u, d, fl), reverse=True)
     _pre_dom, _pre_margin = _pre_sorted[0], _pre_sorted[0] - _pre_sorted[1]
     _post_dom, _post_margin = _post_sorted[0], _post_sorted[0] - _post_sorted[1]
-    _mc_authority_rejected = (_post_dom > _pre_dom + 1e-12
-                              or _post_margin > _pre_margin + 1e-12)
-    if _mc_authority_rejected:
-        u, d, fl = pre              # discard the adjustment; MC may not increase authority
+    _third = 1.0 / 3.0
+    _lam = 0.0
+    if _post_margin > _pre_margin and _post_margin > 0.0:
+        _lam = max(_lam, 1.0 - (_pre_margin / _post_margin))
+    if _post_dom > _pre_dom and _post_dom > _third:
+        _lam = max(_lam, 1.0 - ((_pre_dom - _third) / (_post_dom - _third)))
+    _lam = min(1.0, max(0.0, _lam))
+    _mc_authority_capped = _lam > 0.0
+    if _mc_authority_capped:
+        u = (1.0 - _lam) * u + _lam * _third
+        d = (1.0 - _lam) * d + _lam * _third
+        fl = (1.0 - _lam) * fl + _lam * _third
 
     final_winner = _argmax_dir(u, d, fl)
 
     # Round for storage, then renormalize so stored legs sum to exactly 1.0.
-    # Fail-closed: if rounding would flip argmax, keep the pre-round adjusted triplet.
+    # Fail-closed on TWO invariants: rounding may flip argmax, and rounding-then-renormalising can
+    # nudge dominance/margin back UP past the cap (measured max +9.75e-07 across 20,775 triplets,
+    # e.g. pre=(0.985,0.005,0.01) margin 0.975000 -> stored 0.975001). Both are rejected here, so
+    # the value actually WRITTEN carries the invariant, not merely the intermediate.
     rounded_tri = _triplet((round(u, 6), round(d, 6), round(fl, 6)))
+    _rt_sorted = sorted(rounded_tri, reverse=True) if rounded_tri is not None else None
+    _rt_keeps_authority = _rt_sorted is not None and (
+        _rt_sorted[0] <= _pre_dom + 1e-12
+        and (_rt_sorted[0] - _rt_sorted[1]) <= _pre_margin + 1e-12
+    )
 
-    if rounded_tri is not None and _argmax_dir(*rounded_tri) == final_winner:
+    if rounded_tri is not None and _argmax_dir(*rounded_tri) == final_winner and _rt_keeps_authority:
 
         u_out, d_out, fl_out = rounded_tri
 
@@ -637,9 +679,13 @@ def fuse_payload_apply_mc_adjustment(fusion: Any, mc_out: Any, spot_price: Optio
 
         "mc_feature_source": mc_bundle_source or "derived_mc_normalized",
 
-        # True when the adjustment was discarded because it would have RAISED dominant probability
-        # or WIDENED margin — i.e. MC tried to increase directional authority rather than soften it.
-        "authority_increase_rejected": bool(_mc_authority_rejected),
+        # True when the adjustment was CAPPED (blended toward uniform) because it would otherwise
+        # have raised dominant probability or widened margin above the pre-adjustment values —
+        # i.e. MC tried to increase directional authority rather than soften it. The adjustment is
+        # capped, never discarded: discarding it would restore conviction MC had just removed.
+        "authority_increase_capped": bool(_mc_authority_capped),
+        # How much uniform blending the cap required (0.0 = adjustment passed through untouched).
+        "authority_cap_lambda": round(float(_lam), 9),
 
     }
 

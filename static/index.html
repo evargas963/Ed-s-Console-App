@@ -4984,15 +4984,19 @@ function deriveSourceForHorizon(d, slug) {
     || String(row.call || '').toUpperCase() === 'UNAVAILABLE'
     || String(row.row_state || '').toLowerCase() === 'missing';
   // A DIRECTIONAL surface may not be authorized by a SETUP-level predicate.
-  // isFusionAuthoritative(d) is bundle-level setup availability; horizon_fusion_available is
-  // per-horizon directional fusion; stack_directional_authorized is the transported directional
-  // AUTHORIZATION from governed_stack_contract. These are three distinct meanings and are kept
-  // distinct. The bug was the `else { hzFusionOk = true; }` fallback: a MISSING per-horizon map
-  // let bare setup availability light the "ML FUSION" chip for every horizon. Absent evidence now
-  // means NOT authorized, and the directional verdict is required on top of setup availability.
+  // isFusionAuthoritative(d) is bundle-level SETUP availability; horizon_fusion_available would be
+  // PER-HORIZON directional fusion. The bug fixed here is the old `else { hzFusionOk = true; }`
+  // fallback: `horizon_fusion_available` is not a MarketState field, so that map is ALWAYS absent
+  // on /api/state, and the fallback therefore let bare setup availability light the "ML FUSION"
+  // chip for every horizon on every tick. Absent evidence now means NOT authorized.
+  //
+  // NOT gated here: `d.stack_directional_authorized`. That verdict is computed once for the
+  // GOVERNED horizon, so applying it to the 1c/5c/15c/60c chips alike would gate one horizon on
+  // another's composition. Gating this surface correctly needs a PER-HORIZON authorization map
+  // that the producer does not emit yet; that half is reported as unfixed rather than approximated
+  // with a scalar that means something else.
   let hzFusionOk = false;
-  if (typeof isFusionAuthoritative === 'function' && isFusionAuthoritative(d)
-      && d.stack_directional_authorized === true) {
+  if (typeof isFusionAuthoritative === 'function' && isFusionAuthoritative(d)) {
     const hfa = d.horizon_fusion_available;
     if (hfa && typeof hfa === 'object' && Object.prototype.hasOwnProperty.call(hfa, slug)) {
       hzFusionOk = hfa[slug] === true;

@@ -14,6 +14,7 @@ divergence is reported separately as NOT_PROVEN, not resolved by blessing the ru
 
 from __future__ import annotations
 
+import ast
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -28,15 +29,38 @@ import monte_carlo  # noqa: E402
 TRI = {"up": 0.55, "down": 0.25, "flat": 0.20}
 
 
-def _code_only(src: str, marker: str = "#") -> str:
-    """Source with comment lines removed, so these controls assert on CODE and are not satisfied
-    (or defeated) by prose that merely mentions a removed construct."""
+def _code_only(src: str) -> str:
+    """Python source with ALL comments and docstrings removed, EXACTLY — via ast, not heuristics.
+
+    The first version of this helper dropped only lines whose first non-space character was `#`.
+    That left TRAILING comments and docstring BODIES in the text, so a control asserting
+    "construct X is gone" could be satisfied or defeated by prose that merely mentions X — which is
+    the precise failure mode these ONE-FAUCET controls exist to catch. `ast.unparse` emits code
+    only; docstrings are stripped explicitly below. Quotes are normalised because unparse
+    re-renders string literals in its own style.
+    """
+    tree = ast.parse(src)
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+            body = getattr(node, "body", None)
+            if (body and isinstance(body[0], ast.Expr)
+                    and isinstance(body[0].value, ast.Constant)
+                    and isinstance(body[0].value.value, str)):
+                node.body = body[1:] or [ast.Pass()]
+    return ast.unparse(tree).replace('"', "'")
+
+
+def _js_code_only(src: str) -> str:
+    """JS source with `//` line comments removed — same reason as _code_only.
+
+    This is not hypothetical: the comment that documents the removed `else { hzFusionOk = true; }`
+    fallback quotes it verbatim, so a raw-text control asserting that construct is gone reads its
+    own explanation and fails. Controls must see CODE.
+    """
     out = []
     for ln in src.splitlines():
-        s = ln.strip()
-        if s.startswith(marker) or s.startswith('"""') or s.startswith("*"):
-            continue
-        out.append(ln.split(marker)[0] if marker == "//" else ln)
+        i = ln.find("//")
+        out.append(ln if i < 0 else ln[:i])
     return "\n".join(out)
 
 
@@ -159,13 +183,51 @@ def test_mc_may_never_increase_dominant_or_margin():
 
 
 def test_mc_may_still_soften_an_authorized_state():
-    """MC stays a real risk influence: one-way means downgrade is allowed."""
-    import inspect
+    """CONTROL 4 (inverse half) — one-way means DOWNGRADE IS ALLOWED, behaviourally.
+
+    The first version of this guard VETOED the whole adjustment whenever either scalar rose, which
+    silently restored conviction MC had just removed. Measured on this tree before the repair: of
+    20,775 exact-sum-1 triplets driven by the real feature keys, 73.7% of adjustments were
+    discarded and 211 came back TRADEABLE after MC had made them WAIT. This is that exact case —
+    dominance rises while margin collapses, so the veto fired and the softening was lost.
+    """
+    from dataclasses import dataclass
 
     import mc_fusion_adjustment as mcf
-    src = inspect.getsource(mcf.fuse_payload_apply_mc_adjustment)
-    assert "_mc_authority_rejected" in src
-    assert "u, d, fl = pre" in src, "rejection must restore the PRE triplet, not invent one"
+
+    @dataclass
+    class _P:
+        available: bool = True
+        prob_up: float = 0.0
+        prob_down: float = 0.0
+        prob_flat: float = 0.0
+        canonical_provenance: str = "ok"
+        mc_post_fusion_audit: dict | None = None
+
+    def _dm(t):
+        s = sorted(t, reverse=True)
+        return s[0], s[0] - s[1]
+
+    pre = (0.25, 0.39, 0.36)
+    pre_dom, pre_margin = _dm(pre)
+    assert pre_dom >= 0.38 and pre_margin >= 0.03, "premise: starts TRADEABLE"
+
+    mc_out = SimpleNamespace(
+        available=True,
+        mc_feature_dict=lambda: {"source": "derived_mc_normalized", "expected_move": 0.9,
+                                 "volatility": 0.0148 * 450.0, "skew": -0.04,
+                                 "tail_risk": 0.1, "directional_bias": -0.2},
+    )
+    out = mcf.fuse_payload_apply_mc_adjustment(
+        _P(prob_up=pre[0], prob_down=pre[1], prob_flat=pre[2]), mc_out, 450.0)
+    post = (out.prob_up, out.prob_down, out.prob_flat)
+    post_dom, post_margin = _dm(post)
+
+    assert post != pre, "the softening must survive — a veto here restores conviction MC removed"
+    assert post_margin < pre_margin, "MC's downgrade must reach the stored triplet"
+    assert not (post_dom >= 0.38 and post_margin >= 0.03), "MC made it WAIT; it must STAY WAIT"
+    # and the cap still holds in the authority-increasing direction
+    assert post_dom <= pre_dom + 1e-9 and post_margin <= pre_margin + 1e-9
 
 
 # ── CONTROL 5: canonical MC horizon semantics ─────────────────────────────────────────────────
@@ -187,11 +249,20 @@ def test_the_ui_consumes_the_transported_minutes_and_holds_no_time_authority():
 
 # ── CONTROL 6: weak fusion may not authorize a directional horizon ────────────────────────────
 def test_setup_fusion_alone_cannot_light_a_directional_horizon():
-    ui = (ROOT / "static" / "index.html").read_text(encoding="utf-8", errors="replace")
-    assert "d.stack_directional_authorized === true" in ui, \
-        "directional chip must require the transported directional verdict"
-    assert "hzFusionOk = false;   // no per-horizon evidence => withhold, never assume" in ui, \
-        "a missing per-horizon map must withhold, not authorize every horizon"
+    """The old fallback read `else { hzFusionOk = true; }` — a MISSING per-horizon map authorized
+    EVERY horizon from bundle-level setup availability alone.
+
+    That fallback was not a rare edge: `horizon_fusion_available` is not a MarketState field, so it
+    is absent from /api/state on every tick and the fallback was ALWAYS taken. The second assertion
+    proves that, so the first is not merely pinning text."""
+    import market_state
+
+    ui = _js_code_only((ROOT / "static" / "index.html").read_text(encoding="utf-8", errors="replace"))
+    assert "hzFusionOk = true" not in ui, "the assume-authorized fallback must be gone"
+    assert "hzFusionOk = false" in ui, "a missing per-horizon map must withhold"
+    assert "horizon_fusion_available" not in market_state.MarketState.__dataclass_fields__, \
+        "if this field ever IS emitted, the fallback stops being the always-taken branch and this " \
+        "control must be rewritten to exercise the map itself"
 
 
 def test_stack_health_requires_the_transported_verdict_and_cannot_substitute():
@@ -215,7 +286,7 @@ def test_server_transports_the_verdict_and_does_not_recompute_it():
     src = _code_only((ROOT / "server.py").read_text(encoding="utf-8", errors="replace"))
     assert "unified_stack_team_can_authorize(" not in src, \
         "server must not hold a second authorization computation"
-    assert 'ms_dict.get("stack_directional_authorized")' in src, \
+    assert "ms_dict.get('stack_directional_authorized')" in src, \
         "server must consume the transported verdict"
     assert "def classify_stack_health(*, fusion_available" not in src, \
         "the shadow stack-health copy must be gone"
@@ -238,7 +309,7 @@ def test_display_mc_leg_consumes_the_governing_decision():
     src = _code_only(inspect.getsource(signals._compute_display_wall_clock_mc_excursions))
     assert "mc_model_direction_inputs(" not in src, \
         "display leg must not re-derive directional priors"
-    assert 'ml_bundle.get("mc_conditioned")' in src, \
+    assert "ml_bundle.get('mc_conditioned')" in src, \
         "display leg must consume the governing MC conditioning decision"
 
 
@@ -257,3 +328,50 @@ def test_meta_is_credited_only_when_the_approved_composition_ran():
         mc_out=SimpleNamespace(available=False), ml_bundle=bundle,
         regime=SimpleNamespace(primary="unknown"), fusion_payload=None)
     assert "meta" not in scored
+
+
+# ── PRODUCER <-> GATE binding (added after adversarial review) ────────────────────────────────
+def test_producer_record_and_gate_agree_on_keys_and_semantics():
+    """If the producer emitted a key the gate never reads — or named one differently — both sides
+    would keep passing their own tests while production read `composition_unknown` forever. Bind
+    them with the REAL record from the real producer, not a hand-built dict.
+
+    Environment-independent by construction: whatever the local artifacts say, the gate's verdict
+    for a COMPLETE triplet must equal the producer's own `complete`.
+    """
+    from ml_predict import stack_probs_composition_record
+
+    rec = stack_probs_composition_record("SPY", "1c",
+                                         {"xgb": TRI, "lstm": TRI, "transformer": TRI})
+    for k in ("horizon", "required", "produced", "missing", "collapsed",
+              "contract_compliant", "contract_issues", "complete"):
+        assert k in rec, f"producer must emit {k!r} — the gate reads it"
+
+    ok, _reason = gsc.unified_stack_team_can_authorize(
+        xgb_out=_layer(), lstm_out=_layer(), transformer_out=_layer(),
+        stack_probs=TRI, stack_probs_composition=rec)
+    assert ok is bool(rec["complete"]), \
+        "the gate's verdict must track the producer's record, not re-derive a weaker answer"
+
+
+def test_composition_credits_only_the_legs_that_fed_the_triplet():
+    """At 5c the runtime blend is xgb_plus_transformer, yet lstm_p is still COMPUTED upstream.
+    Crediting LSTM there would authorize a triplet it never touched — shape over provenance, the
+    exact error this record exists to end."""
+    from ml_predict import stack_probs_composition_record
+
+    rec = stack_probs_composition_record("SPY", "5c", {"xgb": TRI, "transformer": TRI})
+    assert "lstm" in rec["missing"], "a leg that did not feed the blend is not a contributor"
+    assert "lstm" not in rec["produced"]
+    assert rec["complete"] is False
+
+
+def test_ablation_scorer_builds_the_composition_it_gates_on():
+    """The ablation leg read `ml_bundle.get("stack_probs_composition")` from a bundle literal that
+    never set it, so its gate was hardwired to (False, 'composition_unknown') and every scored row
+    ran base-neutral against an ML-conditioned production leg — the conditioning skew the call was
+    added to remove."""
+    src = _code_only((ROOT / "arch_competition" / "ablation_bundle_inference.py")
+                     .read_text(encoding="utf-8", errors="replace"))
+    assert "ml_bundle['stack_probs_composition'] = stack_probs_composition_record(" in src, \
+        "the ablation leg must BUILD the record it authorizes on, not read an unset key"

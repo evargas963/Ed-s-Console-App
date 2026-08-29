@@ -463,7 +463,10 @@ def _compute_display_wall_clock_mc_excursions(
     Display-only wall-clock EFE/EAE for Key Levels (5m / 15m rows).
 
     Isolated from fusion posterior, sizing, and ML features. Uses
-    ``wall_clock_minutes_to_mc_bars`` so BAR_MINUTES=5 maps 5m→1 bar, 15m→3 bars.
+    ``wall_clock_minutes_to_mc_bars``, which divides by the canonical ``monte_carlo.BAR_MINUTES``:
+    at the current BAR_MINUTES=1 that is 5m→5 bars and 15m→15 bars. (This line previously asserted
+    BAR_MINUTES=5 → 5m→1 bar / 15m→3 bars, which contradicted the constant it names; the helper
+    reads the constant, so only the prose was stale.)
     Fail-closed: any blocked input => all keys None (UI omits rows).
     """
     keys = ("mc_efe_5m", "mc_eae_5m", "mc_efe_15m", "mc_eae_15m")

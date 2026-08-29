@@ -456,6 +456,15 @@ _collapse_flag_registry: dict[str, set] = {}  # _model_registry_key -> {collapse
 # Strict-active bundle resolution — cache blocked/ok per (ticker, hz); warn once per key.
 _active_bundle_dir_cache: dict[str, Path | None] = {}
 _strict_bundle_warned: set[str] = set()
+# Serving-contract verdict per (ticker, hz) for stack_probs_composition_record. That verdict costs
+# a sha256 sweep of seven artifacts plus a torch.load of both sequence checkpoints and a pickle
+# load of the meta stack — measured 0.050-0.055 s per (ticker, horizon). The record is consulted
+# once per horizon per ticker per refresh, so calling it uncached put ~10 s of synchronous CPU on
+# every 58-symbol sweep, directly on the /api/state latency that card_freshness_v1 turns into
+# STALE cards. Cached with the SAME lifetime as _active_bundle_dir_cache and evicted from the same
+# three places (reset_caches, invalidate_model_registry, the per-key provenance eviction below),
+# so a promotion or retrain can never be served a stale compliance verdict.
+_bundle_contract_cache: dict[str, dict] = {}
 # ML-PIPE Item 4 — verification provenance per f"{registry_key}|{artifact_role}".
 # Records the exact manifest + artifact identity every governed load was verified
 # against (or the fail-closed reason), and the stat identity used by the
@@ -632,6 +641,7 @@ def invalidate_model_registry_key(rk: str) -> None:
         if key.startswith(prov_prefix):
             del _artifact_verification_registry[key]
     _active_bundle_dir_cache.pop(rk, None)
+    _bundle_contract_cache.pop(rk, None)
     _strict_bundle_warned.discard(rk)
 
 
@@ -2128,15 +2138,25 @@ def stack_probs_composition_record(
 
     contract_compliant = False
     contract_issues: list[str] = []
-    try:
-        bt = _bundle_ticker_for_artifacts(ticker)
-        chk = check_active_bundle_complete(
-            bt, hz, bundle_dir=active_bundle_dir(bt, hz, models_dir=MODEL_DIR),
-            models_dir=MODEL_DIR)
-        contract_compliant = bool(chk.get("compliant"))
-        contract_issues = [str(i) for i in (chk.get("issues") or [])][:6]
-    except Exception as e:  # noqa: BLE001 — an unreadable bundle is NOT an authorized one
-        contract_issues = [f"{type(e).__name__}: {e}"]
+    _ck = _model_registry_key(ticker, hz)
+    _cached = _bundle_contract_cache.get(_ck)
+    if _cached is not None:
+        contract_compliant = bool(_cached.get("contract_compliant"))
+        contract_issues = list(_cached.get("contract_issues") or [])
+    else:
+        try:
+            bt = _bundle_ticker_for_artifacts(ticker)
+            chk = check_active_bundle_complete(
+                bt, hz, bundle_dir=active_bundle_dir(bt, hz, models_dir=MODEL_DIR),
+                models_dir=MODEL_DIR)
+            contract_compliant = bool(chk.get("compliant"))
+            contract_issues = [str(i) for i in (chk.get("issues") or [])][:6]
+        except Exception as e:  # noqa: BLE001 — an unreadable bundle is NOT an authorized one
+            contract_issues = [f"{type(e).__name__}: {e}"]
+        _bundle_contract_cache[_ck] = {
+            "contract_compliant": contract_compliant,
+            "contract_issues": list(contract_issues),
+        }
 
     return {
         "horizon": hz,
@@ -2429,10 +2449,16 @@ def run_unified_stack_ml_once(
     }
 
     stack_probs = None
+    # The legs that actually FED the triplet — not merely the legs that predicted. These differ:
+    # at 5c the runtime blend is xgb_plus_transformer, yet lstm_p is still computed above. Handing
+    # the composition record all three would credit LSTM as a contributor to a triplet it never
+    # touched, which is exactly the shape-over-provenance error this record exists to end.
+    _contributing_legs: dict[str, Optional[dict]] = {}
     if xgb_p is not None or lstm_p is not None or tr_p is not None:
         # 5c default runtime path: winning stack is xgb_plus_transformer with
         # calibrated probabilities before downstream decision consumption.
         if get_ml_infer_horizon_slug() == "5c":
+            _contributing_legs = {"xgb": xgb_p, "transformer": tr_p}
             stack_probs = _weighted_average_partial(
                 tkr,
                 [("xgb", xgb_p, 0.40), ("transformer", tr_p, 0.25)],
@@ -2442,6 +2468,7 @@ def run_unified_stack_ml_once(
                 tkr, stack_probs
             )
         else:
+            _contributing_legs = {"xgb": xgb_p, "lstm": lstm_p, "transformer": tr_p}
             _meta_overlay = meta_tabular_overlay if meta_tabular_overlay is not None else snapshot
             stack_probs = _ensemble_parallel_probs(
                 tkr,
@@ -2476,7 +2503,7 @@ def run_unified_stack_ml_once(
         "stack_probs_composition": stack_probs_composition_record(
             tkr,
             get_ml_infer_horizon_slug(),
-            {"xgb": xgb_p, "lstm": lstm_p, "transformer": tr_p},
+            _contributing_legs,
             collapsed=_active_base_collapse_flags(tkr),
         ),
         "movement_head_probs": _mh,
@@ -2771,6 +2798,7 @@ def reset_caches():
     """Clear all loaded models. Call this after retraining."""
     global _xgb_registry, _xgb_movehead_registry, _meta_registry, _lstm_registry, _trans_registry
     global _collapse_flag_registry, _active_bundle_dir_cache, _strict_bundle_warned
+    global _bundle_contract_cache
     _xgb_registry   = {}
     _xgb_movehead_registry = {}
     _meta_registry  = {}
@@ -2778,6 +2806,7 @@ def reset_caches():
     _trans_registry = {}
     _collapse_flag_registry = {}
     _active_bundle_dir_cache = {}
+    _bundle_contract_cache = {}
     _strict_bundle_warned = set()
     logger.info("ml_predict: all model caches cleared")
 
@@ -2800,6 +2829,7 @@ def invalidate_model_registry(ticker: str, hz: str | None = None) -> bool:
     if rk in _active_bundle_dir_cache:
         del _active_bundle_dir_cache[rk]
         _strict_bundle_warned.discard(rk)
+    _bundle_contract_cache.pop(rk, None)
     return removed
 
 
