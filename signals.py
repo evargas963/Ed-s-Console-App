@@ -407,8 +407,24 @@ def production_fusion_payload_for_stack(
         regime=regime,
         fusion_payload=fusion_payload_full,
     )
+    # STAMP THE VERDICT ONTO THE PAYLOAD. This is the only site holding BOTH this horizon's
+    # ml_bundle (where the authorization was computed, with composition in scope) and this
+    # horizon's payload (the only per-horizon carrier). Everything downstream — market_state,
+    # server, the per-horizon MH snapshot, the UI — reads this value instead of rebuilding one.
+    if fusion_payload_full is not None and isinstance(ml_bundle, dict):
+        try:
+            object.__setattr__(fusion_payload_full, "stack_directional_authorized",
+                               bool(ml_bundle.get("unified_stack_team_ok")))
+            object.__setattr__(fusion_payload_full, "stack_directional_authorization_reason",
+                               ml_bundle.get("unified_stack_team_reason"))
+        except Exception as e:  # noqa: BLE001 — never fail a tick over provenance stamping
+            log.debug("could not stamp directional authorization on fusion payload: %s", e)
+
     audit = {
         "stack_layers_scored": layers_scored,
+        "stack_directional_authorized": (
+            bool(ml_bundle.get("unified_stack_team_ok")) if isinstance(ml_bundle, dict) else False
+        ),
         "mc_stack_probability_source": (
             ml_bundle.get("mc_stack_probability_source")
             if isinstance(ml_bundle, dict)
@@ -463,22 +479,25 @@ def _compute_display_wall_clock_mc_excursions(
     from governed_stack_contract import (
         MC_DISPLAY_N_PATHS,
         MC_DISPLAY_WALL_CLOCK_MINUTES,
-        mc_model_direction_inputs,
         wall_clock_minutes_to_mc_bars,
     )
-    from ml_predict import stack_probs_bundle_key
 
     _mc_regime = getattr(regime, "primary", None) if regime else None
     if _mc_regime == "unknown":
         _mc_regime = None
     _mc_regime_conf = getattr(regime, "confidence", None) if regime else None
-    _spk = stack_probs_bundle_key()
-    _m_up, _m_dn, _m_conf, _, _ = mc_model_direction_inputs(
-        xgb_out=xgb_out,
-        lstm_out=lstm_out,
-        transformer_out=transformer_out,
-        stack_probs=ml_bundle.get(_spk) if isinstance(ml_bundle, dict) else None,
-    )
+    # ONE MC CONDITIONING AUTHORITY. This display leg used to call mc_model_direction_inputs()
+    # itself and pass the result straight into simulate(), so it could condition on a PARTIAL or
+    # unauthorized composition while the governing leg correctly ran base_neutral — two different
+    # Monte Carlos on one tick, only one of them governed. It now CONSUMES the governing decision
+    # (written by _run_model_stack) instead of deriving a second one. Absent key => not conditioned.
+    _mc_conditioned_disp = bool(ml_bundle.get("mc_conditioned")) if isinstance(ml_bundle, dict) else False
+    if _mc_conditioned_disp:
+        _m_up = ml_bundle.get("mc_model_prob_up")
+        _m_dn = ml_bundle.get("mc_model_prob_down")
+        _m_conf = ml_bundle.get("mc_model_confidence")
+    else:
+        _m_up = _m_dn = _m_conf = None
     garch_full = mc_spot_ctx.get("garch_sigma_bars")
 
     for minutes in MC_DISPLAY_WALL_CLOCK_MINUTES:
@@ -641,6 +660,9 @@ def _run_model_stack(
         ml_bundle = {
             "model_outputs": _once.get("model_outputs"),
             _spk: _once.get(_spk),
+            # Carry the composition provenance forward. Without it the authorization gate below can
+            # only see the SHAPE of the triplet, which one renormalised leg fakes.
+            "stack_probs_composition": _once.get("stack_probs_composition"),
             "movement_head_probs": _once.get("movement_head_probs") or {},
         }
         fused = _once["fusion"]
@@ -733,6 +755,10 @@ def _run_model_stack(
                 lstm_out=lstm_out,
                 transformer_out=transformer_out,
                 stack_probs=_stack_probs if isinstance(_stack_probs, dict) else None,
+                # Provenance from the ONE place the leg list survives (ml_predict). Without it the
+                # gate can only see the SHAPE of the triplet, which a single renormalised leg fakes.
+                stack_probs_composition=(ml_bundle.get("stack_probs_composition")
+                                         if isinstance(ml_bundle, dict) else None),
             )
             _m_up, _m_dn, _m_conf, _avail_map, _mc_src = mc_model_direction_inputs(
                 xgb_out=xgb_out,

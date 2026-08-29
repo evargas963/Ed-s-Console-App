@@ -590,6 +590,25 @@ def fuse_payload_apply_mc_adjustment(fusion: Any, mc_out: Any, spot_price: Optio
 
     u, d, fl = apply_mc_adjustment(pre, mc_n)
 
+    # ── MC IS ONE-WAY: it may soften an authorized opportunity, never manufacture conviction ──
+    # Preserving argmax is NOT sufficient. Multi-horizon tradeability reads TWO scalars —
+    # multi_horizon_decision.py:863-864, `dom >= TRADEABLE_DOM_MIN` and
+    # `margin >= TRADEABLE_MARGIN_MIN` — so an adjustment that keeps the winner while RAISING the
+    # dominant probability or WIDENING the margin can carry a non-tradeable state across .38/.03
+    # and make it tradeable. That is MC creating predictive authority, which it must never do.
+    # This is a monotonicity constraint on exactly the two quantities that gate reads. It is not a
+    # second argmax guard (the existing one below is untouched) and it neither reads nor tunes the
+    # thresholds. It matches the engine's own written policy, multi_horizon_decision.py:5 —
+    # "downgrades/blocks are allowed; synthetic conviction is not."
+    _pre_sorted = sorted(pre, reverse=True)
+    _post_sorted = sorted((u, d, fl), reverse=True)
+    _pre_dom, _pre_margin = _pre_sorted[0], _pre_sorted[0] - _pre_sorted[1]
+    _post_dom, _post_margin = _post_sorted[0], _post_sorted[0] - _post_sorted[1]
+    _mc_authority_rejected = (_post_dom > _pre_dom + 1e-12
+                              or _post_margin > _pre_margin + 1e-12)
+    if _mc_authority_rejected:
+        u, d, fl = pre              # discard the adjustment; MC may not increase authority
+
     final_winner = _argmax_dir(u, d, fl)
 
     # Round for storage, then renormalize so stored legs sum to exactly 1.0.
@@ -617,6 +636,10 @@ def fuse_payload_apply_mc_adjustment(fusion: Any, mc_out: Any, spot_price: Optio
         "final_argmax": _argmax_dir(u_out, d_out, fl_out),
 
         "mc_feature_source": mc_bundle_source or "derived_mc_normalized",
+
+        # True when the adjustment was discarded because it would have RAISED dominant probability
+        # or WIDENED margin — i.e. MC tried to increase directional authority rather than soften it.
+        "authority_increase_rejected": bool(_mc_authority_rejected),
 
     }
 

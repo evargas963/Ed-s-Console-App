@@ -5152,18 +5152,13 @@ def _attach_stack_runtime_and_governance(ms_dict: dict, *, ticker: str) -> None:
     - stack_runtime: fusion active, MC participation, coarse stack mode (FULL/INVALID)
     - stack_governance: architecture competition state from models/arch_state.json (when present)
     """
-    try:
-        from governed_stack_contract import classify_stack_health
-    except Exception:
-        def classify_stack_health(*, fusion_available, mc_available, n_ml_layers_available, unified_stack_team_ok=None):  # type: ignore
-            team_ok = unified_stack_team_ok
-            if team_ok is None:
-                team_ok = n_ml_layers_available >= 3 and fusion_available
-            if not team_ok or not fusion_available or not mc_available:
-                return "INVALID"
-            if n_ml_layers_available >= 3:
-                return "FULL"
-            return "INVALID"
+    # ONE producer for stack health. The former `except Exception:` shadow re-implemented
+    # classify_stack_health here — a FOURTH code path answering the same question, silently
+    # swapped in on an import failure, and carrying the very substitution the contract forbids
+    # (`team_ok = n_ml_layers_available >= 3 and fusion_available`, a fusion-AVAILABILITY predicate
+    # standing in for directional AUTHORIZATION). A hand-maintained copy cannot be kept honest, so
+    # the import is now unguarded: if the contract module cannot load, that must surface.
+    from governed_stack_contract import classify_stack_health
 
     # STACK-WIRE-4-CAND-MS-DICT-ADOPTION: tradability gate, not bare .available flag.
     # fusion_available=True + canonical_provenance="canonical_forecast_missing" is a
@@ -5179,34 +5174,20 @@ def _attach_stack_runtime_and_governance(ms_dict: dict, *, ticker: str) -> None:
         if ms_dict.get(k):
             n_ml_layers += 1
 
-    from types import SimpleNamespace
-
-    from governed_stack_contract import unified_stack_team_can_authorize
-
-    def _layer_ns(layer: str):
-        probs = (ms_dict.get("ml_layer_probs") or {}).get(layer)
-        if isinstance(probs, dict) and probs.get("up") is not None:
-            return SimpleNamespace(
-                available=True,
-                prob_up=probs.get("up"),
-                prob_down=probs.get("down"),
-                prob_flat=probs.get("flat"),
-            )
-        avail = bool(ms_dict.get(f"{layer}_available"))
-        return SimpleNamespace(
-            available=avail,
-            prob_up=None,
-            prob_down=None,
-            prob_flat=None,
-        )
-
-    team_ok, team_reason = unified_stack_team_can_authorize(
-        xgb_out=_layer_ns("xgb"),
-        lstm_out=_layer_ns("lstm"),
-        transformer_out=_layer_ns("transformer"),
-        stack_probs=None,
-    )
-    ms_dict["unified_stack_team_ok"] = bool(team_ok)
+    # DIRECTIONAL AUTHORIZATION IS TRANSPORTED, NOT RECOMPUTED.
+    # This used to rebuild layer namespaces from ms_dict and call
+    # unified_stack_team_can_authorize(..., stack_probs=None) — a SECOND authority answering a
+    # structurally different question (passing stack_probs=None disabled a branch the engine uses)
+    # and then overwriting the engine's own field with its answer. Worse, the reconstructed layers
+    # reported available=True with all three probs None whenever ml_layer_probs was absent, so the
+    # verdict depended on payload serialization completeness rather than on what the stack did.
+    # The engine computes it once, where composition and provenance are known, and stamps it on the
+    # payload; here we only read it.
+    _authorized = ms_dict.get("stack_directional_authorized")
+    team_ok = bool(_authorized) if _authorized is not None else False
+    team_reason = ms_dict.get("stack_directional_authorization_reason") or (
+        "authorization_absent_from_payload" if _authorized is None else "")
+    ms_dict["unified_stack_team_ok"] = team_ok
     ms_dict["unified_stack_team_reason"] = team_reason
 
     cm = ms_dict.get("fusion_contributing_models")

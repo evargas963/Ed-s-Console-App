@@ -456,6 +456,14 @@ class MarketState:
     mc_vol_source:          Optional[str]   = None  # VOLATILITY source: 'garch' or 'blend'
     mc_sigma_value:         Optional[float] = None  # ANNUALIZED decimal vol, post regime mult (path-independent)
     mc_conditioning:        Optional[str]   = None  # DRIFT source: 'ml_conditioned' or 'base_neutral'
+    #: MC horizon in WALL-CLOCK MINUTES, carried from monte_carlo (BAR_MINUTES canonical there).
+    #: The UI renders this directly; it must never multiply mc_horizon by a constant of its own.
+    mc_horizon_minutes:     Optional[int]   = None
+    #: TRANSPORTED directional authorization (governed_stack_contract is the sole computation).
+    #: MarketState previously had NO such field, which is exactly why server.py rebuilt a verdict
+    #: from weaker inputs. Distinct from fusion availability and from operator freshness.
+    stack_directional_authorized: Optional[bool] = None
+    stack_directional_authorization_reason: Optional[str] = None
     mc_em_anchor:           Optional[str]   = None
     mc_iv_source:           Optional[str]   = None
     # Display-only wall-clock MC excursions (Key Levels); not used for sizing or fusion.
@@ -1813,6 +1821,12 @@ def build_market_state(
             ms.mc_vol_source    = getattr(_fusion, 'mc_vol_source', None)
             ms.mc_sigma_value   = getattr(_fusion, 'mc_sigma_value', None)
             ms.mc_conditioning  = getattr(_fusion, 'mc_conditioning', None)
+            ms.mc_horizon_minutes = getattr(_fusion, 'mc_horizon_minutes', None)
+            # Transport only — no recomputation. See governed_stack_contract for the authority.
+            ms.stack_directional_authorized = getattr(
+                _fusion, 'stack_directional_authorized', None)
+            ms.stack_directional_authorization_reason = getattr(
+                _fusion, 'stack_directional_authorization_reason', None)
 
         _disp_mc = getattr(_sig_out, "mc_display_excursions", None) or {}
         if isinstance(_disp_mc, dict):

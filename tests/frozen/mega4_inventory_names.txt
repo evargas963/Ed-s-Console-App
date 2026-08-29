@@ -834,6 +834,7 @@ ml_predict.py::run_unified_stack_ml_once
 ml_predict.py::run_unified_stack_ml_once._parallel_model_output_record
 ml_predict.py::set_ml_infer_horizon_slug
 ml_predict.py::stack_probs_bundle_key
+ml_predict.py::stack_probs_composition_record
 ml_scheduler.py::_append_training_report
 ml_scheduler.py::_apply_pr2_report_fields
 ml_scheduler.py::_artifact_paths_relative

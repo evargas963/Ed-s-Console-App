@@ -4983,13 +4983,21 @@ function deriveSourceForHorizon(d, slug) {
   const rowMissing = !row
     || String(row.call || '').toUpperCase() === 'UNAVAILABLE'
     || String(row.row_state || '').toLowerCase() === 'missing';
+  // A DIRECTIONAL surface may not be authorized by a SETUP-level predicate.
+  // isFusionAuthoritative(d) is bundle-level setup availability; horizon_fusion_available is
+  // per-horizon directional fusion; stack_directional_authorized is the transported directional
+  // AUTHORIZATION from governed_stack_contract. These are three distinct meanings and are kept
+  // distinct. The bug was the `else { hzFusionOk = true; }` fallback: a MISSING per-horizon map
+  // let bare setup availability light the "ML FUSION" chip for every horizon. Absent evidence now
+  // means NOT authorized, and the directional verdict is required on top of setup availability.
   let hzFusionOk = false;
-  if (typeof isFusionAuthoritative === 'function' && isFusionAuthoritative(d)) {
+  if (typeof isFusionAuthoritative === 'function' && isFusionAuthoritative(d)
+      && d.stack_directional_authorized === true) {
     const hfa = d.horizon_fusion_available;
     if (hfa && typeof hfa === 'object' && Object.prototype.hasOwnProperty.call(hfa, slug)) {
       hzFusionOk = hfa[slug] === true;
     } else {
-      hzFusionOk = true;
+      hzFusionOk = false;   // no per-horizon evidence => withhold, never assume
     }
   }
   const hzKey = ({ '1c': '1m', '5c': '5m', '15c': '15m', '60c': '60m' })[slug] || slug;
@@ -8568,7 +8576,7 @@ function renderTierALive(d, fullRenderSource) {
 
     // ── MONTE CARLO section ───────────────────────────────────────────────────
     const mcAvail = d.mc_available;
-    html += '<div class="kl-section-hdr" style="border-top:2px solid var(--border)">MONTE CARLO<span>live stack · 5m/15m wall-clock display (5-min MC steps)</span></div>';
+    html += '<div class="kl-section-hdr" style="border-top:2px solid var(--border)">MONTE CARLO<span>live stack · 5m/15m wall-clock display (1-min MC steps)</span></div>';
     if (mcAvail) {
       const mcEfe = d.mc_efe != null ? parseFloat(d.mc_efe).toFixed(2) : null;
       const mcEae = d.mc_eae != null ? parseFloat(d.mc_eae).toFixed(2) : null;
@@ -8576,12 +8584,16 @@ function renderTierALive(d, fullRenderSource) {
       const mcExpand = d.mc_expansion != null ? Math.round(d.mc_expansion * 100) + '%' : '—';
       const efePrice = mcEfe && spot ? (spot + parseFloat(mcEfe)).toFixed(2) : '—';
       const eaePrice = mcEae && spot ? (spot - parseFloat(mcEae)).toFixed(2) : '—';
-      // HONEST live-horizon clock: the live MC row is the governed horizon, and the engine
-      // steps 5 min/bar (BAR_MINUTES=5) — so its TRUE forward time is mc_horizon bars x 5 min,
-      // NOT the slug minutes and NOT 1m. Label it so a trader cannot confuse it with the fixed
-      // 5m/15m rows below. Falls back to "live" when the bar count is absent.
-      const mcLiveMin = (d.mc_horizon != null && !Number.isNaN(parseInt(d.mc_horizon, 10)))
-        ? (parseInt(d.mc_horizon, 10) * 5) : null;
+      // HONEST live-horizon clock: the live MC row is the governed horizon. Its wall-clock time is
+      // computed by the PRODUCER (monte_carlo, where BAR_MINUTES is canonical) and transported as
+      // mc_horizon_minutes. Do NOT multiply mc_horizon by a constant here: this line did
+      // `mc_horizon * 5` while BAR_MINUTES was 1, so a 5-bar horizon painted as "~25m fwd" when the
+      // truth was ~5m. Changing the 5 to a 1 would merely keep a second, independent time authority
+      // in the browser — the repair is to consume the one value the engine already computed.
+      // Falls back to "live stack" when the field is absent, matching the convention below.
+      const mcLiveMin = (d.mc_horizon_minutes != null
+                         && !Number.isNaN(parseInt(d.mc_horizon_minutes, 10)))
+        ? parseInt(d.mc_horizon_minutes, 10) : null;
       const mcLiveLbl = mcLiveMin != null ? `live · ~${mcLiveMin}m fwd` : 'live stack';
 
       if (mcEfe) html += `<div class="kl-grid" title="Expected Maximum Favorable Excursion (Sweeney MFE): the Monte Carlo expectation of the best price move in your favor over the horizon. Formerly 'EFE'.">
@@ -8602,7 +8614,7 @@ function renderTierALive(d, fullRenderSource) {
       </div>`;
       // ── Fixed wall-clock 5m / 15m EFE/EAE (display-only, independent of the governing
       // horizon). Server (signals.py) computes these via wall_clock_minutes_to_mc_bars
-      // (5m=1 bar, 15m=3 bars at BAR_MINUTES=5) and exposes mc_efe_5m/mc_eae_5m/mc_efe_15m/
+      // (5m=5 bars, 15m=15 bars at the canonical BAR_MINUTES=1) and exposes mc_efe_5m/mc_eae_5m/mc_efe_15m/
       // mc_eae_15m on /api/state. Fail-closed: rows render ONLY when the key is present and
       // numeric — missing => no row (never 0 / fabricated). Until the server half lands these
       // keys are absent and nothing renders (the live-horizon block above is unchanged).

@@ -102,7 +102,28 @@ def _run_stack(*, layers: dict, spot: float = 450.0, iv: float = 0.2):
               return_value={"ticker": "SPY"}), \
         patch("ml_predict.run_unified_stack_ml_once") as rbm, \
         patch("monte_carlo.simulate", side_effect=spy):
-        rbm.return_value = {"fusion": layers, "model_outputs": {}, "stack_probs_15c": None}
+        # Directional authorization now requires PROVENANCE, not just complete-looking layers:
+        # the approved composition (per active_bundle_contract) must have produced the triplet.
+        # These fixtures therefore supply a composition record and the combined triplet whenever
+        # every layer is live. A partial roster supplies an INCOMPLETE record, which is exactly the
+        # unauthorized case these tests exercise.
+        _live = [k for k, v in layers.items() if v.get("prob_flat") is not None and v.get("available")]
+        _all_live = sorted(_live) == ["lstm", "transformer", "xgb"]
+        from ml_predict import stack_probs_bundle_key
+        rbm.return_value = {
+            "fusion": layers,
+            "model_outputs": {},
+            # the combined triplet must live under the LIVE horizon's key, not a hard-coded one
+            stack_probs_bundle_key(): (
+                {"up": 0.55, "down": 0.25, "flat": 0.20} if _all_live else None),
+            "stack_probs_composition": {
+                "horizon": "15c", "required": ["xgb", "lstm", "transformer"],
+                "produced": sorted(_live),
+                "missing": [k for k in ("xgb", "lstm", "transformer") if k not in _live],
+                "collapsed": [], "contract_compliant": _all_live, "contract_issues": [],
+                "complete": _all_live,
+            },
+        }
         xgb_out, lstm_out, transformer_out, mc_out, ml_bundle = signals._run_model_stack(
             _inp(spot, iv), _rules(),
             SimpleNamespace(primary="unknown", confidence="low"),

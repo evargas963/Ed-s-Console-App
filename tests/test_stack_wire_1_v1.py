@@ -119,6 +119,11 @@ def test_stack_runtime_fusion_active_uses_tradability_gate_not_bare_flag():
             "lstm": {"up": 0.4, "down": 0.3, "flat": 0.3},
             "transformer": {"up": 0.4, "down": 0.3, "flat": 0.3},
         },
+        # The server no longer RE-DERIVES directional authorization from layer probs — it consumes
+        # the verdict computed where composition was known. A payload without it is unauthorized,
+        # so the authoritative case must now carry it.
+        "stack_directional_authorized": True,
+        "stack_directional_authorization_reason": "composition_complete:xgb+lstm+transformer",
     }
     server._attach_stack_runtime_and_governance(ms_ok, ticker="SPY")
     assert ms_ok["stack_runtime"]["fusion_active"] is True

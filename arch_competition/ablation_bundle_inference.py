@@ -550,7 +550,13 @@ def score_unified_ablation_fusion_from_wire_row(
     from features.inference_snapshot import build_inference_snapshot_v1_from_db_row
     from features.monte_carlo_stack_input import MonteCarloStackInputError, resolve_monte_carlo_stack_inputs
     from features.replay_signal_input_v1 import signal_input_from_snapshot_row_dict
-    from governed_stack_contract import derive_stack_layers_scored, horizon_slug_to_mc_bars, mc_model_direction_inputs
+    from governed_stack_contract import (
+        derive_stack_layers_scored,
+        horizon_slug_to_mc_bars,
+        mc_model_direction_inputs,
+        mc_team_should_fail_closed,
+        unified_stack_team_can_authorize,
+    )
     from mc_fusion_adjustment import fuse_payload_apply_mc_adjustment
     from ml_predict import stack_probs_bundle_key
     from numeric_contract import float_finite_or_none
@@ -690,6 +696,21 @@ def score_unified_ablation_fusion_from_wire_row(
             ml_bundle["mc_model_prob_up"] = _m_up
             ml_bundle["mc_model_prob_down"] = _m_dn
             ml_bundle["mc_model_confidence"] = _m_conf
+            # SAME MC CONDITIONING AUTHORITY as production. Without this the ablation leg
+            # conditioned on a composition production would refuse, so it measured a
+            # differently-conditioned stack than the one it is meant to compare against.
+            _team_ok, _team_reason = unified_stack_team_can_authorize(
+                xgb_out=xgb_out,
+                lstm_out=lstm_out,
+                transformer_out=transformer_out,
+                stack_probs=stack_probs,
+                stack_probs_composition=ml_bundle.get("stack_probs_composition"),
+            )
+            ml_bundle["unified_stack_team_ok"] = _team_ok
+            ml_bundle["unified_stack_team_reason"] = _team_reason
+            if mc_team_should_fail_closed(_team_ok, _mc_src):
+                _m_up = _m_dn = _m_conf = None      # base-neutral: no unauthorized prior
+            ml_bundle["mc_conditioned"] = not mc_team_should_fail_closed(_team_ok, _mc_src)
             mc_out = monte_carlo.simulate(
                 spot=_smc["spot"],
                 iv=iv,

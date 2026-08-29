@@ -2092,13 +2092,78 @@ def _weighted_average(
     return {c: round(result[c], 4) for c in CLASS_NAMES}
 
 
+def stack_probs_composition_record(
+    ticker: str,
+    hz: str,
+    leg_probs: dict[str, Optional[dict]],
+    *,
+    collapsed: Optional[set] = None,
+) -> dict:
+    """Provenance for one horizon's directional triplet: what the contract REQUIRES vs what RAN.
+
+    The serving/promotion contract in active_bundle_contract is the authority on the approved
+    composition (xgb + lstm + transformer + meta_stack, horizon-invariant). It is NOT weakened or
+    re-derived here — this only records, per tick, whether that contract is satisfied and which
+    legs actually produced a complete triplet, so the authorization gate can ask one honest
+    question instead of inferring from the shape of a dictionary.
+
+    A partial or contract-noncompliant composition may still be computed for DIAGNOSTIC use (the
+    5c xgb_plus_transformer runtime blend continues to run); `complete` simply stays False so it
+    inherits no directional authorization.
+    """
+    from active_bundle_contract import (
+        BUNDLE_ARTIFACT_TRIPLE,
+        active_bundle_dir,
+        check_active_bundle_complete,
+    )
+
+    collapsed = collapsed or set()
+    required = [kind for kind, _m, _meta in BUNDLE_ARTIFACT_TRIPLE]
+    produced = [
+        name for name in required
+        if name not in collapsed
+        and _require_direction_probability_triplet(leg_probs.get(name)) is not None
+    ]
+    missing = [name for name in required if name not in produced]
+
+    contract_compliant = False
+    contract_issues: list[str] = []
+    try:
+        bt = _bundle_ticker_for_artifacts(ticker)
+        chk = check_active_bundle_complete(
+            bt, hz, bundle_dir=active_bundle_dir(bt, hz, models_dir=MODEL_DIR),
+            models_dir=MODEL_DIR)
+        contract_compliant = bool(chk.get("compliant"))
+        contract_issues = [str(i) for i in (chk.get("issues") or [])][:6]
+    except Exception as e:  # noqa: BLE001 — an unreadable bundle is NOT an authorized one
+        contract_issues = [f"{type(e).__name__}: {e}"]
+
+    return {
+        "horizon": hz,
+        "required": required,
+        "produced": produced,
+        "missing": missing,
+        "collapsed": sorted(str(c) for c in collapsed),
+        "contract_compliant": contract_compliant,
+        "contract_issues": contract_issues,
+        # The ONE fact the authorization gate consumes: the approved composition, per the serving
+        # contract, actually produced this triplet.
+        "complete": bool(contract_compliant and not missing),
+    }
+
+
 def _weighted_average_partial(
     ticker: str,
     weighted_parts: list[tuple[str, Optional[dict], float]],
     *,
     collapsed: Optional[set] = None,
 ) -> Optional[dict]:
-    """Renormalized blend over available base legs (e.g. 5c xgb_plus_transformer without LSTM)."""
+    """Renormalized blend over available base legs (e.g. 5c xgb_plus_transformer without LSTM).
+
+    DIAGNOSTIC ONLY for authorization purposes: this renormalises surviving legs to weight 1.0, so
+    its output cannot be distinguished from a full-composition triplet by shape. Callers must read
+    stack_probs_composition_record() to learn what actually produced it.
+    """
     collapsed = collapsed or set()
     healthy: list[tuple[str, dict, float]] = []
     for name, probs, weight in weighted_parts:
@@ -2403,6 +2468,17 @@ def run_unified_stack_ml_once(
         "fusion": fusion_pack,
         "model_outputs": model_outputs,
         stack_probs_bundle_key(): stack_probs,
+        # WHICH composition produced that triplet. Recorded HERE because this is the only place
+        # the leg list still exists: _weighted_average_partial renormalises the surviving legs to
+        # weight 1.0, so a single-leg blend is numerically and structurally indistinguishable from
+        # a full-composition output downstream. Measured: a lone xgb leg yields
+        # {'up':0.55,'down':0.25,'flat':0.2}, which stack_probs_triplet_complete calls complete.
+        "stack_probs_composition": stack_probs_composition_record(
+            tkr,
+            get_ml_infer_horizon_slug(),
+            {"xgb": xgb_p, "lstm": lstm_p, "transformer": tr_p},
+            collapsed=_active_base_collapse_flags(tkr),
+        ),
         "movement_head_probs": _mh,
         "parallel_runtime": True,
         "stack_schema_version": PARALLEL_STACK_SCHEMA_VERSION,

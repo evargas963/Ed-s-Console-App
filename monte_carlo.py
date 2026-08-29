@@ -117,6 +117,11 @@ class MonteCarloOutput:
     simulation_ok:      bool  = False
     n_paths:            int   = 0
     horizon_bars:       int   = 0
+    #: The SAME horizon in wall-clock minutes, computed here from BAR_MINUTES. Emitted at the
+    #: definition site so BAR_MINUTES has exactly ONE arithmetic consumer for display: any consumer
+    #: that multiplies horizon_bars itself becomes a second, independent time authority, which is
+    #: how the UI came to render a 5-bar horizon as "25m" while BAR_MINUTES was 1.
+    horizon_minutes:    int   = 0
     upper_25:           Optional[float] = None
     upper_50:           Optional[float] = None
     upper_75:           Optional[float] = None
@@ -428,6 +433,7 @@ def simulate(
         return MonteCarloOutput(
             available=True, simulation_ok=True,
             n_paths=n_paths, horizon_bars=horizon_bars,
+            horizon_minutes=int(horizon_bars * BAR_MINUTES),
             upper_25=round(upper_25, 2), upper_50=round(upper_50, 2), upper_75=round(upper_75, 2),
             median_path=round(median, 2),
             lower_25=round(lower_25, 2), lower_50=round(lower_50, 2), lower_75=round(lower_75, 2),
