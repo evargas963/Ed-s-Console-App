@@ -32,6 +32,8 @@ def _fus(up: float, down: float, flat: float):
         mc_available=False,
         contributing_models=[],
         missing_models=[],
+        stack_directional_authorized=True,
+        stack_directional_authorization_reason="test_authorized",
     )
 
 
@@ -50,6 +52,9 @@ def _pred(**kw):
         down_prob_60c=0.2,
         flat_prob_60c=0.2,
         mh_prob_source_by_horizon={},
+        horizon_directional_authorized={
+            "1c": True, "5c": True, "15c": True, "60c": True,
+        },
     )
     base.update(kw)
     return SimpleNamespace(**base)

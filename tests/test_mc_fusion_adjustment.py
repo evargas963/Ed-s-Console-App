@@ -41,7 +41,13 @@ def test_apply_mc_adjustment_preserves_argmax_up():
 
 
 def test_fuse_payload_mc_audit_carries_mc_feature_source_from_bundle():
-    fus = FusionPayload(available=True, prob_up=0.5, prob_down=0.3, prob_flat=0.2)
+    fus = FusionPayload(
+        available=True,
+        prob_up=0.5,
+        prob_down=0.3,
+        prob_flat=0.2,
+        stack_directional_authorized=True,
+    )
     mc = SimpleNamespace(
         available=True,
         mc_feature_dict=lambda: {
@@ -82,7 +88,13 @@ def test_fuse_payload_stored_triplet_sums_to_one_after_round():
     drift_cases = 0
     for i in range(200):
         base = (0.4 + (i % 50) / 100.0, 0.3, 0.3 - (i % 50) / 100.0)
-        fus = FusionPayload(available=True, prob_up=base[0], prob_down=base[1], prob_flat=base[2])
+        fus = FusionPayload(
+            available=True,
+            prob_up=base[0],
+            prob_down=base[1],
+            prob_flat=base[2],
+            stack_directional_authorized=True,
+        )
         out = fuse_payload_apply_mc_adjustment(fus, mc, 100.0)
         s = out.prob_up + out.prob_down + out.prob_flat
         assert math.isclose(s, 1.0, abs_tol=1e-12)

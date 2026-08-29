@@ -492,6 +492,14 @@ def compute_multi_horizon_synthesis(
         per_hz_audit[hz] = {
             "semantic_role": HORIZON_SEMANTIC_ROLE.get(hz, ""),
             "predictive_probability_source": mh_src.get(hz, "unknown"),
+            "stack_directional_authorized": bool(
+                snap and getattr(snap, "stack_directional_authorized", None) is True
+            ),
+            "stack_directional_authorization_reason": (
+                getattr(snap, "stack_directional_authorization_reason", None)
+                if snap
+                else None
+            ),
             "fusion_ml_available": bool(snap and snap.horizon_fusion_available),
             "fusion_dominant_direction": getattr(snap, "dominant_direction", None) if snap else None,
             "fusion_top_probability": round(getattr(snap, "top_probability", 0.0), 4) if snap else None,
@@ -792,6 +800,34 @@ def _forecast_horizon_live(
         )
         em = getattr(pred, "avg_60c_pts", None)
 
+    authorization_map = getattr(pred, "horizon_directional_authorized", None)
+    pred_authorized = bool(
+        isinstance(authorization_map, dict)
+        and authorization_map.get(hz) is True
+    )
+    ml_snap = mh_ml_bundle.snapshot(hz) if mh_ml_bundle else None
+    snapshot_authorized = bool(
+        ml_snap and getattr(ml_snap, "stack_directional_authorized", None) is True
+    )
+    if not pred_authorized or (ml_snap is not None and not snapshot_authorized):
+        return HorizonForecast(
+            horizon=hz,
+            direction="wait",
+            probability_up=0.0,
+            probability_down=0.0,
+            probability_flat=0.0,
+            confidence=0.0,
+            provenance="predictive_directional_unauthorized",
+            tradeable=False,
+            unavailable=True,
+            missing=True,
+            valid_contract=False,
+            dominant_probability=0.0,
+            probability_margin=0.0,
+            expected_move_pts=(float(em) if em is not None else None),
+            entry_ref=None,
+        )
+
     if triplet is None:
         miss = True
         return HorizonForecast(
@@ -813,7 +849,6 @@ def _forecast_horizon_live(
         )
     up, dn, fl = triplet
 
-    ml_snap = mh_ml_bundle.snapshot(hz) if mh_ml_bundle else None
     fusion_ml = bool(ml_snap and ml_snap.horizon_fusion_available)
     provenance = f"predictive_mh_fusion_primary_{hz}"
     if not fusion_ml:

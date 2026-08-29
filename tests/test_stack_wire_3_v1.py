@@ -172,7 +172,7 @@ def test_tradability_gates_use_authority_only():
     assert 'provenance == "bayesian_fusion"' not in ce
     assert 'provenance != "fusion_unavailable"' not in ce
     assert "canonical_provenance_is_tradable" in ce
-    assert "fusion_is_authoritative" in ce
+    assert "fusion_has_tradable_direction" in ce
     assert "is_canonical_tradable" in pe_enrich or "fusion_is_authoritative" in pe_enrich
 
 

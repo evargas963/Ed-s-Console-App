@@ -146,6 +146,7 @@ def test_reconstructed_ms_dict_validates_through_v2_adapter(tmp_path):
 
     ms = ms_dict_from_snapshot_row(_snapshot_row(conn))
     ms["canonical_provenance"] = "bayesian_fusion"
+    ms["stack_directional_authorized"] = True
     decision = build_module_a_a1_decision(ms)
     conn.close()
 
@@ -165,6 +166,7 @@ def test_snapshot_alias_mapping_matches_equivalent_ms_dict(tmp_path):
         "ticker": "SPY",
         "fusion_available": True,
         "canonical_provenance": "bayesian_fusion",
+        "stack_directional_authorized": True,
         "fusion_dominant_direction": "up",
         "fusion_dominant_prob": 0.64,
         "fusion_confidence": "high",
@@ -180,6 +182,7 @@ def test_snapshot_alias_mapping_matches_equivalent_ms_dict(tmp_path):
     conn.close()
 
     ms["canonical_provenance"] = "bayesian_fusion"
+    ms["stack_directional_authorized"] = True
     reconstructed = build_module_a_a1_decision(ms)
     expected = build_module_a_a1_decision(equivalent)
     assert reconstructed["decision"]["action"] == expected["decision"]["action"]
@@ -194,6 +197,7 @@ def test_replay_context_proof_extraction_populates_a2_selection(tmp_path):
 
     row = dict(_snapshot_row(conn))
     row["canonical_provenance"] = "bayesian_fusion"
+    row["stack_directional_authorized"] = True
     payload = build_v2_advisory_snapshot(row)
     conn.close()
 

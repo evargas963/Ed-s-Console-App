@@ -117,10 +117,17 @@ def _run_stack(*, layers: dict, spot: float = 450.0, iv: float = 0.2):
             stack_probs_bundle_key(): (
                 {"up": 0.55, "down": 0.25, "flat": 0.20} if _all_live else None),
             "stack_probs_composition": {
+                "authorization_schema_version": 1,
                 "horizon": "15c", "required": ["xgb", "lstm", "transformer"],
-                "produced": sorted(_live),
+                "produced": [
+                    k for k in ("xgb", "lstm", "transformer") if k in _live
+                ],
                 "missing": [k for k in ("xgb", "lstm", "transformer") if k not in _live],
-                "collapsed": [], "contract_compliant": _all_live, "contract_issues": [],
+                "collapsed": [],
+                "approved_computation": "meta_stack",
+                "executed_computation": "meta_stack" if _all_live else None,
+                "computation_compliant": _all_live,
+                "contract_compliant": _all_live, "contract_issues": [],
                 "complete": _all_live,
             },
         }

@@ -11,7 +11,11 @@ from __future__ import annotations
 import json
 from typing import Any, Optional
 
-from fusion_contract import fusion_is_authoritative
+from fusion_contract import (
+    fusion_direction_is_authorized,
+    fusion_has_tradable_direction,
+    fusion_is_authoritative,
+)
 
 # COH-I-G: contributing-models JSON column truncation guard.
 # Max chars retained when serializing fusion.contributing_models for the snapshot column;
@@ -26,7 +30,7 @@ FUSION_STACK_STATUS_MAX_CHARS: int = 500
 
 def _fusion_triplet(fusion: Any) -> Optional[tuple[float, float, float]]:
     """Normalized (up, down, flat) or None when fusion unavailable or probs incomplete."""
-    if not fusion_is_authoritative(fusion):
+    if not fusion_has_tradable_direction(fusion):
         return None
     pu = getattr(fusion, "prob_up", None)
     pd_ = getattr(fusion, "prob_down", None)
@@ -46,6 +50,15 @@ def _fusion_triplet(fusion: Any) -> Optional[tuple[float, float, float]]:
 def _stack_status(fusion: Any, *, avail: bool, dom: str, fconf: str) -> str:
     if avail:
         return f"fusion_ok|dir={dom}|lbl={fconf}"
+    if fusion_is_authoritative(fusion):
+        reason = (
+            getattr(fusion, "stack_directional_authorization_reason", None)
+            or "directional authorization absent"
+        )
+        return (
+            f"fusion_directional_unauthorized|{reason}"
+            [:FUSION_STACK_STATUS_MAX_CHARS]
+        )
     summary = (getattr(fusion, "fusion_summary", None) or "")[:200]
     return f"fusion_unavailable|{summary}"[:FUSION_STACK_STATUS_MAX_CHARS]
 
@@ -76,7 +89,7 @@ def fusion_payload_to_policy_columns(hz: str, fusion: Any) -> dict[str, Any]:
     When fusion is unavailable or directional probabilities are incomplete, probability
     columns are None (not fabricated from 1/3 placeholders or ``or 0.0`` coercion).
     """
-    avail = fusion_is_authoritative(fusion)
+    avail = fusion_has_tradable_direction(fusion)
     dom = str(getattr(fusion, "dominant_direction", "?") or "?") if fusion is not None else "?"
     fconf = str(getattr(fusion, "fusion_confidence", "?") or "?") if fusion is not None else "?"
     status = _stack_status(fusion, avail=avail, dom=dom, fconf=fconf)[:FUSION_STACK_STATUS_MAX_CHARS]
@@ -84,7 +97,7 @@ def fusion_payload_to_policy_columns(hz: str, fusion: Any) -> dict[str, Any]:
     tri = _fusion_triplet(fusion)
     if tri is None:
         cm_json: Optional[str] = None
-        if fusion is not None and avail:
+        if fusion is not None and fusion_direction_is_authorized(fusion):
             cm = getattr(fusion, "contributing_models", None) or []
             try:
                 cm_json = json.dumps(list(cm), separators=(",", ":"))[:FUSION_CONTRIBUTING_MODELS_JSON_MAX_CHARS]

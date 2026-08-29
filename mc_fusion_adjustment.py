@@ -24,7 +24,7 @@ from dataclasses import replace
 
 from typing import Any, Mapping, Optional, Tuple
 
-from fusion_contract import fusion_is_authoritative
+from fusion_contract import fusion_direction_is_authorized
 
 
 log = logging.getLogger(__name__)
@@ -524,7 +524,9 @@ def fuse_payload_apply_mc_adjustment(fusion: Any, mc_out: Any, spot_price: Optio
 
     """
 
-    if not fusion_is_authoritative(fusion):
+    # Setup fusion availability is not directional authority. MC may only soften a triplet whose
+    # approved runtime computation was authorized by the producer.
+    if not fusion_direction_is_authorized(fusion):
 
         return fusion
 
@@ -643,6 +645,25 @@ def fuse_payload_apply_mc_adjustment(fusion: Any, mc_out: Any, spot_price: Optio
         d = (1.0 - _lam) * d + _lam * _third
         fl = (1.0 - _lam) * fl + _lam * _third
 
+        # Closed-form lambda is exact over real numbers, but the downstream gate compares binary
+        # floats with hard >= thresholds. A mathematically equal margin can therefore move from
+        # 0.02999999999999997 to 0.030000000000000027 and manufacture tradeability. Add the
+        # smallest practical uniform softening only when float arithmetic leaves such a residue.
+        # This is threshold-independent and preserves every non-residual downgrade.
+        _strict_soften = 1e-12
+        for _ in range(8):
+            _cap_sorted = sorted((u, d, fl), reverse=True)
+            if (
+                _cap_sorted[0] <= _pre_dom
+                and (_cap_sorted[0] - _cap_sorted[1]) <= _pre_margin
+            ):
+                break
+            u = (1.0 - _strict_soften) * u + _strict_soften * _third
+            d = (1.0 - _strict_soften) * d + _strict_soften * _third
+            fl = (1.0 - _strict_soften) * fl + _strict_soften * _third
+            _lam = 1.0 - (1.0 - _lam) * (1.0 - _strict_soften)
+            _strict_soften *= 10.0
+
     final_winner = _argmax_dir(u, d, fl)
 
     # Round for storage, then renormalize so stored legs sum to exactly 1.0.
@@ -653,8 +674,8 @@ def fuse_payload_apply_mc_adjustment(fusion: Any, mc_out: Any, spot_price: Optio
     rounded_tri = _triplet((round(u, 6), round(d, 6), round(fl, 6)))
     _rt_sorted = sorted(rounded_tri, reverse=True) if rounded_tri is not None else None
     _rt_keeps_authority = _rt_sorted is not None and (
-        _rt_sorted[0] <= _pre_dom + 1e-12
-        and (_rt_sorted[0] - _rt_sorted[1]) <= _pre_margin + 1e-12
+        _rt_sorted[0] <= _pre_dom
+        and (_rt_sorted[0] - _rt_sorted[1]) <= _pre_margin
     )
 
     if rounded_tri is not None and _argmax_dir(*rounded_tri) == final_winner and _rt_keeps_authority:

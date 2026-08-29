@@ -59,13 +59,14 @@ def _rich_contract(**overrides) -> dict:
 
 
 def _a1_trade() -> dict:
-    # WIRE-4 / FIND-FP1-3 tightened is_ms_dict_fusion_authoritative to require BOTH
-    # fusion_available AND canonical_provenance in TRADABLE_CANONICAL_PROVENANCE.
+    # Fusion authority requires fusion_available, tradable canonical_provenance,
+    # and the transported producer verdict stack_directional_authorized=True.
     return build_module_a_a1_decision(
         {
             "ticker": "SPY",
             "fusion_available": True,
             "canonical_provenance": "bayesian_fusion",
+            "stack_directional_authorized": True,
             "fusion_dominant_direction": "up",
             "fusion_dominant_prob": 0.64,
             "fusion_confidence": "high",

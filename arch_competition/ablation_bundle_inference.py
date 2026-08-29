@@ -648,13 +648,26 @@ def score_unified_ablation_fusion_from_wire_row(
     lstm_out = _to_out(lstm_p)
     transformer_out = _to_out(tr_p)
 
-    stack_probs = mp._ensemble_parallel_probs(
-        tku,
-        xgb_p,
-        lstm_p,
-        tr_p,
-        meta_tabular_overlay=dict(wire_row),
-    )
+    _executed_computation: str | None = None
+    if hz == "5c":
+        stack_probs = mp._weighted_average_partial(
+            tku,
+            [("xgb", xgb_p, 0.40), ("transformer", tr_p, 0.25)],
+            collapsed=mp._active_base_collapse_flags(tku),
+        )
+        stack_probs = mp._apply_5c_xgb_plus_transformer_isotonic_calibration(
+            tku, stack_probs
+        )
+        if stack_probs is not None:
+            _executed_computation = "xgb_plus_transformer_diagnostic"
+    else:
+        stack_probs, _executed_computation = mp._ensemble_parallel_probs_with_execution(
+            tku,
+            xgb_p,
+            lstm_p,
+            tr_p,
+            meta_tabular_overlay=dict(wire_row),
+        )
     spk = stack_probs_bundle_key()
     ml_bundle: dict[str, Any] = {
         "model_outputs": None,
@@ -712,6 +725,7 @@ def score_unified_ablation_fusion_from_wire_row(
                 # xgb_plus_transformer, so LSTM is not a contributor to that triplet.
                 ({"xgb": xgb_p, "transformer": tr_p} if hz == "5c"
                  else {"xgb": xgb_p, "lstm": lstm_p, "transformer": tr_p}),
+                executed_computation=_executed_computation,
             )
             _team_ok, _team_reason = unified_stack_team_can_authorize(
                 xgb_out=xgb_out,
@@ -757,6 +771,13 @@ def score_unified_ablation_fusion_from_wire_row(
         signal_layer_v1=inf_v1.get("signal_layer_v1"),
         fusion_tick_cache=_ftc,
     )
+    if fusion_payload_base is not None:
+        fusion_payload_base.stack_directional_authorized = bool(
+            ml_bundle.get("unified_stack_team_ok")
+        )
+        fusion_payload_base.stack_directional_authorization_reason = ml_bundle.get(
+            "unified_stack_team_reason"
+        )
     fusion_payload_full = fusion_payload_base
     try:
         fusion_payload_full = fuse_payload_apply_mc_adjustment(

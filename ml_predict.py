@@ -2107,6 +2107,7 @@ def stack_probs_composition_record(
     hz: str,
     leg_probs: dict[str, Optional[dict]],
     *,
+    executed_computation: str | None,
     collapsed: Optional[set] = None,
 ) -> dict:
     """Provenance for one horizon's directional triplet: what the contract REQUIRES vs what RAN.
@@ -2114,8 +2115,9 @@ def stack_probs_composition_record(
     The serving/promotion contract in active_bundle_contract is the authority on the approved
     composition (xgb + lstm + transformer + meta_stack, horizon-invariant). It is NOT weakened or
     re-derived here — this only records, per tick, whether that contract is satisfied and which
-    legs actually produced a complete triplet, so the authorization gate can ask one honest
-    question instead of inferring from the shape of a dictionary.
+    legs actually produced a complete triplet AND which combiner produced ``stack_probs``, so the
+    authorization gate can ask one honest question instead of inferring from dictionary shape or
+    disk presence.
 
     A partial or contract-noncompliant composition may still be computed for DIAGNOSTIC use (the
     5c xgb_plus_transformer runtime blend continues to run); `complete` simply stays False so it
@@ -2123,6 +2125,7 @@ def stack_probs_composition_record(
     """
     from active_bundle_contract import (
         BUNDLE_ARTIFACT_TRIPLE,
+        META_STACK_KIND,
         active_bundle_dir,
         check_active_bundle_complete,
     )
@@ -2159,16 +2162,24 @@ def stack_probs_composition_record(
         }
 
     return {
+        "authorization_schema_version": 1,
         "horizon": hz,
         "required": required,
         "produced": produced,
         "missing": missing,
         "collapsed": sorted(str(c) for c in collapsed),
+        "approved_computation": META_STACK_KIND,
+        "executed_computation": executed_computation,
+        "computation_compliant": executed_computation == META_STACK_KIND,
         "contract_compliant": contract_compliant,
         "contract_issues": contract_issues,
         # The ONE fact the authorization gate consumes: the approved composition, per the serving
         # contract, actually produced this triplet.
-        "complete": bool(contract_compliant and not missing),
+        "complete": bool(
+            contract_compliant
+            and not missing
+            and executed_computation == META_STACK_KIND
+        ),
     }
 
 
@@ -2245,6 +2256,43 @@ def _active_base_collapse_flags(ticker: str) -> set:
     return flags
 
 
+def _ensemble_parallel_probs_with_execution(
+    ticker: str,
+    xgb_p: Optional[dict],
+    lstm_p: Optional[dict],
+    trans_p: Optional[dict],
+    *,
+    meta_tabular_overlay: dict | None = None,
+) -> tuple[Optional[dict], str | None]:
+    """Return probabilities plus the computation that actually produced them.
+
+    A base flagged ``val_single_class_collapse`` is degenerate (all-flat); the meta is
+    re-fit clean against it on retrain (see ml_scheduler._assemble_meta_base_prob_vectors),
+    so the meta path needs no row-time change EXCEPT the all-collapsed guard below. The
+    weighted-average fallback drops collapsed bases.
+    """
+    if not _parallel_base_stack_complete(xgb_p, lstm_p, trans_p):
+        return None, None
+    collapsed = _active_base_collapse_flags(ticker)
+    if collapsed >= {"xgb", "lstm", "transformer"}:
+        logger.warning(
+            "Parallel combiner %s: all three bases single-class-collapsed — uniform (not false-flat)",
+            ticker,
+        )
+        return dict(_UNIFORM_PROBS), "all_collapsed_uniform"
+    stack_probs = _predict_meta(
+        ticker,
+        xgb_p,
+        lstm_p,
+        trans_p,
+        meta_tabular_overlay=meta_tabular_overlay,
+    )
+    if stack_probs is not None:
+        return stack_probs, "meta_stack"
+    stack_probs = _weighted_average(ticker, xgb_p, lstm_p, trans_p, collapsed=collapsed)
+    return stack_probs, ("weighted_average_fallback" if stack_probs is not None else None)
+
+
 def _ensemble_parallel_probs(
     ticker: str,
     xgb_p: Optional[dict],
@@ -2253,32 +2301,15 @@ def _ensemble_parallel_probs(
     *,
     meta_tabular_overlay: dict | None = None,
 ) -> Optional[dict]:
-    """Meta when trained, else weighted average — only when full parallel stack is present.
-
-    A base flagged ``val_single_class_collapse`` is degenerate (all-flat); the meta is
-    re-fit clean against it on retrain (see ml_scheduler._assemble_meta_base_prob_vectors),
-    so the meta path needs no row-time change EXCEPT the all-collapsed guard below. The
-    weighted-average fallback drops collapsed bases.
-    """
-    if not _parallel_base_stack_complete(xgb_p, lstm_p, trans_p):
-        return None
-    collapsed = _active_base_collapse_flags(ticker)
-    if collapsed >= {"xgb", "lstm", "transformer"}:
-        logger.warning(
-            "Parallel combiner %s: all three bases single-class-collapsed — uniform (not false-flat)",
-            ticker,
-        )
-        return dict(_UNIFORM_PROBS)
-    stack_probs = _predict_meta(
+    """Compatibility wrapper for callers that do not consume computation provenance."""
+    probs, _executed = _ensemble_parallel_probs_with_execution(
         ticker,
         xgb_p,
         lstm_p,
         trans_p,
         meta_tabular_overlay=meta_tabular_overlay,
     )
-    if stack_probs is None:
-        stack_probs = _weighted_average(ticker, xgb_p, lstm_p, trans_p, collapsed=collapsed)
-    return stack_probs
+    return probs
 
 
 def _apply_5c_xgb_plus_transformer_isotonic_calibration(
@@ -2449,6 +2480,7 @@ def run_unified_stack_ml_once(
     }
 
     stack_probs = None
+    _executed_computation: str | None = None
     # The legs that actually FED the triplet — not merely the legs that predicted. These differ:
     # at 5c the runtime blend is xgb_plus_transformer, yet lstm_p is still computed above. Handing
     # the composition record all three would credit LSTM as a contributor to a triplet it never
@@ -2467,10 +2499,12 @@ def run_unified_stack_ml_once(
             stack_probs = _apply_5c_xgb_plus_transformer_isotonic_calibration(
                 tkr, stack_probs
             )
+            if stack_probs is not None:
+                _executed_computation = "xgb_plus_transformer_diagnostic"
         else:
             _contributing_legs = {"xgb": xgb_p, "lstm": lstm_p, "transformer": tr_p}
             _meta_overlay = meta_tabular_overlay if meta_tabular_overlay is not None else snapshot
-            stack_probs = _ensemble_parallel_probs(
+            stack_probs, _executed_computation = _ensemble_parallel_probs_with_execution(
                 tkr,
                 xgb_p,
                 lstm_p,
@@ -2504,6 +2538,7 @@ def run_unified_stack_ml_once(
             tkr,
             get_ml_infer_horizon_slug(),
             _contributing_legs,
+            executed_computation=_executed_computation,
             collapsed=_active_base_collapse_flags(tkr),
         ),
         "movement_head_probs": _mh,

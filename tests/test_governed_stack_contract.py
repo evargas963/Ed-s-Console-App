@@ -187,8 +187,12 @@ def test_derive_stack_layers_scored_meta_when_stack_probs_feed_mc():
         # is not evidence — mc_model_direction_inputs returns it for any complete triplet, including
         # the 5c weighted blend for which zero meta_*_5c.pkl exists.
         "stack_probs_composition": {
+            "authorization_schema_version": 1,
             "horizon": "1c", "required": ["xgb", "lstm", "transformer"],
             "produced": ["xgb", "lstm", "transformer"], "missing": [], "collapsed": [],
+            "approved_computation": "meta_stack",
+            "executed_computation": "meta_stack",
+            "computation_compliant": True,
             "contract_compliant": True, "contract_issues": [], "complete": True,
         },
     }
@@ -256,8 +260,11 @@ def test_unified_stack_team_requires_the_complete_approved_composition():
     ok = SimpleNamespace(available=True, prob_up=0.5, prob_down=0.3, prob_flat=0.2)
     bad = SimpleNamespace(available=False, prob_up=0.33, prob_down=0.33, prob_flat=0.34)
     partial = {
+        "authorization_schema_version": 1,
         "horizon": "1c", "required": ["xgb", "lstm", "transformer"], "produced": ["xgb"],
         "missing": ["lstm", "transformer"], "collapsed": [], "contract_compliant": True,
+        "approved_computation": "meta_stack", "executed_computation": "meta_stack",
+        "computation_compliant": True,
         "contract_issues": [], "complete": False,
     }
     team_ok, reason = unified_stack_team_can_authorize(

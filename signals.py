@@ -43,7 +43,12 @@ from prediction_engine import (
     _empty_prediction,
 )
 from call_engine import compute_call
-from fusion_contract import fusion_is_authoritative, is_canonical_tradable
+from fusion_contract import (
+    fusion_direction_is_authorized,
+    fusion_has_tradable_direction,
+    fusion_is_authoritative,
+    is_canonical_tradable,
+)
 from numeric_contract import float_finite_or_none, float_positive_or_none, direction_from_normalized_triplet
 from regime_engine import classify_regime
 from volatility_regime import classify_volatility_regime
@@ -120,6 +125,15 @@ def canonical_forecast_from_fusion(fusion) -> CanonicalForecast:
             probability_flat=u,
             confidence="low",
             provenance="fusion_unavailable",
+        )
+    if not fusion_direction_is_authorized(fusion):
+        return CanonicalForecast(
+            direction="flat",
+            probability_up=u,
+            probability_down=u,
+            probability_flat=u,
+            confidence="low",
+            provenance="fusion_directional_unauthorized",
         )
     pu_raw = getattr(fusion, "prob_up", None)
     pd_raw = getattr(fusion, "prob_down", None)
@@ -372,6 +386,16 @@ def production_fusion_payload_for_stack(
         signal_layer_v1=signal_layer_v1,
         fusion_tick_cache=_ftc,
     )
+    # The authorization decision is computed exactly once in _run_model_stack, where the approved
+    # composition and the computation that actually produced stack_probs are both in scope.
+    # Stamp it before any directional consumer, including the MC adjustment.
+    if fusion_payload_base is not None and isinstance(ml_bundle, dict):
+        fusion_payload_base.stack_directional_authorized = bool(
+            ml_bundle.get("unified_stack_team_ok")
+        )
+        fusion_payload_base.stack_directional_authorization_reason = ml_bundle.get(
+            "unified_stack_team_reason"
+        )
     fusion_payload_full = fusion_payload_base
     try:
         _adj_spot = _spot_for_mc_fusion_adjustment(mc_spot_ctx, inference_snapshot_v1)
@@ -407,19 +431,6 @@ def production_fusion_payload_for_stack(
         regime=regime,
         fusion_payload=fusion_payload_full,
     )
-    # STAMP THE VERDICT ONTO THE PAYLOAD. This is the only site holding BOTH this horizon's
-    # ml_bundle (where the authorization was computed, with composition in scope) and this
-    # horizon's payload (the only per-horizon carrier). Everything downstream — market_state,
-    # server, the per-horizon MH snapshot, the UI — reads this value instead of rebuilding one.
-    if fusion_payload_full is not None and isinstance(ml_bundle, dict):
-        try:
-            object.__setattr__(fusion_payload_full, "stack_directional_authorized",
-                               bool(ml_bundle.get("unified_stack_team_ok")))
-            object.__setattr__(fusion_payload_full, "stack_directional_authorization_reason",
-                               ml_bundle.get("unified_stack_team_reason"))
-        except Exception as e:  # noqa: BLE001 — never fail a tick over provenance stamping
-            log.debug("could not stamp directional authorization on fusion payload: %s", e)
-
     audit = {
         "stack_layers_scored": layers_scored,
         "stack_directional_authorized": (
@@ -1147,7 +1158,7 @@ def _build_stack_decision_path(xgb_out, lstm_out, transformer_out, mc_out, fusio
         )
 
     # 5. Fusion
-    fus_avail = fusion_is_authoritative(fusion)
+    fus_avail = fusion_has_tradable_direction(fusion)
     if not fus_avail:
         fus_stage = StackStage(stage_id="fusion", status="inactive", note="Fusion: inactive")
     else:
@@ -1736,8 +1747,6 @@ def _compute_signals_impl(inp: SignalInput, db=None, ticker: str = "",
     snapshot = _build_snapshot_dict(inp, rules, pred, call, canonical)
     if _don():
         _ddone("post_stack", ticker)
-
-    from fusion_contract import fusion_has_tradable_direction
 
     _log_decision_bundle(
         ticker,

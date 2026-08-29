@@ -29,7 +29,10 @@ from math_exposure import (
     BREAKOUT_BLOCK_THRESHOLD,
 )
 from decision_gate import evaluate_decision_path_admission
-from fusion_contract import canonical_provenance_is_tradable, fusion_is_authoritative
+from fusion_contract import (
+    canonical_provenance_is_tradable,
+    fusion_has_tradable_direction,
+)
 from time_et import RTH_OPEN_MINS
 from position_sizing_policy import regime_size_multiplier
 from replay_hold_bars import replay_max_hold_bars_for_setup
@@ -1323,7 +1326,7 @@ def _validate_trade(
     # ══════════════════════════════════════════════════════════════════════════
     prob_fails = []
 
-    _fusion_available = fusion_is_authoritative(fusion)
+    _fusion_available = fusion_has_tradable_direction(fusion)
     _vol_unstable = vol_regime and getattr(vol_regime, 'vol_regime', '') == "unstable"
     # Slightly lenient in normal vol: 0.25 veto'd almost all multi-model splits; stack still needs 2+ votes.
     _agree_threshold = AGREE_THRESHOLD_UNSTABLE if _vol_unstable else AGREE_THRESHOLD_DEFAULT
@@ -1527,7 +1530,7 @@ def compute_call(
     # When mh_policy is present (production): pooled ALL consensus is the sole ML authority.
     # Live-horizon fusion remains for MC/risk/sizing only — not a duplicate stack vote.
     # ══════════════════════════════════════════════════════════════════════════
-    _fusion_available = fusion_is_authoritative(fusion)
+    _fusion_available = fusion_has_tradable_direction(fusion)
     _regime_label = getattr(regime, 'primary', 'unknown') if regime else 'unknown'
     # UI-04 P1C charm vote gate (operator-approved 2026-07-10): charm's
     # analytic sign convention / units / horizon semantics / predictive

@@ -27,12 +27,18 @@ test('isFusionAuthoritative gates on stack_runtime.fusion_active and tradability
 
   // Primary path: stack_runtime.fusion_active is server-stamped truth.
   const rtActive = await page.evaluate(() =>
-    window.isFusionAuthoritative({ stack_runtime: { fusion_active: true } }),
+    window.isFusionAuthoritative({
+      stack_directional_authorized: true,
+      stack_runtime: { fusion_active: true },
+    }),
   );
   expect(rtActive).toBe(true);
 
   const rtInactive = await page.evaluate(() =>
-    window.isFusionAuthoritative({ stack_runtime: { fusion_active: false } }),
+    window.isFusionAuthoritative({
+      stack_directional_authorized: true,
+      stack_runtime: { fusion_active: false },
+    }),
   );
   expect(rtInactive).toBe(false);
 
@@ -42,6 +48,7 @@ test('isFusionAuthoritative gates on stack_runtime.fusion_active and tradability
     window.isFusionAuthoritative({
       fusion_available: true,
       canonical_provenance: 'canonical_forecast_missing',
+      stack_directional_authorized: true,
     }),
   );
   expect(splitBrain).toBe(false);
@@ -52,13 +59,18 @@ test('isFusionAuthoritative gates on stack_runtime.fusion_active and tradability
     window.isFusionAuthoritative({
       fusion_available: true,
       canonical_provenance: 'bayesian_fusion',
+      stack_directional_authorized: true,
     }),
   );
   expect(authoritative).toBe(true);
 
   // Empty / missing provenance with bare flag must NOT be treated as tradable.
   const emptyProv = await page.evaluate(() =>
-    window.isFusionAuthoritative({ fusion_available: true, canonical_provenance: '' }),
+    window.isFusionAuthoritative({
+      fusion_available: true,
+      canonical_provenance: '',
+      stack_directional_authorized: true,
+    }),
   );
   expect(emptyProv).toBe(false);
 
@@ -70,6 +82,7 @@ test('isFusionAuthoritative gates on stack_runtime.fusion_active and tradability
       stack_runtime: { fusion_active: false },
       fusion_available: true,
       canonical_provenance: 'bayesian_fusion',
+      stack_directional_authorized: true,
     }),
   );
   expect(rtVeto).toBe(false);
@@ -88,6 +101,7 @@ test('effectiveDirection refuses fusion_dominant_direction when not authoritativ
   const auth = await page.evaluate(() =>
     window.effectiveDirection({
       stack_runtime: { fusion_active: true },
+      stack_directional_authorized: true,
       fusion_dominant_direction: 'up',
       dominant_dir: 'down',
     }),
@@ -99,6 +113,7 @@ test('effectiveDirection refuses fusion_dominant_direction when not authoritativ
     window.effectiveDirection({
       fusion_available: true,
       canonical_provenance: 'canonical_forecast_missing',
+      stack_directional_authorized: true,
       fusion_dominant_direction: 'up',
       dominant_dir: 'down',
     }),
@@ -110,6 +125,7 @@ test('effectiveDirection refuses fusion_dominant_direction when not authoritativ
     window.effectiveDirection({
       fusion_available: true,
       canonical_provenance: 'bayesian_fusion',
+      stack_directional_authorized: true,
       stack_runtime: { fusion_active: false },
       fusion_dominant_direction: 'up',
       dominant_dir: 'down',

@@ -12,6 +12,7 @@ from multi_horizon_ml_bundle import fusion_payload_to_horizon_snapshot
 def test_nan_prob_up_yields_unavailable_snapshot():
     fus = SimpleNamespace(
         available=True,
+        stack_directional_authorized=True,
         prob_up=float("nan"),
         prob_down=0.2,
         prob_flat=0.2,
@@ -31,6 +32,7 @@ def test_nan_prob_up_yields_unavailable_snapshot():
 def test_dominant_direction_from_triplet_not_upstream_label():
     fus = SimpleNamespace(
         available=True,
+        stack_directional_authorized=True,
         prob_up=0.1,
         prob_down=0.7,
         prob_flat=0.2,
@@ -50,6 +52,7 @@ def test_dominant_direction_from_triplet_not_upstream_label():
 def test_renormalized_triplet_stamps_provenance():
     fus = SimpleNamespace(
         available=True,
+        stack_directional_authorized=True,
         prob_up=0.8,
         prob_down=0.8,
         prob_flat=0.8,
@@ -68,6 +71,7 @@ def test_renormalized_triplet_stamps_provenance():
 def test_already_normalized_triplet_keeps_bayesian_fusion_provenance():
     fus = SimpleNamespace(
         available=True,
+        stack_directional_authorized=True,
         prob_up=0.5,
         prob_down=0.3,
         prob_flat=0.2,
@@ -86,6 +90,7 @@ def test_already_normalized_triplet_keeps_bayesian_fusion_provenance():
 def test_missing_fusion_confidence_score_stays_none_not_zero():
     fus = SimpleNamespace(
         available=True,
+        stack_directional_authorized=True,
         prob_up=0.5,
         prob_down=0.3,
         prob_flat=0.2,

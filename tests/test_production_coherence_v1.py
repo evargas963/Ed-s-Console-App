@@ -64,13 +64,25 @@ def _js_code_only(src: str) -> str:
     return "\n".join(out)
 
 
-def _composition(*, produced, required=("xgb", "lstm", "transformer"), compliant=True):
+def _composition(
+    *,
+    produced,
+    required=("xgb", "lstm", "transformer"),
+    compliant=True,
+    executed_computation="meta_stack",
+):
     missing = [r for r in required if r not in produced]
     return {
+        "authorization_schema_version": 1,
         "horizon": "1c", "required": list(required), "produced": list(produced),
         "missing": missing, "collapsed": [], "contract_compliant": compliant,
         "contract_issues": [] if compliant else ["synthetic: bundle contract not satisfied"],
-        "complete": bool(compliant and not missing),
+        "approved_computation": "meta_stack",
+        "executed_computation": executed_computation,
+        "computation_compliant": executed_computation == "meta_stack",
+        "complete": bool(
+            compliant and not missing and executed_computation == "meta_stack"
+        ),
     }
 
 
@@ -122,11 +134,45 @@ def test_missing_composition_record_is_unauthorized_not_assumed():
     assert ok is False and reason == "composition_unknown"
 
 
+def test_weighted_fallback_cannot_impersonate_the_approved_meta_computation():
+    comp = _composition(
+        produced=("xgb", "lstm", "transformer"),
+        executed_computation="weighted_average_fallback",
+    )
+    ok, reason = gsc.unified_stack_team_can_authorize(
+        xgb_out=_layer(),
+        lstm_out=_layer(),
+        transformer_out=_layer(),
+        stack_probs=TRI,
+        stack_probs_composition=comp,
+    )
+    assert ok is False
+    assert reason == "composition_computation_unapproved:weighted_average_fallback"
+
+
+def test_forged_complete_record_cannot_hide_a_missing_runtime_leg():
+    comp = _composition(produced=("xgb", "lstm", "transformer"))
+    ok, reason = gsc.unified_stack_team_can_authorize(
+        xgb_out=_layer(),
+        lstm_out=_layer(available=False, up=None, dn=None, flat=None),
+        transformer_out=_layer(),
+        stack_probs=TRI,
+        stack_probs_composition=comp,
+    )
+    assert ok is False
+    assert reason == "composition_runtime_mismatch:missing=lstm"
+
+
 def test_the_live_5c_composition_on_this_tree_is_unauthorized():
     """Anchors the ruling to reality: 5c requires meta_stack per active_bundle_contract and ZERO
     meta_*_5c artifacts exist, so no 5c bundle is compliant and 5c cannot authorize."""
     from ml_predict import stack_probs_composition_record
-    rec = stack_probs_composition_record("SPY", "5c", {"xgb": TRI, "lstm": None, "transformer": TRI})
+    rec = stack_probs_composition_record(
+        "SPY",
+        "5c",
+        {"xgb": TRI, "lstm": None, "transformer": TRI},
+        executed_computation="xgb_plus_transformer_diagnostic",
+    )
     assert rec["complete"] is False
     ok, reason = gsc.unified_stack_team_can_authorize(
         xgb_out=_layer(), lstm_out=_layer(available=False, up=None, dn=None, flat=None),
@@ -155,6 +201,7 @@ def test_mc_may_never_increase_dominant_or_margin():
         prob_down: float = 0.0
         prob_flat: float = 0.0
         canonical_provenance: str = "ok"
+        stack_directional_authorized: bool = True
         mc_post_fusion_audit: dict | None = None
 
     def _dm(t):
@@ -202,6 +249,7 @@ def test_mc_may_still_soften_an_authorized_state():
         prob_down: float = 0.0
         prob_flat: float = 0.0
         canonical_provenance: str = "ok"
+        stack_directional_authorized: bool = True
         mc_post_fusion_audit: dict | None = None
 
     def _dm(t):
@@ -228,6 +276,139 @@ def test_mc_may_still_soften_an_authorized_state():
     assert not (post_dom >= 0.38 and post_margin >= 0.03), "MC made it WAIT; it must STAY WAIT"
     # and the cap still holds in the authority-increasing direction
     assert post_dom <= pre_dom + 1e-9 and post_margin <= pre_margin + 1e-9
+
+
+def test_mc_float_boundary_cannot_promote_wait_to_tradeable():
+    """The exact adversarial counterexample: strict authority monotonicity must survive storage."""
+    from dataclasses import dataclass
+
+    import mc_fusion_adjustment as mcf
+    from multi_horizon_decision import _confidence_from_probs
+
+    @dataclass
+    class _P:
+        available: bool = True
+        prob_up: float = 0.0
+        prob_down: float = 0.0
+        prob_flat: float = 0.0
+        stack_directional_authorized: bool = True
+        canonical_provenance: str = "bayesian_fusion"
+        mc_post_fusion_audit: dict | None = None
+
+    pre = (0.384, 0.414, 0.202)
+    pre_dom, pre_margin, pre_call = _confidence_from_probs(*pre)
+    assert pre_call == "wait"
+    mc_out = SimpleNamespace(
+        available=True,
+        mc_feature_dict=lambda: {
+            "expected_move": 0.001111,
+            "volatility": 0.043127 * 450,
+            "skew": 0.1,
+            "tail_risk": 0.10783,
+            "directional_bias": -0.138842,
+        },
+    )
+    out = mcf.fuse_payload_apply_mc_adjustment(
+        _P(prob_up=pre[0], prob_down=pre[1], prob_flat=pre[2]),
+        mc_out,
+        450.0,
+    )
+    post = (out.prob_up, out.prob_down, out.prob_flat)
+    post_dom, post_margin, post_call = _confidence_from_probs(*post)
+    assert post_dom <= pre_dom
+    assert post_margin <= pre_margin
+    assert post_call == "wait"
+
+
+def test_unauthorized_fusion_is_withheld_by_canonical_horizon_policy_and_mc():
+    from bayesian_fusion import FusionPayload
+    from features.fusion_policy_contract import fusion_payload_to_policy_columns
+    from multi_horizon_ml_bundle import fusion_payload_to_horizon_snapshot
+    from signals import canonical_forecast_from_fusion
+
+    fus = FusionPayload(
+        available=True,
+        prob_up=0.70,
+        prob_down=0.15,
+        prob_flat=0.15,
+        stack_directional_authorized=False,
+        stack_directional_authorization_reason="test_unapproved_computation",
+    )
+    mc_out = SimpleNamespace(
+        available=True,
+        mc_feature_dict=lambda: {
+            "expected_move": 1.0,
+            "volatility": 2.0,
+            "skew": 0.0,
+            "tail_risk": 0.1,
+            "directional_bias": 0.1,
+        },
+    )
+    from mc_fusion_adjustment import fuse_payload_apply_mc_adjustment
+
+    adjusted = fuse_payload_apply_mc_adjustment(fus, mc_out, 100.0)
+    assert adjusted.mc_post_fusion_audit is None
+
+    canonical = canonical_forecast_from_fusion(adjusted)
+    assert canonical.provenance == "fusion_directional_unauthorized"
+    assert canonical.direction == "flat"
+
+    snap = fusion_payload_to_horizon_snapshot("5c", adjusted)
+    assert snap.stack_directional_authorized is False
+    assert snap.horizon_fusion_available is False
+    assert snap.provenance == "fusion_directional_unauthorized"
+
+    cols = fusion_payload_to_policy_columns("5c", adjusted)
+    assert cols["fused_move_prob_5c"] is None
+    assert cols["fused_dir_up_prob_5c"] is None
+    assert "fusion_directional_unauthorized" in cols["fused_stack_status_5c"]
+
+
+def test_mixed_horizon_authorization_is_transport_not_bundle_level_inference():
+    from bayesian_fusion import FusionPayload
+    from multi_horizon_ml_bundle import build_multi_horizon_ml_fusion_bundle
+    from prediction_engine import _multi_horizon_authorization_maps
+
+    def _fus(authorized: bool) -> FusionPayload:
+        return FusionPayload(
+            available=True,
+            prob_up=0.60,
+            prob_down=0.20,
+            prob_flat=0.20,
+            stack_directional_authorized=authorized,
+            stack_directional_authorization_reason=(
+                "approved" if authorized else "unapproved"
+            ),
+        )
+
+    bundle = build_multi_horizon_ml_fusion_bundle(
+        {"1c": _fus(True), "5c": _fus(False), "15c": _fus(True), "60c": _fus(False)},
+        live_canonical_horizon_slug="1c",
+    )
+    auth, reasons, available = _multi_horizon_authorization_maps(bundle)
+    assert auth == {"1c": True, "5c": False, "15c": True, "60c": False}
+    assert available == auth
+    assert reasons["5c"] == "unapproved"
+
+    from multi_horizon_decision import _forecast_horizon_live
+
+    pred = SimpleNamespace(
+        up_prob_5c=0.80,
+        down_prob_5c=0.10,
+        flat_prob_5c=0.10,
+        avg_5c_pts=2.0,
+        horizon_directional_authorized=auth,
+    )
+    forecast = _forecast_horizon_live(
+        pred,
+        SimpleNamespace(spot=450.0),
+        "5c",
+        canonical=None,
+        mh_ml_bundle=bundle,
+    )
+    assert forecast.direction == "wait"
+    assert forecast.tradeable is False
+    assert forecast.provenance == "predictive_directional_unauthorized"
 
 
 # ── CONTROL 5: canonical MC horizon semantics ─────────────────────────────────────────────────
@@ -260,9 +441,9 @@ def test_setup_fusion_alone_cannot_light_a_directional_horizon():
     ui = _js_code_only((ROOT / "static" / "index.html").read_text(encoding="utf-8", errors="replace"))
     assert "hzFusionOk = true" not in ui, "the assume-authorized fallback must be gone"
     assert "hzFusionOk = false" in ui, "a missing per-horizon map must withhold"
-    assert "horizon_fusion_available" not in market_state.MarketState.__dataclass_fields__, \
-        "if this field ever IS emitted, the fallback stops being the always-taken branch and this " \
-        "control must be rewritten to exercise the map itself"
+    assert "horizon_directional_authorized" in market_state.MarketState.__dataclass_fields__
+    assert "horizon_fusion_available" in market_state.MarketState.__dataclass_fields__
+    assert "horizon_directional_authorized" in ui
 
 
 def test_stack_health_requires_the_transported_verdict_and_cannot_substitute():
@@ -341,10 +522,17 @@ def test_producer_record_and_gate_agree_on_keys_and_semantics():
     """
     from ml_predict import stack_probs_composition_record
 
-    rec = stack_probs_composition_record("SPY", "1c",
-                                         {"xgb": TRI, "lstm": TRI, "transformer": TRI})
-    for k in ("horizon", "required", "produced", "missing", "collapsed",
-              "contract_compliant", "contract_issues", "complete"):
+    rec = stack_probs_composition_record(
+        "SPY",
+        "1c",
+        {"xgb": TRI, "lstm": TRI, "transformer": TRI},
+        executed_computation="meta_stack",
+    )
+    for k in (
+        "authorization_schema_version", "horizon", "required", "produced", "missing",
+        "collapsed", "approved_computation", "executed_computation",
+        "computation_compliant", "contract_compliant", "contract_issues", "complete",
+    ):
         assert k in rec, f"producer must emit {k!r} — the gate reads it"
 
     ok, _reason = gsc.unified_stack_team_can_authorize(
@@ -360,10 +548,53 @@ def test_composition_credits_only_the_legs_that_fed_the_triplet():
     exact error this record exists to end."""
     from ml_predict import stack_probs_composition_record
 
-    rec = stack_probs_composition_record("SPY", "5c", {"xgb": TRI, "transformer": TRI})
+    rec = stack_probs_composition_record(
+        "SPY",
+        "5c",
+        {"xgb": TRI, "transformer": TRI},
+        executed_computation="xgb_plus_transformer_diagnostic",
+    )
     assert "lstm" in rec["missing"], "a leg that did not feed the blend is not a contributor"
     assert "lstm" not in rec["produced"]
     assert rec["complete"] is False
+
+
+def test_bundle_contract_cache_hits_and_both_invalidation_paths_evict(monkeypatch, tmp_path):
+    import active_bundle_contract as abc
+    import ml_predict as mp
+
+    calls = 0
+
+    def _check(*_args, **_kwargs):
+        nonlocal calls
+        calls += 1
+        return {"compliant": True, "issues": []}
+
+    monkeypatch.setattr(abc, "check_active_bundle_complete", _check)
+    monkeypatch.setattr(abc, "active_bundle_dir", lambda *_a, **_k: tmp_path)
+    mp.reset_caches()
+    legs = {"xgb": TRI, "lstm": TRI, "transformer": TRI}
+
+    first = mp.stack_probs_composition_record(
+        "SPY", "1c", legs, executed_computation="meta_stack"
+    )
+    second = mp.stack_probs_composition_record(
+        "SPY", "1c", legs, executed_computation="meta_stack"
+    )
+    assert first["complete"] is True and second["complete"] is True
+    assert calls == 1, "same registry key must not repeat the bundle disk check"
+
+    mp.invalidate_model_registry("SPY", "1c")
+    mp.stack_probs_composition_record(
+        "SPY", "1c", legs, executed_computation="meta_stack"
+    )
+    assert calls == 2
+
+    mp.reset_caches()
+    mp.stack_probs_composition_record(
+        "SPY", "1c", legs, executed_computation="meta_stack"
+    )
+    assert calls == 3
 
 
 def test_ablation_scorer_builds_the_composition_it_gates_on():

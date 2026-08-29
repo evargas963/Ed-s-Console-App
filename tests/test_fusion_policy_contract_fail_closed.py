@@ -22,6 +22,7 @@ def test_fused_confidence_none_when_fusion_unavailable() -> None:
 def test_fused_confidence_none_when_directional_triplet_missing() -> None:
     fusion = SimpleNamespace(
         available=True,
+        stack_directional_authorized=True,
         prob_up=None,
         prob_down=None,
         prob_flat=None,
@@ -37,6 +38,7 @@ def test_fused_confidence_none_when_directional_triplet_missing() -> None:
 def test_fused_confidence_bounded_when_fusion_ok() -> None:
     fusion = SimpleNamespace(
         available=True,
+        stack_directional_authorized=True,
         prob_up=0.6,
         prob_down=0.2,
         prob_flat=0.2,

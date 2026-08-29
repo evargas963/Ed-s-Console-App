@@ -943,6 +943,7 @@ MEGA4_TRACEABLE_INVENTORY: tuple[Mega4TraceableDerivation, ...] = (
     Mega4TraceableDerivation("ml_predict.py", 1620, "_active_base_collapse_flags", "NONE", None, (), None, "No market-field derivation: No Schwab market-field derivation in function body."),
     Mega4TraceableDerivation("ml_predict.py", 1626, "_fmt", "NONE", None, (), None, "No market-field derivation: No Schwab market-field derivation in function body."),
     Mega4TraceableDerivation("ml_predict.py", 1638, "_ensemble_parallel_probs", "NONE", None, (), None, "No market-field derivation: No Schwab market-field derivation in function body."),
+    Mega4TraceableDerivation("ml_predict.py", 2259, "_ensemble_parallel_probs_with_execution", "NONE", None, (), None, "No market-field derivation: No Schwab market-field derivation in function body."),
     Mega4TraceableDerivation("ml_predict.py", 2203, "prewarm_inference_models_for_ticker", "NONE", None, (), None, "No market-field derivation: No Schwab market-field derivation in function body."),
     Mega4TraceableDerivation("ml_scheduler.py", 62, "scheduler_arch_state_path", "NONE", None, (), None, "Pure path resolver: returns scheduler arch_state JSON path for an ml_horizon_slug. Filesystem only; no DB read, no market-field derivation."),
     Mega4TraceableDerivation("ml_scheduler.py", 69, "scheduler_active_root", "NONE", None, (), None, "Pure path resolver: returns the scheduler's active model root path. Filesystem only; no DB read, no market-field derivation."),

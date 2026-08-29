@@ -4946,7 +4946,9 @@ function sourceChipDisplayText(source, d) {
 function deriveSourceForHorizon(d, slug) {
   if (!d || typeof d !== 'object') return 'UNAVAILABLE';
   if (slug === 'consolidated') {
-    if (d.guest_anchor_active) {
+    if (d.guest_anchor_active
+        && typeof isFusionAuthoritative === 'function'
+        && isFusionAuthoritative(d)) {
       return guestAnchorChipLabel(d);
     }
     // Provenance chip = source authority, not tradeability. Fusion authoritative
@@ -4960,20 +4962,28 @@ function deriveSourceForHorizon(d, slug) {
     }
     return 'UNAVAILABLE';
   }
+  const authMap = d.horizon_directional_authorized;
+  const hzAuthorized = !!(authMap
+    && typeof authMap === 'object'
+    && Object.prototype.hasOwnProperty.call(authMap, slug)
+    && authMap[slug] === true);
   const srcMap = d.mh_prob_source_by_horizon;
   if (srcMap && typeof srcMap === 'object' && srcMap[slug] != null) {
     const raw = String(srcMap[slug]).trim();
     const up = raw.toUpperCase();
     // Brief-style values (preferred forward path)
-    if (up === 'ML_FUSION' || up === 'ML FUSION') return 'ML FUSION';
-    if (up === 'PROVISIONAL' || up.indexOf('PROVISIONAL') === 0) return guestAnchorChipLabel(d);
-    if (up === 'EMPIRICAL' || up === 'BLEND' || up === 'UNAVAILABLE' || up === 'DEGRADED') return up;
+    if (up === 'ML_FUSION' || up === 'ML FUSION') return hzAuthorized ? 'ML FUSION' : 'UNAVAILABLE';
+    if (up === 'PROVISIONAL' || up.indexOf('PROVISIONAL') === 0) {
+      return hzAuthorized ? guestAnchorChipLabel(d) : 'UNAVAILABLE';
+    }
+    if (up === 'EMPIRICAL' || up === 'UNAVAILABLE' || up === 'DEGRADED') return up;
+    if (up === 'BLEND') return hzAuthorized ? 'BLEND' : 'UNAVAILABLE';
     // Server internal stamping (current implementation in resolve_horizon_source / fusion contract)
     const lc = raw.toLowerCase();
-    if (lc === 'guest_anchor_fusion') return guestAnchorChipLabel(d);
-    if (lc === 'fusion_ml_primary') return 'ML FUSION';
-    if (lc === 'empirical_support_blend') return 'BLEND';
-    if (lc === 'fusion_directional_missing') return 'UNAVAILABLE';
+    if (lc === 'guest_anchor_fusion') return hzAuthorized ? guestAnchorChipLabel(d) : 'UNAVAILABLE';
+    if (lc === 'fusion_ml_primary') return hzAuthorized ? 'ML FUSION' : 'UNAVAILABLE';
+    if (lc === 'empirical_support_blend') return hzAuthorized ? 'BLEND' : 'UNAVAILABLE';
+    if (lc === 'fusion_directional_missing' || lc === 'fusion_directional_unauthorized') return 'UNAVAILABLE';
     // Fall through to derivation below if value is unrecognized.
   }
   const si = (d.stack_integrity_v1 && typeof d.stack_integrity_v1 === 'object') ? d.stack_integrity_v1 : {};
@@ -4983,20 +4993,10 @@ function deriveSourceForHorizon(d, slug) {
   const rowMissing = !row
     || String(row.call || '').toUpperCase() === 'UNAVAILABLE'
     || String(row.row_state || '').toLowerCase() === 'missing';
-  // A DIRECTIONAL surface may not be authorized by a SETUP-level predicate.
-  // isFusionAuthoritative(d) is bundle-level SETUP availability; horizon_fusion_available would be
-  // PER-HORIZON directional fusion. The bug fixed here is the old `else { hzFusionOk = true; }`
-  // fallback: `horizon_fusion_available` is not a MarketState field, so that map is ALWAYS absent
-  // on /api/state, and the fallback therefore let bare setup availability light the "ML FUSION"
-  // chip for every horizon on every tick. Absent evidence now means NOT authorized.
-  //
-  // NOT gated here: `d.stack_directional_authorized`. That verdict is computed once for the
-  // GOVERNED horizon, so applying it to the 1c/5c/15c/60c chips alike would gate one horizon on
-  // another's composition. Gating this surface correctly needs a PER-HORIZON authorization map
-  // that the producer does not emit yet; that half is reported as unfixed rather than approximated
-  // with a scalar that means something else.
+  // Both maps are transported from the producer for this exact horizon. Availability is not a
+  // substitute for authorization, and an absent map fails closed.
   let hzFusionOk = false;
-  if (typeof isFusionAuthoritative === 'function' && isFusionAuthoritative(d)) {
+  if (hzAuthorized) {
     const hfa = d.horizon_fusion_available;
     if (hfa && typeof hfa === 'object' && Object.prototype.hasOwnProperty.call(hfa, slug)) {
       hzFusionOk = hfa[slug] === true;
@@ -5912,8 +5912,10 @@ const SIGNAL_CHAIN_COL = { active: '#1D9E75', degraded: '#BA7517', off: '#E24B4A
 // back to fusion_available AND canonical_provenance === "bayesian_fusion" so the
 // UI never reports "active" for a non-tradable split-brain payload.
 function isFusionAuthoritative(d) {
+  const directionAuthorized = !!(d && d.stack_directional_authorized === true);
+  if (!directionAuthorized) return false;
   const rt = (d && d.stack_runtime && typeof d.stack_runtime === 'object') ? d.stack_runtime : null;
-  if (rt && typeof rt.fusion_active === 'boolean') return rt.fusion_active;
+  if (rt && typeof rt.fusion_active === 'boolean') return rt.fusion_active === true;
   const flag = !!(d && d.fusion_available);
   const prov = String((d && d.canonical_provenance) || '').toLowerCase();
   return flag && prov === 'bayesian_fusion';
@@ -5929,6 +5931,7 @@ function isFusionAuthoritative(d) {
 // surface as real signal.
 function isCanonicalTradable(d) {
   if (!d || typeof d !== 'object') return false;
+  if (d.stack_directional_authorized !== true) return false;
   const prov = String((d && d.canonical_provenance) || '').toLowerCase();
   return prov === 'bayesian_fusion';
 }
@@ -9699,11 +9702,18 @@ function horizonDirectionWithheld(integrity, d, hz, nowMs) {
   if (!ld) return { withheld: true, reason: 'no_payload' };
   const slug = String(hz || '').toLowerCase();
   if (!slug) return { withheld: false, reason: null };
+  const authMap = ld.horizon_directional_authorized;
+  if (!(authMap
+      && typeof authMap === 'object'
+      && Object.prototype.hasOwnProperty.call(authMap, slug)
+      && authMap[slug] === true)) {
+    return { withheld: true, reason: 'horizon_directional_unauthorized' };
+  }
   const map = ld.horizon_fusion_available;
   if (map && typeof map === 'object' && Object.prototype.hasOwnProperty.call(map, slug)) {
     if (map[slug] !== true) return { withheld: true, reason: 'horizon_fusion_unavailable' };
-  } else if (ld.fusion_available === false) {
-    return { withheld: true, reason: 'fusion_unavailable' };
+  } else {
+    return { withheld: true, reason: 'horizon_fusion_evidence_absent' };
   }
   return { withheld: false, reason: null };
 }

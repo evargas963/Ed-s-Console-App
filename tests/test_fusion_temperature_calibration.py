@@ -231,6 +231,7 @@ def test_artifact_records_fit_window_floor(tmp_path: Path):
 
 class _Fusion:
     available = True
+    stack_directional_authorized = True
     fusion_failed_closed = False
     prob_up = 0.7
     prob_down = 0.2

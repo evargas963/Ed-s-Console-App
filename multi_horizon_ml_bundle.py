@@ -13,7 +13,7 @@ import os
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
-from fusion_contract import fusion_is_authoritative
+from fusion_contract import fusion_direction_is_authorized, fusion_is_authoritative
 from ml_horizon import PRIMARY_DECISION_HORIZONS
 from numeric_contract import direction_from_normalized_triplet, float_finite_or_none
 
@@ -72,7 +72,12 @@ def fusion_calibration_status() -> dict[str, Any]:
     }
 
 
-def _unavailable_horizon_snapshot(hz: str, *, provenance: str) -> HorizonMLFusionSnapshot:
+def _unavailable_horizon_snapshot(
+    hz: str,
+    *,
+    provenance: str,
+    authorization_reason: str | None = None,
+) -> HorizonMLFusionSnapshot:
     t = 1.0 / 3.0
     return HorizonMLFusionSnapshot(
         horizon_slug=hz,
@@ -89,6 +94,8 @@ def _unavailable_horizon_snapshot(hz: str, *, provenance: str) -> HorizonMLFusio
         missing_models=(),
         provenance=provenance,
         horizon_tier="primary_decision",
+        stack_directional_authorized=False,
+        stack_directional_authorization_reason=authorization_reason,
     )
 
 
@@ -125,6 +132,9 @@ class HorizonMLFusionSnapshot:
     contributing_models: tuple[str, ...] = field(default_factory=tuple)
     missing_models: tuple[str, ...] = field(default_factory=tuple)
     provenance: str = "bayesian_fusion"
+    # The producer verdict for this exact horizon. Never reconstructed from availability/probs.
+    stack_directional_authorized: bool = False
+    stack_directional_authorization_reason: str | None = None
     # Always "primary_decision" for rows in MultiHorizonMLFusionBundle (secondary never admitted).
     horizon_tier: str = "primary_decision"
     # Raw (pre-calibration) triplet — logged alongside the served triplet so the
@@ -148,10 +158,36 @@ class MultiHorizonMLFusionBundle:
         s = self.by_horizon.get(hz)
         return bool(s and s.horizon_fusion_available)
 
+    def directional_authorization_map(self) -> dict[str, bool]:
+        return {
+            hz: bool(s.stack_directional_authorized)
+            for hz, s in self.by_horizon.items()
+        }
+
+    def directional_authorization_reason_map(self) -> dict[str, str | None]:
+        return {
+            hz: s.stack_directional_authorization_reason
+            for hz, s in self.by_horizon.items()
+        }
+
+    def fusion_availability_map(self) -> dict[str, bool]:
+        return {
+            hz: bool(s.horizon_fusion_available)
+            for hz, s in self.by_horizon.items()
+        }
+
 
 def fusion_payload_to_horizon_snapshot(hz: str, fus: Any) -> HorizonMLFusionSnapshot:
     if not fusion_is_authoritative(fus):
         return _unavailable_horizon_snapshot(hz, provenance="fusion_unavailable")
+    if not fusion_direction_is_authorized(fus):
+        return _unavailable_horizon_snapshot(
+            hz,
+            provenance="fusion_directional_unauthorized",
+            authorization_reason=getattr(
+                fus, "stack_directional_authorization_reason", None
+            ),
+        )
 
     pu = float_finite_or_none(getattr(fus, "prob_up", None))
     pd = float_finite_or_none(getattr(fus, "prob_down", None))
@@ -195,6 +231,10 @@ def fusion_payload_to_horizon_snapshot(hz: str, fus: Any) -> HorizonMLFusionSnap
         missing_models=mm,
         provenance=prov,
         horizon_tier="primary_decision",
+        stack_directional_authorized=True,
+        stack_directional_authorization_reason=getattr(
+            fus, "stack_directional_authorization_reason", None
+        ),
         prob_up_raw=pu_raw,
         prob_down_raw=pd_raw,
         prob_flat_raw=pf_raw,

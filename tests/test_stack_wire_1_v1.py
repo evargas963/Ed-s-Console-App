@@ -57,6 +57,7 @@ def test_stack_runtime_fields_propagate():
     ms_dict = {
         "fusion_available": True,
         "canonical_provenance": "bayesian_fusion",  # STACK-WIRE-4-CAND: tradable provenance required
+        "stack_directional_authorized": True,
         "mc_available": True,
         "xgb_available": True,
         "lstm_available": False,
@@ -170,13 +171,20 @@ def test_canonical_provenance_enum_complete():
     assert unavailable.provenance == "fusion_unavailable"
 
     missing = canonical_forecast_from_fusion(
-        SimpleNamespace(available=True, prob_up=None, prob_down=None, prob_flat=None)
+        SimpleNamespace(
+            available=True,
+            stack_directional_authorized=True,
+            prob_up=None,
+            prob_down=None,
+            prob_flat=None,
+        )
     )
     assert missing.provenance == "fusion_directional_missing"
 
     invalid = canonical_forecast_from_fusion(
         SimpleNamespace(
             available=True,
+            stack_directional_authorized=True,
             prob_up=0.0,
             prob_down=0.0,
             prob_flat=0.0,
@@ -189,6 +197,7 @@ def test_canonical_provenance_enum_complete():
     good = canonical_forecast_from_fusion(
         SimpleNamespace(
             available=True,
+            stack_directional_authorized=True,
             prob_up=0.5,
             prob_down=0.3,
             prob_flat=0.2,

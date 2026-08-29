@@ -179,11 +179,15 @@ def test_monte_carlo_receives_resolved_model_probs_for_drift():
     from ml_predict import get_ml_infer_horizon_slug
 
     captured = _drift_priors_captured_for_composition({
+        "authorization_schema_version": 1,
         "horizon": get_ml_infer_horizon_slug(),
         "required": ["xgb", "lstm", "transformer"],
         "produced": ["xgb", "lstm", "transformer"],
         "missing": [],
         "collapsed": [],
+        "approved_computation": "meta_stack",
+        "executed_computation": "meta_stack",
+        "computation_compliant": True,
         "contract_compliant": True,
         "contract_issues": [],
         "complete": True,
