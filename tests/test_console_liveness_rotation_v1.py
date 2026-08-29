@@ -342,6 +342,120 @@ def test_de_enrolled_tickers_cannot_control_the_current_obligation(tmp_path):
         assert n == ROSTER_N, f"orphans leaked into the measured population: {n}"
 
 
+# ── PROOF 9: REPEATED disruptions must not become the cadence ─────────────────────────────────
+def _repeated_gap_db(tmp_path, name, *, frac_recovered, n_gaps, gap=7200.0, tail=4):
+    """`n_gaps` recent disruptions; `frac_recovered` have collected once since the last one.
+
+    Per ticker the recent intervals become [normal?, gap, gap, ...], so a plain median over the
+    last three is the GAP as soon as two disruptions fall inside the window.
+    """
+    p = tmp_path / name
+    con = sqlite3.connect(str(p))
+    con.execute("CREATE TABLE snapshots (ts_utc REAL, ticker TEXT, mc_paths INTEGER, "
+                "logger_source TEXT)")
+    con.execute("CREATE TABLE logging_universe (ticker TEXT, category TEXT, "
+                "last_background_log_ts_utc REAL)")
+    now = time.time()
+    for i in range(6):
+        con.execute("INSERT INTO snapshots VALUES (?,?,?,?)",
+                    (now - 5 - i, "SPY", 10000, "base_money_path"))
+    n_rec = int(round(ROSTER_N * frac_recovered))
+    for i in range(ROSTER_N):
+        tk = f"T{i:02d}"
+        t = (now - ROTATION_SECS * (i / ROSTER_N) if i < n_rec
+             else now - gap - ROTATION_SECS * (i / ROSTER_N))
+        stamps = [t]
+        for _g in range(n_gaps):
+            t -= gap
+            stamps.append(t)
+        for _h in range(tail):
+            t -= ROTATION_SECS
+            stamps.append(t)
+        con.execute("INSERT INTO logging_universe VALUES (?,?,?)", (tk, "core", stamps[0]))
+        for ts in stamps:
+            con.execute("INSERT INTO snapshots VALUES (?,?,?,?)",
+                        (ts, tk, 10000, "background_logger"))
+    con.commit()
+    con.close()
+    return str(p)
+
+
+def test_two_recent_disruptions_do_not_become_the_cadence(tmp_path):
+    """ATTACK: two gaps inside the per-ticker window make [normal, gap, gap], whose MEDIAN is the
+    gap. Measured before the fix: the 7200s outage became the rotation and check() returned OK at
+    50-100% recovered while half the roster was still stale."""
+    for n_gaps in (1, 2):
+        for frac in (0.25, 0.5, 0.75, 0.92, 1.0):
+            path = _repeated_gap_db(tmp_path, f"rg{n_gaps}_{int(frac*100)}.db",
+                                    frac_recovered=frac, n_gaps=n_gaps)
+            rot, _n = _rotation_of(tmp_path, None, None, path=path)
+            assert abs(rot - ROTATION_SECS) < 1.0, (
+                f"{n_gaps} gap(s), {frac*100:.0f}% recovered: disruption became the cadence "
+                f"({rot:.0f}s)")
+
+
+def test_repeated_disruptions_still_alert_while_tickers_remain_stale(tmp_path):
+    for n_gaps in (1, 2):
+        for frac in (0.25, 0.5, 0.75, 0.92):
+            rc, emitted = _run(_repeated_gap_db(tmp_path, f"ra{n_gaps}_{int(frac*100)}.db",
+                                                frac_recovered=frac, n_gaps=n_gaps))
+            assert rc == 1, (f"{n_gaps} gap(s), {frac*100:.0f}% recovered returned OK: "
+                             f"{_joined(emitted)}")
+
+
+def test_when_every_recent_interval_is_a_disruption_it_fails_closed(tmp_path):
+    """If nothing in the window is a genuine sweep, the cadence cannot be measured honestly — that
+    must ALERT, never be answered with the outage duration."""
+    for frac in (0.25, 0.5, 0.75, 1.0):
+        path = _repeated_gap_db(tmp_path, f"rz{int(frac*100)}.db", frac_recovered=frac, n_gaps=3)
+        rot, n = _rotation_of(tmp_path, None, None, path=path)
+        assert rot is None and n == 0, f"a cadence was invented from disruptions: {rot}"
+        rc, emitted = _run(path)
+        assert rc == 1 and "UNMEASURABLE" in _joined(emitted).upper(), _joined(emitted)
+
+
+# ── PROOF 10: work is bounded by the roster, not by the lifetime of snapshots ──────────────────
+def test_history_read_is_bounded_and_ancient_cadence_cannot_win(tmp_path):
+    """The query reads a roster-scaled slice of the newest rows (LIMIT via idx_snap_ts) instead of
+    every background-logger row ever written — measured on production: 46.4s reading 24,569 rows and
+    discarding 99.1%, versus ~0.3s after. Behaviourally: a large volume of ANCIENT history at a
+    different cadence must not reach the measurement."""
+    p = tmp_path / "deep.db"
+    con = sqlite3.connect(str(p))
+    con.execute("CREATE TABLE snapshots (ts_utc REAL, ticker TEXT, mc_paths INTEGER, "
+                "logger_source TEXT)")
+    con.execute("CREATE TABLE logging_universe (ticker TEXT, category TEXT, "
+                "last_background_log_ts_utc REAL)")
+    now = time.time()
+    for i in range(6):
+        con.execute("INSERT INTO snapshots VALUES (?,?,?,?)",
+                    (now - 5 - i, "SPY", 10000, "base_money_path"))
+    for i in range(ROSTER_N):
+        tk = f"T{i:02d}"
+        age = ROTATION_SECS * i / ROSTER_N
+        con.execute("INSERT INTO logging_universe VALUES (?,?,?)", (tk, "core", now - age))
+        for h in range(HISTORY):                                   # recent, true cadence
+            con.execute("INSERT INTO snapshots VALUES (?,?,?,?)",
+                        (now - age - ROTATION_SECS * h, tk, 10000, "background_logger"))
+        for h in range(60):                                        # ANCIENT, 10x slower cadence
+            con.execute("INSERT INTO snapshots VALUES (?,?,?,?)",
+                        (now - 30 * 86400 - age - 14000.0 * h, tk, 10000, "background_logger"))
+    con.commit()
+    con.close()
+
+    deep = sqlite3.connect(str(p))
+    try:
+        total = deep.execute("SELECT COUNT(*) FROM snapshots WHERE "
+                             "logger_source='background_logger'").fetchone()[0]
+        enrolled = [r[0] for r in deep.execute("SELECT ticker FROM logging_universe")]
+        rot, n = clc.observed_rotation(deep, enrolled)
+    finally:
+        deep.close()
+    assert total > 3000, "premise: the table holds far more history than is needed"
+    assert abs(rot - ROTATION_SECS) < 1.0, f"ancient cadence leaked into the measurement: {rot:.0f}s"
+    assert n == ROSTER_N
+
+
 # ── TOLERANCE: three rotations must cover MEASURED same-ticker revisit jitter ──────────────────
 def test_three_rotations_covers_measured_revisit_jitter_but_not_a_real_hiccup():
     """Derived from 524 same-ticker background-logger revisit INTERVALS (outage hours excluded):

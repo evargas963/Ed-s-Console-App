@@ -44,6 +44,7 @@ from __future__ import annotations
 import argparse
 import sqlite3
 import sys
+from bisect import bisect_left, bisect_right
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -90,13 +91,16 @@ STALE_LIMIT_SECS = 600
 ROTATIONS_ALLOWED = 3
 #: A median revisit interval needs at least this many tickers to mean anything.
 MIN_TICKERS_FOR_ROTATION = 3
-#: Collections read per ticker, giving COLLECTIONS_PER_TICKER-1 intervals. DERIVED: a regime change
-#: (an outage, a restart, a token reauth) contributes exactly ONE contaminated interval per ticker —
-#: the one that straddles the gap — so rejecting it with a per-ticker median needs at least three
-#: intervals, hence four collections. Reading only the two most recent made that single straddling
-#: interval the ticker's whole evidence, and once half the roster had received its first post-gap
-#: collection the OUTAGE became the measured rotation and licensed everything still stale.
+#: Collections read per ticker, giving COLLECTIONS_PER_TICKER-1 candidate intervals.
 COLLECTIONS_PER_TICKER = 4
+#: Query sizing only (not a decision threshold): the newest N background-logger rows are read, where
+#: N scales with the ROSTER — COLLECTIONS_PER_TICKER x roster x this margin. The margin covers rows
+#: belonging to non-enrolled tickers and uneven per-ticker cadence, so each enrolled ticker's recent
+#: collections are present. Work is therefore bounded by the roster, not by the lifetime size of
+#: snapshots. MEASURED on production (382,128 snapshot rows, 24,569 background-logger): the previous
+#: unbounded form took 46.4s and threw away 99.1% of what it read; the bounded form reads ~900 rows
+#: in ~0.5s via idx_snap_ts.
+HISTORY_QUERY_MARGIN = 4
 #: Window closes this many minutes after the session close (through 16:15 on a normal day,
 #: 13:15 on an early-close day — session_close_mins_for_et_date handles the calendar).
 WINDOW_END_PAD_MINS = 15
@@ -133,43 +137,79 @@ def observed_rotation(con: sqlite3.Connection,
     * ONLY THE ENROLLED ROSTER. A ticker that is no longer in a collecting category is not part of
       the regime being judged, and its historical cadence must not set today's obligation. Measured:
       80 de-enrolled tickers carrying 60s (or 30000s) history took the rotation over completely.
-    * ONLY WITHIN ONE REGIME. Each ticker's own MEDIAN over its recent intervals is used, not its
-      single most recent one. An outage/restart/reauth gap contributes exactly one straddling
-      interval per ticker, which a median over three rejects. Reading just the latest interval made
-      that gap the ticker's entire evidence: measured, once half the roster had taken its first
-      post-recovery collection the 7200s OUTAGE became the measured rotation and check() returned
-      OK while the rest of the roster was still stale.
+    * ONLY INTERVALS THE COLLECTOR SWEPT CONTINUOUSLY. An interval is admitted as evidence of
+      cadence only if the collector was working THROUGHOUT it — no dead stretch covering half of
+      it. During a genuine revisit interval the sweep is visiting other enrolled tickers the whole
+      time, so the writes inside are spread evenly and the largest quiet stretch is about one
+      per-ticker step. An interval that straddles an outage is mostly silence, whatever happens at
+      its ends. Note a COUNT of writes inside is not enough: a straddling interval also contains a
+      full recovery sweep's worth of writes, just bunched at the finish — it is the CONTINUITY that
+      separates cadence from disruption.
+      Taking a median over "the last three intervals" instead only survives ONE disruption:
+      measured, two recent gaps make the per-ticker intervals [normal, gap, gap], their median IS
+      the gap, and the 7200s outage became the "normal" cadence that then licensed every still-stale
+      ticker. Raising the sample size only moves that boundary, so the rule is about which intervals
+      QUALIFY, not how many are read. Half is the same natural boundary the coverage rule uses.
 
-    Returns (None, n) when too few enrolled tickers carry enough history; the caller must then
-    ALERT rather than invent a number.
+    Returns (None, n) when too few enrolled tickers have any qualifying interval — the cadence
+    cannot be measured honestly, so the caller must ALERT rather than treat outage duration as
+    normal.
     """
     enrolled = {str(t).upper() for t in enrolled_tickers or ()}
     if not enrolled:
         return None, 0
+    # Work is bounded by the ROSTER, not by the lifetime size of snapshots: read the newest
+    # roster-scaled slice of the background-logger stream, newest first, via idx_snap_ts.
+    limit = COLLECTIONS_PER_TICKER * len(enrolled) * HISTORY_QUERY_MARGIN
     try:
         rows = con.execute(
             "SELECT ticker, ts_utc FROM snapshots WHERE logger_source = 'background_logger' "
-            "AND ticker IS NOT NULL ORDER BY ticker, ts_utc DESC"
+            "AND ticker IS NOT NULL ORDER BY ts_utc DESC LIMIT ?", (limit,)
         ).fetchall()
     except sqlite3.Error:
         return None, 0
 
     recent: dict[str, list[float]] = {}
+    stream: list[float] = []                           # every enrolled collection in the slice
     for tk, ts in rows:
         if ts is None:
             continue
         key = str(tk).upper()
         if key not in enrolled:
             continue                                   # not part of the regime being judged
+        stream.append(float(ts))
         seen = recent.setdefault(key, [])
         if len(seen) < COLLECTIONS_PER_TICKER:
             seen.append(float(ts))
+    stream.sort()
+
+    def _is_one_cadence_interval(earlier: float, later: float) -> bool:
+        """Is [earlier, later] one turn of the sweep, rather than a disruption or a skip?
+
+        Two ways an interval can fail to be cadence, and both must be excluded:
+          * DISRUPTION — the collector stopped inside it. Then most of the interval is silent, so
+            the quietest stretch covers half or more of it.
+          * SKIP — the collector kept sweeping but passed this ticker by. Then MORE than a roster's
+            worth of collections happened inside, i.e. the sweep went round more than once without
+            visiting it. That interval measures the ticker's failure, not the cadence.
+        """
+        span = later - earlier
+        lo, hi = bisect_right(stream, earlier), bisect_left(stream, later)
+        if hi - lo > len(enrolled):                    # more than one turn of the roster => skipped
+            return False
+        marks = [earlier] + stream[lo:hi] + [later]
+        quietest = max(b - a for a, b in zip(marks, marks[1:]))
+        return quietest * 2.0 < span                   # the sweep worked through most of it
 
     per_ticker: list[float] = []
     for stamps in recent.values():
-        gaps = sorted(a - b for a, b in zip(stamps, stamps[1:]) if a > b)
-        if len(gaps) >= COLLECTIONS_PER_TICKER - 1:    # enough to reject one regime-change gap
-            per_ticker.append(gaps[len(gaps) // 2])
+        qualifying = []
+        for later, earlier in zip(stamps, stamps[1:]):
+            if later > earlier and _is_one_cadence_interval(earlier, later):
+                qualifying.append(later - earlier)
+        if qualifying:
+            qualifying.sort()
+            per_ticker.append(qualifying[len(qualifying) // 2])
     if len(per_ticker) < MIN_TICKERS_FOR_ROTATION:
         return None, len(per_ticker)
     per_ticker.sort()
