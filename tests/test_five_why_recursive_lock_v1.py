@@ -7,6 +7,7 @@ vocabulary + null study reports) and the adversarial-audit test-lock family belo
 """
 from __future__ import annotations
 
+import datetime
 from pathlib import Path
 
 _P = Path("governance/root_cause_log.md")
@@ -102,13 +103,40 @@ def test_rth_lock_ignores_files_that_only_read_without_aggregating(tmp_path, mon
 # ── RC-56: a committed measured claim must carry its reproduce command ────────
 
 
-def _claims_scan(tmp_path, monkeypatch, added_line: str, file_body: str | None = None):
-    """Run the real detector over one staged governance .md with `added_line` in its diff."""
+def _register_md(rows: str) -> str:
+    """A minimal register in the real file's shape: >=5 cells, status / _ / due / claim / _."""
+    return ("| status | owner | due | claim | evidence |\n"
+            "|---|---|---|---|---|\n" + rows)
+
+
+def _in_date_register() -> str:
+    """A synthetic register with nothing overdue. The due date is computed from TODAY so this
+    fixture can never go stale the way a hard-coded date does."""
+    due = (datetime.date.today() + datetime.timedelta(days=30)).isoformat()
+    return _register_md(f"| UNPROVEN | ops | {due} | synthetic in-date claim | pending |\n")
+
+
+def _claims_scan(tmp_path, monkeypatch, added_line: str, file_body: str | None = None,
+                 register: str | None = None):
+    """Run the real detector over one staged governance .md with `added_line` in its diff.
+
+    ISOLATION (the defect this fixture had): check_measured_claims_cite_evidence() is the
+    CONSOLIDATED evidence gate, so it also runs _unproven_register_violations(). That reads
+    module-level `_UNPROVEN_REGISTER`, which is bound to the REAL repository at import time and
+    is therefore NOT redirected by monkeypatching `REPO`. These synthetic tests consequently
+    inherited the real governance/unproven_register.md, and on 2026-08-29 five genuinely overdue
+    rows began leaking in — five tests that assert an EXACT result started failing for reasons
+    that have nothing to do with what they test. Point the register at a synthetic in-date one so
+    the fixture sees only its own repo state. Real enforcement is untouched: the validator itself
+    is unchanged and still reads the real file everywhere else.
+    """
     import tools.check_institutional_correctness as cic
     rel = "governance/x.md"
     p = tmp_path / "governance"
     p.mkdir(exist_ok=True)
     (p / "x.md").write_text(file_body if file_body is not None else added_line, encoding="utf-8")
+    reg = p / "unproven_register.md"
+    reg.write_text(_in_date_register() if register is None else register, encoding="utf-8")
     def fake(args):
         if args[:3] == ["diff", "--cached", "--name-only"]:
             return [rel]
@@ -117,6 +145,7 @@ def _claims_scan(tmp_path, monkeypatch, added_line: str, file_body: str | None =
         return []
     monkeypatch.setattr(cic, "_git_output_lines", fake)
     monkeypatch.setattr(cic, "REPO", tmp_path)
+    monkeypatch.setattr(cic, "_UNPROVEN_REGISTER", reg)
     return cic.check_measured_claims_cite_evidence()
 
 
@@ -142,6 +171,71 @@ def test_claims_lock_ignores_prose_without_numeric_findings(tmp_path, monkeypatc
 def test_claims_lock_does_not_count_dates_or_rc_ids_as_claims(tmp_path, monkeypatch):
     line = "PROVEN on 2026-07-26 per RC-43 and RC-54"
     assert _claims_scan(tmp_path, monkeypatch, line) == []
+
+
+# ── The isolation fix must not weaken unproven-register enforcement ──────────
+
+
+def _register_violations(monkeypatch, path):
+    import tools.check_institutional_correctness as cic
+    monkeypatch.setattr(cic, "_UNPROVEN_REGISTER", path)
+    return cic._unproven_register_violations()
+
+
+def test_an_overdue_synthetic_row_still_fails_the_register_validator(tmp_path, monkeypatch):
+    """The fixture is isolated, not neutered: an overdue row in the register it points at still
+    fails, so the synthetic register cannot be used to hide an open claim."""
+    overdue = (datetime.date.today() - datetime.timedelta(days=3)).isoformat()
+    reg = tmp_path / "reg.md"
+    reg.write_text(_register_md(f"| UNPROVEN | ops | {overdue} | synthetic overdue claim | none |\n"),
+                   encoding="utf-8")
+    v = _register_violations(monkeypatch, reg)
+    assert len(v) == 1 and "3d past due" in v[0].msg
+
+
+def test_an_in_date_or_terminal_synthetic_row_passes(tmp_path, monkeypatch):
+    future = (datetime.date.today() + datetime.timedelta(days=10)).isoformat()
+    past = (datetime.date.today() - datetime.timedelta(days=10)).isoformat()
+    reg = tmp_path / "reg.md"
+    reg.write_text(_register_md(
+        f"| UNPROVEN | ops | {future} | still in date | pending |\n"
+        f"| PROVEN | ops | {past} | terminal, past due date is irrelevant | evidence |\n"
+        f"| REMEDIATED | ops | {past} | terminal via a landed fix | commit |\n"), encoding="utf-8")
+    assert _register_violations(monkeypatch, reg) == []
+
+
+def test_the_real_register_is_still_enforced_after_the_isolation_fix(monkeypatch):
+    """Run the UNCHANGED validator against the ACTUAL repository register and require it to report
+    exactly the rows that are genuinely past due — five of them dated 2026-08-28 as of 2026-08-29.
+    Computed from the file rather than hard-coded, so this proves enforcement survives on any day.
+    """
+    import tools.check_institutional_correctness as cic
+    real = Path(__file__).resolve().parent.parent / "governance" / "unproven_register.md"
+    assert real.is_file(), "the real register must exist — missing register is itself a violation"
+
+    today = datetime.date.today()
+    expected = 0
+    for ln in real.read_text(encoding="utf-8").splitlines():
+        s = ln.strip()
+        if not s.startswith("|"):
+            continue
+        cells = [c.strip() for c in s.strip("|").split("|")]
+        if len(cells) < 5 or cells[0].upper() not in ("UNPROVEN", "DISPROVED"):
+            continue
+        try:
+            due = datetime.date.fromisoformat(cells[2])
+        except ValueError:
+            expected += 1
+            continue
+        if (today - due).days > 0:
+            expected += 1
+
+    monkeypatch.setattr(cic, "_UNPROVEN_REGISTER", real)
+    got = cic._unproven_register_violations()
+    assert len(got) == expected, (
+        f"real-register enforcement changed: validator reported {len(got)}, "
+        f"file contains {expected} genuinely open past-due row(s)")
+    assert all(v.path == real for v in got)
 
 
 # ── RC-65: the open-item ratchet must measure DEFERRAL, not discovery ─────────
