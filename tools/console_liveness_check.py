@@ -90,6 +90,13 @@ STALE_LIMIT_SECS = 600
 ROTATIONS_ALLOWED = 3
 #: A median revisit interval needs at least this many tickers to mean anything.
 MIN_TICKERS_FOR_ROTATION = 3
+#: Collections read per ticker, giving COLLECTIONS_PER_TICKER-1 intervals. DERIVED: a regime change
+#: (an outage, a restart, a token reauth) contributes exactly ONE contaminated interval per ticker —
+#: the one that straddles the gap — so rejecting it with a per-ticker median needs at least three
+#: intervals, hence four collections. Reading only the two most recent made that single straddling
+#: interval the ticker's whole evidence, and once half the roster had received its first post-gap
+#: collection the OUTAGE became the measured rotation and licensed everything still stale.
+COLLECTIONS_PER_TICKER = 4
 #: Window closes this many minutes after the session close (through 16:15 on a normal day,
 #: 13:15 on an early-close day — session_close_mins_for_et_date handles the calendar).
 WINDOW_END_PAD_MINS = 15
@@ -99,7 +106,8 @@ RECENT_MC_WINDOW_SECS = 900
 LOG_PATH = REPO / "reports" / "console_liveness_run.log"
 
 
-def observed_rotation(con: sqlite3.Connection) -> tuple[float | None, int]:
+def observed_rotation(con: sqlite3.Connection,
+                      enrolled_tickers: "list[str] | set[str] | None") -> tuple[float | None, int]:
     """(measured rotation, tickers it was measured from) from OBSERVED same-ticker revisits.
 
     WHY NOT THE AGE LADDER. Earlier revisions inferred the cycle from the cross-sectional spread of
@@ -120,9 +128,24 @@ def observed_rotation(con: sqlite3.Connection) -> tuple[float | None, int]:
     against. Verified against both outage geometries at 76%, 90% and 95% dark: recovered 1400s
     against a true 1400s in every case.
 
-    Returns (None, n) when too few tickers have ever been collected twice; the caller must then
+    MEASUREMENT AUTHORITY — two limits on which observations may define the obligation:
+
+    * ONLY THE ENROLLED ROSTER. A ticker that is no longer in a collecting category is not part of
+      the regime being judged, and its historical cadence must not set today's obligation. Measured:
+      80 de-enrolled tickers carrying 60s (or 30000s) history took the rotation over completely.
+    * ONLY WITHIN ONE REGIME. Each ticker's own MEDIAN over its recent intervals is used, not its
+      single most recent one. An outage/restart/reauth gap contributes exactly one straddling
+      interval per ticker, which a median over three rejects. Reading just the latest interval made
+      that gap the ticker's entire evidence: measured, once half the roster had taken its first
+      post-recovery collection the 7200s OUTAGE became the measured rotation and check() returned
+      OK while the rest of the roster was still stale.
+
+    Returns (None, n) when too few enrolled tickers carry enough history; the caller must then
     ALERT rather than invent a number.
     """
+    enrolled = {str(t).upper() for t in enrolled_tickers or ()}
+    if not enrolled:
+        return None, 0
     try:
         rows = con.execute(
             "SELECT ticker, ts_utc FROM snapshots WHERE logger_source = 'background_logger' "
@@ -131,19 +154,26 @@ def observed_rotation(con: sqlite3.Connection) -> tuple[float | None, int]:
     except sqlite3.Error:
         return None, 0
 
-    last_two: dict[str, list[float]] = {}
+    recent: dict[str, list[float]] = {}
     for tk, ts in rows:
         if ts is None:
             continue
-        seen = last_two.setdefault(str(tk), [])
-        if len(seen) < 2:
+        key = str(tk).upper()
+        if key not in enrolled:
+            continue                                   # not part of the regime being judged
+        seen = recent.setdefault(key, [])
+        if len(seen) < COLLECTIONS_PER_TICKER:
             seen.append(float(ts))
 
-    intervals = sorted(pair[0] - pair[1] for pair in last_two.values()
-                       if len(pair) == 2 and pair[0] > pair[1])
-    if len(intervals) < MIN_TICKERS_FOR_ROTATION:
-        return None, len(intervals)
-    return intervals[len(intervals) // 2], len(intervals)
+    per_ticker: list[float] = []
+    for stamps in recent.values():
+        gaps = sorted(a - b for a, b in zip(stamps, stamps[1:]) if a > b)
+        if len(gaps) >= COLLECTIONS_PER_TICKER - 1:    # enough to reject one regime-change gap
+            per_ticker.append(gaps[len(gaps) // 2])
+    if len(per_ticker) < MIN_TICKERS_FOR_ROTATION:
+        return None, len(per_ticker)
+    per_ticker.sort()
+    return per_ticker[len(per_ticker) // 2], len(per_ticker)
 
 
 def _emit(status: str, message: str) -> None:
@@ -252,7 +282,7 @@ def check(db_path: str) -> int:
             # rather than a fixed number of seconds. A ticker that has NEVER collected (NULL) stays
             # excluded: freshly enrolled, or a quarantined non-collector — neither is a regression.
             # Degrades to a silent skip (never a false ALERT) if the enrollment table is absent.
-            rotation, n_measured = observed_rotation(con)
+            rotation, n_measured = observed_rotation(con, [tk for tk, _a in clocked])
             if rotation is None:
                 # FAIL CLOSED: no revisit obligation can be measured, so nothing can be CERTIFIED.
                 # The one exception is not a fallback allowance but its opposite: if every clocked

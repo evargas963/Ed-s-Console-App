@@ -103,10 +103,12 @@ def _joined(emitted):
 
 
 # ── the derivation itself ─────────────────────────────────────────────────────────────────────
-def _rotation_of(tmp_path, ages, name, history_cycle=ROTATION_SECS):
-    con = sqlite3.connect(_db(tmp_path, ages=ages, name=name, history_cycle=history_cycle))
+def _rotation_of(tmp_path, ages, name, history_cycle=ROTATION_SECS, path=None):
+    con = sqlite3.connect(path or _db(tmp_path, ages=ages, name=name,
+                                      history_cycle=history_cycle))
     try:
-        return clc.observed_rotation(con)
+        enrolled = [r[0] for r in con.execute("SELECT ticker FROM logging_universe")]
+        return clc.observed_rotation(con, enrolled)
     finally:
         con.close()
 
@@ -127,11 +129,7 @@ def test_rotation_is_offset_invariant(tmp_path):
 def test_unmeasurable_when_nothing_has_been_collected_twice(tmp_path):
     """FAIL CLOSED: no observed revisits => no obligation can be measured => never OK."""
     path = _db(tmp_path, ages=_healthy_ladder(), name="nohist.db", with_history=False)
-    con = sqlite3.connect(path)
-    try:
-        rotation, n = clc.observed_rotation(con)
-    finally:
-        con.close()
+    rotation, n = _rotation_of(tmp_path, None, None, path=path)
     assert rotation is None and n == 0
     rc, emitted = _run(path)
     assert rc == 1 and "UNMEASURABLE" in _joined(emitted).upper()
@@ -268,6 +266,80 @@ def test_healthy_jitter_does_not_trip_the_coverage_rule(tmp_path):
     ages = _healthy_ladder(n=ROSTER_N - 6) + [ROTATION_SECS * 1.7] * 6      # ~10% past one rotation
     rc, emitted = _run(_db(tmp_path, ages=sorted(ages), name="jit.db"))
     assert rc == 0, _joined(emitted)
+
+
+# ── PROOF 8: MEASUREMENT AUTHORITY — which observations may define the obligation ─────────────
+def _recovery_db(tmp_path, name, *, frac_recovered, gap=7200.0, orphans=0, orphan_cycle=0.0,
+                 history=6):
+    """Healthy rotation, then an outage of `gap`, then partial recovery.
+
+    `frac_recovered` of the roster has had EXACTLY ONE post-gap collection, so its two most recent
+    collections STRADDLE the outage and its latest interval is the outage duration. Optional
+    de-enrolled tickers carry history at a different cadence but are absent from logging_universe.
+    """
+    p = tmp_path / name
+    con = sqlite3.connect(str(p))
+    con.execute("CREATE TABLE snapshots (ts_utc REAL, ticker TEXT, mc_paths INTEGER, "
+                "logger_source TEXT)")
+    con.execute("CREATE TABLE logging_universe (ticker TEXT, category TEXT, "
+                "last_background_log_ts_utc REAL)")
+    now = time.time()
+    for i in range(6):
+        con.execute("INSERT INTO snapshots VALUES (?,?,?,?)",
+                    (now - 5 - i, "SPY", 10000, "base_money_path"))
+    n_rec = int(round(ROSTER_N * frac_recovered))
+    for i in range(ROSTER_N):
+        tk = f"T{i:02d}"
+        pre_last = now - gap - ROTATION_SECS * (i / ROSTER_N)
+        latest = (now - ROTATION_SECS * (i / max(1, n_rec))) if i < n_rec else pre_last
+        con.execute("INSERT INTO logging_universe VALUES (?,?,?)", (tk, "core", latest))
+        stamps = ([latest] if i < n_rec else []) + [pre_last - ROTATION_SECS * h
+                                                    for h in range(history)]
+        for ts in stamps:
+            con.execute("INSERT INTO snapshots VALUES (?,?,?,?)",
+                        (ts, tk, 10000, "background_logger"))
+    for j in range(orphans):                       # de-enrolled: history only, NOT enrolled
+        for h in range(history):
+            con.execute("INSERT INTO snapshots VALUES (?,?,?,?)",
+                        (now - 50.0 - orphan_cycle * h, f"ORPH{j:02d}", 10000, "background_logger"))
+    con.commit()
+    con.close()
+    return str(p)
+
+
+def test_a_recovery_gap_never_becomes_the_measured_rotation(tmp_path):
+    """ATTACK: after an outage a ticker's two most recent collections straddle the gap, so its
+    latest interval IS the outage. Reading only that interval made the 7200s outage the rotation
+    once half the roster had recovered, and check() returned OK while the rest was still stale.
+    A per-ticker MEDIAN rejects the single straddling interval."""
+    for frac in (0.25, 0.5, 0.75, 0.92, 1.0):
+        path = _recovery_db(tmp_path, f"rec{int(frac*100)}.db", frac_recovered=frac)
+        rot, n = _rotation_of(tmp_path, None, None, path=path)
+        assert abs(rot - ROTATION_SECS) < 1.0, (
+            f"{frac*100:.0f}% recovered: outage became the rotation ({rot:.0f}s)")
+        assert n == ROSTER_N
+
+
+def test_partial_recovery_still_alerts_while_tickers_remain_stale(tmp_path):
+    """The outage must not license the roster: while any ticker is still pre-outage stale the
+    check must ALERT, and only a COMPLETE recovery may return OK."""
+    for frac in (0.25, 0.5, 0.75, 0.92):
+        rc, emitted = _run(_recovery_db(tmp_path, f"pr{int(frac*100)}.db", frac_recovered=frac))
+        assert rc == 1, f"{frac*100:.0f}% recovered returned OK: {_joined(emitted)}"
+    rc, emitted = _run(_recovery_db(tmp_path, "pr100.db", frac_recovered=1.0))
+    assert rc == 0, f"a fully recovered roster must pass: {_joined(emitted)}"
+
+
+def test_de_enrolled_tickers_cannot_control_the_current_obligation(tmp_path):
+    """ATTACK: history from tickers no longer in a collecting category must not set today's
+    rotation. Measured: 80 de-enrolled tickers at 60s (or 30000s) took it over completely."""
+    for n_orph, ocyc in ((30, 60.0), (80, 60.0), (30, 30000.0), (80, 30000.0)):
+        path = _recovery_db(tmp_path, f"orph{n_orph}_{int(ocyc)}.db", frac_recovered=1.0,
+                            orphans=n_orph, orphan_cycle=ocyc)
+        rot, n = _rotation_of(tmp_path, None, None, path=path)
+        assert abs(rot - ROTATION_SECS) < 1.0, (
+            f"{n_orph} de-enrolled tickers at {ocyc:.0f}s controlled the rotation: {rot:.0f}s")
+        assert n == ROSTER_N, f"orphans leaked into the measured population: {n}"
 
 
 # ── TOLERANCE: three rotations must cover MEASURED same-ticker revisit jitter ──────────────────
