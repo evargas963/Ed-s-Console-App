@@ -14532,6 +14532,39 @@ def get_expiries(ticker: str = Query(default=DEFAULT_TICKER)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/api/chain")
+def get_chain(ticker: str = Query(default=DEFAULT_TICKER)):
+    """CONTRACT-SELECTION surface: real per-contract chain rows for one ticker, so a UI can
+    let an operator pick one option contract and pass its `symbol` straight to POST
+    /api/streaming/active-option-contract or GET /api/order-flow/options-microstructure —
+    the same "chain response's own symbol field, never constructed" rule those two routes
+    already document.
+
+    SERIALIZER, not a second producer: delegates to _latest_chain_and_spot, the SAME stored-
+    chain reader terrain/radar/order-flow-microstructure already use — no new Schwab fetch
+    here, no reshaping. Each contract row is Schwab's native per-contract dict verbatim
+    (symbol, putCall, strikePrice, bid, ask, last, delta, gamma, theta, vega, volatility,
+    openInterest, totalVolume, expirationDate, daysToExpiration, ...).
+
+    The stored chain covers ONE expiry at a time — whichever was last selected for this
+    ticker by the existing render/terrain paths, not a live multi-expiry fetch (see
+    /api/expiries for the full expiry list). Fails closed to an empty contracts list with
+    status='no_chain' if nothing has been stored yet for this ticker; never fabricates rows
+    for an expiry that was not actually captured."""
+    t = ticker.upper().strip()
+    # TICKER-PREVIEW-NO-ENROLL: listing a chain is a VIEW — touch last-seen only.
+    _touch_tracked_ticker_view(t)
+    contracts, spot = _latest_chain_and_spot(t)
+    if not contracts:
+        return JSONResponse({"ticker": t, "spot": spot, "expiry": None, "contracts": [], "status": "no_chain"})
+    expiry = None
+    for ct in contracts:
+        if isinstance(ct, dict) and ct.get("expirationDate"):
+            expiry = str(ct["expirationDate"])[:10]
+            break
+    return JSONResponse({"ticker": t, "spot": spot, "expiry": expiry, "contracts": contracts, "status": "ok"})
+
+
 @app.get("/api/logger/status")
 def logger_status():
     """Return background logger status — which tickers are being logged and their stats."""
