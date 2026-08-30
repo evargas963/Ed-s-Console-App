@@ -15,6 +15,7 @@ clients into `MessageBus.publish` and runs `CaptureWriter.run` + `HealthRegistry
 from __future__ import annotations
 
 import asyncio
+import json
 import sqlite3
 import time
 from dataclasses import dataclass, field
@@ -22,6 +23,12 @@ from pathlib import Path
 from typing import Any
 
 STREAM_DB_DEFAULT = Path(__file__).resolve().parent / "data" / "stream_capture.db"
+
+#: Cross-process signal: the server process (one active UI viewer's ticker) writes here;
+#: the canonical daemon polls it to dynamically add/drop book-depth subscription for that
+#: one symbol. This is the ONLY channel by which the server influences the daemon's Schwab
+#: subscriptions — it never opens its own StreamClient (single-stream-authority law).
+ACTIVE_TICKER_SIGNAL_DEFAULT = Path(__file__).resolve().parent / "data" / "stream_active_ticker.json"
 
 #: Queue policies. COALESCE keeps only the newest pending message per topic (quotes).
 #: COUNT_DROPS rejects new messages when full and counts them loudly (prints).
@@ -36,9 +43,18 @@ CREATE TABLE IF NOT EXISTS stream_quotes_raw (
     bid_size INTEGER, ask_size INTEGER, last_size INTEGER,
     total_volume INTEGER,
     quote_time_ms INTEGER, trade_time_ms INTEGER,
-    src TEXT NOT NULL
+    src TEXT NOT NULL,
+    native_json TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_sqr_sym_ts ON stream_quotes_raw(symbol, ts_recv);
+CREATE TABLE IF NOT EXISTS stream_book_raw (
+    ts_recv REAL NOT NULL,
+    symbol TEXT NOT NULL,
+    service TEXT NOT NULL,
+    native_json TEXT NOT NULL,
+    src TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_sbkr_sym_ts ON stream_book_raw(symbol, ts_recv);
 CREATE TABLE IF NOT EXISTS stream_prints_raw (
     ts_recv REAL NOT NULL,
     symbol TEXT NOT NULL,
@@ -61,13 +77,54 @@ CREATE INDEX IF NOT EXISTS idx_sbr_sym_ts ON stream_bars_raw(symbol, bar_start_m
 
 def quote_msg(*, symbol: str, bid=None, ask=None, last=None, bid_size=None, ask_size=None,
               last_size=None, total_volume=None, quote_time_ms=None, trade_time_ms=None,
-              src: str, ts_recv: float | None = None) -> dict:
+              src: str, ts_recv: float | None = None, native: dict | None = None) -> dict:
     """The ONE producer shape for quote.* topics — daemon and tests both build through
-    here so the writer's reads and the producers' writes can never drift (RC-15 class)."""
+    here so the writer's reads and the producers' writes can never drift (RC-15 class).
+
+    ``native``: the Schwab content-item dict verbatim, when the caller has it (e.g. a
+    LEVEL_ONE_EQUITY handler). Stored alongside the flattened columns so a downstream
+    consumer that needs FIELD FIDELITY (e.g. live-plane hydration, which reads
+    BID_TIME_MILLIS / REGULAR_MARKET_CHANGE_PERCENT — fields the flattened columns do
+    not carry) is not forced to re-derive a lossy approximation from them. Optional:
+    existing quote producers that lack the native dict are unaffected."""
     return {"ts_recv": ts_recv if ts_recv is not None else time.time(), "symbol": symbol,
             "bid": bid, "ask": ask, "last": last, "bid_size": bid_size,
             "ask_size": ask_size, "last_size": last_size, "total_volume": total_volume,
-            "quote_time_ms": quote_time_ms, "trade_time_ms": trade_time_ms, "src": src}
+            "quote_time_ms": quote_time_ms, "trade_time_ms": trade_time_ms, "src": src,
+            "native": native}
+
+
+def book_msg(*, symbol: str, service: str, content: dict, src: str,
+             ts_recv: float | None = None) -> dict:
+    """The ONE producer shape for book.* topics (NASDAQ_BOOK / NYSE_BOOK).
+
+    ``content`` is the Schwab content-item dict verbatim (BIDS/ASKS/BOOK_TIME) — stored
+    as-is, never flattened, since book depth has no meaningful scalar projection."""
+    return {"ts_recv": ts_recv if ts_recv is not None else time.time(), "symbol": symbol,
+            "service": service, "content": content, "src": src}
+
+
+def write_active_ticker_signal(ticker: str, *, path: Path = ACTIVE_TICKER_SIGNAL_DEFAULT) -> None:
+    """The server's ONE write into the daemon's book-subscription decision.
+
+    Atomic (write-temp-then-replace): the daemon polls this file on its own schedule and
+    must never observe a half-written JSON body."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(json.dumps({"ticker": (ticker or "").upper().strip(),
+                               "requested_at": time.time()}), encoding="utf-8")
+    tmp.replace(path)
+
+
+def read_active_ticker_signal(*, path: Path = ACTIVE_TICKER_SIGNAL_DEFAULT) -> str | None:
+    """The daemon's read of the server's requested active ticker. None on any absence/
+    corruption — a missing signal means 'no book subscription', never a guessed symbol."""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    t = str(data.get("ticker") or "").upper().strip()
+    return t or None
 
 
 def print_msg(*, symbol: str, price=None, size=None, exchange=None, conditions=None,
@@ -209,6 +266,11 @@ class CaptureWriter:
         try:
             self._conn.executescript("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;")
             self._conn.executescript(STREAM_SCHEMA_SQL)
+            # CREATE TABLE IF NOT EXISTS does not add columns to a table that already
+            # exists from a prior daemon run. Migrate forward, idempotently.
+            cols = {r[1] for r in self._conn.execute("PRAGMA table_info(stream_quotes_raw)")}
+            if "native_json" not in cols:
+                self._conn.execute("ALTER TABLE stream_quotes_raw ADD COLUMN native_json TEXT")
             self._conn.commit()
         except Exception:
             # Init failed after connect — close before the object is discarded so the
@@ -220,27 +282,40 @@ class CaptureWriter:
     def insert(self, topic: str, msg: dict) -> None:
         kind = topic.split(".", 1)[0]
         if kind == "quote":
+            native = msg.get("native")
             self._conn.execute(
                 "INSERT INTO stream_quotes_raw(ts_recv,symbol,bid,ask,last,bid_size,ask_size,"
-                "last_size,total_volume,quote_time_ms,trade_time_ms,src) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+                "last_size,total_volume,quote_time_ms,trade_time_ms,src,native_json) "
+                "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (msg.get("ts_recv"), msg.get("symbol"), msg.get("bid"), msg.get("ask"),
                  msg.get("last"), msg.get("bid_size"), msg.get("ask_size"), msg.get("last_size"),
                  msg.get("total_volume"), msg.get("quote_time_ms"), msg.get("trade_time_ms"),
-                 msg.get("src", "?")))
+                 msg.get("src", "?"),  # caps-ok: src is a required kwarg on quote_msg (no default); "?" only guards a dict built outside that constructor, never a legitimately-absent value
+                 json.dumps(native) if native is not None else None))
+        elif kind == "book":
+            content = msg.get("content")
+            if content is None:
+                return
+            self._conn.execute(
+                "INSERT INTO stream_book_raw(ts_recv,symbol,service,native_json,src) "
+                "VALUES(?,?,?,?,?)",
+                (msg.get("ts_recv"), msg.get("symbol"), msg.get("service"),
+                 json.dumps(content),
+                 msg.get("src", "?")))  # caps-ok: src is a required kwarg on book_msg (no default); same guard as the quote branch above
         elif kind == "print":
             self._conn.execute(
                 "INSERT INTO stream_prints_raw(ts_recv,symbol,price,size,exchange,conditions,"
                 "trade_ts_ms,src) VALUES(?,?,?,?,?,?,?,?)",
                 (msg.get("ts_recv"), msg.get("symbol"), msg.get("price"), msg.get("size"),
                  msg.get("exchange"), msg.get("conditions"), msg.get("trade_ts_ms"),
-                 msg.get("src", "?")))
+                 msg.get("src", "?")))  # caps-ok: src is a required kwarg on print_msg (no default); same guard as the quote branch above
         elif kind == "bar1m":
             self._conn.execute(
                 "INSERT INTO stream_bars_raw(ts_recv,symbol,bar_start_ms,open,high,low,close,"
                 "volume,src) VALUES(?,?,?,?,?,?,?,?,?)",
                 (msg.get("ts_recv"), msg.get("symbol"), msg.get("bar_start_ms"), msg.get("open"),
                  msg.get("high"), msg.get("low"), msg.get("close"), msg.get("volume"),
-                 msg.get("src", "?")))
+                 msg.get("src", "?")))  # caps-ok: src is a required kwarg on bar_msg (no default); same guard as the quote branch above
         else:
             return
         self.rows_written += 1

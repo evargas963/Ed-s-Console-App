@@ -137,6 +137,20 @@ load-bearing properties.
 Until the task exists, advisory debt and the TQM queue are visible only when someone runs the
 scan by hand — precisely the condition RC-250 was opened for.
 
+## 2026-08-30 — `EdConsole Stream Capture` becomes the SOLE Schwab streaming authority
+
+The command line, schedule, and lock/log paths are UNCHANGED — no task edit was made. What changed
+is inside `tools/run_stream_capture.py`: it is now also the sole source for the live UI's book/L1
+feed. `order_flow_streaming.py` used to open a SECOND, independent `schwab.streaming.StreamClient`
+at server startup — proven still-open by `tools/check_single_stream_authority.py`'s repo-wide
+census before this fix (2 production constructors; census now enforces exactly 1). That module now
+reads this daemon's `stream_capture.db` read-only; the daemon additionally captures NASDAQ_BOOK /
+NYSE_BOOK for whichever ONE symbol the server signals as the active UI ticker
+(`data/stream_active_ticker.json`, polled ~1s), and stores native-fidelity quote content
+(`stream_quotes_raw.native_json`) alongside the existing flattened columns. No new host
+configuration is required — the server and this task already run on the same host and share
+`data/`.
+
 ## Known defect history this inventory exists to prevent
 
 - `EdTerrainScorecard` ran an inline `set PYTHONUTF8=1 &&` for weeks — cmd assigned `"1 "` with a

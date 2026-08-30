@@ -7,6 +7,8 @@ import sqlite3
 
 import pytest
 
+import json
+
 from stream_spine import (
     COALESCE,
     COUNT_DROPS,
@@ -14,8 +16,11 @@ from stream_spine import (
     HealthRegistry,
     MessageBus,
     bar_msg,
+    book_msg,
     print_msg,
     quote_msg,
+    read_active_ticker_signal,
+    write_active_ticker_signal,
 )
 
 
@@ -86,6 +91,114 @@ def test_writer_batches_into_stream_capture_db(tmp_path):
     assert con.execute("SELECT COUNT(*) FROM stream_prints_raw").fetchone()[0] == 1
     assert con.execute("SELECT COUNT(*) FROM stream_bars_raw").fetchone()[0] == 1
     assert con.execute("PRAGMA journal_mode").fetchone()[0].lower() == "wal"
+
+
+def test_quote_native_content_stored_with_field_fidelity(tmp_path):
+    """The daemon's flattened columns cannot carry BID_TIME_MILLIS / REGULAR_MARKET_
+    CHANGE_PERCENT — fields the live-plane hydrator needs. `native` must round-trip
+    losslessly through the same INSERT the flattened columns use."""
+    db = tmp_path / "stream_capture.db"
+    w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
+    native = {"key": "SPY", "BID_PRICE": 1.0, "BID_TIME_MILLIS": 123,
+             "REGULAR_MARKET_CHANGE_PERCENT": 0.42}
+    w.insert("quote.SPY", quote_msg(symbol="SPY", bid=1.0, src="schwab_l1", ts_recv=1.0,
+                                    native=native))
+    w.commit()
+    w.close()
+    con = sqlite3.connect(db)
+    row = con.execute("SELECT native_json FROM stream_quotes_raw").fetchone()
+    assert json.loads(row[0]) == native
+
+
+def test_quote_without_native_stores_null_not_a_fabricated_value(tmp_path):
+    """Existing quote producers (Alpaca, tests) pass no native dict — must stay NULL,
+    never an empty-dict placeholder that would misrepresent 'no data' as 'measured empty'."""
+    db = tmp_path / "stream_capture.db"
+    w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
+    w.insert("quote.SPY", quote_msg(symbol="SPY", bid=1.0, src="alpaca_iex", ts_recv=1.0))
+    w.commit()
+    w.close()
+    con = sqlite3.connect(db)
+    assert con.execute("SELECT native_json FROM stream_quotes_raw").fetchone()[0] is None
+
+
+def test_existing_stream_capture_db_migrates_native_json_column(tmp_path):
+    """A daemon restart against a DB written by the PRE-repair schema must not crash —
+    ALTER TABLE ADD COLUMN is idempotent forward migration, not a fresh-DB assumption."""
+    db = tmp_path / "stream_capture.db"
+    con = sqlite3.connect(db)
+    con.executescript("""
+        CREATE TABLE stream_quotes_raw (
+            ts_recv REAL NOT NULL, symbol TEXT NOT NULL,
+            bid REAL, ask REAL, last REAL,
+            bid_size INTEGER, ask_size INTEGER, last_size INTEGER,
+            total_volume INTEGER, quote_time_ms INTEGER, trade_time_ms INTEGER,
+            src TEXT NOT NULL
+        );
+    """)
+    con.commit()
+    con.close()
+    w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
+    w.insert("quote.SPY", quote_msg(symbol="SPY", bid=1.0, src="t", ts_recv=1.0,
+                                    native={"key": "SPY"}))
+    w.commit()
+    w.close()
+    con = sqlite3.connect(db)
+    assert con.execute("SELECT native_json FROM stream_quotes_raw").fetchone()[0] is not None
+
+
+def test_book_content_stored_verbatim_never_flattened(tmp_path):
+    db = tmp_path / "stream_capture.db"
+    w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
+    content = {"key": "SPY", "BIDS": [{"BID_PRICE": 1.0}], "ASKS": [{"ASK_PRICE": 1.1}],
+              "BOOK_TIME": 999}
+    w.insert("book.SPY", book_msg(symbol="SPY", service="NASDAQ_BOOK", content=content,
+                                  src="schwab_book", ts_recv=1.0))
+    w.commit()
+    w.close()
+    con = sqlite3.connect(db)
+    row = con.execute(
+        "SELECT symbol, service, native_json, src FROM stream_book_raw").fetchone()
+    assert row[0] == "SPY" and row[1] == "NASDAQ_BOOK" and row[3] == "schwab_book"
+    assert json.loads(row[2]) == content
+
+
+def test_book_msg_with_no_content_is_not_inserted(tmp_path):
+    """insert() on kind 'book' with no content must not write a row that get_content_for_symbol
+    would then treat as a valid empty book snapshot."""
+    db = tmp_path / "stream_capture.db"
+    w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
+    w.insert("book.SPY", {"ts_recv": 1.0, "symbol": "SPY", "service": "NASDAQ_BOOK",
+                          "content": None, "src": "t"})
+    w.commit()
+    w.close()
+    con = sqlite3.connect(db)
+    assert con.execute("SELECT COUNT(*) FROM stream_book_raw").fetchone()[0] == 0
+
+
+def test_active_ticker_signal_round_trips(tmp_path):
+    p = tmp_path / "stream_active_ticker.json"
+    write_active_ticker_signal("spy", path=p)
+    assert read_active_ticker_signal(path=p) == "SPY"
+
+
+def test_active_ticker_signal_absent_is_none_not_a_guess(tmp_path):
+    """A missing/corrupt signal must mean 'no active ticker', never a stale-cache guess
+    or an exception that could crash the daemon's poll loop."""
+    p = tmp_path / "does_not_exist.json"
+    assert read_active_ticker_signal(path=p) is None
+    p.write_text("{not json", encoding="utf-8")
+    assert read_active_ticker_signal(path=p) is None
+
+
+def test_active_ticker_signal_write_is_atomic_replace(tmp_path):
+    """The daemon polls this file on its own schedule; a torn write must never be
+    observable — write-temp-then-replace, not write-in-place."""
+    p = tmp_path / "stream_active_ticker.json"
+    write_active_ticker_signal("SPY", path=p)
+    assert not p.with_suffix(p.suffix + ".tmp").exists()
+    write_active_ticker_signal("QQQ", path=p)
+    assert read_active_ticker_signal(path=p) == "QQQ"
 
 
 def test_health_states_progress_running_degraded_stale():

@@ -10056,36 +10056,22 @@ async def _app_lifespan(app):
             "(set ED_ENABLE_BACKGROUND_SCHEDULER=1 on a training host to opt in)"
         )
 
-    # Order flow streaming (nasdaq_book, nyse_book, level_one_equity)
+    # Live-plane feed (nasdaq_book, nyse_book, level_one_equity) — READ-ONLY from the
+    # canonical capture daemon's stream_capture.db. SINGLE-STREAM-AUTHORITY repair: this
+    # used to gate on a resolved Schwab account_id because it needed one to open its own
+    # StreamClient. It opens no Schwab session now, so it has no account dependency —
+    # gating it behind account resolution was a correctness bug under the new
+    # architecture (a broken/expiring token would silently disable the live UI's quote
+    # feed even though the daemon was capturing fine). Unconditional.
     try:
-        client = get_client()
-        if client:
-            account_id = None
-            try:
-                an = client.get_account_numbers()
-                status = getattr(an, "status_code", 0) if an else 0
-                if status == 200:
-                    data = an.json() if hasattr(an, "json") and callable(an.json) else []
-                    if isinstance(data, list) and data:
-                        account_id = data[0].get("accountNumber") or data[0].get("hashValue")
-                    if account_id and str(account_id).isdigit():
-                        account_id = int(account_id)
-                elif status == 401:
-                    resp_text = getattr(an, "text", str(an)) if an else ""
-                    log.error(f"Accounts 401 — response: {resp_text}")
-            except Exception as ae:
-                log.debug(f"Account numbers for streaming: {ae}")
-            if account_id:
-                from order_flow_streaming import start_order_flow_stream
+        from order_flow_streaming import start_order_flow_stream
 
-                # LIVE_OPERATOR_MODE_RESET_V1 Step 2 — single Tier C owner: the
-                # tick-coherent recompute callback (_on_tick_broadcast_sync) is no
-                # longer registered; _sse_background_loop owns viewed-key cadence.
-                # The quote lane (live_market_plane → live_quote SSE) still updates
-                # per tick via record_from_level_one_equity.
-                start_order_flow_stream(client, account_id, DEFAULT_TICKER)
-            else:
-                log.info("Order flow streaming: no account_id, running REST-only")
+        # LIVE_OPERATOR_MODE_RESET_V1 Step 2 — single Tier C owner: the
+        # tick-coherent recompute callback (_on_tick_broadcast_sync) is no
+        # longer registered; _sse_background_loop owns viewed-key cadence.
+        # The quote lane (live_market_plane → live_quote SSE) still updates
+        # per tick via record_from_level_one_equity.
+        start_order_flow_stream(None, None, DEFAULT_TICKER)
     except ImportError as ie:
         log.debug(f"Order flow streaming not started: {ie}")
     except Exception as e:
@@ -10135,8 +10121,8 @@ async def _app_lifespan(app):
     _session_open_anchor_warm_stop.set()
     _anchor_quote_lane_refresh_stop.set()
     _shutdown_analytics_executor(wait=True)
-    # Schwab stream thread + websocket: must close before loop/thread teardown
-    # (avoids pending websockets tasks destroyed with the event loop).
+    # Live-plane feed task (reads the canonical capture daemon's DB — no Schwab socket
+    # of its own to close here since single-stream-authority root fix 2026-08-30).
     try:
         from order_flow_streaming import stop_order_flow_stream
 

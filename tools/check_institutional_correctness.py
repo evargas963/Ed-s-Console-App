@@ -1430,6 +1430,28 @@ def check_one_producer() -> list[Violation]:
     return out
 
 
+def check_single_stream_authority() -> list[Violation]:
+    """SINGLE-STREAM-AUTHORITY (2026-08-30) — exactly one production Schwab StreamClient
+    constructor, repo-wide. order_flow_streaming.py used to open a second, independent
+    session at server startup, racing the canonical capture daemon on the same account.
+    Root-fixed: that module now reads the daemon's capture DB read-only and opens no
+    Schwab session. This gate is the mutation-tested proof it stays that way — a future
+    change that reintroduces a second constructor (or renames/duplicates the daemon
+    itself) fails here, not merely in a design review.
+    """
+    out: list[Violation] = []
+    try:
+        sys.path.insert(0, str(REPO / "tools"))
+        from check_single_stream_authority import violations as _v
+        for msg in _v():
+            out.append(Violation(REPO / "tools" / "run_stream_capture.py", 0, msg))
+    except Exception as exc:                                        # noqa: BLE001
+        out.append(Violation(REPO / "tools" / "check_single_stream_authority.py", 0,
+                             f"checker unavailable ({type(exc).__name__}: {exc}) — a gate "
+                             f"that cannot run is not a gate"))
+    return out
+
+
 def _rc_mechanism_claims_cite_a_source_violations() -> list[Violation]:
     """RC-319 — a claim about how the MARKET behaves must be checkable by a reader.
 
@@ -3856,6 +3878,10 @@ CHECKS = [
     # because an unregistered gate enforces nothing — it sat at zero registrations while
     # being reported as a lock.
     ("one_producer", check_one_producer, True),
+    # OPTIONS_ORDER_FLOW_V1 Phase 1-3 (2026-08-30): exactly one production Schwab
+    # StreamClient constructor, repo-wide. ENFORCED — mutation-tested
+    # (tests/test_single_stream_authority_v1.py), not a design-review-only script.
+    ("single_stream_authority", check_single_stream_authority, True),
     ("snapshots_read_names_the_timeframe", check_snapshots_read_names_the_timeframe, True),  # query PLAN, not code shape
     ("shutdown_is_bounded", check_shutdown_is_bounded, True),  # Ctrl+C must always work
     ("venv_parity", check_venv_parity, True),  # one interpreter — .venv only (CI exempt)

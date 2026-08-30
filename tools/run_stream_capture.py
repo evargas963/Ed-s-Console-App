@@ -2,7 +2,15 @@
 """CR-01 capture daemon: Schwab Streamer -> bus -> stream_capture.db. CAPTURE-ONLY.
 
 Consensus plan v1.2: this process owns the ONLY Schwab stream (single-streamer-owner
-rule) and writes ONLY stream_capture.db. No UI consumes anything until CR-CAP.
+rule) and writes ONLY stream_capture.db.
+
+SINGLE-STREAM-AUTHORITY (root-fixed 2026-08-30): order_flow_streaming.py — the live UI's
+book/L1 feed — now reads these rows read-only instead of opening its own StreamClient.
+This process additionally captures NASDAQ_BOOK / NYSE_BOOK for the one symbol the server
+signals as the active UI viewer's ticker (stream_active_ticker.json, polled every ~1s by
+_active_ticker_book_poll_loop), and stores the native content dict for quotes alongside
+the flattened columns (see stream_spine.quote_msg's `native` field) so a downstream reader
+needing field fidelity does not have to re-derive a lossy approximation.
 
 Acceptance instrumentation built in (measured, not asserted):
   - JSON-handle latency p50/p99, per-service message counts, bus drop counters,
@@ -36,8 +44,10 @@ from stream_spine import (  # noqa: E402
     HealthRegistry,
     MessageBus,
     bar_msg,
+    book_msg,
     print_msg,
     quote_msg,
+    read_active_ticker_signal,
 )
 
 STATUS_PATH = ROOT / "reports" / "stream_capture_status.json"
@@ -48,9 +58,12 @@ def acquire_owner_lock() -> int:
     """ENFORCE the single-streamer-owner rule (Cursor review HIGH: it was prose only).
 
     Exclusive pidfile: a second daemon refuses to start; a stale lock (dead pid) is
-    reclaimed. NOTE the known remaining conflict: server.py's start_order_flow_stream
-    can open its own Schwab stream — registered CR-01 follow-up is to route it through
-    this daemon's bus at CR-03; until then do not run both stream surfaces at once.
+    reclaimed. The formerly-known conflict — server.py's order_flow_streaming opening a
+    SECOND independent Schwab stream — is root-fixed (2026-08-30): that module now reads
+    this daemon's stream_capture.db read-only and opens no Schwab session of its own
+    (tools/check_single_stream_authority.py enforces PRODUCTION_SCHWAB_STREAMCLIENT_
+    CONSTRUCTORS == 1, this file being the one). This lock now guards the ONLY remaining
+    way to violate single-streamer-owner: two copies of THIS daemon.
     """
     import os
     for attempt in (1, 2):
@@ -372,7 +385,12 @@ def make_handler(service: str, field_map: dict, topic_kind: str, bus: MessageBus
                                 last_size=parsed.get("last_size"),
                                 total_volume=parsed.get("total_volume"),
                                 quote_time_ms=parsed.get("quote_time_ms"),
-                                trade_time_ms=parsed.get("trade_time_ms"), src="schwab_l1")
+                                trade_time_ms=parsed.get("trade_time_ms"), src="schwab_l1",
+                                # Native content item verbatim — the live-plane hydrator
+                                # (daemon_plane_feed.py) needs fields the flattened
+                                # columns do not carry (BID_TIME_MILLIS, REGULAR_MARKET_
+                                # CHANGE_PERCENT, ...); field meaning is carried 1:1.
+                                native=item)
             else:
                 out = bar_msg(symbol=sym, bar_start_ms=parsed.get("bar_start_ms"),
                               open=parsed.get("open"), high=parsed.get("high"),
@@ -381,6 +399,76 @@ def make_handler(service: str, field_map: dict, topic_kind: str, bus: MessageBus
             bus.publish(f"{topic_kind}.{sym}", out)
         stats.record(service, (time.perf_counter() - t0) * 1000.0)
     return handler
+
+
+def make_book_handler(service: str, bus: MessageBus, health: HealthRegistry, stats: CaptureStats):
+    """NASDAQ_BOOK / NYSE_BOOK — content stored verbatim (book_msg), never flattened."""
+    def handler(msg: dict) -> None:
+        t0 = time.perf_counter()
+        save_raw_sample(service, msg, stats)
+        health.beat(service)
+        for item in msg.get("content") or []:
+            if not isinstance(item, dict):
+                continue
+            sym = str(item.get("key") or "").upper()
+            if not sym:
+                continue
+            bus.publish(f"book.{sym}", book_msg(symbol=sym, service=service, content=item,
+                                                src="schwab_book"))
+        stats.record(service, (time.perf_counter() - t0) * 1000.0)
+    return handler
+
+
+async def _apply_active_ticker_book_subs(stream, current: str | None) -> str | None:
+    """Diff the server's requested active ticker against the currently book-subscribed
+    one; unsub the old, sub the new. Bounded key cost: at most ONE symbol carries book
+    depth at a time (2 services x 1 symbol = 2 keys), independent of the L1/CHART roster
+    size — the daemon does not re-derive Section 1's whole-roster budget problem because
+    it never puts books on more than one symbol.
+
+    Called after every (re)connect (a fresh StreamClient carries no subscriptions) and
+    polled on its own fast cadence so a UI ticker switch is not held to the 10s status
+    loop (SWITCH-LATENCY: server.py's prior direct-subscribe path was tuned for
+    sub-second turnaround; a signal-file poll must not regress that to 10s)."""
+    requested = read_active_ticker_signal()
+    if requested == current:
+        return current
+    if current:
+        try:
+            await stream.nasdaq_book_unsubs([current])
+            await stream.nyse_book_unsubs([current])
+        except Exception as e:
+            print(f"book unsub {current}: {e}")
+    if requested:
+        try:
+            await stream.nasdaq_book_subs([requested])
+            await stream.nyse_book_subs([requested])
+            print(f"book subscribed active ticker -> {requested}")
+        except Exception as e:
+            print(f"book sub {requested}: {e}")
+            return current
+    return requested
+
+
+async def _active_ticker_book_poll_loop(get_stream, get_current, set_current,
+                                        stop: asyncio.Event,
+                                        interval_sec: float = 1.0) -> None:
+    """Fast poll of the active-ticker signal, independent of the 10s status/watchdog
+    loop and of stream recycles (reads whatever StreamClient is current at each tick)."""
+    while not stop.is_set():
+        try:
+            await asyncio.wait_for(stop.wait(), timeout=interval_sec)
+            return
+        except asyncio.TimeoutError:
+            pass
+        stream = get_stream()
+        if stream is None:
+            continue
+        try:
+            new_cur = await _apply_active_ticker_book_subs(stream, get_current())
+            set_current(new_cur)
+        except Exception as e:  # noqa: BLE001 — poll loop must survive one bad tick
+            print(f"active-ticker book poll: {type(e).__name__}: {e}")
 
 
 def write_status(bus: MessageBus, health: HealthRegistry, writer: CaptureWriter,
@@ -464,10 +552,15 @@ async def _run_locked(symbols: list[str], duration_min: float, db_path: str | No
         writer.close()   # every exit path incl. login/subscribe failure (round-3 MEDIUM)
 
 
-async def _schwab_connect(state, symbols, bus, health, stats, stop):
-    """Fresh Schwab stream: login + handlers + subs -> running pump task.
+async def _schwab_connect(state, symbols, bus, health, stats, stop, active_book_ticker=None):
+    """Fresh Schwab stream: login + handlers + subs -> (stream, running pump task).
     Used at start AND by the half-open watchdog (a recycle is a clean rebuild —
-    never an attempt to resuscitate a dead StreamClient)."""
+    never an attempt to resuscitate a dead StreamClient).
+
+    ``active_book_ticker``: re-apply book depth for this ONE symbol immediately after
+    connecting — a fresh StreamClient carries no subscriptions, so a recycle that forgot
+    this would silently drop the live UI's book depth until the next poll tick noticed
+    the (unchanged) signal file and there was nothing to diff against."""
     from schwab.streaming import StreamClient
 
     stream = StreamClient(state.client)
@@ -476,25 +569,42 @@ async def _schwab_connect(state, symbols, bus, health, stats, stop):
         make_handler("LEVELONE_EQUITIES", LEVELONE_FIELDS, "quote", bus, health, stats))
     stream.add_chart_equity_handler(
         make_handler("CHART_EQUITY", CHART_FIELDS, "bar1m", bus, health, stats))
+    stream.add_nasdaq_book_handler(make_book_handler("NASDAQ_BOOK", bus, health, stats))
+    stream.add_nyse_book_handler(make_book_handler("NYSE_BOOK", bus, health, stats))
     await stream.level_one_equity_subs(symbols)
     await stream.chart_equity_subs(symbols)
     print(f"subscribed {len(symbols)} symbols x2 services (key accounting: "
           f"{len(symbols) * 2} keys used)")
+    if active_book_ticker:
+        try:
+            await stream.nasdaq_book_subs([active_book_ticker])
+            await stream.nyse_book_subs([active_book_ticker])
+            print(f"book resubscribed active ticker -> {active_book_ticker} (post-reconnect)")
+        except Exception as e:
+            print(f"book resub {active_book_ticker} after reconnect: {e}")
 
     async def pump() -> None:
         while not stop.is_set():
             await stream.handle_message()
 
-    return asyncio.create_task(pump())
+    return stream, asyncio.create_task(pump())
 
 
 async def _run_streaming(symbols, duration_min, bus, health, stats,
                          writer, wsub, stop, state) -> int:
     max_qdepth = 0
     writer_task = asyncio.create_task(writer.run(wsub, stop=stop))
-    pump_task = await _schwab_connect(state, symbols, bus, health, stats, stop)
+    #: Shared with the active-ticker book-poll task (below) — a plain dict, not a
+    #: closure-captured local, because BOTH the recycle path here and the poll loop's
+    #: coroutine need to read/write the SAME current values.
+    book_state: dict = {"stream": None, "ticker": None}
+    stream, pump_task = await _schwab_connect(state, symbols, bus, health, stats, stop)
+    book_state["stream"] = stream
     # CR-02 prints leg — optional co-producer on the SAME bus/writer/health.
     alpaca_task = asyncio.create_task(alpaca_pump(symbols, bus, health, stats, stop))
+    book_poll_task = asyncio.create_task(_active_ticker_book_poll_loop(
+        lambda: book_state["stream"], lambda: book_state["ticker"],
+        lambda t: book_state.__setitem__("ticker", t), stop))
     deadline = time.monotonic() + duration_min * 60 if duration_min > 0 else None
     last_reconnect = time.monotonic()
     try:
@@ -509,6 +619,7 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
                 print(f"watchdog: LEVELONE_EQUITIES quiet {age:.0f}s — recycling "
                       f"Schwab stream (half-open guard)")
                 last_reconnect = time.monotonic()
+                book_state["stream"] = None   # poll loop must not use the dying stream
                 pump_task.cancel()
                 try:
                     await pump_task
@@ -517,8 +628,10 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
                 except Exception as exc:  # noqa: BLE001 — recycle path; reported
                     print(f"watchdog: old pump ended with {type(exc).__name__}: {exc}")
                 try:
-                    pump_task = await _schwab_connect(state, symbols, bus, health,
-                                                      stats, stop)
+                    stream, pump_task = await _schwab_connect(
+                        state, symbols, bus, health, stats, stop,
+                        active_book_ticker=book_state["ticker"])
+                    book_state["stream"] = stream
                 except Exception as exc:  # noqa: BLE001 — retry next tick, loudly
                     print(f"watchdog: reconnect FAILED ({type(exc).__name__}: {exc}) "
                           f"— retrying after cooldown")
@@ -529,7 +642,7 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
         pass
     finally:
         await _shutdown_sequence(pump_task, writer_task, stop, wsub,
-                                 extra_producers=(alpaca_task,))
+                                 extra_producers=(alpaca_task, book_poll_task))
         writer.close()
         write_status(bus, health, writer, stats, max_qdepth)
         print(json.dumps({

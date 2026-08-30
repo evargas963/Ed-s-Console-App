@@ -3,12 +3,21 @@
 from __future__ import annotations
 
 import asyncio
+from types import SimpleNamespace
 
-from stream_spine import COUNT_DROPS, HealthRegistry, MessageBus
+from stream_spine import (
+    COUNT_DROPS,
+    HealthRegistry,
+    MessageBus,
+    read_active_ticker_signal,
+    write_active_ticker_signal,
+)
 from tools.run_stream_capture import (
     CHART_FIELDS,
     LEVELONE_FIELDS,
     CaptureStats,
+    _apply_active_ticker_book_subs,
+    make_book_handler,
     make_handler,
     parse_stream_item,
 )
@@ -44,6 +53,254 @@ def test_handler_publishes_through_real_bus_and_beats_health():
         assert stats.per_service["LEVELONE_EQUITIES"] == 1
         assert stats.raw_sampled == {"LEVELONE_EQUITIES"}
     asyncio.run(go())
+
+
+def test_quote_handler_carries_native_content_for_hydration():
+    """The live-plane hydrator needs the raw content item verbatim (BID_TIME_MILLIS etc,
+    fields the flattened quote_msg columns do not carry) — make_handler must pass it."""
+    async def go():
+        bus = MessageBus()
+        sub = bus.subscribe("quote.", policy=COUNT_DROPS)
+        h = make_handler("LEVELONE_EQUITIES", LEVELONE_FIELDS, "quote", bus,
+                         HealthRegistry(), CaptureStats())
+        native_item = {"key": "SPY", "BID_PRICE": 1.0, "BID_TIME_MILLIS": 42}
+        h({"content": [native_item]})
+        _topic, msg = await sub.get()
+        assert msg["native"] == native_item
+    asyncio.run(go())
+
+
+def test_book_handler_publishes_content_verbatim():
+    async def go():
+        bus = MessageBus()
+        sub = bus.subscribe("book.", policy=COUNT_DROPS)
+        h = make_book_handler("NASDAQ_BOOK", bus, HealthRegistry(), CaptureStats())
+        item = {"key": "SPY", "BIDS": [{"BID_PRICE": 1.0}], "ASKS": [{"ASK_PRICE": 1.1}]}
+        h({"content": [item]})
+        topic, msg = await sub.get()
+        assert topic == "book.SPY"
+        assert msg["service"] == "NASDAQ_BOOK" and msg["content"] == item
+    asyncio.run(go())
+
+
+def test_book_handler_ignores_items_with_no_symbol():
+    async def go():
+        bus = MessageBus()
+        h = make_book_handler("NYSE_BOOK", bus, HealthRegistry(), CaptureStats())
+        h({"content": [{"BIDS": []}]})   # no 'key' -> no symbol
+        assert bus.published == 0
+    asyncio.run(go())
+
+
+class _FakeStream:
+    """Records book (un)subscribe calls; never touches real Schwab."""
+    def __init__(self):
+        self.calls: list[tuple] = []
+
+    async def nasdaq_book_subs(self, syms):
+        self.calls.append(("nasdaq_sub", tuple(syms)))
+
+    async def nyse_book_subs(self, syms):
+        self.calls.append(("nyse_sub", tuple(syms)))
+
+    async def nasdaq_book_unsubs(self, syms):
+        self.calls.append(("nasdaq_unsub", tuple(syms)))
+
+    async def nyse_book_unsubs(self, syms):
+        self.calls.append(("nyse_unsub", tuple(syms)))
+
+
+def test_apply_active_ticker_book_subs_switches_symbol(tmp_path, monkeypatch):
+    """PHASE 4-G shape: the daemon must subscribe book depth for whatever ticker the
+    server signals, and unsubscribe the one it replaces — never both at once."""
+    p = tmp_path / "stream_active_ticker.json"
+    write_active_ticker_signal("QQQ", path=p)
+    monkeypatch.setattr("tools.run_stream_capture.read_active_ticker_signal",
+                        lambda: read_active_ticker_signal(path=p))
+    stream = _FakeStream()
+
+    async def go():
+        new_cur = await _apply_active_ticker_book_subs(stream, "SPY")
+        assert new_cur == "QQQ"
+        assert ("nasdaq_unsub", ("SPY",)) in stream.calls
+        assert ("nyse_unsub", ("SPY",)) in stream.calls
+        assert ("nasdaq_sub", ("QQQ",)) in stream.calls
+        assert ("nyse_sub", ("QQQ",)) in stream.calls
+    asyncio.run(go())
+
+
+def test_apply_active_ticker_book_subs_no_change_is_a_no_op(monkeypatch):
+    monkeypatch.setattr("tools.run_stream_capture.read_active_ticker_signal", lambda: "SPY")
+    stream = _FakeStream()
+
+    async def go():
+        new_cur = await _apply_active_ticker_book_subs(stream, "SPY")
+        assert new_cur == "SPY"
+        assert stream.calls == []
+    asyncio.run(go())
+
+
+def test_apply_active_ticker_book_subs_first_activation_has_no_unsub(monkeypatch):
+    """No current ticker yet (daemon just started, no viewer active) -> subscribe only,
+    never an unsub call for a symbol that was never subscribed."""
+    monkeypatch.setattr("tools.run_stream_capture.read_active_ticker_signal", lambda: "SPY")
+    stream = _FakeStream()
+
+    async def go():
+        new_cur = await _apply_active_ticker_book_subs(stream, None)
+        assert new_cur == "SPY"
+        assert all(c[0] not in ("nasdaq_unsub", "nyse_unsub") for c in stream.calls)
+    asyncio.run(go())
+
+
+class _FakeSchwabStreamClient:
+    """Records handler registrations + subscribe/unsubscribe calls; never touches real
+    Schwab. Models exactly the subset of schwab-py's StreamClient surface _schwab_connect
+    actually calls."""
+    def __init__(self, client, account_id=None):
+        self.client = client
+        self.account_id = account_id
+        self.handlers: dict[str, object] = {}
+        self.calls: list[tuple] = []
+
+    def add_level_one_equity_handler(self, h):
+        self.handlers["l1"] = h
+
+    def add_chart_equity_handler(self, h):
+        self.handlers["chart"] = h
+
+    def add_nasdaq_book_handler(self, h):
+        self.handlers["nasdaq_book"] = h
+
+    def add_nyse_book_handler(self, h):
+        self.handlers["nyse_book"] = h
+
+    async def login(self):
+        self.calls.append(("login",))
+
+    async def level_one_equity_subs(self, syms):
+        self.calls.append(("l1_sub", tuple(syms)))
+
+    async def chart_equity_subs(self, syms):
+        self.calls.append(("chart_sub", tuple(syms)))
+
+    async def nasdaq_book_subs(self, syms):
+        self.calls.append(("nasdaq_sub", tuple(syms)))
+
+    async def nyse_book_subs(self, syms):
+        self.calls.append(("nyse_sub", tuple(syms)))
+
+    async def handle_message(self):
+        await asyncio.sleep(3600)   # never resolves in a test; only cancellation ends it
+
+
+def _install_fake_schwab_streaming(monkeypatch):
+    import sys
+    import types
+    monkeypatch.setitem(sys.modules, "schwab.streaming",
+                        types.SimpleNamespace(StreamClient=_FakeSchwabStreamClient))
+
+
+def test_schwab_connect_registers_book_handlers_every_time():
+    """PHASE 4-E: canonical one-owner startup must wire book handlers on connect — not
+    only after the first UI viewer ever requests a ticker (a later signal write must not
+    race an unregistered handler)."""
+    import tools.run_stream_capture as d
+
+    async def go(monkeypatch):
+        _install_fake_schwab_streaming(monkeypatch)
+        bus, health, stats, stop = MessageBus(), HealthRegistry(), CaptureStats(), asyncio.Event()
+        stream, task = await d._schwab_connect(SimpleNamespace(client=object()), ["SPY"], bus, health, stats, stop)
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        assert "nasdaq_book" in stream.handlers and "nyse_book" in stream.handlers
+        assert ("login",) in stream.calls
+        assert ("l1_sub", ("SPY",)) in stream.calls
+
+    import pytest as _pt
+    mp = _pt.MonkeyPatch()
+    try:
+        asyncio.run(go(mp))
+    finally:
+        mp.undo()
+
+
+def test_schwab_connect_reapplies_active_book_ticker_after_reconnect():
+    """PHASE 4-F: a fresh StreamClient (post half-open recycle) carries NO subscriptions
+    — the active UI viewer's book depth must be re-applied on THIS connect, not wait for
+    the next 1s poll tick to notice an unchanged signal file and do nothing."""
+    import tools.run_stream_capture as d
+
+    async def go(monkeypatch):
+        _install_fake_schwab_streaming(monkeypatch)
+        bus, health, stats, stop = MessageBus(), HealthRegistry(), CaptureStats(), asyncio.Event()
+        stream, task = await d._schwab_connect(SimpleNamespace(client=object()), ["SPY"], bus, health, stats, stop,
+                                               active_book_ticker="QQQ")
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        assert ("nasdaq_sub", ("QQQ",)) in stream.calls
+        assert ("nyse_sub", ("QQQ",)) in stream.calls
+
+    import pytest as _pt
+    mp = _pt.MonkeyPatch()
+    try:
+        asyncio.run(go(mp))
+    finally:
+        mp.undo()
+
+
+def test_reconnect_replaces_stream_not_both_at_once():
+    """PHASE 4-F: two sequential connects must yield two DISTINCT StreamClient instances
+    — never a leaked reference to the old one that would leave two concurrent Schwab
+    sessions on one account."""
+    import tools.run_stream_capture as d
+
+    async def go(monkeypatch):
+        _install_fake_schwab_streaming(monkeypatch)
+        bus, health, stats, stop = MessageBus(), HealthRegistry(), CaptureStats(), asyncio.Event()
+        stream1, task1 = await d._schwab_connect(SimpleNamespace(client=object()), ["SPY"], bus, health, stats, stop)
+        task1.cancel()
+        try:
+            await task1
+        except asyncio.CancelledError:
+            pass
+        stream2, task2 = await d._schwab_connect(SimpleNamespace(client=object()), ["SPY"], bus, health, stats, stop,
+                                                 active_book_ticker="SPY")
+        task2.cancel()
+        try:
+            await task2
+        except asyncio.CancelledError:
+            pass
+        assert stream1 is not stream2
+        assert task1.done() and task1.cancelled()
+
+    import pytest as _pt
+    mp = _pt.MonkeyPatch()
+    try:
+        asyncio.run(go(mp))
+    finally:
+        mp.undo()
+
+
+def test_recycle_cancels_old_pump_before_reconnecting_structurally():
+    """Structural corroboration of the behavioral tests above: the watchdog branch in
+    _run_streaming must cancel+await the OLD pump task before calling _schwab_connect
+    again — sequential code, but pinned so a future edit cannot silently reorder it into
+    a `create_task` race between old and new streams."""
+    import inspect
+    import tools.run_stream_capture as d
+
+    src = inspect.getsource(d._run_streaming)
+    cancel_at = src.index("pump_task.cancel()")
+    await_at = src.index("await pump_task", cancel_at)
+    reconnect_at = src.index("_schwab_connect(", await_at)
+    assert cancel_at < await_at < reconnect_at
 
 
 def test_chart_handler_builds_bar_messages():
