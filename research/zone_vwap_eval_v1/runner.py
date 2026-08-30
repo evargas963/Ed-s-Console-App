@@ -38,7 +38,9 @@ def _load_rows(db: Path, ticker: str, hz: str):
     cols = ", ".join(FEATS)
     q = (
         f"SELECT ts_utc, {label}, {cols} FROM snapshots_1m_normalized "
-        f"WHERE ticker=? AND timeframe='1m' AND {label} IS NOT NULL"
+        f"WHERE ticker=? AND timeframe='1m' AND {label} IS NOT NULL "
+        # Session-only pa_vwap_zscore: exclude roll-fallback contamination (vwap NULL).
+        f"AND vwap IS NOT NULL"
     )
     c = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
     rows = c.execute(q, (ticker,)).fetchall()

@@ -70,14 +70,18 @@ def test_signal_layer_f_rejects_nan() -> None:
     assert "math.isnan" not in body.split("def _f")[1].split("\ndef ")[0]
 
 
-def test_vwap_source_inp_vs_bars_roll() -> None:
+def test_vwap_source_session_or_absent() -> None:
     bars = _synth_bars(80)
     decision_ts = float(bars[-1]["bar_end_ts_utc"])
-    layer_roll = compute_signal_layer_v1(bars, decision_ts_utc=decision_ts, inp=None)
-    assert layer_roll.get("meta.vwap_source") == "roll"
+    layer_absent = compute_signal_layer_v1(bars, decision_ts_utc=decision_ts, inp=None)
+    assert layer_absent.get("meta.vwap_source") is None
+    assert layer_absent.get("vl.price_vs_vwap_pct") is None
+    assert layer_absent.get("vl.vwap_distance_pts") is None
+    assert layer_absent.get("vl.vwap_zscore") is None
     inp = SimpleNamespace(vwap=101.5)
-    layer_inp = compute_signal_layer_v1(bars, decision_ts_utc=decision_ts, inp=inp)
-    assert layer_inp.get("meta.vwap_source") == "inp"
+    layer_session = compute_signal_layer_v1(bars, decision_ts_utc=decision_ts, inp=inp)
+    assert layer_session.get("meta.vwap_source") == "session"
+    assert layer_session.get("vl.price_vs_vwap_pct") is not None
 
 
 def test_mtf_trend_signs_none_when_aggregated_bars_insufficient() -> None:

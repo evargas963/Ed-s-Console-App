@@ -673,6 +673,41 @@ def backfill_price_action_columns(
     return out
 
 
+def null_pa_vwap_zscore_roll_contamination(
+    db_path: Path = DB_PATH,
+) -> dict[str, Any]:
+    """NULL ``pa_vwap_zscore`` rows that cannot be session-VWAP under the current contract.
+
+    Pre-c976d058 the signal layer filled ``vl.vwap_zscore`` from a rolling 60-bar VWAP
+    when persisted session ``vwap`` was NULL. Those rows are an unlabeled mixture and must
+    not be scored alongside session-only values. Session-present historical rows already
+    preferred ``inp.vwap`` under the old producer, so they keep their values.
+
+    Updates ``snapshots`` and ``snapshots_1m_normalized``. Does not fabricate VWAP.
+    """
+    out: dict[str, Any] = {
+        "snapshots_nulled": 0,
+        "normalized_nulled": 0,
+        "predicate": "pa_vwap_zscore IS NOT NULL AND vwap IS NULL",
+    }
+    conn = _connect(db_path)
+    try:
+        cur = conn.execute(
+            "UPDATE snapshots SET pa_vwap_zscore = NULL "
+            "WHERE pa_vwap_zscore IS NOT NULL AND vwap IS NULL"
+        )
+        out["snapshots_nulled"] = int(cur.rowcount if cur.rowcount is not None else 0)
+        cur2 = conn.execute(
+            "UPDATE snapshots_1m_normalized SET pa_vwap_zscore = NULL "
+            "WHERE pa_vwap_zscore IS NOT NULL AND vwap IS NULL"
+        )
+        out["normalized_nulled"] = int(cur2.rowcount if cur2.rowcount is not None else 0)
+        conn.commit()
+    finally:
+        conn.close()
+    return out
+
+
 def _print_ingestion_context(db_path: Path, raw_rows: int, normalized_rows: int) -> None:
     """Clarify why raw_rows is far below snapshot row counts (1m-vs-5m selection)."""
     conn = _connect(db_path)
@@ -713,6 +748,14 @@ if __name__ == "__main__":
         print("  rows_skipped_no_bars:", res["rows_skipped_no_bars"])
         for t, st in res["by_ticker"].items():
             print(f"  {t}: {st}")
+        sys.exit(0)
+
+    if "--null-pa-vwap-roll-contamination" in sys.argv:
+        res = null_pa_vwap_zscore_roll_contamination(db)
+        print("pa_vwap_zscore roll-contamination null:")
+        print("  predicate:", res["predicate"])
+        print("  snapshots_nulled:", res["snapshots_nulled"])
+        print("  normalized_nulled:", res["normalized_nulled"])
         sys.exit(0)
 
     if validate_only:

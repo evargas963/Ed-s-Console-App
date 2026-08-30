@@ -35,7 +35,7 @@ if TYPE_CHECKING:  # forward-ref only — the "pd.DataFrame" annotations; no run
 
 log = logging.getLogger(__name__)
 
-from time_et import ET, RTH_END_MINS, RTH_OPEN_MINS, now_et
+from time_et import ET, RTH_END_MINS, RTH_OPEN_MINS, is_trading_day_et, now_et
 
 # RC-324: DERIVED from the time_et minute-of-day authority, not inlined. These were
 # `time(9, 30)` and `time(16, 0)` written here, and FIND-MC-1 had already removed exactly
@@ -470,6 +470,46 @@ def compute_session_vwap_series(
         series.append((dt.timestamp(), round(w, 4), round(w + sd, 4), round(w - sd, 4),
                        round(w + 2 * sd, 4), round(w - 2 * sd, 4)))
     return series
+
+
+SESSION_VWAP_PRESENT = "present"
+SESSION_VWAP_EXPECTED_ABSENT = "expected_absent"
+SESSION_VWAP_RTH_PRODUCER_FAILURE = "rth_producer_failure"
+
+
+def count_session_rth_positive_volume_bars(
+    bars: list, session_date: date, cutoff_dt: Optional[datetime] = None,
+) -> int:
+    """INPUT RTH bars with positive volume on session_date — independent of the VWAP series."""
+    n = 0
+    for b in _filter_rth_bars(_bars_to_list(bars), session_date, cutoff_dt):
+        if _positive_float_or_none(b.get("volume")) is not None:
+            n += 1
+    return n
+
+
+def classify_session_vwap_presence(
+    *,
+    vwap: Optional[float],
+    session_date: date,
+    now_et_dt: datetime,
+    session_rth_positive_volume_bars: int,
+) -> str:
+    """Classify current-session VWAP as present, expected-absent, or producer failure.
+
+    Weekend / holiday / premarket / no same-session positive-volume RTH bars yet
+    are expected absence. Genuine failure is: those bars exist and VWAP is still None.
+    """
+    if vwap is not None:
+        return SESSION_VWAP_PRESENT
+    if not is_trading_day_et(session_date.isoformat()):
+        return SESSION_VWAP_EXPECTED_ABSENT
+    open_dt = datetime.combine(session_date, RTH_OPEN, tzinfo=now_et_dt.tzinfo or ET)
+    if now_et_dt < open_dt:
+        return SESSION_VWAP_EXPECTED_ABSENT
+    if session_rth_positive_volume_bars <= 0:
+        return SESSION_VWAP_EXPECTED_ABSENT
+    return SESSION_VWAP_RTH_PRODUCER_FAILURE
 
 
 def compute_session_vwap_path(
@@ -1799,13 +1839,15 @@ class PriceLevelSnapshot:
 
     __slots__ = ("ticker", "session_date", "generation", "bar_source", "as_of_ts_utc",
                  "produced_ts_utc", "levels", "vwap_path", "vwap_series",
-                 "families_absent", "degraded", "input_fingerprint", "bars_used")
+                 "families_absent", "degraded", "input_fingerprint", "bars_used",
+                 "session_rth_positive_volume_bars")
 
     def __init__(self, *, ticker: str, session_date: date, generation: int,
                  bar_source: str, as_of_ts_utc: Optional[float], produced_ts_utc: float,
                  levels: dict, vwap_path: list, families_absent: list,
                  degraded: list, input_fingerprint: tuple, bars_used: int,
-                 vwap_series: Optional[list] = None) -> None:
+                 vwap_series: Optional[list] = None,
+                 session_rth_positive_volume_bars: int = 0) -> None:
         self.ticker = ticker
         self.session_date = session_date
         self.generation = generation
@@ -1819,6 +1861,7 @@ class PriceLevelSnapshot:
         self.degraded = degraded
         self.input_fingerprint = input_fingerprint
         self.bars_used = bars_used
+        self.session_rth_positive_volume_bars = int(session_rth_positive_volume_bars)
 
     def price(self, level_id: str) -> Optional[float]:
         """The canonical value, or None. Absence is absence — never spot, zero or a sibling."""
@@ -1938,15 +1981,19 @@ def build_price_level_snapshot(
             levels=levels, vwap_path=vwap_path, vwap_series=vwap_series,
             families_absent=families_absent, degraded=list(degraded or []),
             input_fingerprint=_snapshot_input_fingerprint(tk, session_date, bars_norm, bar_source),
-            bars_used=0,
+            bars_used=0, session_rth_positive_volume_bars=0,
         )
 
     # ── vwap + bands (one accumulation: the series IS the scalars' source) ───
+    session_rth_vol_n = count_session_rth_positive_volume_bars(bars_norm, session_date)
     vwap_series = compute_session_vwap_series(bars_norm, session_date)
     vwap_val = vwap_series[-1][1] if vwap_series else None
     if vwap_val is None:
-        families_absent.append({
-            "family": "vwap", "reason": "no RTH volume for session VWAP in available bars"})
+        if session_rth_vol_n > 0:
+            vwap_abs_reason = "RTH volume bars present but session VWAP did not materialize"
+        else:
+            vwap_abs_reason = "no RTH volume for session VWAP in available bars"
+        families_absent.append({"family": "vwap", "reason": vwap_abs_reason})
     else:
         _put("VWAP", vwap_val,
              producer=f"{_PRODUCER_NS}.compute_session_vwap_series", window=sess_window)
@@ -2003,6 +2050,7 @@ def build_price_level_snapshot(
         families_absent=families_absent, degraded=list(degraded or []),
         input_fingerprint=_snapshot_input_fingerprint(tk, session_date, bars_norm, bar_source),
         bars_used=len(bars_norm),
+        session_rth_positive_volume_bars=session_rth_vol_n,
     )
 
 
