@@ -13931,6 +13931,48 @@ def api_order_flow_microstructure(ticker: str = Query(default=DEFAULT_TICKER)):
     return JSONResponse(payload)
 
 
+@app.get("/api/order-flow/options-microstructure")
+def api_order_flow_options_microstructure(contract: str = Query(...)):
+    """Same canonical L2 book microstructure as /api/order-flow/microstructure, for one
+    OPTION CONTRACT's live book. SERIALIZER, not a second producer: delegates to
+    order_flow_streaming.get_option_contract_book_microstructure, which itself delegates
+    to the SAME order_flow_engine.compute_book_microstructure the equity route reads — no
+    parallel book-imbalance computation for options. `contract` MUST be a chain response's
+    own "symbol" field (OSI format, e.g. "SPY   260820C00767000"); this route does not
+    construct or validate that format, it only serializes whatever content has been
+    replayed for the literal string given. No ticker-roster touch here — a contract symbol
+    is not a ticker and does not participate in that enrollment concept."""
+    c = (contract or "").strip()
+    if not c:
+        return JSONResponse({"error": "contract is required"}, status_code=400)
+    from order_flow_streaming import get_option_contract_book_microstructure
+    payload = get_option_contract_book_microstructure(c)
+    payload["contract"] = c
+    return JSONResponse(payload)
+
+
+@app.post("/api/streaming/active-option-contract")
+async def post_streaming_active_option_contract(payload: dict = Body(default={})):
+    """Subscribe LEVELONE_OPTIONS+OPTIONS_BOOK to one option contract (dynamic; replaces
+    prior subscription). Mirrors /api/streaming/active-ticker exactly, for the SEPARATE
+    option-contract slot (an equity ticker and an option contract on that same underlying
+    can be watched at once — see order_flow_streaming.py's module docstring)."""
+    c = str(payload.get("contract") or "").strip()
+    if not c:
+        return JSONResponse({"ok": False, "error": "contract is required"}, status_code=400)
+
+    def _apply():
+        from order_flow_streaming import set_active_option_contract
+
+        ok = set_active_option_contract(c)
+        return {"ok": ok, "contract": c}
+    try:
+        out = await asyncio.get_event_loop().run_in_executor(_get_fast_quote_executor(), _apply)
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e), "contract": c}, status_code=500)
+    return JSONResponse(out)
+
+
 @app.post("/api/streaming/active-ticker")
 async def post_streaming_active_ticker(payload: dict = Body(default={})):
     """Subscribe Schwab L1+book to the active UI ticker (dynamic; replaces prior subscription)."""

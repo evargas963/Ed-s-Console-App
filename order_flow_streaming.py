@@ -35,14 +35,21 @@ import time
 from typing import Any, Callable, Optional
 
 from instrument_identity import ticker_storage_key
-from stream_spine import STREAM_DB_DEFAULT, write_active_ticker_signal
+from stream_spine import (
+    STREAM_DB_DEFAULT,
+    write_active_option_contract_signal,
+    write_active_ticker_signal,
+)
 
 from order_flow_live_state import (
     clear_all_live_state,
+    clear_symbol,
     forget_unsubscribed_symbols,
+    get_content_for_symbol,
     push_book,
     push_level_one,
 )
+from order_flow_engine import compute_book_microstructure
 
 import live_market_plane as _lmp
 
@@ -61,6 +68,17 @@ _last_subscribe_completed_ts: Optional[float] = None
 #: reads only NEW rows — never replays history, never misses a row between polls.
 _l1_cursor: dict[str, float] = {}
 _book_cursor: dict[str, float] = {}
+
+#: The one option CONTRACT (OSI symbol) whose LEVELONE_OPTIONS/OPTIONS_BOOK rows this feed
+#: replays — a SEPARATE slot from _active_ticker (an equity ticker and an option contract
+#: on that same underlying can be watched at once; they are different symbol identities in
+#: every table and signal file). No staleness/authority state machine here: order-flow
+#: semantic products are a display-adjacent concern already governed by the SAME fail-
+#: closed content-presence rule compute_book_microstructure already enforces (no book
+#: snapshot -> status 'no_book', never a fabricated value).
+_active_option_contract: Optional[str] = None
+_option_l1_cursor: dict[str, float] = {}
+_option_book_cursor: dict[str, float] = {}
 
 _on_tick_callback: Optional[Callable[[str], None]] = None
 
@@ -138,9 +156,16 @@ def get_streaming_diagnostics() -> dict[str, Any]:
     }
 
 
-def _open_capture_db_readonly(db_path=STREAM_DB_DEFAULT) -> Optional[sqlite3.Connection]:
+def _open_capture_db_readonly(db_path=None) -> Optional[sqlite3.Connection]:
     """Read-only by construction (uri mode=ro), never a write handle onto the daemon's
-    database — this module carries observations, it does not produce them."""
+    database — this module carries observations, it does not produce them.
+
+    `db_path` defaults to the MODULE ATTRIBUTE at call time, not a parameter default bound
+    once at function-definition time — a default of `STREAM_DB_DEFAULT` directly would
+    freeze whatever that name pointed to when this module was imported, so a caller (or a
+    test) that reassigns the module attribute afterward would silently be ignored."""
+    if db_path is None:
+        db_path = STREAM_DB_DEFAULT
     try:
         return sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
     except sqlite3.OperationalError:
@@ -188,6 +213,42 @@ def _replay_new_rows(con: sqlite3.Connection, ticker: str) -> None:
         _book_cursor[ticker] = ts_recv
 
 
+def _replay_option_contract_rows(con: sqlite3.Connection, contract_symbol: str) -> None:
+    """Same replay shape as _replay_new_rows, for the one option CONTRACT this feed is
+    tracking. LEVELONE_OPTIONS rows read via push_level_one and OPTIONS_BOOK rows via
+    push_book — order_flow_live_state's functions are symbol-generic (they read Schwab's
+    native field names, not an equity-specific schema) and the captured field shapes
+    (reports/of_capability_probe/options_20260820T1354Z/) carry every field either reads:
+    BID_PRICE/ASK_PRICE/LAST_PRICE/LAST_SIZE/TOTAL_VOLUME/TRADE_TIME_MILLIS for L1;
+    BIDS/ASKS/BOOK_TIME for book. No new plane, no new ingest function — the SAME producer
+    order_flow_live_state already is, called with a different symbol."""
+    l1_since = _option_l1_cursor.get(contract_symbol, 0.0)
+    rows = con.execute(
+        "SELECT ts_recv, native_json FROM stream_options_quotes_raw "
+        "WHERE symbol = ? AND ts_recv > ? ORDER BY ts_recv",
+        (contract_symbol, l1_since)).fetchall()
+    for ts_recv, native_json in rows:
+        try:
+            item = json.loads(native_json)
+        except (TypeError, ValueError):
+            continue
+        push_level_one(contract_symbol, item)
+        _option_l1_cursor[contract_symbol] = ts_recv
+
+    book_since = _option_book_cursor.get(contract_symbol, 0.0)
+    rows = con.execute(
+        "SELECT ts_recv, native_json FROM stream_book_raw "
+        "WHERE symbol = ? AND service = 'OPTIONS_BOOK' AND ts_recv > ? ORDER BY ts_recv",
+        (contract_symbol, book_since)).fetchall()
+    for ts_recv, native_json in rows:
+        try:
+            item = json.loads(native_json)
+        except (TypeError, ValueError):
+            continue
+        push_book(contract_symbol, item)
+        _option_book_cursor[contract_symbol] = ts_recv
+
+
 async def _feed_loop() -> None:
     global _feed_running
     con: Optional[sqlite3.Connection] = None
@@ -196,9 +257,13 @@ async def _feed_loop() -> None:
             if con is None:
                 con = await asyncio.to_thread(_open_capture_db_readonly)
             tkr = _active_ticker
-            if con is not None and tkr:
+            contract = _active_option_contract
+            if con is not None and (tkr or contract):
                 try:
-                    await asyncio.to_thread(_replay_new_rows, con, tkr)
+                    if tkr:
+                        await asyncio.to_thread(_replay_new_rows, con, tkr)
+                    if contract:
+                        await asyncio.to_thread(_replay_option_contract_rows, con, contract)
                 except sqlite3.Error as e:
                     log.warning("daemon plane feed: db read failed, reopening: %s", e)
                     try:
@@ -239,6 +304,44 @@ def set_streaming_active_ticker(ticker: str) -> bool:
     return True
 
 
+def set_active_option_contract(contract_symbol: str) -> bool:
+    """Request LEVELONE_OPTIONS+OPTIONS_BOOK for this ONE option contract and begin
+    replaying its rows. `contract_symbol` MUST already be a chain response's own "symbol"
+    field (see stream_spine.ACTIVE_OPTION_CONTRACT_SIGNAL_DEFAULT) — never constructed
+    here. A separate slot from the equity active ticker: the daemon adds its own
+    subscription on its own poll cadence (stream_active_option_contract.json)."""
+    global _active_option_contract
+    t = ticker_storage_key(contract_symbol)
+    if not t:
+        return False
+    if _active_option_contract == t:
+        return True
+    old = _active_option_contract
+    _log_stream("OPTION_CONTRACT_RESUBSCRIBE_START", old=old, new=t)
+    if old:
+        clear_symbol(old)
+    write_active_option_contract_signal(t)
+    _active_option_contract = t
+    log.info("Live-plane feed active option contract -> %s", t)
+    _log_stream("OPTION_CONTRACT_RESUBSCRIBE_DONE", contract=t)
+    return True
+
+
+def get_option_contract_book_microstructure(contract_symbol: str) -> dict:
+    """The order-flow SEMANTIC PRODUCT for one option contract's live book: reuses
+    order_flow_engine.compute_book_microstructure — the SAME one producer the equity
+    `/api/order-flow/microstructure` route reads — called with this contract's own
+    replayed content, never a second book-imbalance computation. Fail-closed by that
+    producer's own contract: no book snapshot yet -> status 'no_book', no fabricated
+    metric. This function does not gate on _active_option_contract being set to
+    `contract_symbol` — a caller may query content already replayed even if the daemon
+    has since moved on, exactly as the equity route does not gate on the ticker being
+    'the' active one."""
+    t = ticker_storage_key(contract_symbol)
+    content = get_content_for_symbol(t) if t else []
+    return compute_book_microstructure({"content": content}, ticker=t)
+
+
 def start_order_flow_stream(
     client: Any,
     account_id: Any,
@@ -268,10 +371,12 @@ STREAM_THREAD_JOIN_TIMEOUT_SEC = 35.0
 
 def stop_order_flow_stream(*, join_timeout: float = STREAM_THREAD_JOIN_TIMEOUT_SEC) -> None:
     global _feed_running, _feed_task, _streaming_last_update_ts, _active_ticker
+    global _active_option_contract
     _log_stream("STREAM_THREAD_JOIN_START", join_timeout_sec=join_timeout)
     _feed_running = False
     _streaming_last_update_ts = None
     _active_ticker = None
+    _active_option_contract = None
     clear_all_live_state()
     task = _feed_task
     if task is not None and not task.done():
