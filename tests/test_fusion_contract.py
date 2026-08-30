@@ -69,6 +69,7 @@ def test_is_ms_dict_fusion_authoritative_provenance_gate():
             {
                 "fusion_available": True,
                 "canonical_provenance": next(iter(TRADABLE_CANONICAL_PROVENANCE)),
+                "stack_directional_authorized": True,
             }
         )
         is True
@@ -90,7 +91,11 @@ def test_gate_rejects_debug_override_canonical_provenance_when_fusion_available(
 
 def test_gate_admits_bayesian_fusion_provenance_when_fusion_available():
     prov = "bayesian_fusion"
-    ms = {"fusion_available": True, "canonical_provenance": prov}
+    ms = {
+        "fusion_available": True,
+        "canonical_provenance": prov,
+        "stack_directional_authorized": True,
+    }
     assert canonical_provenance_is_tradable(prov) is True
     assert is_ms_dict_fusion_authoritative(ms) is True
 

@@ -55,6 +55,9 @@ function payloadAlignedLong() {
       contributing_models: ['xgb', 'lstm', 'transformer'],
     },
     fusion_available: true,
+    stack_directional_authorized: true,
+    horizon_directional_authorized: { '1c': true, '5c': true, '15c': true, '60c': true },
+    horizon_fusion_available: { '1c': true, '5c': true, '15c': true, '60c': true },
     canonical_provenance: 'bayesian_fusion',
     mc_available: true,
   };
@@ -159,6 +162,9 @@ test('1M horizon withholds direction when final_tradeable=false (ALL WAIT)', asy
     entry_state: 'no_setup',
     wait_reason: 'fewer than 2 tradeable horizons agree — insufficient confluence',
     fusion_available: true,
+    stack_directional_authorized: true,
+    horizon_directional_authorized: { '1c': true, '5c': true, '15c': true, '60c': true },
+    horizon_fusion_available: { '1c': true, '5c': true, '15c': true, '60c': true },
     canonical_provenance: 'bayesian_fusion',
     stack_runtime: { fusion_active: true, stack_mode: 'FULL' },
   };
@@ -216,6 +222,38 @@ test('PLAN pill card renders from payload', async ({ page }) => {
   // entry_state 'armed' + final_bias LONG → state line + green chrome.
   expect(await page.textContent('#tf-plan-state')).toBe('ARMED');
   expect(await page.getAttribute('#tf-signal-plan', 'class')).toContain('tf-state-up');
+});
+
+test('per-horizon source chips consume authorization and never infer ML authority', async ({ page }) => {
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(
+    () => typeof window.deriveSourceForHorizon === 'function',
+    null,
+    { timeout: 30000 },
+  );
+
+  const labels = await page.evaluate(() => {
+    const payload = {
+      fusion_available: true,
+      canonical_provenance: 'bayesian_fusion',
+      stack_directional_authorized: false,
+      stack_runtime: { fusion_active: true, stack_mode: 'FULL' },
+      mh_prob_source_by_horizon: {
+        '1c': 'fusion_ml_primary',
+        '5c': 'fusion_ml_primary',
+      },
+      horizon_directional_authorized: { '1c': true, '5c': false },
+      horizon_fusion_available: { '1c': true, '5c': true },
+    };
+    return {
+      one: window.deriveSourceForHorizon(payload, '1c'),
+      five: window.deriveSourceForHorizon(payload, '5c'),
+      consolidated: window.deriveSourceForHorizon(payload, 'consolidated'),
+    };
+  });
+  expect(labels.one).toBe('ML FUSION');
+  expect(labels.five).toBe('UNAVAILABLE');
+  expect(labels.consolidated).toBe('UNAVAILABLE');
 });
 
 test('ALL pill withholds with WAIT reason on split-brain payload (WIRE-4-CAND → cards)', async ({ page }) => {

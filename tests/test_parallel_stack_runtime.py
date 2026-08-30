@@ -113,10 +113,17 @@ def test_parallel_runtime_artifact_error_is_value_error():
     assert issubclass(ParallelRuntimeArtifactError, ValueError)
 
 
-def test_monte_carlo_receives_resolved_model_probs_for_drift():
-    """Monte Carlo simulate receives explicit model_prob_* for path drift (governed stack inputs)."""
+def _drift_priors_captured_for_composition(composition):
+    """Run the live stack once; return the kwargs Monte Carlo's simulate() actually received.
+
+    ``composition`` is the ``stack_probs_composition`` record the ML bundle carries (None means the
+    producer reported none). Directional conditioning is authorized on COMPOSITION, so that record
+    is the ONLY input varied between the two cases below — identical legs, identical stack_probs
+    triplet, keyed at the live bundle key.
+    """
     import signals
     from types import SimpleNamespace
+    from ml_predict import stack_probs_bundle_key
 
     captured = {}
 
@@ -156,13 +163,52 @@ def test_monte_carlo_receives_resolved_model_probs_for_drift():
                 "transformer": {"available": True, "prob_up": 0.33, "prob_down": 0.33, "prob_flat": 0.34},
             },
             "model_outputs": {},
-            "stack_probs_15c": None,
+            # Key at the LIVE bundle key. The former hardcoded "stack_probs_15c" never matched it,
+            # so stack_probs was always None here — invisible while the gate authorized on leg shape.
+            stack_probs_bundle_key(): {"up": 0.4, "down": 0.35, "flat": 0.25},
+            "stack_probs_composition": composition,
         }
         signals._run_model_stack(inf, rules, regime, db=MagicMock(), inference_snapshot_v1=_minimal_inf_v1())
+
+    return captured
+
+
+def test_monte_carlo_receives_resolved_model_probs_for_drift():
+    """Monte Carlo simulate receives explicit model_prob_* for path drift when the APPROVED stack
+    composition actually produced the triplet."""
+    from ml_predict import get_ml_infer_horizon_slug
+
+    captured = _drift_priors_captured_for_composition({
+        "authorization_schema_version": 1,
+        "horizon": get_ml_infer_horizon_slug(),
+        "required": ["xgb", "lstm", "transformer"],
+        "produced": ["xgb", "lstm", "transformer"],
+        "missing": [],
+        "collapsed": [],
+        "approved_computation": "meta_stack",
+        "executed_computation": "meta_stack",
+        "computation_compliant": True,
+        "contract_compliant": True,
+        "contract_issues": [],
+        "complete": True,
+    })
 
     assert captured.get("model_prob_up") is not None
     assert captured.get("model_prob_down") is not None
     assert captured.get("model_confidence") is not None
+
+
+def test_monte_carlo_drift_priors_fail_closed_when_composition_unproven():
+    """Three legs reporting available=True AND a complete-looking stack_probs triplet is NOT
+    authorization. With the SAME triplet as the positive case and only the composition record
+    removed, Monte Carlo must still SIMULATE (base/neutral mode, PR #208) but must receive NO
+    directional priors — conditioning is withheld, the run is not."""
+    captured = _drift_priors_captured_for_composition(None)
+
+    assert captured.get("spot") is not None, "MC must still run base/neutral, not be suppressed"
+    assert captured.get("model_prob_up") is None
+    assert captured.get("model_prob_down") is None
+    assert captured.get("model_confidence") is None
 
 
 def test_fusion_overlay_rejects_mvp_keys():

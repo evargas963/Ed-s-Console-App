@@ -21,6 +21,7 @@ def test_none_prob_flat_does_not_fabricate_move_prob_one():
     """Missing prob_flat used to coerce via ``or 0.0`` → move_prob = 1.0."""
     fus = SimpleNamespace(
         available=True,
+        stack_directional_authorized=True,
         prob_up=0.5,
         prob_down=0.3,
         prob_flat=None,
@@ -37,6 +38,7 @@ def test_none_prob_flat_does_not_fabricate_move_prob_one():
 def test_complete_fusion_triplet_computes_move_prob():
     fus = SimpleNamespace(
         available=True,
+        stack_directional_authorized=True,
         prob_up=0.5,
         prob_down=0.2,
         prob_flat=0.3,

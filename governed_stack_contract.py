@@ -8,6 +8,7 @@ so offline ablation and live serve converge without silent omission semantics.
 """
 from __future__ import annotations
 
+import math
 import os
 from contextlib import contextmanager
 from contextvars import ContextVar, Token
@@ -516,19 +517,31 @@ LEGACY_AVERAGE_AVAILABLE_ML_LAYERS = "average_available_base_models"
 def _model_out_triplet_complete(out: Any) -> bool:
     if not getattr(out, "available", False):
         return False
+    values: list[float] = []
     for key in ("prob_up", "prob_down", "prob_flat"):
-        if getattr(out, key, None) is None:
+        try:
+            value = float(getattr(out, key, None))
+        except (TypeError, ValueError):
             return False
-    return True
+        if not math.isfinite(value) or value < 0.0 or value > 1.0:
+            return False
+        values.append(value)
+    return sum(values) > 0.0 and abs(sum(values) - 1.0) <= 0.01
 
 
 def stack_probs_triplet_complete(stack_probs: Optional[dict[str, float]]) -> bool:
     if not isinstance(stack_probs, dict):
         return False
+    values: list[float] = []
     for key in ("up", "down", "flat"):
-        if stack_probs.get(key) is None:
+        try:
+            value = float(stack_probs.get(key))
+        except (TypeError, ValueError):
             return False
-    return True
+        if not math.isfinite(value) or value < 0.0 or value > 1.0:
+            return False
+        values.append(value)
+    return sum(values) > 0.0 and abs(sum(values) - 1.0) <= 0.01
 
 
 def count_unified_stack_ml_layers_available(
@@ -550,14 +563,73 @@ def unified_stack_team_can_authorize(
     lstm_out: Any,
     transformer_out: Any,
     stack_probs: Optional[dict[str, float]],
+    stack_probs_composition: Optional[dict[str, Any]],
 ) -> tuple[bool, str]:
-    """Unified stack team gate — all three ML layers + meta/weighted stack_probs, or withhold together."""
-    if stack_probs_triplet_complete(stack_probs):
-        return True, "stack_probs_meta_or_weighted"
-    if all(_model_out_triplet_complete(o) for o in (xgb_out, lstm_out, transformer_out)):
-        return True, "unified_stack_ml_triplets"
-    n = count_unified_stack_ml_layers_available(xgb_out, lstm_out, transformer_out)
-    return False, f"unified_stack_incomplete_layers={n}"
+    """THE directional-authorization authority. One computation; everyone downstream transports it.
+
+    A horizon's directional stack is authorized only when the COMPLETE APPROVED COMPOSITION for
+    that horizon actually produced the triplet. The approved composition is owned by
+    active_bundle_contract (the serving/promotion contract) and is neither weakened nor re-derived
+    here; ml_predict.stack_probs_composition_record() reports, per tick, whether that contract is
+    satisfied AND which legs produced. This gate reads that one record.
+
+    WHY THE OLD SHAPE TEST WAS UNSOUND. It authorized on either of two shape-only conditions:
+      * `stack_probs_triplet_complete(stack_probs)` — three `is None` checks, which cannot see
+        composition. _weighted_average_partial renormalises surviving legs to weight 1.0, so a
+        SINGLE leg yields a complete-looking triplet. Measured on this tree: a lone xgb leg gave
+        {'up':0.55,'down':0.25,'flat':0.2} and this function returned
+        (True, 'stack_probs_meta_or_weighted'). One model masqueraded as an authorized stack.
+      * `all(_model_out_triplet_complete(...))` over exactly three hardcoded layers, which also
+        ignores whether the serving contract for that horizon is satisfied at all.
+
+    A partial or contract-noncompliant composition may still COMPUTE (the 5c xgb_plus_transformer
+    blend keeps running for diagnostics); it simply inherits no directional authorization. The
+    runtime-vs-bundle-contract divergence at 5c is reported separately as NOT_PROVEN, not resolved
+    here by blessing the runtime branch.
+
+    `stack_probs_composition` is REQUIRED, with no default, so every caller must supply provenance
+    or fail loudly rather than silently re-deriving a weaker answer.
+    """
+    comp = stack_probs_composition if isinstance(stack_probs_composition, dict) else None
+    if comp is None:
+        return False, "composition_unknown"
+    if comp.get("authorization_schema_version") != 1:
+        return False, "composition_schema_invalid"
+    if not comp.get("contract_compliant"):
+        issues = comp.get("contract_issues") or []
+        why = str(issues[0])[:60] if issues else "bundle contract not satisfied"
+        return False, f"composition_contract_noncompliant:{why}"
+
+    from active_bundle_contract import BUNDLE_ARTIFACT_TRIPLE, META_STACK_KIND
+
+    required = [kind for kind, _model, _meta in BUNDLE_ARTIFACT_TRIPLE]
+    if list(comp.get("required") or []) != required:
+        return False, "composition_required_legs_invalid"
+    if comp.get("approved_computation") != META_STACK_KIND:
+        return False, "composition_approved_computation_invalid"
+    executed = comp.get("executed_computation")
+    if executed != META_STACK_KIND or comp.get("computation_compliant") is not True:
+        return False, f"composition_computation_unapproved:{executed or 'none'}"
+
+    missing = list(comp.get("missing") or [])
+    if missing:
+        return False, f"composition_incomplete:missing={'+'.join(sorted(missing))}"
+    produced = list(comp.get("produced") or [])
+    if produced != required:
+        return False, "composition_produced_legs_invalid"
+    actual_complete = {
+        "xgb": _model_out_triplet_complete(xgb_out),
+        "lstm": _model_out_triplet_complete(lstm_out),
+        "transformer": _model_out_triplet_complete(transformer_out),
+    }
+    actual_missing = [name for name in required if not actual_complete.get(name, False)]
+    if actual_missing:
+        return False, f"composition_runtime_mismatch:missing={'+'.join(actual_missing)}"
+    if comp.get("complete") is not True:
+        return False, "composition_record_incomplete"
+    if not stack_probs_triplet_complete(stack_probs):
+        return False, "composition_complete_but_no_triplet"
+    return True, f"composition_complete:{'+'.join(produced)}:{executed}"
 
 
 def mc_team_should_fail_closed(
@@ -615,12 +687,26 @@ def derive_stack_layers_scored(
     spk = stack_probs_bundle_key()
     stack_probs = bundle.get(spk)
     mc_src = mc_stack_probability_source_from_mapping(bundle)
+    # META is credited only when the approved composition actually ran. The source string alone is
+    # not evidence: mc_model_direction_inputs returns "stack_probs_meta_or_weighted" for ANY
+    # complete triplet, including the 5c weighted blend for which zero meta_*_5c.pkl exists — so
+    # the old test credited a meta layer that never executed. The composition record carries the
+    # contract verdict (meta_stack is part of the approved composition), so require it.
+    _comp = bundle.get("stack_probs_composition")
+    _composition_complete = bool(
+        isinstance(_comp, dict)
+        and _comp.get("authorization_schema_version") == 1
+        and _comp.get("complete") is True
+        and _comp.get("approved_computation") == "meta_stack"
+        and _comp.get("executed_computation") == "meta_stack"
+    )
     if (
         isinstance(stack_probs, dict)
         and stack_probs.get("up") is not None
         and stack_probs.get("down") is not None
         and stack_probs.get("flat") is not None
         and mc_src == "stack_probs_meta_or_weighted"
+        and _composition_complete
     ):
         scored.append("meta")
 
@@ -643,17 +729,21 @@ def classify_stack_health(
     fusion_available: bool,
     mc_available: bool,
     n_ml_layers_available: int,
-    unified_stack_team_ok: bool | None = None,
+    unified_stack_team_ok: bool,
 ) -> str:
     """
     Coarse health for operator surfaces (not a trading gate on its own).
 
     INVALID — unified stack team did not score together, fusion/MC withheld, or partial ML
     FULL    — tradable fusion + MC + all three xgb/lstm/transformer layers scored as one team
+
+    `unified_stack_team_ok` is REQUIRED: it is the transported verdict from
+    unified_stack_team_can_authorize. It previously defaulted to None and was then substituted with
+    `n_ml_layers_available >= 3 and fusion_available` — a fusion-AVAILABILITY predicate standing in
+    for directional AUTHORIZATION, i.e. the exact weaker-predicate substitution this contract exists
+    to prevent. There is one authority; this surface consumes it.
     """
     team_ok = unified_stack_team_ok
-    if team_ok is None:
-        team_ok = n_ml_layers_available >= 3 and fusion_available
     if not team_ok or not fusion_available or not mc_available:
         return "INVALID"
     if n_ml_layers_available >= 3:

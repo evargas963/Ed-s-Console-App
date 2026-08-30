@@ -258,11 +258,15 @@ def _overlay_multi_horizon_ml_on_product_triplets(
         fusion_triplet = _fusion_snap_triplet(snap)
         if fusion_triplet is None:
             out[hz] = _withheld
-            src[hz] = (
-                "fusion_unavailable"
-                if snap is None or not getattr(snap, "horizon_fusion_available", False)
-                else "fusion_directional_missing"
-            )
+            snap_provenance = str(getattr(snap, "provenance", "") or "")
+            if snap_provenance == "fusion_directional_unauthorized":
+                src[hz] = "fusion_directional_unauthorized"
+            else:
+                src[hz] = (
+                    "fusion_unavailable"
+                    if snap is None or not getattr(snap, "horizon_fusion_available", False)
+                    else "fusion_directional_missing"
+                )
             continue
         mu, md, mf = fusion_triplet
         emp_ok = all(x is not None for x in (eu, ed, ef))
@@ -282,6 +286,28 @@ def _overlay_multi_horizon_ml_on_product_triplets(
             out[hz] = (mu, md, mf)
             src[hz] = "fusion_ml_primary"
     return out, src, integrity_events
+
+
+def _multi_horizon_authorization_maps(
+    multi_horizon_ml_bundle: Optional[Any],
+) -> tuple[dict[str, bool], dict[str, Optional[str]], dict[str, bool]]:
+    """Transport explicit per-horizon verdicts; absent/malformed evidence fails closed."""
+    authorized = {hz: False for hz in PRIMARY_DECISION_HORIZONS}
+    reasons: dict[str, Optional[str]] = {hz: None for hz in PRIMARY_DECISION_HORIZONS}
+    available = {hz: False for hz in PRIMARY_DECISION_HORIZONS}
+    by_h = getattr(multi_horizon_ml_bundle, "by_horizon", None)
+    if not isinstance(by_h, dict):
+        return authorized, reasons, available
+    for hz in PRIMARY_DECISION_HORIZONS:
+        snap = by_h.get(hz)
+        if snap is None:
+            continue
+        authorized[hz] = getattr(snap, "stack_directional_authorized", None) is True
+        reasons[hz] = getattr(snap, "stack_directional_authorization_reason", None)
+        available[hz] = bool(
+            authorized[hz] and getattr(snap, "horizon_fusion_available", False)
+        )
+    return authorized, reasons, available
 
 
 def _avg_outcome_pts(similar: list, pts_col: str) -> Optional[float]:
@@ -726,6 +752,9 @@ def _empty_prediction(
     _tri_f, mh_prob_source_by_horizon, _mh_overlay_events = _overlay_multi_horizon_ml_on_product_triplets(
         _mh_empirical_product, multi_horizon_ml_bundle
     )
+    _hz_auth, _hz_auth_reason, _hz_available = _multi_horizon_authorization_maps(
+        multi_horizon_ml_bundle
+    )
     _stack_integrity_v1 = finalize_stack_integrity_v1(_mh_overlay_events)
     u1, d1, f1 = _tri_f["1c"]
     u5, d5, f5 = _tri_f["5c"]
@@ -764,6 +793,9 @@ def _empty_prediction(
         flat_prob_60c=f60,
         mh_empirical_product_triplets=dict(_mh_empirical_product),
         mh_prob_source_by_horizon=dict(mh_prob_source_by_horizon),
+        horizon_directional_authorized=_hz_auth,
+        horizon_directional_authorization_reason=_hz_auth_reason,
+        horizon_fusion_available=_hz_available,
         stack_integrity_v1=_stack_integrity_v1,
         stack_integrity_events=list(_mh_overlay_events) if _mh_overlay_events else None,
     )
@@ -872,6 +904,9 @@ def compute_prediction_core(
     }
     _tri_f, mh_prob_source_by_horizon, _mh_overlay_events = _overlay_multi_horizon_ml_on_product_triplets(
         _mh_empirical_product, multi_horizon_ml_bundle
+    )
+    _hz_auth, _hz_auth_reason, _hz_available = _multi_horizon_authorization_maps(
+        multi_horizon_ml_bundle
     )
     ou1, od1, of1 = _tri_f["1c"]
     ou5, od5, of5 = _tri_f["5c"]
@@ -1029,6 +1064,9 @@ def compute_prediction_core(
         ),
         mh_empirical_product_triplets=dict(_mh_empirical_product),
         mh_prob_source_by_horizon=dict(mh_prob_source_by_horizon),
+        horizon_directional_authorized=_hz_auth,
+        horizon_directional_authorization_reason=_hz_auth_reason,
+        horizon_fusion_available=_hz_available,
         stack_integrity_v1=_stack_integrity_v1,
         stack_integrity_events=list(_integrity_events) if _integrity_events else None,
     )

@@ -225,6 +225,7 @@ TRADABLE_CANONICAL_PROVENANCE: frozenset[str] = frozenset({"bayesian_fusion"})
 NON_TRADABLE_CANONICAL_PROVENANCE: frozenset[str] = frozenset(
     {
         "fusion_unavailable",
+        "fusion_directional_unauthorized",
         "fusion_directional_missing",
         "fusion_directional_invalid",
         "missing_canonical_fallback",
@@ -319,6 +320,11 @@ class PredictiveCard:
     mh_empirical_product_triplets: Optional[dict[str, tuple[Optional[float], Optional[float], Optional[float]]]] = None
     # Per product horizon: fusion_ml_primary | empirical_support_blend | empirical_histogram
     mh_prob_source_by_horizon: Optional[dict[str, str]] = None
+    # Per-horizon producer verdict and directional availability. Consumers must never infer either
+    # from mh_prob_source_by_horizon, probability shape, contributor counts, or stack health.
+    horizon_directional_authorized: Optional[dict[str, bool]] = None
+    horizon_directional_authorization_reason: Optional[dict[str, Optional[str]]] = None
+    horizon_fusion_available: Optional[dict[str, bool]] = None
     # Machine-visible degradation / fallback audit (see features/stack_integrity_v1.py)
     stack_integrity_v1: Optional[dict[str, Any]] = None
     stack_integrity_events: Optional[list] = None

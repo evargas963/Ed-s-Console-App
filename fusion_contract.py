@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 from signal_types import TRADABLE_CANONICAL_PROVENANCE
@@ -14,14 +15,28 @@ def fusion_is_authoritative(fusion: Any) -> bool:
     return bool(getattr(fusion, "available", False))
 
 
+def fusion_direction_is_authorized(fusion: Any) -> bool:
+    """Consume the producer's directional-authorization verdict without reconstructing it."""
+    return bool(
+        fusion_is_authoritative(fusion)
+        and getattr(fusion, "stack_directional_authorized", None) is True
+    )
+
+
 def fusion_has_tradable_direction(fusion: Any) -> bool:
     """True when fusion carries a complete ML directional triplet safe for horizon cards / canonical."""
-    if not fusion_is_authoritative(fusion):
+    if not fusion_direction_is_authorized(fusion):
         return False
+    values: list[float] = []
     for key in ("prob_up", "prob_down", "prob_flat"):
-        if getattr(fusion, key, None) is None:
+        try:
+            value = float(getattr(fusion, key, None))
+        except (TypeError, ValueError):
             return False
-    return True
+        if not math.isfinite(value) or value < 0.0 or value > 1.0:
+            return False
+        values.append(value)
+    return sum(values) > 0.0
 
 
 def canonical_provenance_is_tradable(provenance: str | None) -> bool:
@@ -40,8 +55,10 @@ def is_canonical_tradable(canonical: Any) -> bool:
 
 
 def is_ms_dict_fusion_authoritative(ms: dict[str, Any]) -> bool:
-    """True when Tier C ``ms_dict`` fusion fields are safe to read (available + tradable provenance)."""
+    """True when Tier C carries the producer verdict plus tradable canonical provenance."""
     if not ms.get("fusion_available"):
+        return False
+    if ms.get("stack_directional_authorized") is not True:
         return False
     prov = ms.get("canonical_provenance")
     return canonical_provenance_is_tradable(str(prov or ""))

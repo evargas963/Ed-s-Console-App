@@ -94,6 +94,18 @@ class FusionPayload:
     # on triplet COMPLETENESS: a base-neutral row can carry three available layers, so without this
     # a stored row is genuinely ambiguous. See tests/test_mc_base_neutral_mode_v1.py.
     mc_conditioning:       Optional[str]   = None
+    #: The MC horizon in WALL-CLOCK MINUTES, carried verbatim from monte_carlo (BAR_MINUTES is
+    #: canonical there). Transported so no consumer multiplies bars by its own constant.
+    mc_horizon_minutes:    Optional[int]   = None
+
+    # ── Directional authorization, TRANSPORTED (never recomputed downstream) ──────────────────
+    #: The verdict from governed_stack_contract.unified_stack_team_can_authorize for THIS horizon.
+    #: This is the per-horizon carrier: server, market_state and the UI consume this value rather
+    #: than reconstructing one from weaker inputs (fusion availability, layer counts, triplet shape).
+    #: Deliberately DISTINCT from `available` (setup fusion) and from directional-fusion presence:
+    #: setup fusion may legitimately exist with no directional ML authority.
+    stack_directional_authorized: Optional[bool] = None
+    stack_directional_authorization_reason: Optional[str] = None
 
     # Model agreement (XGB + LSTM + Transformer + MC directional alignment)
     model_agreement:       Optional[float] = None
@@ -771,6 +783,8 @@ def _fuse_impl(
                       or _assum.get("blended_sigma")) if mc_avail else None
     # Drift provenance rides the producer's own assumption manifest, same as the vol source above.
     mc_conditioning = _assum.get("mc_conditioning") if mc_avail else None
+    # Wall-clock horizon carried verbatim from the producer — never recomputed from bars here.
+    mc_horizon_minutes = getattr(mc_out, "horizon_minutes", None) if mc_avail else None
 
     return FusionPayload(
         available=True,
@@ -807,6 +821,7 @@ def _fuse_impl(
         mc_vol_source=mc_vol_source,
         mc_sigma_value=mc_sigma_value,
         mc_conditioning=mc_conditioning,
+        mc_horizon_minutes=mc_horizon_minutes,
         model_agreement=round(agreement, 3) if agreement is not None else None,
         model_agreement_label=agree_label,
         prob_up=round(prob_up, 3) if prob_up is not None else None,

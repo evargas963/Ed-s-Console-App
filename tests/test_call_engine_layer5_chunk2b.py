@@ -14,6 +14,10 @@ from tests.test_call_engine_chunk1_fail_closed import _strong_long_stack_input
 
 class _FusionPosteriorError:
     available = True
+    stack_directional_authorized = True
+    prob_up = 0.6
+    prob_down = 0.2
+    prob_flat = 0.2
 
     @property
     def reversal_posterior(self):
@@ -54,7 +58,15 @@ def test_validate_trade_fusion_gate_exception_fails_probability_layer():
 
 def test_validate_trade_eae_gate_uses_vol_regime_risk_multiplier():
     inp = SimpleNamespace(ticker="SPY", spot=450.0, call_gamma_wall=None, put_gamma_wall=None, vix_level=20.0)
-    fusion = SimpleNamespace(available=True, mc_available=True, mc_eae=100.0)
+    fusion = SimpleNamespace(
+        available=True,
+        stack_directional_authorized=True,
+        prob_up=0.6,
+        prob_down=0.2,
+        prob_flat=0.2,
+        mc_available=True,
+        mc_eae=100.0,
+    )
     vol = SimpleNamespace(vol_regime="unstable", risk_multiplier=1.5)
     canonical = CanonicalForecast(
         direction="up",

@@ -183,6 +183,18 @@ def test_derive_stack_layers_scored_meta_when_stack_probs_feed_mc():
     bundle = {
         spk: {"up": 0.5, "down": 0.3, "flat": 0.2},
         "mc_stack_probability_source": "stack_probs_meta_or_weighted",
+        # META is credited only when the APPROVED composition actually ran. The source string alone
+        # is not evidence — mc_model_direction_inputs returns it for any complete triplet, including
+        # the 5c weighted blend for which zero meta_*_5c.pkl exists.
+        "stack_probs_composition": {
+            "authorization_schema_version": 1,
+            "horizon": "1c", "required": ["xgb", "lstm", "transformer"],
+            "produced": ["xgb", "lstm", "transformer"], "missing": [], "collapsed": [],
+            "approved_computation": "meta_stack",
+            "executed_computation": "meta_stack",
+            "computation_compliant": True,
+            "contract_compliant": True, "contract_issues": [], "complete": True,
+        },
     }
     fusion = FusionPayload(
         available=True,
@@ -241,17 +253,29 @@ def test_derive_stack_layers_scored_omits_meta_without_stack_probs():
     assert "fusion" in layers
 
 
-def test_unified_stack_team_requires_all_ml_layers():
+def test_unified_stack_team_requires_the_complete_approved_composition():
+    """Authorization is COMPOSITION-based, not shape-based: the approved composition (owned by
+    active_bundle_contract) must have produced the triplet. One surviving leg is not a stack, even
+    though _weighted_average_partial renormalises it into a complete-looking up/down/flat dict."""
     ok = SimpleNamespace(available=True, prob_up=0.5, prob_down=0.3, prob_flat=0.2)
     bad = SimpleNamespace(available=False, prob_up=0.33, prob_down=0.33, prob_flat=0.34)
+    partial = {
+        "authorization_schema_version": 1,
+        "horizon": "1c", "required": ["xgb", "lstm", "transformer"], "produced": ["xgb"],
+        "missing": ["lstm", "transformer"], "collapsed": [], "contract_compliant": True,
+        "approved_computation": "meta_stack", "executed_computation": "meta_stack",
+        "computation_compliant": True,
+        "contract_issues": [], "complete": False,
+    }
     team_ok, reason = unified_stack_team_can_authorize(
         xgb_out=ok,
         lstm_out=bad,
         transformer_out=bad,
-        stack_probs=None,
+        stack_probs={"up": 0.5, "down": 0.3, "flat": 0.2},
+        stack_probs_composition=partial,
     )
     assert team_ok is False
-    assert "unified_stack_incomplete" in reason
+    assert "composition_incomplete" in reason
 
 
 def test_mc_team_fail_closed_when_stack_incomplete():

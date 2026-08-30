@@ -33,6 +33,9 @@ def _pred(
         up_prob_15c=u15, down_prob_15c=d15, flat_prob_15c=f15,
         up_prob_60c=u60, down_prob_60c=d60, flat_prob_60c=f60,
         avg_5c_pts=1.1, avg_15c_pts=2.3, avg_60c_pts=4.6,
+        horizon_directional_authorized={
+            "1c": True, "5c": True, "15c": True, "60c": True,
+        },
     )
 
 

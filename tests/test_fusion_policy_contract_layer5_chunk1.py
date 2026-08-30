@@ -22,6 +22,7 @@ def test_fusion_none_yields_none_policy_probs():
 def test_zero_sum_triplet_yields_none_policy_probs():
     fus = SimpleNamespace(
         available=True,
+        stack_directional_authorized=True,
         prob_up=0.0,
         prob_down=0.0,
         prob_flat=0.0,
@@ -38,6 +39,7 @@ def test_zero_sum_triplet_yields_none_policy_probs():
 def test_non_numeric_triplet_yields_none_policy_probs():
     fus = SimpleNamespace(
         available=True,
+        stack_directional_authorized=True,
         prob_up="bad",
         prob_down=0.3,
         prob_flat=0.2,
@@ -58,6 +60,7 @@ def test_policy_column_helpers():
 def test_contributing_models_json_fail_emits_empty_array_when_avail():
     fus = SimpleNamespace(
         available=True,
+        stack_directional_authorized=True,
         prob_up=0.5,
         prob_down=None,
         prob_flat=0.2,
@@ -74,6 +77,7 @@ def test_contributing_models_json_fail_emits_empty_array_when_avail():
 def test_complete_triplet_emits_bounded_probs_and_confidence():
     fus = SimpleNamespace(
         available=True,
+        stack_directional_authorized=True,
         prob_up=0.6,
         prob_down=0.2,
         prob_flat=0.2,
@@ -92,6 +96,7 @@ def test_complete_triplet_emits_bounded_probs_and_confidence():
 def test_stack_status_uses_question_marks_when_dominant_direction_missing():
     fus = SimpleNamespace(
         available=True,
+        stack_directional_authorized=True,
         prob_up=0.5,
         prob_down=0.25,
         prob_flat=0.25,
@@ -131,6 +136,7 @@ def test_coh_i_g_contributing_models_json_truncation_named():
     huge = [f"model_{i}" for i in range(10000)]
     fus = SimpleNamespace(
         available=True,
+        stack_directional_authorized=True,
         prob_up=0.5, prob_down=0.3, prob_flat=0.2,
         fusion_confidence_score=0.7,
         contributing_models=huge,

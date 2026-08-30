@@ -772,6 +772,7 @@ ml_predict.py::_bundle_ticker_for_artifacts
 ml_predict.py::_cascade_challenger_inference_scope
 ml_predict.py::_enforce_active_serve_policy
 ml_predict.py::_ensemble_parallel_probs
+ml_predict.py::_ensemble_parallel_probs_with_execution
 ml_predict.py::_fmt
 ml_predict.py::_load_lstm
 ml_predict.py::_load_meta
@@ -834,6 +835,7 @@ ml_predict.py::run_unified_stack_ml_once
 ml_predict.py::run_unified_stack_ml_once._parallel_model_output_record
 ml_predict.py::set_ml_infer_horizon_slug
 ml_predict.py::stack_probs_bundle_key
+ml_predict.py::stack_probs_composition_record
 ml_scheduler.py::_append_training_report
 ml_scheduler.py::_apply_pr2_report_fields
 ml_scheduler.py::_artifact_paths_relative

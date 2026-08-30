@@ -207,6 +207,9 @@ def _phase3_pred_bullish_all_horizons():
         up_prob_5c=0.64, down_prob_5c=0.18, flat_prob_5c=0.18,
         up_prob_15c=0.66, down_prob_15c=0.17, flat_prob_15c=0.17,
         up_prob_60c=0.60, down_prob_60c=0.22, flat_prob_60c=0.18,
+        horizon_directional_authorized={
+            "1c": True, "5c": True, "15c": True, "60c": True,
+        },
     )
 
 

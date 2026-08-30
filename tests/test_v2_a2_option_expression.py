@@ -26,6 +26,7 @@ def _sample_a1() -> dict:
             "ticker": "SPY",
             "fusion_available": True,
             "canonical_provenance": "bayesian_fusion",
+            "stack_directional_authorized": True,
             "fusion_dominant_direction": "up",
             "fusion_dominant_prob": 0.64,
             "fusion_confidence": "high",

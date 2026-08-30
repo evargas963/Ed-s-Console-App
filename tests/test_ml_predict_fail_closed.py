@@ -387,6 +387,29 @@ def test_ensemble_backcompat_no_collapse_uses_weighted_average(monkeypatch):
     assert mp._ensemble_parallel_probs("SPY", xgb, lstm, tr) == mp._weighted_average("SPY", xgb, lstm, tr)
 
 
+def test_ensemble_reports_weighted_fallback_instead_of_crediting_meta(monkeypatch):
+    tri = {"up": 0.5, "down": 0.3, "flat": 0.2}
+    monkeypatch.setattr(mp, "_active_base_collapse_flags", lambda _t: set())
+    monkeypatch.setattr(mp, "_predict_meta", lambda *a, **k: None)
+    probs, executed = mp._ensemble_parallel_probs_with_execution(
+        "SPY", tri, tri, tri
+    )
+    assert probs == mp._weighted_average("SPY", tri, tri, tri)
+    assert executed == "weighted_average_fallback"
+
+
+def test_ensemble_reports_meta_only_when_meta_produced_the_triplet(monkeypatch):
+    tri = {"up": 0.5, "down": 0.3, "flat": 0.2}
+    meta = {"up": 0.6, "down": 0.2, "flat": 0.2}
+    monkeypatch.setattr(mp, "_active_base_collapse_flags", lambda _t: set())
+    monkeypatch.setattr(mp, "_predict_meta", lambda *a, **k: meta)
+    probs, executed = mp._ensemble_parallel_probs_with_execution(
+        "SPY", tri, tri, tri
+    )
+    assert probs == meta
+    assert executed == "meta_stack"
+
+
 def test_model_dir_live_ablation_experiment_uses_parallel(tmp_path, monkeypatch):
     from arch_competition.stack_bundle_eval_v1 import LIVE_ABLATION_EXPERIMENT_ENV
 

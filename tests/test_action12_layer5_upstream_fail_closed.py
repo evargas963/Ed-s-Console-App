@@ -79,6 +79,7 @@ def test_fuse_directional_none_when_models_unavailable():
 def test_canonical_forecast_missing_directional_triplet():
     fusion = SimpleNamespace(
         available=True,
+        stack_directional_authorized=True,
         prob_up=None,
         prob_down=None,
         prob_flat=None,

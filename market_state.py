@@ -367,6 +367,9 @@ class MarketState:
     model_version:      str             = "rules_v1"
     pred_model_source:  Optional[str]   = None   # 'ml', 'rules', 'statistical' — which engine produced probs
     mh_prob_source_by_horizon: Optional[dict] = None  # 1c/5c/15c/60c → empirical_histogram | fusion_ml_primary | ...
+    horizon_directional_authorized: Optional[dict] = None
+    horizon_directional_authorization_reason: Optional[dict] = None
+    horizon_fusion_available: Optional[dict] = None
     pred_override_source: Optional[str] = None   # 'user', 'manual' — when user overrode prediction
     timeframe_reads:    dict            = field(default_factory=dict)
     avg_5c_pts:         Optional[float] = None
@@ -456,6 +459,14 @@ class MarketState:
     mc_vol_source:          Optional[str]   = None  # VOLATILITY source: 'garch' or 'blend'
     mc_sigma_value:         Optional[float] = None  # ANNUALIZED decimal vol, post regime mult (path-independent)
     mc_conditioning:        Optional[str]   = None  # DRIFT source: 'ml_conditioned' or 'base_neutral'
+    #: MC horizon in WALL-CLOCK MINUTES, carried from monte_carlo (BAR_MINUTES canonical there).
+    #: The UI renders this directly; it must never multiply mc_horizon by a constant of its own.
+    mc_horizon_minutes:     Optional[int]   = None
+    #: TRANSPORTED directional authorization (governed_stack_contract is the sole computation).
+    #: MarketState previously had NO such field, which is exactly why server.py rebuilt a verdict
+    #: from weaker inputs. Distinct from fusion availability and from operator freshness.
+    stack_directional_authorized: Optional[bool] = None
+    stack_directional_authorization_reason: Optional[str] = None
     mc_em_anchor:           Optional[str]   = None
     mc_iv_source:           Optional[str]   = None
     # Display-only wall-clock MC excursions (Key Levels); not used for sizing or fusion.
@@ -1714,6 +1725,22 @@ def build_market_state(
             ms.pred_model_source = getattr(_pred, 'model_source', None)
             _mh_src = getattr(_pred, "mh_prob_source_by_horizon", None)
             ms.mh_prob_source_by_horizon = dict(_mh_src) if isinstance(_mh_src, dict) else None
+            _hz_auth = getattr(_pred, "horizon_directional_authorized", None)
+            ms.horizon_directional_authorized = (
+                dict(_hz_auth) if isinstance(_hz_auth, dict) else None
+            )
+            _hz_auth_reason = getattr(
+                _pred, "horizon_directional_authorization_reason", None
+            )
+            ms.horizon_directional_authorization_reason = (
+                dict(_hz_auth_reason)
+                if isinstance(_hz_auth_reason, dict)
+                else None
+            )
+            _hz_available = getattr(_pred, "horizon_fusion_available", None)
+            ms.horizon_fusion_available = (
+                dict(_hz_available) if isinstance(_hz_available, dict) else None
+            )
             ms.pred_override_source = getattr(_sig_out, 'pred_override_source', None)
             ms.avg_5c_pts      = _pred.avg_5c_pts
             ms.avg_15c_pts     = getattr(_pred, "avg_15c_pts", None)
@@ -1813,6 +1840,12 @@ def build_market_state(
             ms.mc_vol_source    = getattr(_fusion, 'mc_vol_source', None)
             ms.mc_sigma_value   = getattr(_fusion, 'mc_sigma_value', None)
             ms.mc_conditioning  = getattr(_fusion, 'mc_conditioning', None)
+            ms.mc_horizon_minutes = getattr(_fusion, 'mc_horizon_minutes', None)
+            # Transport only — no recomputation. See governed_stack_contract for the authority.
+            ms.stack_directional_authorized = getattr(
+                _fusion, 'stack_directional_authorized', None)
+            ms.stack_directional_authorization_reason = getattr(
+                _fusion, 'stack_directional_authorization_reason', None)
 
         _disp_mc = getattr(_sig_out, "mc_display_excursions", None) or {}
         if isinstance(_disp_mc, dict):

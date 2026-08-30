@@ -18,6 +18,7 @@ from tests.test_call_engine_layer5_chunk2c import _rules_long, _pred
 def test_non_tradable_provenance_includes_directional_missing_and_invalid():
     assert "fusion_directional_missing" in NON_TRADABLE_CANONICAL_PROVENANCE
     assert "fusion_directional_invalid" in NON_TRADABLE_CANONICAL_PROVENANCE
+    assert "fusion_directional_unauthorized" in NON_TRADABLE_CANONICAL_PROVENANCE
     assert "fusion_unavailable" in NON_TRADABLE_CANONICAL_PROVENANCE
 
 
@@ -31,6 +32,7 @@ def test_canonical_forecast_fusion_unavailable_placeholder():
 def test_canonical_forecast_directional_missing_placeholder():
     fusion = SimpleNamespace(
         available=True,
+        stack_directional_authorized=True,
         prob_up=None,
         prob_down=None,
         prob_flat=None,
@@ -69,7 +71,13 @@ def test_compute_call_forces_wait_on_directional_missing_when_stack_would_be_lon
         mc_available=False,
     )
     canonical = canonical_forecast_from_fusion(
-        SimpleNamespace(available=True, prob_up=None, prob_down=None, prob_flat=None)
+        SimpleNamespace(
+            available=True,
+            stack_directional_authorized=True,
+            prob_up=None,
+            prob_down=None,
+            prob_flat=None,
+        )
     )
     vol = SimpleNamespace(
         vol_regime="normal",

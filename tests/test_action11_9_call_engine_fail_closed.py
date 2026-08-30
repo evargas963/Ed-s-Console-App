@@ -163,7 +163,15 @@ def test_etf_chg_pct_none_does_not_fabricate_vote_from_zero():
 
 
 def test_fusion_posterior_gate_blocks_long_when_reversal_posterior_missing():
-    fusion = SimpleNamespace(available=True, model_agreement=0.9, n_sources_active=3)
+    fusion = SimpleNamespace(
+        available=True,
+        stack_directional_authorized=True,
+        prob_up=0.6,
+        prob_down=0.2,
+        prob_flat=0.2,
+        model_agreement=0.9,
+        n_sources_active=3,
+    )
     canonical = CanonicalForecast(
         direction="up",
         probability_up=0.5,
@@ -188,7 +196,15 @@ def test_fusion_posterior_gate_blocks_long_when_reversal_posterior_missing():
 
 
 def test_fusion_posterior_gate_blocks_short_when_posteriors_missing():
-    fusion = SimpleNamespace(available=True, model_agreement=0.9, n_sources_active=3)
+    fusion = SimpleNamespace(
+        available=True,
+        stack_directional_authorized=True,
+        prob_up=0.2,
+        prob_down=0.6,
+        prob_flat=0.2,
+        model_agreement=0.9,
+        n_sources_active=3,
+    )
     canonical = CanonicalForecast(
         direction="down",
         probability_up=0.25,

@@ -7,12 +7,13 @@ from v2_decision.schema import V2DecisionSchemaError, leaf
 
 
 def _sample_market_state() -> dict:
-    # WIRE-4 / FIND-FP1-3 tightened the fusion authority gate to require BOTH
-    # fusion_available AND canonical_provenance in TRADABLE_CANONICAL_PROVENANCE.
+    # Fusion authority requires fusion_available, tradable canonical_provenance,
+    # and the transported producer verdict stack_directional_authorized=True.
     return {
         "ticker": "SPY",
         "fusion_available": True,
         "canonical_provenance": "bayesian_fusion",
+        "stack_directional_authorized": True,
         "fusion_dominant_direction": "up",
         "fusion_dominant_prob": 0.64,
         "fusion_confidence": "high",

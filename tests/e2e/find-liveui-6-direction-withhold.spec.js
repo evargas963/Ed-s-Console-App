@@ -134,6 +134,7 @@ test('horizonDirectionWithheld reads horizon_fusion_available map per Schwab-can
 
   // MHMLB-NS1 hook: per-horizon availability map keyed on 1c/5c/15c/60c.
   const payload = {
+    horizon_directional_authorized: { '1c': true, '5c': true, '15c': true, '60c': true },
     horizon_fusion_available: { '1c': false, '5c': true, '15c': true, '60c': true },
   };
   const clean = {};
@@ -157,7 +158,7 @@ test('horizonDirectionWithheld reads horizon_fusion_available map per Schwab-can
   expect(five.withheld).toBe(false);
 });
 
-test('horizonDirectionWithheld falls back to bundle-level fusion_available when map absent', async ({ page }) => {
+test('horizonDirectionWithheld fails closed when per-horizon authorization is absent', async ({ page }) => {
   await gotoWithWithholdHelpers(page);
 
   // No horizon_fusion_available map; fusion_available=false on the payload.
@@ -165,14 +166,14 @@ test('horizonDirectionWithheld falls back to bundle-level fusion_available when 
     window._priceAheadOfBundle = false;
     return window.horizonDirectionWithheld({}, { fusion_available: false }, '15c');
   });
-  expect(bundleOff).toEqual({ withheld: true, reason: 'fusion_unavailable' });
+  expect(bundleOff).toEqual({ withheld: true, reason: 'horizon_directional_unauthorized' });
 
-  // No map, no fusion_available flag → not withheld (bundle-level handled elsewhere).
+  // No map and no fusion flag still withholds: absence may not imply directional authority.
   const noSignal = await page.evaluate(() => {
     window._priceAheadOfBundle = false;
     return window.horizonDirectionWithheld({}, {}, '15c');
   });
-  expect(noSignal.withheld).toBe(false);
+  expect(noSignal).toEqual({ withheld: true, reason: 'horizon_directional_unauthorized' });
 });
 
 test('horizonDirectionWithheld inherits bundle-level withhold', async ({ page }) => {
@@ -238,6 +239,7 @@ test('_updateDirectionWithheldMarkers per-horizon: tf-signal-{slug} card marked 
     window._priceAheadOfBundle = false;
     window._lastData = {
       decision_generation_id: 1,
+      horizon_directional_authorized: { '1c': true, '5c': true, '15c': true, '60c': true },
       horizon_fusion_available: { '1c': false, '5c': true, '15c': true, '60c': true },
     };
     window._liveUiIntegrity = {
@@ -456,6 +458,8 @@ test('tf-signal cards do not get STALE withhold when trusted bundle within trust
         { horizon: '60c', call: 'LONG' },
       ],
       analytics_refresh_in_progress: true,
+      horizon_directional_authorized: { '1c': true, '5c': true, '15c': true, '60c': true },
+      horizon_fusion_available: { '1c': true, '5c': true, '15c': true, '60c': true },
     };
     window._priceAheadOfBundle = true;
     return ['1c', '5c', '15c', '60c'].map((hz) => ({

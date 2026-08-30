@@ -4946,7 +4946,9 @@ function sourceChipDisplayText(source, d) {
 function deriveSourceForHorizon(d, slug) {
   if (!d || typeof d !== 'object') return 'UNAVAILABLE';
   if (slug === 'consolidated') {
-    if (d.guest_anchor_active) {
+    if (d.guest_anchor_active
+        && typeof isFusionAuthoritative === 'function'
+        && isFusionAuthoritative(d)) {
       return guestAnchorChipLabel(d);
     }
     // Provenance chip = source authority, not tradeability. Fusion authoritative
@@ -4960,20 +4962,28 @@ function deriveSourceForHorizon(d, slug) {
     }
     return 'UNAVAILABLE';
   }
+  const authMap = d.horizon_directional_authorized;
+  const hzAuthorized = !!(authMap
+    && typeof authMap === 'object'
+    && Object.prototype.hasOwnProperty.call(authMap, slug)
+    && authMap[slug] === true);
   const srcMap = d.mh_prob_source_by_horizon;
   if (srcMap && typeof srcMap === 'object' && srcMap[slug] != null) {
     const raw = String(srcMap[slug]).trim();
     const up = raw.toUpperCase();
     // Brief-style values (preferred forward path)
-    if (up === 'ML_FUSION' || up === 'ML FUSION') return 'ML FUSION';
-    if (up === 'PROVISIONAL' || up.indexOf('PROVISIONAL') === 0) return guestAnchorChipLabel(d);
-    if (up === 'EMPIRICAL' || up === 'BLEND' || up === 'UNAVAILABLE' || up === 'DEGRADED') return up;
+    if (up === 'ML_FUSION' || up === 'ML FUSION') return hzAuthorized ? 'ML FUSION' : 'UNAVAILABLE';
+    if (up === 'PROVISIONAL' || up.indexOf('PROVISIONAL') === 0) {
+      return hzAuthorized ? guestAnchorChipLabel(d) : 'UNAVAILABLE';
+    }
+    if (up === 'EMPIRICAL' || up === 'UNAVAILABLE' || up === 'DEGRADED') return up;
+    if (up === 'BLEND') return hzAuthorized ? 'BLEND' : 'UNAVAILABLE';
     // Server internal stamping (current implementation in resolve_horizon_source / fusion contract)
     const lc = raw.toLowerCase();
-    if (lc === 'guest_anchor_fusion') return guestAnchorChipLabel(d);
-    if (lc === 'fusion_ml_primary') return 'ML FUSION';
-    if (lc === 'empirical_support_blend') return 'BLEND';
-    if (lc === 'fusion_directional_missing') return 'UNAVAILABLE';
+    if (lc === 'guest_anchor_fusion') return hzAuthorized ? guestAnchorChipLabel(d) : 'UNAVAILABLE';
+    if (lc === 'fusion_ml_primary') return hzAuthorized ? 'ML FUSION' : 'UNAVAILABLE';
+    if (lc === 'empirical_support_blend') return hzAuthorized ? 'BLEND' : 'UNAVAILABLE';
+    if (lc === 'fusion_directional_missing' || lc === 'fusion_directional_unauthorized') return 'UNAVAILABLE';
     // Fall through to derivation below if value is unrecognized.
   }
   const si = (d.stack_integrity_v1 && typeof d.stack_integrity_v1 === 'object') ? d.stack_integrity_v1 : {};
@@ -4983,13 +4993,15 @@ function deriveSourceForHorizon(d, slug) {
   const rowMissing = !row
     || String(row.call || '').toUpperCase() === 'UNAVAILABLE'
     || String(row.row_state || '').toLowerCase() === 'missing';
+  // Both maps are transported from the producer for this exact horizon. Availability is not a
+  // substitute for authorization, and an absent map fails closed.
   let hzFusionOk = false;
-  if (typeof isFusionAuthoritative === 'function' && isFusionAuthoritative(d)) {
+  if (hzAuthorized) {
     const hfa = d.horizon_fusion_available;
     if (hfa && typeof hfa === 'object' && Object.prototype.hasOwnProperty.call(hfa, slug)) {
       hzFusionOk = hfa[slug] === true;
     } else {
-      hzFusionOk = true;
+      hzFusionOk = false;   // no per-horizon evidence => withhold, never assume
     }
   }
   const hzKey = ({ '1c': '1m', '5c': '5m', '15c': '15m', '60c': '60m' })[slug] || slug;
@@ -5900,8 +5912,10 @@ const SIGNAL_CHAIN_COL = { active: '#1D9E75', degraded: '#BA7517', off: '#E24B4A
 // back to fusion_available AND canonical_provenance === "bayesian_fusion" so the
 // UI never reports "active" for a non-tradable split-brain payload.
 function isFusionAuthoritative(d) {
+  const directionAuthorized = !!(d && d.stack_directional_authorized === true);
+  if (!directionAuthorized) return false;
   const rt = (d && d.stack_runtime && typeof d.stack_runtime === 'object') ? d.stack_runtime : null;
-  if (rt && typeof rt.fusion_active === 'boolean') return rt.fusion_active;
+  if (rt && typeof rt.fusion_active === 'boolean') return rt.fusion_active === true;
   const flag = !!(d && d.fusion_available);
   const prov = String((d && d.canonical_provenance) || '').toLowerCase();
   return flag && prov === 'bayesian_fusion';
@@ -5917,6 +5931,7 @@ function isFusionAuthoritative(d) {
 // surface as real signal.
 function isCanonicalTradable(d) {
   if (!d || typeof d !== 'object') return false;
+  if (d.stack_directional_authorized !== true) return false;
   const prov = String((d && d.canonical_provenance) || '').toLowerCase();
   return prov === 'bayesian_fusion';
 }
@@ -8568,7 +8583,7 @@ function renderTierALive(d, fullRenderSource) {
 
     // ── MONTE CARLO section ───────────────────────────────────────────────────
     const mcAvail = d.mc_available;
-    html += '<div class="kl-section-hdr" style="border-top:2px solid var(--border)">MONTE CARLO<span>live stack · 5m/15m wall-clock display (5-min MC steps)</span></div>';
+    html += '<div class="kl-section-hdr" style="border-top:2px solid var(--border)">MONTE CARLO<span>live stack · 5m/15m wall-clock display (1-min MC steps)</span></div>';
     if (mcAvail) {
       const mcEfe = d.mc_efe != null ? parseFloat(d.mc_efe).toFixed(2) : null;
       const mcEae = d.mc_eae != null ? parseFloat(d.mc_eae).toFixed(2) : null;
@@ -8576,12 +8591,16 @@ function renderTierALive(d, fullRenderSource) {
       const mcExpand = d.mc_expansion != null ? Math.round(d.mc_expansion * 100) + '%' : '—';
       const efePrice = mcEfe && spot ? (spot + parseFloat(mcEfe)).toFixed(2) : '—';
       const eaePrice = mcEae && spot ? (spot - parseFloat(mcEae)).toFixed(2) : '—';
-      // HONEST live-horizon clock: the live MC row is the governed horizon, and the engine
-      // steps 5 min/bar (BAR_MINUTES=5) — so its TRUE forward time is mc_horizon bars x 5 min,
-      // NOT the slug minutes and NOT 1m. Label it so a trader cannot confuse it with the fixed
-      // 5m/15m rows below. Falls back to "live" when the bar count is absent.
-      const mcLiveMin = (d.mc_horizon != null && !Number.isNaN(parseInt(d.mc_horizon, 10)))
-        ? (parseInt(d.mc_horizon, 10) * 5) : null;
+      // HONEST live-horizon clock: the live MC row is the governed horizon. Its wall-clock time is
+      // computed by the PRODUCER (monte_carlo, where BAR_MINUTES is canonical) and transported as
+      // mc_horizon_minutes. Do NOT multiply mc_horizon by a constant here: this line did
+      // `mc_horizon * 5` while BAR_MINUTES was 1, so a 5-bar horizon painted as "~25m fwd" when the
+      // truth was ~5m. Changing the 5 to a 1 would merely keep a second, independent time authority
+      // in the browser — the repair is to consume the one value the engine already computed.
+      // Falls back to "live stack" when the field is absent, matching the convention below.
+      const mcLiveMin = (d.mc_horizon_minutes != null
+                         && !Number.isNaN(parseInt(d.mc_horizon_minutes, 10)))
+        ? parseInt(d.mc_horizon_minutes, 10) : null;
       const mcLiveLbl = mcLiveMin != null ? `live · ~${mcLiveMin}m fwd` : 'live stack';
 
       if (mcEfe) html += `<div class="kl-grid" title="Expected Maximum Favorable Excursion (Sweeney MFE): the Monte Carlo expectation of the best price move in your favor over the horizon. Formerly 'EFE'.">
@@ -8602,7 +8621,7 @@ function renderTierALive(d, fullRenderSource) {
       </div>`;
       // ── Fixed wall-clock 5m / 15m EFE/EAE (display-only, independent of the governing
       // horizon). Server (signals.py) computes these via wall_clock_minutes_to_mc_bars
-      // (5m=1 bar, 15m=3 bars at BAR_MINUTES=5) and exposes mc_efe_5m/mc_eae_5m/mc_efe_15m/
+      // (5m=5 bars, 15m=15 bars at the canonical BAR_MINUTES=1) and exposes mc_efe_5m/mc_eae_5m/mc_efe_15m/
       // mc_eae_15m on /api/state. Fail-closed: rows render ONLY when the key is present and
       // numeric — missing => no row (never 0 / fabricated). Until the server half lands these
       // keys are absent and nothing renders (the live-horizon block above is unchanged).
@@ -9683,11 +9702,18 @@ function horizonDirectionWithheld(integrity, d, hz, nowMs) {
   if (!ld) return { withheld: true, reason: 'no_payload' };
   const slug = String(hz || '').toLowerCase();
   if (!slug) return { withheld: false, reason: null };
+  const authMap = ld.horizon_directional_authorized;
+  if (!(authMap
+      && typeof authMap === 'object'
+      && Object.prototype.hasOwnProperty.call(authMap, slug)
+      && authMap[slug] === true)) {
+    return { withheld: true, reason: 'horizon_directional_unauthorized' };
+  }
   const map = ld.horizon_fusion_available;
   if (map && typeof map === 'object' && Object.prototype.hasOwnProperty.call(map, slug)) {
     if (map[slug] !== true) return { withheld: true, reason: 'horizon_fusion_unavailable' };
-  } else if (ld.fusion_available === false) {
-    return { withheld: true, reason: 'fusion_unavailable' };
+  } else {
+    return { withheld: true, reason: 'horizon_fusion_evidence_absent' };
   }
   return { withheld: false, reason: null };
 }
