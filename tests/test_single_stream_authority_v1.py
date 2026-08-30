@@ -69,6 +69,33 @@ def test_a_module_alias_construction_is_still_found(tmp_path):
     assert len(lines) == 1
 
 
+def test_from_schwab_import_streaming_alias_is_still_found(tmp_path):
+    """ADVERSARIAL RECHECK 2026-08-30: `from schwab import streaming as s; s.StreamClient(...)`
+    is a DIFFERENT AST shape from `import schwab.streaming as m` (an ImportFrom binding the
+    module name via a from-import, not an Import statement) — a real, previously-unexploited
+    blind spot in the module-alias detector, found by adversarial inspection and fixed by
+    also walking ImportFrom(module='schwab') nodes. Unaliased `from schwab import streaming`
+    is covered too."""
+    p = tmp_path / "from_import_aliased.py"
+    p.write_text(textwrap.dedent('''
+        from schwab import streaming as s
+
+        def connect(client):
+            return s.StreamClient(client)
+    '''), encoding="utf-8")
+    lines = find_stream_client_constructions(p)
+    assert len(lines) == 1
+
+    p2 = tmp_path / "from_import_unaliased.py"
+    p2.write_text(textwrap.dedent('''
+        from schwab import streaming
+
+        def connect(client):
+            return streaming.StreamClient(client)
+    '''), encoding="utf-8")
+    assert len(find_stream_client_constructions(p2)) == 1
+
+
 def test_an_unrelated_streamclient_class_is_not_a_false_positive(tmp_path):
     """A same-named class from an UNRELATED module must not be flagged — only imports
     traced to schwab.streaming count."""

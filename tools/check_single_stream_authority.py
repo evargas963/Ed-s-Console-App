@@ -64,14 +64,24 @@ def _stream_client_local_names(tree: ast.Module) -> set[str]:
 
 
 def _module_aliases_for_schwab_streaming(tree: ast.Module) -> set[str]:
-    """Names bound to the `schwab.streaming` MODULE itself (`import schwab.streaming as m`,
-    or bare `import schwab.streaming` binding `schwab`), for `m.StreamClient(...)` calls."""
+    """Names bound to the `schwab.streaming` MODULE itself, for `m.StreamClient(...)` calls
+    — covers BOTH import forms that bind the module (not the class) as a name:
+    `import schwab.streaming as m` / bare `import schwab.streaming` (binds `schwab`), and
+    `from schwab import streaming` / `from schwab import streaming as s` (ADVERSARIAL
+    RECHECK 2026-08-30: this second form was a real, if unexploited, blind spot — only
+    `ast.Import` nodes were inspected, so `from schwab import streaming as s` followed by
+    `s.StreamClient(...)` anywhere outside the canonical daemon would have gone undetected
+    and silently PASSED the gate)."""
     aliases: set[str] = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             for alias in node.names:
                 if alias.name == "schwab.streaming":
                     aliases.add(alias.asname or "schwab")
+        elif isinstance(node, ast.ImportFrom) and node.module == "schwab":
+            for alias in node.names:
+                if alias.name == "streaming":
+                    aliases.add(alias.asname or alias.name)
     return aliases
 
 
