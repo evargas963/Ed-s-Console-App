@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ed Options — chain, contract selection, order flow</title>
+<style>
+  :root { --bg:#0a0e15; --panel:#111826; --panel2:#181c26; --border:#1f2a3c; --border2:#2a3850;
+          --text:#e9eef6; --text2:#c6d0e0; --dim:#93a1b8; --mut:#66748c;
+          --accent:#37d2dd; --blue:#4b8bff; --green:#2fd08a; --red:#ff5c74; --amber:#f6b73c;
+          --vio:#a78bfa; --orange:#f97316; --skyblue:#93c5fd;
+          --gridline:rgba(147,161,184,.14);
+          --mono:'IBM Plex Mono', ui-monospace, Consolas, monospace; }
+  body.light { --bg:#f4f7fb; --panel:#ffffff; --panel2:#eef2f8; --border:#d8dfea; --border2:#c3cddc;
+          --text:#0f172a; --text2:#1e293b; --dim:#5b6b83; --mut:#7c8aa0;
+          --accent:#0891b2; --blue:#2563eb; --green:#16a34a; --red:#dc2626; --amber:#d97706;
+          --vio:#7c3aed; --orange:#ea580c; --skyblue:#3b82f6;
+          --gridline:rgba(15,23,42,.10); }
+  * { box-sizing:border-box; }
+  html, body { height:100%; }
+  body { margin:0; color:var(--text); background:var(--bg); display:flex; flex-direction:column;
+         overflow:auto; font:14px/1.4 ui-sans-serif, system-ui, 'Segoe UI', Roboto, sans-serif; }
+  #top { flex:none; display:flex; gap:10px; align-items:center; padding:8px 14px;
+         border-bottom:1px solid var(--border); flex-wrap:wrap; }
+  #tk { background:var(--panel); color:var(--text); border:1px solid var(--border2);
+        border-radius:8px; padding:6px 10px; width:88px; font-weight:800; font-size:14px;
+        text-transform:uppercase; font-family:var(--mono); }
+  .cv-nav { display:flex; gap:.2em; margin-left:auto; }
+  .cv-tab { padding:.45em .95em; border-radius:.5em; color:var(--dim); font-weight:600;
+            cursor:pointer; border:1px solid transparent; background:none; font:inherit;
+            text-decoration:none; }
+  .cv-tab[aria-selected="true"] { background:var(--panel); color:var(--text);
+                                  border-color:var(--border); }
+  .cv-tab:hover { color:var(--text2); }
+  #meta { flex:none; display:flex; gap:14px; padding:6px 14px; font-size:10.5px;
+          color:var(--mut); border-bottom:1px solid var(--border); font-family:var(--mono);
+          flex-wrap:wrap; align-items:center; }
+  #meta b { font-weight:600; color:var(--dim); }
+  #notice { flex:none; padding:6px 14px; font-size:11.5px; color:var(--amber);
+            border-bottom:1px solid var(--border); display:none; }
+  #layout { display:flex; flex:1 1 0; min-height:420px; gap:0; }
+  #chain-wrap { flex:1 1 auto; min-width:0; overflow:auto; padding:10px 14px; }
+  table.chain { width:100%; border-collapse:collapse; font-family:var(--mono); font-size:12px; }
+  table.chain th { position:sticky; top:0; background:var(--bg); color:var(--mut);
+                   font-weight:600; padding:5px 7px; border-bottom:1px solid var(--border2);
+                   text-align:right; white-space:nowrap; }
+  table.chain th.strike-col { text-align:center; color:var(--dim); }
+  table.chain td { padding:4px 7px; text-align:right; border-bottom:1px solid var(--border);
+                   white-space:nowrap; }
+  table.chain td.strike { text-align:center; font-weight:700; color:var(--text2);
+                          background:var(--panel2); }
+  td.side-call, td.side-put { cursor:pointer; }
+  td.side-call:hover, td.side-put:hover { background:var(--panel2); }
+  tr.selected td.side-call.sel, tr.selected td.side-put.sel { outline:2px solid var(--accent);
+    outline-offset:-2px; }
+  td.itm { color:var(--text); } td.otm { color:var(--mut); }
+  #rail { width:340px; flex:none; border-left:1px solid var(--border); padding:10px 12px;
+          font-family:var(--mono); font-size:12px; overflow:auto; }
+  #rail h3 { margin:0 0 8px; font-size:12px; color:var(--dim); font-weight:700;
+             letter-spacing:.03em; text-transform:uppercase; }
+  #sel-empty { color:var(--mut); }
+  #sel-body div.row { display:flex; justify-content:space-between; padding:2px 0;
+                      border-bottom:1px dashed var(--border); }
+  #sel-body .k { color:var(--mut); } #sel-body .v { color:var(--text2); font-weight:600; }
+  #health { display:flex; align-items:center; gap:6px; margin:8px 0; }
+  #health-dot { width:8px; height:8px; border-radius:50%; background:var(--mut); flex:none; }
+  #health-dot.healthy { background:var(--green); animation:pulse 1.6s ease-in-out infinite; }
+  #health-dot.unhealthy { background:var(--red); }
+  @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:.3; } }
+  #depth-tbl { width:100%; border-collapse:collapse; margin-top:6px; }
+  #depth-tbl th { color:var(--mut); text-align:right; padding:3px 4px; font-weight:600; }
+  #depth-tbl td { text-align:right; padding:3px 4px; border-top:1px solid var(--border); }
+</style>
+</head>
+<body>
+<div id="top">
+  <input id="tk" value="SPY" spellcheck="false">
+  <div class="cv-nav" role="tablist" aria-label="View">
+    <a class="cv-tab" href="/">Console</a>
+    <a class="cv-tab" href="/#terrain">Terrain</a>
+    <a class="cv-tab" href="/chart">Chart</a>
+    <a class="cv-tab" href="/exposure">Exposure</a>
+    <a class="cv-tab" href="/desk">Desk</a>
+    <span class="cv-tab" aria-selected="true">Options</span>
+  </div>
+  <button type="button" class="cv-tab" id="theme-btn">&#9728;&#65039; LIGHT</button>
+</div>
+<div id="meta">
+  <span>spot <b id="m-spot">&hellip;</b></span>
+  <span>expiry <b id="m-expiry">&hellip;</b></span>
+  <span>contracts <b id="m-count">&hellip;</b></span>
+  <span title="the stored chain covers ONE expiry at a time — whichever a prior render/terrain cycle last captured for this ticker, not a live multi-expiry fetch">chain scope: last-captured expiry only</span>
+  <span style="margin-left:auto;">poll <b>2s</b></span>
+</div>
+<div id="notice"></div>
+<div id="layout">
+  <div id="chain-wrap">
+    <table class="chain" id="chain-tbl">
+      <thead>
+        <tr>
+          <th>OI</th><th>Vol</th><th>IV</th><th>&Delta;</th><th>&Gamma;</th><th>Bid</th><th>Ask</th>
+          <th class="strike-col">Strike</th>
+          <th>Bid</th><th>Ask</th><th>&Delta;</th><th>&Gamma;</th><th>IV</th><th>Vol</th><th>OI</th>
+        </tr>
+      </thead>
+      <tbody id="chain-body"></tbody>
+    </table>
+  </div>
+  <div id="rail">
+    <h3>Selected contract</h3>
+    <div id="sel-empty">Click a Bid/Ask cell in the chain to select a contract and subscribe its live book.</div>
+    <div id="sel-body" style="display:none;">
+      <div class="row"><span class="k">symbol</span><span class="v" id="sel-symbol">&mdash;</span></div>
+      <div id="health">
+        <span id="health-dot"></span>
+        <span id="health-label" style="color:var(--mut);">&hellip;</span>
+      </div>
+      <div class="row"><span class="k">status</span><span class="v" id="mx-status">&mdash;</span></div>
+      <div class="row"><span class="k">top bid / ask</span><span class="v" id="mx-topbook">&mdash;</span></div>
+      <div class="row"><span class="k">mid / microprice</span><span class="v" id="mx-mid">&mdash;</span></div>
+      <div class="row"><span class="k">spread</span><span class="v" id="mx-spread">&mdash;</span></div>
+      <div class="row"><span class="k">book age</span><span class="v" id="mx-age">&mdash;</span></div>
+      <table id="depth-tbl">
+        <thead><tr><th>depth</th><th>bid</th><th>ask</th><th>imbalance</th></tr></thead>
+        <tbody id="depth-body"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+<script>
+(function(){
+  'use strict';
+  var tkEl = document.getElementById('tk');
+  var body = document.body;
+
+  // Theme: same ed_theme convention the rest of the console uses.
+  function applyTheme(t){ body.classList.toggle('light', t === 'light');
+    document.getElementById('theme-btn').textContent = t === 'light' ? '☀️ LIGHT' : '🌙 DARK'; }
+  var savedTheme = 'dark';
+  try { savedTheme = localStorage.getItem('ed_theme') || 'dark'; } catch (e) {}
+  applyTheme(savedTheme);
+  document.getElementById('theme-btn').addEventListener('click', function(){
+    var next = body.classList.contains('light') ? 'dark' : 'light';
+    applyTheme(next);
+    try { localStorage.setItem('ed_theme', next); } catch (e) {}
+  });
+
+  var selectedSymbol = null;
+  var micxTimer = null;
+
+  function fmt(v, d){ if (v === null || v === undefined || Number.isNaN(v)) return '—';
+    return typeof v === 'number' ? v.toFixed(d === undefined ? 2 : d) : String(v); }
+
+  function itmClass(strike, spot, side){
+    if (spot === null || spot === undefined) return '';
+    if (side === 'call') return strike <= spot ? 'itm' : 'otm';
+    return strike >= spot ? 'itm' : 'otm';
+  }
+
+  function notice(msg){
+    var n = document.getElementById('notice');
+    if (!msg) { n.style.display = 'none'; n.textContent = ''; return; }
+    n.style.display = 'block'; n.textContent = msg;
+  }
+
+  function renderChain(payload){
+    var tbody = document.getElementById('chain-body');
+    tbody.innerHTML = '';
+    document.getElementById('m-spot').textContent = payload.spot === null || payload.spot === undefined ? '—' : fmt(payload.spot, 2);
+    document.getElementById('m-expiry').textContent = payload.expiry || '—';
+    document.getElementById('m-count').textContent = String((payload.contracts || []).length);
+
+    if (payload.status === 'no_chain' || !payload.contracts || !payload.contracts.length) {
+      notice('No chain captured yet for ' + payload.ticker + ' — nothing to select. The chain fills in once terrain/render collection has captured this ticker.');
+      return;
+    }
+    notice('');
+
+    var byStrike = {};
+    payload.contracts.forEach(function(c){
+      var k = c.strikePrice;
+      if (!byStrike[k]) byStrike[k] = {};
+      byStrike[k][c.putCall === 'PUT' ? 'put' : 'call'] = c;
+    });
+    var strikes = Object.keys(byStrike).map(Number).sort(function(a,b){ return a - b; });
+
+    strikes.forEach(function(strike){
+      var row = byStrike[strike];
+      var call = row.call, put = row.put;
+      var tr = document.createElement('tr');
+      tr.innerHTML =
+        '<td>' + (call ? fmt(call.openInterest, 0) : '—') + '</td>' +
+        '<td>' + (call ? fmt(call.totalVolume, 0) : '—') + '</td>' +
+        '<td>' + (call ? fmt(call.volatility, 1) : '—') + '</td>' +
+        '<td>' + (call ? fmt(call.delta, 3) : '—') + '</td>' +
+        '<td>' + (call ? fmt(call.gamma, 4) : '—') + '</td>' +
+        '<td class="side-call ' + (call ? itmClass(strike, payload.spot, 'call') : '') + '">' + (call ? fmt(call.bid, 2) : '—') + '</td>' +
+        '<td class="side-call ' + (call ? itmClass(strike, payload.spot, 'call') : '') + '">' + (call ? fmt(call.ask, 2) : '—') + '</td>' +
+        '<td class="strike">' + fmt(strike, 2) + '</td>' +
+        '<td class="side-put ' + (put ? itmClass(strike, payload.spot, 'put') : '') + '">' + (put ? fmt(put.bid, 2) : '—') + '</td>' +
+        '<td class="side-put ' + (put ? itmClass(strike, payload.spot, 'put') : '') + '">' + (put ? fmt(put.ask, 2) : '—') + '</td>' +
+        '<td>' + (put ? fmt(put.delta, 3) : '—') + '</td>' +
+        '<td>' + (put ? fmt(put.gamma, 4) : '—') + '</td>' +
+        '<td>' + (put ? fmt(put.volatility, 1) : '—') + '</td>' +
+        '<td>' + (put ? fmt(put.totalVolume, 0) : '—') + '</td>' +
+        '<td>' + (put ? fmt(put.openInterest, 0) : '—') + '</td>';
+      var callCells = tr.querySelectorAll('td.side-call');
+      var putCells = tr.querySelectorAll('td.side-put');
+      if (call) callCells.forEach(function(td){ td.addEventListener('click', function(){ selectContract(call.symbol, tr, 'call'); }); });
+      if (put) putCells.forEach(function(td){ td.addEventListener('click', function(){ selectContract(put.symbol, tr, 'put'); }); });
+      tbody.appendChild(tr);
+    });
+  }
+
+  function loadChain(){
+    var t = (tkEl.value || 'SPY').toUpperCase().trim();
+    fetch('/api/chain?ticker=' + encodeURIComponent(t))
+      .then(function(r){ return r.json(); })
+      .then(renderChain)
+      .catch(function(){ notice('Chain fetch failed.'); });
+  }
+
+  function selectContract(symbol, tr, side){
+    selectedSymbol = symbol;
+    document.querySelectorAll('tr.selected').forEach(function(x){ x.classList.remove('selected'); });
+    document.querySelectorAll('td.sel').forEach(function(x){ x.classList.remove('sel'); });
+    tr.classList.add('selected');
+    var cell = tr.querySelector('td.side-' + side);
+    if (cell) cell.classList.add('sel');
+
+    document.getElementById('sel-empty').style.display = 'none';
+    document.getElementById('sel-body').style.display = 'block';
+    document.getElementById('sel-symbol').textContent = symbol;
+
+    fetch('/api/streaming/active-option-contract', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({contract: symbol}),
+    }).catch(function(){});
+
+    if (micxTimer) clearInterval(micxTimer);
+    pollMicrostructure();
+    micxTimer = setInterval(pollMicrostructure, 2000);
+  }
+
+  function pollMicrostructure(){
+    if (!selectedSymbol) return;
+    fetch('/api/order-flow/options-microstructure?contract=' + encodeURIComponent(selectedSymbol))
+      .then(function(r){ return r.json(); })
+      .then(renderMicrostructure)
+      .catch(function(){});
+  }
+
+  function renderMicrostructure(m){
+    if (m.contract !== selectedSymbol) return;   // a stale in-flight response for a since-deselected contract
+    document.getElementById('mx-status').textContent = m.status || '—';
+    var tob = m.top_of_book || {};
+    document.getElementById('mx-topbook').textContent =
+      fmt(tob.bid, 2) + ' x ' + fmt(tob.bid_size, 0) + '  /  ' + fmt(tob.ask, 2) + ' x ' + fmt(tob.ask_size, 0);
+    document.getElementById('mx-mid').textContent = fmt(m.mid, 3) + ' / ' + fmt(m.microprice, 3);
+    document.getElementById('mx-spread').textContent = fmt(m.spread_pts, 3);
+    var ages = m.ages || {};
+    document.getElementById('mx-age').textContent = ages.book_age_sec === null || ages.book_age_sec === undefined
+      ? '—' : fmt(ages.book_age_sec, 1) + 's';
+
+    var depthBody = document.getElementById('depth-body');
+    depthBody.innerHTML = '';
+    var depth = m.depth || {};
+    Object.keys(depth).sort(function(a,b){ return Number(a) - Number(b); }).forEach(function(n){
+      var d = depth[n];
+      var tr = document.createElement('tr');
+      tr.innerHTML = '<td>' + n + '</td><td>' + fmt(d.bid_total, 0) + '</td><td>' +
+        fmt(d.ask_total, 0) + '</td><td>' + fmt(d.imbalance, 3) + '</td>';
+      depthBody.appendChild(tr);
+    });
+
+    var plane = m.streaming_plane || {};
+    var dot = document.getElementById('health-dot');
+    var label = document.getElementById('health-label');
+    dot.classList.remove('healthy', 'unhealthy');
+    if (plane.streaming_healthy === true) {
+      dot.classList.add('healthy');
+      label.textContent = 'streaming' + (plane.streaming_staleness_ms !== null && plane.streaming_staleness_ms !== undefined
+        ? ' · ' + Math.round(plane.streaming_staleness_ms) + 'ms' : '');
+    } else if (plane.streaming_healthy === false) {
+      dot.classList.add('unhealthy');
+      label.textContent = plane.streaming_connected ? 'feed stale' : 'feed not connected';
+    } else {
+      label.textContent = 'diagnostics unavailable';
+    }
+  }
+
+  tkEl.addEventListener('change', loadChain);
+  tkEl.addEventListener('keydown', function(e){ if (e.key === 'Enter') loadChain(); });
+  loadChain();
+  setInterval(loadChain, 30000);
+})();
+</script>
+</body>
+</html>

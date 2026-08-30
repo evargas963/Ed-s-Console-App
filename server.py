@@ -13463,6 +13463,20 @@ def exposure_page():
                         headers={"Cache-Control": "no-store, no-cache, must-revalidate"})
 
 
+@app.get("/options", response_class=HTMLResponse)
+def options_page():
+    """OPTIONS_ORDER_FLOW_V1 UI/consumer wiring: chain + contract-selection + live
+    order-flow microstructure for one option contract. Reads GET /api/chain (contract
+    listing), POST /api/streaming/active-option-contract (subscribe), GET /api/order-flow/
+    options-microstructure (live book + freshness/health) — no new endpoints, no client-
+    side second producer."""
+    p = static_dir / "options.html"
+    if not p.exists():
+        return HTMLResponse("<p>static/options.html not found</p>", status_code=404)
+    return HTMLResponse(p.read_text(encoding="utf-8"),
+                        headers={"Cache-Control": "no-store, no-cache, must-revalidate"})
+
+
 @app.get("/desk", response_class=HTMLResponse)
 def desk_page():
     """Desk — research, candidates and book, replayable at an earlier knowledge time."""

@@ -594,6 +594,7 @@ MEGA1_TRACEABLE_INVENTORY: tuple[Mega1TraceableDerivation, ...] = (
     Mega1TraceableDerivation("server.py", 12764, "scorecard_trading_day_age", "NONE", None, (), None, "No market-field derivation: TRADING days between the scorecard's generated_utc and today ET, through the market calendar; None means unusable rather than fresh."),
     Mega1TraceableDerivation("server.py", 12862, "exposure_page", "NONE", None, (), None, "No market-field derivation: serves static/exposure.html (RC-200, re-landed with RC-210)."),
     Mega1TraceableDerivation("server.py", 12873, "desk_page", "NONE", None, (), None, "No market-field derivation: serves the Desk page shell."),
+    Mega1TraceableDerivation("server.py", 13467, "options_page", "NONE", None, (), None, "No market-field derivation: serves static/options.html (OPTIONS_ORDER_FLOW_V1 UI/consumer wiring)."),
     Mega1TraceableDerivation("server.py", 12883, "get_desk_radar", "ALLOWLISTED", None, (), 'mega1_sqlite_internal', "Candidate structure as it stood at `as_of`, read from the desk fact store; the as-of bound is what keeps a replay honest."),
     Mega1TraceableDerivation("server.py", 12904, "get_desk_dossier", "ALLOWLISTED", None, (), 'mega1_sqlite_internal', "One name's measured structure as it stood at `as_of`, from the desk fact store."),
     Mega1TraceableDerivation("server.py", 12923, "get_desk_evidence", "NONE", None, (), None, "No market-field derivation: reads the study scoreboard out of reports/ rather than retyping it, so the page cannot disagree with the artefact."),
