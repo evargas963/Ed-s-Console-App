@@ -7,18 +7,23 @@ from types import SimpleNamespace
 
 from stream_spine import (
     COUNT_DROPS,
+    CaptureWriter,
     HealthRegistry,
     MessageBus,
+    read_active_option_contract_signal,
     read_active_ticker_signal,
+    write_active_option_contract_signal,
     write_active_ticker_signal,
 )
 from tools.run_stream_capture import (
     CHART_FIELDS,
     LEVELONE_FIELDS,
     CaptureStats,
+    _apply_active_option_contract_subs,
     _apply_active_ticker_book_subs,
     make_book_handler,
     make_handler,
+    make_options_quote_handler,
     parse_stream_item,
 )
 
@@ -153,6 +158,159 @@ def test_apply_active_ticker_book_subs_first_activation_has_no_unsub(monkeypatch
     asyncio.run(go())
 
 
+class _FakeOptionStream:
+    """Records options (un)subscribe calls; never touches real Schwab."""
+    def __init__(self):
+        self.calls: list[tuple] = []
+
+    async def level_one_option_subs(self, syms):
+        self.calls.append(("l1_option_sub", tuple(syms)))
+
+    async def options_book_subs(self, syms):
+        self.calls.append(("options_book_sub", tuple(syms)))
+
+    async def level_one_option_unsubs(self, syms):
+        self.calls.append(("l1_option_unsub", tuple(syms)))
+
+    async def options_book_unsubs(self, syms):
+        self.calls.append(("options_book_unsub", tuple(syms)))
+
+
+_SPY_CONTRACT = "SPY   260820C00767000"
+_QQQ_CONTRACT = "QQQ   260820C00450000"
+
+
+def test_apply_active_option_contract_subs_switches_contract(tmp_path, monkeypatch):
+    """Mirrors the equity-book diff test: subscribe the new contract, unsubscribe the
+    one it replaces, never both live at once."""
+    p = tmp_path / "stream_active_option_contract.json"
+    write_active_option_contract_signal(_QQQ_CONTRACT, path=p)
+    monkeypatch.setattr("tools.run_stream_capture.read_active_option_contract_signal",
+                        lambda: read_active_option_contract_signal(path=p))
+    stream = _FakeOptionStream()
+
+    async def go():
+        new_cur = await _apply_active_option_contract_subs(stream, _SPY_CONTRACT)
+        assert new_cur == _QQQ_CONTRACT
+        assert ("l1_option_unsub", (_SPY_CONTRACT,)) in stream.calls
+        assert ("options_book_unsub", (_SPY_CONTRACT,)) in stream.calls
+        assert ("l1_option_sub", (_QQQ_CONTRACT,)) in stream.calls
+        assert ("options_book_sub", (_QQQ_CONTRACT,)) in stream.calls
+    asyncio.run(go())
+
+
+def test_apply_active_option_contract_subs_no_change_is_a_no_op(monkeypatch):
+    monkeypatch.setattr("tools.run_stream_capture.read_active_option_contract_signal",
+                        lambda: _SPY_CONTRACT)
+    stream = _FakeOptionStream()
+
+    async def go():
+        new_cur = await _apply_active_option_contract_subs(stream, _SPY_CONTRACT)
+        assert new_cur == _SPY_CONTRACT
+        assert stream.calls == []
+    asyncio.run(go())
+
+
+def test_apply_active_option_contract_subs_first_activation_has_no_unsub(monkeypatch):
+    monkeypatch.setattr("tools.run_stream_capture.read_active_option_contract_signal",
+                        lambda: _SPY_CONTRACT)
+    stream = _FakeOptionStream()
+
+    async def go():
+        new_cur = await _apply_active_option_contract_subs(stream, None)
+        assert new_cur == _SPY_CONTRACT
+        assert all(c[0] not in ("l1_option_unsub", "options_book_unsub")
+                   for c in stream.calls)
+    asyncio.run(go())
+
+
+def test_apply_active_option_contract_subs_opens_coverage_epochs_on_activation(tmp_path, monkeypatch):
+    """First activation (no prior contract) must OPEN durable epochs for both services —
+    a reader must be able to tell 'not yet subscribed' from 'subscribed, silent'."""
+    monkeypatch.setattr("tools.run_stream_capture.read_active_option_contract_signal",
+                        lambda: _SPY_CONTRACT)
+    stream = _FakeOptionStream()
+    writer = CaptureWriter(tmp_path / "cap.db", batch_rows=1, batch_sec=10.0)
+    epoch_state = {"l1": None, "book": None}
+
+    async def go():
+        new_cur = await _apply_active_option_contract_subs(
+            stream, None, writer=writer, epoch_state=epoch_state)
+        assert new_cur == _SPY_CONTRACT
+        assert epoch_state["l1"] is not None and epoch_state["book"] is not None
+    asyncio.run(go())
+    import sqlite3
+    con = sqlite3.connect(tmp_path / "cap.db")
+    rows = con.execute(
+        "SELECT symbol, service, ended_ts FROM stream_coverage_epochs ORDER BY id").fetchall()
+    writer.close()
+    assert rows == [(_SPY_CONTRACT, "LEVELONE_OPTIONS", None),
+                    (_SPY_CONTRACT, "OPTIONS_BOOK", None)]
+
+
+def test_apply_active_option_contract_subs_closes_old_opens_new_on_switch(tmp_path, monkeypatch):
+    p = tmp_path / "signal.json"
+    write_active_option_contract_signal(_QQQ_CONTRACT, path=p)
+    monkeypatch.setattr("tools.run_stream_capture.read_active_option_contract_signal",
+                        lambda: read_active_option_contract_signal(path=p))
+    stream = _FakeOptionStream()
+    writer = CaptureWriter(tmp_path / "cap.db", batch_rows=1, batch_sec=10.0)
+    epoch_state = {"l1": 1, "book": 2}
+    # Seed the "old" epochs a real activation would have opened.
+    writer._conn.execute(
+        "INSERT INTO stream_coverage_epochs(id,symbol,service,started_ts,reason) "
+        "VALUES(1,?,?,0,?),(2,?,?,0,?)",
+        (_SPY_CONTRACT, "LEVELONE_OPTIONS", "seed", _SPY_CONTRACT, "OPTIONS_BOOK", "seed"))
+    writer._conn.commit()
+
+    async def go():
+        new_cur = await _apply_active_option_contract_subs(
+            stream, _SPY_CONTRACT, writer=writer, epoch_state=epoch_state)
+        assert new_cur == _QQQ_CONTRACT
+    asyncio.run(go())
+    import sqlite3
+    con = sqlite3.connect(tmp_path / "cap.db")
+    old_rows = con.execute(
+        "SELECT ended_ts FROM stream_coverage_epochs WHERE id IN (1,2)").fetchall()
+    new_rows = con.execute(
+        "SELECT symbol, ended_ts FROM stream_coverage_epochs WHERE symbol=?",
+        (_QQQ_CONTRACT,)).fetchall()
+    writer.close()
+    assert all(r[0] is not None for r in old_rows), "switching away must CLOSE the old epochs"
+    assert len(new_rows) == 2 and all(r[1] is None for r in new_rows)
+
+
+def test_options_quote_handler_publishes_native_content_verbatim():
+    """The real live-captured shape (reports/of_capability_probe/options_20260820T1354Z/)
+    — 57 native fields, greeks/OI/IV included — must reach the bus untouched."""
+    async def go():
+        bus = MessageBus()
+        sub = bus.subscribe("optquote.", policy=COUNT_DROPS)
+        h = make_options_quote_handler(bus, HealthRegistry(), CaptureStats())
+        item = {"key": _SPY_CONTRACT, "BID_PRICE": 1.26, "ASK_PRICE": 1.28,
+               "DELTA": 0.45644607, "OPEN_INTEREST": 2097, "CONTRACT_TYPE": "C"}
+        h({"content": [item]})
+        topic, msg = await sub.get()
+        assert topic == f"optquote.{_SPY_CONTRACT}"
+        assert msg["content"] == item and msg["src"] == "schwab_options_l1"
+    asyncio.run(go())
+
+
+def test_options_book_handler_reuses_the_generic_book_handler():
+    """OPTIONS_BOOK needs no new handler — make_book_handler is already
+    service-parametrized; _schwab_connect wires it with service='OPTIONS_BOOK'."""
+    async def go():
+        bus = MessageBus()
+        sub = bus.subscribe("book.", policy=COUNT_DROPS)
+        h = make_book_handler("OPTIONS_BOOK", bus, HealthRegistry(), CaptureStats())
+        item = {"key": _SPY_CONTRACT, "BIDS": [{"BID_PRICE": 1.28}], "ASKS": [{"ASK_PRICE": 1.3}]}
+        h({"content": [item]})
+        topic, msg = await sub.get()
+        assert topic == f"book.{_SPY_CONTRACT}"
+        assert msg["service"] == "OPTIONS_BOOK" and msg["content"] == item
+    asyncio.run(go())
+
+
 class _FakeSchwabStreamClient:
     """Records handler registrations + subscribe/unsubscribe calls; never touches real
     Schwab. Models exactly the subset of schwab-py's StreamClient surface _schwab_connect
@@ -175,6 +333,12 @@ class _FakeSchwabStreamClient:
     def add_nyse_book_handler(self, h):
         self.handlers["nyse_book"] = h
 
+    def add_level_one_option_handler(self, h):
+        self.handlers["l1_option"] = h
+
+    def add_options_book_handler(self, h):
+        self.handlers["options_book"] = h
+
     async def login(self):
         self.calls.append(("login",))
 
@@ -189,6 +353,12 @@ class _FakeSchwabStreamClient:
 
     async def nyse_book_subs(self, syms):
         self.calls.append(("nyse_sub", tuple(syms)))
+
+    async def level_one_option_subs(self, syms):
+        self.calls.append(("l1_option_sub", tuple(syms)))
+
+    async def options_book_subs(self, syms):
+        self.calls.append(("options_book_sub", tuple(syms)))
 
     async def handle_message(self):
         await asyncio.sleep(3600)   # never resolves in a test; only cancellation ends it
@@ -246,6 +416,33 @@ def test_schwab_connect_reapplies_active_book_ticker_after_reconnect():
             pass
         assert ("nasdaq_sub", ("QQQ",)) in stream.calls
         assert ("nyse_sub", ("QQQ",)) in stream.calls
+
+    import pytest as _pt
+    mp = _pt.MonkeyPatch()
+    try:
+        asyncio.run(go(mp))
+    finally:
+        mp.undo()
+
+
+def test_schwab_connect_reapplies_active_option_contract_after_reconnect():
+    """Same reconnect-survives shape as the book ticker, for the options contract."""
+    import tools.run_stream_capture as d
+
+    async def go(monkeypatch):
+        _install_fake_schwab_streaming(monkeypatch)
+        bus, health, stats, stop = MessageBus(), HealthRegistry(), CaptureStats(), asyncio.Event()
+        stream, task = await d._schwab_connect(
+            SimpleNamespace(client=object()), ["SPY"], bus, health, stats, stop,
+            active_option_contract=_SPY_CONTRACT)
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        assert "l1_option" in stream.handlers and "options_book" in stream.handlers
+        assert ("l1_option_sub", (_SPY_CONTRACT,)) in stream.calls
+        assert ("options_book_sub", (_SPY_CONTRACT,)) in stream.calls
 
     import pytest as _pt
     mp = _pt.MonkeyPatch()

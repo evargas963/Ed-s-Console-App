@@ -41,12 +41,15 @@ from stream_spine import (  # noqa: E402
     COALESCE,
     COUNT_DROPS,
     CaptureWriter,
+    CoverageWriteError,
     HealthRegistry,
     MessageBus,
     bar_msg,
     book_msg,
+    options_quote_msg,
     print_msg,
     quote_msg,
+    read_active_option_contract_signal,
     read_active_ticker_signal,
 )
 
@@ -471,6 +474,107 @@ async def _active_ticker_book_poll_loop(get_stream, get_current, set_current,
             print(f"active-ticker book poll: {type(e).__name__}: {e}")
 
 
+def make_options_quote_handler(bus: MessageBus, health: HealthRegistry, stats: CaptureStats):
+    """LEVELONE_OPTIONS — content stored verbatim (options_quote_msg), never flattened.
+    57 native fields (greeks, OI, IV, DTE, ...); no existing consumer needs a flattened
+    projection, so inventing scalar columns here would be speculative schema."""
+    service = "LEVELONE_OPTIONS"
+
+    def handler(msg: dict) -> None:
+        t0 = time.perf_counter()
+        save_raw_sample(service, msg, stats)
+        health.beat(service)
+        for item in msg.get("content") or []:
+            if not isinstance(item, dict):
+                continue
+            sym = str(item.get("key") or "").upper()
+            if not sym:
+                continue
+            bus.publish(f"optquote.{sym}", options_quote_msg(
+                symbol=sym, content=item, src="schwab_options_l1"))
+        stats.record(service, (time.perf_counter() - t0) * 1000.0)
+    return handler
+
+
+async def _apply_active_option_contract_subs(stream, current: str | None, *,
+                                             writer=None, epoch_state: dict | None = None) -> str | None:
+    """Diff the server's requested active OPTION CONTRACT against the currently
+    subscribed one; unsub the old, sub the new. Same bounded-key shape as the equity book
+    poll: at most ONE contract carries LEVELONE_OPTIONS + OPTIONS_BOOK at a time (2
+    services x 1 contract = 2 keys), independent of anything else the daemon watches.
+
+    `requested` MUST already be a chain response's own "symbol" field (enforced by
+    stream_spine.write_active_option_contract_signal's caller, not re-validated here) —
+    a bare ticker was PROVEN to fail this exact subscribe call ("no option symbol from
+    chain", reports/of_schwab_live_capability_matrix_20260820.md).
+
+    ``writer``/``epoch_state``: when given, durably records COVERAGE EPOCHS (which
+    windows this contract was actually subscribed) — mutated in place
+    ({"l1": epoch_id|None, "book": epoch_id|None}) so a gap in stream_options_quotes_raw
+    is later interpretable as "not subscribed" vs "subscribed, vendor silent". Optional:
+    tests exercising only the subscribe-diff behavior can omit both."""
+    requested = read_active_option_contract_signal()
+    if requested == current:
+        return current
+    if current:
+        try:
+            await stream.level_one_option_unsubs([current])
+            await stream.options_book_unsubs([current])
+        except Exception as e:
+            print(f"options unsub {current}: {e}")
+        if writer is not None and epoch_state is not None:
+            try:
+                if epoch_state.get("l1") is not None:
+                    writer.close_coverage_epoch(epoch_state["l1"], reason="active_contract_changed")
+                if epoch_state.get("book") is not None:
+                    writer.close_coverage_epoch(epoch_state["book"], reason="active_contract_changed")
+            except CoverageWriteError as e:
+                print(f"coverage epoch close failed: {e}")
+            epoch_state["l1"] = epoch_state["book"] = None
+    if requested:
+        try:
+            await stream.level_one_option_subs([requested])
+            await stream.options_book_subs([requested])
+            print(f"options subscribed active contract -> {requested}")
+        except Exception as e:
+            print(f"options sub {requested}: {e}")
+            return current
+        if writer is not None and epoch_state is not None:
+            try:
+                epoch_state["l1"] = writer.open_coverage_epoch(
+                    requested, "LEVELONE_OPTIONS", reason="active_contract_set")
+                epoch_state["book"] = writer.open_coverage_epoch(
+                    requested, "OPTIONS_BOOK", reason="active_contract_set")
+            except CoverageWriteError as e:
+                print(f"coverage epoch open failed: {e}")
+                epoch_state["l1"] = epoch_state["book"] = None
+    return requested
+
+
+async def _active_option_contract_poll_loop(get_stream, get_current, set_current,
+                                            stop: asyncio.Event, writer=None,
+                                            epoch_state: dict | None = None,
+                                            interval_sec: float = 1.0) -> None:
+    """Fast poll of the active-option-contract signal — same shape and cadence as
+    _active_ticker_book_poll_loop, independent of it (a different signal file, a
+    different pair of Schwab services)."""
+    while not stop.is_set():
+        try:
+            await asyncio.wait_for(stop.wait(), timeout=interval_sec)
+            return
+        except asyncio.TimeoutError:
+            pass
+        stream = get_stream()
+        if stream is None:
+            continue
+        try:
+            new_cur = await _apply_active_option_contract_subs(
+                stream, get_current(), writer=writer, epoch_state=epoch_state)
+            set_current(new_cur)
+        except Exception as e:  # noqa: BLE001 — poll loop must survive one bad tick
+            print(f"active-option-contract poll: {type(e).__name__}: {e}")
+
+
 def write_status(bus: MessageBus, health: HealthRegistry, writer: CaptureWriter,
                  stats: CaptureStats, max_qdepth: int) -> None:
     STATUS_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -552,15 +656,21 @@ async def _run_locked(symbols: list[str], duration_min: float, db_path: str | No
         writer.close()   # every exit path incl. login/subscribe failure (round-3 MEDIUM)
 
 
-async def _schwab_connect(state, symbols, bus, health, stats, stop, active_book_ticker=None):
+async def _schwab_connect(state, symbols, bus, health, stats, stop, active_book_ticker=None,
+                          active_option_contract=None, writer=None, epoch_state=None):
     """Fresh Schwab stream: login + handlers + subs -> (stream, running pump task).
     Used at start AND by the half-open watchdog (a recycle is a clean rebuild —
     never an attempt to resuscitate a dead StreamClient).
 
-    ``active_book_ticker``: re-apply book depth for this ONE symbol immediately after
-    connecting — a fresh StreamClient carries no subscriptions, so a recycle that forgot
-    this would silently drop the live UI's book depth until the next poll tick noticed
-    the (unchanged) signal file and there was nothing to diff against."""
+    ``active_book_ticker`` / ``active_option_contract``: re-apply these subscriptions
+    immediately after connecting — a fresh StreamClient carries no subscriptions, so a
+    recycle that forgot this would silently drop live depth/options data until the next
+    poll tick noticed the (unchanged) signal file and had nothing to diff against.
+
+    ``writer``/``epoch_state``: when given, opens a NEW options coverage epoch for
+    ``active_option_contract`` (a stream recycle genuinely ends the old subscription
+    window, however briefly — the caller is responsible for closing the epoch that died
+    with the old stream before calling this)."""
     from schwab.streaming import StreamClient
 
     stream = StreamClient(state.client)
@@ -571,6 +681,8 @@ async def _schwab_connect(state, symbols, bus, health, stats, stop, active_book_
         make_handler("CHART_EQUITY", CHART_FIELDS, "bar1m", bus, health, stats))
     stream.add_nasdaq_book_handler(make_book_handler("NASDAQ_BOOK", bus, health, stats))
     stream.add_nyse_book_handler(make_book_handler("NYSE_BOOK", bus, health, stats))
+    stream.add_level_one_option_handler(make_options_quote_handler(bus, health, stats))
+    stream.add_options_book_handler(make_book_handler("OPTIONS_BOOK", bus, health, stats))
     await stream.level_one_equity_subs(symbols)
     await stream.chart_equity_subs(symbols)
     print(f"subscribed {len(symbols)} symbols x2 services (key accounting: "
@@ -582,6 +694,23 @@ async def _schwab_connect(state, symbols, bus, health, stats, stop, active_book_
             print(f"book resubscribed active ticker -> {active_book_ticker} (post-reconnect)")
         except Exception as e:
             print(f"book resub {active_book_ticker} after reconnect: {e}")
+    if active_option_contract:
+        try:
+            await stream.level_one_option_subs([active_option_contract])
+            await stream.options_book_subs([active_option_contract])
+            print(f"options resubscribed active contract -> {active_option_contract} "
+                  f"(post-reconnect)")
+            if writer is not None and epoch_state is not None:
+                try:
+                    epoch_state["l1"] = writer.open_coverage_epoch(
+                        active_option_contract, "LEVELONE_OPTIONS", reason="stream_reconnect")
+                    epoch_state["book"] = writer.open_coverage_epoch(
+                        active_option_contract, "OPTIONS_BOOK", reason="stream_reconnect")
+                except CoverageWriteError as e:
+                    print(f"coverage epoch open failed (post-reconnect): {e}")
+                    epoch_state["l1"] = epoch_state["book"] = None
+        except Exception as e:
+            print(f"options resub {active_option_contract} after reconnect: {e}")
 
     async def pump() -> None:
         while not stop.is_set():
@@ -598,13 +727,25 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
     #: closure-captured local, because BOTH the recycle path here and the poll loop's
     #: coroutine need to read/write the SAME current values.
     book_state: dict = {"stream": None, "ticker": None}
+    #: Same shared-dict shape, for the options-contract poll loop — a SEPARATE signal
+    #: (stream_active_option_contract.json) and a separate pair of Schwab services, so it
+    #: is tracked independently rather than folded into book_state.
+    option_state: dict = {"stream": None, "contract": None}
+    #: Durable coverage-epoch row ids for the CURRENTLY active option contract — mutated
+    #: by _apply_active_option_contract_subs / _schwab_connect's reconnect-reapply.
+    option_epoch_state: dict = {"l1": None, "book": None}
     stream, pump_task = await _schwab_connect(state, symbols, bus, health, stats, stop)
     book_state["stream"] = stream
+    option_state["stream"] = stream
     # CR-02 prints leg — optional co-producer on the SAME bus/writer/health.
     alpaca_task = asyncio.create_task(alpaca_pump(symbols, bus, health, stats, stop))
     book_poll_task = asyncio.create_task(_active_ticker_book_poll_loop(
         lambda: book_state["stream"], lambda: book_state["ticker"],
         lambda t: book_state.__setitem__("ticker", t), stop))
+    option_poll_task = asyncio.create_task(_active_option_contract_poll_loop(
+        lambda: option_state["stream"], lambda: option_state["contract"],
+        lambda c: option_state.__setitem__("contract", c), stop,
+        writer=writer, epoch_state=option_epoch_state))
     deadline = time.monotonic() + duration_min * 60 if duration_min > 0 else None
     last_reconnect = time.monotonic()
     try:
@@ -620,6 +761,20 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
                       f"Schwab stream (half-open guard)")
                 last_reconnect = time.monotonic()
                 book_state["stream"] = None   # poll loop must not use the dying stream
+                option_state["stream"] = None
+                # The dying stream's subscription window genuinely ends here — close its
+                # coverage epochs now, before the reconnect attempt (which may itself fail
+                # and retry next tick; the epoch table must not claim coverage through a
+                # window we know the socket was down for).
+                if option_state["contract"] is not None:
+                    try:
+                        if option_epoch_state.get("l1") is not None:
+                            writer.close_coverage_epoch(option_epoch_state["l1"], reason="stream_recycle")
+                        if option_epoch_state.get("book") is not None:
+                            writer.close_coverage_epoch(option_epoch_state["book"], reason="stream_recycle")
+                    except CoverageWriteError as exc:
+                        print(f"coverage epoch close failed (recycle): {exc}")
+                    option_epoch_state["l1"] = option_epoch_state["book"] = None
                 pump_task.cancel()
                 try:
                     await pump_task
@@ -630,8 +785,11 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
                 try:
                     stream, pump_task = await _schwab_connect(
                         state, symbols, bus, health, stats, stop,
-                        active_book_ticker=book_state["ticker"])
+                        active_book_ticker=book_state["ticker"],
+                        active_option_contract=option_state["contract"],
+                        writer=writer, epoch_state=option_epoch_state)
                     book_state["stream"] = stream
+                    option_state["stream"] = stream
                 except Exception as exc:  # noqa: BLE001 — retry next tick, loudly
                     print(f"watchdog: reconnect FAILED ({type(exc).__name__}: {exc}) "
                           f"— retrying after cooldown")
@@ -642,7 +800,17 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
         pass
     finally:
         await _shutdown_sequence(pump_task, writer_task, stop, wsub,
-                                 extra_producers=(alpaca_task, book_poll_task))
+                                 extra_producers=(alpaca_task, book_poll_task, option_poll_task))
+        # A clean exit ends the option contract's coverage window too — an OPEN epoch
+        # surviving process exit would misreport coverage through a period the daemon
+        # was not even running.
+        try:
+            if option_epoch_state.get("l1") is not None:
+                writer.close_coverage_epoch(option_epoch_state["l1"], reason="shutdown")
+            if option_epoch_state.get("book") is not None:
+                writer.close_coverage_epoch(option_epoch_state["book"], reason="shutdown")
+        except CoverageWriteError as exc:
+            print(f"coverage epoch close failed (shutdown): {exc}")
         writer.close()
         write_status(bus, health, writer, stats, max_qdepth)
         print(json.dumps({

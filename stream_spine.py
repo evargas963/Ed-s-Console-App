@@ -30,6 +30,15 @@ STREAM_DB_DEFAULT = Path(__file__).resolve().parent / "data" / "stream_capture.d
 #: subscriptions — it never opens its own StreamClient (single-stream-authority law).
 ACTIVE_TICKER_SIGNAL_DEFAULT = Path(__file__).resolve().parent / "data" / "stream_active_ticker.json"
 
+#: Same channel, for the one option CONTRACT (OSI symbol, e.g. "SPY   260820C00767000")
+#: the daemon should stream LEVELONE_OPTIONS/OPTIONS_BOOK for. Options streaming is proven
+#: live (reports/of_capability_probe/options_20260820T1354Z/: subs_ok=true both services,
+#: 91/90 frames) but was never wired into the canonical daemon — this is that wiring, not a
+#: new probe. The contract symbol MUST come from a chain response's own "symbol" field
+#: (schwab_client.safe_get_chain), never constructed here: a prior manual probe attempt
+#: with a bare ticker failed "no option symbol from chain".
+ACTIVE_OPTION_CONTRACT_SIGNAL_DEFAULT = Path(__file__).resolve().parent / "data" / "stream_active_option_contract.json"
+
 #: Queue policies. COALESCE keeps only the newest pending message per topic (quotes).
 #: COUNT_DROPS rejects new messages when full and counts them loudly (prints).
 COALESCE = "coalesce"
@@ -55,6 +64,31 @@ CREATE TABLE IF NOT EXISTS stream_book_raw (
     src TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_sbkr_sym_ts ON stream_book_raw(symbol, ts_recv);
+CREATE TABLE IF NOT EXISTS stream_options_quotes_raw (
+    ts_recv REAL NOT NULL,
+    symbol TEXT NOT NULL,
+    native_json TEXT NOT NULL,
+    src TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_soqr_sym_ts ON stream_options_quotes_raw(symbol, ts_recv);
+-- One row per (symbol, service) SUBSCRIPTION INTERVAL. ended_ts NULL means still open.
+-- WHY THIS EXISTS: a gap in stream_options_quotes_raw/stream_book_raw is ambiguous
+-- between "we were not subscribed" (a hole in coverage) and "we were subscribed and
+-- nothing changed" (the vendor's silence IS the observation) — without this record both
+-- read identically as "no rows", and a reader would mistake our subscription window for
+-- a market fact. Options streaming watches at most ONE contract at a time (bounded by
+-- construction, see _apply_active_option_contract_subs), so this is a single open-interval
+-- ledger per (symbol, service), not the historical branch's multi-contract rotation
+-- policy — that complexity does not apply to this design.
+CREATE TABLE IF NOT EXISTS stream_coverage_epochs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    symbol TEXT NOT NULL,
+    service TEXT NOT NULL,
+    started_ts REAL NOT NULL,
+    ended_ts REAL,
+    reason TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_sce_sym_svc ON stream_coverage_epochs(symbol, service);
 CREATE TABLE IF NOT EXISTS stream_prints_raw (
     ts_recv REAL NOT NULL,
     symbol TEXT NOT NULL,
@@ -104,27 +138,63 @@ def book_msg(*, symbol: str, service: str, content: dict, src: str,
             "service": service, "content": content, "src": src}
 
 
-def write_active_ticker_signal(ticker: str, *, path: Path = ACTIVE_TICKER_SIGNAL_DEFAULT) -> None:
-    """The server's ONE write into the daemon's book-subscription decision.
+def options_quote_msg(*, symbol: str, content: dict, src: str,
+                      ts_recv: float | None = None) -> dict:
+    """The ONE producer shape for optquote.* topics (LEVELONE_OPTIONS).
 
-    Atomic (write-temp-then-replace): the daemon polls this file on its own schedule and
-    must never observe a half-written JSON body."""
+    ``content`` is the Schwab content-item dict verbatim (57 native fields: greeks, OI,
+    IV, DTE, ...) — stored as native JSON, never flattened; nothing in this repo reads a
+    flattened options-quote column, so inventing one would be speculative schema, not a
+    compatibility need."""
+    return {"ts_recv": ts_recv if ts_recv is not None else time.time(), "symbol": symbol,
+            "content": content, "src": src}
+
+
+def _write_json_signal(value_key: str, value: str, *, path: Path) -> None:
+    """Shared atomic write for the server->daemon signal files: write-temp-then-replace,
+    so the daemon (polling on its own schedule) never observes a half-written body."""
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(json.dumps({"ticker": (ticker or "").upper().strip(),
+    tmp.write_text(json.dumps({value_key: (value or "").upper().strip(),
                                "requested_at": time.time()}), encoding="utf-8")
     tmp.replace(path)
 
 
-def read_active_ticker_signal(*, path: Path = ACTIVE_TICKER_SIGNAL_DEFAULT) -> str | None:
-    """The daemon's read of the server's requested active ticker. None on any absence/
-    corruption — a missing signal means 'no book subscription', never a guessed symbol."""
+def _read_json_signal(value_key: str, *, path: Path) -> str | None:
+    """Shared read: None on any absence/corruption — a missing signal means 'no
+    subscription', never a guessed value."""
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
-    t = str(data.get("ticker") or "").upper().strip()
-    return t or None
+    v = str(data.get(value_key) or "").upper().strip()
+    return v or None
+
+
+def write_active_ticker_signal(ticker: str, *, path: Path = ACTIVE_TICKER_SIGNAL_DEFAULT) -> None:
+    """The server's ONE write into the daemon's book-subscription decision."""
+    _write_json_signal("ticker", ticker, path=path)
+
+
+def read_active_ticker_signal(*, path: Path = ACTIVE_TICKER_SIGNAL_DEFAULT) -> str | None:
+    """The daemon's read of the server's requested active ticker."""
+    return _read_json_signal("ticker", path=path)
+
+
+def write_active_option_contract_signal(
+    contract_symbol: str, *, path: Path = ACTIVE_OPTION_CONTRACT_SIGNAL_DEFAULT,
+) -> None:
+    """The server's ONE write into the daemon's options-subscription decision.
+    `contract_symbol` MUST be a chain response's own "symbol" field — never constructed
+    here (see the module-level ACTIVE_OPTION_CONTRACT_SIGNAL_DEFAULT comment)."""
+    _write_json_signal("contract_symbol", contract_symbol, path=path)
+
+
+def read_active_option_contract_signal(
+    *, path: Path = ACTIVE_OPTION_CONTRACT_SIGNAL_DEFAULT,
+) -> str | None:
+    """The daemon's read of the server's requested active option contract."""
+    return _read_json_signal("contract_symbol", path=path)
 
 
 def print_msg(*, symbol: str, price=None, size=None, exchange=None, conditions=None,
@@ -239,6 +309,17 @@ class HealthRegistry:
         return any(v["state"] in ("STALE", "DOWN") for v in self.report(now).values())
 
 
+class CoverageWriteError(Exception):
+    """A durable coverage-epoch write did not land.
+
+    Raised, not swallowed, so a caller advancing IN-MEMORY subscription state (e.g. the
+    daemon's option_state["contract"]) can gate that advance on the durable record
+    actually being written — memory must never claim coverage the epoch table never
+    recorded, or a reader trusting the epoch table would see a coverage window that was
+    never actually live.
+    """
+
+
 class CaptureWriter:
     """Single writer draining bus subscriptions into stream_capture.db in batches.
 
@@ -302,6 +383,15 @@ class CaptureWriter:
                 (msg.get("ts_recv"), msg.get("symbol"), msg.get("service"),
                  json.dumps(content),
                  msg.get("src", "?")))  # caps-ok: src is a required kwarg on book_msg (no default); same guard as the quote branch above
+        elif kind == "optquote":
+            content = msg.get("content")
+            if content is None:
+                return
+            self._conn.execute(
+                "INSERT INTO stream_options_quotes_raw(ts_recv,symbol,native_json,src) "
+                "VALUES(?,?,?,?)",
+                (msg.get("ts_recv"), msg.get("symbol"), json.dumps(content),
+                 msg.get("src", "?")))  # caps-ok: src is a required kwarg on options_quote_msg (no default); same guard as the quote branch above
         elif kind == "print":
             self._conn.execute(
                 "INSERT INTO stream_prints_raw(ts_recv,symbol,price,size,exchange,conditions,"
@@ -323,6 +413,34 @@ class CaptureWriter:
     def commit(self) -> None:
         self._conn.commit()
         self.commits += 1
+
+    def open_coverage_epoch(self, symbol: str, service: str, *, reason: str,
+                            ts: float | None = None) -> int:
+        """Immediately committed, not batched: this is a low-frequency state transition
+        where correctness (durably recording WHEN a subscription started) matters more
+        than throughput. Returns the new epoch's row id."""
+        t = ts if ts is not None else time.time()
+        try:
+            cur = self._conn.execute(
+                "INSERT INTO stream_coverage_epochs(symbol,service,started_ts,reason) "
+                "VALUES(?,?,?,?)", (symbol, service, t, reason))
+            self._conn.commit()
+            return cur.lastrowid
+        except Exception as e:
+            raise CoverageWriteError(f"open_coverage_epoch({symbol},{service}): {e}") from e
+
+    def close_coverage_epoch(self, epoch_id: int, *, reason: str,
+                             ts: float | None = None) -> None:
+        """Idempotent: only an OPEN epoch (ended_ts IS NULL) is closed, so a duplicate
+        close call cannot overwrite an already-recorded end time."""
+        t = ts if ts is not None else time.time()
+        try:
+            self._conn.execute(
+                "UPDATE stream_coverage_epochs SET ended_ts=?, reason=? "
+                "WHERE id=? AND ended_ts IS NULL", (t, reason, epoch_id))
+            self._conn.commit()
+        except Exception as e:
+            raise CoverageWriteError(f"close_coverage_epoch({epoch_id}): {e}") from e
 
     def _insert_guarded(self, topic: str, msg: Any) -> int:
         """1 if a row landed; insert failures are COUNTED, never kill the writer

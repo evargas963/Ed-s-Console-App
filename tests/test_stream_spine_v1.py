@@ -13,13 +13,17 @@ from stream_spine import (
     COALESCE,
     COUNT_DROPS,
     CaptureWriter,
+    CoverageWriteError,
     HealthRegistry,
     MessageBus,
     bar_msg,
     book_msg,
+    options_quote_msg,
     print_msg,
     quote_msg,
+    read_active_option_contract_signal,
     read_active_ticker_signal,
+    write_active_option_contract_signal,
     write_active_ticker_signal,
 )
 
@@ -174,6 +178,132 @@ def test_book_msg_with_no_content_is_not_inserted(tmp_path):
     w.close()
     con = sqlite3.connect(db)
     assert con.execute("SELECT COUNT(*) FROM stream_book_raw").fetchone()[0] == 0
+
+
+#: Real content shape from the live-proven probe (reports/of_capability_probe/
+#: options_20260820T1354Z/frames/LEVELONE_OPTIONS_001_decoded.json) — not invented.
+_REAL_LEVELONE_OPTIONS_CONTENT = {
+    "key": "SPY   260820C00767000", "delayed": False, "assetMainType": "OPTION",
+    "DESCRIPTION": "SPY 08/20/2026 767.00 C", "BID_PRICE": 1.26, "ASK_PRICE": 1.28,
+    "LAST_PRICE": 1.27, "OPEN_INTEREST": 2097, "VOLATILITY": 16.50358958,
+    "DELTA": 0.45644607, "GAMMA": 0.1165604, "THETA": -1.17543886, "VEGA": 0.08171809,
+    "DAYS_TO_EXPIRATION": 0, "CONTRACT_TYPE": "C", "UNDERLYING": "SPY",
+}
+
+#: Real content shape from OPTIONS_BOOK_001_decoded.json — per-MM/exchange depth.
+_REAL_OPTIONS_BOOK_CONTENT = {
+    "key": "SPY   260820C00767000", "BOOK_TIME": 1787234093764,
+    "BIDS": [{"BID_PRICE": 1.28, "TOTAL_VOLUME": 1746, "NUM_BIDS": 12,
+             "BIDS": [{"EXCHANGE": "NYSE", "BID_VOLUME": 262, "SEQUENCE": 35693547}]}],
+    "ASKS": [{"ASK_PRICE": 1.3, "TOTAL_VOLUME": 1533, "NUM_ASKS": 10,
+             "ASKS": [{"EXCHANGE": "EDGX", "ASK_VOLUME": 346, "SEQUENCE": 35693726}]}],
+}
+
+
+def test_options_quote_content_stored_verbatim_never_flattened(tmp_path):
+    db = tmp_path / "stream_capture.db"
+    w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
+    w.insert("optquote.SPY   260820C00767000", options_quote_msg(
+        symbol="SPY   260820C00767000", content=_REAL_LEVELONE_OPTIONS_CONTENT,
+        src="schwab_options_l1", ts_recv=1.0))
+    w.commit()
+    w.close()
+    con = sqlite3.connect(db)
+    row = con.execute(
+        "SELECT symbol, native_json, src FROM stream_options_quotes_raw").fetchone()
+    assert row[0] == "SPY   260820C00767000" and row[2] == "schwab_options_l1"
+    assert json.loads(row[1]) == _REAL_LEVELONE_OPTIONS_CONTENT
+
+
+def test_options_quote_with_no_content_is_not_inserted(tmp_path):
+    db = tmp_path / "stream_capture.db"
+    w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
+    w.insert("optquote.SPY", {"ts_recv": 1.0, "symbol": "SPY", "content": None, "src": "t"})
+    w.commit()
+    w.close()
+    con = sqlite3.connect(db)
+    assert con.execute("SELECT COUNT(*) FROM stream_options_quotes_raw").fetchone()[0] == 0
+
+
+def test_options_book_reuses_the_generic_book_table_by_service(tmp_path):
+    """OPTIONS_BOOK needs no new table — stream_book_raw is already service-discriminated
+    (NASDAQ_BOOK/NYSE_BOOK/OPTIONS_BOOK all coexist by `service` value)."""
+    db = tmp_path / "stream_capture.db"
+    w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
+    w.insert("book.SPY   260820C00767000", book_msg(
+        symbol="SPY   260820C00767000", service="OPTIONS_BOOK",
+        content=_REAL_OPTIONS_BOOK_CONTENT, src="schwab_options_book", ts_recv=1.0))
+    w.commit()
+    w.close()
+    con = sqlite3.connect(db)
+    row = con.execute(
+        "SELECT symbol, service, native_json FROM stream_book_raw").fetchone()
+    assert row[1] == "OPTIONS_BOOK"
+    assert json.loads(row[2]) == _REAL_OPTIONS_BOOK_CONTENT
+
+
+def test_coverage_epoch_open_then_close_records_both_timestamps(tmp_path):
+    db = tmp_path / "stream_capture.db"
+    w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
+    epoch_id = w.open_coverage_epoch("SPY   260820C00767000", "LEVELONE_OPTIONS",
+                                     reason="active_contract_set", ts=1.0)
+    w.close_coverage_epoch(epoch_id, reason="active_contract_switched", ts=5.0)
+    con = sqlite3.connect(db)
+    row = con.execute(
+        "SELECT symbol, service, started_ts, ended_ts, reason "
+        "FROM stream_coverage_epochs WHERE id=?", (epoch_id,)).fetchone()
+    w.close()
+    assert row == ("SPY   260820C00767000", "LEVELONE_OPTIONS", 1.0, 5.0,
+                   "active_contract_switched")
+
+
+def test_coverage_epoch_open_leaves_ended_ts_null(tmp_path):
+    """A gap after an OPEN epoch with no close is interpretable as 'still subscribed,
+    vendor silent' — never confused with 'not subscribed' (NULL ended_ts is the marker)."""
+    db = tmp_path / "stream_capture.db"
+    w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
+    epoch_id = w.open_coverage_epoch("SPY", "OPTIONS_BOOK", reason="active_contract_set", ts=1.0)
+    con = sqlite3.connect(db)
+    row = con.execute(
+        "SELECT ended_ts FROM stream_coverage_epochs WHERE id=?", (epoch_id,)).fetchone()
+    w.close()
+    assert row[0] is None
+
+
+def test_coverage_epoch_close_is_idempotent_never_overwrites_first_close(tmp_path):
+    db = tmp_path / "stream_capture.db"
+    w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
+    epoch_id = w.open_coverage_epoch("SPY", "LEVELONE_OPTIONS", reason="x", ts=1.0)
+    w.close_coverage_epoch(epoch_id, reason="first_close", ts=5.0)
+    w.close_coverage_epoch(epoch_id, reason="second_close_must_not_land", ts=99.0)
+    con = sqlite3.connect(db)
+    row = con.execute(
+        "SELECT ended_ts, reason FROM stream_coverage_epochs WHERE id=?",
+        (epoch_id,)).fetchone()
+    w.close()
+    assert row == (5.0, "first_close")
+
+
+def test_coverage_epoch_write_failure_raises_not_swallowed(tmp_path):
+    """CoverageWriteError must be RAISED so a caller advancing in-memory subscription
+    state can gate that advance on the durable write actually landing — a silent failure
+    here would let memory claim coverage the epoch table never recorded."""
+    db = tmp_path / "stream_capture.db"
+    w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
+    w.close()   # connection is now closed; any further write must fail
+    with pytest.raises(CoverageWriteError):
+        w.open_coverage_epoch("SPY", "LEVELONE_OPTIONS", reason="x")
+
+
+def test_active_option_contract_signal_round_trips(tmp_path):
+    p = tmp_path / "stream_active_option_contract.json"
+    write_active_option_contract_signal("spy   260820c00767000", path=p)
+    assert read_active_option_contract_signal(path=p) == "SPY   260820C00767000"
+
+
+def test_active_option_contract_signal_absent_is_none(tmp_path):
+    p = tmp_path / "does_not_exist.json"
+    assert read_active_option_contract_signal(path=p) is None
 
 
 def test_active_ticker_signal_round_trips(tmp_path):
