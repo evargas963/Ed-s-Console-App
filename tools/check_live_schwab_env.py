@@ -34,10 +34,14 @@ _NON_LIVE_SCHWAB_VALUES = frozenset(
     }
 )
 
+# Only CI/offline/test contamination that makes schwab_live_blocked_for() true
+# via ED_CI_OFFLINE or that marks a GitHub-Actions/agent shell. Do NOT strip
+# harness flags (ED_CONSOLE_ALLOW_NONCANONICAL_DB) or live SCHWAB_* values —
+# those are not Schwab-offline contamination (pytest-full 33283969383: stripping
+# the DB harness flag on an xdist worker failed 23 unrelated EdDB tests).
 _STRIP_ALWAYS = (
     "ED_CI_OFFLINE",
     "CI",
-    "ED_CONSOLE_ALLOW_NONCANONICAL_DB",
 )
 
 
