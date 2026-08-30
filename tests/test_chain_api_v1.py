@@ -5,44 +5,24 @@ stored-chain reader terrain/radar/order-flow-microstructure already use. This fi
 the route serves Schwab's native per-contract fields verbatim (no reshaping), fails closed
 to an empty contracts list when nothing is stored, and derives `expiry` from the contracts
 actually present rather than fabricating it.
+
+Uses the REAL captured chain in tests/fixtures/real_spy_0dte_chain_with_poison.json (40
+live SPY contracts pulled from data/ed_console.db) rather than hand-built contract dicts —
+institutional_correctness's no_synthetic_domain_fixtures_in_tests gate requires real chain
+data for this domain.
 """
 
 from __future__ import annotations
 
-_SPY_CALL_CONTRACT = {
-    "symbol": "SPY   260820C00767000",
-    "putCall": "CALL",
-    "strikePrice": 767.0,
-    "bid": 1.26,
-    "ask": 1.28,
-    "last": 1.27,
-    "delta": 0.45644607,
-    "gamma": 0.02911,
-    "theta": -0.31,
-    "vega": 0.19,
-    "volatility": 12.4,
-    "openInterest": 2097,
-    "totalVolume": 44994,
-    "expirationDate": "2026-08-20 00:00:00.0",
-    "daysToExpiration": 12,
-}
-_SPY_PUT_CONTRACT = {
-    "symbol": "SPY   260820P00767000",
-    "putCall": "PUT",
-    "strikePrice": 767.0,
-    "bid": 1.10,
-    "ask": 1.14,
-    "last": 1.12,
-    "delta": -0.44,
-    "gamma": 0.02911,
-    "theta": -0.30,
-    "vega": 0.19,
-    "volatility": 12.6,
-    "openInterest": 1850,
-    "totalVolume": 30112,
-    "expirationDate": "2026-08-20 00:00:00.0",
-    "daysToExpiration": 12,
-}
+import json
+from pathlib import Path
+
+_FIXTURE = json.loads(
+    (Path(__file__).parent / "fixtures" / "real_spy_0dte_chain_with_poison.json")
+    .read_text(encoding="utf-8")
+)
+_REAL_CONTRACTS = _FIXTURE["chain"]
+_REAL_SPOT = _FIXTURE["spot"]
 
 
 def test_chain_fails_closed_with_no_stored_chain(monkeypatch):
@@ -61,25 +41,24 @@ def test_chain_fails_closed_with_no_stored_chain(monkeypatch):
 
 
 def test_chain_serves_real_stored_contracts_verbatim(monkeypatch):
-    """Not a synthetic shortcut: proves the route serializes Schwab's native per-contract
-    dict AS-IS (same keys _latest_chain_and_spot's real callers — terrain_engine,
-    order_flow_engine consumers — already read: symbol/putCall/strikePrice/delta/gamma/
-    openInterest/totalVolume), never a reshaped or invented schema."""
+    """Proves the route serializes Schwab's native per-contract dicts AS-IS — the same real
+    captured chain _latest_chain_and_spot's real callers already read — never a reshaped or
+    invented schema."""
     import server as srv
     from starlette.testclient import TestClient
 
-    contracts = [_SPY_CALL_CONTRACT, _SPY_PUT_CONTRACT]
-    monkeypatch.setattr(srv, "_latest_chain_and_spot", lambda t: (contracts, 765.43))
+    monkeypatch.setattr(srv, "_latest_chain_and_spot",
+                        lambda t: (_REAL_CONTRACTS, _REAL_SPOT))
     with TestClient(srv.app) as client:
         r = client.get("/api/chain", params={"ticker": "SPY"})
         assert r.status_code == 200
         body = r.json()
         assert body["ticker"] == "SPY"
-        assert body["spot"] == 765.43
+        assert body["spot"] == _REAL_SPOT
         assert body["status"] == "ok"
-        assert body["contracts"] == contracts   # byte-for-byte pass-through, no reshaping
-        syms = {c["symbol"] for c in body["contracts"]}
-        assert syms == {"SPY   260820C00767000", "SPY   260820P00767000"}
+        assert body["contracts"] == _REAL_CONTRACTS   # byte-for-byte pass-through
+        assert len(body["contracts"]) == 40
+        assert "SPY   260717C00734000" in {c["symbol"] for c in body["contracts"]}
 
 
 def test_chain_derives_expiry_from_contracts_not_fabricated(monkeypatch):
@@ -87,10 +66,10 @@ def test_chain_derives_expiry_from_contracts_not_fabricated(monkeypatch):
     from starlette.testclient import TestClient
 
     monkeypatch.setattr(srv, "_latest_chain_and_spot",
-                        lambda t: ([_SPY_CALL_CONTRACT], 765.43))
+                        lambda t: (_REAL_CONTRACTS, _REAL_SPOT))
     with TestClient(srv.app) as client:
         r = client.get("/api/chain", params={"ticker": "SPY"})
-        assert r.json()["expiry"] == "2026-08-20"
+        assert r.json()["expiry"] == _REAL_CONTRACTS[0]["expirationDate"][:10]
 
 
 def test_chain_uppercases_and_strips_ticker(monkeypatch):
