@@ -496,59 +496,145 @@ def make_options_quote_handler(bus: MessageBus, health: HealthRegistry, stats: C
     return handler
 
 
-async def _apply_active_option_contract_subs(stream, current: str | None, *,
-                                             writer=None, epoch_state: dict | None = None) -> str | None:
-    """Diff the server's requested active OPTION CONTRACT against the currently
-    subscribed one; unsub the old, sub the new. Same bounded-key shape as the equity book
-    poll: at most ONE contract carries LEVELONE_OPTIONS + OPTIONS_BOOK at a time (2
-    services x 1 contract = 2 keys), independent of anything else the daemon watches.
+def _add_pending_close(epoch_state: dict, key: str, epoch_id: int) -> None:
+    pending = epoch_state.setdefault(f"{key}_pending_close", set())
+    pending.add(epoch_id)
+
+
+def _try_close_one(writer, epoch_state: dict, key: str, epoch_id: int, *, reason: str) -> bool:
+    """Attempt one close; a failure MOVES the id into the pending-close set rather than
+    dropping it — close_coverage_epoch is idempotent (only touches ended_ts IS NULL rows),
+    so retrying a call that actually landed is always safe."""
+    try:
+        writer.close_coverage_epoch(epoch_id, reason=reason)
+        return True
+    except CoverageWriteError as e:
+        print(f"coverage epoch close failed ({key}={epoch_id}, retry pending): {e}")
+        _add_pending_close(epoch_state, key, epoch_id)
+        return False
+
+
+def _close_coverage_epoch_tracked(writer, epoch_state: dict, key: str, *, reason: str) -> None:
+    """Close the CURRENT epoch for `key` (epoch_state[key]), if any. On failure the id
+    moves into a per-key pending-close set instead of being discarded — retried by
+    _retry_pending_epoch_closes on every later reconciliation tick until it durably
+    closes. NEVER silently forgets an epoch id: an unclosed epoch would permanently
+    misreport an ended coverage window as still open (the exact class of bug this
+    function exists to prevent — see CoverageWriteError's own docstring)."""
+    epoch_id = epoch_state.get(key)
+    epoch_state[key] = None
+    if epoch_id is None:
+        return
+    _try_close_one(writer, epoch_state, key, epoch_id, reason=reason)
+
+
+def _open_coverage_epoch_tracked(writer, epoch_state: dict, key: str, symbol: str,
+                                 service: str, *, reason: str) -> None:
+    """Open one durable coverage epoch. On failure epoch_state[key] stays None, so the
+    caller must not treat `symbol` as durably covered for `service` this tick — retried
+    on the next reconciliation tick, never assumed."""
+    try:
+        epoch_state[key] = writer.open_coverage_epoch(symbol, service, reason=reason)
+    except CoverageWriteError as e:
+        print(f"coverage epoch open failed ({key}={symbol}, retry pending): {e}")
+        epoch_state[key] = None
+
+
+def _retry_pending_epoch_closes(writer, epoch_state: dict, key: str, *, reason: str) -> None:
+    """Retry any previously-failed epoch closes for `key` — called every reconciliation
+    tick so a transient durable-write outage self-heals without operator action, and a
+    stuck epoch never silently sits open forever."""
+    pending_key = f"{key}_pending_close"
+    pending = epoch_state.get(pending_key)
+    if not pending:
+        return
+    still_open = {eid for eid in pending
+                 if not _try_close_one(writer, epoch_state, key, eid, reason=reason)}
+    epoch_state[pending_key] = still_open
+
+
+async def _reconcile_option_service(stream, held: str | None, requested: str | None, *,
+                                    subs_fn, unsubs_fn, writer, epoch_state: dict | None,
+                                    epoch_key: str, service_name: str) -> str | None:
+    """Reconcile ONE Schwab option service (LEVELONE_OPTIONS or OPTIONS_BOOK)
+    independently of the other — they are two SEPARATE vendor operations, not a
+    transactional pair, so one succeeding while the other fails must not be collapsed
+    into a single all-or-nothing outcome (the old code returned the STALE `current` on
+    any exception, discarding a real vendor-side success and inviting a duplicate
+    subscribe on the next tick). Returns the symbol now actually held at the vendor for
+    THIS service (None if none) — vendor-held truth advances only on a confirmed vendor
+    ack, durable coverage-epoch truth (epoch_state[epoch_key]) advances only on a
+    confirmed sqlite write, and neither is ever assumed from the other."""
+    if held != requested:
+        if held is not None:
+            try:
+                await unsubs_fn([held])
+                held = None
+            except Exception as e:
+                print(f"{service_name} unsub {held} failed, retry pending: {e}")
+                # Unknown true vendor state for `held` — do not also attempt a
+                # subscribe this tick (would risk two live keys for one service under
+                # this repo's one-contract-at-a-time budget design). Retried next tick.
+                return held
+            # The old vendor-held symbol is gone — its coverage window ends HERE,
+            # independent of whether a new subscribe below succeeds this same tick. Close
+            # it now rather than deferring to the bottom reconciliation block below, which
+            # only closes when the FINAL `held` is None — a same-tick switch (A -> B)
+            # would otherwise never observe "A's epoch needs closing" as its own step.
+            if writer is not None and epoch_state is not None:
+                _close_coverage_epoch_tracked(writer, epoch_state, epoch_key,
+                                              reason="active_contract_changed")
+        if requested is not None and held is None:
+            try:
+                await subs_fn([requested])
+                held = requested
+                print(f"{service_name} subscribed -> {requested}")
+            except Exception as e:
+                print(f"{service_name} sub {requested} failed, retry pending: {e}")
+                # held stays None; retried next tick without a stale duplicate-sub risk.
+    if writer is not None and epoch_state is not None:
+        _retry_pending_epoch_closes(writer, epoch_state, epoch_key, reason="retry_pending_close")
+        if held is not None:
+            if epoch_state.get(epoch_key) is None:
+                _open_coverage_epoch_tracked(writer, epoch_state, epoch_key, held,
+                                             service_name, reason="active_contract_set")
+        else:
+            _close_coverage_epoch_tracked(writer, epoch_state, epoch_key,
+                                          reason="active_contract_changed")
+    return held
+
+
+async def _apply_active_option_contract_subs(stream, contract_state: dict, *,
+                                             writer=None, epoch_state: dict | None = None) -> dict:
+    """Diff the server's requested active OPTION CONTRACT against what is currently held,
+    PER SERVICE (LEVELONE_OPTIONS and OPTIONS_BOOK reconciled independently — see
+    _reconcile_option_service). Same bounded-key shape as the equity book poll: at most
+    ONE contract carries each service at a time (2 services x 1 contract = 2 keys),
+    independent of anything else the daemon watches.
 
     `requested` MUST already be a chain response's own "symbol" field (enforced by
     stream_spine.write_active_option_contract_signal's caller, not re-validated here) —
     a bare ticker was PROVEN to fail this exact subscribe call ("no option symbol from
     chain", reports/of_schwab_live_capability_matrix_20260820.md).
 
-    ``writer``/``epoch_state``: when given, durably records COVERAGE EPOCHS (which
-    windows this contract was actually subscribed) — mutated in place
-    ({"l1": epoch_id|None, "book": epoch_id|None}) so a gap in stream_options_quotes_raw
-    is later interpretable as "not subscribed" vs "subscribed, vendor silent". Optional:
-    tests exercising only the subscribe-diff behavior can omit both."""
+    ``contract_state``: {"l1": symbol|None, "book": symbol|None} — the symbol currently
+    held AT THE VENDOR for each service; mutated in place and returned. ``writer``/
+    ``epoch_state``: when given, durably records COVERAGE EPOCHS (which windows this
+    contract was actually subscribed, per service) — mutated in place ({"l1": epoch_id|
+    None, "book": epoch_id|None} plus retry-tracking keys) so a gap in
+    stream_options_quotes_raw is later interpretable as "not subscribed" vs "subscribed,
+    vendor silent". Optional: tests exercising only the subscribe-diff behavior can omit
+    both."""
     requested = read_active_option_contract_signal()
-    if requested == current:
-        return current
-    if current:
-        try:
-            await stream.level_one_option_unsubs([current])
-            await stream.options_book_unsubs([current])
-        except Exception as e:
-            print(f"options unsub {current}: {e}")
-        if writer is not None and epoch_state is not None:
-            try:
-                if epoch_state.get("l1") is not None:
-                    writer.close_coverage_epoch(epoch_state["l1"], reason="active_contract_changed")
-                if epoch_state.get("book") is not None:
-                    writer.close_coverage_epoch(epoch_state["book"], reason="active_contract_changed")
-            except CoverageWriteError as e:
-                print(f"coverage epoch close failed: {e}")
-            epoch_state["l1"] = epoch_state["book"] = None
-    if requested:
-        try:
-            await stream.level_one_option_subs([requested])
-            await stream.options_book_subs([requested])
-            print(f"options subscribed active contract -> {requested}")
-        except Exception as e:
-            print(f"options sub {requested}: {e}")
-            return current
-        if writer is not None and epoch_state is not None:
-            try:
-                epoch_state["l1"] = writer.open_coverage_epoch(
-                    requested, "LEVELONE_OPTIONS", reason="active_contract_set")
-                epoch_state["book"] = writer.open_coverage_epoch(
-                    requested, "OPTIONS_BOOK", reason="active_contract_set")
-            except CoverageWriteError as e:
-                print(f"coverage epoch open failed: {e}")
-                epoch_state["l1"] = epoch_state["book"] = None
-    return requested
+    contract_state["l1"] = await _reconcile_option_service(
+        stream, contract_state.get("l1"), requested,
+        subs_fn=stream.level_one_option_subs, unsubs_fn=stream.level_one_option_unsubs,
+        writer=writer, epoch_state=epoch_state, epoch_key="l1", service_name="LEVELONE_OPTIONS")
+    contract_state["book"] = await _reconcile_option_service(
+        stream, contract_state.get("book"), requested,
+        subs_fn=stream.options_book_subs, unsubs_fn=stream.options_book_unsubs,
+        writer=writer, epoch_state=epoch_state, epoch_key="book", service_name="OPTIONS_BOOK")
+    return contract_state
 
 
 async def _active_option_contract_poll_loop(get_stream, get_current, set_current,
@@ -658,9 +744,9 @@ async def _run_locked(symbols: list[str], duration_min: float, db_path: str | No
 
 async def _schwab_connect(state, symbols, bus, health, stats, stop, active_book_ticker=None,
                           active_option_contract=None, writer=None, epoch_state=None):
-    """Fresh Schwab stream: login + handlers + subs -> (stream, running pump task).
-    Used at start AND by the half-open watchdog (a recycle is a clean rebuild —
-    never an attempt to resuscitate a dead StreamClient).
+    """Fresh Schwab stream: login + handlers + subs -> (stream, running pump task,
+    option_contract_state). Used at start AND by the half-open watchdog (a recycle is a
+    clean rebuild — never an attempt to resuscitate a dead StreamClient).
 
     ``active_book_ticker`` / ``active_option_contract``: re-apply these subscriptions
     immediately after connecting — a fresh StreamClient carries no subscriptions, so a
@@ -670,7 +756,12 @@ async def _schwab_connect(state, symbols, bus, health, stats, stop, active_book_
     ``writer``/``epoch_state``: when given, opens a NEW options coverage epoch for
     ``active_option_contract`` (a stream recycle genuinely ends the old subscription
     window, however briefly — the caller is responsible for closing the epoch that died
-    with the old stream before calling this)."""
+    with the old stream before calling this).
+
+    The returned ``option_contract_state`` ({"l1": symbol|None, "book": symbol|None})
+    reflects what ACTUALLY got resubscribed per service — a partial failure (e.g.
+    LEVELONE_OPTIONS resubscribes but OPTIONS_BOOK errors) must not be reported to the
+    caller as a uniform success on both services."""
     from schwab.streaming import StreamClient
 
     stream = StreamClient(state.client)
@@ -694,29 +785,27 @@ async def _schwab_connect(state, symbols, bus, health, stats, stop, active_book_
             print(f"book resubscribed active ticker -> {active_book_ticker} (post-reconnect)")
         except Exception as e:
             print(f"book resub {active_book_ticker} after reconnect: {e}")
+    option_contract_state = {"l1": None, "book": None}
     if active_option_contract:
-        try:
-            await stream.level_one_option_subs([active_option_contract])
-            await stream.options_book_subs([active_option_contract])
-            print(f"options resubscribed active contract -> {active_option_contract} "
-                  f"(post-reconnect)")
-            if writer is not None and epoch_state is not None:
-                try:
-                    epoch_state["l1"] = writer.open_coverage_epoch(
-                        active_option_contract, "LEVELONE_OPTIONS", reason="stream_reconnect")
-                    epoch_state["book"] = writer.open_coverage_epoch(
-                        active_option_contract, "OPTIONS_BOOK", reason="stream_reconnect")
-                except CoverageWriteError as e:
-                    print(f"coverage epoch open failed (post-reconnect): {e}")
-                    epoch_state["l1"] = epoch_state["book"] = None
-        except Exception as e:
-            print(f"options resub {active_option_contract} after reconnect: {e}")
+        # A fresh StreamClient holds nothing (held=None for both services) — reconciles
+        # through the SAME per-service function the normal poll tick uses, so a partial
+        # failure here (e.g. LEVELONE_OPTIONS resubscribes but OPTIONS_BOOK errors) gets
+        # the identical per-service-truth handling instead of a duplicated, coarser
+        # all-or-nothing block. The ACTUAL per-service outcome is captured, never assumed.
+        option_contract_state["l1"] = await _reconcile_option_service(
+            stream, None, active_option_contract,
+            subs_fn=stream.level_one_option_subs, unsubs_fn=stream.level_one_option_unsubs,
+            writer=writer, epoch_state=epoch_state, epoch_key="l1", service_name="LEVELONE_OPTIONS")
+        option_contract_state["book"] = await _reconcile_option_service(
+            stream, None, active_option_contract,
+            subs_fn=stream.options_book_subs, unsubs_fn=stream.options_book_unsubs,
+            writer=writer, epoch_state=epoch_state, epoch_key="book", service_name="OPTIONS_BOOK")
 
     async def pump() -> None:
         while not stop.is_set():
             await stream.handle_message()
 
-    return stream, asyncio.create_task(pump())
+    return stream, asyncio.create_task(pump()), option_contract_state
 
 
 async def _run_streaming(symbols, duration_min, bus, health, stats,
@@ -729,12 +818,16 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
     book_state: dict = {"stream": None, "ticker": None}
     #: Same shared-dict shape, for the options-contract poll loop — a SEPARATE signal
     #: (stream_active_option_contract.json) and a separate pair of Schwab services, so it
-    #: is tracked independently rather than folded into book_state.
-    option_state: dict = {"stream": None, "contract": None}
+    #: is tracked independently rather than folded into book_state. "contract" holds the
+    #: symbol currently held AT THE VENDOR per service ({"l1": symbol|None, "book":
+    #: symbol|None}) — the two services are reconciled independently (see
+    #: _reconcile_option_service) since one can subscribe while the other fails.
+    option_state: dict = {"stream": None, "contract": {"l1": None, "book": None}}
     #: Durable coverage-epoch row ids for the CURRENTLY active option contract — mutated
     #: by _apply_active_option_contract_subs / _schwab_connect's reconnect-reapply.
     option_epoch_state: dict = {"l1": None, "book": None}
-    stream, pump_task = await _schwab_connect(state, symbols, bus, health, stats, stop)
+    stream, pump_task, option_state["contract"] = await _schwab_connect(
+        state, symbols, bus, health, stats, stop)
     book_state["stream"] = stream
     option_state["stream"] = stream
     # CR-02 prints leg — optional co-producer on the SAME bus/writer/health.
@@ -763,18 +856,22 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
                 book_state["stream"] = None   # poll loop must not use the dying stream
                 option_state["stream"] = None
                 # The dying stream's subscription window genuinely ends here — close its
-                # coverage epochs now, before the reconnect attempt (which may itself fail
-                # and retry next tick; the epoch table must not claim coverage through a
-                # window we know the socket was down for).
-                if option_state["contract"] is not None:
-                    try:
-                        if option_epoch_state.get("l1") is not None:
-                            writer.close_coverage_epoch(option_epoch_state["l1"], reason="stream_recycle")
-                        if option_epoch_state.get("book") is not None:
-                            writer.close_coverage_epoch(option_epoch_state["book"], reason="stream_recycle")
-                    except CoverageWriteError as exc:
-                        print(f"coverage epoch close failed (recycle): {exc}")
-                    option_epoch_state["l1"] = option_epoch_state["book"] = None
+                # coverage epochs now (tracked: a failed close moves the id into a
+                # pending-close retry set rather than being forgotten — see
+                # _close_coverage_epoch_tracked), before the reconnect attempt (which may
+                # itself fail and retry next tick; the epoch table must not claim coverage
+                # through a window we know the socket was down for). The vendor-held
+                # bookkeeping is reset too — a fresh stream holds nothing regardless of
+                # what the dying one held.
+                _retry_pending_epoch_closes(writer, option_epoch_state, "l1", reason="stream_recycle")
+                _retry_pending_epoch_closes(writer, option_epoch_state, "book", reason="stream_recycle")
+                _close_coverage_epoch_tracked(writer, option_epoch_state, "l1", reason="stream_recycle")
+                _close_coverage_epoch_tracked(writer, option_epoch_state, "book", reason="stream_recycle")
+                # The RECONNECT TARGET is the operator's current desired symbol, read fresh
+                # from the signal file — not the (about-to-be-discarded) per-service held
+                # state, which may be stale or partially set from a prior partial failure.
+                reconnect_option_contract = read_active_option_contract_signal()
+                option_state["contract"] = {"l1": None, "book": None}
                 pump_task.cancel()
                 try:
                     await pump_task
@@ -783,10 +880,10 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
                 except Exception as exc:  # noqa: BLE001 — recycle path; reported
                     print(f"watchdog: old pump ended with {type(exc).__name__}: {exc}")
                 try:
-                    stream, pump_task = await _schwab_connect(
+                    stream, pump_task, option_state["contract"] = await _schwab_connect(
                         state, symbols, bus, health, stats, stop,
                         active_book_ticker=book_state["ticker"],
-                        active_option_contract=option_state["contract"],
+                        active_option_contract=reconnect_option_contract,
                         writer=writer, epoch_state=option_epoch_state)
                     book_state["stream"] = stream
                     option_state["stream"] = stream
@@ -803,14 +900,21 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
                                  extra_producers=(alpaca_task, book_poll_task, option_poll_task))
         # A clean exit ends the option contract's coverage window too — an OPEN epoch
         # surviving process exit would misreport coverage through a period the daemon
-        # was not even running.
-        try:
-            if option_epoch_state.get("l1") is not None:
-                writer.close_coverage_epoch(option_epoch_state["l1"], reason="shutdown")
-            if option_epoch_state.get("book") is not None:
-                writer.close_coverage_epoch(option_epoch_state["book"], reason="shutdown")
-        except CoverageWriteError as exc:
-            print(f"coverage epoch close failed (shutdown): {exc}")
+        # was not even running. Tracked closes: a failure here still moves the id into
+        # the pending-close set rather than discarding it — on the NEXT daemon start,
+        # reconcile_open_epochs_on_start-style startup reconciliation (or, absent that,
+        # the operator) can still find and close the never-cleanly-ended row rather than
+        # it being silently forgotten by this process's own bookkeeping alone.
+        _retry_pending_epoch_closes(writer, option_epoch_state, "l1", reason="shutdown")
+        _retry_pending_epoch_closes(writer, option_epoch_state, "book", reason="shutdown")
+        _close_coverage_epoch_tracked(writer, option_epoch_state, "l1", reason="shutdown")
+        _close_coverage_epoch_tracked(writer, option_epoch_state, "book", reason="shutdown")
+        for _key in ("l1", "book"):
+            _pending = option_epoch_state.get(f"{_key}_pending_close")
+            if _pending:
+                print(f"WARNING: shutdown leaves {len(_pending)} unclosed coverage "
+                      f"epoch(s) for {_key}: {sorted(_pending)} — durable write kept "
+                      f"failing; row(s) remain open in stream_coverage_epochs")
         writer.close()
         write_status(bus, health, writer, stats, max_qdepth)
         print(json.dumps({

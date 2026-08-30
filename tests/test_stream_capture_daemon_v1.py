@@ -182,7 +182,8 @@ _QQQ_CONTRACT = "QQQ   260820C00450000"
 
 def test_apply_active_option_contract_subs_switches_contract(tmp_path, monkeypatch):
     """Mirrors the equity-book diff test: subscribe the new contract, unsubscribe the
-    one it replaces, never both live at once."""
+    one it replaces, never both live at once. contract_state is per-service: both
+    services start held=SPY, both switch to held=QQQ."""
     p = tmp_path / "stream_active_option_contract.json"
     write_active_option_contract_signal(_QQQ_CONTRACT, path=p)
     monkeypatch.setattr("tools.run_stream_capture.read_active_option_contract_signal",
@@ -190,8 +191,9 @@ def test_apply_active_option_contract_subs_switches_contract(tmp_path, monkeypat
     stream = _FakeOptionStream()
 
     async def go():
-        new_cur = await _apply_active_option_contract_subs(stream, _SPY_CONTRACT)
-        assert new_cur == _QQQ_CONTRACT
+        state = {"l1": _SPY_CONTRACT, "book": _SPY_CONTRACT}
+        new_state = await _apply_active_option_contract_subs(stream, state)
+        assert new_state == {"l1": _QQQ_CONTRACT, "book": _QQQ_CONTRACT}
         assert ("l1_option_unsub", (_SPY_CONTRACT,)) in stream.calls
         assert ("options_book_unsub", (_SPY_CONTRACT,)) in stream.calls
         assert ("l1_option_sub", (_QQQ_CONTRACT,)) in stream.calls
@@ -205,8 +207,9 @@ def test_apply_active_option_contract_subs_no_change_is_a_no_op(monkeypatch):
     stream = _FakeOptionStream()
 
     async def go():
-        new_cur = await _apply_active_option_contract_subs(stream, _SPY_CONTRACT)
-        assert new_cur == _SPY_CONTRACT
+        state = {"l1": _SPY_CONTRACT, "book": _SPY_CONTRACT}
+        new_state = await _apply_active_option_contract_subs(stream, state)
+        assert new_state == {"l1": _SPY_CONTRACT, "book": _SPY_CONTRACT}
         assert stream.calls == []
     asyncio.run(go())
 
@@ -217,8 +220,9 @@ def test_apply_active_option_contract_subs_first_activation_has_no_unsub(monkeyp
     stream = _FakeOptionStream()
 
     async def go():
-        new_cur = await _apply_active_option_contract_subs(stream, None)
-        assert new_cur == _SPY_CONTRACT
+        state = {"l1": None, "book": None}
+        new_state = await _apply_active_option_contract_subs(stream, state)
+        assert new_state == {"l1": _SPY_CONTRACT, "book": _SPY_CONTRACT}
         assert all(c[0] not in ("l1_option_unsub", "options_book_unsub")
                    for c in stream.calls)
     asyncio.run(go())
@@ -234,9 +238,10 @@ def test_apply_active_option_contract_subs_opens_coverage_epochs_on_activation(t
     epoch_state = {"l1": None, "book": None}
 
     async def go():
-        new_cur = await _apply_active_option_contract_subs(
-            stream, None, writer=writer, epoch_state=epoch_state)
-        assert new_cur == _SPY_CONTRACT
+        state = {"l1": None, "book": None}
+        new_state = await _apply_active_option_contract_subs(
+            stream, state, writer=writer, epoch_state=epoch_state)
+        assert new_state == {"l1": _SPY_CONTRACT, "book": _SPY_CONTRACT}
         assert epoch_state["l1"] is not None and epoch_state["book"] is not None
     asyncio.run(go())
     import sqlite3
@@ -264,9 +269,10 @@ def test_apply_active_option_contract_subs_closes_old_opens_new_on_switch(tmp_pa
     writer._conn.commit()
 
     async def go():
-        new_cur = await _apply_active_option_contract_subs(
-            stream, _SPY_CONTRACT, writer=writer, epoch_state=epoch_state)
-        assert new_cur == _QQQ_CONTRACT
+        state = {"l1": _SPY_CONTRACT, "book": _SPY_CONTRACT}
+        new_state = await _apply_active_option_contract_subs(
+            stream, state, writer=writer, epoch_state=epoch_state)
+        assert new_state == {"l1": _QQQ_CONTRACT, "book": _QQQ_CONTRACT}
     asyncio.run(go())
     import sqlite3
     con = sqlite3.connect(tmp_path / "cap.db")
@@ -360,6 +366,12 @@ class _FakeSchwabStreamClient:
     async def options_book_subs(self, syms):
         self.calls.append(("options_book_sub", tuple(syms)))
 
+    async def level_one_option_unsubs(self, syms):
+        self.calls.append(("l1_option_unsub", tuple(syms)))
+
+    async def options_book_unsubs(self, syms):
+        self.calls.append(("options_book_unsub", tuple(syms)))
+
     async def handle_message(self):
         await asyncio.sleep(3600)   # never resolves in a test; only cancellation ends it
 
@@ -380,7 +392,7 @@ def test_schwab_connect_registers_book_handlers_every_time():
     async def go(monkeypatch):
         _install_fake_schwab_streaming(monkeypatch)
         bus, health, stats, stop = MessageBus(), HealthRegistry(), CaptureStats(), asyncio.Event()
-        stream, task = await d._schwab_connect(SimpleNamespace(client=object()), ["SPY"], bus, health, stats, stop)
+        stream, task, _cs = await d._schwab_connect(SimpleNamespace(client=object()), ["SPY"], bus, health, stats, stop)
         task.cancel()
         try:
             await task
@@ -407,8 +419,8 @@ def test_schwab_connect_reapplies_active_book_ticker_after_reconnect():
     async def go(monkeypatch):
         _install_fake_schwab_streaming(monkeypatch)
         bus, health, stats, stop = MessageBus(), HealthRegistry(), CaptureStats(), asyncio.Event()
-        stream, task = await d._schwab_connect(SimpleNamespace(client=object()), ["SPY"], bus, health, stats, stop,
-                                               active_book_ticker="QQQ")
+        stream, task, _cs = await d._schwab_connect(SimpleNamespace(client=object()), ["SPY"], bus, health, stats, stop,
+                                                    active_book_ticker="QQQ")
         task.cancel()
         try:
             await task
@@ -432,7 +444,7 @@ def test_schwab_connect_reapplies_active_option_contract_after_reconnect():
     async def go(monkeypatch):
         _install_fake_schwab_streaming(monkeypatch)
         bus, health, stats, stop = MessageBus(), HealthRegistry(), CaptureStats(), asyncio.Event()
-        stream, task = await d._schwab_connect(
+        stream, task, contract_state = await d._schwab_connect(
             SimpleNamespace(client=object()), ["SPY"], bus, health, stats, stop,
             active_option_contract=_SPY_CONTRACT)
         task.cancel()
@@ -443,6 +455,7 @@ def test_schwab_connect_reapplies_active_option_contract_after_reconnect():
         assert "l1_option" in stream.handlers and "options_book" in stream.handlers
         assert ("l1_option_sub", (_SPY_CONTRACT,)) in stream.calls
         assert ("options_book_sub", (_SPY_CONTRACT,)) in stream.calls
+        assert contract_state == {"l1": _SPY_CONTRACT, "book": _SPY_CONTRACT}
 
     import pytest as _pt
     mp = _pt.MonkeyPatch()
@@ -461,14 +474,14 @@ def test_reconnect_replaces_stream_not_both_at_once():
     async def go(monkeypatch):
         _install_fake_schwab_streaming(monkeypatch)
         bus, health, stats, stop = MessageBus(), HealthRegistry(), CaptureStats(), asyncio.Event()
-        stream1, task1 = await d._schwab_connect(SimpleNamespace(client=object()), ["SPY"], bus, health, stats, stop)
+        stream1, task1, _cs1 = await d._schwab_connect(SimpleNamespace(client=object()), ["SPY"], bus, health, stats, stop)
         task1.cancel()
         try:
             await task1
         except asyncio.CancelledError:
             pass
-        stream2, task2 = await d._schwab_connect(SimpleNamespace(client=object()), ["SPY"], bus, health, stats, stop,
-                                                 active_book_ticker="SPY")
+        stream2, task2, _cs2 = await d._schwab_connect(SimpleNamespace(client=object()), ["SPY"], bus, health, stats, stop,
+                                                       active_book_ticker="SPY")
         task2.cancel()
         try:
             await task2

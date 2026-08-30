@@ -33,6 +33,7 @@ import logging
 import sqlite3
 import time
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 from typing import Any, Callable, Optional
 
 from instrument_identity import ticker_storage_key
@@ -86,6 +87,54 @@ _on_tick_callback: Optional[Callable[[str], None]] = None
 
 STREAMING_STALE_MS = 25_000.0
 GRACE_AFTER_SUBSCRIBE_SEC = 8.0
+
+#: FRESHNESS/HEALTH SEMANTIC AUDIT (OPTIONS_ORDER_FLOW_V1, 2026-08-30): this module's own
+#: streaming_connected/streaming_healthy answer ONE question — "is my local read-only DB-
+#: poll task alive, and did a row land in stream_capture.db recently" — which is a PROXY
+#: for daemon health, not the daemon's Schwab-socket truth itself. A stale row sitting in
+#: the DB could let this proxy read "healthy" while the daemon's actual upstream Schwab
+#: connection for that exact service has gone dark; the reverse is also possible right
+#: after a fresh daemon (re)connect, before this module's poll has caught up. The daemon
+#: itself already computes the REAL truth per Schwab service (stream_spine.HealthRegistry,
+#: fed by health.beat() calls inside the actual message handlers in tools/
+#: run_stream_capture.py) and writes it to STATUS_PATH every ~10s — but nothing ever read
+#: it back into the UI-facing diagnostics until now. "local DB poll task exists" must never
+#: masquerade as "Schwab stream connected" — _read_daemon_upstream_health is the ground
+#: truth for that distinct question, surfaced as its own field, never blended into
+#: streaming_healthy.
+_DAEMON_STATUS_PATH = Path(__file__).resolve().parent / "reports" / "stream_capture_status.json"
+#: The daemon's write_status() loop runs on a 10s cadence — 3x that as a liveness bound on
+#: the STATUS FILE ITSELF (not the per-service health it carries): if the file hasn't been
+#: touched this recently, the daemon PROCESS may be dead, and every entry inside a dead
+#: process's last-written snapshot would be lying about "recent" if trusted at face value.
+_DAEMON_STATUS_STALE_SEC = 30.0
+
+
+def _read_daemon_upstream_health(services: tuple[str, ...]) -> dict[str, dict]:
+    """Ground truth for "is the Schwab websocket itself actually connected and receiving
+    frames for these services" — read from the CANONICAL DAEMON's own status file, never
+    derived from this module's local replay state. Fails closed to state='UNKNOWN' (never
+    fabricates 'RUNNING') on any read/parse failure, or when the status file's own
+    last-write timestamp is stale enough that the daemon PROCESS itself may not be
+    running — a per-service health entry from a dead process's last snapshot is not
+    'current' just because the JSON happens to still say RUNNING."""
+    try:
+        status = json.loads(_DAEMON_STATUS_PATH.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {s: {"state": "UNKNOWN", "age_sec": None} for s in services}
+    status_ts = status.get("ts")
+    status_age = (time.time() - status_ts) if isinstance(status_ts, (int, float)) else None
+    if status_age is None or status_age > _DAEMON_STATUS_STALE_SEC:
+        return {s: {"state": "UNKNOWN", "age_sec": None,
+                    "daemon_status_stale_sec": status_age} for s in services}
+    health = status.get("health")
+    health = health if isinstance(health, dict) else {}
+    out: dict[str, dict] = {}
+    for s in services:
+        entry = health.get(s)
+        out[s] = ({"state": entry.get("state"), "age_sec": entry.get("age_sec")}
+                  if isinstance(entry, dict) else {"state": "UNKNOWN", "age_sec": None})
+    return out
 
 
 def _log_stream(phase: str, **kwargs: Any) -> None:
@@ -155,6 +204,10 @@ def get_streaming_diagnostics() -> dict[str, Any]:
         "streaming_last_update_ts": last,
         "streaming_staleness_ms": stale_ms,
         "streaming_healthy": _streaming_healthy(),
+        # Ground truth for the Schwab socket itself (see _read_daemon_upstream_health's
+        # docstring) — distinct from streaming_healthy above, which only proves this
+        # module's own local DB-poll replay is alive and recently updated.
+        "daemon_upstream_health": _read_daemon_upstream_health(("LEVELONE_EQUITIES",)),
     }
 
 
@@ -401,6 +454,13 @@ def get_option_contract_streaming_diagnostics() -> dict[str, Any]:
         "streaming_last_update_ts": last,
         "streaming_staleness_ms": stale_ms,
         "streaming_healthy": _option_streaming_healthy(),
+        # Ground truth for the Schwab socket itself, per service — distinct from
+        # streaming_healthy above (this module's local replay proxy). A fresh LEVELONE_
+        # OPTIONS quote does not imply a fresh OPTIONS_BOOK if the book service has
+        # stopped: the two are reported SEPARATELY, never collapsed into one flag, so a
+        # consumer cannot mistake one service's freshness for the other's.
+        "daemon_upstream_health": _read_daemon_upstream_health(
+            ("LEVELONE_OPTIONS", "OPTIONS_BOOK")),
     }
 
 
