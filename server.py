@@ -14546,37 +14546,121 @@ def get_expiries(ticker: str = Query(default=DEFAULT_TICKER)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+#: OPTIONS_ORDER_FLOW_V1 completeness repair (2026-08-30, operator-directed): the analytical
+#: chain faucet (resolve_chain_strike_count, max 120) bounds strikes AROUND ATM per ticker's
+#: gamma/terrain needs and is explicitly allowed to stay narrow for that purpose — but
+#: /api/chain is a CONTRACT-SELECTION surface, and a UI reading a narrow analytical snapshot
+#: as if it were the complete chain silently hides real, tradeable contracts. MEASURED live
+#: 2026-08-30 (TSLA, SPY, real Schwab data, not synthetic): a strike_count=20 fetch for TSLA's
+#: nearest expiry returned 40 contracts spanning 325.0-372.5; the SAME expiry with
+#: strike_count=250 AND the [sel,sel] single-expiry date window (the identical safe-
+#: partitioning trick RC-494/_chain_to_date_for already proved live for index tickers,
+#: generalized here to any ticker) returned 236 contracts spanning 160.0-630.0 — 98 real
+#: strikes the bounded fetch never showed, in 0.34s, no vendor error. SPY (a much heavier
+#: book) at strike_count=250 across two different expiries returned 388/330 contracts in
+#: 0.59s/0.48s, also clean. This is SAFE BY CONSTRUCTION, not by luck: this repo's own
+#: measured 502s (SPY/QQQ at strikeCount>=150, $SPX at 80-100) were ALL multi-expiry requests
+#: (strikeCount * 2 sides * ~35-55 expiries in ONE response, server.py:11090-11091) —
+#: bounding one request to exactly ONE expiry via from_date=to_date caps its contract
+#: ceiling at strike_count*2 regardless of expiry count, staying an order of magnitude under
+#: SCHWAB_CHAIN_CONTRACT_BUDGET=6600 even at strike_count=250.
+COMPLETE_CHAIN_STRIKE_COUNT = 250
+
+
 @app.get("/api/chain")
-def get_chain(ticker: str = Query(default=DEFAULT_TICKER)):
-    """CONTRACT-SELECTION surface: real per-contract chain rows for one ticker, so a UI can
-    let an operator pick one option contract and pass its `symbol` straight to POST
+def get_chain(ticker: str = Query(default=DEFAULT_TICKER),
+              expiry: Optional[str] = Query(default=None)):
+    """CONTRACT-SELECTION surface: the COMPLETE real vendor contract set for one ticker and
+    one expiry — every strike Schwab actually lists, not a bounded analytical window — so a
+    UI can let an operator pick one option contract and pass its `symbol` straight to POST
     /api/streaming/active-option-contract or GET /api/order-flow/options-microstructure —
     the same "chain response's own symbol field, never constructed" rule those two routes
     already document.
 
-    SERIALIZER, not a second producer: delegates to _latest_chain_and_spot, the SAME stored-
-    chain reader terrain/radar/order-flow-microstructure already use — no new Schwab fetch
-    here, no reshaping. Each contract row is Schwab's native per-contract dict verbatim
-    (symbol, putCall, strikePrice, bid, ask, last, delta, gamma, theta, vega, volatility,
-    openInterest, totalVolume, expirationDate, daysToExpiration, ...).
+    COMPLETE, separate from the bounded analytical chain views: fetches LIVE, scoped to
+    exactly one expiry (see the COMPLETE_CHAIN_STRIKE_COUNT comment above for the measured
+    safety case), through _gated_safe_get_chain — the SAME single, rate-limited, coalesced
+    chain-fetch faucet every other chain read in this file already uses (RC-59/RC-127/
+    Cursor-audit F2's chain_width_single_faucet invariant) — never a second, ungated vendor-
+    call surface, and never a second per-contract parsing path (reuses
+    flatten_chain_contracts/chain_underlying_spot verbatim, same as every other chain
+    consumer). Every native Schwab field is served AS-IS — nothing here rounds, filters, or
+    reconstructs a strike from assumed spacing; fractional strikes (.50/.25/...) survive
+    exactly as the vendor sent them.
 
-    The stored chain covers ONE expiry at a time — whichever was last selected for this
-    ticker by the existing render/terrain paths, not a live multi-expiry fetch (see
-    /api/expiries for the full expiry list). Fails closed to an empty contracts list with
-    status='no_chain' if nothing has been stored yet for this ticker; never fabricates rows
-    for an expiry that was not actually captured."""
+    `expiry` optional: defaults to the ticker's nearest listed expiry (the SAME
+    _fetch_expiries_light faucet /api/expiries uses). `scope.kind` states EXACTLY what was
+    served: 'complete_single_expiry' on a live success — proven complete for that one
+    expiry, not the whole multi-expiry universe (a single synchronous HTTP request
+    completing the ENTIRE multi-expiry book is exactly the request shape that produced this
+    repo's measured 502s; one complete expiry per call is the honest, budget-safe unit).
+    ANY failure (vendor error, auth, gate timeout) fails closed to the last STORED
+    analytical snapshot (_latest_chain_and_spot, this endpoint's original sole source),
+    explicitly labeled scope.kind='stored_analytical_snapshot_fallback' so a caller can
+    never mistake a narrower fallback for a complete live fetch — bounded gamma/terrain
+    views remain legal for their own purpose, but this endpoint never lets one masquerade
+    as complete without saying so. status='no_chain' if even the fallback has nothing."""
     t = ticker.upper().strip()
     # TICKER-PREVIEW-NO-ENROLL: listing a chain is a VIEW — touch last-seen only.
     _touch_tracked_ticker_view(t)
+
+    resolved_expiry = (expiry or "").strip()[:10] or None
+    if resolved_expiry is None:
+        try:
+            exps = _fetch_expiries_light(t)
+            resolved_expiry = exps[0] if exps else None
+        except Exception as e:
+            log.debug("chain: expiry resolution failed for %s: %s", t, e)
+
+    if resolved_expiry is not None:
+        try:
+            d = date.fromisoformat(resolved_expiry)
+            client = get_client()
+            c_resp, _gate_wait, _fetch_sec = _gated_safe_get_chain(
+                client, t,
+                strike_count=COMPLETE_CHAIN_STRIKE_COUNT,   # chain-width-faucet-ok: contract-selection listing only, no level/gamma math computed from this fetch — deliberately a fixed WIDE single-expiry-scoped bound, not the per-ticker analytical width authority
+                from_date=d, to_date=d, priority=False)
+            if c_resp is not None and c_resp.status_code == 200:
+                c_json = c_resp.json()
+                spot, _spot_source, _spot_as_of = resolve_spot(t, chain_json=c_json)
+                contracts = flatten_chain_contracts(c_json)
+                # Defensive scope check — never trust the request alone to guarantee the
+                # response's own expirationDate matches what was actually asked for.
+                returned_exps = sorted({
+                    str(c.get("expirationDate") or "")[:10]
+                    for c in contracts if isinstance(c, dict) and c.get("expirationDate")
+                })
+                return JSONResponse({
+                    "ticker": t, "spot": spot, "expiry": resolved_expiry,
+                    "contracts": contracts, "status": "ok" if contracts else "no_chain",
+                    "scope": {"kind": "complete_single_expiry",
+                             "requested_expiry": resolved_expiry,
+                             "returned_expiries": returned_exps,
+                             "strike_count": COMPLETE_CHAIN_STRIKE_COUNT},
+                })
+            log.warning("chain: live fetch non-200 for %s expiry %s, falling back to "
+                       "stored snapshot", t, resolved_expiry)
+        except Exception as e:
+            log.warning("chain: live fetch failed for %s expiry %s (%s), falling back to "
+                       "stored snapshot", t, resolved_expiry, e)
+
     contracts, spot = _latest_chain_and_spot(t)
     if not contracts:
-        return JSONResponse({"ticker": t, "spot": spot, "expiry": None, "contracts": [], "status": "no_chain"})
-    expiry = None
+        return JSONResponse({"ticker": t, "spot": spot, "expiry": None, "contracts": [],
+                            "status": "no_chain",
+                            "scope": {"kind": "stored_analytical_snapshot_fallback"}})
+    stored_expiry = None
     for ct in contracts:
         if isinstance(ct, dict) and ct.get("expirationDate"):
-            expiry = str(ct["expirationDate"])[:10]
+            stored_expiry = str(ct["expirationDate"])[:10]
             break
-    return JSONResponse({"ticker": t, "spot": spot, "expiry": expiry, "contracts": contracts, "status": "ok"})
+    return JSONResponse({
+        "ticker": t, "spot": spot, "expiry": stored_expiry, "contracts": contracts,
+        "status": "ok",
+        "scope": {"kind": "stored_analytical_snapshot_fallback",
+                 "note": "bounded analytical snapshot, NOT proven complete — live "
+                         "complete-chain fetch was unavailable this request"},
+    })
 
 
 @app.get("/api/logger/status")
