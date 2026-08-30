@@ -11,6 +11,8 @@ computation for options.
 from __future__ import annotations
 
 import asyncio
+import threading
+import time
 
 import order_flow_live_state as ofls
 import order_flow_streaming as ofs
@@ -180,3 +182,134 @@ def test_feed_loop_replays_both_ticker_and_option_contract_independently(tmp_pat
 
     assert any(i.get("LAST_PRICE") == 450.0 for i in ofls.get_content_for_symbol("SPY"))
     assert any(i.get("LAST_PRICE") == 1.27 for i in ofls.get_content_for_symbol(_SPY_CONTRACT))
+
+
+def test_feed_loop_confines_every_db_touch_to_one_thread(tmp_path, monkeypatch):
+    """ROOT-CAUSE regression: sqlite3.Connection is thread-affine (check_same_thread=True).
+    _feed_loop used to route open+replay through the DEFAULT asyncio.to_thread executor,
+    which has multiple workers and no affinity guarantee between calls — reproduced as
+    "SQLite objects created in a thread can only be used in that same thread" under real
+    cross-call thread reuse (not synthetic). Proves the fix directly: every DB-touching
+    call across several poll ticks reports the SAME thread ident, not merely that no
+    exception happened to surface this run."""
+    db = _reset(tmp_path)
+    ofs._active_ticker = None
+    ofs._l1_cursor = {}
+    ofs._book_cursor = {}
+    monkeypatch.setattr(ofs, "STREAM_DB_DEFAULT", db)
+    monkeypatch.setattr("order_flow_streaming.write_active_ticker_signal", lambda *_a, **_k: None)
+    monkeypatch.setattr("order_flow_streaming.write_active_option_contract_signal", lambda *_a, **_k: None)
+    _write_option_l1_row(db, _SPY_CONTRACT, _REAL_LEVELONE_OPTIONS_CONTENT, ts_recv=1.0)
+
+    seen_idents: set[int] = set()
+    real_open = ofs._open_capture_db_readonly
+    real_replay = ofs._replay_option_contract_rows
+
+    def spy_open(*a, **k):
+        seen_idents.add(threading.get_ident())
+        return real_open(*a, **k)
+
+    def spy_replay(*a, **k):
+        seen_idents.add(threading.get_ident())
+        return real_replay(*a, **k)
+
+    monkeypatch.setattr(ofs, "_open_capture_db_readonly", spy_open)
+    monkeypatch.setattr(ofs, "_replay_option_contract_rows", spy_replay)
+
+    async def go():
+        ofs._feed_running = True
+        ofs.set_active_option_contract(_SPY_CONTRACT)
+        task = asyncio.get_event_loop().create_task(ofs._feed_loop())
+        await asyncio.sleep(1.5)   # several POLL_INTERVAL_SEC=0.5 ticks -> several to_thread calls
+        ofs._feed_running = False
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+    asyncio.run(go())
+
+    assert len(seen_idents) == 1, (
+        f"DB touches spanned {len(seen_idents)} threads — a shared sqlite3.Connection "
+        f"crossing threads is exactly the defect this test exists to catch")
+
+
+def _reset_option_feed_globals():
+    ofs._feed_running = False
+    ofs._active_option_contract = None
+    ofs._option_streaming_last_update_ts = None
+    ofs._option_last_subscribe_completed_ts = None
+    ofs._option_l1_cursor = {}
+    ofs._option_book_cursor = {}
+
+
+def test_option_contract_streaming_diagnostics_healthy_on_recent_tick():
+    """Mirrors get_streaming_diagnostics()'s own equity-side contract exactly, for the
+    independent option-contract slot: a recent update ts reads healthy with ~0 staleness."""
+    _reset_option_feed_globals()
+    ofs._feed_running = True
+    ofs._active_option_contract = _SPY_CONTRACT
+    ofs._option_streaming_last_update_ts = time.time()
+
+    diag = ofs.get_option_contract_streaming_diagnostics()
+    assert diag["streaming_connected"] is True
+    assert diag["option_contract"] == _SPY_CONTRACT
+    assert diag["streaming_healthy"] is True
+    assert diag["streaming_staleness_ms"] is not None
+    assert diag["streaming_staleness_ms"] < 1000.0
+
+
+def test_option_contract_streaming_diagnostics_stale_past_threshold():
+    """Past STREAMING_STALE_MS (25s) with no fresher tick, the contract must read
+    unhealthy — the same staleness gate the equity slot enforces."""
+    _reset_option_feed_globals()
+    ofs._feed_running = True
+    ofs._active_option_contract = _SPY_CONTRACT
+    ofs._option_streaming_last_update_ts = time.time() - 30.0
+
+    diag = ofs.get_option_contract_streaming_diagnostics()
+    assert diag["streaming_healthy"] is False
+    assert diag["streaming_staleness_ms"] >= 30_000.0
+
+
+def test_option_contract_streaming_diagnostics_grace_window_before_first_tick():
+    """Immediately after subscribing (no data yet), the grace window
+    (GRACE_AFTER_SUBSCRIBE_SEC=8s) must read healthy with a fabricated-zero staleness —
+    not unhealthy just because no tick has landed yet."""
+    _reset_option_feed_globals()
+    ofs._feed_running = True
+    ofs._active_option_contract = _SPY_CONTRACT
+    ofs._option_last_subscribe_completed_ts = time.time()
+
+    diag = ofs.get_option_contract_streaming_diagnostics()
+    assert diag["streaming_healthy"] is True
+    assert diag["streaming_staleness_ms"] == 0.0
+
+
+def test_option_contract_streaming_diagnostics_unhealthy_when_feed_not_running():
+    _reset_option_feed_globals()
+    ofs._feed_running = False
+    ofs._active_option_contract = _SPY_CONTRACT
+    ofs._option_streaming_last_update_ts = time.time()
+
+    diag = ofs.get_option_contract_streaming_diagnostics()
+    assert diag["streaming_connected"] is False
+    assert diag["streaming_healthy"] is False
+
+
+def test_option_contract_streaming_diagnostics_independent_of_equity_slot():
+    """The two diagnostics functions must read their own module-level state only — a
+    stale/dead equity ticker must not drag down a healthy option contract, and vice
+    versa, since the mission requires both to be watchable independently at once."""
+    _reset_option_feed_globals()
+    ofs._active_ticker = "SPY"
+    ofs._streaming_last_update_ts = time.time() - 60.0
+    ofs._last_subscribe_completed_ts = None
+    ofs._feed_running = True
+    ofs._active_option_contract = _SPY_CONTRACT
+    ofs._option_streaming_last_update_ts = time.time()
+
+    assert ofs._streaming_healthy() is False
+    assert ofs._option_streaming_healthy() is True
+    assert ofs.get_streaming_diagnostics()["streaming_healthy"] is False
+    assert ofs.get_option_contract_streaming_diagnostics()["streaming_healthy"] is True

@@ -13945,9 +13945,16 @@ def api_order_flow_options_microstructure(contract: str = Query(...)):
     c = (contract or "").strip()
     if not c:
         return JSONResponse({"error": "contract is required"}, status_code=400)
-    from order_flow_streaming import get_option_contract_book_microstructure
+    from order_flow_streaming import (
+        get_option_contract_book_microstructure,
+        get_option_contract_streaming_diagnostics,
+    )
     payload = get_option_contract_book_microstructure(c)
     payload["contract"] = c
+    try:
+        payload["streaming_plane"] = get_option_contract_streaming_diagnostics()
+    except Exception:  # diagnostics are informational only — never fail the book payload for them
+        payload["streaming_plane"] = {}
     return JSONResponse(payload)
 
 
@@ -13962,10 +13969,14 @@ async def post_streaming_active_option_contract(payload: dict = Body(default={})
         return JSONResponse({"ok": False, "error": "contract is required"}, status_code=400)
 
     def _apply():
-        from order_flow_streaming import set_active_option_contract
+        from order_flow_streaming import (
+            set_active_option_contract,
+            get_option_contract_streaming_diagnostics,
+        )
 
         ok = set_active_option_contract(c)
-        return {"ok": ok, "contract": c}
+        diag = get_option_contract_streaming_diagnostics()
+        return {"ok": ok, "contract": c, **diag}
     try:
         out = await asyncio.get_event_loop().run_in_executor(_get_fast_quote_executor(), _apply)
     except Exception as e:

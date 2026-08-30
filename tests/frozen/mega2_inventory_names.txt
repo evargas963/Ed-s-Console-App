@@ -228,10 +228,12 @@ order_flow_live_state.py::push_level_one
 order_flow_streaming.py::_feed_loop
 order_flow_streaming.py::_log_stream
 order_flow_streaming.py::_open_capture_db_readonly
+order_flow_streaming.py::_option_streaming_healthy
 order_flow_streaming.py::_replay_new_rows
 order_flow_streaming.py::_replay_option_contract_rows
 order_flow_streaming.py::_streaming_healthy
 order_flow_streaming.py::get_option_contract_book_microstructure
+order_flow_streaming.py::get_option_contract_streaming_diagnostics
 order_flow_streaming.py::get_plane_authority_for_ticker
 order_flow_streaming.py::get_stream_thread
 order_flow_streaming.py::get_streaming_diagnostics

@@ -65,7 +65,34 @@ def test_options_microstructure_serves_replayed_content(monkeypatch):
         assert body["contract"] == _SPY_CONTRACT
         assert body["status"] == "ok"
         assert body["depth"]["1"]["imbalance"] is not None
+        assert "streaming_plane" in body
+        assert "streaming_healthy" in body["streaming_plane"]
     ofls.clear_all_live_state()
+
+
+def test_options_microstructure_streaming_plane_reflects_real_diagnostics(monkeypatch):
+    """The inlined streaming_plane block is NOT a stub — it must carry the real, live
+    get_option_contract_streaming_diagnostics() state for the contract being served."""
+    import order_flow_streaming as ofs
+    import server as srv
+    from starlette.testclient import TestClient
+
+    ofs._feed_running = True
+    ofs._active_option_contract = _SPY_CONTRACT
+    ofs._option_streaming_last_update_ts = None
+    ofs._option_last_subscribe_completed_ts = None
+    try:
+        with TestClient(srv.app) as client:
+            r = client.get("/api/order-flow/options-microstructure",
+                           params={"contract": _SPY_CONTRACT})
+            assert r.status_code == 200
+            plane = r.json()["streaming_plane"]
+            assert plane["option_contract"] == _SPY_CONTRACT
+            assert plane["streaming_connected"] is True
+            assert plane["streaming_healthy"] is False   # no tick, no fresh subscribe grace
+    finally:
+        ofs._feed_running = False
+        ofs._active_option_contract = None
 
 
 def test_active_option_contract_post_requires_contract(monkeypatch):
@@ -90,6 +117,7 @@ def test_active_option_contract_post_calls_the_real_setter(monkeypatch):
         assert r.status_code == 200
         body = r.json()
         assert body["ok"] is True and body["contract"] == _SPY_CONTRACT
+        assert "streaming_healthy" in body
     assert calls == [_SPY_CONTRACT]
 
 

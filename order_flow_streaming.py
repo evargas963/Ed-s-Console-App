@@ -32,6 +32,7 @@ import json
 import logging
 import sqlite3
 import time
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Callable, Optional
 
 from instrument_identity import ticker_storage_key
@@ -72,13 +73,14 @@ _book_cursor: dict[str, float] = {}
 #: The one option CONTRACT (OSI symbol) whose LEVELONE_OPTIONS/OPTIONS_BOOK rows this feed
 #: replays — a SEPARATE slot from _active_ticker (an equity ticker and an option contract
 #: on that same underlying can be watched at once; they are different symbol identities in
-#: every table and signal file). No staleness/authority state machine here: order-flow
-#: semantic products are a display-adjacent concern already governed by the SAME fail-
-#: closed content-presence rule compute_book_microstructure already enforces (no book
-#: snapshot -> status 'no_book', never a fabricated value).
+#: every table and signal file).
 _active_option_contract: Optional[str] = None
 _option_l1_cursor: dict[str, float] = {}
 _option_book_cursor: dict[str, float] = {}
+#: Own staleness clock, separate from the equity ticker's — an option contract watched
+#: alongside a ticker must be able to go stale (or come up fresh) independently.
+_option_streaming_last_update_ts: Optional[float] = None
+_option_last_subscribe_completed_ts: Optional[float] = None
 
 _on_tick_callback: Optional[Callable[[str], None]] = None
 
@@ -222,6 +224,7 @@ def _replay_option_contract_rows(con: sqlite3.Connection, contract_symbol: str) 
     BID_PRICE/ASK_PRICE/LAST_PRICE/LAST_SIZE/TOTAL_VOLUME/TRADE_TIME_MILLIS for L1;
     BIDS/ASKS/BOOK_TIME for book. No new plane, no new ingest function — the SAME producer
     order_flow_live_state already is, called with a different symbol."""
+    global _option_streaming_last_update_ts
     l1_since = _option_l1_cursor.get(contract_symbol, 0.0)
     rows = con.execute(
         "SELECT ts_recv, native_json FROM stream_options_quotes_raw "
@@ -233,6 +236,7 @@ def _replay_option_contract_rows(con: sqlite3.Connection, contract_symbol: str) 
         except (TypeError, ValueError):
             continue
         push_level_one(contract_symbol, item)
+        _option_streaming_last_update_ts = time.time()
         _option_l1_cursor[contract_symbol] = ts_recv
 
     book_since = _option_book_cursor.get(contract_symbol, 0.0)
@@ -250,24 +254,38 @@ def _replay_option_contract_rows(con: sqlite3.Connection, contract_symbol: str) 
 
 
 async def _feed_loop() -> None:
+    """A sqlite3.Connection is THREAD-AFFINE (check_same_thread=True by default) — it may
+    only be touched from the OS thread that created it. This loop opens ONE read-only
+    connection and reuses it across every poll tick's two replay calls, but the default
+    executor `asyncio.to_thread` schedules onto (min(32, cpu_count+4) worker threads with
+    no affinity guarantee between calls — a real defect, not a test artifact: measured via
+    a genuinely flaky integration test ("SQLite objects created in a thread can only be
+    used in that same thread") that reproduced under real cross-call thread reuse, not a
+    synthetic shortcut. Fixed at the root: every DB touch in this loop's lifetime — open
+    AND both replay calls — runs on a DEDICATED single-worker executor, so `con` never
+    crosses threads. The executor is scoped to this loop's own lifetime, not module-level,
+    so a start/stop/restart cycle never risks a stale worker thread from a prior run."""
     global _feed_running
     con: Optional[sqlite3.Connection] = None
+    executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="daemon-plane-feed-db")
+    loop = asyncio.get_event_loop()
     try:
         while _feed_running:
             if con is None:
-                con = await asyncio.to_thread(_open_capture_db_readonly)
+                con = await loop.run_in_executor(executor, _open_capture_db_readonly)
             tkr = _active_ticker
             contract = _active_option_contract
             if con is not None and (tkr or contract):
                 try:
                     if tkr:
-                        await asyncio.to_thread(_replay_new_rows, con, tkr)
+                        await loop.run_in_executor(executor, _replay_new_rows, con, tkr)
                     if contract:
-                        await asyncio.to_thread(_replay_option_contract_rows, con, contract)
+                        await loop.run_in_executor(
+                            executor, _replay_option_contract_rows, con, contract)
                 except sqlite3.Error as e:
                     log.warning("daemon plane feed: db read failed, reopening: %s", e)
                     try:
-                        con.close()
+                        await loop.run_in_executor(executor, con.close)
                     except sqlite3.Error:
                         pass
                     con = None
@@ -275,9 +293,10 @@ async def _feed_loop() -> None:
     finally:
         if con is not None:
             try:
-                con.close()
+                await loop.run_in_executor(executor, con.close)
             except sqlite3.Error:
                 pass
+        executor.shutdown(wait=False)
         _log_stream("FEED_LOOP_STOP_DONE")
 
 
@@ -310,7 +329,7 @@ def set_active_option_contract(contract_symbol: str) -> bool:
     field (see stream_spine.ACTIVE_OPTION_CONTRACT_SIGNAL_DEFAULT) — never constructed
     here. A separate slot from the equity active ticker: the daemon adds its own
     subscription on its own poll cadence (stream_active_option_contract.json)."""
-    global _active_option_contract
+    global _active_option_contract, _option_last_subscribe_completed_ts, _option_streaming_last_update_ts
     t = ticker_storage_key(contract_symbol)
     if not t:
         return False
@@ -322,6 +341,8 @@ def set_active_option_contract(contract_symbol: str) -> bool:
         clear_symbol(old)
     write_active_option_contract_signal(t)
     _active_option_contract = t
+    _option_last_subscribe_completed_ts = time.time()
+    _option_streaming_last_update_ts = None
     log.info("Live-plane feed active option contract -> %s", t)
     _log_stream("OPTION_CONTRACT_RESUBSCRIBE_DONE", contract=t)
     return True
@@ -340,6 +361,47 @@ def get_option_contract_book_microstructure(contract_symbol: str) -> dict:
     t = ticker_storage_key(contract_symbol)
     content = get_content_for_symbol(t) if t else []
     return compute_book_microstructure({"content": content}, ticker=t)
+
+
+def _option_streaming_healthy() -> bool:
+    if not (_feed_running and _active_option_contract):
+        return False
+    now = time.time()
+    if _option_streaming_last_update_ts is not None:
+        return (now - _option_streaming_last_update_ts) * 1000.0 <= STREAMING_STALE_MS
+    if (_option_last_subscribe_completed_ts is not None
+            and (now - _option_last_subscribe_completed_ts) < GRACE_AFTER_SUBSCRIBE_SEC):
+        return True
+    return False
+
+
+def get_option_contract_streaming_diagnostics() -> dict[str, Any]:
+    """FRESHNESS/HEALTH for the option-contract feed — the SAME shape as
+    get_streaming_diagnostics(), mirrored for the separate option-contract slot. Answers
+    "is the daemon actually subscribed and receiving data for this contract", distinct
+    from get_option_contract_book_microstructure's book-CONTENT-level ages/status (which
+    answer "how stale is the replayed book itself"). Both distinctions matter: a feed can
+    be streaming_healthy=True with status='no_book' (subscribed, market simply has not
+    sent a book frame yet) as legitimately as it can be streaming_healthy=False with a
+    perfectly fresh cached book (the feed died after its last good frame)."""
+    now = time.time()
+    last = _option_streaming_last_update_ts
+    stale_ms: Optional[float]
+    if last is not None:
+        stale_ms = max(0.0, (now - last) * 1000.0)
+    elif (_option_last_subscribe_completed_ts is not None
+          and (now - _option_last_subscribe_completed_ts) < GRACE_AFTER_SUBSCRIBE_SEC):
+        stale_ms = 0.0
+    else:
+        stale_ms = None
+
+    return {
+        "streaming_connected": bool(_feed_running),
+        "option_contract": _active_option_contract,
+        "streaming_last_update_ts": last,
+        "streaming_staleness_ms": stale_ms,
+        "streaming_healthy": _option_streaming_healthy(),
+    }
 
 
 def start_order_flow_stream(
@@ -371,12 +433,13 @@ STREAM_THREAD_JOIN_TIMEOUT_SEC = 35.0
 
 def stop_order_flow_stream(*, join_timeout: float = STREAM_THREAD_JOIN_TIMEOUT_SEC) -> None:
     global _feed_running, _feed_task, _streaming_last_update_ts, _active_ticker
-    global _active_option_contract
+    global _active_option_contract, _option_streaming_last_update_ts
     _log_stream("STREAM_THREAD_JOIN_START", join_timeout_sec=join_timeout)
     _feed_running = False
     _streaming_last_update_ts = None
     _active_ticker = None
     _active_option_contract = None
+    _option_streaming_last_update_ts = None
     clear_all_live_state()
     task = _feed_task
     if task is not None and not task.done():
