@@ -148,6 +148,48 @@ def engineered_features_missing_withheld_wall_distances(
             return True
     return False
 
+
+# cf_vwap_distance_pct encodes absence as 0.0 — the same float as spot==VWAP. The trained
+# encoder cannot distinguish those states (REQUIRES_RETRAIN to change the vector). Fail-closed
+# authorization instead withholds directional authority when canonical session VWAP is absent,
+# without mutating the artifact's numeric contract (RC-435 class: gate on producer presence).
+CF_VWAP_DISTANCE_PCT_FEATURE = "cf_vwap_distance_pct"
+
+
+def canonical_session_vwap_present(vwap) -> bool:
+    """Same presence predicate as ``lstm_data.compute_confluence_features`` VWAP branch."""
+    from numeric_contract import float_positive_or_none
+
+    return float_positive_or_none(vwap) is not None
+
+
+def feature_list_requires_cf_vwap_distance(feature_names: list | None) -> bool:
+    if not feature_names:
+        return False
+    return CF_VWAP_DISTANCE_PCT_FEATURE in feature_names
+
+
+def should_abstain_missing_session_vwap_for_cf(
+    *,
+    session_vwap,
+    feature_names: list | None = None,
+    consumes_cf_vwap: bool | None = None,
+) -> bool:
+    """True → serving head must return None (no directional contribution).
+
+    Gate on raw session VWAP presence, never on ``cf_vwap_distance_pct == 0.0``
+    (genuine zero distance is a legitimate model input when VWAP is present).
+    """
+    requires = (
+        bool(consumes_cf_vwap)
+        if consumes_cf_vwap is not None
+        else feature_list_requires_cf_vwap_distance(feature_names)
+    )
+    if not requires:
+        return False
+    return not canonical_session_vwap_present(session_vwap)
+
+
 # -- Model path helpers ----------------------------------------------------------
 def model_path(
     ticker: str,

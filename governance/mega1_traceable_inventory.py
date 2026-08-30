@@ -491,6 +491,7 @@ MEGA1_TRACEABLE_INVENTORY: tuple[Mega1TraceableDerivation, ...] = (
     Mega1TraceableDerivation("snapshot_normalizer.py", 492, "load_normalized_rows", "ALLOWLISTED", None, (), 'mega1_sqlite_internal', "Reads persisted snapshot SQLite rows, not Schwab wire JSON (load_normalized_rows)."),
     Mega1TraceableDerivation("snapshot_normalizer.py", 517, "run_full_materialization", "NONE", None, (), None, "No market-field derivation: CLI orchestration materialize+validate."),
     Mega1TraceableDerivation("snapshot_normalizer.py", 531, "backfill_price_action_columns", "NONE", None, (), None, "No market-field derivation: No Schwab market-field derivation in function body."),
+    Mega1TraceableDerivation("snapshot_normalizer.py", 676, "null_pa_vwap_zscore_roll_contamination", "NONE", None, (), None, "No market-field derivation: NULLs pa_vwap_zscore where session vwap is absent (roll-fallback contamination repair); no Schwab wire derivation."),
     Mega1TraceableDerivation("snapshot_normalizer.py", 539, "_print_ingestion_context", "NONE", None, (), None, "No market-field derivation: Diagnostic print helper."),
     Mega1TraceableDerivation("sse_adapter.py", 24, "SSEBarStream.connect", "NONE", None, (), None, "No market-field derivation: Abstract transport contract; no Schwab read."),
     Mega1TraceableDerivation("sse_adapter.py", 29, "SSEBarStream.disconnect", "NONE", None, (), None, "No market-field derivation: Abstract transport contract; no Schwab read."),

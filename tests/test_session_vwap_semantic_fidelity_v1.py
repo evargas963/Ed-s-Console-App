@@ -147,8 +147,13 @@ def test_zero_volume_rth_bar_does_not_create_session_vwap() -> None:
     assert count_session_rth_positive_volume_bars(bars, FRIDAY) == 0
 
 
-def test_lstm_cf_vwap_still_encodes_absence_as_zero_requires_retrain() -> None:
-    """Active LSTM contract: missing session VWAP and true zero distance are both 0.0."""
+def test_lstm_cf_vwap_encoder_still_cannot_distinguish_absence_from_zero() -> None:
+    """Encoder limit remains: missing session VWAP and true zero distance are both 0.0.
+
+    Production directional authority is closed separately by
+    ``should_abstain_missing_session_vwap_for_cf`` (raw session VWAP presence), which
+    does not change this trained numeric representation.
+    """
     ts = datetime(2026, 8, 28, 10, 0, tzinfo=ET).timestamp()
     absent = compute_confluence_features(
         [{"ts_utc": ts, "spot": 500.0, "vwap": None}], 0,

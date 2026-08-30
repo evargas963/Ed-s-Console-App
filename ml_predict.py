@@ -1059,6 +1059,7 @@ def _predict_xgb(
             apply_xgb_imputation_matrix,
             engineer_single_snapshot,
             engineered_features_missing_withheld_wall_distances,
+            should_abstain_missing_session_vwap_for_cf,
         )
 
         if xgb_pre_engineering_snapshot is not None:
@@ -1092,6 +1093,16 @@ def _predict_xgb(
         ):
             logger.info(
                 "XGBoost %s: abstain — structurally withheld OI/vanna wall distance missing",
+                ticker,
+            )
+            return None
+        if should_abstain_missing_session_vwap_for_cf(
+            session_vwap=snap.get("vwap"),
+            feature_names=reg["feature_names"],
+        ):
+            logger.info(
+                "XGBoost %s: abstain — session VWAP absent while feature contract "
+                "includes cf_vwap_distance_pct",
                 ticker,
             )
             return None
@@ -1207,6 +1218,7 @@ def _predict_xgb_movement_heads(
                 apply_xgb_imputation_matrix,
                 engineer_single_snapshot,
                 engineered_features_missing_withheld_wall_distances,
+                should_abstain_missing_session_vwap_for_cf,
             )
 
             if _m5_snap_cached is None:
@@ -1231,6 +1243,11 @@ def _predict_xgb_movement_heads(
             x_raw = X.values.astype(np.float64)
             if engineered_features_missing_withheld_wall_distances(
                 x_raw[0], reg["feature_names"]
+            ):
+                continue
+            if should_abstain_missing_session_vwap_for_cf(
+                session_vwap=snap.get("vwap"),
+                feature_names=reg["feature_names"],
             ):
                 continue
             impute = reg["meta"].get("impute_medians") or {}
@@ -1433,6 +1450,32 @@ def _predict_lstm(
         ):
             logger.info(
                 "LSTM %s: abstain — structurally withheld OI/vanna wall distance missing",
+                ticker,
+            )
+            return None
+
+        from ml_train import should_abstain_missing_session_vwap_for_cf
+
+        _cf_idx = CONFLUENCE_FEATURES.index("cf_vwap_distance_pct")
+        _mask_conf_probe = np.array(
+            checkpoint.get("mask_conf", [True] * len(CONFLUENCE_FEATURES)),
+            dtype=bool,
+        )
+        _consumes_cf_vwap = (
+            _cf_idx < _mask_conf_probe.shape[0] and bool(_mask_conf_probe[_cf_idx])
+        )
+        _sess_vwap = None
+        if snapshot is not None:
+            _sess_vwap = snapshot.get("vwap") if isinstance(snapshot, dict) else getattr(snapshot, "vwap", None)
+        if _sess_vwap is None and merged_window:
+            _sess_vwap = merged_window[-1].get("vwap")
+        if should_abstain_missing_session_vwap_for_cf(
+            session_vwap=_sess_vwap,
+            consumes_cf_vwap=_consumes_cf_vwap,
+        ):
+            logger.info(
+                "LSTM %s: abstain — session VWAP absent while confluence contract "
+                "includes cf_vwap_distance_pct",
                 ticker,
             )
             return None
