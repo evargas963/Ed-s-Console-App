@@ -941,6 +941,7 @@ class PriceLevels:
 
     # Meta
     bars_today:   int             = 0      # Number of 1-min bars for today
+    session_rth_positive_volume_bars: int = 0  # same-session RTH bars with volume (VWAP input)
     error:        str             = ""
 
     # Phase 2A carriage identity — WHICH canonical snapshot these values came out of.
@@ -1037,6 +1038,9 @@ def fetch_price_levels(
         pl.today_poc, pl.today_vah, pl.today_val = (
             carried["TODAY_POC"], carried["TODAY_VAH"], carried["TODAY_VAL"])
         pl.bars_today = snap.bars_used
+        pl.session_rth_positive_volume_bars = int(
+            getattr(snap, "session_rth_positive_volume_bars", 0) or 0
+        )
         pl.level_generation = snap.generation
         pl.level_semantic_scope = "session_rth"
         pl.level_as_of_ts_utc = snap.as_of_ts_utc

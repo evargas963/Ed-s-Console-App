@@ -7124,10 +7124,34 @@ def _fetch_state(
             )
             if price_levels.error:
                 log.warning(f"PriceLevels: {ticker} partial error: {price_levels.error}")
-            if price_levels.vwap is None and price_levels.bars_today > 0:
-                log.warning(f"PriceLevels: {ticker} has {price_levels.bars_today} bars but VWAP is None")
+            from liquidity_value_engine import (
+                SESSION_VWAP_RTH_PRODUCER_FAILURE,
+                classify_session_vwap_presence,
+            )
+            _vwap_status = classify_session_vwap_presence(
+                vwap=price_levels.vwap,
+                session_date=now_et.date(),
+                now_et_dt=now_et,
+                session_rth_positive_volume_bars=int(
+                    getattr(price_levels, "session_rth_positive_volume_bars", 0) or 0
+                ),
+            )
+            if _vwap_status == SESSION_VWAP_RTH_PRODUCER_FAILURE:
+                log.warning(
+                    "PriceLevels: %s RTH producer failure — %s same-session RTH volume bars "
+                    "but canonical session VWAP is None (generation=%s)",
+                    ticker,
+                    getattr(price_levels, "session_rth_positive_volume_bars", 0),
+                    getattr(price_levels, "level_generation", None),
+                )
             elif price_levels.vwap is not None:
                 log.debug(f"PriceLevels: {ticker} VWAP={price_levels.vwap:.2f} bars={price_levels.bars_today}")
+            else:
+                log.debug(
+                    "PriceLevels: %s session VWAP expected-absent (bars_today=%s rth_vol_bars=%s)",
+                    ticker, price_levels.bars_today,
+                    getattr(price_levels, "session_rth_positive_volume_bars", 0),
+                )
         except _LevelCarrierConflict:
             raise
         except Exception as e:
@@ -8244,18 +8268,33 @@ def _fetch_state(
                     _vwap = getattr(price_levels, "vwap", None)
                     _vwap_f = float(_vwap) if _vwap is not None else None
                     if _vwap_f is None:
-                        # Schwab index symbols ($SPX, $VIX, $NDX, etc.) don't carry intraday
-                        # volume data; VWAP (price × volume sum) cannot compute by definition.
-                        # Steady-state DEBUG for those; WARNING for real tickers.
+                        from liquidity_value_engine import (
+                            SESSION_VWAP_RTH_PRODUCER_FAILURE,
+                            classify_session_vwap_presence,
+                        )
                         _is_index_symbol = isinstance(ticker, str) and ticker.startswith("$")
-                        _vwap_log = log.debug if _is_index_symbol else log.warning
+                        _vwap_status = classify_session_vwap_presence(
+                            vwap=_vwap_f,
+                            session_date=_et_now.date(),
+                            now_et_dt=_et_now,
+                            session_rth_positive_volume_bars=int(
+                                getattr(price_levels, "session_rth_positive_volume_bars", 0) or 0
+                            ),
+                        )
+                        # Index symbols have no volume by definition; weekend/premarket
+                        # absence is expected. WARN only on genuine RTH producer failure.
+                        _vwap_log = (
+                            log.warning
+                            if (not _is_index_symbol and _vwap_status == SESSION_VWAP_RTH_PRODUCER_FAILURE)
+                            else log.debug
+                        )
                         _vwap_log(
-                            "VWAP absent for %s (canonical snapshot generation=%s) — writing NULL",
-                            ticker, getattr(price_levels, "level_generation", None),
+                            "VWAP absent for %s (canonical snapshot generation=%s status=%s) — writing NULL",
+                            ticker, getattr(price_levels, "level_generation", None), _vwap_status,
                         )
                     _vwap_dist = round(spot_f - _vwap_f, 4) if _vwap_f else None
     
-                    # VWAP side must follow the same vwap we persist (API VWAP or bar-derived fallback).
+                    # VWAP side follows the persisted canonical session VWAP (None stays None).
                     _row_vwap_side = getattr(ms, "vwap_side", None)
                     if _row_vwap_side is None:
                         _row_vwap_side = derive_vwap_side(spot_f, _vwap_f)

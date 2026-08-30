@@ -4,6 +4,16 @@ Canonical 1m signal layer (v1) — bar-only features for directional structure.
 All features use completed 1m bars with bar_end_ts_utc <= decision_ts_utc (no lookahead).
 VWAP/session fields from SignalInput are aligned to decision time (same clock as refresh_ts_utc).
 
+Canonical session VWAP is one market truth at a timestamp. Session-derived vl.* slots
+use that value or stay honestly absent. A rolling / weekly / HTF / anchored VWAP is a
+different concept and is not a fallback representation of session VWAP.
+
+Future VWAP research candidates (document only — not implemented, not horizon-assigned):
+rolling-window VWAPs; higher-timeframe VWAPs; weekly/monthly VWAP; event/swing/earnings
+anchored VWAP. Inclusion and temporal windows must be selected independently by horizon
+through chronological OOS ablation, against baselines and net of costs. No fixed rolling
+window is promoted merely because it sounds appropriate.
+
 Categories: price structure, VWAP/value, volatility/compression, candle/imbalance,
 multi-timeframe (derived from stacked 1m), participation.
 """
@@ -28,7 +38,6 @@ W_SWING = 50
 W_ATR = 14
 W_ATR_LONG = 60
 W_VWAP_STATS = 20
-W_VWAP_ROLL = 60
 W_VOL_PART = 20
 W_RANGE = 20
 W_RV = 30
@@ -408,32 +417,15 @@ def compute_signal_layer_v1(
         out["ps.range_position_n20"] = None
 
     # ── B. VWAP / value ────────────────────────────────────────────────────
-    typ_vol_sum = 0.0
-    vol_sum = 0.0
-    sl_v = bars[-W_VWAP_ROLL:] if len(bars) >= 5 else bars
-    for b in sl_v:
-        h = _f(b.get("high"))
-        l_ = _f(b.get("low"))
-        c = _f(b.get("close"))
-        v = _f(b.get("volume"))
-        if h and l_ and c and v is not None:
-            tp = (h + l_ + c) / 3.0
-            typ_vol_sum += tp * v
-            vol_sum += v
-    vwap_roll = _safe_div(typ_vol_sum, vol_sum) if vol_sum > EPS else None
-
-    # RC-345 / F36: the caller SESSION vwap (vwap_inp) and the local ROLLING 60-bar
-    # typical-price vwap (vwap_roll) are DIFFERENT reference points, so the price-vs-vwap
-    # features carry meta.vwap_source ('inp' | 'roll') — the fallback is never an anonymous
-    # mix. Session vwap is preferred; the rolling vwap is a governed, source-tagged
-    # degradation, exactly like the flow_imbalance book/volume fallback (F11).
-    vwap_inp = _f(getattr(inp, "vwap", None)) if inp is not None else None
-    if vwap_inp is not None:
-        vwap_use = vwap_inp
-        out["meta.vwap_source"] = "inp"
+    # Session VWAP only. A rolling 60×1m typical-price VWAP is a different concept
+    # and must not occupy these slots. Missing session VWAP stays absent.
+    vwap_session = _f(getattr(inp, "vwap", None)) if inp is not None else None
+    if vwap_session is not None:
+        vwap_use = vwap_session
+        out["meta.vwap_source"] = "session"
     else:
-        vwap_use = vwap_roll
-        out["meta.vwap_source"] = "roll" if vwap_roll is not None else None
+        vwap_use = None
+        out["meta.vwap_source"] = None
 
     if vwap_use is not None:
         out["vl.price_vs_vwap_pct"] = _safe_div(c_now - vwap_use, c_now) * 100.0

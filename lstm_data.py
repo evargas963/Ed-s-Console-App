@@ -381,8 +381,14 @@ def compute_confluence_features(snapshots_5m: list[dict], current_idx: int) -> d
 
     Returns:
         dict of confluence feature values. ABSENT is encoded 0.0, the encoding this feature
-        family already declares at ``ml_data_common.attach_confluence_features_for_serve``;
-        NaN would be the better signal but the LSTM lane cannot consume it.
+        family already declares at ``ml_data_common.attach_confluence_features_for_serve``.
+        For ``cf_vwap_distance_pct`` this 0.0 is ALSO the genuine zero-distance encoding
+        (spot == session VWAP). The current encoder cannot represent those as distinct
+        states: ``n_confluence=6`` with ``masked_conf=[]``, no ``__present`` bit, and
+        ``build_lstm_dataset`` does ``np.nan_to_num(..., nan=0.0)``. Changing the fill,
+        emitting NaN, or adding a sentinel would change the number presented to every
+        active LSTM (68) and the five IWM/QQQ XGB heads that list this column.
+        REQUIRES_RETRAIN / schema replacement — do not silently change this contract.
     """
     result = {
         "cf_momentum_5m": 0.0,       # -1 to +1: recent 5m direction

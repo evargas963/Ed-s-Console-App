@@ -972,17 +972,15 @@ def test_rc345_movement_target_threshold_one_selector() -> None:
 
 # ------------------------------------------------------------------- F36 signal-layer VWAP anchor
 def test_rc345_signal_layer_vwap_anchor_is_source_tagged() -> None:
-    """F36: the price-vs-vwap features use the caller SESSION vwap when present and a local
-    ROLLING 60-bar vwap only as a governed fallback — and the reference is ALWAYS tagged via
-    meta.vwap_source ('inp'|'roll'), so the two different VWAP semantics are never mixed
-    anonymously (the same governed source-tagged pattern accepted for F11)."""
+    """F36: session-derived vl.* slots use canonical session VWAP or stay absent.
+
+    A rolling VWAP must not occupy those slots — tagging the old mix was not fidelity.
+    """
     sl = _read("features/signal_layer_v1.py")
-    assert 'out["meta.vwap_source"] = "inp"' in sl and 'out["meta.vwap_source"] = "roll"' in sl, (
-        "signal-layer vwap features must carry their source anchor (F36/RC-345)")
-    # session vwap is PREFERRED (checked first), rolling is the fallback branch
-    inp_idx = sl.index('if vwap_inp is not None:')
-    roll_idx = sl.index("vwap_use = vwap_roll")
-    assert inp_idx < roll_idx, "session vwap must be preferred over the rolling fallback (F36)"
+    assert 'out["meta.vwap_source"] = "session"' in sl
+    assert 'vwap_use = vwap_roll' not in sl
+    assert 'out["meta.vwap_source"] = "roll"' not in sl
+    assert "W_VWAP_ROLL" not in sl
 
 
 # -------------------------------------------------------------- F22 dominant direction / confidence
