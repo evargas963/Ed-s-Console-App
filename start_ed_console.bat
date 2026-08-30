@@ -40,6 +40,19 @@ echo.
 set ED_OPS_RUNNER=1
 set ED_CALIBRATION_LOG=1
 
+REM Strip inherited CI/test contamination from parent shells (agent / pytest).
+REM Proven 2026-08-29: launching with ED_CI_OFFLINE=1 left /api/health=200 while
+REM analytics bg failed every ticker (Schwab CI offline RuntimeError). Clear first,
+REM then fail-closed if live Schwab would still be blocked.
+for /f "delims=" %%L in ('"%VENV_PY%" tools\check_live_schwab_env.py --bat-unsets') do %%L
+"%VENV_PY%" tools\check_live_schwab_env.py --sanitize
+if errorlevel 1 (
+    echo  LAUNCH BLOCKED: live Schwab env is CI/test contaminated or missing credentials.
+    echo  Unset ED_CI_OFFLINE / test SCHWAB_* and ensure live credentials ^(or .env^).
+    pause
+    exit /b 1
+)
+
 REM RC-350 ONE-APP LOCK (operator yes 2026-08-14): the desk may only run a committed,
 REM non-divergent build of origin/main. Emergency bypass: set ED_LIVE_PATH_UNLOCKED=1.
 "%VENV_PY%" tools\check_live_path_is_main.py
