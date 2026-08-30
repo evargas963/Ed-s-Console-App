@@ -1464,11 +1464,12 @@ def _predict_lstm(
         _consumes_cf_vwap = (
             _cf_idx < _mask_conf_probe.shape[0] and bool(_mask_conf_probe[_cf_idx])
         )
+        # Authorization uses the current-tick session VWAP only. merged_window[-1]
+        # is the last causal history bar (as_of exclusive), not the decision
+        # generation — its vwap can be a prior row / prior session.
         _sess_vwap = None
         if snapshot is not None:
             _sess_vwap = snapshot.get("vwap") if isinstance(snapshot, dict) else getattr(snapshot, "vwap", None)
-        if _sess_vwap is None and merged_window:
-            _sess_vwap = merged_window[-1].get("vwap")
         if should_abstain_missing_session_vwap_for_cf(
             session_vwap=_sess_vwap,
             consumes_cf_vwap=_consumes_cf_vwap,
