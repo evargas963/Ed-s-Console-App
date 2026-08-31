@@ -142,6 +142,20 @@ def test_the_remaining_filesystem_scanners_are_measured_not_forgotten():
     # two NEW, deliberate scanner sites ARRIVED inside this already-tracked file --
     # check_no_duplicate_tests and check_no_new_independent_repo_scan_in_tests, the two
     # mechanical recurrence locks that rehab required. Same file, no new file in the set.
+    # 13 files LEFT the same day: test_anti_pattern_family_repo_wide.py,
+    # test_coh_sa1_float_consolidation.py, test_datetime_silent_default_repo_wide.py,
+    # test_direction_triplet_authority.py, test_find_cal_ts_rderive.py,
+    # test_fusion_contract.py, test_mhmlb_namespace_v1.py, test_ml_feature_provenance.py,
+    # test_position_sizing_policy.py, test_replay_hold_bars.py,
+    # test_repo_sweep_error_propagation_v1.py, test_repo_sweep_magic_thresholds_v1.py,
+    # test_stack_wire_4_v1.py -- each migrated its independent root.rglob("*.py") onto
+    # the shared repo_index fixture (check_no_new_independent_repo_scan_in_tests, now
+    # ENFORCED, requires it). This detector (`.rglob(` only) does not yet see the
+    # further 4 files migrated the same day via `.glob(` (test_centralization.py,
+    # test_execution_identity_v1.py, test_market_context_fetch_fail_closed.py,
+    # test_path_authority_v1.py) -- they were never in this frozen set to begin with,
+    # since this older detector never matched `.glob(` in the first place. That gap
+    # between the two detectors is real and unresolved; see the rehab return packet.
     per_file = Counter(rel.rsplit(":", 1)[0] for rel in found)
     current = {f"{rel}::{n}" for rel, n in per_file.items()}
     frozen = frozenset(
