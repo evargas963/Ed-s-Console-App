@@ -3689,6 +3689,7 @@ from timeframe_config import CANONICAL_TIMEFRAME
 # path now has no failure mode to pick a policy for.
 from calibration.option_chain_morning_full import (
     GEX_FULL_CHAIN_STRIKE_COUNT,
+    MAX_DTE_DAYS as COMPLETE_CHAIN_NEAR_TERM_MAX_DTE_DAYS,
     # RC-161: the MORNING_* aliases are gone from this import because the scheduler no longer
     # reads them. That coupling WAS the defect — the archive's write window was steering the
     # terrain loop's contention guard. The guard now owns TERRAIN_CONTENTION_*, and the archive
@@ -3703,6 +3704,8 @@ from calibration.option_chain_morning_full import (
     universal_capture_window,
 )
 from calibration.complete_chain_capture import (
+    eligible_near_term_expiries,
+    has_complete_chain_capture_today,
     latest_complete_chain_capture,
     persist_complete_chain_capture,
 )
@@ -11636,6 +11639,94 @@ def _persist_universal_capture(tk: str, key: tuple[str, str], width: int,
                     tk, status, result.get("reason"))
 
 
+#: OPTIONS_ORDER_FLOW_V1 round 4 (material-defect-lifecycle review, 2026-08-31): the
+#: PROVEN-complete strike_range=ALL fetch built for /api/chain (round 3) had NO
+#: systematic producer -- persist_complete_chain_capture only ever ran from that
+#: operator-triggered endpoint, so an expiry earned a proven-complete record ONLY if a
+#: human happened to click it in /options. The pre-existing systematic collector below
+#: rides the SAME once-daily universal-capture window and trigger (`want_capture` /
+#: `_universal_capture_wanted`) the sentinel/whole-roster wide fetch already uses, and
+#: reuses the wide fetch's OWN contracts list to discover this ticker's listed expiries
+#: at ZERO extra vendor cost -- only the per-expiry strike_range=ALL fetches below are
+#: new vendor calls, one per not-yet-proven-today expiry, through the same
+#: rate-limited/coalesced _gated_safe_get_chain gate every other chain read uses.
+#: Bounded to _COMPLETE_CAPTURE_MAX_EXPIRIES_PER_TICKER per ticker per cycle so an
+#: unusually weekly-heavy name cannot unboundedly inflate one cycle's vendor cost; a
+#: truncation is logged, never silent.
+_COMPLETE_CAPTURE_MAX_EXPIRIES_PER_TICKER = 8
+
+
+def _persist_universal_complete_chain(tk: str, client, contracts: list, et_date: str,
+                                      ts_utc: float | None = None) -> None:
+    """Systematic near-term COMPLETE-chain capture, one expiry at a time, into
+    complete_chain_captures -- the same table and completeness basis /api/chain's
+    on-demand path already uses, extended to run universally without waiting on an
+    operator's click.
+
+    `ts_utc` (defaults to real now) is threaded through to every persisted row so the
+    idempotency check (`has_complete_chain_capture_today`, keyed on THIS same et_date)
+    and the row it is checking against always agree on which ET day they mean -- a
+    prior draft let `persist_complete_chain_capture` default its own timestamp to a
+    separately-read `time.time()`, which a same-day re-entry test caught immediately
+    re-fetching every expiry because the two clock reads could disagree on the day.
+    """
+    ts = float(ts_utc if ts_utc is not None else time.time())
+    all_exps = {
+        str(c.get("expirationDate") or "")[:10]
+        for c in contracts if isinstance(c, dict) and c.get("expirationDate")
+    }
+    eligible = eligible_near_term_expiries(
+        all_exps, max_dte_days=COMPLETE_CHAIN_NEAR_TERM_MAX_DTE_DAYS, now_et_date=et_date)
+    attempted = captured = failed = 0
+    for expiry in eligible[:_COMPLETE_CAPTURE_MAX_EXPIRIES_PER_TICKER]:
+        if has_complete_chain_capture_today(get_db().db_path, tk, expiry, et_date):
+            continue
+        attempted += 1
+        try:
+            d = date.fromisoformat(expiry)
+            c_resp, _gw, _fs = _gated_safe_get_chain(
+                client, tk, strike_range="ALL", from_date=d, to_date=d, priority=False)
+            if c_resp is None or c_resp.status_code != 200:
+                failed += 1
+                continue
+            c_json = c_resp.json()
+            exp_contracts = flatten_chain_contracts(c_json)
+            returned_exps = sorted({
+                str(c.get("expirationDate") or "")[:10]
+                for c in exp_contracts if isinstance(c, dict) and c.get("expirationDate")
+            })
+            if returned_exps != [expiry]:
+                log.warning(
+                    "complete-chain systematic capture: expiry scope mismatch "
+                    "ticker=%s requested=%s returned=%s -- not persisting",
+                    tk, expiry, returned_exps)
+                failed += 1
+                continue
+            exp_spot, _ss, _sa = resolve_spot(tk, chain_json=c_json)
+            result = persist_complete_chain_capture(
+                get_db().db_path, ticker=tk, expiry=expiry, contracts=exp_contracts,
+                spot=exp_spot, completeness_basis=COMPLETENESS_BASIS_STRIKE_RANGE_ALL,
+                ts_utc=ts)
+            if result.get("status") == "written":
+                captured += 1
+            else:
+                failed += 1
+        except Exception as e:
+            failed += 1
+            log.warning("complete-chain systematic capture failed ticker=%s expiry=%s: %s",
+                        tk, expiry, e)
+    if len(eligible) > _COMPLETE_CAPTURE_MAX_EXPIRIES_PER_TICKER:
+        log.warning(
+            "complete-chain systematic capture: ticker=%s truncated to %d of %d "
+            "eligible near-term expiries this cycle", tk,
+            _COMPLETE_CAPTURE_MAX_EXPIRIES_PER_TICKER, len(eligible))
+    if attempted:
+        log.info(
+            "complete-chain systematic capture ticker=%s et_date=%s attempted=%d "
+            "captured=%d failed=%d eligible=%d", tk, et_date, attempted, captured,
+            failed, len(eligible))
+
+
 #: Flip-drift measurement (unproven-register row due 2026-07-31): the mechanism is
 #: proven (gamma depends on spot/IV/time) but the intraday MAGNITUDE of flip movement
 #: is unmeasured. Every terrain-loop compute appends one JSONL row here so a week of
@@ -11975,6 +12066,7 @@ def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
         spot, spot_source, spot_ts = resolve_spot(tk, chain_json=c_json)
         if want_capture and contracts:
             _persist_universal_capture(tk, cap_key, _width, contracts, spot)
+            _persist_universal_complete_chain(tk, client, contracts, cap_key[1])
         # Learn this instrument's geometry from the chain we just read, so the NEXT cycle
         # requests the width its +/-5% span actually needs instead of a tabulated guess.
         # RC-149: tell the learner WHICH basis produced this chain. A narrowed window under-counts

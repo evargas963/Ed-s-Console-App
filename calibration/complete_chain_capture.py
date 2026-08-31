@@ -96,6 +96,73 @@ def persist_complete_chain_capture(
             "n_contracts": len(clean), "completeness_basis": completeness_basis}
 
 
+def has_complete_chain_capture_today(
+    db_path: Path | str, ticker: str, expiry: str, et_date: str
+) -> bool:
+    """True when a COMPLETE capture for (ticker, expiry) already exists for the given
+    ET calendar date. DB-backed (not an in-process memo) so the once-daily systematic
+    iteration survives a restart without re-fetching an expiry it already proved
+    complete today, and correctly re-attempts on a fresh day."""
+    path = Path(db_path)
+    if not path.is_file():
+        return False
+    tk = ticker_storage_key(ticker)
+    exp = str(expiry or "").strip()[:10]
+    day = str(et_date or "").strip()[:10]
+    if not tk or not exp or not day:
+        return False
+    try:
+        conn = sqlite3.connect(f"file:{path.resolve().as_posix()}?mode=ro", uri=True)
+    except sqlite3.Error:
+        return False
+    try:
+        if not conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='complete_chain_captures'"
+        ).fetchone():
+            return False
+        row = conn.execute(
+            "SELECT ts_utc FROM complete_chain_captures WHERE ticker=? AND expiry=? "
+            "ORDER BY ts_utc DESC LIMIT 1",
+            (tk, exp),
+        ).fetchone()
+    except sqlite3.Error:
+        return False
+    finally:
+        conn.close()
+    if not row:
+        return False
+    from calibration.option_chain_morning_full import et_date_and_mins
+    captured_day, _mins = et_date_and_mins(float(row[0]))
+    return captured_day == day
+
+
+def eligible_near_term_expiries(
+    expiry_dates: "set[str] | list[str]", *, max_dte_days: float, now_et_date: str
+) -> list[str]:
+    """The declared systematic-collection expiry scope: listed expiries from today
+    through `max_dte_days` out — the SAME near-term horizon
+    `option_chain_morning_full.MAX_DTE_DAYS` already uses for its own systematic
+    capture, so the two mechanisms share one definition of "near-term," not two.
+    Far-dated expiries (LEAPS, distant monthlies) are deliberately OUT of this
+    systematic scope; they remain reachable only via an operator's manual /api/chain
+    request, unchanged from before this function existed."""
+    from datetime import date as _date
+    today = _date.fromisoformat(str(now_et_date)[:10])
+    out = []
+    for e in expiry_dates or []:
+        exp = str(e or "").strip()[:10]
+        if not exp:
+            continue
+        try:
+            d = _date.fromisoformat(exp)
+        except ValueError:
+            continue
+        dte = (d - today).days
+        if 0 <= dte <= max_dte_days:
+            out.append(exp)
+    return sorted(set(out))
+
+
 def latest_complete_chain_capture(
     db_path: Path | str, ticker: str, expiry: str
 ) -> dict[str, Any] | None:
