@@ -3707,6 +3707,7 @@ from calibration.complete_chain_capture import (
     eligible_near_term_expiries,
     has_complete_chain_capture_today,
     latest_complete_chain_capture,
+    next_capture_batch,
     persist_complete_chain_capture,
 )
 
@@ -11643,44 +11644,95 @@ def _persist_universal_capture(tk: str, key: tuple[str, str], width: int,
 #: PROVEN-complete strike_range=ALL fetch built for /api/chain (round 3) had NO
 #: systematic producer -- persist_complete_chain_capture only ever ran from that
 #: operator-triggered endpoint, so an expiry earned a proven-complete record ONLY if a
-#: human happened to click it in /options. The pre-existing systematic collector below
-#: rides the SAME once-daily universal-capture window and trigger (`want_capture` /
-#: `_universal_capture_wanted`) the sentinel/whole-roster wide fetch already uses, and
-#: reuses the wide fetch's OWN contracts list to discover this ticker's listed expiries
-#: at ZERO extra vendor cost -- only the per-expiry strike_range=ALL fetches below are
-#: new vendor calls, one per not-yet-proven-today expiry, through the same
-#: rate-limited/coalesced _gated_safe_get_chain gate every other chain read uses.
-#: Bounded to _COMPLETE_CAPTURE_MAX_EXPIRIES_PER_TICKER per ticker per cycle so an
-#: unusually weekly-heavy name cannot unboundedly inflate one cycle's vendor cost; a
-#: truncation is logged, never silent.
+#: human happened to click it in /options. The systematic collector below reuses the
+#: SAME once-daily universal-capture WINDOW (`universal_capture_window`) the
+#: sentinel/whole-roster wide fetch already uses, and discovers this ticker's listed
+#: expiries from the REGULAR per-cycle terrain chain fetch it is called with -- the
+#: SAME unwindowed "full"-basis request _terrain_refresh_one already makes every cycle
+#: (server.py:_terrain_refresh_one's basis ladder), at ZERO extra vendor cost for
+#: discovery. Only the per-expiry strike_range=ALL fetches below are new vendor calls,
+#: through the same rate-limited/coalesced _gated_safe_get_chain gate every other
+#: chain read uses.
+#:
+#: OPERATOR-CAUGHT DEFECT (2026-08-31, same day): the first version sliced
+#: `eligible[:CAP]` BEFORE filtering out already-captured expiries. Once the first CAP
+#: expiries were captured, every later cycle kept re-selecting that SAME first-CAP
+#: slice (all already done, so the loop body no-opped on every one) -- expiry #(CAP+1)
+#: and beyond were NEVER attempted, on ANY cycle, ANY day: a bounded per-cycle vendor
+#: budget had silently become a PERMANENT completeness ceiling. Fixed by filtering to
+#: `still_needed` (not yet proven complete today, not yet given up on today) FIRST,
+#: THEN slicing the per-cycle budget from THAT -- so once today's first CAP are
+#: captured, they drop out of `still_needed` and the NEXT cycle's slice naturally
+#: advances to the next uncaptured expiries. This also required decoupling this
+#: function from the sibling `_persist_universal_capture`'s once-per-day "done" gate
+#: (it previously only ran once per ticker per day, piggybacked on that gate, so
+#: "successive cycles" never actually happened in production regardless of the slice
+#: bug) -- it is now called every terrain cycle inside the capture window and
+#: self-gates on whether there is still real work, so it gets many chances per day.
+#:
+#: Bounded to _COMPLETE_CAPTURE_MAX_EXPIRIES_PER_TICKER new-work items per CALL (not
+#: per day) so an unusually weekly-heavy name cannot unboundedly inflate one cycle's
+#: vendor cost; a chronically-failing expiry gives up after
+#: _COMPLETE_CAPTURE_EXPIRY_MAX_ATTEMPTS attempts THE SAME ET day (mirrors
+#: _MORNING_CAPTURE_MAX_ATTEMPTS's existing give-up convention) so it cannot
+#: permanently occupy a budget slot ahead of expiries never yet attempted; both a
+#: truncation and a give-up are logged, never silent.
 _COMPLETE_CAPTURE_MAX_EXPIRIES_PER_TICKER = 8
+_COMPLETE_CAPTURE_EXPIRY_MAX_ATTEMPTS = 3
+#: (ticker, expiry, et_date) -> attempts. In-memory, like _morning_capture_attempts --
+#: a restart simply grants a fresh attempt budget, which is safe: the DURABLE state
+#: that must survive restart is COMPLETION (has_complete_chain_capture_today, DB-
+#: backed), not the give-up bookkeeping for a same-day chronic failure.
+_complete_chain_capture_attempts: dict[tuple[str, str, str], int] = {}
 
 
-def _persist_universal_complete_chain(tk: str, client, contracts: list, et_date: str,
+def _persist_universal_complete_chain(tk: str, client, contracts: list,
                                       ts_utc: float | None = None) -> None:
     """Systematic near-term COMPLETE-chain capture, one expiry at a time, into
     complete_chain_captures -- the same table and completeness basis /api/chain's
     on-demand path already uses, extended to run universally without waiting on an
-    operator's click.
+    operator's click. Self-gated: returns immediately (zero vendor calls) outside the
+    capture window, on a non-trading day, or once every eligible near-term expiry is
+    already proven complete (or given up on) for today.
 
-    `ts_utc` (defaults to real now) is threaded through to every persisted row so the
-    idempotency check (`has_complete_chain_capture_today`, keyed on THIS same et_date)
-    and the row it is checking against always agree on which ET day they mean -- a
-    prior draft let `persist_complete_chain_capture` default its own timestamp to a
-    separately-read `time.time()`, which a same-day re-entry test caught immediately
-    re-fetching every expiry because the two clock reads could disagree on the day.
+    `ts_utc` (defaults to real now) is the ONE clock read this call uses -- derived
+    into et_date/mins AND threaded through to every persisted row, so the idempotency
+    check and the row it is checking against can never disagree about which ET day
+    they mean (a prior draft read `time.time()` twice, separately, for exactly that
+    purpose, and a same-day re-entry test caught it re-fetching every expiry).
     """
     ts = float(ts_utc if ts_utc is not None else time.time())
+    et_date, mins = gex_et_date_and_mins(ts)
+    if not universal_capture_window(mins) or not is_trading_day_et(et_date):
+        return
     all_exps = {
         str(c.get("expirationDate") or "")[:10]
         for c in contracts if isinstance(c, dict) and c.get("expirationDate")
     }
     eligible = eligible_near_term_expiries(
         all_exps, max_dte_days=COMPLETE_CHAIN_NEAR_TERM_MAX_DTE_DAYS, now_et_date=et_date)
+    db_path = get_db().db_path
+    already_captured = {
+        expiry for expiry in eligible
+        if has_complete_chain_capture_today(db_path, tk, expiry, et_date)
+    }
+    given_up = {
+        expiry for expiry in eligible
+        if _complete_chain_capture_attempts.get((tk, expiry, et_date), 0)
+        >= _COMPLETE_CAPTURE_EXPIRY_MAX_ATTEMPTS
+    }
+    still_needed_count = sum(1 for e in eligible if e not in already_captured and e not in given_up)
+    if not still_needed_count:
+        return
+    batch = next_capture_batch(
+        eligible, already_captured=already_captured, given_up=given_up,
+        batch_size=_COMPLETE_CAPTURE_MAX_EXPIRIES_PER_TICKER)
+
     attempted = captured = failed = 0
-    for expiry in eligible[:_COMPLETE_CAPTURE_MAX_EXPIRIES_PER_TICKER]:
-        if has_complete_chain_capture_today(get_db().db_path, tk, expiry, et_date):
-            continue
+    for expiry in batch:
+        attempt_key = (tk, expiry, et_date)
+        n_attempts = _complete_chain_capture_attempts.get(attempt_key, 0) + 1
+        _complete_chain_capture_attempts[attempt_key] = n_attempts
         attempted += 1
         try:
             d = date.fromisoformat(expiry)
@@ -11704,7 +11756,7 @@ def _persist_universal_complete_chain(tk: str, client, contracts: list, et_date:
                 continue
             exp_spot, _ss, _sa = resolve_spot(tk, chain_json=c_json)
             result = persist_complete_chain_capture(
-                get_db().db_path, ticker=tk, expiry=expiry, contracts=exp_contracts,
+                db_path, ticker=tk, expiry=expiry, contracts=exp_contracts,
                 spot=exp_spot, completeness_basis=COMPLETENESS_BASIS_STRIKE_RANGE_ALL,
                 ts_utc=ts)
             if result.get("status") == "written":
@@ -11715,16 +11767,23 @@ def _persist_universal_complete_chain(tk: str, client, contracts: list, et_date:
             failed += 1
             log.warning("complete-chain systematic capture failed ticker=%s expiry=%s: %s",
                         tk, expiry, e)
-    if len(eligible) > _COMPLETE_CAPTURE_MAX_EXPIRIES_PER_TICKER:
+        if n_attempts >= _COMPLETE_CAPTURE_EXPIRY_MAX_ATTEMPTS and not has_complete_chain_capture_today(
+            db_path, tk, expiry, et_date
+        ):
+            log.warning(
+                "complete-chain systematic capture: ticker=%s expiry=%s given up for "
+                "today after %d attempts", tk, expiry, n_attempts)
+    if still_needed_count > _COMPLETE_CAPTURE_MAX_EXPIRIES_PER_TICKER:
         log.warning(
             "complete-chain systematic capture: ticker=%s truncated to %d of %d "
-            "eligible near-term expiries this cycle", tk,
-            _COMPLETE_CAPTURE_MAX_EXPIRIES_PER_TICKER, len(eligible))
+            "still-needed near-term expiries this cycle -- the remainder are "
+            "carried to the next cycle, never dropped", tk,
+            _COMPLETE_CAPTURE_MAX_EXPIRIES_PER_TICKER, still_needed_count)
     if attempted:
         log.info(
             "complete-chain systematic capture ticker=%s et_date=%s attempted=%d "
-            "captured=%d failed=%d eligible=%d", tk, et_date, attempted, captured,
-            failed, len(eligible))
+            "captured=%d failed=%d still_needed=%d eligible=%d", tk, et_date, attempted,
+            captured, failed, still_needed_count, len(eligible))
 
 
 #: Flip-drift measurement (unproven-register row due 2026-07-31): the mechanism is
@@ -12066,7 +12125,16 @@ def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
         spot, spot_source, spot_ts = resolve_spot(tk, chain_json=c_json)
         if want_capture and contracts:
             _persist_universal_capture(tk, cap_key, _width, contracts, spot)
-            _persist_universal_complete_chain(tk, client, contracts, cap_key[1])
+        if contracts:
+            # Deliberately NOT gated on want_capture: that flag reflects the SIBLING
+            # wide-fetch's own once-per-day "done" state, and this function needs its
+            # own chance to run on every cycle inside the window so a near-term
+            # expiry universe wider than one cycle's budget still gets fully covered
+            # over successive cycles (see the function's own docstring for the
+            # operator-caught defect this fixes). It self-gates on window/trading-day/
+            # remaining-work internally, so a no-op call here costs one cheap DB check,
+            # never a vendor call.
+            _persist_universal_complete_chain(tk, client, contracts)
         # Learn this instrument's geometry from the chain we just read, so the NEXT cycle
         # requests the width its +/-5% span actually needs instead of a tabulated guess.
         # RC-149: tell the learner WHICH basis produced this chain. A narrowed window under-counts

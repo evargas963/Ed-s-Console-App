@@ -163,6 +163,28 @@ def eligible_near_term_expiries(
     return sorted(set(out))
 
 
+def next_capture_batch(
+    eligible: list[str], *, already_captured: "set[str]", given_up: "set[str]" = frozenset(),
+    batch_size: int,
+) -> list[str]:
+    """The systematic capture's own per-cycle work-selection policy: filter the
+    declared eligible set down to what genuinely still needs capturing THIS cycle
+    (not already proven complete today, not given up on today), THEN take the next
+    `batch_size` of that remaining work.
+
+    ROUND-4 DEFECT this exists to prevent regressing (operator-caught, 2026-08-31): an
+    earlier draft sliced `eligible[:batch_size]` FIRST and filtered afterward. Once the
+    first `batch_size` expiries were captured, every later cycle re-selected that SAME
+    first-`batch_size` slice — all already done, so the loop body no-opped on every one
+    — and any eligible expiry past the cap was NEVER attempted, on any cycle, any day:
+    a bounded per-cycle vendor budget had silently become a PERMANENT completeness
+    ceiling. Filtering before slicing is the entire fix — once today's captured
+    expiries drop out of the candidate set, the next cycle's slice naturally advances
+    past them to the expiries still waiting."""
+    still_needed = [e for e in eligible if e not in already_captured and e not in given_up]
+    return still_needed[:batch_size]
+
+
 def latest_complete_chain_capture(
     db_path: Path | str, ticker: str, expiry: str
 ) -> dict[str, Any] | None:
