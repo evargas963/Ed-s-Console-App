@@ -64,24 +64,51 @@ def _stream_client_local_names(tree: ast.Module) -> set[str]:
 
 
 def _module_aliases_for_schwab_streaming(tree: ast.Module) -> set[str]:
-    """Names bound to the `schwab.streaming` MODULE itself, for `m.StreamClient(...)` calls
-    — covers BOTH import forms that bind the module (not the class) as a name:
-    `import schwab.streaming as m` / bare `import schwab.streaming` (binds `schwab`), and
-    `from schwab import streaming` / `from schwab import streaming as s` (ADVERSARIAL
-    RECHECK 2026-08-30: this second form was a real, if unexploited, blind spot — only
-    `ast.Import` nodes were inspected, so `from schwab import streaming as s` followed by
-    `s.StreamClient(...)` anywhere outside the canonical daemon would have gone undetected
-    and silently PASSED the gate)."""
+    """Names bound DIRECTLY to the `schwab.streaming` MODULE, for single-attribute
+    `m.StreamClient(...)` calls — `import schwab.streaming as m` (an explicit alias,
+    which binds exactly `m` to the submodule), and `from schwab import streaming` /
+    `from schwab import streaming as s` (ADVERSARIAL RECHECK 2026-08-30: this second
+    form was a real, if unexploited, blind spot — only `ast.Import` nodes were
+    inspected, so `from schwab import streaming as s` followed by `s.StreamClient(...)`
+    anywhere outside the canonical daemon would have gone undetected and silently
+    PASSED the gate). A BARE `import schwab.streaming` (no `as`) does NOT belong here —
+    Python binds the top-level name `schwab`, not `schwab.streaming`, so the correct
+    call shape is the double-attribute `schwab.streaming.StreamClient(...)`, handled by
+    `_package_aliases_for_schwab` below."""
     aliases: set[str] = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             for alias in node.names:
-                if alias.name == "schwab.streaming":
-                    aliases.add(alias.asname or "schwab")
+                if alias.name == "schwab.streaming" and alias.asname:
+                    aliases.add(alias.asname)
         elif isinstance(node, ast.ImportFrom) and node.module == "schwab":
             for alias in node.names:
                 if alias.name == "streaming":
                     aliases.add(alias.asname or alias.name)
+    return aliases
+
+
+def _package_aliases_for_schwab(tree: ast.Module) -> set[str]:
+    """Names bound to the TOP-LEVEL `schwab` PACKAGE, for double-attribute
+    `X.streaming.StreamClient(...)` calls -- covers a bare `import schwab` (optionally
+    `as X`) AND a bare `import schwab.streaming` with no `as` (Python binds `schwab`,
+    not `schwab.streaming`, so `schwab.streaming.StreamClient(...)` is the correct and
+    only valid call shape for that unaliased form).
+
+    TEST_SYSTEM_REHAB_V2 (2026-08-31, Cursor-confirmed hole): a bare `import schwab`
+    followed by `schwab.streaming.StreamClient(...)` was NOT detected at all -- this
+    function did not exist, and the call-site loop below only matched single-level
+    attribute access, which a double-attribute chain like `schwab.streaming.X` can
+    never satisfy even if `schwab` had been tracked."""
+    aliases: set[str] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Import):
+            continue
+        for alias in node.names:
+            if alias.name == "schwab":
+                aliases.add(alias.asname or "schwab")
+            elif alias.name == "schwab.streaming" and not alias.asname:
+                aliases.add("schwab")
     return aliases
 
 
@@ -96,7 +123,8 @@ def find_stream_client_constructions(path: Path) -> list[int]:
 
     direct_names = _stream_client_local_names(tree)
     module_aliases = _module_aliases_for_schwab_streaming(tree)
-    if not direct_names and not module_aliases:
+    package_aliases = _package_aliases_for_schwab(tree)
+    if not direct_names and not module_aliases and not package_aliases:
         return []
 
     lines: list[int] = []
@@ -108,6 +136,12 @@ def find_stream_client_constructions(path: Path) -> list[int]:
             lines.append(node.lineno)
         elif (isinstance(fn, ast.Attribute) and fn.attr == "StreamClient"
               and isinstance(fn.value, ast.Name) and fn.value.id in module_aliases):
+            lines.append(node.lineno)
+        elif (isinstance(fn, ast.Attribute) and fn.attr == "StreamClient"
+              and isinstance(fn.value, ast.Attribute) and fn.value.attr == "streaming"
+              and isinstance(fn.value.value, ast.Name) and fn.value.value.id in package_aliases):
+            # X.streaming.StreamClient(...) where X resolves to the top-level `schwab`
+            # package -- the bare `import schwab` / bare `import schwab.streaming` hole.
             lines.append(node.lineno)
     return lines
 

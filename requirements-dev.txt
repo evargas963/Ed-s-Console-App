@@ -5,6 +5,13 @@
 # content passed locally. Bump these deliberately and confirm CI stays green.
 pytest>=8.0
 pytest-xdist>=3.6.0
+# TEST_SYSTEM_REHAB_V2: filelock coordinates the one-build-per-run RepoIndex cache
+# (tests/conftest.py) across xdist worker PROCESSES -- each is a separate Python
+# interpreter with its own "session", so a plain session-scoped fixture still rebuilds
+# per worker without this. pytest-xdist only declares filelock under its own
+# `testing` extra, not as a hard dependency, so it must be pinned here directly or a
+# clean `-r requirements-dev.txt` install can silently lack it.
+filelock>=3.12
 # RC-400: ruff is a REQUIRED dev dependency, not an optional convenience. The turn
 # self-audit runs `python -m ruff check` as one of its four required checks, so without it
 # the audit's verdict is FAIL rather than NOT_PROVEN and sixteen contract tests fail on a

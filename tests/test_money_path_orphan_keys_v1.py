@@ -22,8 +22,6 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from tools.check_institutional_correctness import check_no_orphan_dict_keys  # noqa: E402
-
 #: Files whose dict reads can reach a trade decision or the vendor boundary feeding one.
 #: Tooling and research code carry their own backlog; this contract binds the money path.
 MONEY_PATH = {
@@ -32,14 +30,10 @@ MONEY_PATH = {
     "liquidity_value_engine.py", "bayesian_fusion.py", "terrain_read.py", "numeric_contract.py",
 }
 
-
-import pytest  # noqa: E402
-
-
-@pytest.fixture(scope="module")
-def live_orphans():
-    """ONE live repo sweep shared by both consumers below (~6s per call measured)."""
-    return check_no_orphan_dict_keys()
+#: TEST_SYSTEM_REHAB_V2: `live_orphans` is now the session-scoped fixture in
+#: tests/conftest.py, shared with test_orphan_dict_keys_data_sources_v1.py's pure-read
+#: consumers -- both files independently paying the full check_no_orphan_dict_keys()
+#: sweep was the actual duplicate cost, not this file's own use of it.
 
 
 def _money_path_violations(violations) -> list[str]:

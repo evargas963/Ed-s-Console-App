@@ -39,16 +39,14 @@ GATE = _load_gate()
 
 POLICY_KEYS = ("legacy_allowance", "expires_at_utc", "strict_default")
 
-import pytest  # noqa: E402
-
-
-@pytest.fixture(scope="module")
-def live_orphans():
-    """ONE live check_no_orphan_dict_keys() run shared by the pure-read tests below.
-
-    The check sweeps every production file per call (measured ~5-7s); five tests here
-    read the SAME live result. Tests that monkeypatch the gate keep calling it fresh."""
-    return GATE.check_no_orphan_dict_keys()
+#: TEST_SYSTEM_REHAB_V2: the pure-read tests below now consume the SAME session-scoped
+#: `live_orphans` fixture (tests/conftest.py) test_money_path_orphan_keys_v1.py uses --
+#: both files independently sweeping the whole production tree via check_no_orphan_dict_keys()
+#: was genuine duplicate cost (measured ~26-37s each). `GATE` (this file's isolated
+#: `_load_gate()` module copy) stays: test_a_missing_or_malformed_source_contributes_nothing
+#: monkeypatches GATE._DATA_FILE_KEY_SOURCES, and that mutation must never leak into the
+#: normally-imported module every other test file shares -- an isolated copy is the
+#: correct, minimal way to get that, not redundant computation.
 
 
 def test_the_policy_file_actually_contains_the_keys_we_claim():

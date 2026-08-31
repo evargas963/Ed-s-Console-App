@@ -37,6 +37,9 @@ def _seed_db(db_path: Path) -> None:
 
 
 def test_run_repair_empty_db_errors(tmp_path: Path):
+    # institutional-duplicate-ok: same-shaped test against a DIFFERENT production
+    # module (calibration.repair_canonical_1m_edge_carry_v1.run_repair, not
+    # interior_gaps_v1) -- TEST_SYSTEM_REHAB_V2 semantic review kept both deliberately.
     db_path = tmp_path / "empty.db"
     conn = sqlite3.connect(str(db_path))
     conn.executescript(

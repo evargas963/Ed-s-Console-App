@@ -13,16 +13,13 @@ import ast
 import inspect
 
 import order_flow_streaming as ofs
-from tools.check_single_stream_authority import run_census
 
-
-def test_A_alternate_stream_construction_anywhere_in_tree_is_a_census_violation():
-    """A. canonical daemon running + server attempts independent Schwab stream -> BLOCK.
-
-    Not a runtime race to simulate — the server code path CANNOT construct one (see B);
-    this proves the repo-wide census would catch it if it ever could."""
-    census = run_census()
-    assert census["VIOLATION"] == []
+#: TEST_SYSTEM_REHAB_V2: requirement-letter A was a fresh run_census() call asserting
+#: the EXACT same fact (census["VIOLATION"] == []) as
+#: test_single_stream_authority_v1.py::test_current_tree_has_exactly_one_production_owner
+#: already proves — a real, expensive (~15-20s) duplicate whole-tree census, not a
+#: distinct check. Requirement A's traceability now lives in that test's own name/
+#: docstring instead of a second executable census.
 
 
 def test_B_server_startup_path_has_no_streamclient_constructor():
@@ -60,21 +57,12 @@ def test_C_mutation_alternate_factory_is_caught():
         gate._tracked_python = orig_tracked
 
 
-def test_D_second_daemon_owner_is_blocked_by_the_pidfile():
-    """D. second daemon/capture owner -> BLOCK. Pre-existing mechanism
-    (acquire_owner_lock), unmodified by this repair — reasserted here for completeness of
-    the Phase 4 letter mapping. See test_stream_capture_daemon_v1.py::
-    test_owner_lock_released_on_every_exit_path for the full exercise."""
-    import tools.run_stream_capture as d
-    assert callable(d.acquire_owner_lock) and callable(d.release_owner_lock)
-
-
-def test_E_canonical_one_owner_startup_passes():
-    """E. canonical one-owner startup -> PASS.
-    See test_stream_capture_daemon_v1.py::test_schwab_connect_registers_book_handlers_
-    every_time for the full connect-time proof (login, handlers, subs all fire)."""
-    import tools.run_stream_capture as d
-    assert inspect.iscoroutinefunction(d._schwab_connect)
+#: TEST_SYSTEM_REHAB_V2: requirement letters D and E were callable()/iscoroutinefunction()
+#: existence checks — existence is not runtime correctness. Both docstrings named the
+#: real behavioral proof already covering them (verified present, not just claimed):
+#: test_stream_capture_daemon_v1.py::test_owner_lock_released_on_every_exit_path (D) and
+#: ::test_schwab_connect_registers_book_handlers_every_time (E). Deleted; their
+#: traceability now lives in those tests' own names/docstrings.
 
 
 def test_F_reconnect_after_recycle_has_no_concurrent_authorities():

@@ -273,22 +273,44 @@ class RepoIndex:
     """rel_path -> (source_text, ast_tree_or_None) over every repo .py file."""
 
     def __init__(self, root: Path) -> None:
-        import ast as _ast
         self.root = root
         self.files: dict[Path, tuple[str, object | None]] = {}
+        for rel, text in sorted(self._read_all_texts(root).items()):
+            self.files[rel] = (text, self._parse_or_none(text))
+
+    @staticmethod
+    def _read_all_texts(root: Path) -> dict[Path, str]:
+        """The I/O-only half of a build: every tracked-shape .py file's raw text, no
+        parsing. Split out so xdist workers can share just this (small, cheap to
+        pickle) and each run their own native `ast.parse` -- see the `repo_index`
+        fixture below."""
+        out: dict[Path, str] = {}
         for path in sorted(root.rglob("*.py")):
             rel = path.relative_to(root)
             if any(part in _REPO_INDEX_SKIP_DIRS for part in rel.parts):
                 continue
             try:
-                text = path.read_text(encoding="utf-8")
+                out[rel] = path.read_text(encoding="utf-8")
             except (OSError, UnicodeDecodeError):
                 continue
-            try:
-                tree = _ast.parse(text)
-            except SyntaxError:
-                tree = None
-            self.files[rel] = (text, tree)
+        return out
+
+    @staticmethod
+    def _parse_or_none(text: str):
+        import ast as _ast
+        try:
+            return _ast.parse(text)
+        except SyntaxError:
+            return None
+
+    @classmethod
+    def from_texts(cls, root: Path, texts: dict[Path, str]) -> "RepoIndex":
+        """Build from an already-read text corpus (e.g. shared across xdist workers)
+        -- parses locally, natively, per worker; never pickles/unpickles AST trees."""
+        self = cls.__new__(cls)
+        self.root = root
+        self.files = {rel: (text, cls._parse_or_none(text)) for rel, text in sorted(texts.items())}
+        return self
 
     def items(self):
         """(rel_path, source_text, tree_or_None), sorted by path."""
@@ -297,8 +319,65 @@ class RepoIndex:
 
 
 @pytest.fixture(scope="session")
-def repo_index() -> RepoIndex:
-    return RepoIndex(Path(__file__).resolve().parent.parent)
+def repo_index(tmp_path_factory, worker_id: str) -> RepoIndex:
+    """ONE repository TEXT READ per COMPLETE run, not one per xdist WORKER --
+    parsing stays LOCAL to each worker.
+
+    TEST_SYSTEM_REHAB_V2 (2026-08-31): `scope="session"` only shares within one
+    process. Under `-n auto`/`--dist loadfile` each xdist worker is a SEPARATE Python
+    interpreter with its own "session", so whichever workers happen to draw a
+    repo_index-consuming file each independently pay the full build (measured:
+    20-45s+ per worker under load). The standard pytest-xdist recipe for this class of
+    problem is: first worker builds + pickles to the run's shared temp root
+    (`tmp_path_factory.getbasetemp().parent` -- xdist creates ONE per run, common to
+    every worker, auto-cleaned between runs, never stale cross-run state); later
+    workers unpickle instead of rebuilding. MEASURED here that pickling/unpickling the
+    FULL parsed AST-tree object graph is itself expensive (~8.5s to unpickle, against
+    ~16.5s to build from scratch -- real savings, but not the near-zero the recipe
+    usually delivers for primitive data). Sharing only the TEXT (cheap: plain strings,
+    no deep object graph) and letting each worker run its own native `ast.parse` --
+    measured fast, C-level, not the bottleneck -- gets closer to the actual floor: one
+    disk read of the whole tree, N cheap native parses.
+
+    `worker_id == "master"` means this run has no xdist workers at all (bare
+    `pytest`, no `-n`) -- build directly, no IPC needed.
+    """
+    root = Path(__file__).resolve().parent.parent
+    if worker_id == "master":
+        return RepoIndex(root)
+
+    import pickle
+
+    from filelock import FileLock
+
+    shared_dir = tmp_path_factory.getbasetemp().parent
+    cache_file = shared_dir / "repo_index_texts_cache.pkl"
+    lock_file = shared_dir / "repo_index_texts_cache.lock"
+    with FileLock(str(lock_file)):
+        if cache_file.is_file():
+            with cache_file.open("rb") as f:
+                texts = pickle.load(f)
+        else:
+            texts = RepoIndex._read_all_texts(root)
+            with cache_file.open("wb") as f:
+                pickle.dump(texts, f)
+    return RepoIndex.from_texts(root, texts)
+
+
+#: TEST_SYSTEM_REHAB_V2: check_no_orphan_dict_keys() sweeps every production file
+#: (measured ~6-37s depending on load) and was run independently -- once per module
+#: -- by two separate test files (test_money_path_orphan_keys_v1.py and
+#: test_orphan_dict_keys_data_sources_v1.py), each paying the full sweep. Both files'
+#: PURE-READ consumers (nothing that monkeypatches the checker's module state) now
+#: share this ONE session-scoped result. The one test that genuinely needs an
+#: ISOLATED module copy for safe monkeypatching
+#: (test_a_missing_or_malformed_source_contributes_nothing) keeps its own private
+#: `_load_gate()` import -- that isolation is a distinct technical need, not
+#: redundant computation, and is left untouched.
+@pytest.fixture(scope="session")
+def live_orphans():
+    from tools.check_institutional_correctness import check_no_orphan_dict_keys
+    return check_no_orphan_dict_keys()
 
 
 # ------------------------------------------------- tracked-ledger firewall --

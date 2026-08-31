@@ -310,36 +310,13 @@ def test_universal_complete_chain_is_idempotent_within_the_same_et_day(monkeypat
     )
 
 
-def test_universal_complete_chain_one_expiry_failing_does_not_block_its_sibling(
-    monkeypatch, tmp_path
-):
-    """Attack: one expiry's vendor fetch fails (non-200) -- the failure must not stop
-    the sibling expiry from being attempted and persisted in the same cycle."""
-    import server as srv
-
-    db_path = _fake_db(monkeypatch, srv, tmp_path)
-    _reset_module_state(srv)
-    monkeypatch.setattr(srv, "COMPLETE_CHAIN_NEAR_TERM_MAX_DTE_DAYS", 30000.0)
-
-    def _fake_gated(client, ticker, *, strike_count=None, strike_range=None,
-                    from_date=None, to_date=None, priority=False):
-        req = str(to_date) if to_date else ""
-        if req == _TSLA_EXPIRY:
-            return _FakeResp(502, {}), 0.0, 0.1  # vendor failure for expiry 1
-        if req == _SPY_EXPIRY:
-            return _FakeResp(200, _chain_json_for(_SPY_CONTRACTS)), 0.0, 0.1
-        return _FakeResp(200, {"callExpDateMap": {}, "putExpDateMap": {}}), 0.0, 0.1
-    monkeypatch.setattr(srv, "_gated_safe_get_chain", _fake_gated)
-
-    srv._persist_universal_complete_chain(
-        "ZZTEST", client=object(), contracts=_wide_contracts_spanning_both_real_expiries(),
-        ts_utc=_TS_IN_WINDOW)
-
-    assert srv.latest_complete_chain_capture(db_path, "ZZTEST", _TSLA_EXPIRY) is None, (
-        "a failed fetch must never persist a partial/absent capture"
-    )
-    spy_cap = srv.latest_complete_chain_capture(db_path, "ZZTEST", _SPY_EXPIRY)
-    assert spy_cap is not None, "the sibling expiry's fetch must still be attempted and persisted"
+#: TEST_SYSTEM_REHAB_V2: a standalone "one expiry failing doesn't block its sibling
+#: within the same cycle" test was here -- SUBSUMED by test_E below. test_E's chronic
+#: failer sorts FIRST in `still_needed`, so for ANY of its 10 healthy siblings to be
+#: captured within the bounded cycle count, the loop must already continue past that
+#: failure within the very first cycle (a `continue`, never a `break`, on failure) --
+#: the exact same mechanism this deleted test verified in isolation, with weaker
+#: (single-cycle-only) evidence than test_E's multi-cycle proof.
 
 
 def test_universal_complete_chain_rejects_an_expiry_scope_mismatch(monkeypatch, tmp_path):
@@ -400,6 +377,9 @@ def _real_contracts_at(expiry_str: str, n: int):
 
 
 def test_A_cap_plus_3_eligible_cycle_one_performs_at_most_cap_calls(monkeypatch, tmp_path):
+    """A, plus the truncation-is-logged proof (TEST_SYSTEM_REHAB_V2: merged from a
+    separate test that asserted the identical call-count fact alongside this one
+    additional log-visibility check -- one behavioral proof, not two)."""
     import server as srv
 
     _fake_db(monkeypatch, srv, tmp_path)
@@ -411,11 +391,14 @@ def test_A_cap_plus_3_eligible_cycle_one_performs_at_most_cap_calls(monkeypatch,
 
     calls: list[str] = []
     _fake_gated_by_symbol_list(monkeypatch, srv, {}, calls)
+    logged = []
+    monkeypatch.setattr(srv.log, "warning", lambda msg, *a: logged.append(msg % a if a else msg))
 
     srv._persist_universal_complete_chain(
         "ZZTEST", client=object(), contracts=wide_contracts, ts_utc=_TS_IN_WINDOW)
 
     assert len(calls) == cap, f"cycle 1 must attempt at most the cap ({cap}), not all {n_eligible} eligible"
+    assert any("truncated" in m for m in logged), "truncation beyond the cap must be logged, never silent"
 
 
 def test_B_cycle_two_same_day_advances_past_already_complete_expiries(monkeypatch, tmp_path):
@@ -597,29 +580,7 @@ def test_E_one_chronically_failing_expiry_does_not_starve_later_ones(monkeypatch
     ), "the chronic failer must have hit its own give-up cap, not been retried forever"
 
 
-def test_universal_complete_chain_truncates_and_logs_beyond_the_per_cycle_cap(
-    monkeypatch, tmp_path
-):
-    """Attack: an unusually weekly-heavy ticker must not unboundedly inflate one
-    cycle's vendor cost -- only up to the declared per-cycle cap is fetched, and the
-    truncation is logged, never silent."""
-    import server as srv
-
-    _fake_db(monkeypatch, srv, tmp_path)
-    _reset_module_state(srv)
-    monkeypatch.setattr(srv, "COMPLETE_CHAIN_NEAR_TERM_MAX_DTE_DAYS", 30000.0)
-    cap = srv._COMPLETE_CAPTURE_MAX_EXPIRIES_PER_TICKER
-    n_eligible = cap + 3
-    wide_contracts = _n_contracts_at_distinct_expiries(n_eligible)
-
-    calls: list[str] = []
-    _fake_gated_by_symbol_list(monkeypatch, srv, {}, calls)
-
-    logged = []
-    monkeypatch.setattr(srv.log, "warning", lambda msg, *a: logged.append(msg % a if a else msg))
-
-    srv._persist_universal_complete_chain(
-        "ZZTEST", client=object(), contracts=wide_contracts, ts_utc=_TS_IN_WINDOW)
-
-    assert len(calls) == cap, f"must fetch at most the declared cap ({cap}), not all {n_eligible} eligible expiries"
-    assert any("truncated" in m for m in logged), "truncation beyond the cap must be logged, never silent"
+#: TEST_SYSTEM_REHAB_V2: this file's own standalone truncation/logging test was here
+#: -- MERGED into test_A above (identical call-count assertion plus the same
+#: log-visibility check on the exact same scenario shape; one behavioral proof, not
+#: two duplicate cycle-1 executions).

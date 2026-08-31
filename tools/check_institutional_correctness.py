@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import ast
 import datetime
+import hashlib
 import json
 import os
 import re
@@ -1077,6 +1078,116 @@ def check_no_synthetic_domain_fixtures_in_tests() -> list[Violation]:
                 )
             )
     return out
+
+
+# ── TEST_SYSTEM_REHAB_V2 recurrence locks (2026-08-31) ───────────────────────────
+# Two objective recurrence classes PROVEN this rehab (an exact-duplicate test family,
+# and dozens of independent whole-repo scans duplicating the shared repo_index
+# observation) must not silently return. Both cores are pure functions over a `root`
+# directory so tests/test_rehab_recurrence_locks_v1.py can prove BLOCK/PASS against a
+# synthetic tmp_path tree, never the real repository — the real-tree wrappers below
+# just point that same logic at TESTS.
+
+_DUPLICATE_TEST_JUSTIFY_MARKER = "institutional-duplicate-ok"
+_SCAN_JUSTIFY_MARKER = "institutional-scan-ok"
+
+
+def _normalized_test_body_hash(node: ast.FunctionDef) -> str:
+    """AST dump of a test function's body with its own name stripped, so two
+    byte-identical bodies under different names still hash equal — but two bodies
+    that read/construct anything differently (a different Name, Attribute, or
+    Constant node anywhere) hash DIFFERENT, so a same-shaped test against a
+    genuinely different production module is never flagged."""
+    dumped = ast.dump(node, annotate_fields=True, include_attributes=False)
+    return hashlib.sha256(dumped.replace(f"name='{node.name}'", "name='X'", 1).encode()).hexdigest()
+
+
+def _find_duplicate_test_groups(root: Path) -> list[list[tuple[Path, int, str]]]:
+    """Groups of 2+ top-level test functions (anywhere under `root`, excluding
+    archive/) whose bodies are byte-identical once each function's own name is
+    normalized away. A function whose span contains the exemption marker is
+    excluded from grouping entirely (never silently paired with anything)."""
+    groups: dict[str, list[tuple[Path, int, str]]] = {}
+    for p in sorted(root.rglob("test_*.py")):
+        if "archive" in p.relative_to(root).parts:
+            continue
+        src = _read_or_empty(p)
+        if not src:
+            continue
+        try:
+            tree = ast.parse(src, filename=str(p))
+        except SyntaxError:
+            continue
+        lines = src.splitlines()
+        for node in ast.walk(tree):
+            if not (isinstance(node, ast.FunctionDef) and node.name.startswith("test_")):
+                continue
+            lo, hi = node.lineno, getattr(node, "end_lineno", node.lineno)
+            seg = "\n".join(lines[lo - 1: hi])
+            if _DUPLICATE_TEST_JUSTIFY_MARKER in seg:
+                continue
+            h = _normalized_test_body_hash(node)
+            groups.setdefault(h, []).append((p, node.lineno, node.name))
+    return [members for members in groups.values() if len(members) > 1]
+
+
+def check_no_duplicate_tests() -> list[Violation]:
+    """Fail if two test functions have a byte-identical body (own name aside) —
+    TEST_SYSTEM_REHAB_V2's exact-duplicate-test recurrence lock."""
+    out: list[Violation] = []
+    for members in _find_duplicate_test_groups(TESTS):
+        names = ", ".join(f"{p.relative_to(REPO)}:{ln}::{n}" for p, ln, n in members)
+        p0, ln0, _n0 = members[0]
+        out.append(Violation(
+            p0, ln0,
+            f"duplicate test body (byte-identical once the function's own name is "
+            f"normalized away) across: {names}. If these exercise genuinely "
+            f"different production modules, add '# institutional-duplicate-ok: "
+            f"<reason>' inside the function; otherwise delete the redundant copy "
+            f"and keep the canonical one.",
+        ))
+    return out
+
+
+def _find_new_repo_scans(root: Path) -> list[tuple[Path, int]]:
+    """Test files under `root` (excluding archive/) that walk `.rglob(` themselves
+    instead of consuming the shared `repo_index` fixture. A file already referencing
+    `repo_index` anywhere, or carrying the exemption marker anywhere, is skipped
+    entirely — this locates NEW independent scans, not every possible rglob use."""
+    out: list[tuple[Path, int]] = []
+    for p in sorted(root.rglob("test_*.py")):
+        if "archive" in p.relative_to(root).parts:
+            continue
+        src = _read_or_empty(p)
+        if not src or "repo_index" in src or _SCAN_JUSTIFY_MARKER in src or "rglob(" not in src:
+            continue
+        try:
+            tree = ast.parse(src, filename=str(p))
+        except SyntaxError:
+            continue
+        for node in ast.walk(tree):
+            if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                    and node.func.attr == "rglob"):
+                out.append((p, getattr(node, "lineno", 0)))
+    return out
+
+
+def check_no_new_independent_repo_scan_in_tests() -> list[Violation]:
+    """Fail if a NEW test performs its own repo-wide `.rglob(` file walk instead of
+    consuming the shared `repo_index` fixture (tests/conftest.py) —
+    TEST_SYSTEM_REHAB_V2's duplicate-repo-observation recurrence lock. A genuinely
+    specialized scan (different root, non-.py files, a scope the shared corpus
+    cannot supply) is exempted with '# institutional-scan-ok: <reason>'."""
+    return [
+        Violation(
+            p, line,
+            "new independent repo-wide file scan (.rglob) in a test that does not "
+            "consume the shared `repo_index` fixture (tests/conftest.py) — share the "
+            "existing current-tree observation, or justify a genuinely specialized "
+            "scan with '# institutional-scan-ok: <reason>'.",
+        )
+        for p, line in _find_new_repo_scans(TESTS)
+    ]
 
 
 # ── Production-code checks (no-silent-swallow, simplicity) ───────────────────
@@ -3802,6 +3913,18 @@ CHECKS = [
     # ENFORCED (must be zero — block pre-commit):
     ("no_synthetic_domain_fixtures_in_tests", check_no_synthetic_domain_fixtures_in_tests, True),
     ("no_swallowed_test_failures", check_no_swallowed_test_failures, True),  # printed failure must fail the run
+    # TEST_SYSTEM_REHAB_V2 (2026-08-31) recurrence lock 1/2: an exact-duplicate test
+    # body must not silently reappear. 0 on this tree (the 2 real groups this rehab
+    # found are marked '# institutional-duplicate-ok:' — genuinely distinct production
+    # modules, kept deliberately).
+    ("no_duplicate_tests", check_no_duplicate_tests, True),
+    # TEST_SYSTEM_REHAB_V2 recurrence lock 2/2: ADVISORY, not enforced — 18 pre-
+    # existing independent repo scans remain (own_repo_scan_candidates, not yet
+    # migrated onto tests/conftest.py's shared repo_index; this rehab fixed the two
+    # PROVEN-expensive duplicate-census cases, not all 18). Matches this file's own
+    # "advisory debt: drive to zero, then enforce" convention (see function_length,
+    # file_length, ruff_quality below) — promote to ENFORCED once that debt is zero.
+    ("no_new_independent_repo_scan_in_tests", check_no_new_independent_repo_scan_in_tests, False),
     # SIMPLICITY REHAB T2-2 (2026-08-24, governance/retired_checks.md): root_cause_log is
     # the ONE enforced ledger validator. The nine other ledger registrations
     # (rc_citations_resolve, rc_status_vocabulary, rc_log_rows_keep_schema,

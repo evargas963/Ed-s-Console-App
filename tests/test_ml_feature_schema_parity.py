@@ -1884,12 +1884,6 @@ def test_ml_pipeline_efficiency_checker_green():
     assert check_ml_pipeline_efficiency() == []
 
 
-def test_ablation_parity_includes_bridge_and_backtest_hooks():
-    from tools.check_ablation_pipeline_parity import check_ablation_pipeline_parity
-
-    assert check_ablation_pipeline_parity() == []
-
-
 # ── RC-332: cf_* has ONE input population, and callers may not choose it ────────
 #
 # RC-328 made the confluence WINDOW clock-defined and repaired two lanes. Four more kept

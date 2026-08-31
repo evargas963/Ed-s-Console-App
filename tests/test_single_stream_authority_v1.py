@@ -12,6 +12,8 @@ from __future__ import annotations
 import textwrap
 from pathlib import Path
 
+import pytest
+
 from tools.check_single_stream_authority import (
     OFFLINE_TOOLS,
     PRODUCTION_OWNER,
@@ -21,17 +23,26 @@ from tools.check_single_stream_authority import (
 )
 
 
-def test_current_tree_has_exactly_one_production_owner():
+#: TEST_SYSTEM_REHAB_V2: the two tests below both independently called run_census() on
+#: the REAL, unmutated tree (measured ~21-26s each) to assert different facts about the
+#: SAME result. One canonical current-tree census, shared -- the mutation controls
+#: further down (genuine repository-input changes via monkeypatch) still each run their
+#: own census, because THAT is the materially distinct case this file exists to prove.
+@pytest.fixture(scope="module")
+def current_tree_census():
+    return run_census()
+
+
+def test_current_tree_has_exactly_one_production_owner(current_tree_census):
     """PHASE 1 acceptance: PRODUCTION_SCHWAB_STREAMCLIENT_CONSTRUCTORS = exactly 1."""
-    census = run_census()
+    census = current_tree_census
     assert census["PRODUCTION_OWNER"] == [f"{PRODUCTION_OWNER}:555"] or \
         len(census["PRODUCTION_OWNER"]) == 1, census["PRODUCTION_OWNER"]
     assert census["VIOLATION"] == [], census["VIOLATION"]
 
 
-def test_offline_tool_is_classified_not_counted_as_a_violation():
-    census = run_census()
-    assert any(site.startswith(tuple(OFFLINE_TOOLS)) for site in census["OFFLINE_TOOL"])
+def test_offline_tool_is_classified_not_counted_as_a_violation(current_tree_census):
+    assert any(site.startswith(tuple(OFFLINE_TOOLS)) for site in current_tree_census["OFFLINE_TOOL"])
 
 
 def test_classify_production_owner_and_default_violation():
@@ -94,6 +105,48 @@ def test_from_schwab_import_streaming_alias_is_still_found(tmp_path):
             return streaming.StreamClient(client)
     '''), encoding="utf-8")
     assert len(find_stream_client_constructions(p2)) == 1
+
+
+def test_bare_import_schwab_double_attribute_chain_is_found(tmp_path):
+    """TEST_SYSTEM_REHAB_V2 (Cursor-confirmed hole, 2026-08-31): `import schwab` followed
+    by `schwab.streaming.StreamClient(...)` — a double-attribute chain through the
+    top-level PACKAGE name, a different AST shape from every form above (which all bind
+    a name directly to the `schwab.streaming` module or the `StreamClient` class). This
+    was undetected before _package_aliases_for_schwab existed."""
+    p = tmp_path / "bare_package_import.py"
+    p.write_text(textwrap.dedent('''
+        import schwab
+
+        def connect(client):
+            return schwab.streaming.StreamClient(client)
+    '''), encoding="utf-8")
+    assert len(find_stream_client_constructions(p)) == 1
+
+    p2 = tmp_path / "bare_package_import_aliased.py"
+    p2.write_text(textwrap.dedent('''
+        import schwab as sch
+
+        def connect(client):
+            return sch.streaming.StreamClient(client)
+    '''), encoding="utf-8")
+    assert len(find_stream_client_constructions(p2)) == 1
+
+
+def test_bare_import_schwab_streaming_no_alias_double_attribute_is_found(tmp_path):
+    """A bare `import schwab.streaming` (no `as`) binds the name `schwab`, not
+    `schwab.streaming` — so the correct and only valid call shape is the DOUBLE
+    attribute `schwab.streaming.StreamClient(...)`, not a single-level
+    `schwab.StreamClient(...)`. The prior implementation added "schwab" to the
+    single-attribute alias set for exactly this import form, which meant it could never
+    actually match the real call shape a caller would write."""
+    p = tmp_path / "bare_submodule_import.py"
+    p.write_text(textwrap.dedent('''
+        import schwab.streaming
+
+        def connect(client):
+            return schwab.streaming.StreamClient(client)
+    '''), encoding="utf-8")
+    assert len(find_stream_client_constructions(p)) == 1
 
 
 def test_an_unrelated_streamclient_class_is_not_a_false_positive(tmp_path):
