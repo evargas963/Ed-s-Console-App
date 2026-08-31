@@ -756,7 +756,8 @@ def test_chain_fetch_gate_serializes_concurrent_fetches(monkeypatch):
     # RC-239: the production call site passes `to_date=` as well; a stub that omits it does
     # not stand in for the real callee, it just raises TypeError inside the gate. Cursor-audit F2
     # added `from_date=` (single-expiry near-edge bound) — the stub mirrors the real signature.
-    def _slow_chain(client, ticker, *, strike_count, to_date=None, from_date=None):
+    # OPTIONS_ORDER_FLOW_V1 round 3 added `strike_range=` (see the source-shape lock test above).
+    def _slow_chain(client, ticker, *, strike_count=None, strike_range=None, to_date=None, from_date=None):
         with lk:
             active["n"] += 1
             active["max"] = max(active["max"], active["n"])
@@ -793,7 +794,7 @@ def test_chain_fetch_gate_fail_open_on_timeout(monkeypatch):
     monkeypatch.setattr(
         srv,
         "safe_get_chain",
-        lambda client, ticker, *, strike_count, to_date=None, from_date=None: (calls.append(ticker), "RESP")[1],
+        lambda client, ticker, *, strike_count=None, strike_range=None, to_date=None, from_date=None: (calls.append(ticker), "RESP")[1],
     )
     # CHAIN_GATE_V2: two slots — saturate both to force the timeout path.
     assert srv._schwab_chain_fetch_gate.acquire(timeout=1)
@@ -826,7 +827,7 @@ def test_chain_fetch_gate_returns_timings_on_normal_path(monkeypatch):
     monkeypatch.setattr(srv, "_chain_inflight", {})
     monkeypatch.setattr(
         srv, "safe_get_chain",
-        lambda client, ticker, *, strike_count, to_date=None, from_date=None: "OK")
+        lambda client, ticker, *, strike_count=None, strike_range=None, to_date=None, from_date=None: "OK")
     resp, gate_wait_sec, fetch_sec = srv._gated_safe_get_chain(None, "ZZZ_NORM", strike_count=5)
     assert resp == "OK"
     assert gate_wait_sec >= 0.0
@@ -856,7 +857,7 @@ def test_chain_fetch_call_shape_and_gated_site_source_lock():
     # (single-expiry near-edge bound). The lock asserts the SHAPE — gated helper, faucet-sourced
     # width, and every kwarg named — rather than a frozen literal that goes stale the moment a
     # legitimate argument is added.
-    assert "resp = safe_get_chain(client, ticker, strike_count=strike_count, to_date=to_date, from_date=from_date)" in src
+    assert "resp = safe_get_chain(client, ticker, strike_count=strike_count, strike_range=strike_range,\n                              to_date=to_date, from_date=from_date)" in src
     assert "_gated_safe_get_chain, client, ticker," in src
     # Width comes from the faucet, never a bare constant (enforced repo-wide by
     # tools/check_institutional_correctness.py::check_chain_width_single_faucet).

@@ -62,11 +62,19 @@
   #sel-body div.row { display:flex; justify-content:space-between; padding:2px 0;
                       border-bottom:1px dashed var(--border); }
   #sel-body .k { color:var(--mut); } #sel-body .v { color:var(--text2); font-weight:600; }
-  #health { display:flex; align-items:center; gap:6px; margin:8px 0; }
+  #health { display:flex; align-items:center; gap:6px; margin:8px 0 2px; }
   #health-dot { width:8px; height:8px; border-radius:50%; background:var(--mut); flex:none; }
   #health-dot.healthy { background:var(--green); animation:pulse 1.6s ease-in-out infinite; }
+  #health-dot.degraded { background:var(--amber); }
   #health-dot.unhealthy { background:var(--red); }
   @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:.3; } }
+  #health-detail { font-size:10.5px; color:var(--mut); line-height:1.7; margin-bottom:8px; }
+  #health-detail .ok { color:var(--green); } #health-detail .bad { color:var(--red); }
+  #health-detail .warn { color:var(--amber); }
+  #exp-select { background:var(--panel); color:var(--text); border:1px solid var(--border2);
+                border-radius:4px; font-family:var(--mono); font-size:11px; padding:2px 4px; }
+  #m-scope { }
+  #m-scope.ok { color:var(--green); } #m-scope.warn { color:var(--amber); }
   #depth-tbl { width:100%; border-collapse:collapse; margin-top:6px; }
   #depth-tbl th { color:var(--mut); text-align:right; padding:3px 4px; font-weight:600; }
   #depth-tbl td { text-align:right; padding:3px 4px; border-top:1px solid var(--border); }
@@ -87,9 +95,10 @@
 </div>
 <div id="meta">
   <span>spot <b id="m-spot">&hellip;</b></span>
-  <span>expiry <b id="m-expiry">&hellip;</b></span>
+  <span>expiry <select id="exp-select"><option value="">&hellip;</option></select></span>
+  <span>showing <b id="m-expiry">&hellip;</b></span>
   <span>contracts <b id="m-count">&hellip;</b></span>
-  <span title="the stored chain covers ONE expiry at a time — whichever a prior render/terrain cycle last captured for this ticker, not a live multi-expiry fetch">chain scope: last-captured expiry only</span>
+  <span id="m-scope">&hellip;</span>
   <span style="margin-left:auto;">poll <b>2s</b></span>
 </div>
 <div id="notice"></div>
@@ -113,7 +122,12 @@
       <div class="row"><span class="k">symbol</span><span class="v" id="sel-symbol">&mdash;</span></div>
       <div id="health">
         <span id="health-dot"></span>
-        <span id="health-label" style="color:var(--mut);">&hellip;</span>
+        <span id="health-summary" style="color:var(--mut);">&hellip;</span>
+      </div>
+      <div id="health-detail">
+        <div id="health-replay">replay: &hellip;</div>
+        <div id="health-l1">L1 upstream: &hellip;</div>
+        <div id="health-book">BOOK upstream: &hellip;</div>
       </div>
       <div class="row"><span class="k">status</span><span class="v" id="mx-status">&mdash;</span></div>
       <div class="row"><span class="k">top bid / ask</span><span class="v" id="mx-topbook">&mdash;</span></div>
@@ -163,15 +177,43 @@
     n.style.display = 'block'; n.textContent = msg;
   }
 
+  // Honest scope labeling (round-2 completeness repair): the UI must never present a
+  // fallback tier as if it were the same thing as a proven-complete live chain.
+  function renderScope(scope){
+    var el = document.getElementById('m-scope');
+    el.classList.remove('ok', 'warn');
+    var kind = scope && scope.kind;
+    if (kind === 'complete_single_expiry') {
+      el.textContent = '✓ complete chain (strike_range=ALL)';
+      el.classList.add('ok');
+    } else if (kind === 'expiry_scope_mismatch') {
+      el.textContent = '⚠ vendor returned a different expiry — not proven complete';
+      el.classList.add('warn');
+    } else if (kind === 'persisted_complete_capture_fallback') {
+      var age = scope.captured_age_sec;
+      el.textContent = '⚠ prior complete capture' +
+        (age !== null && age !== undefined ? ' (' + Math.round(age) + 's old)' : '') +
+        ' — not live';
+      el.classList.add('warn');
+    } else if (kind === 'stored_analytical_snapshot_fallback') {
+      el.textContent = '⚠ bounded analytical snapshot — NOT proven complete';
+      el.classList.add('warn');
+    } else {
+      el.textContent = 'scope: unknown';
+      el.classList.add('warn');
+    }
+  }
+
   function renderChain(payload){
     var tbody = document.getElementById('chain-body');
     tbody.innerHTML = '';
     document.getElementById('m-spot').textContent = payload.spot === null || payload.spot === undefined ? '—' : fmt(payload.spot, 2);
     document.getElementById('m-expiry').textContent = payload.expiry || '—';
     document.getElementById('m-count').textContent = String((payload.contracts || []).length);
+    renderScope(payload.scope);
 
     if (payload.status === 'no_chain' || !payload.contracts || !payload.contracts.length) {
-      notice('No chain captured yet for ' + payload.ticker + ' — nothing to select. The chain fills in once terrain/render collection has captured this ticker.');
+      notice('No chain available for ' + payload.ticker + (payload.expiry ? (' / ' + payload.expiry) : '') + ' — nothing to select.');
       return;
     }
     notice('');
@@ -212,12 +254,49 @@
     });
   }
 
+  var expSelect = document.getElementById('exp-select');
+
   function loadChain(){
     var t = (tkEl.value || 'SPY').toUpperCase().trim();
-    fetch('/api/chain?ticker=' + encodeURIComponent(t))
+    var url = '/api/chain?ticker=' + encodeURIComponent(t);
+    var exp = expSelect.value;
+    if (exp) url += '&expiry=' + encodeURIComponent(exp);
+    fetch(url)
       .then(function(r){ return r.json(); })
       .then(renderChain)
       .catch(function(){ notice('Chain fetch failed.'); });
+  }
+
+  // The complete expiry universe, operator-accessible (round-2 requirement): populate the
+  // selector from the SAME /api/expiries faucet the rest of the console uses — the whole
+  // listed universe is reachable, one safely-partitioned expiry at a time, never a single
+  // unsafe multi-expiry request.
+  function loadExpiries(){
+    var t = (tkEl.value || 'SPY').toUpperCase().trim();
+    fetch('/api/expiries?ticker=' + encodeURIComponent(t))
+      .then(function(r){ return r.json(); })
+      .then(function(j){
+        var exps = j.expiries || [];
+        var prev = expSelect.value;
+        expSelect.innerHTML = '';
+        if (!exps.length) {
+          var opt = document.createElement('option');
+          opt.value = ''; opt.textContent = '(none listed)';
+          expSelect.appendChild(opt);
+          loadChain();
+          return;
+        }
+        exps.forEach(function(e){
+          var opt = document.createElement('option');
+          opt.value = e; opt.textContent = e;
+          expSelect.appendChild(opt);
+        });
+        // Keep the previous selection if it's still in the new list (ticker unchanged,
+        // e.g. a 30s refresh); otherwise default to nearest (first listed).
+        expSelect.value = exps.indexOf(prev) >= 0 ? prev : exps[0];
+        loadChain();
+      })
+      .catch(function(){ loadChain(); });   // expiries lookup failing must not block the chain fetch itself
   }
 
   function selectContract(symbol, tr, side){
@@ -273,25 +352,65 @@
       depthBody.appendChild(tr);
     });
 
-    var plane = m.streaming_plane || {};
-    var dot = document.getElementById('health-dot');
-    var label = document.getElementById('health-label');
-    dot.classList.remove('healthy', 'unhealthy');
-    if (plane.streaming_healthy === true) {
-      dot.classList.add('healthy');
-      label.textContent = 'streaming' + (plane.streaming_staleness_ms !== null && plane.streaming_staleness_ms !== undefined
-        ? ' · ' + Math.round(plane.streaming_staleness_ms) + 'ms' : '');
-    } else if (plane.streaming_healthy === false) {
-      dot.classList.add('unhealthy');
-      label.textContent = plane.streaming_connected ? 'feed stale' : 'feed not connected';
-    } else {
-      label.textContent = 'diagnostics unavailable';
-    }
+    renderHealth(m.streaming_plane || {});
   }
 
-  tkEl.addEventListener('change', loadChain);
-  tkEl.addEventListener('keydown', function(e){ if (e.key === 'Enter') loadChain(); });
-  loadChain();
+  // Round-2 requirement: local replay health, Schwab LEVELONE_OPTIONS upstream health,
+  // and Schwab OPTIONS_BOOK upstream health are THREE DISTINCT truths — the backend
+  // documents this explicitly (daemon_upstream_health is NOT the same claim as
+  // streaming_healthy, which is only a local-DB-replay freshness proxy). This UI must
+  // never let one healthy dimension paint a flat green over another that is stale: the
+  // summary dot is green ONLY when all three agree healthy, amber if some but not all
+  // are healthy, red if none are — and every dimension's raw state is always shown below
+  // it, never hidden behind the single dot.
+  function renderHealth(plane){
+    var upstream = plane.daemon_upstream_health || {};
+    var l1 = upstream.LEVELONE_OPTIONS || {};
+    var bookSvc = upstream.OPTIONS_BOOK || {};
+    var localHealthy = plane.streaming_healthy === true;
+    var l1Healthy = l1.state === 'RUNNING';
+    var bookHealthy = bookSvc.state === 'RUNNING';
+    var haveUpstream = !!upstream.LEVELONE_OPTIONS || !!upstream.OPTIONS_BOOK;
+
+    var dot = document.getElementById('health-dot');
+    var summary = document.getElementById('health-summary');
+    dot.classList.remove('healthy', 'degraded', 'unhealthy');
+    if (!haveUpstream) {
+      // Only the local-replay claim is known — never present that alone as full "streaming healthy".
+      dot.classList.add(localHealthy ? 'degraded' : 'unhealthy');
+      summary.textContent = localHealthy ? 'replay ok, upstream unknown' : 'unhealthy';
+    } else if (localHealthy && l1Healthy && bookHealthy) {
+      dot.classList.add('healthy');
+      summary.textContent = 'all healthy' + (plane.streaming_staleness_ms !== null && plane.streaming_staleness_ms !== undefined
+        ? ' · ' + Math.round(plane.streaming_staleness_ms) + 'ms' : '');
+    } else if (localHealthy || l1Healthy || bookHealthy) {
+      dot.classList.add('degraded');
+      summary.textContent = 'partial — see detail';
+    } else {
+      dot.classList.add('unhealthy');
+      summary.textContent = plane.streaming_connected ? 'stale' : 'not connected';
+    }
+
+    var replayEl = document.getElementById('health-replay');
+    replayEl.textContent = 'replay: ' + (plane.streaming_connected === false ? 'not connected'
+      : (localHealthy ? 'healthy' : 'stale'));
+    replayEl.className = localHealthy ? 'ok' : 'bad';
+
+    var l1El = document.getElementById('health-l1');
+    l1El.textContent = 'L1 upstream: ' + (l1.state || 'UNKNOWN') +
+      (l1.age_sec !== null && l1.age_sec !== undefined ? ' (' + fmt(l1.age_sec, 1) + 's)' : '');
+    l1El.className = l1Healthy ? 'ok' : (l1.state ? 'bad' : 'warn');
+
+    var bookEl = document.getElementById('health-book');
+    bookEl.textContent = 'BOOK upstream: ' + (bookSvc.state || 'UNKNOWN') +
+      (bookSvc.age_sec !== null && bookSvc.age_sec !== undefined ? ' (' + fmt(bookSvc.age_sec, 1) + 's)' : '');
+    bookEl.className = bookHealthy ? 'ok' : (bookSvc.state ? 'bad' : 'warn');
+  }
+
+  tkEl.addEventListener('change', loadExpiries);
+  tkEl.addEventListener('keydown', function(e){ if (e.key === 'Enter') loadExpiries(); });
+  expSelect.addEventListener('change', loadChain);
+  loadExpiries();
   setInterval(loadChain, 30000);
 })();
 </script>

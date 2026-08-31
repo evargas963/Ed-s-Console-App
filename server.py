@@ -830,14 +830,14 @@ def spot_is_a_close(source: str) -> bool:
     return source in SPOT_CLOSE_SOURCES
 
 
-def _gated_safe_get_chain(client, ticker: str, *, strike_count, priority: bool = False,
-                          to_date=None, from_date=None):
+def _gated_safe_get_chain(client, ticker: str, *, strike_count=None, strike_range=None,
+                          priority: bool = False, to_date=None, from_date=None):
     """safe_get_chain behind the bounded two-slot gate -> (resp, gate_wait_sec, fetch_sec).
 
     Schwab CSV authority checked: yes
     CSV row(s): chains.* via schwab_client.safe_get_chain - call shape
-      unchanged (safe_get_chain(client, ticker, strike_count=...)); this is
-      scheduling (bounded 2-slot gate + per-ticker single-flight coalescing),
+      unchanged (safe_get_chain(client, ticker, strike_count=..., strike_range=...));
+      this is scheduling (bounded 2-slot gate + per-ticker single-flight coalescing),
       no field read/derivation/emission change.
     Derived-field disposition: none required.
     All consumers checked: yes - c_resp consumed identically downstream;
@@ -859,8 +859,15 @@ def _gated_safe_get_chain(client, ticker: str, *, strike_count, priority: bool =
     # RC-127: to_date joins the coalesce key — a full-book fetch and a 45-day rung are
     # DIFFERENT fetches, same as the strike-width lesson above. Cursor-audit F2: from_date
     # likewise — a single-expiry window (from=to=sel) and the open-near-end horizon fetch are
-    # different requests and must never coalesce onto each other.
-    key = ((ticker or "").strip().upper(), int(strike_count), str(to_date or ""), str(from_date or ""))
+    # different requests and must never coalesce onto each other. strike_range joins it too
+    # (OPTIONS_ORDER_FLOW_V1 2026-08-30): a strike_range="ALL" complete-chain request and a
+    # bounded strike_count request for the SAME ticker/dates are DIFFERENT fetches — MEASURED
+    # live, "ALL" returned 69 more real strikes than strike_count=250 alone for the same SPY
+    # expiry, so coalescing them onto each other would silently hand a caller wanting the
+    # complete set a truncated bounded response, or vice versa.
+    key = ((ticker or "").strip().upper(),
+          int(strike_count) if strike_count is not None else None,
+          str(strike_range or ""), str(to_date or ""), str(from_date or ""))
     wait_started = time.monotonic()
     with _chain_inflight_lock:
         holder = _chain_inflight.get(key)
@@ -901,7 +908,8 @@ def _gated_safe_get_chain(client, ticker: str, *, strike_count, priority: bool =
     resp = None
     exc = None
     try:
-        resp = safe_get_chain(client, ticker, strike_count=strike_count, to_date=to_date, from_date=from_date)
+        resp = safe_get_chain(client, ticker, strike_count=strike_count, strike_range=strike_range,
+                              to_date=to_date, from_date=from_date)
         return resp, gate_wait_sec, round(time.monotonic() - fetch_started, 3)
     except SchwabAuthError as e:
         exc = e
@@ -3693,6 +3701,10 @@ from calibration.option_chain_morning_full import (
     has_morning_full_capture,
     maybe_persist_morning_full_chain,
     universal_capture_window,
+)
+from calibration.complete_chain_capture import (
+    latest_complete_chain_capture,
+    persist_complete_chain_capture,
 )
 
 #: Timeframes to try, in order, when reading stored snapshot rows. The timeframe MUST be
@@ -14546,25 +14558,33 @@ def get_expiries(ticker: str = Query(default=DEFAULT_TICKER)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-#: OPTIONS_ORDER_FLOW_V1 completeness repair (2026-08-30, operator-directed): the analytical
-#: chain faucet (resolve_chain_strike_count, max 120) bounds strikes AROUND ATM per ticker's
-#: gamma/terrain needs and is explicitly allowed to stay narrow for that purpose — but
-#: /api/chain is a CONTRACT-SELECTION surface, and a UI reading a narrow analytical snapshot
-#: as if it were the complete chain silently hides real, tradeable contracts. MEASURED live
-#: 2026-08-30 (TSLA, SPY, real Schwab data, not synthetic): a strike_count=20 fetch for TSLA's
-#: nearest expiry returned 40 contracts spanning 325.0-372.5; the SAME expiry with
-#: strike_count=250 AND the [sel,sel] single-expiry date window (the identical safe-
-#: partitioning trick RC-494/_chain_to_date_for already proved live for index tickers,
-#: generalized here to any ticker) returned 236 contracts spanning 160.0-630.0 — 98 real
-#: strikes the bounded fetch never showed, in 0.34s, no vendor error. SPY (a much heavier
-#: book) at strike_count=250 across two different expiries returned 388/330 contracts in
-#: 0.59s/0.48s, also clean. This is SAFE BY CONSTRUCTION, not by luck: this repo's own
-#: measured 502s (SPY/QQQ at strikeCount>=150, $SPX at 80-100) were ALL multi-expiry requests
-#: (strikeCount * 2 sides * ~35-55 expiries in ONE response, server.py:11090-11091) —
-#: bounding one request to exactly ONE expiry via from_date=to_date caps its contract
-#: ceiling at strike_count*2 regardless of expiry count, staying an order of magnitude under
-#: SCHWAB_CHAIN_CONTRACT_BUDGET=6600 even at strike_count=250.
-COMPLETE_CHAIN_STRIKE_COUNT = 250
+#: OPTIONS_ORDER_FLOW_V1 completeness repair (2026-08-30, operator-directed, round 2): a
+#: fixed strike_count is NEVER proof of completeness — it is by definition a BOUND (N
+#: strikes above/below ATM), and MEASURED live 2026-08-30 it silently truncated a real
+#: chain: SPY's near expiry at strike_count=250 returned 388 contracts (194 strikes,
+#: 645.0-950.0); the SAME expiry via schwab-py's `strike_range=Options.StrikeRange.ALL` —
+#: a DIFFERENT vendor selection dimension, not a wider count — returned 526 contracts (263
+#: strikes, 420.0-950.0): 69 real strikes strike_count=250 never showed. `strike_range=
+#: "ALL"` was independently confirmed to be the vendor's actual complete set (not itself
+#: silently bounded) by a saturation check: an unrelated strike_count=500 request on the
+#: SAME expiry returned the IDENTICAL strike set, byte-for-byte — the two independent
+#: request shapes converged, which a still-truncated response could not do. TSLA's near
+#: expiry: strike_count=250 and strike_range=ALL happened to already agree (236 contracts,
+#: 118 strikes, 160.0-630.0, 27 fractional) — evidence that a bound merely CAN coincide with
+#: completeness on a given day, never proof that it reliably does, which is exactly why
+#: `strike_range=ALL` (never a strike_count bound) is now the completeness basis. Real
+#: capture evidence: tests/fixtures/real_tsla_complete_chain_strike_range_all.json,
+#: tests/fixtures/real_spy_strike_count_vs_strike_range_all_evidence.json.
+#:
+#: SAFE BY CONSTRUCTION regardless of strike width: this repo's own measured 502s (SPY/QQQ
+#: at strikeCount>=150, $SPX at 80-100, server.py:11090-11091) were ALL multi-expiry
+#: requests (strikeCount * 2 sides * ~35-55 expiries in ONE response) — bounding one
+#: request to exactly ONE expiry via from_date=to_date keeps `strike_range=ALL`'s contract
+#: count scoped to that single expiry's real strike population (measured 236-526 contracts
+#: above), an order of magnitude under SCHWAB_CHAIN_CONTRACT_BUDGET=6600, regardless of how
+#: many strikes that population actually has — the vendor 502 was never about strike width
+#: alone, it was strike width MULTIPLIED across every expiry in an unwindowed request.
+COMPLETENESS_BASIS_STRIKE_RANGE_ALL = "strike_range=ALL"
 
 
 @app.get("/api/chain")
@@ -14578,28 +14598,36 @@ def get_chain(ticker: str = Query(default=DEFAULT_TICKER),
     already document.
 
     COMPLETE, separate from the bounded analytical chain views: fetches LIVE, scoped to
-    exactly one expiry (see the COMPLETE_CHAIN_STRIKE_COUNT comment above for the measured
-    safety case), through _gated_safe_get_chain — the SAME single, rate-limited, coalesced
-    chain-fetch faucet every other chain read in this file already uses (RC-59/RC-127/
-    Cursor-audit F2's chain_width_single_faucet invariant) — never a second, ungated vendor-
-    call surface, and never a second per-contract parsing path (reuses
-    flatten_chain_contracts/chain_underlying_spot verbatim, same as every other chain
-    consumer). Every native Schwab field is served AS-IS — nothing here rounds, filters, or
-    reconstructs a strike from assumed spacing; fractional strikes (.50/.25/...) survive
-    exactly as the vendor sent them.
+    exactly one expiry, through _gated_safe_get_chain — the SAME single, rate-limited,
+    coalesced chain-fetch faucet every other chain read in this file already uses (RC-59/
+    RC-127/Cursor-audit F2's chain_width_single_faucet invariant) — using
+    `strike_range="ALL"` (see COMPLETENESS_BASIS_STRIKE_RANGE_ALL's comment above for the
+    measured proof this is genuinely complete, not merely wide), never a bare strike_count
+    bound, and never a second per-contract parsing path (reuses flatten_chain_contracts/
+    resolve_spot verbatim, same as every other chain consumer). Every native Schwab field
+    is served AS-IS — nothing here rounds, filters, or reconstructs a strike from assumed
+    spacing; fractional strikes (.50/.25/...) survive exactly as the vendor sent them.
 
     `expiry` optional: defaults to the ticker's nearest listed expiry (the SAME
     _fetch_expiries_light faucet /api/expiries uses). `scope.kind` states EXACTLY what was
-    served: 'complete_single_expiry' on a live success — proven complete for that one
-    expiry, not the whole multi-expiry universe (a single synchronous HTTP request
-    completing the ENTIRE multi-expiry book is exactly the request shape that produced this
-    repo's measured 502s; one complete expiry per call is the honest, budget-safe unit).
-    ANY failure (vendor error, auth, gate timeout) fails closed to the last STORED
-    analytical snapshot (_latest_chain_and_spot, this endpoint's original sole source),
-    explicitly labeled scope.kind='stored_analytical_snapshot_fallback' so a caller can
-    never mistake a narrower fallback for a complete live fetch — bounded gamma/terrain
-    views remain legal for their own purpose, but this endpoint never lets one masquerade
-    as complete without saying so. status='no_chain' if even the fallback has nothing."""
+    served, THREE tiers, honestly distinguished — a caller must never mistake a narrower
+    tier for the complete live one:
+      1. 'complete_single_expiry' — a live strike_range=ALL fetch succeeded AND the
+         vendor's own returned_expiries matched the requested expiry EXACTLY (never
+         claimed on a mismatch — see the expiry_scope_mismatch tier below). Also PERSISTS
+         this proven-complete capture (calibration/complete_chain_capture.py) — a fully
+         independent table from the bounded analytical snapshots, so completeness has a
+         durable record, not just a live-request-shaped promise.
+      2. 'expiry_scope_mismatch' — the vendor's response did not exactly match the
+         requested expiry (e.g. returned a different or additional expiry). The contracts
+         actually returned are still served (never silently dropped — real data), but
+         completeness for the REQUESTED expiry is explicitly NOT claimed.
+      3. 'persisted_complete_capture_fallback' — no live fetch this request (error/
+         timeout/mismatch), but a PRIOR complete_single_expiry capture exists for this
+         exact ticker+expiry; served with its captured_age_sec so staleness is visible.
+      4. 'stored_analytical_snapshot_fallback' — last resort: the bounded, gamma/terrain-
+         tuned snapshot this endpoint originally served, explicitly labeled as NOT proven
+         complete. status='no_chain' if even this has nothing."""
     t = ticker.upper().strip()
     # TICKER-PREVIEW-NO-ENROLL: listing a chain is a VIEW — touch last-seen only.
     _touch_tracked_ticker_view(t)
@@ -14617,32 +14645,78 @@ def get_chain(ticker: str = Query(default=DEFAULT_TICKER),
             d = date.fromisoformat(resolved_expiry)
             client = get_client()
             c_resp, _gate_wait, _fetch_sec = _gated_safe_get_chain(
-                client, t,
-                strike_count=COMPLETE_CHAIN_STRIKE_COUNT,   # chain-width-faucet-ok: contract-selection listing only, no level/gamma math computed from this fetch — deliberately a fixed WIDE single-expiry-scoped bound, not the per-ticker analytical width authority
-                from_date=d, to_date=d, priority=False)
+                client, t, strike_range="ALL", from_date=d, to_date=d, priority=False)
             if c_resp is not None and c_resp.status_code == 200:
                 c_json = c_resp.json()
                 spot, _spot_source, _spot_as_of = resolve_spot(t, chain_json=c_json)
                 contracts = flatten_chain_contracts(c_json)
-                # Defensive scope check — never trust the request alone to guarantee the
-                # response's own expirationDate matches what was actually asked for.
+                # SCOPE CHECK, not defensive-only: never trust the request alone to
+                # guarantee the response's own expirationDate matches what was actually
+                # asked for — a mismatch here is the difference between claiming and
+                # proving completeness for the REQUESTED expiry.
                 returned_exps = sorted({
                     str(c.get("expirationDate") or "")[:10]
                     for c in contracts if isinstance(c, dict) and c.get("expirationDate")
                 })
-                return JSONResponse({
-                    "ticker": t, "spot": spot, "expiry": resolved_expiry,
-                    "contracts": contracts, "status": "ok" if contracts else "no_chain",
-                    "scope": {"kind": "complete_single_expiry",
-                             "requested_expiry": resolved_expiry,
-                             "returned_expiries": returned_exps,
-                             "strike_count": COMPLETE_CHAIN_STRIKE_COUNT},
-                })
-            log.warning("chain: live fetch non-200 for %s expiry %s, falling back to "
-                       "stored snapshot", t, resolved_expiry)
+                if returned_exps == [resolved_expiry]:
+                    try:
+                        persist_complete_chain_capture(
+                            get_db().db_path, ticker=t, expiry=resolved_expiry,
+                            contracts=contracts, spot=spot,
+                            completeness_basis=COMPLETENESS_BASIS_STRIKE_RANGE_ALL)
+                    except Exception as e:
+                        log.warning("chain: complete-capture persist failed for %s %s: %s",
+                                   t, resolved_expiry, e)
+                    return JSONResponse({
+                        "ticker": t, "spot": spot, "expiry": resolved_expiry,
+                        "contracts": contracts, "status": "ok" if contracts else "no_chain",
+                        "scope": {"kind": "complete_single_expiry",
+                                 "requested_expiry": resolved_expiry,
+                                 "returned_expiries": returned_exps,
+                                 "completeness_basis": COMPLETENESS_BASIS_STRIKE_RANGE_ALL},
+                    })
+                log.warning("chain: expiry scope mismatch for %s — requested %s, vendor "
+                           "returned %s; NOT claiming completeness", t, resolved_expiry,
+                           returned_exps)
+                if contracts:
+                    return JSONResponse({
+                        "ticker": t, "spot": spot, "expiry": resolved_expiry,
+                        "contracts": contracts, "status": "ok",
+                        "scope": {"kind": "expiry_scope_mismatch",
+                                 "requested_expiry": resolved_expiry,
+                                 "returned_expiries": returned_exps,
+                                 "note": "vendor response did not match the requested "
+                                         "expiry exactly — served as-is for "
+                                         "transparency, NOT proven complete for the "
+                                         "requested expiry"},
+                    })
+                # No contracts at all for the mismatch case — fall through to the
+                # persisted/stored tiers below rather than returning an empty response.
+            else:
+                log.warning("chain: live fetch non-200 for %s expiry %s, falling back",
+                           t, resolved_expiry)
         except Exception as e:
-            log.warning("chain: live fetch failed for %s expiry %s (%s), falling back to "
-                       "stored snapshot", t, resolved_expiry, e)
+            log.warning("chain: live fetch failed for %s expiry %s (%s), falling back",
+                       t, resolved_expiry, e)
+
+        try:
+            cap = latest_complete_chain_capture(get_db().db_path, t, resolved_expiry)
+        except Exception as e:
+            cap = None
+            log.debug("chain: persisted-capture read failed for %s %s: %s",
+                     t, resolved_expiry, e)
+        if cap:
+            return JSONResponse({
+                "ticker": t, "spot": cap["spot"], "expiry": resolved_expiry,
+                "contracts": cap["contracts"], "status": "ok",
+                "scope": {"kind": "persisted_complete_capture_fallback",
+                         "requested_expiry": resolved_expiry,
+                         "completeness_basis": cap["completeness_basis"],
+                         "captured_ts": cap["ts_utc"],
+                         "captured_age_sec": round(time.time() - cap["ts_utc"], 1),
+                         "note": "a prior COMPLETE capture — not fetched live this "
+                                 "request, staleness stated above"},
+            })
 
     contracts, spot = _latest_chain_and_spot(t)
     if not contracts:
@@ -14659,7 +14733,8 @@ def get_chain(ticker: str = Query(default=DEFAULT_TICKER),
         "status": "ok",
         "scope": {"kind": "stored_analytical_snapshot_fallback",
                  "note": "bounded analytical snapshot, NOT proven complete — live "
-                         "complete-chain fetch was unavailable this request"},
+                         "complete-chain fetch and any persisted capture were both "
+                         "unavailable this request"},
     })
 
 

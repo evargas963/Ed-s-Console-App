@@ -1,0 +1,56 @@
+table: complete_chain_captures
+module: calibration/complete_chain_capture.py
+
+motivation: >
+  OPTIONS_ORDER_FLOW_V1 completeness repair (2026-08-30, operator-directed). GET /api/chain
+  is a CONTRACT-SELECTION surface, not a gamma/terrain analytical view — a UI reading a
+  bounded strike_count snapshot as if it were the complete chain silently hides real,
+  tradeable contracts. MEASURED live: SPY's near expiry at strike_count=250 returned 388
+  contracts (194 strikes); the SAME expiry via schwab-py's strike_range=Options.
+  StrikeRange.ALL returned 526 contracts (263 strikes) — 69 real strikes the bounded fetch
+  never showed. Nothing in the repo persisted a durable record of "what contracts actually
+  existed" until this table — the bounded analytical snapshots (snapshots.
+  option_chain_json) and the near-term wide capture (option_chain_morning_full, itself
+  still strike_count-bounded and SPY/QQQ/IWM-only) were never proof of completeness for
+  any other ticker or expiry.
+
+composition: >
+  One row per (ticker, expiry, ts_utc) — a TIME SERIES, not a once-a-day snapshot (PRIMARY
+  KEY includes ts_utc, so repeated captures of the same ticker+expiry accumulate rather
+  than overwrite). Columns: ticker (canonical storage key), expiry (YYYY-MM-DD, the ONE
+  expiry this capture covers), ts_utc (capture time), spot (underlying price at capture,
+  via resolve_spot), n_contracts, completeness_basis (the machine-readable record of WHY
+  this capture is believed complete — currently always "strike_range=ALL", the vendor's own
+  documented "give me every strike" selection mode, confirmed to converge with an
+  independent strike_count=500 saturation check on real TSLA/SPY data), chain_json (the
+  FULL list of Schwab's native per-contract dicts, verbatim — every field, no rounding, no
+  reshaping, no strike coercion), source. Each row's chain_json is bounded to contracts for
+  the single stated expiry only (from_date=to_date at fetch time) — this is a deliberate
+  per-expiry partition, not a multi-expiry archive, chosen because a single request
+  completing the ENTIRE multi-expiry universe is exactly the request shape that produced
+  this repo's own measured Schwab 502s (SPY/QQQ at strikeCount>=150, $SPX at 80-100,
+  multi-expiry requests scaling as strikeCount * 2 sides * every expiry in the window).
+
+collection: >
+  Written from GET /api/chain (server.get_chain) — the SAME live single-expiry fetch that
+  serves the endpoint's response, not a separate scheduled job or a second producer. A row
+  is written ONLY when the live fetch succeeds AND the vendor's own returned_expiries
+  matches the requested expiry exactly (a mismatch downgrades scope.kind to
+  'expiry_scope_mismatch' and is explicitly NOT persisted here — see
+  test_chain_expiry_mismatch_does_not_persist_a_complete_capture). Write frequency follows
+  UI usage: static/options.html's loadChain() fires on ticker/expiry change and a 30s
+  refresh interval while the page is open — there is no independent polling loop, so this
+  table's growth is naturally bounded by real operator interaction with the Options page.
+
+recommended_uses: >
+  (1) The canonical fallback when a live complete-chain fetch is unavailable this request
+  (scope.kind='persisted_complete_capture_fallback' in the /api/chain response) — serves
+  the newest capture for the exact ticker+expiry requested, with its age stated so
+  staleness is never hidden. (2) A durable, query-able record of "what did the vendor
+  actually list" for any ticker+expiry this table has ever captured, for future analysis
+  or audit. NOT a substitute for the bounded gamma/terrain analytical views
+  (resolve_chain_strike_count, option_chain_morning_full) — those remain the sole inputs to
+  level/gamma computation and are untouched by this table; this table exists ONLY for the
+  contract-selection/completeness concern GET /api/chain serves. NOT intended for
+  per-request synchronous reads outside that fallback path — reading is a single indexed
+  SELECT (idx_complete_chain_captures_latest on ticker, expiry, ts_utc DESC), not a scan.

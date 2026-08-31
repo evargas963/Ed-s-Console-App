@@ -606,14 +606,27 @@ def safe_get_daily_price_history(client, ticker: str, *, period_months: int = 2)
             return None
 
 
-def safe_get_chain(client, ticker: str, *, strike_count: int = 20, from_date=None, to_date=None):
+def safe_get_chain(client, ticker: str, *, strike_count: int | None = 20,
+                   strike_range: str | None = None, from_date=None, to_date=None):
     # schwab-py supports optional args; we keep them optional to reduce breakage.
+    # `strike_range` (schwab-py's Options.StrikeRange, e.g. "ALL") is a DIFFERENT vendor
+    # selection dimension than strike_count (N strikes above/below ATM) — MEASURED live
+    # 2026-08-30: strike_count=250 alone silently truncated a real SPY single-expiry chain
+    # by 69 strikes (missed range 420.0-644.0) that strike_range="ALL" correctly returned,
+    # confirmed converged against an independent strike_count=500 saturation check on the
+    # SAME request. When strike_range is given, strike_count is OMITTED entirely rather
+    # than sent alongside it — exactly the combination proven live, never an untested
+    # combination of both params on one request.
     _block_live_schwab_in_ci_offline()
     if _schwab_auth_latched():
         raise SchwabAuthError(
             "Schwab auth latched after prior token failure — option chain withheld"
         )
-    kwargs = {"strike_count": strike_count, "include_underlying_quote": True}
+    kwargs = {"include_underlying_quote": True}
+    if strike_range is not None:
+        kwargs["strike_range"] = strike_range
+    elif strike_count is not None:
+        kwargs["strike_count"] = strike_count
     if from_date is not None:
         kwargs["from_date"] = from_date
     if to_date is not None:
