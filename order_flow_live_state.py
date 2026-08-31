@@ -96,7 +96,7 @@ def _get_receive_log(symbol: str) -> deque:
         return _receive_log[symbol]
 
 
-def push_level_one(symbol: str, content_item: dict) -> None:
+def push_level_one(symbol: str, content_item: dict, ts_recv: Optional[float] = None) -> None:
     """
     Push level_one_equity update. Extracts:
     - Top-of-book: BID_PRICE, ASK_PRICE, BID_SIZE, ASK_SIZE
@@ -104,12 +104,23 @@ def push_level_one(symbol: str, content_item: dict) -> None:
       restatements are not counted as new prints. Distinct same-ms triples are
       kept. TRADE_TIME_MILLIS is not a unique trade id. Each receipt gets a
       local receive_seq (not native identity).
+
+    `ts_recv` (PR214 remediation, Gap 1): the observation timestamp stamped onto
+    each top-of-book field written this call, consumed by
+    order_flow_engine._latest_content_field's freshness boundary. Replay callers
+    (order_flow_streaming) pass the canonical stream_capture.db `ts_recv` column --
+    the real receive time of that row, correct even when replay is catching up on a
+    backlog. Defaults to `_time.time()` (the SAME clock this function already reads
+    for the tape's `server_received_ts` below) for direct/live callers and tests
+    that do not carry a DB row -- one clock, not a second one invented for this.
     """
     if not content_item or not isinstance(content_item, dict):
         return
     sym = ticker_storage_key(symbol or content_item.get("key"))  # RC-345/F25: canonical OF-state key (write+read consistent; idempotent on stream symbols)
     if not sym:
         return
+    if ts_recv is None:
+        ts_recv = _time.time()
 
     # Store TOTAL_VOLUME from WebSocket (content.*.TOTAL_VOLUME / content.*.VOLUME) for candle accumulator
     vol = content_item.get("TOTAL_VOLUME") or content_item.get("VOLUME")
@@ -155,7 +166,12 @@ def push_level_one(symbol: str, content_item: dict) -> None:
     # be wiped to None. RTH proof (2026-08-31): the prior full-overwrite form dropped
     # a valid, seconds-old price the moment a size-only delta arrived. `in
     # content_item` (not `.get(...) is not None`), so a tick that explicitly carries a
-    # field with value `0` still updates it -- 0 is a real size, not "absent".
+    # field with value `0` still updates it -- 0 is a real size, not "absent". Each
+    # field written also gets a sibling "{field}_TS_RECV" observation stamp (Gap 1) so
+    # order_flow_engine can bound how long a carried-forward field stays valid --
+    # BID_TIME_MILLIS/ASK_TIME_MILLIS are Schwab-native but not reliably present on
+    # captured options payloads, so this local receive stamp is the one freshness
+    # signal guaranteed to exist for every field on every plane.
     with _lock:
         top_item = dict(_top.get(sym) or {
             "BID_PRICE": None, "ASK_PRICE": None, "BID_SIZE": None, "ASK_SIZE": None,
@@ -165,6 +181,7 @@ def push_level_one(symbol: str, content_item: dict) -> None:
                       "BID_TIME_MILLIS", "ASK_TIME_MILLIS"):
             if field in content_item:
                 top_item[field] = content_item[field]
+                top_item[f"{field}_TS_RECV"] = ts_recv
         _top[sym] = top_item
 
     trade_ms = content_item.get("TRADE_TIME_MILLIS")

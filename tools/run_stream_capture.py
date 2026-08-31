@@ -663,6 +663,15 @@ async def _active_option_contract_poll_loop(get_stream, get_current, set_current
 
 def write_status(bus: MessageBus, health: HealthRegistry, writer: CaptureWriter,
                  stats: CaptureStats, max_qdepth: int) -> None:
+    # PR214_RTH_DEFECT_REMEDIATION_FINAL_GAPS (Gap 2): the producer identity/liveness
+    # signal now lives INSIDE stream_capture.db itself (write_heartbeat), on the SAME
+    # cadence as this file-based status write -- one call site, one clock, not a second
+    # independently-scheduled heartbeat loop. The file-based status below is unchanged
+    # and still serves _read_daemon_upstream_health's per-service Schwab-socket truth.
+    try:
+        writer.write_heartbeat()
+    except Exception as e:  # noqa: BLE001 — a heartbeat write failure must not kill the daemon's status loop
+        print(f"write_heartbeat failed (continuing): {type(e).__name__}: {e}")
     STATUS_PATH.parent.mkdir(parents=True, exist_ok=True)
     STATUS_PATH.write_text(json.dumps({
         "ts": time.time(), "health": health.report(),

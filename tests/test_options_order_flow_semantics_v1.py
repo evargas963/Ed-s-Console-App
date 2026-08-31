@@ -265,6 +265,11 @@ def test_option_contract_streaming_diagnostics_healthy_on_recent_tick():
     ofs._feed_running = True
     ofs._active_option_contract = _SPY_CONTRACT
     ofs._option_streaming_last_update_ts = time.time()
+    # Gap 2 (PR214 final remediation): streaming_healthy now also requires a producer
+    # identity that is either confirmed (a fresh DB heartbeat) or still within the
+    # startup grace window — this test has no real daemon/DB behind it, so it must
+    # establish that grace explicitly, same as test_..._grace_window_before_first_tick.
+    ofs._option_last_subscribe_completed_ts = time.time()
 
     diag = ofs.get_option_contract_streaming_diagnostics()
     assert diag["streaming_connected"] is True
@@ -323,6 +328,10 @@ def test_option_contract_streaming_diagnostics_independent_of_equity_slot():
     ofs._feed_running = True
     ofs._active_option_contract = _SPY_CONTRACT
     ofs._option_streaming_last_update_ts = time.time()
+    # Gap 2: see test_option_contract_streaming_diagnostics_healthy_on_recent_tick — no
+    # real daemon/DB behind this test, so the option slot's healthy=True needs explicit
+    # startup grace. The equity slot deliberately has none (it must read unhealthy).
+    ofs._option_last_subscribe_completed_ts = time.time()
 
     assert ofs._streaming_healthy() is False
     assert ofs._option_streaming_healthy() is True

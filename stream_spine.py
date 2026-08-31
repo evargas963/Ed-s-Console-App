@@ -139,7 +139,38 @@ CREATE TABLE IF NOT EXISTS stream_bars_raw (
     src TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_sbr_sym_ts ON stream_bars_raw(symbol, bar_start_ms);
+-- PR214_RTH_DEFECT_REMEDIATION_FINAL_GAPS (Gap 2): the daemon's own producer identity
+-- and liveness, written INTO this same file rather than a separate checkout-relative
+-- status file. A consumer that opens its OWN resolved db_path and finds a fresh row
+-- here has, by construction, proven it is reading the SAME physical file the daemon is
+-- writing to -- no second, independently-resolved path string to keep in sync (the
+-- prior _DAEMON_STATUS_PATH-based identity check inherited the exact checkout-relative
+-- defect class it was built to catch). Singleton row (id=1, upserted).
+CREATE TABLE IF NOT EXISTS stream_producer_heartbeat (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    daemon_pid INTEGER,
+    heartbeat_ts REAL NOT NULL,
+    resolved_db_path TEXT NOT NULL
+);
 """
+
+
+def read_producer_heartbeat(conn: sqlite3.Connection) -> "dict | None":
+    """Read the producer identity/liveness row from THIS connection's own
+    stream_capture.db (Gap 2) -- the SAME data plane the caller already reads
+    quote/book rows from, never a second independent channel. Returns None when the
+    table does not exist yet (a pre-heartbeat daemon, or a DB nothing has ever written
+    a heartbeat into) or holds no row. The caller judges freshness/identity from the
+    returned `heartbeat_ts`, not this function."""
+    try:
+        row = conn.execute(
+            "SELECT daemon_pid, heartbeat_ts, resolved_db_path "
+            "FROM stream_producer_heartbeat WHERE id = 1").fetchone()
+    except sqlite3.OperationalError:
+        return None
+    if row is None:
+        return None
+    return {"daemon_pid": row[0], "heartbeat_ts": row[1], "resolved_db_path": row[2]}
 
 
 def quote_msg(*, symbol: str, bid=None, ask=None, last=None, bid_size=None, ask_size=None,
@@ -468,6 +499,29 @@ class CaptureWriter:
             return cur.lastrowid
         except Exception as e:
             raise CoverageWriteError(f"open_coverage_epoch({symbol},{service}): {e}") from e
+
+    def write_heartbeat(self, *, pid: int | None = None, ts: float | None = None) -> None:
+        """Producer identity/liveness signal written INTO the canonical stream_capture.db
+        itself (PR214_RTH_DEFECT_REMEDIATION_FINAL_GAPS, Gap 2) -- not a separate
+        checkout-relative status file. A consumer opening its OWN resolved db_path and
+        finding a fresh row here has, by construction, proven it is reading the SAME
+        physical file this writer is writing to. `resolved_db_path` is carried for human
+        diagnostics only (what the daemon believes its own path is) -- it is NOT the
+        trust mechanism; the trust mechanism is "this connection can see this row at
+        all". Immediately committed (like open/close_coverage_epoch): a low-frequency
+        liveness signal where durability matters more than batching throughput."""
+        t = ts if ts is not None else time.time()
+        p = pid if pid is not None else os.getpid()
+        try:
+            self._conn.execute(
+                "INSERT INTO stream_producer_heartbeat(id, daemon_pid, heartbeat_ts, resolved_db_path) "
+                "VALUES (1, ?, ?, ?) "
+                "ON CONFLICT(id) DO UPDATE SET daemon_pid=excluded.daemon_pid, "
+                "heartbeat_ts=excluded.heartbeat_ts, resolved_db_path=excluded.resolved_db_path",
+                (p, t, str(self.db_path)))
+            self._conn.commit()
+        except Exception as e:
+            raise CoverageWriteError(f"write_heartbeat: {e}") from e
 
     def close_coverage_epoch(self, epoch_id: int, *, reason: str,
                              ts: float | None = None) -> None:

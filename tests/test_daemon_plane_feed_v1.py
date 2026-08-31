@@ -184,66 +184,119 @@ def test_feed_loop_starts_and_stops_cleanly(tmp_path, monkeypatch):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# PR214_RTH_DEFECT_REMEDIATION_V1 — stream DB identity mismatch must be
-# diagnosable and must fail closed, never report a connected stream plane on
-# the strength of local replay staleness alone when producer and consumer are
-# confirmed attached to different files.
+# PR214_RTH_DEFECT_REMEDIATION_FINAL_GAPS — Gap 2: producer identity now lives INSIDE
+# stream_capture.db itself (stream_producer_heartbeat), not a second checkout-relative
+# status file. These tests drive the REAL CaptureWriter.write_heartbeat and the REAL
+# _stream_db_identity_status/_open_capture_db_readonly path — same-process, single-DB
+# scenarios (matched, stale, absent heartbeat). The MANDATORY real two-checkout-root
+# proof (two genuinely different physical DB files, one server resolving each) lives in
+# tests/test_stream_producer_identity_two_checkout_v1.py — this file's cases below
+# would NOT catch the actual RTH failure geometry on their own, by design; that is the
+# other file's job.
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _write_daemon_status(status_path, *, db_path: str, ts=None) -> None:
-    import json
-    import time as _time
-    status_path.parent.mkdir(parents=True, exist_ok=True)
-    status_path.write_text(json.dumps({
-        "ts": ts if ts is not None else _time.time(),
-        "health": {"LEVELONE_EQUITIES": {"state": "RUNNING", "age_sec": 0.1}},
-        "db_path": db_path,
-    }), encoding="utf-8")
-
-
-def test_db_path_e_matched_identity_is_not_flagged(tmp_path, monkeypatch):
+def test_producer_identity_a_matched_heartbeat_in_same_db_allows_healthy(tmp_path, monkeypatch):
     db = _reset(tmp_path)
     monkeypatch.setattr(ofs, "STREAM_DB_DEFAULT", db)
     monkeypatch.delenv("STREAM_CAPTURE_DB_PATH", raising=False)
-    status_path = tmp_path / "status.json"
-    monkeypatch.setattr(ofs, "_DAEMON_STATUS_PATH", status_path)
-    _write_daemon_status(status_path, db_path=str(db.resolve()))
-    diag = ofs.get_streaming_diagnostics()
-    assert diag["stream_db_identity"]["identity_match"] is True
-    assert diag["stream_db_identity"]["server_resolved_path"] == str(db.resolve())
-
-
-def test_db_path_e_mismatch_is_diagnosable_and_fails_closed(tmp_path, monkeypatch):
-    """THE exact RTH failure mode, reproduced directly: daemon reports one resolved
-    db_path, server resolves a DIFFERENT one. Must surface identity_match=False and
-    force streaming_healthy=False, even if local replay looks fresh."""
-    db = _reset(tmp_path)
-    monkeypatch.setattr(ofs, "STREAM_DB_DEFAULT", db)
-    monkeypatch.delenv("STREAM_CAPTURE_DB_PATH", raising=False)
-    status_path = tmp_path / "status.json"
-    monkeypatch.setattr(ofs, "_DAEMON_STATUS_PATH", status_path)
-    _write_daemon_status(status_path, db_path=str((tmp_path / "a_different_checkouts_db.db").resolve()))
-    # Make local replay look perfectly fresh/healthy on its own terms.
+    w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
+    w.write_heartbeat()
+    w.close()
     ofs._feed_running = True
     ofs._active_ticker = "SPY"
     ofs._streaming_last_update_ts = __import__("time").time()
     try:
         diag = ofs.get_streaming_diagnostics()
-        assert diag["stream_db_identity"]["identity_match"] is False
-        assert diag["streaming_healthy"] is False, (
-            "a confirmed DB identity mismatch must fail closed regardless of local replay freshness")
+        assert diag["stream_db_identity"]["identity_match"] is True
+        assert diag["stream_db_identity"]["server_resolved_path"] == str(db.resolve())
+        assert diag["streaming_healthy"] is True
     finally:
         ofs._feed_running = False
         ofs._active_ticker = None
         ofs._streaming_last_update_ts = None
 
 
-def test_db_path_e_unreadable_daemon_status_is_unknown_not_a_false_mismatch(tmp_path, monkeypatch):
-    """No daemon status available yet (cold start) is the EXISTING 'unknown' case,
-    distinct from a confirmed mismatch -- must not itself force streaming_healthy=False."""
+def test_producer_identity_b_stale_heartbeat_fails_closed(tmp_path, monkeypatch):
+    """A heartbeat row EXISTS in the exact file the server reads (same DB — no
+    cross-checkout ambiguity at all) but is old: a producer once wrote here and has
+    since gone dark. Must surface identity_match=False and force
+    streaming_healthy=False even though local replay looks perfectly fresh."""
+    import time as _time
     db = _reset(tmp_path)
     monkeypatch.setattr(ofs, "STREAM_DB_DEFAULT", db)
     monkeypatch.delenv("STREAM_CAPTURE_DB_PATH", raising=False)
-    monkeypatch.setattr(ofs, "_DAEMON_STATUS_PATH", tmp_path / "does_not_exist.json")
+    w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
+    w.write_heartbeat(ts=_time.time() - (ofs.STREAM_PRODUCER_HEARTBEAT_STALE_SEC + 5.0))
+    w.close()
+    ofs._feed_running = True
+    ofs._active_ticker = "SPY"
+    ofs._streaming_last_update_ts = _time.time()
+    try:
+        diag = ofs.get_streaming_diagnostics()
+        assert diag["stream_db_identity"]["identity_match"] is False
+        assert diag["streaming_healthy"] is False, (
+            "a confirmed-stale producer heartbeat must fail closed regardless of local replay freshness")
+    finally:
+        ofs._feed_running = False
+        ofs._active_ticker = None
+        ofs._streaming_last_update_ts = None
+
+
+def test_producer_identity_c_no_heartbeat_row_is_unknown_and_tolerated_within_grace(tmp_path, monkeypatch):
+    """A DB exists (even with real quote rows already in it, from a pre-heartbeat
+    daemon or a first-tick race) but NO heartbeat row has ever been written. This is
+    the EXISTING 'unknown' case, not a confirmed mismatch — during the startup grace
+    window it must not itself force streaming_healthy=False."""
+    import time as _time
+    db = _reset(tmp_path)
+    monkeypatch.setattr(ofs, "STREAM_DB_DEFAULT", db)
+    monkeypatch.delenv("STREAM_CAPTURE_DB_PATH", raising=False)
+    _write_l1_row(db, "SPY", {"key": "SPY", "LAST_PRICE": 450.0}, ts_recv=1.0)  # no write_heartbeat call
+    ofs._feed_running = True
+    ofs._active_ticker = "SPY"
+    ofs._streaming_last_update_ts = _time.time()
+    ofs._last_subscribe_completed_ts = _time.time()  # within GRACE_AFTER_SUBSCRIBE_SEC
+    try:
+        diag = ofs.get_streaming_diagnostics()
+        assert diag["stream_db_identity"]["identity_match"] is None
+        assert diag["streaming_healthy"] is True, "brief cold-start unknown must not itself fail closed"
+    finally:
+        ofs._feed_running = False
+        ofs._active_ticker = None
+        ofs._streaming_last_update_ts = None
+        ofs._last_subscribe_completed_ts = None
+
+
+def test_producer_identity_d_no_heartbeat_row_past_grace_fails_closed(tmp_path, monkeypatch):
+    """Gap 2, Case 3 (operator requirement, verbatim): 'server sees local fresh-looking
+    rows but no current canonical producer heartbeat -> MUST NOT report healthy.' Once
+    the startup grace window has elapsed, an indefinite 'no heartbeat' can no longer
+    coexist with a positive healthy claim, even though local replay is fresh."""
+    import time as _time
+    db = _reset(tmp_path)
+    monkeypatch.setattr(ofs, "STREAM_DB_DEFAULT", db)
+    monkeypatch.delenv("STREAM_CAPTURE_DB_PATH", raising=False)
+    _write_l1_row(db, "SPY", {"key": "SPY", "LAST_PRICE": 450.0}, ts_recv=1.0)  # no write_heartbeat call
+    ofs._feed_running = True
+    ofs._active_ticker = "SPY"
+    ofs._streaming_last_update_ts = _time.time()
+    ofs._last_subscribe_completed_ts = None  # no grace in effect
+    try:
+        diag = ofs.get_streaming_diagnostics()
+        assert diag["stream_db_identity"]["identity_match"] is None
+        assert diag["streaming_healthy"] is False, (
+            "no producer heartbeat past the startup grace window must fail closed even with fresh local rows")
+    finally:
+        ofs._feed_running = False
+        ofs._active_ticker = None
+        ofs._streaming_last_update_ts = None
+
+
+def test_producer_identity_e_missing_db_is_unknown_not_a_false_mismatch(tmp_path, monkeypatch):
+    """Cold start: the daemon has not created stream_capture.db yet at all. Must be the
+    EXISTING 'unknown' case, distinct from a confirmed mismatch."""
+    db = tmp_path / "does_not_exist.db"
+    monkeypatch.setattr(ofs, "STREAM_DB_DEFAULT", db)
+    monkeypatch.delenv("STREAM_CAPTURE_DB_PATH", raising=False)
     diag = ofs.get_streaming_diagnostics()
     assert diag["stream_db_identity"]["identity_match"] is None

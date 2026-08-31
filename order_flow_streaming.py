@@ -39,6 +39,7 @@ from typing import Any, Callable, Optional
 from instrument_identity import ticker_storage_key
 from stream_spine import (
     STREAM_DB_DEFAULT,
+    read_producer_heartbeat,
     resolve_stream_db_path,
     write_active_option_contract_signal,
     write_active_ticker_signal,
@@ -188,31 +189,80 @@ def streaming_l1_cache_usable(ticker: str) -> bool:
     return (time.time() - last) * 1000.0 <= FAST_QUOTE_STREAM_CACHE_MAX_AGE_MS
 
 
+#: How stale a producer heartbeat row may be before it stops counting as "current" —
+#: matches the daemon's own status-write cadence bound (_DAEMON_STATUS_STALE_SEC, 3x
+#: its ~10s write loop), the SAME grounding that already governs the file-based
+#: upstream-health check. write_status() writes the DB heartbeat and the status file
+#: on the SAME call, so one bound serves both.
+STREAM_PRODUCER_HEARTBEAT_STALE_SEC = _DAEMON_STATUS_STALE_SEC
+
+
 def _stream_db_identity_status() -> dict[str, Any]:
-    """SERVER_STREAM_DB == DAEMON_STREAM_DB, directly diagnosable. Reads the daemon's
-    self-reported resolved db_path from its own status file (the same file
-    _read_daemon_upstream_health reads) and compares it against THIS process's own
-    resolved path. PR214_RTH_DEFECT_REMEDIATION_V1 (2026-08-31 RTH proof): both
-    processes reported healthy while attached to two different files -- no
-    per-service health flag can see that failure mode; this check exists
-    specifically for it. `identity_match` is None (not False) when the daemon's
-    status is unreadable or stale — that is the EXISTING "daemon health unknown"
-    case _read_daemon_upstream_health already has, not a NEW mismatch claim."""
+    """PRODUCER IDENTITY VIA THE SHARED DATA PLANE (PR214_RTH_DEFECT_REMEDIATION_FINAL_GAPS,
+    Gap 2): opens THIS process's own resolved db_path — the SAME connection the replay
+    loop already reads quote/book rows through — and looks for a fresh
+    stream_producer_heartbeat row the daemon wrote through that identical file. Identity
+    is proven STRUCTURALLY (same file => same connection sees the same row), not by
+    string-comparing two independently-resolved path values.
+
+    PR214_RTH_DEFECT_REMEDIATION_V1's prior mechanism compared this process's resolved
+    path against a path the daemon self-reported into a SEPARATE, ALSO checkout-relative
+    status file (_DAEMON_STATUS_PATH) — the identical defect class Defect 2 fixed, one
+    level up: in the real two-checkout failure geometry, the server read its OWN
+    checkout's copy of that status file and got identity_match=None (unknown), never the
+    confirmed-False the fail-closed guard requires. Reading the heartbeat OUT OF the
+    exact file already being consumed removes that second path-identity channel
+    entirely — there is nothing left to independently mis-resolve.
+
+    `identity_match`:
+      True  — a heartbeat row is visible on THIS connection and is fresh (within
+              STREAM_PRODUCER_HEARTBEAT_STALE_SEC). Confirmed live producer, same file.
+      False — a heartbeat row is visible but STALE. CONFIRMED, not unknown: something
+              wrote here, but not recently enough to trust as a live producer.
+      None  — no heartbeat row at all (the DB cannot be opened yet, is empty, or a
+              pre-heartbeat daemon has never written one here). Unknown — covers cold
+              start AND "this resolved path is not the file a producer is writing to"
+              (e.g. a genuine two-checkout mismatch) identically; callers must not treat
+              an indefinite None as healthy (see get_streaming_diagnostics)."""
     resolved = str(resolve_stream_db_path(STREAM_DB_DEFAULT))
+    con = _open_capture_db_readonly()
+    if con is None:
+        return {"server_resolved_path": resolved, "producer_heartbeat": None, "identity_match": None}
     try:
-        status = json.loads(_DAEMON_STATUS_PATH.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {"server_resolved_path": resolved, "daemon_reported_path": None, "identity_match": None}
-    daemon_path = status.get("db_path")
-    status_ts = status.get("ts")
-    status_age = (time.time() - status_ts) if isinstance(status_ts, (int, float)) else None
-    if status_age is None or status_age > _DAEMON_STATUS_STALE_SEC or not isinstance(daemon_path, str):
-        return {"server_resolved_path": resolved, "daemon_reported_path": daemon_path, "identity_match": None}
+        beat = read_producer_heartbeat(con)
+    finally:
+        con.close()
+    if beat is None:
+        return {"server_resolved_path": resolved, "producer_heartbeat": None, "identity_match": None}
+    age = time.time() - beat["heartbeat_ts"]
     return {
         "server_resolved_path": resolved,
-        "daemon_reported_path": daemon_path,
-        "identity_match": (resolved == daemon_path),
+        "producer_heartbeat": {**beat, "age_sec": age},
+        "identity_match": age <= STREAM_PRODUCER_HEARTBEAT_STALE_SEC,
     }
+
+
+def _identity_forces_unhealthy(db_identity: dict, last_subscribe_completed_ts: Optional[float],
+                               now: float) -> bool:
+    """Gap 2: streaming_healthy=True must never coexist indefinitely with an unproven
+    producer identity. A CONFIRMED stale/absent-then-found-stale heartbeat
+    (identity_match is False) fails closed unconditionally, regardless of local replay
+    freshness. identity_match is None (no heartbeat visible on this resolved path at
+    all — cold start, or a genuine cross-checkout mismatch, indistinguishable from each
+    other by design; see _stream_db_identity_status) is tolerated ONLY within the SAME
+    startup grace window _streaming_healthy/_option_streaming_healthy already grant
+    local replay staleness (GRACE_AFTER_SUBSCRIBE_SEC) — brief cold-start unknown is
+    fine, an indefinite unknown is not (operator requirement, verbatim: 'Unknown may
+    exist briefly during cold startup, but it cannot coexist indefinitely with a
+    positive healthy connected stream plane claim')."""
+    m = db_identity["identity_match"]
+    if m is False:
+        return True
+    if m is None:
+        within_grace = (last_subscribe_completed_ts is not None
+                        and (now - last_subscribe_completed_ts) < GRACE_AFTER_SUBSCRIBE_SEC)
+        return not within_grace
+    return False
 
 
 def get_streaming_diagnostics() -> dict[str, Any]:
@@ -228,10 +278,10 @@ def get_streaming_diagnostics() -> dict[str, Any]:
 
     db_identity = _stream_db_identity_status()
     healthy = _streaming_healthy()
-    if db_identity["identity_match"] is False:
-        # Fail closed: producer and consumer are CONFIRMED attached to different
-        # files -- never report a connected stream plane on that basis, no matter
-        # what the local replay staleness says.
+    if _identity_forces_unhealthy(db_identity, _last_subscribe_completed_ts, now):
+        # Fail closed: producer identity is confirmed mismatched/stale, or has never
+        # been established beyond the startup grace window -- never report a connected
+        # stream plane on that basis, no matter what the local replay staleness says.
         healthy = False
     return {
         "streaming_connected": bool(_feed_running),
@@ -283,7 +333,7 @@ def _replay_new_rows(con: sqlite3.Connection, ticker: str) -> None:
             item = json.loads(native_json)
         except (TypeError, ValueError):
             continue
-        push_level_one(ticker, item)
+        push_level_one(ticker, item, ts_recv=ts_recv)
         try:
             _lmp.record_from_level_one_equity(ticker, item)
         except Exception as e:
@@ -329,7 +379,7 @@ def _replay_option_contract_rows(con: sqlite3.Connection, contract_symbol: str) 
             item = json.loads(native_json)
         except (TypeError, ValueError):
             continue
-        push_level_one(contract_symbol, item)
+        push_level_one(contract_symbol, item, ts_recv=ts_recv)
         _option_streaming_last_update_ts = time.time()
         _option_l1_cursor[contract_symbol] = ts_recv
 
@@ -491,7 +541,7 @@ def get_option_contract_streaming_diagnostics() -> dict[str, Any]:
 
     db_identity = _stream_db_identity_status()
     healthy = _option_streaming_healthy()
-    if db_identity["identity_match"] is False:
+    if _identity_forces_unhealthy(db_identity, _option_last_subscribe_completed_ts, now):
         healthy = False   # fail closed — see get_streaming_diagnostics' identical guard
     return {
         "streaming_connected": bool(_feed_running),

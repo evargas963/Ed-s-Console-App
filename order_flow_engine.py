@@ -47,6 +47,16 @@ OF_TAPE_WINDOW_5M_SEC: float = 300.0
 OF_CUM_DELTA_NORM_DIVISOR: float = 10000.0
 OF_OPTIONS_DELTA_NORM_DIVISOR: float = 50000.0
 OF_ABSORPTION_PRICE_EPS: float = 0.01
+# Per-field top-of-book freshness boundary (PR214 remediation, Gap 1). A carried-forward
+# field (e.g. BID_PRICE surviving a size-only delta) is valid only while it is within this
+# many seconds of its own last observation -- NOT an arbitrary unbounded historical carry.
+# Value matches the EXISTING canonical stream-health threshold
+# order_flow_streaming.STREAMING_STALE_MS (25_000ms) -- the established staleness policy for
+# this exact data plane -- rather than inventing a second number. Kept as a same-valued local
+# constant (not a cross-import) because order_flow_streaming imports FROM this module;
+# importing the reverse direction would create a cycle. Cross-checked for drift by
+# tests/test_order_flow_microstructure_v1.py.
+OF_TOP_OF_BOOK_FIELD_STALE_SEC: float = 25.0
 # Book-depth ladder for _compute_book_imbalance: top of book, shallow, deep.
 OF_BOOK_DEPTH_TOP: int = 1
 OF_BOOK_DEPTH_SHALLOW: int = 3
@@ -265,7 +275,10 @@ def _latest_quote_snapshot(items: list) -> Optional[dict]:
     return None
 
 
-def _latest_content_field(items: list, field: str) -> Any:
+def _latest_content_field(
+    items: list, field: str, *, now: Optional[float] = None,
+    max_age_sec: Optional[float] = None,
+) -> Any:
     """THE ONE per-field resolution: the newest non-null observation of `field` alone,
     walking `items` from most-recent to oldest. Schwab's LEVELONE_OPTIONS/EQUITIES
     stream sends partial/delta ticks -- a size-only update carries no BID_PRICE key at
@@ -279,22 +292,53 @@ def _latest_content_field(items: list, field: str) -> Any:
     (order_flow_live_state.get_content_for_symbol keys its stores per symbol, and
     set_active_option_contract/set_streaming_active_ticker clear_symbol() the prior
     one on switch) -- this function does not itself walk across a contract boundary,
-    it walks only as far back as the one already-isolated `items` list given to it."""
+    it walks only as far back as the one already-isolated `items` list given to it. A
+    fresh, size-only delta creates a NEW dict in the caller and does not itself
+    disturb this history, so per-field epoch isolation is structural (Gap 1 item D).
+
+    FRESHNESS BOUNDARY (PR214 remediation, Gap 1): a carried-forward field is only
+    valid while it is within `max_age_sec` of its own observation timestamp.
+    order_flow_live_state.push_level_one stamps a sibling `"{field}_TS_RECV"` key
+    (the canonical stream_capture.db `ts_recv` receive clock during replay, or
+    time.time() at push for a direct/live call -- ONE clock, never invented twice)
+    alongside every field it writes into `_top[sym]`. When that sibling key is
+    present and both `now`/`max_age_sec` are given, a field older than the bound is
+    treated as NOT present on that item (Gap 1 item C) and the walk continues --
+    which in practice resolves to None, since `_top[sym]` is the only content item
+    carrying these fields. An item with NO sibling timestamp (a hand-built test
+    item, or a content item this field's freshness scheme predates) is accepted
+    as-is: freshness bounding only REJECTS a proven-stale value, it never treats
+    missing metadata as a rejection (which would silently break every caller that
+    does not carry timestamps, including this file's own back-compat tests)."""
     for item in reversed(items):
-        if isinstance(item, dict) and item.get(field) is not None:
-            return item.get(field)
+        if not isinstance(item, dict):
+            continue
+        val = item.get(field)
+        if val is None:
+            continue
+        if max_age_sec is not None and now is not None:
+            ts = item.get(f"{field}_TS_RECV")
+            if ts is not None and (now - ts) > max_age_sec:
+                continue
+        return val
     return None
 
 
-def _compute_top_book_pressure(data: dict) -> tuple[Optional[float], Optional[str]]:
+def _compute_top_book_pressure(data: dict, *, now_ts: Optional[float] = None) -> tuple[Optional[float], Optional[str]]:
     """
     Top-of-book pressure: (bid_size - ask_size) / (bid_size + ask_size).
     Uses: content.*.BID_SIZE, ASK_SIZE or quote.bidSize, quote.askSize.
-    Returns (pressure, source_tier).
+    Returns (pressure, source_tier). `now_ts` grounds the Gap-1 per-field freshness
+    boundary (OF_TOP_OF_BOOK_FIELD_STALE_SEC); defaults to time.time() when omitted so
+    production callers get real enforcement without threading it explicitly.
     """
+    import time as _t
+    now = _t.time() if now_ts is None else now_ts
     items = _iter_content(data)
-    bid_sz = _safe_float(_latest_content_field(items, "BID_SIZE"))
-    ask_sz = _safe_float(_latest_content_field(items, "ASK_SIZE"))
+    bid_sz = _safe_float(_latest_content_field(
+        items, "BID_SIZE", now=now, max_age_sec=OF_TOP_OF_BOOK_FIELD_STALE_SEC))
+    ask_sz = _safe_float(_latest_content_field(
+        items, "ASK_SIZE", now=now, max_age_sec=OF_TOP_OF_BOOK_FIELD_STALE_SEC))
     source_tier = "unavailable"
     if bid_sz is not None and ask_sz is not None:
         source_tier = "schwab_stream"
@@ -319,11 +363,21 @@ def _compute_top_book_pressure(data: dict) -> tuple[Optional[float], Optional[st
     return (bid_sz - ask_sz) / total, source_tier
 
 
-def _resolve_bid_ask_prices(data: dict) -> tuple[Optional[float], Optional[float], Optional[str], Optional[str]]:
-    """Resolve Schwab bid/ask prices and leaf provenance labels."""
+def _resolve_bid_ask_prices(
+    data: dict, *, now_ts: Optional[float] = None,
+) -> tuple[Optional[float], Optional[float], Optional[str], Optional[str]]:
+    """Resolve Schwab bid/ask prices and leaf provenance labels. `now_ts` grounds the
+    Gap-1 per-field freshness boundary (OF_TOP_OF_BOOK_FIELD_STALE_SEC); defaults to
+    time.time() when omitted. A price older than the boundary resolves to None here and
+    the caller falls through to the REST quote/extended/underlying tiers below -- it is
+    never silently reused past its freshness horizon (Gap 1 item C)."""
+    import time as _t
+    now = _t.time() if now_ts is None else now_ts
     items = _iter_content(data)
-    bid_p = _safe_float(_latest_content_field(items, "BID_PRICE"))
-    ask_p = _safe_float(_latest_content_field(items, "ASK_PRICE"))
+    bid_p = _safe_float(_latest_content_field(
+        items, "BID_PRICE", now=now, max_age_sec=OF_TOP_OF_BOOK_FIELD_STALE_SEC))
+    ask_p = _safe_float(_latest_content_field(
+        items, "ASK_PRICE", now=now, max_age_sec=OF_TOP_OF_BOOK_FIELD_STALE_SEC))
     bid_leaf = "streaming.BID_PRICE" if bid_p is not None else None
     ask_leaf = "streaming.ASK_PRICE" if ask_p is not None else None
     if bid_p is None or ask_p is None:
@@ -378,12 +432,13 @@ def _resolve_quote_mark(data: dict) -> tuple[Optional[float], Optional[str]]:
     return None, None
 
 
-def _compute_spread(data: dict) -> dict[str, Any]:
+def _compute_spread(data: dict, *, now_ts: Optional[float] = None) -> dict[str, Any]:
     """
     Bid-ask spread with explicit unit discipline: ``spread_pts`` (ask-bid points)
     and ``spread_frac`` (pts / midpoint). Never mix units on a single field.
+    `now_ts` grounds the Gap-1 per-field freshness boundary on the resolved bid/ask.
     """
-    bid_p, ask_p, bid_leaf, ask_leaf = _resolve_bid_ask_prices(data)
+    bid_p, ask_p, bid_leaf, ask_leaf = _resolve_bid_ask_prices(data, now_ts=now_ts)
     if bid_p is None or ask_p is None:
         return {
             "spread_pts": None,
@@ -452,15 +507,19 @@ def _sorted_valid_levels(levels: list[tuple[float, float]], *, descending: bool)
     return valid
 
 
-def _extract_canonical_book(data: dict) -> dict:
+def _extract_canonical_book(data: dict, *, now_ts: Optional[float] = None) -> dict:
     """THE single extraction/normalization of the live book. Walks the content ONCE, validates
     and sorts both sides, and resolves the L1 top-of-book. Every downstream metric reads this
-    result; nothing else re-walks the raw book."""
+    result; nothing else re-walks the raw book. `now_ts` grounds the Gap-1 per-field freshness
+    boundary on bid/ask; recomputing this on every call (never cached itself) means a field
+    that ages past the boundary between calls correctly drops out of the CONTENT identity used
+    by compute_book_microstructure's carry cache, forcing a recompute rather than serving a
+    stale structural result."""
     items = _iter_content(data)
     snapshot = _latest_book_snapshot(items)
     quote_snap = _latest_quote_snapshot(items)
 
-    bid, ask, bid_leaf, ask_leaf = _resolve_bid_ask_prices(data)
+    bid, ask, bid_leaf, ask_leaf = _resolve_bid_ask_prices(data, now_ts=now_ts)
     bid_size = _safe_int(quote_snap.get("BID_SIZE")) if quote_snap else None
     ask_size = _safe_int(quote_snap.get("ASK_SIZE")) if quote_snap else None
     if bid_size is not None and bid_size < 0:   # reject invalid displayed size
@@ -674,7 +733,7 @@ def compute_book_microstructure(data: dict, *, now_ts: Optional[float] = None,
     import time
     now = time.time() if now_ts is None else now_ts
 
-    cb = _extract_canonical_book(data)
+    cb = _extract_canonical_book(data, now_ts=now)
     book_time_ms = cb["book_time_ms"]
 
     # Carry only when the canonical book CONTENT is byte-for-byte identical — not merely the same
@@ -1046,10 +1105,17 @@ class OrderFlowEngine:
         if not isinstance(data, dict):
             return self._empty_result()
 
+        # ONE freshness clock per compute() call: every top-of-book resolution below (book
+        # microstructure, top_book_pressure, spread) shares this SAME `now`, so the Gap-1
+        # per-field freshness boundary judges "how stale" identically across all three rather
+        # than each independently reading a slightly different wall-clock instant.
+        import time as _time
+        now = _time.time()
+
         # ONE CANONICAL BOOK PATH: extract/normalize the book ONCE via the single producer, and
         # READ book_imbalance_1/3/5 from that result. Nothing here re-walks or re-sums the raw
         # book. `ticker` lets the route serialize this same computed state (carry, not recompute).
-        book_micro = compute_book_microstructure(data, ticker=ticker)
+        book_micro = compute_book_microstructure(data, now_ts=now, ticker=ticker)
         book_imbalance_1 = book_micro["depth"]["1"]["imbalance"]
         book_imbalance_3 = book_micro["depth"]["3"]["imbalance"]
         book_imbalance_5 = book_micro["depth"]["5"]["imbalance"]
@@ -1060,10 +1126,10 @@ class OrderFlowEngine:
         # streaming book is absent those stay None: fail-closed, so the book dimension reads
         # ABSENT rather than a top-of-book proxy mislabeled as depth-5. (Removed the former REST
         # fallback `book_imbalance_5 = top_book_pressure`, which conflated the two under one name.)
-        top_book_pressure, top_book_pressure_source = _compute_top_book_pressure(data)
+        top_book_pressure, top_book_pressure_source = _compute_top_book_pressure(data, now_ts=now)
 
         # (RC-473: the retired composite's book/tape leg selection was removed with the score.)
-        spread_d = _compute_spread(data)
+        spread_d = _compute_spread(data, now_ts=now)
         spread_pts = spread_d.get("spread_pts")
 
         # Tape metrics

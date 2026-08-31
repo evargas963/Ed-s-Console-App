@@ -479,3 +479,137 @@ def test_mutation_control_single_snapshot_selection_loses_the_price():
         "delta shape — this is the regression the fix must not reintroduce")
     bid, ask, _, _ = ofe._resolve_bid_ask_prices({"content": items})
     assert (bid, ask) == (0.58, 0.59), "the FIXED resolver must not reproduce the loss above"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PR214_RTH_DEFECT_REMEDIATION_FINAL_GAPS — Gap 1: the per-field resolver above has NO
+# freshness bound -- it could combine a fresh BID_SIZE with an arbitrarily old BID_PRICE.
+# A carried-forward field is valid only within OF_TOP_OF_BOOK_FIELD_STALE_SEC (== the
+# EXISTING order_flow_streaming.STREAMING_STALE_MS canonical staleness policy, not an
+# invented number) of its own observation. These tests drive the REAL production path
+# (order_flow_live_state.push_level_one, which stamps a "{field}_TS_RECV" sibling per
+# field) with explicit `ts_recv`/`now_ts` so freshness is deterministic, not wall-clock.
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_groundedness_freshness_bound_matches_existing_streaming_stale_ms():
+    """The Gap-1 bound must be THE existing canonical stream-health threshold, not a
+    second, independently-invented number that could silently drift from it."""
+    import order_flow_streaming as ofs
+    assert ofe.OF_TOP_OF_BOOK_FIELD_STALE_SEC * 1000.0 == ofs.STREAMING_STALE_MS
+
+
+def test_freshness_a_full_tick_then_immediate_size_only_delta_preserves_price():
+    import order_flow_live_state as ofls
+    ofls.clear_symbol("RTH_FRESH_A")
+    try:
+        t0 = 1_000_000.0
+        ofls.push_level_one("RTH_FRESH_A",
+                            {"BID_PRICE": 0.58, "ASK_PRICE": 0.59, "BID_SIZE": 11, "ASK_SIZE": 23},
+                            ts_recv=t0)
+        ofls.push_level_one("RTH_FRESH_A", {"BID_SIZE": 8, "ASK_SIZE": 35}, ts_recv=t0 + 0.2)
+        data = {"content": ofls.get_content_for_symbol("RTH_FRESH_A")}
+        bid, ask, _, _ = ofe._resolve_bid_ask_prices(data, now_ts=t0 + 0.2)
+        assert (bid, ask) == (0.58, 0.59), "price a fraction of a second old must survive"
+    finally:
+        ofls.clear_symbol("RTH_FRESH_A")
+
+
+def test_freshness_b_several_fresh_deltas_keep_prior_price_usable():
+    import order_flow_live_state as ofls
+    ofls.clear_symbol("RTH_FRESH_B")
+    try:
+        t0 = 1_000_000.0
+        ofls.push_level_one("RTH_FRESH_B",
+                            {"BID_PRICE": 12.30, "ASK_PRICE": 12.35, "BID_SIZE": 5, "ASK_SIZE": 5},
+                            ts_recv=t0)
+        for i in range(1, 6):  # five more size-only deltas, each a few seconds apart
+            ofls.push_level_one("RTH_FRESH_B", {"BID_SIZE": 5 + i, "ASK_SIZE": 5 + i},
+                                ts_recv=t0 + i * 3.0)
+        now = t0 + 5 * 3.0 + 1.0  # 16s after the price tick -- inside the 25s bound
+        data = {"content": ofls.get_content_for_symbol("RTH_FRESH_B")}
+        bid, ask, _, _ = ofe._resolve_bid_ask_prices(data, now_ts=now)
+        assert (bid, ask) == (12.30, 12.35), "prior price must remain usable across several fresh deltas"
+    finally:
+        ofls.clear_symbol("RTH_FRESH_B")
+
+
+def test_freshness_c_price_older_than_boundary_becomes_unavailable():
+    import order_flow_live_state as ofls
+    ofls.clear_symbol("RTH_FRESH_C")
+    try:
+        t0 = 1_000_000.0
+        ofls.push_level_one("RTH_FRESH_C",
+                            {"BID_PRICE": 7.77, "ASK_PRICE": 7.79, "BID_SIZE": 9, "ASK_SIZE": 9},
+                            ts_recv=t0)
+        now_just_inside = t0 + ofe.OF_TOP_OF_BOOK_FIELD_STALE_SEC - 0.01
+        now_just_outside = t0 + ofe.OF_TOP_OF_BOOK_FIELD_STALE_SEC + 0.01
+        data = {"content": ofls.get_content_for_symbol("RTH_FRESH_C")}
+        bid_in, ask_in, _, _ = ofe._resolve_bid_ask_prices(data, now_ts=now_just_inside)
+        assert (bid_in, ask_in) == (7.77, 7.79), "still within the freshness boundary"
+        bid_out, ask_out, _, _ = ofe._resolve_bid_ask_prices(data, now_ts=now_just_outside)
+        assert (bid_out, ask_out) == (None, None), (
+            "a price older than the freshness boundary must resolve to unavailable, "
+            "not be carried forward indefinitely")
+    finally:
+        ofls.clear_symbol("RTH_FRESH_C")
+
+
+def test_freshness_d_previous_epoch_price_never_carries_forward_even_if_technically_fresh():
+    """Item D, freshness-aware: a still-within-window price from a PRIOR contract must
+    never appear for a NEW contract on the same symbol slot after a switch -- epoch
+    isolation (clear_symbol) takes precedence over recency."""
+    import order_flow_live_state as ofls
+    ofls.clear_symbol("RTH_FRESH_D")
+    try:
+        t0 = 1_000_000.0
+        ofls.push_level_one("RTH_FRESH_D",
+                            {"BID_PRICE": 3.10, "ASK_PRICE": 3.15, "BID_SIZE": 4, "ASK_SIZE": 4},
+                            ts_recv=t0)
+        # Contract switch: the prior contract's state is cleared before the new one is pushed.
+        ofls.clear_symbol("RTH_FRESH_D")
+        ofls.push_level_one("RTH_FRESH_D", {"BID_SIZE": 6}, ts_recv=t0 + 1.0)
+        data = {"content": ofls.get_content_for_symbol("RTH_FRESH_D")}
+        # now_ts is only 1s after the OLD price's ts_recv -- well within the freshness window --
+        # proving the absence is from epoch isolation, not from staleness rejection.
+        bid, ask, _, _ = ofe._resolve_bid_ask_prices(data, now_ts=t0 + 1.0)
+        assert (bid, ask) == (None, None), "a fresh-looking price from the PRIOR epoch must never carry forward"
+    finally:
+        ofls.clear_symbol("RTH_FRESH_D")
+
+
+def test_freshness_e_fresh_bid_but_stale_ask_does_not_publish_a_falsely_complete_pair():
+    import order_flow_live_state as ofls
+    ofls.clear_symbol("RTH_FRESH_E")
+    try:
+        t0 = 1_000_000.0
+        ofls.push_level_one("RTH_FRESH_E",
+                            {"BID_PRICE": 20.00, "ASK_PRICE": 20.10, "BID_SIZE": 3, "ASK_SIZE": 3},
+                            ts_recv=t0)
+        # Only BID_PRICE refreshes; ASK_PRICE's TS_RECV stays pinned at t0.
+        t_bid_refresh = t0 + ofe.OF_TOP_OF_BOOK_FIELD_STALE_SEC - 1.0
+        ofls.push_level_one("RTH_FRESH_E", {"BID_PRICE": 20.05}, ts_recv=t_bid_refresh)
+        now = t_bid_refresh + 2.0  # ask is now (now - t0) > bound old; bid is fresh
+        assert (now - t0) > ofe.OF_TOP_OF_BOOK_FIELD_STALE_SEC
+        assert (now - t_bid_refresh) <= ofe.OF_TOP_OF_BOOK_FIELD_STALE_SEC
+        data = {"content": ofls.get_content_for_symbol("RTH_FRESH_E")}
+        bid, ask, _, _ = ofe._resolve_bid_ask_prices(data, now_ts=now)
+        assert bid == 20.05, "the freshly-updated leg must still resolve"
+        assert ask is None, "a stale leg must not be paired with a fresh one as a falsely-complete top of book"
+    finally:
+        ofls.clear_symbol("RTH_FRESH_E")
+
+
+def test_freshness_f_zero_remains_a_valid_value_under_the_freshness_bound():
+    import order_flow_live_state as ofls
+    ofls.clear_symbol("RTH_FRESH_F")
+    try:
+        t0 = 1_000_000.0
+        ofls.push_level_one("RTH_FRESH_F",
+                            {"BID_PRICE": 5.00, "ASK_PRICE": 5.02, "BID_SIZE": 0, "ASK_SIZE": 7},
+                            ts_recv=t0)
+        data = {"content": ofls.get_content_for_symbol("RTH_FRESH_F")}
+        pressure, tier = ofe._compute_top_book_pressure(data, now_ts=t0 + 1.0)
+        assert tier == "schwab_stream", "a real BID_SIZE=0 must not be treated as missing under freshness bounding"
+        assert pressure == (0 - 7) / (0 + 7)
+    finally:
+        ofls.clear_symbol("RTH_FRESH_F")
