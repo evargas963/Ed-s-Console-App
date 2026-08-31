@@ -43,9 +43,9 @@ def test_renamed_reformatted_duplicate_is_blocked(tmp_path):
 
 
 def test_same_shape_different_production_seam_is_not_blocked(tmp_path):
-    """The challenger/structural-eval precedent: identical shape, different target
-    module referenced inside the body -- a genuinely distinct production seam, not a
-    duplicate."""
+    """Identical shape, different target module imported INSIDE the function body --
+    already distinguishable by a plain AST diff (the import statement text itself
+    differs), no resolution needed."""
     (tmp_path / "test_a.py").write_text(
         "def test_write_report(tmp_path):\n"
         "    from module_a import runner\n"
@@ -61,6 +61,52 @@ def test_same_shape_different_production_seam_is_not_blocked(tmp_path):
         encoding="utf-8",
     )
     assert _find_duplicate_test_groups(tmp_path) == []
+
+
+def test_same_shape_different_module_level_import_target_is_resolved_not_blocked(tmp_path):
+    """TEST_SYSTEM_REHAB_V2 (real precedent: test_challenger_eval_v1.py /
+    test_structural_eval_v1.py): identical function body text, but `runner` is bound
+    to a DIFFERENT module by a MODULE-LEVEL import in each file -- the function body
+    alone is byte-identical AST, so this requires resolving the import binding, not
+    just diffing the body. Previously needed a '# institutional-duplicate-ok:'
+    marker; now correctly distinguished with no marker at all."""
+    (tmp_path / "test_a.py").write_text(
+        "from module_a import runner\n"
+        "def test_write_report(tmp_path):\n"
+        "    report = runner.run_study(tmp_path)\n"
+        "    assert report\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "test_b.py").write_text(
+        "from module_b import runner\n"
+        "def test_write_report(tmp_path):\n"
+        "    report = runner.run_study(tmp_path)\n"
+        "    assert report\n",
+        encoding="utf-8",
+    )
+    assert _find_duplicate_test_groups(tmp_path) == []
+
+
+def test_same_module_level_import_target_with_identical_body_is_still_blocked(tmp_path):
+    """The resolution logic must not become an accidental blanket pass -- if the
+    module-level import ALSO resolves to the SAME target in both files, the
+    duplicate is still caught."""
+    (tmp_path / "test_a.py").write_text(
+        "from module_a import runner\n"
+        "def test_one():\n"
+        "    report = runner.run_study()\n"
+        "    assert report\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "test_b.py").write_text(
+        "from module_a import runner\n"
+        "def test_two():\n"
+        "    report = runner.run_study()\n"
+        "    assert report\n",
+        encoding="utf-8",
+    )
+    groups = _find_duplicate_test_groups(tmp_path)
+    assert len(groups) == 1
 
 
 def test_exemption_marker_excludes_a_real_duplicate(tmp_path):

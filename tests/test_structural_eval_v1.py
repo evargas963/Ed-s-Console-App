@@ -184,9 +184,6 @@ def test_run_study_end_to_end(tmp_path, monkeypatch):
 
 
 def test_write_report_creates_json_and_latest(tmp_path, monkeypatch):
-    # institutional-duplicate-ok: same-shaped test against a DIFFERENT production
-    # module (research.structural_eval_v1.runner, not challenger_eval_v1.runner) --
-    # TEST_SYSTEM_REHAB_V2 semantic review kept both deliberately.
     db = _fixture_db(tmp_path, n_days=2, per_day=5)
     monkeypatch.setattr(runner, "invalid_threshold_horizons", lambda: [])
     report = runner.run_study(db)

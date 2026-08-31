@@ -1092,14 +1092,48 @@ _DUPLICATE_TEST_JUSTIFY_MARKER = "institutional-duplicate-ok"
 _SCAN_JUSTIFY_MARKER = "institutional-scan-ok"
 
 
-def _normalized_test_body_hash(node: ast.FunctionDef) -> str:
+def _module_level_import_bindings(tree: ast.Module) -> dict[str, str]:
+    """{local_name: resolved_module_path} for every TOP-LEVEL `import X [as Y]` /
+    `from X import Y [as Z]` in a file — used to tell apart two test functions whose
+    BODY text is identical but that reference differently-imported names (e.g. both
+    call `runner.run_study(...)`, where `runner` is bound to a different module in
+    each file). Only module-level bindings are resolved; a name imported inside the
+    function itself is already visible to the plain AST-dump hash."""
+    out: dict[str, str] = {}
+    for node in tree.body:
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                out[alias.asname or alias.name.split(".")[0]] = alias.name
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            for alias in node.names:
+                out[alias.asname or alias.name] = f"{node.module}.{alias.name}"
+    return out
+
+
+def _normalized_test_body_hash(node: ast.FunctionDef, import_bindings: dict[str, str]) -> str:
     """AST dump of a test function's body with its own name stripped, so two
     byte-identical bodies under different names still hash equal — but two bodies
     that read/construct anything differently (a different Name, Attribute, or
     Constant node anywhere) hash DIFFERENT, so a same-shaped test against a
-    genuinely different production module is never flagged."""
+    genuinely different production module is never flagged.
+
+    TEST_SYSTEM_REHAB_V2: also resolves every module-level-imported name the
+    function body actually references (e.g. `runner` bound to a different module
+    per file) and folds the sorted resolved-module list into the hash — two
+    identically-shaped test bodies calling into genuinely different production
+    modules now hash DIFFERENT on that basis alone, with no exemption marker
+    needed. A marker remains for cases resolution cannot structurally distinguish
+    (e.g. a truly interchangeable literal/config difference)."""
     dumped = ast.dump(node, annotate_fields=True, include_attributes=False)
-    return hashlib.sha256(dumped.replace(f"name='{node.name}'", "name='X'", 1).encode()).hexdigest()
+    normalized = dumped.replace(f"name='{node.name}'", "name='X'", 1)
+    referenced_modules = sorted({
+        import_bindings[n.id]
+        for n in ast.walk(node)
+        if isinstance(n, ast.Name) and n.id in import_bindings
+    })
+    return hashlib.sha256(
+        (normalized + "|" + ",".join(referenced_modules)).encode()
+    ).hexdigest()
 
 
 def _find_duplicate_test_groups(root: Path) -> list[list[tuple[Path, int, str]]]:
@@ -1118,6 +1152,7 @@ def _find_duplicate_test_groups(root: Path) -> list[list[tuple[Path, int, str]]]
             tree = ast.parse(src, filename=str(p))
         except SyntaxError:
             continue
+        import_bindings = _module_level_import_bindings(tree)
         lines = src.splitlines()
         for node in ast.walk(tree):
             if not (isinstance(node, ast.FunctionDef) and node.name.startswith("test_")):
@@ -1126,7 +1161,7 @@ def _find_duplicate_test_groups(root: Path) -> list[list[tuple[Path, int, str]]]
             seg = "\n".join(lines[lo - 1: hi])
             if _DUPLICATE_TEST_JUSTIFY_MARKER in seg:
                 continue
-            h = _normalized_test_body_hash(node)
+            h = _normalized_test_body_hash(node, import_bindings)
             groups.setdefault(h, []).append((p, node.lineno, node.name))
     return [members for members in groups.values() if len(members) > 1]
 
