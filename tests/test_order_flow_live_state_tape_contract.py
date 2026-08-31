@@ -1,3 +1,6 @@
+"""order_flow_live_state must preserve a genuinely-missing last-trade size as
+missing, not coerce it to zero -- downstream order-flow consumers need to tell
+"no size reported" apart from "size was zero"."""
 from __future__ import annotations
 
 import order_flow_engine as ofe

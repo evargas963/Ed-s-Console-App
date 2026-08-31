@@ -1,3 +1,6 @@
+"""v2_decision.a2_lifecycle_sidecar's pin-risk lifecycle health/gap classification
+must correctly reflect the real session state (SessionInfo) it's built against --
+misclassifying pin-risk health would silently mask a genuine near-expiry pin gap."""
 from __future__ import annotations
 
 from copy import deepcopy

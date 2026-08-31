@@ -1,3 +1,6 @@
+"""compute_exposures_by_strike's contract multiplier must come from the real chain
+data, never a hardcoded/default multiplier -- a wrong default silently mis-scales
+every exposure computed from that contract."""
 from __future__ import annotations
 
 import json

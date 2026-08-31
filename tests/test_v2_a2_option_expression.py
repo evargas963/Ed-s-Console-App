@@ -1,3 +1,7 @@
+"""v2_decision.a2_option_expression's hard-gate action policy and contract map must
+route every adapter gap through the correct hard-gate action -- a gap that falls
+through to a permissive default would silently let an ineligible contract express
+a live decision."""
 from __future__ import annotations
 
 from datetime import datetime

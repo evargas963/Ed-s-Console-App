@@ -1,3 +1,6 @@
+"""v2_decision.a2_replay_labels.build_a2_replay_label(_artifact) must correctly flag
+a raw-chain gap on a replayed trade row -- a replay label that silently hides a real
+raw-chain gap would score the replay against data live trading never had."""
 from __future__ import annotations
 
 from v2_decision.a2_replay_labels import (

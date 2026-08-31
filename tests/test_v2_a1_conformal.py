@@ -1,3 +1,7 @@
+"""calibration.v2_a1_conformal's regime-coverage/sample-gate logic must enforce the
+statistical-integrity bucket gate and correctly detect a missing regime axis --
+building a conformal interval on an under-sampled or missing-regime bucket would
+silently understate real uncertainty."""
 from __future__ import annotations
 
 import pytest

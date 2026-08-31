@@ -1,3 +1,7 @@
+"""server.py's tier-C payload must attach the V2 decision AFTER the decision bundle
+is stamped, not before -- attaching early would silently ship a tier-C payload
+built from a pre-stamp, not-yet-final decision bundle. Source-order check: the
+ordering itself is the property, not derivable from behavior alone."""
 from __future__ import annotations
 
 from pathlib import Path

@@ -1,3 +1,7 @@
+"""calibration.v2_a1_execution_ev.build_a1_execution_ev_artifact must require its
+minimum fill-history sample and every registry entry the EV-bounds/conformal chain
+declares before producing an execution-EV artifact -- skipping a required registry
+entry would silently produce an EV estimate the fill history can't support."""
 from __future__ import annotations
 
 import pytest

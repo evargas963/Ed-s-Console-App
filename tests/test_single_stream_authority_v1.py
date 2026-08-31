@@ -179,12 +179,16 @@ def test_mutation_reintroducing_a_second_production_streamclient_fails_the_gate(
 
     real_find = gate.find_stream_client_constructions
     monkeypatch.setattr(gate, "find_stream_client_constructions", fake_find)
-    try:
-        census = gate.run_census()
-        assert "order_flow_streaming.py:999" in census["VIOLATION"]
-        assert gate.main() == 1, "the gate must exit non-zero when a violation is reintroduced"
-    finally:
-        pass   # monkeypatch fixture would undo automatically; explicit for clarity
+    census = gate.run_census()
+    assert "order_flow_streaming.py:999" in census["VIOLATION"]
+    # TEST_SYSTEM_REHAB_V2: main() re-derives its own census via a fresh run_census()
+    # call, so asserting `gate.main() == 1` here used to trigger a SECOND full
+    # tracked-tree AST scan (this was the 39.75s outlier in the local slowest-20).
+    # main()'s exit-code contract is what this line proves, not run_census() a second
+    # time -- so hand it the SAME real census already computed above (still the real,
+    # live-mutated result; only the redundant re-scan is removed).
+    monkeypatch.setattr(gate, "run_census", lambda: census)
+    assert gate.main() == 1, "the gate must exit non-zero when a violation is reintroduced"
 
 
 def test_mutation_two_production_owners_also_fails(monkeypatch):

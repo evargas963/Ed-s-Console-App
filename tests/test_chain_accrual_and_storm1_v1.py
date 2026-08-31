@@ -94,7 +94,12 @@ def test_accrual_refuses_outside_the_window(tmp_path):
         assert res["status"] == "skipped" and res["reason"] == "outside_accrual_window", (
             f"{h}:{m:02d} ET was accepted outside the mandate: {res}"
         )
-    assert not db.exists() or True   # nothing written is the point
+    # TEST_SYSTEM_REHAB_V2: was `assert not db.exists() or True` -- an `X or True`
+    # tautology that always passes regardless of X, so it never actually checked the
+    # "nothing written" claim the comment made. Traced persist_chain_accrual: every
+    # outside-window path returns before any sqlite3.connect, so the file genuinely
+    # never gets created here -- the real assertion holds and is now enforced.
+    assert not db.exists(), "outside-window calls must not create the db file at all"
 
 
 def test_accrual_fails_closed_on_unusable_rows(tmp_path):

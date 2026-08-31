@@ -1,3 +1,6 @@
+"""validate_v2_decision must reject a V2 decision missing a required leaf field
+(fusion_available, tradable canonical_provenance, etc.) rather than silently
+accepting a partial decision as complete."""
 from __future__ import annotations
 
 import pytest

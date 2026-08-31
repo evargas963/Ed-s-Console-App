@@ -1,3 +1,6 @@
+"""calibration.v2_advisory_backfill must write the V2 advisory decision log into the
+live calibration sqlite schema with the correct adapter/schema version columns --
+a mismatch here corrupts calibration training data silently."""
 from __future__ import annotations
 
 import json

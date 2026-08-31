@@ -1,3 +1,9 @@
+"""calibration.v2_advisory_backfill's historical bulk-backfill path (schema
+migration, walk-forward embargo enforcement, per-row error handling, fusion-field
+inference) must reconstruct the same V2 decision shape the live logger writes --
+paired with test_calibration_v2_live_logging.py's proof that both writers share
+identical columns, so a backfilled row and a live row are never distinguishable by
+schema alone."""
 from __future__ import annotations
 
 import json

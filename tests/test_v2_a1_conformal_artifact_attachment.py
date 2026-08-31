@@ -1,3 +1,7 @@
+"""v2_decision.a1_conformal_artifact_attachment must attach the loaded conformal
+artifact to the decision only when the loader actually returns one -- attaching a
+stale/absent artifact would silently misrepresent the decision's calibration
+lineage."""
 from __future__ import annotations
 
 from pathlib import Path

@@ -1,3 +1,6 @@
+"""feature_contract_validation.validate_feature_contracts and the layer-registry
+shape validator must reject a malformed feature registry, not let a bad contract
+silently reach the model input pipeline."""
 from __future__ import annotations
 
 import json

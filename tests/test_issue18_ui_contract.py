@@ -1,3 +1,8 @@
+"""static/index.html's card-rendering structure must match the governed
+CARD_CONSUMER_CONTRACT_V1.json / docs/CARD_TRUST_CONTRACT.md source-of-truth --
+a drifted frontend contract would silently disagree with the trust rules the
+console claims to enforce. Region scoping is brace-matched (never a byte-offset
+slice, which went stale as functions grew during the 2026-08-24 audit)."""
 from __future__ import annotations
 
 import json

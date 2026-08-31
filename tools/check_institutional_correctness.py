@@ -1213,17 +1213,22 @@ def _is_os_walk_call(node: ast.Call) -> bool:
     return isinstance(fn, ast.Name) and fn.id == "walk"  # `from os import walk`
 
 
-def _find_new_repo_scans(root: Path) -> list[tuple[Path, int]]:
-    """Test files under `root` (excluding archive/) that build their own .py-source
-    repo-wide observation (`.rglob`/`.glob` targeting *.py, or `os.walk`) instead of
-    consuming the shared `repo_index` fixture. Detection and the exemption marker are
-    BOTH scoped to the ENCLOSING FUNCTION, not the whole file: a file (or even one
-    function) may legitimately consume `repo_index` for one purpose and still be
-    caught building a second, independent .py-source scan alongside it -- a file-wide
-    "repo_index appears somewhere" bypass would hide exactly that."""
+def _find_py_source_scan_sites(root: Path, *, name_glob: str,
+                                exclude_dir_parts: frozenset[str] = frozenset()) -> list[tuple[Path, int]]:
+    """THE ONE AST walk for .py-source repo scans (`.rglob`/`.glob` targeting *.py, or
+    `os.walk`) under `root`, restricted to files matching `name_glob`. TEST_SYSTEM_REHAB_V2
+    (2026-08-31) unified this with tests/test_gate_scope_is_the_git_index_v1.py's older,
+    independent census walk, which only matched `.rglob(` and silently missed every
+    `.glob(`/`os.walk` site -- two AST walks looking for the same shape had drifted apart.
+    That test now calls this function too (as a git-index-filtered VIEW over its output)
+    instead of re-implementing the walk. Detection and the exemption marker are BOTH
+    scoped to the ENCLOSING FUNCTION, not the whole file: a file (or even one function)
+    may legitimately consume `repo_index` for one purpose and still be caught building a
+    second, independent .py-source scan alongside it -- a file-wide "repo_index appears
+    somewhere" bypass would hide exactly that."""
     out: list[tuple[Path, int]] = []
-    for p in sorted(root.rglob("test_*.py")):
-        if "archive" in p.relative_to(root).parts:
+    for p in sorted(root.rglob(name_glob)):
+        if exclude_dir_parts & set(p.relative_to(root).parts):
             continue
         src = _read_or_empty(p)
         if not src:
@@ -1245,6 +1250,13 @@ def _find_new_repo_scans(root: Path) -> list[tuple[Path, int]]:
                 continue
             out.append((p, line))
     return out
+
+
+def _find_new_repo_scans(root: Path) -> list[tuple[Path, int]]:
+    """Test files under `root` (excluding archive/) that build their own .py-source
+    repo-wide observation instead of consuming the shared `repo_index` fixture --
+    the ENFORCEMENT-scoped view of `_find_py_source_scan_sites` (test_*.py only)."""
+    return _find_py_source_scan_sites(root, name_glob="test_*.py", exclude_dir_parts=frozenset({"archive"}))
 
 
 def check_no_new_independent_repo_scan_in_tests() -> list[Violation]:

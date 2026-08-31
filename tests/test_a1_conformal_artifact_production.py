@@ -1,3 +1,6 @@
+"""A1 conformal artifact production: atomic write, current-pointer swap, and
+lineage/eligibility gating must never leave a partial or wrongly-promoted artifact
+live for the runtime to load."""
 from __future__ import annotations
 
 import json

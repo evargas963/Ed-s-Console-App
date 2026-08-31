@@ -1,3 +1,6 @@
+"""v2_decision.a2_eod_force_exit: the end-of-day forced-exit clock derivation and
+trigger must fire on the correct ET boundary, never hold a position past close or
+force-exit early."""
 from __future__ import annotations
 
 from copy import deepcopy

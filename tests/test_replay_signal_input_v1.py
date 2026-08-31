@@ -1,3 +1,6 @@
+"""features.replay_signal_input_v1.signal_input_from_snapshot_row_dict must build the
+same canonical signal-input shape from a replayed snapshot row that live inference
+gets -- a divergence here means replay evaluates a different model than production."""
 from __future__ import annotations
 
 import pytest

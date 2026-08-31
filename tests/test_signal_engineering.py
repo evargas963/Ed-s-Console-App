@@ -1,3 +1,6 @@
+"""calibration.signal_engineering.run_engineering must run end-to-end without
+raising on a real input shape -- the one smoke proof that the engineering pipeline
+is wired correctly before its individual stages are trusted."""
 from __future__ import annotations
 
 from pathlib import Path

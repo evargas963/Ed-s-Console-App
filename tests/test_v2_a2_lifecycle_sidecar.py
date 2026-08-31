@@ -1,3 +1,7 @@
+"""v2_decision.a2_lifecycle_sidecar must correctly name every lifecycle gap and
+block preview on the gaps that are actually preview-blocking, staying in sync with
+lifecycle_rule_core's declared version -- a gap silently misclassified as
+non-blocking would let an incomplete decision through to preview."""
 from __future__ import annotations
 
 from datetime import datetime

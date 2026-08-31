@@ -171,7 +171,22 @@ def test_feed_loop_replays_both_ticker_and_option_contract_independently(tmp_pat
         ofs.set_streaming_active_ticker("SPY")
         ofs.set_active_option_contract(_SPY_CONTRACT)
         task = asyncio.get_event_loop().create_task(ofs._feed_loop())
-        await asyncio.sleep(0.3)
+        # TEST_SYSTEM_REHAB_V2: was a flat `await asyncio.sleep(0.3)`. _feed_loop's
+        # first tick needs three SEQUENTIAL executor round-trips (open db, replay
+        # ticker, replay contract) before either slot is populated; under real system
+        # load those round-trips can individually exceed 300ms, so this failed
+        # (assert False on the option-contract slot) under measured 100% CPU
+        # contention while passing 3/3 in isolation -- a load-sensitive fixed sleep,
+        # not a production defect. Poll for the actual condition instead: exits in
+        # ~one tick under normal load, tolerates real contention up to 10s, and still
+        # fails for real if the production code genuinely never populates a slot.
+        deadline = time.monotonic() + 10.0
+        while time.monotonic() < deadline:
+            if (any(i.get("LAST_PRICE") == 450.0 for i in ofls.get_content_for_symbol("SPY"))
+                    and any(i.get("LAST_PRICE") == 1.27
+                            for i in ofls.get_content_for_symbol(_SPY_CONTRACT))):
+                break
+            await asyncio.sleep(0.05)
         ofs._feed_running = False
         task.cancel()
         try:

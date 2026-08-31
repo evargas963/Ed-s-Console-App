@@ -1,3 +1,6 @@
+"""governed_stack_contract: stack-health classification, MC-team fail-closed
+authorization, and wall-clock-to-bars conversion must fail closed on a degraded or
+malformed stack, never authorize a decision on incomplete inputs."""
 from types import SimpleNamespace
 
 import pytest

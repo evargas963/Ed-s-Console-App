@@ -1,3 +1,6 @@
+"""order_flow_engine._iter_tape_prints must preserve a missing trade size as
+missing, not coerce it to zero -- the same missing-vs-zero contract as the live
+tape state, proved here at the print-iteration seam specifically."""
 from __future__ import annotations
 
 import order_flow_engine as ofe

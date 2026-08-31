@@ -1,3 +1,7 @@
+"""The similarity engine's feature-universe inventory, staged search, and
+divergence/synthesis output must be reproducible, deterministic, and correctly
+partitioned -- a non-deterministic feature universe silently changes which
+historical analogues rank as nearest-neighbor on repeat runs."""
 from __future__ import annotations
 
 import sys

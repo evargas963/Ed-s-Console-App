@@ -1,3 +1,7 @@
+"""v2_decision.a1_isotonic_calibration_attachment must only attach a calibrated
+probability + lineage when both the isotonic artifact and the raw probability are
+actually present -- attaching a calibrated value built on a missing input would
+silently misstate the decision's true calibration provenance."""
 from __future__ import annotations
 
 from copy import deepcopy

@@ -44,10 +44,18 @@ def test_charm_gate_zero_vote_functional():
     baseline = greek_bias(1000.0, None, 0.8,
                           dex_magnitude="moderate", charm_magnitude="moderate")
     assert with_charm_gated == baseline
-    # And the ungated form WOULD differ (proves the gate is load-bearing, not vacuous)
+    # And the ungated form WOULD differ (proves the gate is load-bearing, not vacuous).
+    # TEST_SYSTEM_REHAB_V2: the original moderate/moderate inputs put the delta score
+    # alone (0.7) already past GREEK_BIAS_THRESHOLD (0.5), so adding "buying"/large
+    # charm (+0.5) never changed the bucket -- a real, silent tie, hidden behind an
+    # `... or True` that would still pass even if the gate were deleted entirely.
+    # dex_magnitude="small" keeps delta alone (0.3) below threshold so the added
+    # charm score (+0.5) provably flips neutral -> bullish, a real, checked property.
+    weak_baseline = greek_bias(1000.0, None, 0.8,
+                                dex_magnitude="small", charm_magnitude="moderate")
     ungated = greek_bias(1000.0, "buying", 0.8,
-                         dex_magnitude="moderate", charm_magnitude="large")
-    assert ungated != baseline or True  # direction-sensitive engines may tie on this input
+                         dex_magnitude="small", charm_magnitude="large")
+    assert ungated != weak_baseline, "ungated charm must be load-bearing, not vacuous"
 
 
 def test_charm_research_surfaces_preserved():

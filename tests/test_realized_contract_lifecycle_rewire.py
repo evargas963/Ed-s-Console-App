@@ -1,3 +1,6 @@
+"""realized_contract_eval's rewired wiring through lifecycle_rule_core must still
+evaluate the correct realized-bar outcome (high/low/open/close) after the rewire --
+proves the seam survived, not just that the old code path still exists."""
 from __future__ import annotations
 
 import lifecycle_rule_core
