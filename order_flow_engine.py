@@ -511,17 +511,28 @@ def _extract_canonical_book(data: dict, *, now_ts: Optional[float] = None) -> di
     """THE single extraction/normalization of the live book. Walks the content ONCE, validates
     and sorts both sides, and resolves the L1 top-of-book. Every downstream metric reads this
     result; nothing else re-walks the raw book. `now_ts` grounds the Gap-1 per-field freshness
-    boundary on bid/ask; recomputing this on every call (never cached itself) means a field
-    that ages past the boundary between calls correctly drops out of the CONTENT identity used
-    by compute_book_microstructure's carry cache, forcing a recompute rather than serving a
-    stale structural result."""
+    boundary on bid/ask/bid_size/ask_size; recomputing this on every call (never cached itself)
+    means a field that ages past the boundary between calls correctly drops out of the CONTENT
+    identity used by compute_book_microstructure's carry cache, forcing a recompute rather than
+    serving a stale structural result.
+
+    PR214_TOP_OF_BOOK_SIZE_FRESHNESS_FINAL: bid_size/ask_size used to come from
+    `_latest_quote_snapshot` — a single "latest" content item, the same assume-co-occurrence
+    shape Gap 1 already fixed for BID_PRICE/ASK_PRICE/top_book_pressure. A stale or partial
+    snapshot could still supply the DISPLAYED canonical top-of-book sizes through this one
+    remaining path. Now resolved through the SAME `_latest_content_field` freshness authority
+    `_compute_top_book_pressure` already uses — one canonical per-field resolver, one freshness
+    boundary, for every top-of-book leaf."""
+    import time as _t
+    now = _t.time() if now_ts is None else now_ts
     items = _iter_content(data)
     snapshot = _latest_book_snapshot(items)
-    quote_snap = _latest_quote_snapshot(items)
 
-    bid, ask, bid_leaf, ask_leaf = _resolve_bid_ask_prices(data, now_ts=now_ts)
-    bid_size = _safe_int(quote_snap.get("BID_SIZE")) if quote_snap else None
-    ask_size = _safe_int(quote_snap.get("ASK_SIZE")) if quote_snap else None
+    bid, ask, bid_leaf, ask_leaf = _resolve_bid_ask_prices(data, now_ts=now)
+    bid_size = _safe_int(_latest_content_field(
+        items, "BID_SIZE", now=now, max_age_sec=OF_TOP_OF_BOOK_FIELD_STALE_SEC))
+    ask_size = _safe_int(_latest_content_field(
+        items, "ASK_SIZE", now=now, max_age_sec=OF_TOP_OF_BOOK_FIELD_STALE_SEC))
     if bid_size is not None and bid_size < 0:   # reject invalid displayed size
         bid_size = None
     if ask_size is not None and ask_size < 0:

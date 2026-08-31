@@ -613,3 +613,150 @@ def test_freshness_f_zero_remains_a_valid_value_under_the_freshness_bound():
         assert pressure == (0 - 7) / (0 + 7)
     finally:
         ofls.clear_symbol("RTH_FRESH_F")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PR214_TOP_OF_BOOK_SIZE_FRESHNESS_FINAL — the SAME defect class, one remaining path:
+# _extract_canonical_book's published bid_size/ask_size used to come from
+# _latest_quote_snapshot (a single "latest" content item), not the freshness-aware
+# per-field resolver Gap 1 already wired for BID_PRICE/ASK_PRICE/top_book_pressure.
+# Now bid_size/ask_size resolve through the SAME _latest_content_field authority, the
+# SAME now_ts, the SAME OF_TOP_OF_BOOK_FIELD_STALE_SEC boundary. These tests drive the
+# REAL production path (order_flow_live_state.push_level_one, explicit ts_recv) so
+# freshness is deterministic, matching the Gap 1 freshness tests above.
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_size_a_fresh_bid_and_ask_size_resolve_exactly():
+    import order_flow_live_state as ofls
+    ofls.clear_symbol("SIZE_FRESH_A")
+    try:
+        t0 = 1_000_000.0
+        ofls.push_level_one("SIZE_FRESH_A",
+                            {"BID_PRICE": 4.10, "ASK_PRICE": 4.12, "BID_SIZE": 17, "ASK_SIZE": 29},
+                            ts_recv=t0)
+        data = {"content": ofls.get_content_for_symbol("SIZE_FRESH_A")}
+        cb = ofe._extract_canonical_book(data, now_ts=t0 + 1.0)
+        assert (cb["bid_size"], cb["ask_size"]) == (17, 29)
+        # end-to-end: the full microstructure payload's top_of_book carries the same values.
+        m = ofe.compute_book_microstructure(data, now_ts=t0 + 1.0)
+        assert m["top_of_book"]["bid_size"] == 17
+        assert m["top_of_book"]["ask_size"] == 29
+    finally:
+        ofls.clear_symbol("SIZE_FRESH_A")
+
+
+def test_size_b_fresh_price_but_stale_bid_size_is_unavailable():
+    import order_flow_live_state as ofls
+    ofls.clear_symbol("SIZE_FRESH_B")
+    try:
+        t0 = 1_000_000.0
+        ofls.push_level_one("SIZE_FRESH_B",
+                            {"BID_PRICE": 4.10, "ASK_PRICE": 4.12, "BID_SIZE": 17, "ASK_SIZE": 29},
+                            ts_recv=t0)
+        # Refresh price on both legs and ASK_SIZE; BID_SIZE's ts_recv stays pinned at t0.
+        t_refresh = t0 + 1.0
+        ofls.push_level_one("SIZE_FRESH_B",
+                            {"BID_PRICE": 4.11, "ASK_PRICE": 4.13, "ASK_SIZE": 30},
+                            ts_recv=t_refresh)
+        now = t0 + ofe.OF_TOP_OF_BOOK_FIELD_STALE_SEC + 1.0  # BID_SIZE now stale; price/ASK_SIZE fresh
+        assert (now - t_refresh) <= ofe.OF_TOP_OF_BOOK_FIELD_STALE_SEC
+        data = {"content": ofls.get_content_for_symbol("SIZE_FRESH_B")}
+        cb = ofe._extract_canonical_book(data, now_ts=now)
+        assert (cb["bid"], cb["ask"]) == (4.11, 4.13), "the refreshed price must resolve"
+        assert cb["bid_size"] is None, "a stale BID_SIZE must not be published as a real size"
+        assert cb["ask_size"] == 30, "the refreshed ASK_SIZE must still resolve"
+    finally:
+        ofls.clear_symbol("SIZE_FRESH_B")
+
+
+def test_size_c_fresh_bid_size_but_stale_ask_size_is_unavailable():
+    import order_flow_live_state as ofls
+    ofls.clear_symbol("SIZE_FRESH_C")
+    try:
+        t0 = 1_000_000.0
+        ofls.push_level_one("SIZE_FRESH_C",
+                            {"BID_PRICE": 4.10, "ASK_PRICE": 4.12, "BID_SIZE": 17, "ASK_SIZE": 29},
+                            ts_recv=t0)
+        # Refresh price on both legs and BID_SIZE; ASK_SIZE's ts_recv stays pinned at t0.
+        t_refresh = t0 + 1.0
+        ofls.push_level_one("SIZE_FRESH_C",
+                            {"BID_PRICE": 4.11, "ASK_PRICE": 4.13, "BID_SIZE": 18},
+                            ts_recv=t_refresh)
+        now = t0 + ofe.OF_TOP_OF_BOOK_FIELD_STALE_SEC + 1.0  # ASK_SIZE now stale; price/BID_SIZE fresh
+        assert (now - t_refresh) <= ofe.OF_TOP_OF_BOOK_FIELD_STALE_SEC
+        data = {"content": ofls.get_content_for_symbol("SIZE_FRESH_C")}
+        cb = ofe._extract_canonical_book(data, now_ts=now)
+        assert cb["bid_size"] == 18, "the refreshed BID_SIZE must still resolve"
+        assert cb["ask_size"] is None, (
+            "a stale ASK_SIZE must not be published alongside a fresh BID_SIZE as a falsely-complete pair")
+    finally:
+        ofls.clear_symbol("SIZE_FRESH_C")
+
+
+def test_size_d_size_only_partial_delta_inside_window_survives():
+    import order_flow_live_state as ofls
+    ofls.clear_symbol("SIZE_FRESH_D")
+    try:
+        t0 = 1_000_000.0
+        ofls.push_level_one("SIZE_FRESH_D",
+                            {"BID_PRICE": 4.10, "ASK_PRICE": 4.12, "BID_SIZE": 17, "ASK_SIZE": 29},
+                            ts_recv=t0)
+        ofls.push_level_one("SIZE_FRESH_D", {"BID_SIZE": 40, "ASK_SIZE": 41}, ts_recv=t0 + 2.0)
+        now = t0 + 2.5  # well inside the freshness window of the size-only delta
+        data = {"content": ofls.get_content_for_symbol("SIZE_FRESH_D")}
+        cb = ofe._extract_canonical_book(data, now_ts=now)
+        assert (cb["bid_size"], cb["ask_size"]) == (40, 41), "the new delta sizes must survive, not the stale originals"
+        assert (cb["bid"], cb["ask"]) == (4.10, 4.12), "price must survive the size-only delta unchanged"
+    finally:
+        ofls.clear_symbol("SIZE_FRESH_D")
+
+
+def test_size_e_zero_bid_size_resolves_as_a_real_value():
+    import order_flow_live_state as ofls
+    ofls.clear_symbol("SIZE_FRESH_E")
+    try:
+        t0 = 1_000_000.0
+        ofls.push_level_one("SIZE_FRESH_E",
+                            {"BID_PRICE": 4.10, "ASK_PRICE": 4.12, "BID_SIZE": 0, "ASK_SIZE": 5},
+                            ts_recv=t0)
+        data = {"content": ofls.get_content_for_symbol("SIZE_FRESH_E")}
+        cb = ofe._extract_canonical_book(data, now_ts=t0 + 1.0)
+        assert cb["bid_size"] == 0, "a real BID_SIZE=0 must resolve as 0, not None"
+        m = ofe.compute_book_microstructure(data, now_ts=t0 + 1.0)
+        assert m["top_of_book"]["bid_size"] == 0
+    finally:
+        ofls.clear_symbol("SIZE_FRESH_E")
+
+
+def test_size_f_stale_price_and_stale_sizes_yield_no_falsely_complete_top_of_book():
+    import order_flow_live_state as ofls
+    ofls.clear_symbol("SIZE_FRESH_F")
+    try:
+        t0 = 1_000_000.0
+        ofls.push_level_one("SIZE_FRESH_F",
+                            {"BID_PRICE": 4.10, "ASK_PRICE": 4.12, "BID_SIZE": 17, "ASK_SIZE": 29},
+                            ts_recv=t0)
+        now = t0 + ofe.OF_TOP_OF_BOOK_FIELD_STALE_SEC + 1.0  # nothing refreshed -- everything stale
+        data = {"content": ofls.get_content_for_symbol("SIZE_FRESH_F")}
+        cb = ofe._extract_canonical_book(data, now_ts=now)
+        assert (cb["bid"], cb["ask"], cb["bid_size"], cb["ask_size"]) == (None, None, None, None), (
+            "stale price AND stale sizes must never be published as a falsely-complete top of book")
+    finally:
+        ofls.clear_symbol("SIZE_FRESH_F")
+
+
+def test_size_g_production_replay_seams_thread_ts_recv_into_push_level_one():
+    """Direct source proof of the two known production replay seams (not a repo-wide
+    audit): order_flow_streaming._replay_new_rows (equity LEVELONE_EQUITIES) and
+    _replay_option_contract_rows (LEVELONE_OPTIONS) must both call push_level_one with
+    the real stream_capture.db row's own ts_recv threaded through -- so the live PR #214
+    streaming path cannot silently fall back to an unbounded/approximated timestamp and
+    bypass the freshness boundary this file proves above."""
+    import inspect
+    import order_flow_streaming as ofs
+    equity_src = inspect.getsource(ofs._replay_new_rows)
+    assert "push_level_one(ticker, item, ts_recv=ts_recv)" in equity_src, (
+        "equity replay seam must thread the real row ts_recv into push_level_one")
+    options_src = inspect.getsource(ofs._replay_option_contract_rows)
+    assert "push_level_one(contract_symbol, item, ts_recv=ts_recv)" in options_src, (
+        "options replay seam must thread the real row ts_recv into push_level_one")
