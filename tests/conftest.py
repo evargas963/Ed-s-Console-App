@@ -99,12 +99,28 @@ def _ensure_console_db_snapshots_1m_normalized_schema():
     ensure_console_db_training_schema()
 
 
+#: TEST_SYSTEM_REHAB_V2: this fixture called the SAME no-arg
+#: ensure_console_db_training_schema() as the session-scoped sibling above -- but
+#: FUNCTION-scoped, so it opened a real sqlite connection and ran a sqlite_master
+#: query before every one of ~6469 tests, not once. The stated concern (Playwright /
+#: an early test touching the db file before the session fixture's guarantee takes
+#: effect) is a first-call concern, not a per-test one -- a process-level cache
+#: preserves that exact protection (the real check still runs on the very first
+#: call, from whichever test happens to run first) while removing ~6468 redundant
+#: connection opens.
+_console_db_schema_verified = False
+
+
 @pytest.fixture(autouse=True)
 def _ensure_console_db_schema_before_each_test():
     """Playwright / early tests may touch ``data/ed_console.db`` without normalized schema."""
+    global _console_db_schema_verified
+    if _console_db_schema_verified:
+        return
     from db import ensure_console_db_training_schema
 
     ensure_console_db_training_schema()
+    _console_db_schema_verified = True
 
 
 @pytest.fixture(scope="session")
