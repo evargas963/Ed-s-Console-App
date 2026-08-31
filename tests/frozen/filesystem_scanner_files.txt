@@ -21,7 +21,7 @@ tests/test_stack_wire_4_v1.py::1
 tools/_build_section11_inventory.py::1
 tools/audit_snapshot_columns.py::1
 tools/build_snapshot_sql_registry.py::1
-tools/check_institutional_correctness.py::5
+tools/check_institutional_correctness.py::7
 tools/check_vendor_field_coercion.py::2
 tools/code_health_panel.py::1
 tools/dead_tests_audit_v1.py::1

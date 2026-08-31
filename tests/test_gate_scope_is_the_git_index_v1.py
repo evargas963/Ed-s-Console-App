@@ -138,6 +138,10 @@ def test_the_remaining_filesystem_scanners_are_measured_not_forgotten():
     # (test_news_events_drop x2, test_session_log_drop, test_confluence_log_drop —
     # converted to the shared session RepoIndex), one ARRIVED (tests/conftest.py
     # RepoIndex builder, the single live pass those tests now consume).
+    # tools/check_institutional_correctness.py 5 -> 7 (TEST_SYSTEM_REHAB_V2 2026-08-31):
+    # two NEW, deliberate scanner sites ARRIVED inside this already-tracked file --
+    # check_no_duplicate_tests and check_no_new_independent_repo_scan_in_tests, the two
+    # mechanical recurrence locks that rehab required. Same file, no new file in the set.
     per_file = Counter(rel.rsplit(":", 1)[0] for rel in found)
     current = {f"{rel}::{n}" for rel, n in per_file.items()}
     frozen = frozenset(
