@@ -39,6 +39,7 @@ from typing import Any, Callable, Optional
 from instrument_identity import ticker_storage_key
 from stream_spine import (
     STREAM_DB_DEFAULT,
+    resolve_stream_db_path,
     write_active_option_contract_signal,
     write_active_ticker_signal,
 )
@@ -187,6 +188,33 @@ def streaming_l1_cache_usable(ticker: str) -> bool:
     return (time.time() - last) * 1000.0 <= FAST_QUOTE_STREAM_CACHE_MAX_AGE_MS
 
 
+def _stream_db_identity_status() -> dict[str, Any]:
+    """SERVER_STREAM_DB == DAEMON_STREAM_DB, directly diagnosable. Reads the daemon's
+    self-reported resolved db_path from its own status file (the same file
+    _read_daemon_upstream_health reads) and compares it against THIS process's own
+    resolved path. PR214_RTH_DEFECT_REMEDIATION_V1 (2026-08-31 RTH proof): both
+    processes reported healthy while attached to two different files -- no
+    per-service health flag can see that failure mode; this check exists
+    specifically for it. `identity_match` is None (not False) when the daemon's
+    status is unreadable or stale — that is the EXISTING "daemon health unknown"
+    case _read_daemon_upstream_health already has, not a NEW mismatch claim."""
+    resolved = str(resolve_stream_db_path(STREAM_DB_DEFAULT))
+    try:
+        status = json.loads(_DAEMON_STATUS_PATH.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {"server_resolved_path": resolved, "daemon_reported_path": None, "identity_match": None}
+    daemon_path = status.get("db_path")
+    status_ts = status.get("ts")
+    status_age = (time.time() - status_ts) if isinstance(status_ts, (int, float)) else None
+    if status_age is None or status_age > _DAEMON_STATUS_STALE_SEC or not isinstance(daemon_path, str):
+        return {"server_resolved_path": resolved, "daemon_reported_path": daemon_path, "identity_match": None}
+    return {
+        "server_resolved_path": resolved,
+        "daemon_reported_path": daemon_path,
+        "identity_match": (resolved == daemon_path),
+    }
+
+
 def get_streaming_diagnostics() -> dict[str, Any]:
     now = time.time()
     last = _streaming_last_update_ts
@@ -198,16 +226,24 @@ def get_streaming_diagnostics() -> dict[str, Any]:
     else:
         stale_ms = None
 
+    db_identity = _stream_db_identity_status()
+    healthy = _streaming_healthy()
+    if db_identity["identity_match"] is False:
+        # Fail closed: producer and consumer are CONFIRMED attached to different
+        # files -- never report a connected stream plane on that basis, no matter
+        # what the local replay staleness says.
+        healthy = False
     return {
         "streaming_connected": bool(_feed_running),
         "streaming_ticker": _active_ticker,
         "streaming_last_update_ts": last,
         "streaming_staleness_ms": stale_ms,
-        "streaming_healthy": _streaming_healthy(),
+        "streaming_healthy": healthy,
         # Ground truth for the Schwab socket itself (see _read_daemon_upstream_health's
         # docstring) — distinct from streaming_healthy above, which only proves this
         # module's own local DB-poll replay is alive and recently updated.
         "daemon_upstream_health": _read_daemon_upstream_health(("LEVELONE_EQUITIES",)),
+        "stream_db_identity": db_identity,
     }
 
 
@@ -218,9 +254,14 @@ def _open_capture_db_readonly(db_path=None) -> Optional[sqlite3.Connection]:
     `db_path` defaults to the MODULE ATTRIBUTE at call time, not a parameter default bound
     once at function-definition time — a default of `STREAM_DB_DEFAULT` directly would
     freeze whatever that name pointed to when this module was imported, so a caller (or a
-    test) that reassigns the module attribute afterward would silently be ignored."""
+    test) that reassigns the module attribute afterward would silently be ignored.
+
+    PR214_RTH_DEFECT_REMEDIATION_V1: goes through `resolve_stream_db_path`, the ONE
+    canonical resolver `tools/run_stream_capture.py`'s CaptureWriter also uses, with
+    THIS module's own `STREAM_DB_DEFAULT` (still test-monkeypatchable, unchanged) as
+    the fallback when no STREAM_CAPTURE_DB_PATH override is set."""
     if db_path is None:
-        db_path = STREAM_DB_DEFAULT
+        db_path = resolve_stream_db_path(STREAM_DB_DEFAULT)
     try:
         return sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
     except sqlite3.OperationalError:
@@ -448,12 +489,16 @@ def get_option_contract_streaming_diagnostics() -> dict[str, Any]:
     else:
         stale_ms = None
 
+    db_identity = _stream_db_identity_status()
+    healthy = _option_streaming_healthy()
+    if db_identity["identity_match"] is False:
+        healthy = False   # fail closed — see get_streaming_diagnostics' identical guard
     return {
         "streaming_connected": bool(_feed_running),
         "option_contract": _active_option_contract,
         "streaming_last_update_ts": last,
         "streaming_staleness_ms": stale_ms,
-        "streaming_healthy": _option_streaming_healthy(),
+        "streaming_healthy": healthy,
         # Ground truth for the Schwab socket itself, per service — distinct from
         # streaming_healthy above (this module's local replay proxy). A fresh LEVELONE_
         # OPTIONS quote does not imply a fresh OPTIONS_BOOK if the book service has
@@ -461,6 +506,7 @@ def get_option_contract_streaming_diagnostics() -> dict[str, Any]:
         # consumer cannot mistake one service's freshness for the other's.
         "daemon_upstream_health": _read_daemon_upstream_health(
             ("LEVELONE_OPTIONS", "OPTIONS_BOOK")),
+        "stream_db_identity": db_identity,
     }
 
 

@@ -149,16 +149,22 @@ def push_level_one(symbol: str, content_item: dict) -> None:
     except Exception as e:
         log.debug(f"RTH reset check failed (continuing): {e}")
 
-    # Update top-of-book
-    top_item = {
-        "BID_PRICE": content_item.get("BID_PRICE"),
-        "ASK_PRICE": content_item.get("ASK_PRICE"),
-        "BID_SIZE": content_item.get("BID_SIZE"),
-        "ASK_SIZE": content_item.get("ASK_SIZE"),
-        "BID_TIME_MILLIS": content_item.get("BID_TIME_MILLIS"),
-        "ASK_TIME_MILLIS": content_item.get("ASK_TIME_MILLIS"),
-    }
+    # Update top-of-book: MERGE, never overwrite. Schwab's LEVELONE_OPTIONS/EQUITIES
+    # stream sends partial/delta ticks -- a size-only update carries no BID_PRICE key
+    # at all -- so a field absent from THIS tick must keep its last known value, not
+    # be wiped to None. RTH proof (2026-08-31): the prior full-overwrite form dropped
+    # a valid, seconds-old price the moment a size-only delta arrived. `in
+    # content_item` (not `.get(...) is not None`), so a tick that explicitly carries a
+    # field with value `0` still updates it -- 0 is a real size, not "absent".
     with _lock:
+        top_item = dict(_top.get(sym) or {
+            "BID_PRICE": None, "ASK_PRICE": None, "BID_SIZE": None, "ASK_SIZE": None,
+            "BID_TIME_MILLIS": None, "ASK_TIME_MILLIS": None,
+        })
+        for field in ("BID_PRICE", "ASK_PRICE", "BID_SIZE", "ASK_SIZE",
+                      "BID_TIME_MILLIS", "ASK_TIME_MILLIS"):
+            if field in content_item:
+                top_item[field] = content_item[field]
         _top[sym] = top_item
 
     trade_ms = content_item.get("TRADE_TIME_MILLIS")

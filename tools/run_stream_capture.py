@@ -672,6 +672,12 @@ def write_status(bus: MessageBus, health: HealthRegistry, writer: CaptureWriter,
         "max_writer_queue_depth": max_qdepth,
         "per_service": stats.per_service,
         "handle_ms_p50": stats.p(50), "handle_ms_p99": stats.p(99),
+        # PR214_RTH_DEFECT_REMEDIATION_V1: the resolved ABSOLUTE stream DB identity
+        # this daemon is actually writing, so a consumer can directly compare it
+        # against its own resolved path rather than assuming they match because
+        # both processes were "healthy" (the RTH failure mode: both healthy, two
+        # different files).
+        "db_path": str(writer.db_path),
     }, indent=2), encoding="utf-8")
 
 

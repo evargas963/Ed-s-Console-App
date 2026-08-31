@@ -181,3 +181,69 @@ def test_feed_loop_starts_and_stops_cleanly(tmp_path, monkeypatch):
         ofs.stop_order_flow_stream(join_timeout=1.0)
         assert ofs.is_order_flow_stream_running() is False
     asyncio.run(go())
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PR214_RTH_DEFECT_REMEDIATION_V1 — stream DB identity mismatch must be
+# diagnosable and must fail closed, never report a connected stream plane on
+# the strength of local replay staleness alone when producer and consumer are
+# confirmed attached to different files.
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _write_daemon_status(status_path, *, db_path: str, ts=None) -> None:
+    import json
+    import time as _time
+    status_path.parent.mkdir(parents=True, exist_ok=True)
+    status_path.write_text(json.dumps({
+        "ts": ts if ts is not None else _time.time(),
+        "health": {"LEVELONE_EQUITIES": {"state": "RUNNING", "age_sec": 0.1}},
+        "db_path": db_path,
+    }), encoding="utf-8")
+
+
+def test_db_path_e_matched_identity_is_not_flagged(tmp_path, monkeypatch):
+    db = _reset(tmp_path)
+    monkeypatch.setattr(ofs, "STREAM_DB_DEFAULT", db)
+    monkeypatch.delenv("STREAM_CAPTURE_DB_PATH", raising=False)
+    status_path = tmp_path / "status.json"
+    monkeypatch.setattr(ofs, "_DAEMON_STATUS_PATH", status_path)
+    _write_daemon_status(status_path, db_path=str(db.resolve()))
+    diag = ofs.get_streaming_diagnostics()
+    assert diag["stream_db_identity"]["identity_match"] is True
+    assert diag["stream_db_identity"]["server_resolved_path"] == str(db.resolve())
+
+
+def test_db_path_e_mismatch_is_diagnosable_and_fails_closed(tmp_path, monkeypatch):
+    """THE exact RTH failure mode, reproduced directly: daemon reports one resolved
+    db_path, server resolves a DIFFERENT one. Must surface identity_match=False and
+    force streaming_healthy=False, even if local replay looks fresh."""
+    db = _reset(tmp_path)
+    monkeypatch.setattr(ofs, "STREAM_DB_DEFAULT", db)
+    monkeypatch.delenv("STREAM_CAPTURE_DB_PATH", raising=False)
+    status_path = tmp_path / "status.json"
+    monkeypatch.setattr(ofs, "_DAEMON_STATUS_PATH", status_path)
+    _write_daemon_status(status_path, db_path=str((tmp_path / "a_different_checkouts_db.db").resolve()))
+    # Make local replay look perfectly fresh/healthy on its own terms.
+    ofs._feed_running = True
+    ofs._active_ticker = "SPY"
+    ofs._streaming_last_update_ts = __import__("time").time()
+    try:
+        diag = ofs.get_streaming_diagnostics()
+        assert diag["stream_db_identity"]["identity_match"] is False
+        assert diag["streaming_healthy"] is False, (
+            "a confirmed DB identity mismatch must fail closed regardless of local replay freshness")
+    finally:
+        ofs._feed_running = False
+        ofs._active_ticker = None
+        ofs._streaming_last_update_ts = None
+
+
+def test_db_path_e_unreadable_daemon_status_is_unknown_not_a_false_mismatch(tmp_path, monkeypatch):
+    """No daemon status available yet (cold start) is the EXISTING 'unknown' case,
+    distinct from a confirmed mismatch -- must not itself force streaming_healthy=False."""
+    db = _reset(tmp_path)
+    monkeypatch.setattr(ofs, "STREAM_DB_DEFAULT", db)
+    monkeypatch.delenv("STREAM_CAPTURE_DB_PATH", raising=False)
+    monkeypatch.setattr(ofs, "_DAEMON_STATUS_PATH", tmp_path / "does_not_exist.json")
+    diag = ofs.get_streaming_diagnostics()
+    assert diag["stream_db_identity"]["identity_match"] is None

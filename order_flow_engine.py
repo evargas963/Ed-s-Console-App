@@ -247,7 +247,11 @@ def _compute_book_imbalance(data: dict, depth: int) -> Optional[float]:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _latest_quote_snapshot(items: list) -> Optional[dict]:
-    """Return the most recent content item with BID_SIZE or ASK_SIZE (or BID_PRICE/ASK_PRICE)."""
+    """Return the most recent content item with BID_SIZE or ASK_SIZE (or BID_PRICE/ASK_PRICE).
+
+    Still used by `_resolve_quote_mark` (MARK is a single-field read, not part of this
+    defect). NOT used for BID_PRICE/ASK_PRICE/BID_SIZE/ASK_SIZE any more -- see
+    `_latest_content_field`."""
     for item in reversed(items):
         if not isinstance(item, dict):
             continue
@@ -261,6 +265,27 @@ def _latest_quote_snapshot(items: list) -> Optional[dict]:
     return None
 
 
+def _latest_content_field(items: list, field: str) -> Any:
+    """THE ONE per-field resolution: the newest non-null observation of `field` alone,
+    walking `items` from most-recent to oldest. Schwab's LEVELONE_OPTIONS/EQUITIES
+    stream sends partial/delta ticks -- a size-only update carries no BID_PRICE key at
+    all -- so BID_PRICE, ASK_PRICE, BID_SIZE, and ASK_SIZE must each be resolved
+    independently; a single "latest snapshot" item (the previous approach) assumes
+    they always co-occur on the same tick, which live RTH data disproved (RTH proof,
+    2026-08-31: a size-only delta silently masked a valid price from the immediately
+    preceding tick). `is not None`, never truthiness -- 0 is a real, valid size.
+
+    `items` is ALREADY scoped to one symbol/contract by the caller
+    (order_flow_live_state.get_content_for_symbol keys its stores per symbol, and
+    set_active_option_contract/set_streaming_active_ticker clear_symbol() the prior
+    one on switch) -- this function does not itself walk across a contract boundary,
+    it walks only as far back as the one already-isolated `items` list given to it."""
+    for item in reversed(items):
+        if isinstance(item, dict) and item.get(field) is not None:
+            return item.get(field)
+    return None
+
+
 def _compute_top_book_pressure(data: dict) -> tuple[Optional[float], Optional[str]]:
     """
     Top-of-book pressure: (bid_size - ask_size) / (bid_size + ask_size).
@@ -268,19 +293,22 @@ def _compute_top_book_pressure(data: dict) -> tuple[Optional[float], Optional[st
     Returns (pressure, source_tier).
     """
     items = _iter_content(data)
-    bid_sz, ask_sz = None, None
+    bid_sz = _safe_float(_latest_content_field(items, "BID_SIZE"))
+    ask_sz = _safe_float(_latest_content_field(items, "ASK_SIZE"))
     source_tier = "unavailable"
-    snapshot = _latest_quote_snapshot(items)
-    if snapshot:
-        bid_sz = _safe_float(snapshot.get("BID_SIZE"))
-        ask_sz = _safe_float(snapshot.get("ASK_SIZE"))
-        if bid_sz is not None and ask_sz is not None:
-            source_tier = "schwab_stream"
+    if bid_sz is not None and ask_sz is not None:
+        source_tier = "schwab_stream"
     if bid_sz is None or ask_sz is None:
         quote = data.get("quote") or {}
         extended = data.get("extended") or {}
-        bid_sz = bid_sz or _safe_float(quote.get("bidSize")) or _safe_float(extended.get("bidSize"))
-        ask_sz = ask_sz or _safe_float(quote.get("askSize")) or _safe_float(extended.get("askSize"))
+        if bid_sz is None:
+            bid_sz = _safe_float(quote.get("bidSize"))
+        if bid_sz is None:
+            bid_sz = _safe_float(extended.get("bidSize"))
+        if ask_sz is None:
+            ask_sz = _safe_float(quote.get("askSize"))
+        if ask_sz is None:
+            ask_sz = _safe_float(extended.get("askSize"))
         if bid_sz is not None and ask_sz is not None and source_tier == "unavailable":
             source_tier = "schwab_quote"
     if bid_sz is None or ask_sz is None:
@@ -294,16 +322,10 @@ def _compute_top_book_pressure(data: dict) -> tuple[Optional[float], Optional[st
 def _resolve_bid_ask_prices(data: dict) -> tuple[Optional[float], Optional[float], Optional[str], Optional[str]]:
     """Resolve Schwab bid/ask prices and leaf provenance labels."""
     items = _iter_content(data)
-    bid_p, ask_p = None, None
-    bid_leaf, ask_leaf = None, None
-    snapshot = _latest_quote_snapshot(items)
-    if snapshot:
-        bid_p = _safe_float(snapshot.get("BID_PRICE"))
-        ask_p = _safe_float(snapshot.get("ASK_PRICE"))
-        if bid_p is not None:
-            bid_leaf = "streaming.BID_PRICE"
-        if ask_p is not None:
-            ask_leaf = "streaming.ASK_PRICE"
+    bid_p = _safe_float(_latest_content_field(items, "BID_PRICE"))
+    ask_p = _safe_float(_latest_content_field(items, "ASK_PRICE"))
+    bid_leaf = "streaming.BID_PRICE" if bid_p is not None else None
+    ask_leaf = "streaming.ASK_PRICE" if ask_p is not None else None
     if bid_p is None or ask_p is None:
         quote = data.get("quote") or {}
         extended = data.get("extended") or {}

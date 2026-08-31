@@ -345,3 +345,137 @@ def test_engine_and_route_read_the_same_canonical_state():
     assert out["book_imbalance_3"] == route["depth"]["3"]["imbalance"]
     assert out["book_imbalance_5"] == route["depth"]["5"]["imbalance"]
     ofe._MICRO_STRUCTURAL_CACHE.pop("SAME", None)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PR214_RTH_DEFECT_REMEDIATION_V1 (2026-08-31) — Schwab LEVELONE_OPTIONS/EQUITIES
+# sends partial/delta ticks (live RTH proof, TSLA 260831C00367500, ~14:00 CDT: a
+# size-only tick carrying only ASK_SIZE silently masked a valid, seconds-old
+# BID_PRICE/ASK_PRICE). Each top-of-book leaf (BID_PRICE, ASK_PRICE, BID_SIZE,
+# ASK_SIZE) must resolve INDEPENDENTLY from the newest tick that actually carries
+# it, through the ONE canonical `_latest_content_field` resolver both
+# `_resolve_bid_ask_prices` and `_compute_top_book_pressure` delegate to.
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_delta_a_full_tick_resolves_all_four_fields_exactly():
+    items = [{"BID_PRICE": 0.58, "ASK_PRICE": 0.59, "BID_SIZE": 11, "ASK_SIZE": 23}]
+    data = {"content": items}
+    bid, ask, bid_leaf, ask_leaf = ofe._resolve_bid_ask_prices(data)
+    assert (bid, ask) == (0.58, 0.59)
+    assert (bid_leaf, ask_leaf) == ("streaming.BID_PRICE", "streaming.ASK_PRICE")
+    pressure, tier = ofe._compute_top_book_pressure(data)
+    assert tier == "schwab_stream"
+    assert pressure == (11 - 23) / (11 + 23)
+
+
+def test_delta_b_size_only_tick_keeps_last_known_prices_and_updates_sizes():
+    items = [
+        {"BID_PRICE": 0.58, "ASK_PRICE": 0.59, "BID_SIZE": 11, "ASK_SIZE": 23},
+        {"BID_SIZE": 8, "ASK_SIZE": 35},  # real live shape: size-only delta, no price keys at all
+    ]
+    data = {"content": items}
+    bid, ask, _, _ = ofe._resolve_bid_ask_prices(data)
+    assert (bid, ask) == (0.58, 0.59), "prices must survive a size-only delta"
+    pressure, tier = ofe._compute_top_book_pressure(data)
+    assert tier == "schwab_stream"
+    assert pressure == (8 - 35) / (8 + 35), "sizes must update to the delta's own values"
+
+
+def test_delta_c_bid_size_only_delta_leaves_ask_size_at_its_last_value():
+    items = [
+        {"BID_PRICE": 0.58, "ASK_PRICE": 0.59, "BID_SIZE": 11, "ASK_SIZE": 23},
+        {"BID_SIZE": 6},  # bid-size-only delta
+    ]
+    data = {"content": items}
+    bid, ask, _, _ = ofe._resolve_bid_ask_prices(data)
+    assert (bid, ask) == (0.58, 0.59)
+    pressure, tier = ofe._compute_top_book_pressure(data)
+    assert tier == "schwab_stream"
+    assert pressure == (6 - 23) / (6 + 23), "ask size must retain its last known value (23)"
+
+
+def test_delta_d_price_only_delta_updates_changed_leg_keeps_the_other():
+    items = [
+        {"BID_PRICE": 0.58, "ASK_PRICE": 0.59, "BID_SIZE": 11, "ASK_SIZE": 23},
+        {"ASK_PRICE": 0.60},  # price-only delta on one leg
+    ]
+    data = {"content": items}
+    bid, ask, _, _ = ofe._resolve_bid_ask_prices(data)
+    assert bid == 0.58, "the unaffected leg must keep its last known value"
+    assert ask == 0.60, "the changed leg must update"
+
+
+def test_delta_e_zero_size_is_a_real_value_not_a_fallback_trigger():
+    items = [{"BID_PRICE": 0.10, "ASK_PRICE": 0.12, "BID_SIZE": 0, "ASK_SIZE": 5}]
+    data = {"content": items}
+    pressure, tier = ofe._compute_top_book_pressure(data)
+    assert tier == "schwab_stream", "a real BID_SIZE=0 must not be treated as missing"
+    assert pressure == (0 - 5) / (0 + 5)
+
+
+def test_delta_f_no_valid_field_anywhere_resolves_to_none():
+    items = [{"LAST_PRICE": 0.55, "LAST_SIZE": 3}]  # tape print only, no top-of-book fields
+    data = {"content": items}
+    assert ofe._resolve_bid_ask_prices(data) == (None, None, None, None)
+    assert ofe._compute_top_book_pressure(data) == (None, "unavailable")
+
+
+def test_delta_g_contract_isolation_no_bleed_across_symbols():
+    """Storage-layer isolation through the REAL production path (order_flow_live_state),
+    not a hand-built items list."""
+    import order_flow_live_state as ofls
+    ofls.clear_symbol("RTH_TEST_CONTRACT_A")
+    ofls.clear_symbol("RTH_TEST_CONTRACT_B")
+    try:
+        ofls.push_level_one("RTH_TEST_CONTRACT_A",
+                            {"BID_PRICE": 9.99, "ASK_PRICE": 10.01, "BID_SIZE": 4, "ASK_SIZE": 4})
+        ofls.push_level_one("RTH_TEST_CONTRACT_B", {"BID_SIZE": 2})  # never had a price of its own
+        bid_a, ask_a, _, _ = ofe._resolve_bid_ask_prices(
+            {"content": ofls.get_content_for_symbol("RTH_TEST_CONTRACT_A")})
+        assert (bid_a, ask_a) == (9.99, 10.01)
+        bid_b, ask_b, _, _ = ofe._resolve_bid_ask_prices(
+            {"content": ofls.get_content_for_symbol("RTH_TEST_CONTRACT_B")})
+        assert (bid_b, ask_b) == (None, None), "contract B must never see contract A's price"
+    finally:
+        ofls.clear_symbol("RTH_TEST_CONTRACT_A")
+        ofls.clear_symbol("RTH_TEST_CONTRACT_B")
+
+
+def test_storage_layer_merges_partial_ticks_not_overwrites():
+    """push_level_one itself — the actual RTH-observed defect location, one layer below
+    order_flow_engine's resolver: a size-only tick must not wipe a previously-stored
+    price out of order_flow_live_state._top[sym]."""
+    import order_flow_live_state as ofls
+    ofls.clear_symbol("RTH_TEST_MUTTEST")
+    try:
+        ofls.push_level_one("RTH_TEST_MUTTEST",
+                            {"BID_PRICE": 1.23, "ASK_PRICE": 1.25, "BID_SIZE": 10, "ASK_SIZE": 10})
+        ofls.push_level_one("RTH_TEST_MUTTEST", {"ASK_SIZE": 75})  # exact live shape, 2026-08-31
+        data = {"content": ofls.get_content_for_symbol("RTH_TEST_MUTTEST")}
+        bid, ask, _, _ = ofe._resolve_bid_ask_prices(data)
+        assert (bid, ask) == (1.23, 1.25), "a size-only tick must not erase the stored price"
+        pressure, tier = ofe._compute_top_book_pressure(data)
+        assert tier == "schwab_stream"
+        assert pressure == (10 - 75) / (10 + 75)
+    finally:
+        ofls.clear_symbol("RTH_TEST_MUTTEST")
+
+
+def test_mutation_control_single_snapshot_selection_loses_the_price():
+    """MUTATION/FAULT CONTROL: the RETIRED single-snapshot-item approach
+    (`_latest_quote_snapshot`, still used by `_resolve_quote_mark` for MARK only) reads
+    BOTH price and size from ONE item. Proves it gets the wrong answer on the exact
+    delta sequence test B uses — the per-field fix is load-bearing, not coincidental.
+    If `_resolve_bid_ask_prices`/`_compute_top_book_pressure` ever regress back to
+    this shape, test B/C/D above fail; this test independently pins WHY."""
+    items = [
+        {"BID_PRICE": 0.58, "ASK_PRICE": 0.59, "BID_SIZE": 11, "ASK_SIZE": 23},
+        {"BID_SIZE": 8, "ASK_SIZE": 35},
+    ]
+    old_snapshot = ofe._latest_quote_snapshot(items)
+    assert old_snapshot is items[-1], "sanity: the retired selector picks the newest item"
+    assert old_snapshot.get("BID_PRICE") is None and old_snapshot.get("ASK_PRICE") is None, (
+        "the retired single-snapshot approach loses the price on this exact live-observed "
+        "delta shape — this is the regression the fix must not reintroduce")
+    bid, ask, _, _ = ofe._resolve_bid_ask_prices({"content": items})
+    assert (bid, ask) == (0.58, 0.59), "the FIXED resolver must not reproduce the loss above"

@@ -420,3 +420,80 @@ def test_writer_init_closes_conn_if_schema_setup_fails(tmp_path, monkeypatch):
     with pytest.raises(RuntimeError, match="schema boom"):
         CaptureWriter(tmp_path / "s.db")
     assert closed["n"] == 1
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PR214_RTH_DEFECT_REMEDIATION_V1 (2026-08-31) — ONE canonical stream DB path
+# authority. Live RTH proof: the daemon was launched with an explicit --db against
+# the PRODUCTION checkout's stream_capture.db and was healthy; the server, run
+# from the DEV checkout, defaulted to STREAM_DB_DEFAULT (checkout-relative, no
+# override) and was ALSO healthy -- both processes reported RUNNING while
+# attached to two different files, and the API truthfully returned `no_book`
+# because they never shared an actual data plane. resolve_stream_db_path is the
+# fix: an explicit STREAM_CAPTURE_DB_PATH env override, checked before any
+# checkout-relative default, so daemon and server can be pointed at the identical
+# absolute file regardless of which checkout each process's code lives in.
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_db_path_a_no_override_resolves_the_existing_canonical_default(monkeypatch):
+    monkeypatch.delenv("STREAM_CAPTURE_DB_PATH", raising=False)
+    import stream_spine as ss
+    assert ss.resolve_stream_db_path() == ss.STREAM_DB_DEFAULT.resolve()
+
+
+def test_db_path_b_absolute_env_override_wins(monkeypatch, tmp_path):
+    target = (tmp_path / "override.db").resolve()
+    monkeypatch.setenv("STREAM_CAPTURE_DB_PATH", str(target))
+    import stream_spine as ss
+    assert ss.resolve_stream_db_path() == target
+    # And it wins even over an explicit caller-supplied default/fallback:
+    assert ss.resolve_stream_db_path(tmp_path / "not_this_one.db") == target
+
+
+def test_db_path_c_relative_override_is_normalized_to_one_absolute_identity(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("STREAM_CAPTURE_DB_PATH", "relative_stream.db")
+    import stream_spine as ss
+    resolved = ss.resolve_stream_db_path()
+    assert resolved.is_absolute()
+    assert resolved == (tmp_path / "relative_stream.db").resolve()
+
+
+def test_db_path_d_two_different_checkout_roots_same_override_resolve_identical(monkeypatch, tmp_path):
+    """Directly reproduces the RTH failure mode's fix: 'daemon' and 'server' sides
+    simulated with DIFFERENT checkout-relative defaults (as if each lived under a
+    different repo root), but the SAME explicit override — both must resolve to
+    the identical absolute path."""
+    target = (tmp_path / "shared_canonical.db").resolve()
+    monkeypatch.setenv("STREAM_CAPTURE_DB_PATH", str(target))
+    import stream_spine as ss
+    daemon_side_default = tmp_path / "checkout_a" / "data" / "stream_capture.db"
+    server_side_default = tmp_path / "checkout_b" / "data" / "stream_capture.db"
+    assert ss.resolve_stream_db_path(daemon_side_default) == target
+    assert ss.resolve_stream_db_path(server_side_default) == target
+
+
+def test_db_path_capture_writer_default_argument_is_not_frozen_at_import_time(monkeypatch, tmp_path):
+    """CaptureWriter(db_path: ... = STREAM_DB_DEFAULT) used to bind the default value
+    ONCE at class-definition (import) time -- an env override set AFTER import could
+    never be seen. `db_path=None` (the new default) resolves fresh on every call."""
+    target = (tmp_path / "fresh_each_call.db").resolve()
+    monkeypatch.setenv("STREAM_CAPTURE_DB_PATH", str(target))
+    w = CaptureWriter()  # no explicit db_path -- must go through resolve_stream_db_path NOW
+    try:
+        assert w.db_path == target
+    finally:
+        w.close()
+
+
+def test_db_path_e_explicit_caller_path_still_bypasses_the_resolver(tmp_path, monkeypatch):
+    """An explicit db_path (tests, or the daemon's --db flag) is a deliberate escape
+    hatch and must NOT be silently overridden by an unrelated env var -- only the
+    "no explicit path" case goes through resolve_stream_db_path."""
+    monkeypatch.setenv("STREAM_CAPTURE_DB_PATH", str((tmp_path / "should_not_be_used.db").resolve()))
+    explicit = tmp_path / "explicit.db"
+    w = CaptureWriter(explicit)
+    try:
+        assert w.db_path == explicit.resolve()
+    finally:
+        w.close()

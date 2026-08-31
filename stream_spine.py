@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import sqlite3
 import time
 from dataclasses import dataclass, field
@@ -23,6 +24,38 @@ from pathlib import Path
 from typing import Any
 
 STREAM_DB_DEFAULT = Path(__file__).resolve().parent / "data" / "stream_capture.db"
+
+#: env var name for resolve_stream_db_path's cross-checkout override.
+STREAM_CAPTURE_DB_PATH_ENV = "STREAM_CAPTURE_DB_PATH"
+
+
+def resolve_stream_db_path(default: "Path | str | None" = None) -> Path:
+    """THE ONE canonical stream-capture DB path authority every producer and
+    consumer (tools/run_stream_capture.py's CaptureWriter, order_flow_streaming.py's
+    feed-loop reader) resolves through.
+
+    PR214_RTH_DEFECT_REMEDIATION_V1 (2026-08-31 RTH proof): STREAM_DB_DEFAULT alone
+    is checkout-relative with no cross-process override -- a daemon launched with
+    `--db` against one checkout's file and a server defaulting to a DIFFERENT
+    checkout's own STREAM_DB_DEFAULT both reported healthy (real data flowing,
+    real subscriptions RUNNING) while structurally disconnected: the API served a
+    truthful `no_book` because the two processes were never reading the same file.
+    Same override shape config.py already uses for SCHWAB_TOKEN_PATH.
+
+    `STREAM_CAPTURE_DB_PATH`, when set, is checked FIRST and resolved to an
+    ABSOLUTE path — never used relative, since a relative override could mean two
+    different absolute files under two different processes' working directories,
+    silently reproducing the exact defect this closes. Only when unset does this
+    fall back to `default` (a caller's own, possibly test-monkeypatched, module
+    constant) or STREAM_DB_DEFAULT. Called fresh on every use, never bound as a
+    function/class default-argument value (which freezes at import/definition
+    time and can never see a later env var or monkeypatch)."""
+    override = os.environ.get(STREAM_CAPTURE_DB_PATH_ENV)
+    if override:
+        return Path(override).expanduser().resolve()
+    if default is not None:
+        return Path(default).resolve()
+    return STREAM_DB_DEFAULT.resolve()
 
 #: Cross-process signal: the server process (one active UI viewer's ticker) writes here;
 #: the canonical daemon polls it to dynamically add/drop book-depth subscription for that
@@ -327,12 +360,19 @@ class CaptureWriter:
     Commit every `batch_rows` rows or `batch_sec`, whichever first.
     """
 
-    def __init__(self, db_path: Path | str = STREAM_DB_DEFAULT, *,
+    def __init__(self, db_path: "Path | str | None" = None, *,
                  batch_rows: int = 500, batch_sec: float = 0.25) -> None:
+        # PR214_RTH_DEFECT_REMEDIATION_V1: `db_path: Path | str = STREAM_DB_DEFAULT`
+        # was a default-argument value, evaluated ONCE at class-definition time
+        # (import time) -- it could never see a later STREAM_CAPTURE_DB_PATH env
+        # var. `None` is the sentinel; an explicit `db_path` (e.g. a test's
+        # tmp_path, or the daemon's --db flag) still bypasses the resolver
+        # entirely, exactly as before -- only the "no explicit path given" case
+        # now goes through the one canonical, env-var-aware resolver.
+        p = resolve_stream_db_path() if db_path is None else Path(db_path).resolve()
         # RESOLVED path, not basename: `data/x/../ed_console.db`, symlinks and junctions
         # all collapse under resolve() (Cursor review 2026-07-21: basename-only guard
         # was bypassable — an RC-6 law hole).
-        p = Path(db_path).resolve()
         if p.name == "ed_console.db":
             raise ValueError("CaptureWriter must never write the operational DB (RC-6 law)")
         p.parent.mkdir(parents=True, exist_ok=True)
