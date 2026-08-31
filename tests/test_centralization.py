@@ -128,7 +128,7 @@ def test_architecture():
 # ══════════════════════════════════════════════════════════════════════════════
 
 @fails_closed
-def test_formula_ownership():
+def test_formula_ownership(repo_index):
     print("\n2. FORMULA OWNERSHIP — no duplicate formulas")
 
     # Key formulas and their canonical owners
@@ -160,22 +160,22 @@ def test_formula_ownership():
         "compute_position_size": "call_engine.py",
     }
 
-    # Scan all .py files for function definitions
-    py_files = list(ROOT.glob("*.py"))
+    # TEST_SYSTEM_REHAB_V2: was an independent ROOT.glob("*.py") + per-file
+    # read+parse -- now sources from the shared `repo_index` corpus, filtered to
+    # top-level (root-directory) modules only, matching the original non-recursive
+    # glob's scope exactly.
     func_locations = {}  # func_name → [file1, file2, ...]
 
-    for pf in py_files:
-        if pf.name.startswith("test_"):
+    for rel, _text, tree in repo_index.items():
+        if len(rel.parts) != 1 or rel.name.startswith("test_"):
             continue
-        try:
-            tree = ast.parse(pf.read_text(encoding="utf-8", errors="replace"))
-            for node in ast.walk(tree):
-                if isinstance(node, ast.FunctionDef):
-                    name = node.name
-                    if name in FORMULAS:
-                        func_locations.setdefault(name, []).append(pf.name)
-        except (SyntaxError, UnicodeDecodeError):
-            pass  # skip binary or unparseable files
+        if tree is None:
+            continue  # unparseable, same as the original except clause
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef):
+                name = node.name
+                if name in FORMULAS:
+                    func_locations.setdefault(name, []).append(rel.name)
 
     for func, expected_owner in FORMULAS.items():
         locs = func_locations.get(func, [])
@@ -412,15 +412,22 @@ def test_db_schema(full=False):
 # ══════════════════════════════════════════════════════════════════════════════
 
 @fails_closed
-def test_syntax():
+def test_syntax(repo_index):
     print("\n8. SYNTAX — all Python files parse")
 
-    for pf in sorted(ROOT.glob("*.py")):
-        try:
-            ast.parse(pf.read_text(encoding="utf-8", errors="replace"))
-            _pass(f"{pf.name}")
-        except SyntaxError as e:
-            _fail(f"{pf.name}: line {e.lineno}: {e.msg}")
+    # TEST_SYSTEM_REHAB_V2: was an independent ROOT.glob("*.py") + per-file
+    # re-parse -- repo_index already parses every file once (tree is None on a
+    # SyntaxError), so this reuses that result instead of parsing a second time.
+    for rel, text, tree in sorted(repo_index.items()):
+        if len(rel.parts) != 1:
+            continue
+        if tree is not None:
+            _pass(f"{rel.name}")
+        else:
+            try:
+                ast.parse(text)
+            except SyntaxError as e:
+                _fail(f"{rel.name}: line {e.lineno}: {e.msg}")
 
 
 # ══════════════════════════════════════════════════════════════════════════════

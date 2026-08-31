@@ -374,10 +374,32 @@ def repo_index(tmp_path_factory, worker_id: str) -> RepoIndex:
 #: (test_a_missing_or_malformed_source_contributes_nothing) keeps its own private
 #: `_load_gate()` import -- that isolation is a distinct technical need, not
 #: redundant computation, and is left untouched.
+#: TEST_SYSTEM_REHAB_V2 (2026-08-31): scope="session" only shares within one xdist
+#: worker process (same reasoning as `repo_index` above) -- reuses the identical
+#: build-once-per-run, filelock-coordinated cache recipe, keyed by its own cache
+#: filename so it never collides with repo_index's cache in the same shared temp dir.
 @pytest.fixture(scope="session")
-def live_orphans():
+def live_orphans(tmp_path_factory, worker_id: str):
     from tools.check_institutional_correctness import check_no_orphan_dict_keys
-    return check_no_orphan_dict_keys()
+
+    if worker_id == "master":
+        return check_no_orphan_dict_keys()
+
+    import pickle
+
+    from filelock import FileLock
+
+    shared_dir = tmp_path_factory.getbasetemp().parent
+    cache_file = shared_dir / "live_orphans_cache.pkl"
+    lock_file = shared_dir / "live_orphans_cache.lock"
+    with FileLock(str(lock_file)):
+        if cache_file.is_file():
+            with cache_file.open("rb") as f:
+                return pickle.load(f)
+        result = check_no_orphan_dict_keys()
+        with cache_file.open("wb") as f:
+            pickle.dump(result, f)
+        return result
 
 
 # ------------------------------------------------- tracked-ledger firewall --

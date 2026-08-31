@@ -51,23 +51,23 @@ def _repo_root() -> Path:
     return Path(__file__).resolve().parents[1]
 
 
-def _iter_production_py(root: Path):
-    for path in root.rglob("*.py"):
-        rel = path.relative_to(root)
+#: TEST_SYSTEM_REHAB_V2: was an independent root.rglob("*.py") + per-file read_text --
+#: now sources from the shared tests/conftest.py `repo_index` corpus. Filter semantics
+#: unchanged (skip tests/scratchpad and the same build-tool dirs).
+def _iter_production_py(repo_index):
+    for rel, text, _tree in repo_index.items():
         if rel.parts and rel.parts[0] == "tests":
             continue
         if any(part in _SKIP_PY_TREE_DIRS for part in rel.parts):
             continue
-        yield path, rel
+        yield rel, text
 
 
-def _scan_patterns() -> tuple[list[str], list[str], dict[str, int]]:
-    root = _repo_root()
+def _scan_patterns(repo_index) -> tuple[list[str], list[str], dict[str, int]]:
     bare: list[str] = []
     silent: list[str] = []
     per_file: dict[str, int] = {}
-    for path, rel in _iter_production_py(root):
-        src = path.read_text(encoding="utf-8")
+    for rel, src in _iter_production_py(repo_index):
         rel_s = str(rel).replace("\\", "/")
         for m in _BARE_EXCEPT.finditer(src):
             line = src[: m.start()].count("\n") + 1
@@ -79,21 +79,21 @@ def _scan_patterns() -> tuple[list[str], list[str], dict[str, int]]:
     return bare, silent, per_file
 
 
-def test_no_bare_except_in_production_tree():
-    bare, _, _ = _scan_patterns()
+def test_no_bare_except_in_production_tree(repo_index):
+    bare, _, _ = _scan_patterns(repo_index)
     assert not bare, f"bare except: clauses remain: {bare}"
 
 
-def test_no_silent_exception_pass_in_production_tree():
-    _, silent, per_file = _scan_patterns()
+def test_no_silent_exception_pass_in_production_tree(repo_index):
+    _, silent, per_file = _scan_patterns(repo_index)
     assert len(silent) == _BASELINE_SILENT_EXCEPTION_PASS, (
         f"silent except Exception: pass count {len(silent)} != baseline {_BASELINE_SILENT_EXCEPTION_PASS}; "
         f"hits: {silent[:30]}; per_file={per_file}"
     )
 
 
-def test_critical_paths_have_no_silent_exception_pass():
-    _, silent, _ = _scan_patterns()
+def test_critical_paths_have_no_silent_exception_pass(repo_index):
+    _, silent, _ = _scan_patterns(repo_index)
     critical_hits = [s for s in silent if s.split(":")[0] in _CRITICAL_SILENT_PASS_FILES]
     assert not critical_hits, critical_hits
 

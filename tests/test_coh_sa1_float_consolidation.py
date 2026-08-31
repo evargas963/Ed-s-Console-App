@@ -41,18 +41,16 @@ _INLINE_NUM_TRY_EXCEPT = re.compile(
 )
 
 
-def _repo_root() -> Path:
-    return Path(__file__).resolve().parents[1]
-
-
-def _iter_repo_py_files(root: Path):
-    for path in root.rglob("*.py"):
-        rel = path.relative_to(root)
+#: TEST_SYSTEM_REHAB_V2: was an independent root.rglob("*.py") + per-file read_text --
+#: now sources from the shared tests/conftest.py `repo_index` corpus. Filter semantics
+#: unchanged (skip tests/ and the same build-tool dirs).
+def _iter_repo_py_files(repo_index):
+    for rel, text, _tree in repo_index.items():
         if rel.parts and rel.parts[0] == "tests":
             continue
         if any(part in _SKIP_PY_TREE_DIRS for part in rel.parts):
             continue
-        yield path, rel
+        yield rel, text
 
 
 @pytest.mark.parametrize("module_name,attr", _COH_SA1_FLOAT_OR_NONE)
@@ -92,11 +90,9 @@ def test_training_cache_normalize_data_fp_rejects_nan_ts_utc():
     assert out["max_ts_utc"] == 100.0
 
 
-def test_all_float_or_none_helpers_delegate_to_numeric_contract():
-    root = _repo_root()
+def test_all_float_or_none_helpers_delegate_to_numeric_contract(repo_index):
     offenders: list[str] = []
-    for path, rel in _iter_repo_py_files(root):
-        src = path.read_text(encoding="utf-8")
+    for rel, src in _iter_repo_py_files(repo_index):
         if "def _float_or_none" not in src:
             continue
         if "float_finite_or_none" not in src:
@@ -106,11 +102,9 @@ def test_all_float_or_none_helpers_delegate_to_numeric_contract():
     assert not offenders, offenders
 
 
-def test_all_positive_float_helpers_delegate_to_numeric_contract():
-    root = _repo_root()
+def test_all_positive_float_helpers_delegate_to_numeric_contract(repo_index):
     offenders: list[str] = []
-    for path, rel in _iter_repo_py_files(root):
-        src = path.read_text(encoding="utf-8")
+    for rel, src in _iter_repo_py_files(repo_index):
         if "def _positive_float_or_none" not in src:
             continue
         if "float_positive_or_none" not in src:
@@ -148,12 +142,10 @@ _MODULE_LEVEL_F = re.compile(r"^def _f\s*\(", re.MULTILINE)
 _MODULE_LEVEL_NUM = re.compile(r"^def _num\s*\(", re.MULTILINE)
 
 
-def test_all_module_level_f_helpers_delegate_to_numeric_contract():
+def test_all_module_level_f_helpers_delegate_to_numeric_contract(repo_index):
     """Module-level ``def _f`` parsers (not nested locals in ml_train / adapters)."""
-    root = _repo_root()
     offenders: list[str] = []
-    for path, rel in _iter_repo_py_files(root):
-        src = path.read_text(encoding="utf-8")
+    for rel, src in _iter_repo_py_files(repo_index):
         if not _MODULE_LEVEL_F.search(src):
             continue
         if "float_finite_or_none" not in src:
@@ -163,11 +155,9 @@ def test_all_module_level_f_helpers_delegate_to_numeric_contract():
     assert not offenders, offenders
 
 
-def test_all_module_level_num_helpers_delegate_to_numeric_contract():
-    root = _repo_root()
+def test_all_module_level_num_helpers_delegate_to_numeric_contract(repo_index):
     offenders: list[str] = []
-    for path, rel in _iter_repo_py_files(root):
-        src = path.read_text(encoding="utf-8")
+    for rel, src in _iter_repo_py_files(repo_index):
         if not _MODULE_LEVEL_NUM.search(src):
             continue
         if "float_finite_or_none" not in src:
@@ -177,12 +167,10 @@ def test_all_module_level_num_helpers_delegate_to_numeric_contract():
     assert not offenders, offenders
 
 
-def test_no_legacy_inline_float_or_none_try_body():
+def test_no_legacy_inline_float_or_none_try_body(repo_index):
     """_float_or_none helpers must delegate; no inline try/return float bodies."""
-    root = _repo_root()
     offenders: list[str] = []
-    for path, rel in _iter_repo_py_files(root):
-        src = path.read_text(encoding="utf-8")
+    for rel, src in _iter_repo_py_files(repo_index):
         if "def _float_or_none" not in src:
             continue
         if "float_finite_or_none" not in src:

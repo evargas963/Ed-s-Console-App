@@ -530,20 +530,25 @@ def test_server_model_derived_snapshot_write_is_anchor_guarded():
     assert 'ms_dict.get("decision_id") == _xid_pair[0]' in src
 
 
-def test_write_path_universe_inventory():
+def test_write_path_universe_inventory(repo_index):
     """Recurrence lock: every repo-root production writer to the three linked
     tables is known.  A NEW writer file appearing in this scan means the
     identity system must be extended — this test fails until it is."""
-    root = Path(__file__).resolve().parent.parent
+    # TEST_SYSTEM_REHAB_V2: was an independent root.glob("*.py") +
+    # (root/"calibration").glob("*.py") + per-file read_text -- now sources from the
+    # shared `repo_index` corpus, filtered to the same two top-level scopes.
     writers: set[str] = set()
-    for p in sorted(root.glob("*.py")) + sorted((root / "calibration").glob("*.py")):
-        text = p.read_text(encoding="utf-8", errors="replace")
+    for rel, text, _tree in repo_index.items():
+        in_root = len(rel.parts) == 1
+        in_calibration = len(rel.parts) == 2 and rel.parts[0] == "calibration"
+        if not (in_root or in_calibration):
+            continue
         if ("INSERT INTO snapshots" in text or "insert_snapshot(" in text
                 or "INSERT INTO production_decision_records" in text
                 or "INSERT INTO calibration_decision_log" in text):
-            if p.name.startswith("test_") or "backfill" in p.name or "analyze" in p.name:
+            if rel.name.startswith("test_") or "backfill" in rel.name or "analyze" in rel.name:
                 continue
-            writers.add(p.name if p.parent == root else f"calibration/{p.name}")
+            writers.add(rel.name if in_root else f"calibration/{rel.name}")
     known = {
         "db.py",                      # insert_snapshot (guarded; quote-only N/A)
         "server.py",                  # anchored model-derived + quote-only paths

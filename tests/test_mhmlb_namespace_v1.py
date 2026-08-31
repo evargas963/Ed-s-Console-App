@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import re
-from pathlib import Path
 
 from multi_horizon_ml_bundle import (
     HorizonMLFusionSnapshot,
@@ -32,14 +31,16 @@ _PER_HORIZON_FUSION_AVAILABLE_LEAK = re.compile(
 _MHMLB_FILE = "multi_horizon_ml_bundle.py"
 
 
-def _iter_production_py(root: Path):
-    for path in root.rglob("*.py"):
-        rel = path.relative_to(root)
+#: TEST_SYSTEM_REHAB_V2: was an independent root.rglob("*.py") + per-file read_text --
+#: now sources from the shared tests/conftest.py `repo_index` corpus. Filter semantics
+#: unchanged (skip tests/tools/governance and the same build-tool dirs).
+def _iter_production_py(repo_index):
+    for rel, text, _tree in repo_index.items():
         if rel.parts and rel.parts[0] == "tests":
             continue
         if any(part in _SKIP_DIRS for part in rel.parts):
             continue
-        yield path, rel.as_posix()
+        yield rel.as_posix(), text
 
 
 def test_horizon_fusion_available_attribute_exists():
@@ -67,19 +68,16 @@ def test_bundle_method_renamed_to_horizon_fusion_available():
     assert not hasattr(bundle, "fusion_available")
 
 
-def test_no_inline_horizon_snapshot_fusion_available_leak():
-    root = Path(__file__).resolve().parents[1]
+def test_no_inline_horizon_snapshot_fusion_available_leak(repo_index):
     offenders: list[str] = []
-    for path, rel in _iter_production_py(root):
+    for rel, src in _iter_production_py(repo_index):
         if rel == _MHMLB_FILE:
-            src = path.read_text(encoding="utf-8", errors="replace")
             if "horizon_fusion_available" not in src:
                 offenders.append(f"{rel}: missing horizon_fusion_available field")
             if re.search(r"\bfusion_available\s*:", src):
                 offenders.append(f"{rel}: legacy fusion_available field name")
             continue
-        text = path.read_text(encoding="utf-8", errors="replace")
-        for i, line in enumerate(text.splitlines(), start=1):
+        for i, line in enumerate(src.splitlines(), start=1):
             if _PER_HORIZON_FUSION_AVAILABLE_LEAK.search(line):
                 offenders.append(f"{rel}:{i}:{line.strip()}")
     assert offenders == []

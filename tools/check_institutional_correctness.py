@@ -1149,42 +1149,86 @@ def check_no_duplicate_tests() -> list[Violation]:
     return out
 
 
+def _string_const(node: ast.AST) -> str | None:
+    return node.value if isinstance(node, ast.Constant) and isinstance(node.value, str) else None
+
+
+def _is_py_source_scan_call(node: ast.Call) -> bool:
+    """True for a `.rglob(...)`/`.glob(...)` call whose PATTERN targets .py source
+    files -- the only shape that is actually redundant with `repo_index` (which only
+    indexes .py files). A `tmp_path.rglob("*.json")` cleanup-verification scan, or any
+    glob for a non-.py artifact type, can never be satisfied by the shared corpus
+    regardless of its receiver, so it is not flagged at all -- not exempted, genuinely
+    a different observation. `os.walk(...)` takes no pattern and is always flagged
+    (rare in this codebase; the marker covers a real non-.py need)."""
+    if not isinstance(node.func, ast.Attribute):
+        return False
+    if node.func.attr not in ("rglob", "glob"):
+        return False
+    if not node.args:
+        return False
+    pattern = _string_const(node.args[0])
+    return pattern is not None and ".py" in pattern
+
+
+def _is_os_walk_call(node: ast.Call) -> bool:
+    fn = node.func
+    if isinstance(fn, ast.Attribute) and fn.attr == "walk":
+        return isinstance(fn.value, ast.Name) and fn.value.id == "os"
+    return isinstance(fn, ast.Name) and fn.id == "walk"  # `from os import walk`
+
+
 def _find_new_repo_scans(root: Path) -> list[tuple[Path, int]]:
-    """Test files under `root` (excluding archive/) that walk `.rglob(` themselves
-    instead of consuming the shared `repo_index` fixture. A file already referencing
-    `repo_index` anywhere, or carrying the exemption marker anywhere, is skipped
-    entirely — this locates NEW independent scans, not every possible rglob use."""
+    """Test files under `root` (excluding archive/) that build their own .py-source
+    repo-wide observation (`.rglob`/`.glob` targeting *.py, or `os.walk`) instead of
+    consuming the shared `repo_index` fixture. Detection and the exemption marker are
+    BOTH scoped to the ENCLOSING FUNCTION, not the whole file: a file (or even one
+    function) may legitimately consume `repo_index` for one purpose and still be
+    caught building a second, independent .py-source scan alongside it -- a file-wide
+    "repo_index appears somewhere" bypass would hide exactly that."""
     out: list[tuple[Path, int]] = []
     for p in sorted(root.rglob("test_*.py")):
         if "archive" in p.relative_to(root).parts:
             continue
         src = _read_or_empty(p)
-        if not src or "repo_index" in src or _SCAN_JUSTIFY_MARKER in src or "rglob(" not in src:
+        if not src:
             continue
         try:
             tree = ast.parse(src, filename=str(p))
         except SyntaxError:
             continue
+        lines = src.splitlines()
         for node in ast.walk(tree):
-            if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
-                    and node.func.attr == "rglob"):
-                out.append((p, getattr(node, "lineno", 0)))
+            if not isinstance(node, ast.Call):
+                continue
+            if not (_is_py_source_scan_call(node) or _is_os_walk_call(node)):
+                continue
+            line = getattr(node, "lineno", 0)
+            span = _enclosing_func_span(tree, line)
+            seg = "\n".join(lines[span[0] - 1: span[1]]) if span else lines[max(0, line - 1)]
+            if _SCAN_JUSTIFY_MARKER in seg:
+                continue
+            out.append((p, line))
     return out
 
 
 def check_no_new_independent_repo_scan_in_tests() -> list[Violation]:
-    """Fail if a NEW test performs its own repo-wide `.rglob(` file walk instead of
-    consuming the shared `repo_index` fixture (tests/conftest.py) —
-    TEST_SYSTEM_REHAB_V2's duplicate-repo-observation recurrence lock. A genuinely
-    specialized scan (different root, non-.py files, a scope the shared corpus
-    cannot supply) is exempted with '# institutional-scan-ok: <reason>'."""
+    """Fail if a NEW test performs its own repo-wide .py-source scan
+    (`.rglob`/`.glob` targeting *.py, or `os.walk`) instead of consuming the shared
+    `repo_index` fixture (tests/conftest.py) — TEST_SYSTEM_REHAB_V2's duplicate-repo-
+    observation recurrence lock. A genuinely specialized scan (a scope the shared
+    corpus cannot supply) is exempted with '# institutional-scan-ok: <reason>' inside
+    the SAME function — the marker does not cover the rest of the file. A scan for a
+    non-.py artifact type (temp-dir cleanup checks, model-artifact directories, etc.)
+    is a different observation entirely and is never flagged, not merely exempted."""
     return [
         Violation(
             p, line,
-            "new independent repo-wide file scan (.rglob) in a test that does not "
-            "consume the shared `repo_index` fixture (tests/conftest.py) — share the "
-            "existing current-tree observation, or justify a genuinely specialized "
-            "scan with '# institutional-scan-ok: <reason>'.",
+            "new independent repo-wide .py-source scan (.rglob/.glob/os.walk) in a "
+            "test that does not consume the shared `repo_index` fixture "
+            "(tests/conftest.py) for THIS observation — share the existing "
+            "current-tree observation, or justify a genuinely specialized scan with "
+            "'# institutional-scan-ok: <reason>' inside the same function.",
         )
         for p, line in _find_new_repo_scans(TESTS)
     ]
@@ -3918,13 +3962,12 @@ CHECKS = [
     # found are marked '# institutional-duplicate-ok:' — genuinely distinct production
     # modules, kept deliberately).
     ("no_duplicate_tests", check_no_duplicate_tests, True),
-    # TEST_SYSTEM_REHAB_V2 recurrence lock 2/2: ADVISORY, not enforced — 18 pre-
-    # existing independent repo scans remain (own_repo_scan_candidates, not yet
-    # migrated onto tests/conftest.py's shared repo_index; this rehab fixed the two
-    # PROVEN-expensive duplicate-census cases, not all 18). Matches this file's own
-    # "advisory debt: drive to zero, then enforce" convention (see function_length,
-    # file_length, ruff_quality below) — promote to ENFORCED once that debt is zero.
-    ("no_new_independent_repo_scan_in_tests", check_no_new_independent_repo_scan_in_tests, False),
+    # TEST_SYSTEM_REHAB_V2 recurrence lock 2/2: ENFORCED (2026-08-31, promoted from
+    # ADVISORY same day). All 18 originally-identified independent repo scans plus 7
+    # more the strengthened per-function/per-observation detector then found (the
+    # file-wide "repo_index appears somewhere" bypass had been hiding them) are
+    # migrated onto tests/conftest.py's shared `repo_index` — live count is 0.
+    ("no_new_independent_repo_scan_in_tests", check_no_new_independent_repo_scan_in_tests, True),
     # SIMPLICITY REHAB T2-2 (2026-08-24, governance/retired_checks.md): root_cause_log is
     # the ONE enforced ledger validator. The nine other ledger registrations
     # (rc_citations_resolve, rc_status_vocabulary, rc_log_rows_keep_schema,

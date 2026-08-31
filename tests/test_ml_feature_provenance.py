@@ -47,16 +47,17 @@ SILENT_DEFAULT_ALLOWLIST: tuple[tuple[str, str], ...] = (
 )
 
 
-def _iter_repo_py_files() -> list[Path]:
-    out: list[Path] = []
-    for path in ROOT.rglob("*.py"):
-        if set(path.parts) & SKIP_DIR_PARTS:
+#: TEST_SYSTEM_REHAB_V2: was an independent ROOT.rglob("*.py") + per-file read_text --
+#: now sources from the shared tests/conftest.py `repo_index` corpus. Filter semantics
+#: unchanged (SKIP_DIR_PARTS, plus tools/ excluded at iteration as before).
+def _iter_repo_py_files(repo_index):
+    for rel, text, _tree in repo_index.items():
+        if set(rel.parts) & SKIP_DIR_PARTS:
             continue
-        rel = path.relative_to(ROOT).as_posix()
-        if rel.startswith("tools/"):
+        rel_posix = rel.as_posix()
+        if rel_posix.startswith("tools/"):
             continue
-        out.append(path)
-    return out
+        yield rel_posix, text
 
 
 def _allowlisted(rel_posix: str) -> bool:
@@ -66,13 +67,12 @@ def _allowlisted(rel_posix: str) -> bool:
     return False
 
 
-def _repo_wide_pattern_hits(pattern: re.Pattern[str]) -> list[str]:
+def _repo_wide_pattern_hits(repo_index, pattern: re.Pattern[str]) -> list[str]:
     hits: list[str] = []
-    for path in _iter_repo_py_files():
-        rel = path.relative_to(ROOT).as_posix()
+    for rel, text in _iter_repo_py_files(repo_index):
         if _allowlisted(rel):
             continue
-        for lineno, line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
+        for lineno, line in enumerate(text.splitlines(), 1):
             if line.strip().startswith("#"):
                 continue
             if pattern.search(line):
@@ -227,8 +227,8 @@ def test_v2_advisory_backfill_stamps_reconstructed_fields():
     assert payload["live_ms_field_sources"]["zone"] == RECONSTRUCTED_LIVE_MS_SOURCE
 
 
-def test_no_silent_default_in_feature_paths_repo_wide():
-    above_hits = _repo_wide_pattern_hits(VWAP_SIDE_ABOVE_DEFAULT_RE)
+def test_no_silent_default_in_feature_paths_repo_wide(repo_index):
+    above_hits = _repo_wide_pattern_hits(repo_index, VWAP_SIDE_ABOVE_DEFAULT_RE)
     assert not above_hits, "vwap_side else-above violations:\n" + "\n".join(above_hits[:40])
 
 

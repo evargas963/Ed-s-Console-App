@@ -389,17 +389,25 @@ def test_vol_context_bound_outside_any_try():
     )
 
 
-def test_canonical_signal_input_construction_lock():
+def test_canonical_signal_input_construction_lock(repo_index):
     """Money-path SignalInput construction happens only in the two canonical
     builders (market_state live stamp; replay builder). Production code must
     not bypass the vol boundary with an independent SignalInput(...)."""
+    # TEST_SYSTEM_REHAB_V2: was two independent globs (_REPO.glob("*.py"),
+    # (_REPO/"features").glob("*.py")) + per-file read+parse -- now sources from the
+    # shared `repo_index` corpus, filtered to the same two top-level scopes.
     allowed = {"market_state.py", "features/replay_signal_input_v1.py", "signal_types.py"}
     offenders: list[str] = []
-    for path in _REPO.glob("*.py"):
-        rel = path.name
-        if rel in allowed or rel.startswith("test_"):
+    for rel, _text, tree in repo_index.items():
+        in_root = len(rel.parts) == 1
+        in_features = len(rel.parts) == 2 and rel.parts[0] == "features"
+        if not (in_root or in_features):
             continue
-        tree = _ast.parse(path.read_text(encoding="utf-8", errors="replace"))
+        rel_s = rel.name if in_root else f"features/{rel.name}"
+        if rel_s in allowed or (in_root and rel.name.startswith("test_")):
+            continue
+        if tree is None:
+            continue
         for node in _ast.walk(tree):
             if isinstance(node, _ast.Call):
                 fn = node.func
@@ -407,19 +415,5 @@ def test_canonical_signal_input_construction_lock():
                     fn.attr if isinstance(fn, _ast.Attribute) else ""
                 )
                 if name == "SignalInput":
-                    offenders.append(f"{rel}:{node.lineno}")
-    fdir = _REPO / "features"
-    for path in fdir.glob("*.py"):
-        rel = f"features/{path.name}"
-        if rel in allowed:
-            continue
-        tree = _ast.parse(path.read_text(encoding="utf-8", errors="replace"))
-        for node in _ast.walk(tree):
-            if isinstance(node, _ast.Call):
-                fn = node.func
-                name = fn.id if isinstance(fn, _ast.Name) else (
-                    fn.attr if isinstance(fn, _ast.Attribute) else ""
-                )
-                if name == "SignalInput":
-                    offenders.append(f"{rel}:{node.lineno}")
+                    offenders.append(f"{rel_s}:{node.lineno}")
     assert offenders == [], f"SignalInput constructed outside canonical builders: {offenders}"

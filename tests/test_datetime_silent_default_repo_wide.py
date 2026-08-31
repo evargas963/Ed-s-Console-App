@@ -4,11 +4,7 @@ from __future__ import annotations
 
 import re
 from datetime import datetime, timedelta
-from pathlib import Path
 from unittest.mock import MagicMock
-
-
-ROOT = Path(__file__).resolve().parent.parent
 
 _DATETIME_DEFAULT_ZERO = re.compile(r"""\.get\(\s*["']datetime["']\s*,\s*0\s*\)""")
 
@@ -35,18 +31,21 @@ _SKIP_DIR_PARTS = frozenset(
 _DATETIME_DEFAULT_ZERO_ALLOWLIST: frozenset[str] = frozenset()
 
 
-def test_no_datetime_default_zero_in_production_py():
+def test_no_datetime_default_zero_in_production_py(repo_index):
+    """TEST_SYSTEM_REHAB_V2: was an independent ROOT.rglob("*.py") + per-file
+    read_text -- now sources from the shared `repo_index` corpus. Filter semantics
+    unchanged (same _SKIP_DIR_PARTS, incl. the deliberate calibration/verification/
+    arch_competition exclusions)."""
     hits: list[str] = []
-    for path in ROOT.rglob("*.py"):
-        if any(part in _SKIP_DIR_PARTS for part in path.parts):
+    for rel, text, _tree in repo_index.items():
+        if any(part in _SKIP_DIR_PARTS for part in rel.parts):
             continue
-        rel = path.relative_to(ROOT).as_posix()
-        if rel in _DATETIME_DEFAULT_ZERO_ALLOWLIST:
+        rel_posix = rel.as_posix()
+        if rel_posix in _DATETIME_DEFAULT_ZERO_ALLOWLIST:
             continue
-        text = path.read_text(encoding="utf-8", errors="replace")
         for i, line in enumerate(text.splitlines(), start=1):
             if _DATETIME_DEFAULT_ZERO.search(line):
-                hits.append(f"{rel}:{i}:{line.strip()}")
+                hits.append(f"{rel_posix}:{i}:{line.strip()}")
     assert hits == [], f".get('datetime', 0) remains in production code: {hits}"
 
 

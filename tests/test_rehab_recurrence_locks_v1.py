@@ -134,6 +134,86 @@ def test_a_file_with_no_rglob_at_all_is_not_flagged(tmp_path):
     assert _find_new_repo_scans(tmp_path) == []
 
 
+def test_os_walk_alternate_form_is_blocked(tmp_path):
+    """G: alternate independent-scan forms must be caught too, not only .rglob."""
+    (tmp_path / "test_walk.py").write_text(
+        "import os\n"
+        "def test_something():\n"
+        "    for dirpath, dirs, files in os.walk('.'):\n"
+        "        pass\n",
+        encoding="utf-8",
+    )
+    hits = _find_new_repo_scans(tmp_path)
+    assert len(hits) == 1
+    assert hits[0][0].name == "test_walk.py"
+
+
+def test_bare_from_os_import_walk_is_also_blocked(tmp_path):
+    (tmp_path / "test_walk2.py").write_text(
+        "from os import walk\n"
+        "def test_something():\n"
+        "    for dirpath, dirs, files in walk('.'):\n"
+        "        pass\n",
+        encoding="utf-8",
+    )
+    hits = _find_new_repo_scans(tmp_path)
+    assert len(hits) == 1
+
+
+def test_non_py_glob_pattern_is_never_flagged_no_marker_needed(tmp_path):
+    """A scan for a non-.py artifact type (temp-dir cleanup, model files, etc.) is a
+    DIFFERENT observation from repo_index (which only indexes .py files) -- it is
+    excluded outright, not merely exempted, so no marker is required."""
+    (tmp_path / "test_cleanup.py").write_text(
+        "def test_something(tmp_path):\n"
+        "    assert not list(tmp_path.rglob('*.json'))\n",
+        encoding="utf-8",
+    )
+    assert _find_new_repo_scans(tmp_path) == []
+
+
+def test_exemption_marker_is_scoped_to_its_own_function_not_the_whole_file(tmp_path):
+    """G: a marker in ONE function must not silence a genuine independent .py-source
+    scan in a SIBLING function in the same file -- the old file-wide bypass would
+    have hidden exactly this."""
+    (tmp_path / "test_scan.py").write_text(
+        "from pathlib import Path\n"
+        "def test_one():\n"
+        "    # institutional-scan-ok: this one is genuinely justified\n"
+        "    for p in Path('fixtures').rglob('*.py'):\n"
+        "        pass\n"
+        "def test_two():\n"
+        "    for p in Path('.').rglob('*.py'):\n"
+        "        pass\n",
+        encoding="utf-8",
+    )
+    hits = _find_new_repo_scans(tmp_path)
+    assert len(hits) == 1, "test_two's unmarked scan must still be caught"
+
+
+def test_repo_index_consumer_can_still_be_caught_for_a_second_independent_scan(tmp_path):
+    """G: consuming `repo_index` for one purpose must not blanket-exempt an
+    ADDITIONAL independent .py-source scan in the same function -- the old
+    file-wide 'repo_index appears somewhere' bypass would have hidden this."""
+    (tmp_path / "test_mixed.py").write_text(
+        "from pathlib import Path\n"
+        "def test_something(repo_index):\n"
+        "    for rel, text, tree in repo_index.items():\n"
+        "        pass\n"
+        "    for p in Path('.').rglob('*.py'):\n"
+        "        pass\n",
+        encoding="utf-8",
+    )
+    hits = _find_new_repo_scans(tmp_path)
+    assert len(hits) == 1, "the second, independent .py scan must still be flagged"
+
+
+def test_real_tree_has_zero_redundant_repo_scans():
+    from tools.check_institutional_correctness import check_no_new_independent_repo_scan_in_tests
+    violations = check_no_new_independent_repo_scan_in_tests()
+    assert violations == [], "\n".join(str(v) for v in violations)
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Real-tree sanity: both ENFORCED-scoped checks currently PASS on the actual repo
 # (the scan lock is ADVISORY -- known pre-existing debt, not asserted at zero here).

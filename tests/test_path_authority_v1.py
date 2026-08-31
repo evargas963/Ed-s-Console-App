@@ -97,24 +97,29 @@ def test_fail_closed_unresolvable_path_is_not_silently_ungoverned(monkeypatch):
 
 
 # --------------------------------------------------------------------------- one producer
-def test_single_producer_no_module_redefines_the_geometry():
+def test_single_producer_no_module_redefines_the_geometry(repo_index):
     """ONE FAUCET: no module outside the authority may define its own suffix/prefix tuples.
 
     Independent oracle: read the tools/ sources as TEXT and look for a second definition.
     A grep-free scan, because the rule being protected is about definitions existing at all.
+
+    TEST_SYSTEM_REHAB_V2: was an independent (REPO/"tools").glob("*.py") + per-file
+    read_text -- now sources from the shared `repo_index` corpus, filtered to the
+    same top-level tools/ scope.
     """
     banned_defs = ("PROD_SUFFIXES = (", "PRODUCTION_SUFFIXES = (", "NON_PROD_PREFIXES = (",
                    "NOT_PRODUCT_PREFIXES = (", "ALWAYS_ALLOWED_PREFIXES = (",
                    "_RESEARCH_PROD_SUFFIXES = (", "_RESEARCH_EXEMPT_PREFIXES = (",
                    "_PRODUCTION_SUFFIX = (", "_NON_PRODUCTION = (")
     offenders: list[str] = []
-    for src in sorted((REPO / "tools").glob("*.py")):
-        if src.name == "pretooluse_guard.py":
+    for rel, text, _tree in sorted(repo_index.items()):
+        if len(rel.parts) != 2 or rel.parts[0] != "tools":
+            continue
+        if rel.name == "pretooluse_guard.py":
             continue                      # the authority is allowed to define them
-        text = src.read_text(encoding="utf-8", errors="replace")
         for token in banned_defs:
             if token in text:
-                offenders.append(f"{src.name}: {token.strip(' =(')}")
+                offenders.append(f"{rel.name}: {token.strip(' =(')}")
     assert offenders == [], (
         "a second producer of the path geometry exists — one semantic truth, one computation: "
         + "; ".join(offenders)

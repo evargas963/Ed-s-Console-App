@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 import re
-from pathlib import Path
 
 from position_sizing_policy import (
     REGIME_SIZE_MULTIPLIER_DEFAULT,
@@ -19,18 +18,16 @@ _REGIME_MULT_INLINE = re.compile(r"""REGIME_MULT\s*=\s*\{""")
 _REGIME_MULT_DEF = re.compile(r"""def\s+regime_size_multiplier\s*\(""")
 
 
-def _repo_root() -> Path:
-    return Path(__file__).resolve().parents[1]
-
-
-def _iter_production_py(root: Path):
-    for path in root.rglob("*.py"):
-        rel = path.relative_to(root)
+#: TEST_SYSTEM_REHAB_V2: was an independent root.rglob("*.py") + per-file read_text --
+#: now sources from the shared tests/conftest.py `repo_index` corpus. Filter semantics
+#: unchanged (skip tests/ and the same build-tool dirs).
+def _iter_production_py(repo_index):
+    for rel, text, _tree in repo_index.items():
         if rel.parts and rel.parts[0] == "tests":
             continue
         if any(part in _SKIP_PY_TREE_DIRS for part in rel.parts):
             continue
-        yield path, rel
+        yield rel, text
 
 
 def test_regime_size_multiplier_known_labels():
@@ -56,25 +53,21 @@ def test_regime_size_multiplier_confidence_nudge():
     assert regime_size_multiplier("vol_compression", "low") == max(0.40, base - 0.10)
 
 
-def test_no_inline_regime_mult_dict_outside_authority():
-    root = _repo_root()
+def test_no_inline_regime_mult_dict_outside_authority(repo_index):
     offenders: list[str] = []
-    for path, rel in _iter_production_py(root):
+    for rel, src in _iter_production_py(repo_index):
         if rel.name == "position_sizing_policy.py":
             continue
-        src = path.read_text(encoding="utf-8")
         if _REGIME_MULT_INLINE.search(src):
             offenders.append(str(rel).replace("\\", "/"))
     assert not offenders, offenders
 
 
-def test_no_regime_size_multiplier_defs_outside_authority():
-    root = _repo_root()
+def test_no_regime_size_multiplier_defs_outside_authority(repo_index):
     offenders: list[str] = []
-    for path, rel in _iter_production_py(root):
+    for rel, src in _iter_production_py(repo_index):
         if rel.name == "position_sizing_policy.py":
             continue
-        src = path.read_text(encoding="utf-8")
         if _REGIME_MULT_DEF.search(src):
             offenders.append(str(rel).replace("\\", "/"))
     assert not offenders, offenders

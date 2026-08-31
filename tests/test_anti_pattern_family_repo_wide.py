@@ -79,11 +79,16 @@ def test_lstm_data_zone_missing_sentinel_not_pin_neutral_default():
     assert 'or "pin_neutral"' not in text
 
 
-def test_production_scan_covers_all_py_outside_tools_tests():
+def test_production_scan_covers_all_py_outside_tools_tests(repo_index):
+    """TEST_SYSTEM_REHAB_V2: `prod_files` (the independent completeness check against
+    scan_all's own output) now sources from the shared `repo_index` corpus rather than
+    a second root.rglob("*.py") -- scan_all() itself stays untouched: it lives in
+    tools/anti_pattern_sweep.py, a standalone tool usable outside pytest (Hardening,
+    direct invocation), so it cannot depend on a pytest-only fixture."""
     prod_files = {
-        p.relative_to(ROOT).as_posix()
-        for p in ROOT.rglob("*.py")
-        if "tests" not in p.parts and "tools" not in p.parts and ".git" not in p.parts
+        rel.as_posix()
+        for rel, _text, _tree in repo_index.items()
+        if "tests" not in rel.parts and "tools" not in rel.parts and ".git" not in rel.parts
     }
     _scanned = {rel for _ln, rel, _vid, _expr in scan_all(production_only=True)}
     # Files with zero pattern hits won't appear in scan output; ensure core modules were scanned.
