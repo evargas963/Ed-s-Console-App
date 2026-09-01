@@ -235,6 +235,8 @@ def test_spread_instability_raises_spread_materiality_threshold():
 def test_rth_open_vs_midday_differ_via_intraday_ramp():
     from datetime import datetime
 
+    import pytest
+
     from planes.l1_thresholds import AdaptiveMaterialityContext, resolve_l1_materiality_engine
 
     from time_et import ET as et  # noqa: F401
@@ -245,7 +247,28 @@ def test_rth_open_vs_midday_differ_via_intraday_ramp():
     md = resolve_l1_materiality_engine("SPY", context=AdaptiveMaterialityContext(now_ts=ts_mid, **ctx))
     assert ro.session_bucket == "rth_open"
     assert md.session_bucket == "rth_midday"
-    assert ro.session_intraday_ramp != md.session_intraday_ramp or ro.spot_rel_eps != md.spot_rel_eps
+    # TEST_SYSTEM_REHAB_V2_RESIDUAL_CLOSURE (weak-assertion item 2 of the 17-20 block):
+    # was `ro.session_intraday_ramp != md.session_intraday_ramp or ro.spot_rel_eps !=
+    # md.spot_rel_eps`. The LEFT disjunct is true by construction (measured: ramp 1.01 at
+    # 09:35 vs 1.00 at 12:15), so Python short-circuits and the right operand was NEVER
+    # evaluated -- dead code. And neither disjunct tested the ramp: these two timestamps
+    # also land in different session buckets, whose base multipliers already differ
+    # (1.08 vs 0.98), so spot_rel_eps differs whether the ramp is wired in or not.
+    # The defect that stayed 100% green: the ramp keeps being REPORTED on the resolution
+    # while silently no longer multiplying into spot_rel_eps -- the epsilon that decides
+    # whether an L1 rebuild fires. Proven now by holding the bucket CONSTANT so the ramp
+    # is the only varying factor (measured: eps ratio == ramp ratio exactly).
+    ts_open_late = datetime(2024, 6, 14, 9, 45, tzinfo=et).timestamp()
+    ro_late = resolve_l1_materiality_engine(
+        "SPY", context=AdaptiveMaterialityContext(now_ts=ts_open_late, **ctx))
+    assert ro_late.session_bucket == "rth_open", "both anchors must stay in the same bucket"
+    assert ro_late.session_intraday_ramp != ro.session_intraday_ramp, (
+        "the ramp must still vary WITHIN rth_open, else this proves nothing")
+    assert ro_late.spot_rel_eps / ro.spot_rel_eps == pytest.approx(
+        ro_late.session_intraday_ramp / ro.session_intraday_ramp), (
+        "session_intraday_ramp must actually multiply into spot_rel_eps — a ramp that is "
+        "reported but no longer applied leaves these ratios divergent")
+    assert ro.spot_rel_eps != md.spot_rel_eps
 
 
 def test_materiality_boolean_differs_when_only_engine_context_differs():

@@ -528,8 +528,15 @@ def test_monte_carlo_v2():
         else:
             _fail("Shock gating incorrect")
 
-        # Test 3: model version is v3
-        if "v3" in r_pin.model_version or "garch" in r_pin.model_version:
+        # Test 3: model version is exactly mc_v3_garch.
+        # TEST_SYSTEM_REHAB_V2_RESIDUAL_CLOSURE: was `"v3" in mv or "garch" in mv` --
+        # the failure message already claimed "Expected mc_v3_garch" while the oracle
+        # accepted ANY string containing either substring, so a silent drift to
+        # "mc_v4_garch" (or any other *garch* build) passed while reporting the wrong
+        # thing. This is the only test in the repo that pins MC's base version string
+        # (tests/test_mc_base_neutral_mode_v1.py only checks the ":base_neutral" suffix
+        # and the "blocked" refusal marker, never the base), so it is pinned exactly.
+        if r_pin.model_version == "mc_v3_garch":
             _pass(f"Model version: {r_pin.model_version}")
         else:
             _fail(f"Expected mc_v3_garch, got {r_pin.model_version}")

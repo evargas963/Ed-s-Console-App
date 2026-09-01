@@ -78,14 +78,18 @@ def test_regime_ring_is_tighter_than_the_wall_contact_ring() -> None:
 
 def test_bars1m_endpoint_serves_canonical_bars_shape():
     """CR-03 pre-work: /api/bars1m returns newest-last {t,o,h,l,c,v} rows from
-    price_bars_1m (read-only; index-served: ticker named in the WHERE)."""
-    import server as srv
-    from fastapi.testclient import TestClient
+    price_bars_1m (read-only; index-served: ticker named in the WHERE).
 
-    client = TestClient(srv.app)
-    r = client.get("/api/bars1m?ticker=SPY&limit=5")
-    assert r.status_code == 200
-    body = r.json()
+    TEST_SYSTEM_REHAB_V2_RESIDUAL_CLOSURE (TestClient adjudication): REWRITE.
+    get_bars1m is a plain sync handler taking only Query params and returning a
+    JSONResponse it builds itself -- no auth, middleware, Request, or response_model
+    reshaping. This file's own test_spot_endpoint_caches_upstream_within_ttl already
+    calls its handler directly, so this is the established pattern here."""
+    import json
+
+    import server as srv
+
+    body = json.loads(srv.get_bars1m(ticker="SPY", limit=5).body)
     assert body["ticker"] == "SPY" and isinstance(body["bars"], list)
     if body["bars"]:
         row = body["bars"][-1]
@@ -320,14 +324,18 @@ def test_spot_endpoint_caches_upstream_within_ttl(monkeypatch):
 
 
 def test_spot_endpoint_shape_single_authority():
-    """Fast-poll spot feed for /chart (2.5s): exact shape, one price authority."""
-    import server as srv
-    from fastapi.testclient import TestClient
+    """Fast-poll spot feed for /chart (2.5s): exact shape, one price authority.
 
-    client = TestClient(srv.app)
-    r = client.get("/api/spot?ticker=SPY")
-    assert r.status_code == 200
-    body = r.json()
+    TEST_SYSTEM_REHAB_V2_RESIDUAL_CLOSURE (TestClient adjudication): REWRITE.
+    get_spot is a plain sync handler taking one Query param and returning a
+    JSONResponse it builds itself -- no auth, middleware, Request, or response_model.
+    test_spot_endpoint_caches_upstream_within_ttl in this same file already calls it
+    directly, so the direct seam is the established pattern for this endpoint."""
+    import json
+
+    import server as srv
+
+    body = json.loads(srv.get_spot(ticker="SPY").body)
     assert body["ticker"] == "SPY"
     assert set(body) == {"ticker", "spot", "spot_source", "spot_as_of_ts_utc"}
 

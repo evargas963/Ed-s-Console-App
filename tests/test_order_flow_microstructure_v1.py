@@ -173,11 +173,39 @@ def test_no_temporal_proxy_claimed():
 
 
 def test_every_emitted_metric_is_classified():
+    """TEST_SYSTEM_REHAB_V2_RESIDUAL_CLOSURE (weak-assertion item 10): was a
+    hardcoded 8-key list checked with `key in cls or f"{key}.*" in cls or
+    any(c.startswith(key) for c in cls)`. Two defects:
+
+      (a) the third arm SUBSUMES the first two (an exact `key` entry, and a
+          `"{key}.*"` entry, both satisfy `startswith(key)`), and it is a BARE
+          prefix match -- so deleting the real `mid` classification while any
+          unrelated `mid*` key existed still passed. Measured negative control:
+          drop "mid", add "mid_price" -> old assertion PASSES, this one FAILS.
+      (b) the test's NAME claims EVERY emitted metric is classified, but it only
+          ever checked 8 hand-listed keys out of the 13 real metric keys the
+          payload emits -- a NEW emitted metric shipped with no classification
+          entry could never be caught, which is the entire defect the name
+          promises to guard.
+
+    Now the metric set is DERIVED from the actual payload, and the family match
+    requires a dotted boundary (`key + "."`), so a prefix collision cannot stand
+    in for the real entry."""
     m = ofe.compute_book_microstructure(_data(), now_ts=1787233772.0)
     cls = m["classification"]
-    for key in ("mid", "microprice", "spread_pts", "spread_frac",
-                "depth_pressure", "book_slope", "liquidity_concentration", "wall_candidates"):
-        assert key in cls or f"{key}.*" in cls or any(c.startswith(key) for c in cls)
+    # Self-describing meta blocks, not emitted metrics: the classification map
+    # itself, the explicit deferral list, the status flag, and wall_method (which
+    # documents HOW wall_candidates is computed and carries no metric of its own).
+    meta = {"classification", "deferred", "status", "wall_method"}
+    unclassified = [
+        key for key in m
+        if key not in meta
+        and key not in cls
+        and not any(c.startswith(f"{key}.") for c in cls)
+    ]
+    assert unclassified == [], (
+        f"emitted metric(s) with no classification entry: {unclassified}. Every metric "
+        f"this producer emits must declare NATIVE/DERIVED/PROXY provenance.")
 
 
 def test_server_received_ts_is_classified_derived():

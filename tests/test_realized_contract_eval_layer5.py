@@ -49,7 +49,25 @@ def test_chain_selection_quality_ignores_ranked_rows_without_strike():
         entry_chain=[],
         exit_chain=[],
     )
-    assert row["alt_1"] is None or row["alt_1"]["strike"] != 0.0
+    # TEST_SYSTEM_REHAB_V2_RESIDUAL_CLOSURE (weak-assertion item 1): was
+    # `assert row["alt_1"] is None or row["alt_1"]["strike"] != 0.0`. Two holes:
+    # (a) the `is None` disjunct FAILS OPEN -- had the function regressed to dropping
+    #     ALL ranked rows, alt_1 would be None and this passed, while the row the test
+    #     exists to preserve (strike 501.0) had vanished from the audit artifact;
+    # (b) it was mutation-dead against its own named target -- deleting the
+    #     `if row.get("strike") is None: continue` guard in realized_contract_eval
+    #     yields byte-identical output, since the following float(row["strike"])
+    #     raises TypeError on None and continues anyway.
+    # The real contract: the strikeless row is DROPPED ENTIRELY -- it yields no alt,
+    # AND its composite_score (99.0, higher than the real row's 8.0) never becomes
+    # best_score, which would otherwise fabricate score_gap_vs_best.
+    assert row["alt_1"] == {
+        "strike": 501.0, "composite_score": 8.0, "realized_pnl_dollars": None
+    }, f"the one usable ranked row must survive verbatim; got {row['alt_1']!r}"
+    assert row["alt_2"] is None and row["alt_3"] is None, (
+        "the strikeless ranked row must produce no alternative at all")
+    assert row["score_gap_vs_best"] is None, (
+        "the dropped row's composite_score must never reach best_score")
 
 
 def test_chain_selection_quality_best_score_ignores_none_scores():

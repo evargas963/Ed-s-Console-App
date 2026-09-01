@@ -270,11 +270,34 @@ def test_l1_diagnostics_endpoint_exposes_ed_l1(monkeypatch):
 
 
 def test_index_html_l1_scope_and_generation_guards():
+    """TEST_SYSTEM_REHAB_V2_RESIDUAL_CLOSURE (weak-assertion item 4 of the 17-20 block):
+    the last assertion was `"REJECTED stale l1_generation" in html or "stale
+    l1_generation" in html` -- degenerate three ways.
+
+      (1) "stale l1_generation" is a PROPER SUBSTRING of "REJECTED stale
+          l1_generation", so A implies B and `A or B` is exactly B. The left branch
+          could never rescue the right one; it contributed zero power.
+      (2) It was already subsumed by the `"l1_generation" in html` line above it.
+      (3) Worst: the text it matched is a DIAG-gated console.warn with zero
+          production behavior -- ANTI-CORRELATED with the defect. Delete the real
+          guard condition but leave the log line and it passed while stale-frame
+          flicker shipped; reword the log and it failed with no defect at all.
+
+    The real guard is the monotonic-generation call itself. Asserted structurally
+    here; the BEHAVIOR of l1ApplyTierBLightMonotonic (5->7 accept, 7->6 reject,
+    same-gen older serverTs reject) is executed against the real shipped JS by
+    tests/l1_sse_guards_node.mjs, which stays the authority for it."""
     html = (ROOT / "static" / "index.html").read_text(encoding="utf-8", errors="replace")
     assert "_l1GenByScope" in html
     assert "renderTierBLight" in html
     assert "l1_generation" in html
-    assert "REJECTED stale l1_generation" in html or "stale l1_generation" in html
+    assert (
+        "guards.l1ApplyTierBLightMonotonic(scopeKey, g, window._l1GenByScope, "
+        "serverTs, window._l1ServerTsByScope)" in html
+    ), (
+        "renderTierBLight must still route every Tier-B paint through the monotonic "
+        "generation guard — a late HTTP poll carrying an older l1_generation must not "
+        "be allowed to repaint over a newer SSE frame")
 
 
 def test_index_html_l1_quote_vs_of_freshness_ui():

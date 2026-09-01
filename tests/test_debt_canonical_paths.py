@@ -102,10 +102,46 @@ def test_similar_setup_filters_align_with_inference_snapshot_not_signalinput():
 
 
 def test_production_default_parallel_unchanged_in_signals_doc():
+    """TEST_SYSTEM_REHAB_V2_RESIDUAL_CLOSURE (weak-assertion item 4): was
+    `assert "parallel" in src.lower() or "run_unified_stack_ml_once" in src` -- a
+    presence-only substring grep over a ~75k-char module with two independently
+    satisfied disjuncts. Measured: "parallel" matched 3 times (one of them PROSE in a
+    docstring, two only via .lower() on the identifier ParallelRuntimeArtifactError)
+    and "run_unified_stack_ml_once" 10 times. Deleting the entire parallel model
+    stack would leave either behind and still pass -- the only thing that could
+    actually fail was `import signals`, i.e. an import smoke test wearing a
+    behavioral name. Nothing in the title ("production DEFAULT parallel UNCHANGED")
+    was asserted.
+
+    The real contract (Issue 13) is structural and checkable: XGB/LSTM/Transformer
+    are driven by EXACTLY ONE run_unified_stack_ml_once(...) call per tick inside
+    signals._run_model_stack. The regression to refuse is reverting to per-model or
+    per-horizon invocation (N calls per tick), which silently re-splits the unified
+    stack that the downstream authorization gate assumes scored together."""
+    import ast
+
     import signals
 
     src = open(signals.__file__, encoding="utf-8").read()
-    assert "parallel" in src.lower() or "run_unified_stack_ml_once" in src
+    tree = ast.parse(src)
+    fn = next((n for n in ast.walk(tree)
+               if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+               and n.name == "_run_model_stack"), None)
+    assert fn is not None, "signals._run_model_stack is gone; the unified stack entry point moved"
+    calls = [
+        c for c in ast.walk(fn)
+        if isinstance(c, ast.Call)
+        and ((isinstance(c.func, ast.Name) and c.func.id == "run_unified_stack_ml_once")
+             or (isinstance(c.func, ast.Attribute) and c.func.attr == "run_unified_stack_ml_once"))
+    ]
+    assert len(calls) == 1, (
+        f"_run_model_stack must invoke run_unified_stack_ml_once EXACTLY once per tick "
+        f"(one unified stack scoring); found {len(calls)} call site(s) at lines "
+        f"{[c.lineno for c in calls]}")
+    assert "stack_probs_composition" in src, (
+        "the unified stack must still publish stack_probs_composition — without it the "
+        "authorization gate sees only the SHAPE of the triplet, which one renormalised "
+        "leg can fake")
 
 
 def test_transformer_prepare_sequence_accepts_reference_spot():

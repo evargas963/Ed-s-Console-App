@@ -23,8 +23,18 @@ def test_load_schwab_index_maps_tokens(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     idx = load_schwab_index(p)
-    assert "bidprice" in idx or "quote" in idx
-    assert any("bidPrice" in x for x in idx.get("bidprice", []))
+    # TEST_SYSTEM_REHAB_V2_RESIDUAL_CLOSURE (weak-assertion item 3): the first
+    # assertion was `"bidprice" in idx or "quote" in idx` -- STRICTLY SUBSUMED by the
+    # line below it (a non-empty idx["bidprice"] entails "bidprice" in idx), so it
+    # added zero detection power, and its `or "quote" in idx` disjunct actively
+    # weakened it: an index that never produced the full compound token still passed
+    # on the bare "quote" segment alone. Replaced with the exact token->field mapping,
+    # which pins what this loader actually owes its one consumer (the
+    # csv_candidate_fields column of the coverage register).
+    assert idx["bidprice"] == ["quotes.quote.bidPrice"], (
+        f"token must map to the FULL canonical field, not a segment; got {idx.get('bidprice')!r}")
+    assert sorted(idx) == ["bidprice", "callexpdatemap", "chains", "quote", "quotes"], (
+        f"tokenizer emitted an unexpected key set: {sorted(idx)}")
 
 
 def test_csv_candidates_for_tokens_caps() -> None:

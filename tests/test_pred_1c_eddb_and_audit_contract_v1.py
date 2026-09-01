@@ -84,8 +84,21 @@ def test_snapshots_table_accepts_pred_1c_triple_minimal_insert(tmp_path):
 def test_phase5_audit_module_defines_governed_pred_1c_metric():
     p = ROOT / "tools" / "legacy" / "horizon_7" / "_phase5_discrimination_audit_v1.py"
     src = p.read_text(encoding="utf-8")
+    # TEST_SYSTEM_REHAB_V2_RESIDUAL_CLOSURE (weak-assertion item 2): the second line
+    # was `assert "n_gov_pred1c" in src or "governed_rows_with_pred_1c_nonnull" in src`
+    # -- a STRICT TAUTOLOGY. Its right operand is character-for-character the
+    # assertion on the line above, so it could never fail: if the line above passed,
+    # the disjunct was true by construction; if it failed, this line never ran.
+    # Two independent substring checks also could not see the defect that matters --
+    # the published JSON key drifting away from the governed metric it claims to
+    # report. Pin the WIRING instead: the key must be emitted FROM the governed count.
     assert "governed_rows_with_pred_1c_nonnull" in src
-    assert "n_gov_pred1c" in src or "governed_rows_with_pred_1c_nonnull" in src
+    assert '"governed_rows_with_pred_1c_nonnull": n_gov_pred1c,' in src, (
+        "the published key must be assigned from the governed pred_1c count "
+        "(n_gov_pred1c); a key emitted from any other variable silently republishes "
+        "a different metric under the governed name")
+    assert "s.pred_1c_up_prob IS NOT NULL" in src, (
+        "the governed count must still be computed over pred_1c_up_prob")
 
 
 def test_production_db_has_governed_pred_1c_when_expected():
