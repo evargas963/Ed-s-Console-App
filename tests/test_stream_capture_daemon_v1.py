@@ -32,6 +32,55 @@ from tools.run_stream_capture import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _isolated_desired_state_signals(tmp_path, monkeypatch):
+    """Give every test in this file its OWN active-ticker / active-option-contract signal
+    files, instead of the process-wide repo defaults.
+
+    Those defaults are single repo-relative paths bound at import time
+    (`ACTIVE_OPTION_CONTRACT_SIGNAL_DEFAULT`, `ACTIVE_TICKER_SIGNAL_DEFAULT`). Four test
+    files write them, 28 call sites in total, and protected CI runs pytest under xdist —
+    so a test here would set the desired contract to B while a test on another worker set
+    it to something else, and the daemon under test read the loser of that race. Measured
+    on CI ([gw2]) and reproduced locally 3/3 under `-n 4`: the generation-1 tick saw
+    `held == requested`, never issued the unsubscribe, never reached the parked seam, and
+    `parked.wait()` timed out at 25s. The bound was never the problem; the daemon was
+    reading another worker's desired state.
+
+    Both halves are redirected: the WRITERS this module calls, and the READERS the daemon
+    itself calls (`tools.run_stream_capture` looks these up as module globals at call
+    time, so patching them there covers the poll loops and the recycle's reconnect read).
+    Nothing about the ordering invariant changes — the daemon still reads a real signal
+    file through its real seam; only the path stops being shared."""
+    import sys as _sys
+
+    import stream_spine as _spine
+    import tools.run_stream_capture as _d
+
+    option_sig = tmp_path / "stream_active_option_contract.json"
+    ticker_sig = tmp_path / "stream_active_ticker.json"
+    this_module = _sys.modules[__name__]
+
+    # Bind the originals off stream_spine, NOT off this module's globals: the globals are
+    # what is being replaced, so a lambda that looked them up would call itself.
+    real_write_opt = _spine.write_active_option_contract_signal
+    real_write_tkr = _spine.write_active_ticker_signal
+    real_read_opt = _spine.read_active_option_contract_signal
+    real_read_tkr = _spine.read_active_ticker_signal
+
+    # `{"path": default, **kw}` — the per-test path is only a DEFAULT. A caller that
+    # already passes an explicit `path=` (a test doing its own finer-grained isolation)
+    # still wins; swallowing it would silently redirect that test's signal file.
+    monkeypatch.setattr(this_module, "write_active_option_contract_signal",
+                        lambda c, **kw: real_write_opt(c, **{"path": option_sig, **kw}))
+    monkeypatch.setattr(this_module, "write_active_ticker_signal",
+                        lambda t, **kw: real_write_tkr(t, **{"path": ticker_sig, **kw}))
+    monkeypatch.setattr(_d, "read_active_option_contract_signal",
+                        lambda **kw: real_read_opt(**{"path": option_sig, **kw}))
+    monkeypatch.setattr(_d, "read_active_ticker_signal",
+                        lambda **kw: real_read_tkr(**{"path": ticker_sig, **kw}))
+
+
 def test_parse_stream_item_maps_numeric_keys_and_symbol():
     item = {"key": "spy", "BID_PRICE": 747.6, "ASK_PRICE": 747.62, "LAST_PRICE": 747.61,
             "BID_SIZE": 12, "ASK_SIZE": 9, "TOTAL_VOLUME": 1000000, "LAST_SIZE": 100,
