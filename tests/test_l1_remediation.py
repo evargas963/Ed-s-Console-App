@@ -316,14 +316,13 @@ def test_index_html_l1_quote_vs_of_freshness_ui():
     assert "_l1FreshnessPaint" in html
 
 
-def test_client_l1_generation_guard_logic_mirror():
-    """Mirror index.html: do not accept older l1_generation for the same scope key."""
-
-    def accept(prev: float | None, g: float) -> bool:
-        if prev is not None and g < prev:
-            return False
-        return True
-
-    assert accept(5.0, 3.0) is False
-    assert accept(5.0, 6.0) is True
-    assert accept(None, 1.0) is True
+# DELETED: test_client_l1_generation_guard_logic_mirror. It defined its own Python
+# `accept(prev, g)` and asserted against THAT COPY, never against the shipped client
+# rule -- the same "test the re-implementation, not the implementation" defect class
+# tests/test_l1_cold_start_transition.py documents as already fixed elsewhere. Its
+# three cases (5->3 reject, 5->6 accept, None->1 accept) are strictly subsumed by
+# tests/l1_sse_guards_node.mjs, which executes the REAL
+# static/js/l1_sse_guards.js::l1ApplyTierBLightMonotonic over 5->7 accept, 7->6
+# reject, stale-HTTP-after-newer-SSE reject, same-generation-older-_server_build_ts
+# reject, and same/newer-timestamp accept. Deleting the mirror removes no material
+# defect detection; not replaced.
