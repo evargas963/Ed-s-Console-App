@@ -519,10 +519,13 @@ def _epoch_close_is_pending(epoch_state: dict, key: str, epoch_id: "int | None")
 def _discard_pending_close(epoch_state: dict, key: str, epoch_id: "int | None") -> None:
     """Drop `epoch_id` from the pending-close retry set (PR214 defect 1D).
 
-    Used ONLY after a compensating resubscribe has restored the vendor subscription that
-    epoch describes: the epoch is legitimately open again, so the retry machinery must
-    not later close it behind a live subscription's back. This is not 'forgetting' a
-    failed close — the close is no longer the correct action."""
+    Used ONLY when the epoch's subscription is KNOWN to still be live, so closing it is
+    no longer the correct action and the retry machinery must not later close it behind
+    that live subscription's back. Since the durable-close-first reordering there is
+    exactly one such caller: a durable CLOSE that failed BEFORE the vendor was touched.
+    The vendor never unsubscribed, so the still-open epoch is a true description of a
+    live subscription and becomes the current epoch again. This is not 'forgetting' a
+    failed close — under close-first, a failed close means nothing happened at all."""
     pending = epoch_state.get(f"{key}_pending_close")
     if pending:
         pending.discard(epoch_id)
@@ -596,61 +599,87 @@ async def _reconcile_option_service(stream, held: str | None, requested: str | N
     subscribe on the next tick). Returns the symbol now actually held at the vendor for
     THIS service (None if none) — vendor-held truth advances only on a confirmed vendor
     ack, durable coverage-epoch truth (epoch_state[epoch_key]) advances only on a
-    confirmed sqlite write, and neither is ever assumed from the other."""
+    confirmed sqlite write, and neither is ever assumed from the other.
+
+    TRANSITION ORDER IS THE CORRECTNESS CONTRACT (PR214 coverage-interval causality).
+    An A->B switch runs strictly:
+
+        durable CLOSE A  ->  vendor UNSUB A  ->  vendor SUB B  ->  durable OPEN B
+
+    The durable close comes FIRST, before the vendor is touched. The previous ordering
+    (unsub first, close second, resubscribe on close failure) kept vendor and ledger
+    agreeing at the TICK BOUNDARY but not across the INTERVAL: measured with a
+    deterministic clock, A's epoch stayed continuously open (started_ts=101.0,
+    ended_ts=NULL) across [102.0 unsub-complete, 104.0 resubscribe-complete] -- a window
+    in which the vendor was definitively NOT subscribed. That is a false-positive
+    coverage claim, and it is exactly the confusion stream_coverage_epochs exists to
+    prevent: our own subscription hole would later read as observed market silence.
+
+    Closing first makes the ledger's claim conservative by construction:
+      A.ended_ts   <= the confirmed vendor UNSUB A completion time
+      B.started_ts >= the confirmed vendor SUB B completion time
+    so the ledger may describe a slightly WIDER uncovered interval than the true vendor
+    transition, but it can never bridge a known period of no subscription. That bias is
+    deliberate and fail-closed. These timestamps are therefore transition BOUNDARIES,
+    not vendor acknowledgement times, and must not be described as the latter."""
     if held != requested:
         if held is not None:
-            unsubscribed = held            # the symbol whose coverage window is ending
+            # True only once a durable coverage claim has actually been surrendered for
+            # `held` this tick. Callers without a writer/epoch_state (no ledger at all)
+            # never surrender anything, so they keep the historical unsub-failure
+            # behaviour: stay on the last KNOWN vendor-held symbol and retry next tick.
+            coverage_surrendered = False
+            if writer is not None and epoch_state is not None:
+                # CASE A: durable CLOSE FIRST. If it fails, the vendor has NOT been
+                # touched, so the prior state is still exactly true (A held, A epoch
+                # open) -- nothing to compensate, and critically no vendor operation
+                # whose interval could go unrecorded. Retry the whole transition next
+                # tick. This replaces the old unsub-then-resubscribe rollback, which
+                # only restored the END state and could not undo the interval.
+                closing_epoch_id = epoch_state.get(epoch_key)
+                _close_coverage_epoch_tracked(writer, epoch_state, epoch_key,
+                                              reason="active_contract_changed")
+                if _epoch_close_is_pending(epoch_state, epoch_key, closing_epoch_id):
+                    print(f"{service_name}: durable coverage-epoch CLOSE failed for "
+                          f"{held} — leaving the vendor subscription untouched and "
+                          f"NOT subscribing {requested}; retrying the transition later")
+                    # The epoch is still open and still describes a live subscription,
+                    # so it is the CURRENT epoch again and closing it is not the correct
+                    # action to retry behind a subscription we deliberately kept.
+                    epoch_state[epoch_key] = closing_epoch_id
+                    _discard_pending_close(epoch_state, epoch_key, closing_epoch_id)
+                    _retry_pending_epoch_closes(writer, epoch_state, epoch_key,
+                                                reason="retry_pending_close")
+                    return held
+                # Surrendered only if there was an actual open claim to surrender. With
+                # no tracked epoch id the close was a no-op, so an unsubscribe failure
+                # below has no coverage-truth divergence to escalate and must keep the
+                # historical retry behaviour rather than recycling the whole session.
+                coverage_surrendered = closing_epoch_id is not None
             try:
                 await unsubs_fn([held])
                 held = None
             except Exception as e:
-                print(f"{service_name} unsub {held} failed, retry pending: {e}")
-                # Unknown true vendor state for `held` — do not also attempt a
-                # subscribe this tick (would risk two live keys for one service under
-                # this repo's one-contract-at-a-time budget design). Retried next tick.
-                return held
-            # The old vendor-held symbol is gone — its coverage window ends HERE,
-            # independent of whether a new subscribe below succeeds this same tick. Close
-            # it now rather than deferring to the bottom reconciliation block below, which
-            # only closes when the FINAL `held` is None — a same-tick switch (A -> B)
-            # would otherwise never observe "A's epoch needs closing" as its own step.
-            if writer is not None and epoch_state is not None:
-                closing_epoch_id = epoch_state.get(epoch_key)
-                _close_coverage_epoch_tracked(writer, epoch_state, epoch_key,
-                                              reason="active_contract_changed")
-                # PR214 bidirectional coverage truth (defect 1C): the SUBSCRIBE->open
-                # direction was already compensated; this is its missing mirror. If A's
-                # durable CLOSE failed, A's epoch is still OPEN. Subscribing B now would
-                # leave TWO open epochs on one service (measured before this fix:
-                # id=1 SPY open AND id=2 QQQ open), which is not merely untidy — these
-                # epochs are read as PRODUCER SUBSCRIPTION IDENTITY, so it makes "what is
-                # this service subscribed to" unanswerable. Restore the previous truthful
-                # state instead: RESUBSCRIBE A, leaving vendor and ledger agreeing on A,
-                # and let the transition retry on a later tick.
-                if _epoch_close_is_pending(epoch_state, epoch_key, closing_epoch_id):
-                    print(f"{service_name}: durable coverage-epoch CLOSE failed for "
-                          f"{unsubscribed} — not subscribing {requested}; restoring the "
-                          f"prior subscription so vendor and ledger stay in agreement")
-                    try:
-                        await subs_fn([unsubscribed])
-                    except Exception as e:
-                        # Vendor state uncertain AND A's epoch still open. Do not
-                        # continue: escalate into the same stream-recycle path the
-                        # subscribe-direction compensation failure uses.
-                        raise OptionCoverageCompensationError(
-                            f"{service_name}: coverage-epoch close failed for "
-                            f"{unsubscribed} AND the compensating resubscribe also failed "
-                            f"({type(e).__name__}: {e}) — vendor state uncertain while its "
-                            f"epoch remains open; forcing stream recycle rather than "
-                            f"continuing") from e
-                    # Restored: the vendor holds A again and A's epoch is legitimately
-                    # open, so its id must be reinstated as the CURRENT epoch and removed
-                    # from pending-close (defect 1D) — otherwise the retry machinery would
-                    # later close the epoch of a subscription that is genuinely live.
-                    held = unsubscribed
-                    epoch_state[epoch_key] = closing_epoch_id
-                    _discard_pending_close(epoch_state, epoch_key, closing_epoch_id)
+                if not coverage_surrendered:
+                    # No ledger involved (no writer/epoch_state): nothing was surrendered,
+                    # so there is no coverage-truth divergence to escalate. Historical
+                    # behaviour — stay on the last KNOWN vendor-held symbol, do not also
+                    # subscribe this tick (two live keys on one service), retry next tick.
+                    print(f"{service_name} unsub {held} failed, retry pending: {e}")
                     return held
+                # CASE C: the ledger has ALREADY surrendered this symbol's coverage claim,
+                # but the vendor unsubscribe is unconfirmed. Do not pretend the old steady
+                # state is intact, and above all do not re-open an epoch to make the two
+                # look equal -- that would fabricate coverage over an interval whose
+                # vendor state we do not know. A conservative uncovered interval is
+                # correct; a fabricated subscribed interval is not. Escalate into the
+                # existing stream-recycle path.
+                raise OptionCoverageCompensationError(
+                    f"{service_name}: durable coverage for {held} was closed but the "
+                    f"vendor unsubscribe then failed ({type(e).__name__}: {e}) — vendor "
+                    f"state unconfirmed with its coverage claim already surrendered; "
+                    f"forcing stream recycle rather than continuing or fabricating an "
+                    f"open epoch") from e
         if requested is not None and held is None:
             try:
                 await subs_fn([requested])

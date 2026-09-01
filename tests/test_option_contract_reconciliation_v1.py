@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import asyncio
 import sqlite3
+import time
 
 import pytest
 
@@ -795,9 +796,15 @@ def _switch_tick(stream, writer, epoch_state, held, requested):
         epoch_key="l1", service_name="LEVELONE_OPTIONS"))
 
 
-def test_coverage_A_close_failure_restores_prior_subscription(tmp_path, monkeypatch):
-    """1G-A. UNSUB A ok -> CLOSE A fails -> compensating RESUB A succeeds.
-    Vendor held = A, exactly one open epoch = A, B never subscribed, no B epoch."""
+def test_coverage_A_close_failure_never_touches_the_vendor(tmp_path, monkeypatch):
+    """CASE A — the most important attack (PR214 coverage-interval causality).
+
+    REWRITTEN. This previously asserted the resubscribe ROLLBACK (unsub A, then resub A
+    on close failure). That rollback restored the END state but could not undo the
+    INTERVAL: measured, A's epoch stayed open across a window in which the vendor was
+    definitively unsubscribed. Durable-close-first removes the need for it entirely --
+    when the close fails the vendor is never touched at all, so there is no interval to
+    hide and nothing to compensate."""
     db = tmp_path / "cap.db"
     w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
     try:
@@ -809,48 +816,102 @@ def test_coverage_A_close_failure_restores_prior_subscription(tmp_path, monkeypa
 
         held = _switch_tick(stream, w, epoch_state, _SPY_CONTRACT, _QQQ_CONTRACT)
 
-        assert held == _SPY_CONTRACT, "the prior subscription must be restored, not dropped"
-        assert stream.calls == [("l1_option_unsub", (_SPY_CONTRACT,)),
-                                ("l1_option_sub", (_SPY_CONTRACT,))], (
-            f"B must never be subscribed while A's epoch is still open; got {stream.calls}")
+        unsub_calls = [c for c in stream.calls if c[0] == "l1_option_unsub"]
+        sub_calls = [c for c in stream.calls if c[0] == "l1_option_sub"]
+        assert len(unsub_calls) == 0, (
+            f"unsubs_fn CALL COUNT must be 0 when the durable close failed; got {unsub_calls}")
+        assert len(sub_calls) == 0, (
+            f"subs_fn CALL COUNT must be 0 when the durable close failed; got {sub_calls}")
+        assert stream.calls == [], "the vendor must not be touched at all"
+        assert held == _SPY_CONTRACT, "the vendor still holds A — it was never changed"
         rows = _one_service_open(db)
         assert len(rows) == 1 and rows[0][1] == _SPY_CONTRACT, (
-            f"exactly one open epoch, on A; got {rows}")
-        assert epoch_state["l1"] == eid, "A's epoch id is the current epoch again"
+            f"exactly one open epoch, still on A; got {rows}")
+        assert epoch_state["l1"] == eid, "A's epoch id remains the current epoch"
+        assert epoch_state.get("l1_pending_close") == set(), (
+            "the epoch describes a live subscription we deliberately kept — closing it is "
+            "not the correct action to retry")
     finally:
         w.close()
 
 
-def test_coverage_B_close_and_resubscribe_both_fail_escalates(tmp_path, monkeypatch):
-    """1G-B. CLOSE A fails AND the compensating RESUB A also fails -> vendor state is
-    uncertain while A's epoch is still open. No steady-state continuation, no healthy
-    claim: it escalates into the same recycle path the subscribe-direction uses."""
+def test_coverage_C_vendor_unsub_failure_after_durable_close_fails_closed(tmp_path, monkeypatch):
+    """CASE C — durable CLOSE A succeeded, vendor UNSUB A then failed/unconfirmed.
+
+    REPLACES the old close-fail + resubscribe-fail escalation, which cannot occur under
+    durable-close-first (no resubscribe exists). The ledger has already surrendered A's
+    coverage claim while the vendor operation is unconfirmed: B must not be subscribed,
+    no false A epoch may be recreated to make the states look equal, and the existing
+    recycle path must be forced. A conservative uncovered interval beats a fabricated
+    subscribed one."""
     from tools.run_stream_capture import OptionCoverageCompensationError
 
     db = tmp_path / "cap.db"
     w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
     try:
-        eid = w.open_coverage_epoch(_SPY_CONTRACT, "LEVELONE_OPTIONS",
-                                    reason="active_contract_set", ts=1.0)
-        epoch_state = {"l1": eid}
-        monkeypatch.setattr(w, "close_coverage_epoch", _failing_close)
-        stream = _FlakyOptionStream(fail_calls={"l1_option_sub"})   # resubscribe fails
+        w.open_coverage_epoch(_SPY_CONTRACT, "LEVELONE_OPTIONS",
+                              reason="active_contract_set", ts=1.0)
+        epoch_state = {"l1": 1}
+        stream = _FlakyOptionStream(fail_calls={"l1_option_unsub"})   # vendor unsub fails
 
         with pytest.raises(OptionCoverageCompensationError) as exc:
             _switch_tick(stream, w, epoch_state, _SPY_CONTRACT, _QQQ_CONTRACT)
         msg = str(exc.value)
-        assert "close failed" in msg and "compensating resubscribe also failed" in msg
+        assert "was closed but the vendor unsubscribe then failed" in msg
         assert "forcing stream recycle" in msg
-        rows = _one_service_open(db)
-        assert len(rows) == 1 and rows[0][1] == _SPY_CONTRACT, (
-            "no B epoch may have been created on the escalation path")
+
+        assert [c for c in stream.calls if c[0] == "l1_option_sub"] == [], (
+            "B must never be subscribed on the escalation path")
+        assert _one_service_open(db) == [], (
+            "A's epoch stays CLOSED — no false open epoch may be recreated merely to make "
+            "vendor and ledger look equal over an interval we cannot vouch for")
     finally:
         w.close()
 
 
-def test_coverage_C_pending_close_retry_cannot_close_a_restored_subscription(tmp_path, monkeypatch):
-    """1G-C (defect 1D). After the compensating RESUB restores A, the pending-close retry
-    machinery must NOT later close A's epoch behind a live subscription's back."""
+def test_coverage_C_no_tracked_epoch_keeps_historical_unsub_failure_behaviour(tmp_path):
+    """Scoping control for CASE C, second form: a writer IS present but no epoch id is
+    tracked for this service, so the close is a no-op and NOTHING is surrendered. An
+    unsubscribe failure must then keep the historical retry behaviour, not escalate the
+    whole session into a recycle over a coverage claim that was never made."""
+    db = tmp_path / "cap.db"
+    w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
+    try:
+        epoch_state = {"l1": None}          # vendor holds A, but no epoch is tracked
+        stream = _FlakyOptionStream(fail_calls={"l1_option_unsub"})
+        held = _switch_tick(stream, w, epoch_state, _SPY_CONTRACT, _QQQ_CONTRACT)
+        assert held == _SPY_CONTRACT, "stay on the last KNOWN vendor-held symbol"
+        assert [c for c in stream.calls if c[0] == "l1_option_sub"] == [], (
+            "must not open a second live key while the old unsub is unconfirmed")
+        assert _one_service_open(db) == [], "no epoch existed and none was fabricated"
+    finally:
+        w.close()
+
+
+def test_coverage_C_no_ledger_caller_keeps_historical_unsub_failure_behaviour():
+    """Scoping control for CASE C: a caller with NO writer/epoch_state surrenders no
+    coverage claim, so an unsub failure must NOT escalate — it keeps the historical
+    behaviour of staying on the last KNOWN vendor-held symbol and retrying next tick.
+    Without this scoping the fix would have changed the no-ledger path too."""
+    stream = _FlakyOptionStream(fail_calls={"l1_option_unsub"})
+    held = asyncio.run(_reconcile_option_service(
+        stream, _SPY_CONTRACT, _QQQ_CONTRACT,
+        subs_fn=stream.level_one_option_subs, unsubs_fn=stream.level_one_option_unsubs,
+        writer=None, epoch_state=None, epoch_key="l1", service_name="LEVELONE_OPTIONS"))
+    assert held == _SPY_CONTRACT
+    assert [c for c in stream.calls if c[0] == "l1_option_sub"] == [], (
+        "must not open a second live key while the old unsub is unconfirmed")
+
+
+def test_coverage_C_pending_close_retry_cannot_close_a_still_live_subscription(tmp_path, monkeypatch):
+    """1G-C (defect 1D), RETARGETED for durable-close-first.
+
+    Originally: 'after the compensating RESUB restores A'. There is no resubscribe any
+    more — under close-first a failed durable close means the vendor was NEVER touched,
+    so A was never unsubscribed and nothing had to be restored. The assertion this test
+    exists for is unchanged and is now reached by a stronger route: A's epoch is still
+    open because A's subscription is still LIVE, so the pending-close retry machinery
+    must not later close it behind that live subscription's back."""
     db = tmp_path / "cap.db"
     w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
     try:
@@ -862,16 +923,20 @@ def test_coverage_C_pending_close_retry_cannot_close_a_restored_subscription(tmp
         stream = _FlakyOptionStream()
         held = _switch_tick(stream, w, epoch_state, _SPY_CONTRACT, _QQQ_CONTRACT)
         assert held == _SPY_CONTRACT
+        # The close-first reason the epoch is legitimately open: no vendor op ever ran.
+        assert stream.calls == [], (
+            "the durable close failed first, so the vendor must be untouched — the epoch "
+            "is open because the subscription never stopped, not because it was restored")
         assert epoch_state.get("l1_pending_close") == set(), (
-            "the restored epoch must not remain queued for closing")
+            "a still-live epoch must not remain queued for closing")
 
-        # The DB recovers; a retry pass now runs with A legitimately subscribed.
+        # The DB recovers; a retry pass now runs with A still subscribed the whole time.
         monkeypatch.setattr(w, "close_coverage_epoch", real_close)
         _retry_pending_epoch_closes(w, epoch_state, "l1", reason="retry_pending_close")
 
         rows = _one_service_open(db)
         assert len(rows) == 1 and rows[0][1] == _SPY_CONTRACT, (
-            "the retry must not have closed the epoch of a live, restored subscription")
+            "the retry must not have closed the epoch of a still-live subscription")
         assert epoch_state["l1"] == eid
     finally:
         w.close()
@@ -890,7 +955,8 @@ def test_coverage_D_switch_completes_cleanly_once_the_db_recovers(tmp_path, monk
         monkeypatch.setattr(w, "close_coverage_epoch", _failing_close)
         stream = _FlakyOptionStream()
         held = _switch_tick(stream, w, epoch_state, _SPY_CONTRACT, _QQQ_CONTRACT)
-        assert held == _SPY_CONTRACT           # tick 1: restored, transition pending
+        assert held == _SPY_CONTRACT     # tick 1: vendor untouched, transition deferred
+        assert stream.calls == [], "close failed first, so tick 1 issued no vendor op"
 
         monkeypatch.setattr(w, "close_coverage_epoch", real_close)   # DB recovers
         stream2 = _FlakyOptionStream()
@@ -992,3 +1058,256 @@ def test_coverage_bidirectional_invariant_holds_at_every_tick_boundary(tmp_path,
         _check(db2, held)
     finally:
         w2.close()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PR214 COVERAGE-INTERVAL CAUSALITY — tick-boundary consistency is not interval truth.
+#
+# MEASURED before the fix, with a deterministic clock:
+#   t=101.0 DURABLE_OPEN_A            started_ts=101.0
+#   t=102.0 VENDOR_UNSUB_COMPLETE     <- A definitively NOT subscribed from here
+#   t=103.0 DURABLE_CLOSE_A failed
+#   t=104.0 VENDOR_SUB_COMPLETE       <- A subscribed again (compensating resubscribe)
+#   ledger: started_ts=101.0, ended_ts=NULL
+# The single continuous open epoch therefore CLAIMED coverage across [102.0, 104.0], a
+# window in which the vendor was definitively unsubscribed -- turning our own coverage
+# hole into what would later read as observed market silence.
+#
+# Root fix: durable CLOSE happens BEFORE the vendor is touched, so a failed close never
+# produces a vendor operation at all, and a successful transition brackets the vendor gap
+# conservatively from the outside.
+# ─────────────────────────────────────────────────────────────────────────────
+
+class _RecordingOptionStream(_FlakyOptionStream):
+    """Records a wall-clock timestamp for each COMPLETED vendor operation, so the real
+    ordering and the durable timestamps can be compared without a test-only `ts`
+    parameter threaded through production code."""
+
+    def __init__(self, **kw):
+        super().__init__(**kw)
+        self.events: list[tuple] = []
+
+    async def _maybe_fail(self, name, syms):
+        await super()._maybe_fail(name, syms)
+        self.events.append((name, tuple(syms), time.time()))
+
+
+def test_temporal_normal_switch_orders_close_unsub_sub_open(tmp_path):
+    """REQUIRED attack 2 + 5. Records the real operation order and the durable timestamps
+    on an ordinary A->B switch, and proves the conservative bracketing:
+        durable CLOSE A  <  vendor UNSUB A  <  vendor SUB B  <  durable OPEN B
+        A.ended_ts   <= confirmed vendor UNSUB A completion
+        B.started_ts >= confirmed vendor SUB B completion
+    so every known vendor-not-subscribed instant lies OUTSIDE durable coverage."""
+    db = tmp_path / "cap.db"
+    w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
+    try:
+        order: list[str] = []
+        real_close, real_open = w.close_coverage_epoch, w.open_coverage_epoch
+
+        def _close(eid, **k):
+            order.append("durable_close")
+            return real_close(eid, **k)
+
+        def _open(sym, svc, **k):
+            order.append("durable_open")
+            return real_open(sym, svc, **k)
+        w.close_coverage_epoch, w.open_coverage_epoch = _close, _open
+
+        w.open_coverage_epoch(_SPY_CONTRACT, "LEVELONE_OPTIONS",
+                              reason="active_contract_set")
+        order.clear()                      # ignore the setup open
+        epoch_state = {"l1": 1}
+        stream = _RecordingOptionStream()
+
+        held = _switch_tick(stream, w, epoch_state, _SPY_CONTRACT, _QQQ_CONTRACT)
+        assert held == _QQQ_CONTRACT
+
+        vendor_order = [e[0] for e in stream.events]
+        assert vendor_order == ["l1_option_unsub", "l1_option_sub"]
+        assert order == ["durable_close", "durable_open"]
+
+        # Interleave the two recordings into one causal sequence.
+        t_unsub = next(e[2] for e in stream.events if e[0] == "l1_option_unsub")
+        t_sub = next(e[2] for e in stream.events if e[0] == "l1_option_sub")
+        con = sqlite3.connect(db)
+        try:
+            rows = con.execute(
+                "SELECT symbol, started_ts, ended_ts FROM stream_coverage_epochs "
+                "ORDER BY id").fetchall()
+        finally:
+            con.close()
+        a_row = next(r for r in rows if r[0] == _SPY_CONTRACT)
+        b_row = next(r for r in rows if r[0] == _QQQ_CONTRACT)
+
+        assert a_row[2] is not None, "A must be durably closed"
+        assert a_row[2] <= t_unsub, (
+            f"A.ended_ts ({a_row[2]}) must not be AFTER the confirmed vendor unsubscribe "
+            f"({t_unsub}) — the coverage claim is surrendered before the vendor is touched")
+        assert b_row[1] >= t_sub, (
+            f"B.started_ts ({b_row[1]}) must not precede the confirmed vendor subscribe "
+            f"({t_sub}) — coverage may not begin before the subscription exists")
+        assert b_row[2] is None
+        # The uncovered ledger interval strictly CONTAINS the real vendor gap.
+        assert a_row[2] <= t_unsub <= t_sub <= b_row[1]
+    finally:
+        w.close()
+
+
+def test_temporal_no_open_epoch_may_bridge_a_known_unsubscribed_interval(tmp_path, monkeypatch):
+    """REQUIRED attack 6, stated as the canonical principle:
+        KNOWN_VENDOR_NOT_SUBSCRIBED(service, t)
+          => DURABLE_COVERAGE_MUST_NOT_CLAIM_SUBSCRIBED(service, t)
+
+    Drives both outcomes a transition can have and, for each, checks every epoch row
+    against every interval in which the vendor was known to be unsubscribed. This is the
+    assertion the pre-fix code failed: its single continuous A epoch spanned the
+    unsub->resubscribe window."""
+    def _known_unsubscribed_intervals(events):
+        """[(start, end)] windows where this service had NO vendor subscription."""
+        out, open_since = [], None
+        for name, _syms, ts in events:
+            if name.endswith("_unsub"):
+                open_since = ts                     # not subscribed from here...
+            elif name.endswith("_sub") and open_since is not None:
+                out.append((open_since, ts))        # ...until here
+                open_since = None
+        if open_since is not None:
+            out.append((open_since, float("inf")))
+        return out
+
+    def _assert_no_bridge(db_path, events):
+        con = sqlite3.connect(db_path)
+        try:
+            rows = con.execute(
+                "SELECT symbol, started_ts, ended_ts FROM stream_coverage_epochs").fetchall()
+        finally:
+            con.close()
+        for lo, hi in _known_unsubscribed_intervals(events):
+            for sym, started, ended in rows:
+                end = float("inf") if ended is None else ended
+                overlap = max(started, lo) < min(end, hi)
+                assert not overlap, (
+                    f"epoch {sym!r} [{started}, {ended}] CLAIMS coverage inside a known "
+                    f"unsubscribed interval [{lo}, {hi}]")
+
+    # 1. Ordinary switch: a real vendor gap exists between unsub A and sub B.
+    db1 = tmp_path / "switch.db"
+    w1 = CaptureWriter(db1, batch_rows=1, batch_sec=10.0)
+    try:
+        w1.open_coverage_epoch(_SPY_CONTRACT, "LEVELONE_OPTIONS", reason="x")
+        s1 = _RecordingOptionStream()
+        _switch_tick(s1, w1, {"l1": 1}, _SPY_CONTRACT, _QQQ_CONTRACT)
+        assert _known_unsubscribed_intervals(s1.events), "the attack needs a real gap"
+        _assert_no_bridge(db1, s1.events)
+    finally:
+        w1.close()
+
+    # 2. Close-failure: no vendor operation at all, so no interval and no bridge.
+    db2 = tmp_path / "closefail.db"
+    w2 = CaptureWriter(db2, batch_rows=1, batch_sec=10.0)
+    try:
+        w2.open_coverage_epoch(_SPY_CONTRACT, "LEVELONE_OPTIONS", reason="x")
+        monkeypatch.setattr(w2, "close_coverage_epoch", _failing_close)
+        s2 = _RecordingOptionStream()
+        held = _switch_tick(s2, w2, {"l1": 1}, _SPY_CONTRACT, _QQQ_CONTRACT)
+        assert held == _SPY_CONTRACT
+        assert s2.events == [], "the vendor was never touched, so no interval exists"
+        _assert_no_bridge(db2, s2.events)
+    finally:
+        w2.close()
+
+
+@pytest.mark.parametrize("close_ok", [True, False])
+@pytest.mark.parametrize("unsub_ok", [True, False])
+@pytest.mark.parametrize("sub_ok", [True, False])
+@pytest.mark.parametrize("open_ok", [True, False])
+def test_exhaustive_failure_matrix_never_claims_false_coverage(
+        tmp_path, monkeypatch, close_ok, unsub_ok, sub_ok, open_ok):
+    """EXHAUSTIVE: all 16 combinations of (durable close, vendor unsub, vendor sub,
+    durable open) succeeding or failing on one A->B transition. For EVERY outcome --
+    including the explicit fail-closed escalations -- the durable ledger must satisfy:
+
+      1. no epoch claims coverage inside a known vendor-unsubscribed interval;
+      2. at most ONE open epoch for the service;
+      3. on a normal (non-escalating) return, vendor-held and the ledger agree exactly:
+         held is X  <=> exactly one open epoch whose symbol is X
+         held is None <=> zero open epochs.
+
+    An escalation (OptionCoverageCompensationError) is an allowed UNKNOWN outcome, but
+    (1) and (2) must still hold — the recycle path may not leave fabricated coverage."""
+    from tools.run_stream_capture import OptionCoverageCompensationError
+
+    db = tmp_path / "cap.db"
+    w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
+    try:
+        real_close, real_open = w.close_coverage_epoch, w.open_coverage_epoch
+        w.open_coverage_epoch(_SPY_CONTRACT, "LEVELONE_OPTIONS", reason="seed")
+        epoch_state = {"l1": 1}
+
+        def _close(eid, **k):
+            if not close_ok:
+                raise CoverageWriteError("matrix: close fails")
+            return real_close(eid, **k)
+
+        def _open(sym, svc, **k):
+            if not open_ok:
+                raise CoverageWriteError("matrix: open fails")
+            return real_open(sym, svc, **k)
+        monkeypatch.setattr(w, "close_coverage_epoch", _close)
+        monkeypatch.setattr(w, "open_coverage_epoch", _open)
+
+        fails = set()
+        if not unsub_ok:
+            fails.add("l1_option_unsub")
+        if not sub_ok:
+            fails.add("l1_option_sub")
+        stream = _RecordingOptionStream(fail_calls=fails)
+
+        escalated = False
+        held = None
+        try:
+            held = _switch_tick(stream, w, epoch_state, _SPY_CONTRACT, _QQQ_CONTRACT)
+        except OptionCoverageCompensationError:
+            escalated = True
+
+        con = sqlite3.connect(db)
+        try:
+            rows = con.execute(
+                "SELECT symbol, started_ts, ended_ts FROM stream_coverage_epochs "
+                "WHERE service='LEVELONE_OPTIONS'").fetchall()
+        finally:
+            con.close()
+        open_rows = [r for r in rows if r[2] is None]
+        label = (f"close_ok={close_ok} unsub_ok={unsub_ok} sub_ok={sub_ok} "
+                 f"open_ok={open_ok} escalated={escalated} held={held!r}")
+
+        # (2) at most one open epoch for the service, in every outcome
+        assert len(open_rows) <= 1, f"{label}: {len(open_rows)} open epochs -> {open_rows}"
+
+        # (1) no epoch may bridge a known unsubscribed interval
+        gaps, open_since = [], None
+        for name, _syms, ts in stream.events:
+            if name.endswith("_unsub"):
+                open_since = ts
+            elif name.endswith("_sub") and open_since is not None:
+                gaps.append((open_since, ts))
+                open_since = None
+        if open_since is not None:
+            gaps.append((open_since, float("inf")))
+        for lo, hi in gaps:
+            for sym, started, ended in rows:
+                end = float("inf") if ended is None else ended
+                assert not (max(started, lo) < min(end, hi)), (
+                    f"{label}: epoch {sym!r} [{started},{ended}] claims coverage inside "
+                    f"known-unsubscribed [{lo},{hi}]")
+
+        # (3) exact vendor <-> ledger agreement on every non-escalating return
+        if not escalated:
+            if held is None:
+                assert open_rows == [], f"{label}: vendor holds nothing but epochs are open"
+            else:
+                assert len(open_rows) == 1 and open_rows[0][0] == held, (
+                    f"{label}: vendor holds {held!r} but open epochs are {open_rows}")
+    finally:
+        w.close()
