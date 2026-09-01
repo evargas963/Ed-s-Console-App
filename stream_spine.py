@@ -511,11 +511,20 @@ class CaptureWriter:
         t = ts if ts is not None else time.time()
         r = reason if reason is not None else self.COVERAGE_ORPHAN_REASON
         try:
-            cur = self._conn.execute(
+            # MEASURE the orphan count, never infer it from cursor.rowcount: sqlite3
+            # reports -1 when it cannot determine the affected-row count, and coercing
+            # that to 0 would silently report "no orphans found" for a reconciliation
+            # that may have closed many -- the exact silent-zero shape this repo bans.
+            # The count is read on the same connection immediately before the UPDATE
+            # that consumes it, so it is the number of rows actually reconciled.
+            n = int(self._conn.execute(
+                "SELECT COUNT(*) FROM stream_coverage_epochs "
+                "WHERE ended_ts IS NULL").fetchone()[0])
+            self._conn.execute(
                 "UPDATE stream_coverage_epochs SET ended_ts=?, reason=? "
                 "WHERE ended_ts IS NULL", (t, r))
             self._conn.commit()
-            return int(cur.rowcount or 0)
+            return n
         except Exception as e:
             raise CoverageWriteError(f"reconcile_orphan_coverage_epochs: {e}") from e
 
