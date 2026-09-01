@@ -1393,6 +1393,53 @@ def test_exhaustive_failure_matrix_never_claims_false_coverage(
         w.close()
 
 
+def test_an_unpublishable_surrender_must_not_release_the_vendor(tmp_path, monkeypatch):
+    """WRITE-AHEAD RETRACTION. A published coverage claim is a LATCHED POSITIVE: it stands
+    until something overwrites it. So a surrender the daemon cannot PUBLISH is as
+    disqualifying as one it cannot durably close.
+
+    MEASURED before the retraction was ordered first: with both the durable close and the
+    claim write failing, the row stayed open, the previously published claim stayed
+    standing, and it was still inside the liveness TTL — so the real consumer returned
+    contract_match=true against a 0.07s-old heartbeat naming an epoch the daemon had
+    already given up. "The heartbeat will go stale" is not a defence; staleness is a whole
+    TTL away.
+
+    The fix is the same shape as the durable-close-first law beside it: retract the claim
+    BEFORE touching the vendor, and if the retraction cannot be published, keep the
+    subscription — which keeps the standing claim TRUE — rather than surrendering behind a
+    claim nobody can be told about."""
+    db = tmp_path / "cap.db"
+    w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
+    try:
+        eid = w.open_coverage_epoch(_SPY_CONTRACT, "LEVELONE_OPTIONS",
+                                    reason="active_contract_set", ts=1.0)
+        epoch_state = {"l1": eid}
+
+        # The durable close still WORKS; only the claim publication fails. That isolates
+        # the retraction as the thing being gated — nothing else here can explain a pass.
+        def _no_publish(*a, **k):
+            raise CoverageWriteError("claim publication unavailable")
+        monkeypatch.setattr(w, "write_heartbeat", _no_publish)
+
+        stream = _FlakyOptionStream()
+        held = _switch_tick(stream, w, epoch_state, _SPY_CONTRACT, _QQQ_CONTRACT)
+
+        assert held == _SPY_CONTRACT, "the vendor must still hold the old contract"
+        assert stream.calls == [], (
+            "no vendor operation may run behind an unpublishable surrender; got "
+            f"{stream.calls}")
+        rows = _one_service_open(db)
+        assert len(rows) == 1 and rows[0][1] == _SPY_CONTRACT, (
+            f"the epoch must remain open and current, so the standing claim stays TRUE; "
+            f"got {rows}")
+        assert epoch_state["l1"] == eid, "the epoch id must be reinstated as current"
+        assert _pending_ids(epoch_state, "l1") == set(), (
+            "a still-live epoch must not be queued for closing")
+    finally:
+        w.close()
+
+
 def test_deferred_close_records_the_surrender_time_not_the_retry_time(tmp_path, monkeypatch):
     """A DEFERRED close must not drag ended_ts forward across the durable-write outage.
 

@@ -525,7 +525,7 @@ class OptionCoverageCompensationError(RuntimeError):
 COVERAGE_CLAIM_SERVICES = {"l1": "LEVELONE_OPTIONS", "book": "OPTIONS_BOOK"}
 
 
-def _publish_coverage_claim(writer, epoch_state: dict) -> None:
+def _publish_coverage_claim(writer, epoch_state: dict) -> bool:
     """Publish WHAT THIS PRODUCER CURRENTLY CLAIMS to be subscribed, per option service.
 
     An open coverage row is history, not an assertion. A durable CLOSE that fails leaves
@@ -540,19 +540,31 @@ def _publish_coverage_claim(writer, epoch_state: dict) -> None:
     heartbeat interval later, and a successful switch confirms immediately instead of
     reading as UNKNOWN until the next beat.
 
-    Best effort by construction: if this write ALSO fails the daemon cannot publish
-    anything, its heartbeat stops advancing, and the reader's staleness gate makes
-    producer identity unknown — which is the correct fail-closed outcome, never a false
-    positive. Never raises: it is a truth-publication side effect, not the caller's work."""
+    RETURNS whether the claim actually landed, and callers surrendering coverage MUST
+    check it. A claim is a LATCHED POSITIVE: once published it stands until something
+    overwrites it. If a retraction cannot be written, the PREVIOUS claim is still there
+    and still inside the liveness TTL, so a consumer reading it confirms a subscription
+    the daemon has already given up — measured at the pre-write-ahead shape:
+    contract_match=true against a 0.07s-old heartbeat claiming a surrendered epoch.
+    "The heartbeat will go stale" is not a defence; staleness is up to a full TTL away.
+
+    Passing an empty mapping publishes a FULL RETRACTION (nothing claimed), which is how
+    a caller gives up coverage it cannot describe per-key yet.
+
+    Never raises: truth publication is a side effect, not the caller's work — but its
+    failure is reported to the caller as False, never swallowed."""
     if writer is None or epoch_state is None:
-        return
+        return False
     try:
         writer.write_heartbeat(claimed_coverage={
             service: epoch_state.get(key)
             for key, service in COVERAGE_CLAIM_SERVICES.items()})
-    except Exception as e:  # noqa: BLE001 — see the fail-closed note above
-        print(f"coverage claim publish failed (producer identity will read as "
-              f"UNKNOWN until the next successful heartbeat): {type(e).__name__}: {e}")
+        return True
+    except Exception as e:  # noqa: BLE001 — reported to the caller, see above
+        print(f"coverage claim publish FAILED — the previously published claim still "
+              f"stands and is still within the liveness TTL, so this surrender cannot be "
+              f"made visible yet: {type(e).__name__}: {e}")
+        return False
 
 
 def _epoch_close_is_pending(epoch_state: dict, key: str, epoch_id: "int | None") -> bool:
@@ -611,17 +623,23 @@ def _try_close_one(writer, epoch_state: dict, key: str, epoch_id: int, *, reason
 
 
 def _close_coverage_epoch_tracked(writer, epoch_state: dict, key: str, *, reason: str,
-                                  surrendered_ts: float | None = None) -> None:
+                                  surrendered_ts: float | None = None,
+                                  require_publish: bool = False) -> bool:
     """Close the CURRENT epoch for `key` (epoch_state[key]), if any. On failure the id
     moves into a per-key pending-close set instead of being discarded — retried by
     _retry_pending_epoch_closes on every later reconciliation tick until it durably
     closes. NEVER silently forgets an epoch id: an unclosed epoch would permanently
     misreport an ended coverage window as still open (the exact class of bug this
-    function exists to prevent — see CoverageWriteError's own docstring)."""
+    function exists to prevent — see CoverageWriteError's own docstring).
+
+    RETURNS whether the surrender was PUBLISHED (the retraction of the producer claim
+    landed). False means the previously published claim still stands: the caller has not
+    actually been able to give this coverage up as far as any consumer can tell, and must
+    not proceed to surrender the vendor subscription behind it."""
     epoch_id = epoch_state.get(key)
     epoch_state[key] = None
     if epoch_id is None:
-        return
+        return True
     # Coverage is surrendered HERE — at the decision, before the durable write is even
     # attempted and (under close-first) before the vendor is touched. Pinning ended_ts to
     # this instant is what keeps the claim conservative when the write has to be retried.
@@ -631,11 +649,27 @@ def _close_coverage_epoch_tracked(writer, epoch_state: dict, key: str, *, reason
     # down, and a shutdown surrenders capture before the writer drain (which alone may
     # take up to 60s). Passing that earlier instant keeps the ledger conservative; taking
     # time.time() here would claim coverage across a window we already know was dead.
+    # WRITE-AHEAD RETRACTION. The claim is withdrawn BEFORE the durable close is even
+    # attempted, and its success is what the caller gates the vendor surrender on. Doing
+    # it afterwards was not enough: if the close AND the retraction both failed, the row
+    # stayed open, the previous claim stayed published, and that claim was still inside
+    # the liveness TTL — so a consumer confirmed a subscription already given up. Ordering
+    # it first means a caller can learn it cannot publish the surrender BEFORE performing
+    # one, exactly as the durable-close-first law already governs the vendor transition.
+    published = _publish_coverage_claim(writer, epoch_state)
+    if not published and require_publish:
+        # `require_publish` callers CAN decline to surrender (the vendor transition is
+        # theirs to defer), so nothing is given up at all: the epoch stays current and the
+        # row is deliberately NOT closed. Closing it here while the standing claim still
+        # named it would leave memory and ledger disagreeing — a closed row the daemon
+        # still believes it holds. Callers that MUST surrender (a recycle tearing down a
+        # dying socket, a shutdown) leave this False and proceed; their residual exposure
+        # is documented at those call sites.
+        epoch_state[key] = epoch_id
+        return False
     _try_close_one(writer, epoch_state, key, epoch_id, reason=reason,
                    surrendered_ts=time.time() if surrendered_ts is None else surrendered_ts)
-    # Surrender is now published, whether or not the row could actually be closed. This
-    # is the step that stops a failed close from reading as a live subscription.
-    _publish_coverage_claim(writer, epoch_state)
+    return published
 
 
 def _open_coverage_epoch_tracked(writer, epoch_state: dict, key: str, symbol: str,
@@ -761,12 +795,22 @@ async def _reconcile_option_service(stream, held: str | None, requested: str | N
                 # tick. This replaces the old unsub-then-resubscribe rollback, which
                 # only restored the END state and could not undo the interval.
                 closing_epoch_id = epoch_state.get(epoch_key)
-                _close_coverage_epoch_tracked(writer, epoch_state, epoch_key,
-                                              reason="active_contract_changed")
-                if _epoch_close_is_pending(epoch_state, epoch_key, closing_epoch_id):
-                    print(f"{service_name}: durable coverage-epoch CLOSE failed for "
-                          f"{held} — leaving the vendor subscription untouched and "
-                          f"NOT subscribing {requested}; retrying the transition later")
+                surrender_published = _close_coverage_epoch_tracked(
+                    writer, epoch_state, epoch_key, reason="active_contract_changed",
+                    require_publish=True)
+                # An UNPUBLISHABLE surrender is as disqualifying as an unwritable close.
+                # If the retraction did not land, the previously published claim still
+                # names this epoch and is still inside the liveness TTL, so surrendering
+                # the vendor now would make that standing claim FALSE with no way to say
+                # so. Keeping the subscription keeps the standing claim TRUE instead —
+                # the same fail-closed shape as the durable-close failure beside it.
+                if (not surrender_published
+                        or _epoch_close_is_pending(epoch_state, epoch_key, closing_epoch_id)):
+                    why = ("durable coverage-epoch CLOSE failed" if surrender_published
+                           else "the coverage-claim RETRACTION could not be published")
+                    print(f"{service_name}: {why} for {held} — leaving the vendor "
+                          f"subscription untouched and NOT subscribing {requested}; "
+                          f"retrying the transition later")
                     # The epoch is still open and still describes a live subscription,
                     # so it is the CURRENT epoch again and closing it is not the correct
                     # action to retry behind a subscription we deliberately kept.
@@ -774,6 +818,10 @@ async def _reconcile_option_service(stream, held: str | None, requested: str | N
                     _discard_pending_close(epoch_state, epoch_key, closing_epoch_id)
                     _retry_pending_epoch_closes(writer, epoch_state, epoch_key,
                                                 reason="retry_pending_close")
+                    # Re-assert the claim we just withdrew: the subscription is still
+                    # live. If THIS write fails too the claim stays retracted, which
+                    # under-claims — the safe direction, never a false positive.
+                    _publish_coverage_claim(writer, epoch_state)
                     return held
                 # Surrendered only if there was an actual open claim to surrender. Under
                 # production coverage authority the entry invariant above guarantees one
@@ -1401,6 +1449,13 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
                 # involves a bounded vendor logout, so stamping ended_ts afterwards would
                 # claim coverage across a window we had already given up on.
                 recycle_surrendered_ts = time.time()
+                # WRITE-AHEAD RETRACTION, before the subscription actually dies below.
+                # The published claim is a latched positive: retracting it only after the
+                # teardown leaves it standing — and inside the liveness TTL — across the
+                # whole window in which the vendor subscription is already gone. Passing
+                # an empty mapping claims nothing without touching option_epoch_state, so
+                # this cannot interact with the stream-generation ownership teardown.
+                _publish_coverage_claim(writer, {})
                 book_state["stream"] = None   # poll loop must not use the dying stream
                 option_state["stream"] = None
                 # RETIRE THE WHOLE GENERATION FIRST — control tasks (cancelled AND
@@ -1475,6 +1530,10 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
         # does not move, and if the durable write has to be retried the pending-close map
         # replays this same instant.
         shutdown_surrendered_ts = time.time()
+        # WRITE-AHEAD RETRACTION, for the same reason as the recycle: capture stops below,
+        # and a claim retracted only afterwards stands (and stays fresh) across the whole
+        # teardown and writer drain.
+        _publish_coverage_claim(writer, {})
         await _shutdown_sequence(pump_task, writer_task, stop, wsub,
                                  extra_producers=(alpaca_task, *control_tasks))
         # The daemon's own Schwab session must not outlive the daemon. _shutdown_sequence
