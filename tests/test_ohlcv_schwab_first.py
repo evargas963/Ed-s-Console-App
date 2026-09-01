@@ -128,6 +128,13 @@ def _tracked_py_files() -> list[Path]:
     allowlist entry, but that is a list somebody has to keep true. The index already answers
     'is this repository code', it answers it for every future directory nobody thought of, and
     a staged file counts the moment it is staged.
+
+    # institutional-scan-ok: this is the RC-274 silent-zero PRODUCTION-correctness gate,
+    # explicitly pinned to keep its own independent git-ls-files scope by
+    # test_gate_scope_is_the_git_index_v1.py::test_the_two_repo_wide_product_gates_use_the_index
+    # (asserts "git ls-files" stays in THIS file's source) -- not a redundant TEST
+    # observation `repo_index` happens to also serve, but the one gate RC-274/RC-286
+    # exist to keep correct on its own terms.
     """
     proc = subprocess.run(
         ["git", "ls-files", "-z", "--", "*.py"],

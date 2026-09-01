@@ -39,9 +39,20 @@ def _doc(*lanes: dict) -> dict:
     }
 
 
-def test_committed_ledger_is_coherent():
-    doc = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
-    assert validate_ledger(doc) == [], "committed ledger must pass its own gate"
+# TEST_SYSTEM_REHAB_V2 final remediation: `test_committed_ledger_is_coherent`
+# (was: `doc = json.loads(SCHEMA_PATH.read_text(...)); assert validate_ledger(doc)
+# == []`) was REMOVED -- an exact live-tree duplicate of Hardening's own
+# "institutional closure gate" CI step (.github/workflows/hardening.yml:83-84:
+# `python tools/check_institutional_closure_gate.py`, which reads this SAME
+# SCHEMA_PATH and calls this SAME validate_ledger on every run). Correct
+# architecture: pytest fault/mutation-tests the checker's LOGIC against synthetic
+# input (every test below this point does exactly that); Hardening runs the
+# checker against the real repository. Re-running the identical real-tree proof a
+# second time inside pytest does not add coverage -- it is the same assertion,
+# against the same file, calling the same function, just a different caller.
+# test_committed_ledger_backtracks_the_three_inflated_closures (below) is NOT a
+# duplicate of this -- it asserts specific per-lane drift-recovery content, not a
+# blanket "the checker returns []".
 
 
 def test_committed_ledger_backtracks_the_three_inflated_closures():

@@ -105,8 +105,24 @@ def test_narrow_chain_flip_is_reported_low_confidence() -> None:
     chain, spot = _load_real_chain()
     flip, confidence, diag = compute_gamma_flip_v2(chain, spot)
     assert confidence == GAMMA_FLIP_NARROW
-    assert diag["span_below_pct"] < 0.05 or diag["span_above_pct"] < 0.05
-    assert diag["n_strikes"] > 0 and diag["strike_lo"] < diag["strike_hi"]
+    # TEST_SYSTEM_REHAB_V2_RESIDUAL_CLOSURE (weak-assertion item 6): the next line was
+    # `assert diag["span_below_pct"] < 0.05 or diag["span_above_pct"] < 0.05` -- LOGICALLY
+    # IMPLIED by the assertion above it. compute_gamma_flip_v2 returns GAMMA_FLIP_NARROW
+    # exactly when `not covers_regime`, which IS `span_below < 0.05 or span_above < 0.05`
+    # against the same hardcoded GAMMA_FLIP_MIN_SPAN_PCT=0.05. It restated the verdict in
+    # raw numbers and could not fail independently. Likewise `n_strikes > 0` was
+    # guaranteed (an empty chain returns GAMMA_FLIP_UNAVAILABLE, already excluded above).
+    # What this fixture actually proves, and nothing else asserted: the served flip lies
+    # OUTSIDE the delivered strike range -- an extrapolated level -- which is precisely
+    # why the NARROW verdict must ride along with it.
+    assert flip is not None and flip > diag["strike_hi"], (
+        f"this narrow chain's flip is extrapolated past its own top strike "
+        f"(flip={flip}, strike_hi={diag['strike_hi']}); that is the condition the "
+        f"NARROW tier exists to disclose")
+    assert diag["covers_regime_span"] is False and diag["covers_level_span"] is False, (
+        "both span-coverage flags must be False for a NARROW verdict; a tier-selection "
+        "inversion would flip these while leaving the raw spans untouched")
+    assert diag["strike_lo"] < diag["strike_hi"]
 
 
 def test_flip_v2_fails_closed_without_inputs() -> None:

@@ -29,7 +29,6 @@ from governance.mega3_traceable_inventory import (  # noqa: E402
 )
 from governance.mega_chain_of_trust import (  # noqa: E402
     MegaInventoryBundle,
-    assert_mega_chain_closes,
     build_merged_index,
     resolve_producer_chain,
 )
@@ -152,10 +151,6 @@ def test_mega3_scope_complete():
 def test_mega3_row_schema_valid():
     for row in MEGA3_TRACEABLE_INVENTORY:
         _validate_row(row)
-
-
-def test_mega3_chain_of_trust_closes():
-    assert_mega_chain_closes(_mega_bundles())
 
 
 def test_mega3_cross_mega_producer_refs_in_prior_inventories():

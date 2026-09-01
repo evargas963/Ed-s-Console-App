@@ -1,3 +1,6 @@
+"""market_state._schwab_days_to_expiration_for_contract must use Schwab's own DTE
+field, never a locally date-subtracted approximation -- a wrong DTE silently
+mis-weights every downstream charm/parity computation for that contract."""
 from __future__ import annotations
 
 from market_state import _build_contract_context_ms, _schwab_days_to_expiration_for_contract

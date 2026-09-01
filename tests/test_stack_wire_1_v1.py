@@ -143,7 +143,12 @@ def test_state_error_truncation_constant():
     assert server.STATE_ERROR_DETAIL_MAX_CHARS == 120
     ms_src = inspect.getsource(market_state.build_market_state)
     srv_src = inspect.getsource(server._logger_fetch_and_log)
-    assert "[:120]" not in ms_src or "STATE_ERROR_DETAIL_MAX_CHARS" in ms_src
+    # TEST_SYSTEM_REHAB_V2: was `"[:120]" not in ms_src or "STATE_ERROR_DETAIL_MAX_CHARS"
+    # in ms_src` -- the constant appearing ANYWHERE in build_market_state's source
+    # (not necessarily at the truncation site) satisfied the OR, so a reintroduced
+    # hardcoded `[:120]` slice sitting alongside an unrelated mention of the constant
+    # would still pass. Made consistent with the strict server.py check below.
+    assert "[:120]" not in ms_src, "market_state truncation reintroduced a hardcoded magic number"
     assert "[:120]" not in srv_src
 
 

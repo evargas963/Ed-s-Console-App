@@ -94,8 +94,25 @@ def test_a_chain_too_narrow_for_the_at_spot_sign_still_stands_everything_aside()
         spot=100.0, flip=99.0, flip_confidence=GAMMA_FLIP_NARROW,
         put_wall=95.0, call_wall=105.0, gamma_at_spot=5.0e9, ticker="SPY",
     )
-    assert not read.regime or read.regime in ("", None) or "not trustworthy" in " ".join(read.lines), (
-        f"a NARROW chain must not issue a regime: {read.regime} / {read.lines}")
+    # TEST_SYSTEM_REHAB_V2_RESIDUAL_CLOSURE (weak-assertion item 5): was a 3-way
+    # `or` in which the first two disjuncts are DEAD (measured: regime is the truthy
+    # string 'UNAVAILABLE', so `not read.regime` and `read.regime in ("", None)` are
+    # both False) and the entire discriminating power sat on a PROSE substring,
+    # "not trustworthy". That is wrong in both directions: rewording the operator
+    # sentence broke the test with zero behavior change, and -- the real hole -- if
+    # the fail-closed tier guard were loosened to admit NARROW, the function would
+    # return a LIVE regime/posture off an untrustworthy chain and this still passed
+    # so long as any advisory line anywhere contained the phrase. The test's own
+    # name promises "stands everything aside", yet posture was never asserted.
+    # Pinned to the withheld-state IDENTITIES instead of prose.
+    from terrain_read import POSTURE_STAND_ASIDE, REGIME_UNAVAILABLE
+
+    assert read.regime == REGIME_UNAVAILABLE, (
+        f"a NARROW chain must withhold the regime entirely, got {read.regime!r}")
+    assert read.posture == POSTURE_STAND_ASIDE, (
+        f"a NARROW chain must stand aside, got {read.posture!r}")
+    assert "not trustworthy" in " ".join(read.lines), (
+        f"the operator must be told why it was withheld: {read.lines}")
 
 
 def test_regime_wording_discloses_the_modeled_dealer_sign():

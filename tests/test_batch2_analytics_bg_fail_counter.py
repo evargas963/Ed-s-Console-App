@@ -185,8 +185,13 @@ def test_resolve_ticker_param_symbol_alias():
 
 
 def test_api_state_symbol_alias_routes_to_symbol(monkeypatch):
+    """TEST_SYSTEM_REHAB_V2 final remediation: get_state is a plain sync handler
+    (FastAPI Query params only) with no auth/middleware/serialization-shaping
+    dependency -- the HTTP round trip added nothing a direct call doesn't already
+    prove."""
+    import json
+
     import server as srv
-    from starlette.testclient import TestClient
 
     seen: dict[str, str] = {}
 
@@ -197,29 +202,28 @@ def test_api_state_symbol_alias_routes_to_symbol(monkeypatch):
         return JSONResponse({"ticker": ticker, "update_source": update_source})
 
     monkeypatch.setattr(srv, "_tier_c_analytics_json_response", fake_tier)
-    with TestClient(srv.app) as client:
-        r = client.get("/api/state", params={"symbol": "QQQ"})
-        assert r.status_code == 200
-        assert r.json()["ticker"] == "QQQ"
+    resp = srv.get_state(symbol="QQQ")
+    body = json.loads(resp.body)
+    assert body["ticker"] == "QQQ"
     assert seen["ticker"] == "QQQ"
 
 
 def test_api_build_exposes_git_sha(monkeypatch):
     """BUILD_IDENTITY semantics (operator-approved 2026-07-10): git_sha is the
     STARTUP process identity; request-time repo state lives only under
-    repository_state_now.repo_head_now."""
+    repository_state_now.repo_head_now.
+
+    TEST_SYSTEM_REHAB_V2 final remediation: api_build is a plain sync handler with
+    no auth/middleware/serialization-shaping dependency -- the HTTP round trip added
+    nothing a direct call doesn't already prove."""
     import server as srv
-    from starlette.testclient import TestClient
 
     monkeypatch.setattr(srv, "_repo_git_head_sha", lambda: "abc123deadbeef")
-    with TestClient(srv.app) as client:
-        r = client.get("/api/build")
-        assert r.status_code == 200
-        body = r.json()
-        assert body["git_sha"] == body["process_identity"]["startup_git_sha"]
-        assert body["repository_state_now"]["repo_head_now"] == "abc123deadbeef"
-        assert body["git_sha_semantics"] == "startup_process_identity"
-        assert body["contract"] == "meet_or_exceed_v1"
+    body = srv.api_build()
+    assert body["git_sha"] == body["process_identity"]["startup_git_sha"]
+    assert body["repository_state_now"]["repo_head_now"] == "abc123deadbeef"
+    assert body["git_sha_semantics"] == "startup_process_identity"
+    assert body["contract"] == "meet_or_exceed_v1"
 
 
 def test_publish_progressive_tier_c_cache_non_pending_shell():
@@ -331,8 +335,14 @@ def test_publish_progressive_tier_c_cache_non_pending_shell():
 
 
 def test_post_analytics_warm_schedules_recompute_and_prewarm(monkeypatch):
+    """TEST_SYSTEM_REHAB_V2 final remediation: post_analytics_warm is an async
+    handler (real thread-pool offload via loop.run_in_executor, no auth/middleware/
+    serialization-shaping dependency) -- the HTTP round trip added nothing a direct
+    asyncio.run(...) call doesn't already prove."""
+    import asyncio
+    import json
+
     import server as srv
-    from fastapi.testclient import TestClient
 
     scheduled: list[tuple] = []
 
@@ -344,10 +354,11 @@ def test_post_analytics_warm_schedules_recompute_and_prewarm(monkeypatch):
     )
     monkeypatch.setattr(srv, "_touch_tracked_ticker_view", lambda _t: None)
 
-    client = TestClient(srv.app)
-    resp = client.post("/api/analytics/warm?ticker=SPY")
-    assert resp.status_code == 200
-    body = resp.json()
+    # symbol/expiry must be passed explicitly: calling the handler directly bypasses
+    # FastAPI's Query(...) dependency resolution, so an omitted Query-typed param
+    # stays the unresolved Query() sentinel object rather than its declared default.
+    resp = asyncio.run(srv.post_analytics_warm(ticker="SPY", symbol=None, expiry=None))
+    body = json.loads(resp.body)
     assert body.get("ok") is True
     assert body.get("ticker") == "SPY"
     assert scheduled
@@ -356,13 +367,12 @@ def test_post_analytics_warm_schedules_recompute_and_prewarm(monkeypatch):
 
 
 def test_api_build_exposes_ui_maximize_sla():
+    """TEST_SYSTEM_REHAB_V2 final remediation: api_build is a plain sync handler
+    with no auth/middleware/serialization-shaping dependency -- the HTTP round trip
+    added nothing a direct call doesn't already prove."""
     import server as srv
-    from fastapi.testclient import TestClient
 
-    client = TestClient(srv.app)
-    resp = client.get("/api/build")
-    assert resp.status_code == 200
-    body = resp.json()
+    body = srv.api_build()
     sla = body.get("ui_maximize_sla_ms") or {}
     assert sla.get("first_quote") == srv.UI_MAXIMIZE_SLA_MS["first_quote"]
     assert sla.get("fusion_cards_panel_warm") == srv.UI_MAXIMIZE_SLA_MS["fusion_cards_panel_warm"]

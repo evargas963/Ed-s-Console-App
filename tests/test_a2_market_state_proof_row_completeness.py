@@ -1,3 +1,6 @@
+"""Every field of a fully-populated option contract must flow through
+build_a2_option_expression / module_a_adapter into the market-state proof row --
+a field silently dropped here is a silent gap in the auditable decision trail."""
 from __future__ import annotations
 
 from market_state import _oe_chain_row_snapshot, recommend_option_expression

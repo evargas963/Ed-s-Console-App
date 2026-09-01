@@ -59,7 +59,10 @@ def test_quote_hook_returns_the_published_of_signature(srv_clean_of):
 
 
 def test_diagnostics_includes_of_hook_counters(monkeypatch):
-    from starlette.testclient import TestClient
+    """TEST_SYSTEM_REHAB_V2 final remediation: get_l1_diagnostics is a plain sync
+    handler with no auth/middleware/lifespan dependency -- the HTTP round trip added
+    nothing a direct call doesn't already prove."""
+    import json
 
     import server as srv
 
@@ -68,8 +71,6 @@ def test_diagnostics_includes_of_hook_counters(monkeypatch):
         "get_quote",
         lambda t: {"spot": 400.0, "bid": 399.0, "ask": 401.0},
     )
-    with TestClient(srv.app) as client:
-        r = client.get("/api/diagnostics/l1")
-        j = r.json()["ed_l1"]
-        assert "l1_of_quote_hook_engine_total" in j
-        assert "l1_of_quote_hook_reuse_total" in j
+    j = json.loads(srv.get_l1_diagnostics().body)["ed_l1"]
+    assert "l1_of_quote_hook_engine_total" in j
+    assert "l1_of_quote_hook_reuse_total" in j

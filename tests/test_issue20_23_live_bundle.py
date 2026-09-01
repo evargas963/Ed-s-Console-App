@@ -345,24 +345,31 @@ def _assert_sse_cache_bypass_for_key(
 
 
 def test_api_analytics_light_is_tier_b_fast_path():
-    """L1 /api/analytics/light — formal plane contract; no Tier C pipeline."""
-    from starlette.testclient import TestClient
+    """L1 /api/analytics/light — formal plane contract; no Tier C pipeline.
+
+    TEST_SYSTEM_REHAB_V2_RESIDUAL_CLOSURE (TestClient adjudication): REWRITE.
+    get_analytics_light is an async handler taking only Query params and returning a
+    JSONResponse it builds itself; it declares no Request, no auth, no middleware and
+    no response_model. Every field asserted below (including "_endpoint") is a value
+    the handler writes into its own payload, not one the routing layer supplies, so
+    the HTTP round trip proved nothing extra. The genuinely lifespan- and
+    request-lifecycle-dependent tests in this file (the SSE cache-bypass and
+    viewer-owned scheduling races) deliberately stay on TestClient."""
+    import asyncio
+    import json
 
     import server as srv
 
-    with TestClient(srv.app) as client:
-        r = client.get("/api/analytics/light", params={"ticker": "SPY"})
-        assert r.status_code == 200
-        j = r.json()
-        assert j.get("plane") == "L1_context"
-        assert j.get("merge_rule") == "L0_plus_acknowledged_L2_snapshot"
-        assert j.get("_tier") == "B_light"
-        assert j.get("_endpoint") == "/api/analytics/light"
-        assert "l2_snapshot_version_used" in j
-        assert "l1_generation" in j
-        assert "order_flow" in j
-        assert "b_light_generated_at" in j
-        assert "tier_b_structural" in j
+    j = json.loads(asyncio.run(srv.get_analytics_light(ticker="SPY", expiry=None)).body)
+    assert j.get("plane") == "L1_context"
+    assert j.get("merge_rule") == "L0_plus_acknowledged_L2_snapshot"
+    assert j.get("_tier") == "B_light"
+    assert j.get("_endpoint") == "/api/analytics/light"
+    assert "l2_snapshot_version_used" in j
+    assert "l1_generation" in j
+    assert "order_flow" in j
+    assert "b_light_generated_at" in j
+    assert "tier_b_structural" in j
 
 
 def test_api_state_viewer_owned_serves_cache_without_scheduling(monkeypatch, _cache_test_key):

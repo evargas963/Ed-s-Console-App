@@ -101,11 +101,24 @@ def test_pin_fails_closed_without_dollarized_gex():
 
 
 def test_hvl_and_walls_still_pick():
+    """TEST_SYSTEM_REHAB_V2_RESIDUAL_CLOSURE (weak-assertion item 1 of the 17-20 block):
+    was `assert cg is not None or pg is not None` -- presence-only, with an `or` that
+    made a ONE-SIDED TOTAL FAILURE invisible. pick_gamma_wall_strikes resolves the call
+    wall and the put wall through two INDEPENDENT _pick_strike_max_metric calls; if the
+    put side returned None for every strike, `cg is not None` alone kept this green.
+    That is not hypothetical: put_gex_1pct is stored NEGATIVE, and _pick_strike_max_metric
+    skips any value <= 0, so dropping the abs() in bucket_metric_abs makes pg None for
+    EVERY chain -- and the old assertion passed. Both picks are now pinned to the values
+    this fixture actually produces (measured 745.0/745.0/745.0, the same numbers
+    test_consensus_walls_bind_terrain_ssot... pins downstream through build_walls_rows)."""
     exposures, spot = _dollarized_exposures()
     hvl = pick_hvl_strike(exposures, sorted(exposures.keys()))
-    assert hvl is not None
+    assert hvl == 745.0, f"HVL moved off the fixture's known strike: {hvl}"
     (cg, _), (pg, _) = pick_gamma_wall_strikes(exposures, sorted(exposures.keys()))
-    assert cg is not None or pg is not None
+    assert cg == 745.0, f"call gamma wall moved: {cg}"
+    assert pg == 745.0, (
+        f"put gamma wall moved: {pg} — a None here means the put side stopped resolving "
+        f"entirely (the negative-metric/abs() regression), which the old `or` hid")
 
 
 def _three_way_split_exposures():

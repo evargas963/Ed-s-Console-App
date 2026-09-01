@@ -42,6 +42,15 @@ def test_fast_quote_endpoint_returns_fast_fields(monkeypatch):
 
 
 def test_fast_quote_auth_failure_serves_carried_forward_plane(monkeypatch):
+    """TEST_SYSTEM_REHAB_V2 final remediation: this used to ALSO call
+    srv._fetch_fast_quote_payload("SPY") directly first and re-assert the exact same
+    two facts (spot, quote_source_detail.carried_forward) before making the real
+    HTTP call below -- a redundant reassertion of the unit-level behavior
+    tests/test_spot_authority_v1.py::test_carried_forward_quote_is_recorded_with_its_degradation
+    already proves more thoroughly (it additionally proves the plane-recording side
+    effect and generation-ID consistency this file never checked). This file's own
+    contract is the /api/fast-quote HTTP response (its docstring), so only the HTTP
+    round trip below remains -- it is what this file exists to prove."""
     import order_flow_streaming as ofs
     import server as srv
 
@@ -67,10 +76,6 @@ def test_fast_quote_auth_failure_serves_carried_forward_plane(monkeypatch):
         )
 
     monkeypatch.setattr(srv, "_build_rest_fast_quote_payload", _boom)
-    payload = srv._fetch_fast_quote_payload("SPY")
-    assert payload["spot"] == 749.73
-    assert payload["quote_source_detail"]["carried_forward"] is True
-    assert payload["quote_source_detail"]["schwab_auth_degraded"] is True
 
     from starlette.testclient import TestClient
 

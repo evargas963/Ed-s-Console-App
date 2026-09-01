@@ -51,7 +51,10 @@ def test_forward_return_reads_strictly_after_the_touch_bar():
         got = S._forward_ret(sb, i, h)
         want = (sb[i + h]["close"] - sb[i]["close"]) / sb[i]["close"]
         assert got is not None and abs(got - want) < 1e-12, f"horizon {h} read the wrong bar"
-    assert S._forward_ret(sb, i, 0) == 0.0 or S._forward_ret(sb, i, 0) is not None
+    assert S._forward_ret(sb, i, 0) == 0.0, (
+        "horizon 0 must read the touch bar's own close against itself (identically "
+        "0.0); an off-by-one that reads the NEXT bar instead would return a nonzero, "
+        "non-None value and previously passed this check")
 
 
 def test_levels_under_test_are_all_fixed_before_the_touch():

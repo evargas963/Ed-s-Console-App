@@ -1,3 +1,6 @@
+"""apply_a1_v2_calibration_to_raw_probability: the runtime application of the A1
+isotonic calibration curve to a raw model probability must use the correct
+threshold/lineage, never fall back to an uncalibrated pass-through."""
 from __future__ import annotations
 
 from copy import deepcopy

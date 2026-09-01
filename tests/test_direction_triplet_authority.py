@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import re
-from pathlib import Path
 from types import SimpleNamespace
 
 from numeric_contract import direction_from_normalized_triplet
@@ -17,18 +16,19 @@ _INLINE_TRIPLET_MAX = re.compile(
 )
 
 
-def _repo_root() -> Path:
-    return Path(__file__).resolve().parents[1]
-
-
-def _iter_production_py(root: Path):
-    for path in root.rglob("*.py"):
-        rel = path.relative_to(root)
+#: TEST_SYSTEM_REHAB_V2: was an independent root.rglob("*.py") + per-file read_text --
+#: now sources from the shared tests/conftest.py `repo_index` corpus (one read of the
+#: whole tree per run, not a private re-walk per file). Filter semantics unchanged
+#: (skip tests/ and the same build-tool dirs); repo_index's own skip set is a strict
+#: superset (also excludes build/dist/.pytest_cache/.mypy_cache/.ruff_cache, none of
+#: which ever hold tracked production source).
+def _iter_production_py(repo_index):
+    for rel, text, _tree in repo_index.items():
         if rel.parts and rel.parts[0] == "tests":
             continue
         if any(part in _SKIP_PY_TREE_DIRS for part in rel.parts):
             continue
-        yield path, rel
+        yield rel, text
 
 
 def test_stack_model_stage_ignores_dominant_class_uses_triplet():
@@ -49,14 +49,12 @@ def test_stack_model_stage_ignores_dominant_class_uses_triplet():
     assert path.xgboost.direction == "down"
 
 
-def test_no_inline_triplet_max_outside_numeric_contract():
-    root = _repo_root()
+def test_no_inline_triplet_max_outside_numeric_contract(repo_index):
     allowed = {"numeric_contract.py"}
     offenders: list[str] = []
-    for path, rel in _iter_production_py(root):
+    for rel, src in _iter_production_py(repo_index):
         if rel.name in allowed:
             continue
-        src = path.read_text(encoding="utf-8")
         if _INLINE_TRIPLET_MAX.search(src):
             offenders.append(str(rel).replace("\\", "/"))
     assert not offenders, offenders

@@ -19,15 +19,20 @@ def _minimal_governed_files(model_dir: Path, *, cascade_ok: bool = True):
 
 
 def test_governance_route_serves_dashboard_html():
+    """TEST_SYSTEM_REHAB_V2_RESIDUAL_CLOSURE (TestClient adjudication): REWRITE.
+    governance_visibility_page takes no parameters, no Request, no auth, no
+    middleware; it reads static/governance.html off disk and returns an HTMLResponse
+    (with its own 404 HTMLResponse when the file is absent). The StaticFiles mount is
+    at /static -- a disjoint prefix -- so there is no route-shadowing question of the
+    kind test_single_producer_batch_f02_f13_v1 guards for the RTH-clock route. The
+    HTTP round trip re-proved nothing the response object does not already carry."""
     import server
 
-    from fastapi.testclient import TestClient
-
-    c = TestClient(server.app)
-    r = c.get("/governance")
-    assert r.status_code == 200
-    assert "sec-architecture" in r.text
-    assert "Governance dashboard" in r.text
+    resp = server.governance_visibility_page()
+    assert resp.status_code == 200
+    text = resp.body.decode("utf-8")
+    assert "sec-architecture" in text
+    assert "Governance dashboard" in text
 
 
 def test_governance_html_has_dashboard_sections():
@@ -79,6 +84,13 @@ def test_panel_payload_contains_all_dashboard_sections(monkeypatch, tmp_path: Pa
 
 
 def test_api_governance_panel_emit_notifications_query(monkeypatch, tmp_path: Path):
+    """TEST_SYSTEM_REHAB_V2_RESIDUAL_CLOSURE (TestClient adjudication): KEEP.
+    The distinct HTTP-boundary defect is FastAPI's query-string -> bool coercion.
+    api_governance_panel declares `emit_notifications: bool = Query(False, ...)`, and
+    this test sends the literal STRING "false" the way a browser does. A direct call
+    would hand the handler an already-typed Python False and could never catch the
+    real regression here: the param losing its bool annotation, so the truthy string
+    "false" starts arming live notification delivery on every routine panel refresh."""
     project_root = tmp_path / "proj"
     models_dir = project_root / "models"
     _minimal_governed_files(models_dir, cascade_ok=True)

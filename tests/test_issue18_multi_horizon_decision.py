@@ -1,3 +1,6 @@
+"""multi_horizon_decision's alignment-state classification (ALIGNMENT_STATE_NO_PRIMARY
+etc.) must correctly detect when the primary-horizon decision data is missing rather
+than silently aligning against a stale/absent horizon."""
 from __future__ import annotations
 
 from types import SimpleNamespace

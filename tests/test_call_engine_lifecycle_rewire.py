@@ -1,3 +1,6 @@
+"""call_engine's rewired stop/target wiring through lifecycle_rule_core and
+math_exposure must still compute the correct StopDistance/TargetLevels after the
+rewire -- this proves the seam, not just that the old code path still exists."""
 from __future__ import annotations
 
 from types import SimpleNamespace

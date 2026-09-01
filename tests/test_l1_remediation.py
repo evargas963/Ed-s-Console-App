@@ -247,7 +247,11 @@ def test_notify_ticker_expiry_changed_cold_start_then_cache_read(monkeypatch):
 
 
 def test_l1_diagnostics_endpoint_exposes_ed_l1(monkeypatch):
-    from starlette.testclient import TestClient
+    """TEST_SYSTEM_REHAB_V2 final remediation: get_l1_diagnostics is a plain sync
+    handler with no auth/middleware/lifespan dependency -- nothing here asserts on
+    startup/shutdown sequencing, so the HTTP round trip added nothing a direct call
+    doesn't already prove."""
+    import json
 
     import server as srv
 
@@ -256,24 +260,44 @@ def test_l1_diagnostics_endpoint_exposes_ed_l1(monkeypatch):
         "get_quote",
         lambda t: {"spot": 400.0, "bid": 399.0, "ask": 401.0},
     )
-    with TestClient(srv.app) as client:
-        r = client.get("/api/diagnostics/l1")
-        assert r.status_code == 200
-        j = r.json()
-        assert "ed_l1" in j
-        assert "l1_build_total" in j["ed_l1"]
-        assert "l1_build_by_reason" in j["ed_l1"]
-        assert "policy" in j["ed_l1"]
-        assert "L1_ORDER_FLOW_STALE_SEC" in j["ed_l1"]["policy"]
-        assert "l1_lru_order_len" in j["ed_l1"]
+    j = json.loads(srv.get_l1_diagnostics().body)
+    assert "ed_l1" in j
+    assert "l1_build_total" in j["ed_l1"]
+    assert "l1_build_by_reason" in j["ed_l1"]
+    assert "policy" in j["ed_l1"]
+    assert "L1_ORDER_FLOW_STALE_SEC" in j["ed_l1"]["policy"]
+    assert "l1_lru_order_len" in j["ed_l1"]
 
 
 def test_index_html_l1_scope_and_generation_guards():
+    """TEST_SYSTEM_REHAB_V2_RESIDUAL_CLOSURE (weak-assertion item 4 of the 17-20 block):
+    the last assertion was `"REJECTED stale l1_generation" in html or "stale
+    l1_generation" in html` -- degenerate three ways.
+
+      (1) "stale l1_generation" is a PROPER SUBSTRING of "REJECTED stale
+          l1_generation", so A implies B and `A or B` is exactly B. The left branch
+          could never rescue the right one; it contributed zero power.
+      (2) It was already subsumed by the `"l1_generation" in html` line above it.
+      (3) Worst: the text it matched is a DIAG-gated console.warn with zero
+          production behavior -- ANTI-CORRELATED with the defect. Delete the real
+          guard condition but leave the log line and it passed while stale-frame
+          flicker shipped; reword the log and it failed with no defect at all.
+
+    The real guard is the monotonic-generation call itself. Asserted structurally
+    here; the BEHAVIOR of l1ApplyTierBLightMonotonic (5->7 accept, 7->6 reject,
+    same-gen older serverTs reject) is executed against the real shipped JS by
+    tests/l1_sse_guards_node.mjs, which stays the authority for it."""
     html = (ROOT / "static" / "index.html").read_text(encoding="utf-8", errors="replace")
     assert "_l1GenByScope" in html
     assert "renderTierBLight" in html
     assert "l1_generation" in html
-    assert "REJECTED stale l1_generation" in html or "stale l1_generation" in html
+    assert (
+        "guards.l1ApplyTierBLightMonotonic(scopeKey, g, window._l1GenByScope, "
+        "serverTs, window._l1ServerTsByScope)" in html
+    ), (
+        "renderTierBLight must still route every Tier-B paint through the monotonic "
+        "generation guard — a late HTTP poll carrying an older l1_generation must not "
+        "be allowed to repaint over a newer SSE frame")
 
 
 def test_index_html_l1_quote_vs_of_freshness_ui():
@@ -292,14 +316,13 @@ def test_index_html_l1_quote_vs_of_freshness_ui():
     assert "_l1FreshnessPaint" in html
 
 
-def test_client_l1_generation_guard_logic_mirror():
-    """Mirror index.html: do not accept older l1_generation for the same scope key."""
-
-    def accept(prev: float | None, g: float) -> bool:
-        if prev is not None and g < prev:
-            return False
-        return True
-
-    assert accept(5.0, 3.0) is False
-    assert accept(5.0, 6.0) is True
-    assert accept(None, 1.0) is True
+# DELETED: test_client_l1_generation_guard_logic_mirror. It defined its own Python
+# `accept(prev, g)` and asserted against THAT COPY, never against the shipped client
+# rule -- the same "test the re-implementation, not the implementation" defect class
+# tests/test_l1_cold_start_transition.py documents as already fixed elsewhere. Its
+# three cases (5->3 reject, 5->6 accept, None->1 accept) are strictly subsumed by
+# tests/l1_sse_guards_node.mjs, which executes the REAL
+# static/js/l1_sse_guards.js::l1ApplyTierBLightMonotonic over 5->7 accept, 7->6
+# reject, stale-HTTP-after-newer-SSE reject, same-generation-older-_server_build_ts
+# reject, and same/newer-timestamp accept. Deleting the mirror removes no material
+# defect detection; not replaced.

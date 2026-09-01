@@ -337,6 +337,15 @@ def test_rollback_checkpoint_all_corrupt_or_empty_is_unavailable(tmp_path: Path)
 
 
 def test_manual_promote_endpoint_invokes_only_manual_control(monkeypatch, tmp_path: Path):
+    """TEST_SYSTEM_REHAB_V2_RESIDUAL_CLOSURE (TestClient adjudication): KEEP.
+    api_governance_manual_promote is `(request: Request, payload: dict = Body(...))`
+    and gates on `request.client.host` via client_may_run_governance_action -- a
+    localhost-vs-remote AUTHORIZATION check driven by the real ASGI connection, on
+    the one endpoint in this app that can promote a model architecture. Only a real
+    request supplies `request.client`; a direct call would have to fabricate one,
+    which tests the fake rather than the boundary. This proves the POST clears BOTH
+    gates (the ED_GOVERNANCE_UI_ACTIONS flag and the client-host check) before
+    manual_promote_to_active_explicit is reached at all."""
     monkeypatch.setenv("ED_GOVERNANCE_UI_ACTIONS", "1")
     monkeypatch.setenv("ED_GOVERNANCE_ALLOW_REMOTE", "1")
     project_root = tmp_path / "proj"

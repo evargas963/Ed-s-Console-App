@@ -369,7 +369,15 @@ def test_meta_assembly_uses_canonical_dataframe_ingress() -> None:
 
     text = (Path(__file__).resolve().parent.parent / "ml_scheduler.py").read_text(encoding="utf-8")
     assert "records_for_mvp_from_dataframe" in text
-    assert '.to_dict("records")' not in text or "records_for_mvp_from_dataframe(df)" in text
+    # TEST_SYSTEM_REHAB_V2: was `'.to_dict("records")' not in text or
+    # "records_for_mvp_from_dataframe(df)" in text` -- a whole-file OR, so a
+    # reintroduced raw `df.to_dict("records")` in the META block would pass as long
+    # as records_for_mvp_from_dataframe(df) is STILL called anywhere else in the
+    # file, exactly the direct-call regression this line claims to ban. Made an
+    # unconditional ban, matching the two explicit bans immediately below it.
+    assert '.to_dict("records")' not in text, (
+        "ml_scheduler.py calls df.to_dict('records') directly -- must go through "
+        "records_for_mvp_from_dataframe(df) instead")
     # Explicit ban: no inline list-comp over raw to_dict in meta block
     assert "[clean_dataframe_row_dict(r) for r in df.to_dict" not in text
     assert '[normalize_pandas_sql_null_row_dict(r) for r in df.to_dict' not in text

@@ -1,3 +1,6 @@
+"""lifecycle_rule_core's risk-multiplier/time-decay/VIX-adjustment/same-bar
+resolution must each apply the correct adjustment -- a wrong multiplier here
+silently mis-sizes every open position's stop/target."""
 from __future__ import annotations
 
 import pytest

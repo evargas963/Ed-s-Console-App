@@ -1,3 +1,5 @@
+"""load_a1_conformal_artifact must round-trip exactly what production writes and
+reject a malformed/stale artifact rather than silently serving wrong calibration."""
 from __future__ import annotations
 
 import json

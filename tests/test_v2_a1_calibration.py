@@ -1,3 +1,6 @@
+"""calibration.v2_a1_calibration's regime-axis/schema wiring against the live
+calibration sqlite schema must reject a missing regime axis rather than silently
+calibrating against an incomplete regime set."""
 from __future__ import annotations
 
 import builtins

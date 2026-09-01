@@ -1,3 +1,6 @@
+"""math_volatility.compute_expected_move_iv must require a real Schwab IV, never
+fall back to a synthetic default IV when the real value is missing -- a synthetic
+default silently fabricates an expected-move number."""
 from __future__ import annotations
 
 from pathlib import Path

@@ -402,12 +402,11 @@ CAPS_LINE_ALLOWLIST: tuple[tuple[str, int | str, str, str], ...] = (
     # 218 -> 217: RC-64 removed a dead `reasons: list[str] = []` initialisation earlier in this
     # file, shifting every following line up by one. The reviewed site is unchanged.
     ("trade_impacting_gate.py", 217, "GET_WITH_DEFAULT", "env config only"),
-    # Log-line labels, not data: `msg.get("src", "?")` fills a DISPLAY string in a diagnostic
-    # log record. No decision, model input, or persisted field reads these — absence genuinely
-    # is "unknown source" for a log line, so "?" is the honest rendering, not a fabricated value.
-    ("stream_spine.py", 229, "GET_WITH_DEFAULT", "log-line source label only"),
-    ("stream_spine.py", 236, "GET_WITH_DEFAULT", "log-line source label only"),
-    ("stream_spine.py", 243, "GET_WITH_DEFAULT", "log-line source label only"),
+    # stream_spine.py's `msg.get("src", "?")` sites moved when native-fidelity/book capture
+    # (2026-08-30) added lines above CaptureWriter.insert(); a line-pinned entry here would
+    # silently stop matching the moment anything shifts again (exactly the failure mode this
+    # allowlist shape is documented above as NOT suited to). Each site now carries its own
+    # `# caps-ok:` marker instead, which travels with the code it excuses.
 )
 
 

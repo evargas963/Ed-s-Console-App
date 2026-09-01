@@ -98,13 +98,14 @@ def test_same_gen_ts_material_diff_increments_identity_violation():
 
 
 def test_diagnostics_l1_sse_light_has_policy_and_semantics():
-    import server as srv
-    from fastapi.testclient import TestClient
+    """TEST_SYSTEM_REHAB_V2 final remediation: get_l1_diagnostics is a plain sync
+    handler with no auth/middleware/serialization-shaping dependency -- the HTTP
+    round trip added nothing a direct call doesn't already prove."""
+    import json
 
-    client = TestClient(srv.app)
-    r = client.get("/api/diagnostics/l1")
-    assert r.status_code == 200
-    light = r.json()["ed_l1"]["l1_sse_light"]
+    import server as srv
+
+    light = json.loads(srv.get_l1_diagnostics().body)["ed_l1"]["l1_sse_light"]
     assert "l1_sse_backpressure_policy" in light
     assert "evict_oldest" in light["l1_sse_backpressure_policy"]
     assert "l1_sse_thread_queue_fairness_policy" in light

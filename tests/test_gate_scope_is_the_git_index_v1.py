@@ -16,7 +16,6 @@ else the shape lives. So the last test here asks that question mechanically.
 
 from __future__ import annotations
 
-import ast
 import subprocess
 import sys
 from collections import Counter
@@ -72,26 +71,26 @@ def _filesystem_enumerating_scanners() -> list[str]:
     scripts. A sweep that inherits its instance's neighbourhood cannot find the class, which
     is the exact failure RC-286's docstring names. The scope is now the git index, which is
     also the answer this whole file is about.
+
+    TEST_SYSTEM_REHAB_V2 (2026-08-31) — UNIFIED SCANNER AUTHORITY. This function used to run
+    its own independent AST walk that matched `.rglob(` only, so it never saw `.glob(` or
+    `os.walk(` sites — a second, weaker implementation of the exact same detection the
+    duplicate-repo-observation recurrence lock (tools/check_institutional_correctness.py::
+    check_no_new_independent_repo_scan_in_tests) already did correctly. There is now exactly
+    ONE AST walk for this shape (`_find_py_source_scan_sites`); this function is a VIEW over
+    its output that adds only the one thing that walk does not do itself: intersecting with
+    the git index, so untracked scratch stays invisible (RC-274 -> RC-286).
     """
-    tracked = subprocess.run(
-        ["git", "ls-files", "-z", "--", "tools/*.py", "tests/*.py"],
-        cwd=REPO, capture_output=True, text=True, check=True).stdout
+    from tools.check_institutional_correctness import _find_py_source_scan_sites
+    tracked = _tracked()
+    hits = (_find_py_source_scan_sites(REPO / "tools", name_glob="*.py")
+            + _find_py_source_scan_sites(REPO / "tests", name_glob="*.py"))
     found: list[str] = []
-    for rel in sorted(p for p in tracked.split("\0") if p):
-        path = REPO / rel
-        if not path.exists():
-            continue
-        try:
-            tree = ast.parse(path.read_text(encoding="utf-8", errors="replace"))
-        except SyntaxError:
-            continue
-        for node in ast.walk(tree):
-            if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
-                    and node.func.attr == "rglob"):
-                for arg in node.args:
-                    if isinstance(arg, ast.Constant) and str(arg.value).endswith(".py"):
-                        found.append(f"{rel}:{node.lineno}")
-    return found
+    for path, lineno in hits:
+        rel = path.relative_to(REPO).as_posix()
+        if rel in tracked:
+            found.append(f"{rel}:{lineno}")
+    return sorted(found)
 
 
 def test_the_two_repo_wide_product_gates_use_the_index():
@@ -138,6 +137,55 @@ def test_the_remaining_filesystem_scanners_are_measured_not_forgotten():
     # (test_news_events_drop x2, test_session_log_drop, test_confluence_log_drop —
     # converted to the shared session RepoIndex), one ARRIVED (tests/conftest.py
     # RepoIndex builder, the single live pass those tests now consume).
+    # tools/check_institutional_correctness.py 5 -> 7 (TEST_SYSTEM_REHAB_V2 2026-08-31):
+    # two NEW, deliberate scanner sites ARRIVED inside this already-tracked file --
+    # check_no_duplicate_tests and check_no_new_independent_repo_scan_in_tests, the two
+    # mechanical recurrence locks that rehab required. Same file, no new file in the set.
+    # 13 files LEFT the same day: test_anti_pattern_family_repo_wide.py,
+    # test_coh_sa1_float_consolidation.py, test_datetime_silent_default_repo_wide.py,
+    # test_direction_triplet_authority.py, test_find_cal_ts_rderive.py,
+    # test_fusion_contract.py, test_mhmlb_namespace_v1.py, test_ml_feature_provenance.py,
+    # test_position_sizing_policy.py, test_replay_hold_bars.py,
+    # test_repo_sweep_error_propagation_v1.py, test_repo_sweep_magic_thresholds_v1.py,
+    # test_stack_wire_4_v1.py -- each migrated its independent root.rglob("*.py") onto
+    # the shared repo_index fixture (check_no_new_independent_repo_scan_in_tests, now
+    # ENFORCED, requires it). This detector (`.rglob(` only) does not yet see the
+    # further 4 files migrated the same day via `.glob(` (test_centralization.py,
+    # test_execution_identity_v1.py, test_market_context_fetch_fail_closed.py,
+    # test_path_authority_v1.py) -- they were never in this frozen set to begin with,
+    # since this older detector never matched `.glob(` in the first place.
+    # 21 -> 62 (TEST_SYSTEM_REHAB_V2, same day, continuation): the gap noted directly
+    # above was CLOSED, not left unresolved. `_filesystem_enumerating_scanners()` no
+    # longer runs its own AST walk -- it now calls the SAME `_find_py_source_scan_sites`
+    # the duplicate-repo-observation lock uses, which also catches `.glob(` and both
+    # `os.walk(` forms. The jump from 21 to 62 is not new scanners appearing; it is the
+    # weaker of two competing implementations being retired. Every one of the 41
+    # newly-visible sites was already there: 4 more `.glob(`-based test_*.py files
+    # (already migrated, already counted by the OTHER detector, now also seen here), a
+    # cluster of `tools/_build_sectionN_inventory.py` one-off scripts, and standalone
+    # tools/ audit CLIs (agent_error_report.py, build_phase3_repo_cleanup.py,
+    # operating_process_lock.py, repo_exposure_audit.py, repo_scoreboard.py,
+    # universal_scope_lock.py x3) that legitimately walk the tree for their own
+    # single-purpose reason and were simply invisible to the old `.rglob(`-only,
+    # endswith(".py")-only matcher. None of these are test files subject to the
+    # ENFORCED redundant-observation lock (that lock stays scoped to tests/test_*.py,
+    # archive/ excluded, and still reports 0) -- this frozen set is the broader,
+    # non-judgmental census the docstring above describes, now computed once.
+    # tools\check_institutional_correctness.py 10 -> 12 (TEST_SYSTEM_REHAB_V2 final
+    # remediation, 2026-08-31): the shared `_find_py_source_scan_sites` detector was
+    # extended to also catch `subprocess.run(["git","ls-files",...])` + a subsequent
+    # per-file content read (the bypass shape ~9-10 test files used, structurally
+    # invisible to the original `.rglob`/`.glob`/`os.walk`-only matcher), and one
+    # new, deliberate `.rglob(` scanner site arrived in this file (the third
+    # recurrence lock, `_find_constant_true_or_assertions`, ENFORCED at 0 real
+    # instances). Both extensions to an ALREADY-tracked file, no new file. 5 NEW
+    # FILES arrived, all in tools/ (never test files, never subject to the ENFORCED
+    # lock, which stays 0): check_one_producer.py, check_private_paths.py,
+    # check_test_claims_are_executed.py, producer_inventory_v1.py,
+    # turn_self_audit.py -- each already did the git-ls-files+read shape for its own
+    # legitimate single-purpose census/audit reason, simply invisible to the old
+    # detector before its git-ls-files extension. None of these are new scans; the
+    # detector just stopped missing a call shape it was blind to.
     per_file = Counter(rel.rsplit(":", 1)[0] for rel in found)
     current = {f"{rel}::{n}" for rel, n in per_file.items()}
     frozen = frozenset(

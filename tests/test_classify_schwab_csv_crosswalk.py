@@ -1,3 +1,7 @@
+"""tools.classify_schwab_csv_crosswalk.classify/disposition_for: the Schwab-field
+crosswalk classification and disposition rules must assign the correct category to
+every field shape, since a wrong disposition here silently mis-routes real vendor
+fields during the crosswalk audit."""
 from __future__ import annotations
 
 from tools.classify_schwab_csv_crosswalk import classify, disposition_for

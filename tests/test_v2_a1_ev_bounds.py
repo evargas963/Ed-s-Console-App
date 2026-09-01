@@ -1,3 +1,7 @@
+"""calibration.v2_a1_ev_bounds.build_a1_ev_bounds_artifact must enforce the same
+statistical-integrity sample gate as the conformal artifact it builds on -- an
+EV-bounds artifact built on an under-sampled bucket would silently overstate
+confidence in the expected-value estimate."""
 from __future__ import annotations
 
 import pytest

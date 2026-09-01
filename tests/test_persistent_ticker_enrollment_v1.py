@@ -69,6 +69,11 @@ def test_second_registration_does_not_remove_first_ticker(monkeypatch, tmp_path)
 
 
 def test_logger_status_includes_enrollment_policy(monkeypatch, tmp_path):
+    """TEST_SYSTEM_REHAB_V2 final remediation: logger_status is a plain sync
+    handler with no auth/middleware/serialization-shaping dependency -- the HTTP
+    round trip added nothing a direct call doesn't already prove."""
+    import json
+
     import server as srv
 
     edb = EdDB(tmp_path / "st.db")
@@ -83,14 +88,10 @@ def test_logger_status_includes_enrollment_policy(monkeypatch, tmp_path):
         srv.CORE_TICKERS[:] = ["SPY"]
         with srv._logger_lock:
             srv._logger_tickers[:] = ["SPY"]
-        from starlette.testclient import TestClient
-
-        with TestClient(srv.app) as client:
-            r = client.get("/api/logger/status")
-            assert r.status_code == 200
-            pol = r.json().get("user_persisted_enrollment_policy")
-            assert pol is not None
-            assert pol.get("fifo_eviction_enabled") is False
-            assert pol.get("unlimited_user_persisted") is True
+        body = json.loads(srv.logger_status().body)
+        pol = body.get("user_persisted_enrollment_policy")
+        assert pol is not None
+        assert pol.get("fifo_eviction_enabled") is False
+        assert pol.get("unlimited_user_persisted") is True
     finally:
         srv.CORE_TICKERS[:] = prev

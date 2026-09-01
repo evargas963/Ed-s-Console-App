@@ -1,3 +1,6 @@
+"""The snapshot writer's DTE/hours-to-expiry must use Schwab's own daysToExpiration
+field (never a locally date-subtracted approximation) and fail closed when that
+field is missing, including correctly handling an early-close session."""
 from __future__ import annotations
 
 import sys

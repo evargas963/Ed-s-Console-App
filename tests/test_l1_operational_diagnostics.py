@@ -281,13 +281,14 @@ def test_operational_scope_pressure_warning():
 
 
 def test_l1_diagnostics_endpoint_includes_operational_and_legacy_fields():
-    import server as srv
-    from fastapi.testclient import TestClient
+    """TEST_SYSTEM_REHAB_V2 final remediation: get_l1_diagnostics is a plain sync
+    handler with no auth/middleware/serialization-shaping dependency -- the HTTP
+    round trip added nothing a direct call doesn't already prove."""
+    import json
 
-    client = TestClient(srv.app)
-    r = client.get("/api/diagnostics/l1")
-    assert r.status_code == 200
-    j = r.json()
+    import server as srv
+
+    j = json.loads(srv.get_l1_diagnostics().body)
     ed = j["ed_l1"]
     assert ed.get("schema_version") == 2
     assert "l1_diag_uptime_sec" in ed

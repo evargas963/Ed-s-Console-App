@@ -128,7 +128,7 @@ def test_architecture():
 # ══════════════════════════════════════════════════════════════════════════════
 
 @fails_closed
-def test_formula_ownership():
+def test_formula_ownership(repo_index):
     print("\n2. FORMULA OWNERSHIP — no duplicate formulas")
 
     # Key formulas and their canonical owners
@@ -160,22 +160,22 @@ def test_formula_ownership():
         "compute_position_size": "call_engine.py",
     }
 
-    # Scan all .py files for function definitions
-    py_files = list(ROOT.glob("*.py"))
+    # TEST_SYSTEM_REHAB_V2: was an independent ROOT.glob("*.py") + per-file
+    # read+parse -- now sources from the shared `repo_index` corpus, filtered to
+    # top-level (root-directory) modules only, matching the original non-recursive
+    # glob's scope exactly.
     func_locations = {}  # func_name → [file1, file2, ...]
 
-    for pf in py_files:
-        if pf.name.startswith("test_"):
+    for rel, _text, tree in repo_index.items():
+        if len(rel.parts) != 1 or rel.name.startswith("test_"):
             continue
-        try:
-            tree = ast.parse(pf.read_text(encoding="utf-8", errors="replace"))
-            for node in ast.walk(tree):
-                if isinstance(node, ast.FunctionDef):
-                    name = node.name
-                    if name in FORMULAS:
-                        func_locations.setdefault(name, []).append(pf.name)
-        except (SyntaxError, UnicodeDecodeError):
-            pass  # skip binary or unparseable files
+        if tree is None:
+            continue  # unparseable, same as the original except clause
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef):
+                name = node.name
+                if name in FORMULAS:
+                    func_locations.setdefault(name, []).append(rel.name)
 
     for func, expected_owner in FORMULAS.items():
         locs = func_locations.get(func, [])
@@ -412,15 +412,22 @@ def test_db_schema(full=False):
 # ══════════════════════════════════════════════════════════════════════════════
 
 @fails_closed
-def test_syntax():
+def test_syntax(repo_index):
     print("\n8. SYNTAX — all Python files parse")
 
-    for pf in sorted(ROOT.glob("*.py")):
-        try:
-            ast.parse(pf.read_text(encoding="utf-8", errors="replace"))
-            _pass(f"{pf.name}")
-        except SyntaxError as e:
-            _fail(f"{pf.name}: line {e.lineno}: {e.msg}")
+    # TEST_SYSTEM_REHAB_V2: was an independent ROOT.glob("*.py") + per-file
+    # re-parse -- repo_index already parses every file once (tree is None on a
+    # SyntaxError), so this reuses that result instead of parsing a second time.
+    for rel, text, tree in sorted(repo_index.items()):
+        if len(rel.parts) != 1:
+            continue
+        if tree is not None:
+            _pass(f"{rel.name}")
+        else:
+            try:
+                ast.parse(text)
+            except SyntaxError as e:
+                _fail(f"{rel.name}: line {e.lineno}: {e.msg}")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -431,8 +438,23 @@ def test_syntax():
 def test_wrapper():
     print("\n9. WRAPPER — math_exposure.py re-exports")
 
+    # TEST_SYSTEM_REHAB_V2 final remediation: `hasattr(me, name)` only proves SOME
+    # attribute with that name exists on math_exposure -- it is satisfied identically
+    # by a genuine `from math_levels import *` re-export, a locally-redefined stale
+    # duplicate under the same name, or a mis-aliased import wiring the WRONG split
+    # module's function in under this name (e.g. `from math_levels import
+    # compute_gamma_flip_v1 as compute_gamma_flip_v2`). Object IDENTITY against the
+    # actual owning split module is what "wrapper" means; presence alone is not.
     try:
         import math_exposure as me
+        import math_exposure_core
+        import math_levels
+        import math_probabilities
+        import math_volatility
+        owners = {
+            "math_exposure_core": math_exposure_core, "math_levels": math_levels,
+            "math_volatility": math_volatility, "math_probabilities": math_probabilities,
+        }
         critical_exports = [
             "compute_exposures_by_strike",
             "compute_gamma_flip_v2",
@@ -447,10 +469,17 @@ def test_wrapper():
             "compute_volatility_envelope",
         ]
         for name in critical_exports:
-            if hasattr(me, name):
-                _pass(f"math_exposure.{name}")
-            else:
+            wrapped = getattr(me, name, None)
+            if wrapped is None:
                 _fail(f"math_exposure.{name} NOT exported")
+                continue
+            owning = [mn for mn, m in owners.items() if getattr(m, name, None) is wrapped]
+            if owning:
+                _pass(f"math_exposure.{name} (identical to {owning[0]}.{name})")
+            else:
+                _fail(f"math_exposure.{name} is not object-identical to any split "
+                     f"module's own {name} -- a locally-redefined stub or a "
+                     f"mis-aliased import, not a genuine re-export")
     except Exception as e:
         _fail(f"Wrapper import: {e}")
 
@@ -499,8 +528,15 @@ def test_monte_carlo_v2():
         else:
             _fail("Shock gating incorrect")
 
-        # Test 3: model version is v3
-        if "v3" in r_pin.model_version or "garch" in r_pin.model_version:
+        # Test 3: model version is exactly mc_v3_garch.
+        # TEST_SYSTEM_REHAB_V2_RESIDUAL_CLOSURE: was `"v3" in mv or "garch" in mv` --
+        # the failure message already claimed "Expected mc_v3_garch" while the oracle
+        # accepted ANY string containing either substring, so a silent drift to
+        # "mc_v4_garch" (or any other *garch* build) passed while reporting the wrong
+        # thing. This is the only test in the repo that pins MC's base version string
+        # (tests/test_mc_base_neutral_mode_v1.py only checks the ":base_neutral" suffix
+        # and the "blocked" refusal marker, never the base), so it is pinned exactly.
+        if r_pin.model_version == "mc_v3_garch":
             _pass(f"Model version: {r_pin.model_version}")
         else:
             _fail(f"Expected mc_v3_garch, got {r_pin.model_version}")

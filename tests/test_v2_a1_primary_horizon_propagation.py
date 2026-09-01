@@ -1,3 +1,7 @@
+"""MarketState/_ms_to_dict must propagate the primary-horizon fields Module A's
+conformal-promotion decision (derive_a1_conformal_bounds) actually needs -- a
+dropped or stale field here would silently starve the decision of its primary
+horizon and mispromote the wrong conformal bound."""
 from __future__ import annotations
 
 import dataclasses

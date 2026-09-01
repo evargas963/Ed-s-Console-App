@@ -115,27 +115,42 @@ def test_the_two_pin_metrics_are_different_quantities():
         f"strength_pct is the margin over the runner-up, got {strength}")
 
 
-def test_no_consumer_of_the_removed_key_appears():
+def test_no_consumer_of_the_removed_key_appears(repo_index):
     """The measurement that made the removal safe, re-run so it stays true.
 
     If a reader of `charm["gamma_pin"]` ever appears, this fails and sends the author to
     RC-302 rather than letting the collision return through a new consumer.
+
+    TEST_SYSTEM_REHAB_V2 final remediation: the .py half of this scan was an
+    independent `git ls-files` + read, redundant with the shared `repo_index`
+    observation. Split: .py source comes from `repo_index` (excluding tests/); the
+    .html half is a genuinely distinct artifact type repo_index never indexes, kept
+    as its OWN narrowly-pathspec'd scan (only 7 tracked .html files repo-wide).
     """
     import re
 
-    files = [f for f in subprocess.run(
-        ["git", "ls-files", "-z"], cwd=REPO, capture_output=True, text=True,
-        check=True).stdout.split("\0")
-        if f.endswith((".py", ".html")) and not f.startswith("tests/")]
-    hits = []
-    for rel in files:
+    pattern = re.compile(r'(_charm_raw|charm)\s*\[\s*["\']gamma_pin')
+
+    def _hits(rel: str, lines: list[str]) -> list[str]:
+        return [f"{rel}:{i}" for i, line in enumerate(lines, 1) if pattern.search(line)]
+
+    hits: list[str] = []
+    for relpath, text, _tree in repo_index.items():
+        rel = relpath.as_posix()
+        if rel.startswith("tests/"):
+            continue
+        hits += _hits(rel, text.splitlines())
+    # institutional-scan-ok: non-.py artifact type (html), repo_index cannot serve it;
+    # 7 tracked files repo-wide, scoped by an explicit *.html pathspec, not a bare scan.
+    html_files = subprocess.run(
+        ["git", "ls-files", "-z", "--", "*.html"], cwd=REPO, capture_output=True,
+        text=True, check=True).stdout.split("\0")
+    for rel in (f for f in html_files if f and not f.startswith("tests/")):
         try:
             lines = (REPO / rel).read_text(encoding="utf-8", errors="replace").splitlines()
         except OSError:
             continue
-        for i, line in enumerate(lines, 1):
-            if re.search(r'(_charm_raw|charm)\s*\[\s*["\']gamma_pin', line):
-                hits.append(f"{rel}:{i}")
+        hits += _hits(rel, lines)
     assert not hits, (
         f"a consumer of charm's removed gamma_pin key appeared at {hits}. That key was "
         f"terrain's name for a different metric on a different chain scope — see RC-302.")

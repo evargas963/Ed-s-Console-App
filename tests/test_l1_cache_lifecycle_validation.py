@@ -200,15 +200,16 @@ def test_ensure_backfills_lru_when_cache_has_row(l1_cache_clean):
 
 
 def test_diagnostics_exposes_lifecycle_and_invariants(l1_cache_clean):
+    """TEST_SYSTEM_REHAB_V2 final remediation: get_l1_diagnostics is a plain sync
+    handler with no auth/middleware/serialization-shaping dependency -- the HTTP
+    round trip added nothing a direct call doesn't already prove."""
+    import json
+
     import server as srv
-    from fastapi.testclient import TestClient
 
     srv._l1_snapshot_cache[("DX", "e")] = _minimal_snap(time.time())
     srv._l1_touch_scope(("DX", "e"))
-    client = TestClient(srv.app)
-    r = client.get("/api/diagnostics/l1")
-    assert r.status_code == 200
-    ed = r.json()["ed_l1"]
+    ed = json.loads(srv.get_l1_diagnostics().body)["ed_l1"]
     assert ed["l1_cache_lifecycle"]["keys_match"] is True
     assert "l1_cache_eviction_ttl_total" in ed
     assert "l1_cache_eviction_cap_total" in ed

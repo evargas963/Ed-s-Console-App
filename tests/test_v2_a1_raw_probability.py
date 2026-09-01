@@ -1,3 +1,7 @@
+"""v2_decision.module_a_adapter must delegate to the one public dominant_probability
+faucet (v2_decision.a1_raw_probability) rather than recomputing its own primary-
+horizon probability -- a second computation here would be a ONE-FAUCET violation
+that could silently diverge from the canonical probability."""
 from __future__ import annotations
 
 import inspect

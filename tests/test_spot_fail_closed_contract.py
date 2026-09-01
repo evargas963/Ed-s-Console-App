@@ -1,3 +1,7 @@
+"""Every consumer of spot price (_validate_trade, compute_confluence_features,
+normalize_mc, engineer_single_snapshot, _spot_for_mc_fusion_adjustment) must fail
+closed on a missing/invalid spot rather than silently computing against zero or a
+stale fallback -- a repo-wide contract, checked at each of its real call sites."""
 from __future__ import annotations
 
 from types import SimpleNamespace

@@ -105,19 +105,18 @@ _ISSUE14_DIAGNOSTIC_BANNER = (
 )
 
 
-def test_no_rth_where_clause_callers_repo_wide():
-    """Regression: rth_where_clause() must not appear outside ml_data_common (definition)."""
-    root = Path(__file__).resolve().parents[1]
+def test_no_rth_where_clause_callers_repo_wide(repo_index):
+    """Regression: rth_where_clause() must not appear outside ml_data_common
+    (definition). TEST_SYSTEM_REHAB_V2: sources from the shared `repo_index` corpus
+    instead of an independent root.rglob("*.py")."""
     offenders: list[str] = []
-    for path in root.rglob("*.py"):
-        rel = path.relative_to(root)
+    for rel, src, _tree in repo_index.items():
         if rel.parts and rel.parts[0] == "tests":
             continue
         if rel.name == "ml_data_common.py":
             continue
         if any(part in _SKIP_PY_TREE_DIRS for part in rel.parts):
             continue
-        src = path.read_text(encoding="utf-8")
         if "rth_where_clause()" in src:
             offenders.append(str(rel).replace("\\", "/"))
     assert not offenders, f"rth_where_clause() callers: {offenders}"

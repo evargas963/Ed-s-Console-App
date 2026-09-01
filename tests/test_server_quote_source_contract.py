@@ -1,3 +1,6 @@
+"""server's REST fast-quote path must expose real field provenance, fail closed
+(never silently zero) on a missing spot, and derive session/order-flow fields from
+Schwab's own timestamps -- not wall-clock or a memoized stale quote."""
 from __future__ import annotations
 
 import sys

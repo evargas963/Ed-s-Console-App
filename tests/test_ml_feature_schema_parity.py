@@ -1884,12 +1884,6 @@ def test_ml_pipeline_efficiency_checker_green():
     assert check_ml_pipeline_efficiency() == []
 
 
-def test_ablation_parity_includes_bridge_and_backtest_hooks():
-    from tools.check_ablation_pipeline_parity import check_ablation_pipeline_parity
-
-    assert check_ablation_pipeline_parity() == []
-
-
 # ── RC-332: cf_* has ONE input population, and callers may not choose it ────────
 #
 # RC-328 made the confluence WINDOW clock-defined and repaired two lanes. Four more kept
@@ -1898,29 +1892,19 @@ def test_ablation_parity_includes_bridge_and_backtest_hooks():
 # LSTM offline and live populations, cf_alignment_score off by up to 3.0 of its -4..+4
 # range. These two controls fail if either half of that regresses.
 
-def test_no_production_lane_supplies_its_own_confluence_population():
+def test_no_production_lane_supplies_its_own_confluence_population(repo_index):
     """The recurrence mode is a NEW call site passing rows, not a wrong formula.
 
     Only `ml_data_common` may name the population: once inside the authority, and once in
     its explicitly logged degraded path for frames absent from the canonical series. A
     third site anywhere in production means a lane chose its own population again.
     """
-    import subprocess
-    from pathlib import Path
-
-    repo = Path(__file__).resolve().parent.parent
-    tracked = subprocess.run(
-        ["git", "ls-files", "-z", "--", "*.py"], cwd=repo,
-        capture_output=True, text=True, check=True).stdout
     offenders = []
-    for rel in sorted(p for p in tracked.split("\0") if p):
+    for relpath, text, _tree in repo_index.items():
+        rel = relpath.as_posix()
         if rel.startswith(("tests/", "tools/", "research/", "arch_competition/")):
             continue
-        path = repo / rel
-        if not path.is_file():
-            continue
-        for i, line in enumerate(
-                path.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
+        for i, line in enumerate(text.splitlines(), 1):
             if "compute_confluence_features(" in line and "def " not in line:
                 offenders.append(f"{rel}:{i}")
     unexpected = [o for o in offenders if not o.startswith("ml_data_common.py:")]

@@ -387,13 +387,23 @@ def test_stack_mode_value_is_authority_only():
 
 # FIND-SERVERPY-17
 def test_prediction_override_rejects_empty_direction():
-    from fastapi.testclient import TestClient
+    """TEST_SYSTEM_REHAB_V2_RESIDUAL_CLOSURE (TestClient adjudication): REWRITE.
+    The rejection is authored by the handler itself -- `d = (direction or "").strip()
+    .lower()` then `raise HTTPException(status_code=400, ...)` -- not by FastAPI
+    request validation: both params are plain `str = Query(...)`, and an empty query
+    value binds to the empty string, which is exactly what is passed here. FastAPI's
+    only role is translating the raised HTTPException into a response, which is
+    framework behavior, not this endpoint's contract; asserting the raised exception
+    and its status_code proves the same rejection with the same specificity."""
+    import pytest
+    from fastapi import HTTPException
 
     import server
 
-    client = TestClient(server.app)
-    r = client.post("/api/prediction/override?ticker=SPY&direction=")
-    assert r.status_code == 400
+    with pytest.raises(HTTPException) as exc:
+        server.prediction_override(ticker="SPY", direction="", source="user")
+    assert exc.value.status_code == 400
+    assert "up, flat, or down" in str(exc.value.detail)
 
 
 # FIND-SERVERPY-18
@@ -405,8 +415,14 @@ def test_tradeable_score_calls_liquidity_engine_authority():
 
 # FIND-SERVERPY-19
 def test_debug_prediction_returns_populated_distribution(monkeypatch):
-    from fastapi.testclient import TestClient
-
+    """TEST_SYSTEM_REHAB_V2_RESIDUAL_CLOSURE (TestClient adjudication): REWRITE.
+    debug_prediction is `(ticker: str = DEFAULT_TICKER)` -- a plain default, not even
+    a Query -- returning a bare dict. Its fail-closed R-011 gate is a plain
+    os.environ read INSIDE the function body, and the NEGATIVE side of that gate
+    (404 without the flag) is separately and deliberately proven over real HTTP by
+    tests/adversarial/test_remaining_route_inventory.py::
+    test_r011_debug_endpoint_blocked_without_flag, which stays on TestClient. This
+    test only covers the positive-path body shape, which the direct call reproduces."""
     import server
 
     # /api/debug/prediction is fail-closed gated (R-011): it 404s unless
@@ -414,7 +430,6 @@ def test_debug_prediction_returns_populated_distribution(monkeypatch):
     # (monkeypatch auto-reverts) — the production gate is unchanged.
     monkeypatch.setenv("ED_ALLOW_DEBUG_ENDPOINTS", "1")
 
-    client = TestClient(server.app)
     with patch.object(server, "_fetch_state") as fs:
         fs.return_value = {
             "zone": "pin_bull",
@@ -434,9 +449,7 @@ def test_debug_prediction_returns_populated_distribution(monkeypatch):
             gdb.return_value = MagicMock(
                 get_zone_distribution=MagicMock(return_value={"pin_bull": 3})
             )
-            r = client.get("/api/debug/prediction?ticker=SPY")
-    assert r.status_code == 200
-    body = r.json()
+            body = server.debug_prediction(ticker="SPY")
     assert "error" not in body
     assert body.get("db_zone_distribution") == {"pin_bull": 3}
 

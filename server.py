@@ -830,14 +830,14 @@ def spot_is_a_close(source: str) -> bool:
     return source in SPOT_CLOSE_SOURCES
 
 
-def _gated_safe_get_chain(client, ticker: str, *, strike_count, priority: bool = False,
-                          to_date=None, from_date=None):
+def _gated_safe_get_chain(client, ticker: str, *, strike_count=None, strike_range=None,
+                          priority: bool = False, to_date=None, from_date=None):
     """safe_get_chain behind the bounded two-slot gate -> (resp, gate_wait_sec, fetch_sec).
 
     Schwab CSV authority checked: yes
     CSV row(s): chains.* via schwab_client.safe_get_chain - call shape
-      unchanged (safe_get_chain(client, ticker, strike_count=...)); this is
-      scheduling (bounded 2-slot gate + per-ticker single-flight coalescing),
+      unchanged (safe_get_chain(client, ticker, strike_count=..., strike_range=...));
+      this is scheduling (bounded 2-slot gate + per-ticker single-flight coalescing),
       no field read/derivation/emission change.
     Derived-field disposition: none required.
     All consumers checked: yes - c_resp consumed identically downstream;
@@ -859,8 +859,15 @@ def _gated_safe_get_chain(client, ticker: str, *, strike_count, priority: bool =
     # RC-127: to_date joins the coalesce key — a full-book fetch and a 45-day rung are
     # DIFFERENT fetches, same as the strike-width lesson above. Cursor-audit F2: from_date
     # likewise — a single-expiry window (from=to=sel) and the open-near-end horizon fetch are
-    # different requests and must never coalesce onto each other.
-    key = ((ticker or "").strip().upper(), int(strike_count), str(to_date or ""), str(from_date or ""))
+    # different requests and must never coalesce onto each other. strike_range joins it too
+    # (OPTIONS_ORDER_FLOW_V1 2026-08-30): a strike_range="ALL" complete-chain request and a
+    # bounded strike_count request for the SAME ticker/dates are DIFFERENT fetches — MEASURED
+    # live, "ALL" returned 69 more real strikes than strike_count=250 alone for the same SPY
+    # expiry, so coalescing them onto each other would silently hand a caller wanting the
+    # complete set a truncated bounded response, or vice versa.
+    key = ((ticker or "").strip().upper(),
+          int(strike_count) if strike_count is not None else None,
+          str(strike_range or ""), str(to_date or ""), str(from_date or ""))
     wait_started = time.monotonic()
     with _chain_inflight_lock:
         holder = _chain_inflight.get(key)
@@ -901,7 +908,8 @@ def _gated_safe_get_chain(client, ticker: str, *, strike_count, priority: bool =
     resp = None
     exc = None
     try:
-        resp = safe_get_chain(client, ticker, strike_count=strike_count, to_date=to_date, from_date=from_date)
+        resp = safe_get_chain(client, ticker, strike_count=strike_count, strike_range=strike_range,
+                              to_date=to_date, from_date=from_date)
         return resp, gate_wait_sec, round(time.monotonic() - fetch_started, 3)
     except SchwabAuthError as e:
         exc = e
@@ -3681,6 +3689,7 @@ from timeframe_config import CANONICAL_TIMEFRAME
 # path now has no failure mode to pick a policy for.
 from calibration.option_chain_morning_full import (
     GEX_FULL_CHAIN_STRIKE_COUNT,
+    MAX_DTE_DAYS as COMPLETE_CHAIN_NEAR_TERM_MAX_DTE_DAYS,
     # RC-161: the MORNING_* aliases are gone from this import because the scheduler no longer
     # reads them. That coupling WAS the defect — the archive's write window was steering the
     # terrain loop's contention guard. The guard now owns TERRAIN_CONTENTION_*, and the archive
@@ -3693,6 +3702,13 @@ from calibration.option_chain_morning_full import (
     has_morning_full_capture,
     maybe_persist_morning_full_chain,
     universal_capture_window,
+)
+from calibration.complete_chain_capture import (
+    eligible_near_term_expiries,
+    has_complete_chain_capture_today,
+    latest_complete_chain_capture,
+    next_capture_batch,
+    persist_complete_chain_capture,
 )
 
 #: Timeframes to try, in order, when reading stored snapshot rows. The timeframe MUST be
@@ -10056,36 +10072,22 @@ async def _app_lifespan(app):
             "(set ED_ENABLE_BACKGROUND_SCHEDULER=1 on a training host to opt in)"
         )
 
-    # Order flow streaming (nasdaq_book, nyse_book, level_one_equity)
+    # Live-plane feed (nasdaq_book, nyse_book, level_one_equity) — READ-ONLY from the
+    # canonical capture daemon's stream_capture.db. SINGLE-STREAM-AUTHORITY repair: this
+    # used to gate on a resolved Schwab account_id because it needed one to open its own
+    # StreamClient. It opens no Schwab session now, so it has no account dependency —
+    # gating it behind account resolution was a correctness bug under the new
+    # architecture (a broken/expiring token would silently disable the live UI's quote
+    # feed even though the daemon was capturing fine). Unconditional.
     try:
-        client = get_client()
-        if client:
-            account_id = None
-            try:
-                an = client.get_account_numbers()
-                status = getattr(an, "status_code", 0) if an else 0
-                if status == 200:
-                    data = an.json() if hasattr(an, "json") and callable(an.json) else []
-                    if isinstance(data, list) and data:
-                        account_id = data[0].get("accountNumber") or data[0].get("hashValue")
-                    if account_id and str(account_id).isdigit():
-                        account_id = int(account_id)
-                elif status == 401:
-                    resp_text = getattr(an, "text", str(an)) if an else ""
-                    log.error(f"Accounts 401 — response: {resp_text}")
-            except Exception as ae:
-                log.debug(f"Account numbers for streaming: {ae}")
-            if account_id:
-                from order_flow_streaming import start_order_flow_stream
+        from order_flow_streaming import start_order_flow_stream
 
-                # LIVE_OPERATOR_MODE_RESET_V1 Step 2 — single Tier C owner: the
-                # tick-coherent recompute callback (_on_tick_broadcast_sync) is no
-                # longer registered; _sse_background_loop owns viewed-key cadence.
-                # The quote lane (live_market_plane → live_quote SSE) still updates
-                # per tick via record_from_level_one_equity.
-                start_order_flow_stream(client, account_id, DEFAULT_TICKER)
-            else:
-                log.info("Order flow streaming: no account_id, running REST-only")
+        # LIVE_OPERATOR_MODE_RESET_V1 Step 2 — single Tier C owner: the
+        # tick-coherent recompute callback (_on_tick_broadcast_sync) is no
+        # longer registered; _sse_background_loop owns viewed-key cadence.
+        # The quote lane (live_market_plane → live_quote SSE) still updates
+        # per tick via record_from_level_one_equity.
+        start_order_flow_stream(None, None, DEFAULT_TICKER)
     except ImportError as ie:
         log.debug(f"Order flow streaming not started: {ie}")
     except Exception as e:
@@ -10135,8 +10137,8 @@ async def _app_lifespan(app):
     _session_open_anchor_warm_stop.set()
     _anchor_quote_lane_refresh_stop.set()
     _shutdown_analytics_executor(wait=True)
-    # Schwab stream thread + websocket: must close before loop/thread teardown
-    # (avoids pending websockets tasks destroyed with the event loop).
+    # Live-plane feed task (reads the canonical capture daemon's DB — no Schwab socket
+    # of its own to close here since single-stream-authority root fix 2026-08-30).
     try:
         from order_flow_streaming import stop_order_flow_stream
 
@@ -11638,6 +11640,152 @@ def _persist_universal_capture(tk: str, key: tuple[str, str], width: int,
                     tk, status, result.get("reason"))
 
 
+#: OPTIONS_ORDER_FLOW_V1 round 4 (material-defect-lifecycle review, 2026-08-31): the
+#: PROVEN-complete strike_range=ALL fetch built for /api/chain (round 3) had NO
+#: systematic producer -- persist_complete_chain_capture only ever ran from that
+#: operator-triggered endpoint, so an expiry earned a proven-complete record ONLY if a
+#: human happened to click it in /options. The systematic collector below reuses the
+#: SAME once-daily universal-capture WINDOW (`universal_capture_window`) the
+#: sentinel/whole-roster wide fetch already uses, and discovers this ticker's listed
+#: expiries from the REGULAR per-cycle terrain chain fetch it is called with -- the
+#: SAME unwindowed "full"-basis request _terrain_refresh_one already makes every cycle
+#: (server.py:_terrain_refresh_one's basis ladder), at ZERO extra vendor cost for
+#: discovery. Only the per-expiry strike_range=ALL fetches below are new vendor calls,
+#: through the same rate-limited/coalesced _gated_safe_get_chain gate every other
+#: chain read uses.
+#:
+#: OPERATOR-CAUGHT DEFECT (2026-08-31, same day): the first version sliced
+#: `eligible[:CAP]` BEFORE filtering out already-captured expiries. Once the first CAP
+#: expiries were captured, every later cycle kept re-selecting that SAME first-CAP
+#: slice (all already done, so the loop body no-opped on every one) -- expiry #(CAP+1)
+#: and beyond were NEVER attempted, on ANY cycle, ANY day: a bounded per-cycle vendor
+#: budget had silently become a PERMANENT completeness ceiling. Fixed by filtering to
+#: `still_needed` (not yet proven complete today, not yet given up on today) FIRST,
+#: THEN slicing the per-cycle budget from THAT -- so once today's first CAP are
+#: captured, they drop out of `still_needed` and the NEXT cycle's slice naturally
+#: advances to the next uncaptured expiries. This also required decoupling this
+#: function from the sibling `_persist_universal_capture`'s once-per-day "done" gate
+#: (it previously only ran once per ticker per day, piggybacked on that gate, so
+#: "successive cycles" never actually happened in production regardless of the slice
+#: bug) -- it is now called every terrain cycle inside the capture window and
+#: self-gates on whether there is still real work, so it gets many chances per day.
+#:
+#: Bounded to _COMPLETE_CAPTURE_MAX_EXPIRIES_PER_TICKER new-work items per CALL (not
+#: per day) so an unusually weekly-heavy name cannot unboundedly inflate one cycle's
+#: vendor cost; a chronically-failing expiry gives up after
+#: _COMPLETE_CAPTURE_EXPIRY_MAX_ATTEMPTS attempts THE SAME ET day (mirrors
+#: _MORNING_CAPTURE_MAX_ATTEMPTS's existing give-up convention) so it cannot
+#: permanently occupy a budget slot ahead of expiries never yet attempted; both a
+#: truncation and a give-up are logged, never silent.
+_COMPLETE_CAPTURE_MAX_EXPIRIES_PER_TICKER = 8
+_COMPLETE_CAPTURE_EXPIRY_MAX_ATTEMPTS = 3
+#: (ticker, expiry, et_date) -> attempts. In-memory, like _morning_capture_attempts --
+#: a restart simply grants a fresh attempt budget, which is safe: the DURABLE state
+#: that must survive restart is COMPLETION (has_complete_chain_capture_today, DB-
+#: backed), not the give-up bookkeeping for a same-day chronic failure.
+_complete_chain_capture_attempts: dict[tuple[str, str, str], int] = {}
+
+
+def _persist_universal_complete_chain(tk: str, client, contracts: list,
+                                      ts_utc: float | None = None) -> None:
+    """Systematic near-term COMPLETE-chain capture, one expiry at a time, into
+    complete_chain_captures -- the same table and completeness basis /api/chain's
+    on-demand path already uses, extended to run universally without waiting on an
+    operator's click. Self-gated: returns immediately (zero vendor calls) outside the
+    capture window, on a non-trading day, or once every eligible near-term expiry is
+    already proven complete (or given up on) for today.
+
+    `ts_utc` (defaults to real now) is the ONE clock read this call uses -- derived
+    into et_date/mins AND threaded through to every persisted row, so the idempotency
+    check and the row it is checking against can never disagree about which ET day
+    they mean (a prior draft read `time.time()` twice, separately, for exactly that
+    purpose, and a same-day re-entry test caught it re-fetching every expiry).
+    """
+    ts = float(ts_utc if ts_utc is not None else time.time())
+    et_date, mins = gex_et_date_and_mins(ts)
+    if not universal_capture_window(mins) or not is_trading_day_et(et_date):
+        return
+    all_exps = {
+        str(c.get("expirationDate") or "")[:10]
+        for c in contracts if isinstance(c, dict) and c.get("expirationDate")
+    }
+    eligible = eligible_near_term_expiries(
+        all_exps, max_dte_days=COMPLETE_CHAIN_NEAR_TERM_MAX_DTE_DAYS, now_et_date=et_date)
+    db_path = get_db().db_path
+    already_captured = {
+        expiry for expiry in eligible
+        if has_complete_chain_capture_today(db_path, tk, expiry, et_date)
+    }
+    given_up = {
+        expiry for expiry in eligible
+        if _complete_chain_capture_attempts.get((tk, expiry, et_date), 0)
+        >= _COMPLETE_CAPTURE_EXPIRY_MAX_ATTEMPTS
+    }
+    still_needed_count = sum(1 for e in eligible if e not in already_captured and e not in given_up)
+    if not still_needed_count:
+        return
+    batch = next_capture_batch(
+        eligible, already_captured=already_captured, given_up=given_up,
+        batch_size=_COMPLETE_CAPTURE_MAX_EXPIRIES_PER_TICKER)
+
+    attempted = captured = failed = 0
+    for expiry in batch:
+        attempt_key = (tk, expiry, et_date)
+        n_attempts = _complete_chain_capture_attempts.get(attempt_key, 0) + 1
+        _complete_chain_capture_attempts[attempt_key] = n_attempts
+        attempted += 1
+        try:
+            d = date.fromisoformat(expiry)
+            c_resp, _gw, _fs = _gated_safe_get_chain(
+                client, tk, strike_range="ALL", from_date=d, to_date=d, priority=False)
+            if c_resp is None or c_resp.status_code != 200:
+                failed += 1
+                continue
+            c_json = c_resp.json()
+            exp_contracts = flatten_chain_contracts(c_json)
+            returned_exps = sorted({
+                str(c.get("expirationDate") or "")[:10]
+                for c in exp_contracts if isinstance(c, dict) and c.get("expirationDate")
+            })
+            if returned_exps != [expiry]:
+                log.warning(
+                    "complete-chain systematic capture: expiry scope mismatch "
+                    "ticker=%s requested=%s returned=%s -- not persisting",
+                    tk, expiry, returned_exps)
+                failed += 1
+                continue
+            exp_spot, _ss, _sa = resolve_spot(tk, chain_json=c_json)
+            result = persist_complete_chain_capture(
+                db_path, ticker=tk, expiry=expiry, contracts=exp_contracts,
+                spot=exp_spot, completeness_basis=COMPLETENESS_BASIS_STRIKE_RANGE_ALL,
+                ts_utc=ts)
+            if result.get("status") == "written":
+                captured += 1
+            else:
+                failed += 1
+        except Exception as e:
+            failed += 1
+            log.warning("complete-chain systematic capture failed ticker=%s expiry=%s: %s",
+                        tk, expiry, e)
+        if n_attempts >= _COMPLETE_CAPTURE_EXPIRY_MAX_ATTEMPTS and not has_complete_chain_capture_today(
+            db_path, tk, expiry, et_date
+        ):
+            log.warning(
+                "complete-chain systematic capture: ticker=%s expiry=%s given up for "
+                "today after %d attempts", tk, expiry, n_attempts)
+    if still_needed_count > _COMPLETE_CAPTURE_MAX_EXPIRIES_PER_TICKER:
+        log.warning(
+            "complete-chain systematic capture: ticker=%s truncated to %d of %d "
+            "still-needed near-term expiries this cycle -- the remainder are "
+            "carried to the next cycle, never dropped", tk,
+            _COMPLETE_CAPTURE_MAX_EXPIRIES_PER_TICKER, still_needed_count)
+    if attempted:
+        log.info(
+            "complete-chain systematic capture ticker=%s et_date=%s attempted=%d "
+            "captured=%d failed=%d still_needed=%d eligible=%d", tk, et_date, attempted,
+            captured, failed, still_needed_count, len(eligible))
+
+
 #: Flip-drift measurement (unproven-register row due 2026-07-31): the mechanism is
 #: proven (gamma depends on spot/IV/time) but the intraday MAGNITUDE of flip movement
 #: is unmeasured. Every terrain-loop compute appends one JSONL row here so a week of
@@ -11977,6 +12125,16 @@ def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
         spot, spot_source, spot_ts = resolve_spot(tk, chain_json=c_json)
         if want_capture and contracts:
             _persist_universal_capture(tk, cap_key, _width, contracts, spot)
+        if contracts:
+            # Deliberately NOT gated on want_capture: that flag reflects the SIBLING
+            # wide-fetch's own once-per-day "done" state, and this function needs its
+            # own chance to run on every cycle inside the window so a near-term
+            # expiry universe wider than one cycle's budget still gets fully covered
+            # over successive cycles (see the function's own docstring for the
+            # operator-caught defect this fixes). It self-gates on window/trading-day/
+            # remaining-work internally, so a no-op call here costs one cheap DB check,
+            # never a vendor call.
+            _persist_universal_complete_chain(tk, client, contracts)
         # Learn this instrument's geometry from the chain we just read, so the NEXT cycle
         # requests the width its +/-5% span actually needs instead of a tabulated guess.
         # RC-149: tell the learner WHICH basis produced this chain. A narrowed window under-counts
@@ -13477,6 +13635,20 @@ def exposure_page():
                         headers={"Cache-Control": "no-store, no-cache, must-revalidate"})
 
 
+@app.get("/options", response_class=HTMLResponse)
+def options_page():
+    """OPTIONS_ORDER_FLOW_V1 UI/consumer wiring: chain + contract-selection + live
+    order-flow microstructure for one option contract. Reads GET /api/chain (contract
+    listing), POST /api/streaming/active-option-contract (subscribe), GET /api/order-flow/
+    options-microstructure (live book + freshness/health) — no new endpoints, no client-
+    side second producer."""
+    p = static_dir / "options.html"
+    if not p.exists():
+        return HTMLResponse("<p>static/options.html not found</p>", status_code=404)
+    return HTMLResponse(p.read_text(encoding="utf-8"),
+                        headers={"Cache-Control": "no-store, no-cache, must-revalidate"})
+
+
 @app.get("/desk", response_class=HTMLResponse)
 def desk_page():
     """Desk — research, candidates and book, replayable at an earlier knowledge time."""
@@ -13943,6 +14115,86 @@ def api_order_flow_microstructure(ticker: str = Query(default=DEFAULT_TICKER)):
     payload = compute_book_microstructure(data, ticker=t)
     payload["ticker"] = t
     return JSONResponse(payload)
+
+
+@app.get("/api/order-flow/options-microstructure")
+def api_order_flow_options_microstructure(contract: str = Query(...)):
+    """Same canonical L2 book microstructure as /api/order-flow/microstructure, for one
+    OPTION CONTRACT's live book. SERIALIZER, not a second producer: delegates to
+    order_flow_streaming.get_option_contract_book_microstructure, which itself delegates
+    to the SAME order_flow_engine.compute_book_microstructure the equity route reads — no
+    parallel book-imbalance computation for options. `contract` MUST be a chain response's
+    own "symbol" field (OSI format, e.g. "SPY   260820C00767000"); this route does not
+    construct or validate that format, it only serializes whatever content has been
+    replayed for the literal string given. No ticker-roster touch here — a contract symbol
+    is not a ticker and does not participate in that enrollment concept."""
+    c = (contract or "").strip()
+    if not c:
+        return JSONResponse({"error": "contract is required"}, status_code=400)
+    from order_flow_streaming import (
+        get_option_contract_book_microstructure,
+        get_option_contract_streaming_diagnostics,
+    )
+    payload = get_option_contract_book_microstructure(c)
+    payload["contract"] = c
+    try:
+        # PR214 merge blocker 1A: the diagnostics are bound to the CONTRACT BEING
+        # QUERIED, not to whatever contract the plane happens to be streaming. Without
+        # `c` this attached the globally-active contract's health verbatim to a book
+        # computed for a different contract, so a response could read `contract: A`
+        # beside `streaming_healthy: true` that belonged entirely to B. The book above
+        # is still served truthfully (replayed content for A is real and is not
+        # discarded); only the LIVE HEALTH claim is bound and fails closed on mismatch.
+        payload["streaming_plane"] = get_option_contract_streaming_diagnostics(for_contract=c)
+    except Exception:  # diagnostics are informational only — never fail the book payload for them
+        payload["streaming_plane"] = {}
+    return JSONResponse(payload)
+
+
+@app.post("/api/streaming/active-option-contract")
+async def post_streaming_active_option_contract(payload: dict = Body(default={})):
+    """Subscribe LEVELONE_OPTIONS+OPTIONS_BOOK to one option contract (dynamic; replaces
+    prior subscription). Mirrors /api/streaming/active-ticker exactly, for the SEPARATE
+    option-contract slot (an equity ticker and an option contract on that same underlying
+    can be watched at once — see order_flow_streaming.py's module docstring)."""
+    c = str(payload.get("contract") or "").strip()
+    if not c:
+        return JSONResponse({"ok": False, "error": "contract is required"}, status_code=400)
+
+    # PR214 premerge gap 2: take the command's generation HERE, at admission, before the
+    # body is offloaded to the executor. Ordering must reflect the order the operator's
+    # commands ARRIVED, not the order their thread-pool bodies happen to finish -- an
+    # A admitted first but delayed must not overwrite a B admitted later that already
+    # wrote. The browser token cannot cover this: it only suppresses a stale RESPONSE.
+    from order_flow_streaming import (
+        StaleOptionCommandError,
+        begin_option_contract_command,
+    )
+    generation = begin_option_contract_command()
+
+    def _apply():
+        from order_flow_streaming import (
+            set_active_option_contract,
+            get_option_contract_streaming_diagnostics,
+        )
+
+        ok = set_active_option_contract(c, command_generation=generation)
+        # PR214 merge blocker 1A: bind the acknowledgement's health to the contract
+        # THIS request asked for, so a client that validates the ack cannot be handed
+        # a healthy-looking plane belonging to a different contract.
+        diag = get_option_contract_streaming_diagnostics(for_contract=c)
+        return {"ok": ok, "contract": c, "command_generation": generation, **diag}
+    try:
+        out = await asyncio.get_event_loop().run_in_executor(_get_fast_quote_executor(), _apply)
+    except StaleOptionCommandError as e:
+        # A superseded command is NOT the current authority. 409 Conflict, ok:false --
+        # the client must not treat this as a successful subscription of `c`.
+        return JSONResponse({"ok": False, "error": str(e), "contract": c,
+                             "superseded": True, "command_generation": generation},
+                            status_code=409)
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e), "contract": c}, status_code=500)
+    return JSONResponse(out)
 
 
 @app.post("/api/streaming/active-ticker")
@@ -14491,6 +14743,186 @@ def get_expiries(ticker: str = Query(default=DEFAULT_TICKER)):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+#: OPTIONS_ORDER_FLOW_V1 completeness repair (2026-08-30, operator-directed, round 2): a
+#: fixed strike_count is NEVER proof of completeness — it is by definition a BOUND (N
+#: strikes above/below ATM), and MEASURED live 2026-08-30 it silently truncated a real
+#: chain: SPY's near expiry at strike_count=250 returned 388 contracts (194 strikes,
+#: 645.0-950.0); the SAME expiry via schwab-py's `strike_range=Options.StrikeRange.ALL` —
+#: a DIFFERENT vendor selection dimension, not a wider count — returned 526 contracts (263
+#: strikes, 420.0-950.0): 69 real strikes strike_count=250 never showed. `strike_range=
+#: "ALL"` was independently confirmed to be the vendor's actual complete set (not itself
+#: silently bounded) by a saturation check: an unrelated strike_count=500 request on the
+#: SAME expiry returned the IDENTICAL strike set, byte-for-byte — the two independent
+#: request shapes converged, which a still-truncated response could not do. TSLA's near
+#: expiry: strike_count=250 and strike_range=ALL happened to already agree (236 contracts,
+#: 118 strikes, 160.0-630.0, 27 fractional) — evidence that a bound merely CAN coincide with
+#: completeness on a given day, never proof that it reliably does, which is exactly why
+#: `strike_range=ALL` (never a strike_count bound) is now the completeness basis. Real
+#: capture evidence: tests/fixtures/real_tsla_complete_chain_strike_range_all.json,
+#: tests/fixtures/real_spy_strike_count_vs_strike_range_all_evidence.json.
+#:
+#: SAFE BY CONSTRUCTION regardless of strike width: this repo's own measured 502s (SPY/QQQ
+#: at strikeCount>=150, $SPX at 80-100, server.py:11090-11091) were ALL multi-expiry
+#: requests (strikeCount * 2 sides * ~35-55 expiries in ONE response) — bounding one
+#: request to exactly ONE expiry via from_date=to_date keeps `strike_range=ALL`'s contract
+#: count scoped to that single expiry's real strike population (measured 236-526 contracts
+#: above), an order of magnitude under SCHWAB_CHAIN_CONTRACT_BUDGET=6600, regardless of how
+#: many strikes that population actually has — the vendor 502 was never about strike width
+#: alone, it was strike width MULTIPLIED across every expiry in an unwindowed request.
+COMPLETENESS_BASIS_STRIKE_RANGE_ALL = "strike_range=ALL"
+
+
+@app.get("/api/chain")
+def get_chain(ticker: str = Query(default=DEFAULT_TICKER),
+              expiry: Optional[str] = Query(default=None)):
+    """CONTRACT-SELECTION surface: the COMPLETE real vendor contract set for one ticker and
+    one expiry — every strike Schwab actually lists, not a bounded analytical window — so a
+    UI can let an operator pick one option contract and pass its `symbol` straight to POST
+    /api/streaming/active-option-contract or GET /api/order-flow/options-microstructure —
+    the same "chain response's own symbol field, never constructed" rule those two routes
+    already document.
+
+    COMPLETE, separate from the bounded analytical chain views: fetches LIVE, scoped to
+    exactly one expiry, through _gated_safe_get_chain — the SAME single, rate-limited,
+    coalesced chain-fetch faucet every other chain read in this file already uses (RC-59/
+    RC-127/Cursor-audit F2's chain_width_single_faucet invariant) — using
+    `strike_range="ALL"` (see COMPLETENESS_BASIS_STRIKE_RANGE_ALL's comment above for the
+    measured proof this is genuinely complete, not merely wide), never a bare strike_count
+    bound, and never a second per-contract parsing path (reuses flatten_chain_contracts/
+    resolve_spot verbatim, same as every other chain consumer). Every native Schwab field
+    is served AS-IS — nothing here rounds, filters, or reconstructs a strike from assumed
+    spacing; fractional strikes (.50/.25/...) survive exactly as the vendor sent them.
+
+    `expiry` optional: defaults to the ticker's nearest listed expiry (the SAME
+    _fetch_expiries_light faucet /api/expiries uses). `scope.kind` states EXACTLY what was
+    served, THREE tiers, honestly distinguished — a caller must never mistake a narrower
+    tier for the complete live one:
+      1. 'complete_single_expiry' — a live strike_range=ALL fetch succeeded AND the
+         vendor's own returned_expiries matched the requested expiry EXACTLY (never
+         claimed on a mismatch — see the expiry_scope_mismatch tier below). Also PERSISTS
+         this proven-complete capture (calibration/complete_chain_capture.py) — a fully
+         independent table from the bounded analytical snapshots, so completeness has a
+         durable record, not just a live-request-shaped promise.
+      2. 'expiry_scope_mismatch' — the vendor's response did not exactly match the
+         requested expiry (e.g. returned a different or additional expiry). The contracts
+         actually returned are still served (never silently dropped — real data), but
+         completeness for the REQUESTED expiry is explicitly NOT claimed.
+      3. 'persisted_complete_capture_fallback' — no live fetch this request (error/
+         timeout/mismatch), but a PRIOR complete_single_expiry capture exists for this
+         exact ticker+expiry; served with its captured_age_sec so staleness is visible.
+      4. 'stored_analytical_snapshot_fallback' — last resort: the bounded, gamma/terrain-
+         tuned snapshot this endpoint originally served, explicitly labeled as NOT proven
+         complete. status='no_chain' if even this has nothing."""
+    t = ticker.upper().strip()
+    # TICKER-PREVIEW-NO-ENROLL: listing a chain is a VIEW — touch last-seen only.
+    _touch_tracked_ticker_view(t)
+
+    resolved_expiry = (expiry or "").strip()[:10] or None
+    if resolved_expiry is None:
+        try:
+            exps = _fetch_expiries_light(t)
+            resolved_expiry = exps[0] if exps else None
+        except Exception as e:
+            log.debug("chain: expiry resolution failed for %s: %s", t, e)
+
+    if resolved_expiry is not None:
+        try:
+            d = date.fromisoformat(resolved_expiry)
+            client = get_client()
+            c_resp, _gate_wait, _fetch_sec = _gated_safe_get_chain(
+                client, t, strike_range="ALL", from_date=d, to_date=d, priority=False)
+            if c_resp is not None and c_resp.status_code == 200:
+                c_json = c_resp.json()
+                spot, _spot_source, _spot_as_of = resolve_spot(t, chain_json=c_json)
+                contracts = flatten_chain_contracts(c_json)
+                # SCOPE CHECK, not defensive-only: never trust the request alone to
+                # guarantee the response's own expirationDate matches what was actually
+                # asked for — a mismatch here is the difference between claiming and
+                # proving completeness for the REQUESTED expiry.
+                returned_exps = sorted({
+                    str(c.get("expirationDate") or "")[:10]
+                    for c in contracts if isinstance(c, dict) and c.get("expirationDate")
+                })
+                if returned_exps == [resolved_expiry]:
+                    try:
+                        persist_complete_chain_capture(
+                            get_db().db_path, ticker=t, expiry=resolved_expiry,
+                            contracts=contracts, spot=spot,
+                            completeness_basis=COMPLETENESS_BASIS_STRIKE_RANGE_ALL)
+                    except Exception as e:
+                        log.warning("chain: complete-capture persist failed for %s %s: %s",
+                                   t, resolved_expiry, e)
+                    return JSONResponse({
+                        "ticker": t, "spot": spot, "expiry": resolved_expiry,
+                        "contracts": contracts, "status": "ok" if contracts else "no_chain",
+                        "scope": {"kind": "complete_single_expiry",
+                                 "requested_expiry": resolved_expiry,
+                                 "returned_expiries": returned_exps,
+                                 "completeness_basis": COMPLETENESS_BASIS_STRIKE_RANGE_ALL},
+                    })
+                log.warning("chain: expiry scope mismatch for %s — requested %s, vendor "
+                           "returned %s; NOT claiming completeness", t, resolved_expiry,
+                           returned_exps)
+                if contracts:
+                    return JSONResponse({
+                        "ticker": t, "spot": spot, "expiry": resolved_expiry,
+                        "contracts": contracts, "status": "ok",
+                        "scope": {"kind": "expiry_scope_mismatch",
+                                 "requested_expiry": resolved_expiry,
+                                 "returned_expiries": returned_exps,
+                                 "note": "vendor response did not match the requested "
+                                         "expiry exactly — served as-is for "
+                                         "transparency, NOT proven complete for the "
+                                         "requested expiry"},
+                    })
+                # No contracts at all for the mismatch case — fall through to the
+                # persisted/stored tiers below rather than returning an empty response.
+            else:
+                log.warning("chain: live fetch non-200 for %s expiry %s, falling back",
+                           t, resolved_expiry)
+        except Exception as e:
+            log.warning("chain: live fetch failed for %s expiry %s (%s), falling back",
+                       t, resolved_expiry, e)
+
+        try:
+            cap = latest_complete_chain_capture(get_db().db_path, t, resolved_expiry)
+        except Exception as e:
+            cap = None
+            log.debug("chain: persisted-capture read failed for %s %s: %s",
+                     t, resolved_expiry, e)
+        if cap:
+            return JSONResponse({
+                "ticker": t, "spot": cap["spot"], "expiry": resolved_expiry,
+                "contracts": cap["contracts"], "status": "ok",
+                "scope": {"kind": "persisted_complete_capture_fallback",
+                         "requested_expiry": resolved_expiry,
+                         "completeness_basis": cap["completeness_basis"],
+                         "captured_ts": cap["ts_utc"],
+                         "captured_age_sec": round(time.time() - cap["ts_utc"], 1),
+                         "note": "a prior COMPLETE capture — not fetched live this "
+                                 "request, staleness stated above"},
+            })
+
+    contracts, spot = _latest_chain_and_spot(t)
+    if not contracts:
+        return JSONResponse({"ticker": t, "spot": spot, "expiry": None, "contracts": [],
+                            "status": "no_chain",
+                            "scope": {"kind": "stored_analytical_snapshot_fallback"}})
+    stored_expiry = None
+    for ct in contracts:
+        if isinstance(ct, dict) and ct.get("expirationDate"):
+            stored_expiry = str(ct["expirationDate"])[:10]
+            break
+    return JSONResponse({
+        "ticker": t, "spot": spot, "expiry": stored_expiry, "contracts": contracts,
+        "status": "ok",
+        "scope": {"kind": "stored_analytical_snapshot_fallback",
+                 "note": "bounded analytical snapshot, NOT proven complete — live "
+                         "complete-chain fetch and any persisted capture were both "
+                         "unavailable this request"},
+    })
 
 
 @app.get("/api/logger/status")

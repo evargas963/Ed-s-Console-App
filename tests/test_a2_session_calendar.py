@@ -1,3 +1,6 @@
+"""v2_decision.a2_session_calendar: SessionInfo/get_session_info must classify the
+correct trading-session state for a given date, including holidays/early closes --
+a wrong session classification propagates into every downstream lifecycle rule."""
 from __future__ import annotations
 
 import json

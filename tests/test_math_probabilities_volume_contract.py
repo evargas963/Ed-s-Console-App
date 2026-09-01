@@ -1,3 +1,6 @@
+"""math_probabilities.compute_volume_oi_ratio/flow_imbalance_normalized_with_fallback
+must not treat a missing (None) volume as a dormant zero -- collapsing "unknown" into
+"zero" silently invents a bearish/bullish signal that was never observed."""
 from __future__ import annotations
 
 from math_probabilities import compute_volume_oi_ratio, flow_imbalance_normalized_with_fallback

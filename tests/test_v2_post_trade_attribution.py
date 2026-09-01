@@ -1,3 +1,6 @@
+"""v2_decision.post_trade_attribution must build and persist an attribution record
+carrying every required key, and load recent records back correctly -- a dropped
+key would silently break the post-trade audit trail this record exists to provide."""
 from __future__ import annotations
 
 import pytest

@@ -675,7 +675,7 @@ def _moving_ref_offenders(text, label):
     return offenders
 
 
-def test_no_negative_control_compares_against_a_moving_reference():
+def test_no_negative_control_compares_against_a_moving_reference(repo_index):
     """Class-level lock for RC-260, not a second copy of the same one-site fix.
 
     RC-260 was one test comparing against ``git show HEAD:<file>``. The bug is
@@ -692,15 +692,21 @@ def test_no_negative_control_compares_against_a_moving_reference():
     # RC-307: repo-wide is the GIT INDEX. A filesystem walk here would judge untracked
     # scratch copies of old test files, which is how tests/test_coh_sa2_et_authority.py
     # spent weeks failing on 93 scripts the repository does not contain.
-    tracked = subprocess.run(["git", "ls-files", "-z", "--", "tests/test_*.py"],
-                             cwd=REPO, capture_output=True, text=True, check=True).stdout
+    #
+    # TEST_SYSTEM_REHAB_V2 final remediation: migrated the independent `git ls-files`
+    # re-scan onto the shared `repo_index` fixture. In the same edit, widened the file
+    # filter from the literal pathspec `tests/test_*.py` to "any tracked test_*.py
+    # under tests/, at any depth" -- that literal pathspec cannot match a file whose
+    # immediate parent segment isn't "test_"-prefixed (git pathspec semantics), so it
+    # silently never saw tests/adversarial/*.py, tests/decision_reconstruction/*.py,
+    # tests/release_object/*.py, tests/runtime_proof/*.py (the same 13-file gap the
+    # semantic-family manifest independently found and fixed).
     offenders = []
-    for rel in sorted(p for p in tracked.split("\0") if p):
-        path = REPO / rel
-        if not path.exists():
+    for relpath, text, _tree in repo_index.items():
+        rel = relpath.as_posix()
+        if not (rel.startswith("tests/") and relpath.name.startswith("test_")):
             continue
-        offenders += _moving_ref_offenders(
-            path.read_text(encoding="utf-8", errors="replace"), rel)
+        offenders += _moving_ref_offenders(text, rel)
     assert offenders == [], (
         "negative controls must name the revision they mean, not a moving ref "
         "(RC-260):\n  " + "\n  ".join(offenders))

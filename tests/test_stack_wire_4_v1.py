@@ -88,22 +88,19 @@ def test_mc_model_direction_inputs_stack_probs_path_does_not_raise():
     assert out[4] == "stack_probs_meta_or_weighted"
 
 
-def test_classify_stack_health_single_producer():
-    root = _repo_root()
+def test_classify_stack_health_single_producer(repo_index):
+    """TEST_SYSTEM_REHAB_V2: sources from the shared `repo_index` corpus instead of an
+    independent root.rglob("*.py")."""
     # scratchpad/ holds the RC-210 wipe-recovery copies (e.g. _server_RELANDED_20260802.py)
     # — preserved evidence, never production; counting them breaks single-producer scans.
     skip_dirs = {".git", ".venv", "venv", "node_modules", "__pycache__", "tests", ".claude",
                  "scratchpad"}
     call_sites: list[str] = []
-    for path in root.rglob("*.py"):
-        rel = path.relative_to(root)
+    for rel, src, _tree in repo_index.items():
         if rel.parts and rel.parts[0] in skip_dirs:
             continue
         if any(part in skip_dirs for part in rel.parts):
             continue
-        if rel.parts[0] == "tests":
-            continue
-        src = path.read_text(encoding="utf-8")
         for i, line in enumerate(src.splitlines(), 1):
             if "classify_stack_health(" not in line:
                 continue

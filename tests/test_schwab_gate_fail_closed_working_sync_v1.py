@@ -1,3 +1,7 @@
+"""The Schwab crosswalk WORKING csv's fail-closed classification (spot-validation
+no-default-zero, underlying-price-row relocation, MC fusion N7 volatility row) must
+stay synced with the code it describes -- a stale crosswalk entry silently
+misrepresents what the fail-closed gate actually does."""
 from __future__ import annotations
 
 import csv

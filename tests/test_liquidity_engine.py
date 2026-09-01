@@ -835,8 +835,17 @@ def test_no_lookahead_premarket():
     cfg = PlaybookConfig()
     out = build_premarket_snapshot("SPY", bars, session, cfg)
     assert out.raw_levels.get("prev_day")
-    # No today POC/VAH/VAL in premarket raw
-    assert "poc" not in str(out.raw_levels.get("prev_day", {})).lower() or "pd_" in str(out.raw_levels)
+    # No today POC/VAH/VAL in premarket raw: every "poc"-shaped key inside prev_day
+    # must be the pd_-prefixed previous-day form, not an unprefixed today value that
+    # leaked in. TEST_SYSTEM_REHAB_V2: was `"poc" not in prev_day or "pd_" in
+    # raw_levels` -- the second arm checked ANY "pd_" occurrence anywhere in the
+    # whole payload, satisfied unconditionally since prev_day always has pd_ keys,
+    # so a leaked unprefixed "today_poc" inside prev_day would never be caught.
+    prev_day = out.raw_levels.get("prev_day", {})
+    poc_keys = [k for k in prev_day if "poc" in str(k).lower()]
+    assert poc_keys, "prev_day carries no poc-shaped key at all"
+    assert all(str(k).lower().startswith("pd_") for k in poc_keys), (
+        f"prev_day contains a non-pd_-prefixed poc key: {poc_keys}")
 
 
 def test_summarize_snapshot():

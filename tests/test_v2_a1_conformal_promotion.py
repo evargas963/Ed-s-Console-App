@@ -1,3 +1,7 @@
+"""v2_decision.a1_conformal_promotion.derive_a1_conformal_bounds must only promote a
+conformal bound into the live module-A decision when it's actually eligible, and the
+resulting decision must still pass validate_v2_decision -- a wrongly-promoted bound
+would silently widen/narrow the decision's stated confidence."""
 from __future__ import annotations
 
 import time

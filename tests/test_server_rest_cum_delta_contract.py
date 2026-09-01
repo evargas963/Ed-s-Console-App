@@ -1,3 +1,7 @@
+"""server's REST cumulative-delta computation must preserve a genuinely-missing
+last-trade size as unavailable rather than coercing it to zero, and use Schwab's
+own last size when present -- the REST-path instance of the missing-vs-zero
+contract proved elsewhere for the streaming order-flow path."""
 from __future__ import annotations
 
 from datetime import datetime

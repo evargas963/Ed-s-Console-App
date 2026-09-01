@@ -1,3 +1,6 @@
+"""A1 isotonic artifact production (produce_a1_isotonic_artifact + its CLI arg
+parser): atomic write, current-pointer swap, and lineage id must never leave a
+partial or wrongly-promoted artifact live for the runtime to load."""
 from __future__ import annotations
 
 import json

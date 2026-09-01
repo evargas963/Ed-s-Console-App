@@ -103,12 +103,22 @@ def test_before_after_probe_is_read_only():
     measures changes underneath the measurement."""
     src = (REPO / "tools" / "phase2a_before_after_probe.py").read_text(encoding="utf-8")
     tree = ast.parse(src)
+    write_modes = {"w", "a", "x", "w+", "a+", "x+", "wb", "ab", "xb", "wb+", "ab+", "xb+"}
     for node in ast.walk(tree):
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
             assert node.func.attr not in ("write_text", "write_bytes", "unlink", "rmtree"), (
                 f"before/after probe performs a write: {ast.unparse(node)[:100]}")
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
-            assert node.func.id != "open" or True  # reads are fine; writes are caught above
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "open":
+            # TEST_SYSTEM_REHAB_V2: was `assert node.func.id != "open" or True` -- always
+            # true regardless of node, so a bare `open(path, "w")` write (not caught by the
+            # attribute check above, which only sees .write_text/.write_bytes/.unlink/
+            # .rmtree method calls) would have silently passed. A missing mode arg defaults
+            # to "r" (read), so only an EXPLICIT write mode is flagged.
+            mode_arg = node.args[1] if len(node.args) > 1 else next(
+                (kw.value for kw in node.keywords if kw.arg == "mode"), None)
+            mode = mode_arg.value if isinstance(mode_arg, ast.Constant) else None
+            assert mode not in write_modes, (
+                f"before/after probe opens a file in a write mode: {ast.unparse(node)[:100]}")
 
 
 # ── producer_inventory_v1: RC-327's mission denominator ─────────────────────────

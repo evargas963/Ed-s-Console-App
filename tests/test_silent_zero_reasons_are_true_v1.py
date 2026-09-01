@@ -41,8 +41,11 @@ def test_absent_pipeline_timing_is_not_published_as_zero_milliseconds():
 
     import server as srv
 
-    src = inspect.getsource(srv)
-    i = src.find('out["l1_pipeline_ms"]')
+    # TEST_SYSTEM_REHAB_V2: this used to also compute `i = src.find('out["l1_pipeline_ms"]')`
+    # from a separate, unused `src = inspect.getsource(srv)` call, then end with
+    # `assert i or True` -- vacuous regardless of `i` (str.find returns -1, which is
+    # truthy, on a miss; `-1 or True` and `n or True` are both always True). Removed:
+    # the three real assertions below already cover the property directly.
     blk = inspect.getsource(srv)  # whole module; assert on the specific repaired lines
     assert 'ms = _fin_ms(out.get("l1_pipeline_ms"))' in blk, (
         "l1_pipeline_ms is being coerced again instead of read as optional")
@@ -50,7 +53,6 @@ def test_absent_pipeline_timing_is_not_published_as_zero_milliseconds():
         "absent timing is accumulated into l1_build_ms_sum again")
     assert '"l1_build_ms": None if ms is None else round(ms, 3)' in blk, (
         "absent timing is published as 0.0 ms again — it depresses the average silently")
-    assert i or True
 
 
 def test_no_active_exemption_claims_the_nonexistent_pipeline_guard():
@@ -114,10 +116,18 @@ def test_a_future_expiry_still_blocks(monkeypatch):
 def test_the_reason_string_admits_a_malformed_hold(monkeypatch):
     """The operator-facing line must say the hold has no expiry, not 'next attempt in 0s'."""
     srv = _fresh_quarantine(monkeypatch, {"failures": 3, "reason": "boom"})
-    msg = srv._terrain_quarantine_reason("ZZQ") if hasattr(
-        srv, "_terrain_quarantine_reason") else ""
-    if msg:
-        assert "NO expiry recorded" in msg or "malformed" in msg, msg
+    # TEST_SYSTEM_REHAB_V2: was `if msg: assert ...` where msg came from a call to
+    # `_terrain_quarantine_reason` (with a leading underscore) -- a name that has
+    # NEVER existed in server.py; the real function is `terrain_quarantine_reason`
+    # (no underscore). `if msg:` made this silently skip its own assertion forever
+    # (hasattr was always False, msg was always "") instead of failing on the typo --
+    # zero coverage, not a passing check. Found only once the freshness/presence gap
+    # itself was fixed and this line finally ran for real; corrected to the real name.
+    assert hasattr(srv, "terrain_quarantine_reason"), (
+        "terrain_quarantine_reason is gone; the malformed-hold message can't be checked")
+    msg = srv.terrain_quarantine_reason("ZZQ")
+    assert msg, "a malformed hold (no until_ts) must produce a non-empty reason string"
+    assert "NO expiry recorded" in msg or "malformed" in msg, msg
 
 
 # ──────────────────────────── market_session: the date is REQUIRED, not optional ────

@@ -17,7 +17,6 @@ only the per_bar_1m era by sqrt(ANNUALIZED_HOURS*60/BAR_MINUTES)).
 """
 from __future__ import annotations
 
-import subprocess
 import sys
 from pathlib import Path
 
@@ -86,21 +85,11 @@ def test_rows_after_the_legacy_boundary_are_annualized():
     assert mc_sigma_unit_for_row(MC_SIGMA_LEGACY_LAST_WRITE_TS + 1, "garch") == "annualized"
 
 
-def test_no_new_mc_sigma_value_reader_appears_unpinned():
-    proc = subprocess.run(
-        ["git", "ls-files", "-z", "--", "*.py"],
-        cwd=ROOT, capture_output=True, text=True, check=True,
-    )
+def test_no_new_mc_sigma_value_reader_appears_unpinned(repo_index):
     mentions = set()
-    for rel in proc.stdout.split("\0"):
-        if not rel:
-            continue
-        try:
-            text = (ROOT / rel).read_text(encoding="utf-8", errors="replace")
-        except OSError:
-            continue
+    for relpath, text, _tree in repo_index.items():
         if "mc_sigma_value" in text:
-            mentions.add(rel.replace("\\", "/"))
+            mentions.add(relpath.as_posix())
     assert mentions == set(READER_CENSUS), (
         f"mc_sigma_value consumer census moved.\n"
         f"NEW (not pinned): {sorted(mentions - set(READER_CENSUS))}\n"

@@ -1,3 +1,6 @@
+"""tools.migrate_snapshots_schema_repair_v1 must repair a snapshots table's schema
+in place without losing or corrupting existing rows -- a one-way migration tool
+that gets this wrong destroys production history irreversibly."""
 from __future__ import annotations
 
 import sqlite3

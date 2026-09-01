@@ -1,3 +1,7 @@
+"""The similarity engine's structural-anchor overlay matching, audit-metadata
+resolution, and staged-diagnosis output must be reproducible and structurally
+correct -- a survivorship-biased or non-reproducible overlay silently corrupts
+which historical analogues a similarity search returns."""
 from __future__ import annotations
 
 import sys

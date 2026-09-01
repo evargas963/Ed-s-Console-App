@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import re
-from pathlib import Path
 
 import pytest
 
@@ -32,18 +31,16 @@ _MISSING_GREEK_SENTINEL_LITERAL = re.compile(r"-999\.0")
 _AUTHORITY_FILE = "math_exposure_core.py"
 
 
-def _repo_root() -> Path:
-    return Path(__file__).resolve().parents[1]
-
-
-def _iter_production_py(root: Path):
-    for path in root.rglob("*.py"):
-        rel = path.relative_to(root)
+#: TEST_SYSTEM_REHAB_V2: was an independent root.rglob("*.py") + per-file read_text --
+#: now sources from the shared tests/conftest.py `repo_index` corpus. Filter semantics
+#: unchanged (skip tests/tools/governance and the same build-tool dirs).
+def _iter_production_py(repo_index):
+    for rel, text, _tree in repo_index.items():
         if rel.parts and rel.parts[0] == "tests":
             continue
         if any(part in _SKIP_PY_TREE_DIRS for part in rel.parts):
             continue
-        yield path, rel
+        yield rel, text
 
 
 def _offending_literal_lines(src: str, rel_name: str) -> list[str]:
@@ -85,12 +82,10 @@ def test_t1_fallback_and_t2_offset_constants_pin_expected_r_multiples():
     assert levels.target2 == pytest.approx(103.0)
 
 
-def test_no_inline_missing_greek_sentinel_literal_in_production_outside_authority():
+def test_no_inline_missing_greek_sentinel_literal_in_production_outside_authority(repo_index):
     """Repo-wide guard (sweep-3 shape): only math_exposure_core may define -999.0."""
-    root = _repo_root()
     offenders: list[str] = []
-    for path, rel in _iter_production_py(root):
+    for rel, src in _iter_production_py(repo_index):
         rel_s = str(rel).replace("\\", "/")
-        src = path.read_text(encoding="utf-8")
         offenders.extend(_offending_literal_lines(src, rel_s))
     assert not offenders, offenders

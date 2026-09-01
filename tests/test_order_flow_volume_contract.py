@@ -1,3 +1,6 @@
+"""order_flow_engine._compute_options_flow must not treat a missing total_volume as
+zero flow -- the same missing-vs-zero contract as the live-state and tape-print
+seams, proved here at the options-flow computation itself."""
 from __future__ import annotations
 
 from order_flow_engine import _compute_options_flow

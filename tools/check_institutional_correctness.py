@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import ast
 import datetime
+import hashlib
 import json
 import os
 import re
@@ -1079,6 +1080,343 @@ def check_no_synthetic_domain_fixtures_in_tests() -> list[Violation]:
     return out
 
 
+# ── TEST_SYSTEM_REHAB_V2 recurrence locks (2026-08-31) ───────────────────────────
+# Two objective recurrence classes PROVEN this rehab (an exact-duplicate test family,
+# and dozens of independent whole-repo scans duplicating the shared repo_index
+# observation) must not silently return. Both cores are pure functions over a `root`
+# directory so tests/test_rehab_recurrence_locks_v1.py can prove BLOCK/PASS against a
+# synthetic tmp_path tree, never the real repository — the real-tree wrappers below
+# just point that same logic at TESTS.
+
+_DUPLICATE_TEST_JUSTIFY_MARKER = "institutional-duplicate-ok"
+_SCAN_JUSTIFY_MARKER = "institutional-scan-ok"
+
+
+def _module_level_import_bindings(tree: ast.Module) -> dict[str, str]:
+    """{local_name: resolved_module_path} for every TOP-LEVEL `import X [as Y]` /
+    `from X import Y [as Z]` in a file — used to tell apart two test functions whose
+    BODY text is identical but that reference differently-imported names (e.g. both
+    call `runner.run_study(...)`, where `runner` is bound to a different module in
+    each file). Only module-level bindings are resolved; a name imported inside the
+    function itself is already visible to the plain AST-dump hash."""
+    out: dict[str, str] = {}
+    for node in tree.body:
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                out[alias.asname or alias.name.split(".")[0]] = alias.name
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            for alias in node.names:
+                out[alias.asname or alias.name] = f"{node.module}.{alias.name}"
+    return out
+
+
+def _normalized_test_body_hash(node: ast.FunctionDef, import_bindings: dict[str, str]) -> str:
+    """AST dump of a test function's body with its own name stripped, so two
+    byte-identical bodies under different names still hash equal — but two bodies
+    that read/construct anything differently (a different Name, Attribute, or
+    Constant node anywhere) hash DIFFERENT, so a same-shaped test against a
+    genuinely different production module is never flagged.
+
+    TEST_SYSTEM_REHAB_V2: also resolves every module-level-imported name the
+    function body actually references (e.g. `runner` bound to a different module
+    per file) and folds the sorted resolved-module list into the hash — two
+    identically-shaped test bodies calling into genuinely different production
+    modules now hash DIFFERENT on that basis alone, with no exemption marker
+    needed. A marker remains for cases resolution cannot structurally distinguish
+    (e.g. a truly interchangeable literal/config difference)."""
+    dumped = ast.dump(node, annotate_fields=True, include_attributes=False)
+    normalized = dumped.replace(f"name='{node.name}'", "name='X'", 1)
+    referenced_modules = sorted({
+        import_bindings[n.id]
+        for n in ast.walk(node)
+        if isinstance(n, ast.Name) and n.id in import_bindings
+    })
+    return hashlib.sha256(
+        (normalized + "|" + ",".join(referenced_modules)).encode()
+    ).hexdigest()
+
+
+def _find_duplicate_test_groups(root: Path) -> list[list[tuple[Path, int, str]]]:
+    """Groups of 2+ top-level test functions (anywhere under `root`, excluding
+    archive/) whose bodies are byte-identical once each function's own name is
+    normalized away. A function whose span contains the exemption marker is
+    excluded from grouping entirely (never silently paired with anything)."""
+    groups: dict[str, list[tuple[Path, int, str]]] = {}
+    for p in sorted(root.rglob("test_*.py")):
+        if "archive" in p.relative_to(root).parts:
+            continue
+        src = _read_or_empty(p)
+        if not src:
+            continue
+        try:
+            tree = ast.parse(src, filename=str(p))
+        except SyntaxError:
+            continue
+        import_bindings = _module_level_import_bindings(tree)
+        lines = src.splitlines()
+        for node in ast.walk(tree):
+            if not (isinstance(node, ast.FunctionDef) and node.name.startswith("test_")):
+                continue
+            lo, hi = node.lineno, getattr(node, "end_lineno", node.lineno)
+            seg = "\n".join(lines[lo - 1: hi])
+            if _DUPLICATE_TEST_JUSTIFY_MARKER in seg:
+                continue
+            h = _normalized_test_body_hash(node, import_bindings)
+            groups.setdefault(h, []).append((p, node.lineno, node.name))
+    return [members for members in groups.values() if len(members) > 1]
+
+
+def check_no_duplicate_tests() -> list[Violation]:
+    """Fail if two test functions have a byte-identical body (own name aside) —
+    TEST_SYSTEM_REHAB_V2's exact-duplicate-test recurrence lock."""
+    out: list[Violation] = []
+    for members in _find_duplicate_test_groups(TESTS):
+        names = ", ".join(f"{p.relative_to(REPO)}:{ln}::{n}" for p, ln, n in members)
+        p0, ln0, _n0 = members[0]
+        out.append(Violation(
+            p0, ln0,
+            f"duplicate test body (byte-identical once the function's own name is "
+            f"normalized away) across: {names}. If these exercise genuinely "
+            f"different production modules, add '# institutional-duplicate-ok: "
+            f"<reason>' inside the function; otherwise delete the redundant copy "
+            f"and keep the canonical one.",
+        ))
+    return out
+
+
+def _string_const(node: ast.AST) -> str | None:
+    return node.value if isinstance(node, ast.Constant) and isinstance(node.value, str) else None
+
+
+def _is_py_source_scan_call(node: ast.Call) -> bool:
+    """True for a `.rglob(...)`/`.glob(...)` call whose PATTERN targets .py source
+    files -- the only shape that is actually redundant with `repo_index` (which only
+    indexes .py files). A `tmp_path.rglob("*.json")` cleanup-verification scan, or any
+    glob for a non-.py artifact type, can never be satisfied by the shared corpus
+    regardless of its receiver, so it is not flagged at all -- not exempted, genuinely
+    a different observation. `os.walk(...)` takes no pattern and is always flagged
+    (rare in this codebase; the marker covers a real non-.py need)."""
+    if not isinstance(node.func, ast.Attribute):
+        return False
+    if node.func.attr not in ("rglob", "glob"):
+        return False
+    if not node.args:
+        return False
+    pattern = _string_const(node.args[0])
+    return pattern is not None and ".py" in pattern
+
+
+def _is_os_walk_call(node: ast.Call) -> bool:
+    fn = node.func
+    if isinstance(fn, ast.Attribute) and fn.attr == "walk":
+        return isinstance(fn.value, ast.Name) and fn.value.id == "os"
+    return isinstance(fn, ast.Name) and fn.id == "walk"  # `from os import walk`
+
+
+def _is_git_ls_files_call(node: ast.Call) -> bool:
+    """`subprocess.run/check_output/check_call(["git", "ls-files", ...], ...)` --
+    TEST_SYSTEM_REHAB_V2 final remediation: the independent audit found ~9-10 test
+    files bypassing the redundant-scan lock this way, structurally invisible to
+    `_is_py_source_scan_call`/`_is_os_walk_call` (a `subprocess.run` call, not a
+    `.rglob`/`.glob`/`os.walk` call). Matched on the command list alone; whether it's
+    actually redundant with `repo_index` depends on what happens to the result
+    afterward -- see `_reads_py_source_in_function`."""
+    fn = node.func
+    if not (isinstance(fn, ast.Attribute) and fn.attr in ("run", "check_output", "check_call")
+            and isinstance(fn.value, ast.Name) and fn.value.id == "subprocess"):
+        return False
+    first = node.args[0] if node.args else next(
+        (kw.value for kw in node.keywords if kw.arg == "args"), None)
+    if not isinstance(first, (ast.List, ast.Tuple)):
+        return False
+    strs = [e.value for e in first.elts if isinstance(e, ast.Constant) and isinstance(e.value, str)]
+    return "git" in strs and "ls-files" in strs
+
+
+def _reads_py_source(fn_node: ast.AST) -> bool:
+    """True if `fn_node`'s body reads file CONTENT (`.read_text(`, `.read_bytes(`,
+    bare `open(`, `inspect.getsource(`) anywhere. A bare `git ls-files` that only
+    inspects FILENAMES (e.g. classifying paths, checking a module is inventoried)
+    never re-reads the corpus `repo_index` already holds and is a genuinely cheaper,
+    different observation -- not flagged. `git ls-files` + a subsequent per-file
+    read is the exact shape `.rglob`+`.read_text()` already is."""
+    for n in ast.walk(fn_node):
+        if not isinstance(n, ast.Call):
+            continue
+        f = n.func
+        if isinstance(f, ast.Attribute) and f.attr in ("read_text", "read_bytes", "getsource"):
+            return True
+        if isinstance(f, ast.Name) and f.id == "open":
+            return True
+    return False
+
+
+def _reads_py_source_in_function(fn_node: ast.FunctionDef | ast.AsyncFunctionDef,
+                                  module: ast.Module) -> bool:
+    """`_reads_py_source(fn_node)`, widened one hop: the common shape in this repo is a
+    small helper (`_tracked_py_under`, `_iter_repo_py_files`, ...) whose ONLY job is
+    the `git ls-files` call, with the actual per-file read happening in whichever
+    function CALLS that helper by name -- still one observation, just split across
+    two functions for readability. A single-hop caller check catches that split
+    without a general cross-function dataflow analysis."""
+    if _reads_py_source(fn_node):
+        return True
+    name = getattr(fn_node, "name", None)
+    if not name:
+        return False
+    for candidate in ast.walk(module):
+        if not isinstance(candidate, (ast.FunctionDef, ast.AsyncFunctionDef)) or candidate is fn_node:
+            continue
+        calls_helper = any(
+            isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == name
+            for n in ast.walk(candidate))
+        if calls_helper and _reads_py_source(candidate):
+            return True
+    return False
+
+
+def _find_py_source_scan_sites(root: Path, *, name_glob: str,
+                                exclude_dir_parts: frozenset[str] = frozenset()) -> list[tuple[Path, int]]:
+    """THE ONE AST walk for .py-source repo scans (`.rglob`/`.glob` targeting *.py,
+    `os.walk`, or `git ls-files` followed by a per-file content read) under `root`,
+    restricted to files matching `name_glob`. TEST_SYSTEM_REHAB_V2 (2026-08-31) first
+    unified this with tests/test_gate_scope_is_the_git_index_v1.py's older, independent
+    census walk (which only matched `.rglob(`), then (final remediation pass) extended
+    it again to catch the `subprocess.run(["git","ls-files",...])` + read/parse shape
+    an independent audit found bypassing the lock entirely -- a materially equivalent
+    full-tree observation the original detector's call-shape matching couldn't see.
+    Detection and the exemption marker are BOTH scoped to the ENCLOSING FUNCTION, not
+    the whole file: a file (or even one function) may legitimately consume
+    `repo_index` for one purpose and still be caught building a second, independent
+    .py-source scan alongside it -- a file-wide "repo_index appears somewhere" bypass
+    would hide exactly that."""
+    out: list[tuple[Path, int]] = []
+    for p in sorted(root.rglob(name_glob)):
+        if exclude_dir_parts & set(p.relative_to(root).parts):
+            continue
+        src = _read_or_empty(p)
+        if not src:
+            continue
+        try:
+            tree = ast.parse(src, filename=str(p))
+        except SyntaxError:
+            continue
+        lines = src.splitlines()
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            # TEST_SYSTEM_REHAB_V2 final remediation (perf root-fix): `_enclosing_func_span`
+            # is a FULL ast.walk(tree) by itself -- calling it for every Call node in the
+            # file (there can be hundreds) turned this per-file pass into O(nodes^2) and
+            # made the real-tree lock test pathologically slow (180s+ for one test, over
+            # ~150 tests/*.py files). It must only run once a node is ALREADY a candidate
+            # (a confirmed rglob/glob/os.walk scan, or a git-ls-files call that needs its
+            # enclosing function inspected) -- exactly the original, fast shape.
+            is_scan = _is_py_source_scan_call(node) or _is_os_walk_call(node)
+            is_git_ls_candidate = (not is_scan) and _is_git_ls_files_call(node)
+            if not (is_scan or is_git_ls_candidate):
+                continue
+            line = getattr(node, "lineno", 0)
+            span = _enclosing_func_span(tree, line)
+            if is_git_ls_candidate and span is not None:
+                for fn_node in ast.walk(tree):
+                    if (isinstance(fn_node, (ast.FunctionDef, ast.AsyncFunctionDef))
+                            and (fn_node.lineno, getattr(fn_node, "end_lineno", fn_node.lineno)) == span):
+                        is_scan = _reads_py_source_in_function(fn_node, tree)
+                        break
+            if not is_scan:
+                continue
+            seg = "\n".join(lines[span[0] - 1: span[1]]) if span else lines[max(0, line - 1)]
+            if _SCAN_JUSTIFY_MARKER in seg:
+                continue
+            out.append((p, line))
+    return out
+
+
+def _find_new_repo_scans(root: Path) -> list[tuple[Path, int]]:
+    """Test files under `root` (excluding archive/) that build their own .py-source
+    repo-wide observation instead of consuming the shared `repo_index` fixture --
+    the ENFORCEMENT-scoped view of `_find_py_source_scan_sites` (test_*.py only)."""
+    return _find_py_source_scan_sites(root, name_glob="test_*.py", exclude_dir_parts=frozenset({"archive"}))
+
+
+def check_no_new_independent_repo_scan_in_tests() -> list[Violation]:
+    """Fail if a NEW test performs its own repo-wide .py-source scan
+    (`.rglob`/`.glob` targeting *.py, or `os.walk`) instead of consuming the shared
+    `repo_index` fixture (tests/conftest.py) — TEST_SYSTEM_REHAB_V2's duplicate-repo-
+    observation recurrence lock. A genuinely specialized scan (a scope the shared
+    corpus cannot supply) is exempted with '# institutional-scan-ok: <reason>' inside
+    the SAME function — the marker does not cover the rest of the file. A scan for a
+    non-.py artifact type (temp-dir cleanup checks, model-artifact directories, etc.)
+    is a different observation entirely and is never flagged, not merely exempted."""
+    return [
+        Violation(
+            p, line,
+            "new independent repo-wide .py-source scan (.rglob/.glob/os.walk) in a "
+            "test that does not consume the shared `repo_index` fixture "
+            "(tests/conftest.py) for THIS observation — share the existing "
+            "current-tree observation, or justify a genuinely specialized scan with "
+            "'# institutional-scan-ok: <reason>' inside the same function.",
+        )
+        for p, line in _find_new_repo_scans(TESTS)
+    ]
+
+
+def _is_constant_true_or_assertion(node: ast.Assert) -> bool:
+    """TEST_SYSTEM_REHAB_V2 final remediation: narrow, mechanical detection ONLY --
+    `assert X or True` / `assert True or X` (a boolean `or` with a literal `True`
+    disjunct anywhere in it) is vacuously true regardless of X, definitionally, no
+    theorem-proving required. Four real instances of exactly this literal shape were
+    found and fixed by the Cursor audit (test_chain_accrual_and_storm1_v1.py,
+    test_phase2a_and_producer_probes_v1.py, test_silent_zero_reasons_are_true_v1.py,
+    test_charm_vote_gate.py) -- this locks that class so it cannot silently
+    reappear. Deliberately does NOT attempt to catch the broader, context-dependent
+    `assert X or Y` weakness (Y a real but contextually-always-true expression given
+    prior lines) -- that requires human judgment per instance, not a general
+    Boolean-expression prover, and was fixed individually instead."""
+    test = node.test
+    return (isinstance(test, ast.BoolOp) and isinstance(test.op, ast.Or)
+            and any(isinstance(v, ast.Constant) and v.value is True for v in test.values))
+
+
+def _find_constant_true_or_assertions(root: Path) -> list[tuple[Path, int]]:
+    """AST walk for `assert <expr> or True` / `assert True or <expr>` under `root`,
+    restricted to test_*.py (the same scope `_find_new_repo_scans` uses)."""
+    out: list[tuple[Path, int]] = []
+    for p in sorted(root.rglob("test_*.py")):
+        if "archive" in p.relative_to(root).parts:
+            continue
+        src = _read_or_empty(p)
+        if not src:
+            continue
+        try:
+            tree = ast.parse(src, filename=str(p))
+        except SyntaxError:
+            continue
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Assert) and _is_constant_true_or_assertion(node):
+                out.append((p, node.lineno))
+    return out
+
+
+def check_no_constant_true_or_assertions() -> list[Violation]:
+    """Fail if a NEW `assert X or True` / `assert True or X` appears -- a boolean OR
+    with a literal True disjunct can never fail, so the assertion provides zero
+    coverage regardless of what X evaluates to. TEST_SYSTEM_REHAB_V2's third
+    recurrence lock, narrowly scoped to this one mechanically-obvious shape (see
+    `_is_constant_true_or_assertion`)."""
+    return [
+        Violation(
+            p, line,
+            "assert <expr> or True (or True or <expr>) is vacuously true regardless "
+            "of <expr> -- this assertion can never fail and provides zero coverage. "
+            "Assert the real condition, or delete the line if nothing is actually "
+            "being checked.",
+        )
+        for p, line in _find_constant_true_or_assertions(TESTS)
+    ]
+
+
 # ── Production-code checks (no-silent-swallow, simplicity) ───────────────────
 # ".claude" (2026-07-22): agent worktrees (.claude/worktrees/<name>/) are full
 # ISOLATED COPIES of the repo — scanning one as production doubled every AST-walked
@@ -1425,6 +1763,28 @@ def check_one_producer() -> list[Violation]:
             out.append(Violation(REPO / "governance" / "computation_registry.json", 0, msg))
     except Exception as exc:                                        # noqa: BLE001
         out.append(Violation(REPO / "tools" / "check_one_producer.py", 0,
+                             f"checker unavailable ({type(exc).__name__}: {exc}) — a gate "
+                             f"that cannot run is not a gate"))
+    return out
+
+
+def check_single_stream_authority() -> list[Violation]:
+    """SINGLE-STREAM-AUTHORITY (2026-08-30) — exactly one production Schwab StreamClient
+    constructor, repo-wide. order_flow_streaming.py used to open a second, independent
+    session at server startup, racing the canonical capture daemon on the same account.
+    Root-fixed: that module now reads the daemon's capture DB read-only and opens no
+    Schwab session. This gate is the mutation-tested proof it stays that way — a future
+    change that reintroduces a second constructor (or renames/duplicates the daemon
+    itself) fails here, not merely in a design review.
+    """
+    out: list[Violation] = []
+    try:
+        sys.path.insert(0, str(REPO / "tools"))
+        from check_single_stream_authority import violations as _v
+        for msg in _v():
+            out.append(Violation(REPO / "tools" / "run_stream_capture.py", 0, msg))
+    except Exception as exc:                                        # noqa: BLE001
+        out.append(Violation(REPO / "tools" / "check_single_stream_authority.py", 0,
                              f"checker unavailable ({type(exc).__name__}: {exc}) — a gate "
                              f"that cannot run is not a gate"))
     return out
@@ -3780,6 +4140,25 @@ CHECKS = [
     # ENFORCED (must be zero — block pre-commit):
     ("no_synthetic_domain_fixtures_in_tests", check_no_synthetic_domain_fixtures_in_tests, True),
     ("no_swallowed_test_failures", check_no_swallowed_test_failures, True),  # printed failure must fail the run
+    # TEST_SYSTEM_REHAB_V2 (2026-08-31) recurrence lock 1/2: an exact-duplicate test
+    # body must not silently reappear. 0 on this tree (the 2 real groups this rehab
+    # found are marked '# institutional-duplicate-ok:' — genuinely distinct production
+    # modules, kept deliberately).
+    ("no_duplicate_tests", check_no_duplicate_tests, True),
+    # TEST_SYSTEM_REHAB_V2 recurrence lock 2/2: ENFORCED (2026-08-31, promoted from
+    # ADVISORY same day). All 18 originally-identified independent repo scans plus 7
+    # more the strengthened per-function/per-observation detector then found (the
+    # file-wide "repo_index appears somewhere" bypass had been hiding them) are
+    # migrated onto tests/conftest.py's shared `repo_index` — live count is 0.
+    ("no_new_independent_repo_scan_in_tests", check_no_new_independent_repo_scan_in_tests, True),
+    # TEST_SYSTEM_REHAB_V2 final remediation, recurrence lock 3: `assert X or True` /
+    # `assert True or X` can never fail (literal True disjunct) -- the 4 real
+    # instances the Cursor audit found were rewritten to assert the real condition;
+    # ENFORCED at 0 so the class cannot silently reappear. Narrowly scoped to this
+    # one mechanical shape only (see _is_constant_true_or_assertion) -- does not
+    # attempt to catch the broader, context-dependent `assert X or Y` weakness,
+    # which needs human judgment per instance.
+    ("no_constant_true_or_assertions", check_no_constant_true_or_assertions, True),
     # SIMPLICITY REHAB T2-2 (2026-08-24, governance/retired_checks.md): root_cause_log is
     # the ONE enforced ledger validator. The nine other ledger registrations
     # (rc_citations_resolve, rc_status_vocabulary, rc_log_rows_keep_schema,
@@ -3856,6 +4235,10 @@ CHECKS = [
     # because an unregistered gate enforces nothing — it sat at zero registrations while
     # being reported as a lock.
     ("one_producer", check_one_producer, True),
+    # OPTIONS_ORDER_FLOW_V1 Phase 1-3 (2026-08-30): exactly one production Schwab
+    # StreamClient constructor, repo-wide. ENFORCED — mutation-tested
+    # (tests/test_single_stream_authority_v1.py), not a design-review-only script.
+    ("single_stream_authority", check_single_stream_authority, True),
     ("snapshots_read_names_the_timeframe", check_snapshots_read_names_the_timeframe, True),  # query PLAN, not code shape
     ("shutdown_is_bounded", check_shutdown_is_bounded, True),  # Ctrl+C must always work
     ("venv_parity", check_venv_parity, True),  # one interpreter — .venv only (CI exempt)
