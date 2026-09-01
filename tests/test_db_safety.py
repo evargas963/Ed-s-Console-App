@@ -124,3 +124,82 @@ def test_approved_bulk_mutation_backup_recorded(tmp_path: Path) -> None:
     after = critical_table_row_counts(conn2)
     conn2.close()
     assert_critical_row_counts_no_drop(before, after)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# LIVE BACKUP SNAPSHOT SAFETY
+#
+# In WAL mode every transaction committed since the last checkpoint lives in the
+# -wal file. A backup that copies only the .db file loses exactly those, and the
+# loss is invisible to both the manifest SHA-256 and PRAGMA quick_check.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _wal_db_with_uncheckpointed_commits(path: Path, n: int) -> sqlite3.Connection:
+    """WAL-mode DB with `n` rows COMMITTED and deliberately NOT checkpointed.
+
+    Returns the still-open connection, because a live server holds connections open —
+    closing the last one would checkpoint the WAL and dissolve the very condition under
+    test."""
+    conn = sqlite3.connect(str(path))
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("CREATE TABLE snapshots (id INTEGER PRIMARY KEY, ticker TEXT)")
+    conn.commit()
+    conn.executemany("INSERT INTO snapshots (ticker) VALUES (?)",
+                     [(f"T{i}",) for i in range(n)])
+    conn.commit()
+    assert Path(str(path) + "-wal").stat().st_size > 0, (
+        "the attack requires committed rows still sitting in the WAL")
+    return conn
+
+
+def test_backup_captures_transactions_still_in_the_wal(tmp_path: Path) -> None:
+    """A backup must contain every transaction COMMITTED at backup time.
+
+    MEASURED against the previous `shutil.copy2` implementation on exactly this setup:
+    rows committed with the WAL uncheckpointed produced a backup that answered
+    `no such table: snapshots` — the table itself was absent — while `PRAGMA
+    quick_check` on that backup still returned "ok". Size and SHA-256 describe the bytes
+    copied, not the transactions that should have been there, so neither can catch it."""
+    src = tmp_path / "live.db"
+    live = _wal_db_with_uncheckpointed_commits(src, 500)
+    try:
+        bp, _mp, _man = backup_console_database(
+            src, operation_name="wal_snapshot_test", backup_root=tmp_path / "out")
+        got = sqlite3.connect(f"file:{bp}?mode=ro", uri=True)
+        try:
+            assert got.execute("SELECT COUNT(*) FROM snapshots").fetchone()[0] == 500, (
+                "the backup is missing transactions committed before it started")
+        finally:
+            got.close()
+    finally:
+        live.close()
+
+
+def test_mutation_control_a_file_copy_backup_loses_committed_wal_rows(tmp_path: Path) -> None:
+    """NEGATIVE CONTROL. Reproduce the original mechanism — copy the .db file only — and
+    show the data loss returns. Without this the test above could pass for the wrong
+    reason (an incidental checkpoint) and prove nothing about the mechanism."""
+    import shutil
+
+    src = tmp_path / "live.db"
+    live = _wal_db_with_uncheckpointed_commits(src, 500)
+    try:
+        dest = tmp_path / "copied.db"
+        shutil.copy2(src, dest)          # the pre-fix mechanism, verbatim
+        got = sqlite3.connect(f"file:{dest}?mode=ro", uri=True)
+        try:
+            try:
+                n = got.execute("SELECT COUNT(*) FROM snapshots").fetchone()[0]
+            except sqlite3.DatabaseError:
+                n = None                  # table absent entirely — the observed failure
+            assert n != 500, (
+                "MUTATION CONTROL FAILED TO BITE: a .db-only file copy must NOT return "
+                "all committed rows while they are still in the WAL")
+            assert got.execute("PRAGMA quick_check(1)").fetchone()[0] == "ok", (
+                "quick_check is expected to report ok on the lossy copy — that is "
+                "precisely why it cannot serve as backup-correctness evidence")
+        finally:
+            got.close()
+    finally:
+        live.close()
