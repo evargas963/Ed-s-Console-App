@@ -1508,12 +1508,6 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
                 else:
                     print(f"watchdog: LEVELONE_EQUITIES quiet {age:.0f}s — recycling "
                           f"Schwab stream (half-open guard)")
-                last_reconnect = time.monotonic()
-                # COVERAGE IS SURRENDERED HERE — at the decision to abandon this socket,
-                # not when the teardown below happens to finish. Retiring the generation
-                # involves a bounded vendor logout, so stamping ended_ts afterwards would
-                # claim coverage across a window we had already given up on.
-                recycle_surrendered_ts = time.time()
                 # WRITE-AHEAD RETRACTION, before the subscription actually dies below —
                 # and if it cannot be written, HOLD the subscription until the standing
                 # claim can no longer confirm it. A recycle is a CONTROLLED surrender: the
@@ -1527,6 +1521,25 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
                     # with a number, so an operator sees the cost rather than a mystery.
                     print(f"watchdog: recycle delayed {_claim_barrier_sec:.1f}s by the "
                           f"coverage-claim barrier (durable writes were failing)")
+                # BOTH CLOCKS START AFTER THE BARRIER, and that placement is the point.
+                #
+                # ended_ts: coverage is surrendered when the teardown below begins, not
+                # when the recycle was DECIDED. The barrier deliberately keeps the old
+                # subscription alive while it waits — quotes are still arriving — so a
+                # timestamp taken before it precedes the real surrender by up to the whole
+                # lease. Measured at that placement: ended_ts 1.47s before the teardown
+                # across a 1.47s barrier. That is an under-claim, and under-claiming is
+                # not free here: rows captured during the wait would sit outside every
+                # epoch, and a gap inside that window would read as "not subscribed" when
+                # the daemon was subscribed and the vendor silent. Still taken BEFORE the
+                # teardown, so the bounded vendor logout is never claimed as covered.
+                #
+                # last_reconnect: the cooldown exists to stop login-spam, so it must
+                # measure the gap between reconnect ATTEMPTS. Time spent held at the
+                # barrier is not time spent connected, and counting it would shorten the
+                # next effective cooldown by up to the lease.
+                last_reconnect = time.monotonic()
+                recycle_surrendered_ts = time.time()
                 book_state["stream"] = None   # poll loop must not use the dying stream
                 option_state["stream"] = None
                 # RETIRE THE WHOLE GENERATION FIRST — control tasks (cancelled AND
@@ -1600,7 +1613,6 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
         # rather than over-claims. Physical persistence happens later; the RECORDED time
         # does not move, and if the durable write has to be retried the pending-close map
         # replays this same instant.
-        shutdown_surrendered_ts = time.time()
         # WRITE-AHEAD RETRACTION, for the same reason as the recycle: capture stops below,
         # and a claim retracted only afterwards stands (and stays fresh) across the whole
         # teardown and writer drain. A clean shutdown is likewise a CONTROLLED surrender,
@@ -1609,6 +1621,13 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
         # controlled path only — an uncatchable kill runs none of this, and is covered as
         # it always was by the claim's own expiry plus startup orphan reconciliation.
         await _surrender_claim_or_wait_out_lease(writer, reason="shutdown")
+        # AFTER the barrier: capture is still live while it waits, so a timestamp taken
+        # before it would end coverage up to a whole lease early. Measured at that
+        # placement: 1.48s early across a 1.48s barrier. Still BEFORE the teardown and the
+        # writer drain below, so the conservative bound this boundary has always carried
+        # is unchanged — it is the same instant relative to the surrender, just no longer
+        # measured from the decision to surrender instead of the surrender itself.
+        shutdown_surrendered_ts = time.time()
         await _shutdown_sequence(pump_task, writer_task, stop, wsub,
                                  extra_producers=(alpaca_task, *control_tasks))
         # The daemon's own Schwab session must not outlive the daemon. _shutdown_sequence

@@ -1944,6 +1944,192 @@ def test_forced_surrender_barrier_releases_early_when_writes_recover(tmp_path, m
         env.w.close()
 
 
+def _barrier_boundary_case(tmp_path, monkeypatch, *, path, ttl=1.5):
+    """Drive the REAL _run_streaming through a CONTROLLED surrender whose claim retraction
+    is unwritable, so the lease barrier engages, and report where the recorded coverage
+    boundary sits relative to the ACTUAL surrender.
+
+    Only write_heartbeat is broken. close_coverage_epoch keeps working, which is what
+    isolates the timestamp: the epoch really does close, so ended_ts is a recorded value
+    rather than a deferred one, and it can be compared against the moment the subscription
+    was actually given up.
+
+    `path` is "recycle" or "shutdown"; returns (ended_ts, actual_surrender_ts, waited)."""
+    import order_flow_streaming as ofs
+    import tools.run_stream_capture as m
+    from stream_spine import CoverageWriteError
+
+    _reset_lifecycle()
+    _install_lifecycle_stream(monkeypatch)
+    monkeypatch.setattr(m, "STATUS_LOOP_INTERVAL_SEC", 0.02)
+    monkeypatch.setattr(m, "PRODUCER_CLAIM_TTL_SEC", ttl)
+    monkeypatch.setattr(ofs, "STREAM_PRODUCER_HEARTBEAT_STALE_SEC", ttl)
+    monkeypatch.setattr(m, "CLAIM_BARRIER_RETRY_SEC", 0.05)
+    write_active_option_contract_signal(_A_CONTRACT)
+
+    gate = asyncio.Event()
+    monkeypatch.setattr(m, "stream_needs_recycle", _one_shot_recycle(gate))
+
+    marks = {}
+    real_retire = m._retire_stream_generation
+    real_shutdown = m._shutdown_sequence
+
+    async def timed_retire(*a, **k):
+        marks.setdefault("surrender_ts", time.time())    # the subscription dies HERE
+        return await real_retire(*a, **k)
+
+    async def timed_shutdown(*a, **k):
+        marks.setdefault("surrender_ts", time.time())
+        return await real_shutdown(*a, **k)
+    monkeypatch.setattr(m, "_retire_stream_generation", timed_retire)
+    monkeypatch.setattr(m, "_shutdown_sequence", timed_shutdown)
+
+    real_barrier = m._surrender_claim_or_wait_out_lease
+
+    async def timed_barrier(writer, *, reason):
+        marks.setdefault("barrier_start", time.time())
+        waited = await real_barrier(writer, reason=reason)
+        # setdefault: a recycle run also passes through the LATER shutdown barrier, and
+        # that second pass must not overwrite the surrender under test.
+        marks.setdefault("waited", waited)
+        return waited
+    monkeypatch.setattr(m, "_surrender_claim_or_wait_out_lease", timed_barrier)
+
+    db = tmp_path / f"boundary_{path}.db"
+
+    async def driver(stop, writer):
+        # let the daemon genuinely subscribe and publish a POSITIVE claim first
+        await _await_event(
+            lambda: any(e[0] == "VENDOR level_one_option_subs"
+                        for e in _LifecycleStream.events),
+            what="the contract to be subscribed")
+        await asyncio.sleep(0.1)
+        assert writer.positive_claim_published_ts is not None, (
+            "a positive claim must be standing before the barrier can mean anything")
+
+        def _boom(*a, **k):
+            raise CoverageWriteError("claim unwritable")
+        monkeypatch.setattr(writer, "write_heartbeat", _boom)
+
+        if path == "recycle":
+            gate.set()
+            await _await_event(lambda: len(_LifecycleStream.generations) >= 2,
+                               what="the replacement generation")
+            await asyncio.sleep(0.1)
+        stop.set()
+
+    asyncio.run(_drive_daemon(m, db, driver=driver))
+
+    rows = _epoch_rows(db)
+    closed = [r for r in rows if r[4] is not None]      # ordered by id
+    assert closed, f"the surrender must have recorded a closed epoch; got {rows}"
+    # Pair the FIRST closed epoch with the FIRST observed surrender: on a recycle run the
+    # later shutdown closes generation 2's epochs too, and comparing those against
+    # generation 1's teardown would measure nothing.
+    return closed[0][4], marks.get("surrender_ts"), marks.get("waited", 0.0)
+
+
+def test_barrier_boundary_recycle_records_the_post_barrier_surrender(tmp_path, monkeypatch):
+    """Under the lease barrier, ended_ts must be the ACTUAL surrender boundary.
+
+    The barrier deliberately KEEPS THE OLD SUBSCRIPTION ALIVE while it waits, so a
+    timestamp captured before it is no longer the moment coverage ended — it precedes the
+    real surrender by up to the whole lease. That is an UNDER-claim, and under-claiming is
+    not automatically safe here: quotes really are still being captured during the wait,
+    so those rows would fall outside every coverage epoch, and a gap inside that window
+    would read as "not subscribed" when the daemon was in fact subscribed and the vendor
+    silent — the exact confusion the ledger exists to prevent, in the other direction."""
+    ended_ts, surrender_ts, waited = _barrier_boundary_case(
+        tmp_path, monkeypatch, path="recycle", ttl=1.5)
+
+    assert waited >= 1.5 * 0.6, f"the barrier must actually have engaged; waited {waited}"
+    assert surrender_ts is not None, "the teardown must have been observed"
+    skew = surrender_ts - ended_ts
+    assert skew < 1.5 * 0.5, (
+        f"ended_ts precedes the real surrender by {skew:.2f}s — it was captured before a "
+        f"{waited:.2f}s barrier during which the subscription was still live and still "
+        f"capturing")
+    assert ended_ts <= surrender_ts + 0.5, (
+        f"ended_ts ({ended_ts}) must not be stamped after the teardown began "
+        f"({surrender_ts}) — that would over-claim across a window the socket was down")
+
+
+def test_barrier_boundary_shutdown_records_the_post_barrier_surrender(tmp_path, monkeypatch):
+    """Same boundary law on the clean-shutdown path."""
+    ended_ts, surrender_ts, waited = _barrier_boundary_case(
+        tmp_path, monkeypatch, path="shutdown", ttl=1.5)
+
+    assert waited >= 1.5 * 0.6, f"the barrier must actually have engaged; waited {waited}"
+    skew = surrender_ts - ended_ts
+    assert skew < 1.5 * 0.5, (
+        f"ended_ts precedes the real surrender by {skew:.2f}s across a {waited:.2f}s "
+        f"barrier in which capture was still live")
+    assert ended_ts <= surrender_ts + 0.5
+
+
+def test_barrier_wait_is_not_counted_against_the_reconnect_cooldown(tmp_path, monkeypatch):
+    """ADJUDICATION of `last_reconnect` under the lease barrier.
+
+    RECONNECT_COOLDOWN_SEC exists to stop login-spam, and stream_needs_recycle measures it
+    as `time.monotonic() - last_reconnect`. Time spent HELD AT THE BARRIER is not time
+    spent connected — the daemon is deliberately waiting before it even tears down — so
+    counting it shortens the next effective cooldown by up to a full lease, precisely
+    while durable writes are failing and recycles are most likely to repeat.
+
+    Measured through the real seam: the first cooldown reading after a barrier-delayed
+    recycle must reflect the time since the RECONNECT, not since the recycle decision."""
+    import order_flow_streaming as ofs
+    import tools.run_stream_capture as m
+    from stream_spine import CoverageWriteError
+
+    ttl = 1.5
+    _reset_lifecycle()
+    _install_lifecycle_stream(monkeypatch)
+    monkeypatch.setattr(m, "STATUS_LOOP_INTERVAL_SEC", 0.02)
+    monkeypatch.setattr(m, "PRODUCER_CLAIM_TTL_SEC", ttl)
+    monkeypatch.setattr(ofs, "STREAM_PRODUCER_HEARTBEAT_STALE_SEC", ttl)
+    monkeypatch.setattr(m, "CLAIM_BARRIER_RETRY_SEC", 0.05)
+    write_active_option_contract_signal(_A_CONTRACT)
+
+    gate = asyncio.Event()
+    seen: list = []
+    fired = {"x": False}
+
+    def decide(age_sec, seen_data, since_last_reconnect):
+        seen.append((len(_LifecycleStream.generations), since_last_reconnect))
+        if gate.is_set() and not fired["x"]:
+            fired["x"] = True
+            return True
+        return False
+    monkeypatch.setattr(m, "stream_needs_recycle", decide)
+
+    async def driver(stop, writer):
+        await _await_event(
+            lambda: any(e[0] == "VENDOR level_one_option_subs"
+                        for e in _LifecycleStream.events),
+            what="the contract to be subscribed")
+        await asyncio.sleep(0.1)
+
+        def _boom(*a, **k):
+            raise CoverageWriteError("claim unwritable")
+        monkeypatch.setattr(writer, "write_heartbeat", _boom)
+        gate.set()
+        await _await_event(lambda: len(_LifecycleStream.generations) >= 2,
+                           what="the replacement generation")
+        await asyncio.sleep(0.15)     # let a few post-recycle ticks be sampled
+        stop.set()
+
+    asyncio.run(_drive_daemon(m, db=tmp_path / "cooldown.db", driver=driver))
+
+    after = [s for gen, s in seen if gen >= 2]
+    assert after, "the watchdog must have evaluated at least once after the reconnect"
+    first = min(after)
+    assert first < ttl * 0.5, (
+        f"the first post-reconnect cooldown reading was {first:.2f}s, which includes the "
+        f"~{ttl}s barrier wait — the cooldown would then expire that much early, allowing "
+        f"a faster re-login exactly while writes are failing")
+
+
 def test_forced_surrender_mutation_control_without_the_barrier(tmp_path, monkeypatch):
     """NEGATIVE CONTROL. Surrender WITHOUT waiting out the standing claim, and the false
     positive must reappear — otherwise the assertions above prove nothing."""
