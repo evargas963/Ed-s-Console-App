@@ -102,9 +102,38 @@
     return active === sel;
   }
 
+  /**
+   * Subscription state for the contract on screen, from the plane's producer truth
+   * (PR214 premerge gap 1B).
+   *
+   * A successful POST proves only that the subscription REQUEST was accepted -- the
+   * server wrote its desired-state signal file. It does NOT prove the daemon has
+   * completed the LEVELONE_OPTIONS / OPTIONS_BOOK subscriptions; that happens on the
+   * daemon's own poll cadence, some time later. Calling that "subscribed" would paint a
+   * false green across exactly the signal-file -> daemon-subscribe transition window.
+   *
+   * Returns one of:
+   *   'none'      no contract selected
+   *   'pending'   requested, producer has not yet confirmed BOTH services
+   *   'subscribed' producer confirmed this contract on both services
+   */
+  function subscriptionState(plane, selectedContract) {
+    const sel = selectedContract == null ? '' : String(selectedContract);
+    if (!sel) return 'none';
+    const p = plane || {};
+    if (p.contract_match === true) return 'subscribed';
+    if (p.contract_match === false) return 'pending';
+    // No server verdict available (older payload / plane not yet read): fall back to the
+    // producer identities themselves, and require BOTH. Never infer from requested state.
+    const l1 = p.producer_l1_contract == null ? '' : String(p.producer_l1_contract);
+    const book = p.producer_book_contract == null ? '' : String(p.producer_book_contract);
+    return (l1 === sel && book === sel) ? 'subscribed' : 'pending';
+  }
+
   g.EdOptionsSubscription = {
     validateSubscriptionAck: validateSubscriptionAck,
     createSubscriptionGate: createSubscriptionGate,
     planeIsBoundToContract: planeIsBoundToContract,
+    subscriptionState: subscriptionState,
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

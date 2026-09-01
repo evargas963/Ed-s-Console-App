@@ -358,8 +358,14 @@
         renderHealth({}, null);
         return;                       // no polling, no healthy state
       }
-      setSubscriptionState('subscribed', 'ok');
+      // PR214 premerge gap 1B: a valid ack proves the REQUEST was accepted, not that the
+      // daemon has subscribed. Commit B as the operator's selected contract and start
+      // polling (that is how producer confirmation is observed), but the subscription
+      // state stays PENDING and health stays unbound until the plane's producer identity
+      // confirms this contract on both services. No green during the transition.
+      setSubscriptionState('request accepted — awaiting producer…', 'warn');
       selectedSymbol = symbol;        // committed ONLY on a validated acknowledgement
+      renderHealth({}, null);         // still unconfirmed: nothing may render healthy yet
       pollMicrostructure();
       micxTimer = setInterval(pollMicrostructure, 2000);
     });
@@ -396,7 +402,17 @@
       depthBody.appendChild(tr);
     });
 
-    renderHealth(m.streaming_plane || {}, selectedSymbol);
+    var plane = m.streaming_plane || {};
+    // gap 1B: reflect PRODUCER-confirmed subscription state on every poll — the request
+    // was accepted earlier, but only the producer's own coverage identity may promote
+    // this to "subscribed", and only then do the normal health rules apply.
+    var subState = globalThis.EdOptionsSubscription.subscriptionState(plane, selectedSymbol);
+    if (subState === 'subscribed') {
+      setSubscriptionState('subscribed', 'ok');
+    } else if (subState === 'pending') {
+      setSubscriptionState('awaiting producer subscription…', 'warn');
+    }
+    renderHealth(plane, selectedSymbol);
   }
 
   // Round-2 requirement: local replay health, Schwab LEVELONE_OPTIONS upstream health,

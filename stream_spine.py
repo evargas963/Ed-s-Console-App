@@ -173,6 +173,38 @@ def read_producer_heartbeat(conn: sqlite3.Connection) -> "dict | None":
     return {"daemon_pid": row[0], "heartbeat_ts": row[1], "resolved_db_path": row[2]}
 
 
+def read_open_coverage_symbols(conn: sqlite3.Connection,
+                               services: "tuple[str, ...]") -> "dict[str, str | None]":
+    """PRODUCER-SIDE subscription identity, read from THIS connection's own
+    stream_capture.db (PR214 premerge gap 1A).
+
+    The active-contract SIGNAL FILE is DESIRED state -- what the server asked for. The
+    OPEN COVERAGE EPOCH is PRODUCER state -- what the daemon actually holds a vendor
+    subscription for, written only after a confirmed subscribe. Between an operator's
+    request for B and the daemon's next poll, those disagree, and a health verdict built
+    on desired state alone would claim B is live while the producer still physically
+    holds A.
+
+    Returns {service: symbol or None}. None means "no epoch is currently open for this
+    service" -- not subscribed as far as the durable ledger knows. A missing table or an
+    unreadable DB yields None for every service: unknown is never confirmation. The
+    (symbol, service) OPEN_EPOCH_COUNT <= 1 invariant (CaptureWriter.open_coverage_epoch)
+    is what makes 'the' open symbol per service well-defined; if several were somehow
+    open, the newest is returned and the ambiguity is not silently resolved elsewhere."""
+    out: "dict[str, str | None]" = {s: None for s in services}
+    for service in services:
+        try:
+            row = conn.execute(
+                "SELECT symbol FROM stream_coverage_epochs "
+                "WHERE service = ? AND ended_ts IS NULL ORDER BY id DESC LIMIT 1",
+                (service,)).fetchone()
+        except sqlite3.OperationalError:
+            return {s: None for s in services}
+        if row is not None:
+            out[service] = row[0]
+    return out
+
+
 def quote_msg(*, symbol: str, bid=None, ask=None, last=None, bid_size=None, ask_size=None,
               last_size=None, total_volume=None, quote_time_ms=None, trade_time_ms=None,
               src: str, ts_recv: float | None = None, native: dict | None = None) -> dict:

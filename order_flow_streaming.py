@@ -31,6 +31,7 @@ import asyncio
 import json
 import logging
 import sqlite3
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -39,6 +40,7 @@ from typing import Any, Callable, Optional
 from instrument_identity import ticker_storage_key
 from stream_spine import (
     STREAM_DB_DEFAULT,
+    read_open_coverage_symbols,
     read_producer_heartbeat,
     resolve_stream_db_path,
     write_active_option_contract_signal,
@@ -467,29 +469,77 @@ def set_streaming_active_ticker(ticker: str) -> bool:
     return True
 
 
-def set_active_option_contract(contract_symbol: str) -> bool:
+#: Monotonic generation for option-contract subscription COMMANDS (PR214 premerge
+#: gap 2). Every command takes a number the moment it is admitted; only a command whose
+#: number is still the highest may WRITE desired state. This is the one authority that
+#: orders the two things a command mutates together -- the signal file the daemon reads
+#: and `_active_option_contract` -- so ordering never depends on HTTP arrival or
+#: completion order, and never on the browser choosing to ignore a stale response.
+#: Guarded by a lock because the endpoint runs its body on a thread-pool executor, so
+#: two commands really can interleave inside this module.
+_option_command_seq: int = 0
+_option_command_lock = threading.Lock()
+
+
+class StaleOptionCommandError(RuntimeError):
+    """A superseded subscription command tried to write desired state after a newer one
+    already did. Raised instead of silently returning, so the caller reports the command
+    as superseded rather than as the successful current authority."""
+
+
+def begin_option_contract_command() -> int:
+    """Admit a subscription command and return its generation. Callers pass this back to
+    set_active_option_contract so a delayed command cannot overwrite a newer one."""
+    global _option_command_seq
+    with _option_command_lock:
+        _option_command_seq += 1
+        return _option_command_seq
+
+
+def set_active_option_contract(contract_symbol: str,
+                               command_generation: Optional[int] = None) -> bool:
     """Request LEVELONE_OPTIONS+OPTIONS_BOOK for this ONE option contract and begin
     replaying its rows. `contract_symbol` MUST already be a chain response's own "symbol"
     field (see stream_spine.ACTIVE_OPTION_CONTRACT_SIGNAL_DEFAULT) — never constructed
     here. A separate slot from the equity active ticker: the daemon adds its own
-    subscription on its own poll cadence (stream_active_option_contract.json)."""
+    subscription on its own poll cadence (stream_active_option_contract.json).
+
+    PR214 premerge gap 2: `command_generation` (from begin_option_contract_command)
+    mechanically orders competing commands. A request for A that was admitted BEFORE a
+    request for B, but reaches this writer AFTER it, is superseded and refused --
+    otherwise the delayed A would write the signal file and `_active_option_contract`
+    back to A, leaving the daemon subscribed to the contract the operator already moved
+    off. The browser-side token cannot prevent that: it only stops a stale RESPONSE from
+    repainting, never a stale WRITE from landing. Omitting the generation preserves the
+    historical single-caller behavior for internal/test callers."""
     global _active_option_contract, _option_last_subscribe_completed_ts, _option_streaming_last_update_ts
     t = ticker_storage_key(contract_symbol)
     if not t:
         return False
-    if _active_option_contract == t:
+    # The staleness check and the two writes it guards happen under ONE lock: checking
+    # outside it would leave the same race one layer down.
+    with _option_command_lock:
+        if command_generation is not None and command_generation < _option_command_seq:
+            _log_stream("OPTION_CONTRACT_COMMAND_SUPERSEDED",
+                        contract=t, generation=command_generation,
+                        newest=_option_command_seq)
+            raise StaleOptionCommandError(
+                f"subscription command for {t} (generation {command_generation}) was "
+                f"superseded by a newer command (generation {_option_command_seq}); "
+                f"refusing to overwrite newer desired state")
+        if _active_option_contract == t:
+            return True
+        old = _active_option_contract
+        _log_stream("OPTION_CONTRACT_RESUBSCRIBE_START", old=old, new=t)
+        if old:
+            clear_symbol(old)
+        write_active_option_contract_signal(t)
+        _active_option_contract = t
+        _option_last_subscribe_completed_ts = time.time()
+        _option_streaming_last_update_ts = None
+        log.info("Live-plane feed active option contract -> %s", t)
+        _log_stream("OPTION_CONTRACT_RESUBSCRIBE_DONE", contract=t)
         return True
-    old = _active_option_contract
-    _log_stream("OPTION_CONTRACT_RESUBSCRIBE_START", old=old, new=t)
-    if old:
-        clear_symbol(old)
-    write_active_option_contract_signal(t)
-    _active_option_contract = t
-    _option_last_subscribe_completed_ts = time.time()
-    _option_streaming_last_update_ts = None
-    log.info("Live-plane feed active option contract -> %s", t)
-    _log_stream("OPTION_CONTRACT_RESUBSCRIBE_DONE", contract=t)
-    return True
 
 
 def get_option_contract_book_microstructure(contract_symbol: str) -> dict:
@@ -517,6 +567,26 @@ def _option_streaming_healthy() -> bool:
             and (now - _option_last_subscribe_completed_ts) < GRACE_AFTER_SUBSCRIBE_SEC):
         return True
     return False
+
+
+#: The two Schwab option services whose durable open coverage epochs constitute
+#: PRODUCER-side subscription identity (as opposed to the server's desired state).
+OPTION_PRODUCER_SERVICES: tuple[str, ...] = ("LEVELONE_OPTIONS", "OPTIONS_BOOK")
+
+
+def _read_producer_option_contracts() -> dict[str, Optional[str]]:
+    """Current open coverage symbol per option service, from the canonical stream DB.
+    Fails closed to None per service on any read problem: an unreadable ledger is
+    'unknown', and unknown must never be treated as producer confirmation."""
+    con = _open_capture_db_readonly()
+    if con is None:
+        return {s: None for s in OPTION_PRODUCER_SERVICES}
+    try:
+        return read_open_coverage_symbols(con, OPTION_PRODUCER_SERVICES)
+    except Exception:   # noqa: BLE001 — diagnostics must never raise into a route
+        return {s: None for s in OPTION_PRODUCER_SERVICES}
+    finally:
+        con.close()
 
 
 def get_option_contract_streaming_diagnostics(
@@ -561,17 +631,35 @@ def get_option_contract_streaming_diagnostics(
     # Contract binding: compare on the SAME canonical key set_active_option_contract
     # stores (ticker_storage_key), so a caller passing the raw chain "symbol" string
     # reconciles correctly rather than mismatching on whitespace/case alone.
+    #
+    # PR214 premerge gap 1A: `_active_option_contract` is only DESIRED/REQUESTED state
+    # (the server wrote the signal file). It is NOT proof the daemon has completed the
+    # LEVELONE_OPTIONS / OPTIONS_BOOK subscriptions -- between the request for B and the
+    # daemon's next poll, the producer still physically holds A. Binding health to
+    # requested state alone would green B during exactly that window. Producer truth is
+    # read from the CANONICAL open coverage epochs in the same stream DB, and a full
+    # contract match now requires requested AND both producer services to agree.
+    producer = _read_producer_option_contracts()
     queried = ticker_storage_key(for_contract) if for_contract else None
     contract_match: Optional[bool] = None
     if queried:
-        contract_match = (_active_option_contract == queried)
+        requested_ok = (_active_option_contract == queried)
+        producer_ok = (producer["LEVELONE_OPTIONS"] == queried
+                       and producer["OPTIONS_BOOK"] == queried)
+        contract_match = bool(requested_ok and producer_ok)
         if not contract_match:
-            # No live evidence exists about the queried contract while the plane is
-            # bound to another one. Fail closed rather than lending B's health to A.
+            # Either the plane is bound elsewhere, or the producer has not yet confirmed
+            # this contract on both services. No live evidence about the queried contract
+            # exists in either case -- fail closed rather than lending another contract's
+            # health, or a not-yet-established subscription's, to this one.
             healthy = False
     return {
         "streaming_connected": bool(_feed_running),
+        # Back-compatible name; it has always been the SERVER-REQUESTED contract.
         "option_contract": _active_option_contract,
+        "server_requested_contract": _active_option_contract,
+        "producer_l1_contract": producer["LEVELONE_OPTIONS"],
+        "producer_book_contract": producer["OPTIONS_BOOK"],
         "queried_contract": queried,
         "contract_match": contract_match,
         "streaming_last_update_ts": last,

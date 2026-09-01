@@ -29,6 +29,8 @@ from __future__ import annotations
 import asyncio
 import sqlite3
 
+import pytest
+
 from stream_spine import (
     CaptureWriter,
     CoverageWriteError,
@@ -98,12 +100,21 @@ def test_A_subscribe_and_coverage_open_both_succeed_advances_cleanly(tmp_path, m
     writer.close()
 
 
-def test_B_coverage_open_write_fails_never_falsely_claims_durable_coverage(tmp_path, monkeypatch):
-    """B. option subscriptions succeed + coverage OPEN write fails -> the vendor-held
-    truth may correctly advance (the subscribe really did happen), but the DURABLE
-    coverage truth (epoch_state) must NOT — the exact IN-MEMORY-CURRENT-CONTRACT-vs-
-    ABSENT-DURABLE-EPOCH divergence the operator's finding named. Verified two ways: the
-    in-memory epoch_state stays None, AND the epochs table has no row for this symbol."""
+def test_B_coverage_open_write_fails_compensates_by_unsubscribing(tmp_path, monkeypatch):
+    """B (PR214 premerge gap 4, attack A). option subscriptions succeed + coverage OPEN
+    write fails.
+
+    This test previously asserted that vendor-held truth ADVANCED while durable coverage
+    stayed absent — which the arbiter correctly identified as the defect, not the fix: a
+    LIVE VENDOR SUBSCRIPTION with NO DURABLE COVERAGE EPOCH makes any later gap in the
+    data unattributable between "not subscribed" and "subscribed, vendor silent", which
+    is the entire causal purpose of the ledger. Steady-state capture must never continue
+    in that shape.
+
+    The invariant this test has always been about ("never falsely claims durable
+    coverage") is preserved and STRENGTHENED: durable truth is still never fabricated,
+    AND the vendor subscription is now given back, so VENDOR_HELD ⇒ DURABLE_OPEN_EPOCH
+    holds at the tick boundary. The next tick retries cleanly."""
     monkeypatch.setattr("tools.run_stream_capture.read_active_option_contract_signal",
                         lambda: _SPY_CONTRACT)
     stream = _FlakyOptionStream()
@@ -118,17 +129,85 @@ def test_B_coverage_open_write_fails_never_falsely_claims_durable_coverage(tmp_p
         state = {"l1": None, "book": None}
         new_state = await _apply_active_option_contract_subs(
             stream, state, writer=writer, epoch_state=epoch_state)
-        # Vendor truth: the subscribe calls really were made (real Schwab ack, in this
-        # fake, always succeeds) — held correctly reflects that.
-        assert new_state == {"l1": _SPY_CONTRACT, "book": _SPY_CONTRACT}
-        # Durable truth: NEVER falsely claimed. This is the invariant the operator's
-        # finding named directly.
-        assert epoch_state["l1"] is None, "coverage OPEN failure must not fabricate a durable epoch id"
-        assert epoch_state["book"] is None
+        # COMPENSATED: the subscribe really happened, the epoch could not be recorded,
+        # so the subscription was handed back -- nothing is vendor-held.
+        assert new_state == {"l1": None, "book": None}, (
+            "a vendor subscription whose coverage start cannot be durably recorded must "
+            "be compensated away, not carried into steady state")
+        # Durable truth: still never fabricated.
+        assert epoch_state["l1"] is None and epoch_state["book"] is None
     asyncio.run(go())
     assert _epochs(tmp_path / "cap.db") == [], (
         "no epoch row may exist when every open_coverage_epoch call was made to fail")
+    # The compensating unsubscribes were really issued, for both services.
+    unsubs = [c for c in stream.calls if c[0].endswith("_unsub")]
+    assert ("l1_option_unsub", (_SPY_CONTRACT,)) in unsubs
+    assert ("options_book_unsub", (_SPY_CONTRACT,)) in unsubs
     writer.close()
+
+
+def test_B2_compensating_unsubscribe_failure_fails_closed_not_continue(tmp_path, monkeypatch):
+    """PR214 premerge gap 4, attack B. vendor sub succeeds -> epoch open fails ->
+    the COMPENSATING UNSUB ALSO fails. True vendor state is now uncertain and durable
+    coverage cannot be guaranteed, so the system must NOT continue as healthy/held: it
+    raises OptionCoverageCompensationError, which the poll loop escalates into the
+    existing stream-recycle path rather than absorbing as an ordinary bad tick."""
+    from tools.run_stream_capture import OptionCoverageCompensationError
+
+    monkeypatch.setattr("tools.run_stream_capture.read_active_option_contract_signal",
+                        lambda: _SPY_CONTRACT)
+    # the compensating unsubscribe fails too
+    stream = _FlakyOptionStream(fail_calls={"l1_option_unsub"})
+    writer = CaptureWriter(tmp_path / "cap.db", batch_rows=1, batch_sec=10.0)
+
+    def _boom(*a, **k):
+        raise CoverageWriteError("simulated durable-write outage")
+    monkeypatch.setattr(writer, "open_coverage_epoch", _boom)
+    epoch_state: dict = {"l1": None, "book": None}
+
+    async def go():
+        return await _apply_active_option_contract_subs(
+            stream, {"l1": None, "book": None}, writer=writer, epoch_state=epoch_state)
+
+    with pytest.raises(OptionCoverageCompensationError) as exc:
+        asyncio.run(go())
+    msg = str(exc.value)
+    assert "compensating unsubscribe also failed" in msg
+    assert "forcing stream recycle" in msg
+    assert _epochs(tmp_path / "cap.db") == [], "no durable coverage was ever recorded"
+    writer.close()
+
+
+def test_B3_poll_loop_escalates_compensation_failure_into_recycle(tmp_path, monkeypatch):
+    """PR214 premerge gap 4: the poll loop's generic handler deliberately survives one
+    bad tick -- correct for a transient error, WRONG for an uncertain-vendor-state
+    compensation failure. Prove that ONE error sets the recycle request instead of being
+    swallowed, while an ordinary error still does not."""
+    import asyncio as _aio
+
+    from tools.run_stream_capture import (
+        OptionCoverageCompensationError,
+        _active_option_contract_poll_loop,
+    )
+
+    async def drive(exc):
+        stop = _aio.Event()
+        recycle = _aio.Event()
+
+        async def _boom(*a, **k):
+            stop.set()          # one tick only
+            raise exc
+        monkeypatch.setattr("tools.run_stream_capture._apply_active_option_contract_subs", _boom)
+        await _active_option_contract_poll_loop(
+            lambda: object(), lambda: {"l1": None, "book": None}, lambda c: None,
+            stop, writer=None, epoch_state=None, interval_sec=0.01,
+            request_recycle=recycle)
+        return recycle.is_set()
+
+    assert asyncio.run(drive(OptionCoverageCompensationError("uncertain vendor state"))) is True, (
+        "a compensation failure must force the recycle path")
+    assert asyncio.run(drive(RuntimeError("ordinary transient vendor error"))) is False, (
+        "an ordinary bad tick must still be survivable without recycling the stream")
 
 
 def test_C_coverage_close_write_fails_keeps_the_old_epoch_id_for_retry(tmp_path, monkeypatch):
@@ -545,3 +624,101 @@ def test_blocker2b_guard_fails_closed_on_stuck_close_then_self_heals(tmp_path, m
         assert rows[1][2] is None, "exactly one epoch is now open for this pair"
     finally:
         writer.close()
+
+
+def test_gap4_D_duplicate_open_refusal_cannot_leave_vendor_held(tmp_path, monkeypatch):
+    """PR214 premerge gap 4, attack D. The 2B duplicate-open guard REFUSES the epoch
+    open (a stale open row for this pair already exists). That refusal must not be a
+    back door into the exact shape gap 4 closes: vendor subscribed, ledger holding no
+    new valid epoch. Compensation applies to a refusal exactly as to a write failure."""
+    monkeypatch.setattr("tools.run_stream_capture.read_active_option_contract_signal",
+                        lambda: _SPY_CONTRACT)
+    stream = _FlakyOptionStream()
+    writer = CaptureWriter(tmp_path / "cap.db", batch_rows=1, batch_sec=10.0)
+    try:
+        # Seed a stale OPEN epoch for the same (symbol, service) pairs, as a lost close
+        # or a skipped reconciliation would leave behind.
+        writer._conn.execute(
+            "INSERT INTO stream_coverage_epochs(symbol,service,started_ts,reason) "
+            "VALUES(?,?,0,'stale_open'),(?,?,0,'stale_open')",
+            (_SPY_CONTRACT, "LEVELONE_OPTIONS", _SPY_CONTRACT, "OPTIONS_BOOK"))
+        writer._conn.commit()
+        epoch_state: dict = {"l1": None, "book": None}
+
+        async def go():
+            return await _apply_active_option_contract_subs(
+                stream, {"l1": None, "book": None}, writer=writer, epoch_state=epoch_state)
+        new_state = asyncio.run(go())
+
+        assert new_state == {"l1": None, "book": None}, (
+            "a refused duplicate open must compensate the vendor subscription away, not "
+            "leave it held against a ledger with no new valid epoch")
+        assert epoch_state["l1"] is None and epoch_state["book"] is None
+        rows = _epochs(tmp_path / "cap.db")
+        assert len(rows) == 2, "the refusal must not have written a second row per pair"
+    finally:
+        writer.close()
+
+
+def test_gap4_steady_state_vendor_held_implies_durable_open_epoch(tmp_path, monkeypatch):
+    """ADJACENT INVARIANT, mechanically demonstrated across the outcomes that can end a
+    tick: for EVERY option service, VENDOR_HELD(symbol) ⇒ CURRENT_DURABLE_OPEN_EPOCH
+    (symbol, service). Checked against the REAL epochs table, not against epoch_state."""
+    monkeypatch.setattr("tools.run_stream_capture.read_active_option_contract_signal",
+                        lambda: _SPY_CONTRACT)
+
+    def _assert_invariant(db_path, held_state):
+        con = sqlite3.connect(db_path)
+        try:
+            open_rows = con.execute(
+                "SELECT symbol, service FROM stream_coverage_epochs "
+                "WHERE ended_ts IS NULL").fetchall()
+        finally:
+            con.close()
+        open_by_service = {svc: sym for sym, svc in open_rows}
+        for key, service in (("l1", "LEVELONE_OPTIONS"), ("book", "OPTIONS_BOOK")):
+            held = held_state.get(key)
+            if held is not None:
+                assert open_by_service.get(service) == held, (
+                    f"VENDOR_HELD({held}) for {service} with no matching durable open "
+                    f"epoch — open rows: {open_rows}")
+
+    # 1. NORMAL: subscribe + durable epoch both succeed -> held, and the epoch exists.
+    db1 = tmp_path / "ok.db"
+    w1 = CaptureWriter(db1, batch_rows=1, batch_sec=10.0)
+    try:
+        st1 = asyncio.run(_apply_active_option_contract_subs(
+            _FlakyOptionStream(), {"l1": None, "book": None},
+            writer=w1, epoch_state={"l1": None, "book": None}))
+        assert st1 == {"l1": _SPY_CONTRACT, "book": _SPY_CONTRACT}
+        _assert_invariant(db1, st1)
+    finally:
+        w1.close()
+
+    # 2. COMPENSATED: durable open fails -> nothing held, invariant vacuously holds.
+    db2 = tmp_path / "compensated.db"
+    w2 = CaptureWriter(db2, batch_rows=1, batch_sec=10.0)
+    try:
+        def _boom(*a, **k):
+            raise CoverageWriteError("simulated durable-write outage")
+        monkeypatch.setattr(w2, "open_coverage_epoch", _boom)
+        st2 = asyncio.run(_apply_active_option_contract_subs(
+            _FlakyOptionStream(), {"l1": None, "book": None},
+            writer=w2, epoch_state={"l1": None, "book": None}))
+        assert st2 == {"l1": None, "book": None}
+        _assert_invariant(db2, st2)
+    finally:
+        w2.close()
+
+    # 3. PARTIAL VENDOR FAILURE: one service subscribes, the other does not. The one that
+    #    IS held must still have its durable epoch; the failed one holds nothing.
+    db3 = tmp_path / "partial.db"
+    w3 = CaptureWriter(db3, batch_rows=1, batch_sec=10.0)
+    try:
+        st3 = asyncio.run(_apply_active_option_contract_subs(
+            _FlakyOptionStream(fail_calls={"options_book_sub"}), {"l1": None, "book": None},
+            writer=w3, epoch_state={"l1": None, "book": None}))
+        assert st3["l1"] == _SPY_CONTRACT and st3["book"] is None
+        _assert_invariant(db3, st3)
+    finally:
+        w3.close()

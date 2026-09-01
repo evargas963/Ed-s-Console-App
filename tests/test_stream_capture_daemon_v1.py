@@ -725,3 +725,84 @@ def test_alpaca_session_recycles_on_silent_socket(monkeypatch):
             timeout=10)
 
     assert asyncio.run(_run()) is True, "silent socket must signal recycle, not hang"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PR214 premerge gap 3 — ORPHAN RECONCILIATION MUST PRECEDE SCHWAB AUTH.
+# _run_locked used to build the Schwab client FIRST and return 2 on auth failure, so a
+# prior hard death plus an expired/broken token meant reconciliation never ran and that
+# dead lifetime's epochs stayed falsely open -- indefinitely subscribed while no daemon
+# was running -- for as long as the token stayed broken. Reconciliation depends on the
+# owner lock and the canonical DB, NOT on the vendor.
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_gap3_orphans_are_reconciled_even_when_schwab_auth_fails(tmp_path, monkeypatch):
+    import sqlite3
+
+    import tools.run_stream_capture as m
+
+    db = tmp_path / "stream_capture.db"
+    A = "SPY   260820C00767000"
+
+    # ── prior daemon lifetime died HARD: two epochs left open, never closed ──
+    seed = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
+    seed.open_coverage_epoch(A, "LEVELONE_OPTIONS", reason="active_contract_set", ts=100.0)
+    seed.open_coverage_epoch(A, "OPTIONS_BOOK", reason="active_contract_set", ts=100.0)
+    seed.close()
+
+    # ── this lifetime: Schwab auth is BROKEN ──
+    monkeypatch.setattr("config.build_config",
+                        lambda _root: SimpleNamespace(api_key="k", app_secret="s",
+                                                      token_path="tok"))
+    monkeypatch.setattr("schwab_client.build_client_from_token",
+                        lambda **kw: SimpleNamespace(ok=False, client=None,
+                                                     message="refresh token expired"))
+    streamed = {"ran": False}
+
+    async def _never(*a, **k):
+        streamed["ran"] = True
+        return 0
+    monkeypatch.setattr(m, "_run_streaming", _never)
+
+    rc = asyncio.run(m._run_locked(["SPY"], 0.0, str(db)))
+
+    assert rc == 2, "a broken Schwab token must still fail the daemon startup"
+    assert streamed["ran"] is False, "the daemon must not pretend streaming started"
+
+    con = sqlite3.connect(db)
+    try:
+        rows = con.execute(
+            "SELECT started_ts, ended_ts, reason FROM stream_coverage_epochs ORDER BY id"
+        ).fetchall()
+    finally:
+        con.close()
+    assert len(rows) == 2, "no NEW live epoch may be created on the auth-failure path"
+    assert all(r[1] is not None for r in rows), (
+        "the prior lifetime's orphan epochs must be reconciled BEFORE the vendor "
+        "dependency is taken -- a broken token must not leave them falsely open")
+    assert all(r[2] == CaptureWriter.COVERAGE_ORPHAN_REASON for r in rows)
+    assert all(r[0] == 100.0 for r in rows), "history closed, never rewritten"
+
+
+def test_gap3_writer_is_closed_on_the_auth_failure_path(tmp_path, monkeypatch):
+    """The writer opened for reconciliation must be cleaned up on the auth-failure exit,
+    not leaked -- the reconciliation commit is already durable by then."""
+    import tools.run_stream_capture as m
+
+    db = tmp_path / "stream_capture.db"
+    closed = {"n": 0}
+    real_close = m.CaptureWriter.close
+
+    def _tracking_close(self):
+        closed["n"] += 1
+        return real_close(self)
+    monkeypatch.setattr(m.CaptureWriter, "close", _tracking_close)
+    monkeypatch.setattr("config.build_config",
+                        lambda _root: SimpleNamespace(api_key="k", app_secret="s",
+                                                      token_path="tok"))
+    monkeypatch.setattr("schwab_client.build_client_from_token",
+                        lambda **kw: SimpleNamespace(ok=False, client=None, message="nope"))
+
+    rc = asyncio.run(m._run_locked(["SPY"], 0.0, str(db)))
+    assert rc == 2
+    assert closed["n"] >= 1, "the CaptureWriter must be closed on the auth-failure path"

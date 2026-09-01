@@ -115,4 +115,51 @@ assert.strictEqual(S.planeIsBoundToContract({ option_contract: A, contract_match
 assert.strictEqual(S.planeIsBoundToContract({}, A), false,
   'an empty plane names no contract and must not be treated as bound');
 
+// ── PR214 premerge gap 1B: POST ack is REQUEST ACCEPTANCE, not vendor subscription ──
+// A valid ack must leave the UI PENDING until the plane's PRODUCER identity confirms
+// this contract on BOTH option services. No false green across the signal-file ->
+// daemon-subscribe transition.
+assert.strictEqual(S.subscriptionState({}, null), 'none', 'nothing selected -> none');
+
+// Requested B, producer still on A (the transition window): PENDING, never subscribed.
+assert.strictEqual(
+  S.subscriptionState({
+    server_requested_contract: B, producer_l1_contract: A, producer_book_contract: A,
+    contract_match: false, streaming_healthy: false,
+  }, B),
+  'pending',
+  'a request the producer has not yet honoured must never read as subscribed');
+
+// Producer confirmed B on BOTH services -> subscribed.
+assert.strictEqual(
+  S.subscriptionState({
+    server_requested_contract: B, producer_l1_contract: B, producer_book_contract: B,
+    contract_match: true, streaming_healthy: true,
+  }, B),
+  'subscribed');
+
+// PARTIAL producer state must stay pending: L1 switched, BOOK has not.
+assert.strictEqual(
+  S.subscriptionState({ producer_l1_contract: B, producer_book_contract: A }, B),
+  'pending', 'L1-only confirmation is not a subscribed contract');
+assert.strictEqual(
+  S.subscriptionState({ producer_l1_contract: B, producer_book_contract: null }, B),
+  'pending', 'a missing BOOK epoch is not confirmation');
+// Both confirmed, but no server verdict field present (older payload) -> subscribed.
+assert.strictEqual(
+  S.subscriptionState({ producer_l1_contract: B, producer_book_contract: B }, B),
+  'subscribed');
+// An empty plane can never promote to subscribed.
+assert.strictEqual(S.subscriptionState({}, B), 'pending');
+
+// And the health binding agrees: during the pending window nothing may render bound.
+assert.strictEqual(
+  S.planeIsBoundToContract({
+    server_requested_contract: B, option_contract: B,
+    producer_l1_contract: A, producer_book_contract: A,
+    contract_match: false, streaming_healthy: true,
+  }, B),
+  false,
+  'contract_match:false during the producer transition must refuse a healthy render');
+
 console.log('options_subscription_node: ok');

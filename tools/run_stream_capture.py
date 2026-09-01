@@ -496,6 +496,18 @@ def make_options_quote_handler(bus: MessageBus, health: HealthRegistry, stats: C
     return handler
 
 
+class OptionCoverageCompensationError(RuntimeError):
+    """A vendor option subscription is live, its durable coverage-epoch open FAILED, and
+    the compensating unsubscribe ALSO failed (PR214 premerge gap 4).
+
+    At this point true vendor state is uncertain AND durable coverage truth cannot be
+    guaranteed, so continuing steady-state capture would silently produce exactly the
+    unattributable gap the coverage ledger exists to prevent. This is raised so the poll
+    loop escalates into the EXISTING stream-recycle path (which tears the session down,
+    closes epochs, and rebuilds from the operator's current desired contract) rather
+    than being absorbed as an ordinary bad tick."""
+
+
 def _add_pending_close(epoch_state: dict, key: str, epoch_id: int) -> None:
     pending = epoch_state.setdefault(f"{key}_pending_close", set())
     pending.add(epoch_id)
@@ -598,6 +610,30 @@ async def _reconcile_option_service(stream, held: str | None, requested: str | N
             if epoch_state.get(epoch_key) is None:
                 _open_coverage_epoch_tracked(writer, epoch_state, epoch_key, held,
                                              service_name, reason="active_contract_set")
+                # PR214 premerge gap 4: a LIVE VENDOR SUBSCRIPTION whose coverage start
+                # could not be durably recorded defeats the entire causal purpose of the
+                # ledger — a later gap in the data becomes unattributable between "not
+                # subscribed" and "subscribed, vendor silent". Steady-state capture must
+                # therefore never continue in that shape. COMPENSATE: give the vendor
+                # subscription back, so the invariant VENDOR_HELD ⇒ DURABLE_OPEN_EPOCH
+                # holds at every tick boundary, and let the next tick retry cleanly.
+                if epoch_state.get(epoch_key) is None:
+                    print(f"{service_name}: durable coverage-epoch open FAILED for {held} — "
+                          f"compensating by unsubscribing (a vendor subscription must not "
+                          f"outlive its coverage record)")
+                    try:
+                        await unsubs_fn([held])
+                        held = None       # vendor no longer holds it; retried next tick
+                    except Exception as e:
+                        # True vendor state is now UNCERTAIN and durable coverage cannot
+                        # be guaranteed. Do not continue as if held/healthy — raise into
+                        # the caller's existing stream-recycle/session-failure path,
+                        # which tears the session down and restores a known state.
+                        raise OptionCoverageCompensationError(
+                            f"{service_name}: coverage-epoch open failed for {held} AND the "
+                            f"compensating unsubscribe also failed ({type(e).__name__}: {e}) "
+                            f"— vendor state uncertain with no durable coverage; forcing "
+                            f"stream recycle rather than continuing") from e
         else:
             _close_coverage_epoch_tracked(writer, epoch_state, epoch_key,
                                           reason="active_contract_changed")
@@ -640,10 +676,18 @@ async def _apply_active_option_contract_subs(stream, contract_state: dict, *,
 async def _active_option_contract_poll_loop(get_stream, get_current, set_current,
                                             stop: asyncio.Event, writer=None,
                                             epoch_state: dict | None = None,
-                                            interval_sec: float = 1.0) -> None:
+                                            interval_sec: float = 1.0,
+                                            request_recycle: asyncio.Event | None = None) -> None:
     """Fast poll of the active-option-contract signal — same shape and cadence as
     _active_ticker_book_poll_loop, independent of it (a different signal file, a
-    different pair of Schwab services)."""
+    different pair of Schwab services).
+
+    `request_recycle` (PR214 premerge gap 4): set when a coverage-compensation failure
+    leaves vendor state uncertain with no durable coverage. The generic handler below
+    deliberately survives one bad tick, which is right for a transient vendor/DB error
+    but WRONG for that condition — absorbing it would let capture continue in exactly
+    the unattributable shape the ledger exists to prevent. That one error escalates into
+    the EXISTING stream-recycle path instead of being swallowed."""
     while not stop.is_set():
         try:
             await asyncio.wait_for(stop.wait(), timeout=interval_sec)
@@ -657,6 +701,13 @@ async def _active_option_contract_poll_loop(get_stream, get_current, set_current
             new_cur = await _apply_active_option_contract_subs(
                 stream, get_current(), writer=writer, epoch_state=epoch_state)
             set_current(new_cur)
+        except OptionCoverageCompensationError as e:
+            # NOT an ordinary bad tick: vendor state uncertain AND no durable coverage.
+            print(f"active-option-contract poll: FORCING STREAM RECYCLE — {e}")
+            if request_recycle is not None:
+                request_recycle.set()
+            else:   # no recycle channel wired (direct/unit call) — never swallow it
+                raise
         except Exception as e:  # noqa: BLE001 — poll loop must survive one bad tick
             print(f"active-option-contract poll: {type(e).__name__}: {e}")
 
@@ -735,43 +786,53 @@ async def _run_locked(symbols: list[str], duration_min: float, db_path: str | No
     from config import build_config
     from schwab_client import build_client_from_token
 
-    cfg = build_config(str(ROOT))
-    state = build_client_from_token(api_key=cfg.api_key, app_secret=cfg.app_secret,
-                                    token_path=cfg.token_path)
-    if not state.ok or state.client is None:
-        print(f"FATAL: Schwab client init failed: {state.message}")
-        return 2
-
-    bus = MessageBus()
-    health = HealthRegistry()
-    stats = CaptureStats(sample_dir=ROOT / "reports")
+    # ── STARTUP ORDER IS A CORRECTNESS CONTRACT (PR214 premerge gap 3) ──────────
+    # Coverage reconciliation depends on the OWNER LOCK (already held by run()) and the
+    # CANONICAL STREAM DB — it does NOT depend on Schwab authentication. Building the
+    # Schwab client first meant a prior hard death plus an expired/broken token exited
+    # at the auth check BEFORE reconciliation ever ran, leaving that dead lifetime's
+    # epochs falsely open — indefinitely subscribed while no daemon is running, which is
+    # precisely the historically-false observability 2A exists to prevent, and it
+    # persisted for exactly as long as the operator's token stayed broken.
+    # DB + reconciliation now come FIRST; the external vendor dependency comes after.
     writer = CaptureWriter(db_path) if db_path else CaptureWriter()
-    # PR214 merge blocker 2A: close any coverage epoch left open by a PRIOR daemon
-    # lifetime BEFORE this one opens any new live epoch. A hard death (SIGKILL, power
-    # loss, OOM) never runs the clean-shutdown closes, so those `ended_ts IS NULL` rows
-    # would otherwise persist as indefinitely-subscribed across a window in which the
-    # daemon was not running. The reconciliation timestamp is an UPPER BOUND ("known
-    # closed no later than this startup"), never a fabricated crash time — see
-    # CaptureWriter.reconcile_orphan_coverage_epochs. Idempotent: a clean prior shutdown
-    # leaves nothing open and this closes 0 rows.
     try:
-        _orphans = writer.reconcile_orphan_coverage_epochs()
-        if _orphans:
-            print(f"coverage-epoch reconciliation: closed {_orphans} orphan epoch(s) "
-                  f"left open by a prior daemon lifetime "
-                  f"(reason={CaptureWriter.COVERAGE_ORPHAN_REASON})")
-    except Exception as e:  # noqa: BLE001 — surfaced, never silently skipped
-        print(f"coverage-epoch reconciliation FAILED: {type(e).__name__}: {e}")
-        raise
-    wsub = bus.subscribe("", policy=COUNT_DROPS, maxsize=8192)   # writer sees everything
-    _ui_future = bus.subscribe("quote.", policy=COALESCE)        # proves coalesce path live
-    stop = asyncio.Event()
+        # Close any coverage epoch left open by a PRIOR daemon lifetime, BEFORE this one
+        # opens any new live epoch. The reconciliation timestamp is an UPPER BOUND
+        # ("known closed no later than this startup"), never a fabricated crash time —
+        # see CaptureWriter.reconcile_orphan_coverage_epochs. Idempotent: a clean prior
+        # shutdown leaves nothing open and this closes 0 rows.
+        try:
+            _orphans = writer.reconcile_orphan_coverage_epochs()
+            if _orphans:
+                print(f"coverage-epoch reconciliation: closed {_orphans} orphan epoch(s) "
+                      f"left open by a prior daemon lifetime "
+                      f"(reason={CaptureWriter.COVERAGE_ORPHAN_REASON})")
+        except Exception as e:  # noqa: BLE001 — surfaced, never silently skipped
+            print(f"coverage-epoch reconciliation FAILED: {type(e).__name__}: {e}")
+            raise
 
-    try:
+        # Only NOW take the external Schwab dependency. A failure here returns without
+        # ever opening a live epoch; reconciliation above is already committed, and the
+        # `finally` closes the writer on this path exactly as on every other.
+        cfg = build_config(str(ROOT))
+        state = build_client_from_token(api_key=cfg.api_key, app_secret=cfg.app_secret,
+                                        token_path=cfg.token_path)
+        if not state.ok or state.client is None:
+            print(f"FATAL: Schwab client init failed: {state.message}")
+            return 2
+
+        bus = MessageBus()
+        health = HealthRegistry()
+        stats = CaptureStats(sample_dir=ROOT / "reports")
+        wsub = bus.subscribe("", policy=COUNT_DROPS, maxsize=8192)   # writer sees everything
+        _ui_future = bus.subscribe("quote.", policy=COALESCE)        # proves coalesce path live
+        stop = asyncio.Event()
+
         return await _run_streaming(symbols, duration_min, bus, health, stats,
                                     writer, wsub, stop, state)
     finally:
-        writer.close()   # every exit path incl. login/subscribe failure (round-3 MEDIUM)
+        writer.close()   # every exit path incl. auth/login/subscribe failure (round-3 MEDIUM)
 
 
 async def _schwab_connect(state, symbols, bus, health, stats, stop, active_book_ticker=None,
@@ -867,10 +928,15 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
     book_poll_task = asyncio.create_task(_active_ticker_book_poll_loop(
         lambda: book_state["stream"], lambda: book_state["ticker"],
         lambda t: book_state.__setitem__("ticker", t), stop))
+    # PR214 premerge gap 4: the option poll loop sets this when a coverage-compensation
+    # failure leaves vendor state uncertain with no durable coverage; the main loop below
+    # treats it exactly like the half-open watchdog and recycles the stream.
+    option_recycle_request = asyncio.Event()
     option_poll_task = asyncio.create_task(_active_option_contract_poll_loop(
         lambda: option_state["stream"], lambda: option_state["contract"],
         lambda c: option_state.__setitem__("contract", c), stop,
-        writer=writer, epoch_state=option_epoch_state))
+        writer=writer, epoch_state=option_epoch_state,
+        request_recycle=option_recycle_request))
     deadline = time.monotonic() + duration_min * 60 if duration_min > 0 else None
     last_reconnect = time.monotonic()
     try:
@@ -881,9 +947,17 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
             # half-open watchdog: quiet LEVELONE past the bar -> rebuild stream
             age = (health.report().get("LEVELONE_EQUITIES") or {}).get("age_sec")
             seen = stats.per_service.get("LEVELONE_EQUITIES", 0) > 0
-            if stream_needs_recycle(age, seen, time.monotonic() - last_reconnect):
-                print(f"watchdog: LEVELONE_EQUITIES quiet {age:.0f}s — recycling "
-                      f"Schwab stream (half-open guard)")
+            _coverage_forced = option_recycle_request.is_set()
+            if _coverage_forced or stream_needs_recycle(age, seen, time.monotonic() - last_reconnect):
+                if _coverage_forced:
+                    # gap 4: option coverage compensation failed — vendor state uncertain
+                    # with no durable coverage. Same teardown/rebuild as the watchdog.
+                    option_recycle_request.clear()
+                    print("option coverage compensation failed — recycling Schwab stream "
+                          "to restore a known vendor/coverage state")
+                else:
+                    print(f"watchdog: LEVELONE_EQUITIES quiet {age:.0f}s — recycling "
+                          f"Schwab stream (half-open guard)")
                 last_reconnect = time.monotonic()
                 book_state["stream"] = None   # poll loop must not use the dying stream
                 option_state["stream"] = None

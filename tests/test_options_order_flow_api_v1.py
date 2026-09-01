@@ -12,6 +12,8 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
@@ -115,7 +117,7 @@ def test_active_option_contract_post_calls_the_real_setter(monkeypatch):
 
     calls = []
     monkeypatch.setattr("order_flow_streaming.set_active_option_contract",
-                        lambda c: calls.append(c) or True)
+                        lambda c, **kw: calls.append(c) or True)
     import server as srv
 
     resp = asyncio.run(srv.post_streaming_active_option_contract(
@@ -157,12 +159,40 @@ _QQQ_CONTRACT = "QQQ   260820C00450000"
 
 def _force_live_option_plane(ofs, active_contract):
     """Make the plane maximally healthy on its own terms, so anything failing closed
-    below is doing so on contract identity and nothing else."""
+    below is doing so on contract identity and nothing else. NOTE this sets only the
+    SERVER-REQUESTED contract; producer identity is seeded separately by
+    _seed_producer_epochs (PR214 premerge gap 1A -- requested state is not proof)."""
     import time as _t
     ofs._feed_running = True
     ofs._active_option_contract = ofs.ticker_storage_key(active_contract)
     ofs._option_streaming_last_update_ts = _t.time()
     ofs._option_last_subscribe_completed_ts = _t.time()
+
+
+def _seed_producer_epochs(ofs, monkeypatch, tmp_path, *, l1=None, book=None):
+    """Point the diagnostics at a real stream DB and write REAL open coverage epochs --
+    producer-side subscription truth, exactly as the daemon records it after a confirmed
+    vendor subscribe. Fresh heartbeat too, so identity/liveness is not the thing failing.
+    Passing None for a service leaves it with no open epoch (not subscribed)."""
+    import time as _t
+
+    from stream_spine import CaptureWriter
+
+    db = tmp_path / "producer_stream.db"
+    w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
+    try:
+        if l1:
+            w.open_coverage_epoch(ofs.ticker_storage_key(l1), "LEVELONE_OPTIONS",
+                                  reason="active_contract_set")
+        if book:
+            w.open_coverage_epoch(ofs.ticker_storage_key(book), "OPTIONS_BOOK",
+                                  reason="active_contract_set")
+        w.write_heartbeat(ts=_t.time())
+    finally:
+        w.close()
+    monkeypatch.setattr(ofs, "STREAM_DB_DEFAULT", db)
+    monkeypatch.delenv("STREAM_CAPTURE_DB_PATH", raising=False)
+    return db
 
 
 def _reset_option_plane(ofs):
@@ -195,23 +225,105 @@ def test_blocker1a_query_a_while_active_b_fails_closed():
         _reset_option_plane(ofs)
 
 
-def test_blocker1a_query_a_while_active_a_is_normal_health():
-    """REQUIRED 2: API A while active A -> normal health, no synthetic penalty."""
+def test_blocker1a_query_a_while_active_a_is_normal_health(monkeypatch, tmp_path):
+    """REQUIRED 2: API A while active A -> normal health, no synthetic penalty.
+
+    PR214 premerge gap 1A: this now requires PRODUCER confirmation too -- both option
+    services must hold an open coverage epoch for A -- not merely that the server
+    requested A."""
     import json
 
     import order_flow_streaming as ofs
     import server as srv
 
     _force_live_option_plane(ofs, _SPY_CONTRACT)
+    _seed_producer_epochs(ofs, monkeypatch, tmp_path, l1=_SPY_CONTRACT, book=_SPY_CONTRACT)
     try:
         body = json.loads(srv.api_order_flow_options_microstructure(
             contract=_SPY_CONTRACT).body)
         plane = body["streaming_plane"]
+        assert plane["server_requested_contract"] == ofs.ticker_storage_key(_SPY_CONTRACT)
+        assert plane["producer_l1_contract"] == ofs.ticker_storage_key(_SPY_CONTRACT)
+        assert plane["producer_book_contract"] == ofs.ticker_storage_key(_SPY_CONTRACT)
         assert plane["contract_match"] is True
         assert plane["streaming_healthy"] is True, (
-            "a correctly-bound, fresh plane must still read healthy")
+            "a fully producer-confirmed, fresh plane must still read healthy")
     finally:
         _reset_option_plane(ofs)
+
+
+def test_gap1a_requested_b_while_producer_still_a_is_not_confirmed(monkeypatch, tmp_path):
+    """REQUIRED gap-1A attack: server requested B, producer/open epochs STILL A, query B.
+
+    The signal file is DESIRED state; the open coverage epoch is PRODUCER state. During
+    the window between the operator's request and the daemon's next poll they disagree,
+    and binding health to requested state alone would green B while the producer is
+    physically still subscribed to A."""
+    import json
+
+    import order_flow_streaming as ofs
+    import server as srv
+
+    _force_live_option_plane(ofs, _QQQ_CONTRACT)          # server REQUESTED B
+    _seed_producer_epochs(ofs, monkeypatch, tmp_path,     # producer still holds A
+                          l1=_SPY_CONTRACT, book=_SPY_CONTRACT)
+    try:
+        plane = json.loads(srv.api_order_flow_options_microstructure(
+            contract=_QQQ_CONTRACT).body)["streaming_plane"]
+        assert plane["server_requested_contract"] == ofs.ticker_storage_key(_QQQ_CONTRACT)
+        assert plane["producer_l1_contract"] == ofs.ticker_storage_key(_SPY_CONTRACT)
+        assert plane["producer_book_contract"] == ofs.ticker_storage_key(_SPY_CONTRACT)
+        assert plane["contract_match"] is not True, (
+            "queried == server-requested must NOT be sufficient while the producer "
+            "still holds another contract")
+        assert plane["streaming_healthy"] is False
+    finally:
+        _reset_option_plane(ofs)
+
+
+def test_gap1a_producer_switches_to_b_then_identity_is_confirmed(monkeypatch, tmp_path):
+    """...and once the producer's open epochs DO switch to B, identity is confirmed."""
+    import json
+
+    import order_flow_streaming as ofs
+    import server as srv
+
+    _force_live_option_plane(ofs, _QQQ_CONTRACT)
+    _seed_producer_epochs(ofs, monkeypatch, tmp_path, l1=_QQQ_CONTRACT, book=_QQQ_CONTRACT)
+    try:
+        plane = json.loads(srv.api_order_flow_options_microstructure(
+            contract=_QQQ_CONTRACT).body)["streaming_plane"]
+        assert plane["contract_match"] is True
+        assert plane["streaming_healthy"] is True
+    finally:
+        _reset_option_plane(ofs)
+
+
+def test_gap1a_partial_producer_state_is_not_a_fully_healthy_plane(monkeypatch, tmp_path):
+    """REQUIRED: partial producer state (L1=B, BOOK=A or absent) must NOT become a fully
+    healthy B plane -- both option services are required for a full contract match."""
+    import json
+
+    import order_flow_streaming as ofs
+    import server as srv
+
+    for i, book_state in enumerate((_SPY_CONTRACT, None)):  # BOOK on the OLD contract, or absent
+        # A fresh DB per case: reusing one would hit the 2B duplicate-open guard on the
+        # second iteration (correctly), which is a different property than the one here.
+        case_dir = tmp_path / f"case{i}"
+        case_dir.mkdir()
+        _force_live_option_plane(ofs, _QQQ_CONTRACT)
+        _seed_producer_epochs(ofs, monkeypatch, case_dir,
+                              l1=_QQQ_CONTRACT, book=book_state)
+        try:
+            plane = json.loads(srv.api_order_flow_options_microstructure(
+                contract=_QQQ_CONTRACT).body)["streaming_plane"]
+            assert plane["producer_l1_contract"] == ofs.ticker_storage_key(_QQQ_CONTRACT)
+            assert plane["contract_match"] is False, (
+                f"L1=B with BOOK={book_state!r} must not be a full contract match")
+            assert plane["streaming_healthy"] is False
+        finally:
+            _reset_option_plane(ofs)
 
 
 def test_blocker1a_whole_plane_query_keeps_historical_unbound_answer():
@@ -241,7 +353,8 @@ def test_blocker1a_post_ack_health_is_bound_to_the_requested_contract(monkeypatc
     _force_live_option_plane(ofs, _QQQ_CONTRACT)
     # Setter stubbed to a no-op FAILURE so the active contract stays on B while the
     # request asks for A -- exactly the unbound-acknowledgement shape.
-    monkeypatch.setattr("order_flow_streaming.set_active_option_contract", lambda _c: False)
+    monkeypatch.setattr("order_flow_streaming.set_active_option_contract",
+                        lambda _c, **kw: False)
     try:
         resp = asyncio.run(srv.post_streaming_active_option_contract(
             payload={"contract": _SPY_CONTRACT}))
@@ -251,3 +364,92 @@ def test_blocker1a_post_ack_health_is_bound_to_the_requested_contract(monkeypatc
         assert body["streaming_healthy"] is False
     finally:
         _reset_option_plane(ofs)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PR214 premerge gap 2 — SERVER-SIDE A->B COMMAND RACE.
+# The browser token stops a late A RESPONSE from repainting B. It cannot stop a late
+# A WRITE from landing: an older A command, delayed before its setter commit, would
+# otherwise overwrite the signal file and _active_option_contract back to A after the
+# newer B already wrote — leaving the daemon subscribed to the contract the operator
+# had already moved off. Ordering is now enforced at the writer itself.
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_gap2_delayed_older_command_cannot_overwrite_newer_desired_state(monkeypatch, tmp_path):
+    """REQUIRED attack: command A generation N, command B generation N+1, execute B's
+    write FIRST, then let the delayed A write proceed. Final server desired state and
+    signal file must both be B, and A must report as superseded — not as the successful
+    current authority."""
+    import order_flow_streaming as ofs
+    from stream_spine import read_active_option_contract_signal
+
+    signal = tmp_path / "stream_active_option_contract.json"
+    monkeypatch.setattr("stream_spine.ACTIVE_OPTION_CONTRACT_SIGNAL_DEFAULT", signal)
+    monkeypatch.setattr(ofs, "write_active_option_contract_signal",
+                        lambda c: __import__("stream_spine").write_active_option_contract_signal(
+                            c, path=signal))
+    ofs._active_option_contract = None
+    try:
+        gen_a = ofs.begin_option_contract_command()      # A admitted first...
+        gen_b = ofs.begin_option_contract_command()      # ...B admitted second
+        assert gen_b > gen_a
+
+        # B's write completes FIRST (its thread-pool body finished sooner).
+        assert ofs.set_active_option_contract(_QQQ_CONTRACT, command_generation=gen_b) is True
+        assert ofs._active_option_contract == ofs.ticker_storage_key(_QQQ_CONTRACT)
+
+        # Now the DELAYED A write resumes. It must be refused, not applied.
+        with pytest.raises(ofs.StaleOptionCommandError) as exc:
+            ofs.set_active_option_contract(_SPY_CONTRACT, command_generation=gen_a)
+        assert "superseded" in str(exc.value)
+
+        # FINAL desired state and the daemon-facing signal file are both B.
+        assert ofs._active_option_contract == ofs.ticker_storage_key(_QQQ_CONTRACT)
+        assert read_active_option_contract_signal(path=signal) == ofs.ticker_storage_key(_QQQ_CONTRACT)
+    finally:
+        ofs._active_option_contract = None
+
+
+def test_gap2_superseded_command_endpoint_reports_conflict_not_success(monkeypatch, tmp_path):
+    """The superseded command's HTTP response must not read as a successful subscription
+    of its own contract — a client validating the ack must reject it."""
+    import asyncio
+    import json
+
+    import order_flow_streaming as ofs
+    import server as srv
+
+    signal = tmp_path / "stream_active_option_contract.json"
+    monkeypatch.setattr(ofs, "write_active_option_contract_signal",
+                        lambda c: __import__("stream_spine").write_active_option_contract_signal(
+                            c, path=signal))
+    ofs._active_option_contract = None
+    try:
+        # A newer command has already been admitted and written B.
+        gen_b = ofs.begin_option_contract_command()
+        ofs.set_active_option_contract(_QQQ_CONTRACT, command_generation=gen_b)
+
+        # A stale command body then runs: force its generation below the newest.
+        monkeypatch.setattr(ofs, "begin_option_contract_command", lambda: 1)
+        resp = asyncio.run(srv.post_streaming_active_option_contract(
+            payload={"contract": _SPY_CONTRACT}))
+        assert resp.status_code == 409
+        body = json.loads(resp.body)
+        assert body["ok"] is False and body["superseded"] is True
+        assert ofs._active_option_contract == ofs.ticker_storage_key(_QQQ_CONTRACT), (
+            "the superseded command must not have moved desired state")
+    finally:
+        ofs._active_option_contract = None
+
+
+def test_gap2_a_command_with_no_generation_keeps_historical_behavior():
+    """Internal/test callers that pass no generation are unaffected (single-caller
+    assumption, encoded explicitly rather than silently)."""
+    import order_flow_streaming as ofs
+
+    ofs._active_option_contract = None
+    try:
+        assert ofs.set_active_option_contract(_SPY_CONTRACT) is True
+        assert ofs._active_option_contract == ofs.ticker_storage_key(_SPY_CONTRACT)
+    finally:
+        ofs._active_option_contract = None

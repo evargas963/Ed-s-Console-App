@@ -53,6 +53,22 @@ def test_options_page_routes_selection_through_the_shipped_gate():
         "the subscribe POST acknowledgement must be validated by the shipped rule (1B)")
     assert "EdOptionsSubscription.planeIsBoundToContract(" in html, (
         "health rendering must go through the shipped identity-binding rule (1D)")
+    assert "EdOptionsSubscription.subscriptionState(" in html, (
+        "the pending -> producer-confirmed transition must go through the shipped rule "
+        "(premerge gap 1B)")
+
+
+def test_options_page_never_claims_subscribed_on_the_post_ack_alone():
+    """PR214 premerge gap 1B: a successful POST proves the subscription REQUEST was
+    accepted, not that the daemon subscribed. The page must not label that 'subscribed';
+    only producer-confirmed state may."""
+    html = (ROOT / "static" / "options.html").read_text(encoding="utf-8", errors="replace")
+    ack_branch = html.split("verdict.accepted")[-1].split("function pollMicrostructure")[0]
+    assert "setSubscriptionState('subscribed'" not in ack_branch, (
+        "the POST-acknowledgement branch must not claim 'subscribed' — that word belongs "
+        "only to the producer-confirmed path in renderMicrostructure")
+    assert "awaiting producer" in ack_branch, (
+        "the acknowledgement branch must state that it is awaiting the producer")
 
 
 def test_options_page_no_longer_silently_swallows_the_subscribe_post():

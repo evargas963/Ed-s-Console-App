@@ -14161,20 +14161,37 @@ async def post_streaming_active_option_contract(payload: dict = Body(default={})
     if not c:
         return JSONResponse({"ok": False, "error": "contract is required"}, status_code=400)
 
+    # PR214 premerge gap 2: take the command's generation HERE, at admission, before the
+    # body is offloaded to the executor. Ordering must reflect the order the operator's
+    # commands ARRIVED, not the order their thread-pool bodies happen to finish -- an
+    # A admitted first but delayed must not overwrite a B admitted later that already
+    # wrote. The browser token cannot cover this: it only suppresses a stale RESPONSE.
+    from order_flow_streaming import (
+        StaleOptionCommandError,
+        begin_option_contract_command,
+    )
+    generation = begin_option_contract_command()
+
     def _apply():
         from order_flow_streaming import (
             set_active_option_contract,
             get_option_contract_streaming_diagnostics,
         )
 
-        ok = set_active_option_contract(c)
+        ok = set_active_option_contract(c, command_generation=generation)
         # PR214 merge blocker 1A: bind the acknowledgement's health to the contract
         # THIS request asked for, so a client that validates the ack cannot be handed
         # a healthy-looking plane belonging to a different contract.
         diag = get_option_contract_streaming_diagnostics(for_contract=c)
-        return {"ok": ok, "contract": c, **diag}
+        return {"ok": ok, "contract": c, "command_generation": generation, **diag}
     try:
         out = await asyncio.get_event_loop().run_in_executor(_get_fast_quote_executor(), _apply)
+    except StaleOptionCommandError as e:
+        # A superseded command is NOT the current authority. 409 Conflict, ok:false --
+        # the client must not treat this as a successful subscription of `c`.
+        return JSONResponse({"ok": False, "error": str(e), "contract": c,
+                             "superseded": True, "command_generation": generation},
+                            status_code=409)
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e), "contract": c}, status_code=500)
     return JSONResponse(out)
