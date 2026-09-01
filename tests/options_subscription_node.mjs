@@ -107,9 +107,14 @@ assert.strictEqual(
 assert.strictEqual(
   S.planeIsBoundToContract({ option_contract: A, contract_match: true, streaming_healthy: true }, A),
   true);
+// REVERSED (PR214 defect 2): this previously asserted that `option_contract` agreement
+// ALONE was sufficient with no server verdict. It is not -- option_contract is a
+// backwards-compatible alias of the SERVER-REQUESTED contract, so trusting it re-opened
+// a green render across the whole signal-file -> daemon-subscribe window.
 assert.strictEqual(
   S.planeIsBoundToContract({ option_contract: A, streaming_healthy: true }, A),
-  true, 'identity agreement alone is sufficient when the server states no verdict');
+  false,
+  'requested-state agreement alone must NOT bind; producer confirmation is required');
 // No committed selection -> nothing is bound (the pending-subscription state).
 assert.strictEqual(S.planeIsBoundToContract({ option_contract: A, contract_match: true }, null), false);
 assert.strictEqual(S.planeIsBoundToContract({}, A), false,
@@ -161,5 +166,46 @@ assert.strictEqual(
   }, B),
   false,
   'contract_match:false during the producer transition must refuse a healthy render');
+
+// ── PR214 defect 2: the no-verdict fallback must not trust REQUESTED state ──────────
+// `option_contract` is a backwards-compatible alias of the SERVER-REQUESTED contract,
+// not producer proof. With contract_match absent, binding must require BOTH producer
+// identities to match explicitly; option_contract / server_requested_contract may never
+// stand in for them.
+assert.strictEqual(
+  S.planeIsBoundToContract({ option_contract: B, streaming_healthy: true }, B),
+  false,
+  'requested-state alias alone must NOT bind when contract_match is absent');
+assert.strictEqual(
+  S.planeIsBoundToContract({
+    option_contract: B, server_requested_contract: B, streaming_healthy: true,
+  }, B),
+  false,
+  'server_requested_contract must never substitute for producer identity either');
+assert.strictEqual(
+  S.planeIsBoundToContract({
+    option_contract: B, producer_l1_contract: B, producer_book_contract: A,
+  }, B),
+  false,
+  'partial producer confirmation (L1 only) must not bind');
+assert.strictEqual(
+  S.planeIsBoundToContract({
+    option_contract: B, producer_l1_contract: B, producer_book_contract: null,
+  }, B),
+  false,
+  'a missing BOOK producer identity must not bind');
+assert.strictEqual(
+  S.planeIsBoundToContract({ producer_l1_contract: B, producer_book_contract: B }, B),
+  true,
+  'explicit producer confirmation on BOTH services is the only no-verdict bind');
+// The server's explicit verdicts still dominate in both directions.
+assert.strictEqual(
+  S.planeIsBoundToContract({
+    contract_match: true, producer_l1_contract: B, producer_book_contract: B,
+  }, B), true);
+assert.strictEqual(
+  S.planeIsBoundToContract({
+    contract_match: false, producer_l1_contract: B, producer_book_contract: B,
+  }, B), false, 'an explicit server mismatch verdict wins over producer fields');
 
 console.log('options_subscription_node: ok');

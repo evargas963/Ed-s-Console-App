@@ -508,6 +508,26 @@ class OptionCoverageCompensationError(RuntimeError):
     than being absorbed as an ordinary bad tick."""
 
 
+def _epoch_close_is_pending(epoch_state: dict, key: str, epoch_id: "int | None") -> bool:
+    """True when `epoch_id`'s durable close FAILED and it is sitting in the pending-close
+    retry set — i.e. that epoch is still OPEN in the table (PR214 defect 1C)."""
+    if epoch_id is None:
+        return False
+    return epoch_id in (epoch_state.get(f"{key}_pending_close") or set())
+
+
+def _discard_pending_close(epoch_state: dict, key: str, epoch_id: "int | None") -> None:
+    """Drop `epoch_id` from the pending-close retry set (PR214 defect 1D).
+
+    Used ONLY after a compensating resubscribe has restored the vendor subscription that
+    epoch describes: the epoch is legitimately open again, so the retry machinery must
+    not later close it behind a live subscription's back. This is not 'forgetting' a
+    failed close — the close is no longer the correct action."""
+    pending = epoch_state.get(f"{key}_pending_close")
+    if pending:
+        pending.discard(epoch_id)
+
+
 def _add_pending_close(epoch_state: dict, key: str, epoch_id: int) -> None:
     pending = epoch_state.setdefault(f"{key}_pending_close", set())
     pending.add(epoch_id)
@@ -579,6 +599,7 @@ async def _reconcile_option_service(stream, held: str | None, requested: str | N
     confirmed sqlite write, and neither is ever assumed from the other."""
     if held != requested:
         if held is not None:
+            unsubscribed = held            # the symbol whose coverage window is ending
             try:
                 await unsubs_fn([held])
                 held = None
@@ -594,8 +615,42 @@ async def _reconcile_option_service(stream, held: str | None, requested: str | N
             # only closes when the FINAL `held` is None — a same-tick switch (A -> B)
             # would otherwise never observe "A's epoch needs closing" as its own step.
             if writer is not None and epoch_state is not None:
+                closing_epoch_id = epoch_state.get(epoch_key)
                 _close_coverage_epoch_tracked(writer, epoch_state, epoch_key,
                                               reason="active_contract_changed")
+                # PR214 bidirectional coverage truth (defect 1C): the SUBSCRIBE->open
+                # direction was already compensated; this is its missing mirror. If A's
+                # durable CLOSE failed, A's epoch is still OPEN. Subscribing B now would
+                # leave TWO open epochs on one service (measured before this fix:
+                # id=1 SPY open AND id=2 QQQ open), which is not merely untidy — these
+                # epochs are read as PRODUCER SUBSCRIPTION IDENTITY, so it makes "what is
+                # this service subscribed to" unanswerable. Restore the previous truthful
+                # state instead: RESUBSCRIBE A, leaving vendor and ledger agreeing on A,
+                # and let the transition retry on a later tick.
+                if _epoch_close_is_pending(epoch_state, epoch_key, closing_epoch_id):
+                    print(f"{service_name}: durable coverage-epoch CLOSE failed for "
+                          f"{unsubscribed} — not subscribing {requested}; restoring the "
+                          f"prior subscription so vendor and ledger stay in agreement")
+                    try:
+                        await subs_fn([unsubscribed])
+                    except Exception as e:
+                        # Vendor state uncertain AND A's epoch still open. Do not
+                        # continue: escalate into the same stream-recycle path the
+                        # subscribe-direction compensation failure uses.
+                        raise OptionCoverageCompensationError(
+                            f"{service_name}: coverage-epoch close failed for "
+                            f"{unsubscribed} AND the compensating resubscribe also failed "
+                            f"({type(e).__name__}: {e}) — vendor state uncertain while its "
+                            f"epoch remains open; forcing stream recycle rather than "
+                            f"continuing") from e
+                    # Restored: the vendor holds A again and A's epoch is legitimately
+                    # open, so its id must be reinstated as the CURRENT epoch and removed
+                    # from pending-close (defect 1D) — otherwise the retry machinery would
+                    # later close the epoch of a subscription that is genuinely live.
+                    held = unsubscribed
+                    epoch_state[epoch_key] = closing_epoch_id
+                    _discard_pending_close(epoch_state, epoch_key, closing_epoch_id)
+                    return held
         if requested is not None and held is None:
             try:
                 await subs_fn([requested])

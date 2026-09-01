@@ -185,23 +185,32 @@ def read_open_coverage_symbols(conn: sqlite3.Connection,
     on desired state alone would claim B is live while the producer still physically
     holds A.
 
-    Returns {service: symbol or None}. None means "no epoch is currently open for this
-    service" -- not subscribed as far as the durable ledger knows. A missing table or an
-    unreadable DB yields None for every service: unknown is never confirmation. The
-    (symbol, service) OPEN_EPOCH_COUNT <= 1 invariant (CaptureWriter.open_coverage_epoch)
-    is what makes 'the' open symbol per service well-defined; if several were somehow
-    open, the newest is returned and the ambiguity is not silently resolved elsewhere."""
+    Returns {service: symbol or None}:
+      0 open rows -> None (not subscribed, as far as the durable ledger knows)
+      1 open row  -> that symbol (the only confirming case)
+      2+ open rows -> None, AMBIGUOUS -- explicitly NOT confirmed
+
+    A missing table or unreadable DB likewise yields None for every service: unknown is
+    never confirmation.
+
+    The ambiguous case must never be resolved by picking a row. An earlier version used
+    `ORDER BY id DESC LIMIT 1`, which silently answered "B" whenever a contradictory
+    A-open/B-open pair existed -- newest-row-wins, i.e. inventing a confident producer
+    identity out of a ledger that cannot support one, and greening health on it. The
+    CaptureWriter service-wide uniqueness guard makes that state unreachable through the
+    normal path; this reader still fails closed so a corrupted or hand-edited ledger
+    cannot be laundered into a confident answer here."""
     out: "dict[str, str | None]" = {s: None for s in services}
     for service in services:
         try:
-            row = conn.execute(
+            rows = conn.execute(
                 "SELECT symbol FROM stream_coverage_epochs "
-                "WHERE service = ? AND ended_ts IS NULL ORDER BY id DESC LIMIT 1",
-                (service,)).fetchone()
+                "WHERE service = ? AND ended_ts IS NULL", (service,)).fetchall()
         except sqlite3.OperationalError:
             return {s: None for s in services}
-        if row is not None:
-            out[service] = row[0]
+        if len(rows) == 1:
+            out[service] = rows[0][0]
+        # 0 rows -> None (not subscribed); 2+ -> None (ambiguous, never confirmed)
     return out
 
 
@@ -520,6 +529,18 @@ class CaptureWriter:
     #: Canonical reason stamped on epochs left open by a prior daemon lifetime.
     COVERAGE_ORPHAN_REASON = "daemon_restart_orphan"
 
+    #: Services this architecture subscribes for AT MOST ONE contract at a time (see
+    #: tools/run_stream_capture.py::_apply_active_option_contract_subs and
+    #: stream_spine.ACTIVE_OPTION_CONTRACT_SIGNAL_DEFAULT — one active option contract,
+    #: by design, not by accident). For these, "one open epoch per (symbol, service)" is
+    #: too weak: A and B are different symbols, so a switch whose close failed could open
+    #: B while A was still open, leaving TWO open epochs on one service. Since these
+    #: epochs are also read as PRODUCER SUBSCRIPTION IDENTITY, that state is not merely
+    #: untidy — it makes "what is this service subscribed to" unanswerable. Scoped
+    #: deliberately to the two canonical option services; equity/book services subscribe
+    #: many symbols concurrently and are NOT covered by this stricter rule.
+    SINGLE_CONTRACT_SERVICES: frozenset[str] = frozenset({"LEVELONE_OPTIONS", "OPTIONS_BOOK"})
+
     def reconcile_orphan_coverage_epochs(self, *, reason: str | None = None,
                                          ts: float | None = None) -> int:
         """Close every epoch still open from a PRIOR daemon lifetime. Returns the count.
@@ -576,17 +597,27 @@ class CaptureWriter:
         LOUDLY rather than silently writing a record that cannot be true."""
         t = ts if ts is not None else time.time()
         try:
-            existing = self._conn.execute(
-                "SELECT id FROM stream_coverage_epochs "
-                "WHERE symbol=? AND service=? AND ended_ts IS NULL",
-                (symbol, service)).fetchall()
+            # For a single-contract service the scope is the SERVICE, regardless of
+            # symbol (see SINGLE_CONTRACT_SERVICES); otherwise it is (symbol, service).
+            if service in self.SINGLE_CONTRACT_SERVICES:
+                existing = self._conn.execute(
+                    "SELECT id, symbol FROM stream_coverage_epochs "
+                    "WHERE service=? AND ended_ts IS NULL", (service,)).fetchall()
+                scope = f"service {service}"
+            else:
+                existing = self._conn.execute(
+                    "SELECT id, symbol FROM stream_coverage_epochs "
+                    "WHERE symbol=? AND service=? AND ended_ts IS NULL",
+                    (symbol, service)).fetchall()
+                scope = f"({symbol}, {service})"
             if existing:
                 raise CoverageWriteError(
                     f"open_coverage_epoch({symbol},{service}): refusing to open a second "
-                    f"epoch while {len(existing)} is/are still open (row id(s) "
-                    f"{[r[0] for r in existing]}). Close the prior epoch, or run "
-                    f"reconcile_orphan_coverage_epochs() at startup — two open epochs "
-                    f"for one (symbol, service) is contradictory coverage history.")
+                    f"epoch while {len(existing)} is/are still open for {scope} (row id(s) "
+                    f"{[r[0] for r in existing]}, symbol(s) {[r[1] for r in existing]}). "
+                    f"Close the prior epoch, or run reconcile_orphan_coverage_epochs() at "
+                    f"startup — two open epochs on one option service is contradictory "
+                    f"coverage history and makes producer identity unanswerable.")
             cur = self._conn.execute(
                 "INSERT INTO stream_coverage_epochs(symbol,service,started_ts,reason) "
                 "VALUES(?,?,?,?)", (symbol, service, t, reason))

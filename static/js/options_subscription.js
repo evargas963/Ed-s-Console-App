@@ -85,21 +85,30 @@
   /**
    * Is the streaming plane's health actually ABOUT the contract on screen?
    *
-   * Refuses binding when the server states a mismatch (`contract_match === false`) and,
-   * independently, when the plane names a different active contract than the selected
-   * one. `contract_match === undefined` on an older payload is not treated as a pass --
-   * the identity comparison still runs. Absence of evidence is never binding.
+   *   contract_match === true   -> bound
+   *   contract_match === false  -> unbound
+   *   contract_match absent     -> FAIL CLOSED unless BOTH producer identities
+   *                                themselves explicitly match the selected contract
+   *
+   * PR214 defect 2: the no-verdict fallback used to bind on
+   * `plane.option_contract === selectedContract`. But `option_contract` is only a
+   * backwards-compatible ALIAS of the SERVER-REQUESTED contract -- what the operator
+   * asked for, not what the producer holds. Binding on it re-introduced exactly the
+   * defect the producer-identity work removed: a green render during the whole
+   * signal-file -> daemon-subscribe window. Producer truth is never inferred from
+   * `option_contract` or `server_requested_contract`; only the producer fields count,
+   * and BOTH option services must agree.
    */
   function planeIsBoundToContract(plane, selectedContract) {
     const p = plane || {};
     if (p.contract_match === false) return false;
     const sel = selectedContract == null ? '' : String(selectedContract);
     if (!sel) return false;
-    const active = p.option_contract == null ? '' : String(p.option_contract);
-    if (active && active !== sel) return false;
     if (p.contract_match === true) return true;
-    // No server verdict: bound only if the plane names this exact contract.
-    return active === sel;
+    // No server verdict: require explicit producer confirmation on BOTH services.
+    const l1 = p.producer_l1_contract == null ? '' : String(p.producer_l1_contract);
+    const book = p.producer_book_contract == null ? '' : String(p.producer_book_contract);
+    return l1 === sel && book === sel;
   }
 
   /**

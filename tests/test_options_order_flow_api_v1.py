@@ -130,10 +130,23 @@ def test_active_option_contract_post_calls_the_real_setter(monkeypatch):
 
 
 def test_active_option_contract_post_surfaces_setter_failure(monkeypatch):
+    """PR214 defect 3: this stub used to be `def _boom(_c)`, but production now calls
+    `set_active_option_contract(c, command_generation=...)`. The stub therefore raised
+    TypeError on the unexpected keyword BEFORE the intended RuntimeError could run, while
+    the broad `500 / ok:false` assertions still passed -- a false-positive oracle that
+    would have kept passing even if the real failure path were never reached.
+
+    Fixed at the root: the stub accepts the real production call signature, a sentinel
+    proves the intended failure actually executed, and the surfaced error text is pinned
+    so a different exception cannot satisfy this test."""
     import asyncio
     import json
 
-    def _boom(_c):
+    invoked = {}
+
+    def _boom(c, command_generation=None):
+        invoked["contract"] = c
+        invoked["generation"] = command_generation
         raise RuntimeError("signal write failed")
     monkeypatch.setattr("order_flow_streaming.set_active_option_contract", _boom)
     import server as srv
@@ -141,7 +154,15 @@ def test_active_option_contract_post_surfaces_setter_failure(monkeypatch):
     resp = asyncio.run(srv.post_streaming_active_option_contract(
         payload={"contract": _SPY_CONTRACT}))
     assert resp.status_code == 500
-    assert json.loads(resp.body)["ok"] is False
+    body = json.loads(resp.body)
+    assert body["ok"] is False
+    assert invoked.get("contract") == _SPY_CONTRACT, (
+        "the intended setter failure must actually have been reached")
+    assert isinstance(invoked.get("generation"), int), (
+        "production must pass a real command_generation — a stub that cannot accept it "
+        "would fail for the wrong reason")
+    assert "signal write failed" in body.get("error", ""), (
+        "the surfaced error must be THE intended failure, not an incidental TypeError")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -295,6 +316,63 @@ def test_gap1a_producer_switches_to_b_then_identity_is_confirmed(monkeypatch, tm
             contract=_QQQ_CONTRACT).body)["streaming_plane"]
         assert plane["contract_match"] is True
         assert plane["streaming_healthy"] is True
+    finally:
+        _reset_option_plane(ofs)
+
+
+def test_ambiguous_open_ledger_fails_closed_not_newest_row_wins(monkeypatch, tmp_path):
+    """PR214 defect 1F. A corrupted/hand-edited ledger with TWO open epochs on one option
+    service must fail CLOSED, not silently resolve to the newer row.
+
+    read_open_coverage_symbols previously used `ORDER BY id DESC LIMIT 1`, which answered
+    "B" for an A-open/B-open pair purely because B had the larger id -- inventing a
+    confident producer identity from a ledger that cannot support one, and greening
+    health on it. Seeded here by direct SQL because the writer's service-wide uniqueness
+    guard (1E) now makes this state unreachable through the normal path."""
+    import json
+
+    import order_flow_streaming as ofs
+    import server as srv
+    from stream_spine import CaptureWriter, read_open_coverage_symbols
+
+    db = tmp_path / "ambiguous.db"
+    w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
+    try:
+        # Direct SQL: bypass the uniqueness guard to simulate a corrupted ledger.
+        w._conn.execute(
+            "INSERT INTO stream_coverage_epochs(symbol,service,started_ts,reason) "
+            "VALUES(?,?,1.0,'seed'),(?,?,2.0,'seed'),(?,?,1.0,'seed')",
+            (ofs.ticker_storage_key(_SPY_CONTRACT), "LEVELONE_OPTIONS",
+             ofs.ticker_storage_key(_QQQ_CONTRACT), "LEVELONE_OPTIONS",   # newer id
+             ofs.ticker_storage_key(_QQQ_CONTRACT), "OPTIONS_BOOK"))
+        w._conn.commit()
+        w.write_heartbeat(ts=__import__("time").time())
+    finally:
+        w.close()
+
+    import sqlite3
+    con = sqlite3.connect(db)
+    try:
+        got = read_open_coverage_symbols(con, ("LEVELONE_OPTIONS", "OPTIONS_BOOK"))
+    finally:
+        con.close()
+    assert got["LEVELONE_OPTIONS"] is None, (
+        "two open symbols on one service is AMBIGUOUS -- it must not resolve to the "
+        "newest row")
+    assert got["OPTIONS_BOOK"] == ofs.ticker_storage_key(_QQQ_CONTRACT), (
+        "the unambiguous service is still answered normally")
+
+    monkeypatch.setattr(ofs, "STREAM_DB_DEFAULT", db)
+    monkeypatch.delenv("STREAM_CAPTURE_DB_PATH", raising=False)
+    _force_live_option_plane(ofs, _QQQ_CONTRACT)
+    try:
+        plane = json.loads(srv.api_order_flow_options_microstructure(
+            contract=_QQQ_CONTRACT).body)["streaming_plane"]
+        assert plane["producer_l1_contract"] is None
+        assert plane["contract_match"] is False, (
+            "contract_match must not become true from an ambiguous ledger")
+        assert plane["streaming_healthy"] is False, (
+            "health must not become true from an ambiguous ledger")
     finally:
         _reset_option_plane(ofs)
 
