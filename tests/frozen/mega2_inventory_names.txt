@@ -232,10 +232,12 @@ order_flow_streaming.py::_log_stream
 order_flow_streaming.py::_open_capture_db_readonly
 order_flow_streaming.py::_option_streaming_healthy
 order_flow_streaming.py::_read_daemon_upstream_health
+order_flow_streaming.py::_read_producer_option_contracts
 order_flow_streaming.py::_replay_new_rows
 order_flow_streaming.py::_replay_option_contract_rows
 order_flow_streaming.py::_stream_db_identity_status
 order_flow_streaming.py::_streaming_healthy
+order_flow_streaming.py::begin_option_contract_command
 order_flow_streaming.py::get_option_contract_book_microstructure
 order_flow_streaming.py::get_option_contract_streaming_diagnostics
 order_flow_streaming.py::get_plane_authority_for_ticker
