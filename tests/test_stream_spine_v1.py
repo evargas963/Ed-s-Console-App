@@ -497,3 +497,127 @@ def test_db_path_e_explicit_caller_path_still_bypasses_the_resolver(tmp_path, mo
         assert w.db_path == explicit.resolve()
     finally:
         w.close()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PR214_FINAL_MERGE_BLOCKERS_V2 — Blocker 2: COVERAGE EPOCH CRASH/RESTART TRUTH.
+# stream_coverage_epochs separates "NOT SUBSCRIBED" from "SUBSCRIBED BUT VENDOR
+# SILENT". A clean shutdown closes epochs; a HARD death never runs that cleanup, so
+# `ended_ts IS NULL` rows survive into the next lifetime and read as indefinitely
+# subscribed across a window the daemon was not even running. 2A reconciles them at
+# startup; 2B refuses a second concurrently-open epoch for one (symbol, service).
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _epoch_rows(db):
+    con = sqlite3.connect(db)
+    try:
+        return con.execute(
+            "SELECT symbol, service, started_ts, ended_ts, reason "
+            "FROM stream_coverage_epochs ORDER BY id").fetchall()
+    finally:
+        con.close()
+
+
+def test_blocker2_crash_restart_orphan_epochs_reconciled_then_exactly_one_open(tmp_path):
+    """REQUIRED 2C attack, end to end.
+
+    Lifetime 1 opens A/LEVELONE_OPTIONS and A/OPTIONS_BOOK then dies HARD -- the writer
+    handle is dropped WITHOUT any close_coverage_epoch call, exactly as SIGKILL would.
+    Lifetime 2 runs startup reconciliation, then subscribes. Proves the prior rows are
+    closed with the orphan reason and that exactly ONE epoch is open per current
+    (symbol, service)."""
+    db = tmp_path / "stream_capture.db"
+    A = "SPY   260820C00767000"
+
+    # ── daemon lifetime 1: open both services, then hard death (NO clean close) ──
+    w1 = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
+    w1.open_coverage_epoch(A, "LEVELONE_OPTIONS", reason="active_contract_set", ts=100.0)
+    w1.open_coverage_epoch(A, "OPTIONS_BOOK", reason="active_contract_set", ts=100.0)
+    w1.close()   # closes the sqlite handle only — the EPOCHS are deliberately left open
+    before = _epoch_rows(db)
+    assert [r[3] for r in before] == [None, None], (
+        "precondition: a hard death leaves both epochs open (ended_ts NULL)")
+
+    # ── daemon lifetime 2: startup reconciliation ──
+    w2 = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
+    try:
+        closed = w2.reconcile_orphan_coverage_epochs(ts=500.0)
+        assert closed == 2, f"both prior-lifetime epochs must be reconciled, closed={closed}"
+        rows = _epoch_rows(db)
+        assert all(r[3] == 500.0 for r in rows), (
+            "orphans close at the RECONCILIATION timestamp -- an upper bound ('known "
+            "closed no later than this startup'), never a fabricated crash time")
+        assert all(r[4] == CaptureWriter.COVERAGE_ORPHAN_REASON for r in rows), (
+            "the reason column must mark these reconciled, not measured, closes")
+        assert all(r[2] == 100.0 for r in rows), "history is closed, never deleted or rewritten"
+
+        # ── subscribe the new contract for the SAME (symbol, service) pairs ──
+        w2.open_coverage_epoch(A, "LEVELONE_OPTIONS", reason="active_contract_set", ts=501.0)
+        w2.open_coverage_epoch(A, "OPTIONS_BOOK", reason="active_contract_set", ts=501.0)
+        con = sqlite3.connect(db)
+        try:
+            per_pair = con.execute(
+                "SELECT symbol, service, COUNT(*) FROM stream_coverage_epochs "
+                "WHERE ended_ts IS NULL GROUP BY symbol, service ORDER BY service").fetchall()
+        finally:
+            con.close()
+        assert per_pair == [(A, "LEVELONE_OPTIONS", 1), (A, "OPTIONS_BOOK", 1)], (
+            f"exactly ONE open epoch per (symbol, service) required; got {per_pair}")
+    finally:
+        w2.close()
+
+
+def test_blocker2_reconciliation_with_no_orphans_is_harmless_and_idempotent(tmp_path):
+    """Startup with nothing open closes 0 rows, disturbs no closed history, and running
+    it twice changes nothing."""
+    db = tmp_path / "stream_capture.db"
+    w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
+    try:
+        eid = w.open_coverage_epoch("SPY", "LEVELONE_OPTIONS", reason="x", ts=1.0)
+        w.close_coverage_epoch(eid, reason="shutdown", ts=2.0)
+        before = _epoch_rows(db)
+        assert w.reconcile_orphan_coverage_epochs(ts=900.0) == 0
+        assert w.reconcile_orphan_coverage_epochs(ts=901.0) == 0
+        assert _epoch_rows(db) == before, (
+            "a clean prior shutdown must be left byte-identical by reconciliation")
+    finally:
+        w.close()
+
+
+def test_blocker2_clean_shutdown_still_closes_normally_after_the_guard(tmp_path):
+    """The 2B guard must not disturb the normal open -> close -> reopen cycle."""
+    db = tmp_path / "stream_capture.db"
+    w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
+    try:
+        e1 = w.open_coverage_epoch("SPY", "OPTIONS_BOOK", reason="active_contract_set", ts=1.0)
+        w.close_coverage_epoch(e1, reason="shutdown", ts=2.0)
+        e2 = w.open_coverage_epoch("SPY", "OPTIONS_BOOK", reason="active_contract_set", ts=3.0)
+        assert e2 != e1
+        assert [r[3] for r in _epoch_rows(db)] == [2.0, None]
+    finally:
+        w.close()
+
+
+def test_blocker2_forced_duplicate_open_fails_loudly_for_the_right_reason(tmp_path):
+    """REQUIRED: a forced duplicate-open must fail, and fail for the CORRECT reason --
+    refusing contradictory history, not dying on an incidental error."""
+    db = tmp_path / "stream_capture.db"
+    w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
+    try:
+        w.open_coverage_epoch("SPY", "LEVELONE_OPTIONS", reason="active_contract_set", ts=1.0)
+        with pytest.raises(CoverageWriteError) as exc:
+            w.open_coverage_epoch("SPY", "LEVELONE_OPTIONS", reason="active_contract_set", ts=2.0)
+        msg = str(exc.value)
+        assert "refusing to open a second epoch" in msg and "still open" in msg
+        con = sqlite3.connect(db)
+        try:
+            n = con.execute(
+                "SELECT COUNT(*) FROM stream_coverage_epochs WHERE ended_ts IS NULL "
+                "AND symbol='SPY' AND service='LEVELONE_OPTIONS'").fetchone()[0]
+        finally:
+            con.close()
+        assert n == 1, "the refused open must not have written a contradictory second row"
+        # A DIFFERENT service for the same symbol is a distinct pair and stays allowed.
+        w.open_coverage_epoch("SPY", "OPTIONS_BOOK", reason="active_contract_set", ts=3.0)
+    finally:
+        w.close()

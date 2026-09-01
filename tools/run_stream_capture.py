@@ -746,6 +746,23 @@ async def _run_locked(symbols: list[str], duration_min: float, db_path: str | No
     health = HealthRegistry()
     stats = CaptureStats(sample_dir=ROOT / "reports")
     writer = CaptureWriter(db_path) if db_path else CaptureWriter()
+    # PR214 merge blocker 2A: close any coverage epoch left open by a PRIOR daemon
+    # lifetime BEFORE this one opens any new live epoch. A hard death (SIGKILL, power
+    # loss, OOM) never runs the clean-shutdown closes, so those `ended_ts IS NULL` rows
+    # would otherwise persist as indefinitely-subscribed across a window in which the
+    # daemon was not running. The reconciliation timestamp is an UPPER BOUND ("known
+    # closed no later than this startup"), never a fabricated crash time — see
+    # CaptureWriter.reconcile_orphan_coverage_epochs. Idempotent: a clean prior shutdown
+    # leaves nothing open and this closes 0 rows.
+    try:
+        _orphans = writer.reconcile_orphan_coverage_epochs()
+        if _orphans:
+            print(f"coverage-epoch reconciliation: closed {_orphans} orphan epoch(s) "
+                  f"left open by a prior daemon lifetime "
+                  f"(reason={CaptureWriter.COVERAGE_ORPHAN_REASON})")
+    except Exception as e:  # noqa: BLE001 — surfaced, never silently skipped
+        print(f"coverage-epoch reconciliation FAILED: {type(e).__name__}: {e}")
+        raise
     wsub = bus.subscribe("", policy=COUNT_DROPS, maxsize=8192)   # writer sees everything
     _ui_future = bus.subscribe("quote.", policy=COALESCE)        # proves coalesce path live
     stop = asyncio.Event()

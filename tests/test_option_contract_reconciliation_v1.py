@@ -483,3 +483,65 @@ def test_repeated_poll_after_partial_failure_recovers_without_duplicate_sub(monk
         f"calls={stream.calls}")
     book_sub_calls = [c for c in stream.calls if c[0] == "options_book_sub"]
     assert len(book_sub_calls) == 2, "BOOK retries on tick 2 after its tick-1 failure"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PR214_FINAL_MERGE_BLOCKERS_V2 — Blocker 2B must COMPOSE with the existing
+# pending-close retry machinery this file already protects. open_coverage_epoch now
+# refuses a second open epoch for the same (symbol, service); a close that FAILED
+# leaves that row open, so the next re-open of the same pair meets the guard. It must
+# fail CLOSED (memory claims no coverage) and SELF-HEAL once the pending close lands.
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_blocker2b_guard_fails_closed_on_stuck_close_then_self_heals(tmp_path, monkeypatch):
+    from tools.run_stream_capture import (
+        _close_coverage_epoch_tracked,
+        _open_coverage_epoch_tracked,
+        _retry_pending_epoch_closes,
+    )
+
+    writer = CaptureWriter(tmp_path / "cap.db", batch_rows=1, batch_sec=10.0)
+    try:
+        epoch_state: dict = {"l1": None}
+        _open_coverage_epoch_tracked(writer, epoch_state, "l1", _SPY_CONTRACT,
+                                     "LEVELONE_OPTIONS", reason="active_contract_set")
+        first_id = epoch_state["l1"]
+        assert first_id is not None
+
+        # The durable CLOSE fails -> the row stays OPEN, the id is tracked pending.
+        real_close = writer.close_coverage_epoch
+        fail = {"on": True}
+
+        def _flaky_close(epoch_id, **k):
+            if fail["on"]:
+                raise CoverageWriteError("simulated durable-write outage on close")
+            return real_close(epoch_id, **k)
+        monkeypatch.setattr(writer, "close_coverage_epoch", _flaky_close)
+        _close_coverage_epoch_tracked(writer, epoch_state, "l1", reason="stream_recycle")
+        assert epoch_state.get("l1_pending_close") == {first_id}
+        assert epoch_state["l1"] is None
+
+        # Re-opening the SAME (symbol, service) while that row is still open must be
+        # REFUSED, and refused FAIL-CLOSED: memory must not claim coverage.
+        _open_coverage_epoch_tracked(writer, epoch_state, "l1", _SPY_CONTRACT,
+                                     "LEVELONE_OPTIONS", reason="active_contract_set")
+        assert epoch_state["l1"] is None, (
+            "a refused open must leave epoch_state None -- never a coverage claim the "
+            "epoch table does not durably record")
+        assert len(_epochs(tmp_path / "cap.db")) == 1, (
+            "the refused open must not have written a contradictory second row")
+
+        # Once the outage clears, the EXISTING retry path closes the stuck epoch and the
+        # re-open then succeeds -- no operator action, exactly as before the guard.
+        fail["on"] = False
+        _retry_pending_epoch_closes(writer, epoch_state, "l1", reason="retry_pending_close")
+        assert epoch_state.get("l1_pending_close") == set()
+        _open_coverage_epoch_tracked(writer, epoch_state, "l1", _SPY_CONTRACT,
+                                     "LEVELONE_OPTIONS", reason="active_contract_set")
+        assert epoch_state["l1"] is not None and epoch_state["l1"] != first_id
+        rows = _epochs(tmp_path / "cap.db")
+        assert len(rows) == 2
+        assert rows[0][2] is not None, "the stuck epoch is closed by the retry"
+        assert rows[1][2] is None, "exactly one epoch is now open for this pair"
+    finally:
+        writer.close()

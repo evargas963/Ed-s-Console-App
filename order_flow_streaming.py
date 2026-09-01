@@ -519,7 +519,9 @@ def _option_streaming_healthy() -> bool:
     return False
 
 
-def get_option_contract_streaming_diagnostics() -> dict[str, Any]:
+def get_option_contract_streaming_diagnostics(
+    for_contract: Optional[str] = None,
+) -> dict[str, Any]:
     """FRESHNESS/HEALTH for the option-contract feed — the SAME shape as
     get_streaming_diagnostics(), mirrored for the separate option-contract slot. Answers
     "is the daemon actually subscribed and receiving data for this contract", distinct
@@ -527,7 +529,19 @@ def get_option_contract_streaming_diagnostics() -> dict[str, Any]:
     answer "how stale is the replayed book itself"). Both distinctions matter: a feed can
     be streaming_healthy=True with status='no_book' (subscribed, market simply has not
     sent a book frame yet) as legitimately as it can be streaming_healthy=False with a
-    perfectly fresh cached book (the feed died after its last good frame)."""
+    perfectly fresh cached book (the feed died after its last good frame).
+
+    CONTRACT BINDING (PR214 merge blocker 1A): `option_contract` is, and always was,
+    the GLOBALLY ACTIVE contract — but this health was being attached verbatim to a
+    payload computed for a DIFFERENT, caller-queried contract, so a response could
+    read `contract: A` beside `streaming_healthy: true` that belonged entirely to B.
+    Pass `for_contract` to bind the answer to the contract actually being asked
+    about: the plane still truthfully reports which contract it is streaming, and
+    `contract_match` states whether that is the one queried. On a mismatch the
+    health FAILS CLOSED — there is no live evidence about A while the feed is bound
+    to B, and absence of evidence must never render as healthy. `for_contract=None`
+    (no caller-specified subject) keeps the historical whole-plane answer, with
+    `contract_match` left None rather than fabricated."""
     now = time.time()
     last = _option_streaming_last_update_ts
     stale_ms: Optional[float]
@@ -543,9 +557,23 @@ def get_option_contract_streaming_diagnostics() -> dict[str, Any]:
     healthy = _option_streaming_healthy()
     if _identity_forces_unhealthy(db_identity, _option_last_subscribe_completed_ts, now):
         healthy = False   # fail closed — see get_streaming_diagnostics' identical guard
+
+    # Contract binding: compare on the SAME canonical key set_active_option_contract
+    # stores (ticker_storage_key), so a caller passing the raw chain "symbol" string
+    # reconciles correctly rather than mismatching on whitespace/case alone.
+    queried = ticker_storage_key(for_contract) if for_contract else None
+    contract_match: Optional[bool] = None
+    if queried:
+        contract_match = (_active_option_contract == queried)
+        if not contract_match:
+            # No live evidence exists about the queried contract while the plane is
+            # bound to another one. Fail closed rather than lending B's health to A.
+            healthy = False
     return {
         "streaming_connected": bool(_feed_running),
         "option_contract": _active_option_contract,
+        "queried_contract": queried,
+        "contract_match": contract_match,
         "streaming_last_update_ts": last,
         "streaming_staleness_ms": stale_ms,
         "streaming_healthy": healthy,

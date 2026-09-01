@@ -120,6 +120,7 @@
     <div id="sel-empty">Click a Bid/Ask cell in the chain to select a contract and subscribe its live book.</div>
     <div id="sel-body" style="display:none;">
       <div class="row"><span class="k">symbol</span><span class="v" id="sel-symbol">&mdash;</span></div>
+      <div class="row"><span class="k">subscription</span><span class="v" id="sel-subscription">&mdash;</span></div>
       <div id="health">
         <span id="health-dot"></span>
         <span id="health-summary" style="color:var(--mut);">&hellip;</span>
@@ -141,6 +142,7 @@
     </div>
   </div>
 </div>
+<script src="/static/js/options_subscription.js"></script>
 <script>
 (function(){
   'use strict';
@@ -161,6 +163,10 @@
 
   var selectedSymbol = null;
   var micxTimer = null;
+  // PR214 merge blocker 1B/1C: the selection is NOT committed on click. It is committed
+  // only after the subscribe POST returns a validated acknowledgement for this exact
+  // contract, and only if this click is still the newest one (gate token).
+  var subGate = globalThis.EdOptionsSubscription.createSubscriptionGate();
 
   function fmt(v, d){ if (v === null || v === undefined || Number.isNaN(v)) return '—';
     return typeof v === 'number' ? v.toFixed(d === undefined ? 2 : d) : String(v); }
@@ -299,8 +305,28 @@
       .catch(function(){ loadChain(); });   // expiries lookup failing must not block the chain fetch itself
   }
 
+  function setSubscriptionState(text, cls){
+    var el = document.getElementById('sel-subscription');
+    el.textContent = text;
+    el.className = 'v' + (cls ? ' ' + cls : '');
+  }
+
+  /**
+   * PR214 merge blocker 1B/1C. Clicking a contract shows it as PENDING and does NOT
+   * commit selection or start polling until the subscribe POST returns a validated
+   * acknowledgement for this exact contract. Every failure mode (network error,
+   * non-2xx, unparseable JSON, ok:false, contract mismatch) leaves the page in an
+   * explicit subscription-failure state with no polling and no health -- replacing the
+   * old silent `.catch(function(){})`. The gate token makes a late acknowledgement for
+   * a superseded contract inert, so A-then-B can never end up selected/polling on A.
+   */
   function selectContract(symbol, tr, side){
-    selectedSymbol = symbol;
+    var token = subGate.begin(symbol);
+    // Stop any previous contract's polling immediately: while this subscription is
+    // pending, nothing is the committed active contract.
+    if (micxTimer) { clearInterval(micxTimer); micxTimer = null; }
+    selectedSymbol = null;
+
     document.querySelectorAll('tr.selected').forEach(function(x){ x.classList.remove('selected'); });
     document.querySelectorAll('td.sel').forEach(function(x){ x.classList.remove('sel'); });
     tr.classList.add('selected');
@@ -310,15 +336,33 @@
     document.getElementById('sel-empty').style.display = 'none';
     document.getElementById('sel-body').style.display = 'block';
     document.getElementById('sel-symbol').textContent = symbol;
+    setSubscriptionState('subscribing…', 'warn');
+    renderHealth({}, null);   // no committed contract yet -> nothing may render healthy
 
+    var status = null;
     fetch('/api/streaming/active-option-contract', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({contract: symbol}),
-    }).catch(function(){});
-
-    if (micxTimer) clearInterval(micxTimer);
-    pollMicrostructure();
-    micxTimer = setInterval(pollMicrostructure, 2000);
+    }).then(function(r){
+      status = r.status;
+      return r.json().then(function(b){ return {networkError: false, status: status, body: b}; },
+                           function(){ return {networkError: false, status: status, body: null}; });
+    }, function(){
+      return {networkError: true, status: null, body: null};
+    }).then(function(result){
+      // A superseded click must never commit, start polling, or overwrite newer state.
+      if (!subGate.mayCommit(token, symbol)) return;
+      var verdict = globalThis.EdOptionsSubscription.validateSubscriptionAck(symbol, result);
+      if (!verdict.accepted) {
+        setSubscriptionState('subscribe failed: ' + verdict.reason, 'bad');
+        renderHealth({}, null);
+        return;                       // no polling, no healthy state
+      }
+      setSubscriptionState('subscribed', 'ok');
+      selectedSymbol = symbol;        // committed ONLY on a validated acknowledgement
+      pollMicrostructure();
+      micxTimer = setInterval(pollMicrostructure, 2000);
+    });
   }
 
   function pollMicrostructure(){
@@ -352,7 +396,7 @@
       depthBody.appendChild(tr);
     });
 
-    renderHealth(m.streaming_plane || {});
+    renderHealth(m.streaming_plane || {}, selectedSymbol);
   }
 
   // Round-2 requirement: local replay health, Schwab LEVELONE_OPTIONS upstream health,
@@ -363,11 +407,10 @@
   // summary dot is green ONLY when all three agree healthy, amber if some but not all
   // are healthy, red if none are — and every dimension's raw state is always shown below
   // it, never hidden behind the single dot.
-  function renderHealth(plane){
+  function renderHealth(plane, boundContract){
     var upstream = plane.daemon_upstream_health || {};
     var l1 = upstream.LEVELONE_OPTIONS || {};
     var bookSvc = upstream.OPTIONS_BOOK || {};
-    var localHealthy = plane.streaming_healthy === true;
     var l1Healthy = l1.state === 'RUNNING';
     var bookHealthy = bookSvc.state === 'RUNNING';
     var haveUpstream = !!upstream.LEVELONE_OPTIONS || !!upstream.OPTIONS_BOOK;
@@ -375,6 +418,26 @@
     var dot = document.getElementById('health-dot');
     var summary = document.getElementById('health-summary');
     dot.classList.remove('healthy', 'degraded', 'unhealthy');
+
+    // PR214 merge blocker 1D: health may only be rendered for the contract it is ABOUT.
+    // If the plane names a different active contract, or the server reports
+    // contract_match === false, this is an UNBOUND identity -- explicitly unhealthy.
+    // A previous contract's RUNNING upstream state must never carry over to a new one.
+    if (!globalThis.EdOptionsSubscription.planeIsBoundToContract(plane, boundContract)) {
+      dot.classList.add('unhealthy');
+      summary.textContent = boundContract
+        ? 'unbound — health belongs to a different contract'
+        : 'no active subscription';
+      var rEl = document.getElementById('health-replay');
+      rEl.textContent = 'replay: unbound'; rEl.className = 'bad';
+      var lEl = document.getElementById('health-l1');
+      lEl.textContent = 'L1 upstream: unbound'; lEl.className = 'bad';
+      var bEl = document.getElementById('health-book');
+      bEl.textContent = 'BOOK upstream: unbound'; bEl.className = 'bad';
+      return;
+    }
+
+    var localHealthy = plane.streaming_healthy === true;
     if (!haveUpstream) {
       // Only the local-replay claim is known — never present that alone as full "streaming healthy".
       dot.classList.add(localHealthy ? 'degraded' : 'unhealthy');

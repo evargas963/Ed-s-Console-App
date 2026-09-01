@@ -14138,7 +14138,14 @@ def api_order_flow_options_microstructure(contract: str = Query(...)):
     payload = get_option_contract_book_microstructure(c)
     payload["contract"] = c
     try:
-        payload["streaming_plane"] = get_option_contract_streaming_diagnostics()
+        # PR214 merge blocker 1A: the diagnostics are bound to the CONTRACT BEING
+        # QUERIED, not to whatever contract the plane happens to be streaming. Without
+        # `c` this attached the globally-active contract's health verbatim to a book
+        # computed for a different contract, so a response could read `contract: A`
+        # beside `streaming_healthy: true` that belonged entirely to B. The book above
+        # is still served truthfully (replayed content for A is real and is not
+        # discarded); only the LIVE HEALTH claim is bound and fails closed on mismatch.
+        payload["streaming_plane"] = get_option_contract_streaming_diagnostics(for_contract=c)
     except Exception:  # diagnostics are informational only — never fail the book payload for them
         payload["streaming_plane"] = {}
     return JSONResponse(payload)
@@ -14161,7 +14168,10 @@ async def post_streaming_active_option_contract(payload: dict = Body(default={})
         )
 
         ok = set_active_option_contract(c)
-        diag = get_option_contract_streaming_diagnostics()
+        # PR214 merge blocker 1A: bind the acknowledgement's health to the contract
+        # THIS request asked for, so a client that validates the ack cannot be handed
+        # a healthy-looking plane belonging to a different contract.
+        diag = get_option_contract_streaming_diagnostics(for_contract=c)
         return {"ok": ok, "contract": c, **diag}
     try:
         out = await asyncio.get_event_loop().run_in_executor(_get_fast_quote_executor(), _apply)

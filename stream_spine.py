@@ -485,18 +485,74 @@ class CaptureWriter:
         self._conn.commit()
         self.commits += 1
 
+    #: Canonical reason stamped on epochs left open by a prior daemon lifetime.
+    COVERAGE_ORPHAN_REASON = "daemon_restart_orphan"
+
+    def reconcile_orphan_coverage_epochs(self, *, reason: str | None = None,
+                                         ts: float | None = None) -> int:
+        """Close every epoch still open from a PRIOR daemon lifetime. Returns the count.
+
+        PR214 merge blocker 2A. stream_coverage_epochs exists to separate "we were NOT
+        subscribed" from "we were subscribed and the vendor was silent". A clean
+        shutdown closes its epochs; a hard process death (SIGKILL, power loss, OOM)
+        skips that cleanup entirely, leaving `ended_ts IS NULL` rows behind. On restart
+        the in-memory epoch state is new, so those rows would persist as
+        INDEFINITELY-SUBSCRIBED forever -- a historically false claim of coverage over
+        a window in which the daemon was not even running.
+
+        This runs at startup, BEFORE any new live epoch is opened, and closes those
+        rows durably. History is never deleted and the crash time is never fabricated:
+        `ended_ts` here is the RECONCILIATION timestamp, and its documented meaning is
+        "coverage is KNOWN CLOSED NO LATER THAN this new daemon's startup" -- an upper
+        bound on the true end, not a claim to know when the previous process died. The
+        `reason` column records that provenance so a reader can tell a reconciled
+        boundary from an observed one and never mistake it for a measured close.
+        """
+        t = ts if ts is not None else time.time()
+        r = reason if reason is not None else self.COVERAGE_ORPHAN_REASON
+        try:
+            cur = self._conn.execute(
+                "UPDATE stream_coverage_epochs SET ended_ts=?, reason=? "
+                "WHERE ended_ts IS NULL", (t, r))
+            self._conn.commit()
+            return int(cur.rowcount or 0)
+        except Exception as e:
+            raise CoverageWriteError(f"reconcile_orphan_coverage_epochs: {e}") from e
+
     def open_coverage_epoch(self, symbol: str, service: str, *, reason: str,
                             ts: float | None = None) -> int:
         """Immediately committed, not batched: this is a low-frequency state transition
         where correctness (durably recording WHEN a subscription started) matters more
-        than throughput. Returns the new epoch's row id."""
+        than throughput. Returns the new epoch's row id.
+
+        PR214 merge blocker 2B: refuses to create a SECOND open epoch for the same
+        (symbol, service). Two concurrently-open rows for one pair is contradictory
+        history -- it makes the coverage ledger unreadable, since a gap can no longer be
+        attributed to a single subscription window. The invariant is mechanical:
+        OPEN_EPOCH_COUNT <= 1 per (symbol, service). Normal re-subscription is
+        unaffected because it closes the prior epoch first; reaching here with a row
+        still open means reconciliation was skipped or a close was lost, so this fails
+        LOUDLY rather than silently writing a record that cannot be true."""
         t = ts if ts is not None else time.time()
         try:
+            existing = self._conn.execute(
+                "SELECT id FROM stream_coverage_epochs "
+                "WHERE symbol=? AND service=? AND ended_ts IS NULL",
+                (symbol, service)).fetchall()
+            if existing:
+                raise CoverageWriteError(
+                    f"open_coverage_epoch({symbol},{service}): refusing to open a second "
+                    f"epoch while {len(existing)} is/are still open (row id(s) "
+                    f"{[r[0] for r in existing]}). Close the prior epoch, or run "
+                    f"reconcile_orphan_coverage_epochs() at startup — two open epochs "
+                    f"for one (symbol, service) is contradictory coverage history.")
             cur = self._conn.execute(
                 "INSERT INTO stream_coverage_epochs(symbol,service,started_ts,reason) "
                 "VALUES(?,?,?,?)", (symbol, service, t, reason))
             self._conn.commit()
             return cur.lastrowid
+        except CoverageWriteError:
+            raise
         except Exception as e:
             raise CoverageWriteError(f"open_coverage_epoch({symbol},{service}): {e}") from e
 
