@@ -1784,3 +1784,180 @@ def test_login_failure_retries_cannot_accumulate_live_sessions(monkeypatch):
     unclosed = [g.gen for g in _LifecycleStream.generations if not g._socket.closed]
     assert unclosed == [], f"failed-login retries leaked transports: {unclosed}"
     assert _LifecycleStream.live == 0, "no attempt may leave a live session behind"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PR214 FORCED-SURRENDER CLAIM BARRIER — a CONTROLLED surrender (watchdog recycle,
+# clean shutdown) picks its own moment, so when the claim retraction cannot be
+# written it can WAIT behind the claim's own lease instead of tearing down while a
+# positive claim is still able to confirm the contract.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _claim_barrier_env(tmp_path, monkeypatch, ttl=1.5):
+    """A live producer holding A on both option services, with a SHORT shared lease.
+
+    Both sides read one constant in production, so the test shrinks both together —
+    shrinking only one would measure a mismatch that cannot occur."""
+    import order_flow_streaming as ofs
+    import tools.run_stream_capture as d
+    from stream_spine import CaptureWriter, CoverageWriteError
+
+    monkeypatch.setattr(d, "PRODUCER_CLAIM_TTL_SEC", ttl)
+    monkeypatch.setattr(ofs, "STREAM_PRODUCER_HEARTBEAT_STALE_SEC", ttl)
+    monkeypatch.setattr(d, "CLAIM_BARRIER_RETRY_SEC", 0.05)
+
+    db = tmp_path / "barrier.db"
+    w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
+    epoch_state = {"l1": None, "book": None}
+    for key, service in d.COVERAGE_CLAIM_SERVICES.items():
+        d._open_coverage_epoch_tracked(w, epoch_state, key,
+                                       ofs.ticker_storage_key(_A_CONTRACT), service,
+                                       reason="active_contract_set")
+    monkeypatch.setattr(ofs, "STREAM_DB_DEFAULT", db)
+    monkeypatch.delenv("STREAM_CAPTURE_DB_PATH", raising=False)
+    _reset_option_plane_for_barrier(ofs)
+
+    def unwritable():
+        def _boom(*a, **k):
+            raise CoverageWriteError("sqlite unwritable")
+        monkeypatch.setattr(w, "close_coverage_epoch", _boom)
+        monkeypatch.setattr(w, "write_heartbeat", _boom)
+
+    return SimpleNamespace(db=db, w=w, epoch_state=epoch_state, ofs=ofs, d=d,
+                           ttl=ttl, unwritable=unwritable, CoverageWriteError=CoverageWriteError)
+
+
+def _reset_option_plane_for_barrier(ofs):
+    ofs._feed_running = True
+    ofs._active_option_contract = ofs.ticker_storage_key(_A_CONTRACT)
+    ofs._option_streaming_last_update_ts = time.time()
+    ofs._option_last_subscribe_completed_ts = time.time()
+
+
+def _confirms(env):
+    return env.ofs.get_option_contract_streaming_diagnostics(
+        for_contract=_A_CONTRACT)["contract_match"] is True
+
+
+def test_forced_surrender_waits_out_a_claim_it_cannot_retract(tmp_path, monkeypatch):
+    """A controlled surrender must never happen while a standing positive claim can still
+    confirm the coverage it is giving up.
+
+    MEASURED before the barrier: the recycle tore the stream down with the retraction
+    unwritten, and the consumer reported contract_match=true for the surrendered contract
+    until the claim aged out — a false positive for the whole remaining lease.
+
+    The consumer is sampled CONTINUOUSLY across the entire surrender, so the assertion is
+    "no instant", not "not at the end"."""
+    env = _claim_barrier_env(tmp_path, monkeypatch)
+    try:
+        assert _confirms(env), "precondition: the live claim confirms while genuinely held"
+        env.unwritable()
+
+        held = {"vendor": True}
+        violations = []
+        samples = {"n": 0}
+
+        async def sampler(stop):
+            while not stop.is_set():
+                samples["n"] += 1
+                if _confirms(env) and not held["vendor"]:
+                    violations.append(time.monotonic())
+                await asyncio.sleep(0.02)
+
+        async def go():
+            stop = asyncio.Event()
+            s = asyncio.create_task(sampler(stop))
+            try:
+                waited = await env.d._surrender_claim_or_wait_out_lease(
+                    env.w, reason="stream_recycle")
+                held["vendor"] = False          # the surrender happens HERE
+                for key in ("l1", "book"):
+                    env.d._close_coverage_epoch_tracked(
+                        env.w, env.epoch_state, key, reason="stream_recycle",
+                        surrendered_ts=200.0)
+                await asyncio.sleep(0.2)        # keep sampling past the surrender
+                return waited
+            finally:
+                stop.set()
+                await s
+
+        waited = asyncio.run(go())
+
+        assert waited >= env.ttl * 0.8, (
+            f"the barrier must have held for roughly the standing lease; waited {waited}")
+        assert samples["n"] > 10, "the sampler must actually have run across the barrier"
+        assert violations == [], (
+            f"{len(violations)} instant(s) where the surrendered contract was still "
+            f"producer-confirmed")
+        assert not _confirms(env), (
+            "after a controlled surrender nothing may confirm the contract")
+    finally:
+        env.w.close()
+
+
+def test_forced_surrender_is_immediate_when_the_retraction_lands(tmp_path, monkeypatch):
+    """The barrier is exceptional, not the normal cost. With writes working, a controlled
+    surrender must retract and proceed with NO added latency — otherwise every recycle and
+    every clean exit would pay the lease."""
+    env = _claim_barrier_env(tmp_path, monkeypatch)
+    try:
+        waited = asyncio.run(
+            env.d._surrender_claim_or_wait_out_lease(env.w, reason="shutdown"))
+        assert waited == 0.0, f"no wait may be imposed on the healthy path; got {waited}"
+        assert not _confirms(env), "the retraction must have landed"
+    finally:
+        env.w.close()
+
+
+def test_forced_surrender_barrier_releases_early_when_writes_recover(tmp_path, monkeypatch):
+    """The barrier is a bound, not a fixed delay: the moment the retraction can actually
+    be written it must publish and release, rather than sitting out the full lease."""
+    env = _claim_barrier_env(tmp_path, monkeypatch, ttl=6.0)
+    try:
+        real_hb = CaptureWriter.write_heartbeat
+        state = {"broken": True}
+
+        def flaky(self, **kw):
+            if state["broken"]:
+                raise env.CoverageWriteError("sqlite unwritable")
+            return real_hb(self, **kw)
+        monkeypatch.setattr(CaptureWriter, "write_heartbeat", flaky)
+
+        async def go():
+            async def heal():
+                await asyncio.sleep(0.4)
+                state["broken"] = False
+            h = asyncio.create_task(heal())
+            waited = await env.d._surrender_claim_or_wait_out_lease(
+                env.w, reason="stream_recycle")
+            await h
+            return waited
+
+        waited = asyncio.run(go())
+        assert 0.0 < waited < env.ttl * 0.6, (
+            f"the barrier must release as soon as the retraction lands, well inside the "
+            f"{env.ttl}s lease; waited {waited}")
+        assert not _confirms(env), "the retraction must have been published on release"
+    finally:
+        env.w.close()
+
+
+def test_forced_surrender_mutation_control_without_the_barrier(tmp_path, monkeypatch):
+    """NEGATIVE CONTROL. Surrender WITHOUT waiting out the standing claim, and the false
+    positive must reappear — otherwise the assertions above prove nothing."""
+    env = _claim_barrier_env(tmp_path, monkeypatch)
+    try:
+        env.unwritable()
+        # surrender immediately, skipping the barrier entirely
+        for key in ("l1", "book"):
+            env.d._close_coverage_epoch_tracked(env.w, env.epoch_state, key,
+                                                reason="stream_recycle",
+                                                surrendered_ts=200.0)
+        assert env.epoch_state["l1"] is None, "the daemon has knowingly surrendered"
+        assert _confirms(env), (
+            "MUTATION CONTROL FAILED TO BITE: surrendering without the barrier must leave "
+            "the standing claim still confirming the contract")
+    finally:
+        env.w.close()

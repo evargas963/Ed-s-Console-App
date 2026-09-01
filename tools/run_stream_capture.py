@@ -41,6 +41,7 @@ sys.path.insert(0, str(ROOT))
 from stream_spine import (  # noqa: E402
     COALESCE,
     COUNT_DROPS,
+    PRODUCER_CLAIM_TTL_SEC,
     CaptureWriter,
     CoverageWriteError,
     HealthRegistry,
@@ -565,6 +566,70 @@ def _publish_coverage_claim(writer, epoch_state: dict) -> bool:
               f"stands and is still within the liveness TTL, so this surrender cannot be "
               f"made visible yet: {type(e).__name__}: {e}")
         return False
+
+
+#: How often the forced-surrender barrier re-attempts the retraction while waiting out a
+#: standing claim. Only ever reached when the durable write is failing, so the cadence
+#: just balances "recover as soon as writes come back" against log noise.
+CLAIM_BARRIER_RETRY_SEC = 2.0
+
+
+async def _surrender_claim_or_wait_out_lease(writer, *, reason: str) -> float:
+    """Give up the published coverage claim, or WAIT until it can no longer confirm.
+
+    For a CONTROLLED surrender (a watchdog/forced recycle, a clean shutdown) the daemon
+    chooses when the subscription dies. That freedom is the fix: a published claim is a
+    latched positive with a KNOWN expiry, so if the retraction cannot be written the
+    surrender does not have to happen now — it can wait behind the claim's own lease.
+
+      retraction lands   -> surrender immediately, nothing can confirm the old contract;
+      retraction fails   -> the claim is still standing AND STILL TRUE, because we have
+                            not surrendered anything yet. Hold the subscription until the
+                            claim is past PRODUCER_CLAIM_TTL_SEC and can no longer confirm,
+                            retrying the retraction throughout, then let the caller
+                            surrender into a window where no positive evidence exists.
+
+    There is therefore no instant at which the old contract can be confirmed while it is
+    not held: before the barrier the claim is true, after it the claim is unusable.
+
+    Returns the delay it imposed, in seconds — 0.0 on the normal path. The wait is bounded
+    by PRODUCER_CLAIM_TTL_SEC from the last successful positive publication, and is only
+    reachable while durable writes are failing.
+
+    Waiting here is safe for the two invariants it could threaten: it happens BEFORE any
+    teardown, so exactly one live Schwab authority exists throughout and no stream
+    generation is retired or created while it runs.
+
+    This covers CONTROLLED paths only. An uncatchable death (SIGKILL, power loss) runs no
+    code at all, so no barrier can exist for it; that case is already handled the way it
+    always was — the claim expires on its own TTL and startup orphan reconciliation closes
+    the epochs the dead lifetime left open. No new machinery is introduced for it."""
+    if writer is None:
+        return 0.0
+    if _publish_coverage_claim(writer, {}):
+        return 0.0
+    started = time.monotonic()
+    announced = False
+    while True:
+        ts = getattr(writer, "positive_claim_published_ts", None)
+        if ts is None:
+            break                      # nothing positive stands; surrender is safe
+        remaining = (ts + PRODUCER_CLAIM_TTL_SEC) - time.time()
+        if remaining <= 0:
+            break                      # the standing claim can no longer confirm
+        if not announced:
+            print(f"{reason}: coverage-claim retraction could not be written — HOLDING "
+                  f"the subscription for up to {remaining:.0f}s until the standing claim "
+                  f"expires, rather than surrendering behind a claim that would still "
+                  f"confirm it")
+            announced = True
+        await asyncio.sleep(min(remaining, CLAIM_BARRIER_RETRY_SEC))
+        if _publish_coverage_claim(writer, {}):
+            break                      # writes recovered; retracted for real
+    waited = time.monotonic() - started
+    if announced:
+        print(f"{reason}: claim barrier cleared after {waited:.1f}s — surrendering now")
+    return waited
 
 
 def _epoch_close_is_pending(epoch_state: dict, key: str, epoch_id: "int | None") -> bool:
@@ -1449,13 +1514,19 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
                 # involves a bounded vendor logout, so stamping ended_ts afterwards would
                 # claim coverage across a window we had already given up on.
                 recycle_surrendered_ts = time.time()
-                # WRITE-AHEAD RETRACTION, before the subscription actually dies below.
-                # The published claim is a latched positive: retracting it only after the
-                # teardown leaves it standing — and inside the liveness TTL — across the
-                # whole window in which the vendor subscription is already gone. Passing
-                # an empty mapping claims nothing without touching option_epoch_state, so
-                # this cannot interact with the stream-generation ownership teardown.
-                _publish_coverage_claim(writer, {})
+                # WRITE-AHEAD RETRACTION, before the subscription actually dies below —
+                # and if it cannot be written, HOLD the subscription until the standing
+                # claim can no longer confirm it. A recycle is a CONTROLLED surrender: the
+                # daemon picks the moment, so it can wait behind the claim's own lease
+                # rather than tearing down while a positive claim is still usable. The
+                # barrier runs before any teardown, so one live authority throughout.
+                _claim_barrier_sec = await _surrender_claim_or_wait_out_lease(
+                    writer, reason="stream_recycle")
+                if _claim_barrier_sec:
+                    # Recovery was deliberately delayed to avoid a false positive. Say so
+                    # with a number, so an operator sees the cost rather than a mystery.
+                    print(f"watchdog: recycle delayed {_claim_barrier_sec:.1f}s by the "
+                          f"coverage-claim barrier (durable writes were failing)")
                 book_state["stream"] = None   # poll loop must not use the dying stream
                 option_state["stream"] = None
                 # RETIRE THE WHOLE GENERATION FIRST — control tasks (cancelled AND
@@ -1532,8 +1603,12 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
         shutdown_surrendered_ts = time.time()
         # WRITE-AHEAD RETRACTION, for the same reason as the recycle: capture stops below,
         # and a claim retracted only afterwards stands (and stays fresh) across the whole
-        # teardown and writer drain.
-        _publish_coverage_claim(writer, {})
+        # teardown and writer drain. A clean shutdown is likewise a CONTROLLED surrender,
+        # so if the retraction cannot be written the exit waits out the standing claim
+        # rather than leaving one that would confirm a contract nothing holds. This is the
+        # controlled path only — an uncatchable kill runs none of this, and is covered as
+        # it always was by the claim's own expiry plus startup orphan reconciliation.
+        await _surrender_claim_or_wait_out_lease(writer, reason="shutdown")
         await _shutdown_sequence(pump_task, writer_task, stop, wsub,
                                  extra_producers=(alpaca_task, *control_tasks))
         # The daemon's own Schwab session must not outlive the daemon. _shutdown_sequence

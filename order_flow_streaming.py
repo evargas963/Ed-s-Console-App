@@ -39,6 +39,7 @@ from typing import Any, Callable, Optional
 
 from instrument_identity import ticker_storage_key
 from stream_spine import (
+    PRODUCER_CLAIM_TTL_SEC,
     STREAM_DB_DEFAULT,
     read_open_coverage_symbols,
     read_producer_heartbeat,
@@ -196,7 +197,10 @@ def streaming_l1_cache_usable(ticker: str) -> bool:
 #: its ~10s write loop), the SAME grounding that already governs the file-based
 #: upstream-health check. write_status() writes the DB heartbeat and the status file
 #: on the SAME call, so one bound serves both.
-STREAM_PRODUCER_HEARTBEAT_STALE_SEC = _DAEMON_STATUS_STALE_SEC
+#: Defined in stream_spine so the DAEMON reads the identical bound: a controlled surrender
+#: has to know exactly how long a claim it could not retract can still confirm. Same value
+#: as _DAEMON_STATUS_STALE_SEC (30s, 3x the ~10s write loop); one definition, two readers.
+STREAM_PRODUCER_HEARTBEAT_STALE_SEC = PRODUCER_CLAIM_TTL_SEC
 
 
 def _stream_db_identity_status() -> dict[str, Any]:

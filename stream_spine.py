@@ -165,6 +165,15 @@ CREATE TABLE IF NOT EXISTS stream_producer_heartbeat (
 """
 
 
+#: How long a PUBLISHED producer coverage claim can still confirm a subscription. It is
+#: the consumer's staleness bound AND, read from the other side, the producer's own lease:
+#: a claim written at T can be used as positive evidence until T + this. The daemon needs
+#: the same number the reader uses — it is what tells a controlled surrender how long a
+#: claim it failed to retract remains capable of confirming — so the value lives here, in
+#: the module both sides already share, rather than being duplicated on either side.
+PRODUCER_CLAIM_TTL_SEC = 30.0
+
+
 def read_producer_heartbeat(conn: sqlite3.Connection) -> "dict | None":
     """Read the producer identity/liveness row from THIS connection's own
     stream_capture.db (Gap 2) -- the SAME data plane the caller already reads
@@ -506,6 +515,12 @@ class CaptureWriter:
         self.rows_written = 0
         self.commits = 0
         self.insert_errors = 0
+        #: When a POSITIVE coverage claim was last successfully published, or None if the
+        #: most recent successful publication claimed nothing. This is the producer's own
+        #: view of its outstanding lease: a controlled surrender that cannot retract the
+        #: claim must not proceed until this + PRODUCER_CLAIM_TTL_SEC has passed, because
+        #: until then a consumer can still confirm coverage from it.
+        self._positive_claim_ts: "float | None" = None
         self._closed = False
         self._conn = sqlite3.connect(str(p))
         try:
@@ -712,6 +727,20 @@ class CaptureWriter:
             self._conn.commit()
         except Exception as e:
             raise CoverageWriteError(f"write_heartbeat: {e}") from e
+        # Only a LANDED write changes the outstanding lease. A publication that claims
+        # nothing clears it; one that names any epoch starts a fresh one at `t`.
+        self._positive_claim_ts = t if (
+            claimed_coverage and any(v is not None for v in claimed_coverage.values())
+        ) else None
+
+    @property
+    def positive_claim_published_ts(self) -> "float | None":
+        """When this producer last successfully published a POSITIVE coverage claim.
+
+        None means nothing it published is capable of confirming coverage. Otherwise the
+        claim can still confirm until this + PRODUCER_CLAIM_TTL_SEC — which is exactly the
+        barrier a controlled surrender must clear when it cannot retract the claim."""
+        return self._positive_claim_ts
 
     def close_coverage_epoch(self, epoch_id: int, *, reason: str,
                              ts: float | None = None) -> None:
