@@ -14,13 +14,14 @@ if str(ROOT) not in sys.path:
 
 
 def test_l1_sse_diagnostics_exposed():
-    import server as srv
-    from fastapi.testclient import TestClient
+    """TEST_SYSTEM_REHAB_V2 final remediation: get_l1_diagnostics is a plain sync
+    handler with no auth/middleware/serialization-shaping dependency -- the HTTP
+    round trip added nothing a direct call doesn't already prove."""
+    import json
 
-    client = TestClient(srv.app)
-    r = client.get("/api/diagnostics/l1")
-    assert r.status_code == 200
-    ed = r.json()["ed_l1"]
+    import server as srv
+
+    ed = json.loads(srv.get_l1_diagnostics().body)["ed_l1"]
     assert "l1_sse_light" in ed
     assert "l1_light_sse_connections" in ed["l1_sse_light"]
 

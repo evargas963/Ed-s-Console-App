@@ -8,28 +8,20 @@ signals.py may only reference the table name in log strings (no SQL).
 
 from __future__ import annotations
 
-import subprocess
 from pathlib import Path
 
 
 _NEEDLE = "calibration_decision_log"
-_ROOT = Path(__file__).resolve().parents[1]
 
-
-def _tracked_py_files() -> list[Path]:
-    """Repo-wide is the GIT INDEX (RC-274, RC-286, RC-307).
-
-    All three scanners below walked the disk behind a hand-written skip list of
-    `__pycache__`, `.venv`, `node_modules`, `.claude` — and not `scratchpad/`, which holds 93
-    untracked throwaway scripts. `scratchpad/_server_RELANDED_20260802.py` is a saved copy of
-    an old server, so it mentions `calibration_decision_log` and has been failing this gate as
-    an unauthorized production reference to code the repository does not contain. Every
-    hand-maintained skip list is correct on the day it is written; the index is the definition.
-    """
-    out = subprocess.run(["git", "ls-files", "-z", "--", "*.py"],
-                         cwd=_ROOT, capture_output=True, text=True, check=True).stdout
-    return [_ROOT / rel for rel in sorted(p for p in out.split("\0") if p)
-            if (_ROOT / rel).exists()]
+# TEST_SYSTEM_REHAB_V2 final remediation: this file's own `_tracked_py_files()`
+# independently re-derived the same git-index observation the shared `repo_index`
+# fixture (tests/conftest.py) already builds once per run -- a `subprocess.run(["git",
+# "ls-files", ...])` + per-file `.read_text()` re-scan is the same redundant cost the
+# `.rglob`/`.glob`/`os.walk` recurrence lock was built to eliminate, just a different
+# call shape. `repo_index` was ALSO missing the git-index scoping this file's own
+# docstring specifically warned about (it used a raw `root.rglob("*.py")`, so
+# `scratchpad/`'s untracked scripts would have silently reached it) -- fixed at the
+# shared fixture, not worked around here a second time.
 
 
 def _allowed_path(rel: Path) -> bool:
@@ -136,19 +128,11 @@ def _allowed_path(rel: Path) -> bool:
     return False
 
 
-def test_no_unauthorized_python_references_to_calibration_decision_log() -> None:
+def test_no_unauthorized_python_references_to_calibration_decision_log(repo_index) -> None:
     offenders: list[str] = []
-    for p in _tracked_py_files():
-        parts = set(p.parts)
-        if "__pycache__" in parts or ".venv" in parts or "node_modules" in parts or ".claude" in parts:
-            continue
-        try:
-            text = p.read_text(encoding="utf-8", errors="replace")
-        except OSError:
-            continue
+    for rel, text, _tree in repo_index.items():
         if _NEEDLE not in text:
             continue
-        rel = p.relative_to(_ROOT)
         if not _allowed_path(rel):
             offenders.append(rel.as_posix())
     assert offenders == [], (
@@ -157,19 +141,13 @@ def test_no_unauthorized_python_references_to_calibration_decision_log() -> None
     )
 
 
-def test_insert_into_calibration_decision_log_only_writer_and_tests() -> None:
+def test_insert_into_calibration_decision_log_only_writer_and_tests(repo_index) -> None:
     """INSERT must not appear outside writer (production) and calibration tests."""
     bad: list[str] = []
-    for p in _tracked_py_files():
-        if "__pycache__" in p.parts or ".claude" in p.parts:
-            continue
-        try:
-            text = p.read_text(encoding="utf-8", errors="replace")
-        except OSError:
-            continue
+    for relpath, text, _tree in repo_index.items():
         if "INSERT INTO calibration_decision_log" not in text:
             continue
-        rel = p.relative_to(_ROOT).as_posix()
+        rel = relpath.as_posix()
         ok = (
             rel == "calibration/writer.py"
             or rel.startswith("tests/test_calibration")
@@ -194,18 +172,12 @@ def test_insert_into_calibration_decision_log_only_writer_and_tests() -> None:
     assert bad == [], f"Unexpected INSERT into calibration_decision_log: {bad}"
 
 
-def test_update_calibration_decision_log_only_backfill_and_tests() -> None:
+def test_update_calibration_decision_log_only_backfill_and_tests(repo_index) -> None:
     bad: list[str] = []
-    for p in _tracked_py_files():
-        if "__pycache__" in p.parts or ".claude" in p.parts:
-            continue
-        try:
-            text = p.read_text(encoding="utf-8", errors="replace")
-        except OSError:
-            continue
+    for relpath, text, _tree in repo_index.items():
         if "UPDATE calibration_decision_log" not in text:
             continue
-        rel = p.relative_to(_ROOT).as_posix()
+        rel = relpath.as_posix()
         ok = (
             rel == "calibration/operable_surface_quarantine.py"  # sole writer of research_excluded; moved here 2026-07-19 out of tools/
             or rel == "calibration/backfill_outcomes.py"

@@ -196,13 +196,14 @@ def test_diagnostics_explainability_fields():
 
 
 def test_diagnostics_endpoint_includes_adaptive_block():
-    import server as srv
-    from fastapi.testclient import TestClient
+    """TEST_SYSTEM_REHAB_V2 final remediation: get_l1_diagnostics is a plain sync
+    handler with no auth/middleware/serialization-shaping dependency -- the HTTP
+    round trip added nothing a direct call doesn't already prove."""
+    import json
 
-    client = TestClient(srv.app)
-    r = client.get("/api/diagnostics/l1")
-    assert r.status_code == 200
-    j = r.json()["ed_l1"]
+    import server as srv
+
+    j = json.loads(srv.get_l1_diagnostics().body)["ed_l1"]
     assert "l1_adaptive_materiality" in j
     assert "sample_spy_adaptive" in j["l1_adaptive_materiality"]
     assert "static_defaults_reference" in j["l1_adaptive_materiality"]

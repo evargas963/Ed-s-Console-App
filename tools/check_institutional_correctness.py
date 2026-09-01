@@ -1213,19 +1213,83 @@ def _is_os_walk_call(node: ast.Call) -> bool:
     return isinstance(fn, ast.Name) and fn.id == "walk"  # `from os import walk`
 
 
+def _is_git_ls_files_call(node: ast.Call) -> bool:
+    """`subprocess.run/check_output/check_call(["git", "ls-files", ...], ...)` --
+    TEST_SYSTEM_REHAB_V2 final remediation: the independent audit found ~9-10 test
+    files bypassing the redundant-scan lock this way, structurally invisible to
+    `_is_py_source_scan_call`/`_is_os_walk_call` (a `subprocess.run` call, not a
+    `.rglob`/`.glob`/`os.walk` call). Matched on the command list alone; whether it's
+    actually redundant with `repo_index` depends on what happens to the result
+    afterward -- see `_reads_py_source_in_function`."""
+    fn = node.func
+    if not (isinstance(fn, ast.Attribute) and fn.attr in ("run", "check_output", "check_call")
+            and isinstance(fn.value, ast.Name) and fn.value.id == "subprocess"):
+        return False
+    first = node.args[0] if node.args else next(
+        (kw.value for kw in node.keywords if kw.arg == "args"), None)
+    if not isinstance(first, (ast.List, ast.Tuple)):
+        return False
+    strs = [e.value for e in first.elts if isinstance(e, ast.Constant) and isinstance(e.value, str)]
+    return "git" in strs and "ls-files" in strs
+
+
+def _reads_py_source(fn_node: ast.AST) -> bool:
+    """True if `fn_node`'s body reads file CONTENT (`.read_text(`, `.read_bytes(`,
+    bare `open(`, `inspect.getsource(`) anywhere. A bare `git ls-files` that only
+    inspects FILENAMES (e.g. classifying paths, checking a module is inventoried)
+    never re-reads the corpus `repo_index` already holds and is a genuinely cheaper,
+    different observation -- not flagged. `git ls-files` + a subsequent per-file
+    read is the exact shape `.rglob`+`.read_text()` already is."""
+    for n in ast.walk(fn_node):
+        if not isinstance(n, ast.Call):
+            continue
+        f = n.func
+        if isinstance(f, ast.Attribute) and f.attr in ("read_text", "read_bytes", "getsource"):
+            return True
+        if isinstance(f, ast.Name) and f.id == "open":
+            return True
+    return False
+
+
+def _reads_py_source_in_function(fn_node: ast.FunctionDef | ast.AsyncFunctionDef,
+                                  module: ast.Module) -> bool:
+    """`_reads_py_source(fn_node)`, widened one hop: the common shape in this repo is a
+    small helper (`_tracked_py_under`, `_iter_repo_py_files`, ...) whose ONLY job is
+    the `git ls-files` call, with the actual per-file read happening in whichever
+    function CALLS that helper by name -- still one observation, just split across
+    two functions for readability. A single-hop caller check catches that split
+    without a general cross-function dataflow analysis."""
+    if _reads_py_source(fn_node):
+        return True
+    name = getattr(fn_node, "name", None)
+    if not name:
+        return False
+    for candidate in ast.walk(module):
+        if not isinstance(candidate, (ast.FunctionDef, ast.AsyncFunctionDef)) or candidate is fn_node:
+            continue
+        calls_helper = any(
+            isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == name
+            for n in ast.walk(candidate))
+        if calls_helper and _reads_py_source(candidate):
+            return True
+    return False
+
+
 def _find_py_source_scan_sites(root: Path, *, name_glob: str,
                                 exclude_dir_parts: frozenset[str] = frozenset()) -> list[tuple[Path, int]]:
-    """THE ONE AST walk for .py-source repo scans (`.rglob`/`.glob` targeting *.py, or
-    `os.walk`) under `root`, restricted to files matching `name_glob`. TEST_SYSTEM_REHAB_V2
-    (2026-08-31) unified this with tests/test_gate_scope_is_the_git_index_v1.py's older,
-    independent census walk, which only matched `.rglob(` and silently missed every
-    `.glob(`/`os.walk` site -- two AST walks looking for the same shape had drifted apart.
-    That test now calls this function too (as a git-index-filtered VIEW over its output)
-    instead of re-implementing the walk. Detection and the exemption marker are BOTH
-    scoped to the ENCLOSING FUNCTION, not the whole file: a file (or even one function)
-    may legitimately consume `repo_index` for one purpose and still be caught building a
-    second, independent .py-source scan alongside it -- a file-wide "repo_index appears
-    somewhere" bypass would hide exactly that."""
+    """THE ONE AST walk for .py-source repo scans (`.rglob`/`.glob` targeting *.py,
+    `os.walk`, or `git ls-files` followed by a per-file content read) under `root`,
+    restricted to files matching `name_glob`. TEST_SYSTEM_REHAB_V2 (2026-08-31) first
+    unified this with tests/test_gate_scope_is_the_git_index_v1.py's older, independent
+    census walk (which only matched `.rglob(`), then (final remediation pass) extended
+    it again to catch the `subprocess.run(["git","ls-files",...])` + read/parse shape
+    an independent audit found bypassing the lock entirely -- a materially equivalent
+    full-tree observation the original detector's call-shape matching couldn't see.
+    Detection and the exemption marker are BOTH scoped to the ENCLOSING FUNCTION, not
+    the whole file: a file (or even one function) may legitimately consume
+    `repo_index` for one purpose and still be caught building a second, independent
+    .py-source scan alongside it -- a file-wide "repo_index appears somewhere" bypass
+    would hide exactly that."""
     out: list[tuple[Path, int]] = []
     for p in sorted(root.rglob(name_glob)):
         if exclude_dir_parts & set(p.relative_to(root).parts):
@@ -1241,10 +1305,27 @@ def _find_py_source_scan_sites(root: Path, *, name_glob: str,
         for node in ast.walk(tree):
             if not isinstance(node, ast.Call):
                 continue
-            if not (_is_py_source_scan_call(node) or _is_os_walk_call(node)):
+            # TEST_SYSTEM_REHAB_V2 final remediation (perf root-fix): `_enclosing_func_span`
+            # is a FULL ast.walk(tree) by itself -- calling it for every Call node in the
+            # file (there can be hundreds) turned this per-file pass into O(nodes^2) and
+            # made the real-tree lock test pathologically slow (180s+ for one test, over
+            # ~150 tests/*.py files). It must only run once a node is ALREADY a candidate
+            # (a confirmed rglob/glob/os.walk scan, or a git-ls-files call that needs its
+            # enclosing function inspected) -- exactly the original, fast shape.
+            is_scan = _is_py_source_scan_call(node) or _is_os_walk_call(node)
+            is_git_ls_candidate = (not is_scan) and _is_git_ls_files_call(node)
+            if not (is_scan or is_git_ls_candidate):
                 continue
             line = getattr(node, "lineno", 0)
             span = _enclosing_func_span(tree, line)
+            if is_git_ls_candidate and span is not None:
+                for fn_node in ast.walk(tree):
+                    if (isinstance(fn_node, (ast.FunctionDef, ast.AsyncFunctionDef))
+                            and (fn_node.lineno, getattr(fn_node, "end_lineno", fn_node.lineno)) == span):
+                        is_scan = _reads_py_source_in_function(fn_node, tree)
+                        break
+            if not is_scan:
+                continue
             seg = "\n".join(lines[span[0] - 1: span[1]]) if span else lines[max(0, line - 1)]
             if _SCAN_JUSTIFY_MARKER in seg:
                 continue
@@ -1278,6 +1359,61 @@ def check_no_new_independent_repo_scan_in_tests() -> list[Violation]:
             "'# institutional-scan-ok: <reason>' inside the same function.",
         )
         for p, line in _find_new_repo_scans(TESTS)
+    ]
+
+
+def _is_constant_true_or_assertion(node: ast.Assert) -> bool:
+    """TEST_SYSTEM_REHAB_V2 final remediation: narrow, mechanical detection ONLY --
+    `assert X or True` / `assert True or X` (a boolean `or` with a literal `True`
+    disjunct anywhere in it) is vacuously true regardless of X, definitionally, no
+    theorem-proving required. Four real instances of exactly this literal shape were
+    found and fixed by the Cursor audit (test_chain_accrual_and_storm1_v1.py,
+    test_phase2a_and_producer_probes_v1.py, test_silent_zero_reasons_are_true_v1.py,
+    test_charm_vote_gate.py) -- this locks that class so it cannot silently
+    reappear. Deliberately does NOT attempt to catch the broader, context-dependent
+    `assert X or Y` weakness (Y a real but contextually-always-true expression given
+    prior lines) -- that requires human judgment per instance, not a general
+    Boolean-expression prover, and was fixed individually instead."""
+    test = node.test
+    return (isinstance(test, ast.BoolOp) and isinstance(test.op, ast.Or)
+            and any(isinstance(v, ast.Constant) and v.value is True for v in test.values))
+
+
+def _find_constant_true_or_assertions(root: Path) -> list[tuple[Path, int]]:
+    """AST walk for `assert <expr> or True` / `assert True or <expr>` under `root`,
+    restricted to test_*.py (the same scope `_find_new_repo_scans` uses)."""
+    out: list[tuple[Path, int]] = []
+    for p in sorted(root.rglob("test_*.py")):
+        if "archive" in p.relative_to(root).parts:
+            continue
+        src = _read_or_empty(p)
+        if not src:
+            continue
+        try:
+            tree = ast.parse(src, filename=str(p))
+        except SyntaxError:
+            continue
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Assert) and _is_constant_true_or_assertion(node):
+                out.append((p, node.lineno))
+    return out
+
+
+def check_no_constant_true_or_assertions() -> list[Violation]:
+    """Fail if a NEW `assert X or True` / `assert True or X` appears -- a boolean OR
+    with a literal True disjunct can never fail, so the assertion provides zero
+    coverage regardless of what X evaluates to. TEST_SYSTEM_REHAB_V2's third
+    recurrence lock, narrowly scoped to this one mechanically-obvious shape (see
+    `_is_constant_true_or_assertion`)."""
+    return [
+        Violation(
+            p, line,
+            "assert <expr> or True (or True or <expr>) is vacuously true regardless "
+            "of <expr> -- this assertion can never fail and provides zero coverage. "
+            "Assert the real condition, or delete the line if nothing is actually "
+            "being checked.",
+        )
+        for p, line in _find_constant_true_or_assertions(TESTS)
     ]
 
 
@@ -4015,6 +4151,14 @@ CHECKS = [
     # file-wide "repo_index appears somewhere" bypass had been hiding them) are
     # migrated onto tests/conftest.py's shared `repo_index` — live count is 0.
     ("no_new_independent_repo_scan_in_tests", check_no_new_independent_repo_scan_in_tests, True),
+    # TEST_SYSTEM_REHAB_V2 final remediation, recurrence lock 3: `assert X or True` /
+    # `assert True or X` can never fail (literal True disjunct) -- the 4 real
+    # instances the Cursor audit found were rewritten to assert the real condition;
+    # ENFORCED at 0 so the class cannot silently reappear. Narrowly scoped to this
+    # one mechanical shape only (see _is_constant_true_or_assertion) -- does not
+    # attempt to catch the broader, context-dependent `assert X or Y` weakness,
+    # which needs human judgment per instance.
+    ("no_constant_true_or_assertions", check_no_constant_true_or_assertions, True),
     # SIMPLICITY REHAB T2-2 (2026-08-24, governance/retired_checks.md): root_cause_log is
     # the ONE enforced ledger validator. The nine other ledger registrations
     # (rc_citations_resolve, rc_status_vocabulary, rc_log_rows_keep_schema,

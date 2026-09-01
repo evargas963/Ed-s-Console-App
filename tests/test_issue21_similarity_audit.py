@@ -3,9 +3,11 @@ Issue 21 — similarity tier audit trace, constraint integrity, inspection scaff
 """
 from __future__ import annotations
 
+import shutil
 import sys
 from pathlib import Path
 
+import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
@@ -61,9 +63,34 @@ def _insert_full_row(conn, *, ticker: str, ts: float, zone: str, vwap_side: str,
     )
 
 
-def test_issue21_trace_completeness_structured_constraints(tmp_path):
-    dbp = tmp_path / "i21t.db"
-    db = EdDB(dbp)
+# TEST_SYSTEM_REHAB_V2 final remediation (perf): each of the 5 tests below used to
+# construct its own fresh `EdDB(tmp_path / "...")`, independently paying the full
+# ~4s schema-init + migration bootstrap (measured: ~20s of pure redundant, byte-
+# identical DDL/migration work across this one file). `_primed_eddb_template`
+# builds that ONE schema-migrated, zero-row database exactly once per worker;
+# `db` copies the plain file (cheap -- no schema/migration re-run needed on an
+# already-current file) into each test's own isolated tmp_path so row-level
+# mutations never leak between tests (measured: ~9s total after the change, a
+# reopened copy still re-validates the schema in ~1.2-1.7s vs a ~2.7s-4s first
+# build, since WAL/migration checks still run but touch zero rows).
+@pytest.fixture(scope="module")
+def _primed_eddb_template(tmp_path_factory):
+    template_path = tmp_path_factory.mktemp("i21_eddb_template") / "template.db"
+    template_db = EdDB(template_path, allow_noncanonical=True)
+    with template_db._connect() as conn:
+        conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        conn.commit()
+    return template_path
+
+
+@pytest.fixture
+def db(tmp_path, _primed_eddb_template):
+    dest = tmp_path / "primed.db"
+    shutil.copy(_primed_eddb_template, dest)
+    return EdDB(dest, allow_noncanonical=True)
+
+
+def test_issue21_trace_completeness_structured_constraints(db):
     ts0 = 1_790_000_000.0
     with db._connect() as conn:
         for i in range(35):
@@ -106,9 +133,7 @@ def test_issue21_trace_completeness_structured_constraints(tmp_path):
     assert ms.get("final_selected_tier") == tr["chosen_tier"]
 
 
-def test_issue21_constraint_integrity_selected_rows(tmp_path):
-    dbp = tmp_path / "i21c.db"
-    db = EdDB(dbp)
+def test_issue21_constraint_integrity_selected_rows(db):
     ts0 = 1_791_000_000.0
     with db._connect() as conn:
         for i in range(40):
@@ -137,10 +162,8 @@ def test_issue21_constraint_integrity_selected_rows(tmp_path):
     assert audit["violations_total"] == 0
 
 
-def test_issue21_widening_relaxation_order_matches_issue19(tmp_path):
+def test_issue21_widening_relaxation_order_matches_issue19(db):
     """Tiers 1–4 attempted in order; each step relaxes only the documented constraint."""
-    dbp = tmp_path / "i21w.db"
-    db = EdDB(dbp)
     ts0 = 1_792_000_000.0
     with db._connect() as conn:
         for i in range(25):
@@ -188,9 +211,7 @@ def test_issue21_widening_relaxation_order_matches_issue19(tmp_path):
     assert len(similar) == 40
 
 
-def test_issue21_inspection_bundle_includes_required_fields(tmp_path):
-    dbp = tmp_path / "i21i.db"
-    db = EdDB(dbp)
+def test_issue21_inspection_bundle_includes_required_fields(db):
     ts0 = 1_793_000_000.0
     with db._connect() as conn:
         for i in range(32):
@@ -227,9 +248,7 @@ def test_issue21_inspection_bundle_includes_required_fields(tmp_path):
     assert raw_p["zone"] == "ix21_insp"
 
 
-def test_issue21_withheld_horizons_when_sparse(tmp_path):
-    dbp = tmp_path / "i21h.db"
-    db = EdDB(dbp)
+def test_issue21_withheld_horizons_when_sparse(db):
     ts0 = 1_794_000_000.0
     with db._connect() as conn:
         for i in range(20):

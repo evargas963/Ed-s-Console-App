@@ -171,6 +171,21 @@ def test_the_remaining_filesystem_scanners_are_measured_not_forgotten():
     # ENFORCED redundant-observation lock (that lock stays scoped to tests/test_*.py,
     # archive/ excluded, and still reports 0) -- this frozen set is the broader,
     # non-judgmental census the docstring above describes, now computed once.
+    # tools\check_institutional_correctness.py 10 -> 12 (TEST_SYSTEM_REHAB_V2 final
+    # remediation, 2026-08-31): the shared `_find_py_source_scan_sites` detector was
+    # extended to also catch `subprocess.run(["git","ls-files",...])` + a subsequent
+    # per-file content read (the bypass shape ~9-10 test files used, structurally
+    # invisible to the original `.rglob`/`.glob`/`os.walk`-only matcher), and one
+    # new, deliberate `.rglob(` scanner site arrived in this file (the third
+    # recurrence lock, `_find_constant_true_or_assertions`, ENFORCED at 0 real
+    # instances). Both extensions to an ALREADY-tracked file, no new file. 5 NEW
+    # FILES arrived, all in tools/ (never test files, never subject to the ENFORCED
+    # lock, which stays 0): check_one_producer.py, check_private_paths.py,
+    # check_test_claims_are_executed.py, producer_inventory_v1.py,
+    # turn_self_audit.py -- each already did the git-ls-files+read shape for its own
+    # legitimate single-purpose census/audit reason, simply invisible to the old
+    # detector before its git-ls-files extension. None of these are new scans; the
+    # detector just stopped missing a call shape it was blind to.
     per_file = Counter(rel.rsplit(":", 1)[0] for rel in found)
     current = {f"{rel}::{n}" for rel, n in per_file.items()}
     frozen = frozenset(

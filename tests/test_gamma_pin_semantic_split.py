@@ -10,9 +10,7 @@ fixture) and math_exposure_core.py pick_pin_and_strength vs pick_net_gex_peak_st
 from __future__ import annotations
 
 import re
-import subprocess
 from datetime import datetime, timezone
-from pathlib import Path
 
 from time_et import (
     GAMMA_PIN_SEMANTIC_MIXED,
@@ -27,7 +25,6 @@ from time_et import (
     snapshots_gamma_pin_semantic,
 )
 
-REPO = Path(__file__).resolve().parent.parent
 REQUIRED = "SNAPSHOTS_GAMMA_PIN_TERRAIN_ANALYSIS_TS_UTC"
 HELPER = "snapshots_gamma_pin_is_terrain_analysis_safe"
 SEMANTIC_FN = "snapshots_gamma_pin_semantic"
@@ -50,18 +47,6 @@ def snapshot_gamma_pin_sql_without_era_split(src: str) -> bool:
     if not _SELECT_PIN.search(src):
         return False
     return REQUIRED not in src and HELPER not in src and SEMANTIC_FN not in src
-
-
-def _tracked_py_under(*prefixes: str) -> list[str]:
-    out = subprocess.run(
-        ["git", "ls-files", "-z", "--", "*.py"],
-        cwd=REPO,
-        capture_output=True,
-        text=True,
-        check=True,
-    ).stdout
-    rels = [p.replace("\\", "/") for p in out.split("\0") if p]
-    return [p for p in rels if p.startswith(prefixes)]
 
 
 def test_writer_land_matches_rc292_commit_iso():
@@ -110,7 +95,7 @@ def test_mixed_era_rows_cannot_form_one_gamma_pin_series():
     assert len(by_sem) == 3, "one GAMMA_PIN label cannot span the three persist eras"
 
 
-def test_injected_unsplit_select_is_caught_and_tracked_readers_are_split():
+def test_injected_unsplit_select_is_caught_and_tracked_readers_are_split(repo_index):
     bad = (
         "rows = con.execute('''SELECT ticker, ts_utc, gamma_pin "
         "FROM snapshots WHERE gamma_pin IS NOT NULL''')"
@@ -128,14 +113,11 @@ def test_injected_unsplit_select_is_caught_and_tracked_readers_are_split():
     )
     assert snapshot_gamma_pin_sql_without_era_split(good_helper) is False
     offenders: list[str] = []
-    tracked = set(_tracked_py_under("tools/", "research/"))
+    scoped = {rel.as_posix(): text for rel, text, _tree in repo_index.items()
+              if rel.as_posix().startswith(("tools/", "research/"))}
     for rel in PIN_STUDIES:
-        assert rel in tracked, rel
-        src = (REPO / rel).read_text(encoding="utf-8")
-        if snapshot_gamma_pin_sql_without_era_split(src):
-            offenders.append(rel)
-    for rel in sorted(tracked):
-        src = (REPO / rel).read_text(encoding="utf-8", errors="replace")
+        assert rel in scoped, rel
+    for rel, src in sorted(scoped.items()):
         if snapshot_gamma_pin_sql_without_era_split(src):
             offenders.append(rel)
     assert offenders == [], (

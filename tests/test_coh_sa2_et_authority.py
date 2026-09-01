@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import re
-import subprocess
 from pathlib import Path
 _NY_LITERAL = 'ZoneInfo("America/New_York")'
 _ET_ASSIGN = re.compile(
@@ -19,59 +18,50 @@ def _repo_root() -> Path:
     return Path(__file__).resolve().parents[1]
 
 
-def _iter_repo_py_files(root: Path):
-    """Repo-wide means the GIT INDEX (RC-274, RC-286, RC-307).
-
-    This walked the filesystem with `rglob` behind a hand-written skip list of `.git`,
-    `.venv`, `node_modules` and friends. `scratchpad/` was not on that list — it holds 93
-    throwaway audit scripts, `git ls-files scratchpad` returns nothing, and `.gitignore:202`
-    excludes it — so two tests here have been failing on code the repository does not
-    contain. Every hand-maintained skip list is correct on the day it is written; the index
-    cannot drift, because it is the definition.
-    """
-    out = subprocess.run(["git", "ls-files", "-z", "--", "*.py"],
-                         cwd=root, capture_output=True, text=True, check=True).stdout
-    for relstr in sorted(p for p in out.split("\0") if p):
-        rel = Path(relstr)
-        if rel.parts and rel.parts[0] == "tests":
-            continue
-        path = root / rel
-        if path.exists():        # tracked-but-absent (a mid-rebase worktree) is not an offender
-            yield path, rel
+# TEST_SYSTEM_REHAB_V2 final remediation: `_iter_repo_py_files` was an independent
+# `git ls-files` + per-file `.read_text()` re-scan, redundant with the shared
+# `repo_index` fixture (tests/conftest.py) that already builds the identical
+# git-index-scoped observation once per run -- structurally invisible to the
+# original .rglob/.glob/os.walk-only recurrence lock (a `subprocess.run` call, not
+# an `.rglob` call), caught only after the lock's git-ls-files extension. Migrated
+# onto `repo_index` below; the original docstring's point (git index, not a
+# filesystem walk with a hand-maintained skip list) is exactly what `repo_index`
+# already does.
 
 
-def test_only_time_et_defines_ny_zoneinfo_literal():
-    root = _repo_root()
+def test_only_time_et_defines_ny_zoneinfo_literal(repo_index):
     offenders: list[str] = []
-    for path, rel in _iter_repo_py_files(root):
-        if rel.name == "time_et.py":
+    for relpath, text, _tree in repo_index.items():
+        if relpath.parts and relpath.parts[0] == "tests":
             continue
-        if _NY_LITERAL in path.read_text(encoding="utf-8"):
-            offenders.append(str(rel).replace("\\", "/"))
+        if relpath.name == "time_et.py":
+            continue
+        if _NY_LITERAL in text:
+            offenders.append(relpath.as_posix())
     assert not offenders, offenders
 
 
-def test_no_module_level_et_zoneinfo_assignment_outside_time_et():
-    root = _repo_root()
+def test_no_module_level_et_zoneinfo_assignment_outside_time_et(repo_index):
     offenders: list[str] = []
-    for path, rel in _iter_repo_py_files(root):
-        if rel.name == "time_et.py":
+    for relpath, text, _tree in repo_index.items():
+        if relpath.parts and relpath.parts[0] == "tests":
             continue
-        src = path.read_text(encoding="utf-8")
-        if _ET_ASSIGN.search(src):
-            offenders.append(str(rel).replace("\\", "/"))
+        if relpath.name == "time_et.py":
+            continue
+        if _ET_ASSIGN.search(text):
+            offenders.append(relpath.as_posix())
     assert not offenders, offenders
 
 
-def test_no_inline_datetime_now_ny_zoneinfo():
-    root = _repo_root()
+def test_no_inline_datetime_now_ny_zoneinfo(repo_index):
     offenders: list[str] = []
-    for path, rel in _iter_repo_py_files(root):
-        if rel.name == "time_et.py":
+    for relpath, text, _tree in repo_index.items():
+        if relpath.parts and relpath.parts[0] == "tests":
             continue
-        src = path.read_text(encoding="utf-8")
-        if _INLINE_NOW_NY.search(src):
-            offenders.append(str(rel).replace("\\", "/"))
+        if relpath.name == "time_et.py":
+            continue
+        if _INLINE_NOW_NY.search(text):
+            offenders.append(relpath.as_posix())
     assert not offenders, offenders
 
 

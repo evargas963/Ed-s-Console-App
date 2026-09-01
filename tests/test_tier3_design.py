@@ -145,4 +145,9 @@ def test_eddb_has_unchanged_similarity_authority():
 
     src = inspect.getsource(EdDB.get_similar_setups)
     assert "def get_similar_setups" in src
-    assert "similarity_tier_stop_viable" in src or "tier_stop" in src
+    # TEST_SYSTEM_REHAB_V2: was `"similarity_tier_stop_viable" in src or "tier_stop" in
+    # src` -- "tier_stop" is a bare substring of "similarity_tier_stop_viable", so if
+    # the real field were renamed away, an incidental "tier_stop" occurrence anywhere
+    # (a comment, an unrelated variable) would still satisfy the OR and hide exactly
+    # the "unchanged similarity authority" regression this test claims to catch.
+    assert "similarity_tier_stop_viable" in src

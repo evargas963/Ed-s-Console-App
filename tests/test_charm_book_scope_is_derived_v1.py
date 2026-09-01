@@ -77,20 +77,37 @@ def test_the_archaeology_file_is_gone():
         "re-impose the charm vote-lock the operator revoked under RC-199")
 
 
-def test_charm_scope_still_does_not_exist_in_production():
-    """The deletion must not be quietly undone by implementing the revoked lock instead."""
-    files = [f for f in subprocess.run(
-        ["git", "ls-files", "-z"], cwd=REPO, capture_output=True, text=True,
-        check=True).stdout.split("\0")
-        if f.endswith((".py", ".html")) and not f.startswith("tests/")]
+def test_charm_scope_still_does_not_exist_in_production(repo_index):
+    """The deletion must not be quietly undone by implementing the revoked lock instead.
+
+    TEST_SYSTEM_REHAB_V2 final remediation: the .py half of this scan was an
+    independent `git ls-files` + read, redundant with the shared `repo_index`
+    observation. Split: .py source comes from `repo_index` (excluding tests/); the
+    .html half is a genuinely distinct artifact type repo_index never indexes, kept
+    as its OWN narrowly-pathspec'd scan (only 7 tracked .html files repo-wide).
+    """
+    def _hit(rel: str, text: str) -> bool:
+        return "charm_scope" in text and "charm_book_scope" not in text.replace(
+            "charm_scope", "charm_book_scope")
+
     hits = []
-    for rel in files:
+    for relpath, text, _tree in repo_index.items():
+        rel = relpath.as_posix()
+        if rel.startswith("tests/"):
+            continue
+        if _hit(rel, text):
+            hits.append(rel)
+    # institutional-scan-ok: non-.py artifact type (html), repo_index cannot serve it;
+    # 7 tracked files repo-wide, scoped by an explicit *.html pathspec, not a bare scan.
+    html_files = subprocess.run(
+        ["git", "ls-files", "-z", "--", "*.html"], cwd=REPO, capture_output=True,
+        text=True, check=True).stdout.split("\0")
+    for rel in (f for f in html_files if f and not f.startswith("tests/")):
         try:
             text = (REPO / rel).read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
-        if "charm_scope" in text and "charm_book_scope" not in text.replace(
-                "charm_scope", "charm_book_scope"):
+        if _hit(rel, text):
             hits.append(rel)
     assert not hits, (
         f"charm_scope appeared in production at {hits}. If the labelled-charm feature is "

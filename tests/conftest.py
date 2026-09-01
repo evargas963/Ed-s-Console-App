@@ -296,15 +296,28 @@ class RepoIndex:
 
     @staticmethod
     def _read_all_texts(root: Path) -> dict[Path, str]:
-        """The I/O-only half of a build: every tracked-shape .py file's raw text, no
+        """The I/O-only half of a build: every TRACKED .py file's raw text, no
         parsing. Split out so xdist workers can share just this (small, cheap to
         pickle) and each run their own native `ast.parse` -- see the `repo_index`
-        fixture below."""
+        fixture below.
+
+        TEST_SYSTEM_REHAB_V2 final remediation: this used `root.rglob("*.py")`, the
+        exact RC-274/RC-286 defect class every migrated-onto-repo_index test was
+        supposed to be immune to -- `scratchpad/` (4 real untracked .py files in this
+        checkout right now) was never in `_REPO_INDEX_SKIP_DIRS`, so the shared
+        observation itself was silently judging untracked scratch as repository code.
+        `git ls-files` is the index the RC-274/RC-286/RC-307 lineage already settled
+        on; `_REPO_INDEX_SKIP_DIRS` stays as defense-in-depth for any tracked-but-
+        unwanted directory, though git-tracking already excludes the gitignored ones."""
+        import subprocess
+        proc = subprocess.run(["git", "ls-files", "-z", "--", "*.py"],
+                              cwd=root, capture_output=True, text=True, check=True)
         out: dict[Path, str] = {}
-        for path in sorted(root.rglob("*.py")):
-            rel = path.relative_to(root)
+        for relstr in sorted(p for p in proc.stdout.split("\0") if p):
+            rel = Path(relstr)
             if any(part in _REPO_INDEX_SKIP_DIRS for part in rel.parts):
                 continue
+            path = root / rel
             try:
                 out[rel] = path.read_text(encoding="utf-8")
             except (OSError, UnicodeDecodeError):

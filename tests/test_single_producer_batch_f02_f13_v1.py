@@ -869,7 +869,7 @@ def test_rc345_gamma_regime_one_classifier_two_named_books() -> None:
 
 
 # ----------------------------------------------------------------------------- F08 ATR denominator
-def test_rc345_atr_denominator_is_fully_classified() -> None:
+def test_rc345_atr_denominator_is_fully_classified(repo_index) -> None:
     """F08: the ATR semantic denominator is complete — the standard TR+SMA ATR has one
     producer (math_volatility.compute_atr); the RTH-session wrapper delegates; the feature
     EPS-floored variant is named distinct; db._snapshot_row_atr READS a stored value (not a
@@ -889,16 +889,14 @@ def test_rc345_atr_denominator_is_fully_classified() -> None:
     # F08 (reopened): the research Wilder ATR (research/pilot_step3/atr.wilder_atr_14) is
     # MECHANICALLY QUARANTINED — no production or model-serving module may import it, so a
     # different-methodology (RMA/Wilder) ATR can never masquerade as the standard SMA ATR.
-    import subprocess
-    from pathlib import Path as _P
-    repo = _P(__file__).resolve().parent.parent
-    tracked = subprocess.run(["git", "ls-files", "--", "*.py"], cwd=repo,
-                             capture_output=True, text=True).stdout.split("\n")
-    prod = [p for p in tracked if p and not p.startswith(
-        ("tests/", "research/", "tools/", "calibration/", "arch_competition/", "scratchpad/",
-         "governance/"))]
-    for rel in prod:
-        body = (repo / rel).read_text(encoding="utf-8", errors="replace")
+    # TEST_SYSTEM_REHAB_V2 final remediation: migrated off an independent `git ls-files`
+    # re-scan onto the shared `repo_index` fixture.
+    excluded = ("tests/", "research/", "tools/", "calibration/", "arch_competition/",
+                "scratchpad/", "governance/")
+    for relpath, body, _tree in repo_index.items():
+        rel = relpath.as_posix()
+        if rel.startswith(excluded):
+            continue
         assert "wilder_atr" not in body and "pilot_step3.atr" not in body, (
             f"{rel} reaches the research Wilder ATR — it must stay quarantined (F08/RC-345)")
 
@@ -1347,8 +1345,15 @@ def test_rc345_net_gex_books_are_consumer_separated() -> None:
     assert 'net_gex_at_spot=flip_diag.get("gamma_at_spot")' in te, (
         "terrain net_gex_at_spot must come from the repriced profile book (F02/RC-345)")
     html = _read("static/index.html")
-    # both books referenced by their distinct names in the client (not a single net_gex)
-    assert "net_gex_at_spot" in html or "gamma_at_spot" in html
+    # both books referenced by their distinct names in the client (not a single net_gex).
+    # TEST_SYSTEM_REHAB_V2: was `"net_gex_at_spot" in html or "gamma_at_spot" in html`,
+    # satisfied by either book alone -- a regression collapsing both back into one
+    # generic net_gex label (the exact defect this test names) would still pass as
+    # long as ONE of the two substrings survived anywhere. The docstring's actual
+    # claim is that BOTH distinct consumer names (d.net_gamma, d.net_gex_at_spot)
+    # appear, so both are now required.
+    assert "net_gex_at_spot" in html, "the repriced profile-at-spot book name is missing"
+    assert "net_gamma" in html, "the vendor-aggregate book name is missing"
     # F02 END-TO-END: the Key-Levels vendor-aggregate label is EXPLICIT — RC-352 renamed it to
     # the institutional "Total Net GEX (per 1%)" (the per-1% unit is part of the meaning), so
     # the operator cannot confuse it with the theoretical profile-at-spot. Both kl_net_gex and

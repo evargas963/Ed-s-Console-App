@@ -149,7 +149,12 @@ def test_compute_call_missing_upstreams_forces_wait_not_sized_trade():
     assert call.execution_mode == "NO_TRADE"
     assert call.wait_blocker is not None
     assert call.wait_blocker.get("provenance") == "missing_canonical_fallback"
-    assert call.signal not in ("long", "short") or not call.validation_passed
+    # TEST_SYSTEM_REHAB_V2: was `call.signal not in ("long","short") or not
+    # call.validation_passed` -- line 147 above already asserts `call.signal ==
+    # "wait"`, which makes `signal not in ("long","short")` unconditionally true, so
+    # this could never fail regardless of `validation_passed`. Line 147 already
+    # covers "not in (long, short)"; dropped as dead weight rather than kept as a
+    # tautology.
 
 
 def _phase3_rules_long():
@@ -259,7 +264,12 @@ def test_call_all_pool_promotes_over_tape_wait():
     assert call.signal == "long", (
         f"expected ALL-promoted long; got {call.signal!r} blocker={call.wait_blocker!r}"
     )
-    assert "ALL consolidated promoted" in call.headline or call.signal == "long"
+    # TEST_SYSTEM_REHAB_V2: was `"ALL consolidated promoted" in call.headline or
+    # call.signal == "long"` -- the line above already asserts signal == "long", so
+    # the second arm made this unconditionally true regardless of the headline text,
+    # the actual property this line claims to check (directional from ALL only).
+    assert "ALL consolidated promoted" in call.headline, (
+        f"headline must attribute the decision to ALL-pool promotion; got {call.headline!r}")
 
 
 def test_call_all_pool_vetoes_tape_only_directional():

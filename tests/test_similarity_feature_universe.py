@@ -78,9 +78,19 @@ def test_feature_universe_inventory_reproducible_and_partitioned(tmp_path):
 
 
 def test_staged_search_structured_and_deterministic(tmp_path):
+    """TEST_SYSTEM_REHAB_V2 final remediation (perf): was seeded with 120 rows,
+    costing ~65s for this test's two full-grid searches (72 deterministic trials
+    each). Measured directly: 30 rows still produces the IDENTICAL structural
+    output as 120 (top_robust_tier_stop_viable hits the same 12-item cap,
+    trial_count is unaffected since the grid size is a property of search_profile
+    "full", not row count) at ~16s -- a 4x speedup with no loss of what this test
+    proves (ranking, selection, structured output, repeatability). 20 rows was
+    measured too small: top_robust_tier_stop_viable collapsed to 0, which would
+    make the `len(...) <= 12` assertion below vacuously true instead of proving
+    the cap is actually reached."""
     db = EdDB(tmp_path / "search.db")
     with db._connect() as conn:
-        _seed_rows(conn, "ZZ", "pin_neutral", 120, 2_000_000_000.0)
+        _seed_rows(conn, "ZZ", "pin_neutral", 30, 2_000_000_000.0)
         conn.commit()
 
     kwargs = dict(

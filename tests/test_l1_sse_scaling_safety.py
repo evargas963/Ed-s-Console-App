@@ -184,11 +184,15 @@ def test_duplicate_same_client_same_scope_increments_warn_counter(monkeypatch):
 
 
 def test_diagnostics_include_scaling_fields():
-    import server as srv
-    from fastapi.testclient import TestClient
+    """TEST_SYSTEM_REHAB_V2 final remediation: get_l1_diagnostics is a plain sync
+    handler with no auth/middleware/serialization-shaping dependency -- the HTTP
+    round trip added nothing this direct call doesn't already prove (it wasn't even
+    using TestClient's `with` context, so it never exercised lifespan either)."""
+    import json
 
-    client = TestClient(srv.app)
-    d = client.get("/api/diagnostics/l1").json()["ed_l1"]["l1_sse_light"]
+    import server as srv
+
+    d = json.loads(srv.get_l1_diagnostics().body)["ed_l1"]["l1_sse_light"]
     assert "l1_light_sse_connections_by_scope" in d
     assert d["l1_light_sse_limit_max_total"] == srv.MAX_L1_LIGHT_SSE_CONNECTIONS_TOTAL
     assert d["l1_light_sse_limit_max_per_scope"] == srv.MAX_L1_LIGHT_SSE_CONNECTIONS_PER_SCOPE

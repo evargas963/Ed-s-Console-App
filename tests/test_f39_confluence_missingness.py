@@ -5,6 +5,10 @@ import ast
 import subprocess
 from pathlib import Path
 
+# TEST_SYSTEM_REHAB_V2 final remediation: `_py_files()` re-derived the same git-index
+# .py-source observation the shared `repo_index` fixture (tests/conftest.py) already
+# builds once per run -- migrated the tree-wide producer sweep onto it below.
+
 ROOT = Path(__file__).resolve().parent.parent
 
 # Cross-asset weighted_push compute sites (not ML cf_* — that is RC-318).
@@ -27,38 +31,16 @@ SKIP_PREFIXES = ("tests/", "archive/", "governance/archive/")
 SKIP_PARTS = frozenset({"archive"})
 
 
-def _py_files() -> list[Path]:
-    """RC-274 -> RC-286: repo-wide means the GIT INDEX, never a filesystem walk.
-
-    This swept `ROOT.rglob("*.py")` behind a hand-maintained SKIP_PARTS, which is the
-    exact shape RC-274 found walking gitignored `scratchpad/` and RC-286 then swept as a
-    class. Every hand-maintained skip list is correct exactly once: the moment an
-    untracked scratch script lands anywhere outside those parts, this gate starts making
-    a repo-wide CLAIM about code that is not in the repository. The index cannot drift.
-    """
-    tracked = subprocess.run(
-        ["git", "ls-files", "-z", "--", "*.py"],
-        cwd=ROOT, capture_output=True, text=True, check=True).stdout
-    out: list[Path] = []
-    for rel in sorted(p for p in tracked.split("\0") if p):
-        if rel.startswith(SKIP_PREFIXES):
-            continue
-        if any(part in SKIP_PARTS for part in Path(rel).parts):
-            continue
-        path = ROOT / rel
-        if path.exists():
-            out.append(path)
-    return out
-
-
-def test_f39_enumerates_every_weighted_push_producer():
+def test_f39_enumerates_every_weighted_push_producer(repo_index):
     """Tree-wide: every assignment that computes weighted_push is a named producer."""
     found: set[str] = set()
-    for path in _py_files():
-        rel = path.relative_to(ROOT).as_posix()
-        try:
-            tree = ast.parse(path.read_text(encoding="utf-8"))
-        except SyntaxError:
+    for relpath, _text, tree in repo_index.items():
+        rel = relpath.as_posix()
+        if rel.startswith(SKIP_PREFIXES):
+            continue
+        if any(part in SKIP_PARTS for part in relpath.parts):
+            continue
+        if tree is None:
             continue
         for node in ast.walk(tree):
             if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):

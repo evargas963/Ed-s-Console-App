@@ -438,8 +438,23 @@ def test_syntax(repo_index):
 def test_wrapper():
     print("\n9. WRAPPER — math_exposure.py re-exports")
 
+    # TEST_SYSTEM_REHAB_V2 final remediation: `hasattr(me, name)` only proves SOME
+    # attribute with that name exists on math_exposure -- it is satisfied identically
+    # by a genuine `from math_levels import *` re-export, a locally-redefined stale
+    # duplicate under the same name, or a mis-aliased import wiring the WRONG split
+    # module's function in under this name (e.g. `from math_levels import
+    # compute_gamma_flip_v1 as compute_gamma_flip_v2`). Object IDENTITY against the
+    # actual owning split module is what "wrapper" means; presence alone is not.
     try:
         import math_exposure as me
+        import math_exposure_core
+        import math_levels
+        import math_probabilities
+        import math_volatility
+        owners = {
+            "math_exposure_core": math_exposure_core, "math_levels": math_levels,
+            "math_volatility": math_volatility, "math_probabilities": math_probabilities,
+        }
         critical_exports = [
             "compute_exposures_by_strike",
             "compute_gamma_flip_v2",
@@ -454,10 +469,17 @@ def test_wrapper():
             "compute_volatility_envelope",
         ]
         for name in critical_exports:
-            if hasattr(me, name):
-                _pass(f"math_exposure.{name}")
-            else:
+            wrapped = getattr(me, name, None)
+            if wrapped is None:
                 _fail(f"math_exposure.{name} NOT exported")
+                continue
+            owning = [mn for mn, m in owners.items() if getattr(m, name, None) is wrapped]
+            if owning:
+                _pass(f"math_exposure.{name} (identical to {owning[0]}.{name})")
+            else:
+                _fail(f"math_exposure.{name} is not object-identical to any split "
+                     f"module's own {name} -- a locally-redefined stub or a "
+                     f"mis-aliased import, not a genuine re-export")
     except Exception as e:
         _fail(f"Wrapper import: {e}")
 

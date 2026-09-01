@@ -116,10 +116,15 @@ def test_a_future_expiry_still_blocks(monkeypatch):
 def test_the_reason_string_admits_a_malformed_hold(monkeypatch):
     """The operator-facing line must say the hold has no expiry, not 'next attempt in 0s'."""
     srv = _fresh_quarantine(monkeypatch, {"failures": 3, "reason": "boom"})
-    msg = srv._terrain_quarantine_reason("ZZQ") if hasattr(
-        srv, "_terrain_quarantine_reason") else ""
-    if msg:
-        assert "NO expiry recorded" in msg or "malformed" in msg, msg
+    # TEST_SYSTEM_REHAB_V2: was `if msg: assert ...` -- if `_terrain_quarantine_reason`
+    # were removed/renamed, or returned an empty string for a malformed hold, `msg`
+    # would be falsy and the assert line never ran at all: zero coverage instead of a
+    # failure. The function's existence and a non-empty message are now required.
+    assert hasattr(srv, "_terrain_quarantine_reason"), (
+        "_terrain_quarantine_reason is gone; the malformed-hold message can't be checked")
+    msg = srv._terrain_quarantine_reason("ZZQ")
+    assert msg, "a malformed hold (no until_ts) must produce a non-empty reason string"
+    assert "NO expiry recorded" in msg or "malformed" in msg, msg
 
 
 # ──────────────────────────── market_session: the date is REQUIRED, not optional ────

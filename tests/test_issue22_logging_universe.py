@@ -282,6 +282,12 @@ def test_issue22_scheduler_json_migration_idempotent(tmp_path):
 
 
 def test_api_logger_universe_audit_v2_shape(monkeypatch, tmp_path):
+    """TEST_SYSTEM_REHAB_V2 final remediation: logger_universe/
+    logger_universe_by_category are plain sync handlers with no auth/middleware/
+    serialization-shaping dependency -- the HTTP round trip added nothing a direct
+    call doesn't already prove."""
+    import json
+
     import db as dbmod
     import server as srv
 
@@ -307,29 +313,23 @@ def test_api_logger_universe_audit_v2_shape(monkeypatch, tmp_path):
                         merged.append(t)
             srv._logger_tickers[:] = merged
 
-        from starlette.testclient import TestClient
-
-        with TestClient(srv.app) as client:
-            r = client.get("/api/logger/universe")
-            assert r.status_code == 200
-            body = r.json()
-            assert body.get("schema") == "logging_universe_audit_v2"
-            assert "protected_symbols" in body
-            assert "eviction_candidates_fifo_user_persisted" in body
-            assert "recent_evictions" in body
-            assert "logging_universe_rows" in body
-            rows = body["logging_universe_rows"]
-            assert isinstance(rows, list) and len(rows) >= 3
-            by_t = {(x["ticker"] or "").upper(): x for x in rows}
-            assert by_t["SPY"]["eviction_status"] == "protected"
-            assert by_t["AUDP"]["eviction_status"] == "protected"
-            assert by_t["AUD1"]["eviction_status"] == "eligible"
-            for key in ("category", "enrollment_source", "enrolled_ts_utc", "last_seen_ts_utc"):
-                assert key in by_t["AUD1"]
-            rcat = client.get("/api/logger/universe/by-category", params={"category": "pinned"})
-            assert rcat.status_code == 200
-            assert rcat.json()["count"] == 1
-            assert rcat.json()["rows"][0]["ticker"].upper() == "AUDP"
+        body = json.loads(srv.logger_universe().body)
+        assert body.get("schema") == "logging_universe_audit_v2"
+        assert "protected_symbols" in body
+        assert "eviction_candidates_fifo_user_persisted" in body
+        assert "recent_evictions" in body
+        assert "logging_universe_rows" in body
+        rows = body["logging_universe_rows"]
+        assert isinstance(rows, list) and len(rows) >= 3
+        by_t = {(x["ticker"] or "").upper(): x for x in rows}
+        assert by_t["SPY"]["eviction_status"] == "protected"
+        assert by_t["AUDP"]["eviction_status"] == "protected"
+        assert by_t["AUD1"]["eviction_status"] == "eligible"
+        for key in ("category", "enrollment_source", "enrolled_ts_utc", "last_seen_ts_utc"):
+            assert key in by_t["AUD1"]
+        rcat = json.loads(srv.logger_universe_by_category(category="pinned").body)
+        assert rcat["count"] == 1
+        assert rcat["rows"][0]["ticker"].upper() == "AUDP"
     finally:
         srv.CORE_TICKERS[:] = prev_core
 

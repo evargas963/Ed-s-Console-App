@@ -37,30 +37,35 @@ def test_production_like_harness_emits_reconstructable_record(release_ready, tmp
     assert payload["risk_state"]["validation_summary"]
 
 
-def test_production_like_record_retrievable_via_api(release_ready, tmp_path, monkeypatch):
-    monkeypatch.setenv("ED_DISABLE_STARTUP_ANALYTICS_WARM", "1")
-    from starlette.testclient import TestClient
-
-    import db as db_mod
-    import server as srv
-    from decision_record import production_like_decision_emission
+def test_production_like_record_retrievable_via_api(release_ready, tmp_path):
+    """TEST_SYSTEM_REHAB_V2 final remediation: this is one of three tests hitting
+    GET /api/decision/{id} that all asserted the identical HTTP-boundary trio
+    (200/ok/reconstruction_complete) -- that trio's ONE canonical HTTP proof is
+    tests/decision_reconstruction/test_immutable_decision_id.py::
+    test_api_decision_endpoint. This test's actual distinct value is proving the
+    production_like_decision_emission harness's record is retrievable and correct
+    (the release_id echo below) -- server.api_decision_by_id is a thin, un-decorated
+    pass-through to decision_record.get_production_decision_by_id +
+    reconstruction_complete (server.py:15191-15204), so calling that pair directly
+    proves the identical retrieval correctness without re-asserting the HTTP
+    contract a sibling test already owns."""
+    from decision_record import (
+        get_production_decision_by_id,
+        production_like_decision_emission,
+        reconstruction_complete,
+    )
 
     db_path = tmp_path / "api_prod_like.db"
     emitted = production_like_decision_emission(db_path, ticker="QQQ")
     decision_id = emitted["decision_id"]
     assert decision_id
 
-    monkeypatch.setattr(db_mod, "DB_PATH", db_path)
-    monkeypatch.setattr(srv, "_HAS_SIGNALS", True)
-
-    with TestClient(srv.app) as client:
-        r = client.get(f"/api/decision/{decision_id}")
-    assert r.status_code == 200
-    body = r.json()
-    assert body["ok"] is True
-    assert body["reconstruction_complete"] is True
-    assert body["decision"]["decision_id"] == decision_id
-    assert body["decision"]["release_id"] == emitted["release_id"]
+    payload = get_production_decision_by_id(decision_id, db_path)
+    assert payload is not None
+    ok, missing = reconstruction_complete(payload)
+    assert ok, missing
+    assert payload["decision_id"] == decision_id
+    assert payload["release_id"] == emitted["release_id"]
 
 
 def test_production_like_blind_reconstruction_single_query(release_ready, tmp_path):
