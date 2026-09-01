@@ -116,13 +116,16 @@ def test_a_future_expiry_still_blocks(monkeypatch):
 def test_the_reason_string_admits_a_malformed_hold(monkeypatch):
     """The operator-facing line must say the hold has no expiry, not 'next attempt in 0s'."""
     srv = _fresh_quarantine(monkeypatch, {"failures": 3, "reason": "boom"})
-    # TEST_SYSTEM_REHAB_V2: was `if msg: assert ...` -- if `_terrain_quarantine_reason`
-    # were removed/renamed, or returned an empty string for a malformed hold, `msg`
-    # would be falsy and the assert line never ran at all: zero coverage instead of a
-    # failure. The function's existence and a non-empty message are now required.
-    assert hasattr(srv, "_terrain_quarantine_reason"), (
-        "_terrain_quarantine_reason is gone; the malformed-hold message can't be checked")
-    msg = srv._terrain_quarantine_reason("ZZQ")
+    # TEST_SYSTEM_REHAB_V2: was `if msg: assert ...` where msg came from a call to
+    # `_terrain_quarantine_reason` (with a leading underscore) -- a name that has
+    # NEVER existed in server.py; the real function is `terrain_quarantine_reason`
+    # (no underscore). `if msg:` made this silently skip its own assertion forever
+    # (hasattr was always False, msg was always "") instead of failing on the typo --
+    # zero coverage, not a passing check. Found only once the freshness/presence gap
+    # itself was fixed and this line finally ran for real; corrected to the real name.
+    assert hasattr(srv, "terrain_quarantine_reason"), (
+        "terrain_quarantine_reason is gone; the malformed-hold message can't be checked")
+    msg = srv.terrain_quarantine_reason("ZZQ")
     assert msg, "a malformed hold (no until_ts) must produce a non-empty reason string"
     assert "NO expiry recorded" in msg or "malformed" in msg, msg
 

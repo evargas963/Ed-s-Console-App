@@ -241,7 +241,19 @@ def test_call_all_pool_promotes_over_tape_wait():
     inp.spy_weighted_push = 0.0
     inp.qqq_weighted_push = 0.0
     inp.iwm_weighted_push = 0.0
-    inp.net_delta = 50.0
+    # TEST_SYSTEM_REHAB_V2: was net_delta=50.0. Traced (protected CI caught this once
+    # the vacuous OR below was removed): net_delta=50.0 makes greek_bias(...) return
+    # "bullish", giving the tape stack a SECOND vote ("Greeks", alongside "micro" from
+    # _phase3_rules_long()'s own rules_signal="long") -- two votes clears
+    # STACK_THRESHOLD_DEFAULT=2 on tape/rules alone, so tape_stack_signal was already
+    # "long" BEFORE mh_policy is even consulted, and _resolve_call_direction_from_all_
+    # pool correctly returns promoted=False (tape already agreed, nothing to promote).
+    # This test's actual intent ("tape below threshold -> directional from ALL only")
+    # requires the tape stack to NOT independently clear threshold; net_delta=0.0
+    # removes the confounding "Greeks" vote (verified: mh_policy still reaches
+    # final_tradeable_decision=True / final_bias="long" unchanged) so only "micro"
+    # votes, tape_stack_signal genuinely becomes "wait", and promotion is exercised.
+    inp.net_delta = 0.0
     inp.zone = "pin_bull"
 
     canonical = _phase3_canonical()
