@@ -883,21 +883,87 @@ def test_coverage_C_vendor_unsub_failure_after_durable_close_fails_closed(tmp_pa
         w.close()
 
 
-def test_coverage_C_no_tracked_epoch_keeps_historical_unsub_failure_behaviour(tmp_path):
-    """Scoping control for CASE C, second form: a writer IS present but no epoch id is
-    tracked for this service, so the close is a no-op and NOTHING is surrendered. An
-    unsubscribe failure must then keep the historical retry behaviour, not escalate the
-    whole session into a recycle over a coverage claim that was never made."""
+def test_4A_vendor_held_with_no_durable_epoch_fails_closed(tmp_path):
+    """4A. REVERSED. This test previously asserted the OPPOSITE — that a writer present
+    with no tracked epoch id should keep the historical unsub-failure retry, "not escalate
+    the whole session over a coverage claim that was never made". That reasoning is wrong,
+    and the test was holding the defect in place.
+
+    Under production coverage authority the shape
+
+        vendor-held = A   AND   epoch_state[service] is None
+
+    is not a harmless one-tick under-claim. `held` is a remembered string, not a vendor
+    acknowledgement. Nothing in the tick re-confirms it, and an unsubscribe failure hands
+    the SAME shape back — so it re-enters itself for as long as the unsubscribe keeps
+    failing, with real quotes landing in stream_options_quotes_raw the whole time while
+    the ledger answers "not subscribed". A provenance hole that sustains itself defeats
+    the exact distinction the ledger exists to make.
+
+    It must fail closed instead, so a fresh generation can EARN coverage through
+    vendor SUB success -> durable OPEN success."""
     db = tmp_path / "cap.db"
     w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
     try:
         epoch_state = {"l1": None}          # vendor holds A, but no epoch is tracked
         stream = _FlakyOptionStream(fail_calls={"l1_option_unsub"})
-        held = _switch_tick(stream, w, epoch_state, _SPY_CONTRACT, _QQQ_CONTRACT)
-        assert held == _SPY_CONTRACT, "stay on the last KNOWN vendor-held symbol"
-        assert [c for c in stream.calls if c[0] == "l1_option_sub"] == [], (
-            "must not open a second live key while the old unsub is unconfirmed")
-        assert _one_service_open(db) == [], "no epoch existed and none was fabricated"
+        with pytest.raises(rsc.OptionCoverageCompensationError) as exc:
+            _switch_tick(stream, w, epoch_state, _SPY_CONTRACT, _QQQ_CONTRACT)
+        assert "with NO durable coverage epoch at tick entry" in str(exc.value)
+        assert "forcing stream recycle" in str(exc.value)
+        assert stream.calls == [], (
+            "fail closed BEFORE touching the vendor: no unsubscribe, and above all no "
+            f"subscribe of the new contract; got {stream.calls}")
+        assert _one_service_open(db) == [], "no epoch may be fabricated from a memory"
+    finally:
+        w.close()
+
+
+def test_4A_the_state_cannot_self_sustain_across_repeated_unsub_failures(tmp_path):
+    """4A-B. The persistent-unsubscribe-failure attack: the same entry state, driven
+    repeatedly. It must escalate on EVERY tick rather than quietly returning held=A and
+    re-entering itself, which is how the hole used to sustain indefinitely."""
+    db = tmp_path / "cap.db"
+    w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
+    try:
+        epoch_state = {"l1": None}
+        for tick in range(5):
+            stream = _FlakyOptionStream(fail_calls={"l1_option_unsub"})
+            with pytest.raises(rsc.OptionCoverageCompensationError):
+                _switch_tick(stream, w, epoch_state, _SPY_CONTRACT, _QQQ_CONTRACT)
+            assert stream.calls == [], f"tick {tick}: vendor touched while inconsistent"
+            assert _one_service_open(db) == [], f"tick {tick}: coverage fabricated"
+    finally:
+        w.close()
+
+
+def test_4B_open_epoch_with_no_vendor_hold_is_surrendered_before_any_subscribe(tmp_path):
+    """4B. The inverse impossible state, adjudicated mechanically rather than assumed
+    away: nothing is held at the vendor, yet a durable epoch is still open.
+
+    Claiming coverage while holding no subscription is a false positive by definition. It
+    must be resolved BEFORE any new subscribe — never left open beside a B epoch, which
+    would put two open epochs on one single-contract service and make "what is this
+    service subscribed to" unanswerable. Surrender is sufficient and correct here (unlike
+    4A there is no uncertain vendor state to recycle over): no subscription exists, so the
+    claim is simply false and is closed."""
+    db = tmp_path / "cap.db"
+    w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
+    try:
+        stale = w.open_coverage_epoch(_SPY_CONTRACT, "LEVELONE_OPTIONS",
+                                      reason="active_contract_set", ts=1.0)
+        epoch_state = {"l1": stale}
+        stream = _FlakyOptionStream()
+        held = _switch_tick(stream, w, epoch_state, None, _QQQ_CONTRACT)
+
+        assert held == _QQQ_CONTRACT, "the legitimate B subscribe still completes"
+        rows = _epochs(db)
+        stale_row = [r for r in rows if r[0] == _SPY_CONTRACT]
+        assert len(stale_row) == 1 and stale_row[0][2] is not None, (
+            f"the stale A claim must be surrendered, not left open: {rows}")
+        assert len(_one_service_open(db)) == 1, (
+            f"exactly one open epoch afterwards, on B; got {_one_service_open(db)}")
+        assert _one_service_open(db)[0][1] == _QQQ_CONTRACT
     finally:
         w.close()
 

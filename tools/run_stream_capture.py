@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import inspect
 import json
 import statistics
 import sys
@@ -149,6 +150,16 @@ ALPACA_SRC = "alpaca_iex"
 ALPACA_STALE_RECONNECT_SEC = 120.0   #: no frames this long -> recycle the socket
 STREAM_STALE_RECONNECT_SEC = 90.0    #: LEVELONE quiet this long -> recycle stream
 RECONNECT_COOLDOWN_SEC = 180.0       #: never login-spam Schwab on quiet tape
+#: Status-write + watchdog evaluation cadence. Named (not an inline literal) so the
+#: recycle path can be driven deterministically at its REAL seam in tests instead of
+#: through a copied state machine — the recycle ordering is a correctness contract and
+#: has to be provable against the code that actually runs.
+STATUS_LOOP_INTERVAL_SEC = 10.0
+#: Upper bound on retiring one StreamClient (bounded logout, then bounded transport
+#: close). A half-open socket is one of the exact conditions that triggers watchdog
+#: recovery, so cleanup must never be able to prevent that recovery — see
+#: _retire_stream_client.
+STREAM_RETIRE_TIMEOUT_SEC = 5.0
 
 
 def stream_needs_recycle(age_sec: float | None, seen_data: bool,
@@ -563,7 +574,8 @@ def _try_close_one(writer, epoch_state: dict, key: str, epoch_id: int, *, reason
         return False
 
 
-def _close_coverage_epoch_tracked(writer, epoch_state: dict, key: str, *, reason: str) -> None:
+def _close_coverage_epoch_tracked(writer, epoch_state: dict, key: str, *, reason: str,
+                                  surrendered_ts: float | None = None) -> None:
     """Close the CURRENT epoch for `key` (epoch_state[key]), if any. On failure the id
     moves into a per-key pending-close set instead of being discarded — retried by
     _retry_pending_epoch_closes on every later reconciliation tick until it durably
@@ -577,8 +589,14 @@ def _close_coverage_epoch_tracked(writer, epoch_state: dict, key: str, *, reason
     # Coverage is surrendered HERE — at the decision, before the durable write is even
     # attempted and (under close-first) before the vendor is touched. Pinning ended_ts to
     # this instant is what keeps the claim conservative when the write has to be retried.
+    #
+    # `surrendered_ts` overrides it for callers whose surrender boundary is EARLIER than
+    # this call: a recycle decides to abandon the socket before it tears the generation
+    # down, and a shutdown surrenders capture before the writer drain (which alone may
+    # take up to 60s). Passing that earlier instant keeps the ledger conservative; taking
+    # time.time() here would claim coverage across a window we already know was dead.
     _try_close_one(writer, epoch_state, key, epoch_id, reason=reason,
-                   surrendered_ts=time.time())
+                   surrendered_ts=time.time() if surrendered_ts is None else surrendered_ts)
 
 
 def _open_coverage_epoch_tracked(writer, epoch_state: dict, key: str, symbol: str,
@@ -650,7 +668,39 @@ async def _reconcile_option_service(stream, held: str | None, requested: str | N
     is stamped with the instant coverage was surrendered, carried in the pending-close
     map, not with the instant sqlite finally accepted it (see _add_pending_close). Before
     that, a close deferred by a 300s write outage recorded ended_ts 300s late and claimed
-    the whole outage as covered — the same false-positive, merely postponed."""
+    the whole outage as covered — the same false-positive, merely postponed.
+
+    ENTRY-STATE INVARIANT (production coverage authority only). When a writer and
+    epoch_state are supplied, this service's remembered vendor state and its durable
+    coverage must AGREE on the way in. The two disagreeing shapes are handled below and
+    neither is allowed to become a steady state — see the guard at the top of the body."""
+    if writer is not None and epoch_state is not None:
+        entry_epoch = epoch_state.get(epoch_key)
+        if held is not None and entry_epoch is None:
+            # VENDOR-HELD WITH NO DURABLE EPOCH. `held` is a remembered string, not a
+            # fresh vendor acknowledgement, so opening an epoch from it would fabricate
+            # coverage for a subscription nobody re-confirmed. Left alone it is worse
+            # than a one-tick under-claim: an unsubscribe failure returns this same shape
+            # again, and the state re-enters itself indefinitely — REAL CAPTURE FLOWING
+            # WITH ZERO DURABLE COVERAGE, which defeats the ledger's entire purpose of
+            # separating "not subscribed" from "subscribed, vendor silent". Treat it as
+            # an inconsistent stream generation and fail closed: the replacement stream
+            # must EARN coverage through vendor SUB success -> durable OPEN success.
+            raise OptionCoverageCompensationError(
+                f"{service_name}: vendor-held {held} with NO durable coverage epoch at "
+                f"tick entry — a remembered held symbol is not a subscription "
+                f"acknowledgement and must not be used to open one; forcing stream "
+                f"recycle so a fresh generation can earn coverage")
+        if held is None and entry_epoch is not None:
+            # OPEN EPOCH WITH NO VENDOR SUBSCRIPTION — the inverse. Claiming coverage
+            # while holding nothing is a false-positive by definition, and it must be
+            # resolved BEFORE any new subscribe rather than left beside a B epoch.
+            # Surrendering conservatively is both correct and sufficient here: there is
+            # no vendor state to be uncertain about, so a recycle would buy nothing.
+            print(f"{service_name}: durable coverage epoch open with NO vendor "
+                  f"subscription held — surrendering the stale claim before reconciling")
+            _close_coverage_epoch_tracked(writer, epoch_state, epoch_key,
+                                          reason="stale_coverage_no_vendor_hold")
     if held != requested:
         if held is not None:
             # True only once a durable coverage claim has actually been surrendered for
@@ -680,10 +730,11 @@ async def _reconcile_option_service(stream, held: str | None, requested: str | N
                     _retry_pending_epoch_closes(writer, epoch_state, epoch_key,
                                                 reason="retry_pending_close")
                     return held
-                # Surrendered only if there was an actual open claim to surrender. With
-                # no tracked epoch id the close was a no-op, so an unsubscribe failure
-                # below has no coverage-truth divergence to escalate and must keep the
-                # historical retry behaviour rather than recycling the whole session.
+                # Surrendered only if there was an actual open claim to surrender. Under
+                # production coverage authority the entry invariant above guarantees one
+                # existed (held != None implies a current epoch), so this is always True
+                # here; it stays explicit because the flag also governs the no-ledger
+                # callers below, for whom nothing is ever surrendered.
                 coverage_surrendered = closing_epoch_id is not None
             try:
                 await unsubs_fn([held])
@@ -889,6 +940,105 @@ async def run(symbols: list[str], duration_min: float, db_path: str | None) -> i
         release_owner_lock(lock_fd)
 
 
+async def _retire_stream_client(stream, *, reason: str,
+                                timeout: float = STREAM_RETIRE_TIMEOUT_SEC) -> None:
+    """THE one seam that terminally retires a Schwab StreamClient. Never raises.
+
+    AT MOST ONE live/logged-in production Schwab stream session may exist, and the static
+    single-constructor gate cannot enforce that at runtime: an abandoned StreamClient is
+    still logged in until something says so. Relying on garbage collection is not
+    retirement — nothing in schwab-py logs out on __del__, so a dropped reference leaves
+    a live session on the account holding subscriptions we no longer read.
+
+    Verified against the INSTALLED schwab-py 1.5.1 (site-packages/schwab/streaming.py):
+      * StreamClient.logout() is the library's supported termination operation — it sends
+        ADMIN/LOGOUT and AWAITS the vendor's response ("no further stream operations are
+        possible" afterwards). Because it awaits a reply, it is precisely the call that
+        hangs on the half-open socket that triggered the recycle in the first place.
+      * logout() does NOT close the websocket: login() assigns self._socket via
+        ws_client.connect() and nothing in logout() touches it. Graceful logout alone
+        therefore leaves the transport open, so the socket is closed afterwards.
+
+    Both steps are separately bounded. A cleanup that can hang would make watchdog
+    recovery impossible, which is strictly worse than the leak it is trying to prevent —
+    so a timeout is REPORTED and then stepped past, never awaited indefinitely."""
+    if stream is None:
+        return
+    logout = getattr(stream, "logout", None)
+    if logout is not None:
+        try:
+            await asyncio.wait_for(logout(), timeout=timeout)
+        except asyncio.TimeoutError:
+            print(f"retire stream ({reason}): logout timed out after {timeout:.0f}s — "
+                  f"closing the transport anyway")
+        except Exception as e:  # noqa: BLE001 — retirement must never raise
+            print(f"retire stream ({reason}): logout failed "
+                  f"({type(e).__name__}: {e}) — closing the transport anyway")
+    # Close the transport whether or not the graceful logout landed: after a timed-out or
+    # failed logout the socket is exactly what still has to go.
+    sock = getattr(stream, "_socket", None)
+    close = getattr(sock, "close", None)
+    if close is None:
+        return
+    try:
+        result = close()
+        if inspect.isawaitable(result):
+            await asyncio.wait_for(result, timeout=timeout)
+    except asyncio.TimeoutError:
+        print(f"retire stream ({reason}): socket close timed out after {timeout:.0f}s")
+    except Exception as e:  # noqa: BLE001
+        print(f"retire stream ({reason}): socket close failed ({type(e).__name__}: {e})")
+
+
+async def _cancel_and_await(tasks, *, what: str) -> None:
+    """Cancel tasks and WAIT for them to actually finish.
+
+    The await is the point. cancel() only schedules the cancellation; until the task has
+    been awaited it may still be suspended inside a vendor operation and may still resume
+    and mutate shared state. Awaiting is what makes "this task can no longer touch
+    anything" a fact rather than a hope."""
+    live = [t for t in tasks if t is not None]
+    for t in live:
+        t.cancel()
+    for t in live:
+        try:
+            await t
+        except asyncio.CancelledError:
+            pass  # expected: we cancelled it
+        except Exception as e:  # noqa: BLE001 — teardown reports, never hangs
+            print(f"{what}: task ended with {type(e).__name__}: {e}")
+
+
+async def _retire_stream_generation(stream, pump_task, control_tasks, *,
+                                    reason: str) -> None:
+    """Retire ONE stream generation completely: its control tasks, its pump, its session.
+
+    STREAM GENERATION OWNERSHIP IS THE CONTRACT. A control operation belonging to
+    generation N must never mutate vendor subscriptions, contract state, epoch state or
+    durable coverage belonging to generation N+1. The poll loops are the only things that
+    can, because they survive across generations by construction and can be suspended
+    inside a vendor await exactly when a recycle begins.
+
+    MEASURED before this existed, through the real _run_streaming/poll/recycle seams: a
+    generation-1 option tick parked inside level_one_option_unsubs(SPY) resumed AFTER
+    generation 2 was live and covered, and then issued FIVE vendor operations on the
+    retired stream (including subscribing the current contract on a dead session),
+    CLOSED generation 2's live OPTIONS_BOOK coverage epoch (row id 4), opened a duplicate
+    (row id 5), and replaced generation 2's epoch id in the shared state (4 -> 5).
+
+    The fix is ownership, not locking: the control tasks are cancelled AND AWAITED before
+    anything else is touched, so no stale tick exists to race. A lock around vendor awaits
+    would be worse — a hung vendor operation is one of the exact conditions the watchdog
+    recovers from, and a lock held across it would block the recovery.
+
+    Cancelling mid-vendor-operation can leave the OLD session's vendor state uncertain.
+    That is acceptable here and only here: the whole point is that the entire old
+    StreamClient is being retired, so its subscriptions die with it."""
+    await _cancel_and_await(control_tasks, what=f"retire generation ({reason})")
+    await _cancel_and_await((pump_task,), what=f"retire generation ({reason})")
+    await _retire_stream_client(stream, reason=reason)
+
+
 async def _shutdown_sequence(pump_task, writer_task, stop, wsub,
                              extra_producers: tuple = ()) -> None:
     """SHUTDOWN ORDER IS THE CONTRACT (Cursor round-2 HIGHs).
@@ -997,6 +1147,33 @@ async def _schwab_connect(state, symbols, bus, health, stats, stop, active_book_
 
     stream = StreamClient(state.client)
     await stream.login()
+    # ── OWNERSHIP BOUNDARY ──────────────────────────────────────────────────────
+    # Past this point a LIVE, LOGGED-IN session exists that this function owns and has
+    # not yet handed to the caller. Anything that raises here (a failed resubscribe, an
+    # OptionCoverageCompensationError out of the reconciliation below) used to abandon it:
+    # the caller's `except Exception` printed "reconnect FAILED", no pump was ever
+    # created to read it, and nothing logged it out — a logged-in session leaked on every
+    # occurrence, on an account that permits one. Retire it before the failure propagates.
+    try:
+        return await _schwab_connect_after_login(
+            stream, symbols, bus, health, stats, stop,
+            active_book_ticker=active_book_ticker,
+            active_option_contract=active_option_contract,
+            writer=writer, epoch_state=epoch_state)
+    except BaseException:
+        # BaseException, not Exception: a cancelled connect must not leak a session
+        # either. The original failure is re-raised unchanged — retirement is cleanup,
+        # never a verdict, and must not mask why the connect failed.
+        await _retire_stream_client(stream, reason="partial connect failure")
+        raise
+
+
+async def _schwab_connect_after_login(stream, symbols, bus, health, stats, stop, *,
+                                      active_book_ticker=None, active_option_contract=None,
+                                      writer=None, epoch_state=None):
+    """Everything _schwab_connect does once a live session exists. Split out ONLY so the
+    ownership boundary above is a single try/except around one call rather than a large
+    indented block — every path out of here is covered by that retirement."""
     stream.add_level_one_equity_handler(
         make_handler("LEVELONE_EQUITIES", LEVELONE_FIELDS, "quote", bus, health, stats))
     stream.add_chart_equity_handler(
@@ -1057,29 +1234,45 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
     #: Durable coverage-epoch row ids for the CURRENTLY active option contract — mutated
     #: by _apply_active_option_contract_subs / _schwab_connect's reconnect-reapply.
     option_epoch_state: dict = {"l1": None, "book": None}
-    stream, pump_task, option_state["contract"] = await _schwab_connect(
-        state, symbols, bus, health, stats, stop)
-    book_state["stream"] = stream
-    option_state["stream"] = stream
-    # CR-02 prints leg — optional co-producer on the SAME bus/writer/health.
-    alpaca_task = asyncio.create_task(alpaca_pump(symbols, bus, health, stats, stop))
-    book_poll_task = asyncio.create_task(_active_ticker_book_poll_loop(
-        lambda: book_state["stream"], lambda: book_state["ticker"],
-        lambda t: book_state.__setitem__("ticker", t), stop))
     # PR214 premerge gap 4: the option poll loop sets this when a coverage-compensation
     # failure leaves vendor state uncertain with no durable coverage; the main loop below
     # treats it exactly like the half-open watchdog and recycles the stream.
     option_recycle_request = asyncio.Event()
-    option_poll_task = asyncio.create_task(_active_option_contract_poll_loop(
-        lambda: option_state["stream"], lambda: option_state["contract"],
-        lambda c: option_state.__setitem__("contract", c), stop,
-        writer=writer, epoch_state=option_epoch_state,
-        request_recycle=option_recycle_request))
+
+    def _start_control_tasks() -> tuple:
+        """The poll loops are BOUND TO ONE STREAM GENERATION and die with it.
+
+        They used to be created once and survive every recycle, reading whatever stream
+        was current at each tick. That is what let a tick suspended inside a generation-1
+        vendor await resume after generation 2 was live and mutate generation 2's vendor
+        subscriptions, contract state, epoch state and durable coverage rows — measured,
+        see _retire_stream_generation. Re-creating them per generation makes stale work
+        impossible instead of merely unlikely: retirement cancels AND awaits them before
+        any shared coverage state is touched."""
+        return (
+            asyncio.create_task(_active_ticker_book_poll_loop(
+                lambda: book_state["stream"], lambda: book_state["ticker"],
+                lambda t: book_state.__setitem__("ticker", t), stop)),
+            asyncio.create_task(_active_option_contract_poll_loop(
+                lambda: option_state["stream"], lambda: option_state["contract"],
+                lambda c: option_state.__setitem__("contract", c), stop,
+                writer=writer, epoch_state=option_epoch_state,
+                request_recycle=option_recycle_request)),
+        )
+
+    stream, pump_task, option_state["contract"] = await _schwab_connect(
+        state, symbols, bus, health, stats, stop)
+    book_state["stream"] = stream
+    option_state["stream"] = stream
+    # CR-02 prints leg — optional co-producer on the SAME bus/writer/health. NOT part of
+    # a Schwab stream generation: it owns its own Alpaca socket and survives recycles.
+    alpaca_task = asyncio.create_task(alpaca_pump(symbols, bus, health, stats, stop))
+    control_tasks = _start_control_tasks()
     deadline = time.monotonic() + duration_min * 60 if duration_min > 0 else None
     last_reconnect = time.monotonic()
     try:
         while not stop.is_set():
-            await asyncio.sleep(10)
+            await asyncio.sleep(STATUS_LOOP_INTERVAL_SEC)
             max_qdepth = max(max_qdepth, wsub.queue.qsize())
             write_status(bus, health, writer, stats, max_qdepth)
             # half-open watchdog: quiet LEVELONE past the bar -> rebuild stream
@@ -1097,8 +1290,20 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
                     print(f"watchdog: LEVELONE_EQUITIES quiet {age:.0f}s — recycling "
                           f"Schwab stream (half-open guard)")
                 last_reconnect = time.monotonic()
+                # COVERAGE IS SURRENDERED HERE — at the decision to abandon this socket,
+                # not when the teardown below happens to finish. Retiring the generation
+                # involves a bounded vendor logout, so stamping ended_ts afterwards would
+                # claim coverage across a window we had already given up on.
+                recycle_surrendered_ts = time.time()
                 book_state["stream"] = None   # poll loop must not use the dying stream
                 option_state["stream"] = None
+                # RETIRE THE WHOLE GENERATION FIRST — control tasks (cancelled AND
+                # awaited), then the pump, then the session itself. Only after this is it
+                # true that nothing else can still be suspended inside a vendor await and
+                # resume into the shared coverage state we are about to rewrite.
+                await _retire_stream_generation(stream, pump_task, control_tasks,
+                                                reason="stream_recycle")
+                stream, pump_task, control_tasks = None, None, ()
                 # The dying stream's subscription window genuinely ends here — close its
                 # coverage epochs now (tracked: a failed close moves the id into a
                 # pending-close retry set rather than being forgotten — see
@@ -1109,20 +1314,15 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
                 # what the dying one held.
                 _retry_pending_epoch_closes(writer, option_epoch_state, "l1", reason="stream_recycle")
                 _retry_pending_epoch_closes(writer, option_epoch_state, "book", reason="stream_recycle")
-                _close_coverage_epoch_tracked(writer, option_epoch_state, "l1", reason="stream_recycle")
-                _close_coverage_epoch_tracked(writer, option_epoch_state, "book", reason="stream_recycle")
+                _close_coverage_epoch_tracked(writer, option_epoch_state, "l1", reason="stream_recycle",
+                                              surrendered_ts=recycle_surrendered_ts)
+                _close_coverage_epoch_tracked(writer, option_epoch_state, "book", reason="stream_recycle",
+                                              surrendered_ts=recycle_surrendered_ts)
                 # The RECONNECT TARGET is the operator's current desired symbol, read fresh
                 # from the signal file — not the (about-to-be-discarded) per-service held
                 # state, which may be stale or partially set from a prior partial failure.
                 reconnect_option_contract = read_active_option_contract_signal()
                 option_state["contract"] = {"l1": None, "book": None}
-                pump_task.cancel()
-                try:
-                    await pump_task
-                except asyncio.CancelledError:
-                    pass
-                except Exception as exc:  # noqa: BLE001 — recycle path; reported
-                    print(f"watchdog: old pump ended with {type(exc).__name__}: {exc}")
                 try:
                     stream, pump_task, option_state["contract"] = await _schwab_connect(
                         state, symbols, bus, health, stats, stop,
@@ -1131,17 +1331,51 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
                         writer=writer, epoch_state=option_epoch_state)
                     book_state["stream"] = stream
                     option_state["stream"] = stream
+                except OptionCoverageCompensationError as exc:
+                    # A coverage escalation is NOT an ordinary connect failure and must
+                    # not be silently downgraded into one. _schwab_connect has already
+                    # retired the partial session, so nothing is live; re-arm the forced
+                    # recycle so the next pass rebuilds immediately instead of waiting on
+                    # the half-open heuristic's cooldown, which this condition never trips.
+                    print(f"watchdog: reconnect raised a COVERAGE COMPENSATION failure "
+                          f"({exc}) — partial session retired; rebuild re-armed")
+                    option_recycle_request.set()
+                    pump_task = asyncio.create_task(asyncio.sleep(0))  # placeholder
                 except Exception as exc:  # noqa: BLE001 — retry next tick, loudly
                     print(f"watchdog: reconnect FAILED ({type(exc).__name__}: {exc}) "
                           f"— retrying after cooldown")
                     pump_task = asyncio.create_task(asyncio.sleep(0))  # placeholder
+                # Control tasks are re-created for the NEW generation either way: on a
+                # failed reconnect both stream handles are None, so they idle harmlessly
+                # until a later pass succeeds.
+                control_tasks = _start_control_tasks()
             if deadline and time.monotonic() > deadline:
                 break
     except (KeyboardInterrupt, asyncio.CancelledError):
         pass
     finally:
+        # ── SHUTDOWN SURRENDER BOUNDARY ─────────────────────────────────────────
+        # Capture the instant continuous capture is given up, ONCE, BEFORE any teardown.
+        # The shutdown sequence quiesces the producers and then drains the writer with a
+        # bound of up to 60s; stamping ended_ts after that drain claimed coverage across
+        # a window in which capture had already stopped and no quote could arrive. That
+        # turns "our capture had already stopped" into "we remained subscribed and the
+        # vendor was silent" — the same false-positive class as the transition-interval
+        # defect, at the other end of the session.
+        #
+        # This boundary is deliberately at or BEFORE the true producer stop (a few
+        # messages may still land between here and the cancel), so the ledger under-claims
+        # rather than over-claims. Physical persistence happens later; the RECORDED time
+        # does not move, and if the durable write has to be retried the pending-close map
+        # replays this same instant.
+        shutdown_surrendered_ts = time.time()
         await _shutdown_sequence(pump_task, writer_task, stop, wsub,
-                                 extra_producers=(alpaca_task, book_poll_task, option_poll_task))
+                                 extra_producers=(alpaca_task, *control_tasks))
+        # The daemon's own Schwab session must not outlive the daemon. _shutdown_sequence
+        # cancels the pump, but a cancelled handle_message() is not a logged-out session:
+        # nothing in schwab-py logs out on garbage collection, so without this the process
+        # exits leaving a live session holding subscriptions on an account that allows one.
+        await _retire_stream_client(stream, reason="shutdown")
         # A clean exit ends the option contract's coverage window too — an OPEN epoch
         # surviving process exit would misreport coverage through a period the daemon
         # was not even running. Tracked closes: a failure here still moves the id into
@@ -1151,8 +1385,10 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
         # it being silently forgotten by this process's own bookkeeping alone.
         _retry_pending_epoch_closes(writer, option_epoch_state, "l1", reason="shutdown")
         _retry_pending_epoch_closes(writer, option_epoch_state, "book", reason="shutdown")
-        _close_coverage_epoch_tracked(writer, option_epoch_state, "l1", reason="shutdown")
-        _close_coverage_epoch_tracked(writer, option_epoch_state, "book", reason="shutdown")
+        _close_coverage_epoch_tracked(writer, option_epoch_state, "l1", reason="shutdown",
+                                      surrendered_ts=shutdown_surrendered_ts)
+        _close_coverage_epoch_tracked(writer, option_epoch_state, "book", reason="shutdown",
+                                      surrendered_ts=shutdown_surrendered_ts)
         for _key in ("l1", "book"):
             _pending = option_epoch_state.get(f"{_key}_pending_close")
             if _pending:

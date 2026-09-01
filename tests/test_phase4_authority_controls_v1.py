@@ -66,15 +66,38 @@ def test_C_mutation_alternate_factory_is_caught():
 
 
 def test_F_reconnect_after_recycle_has_no_concurrent_authorities():
-    """F. canonical owner reconnect after half-open socket -> PASS without creating
-    concurrent old/new authorities. See test_stream_capture_daemon_v1.py::
-    test_reconnect_replaces_stream_not_both_at_once (two connects yield two distinct
-    stream objects, old task provably cancelled) and ::
-    test_recycle_cancels_old_pump_before_reconnecting_structurally (cancel-before-
-    reconnect ordering in _run_streaming)."""
+    """F. canonical owner reconnect after a half-open socket -> PASS without creating
+    concurrent old/new authorities.
+
+    STRENGTHENED. This used to index _run_streaming's SOURCE TEXT for "pump_task.cancel()"
+    ahead of "_schwab_connect(". That pinned a spelling, not a behaviour: it broke as soon
+    as the cancellation moved into a named helper, and it never covered the authority that
+    actually outlived a generation — the poll/control tasks, which kept issuing vendor
+    operations on a retired session after the replacement was already live.
+
+    "No concurrent authorities" is now a proven RUNTIME property of the real recycle; the
+    behavioural proofs live in test_stream_capture_daemon_v1.py::
+    test_d1_a_stale_generation_tick_cannot_mutate_the_next_generation,
+    ::test_1c_a_stale_book_poll_tick_cannot_mutate_after_a_recycle,
+    ::test_recycle_retires_the_old_generation_before_the_replacement_is_built and
+    ::test_d3d_at_most_one_live_logged_in_session_across_the_whole_lifecycle (which
+    carries its own mutation control). What this test keeps is the structural guarantee
+    those depend on: the recycle retires the whole generation BEFORE it reconnects, and
+    the retirement actually awaits what it cancels."""
     import tools.run_stream_capture as d
     src = inspect.getsource(d._run_streaming)
-    assert src.index("pump_task.cancel()") < src.index("_schwab_connect(", src.index("await pump_task"))
+    retire_at = src.index("_retire_stream_generation(")
+    reconnect_at = src.index("_schwab_connect(", retire_at)
+    assert retire_at < reconnect_at, (
+        "the recycle must retire the whole old generation before building its replacement")
+    # cancel() alone only SCHEDULES cancellation; until awaited, a tick suspended inside a
+    # vendor operation can still resume and mutate the next generation's state.
+    cancel_src = inspect.getsource(d._cancel_and_await)
+    assert ".cancel()" in cancel_src and "await t" in cancel_src
+    gen_src = inspect.getsource(d._retire_stream_generation)
+    assert gen_src.index("control_tasks") < gen_src.index("(pump_task,)"), (
+        "control tasks must be retired FIRST: they are the ones that can be suspended "
+        "inside a vendor await and resume into the next generation's state")
 
 
 def test_G_live_plane_consumes_transported_observations_no_schwab_socket():

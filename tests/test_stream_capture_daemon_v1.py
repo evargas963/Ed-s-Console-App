@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from types import SimpleNamespace
+
+import pytest
 
 from stream_spine import (
     COUNT_DROPS,
     CaptureWriter,
+    CoverageWriteError,
     HealthRegistry,
     MessageBus,
     read_active_option_contract_signal,
@@ -498,19 +502,13 @@ def test_reconnect_replaces_stream_not_both_at_once():
         mp.undo()
 
 
-def test_recycle_cancels_old_pump_before_reconnecting_structurally():
-    """Structural corroboration of the behavioral tests above: the watchdog branch in
-    _run_streaming must cancel+await the OLD pump task before calling _schwab_connect
-    again — sequential code, but pinned so a future edit cannot silently reorder it into
-    a `create_task` race between old and new streams."""
-    import inspect
-    import tools.run_stream_capture as d
-
-    src = inspect.getsource(d._run_streaming)
-    cancel_at = src.index("pump_task.cancel()")
-    await_at = src.index("await pump_task", cancel_at)
-    reconnect_at = src.index("_schwab_connect(", await_at)
-    assert cancel_at < await_at < reconnect_at
+#: DELETED: test_recycle_cancels_old_pump_before_reconnecting_structurally.
+#: It indexed _run_streaming's SOURCE TEXT for "pump_task.cancel()" before
+#: "_schwab_connect(" — a spelling pin that broke the moment the cancellation moved into
+#: a named helper, and that never covered the real hazard anyway (the CONTROL TASKS, not
+#: the pump, were what survived a generation). Replaced by the behavioural
+#: test_recycle_retires_the_old_generation_before_the_replacement_is_built below, which
+#: asserts the same ordering against recorded lifecycle events.
 
 
 def test_chart_handler_builds_bar_messages():
@@ -806,3 +804,629 @@ def test_gap3_writer_is_closed_on_the_auth_failure_path(tmp_path, monkeypatch):
     rc = asyncio.run(m._run_locked(["SPY"], 0.0, str(db)))
     assert rc == 2
     assert closed["n"] >= 1, "the CaptureWriter must be closed on the auth-failure path"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PR214 STREAM LIFECYCLE TRUTH — stream-generation ownership, session retirement,
+# and the shutdown coverage boundary. Driven through the REAL _run_streaming /
+# poll / recycle seams, with asyncio Events (never sleeps) as the ordering proof.
+# ─────────────────────────────────────────────────────────────────────────────
+
+_A_CONTRACT = "SPY   260820C00767000"
+_B_CONTRACT = "QQQ   260820C00450000"
+
+
+class _LifecycleStream:
+    """StreamClient double instrumented at the REAL lifecycle seam.
+
+    Counts logins/logouts and tracks live + max-live sessions, so "at most one LIVE,
+    LOGGED-IN Schwab session" is a MEASURED runtime fact rather than a structural
+    inference. `park_on` suspends one named vendor operation for one generation until an
+    Event is released — that is exactly the seam where a poll tick gets caught by a
+    recycle."""
+
+    live = 0
+    max_live = 0
+    logins = 0
+    logouts = 0
+    retire_disabled = False      # mutation control for the one-live-session invariant
+    generations: list = []
+    events: list = []
+    park_on: tuple = ()
+    parked = None
+    release = None
+
+    def __init__(self, client, account_id=None):
+        type(self).generations.append(self)
+        self.gen = len(type(self).generations)
+        self.client = client
+        self.logged_in = False
+        sock = SimpleNamespace(closed=False)
+        sock.close = lambda: setattr(sock, "closed", True)
+        self._socket = sock
+
+    def _log(self, label, detail=None):
+        type(self).events.append((label, self.gen, detail))
+
+    def _noop(self, h):
+        return None
+    add_level_one_equity_handler = _noop
+    add_chart_equity_handler = _noop
+    add_nasdaq_book_handler = _noop
+    add_nyse_book_handler = _noop
+    add_level_one_option_handler = _noop
+    add_options_book_handler = _noop
+
+    async def login(self):
+        cls = type(self)
+        self.logged_in = True
+        cls.live += 1
+        cls.logins += 1
+        cls.max_live = max(cls.max_live, cls.live)
+        self._log("login")
+
+    async def logout(self):
+        cls = type(self)
+        if cls.retire_disabled:
+            # MUTATION CONTROL: the session is never actually retired.
+            self._log("logout_suppressed")
+            return
+        if self.logged_in:
+            self.logged_in = False
+            cls.live -= 1
+        cls.logouts += 1
+        self._log("logout")
+
+    async def _vendor(self, name, syms):
+        cls = type(self)
+        if cls.park_on == (self.gen, name):
+            self._log(f"PARK ENTER {name}")
+            cls.parked.set()
+            await cls.release.wait()
+            self._log(f"PARK RESUME {name}")
+        self._log(f"VENDOR {name}", syms[0] if syms else None)
+
+    async def level_one_equity_subs(self, syms): pass
+    async def chart_equity_subs(self, syms): pass
+
+    async def nasdaq_book_subs(self, syms):
+        await self._vendor("nasdaq_book_subs", syms)
+
+    async def nyse_book_subs(self, syms):
+        await self._vendor("nyse_book_subs", syms)
+
+    async def nasdaq_book_unsubs(self, syms):
+        await self._vendor("nasdaq_book_unsubs", syms)
+
+    async def nyse_book_unsubs(self, syms):
+        await self._vendor("nyse_book_unsubs", syms)
+
+    async def level_one_option_subs(self, syms):
+        await self._vendor("level_one_option_subs", syms)
+
+    async def options_book_subs(self, syms):
+        await self._vendor("options_book_subs", syms)
+
+    async def level_one_option_unsubs(self, syms):
+        await self._vendor("level_one_option_unsubs", syms)
+
+    async def options_book_unsubs(self, syms):
+        await self._vendor("options_book_unsubs", syms)
+
+    async def handle_message(self):
+        await asyncio.sleep(3600)
+
+
+def _reset_lifecycle(park_on=(), retire_disabled=False):
+    cls = _LifecycleStream
+    cls.live = cls.max_live = cls.logins = cls.logouts = 0
+    cls.generations = []
+    cls.events = []
+    cls.park_on = park_on
+    cls.retire_disabled = retire_disabled
+    cls.parked = asyncio.Event()
+    cls.release = asyncio.Event()
+    return cls
+
+
+def _install_lifecycle_stream(monkeypatch):
+    import sys
+    import types
+    monkeypatch.setitem(sys.modules, "schwab.streaming",
+                        types.SimpleNamespace(StreamClient=_LifecycleStream))
+
+
+def _epoch_rows(db):
+    import sqlite3
+    con = sqlite3.connect(db)
+    try:
+        return con.execute(
+            "SELECT id, symbol, service, started_ts, ended_ts "
+            "FROM stream_coverage_epochs ORDER BY id").fetchall()
+    finally:
+        con.close()
+
+
+def _one_shot_recycle(gate: asyncio.Event):
+    """Half-open decision replacement: fires exactly ONCE, when `gate` is set — so the
+    recycle is triggered by a deterministic condition instead of elapsed time."""
+    fired = {"x": False}
+
+    def decide(age_sec, seen_data, since_last_reconnect):
+        if gate.is_set() and not fired["x"]:
+            fired["x"] = True
+            return True
+        return False
+    return decide
+
+
+async def _await_event(pred, *, timeout=25.0, what="condition"):
+    """Sequence the driver against the daemon's own recorded events. Used only to ORDER
+    the driver's steps; every ordering ASSERTION is made against the event log itself."""
+    import time as _t
+    deadline = _t.monotonic() + timeout
+    while _t.monotonic() < deadline:
+        if pred():
+            return True
+        await asyncio.sleep(0.005)
+    raise AssertionError(f"timed out waiting for {what}")
+
+
+async def _drive_daemon(m, db, *, driver, symbols=("SPY",)):
+    """Run the REAL _run_streaming with the lifecycle-instrumented StreamClient."""
+    writer = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
+    bus = MessageBus()
+    wsub = bus.subscribe("", policy=COUNT_DROPS)
+    health, stats, stop = HealthRegistry(), CaptureStats(), asyncio.Event()
+    # A real (quiet) beat so the watchdog branch formats a real age, exactly as live.
+    health.beat("LEVELONE_EQUITIES")
+    stats.per_service["LEVELONE_EQUITIES"] = 1
+
+    drv = asyncio.create_task(driver(stop, writer))
+    run = asyncio.create_task(
+        m._run_streaming(list(symbols), 0.0, bus, health, stats, writer, wsub, stop,
+                         SimpleNamespace(client=object())))
+    try:
+        await asyncio.wait_for(drv, timeout=45)
+        await asyncio.wait_for(run, timeout=45)
+    finally:
+        for t in (drv, run):
+            if not t.done():
+                t.cancel()
+
+
+def test_d1_a_stale_generation_tick_cannot_mutate_the_next_generation(tmp_path, monkeypatch):
+    """DEFECT 1. A poll tick belonging to stream generation N, suspended inside a REAL
+    vendor await when a recycle begins, must not resume into generation N+1's world.
+
+    MEASURED BEFORE the per-generation control tasks existed, through these same seams:
+    the parked generation-1 tick resumed after generation 2 was live and covered, then
+    issued FIVE vendor operations on the retired stream (two of them SUBSCRIBING the
+    current contract on a dead session), CLOSED generation 2's live OPTIONS_BOOK epoch
+    (row id 4), opened a duplicate (row id 5), and replaced generation 2's epoch id in
+    the shared state (book: 4 -> 5).
+
+    Without this test that whole class returns silently: nothing else in the suite
+    exercises a control operation that outlives the stream it was issued against."""
+    import tools.run_stream_capture as m
+
+    db = tmp_path / "cap.db"
+    _reset_lifecycle(park_on=(1, "level_one_option_unsubs"))
+    _install_lifecycle_stream(monkeypatch)
+    monkeypatch.setattr(m, "STATUS_LOOP_INTERVAL_SEC", 0.02)
+    gate = asyncio.Event()
+    monkeypatch.setattr(m, "stream_needs_recycle", _one_shot_recycle(gate))
+    write_active_option_contract_signal(_A_CONTRACT)
+    captured = {}
+
+    async def driver(stop, writer):
+        await _await_event(
+            lambda: any(e[0] == "VENDOR level_one_option_subs" and e[1] == 1
+                        and e[2] == _A_CONTRACT for e in _LifecycleStream.events),
+            what="generation 1 to subscribe A")
+        write_active_option_contract_signal(_B_CONTRACT)
+        await asyncio.wait_for(_LifecycleStream.parked.wait(), timeout=25)
+        gate.set()                       # recycle WHILE the tick is parked in the vendor
+        await _await_event(
+            lambda: any(e[0] == "VENDOR level_one_option_subs" and e[1] == 2
+                        for e in _LifecycleStream.events),
+            what="generation 2 to subscribe B")
+        await asyncio.sleep(0.15)        # let generation 2 finish opening its epochs
+        captured["gen2_rows"] = _epoch_rows(db)
+        captured["mark"] = len(_LifecycleStream.events)
+        _LifecycleStream.release.set()   # release the stale generation-1 operation
+        await asyncio.sleep(0.6)         # give stale work every chance to run
+        captured["after_rows"] = _epoch_rows(db)
+        stop.set()
+
+    asyncio.run(_drive_daemon(m, db, driver=driver))
+
+    labels = [(e[0], e[1]) for e in _LifecycleStream.events]
+    assert ("logout", 1) in labels, "generation 1's session must be retired"
+    assert labels.index(("logout", 1)) < labels.index(("login", 2)), (
+        f"the old session must be retired before the replacement logs in: {labels}")
+
+    stale_after = [e for e in _LifecycleStream.events[captured["mark"]:]
+                   if e[1] == 1 and e[0].startswith("VENDOR")]
+    assert stale_after == [], (
+        f"generation 1 issued vendor operations on a retired stream: {stale_after}")
+
+    assert captured["after_rows"] == captured["gen2_rows"], (
+        "stale generation-1 work mutated generation 2's durable coverage\n"
+        f"  before release: {captured['gen2_rows']}\n"
+        f"  after  release: {captured['after_rows']}")
+    open_rows = [r for r in captured["after_rows"] if r[4] is None]
+    assert len(open_rows) == 2, f"one open epoch per option service; got {open_rows}"
+    assert {r[1] for r in open_rows} == {_B_CONTRACT}, (
+        f"generation 2's epochs must still be on B: {open_rows}")
+
+
+def test_1c_a_stale_book_poll_tick_cannot_mutate_after_a_recycle(tmp_path, monkeypatch):
+    """DEFECT 1C. _active_ticker_book_poll_loop is the option poll's direct sibling: it
+    issues vendor subscribe/unsubscribe against whatever StreamClient is current, from a
+    task that used to survive every recycle. It carries no coverage ledger, so it cannot
+    corrupt durable rows — but it CAN issue book subscriptions on a retired session and
+    write a stale ticker back over the new generation's state.
+
+    ADJUDICATION: EQUIVALENT RACE, and FIXED by the same mechanism — the book poll is one
+    of the per-generation control tasks, so _retire_stream_generation cancels AND awaits
+    it before the replacement exists.
+
+    Earns its existence by pinning the book loop INSIDE the generation boundary: an edit
+    that hoisted it back out would restore the race with nothing else objecting."""
+    import tools.run_stream_capture as m
+
+    db = tmp_path / "cap.db"
+    _reset_lifecycle(park_on=(1, "nasdaq_book_unsubs"))
+    _install_lifecycle_stream(monkeypatch)
+    monkeypatch.setattr(m, "STATUS_LOOP_INTERVAL_SEC", 0.02)
+    gate = asyncio.Event()
+    monkeypatch.setattr(m, "stream_needs_recycle", _one_shot_recycle(gate))
+    write_active_ticker_signal("SPY")
+    write_active_option_contract_signal(_A_CONTRACT)
+    captured = {}
+
+    async def driver(stop, writer):
+        await _await_event(
+            lambda: any(e[0] == "VENDOR nasdaq_book_subs" and e[1] == 1
+                        for e in _LifecycleStream.events),
+            what="generation 1 to subscribe the SPY book")
+        write_active_ticker_signal("QQQ")
+        await asyncio.wait_for(_LifecycleStream.parked.wait(), timeout=25)
+        gate.set()
+        await _await_event(lambda: len(_LifecycleStream.generations) >= 2,
+                           what="generation 2 to be constructed")
+        await asyncio.sleep(0.15)
+        captured["mark"] = len(_LifecycleStream.events)
+        _LifecycleStream.release.set()
+        await asyncio.sleep(0.6)
+        stop.set()
+
+    asyncio.run(_drive_daemon(m, db, driver=driver))
+
+    stale_after = [e for e in _LifecycleStream.events[captured["mark"]:]
+                   if e[1] == 1 and e[0].startswith("VENDOR")]
+    assert stale_after == [], (
+        f"the book poll issued vendor operations on a retired stream: {stale_after}")
+    labels = [(e[0], e[1]) for e in _LifecycleStream.events]
+    assert labels.index(("logout", 1)) < labels.index(("login", 2))
+
+
+def test_recycle_retires_the_old_generation_before_the_replacement_is_built(tmp_path,
+                                                                            monkeypatch):
+    """REPLACES a source-text test that asserted `pump_task.cancel()` appeared before
+    `_schwab_connect(` in _run_streaming's source. That pinned a spelling rather than a
+    behaviour, and it could not see the actual defect: the CONTROL TASKS, not the pump,
+    were what outlived a generation. This is the same contract as a behavioural ordering
+    proof over the daemon's own recorded lifecycle events."""
+    import tools.run_stream_capture as m
+
+    db = tmp_path / "cap.db"
+    _reset_lifecycle()
+    _install_lifecycle_stream(monkeypatch)
+    monkeypatch.setattr(m, "STATUS_LOOP_INTERVAL_SEC", 0.02)
+    gate = asyncio.Event()
+    monkeypatch.setattr(m, "stream_needs_recycle", _one_shot_recycle(gate))
+    write_active_option_contract_signal(_A_CONTRACT)
+
+    async def driver(stop, writer):
+        await _await_event(lambda: any(e[0] == "login" for e in _LifecycleStream.events),
+                           what="generation 1 login")
+        gate.set()
+        await _await_event(lambda: len(_LifecycleStream.generations) >= 2,
+                           what="generation 2")
+        await asyncio.sleep(0.2)
+        stop.set()
+
+    asyncio.run(_drive_daemon(m, db, driver=driver))
+
+    labels = [(e[0], e[1]) for e in _LifecycleStream.events]
+    assert labels.index(("logout", 1)) < labels.index(("login", 2)), (
+        f"generation 1 must be logged out before generation 2 logs in: {labels}")
+    assert _LifecycleStream.max_live <= 1, (
+        f"two sessions were live at once (max {_LifecycleStream.max_live})")
+
+
+def test_d2_shutdown_ended_ts_is_the_surrender_instant_not_the_drain_completion(
+        tmp_path, monkeypatch):
+    """DEFECT 2. Clean shutdown must not claim coverage across the writer drain.
+
+    Order is: producers quiesced (T1) -> writer drains (T2, bounded at 60s) -> durable
+    epoch close. Capture is impossible from T1, but ended_ts used to be stamped when the
+    close finally ran, at T2 or later. That converts "our capture had already stopped"
+    into "we stayed subscribed and the vendor went silent" — the same false-positive
+    class as the transition-interval defect, at the other end of the session.
+
+    MEASURED here with a deliberately SLOW writer drain: the recorded ended_ts must be
+    the surrender boundary, never the drain completion. Persistence may be late; the
+    RECORDED TIME may not move."""
+    import tools.run_stream_capture as m
+
+    db = tmp_path / "cap.db"
+    _reset_lifecycle()
+    _install_lifecycle_stream(monkeypatch)
+    monkeypatch.setattr(m, "STATUS_LOOP_INTERVAL_SEC", 0.02)
+    monkeypatch.setattr(m, "stream_needs_recycle", lambda *a: False)
+    write_active_option_contract_signal(_A_CONTRACT)
+
+    marks = {}
+    real_run = CaptureWriter.run
+
+    async def slow_run(self, sub, stop=None):
+        try:
+            return await real_run(self, sub, stop=stop)
+        finally:
+            # The drain itself takes real time; capture has been impossible since the
+            # producers were cancelled, well before this returns.
+            marks["drain_start"] = time.time()
+            await asyncio.sleep(0.75)
+            marks["drain_done"] = time.time()
+    monkeypatch.setattr(CaptureWriter, "run", slow_run)
+
+    async def driver(stop, writer):
+        await _await_event(
+            lambda: any(e[0] == "VENDOR level_one_option_subs" for e in _LifecycleStream.events),
+            what="the contract to be subscribed")
+        await asyncio.sleep(0.1)
+        marks["stop_requested"] = time.time()
+        stop.set()
+
+    asyncio.run(_drive_daemon(m, db, driver=driver))
+
+    rows = _epoch_rows(db)
+    assert rows, "the shutdown must have produced coverage rows"
+    assert all(r[4] is not None for r in rows), f"every epoch must be closed: {rows}"
+    ended = max(r[4] for r in rows)
+
+    assert marks["drain_done"] > marks["drain_start"], "the drain must have taken time"
+    over_claim = ended - marks["stop_requested"]
+    assert ended <= marks["drain_start"], (
+        f"ended_ts ({ended}) must not be stamped at or after the drain "
+        f"({marks['drain_start']}) — that claims coverage across a window in which "
+        f"capture was already impossible; over-claim was {over_claim:.3f}s")
+    assert ended < marks["drain_done"], (
+        f"ended_ts ({ended}) must precede drain completion ({marks['drain_done']})")
+    # Conservative direction: the boundary is at or BEFORE the stop request.
+    assert ended <= marks["stop_requested"] + 0.05, (
+        f"ended_ts ({ended}) must be the surrender boundary, not a later instant; "
+        f"stop was requested at {marks['stop_requested']}")
+
+
+def test_d2_a_failed_shutdown_close_still_records_the_surrender_instant(tmp_path,
+                                                                        monkeypatch):
+    """DEFECT 2, repair path. If the shutdown close itself fails and is only repaired
+    later, the ORIGINAL shutdown surrender timestamp must survive — exactly as the
+    pending-close map already preserves other surrender times. Otherwise the repair
+    re-introduces the over-claim it was meant to avoid."""
+    import tools.run_stream_capture as m
+
+    db = tmp_path / "cap.db"
+    w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
+    try:
+        eid = w.open_coverage_epoch(_A_CONTRACT, "LEVELONE_OPTIONS",
+                                    reason="active_contract_set", ts=1.0)
+        epoch_state = {"l1": eid}
+        surrendered = 500.0
+
+        def _boom(*a, **k):
+            raise CoverageWriteError("db unavailable during shutdown")
+        real_close = w.close_coverage_epoch
+        monkeypatch.setattr(w, "close_coverage_epoch", _boom)
+        m._close_coverage_epoch_tracked(w, epoch_state, "l1", reason="shutdown",
+                                        surrendered_ts=surrendered)
+        assert set(epoch_state.get("l1_pending_close") or {}) == {eid}
+
+        # Repaired much later, by a later lifetime's retry pass.
+        monkeypatch.setattr(w, "close_coverage_epoch", real_close)
+        m._retry_pending_epoch_closes(w, epoch_state, "l1", reason="retry_pending_close")
+
+        rows = _epoch_rows(db)
+        assert rows[0][4] == surrendered, (
+            f"the repair must replay the ORIGINAL shutdown surrender instant "
+            f"({surrendered}); got {rows[0][4]}")
+    finally:
+        w.close()
+
+
+def test_d3d_at_most_one_live_logged_in_session_across_the_whole_lifecycle(tmp_path,
+                                                                           monkeypatch):
+    """DEFECT 3D. The RUNTIME complement to the static one-constructor gate, which cannot
+    see an abandoned-but-still-logged-in session.
+
+    Exercises A initial connect, B watchdog recycle, C replacement connect, D second
+    recycle, E clean shutdown — asserting at every observable boundary that at most one
+    session is live, and that ZERO remain at exit."""
+    import tools.run_stream_capture as m
+
+    db = tmp_path / "cap.db"
+    _reset_lifecycle()
+    _install_lifecycle_stream(monkeypatch)
+    monkeypatch.setattr(m, "STATUS_LOOP_INTERVAL_SEC", 0.02)
+    gates = [asyncio.Event(), asyncio.Event()]
+    fired = {"n": 0}
+
+    def decide(age_sec, seen_data, since_last_reconnect):
+        if fired["n"] < len(gates) and gates[fired["n"]].is_set():
+            fired["n"] += 1
+            return True
+        return False
+    monkeypatch.setattr(m, "stream_needs_recycle", decide)
+    write_active_option_contract_signal(_A_CONTRACT)
+    observed = []
+
+    async def driver(stop, writer):
+        async def watch():
+            while not stop.is_set():
+                observed.append(_LifecycleStream.live)
+                await asyncio.sleep(0.005)
+        w = asyncio.create_task(watch())
+        try:
+            await _await_event(lambda: len(_LifecycleStream.generations) >= 1,
+                               what="A: initial connect")
+            gates[0].set()                                       # B: watchdog recycle
+            await _await_event(lambda: len(_LifecycleStream.generations) >= 2,
+                               what="C: replacement connect")
+            gates[1].set()                                       # D: second recycle
+            await _await_event(lambda: len(_LifecycleStream.generations) >= 3,
+                               what="third generation")
+            await asyncio.sleep(0.2)
+            stop.set()                                           # E: clean shutdown
+        finally:
+            w.cancel()
+            try:
+                await w
+            except asyncio.CancelledError:
+                pass
+
+    asyncio.run(_drive_daemon(m, db, driver=driver))
+
+    assert len(_LifecycleStream.generations) >= 3, "A-D must have built three generations"
+    assert _LifecycleStream.max_live <= 1, (
+        f"LIVE_LOGGED_IN_STREAMCLIENT_COUNT exceeded 1 (max "
+        f"{_LifecycleStream.max_live}); observed samples: {sorted(set(observed))}")
+    assert max(observed) <= 1, f"sampled live count exceeded 1: {sorted(set(observed))}"
+    assert _LifecycleStream.live == 0, (
+        f"clean shutdown must leave ZERO live sessions; {_LifecycleStream.live} remain")
+    assert _LifecycleStream.logouts == _LifecycleStream.logins, (
+        f"every session must be retired: {_LifecycleStream.logins} logins vs "
+        f"{_LifecycleStream.logouts} logouts")
+    assert all(g._socket.closed for g in _LifecycleStream.generations), (
+        "logout() does not close the websocket in schwab-py 1.5.1 — the transport must "
+        "be closed explicitly for every retired generation")
+
+
+def test_d3d_mutation_control_without_retirement_the_invariant_fails(tmp_path, monkeypatch):
+    """DEFECT 3D negative control. With retirement suppressed, the lifecycle assertions
+    above MUST fail — otherwise they prove nothing and would pass on a daemon that leaks
+    a logged-in session on every recycle."""
+    import tools.run_stream_capture as m
+
+    db = tmp_path / "cap.db"
+    _reset_lifecycle(retire_disabled=True)
+    _install_lifecycle_stream(monkeypatch)
+    monkeypatch.setattr(m, "STATUS_LOOP_INTERVAL_SEC", 0.02)
+    gate = asyncio.Event()
+    monkeypatch.setattr(m, "stream_needs_recycle", _one_shot_recycle(gate))
+    write_active_option_contract_signal(_A_CONTRACT)
+
+    async def driver(stop, writer):
+        await _await_event(lambda: len(_LifecycleStream.generations) >= 1, what="connect")
+        gate.set()
+        await _await_event(lambda: len(_LifecycleStream.generations) >= 2,
+                           what="replacement")
+        await asyncio.sleep(0.2)
+        stop.set()
+
+    asyncio.run(_drive_daemon(m, db, driver=driver))
+
+    assert _LifecycleStream.max_live > 1, (
+        "MUTATION CONTROL FAILED TO BITE: with retirement suppressed two sessions must "
+        f"have been live at once, but max_live was {_LifecycleStream.max_live} — the "
+        "one-live-session assertions above would then be vacuous")
+    assert _LifecycleStream.live > 0, (
+        "MUTATION CONTROL FAILED TO BITE: a suppressed retirement must leave a live "
+        "session at exit")
+
+
+def test_d3c_a_partial_connect_failure_after_login_retires_the_session(tmp_path,
+                                                                       monkeypatch):
+    """DEFECT 3C. _schwab_connect can log in successfully and then raise before it ever
+    returns a pump — a failed resubscribe, or an OptionCoverageCompensationError out of
+    the reconciliation. That used to abandon a LIVE, LOGGED-IN session with nothing
+    reading it and nothing logging it out, on an account that permits one.
+
+    Proves the partial session is explicitly retired, its live count returns to zero, no
+    pump exists for it, and the failure still propagates unchanged."""
+    import tools.run_stream_capture as m
+
+    _reset_lifecycle()
+    _install_lifecycle_stream(monkeypatch)
+
+    boom = m.OptionCoverageCompensationError("forced coverage escalation during connect")
+
+    async def _raise_after_login(*a, **k):
+        raise boom
+    monkeypatch.setattr(m, "_schwab_connect_after_login", _raise_after_login)
+
+    async def go():
+        bus, health, stats, stop = MessageBus(), HealthRegistry(), CaptureStats(), asyncio.Event()
+        with pytest.raises(m.OptionCoverageCompensationError) as exc:
+            await m._schwab_connect(SimpleNamespace(client=object()), ["SPY"],
+                                    bus, health, stats, stop,
+                                    active_option_contract=_A_CONTRACT)
+        return exc.value
+    raised = asyncio.run(go())
+
+    assert raised is boom, "retirement is cleanup, never a verdict: re-raise unchanged"
+    assert _LifecycleStream.logins == 1, "the session did log in"
+    assert _LifecycleStream.live == 0, (
+        "a partially-built session must not stay logged in after the failure")
+    assert _LifecycleStream.logouts == 1, "it must be retired through the canonical seam"
+    assert _LifecycleStream.generations[0]._socket.closed, (
+        "the transport must be closed too — logout() leaves it open in schwab-py 1.5.1")
+
+
+def test_d3c_a_coverage_escalation_during_reconnect_is_not_downgraded(tmp_path, monkeypatch):
+    """DEFECT 3C. A coverage escalation raised out of the reconnect must not be silently
+    absorbed by the watchdog's generic `except Exception: reconnect FAILED` handler.
+
+    That handler leaves recovery to the half-open heuristic, which this condition never
+    trips (the socket is not stale — there is no socket), and option_recycle_request was
+    already cleared, so the rebuild could stall indefinitely. The escalation must re-arm
+    the forced rebuild instead."""
+    import tools.run_stream_capture as m
+
+    db = tmp_path / "cap.db"
+    _reset_lifecycle()
+    _install_lifecycle_stream(monkeypatch)
+    monkeypatch.setattr(m, "STATUS_LOOP_INTERVAL_SEC", 0.02)
+    gate = asyncio.Event()
+    monkeypatch.setattr(m, "stream_needs_recycle", _one_shot_recycle(gate))
+    write_active_option_contract_signal(_A_CONTRACT)
+
+    real_after_login = m._schwab_connect_after_login
+    calls = {"n": 0}
+
+    async def flaky(*a, **k):
+        calls["n"] += 1
+        if calls["n"] == 2:      # the RECONNECT attempt, not the initial connect
+            raise m.OptionCoverageCompensationError("escalation during reconnect")
+        return await real_after_login(*a, **k)
+    monkeypatch.setattr(m, "_schwab_connect_after_login", flaky)
+
+    async def driver(stop, writer):
+        await _await_event(lambda: len(_LifecycleStream.generations) >= 1, what="connect")
+        gate.set()
+        # Generation 2 logs in, then its reconnect raises. Recovery must be re-armed, so
+        # a THIRD generation is built without any further half-open trigger.
+        await _await_event(lambda: len(_LifecycleStream.generations) >= 3,
+                           what="the re-armed rebuild to produce a third generation")
+        await asyncio.sleep(0.2)
+        stop.set()
+
+    asyncio.run(_drive_daemon(m, db, driver=driver))
+
+    assert calls["n"] >= 3, "the rebuild must have been retried after the escalation"
+    assert _LifecycleStream.max_live <= 1, (
+        f"the failed generation leaked a live session (max {_LifecycleStream.max_live})")
+    assert _LifecycleStream.live == 0, "shutdown must leave zero live sessions"
