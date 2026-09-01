@@ -510,10 +510,10 @@ class OptionCoverageCompensationError(RuntimeError):
 
 def _epoch_close_is_pending(epoch_state: dict, key: str, epoch_id: "int | None") -> bool:
     """True when `epoch_id`'s durable close FAILED and it is sitting in the pending-close
-    retry set — i.e. that epoch is still OPEN in the table (PR214 defect 1C)."""
+    retry map — i.e. that epoch is still OPEN in the table (PR214 defect 1C)."""
     if epoch_id is None:
         return False
-    return epoch_id in (epoch_state.get(f"{key}_pending_close") or set())
+    return epoch_id in (epoch_state.get(f"{key}_pending_close") or {})
 
 
 def _discard_pending_close(epoch_state: dict, key: str, epoch_id: "int | None") -> None:
@@ -528,24 +528,38 @@ def _discard_pending_close(epoch_state: dict, key: str, epoch_id: "int | None") 
     failed close — under close-first, a failed close means nothing happened at all."""
     pending = epoch_state.get(f"{key}_pending_close")
     if pending:
-        pending.discard(epoch_id)
+        pending.pop(epoch_id, None)
 
 
-def _add_pending_close(epoch_state: dict, key: str, epoch_id: int) -> None:
-    pending = epoch_state.setdefault(f"{key}_pending_close", set())
-    pending.add(epoch_id)
+def _add_pending_close(epoch_state: dict, key: str, epoch_id: int,
+                       surrendered_ts: float) -> None:
+    """Queue a failed close for retry, REMEMBERING WHEN COVERAGE WAS SURRENDERED.
+
+    The timestamp is the whole point. The pending set used to hold bare ids, so a retry
+    that landed minutes later stamped ended_ts at RETRY time — recording coverage across
+    the entire durable-write outage, a window in which the subscription was already gone.
+    That is the same false-positive claim the close-first ordering exists to prevent,
+    just deferred. The surrender time is captured once, when the close is first
+    attempted, and every later retry replays THAT instant."""
+    pending = epoch_state.setdefault(f"{key}_pending_close", {})
+    pending.setdefault(epoch_id, surrendered_ts)
 
 
-def _try_close_one(writer, epoch_state: dict, key: str, epoch_id: int, *, reason: str) -> bool:
-    """Attempt one close; a failure MOVES the id into the pending-close set rather than
+def _try_close_one(writer, epoch_state: dict, key: str, epoch_id: int, *, reason: str,
+                   surrendered_ts: float) -> bool:
+    """Attempt one close; a failure MOVES the id into the pending-close map rather than
     dropping it — close_coverage_epoch is idempotent (only touches ended_ts IS NULL rows),
-    so retrying a call that actually landed is always safe."""
+    so retrying a call that actually landed is always safe.
+
+    `surrendered_ts` is stamped as ended_ts rather than letting the writer default to
+    time.time(): ended_ts must mean "coverage was given up HERE", not "the database
+    finally accepted the write here"."""
     try:
-        writer.close_coverage_epoch(epoch_id, reason=reason)
+        writer.close_coverage_epoch(epoch_id, reason=reason, ts=surrendered_ts)
         return True
     except CoverageWriteError as e:
         print(f"coverage epoch close failed ({key}={epoch_id}, retry pending): {e}")
-        _add_pending_close(epoch_state, key, epoch_id)
+        _add_pending_close(epoch_state, key, epoch_id, surrendered_ts)
         return False
 
 
@@ -560,7 +574,11 @@ def _close_coverage_epoch_tracked(writer, epoch_state: dict, key: str, *, reason
     epoch_state[key] = None
     if epoch_id is None:
         return
-    _try_close_one(writer, epoch_state, key, epoch_id, reason=reason)
+    # Coverage is surrendered HERE — at the decision, before the durable write is even
+    # attempted and (under close-first) before the vendor is touched. Pinning ended_ts to
+    # this instant is what keeps the claim conservative when the write has to be retried.
+    _try_close_one(writer, epoch_state, key, epoch_id, reason=reason,
+                   surrendered_ts=time.time())
 
 
 def _open_coverage_epoch_tracked(writer, epoch_state: dict, key: str, symbol: str,
@@ -578,13 +596,18 @@ def _open_coverage_epoch_tracked(writer, epoch_state: dict, key: str, symbol: st
 def _retry_pending_epoch_closes(writer, epoch_state: dict, key: str, *, reason: str) -> None:
     """Retry any previously-failed epoch closes for `key` — called every reconciliation
     tick so a transient durable-write outage self-heals without operator action, and a
-    stuck epoch never silently sits open forever."""
+    stuck epoch never silently sits open forever.
+
+    Each id is replayed with the surrender time recorded when its close was FIRST
+    attempted, so however long the outage lasts the recorded ended_ts does not drift
+    forward into a window the subscription no longer covered."""
     pending_key = f"{key}_pending_close"
     pending = epoch_state.get(pending_key)
     if not pending:
         return
-    still_open = {eid for eid in pending
-                 if not _try_close_one(writer, epoch_state, key, eid, reason=reason)}
+    still_open = {eid: ts for eid, ts in pending.items()
+                  if not _try_close_one(writer, epoch_state, key, eid, reason=reason,
+                                        surrendered_ts=ts)}
     epoch_state[pending_key] = still_open
 
 
@@ -621,7 +644,13 @@ async def _reconcile_option_service(stream, held: str | None, requested: str | N
     so the ledger may describe a slightly WIDER uncovered interval than the true vendor
     transition, but it can never bridge a known period of no subscription. That bias is
     deliberate and fail-closed. These timestamps are therefore transition BOUNDARIES,
-    not vendor acknowledgement times, and must not be described as the latter."""
+    not vendor acknowledgement times, and must not be described as the latter.
+
+    The A.ended_ts bound holds even when the durable write has to be RETRIED: the close
+    is stamped with the instant coverage was surrendered, carried in the pending-close
+    map, not with the instant sqlite finally accepted it (see _add_pending_close). Before
+    that, a close deferred by a 300s write outage recorded ended_ts 300s late and claimed
+    the whole outage as covered — the same false-positive, merely postponed."""
     if held != requested:
         if held is not None:
             # True only once a durable coverage claim has actually been surrendered for
@@ -666,6 +695,13 @@ async def _reconcile_option_service(stream, held: str | None, requested: str | N
                     # behaviour — stay on the last KNOWN vendor-held symbol, do not also
                     # subscribe this tick (two live keys on one service), retry next tick.
                     print(f"{service_name} unsub {held} failed, retry pending: {e}")
+                    # This early return skips the bottom block, so drain the pending-close
+                    # queue here as CASE A does — otherwise a durable-write outage that
+                    # coincides with a failing unsubscribe would leave stale ids unretried
+                    # for as long as both persist.
+                    if writer is not None and epoch_state is not None:
+                        _retry_pending_epoch_closes(writer, epoch_state, epoch_key,
+                                                    reason="retry_pending_close")
                     return held
                 # CASE C: the ledger has ALREADY surrendered this symbol's coverage claim,
                 # but the vendor unsubscribe is unconfirmed. Do not pretend the old steady
@@ -772,6 +808,17 @@ async def _active_option_contract_poll_loop(get_stream, get_current, set_current
     but WRONG for that condition — absorbing it would let capture continue in exactly
     the unattributable shape the ledger exists to prevent. That one error escalates into
     the EXISTING stream-recycle path instead of being swallowed."""
+    # The stream an escalation was raised on. Requesting a recycle is asynchronous — the
+    # main loop services it on its own (slower) cadence — so without this the loop would
+    # keep reconciling the very stream it just declared unusable. That is not academic:
+    # an escalation leaves the per-service held NAME stale (the raise skips the caller's
+    # assignment) while the durable epoch is already surrendered, so if the operator's
+    # signal flips back to that symbol first, `held == requested`, the transition block is
+    # skipped entirely, and the bottom block opens a BRAND NEW epoch for it — claiming
+    # coverage for a subscription whose vendor state is precisely what we just admitted we
+    # do not know. Measured before this guard: a fabricated second epoch row for SPY.
+    # "Forcing stream recycle rather than continuing" has to actually stop the continuing.
+    poisoned_stream = None
     while not stop.is_set():
         try:
             await asyncio.wait_for(stop.wait(), timeout=interval_sec)
@@ -781,12 +828,19 @@ async def _active_option_contract_poll_loop(get_stream, get_current, set_current
         stream = get_stream()
         if stream is None:
             continue
+        if stream is poisoned_stream:
+            # Quiet by design: this repeats every tick until the recycle lands, and the
+            # escalation itself was already reported loudly.
+            continue
         try:
             new_cur = await _apply_active_option_contract_subs(
                 stream, get_current(), writer=writer, epoch_state=epoch_state)
             set_current(new_cur)
         except OptionCoverageCompensationError as e:
             # NOT an ordinary bad tick: vendor state uncertain AND no durable coverage.
+            # This stream is done — no further vendor ops or coverage claims on it. The
+            # guard clears itself when the recycle installs a different stream object.
+            poisoned_stream = stream
             print(f"active-option-contract poll: FORCING STREAM RECYCLE — {e}")
             if request_recycle is not None:
                 request_recycle.set()

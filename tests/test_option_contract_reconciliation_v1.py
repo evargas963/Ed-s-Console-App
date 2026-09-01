@@ -38,8 +38,11 @@ from stream_spine import (
     read_active_option_contract_signal,
     write_active_option_contract_signal,
 )
+import tools.run_stream_capture as rsc
 from tools.run_stream_capture import (
+    _active_option_contract_poll_loop,
     _apply_active_option_contract_subs,
+    _close_coverage_epoch_tracked,
     _reconcile_option_service,
     _retry_pending_epoch_closes,
 )
@@ -86,6 +89,16 @@ def _epochs(db_path):
         "SELECT symbol, service, ended_ts FROM stream_coverage_epochs ORDER BY id").fetchall()
     con.close()
     return rows
+
+
+def _pending_ids(epoch_state, key):
+    """Epoch ids queued for close-retry, independent of how the queue is represented.
+
+    It is a {epoch_id: surrendered_ts} map: a deferred close must replay the instant
+    coverage was GIVEN UP, not the instant the database finally accepted the write.
+    Tests assert on the ids here; the timestamps are asserted where they carry meaning
+    (test_deferred_close_records_the_surrender_time_not_the_retry_time)."""
+    return set(epoch_state.get(f"{key}_pending_close") or {})
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -261,8 +274,8 @@ def test_C_coverage_close_write_fails_keeps_the_old_epoch_open_and_held(tmp_path
         assert new_state == {"l1": _SPY_CONTRACT, "book": _SPY_CONTRACT}
         # The restored epochs are current again, and no longer queued for closing.
         assert epoch_state["l1"] == 1 and epoch_state["book"] == 2
-        assert epoch_state.get("l1_pending_close") == set()
-        assert epoch_state.get("book_pending_close") == set()
+        assert _pending_ids(epoch_state, "l1") == set()
+        assert _pending_ids(epoch_state, "book") == set()
     asyncio.run(go())
     rows = _epochs(tmp_path / "cap.db")
     old_rows = [r for r in rows if r[0] == _SPY_CONTRACT]
@@ -308,8 +321,8 @@ def test_D_pending_close_self_heals_once_the_writer_recovers(tmp_path, monkeypat
     # Recycle teardown while the durable write is out: both closes FAIL, both tracked.
     _close_coverage_epoch_tracked(writer, epoch_state, "l1", reason="stream_recycle")
     _close_coverage_epoch_tracked(writer, epoch_state, "book", reason="stream_recycle")
-    assert epoch_state.get("l1_pending_close") == {1}
-    assert epoch_state.get("book_pending_close") == {2}
+    assert _pending_ids(epoch_state, "l1") == {1}
+    assert _pending_ids(epoch_state, "book") == {2}
     assert all(r[2] is None for r in _epochs(tmp_path / "cap.db")), (
         "a failed close must leave the epoch genuinely OPEN, never fabricate an end")
 
@@ -317,9 +330,9 @@ def test_D_pending_close_self_heals_once_the_writer_recovers(tmp_path, monkeypat
     _retry_pending_epoch_closes(writer, epoch_state, "l1", reason="retry_pending_close")
     _retry_pending_epoch_closes(writer, epoch_state, "book", reason="retry_pending_close")
 
-    assert epoch_state.get("l1_pending_close") == set()
-    assert epoch_state.get("book_pending_close") == set()
-    old_rows = [r for r in _epochs(tmp_path / "cap.db") if r[0] == _SPY_CONTRACT]
+    assert _pending_ids(epoch_state, "l1") == set()
+    assert _pending_ids(epoch_state, "book") == set()
+    old_rows =[r for r in _epochs(tmp_path / "cap.db") if r[0] == _SPY_CONTRACT]
     assert len(old_rows) == 2 and all(r[2] is not None for r in old_rows), (
         "once the writer recovers, the previously-stuck epochs must actually close")
     writer.close()
@@ -406,8 +419,9 @@ def test_a_stuck_close_must_block_a_new_epoch_on_the_same_service(tmp_path, monk
     assert final["l1"] == _SPY_CONTRACT, (
         "with SPY's epoch un-closable, the vendor must remain on SPY, not advance to QQQ")
     assert epoch_state["l1"] == 1, "SPY's epoch id is the current L1 epoch again"
-    assert epoch_state.get("l1_pending_close") == set(), (
-        "the restored epoch must not stay queued for closing (it is legitimately open)")
+    assert _pending_ids(epoch_state, "l1") == set(), (
+        "the still-live epoch must not stay queued for closing (it is legitimately open: "
+        "the close failed before the vendor was touched, so the subscription never ended)")
     l1_open = [r for r in _epochs(tmp_path / "cap.db")
                if r[1] == "LEVELONE_OPTIONS" and r[2] is None]
     assert len(l1_open) == 1 and l1_open[0][0] == _SPY_CONTRACT, (
@@ -636,7 +650,7 @@ def test_blocker2b_guard_fails_closed_on_stuck_close_then_self_heals(tmp_path, m
             return real_close(epoch_id, **k)
         monkeypatch.setattr(writer, "close_coverage_epoch", _flaky_close)
         _close_coverage_epoch_tracked(writer, epoch_state, "l1", reason="stream_recycle")
-        assert epoch_state.get("l1_pending_close") == {first_id}
+        assert _pending_ids(epoch_state, "l1") == {first_id}
         assert epoch_state["l1"] is None
 
         # Re-opening the SAME (symbol, service) while that row is still open must be
@@ -653,7 +667,7 @@ def test_blocker2b_guard_fails_closed_on_stuck_close_then_self_heals(tmp_path, m
         # re-open then succeeds -- no operator action, exactly as before the guard.
         fail["on"] = False
         _retry_pending_epoch_closes(writer, epoch_state, "l1", reason="retry_pending_close")
-        assert epoch_state.get("l1_pending_close") == set()
+        assert _pending_ids(epoch_state, "l1") == set()
         _open_coverage_epoch_tracked(writer, epoch_state, "l1", _SPY_CONTRACT,
                                      "LEVELONE_OPTIONS", reason="active_contract_set")
         assert epoch_state["l1"] is not None and epoch_state["l1"] != first_id
@@ -828,7 +842,7 @@ def test_coverage_A_close_failure_never_touches_the_vendor(tmp_path, monkeypatch
         assert len(rows) == 1 and rows[0][1] == _SPY_CONTRACT, (
             f"exactly one open epoch, still on A; got {rows}")
         assert epoch_state["l1"] == eid, "A's epoch id remains the current epoch"
-        assert epoch_state.get("l1_pending_close") == set(), (
+        assert _pending_ids(epoch_state, "l1") == set(), (
             "the epoch describes a live subscription we deliberately kept — closing it is "
             "not the correct action to retry")
     finally:
@@ -927,7 +941,7 @@ def test_coverage_C_pending_close_retry_cannot_close_a_still_live_subscription(t
         assert stream.calls == [], (
             "the durable close failed first, so the vendor must be untouched — the epoch "
             "is open because the subscription never stopped, not because it was restored")
-        assert epoch_state.get("l1_pending_close") == set(), (
+        assert _pending_ids(epoch_state, "l1") == set(), (
             "a still-live epoch must not remain queued for closing")
 
         # The DB recovers; a retry pass now runs with A still subscribed the whole time.
@@ -1309,5 +1323,176 @@ def test_exhaustive_failure_matrix_never_claims_false_coverage(
             else:
                 assert len(open_rows) == 1 and open_rows[0][0] == held, (
                     f"{label}: vendor holds {held!r} but open epochs are {open_rows}")
+    finally:
+        w.close()
+
+
+def test_deferred_close_records_the_surrender_time_not_the_retry_time(tmp_path, monkeypatch):
+    """A DEFERRED close must not drag ended_ts forward across the durable-write outage.
+
+    Close-first fixes the ordering, but the pending-close retry could still defeat it.
+    _try_close_one used to call close_coverage_epoch WITHOUT a ts, so the writer defaulted
+    to time.time() -- the moment the database finally accepted the write, not the moment
+    coverage was given up. A close that failed at t=100 and only landed at t=400 recorded
+    ended_ts=400, claiming the subscription covered [100, 400] -- exactly the window the
+    subscription was already gone for, and unbounded by anything except outage length.
+
+    This is the same false-positive claim as the original interval defect, deferred, so
+    it gets the same standard: the ledger may under-claim, never over-claim.
+
+    MEASURED against the pre-fix code this asserts ended_ts == 400.0 (the retry instant);
+    it must now be 100.0 (the surrender instant)."""
+    clock = {"t": 100.0}
+    monkeypatch.setattr(rsc.time, "time", lambda: clock["t"])
+
+    db = tmp_path / "cap.db"
+    w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
+    try:
+        eid = w.open_coverage_epoch(_SPY_CONTRACT, "LEVELONE_OPTIONS",
+                                    reason="active_contract_set", ts=1.0)
+        epoch_state = {"l1": eid}
+
+        # t=100: coverage is surrendered. The durable write fails and is queued.
+        real_close = w.close_coverage_epoch
+        monkeypatch.setattr(w, "close_coverage_epoch", _failing_close)
+        _close_coverage_epoch_tracked(w, epoch_state, "l1", reason="active_contract_changed")
+        assert _pending_ids(epoch_state, "l1") == {eid}, "the close must be queued, not lost"
+
+        # A long durable-write outage. The subscription is ALREADY gone for all of it.
+        clock["t"] = 400.0
+        monkeypatch.setattr(w, "close_coverage_epoch", real_close)
+        _retry_pending_epoch_closes(w, epoch_state, "l1", reason="retry_pending_close")
+        assert _pending_ids(epoch_state, "l1") == set(), "the retry must have landed"
+
+        con = sqlite3.connect(db)
+        try:
+            ended = con.execute(
+                "SELECT ended_ts FROM stream_coverage_epochs WHERE id=?", (eid,)).fetchone()[0]
+        finally:
+            con.close()
+
+        assert ended == 100.0, (
+            f"ended_ts must be the SURRENDER instant (100.0), not the retry instant "
+            f"(400.0); got {ended}. Anything later claims coverage across the outage.")
+        assert ended < 400.0, "a 300s over-claim across a known-unsubscribed window"
+    finally:
+        w.close()
+
+
+def test_surrender_time_survives_repeated_failed_retries(tmp_path, monkeypatch):
+    """The surrender instant is captured ONCE and must not be refreshed by each failed
+    retry -- otherwise a long outage with per-tick retries walks ended_ts forward one
+    tick at a time and arrives at the same over-claim by increments."""
+    clock = {"t": 100.0}
+    monkeypatch.setattr(rsc.time, "time", lambda: clock["t"])
+
+    db = tmp_path / "cap.db"
+    w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
+    try:
+        eid = w.open_coverage_epoch(_SPY_CONTRACT, "LEVELONE_OPTIONS",
+                                    reason="active_contract_set", ts=1.0)
+        epoch_state = {"l1": eid}
+        real_close = w.close_coverage_epoch
+        monkeypatch.setattr(w, "close_coverage_epoch", _failing_close)
+        _close_coverage_epoch_tracked(w, epoch_state, "l1", reason="active_contract_changed")
+
+        for t in (150.0, 200.0, 250.0, 300.0):      # four failed retry ticks
+            clock["t"] = t
+            _retry_pending_epoch_closes(w, epoch_state, "l1", reason="retry_pending_close")
+            assert _pending_ids(epoch_state, "l1") == {eid}
+
+        clock["t"] = 350.0
+        monkeypatch.setattr(w, "close_coverage_epoch", real_close)
+        _retry_pending_epoch_closes(w, epoch_state, "l1", reason="retry_pending_close")
+
+        con = sqlite3.connect(db)
+        try:
+            ended = con.execute(
+                "SELECT ended_ts FROM stream_coverage_epochs WHERE id=?", (eid,)).fetchone()[0]
+        finally:
+            con.close()
+        assert ended == 100.0, (
+            f"the original surrender instant must survive every retry; got {ended}")
+    finally:
+        w.close()
+
+
+def test_case_C_escalation_cannot_fabricate_a_new_epoch_if_the_signal_flips_back(
+        tmp_path, monkeypatch):
+    """CASE C aftermath: a later tick must NOT re-open an epoch for the symbol whose
+    vendor state is unconfirmed.
+
+    CASE C raises, so `contract_state["l1"] = await _reconcile_option_service(...)` never
+    assigns and the dict keeps naming A -- while epoch_state["l1"] is already None (the
+    durable close DID succeed; it was the vendor unsubscribe that failed). The poll loop
+    catches OptionCoverageCompensationError, sets request_recycle and KEEPS TICKING; the
+    main loop only services the recycle on its own slower cadence.
+
+    If the operator's signal flips back to A inside that window, `held == requested`, the
+    whole transition block is skipped, and the bottom block sees "held with no epoch" and
+    opens a NEW epoch for A -- asserting coverage from now on for a subscription whose
+    vendor state is explicitly unknown (the failed unsub may well have landed). That is a
+    fabricated claim, and it is the precise thing CASE C exists to refuse: never create a
+    new A epoch on the assumption that the old steady state survived."""
+    db = tmp_path / "cap.db"
+    w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
+    try:
+        write_active_option_contract_signal(_QQQ_CONTRACT)
+        contract_state = {"l1": _SPY_CONTRACT, "book": None}
+        eid = w.open_coverage_epoch(_SPY_CONTRACT, "LEVELONE_OPTIONS",
+                                    reason="active_contract_set", ts=1.0)
+        epoch_state = {"l1": eid, "book": None}
+        stream = _FlakyOptionStream(fail_calls={"l1_option_unsub"})
+
+        with pytest.raises(rsc.OptionCoverageCompensationError):
+            asyncio.run(_apply_active_option_contract_subs(
+                stream, contract_state, writer=w, epoch_state=epoch_state))
+
+        # The state CASE C leaves behind, measured rather than assumed.
+        assert contract_state["l1"] == _SPY_CONTRACT, "stale vendor-held name is retained"
+        assert epoch_state["l1"] is None, "the durable close succeeded"
+        assert _one_service_open(db) == [], "no open epoch: the claim was surrendered"
+
+        # ── Now the SAME sequence through the real poll loop, which is where the
+        # aftermath actually plays out: the loop catches the escalation, requests a
+        # recycle, and keeps ticking until the main loop services it.
+        write_active_option_contract_signal(_QQQ_CONTRACT)
+        contract_state = {"l1": _SPY_CONTRACT, "book": None}
+        eid2 = w.open_coverage_epoch(_SPY_CONTRACT, "LEVELONE_OPTIONS",
+                                     reason="active_contract_set", ts=1.0)
+        epoch_state = {"l1": eid2, "book": None}
+        live = _FlakyOptionStream(fail_calls={"l1_option_unsub"})
+
+        async def go():
+            stop = asyncio.Event()
+            recycle = asyncio.Event()
+            ticks = {"n": 0}
+
+            def get_stream():
+                ticks["n"] += 1
+                if ticks["n"] == 2:
+                    # Between ticks the operator flips the signal back to A. The recycle
+                    # has been requested but NOT yet serviced: same stream object.
+                    write_active_option_contract_signal(_SPY_CONTRACT)
+                if ticks["n"] >= 6:
+                    stop.set()
+                return live
+
+            await _active_option_contract_poll_loop(
+                get_stream, lambda: contract_state,
+                lambda c: contract_state.update(c),
+                stop, w, epoch_state, interval_sec=0.001, request_recycle=recycle)
+            return recycle.is_set()
+
+        assert asyncio.run(go()) is True, "the escalation must have requested a recycle"
+
+        open_rows = _one_service_open(db)
+        assert open_rows == [], (
+            "a new epoch was fabricated for a contract whose vendor state is UNCONFIRMED "
+            f"-- open rows: {open_rows}. Coverage may only be claimed after a confirmed "
+            "subscribe, never inferred from a stale held-name that survived an escalation.")
+        assert live.calls == [("l1_option_unsub", (_SPY_CONTRACT,))], (
+            "exactly the one failed unsub: no vendor op may be issued on a stream already "
+            f"declared unusable; got {live.calls}")
     finally:
         w.close()
