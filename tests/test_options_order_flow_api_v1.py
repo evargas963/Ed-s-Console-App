@@ -202,13 +202,18 @@ def _seed_producer_epochs(ofs, monkeypatch, tmp_path, *, l1=None, book=None):
     db = tmp_path / "producer_stream.db"
     w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
     try:
+        claim = {"LEVELONE_OPTIONS": None, "OPTIONS_BOOK": None}
         if l1:
-            w.open_coverage_epoch(ofs.ticker_storage_key(l1), "LEVELONE_OPTIONS",
-                                  reason="active_contract_set")
+            claim["LEVELONE_OPTIONS"] = w.open_coverage_epoch(
+                ofs.ticker_storage_key(l1), "LEVELONE_OPTIONS", reason="active_contract_set")
         if book:
-            w.open_coverage_epoch(ofs.ticker_storage_key(book), "OPTIONS_BOOK",
-                                  reason="active_contract_set")
-        w.write_heartbeat(ts=_t.time())
+            claim["OPTIONS_BOOK"] = w.open_coverage_epoch(
+                ofs.ticker_storage_key(book), "OPTIONS_BOOK", reason="active_contract_set")
+        # A live daemon publishes WHICH epoch it currently claims alongside its heartbeat.
+        # An open row on its own is history, not an assertion -- a failed durable close
+        # leaves one open on a subscription already surrendered. Seeding the claim is what
+        # makes this fixture a LIVE producer rather than a ledger that merely has rows.
+        w.write_heartbeat(ts=_t.time(), claimed_coverage=claim)
     finally:
         w.close()
     monkeypatch.setattr(ofs, "STREAM_DB_DEFAULT", db)
@@ -346,14 +351,19 @@ def test_ambiguous_open_ledger_fails_closed_not_newest_row_wins(monkeypatch, tmp
              ofs.ticker_storage_key(_QQQ_CONTRACT), "LEVELONE_OPTIONS",   # newer id
              ofs.ticker_storage_key(_QQQ_CONTRACT), "OPTIONS_BOOK"))
         w._conn.commit()
-        w.write_heartbeat(ts=__import__("time").time())
+        # A LIVE producer claiming all three forged rows: the ambiguity must be refused on
+        # its own terms, not merely because the claim happens not to cover them.
+        w.write_heartbeat(ts=__import__("time").time(),
+                          claimed_coverage={"LEVELONE_OPTIONS": 2, "OPTIONS_BOOK": 3})
     finally:
         w.close()
 
     import sqlite3
     con = sqlite3.connect(db)
     try:
-        got = read_open_coverage_symbols(con, ("LEVELONE_OPTIONS", "OPTIONS_BOOK"))
+        got = read_open_coverage_symbols(
+            con, ("LEVELONE_OPTIONS", "OPTIONS_BOOK"),
+            stale_sec=ofs.STREAM_PRODUCER_HEARTBEAT_STALE_SEC)
     finally:
         con.close()
     assert got["LEVELONE_OPTIONS"] is None, (
@@ -531,3 +541,206 @@ def test_gap2_a_command_with_no_generation_keeps_historical_behavior():
         assert ofs._active_option_contract == ofs.ticker_storage_key(_SPY_CONTRACT)
     finally:
         ofs._active_option_contract = None
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PR214 DURABLE PRODUCER TRUTH — an OPEN coverage row is history, not a claim.
+#
+# Reproduced at this seam before the fix: a durable CLOSE that fails leaves
+# `ended_ts IS NULL` on an epoch the daemon has ALREADY KNOWINGLY SURRENDERED, the
+# server read that row as producer identity and returned contract_match=true, and the
+# shipped UI rendered the contract as "subscribed". It was re-entrant: every tick the
+# daemon subscribed, was refused a durable epoch, and unsubscribed again, capturing
+# nothing, while the ledger kept naming the contract.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _surrendered_but_unclosed_db(tmp_path, monkeypatch, ofs, contract):
+    """The exact durable state a FAILED close leaves behind, produced by driving the REAL
+    daemon helpers — not hand-written rows. Returns (db, epoch ids still open)."""
+    from stream_spine import CaptureWriter, CoverageWriteError
+    import tools.run_stream_capture as d
+
+    db = tmp_path / "surrendered.db"
+    w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
+    try:
+        epoch_state = {"l1": None, "book": None}
+        for key, service in d.COVERAGE_CLAIM_SERVICES.items():
+            d._open_coverage_epoch_tracked(w, epoch_state, key,
+                                           ofs.ticker_storage_key(contract), service,
+                                           reason="active_contract_set")
+        open_ids = {k: epoch_state[k] for k in ("l1", "book")}
+
+        def _failing(*a, **k):
+            raise CoverageWriteError("durable-write failure during surrender")
+        monkeypatch.setattr(w, "close_coverage_epoch", _failing)
+        for key in ("l1", "book"):
+            d._close_coverage_epoch_tracked(w, epoch_state, key, reason="stream_recycle",
+                                            surrendered_ts=200.0)
+        assert epoch_state["l1"] is None and epoch_state["book"] is None
+    finally:
+        w.close()
+    monkeypatch.setattr(ofs, "STREAM_DB_DEFAULT", db)
+    monkeypatch.delenv("STREAM_CAPTURE_DB_PATH", raising=False)
+    return db, open_ids
+
+
+def test_durable_truth_surrendered_epoch_is_never_producer_confirmation(tmp_path, monkeypatch):
+    """A KNOWINGLY SURRENDERED epoch whose durable close failed must never confirm.
+
+    The rows are still `ended_ts IS NULL` — that is the whole point. What must stop
+    confirming them is that the live producer no longer CLAIMS those epoch ids."""
+    import sqlite3
+
+    import order_flow_streaming as ofs
+
+    db, open_ids = _surrendered_but_unclosed_db(tmp_path, monkeypatch, ofs, _SPY_CONTRACT)
+
+    con = sqlite3.connect(db)
+    try:
+        still_open = con.execute(
+            "SELECT id, service FROM stream_coverage_epochs WHERE ended_ts IS NULL"
+        ).fetchall()
+    finally:
+        con.close()
+    assert len(still_open) == 2, (
+        f"the attack requires the rows to REMAIN OPEN; got {still_open}")
+
+    _reset_option_plane(ofs)
+    _force_live_option_plane(ofs, _SPY_CONTRACT)
+    plane = ofs.get_option_contract_streaming_diagnostics(for_contract=_SPY_CONTRACT)
+
+    assert plane["producer_l1_contract"] is None, (
+        f"a surrendered epoch was reported as producer identity: {plane}")
+    assert plane["producer_book_contract"] is None
+    assert plane["contract_match"] is not True, (
+        "contract_match=true over a surrendered subscription is the false positive this "
+        f"exists to prevent: {plane}")
+    assert plane["streaming_healthy"] is False
+
+
+def test_durable_truth_repeated_ticks_during_the_write_failure_stay_fail_closed(
+        tmp_path, monkeypatch):
+    """The failure was RE-ENTRANT, so one tick is not a sufficient proof. Every tick the
+    daemon re-subscribes, is refused a durable epoch and unsubscribes again; producer
+    identity must read UNKNOWN throughout rather than naming the contract."""
+    import asyncio
+
+    import order_flow_streaming as ofs
+    import tools.run_stream_capture as d
+    from stream_spine import CaptureWriter, CoverageWriteError
+
+    db = tmp_path / "reentrant.db"
+    w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
+    monkeypatch.setattr(ofs, "STREAM_DB_DEFAULT", db)
+    monkeypatch.delenv("STREAM_CAPTURE_DB_PATH", raising=False)
+    _reset_option_plane(ofs)
+    _force_live_option_plane(ofs, _SPY_CONTRACT)
+
+    calls = []
+
+    class _V:
+        async def sub(self, syms):
+            calls.append("SUB")
+
+        async def unsub(self, syms):
+            calls.append("UNSUB")
+
+    try:
+        epoch_state = {"l1": None, "book": None}
+        d._open_coverage_epoch_tracked(w, epoch_state, "l1",
+                                       ofs.ticker_storage_key(_SPY_CONTRACT),
+                                       "LEVELONE_OPTIONS", reason="active_contract_set")
+
+        def _failing(*a, **k):
+            raise CoverageWriteError("persistent durable-write failure")
+        monkeypatch.setattr(w, "close_coverage_epoch", _failing)
+        d._close_coverage_epoch_tracked(w, epoch_state, "l1", reason="stream_recycle",
+                                        surrendered_ts=200.0)
+
+        v = _V()
+        held = None
+        for tick in range(5):
+            held = asyncio.run(d._reconcile_option_service(
+                None, held, ofs.ticker_storage_key(_SPY_CONTRACT),
+                subs_fn=v.sub, unsubs_fn=v.unsub, writer=w, epoch_state=epoch_state,
+                epoch_key="l1", service_name="LEVELONE_OPTIONS"))
+            reported = ofs.get_option_contract_streaming_diagnostics(
+                for_contract=_SPY_CONTRACT)["producer_l1_contract"]
+            assert reported is None, (
+                f"tick {tick}: producer identity re-confirmed a surrendered epoch "
+                f"({reported!r}) while the vendor held {held!r}")
+    finally:
+        w.close()
+    assert calls, "the attack must actually have driven vendor operations"
+
+
+def test_durable_truth_a_producer_that_cannot_write_goes_unknown_not_confirmed(
+        tmp_path, monkeypatch):
+    """The other direction. If the daemon cannot write AT ALL it also cannot republish its
+    claim, so the claim it left behind still names the open epochs. Staleness of the
+    heartbeat is what must make that unknown — otherwise the last claim stands forever."""
+    import time as _t
+
+    import order_flow_streaming as ofs
+    from stream_spine import CaptureWriter
+
+    db = tmp_path / "stale_producer.db"
+    w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
+    try:
+        l1 = w.open_coverage_epoch(ofs.ticker_storage_key(_SPY_CONTRACT),
+                                   "LEVELONE_OPTIONS", reason="active_contract_set")
+        book = w.open_coverage_epoch(ofs.ticker_storage_key(_SPY_CONTRACT),
+                                     "OPTIONS_BOOK", reason="active_contract_set")
+        # Its LAST heartbeat still claims both epochs; the daemon then stopped writing.
+        w.write_heartbeat(ts=_t.time() - (ofs.STREAM_PRODUCER_HEARTBEAT_STALE_SEC + 5.0),
+                          claimed_coverage={"LEVELONE_OPTIONS": l1, "OPTIONS_BOOK": book})
+    finally:
+        w.close()
+    monkeypatch.setattr(ofs, "STREAM_DB_DEFAULT", db)
+    monkeypatch.delenv("STREAM_CAPTURE_DB_PATH", raising=False)
+    _reset_option_plane(ofs)
+    _force_live_option_plane(ofs, _SPY_CONTRACT)
+
+    plane = ofs.get_option_contract_streaming_diagnostics(for_contract=_SPY_CONTRACT)
+    assert plane["producer_l1_contract"] is None, (
+        f"a stale producer's standing claim was treated as confirmation: {plane}")
+    assert plane["contract_match"] is not True
+
+
+def test_durable_truth_recovery_still_records_the_original_surrender_timestamp(tmp_path,
+                                                                               monkeypatch):
+    """The new gate must not disturb the existing law: when persistence recovers, the
+    deferred close records the instant coverage was SURRENDERED, not the repair time."""
+    import sqlite3
+
+    import order_flow_streaming as ofs
+    import tools.run_stream_capture as d
+    from stream_spine import CaptureWriter, CoverageWriteError
+
+    db = tmp_path / "recover.db"
+    w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
+    try:
+        epoch_state = {"l1": None, "book": None}
+        d._open_coverage_epoch_tracked(w, epoch_state, "l1",
+                                       ofs.ticker_storage_key(_SPY_CONTRACT),
+                                       "LEVELONE_OPTIONS", reason="active_contract_set")
+        real_close = w.close_coverage_epoch
+
+        def _failing(*a, **k):
+            raise CoverageWriteError("outage")
+        monkeypatch.setattr(w, "close_coverage_epoch", _failing)
+        d._close_coverage_epoch_tracked(w, epoch_state, "l1", reason="stream_recycle",
+                                        surrendered_ts=200.0)
+        monkeypatch.setattr(w, "close_coverage_epoch", real_close)
+        d._retry_pending_epoch_closes(w, epoch_state, "l1", reason="retry_pending_close")
+    finally:
+        w.close()
+
+    con = sqlite3.connect(db)
+    try:
+        ended = con.execute("SELECT ended_ts FROM stream_coverage_epochs").fetchone()[0]
+    finally:
+        con.close()
+    assert ended == 200.0, (
+        f"the repair must replay the ORIGINAL surrender instant, got {ended}")

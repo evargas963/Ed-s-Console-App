@@ -519,6 +519,42 @@ class OptionCoverageCompensationError(RuntimeError):
     than being absorbed as an ordinary bad tick."""
 
 
+#: epoch_state key -> the Schwab service its coverage epoch belongs to. The ONE place the
+#: daemon's internal per-service key names are mapped to the service names a consumer
+#: reads, so a published claim cannot drift from the coverage rows it refers to.
+COVERAGE_CLAIM_SERVICES = {"l1": "LEVELONE_OPTIONS", "book": "OPTIONS_BOOK"}
+
+
+def _publish_coverage_claim(writer, epoch_state: dict) -> None:
+    """Publish WHAT THIS PRODUCER CURRENTLY CLAIMS to be subscribed, per option service.
+
+    An open coverage row is history, not an assertion. A durable CLOSE that fails leaves
+    `ended_ts IS NULL` on an epoch this daemon has already knowingly surrendered — and a
+    consumer reading that row as producer identity reported a contract the vendor was no
+    longer subscribed to, which the UI rendered as "subscribed". The claim published here
+    is what makes surrender visible ACROSS PROCESSES the moment it happens, without a
+    second source of truth: it rides the existing producer heartbeat row.
+
+    Called on every epoch_state transition (open, close, failed close, retry) rather than
+    only on the status cadence, so a surrender is visible immediately instead of up to one
+    heartbeat interval later, and a successful switch confirms immediately instead of
+    reading as UNKNOWN until the next beat.
+
+    Best effort by construction: if this write ALSO fails the daemon cannot publish
+    anything, its heartbeat stops advancing, and the reader's staleness gate makes
+    producer identity unknown — which is the correct fail-closed outcome, never a false
+    positive. Never raises: it is a truth-publication side effect, not the caller's work."""
+    if writer is None or epoch_state is None:
+        return
+    try:
+        writer.write_heartbeat(claimed_coverage={
+            service: epoch_state.get(key)
+            for key, service in COVERAGE_CLAIM_SERVICES.items()})
+    except Exception as e:  # noqa: BLE001 — see the fail-closed note above
+        print(f"coverage claim publish failed (producer identity will read as "
+              f"UNKNOWN until the next successful heartbeat): {type(e).__name__}: {e}")
+
+
 def _epoch_close_is_pending(epoch_state: dict, key: str, epoch_id: "int | None") -> bool:
     """True when `epoch_id`'s durable close FAILED and it is sitting in the pending-close
     retry map — i.e. that epoch is still OPEN in the table (PR214 defect 1C)."""
@@ -597,6 +633,9 @@ def _close_coverage_epoch_tracked(writer, epoch_state: dict, key: str, *, reason
     # time.time() here would claim coverage across a window we already know was dead.
     _try_close_one(writer, epoch_state, key, epoch_id, reason=reason,
                    surrendered_ts=time.time() if surrendered_ts is None else surrendered_ts)
+    # Surrender is now published, whether or not the row could actually be closed. This
+    # is the step that stops a failed close from reading as a live subscription.
+    _publish_coverage_claim(writer, epoch_state)
 
 
 def _open_coverage_epoch_tracked(writer, epoch_state: dict, key: str, symbol: str,
@@ -609,6 +648,9 @@ def _open_coverage_epoch_tracked(writer, epoch_state: dict, key: str, symbol: st
     except CoverageWriteError as e:
         print(f"coverage epoch open failed ({key}={symbol}, retry pending): {e}")
         epoch_state[key] = None
+    # Publish either outcome: a successful open must be claimable immediately (otherwise a
+    # completed switch reads as UNKNOWN until the next beat), and a failed one must not.
+    _publish_coverage_claim(writer, epoch_state)
 
 
 def _retry_pending_epoch_closes(writer, epoch_state: dict, key: str, *, reason: str) -> None:
@@ -627,6 +669,9 @@ def _retry_pending_epoch_closes(writer, epoch_state: dict, key: str, *, reason: 
                   if not _try_close_one(writer, epoch_state, key, eid, reason=reason,
                                         surrendered_ts=ts)}
     epoch_state[pending_key] = still_open
+    # A landed retry removes the last open row for a surrendered epoch; republish so the
+    # claim and the rows are re-stated together rather than drifting between beats.
+    _publish_coverage_claim(writer, epoch_state)
 
 
 async def _reconcile_option_service(stream, held: str | None, requested: str | None, *,
@@ -902,14 +947,21 @@ async def _active_option_contract_poll_loop(get_stream, get_current, set_current
 
 
 def write_status(bus: MessageBus, health: HealthRegistry, writer: CaptureWriter,
-                 stats: CaptureStats, max_qdepth: int) -> None:
+                 stats: CaptureStats, max_qdepth: int,
+                 epoch_state: dict | None = None) -> None:
     # PR214_RTH_DEFECT_REMEDIATION_FINAL_GAPS (Gap 2): the producer identity/liveness
     # signal now lives INSIDE stream_capture.db itself (write_heartbeat), on the SAME
     # cadence as this file-based status write -- one call site, one clock, not a second
     # independently-scheduled heartbeat loop. The file-based status below is unchanged
     # and still serves _read_daemon_upstream_health's per-service Schwab-socket truth.
+    # The heartbeat carries the producer's CURRENT coverage claim, so the liveness signal
+    # and the subscription assertion advance together on one clock. Re-stating it here
+    # (as well as on every epoch transition) is what makes a daemon that has stopped
+    # writing go UNKNOWN rather than leaving its last claim standing indefinitely.
     try:
-        writer.write_heartbeat()
+        writer.write_heartbeat(claimed_coverage=None if epoch_state is None else {
+            service: epoch_state.get(key)
+            for key, service in COVERAGE_CLAIM_SERVICES.items()})
     except Exception as e:  # noqa: BLE001 — a heartbeat write failure must not kill the daemon's status loop
         print(f"write_heartbeat failed (continuing): {type(e).__name__}: {e}")
     STATUS_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -1151,15 +1203,27 @@ async def _schwab_connect(state, symbols, bus, health, stats, stop, active_book_
     from schwab.streaming import StreamClient
 
     stream = StreamClient(state.client)
-    await stream.login()
     # ── OWNERSHIP BOUNDARY ──────────────────────────────────────────────────────
-    # Past this point a LIVE, LOGGED-IN session exists that this function owns and has
-    # not yet handed to the caller. Anything that raises here (a failed resubscribe, an
-    # OptionCoverageCompensationError out of the reconciliation below) used to abandon it:
-    # the caller's `except Exception` printed "reconnect FAILED", no pump was ever
-    # created to read it, and nothing logged it out — a logged-in session leaked on every
-    # occurrence, on an account that permits one. Retire it before the failure propagates.
+    # It starts BEFORE login, not after. schwab-py's login() establishes the websocket in
+    # _init_from_preferences() and only THEN sends ADMIN/LOGIN and awaits the reply, which
+    # raises (UnexpectedResponse / UnexpectedResponseCode) on a rejected or mismatched
+    # login and never closes the socket it just opened. With the boundary after login(),
+    # that transport escaped every retirement path and no reference to it survived —
+    # measured: 1 socket opened, 0 closed, while the identical failure one step later was
+    # retired cleanly. Each watchdog retry during a token outage repeated it.
+    #
+    # _retire_stream_client is bounded and tolerates a client that never logged in (a
+    # logout attempt on a dead session is reported, then the transport is closed anyway),
+    # so extending the existing lifecycle over login() needs no second mechanism.
+    # Past this point a session this function OWNS may hold a transport and may be logged
+    # in, and it has not yet been handed to the caller. Anything that raises here — the
+    # login itself, a failed resubscribe, an OptionCoverageCompensationError out of the
+    # reconciliation — used to abandon it: the caller's `except Exception` printed
+    # "reconnect FAILED", no pump was ever created to read it, and nothing logged it out
+    # or closed it, on an account that permits one live session. Retire it before the
+    # failure propagates.
     try:
+        await stream.login()
         return await _schwab_connect_after_login(
             stream, symbols, bus, health, stats, stop,
             active_book_ticker=active_book_ticker,
@@ -1315,7 +1379,8 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
         while not stop.is_set():
             await asyncio.sleep(STATUS_LOOP_INTERVAL_SEC)
             max_qdepth = max(max_qdepth, wsub.queue.qsize())
-            write_status(bus, health, writer, stats, max_qdepth)
+            write_status(bus, health, writer, stats, max_qdepth,
+                         epoch_state=option_epoch_state)
             # half-open watchdog: quiet LEVELONE past the bar -> rebuild stream
             age = (health.report().get("LEVELONE_EQUITIES") or {}).get("age_sec")
             seen = stats.per_service.get("LEVELONE_EQUITIES", 0) > 0
@@ -1441,7 +1506,10 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
         # close, which meant the daemon's last liveness record never landed and every
         # clean shutdown printed "write_heartbeat failed (continuing): Cannot operate on
         # a closed database". Nothing may use the writer after close — task or not.
-        write_status(bus, health, writer, stats, max_qdepth)
+        # Shutdown re-states the claim from the (now closed-out) epoch_state, so the final
+        # persisted claim is "this producer holds nothing" rather than its last live one.
+        write_status(bus, health, writer, stats, max_qdepth,
+                     epoch_state=option_epoch_state)
         writer.close()
         # Counters only below: safe to read once the connection is gone.
         print(json.dumps({

@@ -582,7 +582,13 @@ def _read_producer_option_contracts() -> dict[str, Optional[str]]:
     if con is None:
         return {s: None for s in OPTION_PRODUCER_SERVICES}
     try:
-        return read_open_coverage_symbols(con, OPTION_PRODUCER_SERVICES)
+        # An open coverage row confirms only while the LIVE producer still claims that
+        # epoch: a failed durable close leaves the row open on a subscription the daemon
+        # has already surrendered. Same TTL the DB-identity check already uses — the
+        # producer's liveness and its claim are one signal, not a second knob.
+        return read_open_coverage_symbols(
+            con, OPTION_PRODUCER_SERVICES,
+            stale_sec=STREAM_PRODUCER_HEARTBEAT_STALE_SEC)
     except Exception:   # noqa: BLE001 — diagnostics must never raise into a route
         return {s: None for s in OPTION_PRODUCER_SERVICES}
     finally:

@@ -1714,3 +1714,73 @@ def test_init_mutation_control_bypassing_writer_retirement_breaks_the_law(tmp_pa
         probe.assert_writer_retired()
     with pytest.raises(AssertionError):
         probe.assert_close_ordering()
+
+
+class _LoginRejectedStream(_LifecycleStream):
+    """Models installed schwab-py 1.5.1: login() establishes the websocket in
+    _init_from_preferences() and only THEN sends ADMIN/LOGIN and awaits the reply, which
+    raises on a rejected login — leaving the socket it just opened wide open."""
+
+    async def login(self):
+        _LifecycleStream.logins += 1          # the transport was acquired
+        self._log("login_attempt")
+        raise RuntimeError("UnexpectedResponseCode: LOGIN error 3 'token invalid'")
+
+
+def test_login_failure_after_transport_acquisition_retires_the_transport(monkeypatch):
+    """A login that acquires a transport and THEN raises must not escape retirement.
+
+    _schwab_connect's ownership boundary used to open after `await stream.login()`, so
+    this exact failure — the realistic one for an expired or rejected token — left an open
+    websocket that nothing referenced, logged out, or closed. Measured at that shape:
+    1 socket opened, 0 closed, while the identical failure one step later was retired
+    cleanly. Every watchdog retry during a token outage repeated it.
+
+    Distinct from test_d3c_a_partial_connect_failure_after_login_retires_the_session:
+    that one covers failures AFTER login succeeds. This covers the login call itself, and
+    only this one fails if the boundary is moved back below login()."""
+    import tools.run_stream_capture as m
+
+    _reset_lifecycle()
+    monkeypatch.setitem(__import__("sys").modules, "schwab.streaming",
+                        __import__("types").SimpleNamespace(StreamClient=_LoginRejectedStream))
+
+    async def go():
+        bus, health, stats, stop = MessageBus(), HealthRegistry(), CaptureStats(), asyncio.Event()
+        with pytest.raises(RuntimeError) as exc:
+            await m._schwab_connect(SimpleNamespace(client=object()), ["SPY"],
+                                    bus, health, stats, stop)
+        return exc.value
+
+    raised = asyncio.run(go())
+
+    assert "LOGIN error 3" in str(raised), (
+        f"the original login error must be preserved, not masked by cleanup: {raised}")
+    assert len(_LifecycleStream.generations) == 1
+    assert _LifecycleStream.generations[0]._socket.closed is True, (
+        "the transport acquired by the failed login must be closed by the canonical "
+        "retirement path")
+
+
+def test_login_failure_retries_cannot_accumulate_live_sessions(monkeypatch):
+    """Ownership must hold across REPEATED failures: the watchdog retries a rejected login
+    on its cooldown, and each attempt acquires its own transport. None may accumulate."""
+    import tools.run_stream_capture as m
+
+    _reset_lifecycle()
+    monkeypatch.setitem(__import__("sys").modules, "schwab.streaming",
+                        __import__("types").SimpleNamespace(StreamClient=_LoginRejectedStream))
+
+    async def go():
+        bus, health, stats, stop = MessageBus(), HealthRegistry(), CaptureStats(), asyncio.Event()
+        for _ in range(4):
+            with pytest.raises(RuntimeError):
+                await m._schwab_connect(SimpleNamespace(client=object()), ["SPY"],
+                                        bus, health, stats, stop)
+
+    asyncio.run(go())
+
+    assert len(_LifecycleStream.generations) == 4, "four attempts, four transports"
+    unclosed = [g.gen for g in _LifecycleStream.generations if not g._socket.closed]
+    assert unclosed == [], f"failed-login retries leaked transports: {unclosed}"
+    assert _LifecycleStream.live == 0, "no attempt may leave a live session behind"

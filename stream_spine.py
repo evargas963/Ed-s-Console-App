@@ -146,11 +146,21 @@ CREATE INDEX IF NOT EXISTS idx_sbr_sym_ts ON stream_bars_raw(symbol, bar_start_m
 -- writing to -- no second, independently-resolved path string to keep in sync (the
 -- prior _DAEMON_STATUS_PATH-based identity check inherited the exact checkout-relative
 -- defect class it was built to catch). Singleton row (id=1, upserted).
+-- `claimed_coverage_json` (PR214 durable producer truth): the epoch id the LIVE producer
+-- currently asserts per option service, as {service: epoch_id|null}. An OPEN coverage row
+-- is NOT by itself a subscription claim: a durable CLOSE that failed leaves ended_ts NULL
+-- on an epoch the daemon has already KNOWINGLY surrendered, and reading that row as
+-- producer identity produced a false "subscribed" that the UI rendered. The claim rides
+-- this existing liveness row so there is still exactly ONE producer-truth channel, and it
+-- fails closed in both directions: the daemon republishes the claim the instant a close
+-- fails, and if the daemon cannot write at all the heartbeat goes stale and nothing is
+-- confirmed. The coverage rows remain the coverage HISTORY; this is the live assertion.
 CREATE TABLE IF NOT EXISTS stream_producer_heartbeat (
     id INTEGER PRIMARY KEY CHECK (id = 1),
     daemon_pid INTEGER,
     heartbeat_ts REAL NOT NULL,
-    resolved_db_path TEXT NOT NULL
+    resolved_db_path TEXT NOT NULL,
+    claimed_coverage_json TEXT
 );
 """
 
@@ -164,17 +174,24 @@ def read_producer_heartbeat(conn: sqlite3.Connection) -> "dict | None":
     returned `heartbeat_ts`, not this function."""
     try:
         row = conn.execute(
-            "SELECT daemon_pid, heartbeat_ts, resolved_db_path "
+            "SELECT daemon_pid, heartbeat_ts, resolved_db_path, claimed_coverage_json "
             "FROM stream_producer_heartbeat WHERE id = 1").fetchone()
     except sqlite3.OperationalError:
         return None
     if row is None:
         return None
-    return {"daemon_pid": row[0], "heartbeat_ts": row[1], "resolved_db_path": row[2]}
+    try:
+        claimed = json.loads(row[3]) if row[3] else None
+    except (TypeError, ValueError):
+        claimed = None      # unparseable claim is UNKNOWN, never confirmation
+    return {"daemon_pid": row[0], "heartbeat_ts": row[1], "resolved_db_path": row[2],
+            "claimed_coverage": claimed}
 
 
 def read_open_coverage_symbols(conn: sqlite3.Connection,
-                               services: "tuple[str, ...]") -> "dict[str, str | None]":
+                               services: "tuple[str, ...]", *,
+                               stale_sec: float,
+                               now: "float | None" = None) -> "dict[str, str | None]":
     """PRODUCER-SIDE subscription identity, read from THIS connection's own
     stream_capture.db (PR214 premerge gap 1A).
 
@@ -199,18 +216,53 @@ def read_open_coverage_symbols(conn: sqlite3.Connection,
     identity out of a ledger that cannot support one, and greening health on it. The
     CaptureWriter service-wide uniqueness guard makes that state unreachable through the
     normal path; this reader still fails closed so a corrupted or hand-edited ledger
-    cannot be laundered into a confident answer here."""
+    cannot be laundered into a confident answer here.
+
+    AN OPEN ROW IS NOT BY ITSELF A CLAIM (PR214 durable producer truth). `ended_ts IS
+    NULL` used to be sufficient, and it lied: when a durable CLOSE fails, the row stays
+    open for an epoch the daemon has ALREADY KNOWINGLY SURRENDERED, so this reader
+    answered with a contract the vendor was no longer subscribed to and the UI rendered it
+    as "subscribed". Measured at that shape, the state was re-entrant -- every tick the
+    daemon subscribed, was refused a durable epoch, and unsubscribed again, capturing
+    nothing, while this function kept naming the contract.
+
+    A row therefore confirms only when the LIVE producer currently asserts that exact
+    epoch id, via `claimed_coverage` on its heartbeat. That closes both directions of the
+    failure:
+      * daemon alive, close failed -> it republishes the claim immediately (the surrendered
+        id is gone from it), so this returns None even though the row is still open;
+      * daemon cannot write at all -> the heartbeat itself goes stale past `stale_sec`,
+        and a stale producer confirms nothing.
+    A durable-write failure can therefore make producer identity UNKNOWN. It can no longer
+    manufacture a false positive.
+
+    `stale_sec` is required, not defaulted: there is no correct "ungated" read of this
+    table, and an optional gate is one a caller can forget."""
     out: "dict[str, str | None]" = {s: None for s in services}
+    beat = read_producer_heartbeat(conn)
+    if beat is None:
+        return out              # no producer has ever asserted anything here
+    hb_ts = beat.get("heartbeat_ts")
+    t = time.time() if now is None else now
+    if not isinstance(hb_ts, (int, float)) or (t - float(hb_ts)) > float(stale_sec):
+        return out              # the producer is not currently able to assert anything
+    claimed = beat.get("claimed_coverage")
+    if not isinstance(claimed, dict):
+        return out              # a producer that publishes no claim confirms nothing
     for service in services:
         try:
             rows = conn.execute(
-                "SELECT symbol FROM stream_coverage_epochs "
+                "SELECT id, symbol FROM stream_coverage_epochs "
                 "WHERE service = ? AND ended_ts IS NULL", (service,)).fetchall()
         except sqlite3.OperationalError:
             return {s: None for s in services}
-        if len(rows) == 1:
-            out[service] = rows[0][0]
-        # 0 rows -> None (not subscribed); 2+ -> None (ambiguous, never confirmed)
+        if len(rows) != 1:
+            continue            # 0 -> not subscribed; 2+ -> ambiguous, never confirmed
+        claimed_id = claimed.get(service)
+        if isinstance(claimed_id, bool) or not isinstance(claimed_id, int):
+            continue            # no live claim for this service (surrendered, or unknown)
+        if claimed_id == rows[0][0]:
+            out[service] = rows[0][1]
     return out
 
 
@@ -464,6 +516,11 @@ class CaptureWriter:
             cols = {r[1] for r in self._conn.execute("PRAGMA table_info(stream_quotes_raw)")}
             if "native_json" not in cols:
                 self._conn.execute("ALTER TABLE stream_quotes_raw ADD COLUMN native_json TEXT")
+            hb_cols = {r[1] for r in
+                       self._conn.execute("PRAGMA table_info(stream_producer_heartbeat)")}
+            if "claimed_coverage_json" not in hb_cols:
+                self._conn.execute("ALTER TABLE stream_producer_heartbeat "
+                                   "ADD COLUMN claimed_coverage_json TEXT")
             self._conn.commit()
         except Exception:
             # Init failed after connect — close before the object is discarded so the
@@ -628,7 +685,8 @@ class CaptureWriter:
         except Exception as e:
             raise CoverageWriteError(f"open_coverage_epoch({symbol},{service}): {e}") from e
 
-    def write_heartbeat(self, *, pid: int | None = None, ts: float | None = None) -> None:
+    def write_heartbeat(self, *, pid: int | None = None, ts: float | None = None,
+                        claimed_coverage: "dict[str, int | None] | None" = None) -> None:
         """Producer identity/liveness signal written INTO the canonical stream_capture.db
         itself (PR214_RTH_DEFECT_REMEDIATION_FINAL_GAPS, Gap 2) -- not a separate
         checkout-relative status file. A consumer opening its OWN resolved db_path and
@@ -640,13 +698,17 @@ class CaptureWriter:
         liveness signal where durability matters more than batching throughput."""
         t = ts if ts is not None else time.time()
         p = pid if pid is not None else os.getpid()
+        claim = None if claimed_coverage is None else json.dumps(
+            {str(k): v for k, v in claimed_coverage.items()}, sort_keys=True)
         try:
             self._conn.execute(
-                "INSERT INTO stream_producer_heartbeat(id, daemon_pid, heartbeat_ts, resolved_db_path) "
-                "VALUES (1, ?, ?, ?) "
+                "INSERT INTO stream_producer_heartbeat(id, daemon_pid, heartbeat_ts, "
+                "resolved_db_path, claimed_coverage_json) "
+                "VALUES (1, ?, ?, ?, ?) "
                 "ON CONFLICT(id) DO UPDATE SET daemon_pid=excluded.daemon_pid, "
-                "heartbeat_ts=excluded.heartbeat_ts, resolved_db_path=excluded.resolved_db_path",
-                (p, t, str(self.db_path)))
+                "heartbeat_ts=excluded.heartbeat_ts, resolved_db_path=excluded.resolved_db_path, "
+                "claimed_coverage_json=excluded.claimed_coverage_json",
+                (p, t, str(self.db_path), claim))
             self._conn.commit()
         except Exception as e:
             raise CoverageWriteError(f"write_heartbeat: {e}") from e
