@@ -1048,24 +1048,29 @@ async def _shutdown_sequence(pump_task, writer_task, stop, wsub,
        pump→bus→queue loss window).
     2) THEN stop the writer with drain time sized to worst-case depth (8192 rows is
        seconds; 60s is generous) — and a timeout is REPORTED as loss, never silent.
+
+    Any argument may be None: this same sequence retires a FAILED INITIALIZATION, where
+    only some of the resources were ever acquired. `None` means "never created, nothing
+    to retire" — never "skip the rest of the shutdown".
+
+    On return the writer task is TERMINAL in every case (drained, failed, or cancelled by
+    the timeout), which is what makes the caller's writer.close() safe.
     """
     # ALL producers quiesce together — the Alpaca leg is a producer exactly like the
     # Schwab pump, so it must be dead before the writer drain starts (same law).
-    for task in (pump_task, *extra_producers):
-        task.cancel()
-    for task in (pump_task, *extra_producers):
-        try:
-            await task
-        except asyncio.CancelledError:
-            pass  # expected: we cancelled it
-        except Exception as exc:  # noqa: BLE001 — bounded shutdown; report, never hang
-            print(f"shutdown: producer ended with {type(exc).__name__}: {exc}")
+    await _cancel_and_await((pump_task, *extra_producers), what="shutdown: producer")
     stop.set()
+    if writer_task is None:
+        return
     try:
         await asyncio.wait_for(writer_task, timeout=60)
     except asyncio.TimeoutError:
+        # wait_for cancels the task and awaits that cancellation before raising, so the
+        # writer task is terminal here too — the loss is reported, not left running.
         print(f"shutdown: WRITER DRAIN TIMED OUT — up to {wsub.queue.qsize()} "
               "queued rows may be lost (counted, not hidden)")
+    except asyncio.CancelledError:
+        pass  # already retired
     except Exception as exc:  # noqa: BLE001
         print(f"shutdown: writer ended with {type(exc).__name__}: {exc}")
 
@@ -1219,7 +1224,26 @@ async def _schwab_connect_after_login(stream, symbols, bus, health, stats, stop,
 async def _run_streaming(symbols, duration_min, bus, health, stats,
                          writer, wsub, stop, state) -> int:
     max_qdepth = 0
-    writer_task = asyncio.create_task(writer.run(wsub, stop=stop))
+    # ── OWNED RESOURCES, DECLARED BEFORE THE LIFECYCLE BOUNDARY ─────────────────
+    # Every async task and vendor session this function creates is named here and
+    # acquired INSIDE the try below, so the single `finally` retires whatever was
+    # actually acquired — including on a failure during initialization.
+    #
+    # This used to be split: writer_task was created before the try, and the initial
+    # connect + producer/control task creation happened between the two. A failure in
+    # that window bypassed the finally entirely, so nothing ever set `stop`, nothing
+    # awaited the writer task, and _run_locked's own `finally: writer.close()` then ran
+    # while writer.run() was still executing. MEASURED at that shape: writer.run()
+    # entered and never exited, task done()=False cancelled()=False, stop never set, one
+    # orphan task still live — and after the close it consumed five real bus messages and
+    # failed every insert against the closed database (insert_errors=5, rows_written=0).
+    # Initialization failure now gets the same ownership discipline as steady-state
+    # failure; `None`/`()` mean "never acquired, nothing to retire".
+    writer_task = None
+    stream = None
+    pump_task = None
+    alpaca_task = None
+    control_tasks: tuple = ()
     #: Shared with the active-ticker book-poll task (below) — a plain dict, not a
     #: closure-captured local, because BOTH the recycle path here and the poll loop's
     #: coroutine need to read/write the SAME current values.
@@ -1239,7 +1263,7 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
     # treats it exactly like the half-open watchdog and recycles the stream.
     option_recycle_request = asyncio.Event()
 
-    def _start_control_tasks() -> tuple:
+    async def _start_control_tasks() -> tuple:
         """The poll loops are BOUND TO ONE STREAM GENERATION and die with it.
 
         They used to be created once and survive every recycle, reading whatever stream
@@ -1248,29 +1272,46 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
         subscriptions, contract state, epoch state and durable coverage rows — measured,
         see _retire_stream_generation. Re-creating them per generation makes stale work
         impossible instead of merely unlikely: retirement cancels AND awaits them before
-        any shared coverage state is touched."""
-        return (
-            asyncio.create_task(_active_ticker_book_poll_loop(
+        any shared coverage state is touched.
+
+        Partial construction is owned here rather than by the caller: until this returns,
+        the caller has no reference to retire, so a failure building the SECOND task would
+        strand the first outside every lifecycle boundary."""
+        started: list = []
+        try:
+            started.append(asyncio.create_task(_active_ticker_book_poll_loop(
                 lambda: book_state["stream"], lambda: book_state["ticker"],
-                lambda t: book_state.__setitem__("ticker", t), stop)),
-            asyncio.create_task(_active_option_contract_poll_loop(
+                lambda t: book_state.__setitem__("ticker", t), stop)))
+            started.append(asyncio.create_task(_active_option_contract_poll_loop(
                 lambda: option_state["stream"], lambda: option_state["contract"],
                 lambda c: option_state.__setitem__("contract", c), stop,
                 writer=writer, epoch_state=option_epoch_state,
-                request_recycle=option_recycle_request)),
-        )
+                request_recycle=option_recycle_request)))
+        except BaseException:
+            await _cancel_and_await(started, what="control-task construction failed")
+            raise
+        return tuple(started)
 
-    stream, pump_task, option_state["contract"] = await _schwab_connect(
-        state, symbols, bus, health, stats, stop)
-    book_state["stream"] = stream
-    option_state["stream"] = stream
-    # CR-02 prints leg — optional co-producer on the SAME bus/writer/health. NOT part of
-    # a Schwab stream generation: it owns its own Alpaca socket and survives recycles.
-    alpaca_task = asyncio.create_task(alpaca_pump(symbols, bus, health, stats, stop))
-    control_tasks = _start_control_tasks()
     deadline = time.monotonic() + duration_min * 60 if duration_min > 0 else None
     last_reconnect = time.monotonic()
     try:
+        # ── INITIALIZATION IS INSIDE THE LIFECYCLE BOUNDARY ─────────────────────
+        # The writer must be draining before any producer can publish, so it starts
+        # first — see the ordering note on _shutdown_sequence. Delaying it until after
+        # _schwab_connect() was the alternative fix and was REJECTED: _schwab_connect
+        # returns an already-running pump task, so the pump would publish into a bus
+        # nobody was draining. That window is small but real and entirely avoidable,
+        # and it would have traded a deterministic leak for a data-loss race.
+        writer_task = asyncio.create_task(writer.run(wsub, stop=stop))
+        stream, pump_task, option_state["contract"] = await _schwab_connect(
+            state, symbols, bus, health, stats, stop)
+        book_state["stream"] = stream
+        option_state["stream"] = stream
+        # CR-02 prints leg — optional co-producer on the SAME bus/writer/health. NOT part
+        # of a Schwab stream generation: it owns its own Alpaca socket and survives
+        # recycles.
+        alpaca_task = asyncio.create_task(alpaca_pump(symbols, bus, health, stats, stop))
+        control_tasks = await _start_control_tasks()
         while not stop.is_set():
             await asyncio.sleep(STATUS_LOOP_INTERVAL_SEC)
             max_qdepth = max(max_qdepth, wsub.queue.qsize())
@@ -1348,7 +1389,7 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
                 # Control tasks are re-created for the NEW generation either way: on a
                 # failed reconnect both stream handles are None, so they idle harmlessly
                 # until a later pass succeeds.
-                control_tasks = _start_control_tasks()
+                control_tasks = await _start_control_tasks()
             if deadline and time.monotonic() > deadline:
                 break
     except (KeyboardInterrupt, asyncio.CancelledError):
@@ -1395,8 +1436,14 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
                 print(f"WARNING: shutdown leaves {len(_pending)} unclosed coverage "
                       f"epoch(s) for {_key}: {sorted(_pending)} — durable write kept "
                       f"failing; row(s) remain open in stream_coverage_epochs")
-        writer.close()
+        # The final status write includes a producer HEARTBEAT into stream_capture.db, so
+        # it has to happen while the writer still owns its connection. It ran after the
+        # close, which meant the daemon's last liveness record never landed and every
+        # clean shutdown printed "write_heartbeat failed (continuing): Cannot operate on
+        # a closed database". Nothing may use the writer after close — task or not.
         write_status(bus, health, writer, stats, max_qdepth)
+        writer.close()
+        # Counters only below: safe to read once the connection is gone.
         print(json.dumps({
             "rows_written": writer.rows_written, "commits": writer.commits,
             "published": bus.published, "drops": bus.drop_counts(),

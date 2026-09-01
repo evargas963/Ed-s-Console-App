@@ -836,9 +836,13 @@ class _LifecycleStream:
     parked = None
     release = None
 
+    #: The counters below are the shared LEDGER and are always resolved on
+    #: _LifecycleStream itself, never on type(self): subclasses (see
+    #: _FailingInitialConnectStream) would otherwise shadow them with their own
+    #: attributes on first write, and every count would silently read zero.
     def __init__(self, client, account_id=None):
-        type(self).generations.append(self)
-        self.gen = len(type(self).generations)
+        _LifecycleStream.generations.append(self)
+        self.gen = len(_LifecycleStream.generations)
         self.client = client
         self.logged_in = False
         sock = SimpleNamespace(closed=False)
@@ -846,7 +850,7 @@ class _LifecycleStream:
         self._socket = sock
 
     def _log(self, label, detail=None):
-        type(self).events.append((label, self.gen, detail))
+        _LifecycleStream.events.append((label, self.gen, detail))
 
     def _noop(self, h):
         return None
@@ -858,7 +862,7 @@ class _LifecycleStream:
     add_options_book_handler = _noop
 
     async def login(self):
-        cls = type(self)
+        cls = _LifecycleStream
         self.logged_in = True
         cls.live += 1
         cls.logins += 1
@@ -866,7 +870,7 @@ class _LifecycleStream:
         self._log("login")
 
     async def logout(self):
-        cls = type(self)
+        cls = _LifecycleStream
         if cls.retire_disabled:
             # MUTATION CONTROL: the session is never actually retired.
             self._log("logout_suppressed")
@@ -878,7 +882,7 @@ class _LifecycleStream:
         self._log("logout")
 
     async def _vendor(self, name, syms):
-        cls = type(self)
+        cls = _LifecycleStream
         if cls.park_on == (self.gen, name):
             self._log(f"PARK ENTER {name}")
             cls.parked.set()
@@ -972,7 +976,7 @@ async def _await_event(pred, *, timeout=25.0, what="condition"):
     raise AssertionError(f"timed out waiting for {what}")
 
 
-async def _drive_daemon(m, db, *, driver, symbols=("SPY",)):
+async def _drive_daemon(m, db, *, driver, symbols=("SPY",), probe=None):
     """Run the REAL _run_streaming with the lifecycle-instrumented StreamClient."""
     writer = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
     bus = MessageBus()
@@ -989,6 +993,10 @@ async def _drive_daemon(m, db, *, driver, symbols=("SPY",)):
     try:
         await asyncio.wait_for(drv, timeout=45)
         await asyncio.wait_for(run, timeout=45)
+        if probe is not None:
+            # Snapshot INSIDE the loop: asyncio.run() cancels whatever is still pending
+            # on its way out, so anything read afterwards looks tidily cancelled.
+            probe.at_return = probe.state()
     finally:
         for t in (drv, run):
             if not t.done():
@@ -1430,3 +1438,279 @@ def test_d3c_a_coverage_escalation_during_reconnect_is_not_downgraded(tmp_path, 
     assert _LifecycleStream.max_live <= 1, (
         f"the failed generation leaked a live session (max {_LifecycleStream.max_live})")
     assert _LifecycleStream.live == 0, "shutdown must leave zero live sessions"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PR214 INITIALIZATION LIFECYCLE — a failure DURING startup must retire exactly
+# what startup had already acquired. Every created task has one owner, and every
+# exit path quiesces that task before its resources are closed.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class _StartupProbe:
+    """Observes the REAL writer task's lifecycle and the writer-close ordering.
+
+    The writer task is captured from inside writer.run() via asyncio.current_task(), so
+    the object under observation is the daemon's own task, not a stand-in. close() is
+    wrapped to record whether that task was already TERMINAL at the moment the writer's
+    resources were released — the ordering law this family exists to protect."""
+
+    def __init__(self, monkeypatch):
+        self.task = None
+        self.entered = False
+        self.exited = False
+        self.at_return = None          # snapshot taken inside the loop, before cleanup
+        self.close_calls = []          # (task_done, task_cancelled) per close()
+        real_run = CaptureWriter.run
+        real_close = CaptureWriter.close
+
+        async def run(inner_self, sub, stop=None):
+            self.task = asyncio.current_task()
+            self.entered = True
+            try:
+                return await real_run(inner_self, sub, stop=stop)
+            finally:
+                self.exited = True
+
+        def close(inner_self):
+            self.close_calls.append(
+                (self.task.done() if self.task else None,
+                 self.task.cancelled() if self.task else None))
+            return real_close(inner_self)
+
+        monkeypatch.setattr(CaptureWriter, "run", run)
+        monkeypatch.setattr(CaptureWriter, "close", close)
+
+    def state(self) -> dict:
+        """Snapshot of the writer task, taken INSIDE the running loop.
+
+        It has to be a snapshot: asyncio.run() cancels whatever is still pending on its
+        way out, so anything inspected after it returns looks tidily cancelled whether or
+        not the daemon ever owned it."""
+        return {"entered": self.entered, "exited": self.exited,
+                "done": self.task.done() if self.task else None,
+                "cancelled": self.task.cancelled() if self.task else None}
+
+    def assert_writer_retired(self):
+        snap = self.at_return
+        assert snap is not None, "no snapshot was taken inside the loop"
+        assert snap["entered"], "the writer task must actually have started"
+        assert snap["done"] is True, (
+            "the writer task was still running when _run_streaming returned — it is "
+            "orphaned: nothing set stop, nothing awaited it, and the caller's "
+            f"writer.close() then runs against a live writer.run() (snapshot={snap})")
+        assert snap["exited"], "writer.run() must have unwound"
+
+    def assert_close_ordering(self):
+        """Every writer.close() must find the writer task already TERMINAL.
+
+        `done is None` (the task had not even begun) counts as a violation too, not a
+        pass: a scheduled-but-unstarted writer.run() is exactly as capable of waking up
+        against a closed database as a running one."""
+        assert self.close_calls, "the writer must have been closed"
+        for done, _cancelled in self.close_calls:
+            assert done is True, (
+                "writer.close() ran while the writer task was NOT terminal — "
+                "writer.run() would then operate on a closed database "
+                f"(observed close_calls={self.close_calls}, where None means the task "
+                "had not started yet)")
+
+
+async def _run_streaming_expecting_failure(m, db, probe, *, symbols=("SPY",)):
+    """Drive the REAL _run_streaming through a startup failure and return the state
+    needed to judge ownership: the raised exception, surviving daemon tasks, and a
+    snapshot of the writer task taken INSIDE the loop (see _StartupProbe.state)."""
+    writer = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
+    bus = MessageBus()
+    wsub = bus.subscribe("", policy=COUNT_DROPS, maxsize=8192)
+    health, stats, stop = HealthRegistry(), CaptureStats(), asyncio.Event()
+    health.beat("LEVELONE_EQUITIES")
+
+    before = set(asyncio.all_tasks())
+    raised = None
+    try:
+        await m._run_streaming(list(symbols), 0.0, bus, health, stats, writer, wsub,
+                               stop, SimpleNamespace(client=object()))
+    except BaseException as exc:       # noqa: BLE001 — the point is to inspect it
+        raised = exc
+    await asyncio.sleep(0.05)          # let the loop settle, as before teardown
+    probe.at_return = probe.state()
+    survivor_names = [t.get_coro().__qualname__ for t in asyncio.all_tasks()
+                      if t not in before and t is not asyncio.current_task()
+                      and not t.done()]
+    survivors = [t for t in asyncio.all_tasks()
+                 if t not in before and t is not asyncio.current_task() and not t.done()]
+    # The caller (_run_locked) always closes the writer on the way out. Anything the
+    # daemon left running would now be operating against a closed database.
+    writer.close()
+    for i in range(5):                 # real traffic, to expose a live orphan writer
+        bus.publish("quote.SPY", {"symbol": "SPY", "bid": 1.0 + i, "ts": 1.0,
+                                  "src": "probe"})
+    await asyncio.sleep(0.3)
+    for t in survivors:                # never leak out of the test itself
+        t.cancel()
+    return SimpleNamespace(raised=raised, survivors=survivor_names, writer=writer,
+                           bus=bus, stop=stop, stop_set=stop.is_set())
+
+
+class _FailingInitialConnectStream(_LifecycleStream):
+    """Logs in, then fails the very first subscribe — a real initial-connect failure."""
+
+    async def level_one_equity_subs(self, syms):
+        raise RuntimeError("INITIAL CONNECT FAILED: equity subscribe rejected")
+
+
+def test_init_a_initial_connect_failure_leaves_no_orphan_writer_task(tmp_path, monkeypatch):
+    """CASE A. The initial _schwab_connect() raises before returning a stream.
+
+    MEASURED BEFORE, through this same seam: writer.run() had entered and never exited,
+    the task was done()=False cancelled()=False, `stop` was never set, one orphan daemon
+    task remained live — and once the caller's `finally: writer.close()` ran, that
+    orphan consumed five real bus messages and failed every insert against the closed
+    database (insert_errors=5, rows_written=0). The writer task was created before the
+    lifecycle try/finally, so an initialization failure bypassed retirement entirely.
+
+    Without this test that whole class returns the moment anyone moves a resource
+    acquisition back above the try."""
+    import tools.run_stream_capture as m
+
+    db = tmp_path / "cap.db"
+    _reset_lifecycle()
+    monkeypatch.setitem(__import__("sys").modules, "schwab.streaming",
+                        __import__("types").SimpleNamespace(
+                            StreamClient=_FailingInitialConnectStream))
+    probe = _StartupProbe(monkeypatch)
+
+    out = asyncio.run(_run_streaming_expecting_failure(m, db, probe))
+
+    assert isinstance(out.raised, RuntimeError), (
+        f"the original startup exception must propagate, got {out.raised!r}")
+    assert "INITIAL CONNECT FAILED" in str(out.raised), (
+        f"the original failure must not be masked by cleanup: {out.raised}")
+    probe.assert_writer_retired()
+    assert probe.at_return["cancelled"] is False, (
+        "the writer must be DRAINED via stop, not cancelled — cancelling would discard "
+        "whatever was already queued instead of writing it")
+    assert out.stop_set, "the lifecycle boundary must have signalled the writer"
+    assert out.survivors == [], (
+        f"orphan daemon tasks survived a startup failure: {out.survivors}")
+    # The session that DID log in must not outlive the failure either.
+    assert _LifecycleStream.live == 0, "a logged-in session leaked on the failure path"
+    assert _LifecycleStream.logouts == _LifecycleStream.logins == 1
+    probe.assert_close_ordering()
+    assert out.writer.insert_errors == 0, (
+        f"nothing may write after close: insert_errors={out.writer.insert_errors}")
+
+
+def test_init_b_post_connect_pre_loop_failure_retires_everything(tmp_path, monkeypatch):
+    """CASE B. Initial connect SUCCEEDS, then a later initialization step raises before
+    the steady-state loop owns anything.
+
+    The failure is injected at a real startup seam — building the option control task —
+    which lands AFTER the stream, pump, writer task and Alpaca task exist and AFTER the
+    book-poll control task has already been created. So it also exercises partially
+    constructed control tasks, whose first member the caller has no reference to.
+
+    This is what stops the fix from simply moving the orphan one line later."""
+    import tools.run_stream_capture as m
+
+    db = tmp_path / "cap.db"
+    _reset_lifecycle()
+    _install_lifecycle_stream(monkeypatch)
+    probe = _StartupProbe(monkeypatch)
+    write_active_option_contract_signal(_A_CONTRACT)
+
+    def _explode(*a, **k):
+        raise RuntimeError("STARTUP FAILED: option control task could not be built")
+    monkeypatch.setattr(m, "_active_option_contract_poll_loop", _explode)
+
+    out = asyncio.run(_run_streaming_expecting_failure(m, db, probe))
+
+    assert isinstance(out.raised, RuntimeError) and "STARTUP FAILED" in str(out.raised), (
+        f"the original startup exception must propagate, got {out.raised!r}")
+    assert _LifecycleStream.logins == 1, "the stream did connect before the failure"
+    assert _LifecycleStream.live == 0, (
+        "the successfully logged-in StreamClient must be retired on a startup failure")
+    assert _LifecycleStream.generations[0]._socket.closed, "transport must be closed too"
+    probe.assert_writer_retired()
+    assert out.stop_set
+    assert out.survivors == [], (
+        "the pump, the Alpaca producer and the already-created book-poll control task "
+        f"must all be terminal; survivors: {out.survivors}")
+    probe.assert_close_ordering()
+    assert out.writer.insert_errors == 0
+
+
+def test_init_writer_close_never_precedes_a_terminal_writer_task(tmp_path, monkeypatch):
+    """WRITER CLOSE ORDER, on the NORMAL managed exit as well as the failure paths.
+
+    Required order: producers quiesced -> writer drained -> writer task terminal ->
+    writer.close(). The two startup-failure tests above assert the same ordering on their
+    paths; this one pins it for an ordinary run so the law is not only a failure-path
+    property."""
+    import tools.run_stream_capture as m
+
+    db = tmp_path / "cap.db"
+    _reset_lifecycle()
+    _install_lifecycle_stream(monkeypatch)
+    probe = _StartupProbe(monkeypatch)
+    monkeypatch.setattr(m, "STATUS_LOOP_INTERVAL_SEC", 0.02)
+    monkeypatch.setattr(m, "stream_needs_recycle", lambda *a: False)
+    write_active_option_contract_signal(_A_CONTRACT)
+
+    async def driver(stop, writer):
+        await _await_event(
+            lambda: any(e[0] == "VENDOR level_one_option_subs"
+                        for e in _LifecycleStream.events),
+            what="the contract to be subscribed")
+        await asyncio.sleep(0.1)
+        stop.set()
+
+    asyncio.run(_drive_daemon(m, db, driver=driver, probe=probe))
+
+    probe.assert_writer_retired()
+    probe.assert_close_ordering()
+    assert _LifecycleStream.live == 0, "normal shutdown must leave zero live sessions"
+
+
+def test_init_mutation_control_bypassing_writer_retirement_breaks_the_law(tmp_path,
+                                                                          monkeypatch):
+    """NEGATIVE CONTROL. With the startup writer-task retirement bypassed, the ownership
+    assertions above MUST fail — otherwise they would pass on a daemon that orphans its
+    writer, which is exactly the state this mission was opened to fix.
+
+    Bypass is applied at the retirement seam itself (a _shutdown_sequence that quiesces
+    producers but never signals or awaits the writer), so the control exercises the real
+    ordering law rather than a stand-in."""
+    import tools.run_stream_capture as m
+
+    db = tmp_path / "cap.db"
+    _reset_lifecycle()
+    monkeypatch.setitem(__import__("sys").modules, "schwab.streaming",
+                        __import__("types").SimpleNamespace(
+                            StreamClient=_FailingInitialConnectStream))
+    probe = _StartupProbe(monkeypatch)
+
+    async def _shutdown_without_writer_retirement(pump_task, writer_task, stop, wsub,
+                                                  extra_producers=()):
+        await m._cancel_and_await((pump_task, *extra_producers), what="mutation control")
+        # deliberately NOT: stop.set(); await writer_task
+
+    monkeypatch.setattr(m, "_shutdown_sequence", _shutdown_without_writer_retirement)
+
+    out = asyncio.run(_run_streaming_expecting_failure(m, db, probe))
+
+    assert probe.entered, "the writer task must have started for this control to mean anything"
+    assert probe.at_return["done"] is False, (
+        "MUTATION CONTROL FAILED TO BITE: with writer retirement bypassed the writer task "
+        f"must still be running when _run_streaming returns; snapshot={probe.at_return}")
+    assert out.survivors, (
+        "MUTATION CONTROL FAILED TO BITE: the orphaned writer task must show up as a "
+        "surviving daemon task")
+    assert any(done is not True for done, _c in probe.close_calls), (
+        "MUTATION CONTROL FAILED TO BITE: writer.close() must have run while the writer "
+        f"task was not yet terminal; observed {probe.close_calls}")
+    with pytest.raises(AssertionError):
+        probe.assert_writer_retired()
+    with pytest.raises(AssertionError):
+        probe.assert_close_ordering()
