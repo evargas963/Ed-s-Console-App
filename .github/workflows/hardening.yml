@@ -80,6 +80,17 @@ jobs:
           git fetch --no-tags origin main
           python tools/check_delta_adds_no_debt.py --base origin/main
 
+      # REPO REHABILITATION RATCHET (RC-505). Architecture no-regression ONLY: new root
+      # production modules, new tracked runtime/generated state, growth in the directories the
+      # TARGET does not name, migrated code moving back toward root, forbidden dependency
+      # direction inside app/. It does NOT recompute institutional debt — the step above owns
+      # that question and a second opinion would be a second authority. Inherited debt may
+      # remain; it may not grow. Removing, deleting or demoting this step is itself a
+      # regression the ratchet refuses: it reads the BASE ref, so a change cannot authorise
+      # dropping its own gate in the same delta.
+      - name: repo rehabilitation ratchet (architecture no-regression)
+        run: python tools/repo_rehab_status.py --ratchet --base origin/main
+
       - name: institutional closure gate (no inflated parent closures)
         run: python tools/check_institutional_closure_gate.py
       - name: no-grep subprocess

@@ -142,11 +142,22 @@ def test_inert_producer_check_screams_on_a_fatal_run_log(tmp_path, monkeypatch):
 
 
 def test_inert_producer_check_accepts_a_healthy_run_log(tmp_path, monkeypatch):
+    """RC-505 widened this check's subject: 'a declared mechanism that is silently dead' now
+    covers a declared CI gate that the workflow never executes, not only a producer whose run
+    log went quiet. So a HEALTHY fixture has to satisfy both — the run log and the wiring."""
     from tools import check_institutional_correctness as M
     fake = tmp_path
     (fake / "reports").mkdir()
     (fake / "reports" / "zzjob_run.log").write_text(
         "[job] start\nwrote artifact\n[job] exit=0\n", encoding="utf-8")
+    for tool, flag in M._GATES_REQUIRING_CI_INVOCATION:
+        (fake / tool).parent.mkdir(parents=True, exist_ok=True)
+        (fake / tool).write_text("# present\n", encoding="utf-8")
+    wf = fake / M._HARDENING_WORKFLOW
+    wf.parent.mkdir(parents=True, exist_ok=True)
+    wf.write_text("jobs:\n  hardening:\n    steps:\n" + "".join(
+        f"      - run: python {t} {f} --base origin/main\n"
+        for t, f in M._GATES_REQUIRING_CI_INVOCATION), encoding="utf-8")
     monkeypatch.setattr(M, "REPO", fake)
     assert not M.check_scheduled_producers_are_not_inert()
 

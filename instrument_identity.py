@@ -1,46 +1,20 @@
-"""
-Canonical ticker key for SQLite tables keyed like Schwab/stream ingestion: `snapshots`,
-`price_bars_1m`, and exact-match Issue 19 SQL.
+"""Compatibility shim — the canonical owner is `app.domain.instrument_identity` (RC-505).
 
-Policy (Repair v1):
-- Equity-style symbols: uppercase alphanumeric, e.g. `spy` -> `SPY`.
-- Index-style symbols with leading `$` (e.g. `$SPX`): **preserve** `$` and uppercase
-  the remainder → `$SPX`. This matches stored bars and `fill_outcomes` joins.
+This module carries NO logic. It exists so the 91 existing importers of the root path keep
+working while they are re-pointed a few at a time, which is what makes the rehabilitation
+incremental instead of a flag-day rewrite. `tools/repo_rehab_status.py::is_compatibility_shim`
+decides that structurally: imports, plain assignments, a docstring and `pass` only, and at
+least one import from `app`. A single `def` here would make this a second owner of the ticker
+key, however short — the duplicate-authority defect the ratchet exists to refuse.
 
-Do **not** strip `$` for DB retrieval or anchor keys intended to hit those rows.
-
-P1 repair: some Schwab **index** symbols are persisted with a leading `$` while anchors,
-APIs, or human input use the bare root (`SPX` vs `$SPX`). For exact SQLite joins with
-`price_bars_1m`, bare roots listed in ``BROKER_INDEX_BARE_ROOTS`` map to the stored form.
-Source: ``schwab_full_field_inventory.py`` fallback index tuple labels SPX/DJI/COMPX;
-``market_context.py`` uses ``$VIX`` / ``$VXN`` / ``$RVX`` for vol-index fetches.
+New code must import from `app.domain.instrument_identity`. This file dies when nothing
+imports it.
 """
 from __future__ import annotations
 
-# Uppercase roots (no `$`) that must resolve to broker-prefixed keys in DB.
-# RC-126 (operator /goal: levels for ALL tickers): NDX/RUT/DJX/XSP/OEX added — the widely
-# traded Schwab dollar-indexes an operator will type bare. Extend here, nowhere else: this
-# set IS the query-boundary alias authority since the terrain/quote/bars endpoints
-# canonicalize through ticker_storage_key.
-BROKER_INDEX_BARE_ROOTS: frozenset[str] = frozenset(
-    {"SPX", "DJI", "COMPX", "VIX", "VXN", "RVX", "NDX", "RUT", "DJX", "XSP", "OEX"},
+from app.domain.instrument_identity import (
+    BROKER_INDEX_BARE_ROOTS,
+    ticker_storage_key,
 )
 
-
-def ticker_storage_key(ticker: str | None) -> str:
-    """
-    Normalize user/JSON ticker to the string stored in `snapshots.ticker` and
-    `price_bars_1m.ticker` for exact SQL equality.
-    """
-    t = (ticker or "").strip()
-    if not t:
-        return ""
-    if t.startswith("$"):
-        rest = t[1:].strip()
-        if not rest:
-            return "$"
-        return "$" + rest.upper()
-    u = t.upper()
-    if u in BROKER_INDEX_BARE_ROOTS:
-        return "$" + u
-    return u
+__all__ = ["BROKER_INDEX_BARE_ROOTS", "ticker_storage_key"]

@@ -2396,12 +2396,19 @@ def check_credential_leak() -> list[Violation]:
     """
     if str(REPO) not in sys.path:
         sys.path.insert(0, str(REPO))
-    from tools.check_credential_leak import find_credential_leaks
+    from tools.check_credential_leak import StagedDiffUnreadable, find_credential_leaks
 
-    return [
-        Violation(REPO / ".git", 0, hit)
-        for hit in find_credential_leaks()
-    ]
+    try:
+        hits = find_credential_leaks()
+    except StagedDiffUnreadable as e:
+        # RC-506: an unreadable staged diff is a VIOLATION here, not a crash and not silence.
+        # This check ran as `for hit in find_credential_leaks()` while that helper returned
+        # `p.stdout or ""` on any git failure, so a diff nobody could read scanned clean and
+        # the enforced catalog reported zero credential violations.
+        return [Violation(REPO / ".git", 0,
+                          f"the staged diff could not be read, so NOTHING was scanned for "
+                          f"secrets: {e}. This is not a clean result.")]
+    return [Violation(REPO / ".git", 0, hit) for hit in hits]
 
 
 def check_sqlite_wal_contract() -> list[Violation]:
@@ -3073,6 +3080,108 @@ def rc_row_schema_violations(text: str, log: Path) -> list[Violation]:
     return out
 
 
+#: Gates that exist in the tree and MUST be invoked by required CI. (tool path, required flag).
+#: Kept as data so adding one is a row, not a new mechanism.
+_GATES_REQUIRING_CI_INVOCATION = (
+    ("tools/repo_rehab_status.py", "--ratchet"),
+)
+_HARDENING_WORKFLOW = ".github/workflows/hardening.yml"
+
+
+def _declared_gate_is_actually_invoked_violations() -> list[Violation]:
+    """A gate present in the repo must be RUN by required CI, uncommented and unswallowed.
+
+    WHY THIS IS NOT INSIDE THE GATE. The rehabilitation ratchet carries its own self-protection
+    clause, and that clause can only run when the ratchet runs — so deleting its CI step deletes
+    the thing that would have objected. The protection has to be owned by a check that executes
+    independently, and the institutional catalog is that: `check_delta_adds_no_debt` runs the
+    whole catalog in a base worktree and a candidate worktree and compares, so a violation that
+    appears only at HEAD fails the delta gate whether or not the rehab step still exists.
+
+    Three bypasses are refused, because all three were reachable: deleting the step, commenting
+    it out (YAML comments are invisible to a substring search over the raw file), and demoting it
+    by dropping the flag that makes it block or appending `|| true`.
+    """
+    def _yaml_key(line: str) -> str:
+        """The line's key with indentation and any sequence dash removed."""
+        s = line.strip()
+        while s.startswith("- "):
+            s = s[2:].lstrip()
+        return s
+
+    out: list[Violation] = []
+    wf = REPO / _HARDENING_WORKFLOW
+    for tool, flag in _GATES_REQUIRING_CI_INVOCATION:
+        if not (REPO / tool).exists():
+            # NOT a skip. `continue` here was a fail-open: renaming or deleting the gate made
+            # the guard silently satisfied, so the cheapest way past the protection was to
+            # remove the thing it protects. A declared gate that is missing IS the violation.
+            out.append(Violation(
+                Path(tool), 0,
+                f"{tool} is declared as a required CI gate but does not exist in the tree. "
+                f"Deleting or renaming a gate does not retire it (RC-505); remove the "
+                f"declaration in a reviewed delta if that is the intent."))
+            continue
+        if not wf.exists():
+            out.append(Violation(Path(_HARDENING_WORKFLOW), 0,
+                                 f"{tool} exists but {_HARDENING_WORKFLOW} does not, so the gate "
+                                 f"is never invoked by required CI."))
+            continue
+        try:
+            lines = wf.read_text(encoding="utf-8", errors="ignore").splitlines()
+        except OSError:
+            continue
+        live = [ln for ln in lines
+                if Path(tool).name in ln and not ln.strip().startswith("#")]
+        if not live:
+            commented = any(Path(tool).name in ln and ln.strip().startswith("#")
+                            for ln in lines)
+            out.append(Violation(
+                Path(_HARDENING_WORKFLOW), 0,
+                f"{tool} is present in the repo but required CI never runs it"
+                + (" — the invocation is COMMENTED OUT, which reads like wiring and enforces "
+                   "nothing." if commented else ".")
+                + " A declared gate that CI does not execute is inert (RC-505)."))
+            continue
+        # Every way a step can be present and still not block. `|| true` was the only form
+        # enumerated before, and review PROVED nine others pass: continue-on-error, a step- or
+        # job-level `if:`, `; exit 0`, `|| echo ...`, and naming a base the PR chooses.
+        swallow = ("|| true", "|| echo", "; exit 0", "; exit0", "set +e", "|| :")
+        blocking = [ln for ln in live
+                    if flag in ln and not any(s in ln for s in swallow)]
+        if not blocking:
+            out.append(Violation(
+                Path(_HARDENING_WORKFLOW), 0,
+                f"{tool} is invoked by required CI but cannot fail it: no live line carries "
+                f"{flag!r} without a failure-swallowing tail. A gate that cannot block is a "
+                f"report (RC-505)."))
+            continue
+        # The step's own YAML block: the keys that disable it sit on ADJACENT lines, so a
+        # single-line search could never see them.
+        idx = lines.index(blocking[0])
+        window = lines[max(0, idx - 6):idx + 6]
+        for key in ("continue-on-error:", "if:"):
+            # A disabling key can also open the step's list item — `- if: false` — so the
+            # YAML sequence dash has to come off before the match, or the first form of the
+            # bypass is exactly the one that walks through.
+            hit = [w for w in window
+                   if _yaml_key(w).startswith(key) and not w.strip().startswith("#")]
+            if hit:
+                out.append(Violation(
+                    Path(_HARDENING_WORKFLOW), 0,
+                    f"{tool} is invoked but its step carries {hit[0].strip()!r}, which lets the "
+                    f"job stay green whatever the gate says. Wiring that looks intact and "
+                    f"enforces nothing is worse than none (RC-505)."))
+        if "--base origin/main" not in blocking[0]:
+            out.append(Violation(
+                Path(_HARDENING_WORKFLOW), 0,
+                f"{tool} is invoked without `--base origin/main`. Every rule in it is a "
+                f"comparison against the base, so a base the change chooses for itself — "
+                f"`--base HEAD`, `--base HEAD~1` — empties all of them and the gate passes "
+                f"forever (RC-505)."))
+    return out
+
+
 def check_scheduled_producers_are_not_inert() -> list[Violation]:
     """A scheduled PRODUCER that fails every run must not stay silent (RC-97).
 
@@ -3095,7 +3204,12 @@ def check_scheduled_producers_are_not_inert() -> list[Violation]:
     """
     fatal = re.compile(r"Fatal Python error|Traceback \(most recent call last\)|"
                        r"ModuleNotFoundError|SyntaxError:", re.I)
-    out: list[Violation] = []
+    # RC-505: a gate DECLARED in the repo but never invoked by required CI is inert in exactly
+    # the sense this check exists to catch — present, believed live, doing nothing. Folded here
+    # rather than registered as a 47th check (the CHECKS surface does not grow for this), and it
+    # must live OUTSIDE the ratchet it protects: a self-protection clause that only runs when
+    # the protected step runs cannot notice the step being deleted.
+    out: list[Violation] = _declared_gate_is_actually_invoked_violations()
     reports = REPO / "reports"
     if not reports.exists():
         return out
