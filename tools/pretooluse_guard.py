@@ -272,7 +272,22 @@ def _block_unapproved_ui_redesign(rel: str, tool_input: dict) -> int | None:
     return None
 
 
-def _block_production_mutation_without_mission(rel: str, facts: PathFacts) -> int | None:
+def _owning_repo(file_path: str) -> str | None:
+    """The git checkout that contains `file_path`, or None when it cannot be resolved.
+
+    Thin call to `operator_law_guard.repo_root_of` — the repository-identity question already
+    has one owner, and this is not a second one. Imported lazily because operator_law_guard is
+    a sibling chain member, not a dependency of this module's import path.
+    """
+    try:
+        from tools.operator_law_guard import repo_root_of
+    except ImportError:
+        return None
+    return repo_root_of(file_path) or None
+
+
+def _block_production_mutation_without_mission(rel: str, facts: PathFacts,
+                                               file_path: str = "") -> int | None:
     """RC-498: a production mutation requires durable same-day mission state.
 
     This is the AGENTS.md law — "Find something broken -> fix it ... discovery creates the
@@ -290,16 +305,20 @@ def _block_production_mutation_without_mission(rel: str, facts: PathFacts) -> in
     """
     if not facts.production:
         return None
-    from tools.mission_latch import RC_LOG, has_active_mission
-    if has_active_mission():
+    from tools.mission_latch import has_active_mission
+    # The ledger that governs this edit is the one in the checkout that OWNS the file, not the
+    # one beside this guard file — the two differ whenever work happens in a linked worktree.
+    repo = _owning_repo(file_path)
+    if has_active_mission(repo=repo):
         return None
     sys.stderr.write(
         "BLOCKED (RC-498): production mutation with no active mission (AGENTS.md Find -> Fix).\n\n"
         f"  File: {rel}\n"
-        f"  No row in {RC_LOG.name} was opened today, so this session has no durable record of\n"
-        "  what is being fixed. Without one, a defect found on the way to this edit can be\n"
-        "  reported in prose and abandoned when the turn ends — the failure this law exists\n"
-        "  to prevent.\n\n"
+        "  This worktree has no OPEN root-cause row that it opened today, so there is no\n"
+        "  durable record of what is being fixed. A CLOSED row does not count — it records a\n"
+        "  FINISHED mission — and neither does a row that arrived on the trunk from other work.\n"
+        "  Without an active mission, a defect found on the way to this edit can be reported in\n"
+        "  prose and abandoned when the turn ends, which is the failure this law prevents.\n\n"
         "To proceed, open ONE row for the work in governance/root_cause_log.md:\n"
         "  | RC-<n> | OPEN | <today> | <due> | <what is broken> | (1) .. -> (5) ROOT: .. |\n"
         "    IN PROGRESS — <what you are about to do> |\n\n"
@@ -373,7 +392,7 @@ def decide(payload: dict) -> int:
     # demanded a row per edited FILE, this asks for ONE row per session's mission. It exists
     # because the retirement left the Find -> Fix law with no mechanical seam at all —
     # MEASURED on 334c5daf, a production Edit with no row anywhere returned exit 0.
-    blocked = _block_production_mutation_without_mission(rel, facts)
+    blocked = _block_production_mutation_without_mission(rel, facts, fp)
     if blocked is not None:
         return blocked
     return 0

@@ -85,10 +85,28 @@ def _today() -> str:
 
 
 # ── the ledger ────────────────────────────────────────────────────────────────────────────
-def all_rows() -> list[MissionRow]:
+def ledger_path(repo: str | Path | None = None) -> Path:
+    """The ledger of the repository being ACTED ON, not the one this file happens to live in.
+
+    A linked worktree has its own checkout of the ledger, and the guards run from whichever
+    checkout the session started in. MEASURED: with the session rooted at the production
+    checkout while the work happened in `EdWebConsole-dev`, `| RC-498 ` resolved 0 times in
+    the tree the Stop guard read and 1 time in the tree that held the work — so an honest
+    same-day row looked exactly like a broken promise. Callers pass the repo that owns the
+    file being edited or the command being run; `RC_LOG` remains the fallback and the test seam.
+    """
+    if repo is None:
+        return RC_LOG
+    try:
+        return Path(repo) / "governance" / "root_cause_log.md"
+    except (OSError, ValueError):
+        return RC_LOG
+
+
+def all_rows(repo: str | Path | None = None) -> list[MissionRow]:
     """Every parseable row in the ledger. The ONLY parser of this file's row grammar."""
     try:
-        text = RC_LOG.read_text(encoding="utf-8", errors="ignore")
+        text = ledger_path(repo).read_text(encoding="utf-8", errors="ignore")
     except OSError:
         return []             # unreadable ledger -> no rows; see the module docstring on why
     out: list[MissionRow] = []
@@ -102,19 +120,74 @@ def all_rows() -> list[MissionRow]:
     return out
 
 
-def same_day_rows(today: str | None = None) -> list[MissionRow]:
-    """Rows OPENED today — the session's own durable mission state, whatever their status."""
+def same_day_rows(today: str | None = None, repo: str | Path | None = None) -> list[MissionRow]:
+    """Rows OPENED today, whatever their status. Calendar scope only — NOT authority."""
     today = today or _today()
-    return [r for r in all_rows() if r.opened == today]
+    return [r for r in all_rows(repo) if r.opened == today]
 
 
-def has_active_mission(today: str | None = None) -> bool:
-    """Is there durable mission state for today's work?
+def _rows_this_worktree_introduced(repo: str | Path | None = None) -> set[str]:
+    """RC ids whose row exists HERE but not on the trunk — this worktree's own work.
 
-    A row CLOSED today still counts: it is a durable record of work executed today, and
-    demanding that it stay OPEN would reward leaving rows open — the opposite of the law.
+    A git fact, not a new field and not a registry: `git diff origin/main -- <ledger>` compares
+    the trunk against this working tree, so a row shows up when this branch added it, whether
+    it is committed or still uncommitted. Once the PR merges, the row is on the trunk and stops
+    appearing — which is exactly right, because a landed mission must not keep authorizing new
+    work.
+
+    Falls back to `HEAD` when the trunk cannot be resolved (no remote, fresh clone), so an
+    offline worktree can still open a row and proceed.
+
+    Returns None when the question CANNOT BE MEASURED at all — no git, or a directory that is
+    not a checkout. None is not an empty set, and the distinction matters because the two
+    callers must fail closed in OPPOSITE directions: authorization refuses (no proof of a
+    mission), while the turn-end obligation falls back to every same-day row (an unmeasurable
+    git state must not silence RC-72). Collapsing both to `set()` did exactly that — MEASURED
+    in the hermetic mini-checkout, where a planted unfinished row stopped blocking the Stop.
     """
-    return bool(same_day_rows(today))
+    log = ledger_path(repo)
+    root = str(repo) if repo is not None else str(REPO)
+    for base in ("origin/main", "main", "HEAD"):
+        try:
+            r = subprocess.run(["git", "diff", base, "--", str(log)], cwd=root,
+                               capture_output=True, text=True, encoding="utf-8",
+                               errors="replace", timeout=20)
+        except (OSError, subprocess.SubprocessError):
+            return None
+        if r.returncode != 0:
+            continue
+        return {m.group(1) for m in
+                (re.match(r"\+\| (RC-\d+) ", ln) for ln in r.stdout.splitlines()) if m}
+    return None
+
+
+def active_mission_rows(today: str | None = None,
+                        repo: str | Path | None = None) -> list[MissionRow]:
+    """The mission(s) THIS worktree is executing right now.
+
+    Three conditions, and the last two are the RC-500 repair:
+
+      1. opened today          — session scope, unchanged.
+      2. status OPEN           — a CLOSED row is a FINISHED mission. It records what was done;
+                                 it does not authorize what comes next.
+      3. introduced HERE       — the row must be this worktree's own, not one that arrived on
+                                 the trunk. Authority binds to the mission being executed.
+
+    MEASURED before this repair: `has_active_mission` accepted any row opened today, so closing
+    RC-498 still authorized fresh production edits, and a row opened by unrelated work
+    authorized this worktree's. "Some row exists today" is a calendar fact; it was standing in
+    for authority it never established.
+    """
+    introduced = _rows_this_worktree_introduced(repo)
+    if introduced is None:
+        return []                      # unmeasurable -> no proof of a mission -> no authority
+    return [r for r in same_day_rows(today, repo)
+            if r.status == "OPEN" and r.rc_id in introduced]
+
+
+def has_active_mission(today: str | None = None, repo: str | Path | None = None) -> bool:
+    """Is THIS worktree executing a mission right now? Fails closed."""
+    return bool(active_mission_rows(today, repo))
 
 
 # ── is the mission finished ───────────────────────────────────────────────────────────────
@@ -168,10 +241,21 @@ def row_blockers(row: MissionRow) -> list[str]:
             "nor a recorded external blocker"]
 
 
-def mission_blockers(today: str | None = None) -> list[tuple[str, str]]:
-    """(rc_id, reason) for every same-day row that forbids ending the turn."""
+def mission_blockers(today: str | None = None,
+                     repo: str | Path | None = None) -> list[tuple[str, str]]:
+    """(rc_id, reason) for every same-day row THIS worktree opened that forbids ending the turn.
+
+    Scoped to this worktree's own rows for the same reason authorization is: a row that arrived
+    on the trunk is somebody else's landed work, and holding this turn hostage to it would make
+    the guard unsatisfiable by anything the agent can do.
+    """
+    introduced = _rows_this_worktree_introduced(repo)
     out: list[tuple[str, str]] = []
-    for row in same_day_rows(today):
+    for row in same_day_rows(today, repo):
+        # None = the git question could not be measured; RC-72's duty then applies to every
+        # same-day row rather than none, because an unmeasurable state must not grant passage.
+        if introduced is not None and row.rc_id not in introduced:
+            continue
         for reason in row_blockers(row):
             out.append((row.rc_id, reason))
     return out

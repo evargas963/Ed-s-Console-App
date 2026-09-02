@@ -22,8 +22,14 @@ def _write_log(tmp_path, rows: list[str], monkeypatch):
     p.write_text("| id | status | opened | due | defect | why | fix |\n" + "\n".join(rows) + "\n",
                  encoding="utf-8")
     # RC-498 moved the ledger parser into tools/mission_latch.py so the repository holds ONE
-    # `| RC-` scan; stop_guard reads it from there, so that is where the redirect belongs.
+    # row scan; stop_guard reads it from there, so that is where the redirect belongs. RC-500
+    # made the ledger resolve from the repo that owns the target, so `ledger_path` is patched
+    # too — a patched constant alone would be bypassed once a real path is passed. Rows written
+    # here count as this worktree's own; the authority tests live in the latch suite.
     monkeypatch.setattr(ml, "RC_LOG", p)
+    monkeypatch.setattr(ml, "ledger_path", lambda repo=None: p)
+    monkeypatch.setattr(ml, "_rows_this_worktree_introduced",
+                        lambda repo=None: {r.rc_id for r in ml.all_rows()})
     return p
 
 
@@ -122,9 +128,11 @@ def test_every_blocking_state_has_an_escape_that_clears_it(tmp_path, monkeypatch
     bypass above. The real property is that a satisfying action always EXISTS, so this drives
     each one and requires the block to lift."""
     _write_log(tmp_path, [_IN_PROGRESS], monkeypatch)
+    monkeypatch.setattr(ml, "dirty_production_files", lambda *a, **k: [])
     assert _run({"stop_hook_active": True}, monkeypatch) == 2, "precondition: blocked"
 
-    # ESCAPE 1 — finish it.
+    # ESCAPE 1 — finish it. (RC-500: a CLOSED row is no longer an active mission, so the
+    # outcome clause runs; it is pinned above so this asserts the escape, not the checkout.)
     _write_log(tmp_path, [
         f"| RC-90 | CLOSED | {TODAY} | 2099-01-01 | d | (1)->(5) ROOT: x | FIXED: tools/x.py. "
         "MEASURED this turn: 12 passed. END-TO-END: edit -> guard -> block. |"], monkeypatch)

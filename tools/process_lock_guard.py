@@ -367,7 +367,8 @@ def mission_shell_write_violations(cmd: str, payload_cwd: str = "") -> list[str]
     was entirely ungoverned by it — correctly, since that rail answers a different question.
     """
     from tools.mission_latch import has_active_mission
-    if has_active_mission():
+    # Governed by the ledger of the checkout the command RUNS IN, not the one beside this file.
+    if has_active_mission(repo=(_msys_to_windows(payload_cwd) or None) if payload_cwd else None):
         return []
     out: list[str] = []
     seen: set[str] = set()

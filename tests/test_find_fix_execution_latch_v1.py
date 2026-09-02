@@ -41,9 +41,22 @@ HDR = "| id | status | opened | due | defect | why | fix |\n|---|---|---|---|---
 
 
 def _ledger(tmp_path, monkeypatch, *rows: str) -> Path:
+    """A hermetic ledger for the guards under test.
+
+    `ledger_path` is patched rather than `RC_LOG` because the guards now resolve the ledger
+    from the repo that OWNS the target — the RC-500 fix — so a patched module constant would
+    be bypassed the moment a real path is passed.
+
+    `_rows_this_worktree_introduced` defaults to "every row here is this worktree's", which
+    keeps every pre-existing test asking what it was written to ask (status, blockers, paths).
+    Tests about AUTHORITY override it with `_introduced()`.
+    """
     p = tmp_path / "root_cause_log.md"
     p.write_text(HDR + "".join(r.rstrip() + "\n" for r in rows), encoding="utf-8")
     monkeypatch.setattr(ml, "RC_LOG", p)
+    monkeypatch.setattr(ml, "ledger_path", lambda repo=None: p)
+    monkeypatch.setattr(ml, "_rows_this_worktree_introduced",
+                        lambda repo=None: {r.rc_id for r in ml.all_rows()})
     return p
 
 
@@ -134,10 +147,88 @@ def test_one_row_covers_the_session_not_one_row_per_file(tmp_path, monkeypatch):
         assert _decide(_edit(rel)) == 0
 
 
-def test_a_row_closed_today_still_counts_as_mission_state(tmp_path, monkeypatch):
-    """Demanding the row stay OPEN would reward leaving rows open — the opposite of the law."""
-    _ledger(tmp_path, monkeypatch, _row(status="CLOSED", fix="FIXED: x.py. MEASURED: 3 passed."))
+# ─────────────────────────────────────────────────────────────────────────────
+# RC-500 — AUTHORITY BINDS TO THE MISSION BEING EXECUTED, NOT TO THE CALENDAR
+#
+# The first build asked "does any row exist opened today". MEASURED: closing RC-498
+# still authorized fresh production edits, and a row opened by unrelated work
+# authorized this worktree's. "A row exists today" is a calendar fact that was
+# standing in for authority it never established.
+# ─────────────────────────────────────────────────────────────────────────────
+def _introduced(monkeypatch, *rc_ids: str) -> None:
+    """Pin which rows this worktree introduced — the git fact, stubbed for hermeticity."""
+    monkeypatch.setattr(ml, "_rows_this_worktree_introduced", lambda repo=None: set(rc_ids))
+
+
+def test_a_closed_prior_mission_does_not_authorize_new_production_work(tmp_path, monkeypatch):
+    """A CLOSED row is a FINISHED mission. It records what was done; it does not license
+    what comes next."""
+    _ledger(tmp_path, monkeypatch,
+            _row(rc="RC-900", status="CLOSED", fix="FIXED: x.py. MEASURED: 3 passed."))
+    _introduced(monkeypatch, "RC-900")
+    assert _decide(_edit("server.py")) == 2
+
+
+def test_an_unrelated_same_day_row_does_not_authorize_this_worktree(tmp_path, monkeypatch):
+    """A row that arrived on the trunk from other work is not this worktree's mission.
+    Authority binds to the mission being executed."""
+    _ledger(tmp_path, monkeypatch, _row(rc="RC-901", status="OPEN"))
+    _introduced(monkeypatch)                       # this worktree introduced NOTHING
+    assert _decide(_edit("server.py")) == 2
+
+
+def test_the_active_current_mission_authorizes(tmp_path, monkeypatch):
+    _ledger(tmp_path, monkeypatch, _row(rc="RC-902", status="OPEN"))
+    _introduced(monkeypatch, "RC-902")
     assert _decide(_edit("server.py")) == 0
+
+
+def test_closing_the_mission_ends_its_authority(tmp_path, monkeypatch):
+    """The same row, same day, same worktree — only the status changes, and with it the
+    authority. This is the bypass that made PR #218 not merge-ready."""
+    _ledger(tmp_path, monkeypatch, _row(rc="RC-903", status="OPEN"))
+    _introduced(monkeypatch, "RC-903")
+    assert _decide(_edit("server.py")) == 0, "precondition: an open mission authorizes"
+
+    _ledger(tmp_path, monkeypatch,
+            _row(rc="RC-903", status="CLOSED", fix="FIXED: x.py. MEASURED: 9 passed."))
+    _introduced(monkeypatch, "RC-903")
+    assert _decide(_edit("server.py")) == 2
+
+
+def test_the_shell_seam_binds_authority_the_same_way(tmp_path, monkeypatch):
+    """A hole patched only on the Edit seam is a door with the window left open."""
+    _ledger(tmp_path, monkeypatch,
+            _row(rc="RC-904", status="CLOSED", fix="FIXED: x.py. MEASURED: 3 passed."))
+    _introduced(monkeypatch, "RC-904")
+    assert plg.mission_shell_write_violations("sed -i 's/a/b/' server.py", str(ROOT))
+
+    _ledger(tmp_path, monkeypatch, _row(rc="RC-904", status="OPEN"))
+    _introduced(monkeypatch, "RC-904")
+    assert plg.mission_shell_write_violations("sed -i 's/a/b/' server.py", str(ROOT)) == []
+
+
+def test_mutation_control_calendar_only_authority_reopens_the_bypass(tmp_path, monkeypatch):
+    """NEGATIVE CONTROL. Restore the original predicate — any row opened today — and both a
+    closed prior mission and an unrelated row authorize production work again."""
+    monkeypatch.setattr(ml, "active_mission_rows",
+                        lambda today=None, repo=None: ml.same_day_rows(today, repo))
+    _ledger(tmp_path, monkeypatch,
+            _row(rc="RC-905", status="CLOSED", fix="FIXED: x.py. MEASURED: 3 passed."))
+    assert _decide(_edit("server.py")) == 0, (
+        "MUTATION CONTROL FAILED TO BITE: under calendar-only authority a CLOSED row must "
+        "authorize again")
+
+
+def test_a_landed_row_stops_authorizing_once_it_is_on_the_trunk():
+    """The git fact that binds authority: a row shows as introduced-here only while it exists
+    in this worktree and not on the trunk. After the PR merges it is on the trunk, and a landed
+    mission must not keep authorizing new work."""
+    src = Path(ml.__file__).read_text(encoding="utf-8")
+    assert "_rows_this_worktree_introduced" in src
+    assert 'r"\\+\\| (RC-\\d+) "' in src or "git diff" in src
+    # and it is consumed by BOTH gates, not just the one that was reported broken
+    assert src.count("_rows_this_worktree_introduced(repo)") >= 2
 
 
 def test_yesterdays_row_is_not_todays_mission(tmp_path, monkeypatch):
@@ -314,8 +405,12 @@ def test_agent_preference_cannot_become_a_blocker(tmp_path, monkeypatch):
 
 
 def test_stop_allowed_when_the_mission_is_genuinely_finished(tmp_path, monkeypatch):
+    """A finished mission over a clean tree ends the turn. `dirty_production_files` is pinned
+    because a CLOSED row is no longer an active mission (RC-500), so the outcome clause now
+    runs here — and left unpinned this would assert the state of my checkout, not the guard."""
     _ledger(tmp_path, monkeypatch, _row(
         status="CLOSED", fix="FIXED: tools/x.py. MEASURED this turn: 26/26 attacks. END-TO-END."))
+    monkeypatch.setattr(ml, "dirty_production_files", lambda *a, **k: [])
     assert _stop({"transcript_path": _transcript(tmp_path, "t.jsonl")}, monkeypatch) == 0
 
 

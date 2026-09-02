@@ -161,11 +161,17 @@ def main() -> int:
     if mission_latch.operator_halt_instruction(payload.get("transcript_path") or ""):
         return 0
 
-    blockers = mission_latch.mission_blockers()
+    # The ledger that governs this turn belongs to the checkout the SESSION ran in. When work
+    # happens in a linked worktree, that is not the tree this guard file sits in — MEASURED:
+    # `| RC-498 ` resolved 0 times in the production checkout the hook read and 1 time in the
+    # worktree that held the work, so an honest same-day row read as a broken promise.
+    repo = str(payload.get("cwd") or "") or None
+    blockers = mission_latch.mission_blockers(repo=repo)
     # Outcome-side companion to the PreToolUse latch, asked ONLY when there is no mission at
     # all: once a row exists, the row's own state is the question and a dirty tree is simply
     # the work in progress.
-    dirty = [] if mission_latch.has_active_mission() else mission_latch.dirty_production_files()
+    dirty = ([] if mission_latch.has_active_mission(repo=repo)
+             else mission_latch.dirty_production_files(Path(repo) if repo else None))
     if not blockers and not dirty:
         return 0
 
