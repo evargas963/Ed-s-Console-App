@@ -15,6 +15,51 @@ on that measurement: it would have rewritten eight mechanisms to preserve none.
 
 Rows close only with a commit SHA (and a test cite where code changed). History lives in git.
 
+---
+
+## REPO REHABILITATION — 14 CALENDAR DAYS (RC-505)
+
+**START_SHA `334c5dafafa99316589bf74b39bb4ab540bbb1a5`** · start 2026-09-02 · end 2026-09-15
+(calendar days, weekends included). Goal: CURRENT → TARGET until unexplained difference = NONE.
+
+TARGET is fixed and hash-pinned in `tools/repo_rehab_status.py`; editing it changes the digest
+and fails `tests/test_repo_rehab_ratchet_v1.py`. CURRENT and the DELTA are generated from repo
+facts by that tool — nothing below is hand-entered status. Run `python tools/repo_rehab_status.py`.
+
+**BASELINE, measured at START_SHA:** 147 root production modules / 94,026 LOC · `server.py`
+16,276 LOC · `app/` absent · 224 tracked runtime artifacts (`.pt`/`.pkl`) · 1,286 tracked files in
+14 top-level directories the TARGET does not name (44% of 2,897 tracked files) · host separation
+NOT_YET_SEPARATED (0 of 4 host dirs exist outside source).
+
+| day | date | landing |
+|---|---|---|
+| 1 | 09-02 | Ratchet live in required Hardening; status tool; this plan; baseline report. |
+| 2 | 09-03 | `app/` skeleton + `app/domain` — the leaf with no dependencies; pure value types first, imports re-pointed, behavior unchanged. |
+| 3 | 09-04 | `app/infrastructure` — DB and process/runtime seams (`db.py` at its natural boundary, `db_safety`, `db_authority`). |
+| 4 | 09-05 | `app/market_data` — Schwab wire, quotes, bars, calendar. Canonical owner established; legacy root modules become thin shims, then die. |
+| 5 | 09-06 | `app/options` — chain, greeks, exposure; absorbs the merged options-flow work. |
+| 6 | 09-07 | `app/signals` — `signals.py`, `math_levels`, `math_probabilities`, `features/`. |
+| 7 | 09-08 | `app/models` — `ml_*.py`, `training_cache`, `arch_competition/`, `planes/`. **Trained artifacts leave source** → `artifacts/` (224 files). |
+| 8 | 09-09 | `app/decision` — `call_engine`, `decision_gate`, `v2_decision/`, `market_state`. |
+| 9 | 09-10 | `app/api` — `server.py` decomposition begins: routers extracted by surface, no behavior change per move. |
+| 10 | 09-11 | `server.py` continues; `static/` and `config/` settled. |
+| 11 | 09-12 | Host split: `runtime/`, `recovery/`, `artifacts/`, `worktrees/` outside source; stray sibling checkouts and `_preserved_*` dirs consolidated. |
+| 12 | 09-13 | `reports/` (589) and `docs/` (96) dispositioned: generated output → `artifacts/`, living reference → `docs/`. |
+| 13 | 09-14 | `calibration/`, `verification/`, `snapshot_sql/`, `schwab_field_inventory/`, `scripts/` dispositioned into `app/*`, `research/` or `tools/`. |
+| 14 | 09-15 | Unexplained difference audited to NONE, or itemised with a reason per remaining item. |
+
+**Rules for every day.** Product work continues; each touched production path moves toward
+TARGET. No mass rewrite, no feature freeze, no duplicate authority, no new governance framework,
+no report archive. Migration order is fixed: touch → establish canonical owner → preserve
+behavior → remove the duplicate/legacy authority → prove → ship. Known CURRENT debt (Cursor's
+F1–F7 / P1–P24 census, ONE-FAUCET duplication, dead and orphan code, false enforcement claims,
+runtime contamination, ownership and dependency defects, semantic defects) is eliminated
+**during** these migrations, not as separate projects.
+
+**Two TARGET questions are open; the TARGET is unchanged pending the operator's ruling.** Both
+print on every status run (`TARGET_OPEN_QUESTIONS`): the `app/models` vs top-level `models/`
+collision, and the 14 top-level directories the TARGET neither names nor excludes.
+
 **Last rewritten:** 2026-07-16 — post-slimming reconciliation (PR #44 merged @ `8f4c922`).
 **Operator NOW (2026-07-27):** **LP-01** is the top of the backlog — see `ACTIVE_PROGRAM.md` Operator NOW table. The operator directs when it runs (2026-08-24 teardown: statuses are record, not standing authority).
 

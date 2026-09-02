@@ -1,0 +1,36 @@
+# Daily rehabilitation status — CURRENT / TARGET / TODAY'S DELTA.
+#
+# Publishes to the job summary and writes NOTHING to the repository. A nightly markdown archive
+# would be a second work surface that rots the moment anyone stops reading it, and the run
+# history already gives the trend. Only MERGED main is measured: an open PR has earned no credit.
+name: repo-rehab-daily
+
+on:
+  schedule:
+    - cron: "0 12 * * *"      # 12:00 UTC daily, weekends included (14 CALENDAR days)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  status:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0      # the delta compares merged main against START_SHA
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: generate CURRENT / TARGET / TODAY'S DELTA
+        run: |
+          python tools/repo_rehab_status.py --base origin/main | tee /tmp/rehab.txt
+          {
+            echo '### Repo rehabilitation — merged main only'
+            echo '```'
+            cat /tmp/rehab.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: host separation
+        run: python tools/repo_rehab_status.py --host >> "$GITHUB_STEP_SUMMARY"
