@@ -186,8 +186,19 @@ def active_mission_rows(today: str | None = None,
 
 
 def has_active_mission(today: str | None = None, repo: str | Path | None = None) -> bool:
-    """Is THIS worktree executing a mission right now? Fails closed."""
-    return bool(active_mission_rows(today, repo))
+    """Is there exactly ONE unambiguous mission authorizing work here? Fails closed.
+
+    EXACTLY one, not at least one. With two OPEN same-day rows in the same checkout there is
+    no fact that says which of them a given edit belongs to, so either would authorize work it
+    has nothing to do with — worktree authority wearing a mission's name. MEASURED before this
+    clause: two unrelated rows both counted and `has_active_mission` returned True, so the
+    second licensed the first's edits and vice versa.
+
+    Zero and many therefore fail the same way, and both are honestly repairable: open the row,
+    or close the mission you are not executing. AGENTS.md already says ONE row for the
+    session's mission; this is that sentence made arithmetic.
+    """
+    return len(active_mission_rows(today, repo)) == 1
 
 
 # ── is the mission finished ───────────────────────────────────────────────────────────────

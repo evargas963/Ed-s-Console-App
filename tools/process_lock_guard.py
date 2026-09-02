@@ -25,6 +25,7 @@ from tools.operator_law_guard import (  # noqa: E402
     iter_command_segments,
     iter_git_invocations,
     normalize_repo,
+    repo_root_of,
     shell_executed_part,
 )
 from tools.pretooluse_guard import classify_path  # noqa: E402
@@ -355,6 +356,27 @@ def _shell_write_targets(cmd: str, payload_cwd: str = "", base_root: Path | None
                 continue
 
 
+def _owner_checkout(dest: Path) -> str:
+    """The checkout that owns `dest`, tolerating a destination that does not exist YET.
+
+    `repo_root_of` answers this question and stays the only implementation of it, but it
+    returns "" for a nonexistent path — and a write destination is very often a file being
+    CREATED. MEASURED: `curl -o static/app.js` and `--in-place static/app.js` resolved to no
+    owner and went ungoverned for exactly that reason, while `static/index.html` resolved
+    fine. Walking up to the nearest ancestor that does exist asks the same question about the
+    same tree.
+    """
+    cur = dest
+    for _ in range(64):
+        owner = repo_root_of(str(cur))
+        if owner:
+            return owner
+        if cur.parent == cur:
+            break
+        cur = cur.parent
+    return ""
+
+
 def mission_shell_write_violations(cmd: str, payload_cwd: str = "") -> list[str]:
     """RC-498: a SHELL mutation of production code needs the same durable mission state an
     Edit/Write does. Otherwise the latch is a door with the window left open.
@@ -367,29 +389,47 @@ def mission_shell_write_violations(cmd: str, payload_cwd: str = "") -> list[str]
     was entirely ungoverned by it — correctly, since that rail answers a different question.
     """
     from tools.mission_latch import has_active_mission
-    # Governed by the ledger of the checkout the command RUNS IN, not the one beside this file.
-    if has_active_mission(repo=(_msys_to_windows(payload_cwd) or None) if payload_cwd else None):
-        return []
+
+    # RC-501: BOTH questions — "is this production?" and "is there a mission?" — are resolved
+    # from the checkout that OWNS THE DESTINATION, never from this guard file's own repo.
+    # MEASURED against the previous version, whose `classify_path(..., repo=REPO)` judged any
+    # destination outside the guard's checkout to be a foreign tree: `sed -i server.py`,
+    # `cp x server.py`, `mv x server.py` and `tee server.py` ALL passed against a repository
+    # with no mission row at all. A guard that only governs the tree it happens to live in does
+    # not govern the tree the work happens in, which is the whole point of a linked worktree.
+    cwd_root = repo_root_of(_msys_to_windows(payload_cwd)) if payload_cwd else ""
+    base = cwd_root or payload_cwd or str(REPO)
+
     out: list[str] = []
     seen: set[str] = set()
-    for resolved in _shell_write_targets(cmd, payload_cwd, base_root=REPO):
-        facts = classify_path(str(resolved), repo=str(REPO))
+    for resolved in _shell_write_targets(cmd, payload_cwd, base_root=base):
+        owner = _owner_checkout(resolved)
+        if not owner:
+            continue                       # not inside any checkout: no ledger governs it
+        facts = classify_path(str(resolved), repo=owner)
         if not (facts.governed and facts.production) or facts.rel in seen:
             continue
+        if has_active_mission(repo=owner):
+            continue                       # that checkout is executing a mission: allowed
         seen.add(facts.rel)
         out.append(
-            f"FIND_FIX_MISSION_LATCH (RC-498): this command writes production code "
-            f"({facts.rel}) and no root-cause row was opened today. Open ONE row for the "
-            f"session's mission in governance/root_cause_log.md first — see the AGENTS.md "
-            f"Find -> Fix law. Editing governance/, tests/, docs/ and reports/ is never gated.")
-    for _cwd, seg in iter_command_segments(cmd or "", payload_cwd or ""):
-        verb = _shell_rewrites_tracked_tree(seg)
-        if verb and verb not in seen:
-            seen.add(verb)
-            out.append(
-                f"FIND_FIX_MISSION_LATCH (RC-498): `{verb}` rewrites tracked files from a patch "
-                f"or a git object without naming them, and no root-cause row was opened today. "
-                f"Open ONE row for the session's mission first.")
+            f"FIND_FIX_MISSION_LATCH (RC-498/RC-501): this command writes production code "
+            f"({facts.rel}) in {owner}, which has no single active mission. Open ONE row for "
+            f"the session's mission in that checkout's governance/root_cause_log.md first — "
+            f"see the AGENTS.md Find -> Fix law. Editing governance/, tests/, docs/ and "
+            f"reports/ is never gated.")
+
+    # git apply / patch / restore name no destination, so they are judged against the checkout
+    # the command RUNS IN — the tree they would rewrite.
+    if not has_active_mission(repo=cwd_root or None):
+        for _seg_cwd, seg in iter_command_segments(cmd or "", payload_cwd or ""):
+            verb = _shell_rewrites_tracked_tree(seg)
+            if verb and verb not in seen:
+                seen.add(verb)
+                out.append(
+                    f"FIND_FIX_MISSION_LATCH (RC-498/RC-501): `{verb}` rewrites tracked files "
+                    f"from a patch or a git object without naming them, and this checkout has "
+                    f"no single active mission. Open ONE row for the session's mission first.")
     return out
 
 

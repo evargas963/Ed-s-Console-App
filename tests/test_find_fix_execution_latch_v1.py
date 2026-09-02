@@ -220,6 +220,92 @@ def test_mutation_control_calendar_only_authority_reopens_the_bypass(tmp_path, m
         "authorize again")
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# RC-501 — the two residual authority gaps
+# ─────────────────────────────────────────────────────────────────────────────
+def _real_repo(tmp_path: Path, name: str, trunk: list[str], branch: list[str]) -> Path:
+    """A REAL git checkout with a trunk and a feature branch.
+
+    Not stubbed: the defect being closed is precisely that resolution followed the guard
+    file's own repo, so a test that patches resolution away could not observe it.
+    """
+    import subprocess
+
+    root = tmp_path / name
+    (root / "governance").mkdir(parents=True)
+
+    def git(*a):
+        subprocess.run(["git", *a], cwd=str(root), capture_output=True, text=True, timeout=60)
+
+    git("init", "-q", "-b", "main")
+    git("config", "user.email", "a@b.c")
+    git("config", "user.name", "t")
+    (root / "governance" / "root_cause_log.md").write_text(
+        HDR + "".join(r + "\n" for r in trunk), encoding="utf-8")
+    (root / "server.py").write_text("x = 1\n", encoding="utf-8")
+    git("add", "-A")
+    git("commit", "-qm", "trunk")
+    git("checkout", "-qb", "feature")
+    if branch:
+        (root / "governance" / "root_cause_log.md").write_text(
+            HDR + "".join(r + "\n" for r in trunk + branch), encoding="utf-8")
+        git("add", "-A")
+        git("commit", "-qm", "mission")
+    return root
+
+
+@pytest.mark.parametrize("cmd", [
+    "sed -i 's/a/b/' server.py", "cp /tmp/x.py server.py",
+    "mv /tmp/x.py server.py", "echo x | tee server.py", "truncate -s 0 server.py",
+])
+def test_shell_write_is_governed_by_the_checkout_that_owns_the_destination(tmp_path, cmd):
+    """RC-501 GAP 1. The guard file lives in THIS repo; the destination lives in another.
+
+    MEASURED before the fix, with the guard resolving `classify_path(..., repo=REPO)`: every
+    one of these passed against a checkout carrying NO mission row at all, because a
+    destination outside the guard's own tree was judged foreign and waved through. A guard that
+    governs only the tree it happens to live in does not govern the tree the work happens in —
+    which is the entire point of a linked worktree."""
+    target = _real_repo(tmp_path, "nomission", [], [])
+    assert plg.REPO != target, "precondition: the destination is NOT the guard file's repo"
+    assert plg.mission_shell_write_violations(cmd, str(target)), (
+        f"a production write into a checkout with no mission went ungoverned: {cmd}")
+
+
+def test_that_same_shell_write_is_allowed_when_the_owning_checkout_has_a_mission(tmp_path):
+    target = _real_repo(tmp_path, "withmission", [], [_row(rc="RC-710")])
+    assert plg.mission_shell_write_violations("sed -i 's/a/b/' server.py", str(target)) == []
+
+
+def test_a_second_unrelated_open_row_does_not_authorize_a_different_mission(tmp_path):
+    """RC-501 GAP 2. Two OPEN same-day rows introduced by the same checkout.
+
+    Nothing says which of them a given edit belongs to, so either would authorize work it has
+    nothing to do with — worktree authority wearing a mission's name. MEASURED before the fix:
+    both rows counted and `has_active_mission` returned True."""
+    two = _real_repo(tmp_path, "two", [], [_row(rc="RC-711"), _row(rc="RC-712")])
+    assert {r.rc_id for r in ml.active_mission_rows(repo=two)} == {"RC-711", "RC-712"}
+    assert ml.has_active_mission(repo=two) is False, (
+        "ambiguous authority must not authorize: with two open missions neither is THE mission")
+
+
+def test_closing_the_unrelated_row_restores_unambiguous_authority(tmp_path):
+    """And the repair is honest and available: close the mission you are not executing."""
+    one = _real_repo(tmp_path, "one", [], [
+        _row(rc="RC-713"),
+        _row(rc="RC-714", status="CLOSED", fix="FIXED: x.py. MEASURED: 6 passed."),
+    ])
+    assert ml.has_active_mission(repo=one) is True
+
+
+def test_zero_and_many_fail_the_same_way(tmp_path):
+    """Both are 'no single mission', and both are repairable by an action the agent can take."""
+    assert ml.has_active_mission(repo=_real_repo(tmp_path, "zero", [], [])) is False
+    assert ml.has_active_mission(
+        repo=_real_repo(tmp_path, "three", [],
+                        [_row(rc="RC-715"), _row(rc="RC-716"), _row(rc="RC-717")])) is False
+
+
 def test_a_landed_row_stops_authorizing_once_it_is_on_the_trunk():
     """The git fact that binds authority: a row shows as introduced-here only while it exists
     in this worktree and not on the trunk. After the PR merges it is on the trunk, and a landed
