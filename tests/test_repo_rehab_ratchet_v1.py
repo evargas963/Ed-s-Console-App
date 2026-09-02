@@ -346,9 +346,13 @@ def test_local_host_check_reports_separated_when_the_paths_exist(monkeypatch, tm
 def test_host_separation_distinguishes_not_yet_from_violated(tmp_path):
     """Day one is NOT_YET_SEPARATED, not VIOLATED — MEASURED: the first run returned VIOLATED
     for 224 inherited blobs and would have every day until the last one moved, which is a
-    signal nobody can act on. VIOLATED means runtime state is being RE-CREATED."""
+    signal nobody can act on. VIOLATED means runtime state is being RE-CREATED.
+
+    `force_local` is required because this asserts the LOCAL verdicts, and under CI the honest
+    answer is NOT_PROVEN_FROM_CI — which is the other half of the same fix. Without it this test
+    passed locally and failed in CI, asserting the environment rather than the logic."""
     root = _repo(tmp_path, "o", {**BASE, "models/a.pkl": "x\n"}, {"models/b.pkl": "y\n"})
-    inherited = R.host_separation(root, baseline="main", ref="main")
+    inherited = R.host_separation(root, baseline="main", ref="main", force_local=True)
     assert inherited["state"] == "NOT_YET_SEPARATED", inherited
-    growing = R.host_separation(root, baseline="main", ref="cand")
+    growing = R.host_separation(root, baseline="main", ref="cand", force_local=True)
     assert growing["state"] == "VIOLATED", growing
