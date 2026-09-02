@@ -242,7 +242,15 @@ def production_checkout_app_edit_violations(tool_input: dict, repo: Path = REPO)
 #: `2>&1`-style fd dups don't match (their "path" would start with `&`). The universal
 #: source-write ban (operator_law_guard) covers `> *.py` repo-wide but is .py-only; extracting
 #: the redirect destination here lets the caller close the static/*.html|*.js gap in production.
-_REDIRECT_DEST_RE = re.compile(r'(?:^|[^0-9&>])[0-9]*>>?\s*("[^"]+"|\'[^\']+\'|[^\s;|&<>]+)')
+_REDIRECT_DEST_RE = re.compile(r'(?:^|[^0-9&>])[0-9]*>>?\|?\s*("[^"]+"|\'[^\']+\'|[^\s;|&<>]+)')
+
+#: Forms that rewrite TRACKED files without naming them on the command line: a patch decides
+#: what it touches, and `git checkout <rev> -- <path>` / `git restore` write from an object.
+#: `prod_checkout_git_move_violations` deliberately returns None for the `--` file-restore form
+#: (it judges branch moves), so these were reachable by every rail.
+_TREE_WRITE_RE = re.compile(
+    r"(?i)\b(git\s+apply|git\s+checkout(?=[^|;&]*\s--\s)|git\s+restore|"
+    r"git\s+stash\s+(?:pop|apply)|patch\s+-[pi]\d?|patch\s+--\w+)")
 
 
 def _shell_write_dest_paths(seg: str) -> list[str]:
@@ -279,7 +287,109 @@ def _shell_write_dest_paths(seg: str) -> list[str]:
             dests += positionals                             # in-place edit of every file operand
     elif verb == "dd":
         dests += [a[3:] for a in args if a.startswith("of=")]
+    elif verb in ("curl", "wget"):
+        # a download that lands on a path is a write: curl -o FILE / --output FILE, wget -O FILE
+        for flag, nxt in zip(args, args[1:]):
+            if flag in ("-o", "--output", "-O", "--output-document"):
+                dests.append(nxt)
+    elif verb in ("awk", "gawk"):
+        if any(a == "inplace" or a.startswith("inplace") for a in args):
+            dests += positionals
+    # An explicit write-intent flag handed to ANY command — a repo codemod invoked as
+    # `python tools/rewrite.py --write server.py`, `ruff check --fix server.py`, a formatter.
+    # The operands AFTER the flag are what it rewrites; operands before it (the script being
+    # RUN) are reads. LONG FORMS ONLY: a bare `-i` collides with grep/sort/pip, and sed's own
+    # in-place flag is handled by its branch above.
+    for idx, a in enumerate(args):
+        name, _, inline = a.partition("=")
+        if name not in ("--write", "--in-place", "--inplace", "--fix", "--apply", "--output"):
+            continue
+        if inline:
+            dests.append(inline)
+        dests += [t for t in args[idx + 1:] if not t.startswith("-")]
+        break
+    # PowerShell's write cmdlets are DELIBERATELY not enumerated here. operator_law_guard's
+    # _PS_WRITE_BAD already bans Set-Content/Add-Content/Out-File/Copy-Item/Move-Item against a
+    # production-suffix destination universally — MEASURED: `Set-Content server.py 'x=1'` blocks
+    # today with no mission row and no help from this table. A second PowerShell pattern here
+    # would be a second producer of one question (ONE FAUCET). Its residual gap is a destination
+    # built from a bare `$variable`, which no static table closes; that is a limit of the ban,
+    # not something a duplicate here would fix.
     return dests
+
+
+def _shell_rewrites_tracked_tree(seg: str) -> str | None:
+    """The verb, when a segment rewrites tracked files WITHOUT naming them.
+
+    Deliberately separate from `_shell_write_dest_paths` and deliberately adjacent to it: those
+    forms have a destination operand to extract, and these do not. `git apply x.patch` and
+    `patch -p1 < x.patch` rewrite whatever the patch says; `git checkout <rev> -- path` and
+    `git restore` rewrite from an object. Returning a path list for them would be a fiction, so
+    this returns the matched verb and the caller reports a tree write.
+
+    MEASURED on 334c5daf: every form here passed the whole PreToolUse chain, including under
+    the strictest existing rail with cwd set to the production primary.
+    """
+    m = _TREE_WRITE_RE.search(seg)
+    return m.group(0) if m else None
+
+
+def _shell_write_targets(cmd: str, payload_cwd: str = "", base_root: Path | None = None):
+    """Every resolved destination a shell command writes, cwd tracked across `cd` in a chain.
+
+    Extracted from `production_checkout_shell_app_write_violations` so the resolve-and-join
+    loop exists ONCE (ONE FAUCET). The production-checkout rail keeps its own
+    `relative_to(primary)` narrowing; the mission latch applies a different narrowing to the
+    same stream. Neither re-derives how a shell command names a destination.
+    """
+    root = str(base_root) if base_root else str(REPO)
+    for cwd, seg in iter_command_segments(cmd or "", payload_cwd or ""):
+        base = _msys_to_windows(cwd) if cwd else root
+        for dest in _shell_write_dest_paths(seg):
+            try:
+                p = Path(_msys_to_windows(dest))
+                if not p.is_absolute():
+                    p = Path(base) / p
+                yield p.resolve()
+            except (OSError, ValueError):
+                continue
+
+
+def mission_shell_write_violations(cmd: str, payload_cwd: str = "") -> list[str]:
+    """RC-498: a SHELL mutation of production code needs the same durable mission state an
+    Edit/Write does. Otherwise the latch is a door with the window left open.
+
+    MEASURED on 334c5daf in the dev worktree, every one of these returned exit 0 with no row
+    anywhere: `sed -i 's/a/b/' server.py`, `cp /tmp/x.py server.py`, `mv /tmp/x.py server.py`,
+    `echo x | tee server.py`, `truncate -s 0 server.py`, `git apply /tmp/x.patch`, and a repo
+    tool invoked as `... --write server.py`. The existing shell rail only fires when the
+    destination lands inside the PRODUCTION primary checkout, so ordinary development mutation
+    was entirely ungoverned by it — correctly, since that rail answers a different question.
+    """
+    from tools.mission_latch import has_active_mission
+    if has_active_mission():
+        return []
+    out: list[str] = []
+    seen: set[str] = set()
+    for resolved in _shell_write_targets(cmd, payload_cwd, base_root=REPO):
+        facts = classify_path(str(resolved), repo=str(REPO))
+        if not (facts.governed and facts.production) or facts.rel in seen:
+            continue
+        seen.add(facts.rel)
+        out.append(
+            f"FIND_FIX_MISSION_LATCH (RC-498): this command writes production code "
+            f"({facts.rel}) and no root-cause row was opened today. Open ONE row for the "
+            f"session's mission in governance/root_cause_log.md first — see the AGENTS.md "
+            f"Find -> Fix law. Editing governance/, tests/, docs/ and reports/ is never gated.")
+    for _cwd, seg in iter_command_segments(cmd or "", payload_cwd or ""):
+        verb = _shell_rewrites_tracked_tree(seg)
+        if verb and verb not in seen:
+            seen.add(verb)
+            out.append(
+                f"FIND_FIX_MISSION_LATCH (RC-498): `{verb}` rewrites tracked files from a patch "
+                f"or a git object without naming them, and no root-cause row was opened today. "
+                f"Open ONE row for the session's mission first.")
+    return out
 
 
 def production_checkout_shell_app_write_violations(cmd: str, payload_cwd: str = "") -> list[str]:
@@ -298,19 +408,15 @@ def production_checkout_shell_app_write_violations(cmd: str, payload_cwd: str = 
     except (OSError, ValueError):
         return []
     out: list[str] = []
-    for cwd, seg in iter_command_segments(cmd or "", payload_cwd or ""):
-        base = _msys_to_windows(cwd) if cwd else str(primary_res)
-        for dest in _shell_write_dest_paths(seg):
-            try:
-                p = Path(_msys_to_windows(dest))
-                if not p.is_absolute():
-                    p = Path(base) / p
-                resolved = p.resolve()
-                resolved.relative_to(primary_res)            # must land inside the production tree
-            except (OSError, ValueError):
-                continue
-            if classify_path(str(resolved), repo=str(primary_res)).production:
-                out.append(
+    # ONE resolve loop, shared with the RC-498 mission latch; only the narrowing below is
+    # this rail's own — the destination must land INSIDE the production primary.
+    for resolved in _shell_write_targets(cmd, payload_cwd, base_root=primary_res):
+        try:
+            resolved.relative_to(primary_res)
+        except ValueError:
+            continue
+        if classify_path(str(resolved), repo=str(primary_res)).production:
+            out.append(
                     f"PROD_CHECKOUT_APP_EDIT (shell, live-checkout invariant): a shell command "
                     f"writes {resolved} — app code in the PRODUCTION checkout {primary}. "
                     f"Development does not modify the live checkout by ANY means; make the change "
@@ -342,6 +448,9 @@ def pretooluse_block(tool: str, tool_input: dict, payload_cwd: str = "") -> list
         # Live-checkout invariant #4: a materially-equivalent SHELL write to production app code
         # (cp/mv/sed -i/tee/...) is blocked too, not only Edit/Write tool calls.
         out.extend(production_checkout_shell_app_write_violations(cmd, payload_cwd))
+        # RC-498 Find -> Fix latch: the same durable-mission requirement the Edit/Write seam
+        # applies, at the shell seam — otherwise the latch is a door with the window left open.
+        out.extend(mission_shell_write_violations(cmd, payload_cwd))
     return out
 
 

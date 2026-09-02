@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import datetime
 
+import tools.mission_latch as ml
 import tools.stop_guard as sg
 
 TODAY = datetime.date.today().isoformat()
@@ -20,7 +21,9 @@ def _write_log(tmp_path, rows: list[str], monkeypatch):
     p = g / "root_cause_log.md"
     p.write_text("| id | status | opened | due | defect | why | fix |\n" + "\n".join(rows) + "\n",
                  encoding="utf-8")
-    monkeypatch.setattr(sg, "RC_LOG", p)
+    # RC-498 moved the ledger parser into tools/mission_latch.py so the repository holds ONE
+    # `| RC-` scan; stop_guard reads it from there, so that is where the redirect belongs.
+    monkeypatch.setattr(ml, "RC_LOG", p)
     return p
 
 
@@ -70,16 +73,82 @@ def test_ignores_unfinished_rows_from_earlier_days(tmp_path, monkeypatch):
 
 
 def test_missing_log_is_never_a_block(tmp_path, monkeypatch):
-    monkeypatch.setattr(sg, "RC_LOG", tmp_path / "nope" / "root_cause_log.md")
+    monkeypatch.setattr(ml, "RC_LOG", tmp_path / "nope" / "root_cause_log.md")
     assert sg.unfinished_rows_opened_today(TODAY) == []
 
 
-def test_guard_honours_stop_hook_active_so_a_turn_can_always_end(monkeypatch):
-    """A guard that cannot be satisfied is a hang, not a control."""
+def _run(payload: dict, monkeypatch) -> int:
     import io
+    import json
 
-    monkeypatch.setattr(sg.sys, "stdin", io.StringIO('{"stop_hook_active": true}'))
-    assert sg.main() == 0
+    monkeypatch.setattr(sg.sys, "stdin", io.StringIO(json.dumps(payload)))
+    return sg.main()
+
+
+def _operator_says(tmp_path, text: str) -> str:
+    """A transcript whose LAST USER message is the operator's instruction."""
+    import json
+
+    p = tmp_path / "t.jsonl"
+    p.write_text("\n".join(json.dumps(r) for r in (
+        {"type": "user", "message": {"role": "user",
+                                     "content": [{"type": "text", "text": "do the work"}]}},
+        {"type": "assistant", "message": {"role": "assistant",
+                                          "content": [{"type": "text", "text": "working"}]}},
+        {"type": "user", "message": {"role": "user",
+                                     "content": [{"type": "text", "text": text}]}},
+    )) + "\n", encoding="utf-8")
+    return str(p)
+
+
+_IN_PROGRESS = f"| RC-90 | OPEN | {TODAY} | 2099-01-01 | d | (1)->(5) ROOT: x | IN PROGRESS |"
+
+
+def test_retry_flag_is_not_an_authorization(tmp_path, monkeypatch):
+    """RC-498. RC-72 returned 0 whenever `stop_hook_active` was set, so the entire control was
+    clearable by stopping twice — the agent stops, is blocked, stops again, and the flag waves
+    it through with the work still unfinished. The flag proves only that the HOST is retrying;
+    this guard now re-evaluates, exactly as operator_law_guard already does at this seam."""
+    _write_log(tmp_path, [_IN_PROGRESS], monkeypatch)
+    assert _run({"stop_hook_active": True}, monkeypatch) == 2
+
+
+def test_every_blocking_state_has_an_escape_that_clears_it(tmp_path, monkeypatch):
+    """THE ANTI-HANG PROPERTY, PROVEN RATHER THAN ASSERTED.
+
+    The retired find-it-fix-it framework also re-blocked on the retry flag and DID hang,
+    because a missing ledger was itself an offender — there was no action that could satisfy
+    it. Honouring `stop_hook_active` was the old defence against that, and it doubled as the
+    bypass above. The real property is that a satisfying action always EXISTS, so this drives
+    each one and requires the block to lift."""
+    _write_log(tmp_path, [_IN_PROGRESS], monkeypatch)
+    assert _run({"stop_hook_active": True}, monkeypatch) == 2, "precondition: blocked"
+
+    # ESCAPE 1 — finish it.
+    _write_log(tmp_path, [
+        f"| RC-90 | CLOSED | {TODAY} | 2099-01-01 | d | (1)->(5) ROOT: x | FIXED: tools/x.py. "
+        "MEASURED this turn: 12 passed. END-TO-END: edit -> guard -> block. |"], monkeypatch)
+    assert _run({"stop_hook_active": True}, monkeypatch) == 0
+
+    # ESCAPE 2 — record the objective blocker the repo's own vocabulary already defines.
+    _write_log(tmp_path, [
+        f"| RC-90 | OPEN | {TODAY} | 2099-01-01 | d | (1)->(5) ROOT: x | BLOCKED_ON_LIVE_SESSION "
+        "— the proof needs a live RTH quote stream and the market is closed; resumes at the "
+        "next RTH open 2099-01-02. |"], monkeypatch)
+    assert _run({"stop_hook_active": True}, monkeypatch) == 0
+
+    # ESCAPE 3 — the operator says stop.
+    _write_log(tmp_path, [_IN_PROGRESS], monkeypatch)
+    assert _run({"transcript_path": _operator_says(tmp_path, "STOP. Hang it up for tonight.")},
+                monkeypatch) == 0
+
+
+def test_an_unreadable_ledger_abstains_rather_than_hanging_every_turn(tmp_path, monkeypatch):
+    """The retired framework treated a missing/malformed ledger as an offender, which blocked
+    every Stop AND every commit repo-wide. No rows means nothing to say, not a block."""
+    monkeypatch.setattr(ml, "RC_LOG", tmp_path / "absent" / "root_cause_log.md")
+    monkeypatch.setattr(ml, "dirty_production_files", lambda *a, **k: [])
+    assert _run({"stop_hook_active": True}, monkeypatch) == 0
 
 
 def test_env_off_does_not_disable_unfinished_row_block(tmp_path, monkeypatch):

@@ -122,7 +122,10 @@ def _mini_stop_repo(tmp_path: Path) -> Path:
     root = tmp_path / "mini"
     (root / "tools").mkdir(parents=True)
     (root / "governance").mkdir()
-    for name in ("__init__.py", "stop_chain.py", "stop_guard.py"):
+    # mission_latch.py joins the copy list because RC-498 moved the ledger parser there:
+    # stop_guard imports it at module level, and the chain treats a missing member as a
+    # crash-block — which would make this equivalence pass for the wrong reason.
+    for name in ("__init__.py", "stop_chain.py", "stop_guard.py", "mission_latch.py"):
         shutil.copy(ROOT / "tools" / name, root / "tools" / name)
         assert (root / "tools" / name).read_bytes() == (ROOT / "tools" / name).read_bytes()
     today = datetime.date.today().isoformat()
@@ -140,7 +143,9 @@ def test_stop_guard_member_block_equivalence(tmp_path):
     root = _mini_stop_repo(tmp_path)
     payload = {"session_id": "eqv-stop-guard", "stop_hook_active": False}
     standalone, chain = _pair(payload, "tools/stop_guard.py", root=root)
-    _assert_blocking_pair(standalone, chain, ("(RC-72)", "RC-9901"))
+    # RC-498 widened the banner to "(RC-72 / RC-498)" — the same RC-72 block, now naming the
+    # clause that generalised it. The marker drops the parentheses and asserts the same thing.
+    _assert_blocking_pair(standalone, chain, ("RC-72", "RC-9901"))
 
 
 def test_proof_only_guard_member_block_equivalence(tmp_path):

@@ -272,6 +272,43 @@ def _block_unapproved_ui_redesign(rel: str, tool_input: dict) -> int | None:
     return None
 
 
+def _block_production_mutation_without_mission(rel: str, facts: PathFacts) -> int | None:
+    """RC-498: a production mutation requires durable same-day mission state.
+
+    This is the AGENTS.md law — "Find something broken -> fix it ... discovery creates the
+    obligation to remediate through the full blast radius in the active session" — made
+    executable at the seam where the mutation actually happens. The RC-66 lane retired under
+    RC-470/471 demanded a row per EDITED FILE and was rightly judged sprawl; this asks for ONE
+    row for the session's work, which is the smallest durable state that can carry an
+    obligation forward to Stop.
+
+    Compliance surfaces need no row, and that falls out of `classify_path` rather than a
+    second list: governance/, tests/, docs/, reports/, .claude/, .cursor/, calibration/ and
+    scratchpad/ are all NOT production, so opening the row, writing the test and recording the
+    evidence are never blocked by this clause. A foreign path is likewise untouched — that
+    tree's own rules govern it (RC-259).
+    """
+    if not facts.production:
+        return None
+    from tools.mission_latch import RC_LOG, has_active_mission
+    if has_active_mission():
+        return None
+    sys.stderr.write(
+        "BLOCKED (RC-498): production mutation with no active mission (AGENTS.md Find -> Fix).\n\n"
+        f"  File: {rel}\n"
+        f"  No row in {RC_LOG.name} was opened today, so this session has no durable record of\n"
+        "  what is being fixed. Without one, a defect found on the way to this edit can be\n"
+        "  reported in prose and abandoned when the turn ends — the failure this law exists\n"
+        "  to prevent.\n\n"
+        "To proceed, open ONE row for the work in governance/root_cause_log.md:\n"
+        "  | RC-<n> | OPEN | <today> | <due> | <what is broken> | (1) .. -> (5) ROOT: .. |\n"
+        "    IN PROGRESS — <what you are about to do> |\n\n"
+        "ONE row for the session's mission, not one per file. Editing governance/, tests/,\n"
+        "docs/, reports/ and .claude/ is never blocked here — that is how you comply.\n"
+    )
+    return 2
+
+
 def main() -> int:
     try:
         payload = json.load(sys.stdin)
@@ -331,6 +368,14 @@ def decide(payload: dict) -> int:
     # 2026-08-24: feature-branch edits are autonomous; defect rows are still required
     # for defects (root_cause_log at commit/CI) but ordinary work is not a defect.
     # The RC-160 / RC-163 / RC-186 content gates above are unchanged.
+    #
+    # RC-498 (operator, FIND_FIX_EXECUTION_LATCH_V1) is NOT a revival of RC-66: that lane
+    # demanded a row per edited FILE, this asks for ONE row per session's mission. It exists
+    # because the retirement left the Find -> Fix law with no mechanical seam at all —
+    # MEASURED on 334c5daf, a production Edit with no row anywhere returned exit 0.
+    blocked = _block_production_mutation_without_mission(rel, facts)
+    if blocked is not None:
+        return blocked
     return 0
 
 
