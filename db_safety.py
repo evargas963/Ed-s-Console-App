@@ -171,15 +171,31 @@ def backup_console_database(
     # Connection.backup() is SQLite's own online-backup API: it reads through the WAL and
     # produces a transactionally consistent destination while writers continue. Minimum
     # native mechanism -- no snapshot framework and no locking policy of our own.
-    src_conn = sqlite3.connect(str(src), timeout=60.0)
     try:
-        dest_conn = sqlite3.connect(str(dest))
+        src_conn = sqlite3.connect(str(src), timeout=60.0)
         try:
-            src_conn.backup(dest_conn)
+            dest_conn = sqlite3.connect(str(dest))
+            try:
+                src_conn.backup(dest_conn)
+            finally:
+                dest_conn.close()
         finally:
-            dest_conn.close()
-    finally:
-        src_conn.close()
+            src_conn.close()
+    except BaseException:
+        # A partial destination must not survive a failed backup. The manifest is already
+        # safe -- it is written below, only after the backup returns, so a failure leaves
+        # no manifest (verified: an interrupted backup produced zero manifests). But the
+        # destination file DOES survive, and it is named exactly like a real recovery
+        # point (`<stamp>_ed_console.db`) while being unreadable -- measured: reverting
+        # this cleanup stranded `20260902_032346_ed_console.db`, a truncated file wearing
+        # a real recovery-point name. Remove it, so the recovery directory contains only
+        # backups that actually completed.
+        for _partial in (dest, Path(f"{dest}-wal"), Path(f"{dest}-shm")):
+            try:
+                _partial.unlink(missing_ok=True)
+            except OSError:
+                pass    # best effort: never mask the original backup failure
+        raise
     size_b = dest.stat().st_size
     sha = _sha256_file(dest)
     manifest: dict[str, Any] = {

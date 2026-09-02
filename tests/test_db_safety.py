@@ -203,3 +203,121 @@ def test_mutation_control_a_file_copy_backup_loses_committed_wal_rows(tmp_path: 
             got.close()
     finally:
         live.close()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# A FAILED BACKUP MUST NOT MASQUERADE AS A SUCCESSFUL ONE
+#
+# The destination is named exactly like a real recovery point before a single page
+# is written to it. If the backup then dies, the leftover file is indistinguishable
+# by name from a usable backup, and an operator restoring under pressure has no
+# reason to doubt it.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class _BackupBoom(RuntimeError):
+    """A failure raised from inside SQLite's backup loop, as an I/O error would be."""
+
+
+def _source_that_fails_partway(src: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Make ``backup_console_database``'s source connection fail after it has already
+    written pages into the destination — so a partial file genuinely exists."""
+    import db_safety as _dbs
+
+    real_connect = sqlite3.connect
+    steps = {"n": 0}
+
+    class _FailingSource:
+        def __init__(self, inner: sqlite3.Connection) -> None:
+            self._inner = inner
+
+        def backup(self, target, **_kw):          # type: ignore[no-untyped-def]
+            def _cb(status, remaining, total):    # type: ignore[no-untyped-def]
+                steps["n"] += 1
+                if steps["n"] >= 2:
+                    raise _BackupBoom("simulated I/O failure partway through the backup")
+
+            return self._inner.backup(target, pages=1, progress=_cb)
+
+        def __getattr__(self, name: str):         # type: ignore[no-untyped-def]
+            return getattr(self._inner, name)
+
+        def close(self) -> None:
+            self._inner.close()
+
+    def _connect(path, *a, **k):                  # type: ignore[no-untyped-def]
+        conn = real_connect(path, *a, **k)
+        return _FailingSource(conn) if str(path) == str(src) else conn
+
+    monkeypatch.setattr(_dbs.sqlite3, "connect", _connect)
+
+
+def test_failed_backup_leaves_nothing_that_could_pass_for_a_recovery_point(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A backup that raises must leave the recovery directory exactly as it found it.
+
+    The manifest is the accept token and is only written after the copy returns, but the
+    destination .db is created up front under its final recovery-point name — so a crash
+    mid-copy would strand a truncated file that looks like a backup and is not one."""
+    src = tmp_path / "live.db"
+    live = _wal_db_with_uncheckpointed_commits(src, 5000)
+    root = tmp_path / "out"
+    root.mkdir(parents=True)
+    try:
+        _source_that_fails_partway(src, monkeypatch)
+        with pytest.raises(_BackupBoom):
+            backup_console_database(src, operation_name="fail_case", backup_root=root)
+        monkeypatch.undo()
+
+        left = sorted(p.name for p in root.iterdir())
+        assert left == [], f"a failed backup left artifacts behind: {left}"
+    finally:
+        live.close()
+
+
+def test_mutation_control_an_uncleaned_failed_backup_strands_a_convincing_fake(
+    tmp_path: Path,
+) -> None:
+    """NEGATIVE CONTROL for the cleanup above.
+
+    Run the same native backup and the same mid-copy failure WITHOUT the cleanup, and
+    show what survives: a file carrying the recovery-point name that does not hold the
+    data. Without this control the test above could pass merely because nothing was ever
+    created, and would prove nothing about the cleanup being load-bearing."""
+    src = tmp_path / "live.db"
+    live = _wal_db_with_uncheckpointed_commits(src, 5000)
+    try:
+        dest = tmp_path / "20260101_000000_ed_console.db"   # a real recovery-point name
+        s = sqlite3.connect(str(src))
+        d = sqlite3.connect(str(dest))
+        steps = {"n": 0}
+
+        def _cb(status, remaining, total):        # type: ignore[no-untyped-def]
+            steps["n"] += 1
+            if steps["n"] >= 2:
+                raise _BackupBoom("simulated I/O failure partway through the backup")
+
+        try:
+            with pytest.raises(_BackupBoom):
+                s.backup(d, pages=1, progress=_cb)
+        finally:
+            d.close()
+            s.close()
+
+        assert dest.is_file(), (
+            "MUTATION CONTROL FAILED TO BITE: the partial destination must survive when "
+            "nothing removes it — that is the artifact the cleanup exists to delete")
+        got = sqlite3.connect(f"file:{dest}?mode=ro", uri=True)
+        try:
+            try:
+                n = got.execute("SELECT COUNT(*) FROM snapshots").fetchone()[0]
+            except sqlite3.DatabaseError:
+                n = None                          # unreadable — the observed failure
+            assert n != 5000, (
+                "MUTATION CONTROL FAILED TO BITE: a backup abandoned mid-copy must NOT "
+                "already contain every row")
+        finally:
+            got.close()
+    finally:
+        live.close()
