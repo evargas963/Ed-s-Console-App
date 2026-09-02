@@ -138,11 +138,12 @@ def test_every_blocking_state_has_an_escape_that_clears_it(tmp_path, monkeypatch
         "MEASURED this turn: 12 passed. END-TO-END: edit -> guard -> block. |"], monkeypatch)
     assert _run({"stop_hook_active": True}, monkeypatch) == 0
 
-    # ESCAPE 2 — record the objective blocker the repo's own vocabulary already defines.
+    # ESCAPE 2 — declare the blocker STRUCTURALLY (RC-503): the status cell, plus a due date
+    # that has not passed. The fix cell explains what is awaited but carries no authority.
     _write_log(tmp_path, [
-        f"| RC-90 | OPEN | {TODAY} | 2099-01-01 | d | (1)->(5) ROOT: x | BLOCKED_ON_LIVE_SESSION "
-        "— the proof needs a live RTH quote stream and the market is closed; resumes at the "
-        "next RTH open 2099-01-02. |"], monkeypatch)
+        f"| RC-90 | BLOCKED | {TODAY} | 2099-01-01 | d | (1)->(5) ROOT: x | the proof needs a "
+        "live RTH quote stream and the market is closed; resumes at the next RTH open. |"],
+        monkeypatch)
     assert _run({"stop_hook_active": True}, monkeypatch) == 0
 
     # ESCAPE 3 — the operator says stop.

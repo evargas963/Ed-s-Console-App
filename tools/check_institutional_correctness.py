@@ -357,7 +357,10 @@ def check_root_cause_log() -> list[Violation]:
         rc_id, status, _opened, due = cells[0], cells[1], cells[2], cells[3]
 
         out.extend(_rc_row_violations(log_path, n, rc_id, status, cells))
-        if status != "OPEN":
+        # RC-503: BLOCKED is unfinished work, so it carries a due date and goes overdue exactly
+        # like OPEN. Excluding it would have made "blocked" a way to stop the clock, which is
+        # the deferral this ledger's whole due-date discipline exists to prevent.
+        if status not in ("OPEN", "BLOCKED"):
             continue
         try:
             due_date = datetime.date.fromisoformat(due)
@@ -2930,7 +2933,15 @@ def _adversarial_audits_are_answered_violations() -> list[Violation]:
 #: The ONLY status tokens an RC row may carry. Measured from the live ledger on
 #: 2026-08-06: OPEN 4, CLOSED 227, REMEDIATED 1. Adding a token here is a
 #: deliberate act that must also decide whether it belongs in CLOSED_CLASS.
-DECLARED_RC_STATUSES: frozenset[str] = frozenset({"OPEN", "CLOSED", "REMEDIATED"})
+#: BLOCKED joined the vocabulary for RC-503. "This mission is objectively blocked" was
+#: previously asserted by a `BLOCKED_ON_*` substring inside the free-text fix cell, and
+#: tools/mission_latch.py read that substring to decide both turn-end legality AND production
+#: authority — prose deciding enforcement, which is the one thing this repository's controls
+#: are not allowed to do. Making it a STATUS puts the claim in a machine-parsed column that
+#: this very check polices, so an unrecognised or misspelled token fails loudly instead of
+#: silently granting or denying authority. It is NOT in CLOSED_CLASS: a blocked defect is
+#: unfinished work, so the close contract must not treat it as dealt with.
+DECLARED_RC_STATUSES: frozenset[str] = frozenset({"OPEN", "CLOSED", "REMEDIATED", "BLOCKED"})
 
 #: Statuses that assert the defect is dealt with, and therefore must satisfy
 #: the full close contract. Six independent clauses key on this classification.

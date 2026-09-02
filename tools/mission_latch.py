@@ -62,11 +62,21 @@ class MissionRow(NamedTuple):
 UNFINISHED_MARKERS = ("IN PROGRESS", "VERIFICATION PENDING", "PENDING VERIFICATION",
                       "NOT FIXED", "PARTIALLY FIXED", "NOT DONE")
 
-#: The blocker tokens the repo ALREADY enforces at pre-commit via
-#: `operating_process_lock.rc_redate_violations`. Reused rather than reinvented: one
-#: vocabulary for "objectively blocked", not two.
-EXTERNAL_BLOCKERS = ("BLOCKED_ON_OPERATOR", "BLOCKED_ON_LIVE_SESSION",
-                     "BLOCKED_ON_DATA_ACCRUAL", "BLOCKED_ON_EXTERNAL")
+#: RC-503: "is this mission objectively blocked" is answered by the row's STATUS CELL — a
+#: machine-parsed column of the schema — and by its DUE CELL. It is not answered by searching
+#: the free-text fix cell for `BLOCKED_ON_*`, which is what this used to do.
+#:
+#: That earlier form was prose deciding authority: the substring could appear in a sentence
+#: DESCRIBING a blocker, quoting one, or explaining why something was NOT blocked, and the
+#: predicate could not tell those apart from a claim. The whole point of the surrounding work
+#: is that a control must own an OUTCOME, not a VOCABULARY; the authority path was the last
+#: place still violating it.
+#:
+#: The fix cell still SAYS which blocker and what clears it — that is how a human reviews the
+#: claim, and `operating_process_lock.rc_redate_violations` separately requires the
+#: `RE-DATED old->new: BLOCKED_ON_*` justification when a due date MOVES. Neither of those is
+#: authority. This is.
+BLOCKED_STATUS = "BLOCKED"
 
 #: Operator halt authority (AGENTS.md: "Operator halt words: STOP / PAUSE / HANG IT UP /
 #: DO NOT CONTINUE"). ANCHORED to the START of the operator's message, not searched inside it.
@@ -172,12 +182,10 @@ def active_mission_rows(today: str | None = None,
                                  it does not authorize what comes next.
       3. introduced HERE       — the row must be this worktree's own, not one that arrived on
                                  the trunk. Authority binds to the mission being executed.
-      4. NOT externally blocked — RC-502. A row carrying a `BLOCKED_ON_*` disposition says the
-                                 work CANNOT PROCEED. A mission that cannot proceed cannot
-                                 authorize proceeding; the two claims are contradictory, and
-                                 the row is asserting the first while being used for the second.
-                                 Reuses `external_blocker` — the same predicate that lets such
-                                 a row end the turn legally, now also denying it authority.
+    RC-502 added a fourth condition — not externally blocked — because a row that says the work
+    CANNOT PROCEED cannot authorize proceeding. RC-503 then made "blocked" a STATUS, so that
+    condition is now carried by `status == "OPEN"` itself: BLOCKED is a different token and is
+    excluded structurally, with no separate test to keep in step.
 
     MEASURED before this repair: `has_active_mission` accepted any row opened today, so closing
     RC-498 still authorized fresh production edits, and a row opened by unrelated work
@@ -193,8 +201,7 @@ def active_mission_rows(today: str | None = None,
     if introduced is None:
         return []                      # unmeasurable -> no proof of a mission -> no authority
     return [r for r in same_day_rows(today, repo)
-            if r.status == "OPEN" and r.rc_id in introduced
-            and external_blocker(r) is None]
+            if (r.status or "").strip() == "OPEN" and r.rc_id in introduced]
 
 
 def has_active_mission(today: str | None = None, repo: str | Path | None = None) -> bool:
@@ -217,29 +224,27 @@ def has_active_mission(today: str | None = None, repo: str | Path | None = None)
 def external_blocker(row: MissionRow) -> str | None:
     """The objective blocker recorded on a row, or None.
 
-    Two STRUCTURAL requirements, deliberately not a prose test: one of the repo's existing
-    `BLOCKED_ON_*` tokens, and a `due` cell that parses as a date still in the future. The due
-    date is the resume condition, and it is a field the repo already polices — moving it needs
-    `operating_process_lock.rc_redate_violations` to see a `RE-DATED old->new: BLOCKED_ON_*`
-    justification at commit.
+    TWO STRUCTURAL CELLS, no text anywhere: `status` is the declared token BLOCKED, and `due`
+    parses as a date that has not passed. Both are machine-parsed columns of the row schema
+    that `check_rc_status_vocabulary` and the overdue clause already police.
 
-    THIS REPLACED A PROSE TEST THAT DID NOT WORK. The earlier version searched the fix cell for
-    resume words, one alternative being any ISO date. MEASURED against it:
+    THIS REPLACED PROSE DECIDING AUTHORITY (RC-503). The predicate used to search the free-text
+    fix cell for a `BLOCKED_ON_*` substring, which cannot tell a CLAIM from a mention: the same
+    characters appear in a sentence describing a blocker, quoting one, or explaining why
+    something was NOT blocked. Two rounds earlier the resume condition was prose too, and it
+    EXEMPTED "BLOCKED_ON_EXTERNAL - ran out of runway, 2026-01-01" and "I would prefer another
+    audit. 2026-01-01" — the exact dispositions the law forbids — because they contained a
+    date. Each round replaced one prose test with a field; this is the last of them.
 
-        "BLOCKED_ON_EXTERNAL - ran out of runway, 2026-01-01"          -> EXEMPTED
-        "BLOCKED_ON_OPERATOR - I would prefer another audit. 2026-01-01" -> EXEMPTED
+    The due date remains the resume condition, so a stale one fails on arithmetic rather than
+    on vocabulary, and an overdue BLOCKED row stays visible debt to the enforced overdue clause.
 
-    Both are precisely the dispositions the law forbids, and both walked through because they
-    contained a date. Reading the `due` field instead makes a stale date fail on arithmetic
-    rather than on vocabulary.
-
-    HONEST LIMIT, stated rather than implied: this proves the row CARRIES a recognised blocker
-    and a live due date. It cannot prove the blocker is truthful — no machine can read whether
-    the market is really closed. Judging that stays with the operator, and the row is written
-    in plain sight so it can be judged.
+    HONEST LIMIT, stated rather than implied: this proves the row DECLARES itself blocked and
+    carries a live date. No machine can read whether the market is really closed or the
+    operator really unanswered. Judging that stays with the operator — but the declaration is
+    now a single reviewable cell rather than a phrase buried in a paragraph.
     """
-    token = next((t for t in EXTERNAL_BLOCKERS if t in row.fix.upper()), None)
-    if token is None:
+    if (row.status or "").strip() != BLOCKED_STATUS:
         return None
     try:
         due = datetime.date.fromisoformat(row.due.strip())
@@ -247,15 +252,19 @@ def external_blocker(row: MissionRow) -> str | None:
         return None                       # no parseable resume date -> not an objective blocker
     if due < datetime.date.today():
         return None                       # the date it promised to resume by has passed
-    return token
+    return BLOCKED_STATUS
 
 
 def row_blockers(row: MissionRow) -> list[str]:
     """Why this row forbids ending the turn. Empty list = this row does not block Stop."""
-    if row.status != "OPEN":
-        return []                          # CLOSED / SUPERSEDED rows are finished
-    if external_blocker(row):
-        return []                          # objectively blocked: OPEN is the legal form
+    status = (row.status or "").strip()
+    if status == BLOCKED_STATUS:
+        if external_blocker(row):
+            return []                      # objectively blocked with a live date: legal
+        return ["row is BLOCKED but its due date has passed or does not parse — a blocker "
+                "without a live resume date is a deferral, not a blocker"]
+    if status != "OPEN":
+        return []                          # CLOSED / REMEDIATED rows are finished
     hit = next((m for m in UNFINISHED_MARKERS if m in row.fix.upper()), None)
     # The marker adds nothing to the DECISION — measured decision-neutral across 30
     # cases — but naming what the agent itself wrote makes the block message actionable.

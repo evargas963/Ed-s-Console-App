@@ -309,24 +309,30 @@ def test_zero_and_many_fail_the_same_way(tmp_path):
 # ─────────────────────────────────────────────────────────────────────────────
 # RC-502 — a BLOCKED mission cannot authorize the work it says cannot proceed
 # ─────────────────────────────────────────────────────────────────────────────
-_BLOCKED_FIX = ("BLOCKED_ON_OPERATOR — awaiting the operator's decision on the retirement "
-                "step; resumes when they answer.")
+#: RC-503: "blocked" is the row's STATUS cell, not a phrase in its fix cell. The fix cell still
+#: explains WHICH blocker so a human can judge the claim; it carries no authority.
+_BLOCKED_WHY = "awaiting the operator's decision on the retirement step; resumes when they answer."
+
+
+def _blocked_row(rc: str, due: str = "2099-01-01") -> str:
+    return (f"| {rc} | BLOCKED | {TODAY} | {due} | a defect | "
+            f"(1) a -> (2) b -> (3) c -> (4) d -> (5) ROOT: e | {_BLOCKED_WHY} |")
 
 
 def test_a_blocked_mission_does_not_authorize_a_production_edit(tmp_path, monkeypatch):
-    """A row carrying BLOCKED_ON_* asserts the work CANNOT PROCEED. Using it to authorize
-    proceeding asserts the opposite in the same breath.
+    """A BLOCKED row asserts the work CANNOT PROCEED. Using it to authorize proceeding asserts
+    the opposite in the same breath.
 
-    MEASURED before this clause, live: RC-499 carried BLOCKED_ON_OPERATOR and authorized every
-    production edit of the session that opened it."""
-    _ledger(tmp_path, monkeypatch, _row(rc="RC-720", fix=_BLOCKED_FIX))
+    MEASURED before this clause, live: RC-499 was blocked and authorized every production edit
+    of the session that opened it."""
+    _ledger(tmp_path, monkeypatch, _blocked_row("RC-720"))
     _introduced(monkeypatch, "RC-720")
     assert _decide(_edit("server.py")) == 2
 
 
 def test_a_blocked_mission_does_not_authorize_a_shell_write(tmp_path, monkeypatch):
     """Closed on both seams, or it is a door with the window left open."""
-    _ledger(tmp_path, monkeypatch, _row(rc="RC-721", fix=_BLOCKED_FIX))
+    _ledger(tmp_path, monkeypatch, _blocked_row("RC-721"))
     _introduced(monkeypatch, "RC-721")
     assert plg.mission_shell_write_violations("sed -i 's/a/b/' server.py", str(ROOT))
 
@@ -339,10 +345,39 @@ def test_a_normal_open_mission_still_authorizes(tmp_path, monkeypatch):
     assert plg.mission_shell_write_violations("sed -i 's/a/b/' server.py", str(ROOT)) == []
 
 
+def test_prose_in_the_fix_cell_cannot_declare_a_row_blocked(tmp_path, monkeypatch):
+    """RC-503, the point of the whole change: an OPEN row whose fix cell CONTAINS the old
+    `BLOCKED_ON_*` phrasing is NOT blocked. Authority reads the status cell.
+
+    The old predicate substring-matched the free-text cell, which cannot tell a CLAIM from a
+    mention — the same characters appear when describing a blocker, quoting one, or saying
+    something is not blocked. Here the sentence explicitly denies being blocked, and under the
+    old rule that denial would have granted the exemption."""
+    _ledger(tmp_path, monkeypatch, _row(
+        rc="RC-726",
+        fix="This is NOT BLOCKED_ON_OPERATOR and never was; work continues. 2099-01-01"))
+    _introduced(monkeypatch, "RC-726")
+    row = next(r for r in ml.all_rows() if r.rc_id == "RC-726")
+    assert ml.external_blocker(row) is None
+    assert ml.row_blockers(row), "an OPEN unfinished row must still block the turn"
+
+
+def test_a_blocked_row_with_a_stale_due_date_is_a_deferral_not_a_blocker(tmp_path, monkeypatch):
+    """Due-date semantics survive the move to a status: blocked is not a way to stop the clock.
+    The enforced overdue clause covers BLOCKED for the same reason."""
+    _ledger(tmp_path, monkeypatch, _blocked_row("RC-727", due="2020-01-01"))
+    _introduced(monkeypatch, "RC-727")
+    row = next(r for r in ml.all_rows() if r.rc_id == "RC-727")
+    assert ml.external_blocker(row) is None
+    assert ml.row_blockers(row)
+    monkeypatch.setattr(ml, "dirty_production_files", lambda *a, **k: [])
+    assert _stop({"transcript_path": _transcript(tmp_path, "t.jsonl")}, monkeypatch) == 2
+
+
 def test_clearing_the_blocker_restores_authority(tmp_path, monkeypatch):
-    """A blocked row regains authority the only honest way — by ceasing to claim it is blocked.
-    Same row, same day, same worktree; only the disposition changes."""
-    _ledger(tmp_path, monkeypatch, _row(rc="RC-723", fix=_BLOCKED_FIX))
+    """A blocked row regains authority the only honest way — by ceasing to declare itself
+    blocked. Same row, same day, same worktree; only the status cell changes."""
+    _ledger(tmp_path, monkeypatch, _blocked_row("RC-723"))
     _introduced(monkeypatch, "RC-723")
     assert _decide(_edit("server.py")) == 2, "precondition: blocked denies authority"
 
@@ -354,30 +389,49 @@ def test_clearing_the_blocker_restores_authority(tmp_path, monkeypatch):
 
 def test_a_blocked_row_may_still_end_the_turn(tmp_path, monkeypatch):
     """The two questions stay separate and must not be collapsed: a blocked row legally ENDS a
-    turn (that is what the disposition is for) while denying authority to START new production
-    work. Losing this distinction would make an honestly blocked mission unstoppable."""
-    _ledger(tmp_path, monkeypatch, _row(rc="RC-724", fix=_BLOCKED_FIX))
+    turn (that is what the status is for) while denying authority to START new production work.
+    Losing this distinction would make an honestly blocked mission unstoppable."""
+    _ledger(tmp_path, monkeypatch, _blocked_row("RC-724"))
     _introduced(monkeypatch, "RC-724")
     monkeypatch.setattr(ml, "dirty_production_files", lambda *a, **k: [])
     assert _stop({"transcript_path": _transcript(tmp_path, "t.jsonl")}, monkeypatch) == 0
 
 
-def test_mutation_control_ignoring_the_blocker_reopens_the_bypass(tmp_path, monkeypatch):
-    """NEGATIVE CONTROL: make external_blocker blind and the blocked row authorizes again."""
-    _ledger(tmp_path, monkeypatch, _row(rc="RC-725", fix=_BLOCKED_FIX))
+def test_mutation_control_treating_blocked_as_open_reopens_the_bypass(tmp_path, monkeypatch):
+    """NEGATIVE CONTROL: read BLOCKED as an ordinary open mission and it authorizes again."""
+    _ledger(tmp_path, monkeypatch, _blocked_row("RC-725"))
     _introduced(monkeypatch, "RC-725")
-    monkeypatch.setattr(ml, "external_blocker", lambda row: None)
+    monkeypatch.setattr(ml, "active_mission_rows",
+                        lambda today=None, repo=None: ml.same_day_rows(today, repo))
     assert _decide(_edit("server.py")) == 0, (
-        "MUTATION CONTROL FAILED TO BITE: with the blocker ignored, a blocked mission must "
+        "MUTATION CONTROL FAILED TO BITE: with BLOCKED read as open, the blocked mission must "
         "authorize again")
 
 
-def test_the_blocked_clause_reuses_the_existing_predicate():
-    """No second definition of 'objectively blocked' — the same function that lets such a row
-    end the turn is the one that denies it authority."""
-    src = Path(ml.__file__).read_text(encoding="utf-8")
-    assert src.count("def external_blocker") == 1
-    assert "external_blocker(r) is None" in src
+def test_blocked_authority_reads_structure_not_prose():
+    """RC-503. One definition of 'objectively blocked', and it reads CELLS.
+
+    Structural, because the point is that no substring search survives anywhere in the
+    authority path: the status cell decides the declaration, the due cell decides whether it is
+    still live, and `BLOCKED` is a token the enforced status-vocabulary check polices."""
+    import inspect
+
+    assert Path(ml.__file__).read_text(encoding="utf-8").count("def external_blocker") == 1
+    assert ml.BLOCKED_STATUS == "BLOCKED"
+    assert not hasattr(ml, "EXTERNAL_BLOCKERS"), "the prose vocabulary must be gone"
+
+    # THE FUNCTION BODY, not the file: comments may still DISCUSS the old phrasing (they
+    # explain why it was removed), but the predicate must not READ the prose cell.
+    body = inspect.getsource(ml.external_blocker)
+    body = body.split('"""')[2] if body.count('"""') >= 2 else body   # drop the docstring
+    assert "row.fix" not in body, "authority must not read the free-text fix cell"
+    assert "row.status" in body and "row.due" in body
+
+    import tools.check_institutional_correctness as CIC
+    assert "BLOCKED" in CIC.DECLARED_RC_STATUSES, "the token must be a declared status"
+    assert "BLOCKED" not in CIC.CLOSED_CLASS_RC_STATUSES, (
+        "a blocked defect is unfinished work; the close contract must not treat it as dealt "
+        "with")
 
 
 def test_a_landed_row_stops_authorizing_once_it_is_on_the_trunk():
@@ -535,9 +589,7 @@ def test_stop_allowed_when_objectively_blocked(tmp_path, monkeypatch):
     """`dirty_production_files` is pinned because RC-502 made a blocked row not an ACTIVE
     mission, so the outcome clause now runs here — unpinned this would assert the state of my
     checkout rather than the guard."""
-    _ledger(tmp_path, monkeypatch, _row(
-        fix="BLOCKED_ON_LIVE_SESSION — the proof needs a live RTH quote stream and the market "
-            "is closed. Resumes at the next RTH open 2099-01-02."))
+    _ledger(tmp_path, monkeypatch, _blocked_row("RC-900"))
     monkeypatch.setattr(ml, "dirty_production_files", lambda *a, **k: [])
     assert _stop({"transcript_path": _transcript(tmp_path, "t.jsonl")}, monkeypatch) == 0
 
@@ -546,14 +598,13 @@ def test_stop_allowed_when_objectively_blocked(tmp_path, monkeypatch):
 def test_a_blocker_without_a_live_resume_date_is_only_a_label(tmp_path, monkeypatch, due):
     """A blocker needs a resume condition, and the resume condition is the row's `due` FIELD.
 
-    This replaced a regex over the fix cell that searched for resume words, one alternative
-    being any ISO date. MEASURED against that version: "BLOCKED_ON_EXTERNAL - ran out of
-    runway, 2026-01-01" and "BLOCKED_ON_OPERATOR - I would prefer another audit. 2026-01-01"
-    were both EXEMPTED — the two dispositions the law most explicitly forbids, walking through
-    because they happened to contain a date. Reading the structural field instead makes a stale
-    or unparseable date fail on arithmetic rather than on vocabulary."""
-    row = f"| RC-900 | OPEN | {TODAY} | {due} | d | (1)->(5) ROOT: e | BLOCKED_ON_EXTERNAL |"
-    _ledger(tmp_path, monkeypatch, row)
+    Two prose tests were removed on the way here. The resume condition was once a regex over
+    the fix cell whose date alternative EXEMPTED "ran out of runway, 2026-01-01" and "I would
+    prefer another audit. 2026-01-01" — the dispositions the law most explicitly forbids. Then
+    the blocker DECLARATION itself was a `BLOCKED_ON_*` substring in the same cell, which could
+    not tell a claim from a mention. Both are fields now, and a stale or unparseable date fails
+    on arithmetic rather than on vocabulary."""
+    _ledger(tmp_path, monkeypatch, _blocked_row("RC-900", due=due))
     assert _stop({"transcript_path": _transcript(tmp_path, "t.jsonl")}, monkeypatch) == 2
 
 
@@ -561,11 +612,14 @@ def test_agent_preference_cannot_become_a_blocker(tmp_path, monkeypatch):
     """"Ran out of runway" and "I'd prefer another audit" are the mission's named non-blockers.
     They do not exempt, and the reason they cannot is structural: neither produces a live due
     date, and a stale one is refused whatever words accompany it."""
-    for fix in ("BLOCKED_ON_EXTERNAL - ran out of runway, 2026-01-01",
-                "BLOCKED_ON_OPERATOR - I would prefer to run another audit first. 2026-01-01"):
+    for why in ("ran out of runway",
+                "I would prefer to run another audit first",
+                "BLOCKED_ON_EXTERNAL - ran out of runway"):     # the old phrasing, now inert
+        # Declared BLOCKED in the status cell AND carrying a stale due date: the declaration is
+        # structural, so what refuses it is arithmetic on the date, not the words beside it.
         _ledger(tmp_path, monkeypatch,
-                f"| RC-900 | OPEN | {TODAY} | 2020-01-01 | d | (1)->(5) ROOT: e | {fix} |")
-        assert _stop({"transcript_path": _transcript(tmp_path, "t.jsonl")}, monkeypatch) == 2, fix
+                f"| RC-900 | BLOCKED | {TODAY} | 2020-01-01 | d | (1)->(5) ROOT: e | {why} |")
+        assert _stop({"transcript_path": _transcript(tmp_path, "t.jsonl")}, monkeypatch) == 2, why
 
 
 def test_stop_allowed_when_the_mission_is_genuinely_finished(tmp_path, monkeypatch):

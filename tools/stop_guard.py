@@ -134,10 +134,12 @@ def _explain(blockers: list[tuple[str, str]], dirty: list[str], retry: bool) -> 
         "Do ONE of these, then continue:\n"
         "  1. FINISH IT — drive the fix, then set the row CLOSED with measured evidence and\n"
         "     END-TO-END scope. This is the expected outcome.\n"
-        "  2. OBJECTIVELY BLOCKED — record it IN THE ROW with one of\n"
-        f"     {' / '.join(mission_latch.EXTERNAL_BLOCKERS)}, the concrete thing awaited, and\n"
-        "     the event that clears it (a date, the next RTH open, an operator answer).\n"
-        "     Preference, scope convenience and running out of runway are not blockers.\n"
+        f"  2. OBJECTIVELY BLOCKED — set the row's STATUS cell to {mission_latch.BLOCKED_STATUS}\n"
+        "     and give it a due date that has not passed. Say in the fix cell what is awaited\n"
+        "     and what clears it, so a human can judge the claim. A blocked row still goes\n"
+        "     overdue, and it no longer authorizes production work — being blocked and being\n"
+        "     licensed to proceed are contradictory. Preference, scope convenience and running\n"
+        "     out of runway are not blockers.\n"
         "  3. If production is dirty with no mission, open ONE row describing the work.\n\n"
         'Renaming the work "follow-up", "out of scope", "pre-existing" or "next mission" does\n'
         "not clear this — those are the exact disposals the law names.\n")
