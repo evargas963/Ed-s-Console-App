@@ -306,6 +306,80 @@ def test_zero_and_many_fail_the_same_way(tmp_path):
                         [_row(rc="RC-715"), _row(rc="RC-716"), _row(rc="RC-717")])) is False
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# RC-502 — a BLOCKED mission cannot authorize the work it says cannot proceed
+# ─────────────────────────────────────────────────────────────────────────────
+_BLOCKED_FIX = ("BLOCKED_ON_OPERATOR — awaiting the operator's decision on the retirement "
+                "step; resumes when they answer.")
+
+
+def test_a_blocked_mission_does_not_authorize_a_production_edit(tmp_path, monkeypatch):
+    """A row carrying BLOCKED_ON_* asserts the work CANNOT PROCEED. Using it to authorize
+    proceeding asserts the opposite in the same breath.
+
+    MEASURED before this clause, live: RC-499 carried BLOCKED_ON_OPERATOR and authorized every
+    production edit of the session that opened it."""
+    _ledger(tmp_path, monkeypatch, _row(rc="RC-720", fix=_BLOCKED_FIX))
+    _introduced(monkeypatch, "RC-720")
+    assert _decide(_edit("server.py")) == 2
+
+
+def test_a_blocked_mission_does_not_authorize_a_shell_write(tmp_path, monkeypatch):
+    """Closed on both seams, or it is a door with the window left open."""
+    _ledger(tmp_path, monkeypatch, _row(rc="RC-721", fix=_BLOCKED_FIX))
+    _introduced(monkeypatch, "RC-721")
+    assert plg.mission_shell_write_violations("sed -i 's/a/b/' server.py", str(ROOT))
+
+
+def test_a_normal_open_mission_still_authorizes(tmp_path, monkeypatch):
+    """The control that proves the clause is narrow: ordinary active work is unaffected."""
+    _ledger(tmp_path, monkeypatch, _row(rc="RC-722"))
+    _introduced(monkeypatch, "RC-722")
+    assert _decide(_edit("server.py")) == 0
+    assert plg.mission_shell_write_violations("sed -i 's/a/b/' server.py", str(ROOT)) == []
+
+
+def test_clearing_the_blocker_restores_authority(tmp_path, monkeypatch):
+    """A blocked row regains authority the only honest way — by ceasing to claim it is blocked.
+    Same row, same day, same worktree; only the disposition changes."""
+    _ledger(tmp_path, monkeypatch, _row(rc="RC-723", fix=_BLOCKED_FIX))
+    _introduced(monkeypatch, "RC-723")
+    assert _decide(_edit("server.py")) == 2, "precondition: blocked denies authority"
+
+    _ledger(tmp_path, monkeypatch,
+            _row(rc="RC-723", fix="IN PROGRESS — operator answered; resuming the work."))
+    _introduced(monkeypatch, "RC-723")
+    assert _decide(_edit("server.py")) == 0
+
+
+def test_a_blocked_row_may_still_end_the_turn(tmp_path, monkeypatch):
+    """The two questions stay separate and must not be collapsed: a blocked row legally ENDS a
+    turn (that is what the disposition is for) while denying authority to START new production
+    work. Losing this distinction would make an honestly blocked mission unstoppable."""
+    _ledger(tmp_path, monkeypatch, _row(rc="RC-724", fix=_BLOCKED_FIX))
+    _introduced(monkeypatch, "RC-724")
+    monkeypatch.setattr(ml, "dirty_production_files", lambda *a, **k: [])
+    assert _stop({"transcript_path": _transcript(tmp_path, "t.jsonl")}, monkeypatch) == 0
+
+
+def test_mutation_control_ignoring_the_blocker_reopens_the_bypass(tmp_path, monkeypatch):
+    """NEGATIVE CONTROL: make external_blocker blind and the blocked row authorizes again."""
+    _ledger(tmp_path, monkeypatch, _row(rc="RC-725", fix=_BLOCKED_FIX))
+    _introduced(monkeypatch, "RC-725")
+    monkeypatch.setattr(ml, "external_blocker", lambda row: None)
+    assert _decide(_edit("server.py")) == 0, (
+        "MUTATION CONTROL FAILED TO BITE: with the blocker ignored, a blocked mission must "
+        "authorize again")
+
+
+def test_the_blocked_clause_reuses_the_existing_predicate():
+    """No second definition of 'objectively blocked' — the same function that lets such a row
+    end the turn is the one that denies it authority."""
+    src = Path(ml.__file__).read_text(encoding="utf-8")
+    assert src.count("def external_blocker") == 1
+    assert "external_blocker(r) is None" in src
+
+
 def test_a_landed_row_stops_authorizing_once_it_is_on_the_trunk():
     """The git fact that binds authority: a row shows as introduced-here only while it exists
     in this worktree and not on the trunk. After the PR merges it is on the trunk, and a landed
@@ -458,9 +532,13 @@ def test_stop_blocked_when_an_open_row_says_nothing_at_all(tmp_path, monkeypatch
 
 
 def test_stop_allowed_when_objectively_blocked(tmp_path, monkeypatch):
+    """`dirty_production_files` is pinned because RC-502 made a blocked row not an ACTIVE
+    mission, so the outcome clause now runs here — unpinned this would assert the state of my
+    checkout rather than the guard."""
     _ledger(tmp_path, monkeypatch, _row(
         fix="BLOCKED_ON_LIVE_SESSION — the proof needs a live RTH quote stream and the market "
             "is closed. Resumes at the next RTH open 2099-01-02."))
+    monkeypatch.setattr(ml, "dirty_production_files", lambda *a, **k: [])
     assert _stop({"transcript_path": _transcript(tmp_path, "t.jsonl")}, monkeypatch) == 0
 
 

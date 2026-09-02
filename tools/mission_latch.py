@@ -172,17 +172,29 @@ def active_mission_rows(today: str | None = None,
                                  it does not authorize what comes next.
       3. introduced HERE       — the row must be this worktree's own, not one that arrived on
                                  the trunk. Authority binds to the mission being executed.
+      4. NOT externally blocked — RC-502. A row carrying a `BLOCKED_ON_*` disposition says the
+                                 work CANNOT PROCEED. A mission that cannot proceed cannot
+                                 authorize proceeding; the two claims are contradictory, and
+                                 the row is asserting the first while being used for the second.
+                                 Reuses `external_blocker` — the same predicate that lets such
+                                 a row end the turn legally, now also denying it authority.
 
     MEASURED before this repair: `has_active_mission` accepted any row opened today, so closing
     RC-498 still authorized fresh production edits, and a row opened by unrelated work
     authorized this worktree's. "Some row exists today" is a calendar fact; it was standing in
-    for authority it never established.
+    for authority it never established. MEASURED again on the blocked case: RC-499, carrying
+    BLOCKED_ON_OPERATOR, authorized every production edit of the session that opened it.
+
+    A blocked row regains authority the only honest way: by ceasing to claim it is blocked —
+    the disposition is removed and the row becomes ordinary active work again. Nothing else
+    changes, and no new state records the transition.
     """
     introduced = _rows_this_worktree_introduced(repo)
     if introduced is None:
         return []                      # unmeasurable -> no proof of a mission -> no authority
     return [r for r in same_day_rows(today, repo)
-            if r.status == "OPEN" and r.rc_id in introduced]
+            if r.status == "OPEN" and r.rc_id in introduced
+            and external_blocker(r) is None]
 
 
 def has_active_mission(today: str | None = None, repo: str | Path | None = None) -> bool:
