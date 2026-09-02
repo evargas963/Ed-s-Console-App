@@ -3073,6 +3073,63 @@ def rc_row_schema_violations(text: str, log: Path) -> list[Violation]:
     return out
 
 
+#: Gates that exist in the tree and MUST be invoked by required CI. (tool path, required flag).
+#: Kept as data so adding one is a row, not a new mechanism.
+_GATES_REQUIRING_CI_INVOCATION = (
+    ("tools/repo_rehab_status.py", "--ratchet"),
+)
+_HARDENING_WORKFLOW = ".github/workflows/hardening.yml"
+
+
+def _declared_gate_is_actually_invoked_violations() -> list[Violation]:
+    """A gate present in the repo must be RUN by required CI, uncommented and unswallowed.
+
+    WHY THIS IS NOT INSIDE THE GATE. The rehabilitation ratchet carries its own self-protection
+    clause, and that clause can only run when the ratchet runs — so deleting its CI step deletes
+    the thing that would have objected. The protection has to be owned by a check that executes
+    independently, and the institutional catalog is that: `check_delta_adds_no_debt` runs the
+    whole catalog in a base worktree and a candidate worktree and compares, so a violation that
+    appears only at HEAD fails the delta gate whether or not the rehab step still exists.
+
+    Three bypasses are refused, because all three were reachable: deleting the step, commenting
+    it out (YAML comments are invisible to a substring search over the raw file), and demoting it
+    by dropping the flag that makes it block or appending `|| true`.
+    """
+    out: list[Violation] = []
+    wf = REPO / _HARDENING_WORKFLOW
+    for tool, flag in _GATES_REQUIRING_CI_INVOCATION:
+        if not (REPO / tool).exists():
+            continue                      # nothing declared, nothing to protect
+        if not wf.exists():
+            out.append(Violation(Path(_HARDENING_WORKFLOW), 0,
+                                 f"{tool} exists but {_HARDENING_WORKFLOW} does not, so the gate "
+                                 f"is never invoked by required CI."))
+            continue
+        try:
+            lines = wf.read_text(encoding="utf-8", errors="ignore").splitlines()
+        except OSError:
+            continue
+        live = [ln for ln in lines
+                if Path(tool).name in ln and not ln.strip().startswith("#")]
+        if not live:
+            commented = any(Path(tool).name in ln and ln.strip().startswith("#")
+                            for ln in lines)
+            out.append(Violation(
+                Path(_HARDENING_WORKFLOW), 0,
+                f"{tool} is present in the repo but required CI never runs it"
+                + (" — the invocation is COMMENTED OUT, which reads like wiring and enforces "
+                   "nothing." if commented else ".")
+                + " A declared gate that CI does not execute is inert (RC-505)."))
+            continue
+        blocking = [ln for ln in live if flag in ln and "|| true" not in ln]
+        if not blocking:
+            out.append(Violation(
+                Path(_HARDENING_WORKFLOW), 0,
+                f"{tool} is invoked by required CI but cannot fail it: no live line carries "
+                f"{flag!r} without `|| true`. A gate that cannot block is a report (RC-505)."))
+    return out
+
+
 def check_scheduled_producers_are_not_inert() -> list[Violation]:
     """A scheduled PRODUCER that fails every run must not stay silent (RC-97).
 
@@ -3095,7 +3152,12 @@ def check_scheduled_producers_are_not_inert() -> list[Violation]:
     """
     fatal = re.compile(r"Fatal Python error|Traceback \(most recent call last\)|"
                        r"ModuleNotFoundError|SyntaxError:", re.I)
-    out: list[Violation] = []
+    # RC-505: a gate DECLARED in the repo but never invoked by required CI is inert in exactly
+    # the sense this check exists to catch — present, believed live, doing nothing. Folded here
+    # rather than registered as a 47th check (the CHECKS surface does not grow for this), and it
+    # must live OUTSIDE the ratchet it protects: a self-protection clause that only runs when
+    # the protected step runs cannot notice the step being deleted.
+    out: list[Violation] = _declared_gate_is_actually_invoked_violations()
     reports = REPO / "reports"
     if not reports.exists():
         return out

@@ -239,6 +239,39 @@ def _target_at(ref: str, repo: Path = REPO) -> dict | None:
     return None
 
 
+def is_compatibility_shim(src: str) -> bool:
+    """True when a module only RE-EXPORTS from app/ — no logic of its own.
+
+    This is what makes incremental migration possible. `app/foo.py` lands, root `foo.py` becomes
+    `from app.domain.foo import *`, every existing import keeps working, and the root file dies
+    in a later delta. Blocking that would force a flag-day rewrite, which is the one thing the
+    rehabilitation must not require.
+
+    Structural, not a size heuristic: every top-level statement must be an import, a simple
+    assignment (`__all__`), a docstring or `pass`, AND at least one import must come from `app`.
+    A file with a function or class body is carrying logic and is a second owner, however short.
+    """
+    try:
+        tree = ast.parse(src)
+    except SyntaxError:
+        return False
+    touches_app = False
+    for node in tree.body:
+        if isinstance(node, ast.ImportFrom):
+            if (node.module or "").split(".")[0] == "app":
+                touches_app = True
+        elif isinstance(node, ast.Import):
+            if any(a.name.split(".")[0] == "app" for a in node.names):
+                touches_app = True
+        elif isinstance(node, (ast.Assign, ast.AnnAssign, ast.Pass)):
+            continue
+        elif isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant):
+            continue                       # module docstring
+        else:
+            return False                   # a def/class/if/loop is logic, not a re-export
+    return touches_app
+
+
 def ratchet(base: str = "origin/main", head: str = "HEAD", repo: Path = REPO) -> list[str]:
     """Refuse NEW divergence from the TARGET. Inherited debt may stay; it may not grow.
 
@@ -257,14 +290,19 @@ def ratchet(base: str = "origin/main", head: str = "HEAD", repo: Path = REPO) ->
             f"code belongs in app/<package>/. Inherited root modules may stay — this refuses "
             f"ADDING to them.")
 
-    # Reintroduced root ownership: the same module owned in BOTH places at HEAD.
+    # Duplicate production authority at HEAD — but a temporary COMPATIBILITY SHIM is the
+    # intended migration step, not a violation. `app/foo.py` landing while root `foo.py` stays
+    # behind as a re-export is exactly how imports get moved without a flag day.
     app_stems = {Path(f).stem for f in h["_app_py_names"]}
-    dupes = sorted(app_stems & {Path(f).stem for f in h["_root_py_names"]})
-    if dupes:
+    real_dupes = []
+    for stem in sorted(app_stems & {Path(f).stem for f in h["_root_py_names"]}):
+        if not is_compatibility_shim(_git(["show", f"{head}:{stem}.py"], repo) or ""):
+            real_dupes.append(stem)
+    if real_dupes:
         out.append(
-            f"ROOT OWNERSHIP REINTRODUCED: {', '.join(dupes)} exists under app/ AND at the repo "
-            f"root at HEAD. One module, two owners, is the duplicate authority this "
-            f"rehabilitation removes — delete the root copy or finish the move.")
+            f"DUPLICATE PRODUCTION AUTHORITY: {', '.join(real_dupes)} exists under app/ AND at "
+            f"the repo root at HEAD, and the root copy still carries logic. One module, two "
+            f"owners. Reduce the root file to a re-export shim (imports only) or delete it.")
 
     base_app_stems = {Path(f).stem for f in b["_app_py_names"]}
     regressed = sorted(base_app_stems & {Path(f).stem for f in h["_root_py_names"]} - app_stems)

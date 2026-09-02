@@ -119,16 +119,56 @@ def test_every_legacy_directory_has_a_stated_disposition():
 
 
 # ── defect 5b: inherited root shims pass; reintroduced root ownership blocks ──────────────
-def test_unchanged_inherited_root_shim_passes(tmp_path):
-    bad = _bad(_repo(tmp_path, "r", BASE, None))
-    assert not any("ROOT" in b for b in bad), bad
+#: A real compatibility shim: the migration step that keeps every existing import working.
+SHIM = "from app.domain.value import *  # noqa: F401,F403\n"
+#: The same stem carrying LOGIC — a second owner, however short.
+NOT_A_SHIM = "def compute():\n    return 1\n"
+#: A tree that ALREADY contains an inherited same-stem shim, so 'unchanged' is testable.
+BASE_WITH_SHIM = {**BASE, "value.py": SHIM}
 
 
-def test_reintroduced_root_ownership_blocks(tmp_path):
-    """The same module owned under app/ AND at the root in the same tree is two owners for one
-    thing — the duplicate authority this rehabilitation removes."""
-    bad = _bad(_repo(tmp_path, "s", BASE, {"value.py": "X = 1\n"}))
-    assert any("ROOT OWNERSHIP REINTRODUCED" in b for b in bad), bad
+def test_creating_the_app_module_and_retaining_a_root_shim_passes(tmp_path):
+    """THE INTENDED MIGRATION STEP. app/<pkg>/foo.py lands, root foo.py becomes a re-export, and
+    every existing import keeps working. Blocking this would force a flag-day rewrite, which is
+    the one thing the rehabilitation must not require."""
+    base = {k: v for k, v in BASE.items() if k != "app/domain/value.py"}
+    base["value.py"] = "def compute():\n    return 1\n"          # root owns it at the base
+    bad = _bad(_repo(tmp_path, "r1", base,
+                     {"app/domain/value.py": "def compute():\n    return 1\n",
+                      "value.py": SHIM}))
+    assert bad == [], bad
+
+
+def test_unchanged_inherited_same_stem_shim_passes(tmp_path):
+    """The shim is already there and this delta does not touch it."""
+    bad = _bad(_repo(tmp_path, "r2", BASE_WITH_SHIM, {"tools/unrelated.py": "x = 1\n"}))
+    assert bad == [], bad
+
+
+def test_a_root_file_that_still_carries_logic_beside_app_blocks(tmp_path):
+    """Two real owners for one module. Short is not the test — a def is."""
+    bad = _bad(_repo(tmp_path, "r3", BASE, {"value.py": NOT_A_SHIM}))
+    assert any("DUPLICATE PRODUCTION AUTHORITY" in b for b in bad), bad
+
+
+def test_a_shim_regressing_back_into_a_real_module_blocks(tmp_path):
+    """The inherited shim is re-filled with logic: root ownership reintroduced."""
+    bad = _bad(_repo(tmp_path, "r4", BASE_WITH_SHIM, {"value.py": SHIM + NOT_A_SHIM}))
+    assert any("DUPLICATE PRODUCTION AUTHORITY" in b for b in bad), bad
+
+
+@pytest.mark.parametrize("body,is_shim", [
+    ("from app.domain.value import *\n", True),
+    ("from app.domain.value import compute\n__all__ = ['compute']\n", True),
+    ('"""doc."""\nfrom app.domain import value\n', True),
+    ("import app.domain.value\n", True),
+    ("from other.mod import thing\n", False),          # re-export, but not from app/
+    ("from app.domain.value import compute\ndef extra():\n    return 2\n", False),
+    ("from app.domain.value import compute\nif True:\n    compute()\n", False),
+    ("", False),
+])
+def test_shim_detection_is_structural_not_a_size_heuristic(body, is_shim):
+    assert R.is_compatibility_shim(body) is is_shim, body
 
 
 def test_migrated_code_moving_back_toward_root_blocks(tmp_path):
@@ -240,6 +280,84 @@ def test_current_is_generated_not_declared():
     assert cur["tracked_files"] == tracked > 0
     assert cur["root_production_modules"] == len(
         [f for f in R.tracked_files("HEAD", ROOT) if "/" not in f and f.endswith(".py")])
+
+
+# ── independent self-protection: owned OUTSIDE the ratchet it protects ────────────────────
+def _ci_gate_violations(tmp_repo: Path, workflow: str | None, tool: bool = True) -> list[str]:
+    """Drive the INSTITUTIONAL check (not the ratchet) against a planted tree."""
+    import tools.check_institutional_correctness as CIC
+
+    (tmp_repo / "tools").mkdir(parents=True, exist_ok=True)
+    (tmp_repo / ".github" / "workflows").mkdir(parents=True, exist_ok=True)
+    if tool:
+        (tmp_repo / "tools" / "repo_rehab_status.py").write_text("# gate\n", encoding="utf-8")
+    if workflow is not None:
+        (tmp_repo / ".github" / "workflows" / "hardening.yml").write_text(
+            workflow, encoding="utf-8")
+    old = CIC.REPO
+    try:
+        CIC.REPO = tmp_repo
+        return [str(v.msg) for v in CIC._declared_gate_is_actually_invoked_violations()]
+    finally:
+        CIC.REPO = old
+
+
+_LIVE_STEP = ("jobs:\n  hardening:\n    steps:\n"
+              "      - run: python tools/repo_rehab_status.py --ratchet --base origin/main\n")
+
+
+def test_a_live_ratchet_invocation_passes(tmp_path):
+    assert _ci_gate_violations(tmp_path / "ok", _LIVE_STEP) == []
+
+
+def test_deleting_the_ci_invocation_blocks_from_the_institutional_owner(tmp_path):
+    """THE POINT: this fires even though the rehab step no longer runs. A self-protection clause
+    living inside the ratchet cannot notice its own step being deleted."""
+    bad = _ci_gate_violations(tmp_path / "gone", "jobs:\n  hardening:\n    steps: []\n")
+    assert any("never runs it" in b for b in bad), bad
+
+
+def test_commenting_out_the_ci_invocation_blocks(tmp_path):
+    """A YAML comment reads like wiring to any substring search over the raw file and enforces
+    nothing. The check strips comment lines before looking."""
+    wf = ("jobs:\n  hardening:\n    steps:\n"
+          "      # - run: python tools/repo_rehab_status.py --ratchet --base origin/main\n")
+    bad = _ci_gate_violations(tmp_path / "cmt", wf)
+    assert any("COMMENTED OUT" in b for b in bad), bad
+
+
+@pytest.mark.parametrize("step", [
+    "      - run: python tools/repo_rehab_status.py --base origin/main\n",        # no --ratchet
+    "      - run: python tools/repo_rehab_status.py --ratchet --base origin/main || true\n",
+])
+def test_demoting_the_ci_invocation_blocks(tmp_path, step):
+    bad = _ci_gate_violations(tmp_path / ("dem" + str(abs(hash(step)))),
+                              "jobs:\n  hardening:\n    steps:\n" + step)
+    assert any("cannot fail it" in b for b in bad), bad
+
+
+def test_no_gate_declared_means_nothing_to_protect(tmp_path):
+    """The check must not cry wolf on a tree that never had the tool."""
+    assert _ci_gate_violations(tmp_path / "none", _LIVE_STEP, tool=False) == []
+
+
+def test_the_live_repo_wires_the_ratchet_into_required_ci():
+    """And the real tree satisfies it, so this is not a rule nobody meets."""
+    import tools.check_institutional_correctness as CIC
+
+    assert CIC._declared_gate_is_actually_invoked_violations() == []
+
+
+def test_self_protection_is_not_owned_only_by_the_ratchet():
+    """Structural: the institutional catalog must carry the clause, or deleting the rehab step
+    would delete its own guard."""
+    import tools.check_institutional_correctness as CIC
+
+    assert hasattr(CIC, "_declared_gate_is_actually_invoked_violations")
+    src = Path(CIC.__file__).read_text(encoding="utf-8")
+    assert "_declared_gate_is_actually_invoked_violations()" in src, "must be CALLED, not just defined"
+    names = {n for n, _f, e in CIC.CHECKS if e}
+    assert "scheduled_producers_are_not_inert" in names, "the calling check must be ENFORCED"
 
 
 # ── defect 4: TARGET drift blocks BASE->HEAD, even when target+pin+test move together ────
