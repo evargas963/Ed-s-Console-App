@@ -75,7 +75,7 @@ def _i28_bypass_register() -> dict:
         "enforcement_points": [
             _ep("spot non-positive reject", "features/canonical_contract.py", "runtime"),
             _ep("daily health staleness/structure", "verification/daily_health.py", "postmortem"),
-            _ep("finite numeric contract", "numeric_contract.py", "runtime"),
+            _ep("finite numeric contract", "app/domain/numeric_contract.py", "runtime"),
             _ep("Schwab adapter normalization", "market_data_adapter / live_market_plane", "runtime"),
         ],
         "bypass_paths": [

@@ -17,7 +17,7 @@ INDEX_HTML = ROOT / "static" / "index.html"
 SERVER_PY = ROOT / "server.py"
 
 try:
-    from instrument_identity import BROKER_INDEX_BARE_ROOTS, ticker_storage_key
+    from app.domain.instrument_identity import BROKER_INDEX_BARE_ROOTS, ticker_storage_key
     from money_path_ticker_tiers import (
         BASE_MONEY_PATH_TICKERS,
         TRUST_GUEST_UNPROVEN,

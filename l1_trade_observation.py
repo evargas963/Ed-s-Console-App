@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from numeric_contract import float_finite_or_none, float_nonnegative_or_none
+from app.domain.numeric_contract import float_finite_or_none, float_nonnegative_or_none
 
 # Source classification — mechanical, not aspirational.
 NATIVE_AGGRESSOR_AVAILABLE = False

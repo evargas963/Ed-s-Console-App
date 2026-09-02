@@ -26,7 +26,7 @@ from adaptive_similarity_engine import (
     _overlap_metrics,
 )
 from math_exposure import bucket_hi, bucket_lo, dist_bucket
-from instrument_identity import ticker_storage_key
+from app.domain.instrument_identity import ticker_storage_key
 
 SCHEMA_STAGED = "similarity_feature_staged_search_v1"
 SCHEMA_DIVERGENCE = "similarity_baseline_divergence_v1"

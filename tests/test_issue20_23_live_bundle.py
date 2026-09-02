@@ -571,7 +571,7 @@ def test_tick_trigger_session_bucket_boundary(monkeypatch):
     from live_decision_bundle import tick_triggers_coherent_refresh
 
     monkeypatch.setattr("market_context._derive_session", lambda: "Pre-Market")
-    from time_et import ET
+    from app.domain.time_et import ET
     dec = datetime(2026, 1, 6, 9, 20, tzinfo=ET).timestamp()
     now = datetime(2026, 1, 6, 9, 35, tzinfo=ET).timestamp()
     md = {

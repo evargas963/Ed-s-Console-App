@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from instrument_identity import ticker_storage_key
+from app.domain.instrument_identity import ticker_storage_key
 from features.canonical_contract import (
     CANONICAL_FEATURE_CONTRACT_VERSION,
     CANONICAL_FEATURE_TIMEFRAME,
@@ -96,7 +96,7 @@ def validate_inference_snapshot_v1_for_xgb(snap: Any) -> None:
 
 
 def _et_from_ts_utc(ts_utc: float) -> tuple[int, int]:
-    from time_et import et_clock_from_ts_utc
+    from app.domain.time_et import et_clock_from_ts_utc
 
     h, m, _ = et_clock_from_ts_utc(ts_utc)
     return h, m

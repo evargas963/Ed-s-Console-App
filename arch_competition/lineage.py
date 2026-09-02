@@ -8,7 +8,7 @@ from typing import Any
 from training_cache import load_run_manifest
 # RC-345/F25: lineage manifest + fingerprint ticker identity consumes the ONE canonical authority
 # so 'SPX' and '$SPX' are the SAME instrument (no false-reject across the parity boundary).
-from instrument_identity import ticker_storage_key
+from app.domain.instrument_identity import ticker_storage_key
 
 from arch_competition.exceptions import EvaluationLineageError
 from features.canonical_contract import CANONICAL_FEATURE_CONTRACT_VERSION, CANONICAL_FEATURE_TIMEFRAME

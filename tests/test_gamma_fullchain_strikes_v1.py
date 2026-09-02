@@ -13,7 +13,7 @@ from calibration.option_chain_morning_full import (
     has_morning_full_capture,
     maybe_persist_morning_full_chain,
 )
-from time_et import ET
+from app.domain.time_et import ET
 
 
 def test_gex_full_chain_strike_count_is_wide_not_ui_20() -> None:
@@ -120,7 +120,7 @@ from calibration.option_chain_morning_full import (  # noqa: F811 — span const
     MORNING_END_MINS,
     UNIVERSAL_CAPTURE_END_MINS,
 )
-from time_et import ET as _ET
+from app.domain.time_et import ET as _ET
 
 from tests.conftest import most_recent_trading_day_et
 

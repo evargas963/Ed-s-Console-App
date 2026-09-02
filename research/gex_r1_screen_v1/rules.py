@@ -6,7 +6,7 @@ import math
 from dataclasses import dataclass
 
 from research.pilot_step3.data_loader import Bar1m, load_spy_1m_bars
-from time_et import ET
+from app.domain.time_et import ET
 from datetime import datetime, timezone
 
 

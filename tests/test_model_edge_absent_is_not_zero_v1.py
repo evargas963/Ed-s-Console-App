@@ -65,7 +65,7 @@ def _meta(tmp_path: Path, payload: dict) -> Path:
 
 def test_absent_metric_reads_as_none_not_zero(tmp_path, monkeypatch):
     """The defect, driven through the real reader."""
-    from numeric_contract import float_finite_or_none
+    from app.domain.numeric_contract import float_finite_or_none
 
     meta = json.loads(_meta(tmp_path, {"model_version": "v9"}).read_text(encoding="utf-8"))
     raw = float_finite_or_none(meta.get("edge_pp"))
@@ -79,7 +79,7 @@ def test_absent_metric_reads_as_none_not_zero(tmp_path, monkeypatch):
 
 def test_a_real_metric_is_still_reported(tmp_path):
     """Negative control: absence handling must not blank out real measurements."""
-    from numeric_contract import float_finite_or_none
+    from app.domain.numeric_contract import float_finite_or_none
 
     meta = json.loads(_meta(tmp_path, {"edge_pp": 3.5}).read_text(encoding="utf-8"))
     assert float_finite_or_none(meta.get("edge_pp")) == 3.5
@@ -87,7 +87,7 @@ def test_a_real_metric_is_still_reported(tmp_path):
 
 def test_a_genuine_zero_edge_survives(tmp_path):
     """A model MEASURED at zero edge is a real result and must not be erased as absence."""
-    from numeric_contract import float_finite_or_none
+    from app.domain.numeric_contract import float_finite_or_none
 
     meta = json.loads(_meta(tmp_path, {"edge_pp": 0.0}).read_text(encoding="utf-8"))
     assert float_finite_or_none(meta.get("edge_pp")) == 0.0, (
@@ -98,7 +98,7 @@ def test_a_genuine_zero_edge_survives(tmp_path):
 def test_val_accuracy_is_never_published_as_edge(tmp_path):
     """RC-364/RC-291 port: accuracy is not edge. A meta with only val_accuracy has NO
     edge (None → UNSCORED); val_accuracy is stamped under its own name, unscaled."""
-    from numeric_contract import float_finite_or_none
+    from app.domain.numeric_contract import float_finite_or_none
 
     meta = json.loads(_meta(tmp_path, {"val_accuracy": 0.62}).read_text(encoding="utf-8"))
     edge = float_finite_or_none(meta.get("edge_pp"))

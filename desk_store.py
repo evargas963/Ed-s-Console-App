@@ -37,7 +37,7 @@ from typing import Any, Iterable, Mapping, Sequence
 
 # RC-274: every read of a nullable column goes through these. `float(x or 0.0)` turns an absent
 # measurement into the number zero, and a fact table cannot tell the two apart afterwards.
-from numeric_contract import (
+from app.domain.numeric_contract import (
     float_finite_or_none,
     float_nonnegative_or_none,
     float_positive_or_none,
@@ -513,7 +513,7 @@ def materialize_dollar_volume(db_path: str | Path, *, window_days: int = 20) -> 
        does not repair it, so the count of suspect sessions rides along in the payload where it
        stays visible instead of being smoothed away.
     """
-    from time_et import et_date_str_from_ts_utc
+    from app.domain.time_et import et_date_str_from_ts_utc
 
     cutoff = time.time() - (window_days * 86400.0)
     con = _connect(db_path, read_only=True)
@@ -744,7 +744,7 @@ def is_rth_trading_ts(ts_utc: float) -> bool:
     a holiday and four weekend dates — which the ADV, sigma and bootstrap readers all counted as
     sessions. The calendar question belongs to `is_trading_day_et`; this helper asks both.
     """
-    from time_et import et_date_str_from_ts_utc, is_rth_ts_utc, is_trading_day_et
+    from app.domain.time_et import et_date_str_from_ts_utc, is_rth_ts_utc, is_trading_day_et
 
     return is_rth_ts_utc(ts_utc) and is_trading_day_et(et_date_str_from_ts_utc(ts_utc))
 
@@ -759,7 +759,7 @@ def session_is_complete(et_date: str, as_of_utc: float) -> bool:
     a session. Both quietly distort the number, and only ever while the market is open — which
     is precisely when the operator is looking at it.
     """
-    from time_et import (
+    from app.domain.time_et import (
         et_date_str_from_ts_utc,
         et_minute_total_from_ts_utc,
         is_trading_day_et,
@@ -795,7 +795,7 @@ def daily_sigma_bps(db_path: str | Path, subject: str, as_of_utc: float, *,
     """
     import math
 
-    from time_et import et_date_str_from_ts_utc
+    from app.domain.time_et import et_date_str_from_ts_utc
 
     lo = as_of_utc - (window_days * 86400.0)
     try:

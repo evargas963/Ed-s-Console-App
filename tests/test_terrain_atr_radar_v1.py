@@ -160,7 +160,7 @@ def test_terrain_refresh_one_wires_flip_drift_logger(monkeypatch, tmp_path):
     # separately by test_flip_drift_logger_appends_real_jsonl. _log_flip_drift stamps time.time()
     # when the payload carries no computed_ts_utc, so without pinning the calendar authority this
     # assertion would pass or fail depending on the day the suite happens to run (RC-58).
-    import time_et as _te
+    from app.domain import time_et as _te
     monkeypatch.setattr(_te, "is_tradable_session_ts_utc", lambda _ts: True)
     monkeypatch.setattr(srv, "_FLIP_DRIFT_LOG_PATH", tmp_path / "flip.jsonl")
     monkeypatch.setattr(srv, "_log_flip_drift", _spy)

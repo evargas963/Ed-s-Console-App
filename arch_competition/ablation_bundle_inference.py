@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import logging
 
-from instrument_identity import ticker_storage_key  # RC-345/F25: one canonical per-instrument identity
+from app.domain.instrument_identity import ticker_storage_key  # RC-345/F25: one canonical per-instrument identity
 from pathlib import Path
 from typing import Any, Optional
 
@@ -559,7 +559,7 @@ def score_unified_ablation_fusion_from_wire_row(
     )
     from mc_fusion_adjustment import fuse_payload_apply_mc_adjustment
     from ml_predict import stack_probs_bundle_key, stack_probs_composition_record
-    from numeric_contract import float_finite_or_none
+    from app.domain.numeric_contract import float_finite_or_none
     from regime_engine import classify_regime
     from rules_engine import compute_rules
     from signals import _unavailable_model_namespace, production_fusion_triplet_from_payload

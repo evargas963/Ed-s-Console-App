@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional
 
-from numeric_contract import float_nonnegative_or_none  # RC-274: absence is not zero volume
+from app.domain.numeric_contract import float_nonnegative_or_none  # RC-274: absence is not zero volume
 
 #: LP-01 Step 1 (RC-152) — the ONE volume-profile construction.
 #: A bar's volume did not trade at one price. It traded ACROSS [low, high], and the profile is

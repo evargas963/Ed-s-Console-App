@@ -32,7 +32,7 @@ from datetime import datetime, timezone
 from typing import Any, Optional, Tuple
 
 
-from canonical_distances import canonical_nearest_distances
+from app.domain.canonical_distances import canonical_nearest_distances
 
 
 _lock = threading.Lock()
@@ -41,7 +41,7 @@ _next_generation_id: int = 0
 
 
 
-from time_et import ET as _ET
+from app.domain.time_et import ET as _ET
 
 # STACK-WIRE-6b FIND-WIRE6-7: tick-refresh thresholds for spot drift (env-overridable).
 TICK_REFRESH_SPOT_PCT_DEFAULT: float = 0.0003  # 3 bp percent move triggers full _fetch_state refresh
@@ -163,7 +163,7 @@ def persist_stamped_decision(ms_dict: dict, *, route: str, db_path) -> Optional[
 
 
 def _float_or_none(x: Any) -> Optional[float]:
-    from numeric_contract import float_finite_or_none
+    from app.domain.numeric_contract import float_finite_or_none
 
     return float_finite_or_none(x)
 

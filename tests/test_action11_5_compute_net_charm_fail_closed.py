@@ -34,13 +34,13 @@ def test_rc245_one_aggregate_is_priced_at_one_instant():
     import math_exposure_core as mec
 
     reads = {"n": 0}
-    real_now_et = __import__("time_et").now_et
+    real_now_et = __import__("app.domain.time_et", fromlist=["now_et"]).now_et
 
     def _counting_now_et():
         reads["n"] += 1
         return real_now_et()
 
-    import time_et
+    from app.domain import time_et
 
     orig = time_et.now_et
     time_et.now_et = _counting_now_et
@@ -63,7 +63,7 @@ def test_rc245_one_aggregate_is_priced_at_one_instant():
 def test_rc245_time_to_expiry_is_resolved_once_per_distinct_expiry():
     """The invariant that was living inside the loop: T depends only on (expiry, now)."""
     import math_exposure_core as mec
-    import time_et
+    from app.domain import time_et
 
     calls: list[str] = []
     orig = time_et.time_to_expiry_years

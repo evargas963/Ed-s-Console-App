@@ -27,7 +27,7 @@ from statistics import median
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from time_et import RTH_END_MINS, RTH_START_MINS, is_trading_day_et  # RC-58: the one calendar authority
+from app.domain.time_et import RTH_END_MINS, RTH_START_MINS, is_trading_day_et  # RC-58: the one calendar authority
 from tools.terrain_backtest_report_v1 import (  # noqa: E402
     DB,
     SENTINELS,

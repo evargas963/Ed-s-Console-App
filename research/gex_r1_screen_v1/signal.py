@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
-from time_et import ET, RTH_START_MINS, is_trading_day_et  # RC-58: the one calendar authority
+from app.domain.time_et import ET, RTH_START_MINS, is_trading_day_et  # RC-58: the one calendar authority
 
 
 @dataclass(frozen=True)

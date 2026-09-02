@@ -49,8 +49,8 @@ from copy import deepcopy
 from typing import Any, Dict, Optional
 from dataclasses import asdict, dataclass
 
-import time_et as _time_et
-from time_et import (now_et, RTH_OPEN_MINS, RTH_END_MINS, is_capturable_session,
+from app.domain import time_et as _time_et
+from app.domain.time_et import (now_et, RTH_OPEN_MINS, RTH_END_MINS, is_capturable_session,
                      is_trading_day_et)
 
 import html
@@ -224,7 +224,7 @@ from schwab_client import (
     safe_get_price_history,
     SchwabAuthError,
 )
-from instrument_identity import ticker_storage_key   # RC-126: the ONE query-symbol authority
+from app.domain.instrument_identity import ticker_storage_key   # RC-126: the ONE query-symbol authority
 from math_exposure import (
     MISSING_GREEK_SENTINEL,
     gamma_is_plausible,
@@ -1741,7 +1741,7 @@ def _analytics_generated_ts(entry: dict) -> float | None:
     None forces each caller to SAY what absence means instead of inheriting a number that
     points whichever way its arithmetic happens to fall.
     """
-    from numeric_contract import float_positive_or_none
+    from app.domain.numeric_contract import float_positive_or_none
 
     return (float_positive_or_none(entry.get("generated_at"))
             or float_positive_or_none(entry.get("ts")))
@@ -4532,7 +4532,7 @@ def _fetch_and_store_mkt_ctx(client, pcr=None, prev_pcr=None):
         try:
             from db import build_ts_et
             from market_context import confluence_quote_rows_from_context
-            from time_et import now_et
+            from app.domain.time_et import now_et
 
             _qrows = confluence_quote_rows_from_context(
                 ctx,
@@ -4864,7 +4864,7 @@ def _base_money_path_capture_one(ticker: str):
         LOGGER_SOURCE_BASE_MONEY_PATH,
         build_lightweight_snapshot_row_from_quote,
     )
-    from time_et import now_et as _eastern_now
+    from app.domain.time_et import now_et as _eastern_now
 
     t0 = time.monotonic()
     t = ticker.upper().strip()
@@ -5462,7 +5462,7 @@ def _selected_schwab_days_to_expiration(
     except (TypeError, ValueError):
         strike_key = None
 
-    from numeric_contract import float_finite_or_none as _fin
+    from app.domain.numeric_contract import float_finite_or_none as _fin
     matches: list[dict] = []
     for ct in contracts or []:
         exp = str(ct.get("expirationDate") or "")[:10]
@@ -5503,7 +5503,7 @@ def _snapshot_expiry_hours_from_schwab_dte(
     """
     if schwab_dte is None or schwab_dte < 0:
         return None
-    from time_et import hours_until_session_close_et
+    from app.domain.time_et import hours_until_session_close_et
 
     if expiry_et_date:
         return hours_until_session_close_et(now_et, expiry_et_date=expiry_et_date)
@@ -5577,7 +5577,7 @@ def _safe_float_quote(v) -> Optional[float]:
     """Safe float for quote fields. SINGLE SOURCE: delegates to the canonical
     numeric_contract.float_finite_or_none so NaN/±inf are rejected identically everywhere
     (this previously accepted NaN/inf)."""
-    from numeric_contract import float_finite_or_none
+    from app.domain.numeric_contract import float_finite_or_none
     return float_finite_or_none(v)
 
 
@@ -5998,7 +5998,7 @@ def _project_l1(ticker: str, expiry: Optional[str], *, reason: str = "unknown") 
     # the value is accumulated below and published as l1_build_ms, so an absent timing was a
     # measured zero that drags the latency average down and can mask an alarm. Absent timing
     # now contributes NOTHING to the sum and publishes as null.
-    from numeric_contract import float_finite_or_none as _fin_ms
+    from app.domain.numeric_contract import float_finite_or_none as _fin_ms
     ms = _fin_ms(out.get("l1_pipeline_ms"))
     _l1_instrumentation["l1_build_total"] += 1
     if ms is not None:
@@ -6398,7 +6398,7 @@ def _tier_a_live_state_dict(ticker: str, expiry: Optional[str]) -> dict:
             "_endpoint": "/api/live/state",
         }
     spot_f = float(row["spot"])
-    from numeric_contract import float_finite_or_none as _fin
+    from app.domain.numeric_contract import float_finite_or_none as _fin
     # single source: finite bid/ask (raw float() admitted NaN into spread AND the bid/ask
     # echoed into `out` below); canonical reader also removes the try/except.
     bid = _fin(row.get("bid"))
@@ -6564,7 +6564,7 @@ def _fetch_state(
         log.debug("emit_fetch_state_start failed ticker=%s: %s", ticker, e, exc_info=True)
 
     client = get_client()
-    from time_et import now_et as _eastern_now
+    from app.domain.time_et import now_et as _eastern_now
 
     now_et = _eastern_now()
     _chain_window_marks.append(("chain_window_preamble_ms", time.monotonic()))
@@ -6713,7 +6713,7 @@ def _fetch_state(
         round(float(ask) - float(bid), 4) if (bid is not None and ask is not None) else None
     )
     # single source: finite mark (the bare `> 0` gate let +inf through -> inf mid -> inf spread_frac)
-    from numeric_contract import float_finite_or_none as _fin_mk
+    from app.domain.numeric_contract import float_finite_or_none as _fin_mk
     _pm = _fin_mk(parsed_mark)
     _quote_mid_for_spread = _pm if (_pm is not None and _pm > 0) else None
     _quote_spread_frac = (
@@ -7194,7 +7194,7 @@ def _fetch_state(
     _em_up = None
     _em_lo = None
     _em_band_source = "unavailable"  # RC-345 / F06: which EM methodology produced the band
-    from time_et import hours_until_session_close_et as _hours_until_close
+    from app.domain.time_et import hours_until_session_close_et as _hours_until_close
     _hours_rem = _hours_until_close(now_et) or 0.0
     _kl_em_anchor = "unavailable"
     _mc_iv_level = None
@@ -7206,7 +7206,7 @@ def _fetch_state(
         # ATM straddle: find ATM call + put mark from chain
         # single source: reject NaN via the finite reader (raw float() admitted NaN into
         # the strike set, corrupting sorting and the ATM-strike nearest-neighbour pick).
-        from numeric_contract import float_finite_or_none as _fin
+        from app.domain.numeric_contract import float_finite_or_none as _fin
         _all_strikes = sorted({
             sp
             for ct in contracts_use
@@ -9289,7 +9289,7 @@ def _fetch_state(
     # payload must never round what /api/levels serves unrounded (MEASURED same instant:
     # state pdh 748.89 vs levels PDH 748.895 — one number, two precisions on two surfaces).
     # Rounding is a RENDER concern; consumers format. _fv (2dp) stays for non-level fields.
-    from numeric_contract import float_finite_or_none as _raw_level
+    from app.domain.numeric_contract import float_finite_or_none as _raw_level
     ms_dict["vwap"]     = _raw_level(getattr(price_levels, "vwap",     None))
     ms_dict["pdh"]      = _raw_level(getattr(price_levels, "pdh",      None))
     ms_dict["pdl"]      = _raw_level(getattr(price_levels, "pdl",      None))
@@ -9568,7 +9568,7 @@ def _fetch_state(
             # coin-flip model with val_accuracy 0.55 published `edge: 55.0` and the UI counts
             # every LIVE model toward "N approved". Substituting a different measurement is
             # worse than reporting none, because none is legible and a wrong one is not.
-            from numeric_contract import float_finite_or_none as _fin_edge
+            from app.domain.numeric_contract import float_finite_or_none as _fin_edge
             # RC-364/RC-291 port: edge comes ONLY from the requested edge metric — never a
             # val_accuracy translation (accuracy is not edge over a baseline; a coin-flip
             # model with val_accuracy 0.55 must not publish edge 55.0 and read as approved).
@@ -11137,7 +11137,7 @@ def _chain_to_date_for(ticker: str, selected_expiry: str | None = None) -> date 
         return None
     from datetime import date, timedelta
 
-    from time_et import now_et
+    from app.domain.time_et import now_et
 
     horizon = (now_et() + timedelta(days=INDEX_CHAIN_DTE_HORIZON_DAYS)).date()
     if selected_expiry:
@@ -11173,7 +11173,7 @@ def _chain_from_date_for(ticker: str, selected_expiry: str | None = None) -> dat
         return None
     from datetime import date, timedelta
 
-    from time_et import now_et
+    from app.domain.time_et import now_et
 
     horizon = (now_et() + timedelta(days=INDEX_CHAIN_DTE_HORIZON_DAYS)).date()
     try:
@@ -11278,7 +11278,7 @@ def terrain_quarantine_reason(ticker: str | None) -> str:
         # "no cooldown". My earlier reason claimed the latter; Cursor's runtime probe showed
         # it releases the hold and erases the entry, turning an invariant failure into an
         # immediate vendor retry with the evidence gone.
-        from numeric_contract import float_finite_or_none as _fin_q
+        from app.domain.numeric_contract import float_finite_or_none as _fin_q
         until = _fin_q(e.get("until_ts"))
         if until is None:
             return (f"backing off after {e.get('failures')} consecutive failures — "
@@ -11302,7 +11302,7 @@ def _terrain_quarantine_blocks(tk: str) -> bool:
         # RC-281: fail CLOSED on a malformed hold. `or 0.0` dated the expiry to 1970, so the
         # branch never fired, the entry was popped, and the ticker went straight back into
         # rotation — the opposite of a quarantine, reached by a missing field.
-        from numeric_contract import float_finite_or_none as _fin_qb
+        from app.domain.numeric_contract import float_finite_or_none as _fin_qb
         until = _fin_qb(e.get("until_ts"))
         if until is None or now < until:
             _terrain_quarantine_skips[tk] = _terrain_quarantine_skips.get(tk, 0) + 1
@@ -11809,7 +11809,7 @@ def _log_flip_drift(tk: str, payload: dict) -> None:
         # a single SUNDAY window — spot frozen, so it measured a median 0.023 percent movement and
         # would have been reported as "the flip is stable intraday". Market-closed rows do not
         # add noise here, they manufacture the null.
-        from time_et import is_tradable_session_ts_utc as _tradable
+        from app.domain.time_et import is_tradable_session_ts_utc as _tradable
         if not _tradable(_ts):
             return
         row = {"ts_utc": _ts,
@@ -12184,7 +12184,7 @@ def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
             _em_band = payload.get("implied_1d_move") or {}
             _iv = _em_band.get("iv_pct_atm")
             if _iv is not None and float(_iv) > 0:
-                from time_et import now_et as _iv_now_et
+                from app.domain.time_et import now_et as _iv_now_et
                 get_db().bank_daily_atm_iv(
                     tk, _iv_now_et().strftime("%Y-%m-%d"), float(_iv),
                     _em_band.get("dte_used"), _em_band.get("method"), time.time())
@@ -12200,7 +12200,7 @@ def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
             _oi_map = getattr(snap, "oi_by_strike", None) or {}
             if _oi_map:
                 from math_exposure_core import compute_delta_oi_walls as _doiw
-                from time_et import now_et as _oi_now_et
+                from app.domain.time_et import now_et as _oi_now_et
                 _oi_date = _oi_now_et().strftime("%Y-%m-%d")
                 get_db().bank_daily_strike_oi(
                     tk, _oi_date,
@@ -12402,7 +12402,7 @@ def _bars_collect_one(tk: str) -> str:
         # RC-38 single source: a raw float() on a Schwab leaf silently admits NaN/inf, and a NaN
         # price would enter the bar series as a real value. One canonical reader; absence stays
         # absence.
-        from numeric_contract import float_positive_or_none
+        from app.domain.numeric_contract import float_positive_or_none
 
         px = float_positive_or_none(fields.get("last"))
         if px is None:
@@ -12511,7 +12511,7 @@ def _radar_daily_atr_vendor_fallback(tk: str) -> float | None:
     """Daily ATR from Schwab DAILY candles when local 1m history spans <15 sessions
     (RC-484: chain walls exist from minute one but the radar ring stayed blind ~3 weeks
     for a fresh enrollee). Cached per ticker per ET date; fail-closed to None."""
-    from time_et import now_et as _now_et
+    from app.domain.time_et import now_et as _now_et
 
     day_key = _now_et().date().isoformat()
     hit = _radar_daily_atr_vendor_cache.get(tk)
@@ -12961,7 +12961,7 @@ def get_terrain_strikes(ticker: str = Query(default=DEFAULT_TICKER)):
             # SINGLE SOURCE: totalVolume read through the canonical non-negative reader so
             # the REST aggregation drops NaN/±inf (raw float() used to admit them, poisoning
             # the sum) and reads 0/negatives identically to the exposure and order-flow paths.
-            from numeric_contract import (
+            from app.domain.numeric_contract import (
                 float_finite_or_none as _fin,
                 float_nonnegative_or_none as _vol_read,
             )
@@ -13099,7 +13099,7 @@ def get_terrain_strikes(ticker: str = Query(default=DEFAULT_TICKER)):
     # browser from the same rows (a second aggregation site that breaks silently when the
     # payload changes, and can straddle a different spot than the server's). One aggregator.
     def _side_sums(rows, s):
-        from numeric_contract import float_finite_or_none, float_nonnegative_or_none
+        from app.domain.numeric_contract import float_finite_or_none, float_nonnegative_or_none
         if not rows or s is None:
             return None
         gb = ga = vb = va = 0.0
@@ -13253,7 +13253,7 @@ def get_forces(ticker: str = Query(default=DEFAULT_TICKER)):
                     # RC-276: a strike with no net_charm is not a strike with zero charm.
                     # Summed as 0.0 it silently tilted the below/above pair the Exposure tab
                     # renders as dealer charm pressure.
-                    from numeric_contract import float_finite_or_none as _fin_ch
+                    from app.domain.numeric_contract import float_finite_or_none as _fin_ch
 
                     def _ch(v: dict) -> float | None:
                         return _fin_ch(v.get("net_charm"))
@@ -15545,7 +15545,7 @@ def canonical_price_level_snapshot(ticker: str):
     or not.
     """
     from liquidity_value_engine import PlaybookConfig, materialize_price_level_snapshot
-    from time_et import now_et
+    from app.domain.time_et import now_et
 
     tk = ticker_storage_key(ticker or DEFAULT_TICKER)
     session_date = now_et().date()
@@ -16064,7 +16064,7 @@ def debug_charm(ticker: str = DEFAULT_TICKER):
         usable_iv = 0
         sentinel_gamma = 0
         has_oi = 0
-        from numeric_contract import float_finite_or_none as _fin
+        from app.domain.numeric_contract import float_finite_or_none as _fin
         for ct in contracts:
             # single source: canonical finite reader for every greek. Raw float() admitted
             # NaN (the counts were already NaN-safe via inline isfinite gates, now folded
@@ -16098,7 +16098,7 @@ def debug_charm(ticker: str = DEFAULT_TICKER):
         # single source: finite spot via the canonical reader. Raw float() admitted a NaN
         # underlyingPrice, and the `spot <= 0` guard does NOT catch NaN (nan <= 0 is False),
         # so a NaN spot used to flow into compute_net_charm.
-        from numeric_contract import float_finite_or_none as _fin
+        from app.domain.numeric_contract import float_finite_or_none as _fin
         spot = _fin(chain_json.get("underlyingPrice"))   # external-key-ok: Schwab chain JSON node
         if spot is None or spot <= 0:
             return {"error": f"underlyingPrice missing or zero in chain response for {ticker}"}

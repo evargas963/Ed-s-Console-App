@@ -18,7 +18,7 @@ from torch.utils.data import DataLoader, TensorDataset
 
 from research.elastic_net_eval_v1.runner import apply_advancement_screen, evaluate_cell
 from research.incumbent_eval_v1.runner import invalid_threshold_horizons
-from time_et import ET
+from app.domain.time_et import ET
 
 PREREG_PATH = Path(__file__).resolve().parent / "prereg_v1.json"
 CLASSES = ("down", "flat", "up")
@@ -75,7 +75,7 @@ def _load_closes(db: Path, ticker: str, *, session: str = "rth") -> tuple[np.nda
     `session="rth"` keeps only RTH minutes on real trading days; `session="all"` must be ASKED
     FOR, never assumed. An unknown universe refuses rather than guessing (fail-closed).
     """
-    from time_et import is_tradable_session_ts_utc
+    from app.domain.time_et import is_tradable_session_ts_utc
 
     if session not in ("rth", "all"):
         raise ValueError(f"unknown session universe {session!r} — 'rth' or 'all', never implicit")
@@ -142,7 +142,7 @@ def _load_labeled_rows(
     RTH features. Same explicit-universe contract as `_load_closes`: rth by default, "all" must
     be asked for, unknown refuses.
     """
-    from time_et import is_tradable_session_ts_utc
+    from app.domain.time_et import is_tradable_session_ts_utc
 
     from timeframe_config import SNAPSHOT_TABLE_1M
 

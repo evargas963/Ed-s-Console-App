@@ -6,7 +6,7 @@ from datetime import datetime
 
 import pytest  # noqa: F401 — used by approx in several tests
 
-from time_et import ET as _ET
+from app.domain.time_et import ET as _ET
 def _b(start_et: str, o: float, h: float, lo: float, c: float):
     from research.pilot_step3.data_loader import Bar1m
 

@@ -6,7 +6,7 @@ import math
 from typing import Any
 
 from v2_decision.a2_eod_force_exit import derive_et_clock_from_decision_time_ms
-from time_et import RTH_END_MINS
+from app.domain.time_et import RTH_END_MINS
 
 from .a2_lifecycle_health import (
     derive_a2_pin_risk_health,
@@ -727,7 +727,7 @@ def _time_to_expiry_years(ms_dict: dict[str, Any], chain_row: dict[str, Any]) ->
     # re-derived here as a local whole-day dte/365 — that was a second valuation-T authority
     # disagreeing with the charm/gamma/vanna clock near expiry.
     from datetime import datetime
-    from time_et import time_to_expiry_years as _tte, ET
+    from app.domain.time_et import time_to_expiry_years as _tte, ET
 
     exp = str(chain_row.get("expirationDate") or "")[:10]
     decision_time_ms = ms_dict.get("decision_time_ms")
@@ -869,7 +869,7 @@ def _first_number(*values: Any) -> float | None:
 
 
 def _num(value: Any) -> float | None:
-    from numeric_contract import float_finite_or_none
+    from app.domain.numeric_contract import float_finite_or_none
 
     return float_finite_or_none(value)
 

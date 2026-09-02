@@ -157,6 +157,6 @@ def current_pointer_path(
 
 
 def _float_or_none(value: Any) -> float | None:
-    from numeric_contract import float_finite_or_none
+    from app.domain.numeric_contract import float_finite_or_none
 
     return float_finite_or_none(value)

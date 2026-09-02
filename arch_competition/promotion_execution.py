@@ -3,7 +3,7 @@ from __future__ import annotations
 
 # RC-345/F25: promotion artifact/bundle identity consumes the ONE canonical ticker authority
 # (bare 'SPX' and '$SPX' resolve to the same promotion source/destination the writers/readers use).
-from instrument_identity import ticker_storage_key
+from app.domain.instrument_identity import ticker_storage_key
 
 import contextvars
 import json

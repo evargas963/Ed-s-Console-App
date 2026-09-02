@@ -67,7 +67,7 @@ def test_no_inline_datetime_now_ny_zoneinfo(repo_index):
 
 def test_coh_sa2_migrated_modules_use_canonical_et():
     """Spot-check COH-SA-2 production redirects."""
-    from time_et import ET as canonical, now_et
+    from app.domain.time_et import ET as canonical, now_et
 
     import polling_adapter
     import live_decision_bundle

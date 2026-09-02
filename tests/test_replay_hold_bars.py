@@ -13,7 +13,7 @@ from replay_hold_bars import (
     resolve_replay_max_hold_bars_for_payload,
 )
 from realized_contract_eval import build_replay_context_payload
-from time_et import RTH_SESSION_MINUTES
+from app.domain.time_et import RTH_SESSION_MINUTES
 
 _SKIP_PY_TREE_DIRS = frozenset(
     {".claude", ".git", ".venv", "venv", "node_modules", "__pycache__"}

@@ -21,7 +21,7 @@ _INFERENCE_SNAPSHOT_ALLOWED_SOURCES: frozenset[str] = frozenset(
 )
 from features.db_feature_adapter import build_db_mvp_feature_row
 from features.live_feature_adapter import build_live_mvp_feature_row
-from instrument_identity import ticker_storage_key
+from app.domain.instrument_identity import ticker_storage_key
 
 
 def build_feature_lineage_map(

@@ -32,7 +32,7 @@ from liquidity_value_engine import (  # noqa: E402
     PlaybookConfig,
     materialize_price_level_snapshot,
 )
-from time_et import ET  # noqa: E402
+from app.domain.time_et import ET  # noqa: E402
 
 from tests.conftest import most_recent_trading_day_et  # noqa: E402
 

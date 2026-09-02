@@ -19,7 +19,7 @@ from calibration.paths import DEFAULT_DB
 from calibration.schema import ensure_calibration_schema
 from calibration.trust import CALIBRATION_TRUST_TRUSTED
 from calibration.v2_advisory_backfill import ADVISORY_V2_ADAPTER_VERSION, ADVISORY_V2_SNAPSHOT_SCHEMA_VERSION
-from instrument_identity import ticker_storage_key
+from app.domain.instrument_identity import ticker_storage_key
 from timeframe_config import CANONICAL_TIMEFRAME
 
 log = logging.getLogger(__name__)

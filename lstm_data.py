@@ -32,7 +32,7 @@ log = logging.getLogger("lstm_data")
 
 
 def _positive_float_or_none(value) -> Optional[float]:
-    from numeric_contract import float_positive_or_none
+    from app.domain.numeric_contract import float_positive_or_none
 
     return float_positive_or_none(value)
 
@@ -57,7 +57,7 @@ TARGET_CLASSES      = {"up": 0, "down": 1, "flat": 2}
 # RC-345 / F09: the RTH clock boundary (09:30–16:00 ET) is owned by exactly one authority,
 # time_et.RTH_START_MINS / RTH_END_MINS. These names are minute-of-day aliases OF that
 # authority, not an independent 9/30/16/0 redefinition.
-from time_et import RTH_START_MINS as _RTH_START_MINS, RTH_END_MINS as _RTH_END_MINS
+from app.domain.time_et import RTH_START_MINS as _RTH_START_MINS, RTH_END_MINS as _RTH_END_MINS
 RTH_START_HOUR      = _RTH_START_MINS // 60
 RTH_START_MIN       = _RTH_START_MINS % 60
 RTH_END_HOUR        = _RTH_END_MINS // 60
@@ -620,7 +620,7 @@ def extract_rth_snapshots(
     # RC-57: is_tradable_session_ts_utc (weekday + holiday + RTH), NOT the clock-only
     # is_rth_ts_utc, which returns True on Saturday 10:00 and Memorial Day 10:00 and was
     # admitting market-closed rows into LSTM training sequences.
-    from time_et import (
+    from app.domain.time_et import (
         et_clock_from_ts_utc,
         et_date_str_from_ts_utc,
         is_tradable_session_ts_utc,

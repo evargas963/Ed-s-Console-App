@@ -77,7 +77,7 @@ def test_prior_day_family_single_session_dual_faucet_agreement(monkeypatch) -> N
     from datetime import datetime as _dt
 
     from liquidity_value_engine import PlaybookConfig, get_previous_day_levels
-    from time_et import ET
+    from app.domain.time_et import ET
     import market_context as mc
 
     def _ms(y, mo, d, h, mi):
@@ -145,7 +145,7 @@ def test_fetch_price_levels_window_delegates_to_rc153_authority(monkeypatch) -> 
 
     import liquidity_value_engine as lve
     from liquidity_value_engine import PlaybookConfig, materialize_price_level_snapshot
-    from time_et import ET
+    from app.domain.time_et import ET
     import market_context as mc
 
     def _ms(y, mo, d, h, mi):

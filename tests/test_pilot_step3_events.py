@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
-from time_et import ET as _ET
+from app.domain.time_et import ET as _ET
 def _minimal_prereg(**overrides):
     """Minimal prereg dict for generate_events (subset of prereg_v1.json)."""
     base = {

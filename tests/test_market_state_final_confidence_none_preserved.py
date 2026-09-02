@@ -4,7 +4,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 from market_state import MarketState
-from numeric_contract import float_finite_or_none
+from app.domain.numeric_contract import float_finite_or_none
 from multi_horizon_decision import build_multi_horizon_bundle
 from tests.test_issue18_multi_horizon_decision import _call, _canonical, _inp, _pred
 

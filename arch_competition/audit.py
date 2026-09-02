@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from instrument_identity import ticker_storage_key  # RC-345/F25: audit record identity canonical
+from app.domain.instrument_identity import ticker_storage_key  # RC-345/F25: audit record identity canonical
 
 import json
 import logging

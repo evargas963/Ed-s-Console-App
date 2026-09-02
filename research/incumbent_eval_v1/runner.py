@@ -75,7 +75,7 @@ def load_cell_rows(
     trusted calibration rows, RTH decisions only, horizon fusion available with
     a finite probability triplet, and an attached up/down/flat outcome label.
     """
-    from time_et import ET, is_rth_ts_utc
+    from app.domain.time_et import ET, is_rth_ts_utc
 
     cells: dict[tuple[str, str], list[dict[str, Any]]] = {
         (t, hz): [] for t in tickers for hz in horizons

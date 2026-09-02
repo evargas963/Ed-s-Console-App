@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from db import now_et as db_now_et
-from time_et import ET, et_clock_from_ts_utc, now_et
+from app.domain.time_et import ET, et_clock_from_ts_utc, now_et
 
 
 def test_now_et_uses_america_new_york_zone():
@@ -36,7 +36,7 @@ def test_dst_offset_differs_summer_vs_winter():
 
 
 def test_hours_until_session_close_uses_early_close_not_1600():
-    from time_et import hours_until_session_close_et
+    from app.domain.time_et import hours_until_session_close_et
 
     # 2026-11-27 is a listed early-close day (13:00 ET).
     early_am = datetime(2026, 11, 27, 11, 0, tzinfo=ET)
@@ -58,7 +58,7 @@ def test_hours_until_session_close_uses_early_close_not_1600():
 
 
 def test_time_to_expiry_years_uses_timestamp_elapsed_not_civil_timedelta():
-    from time_et import MIN_TIME_TO_EXPIRY_YEARS, YEAR_SECONDS, time_to_expiry_years
+    from app.domain.time_et import MIN_TIME_TO_EXPIRY_YEARS, YEAR_SECONDS, time_to_expiry_years
 
     # DST spring-forward 2026-03-08: civil wall-clock span is 1h longer than elapsed.
     fri = datetime(2026, 3, 6, 10, 30, tzinfo=ET)

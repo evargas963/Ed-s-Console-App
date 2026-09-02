@@ -36,7 +36,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from time_et import et_date_str_from_ts_utc, is_trading_day_et  # noqa: E402
+from app.domain.time_et import et_date_str_from_ts_utc, is_trading_day_et  # noqa: E402
 
 
 #: RC-283: tables whose ROWS must not exist on a closed day at all. `snapshots` is not here

@@ -52,7 +52,7 @@ REPO = Path(__file__).resolve().parent.parent
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
-from time_et import (  # noqa: E402
+from app.domain.time_et import (  # noqa: E402
     RTH_START_MINS,
     is_trading_day_et,
     now_et,

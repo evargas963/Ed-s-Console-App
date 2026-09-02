@@ -18,13 +18,13 @@ log = logging.getLogger(__name__)
 
 
 def _positive_float_or_none(value) -> Optional[float]:
-    from numeric_contract import float_positive_or_none
+    from app.domain.numeric_contract import float_positive_or_none
 
     return float_positive_or_none(value)
 
 
 def _float_or_none(value) -> Optional[float]:
-    from numeric_contract import float_finite_or_none
+    from app.domain.numeric_contract import float_finite_or_none
 
     return float_finite_or_none(value)
 
@@ -303,7 +303,7 @@ def _extract_quote(symbol: str, q_json: dict) -> tuple[Optional[float], Optional
         ext = data.get("extended", {}) or {}
         reg = data.get("regular", {}) or {}
         last = _last_traded_price(quote, ext, reg)
-        from numeric_contract import float_finite_or_none as _fin
+        from app.domain.numeric_contract import float_finite_or_none as _fin
         pct_chg = _fin(quote.get("netPercentChange"))  # external-key-ok: Schwab /quotes leaf (quotes.netPercentChange in schwab_field_dictionary.csv)
         if pct_chg is None:
             pct_chg = _fin(reg.get("regularMarketPercentChange"))
@@ -620,7 +620,7 @@ def _derive_session() -> str:
     holidays / uncovered-calendar-years fail closed to "Closed" instead of falsely
     reporting "RTH" (the served session_label used to say "RTH" on a full holiday).
     """
-    from time_et import now_et, session_close_mins_for_et_date, RTH_START_MINS
+    from app.domain.time_et import now_et, session_close_mins_for_et_date, RTH_START_MINS
 
     now = now_et()
     if now.weekday() >= 5:                              # Sat / Sun
@@ -979,7 +979,7 @@ def fetch_price_levels(
     compatibility; the canonical producer owns the bar input and the ORB window now.
     """
     from liquidity_value_engine import LevelCarrierConflict
-    from time_et import now_et
+    from app.domain.time_et import now_et
 
     pl = PriceLevels(orb_minutes=orb_minutes)
 
@@ -992,7 +992,7 @@ def fetch_price_levels(
                 # single source: canonical finite reader. Raw float() admitted NaN/inf
                 # straight into today_open/high/low, and from there into the levels; the
                 # finite reader rejects them and needs no try/except (it never raises).
-                from numeric_contract import float_finite_or_none as _fin
+                from app.domain.numeric_contract import float_finite_or_none as _fin
                 return _fin(q.get(key))
             pl.today_open = _sf("openPrice")
             pl.today_high = _sf("highPrice")

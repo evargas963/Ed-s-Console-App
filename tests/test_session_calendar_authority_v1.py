@@ -11,7 +11,7 @@ from __future__ import annotations
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from time_et import (
+from app.domain.time_et import (
     EARLY_CLOSE_MINS,
     RTH_END_MINS,
     RTH_START_MINS,

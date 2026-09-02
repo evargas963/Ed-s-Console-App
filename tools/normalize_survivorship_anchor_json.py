@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from canonical_distances import canonicalize_distance_read
+from app.domain.canonical_distances import canonicalize_distance_read
 
 
 def main() -> None:

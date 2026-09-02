@@ -248,7 +248,7 @@ def _per_strike_rows(exposures: dict, contracts: list[dict]) -> list[list]:
     picture of a positioning shift that did not happen.
     """
     from math_exposure_core import bucket_metric, total_gamma_raw_at_strike
-    from numeric_contract import float_finite_or_none, float_nonnegative_or_none
+    from app.domain.numeric_contract import float_finite_or_none, float_nonnegative_or_none
 
     vol_by_k: dict[float, float] = {}
     for ct in contracts or []:
@@ -292,7 +292,7 @@ def _dte_of(ct: object) -> float | None:
     None cannot be compared to 7 by accident — a caller must decide what unknown means,
     which for a maturity SPLIT is "belongs to neither side".
     """
-    from numeric_contract import float_finite_or_none
+    from app.domain.numeric_contract import float_finite_or_none
     return float_finite_or_none(ct.get("daysToExpiration")) if isinstance(ct, dict) else None
 
 
@@ -365,7 +365,7 @@ def compute_implied_one_day_move(contracts: list[dict], spot: float | None) -> d
     in price points; the client centers it on the LIVE spot so the band can never disagree
     with the price beside it (the RC-28/RC-77 one-spot discipline).
     """
-    from numeric_contract import float_finite_or_none
+    from app.domain.numeric_contract import float_finite_or_none
 
     if spot is None or spot <= 0 or not contracts:
         return None
@@ -445,7 +445,7 @@ def _per_strike_map(exposures: dict, contracts: list[dict]) -> dict[float, dict[
     become a dict key. One chain in, one map out: this is the single source for the per-strike
     histogram, replacing the frozen morning archive it used to read.
     """
-    from numeric_contract import float_finite_or_none, float_nonnegative_or_none
+    from app.domain.numeric_contract import float_finite_or_none, float_nonnegative_or_none
 
     out: dict[float, dict[str, Any]] = {}
     for k, ex in (exposures or {}).items():
@@ -738,7 +738,7 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
     # by both the flip verdict and the regime/gamma-at-spot read. Previously the flip built a
     # profile inside compute_gamma_flip_v2 and this function built a SECOND one, each defaulting
     # `now` to its own wall-clock read — two materializations of the same curve at two instants.
-    from time_et import now_et as _now_et
+    from app.domain.time_et import now_et as _now_et
     _terrain_now = now if now is not None else _now_et()   # gamma audit: replay pins the snapshot instant
     profile = compute_gamma_profile(contracts, spot, now=_terrain_now)
     flip, confidence, flip_diag = compute_gamma_flip_v2(

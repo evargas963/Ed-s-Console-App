@@ -61,7 +61,7 @@ def main():
     if pl.error:
         print(f"⚠️  Partial error: {pl.error}\n")
 
-    from time_et import now_et
+    from app.domain.time_et import now_et
 
     today = now_et().strftime("%Y-%m-%d")
 

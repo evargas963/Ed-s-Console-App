@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from canonical_distances import canonicalize_distance_read
+from app.domain.canonical_distances import canonicalize_distance_read
 
 
 class RegimeMvpInputError(ValueError):

@@ -19,7 +19,7 @@ from typing import Optional
 from ml_horizon import DEFAULT_ML_HORIZON_SLUG, normalize_ml_horizon_slug
 # RC-345/F25 (train-write faucet): LSTM model/meta writers consume the ONE canonical
 # ticker-artifact identity so bare 'SPX' and '$SPX' write the same basename the readers expect.
-from instrument_identity import ticker_storage_key
+from app.domain.instrument_identity import ticker_storage_key
 from training_cache_policy import (
     EARLY_STOP_ENABLED,
     EARLY_STOP_MIN_DELTA,

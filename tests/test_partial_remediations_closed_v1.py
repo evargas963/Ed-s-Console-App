@@ -95,7 +95,7 @@ def test_total_builds_is_still_counted_separately():
 
 def _edge(meta: dict, edge_key: str):
     """The reader as server.py now performs it."""
-    from numeric_contract import float_finite_or_none as fin
+    from app.domain.numeric_contract import float_finite_or_none as fin
 
     raw = fin(meta.get(edge_key))
     return None if raw is None else (raw * 100 if edge_key == "val_accuracy" else raw)

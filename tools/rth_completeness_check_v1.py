@@ -36,7 +36,7 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from time_et import (  # noqa: E402
+from app.domain.time_et import (  # noqa: E402
     COLLECT_WINDOW_START_MINS,
     collect_window_end_mins_for_et_date,
     et_date_str_from_ts_utc,
@@ -66,7 +66,7 @@ def session_lookback_bound_ts_utc(sessions: int, *, now: float | None = None) ->
     """
     from datetime import datetime, timedelta
 
-    from time_et import ET
+    from app.domain.time_et import ET
 
     day = (datetime.fromtimestamp(now, tz=ET) if now is not None else now_et()).date()
     found = 0

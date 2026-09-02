@@ -81,7 +81,7 @@ def _num(v: Any) -> float | None:
     The isinstance guard passed `float('nan')` straight through — NaN IS a float — so a poisoned
     archived greek entered the gamma census as a value instead of an absence. One canonical reader.
     """
-    from numeric_contract import float_finite_or_none
+    from app.domain.numeric_contract import float_finite_or_none
 
     return float_finite_or_none(v)
 

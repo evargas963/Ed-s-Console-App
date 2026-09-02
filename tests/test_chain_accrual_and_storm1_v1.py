@@ -19,7 +19,7 @@ from calibration.option_chain_morning_full import (  # noqa: E402
     persist_chain_accrual,
 )
 from terrain_engine import strongest_strike_storm1  # noqa: E402
-from time_et import ET  # noqa: E402
+from app.domain.time_et import ET  # noqa: E402
 
 
 # ── accrual window ───────────────────────────────────────────────────────────────────────

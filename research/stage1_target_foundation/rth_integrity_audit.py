@@ -47,7 +47,7 @@ def find_stored_clock_rth_sites(root: Path = ROOT) -> list[str]:
 def canonical_authority_present(root: Path = ROOT) -> bool:
     """The correct ts_utc authority must exist (time_et.is_rth_ts_utc +
     ml_data_common.filter_df_to_rth_ts_utc)."""
-    te = (root / "time_et.py")
+    te = (root / "app" / "domain" / "time_et.py")
     dc = (root / "ml_data_common.py")
     return (
         te.is_file()

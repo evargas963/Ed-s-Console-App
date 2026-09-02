@@ -27,7 +27,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from time_et import is_tradable_session_ts_utc
+from app.domain.time_et import is_tradable_session_ts_utc
 
 from .data_loader import Bar1m, load_spy_1m_bars
 from .event_generation import generate_events
@@ -103,7 +103,7 @@ def preflight(db_path: str, ticker: str = "SPY") -> dict[str, Any]:
 
 
 def _group_by_et_session(bars: list[Bar1m]) -> dict[str, list[Bar1m]]:
-    from time_et import et_date_str_from_ts_utc
+    from app.domain.time_et import et_date_str_from_ts_utc
 
     by_day: dict[str, list[Bar1m]] = {}
     for b in bars:

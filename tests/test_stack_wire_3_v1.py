@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 import call_engine
 import prediction_engine as pe
-from time_et import RTH_OPEN_MINS, RTH_START_MINS
+from app.domain.time_et import RTH_OPEN_MINS, RTH_START_MINS
 
 from tests.test_call_time_warning import (
     _minimal_input,

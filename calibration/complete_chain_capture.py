@@ -19,7 +19,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from instrument_identity import ticker_storage_key
+from app.domain.instrument_identity import ticker_storage_key
 
 TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS complete_chain_captures (

@@ -22,7 +22,7 @@ from v2_decision.a2_eod_force_exit import (
 )
 
 
-from time_et import ET, RTH_END_MINS
+from app.domain.time_et import ET, RTH_END_MINS
 def _epoch_ms_et(year: int, month: int, day: int, hour: int, minute: int) -> int:
     return int(datetime(year, month, day, hour, minute, tzinfo=ET).timestamp() * 1000)
 

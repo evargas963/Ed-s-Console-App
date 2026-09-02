@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from typing import Any
 import numpy as np
 
-from time_et import ET as _ET
+from app.domain.time_et import ET as _ET
 
 from . import pilot_config
 from .data_loader import Bar1m, RTH_START_MINS

@@ -15,7 +15,7 @@ from calibration.backfill_outcomes import backfill
 from calibration.schema import ensure_calibration_schema
 from calibration.validate_outcome_join import analyze
 from db import EdDB, configure_sqlite_connection
-from instrument_identity import ticker_storage_key
+from app.domain.instrument_identity import ticker_storage_key
 
 N_MATCH = 2200
 N_UNMATCHED = 120

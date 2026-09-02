@@ -559,7 +559,7 @@ def test_step3_fetch_state_does_not_enroll_viewed_ticker():
 # membership/update/delete, and a migration must fold legacy bare-root rows onto the canonical key.
 # ─────────────────────────────────────────────────────────────────────────────
 import sqlite3 as _sqlite3
-from instrument_identity import ticker_storage_key as _K
+from app.domain.instrument_identity import ticker_storage_key as _K
 
 
 def _lu_rows(dbp) -> list[str]:

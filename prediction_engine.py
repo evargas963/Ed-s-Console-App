@@ -17,7 +17,7 @@ from math_exposure import (
     MIN_SAMPLES_STATISTICAL,
 )
 from fusion_contract import fusion_is_authoritative, is_canonical_tradable
-from instrument_identity import ticker_storage_key
+from app.domain.instrument_identity import ticker_storage_key
 from signal_types import SignalInput, PredictiveCard, CanonicalForecast
 from timeframe_config import CANONICAL_TIMEFRAME
 from features.regime_mvp_context import mvp_spot, mvp_zone, mvp_vwap_side
@@ -28,7 +28,7 @@ from db import (
 )
 
 from ml_horizon import PRIMARY_DECISION_HORIZONS
-from time_et import RTH_OPEN_MINS
+from app.domain.time_et import RTH_OPEN_MINS
 from features.stack_integrity_v1 import (
     finalize_stack_integrity_v1,
     merge_stack_integrity_events,
@@ -362,7 +362,7 @@ def _pack_horizon_row(
         # re-running Math.max (biasFromEmp / hz) — the empirical-direction semantic is projected
         # in exactly one place.
         if u is not None and d is not None and f is not None:
-            from numeric_contract import direction_from_normalized_triplet
+            from app.domain.numeric_contract import direction_from_normalized_triplet
             _dom_lbl = direction_from_normalized_triplet(u, d, f)
             if _dom_lbl is not None:
                 # RC-363: stamp only a real label — a WITHHELD (non-finite leg)

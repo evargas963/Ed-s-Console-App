@@ -17,7 +17,7 @@ from sklearn.preprocessing import StandardScaler
 from research.elastic_net_eval_v1.runner import apply_advancement_screen, evaluate_cell
 from research.incumbent_eval_v1.runner import invalid_threshold_horizons
 from research.tcn_eval_v1.runner import _et_date, _load_labeled_rows
-from time_et import ET, RTH_SESSION_MINUTES, RTH_START_MINS
+from app.domain.time_et import ET, RTH_SESSION_MINUTES, RTH_START_MINS
 
 PREREG_PATH = Path(__file__).resolve().parent / "prereg_v1.json"
 N_BINS = RTH_SESSION_MINUTES // 30  # cash RTH / 30-minute bins

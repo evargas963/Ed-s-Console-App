@@ -11,7 +11,7 @@ from v2_decision.a2_lifecycle_sidecar import LIFECYCLE_GAP_NAMES, PREVIEW_BLOCKI
 from v2_decision.module_a_adapter import build_module_a_a1_decision
 
 
-from time_et import ET
+from app.domain.time_et import ET
 def _epoch_ms_et(year: int, month: int, day: int, hour: int, minute: int) -> int:
     return int(datetime(year, month, day, hour, minute, tzinfo=ET).timestamp() * 1000)
 

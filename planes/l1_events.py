@@ -14,7 +14,7 @@ from __future__ import annotations
 import logging
 import threading
 from typing import Any, Callable, Optional
-from instrument_identity import ticker_storage_key
+from app.domain.instrument_identity import ticker_storage_key
 
 log = logging.getLogger("ed.planes.l1_events")
 

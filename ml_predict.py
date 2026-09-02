@@ -47,7 +47,7 @@ from ml_horizon import (
 # RC-345/F25: serving-side artifact/registry ticker identity delegates to the ONE
 # canonical authority (same key the DB, cache, and on-disk $SPX bundle use). No local
 # .upper() second faucet — bare 'SPX' and '$SPX' resolve to the identical bundle.
-from instrument_identity import ticker_storage_key
+from app.domain.instrument_identity import ticker_storage_key
 
 from features.lstm_sequence_input import (
     LstmSequenceInputError,

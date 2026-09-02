@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from ml_data_common import market_session_from_ts_utc
-from time_et import (
+from app.domain.time_et import (
     COH_I_A_ET_BACKFILL_CEILING_TS_UTC,
     build_ts_et_from_ts_utc,
     et_clock_from_ts_utc,

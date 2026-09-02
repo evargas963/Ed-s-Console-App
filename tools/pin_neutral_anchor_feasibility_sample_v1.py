@@ -16,7 +16,7 @@ from calibration.db_guard import register_allow_noncanonical_flag, require_canon
 from calibration.paths import DEFAULT_DB
 from db import get_snapshot_sql
 from horizon_outcomes import OUTCOME_BAR_SPECS, bar_complete_by_utc, forward_bar_start_utc
-from instrument_identity import ticker_storage_key
+from app.domain.instrument_identity import ticker_storage_key
 from timeframe_config import CANONICAL_TIMEFRAME, DERIVED_TIMEFRAME
 
 

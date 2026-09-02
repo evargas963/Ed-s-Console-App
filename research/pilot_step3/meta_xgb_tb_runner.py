@@ -102,7 +102,7 @@ def candidate_features(
     prev_session_close: float | None,
 ) -> dict[str, float | None]:
     """All as-of the SIGNAL bar close; same-session windows only (INGEST_V1)."""
-    from time_et import RTH_START_MINS, RTH_SESSION_MINUTES, et_minute_total_from_ts_utc
+    from app.domain.time_et import RTH_START_MINS, RTH_SESSION_MINUTES, et_minute_total_from_ts_utc
 
     i = ev.signal_bar_index
     b = day_bars[i]

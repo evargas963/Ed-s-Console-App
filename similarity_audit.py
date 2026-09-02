@@ -141,7 +141,7 @@ def normalize_anchor_distances_for_issue19_sql(
 
     Does not modify snapshot rows or Issue 19 queries — caller-only normalization.
     """
-    from canonical_distances import canonicalize_distance_read
+    from app.domain.canonical_distances import canonicalize_distance_read
 
     return canonicalize_distance_read(nearest_above_dist, nearest_below_dist)
 

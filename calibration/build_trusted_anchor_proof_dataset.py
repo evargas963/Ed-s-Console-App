@@ -31,7 +31,7 @@ from calibration.backfill_outcomes import backfill
 from calibration.schema import ensure_calibration_schema
 from calibration.validate_logging_e2e import _inp
 from db import EdDB, configure_sqlite_connection
-from instrument_identity import ticker_storage_key
+from app.domain.instrument_identity import ticker_storage_key
 from signals import compute_signals
 
 N_ROWS = 30

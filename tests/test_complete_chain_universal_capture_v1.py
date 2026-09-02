@@ -46,7 +46,7 @@ from calibration.complete_chain_capture import (
 )
 from tests.conftest import most_recent_trading_day_et
 from tests.test_chain_api_v1 import _chain_json_for, _FakeResp
-from time_et import ET
+from app.domain.time_et import ET
 
 _FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -277,7 +277,7 @@ def test_universal_complete_chain_self_gates_outside_the_capture_window(monkeypa
     # A real Saturday: pick the day after _DAY that the calendar rejects, if _DAY+2 is
     # a weekend; if not (a holiday-adjacent week), fall back to a known Saturday far
     # from any exchange holiday.
-    from time_et import is_trading_day_et
+    from app.domain.time_et import is_trading_day_et
     probe = date.fromordinal(_DAY.toordinal() + 5)
     while is_trading_day_et(probe.isoformat()):
         probe = date.fromordinal(probe.toordinal() + 1)

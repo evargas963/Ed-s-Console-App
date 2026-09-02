@@ -37,7 +37,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Callable, Optional
 
-from instrument_identity import ticker_storage_key
+from app.domain.instrument_identity import ticker_storage_key
 from stream_spine import (
     PRODUCER_CLAIM_TTL_SEC,
     STREAM_DB_DEFAULT,

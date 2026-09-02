@@ -14,7 +14,7 @@ from calibration.backfill_et_clock_from_ts_utc_v1 import (
     run_backfill,
     sample_post_backfill_check,
 )
-from time_et import COH_I_A_ET_BACKFILL_CEILING_TS_UTC, et_clock_from_ts_utc
+from app.domain.time_et import COH_I_A_ET_BACKFILL_CEILING_TS_UTC, et_clock_from_ts_utc
 
 
 def _make_db(path: Path) -> sqlite3.Connection:

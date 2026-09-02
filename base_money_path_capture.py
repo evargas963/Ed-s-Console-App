@@ -10,7 +10,7 @@ from concurrent.futures import ThreadPoolExecutor, TimeoutError, as_completed
 from dataclasses import dataclass
 from typing import Any, Callable, Optional
 
-from instrument_identity import ticker_storage_key
+from app.domain.instrument_identity import ticker_storage_key
 
 LOGGER_SOURCE_BASE_MONEY_PATH = "base_money_path"
 LOGGER_SOURCE_BACKGROUND = "background_logger"
@@ -65,7 +65,7 @@ def build_lightweight_snapshot_row_from_quote(
     spot_f = float(quote_fields["spot_f"])
     et_h = int(now_et.hour)
     et_m = int(now_et.minute)
-    from numeric_contract import float_finite_or_none as _fin
+    from app.domain.numeric_contract import float_finite_or_none as _fin
     # single source: finite bid/ask (raw float() admitted NaN into spread AND the stored
     # bid_price/ask_price below); canonical reader also removes the need for try/except.
     bid = _fin(quote_fields.get("bid"))

@@ -17,7 +17,7 @@ import json
 import sys
 from pathlib import Path
 
-from time_et import ET, RTH_END_MINS, RTH_SESSION_MINUTES, RTH_START_MINS, now_et
+from app.domain.time_et import ET, RTH_END_MINS, RTH_SESSION_MINUTES, RTH_START_MINS, now_et
 
 APP_DIR = str(Path(__file__).parent.resolve())
 

@@ -27,7 +27,7 @@ from ml_horizon import default_training_label_column, live_inference_horizon_slu
 CANONICAL_TARGET_COL = default_training_label_column()
 
 # ── RTH filter: time_et open/close, weekdays (Mon=1..Fri=5) ───────────────────
-from time_et import RTH_END_MINS, RTH_START_MINS
+from app.domain.time_et import RTH_END_MINS, RTH_START_MINS
 RTH_WHERE = f"""
     (et_hour * 60 + et_minute) >= {int(RTH_START_MINS)}
     AND (et_hour * 60 + et_minute) < {int(RTH_END_MINS)}

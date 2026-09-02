@@ -38,7 +38,7 @@ REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 
 from terrain_engine import compute_terrain  # noqa: E402
-from time_et import ET, RTH_END_MINS, RTH_START_MINS, is_trading_day_et  # noqa: E402
+from app.domain.time_et import ET, RTH_END_MINS, RTH_START_MINS, is_trading_day_et  # noqa: E402
 
 # ── Pre-registered constants ─────────────────────────────────────────────────
 RTH_OPEN_MIN = int(RTH_START_MINS)

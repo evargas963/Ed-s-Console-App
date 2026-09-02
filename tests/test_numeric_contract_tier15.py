@@ -6,7 +6,7 @@ import math
 
 import pytest
 
-from numeric_contract import (
+from app.domain.numeric_contract import (
     direction_from_normalized_triplet,
     direction_from_triplet,
     float_finite_or_none,

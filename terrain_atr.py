@@ -67,14 +67,14 @@ def _aggregate(rows: list, bucket_key) -> list[dict]:
 
 
 def _et():
-    from time_et import ET  # single ET authority (COH-SA2)
+    from app.domain.time_et import ET  # single ET authority (COH-SA2)
 
     return ET
 
 
 def compute_atr_pair(db_path: str, ticker: str) -> AtrPair:
     """Daily and 15-minute ATR for one ticker. Never raises; returns None legs on failure."""
-    from instrument_identity import ticker_storage_key
+    from app.domain.instrument_identity import ticker_storage_key
     tk = ticker_storage_key(ticker)  # RC-345/F25: ATR DB query owner consumes canonical identity (callee, not caller-masked)
     if not tk:
         return AtrPair(None, None)

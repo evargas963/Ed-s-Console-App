@@ -6,7 +6,7 @@ import inspect
 
 import order_flow_engine as ofe
 import order_flow_live_state as ofls
-from time_et import RTH_END_MINS, RTH_OPEN_MINS
+from app.domain.time_et import RTH_END_MINS, RTH_OPEN_MINS
 
 
 def test_order_flow_live_state_rth_uses_rth_open_mins_authority():
@@ -31,7 +31,7 @@ def test_order_flow_live_state_rth_actually_behaves_at_the_boundaries(monkeypatc
     """
     import datetime as _dt
 
-    from time_et import ET
+    from app.domain.time_et import ET
 
     def _at(y, m, d, hh, mm):
         monkeypatch.setattr(ofls, "now_et",

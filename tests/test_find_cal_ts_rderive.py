@@ -14,7 +14,7 @@ from ml_data_common import (
     market_session_from_ts_utc,
     stamp_et_clock_columns,
 )
-from time_et import (
+from app.domain.time_et import (
     COH_I_A_ET_AUTHORITY_TS_UTC,
     COH_I_A_ET_BACKFILL_CEILING_TS_UTC,
     build_ts_et_from_ts_utc,

@@ -6,7 +6,7 @@ from typing import Any
 
 
 def _num(value: Any) -> float | None:
-    from numeric_contract import float_finite_or_none
+    from app.domain.numeric_contract import float_finite_or_none
 
     return float_finite_or_none(value)
 

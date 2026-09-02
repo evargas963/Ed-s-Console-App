@@ -12,7 +12,7 @@ if str(_ROOT) not in _sys.path:
 
 import sqlite3, statistics as st
 from datetime import datetime
-from time_et import ET, RTH_END_MINS, RTH_START_MINS
+from app.domain.time_et import ET, RTH_END_MINS, RTH_START_MINS
 con = sqlite3.connect("file:data/ed_console.db?mode=ro", uri=True, timeout=120)
 con.row_factory = sqlite3.Row
 def et(ts):

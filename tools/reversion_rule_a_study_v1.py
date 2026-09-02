@@ -257,7 +257,7 @@ def _arm_verdicts(cells: dict[str, CellEconomics]) -> dict[str, dict[str, Any]]:
 
 
 def run_study(db_path: str) -> dict[str, Any]:
-    from time_et import et_date_str_from_ts_utc
+    from app.domain.time_et import et_date_str_from_ts_utc
 
     t0 = time.perf_counter()
     rows, loader_info, gen_stats = _label_all_candidates(db_path)

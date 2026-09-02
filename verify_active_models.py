@@ -22,7 +22,7 @@ from pathlib import Path
 # authority that created/loaded the bundle (instrument_identity.ticker_storage_key).
 # A verifier inventing its own .upper() normalization is a second faucet that would
 # pass 'SPX'-named lookups against '$SPX'-named artifacts (or miss them entirely).
-from instrument_identity import ticker_storage_key
+from app.domain.instrument_identity import ticker_storage_key
 
 log = logging.getLogger(__name__)
 

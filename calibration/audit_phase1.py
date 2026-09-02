@@ -31,7 +31,7 @@ from calibration.schema import ensure_calibration_schema
 from calibration.statistical_integrity import bucket_gate, verify_audit_phase1_no_numeric_leak
 from db import get_snapshot_sql
 from math_probabilities import MIN_SAMPLES_STATISTICAL
-from instrument_identity import ticker_storage_key
+from app.domain.instrument_identity import ticker_storage_key
 from timeframe_config import CANONICAL_TIMEFRAME
 import logging
 

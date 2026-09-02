@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from time_et import et_date_str_from_ts_utc  # noqa: E402
+from app.domain.time_et import et_date_str_from_ts_utc  # noqa: E402
 
 SAT = datetime.datetime(2026, 7, 25, 14, 0, tzinfo=datetime.timezone.utc).timestamp()  # Sat 10:00 ET
 MON = datetime.datetime(2026, 7, 27, 14, 0, tzinfo=datetime.timezone.utc).timestamp()  # Mon 10:00 ET

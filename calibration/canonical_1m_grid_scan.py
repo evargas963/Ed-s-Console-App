@@ -18,7 +18,7 @@ from horizon_outcomes import (
     OUTCOME_BAR_SPECS,
     forward_bar_start_utc,
 )
-from instrument_identity import ticker_storage_key
+from app.domain.instrument_identity import ticker_storage_key
 from timeframe_config import CANONICAL_TIMEFRAME
 
 try:

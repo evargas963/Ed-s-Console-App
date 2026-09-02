@@ -55,7 +55,7 @@ def _et_now(ts_utc: float):
     duplicate authority, which is exactly the class that produced the two-session-classifier bug
     (RC-48). Enforced by tests/test_coh_sa2_et_authority.py.
     """
-    from time_et import ET
+    from app.domain.time_et import ET
 
     x = float(ts_utc)
     if x > 1e12:
@@ -166,7 +166,7 @@ def load_wide_chains(db_path: str) -> list[tuple[float, float, list[dict]]]:
     statistic toward "nothing moved". Non-trading dates are excluded here via the one calendar
     authority `time_et.is_trading_day_et`; there is deliberately NO opt-out parameter.
     """
-    from time_et import is_trading_day_et
+    from app.domain.time_et import is_trading_day_et
 
     conn = sqlite3.connect(db_path)
     try:

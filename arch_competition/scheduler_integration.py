@@ -6,7 +6,7 @@ Does not copy artifacts to models/active/ or call run_unified_stack_ml_once.
 
 from __future__ import annotations
 
-from instrument_identity import ticker_storage_key  # RC-345/F25: one canonical per-instrument identity
+from app.domain.instrument_identity import ticker_storage_key  # RC-345/F25: one canonical per-instrument identity
 
 import json
 import logging

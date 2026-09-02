@@ -130,7 +130,7 @@ def latest_gamma_at(rows: list[tuple[float, float]], ts: float) -> float | None:
 def session_gamma_medians(
     rows: list[tuple[float, float]], session_of: Any
 ) -> dict[str, float]:
-    from time_et import is_trading_day_et  # RC-58: the one calendar authority
+    from app.domain.time_et import is_trading_day_et  # RC-58: the one calendar authority
 
     by_day: dict[str, list[float]] = {}
     for ts, g in rows:
@@ -183,7 +183,7 @@ def _condition_cells(
     day_override (placebo): maps session -> session whose gamma history is used
     instead - the day-level gamma-shuffle that must kill any real edge.
     """
-    from time_et import et_date_str_from_ts_utc
+    from app.domain.time_et import et_date_str_from_ts_utc
 
     sessions_sorted = sorted(day_gamma_median)
     stats = {"n_no_fresh_gamma": 0, "n_no_z_baseline": 0}
@@ -262,7 +262,7 @@ def run_study(db_path: str) -> dict[str, Any]:
     t0 = time.perf_counter()
     candidates, loader_info = _label_candidates(db_path)
     gamma_rows = load_certified_gamma(db_path, "SPY")
-    from time_et import et_date_str_from_ts_utc
+    from app.domain.time_et import et_date_str_from_ts_utc
 
     day_median = session_gamma_medians(gamma_rows, et_date_str_from_ts_utc)
     baseline = evaluate_cell(

@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Literal
 
-from time_et import ET as _ET
+from app.domain.time_et import ET as _ET
 
 from .atr import wilder_atr_14
 from .data_loader import Bar1m
@@ -326,7 +326,7 @@ FORCE_FLAT_BUFFER_MINS = 5
 
 
 def _et_date_of(ts_utc: float) -> str:
-    from time_et import et_date_str_from_ts_utc
+    from app.domain.time_et import et_date_str_from_ts_utc
 
     return et_date_str_from_ts_utc(float(ts_utc))
 
@@ -337,7 +337,7 @@ def force_flat_ts_utc_f1_v2(entry_ts_utc: float) -> float | None:
     Uses the S1 calendar authority: 15:55 ET on a normal day, 12:55 ET on a
     13:00 early close, None (fail closed) on holidays and uncovered years.
     """
-    from time_et import session_close_mins_for_et_date
+    from app.domain.time_et import session_close_mins_for_et_date
 
     d = _et_date_of(entry_ts_utc)
     close_mins = session_close_mins_for_et_date(d)

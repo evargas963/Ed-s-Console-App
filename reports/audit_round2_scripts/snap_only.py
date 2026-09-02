@@ -8,7 +8,7 @@ from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from time_et import ET  # noqa: E402 — the ONE NY-zone authority (COH-SA-2)
+from app.domain.time_et import ET  # noqa: E402 — the ONE NY-zone authority (COH-SA-2)
 
 DB = os.environ.get("ED_CONSOLE_DB_RO")
 if DB is None:

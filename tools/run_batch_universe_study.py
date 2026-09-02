@@ -60,7 +60,7 @@ def screen_ticker(db_path: str, ticker: str) -> dict[str, Any]:
     """Fail-closed gate verdict for one symbol (reasons enumerated)."""
     from research.pilot_step3.f1_input_gates import classify_bar_source
     from research.pilot_step3.data_loader import load_spy_1m_bars
-    from time_et import et_date_str_from_ts_utc, is_tradable_session_ts_utc
+    from app.domain.time_et import et_date_str_from_ts_utc, is_tradable_session_ts_utc
 
     rep = load_spy_1m_bars(db_path, ticker=ticker, require_rth_only=True)
     tradable = [b for b in rep.bars if is_tradable_session_ts_utc(b.bar_start_ts_utc)]

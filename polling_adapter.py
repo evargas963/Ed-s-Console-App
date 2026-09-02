@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, timedelta, time
 from typing import Callable
-from time_et import ET, RTH_END_MINS
+from app.domain.time_et import ET, RTH_END_MINS
 
 from market_data_adapter import schwab_candles_to_bars
 import logging

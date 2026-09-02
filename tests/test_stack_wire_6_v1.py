@@ -7,7 +7,7 @@ import re
 
 import replay_hold_bars as rhb
 from micro_structure import R_COMPRESSION, R_RANGE, R_TREND_UP
-from time_et import RTH_END_MINS, RTH_OPEN_MINS, RTH_SESSION_MINUTES
+from app.domain.time_et import RTH_END_MINS, RTH_OPEN_MINS, RTH_SESSION_MINUTES
 
 
 def test_rth_session_minutes_authority():

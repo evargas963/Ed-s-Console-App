@@ -7,7 +7,7 @@ import time
 from pathlib import Path
 from typing import Any, Optional
 
-from instrument_identity import ticker_storage_key
+from app.domain.instrument_identity import ticker_storage_key
 
 OVERRIDE_REGISTRY_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS decision_override_registry (

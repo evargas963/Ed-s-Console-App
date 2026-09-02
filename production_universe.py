@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from typing import Iterable
 
-from instrument_identity import ticker_storage_key
+from app.domain.instrument_identity import ticker_storage_key
 from schwab_field_dictionary_builder import is_ticker
 
 _FRAGMENT = frozenset(
