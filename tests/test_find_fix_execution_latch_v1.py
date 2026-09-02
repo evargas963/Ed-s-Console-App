@@ -483,8 +483,14 @@ def test_the_latch_adds_no_new_tracked_state_file():
 
 def test_no_env_kill_switch_on_the_latch(tmp_path, monkeypatch):
     """RC-450 Architecture A: a subject-controlled env value cannot switch off a mandatory
-    control."""
+    control.
+
+    `dirty_production_files` is pinned rather than left to the real tree. Without that pin this
+    test asserted the Stop block only when the checkout HAPPENED to have modified production
+    files — it passed on a dirty dev worktree and FAILED in CI on a clean checkout, which is a
+    test that reports the environment rather than the control."""
     _ledger(tmp_path, monkeypatch)
+    monkeypatch.setattr(ml, "dirty_production_files", lambda *a, **k: ["server.py"])
     for var in ("ED_STOP_GUARD", "ED_PRETOOLUSE_GUARD", "ED_PROCESS_LOCK_GUARD",
                 "ED_MISSION_LATCH"):
         monkeypatch.setenv(var, "off")
