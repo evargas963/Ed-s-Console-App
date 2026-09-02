@@ -186,6 +186,15 @@ def test_the_remaining_filesystem_scanners_are_measured_not_forgotten():
     # legitimate single-purpose census/audit reason, simply invisible to the old
     # detector before its git-ls-files extension. None of these are new scans; the
     # detector just stopped missing a call shape it was blind to.
+    # tools/repo_rehab_status.py::1 ARRIVED 2026-09-02 (RC-505), and it is a DELIBERATE
+    # `git ls-files` exception rather than a lapse into the RC-274 -> RC-286 loop. The
+    # function is `physical_generated_state`, and its whole subject is runtime state that
+    # is PHYSICALLY PRESENT IN THE SOURCE TREE BUT IGNORED, which `git ls-files` cannot
+    # report by construction: measured on this host it finds 247 such files against 224
+    # tracked, and the 23 it alone sees include data/ed_console.db and logs/ed_server.log.
+    # The tracked count is computed separately, from the index, and reported separately.
+    # A walk is the only instrument that can answer this question; every OTHER census in
+    # that file reads the index.
     per_file = Counter(rel.rsplit(":", 1)[0] for rel in found)
     current = {f"{rel}::{n}" for rel, n in per_file.items()}
     frozen = frozenset(
