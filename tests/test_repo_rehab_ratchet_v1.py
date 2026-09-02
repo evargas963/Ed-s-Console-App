@@ -83,7 +83,7 @@ def test_new_tracked_runtime_state_blocks(tmp_path, rel):
 
 def test_growth_in_a_legacy_directory_blocks(tmp_path):
     bad = _bad(_repo(tmp_path, "c", BASE, {"reports/another.json": "{}\n"}))
-    assert any("LEGACY-DIRECTORY GROWTH" in b for b in bad), bad
+    assert any("NEW FILES IN A LEGACY DIRECTORY" in b for b in bad), bad
 
 
 # ── defect 5: a NEW non-TARGET top-level directory, detected dynamically ──────────────────
@@ -218,8 +218,11 @@ def test_demoting_the_ratchet_to_advisory_blocks(tmp_path, step):
 
 # ── legitimate work must PASS ─────────────────────────────────────────────────────────────
 def test_unchanged_inherited_debt_passes(tmp_path):
-    """147 root modules and 224 trained blobs may stay. The ratchet blocks GROWTH, not history."""
-    assert _bad(_repo(tmp_path, "j", BASE, None)) == []
+    """147 root modules and 224 trained blobs may stay. The ratchet blocks GROWTH, not history.
+
+    The candidate carries a real (harmless) commit: an EMPTY delta is now its own violation,
+    because base==head empties every comparison in the gate."""
+    assert _bad(_repo(tmp_path, "j", BASE, {"docs/note.md": "unrelated\n"})) == []
 
 
 def test_migration_toward_the_target_passes(tmp_path):
@@ -234,8 +237,27 @@ def test_deleting_inherited_debt_passes(tmp_path):
     assert bad == [], bad
 
 
-def test_ordinary_product_work_in_an_existing_module_passes(tmp_path):
+def test_product_work_that_grows_a_root_module_on_net_now_blocks(tmp_path):
+    """OPERATOR RULE, and a real workflow change worth stating plainly: inherited root LOC may
+    remain or shrink, never grow on net. A one-line bug fix in a root module with nothing
+    offsetting it is refused — the escape is to put the change in app/, or to pay for it by
+    removing at least as much root code in the same delta."""
     bad = _bad(_repo(tmp_path, "m", BASE, {"legacy_module.py": "Y = 2\nZ = 3  # a bug fix\n"}))
+    assert any("INHERITED ROOT LOC GREW" in b for b in bad), bad
+
+
+def test_net_neutral_product_work_across_root_modules_passes(tmp_path):
+    """NET, not per-module: growing one root module while shrinking another by as much is not
+    growth of the debt, so it passes. This is the escape hatch that keeps the rule survivable."""
+    base = {**BASE, "other_legacy.py": "A = 1\nB = 2\nC = 3\n"}
+    bad = _bad(_repo(tmp_path, "m2", base,
+                     {"legacy_module.py": "Y = 2\nZ = 3\n", "other_legacy.py": "A = 1\n"}))
+    assert not any("ROOT LOC" in b for b in bad), bad
+
+
+def test_the_same_product_work_placed_in_app_passes(tmp_path):
+    """The intended direction: new logic goes to app/, and the root file is untouched."""
+    bad = _bad(_repo(tmp_path, "m3", BASE, {"app/domain/fix.py": "Z = 3  # a bug fix\n"}))
     assert bad == [], bad
 
 
@@ -260,7 +282,7 @@ def test_target_is_hash_pinned():
     # 3b7fe749… is the target as the operator ruled it on 2026-09-02: app/models KEPT, docs/
     # ADDED, every legacy directory dispositioned. It replaced 23b688a7… in that same reviewed
     # delta — which is the sanctioned path, and the reason this assertion fired at all.
-    assert R.TARGET_SHA256.startswith("3b7fe74975d7f86b"), (
+    assert R.TARGET_SHA256.startswith("c1079c06fab96b87"), (
         "TARGET changed. That is not forbidden — it is the OPERATOR's to change — but it may "
         "not happen silently: update this pin in the same reviewed delta. Note the pin alone "
         "is NOT the protection; the ratchet also compares the BASE ref's target, so a delta "
@@ -336,9 +358,11 @@ def test_demoting_the_ci_invocation_blocks(tmp_path, step):
     assert any("cannot fail it" in b for b in bad), bad
 
 
-def test_no_gate_declared_means_nothing_to_protect(tmp_path):
-    """The check must not cry wolf on a tree that never had the tool."""
-    assert _ci_gate_violations(tmp_path / "none", _LIVE_STEP, tool=False) == []
+def test_a_missing_gate_is_reported_against_the_gate_not_the_workflow(tmp_path):
+    """Companion to the deletion control below: the violation must name the absent TOOL, so the
+    message points at what has to come back rather than at a workflow that is intact."""
+    bad = _ci_gate_violations(tmp_path / "none", _LIVE_STEP, tool=False)
+    assert any("does not exist in the tree" in b for b in bad), bad
 
 
 def test_the_live_repo_wires_the_ratchet_into_required_ci():
@@ -358,6 +382,251 @@ def test_self_protection_is_not_owned_only_by_the_ratchet():
     assert "_declared_gate_is_actually_invoked_violations()" in src, "must be CALLED, not just defined"
     names = {n for n, _f, e in CIC.CHECKS if e}
     assert "scheduled_producers_are_not_inert" in names, "the calling check must be ENFORCED"
+
+
+# ── FINAL HARDENING: the bypasses the independent reviews accepted ───────────────────────
+def test_growing_an_inherited_root_module_blocks(tmp_path):
+    """START_SHA root debt may remain or shrink — feeding it is drift wearing inherited debt's
+    name. MEASURED before this rule: +33 LOC landed in one day and passed."""
+    bad = _bad(_repo(tmp_path, "h1", BASE, {"legacy_module.py": "Y = 2\n" + "Z = 3\n" * 20}))
+    assert any("INHERITED ROOT LOC GREW" in b for b in bad), bad
+
+
+def test_shrinking_an_inherited_root_module_passes(tmp_path):
+    bad = _bad(_repo(tmp_path, "h2", {**BASE, "legacy_module.py": "Y = 2\n" * 30},
+                     {"legacy_module.py": "Y = 2\n"}))
+    assert not any("ROOT LOC" in b for b in bad), bad
+
+
+@pytest.mark.parametrize("rel", [
+    "app/loose.py",                       # directly under app/, in no package
+    "app/undeclared_pkg/mod.py",          # a package the TARGET never declared
+    "app/models/sub/deep.py",             # declared package, nested — must PASS
+])
+def test_undeclared_app_children_block_and_declared_ones_pass(tmp_path, rel):
+    bad = _bad(_repo(tmp_path, "h3" + rel.replace("/", "_"), BASE, {rel: "X = 1\n"}))
+    hit = any("UNDECLARED APP CHILD" in b for b in bad)
+    assert hit is (not rel.startswith("app/models/")), (rel, bad)
+
+
+@pytest.mark.parametrize("rel,blocks", [
+    (".internal/mod.py", True),           # dot-prefixed top level was a blind spot
+    (".hidden/data.py", True),
+    (".github/workflows/x.yml", False),   # declared
+    (".claude/settings.json", False),
+])
+def test_dot_prefixed_top_level_population_is_closed(tmp_path, rel, blocks):
+    bad = _bad(_repo(tmp_path, "h4" + rel.replace("/", "_").replace(".", "d"), BASE,
+                     {rel: "x\n"}))
+    assert any("NON-TARGET TOP-LEVEL" in b for b in bad) is blocks, (rel, bad)
+
+
+_APP_BASE = {**BASE, "app/domain/value.py": "X = 1\n"}
+
+
+@pytest.mark.parametrize("body", [
+    "import legacy_module\n",                                   # absolute root module
+    "from legacy_module import Y\n",                            # from-import of a root module
+    "from reports import thing\n",                              # legacy directory
+    "import importlib\nm = importlib.import_module('legacy_module')\n",   # dynamic, literal
+    "def f():\n    import legacy_module\n    return legacy_module\n",     # nested in a function
+    "from typing import TYPE_CHECKING\nif TYPE_CHECKING:\n    import legacy_module\n",
+])
+def test_app_to_legacy_dependency_growth_blocks_for_every_import_form(tmp_path, body):
+    """A rule that only reads module-scope `import x` is a rule about formatting."""
+    bad = _bad(_repo(tmp_path, "h5" + str(abs(hash(body))), _APP_BASE,
+                     {"app/domain/uses.py": body}))
+    assert any("APP->LEGACY DEPENDENCIES GREW" in b for b in bad), (body, bad)
+
+
+def test_app_to_legacy_dependency_shrinking_passes(tmp_path):
+    base = {**_APP_BASE, "app/domain/uses.py": "import legacy_module\n"}
+    bad = _bad(_repo(tmp_path, "h6", base, {"app/domain/uses.py": "X = 2\n"}))
+    assert not any("APP->LEGACY" in b for b in bad), bad
+
+
+def test_relative_imports_inside_app_are_direction_checked(tmp_path):
+    """`from ...api import x` inside app/domain must be caught like the absolute form."""
+    bad = _bad(_repo(tmp_path, "h7", BASE,
+                     {"app/domain/rel.py": "from ..api import router\n"}))
+    assert any("FORBIDDEN DEPENDENCY DIRECTION" in b for b in bad), bad
+
+
+@pytest.mark.parametrize("name,size,sample,expected", [
+    ("weights.safetensors", 10, b"", True),        # extension the old list never had
+    ("blob.unknownext", 5, b"\x00\x01\x02", True),  # binary content, unknown suffix
+    ("dump.unknownext", 2_000_000, b"text", True),  # large + not known source
+    ("mod.py", 2_000_000, b"def f(): pass", False),  # large but known source
+    ("notes.md", 10, b"# hi", False),
+])
+def test_generated_state_detection_is_structural_not_only_suffix(name, size, sample, expected):
+    """A suffix list can always be stepped around by choosing another name — the same failure
+    mode as deciding enforcement by vocabulary."""
+    assert R.is_generated_state(name, size, sample) is expected, name
+
+
+def test_physical_host_scan_counts_ignored_files(tmp_path):
+    """THE SEVERE ONE. .gitignore on this repository already carries models/**, data/*,
+    backups/db/* and logs/, so a tracked-file rule cannot see new contamination at all, and
+    `git rm --cached` would have reported 224 -> 0 while every byte stayed on disk."""
+    src = tmp_path / "src"
+    (src / "models" / "active").mkdir(parents=True)
+    (src / ".gitignore").write_text("models/**\n", encoding="utf-8")
+    (src / "models" / "active" / "m.pt").write_bytes(b"\x00binary")
+    found = R.physical_generated_state(src)
+    assert any(f.endswith("m.pt") for f in found), found
+
+
+def test_physical_scan_skips_tool_caches(tmp_path):
+    src = tmp_path / "src2"
+    (src / ".mypy_cache").mkdir(parents=True)
+    (src / ".mypy_cache" / "c.db").write_bytes(b"x")
+    assert R.physical_generated_state(src) == []
+
+
+def test_the_rehab_files_are_protected_by_test_ownership():
+    """Tests are not CHECKS, so nothing else noticed the suite being deleted."""
+    import tools.gate_test_ownership as G
+
+    assert "tools/repo_rehab_status.py" in G.SELF_PROTECTED_PATHS
+    assert "tests/test_repo_rehab_ratchet_v1.py" in G.SELF_PROTECTED_PATHS
+
+
+def test_the_trust_root_is_named_and_not_claimed_to_be_in_repo():
+    """Every protection here runs from the pull request's own code, so a delta can weaken the
+    checker and ship the weakened checker together. The recursion terminates OUTSIDE the
+    repository, and saying otherwise would be the false-enforcement defect this repo removed."""
+    assert len(R.TRUST_ANCHOR_LOCK_SURFACE) >= 8
+    for p in (".github/workflows/hardening.yml", "tools/repo_rehab_status.py",
+              "tools/check_institutional_correctness.py", "tools/check_delta_adds_no_debt.py",
+              "tests/test_repo_rehab_ratchet_v1.py", "tools/gate_test_ownership.py"):
+        assert p in R.TRUST_ANCHOR_LOCK_SURFACE, p
+    src = Path(R.__file__).read_text(encoding="utf-8")
+    assert "not editable by the PR" in src or "OUTSIDE the repository" in src
+
+
+# ── controls for the bypasses the adversarial review found ───────────────────────────────
+def test_base_equal_head_cannot_neuter_the_ratchet(tmp_path):
+    """MEASURED PASS before this: every rule is a set difference between two trees, so
+    `--base HEAD` emptied all of them and the gate reported success. The workflow supplies the
+    base, so the gate must not trust it."""
+    root = _repo(tmp_path, "b1", BASE, {"new_thing.py": "X = 1\n"})
+    assert any("NEUTERED BY ARGUMENT" in b for b in R.ratchet("cand", "cand", root))
+    assert any("NEW ROOT PRODUCTION MODULE" in b for b in R.ratchet("main", "cand", root))
+
+
+@pytest.mark.parametrize("body", [
+    "from app import api\n",              # the package arrives via names, not module
+    "from app import api as a\n",
+    "from .. import api\n",               # the relative twin
+])
+def test_alias_import_forms_cannot_walk_around_the_dependency_lattice(tmp_path, body):
+    bad = _bad(_repo(tmp_path, "b2" + str(abs(hash(body))), BASE,
+                     {"app/domain/al.py": body}))
+    assert any("FORBIDDEN DEPENDENCY DIRECTION" in b for b in bad), (body, bad)
+
+
+def test_churning_a_legacy_directory_flat_still_blocks(tmp_path):
+    """One aggregate over 13 directories stays flat while 100 curated files leave and 99
+    generated ones arrive. Additions are refused, not net movement."""
+    base = {**BASE, "reports/a.json": "{}\n", "reports/b.json": "{}\n"}
+    bad = _bad(_repo(tmp_path, "b3", base, {"reports/c.json": "{}\n"},
+                     removed=("reports/a.json", "reports/b.json")))
+    assert any("NEW FILES IN A LEGACY DIRECTORY" in b for b in bad), bad
+
+
+@pytest.mark.parametrize("body", [
+    "from app.domain.value import *\nRESULT = (lambda: 1)()\n",
+    "from app.domain.value import *\nTABLE = {k: k for k in range(3)}\n",
+    "from app.domain.value import *\nCFG = build_config()\n",
+])
+def test_a_shim_that_executes_logic_in_an_assignment_is_not_a_shim(body):
+    """Checking the statement TYPE let a module keep all its logic in assignment VALUES and
+    still be certified a re-export."""
+    assert R.is_compatibility_shim(body) is False, body
+
+
+@pytest.mark.parametrize("name", ["model.pt.bak", "console.sqlite.old", "weights.pkl.1"])
+def test_double_suffix_artifacts_are_still_generated_state(name):
+    assert R.is_generated_state(name, 10, b"") is True, name
+
+
+def test_deleting_the_declared_gate_is_a_violation_not_a_skip(tmp_path):
+    """The fail-open: `if not tool.exists(): continue` meant the cheapest way past the guard was
+    to remove the thing it guards."""
+    import tools.check_institutional_correctness as CIC
+
+    root = tmp_path / "nogate"
+    (root / ".github" / "workflows").mkdir(parents=True)
+    (root / "tools").mkdir()
+    (root / ".github" / "workflows" / "hardening.yml").write_text(
+        "jobs: {}\n", encoding="utf-8")
+    old = CIC.REPO
+    try:
+        CIC.REPO = root
+        bad = [str(v.msg) for v in CIC._declared_gate_is_actually_invoked_violations()]
+    finally:
+        CIC.REPO = old
+    assert any("declared as a required CI gate but does not exist" in b for b in bad), bad
+
+
+def test_a_target_mutated_after_the_digest_is_caught(tmp_path, monkeypatch):
+    """The attack that defeats BOTH other protections: `TARGET[...].append(x)` after the digest
+    is computed leaves TARGET_SHA256 untouched (already taken) and the AST literal untouched
+    (a separate statement), while every predicate reads the mutated object."""
+    root = _repo(tmp_path, "b4", {**BASE, "tools/repo_rehab_status.py": _tool_src("{'a': 1}")},
+                 {"tools/repo_rehab_status.py": _tool_src("{'a': 1}") + "\nX = 1\n"})
+    monkeypatch.setattr(R, "TARGET", {"a": 2})           # live object != file literal
+    bad = R.ratchet("main", "cand", root)
+    assert any("MUTATED AT RUNTIME" in b for b in bad), bad
+
+
+def test_adding_a_submodule_blocks(tmp_path):
+    """A gitlink has no slash, no suffix and no blob, so it entered none of the path rules.
+    Review PROVED a submodule carrying 1500 LOC and a 2 MB database passed."""
+    import subprocess
+
+    inner = _repo(tmp_path, "sub_inner", {"engine.py": "X = 1\n"}, None)
+    outer = _repo(tmp_path, "sub_outer", BASE, None)
+    subprocess.run(["git", "-c", "protocol.file.allow=always", "submodule", "add",
+                    "-q", str(inner), "core"], cwd=str(outer), capture_output=True, timeout=120)
+    subprocess.run(["git", "add", "-A"], cwd=str(outer), capture_output=True, timeout=60)
+    subprocess.run(["git", "commit", "-qm", "add submodule"], cwd=str(outer),
+                   capture_output=True, timeout=60)
+    links = R.tracked_gitlinks("cand", outer)
+    if not links:                       # submodule support unavailable in this environment
+        pytest.skip("git submodule add unavailable here")
+    assert any("NEW SUBMODULE" in b for b in R.ratchet("main", "cand", outer))
+
+
+@pytest.mark.parametrize("wf,marker", [
+    ("jobs:\n  hardening:\n    steps:\n      - run: python tools/repo_rehab_status.py"
+     " --ratchet --base origin/main\n        continue-on-error: true\n", "continue-on-error"),
+    ("jobs:\n  hardening:\n    steps:\n      - if: false\n        run: python"
+     " tools/repo_rehab_status.py --ratchet --base origin/main\n", "if:"),
+    ("jobs:\n  hardening:\n    steps:\n      - run: python tools/repo_rehab_status.py"
+     " --ratchet --base origin/main ; exit 0\n", "swallow"),
+    ("jobs:\n  hardening:\n    steps:\n      - run: python tools/repo_rehab_status.py"
+     " --ratchet --base origin/main || echo skipped\n", "swallow"),
+    ("jobs:\n  hardening:\n    steps:\n      - run: python tools/repo_rehab_status.py"
+     " --ratchet --base HEAD\n", "--base origin/main"),
+])
+def test_every_proven_ci_demotion_form_blocks(tmp_path, wf, marker):
+    """Only `|| true` was enumerated before; review proved nine other forms pass. A step that
+    is present and cannot fail is worse than a missing one, because the wiring looks intact."""
+    bad = _ci_gate_violations(tmp_path / ("dm" + str(abs(hash(wf)))), wf)
+    assert bad, (marker, wf)
+
+
+def test_deleting_tooling_or_governance_is_not_scored_as_improvement():
+    """`good = d > 0 if key.startswith('app_')` scored a FALL in tools/ and governance/ as
+    better, rewarding deletion of the machinery holding the line — and scored a RISE in
+    app_imports_legacy as better, which is the facade metric read backwards."""
+    directions = {key: direction for _l, key, _t, direction in R._METRICS}
+    assert directions["tools_py"] == "info"
+    assert directions["governance_files"] == "info"
+    assert directions["app_imports_legacy"] == "down"
+    assert directions["app_modules"] == "up"
 
 
 # ── defect 4: TARGET drift blocks BASE->HEAD, even when target+pin+test move together ────

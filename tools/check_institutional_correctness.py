@@ -3095,11 +3095,26 @@ def _declared_gate_is_actually_invoked_violations() -> list[Violation]:
     it out (YAML comments are invisible to a substring search over the raw file), and demoting it
     by dropping the flag that makes it block or appending `|| true`.
     """
+    def _yaml_key(line: str) -> str:
+        """The line's key with indentation and any sequence dash removed."""
+        s = line.strip()
+        while s.startswith("- "):
+            s = s[2:].lstrip()
+        return s
+
     out: list[Violation] = []
     wf = REPO / _HARDENING_WORKFLOW
     for tool, flag in _GATES_REQUIRING_CI_INVOCATION:
         if not (REPO / tool).exists():
-            continue                      # nothing declared, nothing to protect
+            # NOT a skip. `continue` here was a fail-open: renaming or deleting the gate made
+            # the guard silently satisfied, so the cheapest way past the protection was to
+            # remove the thing it protects. A declared gate that is missing IS the violation.
+            out.append(Violation(
+                Path(tool), 0,
+                f"{tool} is declared as a required CI gate but does not exist in the tree. "
+                f"Deleting or renaming a gate does not retire it (RC-505); remove the "
+                f"declaration in a reviewed delta if that is the intent."))
+            continue
         if not wf.exists():
             out.append(Violation(Path(_HARDENING_WORKFLOW), 0,
                                  f"{tool} exists but {_HARDENING_WORKFLOW} does not, so the gate "
@@ -3121,12 +3136,42 @@ def _declared_gate_is_actually_invoked_violations() -> list[Violation]:
                    "nothing." if commented else ".")
                 + " A declared gate that CI does not execute is inert (RC-505)."))
             continue
-        blocking = [ln for ln in live if flag in ln and "|| true" not in ln]
+        # Every way a step can be present and still not block. `|| true` was the only form
+        # enumerated before, and review PROVED nine others pass: continue-on-error, a step- or
+        # job-level `if:`, `; exit 0`, `|| echo ...`, and naming a base the PR chooses.
+        swallow = ("|| true", "|| echo", "; exit 0", "; exit0", "set +e", "|| :")
+        blocking = [ln for ln in live
+                    if flag in ln and not any(s in ln for s in swallow)]
         if not blocking:
             out.append(Violation(
                 Path(_HARDENING_WORKFLOW), 0,
                 f"{tool} is invoked by required CI but cannot fail it: no live line carries "
-                f"{flag!r} without `|| true`. A gate that cannot block is a report (RC-505)."))
+                f"{flag!r} without a failure-swallowing tail. A gate that cannot block is a "
+                f"report (RC-505)."))
+            continue
+        # The step's own YAML block: the keys that disable it sit on ADJACENT lines, so a
+        # single-line search could never see them.
+        idx = lines.index(blocking[0])
+        window = lines[max(0, idx - 6):idx + 6]
+        for key in ("continue-on-error:", "if:"):
+            # A disabling key can also open the step's list item — `- if: false` — so the
+            # YAML sequence dash has to come off before the match, or the first form of the
+            # bypass is exactly the one that walks through.
+            hit = [w for w in window
+                   if _yaml_key(w).startswith(key) and not w.strip().startswith("#")]
+            if hit:
+                out.append(Violation(
+                    Path(_HARDENING_WORKFLOW), 0,
+                    f"{tool} is invoked but its step carries {hit[0].strip()!r}, which lets the "
+                    f"job stay green whatever the gate says. Wiring that looks intact and "
+                    f"enforces nothing is worse than none (RC-505)."))
+        if "--base origin/main" not in blocking[0]:
+            out.append(Violation(
+                Path(_HARDENING_WORKFLOW), 0,
+                f"{tool} is invoked without `--base origin/main`. Every rule in it is a "
+                f"comparison against the base, so a base the change chooses for itself — "
+                f"`--base HEAD`, `--base HEAD~1` — empties all of them and the gate passes "
+                f"forever (RC-505)."))
     return out
 
 

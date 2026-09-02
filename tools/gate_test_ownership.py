@@ -39,6 +39,11 @@ SELF_PROTECTED_PATHS: tuple[str, ...] = (
     # (check_fix_everything_we_touch.py and enforce_all_rules.py were retired with
     # their stacks — removed from this set 2026-08-25, audit round 2.)
     "tools/check_institutional_closure_gate.py",
+    # RC-505: the rehabilitation ratchet and its negative controls. Tests are not CHECKS, so
+    # nothing noticed the suite being deleted or gutted — after which the ratchet's predicates
+    # could be weakened freely while pytest-full still passed a suite that tested nothing.
+    "tools/repo_rehab_status.py",
+    "tests/test_repo_rehab_ratchet_v1.py",
     ".pre-commit-config.yaml",
     "tests/conftest.py",
     "pyproject.toml",
