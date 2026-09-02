@@ -5,11 +5,23 @@ World-class invariant: there is exactly one lineage. What runs on the desk is a
 released commit of `main`, never a detached HEAD, never a divergent lineage, never
 an uncommitted working tree. This guard is the mechanical enforcement of that.
 
-Wire it in three places (all fail-closed):
-  1. Server launch  — start_ed_console.bat calls this BEFORE `uvicorn`; a non-zero
-     exit aborts the launch. The desk cannot run code that is not on main.
-  2. pre-push hook  — refuses to push a branch whose tip is not built on main.
-  3. CI             — the same check runs on every PR.
+WHERE THIS ACTUALLY RUNS — one place, not three (corrected 2026-09-02, RC-506):
+  1. Server launch — `start_ed_console.bat:58` calls this BEFORE `uvicorn`; a non-zero
+     exit aborts the launch. The desk cannot run code that is not on main. VERIFIED.
+
+This docstring previously also claimed a pre-push hook and a CI job. Neither exists.
+MEASURED 2026-09-02: `.pre-commit-config.yaml` does not name this module (its pre-push
+stage belongs to other hooks), and none of the three workflows — hardening.yml,
+pytest.yml, repo-rehab-daily.yml — invokes it. A repository-wide search finds this file
+referenced only by `start_ed_console.bat` and by tests.
+
+That mattered beyond tidiness. The claim described two independent enforcement points
+that were never built, so the guard read as defence-in-depth while a single launcher
+line carried all of it — and for the whole time that line was the only enforcement, the
+guard could still exit 0 on a lineage it had not measured (see `_git` below). Prose
+asserting enforcement nothing performs is the exact defect class this repository
+polices; it is recorded here rather than deleted so the gap stays visible until someone
+decides whether pre-push and CI wiring should exist.
 
 Checks (all must pass):
   A. HEAD is on branch `main` — not detached, not a feature branch. The production checkout is
@@ -20,7 +32,7 @@ Checks (all must pass):
   C. The working tree has no uncommitted APP code (server.py, *.py, static/*.html,
      static/*.js). Docs/reports/scratch are ignored; app code is not.
 
-Prevention, not just detection: A-C run at launch / pre-push / CI (fail-closed). The PreToolUse
+Prevention, not just detection: A-C run at launch (fail-closed). The PreToolUse
 guard (`tools/process_lock_guard.py`) additionally BLOCKs, at the moment of the command, any git
 branch-move / commit / reset / merge or app-code edit that targets the production checkout — so an
 assigned agent cannot move the live checkout onto a feature branch in the first place, rather than
