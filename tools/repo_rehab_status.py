@@ -3,23 +3,23 @@
 WHY ONE FILE. The mission asks for a status generator AND a no-regression ratchet. They are the
 same computation asked twice: the ratchet is "measure CURRENT at two refs and refuse the ones
 that got worse". Splitting them would create two producers of "what does this repo look like",
-which is the duplicate-authority defect the rehabilitation exists to remove. There is no new
-registry, no new governance surface, and no nightly report archive: the daily job prints to the
-job summary and writes nothing to the repo.
+which is the duplicate-authority defect the rehabilitation exists to remove. No new registry, no
+new governance surface, no report archive: the daily job prints to the job summary.
 
 WHAT IS MEASURED. Structural facts only, read from a git tree — module placement, tracked
 runtime artifacts, directory ownership, import direction. Institutional debt is NOT recomputed
 here: `tools/check_delta_adds_no_debt.py` already owns that question and already runs in
-Hardening, so this tool defers to it rather than growing a second opinion.
+Hardening, so this defers to it rather than growing a second opinion.
 
 USAGE
-    python tools/repo_rehab_status.py                      # CURRENT / TARGET / TODAY'S DELTA
+    python tools/repo_rehab_status.py                      # CURRENT / TARGET / DELTA
     python tools/repo_rehab_status.py --ratchet --base origin/main   # no-regression gate
-    python tools/repo_rehab_status.py --host               # host-separation check only
+    python tools/repo_rehab_status.py --host               # host separation (local only)
 """
 from __future__ import annotations
 
 import argparse
+import ast
 import hashlib
 import json
 import os
@@ -29,22 +29,51 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 
+#: The rehabilitation's fixed origin. Re-anchored to the merge of PR #218 when this work was
+#: rebased onto it, so cumulative progress is measured from the tree the plan actually starts on.
+START_SHA = "e3a7071419dff0ce08b3cc235925eeb7a0c13278"
+
 # ── THE TARGET — FIXED AND HASH-PINNED ────────────────────────────────────────────────────
-#: Pinned so the score cannot be improved by redefining what "done" means. `TARGET_SHA256`
-#: is asserted by tests/test_repo_rehab_ratchet_v1.py; editing any value below changes the
-#: digest and fails the suite, which is the point — the target is the operator's, not the
-#: agent's, and a rehabilitation that may move its own goalposts measures nothing.
+#: Pinned so the score cannot be improved by redefining what "done" means. Two protections, and
+#: the second exists because the first is not enough: `tests/test_repo_rehab_ratchet_v1.py`
+#: asserts the digest, AND the ratchet re-derives the BASE ref's TARGET and refuses any change —
+#: a delta that edited the target, the pin and the test together would satisfy every test it
+#: shipped with and still be moving its own goalposts.
+#:
+#: OPERATOR RULING 2026-09-02: `app/models` is KEPT (the earlier recommendation to rename it
+#: `app/ml` is rejected); `docs/` is added to source. Every other legacy top-level directory is
+#: dispositioned below — none is left unexplained, because "unexplained difference = NONE" is
+#: the goal and a directory with no stated destination can never reach it.
 TARGET: dict = {
     "app_packages": [
         "api", "domain", "market_data", "options", "signals", "models", "decision",
         "infrastructure",
     ],
     "source_top_level": [
-        "app", "research", "tests", "tools", "static", "config", "governance",
+        "app", "research", "tests", "tools", "static", "config", "governance", "docs",
     ],
     "root_production_modules": 0,
     "tracked_runtime_artifacts": 0,
-    "host_dirs_outside_source": ["runtime", "recovery", "artifacts", "worktrees"],
+    #: Where each legacy top-level directory GOES. "<host>" means it leaves source entirely.
+    "legacy_disposition": {
+        "reports": "<host>/artifacts",
+        "models": "<host>/artifacts",
+        "backups": "<host>/recovery",
+        "data": "<host>/runtime",
+        "calibration": "app/models",
+        "features": "app/signals",
+        "arch_competition": "research",
+        "v2_decision": "app/decision",
+        "verification": "tools",
+        "planes": "app/domain",
+        "schwab_field_inventory": "app/market_data",
+        "snapshot_sql": "app/infrastructure",
+        "scripts": "tools",
+    },
+    #: Ed Console-specific host paths, relative to the directory ABOVE the source checkout.
+    "host_paths": [
+        "runtime/EdWebConsole", "recovery/EdWebConsole", "artifacts/EdWebConsole", "worktrees",
+    ],
     "dependency_direction": {
         "domain": [],
         "market_data": ["domain"],
@@ -57,36 +86,27 @@ TARGET: dict = {
         "infrastructure": ["domain"],
     },
 }
-TARGET_SHA256 = hashlib.sha256(
-    json.dumps(TARGET, sort_keys=True, separators=(",", ":")).encode("utf-8")
-).hexdigest()
 
-#: Directories that exist today and the TARGET does not name. They are not "allowed" — every
-#: file in them must end up inside a TARGET directory or leave source. Listed so the report can
-#: show the number shrinking; the ratchet refuses any INCREASE.
-UNMAPPED_TOP_LEVEL = (
-    "reports", "models", "docs", "calibration", "features", "arch_competition",
-    "v2_decision", "verification", "planes", "schwab_field_inventory", "snapshot_sql",
-    "scripts", "backups", "data",
-)
+
+def _digest(target: dict) -> str:
+    return hashlib.sha256(
+        json.dumps(target, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
+
+
+TARGET_SHA256 = _digest(TARGET)
 
 #: Extensions that are runtime/generated state, never source.
 RUNTIME_EXT = frozenset({".db", ".sqlite", ".sqlite3", ".log", ".pkl", ".joblib", ".h5",
                          ".pt", ".onnx", ".parquet", ".bin", ".ckpt"})
 
-#: Recorded once so the daily report can surface them until the operator rules. Implementing
-#: the TARGET verbatim while a known collision stands would be dishonest; changing it here
-#: would be worse, because the target is not the agent's to move.
-TARGET_OPEN_QUESTIONS = (
-    "app/models collides with the existing top-level models/ (438 tracked files, 224 .pt/.pkl "
-    "trained artifacts). Two meanings of 'models' — ML code vs trained state — in one tree is "
-    "the duplicate-authority shape this rehabilitation removes. RECOMMEND app/ml, with trained "
-    "artifacts leaving source for artifacts/. Not applied: the TARGET is the operator's.",
-    "14 top-level directories holding 1,286 tracked files (44% of the repo) are named by "
-    "neither the TARGET nor its exclusions. RECOMMEND stating that each maps into app/*, "
-    "research/, tools/, or leaves source; otherwise 'unexplained difference = NONE' is "
-    "unreachable by construction.",
-)
+
+def _legacy_dirs() -> frozenset[str]:
+    return frozenset(TARGET["legacy_disposition"])
+
+
+def _allowed_top_level() -> frozenset[str]:
+    """Directories a tree may contain: TARGET source, plus legacy ones still being drained."""
+    return frozenset(TARGET["source_top_level"]) | _legacy_dirs()
 
 
 # ── facts ─────────────────────────────────────────────────────────────────────────────────
@@ -109,15 +129,20 @@ def _blob_lines(ref: str, path: str, repo: Path = REPO) -> int:
     return len(out.splitlines()) if out else 0
 
 
+def top_level_dirs(files: list[str]) -> set[str]:
+    return {f.split("/")[0] for f in files if "/" in f and not f.startswith(".")}
+
+
 def current(ref: str = "HEAD", repo: Path = REPO, with_loc: bool = True) -> dict:
     """CURRENT, generated from the tree at `ref`. No hand-entered status anywhere."""
     files = tracked_files(ref, repo)
     root_py = sorted(f for f in files if "/" not in f and f.endswith(".py"))
     app_py = sorted(f for f in files if f.startswith("app/") and f.endswith(".py"))
     runtime = sorted(f for f in files if os.path.splitext(f)[1].lower() in RUNTIME_EXT)
-    unmapped = sorted(f for f in files
-                      if f.split("/")[0] in UNMAPPED_TOP_LEVEL and "/" in f)
-    tops = {f.split("/")[0] for f in files if "/" in f and not f.startswith(".")}
+    tops = top_level_dirs(files)
+    legacy_present = sorted(tops & _legacy_dirs())
+    legacy_files = sorted(f for f in files if f.split("/")[0] in _legacy_dirs() and "/" in f)
+    unknown = sorted(tops - _allowed_top_level())
     gov = sorted(f for f in files if f.startswith("governance/"))
     return {
         "ref": (_git(["rev-parse", "--short", ref], repo) or ref).strip(),
@@ -127,43 +152,52 @@ def current(ref: str = "HEAD", repo: Path = REPO, with_loc: bool = True) -> dict
         "server_py_loc": _blob_lines(ref, "server.py", repo) if with_loc else -1,
         "app_modules": len(app_py),
         "app_loc": sum(_blob_lines(ref, f, repo) for f in app_py) if with_loc else -1,
-        "app_packages_present": sorted(
-            {f.split("/")[1] for f in app_py if f.count("/") >= 2}),
+        "app_packages_present": sorted({f.split("/")[1] for f in app_py if f.count("/") >= 2}),
         "tools_py": len([f for f in files if f.startswith("tools/") and f.endswith(".py")]),
         "governance_files": len(gov),
-        "governance_loc": (sum(_blob_lines(ref, f, repo) for f in gov)
-                           if with_loc and len(gov) <= 400 else -1),
         "tracked_runtime_artifacts": len(runtime),
-        "unmapped_top_level_dirs": sorted(tops & set(UNMAPPED_TOP_LEVEL)),
-        "unmapped_tracked_files": len(unmapped),
+        "legacy_dirs_present": legacy_present,
+        "legacy_tracked_files": len(legacy_files),
+        "unknown_top_level_dirs": unknown,
         "_root_py_names": root_py,
         "_app_py_names": app_py,
         "_runtime_names": runtime,
+        "_top_level": sorted(tops),
     }
 
 
+# ── host separation ───────────────────────────────────────────────────────────────────────
+def _in_ci() -> bool:
+    return bool(os.environ.get("GITHUB_ACTIONS") or os.environ.get("CI"))
+
+
 def host_separation(root: Path | None = None, baseline: str | None = None,
-                    ref: str = "HEAD") -> dict:
-    """Is runtime/recovery/artifacts/worktrees state OUTSIDE the source checkout?
+                    ref: str = "HEAD", force_local: bool = False) -> dict:
+    """Is Ed Console's runtime/recovery/artifacts/worktree state OUTSIDE the source checkout?
 
-    THREE states, not two, and the distinction is the whole value. Reporting an un-migrated
-    layout as VIOLATED on day one makes the signal useless exactly when the work starts —
-    MEASURED on the first run, which returned VIOLATED for 224 INHERITED trained-model blobs
-    and would have done so every day until the last one moved.
+    NOT_PROVEN_FROM_CI is the honest answer in CI. A CI runner clones the repository into an
+    ephemeral path with no host layout around it, so any SEPARATED/VIOLATED verdict there would
+    describe the runner, not the operator's machine — a measurement of the wrong subject read as
+    a measurement of the right one.
 
-      SEPARATED         host dirs exist and no runtime state is tracked in source
-      NOT_YET_SEPARATED inherited runtime state still in source, not growing — the baseline
-      VIOLATED          runtime state is being RE-CREATED inside source (count above baseline)
+    Locally the check is Ed Console-SPECIFIC: it looks for this console's own external paths
+    (`runtime/EdWebConsole`, `recovery/EdWebConsole`, `artifacts/EdWebConsole`, `worktrees`)
+    beside the checkout, not for generic directory names that some other project might own.
 
-    VIOLATED is reserved for the thing that must never happen again, so it means something when
-    it appears.
+      NOT_PROVEN_FROM_CI  running in CI; the host is not observable from here
+      SEPARATED           all four host paths exist and no runtime state is tracked in source
+      NOT_YET_SEPARATED   inherited runtime state still in source, not growing — the baseline
+      VIOLATED            runtime state is being RE-CREATED inside source (above baseline)
     """
     src = (root or REPO).resolve()
+    if _in_ci() and not force_local:
+        return {"state": "NOT_PROVEN_FROM_CI", "host_root": None, "host_paths_present": {},
+                "tracked_runtime_in_source": None, "baseline_runtime_in_source": None,
+                "why": "a CI runner has no host layout; the operator's machine is the subject"}
     host = src.parent
-    present = {d: (host / d).is_dir() for d in TARGET["host_dirs_outside_source"]}
-    contaminating = sorted(
-        f for f in tracked_files(ref, src)
-        if os.path.splitext(f)[1].lower() in RUNTIME_EXT)
+    present = {p: (host / p).is_dir() for p in TARGET["host_paths"]}
+    contaminating = sorted(f for f in tracked_files(ref, src)
+                           if os.path.splitext(f)[1].lower() in RUNTIME_EXT)
     base_n = None
     if baseline:
         base_n = len([f for f in tracked_files(baseline, src)
@@ -174,21 +208,47 @@ def host_separation(root: Path | None = None, baseline: str | None = None,
         state = "SEPARATED"
     else:
         state = "NOT_YET_SEPARATED"
-    return {"state": state, "host_root": str(host), "host_dirs_present": present,
+    return {"state": state, "host_root": str(host), "host_paths_present": present,
             "tracked_runtime_in_source": len(contaminating),
             "baseline_runtime_in_source": base_n, "sample": contaminating[:5]}
 
 
 # ── the ratchet ───────────────────────────────────────────────────────────────────────────
+def _target_at(ref: str, repo: Path = REPO) -> dict | None:
+    """The TARGET literal as it exists at `ref`, parsed without executing that revision."""
+    src = _git(["show", f"{ref}:tools/repo_rehab_status.py"], repo)
+    if not src:
+        return None
+    try:
+        tree = ast.parse(src)
+    except SyntaxError:
+        return None
+    for node in tree.body:
+        if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name) \
+                and node.target.id == "TARGET" and node.value is not None:
+            try:
+                return ast.literal_eval(node.value)
+            except (ValueError, SyntaxError):
+                return None
+        if isinstance(node, ast.Assign) and any(
+                isinstance(t, ast.Name) and t.id == "TARGET" for t in node.targets):
+            try:
+                return ast.literal_eval(node.value)
+            except (ValueError, SyntaxError):
+                return None
+    return None
+
+
 def ratchet(base: str = "origin/main", head: str = "HEAD", repo: Path = REPO) -> list[str]:
     """Refuse NEW divergence from the TARGET. Inherited debt may stay; it may not grow.
 
     Deliberately NOT a debt checker: `check_delta_adds_no_debt` already owns institutional
-    violations and duplicate-producer counts and already runs in Hardening. This adds only the
-    architecture predicates that nothing else measures.
+    violations. This adds only the architecture predicates nothing else measures.
     """
     b, h = current(base, repo, with_loc=False), current(head, repo, with_loc=False)
     out: list[str] = []
+
+    out.extend(_target_drift_violations(base, head, repo))
 
     new_root = sorted(set(h["_root_py_names"]) - set(b["_root_py_names"]))
     if new_root:
@@ -197,36 +257,78 @@ def ratchet(base: str = "origin/main", head: str = "HEAD", repo: Path = REPO) ->
             f"code belongs in app/<package>/. Inherited root modules may stay — this refuses "
             f"ADDING to them.")
 
+    # Reintroduced root ownership: the same module owned in BOTH places at HEAD.
+    app_stems = {Path(f).stem for f in h["_app_py_names"]}
+    dupes = sorted(app_stems & {Path(f).stem for f in h["_root_py_names"]})
+    if dupes:
+        out.append(
+            f"ROOT OWNERSHIP REINTRODUCED: {', '.join(dupes)} exists under app/ AND at the repo "
+            f"root at HEAD. One module, two owners, is the duplicate authority this "
+            f"rehabilitation removes — delete the root copy or finish the move.")
+
+    base_app_stems = {Path(f).stem for f in b["_app_py_names"]}
+    regressed = sorted(base_app_stems & {Path(f).stem for f in h["_root_py_names"]} - app_stems)
+    if regressed:
+        out.append(
+            f"MIGRATED CODE MOVED BACK TOWARD ROOT: {', '.join(regressed)} was under app/ at the "
+            f"base and is at the repo root at HEAD. Migration is one-way.")
+
     new_rt = sorted(set(h["_runtime_names"]) - set(b["_runtime_names"]))
     if new_rt:
         out.append(
             f"NEW TRACKED RUNTIME/GENERATED STATE: {', '.join(new_rt[:6])}"
             f"{' ...' if len(new_rt) > 6 else ''}. Runtime, DB, backup, log and trained-model "
-            f"state lives outside source (artifacts/, runtime/, recovery/).")
+            f"state lives outside source — see the TARGET host paths.")
 
-    if h["unmapped_tracked_files"] > b["unmapped_tracked_files"]:
+    # DYNAMIC: any top-level directory the TARGET neither names nor dispositions.
+    new_unknown = sorted(set(h["unknown_top_level_dirs"]) - set(b["unknown_top_level_dirs"]))
+    if new_unknown:
         out.append(
-            f"UNMAPPED-DIRECTORY GROWTH: {b['unmapped_tracked_files']} -> "
-            f"{h['unmapped_tracked_files']} tracked files in top-level directories the TARGET "
-            f"does not name. Those directories may only shrink.")
+            f"NEW NON-TARGET TOP-LEVEL DIRECTORY: {', '.join(new_unknown)}. Every top-level "
+            f"directory is either TARGET source ({', '.join(TARGET['source_top_level'])}) or a "
+            f"legacy directory with a stated disposition. A new one is a new unexplained "
+            f"difference, which is what this rehabilitation is closing.")
 
-    # A package already migrated must not be re-owned by the root.
-    base_app_mods = {Path(f).stem for f in b["_app_py_names"]}
-    regressed = sorted(base_app_mods & {Path(f).stem for f in h["_root_py_names"]})
-    if regressed:
+    if h["legacy_tracked_files"] > b["legacy_tracked_files"]:
         out.append(
-            f"MIGRATED CODE MOVED BACK TOWARD ROOT: {', '.join(regressed)} exists under app/ at "
-            f"the base and at the repo root at HEAD. Migration is one-way.")
+            f"LEGACY-DIRECTORY GROWTH: {b['legacy_tracked_files']} -> "
+            f"{h['legacy_tracked_files']} tracked files in directories awaiting disposition. "
+            f"They may only shrink.")
 
     out.extend(_dependency_direction_violations(head, repo))
     out.extend(_self_protection_violations(base, head, repo))
     return out
 
 
+def _target_drift_violations(base: str, head: str, repo: Path = REPO) -> list[str]:
+    """The TARGET may not move to flatter the score — checked BASE against HEAD.
+
+    The digest pin in the test suite is necessary and NOT sufficient: a single delta can edit
+    the target, update the pin and update the test together, and every test it ships with will
+    pass. Only a comparison against the base ref can see that, and reading the base is what
+    makes it impossible for a change to authorise its own goalpost move.
+    """
+    base_target = _target_at(base, repo)
+    if base_target is None:
+        return []                      # the tool does not exist at the base: first landing
+    head_target = _target_at(head, repo)
+    if head_target is None:
+        return ["TARGET UNREADABLE AT HEAD: tools/repo_rehab_status.py no longer defines a "
+                "literal TARGET, so drift cannot be measured. Unmeasurable is not compliant."]
+    if _digest(base_target) == _digest(head_target):
+        return []
+    changed = sorted(
+        k for k in set(base_target) | set(head_target)
+        if base_target.get(k) != head_target.get(k))
+    return [
+        f"TARGET DRIFT: the fixed target changed in this delta (fields: {', '.join(changed)}). "
+        f"base sha256={_digest(base_target)[:16]} head sha256={_digest(head_target)[:16]}. The "
+        f"target is the operator's, and a rehabilitation that can redefine 'done' measures "
+        f"nothing. Land the target change as its own reviewed decision."]
+
+
 def _dependency_direction_violations(ref: str, repo: Path = REPO) -> list[str]:
     """Once app/<pkg> exists, it may only import the packages the TARGET allows it to."""
-    import ast
-
     allowed = TARGET["dependency_direction"]
     out: list[str] = []
     for f in tracked_files(ref, repo):
@@ -235,9 +337,8 @@ def _dependency_direction_violations(ref: str, repo: Path = REPO) -> list[str]:
         pkg = f.split("/")[1]
         if pkg not in allowed:
             continue
-        src = _git(["show", f"{ref}:{f}"], repo) or ""
         try:
-            tree = ast.parse(src)
+            tree = ast.parse(_git(["show", f"{ref}:{f}"], repo) or "")
         except SyntaxError:
             continue
         for node in ast.walk(tree):
@@ -248,11 +349,11 @@ def _dependency_direction_violations(ref: str, repo: Path = REPO) -> list[str]:
                 mods = [a.name for a in node.names]
             for m in mods:
                 parts = m.split(".")
-                if len(parts) >= 2 and parts[0] == "app" and parts[1] != pkg:
-                    if parts[1] not in allowed[pkg]:
-                        out.append(
-                            f"FORBIDDEN DEPENDENCY DIRECTION: {f} (app/{pkg}) imports "
-                            f"app.{parts[1]}, which app/{pkg} may not depend on.")
+                if len(parts) >= 2 and parts[0] == "app" and parts[1] != pkg \
+                        and parts[1] not in allowed[pkg]:
+                    out.append(
+                        f"FORBIDDEN DEPENDENCY DIRECTION: {f} (app/{pkg}) imports "
+                        f"app.{parts[1]}, which app/{pkg} may not depend on.")
     return sorted(set(out))
 
 
@@ -260,7 +361,7 @@ def _self_protection_violations(base: str, head: str, repo: Path = REPO) -> list
     """Deleting, disabling or unwiring this ratchet is itself a regression.
 
     Same contract `check_delta_adds_no_debt` applies to enforced checks: if the BASE ref had the
-    protection and HEAD does not, refuse. Read from the base so a change cannot authorise the
+    protection and HEAD does not, refuse — read from the base so a change cannot authorise the
     removal of its own gate in the same delta.
     """
     wf = ".github/workflows/hardening.yml"
@@ -275,82 +376,92 @@ def _self_protection_violations(base: str, head: str, repo: Path = REPO) -> list
             f"at HEAD. The gate is not optional; restore the step.")
     if "repo_rehab_status.py" in base_wf and tool not in head_files:
         out.append(f"REHAB RATCHET DELETED: {tool} is gone at HEAD while CI still requires it.")
-    if "repo_rehab_status.py" in head_wf and "--ratchet" not in head_wf:
+    step = "\n".join(ln for ln in head_wf.splitlines() if "repo_rehab_status" in ln)
+    if "repo_rehab_status.py" in head_wf and "--ratchet" not in step:
         out.append(
             f"REHAB RATCHET DEMOTED: {wf} runs {tool} without --ratchet, so it reports without "
             f"blocking. A gate that cannot fail is not a gate.")
-    if "repo_rehab_status.py" in head_wf and "|| true" in _ratchet_step(head_wf):
-        out.append(
-            f"REHAB RATCHET DEMOTED: its step in {wf} swallows failure with `|| true`.")
+    if "repo_rehab_status.py" in head_wf and "|| true" in step:
+        out.append(f"REHAB RATCHET DEMOTED: its step in {wf} swallows failure with `|| true`.")
     return out
 
 
-def _ratchet_step(workflow_text: str) -> str:
-    """The lines of the hardening workflow that mention this tool, for demotion checks."""
-    return "\n".join(ln for ln in workflow_text.splitlines()
-                     if "repo_rehab_status" in ln)
-
-
 # ── report ────────────────────────────────────────────────────────────────────────────────
-def _schematic(title: str, packages: list[str], extra: list[str]) -> str:
-    lines = [f"{title}", "EdWebConsole/"]
-    if packages:
-        lines.append("  app/")
-        lines += [f"    {p}/" for p in packages]
-    lines += [f"  {e}" for e in extra]
-    return "\n".join(lines)
+def prior_daily_point(ref: str = "origin/main", hours: int = 24, repo: Path = REPO) -> str:
+    """The merged point this report's DAILY delta is measured FROM.
+
+    A git fact, not stored state: the last commit on the trunk older than `hours`. No report
+    archive is needed to know where yesterday was, and none is written.
+    """
+    out = _git(["rev-list", "-1", f"--before={hours}.hours.ago", ref], repo)
+    return (out or "").strip() or ref
 
 
-def report(start_sha: str, base: str = "origin/main") -> str:
-    cur = current(base)
-    start = current(start_sha, with_loc=True)
-    host = host_separation(baseline=start_sha, ref=base)
+_METRICS = [
+    ("root production modules", "root_production_modules", 0),
+    ("root production LOC", "root_production_loc", 0),
+    ("server.py LOC", "server_py_loc", 0),
+    ("app modules", "app_modules", None),
+    ("app LOC", "app_loc", None),
+    ("tools .py files", "tools_py", None),
+    ("governance files", "governance_files", None),
+    ("tracked runtime artifacts", "tracked_runtime_artifacts", 0),
+    ("legacy tracked files", "legacy_tracked_files", 0),
+]
 
-    metrics = [
-        ("root production modules", "root_production_modules", 0),
-        ("root production LOC", "root_production_loc", 0),
-        ("server.py LOC", "server_py_loc", 0),
-        ("app modules", "app_modules", None),
-        ("app LOC", "app_loc", None),
-        ("tools .py files", "tools_py", None),
-        ("governance files", "governance_files", None),
-        ("tracked runtime artifacts", "tracked_runtime_artifacts", 0),
-        ("unmapped tracked files", "unmapped_tracked_files", 0),
-    ]
+
+def _delta_block(title: str, a: dict, b: dict) -> tuple[list[str], str]:
     rows, better, worse = [], 0, 0
-    for label, key, target in metrics:
-        s, c = start[key], cur[key]
+    for label, key, target in _METRICS:
+        s, c = a[key], b[key]
         d = c - s
-        # app modules/LOC growing is progress; everything else shrinking is progress.
         good = d > 0 if key.startswith("app_") else d < 0
         if d:
             better, worse = better + (1 if good else 0), worse + (0 if good else 1)
         rows.append(f"  {label:<28} {s:>8} -> {c:<8} {d:+8d}   target "
                     f"{'—' if target is None else target}")
     verdict = "REGRESSED" if worse else ("IMPROVED" if better else "FLAT")
+    return ([title, *rows, f"  VERDICT: {verdict}"], verdict)
 
-    out = ["=" * 78, "A. CURRENT SCHEMATIC (generated from the tree)", "=" * 78,
-           _schematic("", cur["app_packages_present"],
-                      [f"{d}/" for d in sorted(cur['unmapped_top_level_dirs'])]
-                      + ["research/", "tests/", "tools/", "static/", "governance/",
-                         f"<{cur['root_production_modules']} root .py modules, "
-                         f"{cur['root_production_loc']} LOC>"]),
-           "", "=" * 78,
-           f"B. FIXED TARGET SCHEMATIC   sha256={TARGET_SHA256[:16]}", "=" * 78,
-           _schematic("", TARGET["app_packages"],
-                      [f"{d}/" for d in TARGET["source_top_level"] if d != "app"]),
-           "  (host, outside source: " + ", ".join(TARGET["host_dirs_outside_source"]) + ")",
-           "", "=" * 78,
-           f"C. TODAY'S DELTA — merged main only ({start['ref']} -> {cur['ref']})", "=" * 78,
-           *rows, "",
-           f"  HOST SEPARATION: {host['state']}  "
-           f"(dirs present: {sum(host['host_dirs_present'].values())}"
-           f"/{len(host['host_dirs_present'])}, "
-           f"tracked runtime in source: {host['tracked_runtime_in_source']})",
-           "", f"  VERDICT: {verdict}", ""]
-    if TARGET_OPEN_QUESTIONS:
-        out += ["  TARGET QUESTIONS AWAITING THE OPERATOR (target unchanged):"]
-        out += [f"    - {q}" for q in TARGET_OPEN_QUESTIONS]
+
+def report(start_sha: str = START_SHA, base: str = "origin/main") -> str:
+    cur = current(base)
+    start = current(start_sha)
+    prior = prior_daily_point(base)
+    yday = current(prior)
+    host = host_separation(baseline=start_sha, ref=base)
+
+    daily, _ = _delta_block(
+        f"C. TODAY'S DELTA — prior merged point {yday['ref']} -> {cur['ref']}", yday, cur)
+    cumulative, _ = _delta_block(
+        f"D. CUMULATIVE — START_SHA {start['ref']} -> {cur['ref']}", start, cur)
+
+    out = ["=" * 78, "A. CURRENT SCHEMATIC (generated from the tree)", "=" * 78, "EdWebConsole/"]
+    if cur["app_packages_present"]:
+        out += ["  app/"] + [f"    {p}/" for p in cur["app_packages_present"]]
+    out += [f"  {d}/" for d in sorted(set(cur["_top_level"]))]
+    out += [f"  <{cur['root_production_modules']} root .py modules, "
+            f"{cur['root_production_loc']} LOC>"]
+    if cur["unknown_top_level_dirs"]:
+        out += [f"  !! UNDISPOSITIONED: {', '.join(cur['unknown_top_level_dirs'])}"]
+
+    out += ["", "=" * 78, f"B. FIXED TARGET SCHEMATIC   sha256={TARGET_SHA256[:16]}", "=" * 78,
+            "EdWebConsole/", "  app/"]
+    out += [f"    {p}/" for p in TARGET["app_packages"]]
+    out += [f"  {d}/" for d in TARGET["source_top_level"] if d != "app"]
+    out += ["  (host, outside source: " + ", ".join(TARGET["host_paths"]) + ")",
+            "  legacy dispositions:"]
+    out += [f"    {k:<24} -> {v}" for k, v in sorted(TARGET["legacy_disposition"].items())]
+
+    out += ["", "=" * 78] + daily + ["", "=" * 78] + cumulative
+    out += ["", f"  HOST SEPARATION: {host['state']}"]
+    if host["state"] == "NOT_PROVEN_FROM_CI":
+        out += [f"    ({host['why']}; run locally for a verdict)"]
+    else:
+        out += [f"    host paths present "
+                f"{sum(host['host_paths_present'].values())}/{len(host['host_paths_present'])}, "
+                f"tracked runtime in source {host['tracked_runtime_in_source']} "
+                f"(baseline {host['baseline_runtime_in_source']})"]
     return "\n".join(out)
 
 
@@ -360,11 +471,11 @@ def main() -> int:
     ap.add_argument("--host", action="store_true")
     ap.add_argument("--base", default="origin/main")
     ap.add_argument("--head", default="HEAD")
-    ap.add_argument("--start-sha", default="334c5dafafa99316589bf74b39bb4ab540bbb1a5")
+    ap.add_argument("--start-sha", default=START_SHA)
     a = ap.parse_args()
 
     if a.host:
-        print(json.dumps(host_separation(), indent=2))
+        print(json.dumps(host_separation(baseline=a.start_sha), indent=2))
         return 0
     if a.ratchet:
         bad = ratchet(a.base, a.head)

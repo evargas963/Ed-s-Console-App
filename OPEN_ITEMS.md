@@ -19,17 +19,34 @@ Rows close only with a commit SHA (and a test cite where code changed). History 
 
 ## REPO REHABILITATION — 14 CALENDAR DAYS (RC-505)
 
-**START_SHA `334c5dafafa99316589bf74b39bb4ab540bbb1a5`** · start 2026-09-02 · end 2026-09-15
-(calendar days, weekends included). Goal: CURRENT → TARGET until unexplained difference = NONE.
+**START_SHA `e3a7071419dff0ce08b3cc235925eeb7a0c13278`** (the PR #218 merge) · start 2026-09-02 ·
+end 2026-09-15 (calendar days, weekends included). Goal: CURRENT → TARGET until unexplained
+difference = NONE.
 
-TARGET is fixed and hash-pinned in `tools/repo_rehab_status.py`; editing it changes the digest
-and fails `tests/test_repo_rehab_ratchet_v1.py`. CURRENT and the DELTA are generated from repo
-facts by that tool — nothing below is hand-entered status. Run `python tools/repo_rehab_status.py`.
+**OPERATOR RULING 2026-09-02:** `app/models` is KEPT — the `app/ml` recommendation is rejected;
+`docs/` is TARGET source; every other legacy top-level directory carries an explicit disposition,
+printed by the tool on every run.
+
+**Two deltas, because one number cannot answer two questions.** TODAY'S DELTA is measured from
+the prior merged point (a git fact — `rev-list -1 --before=24.hours.ago`, no stored state and no
+report archive); CUMULATIVE is START_SHA → current. Reporting the cumulative figure as "today's"
+makes every day after day one look busy.
+
+**Host status is NOT_PROVEN_FROM_CI.** A runner clones into an ephemeral path with no host layout
+around it, so a SEPARATED/VIOLATED verdict there would describe the runner, not this machine.
+Only a local run yields a verdict, and it looks for Ed Console's own paths —
+`runtime/EdWebConsole`, `recovery/EdWebConsole`, `artifacts/EdWebConsole`, `worktrees`.
+
+TARGET is fixed and **doubly** pinned in `tools/repo_rehab_status.py`: the digest is asserted by
+`tests/test_repo_rehab_ratchet_v1.py`, AND the ratchet re-derives the target from the BASE ref
+and refuses any change. The pin alone is not enough — a single delta can move the target, the pin
+and the test together and pass every test it ships with. CURRENT and both deltas are generated
+from repo facts; nothing below is hand-entered. Run `python tools/repo_rehab_status.py`.
 
 **BASELINE, measured at START_SHA:** 147 root production modules / 94,026 LOC · `server.py`
-16,276 LOC · `app/` absent · 224 tracked runtime artifacts (`.pt`/`.pkl`) · 1,286 tracked files in
-14 top-level directories the TARGET does not name (44% of 2,897 tracked files) · host separation
-NOT_YET_SEPARATED (0 of 4 host dirs exist outside source).
+16,276 LOC · `app/` absent · 224 tracked runtime artifacts (`.pt`/`.pkl`) · 1,190 tracked files in
+13 legacy top-level directories awaiting disposition · host separation NOT_YET_SEPARATED
+(0 of 4 Ed Console host paths exist outside source).
 
 | day | date | landing |
 |---|---|---|

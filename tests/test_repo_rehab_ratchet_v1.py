@@ -81,15 +81,61 @@ def test_new_tracked_runtime_state_blocks(tmp_path, rel):
     assert any("NEW TRACKED RUNTIME" in b for b in bad), (rel, bad)
 
 
-def test_growth_in_an_unmapped_directory_blocks(tmp_path):
+def test_growth_in_a_legacy_directory_blocks(tmp_path):
     bad = _bad(_repo(tmp_path, "c", BASE, {"reports/another.json": "{}\n"}))
-    assert any("UNMAPPED-DIRECTORY GROWTH" in b for b in bad), bad
+    assert any("LEGACY-DIRECTORY GROWTH" in b for b in bad), bad
+
+
+# ── defect 5: a NEW non-TARGET top-level directory, detected dynamically ──────────────────
+@pytest.mark.parametrize("rel", [
+    "newthing/mod.py", "experiments/run.py", "lib/util.py", "src/main.py",
+])
+def test_new_non_target_top_level_directory_blocks(tmp_path, rel):
+    """Dynamic, not a hardcoded list: anything that is neither TARGET source nor a legacy
+    directory with a stated disposition is a NEW unexplained difference."""
+    bad = _bad(_repo(tmp_path, "p" + rel.split("/")[0], BASE, {rel: "X = 1\n"}))
+    assert any("NEW NON-TARGET TOP-LEVEL DIRECTORY" in b for b in bad), (rel, bad)
+
+
+@pytest.mark.parametrize("rel", [
+    "app/domain/more.py", "research/study.py", "tests/test_a.py", "tools/t.py",
+    "static/x.js", "config/settings.toml", "governance/note.md", "docs/guide.md",
+])
+def test_target_top_level_directories_pass(tmp_path, rel):
+    """...and every TARGET directory is fine, including docs/ which the operator added."""
+    bad = _bad(_repo(tmp_path, "q" + rel.replace("/", "_"), BASE, {rel: "x\n"}))
+    assert not any("NON-TARGET TOP-LEVEL" in b for b in bad), (rel, bad)
+
+
+def test_every_legacy_directory_has_a_stated_disposition():
+    """The goal is 'unexplained difference = NONE'. A directory with no destination can never
+    reach it, so each one is named with where it goes."""
+    import tools.repo_rehab_status as M
+
+    for d in ("reports", "models", "docs", "calibration", "features", "arch_competition",
+              "v2_decision", "verification", "planes", "schwab_field_inventory",
+              "snapshot_sql", "scripts", "backups", "data"):
+        assert d in M.TARGET["legacy_disposition"] or d in M.TARGET["source_top_level"], d
+
+
+# ── defect 5b: inherited root shims pass; reintroduced root ownership blocks ──────────────
+def test_unchanged_inherited_root_shim_passes(tmp_path):
+    bad = _bad(_repo(tmp_path, "r", BASE, None))
+    assert not any("ROOT" in b for b in bad), bad
+
+
+def test_reintroduced_root_ownership_blocks(tmp_path):
+    """The same module owned under app/ AND at the root in the same tree is two owners for one
+    thing — the duplicate authority this rehabilitation removes."""
+    bad = _bad(_repo(tmp_path, "s", BASE, {"value.py": "X = 1\n"}))
+    assert any("ROOT OWNERSHIP REINTRODUCED" in b for b in bad), bad
 
 
 def test_migrated_code_moving_back_toward_root_blocks(tmp_path):
-    """app/domain/value.py exists at base; re-owning it at the root is a one-way street run
-    backwards."""
-    bad = _bad(_repo(tmp_path, "d", BASE, {"value.py": "X = 1\n"}))
+    """app/domain/value.py exists at base; deleting it and re-owning it at the root runs the
+    one-way street backwards."""
+    bad = _bad(_repo(tmp_path, "d", BASE, {"value.py": "X = 1\n"},
+                     removed=("app/domain/value.py",)))
     assert any("MOVED BACK TOWARD ROOT" in b for b in bad), bad
 
 
@@ -171,9 +217,14 @@ def test_target_is_hash_pinned():
     expect = hashlib.sha256(
         json.dumps(R.TARGET, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
     assert R.TARGET_SHA256 == expect, "the digest must be computed from TARGET, not stored"
-    assert R.TARGET_SHA256.startswith("23b688a7b996f724"), (
+    # 3b7fe749… is the target as the operator ruled it on 2026-09-02: app/models KEPT, docs/
+    # ADDED, every legacy directory dispositioned. It replaced 23b688a7… in that same reviewed
+    # delta — which is the sanctioned path, and the reason this assertion fired at all.
+    assert R.TARGET_SHA256.startswith("3b7fe74975d7f86b"), (
         "TARGET changed. That is not forbidden — it is the OPERATOR's to change — but it may "
-        "not happen silently: update this pin in the same reviewed delta.")
+        "not happen silently: update this pin in the same reviewed delta. Note the pin alone "
+        "is NOT the protection; the ratchet also compares the BASE ref's target, so a delta "
+        "that moves target+pin+test together is still refused.")
     assert R.TARGET["root_production_modules"] == 0
     assert R.TARGET["tracked_runtime_artifacts"] == 0
     assert R.TARGET["app_packages"] == [
@@ -189,6 +240,107 @@ def test_current_is_generated_not_declared():
     assert cur["tracked_files"] == tracked > 0
     assert cur["root_production_modules"] == len(
         [f for f in R.tracked_files("HEAD", ROOT) if "/" not in f and f.endswith(".py")])
+
+
+# ── defect 4: TARGET drift blocks BASE->HEAD, even when target+pin+test move together ────
+def _tool_src(target_literal: str) -> str:
+    """A minimal module the ratchet can parse a TARGET out of."""
+    return f"TARGET: dict = {target_literal}\n"
+
+
+def test_target_drift_blocks_even_when_pin_and_tests_change_together(tmp_path):
+    """THE POINT OF THIS CONTROL. A delta can edit the target, update the hash pin and update
+    the asserting test in one commit — every test it ships with then passes. Only a comparison
+    against the BASE ref can see it, which is why the ratchet re-derives the base's TARGET
+    instead of trusting the digest that travelled with the change."""
+    base = {**BASE, "tools/repo_rehab_status.py": _tool_src("{'root_production_modules': 0}")}
+    head = {"tools/repo_rehab_status.py": _tool_src("{'root_production_modules': 147}")}
+    bad = _bad(_repo(tmp_path, "t", base, head))
+    assert any("TARGET DRIFT" in b for b in bad), bad
+    assert any("root_production_modules" in b for b in bad), bad
+
+
+def test_an_unchanged_target_passes(tmp_path):
+    same = _tool_src("{'root_production_modules': 0}")
+    bad = _bad(_repo(tmp_path, "u", {**BASE, "tools/repo_rehab_status.py": same},
+                     {"tools/other.py": "x = 1\n"}))
+    assert not any("TARGET DRIFT" in b for b in bad), bad
+
+
+def test_an_unreadable_target_at_head_blocks(tmp_path):
+    """Unmeasurable is not compliant: if HEAD no longer defines a literal TARGET, drift cannot
+    be measured, so it is refused rather than assumed absent."""
+    base = {**BASE, "tools/repo_rehab_status.py": _tool_src("{'a': 1}")}
+    head = {"tools/repo_rehab_status.py": "TARGET = compute_it()\n"}
+    bad = _bad(_repo(tmp_path, "v", base, head))
+    assert any("TARGET UNREADABLE AT HEAD" in b for b in bad), bad
+
+
+def test_the_live_target_carries_the_operator_ruling():
+    """KEEP app/models (the app/ml recommendation was rejected); ADD docs/."""
+    import tools.repo_rehab_status as M
+
+    assert "models" in M.TARGET["app_packages"]
+    assert "ml" not in M.TARGET["app_packages"]
+    assert "docs" in M.TARGET["source_top_level"]
+
+
+# ── defect 1: daily delta vs cumulative ───────────────────────────────────────────────────
+def test_daily_delta_measures_from_the_prior_merged_point_not_the_start(tmp_path):
+    """TODAY'S DELTA answers 'what moved since yesterday'; START->CURRENT answers 'how far have
+    we come'. One number cannot do both, and reporting the cumulative figure as today's makes
+    every day after day one look busy."""
+    import tools.repo_rehab_status as M
+
+    root = _repo(tmp_path, "w", BASE, {"tools/extra.py": "x = 1\n"})
+    prior = M.prior_daily_point("main", hours=0, repo=root)
+    assert prior, "the prior merged point is derived from git, not from stored state"
+    a = M.current("main", root, with_loc=False)
+    b = M.current("cand", root, with_loc=False)
+    assert b["tools_py"] == a["tools_py"] + 1
+
+
+def test_prior_daily_point_is_a_git_fact_and_writes_nothing(tmp_path):
+    """No report archive: yesterday is found with rev-list, not read from a file the repo keeps."""
+    import tools.repo_rehab_status as M
+
+    root = _repo(tmp_path, "x", BASE, {"tools/extra.py": "x = 1\n"})
+    before = {p.name for p in root.iterdir()}
+    M.prior_daily_point("main", hours=24, repo=root)
+    assert {p.name for p in root.iterdir()} == before
+
+
+# ── defect 2: CI cannot see the host ──────────────────────────────────────────────────────
+def test_host_status_from_ci_is_not_proven(monkeypatch, tmp_path):
+    """A CI runner clones into an ephemeral path with no host layout around it. Any
+    SEPARATED/VIOLATED verdict there would describe the runner, not the operator's machine."""
+    import tools.repo_rehab_status as M
+
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    h = M.host_separation(tmp_path)
+    assert h["state"] == "NOT_PROVEN_FROM_CI", h
+    assert h["tracked_runtime_in_source"] is None
+
+
+def test_local_host_check_looks_for_ed_console_specific_paths():
+    """Not generic directory names some other project on the host might own."""
+    import tools.repo_rehab_status as M
+
+    assert M.TARGET["host_paths"] == [
+        "runtime/EdWebConsole", "recovery/EdWebConsole", "artifacts/EdWebConsole", "worktrees"]
+
+
+def test_local_host_check_reports_separated_when_the_paths_exist(monkeypatch, tmp_path):
+    import tools.repo_rehab_status as M
+
+    monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
+    monkeypatch.delenv("CI", raising=False)
+    src = _repo(tmp_path / "host", "EdWebConsole", {"tools/x.py": "x = 1\n"}, None)
+    for p in M.TARGET["host_paths"]:
+        (tmp_path / "host" / p).mkdir(parents=True, exist_ok=True)
+    h = M.host_separation(src, baseline="main", ref="main")
+    assert h["state"] == "SEPARATED", h
+    assert all(h["host_paths_present"].values())
 
 
 def test_host_separation_distinguishes_not_yet_from_violated(tmp_path):
