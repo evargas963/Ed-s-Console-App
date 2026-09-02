@@ -271,8 +271,15 @@ def current(ref: str = "HEAD", repo: Path = REPO, with_loc: bool = True) -> dict
     unknown = sorted(tops - _allowed_top_level() - set(TARGET["allowed_dot_top_level"]))
     # Anything under app/ that is not inside a DECLARED package: a file directly at app/x.py,
     # or app/<undeclared>/... . Both used to fall between the root rule and the package rule.
+    #
+    # `app/__init__.py` is the ONE exception, and it is an exact path rather than a pattern.
+    # It is what MAKES app/ a package, so requiring it to live inside a package is circular —
+    # the rule as first written refused the very thing it protects, and CI caught that on the
+    # day the skeleton landed. The exception admits that literal path and nothing else:
+    # app/helper.py and app/utils/thing.py remain undeclared children, which is the hole this
+    # rule exists to close.
     undeclared_app = sorted(
-        f for f in files if f.startswith("app/")
+        f for f in files if f.startswith("app/") and f != "app/__init__.py"
         and (f.count("/") == 1 or f.split("/")[1] not in TARGET["app_packages"]))
     gov = sorted(f for f in files if f.startswith("governance/"))
     return {

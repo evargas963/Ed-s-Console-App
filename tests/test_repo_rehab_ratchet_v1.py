@@ -409,6 +409,28 @@ def test_undeclared_app_children_block_and_declared_ones_pass(tmp_path, rel):
     assert hit is (not rel.startswith("app/models/")), (rel, bad)
 
 
+def test_the_app_package_initializer_is_not_an_undeclared_child(tmp_path):
+    """`app/__init__.py` is what MAKES app/ a package, so demanding it live inside a package is
+    circular. MEASURED: the rule as first written refused it, and required CI failed on the day
+    the skeleton landed — the ratchet blocking the first legitimate step toward its own TARGET.
+    It passed locally only because the ratchet was run before the commit, so `ls-tree HEAD`
+    could not yet see an untracked file."""
+    bad = _bad(_repo(tmp_path, "h3init", BASE, {"app/__init__.py": '"""pkg."""\n'}))
+    assert not any("UNDECLARED APP CHILD" in b for b in bad), bad
+
+
+@pytest.mark.parametrize("rel", [
+    "app/helper.py",
+    "app/__main__.py",
+    "app/utils/__init__.py",
+])
+def test_the_initializer_exception_is_one_exact_path_not_a_pattern(tmp_path, rel):
+    """The escape must not widen into 'anything at app/ top level' or 'any __init__.py'.
+    Without this, the fix for the CI failure would have opened the hole the rule closes."""
+    bad = _bad(_repo(tmp_path, "h3x" + rel.replace("/", "_"), BASE, {rel: "X = 1\n"}))
+    assert any("UNDECLARED APP CHILD" in b for b in bad), (rel, bad)
+
+
 @pytest.mark.parametrize("rel,blocks", [
     (".internal/mod.py", True),           # dot-prefixed top level was a blind spot
     (".hidden/data.py", True),
