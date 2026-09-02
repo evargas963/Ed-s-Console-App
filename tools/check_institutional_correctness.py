@@ -2396,12 +2396,19 @@ def check_credential_leak() -> list[Violation]:
     """
     if str(REPO) not in sys.path:
         sys.path.insert(0, str(REPO))
-    from tools.check_credential_leak import find_credential_leaks
+    from tools.check_credential_leak import StagedDiffUnreadable, find_credential_leaks
 
-    return [
-        Violation(REPO / ".git", 0, hit)
-        for hit in find_credential_leaks()
-    ]
+    try:
+        hits = find_credential_leaks()
+    except StagedDiffUnreadable as e:
+        # RC-506: an unreadable staged diff is a VIOLATION here, not a crash and not silence.
+        # This check ran as `for hit in find_credential_leaks()` while that helper returned
+        # `p.stdout or ""` on any git failure, so a diff nobody could read scanned clean and
+        # the enforced catalog reported zero credential violations.
+        return [Violation(REPO / ".git", 0,
+                          f"the staged diff could not be read, so NOTHING was scanned for "
+                          f"secrets: {e}. This is not a clean result.")]
+    return [Violation(REPO / ".git", 0, hit) for hit in hits]
 
 
 def check_sqlite_wal_contract() -> list[Violation]:
