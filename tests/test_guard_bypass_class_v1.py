@@ -26,7 +26,7 @@ _MATERIAL_GUARD_FILES = (
     "tools/process_lock_guard.py",
     "tools/pretooluse_guard.py",
     "tools/stop_guard.py",
-    "tools/proof_only_guard.py",
+    # proof_only_guard.py removed with the file (RC-504): it decided truth from prose.
     "tools/honesty_guard.py",
     "tools/operator_law_guard.py",
     "tools/pm_verify_lock.py",

@@ -1,9 +1,19 @@
-# Open items
+# Open items — ACCEPTANCE SPECIFICATION, not a work ledger
 
-Open-work ledger for the charter phases (Collect / Find & Prove / Decide). Rows close only with a
-commit SHA (and test cite where code changed). History lives in git — closed and superseded rows
-are removed, not accumulated; the pre-slimming ledger is preserved at tag-time in history
-(`git log --follow OPEN_ITEMS.md`).
+**This file is SPECIFICATION, not WORK.** It states what "done" means for the charter phases —
+1,069 distinct acceptance criteria under PA-1..PA-47, plus the standing truths below. Its
+checkboxes are a definition of done, not a queue of assigned work, and nothing mechanical
+schedules from them.
+
+**The single active WORK ledger is `governance/root_cause_log.md`** — established by measurement
+on 2026-09-02, not by assertion. It has eight executable owners, four of them live agent hooks:
+`check_root_cause_log` (enforced, at commit and in required CI), `operator_law_guard.edit_violations`,
+`operating_process_lock.rc_redate_violations`, and `tools/mission_latch.py`, which the PreToolUse
+guard, the shell guard and the Stop guard all read. This file has no enforcing consumer. A
+proposal to consolidate the other way — retire the root-cause ledger onto this one — was rejected
+on that measurement: it would have rewritten eight mechanisms to preserve none.
+
+Rows close only with a commit SHA (and a test cite where code changed). History lives in git.
 
 **Last rewritten:** 2026-07-16 — post-slimming reconciliation (PR #44 merged @ `8f4c922`).
 **Operator NOW (2026-07-27):** **LP-01** is the top of the backlog — see `ACTIVE_PROGRAM.md` Operator NOW table. The operator directs when it runs (2026-08-24 teardown: statuses are record, not standing authority).

@@ -640,18 +640,162 @@ def _successful_commands(transcript_path: str) -> frozenset[str] | None:
     The ledger is written at PreToolUse and cannot know outcomes; the transcript pairs
     every tool_use with its tool_result and carries is_error (shape verified live:
     181/182 Bash tool_use ids in this session's transcript had a paired result, the
-    unpaired one being the in-flight call). ONE producer: tools/proof_only_guard.turn_slice
-    already computes exactly this slice — importing it rather than re-parsing keeps the
-    two guards agreeing on what "ran this turn" means. Returns None when the payload
-    carries no transcript_path at all: unmeasurable, which the callers treat as no proof.
+    unpaired one being the in-flight call). ONE producer: `turn_slice` below computes exactly
+    this slice and every guard that needs it calls that one function, so they all agree on what
+    "ran this turn" means. Returns None when the payload carries no transcript_path at all:
+    unmeasurable, which the callers treat as no proof.
     """
     if not transcript_path:
         return None
-    if str(REPO) not in sys.path:
-        sys.path.insert(0, str(REPO))
-    from tools.proof_only_guard import turn_slice
     _text, executed = turn_slice(transcript_path)
     return frozenset(executed)
+
+
+# ── transcript readers (RC-504) ───────────────────────────────────────────────────────────
+# These moved here when tools/proof_only_guard.py was retired as Stop authority. They are
+# STRUCTURAL: they parse a JSONL transcript into text blocks and executed commands and make no
+# judgement about what any of it MEANS. The prose oracles that sat beside them — a
+# memory-citation word list, a verdict word list, a defect-report word list — were the retired
+# part. This module is where they belong: it already owns turn and session identity (the turn
+# ledger, the session id, which commands actually ran without error).
+
+
+def last_assistant_text(transcript_path: str) -> str | None:
+    """Concatenated text of the final assistant message in the transcript."""
+    p = Path(transcript_path)
+    if not p.exists():
+        return None
+    last: str | None = None
+    try:
+        with p.open(encoding="utf-8", errors="ignore") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    rec = json.loads(line)
+                except (json.JSONDecodeError, ValueError):
+                    continue
+                msg = rec.get("message") or {}
+                if rec.get("type") != "assistant" and msg.get("role") != "assistant":
+                    continue
+                content = msg.get("content")
+                if isinstance(content, str):
+                    last = content
+                elif isinstance(content, list):
+                    parts = [c.get("text", "") for c in content
+                             if isinstance(c, dict) and c.get("type") == "text"]
+                    if any(parts):
+                        last = "\n".join(parts)
+    except OSError:
+        return None
+    return last
+
+
+def last_user_text(transcript_path: str) -> str | None:
+    """Concatenated text of the final USER message (the turn's trigger)."""
+    p = Path(transcript_path)
+    if not p.exists():
+        return None
+    last: str | None = None
+    try:
+        with p.open(encoding="utf-8", errors="ignore") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    rec = json.loads(line)
+                except (json.JSONDecodeError, ValueError):
+                    continue
+                msg = rec.get("message") or {}
+                if rec.get("type") != "user" and msg.get("role") != "user":
+                    continue
+                content = msg.get("content")
+                if isinstance(content, str):
+                    last = content
+                elif isinstance(content, list):
+                    parts = [c.get("text", "") for c in content
+                             if isinstance(c, dict) and c.get("type") == "text"]
+                    if any(parts):
+                        last = "\n".join(parts)
+    except OSError:
+        return None
+    return last
+
+
+def turn_slice(transcript_path: str) -> tuple[str | None, list[str]]:
+    """(assistant text of THIS turn, shell commands that RAN WITHOUT ERROR this turn).
+
+    The turn boundary is the LAST user record carrying real text (tool_result records are
+    user-role but carry no text block). Assistant text is every text block after that boundary
+    concatenated. Commands are the input.command of every Bash/PowerShell tool_use block after
+    the boundary; command-carrying tools only — a Read file_path is not an executed command.
+
+    RESULT, NOT ISSUANCE (operator requirement, 2026-08-25): a command counts only when its
+    tool_result exists in the same transcript and does not carry is_error=true — issuing
+    `pytest` that then FAILED is not proof. A command with no result record at all (interrupted
+    mid-call) does not count either. HONEST LIMIT: is_error=false proves the tool call completed
+    without a harness-level error; it cannot judge whether the OUTPUT supports a claim.
+    """
+    p = Path(transcript_path)
+    if not p.exists():
+        return None, []
+    records: list[tuple[str, list[str], list[tuple[str, str]]]] = []
+    result_error_by_id: dict[str, bool] = {}
+    try:
+        with p.open(encoding="utf-8", errors="ignore") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    rec = json.loads(line)
+                except (json.JSONDecodeError, ValueError):
+                    continue
+                msg = rec.get("message") or {}
+                role = (rec.get("type") if rec.get("type") in ("user", "assistant")
+                        else msg.get("role"))
+                if role not in ("user", "assistant"):
+                    continue
+                content = msg.get("content")
+                texts: list[str] = []
+                cmds: list[tuple[str, str]] = []
+                if isinstance(content, str):
+                    if content.strip():
+                        texts.append(content)
+                elif isinstance(content, list):
+                    for c in content:
+                        if not isinstance(c, dict):
+                            continue
+                        if c.get("type") == "text" and c.get("text", "").strip():
+                            texts.append(c["text"])
+                        elif (c.get("type") == "tool_use"
+                              and c.get("name") in ("Bash", "PowerShell", "Shell")):
+                            cmd = (c.get("input") or {}).get("command")
+                            if isinstance(cmd, str) and cmd.strip():
+                                cmds.append((str(c.get("id") or ""), cmd))
+                        elif c.get("type") == "tool_result":
+                            tid = str(c.get("tool_use_id") or "")
+                            if tid:
+                                result_error_by_id[tid] = bool(c.get("is_error"))
+                records.append((role, texts, cmds))
+    except OSError:
+        return None, []
+    boundary = -1
+    for i, (role, texts, _c) in enumerate(records):
+        if role == "user" and texts:
+            boundary = i
+    texts_out: list[str] = []
+    cmds_out: list[str] = []
+    for role, texts, cmds in records[boundary + 1:]:
+        if role == "assistant":
+            texts_out.extend(texts)
+            for tid, cmd in cmds:
+                # RESULT REQUIRED: no result record, or is_error=true -> not proof.
+                if tid and result_error_by_id.get(tid) is False:
+                    cmds_out.append(cmd)
+    return ("\n".join(texts_out) if texts_out else None), cmds_out
 
 
 def _result_ok(detail: str, ok_cmds: frozenset[str] | None) -> bool:

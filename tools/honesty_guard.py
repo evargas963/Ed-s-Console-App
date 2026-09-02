@@ -84,17 +84,17 @@ HAS_FILES_CHANGED = re.compile(r"\bfiles changed\b|\bchanged files\b", re.I)
 
 def last_assistant_text(transcript_path: str) -> str | None:
     try:
-        from tools.proof_only_guard import last_assistant_text as _lat
+        from tools.operator_law_guard import last_assistant_text as _lat
     except ImportError:
-        from proof_only_guard import last_assistant_text as _lat  # type: ignore
+        from operator_law_guard import last_assistant_text as _lat  # type: ignore
     return _lat(transcript_path)
 
 
 def last_user_text(transcript_path: str) -> str | None:
     try:
-        from tools.proof_only_guard import last_user_text as _lut
+        from tools.operator_law_guard import last_user_text as _lut
     except ImportError:
-        from proof_only_guard import last_user_text as _lut  # type: ignore
+        from operator_law_guard import last_user_text as _lut  # type: ignore
     return _lut(transcript_path)
 
 
@@ -192,11 +192,11 @@ def main() -> int:
     # construction rather than by two files agreeing.
     try:
         from tools.pm_verify_lock import pm_verify_repo_violations
-        from tools.proof_only_guard import turn_slice
+        from tools.operator_law_guard import turn_slice
         from tools.operating_process_lock import completion_claim_violations
     except ImportError:
         from pm_verify_lock import pm_verify_repo_violations  # type: ignore
-        from proof_only_guard import turn_slice  # type: ignore
+        from operator_law_guard import turn_slice  # type: ignore
         from operating_process_lock import completion_claim_violations  # type: ignore
     _turn_text, executed = turn_slice(tp)
     bad.extend(pm_verify_repo_violations(text, executed=executed))

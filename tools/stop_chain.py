@@ -12,13 +12,21 @@ behaved. The guards stay independently runnable — this file is wiring, not aut
 
 Chain members (each file is the lock; this list is the wiring contract the tests pin):
     tools/stop_guard.py
-    tools/proof_only_guard.py
     tools/honesty_guard.py
     tools/operator_law_guard.py
 process_lock_guard is deliberately NOT in the Stop chain: its Stop path measured 3.18s
 (the bulk of the whole chain) and the dereg landed (PR #187 / RC-471) —
 process_lock_guard remains on every PreToolUse, where its process-integrity rails
 (cross-checkout protection, destructive/piped git) actually bind.
+
+proof_only_guard was REMOVED from this chain and deleted (RC-504, operator 2026-09-02).
+It decided truth and completion by matching words in prose, and that was experimentally
+confirmed to false-block: the sentence "rather than tell you again from memory" — a
+DISCLAIMER of memory written immediately before running commands — was flagged as citing
+memory as evidence, because a substring cannot tell an assertion from a denial. Its
+structural half, the transcript readers, moved to tools/operator_law_guard.py, which
+already owns turn and session identity. No replacement was built: there is no vocabulary
+list, regex escape or successor guard, because the defect was the approach.
 """
 from __future__ import annotations
 
@@ -35,7 +43,6 @@ if str(REPO) not in sys.path:
 #: dereg'd from Stop per the docstring; it stays on PreToolUse).
 STOP_CHAIN = (
     "tools.stop_guard",
-    "tools.proof_only_guard",
     "tools.honesty_guard",
     "tools.operator_law_guard",
 )

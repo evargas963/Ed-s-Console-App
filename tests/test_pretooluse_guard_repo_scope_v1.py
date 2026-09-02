@@ -86,9 +86,32 @@ def test_negative_control_foreign_test_file_is_allowed(tmp_path, capsys):
 # file's surviving subject; in-repo edits are now ALLOWED regardless of ledger state:
 
 
-def test_negative_control_our_production_file_is_allowed_without_a_row(capsys):
-    """RC-470: feature-branch edits are autonomous (operator 2026-08-24) - no ledger
-    row is demanded at edit time. The RC-160/163/186 content gates still apply."""
+# SUPERSEDED, and named rather than quietly deleted. RC-470 retired the RC-66 lane, which
+# demanded a row before editing ANY production file -- a row per edited FILE, correctly judged
+# sprawl; that retirement stands. RC-498 (operator 2026-09-01) reinstates a NARROWER rule: ONE
+# row for the session's mission. So the answer to "may an in-repo production edit proceed with
+# no ledger state at all" is now no.
+#
+# The assertion below replaced one that read the LIVE ledger, so it passed or failed according
+# to whether the checkout happened to carry an active row -- green on my branch because my own
+# mission rows were open, red in CI where they were not. Both replacements are hermetic.
+
+
+def test_our_production_file_is_blocked_without_an_active_mission(monkeypatch, capsys):
+    """RC-498 supersedes RC-470 on this point. The RC-160/163/186 content gates are
+    unchanged, and the foreign-path controls above are untouched."""
+    import tools.mission_latch as ml
+
+    monkeypatch.setattr(ml, "has_active_mission", lambda *a, **k: False)
+    assert G.decide(_payload(str(REPO / "server.py"))) == 2
+    assert "RC-498" in capsys.readouterr().err
+
+
+def test_our_production_file_is_allowed_with_an_active_mission(monkeypatch, capsys):
+    """And the rule is narrow: with the session's mission open, ordinary work is untouched."""
+    import tools.mission_latch as ml
+
+    monkeypatch.setattr(ml, "has_active_mission", lambda *a, **k: True)
     assert G.decide(_payload(str(REPO / "server.py"))) == 0
     assert "PRODUCTION file" not in capsys.readouterr().err
 
