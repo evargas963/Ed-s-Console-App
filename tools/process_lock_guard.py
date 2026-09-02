@@ -501,7 +501,7 @@ def stop_block(payload: dict) -> list[str]:
     text = ""
     if transcript:
         try:
-            from tools.proof_only_guard import last_assistant_text
+            from tools.operator_law_guard import last_assistant_text
             text = last_assistant_text(transcript) or ""
         except Exception:  # institutional-swallow-ok: guard must fail-open on transcript read, never hang a Stop; index/DISK checks below still run
             pass

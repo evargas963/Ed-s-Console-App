@@ -38,14 +38,15 @@ import tools.pretooluse_chain as ptc  # noqa: E402
 
 def test_argv_roster_maps_hook_spellings_to_modules():
     assert _argv_members(["tools/stop_guard.py", "tools\\honesty_guard.py",
-                          "proof_only_guard.py"]) == (
-        "tools.stop_guard", "tools.honesty_guard", "tools.proof_only_guard")
+                          "operator_law_guard.py"]) == (
+        "tools.stop_guard", "tools.honesty_guard", "tools.operator_law_guard")
     assert _argv_members([]) == ()
 
 
-def test_default_stop_roster_names_the_four_guards():
-    assert STOP_CHAIN == ("tools.stop_guard", "tools.proof_only_guard",
-                          "tools.honesty_guard", "tools.operator_law_guard")
+def test_default_stop_roster_names_the_three_guards():
+    """RC-504: proof_only_guard was removed as Stop authority and deleted."""
+    assert STOP_CHAIN == ("tools.stop_guard", "tools.honesty_guard",
+                          "tools.operator_law_guard")
 
 
 def test_edit_and_bash_rosters_carry_the_ledger_guard():
@@ -71,7 +72,7 @@ def test_any_members_block_blocks_and_all_members_run(tmp_path):
         + "\n", encoding="utf-8")
     payload = json.dumps({"session_id": "chain-test", "tool_name": "Stop",
                           "transcript_path": str(tp)})
-    assert run_chain(payload, ("tools.proof_only_guard",)) == 0
+    assert run_chain(payload, ("tools.honesty_guard",)) == 0
 
 
 def test_a_crashing_member_blocks_not_passes():
@@ -148,17 +149,35 @@ def test_stop_guard_member_block_equivalence(tmp_path):
     _assert_blocking_pair(standalone, chain, ("RC-72", "RC-9901"))
 
 
-def test_proof_only_guard_member_block_equivalence(tmp_path):
-    """RC-87 block: an unreadable transcript_path is a loud block, never a pass."""
-    payload = {"transcript_path": str(tmp_path / "absent_transcript.jsonl"),
-               "stop_hook_active": False}
-    standalone, chain = _pair(payload, "tools/proof_only_guard.py")
-    _assert_blocking_pair(standalone, chain, ("BLOCKED (RC-87)",))
-    # Fail-closed equivalence on the SAME member (audit round 2): a payload with NO
-    # transcript_path is an unmeasurable turn and blocks in both forms.
-    noref_standalone, noref_chain = _pair({"stop_hook_active": False},
-                                          "tools/proof_only_guard.py")
-    _assert_blocking_pair(noref_standalone, noref_chain, ("BLOCKED (RC-87)",))
+# RC-504: test_proof_only_guard_member_block_equivalence was REMOVED with the guard. It proved
+# standalone/in-chain equivalence for a member that no longer exists; the same property is
+# still proven for every SURVIVING member by the stop_guard and honesty_guard equivalence
+# tests above and below.
+
+
+def test_the_retired_prose_oracle_is_gone_from_every_live_surface(tmp_path):
+    """RC-504 NEGATIVE CONTROL. proof_only_guard decided truth and completion by matching
+    words in prose, and that was experimentally confirmed to false-block: the sentence
+    "rather than tell you again from memory" — a DISCLAIMER of memory written immediately
+    before running commands — was flagged as citing memory as evidence. A substring cannot
+    tell an assertion from a denial.
+
+    This asserts the removal is COMPLETE and, critically, that no successor took its place:
+    no vocabulary list, no regex escape, no replacement guard."""
+    assert not (ROOT / "tools" / "proof_only_guard.py").exists()
+    assert "proof_only_guard" not in STOP_CHAIN and "tools.proof_only_guard" not in STOP_CHAIN
+
+    for cfg, key in ((ROOT / ".claude" / "settings.json", "Stop"),
+                     (ROOT / ".cursor" / "hooks.json", "stop")):
+        raw = cfg.read_text(encoding="utf-8")
+        assert "proof_only_guard" not in raw, cfg.name
+
+    # No successor: nothing new appeared on Stop to do the same job under another name.
+    settings = json.loads((ROOT / ".claude" / "settings.json").read_text(encoding="utf-8"))
+    stop_cmd = settings["hooks"]["Stop"][0]["hooks"][0]["command"]
+    members = {t for t in stop_cmd.split() if t.startswith("tools/") and "chain" not in t}
+    assert members == {"tools/stop_guard.py", "tools/honesty_guard.py",
+                       "tools/operator_law_guard.py"}, members
 
 
 def test_honesty_guard_member_block_equivalence(tmp_path):
@@ -233,7 +252,7 @@ def test_chain_runs_all_members_even_after_an_early_block(tmp_path):
     payload = json.dumps({"transcript_path": str(tmp_path / "absent_transcript.jsonl"),
                           "stop_hook_active": False})
     chain = _pipe([sys.executable, str(ROOT / "tools" / "stop_chain.py"),
-                   "tools/proof_only_guard.py", "tools/honesty_guard.py"], payload, ROOT)
+                   "tools/honesty_guard.py", "tools/operator_law_guard.py"], payload, ROOT)
     assert chain.returncode == 2, chain.stderr
-    assert "BLOCKED (RC-87)" in chain.stderr, chain.stderr
     assert "BLOCKED (RC-209)" in chain.stderr, chain.stderr
+    assert "BLOCKED" in chain.stderr.replace("BLOCKED (RC-209)", "", 1), chain.stderr
