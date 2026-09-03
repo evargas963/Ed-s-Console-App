@@ -27,7 +27,7 @@ When Cursor proposes any logic that reads, derives, or computes a market-data fi
 
 If yes and we're deriving anyway, that's a violation. Solid fix is upstream normalization.
 
-The only acceptable derived fields are those in `docs/DERIVED_ANALYTICS_REGISTRY.md` or future additions registered there with explicit justification.
+The only acceptable derived fields are those in `governance/DERIVED_ANALYTICS_REGISTRY.md` or future additions registered there with explicit justification.
 
 Apply retroactively: as we touch each file going forward, grep for derived-when-Schwab-provides patterns and flag them as cleanup candidates.
 

@@ -93,9 +93,9 @@ Cursor proposed a parallel program ("Schwab Mandatory Leaf Program" / SMLP) with
 
 **Verified state of the current closure loophole** (citations from this repo):
 
-- [`reports/artifacts/schwab_v4_register_build_meta.json:7`](reports/artifacts/schwab_v4_register_build_meta.json:7) — `"partial_scan": true`
-- [`reports/artifacts/schwab_v4_register_build_meta.json:5`](reports/artifacts/schwab_v4_register_build_meta.json:5) — `"max_files": 400`
-- [`reports/artifacts/schwab_v4_register_build_meta.json:6`](reports/artifacts/schwab_v4_register_build_meta.json:6) — `operator_note: "Full-repo closure complete"` (contradicts `partial_scan: true` on next line)
+- [`governance/artifacts/schwab_v4_register_build_meta.json:7`](governance/artifacts/schwab_v4_register_build_meta.json:7) — `"partial_scan": true`
+- [`governance/artifacts/schwab_v4_register_build_meta.json:5`](governance/artifacts/schwab_v4_register_build_meta.json:5) — `"max_files": 400`
+- [`governance/artifacts/schwab_v4_register_build_meta.json:6`](governance/artifacts/schwab_v4_register_build_meta.json:6) — `operator_note: "Full-repo closure complete"` (contradicts `partial_scan: true` on next line)
 - [`.github/workflows/schwab-csv-first.yml:64`](.github/workflows/schwab-csv-first.yml:64) — `--max-files 400` pinned in CI
 
 So `unreviewed_count == 0` today is structurally meaningless. Fix requires three PRs in sequence, not one. **Numbering convention (locked at commit `7ebded3` on `feature/institutional-key-levels`, 2026-05-18): PR N = Nth landing.**
@@ -113,7 +113,7 @@ So `unreviewed_count == 0` today is structurally meaningless. Fix requires three
 
 **PR 3 — SCANNER FULL-TREE WALK (makes D17 mean what directive says):**
 1. Remove `--max-files 400` from `.github/workflows/schwab-csv-first.yml`
-2. Flip `partial_scan` to `false` in `reports/artifacts/schwab_v4_register_build_meta.json`
+2. Flip `partial_scan` to `false` in `governance/artifacts/schwab_v4_register_build_meta.json`
 3. Remove `max_files` field and `scanner_flags.max_files`
 4. Rewrite `operator_note` to match structured fields
 5. Regenerate `SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.csv` and repin scoreboard/meta SHA256 (expect `unreviewed_count` JUMP — correct signal)

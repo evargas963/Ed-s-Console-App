@@ -6,7 +6,7 @@ description: Operator demands a five-number scoreboard plus performance-proof ar
 type: feedback
 originSessionId: d1ef1b06-a269-4fec-93e8-dc9c5b813526
 ---
-**Rule:** Every commit that touches the V4 register, makes a code replacement (derived → Schwab field), or runs the scanner MUST emit a committed metrics JSON at `reports/artifacts/schwab_v4_metrics_<date>_<seq>.json` AND reproduce the same numbers verbatim in the commit message body. Replacements MUST also carry a per-replacement performance-proof JSON at `reports/artifacts/perf_proof_<register_id>_<date>.json` with before/after measurements and verdict=PASS. Any commit missing these is rejected on the spot.
+**Rule:** Every commit that touches the V4 register, makes a code replacement (derived → Schwab field), or runs the scanner MUST emit a committed metrics JSON at `governance/artifacts/schwab_v4_metrics_<date>_<seq>.json` AND reproduce the same numbers verbatim in the commit message body. Replacements MUST also carry a per-replacement performance-proof JSON at `governance/artifacts/perf_proof_<register_id>_<date>.json` with before/after measurements and verdict=PASS. Any commit missing these is rejected on the spot.
 
 **The five numbers (plus deltas):**
 1. `fields_identified_total` — every site the scanner emitted as a register row.

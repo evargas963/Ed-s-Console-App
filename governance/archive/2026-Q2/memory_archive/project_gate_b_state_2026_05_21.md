@@ -61,7 +61,7 @@ End-to-end integration verified: realized_contract_eval runs successfully on act
 
 | Item | State at session start | Action taken |
 |---|---|---|
-| `schwab_field_inventory/SCHWAB_CSV_DERIVED_FIELD_CROSSWALK_WORKING.csv` | -21971 line wipe to 0 bytes, unstaged | **Restored from HEAD.** 3 consumer tools, 1 test, 2 governance MDs depend on it. Wipe was unstaged tool side-effect, not deliberate. Fiduciary action: prevent backtrack by restoring known-good state |
+| `governance/SCHWAB_CSV_DERIVED_FIELD_CROSSWALK_WORKING.csv` | -21971 line wipe to 0 bytes, unstaged | **Restored from HEAD.** 3 consumer tools, 1 test, 2 governance MDs depend on it. Wipe was unstaged tool side-effect, not deliberate. Fiduciary action: prevent backtrack by restoring known-good state |
 | `tools/_sweep3_apply_silent_pass_logging.py` | Untracked one-shot generator | **Committed @ 96f242e** as archive of the recipe that produced 2b9aa28 (matches tools/_build_*_layer5_register_slice.py project pattern) |
 | `.claude/settings.local.json` | Modified (auto-accumulating permissions from tool use) | **Left unstaged.** Operator-local. Auto-rewritten on each session; staging would just churn |
 

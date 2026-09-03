@@ -6,7 +6,7 @@
 **Date:** 2026-05-06
 **Module:** A - short-horizon event-driven trading
 **Expression profile:** A2 - options / 0DTE
-**Parent contract:** `docs/contracts/PILOT_1B_A2_0DTE_CONTRACT.md`
+**Parent contract:** `governance/PILOT_1B_A2_0DTE_CONTRACT.md`
 **Current authority:** advisory only; no runtime, UI, or trade-behavior authority.
 
 This document defines the A2 lifecycle contract before any lifecycle code phase begins. It reconciles existing A2 lifecycle placeholders with a future shared static rule core and names the gaps that must remain visible until implementation, validation, and operator approval close them.

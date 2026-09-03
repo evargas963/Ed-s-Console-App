@@ -271,7 +271,7 @@ Retirement discipline:
 
 ## Crosswalk
 
-`docs/contracts/PILOT_1B_A2_LIFECYCLE_CONTRACT.md`:
+`governance/PILOT_1B_A2_LIFECYCLE_CONTRACT.md`:
 
 - Names `a2_lifecycle_pin_risk_handler_not_implemented` as an A2 lifecycle gap.
 - This contract defines the advisory handler surface and this implementation commit retires the gap.

@@ -168,7 +168,7 @@ The original RTH-normal-session-only deviations are retired by the session-calen
 - `a2_lifecycle_eod_force_exit_shortened_session_handling_pending` - **resolved** by this implementation commit. Calendar-aware force-exit consumes `session_close_et` from `data/trading_calendar/us_equities.json` (`cac88a6`) and derives threshold = `session_close_et - 10 min` per O-35. Early close days fire force-exit at the early-close-relative threshold rather than 15:50.
 - `a2_lifecycle_eod_force_exit_holiday_session_handling_pending` - **resolved** by this implementation commit. Full closure dates in the calendar yield `session_type = "full_closure"`; force-exit MUST NOT fire and cadence stays `"event_triggered"`.
 - `a2_lifecycle_eod_force_exit_out_of_session_stale_state_pending` - **resolved** by this implementation commit. Pre-open and post-close ranges yield `session_type = "out_of_session"`; force-exit MUST NOT fire and cadence stays `"event_triggered"`. Stale calendar (`current_date > valid_through_date`) falls back to RTH-only v1 normal-session behavior, explicit per `governance/A2_LIFECYCLE_SESSION_CALENDAR_HARDENING_CONTRACT.md` stale-fallback discipline.
-- `a2_lifecycle_eod_force_exit_logic_not_implemented` - referenced from `docs/contracts/PILOT_1B_A2_LIFECYCLE_CONTRACT.md`; **resolved** by this contract's code commit (`20a1c14`).
+- `a2_lifecycle_eod_force_exit_logic_not_implemented` - referenced from `governance/PILOT_1B_A2_LIFECYCLE_CONTRACT.md`; **resolved** by this contract's code commit (`20a1c14`).
 
 ---
 
@@ -191,12 +191,12 @@ V1 is advisory only. Promotion to runtime authority requires a future operator d
 
 ## Crosswalk
 
-`docs/contracts/PILOT_1B_A2_LIFECYCLE_CONTRACT.md`:
+`governance/PILOT_1B_A2_LIFECYCLE_CONTRACT.md`:
 
 - Names `a2_lifecycle_eod_force_exit_logic_not_implemented`; this contract closes it via the implementation commit (`20a1c14`).
 - Cadence semantics align with the default lifecycle emission cadence section.
 
-`docs/contracts/PILOT_1B_A2_0DTE_CONTRACT.md`:
+`governance/PILOT_1B_A2_0DTE_CONTRACT.md`:
 
 - Defines the A2 0DTE scope. Force-exit applies only to 0DTE positions.
 - O-34 late-day gamma policy remains advisory-warning-only and does not independently tighten stops, resize, or force exit.

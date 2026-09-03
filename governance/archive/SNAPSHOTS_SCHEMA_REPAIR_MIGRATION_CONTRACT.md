@@ -246,7 +246,7 @@ No runtime trading tests are required for this contract because the migration do
 
 Opened by this contract:
 
-- `db_schema_repair_post_migration_audit_pending` — **RETIRED 2026-05-09.** Production `--apply` verified with row-count parity, non-null/unique `snapshot_id`, `PRAGMA integrity_check` on live DB and pre-migration backup, required indexes, and normalized table rebuild. Evidence: `reports/audits/snapshots_schema_repair_v1_20260509_011607.json` (git blob SHA `847ba97ac49141bcab4999aa1c42477b759c8270` at retirement commit); `governance/OPERATOR_DECISION_REGISTER.md` **O-39**; `SNAPSHOTS_SCHEMA_REPAIR_APPLY_RUNBOOK_V1.md` independent post-condition checklist PASS.
+- `db_schema_repair_post_migration_audit_pending` — **RETIRED 2026-05-09.** Production `--apply` verified with row-count parity, non-null/unique `snapshot_id`, `PRAGMA integrity_check` on live DB and pre-migration backup, required indexes, and normalized table rebuild. Evidence: `governance/audits/snapshots_schema_repair_v1_20260509_011607.json` (git blob SHA `847ba97ac49141bcab4999aa1c42477b759c8270` at retirement commit); `governance/OPERATOR_DECISION_REGISTER.md` **O-39**; `SNAPSHOTS_SCHEMA_REPAIR_APPLY_RUNBOOK_V1.md` independent post-condition checklist PASS.
 - `db_schema_drift_detection_pending` — remains open until a future startup or CI drift-detection mechanism compares code-declared critical schemas against live `sqlite_master`/`PRAGMA table_info` state.
 
 ---

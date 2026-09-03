@@ -5,7 +5,7 @@
 **Status:** TARGET LOCKED FOR DESIGN WORK  
 **Date:** 2026-05-05  
 **Target draft:** `governance/Framework-ED-Decision-Engine-v2.0-DRAFT.md`  
-**Current production/pilot authority:** `docs/Framework-ED-Decision-Engine-v1.1.md` remains authoritative until a v2.0 framework is approved, prereg-bound, and content-hash validated.
+**Current production/pilot authority:** `governance/Framework-ED-Decision-Engine-v1.1.md` remains authoritative until a v2.0 framework is approved, prereg-bound, and content-hash validated.
 
 ---
 
