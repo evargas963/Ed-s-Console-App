@@ -209,7 +209,7 @@ def decision_path_wired_violations(source: str | None = None) -> list[str]:
 
 # claude_cursor_parity_violations RETIRED with check_claude_cursor_guard_parity
 # (governance/retired_checks.md 2026-08-24): guard-wiring parity is an operator
-# merge-review property (RC-475 superseded the CODEOWNERS equivalence).
+# merge-review property (RC-475; that equivalence was corrected by RC-510).
 
 
 _DATASHEET_REQUIRED = frozenset({"motivation", "composition", "collection", "recommended_uses"})
