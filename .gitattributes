@@ -1,5 +1,12 @@
-# Governance JSON artifacts: canonical LF in git and on Linux CI (manifest SHA256 pins).
+# Generated JSON artifacts: canonical LF in git and on Linux CI (manifest SHA256 pins).
+# RC-509 moved these from governance/artifacts/ to reports/artifacts/, the generated-evidence
+# owner. RC-510: the PIN DID NOT MOVE WITH THEM, so git stopped normalising and stored the
+# Windows CRLF a suite run had written — MEASURED: LF on origin/main, CRLF at HEAD for three
+# survivor artifacts, which CI's eol_style_invariant then reported as a pure reflow because on
+# Linux the same suite regenerates them as LF. The old path is kept so the pin still applies to
+# anything restored there from history.
 governance/artifacts/*.json text eol=lf
+reports/artifacts/*.json text eol=lf
 # Harness-owned config (RC-382): the Claude Code harness rewrites .claude/*.json with
 # platform terminators whenever it persists settings. MEASURED 2026-08-15: settings.json
 # was committed LF, flipped to CRLF, restored to LF by hand, and flipped BACK within a

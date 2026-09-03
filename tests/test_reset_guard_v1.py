@@ -192,11 +192,24 @@ def test_rc508_a_safe_form_cannot_launder_a_destructive_one(monkeypatch, tmp_pat
 
 
 def test_rc508_the_safe_reset_is_live_on_the_pretooluse_path(monkeypatch, tmp_path):
-    """The seam that actually runs, not just the predicate: --soft passes, --hard blocks."""
+    """The seam that actually runs, not just the predicate: LOCK-2 lets --soft through.
+
+    Asserted on the RESET_GUARD verdict specifically, NOT on an empty result. The Bash seam
+    carries a SECOND, unrelated rail — PROD_CHECKOUT_LOCK, the live-checkout invariant — which
+    refuses any HEAD-moving git in the PRODUCTION primary checkout, and `reset --soft` does
+    move HEAD. That rail is correct and is not what RC-508 changed.
+
+    MEASURED: an earlier draft asserted `== []` and passed in a linked dev worktree while
+    failing in CI, where the checkout IS the primary and PROD_CHECKOUT_LOCK legitimately
+    fires. A control whose verdict depends on which checkout it runs in is testing the
+    topology, not the law.
+    """
     _no_escape(monkeypatch, tmp_path)
-    assert PLG.pretooluse_block("Bash", {"command": "git reset --soft HEAD~1"}) == []
-    bad = PLG.pretooluse_block("Bash", {"command": "git reset --hard HEAD~1"})
-    assert any("RESET_GUARD" in b for b in bad), "the destructive form stopped blocking"
+    soft = PLG.pretooluse_block("Bash", {"command": "git reset --soft HEAD~1"})
+    assert not any("RESET_GUARD" in b for b in soft), (
+        f"LOCK-2 still refuses a reset that cannot touch index or worktree: {soft}")
+    hard = PLG.pretooluse_block("Bash", {"command": "git reset --hard HEAD~1"})
+    assert any("RESET_GUARD" in b for b in hard), "the destructive form stopped blocking"
 
 
 def test_rc508_the_segment_splitter_has_one_owner():

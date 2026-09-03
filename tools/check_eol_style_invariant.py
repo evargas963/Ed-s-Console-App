@@ -145,7 +145,18 @@ def violations(staged: bool = True) -> list[str]:
         # RC-383: judge a pinned path on the form git will STORE, not on what the harness
         # left on disk — for those paths a worktree/blob terminator difference is the
         # configured behaviour, not a violation.
-        after = apply_pin(after, pinned_eol(path))
+        #
+        # RC-511: apply the pin to BOTH sides. This normalised `after` only, so a pinned path
+        # was compared stored-form against HEAD's raw form. While every blob obeyed its pin the
+        # two agreed and the asymmetry was invisible; the moment a blob VIOLATED its pin, the
+        # check reported PURE EOL REFLOW on the commit that restores it — demanding "restore
+        # the original terminator" while refusing the restoration. MEASURED: three artifacts
+        # left the `governance/artifacts/*.json` pin when RC-509 moved them, so git stored the
+        # Windows CRLF a suite run had written; re-pinning the new path gave INDEX=LF against
+        # HEAD=CRLF and this hook refused it three times running. The pin defines what a
+        # path's committed bytes MEAN, so it binds wherever those bytes are read.
+        pin = pinned_eol(path)
+        before, after = apply_pin(before, pin), apply_pin(after, pin)
         if before == after:
             continue
         if is_binary(before) or is_binary(after) or not is_text_governed(path):
