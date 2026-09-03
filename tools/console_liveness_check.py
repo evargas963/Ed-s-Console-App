@@ -42,6 +42,7 @@ Run:
 from __future__ import annotations
 
 import argparse
+import os
 import sqlite3
 import sys
 from bisect import bisect_left, bisect_right
@@ -52,12 +53,24 @@ REPO = Path(__file__).resolve().parent.parent
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
+from instrument_identity import ticker_storage_key  # noqa: E402
+from app.market_data.snapshot_eligibility import snapshot_collection_eligible  # noqa: E402
 from time_et import (  # noqa: E402
     RTH_START_MINS,
     is_trading_day_et,
     now_et,
     session_close_mins_for_et_date,
 )
+
+
+def quarantine_ledger_path() -> Path | None:
+    """Same durable refuse ledger the logger/terrain book writes. Overridable in tests."""
+    raw = (os.environ.get("ED_TERRAIN_QUARANTINE_LEDGER") or "").strip()
+    if raw:
+        p = Path(raw)
+        return p if p.is_file() else None
+    default = REPO / "reports" / "terrain_quarantine_ledger.jsonl"
+    return default if default.is_file() else None
 
 #: AGGREGATE freshness only: the newest snapshot ACROSS the whole console. SPY/QQQ/IWM run on
 #: their own dedicated ~60s loop (server.py::_base_money_path_logger_loop), so on a healthy
@@ -304,6 +317,19 @@ def check(db_path: str) -> int:
             roster = None
         if roster:
             clocked = [(tk, now_ts - float(ts)) for tk, ts in roster if ts is not None]
+            eligible = set(snapshot_collection_eligible(
+                (tk for tk, _a in clocked),
+                ledger_path=quarantine_ledger_path(),
+            ))
+            clocked = [
+                (tk, a) for tk, a in clocked
+                if ticker_storage_key(tk) in eligible
+            ]
+            if not clocked:
+                _emit("OK", f"collecting (newest {age:.0f}s old), producer live "
+                            f"({mc_live} mc_paths rows/{RECENT_MC_WINDOW_SECS//60}min), "
+                            f"no clocked snapshot-roster tickers after refused-symbol filter")
+                return 0
             ages_sorted = sorted(a for _tk, a in clocked)
             # ROSTER-LOOP LIVENESS. The aggregate clock above is held fresh by the dedicated
             # SPY/QQQ/IWM loop alone, so it cannot see the full-roster sweep dying. In a healthy

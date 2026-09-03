@@ -1941,6 +1941,23 @@ class EdDB:
 
         return _do()
 
+    def logging_universe_remove_panel_auto(self, ticker: str) -> bool:
+        """Drop a snapshot-roster panel_auto row. Never touches core / pinned / user_persisted."""
+        t = ticker_storage_key(ticker)
+
+        def _do() -> bool:
+            with self._connect() as conn:
+                cur = conn.execute(
+                    """
+                    DELETE FROM logging_universe
+                    WHERE ticker = ? COLLATE NOCASE AND category = 'panel_auto'
+                    """,
+                    (t,),
+                )
+                return cur.rowcount > 0
+
+        return _do()
+
     def logging_universe_remove_non_core(self, ticker: str) -> bool:
         """Remove pinned or user_persisted row; never core."""
         t = ticker_storage_key(ticker)  # RC-345/F25: canonical identity — delete hits the $-canonical row via any alias

@@ -110,9 +110,13 @@ IWM_SECTOR_WEIGHT_SUM = sum(w for _, _, w in IWM_SECTORS)  # ~0.63
 def market_context_panel_symbols_excluding_core(core_upper: frozenset[str]) -> list[str]:
     """
     Equity / index symbols whose quotes are pulled every ``fetch_market_context`` cycle for the UI
-    cross-instrument panel (SPY/QQQ/IWM tops, IWM sector ETFs, VIX, 10Y).
+    cross-instrument panel (SPY/QQQ/IWM tops, IWM sector ETFs, VIX).
 
-    Excludes ``core_upper`` so callers do not duplicate ``CORE_TICKERS`` rows in ``logging_universe``.
+    This is the *quote* panel. Snapshot-collection eligibility is a different
+    truth (``app.market_data.snapshot_eligibility``): a holding can stay here for
+    confluence quotes after the vendor has permanently refused its option chain.
+
+    Excludes ``core_upper`` so callers do not duplicate ``CORE_TICKERS`` rows.
     Order is deterministic (tables top-to-bottom, then macro indices).
     """
     seen: set[str] = set()

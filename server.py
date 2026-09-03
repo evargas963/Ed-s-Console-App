@@ -4030,10 +4030,80 @@ def _market_context_panel_auto_candidates() -> list[str]:
     return market_context_panel_symbols_excluding_core(core_u)
 
 
-def _sync_market_context_panel_into_logging_universe(db, now_ts: float) -> None:
-    """Persist cross-panel quote universe into ``logging_universe`` as ``panel_auto`` (data-plane SSOT)."""
+def _permanent_refusals() -> frozenset[str]:
+    """Path adapter to the ONE durable quarantine READ. Empty/missing ledger → no refusals."""
+    from app.market_data.snapshot_eligibility import (
+        permanent_refusals_from_ledger,
+        resolve_ledger_path,
+    )
+
+    return permanent_refusals_from_ledger(
+        resolve_ledger_path(globals().get("TERRAIN_QUARANTINE_LEDGER"))
+    )
+
+
+def _hydrate_permanent_quarantine_from_ledger() -> int:
+    """Load durable permanent refusals into the process quarantine book.
+
+    The ledger is the durable quarantine write-ahead log; the in-memory book is
+    a cache owned here. Without this, every restart re-requests a vendor-refused
+    symbol three times before skipping it again.
+    """
+    refused = _permanent_refusals()
+    n = 0
+    now = time.time()
+    with _terrain_quarantine_lock:
+        for tk in refused:
+            cur = _terrain_quarantine.get(tk) or {}
+            if not cur.get("permanent"):
+                _terrain_quarantine[tk] = {
+                    "reason": "vendor permanently refused (ledger)",
+                    "failures": int(TERRAIN_QUARANTINE_HARD_FAILS),
+                    "permanent": True,
+                    "since_ts": float(now),
+                    "until_ts": None,
+                    "kind": "hard",
+                }
+            n += 1
+    # Leftover panel_auto rows keep last_background_log_ts_utc and resurrect
+    # an F6 expectation. Drop them here — quote-panel membership is unchanged.
+    for tk in refused:
+        _drop_panel_auto_enrollment(tk)
+    return n
+
+
+def _drop_panel_auto_enrollment(tk: str) -> None:
+    """Remove a refused symbol from the snapshot roster only (quote panel unchanged)."""
     try:
-        r = db.logging_universe_sync_panel_auto(_market_context_panel_auto_candidates(), now_ts)
+        get_db().logging_universe_remove_panel_auto(tk)
+    except Exception as e:
+        log.warning("drop panel_auto enrollment failed ticker=%s: %s", tk, e)
+    with _logger_lock:
+        _logger_tickers[:] = [
+            t for t in _logger_tickers if ticker_storage_key(t) != tk
+        ]
+
+
+def _sync_market_context_panel_into_logging_universe(db, now_ts: float) -> None:
+    """Persist snapshot-enrollable panel symbols as ``panel_auto``.
+
+    Quote-panel membership stays in ``market_context`` (holdings can still be
+    quoted). Permanent vendor refusals are filtered here by the ONE
+    snapshot-eligibility computation so a refused symbol cannot be
+    re-inserted by the next panel sync.
+    """
+    try:
+        from app.market_data.snapshot_eligibility import (
+            resolve_ledger_path,
+            snapshot_collection_eligible,
+        )
+
+        quoted = _market_context_panel_auto_candidates()
+        want = snapshot_collection_eligible(
+            quoted,
+            ledger_path=resolve_ledger_path(globals().get("TERRAIN_QUARANTINE_LEDGER")),
+        )
+        r = db.logging_universe_sync_panel_auto(want, now_ts)
         if r.get("desired"):
             log.info(
                 "Issue 22: panel_auto sync — desired=%s upsert_round=%s",
@@ -4107,10 +4177,11 @@ def _run_legacy_logger_json_migration(db) -> None:
 def _load_persisted_tickers() -> list[str]:
     """Authoritative enrolled universe: CORE_TICKERS + logging_universe (pinned + user_persisted + panel_auto).
 
-    ``panel_auto`` rows mirror ``market_context.py`` cross-panel quote symbols (excluding core
-    duplicates). UNIVERSAL COLLECTION (operator, 2026-08-25): the category records HOW a ticker
-    was enrolled, never how much data it gets — panel_auto rows take full snapshot rotation on
-    the same terms as every other enrolled ticker (the old confluence-only carve-out is RC-482).
+    ``panel_auto`` rows are the snapshot-enrollable subset of the market-context
+    quote panel (permanent vendor refusals excluded before sync).
+    UNIVERSAL COLLECTION (operator, 2026-08-25): the category records HOW a ticker
+    was enrolled, never how much data it gets — enrollable panel_auto rows take
+    full snapshot rotation on the same terms as every other enrolled ticker.
 
     Distinct tickers appearing only in snapshots / normalized tables do not auto-enroll (Issue 22).
     ml_scheduler and train_all bulk paths use the same EdDB authority via scheduler_user_tickers.
@@ -4143,16 +4214,11 @@ def _load_persisted_tickers() -> list[str]:
                 log.warning("Issue 22: pruned invalid logging_universe enrollments: %s", removed)
         except Exception as e:
             log.warning("Issue 22: logging_universe prune failed: %s", e)
+        _hydrate_permanent_quarantine_from_ledger()
         _sync_market_context_panel_into_logging_universe(db, logging_universe_sync_wall_ts)
-        for row in db.logging_universe_list_rows():
-            # UNIVERSAL COLLECTION (RC-482/RC-483, 2026-08-25): panel_auto is in the roster.
-            # Neutering filter_tickers_for_background_logging was necessary but NOT sufficient
-            # — this construction loop was the real gate; it silently dropped every panel_auto
-            # ticker (all 17 dark since 2026-05-27) while the docstring claimed full rotation.
-            if row.get("category") in ("user_persisted", "pinned", "panel_auto"):
-                t = ticker_storage_key(row.get("ticker"))  # RC-345/F25: canonical enrolled-ticker identity
-                if t and t not in tickers:
-                    tickers.append(t)
+        # After hydrate drops leftover panel_auto and sync writes the eligible subset,
+        # this is the SOLE enrollment set — do not rebuild it and subtract refusals again.
+        tickers = db.logging_universe_authoritative_tickers()
         try:
             from scheduler_user_tickers import filter_tickers_for_background_logging
 
@@ -4196,14 +4262,10 @@ def _hydrate_logger_tickers_from_db() -> None:
                 log.warning("Issue 22: pruned invalid logging_universe enrollments: %s", removed)
         except Exception as e:
             log.warning("Issue 22: logging_universe prune failed: %s", e)
+        _hydrate_permanent_quarantine_from_ledger()
         _sync_market_context_panel_into_logging_universe(db, logging_universe_sync_wall_ts)
-        merged = [ticker_storage_key(t) for t in CORE_TICKERS]  # RC-345/F25: canonical logger hydration
-        for row in db.logging_universe_list_rows():
-            # UNIVERSAL COLLECTION (RC-482/RC-483): panel_auto joins the roster here too.
-            if row.get("category") in ("user_persisted", "pinned", "panel_auto"):
-                t = ticker_storage_key(row.get("ticker"))  # RC-345/F25: canonical (legacy bare rows resolve on-read)
-                if t and t not in merged:
-                    merged.append(t)
+        # Same sole enrollment authority as _load_persisted_tickers — no second roster.
+        merged = db.logging_universe_authoritative_tickers()
         try:
             from scheduler_user_tickers import filter_tickers_for_background_logging
 
@@ -11295,19 +11357,27 @@ def _note_terrain_failure(tk: str, reason: str, kind: str) -> None:
     """
     log_msg: tuple | None = None
     ledger: tuple | None = None
+    drop_panel_auto: str | None = None
     with _terrain_quarantine_lock:
         n = _terrain_consecutive_fails.get(tk, 0) + 1
         _terrain_consecutive_fails[tk] = n
         if n >= TERRAIN_QUARANTINE_HARD_FAILS:
             if kind == "hard":
                 already = bool(_terrain_quarantine.get(tk, {}).get("permanent"))
-                _terrain_quarantine[tk] = {"reason": reason, "failures": n, "permanent": True,
-                                           "since_ts": time.time(), "until_ts": None,
-                                           "kind": kind}
+                now_ts = time.time()
+                _terrain_quarantine[tk] = {
+                    "reason": reason,
+                    "failures": int(n),
+                    "permanent": True,
+                    "since_ts": float(now_ts),
+                    "until_ts": None,
+                    "kind": "hard",
+                }
                 if not already:
                     log_msg = ("terrain QUARANTINE (permanent) %s after %d hard rejections: %s",
                                tk, n, reason)
                     ledger = ("quarantine_permanent", {"failures": n, "reason": reason})
+                    drop_panel_auto = tk
             else:
                 wait = min(TERRAIN_QUARANTINE_SOFT_MAX_SEC,
                            TERRAIN_QUARANTINE_SOFT_BASE_SEC
@@ -11324,6 +11394,8 @@ def _note_terrain_failure(tk: str, reason: str, kind: str) -> None:
         log.warning(*log_msg)
     if ledger:
         _quarantine_ledger_append(ledger[0], tk, ledger[1])
+    if drop_panel_auto:
+        _drop_panel_auto_enrollment(drop_panel_auto)
 
 
 def _note_terrain_success(tk: str) -> None:
