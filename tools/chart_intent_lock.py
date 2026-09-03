@@ -23,6 +23,14 @@ from pathlib import Path
 
 # ── path scope (residual / handoff / RC / prompt prose) ──────────────────────
 
+
+def _normalize(rel: str) -> str:
+    """The ONE repo-relative spelling (RC-508). Imported lazily so this module stays a leaf
+    that PreToolUse can load on every edit without dragging the guard in at import time."""
+    from tools.pretooluse_guard import normalize_repo_relative
+    return normalize_repo_relative(rel)
+
+
 _PROMPT_PATH_HINT = re.compile(
     r"(?:prompt|agent.?instruction|claude.?finish|cursor.?prompt|handoff|protocol)",
     re.I,
@@ -35,8 +43,16 @@ def is_residual_language_path(rel: str) -> bool:
     SIMPLICITY REHAB 2026-08-24 (T2-5): reports/** and .claude/** DROPPED from the
     gated surface — policing every report and agent-scratch markdown for Done-framing
     was 2026-07-30 program-era scope. The law still binds where the claims land:
-    charter files, cursor rules, the ledger, and explicit handoff/prompt files."""
-    r = rel.replace("\\", "/").lstrip("./")
+    charter files, cursor rules, the ledger, and explicit handoff/prompt files.
+
+    RC-508: this carried the RC-506 bug UNFIXED for two more days. `lstrip("./")` strips
+    CHARACTERS, not a prefix, so `.cursor/rules/x.mdc` became `cursor/rules/x.mdc` and the
+    `.cursor/rules/` test below could never fire — the RC-163 gate was DEAD on a class this
+    docstring says it gates — while `.claude/handoff_prompt.md` lost its dot and slipped past
+    its own exclusion, so agent scratch was OVER-blocked. MEASURED 2026-09-03 before the fix:
+    `.cursor/rules/00-always.mdc` -> False and `.claude/handoff_prompt.md` -> True, both
+    inverted. The spelling now has ONE owner."""
+    r = _normalize(rel)
     if r in ("AGENTS.md", "CLAUDE.md", "ACTIVE_PROGRAM.md"):
         return True
     if r.startswith(".cursor/rules/"):

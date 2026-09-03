@@ -15,9 +15,15 @@ from __future__ import annotations
 
 import re
 import subprocess
+import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
+# RC-508: this checker is invoked as a SCRIPT by the pre-commit hook, so `sys.path[0]` is
+# tools/ and `tools.` is not importable without help. Same guard the other script-invoked
+# tools use, so the shared path authority is reachable from either invocation.
+if str(REPO) not in sys.path:
+    sys.path.insert(0, str(REPO))
 
 # Inline markers (any line carrying one is ignored).
 _FIXTURE_MARKERS = ("credential-leak-ok", "credential-leak-fixture-ok")
@@ -57,7 +63,17 @@ def _staged_text() -> str:
 
 
 def _norm_path(path: str) -> str:
-    return path.replace("\\", "/").lstrip("./")
+    """The ONE repo-relative spelling (RC-508), used to key the skip set above.
+
+    This carried the RC-506 idiom: `lstrip("./")` strips CHARACTERS, so every dot-prefixed
+    path lost its leading dot — MEASURED 2026-09-03, `.github/workflows/hardening.yml` keyed
+    as `github/workflows/hardening.yml`. LATENT rather than live, because every entry in
+    `_SKIP_PATHS` happens to be dot-free today; the day a dot-prefixed fixture is added, the
+    skip silently fails and this firewall over-blocks a file it was told to ignore. Imported
+    lazily so this checker stays a leaf.
+    """
+    from tools.pretooluse_guard import normalize_repo_relative
+    return normalize_repo_relative(path)
 
 
 def find_credential_leaks(diff_text: str | None = None) -> list[str]:

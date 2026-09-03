@@ -15,6 +15,14 @@ import ast
 import re
 from pathlib import Path
 
+
+def _normalize(rel: str) -> str:
+    """The ONE repo-relative spelling (RC-508). Imported lazily so this module stays a leaf
+    that PreToolUse can load on every edit without dragging the guard in at import time."""
+    from tools.pretooluse_guard import normalize_repo_relative
+    return normalize_repo_relative(rel)
+
+
 # Phrases that frame work as SPY-complete (or sentinel-complete) without admitting the carve-out.
 _SPY_ONLY_PHRASE = re.compile(
     r"\b(?:"
@@ -74,8 +82,11 @@ def is_prompt_or_agent_instruction_path(rel: str) -> bool:
     `.cursor/rules/00-always.mdc` returned False (the whole cursor-rules class was UNGATED,
     and it is one of only two path classes this law gates), while `.claude/agent_prompt.md`
     returned True (the documented exclusion inverted, so agent scratch was OVER-blocked).
-    `removeprefix` strips the prefix and nothing else."""
-    r = rel.replace("\\", "/").removeprefix("./")
+
+    RC-508: the repair is no longer local. The spelling of a repo-relative path has ONE owner,
+    `pretooluse_guard.normalize_repo_relative`, because fixing this site and its twin while two
+    more copies of the same idiom survived is what let the defect keep propagating."""
+    r = _normalize(rel)
     if r in ("AGENTS.md", "CLAUDE.md", "ACTIVE_PROGRAM.md"):
         return True
     if r.startswith(".cursor/rules/"):

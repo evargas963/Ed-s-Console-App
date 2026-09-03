@@ -30,6 +30,7 @@ Contract:
 from __future__ import annotations
 
 import json
+import posixpath
 import subprocess
 import sys
 from pathlib import Path
@@ -64,6 +65,41 @@ class PathFacts(NamedTuple):
     rel: str            # repo-relative posix when governed and resolvable, else normalised input
     production: bool    # Q2 — governed AND part of the product surface
     rc66_exempt: bool   # governed AND editing it is how you comply with RC-66
+
+
+def normalize_repo_relative(p: str) -> str:
+    """THE spelling of a repo-relative path (FC-13 / RC-508). One computation, one owner.
+
+    Forward slashes, dot-segments and duplicate separators collapsed, no leading `./`. A
+    leading dot that is part of a NAME — `.github`, `.claude`, `.cursor` — is preserved,
+    because that is the whole point.
+
+    WHY THIS EXISTS. Four call sites hand-rolled this, and the idiom they copied was
+    `str.lstrip("./")`, which strips CHARACTERS rather than a prefix. MEASURED 2026-09-03
+    across all tracked .py: 85 inline normalisation sites in 34 files, 5 of which build a
+    canonical repo-relative KEY, and 4 of those 5 got it from the same wrong idiom. It ate the
+    leading dot of every dot-prefixed path, so `.cursor/rules/x.mdc` became
+    `cursor/rules/x.mdc` and any test against `.cursor/rules/` silently answered False. That
+    killed the RC-160 gate on a whole path class (RC-506), inverted the `.claude/` exclusion,
+    killed the RC-163 gate the same way, mis-keyed the credential firewall's skip set, and
+    made the closure check reject workflow fixes it had actually been shown (RC-507).
+
+    Two rounds fixed two sites and left two standing, which is what a copied idiom does. The
+    repository already declares a path AUTHORITY here — `classify_path` — but it answers the
+    GOVERNANCE question (ours? product? compliance lane?) and offered no primitive for the
+    string, so every caller needing the string built one. This is that primitive. It lives
+    beside `classify_path` because it is the same semantic domain, and every module in this
+    package imports intra-package names lazily, so a leaf lock can consume it without a cycle.
+
+    Foreign and escaping paths are NOT judged here: `../x/y.py` normalises to `../x/y.py` and
+    stays the caller's problem — deciding whether a path is ours is `classify_path`'s job, and
+    this function must not quietly answer a question it was not asked.
+    """
+    s = str(p or "").strip().replace("\\", "/")
+    if not s:
+        return ""
+    out = posixpath.normpath(s)
+    return "" if out == "." else out
 
 
 def _resolve_for_repo(p: str, root: Path) -> tuple[Path | None, bool]:
