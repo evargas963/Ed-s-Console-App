@@ -157,19 +157,31 @@ def payload_work_tree(raw_payload: str) -> Path | None:
     return None
 
 
-#: The tool calls that MODIFY a tree. Only these establish where work occurred.
+#: File-target tools that MODIFY a tree. Only these establish where work occurred.
 #:
 #: The first cut accepted any `tool_use` carrying a file path, which let a Read, a Glob or a
 #: Grep nominate the tree that judges a turn: inspect a file in a stale checkout as the last
 #: action and that checkout became the authority. Looking at a file is not working in it.
-#:
-#: Bash is deliberately absent. A shell command can in principle write anywhere, but deciding
-#: WHERE from a command string is the guessing this resolver exists to avoid — and the repo
-#: already refuses shell writes to source (RC-189: heredoc and `-c` writes to .py are blocked,
-#: the Edit/Write tools are the sanctioned path), so governed mutation arrives through the
-#: tools below. A session whose only mutations were shell writes resolves to no work tree and
-#: is judged here, said out loud, never silently.
 MUTATING_TOOLS = frozenset({"Edit", "Write", "MultiEdit", "NotebookEdit"})
+
+#: Bash is a mutation channel too, and pretending otherwise was WRONG.
+#:
+#: This roster once excluded Bash, on the written claim that the repo already refuses shell
+#: writes to governed state. That claim is false in this repo and the operator caught it:
+#: `tools/operator_law_guard.py` permits heredoc and `-c` writes to `.md`, `.json`, `.jsonl`,
+#: `.txt`, `.csv` and `.log`, and names governance-row edits as a legitimate shell-write case.
+#: Governance ledgers ARE `.md`. So a session could materially change a worktree entirely
+#: through Bash, that tree would never enter the authority set, and Stop fell back to being
+#: adjudicated by the launch checkout — the very defect, reachable through the sanctioned path.
+#:
+#: WHERE a shell command writes is answered by `tools/process_lock_guard.py`, which already
+#: owns that question for the production-checkout and mission rails: `_shell_write_targets`
+#: (destinations, with `cd` tracked across a chain), `_shell_rewrites_tracked_tree` (the forms
+#: that rewrite tracked files WITHOUT naming them) and `git_segment_mutates_checkout` (git
+#: subcommands that change a checkout, `-C <path>` resolved). `bash_mutation_targets` composes
+#: those. It parses nothing itself, because a second shell parser answering the same question
+#: is exactly the duplication this repo removes on sight.
+BASH_TOOLS = frozenset({"Bash", "PowerShell"})
 
 
 def _transcript_lines(path: Path) -> tuple[list[str], str]:
@@ -194,31 +206,110 @@ def _transcript_lines(path: Path) -> tuple[list[str], str]:
             f"{exc}), so where this session did its work cannot be established")
 
 
-def _mutation_targets_in(node) -> list[str]:
-    """Paths this record MODIFIED, however nested — never paths it merely looked at.
+def bash_mutation_targets(command: str, payload_cwd: str = "") -> tuple[list[str], list[str]]:
+    """`(paths a shell command materially writes, reasons a mutation could not be located)`.
 
-    Two filters, and both are load-bearing:
+    Composition only — every judgement below belongs to `tools/process_lock_guard.py`, which
+    already owns "where does this shell command write" for the production-checkout and mission
+    rails. Adding a second parser here would put two answers to one question in the tree.
 
-      * the record must be a `tool_use` whose `name` is in `MUTATING_TOOLS`. Without the name
-        test a Read in a stale checkout nominates that checkout as the authority, which is a
-        one-line way to choose your own judge.
+    Three channels, because the existing owner models them as three:
+      1. WRITE DESTINATIONS — redirects and the file-mutating verbs, `cd` tracked across a
+         chain. This is where the sanctioned `.md`/`.json`/`.jsonl` data writes land, ledgers
+         included.
+      2. GIT OPERATIONS that change a checkout, with `-C <path>` resolved to its worktree, so
+         `git -C <other-worktree> commit` puts THAT tree in the set rather than this one.
+      3. TRACKED-TREE REWRITES that name no destination at all (`git apply`, `patch -p1`,
+         `git restore`, `git stash pop`). Their target is the working directory in effect.
+
+    A harmless read yields nothing from any of the three, so inspection still establishes no
+    authority. Channels 2 and 3 report UNRESOLVED when a mutation is recognised but its tree
+    cannot be located: better an explicit refusal than a quiet fallback to whichever checkout
+    happens to be running the hook.
+    """
+    try:
+        from tools.operator_law_guard import iter_command_segments, iter_git_invocations
+        from tools.process_lock_guard import (
+            _shell_rewrites_tracked_tree,
+            _shell_write_targets,
+            git_segment_mutates_checkout,
+        )
+    except ImportError as exc:
+        # The owner of shell resolution is unavailable, so a shell command's target cannot be
+        # established. Reporting "no mutations" here would be the silent fallback this whole
+        # resolver exists to remove, so it is reported as unresolved instead.
+        return [], [f"shell resolution is unavailable ({type(exc).__name__}: {exc}), so a "
+                    f"shell command's target cannot be established"]
+
+    paths: list[str] = []
+    unresolved: list[str] = []
+    cmd = command or ""
+
+    for dest in _shell_write_targets(cmd, payload_cwd, REPO):
+        paths.append(str(dest))
+
+    for target, seg in iter_git_invocations(cmd, payload_cwd):
+        if not git_segment_mutates_checkout(seg):
+            continue
+        if target:
+            paths.append(str(target))
+        else:
+            unresolved.append(
+                f"a git operation that materially changes a checkout could not be located: "
+                f"{seg.strip()[:120]!r}")
+
+    for cwd, seg in iter_command_segments(cmd, payload_cwd):
+        verb = _shell_rewrites_tracked_tree(seg)
+        if not verb:
+            continue
+        base = cwd or payload_cwd
+        if base:
+            paths.append(str(base))
+        else:
+            unresolved.append(
+                f"`{verb}` rewrites tracked files from a working directory this resolver "
+                f"cannot determine: {seg.strip()[:120]!r}")
+    return paths, unresolved
+
+
+def _mutation_targets_in(node, payload_cwd: str = "") -> tuple[list[str], list[str]]:
+    """`(paths this record MODIFIED, reasons a mutation could not be located)`.
+
+    Never paths the record merely looked at. Three filters, all load-bearing:
+
+      * a file-target record must be a `tool_use` whose `name` is in `MUTATING_TOOLS`. Without
+        the name test a Read in a stale checkout nominates that checkout as the authority,
+        which is a one-line way to choose your own judge.
+      * a shell record goes to `bash_mutation_targets`, because Bash writes governed `.md`
+        state by sanctioned means and pretending otherwise left an untracked channel.
       * it is walked STRUCTURALLY, so assistant prose quoting a path is not a mutation of it.
     """
     found: list[str] = []
+    unresolved: list[str] = []
     if isinstance(node, dict):
-        if (node.get("type") == "tool_use"
-                and node.get("name") in MUTATING_TOOLS
-                and isinstance(node.get("input"), dict)):
-            for key in ("file_path", "notebook_path", "path"):
-                val = node["input"].get(key)
-                if isinstance(val, str) and val.strip():
-                    found.append(val)
+        tool_input = node.get("input")
+        if node.get("type") == "tool_use" and isinstance(tool_input, dict):
+            if node.get("name") in MUTATING_TOOLS:
+                for key in ("file_path", "notebook_path", "path"):
+                    val = tool_input.get(key)
+                    if isinstance(val, str) and val.strip():
+                        found.append(val)
+            elif node.get("name") in BASH_TOOLS:
+                command = tool_input.get("command")
+                if isinstance(command, str) and command.strip():
+                    paths, reasons = bash_mutation_targets(command, payload_cwd)
+                    found.extend(paths)
+                    unresolved.extend(reasons)
         for value in node.values():
-            found.extend(_mutation_targets_in(value))
+            sub_found, sub_unresolved = _mutation_targets_in(value, payload_cwd)
+            found.extend(sub_found)
+            unresolved.extend(sub_unresolved)
     elif isinstance(node, list):
         for item in node:
-            found.extend(_mutation_targets_in(item))
-    return found
+            sub_found, sub_unresolved = _mutation_targets_in(item, payload_cwd)
+            found.extend(sub_found)
+            unresolved.extend(sub_unresolved)
+    return found, unresolved
 
 
 def session_work_trees(raw_payload: str) -> tuple[tuple[Path, ...], str]:
@@ -237,14 +328,18 @@ def session_work_trees(raw_payload: str) -> tuple[tuple[Path, ...], str]:
     established. Lines are pre-filtered on the `"tool_use"` substring purely to avoid parsing
     prose; that can miss nothing, since a real tool_use record contains it by construction.
     """
-    raw = _payload(raw_payload).get("transcript_path")
+    payload = _payload(raw_payload)
+    raw = payload.get("transcript_path")
     if not isinstance(raw, str) or not raw.strip():
         return (), ""                      # no evidence channel at all — caller says so
     lines, failure = _transcript_lines(Path(raw))
     if failure:
         return (), failure
 
+    session_cwd = payload.get("cwd")
+    session_cwd = session_cwd if isinstance(session_cwd, str) else ""
     ordered: list[Path] = []
+    unresolved: list[str] = []
     for line in lines:
         if "tool_use" not in line:
             continue
@@ -252,10 +347,16 @@ def session_work_trees(raw_payload: str) -> tuple[tuple[Path, ...], str]:
             record = json.loads(line)
         except (json.JSONDecodeError, ValueError):
             continue
-        for candidate in _mutation_targets_in(record):
+        candidates, reasons = _mutation_targets_in(record, session_cwd)
+        unresolved.extend(reasons)
+        for candidate in candidates:
             tree = _enclosing_worktree(Path(candidate))
             if tree is not None and tree not in ordered:
                 ordered.append(tree)
+    if unresolved:
+        # A mutation the session definitely performed, in a tree that cannot be named. Falling
+        # back to whichever checkout runs the hook is the defect; refuse instead.
+        return (), "; ".join(sorted(set(unresolved))[:5])
     return tuple(ordered), ""
 
 

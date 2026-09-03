@@ -18,6 +18,7 @@ each test chooses. If authority resolves correctly, work in a live worktree is n
 """
 from __future__ import annotations
 
+import ast
 import json
 import os
 import subprocess
@@ -53,11 +54,40 @@ def _git(cwd: Path, *args: str) -> subprocess.CompletedProcess:
     return r
 
 
+def _chain_modules() -> list[str]:
+    """The chain plus everything it imports from `tools/`, resolved rather than listed.
+
+    Copied REAL into each scratch tree, not stubbed: a tree missing them would exercise the
+    ImportError path instead of the shell resolver, and every real worktree of this repo has
+    them. Computed transitively so adding an import to the chain cannot silently turn these
+    attacks into tests of the degraded path.
+    """
+    seen: set[str] = set()
+    frontier = ["stop_chain", "operator_law_guard", "process_lock_guard"]
+    while frontier:
+        mod = frontier.pop()
+        if mod in seen:
+            continue
+        seen.add(mod)
+        src = REPO / "tools" / f"{mod}.py"
+        if not src.is_file():
+            continue
+        for node in ast.walk(ast.parse(src.read_text(encoding="utf-8"))):
+            names: list[str] = []
+            if isinstance(node, ast.Import):
+                names = [a.name for a in node.names]
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                names = [node.module]
+            frontier += [n.split(".", 1)[1] for n in names if n.startswith("tools.")]
+    return sorted(m for m in seen if (REPO / "tools" / f"{m}.py").is_file())
+
+
 def _install_chain(tree: Path, guard_body: str) -> None:
     tools = tree / "tools"
     tools.mkdir(parents=True, exist_ok=True)
     (tools / "__init__.py").write_text("", encoding="utf-8")
-    (tools / "stop_chain.py").write_bytes(REAL_CHAIN.read_bytes())
+    for mod in _chain_modules():
+        (tools / f"{mod}.py").write_bytes((REPO / "tools" / f"{mod}.py").read_bytes())
     (tools / "demo_guard.py").write_text(guard_body, encoding="utf-8")
 
 
@@ -113,6 +143,11 @@ def run_from(tree: Path, payload: dict, env_extra: dict | None = None) -> subpro
 def tool_use(name: str, path: Path) -> dict:
     return {"type": "assistant", "message": {"content": [
         {"type": "tool_use", "name": name, "input": {"file_path": str(path)}}]}}
+
+
+def bash_use(command: str) -> dict:
+    return {"type": "assistant", "message": {"content": [
+        {"type": "tool_use", "name": "Bash", "input": {"command": command}}]}}
 
 
 def prose(text: str) -> dict:
@@ -187,6 +222,100 @@ def test_prose_that_merely_quotes_a_path_is_not_a_place_work_happened(trees, tmp
     assert result.returncode != 0, (
         "a path merely MENTIONED in assistant prose was accepted as the session's work tree")
     assert "BLOCKED BY primary" in result.stderr, result.stderr
+
+
+# ======================================================= ATTACK: Bash as a mutation channel
+#
+# The roster once excluded Bash on the written claim that this repo already refuses shell
+# writes to governed state. That claim was FALSE and the operator caught it: operator_law_guard
+# permits heredoc and `-c` writes to .md/.json/.jsonl/.txt/.csv/.log and names governance-row
+# edits as a legitimate shell-write case. Governance ledgers are .md. So the sanctioned path
+# was an untracked mutation channel, and Stop fell back to the launch checkout through it.
+
+def test_a_bash_write_to_an_allowed_data_file_puts_that_worktree_in_the_set(trees, tmp_path):
+    """ATTACK 8. Bash writes an allowed .md / .json in worktree A -> Stop must include A."""
+    primary, alpha, _beta = trees
+    for command in (f'echo "| RC-999 | OPEN |" >> "{alpha / "governance_row.md"}"',
+                    f'printf "{{}}" > "{alpha / "artifact.json"}"'):
+        t = write_transcript(tmp_path / "s.jsonl", [bash_use(command)])
+        result = run_from(primary, stop_payload(t))
+        assert result.returncode == 0, (
+            "a shell write to a SANCTIONED data extension did not put its worktree in the "
+            f"authority set, so Stop fell back to the launch checkout.\ncmd: {command}\n"
+            f"STDERR:\n{result.stderr}")
+        assert "BLOCKED BY primary" not in result.stderr, result.stderr
+
+
+def test_a_bash_mutation_and_an_edit_in_different_trees_are_both_adjudicated(trees, tmp_path):
+    """ATTACK 9. Bash mutates A, Edit mutates B, one authority blocks -> Stop blocks.
+
+    The BASH-touched tree is the blocking one and the Edit-touched tree passes, so a resolver
+    that sees only file-target tools clears the turn.
+    """
+    primary, alpha, beta = trees
+    set_guard(beta, BLOCKING_GUARD)
+    t = write_transcript(tmp_path / "s.jsonl", [
+        bash_use(f'echo hi >> "{beta / "notes.md"}"'),
+        tool_use("Edit", alpha / "app.py"),
+    ])
+    result = run_from(primary, stop_payload(t))
+    assert result.returncode != 0, (
+        "a worktree materially changed only through Bash never entered adjudication.\n"
+        f"STDERR:\n{result.stderr}")
+    assert "BLOCKED BY beta" in result.stderr, result.stderr
+
+
+def test_a_git_dash_c_operation_is_not_judged_solely_by_the_launch_tree(trees, tmp_path):
+    """ATTACK 10. `git -C <worktree>` material operation.
+
+    `git -C alpha commit` changes alpha, not the tree the session was launched in. The target
+    is resolved by process_lock_guard's own git parser, so `-C` is not re-parsed here.
+    """
+    primary, alpha, _beta = trees
+    for command in (f'git -C "{alpha}" commit --allow-empty -m x',
+                    f'git -C "{alpha}" merge --ff-only origin/main'):
+        t = write_transcript(tmp_path / "s.jsonl", [bash_use(command)])
+        result = run_from(primary, stop_payload(t))
+        assert result.returncode == 0, (
+            f"a git operation aimed at another worktree was judged by the launch tree.\n"
+            f"cmd: {command}\nSTDERR:\n{result.stderr}")
+        assert "BLOCKED BY primary" not in result.stderr, result.stderr
+
+
+def test_a_harmless_bash_read_establishes_no_worktree(trees, tmp_path):
+    """ATTACK 11. Inspection is not work — including through the shell.
+
+    The counterpart to attack 8: treating Bash as a mutation channel must not degrade into
+    treating every shell command as one. Edit in alpha, then read inside the stale primary;
+    alpha must still govern.
+    """
+    primary, alpha, _beta = trees
+    t = write_transcript(tmp_path / "s.jsonl", [
+        tool_use("Edit", alpha / "app.py"),
+        bash_use(f'cat "{primary / "tools" / "demo_guard.py"}"'),
+        bash_use(f'git -C "{primary}" status --porcelain'),
+        bash_use(f'ls -la "{primary}"'),
+    ])
+    result = run_from(primary, stop_payload(t))
+    assert result.returncode == 0, (
+        "a harmless shell READ established a worktree and took authority from the tree where "
+        f"work actually happened.\nSTDERR:\n{result.stderr}")
+    assert "BLOCKED BY primary" not in result.stderr, result.stderr
+
+
+def test_a_mutating_bash_action_with_no_locatable_tree_fails_explicitly(trees, tmp_path):
+    """ATTACK 12. `git apply` rewrites tracked files it never names.
+
+    With no working directory to resolve it against, the tree it changed cannot be named. That
+    is exactly when falling back to the launch checkout is the defect, so the event is refused
+    and the reason is printed.
+    """
+    primary, _alpha, _beta = trees
+    t = write_transcript(tmp_path / "s.jsonl", [bash_use("git apply /tmp/some.patch")])
+    result = run_from(primary, stop_payload(t))       # no `cwd` in the payload, by design
+    assert result.returncode != 0
+    assert "REFUSED" in result.stderr, result.stderr
+    assert "cannot determine" in result.stderr, result.stderr
 
 
 # ============================================ ATTACK: a session that touched several worktrees
@@ -373,12 +502,46 @@ def test_only_mutating_tools_establish_where_work_happened():
     from tools.stop_chain import MUTATING_TOOLS, _mutation_targets_in
 
     assert MUTATING_TOOLS == {"Edit", "Write", "MultiEdit", "NotebookEdit"}
-    for tool in ("Read", "Grep", "Glob", "Bash", "WebFetch", "Task"):
-        rec = tool_use(tool, REPO / "server.py")
-        assert _mutation_targets_in(rec) == [], f"{tool} counted as a mutation"
+    for tool in ("Read", "Grep", "Glob", "WebFetch", "Task"):
+        found, unresolved = _mutation_targets_in(tool_use(tool, REPO / "server.py"))
+        assert (found, unresolved) == ([], []), f"{tool} counted as a mutation"
     for tool in sorted(MUTATING_TOOLS):
-        rec = tool_use(tool, REPO / "server.py")
-        assert _mutation_targets_in(rec) == [str(REPO / "server.py")], tool
+        found, unresolved = _mutation_targets_in(tool_use(tool, REPO / "server.py"))
+        assert (found, unresolved) == ([str(REPO / "server.py")], []), tool
+
+
+def test_the_bash_resolver_reuses_the_existing_owner_and_reads_no_authority_from_reads():
+    """`bash_mutation_targets` composes process_lock_guard; it must parse nothing itself.
+
+    Pinned because the fix for this hole is a composition, and a later "small tweak" that
+    reaches for its own regex would put two answers to one question back in the tree.
+    """
+    from tools.stop_chain import bash_mutation_targets
+
+    writes, unresolved = bash_mutation_targets(
+        f'printf x >> "{REPO / "governance" / "root_cause_log.md"}"')
+    assert [Path(p) for p in writes] == [REPO / "governance" / "root_cause_log.md"]
+    assert unresolved == []
+
+    git_targets, _ = bash_mutation_targets(f'git -C "{REPO}" commit -m x')
+    assert any(Path(p).resolve() == REPO for p in git_targets), git_targets
+
+    for harmless in (f'cat "{REPO / "server.py"}"', f'git -C "{REPO}" status',
+                     f'git -C "{REPO}" log --oneline -1', f'ls -la "{REPO}"'):
+        assert bash_mutation_targets(harmless) == ([], []), harmless
+
+    _paths, reasons = bash_mutation_targets("git apply /tmp/x.patch")
+    assert reasons and "cannot determine" in reasons[0], reasons
+
+    # no second parser: the resolver owns no regex of its own
+    src = (REPO / "tools" / "stop_chain.py").read_text(encoding="utf-8")
+    fn = next(n for n in ast.walk(ast.parse(src))
+              if isinstance(n, ast.FunctionDef) and n.name == "bash_mutation_targets")
+    called = {n.func.id for n in ast.walk(fn)
+              if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)}
+    assert {"_shell_write_targets", "iter_git_invocations", "iter_command_segments",
+            "git_segment_mutates_checkout", "_shell_rewrites_tracked_tree"} <= called, called
+    assert "re.compile" not in ast.get_source_segment(src, fn)
 
 
 def test_canonical_authority_prefers_the_work_target_over_the_session_record(tmp_path):
