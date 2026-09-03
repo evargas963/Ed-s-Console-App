@@ -34,8 +34,10 @@ ENFORCEMENT_PATHS: tuple[str, ...] = (
     CHECKER_REL,
     DB_REL,
     "tools/honesty_guard.py",
-    "tools/plus_player_locks.py",
+    # RC-505: tools/plus_player_locks.py deleted — its catalog was archived and its one live
+    # helper moved to tools/find_prove_locks.py, which is already listed below.
     "tools/find_prove_locks.py",
+    "tools/mission_latch.py",
     "tools/pretooluse_guard.py",
     "tools/operator_law_guard.py",
     "tools/stop_guard.py",

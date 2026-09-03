@@ -66,8 +66,16 @@ def is_prompt_or_agent_instruction_path(rel: str) -> bool:
     gated surface — policing report prose and agent scratch for framing words was
     2026-07-30 program-era scope; the law binds where instruction actually flows
     (charter files, cursor rules, explicit prompt files). Code-side SPY-only defaults
-    stay separately enforced by spy_only_ticker_default_violations."""
-    r = rel.replace("\\", "/").lstrip("./")
+    stay separately enforced by spy_only_ticker_default_violations.
+
+    RC-505: this normalised with `lstrip("./")`, which strips CHARACTERS, not a prefix — so
+    `.cursor/rules/x.mdc` became `cursor/rules/x.mdc` and neither the dot-prefixed match below
+    nor the `.claude/` exclusion could ever fire. MEASURED 2026-09-02 before the fix:
+    `.cursor/rules/00-always.mdc` returned False (the whole cursor-rules class was UNGATED,
+    and it is one of only two path classes this law gates), while `.claude/agent_prompt.md`
+    returned True (the documented exclusion inverted, so agent scratch was OVER-blocked).
+    `removeprefix` strips the prefix and nothing else."""
+    r = rel.replace("\\", "/").removeprefix("./")
     if r in ("AGENTS.md", "CLAUDE.md", "ACTIVE_PROGRAM.md"):
         return True
     if r.startswith(".cursor/rules/"):

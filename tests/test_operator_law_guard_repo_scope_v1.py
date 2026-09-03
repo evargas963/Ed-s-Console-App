@@ -505,18 +505,25 @@ def test_a_wipe_quoted_in_a_commit_message_is_prose_not_an_action():
     assert not any("RESET_GUARD" in v for v in _pl_block(cmd, REPO))
 
 
-def test_only_one_module_defines_the_destructive_git_predicate():
-    """ONE FAUCET, checked structurally: no second module may grow its own copy."""
-    tools_dir = sorted((REPO / "tools").glob("*.py"))
-    assert len(tools_dir) > 20, "tools/ discovery returned too little to be a real check"
+def test_only_one_module_defines_the_destructive_git_predicate(repo_index):
+    """ONE FAUCET, checked structurally: no second module may grow its own copy.
+
+    Sourced from the shared `repo_index` corpus (tests/conftest.py) rather than an
+    independent tools/ glob — one current-tree observation, shared, is the standing rule
+    (`no_new_independent_repo_scan_in_tests`).
+    """
+    scanned = 0
     offenders = []
-    for p in tools_dir:
-        if p.name == "operating_process_lock.py":
+    for rel, text, _tree in sorted(repo_index.items()):
+        if len(rel.parts) != 2 or rel.parts[0] != "tools":
+            continue
+        scanned += 1
+        if rel.name == "operating_process_lock.py":
             continue                       # the one owner
-        text = p.read_text(encoding="utf-8", errors="replace")
         for token in ("_DESTRUCTIVE_GIT = ", "_HARD_WIPE_RE = ", "_RESET_GUARD_RE = "):
             if token in text:
-                offenders.append("%s: %s" % (p.name, token.strip(" =")))
+                offenders.append("%s: %s" % (rel.name, token.strip(" =")))
+    assert scanned > 20, "tools/ discovery returned too little to be a real check"
     assert offenders == [], (
         "a second producer of the destructive-git predicate exists — that split is exactly "
         "what let `git push -f` through: " + "; ".join(offenders))
