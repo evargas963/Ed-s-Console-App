@@ -44,8 +44,12 @@ REM Strip inherited CI/test contamination from parent shells (agent / pytest).
 REM Proven 2026-08-29: launching with ED_CI_OFFLINE=1 left /api/health=200 while
 REM analytics bg failed every ticker (Schwab CI offline RuntimeError). Clear first,
 REM then fail-closed if live Schwab would still be blocked.
-for /f "delims=" %%L in ('"%VENV_PY%" tools\check_live_schwab_env.py --bat-unsets') do %%L
-"%VENV_PY%" tools\check_live_schwab_env.py --sanitize
+REM RC-512: this preflight is APP RUNTIME, not governance - it asks whether live Schwab
+REM calls will work, which is a precondition of data collection. It moved from tools\ to
+REM the app root with that ownership, so the launch path executes nothing out of the
+REM governance tools directory.
+for /f "delims=" %%L in ('"%VENV_PY%" live_schwab_env.py --bat-unsets') do %%L
+"%VENV_PY%" live_schwab_env.py --sanitize
 if errorlevel 1 (
     echo  LAUNCH BLOCKED: live Schwab env is CI/test contaminated or missing credentials.
     echo  Unset ED_CI_OFFLINE / test SCHWAB_* and ensure live credentials ^(or .env^).
@@ -53,14 +57,20 @@ if errorlevel 1 (
     exit /b 1
 )
 
-REM RC-350 ONE-APP LOCK (operator yes 2026-08-14): the desk may only run a committed,
-REM non-divergent build of origin/main. Emergency bypass: set ED_LIVE_PATH_UNLOCKED=1.
-"%VENV_PY%" tools\check_live_path_is_main.py
-if errorlevel 1 (
-    echo  LAUNCH BLOCKED: the desk is not running origin/main. See RC-350.
-    pause
-    exit /b 1
-)
+REM RC-512 (operator mission 2026-09-03, DECOUPLE GOVERNANCE FROM APP RUNTIME): the
+REM RC-350 ONE-APP LOCK call is no longer on the launch path. It asserted repository
+REM state - branch==main, HEAD==origin/main zero-ahead AND zero-behind, no uncommitted
+REM app file - and began with `git fetch origin main`, so desk availability depended on
+REM git position and on reaching a remote. MEASURED 2026-09-03: the production checkout
+REM was 9 commits behind origin/main and this line aborted the launcher, with no app
+REM defect of any kind.
+REM
+REM The invariant is not lost and this was never its only enforcement: an agent is
+REM PREVENTED from moving, committing to, or editing app code in the production checkout
+REM by tools/process_lock_guard.py on every PreToolUse event. Repository lineage is an
+REM agent/commit/merge concern and stays there; it does not decide whether the desk runs.
+REM Operator-side lineage remains readable on demand:
+REM     .venv\Scripts\python.exe tools\check_live_path_is_main.py
 
 REM Stop any prior instance still bound to port 8000 (plain-line for /f - safe batch syntax)
 for /f "tokens=5" %%P in ('netstat -ano ^| findstr ":8000" ^| findstr "LISTENING"') do taskkill /F /PID %%P 2>nul

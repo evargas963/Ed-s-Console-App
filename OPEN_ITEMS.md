@@ -26,7 +26,7 @@ Rows close only with a commit SHA (and a test cite where code changed). History 
 |---|---|
 | Predictive validity (any horizon beats chance, OOS, net of costs) | **NOT_PROVEN** — 2026-06-01 gate verdict stands |
 | Real-money readiness | **NOT_APPROVED** |
-| Decision-path admission registry (`governance/decision_path_admissions.json`) | **BUILT_EMPTY** — gate live in `call_engine.compute_call` via `decision_gate.py`; nothing admitted; directional calls force WAIT (running server picks this up on its next restart) |
+| Decision-path admission registry (`config/decision_path_admissions.json`) | **BUILT_EMPTY** — gate live in `call_engine.compute_call` via `decision_gate.py`; nothing admitted; directional calls force WAIT (running server picks this up on its next restart) |
 | Card fidelity overall / universal runtime live proof | **NOT_PROVEN** |
 | FP-03..FP-25 battery + LP-01 levels verdicts (kills AND signals) | **ERA-CONTAMINATED — not citable either direction until re-run under the clean protocol (operator 2026-08-01; see Validity notes below)** |
 
@@ -152,7 +152,7 @@ here may be described as edge until it clears a placebo. All of them start `UNPR
   share flow, distance-weighted cluster mass. Requirements are the standing ones — pre-registered,
   purged/embargoed walk-forward, cost-aware, **placebo-controlled** (displaced clusters, as in LP-01
   where the placebo scored HIGHER and correctly killed the signal), and a stated minimum n with a CI
-  that excludes zero. Until it passes, nothing here may reach `governance/decision_path_admissions.json`
+  that excludes zero. Until it passes, nothing here may reach `config/decision_path_admissions.json`
   and the Chart renders no directional arrow.
 
   **h) Charm extends the worked example; the operator's "score" ask (2026-08-01).** Same SPY

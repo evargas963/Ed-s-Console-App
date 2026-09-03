@@ -4770,7 +4770,7 @@ function briefWhyWait(d) {
     }
     if (r === 'decision_path_admission') {
       const tip = String(wb.full_detail ||
-        'No component is ADMITTED in governance/decision_path_admissions.json — the system abstains until edge is proven and admitted.');
+        'No component is ADMITTED in config/decision_path_admissions.json — the system abstains until edge is proven and admitted.');
       const gs = String(wb.gated_signal || '').toLowerCase();
       const line = (gs === 'long' || gs === 'short')
         ? `Wait: not admitted (stack read: ${gs})`

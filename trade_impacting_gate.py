@@ -114,7 +114,10 @@ ROUTE_INVENTORY_EVIDENCE: dict[str, dict[str, object]] = {
     },
     "R-027": {
         "enforcement_state": "classified_non_production",
-        "source_file": "governance/manual_control.py",
+        # RC-512: this said governance/manual_control.py, a path that exists nowhere in the
+        # tree. The module is arch_competition/manual_control.py. A trade-impacting route
+        # inventory that names a missing file sends its own auditor to the wrong place.
+        "source_file": "arch_competition/manual_control.py",
         "source_function": "ops promote / jobs",
         "trade_impacting": False,
         "runtime_gate": "non-production classification — not live HTTP decision emission",

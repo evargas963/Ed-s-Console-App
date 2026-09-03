@@ -192,7 +192,7 @@ def test_absence_reaches_the_surface_as_absence(tmp_path):
 
 def test_radar_rank_makes_no_forecast(tmp_path):
     """Rank is measured structure. The moment it encodes an expected return it needs an
-    ADMITTED claim, and `governance/decision_path_admissions.json` is empty."""
+    ADMITTED claim, and `config/decision_path_admissions.json` is empty."""
     db = tmp_path / "d.db"
     ds.ensure_schema(db)
     now = time.time()
@@ -986,7 +986,7 @@ def test_decide_untouched_admissions_empty():
     import json
     from pathlib import Path
 
-    p = Path(__file__).resolve().parent.parent / "governance" / "decision_path_admissions.json"
+    p = Path(__file__).resolve().parent.parent / "config" / "decision_path_admissions.json"
     reg = json.loads(p.read_text(encoding="utf-8"))
     admitted = reg.get("admissions") or reg.get("admitted") or []
     assert admitted == [], f"decision path is no longer empty: {admitted}"

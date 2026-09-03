@@ -176,8 +176,10 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
-    # Ensure repo root on path when invoked as tools\check_live_schwab_env.py
-    root = Path(__file__).resolve().parent.parent
+    # RC-512: this module lives at the app root, so its own directory IS the repo root.
+    # It used `.parent.parent` while it sat in tools/; kept explicit because the launcher
+    # invokes it as a script, before any package import has put the root on sys.path.
+    root = Path(__file__).resolve().parent
     if str(root) not in sys.path:
         sys.path.insert(0, str(root))
     raise SystemExit(main())

@@ -84,7 +84,7 @@
         "active_bundle_contract.py::write_bundle_integrity_manifest (promotion-time stamp)",
         "ml_predict.py::_verify_governed_artifact + _artifact_registry_entry_stale (serve wiring + cache staleness guard)",
         "tools/ml_item4_fleet_migration.py (fleet inventory/classification/migration/verify; evidence classes CANDIDATE/GIT/GIT_EOL)",
-        "governance/ML_ITEM4_MIGRATION_POLICY.json (committed strict default; legacy allowance disabled+expired; env cannot reopen)"
+        "config/ML_ITEM4_MIGRATION_POLICY.json (committed strict default; legacy allowance disabled+expired; env cannot reopen)"
       ],
       "existing_tests": [
         "tests/test_realized_contract_eval_layer5.py::test_scheduler_eval_pins_and_restores_model_dir",

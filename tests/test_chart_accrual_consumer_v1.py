@@ -280,7 +280,7 @@ def test_decide_untouched_admissions_empty():
     """This slice is Collect + visible surface. Nothing may reach the decision path."""
     import json
     from pathlib import Path
-    p = Path(__file__).resolve().parent.parent / "governance" / "decision_path_admissions.json"
+    p = Path(__file__).resolve().parent.parent / "config" / "decision_path_admissions.json"
     reg = json.loads(p.read_text(encoding="utf-8"))
     admitted = reg.get("admissions") or reg.get("admitted") or []
     assert admitted == [], f"decision path is no longer empty: {admitted}"

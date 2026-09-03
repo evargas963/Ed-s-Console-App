@@ -74,7 +74,7 @@ def significance_substance_violations(text: str, *, rel: str = "") -> list[str]:
 def admission_evidence_resolves_violations(doc: dict | None = None) -> list[str]:
     """SR 11-7: ADMITTED registry rows — every evidence ref must resolve to a repo file."""
     if doc is None:
-        p = REPO / "governance" / "decision_path_admissions.json"
+        p = REPO / "config" / "decision_path_admissions.json"
         try:
             doc = json.loads(p.read_text(encoding="utf-8"))
         except (OSError, ValueError, json.JSONDecodeError) as e:

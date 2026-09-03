@@ -1,7 +1,7 @@
 """Decision-path admission gate (charter, AGENTS.md §Decision-path admission).
 
 No component may influence TRADE — or any output that authorizes or shapes
-exposure — unless ``governance/decision_path_admissions.json`` records it
+exposure — unless ``config/decision_path_admissions.json`` records it
 ADMITTED with evidence (preregistration, OOS results, costs, baselines, scope,
 leakage review) and an operator admission decision.
 
@@ -58,7 +58,7 @@ REQUIRED_EVIDENCE_FIELDS = (
 )
 REQUIRED_OPERATOR_DECISION_FIELDS = ("date", "decided_by")
 
-_DEFAULT_REGISTRY_PATH = Path(__file__).resolve().parent / "governance" / "decision_path_admissions.json"
+_DEFAULT_REGISTRY_PATH = Path(__file__).resolve().parent / "config" / "decision_path_admissions.json"
 
 # Registry states (AdmissionVerdict.registry_state vocabulary).
 STATE_ADMITTED = "admitted"

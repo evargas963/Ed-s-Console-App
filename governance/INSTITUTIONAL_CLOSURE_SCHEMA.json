@@ -693,7 +693,7 @@
       "material_limitations": [],
       "evidence": {
         "fleet": "88/88 active bundles manifest-verified (36 REPROMOTE / 48 RECONSTRUCT / 4 REPROMOTE_REPLACING_UNPROVEN, 0 quarantined); rollback backups models/_item4_quarantine/20260712T133855Z",
-        "strict_default": "governance/ML_ITEM4_MIGRATION_POLICY.json strict_default=true, legacy allowance disabled+expired, env cannot reopen (tested)",
+        "strict_default": "config/ML_ITEM4_MIGRATION_POLICY.json strict_default=true, legacy allowance disabled+expired, env cannot reopen (tested)",
         "cache": "TTL rehash bounds size+mtime_ns-preserving mutation to ED_ARTIFACT_REVERIFY_TTL_SECONDS (default 900s)",
         "tests": "tests/test_ml_item4_fleet_migration.py (21) + tests/test_model_contract_enforcement.py Item-4 section + consumer suites (205 green at implementation)"
       },

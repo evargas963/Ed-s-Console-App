@@ -19,7 +19,6 @@ each session in chat.
 | `OPERATOR_DECISION_REGISTER.md` | O-NN operator decision narratives |
 | `agent_error_log.md` | July-2026 historical error record (E-01..E-39) |
 | `host_scheduled_jobs.md` | The single visible inventory of Windows scheduled tasks |
-| `decision_path_admissions.json` | Decision-path admission registry (starts empty; unadmitted → WAIT) |
 | `guard_applicability.json` | Append-only applicability history (the RC-93 entry is retired; the UNIVERSAL-SAFETY declaration stands; read by tests, not by live guard code) |
 
 ## Live program / process docs

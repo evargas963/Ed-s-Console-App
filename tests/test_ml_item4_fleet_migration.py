@@ -578,7 +578,7 @@ def test_committed_policy_is_strict_and_allowance_closed():
     """The COMMITTED repo policy (not a fixture) must be strict with the legacy
     allowance disabled/expired — recurrence lock against silent reopening."""
     doc = json.loads(
-        (Path(__file__).resolve().parent.parent / "governance" / "ML_ITEM4_MIGRATION_POLICY.json")
+        (Path(__file__).resolve().parent.parent / "config" / "ML_ITEM4_MIGRATION_POLICY.json")
         .read_text(encoding="utf-8")
     )
     assert doc["strict_default"] is True

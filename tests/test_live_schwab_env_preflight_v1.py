@@ -42,20 +42,20 @@ def _isolated_contaminated_parent() -> dict[str, str]:
 
 def test_start_ed_console_bat_wires_live_schwab_env_preflight():
     bat = (ROOT / "start_ed_console.bat").read_text(encoding="utf-8")
-    assert r'tools\check_live_schwab_env.py --bat-unsets' in bat
-    assert r'tools\check_live_schwab_env.py --sanitize' in bat
+    assert 'live_schwab_env.py --bat-unsets' in bat
+    assert 'live_schwab_env.py --sanitize' in bat
     assert "LAUNCH BLOCKED: live Schwab env is CI/test contaminated" in bat
     # preflight (unsets + sanitize) runs before uvicorn so the child inherits the sanitized env
-    assert bat.index("check_live_schwab_env.py --bat-unsets") < bat.index(
+    assert bat.index("live_schwab_env.py --bat-unsets") < bat.index(
         '"%VENV_PY%" -m uvicorn server:app'
     )
-    assert bat.index("check_live_schwab_env.py --sanitize") < bat.index(
+    assert bat.index("live_schwab_env.py --sanitize") < bat.index(
         '"%VENV_PY%" -m uvicorn server:app'
     )
 
 
 def test_ed_ci_offline_inherited_is_sanitized_before_launch():
-    from tools.check_live_schwab_env import apply_sanitize
+    from live_schwab_env import apply_sanitize
 
     env = _isolated_contaminated_parent()
     apply_sanitize(env)
@@ -64,7 +64,7 @@ def test_ed_ci_offline_inherited_is_sanitized_before_launch():
 
 
 def test_schwab_test_sentinel_inherited_is_sanitized_before_launch():
-    from tools.check_live_schwab_env import apply_sanitize, _is_non_live_schwab_value
+    from live_schwab_env import apply_sanitize, _is_non_live_schwab_value
 
     env = _isolated_contaminated_parent()
     apply_sanitize(env)
@@ -76,7 +76,7 @@ def test_schwab_test_sentinel_inherited_is_sanitized_before_launch():
 
 def test_sanitize_does_not_strip_db_harness_or_live_authority():
     """Regression lock for pytest-full 33283969383 / c30d1543."""
-    from tools.check_live_schwab_env import apply_sanitize, vars_to_unset
+    from live_schwab_env import apply_sanitize, vars_to_unset
 
     env = _isolated_contaminated_parent()
     env["SCHWAB_TOKEN_PATH"] = "C:\\live\\schwab_token.json"
@@ -92,7 +92,7 @@ def test_sanitize_does_not_strip_db_harness_or_live_authority():
 
 
 def test_sanitize_does_not_erase_legitimate_live_schwab_credentials():
-    from tools.check_live_schwab_env import apply_sanitize
+    from live_schwab_env import apply_sanitize
 
     env = {
         "SCHWAB_API_KEY": _LIVE_KEY,
@@ -106,7 +106,7 @@ def test_sanitize_does_not_erase_legitimate_live_schwab_credentials():
 
 def test_child_uvicorn_env_has_no_ci_test_contamination():
     """bat-unsets + sanitize are the parent env the uvicorn child inherits."""
-    from tools.check_live_schwab_env import apply_sanitize
+    from live_schwab_env import apply_sanitize
 
     inherited = _isolated_contaminated_parent()
     apply_sanitize(inherited)
@@ -121,7 +121,7 @@ def test_child_uvicorn_env_has_no_ci_test_contamination():
 
 def test_contamination_remaining_after_sanitize_blocks(monkeypatch):
     """Missing live replacement after sentinel strip → fail closed."""
-    from tools import check_live_schwab_env as mod
+    import live_schwab_env as mod
 
     monkeypatch.setattr("config._ensure_dotenv_loaded", lambda: None)
     monkeypatch.delenv("ED_CI_OFFLINE", raising=False)
@@ -132,7 +132,7 @@ def test_contamination_remaining_after_sanitize_blocks(monkeypatch):
 
 
 def test_placeholder_credentials_remaining_block(monkeypatch):
-    from tools import check_live_schwab_env as mod
+    import live_schwab_env as mod
 
     monkeypatch.setattr("config._ensure_dotenv_loaded", lambda: None)
     monkeypatch.delenv("ED_CI_OFFLINE", raising=False)
@@ -143,7 +143,7 @@ def test_placeholder_credentials_remaining_block(monkeypatch):
 
 
 def test_legitimate_live_configuration_passes(monkeypatch):
-    from tools import check_live_schwab_env as mod
+    import live_schwab_env as mod
 
     monkeypatch.setattr("config._ensure_dotenv_loaded", lambda: None)
     monkeypatch.delenv("ED_CI_OFFLINE", raising=False)
@@ -156,7 +156,7 @@ def test_legitimate_live_configuration_passes(monkeypatch):
 
 
 def test_preflight_never_emits_secret_values(monkeypatch, capsys):
-    from tools import check_live_schwab_env as mod
+    import live_schwab_env as mod
 
     secret = "super-secret-live-value-xyz-9f3"
     monkeypatch.setattr("config._ensure_dotenv_loaded", lambda: None)
@@ -189,7 +189,7 @@ def test_block_live_schwab_raises_under_ci_offline_no_arg_call(monkeypatch):
 
 def test_preflight_refuses_contaminated_env_then_passes_after_isolated_sanitize(monkeypatch):
     """Same contract as the old process-env test, but sanitize a copy — no xdist leak."""
-    from tools import check_live_schwab_env as mod
+    import live_schwab_env as mod
 
     monkeypatch.setattr("config._ensure_dotenv_loaded", lambda: None)
     monkeypatch.setenv("ED_CI_OFFLINE", "1")
@@ -221,7 +221,7 @@ def test_preflight_refuses_contaminated_env_then_passes_after_isolated_sanitize(
 
 
 def test_bat_unsets_emit_set_lines_for_cmd_contamination_only(monkeypatch, capsys):
-    from tools import check_live_schwab_env as mod
+    import live_schwab_env as mod
 
     monkeypatch.setenv("ED_CI_OFFLINE", "1")
     monkeypatch.setenv("CI", "true")
