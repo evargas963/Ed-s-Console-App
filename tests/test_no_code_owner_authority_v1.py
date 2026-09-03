@@ -45,12 +45,11 @@ HISTORY = (
 
 _MENTION = re.compile(r"(?i)code[_ -]?owner")
 
-
-def _tracked() -> list[str]:
-    out = subprocess.run(["git", "ls-files"], cwd=str(ROOT), capture_output=True,
-                         text=True, encoding="utf-8", errors="replace").stdout.split()
-    assert len(out) > 100, "tracked-file discovery returned too little to be a real check"
-    return out
+#: Non-.py ACTIVE surfaces. `repo_index` (tests/conftest.py) is the shared observation of the
+#: repository, but it holds .py source ONLY, so it cannot answer a question about charter
+#: markdown, hook JSON or workflow YAML. These suffixes are swept from the git index instead.
+_NON_PY_SUFFIXES = (".md", ".mdc", ".json", ".yaml", ".yml", ".toml", ".cfg", ".sh",
+                    ".ps1", ".bat", ".js", ".mjs", ".html")
 
 
 def test_no_codeowners_file_exists():
@@ -59,25 +58,46 @@ def test_no_codeowners_file_exists():
     assert present == [], (
         f"a CODEOWNERS file was added at {present}. The code-owner requirement was REMOVED, "
         "not satisfied — adding the file re-creates the authority this mission eliminated.")
-    tracked = [p for p in _tracked() if "CODEOWNERS" in p.upper()]
+    tracked = subprocess.run(["git", "ls-files", "--", *CODEOWNERS_LOCATIONS], cwd=str(ROOT),
+                             capture_output=True, text=True).stdout.split()
     assert tracked == [], f"CODEOWNERS is tracked at {tracked}"
 
 
-def test_no_active_surface_claims_code_owner_authority():
-    """No live specification, source or configuration may name it as a control.
-
-    Scoped to ACTIVE surfaces: history and dated evidence are excluded by name above, because
-    rewriting them to match a later decision is the error this mission made twice and undid
-    twice (the preregistration, and 35 archive files).
-    """
+def test_no_active_python_source_claims_code_owner_authority(repo_index):
+    """The .py half, sourced from the shared repository observation rather than a new scan."""
     offenders = []
-    for rel in _tracked():
+    for rel, text, _tree in sorted(repo_index.items()):
+        posix = rel.as_posix()
+        if posix.startswith(HISTORY):
+            continue
+        for n, line in enumerate(text.splitlines(), 1):
+            if _MENTION.search(line):
+                offenders.append(f"{posix}:{n}")
+    assert offenders == [], (
+        "active Python source names code-owner review as a control; it has no role here: "
+        + ", ".join(offenders[:10]))
+
+
+def test_no_active_specification_or_config_claims_code_owner_authority():
+    """The non-.py half: charter, governance specs, hook configs, workflows.
+
+    # institutional-scan-ok: the shared `repo_index` corpus is .py-ONLY (see its docstring in
+    # tests/conftest.py), and this control's whole subject is markdown, JSON and YAML — the
+    # charter, the retirement manifest, the hook configs and the workflows. No existing shared
+    # observation can answer it, and narrowing to a hand-listed set of paths would let a NEW
+    # active surface reintroduce the authority unnoticed, which is the failure this guards.
+    # Scoped to the git index and to non-.py suffixes so it never duplicates the .py sweep.
+    """
+    tracked = subprocess.run(["git", "ls-files"], cwd=str(ROOT), capture_output=True,
+                             text=True, encoding="utf-8", errors="replace").stdout.split()
+    assert len(tracked) > 100, "tracked-file discovery returned too little to be a real check"
+    offenders = []
+    scanned = 0
+    for rel in tracked:
         if rel.startswith(HISTORY):
             continue
         p = ROOT / rel
-        if not p.exists() or p.suffix.lower() not in (
-                ".py", ".md", ".mdc", ".json", ".yaml", ".yml", ".toml", ".cfg", ".sh",
-                ".ps1", ".bat", ".js", ".mjs", ".html"):
+        if p.suffix.lower() not in _NON_PY_SUFFIXES or not p.exists():
             continue
         if p.stat().st_size > 3_000_000:
             continue
@@ -85,12 +105,14 @@ def test_no_active_surface_claims_code_owner_authority():
             text = p.read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
+        scanned += 1
         for n, line in enumerate(text.splitlines(), 1):
             if _MENTION.search(line):
                 offenders.append(f"{rel}:{n}")
+    assert scanned > 50, "non-.py surface discovery returned too little to be a real check"
     assert offenders == [], (
-        "an active surface names code-owner review as a control; it has no role in this "
-        "repository: " + ", ".join(offenders[:10]))
+        "an active specification or config names code-owner review as a control; it has no "
+        "role in this repository: " + ", ".join(offenders[:10]))
 
 
 def test_the_retirement_rationales_name_a_mechanism_that_exists():
