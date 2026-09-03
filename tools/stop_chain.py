@@ -157,93 +157,131 @@ def payload_work_tree(raw_payload: str) -> Path | None:
     return None
 
 
-#: How much of a transcript's tail to read when resolving a no-file event. The most recent
-#: file target is near the end by construction, and a long session's transcript is far more
-#: than a hook is allowed to spend time on.
-_TRANSCRIPT_TAIL_BYTES = 2_000_000
+#: The tool calls that MODIFY a tree. Only these establish where work occurred.
+#:
+#: The first cut accepted any `tool_use` carrying a file path, which let a Read, a Glob or a
+#: Grep nominate the tree that judges a turn: inspect a file in a stale checkout as the last
+#: action and that checkout became the authority. Looking at a file is not working in it.
+#:
+#: Bash is deliberately absent. A shell command can in principle write anywhere, but deciding
+#: WHERE from a command string is the guessing this resolver exists to avoid — and the repo
+#: already refuses shell writes to source (RC-189: heredoc and `-c` writes to .py are blocked,
+#: the Edit/Write tools are the sanctioned path), so governed mutation arrives through the
+#: tools below. A session whose only mutations were shell writes resolves to no work tree and
+#: is judged here, said out loud, never silently.
+MUTATING_TOOLS = frozenset({"Edit", "Write", "MultiEdit", "NotebookEdit"})
 
 
-def _transcript_tail(path: Path) -> list[str]:
+def _transcript_lines(path: Path) -> tuple[list[str], str]:
+    """EVERY line of the transcript, or an explicit reason it could not be read.
+
+    Read whole, not tailed. A fixed tail was a silent correctness hole twice over: an earlier
+    real mutation older than the window vanished, and with it the tree it established, so a
+    long session fell back to bootstrap authority precisely when it had the most history to
+    lose. And the union across a session (see `session_work_trees`) cannot be built from a
+    window at all.
+
+    The cost is bounded by only PARSING lines that could carry a tool call — see the
+    `"tool_use"` pre-filter in the caller, which can produce no false negatives because a real
+    tool_use record necessarily contains that substring.
+    """
     try:
-        size = path.stat().st_size
         with path.open("rb") as fh:
-            if size > _TRANSCRIPT_TAIL_BYTES:
-                fh.seek(size - _TRANSCRIPT_TAIL_BYTES)
-                fh.readline()               # drop the partial line the seek landed inside
-            return fh.read().decode("utf-8", errors="replace").splitlines()
-    except (OSError, ValueError):
-        return []
+            return fh.read().decode("utf-8", errors="replace").splitlines(), ""
+    except OSError as exc:
+        return [], (
+            f"the session transcript at {path} could not be read ({type(exc).__name__}: "
+            f"{exc}), so where this session did its work cannot be established")
 
 
-def _file_paths_in(node) -> list[str]:
-    """Every file path a transcript record names as a TOOL TARGET, however nested.
+def _mutation_targets_in(node) -> list[str]:
+    """Paths this record MODIFIED, however nested — never paths it merely looked at.
 
-    Walked structurally rather than pattern-matched over the raw line, because a transcript
-    also carries assistant prose that can quote a path the session never touched, and a
-    quoted path is not a place where work happened.
+    Two filters, and both are load-bearing:
+
+      * the record must be a `tool_use` whose `name` is in `MUTATING_TOOLS`. Without the name
+        test a Read in a stale checkout nominates that checkout as the authority, which is a
+        one-line way to choose your own judge.
+      * it is walked STRUCTURALLY, so assistant prose quoting a path is not a mutation of it.
     """
     found: list[str] = []
     if isinstance(node, dict):
-        if node.get("type") == "tool_use" and isinstance(node.get("input"), dict):
+        if (node.get("type") == "tool_use"
+                and node.get("name") in MUTATING_TOOLS
+                and isinstance(node.get("input"), dict)):
             for key in ("file_path", "notebook_path", "path"):
                 val = node["input"].get(key)
                 if isinstance(val, str) and val.strip():
                     found.append(val)
         for value in node.values():
-            found.extend(_file_paths_in(value))
+            found.extend(_mutation_targets_in(value))
     elif isinstance(node, list):
         for item in node:
-            found.extend(_file_paths_in(item))
+            found.extend(_mutation_targets_in(item))
     return found
 
 
-def transcript_work_tree(raw_payload: str) -> Path | None:
-    """Where this session's work actually went, read from its own transcript.
+def session_work_trees(raw_payload: str) -> tuple[tuple[Path, ...], str]:
+    """EVERY worktree this session materially modified, or an explicit reason it is unknown.
 
-    This is the half a no-file event needs, and the half the first cut could not answer. A
-    turn-end names no file, so the earlier resolver returned None and the bootstrap tree
-    judged by default — which is precisely the defect, since the bootstrap tree is wherever
-    the session was launched. But the session RECORDED every file it edited, so the most
-    recent one establishes which checkout the work is in. That is evidence, not a guess.
+    Returns `(trees, failure)`. A non-empty `failure` means authority could not be
+    established and the caller must refuse the event — never quietly fall back.
 
-    Scanned newest-first and stopped at the first hit: an older entry says where the session
-    used to be working, which is a different question.
+    ALL of them, not the last one. Taking the most recent mutation let a session that worked
+    in A finish with one harmless write in stale worktree B and hand B the verdict. Work in A
+    does not stop having happened because something later happened elsewhere, so every
+    materially touched tree is returned and the caller adjudicates all of them.
+
+    The whole transcript is read, because a union cannot be built from a window and because a
+    mutation older than any window would otherwise disappear along with the tree it
+    established. Lines are pre-filtered on the `"tool_use"` substring purely to avoid parsing
+    prose; that can miss nothing, since a real tool_use record contains it by construction.
     """
     raw = _payload(raw_payload).get("transcript_path")
     if not isinstance(raw, str) or not raw.strip():
-        return None
-    for line in reversed(_transcript_tail(Path(raw))):
-        if not line.strip():
+        return (), ""                      # no evidence channel at all — caller says so
+    lines, failure = _transcript_lines(Path(raw))
+    if failure:
+        return (), failure
+
+    ordered: list[Path] = []
+    for line in lines:
+        if "tool_use" not in line:
             continue
         try:
             record = json.loads(line)
         except (json.JSONDecodeError, ValueError):
             continue
-        for candidate in reversed(_file_paths_in(record)):
+        for candidate in _mutation_targets_in(record):
             tree = _enclosing_worktree(Path(candidate))
-            if tree is not None:
-                return tree
-    return None
+            if tree is not None and tree not in ordered:
+                ordered.append(tree)
+    return tuple(ordered), ""
 
 
-def canonical_authority(raw_payload: str) -> tuple[Path, str]:
-    """THE governance authority for this event, and how it was established.
+def canonical_authority(raw_payload: str) -> tuple[tuple[Path, ...], str, str]:
+    """Who governs this event: `(trees, source, failure)`.
 
     ONE resolver for both shapes, so there is a single answer to "who judges this" instead of
     a rule for edits and a shrug for everything else:
 
-        payload names a path -> the worktree containing it        (work target)
-        payload names none   -> the worktree of the most recent file this session edited,
-                                read from its own transcript      (session record)
-        neither resolvable   -> this tree, said out loud          (bootstrap)
+        payload names a path -> the worktree containing it              work target
+        payload names none   -> EVERY worktree this session materially
+                                modified, from its own transcript       session record
+        no mutations at all  -> none; this tree judges, and says so     bootstrap
+
+    Plural on purpose. A single answer for a session that worked in two trees would mean
+    choosing one, and any rule for choosing is a rule an agent can satisfy on purpose.
     """
     tree = payload_work_tree(raw_payload)
     if tree is not None:
-        return tree, "work target"
-    tree = transcript_work_tree(raw_payload)
-    if tree is not None:
-        return tree, "session record"
-    return REPO, "bootstrap"
+        return (tree,), "work target", ""
+    trees, failure = session_work_trees(raw_payload)
+    if failure:
+        return (), "unresolved", failure
+    if trees:
+        return trees, "session record", ""
+    return (), "bootstrap", ""
 
 
 # RC-512 — GOVERNANCE AUTHORITY, and why the resolvers above exist.
@@ -262,18 +300,29 @@ def canonical_authority(raw_payload: str) -> tuple[Path, str]:
 #
 # THE RULE, resolved from evidence in BOTH shapes (`canonical_authority`):
 #     payload names a path -> the worktree containing it                    work target
-#     payload names none   -> the worktree of the most recent file this session edited,
-#                             read from its own transcript                  session record
-#     neither resolvable   -> this tree, said out loud                      bootstrap
+#     payload names none   -> EVERY worktree this session MATERIALLY MODIFIED, from its own
+#                             transcript, all of them adjudicated           session record
+#     no mutations at all  -> none; this tree judges and says so            bootstrap
+#     transcript unreadable-> REFUSE, explicitly                            unresolved
 #
 # The middle line is what makes Stop and every other no-file event answerable. The first cut
 # returned None there and the bootstrap judged by default, which is the defect itself.
 #
-# WHAT IT DOES NOT DO. It never decides to skip guards: every path either delegates to a real
-# worktree that runs the IDENTICAL roster, or runs that roster here. Authority is confined to
+# THREE WAYS THE MIDDLE LINE WAS ITSELF A BYPASS, and what each cost:
+#   * it accepted ANY tool_use carrying a path, so a READ in a stale checkout nominated that
+#     checkout. Only MUTATING_TOOLS establish work now: looking at a file is not working in it.
+#   * it took the MOST RECENT target, so one harmless final write in another worktree replaced
+#     the tree where the real work happened. Every materially touched tree is adjudicated now
+#     and the worst real verdict wins — earlier work does not stop having happened.
+#   * it read a fixed 2 MB tail, so a real mutation older than the window vanished and the
+#     session fell back to bootstrap authority silently. The transcript is read whole.
+#
+# WHAT IT DOES NOT DO. It never decides to skip guards: every path either delegates to real
+# worktrees that run the IDENTICAL roster, or runs that roster here. Authority is confined to
 # `repo_worktrees()`, so a prepared directory can never be selected. A tree with UNCOMMITTED
-# guard files is refused, so an agent cannot edit a guard and be judged by the edit. And a
-# delegate that crashes or times out BLOCKS.
+# guard files is refused, so an agent cannot edit a guard and be judged by the edit. A delegate
+# that crashes or times out BLOCKS. And authority that cannot be established REFUSES the event
+# rather than picking a convenient tree.
 
 
 #: Set on a delegated run so authority hops exactly ONCE and can never loop.
@@ -312,27 +361,56 @@ def _delegate(root: Path, raw_payload: str, members: tuple[str, ...]) -> int:
     return proc.returncode
 
 
-def resolve_authority(raw_payload: str, members: tuple[str, ...]) -> tuple[Path, str, str]:
-    """Who judges this event: (tree, how it was chosen, why not the resolved one).
+def _ineligible_reason(root: Path, members: tuple[str, ...]) -> str:
+    """Why `root` may not judge for itself — empty when it may."""
+    if not (root / "tools" / "stop_chain.py").is_file():
+        return f"{root} carries no chain to delegate to"
+    dirty = uncommitted_guard_files(root, members)
+    if dirty:
+        return (f"{root} has UNCOMMITTED guard files ({', '.join(dirty)}); a tree cannot be "
+                f"handed authority over its own unreviewed guard edits")
+    return ""
+
+
+def resolve_authority(raw_payload: str, members: tuple[str, ...]) -> tuple[
+        tuple[Path, ...], bool, str, str, str]:
+    """The whole plan: `(delegate_to, run_here, source, notes, failure)`.
 
     Separated from the acting so the decision is testable on its own, and so the reason a
     delegation did NOT happen is a value rather than a silence.
+
+    `run_here` is True whenever this tree must judge as well — because it is itself one of the
+    materially touched trees, because nothing resolved, or because a resolved tree was refused
+    authority. A refused tree is never simply dropped: something always judges for it.
     """
     import os
 
     if os.environ.get(DELEGATED_ENV) == "1":
-        return REPO, "delegated run", "already delegated; this IS the authority"
-    root, source = canonical_authority(raw_payload)
-    if root == REPO:
-        return REPO, source, ""
-    if not (root / "tools" / "stop_chain.py").is_file():
-        return REPO, "bootstrap", f"{root} carries no chain to delegate to"
-    dirty = uncommitted_guard_files(root, members)
-    if dirty:
-        return REPO, "bootstrap", (
-            f"{root} has UNCOMMITTED guard files ({', '.join(dirty)}); a tree cannot be "
-            f"handed authority over its own unreviewed guard edits")
-    return root, source, ""
+        return (), True, "delegated run", "already delegated; this IS the authority", ""
+
+    trees, source, failure = canonical_authority(raw_payload)
+    if failure:
+        # run_here stays TRUE: refusing to establish authority must not become a way to skip
+        # the roster. The members still run and still say what they found; the refusal is an
+        # ADDITIONAL block on top of their verdict, never a substitute for asking them.
+        return (), True, source, "", failure
+    if not trees:
+        return (), True, source, "", ""
+
+    delegate_to: list[Path] = []
+    notes: list[str] = []
+    run_here = False
+    for root in trees:
+        if root == REPO:
+            run_here = True
+            continue
+        reason = _ineligible_reason(root, members)
+        if reason:
+            notes.append(reason)
+            run_here = True          # judged here INSTEAD, never skipped
+            continue
+        delegate_to.append(root)
+    return tuple(delegate_to), run_here, source, "; ".join(notes), ""
 
 
 def run_chain(raw_payload: str, members: tuple[str, ...] = STOP_CHAIN) -> int:
@@ -341,16 +419,27 @@ def run_chain(raw_payload: str, members: tuple[str, ...] = STOP_CHAIN) -> int:
     A guard that crashes is a BLOCK, not a pass (unmeasurable is never compliant —
     RC-57): its traceback goes to stderr and the chain reports exit 2.
 
-    RC-512: before running anything, ask WHO should be running it. When the authority is a
-    different worktree of this repository, the identical roster runs there and its verdict is
-    returned unchanged. When it is this tree, the roster runs here and every BLOCK says so.
-    No path skips the roster; the only question this settles is which checkout's copy of it
-    answers, and no verdict is ever softened on the way back.
+    RC-512: before running anything, ask WHO should be running it. Every materially touched
+    worktree of this repository runs the identical roster and the WORST real verdict wins —
+    adjudicated, not chosen, because any rule for choosing one tree is a rule an agent can
+    satisfy on purpose. When this tree is among them, or when a resolved tree was refused
+    authority, the roster also runs here and every BLOCK says so. No path skips the roster,
+    no verdict is softened on the way back, and authority that cannot be established REFUSES
+    the event instead of picking a convenient tree.
     """
-    root, source, why_here = resolve_authority(raw_payload, members)
-    if root != REPO:
-        return _delegate(root, raw_payload, members)
+    delegate_to, run_here, source, notes, failure = resolve_authority(raw_payload, members)
     worst = 0
+    if failure:
+        sys.stderr.write(
+            f"GOVERNANCE AUTHORITY: REFUSED — {failure}. Blocking rather than falling back to "
+            f"{REPO}, because quietly judging in whichever tree happens to be running the hook "
+            f"is the defect this resolves (RC-512). The roster below still runs: a refusal to "
+            f"establish authority adds a block, it never removes one.\n")
+        worst = 2
+    for root in delegate_to:
+        worst = max(worst, _delegate(root, raw_payload, members))
+    if not run_here:
+        return 2 if worst else 0
     for name in members:
         try:
             mod = importlib.import_module(name)
@@ -363,7 +452,7 @@ def run_chain(raw_payload: str, members: tuple[str, ...] = STOP_CHAIN) -> int:
             rc = 2
         worst = max(worst, rc)
     if worst:
-        sys.stderr.write(authority_banner(REPO, source, why_here) + "\n")
+        sys.stderr.write(authority_banner(REPO, source, notes) + "\n")
     return 2 if worst else 0
 
 
