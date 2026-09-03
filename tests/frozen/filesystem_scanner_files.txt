@@ -29,6 +29,5 @@ tools/repo_exposure_audit.py::1
 tools/repo_scoreboard.py::1
 tools/scan_derivation_keywords.py::1
 tools/schwab_market_derivation_catalog_v1.py::1
-tools/session_closeout.py::1
 tools/universal_scope_lock.py::3
 tools/verify_registry_coverage.py::1

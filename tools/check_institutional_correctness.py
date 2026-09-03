@@ -633,14 +633,12 @@ def _self_comparison(test: ast.AST) -> str | None:
     return None
 
 
-def _is_overdue(due: str) -> bool:
-    """True when `due` (YYYY-MM-DD) is in the past. An unparseable date is NOT counted here —
-    check_root_cause_log already fails loudly on a malformed due date, so this never
-    double-reports and never silently treats junk as compliant."""
-    try:
-        return datetime.date.fromisoformat(due.strip()) < datetime.date.today()
-    except (TypeError, ValueError):
-        return False
+# RC-505: `_is_overdue` went with check_open_item_cap, its only caller. The two surviving
+# overdue clauses both need MORE than a boolean and are correct as they stand:
+# check_root_cause_log reports an unparseable due date as its own violation before deciding
+# overdue, and the register validator reports HOW MANY days late. A shared helper that
+# returns False on junk would have to be re-checked by both callers anyway, so keeping it as
+# a third opinion on the same question bought nothing.
 
 
 #: Receivers whose .get() is not a dict read we can reason about (routes, env, vendor libs).

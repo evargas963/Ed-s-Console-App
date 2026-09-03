@@ -253,35 +253,62 @@ def _write_ledgers(tmp_path, rc_rows: list[str], reg_rows: list[str]):
     return g / "root_cause_log.md", g / "unproven_register.md"
 
 
-def test_open_item_ratchet_ignores_in_date_items_and_counts_overdue(tmp_path):
+def test_overdue_law_ignores_in_date_items_and_counts_rotted_ones(tmp_path, monkeypatch):
     """A defect opened today with a real due date is HONEST TRACKING and must not fail the
     gate; an item past its own due date is DEFERRAL and must. Counting all open items
-    conflated the two and made recording a real defect fail the build (RC-65)."""
-    from tools.check_institutional_correctness import _overdue_governance_items
+    conflated the two and made recording a real defect fail the build (RC-65).
+
+    RC-505 drives this against the SURVIVING owners. `check_open_item_cap` and its
+    `_overdue_governance_items` are retired — they reported, item for item, what
+    check_root_cause_log reports for RC rows and check_measured_claims_cite_evidence reports
+    for register claims. The LAW is unchanged; only the number of checks stating it is.
+    """
+    import tools.check_institutional_correctness as M
 
     rc, reg = _write_ledgers(
         tmp_path,
-        ["| RC-90 | OPEN | 2026-07-26 | 2099-01-01 | d | w | f |",     # in date -> ignored
-         "| RC-91 | OPEN | 2026-07-01 | 2000-01-01 | d | w | f |",     # ROTTED -> counted
-         "| RC-92 | CLOSED | 2026-07-01 | 2000-01-01 | d | w | f |"],  # closed -> ignored
-        ["| UNPROVEN | 2026-07-26 | 2099-01-01 | fresh claim | e |",   # in date -> ignored
-         "| UNPROVEN | 2026-07-01 | 2000-01-01 | rotted claim | e |",  # ROTTED -> counted
-         "| PROVEN | 2026-07-01 | 2000-01-01 | settled claim | e |"],  # terminal -> ignored
+        ["| RC-90 | OPEN | 2026-07-26 | 2099-01-01 | d | (1) a -> (2) b -> (3) c -> (4) d -> "
+         "(5) ROOT: e | f |",                                            # in date -> ignored
+         "| RC-91 | OPEN | 2026-07-01 | 2000-01-01 | d | (1) a -> (2) b -> (3) c -> (4) d -> "
+         "(5) ROOT: e | f |",                                            # ROTTED -> counted
+         "| RC-92 | CLOSED | 2026-07-01 | 2000-01-01 | d | (1) a -> (2) b -> (3) c -> (4) d "
+         "-> (5) ROOT: e | verified: measured 1 of 1 |"],                # closed -> ignored
+        ["| UNPROVEN | 2026-07-26 | 2099-01-01 | fresh claim | e |",     # in date -> ignored
+         "| UNPROVEN | 2026-07-01 | 2000-01-01 | rotted claim | e |",    # ROTTED -> counted
+         "| PROVEN | 2026-07-01 | 2000-01-01 | settled claim | e |"],    # terminal -> ignored
     )
-    items = _overdue_governance_items(rc, reg)
-    assert len(items) == 2, items
-    assert "RC-91" in items
-    assert any("rotted claim" in i for i in items)
-    assert "RC-90" not in items and "RC-92" not in items
+    monkeypatch.setattr(M, "REPO", tmp_path)
+    monkeypatch.setattr(M, "_UNPROVEN_REGISTER", reg)
+    rc_overdue = [v for v in M.check_root_cause_log() if "past its due date" in str(v.msg)]
+    assert [v for v in rc_overdue if "RC-91" in str(v.msg)], rc_overdue
+    assert not [v for v in rc_overdue if "RC-90" in str(v.msg) or "RC-92" in str(v.msg)], (
+        "an in-date OPEN row or a CLOSED row was counted as deferral")
+
+    reg_overdue = [v for v in M.check_measured_claims_cite_evidence()
+                   if "past due" in str(v.msg)]
+    assert [v for v in reg_overdue if "rotted claim" in str(v.msg)], reg_overdue
+    assert not [v for v in reg_overdue
+                if "fresh claim" in str(v.msg) or "settled claim" in str(v.msg)]
 
 
-def test_open_item_ratchet_does_not_double_report_a_malformed_due_date(tmp_path):
-    """check_root_cause_log already fails loudly on an unparseable due date; the ratchet must
-    not ALSO count it, or one defect reads as two."""
-    from tools.check_institutional_correctness import _is_overdue, _overdue_governance_items
+def test_a_malformed_due_date_is_reported_once_not_twice(tmp_path, monkeypatch):
+    """One defect must read as one defect. A junk due date is reported by the row-schema
+    clause; it must not ALSO be counted as overdue, in either ledger."""
+    import tools.check_institutional_correctness as M
 
-    assert _is_overdue("not-a-date") is False
-    assert _is_overdue("") is False
     rc, reg = _write_ledgers(
-        tmp_path, ["| RC-93 | OPEN | 2026-07-26 | garbage | d | w | f |"], [])
-    assert _overdue_governance_items(rc, reg) == []
+        tmp_path,
+        ["| RC-93 | OPEN | 2026-07-26 | garbage | d | (1) a -> (2) b -> (3) c -> (4) d -> "
+         "(5) ROOT: e | f |"],
+        ["| UNPROVEN | 2026-07-26 | garbage | junk-dated claim | e |"])
+    monkeypatch.setattr(M, "REPO", tmp_path)
+    monkeypatch.setattr(M, "_UNPROVEN_REGISTER", reg)
+
+    msgs = [str(v.msg) for v in M.check_root_cause_log()]
+    assert not [m for m in msgs if "past its due date" in m], msgs
+    assert [m for m in msgs if "RC-93" in m and "due date" in m], (
+        "a junk due date must still be reported ONCE, by the schema clause")
+
+    reg_msgs = [str(v.msg) for v in M.check_measured_claims_cite_evidence()]
+    assert not [m for m in reg_msgs if "past due" in m], reg_msgs
+    assert [m for m in reg_msgs if "unparseable due date" in m], reg_msgs
