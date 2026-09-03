@@ -40,7 +40,6 @@ from __future__ import annotations
 import json
 import os
 import re
-import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -343,7 +342,7 @@ _VERIFICATION = re.compile(
 #: FC-13: this module used to carry its own production-surface geometry here. The constants
 #: were dead — nothing read them — but a dead copy of a semantic rule is still a second
 #: producer waiting to be picked up. The one authority is
-#: tools/pretooluse_guard.classify_path, reached through turn_self_audit.is_production_path.
+#: tools/pretooluse_guard.classify_path, and it is the only one.
 
 #: The no-grep law (2026-05-22) as an ACTION predicate, replacing a spelling test that
 #: flipped on file extensions, downstream pipes and wrappers (audit 2026-08-25:
@@ -393,11 +392,16 @@ def _repo_search_violation(cmd: str) -> bool:
             if name == "rg" and idx == 0:
                 return True
     return False
-#: Deliberate split with operating_process_lock.reset_guard_violations (both stay firing):
-#: THIS regex bans the universal hard forms anywhere on the host; LOCK-2 over there bans the
-#: full reset/restore/checkout--/clean/stash verb class on protected/bare targets.
-_DESTRUCTIVE_GIT = re.compile(
-    r"\bgit\s+(?:reset\s+--hard|checkout\s+--\s|clean\s+-[a-z]*f|push\s+--force(?!-with-lease))", re.I)
+#: RC-505: the destructive-git ban moved OUT of this file. It lived here as a second regex
+#: beside operating_process_lock.reset_guard_violations, both firing on the same
+#: PreToolUse(Bash) event through the same chain, and both files called the split deliberate.
+#: MEASURED 2026-09-02 over 25 command forms: 8 blocked twice with two different messages, and
+#: `git push -f origin main` blocked NOWHERE — this regex spelled the flag `--force` only,
+#: and the other half does not cover push at all. The forms unique to this regex
+#: (`checkout -- .`, force-push) are folded into that one owner, which additionally strips
+#: message and heredoc payloads (RC-253) so a commit message quoting a wipe is prose, not an
+#: action. process_lock_guard is registered on every Bash/PowerShell event this guard sees,
+#: so the reach is unchanged.
 #: RC-273 — the trees that are gitignored and therefore UNRECOVERABLE.
 #: `.gitignore:31 data/*` means the 27 GB database has no history at all, so the
 #: single most valuable artefact in this repository is the one every
@@ -983,9 +987,9 @@ def bash_violations(cmd: str, ledger: list[dict], payload_cwd: str = "") -> list
                    "(2026-05-22): read files end-to-end or use structural/AST analysis. Filtering "
                    "a command's own stdout is allowed; searching the codebase is not. "
                    "Piping a search into head/wc does not make it a stdout filter.")
-    if _DESTRUCTIVE_GIT.search(cmd):
-        out.append("ACTION BLOCKED: destructive git can discard operator work. Hand it to the "
-                   "operator.")
+    # RC-505: destructive git is answered by operating_process_lock.reset_guard_violations,
+    # reached through process_lock_guard on this same PreToolUse registration. One law, one
+    # owner, one message — see the note where this regex used to live.
     if _protected_path_violation(raw):
         out.append("ACTION BLOCKED (RC-273): this deletes, moves or truncates something under "
                    "data/, backups/ or models/. Those trees are gitignored -- there is NO "
@@ -1048,164 +1052,15 @@ def edit_violations(path: str, new_text: str, ledger: list[dict],
 # forcing a token rather than an observation, and it blocked pure governance/read turns.
 # The scoped form of the law survives: pm_verify_repo_violations (honesty_guard) blocks
 # a verdict about repo/live state that carries no same-turn measurement.
-
-
-def _supervisor_incomplete(message: str) -> dict:
-    """A typed parent-owned result for a child that produced no valid audit result."""
-    return {
-        "schema_version": 1,
-        "contract_id": "CLEAN_FOR_TURN_CONTRACT_V1",
-        "authoritative": True,
-        "completed": False,
-        "verdict": "INCOMPLETE",
-        "exit_code": 3,
-        "internal_errors": [message],
-    }
-
-
-def _write_turn_audit_receipt(
-    session_id: str,
-    result: dict,
-    *,
-    observed_exit_code: int,
-    validation_errors: list[str],
-) -> str | None:
-    """Persist parent-observed evidence atomically outside the repository.
-
-    Receipts are diagnostics, never inputs to Stop authorization.
-    """
-    safe_session = re.sub(r"[^A-Za-z0-9_.-]", "_", session_id)[:80]
-    run_id = re.sub(
-        r"[^A-Za-z0-9_.-]", "_", str(result.get("audit_run_id") or "unknown")
-    )[:80]
-    directory = Path(tempfile.gettempdir()) / "ed_turn_audit_receipts" / safe_session
-    target = directory / f"{run_id}.json"
-    payload = {
-        "observed_exit_code": observed_exit_code,
-        "validation_errors": validation_errors,
-        "result": result,
-        "recorded_at": __import__("time").time(),
-    }
-    try:
-        directory.mkdir(parents=True, exist_ok=True)
-        temporary = target.with_suffix(".tmp")
-        temporary.write_text(
-            json.dumps(payload, sort_keys=True), encoding="utf-8"
-        )
-        temporary.replace(target)
-    except OSError as exc:
-        return f"authoritative receipt write failed: {type(exc).__name__}: {exc}"
-    return None
-
-
-def supervise_turn_audit(
-    repo: str | Path,
-    session_id: str,
-    *,
-    command: list[str] | None = None,
-    timeout: float = 1800,
-    required_session_paths: list[str] | tuple[str, ...] | None = None,
-) -> tuple[list[str], dict]:
-    """Launch, observe, and validate the authoritative audit child for this Stop.
-
-    A repository artifact is never read here.  The only candidate result is the
-    stdout of this exact child process, whose actual exit status the parent owns.
-    """
-    root = Path(repo).resolve()
-    if not session_id:
-        result = _supervisor_incomplete("missing session identity")
-        return ["TURN AUDIT INCOMPLETE: missing session identity"], result
-    session_paths = sorted({
-        path.replace("\\", "/").removeprefix("./")
-        for path in required_session_paths or ()
-        if path
-    })
-    argv = command or [
-        sys.executable,
-        str(REPO / "tools" / "turn_self_audit.py"),
-        "--authoritative",
-        "--repo",
-        str(root),
-        "--session-id",
-        session_id,
-        *[
-            item
-            for path in session_paths
-            for item in ("--required-session-file", path)
-        ],
-    ]
-    try:
-        proc = subprocess.run(
-            argv,
-            cwd=str(REPO),
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=timeout,
-        )
-    except subprocess.TimeoutExpired:
-        result = _supervisor_incomplete(f"audit child timed out after {timeout}s")
-        return [f"TURN AUDIT INCOMPLETE: audit child timed out after {timeout}s"], result
-    except (OSError, subprocess.SubprocessError) as exc:
-        result = _supervisor_incomplete(
-            f"audit child launch failed: {type(exc).__name__}: {exc}"
-        )
-        return [f"TURN AUDIT INCOMPLETE: {result['internal_errors'][0]}"], result
-
-    raw = (proc.stdout or "").strip()
-    if proc.returncode not in (0, 1, 2, 3) and not raw:
-        message = (
-            f"audit child did not complete successfully (unexpected exit {proc.returncode})"
-        )
-        return [f"TURN AUDIT INCOMPLETE: {message}"], _supervisor_incomplete(message)
-    try:
-        result = json.loads(raw)
-    except (json.JSONDecodeError, ValueError):
-        message = (
-            f"malformed structured audit result from child exit {proc.returncode}: "
-            f"{raw[:200]!r}"
-        )
-        result = _supervisor_incomplete(message)
-        return [f"TURN AUDIT INCOMPLETE: {message}"], result
-    if not isinstance(result, dict):
-        message = "malformed structured audit result: top level is not an object"
-        return [f"TURN AUDIT INCOMPLETE: {message}"], _supervisor_incomplete(message)
-
-    try:
-        from tools.turn_self_audit import validate_result
-    except ImportError:
-        from turn_self_audit import validate_result  # type: ignore
-    try:
-        validation = validate_result(
-            result,
-            repo=root,
-            session_id=session_id,
-            observed_exit_code=proc.returncode,
-            required_session_paths=session_paths,
-        )
-    except Exception as exc:  # fail closed if the validator itself encounters hostile structure
-        validation = [
-            f"structured result validation crashed: {type(exc).__name__}: {exc}"
-        ]
-    violations = [f"TURN AUDIT RESULT REJECTED: {item}" for item in validation]
-    receipt_error = _write_turn_audit_receipt(
-        session_id,
-        result,
-        observed_exit_code=proc.returncode,
-        validation_errors=validation,
-    )
-    if receipt_error:
-        violations.append(f"TURN AUDIT INCOMPLETE: {receipt_error}")
-    verdict = str(result.get("verdict") or "")
-    if proc.returncode not in (0, 1, 2, 3):
-        violations.append(
-            f"TURN AUDIT INCOMPLETE: audit child did not complete successfully "
-            f"(unexpected exit {proc.returncode})"
-        )
-    if verdict not in ("CLEAN", "NO_RELEVANT_PRODUCTION_CHANGE"):
-        violations.append(f"TURN AUDIT BLOCKED: authoritative verdict is {verdict or 'UNKNOWN'}")
-    return violations, result
+# RC-505: the Stop-time supervised turn audit is GONE, not dormant. RC-190 retired the
+# obligation on 2026-08-24 and left the supervisor (supervise_turn_audit,
+# _write_turn_audit_receipt, _supervisor_incomplete) plus tools/turn_self_audit.py behind
+# as a 'manual/CI tool'. MEASURED 2026-09-02: no workflow, pre-commit hook, Makefile
+# target or npm script ran it, and the supervisor had no caller -- dead code inside a live
+# guard, which reads as coverage that is not there. Everything it audited binds at a real
+# seam: ruff (pre-commit + hardening), pytest (required pytest-full), index/worktree
+# parity (operating_process_lock, pre-commit `operating-process`), and the enforced roster
+# (precommit_institutional + check_delta_adds_no_debt).
 
 
 def stop_violations(ledger: list[dict], ok_cmds: frozenset[str] | None = None) -> list[str]:
@@ -1218,12 +1073,12 @@ def stop_violations(ledger: list[dict], ok_cmds: frozenset[str] | None = None) -
                    f"that RAN WITHOUT ERROR. "
                    f"Edited: {', '.join(sorted(set(edits))[:6])}. Execute the affected tests or "
                    f"a live probe — and it must complete — before ending the turn.")
-    # RC-190 same-turn turn_self_audit obligation RETIRED (SIMPLICITY REHAB 2026-08-24):
+    # RC-190 same-turn supervised-audit obligation RETIRED (SIMPLICITY REHAB 2026-08-24):
     # it enforced ONE obligation twice (ledger clause + a 5.8s-measured Stop-time
     # supervised child), and the same CHECKS roster runs at commit
     # (tools/precommit_institutional.py) with the delta gate as merge authority
     # (check_delta_adds_no_debt --base origin/main in hardening.yml) enforcing strictly
-    # more. tools/turn_self_audit.py stays available as a manual/CI tool.
+    # more. RC-505 deleted the leftover tool and supervisor; nothing ran them.
     # RC-125 probe-every-turn RETIRED here (SIMPLICITY REHAB 2026-08-24) — see the note
     # where _LIVE_PROBE lived: a substring regex forced a token, not an observation, and
     # blocked pure governance/read turns. pm_verify_repo_violations keeps the scoped form.
@@ -1306,8 +1161,8 @@ def main() -> int:
     # full-go 2026-08-24): the child re-ran the CHECKS roster at every Stop with
     # production edits (5.8s measured) on top of the same roster running at commit
     # (precommit_institutional) and the delta gate at merge (hardening.yml), which
-    # enforces strictly more. tools/turn_self_audit.py remains a manual/CI tool;
-    # supervise_turn_audit stays importable for its contract tests.
+    # enforces strictly more. RC-505 then deleted the child and its supervisor: a
+    # retired control kept importable for its own tests is tests without a control.
     if bad:
         _record(sid, "stop_blocked", "operator_law_guard", payload_repo or "")
         sys.stderr.write("BLOCKED (RC-93) — OPERATOR LAW: ban the ACTION, not the word.\n\n"

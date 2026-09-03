@@ -1,10 +1,16 @@
 """FC-13 — one path authority: governance and product-surface from one resolve-and-compare.
 
-These tests fail against the pre-fix tree. Before `classify_path` existed,
-`turn_self_audit.is_production_path` normalised only a leading "./" and then applied a
-RELATIVE-prefix `startswith` exemption, which an absolute path can never match. So
+These tests fail against the pre-fix tree. Before `classify_path` existed, the second
+implementation (`turn_self_audit.is_production_path`) normalised only a leading "./" and then
+applied a RELATIVE-prefix `startswith` exemption, which an absolute path can never match. So
 `<tmp>/scratchpad/x.py` was classified PRODUCTION even though "scratchpad/" was already in
 the exemption list, and the governance question ("is this path even ours") was never asked.
+
+RC-505: that second implementation is now DELETED with the rest of the retired turn-audit
+subsystem, so the consumer-agreement test that compared the two is gone with it — there is
+nothing left to disagree. What replaces it is stronger and already here:
+`test_single_producer_no_module_redefines_the_geometry` fails if any module in tools/ starts
+defining the geometry again.
 
 The oracle here is deliberately independent of the implementation: the expectations are
 stated as literal path/answer pairs derived from the mission's required controls, not
@@ -18,7 +24,6 @@ from pathlib import Path
 import pytest
 
 G = importlib.import_module("tools.pretooluse_guard")
-TSA = importlib.import_module("tools.turn_self_audit")
 
 REPO = Path(G.__file__).resolve().parent.parent
 
@@ -38,24 +43,21 @@ def test_negative_control_absolute_scratchpad_is_not_governed_production(tmp_pat
     facts = G.classify_path(str(p))
     assert facts.governed is False, "a path outside the repository is not ours to govern"
     assert facts.production is False, "not governed cannot be production"
-    assert TSA.is_production_path(str(p)) is False, "the consumer must agree with the authority"
 
 
 def test_legitimate_control_absolute_repo_production_path():
     """GOOD: absolute repo production .py -> governed + production."""
-    facts = G.classify_path(str(REPO / "tools" / "turn_self_audit.py"))
+    facts = G.classify_path(str(REPO / "tools" / "operator_law_guard.py"))
     assert facts.governed is True
     assert facts.production is True
-    assert TSA.is_production_path(str(REPO / "tools" / "turn_self_audit.py")) is True
 
 
 def test_legitimate_control_relative_repo_production_path():
     """GOOD: relative repo production .py -> governed + production."""
-    facts = G.classify_path("tools/turn_self_audit.py")
+    facts = G.classify_path("tools/operator_law_guard.py")
     assert facts.governed is True
     assert facts.production is True
-    assert facts.rel == "tools/turn_self_audit.py"
-    assert TSA.is_production_path("tools/turn_self_audit.py") is True
+    assert facts.rel == "tools/operator_law_guard.py"
 
 
 @pytest.mark.parametrize("rel", [
@@ -71,7 +73,6 @@ def test_legitimate_control_repo_non_production_paths(rel):
     facts = G.classify_path(rel)
     assert facts.governed is True, rel
     assert facts.production is False, rel
-    assert TSA.is_production_path(rel) is False, rel
 
 
 def test_fail_closed_unresolvable_path_is_not_silently_ungoverned(monkeypatch):
@@ -126,19 +127,26 @@ def test_single_producer_no_module_redefines_the_geometry(repo_index):
     )
 
 
-def test_consumers_agree_with_the_authority_across_the_whole_tracked_tree():
-    """Every tracked file must get the same answer from the authority and from the consumer.
+def test_the_authority_answers_every_tracked_file_without_raising():
+    """The authority is asked about REAL repository contents, not a handful of examples.
 
-    This is the property that a merge could silently break, and it is checked over real
-    repository contents rather than a handful of chosen examples.
+    RC-505: this used to compare `classify_path` against `turn_self_audit.is_production_path`
+    across the tracked tree. That second implementation is deleted, and a comparison with
+    nothing is not a control — so the surviving property is that the one authority answers
+    every real path, deterministically, without raising. A second implementation cannot
+    return silently: `test_single_producer_no_module_redefines_the_geometry` fails if one does.
     """
     import subprocess
     files = subprocess.run(["git", "ls-files"], cwd=str(REPO), capture_output=True,
                            text=True, encoding="utf-8", errors="replace").stdout.split()
     assert len(files) > 100, "tracked-file discovery returned too little to be a real check"
-    disagreements = [f for f in files
-                     if G.classify_path(f).production != TSA.is_production_path(f)]
-    assert disagreements == [], f"consumer disagrees with authority on: {disagreements[:10]}"
+    facts = [G.classify_path(f) for f in files]
+    assert all(isinstance(f.production, bool) and isinstance(f.governed, bool) for f in facts)
+    assert all(f.governed for f in facts), "a tracked repository file read as ungoverned"
+    # Determinism: the same question twice must give the same answer.
+    assert [f.production for f in facts] == [G.classify_path(f).production for f in files]
+    # And it must actually discriminate, or it is a constant wearing a predicate's name.
+    assert any(f.production for f in facts) and any(not f.production for f in facts)
 
 
 def test_rc66_lane_and_product_surface_are_distinct_questions():

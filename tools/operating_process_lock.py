@@ -56,15 +56,47 @@ PROTECTED_PATHS: tuple[str, ...] = ENFORCEMENT_PATHS + (
 #: 2026-08-03 (RC-210 x2, RC-229) used soft forms the literal-match ban never saw. A command
 #: matching a destructive verb AND touching a protected/product path (or bare, whole-tree
 #: forms) BLOCKS at PreToolUse in EVERY session wired to process_lock_guard.
-#: Deliberate split with operator_law_guard._DESTRUCTIVE_GIT (both stay firing): that regex
-#: bans the universal hard forms anywhere on the host; THIS class rule covers the full
-#: reset/restore/checkout--/clean/stash verb family on protected/bare targets.
+#: RC-505: this is now the ONE owner of "destructive git". It used to be two — a second regex
+#: (`operator_law_guard._DESTRUCTIVE_GIT`) ran on the SAME PreToolUse(Bash) event through the
+#: same chain, and a comment in both files called the split deliberate. MEASURED 2026-09-02
+#: over 25 command forms: 8 blocked TWICE with two different messages, 2 only there, 6 only
+#: here — and `git push -f origin main` blocked NOWHERE, because that regex spelled the force
+#: flag `--force` only. A split predicate does not add coverage; it hides the gap between the
+#: halves. The two forms unique to the other half are folded in below and the `-f` hole is
+#: closed, so this file answers the question once.
+#: git's GLOBAL options — the ones that sit between `git` and the subcommand. The first group
+#: takes its value as a SEPARATE token, which is why they need their own alternative: a
+#: `(?:-\S+\s+)*` prefix consumes `-C ` and then stalls on the path, so `git -C ../other reset
+#: --hard` slipped past BOTH previous destructive-git regexes (MEASURED 2026-09-02 — it wipes
+#: another checkout, which is the worst case, not an edge case). One definition, consumed by
+#: the regex below and by process_lock_guard's token parser.
+GIT_GLOBAL_WITH_ARG: tuple[str, ...] = (
+    "-C", "-c", "--git-dir", "--work-tree", "--namespace", "--super-prefix", "--exec-path",
+)
+_GIT_GLOBALS = (r"(?:(?:" + "|".join(__import__("re").escape(o) for o in GIT_GLOBAL_WITH_ARG)
+                + r")\s+\S+\s+|-\S+\s+)*")
+
 _RESET_GUARD_RE = __import__("re").compile(
-    r"\bgit\s+(?:-\S+\s+)*(reset\b|restore\b|checkout\s+(?:\S+\s+)*--\s|clean\b|stash\b)",
+    r"\bgit\s+" + _GIT_GLOBALS +
+    r"(reset\b|restore\b|checkout\s+(?:\S+\s+)*--\s|clean\b|stash\b)",
     __import__("re").I)
 _RESET_GUARD_SAFE_RE = __import__("re").compile(
-    r"\bgit\s+(?:-\S+\s+)*(restore\s+--staged\b(?!.*--worktree)|stash\s+list\b|checkout\s+-b\b|clean\s+(?:-\S*n\S*\b|--dry-run\b))",
+    r"\bgit\s+" + _GIT_GLOBALS +
+    r"(restore\s+--staged\b(?!.*--worktree)|stash\s+list\b|checkout\s+-b\b|clean\s+(?:-\S*n\S*\b|--dry-run\b))",
     __import__("re").I)
+
+#: The UNIVERSAL hard forms: destructive whatever they name, so they never consult the
+#: protected-path inventory below. `--force-with-lease` is excluded because it refuses to
+#: overwrite work the pusher has not seen — that is the safe form, and banning it would push
+#: people to the unsafe one. Both spellings of the force flag are here: the previous owner
+#: matched `--force` only, so `git push -f` walked through every guard on the chain.
+_HARD_WIPE_RE = __import__("re").compile(
+    r"\bgit\s+" + _GIT_GLOBALS + r"(?:"
+    r"reset\s+--hard"
+    r"|checkout\s+--\s+\.(?:/)?(?:\s|$)"
+    r"|clean\s+-[a-z]*f"
+    r"|push\s+(?:[^|;&]*\s)?(?:--force(?!-with-lease)|-[a-zA-Z]*f[a-zA-Z]*(?=\s|$))"
+    r")", __import__("re").I)
 
 #: RC-252: the STATIC inventory of what must never be wiped, independent of any mission.
 #: LOCK-2 originally drew its targeted reach from PROTECTED_PATHS plus the ACTIVE mission's
@@ -115,12 +147,28 @@ def _strip_command_payloads(cmd: str) -> str:
 
 
 def reset_guard_violations(command: str) -> list[str]:
-    """LOCK-2: BLOCK tree-destructive git against protected/product scope (RC-231/RC-252).
+    """LOCK-2: BLOCK destructive git — the ONE owner of that question (RC-231/RC-252/RC-505).
 
+    Two clauses, one predicate. The HARD forms (`reset --hard`, `checkout -- .`, `clean -*f*`,
+    `push --force`/`-f`) are destructive whatever they name, so they block on sight, anywhere,
+    in any repository the session can reach. The CLASS forms (the wider
+    reset/restore/checkout--/clean/stash family) block when they touch a protected/product
+    path or take a bare whole-tree shape.
+
+    Both clauses read the SAME payload-stripped command, so a commit message or a heredoc that
+    merely quotes a wipe is still prose (RC-253) — which the previous second owner did not do.
     Not subject-disableable (RC-450): no env token or repo file can authorize a wipe.
-    `git restore --staged` (index-only), `git stash list`, `git checkout -b` stay legal.
+    `git restore --staged` (index-only), `git stash list`, `git checkout -b` and
+    `push --force-with-lease` stay legal.
     """
     cmd = _strip_command_payloads(command or "")
+    if _HARD_WIPE_RE.search(cmd):
+        return [
+            "RESET_GUARD (LOCK-2/RC-231): destructive git — a hard form that discards work "
+            "whatever it names (`reset --hard`, `checkout -- .`, `clean -f`, `push --force`/"
+            "`-f`). Hand it to the operator. `push --force-with-lease` is the safe form and is "
+            "allowed. Not subject-disableable (Architecture A / RC-450)."
+        ]
     if not _RESET_GUARD_RE.search(cmd) or _RESET_GUARD_SAFE_RE.search(cmd):
         return []
     touched = [p for p in PROTECTED_PATHS + PRODUCT_WIPE_PROTECTED if p in cmd]

@@ -35,10 +35,6 @@ sys.path.insert(0, str(REPO / "tools"))
 
 import operator_law_guard as G  # noqa: E402
 
-# RC-368: declared direct owner — this suite drives the guard's protected-path clauses.
-TURN_AUDIT_OWNS = [
-    "tools/operator_law_guard.py",
-]
 
 #: Split so this test file is not itself refused when its text is scanned.
 D = "d" + "ata/"

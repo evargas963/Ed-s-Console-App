@@ -36,8 +36,6 @@ from tools.sync_schwab_field_dictionary import (  # noqa: E402
     write_sync_state,
 )
 
-# RC-368: declared direct owner.
-TURN_AUDIT_OWNS = ["tools/sync_schwab_field_dictionary.py"]
 
 TODAY = "2026-08-15"
 

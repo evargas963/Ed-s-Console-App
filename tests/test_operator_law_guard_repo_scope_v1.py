@@ -35,11 +35,6 @@ sys.path.insert(0, str(REPO / "tools"))
 
 import operator_law_guard as G  # noqa: E402
 
-# RC-368: declared direct owner — this suite drives the guard's repo-scope resolution
-# and the RC-360 grant reader.
-TURN_AUDIT_OWNS = [
-    "tools/operator_law_guard.py",
-]
 
 ED = G.normalize_repo(REPO)
 PYTEST_PROOF = ".venv/Scripts/python.exe -m pytest tests/test_db_safety.py -q"
@@ -423,10 +418,9 @@ def test_governance_and_test_paths_are_still_not_production():
 
 
 # ── 6. universal protections survive the scoping change ───────────────────────────────────
+# RC-505: the destructive-git cases moved to section 6b. They are not weaker for moving —
+# they are asserted at the seam that now owns them, over a strictly LARGER command set.
 @pytest.mark.parametrize("cmd,needle", [
-    ("git reset --hard HEAD~1", "destructive git"),
-    ("git clean -fd", "destructive git"),
-    ("git push --force origin main", "destructive git"),
     ("$env:ED_OPERATOR_LAW_GUARD='off'", "disables a mechanical lock"),
     ("git add -A", "blind staging"),
     ("grep -r foo *.py", "shell grep"),
@@ -445,9 +439,6 @@ def test_rc360_head_grant_cannot_authorize_no_verify_in_this_repository():
 
 
 @pytest.mark.parametrize("cmd,needle", [
-    ("git reset --hard HEAD~1", "destructive git"),
-    ("git clean -fd", "destructive git"),
-    ("git push --force origin main", "destructive git"),
     ("$env:ED_UI_MOCKUP_LOCK='off'", "disables a mechanical lock"),
     ("git add -A", "blind staging"),
 ])
@@ -457,16 +448,78 @@ def test_universal_protections_fire_for_an_unrelated_repository(cmd, needle, oth
     assert any(needle in v for v in out), (cmd, out)
 
 
-def test_universal_protections_fire_when_identity_is_unresolved():
-    out = G.bash_violations("git reset --hard HEAD~1", [], payload_cwd="")
-    assert any("destructive git" in v for v in out), out
+# ── 6b. destructive git: ONE owner, asserted at the seam that runs it (RC-505) ─────────────
+# This guard carried a second destructive-git regex beside
+# operating_process_lock.reset_guard_violations, both firing on the same PreToolUse(Bash)
+# event through the same chain. MEASURED 2026-09-02 across 25 forms: 8 blocked twice, 2 only
+# here, 6 only there — and `git push -f origin main` blocked NOWHERE, because this half
+# spelled the flag `--force` only. The union now lives in the one owner, and these controls
+# assert the SAME universal property (no repo scoping, no early return) at the seam that
+# still runs, plus the two forms that used to escape.
+_DESTRUCTIVE = [
+    "git reset --hard HEAD~1",
+    "git clean -fd",
+    "git push --force origin main",
+    "git push -f origin main",            # RC-505: this used to block nowhere
+    "git -C ../other reset --hard",       # RC-505: `-C <path>` used to walk past both halves
+]
 
 
-def test_guard_does_not_return_early_for_an_out_of_scope_repository(other_repo):
-    """A destructive command AND a commit in one chain: the universal rule must still fire."""
-    out = G.bash_violations('cd "%s" && git reset --hard HEAD~1' % other_repo, [],
-                            payload_cwd=str(REPO))
-    assert any("destructive git" in v for v in out), out
+def _pl_block(cmd, cwd=""):
+    """The live PreToolUse seam for a Bash command, through the guard that owns this law."""
+    import tools.process_lock_guard as PLG
+    return PLG.pretooluse_block("Bash", {"command": cmd}, str(cwd))
+
+
+@pytest.mark.parametrize("cmd", _DESTRUCTIVE)
+def test_destructive_git_blocks_in_this_repository(cmd):
+    assert any("RESET_GUARD" in v for v in _pl_block(cmd, REPO)), cmd
+
+
+@pytest.mark.parametrize("cmd", _DESTRUCTIVE)
+def test_destructive_git_blocks_for_an_unrelated_repository(cmd, other_repo):
+    """Host-wide safety is not a property of which checkout is in front (RC-258)."""
+    assert any("RESET_GUARD" in v for v in _pl_block(cmd, other_repo)), cmd
+
+
+def test_destructive_git_blocks_when_identity_is_unresolved():
+    assert any("RESET_GUARD" in v for v in _pl_block("git reset --hard HEAD~1", ""))
+
+
+def test_destructive_git_is_not_laundered_by_a_harmless_first_command(other_repo):
+    """A destructive command chained behind a `cd` must still fire."""
+    cmd = 'cd "%s" && git reset --hard HEAD~1' % other_repo
+    assert any("RESET_GUARD" in v for v in _pl_block(cmd, REPO)), cmd
+
+
+def test_the_safe_force_push_form_stays_legal():
+    """--force-with-lease refuses to overwrite work the pusher has not seen. Banning the safe
+    form teaches people to reach for the unsafe one."""
+    assert _pl_block("git push --force-with-lease origin main", REPO) == []
+
+
+def test_a_wipe_quoted_in_a_commit_message_is_prose_not_an_action():
+    """RC-253, and a property the deleted second owner did NOT have: it read the raw command,
+    so an honest incident write-up quoting the wipe fired the guard hardest."""
+    cmd = "git commit -m 'RC-231: git reset --hard destroyed the tree'"
+    assert not any("RESET_GUARD" in v for v in _pl_block(cmd, REPO))
+
+
+def test_only_one_module_defines_the_destructive_git_predicate():
+    """ONE FAUCET, checked structurally: no second module may grow its own copy."""
+    tools_dir = sorted((REPO / "tools").glob("*.py"))
+    assert len(tools_dir) > 20, "tools/ discovery returned too little to be a real check"
+    offenders = []
+    for p in tools_dir:
+        if p.name == "operating_process_lock.py":
+            continue                       # the one owner
+        text = p.read_text(encoding="utf-8", errors="replace")
+        for token in ("_DESTRUCTIVE_GIT = ", "_HARD_WIPE_RE = ", "_RESET_GUARD_RE = "):
+            if token in text:
+                offenders.append("%s: %s" % (p.name, token.strip(" =")))
+    assert offenders == [], (
+        "a second producer of the destructive-git predicate exists — that split is exactly "
+        "what let `git push -f` through: " + "; ".join(offenders))
 
 
 def test_non_commit_commands_are_unaffected_by_repository_scoping():

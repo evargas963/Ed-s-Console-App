@@ -62,7 +62,7 @@ Claims that cannot be measured now go in `governance/unproven_register.md`. Stag
 
 **Backlog.** Honest PARTIAL with a tracker is legal; mass-fake CLOSE is not. A due date moves only when the row is blocked outside this repository, recorded as `RE-DATED <old>-><new>: BLOCKED_ON_*` — "need more time" is not a blocker.
 
-**Agent operating process (RC-217; `governance/AGENT_OPERATING_PROCESS_V1.md` carries the detail).** Measure before claiming, land small, never kill a pre-commit mid-hook, and distinguish LIVE from DISK until a restart is proven. PreToolUse blocks destructive-git forms, piped commits, and edits targeting the production checkout. **Live-checkout invariant:** the production `EdWebConsole` checkout is `main == origin/main` only; development runs on the separate `EdWebConsole-dev` worktree.
+**Agent operating process (RC-217; `governance/AGENT_OPERATING_PROCESS_V1.md` carries the detail).** Measure before claiming, land small, never kill a pre-commit mid-hook, and distinguish LIVE from DISK until a restart is proven. PreToolUse blocks destructive-git forms, piped commits, and edits targeting the production checkout. Destructive git has exactly one owner — `operating_process_lock.reset_guard_violations`, reached through `tools/process_lock_guard.py`; `--force-with-lease` stays legal because it is the safe form. **Live-checkout invariant:** the production `EdWebConsole` checkout is `main == origin/main` only; development runs on the separate `EdWebConsole-dev` worktree.
 
 **Immune rule.** Any proposed new mechanism must prove it prevents a real, observed failure that the page, the question, or an existing gate cannot already handle. If two controls protect the same failure, one of them goes.
 

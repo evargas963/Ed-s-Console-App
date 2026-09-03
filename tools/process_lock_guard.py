@@ -111,8 +111,11 @@ _PROD_MOVE_SUBCOMMANDS = frozenset({
     "commit", "reset", "rebase", "cherry-pick", "revert", "am",
     "merge", "pull", "checkout", "switch", "branch",
 })
-_GIT_GLOBAL_WITH_ARG = frozenset({"-C", "-c", "--git-dir", "--work-tree", "--namespace",
-                                  "--super-prefix", "--exec-path"})
+#: RC-505: ONE definition of "git global options that take a separate value", owned by
+#: operating_process_lock (which this module already imports) and consumed here. It was
+#: written out twice, and the copy the destructive-git regexes used omitted it entirely —
+#: `git -C ../other reset --hard` walked past every guard on the chain.
+_GIT_GLOBAL_WITH_ARG = frozenset(OPL.GIT_GLOBAL_WITH_ARG)
 
 
 def _prod_forbidden_git_reason(cmd: str) -> str | None:

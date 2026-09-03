@@ -13,65 +13,7 @@ from pathlib import Path
 # Non-importable production surfaces this suite genuinely exercises (the F07 regime-shadow and
 # F05 actionability locks read and assert on static/index.html). Declaring ownership lets the
 # turn audit map the HTML change to a running suite instead of reporting an unknown owner.
-TURN_AUDIT_OWNS = [
-    "static/index.html",
-    "static/chart.html",
-    "time_et.py",
-    "server.py",
-    "polling_adapter.py",
-    "news_sentiment.py",
-    "liquidity_value_engine.py",
-    "compare_clustering_modes.py",
-    "audit_model_readiness.py",
-    "verification/daily_health.py",
-    "v2_decision/a2_eod_force_exit.py",
-    "v2_decision/a2_option_expression.py",
-    "v2_decision/a2_session_calendar.py",
-    "research/gex_r1_screen_v1/signal.py",
-    "research/pilot_step3/data_loader.py",
-    "research/tod_eval_v1/runner.py",
-    "tools/research/d2_build_dual_label_scratch_db.py",
-    "tools/study_pin_direction_v1.py",
-    "tools/study_pin_charm_v1.py",
-    "tools/study_pin_residence_v1.py",
-    "tools/study_pin_regime_cut_v1.py",
-    "tools/study_terrain_readiness_v1.py",
-    "tools/study_card2_am_pm_v1.py",
-    "tools/study_card_lateday_v1.py",
-    "tools/study_card_lateday_v2.py",
-    "tools/study_timeslice_reversal_v1.py",
-    "tools/lp01_touch_study_v1.py",
-    "tools/liquidity_synthesis_experiments_v1.py",
-    "tools/liquidity_oi_volume_stickiness_v1.py",
-    "tools/terrain_backtest_report_v1.py",
-    "tools/liquidity_intraday_volume_ic_v1.py",
-    # F07: this suite's regime lock reads and asserts on the backtests' regime derivation.
-    "tools/liquidity_gamma_hold_horizon_experiments_v1.py",
-    "tools/liquidity_gamma_levels_experiment_v1.py",
-    # F25: this suite's ticker-identity lock reads/asserts on the canonical routing across
-    # the whole artifact/cache/serve continuum (writer→verifier→predictor).
-    "active_bundle_contract.py",
-    "training_cache.py",
-    "ml_predict.py",
-    "verify_active_models.py",
-    "ml_scheduler.py",
-    # F25 current-tree residuals (Cursor ACCEPT_PARTIAL): feature-curation cell keys / anchor
-    # feeders, the train DB-load bind, and the training-fingerprint producers.
-    "ml_train.py",
-    "tools/feature_curation_gate.py",
-    # F25 known live residuals (2nd batch): transformer/lstm sequence meta identity, ml_data_common
-    # DB binds, arch_state writer, execution routing identity, scheduler enrollment/filter identity.
-    "features/shared_sequence_context.py",
-    "ml_data_common.py",
-    "execution_identity.py",
-    "scheduler_user_tickers.py",
-    # F25 known live residuals (3rd batch — Cursor's latest two): cache-skip streak key and the
-    # arch eval-proof per-ticker key.
-    "training_pipeline_status.py",
-    "eval_metrics_store.py",
-    # F25 denominator sweep (serving/routing/eval/capture/feature identity + real serving bugs):
-    "xgboost_model.py",
-]
+
 
 REPO = Path(__file__).resolve().parent.parent
 

@@ -40,7 +40,8 @@
     },
     {
       "governing_mechanism_id": "ED-OPERATOR-LAW-GUARD/UNIVERSAL-SAFETY",
-      "governing_authority": "Operator standing laws: no-grep (2026-05-22), no destructive git, no lock disablement, no source writes outside Edit/Write (E-37), no blind staging (2026-07-28).",
+      "governing_authority": "Operator standing laws: no-grep (2026-05-22), no lock disablement, no source writes outside Edit/Write (E-37), no blind staging (2026-07-28).",
+      "amendment_2026_09_02_rc505": "DESTRUCTIVE GIT LEFT THIS MECHANISM. It was enforced twice on the same PreToolUse(Bash) event -- here and in operating_process_lock.reset_guard_violations -- and MEASURED across 25 command forms the split blocked 8 forms twice while `git push -f origin main` and `git -C <path> reset --hard` blocked NOWHERE. The one owner is now operating_process_lock.reset_guard_violations, reached through tools/process_lock_guard.py, which is registered on every Bash/PowerShell event this guard sees. Its reach is UNCHANGED and still universal: the predicate reads the command only and consults no repository identity, so it cannot be narrowed by an applicability determination. Controls: tests/test_operator_law_guard_repo_scope_v1.py section 6b.",
       "applicable_repositories": {
         "human_name": "every repository this host's agent can reach",
         "match": "always",
