@@ -47,7 +47,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 SCHWAB_CSV = ROOT / "schwab_field_inventory" / "schwab_field_dictionary.csv"
-DEFAULT_OUT = ROOT / "governance" / "SCHWAB_COVERAGE_CATALOG_V1_WORKING.csv"
+DEFAULT_OUT = ROOT / "schwab_field_inventory" / "SCHWAB_COVERAGE_CATALOG_V1_WORKING.csv"
 
 # Applied per path `parts`; `.claude` excluded by default (Cursor worktrees mirror the repo).
 BASE_SKIP_DIRS = frozenset(

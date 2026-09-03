@@ -9,7 +9,12 @@ from typing import Any
 
 _PRREG_PATH = Path(__file__).resolve().parent / "prereg_v1.json"
 
-# Must match governance/Framework-ED-Decision-Engine-v1.1.md and prereg_v1.json binding fields.
+# The REGISTERED identifier from prereg_v1.json — an immutable label, never resolved as a
+# filesystem path. RC-509 moved the framework document itself to
+# docs/Framework-ED-Decision-Engine-v1.1.md; the prereg keeps the id it was registered under,
+# because rewriting a preregistration's hashed content after the fact is precisely the
+# falsification preregistration exists to prevent (the bulk path rewrite did exactly that, and
+# the content-hash control caught it).
 EXPECTED_FRAMEWORK_DOC_ID = "governance/Framework-ED-Decision-Engine-v1.1.md"
 EXPECTED_FRAMEWORK_DOC_VERSION = "1.1"
 
@@ -51,7 +56,7 @@ def validate_framework_binding(prereg: dict[str, Any]) -> None:
     if not fid or not fver:
         raise ValueError(
             "prereg_v1.json missing framework_doc_id or framework_doc_version; "
-            "amend prereg per governance/Framework-ED-Decision-Engine-v1.1.md"
+            "amend prereg per docs/Framework-ED-Decision-Engine-v1.1.md"
         )
     if fid != EXPECTED_FRAMEWORK_DOC_ID:
         raise ValueError(

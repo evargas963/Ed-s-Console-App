@@ -162,7 +162,7 @@ Operator-facing explanation (reason class + provenance)
 
 ### 8.1 Target hybrid freshness model (`card_freshness_v1` — design only, S1)
 
-**Status:** Design block in `governance/artifacts/CARD_CONSUMER_CONTRACT_V1.json` → `card_freshness_v1`. **Non-binding on production** until LANE S2+ wires producers/consumers. Does **not** close card fidelity or RTH stale-withheld proof.
+**Status:** Design block in `reports/artifacts/CARD_CONSUMER_CONTRACT_V1.json` → `card_freshness_v1`. **Non-binding on production** until LANE S2+ wires producers/consumers. Does **not** close card fidelity or RTH stale-withheld proof.
 
 **Design recommendation:** **HYBRID** — preserve read-only context when stale; fail-closed any actionability / tradeable / ACTIVE styling; surface stale reason codes and operator labels; restore active/tradeable paint only after all freshness gates pass.
 
@@ -309,7 +309,7 @@ Every card-driving payload must carry (transport audit):
 
 ## 15. Declarative card consumer registry (v1)
 
-**Machine-readable source of truth:** `governance/artifacts/CARD_CONSUMER_CONTRACT_V1.json`
+**Machine-readable source of truth:** `reports/artifacts/CARD_CONSUMER_CONTRACT_V1.json`
 
 Each row declares: `field_name`, `category`, `backend_source`, `api_key`, `consumer_surface`, `operator_relevance`, allowed type/values, nullability, stale/pending/fallback behavior, ticker-agnostic rule, `test_required`, and `decision_status`.
 
@@ -366,7 +366,7 @@ When Tier C payload includes S2B-1 operator mirrors (`operator_card_actionable`,
 | Mirrors **absent** | Fall back to existing `analyticsCardTrustGate` — unchanged legacy path. |
 | Mechanism vs runtime | Closed stale/fallback **mechanism** lanes prove withhold paint only; they do **not** prove runtime freshness (2026-06-29 RTH observation remains FAIL until separately closed). |
 
-**Registry:** `governance/artifacts/CARD_CONSUMER_CONTRACT_V1.json` → `operator_mirror_actionability_v1`.
+**Registry:** `reports/artifacts/CARD_CONSUMER_CONTRACT_V1.json` → `operator_mirror_actionability_v1`.
 
 ### Schwab CSV-first declaration (S3A `static/index.html` consumer slice — governance artifact)
 
@@ -389,7 +389,7 @@ Changes to this contract require:
 1. Named fix branch citing section(s) amended.
 2. Paired test or audit artifact where behavior changes.
 3. No silent drift — card meaning changes must be explicit in PR body and operator release notes.
-4. Registry row updates in `governance/artifacts/CARD_CONSUMER_CONTRACT_V1.json` when field disposition changes.
+4. Registry row updates in `reports/artifacts/CARD_CONSUMER_CONTRACT_V1.json` when field disposition changes.
 
 **This document does not authorize model, threshold, fusion-weight, or rendering changes by itself.**
 
@@ -415,7 +415,7 @@ T0 exposes `window.__edMoneyPathLatency` in `static/index.html` to measure:
 
 T0 is prerequisite evidence before transport contract (T1), SSE card-state hardening (T2), rAF render coalescing (T3), and stale fail-closed UI merge (T4). Target architecture remains SSE-first hybrid — not browser WebSocket rewrite.
 
-**Registry:** `governance/artifacts/CARD_CONSUMER_CONTRACT_V1.json` → `money_path_latency_instrumentation_v1`.
+**Registry:** `reports/artifacts/CARD_CONSUMER_CONTRACT_V1.json` → `money_path_latency_instrumentation_v1`.
 
 ### Schwab CSV-first declaration (T0 `static/index.html` instrumentation slice — governance artifact)
 
@@ -440,7 +440,7 @@ SCHWAB_CSV_CHECKED
 
 T1 defines operator-facing freshness/latency semantics and acceptance criteria that downstream implementation lanes (T2–T5) must satisfy. T0 `window.__edMoneyPathLatency` is the diagnostic surface; T1 maps those metrics to contract labels and proof gates.
 
-**Registry:** `governance/artifacts/CARD_CONSUMER_CONTRACT_V1.json` → `stale_label_latency_contract_v1`.
+**Registry:** `reports/artifacts/CARD_CONSUMER_CONTRACT_V1.json` → `stale_label_latency_contract_v1`.
 
 ### Quote freshness states (Tier A / spot rail)
 
@@ -537,7 +537,7 @@ T1 is admissible as contract-only. It does **not** fix lag, does **not** close c
 
 T2 coalesces money-path render requests from SSE/REST transport entry points through `scheduleMoneyPathRender()` using `requestAnimationFrame` latest-wins semantics: multiple pending requests before the scheduled frame keep only the latest payload/source; exactly one flush paints the survivor. Synchronous `render()` / `_renderMoneyPathCore()` preserves existing acceptance/rejection, coherence guards, and card trust behavior for Playwright and direct callers.
 
-**Registry:** `governance/artifacts/CARD_CONSUMER_CONTRACT_V1.json` → `raf_latest_wins_render_scheduler_v1`.
+**Registry:** `reports/artifacts/CARD_CONSUMER_CONTRACT_V1.json` → `raf_latest_wins_render_scheduler_v1`.
 
 ### Scheduler observability (T0 extension)
 
@@ -568,7 +568,7 @@ SCHWAB_CSV_CHECKED
 
 T3 gates money-path transport payloads before the T2 `scheduleMoneyPathRender()` rAF scheduler. Ordering prefers `decision_generation_id` (monotonic) with `_server_build_ts` as secondary tie-break; quote-tier payloads use quote-lane timestamps when analytical timestamps are absent. Newer payloads are accepted and forwarded to T2; older, duplicate, or regressive payloads are rejected without scheduling rAF or painting cards. Missing or invalid ordering keys preserve existing fail-open fallback behavior with explicit diagnostics.
 
-**Registry:** `governance/artifacts/CARD_CONSUMER_CONTRACT_V1.json` → `monotonic_sequence_gating_v1`.
+**Registry:** `reports/artifacts/CARD_CONSUMER_CONTRACT_V1.json` → `monotonic_sequence_gating_v1`.
 
 ### Monotonic observability (T0 extension)
 
@@ -599,7 +599,7 @@ SCHWAB_CSV_CHECKED
 
 T4 unifies browser money-path SSE consumption around an explicit `money_path_snapshot` envelope (nested in Tier C SSE payloads from `server.py::_attach_money_path_snapshot_envelope`) with legacy top-level fallback. Snapshots flow through T3 `acceptMoneyPathPayload` / `ingestMoneyPathSnapshot` → T2 `scheduleMoneyPathRender`. Fail-closed freshness UI applies T1 quote/bundle thresholds before actionable card styling.
 
-**Registry:** `governance/artifacts/CARD_CONSUMER_CONTRACT_V1.json` → `unified_money_path_snapshot_freshness_v1`.
+**Registry:** `reports/artifacts/CARD_CONSUMER_CONTRACT_V1.json` → `unified_money_path_snapshot_freshness_v1`.
 
 ### Freshness fail-closed semantics (T1 thresholds wired)
 

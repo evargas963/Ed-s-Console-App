@@ -134,7 +134,7 @@ measure-then-freeze numeric bounds, MM-share chip, market_stress_index candidate
 pre-registered ML paths) rides OFF the GO-critical path — next consensus round folds it in.
 
 Cursor architectural review 2026-07-21: **CONDITIONAL APPROVE / BLOCK GO until v1.1** —
-all findings incorporated in `governance/CONSOLE_REBUILD_PLAN_CR_V1.md` (v1.1): separate
+all findings incorporated in `docs/CONSOLE_REBUILD_PLAN_CR_V1.md` (v1.1): separate
 `stream_capture.db` (RC-6 lesson, was blocking), bounded-queue + parse-p99 + contention
 matrix in CR-01 acceptance, mechanical CR-CAP capture gate, CR-03 rescoped (registry and
 volume profile deferred; ML demote-not-delete), pre-registered arming thresholds, UI-copy

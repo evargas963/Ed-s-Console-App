@@ -1,0 +1,16 @@
+{
+  "schema_version": 2,
+  "artifact": "reports/artifacts/BLIND_RECONSTRUCTION_TEST_RESULT.json",
+  "generated": "2026-06-15",
+  "procedure": "Select latest production_decision_records.decision_id. Auditor receives ONLY that id. Single query via get_production_decision_by_id.",
+  "sample_decision_id": "b61bc4ed78a348dbbc171bd30b53c694",
+  "elapsed_sec": 0.0026,
+  "target_sla_sec": 60,
+  "third_party_single_query": true,
+  "missing_fields": [],
+  "verdict": "PASS",
+  "i31_effective_maturity": "L3",
+  "note": "Code path proven in tests/decision_reconstruction/; production DB row required for PASS here",
+  "reconstruction_source": "production_like_or_live",
+  "sample_route": "server._fetch_state"
+}

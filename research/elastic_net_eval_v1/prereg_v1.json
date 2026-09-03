@@ -1,7 +1,7 @@
 {
   "prereg_id": "elastic_net_eval_v1_prereg_v1",
   "sibling_precedent": "research/incumbent_eval_v1/prereg_v1.json",
-  "authority_contract": "governance/research/stage1_target_label_foundation/stage2_experiment_contract_v1.json",
+  "authority_contract": "research/stage1_target_label_foundation/stage2_experiment_contract_v1.json",
   "study_question": "Does a mandatory trivial learner (multinomial logistic / Elastic Net) trained walk-forward on production engineered features from snapshots_1m_normalized predict production ternary outcome_{hz} labels out of sample beyond always_flat / majority / persistence and chance (shuffle control), on SPY/QQQ/IWM x {1c,5c,15c,60c}?",
   "study_class": "SIGNAL_EXISTENCE_DIAGNOSTIC",
   "explicitly_not": {

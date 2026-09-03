@@ -42,7 +42,7 @@ log = logging.getLogger(__name__)
 
 
 def _write_audit(result: dict, *, audit_root: Path | None) -> Path:
-    root = Path(audit_root).resolve() if audit_root is not None else (PROJECT_ROOT / "governance" / "audits")
+    root = Path(audit_root).resolve() if audit_root is not None else (PROJECT_ROOT / "reports" / "audits")
     root.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     path = root / f"{SCHEMA}_{stamp}.json"

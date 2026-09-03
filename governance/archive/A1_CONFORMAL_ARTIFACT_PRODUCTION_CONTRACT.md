@@ -40,7 +40,7 @@ Out of scope:
 - automatic cadence binding;
 - ticker discovery;
 - edits to `governance/A1_CONFORMAL_ARTIFACT_LIFECYCLE_CONTRACT.md`;
-- edits to `governance/A1_CALIBRATED_PROBABILITY_PROVENANCE_CONTRACT.md`;
+- edits to `docs/contracts/A1_CALIBRATED_PROBABILITY_PROVENANCE_CONTRACT.md`;
 - edits to existing calibration pipelines.
 
 ---
@@ -125,7 +125,7 @@ Where:
 - `model` is the dict consumed by `apply_isotonic_model`, currently `calibration_artifact["model"]` when `calibration_artifact["status"] == "ok"`.
 - Determinism is guaranteed by sorted keys and compact separators.
 - The future runtime probability producer must compute the hash with the same recipe to satisfy precondition 8 lineage match.
-- Future commits may refine the format but must preserve the uniqueness-and-identity semantic required by `governance/A1_CALIBRATED_PROBABILITY_PROVENANCE_CONTRACT.md`.
+- Future commits may refine the format but must preserve the uniqueness-and-identity semantic required by `docs/contracts/A1_CALIBRATED_PROBABILITY_PROVENANCE_CONTRACT.md`.
 
 ---
 
@@ -177,12 +177,12 @@ V1 cadence is manual and CLI-driven:
 - This contract operationalizes the producer side of 2A's persistence, identity, freshness fields, and path convention.
 - The path convention is preserved verbatim.
 
-`governance/A1_CALIBRATED_PROBABILITY_PROVENANCE_CONTRACT.md` (2B):
+`docs/contracts/A1_CALIBRATED_PROBABILITY_PROVENANCE_CONTRACT.md` (2B):
 
 - This contract binds the v1 lineage hash format.
 - Future runtime probability producers must match this hash recipe to satisfy precondition 8.
 
-`governance/A1_CONFORMAL_INTERVAL_PROMOTION_CONTRACT.md`:
+`docs/contracts/A1_CONFORMAL_INTERVAL_PROMOTION_CONTRACT.md`:
 
 - Precondition 6 consumes `governed_max_age_seconds`; this contract binds the production-side source as CLI-supplied in v1.
 - Precondition 8 consumes `calibration_lineage_id`; this contract binds the producer-side format.

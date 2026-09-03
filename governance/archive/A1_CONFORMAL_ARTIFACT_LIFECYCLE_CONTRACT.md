@@ -87,8 +87,8 @@ Artifacts must preserve the identity fields already emitted by the conformal sca
 Artifacts must also carry these lifecycle fields:
 
 - `ticker_universe` - list of tickers this artifact applies to, for example `["SPY"]` or `["SPY", "QQQ"]`.
-- `governed_max_age_seconds` - numeric value greater than or equal to `0`, required by `governance/A1_CONFORMAL_INTERVAL_PROMOTION_CONTRACT.md` precondition 6.
-- `generated_at_epoch_seconds` - numeric epoch timestamp, required by `governance/A1_CONFORMAL_INTERVAL_PROMOTION_CONTRACT.md` precondition 6.
+- `governed_max_age_seconds` - numeric value greater than or equal to `0`, required by `docs/contracts/A1_CONFORMAL_INTERVAL_PROMOTION_CONTRACT.md` precondition 6.
+- `generated_at_epoch_seconds` - numeric epoch timestamp, required by `docs/contracts/A1_CONFORMAL_INTERVAL_PROMOTION_CONTRACT.md` precondition 6.
 - `calibration_lineage_id` - a string that uniquely identifies the isotonic calibration artifact used to produce the probabilities that fit the conformal quantile. The recommended format is `<calibration_run_id>:<isotonic_artifact_hash_or_id>`, but 2B may refine the exact encoding so long as the uniqueness-and-identity semantic is preserved. Future encodings must not weaken this requirement.
 - `artifact_lifecycle_schema_version` - lifecycle contract schema version, `"1"` for this contract.
 
@@ -110,7 +110,7 @@ If any check fails, the loader returns `None` in production. The loader must not
 
 ## Freshness Fields And Failure Behavior
 
-Freshness follows `governance/A1_CONFORMAL_INTERVAL_PROMOTION_CONTRACT.md` precondition 6:
+Freshness follows `docs/contracts/A1_CONFORMAL_INTERVAL_PROMOTION_CONTRACT.md` precondition 6:
 
 - Both `governed_max_age_seconds` and `generated_at_epoch_seconds` are required.
 - Age check: `current_epoch - generated_at_epoch_seconds <= governed_max_age_seconds`.
@@ -157,9 +157,9 @@ Lineage match mechanism:
 
 - The artifact carries `calibration_lineage_id`.
 - The runtime probability source must carry a matching lineage marker.
-- The match mechanism - where the runtime marker comes from, how it propagates through the stack to `ms_dict`, and how comparison happens - is defined in forthcoming `governance/A1_CALIBRATED_PROBABILITY_PROVENANCE_CONTRACT.md` as 2B.
+- The match mechanism - where the runtime marker comes from, how it propagates through the stack to `ms_dict`, and how comparison happens - is defined in forthcoming `docs/contracts/A1_CALIBRATED_PROBABILITY_PROVENANCE_CONTRACT.md` as 2B.
 
-Until 2B exists and is implemented in code, runtime promotion is gated by this contract's discipline. Even if the seven existing preconditions in `governance/A1_CONFORMAL_INTERVAL_PROMOTION_CONTRACT.md` pass, the lineage match precondition is unsatisfied, so `p_low` and `p_high` must remain `not_implemented`.
+Until 2B exists and is implemented in code, runtime promotion is gated by this contract's discipline. Even if the seven existing preconditions in `docs/contracts/A1_CONFORMAL_INTERVAL_PROMOTION_CONTRACT.md` pass, the lineage match precondition is unsatisfied, so `p_low` and `p_high` must remain `not_implemented`.
 
 This is an honest-not-optimistic posture: lifecycle availability is not treated as proof that the runtime probability and conformal quantile share calibration lineage.
 
@@ -175,7 +175,7 @@ This is an honest-not-optimistic posture: lifecycle availability is not treated 
 
 ## Crosswalk To Existing Contracts
 
-`governance/A1_CONFORMAL_INTERVAL_PROMOTION_CONTRACT.md`:
+`docs/contracts/A1_CONFORMAL_INTERVAL_PROMOTION_CONTRACT.md`:
 
 - Precondition 1, artifact present, implicitly assumes the artifact came from the loader surface defined here.
 - Precondition 6, freshness discipline, depends on `governed_max_age_seconds` and `generated_at_epoch_seconds` as required lifecycle fields defined here.

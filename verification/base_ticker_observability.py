@@ -251,7 +251,7 @@ def base_ticker_observability_report(
             "db_path": str(db_path.resolve()),
             "base_universe_ready": all_pass,
             "base_capture_parity": parity,
-            "contract": "governance/artifacts/base_ticker_money_path_contract.json",
+            "contract": "reports/artifacts/base_ticker_money_path_contract.json",
         },
         "tickers": rows,
         "summary": {

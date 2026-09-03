@@ -6,10 +6,10 @@
 **Date:** 2026-05-07  
 **Schwab authority:** `schwab_field_inventory/schwab_field_dictionary.csv`  
 **Canonical Schwab field count:** 2,393  
-**Mechanical seed:** `governance/SCHWAB_CSV_DERIVED_FIELD_CROSSWALK_WORKING.csv`
-**Classified output:** `governance/SCHWAB_CSV_DERIVED_FIELD_CROSSWALK_CLASSIFIED.csv`  
-**Disposition output:** `governance/SCHWAB_CSV_DERIVED_FIELD_DISPOSITION_REGISTER.csv`  
-**Residual output:** `governance/SCHWAB_CSV_DERIVED_FIELD_CROSSWALK_RESIDUAL.csv`
+**Mechanical seed:** `schwab_field_inventory/SCHWAB_CSV_DERIVED_FIELD_CROSSWALK_WORKING.csv`
+**Classified output:** `schwab_field_inventory/SCHWAB_CSV_DERIVED_FIELD_CROSSWALK_CLASSIFIED.csv`  
+**Disposition output:** `schwab_field_inventory/SCHWAB_CSV_DERIVED_FIELD_DISPOSITION_REGISTER.csv`  
+**Residual output:** `schwab_field_inventory/SCHWAB_CSV_DERIVED_FIELD_CROSSWALK_RESIDUAL.csv`
 **Remediation roadmap:** retired under the ED CONSOLE SLIMMING directive; this file's live value is the field crosswalk below (read by the v2_decision A2 modules).
 
 This document answers the repo-wide question:
@@ -174,7 +174,7 @@ These were either missing from the prior register or need explicit register IDs.
 | CSV-N10 | `calibration/writer.py` | default decision timestamp uses wall clock | `REPLACE_WITH_SCHWAB` data timestamp where appropriate | Medium |
 | CSV-N11 | `math_exposure_core.py::compute_net_charm()` | **`volatility`** `20%` and multiplier `100` defaults | `GATE_FAIL_CLOSED` | High |
 | CSV-N12 | `v2_decision/a2_option_expression.py::_dte_value()` | parses DTE from UI text | `REPLACE_WITH_SCHWAB` / `REDESIGN` | High |
-| CSV-N13 | `market_state.py::_oe_chain_row_snapshot()` | Proof-row path: `daysToExpiration` is now preserved (`market_state._oe_chain_row_snapshot` includes the canonical `daysToExpiration` key per `governance/A2_MARKET_STATE_PROOF_ROW_COMPLETENESS_CONTRACT.md`). Disposition: RESOLVED for the proof-row path. Any non-proof-row consumers still parsing DTE from text fall under CSV-N12 above. | Resolved (proof-row); see CSV-N12 for any residual text-parse consumers | Resolved |
+| CSV-N13 | `market_state.py::_oe_chain_row_snapshot()` | Proof-row path: `daysToExpiration` is now preserved (`market_state._oe_chain_row_snapshot` includes the canonical `daysToExpiration` key per `docs/contracts/A2_MARKET_STATE_PROOF_ROW_COMPLETENESS_CONTRACT.md`). Disposition: RESOLVED for the proof-row path. Any non-proof-row consumers still parsing DTE from text fall under CSV-N12 above. | Resolved (proof-row); see CSV-N12 for any residual text-parse consumers | Resolved |
 | CSV-N14 | `static/index.html` utility bar | point change derived from stream percent times merged spot | `KEEP_DERIVED_WITH_PROVENANCE` or align to `quotes.quote.netChange` | Medium |
 
 ---
@@ -209,7 +209,7 @@ Resolved (no longer in the not-fixed list):
 ```text
 debug_flow_snapshot.py multiplier default — extractor reads `ct.get("multiplier")` directly with no `100` coercion; `math_exposure_core.compute_exposures_by_strike` skips contracts with missing multiplier (fail-closed)
 parse_quote_payload regular/extended subtree policy — `chains.py::parse_quote_payload` removed in the Schwab-direct redesign; equity-quote reads in `server.py` are inline against Schwab `quotes.quote.*` / `quotes.regular.*` / `quotes.extended.*` per CSV-R11
-daysToExpiration preservation — proof-row path preserves `daysToExpiration` per `governance/A2_MARKET_STATE_PROOF_ROW_COMPLETENESS_CONTRACT.md` (CSV-N13 / CSV-R3)
+daysToExpiration preservation — proof-row path preserves `daysToExpiration` per `docs/contracts/A2_MARKET_STATE_PROOF_ROW_COMPLETENESS_CONTRACT.md` (CSV-N13 / CSV-R3)
 ```
 
 ---

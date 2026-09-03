@@ -8,7 +8,7 @@
 **Initial scope:** A1 calibrated entry probability; A2 calibration placeholder only  
 **Initial tickers:** SPY / QQQ unless amended  
 **Runtime plane:** Tier C only  
-**Depends on:** `governance/IMPLEMENTATION_BLUEPRINT_V2.md`, `governance/PILOT_1B_A2_0DTE_CONTRACT.md`, `governance/Framework-ED-Decision-Engine-v2.0-DRAFT.md`, `docs/calibration_statistical_integrity_v2.md`
+**Depends on:** `governance/IMPLEMENTATION_BLUEPRINT_V2.md`, `docs/contracts/PILOT_1B_A2_0DTE_CONTRACT.md`, `governance/Framework-ED-Decision-Engine-v2.0-DRAFT.md`, `docs/calibration_statistical_integrity_v2.md`
 
 This contract defines the calibration scaffold required before v2 probability, conformal, and EV fields can move from `not_implemented` to measured advisory outputs.
 

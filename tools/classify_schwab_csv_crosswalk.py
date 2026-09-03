@@ -3,7 +3,7 @@
 Classify the mechanical Schwab CSV derived-field crosswalk.
 
 Input is the intentionally over-inclusive
-`governance/SCHWAB_CSV_DERIVED_FIELD_CROSSWALK_WORKING.csv`.
+`schwab_field_inventory/SCHWAB_CSV_DERIVED_FIELD_CROSSWALK_WORKING.csv`.
 Output is a full classified CSV plus a smaller residual CSV for rows that still
 need human market-data disposition.
 """
@@ -16,10 +16,10 @@ from collections import Counter
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_INPUT = ROOT / "governance" / "SCHWAB_CSV_DERIVED_FIELD_CROSSWALK_WORKING.csv"
-DEFAULT_OUTPUT = ROOT / "governance" / "SCHWAB_CSV_DERIVED_FIELD_CROSSWALK_CLASSIFIED.csv"
-DEFAULT_RESIDUAL = ROOT / "governance" / "SCHWAB_CSV_DERIVED_FIELD_CROSSWALK_RESIDUAL.csv"
-DEFAULT_DISPOSITION = ROOT / "governance" / "SCHWAB_CSV_DERIVED_FIELD_DISPOSITION_REGISTER.csv"
+DEFAULT_INPUT = ROOT / "schwab_field_inventory" / "SCHWAB_CSV_DERIVED_FIELD_CROSSWALK_WORKING.csv"
+DEFAULT_OUTPUT = ROOT / "schwab_field_inventory" / "SCHWAB_CSV_DERIVED_FIELD_CROSSWALK_CLASSIFIED.csv"
+DEFAULT_RESIDUAL = ROOT / "schwab_field_inventory" / "SCHWAB_CSV_DERIVED_FIELD_CROSSWALK_RESIDUAL.csv"
+DEFAULT_DISPOSITION = ROOT / "schwab_field_inventory" / "SCHWAB_CSV_DERIVED_FIELD_DISPOSITION_REGISTER.csv"
 
 NON_RUNTIME_PREFIXES = (
     ".claude/",

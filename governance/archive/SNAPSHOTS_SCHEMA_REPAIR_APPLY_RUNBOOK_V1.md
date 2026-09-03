@@ -103,7 +103,7 @@ Capture the apply JSON verbatim to a governance audit file:
 
 ```powershell
 $ts = (Get-Date).ToUniversalTime().ToString("yyyyMMdd_HHmmss")
-$audit = "governance/audits/snapshots_schema_repair_v1_$ts.json"
+$audit = "reports/audits/snapshots_schema_repair_v1_$ts.json"
 New-Item -ItemType Directory -Force -Path "governance/audits" | Out-Null
 python tools/migrate_snapshots_schema_repair_v1.py --db-path data/ed_console.db --apply | Tee-Object -FilePath $audit
 ```
@@ -258,7 +258,7 @@ Rollback follows the contract:
 
 ## Gap Closure Criteria
 
-**Status:** Gap retired 2026-05-09 — apply audit `governance/audits/snapshots_schema_repair_v1_20260509_011607.json`, register **O-39**, migration contract Named Gaps. The historical retirement preconditions (`--apply` success + apply JSON saved under `governance/audits/` + independent post-condition checks + closure-commit register update with audit-file SHA) were all met at retirement; full evidence is captured in O-39 and the apply audit JSON.
+**Status:** Gap retired 2026-05-09 — apply audit `reports/audits/snapshots_schema_repair_v1_20260509_011607.json`, register **O-39**, migration contract Named Gaps. The historical retirement preconditions (`--apply` success + apply JSON saved under `reports/audits/` + independent post-condition checks + closure-commit register update with audit-file SHA) were all met at retirement; full evidence is captured in O-39 and the apply audit JSON.
 
 ---
 

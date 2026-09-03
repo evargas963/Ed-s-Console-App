@@ -19,7 +19,7 @@ def attach_a1_isotonic_calibration_to_ms_dict(ms_dict: dict[str, Any], *, ticker
     Either both keys populated (artifact loaded, raw probability extracted, calibration
     applied successfully) OR both None (any failure: missing inputs, loader returned None,
     runtime apply returned None). Closes the canonical calibration source gap per
-    governance/A1_CALIBRATED_PROBABILITY_PROVENANCE_CONTRACT.md (e2e1dbc).
+    docs/contracts/A1_CALIBRATED_PROBABILITY_PROVENANCE_CONTRACT.md (e2e1dbc).
     """
     horizon = str(ms_dict.get("primary_horizon") or "").strip().lower()
     if not ticker or not horizon:

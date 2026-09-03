@@ -21,7 +21,7 @@ from research.stage1_target_foundation.ct_session import (
 )
 
 CT = ZoneInfo("America/Chicago")
-GOV = Path(__file__).resolve().parents[1] / "governance" / "research" / "stage1_target_label_foundation"
+GOV = Path(__file__).resolve().parents[1] / "research" / "stage1_target_label_foundation"
 
 
 def _ct_epoch(y, mo, d, h, mi) -> int:

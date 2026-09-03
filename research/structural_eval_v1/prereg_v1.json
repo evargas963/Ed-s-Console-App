@@ -1,7 +1,7 @@
 {
   "prereg_id": "structural_eval_v1_prereg_v1",
   "sibling_precedent": "research/challenger_eval_v1/prereg_v1.json (Study #2 — same track, same discipline)",
-  "authority_contract": "governance/research/stage1_target_label_foundation/stage2_experiment_contract_v1.json",
+  "authority_contract": "research/stage1_target_label_foundation/stage2_experiment_contract_v1.json",
   "study_question": "Do the structural / dealer-positioning states the app records live at decision time (zone, gamma-wall proximity, regime) carry predictive information about the attached outcome labels — as fixed, semantically motivated rules with no fitting?",
   "study_class": "SIGNAL_EXISTENCE_DIAGNOSTIC",
   "explicitly_not": {

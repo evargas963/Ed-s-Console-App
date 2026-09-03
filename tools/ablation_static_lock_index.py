@@ -90,7 +90,7 @@ def _build_index(
     db_path: Path | None,
     build_count: int,
 ) -> AblationStaticLockIndex:
-    mpath = manifest_path or (repo_root / "governance" / "artifacts" / "feature_ablation_manifest_leaf.json")
+    mpath = manifest_path or (repo_root / "reports" / "artifacts" / "feature_ablation_manifest_leaf.json")
     dbp = db_path if db_path is not None else (repo_root / "data" / "ed_console.db")
     db_exists = dbp.is_file() if dbp is not None else False
     db_resolved = dbp if db_exists else None

@@ -83,7 +83,7 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host "=== O-56 survivor edge probe (pre-retrain go/no-go) ==="
 & python tools/feature_curation_gate.py --survivor-edge-probe --tickers ($Tickers -join ',')
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "!!! Edge probe BLOCKED full retrain — see governance/artifacts/survivor_edge_probe.json" -ForegroundColor Red
+    Write-Host "!!! Edge probe BLOCKED full retrain — see reports/artifacts/survivor_edge_probe.json" -ForegroundColor Red
     exit $LASTEXITCODE
 }
 Write-Host "=== Pre-B incumbent score reconcile (all horizons) ==="

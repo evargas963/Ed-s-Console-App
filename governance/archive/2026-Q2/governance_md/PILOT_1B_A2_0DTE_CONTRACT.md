@@ -259,7 +259,7 @@ The first A2 adapter must include these gaps at minimum:
   governed by O-33.
 - `a2_early_assignment_risk_not_implemented`.
 
-Lifecycle child gaps under `a2_lifecycle_policy_pending` are governed by `governance/PILOT_1B_A2_LIFECYCLE_CONTRACT.md`. That contract extends the umbrella gap without renaming or superseding existing A2 lifecycle leaves (`P_lifecycle_adjusted_profit`, `timeout_policy`, `lifecycle_policy_id`).
+Lifecycle child gaps under `a2_lifecycle_policy_pending` are governed by `docs/contracts/PILOT_1B_A2_LIFECYCLE_CONTRACT.md`. That contract extends the umbrella gap without renaming or superseding existing A2 lifecycle leaves (`P_lifecycle_adjusted_profit`, `timeout_policy`, `lifecycle_policy_id`).
 
 ---
 

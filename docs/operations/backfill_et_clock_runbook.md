@@ -24,7 +24,7 @@ Review JSON output:
 
 - `pre_scan.<table>.candidates` — rows under ceiling
 - `pre_scan.<table>.mismatched` — rows that would change
-- Audit written to `governance/audits/backfill_et_clock_from_ts_utc_v1_<timestamp>.json` (gitignored)
+- Audit written to `reports/audits/backfill_et_clock_from_ts_utc_v1_<timestamp>.json` (gitignored)
 
 ## Step 2 — Batched commit
 

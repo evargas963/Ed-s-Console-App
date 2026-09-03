@@ -87,7 +87,7 @@ print(get_ablation_static_lock_index_build_count())
 
 def test_failure_in_one_check_does_not_hide_failure_in_the_other(monkeypatch, fresh_ablation_static_lock_index):
     bad = AblationStaticLockIndex(
-        manifest_path=REPO / "governance" / "artifacts" / "feature_ablation_manifest_leaf.json",
+        manifest_path=REPO / "reports" / "artifacts" / "feature_ablation_manifest_leaf.json",
         db_path=None,
         gate_import_error=None,
         manifest=None,

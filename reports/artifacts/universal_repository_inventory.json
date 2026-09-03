@@ -1,0 +1,533 @@
+{
+  "schema_version": 1,
+  "artifact": "reports/artifacts/universal_repository_inventory.json",
+  "regen_command": "python tools/build_universal_repository_inventory.py",
+  "tickers": {
+    "training_anchors": [
+      "SPY",
+      "QQQ",
+      "IWM"
+    ],
+    "locked_literals": [
+      "$SPX",
+      "AAPL",
+      "AMZN",
+      "AVGO",
+      "CIFR",
+      "GOOGL",
+      "IWM",
+      "META",
+      "MRVL",
+      "MSFT",
+      "NVDA",
+      "PLTR",
+      "QQQ",
+      "SPX",
+      "SPY",
+      "TSLA"
+    ],
+    "known_routing_symbols": [
+      "$SPX",
+      "AAPL",
+      "AMZN",
+      "AVGO",
+      "CIFR",
+      "GOOGL",
+      "IWM",
+      "META",
+      "MRVL",
+      "MSFT",
+      "NVDA",
+      "PHASE2VERIFY",
+      "PLTR",
+      "QQQ",
+      "SPX",
+      "SPY",
+      "TSLA"
+    ],
+    "ticker_like_pattern": "^[A-Z]{1,5}$|^\\$[A-Z]{1,5}$"
+  },
+  "horizons": {
+    "canonical_slugs": [
+      "1c",
+      "5c",
+      "15c",
+      "60c"
+    ],
+    "source": "ml_horizon.ML_HORIZON_SLUGS"
+  },
+  "models": {
+    "full_stack_layers": [
+      "xgb",
+      "lstm",
+      "transformer",
+      "meta",
+      "monte_carlo",
+      "regime",
+      "fusion"
+    ],
+    "source": "governed_stack_contract.FULL_STACK_MODEL_LAYERS"
+  },
+  "runtime_classes": [
+    "full",
+    "reduced",
+    "degraded",
+    "fail_closed",
+    "quote_only",
+    "not_applicable"
+  ],
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/",
+      "file": "server.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/accuracy",
+      "file": "server.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/analytics/light",
+      "file": "server.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/analytics/light/stream",
+      "file": "server.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/analytics/state",
+      "file": "server.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/analytics/warm",
+      "file": "server.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/build",
+      "file": "server.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/debug/charm",
+      "file": "server.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/debug/prediction",
+      "file": "server.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/decision/{decision_id}",
+      "file": "server.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/diagnostics/chain-gate",
+      "file": "server.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/diagnostics/l1",
+      "file": "server.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/diagnostics/sqlite-contention",
+      "file": "server.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/diagnostics/ticker-switch",
+      "file": "server.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/diagnostics/ticker-switch",
+      "file": "server.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/expiries",
+      "file": "server.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fast-quote",
+      "file": "server.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/governance/manual-promote",
+      "file": "server.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/governance/manual-rollback",
+      "file": "server.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/governance/panel",
+      "file": "server.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/health",
+      "file": "server.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/internal/reload_models",
+      "file": "server.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/level_crosses",
+      "file": "server.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/liquidity-playbook-state",
+      "file": "server.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/liquidity-snapshot",
+      "file": "server.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/live/plane",
+      "file": "server.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/live/state",
+      "file": "server.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/logger/add",
+      "file": "server.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/logger/pin",
+      "file": "server.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/logger/remove",
+      "file": "server.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/logger/status",
+      "file": "server.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/logger/universe",
+      "file": "server.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/logger/universe/by-category",
+      "file": "server.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/logger/unpin",
+      "file": "server.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/ops/calibration_rowcount",
+      "file": "server.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/ops/run",
+      "file": "server.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/ops/run-sequence",
+      "file": "server.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/ops/status",
+      "file": "server.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/prediction/override",
+      "file": "server.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/prediction/override/clear",
+      "file": "server.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/price-levels",
+      "file": "server.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/release/current",
+      "file": "server.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/state",
+      "file": "server.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/stream",
+      "file": "server.py"
+    },
+    {
+      "method": "POST",
+      "path": "/api/streaming/active-ticker",
+      "file": "server.py"
+    },
+    {
+      "method": "GET",
+      "path": "/api/vol-observability",
+      "file": "server.py"
+    },
+    {
+      "method": "GET",
+      "path": "/favicon.ico",
+      "file": "server.py"
+    },
+    {
+      "method": "GET",
+      "path": "/governance",
+      "file": "server.py"
+    },
+    {
+      "method": "GET",
+      "path": "/guide/data-stewardship",
+      "file": "server.py"
+    },
+    {
+      "method": "GET",
+      "path": "/guide/pipeline-quality",
+      "file": "server.py"
+    },
+    {
+      "method": "GET",
+      "path": "/guide/training-and-maintenance",
+      "file": "server.py"
+    },
+    {
+      "method": "GET",
+      "path": "/ops",
+      "file": "server.py"
+    }
+  ],
+  "persistence_writers": [
+    {
+      "file": "calibration/writer.py",
+      "table": "calibration_decision_log"
+    },
+    {
+      "file": "override_registry.py",
+      "table": "decision_override_registry"
+    },
+    {
+      "file": "execution_identity.py",
+      "table": "decision_persistence_ledger"
+    },
+    {
+      "file": "db.py",
+      "table": "ed_schema_flags"
+    },
+    {
+      "file": "distance_option_a_backfill_v1.py",
+      "table": "ed_schema_flags"
+    },
+    {
+      "file": "normalized_training_sync.py",
+      "table": "ed_schema_flags"
+    },
+    {
+      "file": "db.py",
+      "table": "level_crosses"
+    },
+    {
+      "file": "db.py",
+      "table": "logging_universe"
+    },
+    {
+      "file": "db.py",
+      "table": "logging_universe_eviction_log"
+    },
+    {
+      "file": "db.py",
+      "table": "model_accuracy"
+    },
+    {
+      "file": "execution_identity.py",
+      "table": "model_execution_identities"
+    },
+    {
+      "file": "calibration/repair_canonical_1m_bars_for_outcomes.py",
+      "table": "price_bars_1m"
+    },
+    {
+      "file": "calibration/repair_canonical_1m_shared.py",
+      "table": "price_bars_1m"
+    },
+    {
+      "file": "db.py",
+      "table": "price_bars_1m"
+    },
+    {
+      "file": "decision_record.py",
+      "table": "production_decision_records"
+    },
+    {
+      "file": "db.py",
+      "table": "snapshots"
+    },
+    {
+      "file": "snapshot_normalizer.py",
+      "table": "snapshots_1m_normalized"
+    }
+  ],
+  "model_loaders": [
+    {
+      "file": "active_bundle_contract.py",
+      "line": "800",
+      "call": "pickle.load"
+    },
+    {
+      "file": "lstm_data.py",
+      "line": "287",
+      "call": "torch.load"
+    },
+    {
+      "file": "lstm_model.py",
+      "line": "538",
+      "call": "torch.load"
+    },
+    {
+      "file": "lstm_model.py",
+      "line": "834",
+      "call": "torch.load"
+    },
+    {
+      "file": "ml_predict.py",
+      "line": "908",
+      "call": "pickle.load"
+    },
+    {
+      "file": "ml_predict.py",
+      "line": "1091",
+      "call": "pickle.load"
+    },
+    {
+      "file": "ml_predict.py",
+      "line": "1525",
+      "call": "torch.load"
+    },
+    {
+      "file": "ml_predict.py",
+      "line": "1783",
+      "call": "pickle.load"
+    },
+    {
+      "file": "ml_scheduler.py",
+      "line": "1119",
+      "call": "pickle.load"
+    },
+    {
+      "file": "ml_scheduler.py",
+      "line": "1370",
+      "call": "pickle.load"
+    },
+    {
+      "file": "ml_scheduler.py",
+      "line": "1459",
+      "call": "pickle.load"
+    },
+    {
+      "file": "ml_scheduler.py",
+      "line": "1944",
+      "call": "pickle.load"
+    },
+    {
+      "file": "ml_scheduler.py",
+      "line": "2002",
+      "call": "pickle.load"
+    },
+    {
+      "file": "ml_scheduler.py",
+      "line": "2300",
+      "call": "pickle.load"
+    },
+    {
+      "file": "ml_train.py",
+      "line": "945",
+      "call": "pickle.load"
+    },
+    {
+      "file": "transformer_train.py",
+      "line": "467",
+      "call": "torch.load"
+    }
+  ],
+  "ui_card_ids": [
+    "alerts-card",
+    "cal-health-card",
+    "decision-rail-card",
+    "execution-levels-card",
+    "liquidity-path-card",
+    "model-acc-card",
+    "model-health-card",
+    "order-flow-card",
+    "tf-execution-state-chip",
+    "tf-plan-entry",
+    "tf-plan-invalidation",
+    "tf-plan-size",
+    "tf-plan-state",
+    "tf-plan-stop",
+    "tf-plan-targets",
+    "tf-signal-15c",
+    "tf-signal-1c",
+    "tf-signal-5c",
+    "tf-signal-60c",
+    "tf-signal-consolidated",
+    "tf-signal-plan"
+  ],
+  "replay_resolvers": [
+    {
+      "file": "execution_identity.py",
+      "symbol": "resolve_execution_for_replay"
+    },
+    {
+      "file": "replay_hold_bars.py",
+      "symbol": "resolve_replay_max_hold_bars_for_payload"
+    }
+  ],
+  "calibration_paths": [
+    {
+      "file": "calibration/v2_a1_calibration.py",
+      "symbol": "write_a1_calibration_artifact"
+    }
+  ],
+  "content_sha256": "8954fb5a5e2769f18c5811ce339c154aecbcef687398c32bcca369b1f7eca65e"
+}

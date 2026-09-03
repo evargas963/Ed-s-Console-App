@@ -12,7 +12,7 @@
 | Step | Command | Exit | Streamer stopped? | Key artifact(s) |
 |---|---|---|---|---|
 | Auth prove | `python -c "...inspect_token_file..."` | 0 | no | (stdout: token path, EXISTS=True) |
-| A · REST | `python tools/sync_schwab_field_dictionary.py --poll` | **0** | no (REST-only) | `governance/artifacts/schwab_field_sync_state.json`; `schwab_field_inventory/schwab_field_dictionary.csv` |
+| A · REST | `python tools/sync_schwab_field_dictionary.py --poll` | **0** | no (REST-only) | `reports/artifacts/schwab_field_sync_state.json`; `schwab_field_inventory/schwab_field_dictionary.csv` |
 | B · REST+stream | `python schwab_full_field_inventory.py` | **0** | yes | `schwab_field_inventory/schwab_all_fields_master.txt`; `schwab_field_inventory/schwab_field_inventory_summary.csv` |
 | C · OF probe | `python tools/probe_schwab_of_capability_rth.py --symbols SPY,QQQ,IWM --duration-sec 90 --with-levelone-options` | **1 (cosmetic)** | yes | `reports/of_capability_probe/20260820T130550Z/{capability_matrix.json, probe_manifest.json, analysis/*, frames/*}` |
 

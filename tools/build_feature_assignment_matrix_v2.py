@@ -319,12 +319,12 @@ CURSOR_LADDER = (
 )
 
 
-LEGACY_COMPOUND_MANIFEST_PATH = Path("governance/artifacts/feature_ablation_manifest.json")
-EXPANDED_ABLATION_MANIFEST_PATH = Path("governance/artifacts/feature_ablation_manifest_leaf.json")
+LEGACY_COMPOUND_MANIFEST_PATH = Path("reports/artifacts/feature_ablation_manifest.json")
+EXPANDED_ABLATION_MANIFEST_PATH = Path("reports/artifacts/feature_ablation_manifest_leaf.json")
 FEATURE_ABLATION_UNIVERSE_XLSX = Path("feature_ablation_universe.xlsx")
 SCHWAB_DICTIONARY_PATH = Path("schwab_field_inventory/schwab_field_dictionary.csv")
-SCHWAB_ABLATION_REGISTRY_PATH = Path("governance/artifacts/schwab_ablation_field_registry.json")
-SNAPSHOT_CULL_LEDGER_PATH = Path("governance/artifacts/snapshot_column_cull_ledger.json")
+SCHWAB_ABLATION_REGISTRY_PATH = Path("reports/artifacts/schwab_ablation_field_registry.json")
+SNAPSHOT_CULL_LEDGER_PATH = Path("reports/artifacts/snapshot_column_cull_ledger.json")
 # Operator binding: ablation pool must be ≥ this factor × registered ML cone — ablation picks winners.
 MIN_ABLATION_EXPANSION_FACTOR = 2.0
 ABLATION_FEATURE_GRAIN = "schwab_expanded_atomic"
@@ -462,7 +462,7 @@ def load_schwab_ablation_field_registry(*, write: bool = False, stable_time: boo
     out = _build_schwab_ablation_field_registry_payload(stable_time=stable_time)
     if write:
         SCHWAB_ABLATION_REGISTRY_PATH.parent.mkdir(parents=True, exist_ok=True)
-        # newline="\n": governance/artifacts/*.json is pinned eol=lf (.gitattributes); the
+        # newline="\n": reports/artifacts/*.json is pinned eol=lf (.gitattributes); the
         # default text-mode write would emit CRLF on Windows and churn the whole file.
         SCHWAB_ABLATION_REGISTRY_PATH.write_text(
             json.dumps(out, indent=2), encoding="utf-8", newline="\n")
@@ -470,7 +470,7 @@ def load_schwab_ablation_field_registry(*, write: bool = False, stable_time: boo
 
 
 def build_schwab_ablation_field_registry(*, write: bool = True, stable_time: bool = False) -> dict:
-    """Categorize all Schwab dictionary rows; write governance/artifacts/schwab_ablation_field_registry.json."""
+    """Categorize all Schwab dictionary rows; write reports/artifacts/schwab_ablation_field_registry.json."""
     return load_schwab_ablation_field_registry(write=write, stable_time=stable_time)
 
 

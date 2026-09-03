@@ -19,7 +19,7 @@ Runtime priority rule:
 schwab_native_normalized > schwab_native_raw_fallback > derived_fallback_because_schwab_unavailable > unavailable gate
 ```
 
-Internal analytics still remain internal. Schwab does not replace dealer exposure, gamma walls, option-expression scoring, VWAP side, ML outputs, Kelly sizing, or replay PnL policy. Schwab should replace app-side derivation only for primitive market-data observations that it already sends. Legitimate app analytics are governed in `governance/DERIVED_ANALYTICS_REGISTRY.md`.
+Internal analytics still remain internal. Schwab does not replace dealer exposure, gamma walls, option-expression scoring, VWAP side, ML outputs, Kelly sizing, or replay PnL policy. Schwab should replace app-side derivation only for primitive market-data observations that it already sends. Legitimate app analytics are governed in `docs/DERIVED_ANALYTICS_REGISTRY.md`.
 
 ---
 

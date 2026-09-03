@@ -55,7 +55,7 @@ def test_section12_inventory_counts_and_dispositions():
 
 
 def test_section12_inventory_registered_in_replacement_register():
-    reg = (ROOT / "governance/SCHWAB_DERIVED_FIELD_REPLACEMENT_REGISTER_V1.md").read_text(
+    reg = (ROOT / "schwab_field_inventory/SCHWAB_DERIVED_FIELD_REPLACEMENT_REGISTER_V1.md").read_text(
         encoding="utf-8"
     )
     assert "<!-- SECTION12_DERIVATION_INVENTORY_START -->" in reg
