@@ -107,9 +107,18 @@ def _installed(dists=None) -> list:
 def ghost_distributions(dists=None) -> list[tuple[str, str, str]]:
     """`(name, version, why)` for every distribution whose payload is absent.
 
-    Two shapes, both OBSERVED on the production desk: metadata that claims no importable name
-    at all (python-dotenv kept only `../../Scripts/dotenv.exe`, python-dateutil kept nothing),
-    and metadata naming modules that are no longer on disk.
+    ONE rule, and deliberately only one: the distribution NAMES import modules and none of them
+    are on disk. Both production ghosts are caught by it, because `top_level.txt` lives inside
+    the .dist-info directory — the part that survives when the payload is deleted. MEASURED:
+    python-dotenv's surviving dist-info still declared `dotenv`, python-dateutil's still
+    declared `dateutil`, and neither directory existed.
+
+    A first cut also flagged "declares NO importable module", and CI proved that wrong within
+    one run: `cuda-toolkit 13.0.3.0` ships a toolchain and no Python module at all, and was
+    reported as a broken install. A distribution that legitimately ships nothing importable
+    cannot be told apart from one whose declaration was lost, so this makes no claim there.
+    That is the residual gap, stated rather than papered over with an allowlist — a gate that
+    cries wolf on a working environment gets switched off, taking the real protection with it.
     """
     sites = _site_dirs()
 
@@ -124,9 +133,7 @@ def ghost_distributions(dists=None) -> list[tuple[str, str, str]]:
         if not name:
             continue
         declared = _top_level_names(dist)
-        if not declared:
-            ghosts.append((name, dist.version, "installs no importable module"))
-        elif not any(present(n) for n in declared):
+        if declared and not any(present(n) for n in declared):
             ghosts.append((name, dist.version,
                            f"declares {sorted(declared)} — none present on disk"))
     return sorted(ghosts)
@@ -192,7 +199,9 @@ def main(argv: list[str] | None = None) -> int:
     print("(--force-reinstall is required: pip trusts the same metadata that is wrong, so a "
           "plain install reports 'already satisfied' and repairs nothing.)", file=sys.stderr)
     print("=" * 72, file=sys.stderr)
-    return 0 if args.report else 1
+    if args.report:
+        return 0                      # diagnosis prints and exits clean
+    return 1
 
 
 if __name__ == "__main__":

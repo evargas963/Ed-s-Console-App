@@ -53,19 +53,36 @@ def site(tmp_path, monkeypatch):
 
 
 def test_the_exact_production_ghost_is_caught(site):
-    """python-dotenv as it actually was: dist-info kept, only a console script recorded.
+    """python-dotenv as it actually was, reproduced from the artifact rather than imagined.
 
-    Its RECORD listed 9 entries whose only non-metadata path was `../../Scripts/dotenv.exe`,
-    so nothing importable shipped. This is the case that read downstream as absent credentials.
+    MEASURED on the repaired venv: the dist-info that survives ships `top_level.txt` naming
+    `dotenv`, while RECORD had been rewritten down to 9 entries whose only non-metadata path
+    was `../../Scripts/dotenv.exe`. So the distribution still DECLARES a module and the module
+    is gone — which is exactly what read downstream as absent credentials.
     """
     dist = make_dist(site, "python-dotenv", "1.2.2", [
         "../../Scripts/dotenv.exe,sha256=x,1024",
         "python_dotenv-1.2.2.dist-info/METADATA,sha256=y,100",
         "python_dotenv-1.2.2.dist-info/RECORD,,",
-    ])
+    ], top_level="dotenv\n")
     ghosts = rp.ghost_distributions([dist])
     assert [(n, v) for n, v, _ in ghosts] == [("python-dotenv", "1.2.2")], ghosts
-    assert "installs no importable module" in ghosts[0][2]
+    assert "none present on disk" in ghosts[0][2]
+
+
+def test_a_distribution_that_ships_no_python_module_is_not_flagged(site):
+    """The false positive CI caught within one run of the first cut.
+
+    `cuda-toolkit 13.0.3.0` ships a toolchain and no importable module, and was reported as a
+    broken install — on a perfectly good environment. A distribution that legitimately declares
+    nothing importable cannot be distinguished from one whose declaration was lost, so no claim
+    is made about it. A gate that cries wolf gets switched off, and takes the real protection.
+    """
+    dist = make_dist(site, "cuda-toolkit", "13.0.3.0", [
+        "cuda_toolkit-13.0.3.0.dist-info/METADATA,sha256=x,100",
+        "cuda_toolkit-13.0.3.0.dist-info/RECORD,,",
+    ])
+    assert rp.ghost_distributions([dist]) == []
 
 
 def test_metadata_naming_a_module_that_is_not_on_disk_is_caught(site):
@@ -143,7 +160,8 @@ def test_the_live_checkout_is_provisioned():
 
 def test_report_mode_diagnoses_without_blocking(site, monkeypatch):
     """`--report` is for diagnosis; only the gate form may refuse a launch."""
-    ghost = make_dist(site, "python-dotenv", "1.2.2", ["python_dotenv-1.2.2.dist-info/RECORD,,"])
+    ghost = make_dist(site, "python-dotenv", "1.2.2", ["python_dotenv-1.2.2.dist-info/RECORD,,"],
+                      top_level="dotenv\n")
     monkeypatch.setattr(rp, "_installed", lambda dists=None: [ghost] if dists is None else dists)
     monkeypatch.setattr(rp, "ROOT", site)          # no requirements.txt there
 
