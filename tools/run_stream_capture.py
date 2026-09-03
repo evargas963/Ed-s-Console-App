@@ -21,7 +21,7 @@ Acceptance instrumentation built in (measured, not asserted):
     original numeric maps parsed all-None and were caught by this exact mechanism).
 
 Usage:
-    python tools/run_stream_capture.py --symbols SPY,QQQ,IWM --duration-min 390
+    python tools/run_stream_capture.py --symbols SPY,QQQ,IWM --duration-min 0
 """
 
 from __future__ import annotations

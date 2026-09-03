@@ -14160,6 +14160,38 @@ def api_order_flow_options_microstructure(contract: str = Query(...)):
     return JSONResponse(payload)
 
 
+
+@app.get("/api/order-flow/options-history")
+def api_order_flow_options_history(
+    contract: str = Query(...),
+    minutes: float = Query(default=15.0),
+):
+    """Same options live payload, computed from persisted stream_capture rows.
+
+    Used after restart or when the in-memory plane is empty. Does not open Schwab.
+    ``minutes`` is the lookback on ts_recv. Fail-closed empty content -> no_book.
+    """
+    c = (contract or "").strip()
+    if not c:
+        return JSONResponse({"error": "contract is required"}, status_code=400)
+    try:
+        lookback = float(minutes)
+    except (TypeError, ValueError):
+        lookback = 15.0
+    if lookback <= 0 or lookback > 24 * 60:
+        lookback = 15.0
+    import time as _time
+    from app.options.history import hydrate_option_content
+    from app.options.live_payload import options_live_payload
+
+    content = hydrate_option_content(c, since_ts=_time.time() - lookback * 60.0)
+    payload = options_live_payload(c, content=content)
+    payload["contract"] = c
+    payload["history_minutes"] = lookback
+    payload["history_n"] = len(content)
+    return JSONResponse(payload)
+
+
 @app.post("/api/streaming/active-option-contract")
 async def post_streaming_active_option_contract(payload: dict = Body(default={})):
     """Subscribe LEVELONE_OPTIONS+OPTIONS_BOOK to one option contract (dynamic; replaces

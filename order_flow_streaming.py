@@ -52,11 +52,9 @@ from order_flow_live_state import (
     clear_all_live_state,
     clear_symbol,
     forget_unsubscribed_symbols,
-    get_content_for_symbol,
     push_book,
     push_level_one,
 )
-from order_flow_engine import compute_book_microstructure
 
 import live_market_plane as _lmp
 
@@ -450,6 +448,36 @@ async def _feed_loop() -> None:
         _log_stream("FEED_LOOP_STOP_DONE")
 
 
+
+def _contract_matches_underlying(contract: str | None, ticker: str) -> bool:
+    """True when the vendor OSI symbol is for this underlying (prefix, not constructed)."""
+    if not contract or not ticker:
+        return False
+    root = ticker_storage_key(ticker) or ticker
+    raw = str(contract).strip().upper()
+    return raw.startswith(root)
+
+
+def _ensure_default_option_contract_for_ticker(ticker: str) -> None:
+    """Server-owned collectable contract so OPTIONS_BOOK is not browser-gated.
+
+    Operator POST /api/streaming/active-option-contract still wins. This only
+    fills an empty slot or replaces a leftover contract from a different underlying.
+    """
+    global _active_option_contract
+    if _contract_matches_underlying(_active_option_contract, ticker):
+        return
+    try:
+        from app.options.default_contract import default_option_contract
+        from db import DB_PATH
+    except Exception as e:
+        log.debug("default option contract import failed: %s", e)
+        return
+    sym = default_option_contract(ticker, chain_db_path=DB_PATH)
+    if not sym:
+        return
+    set_active_option_contract(sym)
+
 def set_streaming_active_ticker(ticker: str) -> bool:
     """Request book depth + begin replaying L1 for this symbol. The daemon adds/drops
     its own NASDAQ_BOOK/NYSE_BOOK subscription for `ticker` on its own poll cadence
@@ -461,6 +489,7 @@ def set_streaming_active_ticker(ticker: str) -> bool:
         return False
     old = [_active_ticker] if _active_ticker else []
     if _active_ticker == t:
+        _ensure_default_option_contract_for_ticker(t)
         return True
     _log_stream("STREAM_RESUBSCRIBE_START", old=old, new=[t])
     forget_unsubscribed_symbols(old, [t])
@@ -470,6 +499,7 @@ def set_streaming_active_ticker(ticker: str) -> bool:
     _streaming_last_update_ts = None
     log.info("Live-plane feed active ticker -> %s", t)
     _log_stream("STREAM_RESUBSCRIBE_DONE", ticker=t)
+    _ensure_default_option_contract_for_ticker(t)
     return True
 
 
@@ -547,18 +577,16 @@ def set_active_option_contract(contract_symbol: str,
 
 
 def get_option_contract_book_microstructure(contract_symbol: str) -> dict:
-    """The order-flow SEMANTIC PRODUCT for one option contract's live book: reuses
-    order_flow_engine.compute_book_microstructure — the SAME one producer the equity
-    `/api/order-flow/microstructure` route reads — called with this contract's own
-    replayed content, never a second book-imbalance computation. Fail-closed by that
-    producer's own contract: no book snapshot yet -> status 'no_book', no fabricated
-    metric. This function does not gate on _active_option_contract being set to
-    `contract_symbol` — a caller may query content already replayed even if the daemon
-    has since moved on, exactly as the equity route does not gate on the ticker being
-    'the' active one."""
+    """The order-flow SEMANTIC PRODUCT for one option contract: book + PROXY flow.
+
+    Assembled by ``app.options.live_payload.options_live_payload``, which calls
+    ``OrderFlowEngine.compute`` once (that function already produces
+    ``book_microstructure``). No second book walk.
+    """
+    from app.options.live_payload import options_live_payload
+
     t = ticker_storage_key(contract_symbol)
-    content = get_content_for_symbol(t) if t else []
-    return compute_book_microstructure({"content": content}, ticker=t)
+    return options_live_payload(t)
 
 
 def _option_streaming_healthy() -> bool:

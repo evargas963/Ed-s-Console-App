@@ -231,3 +231,50 @@ def latest_complete_chain_capture(
     return {"ticker": tk, "expiry": exp, "ts_utc": float(row[0]), "spot": row[1],
             "n_contracts": int(row[2]), "completeness_basis": row[3],
             "contracts": contracts, "source": str(row[5])}
+
+
+def nearest_complete_chain_capture(
+    db_path: Path | str, ticker: str, *, on_or_after_expiry: str
+) -> dict[str, Any] | None:
+    """Newest banked COMPLETE capture for ticker at the nearest expiry on/after a date.
+
+    Fail-closed: missing file/table/payload -> None. Does not invent a chain or
+    substitute a narrower book. Expiry is the vendor date already stored on the row.
+    """
+    path = Path(db_path)
+    if not path.is_file():
+        return None
+    tk = ticker_storage_key(ticker)
+    cutoff = str(on_or_after_expiry or "").strip()[:10]
+    if not tk or not cutoff:
+        return None
+    try:
+        conn = sqlite3.connect(f"file:{path.resolve().as_posix()}?mode=ro", uri=True)
+    except sqlite3.Error:
+        return None
+    try:
+        if not conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='complete_chain_captures'"
+        ).fetchone():
+            return None
+        row = conn.execute(
+            "SELECT expiry, ts_utc, spot, n_contracts, completeness_basis, chain_json, source "
+            "FROM complete_chain_captures WHERE ticker=? AND expiry>=? "
+            "ORDER BY expiry ASC, ts_utc DESC LIMIT 1",
+            (tk, cutoff),
+        ).fetchone()
+    except sqlite3.Error:
+        return None
+    finally:
+        conn.close()
+    if not row:
+        return None
+    try:
+        contracts = json.loads(row[5])
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(contracts, list) or not contracts:
+        return None
+    return {"ticker": tk, "expiry": str(row[0]), "ts_utc": float(row[1]), "spot": row[2],
+            "n_contracts": int(row[3]), "completeness_basis": row[4],
+            "contracts": contracts, "source": str(row[6])}
