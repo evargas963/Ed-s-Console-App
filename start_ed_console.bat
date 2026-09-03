@@ -22,10 +22,20 @@ if not exist "%VENV_PY%" (
     exit /b 1
 )
 
-"%VENV_PY%" -m uvicorn --version >nul 2>&1
+REM RC-513: is this checkout actually PROVISIONED, not just "does uvicorn import".
+REM MEASURED 2026-09-03: the desk refused to launch with "SCHWAB_API_KEY /
+REM SCHWAB_APP_SECRET missing after sanitize" while .env held both keys. dotenv was
+REM missing, config._load_dotenv_if_present() swallows ImportError by design, and the
+REM canonical load silently became a no-op -- a broken virtualenv wearing the face of
+REM absent credentials. It stayed invisible because python_dotenv-1.2.2.dist-info was
+REM still present with no dotenv/ package: importlib.metadata, pip and a full
+REM requirements.txt audit all reported 22 of 22 SATISFIED. A second ghost,
+REM python-dateutil, was breaking `import pandas` at the same time. The old probe here
+REM asked only whether uvicorn imports, which both ghosts passed.
+"%VENV_PY%" runtime_preflight.py
 if errorlevel 1 (
-    echo  ERROR: uvicorn is not installed in the repo .venv ^("%VENV_PY%"^).
-    echo  Install it:  "%VENV_PY%" -m pip install "uvicorn[standard]" fastapi
+    echo  LAUNCH BLOCKED: the repo virtualenv is not provisioned to run this app.
+    echo  The report above names each distribution and the repair command.
     pause
     exit /b 1
 )
