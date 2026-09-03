@@ -2446,8 +2446,16 @@ def _staged_has_real_change(rel: str) -> bool:
 #: RC-140: the first cut listed only py/html/js, so a closure naming a .ts or .css fix was
 #: unrecognized and therefore unchecked (v31 measured it) — every source extension the repo
 #: could plausibly ship a fix in is listed here now.
+#: RC-507: the leading dot is part of the path. This anchored on `\b[\w]`, and a dot is
+#: neither a boundary-then-word-character nor a word character, so the match STARTED AFTER IT
+#: — `.github/workflows/hardening.yml` came back as `github/workflows/hardening.yml`, which is
+#: not what the staged set holds, so a closure that genuinely shipped a workflow or hook fix
+#: was refused as "naming FIXED files this commit does not carry". An over-block, and aimed at
+#: exactly the control surfaces (.github/, .claude/, .cursor/) a GOVERNANCE closure names most.
+#: The lookbehind replaces `\b` so a match may begin at the dot while still refusing to start
+#: mid-path (`a/b.py` must not yield `b.py`).
 _FIXED_SOURCE_FILE_RE = re.compile(
-    r"\b([\w][\w./\-]*\.(?:py|pyi|html|js|jsx|mjs|cjs|ts|tsx|css|scss|sql|ps1|bat|sh|yaml|yml))\b"
+    r"(?<![\w./\-])((?:\./)?\.?[\w][\w./\-]*\.(?:py|pyi|html|js|jsx|mjs|cjs|ts|tsx|css|scss|sql|ps1|bat|sh|yaml|yml))\b"
 )
 #: RC-141: RC-140 keyed this on the literal word FIXED, so dropping that token ("See VERIFIED
 #: below.") walked straight through — v32 measured it, the same omit-the-watched-token class
@@ -2515,7 +2523,10 @@ def _closed_row_code_not_shipped(
                 and not _NO_CODE_CLAIM_RE.search(body)):
             bad.append(_UNNAMED_FIX)
         for m in _FIXED_SOURCE_FILE_RE.finditer(body):
-            rel = m.group(1).replace("\\", "/").lstrip("./")
+            # RC-507: `lstrip("./")` strips CHARACTERS, so it ate the leading dot of
+            # `.github/...` as well as the `./` prefix it was written for — the same call
+            # RC-506 repaired in universal_scope_lock, one function away.
+            rel = m.group(1).replace("\\", "/").removeprefix("./")
             if rel in bad or rel in staged:
                 continue
             if rel in dirty:

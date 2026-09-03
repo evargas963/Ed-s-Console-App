@@ -490,6 +490,50 @@ def test_closed_row_semantics_escapes_are_closed():
              set(), staged=set()) == [], "an explicit no-code closure was blocked"
 
 
+def test_a_closure_may_name_a_dot_prefixed_path_and_be_believed():
+    """RC-507. The extractor anchored on `\\b[\\w]`, which cannot start on a dot, so
+    `.github/workflows/hardening.yml` came back as `github/workflows/hardening.yml` — a string
+    the staged set never holds. A closure that genuinely shipped a workflow or hook fix was
+    therefore refused as "naming FIXED files this commit does not carry": an OVER-block, and
+    aimed squarely at the control surfaces (.github/, .claude/, .cursor/) a GOVERNANCE closure
+    names most. Every prior fixture used dot-free `tools/` and `tests/` paths, which is exactly
+    why nothing caught it.
+
+    The table covers both directions and the two shapes the anchor must still refuse.
+    """
+    from tools.check_institutional_correctness import _FIXED_SOURCE_FILE_RE as RE
+    from tools.check_institutional_correctness import _closed_row_code_not_shipped as V
+
+    def row(fix, rc="RC-961"):
+        return (f"| {rc} | CLOSED | 2026-09-02 | 2026-09-05 | desc | "
+                f"a -> b -> c -> d -> ROOT: e | {fix} |")
+
+    extracted = {
+        ".github/workflows/hardening.yml": [".github/workflows/hardening.yml"],
+        ".cursor/rules/probe.js": [".cursor/rules/probe.js"],
+        "./tools/y.py": ["./tools/y.py"],          # the `./` prefix the old lstrip existed for
+        "tools/z.py": ["tools/z.py"],
+        "x/a/b.py": ["x/a/b.py"],                  # must not start mid-path and yield "b.py"
+    }
+    for body, want in extracted.items():
+        assert [m.group(1) for m in RE.finditer("FIXED: " + body)] == want, body
+
+    # A dot-prefixed path STAGED with its row must be quiet — the property the bug broke.
+    for path in (".github/workflows/hardening.yml", ".cursor/rules/probe.js", "./tools/y.py"):
+        staged = {path.removeprefix("./")}
+        assert V([row(f"FIXED: {path}")], set(), staged=staged) == [], (
+            f"{path} was staged with its row and still read as absent")
+        # ...and UNstaged it must still fire, or the repair would have bought silence.
+        hits = V([row(f"FIXED: {path}")], set(), staged=set())
+        assert len(hits) == 1 and hits[0][1] == [path.removeprefix("./")], (path, hits)
+
+    # .json/.md stay deliberately unrecognised (RC-137: evidence writes are not "the fix"),
+    # so a closure naming only those is UNNAMED, not satisfied.
+    from tools.check_institutional_correctness import _UNNAMED_FIX
+    hits = V([row("FIXED: .claude/settings.json and AGENTS.md")], set(), staged=set())
+    assert len(hits) == 1 and hits[0][1] == [_UNNAMED_FIX], hits
+
+
 # ── RC-246 (P1): the blocking path runs ENFORCED only; advisory still RUNS and is recorded ──
 
 
