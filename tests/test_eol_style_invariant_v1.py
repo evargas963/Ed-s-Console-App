@@ -24,7 +24,6 @@ REPO = Path(__file__).resolve().parent.parent
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
-TURN_AUDIT_OWNS = ["tools/check_eol_style_invariant.py"]
 
 TOOL = REPO / "tools" / "check_eol_style_invariant.py"
 
@@ -198,6 +197,53 @@ def test_a_pinned_path_with_a_real_content_change_is_still_silent(repo):
         f"a real edit to a PINNED path was reported as a terminator flip — the check is "
         f"judging disk bytes where git judges normalised bytes (RC-383): {out}")
     assert "[PASS]" in out, out
+
+
+def test_a_blob_that_violates_its_own_pin_can_be_repaired(repo):
+    """RC-511: the pin binds on BOTH sides of the comparison.
+
+    It was applied to the worktree side only, so a path pinned `eol=lf` whose HEAD blob is
+    CRLF was compared LF-against-CRLF, and the commit that RESTORES the pin was reported as a
+    PURE EOL REFLOW — the gate demanding "restore the original terminator" while refusing the
+    restoration. Invisible while every blob obeyed its pin, which is why it survived.
+
+    MEASURED on the real tree: RC-509 moved three artifacts out from under
+    `governance/artifacts/*.json text eol=lf`, git stopped normalising and stored the CRLF a
+    Windows suite run had written, and re-pinning the new location was refused three times.
+
+    Planted by committing CRLF with NO pin, then adding the pin — which is exactly how a blob
+    comes to violate one: the file did not move, the pattern did.
+    """
+    root, git = repo
+    (root / "pinned.json").write_bytes(b'{\r\n  "a": 1\r\n}\r\n')
+    git("add", "-A")
+    git("commit", "-m", "commit CRLF with no pin in force")
+
+    (root / ".gitattributes").write_bytes(b"pinned.json text eol=lf\n")
+    (root / "pinned.json").write_bytes(b'{\n  "a": 1\n}\n')
+    git("add", "-A")
+    rc, out = run_in(root)
+    assert rc == 0 and "[PASS]" in out, (
+        f"restoring a pinned path's terminator was refused as a reflow — the repair the "
+        f"message itself asks for is unreachable: {out}")
+
+
+def test_an_unpinned_reflow_is_still_refused_after_the_pin_fix(repo):
+    """The negative half: RC-511 must not turn the lock off for unpinned paths.
+
+    Same shape as the pinned case above, minus the pin. Nothing normalises it, so the flip is
+    real and must still fail — otherwise the repair would have bought silence.
+    """
+    root, git = repo
+    (root / "plain.json").write_bytes(b'{\r\n  "a": 1\r\n}\r\n')
+    git("add", "-A")
+    git("commit", "-m", "commit CRLF, unpinned")
+
+    (root / "plain.json").write_bytes(b'{\n  "a": 1\n}\n')
+    git("add", "-A")
+    rc, out = run_in(root)
+    assert rc != 0 and "PURE EOL REFLOW" in out, (
+        f"an unpinned terminator flip stopped being refused: {out}")
 
 
 def test_the_live_repo_is_currently_clean():

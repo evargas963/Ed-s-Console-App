@@ -40,7 +40,7 @@
       "TEST": [],
       "PROVENANCE": [
         "docs/db_authority_enforcement_v2_global_closure.md",
-        "governance/artifacts/snapshot_column_cull_ledger.json"
+        "reports/artifacts/snapshot_column_cull_ledger.json"
       ],
       "NOISE": [
         "reports/repo_wide_adversarial_audit_wave1.json",
@@ -52,7 +52,7 @@
       "TEST": [],
       "PROVENANCE": [
         "docs/db_authority_enforcement_v2_global_closure.md",
-        "governance/artifacts/snapshot_column_cull_ledger.json"
+        "reports/artifacts/snapshot_column_cull_ledger.json"
       ],
       "NOISE": [
         "reports/repo_wide_adversarial_audit_wave1.json",
@@ -64,7 +64,7 @@
       "TEST": [],
       "PROVENANCE": [
         "docs/phase4a_canonical_1m_full_closure.md",
-        "governance/artifacts/snapshot_column_cull_ledger.json"
+        "reports/artifacts/snapshot_column_cull_ledger.json"
       ],
       "NOISE": [
         "reports/repo_wide_adversarial_audit_wave1.json",
@@ -78,7 +78,7 @@
       ],
       "PROVENANCE": [
         "governance/root_cause_log.md",
-        "governance/artifacts/snapshot_column_cull_ledger.json"
+        "reports/artifacts/snapshot_column_cull_ledger.json"
       ],
       "NOISE": [
         "reports/repo_wide_adversarial_audit_wave1.json",
@@ -89,7 +89,7 @@
       "CODE": [],
       "TEST": [],
       "PROVENANCE": [
-        "governance/artifacts/snapshot_column_cull_ledger.json"
+        "reports/artifacts/snapshot_column_cull_ledger.json"
       ],
       "NOISE": [
         "reports/repo_wide_adversarial_audit_wave1.json",
@@ -101,7 +101,7 @@
       "TEST": [],
       "PROVENANCE": [
         "reports/claude_finish_adversarial_audit_v5.md",
-        "governance/artifacts/snapshot_column_cull_ledger.json"
+        "reports/artifacts/snapshot_column_cull_ledger.json"
       ],
       "NOISE": []
     },
@@ -109,7 +109,7 @@
       "CODE": [],
       "TEST": [],
       "PROVENANCE": [
-        "governance/artifacts/snapshot_column_cull_ledger.json"
+        "reports/artifacts/snapshot_column_cull_ledger.json"
       ],
       "NOISE": []
     },
@@ -117,7 +117,7 @@
       "CODE": [],
       "TEST": [],
       "PROVENANCE": [
-        "governance/artifacts/snapshot_column_cull_ledger.json"
+        "reports/artifacts/snapshot_column_cull_ledger.json"
       ],
       "NOISE": []
     },
@@ -125,7 +125,7 @@
       "CODE": [],
       "TEST": [],
       "PROVENANCE": [
-        "governance/artifacts/snapshot_column_cull_ledger.json"
+        "reports/artifacts/snapshot_column_cull_ledger.json"
       ],
       "NOISE": []
     },
@@ -133,7 +133,7 @@
       "CODE": [],
       "TEST": [],
       "PROVENANCE": [
-        "governance/artifacts/snapshot_column_cull_ledger.json"
+        "reports/artifacts/snapshot_column_cull_ledger.json"
       ],
       "NOISE": []
     },
@@ -141,7 +141,7 @@
       "CODE": [],
       "TEST": [],
       "PROVENANCE": [
-        "governance/artifacts/snapshot_column_cull_ledger.json"
+        "reports/artifacts/snapshot_column_cull_ledger.json"
       ],
       "NOISE": []
     },
@@ -149,7 +149,7 @@
       "CODE": [],
       "TEST": [],
       "PROVENANCE": [
-        "governance/artifacts/snapshot_column_cull_ledger.json"
+        "reports/artifacts/snapshot_column_cull_ledger.json"
       ],
       "NOISE": []
     },
@@ -157,7 +157,7 @@
       "CODE": [],
       "TEST": [],
       "PROVENANCE": [
-        "governance/artifacts/snapshot_column_cull_ledger.json"
+        "reports/artifacts/snapshot_column_cull_ledger.json"
       ],
       "NOISE": []
     },
@@ -165,7 +165,7 @@
       "CODE": [],
       "TEST": [],
       "PROVENANCE": [
-        "governance/artifacts/snapshot_column_cull_ledger.json"
+        "reports/artifacts/snapshot_column_cull_ledger.json"
       ],
       "NOISE": []
     },
@@ -173,7 +173,7 @@
       "CODE": [],
       "TEST": [],
       "PROVENANCE": [
-        "governance/artifacts/snapshot_column_cull_ledger.json"
+        "reports/artifacts/snapshot_column_cull_ledger.json"
       ],
       "NOISE": []
     },
@@ -181,7 +181,7 @@
       "CODE": [],
       "TEST": [],
       "PROVENANCE": [
-        "governance/artifacts/snapshot_column_cull_ledger.json"
+        "reports/artifacts/snapshot_column_cull_ledger.json"
       ],
       "NOISE": []
     },
@@ -189,7 +189,7 @@
       "CODE": [],
       "TEST": [],
       "PROVENANCE": [
-        "governance/artifacts/snapshot_column_cull_ledger.json"
+        "reports/artifacts/snapshot_column_cull_ledger.json"
       ],
       "NOISE": []
     },
@@ -197,7 +197,7 @@
       "CODE": [],
       "TEST": [],
       "PROVENANCE": [
-        "governance/artifacts/snapshot_column_cull_ledger.json"
+        "reports/artifacts/snapshot_column_cull_ledger.json"
       ],
       "NOISE": []
     }

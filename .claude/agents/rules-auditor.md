@@ -26,11 +26,11 @@ Your single job: read the rule surfaces end-to-end and produce a structured repo
 - `CLAUDE.md` — one-line pointer to AGENTS.md
 - `ACTIVE_PROGRAM.md` — current work record and operator-directed backlog
 - `MEMORY.md` — thin pointer + archive index
-- `.cursor/rules/*.mdc` — always-on Cursor rules
+- `.cursor/rules/00-always.mdc` — Cursor's pointer to `AGENTS.md`. RC-505 deleted rules 01/02/04/05: they restated laws AGENTS.md already carries and Python already enforces, and 0 executables and 0 tests referenced them. A rule lives in ONE place — the charter for the law, the code for the enforcement.
 
 **Process mechanics:**
-- `tools/session_closeout.py` (the worktree-handoff checker was removed 2026-08-24)
 - `governance/AGENT_OPERATING_PROCESS_V1.md`
+- `tools/mission_latch.py` (the Find → Fix latch: one open row before a production mutation, and the turn may not end while it is unfinished and unblocked)
 
 **Operator decisions:**
 - `governance/OPERATOR_DECISION_REGISTER.md` (O-NN narratives)

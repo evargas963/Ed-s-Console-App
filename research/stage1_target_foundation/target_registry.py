@@ -1,6 +1,6 @@
 """Stage 1 target registry loader + fail-closed validator (research-only).
 
-The registry (governance/research/stage1_target_label_foundation/target_registry_v1.json)
+The registry (research/stage1_target_label_foundation/target_registry_v1.json)
 is the single machine-readable binding of target_id -> formula -> source ->
 causal contract -> cost/barrier version -> status. This module loads it and
 proves its invariants; tests/test_stage1_target_registry.py locks them.
@@ -20,7 +20,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 REGISTRY_PATH = (
-    ROOT / "governance" / "research" / "stage1_target_label_foundation"
+    ROOT / "research" / "stage1_target_label_foundation"
     / "target_registry_v1.json"
 )
 

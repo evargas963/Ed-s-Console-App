@@ -167,6 +167,61 @@ def test_pretooluse_blocks_spy_only_prompt_write(monkeypatch):
     assert code == 0, f"UNIVERSAL prompt was wrongly blocked: {err!r}"
 
 
+def test_every_declared_gated_path_class_actually_gates():
+    """RC-505. The docstring names TWO gated classes and TWO exclusions; each is asserted.
+
+    MEASURED 2026-09-02, before the fix: `is_prompt_or_agent_instruction_path` normalised with
+    `lstrip("./")`, which strips CHARACTERS rather than a prefix. `.cursor/rules/x.mdc` became
+    `cursor/rules/x.mdc`, so the dot-prefixed `.cursor/rules/` match could never fire — one of
+    only two gated classes was UNGATED — while `.claude/agent_prompt.md` lost its leading dot
+    too and slipped past its own exclusion, so agent scratch was over-blocked. The front-end
+    control above drives a repo-ROOT prompt file, which is the one gated shape the bug did not
+    touch, so it stayed green the whole time the class was dead.
+
+    This is a table over the declared surface: every class in, every exclusion out.
+    """
+    gated = [
+        ".cursor/rules/00-always.mdc",   # the class the bug killed
+        ".cursor/rules/anything.mdc",
+        "AGENTS.md", "CLAUDE.md", "ACTIVE_PROGRAM.md",
+        "./AGENTS.md",                   # the leading "./" the normaliser exists to handle
+        "docs/my_prompt.md",
+    ]
+    ungated = [
+        ".claude/agent_prompt.md",       # dropped by T2-5, and the exclusion must survive
+        "reports/x_prompt.md",           # dropped by T2-5
+        ".cursor/hooks.json",            # not a rules file
+        "server.py",
+    ]
+    wrong = [p for p in gated if not U.is_prompt_or_agent_instruction_path(p)]
+    assert wrong == [], f"declared gated paths that do NOT gate: {wrong}"
+    wrong = [p for p in ungated if U.is_prompt_or_agent_instruction_path(p)]
+    assert wrong == [], f"declared-excluded paths that DO gate: {wrong}"
+
+
+def test_pretooluse_blocks_spy_only_framing_in_a_cursor_rule(monkeypatch):
+    """RC-505, end to end: the front end must block on the class the bug had made dead."""
+    payload = {
+        "tool_name": "Write",
+        "tool_input": {
+            "file_path": str(ROOT / ".cursor" / "rules" / "00-always.mdc"),
+            "content": "Collect is complete for SPY. Sentinel-only is complete.",
+        },
+    }
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(payload)))
+    err = io.StringIO()
+    monkeypatch.setattr(sys, "stderr", err)
+    assert PG.main() == 2, "SPY-complete framing in a Cursor rule was not blocked"
+    assert "RC-160" in err.getvalue()
+
+    payload["tool_input"]["content"] = (
+        "Collect is complete for SPY. OUT-OF-SCOPE: sentinel smoke only.")
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(payload)))
+    err = io.StringIO()
+    monkeypatch.setattr(sys, "stderr", err)
+    assert PG.main() == 0, f"the declared escape was wrongly blocked: {err.getvalue()!r}"
+
+
 def test_live_tree_liquidity_defaults_are_not_spy_only():
     """Sanity: committed liquidity_* tools must not currently violate (no grandfathering)."""
     for path in U.experiment_tool_paths(ROOT):

@@ -1,6 +1,6 @@
 """CR-01 streaming spine: topic bus + last-value cache + capture writer + feed health.
 
-Consensus plan v1.2 (governance/CONSOLE_REBUILD_PLAN_CR_V1.md §4). Laws encoded here:
+Consensus plan v1.2 (docs/CONSOLE_REBUILD_PLAN_CR_V1.md §4). Laws encoded here:
   - cache-then-publish: the cache is written BEFORE subscribers are notified, so any
     consumer can snapshot-then-ride-deltas without a poll-to-hydrate step.
   - every queue is BOUNDED with an explicit policy: quotes coalesce-to-latest,

@@ -1,4 +1,8 @@
-> **Classification:** Active Rule Source | **Scope:** Thin pointer to AGENTS/ACTIVE_PROGRAM and [OPERATOR-ONLY] archive prefs.
+> **Classification:** Pointer — NOT a rule source | **Scope:** Where the rules live, the runtime facts a session needs on arrival, and an index into the [OPERATOR-ONLY] archive.
+>
+> RC-505: this said "Active Rule Source" while its own body says portable rules live in
+> `AGENTS.md`. A file that both claims authority and disclaims it is a second rule surface
+> waiting to be cited. The rules are in `AGENTS.md`; this file points at them.
 
 # MEMORY.md — thin pointer (Phase 1c)
 

@@ -145,7 +145,7 @@ def greeks_era_ok(ts_utc: float, *, rebuilt_from_chain_archive: bool = False) ->
 # conditioning translation nulled. A predictive ingest may consume these names
 # ONLY under a frozen prereg that explicitly binds the certified greeks channel
 # (era floor + recomputed_greeks_ready read gate). Register:
-# governance/DERIVED_ANALYTICS_REGISTRY.md "Lane Classification".
+# docs/DERIVED_ANALYTICS_REGISTRY.md "Lane Classification".
 DISPLAY_ONLY_GREEKS_FEATURES: frozenset[str] = frozenset(
     {
         "net_gamma", "net_gamma_prev", "net_gamma_rc", "net_delta", "charm_net",

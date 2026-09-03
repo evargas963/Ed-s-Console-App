@@ -60,7 +60,7 @@ CANDIDATE_SOURCE_ROOTS: tuple[str, ...] = (
     "parallel", "cascade", "_artifact_archive/parallel", "_artifact_archive/cascade",
 )
 QUARANTINE_DIRNAME = "_item4_quarantine"
-MIGRATION_STATE_PATH = REPO_ROOT / "governance" / "artifacts" / "ML_ITEM4_MIGRATION_STATE.json"
+MIGRATION_STATE_PATH = REPO_ROOT / "reports" / "artifacts" / "ML_ITEM4_MIGRATION_STATE.json"
 
 CLASS_REPROMOTABLE = "PROVEN_SOURCE_REPROMOTABLE"
 CLASS_RECONSTRUCTABLE = "PROVEN_SOURCE_MANIFEST_RECONSTRUCTABLE"
@@ -440,7 +440,7 @@ def verify_fleet(models_dir: Path) -> dict[str, Any]:
 # reviewable, and idempotently re-runnable — never a session-local script.
 # ══════════════════════════════════════════════════════════════════════════════
 
-RECOVERY_RECORD_PATH = REPO_ROOT / "governance" / "artifacts" / "ML_ITEM4_DRIFT_RECOVERY_RECORD.json"
+RECOVERY_RECORD_PATH = REPO_ROOT / "reports" / "artifacts" / "ML_ITEM4_DRIFT_RECOVERY_RECORD.json"
 
 
 def load_recovery_record(path: Path = RECOVERY_RECORD_PATH) -> dict[str, Any]:

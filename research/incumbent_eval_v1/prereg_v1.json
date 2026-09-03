@@ -1,7 +1,7 @@
 {
   "prereg_id": "incumbent_eval_v1_prereg_v1",
   "sibling_precedent": "research/pilot_step3/prereg_v1.json (closest-shape preregistration in this repo)",
-  "authority_contract": "governance/research/stage1_target_label_foundation/stage2_experiment_contract_v1.json (frozen primary metric, baseline roster, stop-condition discipline)",
+  "authority_contract": "research/stage1_target_label_foundation/stage2_experiment_contract_v1.json (frozen primary metric, baseline roster, stop-condition discipline)",
   "study_question": "Do the incumbent seven-layer stack's RECORDED live per-horizon fusion probability triplets carry any predictive information about their attached outcome labels, beyond trivial baselines and chance?",
   "study_class": "SIGNAL_EXISTENCE_DIAGNOSTIC",
   "explicitly_not": {

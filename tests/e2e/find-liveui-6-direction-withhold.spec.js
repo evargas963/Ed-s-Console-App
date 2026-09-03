@@ -6,7 +6,7 @@
  * window-exposed helpers + the marker applier through the same DOM path
  * production uses (_updateLiveUiAe → _updateDirectionWithheldMarkers).
  *
- * Authority: LIVE-UI-1 inventory rows in governance/STACK_WIRING_INTEGRITY_MAP.md
+ * Authority: LIVE-UI-1 inventory rows in docs/STACK_WIRING_INTEGRITY_MAP.md
  * "Live-UI direction transports (LIVE-UI-1, Phase 2)". OF strip is NOT
  * covered by these helpers (its own order_flow_stale clock — FIND-WIRE5-2..3).
  *

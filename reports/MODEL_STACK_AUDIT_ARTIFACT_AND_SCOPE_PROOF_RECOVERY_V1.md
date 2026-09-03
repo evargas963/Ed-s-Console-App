@@ -21,10 +21,10 @@ git status --short
  M .cursor/rules/00-always.mdc
  M AGENTS.md
  M CLAUDE.md
- M governance/artifacts/CHECK_STACK_INVENTORY.json
- M governance/artifacts/survivor_edge_probe.json
- M governance/artifacts/survivor_inference_backtest.json
- M governance/artifacts/survivor_validation_run.json
+ M reports/artifacts/CHECK_STACK_INVENTORY.json
+ M reports/artifacts/survivor_edge_probe.json
+ M reports/artifacts/survivor_inference_backtest.json
+ M reports/artifacts/survivor_validation_run.json
  M governance/docs/AGENT_OPERATING_CONTRACT.md
  M governance/docs/CHECK_STACK_RIGHTSIZING.md
  M governance/mega1_traceable_inventory.py
@@ -48,7 +48,7 @@ git diff --name-status
 M	.cursor/rules/00-always.mdc
 M	AGENTS.md
 M	CLAUDE.md
-M	governance/artifacts/CHECK_STACK_INVENTORY.json
+M	reports/artifacts/CHECK_STACK_INVENTORY.json
 M	governance/docs/AGENT_OPERATING_CONTRACT.md
 M	governance/docs/CHECK_STACK_RIGHTSIZING.md
 M	governance/mega1_traceable_inventory.py
@@ -61,7 +61,7 @@ git diff --stat
  .cursor/rules/00-always.mdc                     |   2 +
  AGENTS.md                                       |   1 +
  CLAUDE.md                                       |   1 +
- governance/artifacts/CHECK_STACK_INVENTORY.json |  25 +++-
+ reports/artifacts/CHECK_STACK_INVENTORY.json |  25 +++-
  governance/docs/AGENT_OPERATING_CONTRACT.md     |   1 +
  governance/docs/CHECK_STACK_RIGHTSIZING.md      |   2 +-
  governance/mega1_traceable_inventory.py         |   2 +

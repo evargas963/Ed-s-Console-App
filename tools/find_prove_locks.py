@@ -45,12 +45,31 @@ _BANNED_CV = frozenset({
 })
 
 
+#: RC-505: this lived in tools/plus_player_locks.py, a module named for a subsystem retired
+#: 2026-08-24 (plus_player_law, plus_player_cursor_hooks — governance/retired_checks.md).
+#: Everything else in that file read `governance/plus_player_attributes.json`, which now sits
+#: under governance/archive/ — MEASURED 2026-09-02, `catalog_completeness_violations()`
+#: returned "catalog unreadable". One live helper does not keep a broken module alive; it
+#: moves to its only consumer, which is here.
+_RESEARCH_PATH_TOKEN = re.compile(
+    r"(?:^|[\s`\"'(])((?:[\w.-]+/)+[\w.-]+\.(?:py|md|html|js|ts|tsx|jsx|css|sql|json))"
+)
+
+
 def _path_resolves(ref: str) -> bool:
-    try:
-        from tools.plus_player_locks import research_path_resolves
-    except ImportError:
-        from plus_player_locks import research_path_resolves  # type: ignore
-    return research_path_resolves(ref)
+    """True when a research citation names something that exists — a URL, or a repo-relative
+    file that is on disk. An unresolvable citation is not evidence."""
+    r = (ref or "").strip()
+    if not r:
+        return False
+    if "http://" in r or "https://" in r:
+        return True
+    for m in _RESEARCH_PATH_TOKEN.finditer(r):
+        rel = m.group(1).replace("\\", "/")
+        if (REPO / rel).is_file():
+            return True
+    first = r.split()[0].strip("`\"'")
+    return "/" in first and (REPO / first.replace("\\", "/")).is_file()
 
 
 def significance_substance_violations(text: str, *, rel: str = "") -> list[str]:
@@ -190,7 +209,7 @@ def decision_path_wired_violations(source: str | None = None) -> list[str]:
 
 # claude_cursor_parity_violations RETIRED with check_claude_cursor_guard_parity
 # (governance/retired_checks.md 2026-08-24): guard-wiring parity is an operator
-# merge-review property (RC-475 superseded the CODEOWNERS equivalence).
+# merge-review property (RC-475; that equivalence was corrected by RC-510).
 
 
 _DATASHEET_REQUIRED = frozenset({"motivation", "composition", "collection", "recommended_uses"})

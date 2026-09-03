@@ -120,3 +120,103 @@ def test_live_path_wired_through_guard(monkeypatch, tmp_path):
     _no_escape(monkeypatch, tmp_path)
     bad = PLG.pretooluse_block("Bash", {"command": "git restore -- static/chart.html"})
     assert any("RESET_GUARD" in b for b in bad), "reset guard not on the live PreToolUse path"
+# ── RC-508: adjudicated by what the command can DESTROY, not by the word `reset` ──────────
+# `git reset --soft` moves HEAD and leaves the index and working tree exactly as they were,
+# so no operator work is reachable by it — yet every spelling of it was blocked, while this
+# repository's OWN merge authority (check_delta_adds_no_debt) runs it to stage the candidate
+# delta. MEASURED 2026-09-03: all reset modes blocked; the ONLY wrong verdicts were the three
+# --soft spellings. Adding it to the allowlist was only safe once the class rule was judged
+# PER SEGMENT, because the allowlist had been searched across the whole command.
+
+#: (command, must_block, what it can reach). One table, both directions.
+_ADJUDICATION: tuple[tuple[str, bool, str], ...] = (
+    # SAFE — cannot reach operator work
+    ("git reset --soft HEAD~1", False, "HEAD only"),
+    ("git reset --soft origin/main", False, "HEAD only"),
+    ("git reset --soft", False, "HEAD only"),
+    ("git -C ../other reset --soft HEAD~1", False, "HEAD only, another checkout"),
+    ("git restore --staged tools/x.py", False, "index only"),
+    ("git stash list", False, "read"),
+    ("git checkout -b feat/x", False, "creates a branch"),
+    ("git clean -n", False, "dry run"),
+    ("git push --force-with-lease origin main", False, "refuses to clobber unseen work"),
+    ("git status", False, "read"),
+    # DESTRUCTIVE — every mode that can discard something
+    ("git reset --hard", True, "index + worktree"),
+    ("git reset --hard HEAD~1", True, "index + worktree + commit"),
+    ("git reset --mixed HEAD~1", True, "the index"),
+    ("git reset HEAD~1", True, "the index (--mixed is the default)"),
+    ("git reset --keep HEAD~1", True, "local changes"),
+    ("git reset --merge HEAD~1", True, "merge state"),
+    ("git clean -fd", True, "untracked files"),
+    ("git clean -xfd", True, "untracked + ignored"),
+    ("git checkout -- .", True, "whole worktree"),
+    ("git checkout -- server.py", True, "a product file"),
+    ("git restore .", True, "whole worktree"),
+    ("git stash", True, "moves the worktree away"),
+    ("git push -f origin main", True, "remote history"),
+    ("git push --force origin main", True, "remote history"),
+    ("git -C ../other reset --hard", True, "another checkout entirely"),
+)
+
+
+def test_rc508_reset_is_adjudicated_by_what_it_can_destroy(monkeypatch, tmp_path):
+    """Both directions in one table: safe forms pass, every destructive mode still blocks."""
+    _no_escape(monkeypatch, tmp_path)
+    wrong = [(cmd, reaches) for cmd, must_block, reaches in _ADJUDICATION
+             if bool(OPL.reset_guard_violations(cmd)) != must_block]
+    assert wrong == [], f"verdict disagrees with what the command can destroy: {wrong}"
+
+
+def test_rc508_a_safe_form_cannot_launder_a_destructive_one(monkeypatch, tmp_path):
+    """THE REASON the allowlist is judged per segment.
+
+    The safe list used to be searched across the WHOLE command, so one safe form anywhere
+    exempted everything chained after it. That was a live hole BEFORE `reset --soft` was
+    added — `git restore --staged x.py && git reset --mixed HEAD~1` was waved through — and
+    adding a new safe form without fixing it would have widened the hole rather than closed
+    a false positive.
+    """
+    _no_escape(monkeypatch, tmp_path)
+    for chain in (
+        "git reset --soft HEAD~1 && git clean -fd",
+        "git reset --soft HEAD~1 && git reset --mixed HEAD~1",
+        "git restore --staged x.py && git reset --mixed HEAD~1",   # the pre-existing hole
+        "git stash list ; git restore .",
+        "git checkout -b feat/x && git checkout -- server.py",
+    ):
+        assert OPL.reset_guard_violations(chain), f"a safe form laundered the chain: {chain}"
+    # ...and a chain that is safe end to end stays legal, or the fix would be a new over-block.
+    assert not OPL.reset_guard_violations("git status && git reset --soft HEAD~1")
+    assert not OPL.reset_guard_violations("git fetch origin && git reset --soft origin/main")
+
+
+def test_rc508_the_safe_reset_is_live_on_the_pretooluse_path(monkeypatch, tmp_path):
+    """The seam that actually runs, not just the predicate: LOCK-2 lets --soft through.
+
+    Asserted on the RESET_GUARD verdict specifically, NOT on an empty result. The Bash seam
+    carries a SECOND, unrelated rail — PROD_CHECKOUT_LOCK, the live-checkout invariant — which
+    refuses any HEAD-moving git in the PRODUCTION primary checkout, and `reset --soft` does
+    move HEAD. That rail is correct and is not what RC-508 changed.
+
+    MEASURED: an earlier draft asserted `== []` and passed in a linked dev worktree while
+    failing in CI, where the checkout IS the primary and PROD_CHECKOUT_LOCK legitimately
+    fires. A control whose verdict depends on which checkout it runs in is testing the
+    topology, not the law.
+    """
+    _no_escape(monkeypatch, tmp_path)
+    soft = PLG.pretooluse_block("Bash", {"command": "git reset --soft HEAD~1"})
+    assert not any("RESET_GUARD" in b for b in soft), (
+        f"LOCK-2 still refuses a reset that cannot touch index or worktree: {soft}")
+    hard = PLG.pretooluse_block("Bash", {"command": "git reset --hard HEAD~1"})
+    assert any("RESET_GUARD" in b for b in hard), "the destructive form stopped blocking"
+
+
+def test_rc508_the_segment_splitter_has_one_owner():
+    """ONE FAUCET: the chain splitter is consumed from operator_law_guard, not re-written."""
+    import inspect
+
+    src = inspect.getsource(OPL._command_segments)
+    assert "iter_command_segments" in src, "the segment splitter was re-implemented here"
+    from tools.operator_law_guard import iter_command_segments
+    assert [s for _c, s in iter_command_segments("git status && git reset --soft HEAD~1", "")]

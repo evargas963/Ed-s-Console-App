@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "artifact": "reports/artifacts/universal_connected_path_governed_edges.json",
+  "description": "Governed connected-path edges where AST import scan alone is insufficient. Each edge must have rationale; omission tests fail when a new material consumer is added without registry update.",
+  "edges": [
+    {
+      "source": "signals.py",
+      "target": "prediction_engine.py",
+      "kind": "decision_producer",
+      "rationale": "signals output feeds prediction_engine compute path"
+    },
+    {
+      "source": "signals.py",
+      "target": "server.py",
+      "kind": "api_publisher",
+      "rationale": "_fetch_state publishes mhap_rows from signals stack"
+    },
+    {
+      "source": "signals.py",
+      "target": "call_engine.py",
+      "kind": "money_path",
+      "rationale": "call scoring consumes signal layer outputs"
+    },
+    {
+      "source": "prediction_engine.py",
+      "target": "bayesian_fusion.py",
+      "kind": "fusion_stack",
+      "rationale": "horizon product triplets from fusion layer"
+    },
+    {
+      "source": "ml_predict.py",
+      "target": "active_bundle_contract.py",
+      "kind": "artifact_loader",
+      "rationale": "serve path verifies artifacts pre-deserialization"
+    },
+    {
+      "source": "execution_identity.py",
+      "target": "calibration/writer.py",
+      "kind": "calibration_identity",
+      "rationale": "calibration passthrough uses execution identity contract"
+    },
+    {
+      "source": "db.py",
+      "target": "calibration/writer.py",
+      "kind": "persistence",
+      "rationale": "snapshot and decision writers share persistence cone"
+    },
+    {
+      "source": "server.py",
+      "target": "static/index.html",
+      "kind": "ui_transport",
+      "rationale": "API state fields bind to horizon card DOM consumers"
+    }
+  ]
+}

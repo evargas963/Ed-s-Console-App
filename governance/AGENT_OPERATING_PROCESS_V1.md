@@ -55,7 +55,7 @@
 
 ## 7. DEBT-CONVERGENCE LAW (fixable repo debt goes down, not sideways)
 
-**No new machinery** — measured with the EXISTING ledgers/checkers: the open + overdue counts from `tools/check_institutional_correctness.py` (`check_root_cause_log`, `check_open_item_cap`), the merge-time delta gate `tools/check_delta_adds_no_debt.py --base origin/main` (which already BLOCKs NEW/WORSENED enforced debt — the hard "no net new debt" floor), and `git log` on `governance/root_cause_log.md`. This is an operating discipline over those numbers; it adds no queue, ratio ledger, or reporting surface.
+**No new machinery** — measured with the EXISTING ledgers/checkers: the open + overdue counts from `tools/check_institutional_correctness.py` (`check_root_cause_log` for RC rows, `check_measured_claims_cite_evidence` for register claims — RC-505 retired `check_open_item_cap`, which reported the same items twice), the merge-time delta gate `tools/check_delta_adds_no_debt.py --base origin/main` (which already BLOCKs NEW/WORSENED enforced debt — the hard "no net new debt" floor), and `git log` on `governance/root_cause_log.md`. This is an operating discipline over those numbers; it adds no queue, ratio ledger, or reporting surface.
 
 - **Recording a newly discovered defect is always allowed and never counts as creating debt** — opening an honest RC row is how discovery is tracked (RC-65), the opposite of the failure mode.
 - **P0 / emergency correctness work is never delayed by the ratio.** Fix it now; the ratio governs only discretionary forward/expansion work.

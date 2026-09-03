@@ -79,7 +79,7 @@ Verdicts recorded in rows FP-03..FP-25 are ERA-CONTAMINATED (`OPEN_ITEMS.md` Sta
 | FP-56 | DONE | **IV/context re-screen.** `NO_SIGNAL_DETECTED` **0 PASS / 12 FAIL** (IWM:1c MCC≈0.23 still fails baselines). Report: `reports/iv_context_eval/iv_context_eval_2026-07-17_56be9ecafe58.json`. |
 | FP-57 | DONE | **interaction re-screen.** `NO_SIGNAL_DETECTED` **0 PASS / 12 FAIL** (IWM:1c MCC≈0.27 still fails baselines). Report: `reports/interaction_eval/interaction_eval_2026-07-17_2d3698a14fbd.json`. |
 | FP-58 | DONE | **Operator PAUSE.** Find & Prove hunt frozen for triangulation (operator 2026-07-17). No new study until explicit resume. |
-| FP-59 | DONE | **Collect durable operable-surface gate (Claude drift-audit directive).** Committed `tools/operable_surface_gate.py` G1–G4 all-ticker `research_excluded=0`; ops `tools/run_operable_surface_ops.py`; FP-24 skip path execution-tested via `resolve_live_v2_calibration_tail_action`. Same-turn ops: refresh + backfill 29/59 + quarantine → **OPERABLE_SURFACE_CLEAN** (old_missing_all=0; live 16/16 colocated). Evidence: `reports/operable_surface_gate_latest.json`, `reports/operable_surface_ops_latest.json`. Rule: `.cursor/rules/02-operable-surface-clean.mdc`. |
+| FP-59 | DONE | **Collect durable operable-surface gate (Claude drift-audit directive).** Committed `tools/operable_surface_gate.py` G1–G4 all-ticker `research_excluded=0`; ops `tools/run_operable_surface_ops.py`; FP-24 skip path execution-tested via `resolve_live_v2_calibration_tail_action`. Same-turn ops: refresh + backfill 29/59 + quarantine → **OPERABLE_SURFACE_CLEAN** (old_missing_all=0; live 16/16 colocated). Evidence: `reports/operable_surface_gate_latest.json`, `reports/operable_surface_ops_latest.json`. Rule: the gate's own docstring in `tools/operable_surface_gate.py` (the `.mdc` restatement was deleted 2026-09-02 — a rule lives with the code that enforces it). |
 | FP-60 | DONE | **Edge-search collaboration brief for Claude** (operator ask). Strategic step-back + full method inventory + ask for joint redesign. Letter: `reports/fp_claude_edge_collaboration_letter.md`. No new study. |
 | FP-61 | BLOCKED | **Week-1 G-LABEL card (Claude triage A).** Placeholder thresholds confirmed; freeze models. Card: `reports/fp_week1_label_card_v1.md`. Reply: `reports/fp_claude_edge_reply.md`. Execute only on operator `GO WEEK1 LABEL`. |
 | FP-62 | DONE | **GEX-R1-SCREEN (§9).** Harness economic gate NULL_OR_WEAK — **not** a mechanism null. Claude independent ER verify: mechanism CONFIRMED (`reports/gex_r1_claude_independent_verify.md`). SPY “inverted” reconciled: GEX build OK; sign-check used wrong metric (`reports/gex_r1_spy_reconcile_note.md`). Reclass: **SIGNAL_PRESENT / HARVEST_UNPROVEN**. |
@@ -134,7 +134,7 @@ measure-then-freeze numeric bounds, MM-share chip, market_stress_index candidate
 pre-registered ML paths) rides OFF the GO-critical path — next consensus round folds it in.
 
 Cursor architectural review 2026-07-21: **CONDITIONAL APPROVE / BLOCK GO until v1.1** —
-all findings incorporated in `governance/CONSOLE_REBUILD_PLAN_CR_V1.md` (v1.1): separate
+all findings incorporated in `docs/CONSOLE_REBUILD_PLAN_CR_V1.md` (v1.1): separate
 `stream_capture.db` (RC-6 lesson, was blocking), bounded-queue + parse-p99 + contention
 matrix in CR-01 acceptance, mechanical CR-CAP capture gate, CR-03 rescoped (registry and
 volume profile deferred; ML demote-not-delete), pre-registered arming thresholds, UI-copy

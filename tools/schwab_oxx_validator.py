@@ -102,7 +102,7 @@ def collect_replaced_perf_violations(
             if not proof:
                 violations.append(
                     f"row {i} register_id={rid!r}: REPLACED requires governed_ref "
-                    "to governance/artifacts/perf_proof/replacements/pp_*.json"
+                    "to reports/artifacts/perf_proof/replacements/pp_*.json"
                 )
                 continue
             if not (perf_dir / proof).is_file():
@@ -247,7 +247,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument(
         "--perf-dir",
         type=Path,
-        default=Path("governance/artifacts/perf_proof/replacements"),
+        default=Path("reports/artifacts/perf_proof/replacements"),
         help="Validate REPLACED governed_ref ↔ pp_*.json register_link binding (V4-B).",
     )
     # 2026-07-15: the legacy --skip-replaced-perf escape is REMOVED — every full

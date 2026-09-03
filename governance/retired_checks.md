@@ -21,6 +21,27 @@ Reproduce: `python -c "import re,pathlib; t=pathlib.Path('governance/root_cause_
 The 18-of-39 inert-document figure reproduces with a git grep per governance/*.md name
 over *.py, *.yaml, *.mdc, tools/, tests/ and AGENTS.md (zero referencing files = inert).
 
+**AMENDMENT 2026-09-03 (RC-510) — the code-owner requirement is GONE, and the four rows
+below are corrected in place.** Four rationales justified retiring a real check by naming
+a GitHub code-owner review requirement as the surviving protection. MEASURED 2026-09-02
+and again 2026-09-03: branch protection carried `require_code_owner_reviews: true` while
+the repository contained NO CODEOWNERS file — `git ls-tree -r origin/main` found none in
+2897 paths and the contents API returned 404 for CODEOWNERS, .github/CODEOWNERS and
+docs/CODEOWNERS. A code-owner requirement with no CODEOWNERS file owns nothing, so it
+required no review from anyone: the cited replacement was a sentence, not a control.
+
+On operator direction the requirement was DELETED rather than implemented — a protection
+that protects nothing is a false entry in the authority map, not missing coverage. The
+setting is now `require_code_owner_reviews: false`; the required checks (`pytest-full`,
+`hardening`), `enforce_admins`, `dismiss_stale_reviews` and the force-push and deletion
+bans are unchanged, and the repository has no rulesets. CODEOWNERS has no role in this
+repository and is not an open item.
+
+THE PROTECTION WAS REAL BUT MISNAMED, and each row below now says so: the guard rosters
+are pinned mechanically in required CI, which is a stronger control than a review
+requirement because it cannot be approved away. `writer_no_drift` needs no successor —
+the role machinery it policed was removed entirely in the 2026-08-24 teardown.
+
 | check | retired | rationale |
 |---|---|---|
 | open_item_cap | 2026-09-02 | STEP 1 DECLARATION ONLY - the check still runs; the removing delta comes later, exactly as this contract requires. PROVEN DUPLICATE, measured 2026-09-02 on this ledger: check_open_item_cap reported 14 overdue governance items and named 8 RC ids - RC-436, RC-416, RC-415, RC-414, RC-413, RC-412, RC-359, RC-354 - every one of which check_root_cause_log ALREADY reports through its own OPEN-past-due clause (21 violations), while the register rows are already reported by the unproven-register validator folded into measured_claims_cite_evidence (8 violations). Unique coverage: NONE. Reproduce: `.venv/Scripts/python.exe -c "import sys,re;sys.path.insert(0,'.');import tools.check_institutional_correctness as C;ids=lambda vs:{m for v in vs for m in re.findall(r'RC-.[0-9]*',str(v.msg))};print(sorted(ids(C.check_open_item_cap())-ids(C.check_root_cause_log())))"` -> `[]`. Its own RC-65 row already conceded half the overlap ("check_root_cause_log already fails loudly on it - one defect must not read as two"), and RC-280 dropped the OPEN_ITEMS count that was its only non-duplicated input, which is what left it with nothing of its own. One overdue item must fail one check, not two. |
@@ -30,10 +51,10 @@ over *.py, *.yaml, *.mdc, tools/, tests/ and AGENTS.md (zero referencing files =
 | rc_document_without_resolve | 2026-08-24 | resolve-path token on new OPEN rows; backlog growth (the RC-228 defect it targeted) is enforced by open_item_cap, and unfinished same-day rows still block turn end (stop_guard RC-72) |
 | log_law | 2026-08-24 | two-homes ledger topology; a third queue describing the same item is enforced by no_governance_duplication, ledger schema by rc_log_rows_keep_schema, epistemic closure by unproven_register |
 | plus_player_law | 2026-08-24 | policed the catalog's own registration flags; an enforced check silently demoted or deleted is exactly what the delta gate roster comparison + this manifest now catch (RC-468, negative-controlled) |
-| plus_player_cursor_hooks | 2026-08-24 | wiring assertion on .cursor/hooks.json; that file is CODEOWNERS-owned with require_code_owner_reviews and enforce_admins live, so an unwiring cannot merge without operator approval - same protection, machine-forced server-side |
-| claude_cursor_guard_parity | 2026-08-24 | wiring assertion across .claude/settings.json + .cursor/hooks.json; both files are CODEOWNERS-owned (same equivalence as plus_player_cursor_hooks) |
-| honesty_guard_wired | 2026-08-24 | wiring assertion that honesty_guard.py is registered on Stop; .claude/settings.json is CODEOWNERS-owned (same equivalence); the guard itself stays |
-| writer_no_drift | 2026-08-24 | commit-time rail over control-authority files keyed on a session env var - measured: not run by the commit hook (RC-406), abstains in CI (RC-396, no role), fires only in local verification shells. The operator ruled 2026-08-24: authority approval binds at MERGE - CODEOWNERS + require_code_owner_reviews + enforce_admins cover every who-is-in-charge file; quality gates are not authority |
+| plus_player_cursor_hooks | 2026-08-24 | wiring assertion on .cursor/hooks.json. RATIONALE CORRECTED 2026-09-03 (RC-510): this cited a code-owner review requirement that never existed - there is no CODEOWNERS file, so the setting required nothing and has now been removed. The protection is real but was misnamed: tests/test_find_fix_execution_latch_v1.py::test_claude_and_cursor_hook_configs_reach_the_same_guards pins this file to an exact guard roster in required CI, so an unwiring turns pytest-full red |
+| claude_cursor_guard_parity | 2026-08-24 | wiring assertion across .claude/settings.json + .cursor/hooks.json. RATIONALE CORRECTED 2026-09-03 (RC-510): the same misnamed equivalence. The surviving control is the one above - it asserts the two files reach IDENTICAL guard sets and pins each roster exactly, which is precisely this check's property, in required CI |
+| honesty_guard_wired | 2026-08-24 | wiring assertion that honesty_guard.py is registered on Stop; the guard itself stays. RATIONALE CORRECTED 2026-09-03 (RC-510): the same misnamed equivalence. The surviving control pins the Stop roster to exactly {stop_guard, honesty_guard, operator_law_guard}, so dropping honesty_guard fails required CI |
+| writer_no_drift | 2026-08-24 | commit-time rail over control-authority files keyed on a session env var - measured: not run by the commit hook (RC-406), abstains in CI (RC-396, no role), fires only in local verification shells. The operator ruled 2026-08-24 that authority approval binds at MERGE. RATIONALE CORRECTED 2026-09-03 (RC-510): that ruling named a code-owner review requirement which never had a CODEOWNERS file behind it and has now been removed. Nothing replaces it and nothing needs to: the role machinery this check policed was deleted entirely in the 2026-08-24 teardown, so there is no drift left to detect |
 | no_governance_duplication | 2026-08-24 | SIMPLICITY REHAB. A >12-shared-6-letter-words heuristic between two markdown ledgers with a 60-term hand-grown stoplist; its own comments record two false positives and zero true catches - every documented firing was wrong. Ledger shape stays enforced by rc_log_rows_keep_schema; the epistemic ledger by unproven_register. NOTE: the log_law row above cited this check as an equivalence - its surviving equivalences are rc_log_rows_keep_schema + unproven_register (amended here rather than editing the append-only row) |
 | checks_are_justified | 2026-08-24 | SIMPLICITY REHAB. Docstring-shape policing of the gate file against itself with a frozen grandfather set - regulates prose in tools/check_institutional_correctness.py, no product defect class. A NEW check that misbehaves is blocked by the delta gate regardless of its docstring; PR review reads docstrings |
 | rc_citations_resolve | 2026-08-24 | SIMPLICITY REHAB T2-2. same file, one validator — substance folded into root_cause_log, which now runs rc_citations_resolve's validation as _rc_citations_resolve_violations |

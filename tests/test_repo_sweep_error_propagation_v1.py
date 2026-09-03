@@ -99,12 +99,12 @@ def test_critical_paths_have_no_silent_exception_pass(repo_index):
 
 
 def test_error_propagation_audit_artifact_exists():
-    audit = _repo_root() / "governance" / "audits" / "repo_sweep_error_propagation_v1_20260520.json"
+    audit = _repo_root() / "reports" / "audits" / "repo_sweep_error_propagation_v1_20260520.json"
     assert audit.is_file(), "governance audit artifact missing"
 
 
 def test_audit_json_class_c_fixed_count_matches_array():
-    audit_path = _repo_root() / "governance" / "audits" / "repo_sweep_error_propagation_v1_20260520.json"
+    audit_path = _repo_root() / "reports" / "audits" / "repo_sweep_error_propagation_v1_20260520.json"
     payload = json.loads(audit_path.read_text(encoding="utf-8"))
     entries = payload.get("class_c_fixed") or []
     summary = payload.get("summary") or {}
@@ -115,12 +115,12 @@ def test_audit_json_class_c_fixed_count_matches_array():
 
 
 def test_error_propagation_audit_v2_artifact_exists():
-    audit = _repo_root() / "governance" / "audits" / "repo_sweep_error_propagation_v2_20260518.json"
+    audit = _repo_root() / "reports" / "audits" / "repo_sweep_error_propagation_v2_20260518.json"
     assert audit.is_file(), "governance sweep #2 audit artifact missing"
 
 
 def test_audit_v2_json_class_c_fixed_count_matches_array():
-    audit_path = _repo_root() / "governance" / "audits" / "repo_sweep_error_propagation_v2_20260518.json"
+    audit_path = _repo_root() / "reports" / "audits" / "repo_sweep_error_propagation_v2_20260518.json"
     payload = json.loads(audit_path.read_text(encoding="utf-8"))
     entries = payload.get("class_c_fixed") or []
     summary = payload.get("summary") or {}
@@ -132,12 +132,12 @@ def test_audit_v2_json_class_c_fixed_count_matches_array():
 
 
 def test_error_propagation_audit_v3_artifact_exists():
-    audit = _repo_root() / "governance" / "audits" / "repo_sweep_error_propagation_v3_20260520.json"
+    audit = _repo_root() / "reports" / "audits" / "repo_sweep_error_propagation_v3_20260520.json"
     assert audit.is_file(), "governance sweep #3 audit artifact missing"
 
 
 def test_audit_v3_json_class_c_fixed_count_matches_array():
-    audit_path = _repo_root() / "governance" / "audits" / "repo_sweep_error_propagation_v3_20260520.json"
+    audit_path = _repo_root() / "reports" / "audits" / "repo_sweep_error_propagation_v3_20260520.json"
     payload = json.loads(audit_path.read_text(encoding="utf-8"))
     entries = payload.get("class_c_fixed") or []
     summary = payload.get("summary") or {}

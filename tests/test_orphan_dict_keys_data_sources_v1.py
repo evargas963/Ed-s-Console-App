@@ -24,7 +24,6 @@ REPO = Path(__file__).resolve().parent.parent
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
-TURN_AUDIT_OWNS = ["tools/check_institutional_correctness.py"]
 
 
 def _load_gate():

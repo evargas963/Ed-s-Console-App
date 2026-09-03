@@ -25,7 +25,6 @@ from __future__ import annotations
 
 import json
 import os
-import posixpath
 import re
 from pathlib import Path
 
@@ -59,9 +58,16 @@ REGISTRY_ENTRY_SCHEMA: dict = {
 
 
 def _norm_rel(rel: str) -> str:
-    """One path spelling: forward slashes, dot-segments collapsed, lowercase (Windows paths
-    are case-insensitive, so `Static/Chart.HTML` must gate like `static/chart.html`)."""
-    return posixpath.normpath(rel.replace("\\", "/")).lower()
+    """The ONE repo-relative spelling, case-folded.
+
+    RC-508: the spelling is `pretooluse_guard.normalize_repo_relative`; the `.lower()` is this
+    surface's own deliberate extra step, because Windows paths are case-insensitive and
+    `Static/Chart.HTML` must gate like `static/chart.html`. This module was already CORRECT —
+    `posixpath.normpath` never ate a leading dot — so it moves for OWNERSHIP, not repair: one
+    computation of the geometry, one visible specialisation on top of it.
+    """
+    from tools.pretooluse_guard import normalize_repo_relative
+    return normalize_repo_relative(rel).lower()
 
 # RC-188 NOTE: a render-ban on unproven level identifiers briefly lived here (2026-08-02) and
 # was REVERTED the same turn on operator correction: the law is "prove all the unproven",

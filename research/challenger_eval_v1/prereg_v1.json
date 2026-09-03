@@ -1,7 +1,7 @@
 {
   "prereg_id": "challenger_eval_v1_prereg_v1",
   "sibling_precedent": "research/incumbent_eval_v1/prereg_v1.json (Study #1 — same track, same discipline)",
-  "authority_contract": "governance/research/stage1_target_label_foundation/stage2_experiment_contract_v1.json",
+  "authority_contract": "research/stage1_target_label_foundation/stage2_experiment_contract_v1.json",
   "study_question": "Can trivially simple, strictly causal price rules (momentum / mean-reversion computed from completed 1m bars) predict the same attached outcome labels on the same rows where the incumbent stack was scored in Study #1 — and how do they compare to the incumbent head-to-head on identical row sets?",
   "study_class": "SIGNAL_EXISTENCE_DIAGNOSTIC",
   "explicitly_not": {

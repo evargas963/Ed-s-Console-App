@@ -17,11 +17,6 @@ from tools.ui_mockup_lock import (
     mockup_gated_entry,
 )
 
-# RC-368: declared direct owner — this suite drives stop_violations (RC-190) and the
-# mockup-lock clauses that live in the guard.
-TURN_AUDIT_OWNS = [
-    "tools/operator_law_guard.py",
-]
 
 
 def _write_registry(root: Path, status: str, variant: str | None,
@@ -320,15 +315,12 @@ def test_stop_still_blocks_edit_with_nothing_run():
     assert not any("RC-190" in m for m in stop_violations(nothing_run))
 
 
-def test_turn_self_audit_blast_radius_and_suite_matching(tmp_path):
-    """RC-190: the audit tool's matcher pairs changed modules with the attack suites that
-    NAME them, and reports uncovered modules as findings rather than skipping them."""
-    from tools.turn_self_audit import matching_attack_suites
-    suites, uncovered = matching_attack_suites(["tools/ui_mockup_lock.py"])
-    assert "tests/test_ui_mockup_lock_v1.py" in suites and not uncovered
-    ghost = "zz_no_such_" + "module_zz"      # split so THIS file cannot satisfy the scan
-    suites2, uncovered2 = matching_attack_suites([f"tools/{ghost}.py"])
-    assert suites2 == [] and uncovered2 == [ghost]
+# RC-505: test_turn_self_audit_blast_radius_and_suite_matching is DELETED with the tool it
+# drove. It exercised `matching_attack_suites` in tools/turn_self_audit.py — the retired
+# Stop-time audit child, which by 2026-09-02 no workflow, pre-commit hook, Makefile target or
+# npm script ran, and whose only caller (operator_law_guard.supervise_turn_audit) had no
+# caller of its own. Blast-radius selection is not lost: required CI runs the WHOLE suite, so
+# a change-to-suite matcher was an optimisation for a run that no longer happens.
 
 
 def test_domain_faucet_lock_blocks_second_faucets():

@@ -1,0 +1,262 @@
+{
+  "schema_version": "1",
+  "generated_at": "2026-06-04T20:36:30.522706+00:00",
+  "anchors": [
+    "SPY",
+    "QQQ",
+    "IWM"
+  ],
+  "horizons": [
+    "1c",
+    "5c",
+    "15c",
+    "60c"
+  ],
+  "max_eval_rows": 800,
+  "min_scored_rows": 50,
+  "ready": false,
+  "issues": [
+    "active_bundle_incomplete:QQQ/1c",
+    "active_bundle_incomplete:QQQ/5c",
+    "active_bundle_incomplete:QQQ/15c",
+    "active_bundle_incomplete:QQQ/60c",
+    "active_bundle_incomplete:IWM/1c",
+    "active_bundle_incomplete:IWM/5c",
+    "active_bundle_incomplete:IWM/15c",
+    "active_bundle_incomplete:IWM/60c"
+  ],
+  "cells": [
+    {
+      "anchor_ticker": "SPY",
+      "horizon_slug": "1c",
+      "active_dir": "models\\active\\SPY",
+      "bundle_complete": true,
+      "baseline": {
+        "eval_accuracy": 0.41625,
+        "balanced_accuracy": 0.333967,
+        "n_rows": 800,
+        "eval_log_loss": 1.037158,
+        "skip_stats": {
+          "rows_total": 800,
+          "missing_hist_db": 0,
+          "xgb_unavailable": 0,
+          "lstm_unavailable": 0,
+          "transformer_unavailable": 0,
+          "ensemble_failed": 0,
+          "scored_full_triplet": 800
+        }
+      },
+      "survivor": {
+        "eval_accuracy": 0.41625,
+        "balanced_accuracy": 0.333967,
+        "n_rows": 800,
+        "eval_log_loss": 1.037165,
+        "skip_stats": {
+          "rows_total": 800,
+          "missing_hist_db": 0,
+          "xgb_unavailable": 0,
+          "lstm_unavailable": 0,
+          "transformer_unavailable": 0,
+          "ensemble_failed": 0,
+          "scored_full_triplet": 800
+        }
+      },
+      "wiring_ok": true,
+      "log_loss_delta": 7e-06,
+      "survivor_better": false
+    },
+    {
+      "anchor_ticker": "SPY",
+      "horizon_slug": "5c",
+      "active_dir": "models\\active_5c\\SPY",
+      "bundle_complete": true,
+      "baseline": {
+        "eval_accuracy": 0.345,
+        "balanced_accuracy": 0.33184,
+        "n_rows": 800,
+        "eval_log_loss": 1.097455,
+        "skip_stats": {
+          "rows_total": 800,
+          "missing_hist_db": 0,
+          "xgb_unavailable": 0,
+          "lstm_unavailable": 0,
+          "transformer_unavailable": 0,
+          "ensemble_failed": 0,
+          "scored_full_triplet": 800
+        }
+      },
+      "survivor": {
+        "eval_accuracy": 0.35,
+        "balanced_accuracy": 0.335959,
+        "n_rows": 800,
+        "eval_log_loss": 1.09943,
+        "skip_stats": {
+          "rows_total": 800,
+          "missing_hist_db": 0,
+          "xgb_unavailable": 0,
+          "lstm_unavailable": 0,
+          "transformer_unavailable": 0,
+          "ensemble_failed": 0,
+          "scored_full_triplet": 800
+        }
+      },
+      "wiring_ok": true,
+      "log_loss_delta": 0.001975,
+      "survivor_better": false
+    },
+    {
+      "anchor_ticker": "SPY",
+      "horizon_slug": "15c",
+      "active_dir": "models\\active_15c\\SPY",
+      "bundle_complete": true,
+      "baseline": {
+        "eval_accuracy": 0.385,
+        "balanced_accuracy": 0.342943,
+        "n_rows": 800,
+        "eval_log_loss": 1.098563,
+        "skip_stats": {
+          "rows_total": 800,
+          "missing_hist_db": 0,
+          "xgb_unavailable": 0,
+          "lstm_unavailable": 0,
+          "transformer_unavailable": 0,
+          "ensemble_failed": 0,
+          "scored_full_triplet": 800
+        }
+      },
+      "survivor": {
+        "eval_accuracy": 0.385,
+        "balanced_accuracy": 0.342943,
+        "n_rows": 800,
+        "eval_log_loss": 1.098563,
+        "skip_stats": {
+          "rows_total": 800,
+          "missing_hist_db": 0,
+          "xgb_unavailable": 0,
+          "lstm_unavailable": 0,
+          "transformer_unavailable": 0,
+          "ensemble_failed": 0,
+          "scored_full_triplet": 800
+        }
+      },
+      "wiring_ok": true,
+      "log_loss_delta": 0.0,
+      "survivor_better": false
+    },
+    {
+      "anchor_ticker": "SPY",
+      "horizon_slug": "60c",
+      "active_dir": "models\\active_60c\\SPY",
+      "bundle_complete": true,
+      "baseline": {
+        "eval_accuracy": 0.48875,
+        "balanced_accuracy": 0.323887,
+        "n_rows": 800,
+        "eval_log_loss": 1.031168,
+        "skip_stats": {
+          "rows_total": 800,
+          "missing_hist_db": 0,
+          "xgb_unavailable": 0,
+          "lstm_unavailable": 0,
+          "transformer_unavailable": 0,
+          "ensemble_failed": 0,
+          "scored_full_triplet": 800
+        }
+      },
+      "survivor": {
+        "eval_accuracy": 0.48875,
+        "balanced_accuracy": 0.323887,
+        "n_rows": 800,
+        "eval_log_loss": 1.031168,
+        "skip_stats": {
+          "rows_total": 800,
+          "missing_hist_db": 0,
+          "xgb_unavailable": 0,
+          "lstm_unavailable": 0,
+          "transformer_unavailable": 0,
+          "ensemble_failed": 0,
+          "scored_full_triplet": 800
+        }
+      },
+      "wiring_ok": true,
+      "log_loss_delta": 0.0,
+      "survivor_better": false
+    },
+    {
+      "anchor_ticker": "QQQ",
+      "horizon_slug": "1c",
+      "active_dir": "models\\active\\QQQ",
+      "bundle_complete": false,
+      "baseline": {},
+      "survivor": {},
+      "wiring_ok": false
+    },
+    {
+      "anchor_ticker": "QQQ",
+      "horizon_slug": "5c",
+      "active_dir": "models\\active_5c\\QQQ",
+      "bundle_complete": false,
+      "baseline": {},
+      "survivor": {},
+      "wiring_ok": false
+    },
+    {
+      "anchor_ticker": "QQQ",
+      "horizon_slug": "15c",
+      "active_dir": "models\\active_15c\\QQQ",
+      "bundle_complete": false,
+      "baseline": {},
+      "survivor": {},
+      "wiring_ok": false
+    },
+    {
+      "anchor_ticker": "QQQ",
+      "horizon_slug": "60c",
+      "active_dir": "models\\active_60c\\QQQ",
+      "bundle_complete": false,
+      "baseline": {},
+      "survivor": {},
+      "wiring_ok": false
+    },
+    {
+      "anchor_ticker": "IWM",
+      "horizon_slug": "1c",
+      "active_dir": "models\\active\\IWM",
+      "bundle_complete": false,
+      "baseline": {},
+      "survivor": {},
+      "wiring_ok": false
+    },
+    {
+      "anchor_ticker": "IWM",
+      "horizon_slug": "5c",
+      "active_dir": "models\\active_5c\\IWM",
+      "bundle_complete": false,
+      "baseline": {},
+      "survivor": {},
+      "wiring_ok": false
+    },
+    {
+      "anchor_ticker": "IWM",
+      "horizon_slug": "15c",
+      "active_dir": "models\\active_15c\\IWM",
+      "bundle_complete": false,
+      "baseline": {},
+      "survivor": {},
+      "wiring_ok": false
+    },
+    {
+      "anchor_ticker": "IWM",
+      "horizon_slug": "60c",
+      "active_dir": "models\\active_60c\\IWM",
+      "bundle_complete": false,
+      "baseline": {},
+      "survivor": {},
+      "wiring_ok": false
+    }
+  ],
+  "voided": true,
+  "void_reason": "compound_workbook_groups_retired_use_leaf_manifest",
+  "ready_for_full_retrain": false,
+  "ready_for_production": false
+}

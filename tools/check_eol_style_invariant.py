@@ -81,7 +81,7 @@ def pinned_eol(path: str) -> str | None:
     RC-383. A pinned path is one git NORMALISES on the way into the blob, so its worktree
     bytes are ALLOWED to differ from HEAD — that is the entire point of the pin.
     .claude/settings.json is 78 CRLF on disk and 78 LF in the index by design, and
-    governance/artifacts/*.json has been pinned the same way for months. Comparing raw
+    reports/artifacts/*.json has been pinned the same way for months. Comparing raw
     worktree bytes for such a path reports a flip on a file that is behaving exactly as
     configured, and a gate that cries wolf on a governed path gets switched off — taking
     the real protection with it. So the comparison is made on the form git will STORE.
@@ -145,7 +145,18 @@ def violations(staged: bool = True) -> list[str]:
         # RC-383: judge a pinned path on the form git will STORE, not on what the harness
         # left on disk — for those paths a worktree/blob terminator difference is the
         # configured behaviour, not a violation.
-        after = apply_pin(after, pinned_eol(path))
+        #
+        # RC-511: apply the pin to BOTH sides. This normalised `after` only, so a pinned path
+        # was compared stored-form against HEAD's raw form. While every blob obeyed its pin the
+        # two agreed and the asymmetry was invisible; the moment a blob VIOLATED its pin, the
+        # check reported PURE EOL REFLOW on the commit that restores it — demanding "restore
+        # the original terminator" while refusing the restoration. MEASURED: three artifacts
+        # left the `governance/artifacts/*.json` pin when RC-509 moved them, so git stored the
+        # Windows CRLF a suite run had written; re-pinning the new path gave INDEX=LF against
+        # HEAD=CRLF and this hook refused it three times running. The pin defines what a
+        # path's committed bytes MEAN, so it binds wherever those bytes are read.
+        pin = pinned_eol(path)
+        before, after = apply_pin(before, pin), apply_pin(after, pin)
         if before == after:
             continue
         if is_binary(before) or is_binary(after) or not is_text_governed(path):

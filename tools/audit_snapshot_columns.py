@@ -67,7 +67,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_DB = ROOT / "data" / "ed_console.db"
-LEDGER_PATH = ROOT / "governance" / "artifacts" / "snapshot_column_cull_ledger.json"
+LEDGER_PATH = ROOT / "reports" / "artifacts" / "snapshot_column_cull_ledger.json"
 TABLES = ("snapshots", "snapshots_1m_normalized")
 
 # Files that DEFINE / WRITE columns — references here are producer/schema, not consumers.

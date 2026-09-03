@@ -12,9 +12,7 @@ REPO = Path(__file__).resolve().parent.parent
 # RC-367: this suite reads and asserts on the exposure page end-to-end (producers,
 # honesty ledger, lane resolver) — declare ownership so the turn audit maps
 # static/exposure.html changes to a running suite instead of an unknown owner.
-TURN_AUDIT_OWNS = [
-    "static/exposure.html",
-]
+
 
 
 def _src() -> str:

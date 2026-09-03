@@ -4,13 +4,13 @@ Reads the tracked SEVERITY_1_CONTROL_VALIDATION_REGISTER.json. The Phase-1 build
 was retired under the ED CONSOLE SLIMMING directive; the register is a tracked artifact.
 
 Outputs:
-  governance/artifacts/UNIVERSAL_BYPASS_REGISTER.json
-  governance/artifacts/DECISION_PATH_REGISTRY.json
-  governance/artifacts/RUNTIME_MUTATION_REGISTER.json
-  governance/artifacts/RELEASE_OBJECT_SCHEMA.json
-  governance/artifacts/BLIND_RECONSTRUCTION_TEST_RESULT.json
-  governance/artifacts/GOVERNANCE_ADVERSARIAL_TEST_SPEC.json
-  governance/artifacts/MATURITY_PROMOTION_RULES.json
+  reports/artifacts/UNIVERSAL_BYPASS_REGISTER.json
+  reports/artifacts/DECISION_PATH_REGISTRY.json
+  reports/artifacts/RUNTIME_MUTATION_REGISTER.json
+  reports/artifacts/RELEASE_OBJECT_SCHEMA.json
+  reports/artifacts/BLIND_RECONSTRUCTION_TEST_RESULT.json
+  reports/artifacts/GOVERNANCE_ADVERSARIAL_TEST_SPEC.json
+  reports/artifacts/MATURITY_PROMOTION_RULES.json
 """
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ from datetime import date
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
-ART = REPO / "governance" / "artifacts"
+ART = REPO / "reports" / "artifacts"
 TODAY = date.today().isoformat()
 
 if str(REPO) not in sys.path:
@@ -263,7 +263,7 @@ def build_universal_bypass_register(reg: dict) -> dict:
     no_bypass_test = sum(1 for e in entries if not e.get("bypass_detection_test"))
     return {
         "schema_version": 1,
-        "artifact": "governance/artifacts/UNIVERSAL_BYPASS_REGISTER.json",
+        "artifact": "reports/artifacts/UNIVERSAL_BYPASS_REGISTER.json",
         "generated": TODAY,
         "methodology": (
             "Per Severity-1 control: all enforcement points, all bypass paths, "
@@ -463,9 +463,9 @@ def build_decision_path_registry() -> dict:
 
     return {
         "schema_version": 1,
-        "artifact": "governance/artifacts/DECISION_PATH_REGISTRY.json",
+        "artifact": "reports/artifacts/DECISION_PATH_REGISTRY.json",
         "generated": TODAY,
-        "source_inventory": "governance/TRADE_IMPACTING_ROUTE_INVENTORY.md",
+        "source_inventory": "docs/TRADE_IMPACTING_ROUTE_INVENTORY.md",
         "route_universality": {
             "proven": False,
             "mandatory_controls": [
@@ -550,8 +550,8 @@ def build_runtime_mutation_register() -> dict:
         ("manual copy to models/active/", True, True, True, "none", "unacceptable", "filesystem"),
         ("sqlite write snapshots_1m_normalized", True, True, True, "mutable", "unacceptable", "data/ed_console.db"),
         ("POST /api/prediction/override", True, True, True, "none", "unacceptable", "server.py"),
-        ("governance.json manifest edits", True, False, True, "mutable", "tolerated", "governance/artifacts/"),
-        ("feature_curation_overrides.json", True, True, True, "mutable", "unacceptable", "governance/artifacts/"),
+        ("governance.json manifest edits", True, False, True, "mutable", "tolerated", "reports/artifacts/"),
+        ("feature_curation_overrides.json", True, True, True, "mutable", "unacceptable", "reports/artifacts/"),
         ("ED_DISABLE_AUTO_PROMOTE=1", True, True, True, "none", "intentional", "runtime env"),
         ("scheduler flags / ml_scheduler CLI", True, True, True, "partial", "tolerated", "ml_scheduler.py"),
         ("POST /api/ops/run* when ED_OPS_RUNNER=1", True, True, True, "partial", "tolerated", "server.py"),
@@ -566,7 +566,7 @@ def build_runtime_mutation_register() -> dict:
 
     return {
         "schema_version": 1,
-        "artifact": "governance/artifacts/RUNTIME_MUTATION_REGISTER.json",
+        "artifact": "reports/artifacts/RUNTIME_MUTATION_REGISTER.json",
         "generated": TODAY,
         "summary": {
             "total_mechanisms": len(mutations),
@@ -596,7 +596,7 @@ def build_release_object_schema() -> dict:
     }
     return {
         "schema_version": 1,
-        "artifact": "governance/artifacts/RELEASE_OBJECT_SCHEMA.json",
+        "artifact": "reports/artifacts/RELEASE_OBJECT_SCHEMA.json",
         "generated": TODAY,
         "release_object_schema": schema,
         "example": {
@@ -605,7 +605,7 @@ def build_release_object_schema() -> dict:
             "model_hashes": ["sha256:…/models/active/SPY/xgb_SPY_1c.pkl"],
             "config_hash": "sha256:…",
             "approval_record": "github-pr-1234-approved-by-…",
-            "artifact_manifest": "governance/artifacts/release_manifest_rel-….json",
+            "artifact_manifest": "reports/artifacts/release_manifest_rel-….json",
             "rollback_target": "rel-2026-06-10T…",
             "created_at_utc": "2026-06-11T12:00:00Z",
         },
@@ -632,7 +632,7 @@ def run_blind_reconstruction_test() -> dict:
     if not db_path.is_file():
         return {
             "schema_version": 2,
-            "artifact": "governance/artifacts/BLIND_RECONSTRUCTION_TEST_RESULT.json",
+            "artifact": "reports/artifacts/BLIND_RECONSTRUCTION_TEST_RESULT.json",
             "generated": TODAY,
             "verdict": "SKIP",
             "reason": "data/ed_console.db not present",
@@ -658,7 +658,7 @@ def run_blind_reconstruction_test() -> dict:
     if not row:
         return {
             "schema_version": 2,
-            "artifact": "governance/artifacts/BLIND_RECONSTRUCTION_TEST_RESULT.json",
+            "artifact": "reports/artifacts/BLIND_RECONSTRUCTION_TEST_RESULT.json",
             "generated": TODAY,
             "procedure": (
                 "Select latest production_decision_records.decision_id. Auditor receives ONLY that id. "
@@ -678,7 +678,7 @@ def run_blind_reconstruction_test() -> dict:
     if payload is None:
         return {
             "schema_version": 2,
-            "artifact": "governance/artifacts/BLIND_RECONSTRUCTION_TEST_RESULT.json",
+            "artifact": "reports/artifacts/BLIND_RECONSTRUCTION_TEST_RESULT.json",
             "generated": TODAY,
             "sample_decision_id": decision_id,
             "verdict": "FAIL",
@@ -691,7 +691,7 @@ def run_blind_reconstruction_test() -> dict:
 
     return {
         "schema_version": 2,
-        "artifact": "governance/artifacts/BLIND_RECONSTRUCTION_TEST_RESULT.json",
+        "artifact": "reports/artifacts/BLIND_RECONSTRUCTION_TEST_RESULT.json",
         "generated": TODAY,
         "procedure": (
             "Select latest production_decision_records.decision_id. Auditor receives ONLY that id. "
@@ -773,7 +773,7 @@ def build_adversarial_test_spec(reg: dict) -> dict:
     implemented = sum(1 for s in suites if s["status"] in ("PARTIAL", "PASS", "FAILING"))
     return {
         "schema_version": 1,
-        "artifact": "governance/artifacts/GOVERNANCE_ADVERSARIAL_TEST_SPEC.json",
+        "artifact": "reports/artifacts/GOVERNANCE_ADVERSARIAL_TEST_SPEC.json",
         "generated": TODAY,
         "methodology": "Governance is proven by adversarial tests, not checker existence.",
         "summary": {
@@ -795,7 +795,7 @@ def build_adversarial_test_spec(reg: dict) -> dict:
 def build_maturity_promotion_rules() -> dict:
     return {
         "schema_version": 1,
-        "artifact": "governance/artifacts/MATURITY_PROMOTION_RULES.json",
+        "artifact": "reports/artifacts/MATURITY_PROMOTION_RULES.json",
         "generated": TODAY,
         "binding_rule": (
             "No control may move upward in maturity based on implementation work alone. "

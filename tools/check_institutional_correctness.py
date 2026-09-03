@@ -443,8 +443,8 @@ def check_adversarial_audits_are_answered() -> list[Violation]:
 def _ratchet_may_write() -> bool:
     """A CHECK MUST NOT MUTATE THE REPO (RC-90).
 
-    check_debt_ratchet used to rewrite the baseline whenever a metric improved, and
-    check_open_item_cap the ceiling. pre-commit stashes unstaged work and runs hooks against the
+    check_debt_ratchet used to rewrite the baseline whenever a metric improved, and the
+    since-retired check_open_item_cap its ceiling. pre-commit stashes unstaged work and runs hooks against the
     STAGED-ONLY tree, so those counts legitimately differ from the working tree: the file was
     rewritten on every single run, pre-commit treats a hook that modifies a tracked file as a
     failure, and staging the rewrite could not help because the next run rewrote it again. Four
@@ -633,102 +633,12 @@ def _self_comparison(test: ast.AST) -> str | None:
     return None
 
 
-def _is_overdue(due: str) -> bool:
-    """True when `due` (YYYY-MM-DD) is in the past. An unparseable date is NOT counted here —
-    check_root_cause_log already fails loudly on a malformed due date, so this never
-    double-reports and never silently treats junk as compliant."""
-    try:
-        return datetime.date.fromisoformat(due.strip()) < datetime.date.today()
-    except (TypeError, ValueError):
-        return False
-
-
-def _overdue_governance_items(rc_path, reg_path) -> list[str]:
-    """RC-65: items that have actually ROTTED — open past their own due date.
-
-    Root-cause columns: id | status | opened | due | ...   (due = cells[3])
-    Register columns:   status | opened | due | claim | ... (due = cells[2])
-    """
-    out: list[str] = []
-    if rc_path.exists():
-        for line in rc_path.read_text(encoding="utf-8").splitlines():
-            if not line.startswith("| RC-"):
-                continue
-            cells = [c.strip() for c in line.strip("|").split("|")]
-            if len(cells) > 3 and cells[1] == "OPEN" and _is_overdue(cells[3]):
-                out.append(cells[0])
-    if reg_path.exists():
-        for line in reg_path.read_text(encoding="utf-8").splitlines():
-            if not line.startswith("|"):
-                continue
-            cells = [c.strip() for c in line.strip("|").split("|")]
-            if len(cells) > 3 and cells[0] in ("UNPROVEN", "DISPROVED") and _is_overdue(cells[2]):
-                out.append(f"register:{cells[3][:40]}")
-    return out
-
-
-def check_open_item_cap() -> list[Violation]:
-    """Governance ledgers must burn DOWN. The open count may never rise.
-
-    Operator 2026-07-19: the ledgers must resolve, not accumulate.
-
-    A fixed cap would repeat the mistake of the 800-line ceiling (RC-19): an arbitrary
-    number invites an arbitrary remedy, and a permanently-red gate teaches you to ignore
-    it. This is a RATCHET instead -- the same mechanism as advisory debt. The current open
-    count is the new ceiling the moment it drops, so the only permitted direction is down,
-    and no number had to be invented.
-
-    MEASURE CORRECTED 2026-07-26 (RC-65, operator: "i don't care about caps as long as we have
-    great code — i thought this was a mechanical lock"). Counting EVERY open item conflated two
-    opposite things: honest new tracking and deferral. On 2026-07-26 a session that found real
-    defects (RC-43's closure was wrong; RC-58's contamination set) FAILED this gate *because* it
-    recorded them — which teaches the agent to stay silent, the precise opposite of this repo's
-    purpose. A control that punishes discovery is worse than no control.
-
-    What actually means "deferred forever" is an item PAST ITS DUE DATE. So the ratchet now counts
-    OVERDUE dated items (root-cause rows and register claims both carry a due date) plus every
-    unchecked OPEN_ITEMS.md row, which has no due date and therefore stays a pure parking-lot
-    count. Opening a defect today with a real due date is free; letting it rot is not — and the
-    burn-down pressure the operator asked for in 2026-07-19 is preserved exactly where it belongs.
-    """
-    out: list[Violation] = []
-    rc = REPO / "governance" / "root_cause_log.md"
-    open_items = _overdue_governance_items(
-        rc, REPO / "governance" / "unproven_register.md")
-    # OPEN_ITEMS.md joined the ratchet 2026-07-20. WHAT WAS OBSERVED: the cap covered
-    # only the two governance ledgers, so OPEN_ITEMS.md was an UNGATED parking lot --
-    # a "flagged, not fixed" disposition could sit there forever, which is exactly the
-    # banned third state (operator: Fixed / Allowlisted-with-reason / Registered-with-
-    # due-date, nothing else). Counting its unchecked rows puts the same only-down
-    # pressure on it. VALIDATED BY PROTOTYPE: 39 unchecked rows at adoption (33 pre-existing + 6
-    # registered from the 2026-07-20 audit remainder); the ceiling was re-baselined
-    # 10 -> 49 IN THE SAME CHANGE (scope expansion, not backsliding) and
-    # may only fall from there.
-    # RC-280: RATCHET REMOVED 2026-08-07 on operator instruction ("WE DO NOT NEED RATCHETS.
-    # WE NEED GREAT CODE. WE NEED TO REMOVE ALL RATCHETS"), and this mission's done_criteria:
-    # no ceiling the operator did not name a number for. This check used to store a
-    # high-water mark in governance/open_item_ceiling.json and block whenever the count rose
-    # above it. MEASURED cost of that design: the ceiling stood at 37 against 39 items and
-    # blocked the commit carrying the adversarial-audit request the operator had already sent
-    # to Cursor, while 34 tests were red -- the control was spending the session on itself.
-    # An invented number also invites an invented remedy: the cheapest way past a count is to
-    # close a row rather than fix a defect, which is the opposite of the intent.
-    #
-    # What survives is the LAW without the number: a dated item may not rot. Zero overdue is
-    # a standard, not a tolerance, and it needs no baseline to compare against.
-    #
-    # DELIBERATELY DROPPED: the unchecked OPEN_ITEMS.md rows this also counted. They carry no
-    # due date, so they were pure parking-lot volume -- the quantity a ratchet measures and a
-    # law cannot. Requiring a due date on every parked row is the honest successor and is a
-    # separate change, not something to smuggle in here.
-    if open_items:
-        out.append(Violation(
-            rc, 0,
-            f"{len(open_items)} governance item(s) are PAST their due date: "
-            f"{', '.join(open_items[:8])}{'...' if len(open_items) > 8 else ''}. "
-            f"Finish it, or re-date it with the reason stated in the row. A due date that "
-            f"passes silently is a deferral wearing a schedule."))
-    return out
+# RC-505: `_is_overdue` went with check_open_item_cap, its only caller. The two surviving
+# overdue clauses both need MORE than a boolean and are correct as they stand:
+# check_root_cause_log reports an unparseable due date as its own violation before deciding
+# overdue, and the register validator reports HOW MANY days late. A shared helper that
+# returns False on junk would have to be re-checked by both callers anyway, so keeping it as
+# a third opinion on the same question bought nothing.
 
 
 #: Receivers whose .get() is not a dict read we can reason about (routes, env, vendor libs).
@@ -2533,24 +2443,40 @@ def _staged_has_real_change(rel: str) -> bool:
 #: Source files a FIXED cell can name. Deliberately NOT .json/.jsonl/.md/.txt: report and
 #: ledger artifacts churn from daily runs, and treating them as "the fix" would make this
 #: check fire on unrelated evidence writes (RC-137's own false-positive analysis).
-#: RC-140: the first cut listed only py/html/js, so a closure naming a .ts or .css fix was
-#: unrecognized and therefore unchecked (v31 measured it) — every source extension the repo
-#: could plausibly ship a fix in is listed here now.
-_FIXED_SOURCE_FILE_RE = re.compile(
-    r"\b([\w][\w./\-]*\.(?:py|pyi|html|js|jsx|mjs|cjs|ts|tsx|css|scss|sql|ps1|bat|sh|yaml|yml))\b"
+#: RC-508: the path-EXTRACTING half of this check is GONE, and with it three constants that
+#: existed only to serve it — `_FIXED_SOURCE_FILE_RE`, `_FIXED_CLAIM_RE` and `_UNNAMED_FIX`.
+#: They read every source path in a fix cell as a claim that THAT FILE was repaired, which no
+#: machine can distinguish from a citation of the suite the closure RAN. RC-507 repaired that
+#: regex's dot-prefix anchor; this supersedes the repair by removing the question, so the
+#: RC-507 defect is now structurally unreachable rather than correctly handled.
+
+
+def _norm_rel_path(p: str) -> str:
+    """The ONE repo-relative spelling (RC-508). Imported lazily: this gate is the heaviest
+    module in the package and must not pull the PreToolUse guard in at import time."""
+    from tools.pretooluse_guard import normalize_repo_relative
+    return normalize_repo_relative(p)
+
+
+#: RC-140: the first cut listed only py/html/js, so a fix shipped in .ts or .css counted as no
+#: code at all (v31 measured it) — every source extension the repo could ship a fix in is here.
+_SOURCE_EXTS: tuple[str, ...] = (
+    "py", "pyi", "html", "js", "jsx", "mjs", "cjs", "ts", "tsx",
+    "css", "scss", "sql", "ps1", "bat", "sh", "yaml", "yml",
 )
-#: RC-141: RC-140 keyed this on the literal word FIXED, so dropping that token ("See VERIFIED
-#: below.") walked straight through — v32 measured it, the same omit-the-watched-token class
-#: as the prose escape it replaced. The obligation now attaches to CLOSING a row, not to any
-#: word in it: every new closure either names checkable source or declares it changed none.
-#: Kept only to describe the claim in messages, never as the trigger.
-_FIXED_CLAIM_RE = re.compile(r"\bFIXED\b\s*[:\-]", re.I)
+
+
+def _is_source_path(rel: str) -> bool:
+    """True when `rel` is a code file — the ONE answer to "is this code?"."""
+    return "." in rel and rel.rsplit(".", 1)[-1].lower() in _SOURCE_EXTS
+
+
 #: The declared escape for closures that genuinely change no source (a disposition, a
 #: measurement, a deferral). Explicit, so "no code" is a STATEMENT rather than an omission.
 _NO_CODE_CLAIM_RE = re.compile(
     r"no code change|no source change|documentation only|ledger only|disposition only", re.I)
-#: Sentinel path reported when a FIXED claim names nothing machine-readable.
-_UNNAMED_FIX = "<FIXED: names no machine-readable source path>"
+#: RC-508: what a failing closure reports — the row is closed and NOTHING shipped.
+_UNSHIPPED_CLOSURE = "<CLOSED with no repairing code and no no-code declaration>"
 
 
 #: A commit SHA cited inside a row — how a closure points at code that landed earlier.
@@ -2563,61 +2489,62 @@ def _row_cells(row: str) -> list[str]:
 
 def _closed_row_code_not_shipped(
     added_rows: list[str],
-    dirty: frozenset[str] | set[str],
+    dirty: frozenset[str] | set[str] = frozenset(),
     *,
     removed_rows: tuple[str, ...] | list[str] = (),
     staged: frozenset[str] | set[str] = frozenset(),
-    sha_touches=None,
+    sha_ships_code=None,
 ) -> list[tuple[str, list[str]]]:
-    """PURE core of RC-137/RC-139: rows whose CLOSED claim is not backed by shipped code.
+    """PURE core of RC-137/RC-139: a closure must not assert a repair with no repairing code.
 
-    Two distinct escapes, both closed here:
-      DIRTY   (RC-134's shape) — the row names FIXED files that are sitting uncommitted, so
-              the ledger says fixed while HEAD does not have it.
-      ABSENT  (v30's shape) — the row is NEWLY closed and names FIXED files that are in
-              neither this commit nor any commit the row cites by SHA. A clean worktree is
-              not evidence: it reads identically whether the fix landed or was never written.
+    THE PROPERTY, and it is a git fact: a row BECOMING closed must be accompanied by real
+    code — shipped in the change that closes it, or carried by a commit the row cites — or it
+    must say plainly that it changes no code.
 
-    A row is checked only when THIS commit adds/rewrites it. ABSENT applies only to rows
-    BECOMING closed (a text edit to a long-closed row cannot re-litigate old history), and a
-    cited SHA that actually touched the file satisfies it — closures may point at where the
-    code landed instead of carrying it.
+    RC-508: THIS USED TO ASK AN UNANSWERABLE QUESTION. It extracted every source path in the
+    fix cell and treated each as a claim that THAT FILE had been repaired, so a closure citing
+    the suite it RAN was indistinguishable from one claiming a file it never touched. Measured
+    consequence: it rejected three correct rows in a single session — RC-505 naming the
+    roster controls it cited, RC-506 naming the suite it ran, RC-507 naming the fixture paths
+    of a path-matching repair — and the session that hit it three times recorded it as
+    friction. Which named path is a repair claim and which is a citation is a fact about
+    English; whether the closing change shipped code is a fact about git. The check now asks
+    only the second, so evidence references are free and the protection is unmoved.
+
+    WHAT IS DELIBERATELY NOT CLAIMED. This proves a closure points at real, non-whitespace
+    work; it cannot prove that work is the RIGHT work. The previous form could not either —
+    its own docstring conceded that "a genuine but unrelated edit to a named file still
+    satisfies this" — so the per-path shell added ambiguity, not strength. Judging whether the
+    repair fits the defect remains the audit's job, and is stated here rather than implied.
+
+    A row is judged only when this change makes it CLOSED; a text edit to an already-closed
+    row cannot re-litigate old history.
     """
     was_closed = {
         _row_cells(r)[0] for r in removed_rows
         if len(_row_cells(r)) >= 7 and _row_cells(r)[1].upper() == "CLOSED"
     }
+    # "Did this change ship code?" — staged paths are already filtered to those whose diff
+    # moves a non-blank line (RC-140, "touched != fixed"); source extension is what makes it
+    # CODE rather than a ledger or evidence write.
+    shipped = sorted(s for s in (_norm_rel_path(p) for p in staged) if _is_source_path(s))
     out: list[tuple[str, list[str]]] = []
     for row in added_rows:
         cells = _row_cells(row)
         if len(cells) < 7 or cells[1].upper() != "CLOSED":
             continue
         rc_id = cells[0]
+        if rc_id in was_closed:
+            continue                      # closed before this change — not a new claim
         body = " ".join(cells[6:])
+        if _NO_CODE_CLAIM_RE.search(body):
+            continue                      # an honest disposition-only closure stays legal
+        if shipped:
+            continue                      # this change carries real code
         shas = [s for s in _ROW_SHA_RE.findall(body) if not s.isdigit()]
-        bad: list[str] = []
-        # RC-140/RC-141: a closure naming nothing checkable is the emptiest of all — it
-        # asserts a repair while giving the machine nothing to verify. The trigger is CLOSING
-        # (not the word FIXED, which v32 showed could simply be omitted); an explicit no-code
-        # declaration satisfies it, so a disposition-only closure stays legal by SAYING so.
-        if (rc_id not in was_closed
-                and not _FIXED_SOURCE_FILE_RE.search(body)
-                and not _NO_CODE_CLAIM_RE.search(body)):
-            bad.append(_UNNAMED_FIX)
-        for m in _FIXED_SOURCE_FILE_RE.finditer(body):
-            rel = m.group(1).replace("\\", "/").lstrip("./")
-            if rel in bad or rel in staged:
-                continue
-            if rel in dirty:
-                bad.append(rel)
-                continue
-            if rc_id in was_closed:
-                continue      # already closed before this commit — not a new claim
-            if sha_touches and any(sha_touches(s, rel) for s in shas):
-                continue      # the row points at the commit that carried it
-            bad.append(rel)
-        if bad:
-            out.append((rc_id, sorted(bad)))
+        if sha_ships_code and any(sha_ships_code(s) for s in shas):
+            continue                      # the row points at the commit that carried it
+        out.append((rc_id, [_UNSHIPPED_CLOSURE]))
     return out
 
 
@@ -2667,68 +2594,49 @@ def _closed_rows_ship_their_code_violations() -> list[Violation]:
     if not added:
         return []
 
-    status = _git_output_lines(["status", "--porcelain"])
-    if status is None:
-        return []
-    dirty: set[str] = set()
-    for ln in status:
-        if len(ln) < 4:
-            continue
-        worktree_col, path = ln[1], ln[3:].strip().strip('"')
-        if " -> " in path:
-            path = path.split(" -> ")[-1].strip().strip('"')
-        if ln[:2] == "??" or worktree_col in ("M", "D"):
-            dirty.add(path.replace("\\", "/"))
-
     # RC-140 ("touched != fixed"): a staged path only counts when its diff changes a
     # non-blank line, so a whitespace-only edit cannot buy a closure.
     staged_files = {
-        p.replace("\\", "/")
+        _norm_rel_path(p)
         for p in (_git_output_lines(["diff", "--cached", "--name-only"]) or [])
         if p.strip() and _staged_has_real_change(p.strip())
     }
 
-    def _sha_touched(sha: str, rel: str) -> bool:
-        """True when `sha` really CHANGED `rel` — how a closure may point at code that landed
-        in an earlier commit. RC-140: name-only membership was too weak (a whitespace or
-        mode-only touch passed), so the commit's own diff for that path must carry a
-        non-blank +/- line."""
-        diff = _git_output_lines(["show", "-U0", "--pretty=format:", sha, "--", rel])
+    def _sha_ships_code(sha: str) -> bool:
+        """True when `sha` carried a real, non-whitespace change to a SOURCE file — how a
+        closure may point at code that landed in an earlier commit.
+
+        RC-508: this asked whether a sha touched a NAMED path, which required knowing which
+        named path was a repair claim. It now asks the question the row actually needs
+        answered. RC-140's "touched != fixed" survives intact: a mode-only or whitespace-only
+        commit still ships nothing.
+        """
+        diff = _git_output_lines(["show", "--numstat", "--pretty=format:", sha])
         if not diff:
             return False
-        return any(ln.startswith(("+", "-")) and not ln.startswith(("+++", "---"))
-                   and ln[1:].strip() for ln in diff)
+        for ln in diff:
+            parts = ln.split("\t")
+            if len(parts) != 3:
+                continue
+            adds, dels, path = parts
+            if adds == "-" or (adds == "0" and dels == "0"):
+                continue                  # binary, or a mode-only touch
+            if _is_source_path(_norm_rel_path(path)):
+                return True
+        return False
 
     out: list[Violation] = []
     gaps = _closed_row_code_not_shipped(
-        added, dirty, removed_rows=removed, staged=staged_files, sha_touches=_sha_touched)
-    for rc_id, files in gaps:
-        if _UNNAMED_FIX in files:
-            out.append(Violation(
-                REPO / log_rel, 0,
-                f"{rc_id} is being CLOSED with a FIXED claim that names no source file a "
-                f"machine can check, so nothing about the repair is verifiable (RC-140, the "
-                f"prose escape v31 measured). Name the files, or state the closure changes no "
-                f"code (\"no code change\" / \"documentation only\" / \"disposition only\")."))
-        files = [f for f in files if f != _UNNAMED_FIX]
-        still_dirty = sorted(f for f in files if f in dirty)
-        absent = sorted(f for f in files if f not in dirty)
-        if still_dirty:
-            out.append(Violation(
-                REPO / log_rel, 0,
-                f"{rc_id} is being committed as CLOSED but the code it names as FIXED is still "
-                f"dirty in the working tree: {', '.join(still_dirty)}. Stage the fix with its "
-                f"row, or the ledger asserts a repair that HEAD does not contain (RC-137: "
-                f"RC-134 shipped CLOSED while HEAD still had the defect and only the running "
-                f"process looked correct)."))
-        if absent:
-            out.append(Violation(
-                REPO / log_rel, 0,
-                f"{rc_id} is being CLOSED naming FIXED files this commit does not carry and no "
-                f"cited commit touched: {', '.join(absent)}. A clean worktree is not evidence — "
-                f"it looks identical whether the fix landed or was never written (RC-139, the "
-                f"escape v30 measured in RC-137's first cut). Stage the fix, or cite the SHA "
-                f"that carried it."))
+        added, removed_rows=removed, staged=staged_files, sha_ships_code=_sha_ships_code)
+    for rc_id, _reason in gaps:
+        out.append(Violation(
+            REPO / log_rel, 0,
+            f"{rc_id} is being CLOSED but this change ships no code and cites no commit that "
+            f"did. A clean worktree is not evidence — it reads identically whether the fix "
+            f"landed or was never written (RC-137: RC-134 shipped CLOSED while HEAD still had "
+            f"the defect, and only the running process looked correct). Stage the fix with its "
+            f"row, cite the SHA that carried it, or say the closure changes no code (\"no code "
+            f"change\" / \"documentation only\" / \"disposition only\")."))
     return out
 
 
@@ -3796,7 +3704,7 @@ def ship_confirmation_violations(rel: str, staged_names: list) -> list[Violation
 # RC-470: the plus_player catalog checks (plus_player_law, plus_player_cursor_hooks)
 # and their callees are retired - governance/retired_checks.md. Roster demotions are
 # caught by the delta-gate roster comparison + declared-retirement manifest; hook-wiring
-# changes are reviewed by the operator at merge (RC-475 — the CODEOWNERS equivalence the
+# changes are reviewed by the operator at merge (RC-475; RC-510 corrected the
 # retirement rows cited was superseded when the authority model was torn down).
 
 
@@ -3945,7 +3853,7 @@ def check_decision_path_wired() -> list[Violation]:
 
 # claude_cursor_guard_parity RETIRED (declared governance/retired_checks.md 2026-08-24;
 # executed in the SIMPLICITY REHAB): hook parity is an operator merge-review property
-# (RC-475 superseded the CODEOWNERS equivalence the row cited). The
+# (RC-475; the equivalence that row cited was corrected by RC-510). The
 # declared-but-still-enforced state this replaces was itself the manifest lying — the
 # defect class RC-468's seam exists to catch.
 
@@ -3997,7 +3905,7 @@ def check_collect_datasheet_staged() -> list[Violation]:
 
 # RC-470: check_honesty_guard_wired retired (governance/retired_checks.md) - an
 # unwiring of the hook files is reviewed by the operator at merge (RC-475 superseded
-# the CODEOWNERS equivalence the row cited). The honesty guard itself stays on Stop.
+# the equivalence that row cited, corrected by RC-510). The honesty guard stays on Stop.
 
 
 #: RC-212 (operator law 2026-08-02: "tighten up the one faucet mechanical lock so this
@@ -4138,13 +4046,14 @@ def check_phase2a_single_level_computation() -> list[Violation]:
 # RC-470: check_writer_no_drift retired (governance/retired_checks.md). Measured before
 # retiring: the commit hook never ran this check (RC-406); CI deliberately set no role
 # (RC-396); it fired only in local verification shells. 2026-08-24 teardown: the whole
-# writer/role machinery (writer_drift_lock, CODEOWNERS, ED_AGENT_ROLE) was then removed
+# writer/role machinery (writer_drift_lock, ED_AGENT_ROLE) was then removed
 # with Architecture A — authority changes are approved by the operator's word in chat
 # (RC-475), with required CI as the machine gate at merge.
 
 
 # RC-470: check_rc_document_without_resolve retired (governance/retired_checks.md) -
-# backlog growth stays enforced by open_item_cap and stop_guard's RC-72 turn block.
+# backlog growth stays enforced by root_cause_log's overdue clause and stop_guard's
+# RC-72 turn block (RC-505 retired open_item_cap, which used to be named here).
 
 
 CHECKS = [
@@ -4196,8 +4105,8 @@ CHECKS = [
     ("domain_faucet_registry", check_domain_faucet_registry, True),  # RC-212: one faucet per DOMAIN; greeks only at bs_*
     ("phase2a_single_level_computation", check_phase2a_single_level_computation, True),  # Phase 2A: one computation + one materialization per (ticker, level_id, scope, generation)
     # RC-470: rc_document_without_resolve RETIRED (governance/retired_checks.md) -
-    # backlog growth stays enforced by open_item_cap; same-day unfinished rows still
-    # block turn end (stop_guard RC-72).
+    # backlog growth stays enforced by root_cause_log's overdue clause; same-day
+    # unfinished rows still block turn end (stop_guard RC-72).
     # RC-470: writer_no_drift RETIRED (governance/retired_checks.md). Measured before
     # retiring: the commit hook never ran it (RC-406); CI deliberately set no role
     # (RC-396); it fired only in local verification shells. The role machinery it
@@ -4225,7 +4134,11 @@ CHECKS = [
     # no_governance_duplication + checks_are_justified RETIRED 2026-08-24 (SIMPLICITY
     # REHAB, governance/retired_checks.md)
     ("no_tautological_assertions", check_no_tautological_assertions, True),  # catch, not pass
-    ("open_item_cap", check_open_item_cap, True),   # ledgers burn down, never accumulate  # 5 whys, restarted on every new cause
+    # RC-505: open_item_cap RETIRED (governance/retired_checks.md, declared on main
+    # 2026-09-02, removed here as step 2). It reported overdue governance items that
+    # root_cause_log ("is OPEN past its due date") and measured_claims_cite_evidence
+    # ("UNPROVEN is Nd past due") already report, item for item. One overdue item must
+    # fail one check, not two.
     # RC-67 (operator 2026-07-26): ADVISORY, not enforced. It still computes and REPORTS every
     # metric delta, so a real regression stays visible — but a COUNT may no longer block a commit.
     # A counter cannot distinguish a regression from a false positive or from a deliberate,

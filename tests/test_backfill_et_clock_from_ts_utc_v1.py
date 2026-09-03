@@ -156,6 +156,15 @@ def test_cli_verify_sample_passes(tmp_path: Path, monkeypatch):
             "--verify-sample",
             "5",
             "--allow-noncanonical-db",
+            # RC-510: without this the CLI defaults its audit to reports/audits/ and every
+            # suite run drops a timestamped JSON into the TRACKED tree, carrying the
+            # operator's home path in `db_path` and `audit_path` — which the credential
+            # firewall then blocks on the next commit. The tool already provides the
+            # override; the test simply never used it.
+            "--audit-root",
+            str(tmp_path / "audits"),
         ]
     )
     assert rc == 0
+    written = sorted((tmp_path / "audits").glob("*.json"))
+    assert written, "the audit went somewhere other than the directory the test named"
