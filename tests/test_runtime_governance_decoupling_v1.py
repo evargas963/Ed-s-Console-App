@@ -412,6 +412,34 @@ def test_the_agent_seam_still_refuses_to_move_the_production_checkout():
     assert prod_checkout_git_move_violations('git -C "/tmp/some-dev-worktree" checkout -b wip') == []
 
 
+def test_the_work_tree_resolver_answers_the_question_the_chain_cannot_yet_ask():
+    """RC-512, agent half. These helpers are resolved and tested but NOT WIRED — see the
+    note beside them in tools/stop_chain.py. Pinned now so the wiring, when authorized, is
+    a two-line change against behaviour that already has controls.
+
+    `payload_work_tree` must return the worktree of an EDIT target and None for a Stop
+    payload, which names no file. Returning something for Stop would be a guess dressed as
+    an answer, and a guess is what put a stale tree in charge in the first place.
+    """
+    from tools.stop_chain import authority_banner, payload_work_tree
+
+    edit_payload = json.dumps({
+        "tool_name": "Edit",
+        "tool_input": {"file_path": str(REPO / "server.py")},
+    })
+    assert payload_work_tree(edit_payload) == REPO
+
+    assert payload_work_tree(json.dumps({"tool_name": "Stop"})) is None
+    assert payload_work_tree(json.dumps({"tool_name": "Bash", "tool_input": {"command": "ls"}})) is None
+    assert payload_work_tree("not json at all") is None
+    assert payload_work_tree(json.dumps(["a", "list"])) is None
+    assert payload_work_tree(json.dumps({"tool_input": {"file_path": "   "}})) is None
+
+    banner = authority_banner()
+    assert banner.startswith("GOVERNANCE AUTHORITY: ")
+    assert str(REPO) in banner, banner
+
+
 def test_the_repository_lineage_check_is_no_longer_wired_to_anything_runtime():
     """Its own docstring claimed launch + pre-push + CI. Two never existed; one is removed.
 

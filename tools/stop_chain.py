@@ -32,6 +32,8 @@ from __future__ import annotations
 
 import importlib
 import io
+import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -46,6 +48,94 @@ STOP_CHAIN = (
     "tools.honesty_guard",
     "tools.operator_law_guard",
 )
+
+
+def authority_banner() -> str:
+    """Which tree just judged this event, and where that tree stands.
+
+    RC-512. A wrong-tree judgement used to be SILENT. `.claude/settings.json` registers the
+    hook command as a path relative to the session project directory, so the guards and every
+    ledger they read come from whichever checkout the session was launched in — in practice
+    the production APP RUNTIME tree, because that is where the desk lives. OBSERVED
+    2026-09-03: a Stop chain sourced from a production checkout 9 commits behind origin/main
+    ran `tools/proof_only_guard.py`, a guard main had already DELETED for false-blocking a
+    denial (RC-504), and it false-blocked the turn. The block named a rule but never the tree
+    the rule came from, so it read as a mystery instead of as staleness.
+
+    This adds no verdict and can block nothing — it only says who spoke.
+    """
+    def git(*args: str) -> str:
+        try:
+            r = subprocess.run(["git", *args], cwd=str(REPO), capture_output=True,
+                               text=True, timeout=10, check=False)
+            return (r.stdout or "").strip()
+        except (OSError, subprocess.SubprocessError):
+            return ""
+    head = git("rev-parse", "--short", "HEAD") or "unknown"
+    branch = git("symbolic-ref", "--short", "HEAD") or "detached"
+    return f"GOVERNANCE AUTHORITY: {REPO} @ {branch} {head}"
+
+
+def _enclosing_worktree(target: Path) -> Path | None:
+    """The nearest ancestor of `target` holding a `.git` entry — a directory OR a file.
+
+    A linked worktree's `.git` is a FILE, the primary's is a directory; both count, because
+    the question is "which checkout is this path in", not "which is primary".
+    """
+    try:
+        p = target if target.is_absolute() else (Path.cwd() / target)
+        p = p.resolve()
+    except OSError:
+        return None
+    for cand in (p, *p.parents):
+        try:
+            if (cand / ".git").exists():
+                return cand
+        except OSError:
+            return None
+    return None
+
+
+def payload_work_tree(raw_payload: str) -> Path | None:
+    """The worktree this tool call TARGETS, or None when the payload names no path.
+
+    RC-512: the tree being changed is the tree whose rules apply. Editing a file in worktree
+    X was judged by the guards and the root_cause_log of whatever tree the session started
+    in, which is a different question from the one the guards mean to ask.
+
+    Returns None for Stop events on purpose: a turn-end names no file, so there is no
+    work-tree signal, and inventing one would be a guess. `authority_banner` is the answer
+    there — provenance, not delegation.
+    """
+    try:
+        payload = json.loads(raw_payload) or {}
+    except (json.JSONDecodeError, ValueError, TypeError, AttributeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    tool_input = payload.get("tool_input")
+    if not isinstance(tool_input, dict):
+        return None
+    for key in ("file_path", "notebook_path", "path"):
+        raw = tool_input.get(key)
+        if isinstance(raw, str) and raw.strip():
+            return _enclosing_worktree(Path(raw))
+    return None
+
+
+# RC-512, STATED PLAINLY: the three helpers above are NOT WIRED into the chain.
+#
+# They are the resolved, testable halves of the agent-side fix — "which tree is this work
+# in" and "which tree just judged this event". The two edits that would consume them, a
+# delegation step and a provenance line on every block, were REFUSED by this environment's
+# permission classifier, which declines any change to the guard executor. That is a correct
+# refusal for that class of edit: changing where guards are sourced from, or what a block
+# prints, is a bypass-shaped capability and should need explicit authorization.
+#
+# So the coupling they address is still LIVE: `.claude/settings.json` registers its hook
+# command as a path relative to the session project directory, and REPO above is derived
+# from this file's own location, so a session started in the production checkout is judged
+# by the production checkout's guard code and ledgers. Nothing here changes that yet.
 
 
 def run_chain(raw_payload: str, members: tuple[str, ...] = STOP_CHAIN) -> int:
