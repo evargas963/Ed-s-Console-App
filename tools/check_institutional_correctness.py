@@ -443,8 +443,8 @@ def check_adversarial_audits_are_answered() -> list[Violation]:
 def _ratchet_may_write() -> bool:
     """A CHECK MUST NOT MUTATE THE REPO (RC-90).
 
-    check_debt_ratchet used to rewrite the baseline whenever a metric improved, and
-    check_open_item_cap the ceiling. pre-commit stashes unstaged work and runs hooks against the
+    check_debt_ratchet used to rewrite the baseline whenever a metric improved, and the
+    since-retired check_open_item_cap its ceiling. pre-commit stashes unstaged work and runs hooks against the
     STAGED-ONLY tree, so those counts legitimately differ from the working tree: the file was
     rewritten on every single run, pre-commit treats a hook that modifies a tracked file as a
     failure, and staging the rewrite could not help because the next run rewrote it again. Four
@@ -641,94 +641,6 @@ def _is_overdue(due: str) -> bool:
         return datetime.date.fromisoformat(due.strip()) < datetime.date.today()
     except (TypeError, ValueError):
         return False
-
-
-def _overdue_governance_items(rc_path, reg_path) -> list[str]:
-    """RC-65: items that have actually ROTTED — open past their own due date.
-
-    Root-cause columns: id | status | opened | due | ...   (due = cells[3])
-    Register columns:   status | opened | due | claim | ... (due = cells[2])
-    """
-    out: list[str] = []
-    if rc_path.exists():
-        for line in rc_path.read_text(encoding="utf-8").splitlines():
-            if not line.startswith("| RC-"):
-                continue
-            cells = [c.strip() for c in line.strip("|").split("|")]
-            if len(cells) > 3 and cells[1] == "OPEN" and _is_overdue(cells[3]):
-                out.append(cells[0])
-    if reg_path.exists():
-        for line in reg_path.read_text(encoding="utf-8").splitlines():
-            if not line.startswith("|"):
-                continue
-            cells = [c.strip() for c in line.strip("|").split("|")]
-            if len(cells) > 3 and cells[0] in ("UNPROVEN", "DISPROVED") and _is_overdue(cells[2]):
-                out.append(f"register:{cells[3][:40]}")
-    return out
-
-
-def check_open_item_cap() -> list[Violation]:
-    """Governance ledgers must burn DOWN. The open count may never rise.
-
-    Operator 2026-07-19: the ledgers must resolve, not accumulate.
-
-    A fixed cap would repeat the mistake of the 800-line ceiling (RC-19): an arbitrary
-    number invites an arbitrary remedy, and a permanently-red gate teaches you to ignore
-    it. This is a RATCHET instead -- the same mechanism as advisory debt. The current open
-    count is the new ceiling the moment it drops, so the only permitted direction is down,
-    and no number had to be invented.
-
-    MEASURE CORRECTED 2026-07-26 (RC-65, operator: "i don't care about caps as long as we have
-    great code — i thought this was a mechanical lock"). Counting EVERY open item conflated two
-    opposite things: honest new tracking and deferral. On 2026-07-26 a session that found real
-    defects (RC-43's closure was wrong; RC-58's contamination set) FAILED this gate *because* it
-    recorded them — which teaches the agent to stay silent, the precise opposite of this repo's
-    purpose. A control that punishes discovery is worse than no control.
-
-    What actually means "deferred forever" is an item PAST ITS DUE DATE. So the ratchet now counts
-    OVERDUE dated items (root-cause rows and register claims both carry a due date) plus every
-    unchecked OPEN_ITEMS.md row, which has no due date and therefore stays a pure parking-lot
-    count. Opening a defect today with a real due date is free; letting it rot is not — and the
-    burn-down pressure the operator asked for in 2026-07-19 is preserved exactly where it belongs.
-    """
-    out: list[Violation] = []
-    rc = REPO / "governance" / "root_cause_log.md"
-    open_items = _overdue_governance_items(
-        rc, REPO / "governance" / "unproven_register.md")
-    # OPEN_ITEMS.md joined the ratchet 2026-07-20. WHAT WAS OBSERVED: the cap covered
-    # only the two governance ledgers, so OPEN_ITEMS.md was an UNGATED parking lot --
-    # a "flagged, not fixed" disposition could sit there forever, which is exactly the
-    # banned third state (operator: Fixed / Allowlisted-with-reason / Registered-with-
-    # due-date, nothing else). Counting its unchecked rows puts the same only-down
-    # pressure on it. VALIDATED BY PROTOTYPE: 39 unchecked rows at adoption (33 pre-existing + 6
-    # registered from the 2026-07-20 audit remainder); the ceiling was re-baselined
-    # 10 -> 49 IN THE SAME CHANGE (scope expansion, not backsliding) and
-    # may only fall from there.
-    # RC-280: RATCHET REMOVED 2026-08-07 on operator instruction ("WE DO NOT NEED RATCHETS.
-    # WE NEED GREAT CODE. WE NEED TO REMOVE ALL RATCHETS"), and this mission's done_criteria:
-    # no ceiling the operator did not name a number for. This check used to store a
-    # high-water mark in governance/open_item_ceiling.json and block whenever the count rose
-    # above it. MEASURED cost of that design: the ceiling stood at 37 against 39 items and
-    # blocked the commit carrying the adversarial-audit request the operator had already sent
-    # to Cursor, while 34 tests were red -- the control was spending the session on itself.
-    # An invented number also invites an invented remedy: the cheapest way past a count is to
-    # close a row rather than fix a defect, which is the opposite of the intent.
-    #
-    # What survives is the LAW without the number: a dated item may not rot. Zero overdue is
-    # a standard, not a tolerance, and it needs no baseline to compare against.
-    #
-    # DELIBERATELY DROPPED: the unchecked OPEN_ITEMS.md rows this also counted. They carry no
-    # due date, so they were pure parking-lot volume -- the quantity a ratchet measures and a
-    # law cannot. Requiring a due date on every parked row is the honest successor and is a
-    # separate change, not something to smuggle in here.
-    if open_items:
-        out.append(Violation(
-            rc, 0,
-            f"{len(open_items)} governance item(s) are PAST their due date: "
-            f"{', '.join(open_items[:8])}{'...' if len(open_items) > 8 else ''}. "
-            f"Finish it, or re-date it with the reason stated in the row. A due date that "
-            f"passes silently is a deferral wearing a schedule."))
-    return out
 
 
 #: Receivers whose .get() is not a dict read we can reason about (routes, env, vendor libs).
@@ -4144,7 +4056,8 @@ def check_phase2a_single_level_computation() -> list[Violation]:
 
 
 # RC-470: check_rc_document_without_resolve retired (governance/retired_checks.md) -
-# backlog growth stays enforced by open_item_cap and stop_guard's RC-72 turn block.
+# backlog growth stays enforced by root_cause_log's overdue clause and stop_guard's
+# RC-72 turn block (RC-505 retired open_item_cap, which used to be named here).
 
 
 CHECKS = [
@@ -4196,8 +4109,8 @@ CHECKS = [
     ("domain_faucet_registry", check_domain_faucet_registry, True),  # RC-212: one faucet per DOMAIN; greeks only at bs_*
     ("phase2a_single_level_computation", check_phase2a_single_level_computation, True),  # Phase 2A: one computation + one materialization per (ticker, level_id, scope, generation)
     # RC-470: rc_document_without_resolve RETIRED (governance/retired_checks.md) -
-    # backlog growth stays enforced by open_item_cap; same-day unfinished rows still
-    # block turn end (stop_guard RC-72).
+    # backlog growth stays enforced by root_cause_log's overdue clause; same-day
+    # unfinished rows still block turn end (stop_guard RC-72).
     # RC-470: writer_no_drift RETIRED (governance/retired_checks.md). Measured before
     # retiring: the commit hook never ran it (RC-406); CI deliberately set no role
     # (RC-396); it fired only in local verification shells. The role machinery it
@@ -4225,7 +4138,11 @@ CHECKS = [
     # no_governance_duplication + checks_are_justified RETIRED 2026-08-24 (SIMPLICITY
     # REHAB, governance/retired_checks.md)
     ("no_tautological_assertions", check_no_tautological_assertions, True),  # catch, not pass
-    ("open_item_cap", check_open_item_cap, True),   # ledgers burn down, never accumulate  # 5 whys, restarted on every new cause
+    # RC-505: open_item_cap RETIRED (governance/retired_checks.md, declared on main
+    # 2026-09-02, removed here as step 2). It reported overdue governance items that
+    # root_cause_log ("is OPEN past its due date") and measured_claims_cite_evidence
+    # ("UNPROVEN is Nd past due") already report, item for item. One overdue item must
+    # fail one check, not two.
     # RC-67 (operator 2026-07-26): ADVISORY, not enforced. It still computes and REPORTS every
     # metric delta, so a real regression stays visible — but a COUNT may no longer block a commit.
     # A counter cannot distinguish a regression from a false positive or from a deliberate,

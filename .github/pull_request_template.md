@@ -1,4 +1,6 @@
-> **Classification:** Process Template | **Scope:** Required fields for every PR — no passive remaining risks
+> Required fields for every PR. Authority: [`AGENTS.md`](../AGENTS.md). Required checks:
+> `pytest-full` and `hardening` — there are no others, and `enforce_admins` is on, so there is
+> no bypass path to declare.
 
 ## What changed:
 <!-- code / docs / harness -->
@@ -7,28 +9,14 @@
 <!-- explicitly list: model, fusion, histogram, card direction, thresholds -->
 
 ## Proof run:
-<!-- commands + exit codes -->
+<!-- commands + exit codes, run this turn -->
 
-## CI failures:
-<!-- hardening / pytest-full / schwab-csv-first / objective-audit -->
+## CI status:
+<!-- pytest-full / hardening — red means not merge-ready -->
 
-## Admin bypass needed:
-<!-- yes/no — if yes, ADMIN_BYPASS_REGISTER entry required -->
+## Defect rows:
+<!-- governance/root_cause_log.md RC ids opened or closed by this PR -->
 
-## Open items closed:
-<!-- item id + evidence -->
-
-## Open items created:
-<!-- item id + status + owner branch -->
-
-## Risks requiring harness:
-<!-- BLOCKED_BY_RTH_WITH_RUNNABLE_VALIDATION_HARNESS / COMPLETION_BRANCH_REQUIRED -->
-
-## Owner branch for unresolved items:
-<!-- named branch per item -->
-
-## Actual report files reviewed:
-<!-- paths — excerpts required for stabilization/transport PRs -->
-
-## Merge recommendation:
-<!-- not merge-ready if passive "known remaining risks" without closure handling -->
+## Residual work:
+<!-- what is NOT finished, in plain sight; "none" is a valid answer. A material defect is
+     never disposed as queued / logged / TODO / follow-up / pre-existing / out-of-scope. -->

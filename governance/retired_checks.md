@@ -21,6 +21,28 @@ Reproduce: `python -c "import re,pathlib; t=pathlib.Path('governance/root_cause_
 The 18-of-39 inert-document figure reproduces with a git grep per governance/*.md name
 over *.py, *.yaml, *.mdc, tools/, tests/ and AGENTS.md (zero referencing files = inert).
 
+**AMENDMENT 2026-09-02 (RC-505) — the CODEOWNERS equivalence four rows cite does not exist,
+and the real survivor is named here instead.** Rows are append-only, so this corrects them
+without editing them. `plus_player_cursor_hooks`, `claude_cursor_guard_parity`,
+`honesty_guard_wired` and `writer_no_drift` each justify their retirement with "that file is
+CODEOWNERS-owned with require_code_owner_reviews and enforce_admins live, so an unwiring
+cannot merge without operator approval". MEASURED 2026-09-02: `gh api
+repos/evargas963/Ed-s-Console-App/branches/main/protection` returns
+`require_code_owner_reviews: true`, `enforce_admins: true` and
+`required_approving_review_count: 0`, while `git ls-files --error-unmatch CODEOWNERS
+.github/CODEOWNERS` finds neither file among 2897 tracked paths. A code-owner requirement
+with no CODEOWNERS file owns nothing, so no review was ever required — the cited replacement
+was a sentence, not a control. AGENTS.md already states this plainly in its operating model.
+THE PROTECTION IS NOT MISSING, ONLY MISNAMED: the guard rosters are pinned mechanically in
+required CI (`pytest-full`) by `tests/test_find_fix_execution_latch_v1.py::
+test_claude_and_cursor_hook_configs_reach_the_same_guards`, which asserts `.claude/settings.json`
+and `.cursor/hooks.json` reach the same guards AND pins each roster to an exact set — so an
+unwiring, a Cursor/Claude divergence, or dropping `honesty_guard.py` from Stop fails the
+required check. `tests/test_hook_chains_v1.py` pins `STOP_CHAIN` and the Edit/Bash chains the
+same way. `writer_no_drift` needs no successor: the role machinery it policed was removed
+entirely in the 2026-08-24 teardown. Read these four rows with this amendment; the equivalence
+they name is void, the equivalence above is live.
+
 | check | retired | rationale |
 |---|---|---|
 | open_item_cap | 2026-09-02 | STEP 1 DECLARATION ONLY - the check still runs; the removing delta comes later, exactly as this contract requires. PROVEN DUPLICATE, measured 2026-09-02 on this ledger: check_open_item_cap reported 14 overdue governance items and named 8 RC ids - RC-436, RC-416, RC-415, RC-414, RC-413, RC-412, RC-359, RC-354 - every one of which check_root_cause_log ALREADY reports through its own OPEN-past-due clause (21 violations), while the register rows are already reported by the unproven-register validator folded into measured_claims_cite_evidence (8 violations). Unique coverage: NONE. Reproduce: `.venv/Scripts/python.exe -c "import sys,re;sys.path.insert(0,'.');import tools.check_institutional_correctness as C;ids=lambda vs:{m for v in vs for m in re.findall(r'RC-.[0-9]*',str(v.msg))};print(sorted(ids(C.check_open_item_cap())-ids(C.check_root_cause_log())))"` -> `[]`. Its own RC-65 row already conceded half the overlap ("check_root_cause_log already fails loudly on it - one defect must not read as two"), and RC-280 dropped the OPEN_ITEMS count that was its only non-duplicated input, which is what left it with nothing of its own. One overdue item must fail one check, not two. |

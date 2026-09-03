@@ -585,3 +585,83 @@ def test_rc246_advisory_never_blocks_and_the_catalogue_keeps_all_seven():
     block = src[i:i + 700]
     assert "return 0" in block, "advisory mode must never block a commit"
 
+
+# ── RC-505: the overdue law survives the open_item_cap retirement ────────────────────────
+# open_item_cap reported "N governance item(s) are PAST their due date" for BOTH ledgers.
+# It was retired (governance/retired_checks.md, declared 2026-09-02) because every item it
+# named was already named, for the same reason, by a surviving check. Retiring the duplicate
+# is only honest if the survivors still fire — these are that proof, one per ledger, driven
+# by injecting a real overdue row rather than by reading a green run.
+
+
+def _inject_row(path: Path, row: str, check):
+    """Append `row`, count what `check` reports, restore the file byte-for-byte.
+
+    Byte-faithful restore (RC-373): a text round-trip rewrites platform newlines and would
+    flap the ledger's EOL style on every run.
+    """
+    orig_bytes = path.read_bytes()
+    orig = path.read_text(encoding="utf-8")
+    baseline = len(check())
+    try:
+        with io.open(path, "w", encoding="utf-8", newline="\n") as fh:
+            fh.write(orig + row)
+        injected = len(check())
+    finally:
+        path.write_bytes(orig_bytes)
+    assert path.read_bytes() == orig_bytes, "ledger restore was not byte-faithful"
+    return baseline, injected
+
+
+def test_an_overdue_root_cause_row_still_fails_without_open_item_cap():
+    """The RC half of the retired check. An OPEN row past its due date must still block."""
+    log = ROOT / "governance" / "root_cause_log.md"
+    row = ("| RC-9997 | OPEN | 2020-01-01 | 2020-01-02 | rotted on purpose | "
+           "(1) a -> (2) b -> (3) c -> (4) d -> (5) ROOT: e | IN PROGRESS |\n")
+    baseline, injected = _inject_row(log, row, C.check_root_cause_log)
+    assert injected > baseline, "an overdue OPEN root-cause row no longer fails any check"
+    assert any("RC-9997" in v.msg and "past its due date" in v.msg
+               for v in _with_row(log, row, C.check_root_cause_log)), \
+        "the survivor must name the item and say WHY, or it is not the same protection"
+
+
+def test_an_overdue_register_claim_still_fails_without_open_item_cap():
+    """The register half. An UNPROVEN claim past its due date must still block."""
+    reg = ROOT / "governance" / "unproven_register.md"
+    row = ("| UNPROVEN | 2020-01-01 | 2020-01-02 | That this rotted claim is still gated | "
+           "n/a | n/a |\n")
+    baseline, injected = _inject_row(reg, row, C.check_measured_claims_cite_evidence)
+    assert injected > baseline, "an overdue register claim no longer fails any check"
+
+
+def _with_row(path: Path, row: str, check):
+    """The violations `check` reports WITH `row` present. Same restore contract as above."""
+    orig_bytes = path.read_bytes()
+    orig = path.read_text(encoding="utf-8")
+    try:
+        with io.open(path, "w", encoding="utf-8", newline="\n") as fh:
+            fh.write(orig + row)
+        return list(check())
+    finally:
+        path.write_bytes(orig_bytes)
+
+
+def test_the_retired_ceiling_file_has_not_returned():
+    """RC-280's standing operator law: no ratchet, no ceiling nobody named a number for.
+
+    The retired check once stored a high-water mark here and blocked whenever the count
+    rose above it. Zero overdue is a standard, not a budget.
+    """
+    assert not (ROOT / "governance" / "open_item_ceiling.json").exists(), (
+        "the stored high-water mark is back — a check compares against a number nobody chose")
+
+
+def test_open_item_cap_is_gone_from_the_catalogue_and_declared_retired():
+    """Step 2 of the two-step contract, pinned: removed here AND declared on the trunk."""
+    import tools.check_institutional_correctness as gate
+
+    assert not any(n == "open_item_cap" for n, _f, _e in gate.CHECKS)
+    assert not hasattr(gate, "check_open_item_cap"), "the retired check is still importable"
+    manifest = (ROOT / "governance" / "retired_checks.md").read_text(encoding="utf-8")
+    assert "| open_item_cap |" in manifest, "removed without a declared retirement row"
+
