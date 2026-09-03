@@ -44,7 +44,12 @@ def test_start_ed_console_bat_wires_live_schwab_env_preflight():
     bat = (ROOT / "start_ed_console.bat").read_text(encoding="utf-8")
     assert 'live_schwab_env.py --bat-unsets' in bat
     assert 'live_schwab_env.py --sanitize' in bat
-    assert "LAUNCH BLOCKED: live Schwab env is CI/test contaminated" in bat
+    # RC-514: an unavailable Schwab capability is REPORTED, never a launch veto. The
+    # sanitization asserted above is unchanged; only the consequence of a bad result changed,
+    # because one vendor's credentials must not decide whether the application may exist
+    # (docs/ARCHITECTURE.md §4).
+    assert "SCHWAB CAPABILITY UNAVAILABLE" in bat
+    assert "LAUNCH BLOCKED: live Schwab env" not in bat
     # preflight (unsets + sanitize) runs before uvicorn so the child inherits the sanitized env
     assert bat.index("live_schwab_env.py --bat-unsets") < bat.index(
         '"%VENV_PY%" -m uvicorn server:app'
@@ -183,7 +188,8 @@ def test_block_live_schwab_raises_under_ci_offline_no_arg_call(monkeypatch):
     monkeypatch.setenv("SCHWAB_APP_SECRET", _TEST_SENTINEL)
     import schwab_client as sc
 
-    with pytest.raises(RuntimeError, match="Schwab CI offline mode"):
+    # RC-514: same refusal, message widened to name every reason the capability is unavailable.
+    with pytest.raises(RuntimeError, match="UNAVAILABLE"):
         sc._block_live_schwab_in_ci_offline()
 
 

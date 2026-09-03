@@ -58,13 +58,28 @@ REM RC-512: this preflight is APP RUNTIME, not governance - it asks whether live
 REM calls will work, which is a precondition of data collection. It moved from tools\ to
 REM the app root with that ownership, so the launch path executes nothing out of the
 REM governance tools directory.
+REM RC-514: SANITIZE ALWAYS, NEVER VETO THE APPLICATION. The --bat-unsets/--sanitize pair
+REM below is unchanged and still strips inherited CI/test contamination before uvicorn.
+REM What changed is the consequence of a bad result. This used to `exit /b 1`, which made one
+REM vendor's credentials decide whether Ed Console may exist. MEASURED 2026-09-03: a ghost
+REM python-dotenv distribution made .env unloadable (RC-513) and the desk would not start,
+REM while the API, UI, health and observability were all perfectly able to run.
+REM docs/ARCHITECTURE.md section 4: Schwab unavailable degrades the CAPABILITY and fails
+REM Schwab-dependent exposure closed; it does not kill the app. Fail-closed enforcement is
+REM config.schwab_live_blocked_for() plus the two refusal sites in schwab_client -- not this
+REM launcher, which only reports.
 for /f "delims=" %%L in ('"%VENV_PY%" live_schwab_env.py --bat-unsets') do %%L
 "%VENV_PY%" live_schwab_env.py --sanitize
 if errorlevel 1 (
-    echo  LAUNCH BLOCKED: live Schwab env is CI/test contaminated or missing credentials.
-    echo  Unset ED_CI_OFFLINE / test SCHWAB_* and ensure live credentials ^(or .env^).
-    pause
-    exit /b 1
+    echo.
+    echo  ============================================================
+    echo   SCHWAB CAPABILITY UNAVAILABLE - starting anyway.
+    echo   API, UI, health and observability come up normally.
+    echo   Live Schwab collection will NOT run, and Schwab-dependent
+    echo   decisions fail closed. No fabricated or stale substitute.
+    echo   Reasons are printed above; /api/health reports the state.
+    echo  ============================================================
+    echo.
 )
 
 REM RC-512 (operator mission 2026-09-03, DECOUPLE GOVERNANCE FROM APP RUNTIME): the

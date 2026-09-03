@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fail-closed preflight: refuse desk launch when live Schwab would be blocked.
+"""Schwab CAPABILITY preflight: sanitize the environment, then report whether live Schwab works.
 
 Proven failure (2026-08-29, production HEAD 9c195333): start_ed_console.bat was
 invoked from an agent/pytest shell that exported ED_CI_OFFLINE=1, CI=true, and
@@ -8,9 +8,22 @@ failed on every ticker with::
 
     RuntimeError: Schwab CI offline mode — live API call blocked (...)
 
-Root cause is contaminated *parent* environment, not the CI gate itself. The desk
-launcher must strip known contamination and refuse when live calls would still be
-blocked — without weakening authorization or swallowing the RuntimeError.
+Root cause is contaminated *parent* environment, not the CI gate itself. The sanitization
+half of that fix is unchanged and still runs first: known contamination is stripped from the
+parent shell before uvicorn inherits it, and nothing here weakens authorization or swallows
+the RuntimeError.
+
+RC-514 CHANGED WHAT A FAILURE MEANS. This module used to answer "may the desk launch", and
+`start_ed_console.bat` exited on a non-zero result — so whether Ed Console could exist at all
+was decided by whether one upstream vendor's credentials happened to resolve. MEASURED
+2026-09-03: a ghost `python-dotenv` distribution made `.env` unloadable (RC-513) and the desk
+would not start, with the API, UI, health and observability all perfectly capable of running.
+
+docs/ARCHITECTURE.md §4 separates application availability from capability availability:
+Schwab unavailable degrades the Schwab capability and fails Schwab-dependent exposure closed;
+it does not kill the application. So this now answers "is the Schwab CAPABILITY available",
+the launcher reports rather than aborts, and the fail-closed half lives where it always did —
+`config.schwab_live_blocked_for()` and the two refusal sites in `schwab_client`.
 """
 from __future__ import annotations
 
@@ -86,8 +99,23 @@ def apply_sanitize(environ: dict[str, str] | None = None) -> list[str]:
     return cleared
 
 
+def schwab_capability_status() -> tuple[str, list[str]]:
+    """`("AVAILABLE" | "UNAVAILABLE", reasons)` for the Schwab capability.
+
+    One computation: the reasons ARE `live_schwab_launch_violations()`, which has always
+    answered "would live Schwab work here". Only the consequence changed — an unavailable
+    capability degrades that capability instead of vetoing the application (RC-514).
+    """
+    reasons = live_schwab_launch_violations()
+    return ("UNAVAILABLE" if reasons else "AVAILABLE"), reasons
+
+
 def live_schwab_launch_violations() -> list[str]:
-    """Return human-readable violations; empty means safe to launch uvicorn."""
+    """Reasons live Schwab would NOT work here; empty means the capability is available.
+
+    Kept under its original name because it is the single predicate every caller already uses.
+    `schwab_capability_status` formats it; nothing recomputes it.
+    """
     # Local import: keeps --bat-unsets usable even if config import is heavy.
     from config import (
         _ensure_dotenv_loaded,
@@ -160,18 +188,22 @@ def main(argv: list[str] | None = None) -> int:
         if cleared:
             print(f"live_schwab_env: cleared inherited contamination: {', '.join(cleared)}")
 
-    violations = live_schwab_launch_violations()
-    if violations:
-        print("LAUNCH BLOCKED: live Schwab environment is not production-safe:", file=sys.stderr)
-        for v in violations:
+    status, reasons = schwab_capability_status()
+    if reasons:
+        print("SCHWAB CAPABILITY UNAVAILABLE — the app runs; this capability does not:",
+              file=sys.stderr)
+        for v in reasons:
             print(f"  - {v}", file=sys.stderr)
         print(
-            "Unset CI/test vars (ED_CI_OFFLINE, CI, test SCHWAB_*), ensure live "
-            "SCHWAB_API_KEY/SCHWAB_APP_SECRET (or .env), then relaunch via start_ed_console.bat.",
+            "Live Schwab collection will not run and Schwab-dependent decisions fail closed "
+            "(no fabricated data, no stale substitute). API, UI, health and observability are "
+            "unaffected. To restore the capability: unset CI/test vars (ED_CI_OFFLINE, CI, "
+            "test SCHWAB_*), ensure live SCHWAB_API_KEY/SCHWAB_APP_SECRET (or repo .env), "
+            "then relaunch via start_ed_console.bat.",
             file=sys.stderr,
         )
         return 1
-    print("live_schwab_env: OK (live Schwab not CI-blocked)")
+    print(f"live_schwab_env: {status} (live Schwab not CI-blocked)")
     return 0
 
 

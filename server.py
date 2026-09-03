@@ -15176,7 +15176,23 @@ def health():
     with _logger_lock:
         running = _logger_running
         n       = len(_logger_tickers)
-    return {"status": "ok", "time": datetime.now().isoformat(), "logger_running": running, "logger_tickers": n}
+    # RC-514 / docs/ARCHITECTURE.md section 4: application availability and capability
+    # availability are separate, so `status` answers "is the app alive" and never folds a
+    # vendor outage into it. Read from config.schwab_live_blocked_for() -- the SAME gate
+    # schwab_client refuses calls on -- so health can never advertise a capability the call
+    # path is blocking. An unreadable gate reports UNAVAILABLE: unmeasurable is not ok (RC-57).
+    try:
+        from config import schwab_live_blocked_for
+        schwab_blocked = bool(schwab_live_blocked_for())
+    except Exception:  # noqa: BLE001 - health must answer, and must not answer optimistically
+        schwab_blocked = True
+    return {
+        "status": "ok",
+        "time": datetime.now().isoformat(),
+        "logger_running": running,
+        "logger_tickers": n,
+        "capabilities": {"schwab": "UNAVAILABLE" if schwab_blocked else "AVAILABLE"},
+    }
 
 
 def _repo_git_head_sha() -> Optional[str]:
