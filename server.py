@@ -5567,21 +5567,7 @@ def _fetch_expiries_light(ticker: str) -> list[str]:
     if c_resp is None or c_resp.status_code != 200:
         raise HTTPException(status_code=502, detail="Option chain fetch failed")
     c_json = c_resp.json()
-    contracts_raw: list[dict] = []
-    for _side_key in ("callExpDateMap", "putExpDateMap"):
-        _side_map = c_json.get(_side_key) or {}
-        if not isinstance(_side_map, dict):
-            continue
-        for _exp_map in _side_map.values():
-            if not isinstance(_exp_map, dict):
-                continue
-            for _strike_list in _exp_map.values():
-                if not isinstance(_strike_list, list):
-                    continue
-                for _ct in _strike_list:
-                    if isinstance(_ct, dict):
-                        contracts_raw.append(_ct)
-    contracts = [dict(ct) for ct in contracts_raw]
+    contracts = flatten_chain_contracts(c_json)
     expiries = _expiries_from_contracts(contracts)
     today = now_et().strftime("%Y-%m-%d")
     return [e for e in expiries if e >= today]
@@ -8786,20 +8772,7 @@ def _fetch_state(
                                     _wide_resp is not None
                                     and getattr(_wide_resp, "status_code", None) == 200
                                 ):
-                                    _wj = _wide_resp.json()
-                                    for _side_key in ("callExpDateMap", "putExpDateMap"):
-                                        _side_map = _wj.get(_side_key) or {}
-                                        if not isinstance(_side_map, dict):
-                                            continue
-                                        for _exp_map in _side_map.values():
-                                            if not isinstance(_exp_map, dict):
-                                                continue
-                                            for _strike_list in _exp_map.values():
-                                                if not isinstance(_strike_list, list):
-                                                    continue
-                                                for _ct in _strike_list:
-                                                    if isinstance(_ct, dict):
-                                                        _wide_contracts.append(dict(_ct))
+                                    _wide_contracts = flatten_chain_contracts(_wide_resp.json())
                                 if _wide_contracts:
                                     maybe_persist_morning_full_chain(
                                         _gex_db_path,
@@ -16084,21 +16057,8 @@ def debug_charm(ticker: str = DEFAULT_TICKER):
         if c_resp is None or c_resp.status_code != 200:
             return {"error": f"Chain fetch failed: status={getattr(c_resp, 'status_code', 'None')}"}
         chain_json = c_resp.json()
-        raw_cts: list[dict] = []
-        for _side_key in ("callExpDateMap", "putExpDateMap"):
-            _side_map = chain_json.get(_side_key) or {}
-            if not isinstance(_side_map, dict):
-                continue
-            for _exp_map in _side_map.values():
-                if not isinstance(_exp_map, dict):
-                    continue
-                for _strike_list in _exp_map.values():
-                    if not isinstance(_strike_list, list):
-                        continue
-                    for _ct in _strike_list:
-                        if isinstance(_ct, dict):
-                            raw_cts.append(_ct)
-        contracts = [dict(ct) for ct in raw_cts]
+        contracts = flatten_chain_contracts(chain_json)
+        raw_cts = contracts
 
         # Sample first contract raw fields
         first_raw = raw_cts[0] if raw_cts else {}
