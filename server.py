@@ -14161,8 +14161,8 @@ def api_order_flow_options_microstructure(contract: str = Query(...)):
 
 
 
-@app.get("/api/order-flow/options-history")
-def api_order_flow_options_history(
+@app.get("/api/options/history")
+def api_options_history(
     contract: str = Query(...),
     minutes: float = Query(default=15.0),
 ):

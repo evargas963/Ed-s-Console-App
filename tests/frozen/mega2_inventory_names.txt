@@ -226,6 +226,8 @@ order_flow_live_state.py::get_top_of_book_sizes._to_int
 order_flow_live_state.py::is_rth_open
 order_flow_live_state.py::push_book
 order_flow_live_state.py::push_level_one
+order_flow_streaming.py::_contract_matches_underlying
+order_flow_streaming.py::_ensure_default_option_contract_for_ticker
 order_flow_streaming.py::_feed_loop
 order_flow_streaming.py::_identity_forces_unhealthy
 order_flow_streaming.py::_log_stream

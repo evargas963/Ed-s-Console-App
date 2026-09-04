@@ -11,36 +11,45 @@ import time
 from stream_spine import STREAM_SCHEMA_SQL
 
 
+def _cde_fixture_chain():
+    from pathlib import Path
+
+    fx_path = Path(__file__).resolve().parent / "fixtures" / "real_cde_complete_chain_half_dollar.json"
+    return json.loads(fx_path.read_text(encoding="utf-8"))
+
+
 def test_pick_atm_call_uses_vendor_symbol_not_constructed():
     from app.options.default_contract import pick_atm_call_symbol
 
-    contracts = [
-        {"putCall": "CALL", "symbol": "CDE   260904C00015000", "strikePrice": 15.0},
-        {"putCall": "CALL", "symbol": "CDE   260904C00016000", "strikePrice": 16.0},
-        {"putCall": "PUT", "symbol": "CDE   260904P00016000", "strikePrice": 16.0},
-    ]
-    assert pick_atm_call_symbol(contracts, 15.6) == "CDE   260904C00016000"
+    fx = _cde_fixture_chain()
+    contracts = fx["chain"]
+    calls = [c for c in contracts if str(c.get("putCall") or "").upper() == "CALL"]
+    assert calls, "real CDE fixture must include CALL rows"
+    spot = float(calls[0]["strikePrice"]) + 0.1
+    picked = pick_atm_call_symbol(contracts, spot)
+    assert picked is not None
+    row = next(c for c in contracts if c.get("symbol") == picked)
+    assert str(row.get("putCall") or "").upper() == "CALL"
+    assert picked == row["symbol"]
     assert pick_atm_call_symbol(contracts, None) is None
 
 
 def test_default_contract_from_banked_chain(tmp_path, monkeypatch):
-    from app.options.default_contract import default_option_contract
+    from app.options.default_contract import default_option_contract, pick_atm_call_symbol
     from calibration.complete_chain_capture import persist_complete_chain_capture
 
-    monkeypatch.setattr("app.options.default_contract._expiry_cutoff_et", lambda: "2026-09-04")
+    fx = _cde_fixture_chain()
+    monkeypatch.setattr("app.options.default_contract._expiry_cutoff_et", lambda: fx["expiry"])
     db = tmp_path / "ed.db"
     persist_complete_chain_capture(
         db,
-        ticker="CDE",
-        expiry="2026-09-04",
-        contracts=[
-            {"putCall": "CALL", "symbol": "CDE   260904C00012000", "strikePrice": 12.0},
-            {"putCall": "CALL", "symbol": "CDE   260904C00013000", "strikePrice": 13.0},
-        ],
-        spot=12.4,
-        completeness_basis="strike_range=ALL",
+        ticker=fx["ticker"],
+        expiry=fx["expiry"],
+        contracts=fx["chain"],
+        spot=16.1,
+        completeness_basis=fx["completeness_basis"],
     )
-    assert default_option_contract("CDE", chain_db_path=db) == "CDE   260904C00012000"
+    assert default_option_contract(fx["ticker"], chain_db_path=db) == pick_atm_call_symbol(fx["chain"], 16.1)
 
 
 def test_live_payload_one_compute_includes_proxy_flow():

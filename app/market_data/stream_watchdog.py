@@ -69,9 +69,7 @@ def start_durable_daemon(
     ]
     creation = 0
     if os.name == "nt":
-        creation = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(
-            subprocess, "CREATE_NEW_PROCESS_GROUP", 0
-        )
+        creation = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
     proc = subprocess.Popen(
         args,
         cwd=str(root),
