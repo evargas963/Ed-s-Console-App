@@ -726,14 +726,16 @@ def test_stream_needs_recycle_decision_boundaries():
 
     ok_cool = RECONNECT_COOLDOWN_SEC + 1
     stale = STREAM_STALE_RECONNECT_SEC + 1
-    assert stream_needs_recycle(stale, True, ok_cool) is True
+    assert stream_needs_recycle(stale, True, ok_cool, True) is True
+    # overnight / closed-market silence is not a half-open socket
+    assert stream_needs_recycle(stale, True, ok_cool, False) is False
     # never recycle: no age yet / never saw data (subscribe problem, not half-open)
-    assert stream_needs_recycle(None, True, ok_cool) is False
-    assert stream_needs_recycle(stale, False, ok_cool) is False
+    assert stream_needs_recycle(None, True, ok_cool, True) is False
+    assert stream_needs_recycle(stale, False, ok_cool, True) is False
     # never login-spam: inside cooldown stays put even when stale
-    assert stream_needs_recycle(stale, True, RECONNECT_COOLDOWN_SEC - 1) is False
+    assert stream_needs_recycle(stale, True, RECONNECT_COOLDOWN_SEC - 1, True) is False
     # fresh feed stays connected
-    assert stream_needs_recycle(STREAM_STALE_RECONNECT_SEC - 1, True, ok_cool) is False
+    assert stream_needs_recycle(STREAM_STALE_RECONNECT_SEC - 1, True, ok_cool, True) is False
 
 
 def test_alpaca_session_recycles_on_silent_socket(monkeypatch):

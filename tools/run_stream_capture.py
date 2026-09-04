@@ -54,6 +54,7 @@ from stream_spine import (  # noqa: E402
     read_active_option_contract_signal,
     read_active_ticker_signal,
 )
+from time_et import is_capturable_session  # noqa: E402
 
 STATUS_PATH = ROOT / "reports" / "stream_capture_status.json"
 OWNER_LOCK = ROOT / "data" / "stream_capture.lock"
@@ -164,11 +165,19 @@ STREAM_RETIRE_TIMEOUT_SEC = 5.0
 
 
 def stream_needs_recycle(age_sec: float | None, seen_data: bool,
-                         since_last_reconnect: float) -> bool:
-    """Half-open-guard decision (pure; unit-tested). Recycle ONLY when:
-    data has flowed before (a never-beat service is a subscribe problem, not a
-    half-open socket), the feed has been quiet past the stale bar, and the
-    cooldown has passed (quiet after-hours tape must not cycle logins)."""
+                         since_last_reconnect: float,
+                         collect_session_live: bool) -> bool:
+    """Half-open-guard decision (pure; unit-tested).
+
+    Recycle ONLY during an intended live collection session
+    (``time_et.is_capturable_session``: trading day, 04:00-20:00 ET).
+    Overnight / closed-market silence is not a half-open socket and must
+    not login-spam Schwab. During the live session: data has flowed before
+    (a never-beat service is a subscribe problem, not a half-open socket),
+    the feed has been quiet past the stale bar, and the cooldown has passed.
+    """
+    if not collect_session_live:
+        return False
     if age_sec is None or not seen_data:
         return False
     return (age_sec > STREAM_STALE_RECONNECT_SEC
@@ -1498,7 +1507,9 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
             age = (health.report().get("LEVELONE_EQUITIES") or {}).get("age_sec")
             seen = stats.per_service.get("LEVELONE_EQUITIES", 0) > 0
             _coverage_forced = option_recycle_request.is_set()
-            if _coverage_forced or stream_needs_recycle(age, seen, time.monotonic() - last_reconnect):
+            if _coverage_forced or stream_needs_recycle(
+                    age, seen, time.monotonic() - last_reconnect,
+                    is_capturable_session()):
                 if _coverage_forced:
                     # gap 4: option coverage compensation failed — vendor state uncertain
                     # with no durable coverage. Same teardown/rebuild as the watchdog.

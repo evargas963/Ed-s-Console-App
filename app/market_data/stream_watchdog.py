@@ -16,6 +16,7 @@ from typing import Any
 
 from stream_spine import (
     PRODUCER_CLAIM_TTL_SEC,
+    STREAM_CAPTURE_DB_PATH_ENV,
     read_producer_heartbeat,
     resolve_stream_db_path,
 )
@@ -52,6 +53,7 @@ def start_durable_daemon(
     repo: Path | None = None,
     symbols: tuple[str, ...] = DEFAULT_SYMBOLS,
     python: str | None = None,
+    db_path: Path | str | None = None,
 ) -> dict[str, Any]:
     """Spawn the capture daemon with duration 0 (until process death), detached."""
     root = repo or REPO
@@ -67,12 +69,17 @@ def start_durable_daemon(
         "--duration-min",
         "0",
     ]
+    resolved_db = resolve_stream_db_path(db_path)
+    args.extend(["--db", str(resolved_db)])
+    env = os.environ.copy()
+    env[STREAM_CAPTURE_DB_PATH_ENV] = str(resolved_db)
     creation = 0
     if os.name == "nt":
         creation = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
     proc = subprocess.Popen(
         args,
         cwd=str(root),
+        env=env,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
         stdin=subprocess.DEVNULL,
@@ -92,7 +99,7 @@ def ensure_stream_capture_running(
     """ONE faucet: start the daemon only when the heartbeat is absent or stale."""
     if daemon_is_fresh(db_path):
         return {"action": "already_running", "age_sec": heartbeat_age_sec(db_path)}
-    started = start_durable_daemon(repo=repo, symbols=symbols, python=python)
+    started = start_durable_daemon(repo=repo, symbols=symbols, python=python, db_path=db_path)
     started["action"] = "started" if started.get("started") else "failed"
     started["age_sec"] = heartbeat_age_sec(db_path)
     return started
