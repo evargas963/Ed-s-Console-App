@@ -240,6 +240,7 @@ order_flow_streaming.py::_replay_option_contract_rows
 order_flow_streaming.py::_stream_db_identity_status
 order_flow_streaming.py::_streaming_healthy
 order_flow_streaming.py::begin_option_contract_command
+order_flow_streaming.py::clear_active_option_contract
 order_flow_streaming.py::get_option_contract_book_microstructure
 order_flow_streaming.py::get_option_contract_streaming_diagnostics
 order_flow_streaming.py::get_plane_authority_for_ticker
