@@ -144,7 +144,7 @@ def test_spxw_matches_dollar_spx_only_via_banked_chain():
         "ticker": "$SPX",
         "expiry": "2026-09-04",
         "contracts": [
-            {"symbol": weekly, "putCall": "CALL", "strikePrice": 7735.0},
+            {"symbol": weekly},
         ],
     }
 
