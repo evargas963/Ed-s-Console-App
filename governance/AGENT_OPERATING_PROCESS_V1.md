@@ -43,7 +43,9 @@
 
 ## 6. LIVE-CHECKOUT INVARIANT (production is main-only; development is isolated)
 
-**Mechanical enforcer:** `tools/check_live_path_is_main.py` (RC-350; launch / pre-push / CI, fail-closed) + `tools/process_lock_guard.py` PreToolUse (prevention at the moment of the command). The canonical `EdWebConsole` checkout is **production only** — development never runs in it.
+**Mechanical enforcer:** `tools/process_lock_guard.py` PreToolUse — prevention at the moment of the command. The canonical `EdWebConsole` checkout is **production only** — development never runs in it.
+
+**RC-512:** this line used to name `tools/check_live_path_is_main.py` as a fail-closed enforcer at "launch / pre-push / CI". Two of those never existed (`.pre-commit-config.yaml` declares `default_stages: [pre-commit]` and no workflow invokes it) and the launch one was removed: it made desk availability depend on repository position, and on 2026-09-03 it aborted the launcher because the production checkout was 9 commits behind `origin/main`, with no application defect. Governance controls agent actions, commit and merge — it does not decide whether the desk may run. The check remains available as an operator/agent-side report (`violations()`); it gates nothing on the runtime path.
 
 1. **Production = main == origin/main, always.** The live desk runs branch `main` at HEAD exactly equal to `origin/main` — never a feature branch, never detached, never ahead (a private divergent lineage) or behind (stale code). Asserted at every launch / push / CI (emergency bypass `ED_LIVE_PATH_UNLOCKED=1` for a downed desk only — every use is a logged admission the invariant broke).
 2. **Development happens on the separate dev worktree** — one non-live development surface (`EdWebConsole-dev`, a linked git worktree), never in the production checkout.
@@ -51,7 +53,7 @@
 4. **Assigned agents cannot change branches or app code in the production checkout.** The PreToolUse guard BLOCKs — at the moment of the command, not only at the next launch — any `git checkout` / `switch` / `branch` / `commit` / `merge` / `reset` / `rebase` / `cherry-pick` that TARGETS the production primary, and any Edit/Write of app code (`server.py`, `*.py`, `static/*.html|*.js`) inside it. Allowed on production: reads, `git fetch`, `git checkout main` (return-to-main), and the fast-forward update in (5). Dev worktrees are unconstrained.
 5. **Merge first, then fast-forward.** Feature work lands via PR to `main`; production then updates ONLY by `git merge --ff-only origin/main` (or `git pull --ff-only`). Production never carries a local commit, so the fast-forward is always clean.
 
-- **DONE when:** `check_live_path_is_main.py` PASSes in the production checkout (branch==main, HEAD==origin/main, no uncommitted app code); dev work is on the dev worktree; production received its change only by fast-forward after the PR merged.
+- **DONE when:** `check_live_path_is_main.py` reports no violation in the production checkout (branch==main, HEAD==origin/main, no uncommitted app code); dev work is on the dev worktree; production received its change only by fast-forward after the PR merged. This is an operating standard the operator reads and acts on — a violation means the desk is stale or divergent, never that it may not run (RC-512).
 
 ## 7. DEBT-CONVERGENCE LAW (fixable repo debt goes down, not sideways)
 
@@ -75,6 +77,6 @@
 | Measure | `.venv/Scripts/python.exe tools/operating_process_lock.py --measure` |
 | Pre-commit gate | `.venv/Scripts/python.exe tools/operating_process_lock.py --pre-commit` |
 | Commit check | `.venv/Scripts/python.exe tools/operating_process_lock.py --commit-check` |
-| Live-checkout lock | `.venv/Scripts/python.exe tools/check_live_path_is_main.py` (production must be branch main == origin/main) |
+| Live-checkout report | `.venv/Scripts/python.exe tools/check_live_path_is_main.py` (production should be branch main == origin/main; reports, does not gate the desk — RC-512) |
 
 No env kill-switch: `ED_PROCESS_LOCK_GUARD` cannot disable the hook (RC-450).

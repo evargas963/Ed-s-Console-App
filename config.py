@@ -31,16 +31,6 @@ DEFAULT_TICKER = "SPY"
 SCHWAB_CALLBACK_URL = "https://127.0.0.1:8182"
 
 
-def _require_env(name: str) -> str:
-    val = os.getenv(name)
-    if val is None or not str(val).strip():
-        raise RuntimeError(
-            f"Missing required environment variable {name!r} — "
-            "set SCHWAB_API_KEY and SCHWAB_APP_SECRET before starting the server."
-        )
-    return str(val).strip()
-
-
 _CI_SCHWAB_PLACEHOLDER_PREFIXES: tuple[str, ...] = (
     "ci-not-live-placeholder",
     "ci-placeholder-",
@@ -68,11 +58,28 @@ def schwab_live_blocked_for(
     api_key: str | None = None,
     app_secret: str | None = None,
 ) -> bool:
-    """Block live Schwab when placeholder credentials are in use (env or explicit args).
+    """Block live Schwab when it cannot work: placeholder OR ABSENT credentials.
 
     ED_CI_OFFLINE with explicit non-placeholder credentials (unit tests) does not block.
+
+    RC-514: absent credentials block too, and did not before. That was the hole under the
+    failure-domain architecture (docs/ARCHITECTURE.md §4).
+    `schwab_credentials_are_ci_placeholders` returns False for an empty value, so with NO
+    credentials this returned False: `build_client_from_token` built a client and
+    `_block_live_schwab_in_ci_offline` waved calls through, and the capability presented itself
+    as live while failing one unauthenticated request at a time. The launcher compensated by
+    refusing to start the WHOLE application — the wrong boundary, and the reason a credential
+    fault took the desk down on 2026-09-03.
+
+    Blocking here is what lets the launcher stop doing that: the two existing fail-closed sites
+    in `schwab_client` then report the capability unavailable instead of pretending. No new
+    mechanism — the same gate, asked the question it should always have answered.
     """
     if schwab_credentials_are_ci_placeholders(api_key, app_secret):
+        return True
+    key = (api_key if api_key is not None else os.getenv("SCHWAB_API_KEY") or "").strip()
+    secret = (app_secret if app_secret is not None else os.getenv("SCHWAB_APP_SECRET") or "").strip()
+    if not key or not secret:
         return True
     offline = os.getenv("ED_CI_OFFLINE", "").strip().lower() in ("1", "true", "yes")
     if not offline:
@@ -115,8 +122,19 @@ def build_config(app_dir: str) -> AppConfig:
     barchart_output_dir = os.path.join(barchart_dir, "output")
     barchart_archive_dir = os.path.join(barchart_dir, "archive")
 
-    api_key = _require_env("SCHWAB_API_KEY")
-    app_secret = _require_env("SCHWAB_APP_SECRET")
+    # RC-514: Schwab credentials are a CAPABILITY input, not an application-shell requirement.
+    # These two lines used to call a `_require_env` helper that RAISED when either was absent,
+    # and `server.py` calls `build_config` at module scope — so `import server`, and therefore
+    # `uvicorn server:app`, failed outright with no credentials. The entire application refused
+    # to exist because one vendor's secrets were missing, which is the boundary
+    # docs/ARCHITECTURE.md §4 rejects: Schwab unavailable degrades the Schwab capability.
+    #
+    # This is not a relaxation. That raise was a SECOND place deciding "can we do Schwab",
+    # duplicating `schwab_live_blocked_for()` — which now blocks on absent credentials, so an
+    # empty value here cannot reach a live call: `build_client_from_token` returns ok=False and
+    # `_block_live_schwab_in_ci_offline` raises. One gate decides, and it still fails closed.
+    api_key = (os.getenv("SCHWAB_API_KEY") or "").strip()
+    app_secret = (os.getenv("SCHWAB_APP_SECRET") or "").strip()
     callback_url = os.getenv("SCHWAB_CALLBACK_URL", SCHWAB_CALLBACK_URL).strip()
 
     return AppConfig(

@@ -50,7 +50,7 @@ Claims that cannot be measured now go in `governance/unproven_register.md`. Stag
 
 **ONE computation.** Every job — research, backtest, training, scoreboard — imports and calls the live functions; it never reimplements them. Two invocations with different inputs are two producers even through the same function. "Validated in research" must mean "runs live" by construction.
 
-**Decision-path admission.** No component may influence TRADE — or any output that authorizes or shapes exposure — unless `governance/decision_path_admissions.json` records it ADMITTED with evidence (preregistration, OOS results, costs, baselines, scope, leakage review) and an operator admission decision. Registry starts empty; unadmitted influence → WAIT. Enforced by `decision_gate.py` in `call_engine.compute_call`, and by `check_decision_path_wired`.
+**Decision-path admission.** No component may influence TRADE — or any output that authorizes or shapes exposure — unless `config/decision_path_admissions.json` records it ADMITTED with evidence (preregistration, OOS results, costs, baselines, scope, leakage review) and an operator admission decision. Registry starts empty; unadmitted influence → WAIT. Enforced by `decision_gate.py` in `call_engine.compute_call`, and by `check_decision_path_wired`.
 
 **Find & Prove substance (RC-210).** Staged experiment reports claiming significance/Sharpe/alpha require `n_trials` + a multiple-testing method, or `[UNVERIFIED]`. Research runners must not use plain `KFold`/`train_test_split` on labeled financial paths without purge/embargo, or `# leakage-ok:`. CONFIRMATORY claims in `research/**` require a resolvable prereg path.
 

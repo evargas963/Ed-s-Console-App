@@ -363,6 +363,42 @@ def get_client(force_refresh: bool = False):
     return _client
 
 
+def schwab_capability_state() -> tuple[str, str]:
+    """`("AVAILABLE" | "UNAVAILABLE", reason)` for the Schwab capability.
+
+    RC-514 second cut. The first published this from `config.schwab_live_blocked_for()` alone,
+    which only proves credentials and CI state PERMIT an attempt — it says nothing about the
+    token. A missing, malformed, or unrefreshable token file leaves the capability unable to
+    operate while that gate reads clear, so health could advertise AVAILABLE for a Schwab that
+    cannot serve a single quote.
+
+    This asks the canonical client instead, through the SAME `build_client_from_token` and the
+    SAME `_client` cache `get_client()` uses — not a parallel health computation. The gate is
+    still enforced, because it is the first thing that builder checks.
+
+    Cost is why it can sit on a polled endpoint. MEASURED: every UNAVAILABLE verdict is cheap
+    and local — missing file 3.3 ms, malformed JSON 15.3 ms, malformed layout 0.3 ms,
+    unrefreshable 13.4 ms — while the ~400 ms client construction happens only on the
+    AVAILABLE path, once, and populates the cache the app then uses. An expired token WITH a
+    refresh token builds fine and is correctly AVAILABLE; schwab-py refreshes it.
+    """
+    global _client
+    if _client is not None:
+        return "AVAILABLE", ""
+    try:
+        state = build_client_from_token(
+            api_key=cfg.api_key,
+            app_secret=cfg.app_secret,
+            token_path=cfg.token_path,
+        )
+    except Exception as exc:  # noqa: BLE001 — health must answer, never optimistically
+        return "UNAVAILABLE", f"{type(exc).__name__}: {exc}"
+    if state.ok and state.client is not None:
+        _client = state.client
+        return "AVAILABLE", ""
+    return "UNAVAILABLE", (state.message or "").strip()
+
+
 def _safe_get_quote_with_retry(client, ticker: str, *, attempt_hook=None):
     """Quote fetch with token-error retry: rebuilds client once and retries."""
     return safe_get_quote(
@@ -15176,7 +15212,26 @@ def health():
     with _logger_lock:
         running = _logger_running
         n       = len(_logger_tickers)
-    return {"status": "ok", "time": datetime.now().isoformat(), "logger_running": running, "logger_tickers": n}
+    # RC-514 / docs/ARCHITECTURE.md section 4: application availability and capability
+    # availability are separate, so `status` answers "is the app alive" and never folds a
+    # vendor outage into it. The capability verdict comes from schwab_capability_state(),
+    # which asks the canonical client -- credentials, CI gate AND token state -- rather than
+    # the credential gate alone, so health cannot advertise a Schwab that could not serve a
+    # quote. Failure to answer reports UNAVAILABLE: unmeasurable is not ok (RC-57).
+    try:
+        schwab_status, schwab_reason = schwab_capability_state()
+    except Exception as exc:  # noqa: BLE001 - health must answer, and never optimistically
+        schwab_status, schwab_reason = "UNAVAILABLE", f"{type(exc).__name__}: {exc}"
+    capability: dict[str, object] = {"schwab": schwab_status}
+    if schwab_reason:
+        capability["schwab_reason"] = schwab_reason
+    return {
+        "status": "ok",
+        "time": datetime.now().isoformat(),
+        "logger_running": running,
+        "logger_tickers": n,
+        "capabilities": capability,
+    }
 
 
 def _repo_git_head_sha() -> Optional[str]:

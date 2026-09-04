@@ -394,10 +394,16 @@ CAPS_LINE_ALLOWLIST: tuple[tuple[str, int | str, str, str], ...] = (
     ("release_object.py", 107, "GET_WITH_DEFAULT", "env config only"),
     ("scheduler_user_tickers.py", 60, "GET_WITH_DEFAULT", "env config only"),
     ("schwab_client.py", 51, "GETATTR_DEFAULT", "constant base URL only"),
-    ("schwab_client.py", 293, "GET_WITH_DEFAULT", "OAuth/config timeout only"),
-    ("schwab_client.py", 371, "GET_OR_DEFAULT", "parse_qs indexing idiom only"),
+    # RC-514: 293/371/372/403 -> 294/372/373/404. These entries are keyed by ABSOLUTE line
+    # number, so widening a refusal message earlier in schwab_client.py shifted every later
+    # line and three inherited, already-reviewed hits reappeared as new violations in required
+    # CI. The lines themselves are unchanged — re-identified by CONTENT, not by adding one:
+    # 294 is the OAuth callback timeout, 372/373 the two parse_qs indexing idioms, 404 the
+    # auth-failure latch.
+    ("schwab_client.py", 294, "GET_WITH_DEFAULT", "OAuth/config timeout only"),
     ("schwab_client.py", 372, "GET_OR_DEFAULT", "parse_qs indexing idiom only"),
-    ("schwab_client.py", 403, "GET_WITH_DEFAULT", "OAuth/config timeout only"),
+    ("schwab_client.py", 373, "GET_OR_DEFAULT", "parse_qs indexing idiom only"),
+    ("schwab_client.py", 404, "GET_WITH_DEFAULT", "OAuth/config timeout only"),
     ("timing_probe2.py", 23, "GET_WITH_DEFAULT", "diagnostic probe display fallback"),
     # 218 -> 217: RC-64 removed a dead `reasons: list[str] = []` initialisation earlier in this
     # file, shifting every following line up by one. The reviewed site is unchanged.

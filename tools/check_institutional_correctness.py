@@ -753,7 +753,7 @@ _ORPHAN_KEY_SKIP_RECEIVERS = frozenset({
 _DATA_FILE_KEY_SOURCES: tuple[tuple[str, str], ...] = (
     # read by active_bundle_contract._load_migration_policy -> _legacy_allowance_open
     # and artifact_integrity_strict_absence
-    ("governance/ML_ITEM4_MIGRATION_POLICY.json", "active_bundle_contract.py"),
+    ("config/ML_ITEM4_MIGRATION_POLICY.json", "active_bundle_contract.py"),
     # read by v2_decision.a2_session_calendar.load_a2_session_calendar / _is_valid_calendar
     ("data/trading_calendar/us_equities.json", "v2_decision/a2_session_calendar.py"),
 )
@@ -3843,7 +3843,7 @@ def check_admission_evidence_resolves() -> list[Violation]:
     with vibe-string evidence refs would pass schema while citing nothing real — SR 11-7 validation
     substance gap.
 
-    Rule: when governance/decision_path_admissions.json lists ADMITTED entries, every evidence
+    Rule: when config/decision_path_admissions.json lists ADMITTED entries, every evidence
     field that is a repo path must resolve to an existing file (http URLs exempt). Empty list -> [].
 
     HOW VALIDATED: tests/test_find_prove_locks_v1.py drives admission_evidence_resolves_violations.
@@ -3852,7 +3852,7 @@ def check_admission_evidence_resolves() -> list[Violation]:
         from tools.find_prove_locks import admission_evidence_resolves_violations
     except ImportError:
         from find_prove_locks import admission_evidence_resolves_violations  # type: ignore
-    p = REPO / "governance" / "decision_path_admissions.json"
+    p = REPO / "config" / "decision_path_admissions.json"
     reasons = admission_evidence_resolves_violations()
     return [Violation(p, 0, r) for r in reasons]
 

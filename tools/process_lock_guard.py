@@ -115,18 +115,19 @@ _GIT_GLOBAL_WITH_ARG = frozenset({"-C", "-c", "--git-dir", "--work-tree", "--nam
                                   "--super-prefix", "--exec-path"})
 
 
-def _prod_forbidden_git_reason(cmd: str) -> str | None:
-    """For a git command already known to TARGET the production primary, return WHY it is
-    forbidden there, or None if it is an allowed production operation. Parses one git
-    invocation: strip `git` + global options, then classify the subcommand and its args.
-    ALLOWED on production: reads/fetch; `git merge|pull --ff-only origin/main` (the
-    merge-then-fast-forward update, invariant #5); `git checkout|switch main` (return to main);
-    `git checkout -- <path>` file-restore (left to the destructive-git rail)."""
+def git_subcommand(cmd: str) -> tuple[str, list[str]]:
+    """`(subcommand, its args)` for one git invocation — `("", [])` when there is no git call.
+
+    Stripping `git` and its GLOBAL options is the fiddly half: `-C <path>` and friends take a
+    SEPARATE value, so "the first non-flag token" reads that PATH as the subcommand. Extracted
+    from `_prod_forbidden_git_reason` (RC-512) so a second caller asking a different question
+    of the same syntax reuses this instead of re-deriving it — ONE FAUCET.
+    """
     toks = [t.strip("\"'") for t in _tokens(shell_executed_part(cmd or ""))]
     gi = next((i for i, t in enumerate(toks)
                if Path(t).name.lower() in ("git", "git.exe")), -1)
     if gi < 0:
-        return None
+        return "", []
     rest = toks[gi + 1:]
     i = 0
     while i < len(rest):                 # skip git GLOBAL options up to the subcommand
@@ -140,9 +141,37 @@ def _prod_forbidden_git_reason(cmd: str) -> str | None:
         else:
             break
     if i >= len(rest):
-        return None                      # bare `git` with no subcommand
-    sub = rest[i]
-    args = rest[i + 1:]
+        return "", []                    # bare `git` with no subcommand
+    return rest[i], rest[i + 1:]
+
+
+def git_segment_mutates_checkout(seg: str) -> bool:
+    """Does this git segment MATERIALLY CHANGE the checkout it targets?
+
+    A different question from `_prod_forbidden_git_reason`, which asks whether an operation is
+    forbidden ON PRODUCTION and so answers None for `git checkout main` and
+    `git merge --ff-only origin/main` — both sanctioned there, and both of which still rewrite
+    a working tree. RC-512 needs the material question: a session that ran
+    `git -C <worktree> merge --ff-only origin/main` changed that worktree whether or not the
+    operation was permitted, so that worktree must take part in adjudicating the turn.
+
+    Both answers come from the SAME `_PROD_MOVE_SUBCOMMANDS` roster and the same parser above;
+    only the policy layered on top differs.
+    """
+    sub, _args = git_subcommand(seg)
+    return bool(sub) and sub in _PROD_MOVE_SUBCOMMANDS
+
+
+def _prod_forbidden_git_reason(cmd: str) -> str | None:
+    """For a git command already known to TARGET the production primary, return WHY it is
+    forbidden there, or None if it is an allowed production operation. Parses one git
+    invocation: strip `git` + global options, then classify the subcommand and its args.
+    ALLOWED on production: reads/fetch; `git merge|pull --ff-only origin/main` (the
+    merge-then-fast-forward update, invariant #5); `git checkout|switch main` (return to main);
+    `git checkout -- <path>` file-restore (left to the destructive-git rail)."""
+    sub, args = git_subcommand(cmd)
+    if not sub:
+        return None
     if sub not in _PROD_MOVE_SUBCOMMANDS:
         return None                      # status/log/diff/show/add/fetch/worktree/stash/... allowed
     if sub in ("checkout", "switch"):

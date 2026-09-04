@@ -22,10 +22,20 @@ if not exist "%VENV_PY%" (
     exit /b 1
 )
 
-"%VENV_PY%" -m uvicorn --version >nul 2>&1
+REM RC-513: is this checkout actually PROVISIONED, not just "does uvicorn import".
+REM MEASURED 2026-09-03: the desk refused to launch with "SCHWAB_API_KEY /
+REM SCHWAB_APP_SECRET missing after sanitize" while .env held both keys. dotenv was
+REM missing, config._load_dotenv_if_present() swallows ImportError by design, and the
+REM canonical load silently became a no-op -- a broken virtualenv wearing the face of
+REM absent credentials. It stayed invisible because python_dotenv-1.2.2.dist-info was
+REM still present with no dotenv/ package: importlib.metadata, pip and a full
+REM requirements.txt audit all reported 22 of 22 SATISFIED. A second ghost,
+REM python-dateutil, was breaking `import pandas` at the same time. The old probe here
+REM asked only whether uvicorn imports, which both ghosts passed.
+"%VENV_PY%" runtime_preflight.py
 if errorlevel 1 (
-    echo  ERROR: uvicorn is not installed in the repo .venv ^("%VENV_PY%"^).
-    echo  Install it:  "%VENV_PY%" -m pip install "uvicorn[standard]" fastapi
+    echo  LAUNCH BLOCKED: the repo virtualenv is not provisioned to run this app.
+    echo  The report above names each distribution and the repair command.
     pause
     exit /b 1
 )
@@ -44,23 +54,48 @@ REM Strip inherited CI/test contamination from parent shells (agent / pytest).
 REM Proven 2026-08-29: launching with ED_CI_OFFLINE=1 left /api/health=200 while
 REM analytics bg failed every ticker (Schwab CI offline RuntimeError). Clear first,
 REM then fail-closed if live Schwab would still be blocked.
-for /f "delims=" %%L in ('"%VENV_PY%" tools\check_live_schwab_env.py --bat-unsets') do %%L
-"%VENV_PY%" tools\check_live_schwab_env.py --sanitize
+REM RC-512: this preflight is APP RUNTIME, not governance - it asks whether live Schwab
+REM calls will work, which is a precondition of data collection. It moved from tools\ to
+REM the app root with that ownership, so the launch path executes nothing out of the
+REM governance tools directory.
+REM RC-514: SANITIZE ALWAYS, NEVER VETO THE APPLICATION. The --bat-unsets/--sanitize pair
+REM below is unchanged and still strips inherited CI/test contamination before uvicorn.
+REM What changed is the consequence of a bad result. This used to `exit /b 1`, which made one
+REM vendor's credentials decide whether Ed Console may exist. MEASURED 2026-09-03: a ghost
+REM python-dotenv distribution made .env unloadable (RC-513) and the desk would not start,
+REM while the API, UI, health and observability were all perfectly able to run.
+REM docs/ARCHITECTURE.md section 4: Schwab unavailable degrades the CAPABILITY and fails
+REM Schwab-dependent exposure closed; it does not kill the app. Fail-closed enforcement is
+REM config.schwab_live_blocked_for() plus the two refusal sites in schwab_client -- not this
+REM launcher, which only reports.
+for /f "delims=" %%L in ('"%VENV_PY%" live_schwab_env.py --bat-unsets') do %%L
+"%VENV_PY%" live_schwab_env.py --sanitize
 if errorlevel 1 (
-    echo  LAUNCH BLOCKED: live Schwab env is CI/test contaminated or missing credentials.
-    echo  Unset ED_CI_OFFLINE / test SCHWAB_* and ensure live credentials ^(or .env^).
-    pause
-    exit /b 1
+    echo.
+    echo  ============================================================
+    echo   SCHWAB CAPABILITY UNAVAILABLE - starting anyway.
+    echo   API, UI, health and observability come up normally.
+    echo   Live Schwab collection will NOT run, and Schwab-dependent
+    echo   decisions fail closed. No fabricated or stale substitute.
+    echo   Reasons are printed above; /api/health reports the state.
+    echo  ============================================================
+    echo.
 )
 
-REM RC-350 ONE-APP LOCK (operator yes 2026-08-14): the desk may only run a committed,
-REM non-divergent build of origin/main. Emergency bypass: set ED_LIVE_PATH_UNLOCKED=1.
-"%VENV_PY%" tools\check_live_path_is_main.py
-if errorlevel 1 (
-    echo  LAUNCH BLOCKED: the desk is not running origin/main. See RC-350.
-    pause
-    exit /b 1
-)
+REM RC-512 (operator mission 2026-09-03, DECOUPLE GOVERNANCE FROM APP RUNTIME): the
+REM RC-350 ONE-APP LOCK call is no longer on the launch path. It asserted repository
+REM state - branch==main, HEAD==origin/main zero-ahead AND zero-behind, no uncommitted
+REM app file - and began with `git fetch origin main`, so desk availability depended on
+REM git position and on reaching a remote. MEASURED 2026-09-03: the production checkout
+REM was 9 commits behind origin/main and this line aborted the launcher, with no app
+REM defect of any kind.
+REM
+REM The invariant is not lost and this was never its only enforcement: an agent is
+REM PREVENTED from moving, committing to, or editing app code in the production checkout
+REM by tools/process_lock_guard.py on every PreToolUse event. Repository lineage is an
+REM agent/commit/merge concern and stays there; it does not decide whether the desk runs.
+REM Operator-side lineage remains readable on demand:
+REM     .venv\Scripts\python.exe tools\check_live_path_is_main.py
 
 REM Stop any prior instance still bound to port 8000 (plain-line for /f - safe batch syntax)
 for /f "tokens=5" %%P in ('netstat -ano ^| findstr ":8000" ^| findstr "LISTENING"') do taskkill /F /PID %%P 2>nul

@@ -3,7 +3,7 @@
 check_no_orphan_dict_keys proves a NEGATIVE ("nothing writes this key") from a Python-only
 AST walk. This repo also writes keys in COMMITTED data files that Python reads by name, so
 three keys in active_bundle_contract — legacy_allowance, expires_at_utc, strict_default,
-all written in governance/ML_ITEM4_MIGRATION_POLICY.json — were reported as silent-None
+all written in config/ML_ITEM4_MIGRATION_POLICY.json — were reported as silent-None
 candidates although the repo writes every one of them.
 
 The danger in fixing this is obvious and is what these tests pin down: it would be easy to
@@ -52,7 +52,7 @@ POLICY_KEYS = ("legacy_allowance", "expires_at_utc", "strict_default")
 def test_the_policy_file_actually_contains_the_keys_we_claim():
     """Ground the whole row in the artifact, not in the checker's opinion of it."""
     policy = json.loads(
-        (REPO / "governance" / "ML_ITEM4_MIGRATION_POLICY.json").read_text(encoding="utf-8"))
+        (REPO / "config" / "ML_ITEM4_MIGRATION_POLICY.json").read_text(encoding="utf-8"))
     assert "legacy_allowance" in policy
     assert "strict_default" in policy
     assert "expires_at_utc" in policy["legacy_allowance"], "nested keys must be harvested too"
@@ -165,7 +165,7 @@ def test_a_missing_or_malformed_source_contributes_nothing(monkeypatch, tmp_path
     monkeypatch.setattr(
         GATE, "_DATA_FILE_KEY_SOURCES",
         (("governance/DOES_NOT_EXIST.json", "nobody.py"),
-         ("governance/ML_ITEM4_MIGRATION_POLICY.json", "active_bundle_contract.py")),
+         ("config/ML_ITEM4_MIGRATION_POLICY.json", "active_bundle_contract.py")),
     )
     harvested = GATE._committed_data_file_keys()
     assert "strict_default" in harvested, "the valid source must still be harvested"
