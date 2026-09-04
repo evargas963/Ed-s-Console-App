@@ -82,8 +82,24 @@ def test_build_config_fail_closed_without_secrets(monkeypatch: pytest.MonkeyPatc
     monkeypatch.setattr("config._load_dotenv_if_present", lambda: None)
     from config import build_config
 
-    with pytest.raises(RuntimeError, match="SCHWAB_API_KEY"):
-        build_config(str(tmp_path))
+    # RC-514: this used to require build_config to RAISE without secrets. server.py calls
+    # build_config at MODULE SCOPE, so that raise made `import server` — and therefore
+    # `uvicorn server:app` — fail outright: the whole application refused to exist because one
+    # vendor's credentials were absent, the boundary docs/ARCHITECTURE.md §4 rejects.
+    #
+    # Nothing is weakened. What the raise protected — no live Schwab without credentials — is
+    # asserted here at `schwab_live_blocked_for`, the gate `schwab_client` refuses on, so the
+    # capability fails closed while the application shell stays able to run.
+    from config import schwab_live_blocked_for
+    from schwab_client import build_client_from_token
+
+    cfg = build_config(str(tmp_path))            # the app shell builds ...
+    assert cfg.api_key == "" and cfg.app_secret == ""
+
+    assert schwab_live_blocked_for() is True     # ... the capability does not
+    state = build_client_from_token(str(tmp_path / "token.json"), cfg.api_key, cfg.app_secret)
+    assert state.ok is False and state.client is None, state
+    assert "UNAVAILABLE" in state.message, state.message
 
 
 def test_server_imports_in_ci_without_live_credentials() -> None:
@@ -167,5 +183,8 @@ def test_ci_offline_blocks_live_schwab_client_and_api(monkeypatch: pytest.Monkey
         def get_quote(self, _ticker: str):
             raise AssertionError("live Schwab API must not be called in CI offline mode")
 
-    with pytest.raises(RuntimeError, match="offline"):
+    # RC-514: the refusal message now names every reason the capability is unavailable
+    # (missing credentials, ci-placeholder credentials, or ED_CI_OFFLINE) rather than only
+    # the CI one. The refusal itself is unchanged — a live call still raises.
+    with pytest.raises(RuntimeError, match="UNAVAILABLE"):
         safe_get_quote(_FakeClient(), "SPY")

@@ -508,7 +508,7 @@ def _verify_governed_artifact(base: Path, bt: str, hz: str, role: str, filename:
     that sentence misled two independent audits into recording a hole that is not
     open. The environment flag is NOT the only lever and is no longer the operative
     one. `artifact_integrity_strict_absence()` resolves the COMMITTED policy in
-    governance/ML_ITEM4_MIGRATION_POLICY.json, which carries strict_default=true
+    config/ML_ITEM4_MIGRATION_POLICY.json, which carries strict_default=true
     with legacy_allowance.enabled=false, expired 2026-07-12. Measured: strict is
     True with the flag unset, AND True at ED_ARTIFACT_INTEGRITY_STRICT=0 — once the
     allowance is disabled the environment cannot reopen legacy serving. So a bundle

@@ -404,7 +404,7 @@ def _build_call_headlines(final_signal, conviction, trade_type,
             headline = f"WAIT — decision path not admitted{suffix}."
             reasoning = blocker.get(
                 "full_detail",
-                "No component is ADMITTED in governance/decision_path_admissions.json — "
+                "No component is ADMITTED in config/decision_path_admissions.json — "
                 "the system abstains until edge is proven and admitted.",
             )
         else:
@@ -1737,7 +1737,7 @@ def compute_call(
     # ══════════════════════════════════════════════════════════════════════════
     # DECISION-PATH ADMISSION GATE (charter, AGENTS.md) — last directional
     # authority. A long/short may leave compute_call only if the decision path
-    # is ADMITTED in governance/decision_path_admissions.json (fail-closed:
+    # is ADMITTED in config/decision_path_admissions.json (fail-closed:
     # missing/invalid/empty registry admits nothing). Runs before the Risk
     # Engine so trade_type, levels, sizing, and headlines all see the gated
     # signal. The would-be direction is preserved in wait_blocker.gated_signal

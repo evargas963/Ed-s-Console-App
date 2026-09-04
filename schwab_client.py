@@ -193,8 +193,9 @@ def build_client_from_token(token_path: str, api_key: str, app_secret: str) -> S
         return SchwabClientState(
             ok=False,
             message=(
-                "Schwab CI offline mode (ED_CI_OFFLINE or ci-placeholder credentials) — "
-                "live client construction blocked; no Schwab API calls."
+                "Schwab capability UNAVAILABLE (missing credentials, ci-placeholder "
+                "credentials, or ED_CI_OFFLINE) — live client construction blocked; "
+                "no Schwab API calls."
             ),
             client=None,
         )
@@ -435,7 +436,8 @@ def _block_live_schwab_in_ci_offline() -> None:
 
     if schwab_live_blocked_for():
         raise RuntimeError(
-            "Schwab CI offline mode — live API call blocked (ED_CI_OFFLINE or ci-placeholder credentials)"
+            "Schwab capability UNAVAILABLE — live API call blocked (missing credentials, "
+            "ci-placeholder credentials, or ED_CI_OFFLINE). No fabricated or stale substitute."
         )
 
 

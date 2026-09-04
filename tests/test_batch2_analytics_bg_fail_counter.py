@@ -404,15 +404,19 @@ def test_start_ed_console_bat_opens_edge_not_chrome():
 
 
 def test_start_ed_console_bat_uses_repo_venv_python_not_bare_path_rc497():
-    """RC-497: the launcher must drive its RC-350 check and uvicorn through the repo
+    """RC-497: the launcher must drive its preflight and uvicorn through the repo
     .venv interpreter, never bare PATH python/pip. In a spawned/scheduled context
     (Start-Process, Task Scheduler) bare `python` resolves to a uvicorn-less
-    interpreter and the launch silently no-ops (proven 2026-08-27)."""
+    interpreter and the launch silently no-ops (proven 2026-08-27).
+
+    RC-512: the pinned statement was the RC-350 repository check, which is no longer on
+    the launch path at all. The interpreter rule is unchanged and is now pinned on the
+    live-Schwab preflight, the one preflight the launcher still runs."""
     bat = (Path(__file__).resolve().parent.parent / "start_ed_console.bat").read_text(encoding="utf-8")
     # the pinned repo interpreter is defined, and both the check and the launch go through it
     assert r'set "VENV_PY=%~dp0.venv\Scripts\python.exe"' in bat
     assert '"%VENV_PY%" -m uvicorn server:app' in bat
-    assert '"%VENV_PY%" tools\\check_live_path_is_main.py' in bat
+    assert '"%VENV_PY%" live_schwab_env.py --sanitize' in bat
     # no EXECUTED statement runs a bare-PATH python/pip, and there is no launch-time install
     for raw in bat.splitlines():
         ln = raw.strip().lower()

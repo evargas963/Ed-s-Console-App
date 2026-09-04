@@ -295,7 +295,7 @@ def _reconstruction_provenance(b: dict[str, Any]) -> dict[str, Any]:
             "manifest reconstructed from files whose bytes were independently "
             "established (candidate sha256 identity / git-HEAD blob identity / "
             "git blob identity modulo CRLF checkout smudge on tracked JSON metas); "
-            "NOT a promotion — see governance/ML_ITEM4_MIGRATION_POLICY.json"
+            "NOT a promotion — see config/ML_ITEM4_MIGRATION_POLICY.json"
         ),
     }
 

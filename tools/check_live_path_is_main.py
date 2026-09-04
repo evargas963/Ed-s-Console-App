@@ -1,15 +1,32 @@
 #!/usr/bin/env python3
-"""ONE-APP LOCK (RC-350): the running app must be a provable build of origin/main.
+"""ONE-APP LOCK (RC-350): report whether a checkout is a provable build of origin/main.
 
-World-class invariant: there is exactly one lineage. What runs on the desk is a
-released commit of `main`, never a detached HEAD, never a divergent lineage, never
-an uncommitted working tree. This guard is the mechanical enforcement of that.
+Lineage invariant: what runs on the desk should be a released commit of `main`, not a
+detached HEAD, not a divergent lineage, not an uncommitted working tree.
 
-Wire it in three places (all fail-closed):
-  1. Server launch  — start_ed_console.bat calls this BEFORE `uvicorn`; a non-zero
-     exit aborts the launch. The desk cannot run code that is not on main.
-  2. pre-push hook  — refuses to push a branch whose tip is not built on main.
-  3. CI             — the same check runs on every PR.
+WHERE THIS RUNS — corrected, RC-512. It claimed three fail-closed wiring points; two of
+them never existed and the third was the harmful one:
+
+  * pre-push — NEVER wired. `.pre-commit-config.yaml` sets `default_stages: [pre-commit]`
+    and states in its own header that the pre-push stage has no hooks.
+  * CI — NEVER wired. `.github/workflows/hardening.yml` and `pytest.yml` do not invoke it.
+  * Server launch — the ONLY real wiring, and it has been REMOVED. It ran in
+    start_ed_console.bat before `uvicorn` and aborted the launch on a non-zero exit, so
+    repository position decided whether the desk could run. MEASURED 2026-09-03: the
+    production checkout was 9 commits behind origin/main, and the launcher exited 1 with
+    no application defect of any kind. It also opened with `git fetch origin main`, making
+    app startup depend on reaching a remote.
+
+So as wired, this file's sole effect was to stop the desk from starting. It is now an
+AGENT/OPERATOR-side report, not a runtime gate: `violations()` is what the tests and any
+operator invocation read, and callers decide what to do with it. Nothing on the
+application runtime path consults it.
+
+The lineage invariant itself is enforced where governance belongs — at the agent seam,
+where it PREVENTS the divergence rather than punishing it at launch time.
+`tools/process_lock_guard.py` blocks, on every PreToolUse event, an agent moving the
+production checkout onto another branch, committing into it, or editing app code in it.
+That enforcement predates this file's launch wiring and is unchanged by its removal.
 
 Checks (all must pass):
   A. HEAD is on branch `main` — not detached, not a feature branch. The production checkout is
@@ -20,15 +37,16 @@ Checks (all must pass):
   C. The working tree has no uncommitted APP code (server.py, *.py, static/*.html,
      static/*.js). Docs/reports/scratch are ignored; app code is not.
 
-Prevention, not just detection: A-C run at launch / pre-push / CI (fail-closed). The PreToolUse
-guard (`tools/process_lock_guard.py`) additionally BLOCKs, at the moment of the command, any git
-branch-move / commit / reset / merge or app-code edit that targets the production checkout — so an
-assigned agent cannot move the live checkout onto a feature branch in the first place, rather than
-this check catching the divergence only at the next launch.
+Prevention, not detection, is where this invariant actually holds: the PreToolUse guard
+(`tools/process_lock_guard.py`) BLOCKs, at the moment of the command, any git branch-move /
+commit / reset / merge or app-code edit that targets the production checkout — so an assigned
+agent cannot move the live checkout onto a feature branch in the first place. A-C below only
+ever described a divergence that prevention had already refused, or one the OPERATOR chose,
+which is the operator's call to make.
 
-Emergency bypass: `ED_LIVE_PATH_UNLOCKED=1` skips the launch abort but STILL prints
-the violation loudly and logs it — use only to recover a downed desk, never as a
-habit. Every bypass is a visible admission that the invariant was broken.
+`ED_LIVE_PATH_UNLOCKED=1` is retained for callers that treat a non-zero exit as fatal: it
+still prints every violation loudly, then returns 0. There is no longer a launch abort for it
+to bypass (RC-512).
 """
 from __future__ import annotations
 

@@ -131,7 +131,7 @@ class ArtifactVerificationError(ValueError):
         self.identity = dict(identity or {})
 
 
-MIGRATION_POLICY_PATH = Path(__file__).resolve().parent / "governance" / "ML_ITEM4_MIGRATION_POLICY.json"
+MIGRATION_POLICY_PATH = Path(__file__).resolve().parent / "config" / "ML_ITEM4_MIGRATION_POLICY.json"
 
 
 def _load_migration_policy() -> dict[str, Any] | None:
