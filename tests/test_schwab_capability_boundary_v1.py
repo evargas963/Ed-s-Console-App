@@ -45,6 +45,19 @@ def clean_env(monkeypatch):
     return monkeypatch
 
 
+def use_config(monkeypatch, server, *, token_path: str) -> None:
+    """Point the server at live-looking credentials and a chosen token file.
+
+    `cfg` is a FROZEN dataclass, so its fields cannot be patched in place — the object is
+    replaced, which is also closer to what a real launch does.
+    """
+    import dataclasses
+
+    monkeypatch.setattr(server, "_client", None, raising=False)
+    monkeypatch.setattr(server, "cfg", dataclasses.replace(
+        server.cfg, api_key=LIVE_KEY, app_secret=LIVE_SECRET, token_path=token_path))
+
+
 def run_preflight(env_extra: dict) -> subprocess.CompletedProcess:
     env = {k: v for k, v in os.environ.items() if k not in SCHWAB_ENV}
     env.update(env_extra)
@@ -194,32 +207,92 @@ def test_the_shipped_decision_registry_authorizes_no_exposure():
 
 # ================================================================= app availability
 
-def test_health_reports_the_capability_and_the_app_stays_ok(clean_env):
-    """PROOF 1c/2. The app is `ok` while Schwab is UNAVAILABLE, and health says which.
-
-    Health reads the same gate `schwab_client` refuses on, so it can never advertise a
-    capability the call path is blocking.
-    """
+def test_health_reports_the_capability_and_the_app_stays_ok(clean_env, monkeypatch):
+    """PROOF 1c/2. The app is `ok` while Schwab is UNAVAILABLE, and health says which."""
     import server
 
+    monkeypatch.setattr(server, "_client", None, raising=False)
     payload = server.health()
     assert payload["status"] == "ok", "a vendor outage must not make the application unhealthy"
     assert payload["capabilities"]["schwab"] == "UNAVAILABLE", payload
 
-    clean_env.setenv("SCHWAB_API_KEY", LIVE_KEY)
-    clean_env.setenv("SCHWAB_APP_SECRET", LIVE_SECRET)
-    assert server.health()["capabilities"]["schwab"] == "AVAILABLE", "PROOF 3"
 
+def test_credentials_alone_do_not_make_the_capability_available(clean_env, monkeypatch):
+    """RC-514 second cut, and the overclaim it removes.
 
-def test_health_answers_unavailable_when_the_gate_itself_cannot_be_read(clean_env, monkeypatch):
-    """Unmeasurable is not ok (RC-57): a broken gate reports UNAVAILABLE, never AVAILABLE."""
+    Health first published this from `config.schwab_live_blocked_for()` alone, which proves
+    only that credentials and CI state PERMIT an attempt. With live-looking credentials and NO
+    usable token the capability cannot serve a single quote, yet that gate reads clear — so
+    health advertised AVAILABLE for a Schwab that could not operate.
+    """
     import config
     import server
 
-    def boom():
-        raise RuntimeError("gate unreadable")
+    clean_env.setenv("SCHWAB_API_KEY", LIVE_KEY)
+    clean_env.setenv("SCHWAB_APP_SECRET", LIVE_SECRET)
+    use_config(monkeypatch, server, token_path=str(REPO / "no_such_token.json"))
 
-    monkeypatch.setattr(config, "schwab_live_blocked_for", boom)
+    assert config.schwab_live_blocked_for() is False, "the credential gate permits an attempt"
+
+    status, reason = server.schwab_capability_state()
+    assert status == "UNAVAILABLE", (status, reason)
+    assert "token" in reason.lower(), reason
+
+    payload = server.health()
+    assert payload["status"] == "ok"
+    assert payload["capabilities"]["schwab"] == "UNAVAILABLE", payload
+    assert payload["capabilities"]["schwab_reason"], payload
+
+
+@pytest.mark.parametrize("label,body", [
+    ("malformed json", "not json at all"),
+    ("malformed layout", "{}"),
+    ("unrefreshable", '{"creation_timestamp": 1, "token": {"access_token": "a", "expires_at": 1}}'),
+])
+def test_a_token_that_cannot_operate_reports_unavailable(clean_env, monkeypatch, tmp_path,
+                                                         label, body):
+    """PROOF: invalid token state -> app up, capability UNAVAILABLE.
+
+    Every one of these is cheap and local, which is why the canonical builder can sit behind a
+    polled endpoint: MEASURED 0.3-15.3 ms per verdict, against ~400 ms for the AVAILABLE path
+    that populates the cache once.
+    """
+    import server
+
+    token = tmp_path / "token.json"
+    token.write_text(body, encoding="utf-8")
+    clean_env.setenv("SCHWAB_API_KEY", LIVE_KEY)
+    clean_env.setenv("SCHWAB_APP_SECRET", LIVE_SECRET)
+    use_config(monkeypatch, server, token_path=str(token))
+
+    status, reason = server.schwab_capability_state()
+    assert status == "UNAVAILABLE", f"{label}: {status} {reason}"
+    assert reason, label
+    assert server.health()["status"] == "ok", label
+
+
+def test_health_reads_the_same_client_cache_the_app_uses(clean_env, monkeypatch):
+    """Not a parallel computation: a built client is reported AVAILABLE from the SAME cache."""
+    import server
+
+    monkeypatch.setattr(server, "_client", object(), raising=False)
+    assert server.schwab_capability_state() == ("AVAILABLE", "")
+    assert server.health()["capabilities"]["schwab"] == "AVAILABLE"
+
+
+def test_health_answers_unavailable_when_the_capability_cannot_be_read(clean_env, monkeypatch):
+    """Unmeasurable is not ok (RC-57): a broken probe reports UNAVAILABLE, never AVAILABLE."""
+    import server
+
+    def boom(*_a, **_k):
+        raise RuntimeError("client state unreadable")
+
+    monkeypatch.setattr(server, "_client", None, raising=False)
+    monkeypatch.setattr(server, "build_client_from_token", boom, raising=False)
+    status, reason = server.schwab_capability_state()
+    assert status == "UNAVAILABLE" and "unreadable" in reason, (status, reason)
+
+    monkeypatch.setattr(server, "schwab_capability_state", boom, raising=False)
     payload = server.health()
     assert payload["status"] == "ok"
     assert payload["capabilities"]["schwab"] == "UNAVAILABLE", payload
