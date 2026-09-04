@@ -184,11 +184,11 @@ def next_rth_et_date(as_of: datetime | None = None) -> date:
     If `as_of` falls on a trading day before RTH close, that day is still next.
     After close (or on a non-trading day), walk forward to the next trading day.
     """
-    from time_et import RTH_END_MINS, is_trading_day_et, now_et
+    from app.domain.time_et import RTH_END_MINS, is_trading_day_et, now_et
 
     n = as_of if as_of is not None else now_et()
     if n.tzinfo is None:
-        from time_et import ET
+        from app.domain.time_et import ET
         n = n.replace(tzinfo=ET)
     d = n.date()
     mins = n.hour * 60 + n.minute

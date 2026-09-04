@@ -33,7 +33,7 @@ sys.path.insert(0, str(ROOT))
 from calibration.db_guard import register_allow_noncanonical_flag, require_canonical_db_target
 from db import configure_sqlite_connection
 from features.inference_snapshot import build_inference_snapshot_v1_from_db_row
-from instrument_identity import ticker_storage_key
+from app.domain.instrument_identity import ticker_storage_key
 from ml_horizon import ML_HORIZON_SLUGS, normalize_ml_horizon_slug
 import ml_predict
 from ml_predict import _predict_xgb_movement_heads, reset_ml_infer_horizon_slug, set_ml_infer_horizon_slug

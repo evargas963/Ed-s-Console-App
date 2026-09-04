@@ -46,7 +46,7 @@ from math_exposure_core import (  # noqa: E402
     compute_exposures_by_strike,
     total_gamma_raw_at_strike,
 )
-from numeric_contract import float_finite_or_none, float_nonnegative_or_none  # noqa: E402
+from app.domain.numeric_contract import float_finite_or_none, float_nonnegative_or_none  # noqa: E402
 
 # ── Reuse stickiness helpers (obs chains, bars, outcomes) ────────────────────
 _STICKY_PATH = REPO / "tools" / "liquidity_oi_volume_stickiness_v1.py"

@@ -48,7 +48,7 @@ ROOT = Path(__file__).resolve().parent
 
 
 def _positive_float_or_none(value):
-    from numeric_contract import float_positive_or_none
+    from app.domain.numeric_contract import float_positive_or_none
 
     return float_positive_or_none(value)
 

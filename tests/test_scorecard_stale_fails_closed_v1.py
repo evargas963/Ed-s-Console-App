@@ -54,7 +54,7 @@ def test_weekend_does_not_age_a_scorecard():
     add to it. Computed against the SAME trading-day authority the function uses, over a
     window that always contains a weekend."""
     import datetime
-    from time_et import is_trading_day_et
+    from app.domain.time_et import is_trading_day_et
     today = datetime.datetime.now(server.ET_ZONE).date() if hasattr(server, "ET_ZONE") else (
         datetime.datetime.now(datetime.timezone.utc).astimezone(
             __import__("zoneinfo").ZoneInfo("America/New_York")).date())

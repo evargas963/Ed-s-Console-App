@@ -16,7 +16,7 @@ the fallback returning 20 vs the live setup returning 0). The
 
 from __future__ import annotations
 
-from time_et import RTH_SESSION_MINUTES
+from app.domain.time_et import RTH_SESSION_MINUTES
 
 # ── STACK-WIRE-6: single source of truth for trade_type → max 1m hold bars ──
 # Both ``replay_max_hold_bars_for_setup`` and ``replay_max_hold_bars_for_trade_type``

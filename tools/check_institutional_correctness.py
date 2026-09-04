@@ -3665,14 +3665,15 @@ def check_collect_window_single_law() -> list[Violation]:
     Escapes: `# collect-window-ok: <reason>`.
     """
     out: list[Violation] = []
-    te = REPO / "time_et.py"
+    te = REPO / "app" / "domain" / "time_et.py"
     dbp = REPO / "db.py"
     te_src = te.read_text(encoding="utf-8", errors="replace") if te.exists() else ""
     db_src = dbp.read_text(encoding="utf-8", errors="replace") if dbp.exists() else ""
     for sym in ("COLLECT_WINDOW_START_MINS", "COLLECT_WINDOW_END_MINS",
                 "def is_collect_window_bar_end_ts_utc"):
         if sym not in te_src:
-            out.append(Violation(te, 0, f"collect-window authority missing: {sym} not in time_et.py"))
+            out.append(Violation(te, 0, f"collect-window authority missing: {sym} not in "
+                                        f"app/domain/time_et.py"))
     if "is_collect_window_bar_end_ts_utc" not in db_src:
         out.append(Violation(dbp, 0,
                              "upsert_1m_bars no longer gates on the collect-window authority — "

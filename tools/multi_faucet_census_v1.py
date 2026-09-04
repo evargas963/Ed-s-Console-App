@@ -170,7 +170,7 @@ def build_findings() -> list[dict]:
             "severity": "P1",
             "producers": {
                 "time_et (ET market-logic authority) / America-Chicago display law":
-                    _sites("time_et.py", r"def now_et|^ET = ", 2),
+                    _sites("app/domain/time_et.py", r"def now_et|^ET = ", 2),
                 "static/chart.html SESSION_TZ+DISPLAY_TZ (RC-223 killed ambient regroup)":
                     _sites("static/chart.html", r"SESSION_TZ|etDateKey|DISPLAY_TZ"),
                 "tools/clocks_tz_lock.py bare toLocaleDateString ban":

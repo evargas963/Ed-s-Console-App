@@ -3,7 +3,7 @@ computation for nearest-above/nearest-below distance must be correct for every
 spot/level ordering, since every consumer reads distances through this one faucet."""
 import pytest
 
-from canonical_distances import canonical_nearest_distances, canonicalize_distance_read
+from app.domain.canonical_distances import canonical_nearest_distances, canonicalize_distance_read
 
 
 def test_both_levels_typical_geometry():

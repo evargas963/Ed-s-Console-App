@@ -20,7 +20,7 @@ from calibration.v2_a1_calibration import (
 from calibration.v2_a1_conformal import (
     build_a1_conformal_artifact,
 )
-from instrument_identity import ticker_storage_key
+from app.domain.instrument_identity import ticker_storage_key
 from v2_decision.a1_conformal_artifact_contract import (
     ARTIFACT_LIFECYCLE_SCHEMA_VERSION,
     artifact_output_path,

@@ -18,7 +18,7 @@ import db as db_mod
 from calibration.schema import ensure_calibration_schema
 from calibration.validate_logging_e2e import _inp
 from db import EdDB, configure_sqlite_connection
-from instrument_identity import ticker_storage_key
+from app.domain.instrument_identity import ticker_storage_key
 from calibration.v2_live_logging import append_live_v2_calibration_decision
 from signals import compute_signals
 from v2_decision import build_module_a_a1_decision

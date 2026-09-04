@@ -32,7 +32,7 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from time_et import is_collect_window_bar_end_ts_utc, now_et  # noqa: E402
+from app.domain.time_et import is_collect_window_bar_end_ts_utc, now_et  # noqa: E402
 
 BATCH = 50_000
 

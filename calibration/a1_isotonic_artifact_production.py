@@ -16,7 +16,7 @@ from calibration.v2_a1_calibration import (
     fit_a1_isotonic_artifact,
     load_a1_calibration_rows,
 )
-from instrument_identity import ticker_storage_key
+from app.domain.instrument_identity import ticker_storage_key
 from v2_decision.a1_conformal_artifact_contract import (
     artifact_output_path,
     current_pointer_path,

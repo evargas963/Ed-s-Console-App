@@ -8,7 +8,7 @@ pure helpers; no I/O.
 from __future__ import annotations
 
 from typing import Any, Optional
-from instrument_identity import ticker_storage_key
+from app.domain.instrument_identity import ticker_storage_key
 
 # --- Cache lifecycle (mandatory: bounded retention + TTL) ---
 L1_CACHE_ENTRY_TTL_SEC: float = 600.0

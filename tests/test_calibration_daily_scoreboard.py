@@ -258,7 +258,7 @@ def test_rolling_horizon_log_loss_and_skill_weights(tmp_path):
     )
     from calibration.fusion_temperature import FIT_WINDOW_FLOOR_UTC
 
-    from time_et import is_rth_ts_utc
+    from app.domain.time_et import is_rth_ts_utc
 
     db = tmp_path / "skill.db"
     conn = sqlite3.connect(db)

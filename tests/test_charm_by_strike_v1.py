@@ -18,7 +18,7 @@ from pathlib import Path
 
 import pytest
 from datetime import datetime
-import time_et
+from app.domain import time_et
 
 from math_levels import bs_charm, compute_charm_by_strike, pick_charm_wall_strikes
 

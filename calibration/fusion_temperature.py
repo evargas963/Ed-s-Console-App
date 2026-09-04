@@ -38,7 +38,7 @@ import time
 from pathlib import Path
 from typing import Any, Optional
 
-from instrument_identity import ticker_storage_key
+from app.domain.instrument_identity import ticker_storage_key
 
 log = logging.getLogger(__name__)
 
@@ -108,7 +108,7 @@ def load_fusion_calibration_rows(
     are excluded — their logged triplets predate the current serve stack and
     poison the temperature fit (see FIT_WINDOW_FLOOR_UTC).
     """
-    from time_et import is_rth_ts_utc
+    from app.domain.time_et import is_rth_ts_utc
 
     conn = sqlite3.connect(str(db_path))
     conn.row_factory = sqlite3.Row

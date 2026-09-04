@@ -25,7 +25,7 @@ from adaptive_similarity_engine import (
 from similarity_audit import normalize_anchor_distances_for_issue19_sql
 from similarity_feature_search import resolve_overlay_for_anchor
 
-from instrument_identity import ticker_storage_key
+from app.domain.instrument_identity import ticker_storage_key
 from timeframe_config import CANONICAL_TIMEFRAME
 
 SCHEMA_CALIBRATION_V1 = "adaptive_shadow_v2_calibration_v1"

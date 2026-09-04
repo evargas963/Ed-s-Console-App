@@ -29,7 +29,7 @@ from calibration.analyze_phase4 import _directional_pnl
 from calibration.db_guard import register_allow_noncanonical_flag, require_canonical_db_target
 from calibration.paths import DEFAULT_DB, ensure_artifacts_dir
 from db import configure_sqlite_connection
-from instrument_identity import ticker_storage_key
+from app.domain.instrument_identity import ticker_storage_key
 
 try:
     from scipy import stats as scipy_stats

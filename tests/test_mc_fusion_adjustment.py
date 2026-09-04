@@ -8,7 +8,7 @@ from bayesian_fusion import FusionPayload
 from mc_fusion_adjustment import apply_mc_adjustment, fuse_payload_apply_mc_adjustment, normalize_mc
 
 
-from numeric_contract import direction_from_normalized_triplet
+from app.domain.numeric_contract import direction_from_normalized_triplet
 
 
 def _argmax3(u: float, d: float, f: float) -> str:

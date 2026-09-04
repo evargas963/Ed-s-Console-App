@@ -6,7 +6,7 @@ Does not promote, copy artifacts, or change ``run_unified_stack_ml_once`` / prod
 
 from __future__ import annotations
 
-from instrument_identity import ticker_storage_key  # RC-345/F25: eval manifest identity canonical
+from app.domain.instrument_identity import ticker_storage_key  # RC-345/F25: eval manifest identity canonical
 
 import hashlib
 import json
@@ -127,7 +127,7 @@ def _metrics_from_detail(detail: dict[str, Any]) -> tuple[float, float, int, Opt
     import numpy as np
     from sklearn.metrics import accuracy_score, balanced_accuracy_score, log_loss
 
-    from numeric_contract import direction_from_normalized_triplet
+    from app.domain.numeric_contract import direction_from_normalized_triplet
 
     y_true_raw = detail.get("y_true") or []
     prob_rows_raw = detail.get("prob_rows") or []

@@ -49,7 +49,7 @@ def test_generate_events_revalidates_frozen_prereg():
     from research.pilot_step3.data_loader import Bar1m
     from datetime import datetime, timedelta
 
-    from time_et import ET as et  # noqa: F401
+    from app.domain.time_et import ET as et  # noqa: F401
     prereg = pilot_config.load_prereg(validate=False)
     prereg = {**prereg, "framework_doc_version": "0.0", "content_hash": pilot_config.prereg_content_hash({**prereg, "framework_doc_version": "0.0"})}
 

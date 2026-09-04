@@ -12,7 +12,7 @@ from typing import Dict, List
 import math
 import logging
 
-from numeric_contract import float_finite_or_none, float_nonnegative_or_none
+from app.domain.numeric_contract import float_finite_or_none, float_nonnegative_or_none
 
 log = logging.getLogger(__name__)
 
@@ -204,7 +204,7 @@ def compute_exposures_by_strike(
     # time_et.time_to_expiry_years (intraday ACT/365 to session close), NOT a local
     # whole-day `dte / 365.0`. `now` is pinned once so every contract in the aggregate is
     # priced at one instant, and T is memoised per distinct expiry string.
-    from time_et import time_to_expiry_years as _tte, now_et as _now_et
+    from app.domain.time_et import time_to_expiry_years as _tte, now_et as _now_et
     _tte_now = _now_et()
     _tte_cache: dict[str, float | None] = {}
 
@@ -1059,7 +1059,7 @@ def compute_net_charm(
     # split — the 0DTE branch only approximated it (hardcoded 16:00, 0.5h floor) and the
     # dte/365 branch ignored the intraday fraction entirely, so the two charm engines
     # disagreed near expiry (RC-42 / RC-37; validated against Schwab-reported gamma).
-    from time_et import time_to_expiry_years as _tte
+    from app.domain.time_et import time_to_expiry_years as _tte
     # RC-224 / census #6: unit charm from the ONE greek-formula faucet (not inline).
     from math_levels import bs_charm as _bs_charm
 
@@ -1071,7 +1071,7 @@ def compute_net_charm(
     # — a single figure now describes a single moment — and memoising per distinct expiry
     # string makes it cheap. Values are unchanged: same inputs, same formula, same faucet.
     if now is None:
-        from time_et import now_et as _now_et
+        from app.domain.time_et import now_et as _now_et
 
         now = _now_et()
     _tte_cache: dict[str, float | None] = {}

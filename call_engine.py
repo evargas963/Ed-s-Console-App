@@ -33,7 +33,7 @@ from fusion_contract import (
     canonical_provenance_is_tradable,
     fusion_has_tradable_direction,
 )
-from time_et import RTH_OPEN_MINS
+from app.domain.time_et import RTH_OPEN_MINS
 from position_sizing_policy import regime_size_multiplier
 from replay_hold_bars import replay_max_hold_bars_for_setup
 from signal_types import (

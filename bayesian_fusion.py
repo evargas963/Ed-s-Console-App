@@ -31,7 +31,7 @@ from dataclasses import dataclass, field
 import os
 from typing import Any, Optional
 
-from numeric_contract import direction_from_normalized_triplet, float_finite_or_none
+from app.domain.numeric_contract import direction_from_normalized_triplet, float_finite_or_none
 
 log = logging.getLogger(__name__)
 

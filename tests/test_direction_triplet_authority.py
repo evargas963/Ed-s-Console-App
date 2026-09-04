@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from types import SimpleNamespace
 
-from numeric_contract import direction_from_normalized_triplet
+from app.domain.numeric_contract import direction_from_normalized_triplet
 
 _SKIP_PY_TREE_DIRS = frozenset(
     {".claude", ".git", ".venv", "venv", "node_modules", "__pycache__"}

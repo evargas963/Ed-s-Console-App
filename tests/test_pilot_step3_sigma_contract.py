@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 
 import numpy as np
 
-from time_et import ET as _ET
+from app.domain.time_et import ET as _ET
 def test_prereg_v1_content_hash_validates():
     from research.pilot_step3 import pilot_config
 

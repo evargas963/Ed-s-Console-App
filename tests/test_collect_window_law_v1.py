@@ -24,7 +24,7 @@ REPO = Path(__file__).resolve().parent.parent
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
-from time_et import (  # noqa: E402
+from app.domain.time_et import (  # noqa: E402
     COLLECT_WINDOW_END_MINS,
     COLLECT_WINDOW_START_MINS,
     ET,
@@ -122,7 +122,7 @@ def test_the_enrolment_fallback_counts_sessions_not_days():
     """
     from datetime import timedelta
 
-    from time_et import is_trading_day_et
+    from app.domain.time_et import is_trading_day_et
     from tools.rth_completeness_check_v1 import (
         ENROLLMENT_FALLBACK_SESSIONS,
         session_lookback_bound_ts_utc,

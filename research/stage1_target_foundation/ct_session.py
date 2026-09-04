@@ -22,7 +22,7 @@ from zoneinfo import ZoneInfo
 
 # COH-SA-2: the America/New_York ZoneInfo authority lives ONLY in time_et.py;
 # reuse it rather than defining a second NY literal here.
-from time_et import ET as EXCHANGE_TZ  # the calendar's ET convention only
+from app.domain.time_et import ET as EXCHANGE_TZ  # the calendar's ET convention only
 
 ROOT = Path(__file__).resolve().parents[2]
 CALENDAR_PATH = ROOT / "data" / "trading_calendar" / "us_equities.json"

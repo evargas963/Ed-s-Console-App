@@ -38,7 +38,7 @@ from calibration.schema import ensure_calibration_schema  # noqa: E402
 from calibration.validate_outcome_join import analyze as analyze_outcome_join  # noqa: E402
 from calibration.validate_logging_e2e import _inp  # noqa: E402
 from db import EdDB, configure_sqlite_connection  # noqa: E402
-from instrument_identity import ticker_storage_key  # noqa: E402
+from app.domain.instrument_identity import ticker_storage_key  # noqa: E402
 from signals import compute_signals  # noqa: E402
 
 # Materially non-trivial trusted population (> MIN_SAMPLES_STATISTICAL floor).

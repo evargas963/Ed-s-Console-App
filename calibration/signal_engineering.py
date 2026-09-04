@@ -21,7 +21,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from arch_competition.atomic_io import write_json_file_atomically
-from numeric_contract import direction_from_normalized_triplet
+from app.domain.numeric_contract import direction_from_normalized_triplet
 from calibration.analyze_phase4 import _directional_pnl
 from calibration.db_guard import enforce_resolved_path, register_allow_noncanonical_flag
 from calibration.edge_discovery import (

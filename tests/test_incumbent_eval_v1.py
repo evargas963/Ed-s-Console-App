@@ -15,7 +15,7 @@ from datetime import datetime, timedelta
 import pytest
 
 from research.incumbent_eval_v1 import runner, stats
-from time_et import ET
+from app.domain.time_et import ET
 
 
 # ── stats: multiclass MCC ────────────────────────────────────────────────────

@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from fusion_contract import is_ms_dict_fusion_authoritative
-from numeric_contract import float_finite_or_none
+from app.domain.numeric_contract import float_finite_or_none
 
 
 def _probability_candidate(value: Any) -> float | None:

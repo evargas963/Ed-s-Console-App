@@ -38,7 +38,7 @@ except Exception:
         pass
 
 from db import get_snapshot_sql
-from instrument_identity import ticker_storage_key
+from app.domain.instrument_identity import ticker_storage_key
 import logging
 
 log = logging.getLogger(__name__)

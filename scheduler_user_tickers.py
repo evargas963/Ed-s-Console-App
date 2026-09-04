@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Optional
 import logging
 
-from instrument_identity import ticker_storage_key
+from app.domain.instrument_identity import ticker_storage_key
 
 log = logging.getLogger(__name__)
 

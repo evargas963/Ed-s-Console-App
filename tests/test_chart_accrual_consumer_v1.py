@@ -20,7 +20,7 @@ from calibration.option_chain_morning_full import (  # noqa: E402
     latest_accrual_rows,
     persist_chain_accrual,
 )
-from time_et import ET  # noqa: E402
+from app.domain.time_et import ET  # noqa: E402
 
 # RC-367: this suite drives the Chart page's real reader/endpoint path — declare
 # ownership so the turn audit maps static/chart.html changes to a running suite
@@ -67,7 +67,7 @@ def test_the_fixture_date_comes_from_the_calendar_the_writer_uses():
     and the writer's admission rule comes from the market calendar. This asserts the two now
     agree, and it is the case that would go red first if the helper ever drifted back.
     """
-    from time_et import is_trading_day_et
+    from app.domain.time_et import is_trading_day_et
 
     day = most_recent_trading_day_et()
     assert is_trading_day_et(day.isoformat()), (

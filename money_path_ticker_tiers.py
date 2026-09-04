@@ -15,7 +15,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-from instrument_identity import ticker_storage_key
+from app.domain.instrument_identity import ticker_storage_key
 from scheduler_user_tickers import TRAINING_ANCHOR_TICKERS
 
 _REPO_ROOT = Path(__file__).resolve().parent

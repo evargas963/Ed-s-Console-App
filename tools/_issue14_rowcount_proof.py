@@ -17,7 +17,7 @@ sys.path.insert(0, str(ROOT))
 
 from db import DB_PATH
 from ml_data_common import weekday_where_clause
-from time_et import is_rth_ts_utc
+from app.domain.time_et import is_rth_ts_utc
 from timeframe_config import CANONICAL_TIMEFRAME, SNAPSHOT_TABLE_1M
 
 p = DB_PATH

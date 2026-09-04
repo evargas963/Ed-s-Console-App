@@ -24,7 +24,7 @@ import threading
 import time
 from typing import Any, Optional
 
-from instrument_identity import ticker_storage_key
+from app.domain.instrument_identity import ticker_storage_key
 
 log = logging.getLogger(__name__)
 

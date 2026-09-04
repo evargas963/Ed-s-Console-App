@@ -399,7 +399,7 @@ from verification.ui_realtime_transport_audit import (
     ticker_switch_pair_kind,
     tier_c_payload_fingerprint,
 )
-from instrument_identity import ticker_storage_key
+from app.domain.instrument_identity import ticker_storage_key
 
 
 def test_render_coherence_guard_rejects_wrong_ticker():

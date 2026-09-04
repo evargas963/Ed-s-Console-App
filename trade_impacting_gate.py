@@ -10,8 +10,8 @@ import os
 from dataclasses import dataclass, field
 from typing import Any
 
-from numeric_contract import float_finite_or_none
-from instrument_identity import ticker_storage_key
+from app.domain.numeric_contract import float_finite_or_none
+from app.domain.instrument_identity import ticker_storage_key
 
 # Conservative index ETF bounds — wrong-but-finite prices outside these quarantine.
 _PRICE_SANITY_BOUNDS: dict[str, tuple[float, float]] = {

@@ -101,7 +101,7 @@ def load_decision_rows(
 ) -> dict[tuple[str, str], list[dict[str, Any]]]:
     """Time-ordered scored rows per (ticker, horizon) — Study #1 gates, plus the
     incumbent's recorded dominant_direction kept for head-to-head comparison."""
-    from time_et import ET, is_rth_ts_utc
+    from app.domain.time_et import ET, is_rth_ts_utc
 
     cells: dict[tuple[str, str], list[dict[str, Any]]] = {
         (t, hz): [] for t in tickers for hz in horizons

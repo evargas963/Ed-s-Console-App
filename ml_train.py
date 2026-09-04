@@ -25,7 +25,7 @@ from db import DB_PATH as _DB_PATH_OBJ
 
 DB_PATH = str(_DB_PATH_OBJ)  # same file as EdDB; honors ED_CONSOLE_DB via db.py
 MODEL_DIR = Path("models")
-from canonical_distances import canonicalize_distance_read
+from app.domain.canonical_distances import canonicalize_distance_read
 from ml_horizon import (
     DEFAULT_ML_HORIZON_SLUG,
     DEFAULT_TRAINING_LABEL_COLUMN,
@@ -34,10 +34,10 @@ from ml_horizon import (
     normalize_ml_horizon_slug,
     outcome_column,
 )
-from time_et import RTH_OPEN_MINS, RTH_SESSION_MINUTES
+from app.domain.time_et import RTH_OPEN_MINS, RTH_SESSION_MINUTES
 # RC-345/F25 (train-write faucet): the model/meta WRITERS must emit the identical artifact
 # identity the readers/verifier/predictor expect — one canonical authority, no local .upper().
-from instrument_identity import ticker_storage_key
+from app.domain.instrument_identity import ticker_storage_key
 
 TARGET_COL = DEFAULT_TRAINING_LABEL_COLUMN  # Default tabular label; training uses outcome_column(ml_horizon_slug).
 
@@ -158,7 +158,7 @@ CF_VWAP_DISTANCE_PCT_FEATURE = "cf_vwap_distance_pct"
 
 def canonical_session_vwap_present(vwap) -> bool:
     """Same presence predicate as ``lstm_data.compute_confluence_features`` VWAP branch."""
-    from numeric_contract import float_positive_or_none
+    from app.domain.numeric_contract import float_positive_or_none
 
     return float_positive_or_none(vwap) is not None
 
@@ -924,7 +924,7 @@ def engineer_single_snapshot(snapshot: dict, category_maps: dict,
         except (TypeError, ValueError):
             _ts_f = float("nan")
         if np.isfinite(_ts_f):
-            from time_et import et_clock_from_ts_utc
+            from app.domain.time_et import et_clock_from_ts_utc
 
             eh, em, _ = et_clock_from_ts_utc(_ts_f)
     # Scalar adapter: compose minutes-of-day from the canonical clock; the session-time

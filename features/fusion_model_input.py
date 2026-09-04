@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Any, Mapping
 
-from canonical_distances import canonicalize_distance_read
+from app.domain.canonical_distances import canonicalize_distance_read
 
 from features.db_feature_adapter import build_db_mvp_feature_row
 from features.mvp_source_coercion import MvpFeatureSourceError
@@ -127,7 +127,7 @@ _META_CATEGORICAL_ORDINALS: dict[str, dict[str, float]] = {
 
 
 def _meta_encode_column_value(column: str, raw: Any) -> float:
-    from numeric_contract import float_finite_or_none
+    from app.domain.numeric_contract import float_finite_or_none
 
     if column in _META_CATEGORICAL_COLUMNS:
         if raw is None or raw == "":

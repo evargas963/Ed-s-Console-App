@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from typing import Any
-from time_et import ET, RTH_END_MINS, RTH_START_MINS
+from app.domain.time_et import ET, RTH_END_MINS, RTH_START_MINS
 
 from v2_decision.a2_session_calendar import get_session_info, load_a2_session_calendar
 

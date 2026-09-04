@@ -122,7 +122,7 @@ def morning_gamma_by_session(
     gamma_rows: list[tuple[float, float]]
 ) -> dict[str, float]:
     """First trusted gamma inside 09:30-10:15 ET per session."""
-    from time_et import (RTH_START_MINS, et_date_str_from_ts_utc,
+    from app.domain.time_et import (RTH_START_MINS, et_date_str_from_ts_utc,
                          et_minute_total_from_ts_utc, is_trading_day_et)  # RC-58
 
     out: dict[str, float] = {}

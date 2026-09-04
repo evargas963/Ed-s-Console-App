@@ -41,7 +41,7 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Optional
 
-from instrument_identity import ticker_storage_key
+from app.domain.instrument_identity import ticker_storage_key
 
 MODEL_SERVE_POLICY_VERSION = "1.0.0"
 

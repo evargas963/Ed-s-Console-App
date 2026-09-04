@@ -21,7 +21,7 @@ if str(_ROOT) not in _sys.path:
 
 import sqlite3, statistics as st
 from datetime import datetime
-from time_et import (
+from app.domain.time_et import (
     ET,
     RTH_END_MINS,
     RTH_START_MINS,

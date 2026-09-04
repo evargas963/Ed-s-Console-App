@@ -7,7 +7,7 @@ import logging
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Literal, NamedTuple
-from time_et import ET, RTH_END_MINS, RTH_START_MINS, now_et
+from app.domain.time_et import ET, RTH_END_MINS, RTH_START_MINS, now_et
 
 logger = logging.getLogger(__name__)
 CALENDAR_RELATIVE_PATH = Path("trading_calendar") / "us_equities.json"

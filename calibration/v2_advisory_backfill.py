@@ -114,7 +114,7 @@ def ms_dict_from_snapshot_row(row: Mapping[str, Any]) -> dict[str, Any]:
     if ts_utc is not None:
         ms.setdefault("ts_utc", ts_utc)
         from ml_data_common import market_session_from_ts_utc
-        from time_et import et_clock_from_ts_utc
+        from app.domain.time_et import et_clock_from_ts_utc
 
         eh, em, _ = et_clock_from_ts_utc(ts_utc)
         ms["et_hour"] = eh
@@ -484,13 +484,13 @@ def _infer_fusion_fields(ms: dict[str, Any]) -> None:
 
 
 def _direction_from_triplet(up: Any, down: Any, flat: Any) -> str | None:
-    from numeric_contract import direction_from_triplet
+    from app.domain.numeric_contract import direction_from_triplet
 
     return direction_from_triplet(up, down, flat)
 
 
 def _float_or_none(value: Any) -> float | None:
-    from numeric_contract import float_finite_or_none
+    from app.domain.numeric_contract import float_finite_or_none
 
     return float_finite_or_none(value)
 

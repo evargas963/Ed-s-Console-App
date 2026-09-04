@@ -42,7 +42,7 @@ from typing import Any, Iterator, Optional
 from zoneinfo import ZoneInfo
 
 from arch_competition.atomic_io import write_json_file_atomically
-from instrument_identity import ticker_storage_key
+from app.domain.instrument_identity import ticker_storage_key
 from calibration.backfill_outcomes import backfill
 from calibration.db_guard import register_allow_noncanonical_flag, require_canonical_db_target
 from calibration.paths import DEFAULT_DB
@@ -50,7 +50,7 @@ from calibration.schema import ensure_calibration_schema
 # SCHWAB_CSV_CHECKED: COH-SA-2 timezone-authority redirect only.
 # This edit reads, derives, renames, emits, and maps no Schwab market-data field;
 # CSV row authority does not apply to this non-market-field change.
-from time_et import ET  # COH-SA-2: America/New_York ZoneInfo authority lives only in time_et.py
+from app.domain.time_et import ET  # COH-SA-2: America/New_York ZoneInfo authority lives only in time_et.py
 
 log = logging.getLogger(__name__)
 
@@ -124,7 +124,7 @@ def _per_horizon_prediction_rows(
     if tickers:
         sql += f" AND ticker IN ({','.join('?' * len(tickers))})"
         params.extend(tickers)
-    from time_et import is_rth_ts_utc
+    from app.domain.time_et import is_rth_ts_utc
 
     for row in conn.execute(sql + " ORDER BY decision_ts_utc", params):
         if not is_rth_ts_utc(float(row["decision_ts_utc"])):
@@ -255,7 +255,7 @@ def rolling_horizon_log_loss(
     import time
 
     from calibration.fusion_temperature import FIT_WINDOW_FLOOR_UTC
-    from time_et import is_rth_ts_utc
+    from app.domain.time_et import is_rth_ts_utc
 
     now = float(now_ts_utc) if now_ts_utc is not None else time.time()
     lo = max(now - float(lookback_days) * 86400.0, FIT_WINDOW_FLOOR_UTC)
@@ -406,7 +406,7 @@ def _production_tallies(
     (including untrusted and non-RTH, which the scoring pass never sees), plus
     snapshot-presence evidence used to distinguish NOT_IN_ACTIVE_LOGGER from
     NO_ROWS_PRODUCED. Never mutates anything."""
-    from time_et import is_rth_ts_utc
+    from app.domain.time_et import is_rth_ts_utc
 
     lo, hi = et_day_utc_bounds(et_date)
     sql = (
@@ -1518,7 +1518,7 @@ def _actionability_decision_rows(
     conn: sqlite3.Connection, et_date: str, tickers: Optional[list[str]]
 ) -> list[dict[str, Any]]:
     """Per-decision rows (trusted, RTH — same gates as the scoreboard)."""
-    from time_et import is_rth_ts_utc
+    from app.domain.time_et import is_rth_ts_utc
 
     lo, hi = et_day_utc_bounds(et_date)
     sql = (

@@ -71,7 +71,7 @@ def test_et_date_key_matches_time_et_authority():
     from datetime import datetime, timezone
     from zoneinfo import ZoneInfo
 
-    from time_et import et_date_str_from_ts_utc
+    from app.domain.time_et import et_date_str_from_ts_utc
 
     et_noon = datetime(2026, 8, 3, 12, 0, tzinfo=ZoneInfo("America/New_York"))
     ts = et_noon.astimezone(timezone.utc).timestamp()

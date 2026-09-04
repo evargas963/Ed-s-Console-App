@@ -43,7 +43,7 @@ def _rth_session_stamps(n: int) -> list[float]:
     """
     from datetime import datetime, timedelta
 
-    from time_et import ET, is_rth_ts_utc, is_trading_day_et
+    from app.domain.time_et import ET, is_rth_ts_utc, is_trading_day_et
 
     now = time.time()
     out: list[float] = []
@@ -75,7 +75,7 @@ def _recent_non_session_stamp(window_days: int = 20) -> tuple[str, float]:
     Production was never affected: an in-window weekend bar is still excluded (proven here)."""
     from datetime import datetime, timedelta
 
-    from time_et import ET, is_trading_day_et
+    from app.domain.time_et import ET, is_trading_day_et
 
     now = time.time()
     cutoff = now - window_days * 86400.0
@@ -100,7 +100,7 @@ def _weekday_premarket_stamp(window_days: int = 20) -> tuple[str, float]:
     without deleting the underlying bars."""
     from datetime import datetime, timedelta
 
-    from time_et import ET, is_rth_ts_utc, is_trading_day_et
+    from app.domain.time_et import ET, is_rth_ts_utc, is_trading_day_et
 
     now = time.time()
     cutoff = now - window_days * 86400.0
@@ -324,7 +324,7 @@ def test_adv_counts_only_the_regular_session(tmp_path):
     import sqlite3
     from datetime import datetime, timedelta
 
-    from time_et import ET, is_rth_ts_utc, is_trading_day_et
+    from app.domain.time_et import ET, is_rth_ts_utc, is_trading_day_et
 
     db = tmp_path / "d.db"
     ds.ensure_schema(db)
@@ -638,7 +638,7 @@ def test_a_session_in_progress_is_not_a_completed_session():
     operator is reading the number."""
     from datetime import datetime
 
-    from time_et import ET, is_trading_day_et
+    from app.domain.time_et import ET, is_trading_day_et
 
     # find a real trading day inside the window
     probe = datetime.now(ET).date()
@@ -665,7 +665,7 @@ def test_sigma_drops_the_session_in_progress(tmp_path):
     import sqlite3
     from datetime import datetime
 
-    from time_et import ET, is_rth_ts_utc
+    from app.domain.time_et import ET, is_rth_ts_utc
 
     db = tmp_path / "d.db"
     con = sqlite3.connect(str(db))
@@ -791,7 +791,7 @@ def test_the_distribution_is_deterministic_against_the_same_bars(tmp_path):
     # Fill whole regular sessions. Walking back minute-by-minute from one session's midpoint
     # leaves the session after 90 bars and starves the bootstrap — the filter is doing its job,
     # the fixture was wrong.
-    from time_et import is_rth_ts_utc
+    from app.domain.time_et import is_rth_ts_utc
 
     px, n_rth = 100.0, 0
     for day_ts in _rth_session_stamps(3):
@@ -930,12 +930,12 @@ def test_rth_calendar_gate_is_date_and_ticker_agnostic(non_trading_ts_fn, sym):
     no weekend or holiday, ever reads as a regular session."""
     from datetime import datetime
 
-    from time_et import ET
+    from app.domain.time_et import ET
 
     ts = non_trading_ts_fn(ET, datetime)
     assert ds.is_rth_trading_ts(ts) is False
     # session_is_complete is ticker-free, but assert the full desk agrees a no-session day is done.
-    from time_et import et_date_str_from_ts_utc
+    from app.domain.time_et import et_date_str_from_ts_utc
     assert ds.session_is_complete(et_date_str_from_ts_utc(ts), time.time()) is True
 
 
@@ -974,7 +974,7 @@ def test_session_stamps_only_land_on_trading_days():
     """The fixture helper itself is under test now — it broke the suite before the code did."""
     from datetime import datetime
 
-    from time_et import ET, is_trading_day_et
+    from app.domain.time_et import ET, is_trading_day_et
 
     for ts in _rth_session_stamps(5):
         d = datetime.fromtimestamp(ts, ET).date().isoformat()

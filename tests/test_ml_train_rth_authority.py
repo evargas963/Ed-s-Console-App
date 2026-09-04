@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 
 from ml_train import engineer_features, engineer_single_snapshot
-from time_et import RTH_SESSION_MINUTES
+from app.domain.time_et import RTH_SESSION_MINUTES
 
 
 def test_session_time_kernel_uses_rth_authority_and_builders_delegate() -> None:

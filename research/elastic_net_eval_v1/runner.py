@@ -24,7 +24,7 @@ from sklearn.preprocessing import StandardScaler
 
 from research.incumbent_eval_v1 import stats
 from research.incumbent_eval_v1.runner import invalid_threshold_horizons
-from time_et import ET
+from app.domain.time_et import ET
 
 PREREG_PATH = Path(__file__).resolve().parent / "prereg_v1.json"
 

@@ -24,7 +24,7 @@ from market_state import build_market_state
 from math_volatility import session_bucket
 from timeframe_config import CANONICAL_TIMEFRAME
 
-from time_et import ET
+from app.domain.time_et import ET
 N_INSERTS = 110
 TICKER = "PHASE2VERIFY"
 

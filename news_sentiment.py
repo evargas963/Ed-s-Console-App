@@ -27,7 +27,7 @@ from datetime import datetime, timedelta
 from typing import Any, Optional
 log = logging.getLogger(__name__)
 
-from time_et import ET as _ET, RTH_START_MINS
+from app.domain.time_et import ET as _ET, RTH_START_MINS
 
 _throttle_sec = float(__import__("os").environ.get("ED_NEWS_THROTTLE_SEC", "90"))
 _lock = threading.Lock()

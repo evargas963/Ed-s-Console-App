@@ -46,7 +46,7 @@ from liquidity_value_engine import (  # noqa: E402
     get_overnight_levels,
     get_previous_day_levels,
 )
-from time_et import ET, RTH_END_MINS, RTH_START_MINS  # noqa: E402
+from app.domain.time_et import ET, RTH_END_MINS, RTH_START_MINS  # noqa: E402
 
 # ── PRE-REGISTERED, before any result was seen ───────────────────────────────────────────────
 #: Forward horizons in minutes.

@@ -9,7 +9,7 @@ from calibration.option_chain_morning_full import (
     maybe_persist_morning_full_chain,
     persist_chain_accrual,
 )
-from time_et import ET
+from app.domain.time_et import ET
 
 
 def _contracts() -> list[dict]:
@@ -41,7 +41,7 @@ def test_forces_skips_non_trading_morning_full_dates(tmp_path, monkeypatch):
     import sqlite3
 
     import server as s
-    from time_et import is_trading_day_et
+    from app.domain.time_et import is_trading_day_et
 
     db = tmp_path / "f.db"
     con = sqlite3.connect(db)

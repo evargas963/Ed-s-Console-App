@@ -20,7 +20,7 @@ def _resolve_status_path(path: Path | None) -> Path:
 
 def cache_skip_streak_key(ticker: str, horizon: str) -> str:
     from ml_horizon import normalize_ml_horizon_slug
-    from instrument_identity import ticker_storage_key
+    from app.domain.instrument_identity import ticker_storage_key
 
     # RC-345/F25: the streak dict key is canonical identity — write/read/lookup all flow through
     # this one producer, so SPX and $SPX share a single streak slot ("$SPX:..."). No .upper() faucet.

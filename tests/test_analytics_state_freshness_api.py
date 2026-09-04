@@ -541,7 +541,7 @@ def test_session_open_anchor_warm_due_predicate_rth_gate_and_daily_latch():
     import server as srv
     from datetime import datetime
 
-    from time_et import ET
+    from app.domain.time_et import ET
 
     rth_monday = datetime(2026, 7, 6, 9, 31, tzinfo=ET)
     pre_open = datetime(2026, 7, 6, 9, 29, tzinfo=ET)

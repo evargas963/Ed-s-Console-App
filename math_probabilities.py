@@ -364,7 +364,7 @@ def dominant_direction(up: float, down: float, flat: float) -> tuple:
     # authority — numeric_contract.direction_from_normalized_triplet (same up>down>flat
     # tie-break). This carries that label plus its probability; it does not re-implement the
     # argmax (the old `max(probs, key=probs.get)` was a second projection of the same vector).
-    from numeric_contract import direction_from_normalized_triplet
+    from app.domain.numeric_contract import direction_from_normalized_triplet
     probs = {"up": up, "down": down, "flat": flat}
     dom = direction_from_normalized_triplet(up, down, flat)
     if dom is None:

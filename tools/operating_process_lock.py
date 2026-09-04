@@ -75,7 +75,7 @@ _RESET_GUARD_SAFE_RE = __import__("re").compile(
 PRODUCT_WIPE_PROTECTED: tuple[str, ...] = (
     "db.py",
     "server.py",
-    "time_et.py",
+    "app/domain/time_et.py",
     "math_exposure_core.py",
     "math_levels.py",
     "liquidity_value_engine.py",

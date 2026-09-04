@@ -118,7 +118,7 @@ def _f(v: Any) -> float | None:
     malformed world-data cell became a poison value rather than an absence. Strips the thousands
     separators this feed uses, then delegates the numeric contract to the single canonical reader.
     """
-    from numeric_contract import float_finite_or_none
+    from app.domain.numeric_contract import float_finite_or_none
 
     try:
         cleaned = str(v).replace(",", "").strip()

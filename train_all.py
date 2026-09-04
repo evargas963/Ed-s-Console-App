@@ -22,7 +22,7 @@ from ml_horizon import DEFAULT_ML_HORIZON_SLUG, normalize_ml_horizon_slug, outco
 # RC-345/F25 (train-write faucet): every identity-bearing ticker use here (DB-query key,
 # training roster identity, direct artifact basename) consumes the ONE canonical authority so
 # bare 'SPX' and '$SPX' resolve to the same rows and the same artifact the writers/readers use.
-from instrument_identity import ticker_storage_key
+from app.domain.instrument_identity import ticker_storage_key
 import logging
 
 log = logging.getLogger(__name__)

@@ -6,7 +6,7 @@ All mutations require manual_promote_to_active_explicit / manual_rollback_to_che
 
 from __future__ import annotations
 
-from instrument_identity import ticker_storage_key  # RC-345/F25: one canonical per-instrument identity
+from app.domain.instrument_identity import ticker_storage_key  # RC-345/F25: one canonical per-instrument identity
 
 import json
 import logging

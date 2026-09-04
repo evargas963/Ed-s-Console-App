@@ -27,7 +27,7 @@ if str(ROOT) not in sys.path:
 MONEY_PATH = {
     "server.py", "terrain_engine.py", "db.py", "decision_gate.py", "schwab_client.py",
     "math_levels.py", "math_exposure_core.py", "call_engine.py", "rules_engine.py",
-    "liquidity_value_engine.py", "bayesian_fusion.py", "terrain_read.py", "numeric_contract.py",
+    "liquidity_value_engine.py", "bayesian_fusion.py", "terrain_read.py", "app/domain/numeric_contract.py",
 }
 
 #: TEST_SYSTEM_REHAB_V2: `live_orphans` is now the session-scoped fixture in

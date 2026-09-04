@@ -42,7 +42,7 @@ from liquidity_value_engine import (
     reset_level_carrier_ledger,
     scoped_level_id,
 )
-from time_et import ET
+from app.domain.time_et import ET
 from tools.phase2a_level_lock import (
     client_level_reconstruction_violations,
     level_alias_value_violations,
@@ -310,7 +310,7 @@ def test_api_levels_serializes_the_snapshot_and_does_not_compute(monkeypatch):
     import json
 
     import server as srv
-    import time_et as te
+    from app.domain import time_et as te
 
     tape = _tape()
     monkeypatch.setattr(srv, "_liquidity_live_1m_overlay_bars", lambda t: tape)

@@ -6,7 +6,7 @@ import inspect
 from adaptive_shadow_v2_calibration import load_survivorship_anchors_v1
 from db import EdDB, CANONICAL_TIMEFRAME, HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1, get_snapshot_sql
 from timeframe_config import DERIVED_TIMEFRAME
-from instrument_identity import ticker_storage_key
+from app.domain.instrument_identity import ticker_storage_key
 from market_data_adapter import schwab_candles_to_bars
 
 
@@ -279,7 +279,7 @@ def test_get_similar_setups_rejects_non_canonical_timeframe(tmp_path):
 def test_index_roots_resolve_to_dollar_form():
     """Typing a bare index root anywhere must reach Schwab in its dollar form — $SPX stayed
     dark for a session because the endpoints skipped this authority."""
-    from instrument_identity import ticker_storage_key
+    from app.domain.instrument_identity import ticker_storage_key
     for bare, dollar in (("SPX", "$SPX"), ("spx", "$SPX"), ("NDX", "$NDX"), ("rut", "$RUT"),
                          ("DJX", "$DJX"), ("XSP", "$XSP"), ("OEX", "$OEX"), ("VIX", "$VIX")):
         assert ticker_storage_key(bare) == dollar

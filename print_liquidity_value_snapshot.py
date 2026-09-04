@@ -137,7 +137,7 @@ def main():
     ticker = args.ticker.upper().strip()
     session_date = args.date
     if not session_date:
-        from time_et import now_et
+        from app.domain.time_et import now_et
 
         session_date = now_et().strftime("%Y-%m-%d")
 

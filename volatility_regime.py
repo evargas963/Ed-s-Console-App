@@ -26,7 +26,7 @@ from typing import Any, Optional
 import logging
 
 from features.regime_mvp_context import RegimeMvpInputError, mvp_spot, require_mvp_features
-from numeric_contract import float_finite_or_none
+from app.domain.numeric_contract import float_finite_or_none
 from signal_types import SignalInput
 
 log = logging.getLogger(__name__)

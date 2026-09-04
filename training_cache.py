@@ -35,7 +35,7 @@ from ml_horizon import DEFAULT_ML_HORIZON_SLUG, DEFAULT_TRAINING_LABEL_COLUMN
 # a local .upper() so a model/cache identity can NEVER diverge from the DB storage key
 # (bare 'SPX' and '$SPX' both resolve to the '$SPX' the bars/snapshots tables and the
 # on-disk $SPX bundle already use). This is a delegation, not a second normalizer.
-from instrument_identity import ticker_storage_key
+from app.domain.instrument_identity import ticker_storage_key
 
 MANIFEST_FILENAME = "scheduler_run_manifest.json"
 FEATURE_CACHE_ROOT = Path(__file__).parent / "models" / "cache" / "features"
@@ -514,7 +514,7 @@ def _normalize_data_fp(d: Optional[dict]) -> dict:
         return {}
 
     def _num(x):
-        from numeric_contract import float_finite_or_none
+        from app.domain.numeric_contract import float_finite_or_none
 
         return float_finite_or_none(x)
 

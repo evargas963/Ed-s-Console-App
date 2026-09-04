@@ -6,7 +6,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from db import DB_PATH
 from horizon_outcomes import forward_bar_start_utc, OUTCOME_BAR_SPECS
-from instrument_identity import ticker_storage_key
+from app.domain.instrument_identity import ticker_storage_key
 
 ts = 1775926978.9349923
 conn = sqlite3.connect(str(DB_PATH), timeout=120.0)

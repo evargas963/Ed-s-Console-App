@@ -36,7 +36,7 @@ from calibration.backfill_et_clock_from_ts_utc_v1 import (  # noqa: E402
 )
 from calibration.db_guard import register_allow_noncanonical_flag, require_canonical_db_target  # noqa: E402
 from calibration.paths import DEFAULT_DB, PROJECT_ROOT  # noqa: E402
-from time_et import COH_I_A_ET_BACKFILL_CEILING_TS_UTC  # noqa: E402
+from app.domain.time_et import COH_I_A_ET_BACKFILL_CEILING_TS_UTC  # noqa: E402
 
 log = logging.getLogger(__name__)
 

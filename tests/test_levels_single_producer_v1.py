@@ -405,7 +405,7 @@ def test_api_levels_b1_contract_single_session_prior_day(monkeypatch):
     from datetime import datetime as _dt
 
     import server as srv
-    from time_et import ET
+    from app.domain.time_et import ET
 
     def _bar(y, mo, d, h, mi, o, hi, lo, c):
         return {"timestamp": int(_dt(y, mo, d, h, mi, tzinfo=ET).timestamp() * 1000),
@@ -424,7 +424,7 @@ def test_api_levels_b1_contract_single_session_prior_day(monkeypatch):
     # This fixture tests WINDOW SELECTION with tiny sessions; the t12 coverage floor is
     # exercised by its own dedicated test below.
     monkeypatch.setattr(srv, "LEVELS_PRIOR_SESSION_MIN_BARS", 2)
-    import time_et as te
+    from app.domain import time_et as te
     monkeypatch.setattr(te, "now_et", lambda: _dt(2026, 8, 3, 10, 0, tzinfo=ET))
 
     resp = srv.get_levels(ticker="SPY")
@@ -725,7 +725,7 @@ def test_api_levels_truncated_accumulator_falls_through_to_banked(monkeypatch, t
     from datetime import datetime as _dt
 
     import server as srv
-    from time_et import ET
+    from app.domain.time_et import ET
 
     def _bar_ms(y, mo, d, h, mi, o, hi, lo, c):
         return {"timestamp": int(_dt(y, mo, d, h, mi, tzinfo=ET).timestamp() * 1000),
@@ -739,7 +739,7 @@ def test_api_levels_truncated_accumulator_falls_through_to_banked(monkeypatch, t
     ]
     monkeypatch.setattr(srv, "_liquidity_live_1m_overlay_bars", lambda t: truncated)
     monkeypatch.setattr(srv, "resolve_spot", lambda t, **kw: (758.0, "schwab_quote_last", 1.0))
-    import time_et as te
+    from app.domain import time_et as te
     monkeypatch.setattr(te, "now_et", lambda: _dt(2026, 8, 4, 10, 0, tzinfo=ET))
 
     # Banked DB: the FULL prior session (390 bars) with the true low 749.59.

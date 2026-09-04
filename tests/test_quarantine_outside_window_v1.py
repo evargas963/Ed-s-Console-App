@@ -18,7 +18,7 @@ REPO = Path(__file__).resolve().parent.parent
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
-from time_et import ET  # noqa: E402
+from app.domain.time_et import ET  # noqa: E402
 
 TOOL = REPO / "tools" / "quarantine_outside_window_bars_v1.py"
 

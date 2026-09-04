@@ -17,7 +17,7 @@ from calibration.writer import (
     sqlite_busy_retry_sleep_seconds,
 )
 from db import EdDB, configure_sqlite_connection
-from instrument_identity import ticker_storage_key
+from app.domain.instrument_identity import ticker_storage_key
 from timeframe_config import CANONICAL_TIMEFRAME
 
 

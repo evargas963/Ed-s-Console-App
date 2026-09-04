@@ -12,7 +12,7 @@ from datetime import date, datetime
 os.environ.setdefault("PYTEST_CURRENT_TEST", "boot")
 
 import tools.lp01_touch_study_v1 as S  # noqa: E402
-from time_et import ET, RTH_START_MINS  # noqa: E402
+from app.domain.time_et import ET, RTH_START_MINS  # noqa: E402
 
 
 def _bar(d: date, hh: int, mm: int, o: float, h: float, lo: float, c: float) -> dict:

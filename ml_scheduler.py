@@ -31,7 +31,7 @@ from pathlib import Path
 # every one delegates to the ONE canonical authority (instrument_identity.ticker_storage_key)
 # so the files it WRITES ('$SPX') match what the verifier and predictor LOOK FOR, and match
 # the DB storage key. No local .upper() second faucet for artifact/enrollment identity.
-from instrument_identity import ticker_storage_key
+from app.domain.instrument_identity import ticker_storage_key
 
 # RC-340: THE row-enrichment authority for every engineer_single_snapshot call in this
 # module — five cascade/bridge routes previously fed RAW rows (cf_* -> 0.0, dgex -> NaN).
@@ -56,8 +56,8 @@ TRAINING_REPORT_PATH = MODEL_DIR / "training_report.jsonl"
 RUN_AT_HOUR = 16
 RUN_AT_MINUTE = 15
 
-from numeric_contract import direction_from_normalized_triplet
-from time_et import ET
+from app.domain.numeric_contract import direction_from_normalized_triplet
+from app.domain.time_et import ET
 
 log = logging.getLogger("ml_scheduler")
 
@@ -91,7 +91,7 @@ def _infer_slug_from_target_column(target_column: str) -> str:
 
 
 def _now_et() -> datetime:
-    from time_et import now_et
+    from app.domain.time_et import now_et
 
     return now_et()
 

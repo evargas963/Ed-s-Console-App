@@ -15,7 +15,7 @@ from datetime import datetime, timedelta
 import pytest
 
 from research.structural_eval_v1 import runner
-from time_et import ET
+from app.domain.time_et import ET
 
 
 # ── fixed semantic rules ─────────────────────────────────────────────────────

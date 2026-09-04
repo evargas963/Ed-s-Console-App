@@ -11,7 +11,7 @@ from horizon_outcomes import (
     SYNTHETIC_EDGE_CARRY_V1,
     SYNTHETIC_INTERIOR_GRID_REPAIR_V1,
 )
-from time_et import is_collect_window_bar_end_ts_utc  # RC-183 collect-window law
+from app.domain.time_et import is_collect_window_bar_end_ts_utc  # RC-183 collect-window law
 
 GAP_FILL_CANONICAL_1M_GRID_V1 = "gap_fill_canonical_1m_grid_v1"
 
@@ -44,7 +44,7 @@ def apply_repair_1m_bar_batch_writes(
 ) -> tuple[int, int]:
     """Single-transaction bar upserts + governed outcome refresh for mutated starts."""
     from db import _refresh_governed_outcomes_after_bar_mutation, configure_sqlite_connection
-    from instrument_identity import ticker_storage_key
+    from app.domain.instrument_identity import ticker_storage_key
 
     conn = sqlite3.connect(str(db_path), timeout=120.0)
     configure_sqlite_connection(conn)

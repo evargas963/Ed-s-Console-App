@@ -49,7 +49,7 @@ from fusion_contract import (
     fusion_is_authoritative,
     is_canonical_tradable,
 )
-from numeric_contract import float_finite_or_none, float_positive_or_none, direction_from_normalized_triplet
+from app.domain.numeric_contract import float_finite_or_none, float_positive_or_none, direction_from_normalized_triplet
 from regime_engine import classify_regime
 from volatility_regime import classify_volatility_regime
 import bayesian_fusion

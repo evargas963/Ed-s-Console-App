@@ -47,7 +47,7 @@ from math_levels import (  # noqa: E402
     gamma_at_price,
 )
 from terrain_engine import compute_terrain  # noqa: E402
-from time_et import ET, RTH_END_MINS, RTH_START_MINS  # noqa: E402
+from app.domain.time_et import ET, RTH_END_MINS, RTH_START_MINS  # noqa: E402
 
 DB = ROOT / "data" / "ed_console.db"
 OUT_MD = ROOT / "reports" / "terrain_backtest_latest.md"
@@ -78,7 +78,7 @@ def _is_measurable_day(day: str) -> bool:
     wall hold (a frozen high cannot exceed a call wall). It inflated the wall-hold KPI and tied
     ~245 range values at the bottom rank of every Spearman rho.
     """
-    from time_et import is_trading_day_et
+    from app.domain.time_et import is_trading_day_et
     return is_trading_day_et(day)
 
 
@@ -176,7 +176,7 @@ def _replay_instant(ts_utc):
     not as of the run. Returns None when the timestamp is unusable, which makes compute_terrain
     fall back to now_et() exactly as before — degrade, never crash a report.
     """
-    from time_et import ET
+    from app.domain.time_et import ET
     try:
         return datetime.fromtimestamp(float(ts_utc), tz=ET)
     except (TypeError, ValueError, OSError, OverflowError):

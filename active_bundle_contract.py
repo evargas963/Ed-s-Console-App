@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Any
 
 from ml_horizon import DEFAULT_ML_HORIZON_SLUG, normalize_ml_horizon_slug
-from instrument_identity import ticker_storage_key
+from app.domain.instrument_identity import ticker_storage_key
 
 
 def artifact_ticker_key(ticker: str) -> str:

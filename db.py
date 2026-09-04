@@ -90,7 +90,7 @@ from similarity_audit import (
     widening_summary_from_tiers,
 )
 
-from instrument_identity import ticker_storage_key
+from app.domain.instrument_identity import ticker_storage_key
 
 log = logging.getLogger(__name__)
 
@@ -352,9 +352,9 @@ def ensure_console_db_training_schema(db_path: Path | None = None) -> Path:
     return path
 
 # ── ET timezone (DST-aware; see time_et.py) ───────────────────────────────────
-from time_et import now_et  # noqa: E402  — re-export for legacy `from db import now_et`
-from time_et import is_collect_window_bar_end_ts_utc  # noqa: E402  — RC-183 collect-window law
-from time_et import (  # noqa: E402  — RC-345/F09: single RTH-boundary authority
+from app.domain.time_et import now_et  # noqa: E402  — re-export for legacy `from db import now_et`
+from app.domain.time_et import is_collect_window_bar_end_ts_utc  # noqa: E402  — RC-183 collect-window law
+from app.domain.time_et import (  # noqa: E402  — RC-345/F09: single RTH-boundary authority
     RTH_START_MINS as _RTH_START_MINS_AUTH,
     RTH_END_MINS as _RTH_END_MINS_AUTH,
 )
@@ -4783,7 +4783,7 @@ class EdDB:
 
             correct = 0
             scored = 0
-            from numeric_contract import direction_from_normalized_triplet, float_finite_or_none
+            from app.domain.numeric_contract import direction_from_normalized_triplet, float_finite_or_none
             outcome_counts: dict[str, int] = {}
             for row in rows:
                 # RC-345 / F22: predicted direction = the ONE argmax authority
@@ -5370,7 +5370,7 @@ def market_session(et_hour: int, et_minute: int, *, et_date: str) -> str:
     requiring it costs nothing and closes the reintroduction path. Without the date this
     function cannot know whether a session exists at all, and it must not guess.
     """
-    from time_et import is_trading_day_et
+    from app.domain.time_et import is_trading_day_et
     if not is_trading_day_et(str(et_date)):
         return "closed"
     mins = et_hour * 60 + et_minute

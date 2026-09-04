@@ -19,13 +19,13 @@ def _section15_files() -> list[str]:
         "setup_readiness.py",
         "scheduler_user_tickers.py",
         "production_universe.py",
-        "instrument_identity.py",
+        "app/domain/instrument_identity.py",
         "timeframe_config.py",
         "model_contract.py",
         "horizon_outcomes.py",
         "movement_target_threshold.py",
         "institutional_behavior.py",
-        "canonical_distances.py",
+        "app/domain/canonical_distances.py",
         "tier3_design.py",
     ]
     return sorted(dict.fromkeys(names))
@@ -50,7 +50,7 @@ OVERRIDES: dict[tuple[str, str], tuple[str, str, str]] = {
         "NONE",
         "Feature contract validation against schema.",
     ),
-    ("canonical_distances.py", "canonical_distance_buckets_v1"): (
+    ("app/domain/canonical_distances.py", "canonical_distance_buckets_v1"): (
         "distance buckets",
         "NONE",
         "Static canonical distance bucket definitions.",
@@ -100,7 +100,7 @@ def classify(file: str, qual: str, fn: ast.FunctionDef, body: str) -> tuple[str,
     if name_l in ("main", "_main") or name_l.startswith("cli_"):
         return ("—", "NONE", "CLI entrypoint.")
 
-    if file == "config.py" or file == "instrument_identity.py" or file == "scheduler_user_tickers.py":
+    if file == "config.py" or file == "app/domain/instrument_identity.py" or file == "scheduler_user_tickers.py":
         return ("—", "NONE", "Configuration/identity helper; no market-field derivation.")
 
     if "contract" in file or file in ("horizon_outcomes.py", "movement_target_threshold.py", "tier3_design.py"):
@@ -138,7 +138,7 @@ def classify(file: str, qual: str, fn: ast.FunctionDef, body: str) -> tuple[str,
     if file == "production_universe.py":
         return ("universe config", "NONE", "Production ticker universe list.")
 
-    if file == "institutional_behavior.py" or file == "canonical_distances.py":
+    if file == "institutional_behavior.py" or file == "app/domain/canonical_distances.py":
         return ("design constants", "NONE", "Institutional behavior / distance design definitions.")
 
     return ("—", "NONE", "No Schwab market-field derivation in function body.")

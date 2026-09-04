@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from typing import List, Tuple
-from time_et import now_et
+from app.domain.time_et import now_et
 
 # US session date (ET) — ISO strings. Broad risk: CPI, FOMC, NFP-heavy days, major quad witching.
 # Keep tight: only days where you want elevated or high event_risk.

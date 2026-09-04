@@ -75,7 +75,7 @@ def test_fetch_price_levels_skips_candle_missing_datetime():
 def _retired_fetch_price_levels_candle_test():
     from market_context import fetch_price_levels
 
-    from time_et import ET as et  # noqa: F401
+    from app.domain.time_et import ET as et  # noqa: F401
     yday = (datetime.now(et) - timedelta(days=1)).replace(
         hour=11, minute=0, second=0, microsecond=0
     )

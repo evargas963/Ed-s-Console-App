@@ -15,7 +15,7 @@ from contextvars import ContextVar, Token
 from dataclasses import dataclass
 from typing import Any, Iterator, Optional
 
-from instrument_identity import ticker_storage_key
+from app.domain.instrument_identity import ticker_storage_key
 from ml_horizon import ALL_GOVERNED_HORIZONS, ML_HORIZON_SLUGS
 
 # ── Authoritative inference stack (operator binding 2026-06-04) ──

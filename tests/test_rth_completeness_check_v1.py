@@ -63,7 +63,7 @@ def test_non_trading_day_is_a_clean_noop(tmp_path):
 def test_census_counts_session_minutes_against_the_grid(tmp_path):
     from datetime import datetime, timedelta
 
-    from time_et import ET, is_trading_day_et
+    from app.domain.time_et import ET, is_trading_day_et
 
     # most recent real trading day
     probe = datetime.now(ET).date()

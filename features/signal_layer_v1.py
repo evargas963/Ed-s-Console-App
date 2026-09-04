@@ -24,7 +24,7 @@ import logging
 import math
 from typing import Any, Mapping, Optional, Sequence
 
-from numeric_contract import float_finite_or_none
+from app.domain.numeric_contract import float_finite_or_none
 
 log = logging.getLogger(__name__)
 
@@ -302,7 +302,7 @@ def load_bars_before_decision(
     """
     Load completed 1m bars with bar_end_ts_utc <= decision_ts_utc, oldest first.
     """
-    from instrument_identity import ticker_storage_key
+    from app.domain.instrument_identity import ticker_storage_key
 
     tkey = ticker_storage_key(ticker)
     cur = conn.execute(

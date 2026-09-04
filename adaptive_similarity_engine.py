@@ -23,7 +23,7 @@ from db import sql_adaptive_broad_similarity_pool, sql_issue19_tier1_candidate_r
 from timeframe_config import CANONICAL_TIMEFRAME
 from similarity_audit import query_context_for_similarity
 
-from instrument_identity import ticker_storage_key  # noqa: E402
+from app.domain.instrument_identity import ticker_storage_key  # noqa: E402
 from db import (  # noqa: E402
     similarity_empirically_viable,
     similarity_labeled_counts,

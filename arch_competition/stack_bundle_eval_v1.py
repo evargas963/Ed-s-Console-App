@@ -17,7 +17,7 @@ from __future__ import annotations
 
 # RC-345/F25: bundle-eval artifact/model identity consumes the ONE canonical ticker authority
 # so eval lookups resolve to the same artifact the writers/promotion/readers produced.
-from instrument_identity import ticker_storage_key
+from app.domain.instrument_identity import ticker_storage_key
 
 import json
 import logging

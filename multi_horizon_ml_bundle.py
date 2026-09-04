@@ -15,7 +15,7 @@ from typing import Any, Optional
 
 from fusion_contract import fusion_direction_is_authorized, fusion_is_authoritative
 from ml_horizon import PRIMARY_DECISION_HORIZONS
-from numeric_contract import direction_from_normalized_triplet, float_finite_or_none
+from app.domain.numeric_contract import direction_from_normalized_triplet, float_finite_or_none
 
 log = logging.getLogger(__name__)
 

@@ -15,7 +15,7 @@ from typing import Any, Optional
 from fusion_contract import is_canonical_tradable
 from ml_horizon import PRIMARY_DECISION_HORIZONS
 from multi_horizon_ml_bundle import MultiHorizonMLFusionBundle
-from numeric_contract import direction_from_normalized_triplet, float_finite_or_none
+from app.domain.numeric_contract import direction_from_normalized_triplet, float_finite_or_none
 
 log = logging.getLogger(__name__)
 

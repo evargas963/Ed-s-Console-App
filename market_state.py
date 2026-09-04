@@ -21,11 +21,11 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Optional
 
-from canonical_distances import canonical_nearest_distances
+from app.domain.canonical_distances import canonical_nearest_distances
 from math_snapshot_derive import derive_vwap_side  # RC-345/F21: one vwap-side authority
 from math_probabilities import OE_SPREAD_TIGHT_MAX
 from fusion_contract import canonical_provenance_is_tradable, fusion_is_authoritative
-from numeric_contract import float_finite_or_none
+from app.domain.numeric_contract import float_finite_or_none
 from timeframe_config import CANONICAL_TIMEFRAME
 from ml_horizon import PRIMARY_DECISION_HORIZONS
 from multi_horizon_decision import normalize_alignment_state
@@ -1671,7 +1671,7 @@ def build_market_state(
             ms.flat_prob_60c   = getattr(_pred, "flat_prob_60c", None)
             # RC-345 / F22: project each horizon's predicted triplet to a dominant via the ONE
             # authority so the UI renders it (no client Math.max). Only finite triplets project.
-            from numeric_contract import direction_from_normalized_triplet as _dom
+            from app.domain.numeric_contract import direction_from_normalized_triplet as _dom
             _pdbh: dict = {}
             for _hz in ("1c", "5c", "15c", "60c"):
                 _pu = float_finite_or_none(getattr(ms, f"up_prob_{_hz}", None))

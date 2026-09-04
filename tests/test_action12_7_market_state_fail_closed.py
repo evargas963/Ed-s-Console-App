@@ -171,7 +171,7 @@ def test_mhap_rows_confidence_none_not_zero_for_missing_assessment():
         if _missing:
             _conf = None
         else:
-            from numeric_contract import float_finite_or_none
+            from app.domain.numeric_contract import float_finite_or_none
 
             _conf = float_finite_or_none(getattr(_a, "confidence", None))
         _rows.append({"horizon": _hz, "confidence": _conf, "missing": _missing})

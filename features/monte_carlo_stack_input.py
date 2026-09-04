@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from numeric_contract import float_finite_or_none, float_positive_or_none
+from app.domain.numeric_contract import float_finite_or_none, float_positive_or_none
 
 REL_SPOT_TOL = 1e-5
 

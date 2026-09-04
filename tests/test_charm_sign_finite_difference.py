@@ -86,7 +86,7 @@ def test_scalar_equals_per_strike_dealer_signed_sum():
     from datetime import datetime, timedelta
 
     from math_levels import compute_charm_by_strike
-    from time_et import ET
+    from app.domain.time_et import ET
 
     exp = "2026-08-03"
     now = datetime(2026, 8, 3, 16, 0, tzinfo=ET) - timedelta(days=5)
@@ -110,7 +110,7 @@ def test_put_heavy_book_flips_the_dealer_signed_net():
     one, and neither may equal the gross."""
     from datetime import datetime, timedelta
 
-    from time_et import ET
+    from app.domain.time_et import ET
 
     exp = "2026-08-03"
     now = datetime(2026, 8, 3, 16, 0, tzinfo=ET) - timedelta(days=5)
@@ -187,7 +187,7 @@ def test_compute_net_charm_uses_bs_charm_faucet_not_inline():
 @pytest.mark.parametrize("label,S,dte", CASES)
 def test_compute_net_charm_sign_matches_finite_difference(label, S, dte):
     from datetime import datetime, timedelta
-    from time_et import ET
+    from app.domain.time_et import ET
     fd = _fd_calendar_charm(S, dte)
     # T now comes from the canonical calendar clock (time_to_expiry_years), so pin `now` to
     # exactly `dte` days before the 16:00 ET expiry — making compute_net_charm's T == dte/365,

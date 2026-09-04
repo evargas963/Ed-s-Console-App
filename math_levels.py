@@ -589,7 +589,7 @@ def parity_f_minus_spot_from_contracts(
         spot_f = float(spot)
     except Exception:
         return None
-    from numeric_contract import float_finite_or_none as _fin
+    from app.domain.numeric_contract import float_finite_or_none as _fin
     use = []
     for c in contracts or []:
         # single source: finite DTE (canonical reader rejects NaN/±inf that int(float()) raised on)
@@ -803,7 +803,7 @@ def _contract_inputs(ct: dict, now=None) -> tuple[float, float, float, float, fl
     against Schwab-reported gamma). Offline/replay callers pass `now` = the snapshot time.
     """
     from math_exposure_core import _f, schwab_iv_to_sigma
-    from time_et import time_to_expiry_years
+    from app.domain.time_et import time_to_expiry_years
 
     strike = _f(ct.get("strikePrice"))
     oi = _f(ct.get("openInterest"))
@@ -1212,7 +1212,7 @@ def infer_strike_increment(contracts: List[dict]) -> float | None:
     """
     if not contracts:
         return None
-    from numeric_contract import float_finite_or_none as _fin
+    from app.domain.numeric_contract import float_finite_or_none as _fin
     strikes_set: set[float] = set()
     for c in contracts:
         if not isinstance(c, dict):

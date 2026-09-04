@@ -12,7 +12,7 @@ from __future__ import annotations
 import re
 from datetime import datetime, timezone
 
-from time_et import (
+from app.domain.time_et import (
     GAMMA_PIN_SEMANTIC_MIXED,
     GAMMA_PIN_SEMANTIC_NET_GEX_PEAK,
     GAMMA_PIN_SEMANTIC_TERRAIN,

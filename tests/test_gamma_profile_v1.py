@@ -29,7 +29,7 @@ from math_levels import (
 
 import pytest
 from datetime import datetime
-import time_et
+from app.domain import time_et
 
 
 @pytest.fixture(autouse=True)

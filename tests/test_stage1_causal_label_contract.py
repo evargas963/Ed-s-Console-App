@@ -117,7 +117,7 @@ def test_source_row_mutation_changes_label():
 def test_session_authority_is_ts_utc_not_stored_clock():
     """The golden premarket bar (08:00 ET) must classify NON-RTH via the canonical
     ts_utc->DST-ET authority — never a stored et_hour column."""
-    from time_et import is_rth_ts_utc
+    from app.domain.time_et import is_rth_ts_utc
     assert is_rth_ts_utc(1767618000) is False  # 08:00 ET premarket
     assert is_rth_ts_utc(1767623700) is True   # 09:35 ET RTH
 

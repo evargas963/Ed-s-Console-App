@@ -175,7 +175,7 @@ def most_recent_trading_day_et(*, on_or_before: date | None = None) -> date:
     function the code validates against means the test can no longer disagree with the
     calendar, and there is no literal to rot.
     """
-    from time_et import ET, is_trading_day_et
+    from app.domain.time_et import ET, is_trading_day_et
 
     day = on_or_before or datetime.now(ET).date()
     for _ in range(14):          # the longest market closure gap is far under two weeks
@@ -221,7 +221,7 @@ def in_window_ts(hour: int = 10, minute: int = 0, *, span_minutes: int = 0) -> f
     `span_minutes` is the length of the bar series that will start here: it is checked
     against the window's end so a fixture cannot half-fit and fail on its tail alone.
     """
-    from time_et import COLLECT_WINDOW_END_MINS, COLLECT_WINDOW_START_MINS, ET
+    from app.domain.time_et import COLLECT_WINDOW_END_MINS, COLLECT_WINDOW_START_MINS, ET
 
     start = hour * 60 + minute
     if start <= COLLECT_WINDOW_START_MINS:
@@ -253,7 +253,7 @@ def most_recent_completed_session_et() -> date:
     loop RC-286's docstring names. The completion rule now lives in one place, so a fixture
     cannot anchor to an unfinished session by forgetting to ask.
     """
-    from time_et import COLLECT_WINDOW_END_MINS, ET
+    from app.domain.time_et import COLLECT_WINDOW_END_MINS, ET
 
     now = datetime.now(ET)
     day = most_recent_trading_day_et()

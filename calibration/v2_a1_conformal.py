@@ -279,7 +279,7 @@ def _sample_gate(n: int, min_required: int, operator_decision: str) -> dict[str,
 
 
 def _float_or_none(value: Any) -> float | None:
-    from numeric_contract import float_finite_or_none
+    from app.domain.numeric_contract import float_finite_or_none
 
     return float_finite_or_none(value)
 

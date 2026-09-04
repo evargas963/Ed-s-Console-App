@@ -84,7 +84,7 @@ def test_bare_index_root_gets_index_protections_f1():
     requested the full multi-year book (the RC-491 502). The width/date faucets now normalize
     their own input, and _fetch_state normalizes at its single chokepoint."""
     import server as srv
-    from instrument_identity import ticker_storage_key
+    from app.domain.instrument_identity import ticker_storage_key
 
     for bare, dollar in (("SPX", "$SPX"), ("RUT", "$RUT"), ("VIX", "$VIX"), ("NDX", "$NDX")):
         assert ticker_storage_key(bare) == dollar
@@ -180,7 +180,7 @@ def test_logger_quarantines_permanently_refused_symbol_f4(monkeypatch):
     backoff, never a permanent quarantine (fail-closed classification)."""
     import server as srv
     from fastapi import HTTPException
-    from instrument_identity import ticker_storage_key
+    from app.domain.instrument_identity import ticker_storage_key
 
     sym = "ZZQTEST"
     tk = ticker_storage_key(sym)

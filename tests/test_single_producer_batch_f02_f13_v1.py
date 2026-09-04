@@ -16,7 +16,7 @@ from pathlib import Path
 TURN_AUDIT_OWNS = [
     "static/index.html",
     "static/chart.html",
-    "time_et.py",
+    "app/domain/time_et.py",
     "server.py",
     "polling_adapter.py",
     "news_sentiment.py",
@@ -168,7 +168,7 @@ def test_rc345_valuation_T_has_one_authority() -> None:
     time_et.time_to_expiry_years (intraday ACT/365 to session close). No production greek
     site may feed a local whole-day `dte / 365` into a bs_* pricer — math_exposure_core's
     vanna faucet used to, disagreeing with the charm/gamma clock near expiry."""
-    from time_et import time_to_expiry_years
+    from app.domain.time_et import time_to_expiry_years
 
     assert callable(time_to_expiry_years)
 
@@ -223,7 +223,7 @@ def test_rc345_rth_clock_boundary_has_one_authority() -> None:
     """F09: the RTH clock boundary (09:30–16:00 ET) is defined once, in time_et
     (RTH_START_MINS/RTH_END_MINS, is_rth_ts_utc). lstm_data and db must alias that authority,
     never re-hardcode 9/30/16/0 or 570/960."""
-    import time_et
+    from app.domain import time_et
 
     assert time_et.RTH_START_MINS == 570 and time_et.RTH_END_MINS == 960
     assert time_et.is_rth_ts_utc  # canonical clock predicate exists
@@ -267,7 +267,7 @@ def test_rc345_rth_clock_boundary_has_one_authority() -> None:
 
     l1 = _read("planes/l1_thresholds.py")
     l1_code = "\n".join(ln for ln in l1.splitlines() if not ln.lstrip().startswith("#"))
-    assert "from time_et import" in l1 and "RTH_START_MINS" in l1_code and "RTH_END_MINS" in l1_code
+    assert "from app.domain.time_et import" in l1 and "RTH_START_MINS" in l1_code and "RTH_END_MINS" in l1_code
     assert "570" not in l1_code, "l1_thresholds re-hardcodes RTH open (F09)"
 
     a2 = _read("v2_decision/a2_lifecycle_sidecar.py")
@@ -292,7 +292,7 @@ def test_rc345_rth_clock_boundary_has_one_authority() -> None:
     # The JS projection is served at request time from time_et — a committed static
     # blob is a second authority and must not exist.
     from pathlib import Path as _Path
-    from time_et import rth_clock_js_source
+    from app.domain.time_et import rth_clock_js_source
     assert not (_Path("static") / "rth_clock_authority.js").exists(), (
         "committed static/rth_clock_authority.js is a second RTH clock (F09)"
     )
@@ -325,12 +325,12 @@ def test_rc345_rth_clock_boundary_has_one_authority() -> None:
     assert "mm >= 570" not in chart and "mm < 960" not in chart
 
     dh = _read("verification/daily_health.py")
-    assert "from time_et import" in dh and "RTH_START_MINS" in dh
+    assert "from app.domain.time_et import" in dh and "RTH_START_MINS" in dh
     assert "RTH_START_MINS = 570" not in dh
     dl = _read("research/pilot_step3/data_loader.py")
-    assert "from time_et import" in dl and "RTH_START_MINS = 570" not in dl
+    assert "from app.domain.time_et import" in dl and "RTH_START_MINS = 570" not in dl
     am = _read("audit_model_readiness.py")
-    assert "from time_et import" in am and "RTH_START_MINS" in am
+    assert "from app.domain.time_et import" in am and "RTH_START_MINS" in am
     assert ">= 570" not in am
     d2 = _read("tools/research/d2_build_dual_label_scratch_db.py")
     assert "RTH_START_MINS as RTH_START_MIN" in d2
@@ -510,7 +510,7 @@ def test_f11_api_state_volume_fallback_triple_after_lifespan() -> None:
     import server as srv
     from math_probabilities import compute_option_flow_imbalance
     from starlette.testclient import TestClient
-    from time_et import rth_clock_js_source
+    from app.domain.time_et import rth_clock_js_source
 
     exposures = {
         100.0: {
@@ -575,7 +575,7 @@ def test_f09_ui_clock_cannot_serve_stale_disk_or_prior_constants(monkeypatch) ->
     import pytest
 
     pytest.importorskip("fastapi")
-    import time_et
+    from app.domain import time_et
     import server as srv
     from pathlib import Path
     from starlette.testclient import TestClient
@@ -988,7 +988,7 @@ def test_rc345_dominant_direction_one_argmax_authority() -> None:
     carries that label (plus its probability) instead of re-implementing `max(probs, ...)` —
     two projections of the same vector could tie-break differently."""
     from math_probabilities import dominant_direction
-    from numeric_contract import direction_from_normalized_triplet
+    from app.domain.numeric_contract import direction_from_normalized_triplet
 
     for u, d, f in [(0.5, 0.3, 0.2), (0.2, 0.5, 0.3), (0.33, 0.33, 0.33), (0.1, 0.1, 0.8)]:
         dom, prob = dominant_direction(u, d, f)
@@ -1204,7 +1204,7 @@ def test_rc345_adversarial_residuals_real_paths() -> None:
     # F25 (foundation pointer): full canonical-ticker-identity adjudication lives in
     # test_rc345_f25_canonical_ticker_identity_one_producer below (SPX/$SPX + all producers).
     from active_bundle_contract import artifact_ticker_key
-    from instrument_identity import ticker_storage_key
+    from app.domain.instrument_identity import ticker_storage_key
     assert artifact_ticker_key("spy") == ticker_storage_key("spy") == "SPY"
 
     # F11: flow_imbalance_source is PERSISTED (SnapshotRow field + schema column + write).
@@ -1293,7 +1293,7 @@ def test_rc345_rth_clock_only_is_named_distinct_from_calendar() -> None:
     (desk_store.is_rth_trading_ts = clock AND trading-day) are explicitly distinct, named
     semantics — the clock-only one may not silently impersonate the calendar-aware truth for
     Desk readers."""
-    import time_et
+    from app.domain import time_et
     import desk_store
 
     assert callable(time_et.is_rth_ts_utc) and callable(desk_store.is_rth_trading_ts)
@@ -1375,7 +1375,7 @@ def test_rc345_f25_canonical_ticker_identity_one_producer():
     verifier/predictor/scheduler identity delegates to it, so a single instrument can never
     acquire two artifact identities. Behavioral + mutation-grade: the SPX/$SPX collapse is the
     load-bearing case (bare 'SPX' and '$SPX' both map to the on-disk '$SPX' bundle)."""
-    from instrument_identity import ticker_storage_key, BROKER_INDEX_BARE_ROOTS
+    from app.domain.instrument_identity import ticker_storage_key, BROKER_INDEX_BARE_ROOTS
     import training_cache as tc
     import active_bundle_contract as abc
     import ml_predict as mp
@@ -1440,7 +1440,7 @@ def test_rc345_f25_canonical_ticker_identity_one_producer():
             and not l.lstrip().startswith("'")
         )
         assert "ticker.upper()" not in body, f"{fname}: bare .upper() ticker-identity faucet reintroduced (F25)"
-        assert "from instrument_identity import ticker_storage_key" in _read(fname), (
+        assert "from app.domain.instrument_identity import ticker_storage_key" in _read(fname), (
             f"{fname} must consume the canonical ticker-identity authority")
 
     # ── Live-path proof: the real on-disk $SPX bundle resolves identically from bare 'SPX'. ──
@@ -1460,7 +1460,7 @@ def test_rc345_f25_train_writers_match_canonical_read_basenames():
     READ basename for XGB/LSTM/Transformer/meta across the SPX/$SPX negative control."""
     import ml_train, lstm_model, transformer_train
     from active_bundle_contract import bundle_role_filenames, meta_stack_artifact_filename
-    from instrument_identity import ticker_storage_key
+    from app.domain.instrument_identity import ticker_storage_key
 
     MATRIX = ["SPY", "QQQ", "IWM", "SPX", "$SPX", "spx", "$spx"]
     for tk in MATRIX:
@@ -1489,7 +1489,7 @@ def test_rc345_f25_train_writers_match_canonical_read_basenames():
 
     # source guard: the train writers must consume the canonical authority, no local .upper()
     for fname in ("ml_train.py", "lstm_model.py", "transformer_train.py"):
-        assert "from instrument_identity import ticker_storage_key" in _read(fname), (
+        assert "from app.domain.instrument_identity import ticker_storage_key" in _read(fname), (
             f"{fname} must import the canonical ticker-identity authority (F25 train-write)")
 
 
@@ -1498,7 +1498,7 @@ def test_rc345_f25_resume_and_arch_competition_identity_canonical():
     RESUME checkpoints and the arch_competition per-instrument state/log paths must use the SAME
     canonical ticker identity as the model artifacts, so bare 'SPX' and '$SPX' resolve to the same
     resume file and the same arch dir the writers/readers expect."""
-    from instrument_identity import ticker_storage_key
+    from app.domain.instrument_identity import ticker_storage_key
     from arch_competition.notification_delivery import (
         notification_delivery_log_path, notification_dedup_state_path)
     from arch_competition.operational_policy import operational_policy_artifact_path
@@ -1532,7 +1532,7 @@ def test_rc345_f25_resume_and_arch_competition_identity_canonical():
                   "arch_competition/operational_policy.py", "arch_competition/scheduler_integration.py",
                   "arch_competition/manual_control.py", "arch_competition/governance_visibility.py",
                   "arch_competition/live_drift_monitoring.py", "tools/feature_curation_gate.py"):
-        assert "from instrument_identity import ticker_storage_key" in _read(fname), (
+        assert "from app.domain.instrument_identity import ticker_storage_key" in _read(fname), (
             f"{fname} must consume the canonical ticker-identity authority (F25 sibling sweep)")
 
 
@@ -1765,7 +1765,7 @@ def test_rc345_f25_arch_state_writer_reader_share_canonical_key():
     by ticker_storage_key; server.py reads with ticker_storage_key. Behavioral: a state written
     under 'SPX' is retrieved under '$SPX' (and reverse). Mutation: a raw writer key OR raw reader
     key breaks the cross-alias retrieval."""
-    from instrument_identity import ticker_storage_key
+    from app.domain.instrument_identity import ticker_storage_key
 
     # The contract: writer key == reader key == canonical. Simulate the exact key derivation.
     arch_state: dict = {}
