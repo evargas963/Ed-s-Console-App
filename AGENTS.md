@@ -2,10 +2,15 @@
 
 **This file is SPECIFICATION. It enforces nothing.** Where it names a mechanism, the code is the
 authority on what that mechanism actually does; if the two disagree, the code is right and the
-sentence is a defect. Everything mechanical lives in three places and nowhere else: the guard
-chains in `.claude/settings.json` / `.cursor/hooks.json` (in session), `.pre-commit-config.yaml`
-(at commit), and required CI — `pytest-full` + `hardening`, which run
-`tools/check_institutional_correctness.py` and `tools/check_delta_adds_no_debt.py` (at merge).
+sentence is a defect. This is the ONE declaratory engineering-law authority: no other file in the
+repository carries engineering law, and every other rule surface (`CLAUDE.md`,
+`.cursor/rules/00-always.mdc`) is a pointer to this one. Everything mechanical lives in three places
+and nowhere else: the guard chains in `.claude/settings.json` / `.cursor/hooks.json` (in session —
+action and turn-end questions those seams can answer objectively), `.pre-commit-config.yaml` (at
+commit), and required CI — `pytest-full` + `hardening`, where `tools/check_delta_adds_no_debt.py`
+runs the ONE institutional gate, `tools/check_institutional_correctness.py`, against the whole branch
+delta (at merge). `docs/ARCHITECTURE.md` is the one architecture and location authority;
+`governance/root_cause_log.md` is the one defect ledger.
 
 Ed Console is a clean, institutional-grade trading intelligence system built on two convictions:
 
@@ -21,7 +26,33 @@ It does three things, in order:
 
 **Removal rule:** every file materially serves Collect, Find & Prove, or Decide, or is a supporting control that directly protects one — anything else is removed.
 
-**Placement rule:** the removal rule says what belongs in the repository; [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) says *where*. It is the canonical target architecture, and the repository is migrating toward it incrementally rather than by rewrite. When work materially touches an area, move the touched files, responsibilities, imports and ownership toward their canonical owner **when that movement is safe and cohesive** — do not create structure that moves away from the target, do not preserve misplaced code merely because tests import it there today, and do not broaden into unrelated repository-wide migration. If the target is wrong, impossible, or materially inferior for something you encounter, raise the specific evidence-based objection *before* building a competing design. The operator decides architectural amendments; agents do not silently change the architecture. Like the rest of this file, that is specification: no check enforces it.
+**Placement rule:** the removal rule says what belongs in the repository; [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) says *where*. It is the canonical target architecture, and the repository is migrating toward it incrementally rather than by rewrite. Law 9 below governs movement. If the target is wrong, impossible, or materially inferior for something you encounter, raise the specific evidence-based objection *before* building a competing design. The operator decides architectural amendments; agents do not silently change the architecture.
+
+## Institutional end-to-end execution law
+
+These fifteen statements are the engineering law of this repository. They use MUST and MUST NOT
+and contain no discretion. They apply to every implementation mission, including missions that
+change governance itself.
+
+1. EVERY implementation mission MUST correct the entire materially connected path, not only the reported symptom.
+2. EVERY material defect discovered in that connected path MUST be corrected in the same mission unless an objectively external blocker makes execution impossible. The blocker MUST be named in the ledger row as `BLOCKED` with the event that clears it; preference, scope convenience and remaining runway are not blockers.
+3. A material connected defect MUST NOT be classified as unrelated, pre-existing, follow-up, future work, or out-of-scope merely to permit the current mission to close. "Unrelated cleanup" means work on a path that is NOT materially connected to the change; a connected defect is never unrelated.
+4. A patch, bypass, workaround, compatibility path, duplicate producer, alternate computation, silent fallback, shadow state, temporary shim, special-case branch, compensating wrapper, duplicate lifecycle owner, or parallel authority MUST NOT be introduced when the canonical or root correction can solve the problem.
+5. If such non-institutional machinery already exists in the materially connected path, it MUST be deleted, consolidated, moved, or replaced as part of the repair.
+6. ONE semantic truth MUST have ONE computation authority. Every job — research, backtest, training, scoreboard, replay, backfill, frontend — imports and calls the live function; it MUST NOT reimplement it. Two invocations with different inputs are two producers even through the same function. "Validated in research" MUST mean "runs live" by construction.
+7. ONE responsibility MUST have ONE canonical owner.
+8. Tests MUST conform to the correct architecture. Production architecture MUST NOT remain wrong merely because existing tests depend on it. A test import or reference MUST NOT be treated as a production caller or as justification for retaining a superseded implementation.
+9. Materially touched misplaced responsibility MUST move toward `docs/ARCHITECTURE.md` in the same mission when it can be moved without rewriting an unrelated subsystem. If it cannot be moved because of a concrete technical dependency, the mission MUST name that exact dependency and the affected requirement remains NOT_PROVEN. "Large diff", "existing tests", "legacy location", "risk" and "time" are NOT valid exemptions. New production responsibility MUST NOT move away from the target: no new root-level production module, no structure the schematic does not name.
+10. A scoped sub-proof MUST NOT close a broader mission, lane, component, or institutional requirement.
+11. CI, tests, mergeability, agent claims, code-review summaries, and plausible explanations are evidence only. They MUST NOT establish PASS by themselves.
+12. PASS requires direct proof of the resulting implementation across every applicable materially connected layer — backend, frontend, SQL, replay, cache, backfill, training, research and compatibility paths where they exist.
+13. Any material FAIL = overall FAIL.
+14. Any material requirement not directly proven = overall NOT_PROVEN.
+15. No agent may weaken, reinterpret, waive, narrow, or silently create an exception to these requirements. Only the operator may explicitly authorize an exception, in chat, per case.
+
+**Cleanup is not done when the instances are gone.** Deleting an accumulated population without repairing the producer that creates it leaves the defect intact and the ledger claiming otherwise. Closure needs the population disposed of, the producer or its lifecycle repaired, and a control proving recurrence fails — demonstrated at the actual producer being repaired, in that change's own tests.
+
+**What is mechanically enforced, and its honest limit.** The law binds as spoken; the checks add detection for the objectively decidable part of it, all inside `tools/check_institutional_correctness.py` and judged on the change under commit, never on English in prose: `no_superseded_path_survives` (a production definition that this delta orphaned and left defined — laws 4, 5, 8); `changed_computation_leaves_no_twin` (this delta changed or added a function body whose identical copy still exists anywhere else, including research, tools, backfill and replay — law 6); `one_producer` and `domain_faucet_registry` (registered fields and the greek-formula faucet, backend and frontend — law 6); `no_new_root_production_module` (law 9); `institutional_closure_ledger` (a parent lane cannot close over a blocked dimension, and a CLOSED lane may cite only mechanisms that exist — laws 10, 11, 14); `authority_docs_cite_existing_mechanisms` (this file and the process documents may not name a tool that is not on the tree). A reimplementation that is not byte-identical, is not a registered field and is not a greek formula is NOT mechanically detectable; that limit is stated here so nobody reads a green gate as proof of law 6. `tools/mission_latch.py` requires one open ledger row before a production mutation and refuses a turn end while that row is unfinished and unblocked.
 
 ## Operating model
 
@@ -29,15 +60,11 @@ It does three things, in order:
 
 **An instruction binds when it is spoken.** A stated law is the obligation itself; a check or hook only adds detection, because agent compliance has a measured failure rate. Absence of a lock is never a licence — it only means the operator is doing the detecting. New mechanical locks are added when the operator asks for one, never manufactured from the words "law" or "mandate": that recipe is how governance sprawl grew, and it is retired. A control that decides a real question by matching English in free text is not enforcement — it fails correct work phrased differently and passes wrong work phrased well.
 
-**Find something broken → fix it.** Discovery creates the obligation to remediate through the full blast radius in the active session. A material defect is never disposed as queued / logged / TODO / follow-up / pre-existing / out-of-scope; if it genuinely cannot be fixed now, say exactly what blocks it, in plain sight. When implementation work exposes a material defect in the path being changed: inspect enough, establish the cause sufficiently, FIX, prove it, continue — do not spawn a separate audit mission when the cause is already sufficient to repair safely. Mechanism: `tools/mission_latch.py` — one work row open before a production mutation, and a turn may not end while that row is unfinished and unblocked.
-
-**Cleanup is not done when the instances are gone.** Deleting an accumulated population without repairing the producer that creates it leaves the defect intact and the ledger claiming otherwise. Closure needs the population disposed of, the producer or its lifecycle repaired, and a control proving recurrence fails — demonstrated at the actual producer being repaired, in that change's own tests.
-
 **Research, then act.** Before editing, read the reference the change rests on — the existing implementation, the direction doc, the vendor spec — and name it.
 
-**Conduct:** never present unverified claims as verified; name limits in the same sentence as the tool; do not leave the changed path internally inconsistent, and do not expand into unrelated cleanup; extend existing files over creating new ones; run the smallest relevant tests during development and the required suite before code sign-off, showing output.
+**Conduct:** never present unverified claims as verified; name limits in the same sentence as the tool; do not leave the changed path internally inconsistent; extend existing files over creating new ones; run the smallest relevant tests during development and the required suite before code sign-off, showing output.
 
-**Agent truth.** No false completion, no promise-without-execution, no approximate counts presented as exact, no model-family bait-and-switch. Operator halt words: `STOP` / `PAUSE` / `HANG IT UP` / `DO NOT CONTINUE`.
+**Agent truth.** No false completion, no promise-without-execution (a stated next action is performed before the turn ends, or its external blocker is named), no approximate counts presented as exact (`COUNT(*)` is exact; a sample, a `MAX(rowid)` or a recycled figure is prefixed `APPROX:` in the same sentence), no model-family bait-and-switch (name the exact object scored). Operator halt words: `STOP` / `PAUSE` / `HANG IT UP` / `DO NOT CONTINUE`.
 
 ## Correctness laws
 
@@ -48,15 +75,13 @@ There is no third form. Plausible-sounding domain lore is `[UNVERIFIED]` until m
 **Fair-method clause.** A measurement is evidence only if its method cannot manufacture the result — equal-width comparison buckets, per-unit normalisation alongside totals, stated sample and selection rule, and no discarding of the inconvenient subset. A flawed check is more dangerous than no check, because it launders a false claim as verified.
 Claims that cannot be measured now go in `governance/unproven_register.md`. Staged governance/report markdown adding a numeric finding is checked by `check_measured_claims_cite_evidence`; live chat prose has no hook and is bound by the law itself.
 
-**ONE computation.** Every job — research, backtest, training, scoreboard — imports and calls the live functions; it never reimplements them. Two invocations with different inputs are two producers even through the same function. "Validated in research" must mean "runs live" by construction.
-
 **Decision-path admission.** No component may influence TRADE — or any output that authorizes or shapes exposure — unless `config/decision_path_admissions.json` records it ADMITTED with evidence (preregistration, OOS results, costs, baselines, scope, leakage review) and an operator admission decision. Registry starts empty; unadmitted influence → WAIT. Enforced by `decision_gate.py` in `call_engine.compute_call`, and by `check_decision_path_wired`.
 
 **Find & Prove substance (RC-210).** Staged experiment reports claiming significance/Sharpe/alpha require `n_trials` + a multiple-testing method, or `[UNVERIFIED]`. Research runners must not use plain `KFold`/`train_test_split` on labeled financial paths without purge/embargo, or `# leakage-ok:`. CONFIRMATORY claims in `research/**` require a resolvable prereg path.
 
-**UNIVERSAL ticker scope (RC-160).** Collect, Find & Prove, Chart, prompts and reports default to the enrolled universe — never SPY-only or sentinel-only framed as complete. Narrow samples require `OUT-OF-SCOPE:` (or `# universal-scope-ok:`) with a reason; sentinel-clean ≠ operable-clean. Enforced by `check_universal_ticker_scope` and `tools/universal_scope_lock.py` behind the PreToolUse guard.
+**UNIVERSAL ticker scope (RC-160).** Collect, Find & Prove, Chart, prompts and reports default to the enrolled universe — never SPY-only or sentinel-only framed as complete. Narrow samples require `OUT-OF-SCOPE:` (or `# universal-scope-ok:`) with a reason; sentinel-clean ≠ operable-clean, and a sentinel-only clean claim is named `SENTINEL_*`, never `OPERABLE_SURFACE_CLEAN`. Enforced by `check_universal_ticker_scope` and `tools/universal_scope_lock.py` behind the PreToolUse guard.
 
-**Chart-intent + next-RTH residuals (RC-163).** Collect/accrual finish language cannot soft-out Chart render as OUT-OF-SCOPE without an open residual or a proven consumer — banking ≠ render Done. Forward residuals must not hardcode a weekday-named live-proof label when the next RTH is a different weekday. Escapes: `# chart-intent-ok:` / `# next-rth-ok:`.
+**Chart-intent + next-RTH residuals (RC-163).** Collect/accrual finish language cannot soft-out Chart render as OUT-OF-SCOPE without an open residual or a proven consumer — banking ≠ render Done. Forward residuals must not hardcode a weekday-named live-proof label when the next RTH is a different weekday; compute it with `time_et.is_trading_day_et` and state the ISO date with the weekday. Escapes: `# chart-intent-ok:` / `# next-rth-ok:`. Enforced by `check_chart_intent_and_next_rth` and `tools/chart_intent_lock.py` behind the PreToolUse guard.
 
 **Honesty / no dodge (RC-209).** Do not lie directly or by omission; do not dodge a plain yes/no or score question; do not substitute deflection for requested deliverables; do not claim a mechanical lock via `.md`/`.mdc`. `tools/honesty_guard.py` blocks detectable dodge and MD-as-lock patterns on Stop.
 
@@ -64,9 +89,9 @@ Claims that cannot be measured now go in `governance/unproven_register.md`. Stag
 
 **Backlog.** Honest PARTIAL with a tracker is legal; mass-fake CLOSE is not. A due date moves only when the row is blocked outside this repository, recorded as `RE-DATED <old>-><new>: BLOCKED_ON_*` — "need more time" is not a blocker.
 
-**Agent operating process (RC-217; `governance/AGENT_OPERATING_PROCESS_V1.md` carries the detail).** Measure before claiming, land small, never kill a pre-commit mid-hook, and distinguish LIVE from DISK until a restart is proven. PreToolUse blocks destructive-git forms, piped commits, and edits targeting the production checkout. **Live-checkout invariant:** the production `EdWebConsole` checkout is `main == origin/main` only; development runs on the separate `EdWebConsole-dev` worktree.
+**Agent operating process (RC-217; `governance/AGENT_OPERATING_PROCESS_V1.md` carries the detail).** Measure before claiming, land small, never kill a pre-commit mid-hook, and distinguish LIVE from DISK until a restart is proven. PreToolUse blocks destructive-git forms, piped commits, and edits targeting the production checkout. **Live-checkout invariant:** the production `EdWebConsole` checkout is `main == origin/main` only; development runs on the separate `EdWebConsole-dev` worktree. **Debt:** no new or worsened enforced debt, and every material defect in the connected mission path is fixed end to end (law 2); `tools/check_delta_adds_no_debt.py` is the floor and there is no retirement ratio.
 
-**Immune rule.** Any proposed new mechanism must prove it prevents a real, observed failure that the page, the question, or an existing gate cannot already handle. If two controls protect the same failure, one of them goes.
+**Immune rule.** Any proposed new mechanism must prove it prevents a real, observed failure that the page, the question, or an existing gate cannot already handle. If two controls protect the same failure, one of them goes. Retiring an enforced check is the two-step contract in `governance/retired_checks.md`.
 
 ## Running it
 

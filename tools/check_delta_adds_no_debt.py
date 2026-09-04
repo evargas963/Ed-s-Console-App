@@ -182,32 +182,43 @@ def index_candidate() -> str:
     return made.stdout.strip()
 
 
-def _stage_the_delta(wt: Path, ref: str) -> None:
-    """Make the candidate's own change appear STAGED inside its worktree.
+def _stage_the_delta(wt: Path, ref: str, base: str) -> None:
+    """Make the candidate's WHOLE change against `base` appear STAGED inside its worktree.
 
     RC-391, second order. Staged-scope enforced checks ask `git diff --cached` what is
     being committed. In a materialised worktree HEAD is the candidate and the index matches it, so
     that question answers EMPTY and those checks fall silent on both sides. They would then
     be structurally incapable of failing at the very seam they were written for, which is a
     check removed by accident rather than by edit — the thing the roster comparison exists
-    to refuse. `reset --soft <parent>` moves HEAD back one commit and leaves the index
-    holding the candidate tree, so `git diff --cached` is EXACTLY the change under commit.
+    to refuse. `reset --soft <fork point>` moves HEAD back to where the candidate left the
+    base and leaves the index holding the candidate tree, so `git diff --cached` is EXACTLY
+    the change this delta lands on the base.
+
+    RC-516: the fork point is `merge-base(base, ref)`, not `ref^`. With `ref^` a multi-commit
+    branch was judged on its LAST commit only, so a delta-scoped check (a superseded path
+    orphaned in commit 2 of 5, a closure row landed one commit before its code) saw a slice
+    of the change and passed the rest unread. On the CI merge ref the two coincide (the merge
+    commit's first parent is main); locally they did not, and local proof must match CI.
+    A candidate that IS the base (nothing to land) stages nothing.
     """
-    parent = _run(["git", "rev-parse", "--verify", "--quiet", f"{ref}^"], cwd=wt)
-    if parent.returncode != 0 or not parent.stdout.strip():
+    fork = _run(["git", "merge-base", base, ref], cwd=wt)
+    if fork.returncode != 0 or not fork.stdout.strip():
         raise RuntimeError(
-            f"cannot resolve the parent of {ref}, so the change under commit cannot be "
-            f"staged for the checks that ask what is being committed: {parent.stderr[-200:]}")
-    reset = _run(["git", "reset", "--soft", parent.stdout.strip()], cwd=wt)
+            f"cannot resolve the fork point of {ref} against {base}, so the change under "
+            f"commit cannot be staged for the checks that ask what is being committed: "
+            f"{fork.stderr[-200:]}")
+    reset = _run(["git", "reset", "--soft", fork.stdout.strip()], cwd=wt)
     if reset.returncode != 0:
         raise RuntimeError(f"cannot stage the delta in the worktree: {reset.stderr[-300:]}")
 
 
-def enforced_counts(ref: str, stage_delta: bool = False) -> tuple[dict[str, int], str, set[str]]:
+def enforced_counts(ref: str, stage_delta: bool = False,
+                    base: str = "origin/main") -> tuple[dict[str, int], str, set[str]]:
     """({check: violations}, short sha, enforced roster) measured in a CLEAN worktree.
 
     `stage_delta` is set for the CANDIDATE side only: the base carries no change, so its
-    staged set is correctly empty, while the candidate's must be the change under commit.
+    staged set is correctly empty, while the candidate's must be its whole change against
+    `base` (RC-516).
     """
     sha = _run(["git", "rev-parse", "--short", ref]).stdout.strip()
     with tempfile.TemporaryDirectory(prefix="deltagate-") as tmp:
@@ -217,7 +228,7 @@ def enforced_counts(ref: str, stage_delta: bool = False) -> tuple[dict[str, int]
             raise RuntimeError(f"cannot materialise {ref}: {add.stderr[-300:]}")
         try:
             if stage_delta:
-                _stage_the_delta(wt, ref)
+                _stage_the_delta(wt, ref, base)
             proc = _run([sys.executable, "tools/check_institutional_correctness.py",
                          "--enforced-only"], cwd=wt)
             # FAIL CLOSED (Cursor hole audit H1). As first shipped this returned
@@ -475,7 +486,8 @@ def main(argv: list[str] | None = None) -> int:
     else:
         base_counts, base_sha, base_roster = enforced_counts(args.base)
         _write_base_cache(cache_key, base_counts, base_sha, base_roster)
-    head_counts, head_sha, head_roster = enforced_counts(candidate_ref, stage_delta=True)
+    head_counts, head_sha, head_roster = enforced_counts(
+        candidate_ref, stage_delta=True, base=args.base)
     # TEARDOWN 2026-08-24: declarations are read from the BASE, never the candidate —
     # a delta cannot mint the authorization for its own protection-removal (two-step
     # contract: declare on main first, remove in a later delta).

@@ -20,8 +20,9 @@ from ml_horizon import ALL_GOVERNED_HORIZONS, ML_HORIZON_SLUGS
 
 # ── Authoritative inference stack (operator binding 2026-06-04) ──
 # All seven layers MUST appear in ablation manifests, stack eval, and agent docs.
-# Do not omit a layer when describing the ML stack (mechanical lock:
-# check_full_stack_models_contract in tools/check_fix_everything_we_touch.py).
+# Do not omit a layer when describing the ML stack. (The static lock that once policed
+# this, check_full_stack_models_contract, was retired with its enforcement stack in
+# 41360574; the tuple below is the ONE authority and tests import it directly.)
 FULL_STACK_MODEL_LAYERS: tuple[str, ...] = (
     "xgb",
     "lstm",

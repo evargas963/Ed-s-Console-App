@@ -1,10 +1,8 @@
 # ACTIVE_PROGRAM.md — what we are doing now
 
-**Updated:** 2026-08-24 — Architecture A teardown: **no standing roles** (the PM/writer/auditor table this file carried is retired). The operator directs each session in chat; rehab law lives in `governance/REHAB_PROGRAM.md`. Daily rehab scan: `tools/rehab_daily_scan.py` → `reports/rehab_latest.md` (recommend-only).
-**Charter:** `AGENTS.md` (Collect / Find & Prove / Decide). **Ledger:** `OPEN_ITEMS.md`.
-**Agent stop authority:** only operator `STOP` / `PAUSE` / `HANG IT UP` / `DO NOT CONTINUE`.
+**This file is a STATUS / WORK RECORD only.** It carries no law: engineering law is `AGENTS.md`, the multi-faucet rehab procedure is `governance/REHAB_PROGRAM.md`, the defect ledger is `governance/root_cause_log.md`, and `OPEN_ITEMS.md` is the acceptance specification. Statuses here are record, not standing authority — the operator directs each session in chat (2026-08-24 teardown: no standing roles). Daily rehab scan: `tools/rehab_daily_scan.py` → `reports/rehab_latest.md` (recommend-only).
 
-**Rehab spine:** repo-wide **multi-faucet** audit/find/fix end-to-end, no patches (`REHAB_PROGRAM.md` RH-F1 primary; operator-invoked).  
+**Rehab spine (record):** repo-wide **multi-faucet** audit/find/fix (`governance/REHAB_PROGRAM.md` RH-F1 primary; operator-invoked).  
 **Last rehab slice worked (2026-08-24):** **levels-tierb-session-collapse-v1** (census concepts 2–5: vwap/ORB/overnight/today VA) — was armed behind quiet-window PASS with `log_progressed=true`; prior: census `4033a33f`, quiet-gate honesty `af0c4897`, Phase-1 prior_day `91d38623`; OUT-OF-SCOPE that slice: charm, clocks, spot, chart `computeDaily` B3. The operator names any next slice in chat.
 
 ## Operator NOW (top of the backlog — the operator directs when it runs)
@@ -186,9 +184,11 @@ DOM eye-candy at minutes horizons.
 
 Baseline banked: SPY draft-cell validation (F1 S1-S5), F2 175-cell grid CLEAN NULL
 (`054dbd35`), meta-XGB v1 price-only KILL-family with clean controls (`917fbda8`).
-**Rule (binding): every expansion step runs the exact F2 flow — frozen prereg, S3
-data gates, economic evaluator (Holm + DSR + 2x-cost + sign-shuffle placebo hard
-halt), two-way audit. No unverified asset or horizon ever touches serving.**
+Protocol on record (operator directive 2026-07-24; the Find & Prove law itself is
+`AGENTS.md` RC-210 and Decision-path admission): every expansion step runs the exact F2
+flow — frozen prereg, S3 data gates, economic evaluator (Holm + DSR + 2x-cost +
+sign-shuffle placebo hard halt), two-way audit. No unverified asset or horizon touches
+serving.
 
 | Phase | Study | State | Notes |
 |---|---|---|---|
@@ -201,7 +201,7 @@ UI provenance migration (`bayesian_fusion` -> `meta_xgb_tb_v1`) stays PARKED unt
 meta study passes the F2 gate AND operator admission; spec + literal inventory live in
 the 2026-07-23/24 session log and the migration is one atomic commit when authorized.
 
-## Standing runtime law (mechanically enforced — do not restate, just don't break)
+## Runtime locks in force (record of where each lives — the law is `AGENTS.md`)
 
 ### Feature placement matrix
 

@@ -36,17 +36,17 @@ def test_verdicts_check_screams_on_an_unproven_kill():
     # text writes flapped the ledger's EOLs on every run.
     orig_bytes = log.read_bytes()
     orig = log.read_text(encoding="utf-8")
-    baseline = len(C.check_verdicts_declare_their_power())
+    baseline = len(C._verdicts_declare_their_power_violations())
     try:
         with io.open(log, "w", encoding="utf-8", newline="\n") as fh:
             fh.write(orig + "| RC-9999 | CLOSED | 2026-07-27 | 2026-08-03 | t | w | "
                             "The lead is RETIRED - it does not replicate. |\n")
-        injected = len(C.check_verdicts_declare_their_power())
+        injected = len(C._verdicts_declare_their_power_violations())
     finally:
         log.write_bytes(orig_bytes)
     assert log.read_bytes() == orig_bytes, "ledger restore was not byte-faithful"
     assert injected == baseline + 1, "an unproven RETIRED verdict was not flagged"
-    assert len(C.check_verdicts_declare_their_power()) == baseline
+    assert len(C._verdicts_declare_their_power_violations()) == baseline
 
 
 def test_verdicts_check_accepts_a_powered_verdict():
@@ -54,12 +54,12 @@ def test_verdicts_check_accepts_a_powered_verdict():
     # RC-373 (RC-372 class): byte-faithful restore, newline-pinned injection write.
     orig_bytes = log.read_bytes()
     orig = log.read_text(encoding="utf-8")
-    baseline = len(C.check_verdicts_declare_their_power())
+    baseline = len(C._verdicts_declare_their_power_violations())
     try:
         with io.open(log, "w", encoding="utf-8", newline="\n") as fh:
             fh.write(orig + "| RC-9999 | CLOSED | 2026-07-27 | 2026-08-03 | t | w | "
                             "RETIRED: n=412, 95% CI [-0.31,-0.12], power 0.86. |\n")
-        assert len(C.check_verdicts_declare_their_power()) == baseline
+        assert len(C._verdicts_declare_their_power_violations()) == baseline
     finally:
         log.write_bytes(orig_bytes)
     assert log.read_bytes() == orig_bytes, "ledger restore was not byte-faithful"
@@ -108,7 +108,7 @@ def test_rc_citation_check_screams_on_a_phantom_id(tmp_path, monkeypatch):
     (fake / "tools" / "zz_probe.py").write_text('"""cites RC-4242 which does not exist."""\n',
                                                 encoding="utf-8")
     monkeypatch.setattr(M, "REPO", fake)
-    bad = M.check_rc_citations_resolve()
+    bad = M._rc_citations_resolve_violations()
     assert any("RC-4242" in str(b) for b in bad), (
         "a phantom RC citation in source was not flagged — the check is inert"
     )
@@ -124,7 +124,7 @@ def test_rc_citation_check_accepts_a_resolvable_id(tmp_path, monkeypatch):
     (fake / "tools" / "zz_probe.py").write_text('"""cites RC-4242 which DOES exist."""\n',
                                                 encoding="utf-8")
     monkeypatch.setattr(M, "REPO", fake)
-    assert not [b for b in M.check_rc_citations_resolve() if "RC-4242" in str(b)]
+    assert not [b for b in M._rc_citations_resolve_violations() if "RC-4242" in str(b)]
 
 
 def test_inert_producer_check_screams_on_a_fatal_run_log(tmp_path, monkeypatch):
@@ -179,12 +179,12 @@ def test_rc_log_row_schema_control(tmp_path, monkeypatch):
     bad = "| RC-901 | CLOSED | 2026-07-28 | 2026-07-28 | desc | whys | ev with |pipe| bars |"
     log.write_text(good + "\n" + bad + "\n", encoding="utf-8")
     monkeypatch.setattr(M, "REPO", fake)
-    hits = M.check_rc_log_rows_keep_schema()
+    hits = M._rc_log_rows_keep_schema_violations()
     assert len(hits) == 1 and "9 cells" in str(hits[0]), (
         f"the 9-cell row was not flagged (or the clean row was): {hits}"
     )
     log.write_text(good + "\n", encoding="utf-8")
-    assert M.check_rc_log_rows_keep_schema() == [], "a clean 7-cell log must pass"
+    assert M._rc_log_rows_keep_schema_violations() == [], "a clean 7-cell log must pass"
 
 
 # RC-470: the close-contract controls (test_close_contract_controls and
@@ -251,9 +251,9 @@ def test_audit_answer_check_control(tmp_path, monkeypatch):
     log = tmp_path / "governance" / "root_cause_log.md"
     log.write_text("| RC-1 | CLOSED | 2026-01-01 | 2026-01-01 | d | w | f |" + chr(10), encoding="utf-8")
     monkeypatch.setattr(M, "REPO", tmp_path)
-    assert M.check_adversarial_audits_are_answered(), "an unanswered audit was not flagged"
+    assert M._adversarial_audits_are_answered_violations(), "an unanswered audit was not flagged"
     log.write_text("| RC-1 | CLOSED | 2026-01-01 | 2026-01-01 | d | w | audit v99 processed |" + chr(10), encoding="utf-8")
-    assert M.check_adversarial_audits_are_answered() == [], "a cited audit was wrongly flagged"
+    assert M._adversarial_audits_are_answered_violations() == [], "a cited audit was wrongly flagged"
 
 
 # RC-504 (operator 2026-09-02): test_defect_report_requires_probe_artifact was REMOVED with
@@ -282,11 +282,11 @@ def test_citation_check_fires_when_numbers_carry_no_command(tmp_path, monkeypatc
     monkeypatch.setattr(M, "REPO", tmp_path)
 
     log.write_text(_citation_row("Verified by careful review.") + "\n", encoding="utf-8")
-    assert len(M.check_rc_numeric_claims_cite_a_command()) == 1, (
+    assert len(M._rc_numeric_claims_cite_a_command_violations()) == 1, (
         "numbers with no citation were not flagged — the rule went inert"
     )
     log.write_text(_citation_row("Verified `by careful review`.") + "\n", encoding="utf-8")
-    assert len(M.check_rc_numeric_claims_cite_a_command()) == 1, (
+    assert len(M._rc_numeric_claims_cite_a_command_violations()) == 1, (
         "backticked PROSE satisfied the citation rule — any text would buy a free pass"
     )
 
@@ -309,7 +309,7 @@ def test_citation_check_accepts_the_repos_live_probe_forms(tmp_path, monkeypatch
         "Measured by `python -m pytest tests/test_terrain_engine_v1.py -q`.",
     ):
         log.write_text(_citation_row(evidence) + "\n", encoding="utf-8")
-        assert M.check_rc_numeric_claims_cite_a_command() == [], (
+        assert M._rc_numeric_claims_cite_a_command_violations() == [], (
             f"a re-runnable citation was rejected — false reject remains: {evidence}"
         )
 

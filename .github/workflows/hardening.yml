@@ -75,13 +75,17 @@ jobs:
       #   unchanged inherited debt       -> PASS
       #   improvement                    -> PASS
       # One implementation, one CHECKS roster, two callers — no second delta tool.
+      #
+      # RC-516: the delta stages the WHOLE branch (merge-base..candidate), so every
+      # delta-scoped enforced check — the institutional end-to-end law checks, the closure
+      # ledger, the faucet registries — judges the full PR, not its last commit. The former
+      # standalone "institutional closure gate" step is now the enforced check
+      # `institutional_closure_ledger` inside the same catalog; one owner, one roster.
       - name: institutional debt delta (same owner as local pre-commit)
         run: |
           git fetch --no-tags origin main
           python tools/check_delta_adds_no_debt.py --base origin/main
 
-      - name: institutional closure gate (no inflated parent closures)
-        run: python tools/check_institutional_closure_gate.py
       - name: no-grep subprocess
         run: python tools/check_no_grep_subprocess.py
 

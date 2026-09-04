@@ -66,7 +66,7 @@ def test_every_status_in_the_live_ledger_is_declared():
 
 
 def test_the_live_ledger_passes_its_own_vocabulary_check():
-    assert K.check_rc_status_vocabulary() == []
+    assert K._rc_status_vocabulary_violations() == []
 
 
 # --------------------------------------------------- negative controls -----
@@ -85,7 +85,7 @@ def test_negative_control_undeclared_status_is_refused(tmp_path, monkeypatch, to
     log.parent.mkdir(parents=True)
     log.write_text(_row(token) + "\n", encoding="utf-8")
     monkeypatch.setattr(K, "REPO", tmp_path, raising=True)
-    violations = K.check_rc_status_vocabulary()
+    violations = K._rc_status_vocabulary_violations()
     assert len(violations) == 1, f"{token!r} slipped through the vocabulary lock"
     assert token in violations[0].msg
 
@@ -101,7 +101,7 @@ def test_cell_padding_is_stripped_not_treated_as_a_new_token(tmp_path, monkeypat
     log.parent.mkdir(parents=True)
     log.write_text(_row("CLOSED") + "\n", encoding="utf-8")
     monkeypatch.setattr(K, "REPO", tmp_path, raising=True)
-    assert K.check_rc_status_vocabulary() == []
+    assert K._rc_status_vocabulary_violations() == []
 
 
 @pytest.mark.parametrize("token", ["OPEN", "CLOSED", "REMEDIATED"])
@@ -111,7 +111,7 @@ def test_negative_control_declared_status_is_allowed(tmp_path, monkeypatch, toke
     log.parent.mkdir(parents=True)
     log.write_text(_row(token) + "\n", encoding="utf-8")
     monkeypatch.setattr(K, "REPO", tmp_path, raising=True)
-    assert K.check_rc_status_vocabulary() == []
+    assert K._rc_status_vocabulary_violations() == []
 
 
 def test_negative_control_non_rc_lines_are_ignored(tmp_path, monkeypatch):
@@ -125,7 +125,7 @@ def test_negative_control_non_rc_lines_are_ignored(tmp_path, monkeypatch):
         + _row("CLOSED") + "\n",
         encoding="utf-8")
     monkeypatch.setattr(K, "REPO", tmp_path, raising=True)
-    assert K.check_rc_status_vocabulary() == []
+    assert K._rc_status_vocabulary_violations() == []
 
 
 def test_negative_control_the_original_bypass_is_now_two_sided(tmp_path, monkeypatch):
@@ -159,7 +159,7 @@ def test_negative_control_the_original_bypass_is_now_two_sided(tmp_path, monkeyp
     log.parent.mkdir(parents=True)
     log.write_text(bypass + "\n", encoding="utf-8")
     monkeypatch.setattr(K, "REPO", tmp_path, raising=True)
-    assert len(K.check_rc_status_vocabulary()) == 1, (
+    assert len(K._rc_status_vocabulary_violations()) == 1, (
         "the bypass token must now be refused by the vocabulary lock")
 
 
@@ -178,8 +178,9 @@ def test_check_is_registered_and_enforced():
 
     Consolidated 2026-08-24 (governance/retired_checks.md): the vocabulary validation now
     runs INSIDE root_cause_log, so the survivor must be registered ENFORCED and its fold
-    table must still name this validator's helper. The injection controls above keep
-    driving the real logic through the check_rc_status_vocabulary wrapper."""
+    table must still name this validator's helper. The injection controls above drive the
+    folded validator `_rc_status_vocabulary_violations` directly — the test-only
+    `check_rc_status_vocabulary` wrapper was removed under AGENTS.md law 8 (RC-516)."""
     import inspect
 
     registered = {name: enforced for name, fn, enforced in K.CHECKS}

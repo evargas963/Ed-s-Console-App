@@ -8,7 +8,7 @@
     {
       "label": "POINT_IN_TIME_FEATURE_CORRECTNESS",
       "exact_code_paths": [
-        "features/inference_snapshot.py::build_inference_snapshot_v1_from_db_row (single-row pure: consumes ONE db_row dict, no DB/live access \u2014 verified by read 2026-07-11)",
+        "features/inference_snapshot.py::build_inference_snapshot_v1_from_db_row (single-row pure: consumes ONE db_row dict, no DB/live access — verified by read 2026-07-11)",
         "features/db_feature_adapter.py::build_db_mvp_feature_row",
         "ml_scheduler.py::_evaluate_parallel_on_full_rth / _evaluate_cascade_on_full_rth (row selection + as_of_ts)",
         "train_all.py::preload_historical_db_for_eval (history window bounds)",
@@ -35,7 +35,7 @@
       "exact_code_paths": [
         "features/* rolling stats (pa_* columns are produced live, replayed from archive)",
         "ml_train.py / lstm_data.py label + window construction",
-        "realized_contract_eval.py (exit-only forward use \u2014 PROVEN for that path @ e400570)"
+        "realized_contract_eval.py (exit-only forward use — PROVEN for that path @ e400570)"
       ],
       "existing_tests": [
         "tests/test_realized_contract_eval_layer5.py (future-row invariance, replay path only)"
@@ -77,7 +77,7 @@
     {
       "label": "MODEL_VERSION_PINNING",
       "exact_code_paths": [
-        "ml_scheduler.py::_evaluate_* (explicit mp.MODEL_DIR pin + restore + horizon slug \u2014 source-locked @ 54f8a34)",
+        "ml_scheduler.py::_evaluate_* (explicit mp.MODEL_DIR pin + restore + horizon slug — source-locked @ 54f8a34)",
         "ml_predict.py::_model_dir_for_ticker (MODEL-04 strict serve gate)",
         "models/active/* current pointers (live serving)",
         "active_bundle_contract.py::verify_artifact_against_manifest (ML-PIPE Item 4 canonical pre-deserialization boundary)",
@@ -89,7 +89,7 @@
       "existing_tests": [
         "tests/test_realized_contract_eval_layer5.py::test_scheduler_eval_pins_and_restores_model_dir",
         "tests/test_model_contract_enforcement.py (ML-PIPE Item 4 adversarial section: hash mutation, manifest mutation, identity substitution, path traversal, cache invalidation, strict-absence, universality matrix)",
-        "tests/test_check_fix_everything_we_touch.py (artifact_load_boundary recurrence lock: ungoverned-site detection, semantic equivalents, ordering)",
+        "[RETIRED 41360574, 2026-07-16] the artifact_load_boundary recurrence lock that lived in the deleted check_fix_everything_we_touch stack; the surviving executable lock is tests/test_model_contract_enforcement.py::test_item4_all_governed_loaders_call_verifier_before_deserialization",
         "tests/test_ml_item4_fleet_migration.py (21 tests: evidence classes, classification matrix all horizons, dry-run purity, repromotion/reconstruction/quarantine/rollback, fleet recompute, policy strict default, no-legacy-reopen, TTL rehash)"
       ],
       "what_existing_tests_prove": "ML-PIPE Item 4 sub-lane: serve loaders verify artifact bytes against the bundle integrity manifest BEFORE pickle/torch deserialization, fail closed with stable reason codes, cache invalidates on artifact/manifest mutation, and an AST recurrence lock blocks new ungoverned deserialization sites. NOT yet proven: legacy bundles (no manifest) remain LEGACY_UNVERIFIED under MODEL-04 authorization; historical-replay mutate-then-replay invariance across the full eval path; end-to-end version pinning parent.",
@@ -97,17 +97,17 @@
         "pre-schema historical rows are permanently UNRECOVERABLE_LEGACY (NULL identity by policy; no backfill ever) - the parent can never claim complete historical coverage",
         "executable replay availability, environment/dependency identity, stochastic seed identity, numerical determinism, and output equivalence remain NOT_PROVEN (only artifact-byte, configuration, and calibration identity are proven)"
       ],
-      "locally_executable_proof": "python -m pytest tests/test_model_contract_enforcement.py tests/test_check_fix_everything_we_touch.py -q (Item 4 sections)",
+      "locally_executable_proof": "python -m pytest tests/test_model_contract_enforcement.py -q (Item 4 sections; the test_check_fix_everything_we_touch companion was deleted in 41360574)",
       "external_proof_required": "none",
       "root_cause_if_defective": "ROOT CAUSE FIXED (Item 4): promotion copied artifact files and dropped the run manifest, so no manifest existed in active bundle dirs and loaders had nothing to verify against; loaders deserialized without hash verification",
       "fix_status": "ITEM_4_FLEET_MIGRATION_LANDED (2026-07-12): all 88 active bundles migrated to manifest verification (36 repromoted from governed candidates, 48 reconstructed from independent evidence [candidate sha256 / git-HEAD blob identity], 4 unproven-byte bundles replaced from complete governed candidates with rollback backups, 0 quarantined/retrain-required); committed policy strict_default=true with legacy allowance disabled+expired (env cannot reopen); verification-cache TTL rehash closes the size+mtime_ns-preserving mutation gap (bounded by ED_ARTIFACT_REVERIFY_TTL_SECONDS, default 900). Parent stays open on per-row replay byte persistence only. || ITEM_4_CLOSED_WITH_EVIDENCE (2026-07-13, final main 5947f79020bc): execution_identity_v1 landed end-to-end (PR #34 principal + PR #35 residuals) - per-row identity for all NEW model-derived production rows is fail-closed by construction; historical replay byte pinning proven at the byte/config/calibration levels; parent stays NOT_PROVEN on the two modes above || ITEM_4_REOPENED (2026-07-13 RTH): first live session contradicted complete decision-cycle persistence (production_decision_records +0; anchor-ordering defect) - fix branch exec-identity-decision-surface-ordering-v1; artifact/byte/config/calibration identity sub-proofs preserved; ML_PIPE_ITEM_4 = NOT_CLOSED until merged fix + RTH reproof || ITEM_4_RECLOSED_WITH_EVIDENCE (2026-07-13, PR #37 merged at final main 9d2baf410bf4, 4/4 push CI 29270711637/29270712167/29270711258/29270710639): canonical RTH reproof passed - +101 identities, 101/101 COMPLETE ledgers, +92 identity-linked production_decision_records (SPY 35/QQQ 21/IWM 20/$SPX-guest 16), 0 one-pair violations, 0 refusals/mismatches, all four horizons, replay 20 CAS artifacts (packet reports/exec_identity/rth_2026-07-13_canonical_reproof.json); parent MODEL_VERSION_PINNING stays NOT_PROVEN on the two modes above",
-      "mechanical_lock": "landed: check_artifact_load_verification_boundary() in tools/check_fix_everything_we_touch.py (repo-wide static audit) + tests/test_model_contract_enforcement.py::test_item4_all_governed_loaders_call_verifier_before_deserialization; fleet recompute lock: tools/ml_item4_fleet_migration.py --verify-fleet (exit 1 on any unverified active bundle; counters never trusted, filesystem recomputed); committed-policy lock: tests/test_ml_item4_fleet_migration.py::test_committed_policy_is_strict_and_allowance_closed",
+      "mechanical_lock": "landed 2026-07 then RETIRED in 41360574: check_artifact_load_verification_boundary() in the deleted check_fix_everything_we_touch stack; SURVIVING lock: tests/test_model_contract_enforcement.py::test_item4_all_governed_loaders_call_verifier_before_deserialization; fleet recompute lock: tools/ml_item4_fleet_migration.py --verify-fleet (exit 1 on any unverified active bundle; counters never trusted, filesystem recomputed); committed-policy lock: tests/test_ml_item4_fleet_migration.py::test_committed_policy_is_strict_and_allowance_closed",
       "final_status": "NOT_PROVEN"
     },
     {
       "label": "CALIBRATION_VERSION_PINNING",
       "exact_code_paths": [
-        "calibration/a1_conformal_artifact_production.py / a1_isotonic_artifact_production.py (versioned artifacts: calibration_run_id + lineage_id + eligibility-gated current pointers \u2014 verified by read)",
+        "calibration/a1_conformal_artifact_production.py / a1_isotonic_artifact_production.py (versioned artifacts: calibration_run_id + lineage_id + eligibility-gated current pointers — verified by read)",
         "server.py attach_a1_* (live serve only; scheduler historical eval carries a no-current-pointer lock @ 54f8a34)"
       ],
       "existing_tests": [
@@ -203,7 +203,7 @@
       ],
       "what_existing_tests_prove": "control machinery sensitivity + collapse on fixture; NOT production-model behavior",
       "unproven_failure_modes": [
-        "n/a \u2014 externally gated execution"
+        "n/a — externally gated execution"
       ],
       "locally_executable_proof": "none beyond harness (done)",
       "external_proof_required": "operator-host runs; clean retrain sequence; OOS baseline comparison",

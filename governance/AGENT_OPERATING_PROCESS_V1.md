@@ -1,6 +1,8 @@
 # Agent Operating Process v1 (RC-217)
 
-**Mechanical enforcer:** `tools/operating_process_lock.py` + `tools/process_lock_guard.py` (PreToolUse / pre-commit) + `tools/check_live_path_is_main.py` (RC-350, launch / pre-push / CI). This file is the checklist; `.py` BLOCKs.
+**Scope of this file:** the distinct operating-process checklist — measure before claiming, land small, hook discipline, LIVE vs DISK, the live-checkout invariant, and the debt rule. Engineering law (end-to-end correction, no patches, one computation, one owner, proof standard) lives ONLY in `AGENTS.md` and is not restated here.
+
+**Mechanical enforcer:** `tools/operating_process_lock.py` + `tools/process_lock_guard.py` (PreToolUse / pre-commit). This file is the checklist; `.py` BLOCKs. `tools/check_live_path_is_main.py` is an operator/agent-side REPORT and gates nothing (RC-512, section 6).
 
 > **2026-08-24 Architecture A teardown.** The role, mission, GO-file and authority-rail
 > machinery this process once carried is REMOVED. The operator directs each session in
@@ -47,26 +49,24 @@
 
 **RC-512:** this line used to name `tools/check_live_path_is_main.py` as a fail-closed enforcer at "launch / pre-push / CI". Two of those never existed (`.pre-commit-config.yaml` declares `default_stages: [pre-commit]` and no workflow invokes it) and the launch one was removed: it made desk availability depend on repository position, and on 2026-09-03 it aborted the launcher because the production checkout was 9 commits behind `origin/main`, with no application defect. Governance controls agent actions, commit and merge — it does not decide whether the desk may run. The check remains available as an operator/agent-side report (`violations()`); it gates nothing on the runtime path.
 
-1. **Production = main == origin/main, always.** The live desk runs branch `main` at HEAD exactly equal to `origin/main` — never a feature branch, never detached, never ahead (a private divergent lineage) or behind (stale code). Asserted at every launch / push / CI (emergency bypass `ED_LIVE_PATH_UNLOCKED=1` for a downed desk only — every use is a logged admission the invariant broke).
+1. **Production = main == origin/main, always.** The live desk runs branch `main` at HEAD exactly equal to `origin/main` — never a feature branch, never detached, never ahead (a private divergent lineage) or behind (stale code). Prevented at the agent seam by `tools/process_lock_guard.py` (item 4) and reported by `tools/check_live_path_is_main.py`; nothing on the runtime path asserts it (RC-512).
 2. **Development happens on the separate dev worktree** — one non-live development surface (`EdWebConsole-dev`, a linked git worktree), never in the production checkout.
 3. **One authorized AI writer at a time.** The dev surface is handed between agents serially; auditors are read-only. There is no per-vendor worktree assignment — the operator directs who writes each session (AGENTS.md operating model).
 4. **Assigned agents cannot change branches or app code in the production checkout.** The PreToolUse guard BLOCKs — at the moment of the command, not only at the next launch — any `git checkout` / `switch` / `branch` / `commit` / `merge` / `reset` / `rebase` / `cherry-pick` that TARGETS the production primary, and any Edit/Write of app code (`server.py`, `*.py`, `static/*.html|*.js`) inside it. Allowed on production: reads, `git fetch`, `git checkout main` (return-to-main), and the fast-forward update in (5). Dev worktrees are unconstrained.
 5. **Merge first, then fast-forward.** Feature work lands via PR to `main`; production then updates ONLY by `git merge --ff-only origin/main` (or `git pull --ff-only`). Production never carries a local commit, so the fast-forward is always clean.
 
-- **DONE when:** `check_live_path_is_main.py` reports no violation in the production checkout (branch==main, HEAD==origin/main, no uncommitted app code); dev work is on the dev worktree; production received its change only by fast-forward after the PR merged. This is an operating standard the operator reads and acts on — a violation means the desk is stale or divergent, never that it may not run (RC-512).
+- **DONE when:** `tools/check_live_path_is_main.py` reports no violation in the production checkout (branch==main, HEAD==origin/main, no uncommitted app code); dev work is on the dev worktree; production received its change only by fast-forward after the PR merged. This is an operating standard the operator reads and acts on — a violation means the desk is stale or divergent, never that it may not run (RC-512).
 
-## 7. DEBT-CONVERGENCE LAW (fixable repo debt goes down, not sideways)
+## 7. DEBT RULE
 
-**No new machinery** — measured with the EXISTING ledgers/checkers: the open + overdue counts from `tools/check_institutional_correctness.py` (`check_root_cause_log`, `check_open_item_cap`), the merge-time delta gate `tools/check_delta_adds_no_debt.py --base origin/main` (which already BLOCKs NEW/WORSENED enforced debt — the hard "no net new debt" floor), and `git log` on `governance/root_cause_log.md`. This is an operating discipline over those numbers; it adds no queue, ratio ledger, or reporting surface.
+**NO NEW OR WORSENED DEBT, AND EVERY MATERIAL DEFECT IN THE CONNECTED MISSION PATH IS FIXED END TO END.** That is the whole rule (AGENTS.md laws 1–5). There is no retirement ratio: a mission is not forced into unrelated cleanup to satisfy a number, and it is not allowed to leave a connected defect behind to protect a number.
 
-- **Recording a newly discovered defect is always allowed and never counts as creating debt** — opening an honest RC row is how discovery is tracked (RC-65), the opposite of the failure mode.
-- **P0 / emergency correctness work is never delayed by the ratio.** Fix it now; the ratio governs only discretionary forward/expansion work.
-- **Discretionary expansion must retire real, pre-existing, FIXABLE engineering debt** in the same body of work. Floor = **2 debt items retired per 1 expansion unit**; normal target **3:1**; a dedicated rehab/cleanup pass targets **≥ 5:1**.
-- **What does NOT count as retired:** re-dating, postponing, moving, relabeling, or closing already-fixed stale paperwork. A retirement is a real fixable defect driven to root and proven fixed (or proven obsolete on the current tree). Bookkeeping reconciliation of stale records is legitimate and required, but it is counted SEPARATELY and never as engineering-debt retirement.
-- **Excluded from the burn denominator:** externally-blocked / data-accrual / operator-blocked rows (a `BLOCKED_ON_*` marker). They are honestly OPEN, not fixable-now — neither debt you must burn nor debt you retired.
-- **Objective: monotonic reduction of actual fixable repo debt** — never status manipulation.
+- **Measured with the EXISTING mechanisms, no new machinery:** the merge-time delta gate `tools/check_delta_adds_no_debt.py --base origin/main` (BLOCKs any NEW or WORSENED enforced violation and any undeclared removal of an enforced check — the floor), and the open/overdue counts from `check_root_cause_log`.
+- **Recording a newly discovered defect is always allowed and never counts as creating debt** — opening an honest RC row is how discovery is tracked (RC-65).
+- **What does NOT count as fixing:** re-dating, postponing, moving, relabeling, or closing already-fixed stale paperwork. Stale-record reconciliation is legitimate and required, and it is reported as reconciliation, never as a fix.
+- **Externally blocked rows** (status `BLOCKED` with the clearing event named) are honestly OPEN and are the only legal form of an unfixed connected defect (AGENTS.md law 2).
 
-- **DONE when:** across the change, real fixable-debt retired ≥ the ratio for the expansion done, measured against the pre-change open/overdue baseline; stale-record reconciliations are reported separately from engineering-debt retirement.
+- **DONE when:** the delta gate passes at the final SHA and every material defect discovered on the connected path is CLOSED with evidence or `BLOCKED` on a named external event.
 
 ---
 
