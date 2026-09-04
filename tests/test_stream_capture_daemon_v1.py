@@ -1009,7 +1009,7 @@ def _one_shot_recycle(gate: asyncio.Event):
     recycle is triggered by a deterministic condition instead of elapsed time."""
     fired = {"x": False}
 
-    def decide(age_sec, seen_data, since_last_reconnect):
+    def decide(age_sec, seen_data, since_last_reconnect, collect_session_live=True):
         if gate.is_set() and not fired["x"]:
             fired["x"] = True
             return True
@@ -1326,7 +1326,7 @@ def test_d3d_at_most_one_live_logged_in_session_across_the_whole_lifecycle(tmp_p
     gates = [asyncio.Event(), asyncio.Event()]
     fired = {"n": 0}
 
-    def decide(age_sec, seen_data, since_last_reconnect):
+    def decide(age_sec, seen_data, since_last_reconnect, collect_session_live=True):
         if fired["n"] < len(gates) and gates[fired["n"]].is_set():
             fired["n"] += 1
             return True
@@ -2148,7 +2148,7 @@ def test_barrier_wait_is_not_counted_against_the_reconnect_cooldown(tmp_path, mo
     seen: list = []
     fired = {"x": False}
 
-    def decide(age_sec, seen_data, since_last_reconnect):
+    def decide(age_sec, seen_data, since_last_reconnect, collect_session_live=True):
         seen.append((len(_LifecycleStream.generations), since_last_reconnect))
         if gate.is_set() and not fired["x"]:
             fired["x"] = True
