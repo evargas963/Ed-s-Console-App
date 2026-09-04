@@ -673,7 +673,8 @@ def test_owner_lock_released_on_every_exit_path(tmp_path, monkeypatch):
     import sys, types, asyncio as aio
     import tools.run_stream_capture as d
 
-    monkeypatch.setattr(d, "OWNER_LOCK", tmp_path / "own.lock")
+    db = tmp_path / "cap.db"
+    lock = tmp_path / "stream_capture.lock"
 
     fake_cfg = types.SimpleNamespace(api_key="k", app_secret="s", token_path="t")
     monkeypatch.setitem(sys.modules, "config",
@@ -683,8 +684,8 @@ def test_owner_lock_released_on_every_exit_path(tmp_path, monkeypatch):
     monkeypatch.setitem(sys.modules, "schwab_client", types.SimpleNamespace(
         build_client_from_token=lambda **_k: types.SimpleNamespace(
             ok=False, client=None, message="nope")))
-    rc = aio.run(d.run(["SPY"], 0.0, str(tmp_path / "cap.db")))
-    assert rc == 2 and not (tmp_path / "own.lock").exists()
+    rc = aio.run(d.run(["SPY"], 0.0, str(db)))
+    assert rc == 2 and not lock.exists()
 
     # Path 2: streamer login RAISES -> exception propagates, lock STILL gone
     class _Boom:
@@ -697,21 +698,22 @@ def test_owner_lock_released_on_every_exit_path(tmp_path, monkeypatch):
                         types.SimpleNamespace(StreamClient=_Boom))
     import pytest as _pt
     with _pt.raises(RuntimeError):
-        aio.run(d.run(["SPY"], 0.0, str(tmp_path / "cap.db")))
-    assert not (tmp_path / "own.lock").exists(), "lock leaked on login failure"
+        aio.run(d.run(["SPY"], 0.0, str(db)))
+    assert not lock.exists(), "lock leaked on login failure"
 
 
 def test_second_owner_refused_while_lock_held(tmp_path, monkeypatch):
     import tools.run_stream_capture as d
     import pytest as _pt
-    monkeypatch.setattr(d, "OWNER_LOCK", tmp_path / "own.lock")
-    fd = d.acquire_owner_lock()
+    db = tmp_path / "cap.db"
+    lock = tmp_path / "stream_capture.lock"
+    fd, held = d.acquire_owner_lock(db)
     try:
         with _pt.raises(SystemExit):
-            d.acquire_owner_lock()      # our own live pid holds it -> refuse
+            d.acquire_owner_lock(db)      # our own live pid holds it -> refuse
     finally:
-        d.release_owner_lock(fd)
-    assert not (tmp_path / "own.lock").exists()
+        d.release_owner_lock(fd, held)
+    assert not lock.exists()
 
 
 # ── half-open-socket guard (2026-07-23, observed live: both feeds silent, no error) ──

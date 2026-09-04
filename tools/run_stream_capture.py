@@ -53,14 +53,23 @@ from stream_spine import (  # noqa: E402
     quote_msg,
     read_active_option_contract_signal,
     read_active_ticker_signal,
+    resolve_stream_db_path,
 )
 from time_et import is_capturable_session  # noqa: E402
 
 STATUS_PATH = ROOT / "reports" / "stream_capture_status.json"
-OWNER_LOCK = ROOT / "data" / "stream_capture.lock"
 
 
-def acquire_owner_lock() -> int:
+def owner_lock_path(db_path: str | Path | None = None) -> Path:
+    """Lock sits beside the resolved stream DB, not the checkout.
+
+    A checkout-relative lock lets a worktree daemon and a production daemon
+    both open Schwab — the same split-brain PR214 closed for the DB path.
+    """
+    return resolve_stream_db_path(db_path).with_name("stream_capture.lock")
+
+
+def acquire_owner_lock(db_path: str | Path | None = None) -> tuple[int, Path]:
     """ENFORCE the single-streamer-owner rule (Cursor review HIGH: it was prose only).
 
     Exclusive pidfile: a second daemon refuses to start; a stale lock (dead pid) is
@@ -72,14 +81,16 @@ def acquire_owner_lock() -> int:
     way to violate single-streamer-owner: two copies of THIS daemon.
     """
     import os
+    lock = owner_lock_path(db_path)
+    lock.parent.mkdir(parents=True, exist_ok=True)
     for attempt in (1, 2):
         try:
-            fd = os.open(str(OWNER_LOCK), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            fd = os.open(str(lock), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
             os.write(fd, str(os.getpid()).encode())
-            return fd
+            return fd, lock
         except FileExistsError:
             try:
-                pid = int(OWNER_LOCK.read_text().strip() or 0)
+                pid = int(lock.read_text().strip() or 0)
             except (OSError, ValueError):
                 pid = 0
             alive = False
@@ -91,20 +102,20 @@ def acquire_owner_lock() -> int:
                     alive = True   # can't verify -> fail closed, require manual removal
             if alive:
                 raise SystemExit(
-                    f"FATAL: another stream-capture owner holds {OWNER_LOCK} (pid {pid}). "
+                    f"FATAL: another stream-capture owner holds {lock} (pid {pid}). "
                     "Single-streamer-owner rule: stop it first, or remove a stale lock."
                 ) from None
             if attempt == 1:
-                OWNER_LOCK.unlink(missing_ok=True)   # stale (dead pid): reclaim once
-    raise SystemExit(f"FATAL: could not acquire {OWNER_LOCK}")
+                lock.unlink(missing_ok=True)   # stale (dead pid): reclaim once
+    raise SystemExit(f"FATAL: could not acquire {lock}")
 
 
-def release_owner_lock(fd: int) -> None:
+def release_owner_lock(fd: int, lock: Path) -> None:
     import os
     try:
         os.close(fd)
     finally:
-        OWNER_LOCK.unlink(missing_ok=True)
+        lock.unlink(missing_ok=True)
 
 #: VERIFIED live 2026-07-21 against reports/stream_raw_sample_levelone_equities.json:
 #: this schwab-py install labels fields by NAME (numeric map parsed all-None — caught by
@@ -1105,13 +1116,13 @@ def write_status(bus: MessageBus, health: HealthRegistry, writer: CaptureWriter,
 
 
 async def run(symbols: list[str], duration_min: float, db_path: str | None) -> int:
-    lock_fd = acquire_owner_lock()
+    lock_fd, lock = acquire_owner_lock(db_path)
     try:
         return await _run_locked(symbols, duration_min, db_path)
     finally:
         # The lock's lifetime is the WHOLE session — login/subscribe failures and
         # KeyboardInterrupt included (Cursor round-2 HIGH: it leaked on init paths).
-        release_owner_lock(lock_fd)
+        release_owner_lock(lock_fd, lock)
 
 
 async def _retire_stream_client(stream, *, reason: str,
