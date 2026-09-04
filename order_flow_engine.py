@@ -381,6 +381,23 @@ def _resolve_bid_ask_prices(
     bid_leaf = "streaming.BID_PRICE" if bid_p is not None else None
     ask_leaf = "streaming.ASK_PRICE" if ask_p is not None else None
     if bid_p is None or ask_p is None:
+        # LEVELONE_* is often size-only after the last price tick. OPTIONS_BOOK /
+        # NASDAQ_BOOK already in `content` still carries a current top. Read that
+        # before REST quote/extended/underlying so a live book cannot be ignored
+        # while L1 prices stay null.
+        snapshot = _latest_book_snapshot(items)
+        if snapshot is not None:
+            if bid_p is None:
+                bid_lv = _sorted_valid_levels(_iter_bids_levels(snapshot), descending=True)
+                if bid_lv:
+                    bid_p = bid_lv[0][0]
+                    bid_leaf = "streaming.BOOK.BID_PRICE"
+            if ask_p is None:
+                ask_lv = _sorted_valid_levels(_iter_asks_levels(snapshot), descending=False)
+                if ask_lv:
+                    ask_p = ask_lv[0][0]
+                    ask_leaf = "streaming.BOOK.ASK_PRICE"
+    if bid_p is None or ask_p is None:
         quote = data.get("quote") or {}
         extended = data.get("extended") or {}
         underlying = data.get("underlying") or {}

@@ -127,3 +127,65 @@ def test_same_underlying_manual_contract_is_kept(monkeypatch):
     finally:
         ofs._active_option_contract = None
         ofs._active_ticker = None
+
+def test_spxw_matches_dollar_spx_only_via_banked_chain():
+    """Real 2026-09-04 $SPX complete chain uses OSI root SPXW, not SPX.
+
+    Without chain evidence SPXW must not alias to $SPX (no invented weekly map).
+    With the vendor chain, the same root matches $SPX and still does not match SPY.
+    """
+    from order_flow_streaming import _contract_matches_underlying
+
+    weekly = "SPXW  260904C07735000"
+    assert _contract_matches_underlying(weekly, "$SPX") is False
+    assert _contract_matches_underlying(weekly, "SPY") is False
+
+    cap = {
+        "ticker": "$SPX",
+        "expiry": "2026-09-04",
+        "contracts": [
+            {"symbol": weekly, "putCall": "CALL", "strikePrice": 7735.0},
+        ],
+    }
+
+    def _nearest(db_path, ticker, *, on_or_after_expiry):
+        tk = (ticker or "").strip().upper()
+        if tk in ("$SPX", "SPX"):
+            return cap
+        return None
+
+    import calibration.complete_chain_capture as ccc
+    import order_flow_streaming as ofs
+    orig = ccc.nearest_complete_chain_capture
+    ccc.nearest_complete_chain_capture = _nearest
+    try:
+        db = "unused.db"
+        assert ofs._contract_matches_underlying(weekly, "$SPX", chain_db_path=db) is True
+        assert ofs._contract_matches_underlying(weekly, "SPY", chain_db_path=db) is False
+        assert ofs._contract_matches_underlying("SPY   260904C00772000", "$SPX", chain_db_path=db) is False
+    finally:
+        ccc.nearest_complete_chain_capture = orig
+
+
+def test_switch_underlying_clears_when_no_replacement(monkeypatch):
+    """CDE -> C with no banked C chain must not keep the CDE contract."""
+    import order_flow_streaming as ofs
+
+    written = []
+    monkeypatch.setattr(ofs, "write_active_ticker_signal", lambda *_a, **_k: None)
+    monkeypatch.setattr(ofs, "write_active_option_contract_signal", lambda s: written.append(s))
+    monkeypatch.setattr(ofs, "forget_unsubscribed_symbols", lambda *_a, **_k: None)
+    monkeypatch.setattr(ofs, "clear_symbol", lambda *_a, **_k: None)
+    monkeypatch.setattr(
+        "app.options.contracts.default.default_option_contract",
+        lambda ticker, chain_db_path=None: None,
+    )
+    ofs._active_option_contract = "CDE   260904C00013000"
+    ofs._active_ticker = "CDE"
+    try:
+        assert ofs.set_streaming_active_ticker("C") is True
+        assert ofs._active_option_contract is None
+        assert written[-1] == ""
+    finally:
+        ofs._active_option_contract = None
+        ofs._active_ticker = None

@@ -338,3 +338,64 @@ def test_option_contract_streaming_diagnostics_independent_of_equity_slot():
     assert ofs._option_streaming_healthy() is True
     assert ofs.get_streaming_diagnostics()["streaming_healthy"] is False
     assert ofs.get_option_contract_streaming_diagnostics()["streaming_healthy"] is True
+
+
+def test_reused_readonly_feed_sees_later_option_commits(tmp_path, monkeypatch):
+    """The live plane reuses one readonly connection. A deferred SQLite snapshot
+    would hide later OPTIONS_BOOK commits (history hydrates; live stays no_book).
+    # universal-scope-ok: vendor OSI fixture, not a SPY-only product claim.
+    """
+    db = _reset(tmp_path, monkeypatch)
+    ofs._option_streaming_last_update_ts = None
+    CaptureWriter(db, batch_rows=1, batch_sec=10.0).close()
+    con = ofs._open_capture_db_readonly(db)
+    assert con is not None
+    assert con.isolation_level is None
+    ofs._replay_option_contract_rows(con, _SPY_CONTRACT)
+    assert ofs._option_streaming_last_update_ts is None
+    assert not any(i.get("BIDS") for i in ofls.get_content_for_symbol(_SPY_CONTRACT))
+
+    _write_option_l1_row(db, _SPY_CONTRACT, _REAL_LEVELONE_OPTIONS_CONTENT, ts_recv=2.0)
+    _write_option_book_row(db, _SPY_CONTRACT, _REAL_OPTIONS_BOOK_CONTENT, ts_recv=2.0)
+
+    ofs._replay_option_contract_rows(con, _SPY_CONTRACT)
+    con.close()
+    assert ofs._option_streaming_last_update_ts is not None
+    items = ofls.get_content_for_symbol(_SPY_CONTRACT)
+    assert any(i.get("LAST_PRICE") == 1.27 for i in items)
+    assert any(i.get("BIDS") == _REAL_OPTIONS_BOOK_CONTENT["BIDS"] for i in items)
+
+
+def test_first_tick_option_replay_is_snapshot_tail_not_lifetime(tmp_path, monkeypatch):
+    """A long-lived OPTIONS_BOOK history must not be fully replayed on bind.
+    # universal-scope-ok: vendor OSI fixture, not a SPY-only product claim.
+    """
+    db = _reset(tmp_path, monkeypatch)
+    old = dict(_REAL_OPTIONS_BOOK_CONTENT)
+    old = {**old, "BIDS": [{"BID_PRICE": 9.99, "TOTAL_VOLUME": 1}]}
+    latest = _REAL_OPTIONS_BOOK_CONTENT
+    _write_option_book_row(db, _SPY_CONTRACT, old, ts_recv=1.0)
+    _write_option_book_row(db, _SPY_CONTRACT, latest, ts_recv=2.0)
+    con = ofs._open_capture_db_readonly(db)
+    ofs._replay_option_contract_rows(con, _SPY_CONTRACT)
+    con.close()
+    items = ofls.get_content_for_symbol(_SPY_CONTRACT)
+    bids = [i.get("BIDS") for i in items if i.get("BIDS")]
+    assert latest["BIDS"] in bids
+    assert old["BIDS"] not in bids
+
+
+def test_ensure_default_adopts_matching_signal_file(tmp_path, monkeypatch):
+    """Process start with empty in-memory slot must bind the daemon's existing signal.
+    # universal-scope-ok: vendor OSI fixture, not a SPY-only product claim.
+    """
+    _reset(tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        ofs, "read_active_option_contract_signal", lambda: _SPY_CONTRACT)
+    written = []
+    monkeypatch.setattr(ofs, "write_active_option_contract_signal", lambda s: written.append(s))
+    monkeypatch.setattr(ofs, "_contract_matches_underlying", lambda c, t, **k: c == _SPY_CONTRACT)
+    ofs._active_option_contract = None
+    ofs._ensure_default_option_contract_for_ticker("SPY")
+    assert ofs._active_option_contract == _SPY_CONTRACT
+    assert written == [_SPY_CONTRACT]

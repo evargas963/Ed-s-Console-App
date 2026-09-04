@@ -788,3 +788,19 @@ def test_size_g_production_replay_seams_thread_ts_recv_into_push_level_one():
     options_src = inspect.getsource(ofs._replay_option_contract_rows)
     assert "push_level_one(contract_symbol, item, ts_recv=ts_recv)" in options_src, (
         "options replay seam must thread the real row ts_recv into push_level_one")
+
+
+def test_book_top_fills_bid_ask_when_l1_has_no_price():
+    """OPTIONS_BOOK / NASDAQ_BOOK already in content is the live top when L1 is size-only.
+    # universal-scope-ok: book shape fixture, not a SPY-only product claim.
+    """
+    items = [{
+        "BIDS": [{"BID_PRICE": 0.02, "TOTAL_VOLUME": 10}],
+        "ASKS": [{"ASK_PRICE": 0.03, "TOTAL_VOLUME": 12}],
+        "BOOK_TIME": 1,
+    }, {"ASK_SIZE": 12}]
+    bid, ask, bid_leaf, ask_leaf = ofe._resolve_bid_ask_prices({"content": items})
+    assert bid == 0.02
+    assert ask == 0.03
+    assert bid_leaf == "streaming.BOOK.BID_PRICE"
+    assert ask_leaf == "streaming.BOOK.ASK_PRICE"

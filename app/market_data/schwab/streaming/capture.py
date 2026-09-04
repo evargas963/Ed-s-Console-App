@@ -30,6 +30,7 @@ import argparse
 import asyncio
 import inspect
 import json
+import os
 import statistics
 import sys
 import time
@@ -51,6 +52,7 @@ from stream_spine import (  # noqa: E402
     options_quote_msg,
     print_msg,
     quote_msg,
+    STREAM_CAPTURE_DB_PATH_ENV,
     read_active_option_contract_signal,
     read_active_ticker_signal,
     resolve_stream_db_path,
@@ -1116,7 +1118,12 @@ def write_status(bus: MessageBus, health: HealthRegistry, writer: CaptureWriter,
 
 
 async def run(symbols: list[str], duration_min: float, db_path: str | None) -> int:
-    lock_fd, lock = acquire_owner_lock(db_path)
+    # Bind this process's signal/lock authority to the writer DB. Otherwise
+    # STREAM_DB_DEFAULT (checkout-relative) and `--db` can name two files, and
+    # the daemon writes quotes to production while polling a worktree signal.
+    resolved = resolve_stream_db_path(db_path)
+    os.environ[STREAM_CAPTURE_DB_PATH_ENV] = str(resolved)
+    lock_fd, lock = acquire_owner_lock(resolved)
     try:
         return await _run_locked(symbols, duration_min, db_path)
     finally:
@@ -1500,10 +1507,24 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
         # nobody was draining. That window is small but real and entirely avoidable,
         # and it would have traded a deterministic leak for a data-loss race.
         writer_task = asyncio.create_task(writer.run(wsub, stop=stop))
+        # Same generation-start contract as recycle: a fresh StreamClient holds
+        # nothing. Applying the DB-adjacent option-contract (and ticker) signal
+        # HERE means LEVELONE_OPTIONS/OPTIONS_BOOK coverage is earned on the
+        # first generation, not only if the poll loop happens to be alive.
+        # MEASURED 2026-09-04 RTH: after stream_recycle, equities kept flowing
+        # while option epochs stayed closed — reconnect applied the signal,
+        # initial connect did not, and a checkout-relative signal file had
+        # pinned an expired OSI. Poll-only recovery is not generation-start.
+        boot_ticker = read_active_ticker_signal()
+        boot_option = read_active_option_contract_signal()
         stream, pump_task, option_state["contract"] = await _schwab_connect(
-            state, symbols, bus, health, stats, stop)
+            state, symbols, bus, health, stats, stop,
+            active_book_ticker=boot_ticker,
+            active_option_contract=boot_option,
+            writer=writer, epoch_state=option_epoch_state)
         book_state["stream"] = stream
         option_state["stream"] = stream
+        book_state["ticker"] = boot_ticker
         # CR-02 prints leg — optional co-producer on the SAME bus/writer/health. NOT part
         # of a Schwab stream generation: it owns its own Alpaca socket and survives
         # recycles.
