@@ -124,3 +124,200 @@ def test_approved_bulk_mutation_backup_recorded(tmp_path: Path) -> None:
     after = critical_table_row_counts(conn2)
     conn2.close()
     assert_critical_row_counts_no_drop(before, after)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# LIVE BACKUP SNAPSHOT SAFETY
+#
+# In WAL mode every transaction committed since the last checkpoint lives in the
+# -wal file. A backup that copies only the .db file loses exactly those, and the
+# loss is invisible to both the manifest SHA-256 and PRAGMA quick_check.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _wal_db_with_uncheckpointed_commits(path: Path, n: int) -> sqlite3.Connection:
+    """WAL-mode DB with `n` rows COMMITTED and deliberately NOT checkpointed.
+
+    Returns the still-open connection, because a live server holds connections open —
+    closing the last one would checkpoint the WAL and dissolve the very condition under
+    test."""
+    conn = sqlite3.connect(str(path))
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("CREATE TABLE snapshots (id INTEGER PRIMARY KEY, ticker TEXT)")
+    conn.commit()
+    conn.executemany("INSERT INTO snapshots (ticker) VALUES (?)",
+                     [(f"T{i}",) for i in range(n)])
+    conn.commit()
+    assert Path(str(path) + "-wal").stat().st_size > 0, (
+        "the attack requires committed rows still sitting in the WAL")
+    return conn
+
+
+def test_backup_captures_transactions_still_in_the_wal(tmp_path: Path) -> None:
+    """A backup must contain every transaction COMMITTED at backup time.
+
+    MEASURED against the previous `shutil.copy2` implementation on exactly this setup:
+    rows committed with the WAL uncheckpointed produced a backup that answered
+    `no such table: snapshots` — the table itself was absent — while `PRAGMA
+    quick_check` on that backup still returned "ok". Size and SHA-256 describe the bytes
+    copied, not the transactions that should have been there, so neither can catch it."""
+    src = tmp_path / "live.db"
+    live = _wal_db_with_uncheckpointed_commits(src, 500)
+    try:
+        bp, _mp, _man = backup_console_database(
+            src, operation_name="wal_snapshot_test", backup_root=tmp_path / "out")
+        got = sqlite3.connect(f"file:{bp}?mode=ro", uri=True)
+        try:
+            assert got.execute("SELECT COUNT(*) FROM snapshots").fetchone()[0] == 500, (
+                "the backup is missing transactions committed before it started")
+        finally:
+            got.close()
+    finally:
+        live.close()
+
+
+def test_mutation_control_a_file_copy_backup_loses_committed_wal_rows(tmp_path: Path) -> None:
+    """NEGATIVE CONTROL. Reproduce the original mechanism — copy the .db file only — and
+    show the data loss returns. Without this the test above could pass for the wrong
+    reason (an incidental checkpoint) and prove nothing about the mechanism."""
+    import shutil
+
+    src = tmp_path / "live.db"
+    live = _wal_db_with_uncheckpointed_commits(src, 500)
+    try:
+        dest = tmp_path / "copied.db"
+        shutil.copy2(src, dest)          # the pre-fix mechanism, verbatim
+        got = sqlite3.connect(f"file:{dest}?mode=ro", uri=True)
+        try:
+            try:
+                n = got.execute("SELECT COUNT(*) FROM snapshots").fetchone()[0]
+            except sqlite3.DatabaseError:
+                n = None                  # table absent entirely — the observed failure
+            assert n != 500, (
+                "MUTATION CONTROL FAILED TO BITE: a .db-only file copy must NOT return "
+                "all committed rows while they are still in the WAL")
+            assert got.execute("PRAGMA quick_check(1)").fetchone()[0] == "ok", (
+                "quick_check is expected to report ok on the lossy copy — that is "
+                "precisely why it cannot serve as backup-correctness evidence")
+        finally:
+            got.close()
+    finally:
+        live.close()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# A FAILED BACKUP MUST NOT MASQUERADE AS A SUCCESSFUL ONE
+#
+# The destination is named exactly like a real recovery point before a single page
+# is written to it. If the backup then dies, the leftover file is indistinguishable
+# by name from a usable backup, and an operator restoring under pressure has no
+# reason to doubt it.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class _BackupBoom(RuntimeError):
+    """A failure raised from inside SQLite's backup loop, as an I/O error would be."""
+
+
+def _source_that_fails_partway(src: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Make ``backup_console_database``'s source connection fail after it has already
+    written pages into the destination — so a partial file genuinely exists."""
+    import db_safety as _dbs
+
+    real_connect = sqlite3.connect
+    steps = {"n": 0}
+
+    class _FailingSource:
+        def __init__(self, inner: sqlite3.Connection) -> None:
+            self._inner = inner
+
+        def backup(self, target, **_kw):          # type: ignore[no-untyped-def]
+            def _cb(status, remaining, total):    # type: ignore[no-untyped-def]
+                steps["n"] += 1
+                if steps["n"] >= 2:
+                    raise _BackupBoom("simulated I/O failure partway through the backup")
+
+            return self._inner.backup(target, pages=1, progress=_cb)
+
+        def __getattr__(self, name: str):         # type: ignore[no-untyped-def]
+            return getattr(self._inner, name)
+
+        def close(self) -> None:
+            self._inner.close()
+
+    def _connect(path, *a, **k):                  # type: ignore[no-untyped-def]
+        conn = real_connect(path, *a, **k)
+        return _FailingSource(conn) if str(path) == str(src) else conn
+
+    monkeypatch.setattr(_dbs.sqlite3, "connect", _connect)
+
+
+def test_failed_backup_leaves_nothing_that_could_pass_for_a_recovery_point(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A backup that raises must leave the recovery directory exactly as it found it.
+
+    The manifest is the accept token and is only written after the copy returns, but the
+    destination .db is created up front under its final recovery-point name — so a crash
+    mid-copy would strand a truncated file that looks like a backup and is not one."""
+    src = tmp_path / "live.db"
+    live = _wal_db_with_uncheckpointed_commits(src, 5000)
+    root = tmp_path / "out"
+    root.mkdir(parents=True)
+    try:
+        _source_that_fails_partway(src, monkeypatch)
+        with pytest.raises(_BackupBoom):
+            backup_console_database(src, operation_name="fail_case", backup_root=root)
+        monkeypatch.undo()
+
+        left = sorted(p.name for p in root.iterdir())
+        assert left == [], f"a failed backup left artifacts behind: {left}"
+    finally:
+        live.close()
+
+
+def test_mutation_control_an_uncleaned_failed_backup_strands_a_convincing_fake(
+    tmp_path: Path,
+) -> None:
+    """NEGATIVE CONTROL for the cleanup above.
+
+    Run the same native backup and the same mid-copy failure WITHOUT the cleanup, and
+    show what survives: a file carrying the recovery-point name that does not hold the
+    data. Without this control the test above could pass merely because nothing was ever
+    created, and would prove nothing about the cleanup being load-bearing."""
+    src = tmp_path / "live.db"
+    live = _wal_db_with_uncheckpointed_commits(src, 5000)
+    try:
+        dest = tmp_path / "20260101_000000_ed_console.db"   # a real recovery-point name
+        s = sqlite3.connect(str(src))
+        d = sqlite3.connect(str(dest))
+        steps = {"n": 0}
+
+        def _cb(status, remaining, total):        # type: ignore[no-untyped-def]
+            steps["n"] += 1
+            if steps["n"] >= 2:
+                raise _BackupBoom("simulated I/O failure partway through the backup")
+
+        try:
+            with pytest.raises(_BackupBoom):
+                s.backup(d, pages=1, progress=_cb)
+        finally:
+            d.close()
+            s.close()
+
+        assert dest.is_file(), (
+            "MUTATION CONTROL FAILED TO BITE: the partial destination must survive when "
+            "nothing removes it — that is the artifact the cleanup exists to delete")
+        got = sqlite3.connect(f"file:{dest}?mode=ro", uri=True)
+        try:
+            try:
+                n = got.execute("SELECT COUNT(*) FROM snapshots").fetchone()[0]
+            except sqlite3.DatabaseError:
+                n = None                          # unreadable — the observed failure
+            assert n != 5000, (
+                "MUTATION CONTROL FAILED TO BITE: a backup abandoned mid-copy must NOT "
+                "already contain every row")
+        finally:
+            got.close()
+    finally:
+        live.close()
