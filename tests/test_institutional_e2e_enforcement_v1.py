@@ -63,14 +63,16 @@ GEX_BODY = textwrap.dedent('''
 
 OLD_BODY = textwrap.dedent('''
     def old_compute(rows, spot):
+        """A superseded path that is NOT a computation of the registered truth (it counts
+        volume), so the superseded-path controls are not confounded by clause (c)."""
         acc = 0.0
         n = 0
         for r in rows:
-            acc += r["gamma"] * r["oi"]
+            acc += r["volume"]
             n += 1
         if n == 0:
             return 0.0
-        return acc * spot
+        return acc / n
 ''').lstrip()
 
 FILES = {
@@ -85,6 +87,26 @@ FILES = {
     # A research copy that already exists at the base: the whole-tree census would count it,
     # the delta-scoped checks must NOT charge it to a change that leaves it alone.
     "research/study.py": GEX_BODY.replace("def compute_gex(", "def compute_gex_copy("),
+    # The registered semantic truth and its pre-existing CONNECTED reimplementations on the
+    # other surfaces (attacks A and B): a frontend that recomputes GEX from the chain, and a
+    # SQL-derived replacement. Both sit at the base untouched; the change under test is the
+    # BACKEND producer.
+    "governance/computation_registry.json": json.dumps({"fields": {
+        "gex_dollars_per_1pct_at_strike": {
+            "producer": "app/exposure/gex.py:compute_gex",
+            "computation_inputs": ["gamma", "oi", "spot"],
+            "surface_inputs": [["gamma"], ["oi", "openInterest", "open_interest"], ["spot", "spt"]],
+        }}}),
+    "static/chart.js": "function gexAtStrike(r, spot) {\n  return r.gamma * r.oi * spot * spot * 0.01;\n}\n",
+    "snapshot_sql/gex.sql": "SELECT strike, gamma * open_interest * spot * spot * 0.01 AS gex\nFROM chain;\n",
+    # A legitimate frontend CONSUMER: renders the served value, computes nothing (control D).
+    "static/render.js": "function render(payload) {\n  return payload.gex_total.toFixed(2);\n}\n",
+    # Same-name collision fixtures (defect 3): two unrelated `normalize` definitions, each
+    # with its own resolvable caller.
+    "app/norm_a.py": "def normalize(x):\n    a = x + 1\n    b = a * 2\n    c = b - 3\n    d = c / 4\n    e = d + 5\n    return e\n",
+    "app/norm_b.py": "def normalize(x):\n    a = x * 10\n    b = a - 1\n    c = b * 3\n    d = c + 4\n    e = d - 5\n    return e\n",
+    "svc/use_a.py": "from app.norm_a import normalize\n\n\ndef use_a(x):\n    return normalize(x)\n",
+    "svc/use_b.py": "import app.norm_b as nb\n\n\ndef use_b(x):\n    return nb.normalize(x)\n",
     "governance/level_faucets.json": json.dumps({"level_domain_producers": {}}),
     "governance/INSTITUTIONAL_CLOSURE_SCHEMA.json": json.dumps({
         "required_dimensions": ["ROOT_CAUSE", "END_TO_END_CORRECTNESS", "MECHANICAL_ENFORCEMENT"],
@@ -183,13 +205,61 @@ def test_no_context_and_no_delta_are_silent(repo):
 
 # ── 1: canonical producer changed while a connected duplicate remains → FAIL ─────────
 
-def test_attack_1_canonical_changed_duplicate_left_diverged(repo):
-    _stage(repo, "app/exposure/gex.py",
-           GEX_BODY.replace("    total = 0.0\n", "    if spot <= 0:\n        raise ValueError(spot)\n    total = 0.0\n"))
+CHANGED_GEX = GEX_BODY.replace(
+    "    total = 0.0\n", "    if spot <= 0:\n        raise ValueError(spot)\n    total = 0.0\n")
+
+
+def _hits_for(hits: list[str], rel: str) -> list[str]:
+    return [h for h in hits if rel in h.replace("\\", "/")]
+
+
+def test_attack_1_canonical_changed_python_duplicate_left_diverged(repo):
+    _stage(repo, "app/exposure/gex.py", CHANGED_GEX)
     hits = _run("changed_computation_leaves_no_twin")
-    assert len(hits) == 1, hits
-    assert "research/study.py" in hits[0].replace("\\", "/")
-    assert "compute_gex_copy" in hits[0] and "identical copy" in hits[0] and "diverged" in hits[0]
+    study = _hits_for(hits, "research/study.py")
+    assert len(study) == 1, hits
+    assert "compute_gex_copy" in study[0] and "identical copy" in study[0] and "diverged" in study[0]
+
+
+# ── A: backend canonical changed while the PRE-EXISTING frontend duplicate is untouched ──
+
+def test_attack_A_backend_changed_frontend_duplicate_untouched(repo):
+    _stage(repo, "app/exposure/gex.py", CHANGED_GEX)
+    hits = _run("changed_computation_leaves_no_twin")
+    js = _hits_for(hits, "static/chart.js")
+    assert len(js) == 1, hits
+    assert "gex_dollars_per_1pct_at_strike" in js[0] and "stayed behind" in js[0]
+    assert "static/chart.js:2" in js[0].replace("\\", "/"), "the computing statement's line is named"
+
+
+# ── B: backend canonical changed while the PRE-EXISTING SQL-derived replacement remains ──
+
+def test_attack_B_backend_changed_sql_replacement_untouched(repo):
+    _stage(repo, "app/exposure/gex.py", CHANGED_GEX)
+    hits = _run("changed_computation_leaves_no_twin")
+    sql = _hits_for(hits, "snapshot_sql/gex.sql")
+    assert len(sql) == 1, hits
+    assert "gex_dollars_per_1pct_at_strike" in sql[0]
+
+
+# ── D: a frontend consumer that only renders the served value is never a site ──────────
+
+def test_control_D_frontend_consumer_of_the_served_value_is_not_a_site(repo):
+    _stage(repo, "app/exposure/gex.py", CHANGED_GEX)
+    hits = _run("changed_computation_leaves_no_twin")
+    assert _hits_for(hits, "static/render.js") == [], hits
+    # and when the connected reimplementations are gone, a backend change is clean
+    _stage(repo, "static/chart.js", "function gexAtStrike(payload) {\n  return payload.gex_total;\n}\n")
+    _stage(repo, "snapshot_sql/gex.sql", None)
+    _stage(repo, "research/study.py", "from app.exposure.gex import compute_gex\n\n\ndef study(rows, spot):\n    return compute_gex(rows, spot)\n")
+    assert _run("changed_computation_leaves_no_twin") == []
+
+
+def test_control_D_unchanged_producer_charges_nothing_to_the_standing_duplicates(repo):
+    """The pre-existing frontend/SQL sites are standing debt for the whole-tree
+    one_producer check, not a finding against a change that leaves the producer alone."""
+    _stage(repo, "svc/api.py", "from app.exposure.gex import compute_gex\n\n\ndef serve(rows, spot):\n    # touched\n    return compute_gex(rows, spot)\n")
+    assert _run("changed_computation_leaves_no_twin") == []
 
 
 # ── 2: new fallback independently computes the same truth → FAIL ─────────────────────
@@ -388,9 +458,13 @@ def test_control_10_unrelated_change(repo):
 # ── 11: correct root fix — duplicate removed, every consumer rewired → PASS ──────────
 
 def test_control_11_root_fix_removes_duplicate_and_rewires_consumers(repo):
-    _stage(repo, "app/exposure/gex.py",
-           GEX_BODY.replace("    total = 0.0\n", "    if spot <= 0:\n        raise ValueError(spot)\n    total = 0.0\n"))
+    """The whole connected path: producer corrected, the Python copy, the frontend
+    recomputation and the SQL replacement all rewired to consume the produced value, the
+    superseded path deleted with its caller rewired."""
+    _stage(repo, "app/exposure/gex.py", CHANGED_GEX)
     _stage(repo, "research/study.py", "from app.exposure.gex import compute_gex\n\n\ndef study(rows, spot):\n    return compute_gex(rows, spot)\n")
+    _stage(repo, "static/chart.js", "function gexAtStrike(payload) {\n  return payload.gex_total;\n}\n")
+    _stage(repo, "snapshot_sql/gex.sql", None)
     _stage(repo, "svc/legacy_api.py", "from app.exposure.gex import compute_gex\n\n\ndef serve_old(rows, spot):\n    return compute_gex(rows, spot)\n")
     _stage(repo, "legacy/old_gex.py", None)
     for name in ("no_superseded_path_survives", "changed_computation_leaves_no_twin",
@@ -411,6 +485,70 @@ def test_control_12_authority_document_naming_existing_mechanisms_passes(repo):
 
 
 # ── the path grammar is one definition, shared ───────────────────────────────────────
+
+# ── same-name collisions (defect 3): references bind to ONE definition ─────────────────
+
+COMMON_NAMES = ["compute", "normalize", "resolve", "load", "build"]
+
+
+def _two_same_named(repo: Path, name: str) -> None:
+    """Two unrelated modules defining `name`, each with its own resolvable production
+    caller, committed as the base before the attack."""
+    _stage(repo, f"app/{name}_a.py", f"def {name}(x):\n    a = x + 1\n    b = a * 2\n    c = b - 3\n    d = c / 4\n    e = d + 5\n    return e\n")
+    _stage(repo, f"app/{name}_b.py", f"def {name}(x):\n    a = x * 10\n    b = a - 1\n    c = b * 3\n    d = c + 4\n    e = d - 5\n    return e\n")
+    _stage(repo, f"svc/call_{name}_a.py", f"from app.{name}_a import {name}\n\n\ndef via_a(x):\n    return {name}(x)\n")
+    _stage(repo, f"svc/call_{name}_b.py", f"import app.{name}_b as m\n\n\ndef via_b(x):\n    return m.{name}(x)\n")
+    _git(repo, "commit", "-qm", f"two {name}")
+
+
+@pytest.mark.parametrize("name", COMMON_NAMES)
+def test_collision_replaced_definition_is_detected_despite_a_same_named_survivor(repo, name):
+    """A is replaced (its only caller rewired elsewhere) while B keeps its caller: A.name
+    must be reported even though `name` still has live references repository-wide."""
+    _two_same_named(repo, name)
+    _stage(repo, f"svc/call_{name}_a.py", "from app.exposure.gex import compute_gex\n\n\ndef via_a(x):\n    return compute_gex([], x)\n")
+    hits = _run("no_superseded_path_survives")
+    assert len(hits) == 1, hits
+    assert f"app/{name}_a.py" in hits[0].replace("\\", "/") and f"'{name}'" in hits[0]
+
+
+@pytest.mark.parametrize("name", COMMON_NAMES)
+def test_collision_still_used_definition_is_never_condemned(repo, name):
+    """B is replaced while A stays imported and called: A must not be reported, and B must."""
+    _two_same_named(repo, name)
+    _stage(repo, f"svc/call_{name}_b.py", "from app.exposure.gex import compute_gex\n\n\ndef via_b(x):\n    return compute_gex([], x)\n")
+    hits = _run("no_superseded_path_survives")
+    assert len(hits) == 1, hits
+    assert f"app/{name}_b.py" in hits[0].replace("\\", "/")
+    assert f"app/{name}_a.py" not in hits[0].replace("\\", "/")
+
+
+def test_collision_both_replaced_reports_both(repo):
+    _two_same_named(repo, "normalize")
+    _stage(repo, "svc/call_normalize_a.py", "from app.exposure.gex import compute_gex\n\n\ndef via_a(x):\n    return compute_gex([], x)\n")
+    _stage(repo, "svc/call_normalize_b.py", "from app.exposure.gex import compute_gex\n\n\ndef via_b(x):\n    return compute_gex([], x)\n")
+    hits = sorted(h.replace("\\", "/") for h in _run("no_superseded_path_survives"))
+    assert len(hits) == 2 and "app/normalize_a.py" in hits[0] and "app/normalize_b.py" in hits[1], hits
+
+
+def test_collision_attribute_reference_on_an_untyped_receiver_is_the_documented_blind_spot(repo):
+    """`obj.normalize()` cannot be bound to a definition, so it keeps every `normalize`
+    alive: a replaced A is MISSED here (blind spot, stated in AGENTS.md) and nothing is
+    falsely reported. The check never guesses."""
+    _two_same_named(repo, "normalize")
+    _stage(repo, "svc/dyn.py", "def apply(obj, x):\n    return obj.normalize(x)\n")
+    _git(repo, "commit", "-qm", "dyn")
+    _stage(repo, "svc/call_normalize_a.py", "from app.exposure.gex import compute_gex\n\n\ndef via_a(x):\n    return compute_gex([], x)\n")
+    assert _run("no_superseded_path_survives") == []
+
+
+def test_collision_base_fixture_is_a_control(repo):
+    """The seed's own pair (app/norm_a via `from`, app/norm_b via module alias): rewiring
+    the alias caller condemns norm_b only."""
+    _stage(repo, "svc/use_b.py", "from app.exposure.gex import compute_gex\n\n\ndef use_b(x):\n    return compute_gex([], x)\n")
+    hits = _run("no_superseded_path_survives")
+    assert len(hits) == 1 and "app/norm_b.py" in hits[0].replace("\\", "/"), hits
+
 
 def test_mechanism_path_grammar_ignores_globs_directories_and_placeholders():
     text = ("`tools/*.py`, `app/api/routes/`, `static/*.html|*.js`, `mega*_traceable_inventory.py`, "

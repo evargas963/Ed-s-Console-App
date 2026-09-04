@@ -6,7 +6,9 @@
     "FAIL": "registered field computed in two or more sites, or in a site that is not the declared producer",
     "NOT_PROVEN": "field not yet registered. Counted and reported, never silently passed. The count is asserted by tests/test_one_producer_registry_v1.py so the unenforced remainder cannot drift and must shrink."
   },
-  "payload_surfaces": ["server.py"],
+  "payload_surfaces": [
+    "server.py"
+  ],
   "_payload_surfaces_note": "RC-325/SP-05: the files whose emitted fields are classified as registered or NOT_PROVEN. Declaring them makes their ABSENCE a fail-closed violation — the checker raises PayloadSurfaceMissing rather than reporting zero unresolved fields, because 'I could not look' must never read as 'there is nothing there'. A fixture repo that declares none is silent by design; this repo declares server.py and therefore cannot pass while it is missing.",
   "_how_to_add_a_field": "Name the field, the ONE module:function permitted to compute it, and the evidence you used to establish that it is the only one. Adding a field without deleting the competing sites is a FAIL, not a registration.",
   "fields": {
@@ -14,47 +16,141 @@
       "producer": "math_exposure_core.py:compute_exposures_by_strike",
       "kind": "derived",
       "formula": "gamma * oi * contract_multiplier * spot^2 * 0.01",
-      "computation_inputs": ["gamma", "oi", "spt"],
+      "computation_inputs": [
+        "gamma",
+        "oi",
+        "spt"
+      ],
       "evidence": "RC-345 / F42 (NOT F14 — F14 is VWAP bands; ids F01-F40 immutable): the DISTINGUISHING signature of the dollar-GEX-per-1% quantity is the spot-squared scaling (the local `spt * spt` term). The prior generic inputs (gamma, openInterest, spot) false-matched math_probabilities.score_option_expression, whose only qualifying construct is `base += min(abs(gamma) * 10.0, 3.0)` — a scoring accumulation that mentions gamma but is NOT a $GEX derivation (no OI, no spot-squared: a legitimately DISTINCT semantic, and a local scalar never published as an exposure). Pinning computation_inputs to the actual producer variables (gamma, oi, spt) restricts the match to the one site that reprices gamma into dollars-per-1%: math_exposure_core.compute_exposures_by_strike (call_gex_1pct / put_gex_1pct at lines 288/315). Locked by tests/test_single_producer_batch_f02_f13_v1.py (the `* spt * spt * 0.01` arithmetic appears in exactly two lines, both inside that one function).",
-      "status": "SINGLE_SOURCE"
+      "status": "SINGLE_SOURCE",
+      "surface_inputs": [
+        [
+          "gamma"
+        ],
+        [
+          "oi",
+          "openInterest",
+          "open_interest"
+        ],
+        [
+          "spot",
+          "spt",
+          "underlying",
+          "underlying_price",
+          "underlyingPrice",
+          "spot_price",
+          "spotPrice"
+        ]
+      ]
     },
     "dex_dollars_at_strike": {
       "producer": "math_exposure_core.py:compute_exposures_by_strike",
       "kind": "derived",
       "formula": "delta * oi * contract_multiplier * spot",
       "evidence": "Same AST pass found 10 candidate computing functions for (delta, openInterest).",
-      "status": "DECLARED_NOT_YET_COLLAPSED"
+      "status": "DECLARED_NOT_YET_COLLAPSED",
+      "surface_inputs": [
+        [
+          "delta"
+        ],
+        [
+          "oi",
+          "openInterest",
+          "open_interest"
+        ],
+        [
+          "spot",
+          "spt",
+          "underlying",
+          "underlying_price",
+          "underlyingPrice",
+          "spot_price",
+          "spotPrice"
+        ]
+      ]
     },
     "open_interest_sum_at_strike": {
       "producer": "math_exposure_core.py:compute_exposures_by_strike",
       "kind": "schwab_leaf_aggregate",
       "leaf": "chains.*.openInterest",
       "evidence": "Same AST pass found 11 candidate summing functions.",
-      "status": "DECLARED_NOT_YET_COLLAPSED"
+      "status": "DECLARED_NOT_YET_COLLAPSED",
+      "surface_inputs": [
+        [
+          "oi",
+          "openInterest",
+          "open_interest"
+        ],
+        [
+          "strike",
+          "strikePrice",
+          "strike_price"
+        ]
+      ]
     },
     "option_volume_sum_at_strike": {
       "producer": "math_exposure_core.py:compute_exposures_by_strike",
       "kind": "schwab_leaf_aggregate",
       "leaf": "chains.*.totalVolume",
       "evidence": "Same AST pass found 22 candidate summing functions — the widest duplication measured.",
-      "status": "DECLARED_NOT_YET_COLLAPSED"
+      "status": "DECLARED_NOT_YET_COLLAPSED",
+      "surface_inputs": [
+        [
+          "totalVolume",
+          "total_volume",
+          "volume"
+        ],
+        [
+          "strike",
+          "strikePrice",
+          "strike_price"
+        ]
+      ]
     },
     "net_charm_at_strike": {
       "producer": "math_levels.py:compute_charm_by_strike",
       "kind": "derived",
       "formula": "dealer-signed net_charm = call_charm - put_charm per strike (RC-179)",
       "evidence": "AST pass found 1 computing function; already single-source.",
-      "status": "SINGLE_SOURCE"
+      "status": "SINGLE_SOURCE",
+      "surface_inputs": [
+        [
+          "charm"
+        ],
+        [
+          "oi",
+          "openInterest",
+          "open_interest"
+        ]
+      ]
     },
     "price_level_family_phase2a": {
       "producer": "liquidity_value_engine.py:build_price_level_snapshot",
       "kind": "derived",
-      "level_ids": ["PDH", "PDL", "PDC", "PD_POC", "PD_VAH", "PD_VAL",
-                     "OVERNIGHT_HIGH", "OVERNIGHT_LOW", "ORB_HIGH", "ORB_LOW", "ORB_MID",
-                     "VWAP", "VWAP_P1", "VWAP_M1", "VWAP_P2", "VWAP_M2",
-                     "TODAY_POC", "TODAY_VAH", "TODAY_VAL"],
+      "level_ids": [
+        "PDH",
+        "PDL",
+        "PDC",
+        "PD_POC",
+        "PD_VAH",
+        "PD_VAL",
+        "OVERNIGHT_HIGH",
+        "OVERNIGHT_LOW",
+        "ORB_HIGH",
+        "ORB_LOW",
+        "ORB_MID",
+        "VWAP",
+        "VWAP_P1",
+        "VWAP_M1",
+        "VWAP_P2",
+        "VWAP_M2",
+        "TODAY_POC",
+        "TODAY_VAH",
+        "TODAY_VAL"
+      ],
       "evidence": "Phase 2A (5609617d). Enforced separately and at computation level by tools/phase2a_level_lock.py, which Cursor has proven bypassable via compute_session_vwap_series, direct formulas, and recomputation inside build_live_snapshot — so this entry is DECLARED, not proven.",
       "status": "DECLARED_NOT_YET_COLLAPSED"
     }
-  }
+  },
+  "_surface_inputs_note": "RC-516 (AGENTS.md laws 6 and 12): `surface_inputs` lists, per field, groups of accepted spellings of each defining input as they appear in JavaScript, inline page scripts and SQL. tools/check_one_producer.surface_computing_sites treats a statement that arithmetically joins spellings from two or more groups as a computing site of the field - a frontend or query reimplementation is a second faucet. A field without surface_inputs is judged on Python only; that surface class is NOT_MECHANICALLY_DETECTABLE for it and stays with the law."
 }

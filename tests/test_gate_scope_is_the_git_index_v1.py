@@ -186,6 +186,11 @@ def test_the_remaining_filesystem_scanners_are_measured_not_forgotten():
     # legitimate single-purpose census/audit reason, simply invisible to the old
     # detector before its git-ls-files extension. None of these are new scans; the
     # detector just stopped missing a call shape it was blind to.
+    # tools/check_one_producer.py 1 -> 2 (RC-516, 2026-09-04): ONE deliberate new
+    # enumeration in an already-tracked file — `_tracked_surfaces` lists the tracked
+    # JS / HTML / SQL files so a registered field recomputed in the browser or in a
+    # query is a second faucet too (AGENTS.md law 12); same git-index authority as the
+    # Python scan, read by `load_surfaces`. No new file.
     per_file = Counter(rel.rsplit(":", 1)[0] for rel in found)
     current = {f"{rel}::{n}" for rel, n in per_file.items()}
     frozen = frozenset(
