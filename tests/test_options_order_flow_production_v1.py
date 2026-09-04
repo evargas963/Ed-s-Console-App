@@ -1,4 +1,4 @@
-"""Options/order-flow production path: default contract, live payload, history, watchdog.
+"""Options/order-flow production path: default contract, live payload, history, stream lock.
 
 # universal-scope-ok: fixtures use banked CDE/SPY contract rows as vendor-symbol
 # examples of the enrolled-universe capture path, not a SPY-only product claim.
@@ -109,53 +109,181 @@ def test_history_hydrates_from_stream_capture_only(tmp_path, monkeypatch):
     assert payload["status"] == "ok"
 
 
-def test_watchdog_does_not_start_when_heartbeat_fresh(tmp_path, monkeypatch):
-    from app.market_data.stream_watchdog import ensure_stream_capture_running
-    from stream_spine import STREAM_SCHEMA_SQL, PRODUCER_CLAIM_TTL_SEC
+def _isolated_stream_env(db_path):
+    """Child env: tmp DB wins over the live STREAM_CAPTURE_DB_PATH, Schwab is blocked."""
+    import os
+    env = os.environ.copy()
+    env["STREAM_CAPTURE_DB_PATH"] = str(db_path.resolve())
+    env["ED_CI_OFFLINE"] = "1"
+    env["SCHWAB_API_KEY"] = "ci-placeholder-key"
+    env["SCHWAB_APP_SECRET"] = "ci-placeholder-secret"
+    return env
 
+
+def test_real_subprocess_second_daemon_cannot_own_lock(tmp_path):
+    """Real process boundary: a held DB-adjacent lock refuses a second daemon.
+
+    Does not mock Popen. The second process is the real tools/run_stream_capture.py
+    entry point. It must exit non-zero and must not be reported as started.
+    """
+    import subprocess
+    import sys
+    import time
+    from pathlib import Path as _P
+
+    repo = _P(__file__).resolve().parents[1]
     db = tmp_path / "stream_capture.db"
-    con = sqlite3.connect(str(db))
-    con.executescript(STREAM_SCHEMA_SQL)
-    con.execute(
-        "INSERT INTO stream_producer_heartbeat(id, daemon_pid, heartbeat_ts, resolved_db_path) "
-        "VALUES(1, 1, ?, ?)",
-        (time.time(), str(db)),
+    lock = tmp_path / "stream_capture.lock"
+    env = _isolated_stream_env(db)
+    holder_src = (
+        "import os, sys, time\n"
+        f"sys.path.insert(0, r'{repo}')\n"
+        "from tools.run_stream_capture import acquire_owner_lock, owner_lock_path\n"
+        f"db = r'{db}'\n"
+        "os.environ['STREAM_CAPTURE_DB_PATH'] = db\n"
+        "fd, held = acquire_owner_lock(db)\n"
+        "print('LOCK_HELD', held, flush=True)\n"
+        "time.sleep(90)\n"
     )
-    con.commit()
-    con.close()
-    monkeypatch.setenv("STREAM_CAPTURE_DB_PATH", str(db.resolve()))
-    started = []
-    monkeypatch.setattr(
-        "app.market_data.stream_watchdog.start_durable_daemon",
-        lambda **k: started.append(k) or {"started": True},
+    holder = subprocess.Popen(
+        [sys.executable, "-c", holder_src],
+        cwd=str(repo),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        env=env,
     )
-    out = ensure_stream_capture_running(db_path=db)
-    assert out["action"] == "already_running"
-    assert started == []
-    assert PRODUCER_CLAIM_TTL_SEC == 30.0
+    try:
+        deadline = time.time() + 20
+        saw_lock = False
+        while time.time() < deadline:
+            if lock.exists():
+                saw_lock = True
+                break
+            if holder.poll() is not None:
+                out, err = holder.communicate()
+                raise AssertionError(
+                    f"lock holder died rc={holder.returncode} stdout={out!r} stderr={err!r}"
+                )
+            time.sleep(0.05)
+        assert saw_lock, "holder never created the DB-adjacent lock"
+        second = subprocess.run(
+            [
+                sys.executable,
+                "tools/run_stream_capture.py",
+                "--symbols",
+                "SPY",
+                "--duration-min",
+                "0",
+                "--db",
+                str(db),
+            ],
+            cwd=str(repo),
+            capture_output=True,
+            text=True,
+            timeout=45,
+            env=env,
+        )
+        combined = (second.stdout or "") + (second.stderr or "")
+        assert second.returncode != 0, combined
+        assert "another stream-capture owner" in combined, combined
+        assert '"started"' not in combined
+    finally:
+        holder.kill()
+        try:
+            holder.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            holder.terminate()
 
 
-def test_watchdog_starts_duration_zero_when_stale(tmp_path, monkeypatch):
-    from app.market_data.stream_watchdog import ensure_stream_capture_running
+def test_real_subprocess_failed_schwab_is_not_started(tmp_path):
+    """Schwab/session failure is exit 2 and releases the lock. Not a success."""
+    import subprocess
+    import sys
+    from pathlib import Path as _P
 
+    repo = _P(__file__).resolve().parents[1]
     db = tmp_path / "stream_capture.db"
-    con = sqlite3.connect(str(db))
-    con.executescript(STREAM_SCHEMA_SQL)
-    con.execute(
-        "INSERT INTO stream_producer_heartbeat(id, daemon_pid, heartbeat_ts, resolved_db_path) "
-        "VALUES(1, 1, ?, ?)",
-        (time.time() - 120.0, str(db)),
+    lock = tmp_path / "stream_capture.lock"
+    env = _isolated_stream_env(db)
+    result = subprocess.run(
+        [
+            sys.executable,
+            "tools/run_stream_capture.py",
+            "--symbols",
+            "SPY",
+            "--duration-min",
+            "0",
+            "--db",
+            str(db),
+        ],
+        cwd=str(repo),
+        capture_output=True,
+        text=True,
+        timeout=45,
+        env=env,
     )
-    con.commit()
-    con.close()
-    monkeypatch.setenv("STREAM_CAPTURE_DB_PATH", str(db.resolve()))
-    monkeypatch.setattr(
-        "app.market_data.stream_watchdog.start_durable_daemon",
-        lambda **k: {"started": True, "pid": 9, "duration_min": 0},
+    combined = (result.stdout or "") + (result.stderr or "")
+    assert result.returncode == 2, combined
+    assert "FATAL: Schwab client init failed" in combined, combined
+    assert not lock.exists(), "failed start leaked the owner lock"
+    assert '"started"' not in combined
+
+
+def test_real_subprocess_dead_owner_lock_is_reclaimed(tmp_path):
+    """After the owner process dies, the next real daemon can take the lock.
+
+    It then fails Schwab honestly (exit 2) — reclaim is not a false start.
+    """
+    import subprocess
+    import sys
+    from pathlib import Path as _P
+
+    repo = _P(__file__).resolve().parents[1]
+    db = tmp_path / "stream_capture.db"
+    lock = tmp_path / "stream_capture.lock"
+    env = _isolated_stream_env(db)
+    holder_src = (
+        "import os, sys\n"
+        f"sys.path.insert(0, r'{repo}')\n"
+        "from tools.run_stream_capture import acquire_owner_lock\n"
+        f"db = r'{db}'\n"
+        "os.environ['STREAM_CAPTURE_DB_PATH'] = db\n"
+        "fd, held = acquire_owner_lock(db)\n"
+        "os._exit(0)\n"
     )
-    out = ensure_stream_capture_running(db_path=db)
-    assert out["action"] == "started"
-    assert out["duration_min"] == 0
+    died = subprocess.run(
+        [sys.executable, "-c", holder_src],
+        cwd=str(repo),
+        capture_output=True,
+        text=True,
+        timeout=20,
+        env=env,
+    )
+    assert died.returncode == 0, died.stdout + died.stderr
+    assert lock.exists(), "crash must leave the lock file for the next owner to reclaim"
+    result = subprocess.run(
+        [
+            sys.executable,
+            "tools/run_stream_capture.py",
+            "--symbols",
+            "SPY",
+            "--duration-min",
+            "0",
+            "--db",
+            str(db),
+        ],
+        cwd=str(repo),
+        capture_output=True,
+        text=True,
+        timeout=45,
+        env=env,
+    )
+    combined = (result.stdout or "") + (result.stderr or "")
+    assert result.returncode == 2, combined
+    assert "another stream-capture owner" not in combined, combined
+    assert "FATAL: Schwab client init failed" in combined, combined
+    assert not lock.exists()
 
 
 def test_options_api_carries_flow_block():
