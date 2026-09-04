@@ -90,7 +90,7 @@ def acquire_owner_lock(db_path: str | Path | None = None) -> tuple[int, Path]:
             return fd, lock
         except FileExistsError:
             try:
-                pid = int(lock.read_text().strip() or 0)
+                pid = int(lock.read_text().strip() or 0)  # caps-ok: empty pidfile is not a live owner; 0 fails alive-check and reclaims
             except (OSError, ValueError):
                 pid = 0
             alive = False
@@ -631,7 +631,7 @@ async def _surrender_claim_or_wait_out_lease(writer, *, reason: str) -> float:
     started = time.monotonic()
     announced = False
     while True:
-        ts = getattr(writer, "positive_claim_published_ts", None)
+        ts = getattr(writer, "positive_claim_published_ts", None)  # caps-ok: optional claim timestamp; None means no standing claim
         if ts is None:
             break                      # nothing positive stands; surrender is safe
         remaining = (ts + PRODUCER_CLAIM_TTL_SEC) - time.time()
@@ -1149,7 +1149,7 @@ async def _retire_stream_client(stream, *, reason: str,
     so a timeout is REPORTED and then stepped past, never awaited indefinitely."""
     if stream is None:
         return
-    logout = getattr(stream, "logout", None)
+    logout = getattr(stream, "logout", None)  # caps-ok: optional schwab-py logout; missing means skip
     if logout is not None:
         try:
             await asyncio.wait_for(logout(), timeout=timeout)
@@ -1161,8 +1161,8 @@ async def _retire_stream_client(stream, *, reason: str,
                   f"({type(e).__name__}: {e}) — closing the transport anyway")
     # Close the transport whether or not the graceful logout landed: after a timed-out or
     # failed logout the socket is exactly what still has to go.
-    sock = getattr(stream, "_socket", None)
-    close = getattr(sock, "close", None)
+    sock = getattr(stream, "_socket", None)  # caps-ok: optional transport handle
+    close = getattr(sock, "close", None)  # caps-ok: optional closer; missing means already gone
     if close is None:
         return
     try:
@@ -1516,7 +1516,7 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
                          epoch_state=option_epoch_state)
             # half-open watchdog: quiet LEVELONE past the bar -> rebuild stream
             age = (health.report().get("LEVELONE_EQUITIES") or {}).get("age_sec")
-            seen = stats.per_service.get("LEVELONE_EQUITIES", 0) > 0
+            seen = stats.per_service.get("LEVELONE_EQUITIES", 0) > 0  # caps-ok: diagnostic unseen-count; 0 means never seen
             _coverage_forced = option_recycle_request.is_set()
             if _coverage_forced or stream_needs_recycle(
                     age, seen, time.monotonic() - last_reconnect,
