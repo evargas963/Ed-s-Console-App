@@ -36,13 +36,20 @@ _REAL_OPTIONS_BOOK_CONTENT = {
 }
 
 
-def _reset(tmp_path):
+def _reset(tmp_path, monkeypatch):
     ofs._feed_running = False
     ofs._active_option_contract = None
     ofs._option_l1_cursor = {}
     ofs._option_book_cursor = {}
     ofls.clear_all_live_state()
-    return tmp_path / "stream_capture.db"
+    db = tmp_path / "stream_capture.db"
+    monkeypatch.setattr(ofs, "STREAM_DB_DEFAULT", db)
+    monkeypatch.delenv("STREAM_CAPTURE_DB_PATH", raising=False)
+    monkeypatch.setattr(
+        "app.options.contracts.default.default_option_contract",
+        lambda *a, **k: None,
+    )
+    return db
 
 
 def _write_option_l1_row(db, symbol, content, ts_recv):
@@ -63,8 +70,7 @@ def _write_option_book_row(db, symbol, content, ts_recv):
 
 
 def test_option_contract_l1_replays_into_order_flow_live_state(tmp_path, monkeypatch):
-    db = _reset(tmp_path)
-    monkeypatch.setattr(ofs, "STREAM_DB_DEFAULT", db)
+    db = _reset(tmp_path, monkeypatch)
     _write_option_l1_row(db, _SPY_CONTRACT, _REAL_LEVELONE_OPTIONS_CONTENT, ts_recv=1.0)
 
     con = ofs._open_capture_db_readonly(db)
@@ -76,8 +82,7 @@ def test_option_contract_l1_replays_into_order_flow_live_state(tmp_path, monkeyp
 
 
 def test_option_contract_book_replays_verbatim(tmp_path, monkeypatch):
-    db = _reset(tmp_path)
-    monkeypatch.setattr(ofs, "STREAM_DB_DEFAULT", db)
+    db = _reset(tmp_path, monkeypatch)
     _write_option_book_row(db, _SPY_CONTRACT, _REAL_OPTIONS_BOOK_CONTENT, ts_recv=1.0)
 
     con = ofs._open_capture_db_readonly(db)
@@ -92,8 +97,7 @@ def test_option_contract_replay_reads_only_options_book_service(tmp_path, monkey
     """A NASDAQ_BOOK/NYSE_BOOK row for the SAME symbol string (should never happen for an
     OSI contract symbol, but the query must not accidentally cross services) must not
     leak into the option contract's replayed content."""
-    db = _reset(tmp_path)
-    monkeypatch.setattr(ofs, "STREAM_DB_DEFAULT", db)
+    db = _reset(tmp_path, monkeypatch)
     w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
     w.insert(f"book.{_SPY_CONTRACT}", book_msg(
         symbol=_SPY_CONTRACT, service="NASDAQ_BOOK",
@@ -113,8 +117,7 @@ def test_option_contract_replay_reads_only_options_book_service(tmp_path, monkey
 def test_get_option_contract_book_microstructure_reuses_the_one_producer(tmp_path, monkeypatch):
     """The decisive proof: this is compute_book_microstructure itself (the SAME function
     the equity /api/order-flow/microstructure route calls), not a parallel computation."""
-    db = _reset(tmp_path)
-    monkeypatch.setattr(ofs, "STREAM_DB_DEFAULT", db)
+    db = _reset(tmp_path, monkeypatch)
     _write_option_book_row(db, _SPY_CONTRACT, _REAL_OPTIONS_BOOK_CONTENT, ts_recv=1.0)
     con = ofs._open_capture_db_readonly(db)
     ofs._replay_option_contract_rows(con, _SPY_CONTRACT)
@@ -150,11 +153,10 @@ def test_set_active_option_contract_writes_signal_and_clears_old_symbol(tmp_path
 def test_feed_loop_replays_both_ticker_and_option_contract_independently(tmp_path, monkeypatch):
     """The equity active ticker and the option contract are independent slots — both must
     hydrate in the SAME poll tick without interfering with each other."""
-    db = _reset(tmp_path)
+    db = _reset(tmp_path, monkeypatch)
     ofs._active_ticker = None
     ofs._l1_cursor = {}
     ofs._book_cursor = {}
-    monkeypatch.setattr(ofs, "STREAM_DB_DEFAULT", db)
     monkeypatch.setattr("order_flow_streaming.write_active_ticker_signal", lambda *_a, **_k: None)
     monkeypatch.setattr("order_flow_streaming.write_active_option_contract_signal", lambda *_a, **_k: None)
 
@@ -207,11 +209,10 @@ def test_feed_loop_confines_every_db_touch_to_one_thread(tmp_path, monkeypatch):
     cross-call thread reuse (not synthetic). Proves the fix directly: every DB-touching
     call across several poll ticks reports the SAME thread ident, not merely that no
     exception happened to surface this run."""
-    db = _reset(tmp_path)
+    db = _reset(tmp_path, monkeypatch)
     ofs._active_ticker = None
     ofs._l1_cursor = {}
     ofs._book_cursor = {}
-    monkeypatch.setattr(ofs, "STREAM_DB_DEFAULT", db)
     monkeypatch.setattr("order_flow_streaming.write_active_ticker_signal", lambda *_a, **_k: None)
     monkeypatch.setattr("order_flow_streaming.write_active_option_contract_signal", lambda *_a, **_k: None)
     _write_option_l1_row(db, _SPY_CONTRACT, _REAL_LEVELONE_OPTIONS_CONTENT, ts_recv=1.0)

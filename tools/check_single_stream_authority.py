@@ -15,7 +15,7 @@ mentions the class by name). Only calls resolvable to `schwab.streaming.StreamCl
 count; an unrelated class of the same name in an unrelated module does not.
 
 CLASSIFICATION, one of:
-    PRODUCTION_OWNER   tools/run_stream_capture.py — the canonical capture daemon.
+    PRODUCTION_OWNER   app/market_data/schwab/streaming/capture.py — the canonical capture daemon.
     OFFLINE_TOOL       schwab_full_field_inventory.py — manual field-discovery CLI, only
                        reachable via `if __name__ == "__main__"`, never imported by any
                        automated path (verified 2026-08-30: its one production import,
@@ -37,7 +37,7 @@ REPO = Path(__file__).resolve().parent.parent
 
 #: `git ls-files` always yields forward-slash paths regardless of OS — compare against
 #: that literally, never a Path-joined (backslash-on-Windows) string.
-PRODUCTION_OWNER = "tools/run_stream_capture.py"
+PRODUCTION_OWNER = "app/market_data/schwab/streaming/capture.py"
 OFFLINE_TOOLS = {"schwab_full_field_inventory.py"}
 
 

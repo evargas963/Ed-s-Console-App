@@ -559,7 +559,7 @@ def _surrendered_but_unclosed_db(tmp_path, monkeypatch, ofs, contract):
     """The exact durable state a FAILED close leaves behind, produced by driving the REAL
     daemon helpers — not hand-written rows. Returns (db, epoch ids still open)."""
     from stream_spine import CaptureWriter, CoverageWriteError
-    import tools.run_stream_capture as d
+    import app.market_data.schwab.streaming.capture as d
 
     db = tmp_path / "surrendered.db"
     w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
@@ -627,7 +627,7 @@ def test_durable_truth_repeated_ticks_during_the_write_failure_stay_fail_closed(
     import asyncio
 
     import order_flow_streaming as ofs
-    import tools.run_stream_capture as d
+    import app.market_data.schwab.streaming.capture as d
     from stream_spine import CaptureWriter, CoverageWriteError
 
     db = tmp_path / "reentrant.db"
@@ -715,7 +715,7 @@ def test_durable_truth_recovery_still_records_the_original_surrender_timestamp(t
     import sqlite3
 
     import order_flow_streaming as ofs
-    import tools.run_stream_capture as d
+    import app.market_data.schwab.streaming.capture as d
     from stream_spine import CaptureWriter, CoverageWriteError
 
     db = tmp_path / "recover.db"

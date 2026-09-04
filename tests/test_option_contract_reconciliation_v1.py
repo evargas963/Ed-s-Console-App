@@ -38,8 +38,8 @@ from stream_spine import (
     read_active_option_contract_signal,
     write_active_option_contract_signal,
 )
-import tools.run_stream_capture as rsc
-from tools.run_stream_capture import (
+import app.market_data.schwab.streaming.capture as rsc
+from app.market_data.schwab.streaming.capture import (
     _active_option_contract_poll_loop,
     _apply_active_option_contract_subs,
     _close_coverage_epoch_tracked,
@@ -107,7 +107,7 @@ def _pending_ids(epoch_state, key):
 
 def test_A_subscribe_and_coverage_open_both_succeed_advances_cleanly(tmp_path, monkeypatch):
     """A. option subscriptions succeed + coverage OPEN write succeeds -> state advances."""
-    monkeypatch.setattr("tools.run_stream_capture.read_active_option_contract_signal",
+    monkeypatch.setattr("app.market_data.schwab.streaming.capture.read_active_option_contract_signal",
                         lambda: _SPY_CONTRACT)
     stream = _FlakyOptionStream()
     writer = CaptureWriter(tmp_path / "cap.db", batch_rows=1, batch_sec=10.0)
@@ -138,7 +138,7 @@ def test_B_coverage_open_write_fails_compensates_by_unsubscribing(tmp_path, monk
     coverage") is preserved and STRENGTHENED: durable truth is still never fabricated,
     AND the vendor subscription is now given back, so VENDOR_HELD ⇒ DURABLE_OPEN_EPOCH
     holds at the tick boundary. The next tick retries cleanly."""
-    monkeypatch.setattr("tools.run_stream_capture.read_active_option_contract_signal",
+    monkeypatch.setattr("app.market_data.schwab.streaming.capture.read_active_option_contract_signal",
                         lambda: _SPY_CONTRACT)
     stream = _FlakyOptionStream()
     writer = CaptureWriter(tmp_path / "cap.db", batch_rows=1, batch_sec=10.0)
@@ -175,9 +175,9 @@ def test_B2_compensating_unsubscribe_failure_fails_closed_not_continue(tmp_path,
     coverage cannot be guaranteed, so the system must NOT continue as healthy/held: it
     raises OptionCoverageCompensationError, which the poll loop escalates into the
     existing stream-recycle path rather than absorbing as an ordinary bad tick."""
-    from tools.run_stream_capture import OptionCoverageCompensationError
+    from app.market_data.schwab.streaming.capture import OptionCoverageCompensationError
 
-    monkeypatch.setattr("tools.run_stream_capture.read_active_option_contract_signal",
+    monkeypatch.setattr("app.market_data.schwab.streaming.capture.read_active_option_contract_signal",
                         lambda: _SPY_CONTRACT)
     # the compensating unsubscribe fails too
     stream = _FlakyOptionStream(fail_calls={"l1_option_unsub"})
@@ -208,7 +208,7 @@ def test_B3_poll_loop_escalates_compensation_failure_into_recycle(tmp_path, monk
     swallowed, while an ordinary error still does not."""
     import asyncio as _aio
 
-    from tools.run_stream_capture import (
+    from app.market_data.schwab.streaming.capture import (
         OptionCoverageCompensationError,
         _active_option_contract_poll_loop,
     )
@@ -220,7 +220,7 @@ def test_B3_poll_loop_escalates_compensation_failure_into_recycle(tmp_path, monk
         async def _boom(*a, **k):
             stop.set()          # one tick only
             raise exc
-        monkeypatch.setattr("tools.run_stream_capture._apply_active_option_contract_subs", _boom)
+        monkeypatch.setattr("app.market_data.schwab.streaming.capture._apply_active_option_contract_subs", _boom)
         await _active_option_contract_poll_loop(
             lambda: object(), lambda: {"l1": None, "book": None}, lambda c: None,
             stop, writer=None, epoch_state=None, interval_sec=0.01,
@@ -247,7 +247,7 @@ def test_C_coverage_close_write_fails_keeps_the_old_epoch_open_and_held(tmp_path
     coherent."""
     p = tmp_path / "signal.json"
     write_active_option_contract_signal(_QQQ_CONTRACT, path=p)
-    monkeypatch.setattr("tools.run_stream_capture.read_active_option_contract_signal",
+    monkeypatch.setattr("app.market_data.schwab.streaming.capture.read_active_option_contract_signal",
                         lambda: read_active_option_contract_signal(path=p))
     stream = _FlakyOptionStream()
     writer = CaptureWriter(tmp_path / "cap.db", batch_rows=1, batch_sec=10.0)
@@ -300,7 +300,7 @@ def test_D_pending_close_self_heals_once_the_writer_recovers(tmp_path, monkeypat
     (the prior subscription is restored and the epoch is no longer pending), so that path
     no longer leaves a pending entry to retry — see
     test_coverage_C_pending_close_retry_cannot_close_a_restored_subscription."""
-    from tools.run_stream_capture import _close_coverage_epoch_tracked
+    from app.market_data.schwab.streaming.capture import _close_coverage_epoch_tracked
 
     writer = CaptureWriter(tmp_path / "cap.db", batch_rows=1, batch_sec=10.0)
     writer._conn.execute(
@@ -345,7 +345,7 @@ def test_E_mutation_ignoring_open_failure_would_fabricate_durable_coverage(tmp_p
     an epoch_state the real epochs table CONTRADICTS — caught by cross-checking the
     in-memory claim against the durable row, not merely asserting the function returned
     something."""
-    monkeypatch.setattr("tools.run_stream_capture.read_active_option_contract_signal",
+    monkeypatch.setattr("app.market_data.schwab.streaming.capture.read_active_option_contract_signal",
                         lambda: _SPY_CONTRACT)
     stream = _FlakyOptionStream()
     writer = CaptureWriter(tmp_path / "cap.db", batch_rows=1, batch_sec=10.0)
@@ -361,7 +361,7 @@ def test_E_mutation_ignoring_open_failure_would_fabricate_durable_coverage(tmp_p
             epoch_state[key] = writer.open_coverage_epoch(symbol, service, reason=reason)
         except CoverageWriteError:
             epoch_state[key] = -1   # BUG: claims a fabricated "durable" epoch id anyway
-    monkeypatch.setattr("tools.run_stream_capture._open_coverage_epoch_tracked",
+    monkeypatch.setattr("app.market_data.schwab.streaming.capture._open_coverage_epoch_tracked",
                         _mutated_open_ignoring_failure)
     epoch_state: dict = {"l1": None, "book": None}
 
@@ -393,7 +393,7 @@ def test_a_stuck_close_must_block_a_new_epoch_on_the_same_service(tmp_path, monk
     may step over."""
     p = tmp_path / "signal.json"
     write_active_option_contract_signal(_QQQ_CONTRACT, path=p)
-    monkeypatch.setattr("tools.run_stream_capture.read_active_option_contract_signal",
+    monkeypatch.setattr("app.market_data.schwab.streaming.capture.read_active_option_contract_signal",
                         lambda: read_active_option_contract_signal(path=p))
     stream = _FlakyOptionStream()
     writer = CaptureWriter(tmp_path / "cap.db", batch_rows=1, batch_sec=10.0)
@@ -443,7 +443,7 @@ def test_first_service_succeeds_second_fails_first_still_advances(monkeypatch):
     """L1 subscribes fine; OPTIONS_BOOK errors. L1's vendor-held truth must advance
     (a real ack happened) even though BOOK's does not — the two services are NOT
     collapsed into one all-or-nothing outcome."""
-    monkeypatch.setattr("tools.run_stream_capture.read_active_option_contract_signal",
+    monkeypatch.setattr("app.market_data.schwab.streaming.capture.read_active_option_contract_signal",
                         lambda: _SPY_CONTRACT)
     stream = _FlakyOptionStream(fail_calls={"options_book_sub"})
 
@@ -461,7 +461,7 @@ def test_unsubscribe_old_l1_succeeds_book_unsub_fails(monkeypatch):
     live BOOK keys for one service) — it stays on the old (unknown-to-us) symbol, retried
     next tick."""
     p = "unused"
-    monkeypatch.setattr("tools.run_stream_capture.read_active_option_contract_signal",
+    monkeypatch.setattr("app.market_data.schwab.streaming.capture.read_active_option_contract_signal",
                         lambda: _QQQ_CONTRACT)
     stream = _FlakyOptionStream(fail_calls={"options_book_unsub"})
 
@@ -479,7 +479,7 @@ def test_unsubscribe_old_l1_succeeds_book_unsub_fails(monkeypatch):
 
 
 def test_both_new_subscriptions_succeed(monkeypatch):
-    monkeypatch.setattr("tools.run_stream_capture.read_active_option_contract_signal",
+    monkeypatch.setattr("app.market_data.schwab.streaming.capture.read_active_option_contract_signal",
                         lambda: _SPY_CONTRACT)
     stream = _FlakyOptionStream()
 
@@ -493,7 +493,7 @@ def test_both_new_subscriptions_succeed(monkeypatch):
 def test_reconnect_with_both_prior_services_active(monkeypatch):
     """_schwab_connect's reconnect-reapply path (a fresh StreamClient, both services
     None) must re-establish both services when both succeed."""
-    import tools.run_stream_capture as d
+    import app.market_data.schwab.streaming.capture as d
     from types import SimpleNamespace
     import sys
     import types
@@ -524,7 +524,7 @@ def test_reconnect_with_both_prior_services_active(monkeypatch):
     async def go():
         from stream_spine import HealthRegistry, MessageBus
         bus, health, stats, stop = MessageBus(), object(), object(), asyncio.Event()
-        from tools.run_stream_capture import CaptureStats
+        from app.market_data.schwab.streaming.capture import CaptureStats
         stream, task, contract_state = await d._schwab_connect(
             SimpleNamespace(client=object()), ["SPY"], bus, HealthRegistry(), CaptureStats(),
             stop, active_option_contract=_SPY_CONTRACT)
@@ -543,7 +543,7 @@ def test_reconnect_with_both_prior_services_active(monkeypatch):
 def test_reconnect_where_one_resubscription_fails(monkeypatch):
     """Reconnect-reapply: L1 resubscribes; BOOK errors. contract_state must reflect the
     partial outcome truthfully — never claim BOOK is held when it is not."""
-    import tools.run_stream_capture as d
+    import app.market_data.schwab.streaming.capture as d
     from types import SimpleNamespace
     import sys
     import types
@@ -574,7 +574,7 @@ def test_reconnect_where_one_resubscription_fails(monkeypatch):
 
     async def go():
         from stream_spine import HealthRegistry, MessageBus
-        from tools.run_stream_capture import CaptureStats
+        from app.market_data.schwab.streaming.capture import CaptureStats
         bus, stop = MessageBus(), asyncio.Event()
         stream, task, contract_state = await d._schwab_connect(
             SimpleNamespace(client=object()), ["SPY"], bus, HealthRegistry(), CaptureStats(),
@@ -594,7 +594,7 @@ def test_repeated_poll_after_partial_failure_recovers_without_duplicate_sub(monk
     ONLY the still-unheld service (BOOK) — never re-issue L1's already-successful
     subscribe, which the operator explicitly warned against ('blindly issuing duplicate
     subscriptions until they happen to converge')."""
-    monkeypatch.setattr("tools.run_stream_capture.read_active_option_contract_signal",
+    monkeypatch.setattr("app.market_data.schwab.streaming.capture.read_active_option_contract_signal",
                         lambda: _SPY_CONTRACT)
     stream = _FlakyOptionStream(fail_calls={"options_book_sub"})
 
@@ -626,7 +626,7 @@ def test_repeated_poll_after_partial_failure_recovers_without_duplicate_sub(monk
 # ─────────────────────────────────────────────────────────────────────────────
 
 def test_blocker2b_guard_fails_closed_on_stuck_close_then_self_heals(tmp_path, monkeypatch):
-    from tools.run_stream_capture import (
+    from app.market_data.schwab.streaming.capture import (
         _close_coverage_epoch_tracked,
         _open_coverage_epoch_tracked,
         _retry_pending_epoch_closes,
@@ -684,7 +684,7 @@ def test_gap4_D_duplicate_open_refusal_cannot_leave_vendor_held(tmp_path, monkey
     open (a stale open row for this pair already exists). That refusal must not be a
     back door into the exact shape gap 4 closes: vendor subscribed, ledger holding no
     new valid epoch. Compensation applies to a refusal exactly as to a write failure."""
-    monkeypatch.setattr("tools.run_stream_capture.read_active_option_contract_signal",
+    monkeypatch.setattr("app.market_data.schwab.streaming.capture.read_active_option_contract_signal",
                         lambda: _SPY_CONTRACT)
     stream = _FlakyOptionStream()
     writer = CaptureWriter(tmp_path / "cap.db", batch_rows=1, batch_sec=10.0)
@@ -717,7 +717,7 @@ def test_gap4_steady_state_vendor_held_implies_durable_open_epoch(tmp_path, monk
     """ADJACENT INVARIANT, mechanically demonstrated across the outcomes that can end a
     tick: for EVERY option service, VENDOR_HELD(symbol) ⇒ CURRENT_DURABLE_OPEN_EPOCH
     (symbol, service). Checked against the REAL epochs table, not against epoch_state."""
-    monkeypatch.setattr("tools.run_stream_capture.read_active_option_contract_signal",
+    monkeypatch.setattr("app.market_data.schwab.streaming.capture.read_active_option_contract_signal",
                         lambda: _SPY_CONTRACT)
 
     def _assert_invariant(db_path, held_state):
@@ -858,7 +858,7 @@ def test_coverage_C_vendor_unsub_failure_after_durable_close_fails_closed(tmp_pa
     no false A epoch may be recreated to make the states look equal, and the existing
     recycle path must be forced. A conservative uncovered interval beats a fabricated
     subscribed one."""
-    from tools.run_stream_capture import OptionCoverageCompensationError
+    from app.market_data.schwab.streaming.capture import OptionCoverageCompensationError
 
     db = tmp_path / "cap.db"
     w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
@@ -1316,7 +1316,7 @@ def test_exhaustive_failure_matrix_never_claims_false_coverage(
 
     An escalation (OptionCoverageCompensationError) is an allowed UNKNOWN outcome, but
     (1) and (2) must still hold — the recycle path may not leave fabricated coverage."""
-    from tools.run_stream_capture import OptionCoverageCompensationError
+    from app.market_data.schwab.streaming.capture import OptionCoverageCompensationError
 
     db = tmp_path / "cap.db"
     w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)

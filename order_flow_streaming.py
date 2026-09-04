@@ -1,6 +1,6 @@
 """
 Live-plane feed for the single active UI ticker — READ-ONLY consumer of the canonical
-capture daemon (tools/run_stream_capture.py), never a second Schwab session.
+capture daemon (app.market_data.schwab.streaming.capture), never a second Schwab session.
 
 SINGLE-STREAM-AUTHORITY LAW (root-fixed here): this module used to own its own
 `schwab.streaming.StreamClient`, logging into Schwab independently of the canonical
@@ -37,7 +37,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Callable, Optional
 
-from instrument_identity import ticker_storage_key
+from instrument_identity import option_underlying_root, ticker_storage_key, vendor_option_root
 from stream_spine import (
     PRODUCER_CLAIM_TTL_SEC,
     STREAM_DB_DEFAULT,
@@ -311,7 +311,7 @@ def _open_capture_db_readonly(db_path=None) -> Optional[sqlite3.Connection]:
     test) that reassigns the module attribute afterward would silently be ignored.
 
     PR214_RTH_DEFECT_REMEDIATION_V1: goes through `resolve_stream_db_path`, the ONE
-    canonical resolver `tools/run_stream_capture.py`'s CaptureWriter also uses, with
+    canonical resolver `app.market_data.schwab.streaming.capture`'s CaptureWriter also uses, with
     THIS module's own `STREAM_DB_DEFAULT` (still test-monkeypatchable, unchanged) as
     the fallback when no STREAM_CAPTURE_DB_PATH override is set."""
     if db_path is None:
@@ -450,12 +450,17 @@ async def _feed_loop() -> None:
 
 
 def _contract_matches_underlying(contract: str | None, ticker: str) -> bool:
-    """True when the vendor OSI symbol is for this underlying (prefix, not constructed)."""
+    """True when the vendor OSI symbol is for this exact underlying.
+
+    Identity is the OCC/Schwab option root already in the vendor ``symbol``
+    versus ``option_underlying_root`` (ticker_storage_key + BROKER_INDEX_BARE_ROOTS).
+    Prefix match is not identity: ``CDE   260904C00005000`` is not ticker ``C``.
+    """
     if not contract or not ticker:
         return False
-    root = ticker_storage_key(ticker) or ticker
-    raw = str(contract).strip().upper()
-    return raw.startswith(root)
+    osi_root = vendor_option_root(contract)
+    und_root = option_underlying_root(ticker)
+    return bool(osi_root) and osi_root == und_root
 
 
 def _ensure_default_option_contract_for_ticker(ticker: str) -> None:
@@ -468,12 +473,12 @@ def _ensure_default_option_contract_for_ticker(ticker: str) -> None:
     if _contract_matches_underlying(_active_option_contract, ticker):
         return
     try:
-        from app.options.default_contract import default_option_contract
+        from app.options.contracts.default import default_option_contract
         from db import DB_PATH
+        sym = default_option_contract(ticker, chain_db_path=DB_PATH)
     except Exception as e:
-        log.debug("default option contract import failed: %s", e)
+        log.debug("default option contract lookup failed: %s", e)
         return
-    sym = default_option_contract(ticker, chain_db_path=DB_PATH)
     if not sym:
         return
     set_active_option_contract(sym)
@@ -579,11 +584,11 @@ def set_active_option_contract(contract_symbol: str,
 def get_option_contract_book_microstructure(contract_symbol: str) -> dict:
     """The order-flow SEMANTIC PRODUCT for one option contract: book + PROXY flow.
 
-    Assembled by ``app.options.live_payload.options_live_payload``, which calls
+    Assembled by ``app.options.order_flow.live_payload.options_live_payload``, which calls
     ``OrderFlowEngine.compute`` once (that function already produces
     ``book_microstructure``). No second book walk.
     """
-    from app.options.live_payload import options_live_payload
+    from app.options.order_flow.live_payload import options_live_payload
 
     t = ticker_storage_key(contract_symbol)
     return options_live_payload(t)

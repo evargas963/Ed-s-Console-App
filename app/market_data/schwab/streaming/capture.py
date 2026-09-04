@@ -21,7 +21,7 @@ Acceptance instrumentation built in (measured, not asserted):
     original numeric maps parsed all-None and were caught by this exact mechanism).
 
 Usage:
-    python tools/run_stream_capture.py --symbols SPY,QQQ,IWM --duration-min 0
+    python -m app.market_data.schwab.streaming.capture --symbols SPY,QQQ,IWM --duration-min 0
 """
 
 from __future__ import annotations
@@ -35,7 +35,7 @@ import sys
 import time
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(ROOT))
 
 from stream_spine import (  # noqa: E402

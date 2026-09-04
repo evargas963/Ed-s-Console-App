@@ -13,7 +13,7 @@ absolute operator-home paths never appear in tracked files (credential-leak hook
 | Task | Schedule | Command | Log | Last verified |
 |---|---|---|---|---|
 | `EdTerrainScorecard` | Weekdays 16:45 ET | `cmd /c "<REPO>\tools\run_terrain_scorecard.bat"` (quoted-set PYTHONUTF8, venv-parity enforced inside the bat) | `reports/scorecard_run.log` (gitignored; scanned by `check_scheduled_producers_are_not_inert`) | 2026-08-04 — Last Result **3221225786** (was 0 on 2026-07-27); see *Terminated-mid-run reading* below |
-| `EdConsole Stream Capture` | Weekdays 08:25 ET, duration 0; same-task 1-min repetition for 12h (IgnoreNew; StopAtDurationEnd=false); ExecutionTimeLimit unlimited | `<REPO>\.venv\Scripts\python.exe tools\run_stream_capture.py --symbols SPY,QQQ,IWM --duration-min 0` (WorkingDirectory=<REPO>) | DB-adjacent `stream_capture.lock` + heartbeat in `stream_capture.db` | 2026-09-03 — this task is the sole lifecycle owner; custom watchdog task deleted |
+| `EdConsole Stream Capture` | Weekdays 08:25 ET, duration 0; same-task 1-min repetition for 12h (IgnoreNew; StopAtDurationEnd=false); ExecutionTimeLimit unlimited | `<REPO>\.venv\Scripts\pythonw.exe -m app.market_data.schwab.streaming.capture --symbols SPY,QQQ,IWM --duration-min 0` (WorkingDirectory=<REPO>) | DB-adjacent `stream_capture.lock` + heartbeat in `stream_capture.db` | 2026-09-04 — pythonw + -m app.market_data.schwab.streaming.capture; one owner; no watchdog |
 | `EdWebConsole Daily Scoreboard` | Daily 15:35 ET | `powershell -NoProfile -ExecutionPolicy Bypass -File <REPO>\tools\run_daily_scoreboard.ps1` | per-script | 2026-08-04 — Last Result **3221225786** (was 0 on 2026-07-27) |
 | ~~`EdMondayDebtWake`~~ | RETIRED | ~~`powershell.exe ... run_monday_debt_wake.ps1`~~ (repo script + `reports/_wake/` markers deleted 2026-08-25, audit round 2 — a one-shot 2026-08-03 alarm re-firing weekly against dead work orders) | `reports/_wake/` (deleted) | **2026-08-25 — DELETED from host by operator** (`schtasks /Delete /TN "EdMondayDebtWake" /F`); verified ABSENT via `Get-ScheduledTask`. Tombstone kept per this file's honest-record rule. |
 | `EdRehabDailyScan` | Daily 18:30 | `powershell.exe -NoProfile -ExecutionPolicy Bypass -File "<REPO>\tools\run_rehab_daily.ps1"` (repo launcher, venv parity + non-zero exit surfaced inside it) | `reports/rehab_latest.md` + `reports/tqm_queue_latest.json` + `reports/advisory_debt_latest.json` | 2026-08-05 — registered by the PM; **PROVEN BY EXECUTION, not by registration**: triggered on demand, Last Result **0**, LastRunTime 04:53:24, and all three artifacts advanced 04:10 → 04:59 with the queue reading 3367/prior 3367/delta 0 across 5 items |
@@ -137,6 +137,11 @@ load-bearing properties.
 
 Until the task exists, advisory debt and the TQM queue are visible only when someone runs the
 scan by hand — precisely the condition RC-250 was opened for.
+
+
+## 2026-09-04 — windowless capture owner
+
+The one stream task now launches ``pythonw.exe -m app.market_data.schwab.streaming.capture``. ``pythonw`` is the same windowless interpreter already used by ``EdRthCompletenessCheck`` and ``EdConsoleLivenessWatch``. No BAT, no second task, no watchdog. ``IgnoreNew`` still refuses a second StreamClient. After merge, retarget WorkingDirectory to the production checkout.
 
 ## 2026-09-03 — native host lifecycle is the one stream process owner
 

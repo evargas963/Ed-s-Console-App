@@ -1785,7 +1785,7 @@ def check_single_stream_authority() -> list[Violation]:
         sys.path.insert(0, str(REPO / "tools"))
         from check_single_stream_authority import violations as _v
         for msg in _v():
-            out.append(Violation(REPO / "tools" / "run_stream_capture.py", 0, msg))
+            out.append(Violation(REPO / "app" / "market_data" / "schwab" / "streaming" / "capture.py", 0, msg))
     except Exception as exc:                                        # noqa: BLE001
         out.append(Violation(REPO / "tools" / "check_single_stream_authority.py", 0,
                              f"checker unavailable ({type(exc).__name__}: {exc}) — a gate "

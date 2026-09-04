@@ -84,7 +84,7 @@ def test_F_reconnect_after_recycle_has_no_concurrent_authorities():
     carries its own mutation control). What this test keeps is the structural guarantee
     those depend on: the recycle retires the whole generation BEFORE it reconnects, and
     the retirement actually awaits what it cancels."""
-    import tools.run_stream_capture as d
+    import app.market_data.schwab.streaming.capture as d
     src = inspect.getsource(d._run_streaming)
     retire_at = src.index("_retire_stream_generation(")
     reconnect_at = src.index("_schwab_connect(", retire_at)

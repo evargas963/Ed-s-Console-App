@@ -12,9 +12,16 @@ import ast
 import asyncio
 import inspect
 
-import order_flow_streaming as ofs
+import pytest
+
 import order_flow_live_state as ofls
+import order_flow_streaming as ofs
 from stream_spine import CaptureWriter, book_msg, quote_msg
+
+
+@pytest.fixture(autouse=True)
+def _isolate_stream_capture_env(monkeypatch):
+    monkeypatch.delenv("STREAM_CAPTURE_DB_PATH", raising=False)
 
 
 def _reset(tmp_path):

@@ -19,7 +19,7 @@ from stream_spine import (
     write_active_option_contract_signal,
     write_active_ticker_signal,
 )
-from tools.run_stream_capture import (
+from app.market_data.schwab.streaming.capture import (
     CHART_FIELDS,
     LEVELONE_FIELDS,
     CaptureStats,
@@ -55,7 +55,7 @@ def _isolated_desired_state_signals(tmp_path, monkeypatch):
     import sys as _sys
 
     import stream_spine as _spine
-    import tools.run_stream_capture as _d
+    import app.market_data.schwab.streaming.capture as _d
 
     option_sig = tmp_path / "stream_active_option_contract.json"
     ticker_sig = tmp_path / "stream_active_ticker.json"
@@ -173,7 +173,7 @@ def test_apply_active_ticker_book_subs_switches_symbol(tmp_path, monkeypatch):
     server signals, and unsubscribe the one it replaces — never both at once."""
     p = tmp_path / "stream_active_ticker.json"
     write_active_ticker_signal("QQQ", path=p)
-    monkeypatch.setattr("tools.run_stream_capture.read_active_ticker_signal",
+    monkeypatch.setattr("app.market_data.schwab.streaming.capture.read_active_ticker_signal",
                         lambda: read_active_ticker_signal(path=p))
     stream = _FakeStream()
 
@@ -188,7 +188,7 @@ def test_apply_active_ticker_book_subs_switches_symbol(tmp_path, monkeypatch):
 
 
 def test_apply_active_ticker_book_subs_no_change_is_a_no_op(monkeypatch):
-    monkeypatch.setattr("tools.run_stream_capture.read_active_ticker_signal", lambda: "SPY")
+    monkeypatch.setattr("app.market_data.schwab.streaming.capture.read_active_ticker_signal", lambda: "SPY")
     stream = _FakeStream()
 
     async def go():
@@ -201,7 +201,7 @@ def test_apply_active_ticker_book_subs_no_change_is_a_no_op(monkeypatch):
 def test_apply_active_ticker_book_subs_first_activation_has_no_unsub(monkeypatch):
     """No current ticker yet (daemon just started, no viewer active) -> subscribe only,
     never an unsub call for a symbol that was never subscribed."""
-    monkeypatch.setattr("tools.run_stream_capture.read_active_ticker_signal", lambda: "SPY")
+    monkeypatch.setattr("app.market_data.schwab.streaming.capture.read_active_ticker_signal", lambda: "SPY")
     stream = _FakeStream()
 
     async def go():
@@ -239,7 +239,7 @@ def test_apply_active_option_contract_subs_switches_contract(tmp_path, monkeypat
     services start held=SPY, both switch to held=QQQ."""
     p = tmp_path / "stream_active_option_contract.json"
     write_active_option_contract_signal(_QQQ_CONTRACT, path=p)
-    monkeypatch.setattr("tools.run_stream_capture.read_active_option_contract_signal",
+    monkeypatch.setattr("app.market_data.schwab.streaming.capture.read_active_option_contract_signal",
                         lambda: read_active_option_contract_signal(path=p))
     stream = _FakeOptionStream()
 
@@ -255,7 +255,7 @@ def test_apply_active_option_contract_subs_switches_contract(tmp_path, monkeypat
 
 
 def test_apply_active_option_contract_subs_no_change_is_a_no_op(monkeypatch):
-    monkeypatch.setattr("tools.run_stream_capture.read_active_option_contract_signal",
+    monkeypatch.setattr("app.market_data.schwab.streaming.capture.read_active_option_contract_signal",
                         lambda: _SPY_CONTRACT)
     stream = _FakeOptionStream()
 
@@ -268,7 +268,7 @@ def test_apply_active_option_contract_subs_no_change_is_a_no_op(monkeypatch):
 
 
 def test_apply_active_option_contract_subs_first_activation_has_no_unsub(monkeypatch):
-    monkeypatch.setattr("tools.run_stream_capture.read_active_option_contract_signal",
+    monkeypatch.setattr("app.market_data.schwab.streaming.capture.read_active_option_contract_signal",
                         lambda: _SPY_CONTRACT)
     stream = _FakeOptionStream()
 
@@ -284,7 +284,7 @@ def test_apply_active_option_contract_subs_first_activation_has_no_unsub(monkeyp
 def test_apply_active_option_contract_subs_opens_coverage_epochs_on_activation(tmp_path, monkeypatch):
     """First activation (no prior contract) must OPEN durable epochs for both services —
     a reader must be able to tell 'not yet subscribed' from 'subscribed, silent'."""
-    monkeypatch.setattr("tools.run_stream_capture.read_active_option_contract_signal",
+    monkeypatch.setattr("app.market_data.schwab.streaming.capture.read_active_option_contract_signal",
                         lambda: _SPY_CONTRACT)
     stream = _FakeOptionStream()
     writer = CaptureWriter(tmp_path / "cap.db", batch_rows=1, batch_sec=10.0)
@@ -309,7 +309,7 @@ def test_apply_active_option_contract_subs_opens_coverage_epochs_on_activation(t
 def test_apply_active_option_contract_subs_closes_old_opens_new_on_switch(tmp_path, monkeypatch):
     p = tmp_path / "signal.json"
     write_active_option_contract_signal(_QQQ_CONTRACT, path=p)
-    monkeypatch.setattr("tools.run_stream_capture.read_active_option_contract_signal",
+    monkeypatch.setattr("app.market_data.schwab.streaming.capture.read_active_option_contract_signal",
                         lambda: read_active_option_contract_signal(path=p))
     stream = _FakeOptionStream()
     writer = CaptureWriter(tmp_path / "cap.db", batch_rows=1, batch_sec=10.0)
@@ -440,7 +440,7 @@ def test_schwab_connect_registers_book_handlers_every_time():
     """PHASE 4-E: canonical one-owner startup must wire book handlers on connect — not
     only after the first UI viewer ever requests a ticker (a later signal write must not
     race an unregistered handler)."""
-    import tools.run_stream_capture as d
+    import app.market_data.schwab.streaming.capture as d
 
     async def go(monkeypatch):
         _install_fake_schwab_streaming(monkeypatch)
@@ -467,7 +467,7 @@ def test_schwab_connect_reapplies_active_book_ticker_after_reconnect():
     """PHASE 4-F: a fresh StreamClient (post half-open recycle) carries NO subscriptions
     — the active UI viewer's book depth must be re-applied on THIS connect, not wait for
     the next 1s poll tick to notice an unchanged signal file and do nothing."""
-    import tools.run_stream_capture as d
+    import app.market_data.schwab.streaming.capture as d
 
     async def go(monkeypatch):
         _install_fake_schwab_streaming(monkeypatch)
@@ -492,7 +492,7 @@ def test_schwab_connect_reapplies_active_book_ticker_after_reconnect():
 
 def test_schwab_connect_reapplies_active_option_contract_after_reconnect():
     """Same reconnect-survives shape as the book ticker, for the options contract."""
-    import tools.run_stream_capture as d
+    import app.market_data.schwab.streaming.capture as d
 
     async def go(monkeypatch):
         _install_fake_schwab_streaming(monkeypatch)
@@ -522,7 +522,7 @@ def test_reconnect_replaces_stream_not_both_at_once():
     """PHASE 4-F: two sequential connects must yield two DISTINCT StreamClient instances
     — never a leaked reference to the old one that would leave two concurrent Schwab
     sessions on one account."""
-    import tools.run_stream_capture as d
+    import app.market_data.schwab.streaming.capture as d
 
     async def go(monkeypatch):
         _install_fake_schwab_streaming(monkeypatch)
@@ -598,7 +598,7 @@ def test_capture_stats_p_safe_with_zero_or_one_sample():
 
 def test_alpaca_rfc3339_nanoseconds_to_ms():
     """Alpaca stamps carry 9-digit fractions; fromisoformat takes 6 — trim must hold."""
-    from tools.run_stream_capture import alpaca_rfc3339_to_ms
+    from app.market_data.schwab.streaming.capture import alpaca_rfc3339_to_ms
     assert alpaca_rfc3339_to_ms("2026-07-22T20:22:23.626206217Z") == 1784751743626
     assert alpaca_rfc3339_to_ms("2026-07-22T20:22:23Z") == 1784751743000
     assert alpaca_rfc3339_to_ms(None) is None
@@ -610,7 +610,7 @@ def test_alpaca_items_flow_through_real_bus_and_writer_to_db(tmp_path):
     -> rows readable back out of a REAL stream_capture db (src=alpaca_iex)."""
     import sqlite3
     from stream_spine import CaptureWriter, MessageBus
-    from tools.run_stream_capture import alpaca_item_to_topic_msg
+    from app.market_data.schwab.streaming.capture import alpaca_item_to_topic_msg
 
     async def go():
         bus = MessageBus()
@@ -644,7 +644,7 @@ def test_alpaca_items_flow_through_real_bus_and_writer_to_db(tmp_path):
 
 
 def test_alpaca_control_and_bar_frames_are_not_captured():
-    from tools.run_stream_capture import alpaca_item_to_topic_msg
+    from app.market_data.schwab.streaming.capture import alpaca_item_to_topic_msg
     assert alpaca_item_to_topic_msg({"T": "success", "msg": "authenticated"}) is None
     assert alpaca_item_to_topic_msg({"T": "subscription", "trades": ["SPY"]}) is None
     # bars deliberately excluded: canonical 1m stays Schwab's (sole-bar-authority law)
@@ -654,7 +654,7 @@ def test_alpaca_control_and_bar_frames_are_not_captured():
 
 def test_alpaca_pump_skips_cleanly_without_keys(tmp_path, monkeypatch, capsys):
     """No keys is a SKIP with one printed line — Schwab capture must be unaffected."""
-    import tools.run_stream_capture as d
+    import app.market_data.schwab.streaming.capture as d
     monkeypatch.setattr(d, "ALPACA_ENV_PATH", tmp_path / "missing.env")
     for var in ("ALPACA_API_KEY_ID", "ALPACA_API_SECRET_KEY"):
         monkeypatch.delenv(var, raising=False)
@@ -671,7 +671,7 @@ def test_alpaca_pump_skips_cleanly_without_keys(tmp_path, monkeypatch, capsys):
 def test_owner_lock_released_on_every_exit_path(tmp_path, monkeypatch):
     """Cursor round-2 HIGH: login/subscribe failures must not leak the lock."""
     import sys, types, asyncio as aio
-    import tools.run_stream_capture as d
+    import app.market_data.schwab.streaming.capture as d
 
     db = tmp_path / "cap.db"
     lock = tmp_path / "stream_capture.lock"
@@ -703,7 +703,7 @@ def test_owner_lock_released_on_every_exit_path(tmp_path, monkeypatch):
 
 
 def test_second_owner_refused_while_lock_held(tmp_path, monkeypatch):
-    import tools.run_stream_capture as d
+    import app.market_data.schwab.streaming.capture as d
     import pytest as _pt
     db = tmp_path / "cap.db"
     lock = tmp_path / "stream_capture.lock"
@@ -720,7 +720,7 @@ def test_second_owner_refused_while_lock_held(tmp_path, monkeypatch):
 
 
 def test_stream_needs_recycle_decision_boundaries():
-    from tools.run_stream_capture import (
+    from app.market_data.schwab.streaming.capture import (
         RECONNECT_COOLDOWN_SEC,
         STREAM_STALE_RECONNECT_SEC,
         stream_needs_recycle,
@@ -745,7 +745,7 @@ def test_alpaca_session_recycles_on_silent_socket(monkeypatch):
     once quiet passes the bar, instead of spinning on timeouts forever."""
     import json as _json
 
-    import tools.run_stream_capture as m
+    import app.market_data.schwab.streaming.capture as m
 
     monkeypatch.setattr(m, "ALPACA_STALE_RECONNECT_SEC", 0.05)
 
@@ -790,7 +790,7 @@ def test_alpaca_session_recycles_on_silent_socket(monkeypatch):
 def test_gap3_orphans_are_reconciled_even_when_schwab_auth_fails(tmp_path, monkeypatch):
     import sqlite3
 
-    import tools.run_stream_capture as m
+    import app.market_data.schwab.streaming.capture as m
 
     db = tmp_path / "stream_capture.db"
     A = "SPY   260820C00767000"
@@ -838,7 +838,7 @@ def test_gap3_orphans_are_reconciled_even_when_schwab_auth_fails(tmp_path, monke
 def test_gap3_writer_is_closed_on_the_auth_failure_path(tmp_path, monkeypatch):
     """The writer opened for reconciliation must be cleaned up on the auth-failure exit,
     not leaked -- the reconciliation commit is already durable by then."""
-    import tools.run_stream_capture as m
+    import app.market_data.schwab.streaming.capture as m
 
     db = tmp_path / "stream_capture.db"
     closed = {"n": 0}
@@ -1069,7 +1069,7 @@ def test_d1_a_stale_generation_tick_cannot_mutate_the_next_generation(tmp_path, 
 
     Without this test that whole class returns silently: nothing else in the suite
     exercises a control operation that outlives the stream it was issued against."""
-    import tools.run_stream_capture as m
+    import app.market_data.schwab.streaming.capture as m
 
     db = tmp_path / "cap.db"
     _reset_lifecycle(park_on=(1, "level_one_option_unsubs"))
@@ -1135,7 +1135,7 @@ def test_1c_a_stale_book_poll_tick_cannot_mutate_after_a_recycle(tmp_path, monke
 
     Earns its existence by pinning the book loop INSIDE the generation boundary: an edit
     that hoisted it back out would restore the race with nothing else objecting."""
-    import tools.run_stream_capture as m
+    import app.market_data.schwab.streaming.capture as m
 
     db = tmp_path / "cap.db"
     _reset_lifecycle(park_on=(1, "nasdaq_book_unsubs"))
@@ -1180,7 +1180,7 @@ def test_recycle_retires_the_old_generation_before_the_replacement_is_built(tmp_
     behaviour, and it could not see the actual defect: the CONTROL TASKS, not the pump,
     were what outlived a generation. This is the same contract as a behavioural ordering
     proof over the daemon's own recorded lifecycle events."""
-    import tools.run_stream_capture as m
+    import app.market_data.schwab.streaming.capture as m
 
     db = tmp_path / "cap.db"
     _reset_lifecycle()
@@ -1221,7 +1221,7 @@ def test_d2_shutdown_ended_ts_is_the_surrender_instant_not_the_drain_completion(
     MEASURED here with a deliberately SLOW writer drain: the recorded ended_ts must be
     the surrender boundary, never the drain completion. Persistence may be late; the
     RECORDED TIME may not move."""
-    import tools.run_stream_capture as m
+    import app.market_data.schwab.streaming.capture as m
 
     db = tmp_path / "cap.db"
     _reset_lifecycle()
@@ -1279,7 +1279,7 @@ def test_d2_a_failed_shutdown_close_still_records_the_surrender_instant(tmp_path
     later, the ORIGINAL shutdown surrender timestamp must survive — exactly as the
     pending-close map already preserves other surrender times. Otherwise the repair
     re-introduces the over-claim it was meant to avoid."""
-    import tools.run_stream_capture as m
+    import app.market_data.schwab.streaming.capture as m
 
     db = tmp_path / "cap.db"
     w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
@@ -1317,7 +1317,7 @@ def test_d3d_at_most_one_live_logged_in_session_across_the_whole_lifecycle(tmp_p
     Exercises A initial connect, B watchdog recycle, C replacement connect, D second
     recycle, E clean shutdown — asserting at every observable boundary that at most one
     session is live, and that ZERO remain at exit."""
-    import tools.run_stream_capture as m
+    import app.market_data.schwab.streaming.capture as m
 
     db = tmp_path / "cap.db"
     _reset_lifecycle()
@@ -1380,7 +1380,7 @@ def test_d3d_mutation_control_without_retirement_the_invariant_fails(tmp_path, m
     """DEFECT 3D negative control. With retirement suppressed, the lifecycle assertions
     above MUST fail — otherwise they prove nothing and would pass on a daemon that leaks
     a logged-in session on every recycle."""
-    import tools.run_stream_capture as m
+    import app.market_data.schwab.streaming.capture as m
 
     db = tmp_path / "cap.db"
     _reset_lifecycle(retire_disabled=True)
@@ -1418,7 +1418,7 @@ def test_d3c_a_partial_connect_failure_after_login_retires_the_session(tmp_path,
 
     Proves the partial session is explicitly retired, its live count returns to zero, no
     pump exists for it, and the failure still propagates unchanged."""
-    import tools.run_stream_capture as m
+    import app.market_data.schwab.streaming.capture as m
 
     _reset_lifecycle()
     _install_lifecycle_stream(monkeypatch)
@@ -1455,7 +1455,7 @@ def test_d3c_a_coverage_escalation_during_reconnect_is_not_downgraded(tmp_path, 
     trips (the socket is not stale — there is no socket), and option_recycle_request was
     already cleared, so the rebuild could stall indefinitely. The escalation must re-arm
     the forced rebuild instead."""
-    import tools.run_stream_capture as m
+    import app.market_data.schwab.streaming.capture as m
 
     db = tmp_path / "cap.db"
     _reset_lifecycle()
@@ -1625,7 +1625,7 @@ def test_init_a_initial_connect_failure_leaves_no_orphan_writer_task(tmp_path, m
 
     Without this test that whole class returns the moment anyone moves a resource
     acquisition back above the try."""
-    import tools.run_stream_capture as m
+    import app.market_data.schwab.streaming.capture as m
 
     db = tmp_path / "cap.db"
     _reset_lifecycle()
@@ -1665,7 +1665,7 @@ def test_init_b_post_connect_pre_loop_failure_retires_everything(tmp_path, monke
     constructed control tasks, whose first member the caller has no reference to.
 
     This is what stops the fix from simply moving the orphan one line later."""
-    import tools.run_stream_capture as m
+    import app.market_data.schwab.streaming.capture as m
 
     db = tmp_path / "cap.db"
     _reset_lifecycle()
@@ -1701,7 +1701,7 @@ def test_init_writer_close_never_precedes_a_terminal_writer_task(tmp_path, monke
     writer.close(). The two startup-failure tests above assert the same ordering on their
     paths; this one pins it for an ordinary run so the law is not only a failure-path
     property."""
-    import tools.run_stream_capture as m
+    import app.market_data.schwab.streaming.capture as m
 
     db = tmp_path / "cap.db"
     _reset_lifecycle()
@@ -1735,7 +1735,7 @@ def test_init_mutation_control_bypassing_writer_retirement_breaks_the_law(tmp_pa
     Bypass is applied at the retirement seam itself (a _shutdown_sequence that quiesces
     producers but never signals or awaits the writer), so the control exercises the real
     ordering law rather than a stand-in."""
-    import tools.run_stream_capture as m
+    import app.market_data.schwab.streaming.capture as m
 
     db = tmp_path / "cap.db"
     _reset_lifecycle()
@@ -1792,7 +1792,7 @@ def test_login_failure_after_transport_acquisition_retires_the_transport(monkeyp
     Distinct from test_d3c_a_partial_connect_failure_after_login_retires_the_session:
     that one covers failures AFTER login succeeds. This covers the login call itself, and
     only this one fails if the boundary is moved back below login()."""
-    import tools.run_stream_capture as m
+    import app.market_data.schwab.streaming.capture as m
 
     _reset_lifecycle()
     monkeypatch.setitem(__import__("sys").modules, "schwab.streaming",
@@ -1818,7 +1818,7 @@ def test_login_failure_after_transport_acquisition_retires_the_transport(monkeyp
 def test_login_failure_retries_cannot_accumulate_live_sessions(monkeypatch):
     """Ownership must hold across REPEATED failures: the watchdog retries a rejected login
     on its cooldown, and each attempt acquires its own transport. None may accumulate."""
-    import tools.run_stream_capture as m
+    import app.market_data.schwab.streaming.capture as m
 
     _reset_lifecycle()
     monkeypatch.setitem(__import__("sys").modules, "schwab.streaming",
@@ -1853,7 +1853,7 @@ def _claim_barrier_env(tmp_path, monkeypatch, ttl=1.5):
     Both sides read one constant in production, so the test shrinks both together —
     shrinking only one would measure a mismatch that cannot occur."""
     import order_flow_streaming as ofs
-    import tools.run_stream_capture as d
+    import app.market_data.schwab.streaming.capture as d
     from stream_spine import CaptureWriter, CoverageWriteError
 
     monkeypatch.setattr(d, "PRODUCER_CLAIM_TTL_SEC", ttl)
@@ -2009,7 +2009,7 @@ def _barrier_boundary_case(tmp_path, monkeypatch, *, path, ttl=1.5):
 
     `path` is "recycle" or "shutdown"; returns (ended_ts, actual_surrender_ts, waited)."""
     import order_flow_streaming as ofs
-    import tools.run_stream_capture as m
+    import app.market_data.schwab.streaming.capture as m
     from stream_spine import CoverageWriteError
 
     _reset_lifecycle()
@@ -2132,7 +2132,7 @@ def test_barrier_wait_is_not_counted_against_the_reconnect_cooldown(tmp_path, mo
     Measured through the real seam: the first cooldown reading after a barrier-delayed
     recycle must reflect the time since the RECONNECT, not since the recycle decision."""
     import order_flow_streaming as ofs
-    import tools.run_stream_capture as m
+    import app.market_data.schwab.streaming.capture as m
     from stream_spine import CoverageWriteError
 
     ttl = 1.5

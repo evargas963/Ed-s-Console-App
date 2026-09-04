@@ -19,7 +19,7 @@ def _cde_fixture_chain():
 
 
 def test_pick_atm_call_uses_vendor_symbol_not_constructed():
-    from app.options.default_contract import pick_atm_call_symbol
+    from app.options.contracts.default import pick_atm_call_symbol
 
     fx = _cde_fixture_chain()
     contracts = fx["chain"]
@@ -35,11 +35,11 @@ def test_pick_atm_call_uses_vendor_symbol_not_constructed():
 
 
 def test_default_contract_from_banked_chain(tmp_path, monkeypatch):
-    from app.options.default_contract import default_option_contract, pick_atm_call_symbol
+    from app.options.contracts.default import default_option_contract, pick_atm_call_symbol
     from calibration.complete_chain_capture import persist_complete_chain_capture
 
     fx = _cde_fixture_chain()
-    monkeypatch.setattr("app.options.default_contract._expiry_cutoff_et", lambda: fx["expiry"])
+    monkeypatch.setattr("app.options.contracts.default._expiry_cutoff_et", lambda: fx["expiry"])
     db = tmp_path / "ed.db"
     persist_complete_chain_capture(
         db,
@@ -54,7 +54,7 @@ def test_default_contract_from_banked_chain(tmp_path, monkeypatch):
 
 def test_live_payload_one_compute_includes_proxy_flow():
     import order_flow_live_state as ofls
-    from app.options.live_payload import options_live_payload
+    from app.options.order_flow.live_payload import options_live_payload
 
     contract = "CDE   260904C00013000"
     ofls.clear_all_live_state()
@@ -79,7 +79,7 @@ def test_live_payload_one_compute_includes_proxy_flow():
 
 
 def test_history_hydrates_from_stream_capture_only(tmp_path, monkeypatch):
-    from app.options.history import hydrate_option_content
+    from app.options.order_flow.history import hydrate_option_content
     db = tmp_path / "stream_capture.db"
     con = sqlite3.connect(str(db))
     con.executescript(STREAM_SCHEMA_SQL)
@@ -104,7 +104,7 @@ def test_history_hydrates_from_stream_capture_only(tmp_path, monkeypatch):
     assert items
     assert any("LAST_PRICE" in x for x in items)
     assert any("BIDS" in x for x in items)
-    from app.options.live_payload import options_live_payload
+    from app.options.order_flow.live_payload import options_live_payload
     payload = options_live_payload(sym, content=items)
     assert payload["status"] == "ok"
 
@@ -138,7 +138,7 @@ def test_real_subprocess_second_daemon_cannot_own_lock(tmp_path):
     holder_src = (
         "import os, sys, time\n"
         f"sys.path.insert(0, r'{repo}')\n"
-        "from tools.run_stream_capture import acquire_owner_lock, owner_lock_path\n"
+        "from app.market_data.schwab.streaming.capture import acquire_owner_lock, owner_lock_path\n"
         f"db = r'{db}'\n"
         "os.environ['STREAM_CAPTURE_DB_PATH'] = db\n"
         "fd, held = acquire_owner_lock(db)\n"
@@ -170,7 +170,7 @@ def test_real_subprocess_second_daemon_cannot_own_lock(tmp_path):
         second = subprocess.run(
             [
                 sys.executable,
-                "tools/run_stream_capture.py",
+                "-m", "app.market_data.schwab.streaming.capture",
                 "--symbols",
                 "SPY",
                 "--duration-min",
@@ -209,7 +209,7 @@ def test_real_subprocess_failed_schwab_is_not_started(tmp_path):
     result = subprocess.run(
         [
             sys.executable,
-            "tools/run_stream_capture.py",
+            "-m", "app.market_data.schwab.streaming.capture",
             "--symbols",
             "SPY",
             "--duration-min",
@@ -246,7 +246,7 @@ def test_real_subprocess_dead_owner_lock_is_reclaimed(tmp_path):
     holder_src = (
         "import os, sys\n"
         f"sys.path.insert(0, r'{repo}')\n"
-        "from tools.run_stream_capture import acquire_owner_lock\n"
+        "from app.market_data.schwab.streaming.capture import acquire_owner_lock\n"
         f"db = r'{db}'\n"
         "os.environ['STREAM_CAPTURE_DB_PATH'] = db\n"
         "fd, held = acquire_owner_lock(db)\n"
@@ -265,7 +265,7 @@ def test_real_subprocess_dead_owner_lock_is_reclaimed(tmp_path):
     result = subprocess.run(
         [
             sys.executable,
-            "tools/run_stream_capture.py",
+            "-m", "app.market_data.schwab.streaming.capture",
             "--symbols",
             "SPY",
             "--duration-min",
