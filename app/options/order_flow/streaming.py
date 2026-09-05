@@ -85,8 +85,8 @@ _book_cursor: dict[str, float] = {}
 #: on that same underlying can be watched at once; they are different symbol identities in
 #: every table and signal file).
 _active_option_contract: Optional[str] = None
-_option_l1_cursor: dict[str, float] = {}
-_option_book_cursor: dict[str, float] = {}
+_option_l1_cursor: dict[str, tuple[float, int]] = {}
+_option_book_cursor: dict[str, tuple[float, int]] = {}
 #: Own staleness clock, separate from the equity ticker's — an option contract watched
 #: alongside a ticker must be able to go stale (or come up fresh) independently.
 _option_streaming_last_update_ts: Optional[float] = None
@@ -419,50 +419,54 @@ def _replay_option_contract_rows(con: sqlite3.Connection, contract_symbol: str) 
     first_l1 = contract_symbol not in _option_l1_cursor
     if first_l1:
         rows = con.execute(
-            "SELECT ts_recv, native_json FROM stream_options_quotes_raw "
-            "WHERE symbol = ? ORDER BY ts_recv DESC LIMIT ?",
+            "SELECT rowid, ts_recv, native_json FROM stream_options_quotes_raw "
+            "WHERE symbol = ? ORDER BY ts_recv DESC, rowid DESC LIMIT ?",
             (contract_symbol, FIRST_TICK_L1_LIMIT)).fetchall()
         rows = list(reversed(rows))
     else:
+        cursor_ts, cursor_rowid = _option_l1_cursor[contract_symbol]
         rows = con.execute(
-            "SELECT ts_recv, native_json FROM stream_options_quotes_raw "
-            "WHERE symbol = ? AND ts_recv > ? ORDER BY ts_recv",
-            (contract_symbol, _option_l1_cursor[contract_symbol])).fetchall()
-    for ts_recv, native_json in rows:
+            "SELECT rowid, ts_recv, native_json FROM stream_options_quotes_raw "
+            "WHERE symbol = ? AND (ts_recv > ? OR (ts_recv = ? AND rowid > ?)) "
+            "ORDER BY ts_recv, rowid",
+            (contract_symbol, cursor_ts, cursor_ts, cursor_rowid)).fetchall()
+    for rowid, ts_recv, native_json in rows:
         try:
             item = json.loads(native_json)
         except (TypeError, ValueError):
             continue
         push_level_one(contract_symbol, item, ts_recv=ts_recv)
         _option_streaming_last_update_ts = time.time()
-        _option_l1_cursor[contract_symbol] = ts_recv
+        _option_l1_cursor[contract_symbol] = (float(ts_recv), int(rowid))
     if first_l1 and contract_symbol not in _option_l1_cursor:
-        _option_l1_cursor[contract_symbol] = 0.0
+        _option_l1_cursor[contract_symbol] = (0.0, 0)
 
     first_book = contract_symbol not in _option_book_cursor
     if first_book:
         rows = con.execute(
-            "SELECT ts_recv, native_json FROM stream_book_raw "
+            "SELECT rowid, ts_recv, native_json FROM stream_book_raw "
             "WHERE symbol = ? AND service = 'OPTIONS_BOOK' "
-            "ORDER BY ts_recv DESC LIMIT ?",
+            "ORDER BY ts_recv DESC, rowid DESC LIMIT ?",
             (contract_symbol, FIRST_TICK_BOOK_LIMIT)).fetchall()
         rows = list(reversed(rows))
     else:
+        cursor_ts, cursor_rowid = _option_book_cursor[contract_symbol]
         rows = con.execute(
-            "SELECT ts_recv, native_json FROM stream_book_raw "
-            "WHERE symbol = ? AND service = 'OPTIONS_BOOK' AND ts_recv > ? "
-            "ORDER BY ts_recv",
-            (contract_symbol, _option_book_cursor[contract_symbol])).fetchall()
-    for ts_recv, native_json in rows:
+            "SELECT rowid, ts_recv, native_json FROM stream_book_raw "
+            "WHERE symbol = ? AND service = 'OPTIONS_BOOK' "
+            "AND (ts_recv > ? OR (ts_recv = ? AND rowid > ?)) "
+            "ORDER BY ts_recv, rowid",
+            (contract_symbol, cursor_ts, cursor_ts, cursor_rowid)).fetchall()
+    for rowid, ts_recv, native_json in rows:
         try:
             item = json.loads(native_json)
         except (TypeError, ValueError):
             continue
         push_book(contract_symbol, item)
         _option_streaming_last_update_ts = time.time()
-        _option_book_cursor[contract_symbol] = ts_recv
+        _option_book_cursor[contract_symbol] = (float(ts_recv), int(rowid))
     if first_book and contract_symbol not in _option_book_cursor:
-        _option_book_cursor[contract_symbol] = 0.0
+        _option_book_cursor[contract_symbol] = (0.0, 0)
 
 
 async def _feed_loop() -> None:

@@ -1,7 +1,7 @@
-"""Hydrate option L1/book content from the one stream-capture store.
+"""Replay persisted option observations through the canonical state owner.
 
-Does not mutate the in-memory live plane. Callers pass the reconstructed
-content into ``order_flow_engine`` — the same computation as the live path.
+This module owns only historical I/O, bounds, and receive chronology. State
+transition semantics live in ``order_flow_live_state.OrderFlowState``.
 """
 from __future__ import annotations
 
@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from instrument_identity import ticker_storage_key
+from order_flow_live_state import OrderFlowState
 from stream_spine import resolve_stream_db_path
 
 
@@ -21,9 +22,16 @@ def hydrate_option_content(
     db_path: str | Path | None = None,
     limit: int = 400,
 ) -> list[dict[str, Any]]:
-    """Replay persisted LEVELONE_OPTIONS + OPTIONS_BOOK rows into content items."""
+    """Return isolated canonical content from persisted L1 and book observations."""
     sym = ticker_storage_key(contract) or str(contract or "").strip()
     if not sym:
+        return []
+    try:
+        bounded_limit = max(0, int(limit))
+        lower_bound = float(since_ts)
+    except (TypeError, ValueError):
+        return []
+    if bounded_limit == 0:
         return []
     path = resolve_stream_db_path(db_path)
     if not path.is_file():
@@ -32,38 +40,46 @@ def hydrate_option_content(
         con = sqlite3.connect(f"file:{path.resolve().as_posix()}?mode=ro", uri=True)
     except sqlite3.Error:
         return []
-    items: list[dict[str, Any]] = []
     try:
+        con.execute("PRAGMA query_only=ON")
+        con.execute("BEGIN")
         l1 = con.execute(
-            "SELECT ts_recv, native_json FROM stream_options_quotes_raw "
-            "WHERE symbol = ? AND ts_recv >= ? ORDER BY ts_recv DESC LIMIT ?",
-            (sym, float(since_ts), int(limit)),
+            "SELECT rowid, ts_recv, native_json FROM stream_options_quotes_raw "
+            "WHERE symbol = ? AND ts_recv >= ? "
+            "ORDER BY ts_recv DESC, rowid DESC LIMIT ?",
+            (sym, lower_bound, bounded_limit),
         ).fetchall()
         book = con.execute(
-            "SELECT ts_recv, native_json FROM stream_book_raw "
+            "SELECT rowid, ts_recv, native_json FROM stream_book_raw "
             "WHERE symbol = ? AND service = 'OPTIONS_BOOK' AND ts_recv >= ? "
-            "ORDER BY ts_recv DESC LIMIT ?",
-            (sym, float(since_ts), int(limit)),
+            "ORDER BY ts_recv DESC, rowid DESC LIMIT ?",
+            (sym, lower_bound, bounded_limit),
         ).fetchall()
     except sqlite3.Error:
-        con.close()
         return []
-    con.close()
-    # Restore receive order (queries are DESC for a bounded tail).
-    for ts_recv, native_json in reversed(l1):
-        try:
-            item = json.loads(native_json)
-        except (TypeError, ValueError):
-            continue
-        if isinstance(item, dict):
-            item = dict(item)
-            item["_ts_recv"] = float(ts_recv)
-            items.append(item)
-    for _ts_recv, native_json in reversed(book):
-        try:
-            item = json.loads(native_json)
-        except (TypeError, ValueError):
-            continue
-        if isinstance(item, dict):
-            items.append(item)
-    return items
+    finally:
+        con.close()
+
+    # Existing live DB replay applies L1 before book when receive timestamps tie.
+    # rowid preserves deterministic insertion order only within its own table; it
+    # is not assigned financial meaning across services.
+    events: list[tuple[float, int, int, str, dict[str, Any]]] = []
+    for kind, service_order, rows in (("l1", 0, l1), ("book", 1, book)):
+        for rowid, ts_recv, native_json in rows:
+            try:
+                item = json.loads(native_json)
+            except (TypeError, ValueError):
+                continue
+            if isinstance(item, dict):
+                events.append(
+                    (float(ts_recv), service_order, int(rowid), kind, dict(item))
+                )
+    events.sort(key=lambda event: event[:3])
+
+    state = OrderFlowState()
+    for ts_recv, _service_order, _rowid, kind, item in events:
+        if kind == "l1":
+            state.push_level_one(sym, item, ts_recv=ts_recv)
+        else:
+            state.push_book(sym, item)
+    return state.get_content_for_symbol(sym)
