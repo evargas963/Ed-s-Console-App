@@ -208,18 +208,34 @@ def run_case(wt: Path, head: str, bases: dict[str, str], case: dict) -> dict:
     }
 
 
-def completed_cases(jsonl: Path | None, head: str) -> dict[str, dict]:
-    """Records already proven for THIS head (ok=True) — reused, never recomputed, unless
-    --force. A record for another head is a different candidate and is ignored."""
+def evidence_identity() -> str:
+    """The EVIDENCE IDENTITY CONTRACT of a campaign record (RC-519): the HEAD commit (which
+    fixes the campaign definition, every base the campaign builds, the driver, the gate and
+    the roster — all tree content) plus the interpreter and the proof owners' third-party
+    closure (psutil only, measured). A record made under a different identity is a
+    different proof and is never reused."""
+    from tools.operating_process_lock import evidence_identity_hash
+    return evidence_identity_hash()
+
+
+def completed_cases(jsonl: Path | None, head: str, identity: str | None = None) -> dict[str, dict]:
+    """Records already proven under THIS evidence identity (head + environment semantics,
+    ok=True, complete) — reused, never recomputed, unless --force. A record for another
+    head or another identity is a different proof; a corrupt or incomplete record is a
+    MISS, never a fabricated PASS."""
     if jsonl is None or not jsonl.is_file():
         return {}
+    identity = evidence_identity() if identity is None else identity
+    required = ("id", "head", "ok", "exit_code", "expect", "got", "evidence_identity")
     out: dict[str, dict] = {}
     for line in jsonl.read_text(encoding="utf-8").splitlines():
         try:
             rec = json.loads(line)
         except ValueError:
             continue
-        if rec.get("head") == head and rec.get("ok") is True and rec.get("id"):
+        if not isinstance(rec, dict) or any(k not in rec for k in required):
+            continue
+        if rec["head"] == head and rec["evidence_identity"] == identity and rec["ok"] is True:
             out[rec["id"]] = rec
     return out
 
@@ -288,14 +304,6 @@ def preflight(out_path: Path | None) -> list[str]:
         problems.append(f"cannot materialise a worktree: {exc}")
     finally:
         shutil.rmtree(probe_wt.parent, ignore_errors=True)
-    try:   # RC-517: the same inventory the PreToolUse guard reads — one owner
-        from tools.operating_process_lock import heavy_verification_jobs
-        busy = heavy_verification_jobs()
-        if busy:
-            problems.append("competing heavy verification alive (the campaign owns the machine): "
-                            + "; ".join(f"pid {j['pid']} {j['kind']}" for j in busy[:4]))
-    except Exception as exc:  # noqa: BLE001
-        problems.append(f"heavy-job inventory unavailable: {type(exc).__name__}: {exc}")
     return problems
 
 
@@ -322,11 +330,19 @@ def main(argv: list[str] | None = None) -> int:
                 print("PREFLIGHT: " + p, flush=True)
             print("campaign NOT STARTED: fix the environment first (nothing was measured)", flush=True)
             return 2
+    # RC-519: ONE authorization path for heavy verification, in-process. A --parallel child
+    # is a descendant of the admitted parent and passes through the ancestor rule.
+    from tools.operating_process_lock import admit_heavy_launch
+    ok, why = admit_heavy_launch("institutional_e2e_boundary_campaign", " ".join(sys.argv))
+    if not ok:
+        print(f"COMPETING_HEAVY_VERIFICATION (RC-519): {why}", flush=True)
+        return 2
     if args.parallel:
         return _run_parallel(args, out_path)
     head = _git(REPO, "rev-parse", "HEAD").strip()
+    identity = evidence_identity()
     jsonl = out_path.with_suffix(".jsonl") if out_path else None   # flushed per case
-    completed = {} if args.force else completed_cases(jsonl, head)
+    completed = {} if args.force else completed_cases(jsonl, head, identity)
     tmp = Path(tempfile.mkdtemp(prefix="e2e-campaign-"))
     wt = tmp / "wt"
     _git(REPO, "worktree", "add", "--detach", "-q", str(wt), head)
@@ -355,6 +371,7 @@ def main(argv: list[str] | None = None) -> int:
         for case in wanted:
             r = run_case(wt, head, bases, case)
             results.append(r)
+            r["evidence_identity"] = identity
             if jsonl is not None:   # completed proof survives any later crash
                 with jsonl.open("a", encoding="utf-8", newline="\n") as fh:
                     fh.write(json.dumps({"head": head, **r}) + "\n")

@@ -44,7 +44,7 @@ The operator names the active slice in chat (the pm_mission.json coordination fi
 
 The ordering of verification (targeted first, one expensive wave at a time, preflight, anomaly trigger, proof reuse) is the `AGENTS.md` Verification discipline with its procedure in `governance/AGENT_OPERATING_PROCESS_V1.md` section 8 — the former T1–T4 tier table here restated it and is consolidated there (RC-517).
 
-**Rehab-specific rule:** red full-suite failures that reproduce on pristine HEAD are **rehab backlog**, not blockers for an unrelated mission — unless they are in files this mission touched. File them into the queue rather than stalling every landing.
+**Rehab-specific rule (the boundary is the materially connected path — `AGENTS.md` laws 2 and 3, never "files this mission edited"):** a red full-suite failure that reproduces on pristine HEAD is thereby proven *pre-existing*, which is not the same as *unrelated* and is never by itself an exemption. If the failing path is materially connected to the mission — a producer, consumer, persistence path, runtime seam, configuration, API/UI, SQL, research/training/replay/cache or compatibility path of the change — it is in the mission and is fixed there, even when no file of that path had been edited yet. Only a failure proven NOT materially connected is rehab backlog: file it into the queue with that proof rather than stalling the landing.
 
 ## LIVE closeout / post-restart DONE bar
 

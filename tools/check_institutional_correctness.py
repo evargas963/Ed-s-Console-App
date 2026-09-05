@@ -5020,6 +5020,14 @@ def main(argv: list[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
     if "--rebaseline" in args:
         return rebaseline()
+    # RC-519: the whole catalog is heavy verification; it admits itself in-process (a child
+    # of an admitted wave — the delta gate — passes through the ancestor rule).
+    sys.path.insert(0, str(REPO / "tools"))
+    from operating_process_lock import admit_heavy_launch
+    ok, why = admit_heavy_launch("check_institutional_correctness", " ".join(sys.argv))
+    if not ok:
+        print(f"COMPETING_HEAVY_VERIFICATION (RC-519): {why}")
+        return 2
     if "--enforced-only" in args:
         enforced_violations, _, _ = run_checks(mode="enforced")
         if enforced_violations:

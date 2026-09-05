@@ -44,6 +44,20 @@ os.environ.setdefault(
     str(Path(_tempfile.mkdtemp(prefix="ed-pytest-ledger-")) / "terrain_quarantine_ledger.jsonl"))
 
 
+def _admit_heavy_pytest_session(config) -> None:
+    root = Path(__file__).resolve().parent.parent
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))
+    from tools.operating_process_lock import admit_heavy_launch, heavy_verification_kind
+    args = " ".join(str(a) for a in config.invocation_params.args)
+    kind = heavy_verification_kind(f"python -m pytest {args}")
+    if not kind:
+        return
+    ok, why = admit_heavy_launch(kind, f"pytest {args}")
+    if not ok:
+        pytest.exit(f"COMPETING_HEAVY_VERIFICATION (RC-519): {why}", returncode=2)
+
+
 def pytest_configure(config) -> None:
     """xdist workers must not share one console DB file.
 
@@ -53,6 +67,11 @@ def pytest_configure(config) -> None:
     """
     worker = os.environ.get("PYTEST_XDIST_WORKER")
     if not worker:
+        # RC-519: the ONE authorization path for heavy verification runs INSIDE the process
+        # being launched, so no shell form (payload, cmd /c, pwsh, subprocess) can bypass it.
+        # A targeted session (named files or node ids, no worker fan-out) is not heavy and
+        # never touches the lease; a whole-suite or parallel session admits itself or exits.
+        _admit_heavy_pytest_session(config)
         return
     root = Path(os.environ.get("TMPDIR") or "/tmp") / f"ed-pytest-{worker}-{os.getpid()}"
     root.mkdir(parents=True, exist_ok=True)

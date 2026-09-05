@@ -426,11 +426,26 @@ def _base_cache_path() -> Path | None:
 _GATE_REL = "tools/check_institutional_correctness.py"
 
 
+def _lock():
+    """The operating-process lock (evidence identity, launch admission) — imported lazily so
+    this driver stays runnable from any cwd, as the hook runner requires."""
+    if str(REPO) not in sys.path:
+        sys.path.insert(0, str(REPO))
+    from tools import operating_process_lock
+    return operating_process_lock
+
+
 def _base_cache_key(base_ref: str) -> str | None:
-    """Content identity of a base measurement: the base COMMIT, the gate blob that commit
-    carries (the roster and every check live there — a changed gate is a different
-    measurement even at the same tree elsewhere), THIS driver's bytes (its parsing decides
-    what a count is) and the interpreter."""
+    """Content identity of a base measurement — the EVIDENCE IDENTITY CONTRACT (RC-519):
+      * the base COMMIT (content-addressed: every tool, check and roster the base runs);
+      * the gate blob that commit carries (named explicitly so a rewritten history at the
+        same tree cannot masquerade — it is implied by the commit, and cheap);
+      * THIS driver's bytes (its parsing and staging decide what a count is);
+      * the interpreter and the third-party closure of the proof owners
+        (`operating_process_lock.verification_evidence_identity`: psutil only, measured).
+    Everything else the measurement reads is tree content. Environment variables are not
+    part of the contract: the gate reads PRE_COMMIT and ED_RATCHET_NO_WRITE, which decide
+    whether advisory debt is WRITTEN, never what is COUNTED."""
     r = _run(["git", "rev-parse", base_ref])
     if r.returncode != 0 or not r.stdout.strip():
         return None
@@ -444,7 +459,7 @@ def _base_cache_key(base_ref: str) -> str | None:
         h.update(Path(__file__).read_bytes())          # parsing logic lives here
     except OSError:
         return None
-    h.update(sys.version.encode())
+    h.update(_lock().evidence_identity_hash().encode())
     return h.hexdigest()
 
 
@@ -507,6 +522,12 @@ def main(argv: list[str] | None = None) -> int:
                     help="measure the exact staged INDEX (the pre-commit question) instead "
                          "of HEAD; unstaged work is structurally excluded")
     args = ap.parse_args(argv)
+
+    # RC-519: heavy verification passes ONE authorization, in-process, whatever launched it.
+    ok, why = _lock().admit_heavy_launch("check_delta_adds_no_debt", " ".join(sys.argv))
+    if not ok:
+        print(f"COMPETING_HEAVY_VERIFICATION (RC-519): {why}")
+        return 2
 
     if args.index:
         candidate_ref, candidate_label = index_candidate(), "staged INDEX"

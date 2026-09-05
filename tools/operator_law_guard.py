@@ -264,8 +264,22 @@ def resolve_target_repo(cmd: str, payload_cwd: str = "") -> tuple[str, str]:
     return "", "no repository identity in the command and no working directory supplied"
 
 
-#: Command heads that wrap another command (its args are the real invocation).
-_CMD_WRAPPERS = frozenset({"env", "time", "nice", "sudo", "xargs", "nohup", "stdbuf"})
+#: Command heads that wrap another command (its args are the real invocation). RC-519: the
+#: wrapper's OWN options are skipped too (`timeout 60s`, `sudo -u user`, `nice -n 10`,
+#: `env -i`, `cmd /c`, `pwsh -NoProfile -Command`), so the program the segment really runs is
+#: the head — this is the ONE resolver every action rule reads; a second one lived in the
+#: operating-process lock and missed exactly these forms.
+_CMD_WRAPPERS = frozenset({"env", "time", "nice", "sudo", "xargs", "nohup", "stdbuf", "timeout",
+                           "command", "exec", "cmd", "powershell", "pwsh", "ionice", "chrt"})
+#: Wrapper options that consume the NEXT token as their value.
+_WRAPPER_VALUE_OPTS = frozenset({"-u", "-g", "-n", "-s", "-k", "--signal", "-p",
+                                 "-executionpolicy", "-ep", "--kill-after",
+                                 "-adjustment", "--adjustment", "-C"})
+_DURATION_RE = re.compile(r"^\d+(?:\.\d+)?[smhd]?$")
+#: Shell-payload switches: the REST of the segment (or the quoted argument) is a nested
+#: command line, judged as one — `cmd /c "python -m pytest -n 8"`, `pwsh -Command ...`.
+_SHELL_PAYLOAD_SWITCH = {"cmd": ("/c", "/k"), "powershell": ("-command", "-c"), "pwsh": ("-command", "-c"),
+                         "sh": ("-c",), "bash": ("-c",), "zsh": ("-c",), "dash": ("-c",)}
 
 
 def iter_command_segments(cmd: str, payload_cwd: str = ""):
@@ -290,20 +304,97 @@ def iter_command_segments(cmd: str, payload_cwd: str = ""):
 
 def _segment_head(seg: str) -> tuple[str, list[str]]:
     """(command head, its tokens) for a segment, skipping leading VAR=val assignments and
-    command wrappers (env/sudo/time/...) so `sudo git checkout` reads as a git invocation and
-    `echo git` does not."""
+    command wrappers WITH their own options (env/sudo -u x/timeout 60s/nice -n 10/cmd /c/
+    pwsh -Command) so `sudo -u ed git checkout` reads as a git invocation, `timeout 60s python
+    -m pytest` reads as a python invocation, and `echo git` does not."""
     toks = _tokens(seg)
     i = 0
     while i < len(toks):
         t = toks[i].strip("\"'")
         name = Path(t).name.lower().removesuffix(".exe")
-        if ("=" in t and not t.startswith("-")) or name in _CMD_WRAPPERS:
+        if "=" in t and not t.startswith("-"):
             i += 1
             continue
-        break
+        if name not in _CMD_WRAPPERS:
+            break
+        i += 1
+        # the wrapper's own options: `-flag`, `-opt value`, a timeout duration, a /c switch
+        while i < len(toks):
+            o = toks[i].strip("\"'")
+            low = o.lower()
+            if name in _SHELL_PAYLOAD_SWITCH and low in _SHELL_PAYLOAD_SWITCH[name]:
+                i += 1                       # the rest of the segment is the nested command
+                break
+            if low.startswith("-") and low not in ("-", "--"):
+                i += 1
+                if low.split("=", 1)[0] in _WRAPPER_VALUE_OPTS and "=" not in low:
+                    i += 1
+                continue
+            if low.startswith("/") and name == "cmd":
+                i += 1
+                continue
+            if name == "timeout" and _DURATION_RE.match(low):
+                i += 1
+                continue
+            break
     if i >= len(toks):
         return "", []
     return Path(toks[i].strip("\"'")).name.lower(), toks[i:]
+
+
+#: Interpreter payloads (`python -c "..."`) and shell payloads (`cmd /c "..."`,
+#: `pwsh -Command "..."`, `bash -c "..."`). The executed-part scan treats them as data;
+#: an ACTION rule that must see inside them (a payload that writes a file, a payload that
+#: launches pytest) reads them through this ONE iterator.
+_PYTHON_HEADS = ("python", "python3", "py", "pypy", "pypy3", "pythonw")
+#: Other interpreters whose `-c` payload is a program (the write rule judges them; the
+#: heavy-launch rule does not read them — a node/perl/ruby payload cannot launch pytest
+#: without a shell, and a shell would be its own payload).
+_SCRIPT_HEADS = frozenset({"node", "perl", "ruby"})
+
+
+_PAYLOAD_SWITCH_RE = re.compile(r"(?:^|\s)(-c|/c|/k|-command)\s+(['\"])((?:\\.|(?!\2).)*)\2",
+                                re.S | re.I)
+
+
+def _payload_owner(raw: str, at: int) -> str:
+    """The program (basename, no .exe) that owns the payload switch at `at`: walk back to the
+    segment start, then past VAR=val and plain wrappers."""
+    seg_start = max((raw.rfind(ch, 0, at) for ch in ";|&\n"), default=-1) + 1
+    toks = _tokens(raw[seg_start:at])
+    j = 0
+    while j < len(toks):
+        t = toks[j].strip("\"'")
+        name = Path(t).name.lower().removesuffix(".exe")
+        if ("=" in t and not t.startswith("-")) or (name in _CMD_WRAPPERS and name not in _SHELL_PAYLOAD_SWITCH):
+            j += 1
+            continue
+        break
+    if j >= len(toks):
+        return ""
+    return Path(toks[j].strip("\"'")).name.lower().removesuffix(".exe")
+
+
+def iter_launch_payloads(raw: str):
+    """Yield ("python", body) for every quoted `-c` payload an interpreter runs and
+    ("shell", body) for every quoted nested command line a shell wrapper runs (`cmd /c
+    "..."`, `pwsh -Command "..."`, `bash -c "..."`). The quoted payload is matched on the
+    RAW text — a separator inside the quotes belongs to the payload, not to the shell.
+    Commit / tag messages are data and are removed first. A `-c` on a non-interpreter
+    (grep -c, sqlite3 -c) is not a payload. Unquoted forms (`cmd /c python -m pytest`)
+    need no payload: `_segment_head` resolves their program directly."""
+    raw = re.sub(r"-m\s+(['\"])(?:\\.|(?!\1).)*\1", " -m MESSAGE ", raw or "", flags=re.S)
+    for pm in _PAYLOAD_SWITCH_RE.finditer(raw):
+        switch, body = pm.group(1).lower(), pm.group(3)
+        exe = _payload_owner(raw, pm.start())
+        if not exe:
+            continue
+        if exe in _SHELL_PAYLOAD_SWITCH and switch in _SHELL_PAYLOAD_SWITCH[exe]:
+            yield "shell", body
+        elif switch == "-c" and (exe in _PYTHON_HEADS or exe.startswith("python")):
+            yield "python", body
+        elif switch == "-c" and exe in _SCRIPT_HEADS:
+            yield "script", body
 
 
 def iter_git_invocations(cmd: str, payload_cwd: str = ""):
@@ -521,30 +612,17 @@ def _safe_data_target(target: str) -> bool:
 #: from the executed-part scan as data, but the WRITE it performs is an action. Payload writes
 #: obey the same E-37 rule as heredocs: literal safe-data targets only. This also closes the
 #: compounding escape `python -c "open('static/chart.html','w')"` — .html is not a data
-#: extension, so a production-surface write from a payload is refused.
-_C_PAYLOAD = re.compile(r"-c\s+(['\"])((?:\\.|(?!\1).)*)\1", re.S)
-
-
-_INTERPRETER_HEADS = frozenset({
-    "python", "python3", "py", "pwsh", "powershell", "sh", "bash", "zsh",
-    "node", "perl", "ruby"})
+#: extension, so a production-surface write from a payload is refused. RC-519: the payload
+#: itself comes from `iter_launch_payloads`, the ONE payload reader (python, shell and
+#: script payloads alike); the regex and interpreter list that lived here were its second copy.
 
 
 def _payload_write_violation(raw: str) -> bool:
     # A commit/tag MESSAGE that DESCRIBES a payload write is data, not a write — the
     # same lesson _protected_path_violation already applies for RC-273 incidents.
-    raw = re.sub(r"-m\s+(['\"])(?:\\.|(?!\1).)*\1", " -m MESSAGE ", raw, flags=re.S)
-    for pm in _C_PAYLOAD.finditer(raw):
-        # -c is an interpreter payload only when an INTERPRETER launches it (grep -c
-        # is a counter, sqlite3 -c is config; blocking those stopped honest work).
-        seg_start = max((raw.rfind(ch, 0, pm.start()) for ch in ";|&\n"), default=-1) + 1
-        head_toks = _tokens(raw[seg_start:pm.start()])
-        if not head_toks:
-            continue
-        exe = Path(head_toks[0].strip("\"'")).name.lower().removesuffix(".exe")
-        if exe not in _INTERPRETER_HEADS and not exe.startswith("python"):
-            continue
-        body = pm.group(2)
+    # RC-519: ONE payload iterator (iter_launch_payloads) feeds every action rule that must
+    # see inside a payload — this write rule and the heavy-launch rule alike.
+    for _kind, body in iter_launch_payloads(raw):
         for m in _HEREDOC_WRITE_SITE.finditer(body):
             if m.group(3):
                 return True
