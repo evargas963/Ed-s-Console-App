@@ -1142,12 +1142,8 @@ def _close_schwab_rest_client(client, *, reason: str) -> None:
     socket in CLOSE_WAIT. Reconnects receive a freshly built client from
     ``state_factory`` instead of reusing this closed generation.
     """
-    session = getattr(client, "session", None)
-    close = getattr(session, "close", None)
-    if close is None:
-        return
     try:
-        close()
+        client.session.close()
     except Exception as exc:  # noqa: BLE001 — transport cleanup must not mask stream state
         print(f"close Schwab REST client ({reason}) failed "
               f"({type(exc).__name__}: {exc})")
