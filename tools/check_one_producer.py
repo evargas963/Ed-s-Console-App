@@ -46,6 +46,7 @@ from __future__ import annotations
 import argparse
 import ast
 import json
+import re
 import subprocess
 from pathlib import Path
 
@@ -66,6 +67,132 @@ def _tracked_python() -> list[str]:
                            + proc.stderr.strip()[:160])
     return [p for p in proc.stdout.split("\0")
             if p and not p.startswith(_SKIP_PREFIXES)]
+
+
+#: RC-516 (AGENTS.md laws 6 and 12): the frontend, inline page scripts and SQL are connected
+#: layers of the same semantic truth. A registered field computed in a browser or in a query
+#: is a second faucet exactly as a Python copy is.
+SURFACE_SUFFIXES = (".js", ".mjs", ".html", ".sql")
+_SURFACE_SKIP_PREFIXES = ("tests/", "scratchpad/", "node_modules/", "reports/", "governance/archive/")
+
+
+def _tracked_surfaces(root: Path | None = None) -> list[str]:
+    """Tracked JS / HTML / SQL files in scope — the same git-index authority as the Python scan."""
+    proc = subprocess.run(["git", "ls-files", "-z", "--", *[f"*{s}" for s in SURFACE_SUFFIXES]],
+                          cwd=root or REPO, capture_output=True, text=True, check=False)
+    if proc.returncode != 0:
+        raise RuntimeError("git ls-files failed, so the surface scan scope is unknown: "
+                           + proc.stderr.strip()[:160])
+    return [p for p in proc.stdout.split("\0")
+            if p and not p.startswith(_SURFACE_SKIP_PREFIXES)]
+
+
+#: A statement boundary for the surface detector: JS/SQL statement ends, block braces.
+_SURFACE_STMT_SPLIT = re.compile(r"[;{}]")
+#: Text between two joined inputs must carry an arithmetic operator and must not cross an
+#: argument/column boundary or a SQL clause keyword — `f(gamma, oi)` and `gamma AS g, oi`
+#: are not computations.
+_SURFACE_JOIN_OP = re.compile(r"[*+\-/]")
+_SURFACE_BOUNDARY = re.compile(r"[,;{}]|\b(?:as|from|where|select|and|or|then|else|when)\b", re.I)
+#: Comments and string literals are prose, not code: a tooltip saying "dealer gamma cushion
+#: half-spent below spot" joins two inputs with a hyphen and computes nothing. They are
+#: blanked (newlines kept, so reported lines stay true) before any statement is judged.
+_JS_NOISE = re.compile(
+    r"//[^\n]*|/\*.*?\*/|'(?:\\.|[^'\\\n])*'|\"(?:\\.|[^\"\\\n])*\"|`(?:\\.|[^`\\])*`", re.S)
+_SQL_NOISE = re.compile(r"--[^\n]*|/\*.*?\*/|'(?:''|[^'\n])*'", re.S)
+_HTML_SCRIPT = re.compile(r"<script\b[^>]*>(.*?)</script\s*>", re.S | re.I)
+
+
+def _blank(m: re.Match) -> str:
+    return re.sub(r"[^\n]", " ", m.group(0))
+
+
+def surface_code(rel: str, text: str) -> str:
+    """The CODE of a surface file with comments, string literals and (for HTML) everything
+    outside `<script>` blocks blanked, line structure preserved."""
+    low = rel.lower()
+    if low.endswith(".sql"):
+        return _SQL_NOISE.sub(_blank, text)
+    if low.endswith(".html"):
+        keep = []
+        pos = 0
+        for m in _HTML_SCRIPT.finditer(text):
+            keep.append(re.sub(r"[^\n]", " ", text[pos:m.start(1)]))
+            keep.append(_JS_NOISE.sub(_blank, m.group(1)))
+            pos = m.end(1)
+        keep.append(re.sub(r"[^\n]", " ", text[pos:]))
+        return "".join(keep)
+    return _JS_NOISE.sub(_blank, text)
+
+
+def surface_computing_sites(spec: dict, surfaces: list[tuple[str, str]]) -> list[str]:
+    """Every surface CODE statement that arithmetically JOINS the field's declared inputs.
+
+    Objective and narrow by design: the registry declares `surface_inputs` — groups of accepted
+    spellings for each input (`gamma`; `oi` / `openInterest` / `open_interest`; `spot` /
+    `underlying_price` ...). A statement is a computing site when spellings from at least two
+    groups appear joined by an arithmetic operator with no argument, column or clause boundary
+    between them. Comments, string literals and HTML outside `<script>` are blanked first, so
+    prose never matches. Reading a served value (`payload.gex_total`), listing columns, or
+    passing inputs as arguments never matches. A field without `surface_inputs` is NOT judged
+    on these surfaces — that class is NOT_MECHANICALLY_DETECTABLE and stays with the law.
+    Known blind spot: code inside a JS template literal `${...}` is blanked with the literal.
+    """
+    groups = spec.get("surface_inputs") or []
+    if len(groups) < 2:
+        return []
+    pats = [re.compile(r"\b(?:" + "|".join(re.escape(a) for a in g) + r")\b", re.I) for g in groups]
+    out: list[str] = []
+    for rel, raw in surfaces:
+        text = surface_code(rel, raw)
+        pos = 0
+        for stmt in _SURFACE_STMT_SPLIT.split(text):
+            start = pos
+            pos += len(stmt) + 1
+            if len(stmt) > 800 or not stmt.strip():
+                continue
+            found = sorted((m.start(), i) for i, p in enumerate(pats) for m in [p.search(stmt)] if m)
+            if len({i for _s, i in found}) < 2:
+                continue
+            joined = False
+            for (a, ia), (b, ib) in zip(found, found[1:]):
+                if ia == ib:
+                    continue
+                between = stmt[a:b]
+                if _SURFACE_JOIN_OP.search(between) and not _SURFACE_BOUNDARY.search(between):
+                    joined = True
+                    break
+            if joined:
+                line = text.count("\n", 0, start + found[0][0]) + 1
+                out.append(f"{rel}:{line}")
+    return out
+
+
+def load_surfaces(rels: list[str] | None = None, root: Path | None = None) -> list[tuple[str, str]]:
+    base = root or REPO
+    out: list[tuple[str, str]] = []
+    for rel in (_tracked_surfaces(base) if rels is None else rels):
+        path = base / rel
+        if path.exists():
+            out.append((rel, path.read_text(encoding="utf-8", errors="replace")))
+    return out
+
+
+def scan_corpus_from_sources(sources: dict[str, str]) -> list[tuple[str, str, list[tuple[ast.AST, str]]]]:
+    """The `build_scan_corpus` shape over caller-supplied sources — the institutional gate's
+    delta clause hands it the CANDIDATE tree (staged blobs), never the working tree."""
+    corpus: list[tuple[str, str, list[tuple[ast.AST, str]]]] = []
+    for rel, src in sources.items():
+        try:
+            tree = ast.parse(src)
+        except SyntaxError:
+            continue
+        lines = src.split("\n")
+        fns = [(fn, "\n".join(lines[fn.lineno - 1:fn.end_lineno]))
+               for fn in ast.walk(tree)
+               if isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef))]
+        corpus.append((rel, src, fns))
+    return corpus
 
 
 class PayloadSurfaceMissing(RuntimeError):
@@ -195,9 +322,10 @@ def evaluate() -> tuple[list[str], list[str], int]:
     fields = reg.get("fields") or {}
     failures: list[str] = []
     corpus = build_scan_corpus()          # one live pass, shared by every field
+    surfaces = load_surfaces()            # RC-516: JS / HTML / SQL, same index authority
     for field, spec in fields.items():
         producer = spec.get("producer") or ""
-        sites = computing_sites(field, spec, corpus)
+        sites = computing_sites(field, spec, corpus) + surface_computing_sites(spec, surfaces)
         if not sites:
             continue                      # nothing recognisable computes it; not a duplicate
         declared = producer.replace(".py:", ".py:")

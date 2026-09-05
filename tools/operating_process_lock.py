@@ -18,6 +18,8 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -701,6 +703,445 @@ def completion_claim_violations(text: str, repo: Path | None = None) -> list[str
     return out
 
 
+# ── RC-517: VERIFICATION EXECUTION — heavy jobs are inventoried, never guessed ─────────
+#: A CPU-heavy verification wave: the whole pytest suite (parallel or bare), the E2E stack,
+#: the delta gate (two clean worktrees, the whole catalog in each), the whole institutional
+#: catalog, and the real-boundary campaign. Two of these at once make both slower and their
+#: timing evidence meaningless (MEASURED 2026-09-04: the campaign's first case took 1661 s
+#: beside an 8-worker pytest wave, 464-1356 s alone). Judged on the COMMAND, never on prose.
+_HEAVY_SCRIPTS = (
+    "check_delta_adds_no_debt.py",
+    "check_institutional_correctness.py",
+    "institutional_e2e_boundary_campaign.py",
+)
+_PYTEST_TARGET_RE = re.compile(r"(?:^|[\s/\\])test_[\w-]+\.py(?:::|\s|$)|::test_", re.I)
+
+
+_PYTHON_HEADS = ("python", "python3", "py", "pypy", "pypy3", "pythonw")
+
+
+def _pytest_kind(pytest_args: list[str]) -> str | None:
+    joined = " ".join(pytest_args)
+    if re.search(r"(?:^|\s)-n\s*(?:\d+|auto)\b|--dist\b|--numprocesses\b", joined):
+        return "pytest-parallel"
+    if not any(_PYTEST_TARGET_RE.search(a) for a in pytest_args):
+        return "pytest-whole-suite"
+    return None
+
+
+def _program_kind(head: str, args: list[str]) -> str | None:
+    """Heavy kind of ONE resolved program invocation (head already resolved by the canonical
+    `_segment_head`, wrappers and their options gone)."""
+    head = head.removesuffix(".exe")
+    if head == "make" and "test-all" in args:
+        return "e2e-suite"
+    if head in ("npm", "npm.cmd") and args[:1] == ["run"] and any(a.startswith("test") for a in args[1:2]):
+        return "e2e-suite"
+    if head in ("npx", "npx.cmd") and args[:2] == ["playwright", "test"]:
+        return "e2e-suite"
+    if head == "playwright" and args[:1] == ["test"]:
+        return "e2e-suite"
+    if head in ("pytest", "py.test"):
+        return _pytest_kind(args)
+    if head in _PYTHON_HEADS or head.startswith("python"):
+        if args[:2] == ["-m", "pytest"]:
+            return _pytest_kind(args[2:])
+        for a in args:
+            base = a.replace("\\", "/").rsplit("/", 1)[-1]
+            if base in _HEAVY_SCRIPTS and "--rebaseline" not in args and "--heavy-jobs" not in args:
+                return base.replace(".py", "")
+    return None
+
+
+def _python_payload_kind(body: str) -> str | None:
+    """ACTION-level reading of an interpreter payload: the AST is searched for a call that
+    launches heavy verification — `pytest.main([...])`, `runpy.run_module("pytest")`, or a
+    `subprocess` / `os.system` call whose command is a LITERAL — and that literal is judged
+    by the same classifier. Prose, comments and strings that merely mention pytest are never
+    read. A launch whose arguments are not literal cannot be judged here; the in-process
+    admission at the launch seam (RC-519) judges it when it runs."""
+    try:
+        tree = ast.parse(body)
+    except SyntaxError:
+        return None
+    main_alias = {"main" for n in ast.walk(tree) if isinstance(n, ast.ImportFrom) and n.module == "pytest"
+                  and any(a.name == "main" for a in n.names)}
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        f = node.func
+        dotted = ""
+        if isinstance(f, ast.Attribute) and isinstance(f.value, ast.Name):
+            dotted = f"{f.value.id}.{f.attr}"
+        elif isinstance(f, ast.Name):
+            dotted = f.id
+        lits: list[str] | None = None
+        if node.args:
+            a0 = node.args[0]
+            if isinstance(a0, ast.Constant) and isinstance(a0.value, str):
+                lits = a0.value.split()
+            elif isinstance(a0, (ast.List, ast.Tuple)) and all(
+                    isinstance(e, ast.Constant) and isinstance(e.value, str) for e in a0.elts):
+                lits = [e.value for e in a0.elts]
+        if dotted == "pytest.main" or (dotted == "main" and dotted in main_alias):
+            if not node.args:
+                return "pytest-whole-suite"
+            return _pytest_kind(lits) if lits is not None else None
+        if dotted in ("runpy.run_module",) and lits and lits[0] == "pytest":
+            return "pytest-whole-suite"
+        if dotted in ("runpy.run_path",) and lits:
+            k = heavy_verification_kind("python " + lits[0])
+            if k:
+                return k
+        if dotted in ("subprocess.run", "subprocess.Popen", "subprocess.call", "subprocess.check_call",
+                      "subprocess.check_output", "os.system", "os.execv", "os.execvp", "os.execl",
+                      "os.execlp") and lits is not None:
+            k = heavy_verification_kind(" ".join(lits))
+            if k:
+                return k
+    return None
+
+
+def heavy_verification_kind(cmd: str) -> str | None:
+    """The kind of CPU-heavy verification wave `cmd` launches, or None for anything else —
+    a targeted test run (named test files or node ids, no worker fan-out) is not heavy.
+
+    ONE command interpretation (RC-519): segments, cwd tracking, quote-aware tokens, wrapper
+    options and payload extraction all come from tools/operator_law_guard.py — the same
+    resolver every other action rule reads — so `timeout 60s python -m pytest -n 8`,
+    `sudo -u ed py -m pytest -n 8`, `cmd /c "python -m pytest -n 8"`, `pwsh -Command ...`
+    and a `python -c` payload that calls `pytest.main` are all the same action. Words in
+    an echo, a commit message, a heredoc or a log filter are never a launch (RC-518)."""
+    if not cmd:
+        return None
+    from tools.operator_law_guard import _segment_head, iter_command_segments, iter_launch_payloads
+    for _cwd, seg in iter_command_segments(cmd):
+        head, toks = _segment_head(seg)
+        if not head:
+            continue
+        kind = _program_kind(head, [t.strip("\"'") for t in toks[1:]])
+        if kind:
+            return kind
+    for pkind, body in iter_launch_payloads(cmd):
+        kind = heavy_verification_kind(body) if pkind == "shell" else _python_payload_kind(body)
+        if kind:
+            return kind
+    return None
+
+
+# ── RC-519: the RIGHT to launch heavy verification is OWNED, not inferred ─────────────
+#: Authorization was a process-table read; the authorized process is not in the table until
+#: its interpreter exists, so two decisions inside that window both passed (measured
+#: 2026-09-05). The interval between decision and visibility is now owned by a two-file
+#: lease under the operating-process lock: a RESERVATION the guard creates atomically
+#: (O_EXCL) with a bounded TTL, and a HELD lease the admitted process claims atomically and
+#: holds for its life (pid + create time; reclaimable only when that pid is dead). Every real
+#: launch seam calls `admit_heavy_launch` in-process — the pytest controller (conftest), the
+#: delta gate, the catalog, the campaign — so no shell form can reach heavy verification
+#: without passing ONE authorization. Not a daemon, not a registry: two small files in the
+#: host temp directory whose meaning is entirely objective (a timestamp, a pid).
+LEASE_DIR = Path(tempfile.gettempdir()) / "ed_console_heavy_verification"
+RESERVATION_TTL_SECONDS = 45          # interpreter start-up is ~2 s; 45 s bounds a crashed launch
+
+
+def _lease_paths() -> tuple[Path, Path]:
+    return LEASE_DIR / "reserved.json", LEASE_DIR / "held.json"
+
+
+def _read_lease(path: Path) -> dict | None:
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+        return doc if isinstance(doc, dict) else None
+    except (OSError, ValueError):
+        return None
+
+
+def _pid_alive(pid: int, create_time: float | None) -> bool | None:
+    """True/False when the process table can answer; None when it cannot (fail closed)."""
+    try:
+        import psutil
+    except ImportError:
+        return None
+    try:
+        p = psutil.Process(int(pid))
+        if create_time is not None and abs(p.create_time() - float(create_time)) > 2.0:
+            return False                                   # pid reused by another process
+        return p.is_running() and p.status() != psutil.STATUS_ZOMBIE
+    except (psutil.NoSuchProcess, ValueError):
+        return False
+    except psutil.AccessDenied:
+        return True
+
+
+def _my_ancestor_pids() -> set[int]:
+    try:
+        import psutil
+        return {p.pid for p in psutil.Process().parents()}
+    except Exception:  # noqa: BLE001 - unknown ancestry is treated as none
+        return set()
+
+
+def held_lease() -> dict | None:
+    """The valid HELD lease, or None. A lease whose pid is dead is stale and is removed."""
+    _reserved, held = _lease_paths()
+    doc = _read_lease(held)
+    if not doc:
+        return None
+    alive = _pid_alive(doc.get("pid", -1), doc.get("create_time"))
+    if alive is False:
+        try:
+            held.unlink()
+        except OSError:
+            pass
+        return None
+    return doc
+
+
+def reservation() -> dict | None:
+    """The valid RESERVATION, or None. Older than the TTL it is a crashed launch and is removed."""
+    reserved, _held = _lease_paths()
+    doc = _read_lease(reserved)
+    if not doc:
+        return None
+    try:
+        age = time.time() - float(doc.get("reserved_at", 0))
+    except (TypeError, ValueError):
+        age = RESERVATION_TTL_SECONDS + 1
+    if age > RESERVATION_TTL_SECONDS or age < -60:
+        try:
+            reserved.unlink()
+        except OSError:
+            pass
+        return None
+    return doc
+
+
+def _create_exclusive(path: Path, doc: dict) -> bool:
+    """Atomically create `path` with `doc`; False when it already exists."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        fd = os.open(str(path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+    except FileExistsError:
+        return False
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        json.dump(doc, fh)
+    return True
+
+
+def reserve_heavy_launch(kind: str, command: str) -> tuple[bool, str]:
+    """The guard-time decision: exactly one heavy launch may be authorized until the
+    launched process has claimed its HELD lease or the reservation has expired. Fails closed
+    on any filesystem error."""
+    try:
+        held = held_lease()
+        if held:
+            return False, (f"a heavy verification job holds the lease — pid {held.get('pid')} "
+                           f"{held.get('kind')} since {held.get('started_utc')}")
+        res = reservation()
+        if res:
+            return False, (f"a heavy launch was authorized {round(time.time() - float(res.get('reserved_at', 0)))} s "
+                           f"ago and has not yet appeared in the process table ({res.get('kind')}: "
+                           f"{str(res.get('command', ''))[:80]}); one launch at a time")
+        reserved, _held = _lease_paths()
+        doc = {"reserved_at": time.time(), "kind": kind, "command": command[:400], "by_pid": os.getpid(),
+               "reserved_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+        if not _create_exclusive(reserved, doc):
+            return False, "another heavy launch was authorized in the same instant; one launch at a time"
+        return True, "reserved"
+    except OSError as exc:
+        return False, f"launch ownership could not be established ({exc}); refusing rather than guessing"
+
+
+def admit_heavy_launch(kind: str, argv_text: str) -> tuple[bool, str]:
+    """The in-process decision at the launch seam. Inside an admitted wave (an ancestor holds
+    the HELD lease) the launch is part of that wave. Otherwise: refuse if another process
+    holds the lease, refuse if an OLDER heavy job is alive (deterministic tie-break for two
+    processes started in the same instant), then claim the HELD lease atomically and retire
+    the reservation. Release happens at exit; a crash leaves a dead pid, which is stale by
+    definition and is reclaimed by the next decision."""
+    try:
+        import psutil
+        me = psutil.Process()
+        my_create = me.create_time()
+        # my launch ROOT: the oldest ancestor that is the same launch (a venv launcher runs
+        # the real interpreter as a child with the same command line) — two sessions started
+        # in one instant are ordered by their roots, never by launcher-vs-interpreter.
+        my_cmd = " ".join(me.cmdline() or [])
+        for parent in me.parents():
+            try:
+                if " ".join(parent.cmdline() or []) != my_cmd:
+                    break
+                my_create = min(my_create, parent.create_time())
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                break
+    except Exception:  # noqa: BLE001
+        return False, "the process table is not readable (psutil); refusing rather than guessing"
+    try:
+        ancestors = _my_ancestor_pids()
+        held = held_lease()
+        if held:
+            if int(held.get("pid", -1)) in ancestors or int(held.get("pid", -1)) == me.pid:
+                return True, f"inside the admitted wave (lease held by pid {held.get('pid')})"
+            return False, (f"a heavy verification job holds the lease — pid {held.get('pid')} "
+                           f"{held.get('kind')} since {held.get('started_utc')}; "
+                           f"`python tools/operating_process_lock.py --heavy-jobs`")
+        older = [j for j in heavy_verification_jobs() if j.get("pid") and j["pid"] not in ancestors
+                 and j.get("create_time", 0) < my_create - 0.001]
+        if older:
+            j = older[0]
+            return False, (f"an older heavy verification job is alive — pid {j['pid']} {j['kind']} "
+                           f"started {j.get('started_utc')} (this launch's root started "
+                           f"{time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(my_create))}); one wave at a time")
+        reserved, held_path = _lease_paths()
+        doc = {"pid": me.pid, "create_time": my_create, "kind": kind, "argv": argv_text[:400],
+               "started_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+        if not _create_exclusive(held_path, doc):
+            if held_lease() is not None:            # still valid: someone claimed it first
+                return False, "another heavy verification job claimed the lease first; one wave at a time"
+            if not _create_exclusive(held_path, doc):
+                return False, "another heavy verification job claimed the lease first; one wave at a time"
+        try:
+            reserved.unlink()
+        except OSError:
+            pass
+        import atexit
+        atexit.register(release_heavy_launch)
+        return True, "admitted"
+    except OSError as exc:
+        return False, f"launch ownership could not be established ({exc}); refusing rather than guessing"
+
+
+def release_heavy_launch() -> None:
+    _reserved, held = _lease_paths()
+    doc = _read_lease(held)
+    if doc and doc.get("pid") == os.getpid():
+        try:
+            held.unlink()
+        except OSError:
+            pass
+
+
+def lease_state() -> dict:
+    """What the lease files say right now — part of the `--heavy-jobs` evidence."""
+    return {"held": held_lease(), "reserved": reservation(), "lease_dir": str(LEASE_DIR)}
+
+
+#: Third-party modules the proof owners (the gate, the delta gate, the campaign, this lock)
+#: import — MEASURED 2026-09-05 by walking their import closure: psutil only. execnet and
+#: openpyxl (missing from a copied venv this month) are outside it and cannot alter these
+#: proofs; pytest-full is a different proof with a different closure and is not reused.
+#: `tests/test_verification_cost_governance_v1.py` recomputes the closure and pins it.
+PROOF_THIRD_PARTY_MODULES = ("psutil",)
+
+
+def verification_evidence_identity() -> dict:
+    """The environment semantics a delta-gate or campaign measurement depends on: the
+    interpreter and the versions of the third-party modules in the proof owners' import
+    closure. Everything else the proofs read is tree content (covered by the SHA)."""
+    import importlib.metadata as md
+    import platform
+    versions = {}
+    for mod in PROOF_THIRD_PARTY_MODULES:
+        try:
+            versions[mod] = md.version(mod)
+        except md.PackageNotFoundError:
+            versions[mod] = "ABSENT"
+    return {"python": f"{platform.python_implementation()} {platform.python_version()}",
+            "packages": versions}
+
+
+def evidence_identity_hash() -> str:
+    import hashlib
+    return hashlib.sha256(json.dumps(verification_evidence_identity(), sort_keys=True).encode()).hexdigest()[:24]
+
+
+def heavy_verification_jobs(exclude_pids: set[int] | None = None) -> list[dict]:
+    """Every heavy verification process alive on this host right now: pid, kind, start time,
+    age, CPU seconds, children and command — the inventory the anomaly trigger and the
+    competing-wave block both read. Excludes this process and its ancestors (a guard running
+    inside a pytest must not report the pytest it runs in). psutil absent -> one
+    UNMEASURABLE row, never a fabricated 'nothing running'."""
+    try:
+        import psutil
+    except ImportError:
+        return [{"pid": 0, "kind": "UNMEASURABLE", "age_seconds": 0, "cpu_seconds": 0,
+                 "command": "", "note": "psutil not importable — install it; an inventory "
+                 "that cannot look is not an inventory"}]
+    me = psutil.Process()
+    skip = {me.pid} | {p.pid for p in me.parents()} | set(exclude_pids or ())
+    out: list[dict] = []
+    now = time.time()
+    for proc in psutil.process_iter(["pid", "cmdline", "create_time", "ppid"]):
+        try:
+            if proc.info["pid"] in skip:
+                continue
+            cmd = " ".join(proc.info.get("cmdline") or [])
+            kind = heavy_verification_kind(cmd)
+            if not kind:
+                continue
+            # ONE job = ONE launch root. A Windows venv `python.exe` is a launcher that runs
+            # the real interpreter as a child with the SAME command line (measured
+            # 2026-09-05: two pytest sessions were four heavy processes, and each
+            # interpreter saw the other session's launcher as an older job). A process
+            # whose parent is a heavy process with the same command line is part of its
+            # parent's job and is not listed on its own.
+            try:
+                parent = proc.parent()
+                if parent is not None and " ".join(parent.cmdline() or []) == cmd \
+                        and heavy_verification_kind(" ".join(parent.cmdline() or [])):
+                    continue
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                pass
+            cpu = proc.cpu_times()
+            out.append({
+                "pid": proc.info["pid"], "kind": kind, "create_time": proc.info["create_time"],
+                "started_utc": datetime.fromtimestamp(proc.info["create_time"], tz=timezone.utc)
+                .strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "age_seconds": round(now - proc.info["create_time"]),
+                "cpu_seconds": round(cpu.user + cpu.system, 1),
+                "children": len(proc.children(recursive=True)),
+                "command": cmd[:240],
+            })
+        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+            continue
+    return sorted(out, key=lambda j: j["pid"])
+
+
+def competing_heavy_verification_violations(cmd: str, jobs: list[dict] | None = None) -> list[str]:
+    """RC-517 (AGENTS.md verification discipline, contention clause): launching a heavy
+    verification wave while another is alive is BLOCKED at the command. Investigate the
+    running job first (`python tools/operating_process_lock.py --heavy-jobs`): healthy ->
+    wait for it; stuck -> stop it and root-fix the cause. Parallelism that has been proven
+    isolated lives INSIDE the owner that proved it (the campaign's --parallel), so one
+    launch is one wave. Targeted runs are never gated."""
+    kind = heavy_verification_kind(cmd)
+    if not kind:
+        return []
+    active = heavy_verification_jobs() if jobs is None else jobs
+    if active:
+        lines = "; ".join(f"pid {j['pid']} {j['kind']} age {j.get('age_seconds', '?')}s cpu "
+                          f"{j.get('cpu_seconds', '?')}s: {(j.get('command') or j.get('note') or '')[:90]}"
+                          for j in active[:4])
+        return [
+            f"COMPETING_HEAVY_VERIFICATION (RC-517): this command launches a {kind} wave while "
+            f"{len(active)} heavy verification job(s) are alive — {lines}. Two waves on one host "
+            f"make both slower and their timing evidence meaningless (measured 2026-09-04). "
+            f"Inspect the running job with `python tools/operating_process_lock.py --heavy-jobs`; "
+            f"if it is healthy, wait for it; if it is stuck, stop it and root-fix the cause; then "
+            f"launch. Targeted runs (named test files or node ids, no -n) are not gated."
+        ]
+    # RC-519: nothing visible — OWN the interval until the launched process is visible.
+    ok, why = reserve_heavy_launch(kind, cmd)
+    if ok:
+        return []
+    return [
+        f"COMPETING_HEAVY_VERIFICATION (RC-519): this command launches a {kind} wave but {why}. "
+        f"Inspect with `python tools/operating_process_lock.py --heavy-jobs` (it prints the lease); "
+        f"a reservation older than {RESERVATION_TTL_SECONDS} s or a lease whose pid is dead is "
+        f"reclaimed automatically. Targeted runs (named test files or node ids, no -n) are not gated."
+    ]
+
+
 def commit_violations(repo: Path | None = None) -> list[str]:
     """Predicates for git commit PreToolUse / pre-commit."""
     root = repo or REPO
@@ -756,7 +1197,18 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--pre-commit", action="store_true", help="pre-commit mode: exit 1 on violation")
     p.add_argument("--measure", action="store_true", help="print JSON measure report")
     p.add_argument("--commit-check", action="store_true", help="commit-time predicates only")
+    p.add_argument("--heavy-jobs", action="store_true",
+                   help="RC-517: inventory every CPU-heavy verification process alive on this "
+                        "host (pid, kind, start, age, CPU seconds, children, command) — the "
+                        "evidence a 'still running' claim must carry")
     args = p.parse_args(argv)
+    if args.heavy_jobs:
+        print(json.dumps({"measured_at_utc": datetime.now(tz=timezone.utc)
+                          .strftime("%Y-%m-%dT%H:%M:%SZ"),
+                          "heavy_jobs": heavy_verification_jobs(),
+                          "lease": lease_state(),
+                          "evidence_identity": verification_evidence_identity()}, indent=2))
+        return 0
     if args.measure:
         print(json.dumps(measure_report(), indent=2))
         return 0

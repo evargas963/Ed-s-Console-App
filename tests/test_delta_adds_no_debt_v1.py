@@ -684,13 +684,47 @@ def test_the_candidate_worktree_presents_the_change_as_STAGED(tmp_path, monkeypa
     try:
         assert _git(wt, "diff", "--cached", "--name-only").split() == [], (
             "precondition: a plain materialised worktree shows NOTHING staged")
-        GATE._stage_the_delta(wt, sha)
+        GATE._stage_the_delta(wt, sha, _git(repo, "rev-parse", "HEAD").strip())
         assert _git(wt, "diff", "--cached", "--name-only").split() == ["added.txt"], (
             "the change under commit is not visible to the checks that ask for it")
         assert _git(wt, "rev-parse", "HEAD").strip() == \
             _git(repo, "rev-parse", "HEAD").strip(), "HEAD must sit at the candidate's parent"
     finally:
         _git(repo, "worktree", "remove", "--force", str(wt))
+
+
+def test_the_staged_delta_is_the_whole_branch_not_the_last_commit(tmp_path):
+    """RC-516: with `ref^` a three-commit branch was judged on its LAST commit only, so a
+    superseded path orphaned in commit 1 and a closure row landed in commit 2 were invisible
+    to every delta-scoped check when commit 3 was measured. The fork point against the base
+    is `merge-base`, so the staged set is everything the branch lands on the base — the
+    same set the CI merge ref presents. A candidate that IS the base stages nothing."""
+    repo = _seeded_repo(tmp_path)
+    base_sha = _git(repo, "rev-parse", "HEAD").strip()
+    for name in ("first.txt", "second.txt", "third.txt"):
+        (repo / name).write_text(f"{name}\n", encoding="utf-8")
+        _git(repo, "add", name)
+        _git(repo, "commit", "-qm", name)
+    tip = _git(repo, "rev-parse", "HEAD").strip()
+
+    wt = tmp_path / "wt"
+    _git(repo, "worktree", "add", "--detach", str(wt), tip)
+    try:
+        GATE._stage_the_delta(wt, tip, base_sha)
+        assert sorted(_git(wt, "diff", "--cached", "--name-only").split()) == \
+            ["first.txt", "second.txt", "third.txt"], "the whole branch must be staged"
+        assert _git(wt, "rev-parse", "HEAD").strip() == base_sha
+    finally:
+        _git(repo, "worktree", "remove", "--force", str(wt))
+
+    wt2 = tmp_path / "wt2"
+    _git(repo, "worktree", "add", "--detach", str(wt2), base_sha)
+    try:
+        GATE._stage_the_delta(wt2, base_sha, base_sha)
+        assert _git(wt2, "diff", "--cached", "--name-only").split() == [], (
+            "a candidate that is the base has no change to stage")
+    finally:
+        _git(repo, "worktree", "remove", "--force", str(wt2))
 
 
 def test_the_precommit_seam_measures_the_check_roster_not_the_whole_tree_delta():

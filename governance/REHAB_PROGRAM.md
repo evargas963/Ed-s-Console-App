@@ -2,19 +2,21 @@
 
 **Directed by the operator in chat** (2026-08-24 teardown: no standing PM/auditor roles — any agent the operator assigns performs the rehab behaviors below that session).
 
-**Primary charter (operator 2026-08-03):** **repo-wide multi-faucet** — **audit → find → fix end-to-end → no patches.**  
-Not “one endpoint.” Not “leave the old producer as fallback.” Not CLOSED until the second path is dead on disk **and** proven on the live process (or honestly DISK_ONLY with restart owed).
+**Scope of this file:** the distinct multi-faucet rehab PROCEDURE (operator charter 2026-08-03: repo-wide multi-faucet, audit → find → fix end-to-end → no patches). The general engineering law it applies — correct the whole connected path, no patch or fallback or second faucet, one computation authority, tests conform to the architecture, PASS only by direct proof — lives ONLY in `AGENTS.md` (Institutional end-to-end execution law) and is not restated here.
 
-Charter restated: piece-by-piece, fix-by-fix, **end-to-end** — dual paths die in-mission or the row stays PARTIAL/OPEN.
-
-## Law
+## Procedure
 
 1. When the operator directs a session at rehab, **RH-F1 multi-faucet** is the spine of that work, across the whole continuum. Named missions (levels Phase 1, FORCES, DB) are **slices of that spine**, never a substitute for the program.
-2. Every slice: **census → one authority → kill the second path (remove or hard-fail) → T1 tests → lock → prove LIVE (or DISK_ONLY + restart owed)**. No “delegate later” residue without an OPEN RC.
-3. **No patches:** a fix that leaves the old producer callable as a silent second faucet is incomplete. Mark PARTIAL until the dead path is removed or hard-fails closed.
-4. **Whole continuum:** backend, frontend, SQL, config, governance — same standard. Spot, walls, volume, PDL, charm, levels — every named field can have a faucet debt.
-5. **Queue sources:** `reports/rehab_latest.md` + multi-faucet census artifacts + this file — RECORDS for the operator's triage; the operator opens each slice in chat; nothing self-opens.
-6. Daily scan (`tools/rehab_daily_scan.py` / Automation) is **recommend-only**; the operator turns findings into work.
+2. Every slice: **census → one authority → kill the second path (remove, never demote to fallback) → T1 tests → lock → prove LIVE (or DISK_ONLY + restart owed)**. A slice is not CLOSED until the second path is dead on disk **and** proven on the live process, or the row honestly says DISK_ONLY with the restart owed. Every field in the continuum — spot, walls, volume, PDL, charm, levels — can carry a faucet debt, on the backend, frontend, SQL, config or governance layer alike.
+3. **Queue sources:** `reports/rehab_latest.md` + multi-faucet census artifacts + this file — RECORDS for the operator's triage; the operator opens each slice in chat; nothing self-opens.
+4. **The ONE rehab measurement owner** is the daily scan, `tools/rehab_daily_scan.py` (host launcher `tools/run_rehab_daily.ps1`, inventory `governance/host_scheduled_jobs.md`). It is **recommend-only**; the operator turns findings into work. There is no second rehab measurement surface: the unscheduled self-measuring plan script that once sat beside it had no caller and was deleted (RC-516, 2026-09-04).
+
+## Collect operable surface (RH-F5 procedure)
+
+- **Authority for a "clean" Collect claim:** `python -m tools.operable_surface_gate --db data/ed_console.db` (committed). Re-run in the same turn before any clean/verified Collect claim.
+- **Scope:** operable = `calibration_trust='trusted' AND COALESCE(research_excluded,0)=0`, **all tickers**. A sentinel-only (SPY/QQQ/IWM) clean result is `SENTINEL_SURFACE_CLEAN` only — never `OPERABLE_SURFACE_CLEAN` (AGENTS.md, UNIVERSAL ticker scope).
+- **Do not widen** production `BACKFILL_JOIN_TOL_SEC` (29). The historical one-shot tol=59 repair was explicit ops, not a production default.
+- **Recurring ops:** `python -m tools.run_operable_surface_ops` (backfill 29 + gate). Without it, young unattached rows age past 70m and regenerate old_missing.
 
 ## Standing facets (hunt these forever)
 
@@ -33,24 +35,16 @@ Charter restated: piece-by-piece, fix-by-fix, **end-to-end** — dual paths die 
 
 The operator names the active slice in chat (the pm_mission.json coordination file was removed 2026-08-24). Candidate-slice record for the operator's triage: `reports/multi_faucet_census_latest.md`.
 
-## Anti-patterns (refuse these)
+## Rehab-specific anti-patterns (refuse these; the general ones are AGENTS.md laws 3–5, 10 and 12)
 
-- Soft “we’ll collapse producers later” without OPEN RC + date
-- Second faucet kept as “fallback”
 - UI polish while a measured dual-number lie remains on the same surface
-- Claiming COMPLETE without END-TO-END reach on named victims
 - Running a full `server.py` stem battery (1000+ tests) as the default per-turn proof when a scoped suite already binds the change
 
 ## Test tiers (efficiency)
 
-| Tier | When | What |
-|------|------|------|
-| **T1 Mission** | Before any green claim / commit | Only tests that name the changed behavior (here: ~32 levels/market_context tests) |
-| **T2 Adjacent** | If T1 green but import surface risky | One related file’s tests, not the whole stem |
-| **T3 Stem / full** | Nightly Automation or pre-release only | `turn_self_audit` full stem / 1800+ — **not** every mission turn |
-| **T4 Pre-commit** | Every commit | Institutional hooks already run — do not re-run T3 in chat “to be safe” |
+The ordering of verification (targeted first, one expensive wave at a time, preflight, anomaly trigger, proof reuse) is the `AGENTS.md` Verification discipline with its procedure in `governance/AGENT_OPERATING_PROCESS_V1.md` section 8 — the former T1–T4 tier table here restated it and is consolidated there (RC-517).
 
-**Rule:** red T3 failures that reproduce on pristine HEAD are **rehab backlog**, not blockers for an unrelated mission — unless they are in files this mission touched. File them into the queue rather than stalling every landing.
+**Rehab-specific rule (the boundary is the materially connected path — `AGENTS.md` laws 2 and 3, never "files this mission edited"):** a red full-suite failure that reproduces on pristine HEAD is thereby proven *pre-existing*, which is not the same as *unrelated* and is never by itself an exemption. If the failing path is materially connected to the mission — a producer, consumer, persistence path, runtime seam, configuration, API/UI, SQL, research/training/replay/cache or compatibility path of the change — it is in the mission and is fixed there, even when no file of that path had been edited yet. Only a failure proven NOT materially connected is rehab backlog: file it into the queue with that proof rather than stalling the landing.
 
 ## LIVE closeout / post-restart DONE bar
 

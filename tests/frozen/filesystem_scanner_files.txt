@@ -21,7 +21,7 @@ tools/audit_snapshot_columns.py::1
 tools/build_phase3_repo_cleanup.py::1
 tools/build_snapshot_sql_registry.py::1
 tools/check_institutional_correctness.py::12
-tools/check_one_producer.py::1
+tools/check_one_producer.py::2
 tools/check_private_paths.py::1
 tools/check_test_claims_are_executed.py::1
 tools/check_vendor_field_coercion.py::2

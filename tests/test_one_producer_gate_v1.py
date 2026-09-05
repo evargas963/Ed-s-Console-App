@@ -77,6 +77,7 @@ def test_a_registered_concept_with_two_producers_fails_the_gate(tmp_path, monkey
     monkeypatch.setattr(C, "REPO", fake_repo)
     monkeypatch.setattr(C, "REGISTRY",
                         fake_repo / "governance" / "computation_registry.json")
+    monkeypatch.setattr(C, "_tracked_surfaces", lambda root=None: [])
     monkeypatch.setattr(C, "_tracked_python", lambda: ["prod_a.py", "prod_b.py"])
 
     hits = C.violations()
@@ -120,10 +121,73 @@ def test_a_valid_consumer_does_not_trip_the_gate(tmp_path, monkeypatch):
     monkeypatch.setattr(C, "REPO", fake_repo)
     monkeypatch.setattr(C, "REGISTRY",
                         fake_repo / "governance" / "computation_registry.json")
+    monkeypatch.setattr(C, "_tracked_surfaces", lambda root=None: [])
     monkeypatch.setattr(C, "_tracked_python", lambda: ["prod_a.py", "consumer.py"])
     assert C.violations() == [], (
         "a consumer that calls the canonical producer was flagged as a second producer — "
         "the gate cannot distinguish consumption from production (SP-01)")
+
+
+def _surface_fixture(fake_repo: Path, monkeypatch, surfaces: dict[str, str]) -> None:
+    (fake_repo / "governance").mkdir()
+    (fake_repo / "prod_a.py").write_text(
+        "def canonical(contracts, spot):\n"
+        "    total = 0.0\n"
+        "    for c in contracts:\n"
+        "        total += c['gamma'] * c['openInterest'] * spot * spot * 0.01\n"
+        "    return total\n", encoding="utf-8")
+    for rel, text in surfaces.items():
+        p = fake_repo / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(text, encoding="utf-8")
+    (fake_repo / "governance" / "computation_registry.json").write_text(json.dumps({
+        "fields": {
+            "gex_dollars_per_1pct_at_strike": {
+                "producer": "prod_a.py:canonical",
+                "computation_inputs": ["gamma", "openInterest", "spot"],
+                "surface_inputs": [["gamma"], ["oi", "openInterest", "open_interest"], ["spot", "spt"]],
+            }
+        }
+    }), encoding="utf-8")
+    monkeypatch.setattr(C, "REPO", fake_repo)
+    monkeypatch.setattr(C, "REGISTRY", fake_repo / "governance" / "computation_registry.json")
+    monkeypatch.setattr(C, "_tracked_python", lambda: ["prod_a.py"])
+    monkeypatch.setattr(C, "_tracked_surfaces", lambda root=None: sorted(surfaces))
+
+
+def test_a_frontend_recomputation_of_a_registered_field_is_a_second_producer(tmp_path, monkeypatch):
+    """RC-516 (AGENTS.md law 12): the browser is a connected layer of the same truth."""
+    _surface_fixture(tmp_path, monkeypatch, {
+        "static/chart.js": "function gexAt(r, spot) {\n  return r.gamma * r.openInterest * spot * spot * 0.01;\n}\n"})
+    hits = C.violations()
+    assert hits and "static/chart.js:2" in hits[0], hits
+
+
+def test_an_inline_html_script_and_a_sql_query_are_second_producers(tmp_path, monkeypatch):
+    _surface_fixture(tmp_path, monkeypatch, {
+        "static/index.html": "<html><script>\nconst g = row.gamma * row.oi * spot * spot;\n</script></html>\n",
+        "snapshot_sql/gex.sql": "SELECT strike, gamma * open_interest * spot * spot * 0.01 AS gex FROM chain;\n"})
+    hits = C.violations()
+    assert hits and "static/index.html:2" in hits[0] and "snapshot_sql/gex.sql:1" in hits[0], hits
+
+
+def test_a_frontend_consumer_and_a_column_list_are_not_producers(tmp_path, monkeypatch):
+    """Rendering the served value, listing columns, passing inputs as arguments: none of
+    these joins the inputs arithmetically, so none is a computation."""
+    _surface_fixture(tmp_path, monkeypatch, {
+        "static/render.js": "function render(p) {\n  return p.gex_total.toFixed(2) + fmt(p.gamma, p.oi, spot);\n}\n",
+        "snapshot_sql/cols.sql": "SELECT gamma, open_interest AS oi, spot FROM chain WHERE spot > 0 AND gamma > 0;\n"})
+    assert C.violations() == []
+
+
+def test_a_field_without_surface_inputs_is_not_judged_on_surfaces(tmp_path, monkeypatch):
+    """Honest scope: no declared spellings, no surface verdict (NOT_MECHANICALLY_DETECTABLE)."""
+    _surface_fixture(tmp_path, monkeypatch, {
+        "static/chart.js": "function gexAt(r, spot) {\n  return r.gamma * r.openInterest * spot * spot * 0.01;\n}\n"})
+    reg = json.loads((tmp_path / "governance" / "computation_registry.json").read_text(encoding="utf-8"))
+    del reg["fields"]["gex_dollars_per_1pct_at_strike"]["surface_inputs"]
+    (tmp_path / "governance" / "computation_registry.json").write_text(json.dumps(reg), encoding="utf-8")
+    assert C.violations() == []
 
 
 def test_absent_payload_surface_fails_closed_when_declared(tmp_path, monkeypatch):
@@ -141,6 +205,7 @@ def test_absent_payload_surface_fails_closed_when_declared(tmp_path, monkeypatch
     }), encoding="utf-8")                            # ...and deliberately not created
     monkeypatch.setattr(C, "REPO", fake)
     monkeypatch.setattr(C, "REGISTRY", fake / "governance" / "computation_registry.json")
+    monkeypatch.setattr(C, "_tracked_surfaces", lambda root=None: [])
     monkeypatch.setattr(C, "_tracked_python", lambda: [])
 
     hits = C.violations()
@@ -166,6 +231,7 @@ def test_absent_payload_surface_is_silent_when_none_declared(tmp_path, monkeypat
         json.dumps({"fields": {}}), encoding="utf-8")   # no payload_surfaces key
     monkeypatch.setattr(C, "REPO", fake)
     monkeypatch.setattr(C, "REGISTRY", fake / "governance" / "computation_registry.json")
+    monkeypatch.setattr(C, "_tracked_surfaces", lambda root=None: [])
     monkeypatch.setattr(C, "_tracked_python", lambda: [])
     assert C.unregistered_payload_fields() == []
     assert C.violations() == []

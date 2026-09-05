@@ -226,7 +226,8 @@ def external_blocker(row: MissionRow) -> str | None:
 
     TWO STRUCTURAL CELLS, no text anywhere: `status` is the declared token BLOCKED, and `due`
     parses as a date that has not passed. Both are machine-parsed columns of the row schema
-    that `check_rc_status_vocabulary` and the overdue clause already police.
+    that `_rc_status_vocabulary_violations` (inside check_root_cause_log) and the overdue
+    clause already police.
 
     THIS REPLACED PROSE DECIDING AUTHORITY (RC-503). The predicate used to search the free-text
     fix cell for a `BLOCKED_ON_*` substring, which cannot tell a CLAIM from a mention: the same

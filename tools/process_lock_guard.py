@@ -521,6 +521,12 @@ def pretooluse_block(tool: str, tool_input: dict, payload_cwd: str = "") -> list
         # RC-498 Find -> Fix latch: the same durable-mission requirement the Edit/Write seam
         # applies, at the shell seam — otherwise the latch is a door with the window left open.
         out.extend(mission_shell_write_violations(cmd, payload_cwd))
+        # RC-517/RC-519: a heavy verification wave may not be launched beside another one,
+        # and the RIGHT to launch is reserved atomically here (a bounded reservation the
+        # admitted process converts into its pid-bound lease), so two decisions in one
+        # breath cannot both pass. The raw command is judged: payloads that launch pytest
+        # are actions. The inventory is consulted only when the command itself is heavy.
+        out.extend(OPL.competing_heavy_verification_violations(cmd))
     return out
 
 

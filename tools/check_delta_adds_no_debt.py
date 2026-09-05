@@ -55,6 +55,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
@@ -182,32 +183,43 @@ def index_candidate() -> str:
     return made.stdout.strip()
 
 
-def _stage_the_delta(wt: Path, ref: str) -> None:
-    """Make the candidate's own change appear STAGED inside its worktree.
+def _stage_the_delta(wt: Path, ref: str, base: str) -> None:
+    """Make the candidate's WHOLE change against `base` appear STAGED inside its worktree.
 
     RC-391, second order. Staged-scope enforced checks ask `git diff --cached` what is
     being committed. In a materialised worktree HEAD is the candidate and the index matches it, so
     that question answers EMPTY and those checks fall silent on both sides. They would then
     be structurally incapable of failing at the very seam they were written for, which is a
     check removed by accident rather than by edit — the thing the roster comparison exists
-    to refuse. `reset --soft <parent>` moves HEAD back one commit and leaves the index
-    holding the candidate tree, so `git diff --cached` is EXACTLY the change under commit.
+    to refuse. `reset --soft <fork point>` moves HEAD back to where the candidate left the
+    base and leaves the index holding the candidate tree, so `git diff --cached` is EXACTLY
+    the change this delta lands on the base.
+
+    RC-516: the fork point is `merge-base(base, ref)`, not `ref^`. With `ref^` a multi-commit
+    branch was judged on its LAST commit only, so a delta-scoped check (a superseded path
+    orphaned in commit 2 of 5, a closure row landed one commit before its code) saw a slice
+    of the change and passed the rest unread. On the CI merge ref the two coincide (the merge
+    commit's first parent is main); locally they did not, and local proof must match CI.
+    A candidate that IS the base (nothing to land) stages nothing.
     """
-    parent = _run(["git", "rev-parse", "--verify", "--quiet", f"{ref}^"], cwd=wt)
-    if parent.returncode != 0 or not parent.stdout.strip():
+    fork = _run(["git", "merge-base", base, ref], cwd=wt)
+    if fork.returncode != 0 or not fork.stdout.strip():
         raise RuntimeError(
-            f"cannot resolve the parent of {ref}, so the change under commit cannot be "
-            f"staged for the checks that ask what is being committed: {parent.stderr[-200:]}")
-    reset = _run(["git", "reset", "--soft", parent.stdout.strip()], cwd=wt)
+            f"cannot resolve the fork point of {ref} against {base}, so the change under "
+            f"commit cannot be staged for the checks that ask what is being committed: "
+            f"{fork.stderr[-200:]}")
+    reset = _run(["git", "reset", "--soft", fork.stdout.strip()], cwd=wt)
     if reset.returncode != 0:
         raise RuntimeError(f"cannot stage the delta in the worktree: {reset.stderr[-300:]}")
 
 
-def enforced_counts(ref: str, stage_delta: bool = False) -> tuple[dict[str, int], str, set[str]]:
+def enforced_counts(ref: str, stage_delta: bool = False,
+                    base: str = "origin/main") -> tuple[dict[str, int], str, set[str]]:
     """({check: violations}, short sha, enforced roster) measured in a CLEAN worktree.
 
     `stage_delta` is set for the CANDIDATE side only: the base carries no change, so its
-    staged set is correctly empty, while the candidate's must be the change under commit.
+    staged set is correctly empty, while the candidate's must be its whole change against
+    `base` (RC-516).
     """
     sha = _run(["git", "rev-parse", "--short", ref]).stdout.strip()
     with tempfile.TemporaryDirectory(prefix="deltagate-") as tmp:
@@ -217,7 +229,7 @@ def enforced_counts(ref: str, stage_delta: bool = False) -> tuple[dict[str, int]
             raise RuntimeError(f"cannot materialise {ref}: {add.stderr[-300:]}")
         try:
             if stage_delta:
-                _stage_the_delta(wt, ref)
+                _stage_the_delta(wt, ref, base)
             proc = _run([sys.executable, "tools/check_institutional_correctness.py",
                          "--enforced-only"], cwd=wt)
             # FAIL CLOSED (Cursor hole audit H1). As first shipped this returned
@@ -399,7 +411,10 @@ def refold_base_counts(
 # fresh measurement - the cache can cost seconds, never correctness.
 
 def _base_cache_path() -> Path | None:
-    r = _run(["git", "rev-parse", "--git-dir"])
+    """ONE cache per repository, shared by every worktree (RC-516: the boundary campaign
+    runs one worktree per base group; a base measured in any of them is proof for all of
+    them, because the key below is content-addressed, not worktree-addressed)."""
+    r = _run(["git", "rev-parse", "--git-common-dir"])
     if r.returncode != 0 or not r.stdout.strip():
         return None
     git_dir = Path(r.stdout.strip())
@@ -408,21 +423,50 @@ def _base_cache_path() -> Path | None:
     return git_dir / "delta_base_cache.json"
 
 
+_GATE_REL = "tools/check_institutional_correctness.py"
+
+
+def _lock():
+    """The operating-process lock (evidence identity, launch admission) — imported lazily so
+    this driver stays runnable from any cwd, as the hook runner requires."""
+    if str(REPO) not in sys.path:
+        sys.path.insert(0, str(REPO))
+    from tools import operating_process_lock
+    return operating_process_lock
+
+
 def _base_cache_key(base_ref: str) -> str | None:
+    """Content identity of a base measurement — the EVIDENCE IDENTITY CONTRACT (RC-519):
+      * the base COMMIT (content-addressed: every tool, check and roster the base runs);
+      * the gate blob that commit carries (named explicitly so a rewritten history at the
+        same tree cannot masquerade — it is implied by the commit, and cheap);
+      * THIS driver's bytes (its parsing and staging decide what a count is);
+      * the interpreter and the third-party closure of the proof owners
+        (`operating_process_lock.verification_evidence_identity`: psutil only, measured).
+    Everything else the measurement reads is tree content. Environment variables are not
+    part of the contract: the gate reads PRE_COMMIT and ED_RATCHET_NO_WRITE, which decide
+    whether advisory debt is WRITTEN, never what is COUNTED."""
     r = _run(["git", "rev-parse", base_ref])
     if r.returncode != 0 or not r.stdout.strip():
         return None
+    gate = _run(["git", "rev-parse", f"{base_ref}:{_GATE_REL}"])
+    if gate.returncode != 0 or not gate.stdout.strip():
+        return None
     h = hashlib.sha256()
     h.update(r.stdout.strip().encode())
+    h.update(gate.stdout.strip().encode())
     try:
         h.update(Path(__file__).read_bytes())          # parsing logic lives here
     except OSError:
         return None
-    h.update(sys.version.encode())
+    h.update(_lock().evidence_identity_hash().encode())
     return h.hexdigest()
 
 
 def _read_base_cache(key: str | None):
+    """A hit returns (counts, short sha, roster) from the entry whose key matches; the file
+    holds many entries (one per base identity) so concurrent campaigns never evict each
+    other. Any unreadable state is a MISS — the cache can cost seconds, never correctness."""
     if not key:
         return None
     path = _base_cache_path()
@@ -430,24 +474,42 @@ def _read_base_cache(key: str | None):
         if path is None or not path.is_file():
             return None
         doc = json.loads(path.read_text(encoding="utf-8"))
-        if doc.get("key") != key:
+        entries = doc.get("entries") if isinstance(doc, dict) else None
+        entry = entries.get(key) if isinstance(entries, dict) else (doc if doc.get("key") == key else None)
+        if not entry:
             return None
-        counts = {str(k): int(v) for k, v in doc["counts"].items()}
-        return counts, str(doc["sha"]), set(doc["roster"])
+        counts = {str(k): int(v) for k, v in entry["counts"].items()}
+        return counts, str(entry["sha"]), set(entry["roster"])
     except (OSError, ValueError, KeyError, TypeError, AttributeError):
         return None                                    # fail-open: recompute
 
 
 def _write_base_cache(key: str | None, counts, sha, roster) -> None:
+    """Evidence-bearing entry: the identity it was measured under, the roster it saw and the
+    time. Written atomically (temp file + replace) so a parallel writer can never be read
+    half-way; entries from other keys are preserved."""
     if not key:
         return
     path = _base_cache_path()
     if path is None:
         return
     try:
-        path.write_text(json.dumps({
+        entries: dict = {}
+        if path.is_file():
+            try:
+                old = json.loads(path.read_text(encoding="utf-8"))
+                if isinstance(old, dict) and isinstance(old.get("entries"), dict):
+                    entries = old["entries"]
+            except (OSError, ValueError):
+                entries = {}
+        entries[key] = {
             "key": key, "counts": counts, "sha": sha, "roster": sorted(roster),
-        }), encoding="utf-8")
+            "driver": _run(["git", "hash-object", str(Path(__file__))]).stdout.strip(),
+            "measured_at_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        }
+        tmp = path.with_name(path.name + f".{os.getpid()}.tmp")
+        tmp.write_text(json.dumps({"entries": entries}), encoding="utf-8")
+        os.replace(tmp, path)
     except OSError:
         pass                                           # cache is best-effort
 
@@ -461,6 +523,12 @@ def main(argv: list[str] | None = None) -> int:
                          "of HEAD; unstaged work is structurally excluded")
     args = ap.parse_args(argv)
 
+    # RC-519: heavy verification passes ONE authorization, in-process, whatever launched it.
+    ok, why = _lock().admit_heavy_launch("check_delta_adds_no_debt", " ".join(sys.argv))
+    if not ok:
+        print(f"COMPETING_HEAVY_VERIFICATION (RC-519): {why}")
+        return 2
+
     if args.index:
         candidate_ref, candidate_label = index_candidate(), "staged INDEX"
     else:
@@ -470,12 +538,14 @@ def main(argv: list[str] | None = None) -> int:
     cached = _read_base_cache(cache_key)
     if cached is not None:
         base_counts, base_sha, base_roster = cached
-        print(f"base side: cache hit for {args.base} ({base_sha}) - re-measure with a "
-              f"changed base/driver/evidence, or delete .git/delta_base_cache.json")
+        print(f"base side: cache hit for {args.base} ({base_sha}) - keyed on the base commit, "
+              f"its gate blob, this driver and the interpreter; re-measure by changing any of "
+              f"those, or delete delta_base_cache.json in the common git dir")
     else:
         base_counts, base_sha, base_roster = enforced_counts(args.base)
         _write_base_cache(cache_key, base_counts, base_sha, base_roster)
-    head_counts, head_sha, head_roster = enforced_counts(candidate_ref, stage_delta=True)
+    head_counts, head_sha, head_roster = enforced_counts(
+        candidate_ref, stage_delta=True, base=args.base)
     # TEARDOWN 2026-08-24: declarations are read from the BASE, never the candidate —
     # a delta cannot mint the authorization for its own protection-removal (two-step
     # contract: declare on main first, remove in a later delta).

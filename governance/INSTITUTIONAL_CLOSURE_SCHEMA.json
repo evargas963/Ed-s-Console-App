@@ -1,7 +1,7 @@
 {
   "schema": "INSTITUTIONAL_CLOSURE_SCHEMA",
   "version": "1.0.0",
-  "governing_standard": "A parent board lane may be CLOSED_WITH_EVIDENCE only when every applicable material proof dimension is PROVEN. Any blocked-vocabulary dimension status forces the parent to NOT_CLOSED. Sub-lane closure never closes a parent. Green CI is execution evidence, not semantic proof. Evidence must cite the declared final SHA. Agents recommend closure; closure is established only by this gate passing over the ledger.",
+  "governing_standard": "A parent board lane may be CLOSED_WITH_EVIDENCE only when every applicable material proof dimension is PROVEN. Any blocked-vocabulary dimension status forces the parent to NOT_CLOSED. Sub-lane closure never closes a parent. Green CI is execution evidence, not semantic proof. Evidence must cite the declared final SHA. Agents recommend closure; closure is established only by this gate passing over the ledger. A lane whose cited mechanisms no longer exist is RETIRED: it asserts nothing current and keeps its record as history. Validated by the enforced check institutional_closure_ledger in tools/check_institutional_correctness.py (RC-516).",
   "required_dimensions": [
     "ROOT_CAUSE",
     "END_TO_END_CORRECTNESS",
@@ -449,64 +449,13 @@
     {
       "lane": "GOV-GATE-PARITY-01",
       "parent_lane": "FULL_GOVERNANCE_GATE_SYSTEM",
-      "status": "CLOSED_WITH_EVIDENCE",
-      "dimensions": {
-        "ROOT_CAUSE": "PROVEN",
-        "END_TO_END_CORRECTNESS": "PROVEN",
-        "UPSTREAM_INPUT_CORRECTNESS": "PROVEN",
-        "DOWNSTREAM_CONSUMER_CORRECTNESS": "PROVEN",
-        "TICKER_UNIVERSALITY": {
-          "status": "NOT_APPLICABLE",
-          "rationale": "governance gate tooling; no per-ticker behavior exists (evidence: tools/check_prepush_parity.py reads workflows/diff/selector only)"
-        },
-        "HORIZON_UNIVERSALITY": {
-          "status": "NOT_APPLICABLE",
-          "rationale": "no horizon-dependent code path in the gate"
-        },
-        "POINT_IN_TIME_CORRECTNESS": {
-          "status": "NOT_APPLICABLE",
-          "rationale": "no historical/market data consumed; gate operates on the working tree and workflow files"
-        },
-        "NO_CURRENT_STATE_LEAKAGE": {
-          "status": "NOT_APPLICABLE",
-          "rationale": "no replay surface; children run with sanitized env (poison-env test)"
-        },
-        "NO_FUTURE_DATA_LEAKAGE": {
-          "status": "NOT_APPLICABLE",
-          "rationale": "no time-series evaluation in the gate"
-        },
-        "MODEL_VERSION_PINNING": {
-          "status": "NOT_APPLICABLE",
-          "rationale": "no model artifact consumed by the gate"
-        },
-        "CALIBRATION_VERSION_PINNING": {
-          "status": "NOT_APPLICABLE",
-          "rationale": "no calibration artifact consumed by the gate"
-        },
-        "FEATURE_SCHEMA_PARITY": {
-          "status": "NOT_APPLICABLE",
-          "rationale": "no feature construction in the gate"
-        },
-        "RUNTIME_PROOF": "PROVEN",
-        "RTH_PROOF": {
-          "status": "NOT_APPLICABLE",
-          "rationale": "gate has no market-session-dependent behavior; runs identically in and out of RTH (evidence: no session/clock reads in tools/check_prepush_parity.py)"
-        },
-        "OBSERVABILITY": "PROVEN",
-        "PROVENANCE": "PROVEN",
-        "REPRODUCIBILITY": "PROVEN",
-        "MECHANICAL_ENFORCEMENT": "PROVEN",
-        "FINAL_SHA_CI": "PROVEN"
-      },
+      "status": "RETIRED",
       "material_limitations": [],
       "preserved_notes": [
         "cold canonical-main gate 1719s / warm 1600s (full safe bundle + cold static cache; hook-infra diff class)",
         "cache dependency derivation, board/ledger reconciliation, session-evidence lifecycle remain open parents (separate lanes)",
         "one-time manual core.bare=false worktree-config repairs were session operations; committed code performs no config writes"
       ],
-      "final_sha": "26ca627def84b580a4d71cd650ba3bfc4cc249bc",
-      "remote_ci_status": "4/4 success at cited tip 26ca627def84 (runs 29180989044, 29180988975, 29180989009, 29180989003)",
-      "next_blocker": null,
       "sub_lanes": [
         {
           "sub_lane": "GOV-GATE-PARITY-01-ENV-SANITIZATION",
@@ -517,76 +466,145 @@
         }
       ],
       "drift_recovery": null,
-      "final_closure_sha": "fbc13718d9aa68561261b57c23c11aef01f3dd10",
-      "final_closure_remote_ci": "4/4 success at cited tip fbc13718d9aa (runs 29184738395, 29184738374, 29184738373, 29184738411)",
-      "sha_semantics": "final_sha = integrated code SHA (fast-forward object, own 4/4 CI); final_closure_sha = ledger commit carrying this record, own 4/4 CI"
+      "sha_semantics": "final_sha = integrated code SHA (fast-forward object, own 4/4 CI); final_closure_sha = ledger commit carrying this record, own 4/4 CI",
+      "retired": {
+        "date": "2026-09-04",
+        "retired_in": "RC-516 (this change; commit cited in the ledger row)",
+        "reason": "Its subject, tools/check_prepush_parity.py and the pre-push tier, was retired in the ED CONSOLE SLIMMING (1C): .pre-commit-config.yaml declares default_stages: [pre-commit] and states that the pre-push stage has no hooks. The lane cited the deleted file as evidence for two NOT_APPLICABLE rationales while reading CLOSED_WITH_EVIDENCE.",
+        "current_owner": "Required CI (pytest-full + Hardening) is the pre-merge authority; there is no pre-push tier to keep in parity.",
+        "historical_dimensions": {
+          "ROOT_CAUSE": "PROVEN",
+          "END_TO_END_CORRECTNESS": "PROVEN",
+          "UPSTREAM_INPUT_CORRECTNESS": "PROVEN",
+          "DOWNSTREAM_CONSUMER_CORRECTNESS": "PROVEN",
+          "TICKER_UNIVERSALITY": {
+            "status": "NOT_APPLICABLE",
+            "rationale": "governance gate tooling; no per-ticker behavior exists (evidence: tools/check_prepush_parity.py reads workflows/diff/selector only)"
+          },
+          "HORIZON_UNIVERSALITY": {
+            "status": "NOT_APPLICABLE",
+            "rationale": "no horizon-dependent code path in the gate"
+          },
+          "POINT_IN_TIME_CORRECTNESS": {
+            "status": "NOT_APPLICABLE",
+            "rationale": "no historical/market data consumed; gate operates on the working tree and workflow files"
+          },
+          "NO_CURRENT_STATE_LEAKAGE": {
+            "status": "NOT_APPLICABLE",
+            "rationale": "no replay surface; children run with sanitized env (poison-env test)"
+          },
+          "NO_FUTURE_DATA_LEAKAGE": {
+            "status": "NOT_APPLICABLE",
+            "rationale": "no time-series evaluation in the gate"
+          },
+          "MODEL_VERSION_PINNING": {
+            "status": "NOT_APPLICABLE",
+            "rationale": "no model artifact consumed by the gate"
+          },
+          "CALIBRATION_VERSION_PINNING": {
+            "status": "NOT_APPLICABLE",
+            "rationale": "no calibration artifact consumed by the gate"
+          },
+          "FEATURE_SCHEMA_PARITY": {
+            "status": "NOT_APPLICABLE",
+            "rationale": "no feature construction in the gate"
+          },
+          "RUNTIME_PROOF": "PROVEN",
+          "RTH_PROOF": {
+            "status": "NOT_APPLICABLE",
+            "rationale": "gate has no market-session-dependent behavior; runs identically in and out of RTH (evidence: no session/clock reads in tools/check_prepush_parity.py)"
+          },
+          "OBSERVABILITY": "PROVEN",
+          "PROVENANCE": "PROVEN",
+          "REPRODUCIBILITY": "PROVEN",
+          "MECHANICAL_ENFORCEMENT": "PROVEN",
+          "FINAL_SHA_CI": "PROVEN"
+        },
+        "historical_record": {
+          "final_sha": "26ca627def84b580a4d71cd650ba3bfc4cc249bc",
+          "remote_ci_status": "4/4 success at cited tip 26ca627def84 (runs 29180989044, 29180988975, 29180989009, 29180989003)",
+          "final_closure_sha": "fbc13718d9aa68561261b57c23c11aef01f3dd10",
+          "final_closure_remote_ci": "4/4 success at cited tip fbc13718d9aa (runs 29184738395, 29184738374, 29184738373, 29184738411)",
+          "next_blocker": null
+        },
+        "history_note": "Everything under historical_* is preserved verbatim as HISTORY. It asserts nothing about the current tree; the mechanisms it names no longer exist, which is why the lane is RETIRED rather than CLOSED_WITH_EVIDENCE (RC-516: a closure may rest only on mechanisms that exist)."
+      }
     },
     {
       "lane": "GOV-BRANCH-AUTHORIZATION-V1",
       "parent_lane": "FULL_GOVERNANCE_GATE_SYSTEM",
-      "status": "CLOSED_WITH_EVIDENCE",
-      "dimensions": {
-        "ROOT_CAUSE": "PROVEN",
-        "END_TO_END_CORRECTNESS": "PROVEN",
-        "UPSTREAM_INPUT_CORRECTNESS": "PROVEN",
-        "DOWNSTREAM_CONSUMER_CORRECTNESS": "PROVEN",
-        "TICKER_UNIVERSALITY": {
-          "status": "NOT_APPLICABLE",
-          "rationale": "governance tooling; no per-ticker behavior"
-        },
-        "HORIZON_UNIVERSALITY": {
-          "status": "NOT_APPLICABLE",
-          "rationale": "no horizon-dependent path"
-        },
-        "POINT_IN_TIME_CORRECTNESS": {
-          "status": "NOT_APPLICABLE",
-          "rationale": "no market data consumed"
-        },
-        "NO_CURRENT_STATE_LEAKAGE": {
-          "status": "NOT_APPLICABLE",
-          "rationale": "no replay surface"
-        },
-        "NO_FUTURE_DATA_LEAKAGE": {
-          "status": "NOT_APPLICABLE",
-          "rationale": "no time-series evaluation"
-        },
-        "MODEL_VERSION_PINNING": {
-          "status": "NOT_APPLICABLE",
-          "rationale": "no model artifact"
-        },
-        "CALIBRATION_VERSION_PINNING": {
-          "status": "NOT_APPLICABLE",
-          "rationale": "no calibration artifact"
-        },
-        "FEATURE_SCHEMA_PARITY": {
-          "status": "NOT_APPLICABLE",
-          "rationale": "no feature construction"
-        },
-        "RUNTIME_PROOF": "PROVEN",
-        "RTH_PROOF": {
-          "status": "NOT_APPLICABLE",
-          "rationale": "no session-dependent behavior"
-        },
-        "OBSERVABILITY": "PROVEN",
-        "PROVENANCE": "PROVEN",
-        "REPRODUCIBILITY": "PROVEN",
-        "MECHANICAL_ENFORCEMENT": "PROVEN",
-        "FINAL_SHA_CI": "PROVEN"
-      },
+      "status": "RETIRED",
       "material_limitations": [],
-      "final_sha": "53b4081beeece0bd0325b5266b520f14d44d93ad",
-      "remote_ci_status": "4/4 success at PR head c6e5c687e867 pull_request-event runs 29191830922, 29191830929, 29191830939, 29191830950 (push-event runs 29191829408, 29191829416, 29191829430, 29191829459 also 4/4); merged via PR #27 merge commit 53b4081beeece",
-      "next_blocker": null,
       "preserved_notes": [
         "live fail-closed field proof: gate refused its own first push (no pre-push stdin), passed after PRE_COMMIT_* env-channel destination reconstruction; both-channels-absent still refuses",
         "post-merge canonical-main probe: --pre-commit on checked-out main REFUSED exit 1 (a checked-out main is never permission), 47 combined tests green at merged main",
         "admin/API bypass prevention is NOT this lane: enforce_admins=false and remote-token routes live in GOV-REMOTE-ENFORCEMENT (NOT_CLOSED); local machinery binds hooked-worktree agents only",
         "V4 register repin (meta+scoreboard register_build) was an operator-authorized coherence remediation for PR source expansion, adopted verbatim from the run-29190833466 pin-authority artifact"
       ],
-      "implementation_sha": "2b7e3214128dd01f5e4126de5765f614a5b6a480",
-      "repin_sha": "c6e5c687e8672fe8b26d5d7521e57610b94bb828",
-      "merge_sha": "53b4081beeece0bd0325b5266b520f14d44d93ad",
-      "sha_semantics": "implementation_sha = feature work tip; repin_sha = authorized coherence remediation tip = PR head; final_sha/merge_sha = PR #27 merge commit on main; final_closure_sha = ledger commit carrying this record (backfilled by the next ledger amendment with its own 4/4 CI, per GOV-GATE-PARITY-01 precedent)"
+      "sha_semantics": "implementation_sha = feature work tip; repin_sha = authorized coherence remediation tip = PR head; final_sha/merge_sha = PR #27 merge commit on main; final_closure_sha = ledger commit carrying this record (backfilled by the next ledger amendment with its own 4/4 CI, per GOV-GATE-PARITY-01 precedent)",
+      "retired": {
+        "date": "2026-09-04",
+        "retired_in": "RC-516 (this change; commit cited in the ledger row)",
+        "reason": "Its subject, the pre-push branch-authorization gate driven by PRE_COMMIT_* env channels and pre-push stdin, was retired with the mission-authorization hooks (2a) in the ED CONSOLE SLIMMING and the 2026-08-24 Architecture A teardown; no pre-push hook exists (.pre-commit-config.yaml default_stages: [pre-commit]). The lane's RUNTIME_PROOF and MECHANICAL_ENFORCEMENT read PROVEN for a hook that no longer runs.",
+        "current_owner": "Branch protection on origin/main (required checks pytest-full + hardening, enforce_admins=true, MEASURED 2026-08-25 per ACTIVE_PROGRAM.md Known risks) plus tools/process_lock_guard.py at PreToolUse (production checkout may not be committed to or switched).",
+        "historical_dimensions": {
+          "ROOT_CAUSE": "PROVEN",
+          "END_TO_END_CORRECTNESS": "PROVEN",
+          "UPSTREAM_INPUT_CORRECTNESS": "PROVEN",
+          "DOWNSTREAM_CONSUMER_CORRECTNESS": "PROVEN",
+          "TICKER_UNIVERSALITY": {
+            "status": "NOT_APPLICABLE",
+            "rationale": "governance tooling; no per-ticker behavior"
+          },
+          "HORIZON_UNIVERSALITY": {
+            "status": "NOT_APPLICABLE",
+            "rationale": "no horizon-dependent path"
+          },
+          "POINT_IN_TIME_CORRECTNESS": {
+            "status": "NOT_APPLICABLE",
+            "rationale": "no market data consumed"
+          },
+          "NO_CURRENT_STATE_LEAKAGE": {
+            "status": "NOT_APPLICABLE",
+            "rationale": "no replay surface"
+          },
+          "NO_FUTURE_DATA_LEAKAGE": {
+            "status": "NOT_APPLICABLE",
+            "rationale": "no time-series evaluation"
+          },
+          "MODEL_VERSION_PINNING": {
+            "status": "NOT_APPLICABLE",
+            "rationale": "no model artifact"
+          },
+          "CALIBRATION_VERSION_PINNING": {
+            "status": "NOT_APPLICABLE",
+            "rationale": "no calibration artifact"
+          },
+          "FEATURE_SCHEMA_PARITY": {
+            "status": "NOT_APPLICABLE",
+            "rationale": "no feature construction"
+          },
+          "RUNTIME_PROOF": "PROVEN",
+          "RTH_PROOF": {
+            "status": "NOT_APPLICABLE",
+            "rationale": "no session-dependent behavior"
+          },
+          "OBSERVABILITY": "PROVEN",
+          "PROVENANCE": "PROVEN",
+          "REPRODUCIBILITY": "PROVEN",
+          "MECHANICAL_ENFORCEMENT": "PROVEN",
+          "FINAL_SHA_CI": "PROVEN"
+        },
+        "historical_record": {
+          "final_sha": "53b4081beeece0bd0325b5266b520f14d44d93ad",
+          "remote_ci_status": "4/4 success at PR head c6e5c687e867 pull_request-event runs 29191830922, 29191830929, 29191830939, 29191830950 (push-event runs 29191829408, 29191829416, 29191829430, 29191829459 also 4/4); merged via PR #27 merge commit 53b4081beeece",
+          "merge_sha": "53b4081beeece0bd0325b5266b520f14d44d93ad",
+          "implementation_sha": "2b7e3214128dd01f5e4126de5765f614a5b6a480",
+          "repin_sha": "c6e5c687e8672fe8b26d5d7521e57610b94bb828",
+          "next_blocker": null
+        },
+        "history_note": "Everything under historical_* is preserved verbatim as HISTORY. It asserts nothing about the current tree; the mechanisms it names no longer exist, which is why the lane is RETIRED rather than CLOSED_WITH_EVIDENCE (RC-516: a closure may rest only on mechanisms that exist)."
+      }
     },
     {
       "lane": "GOV-REMOTE-ENFORCEMENT",
@@ -812,7 +830,7 @@
         "MODEL_VERSION_PINNING_PARENT": "NOT_CLOSED",
         "FULL_MODEL_STACK": "NOT_CLOSED",
         "PREDICTIVE_VALIDITY": "NOT_PROVEN",
-        "REPO_WIDE_UNIVERSAL_FIX_LOCK": "PROVEN (not by this lane: was NOT_PROVEN when this lane closed 2026-07-13 at d64bce2; reconciled after PR #38 merged at final main 87213d3692bd with 4/4 final-main CI - see the UNIVERSAL-FIX-IMPACT-GATE-V1 lane)",
+        "REPO_WIDE_UNIVERSAL_FIX_LOCK": "RETIRED 2026-09-04 (RC-516). History: NOT_PROVEN when this lane closed 2026-07-13 at d64bce2; reconciled to PROVEN after PR #38 merged at final main 87213d3692bd with 4/4 final-main CI; the mechanism was then deleted in 41360574 (2026-07-16) and the UNIVERSAL-FIX-IMPACT-GATE-V1 lane is RETIRED — see that lane's retired record for the current owner. This lane's own closure never rested on it.",
         "REAL_MONEY_APPROVAL": "NOT_APPROVED",
         "note": "Item 4 closure is artifact-byte + configuration + calibration identity for model-derived production rows plus complete identity-linked decision-cycle persistence at canonical RTH; it is NOT proof of predictive correctness, predictive validity, full deterministic reproduction, model quality, complete runtime-class live coverage, cache-isolation/universal-runtime parents, or real-money readiness; child closure closes no parent"
       },
@@ -851,86 +869,8 @@
     {
       "lane": "UNIVERSAL-FIX-IMPACT-GATE-V1",
       "parent_lane": "FULL_GOVERNANCE_GATE_SYSTEM",
-      "status": "CLOSED_WITH_EVIDENCE",
-      "dimensions": {
-        "ROOT_CAUSE": "PROVEN",
-        "END_TO_END_CORRECTNESS": "PROVEN",
-        "UPSTREAM_INPUT_CORRECTNESS": "PROVEN",
-        "DOWNSTREAM_CONSUMER_CORRECTNESS": "PROVEN",
-        "TICKER_UNIVERSALITY": {
-          "status": "NOT_APPLICABLE",
-          "rationale": "governance gate tooling; the gate itself has no per-ticker behavior (it ENFORCES ticker-class declarations in impact manifests)"
-        },
-        "HORIZON_UNIVERSALITY": {
-          "status": "NOT_APPLICABLE",
-          "rationale": "no horizon-dependent path in the gate; horizon coverage is an enforced manifest dimension, not gate behavior"
-        },
-        "POINT_IN_TIME_CORRECTNESS": {
-          "status": "NOT_APPLICABLE",
-          "rationale": "no market data consumed; gate operates on the working tree, AST graph, and generated inventories"
-        },
-        "NO_CURRENT_STATE_LEAKAGE": {
-          "status": "NOT_APPLICABLE",
-          "rationale": "no replay surface in the gate"
-        },
-        "NO_FUTURE_DATA_LEAKAGE": {
-          "status": "NOT_APPLICABLE",
-          "rationale": "no time-series evaluation in the gate"
-        },
-        "MODEL_VERSION_PINNING": {
-          "status": "NOT_APPLICABLE",
-          "rationale": "no model artifact consumed by the gate"
-        },
-        "CALIBRATION_VERSION_PINNING": {
-          "status": "NOT_APPLICABLE",
-          "rationale": "no calibration artifact consumed by the gate"
-        },
-        "FEATURE_SCHEMA_PARITY": {
-          "status": "NOT_APPLICABLE",
-          "rationale": "no feature construction in the gate"
-        },
-        "RUNTIME_PROOF": "PROVEN",
-        "RTH_PROOF": {
-          "status": "NOT_APPLICABLE",
-          "rationale": "no market-session-dependent behavior; the gate runs identically in and out of RTH"
-        },
-        "OBSERVABILITY": "PROVEN",
-        "PROVENANCE": "PROVEN",
-        "REPRODUCIBILITY": "PROVEN",
-        "MECHANICAL_ENFORCEMENT": "PROVEN",
-        "FINAL_SHA_CI": "PROVEN"
-      },
+      "status": "RETIRED",
       "material_limitations": [],
-      "closure_scope": "this lane proves repository governance mechanically rejects falsely universal fixes and unsupported closure claims (static + pre-push + CI enforcement; narrow-fix, representative-only, and parent-from-child rejection; connected-path inventory of routes/writers/loaders/replay/calibration/API/UI consumers; future-omission lock; governed-exception register; deterministic generated artifacts; mechanically enforced mission ownership). It governs the honesty and breadth of FUTURE work. It does NOT assert production calculations are correct, model outputs are accurate, predictive validity, feature correctness, absence of leakage, calibration quality, backtest validity, profitability, real-money readiness, complete dead-code retirement, or complete directory cleanup",
-      "evidence": {
-        "engine": "tools/check_universal_fix_impact_gate.py + tools/universal_gate_ast.py + tools/build_universal_repository_inventory.py + tools/build_universal_connected_path_graph.py; generated artifacts governance/artifacts/universal_repository_inventory.json + universal_connected_path_graph.json + universal_connected_path_governed_edges.json + universal_fix_exception_register.json; manifest governance/universal_fix_impact_manifest.json",
-        "enforcement_tiers": "static (enforce_all_rules stack), governed pre-push (tools/check_prepush_parity.py tier parity), CI (.github/workflows/objective-audit.yml required step)",
-        "tests": "tests/test_universal_fix_impact_gate.py + tests/test_universal_fix_impact_gate_adversarial.py (adversarial A-O + controls P-U) + tests/test_check_schwab_csv_first.py integration section - 98 combined tests green at final main in-turn; tools/check_universal_fix_impact_gate.py exit 0 at final main in-turn",
-        "integration": "PR #38 approved head 07abf497695c; merge = final main 87213d3692bd (2026-07-13T23:19:52Z); merge tree == approved head tree; PR #37 execution-identity implementation and PR #39 Item 4 closure records preserved through multiple rebases and runner-authoritative Schwab repins"
-      },
-      "final_sha": "87213d3692bdf95cb66c42d715c6e1bc7a2cbb4c",
-      "remote_ci_status": "4/4 required push-event success at final main 87213d3692bd (hardening 29292715833, objective-audit 29292715830, schwab-csv-first 29292715866, pytest-full 29292715887; run head_sha independently checked == final main)",
-      "next_blocker": null,
-      "merge_sha": "87213d3692bdf95cb66c42d715c6e1bc7a2cbb4c",
-      "implementation_pr": 38,
-      "implementation_pr_head": "07abf497695c2a4a7b4e626a3287af2c96736d36",
-      "acceptance_labels": {
-        "STATIC_UNIVERSAL_FIX_ENFORCEMENT": "PROVEN",
-        "PREPUSH_UNIVERSAL_FIX_ENFORCEMENT": "PROVEN",
-        "CI_UNIVERSAL_FIX_ENFORCEMENT": "PROVEN",
-        "NARROW_FIX_REJECTION": "PROVEN",
-        "REPRESENTATIVE_ONLY_CLOSURE_REJECTION": "PROVEN",
-        "PARENT_FROM_CHILD_CLOSURE_REJECTION": "PROVEN",
-        "CONNECTED_PATH_INVENTORY": "PROVEN",
-        "FUTURE_OMISSION_LOCK": "PROVEN",
-        "PREPUSH_TIER_PARITY": "PROVEN",
-        "REPO_WIDE_UNIVERSAL_FIX_LOCK": "PROVEN"
-      },
-      "determinism_disclosure": {
-        "same_platform_deterministic_generation": "PROVEN (dual regenerations byte-identical to each other on the same platform)",
-        "normalized_content_determinism": "PROVEN (regenerated content matched committed inventory/graph after LF normalization; content hashes and semantic data stable; no graph or inventory data differed)",
-        "cross_platform_raw_byte_determinism": "NOT_PROVEN - the only observed discrepancy was CRLF vs LF output encoding on Windows regeneration; not claimed unless the canonical builder mechanically normalizes line endings; builders unmodified in the records-only closure; repository acceptance criteria do not require cross-platform raw-byte identity, so this scoped limitation does not reopen the lane"
-      },
       "preserved_non_closure": {
         "ML_PIPE_EXECUTION_IDENTITY_LANE": "CLOSED_WITH_EVIDENCE (unchanged by this lane)",
         "ML_PIPE_ITEM_4": "CLOSED_WITH_EVIDENCE (unchanged by this lane)",
@@ -944,7 +884,94 @@
       "preserved_notes": [
         "history: lane opened -> static/pre-push/CI/AST-graph/dynamic-inventory/impact-matrix/omission locks implemented -> PR #38 required multiple rebases and runner-authoritative Schwab repins -> PR #37 and PR #39 states preserved during conflict resolution -> exact-head CI green -> merged 2026-07-13T23:19:52Z -> exact final-main local + remote proof -> closure earned only after final-main proof; REPO_WIDE_UNIVERSAL_FIX_LOCK was NOT_PROVEN throughout the pre-merge period and those historical entries are retained as history",
         "standing parent blocker retained: Schwab V4 Register Closure push workflow fails at final main (run 29292715898) with the same seven pp_v4b register_link error lines byte-identical to earlier main runs (29270710784, 29284727000) - a separate governed parent, not caused by PR #38 and not resolved by this lane; its existence does not reopen this lock"
-      ]
+      ],
+      "retired": {
+        "date": "2026-09-04",
+        "retired_in": "RC-516 (this change; commit cited in the ledger row)",
+        "reason": "Every cited enforcement file was deleted in 41360574 (2026-07-16, slimming 1B: tools/check_universal_fix_impact_gate.py, tools/universal_gate_ast.py, tools/build_universal_repository_inventory.py, tools/build_universal_connected_path_graph.py, their tests, the objective-audit workflow and the pre-push parity tier), and the generated inventory/graph/manifest state was deleted with RC-516. The record read CLOSED_WITH_EVIDENCE / MECHANICAL_ENFORCEMENT=PROVEN for 50 days after the mechanism ceased to exist.",
+        "current_owner": "tools/check_institutional_correctness.py — enforced checks no_superseded_path_survives, changed_computation_leaves_no_twin, no_new_root_production_module, institutional_closure_ledger and authority_docs_cite_existing_mechanisms (RC-516), run on every PR by the required Hardening delta gate. The manifest, generated-inventory and exception-register machinery has no successor by design: it judged agent declarations, not the code delta.",
+        "historical_dimensions": {
+          "ROOT_CAUSE": "PROVEN",
+          "END_TO_END_CORRECTNESS": "PROVEN",
+          "UPSTREAM_INPUT_CORRECTNESS": "PROVEN",
+          "DOWNSTREAM_CONSUMER_CORRECTNESS": "PROVEN",
+          "TICKER_UNIVERSALITY": {
+            "status": "NOT_APPLICABLE",
+            "rationale": "governance gate tooling; the gate itself has no per-ticker behavior (it ENFORCES ticker-class declarations in impact manifests)"
+          },
+          "HORIZON_UNIVERSALITY": {
+            "status": "NOT_APPLICABLE",
+            "rationale": "no horizon-dependent path in the gate; horizon coverage is an enforced manifest dimension, not gate behavior"
+          },
+          "POINT_IN_TIME_CORRECTNESS": {
+            "status": "NOT_APPLICABLE",
+            "rationale": "no market data consumed; gate operates on the working tree, AST graph, and generated inventories"
+          },
+          "NO_CURRENT_STATE_LEAKAGE": {
+            "status": "NOT_APPLICABLE",
+            "rationale": "no replay surface in the gate"
+          },
+          "NO_FUTURE_DATA_LEAKAGE": {
+            "status": "NOT_APPLICABLE",
+            "rationale": "no time-series evaluation in the gate"
+          },
+          "MODEL_VERSION_PINNING": {
+            "status": "NOT_APPLICABLE",
+            "rationale": "no model artifact consumed by the gate"
+          },
+          "CALIBRATION_VERSION_PINNING": {
+            "status": "NOT_APPLICABLE",
+            "rationale": "no calibration artifact consumed by the gate"
+          },
+          "FEATURE_SCHEMA_PARITY": {
+            "status": "NOT_APPLICABLE",
+            "rationale": "no feature construction in the gate"
+          },
+          "RUNTIME_PROOF": "PROVEN",
+          "RTH_PROOF": {
+            "status": "NOT_APPLICABLE",
+            "rationale": "no market-session-dependent behavior; the gate runs identically in and out of RTH"
+          },
+          "OBSERVABILITY": "PROVEN",
+          "PROVENANCE": "PROVEN",
+          "REPRODUCIBILITY": "PROVEN",
+          "MECHANICAL_ENFORCEMENT": "PROVEN",
+          "FINAL_SHA_CI": "PROVEN"
+        },
+        "historical_record": {
+          "final_sha": "87213d3692bdf95cb66c42d715c6e1bc7a2cbb4c",
+          "remote_ci_status": "4/4 required push-event success at final main 87213d3692bd (hardening 29292715833, objective-audit 29292715830, schwab-csv-first 29292715866, pytest-full 29292715887; run head_sha independently checked == final main)",
+          "merge_sha": "87213d3692bdf95cb66c42d715c6e1bc7a2cbb4c",
+          "implementation_pr": 38,
+          "implementation_pr_head": "07abf497695c2a4a7b4e626a3287af2c96736d36",
+          "acceptance_labels": {
+            "STATIC_UNIVERSAL_FIX_ENFORCEMENT": "PROVEN",
+            "PREPUSH_UNIVERSAL_FIX_ENFORCEMENT": "PROVEN",
+            "CI_UNIVERSAL_FIX_ENFORCEMENT": "PROVEN",
+            "NARROW_FIX_REJECTION": "PROVEN",
+            "REPRESENTATIVE_ONLY_CLOSURE_REJECTION": "PROVEN",
+            "PARENT_FROM_CHILD_CLOSURE_REJECTION": "PROVEN",
+            "CONNECTED_PATH_INVENTORY": "PROVEN",
+            "FUTURE_OMISSION_LOCK": "PROVEN",
+            "PREPUSH_TIER_PARITY": "PROVEN",
+            "REPO_WIDE_UNIVERSAL_FIX_LOCK": "PROVEN"
+          },
+          "evidence": {
+            "engine": "tools/check_universal_fix_impact_gate.py + tools/universal_gate_ast.py + tools/build_universal_repository_inventory.py + tools/build_universal_connected_path_graph.py; generated artifacts governance/artifacts/universal_repository_inventory.json + universal_connected_path_graph.json + universal_connected_path_governed_edges.json + universal_fix_exception_register.json; manifest governance/universal_fix_impact_manifest.json",
+            "enforcement_tiers": "static (enforce_all_rules stack), governed pre-push (tools/check_prepush_parity.py tier parity), CI (.github/workflows/objective-audit.yml required step)",
+            "tests": "tests/test_universal_fix_impact_gate.py + tests/test_universal_fix_impact_gate_adversarial.py (adversarial A-O + controls P-U) + tests/test_check_schwab_csv_first.py integration section - 98 combined tests green at final main in-turn; tools/check_universal_fix_impact_gate.py exit 0 at final main in-turn",
+            "integration": "PR #38 approved head 07abf497695c; merge = final main 87213d3692bd (2026-07-13T23:19:52Z); merge tree == approved head tree; PR #37 execution-identity implementation and PR #39 Item 4 closure records preserved through multiple rebases and runner-authoritative Schwab repins"
+          },
+          "closure_scope": "this lane proves repository governance mechanically rejects falsely universal fixes and unsupported closure claims (static + pre-push + CI enforcement; narrow-fix, representative-only, and parent-from-child rejection; connected-path inventory of routes/writers/loaders/replay/calibration/API/UI consumers; future-omission lock; governed-exception register; deterministic generated artifacts; mechanically enforced mission ownership). It governs the honesty and breadth of FUTURE work. It does NOT assert production calculations are correct, model outputs are accurate, predictive validity, feature correctness, absence of leakage, calibration quality, backtest validity, profitability, real-money readiness, complete dead-code retirement, or complete directory cleanup",
+          "determinism_disclosure": {
+            "same_platform_deterministic_generation": "PROVEN (dual regenerations byte-identical to each other on the same platform)",
+            "normalized_content_determinism": "PROVEN (regenerated content matched committed inventory/graph after LF normalization; content hashes and semantic data stable; no graph or inventory data differed)",
+            "cross_platform_raw_byte_determinism": "NOT_PROVEN - the only observed discrepancy was CRLF vs LF output encoding on Windows regeneration; not claimed unless the canonical builder mechanically normalizes line endings; builders unmodified in the records-only closure; repository acceptance criteria do not require cross-platform raw-byte identity, so this scoped limitation does not reopen the lane"
+          },
+          "next_blocker": null
+        },
+        "history_note": "Everything under historical_* is preserved verbatim as HISTORY. It asserts nothing about the current tree; the mechanisms it names no longer exist, which is why the lane is RETIRED rather than CLOSED_WITH_EVIDENCE (RC-516: a closure may rest only on mechanisms that exist)."
+      }
     }
   ],
   "real_money_approval": "NOT_APPROVED"

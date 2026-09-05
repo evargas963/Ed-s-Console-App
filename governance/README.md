@@ -20,13 +20,14 @@ each session in chat.
 | `agent_error_log.md` | July-2026 historical error record (E-01..E-39) |
 | `host_scheduled_jobs.md` | The single visible inventory of Windows scheduled tasks |
 | `guard_applicability.json` | Append-only applicability history (the RC-93 entry is retired; the UNIVERSAL-SAFETY declaration stands; read by tests, not by live guard code) |
+| `INSTITUTIONAL_CLOSURE_SCHEMA.json` | Parent / sub-lane closure ledger — a parent closes only over PROVEN dimensions, a CLOSED lane may cite only mechanisms that exist, retired mechanisms are RETIRED history; validated by the enforced check `institutional_closure_ledger` (`tools/check_institutional_closure_gate.py` is its validator) |
 
 ## Live program / process docs
 
 | File | Holds |
 |---|---|
-| `AGENT_OPERATING_PROCESS_V1.md` | Process integrity checklist (measure-before-claim, small landings, LIVE vs DISK) |
-| `REHAB_PROGRAM.md` | Operator-invoked rehab program (RH-F1 multi-faucet spine + facets) |
+| `AGENT_OPERATING_PROCESS_V1.md` | Process integrity checklist (measure-before-claim, small landings, LIVE vs DISK, live-checkout invariant, debt rule) — process only; engineering law is `AGENTS.md` |
+| `REHAB_PROGRAM.md` | Operator-invoked multi-faucet rehab PROCEDURE (RH-F1 spine, facets, operable-surface procedure, LIVE closeout) — procedure only; engineering law is `AGENTS.md` |
 | `CONSOLE_REBUILD_PLAN_CR_V1.md` | Console rebuild design record (execution status: `ACTIVE_PROGRAM.md` §CR) |
 | `Framework-ED-Decision-Engine-v1.1.md` | Decision-engine framework reference |
 | `STACK_WIRING_INTEGRITY_MAP.md` | Stack wiring map (content live; provenance header historical) |

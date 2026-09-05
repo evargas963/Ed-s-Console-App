@@ -398,46 +398,11 @@ def _root_cause_ledger_folded_violations() -> list[Violation]:
     return out
 
 
-def check_rc_citations_resolve() -> list[Violation]:
-    """Wrapper kept importable for the negative controls; the substance runs inside
-    check_root_cause_log (retired registration, governance/retired_checks.md)."""
-    return _rc_citations_resolve_violations()
-
-
-def check_rc_status_vocabulary() -> list[Violation]:
-    """Wrapper kept importable for the negative controls; the substance runs inside
-    check_root_cause_log (retired registration, governance/retired_checks.md)."""
-    return _rc_status_vocabulary_violations()
-
-
-def check_rc_log_rows_keep_schema() -> list[Violation]:
-    """Wrapper kept importable for the negative controls; the substance runs inside
-    check_root_cause_log (retired registration, governance/retired_checks.md)."""
-    return _rc_log_rows_keep_schema_violations()
-
-
-def check_rc_numeric_claims_cite_a_command() -> list[Violation]:
-    """Wrapper kept importable for the negative controls; the substance runs inside
-    check_root_cause_log (retired registration, governance/retired_checks.md)."""
-    return _rc_numeric_claims_cite_a_command_violations()
-
-
-def check_rc_mechanism_claims_cite_a_source() -> list[Violation]:
-    """Wrapper kept importable for the negative controls; the substance runs inside
-    check_root_cause_log (retired registration, governance/retired_checks.md)."""
-    return _rc_mechanism_claims_cite_a_source_violations()
-
-
-def check_closed_rows_ship_their_code() -> list[Violation]:
-    """Wrapper kept importable for the negative controls; the substance runs inside
-    check_root_cause_log (retired registration, governance/retired_checks.md)."""
-    return _closed_rows_ship_their_code_violations()
-
-
-def check_adversarial_audits_are_answered() -> list[Violation]:
-    """Wrapper kept importable for the negative controls; the substance runs inside
-    check_root_cause_log (retired registration, governance/retired_checks.md)."""
-    return _adversarial_audits_are_answered_violations()
+# RC-516: the nine `check_<retired name>` wrappers that stood here ("kept importable for
+# the negative controls") were exactly the test-preserving shims AGENTS.md law 8 forbids —
+# production definitions with no production caller, retained because tests imported them.
+# The negative controls now drive the folded `_<name>_violations` validators directly, which
+# is the code that actually runs inside check_root_cause_log / measured_claims_cite_evidence.
 
 
 def _ratchet_may_write() -> bool:
@@ -3396,16 +3361,9 @@ def check_measured_claims_cite_evidence() -> list[Violation]:
     return out
 
 
-def check_verdicts_declare_their_power() -> list[Violation]:
-    """Wrapper kept importable for the negative controls; the substance runs inside
-    check_measured_claims_cite_evidence (retired registration, governance/retired_checks.md)."""
-    return _verdicts_declare_their_power_violations()
-
-
-def check_unproven_register() -> list[Violation]:
-    """Wrapper kept importable for the negative controls; the substance runs inside
-    check_measured_claims_cite_evidence (retired registration, governance/retired_checks.md)."""
-    return _unproven_register_violations()
+# RC-516: the `check_verdicts_declare_their_power` / `check_unproven_register` wrappers that
+# stood here were test-only shims (AGENTS.md law 8); the negative controls now drive
+# `_verdicts_declare_their_power_violations` / `_unproven_register_violations` directly.
 
 
 #: RC-54 — market-data measurement must be scoped to trading sessions.
@@ -4008,6 +3966,12 @@ def check_collect_datasheet_staged() -> list[Violation]:
 #: until its registered migration.
 _GREEK_FAUCET_ESCAPE = "# greek-faucet-ok:"
 _LEVEL_DOMAIN_VOCAB = ("level", "strike", "wall", "terrain", "exposure", "force", "flow")
+#: RC-516 (AGENTS.md law 12: frontend is a connected layer). The same d1-style greek formula
+#: shape, in JavaScript: `Math.log(spot / ...)` with a `Math.sqrt` in reach. A browser-side
+#: reimplementation of the bs_* faucet is the frontend-reconstruction faucet
+#: docs/ARCHITECTURE.md section 5 forbids; the escape is the JS form of the same marker.
+_JS_D1_RE = re.compile(r"Math\.log\(\s*(?:spot|spt|S|price|underlying|px|s0)\b[^)]*/")
+_JS_GREEK_FAUCET_ESCAPE = "// greek-faucet-ok:"
 
 
 def domain_faucet_violations(rel: str, added: str, registry_text: str,
@@ -4046,6 +4010,18 @@ def domain_faucet_violations(rel: str, added: str, registry_text: str,
                         f"bs_vanna/bs_gamma/bs_charm or declare {_GREEK_FAUCET_ESCAPE} "
                         f"<reason>)")
                     break
+    elif rel.endswith((".js", ".html")) and _JS_GREEK_FAUCET_ESCAPE not in added:
+        # RC-516 / AGENTS.md law 12: the frontend is a connected layer of the same truth.
+        for m in _JS_D1_RE.finditer(added):
+            seg = added[m.start():m.start() + 240]
+            if "sqrt" in seg:
+                out.append(
+                    f"{rel}: added a d1-style greek formula in the frontend (RC-212 / "
+                    f"RC-516: greeks are computed ONLY at the bs_* faucet in math_levels.py "
+                    f"and carried to the browser — a browser-side recomputation is the "
+                    f"frontend-reconstruction faucet docs/ARCHITECTURE.md section 5 forbids; "
+                    f"render the served value or declare {_JS_GREEK_FAUCET_ESCAPE} <reason>)")
+                break
     return out
 
 
@@ -4082,7 +4058,7 @@ def check_domain_faucet_registry() -> list[Violation]:
         reg_added = "\n".join(ln[1:] for ln in diff
                               if ln.startswith("+") and not ln.startswith("+++"))
     for rel in names:
-        if not rel.endswith(".py"):
+        if not rel.endswith((".py", ".js", ".html")):
             continue
         diff = _git_output_lines(["diff", "--cached", "-U0", "--", rel]) or []
         added = "\n".join(ln[1:] for ln in diff
@@ -4093,6 +4069,556 @@ def check_domain_faucet_registry() -> list[Violation]:
         out.append(Violation(reg_path, 0,
                              "level-faucet registry missing — the RC-212 domain lock "
                              "gates NOTHING (restore governance/level_faucets.json)"))
+    return out
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════
+# INSTITUTIONAL END-TO-END EXECUTION LAW (RC-516) — the objectively decidable part of
+# AGENTS.md laws 4-6, 8-11 and 14, judged on the CHANGE UNDER COMMIT (the staged index
+# against HEAD), never on English in prose. The universal-fix gate that once carried this
+# (41360574) judged agent-written manifests and regenerated inventories; these checks judge
+# the code delta and nothing else. HONEST LIMIT, stated in AGENTS.md too: a reimplementation
+# that is not byte-identical, not a registered field (Python inputs joined in a function, or
+# `surface_inputs` joined in one JS / HTML / SQL statement) and not a greek formula is not
+# mechanically detectable — the law binds regardless. A green gate is one enforcement layer
+# and evidence only, never proof that an implementation is institutionally correct.
+# ══════════════════════════════════════════════════════════════════════════════════════
+#: Paths that are never production callers or producers: tests (law 8 — a test reference
+#: is not a production caller), scratch, and frozen archives.
+_E2E_NOT_PRODUCTION = ("tests/", "scratchpad/", "governance/archive/")
+#: A duplicated body smaller than this (statements, counted recursively) is boilerplate,
+#: not a computation.
+_TWIN_MIN_STATEMENTS = 6
+_IDENTIFIER_PATH_RE = re.compile(r"^[\w.]+$")
+
+
+def _e2e_is_production_rel(rel: str) -> bool:
+    return rel.endswith(".py") and not rel.startswith(_E2E_NOT_PRODUCTION) and "/archive/" not in rel
+
+
+def _staged_py_delta() -> list[tuple[str, str, str, str]] | None:
+    """[(old_rel, new_rel, base_src, cand_src)] for every staged production .py.
+
+    base_src is the HEAD blob ('' for an addition); cand_src is the INDEX blob ('' for a
+    deletion) — the index, not the working tree, is what the commit will contain. Renames
+    keep both names so a moved function is compared with its own history. None outside a
+    git commit context (never a false block); [] when nothing production is staged.
+    """
+    lines = _git_output_lines(["diff", "--cached", "--name-status", "-M"])
+    if lines is None:
+        return None
+    out: list[tuple[str, str, str, str]] = []
+    for raw in lines:
+        parts = raw.rstrip("\r\n").split("\t")
+        code = parts[0][:1]
+        if code == "R" and len(parts) == 3:
+            old, new = parts[1], parts[2]
+        elif code in ("A", "M", "D") and len(parts) == 2:
+            old = new = parts[1]
+        else:
+            continue
+        old, new = old.replace("\\", "/"), new.replace("\\", "/")
+        if not (_e2e_is_production_rel(old) or _e2e_is_production_rel(new)):
+            continue
+        base = "" if code == "A" else "\n".join(_git_output_lines(["show", f"HEAD:{old}"]) or [])
+        cand = "" if code == "D" else "\n".join(_git_output_lines(["show", f":{new}"]) or [])
+        out.append((old, new, base, cand))
+    return out
+
+
+def _e2e_corpora(delta: list[tuple[str, str, str, str]]) -> tuple[dict[str, str], dict[str, str]]:
+    """(base, candidate) production corpora as {rel: source}.
+
+    Unchanged production files are read once from the working tree and shared by both
+    sides; staged files take their HEAD blob on the base side and their INDEX blob on the
+    candidate side. Everything the repository considers production — root modules, tools,
+    research, calibration, backfill, replay — is in scope (AGENTS.md law 6 names them all).
+    """
+    staged = {old for old, _n, _b, _c in delta} | {new for _o, new, _b, _c in delta}
+    base: dict[str, str] = {}
+    cand: dict[str, str] = {}
+    for p in _production_py_files():
+        rel = p.relative_to(REPO).as_posix()
+        if not _e2e_is_production_rel(rel) or rel in staged:
+            continue
+        src = _read_or_empty(p)
+        base[rel] = src
+        cand[rel] = src
+    for old, new, bsrc, csrc in delta:
+        if bsrc and _e2e_is_production_rel(old):
+            base[old] = bsrc
+        if csrc and _e2e_is_production_rel(new):
+            cand[new] = csrc
+    return base, cand
+
+
+def _e2e_normalized_body(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> str | None:
+    """The function body as a position-free AST dump, docstring stripped; None when the body
+    is too small to be a computation. Identical dumps are identical code."""
+    body = list(fn.body)
+    if body and isinstance(body[0], ast.Expr) and isinstance(body[0].value, ast.Constant) \
+            and isinstance(body[0].value.value, str):
+        body = body[1:]
+    n_stmts = sum(1 for s in body for node in ast.walk(s) if isinstance(node, ast.stmt))
+    if n_stmts < _TWIN_MIN_STATEMENTS:
+        return None
+    return ast.dump(ast.Module(body=body, type_ignores=[]), annotate_fields=False)
+
+
+#: Facts are a pure function of source text; unchanged files are identical on both sides of
+#: the delta and both law checks read the same corpus, so each distinct source is parsed
+#: once per process. Keyed by content, never by path, so a monkeypatched REPO in tests can
+#: never read a stale entry.
+_E2E_FACTS_CACHE: dict[str, tuple] = {}
+
+
+def _e2e_module_facts(src: str) -> tuple[dict[str, list[tuple[str, int, bool]]],
+                                         dict[tuple[str, str, str], int],
+                                         dict[str, tuple[str, int, str | None]],
+                                         dict[str, dict[str, tuple[str, str]]]]:
+    """(defs, refs, bodies, imports) of one module.
+
+    defs    {name: [(qualname, lineno, decorated)]} for every def / async def, methods included.
+    refs    {(kind, base, name): count} — kind "name" for a bare Name, "attr" for
+            `<base>.name` with `base` the dotted receiver expression when it is a plain name
+            chain ('' otherwise), "string" for a component of an identifier-shaped string
+            constant (a `getattr` target, a dispatch key, a dotted registry entry). Prose
+            strings never count. A reference from inside a definition of the same name
+            (recursion) does not keep that definition alive.
+    bodies  {qualname: (name, lineno, normalized body or None)}.
+    imports {"from": {local alias: (dotted module, imported name)},
+             "mod":  {local alias: dotted module}} — the binding structure that lets
+            `_e2e_bind_refs` attach a reference to ONE definition instead of to a bare name
+            (RC-516 second cut: same-name collisions must not hide a superseded path, and
+            must not condemn a definition that is still used).
+    """
+    key = hashlib.sha1(src.encode("utf-8", "replace")).hexdigest()
+    hit = _E2E_FACTS_CACHE.get(key)
+    if hit is not None:
+        return hit
+    defs: dict[str, list[tuple[str, int, bool]]] = {}
+    refs: dict[tuple[str, str, str], int] = {}
+    bodies: dict[str, tuple[str, int, str | None]] = {}
+    imports: dict[str, dict[str, tuple[str, str]]] = {"from": {}, "mod": {}}
+    try:
+        tree = ast.parse(src)
+    except SyntaxError:
+        _E2E_FACTS_CACHE[key] = (defs, refs, bodies, imports)
+        return defs, refs, bodies, imports
+    # One C-level walk builds the parent map; qualnames and "inside a def of the same name"
+    # are then read off the parents instead of a per-node Python recursion.
+    parent: dict[ast.AST, ast.AST] = {}
+    for node in ast.walk(tree):
+        for child in ast.iter_child_nodes(node):
+            parent[child] = node
+    scopes = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
+    spans: dict[str, list[tuple[int, int]]] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            chain = []
+            cur = parent.get(node)
+            while cur is not None:
+                if isinstance(cur, scopes):
+                    chain.append(cur.name)
+                cur = parent.get(cur)
+            qual = ".".join(reversed(chain + [node.name])) if chain else node.name
+            defs.setdefault(node.name, []).append((qual, node.lineno, bool(node.decorator_list)))
+            bodies[qual] = (node.name, node.lineno, _e2e_normalized_body(node))
+            spans.setdefault(node.name, []).append(
+                (node.body[0].lineno, node.end_lineno or node.lineno))
+        elif isinstance(node, ast.ImportFrom):
+            mod = ("." * node.level) + (node.module or "")
+            for alias in node.names:
+                if alias.name != "*":
+                    imports["from"][alias.asname or alias.name] = (mod, alias.name)
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                imports["mod"][alias.asname or alias.name] = (alias.name, "")
+
+    def bump(kind: str, base: str, name: str, line: int) -> None:
+        if not name:
+            return
+        for lo, hi in spans.get(name, ()):
+            if lo <= line <= hi:
+                return          # a reference from inside its own body is recursion, not use
+        k = (kind, base, name)
+        refs[k] = refs.get(k, 0) + 1
+
+    def dotted(node: ast.AST) -> str:
+        parts: list[str] = []
+        while isinstance(node, ast.Attribute):
+            parts.append(node.attr)
+            node = node.value
+        if isinstance(node, ast.Name):
+            parts.append(node.id)
+            return ".".join(reversed(parts))
+        return ""
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name):
+            bump("name", "", node.id, node.lineno)
+        elif isinstance(node, ast.Attribute):
+            bump("attr", dotted(node.value), node.attr, node.lineno)
+        elif isinstance(node, ast.Constant) and isinstance(node.value, str):
+            s = node.value.strip()
+            if s and _IDENTIFIER_PATH_RE.match(s):
+                for tok in s.split("."):
+                    if tok.isidentifier():
+                        bump("string", "", tok, node.lineno)
+    _E2E_FACTS_CACHE[key] = (defs, refs, bodies, imports)
+    return defs, refs, bodies, imports
+
+
+def _e2e_module_rel(dotted: str, corpus: dict[str, str], from_rel: str = "") -> str | None:
+    """The corpus file a dotted module name denotes, or None when it is not in the corpus
+    (third-party, tests, or absent). Relative imports resolve against `from_rel`'s package."""
+    if dotted.startswith("."):
+        level = len(dotted) - len(dotted.lstrip("."))
+        pkg = from_rel.rsplit("/", 1)[0] if "/" in from_rel else ""
+        parts = pkg.split("/") if pkg else []
+        parts = parts[: max(0, len(parts) - (level - 1))] if level > 1 else parts
+        tail = dotted.lstrip(".")
+        dotted = ".".join(parts + ([tail] if tail else []))
+    base = dotted.replace(".", "/")
+    for cand in (f"{base}.py", f"{base}/__init__.py"):
+        if cand in corpus:
+            return cand
+    return None
+
+
+def _e2e_bind_refs(corpus: dict[str, str]) -> tuple[dict[tuple[str, str], int], dict[str, int]]:
+    """Attach every reference in the corpus to the definition it can only mean.
+
+    Returns (resolved, unresolved):
+      resolved   {(module rel, name): count} — a bare Name bound to a definition in its own
+                 module or through `from m import name`; an `alias.name` attribute where
+                 `alias` is an imported module (`import m`, `import m as alias`,
+                 `from pkg import m`).
+      unresolved {name: count} — an attribute on a receiver the import structure cannot
+                 type (`self.name`, `obj.name`), an identifier-shaped string constant, or a
+                 bare Name that is neither defined locally nor imported. These keep EVERY
+                 same-named definition alive, so a same-name collision can hide a superseded
+                 path (known blind spot, stated in AGENTS.md) but can never condemn a
+                 definition that is still used.
+    """
+    resolved: dict[tuple[str, str], int] = {}
+    unresolved: dict[str, int] = {}
+    facts = {rel: _e2e_module_facts(src) for rel, src in corpus.items()}
+    for rel, (defs, refs, _bodies, imports) in facts.items():
+        local = set(defs)
+        for (kind, base, name), n in refs.items():
+            target: str | None = None
+            tname = name
+            if kind == "name":
+                if name in imports["from"]:
+                    mod, orig = imports["from"][name]
+                    target = _e2e_module_rel(mod, corpus, rel)
+                    tname = orig
+                    if target is None:
+                        # `from pkg import mod` names a module, not a definition.
+                        continue
+                elif name in imports["mod"]:
+                    continue
+                elif name in local:
+                    target = rel
+                else:
+                    unresolved[name] = unresolved.get(name, 0) + n
+                    continue
+            elif kind == "attr":
+                if base in imports["mod"]:
+                    target = _e2e_module_rel(imports["mod"][base][0], corpus, rel)
+                elif base in imports["from"]:
+                    mod, orig = imports["from"][base]
+                    target = _e2e_module_rel(f"{mod}.{orig}" if not mod.endswith(".") else mod + orig,
+                                             corpus, rel)
+                if target is None:
+                    unresolved[name] = unresolved.get(name, 0) + n
+                    continue
+            else:
+                unresolved[name] = unresolved.get(name, 0) + n
+                continue
+            k = (target, tname)
+            resolved[k] = resolved.get(k, 0) + n
+    return resolved, unresolved
+
+
+def check_no_superseded_path_survives() -> list[Violation]:
+    """AGENTS.md laws 4, 5 and 8 (RC-516) — a production definition this delta ORPHANED
+    must not stay defined.
+
+    WHAT IT DETECTS. A repair that replaces a path rewires the callers; if the old function
+    is left in place it is a superseded production path that remains callable as a silent
+    alternative — exactly the "second faucet kept as fallback" the rehab charter refuses.
+    Objectively: a name that had at least one production reference before this delta, has
+    none after it, and is still defined in the candidate. Nothing about prose is read.
+
+    DETECTION METHOD. References are BOUND to definitions through the import structure
+    (`_e2e_bind_refs`): a bare name resolves to its own module's definition or to the
+    `from m import name` target; `alias.name` resolves through `import m [as alias]` /
+    `from pkg import m`. Two unrelated modules may both define `normalize`: replacing one
+    while the other stays imported and called is detected, and the still-used one is never
+    condemned. The delta condition: a definition that was alive before this change (bound
+    references > 0) and has none after it, yet is still defined in the candidate.
+
+    KNOWN BLIND SPOT. A reference the import structure cannot type — `self.name`,
+    `obj.name`, a `getattr` string, a bare name from a star import — keeps EVERY definition
+    of that name alive. That can hide a superseded path behind a same-name collision; it can
+    never produce a false positive.
+
+    WHAT IT DOES NOT FLAG. Code that was already dead before the delta (not this change's
+    doing; the removal rule owns it); decorated definitions (a route, a fixture, a property
+    is registered by its decorator); dunder methods and `main`. A reference from tests/ is
+    NOT a production caller (law 8) — the test must change with the architecture.
+
+    NOT A DUPLICATE OF: `changed_computation_leaves_no_twin` judges bodies, this judges
+    reachability; `one_producer` judges registered fields whole-tree.
+    """
+    delta = _staged_py_delta()
+    if not delta:
+        return []
+    base, cand = _e2e_corpora(delta)
+    renamed = {new: old for old, new, _b, _c in delta if old != new}
+    base_resolved, base_unresolved = _e2e_bind_refs(base)
+    cand_resolved, cand_unresolved = _e2e_bind_refs(cand)
+    out: list[Violation] = []
+    for rel in sorted(cand):
+        defs = _e2e_module_facts(cand[rel])[0]
+        base_rel = renamed.get(rel, rel)
+        for name in sorted(defs):
+            if name.startswith("__") or name == "main":
+                continue
+            alive_before = base_resolved.get((base_rel, name), 0) + base_unresolved.get(name, 0)
+            alive_after = cand_resolved.get((rel, name), 0) + cand_unresolved.get(name, 0)
+            if alive_before == 0 or alive_after > 0:
+                continue
+            for qual, ln, decorated in defs[name]:
+                if decorated:
+                    continue
+                out.append(Violation(
+                    REPO / rel, ln,
+                    f"{qual!r} had {alive_before} production reference(s) bound to it before "
+                    f"this delta and has none after it, yet it is still defined — a superseded "
+                    f"path left callable as a silent alternative (AGENTS.md laws 4-5). Delete it "
+                    f"in this change, or it IS the canonical path and the new callers must be "
+                    f"rewired to it. A reference from tests/ is not a production caller (law 8)."))
+    return out
+
+
+def check_changed_computation_leaves_no_twin() -> list[Violation]:
+    """AGENTS.md law 6 (RC-516) — ONE semantic truth, ONE computation — judged on the delta.
+
+    TWO CLAUSES, both objective (byte-identical bodies, positions ignored, docstring ignored):
+      (a) a function this delta ADDS or CHANGES whose body is identical to another function
+          anywhere in production (research, tools, calibration, backfill, replay included)
+          is a second computation of the same thing — import the canonical one;
+      (b) a function this delta CHANGES whose PREVIOUS body had an identical copy elsewhere,
+          and that copy is UNCHANGED in the candidate, is the canonical computation moving
+          while its connected duplicate stays behind, now diverged — the fix-one-copy
+          failure the whole-tree duplicate census cannot see, because after the change the
+          two bodies differ and the census count goes DOWN.
+      (c) REGISTERED SEMANTIC TRUTH, every surface: when this delta changes the declared
+          producer of a field in governance/computation_registry.json, any OTHER site that
+          still computes that field in the candidate — a Python function that arithmetically
+          joins the field's `computation_inputs` (tools/check_one_producer.computing_sites),
+          or a JavaScript / inline-script / SQL statement that arithmetically joins its
+          `surface_inputs` (tools/check_one_producer.surface_computing_sites) — is a connected
+          reimplementation left behind by the fix. A frontend that renders the served value
+          or a query that selects a stored column never matches.
+    A root fix that deletes the copy and rewires its consumers trips no clause.
+
+    KNOWN BLIND SPOTS (NOT_MECHANICALLY_DETECTABLE, the law still binds): a Python
+    reimplementation that is neither byte-identical nor a registered field; a frontend / SQL
+    reimplementation of a truth the registry does not enumerate, or one that does not join
+    the declared inputs in a single statement.
+
+    NOT A DUPLICATE OF: `one_producer` judges the whole tree for a second computing site
+    regardless of change and tolerates standing debt at the delta gate; clause (c) fires on
+    the CHANGE of a producer while a site remains, which whole-tree counting cannot see.
+    """
+    delta = _staged_py_delta()
+    if not delta:
+        return []
+    base, cand = _e2e_corpora(delta)
+    base_bodies = {rel: _e2e_module_facts(src)[2] for rel, src in base.items()}
+    cand_bodies = {rel: _e2e_module_facts(src)[2] for rel, src in cand.items()}
+    by_norm: dict[str, list[tuple[str, str, int]]] = {}
+    for rel, fns in cand_bodies.items():
+        for qual, (name, ln, norm) in fns.items():
+            if norm is not None and not name.startswith("__"):
+                by_norm.setdefault(norm, []).append((rel, qual, ln))
+    out: list[Violation] = []
+    seen: set[tuple[str, str]] = set()
+    for old, new, _b, _c in delta:
+        bfns = base_bodies.get(old, {})
+        cfns = cand_bodies.get(new, {})
+        for qual, (name, ln, norm) in cfns.items():
+            if name.startswith("__"):
+                continue
+            bnorm = bfns.get(qual, (None, None, None))[2]
+            if norm is not None and bnorm != norm:
+                twins = [(r, q, l) for r, q, l in by_norm.get(norm, []) if (r, q) != (new, qual)]
+                if twins and (new, qual) not in seen:
+                    seen.add((new, qual))
+                    out.append(Violation(
+                        REPO / new, ln,
+                        f"{qual!r} was added or changed by this delta and its body is identical "
+                        f"to {', '.join(f'{r}:{q}' for r, q, _l in twins)} — a second computation "
+                        f"of the same thing (AGENTS.md law 6). Import and call the canonical "
+                        f"function; a copy is a second faucet."))
+            if bnorm is not None and bnorm != norm:
+                for r2, fns2 in base_bodies.items():
+                    for q2, (n2, l2, norm2) in fns2.items():
+                        if (r2, q2) == (old, qual) or norm2 != bnorm or n2.startswith("__"):
+                            continue
+                        still = cand_bodies.get(r2, {}).get(q2)
+                        if still is not None and still[2] == bnorm and (r2, q2) not in seen:
+                            seen.add((r2, q2))
+                            out.append(Violation(
+                                REPO / r2, l2,
+                                f"{q2!r} was an identical copy of {old}:{qual} before this delta; "
+                                f"{qual!r} changed and this copy did not — the canonical "
+                                f"computation moved and its connected duplicate stayed behind, "
+                                f"now diverged (AGENTS.md laws 1, 5, 6). Rewire it to the "
+                                f"canonical function and delete the copy in the same change."))
+    out.extend(_registered_truth_left_behind(delta, base_bodies, cand_bodies, cand))
+    return out
+
+
+def _registered_truth_left_behind(delta, base_bodies, cand_bodies, cand) -> list[Violation]:
+    """Clause (c) of changed_computation_leaves_no_twin — see that docstring."""
+    reg_path = REPO / "governance" / "computation_registry.json"
+    try:
+        fields = json.loads(_read_or_empty(reg_path) or "{}").get("fields") or {}
+    except ValueError:
+        return [Violation(reg_path, 0, "computation registry unparseable — clause (c) of the "
+                                       "law check gates NOTHING in this state")]
+    if not fields:
+        return []
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import check_one_producer as cop
+    changed_by_rel = {new: old for old, new, _b, _c in delta}
+    out: list[Violation] = []
+    corpus = None
+    surfaces = None
+    for field, spec in fields.items():
+        producer = str(spec.get("producer") or "")
+        if ".py:" not in producer:
+            continue
+        prod_rel, prod_fn = producer.split(":", 1)
+        if prod_rel not in changed_by_rel:
+            continue
+        before = base_bodies.get(changed_by_rel[prod_rel], {}).get(prod_fn)
+        after = cand_bodies.get(prod_rel, {}).get(prod_fn)
+        if after is None or before is None or before[2] == after[2]:
+            continue
+        if corpus is None:
+            corpus = cop.scan_corpus_from_sources(
+                {rel: src for rel, src in cand.items() if not rel.startswith(cop._SKIP_PREFIXES)})
+            surfaces = cop.load_surfaces(root=REPO)
+        sites = [s for s in cop.computing_sites(field, spec, corpus) if s != producer]
+        sites += cop.surface_computing_sites(spec, surfaces)
+        for site in sites:
+            site_rel, _, tail = site.partition(":")
+            line = int(tail) if tail.isdigit() else 0
+            out.append(Violation(
+                REPO / site_rel, line,
+                f"computes {field!r} while this delta changes its declared producer "
+                f"{producer} — the canonical computation moved and this connected "
+                f"reimplementation stayed behind (AGENTS.md laws 1, 5, 6, 12). Consume the "
+                f"produced value here and delete the computation in the same change."))
+    return out
+
+
+def check_no_new_root_production_module() -> list[Violation]:
+    """AGENTS.md law 9 (RC-516) — new production responsibility must not move AWAY from
+    docs/ARCHITECTURE.md. The target schematic has no root-level modules ("No giant root
+    modules"); every canonical owner is a package. A Python file ADDED or MOVED to the
+    repository root by this delta is structure the target does not name. Objective: the
+    staged name-status, nothing else."""
+    lines = _git_output_lines(["diff", "--cached", "--name-status", "-M"])
+    if lines is None:
+        return []
+    out: list[Violation] = []
+    for raw in lines:
+        parts = raw.rstrip("\r\n").split("\t")
+        code = parts[0][:1]
+        if code == "A" and len(parts) == 2:
+            old, new = None, parts[1]
+        elif code == "R" and len(parts) == 3:
+            old, new = parts[1], parts[2]
+        else:
+            continue
+        new = new.replace("\\", "/")
+        if "/" in new or not new.endswith(".py"):
+            continue
+        if old is not None and "/" not in old.replace("\\", "/"):
+            continue  # a root-to-root rename creates no new root responsibility
+        out.append(Violation(
+            REPO / new, 0,
+            "new root-level Python module. docs/ARCHITECTURE.md names no root-level module in "
+            "the target and requires materially touched responsibility to move TOWARD its "
+            "canonical package, never away (AGENTS.md law 9). Put it under its owner "
+            "(app/<domain>/, research/, tools/, tests/) — create the package if it does not "
+            "exist yet."))
+    return out
+
+
+def check_institutional_closure_ledger() -> list[Violation]:
+    """AGENTS.md laws 10, 11 and 14 (RC-516) — governance/INSTITUTIONAL_CLOSURE_SCHEMA.json
+    may not close a parent over a blocked dimension, and a CLOSED lane may cite only
+    mechanisms that exist. The validator lives in tools/check_institutional_closure_gate.py
+    (its one responsibility); this is its ONE enforced registration — there is no separate
+    CI step, so retiring it goes through governance/retired_checks.md like every check."""
+    schema = REPO / "governance" / "INSTITUTIONAL_CLOSURE_SCHEMA.json"
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))   # the validator lives beside this gate
+        from check_institutional_closure_gate import validate_ledger
+        doc = json.loads(schema.read_text(encoding="utf-8"))
+        return [Violation(schema, 0, e) for e in validate_ledger(doc, root=REPO)]
+    except Exception as exc:                                        # noqa: BLE001
+        return [Violation(REPO / "tools" / "check_institutional_closure_gate.py", 0,
+                          f"checker unavailable ({type(exc).__name__}: {exc}) — a gate "
+                          f"that cannot run is not a gate")]
+
+
+#: The documents that claim to describe current enforcement. History belongs in the ledger
+#: and in git; a path named here must exist. Report artifacts under reports/ are outputs,
+#: not mechanisms, and are not judged.
+_AUTHORITY_DOCS = (
+    "AGENTS.md", "CLAUDE.md", ".cursor/rules/00-always.mdc",
+    "governance/AGENT_OPERATING_PROCESS_V1.md", "governance/REHAB_PROGRAM.md",
+    "governance/README.md", "docs/ARCHITECTURE.md",
+    ".pre-commit-config.yaml", ".claude/settings.json", ".cursor/hooks.json",
+)
+
+
+def check_authority_docs_cite_existing_mechanisms() -> list[Violation]:
+    """RC-516 — an authority document may not name a mechanism that is not on the tree.
+
+    WHAT WAS OBSERVED: governance/AGENT_OPERATING_PROCESS_V1.md headlined a launch /
+    pre-push / CI enforcer that its own body said was never wired, and the closure ledger
+    cited four deleted enforcement files as PROVEN. Nothing judged the claim against the
+    tree. This does: every repository path a listed document names must exist. It reads
+    paths, not sentences — a deleted tool named as history still fails here, because the
+    place for that history is governance/root_cause_log.md, not the current authority.
+    """
+    sys.path.insert(0, str(Path(__file__).resolve().parent))   # one path grammar, defined once
+    from check_institutional_closure_gate import cited_paths
+    out: list[Violation] = []
+    for rel in _AUTHORITY_DOCS:
+        p = REPO / rel
+        text = _read_or_empty(p)
+        if not text:
+            continue
+        for n, line in enumerate(text.splitlines(), start=1):
+            for cited in sorted(cited_paths(line)):
+                if cited.startswith("reports/") or (REPO / cited).exists():
+                    continue
+                out.append(Violation(
+                    p, n,
+                    f"names {cited!r}, which does not exist on this tree — an authority "
+                    f"document may cite only mechanisms that exist; record retirements in "
+                    f"governance/root_cause_log.md, not here (RC-516)."))
     return out
 
 
@@ -4300,6 +4826,14 @@ CHECKS = [
     # so it holds for any writer, not just the libraries that caused the known cases.
     ("eol_style_invariant", check_eol_style_invariant, True),
     ("mypy_types", check_mypy_types, False),                       # dormant until mypy installed
+    # RC-516: INSTITUTIONAL END-TO-END EXECUTION LAW (AGENTS.md) — the objectively decidable
+    # part, judged on the staged delta. ENFORCED from the start: each is delta-scoped or
+    # ledger-scoped and reports zero on the base tree, so it binds on merit, not a baseline.
+    ("no_superseded_path_survives", check_no_superseded_path_survives, True),        # laws 4, 5, 8
+    ("changed_computation_leaves_no_twin", check_changed_computation_leaves_no_twin, True),  # law 6
+    ("no_new_root_production_module", check_no_new_root_production_module, True),    # law 9
+    ("institutional_closure_ledger", check_institutional_closure_ledger, True),      # laws 10, 11, 14
+    ("authority_docs_cite_existing_mechanisms", check_authority_docs_cite_existing_mechanisms, True),
 ]
 
 _MAX_PRINT = 15  # cap advisory output; full count is always reported
@@ -4486,6 +5020,14 @@ def main(argv: list[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
     if "--rebaseline" in args:
         return rebaseline()
+    # RC-519: the whole catalog is heavy verification; it admits itself in-process (a child
+    # of an admitted wave — the delta gate — passes through the ancestor rule).
+    sys.path.insert(0, str(REPO / "tools"))
+    from operating_process_lock import admit_heavy_launch
+    ok, why = admit_heavy_launch("check_institutional_correctness", " ".join(sys.argv))
+    if not ok:
+        print(f"COMPETING_HEAVY_VERIFICATION (RC-519): {why}")
+        return 2
     if "--enforced-only" in args:
         enforced_violations, _, _ = run_checks(mode="enforced")
         if enforced_violations:
