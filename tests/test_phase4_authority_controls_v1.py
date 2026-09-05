@@ -103,7 +103,7 @@ def test_F_reconnect_after_recycle_has_no_concurrent_authorities():
 def test_G_live_plane_consumes_transported_observations_no_schwab_socket():
     """G. server/live plane continues consuming transported observations -> PASS
     without opening Schwab socket. See test_daemon_plane_feed_v1.py for the full
-    hydration proof (L1 + book rows replay into order_flow_live_state/live_market_plane)."""
+    hydration proof (L1 + book rows replay into app.options.order_flow.state/live_market_plane)."""
     src = inspect.getsource(ofs)
     tree = ast.parse(src)
     for node in ast.walk(tree):

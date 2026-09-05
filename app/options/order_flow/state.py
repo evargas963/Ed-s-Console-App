@@ -1,5 +1,5 @@
 """
-order_flow_live_state.py — In-memory live order flow state from streaming.
+app/options/order_flow/state.py — In-memory live order flow state from streaming.
 Stores recent book snapshots, tape prints, and top-of-book from Schwab streaming.
 Feeds OrderFlowEngine with content.* structure for book_imbalance_5 and cum_delta_proxy.
 """

@@ -1,6 +1,6 @@
 """OPTIONS_ORDER_FLOW_V1 — order-flow/options semantic products.
 
-order_flow_live_state.push_level_one/push_book are symbol-generic and read Schwab's
+app.options.order_flow.state.push_level_one/push_book are symbol-generic and read Schwab's
 native field names, not an equity-specific schema — proven here by feeding them the REAL
 captured LEVELONE_OPTIONS/OPTIONS_BOOK shapes (reports/of_capability_probe/
 options_20260820T1354Z/) and reading the result back through the SAME producer equities
@@ -14,7 +14,7 @@ import asyncio
 import threading
 import time
 
-import order_flow_live_state as ofls
+import app.options.order_flow.state as ofls
 import app.options.order_flow.streaming as ofs
 from stream_spine import CaptureWriter, book_msg, options_quote_msg
 
@@ -69,7 +69,7 @@ def _write_option_book_row(db, symbol, content, ts_recv):
     w.close()
 
 
-def test_option_contract_l1_replays_into_order_flow_live_state(tmp_path, monkeypatch):
+def test_option_contract_l1_replays_into_order_flow_state(tmp_path, monkeypatch):
     db = _reset(tmp_path, monkeypatch)
     _write_option_l1_row(db, _SPY_CONTRACT, _REAL_LEVELONE_OPTIONS_CONTENT, ts_recv=1.0)
 

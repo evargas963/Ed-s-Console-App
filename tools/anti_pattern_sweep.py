@@ -324,7 +324,7 @@ CAPS_PREFIX_ALLOWLIST: tuple[tuple[str, str], ...] = (
     ("mc_fusion_adjustment.py", "MC fusion adjustment derived metrics"),
     ("micro_structure.py", "microstructure derived metrics"),
     ("movement_target_threshold.py", "movement target threshold derived metrics"),
-    ("order_flow_live_state.py", "order-flow live state derived metrics"),
+    ("app/options/order_flow/state.py", "order-flow live state derived metrics"),
     ("app/options/order_flow/streaming.py", "order-flow streaming diagnostics"),
     ("institutional_behavior.py", "institutional behavior derived metrics"),
     ("polling_adapter.py", "polling adapter timestamps"),

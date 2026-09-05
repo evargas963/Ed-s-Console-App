@@ -480,7 +480,7 @@ def test_replay_module_imports_no_live_state():
     banned = {
         "server",
         "live_market_plane",
-        "order_flow_live_state",
+        "app.options.order_flow.state",
         "app.options.order_flow.streaming",
         "market_context",
         "schwab_client",
@@ -489,9 +489,9 @@ def test_replay_module_imports_no_live_state():
     imported: set[str] = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
-            imported.update(a.name.split(".")[0] for a in node.names)
+            imported.update(a.name for a in node.names)
         elif isinstance(node, ast.ImportFrom) and node.module:
-            imported.add(node.module.split(".")[0])
+            imported.add(node.module)
     hits = imported & banned
     assert not hits, f"replay module must not import live-state modules: {hits}"
 

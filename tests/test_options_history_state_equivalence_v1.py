@@ -16,10 +16,10 @@ import pytest
 
 import app.options.order_flow.history as history
 import app.options.order_flow.streaming as streaming
-import order_flow_live_state as live_state
+import app.options.order_flow.state as live_state
 from app.api.routes.options_order_flow import options_history
 from app.options.order_flow.live_payload import options_live_payload
-from order_flow_live_state import MAX_BOOK_SNAPSHOTS, OrderFlowState
+from app.options.order_flow.state import MAX_BOOK_SNAPSHOTS, OrderFlowState
 from stream_spine import STREAM_SCHEMA_SQL
 
 

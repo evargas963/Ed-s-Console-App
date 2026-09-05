@@ -10,7 +10,7 @@ from typing import Any
 
 from l1_trade_observation import NATIVE_AGGRESSOR_AVAILABLE, TAPE_CLASSIFICATION
 from app.options.order_flow.engine import OrderFlowEngine
-from order_flow_live_state import get_content_for_symbol
+from app.options.order_flow.state import get_content_for_symbol
 
 
 _FLOW_KEYS = (

@@ -98,7 +98,7 @@ def test_section5_no_bid_ask_mid_spread_fallback_repo_wide():
 
 
 def test_push_level_one_records_stream_fields():
-    import order_flow_live_state as ofs
+    import app.options.order_flow.state as ofs
 
     ofs.clear_symbol("TEST")
     ofs.push_level_one(

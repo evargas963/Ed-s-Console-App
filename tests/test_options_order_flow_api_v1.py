@@ -43,7 +43,7 @@ def test_options_microstructure_requires_contract_param():
 def test_options_microstructure_fails_closed_with_no_replayed_content(monkeypatch):
     import json
 
-    import order_flow_live_state as ofls
+    import app.options.order_flow.state as ofls
     import server as srv
 
     ofls.clear_all_live_state()
@@ -55,11 +55,11 @@ def test_options_microstructure_fails_closed_with_no_replayed_content(monkeypatc
 
 def test_options_microstructure_serves_replayed_content(monkeypatch):
     """Not a synthetic shortcut: pushes the REAL captured OPTIONS_BOOK shape through
-    order_flow_live_state.push_book (the same producer the daemon-plane feed calls), then
+    app.options.order_flow.state.push_book (the same producer the daemon-plane feed calls), then
     proves the route serializes it via compute_book_microstructure."""
     import json
 
-    import order_flow_live_state as ofls
+    import app.options.order_flow.state as ofls
     import server as srv
 
     ofls.clear_all_live_state()

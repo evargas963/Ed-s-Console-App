@@ -7,7 +7,7 @@ SINGLE-STREAM-AUTHORITY LAW (root-fixed here): this module used to own its own
 capture daemon — two authenticated sockets on one account, racing each other for the
 same market truth. It now opens ZERO Schwab connections. The daemon is the one producer;
 this module polls `stream_capture.db` (read-only) for the rows the daemon already wrote,
-and replays them into the same in-process planes (`order_flow_live_state`,
+and replays them into the same in-process planes (`app.options.order_flow.state`,
 `live_market_plane`) the old socket handlers fed — so every downstream consumer
 (`/api/fast-quote`, streaming diagnostics, the active-ticker switch endpoint) needs no
 changes and cannot tell the difference except by dropped/added latency.
@@ -49,7 +49,7 @@ from stream_spine import (
     write_active_ticker_signal,
 )
 
-from order_flow_live_state import (
+from app.options.order_flow.state import (
     clear_all_live_state,
     clear_symbol,
     forget_unsubscribed_symbols,
@@ -405,12 +405,12 @@ def _replay_new_rows(con: sqlite3.Connection, ticker: str) -> None:
 def _replay_option_contract_rows(con: sqlite3.Connection, contract_symbol: str) -> None:
     """Same replay shape as _replay_new_rows, for the one option CONTRACT this feed is
     tracking. LEVELONE_OPTIONS rows read via push_level_one and OPTIONS_BOOK rows via
-    push_book — order_flow_live_state's functions are symbol-generic (they read Schwab's
+    push_book — app.options.order_flow.state's functions are symbol-generic (they read Schwab's
     native field names, not an equity-specific schema) and the captured field shapes
     (reports/of_capability_probe/options_20260820T1354Z/) carry every field either reads:
     BID_PRICE/ASK_PRICE/LAST_PRICE/LAST_SIZE/TOTAL_VOLUME/TRADE_TIME_MILLIS for L1;
     BIDS/ASKS/BOOK_TIME for book. No new plane, no new ingest function — the SAME producer
-    order_flow_live_state already is, called with a different symbol.
+    app.options.order_flow.state already is, called with a different symbol.
 
     First tick is a snapshot tail so a late UI bind hydrates the current book instead
     of walking every OPTIONS_BOOK row ever stored for the contract.

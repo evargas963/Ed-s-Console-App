@@ -449,9 +449,9 @@ def test_delta_f_no_valid_field_anywhere_resolves_to_none():
 
 
 def test_delta_g_contract_isolation_no_bleed_across_symbols():
-    """Storage-layer isolation through the REAL production path (order_flow_live_state),
+    """Storage-layer isolation through the REAL production path (app.options.order_flow.state),
     not a hand-built items list."""
-    import order_flow_live_state as ofls
+    import app.options.order_flow.state as ofls
     ofls.clear_symbol("RTH_TEST_CONTRACT_A")
     ofls.clear_symbol("RTH_TEST_CONTRACT_B")
     try:
@@ -472,8 +472,8 @@ def test_delta_g_contract_isolation_no_bleed_across_symbols():
 def test_storage_layer_merges_partial_ticks_not_overwrites():
     """push_level_one itself — the actual RTH-observed defect location, one layer below
     order_flow_engine's resolver: a size-only tick must not wipe a previously-stored
-    price out of order_flow_live_state._top[sym]."""
-    import order_flow_live_state as ofls
+    price out of app.options.order_flow.state._top[sym]."""
+    import app.options.order_flow.state as ofls
     ofls.clear_symbol("RTH_TEST_MUTTEST")
     try:
         ofls.push_level_one("RTH_TEST_MUTTEST",
@@ -515,7 +515,7 @@ def test_mutation_control_single_snapshot_selection_loses_the_price():
 # A carried-forward field is valid only within OF_TOP_OF_BOOK_FIELD_STALE_SEC (== the
 # EXISTING order_flow_streaming.STREAMING_STALE_MS canonical staleness policy, not an
 # invented number) of its own observation. These tests drive the REAL production path
-# (order_flow_live_state.push_level_one, which stamps a "{field}_TS_RECV" sibling per
+# (app.options.order_flow.state.push_level_one, which stamps a "{field}_TS_RECV" sibling per
 # field) with explicit `ts_recv`/`now_ts` so freshness is deterministic, not wall-clock.
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -527,7 +527,7 @@ def test_groundedness_freshness_bound_matches_existing_streaming_stale_ms():
 
 
 def test_freshness_a_full_tick_then_immediate_size_only_delta_preserves_price():
-    import order_flow_live_state as ofls
+    import app.options.order_flow.state as ofls
     ofls.clear_symbol("RTH_FRESH_A")
     try:
         t0 = 1_000_000.0
@@ -543,7 +543,7 @@ def test_freshness_a_full_tick_then_immediate_size_only_delta_preserves_price():
 
 
 def test_freshness_b_several_fresh_deltas_keep_prior_price_usable():
-    import order_flow_live_state as ofls
+    import app.options.order_flow.state as ofls
     ofls.clear_symbol("RTH_FRESH_B")
     try:
         t0 = 1_000_000.0
@@ -562,7 +562,7 @@ def test_freshness_b_several_fresh_deltas_keep_prior_price_usable():
 
 
 def test_freshness_c_price_older_than_boundary_becomes_unavailable():
-    import order_flow_live_state as ofls
+    import app.options.order_flow.state as ofls
     ofls.clear_symbol("RTH_FRESH_C")
     try:
         t0 = 1_000_000.0
@@ -586,7 +586,7 @@ def test_freshness_d_previous_epoch_price_never_carries_forward_even_if_technica
     """Item D, freshness-aware: a still-within-window price from a PRIOR contract must
     never appear for a NEW contract on the same symbol slot after a switch -- epoch
     isolation (clear_symbol) takes precedence over recency."""
-    import order_flow_live_state as ofls
+    import app.options.order_flow.state as ofls
     ofls.clear_symbol("RTH_FRESH_D")
     try:
         t0 = 1_000_000.0
@@ -606,7 +606,7 @@ def test_freshness_d_previous_epoch_price_never_carries_forward_even_if_technica
 
 
 def test_freshness_e_fresh_bid_but_stale_ask_does_not_publish_a_falsely_complete_pair():
-    import order_flow_live_state as ofls
+    import app.options.order_flow.state as ofls
     ofls.clear_symbol("RTH_FRESH_E")
     try:
         t0 = 1_000_000.0
@@ -628,7 +628,7 @@ def test_freshness_e_fresh_bid_but_stale_ask_does_not_publish_a_falsely_complete
 
 
 def test_freshness_f_zero_remains_a_valid_value_under_the_freshness_bound():
-    import order_flow_live_state as ofls
+    import app.options.order_flow.state as ofls
     ofls.clear_symbol("RTH_FRESH_F")
     try:
         t0 = 1_000_000.0
@@ -650,12 +650,12 @@ def test_freshness_f_zero_remains_a_valid_value_under_the_freshness_bound():
 # per-field resolver Gap 1 already wired for BID_PRICE/ASK_PRICE/top_book_pressure.
 # Now bid_size/ask_size resolve through the SAME _latest_content_field authority, the
 # SAME now_ts, the SAME OF_TOP_OF_BOOK_FIELD_STALE_SEC boundary. These tests drive the
-# REAL production path (order_flow_live_state.push_level_one, explicit ts_recv) so
+# REAL production path (app.options.order_flow.state.push_level_one, explicit ts_recv) so
 # freshness is deterministic, matching the Gap 1 freshness tests above.
 # ─────────────────────────────────────────────────────────────────────────────
 
 def test_size_a_fresh_bid_and_ask_size_resolve_exactly():
-    import order_flow_live_state as ofls
+    import app.options.order_flow.state as ofls
     ofls.clear_symbol("SIZE_FRESH_A")
     try:
         t0 = 1_000_000.0
@@ -674,7 +674,7 @@ def test_size_a_fresh_bid_and_ask_size_resolve_exactly():
 
 
 def test_size_b_fresh_price_but_stale_bid_size_is_unavailable():
-    import order_flow_live_state as ofls
+    import app.options.order_flow.state as ofls
     ofls.clear_symbol("SIZE_FRESH_B")
     try:
         t0 = 1_000_000.0
@@ -698,7 +698,7 @@ def test_size_b_fresh_price_but_stale_bid_size_is_unavailable():
 
 
 def test_size_c_fresh_bid_size_but_stale_ask_size_is_unavailable():
-    import order_flow_live_state as ofls
+    import app.options.order_flow.state as ofls
     ofls.clear_symbol("SIZE_FRESH_C")
     try:
         t0 = 1_000_000.0
@@ -722,7 +722,7 @@ def test_size_c_fresh_bid_size_but_stale_ask_size_is_unavailable():
 
 
 def test_size_d_size_only_partial_delta_inside_window_survives():
-    import order_flow_live_state as ofls
+    import app.options.order_flow.state as ofls
     ofls.clear_symbol("SIZE_FRESH_D")
     try:
         t0 = 1_000_000.0
@@ -740,7 +740,7 @@ def test_size_d_size_only_partial_delta_inside_window_survives():
 
 
 def test_size_e_zero_bid_size_resolves_as_a_real_value():
-    import order_flow_live_state as ofls
+    import app.options.order_flow.state as ofls
     ofls.clear_symbol("SIZE_FRESH_E")
     try:
         t0 = 1_000_000.0
@@ -757,7 +757,7 @@ def test_size_e_zero_bid_size_resolves_as_a_real_value():
 
 
 def test_size_f_stale_price_and_stale_sizes_yield_no_falsely_complete_top_of_book():
-    import order_flow_live_state as ofls
+    import app.options.order_flow.state as ofls
     ofls.clear_symbol("SIZE_FRESH_F")
     try:
         t0 = 1_000_000.0

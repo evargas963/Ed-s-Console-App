@@ -289,7 +289,7 @@ def _latest_content_field(
     preceding tick). `is not None`, never truthiness -- 0 is a real, valid size.
 
     `items` is ALREADY scoped to one symbol/contract by the caller
-    (order_flow_live_state.get_content_for_symbol keys its stores per symbol, and
+    (app.options.order_flow.state.get_content_for_symbol keys its stores per symbol, and
     set_active_option_contract/set_streaming_active_ticker clear_symbol() the prior
     one on switch) -- this function does not itself walk across a contract boundary,
     it walks only as far back as the one already-isolated `items` list given to it. A
@@ -298,7 +298,7 @@ def _latest_content_field(
 
     FRESHNESS BOUNDARY (PR214 remediation, Gap 1): a carried-forward field is only
     valid while it is within `max_age_sec` of its own observation timestamp.
-    order_flow_live_state.push_level_one stamps a sibling `"{field}_TS_RECV"` key
+    app.options.order_flow.state.push_level_one stamps a sibling `"{field}_TS_RECV"` key
     (the canonical stream_capture.db `ts_recv` receive clock during replay, or
     time.time() at push for a direct/live call -- ONE clock, never invented twice)
     alongside every field it writes into `_top[sym]`. When that sibling key is
@@ -752,7 +752,7 @@ def compute_book_microstructure(data: dict, *, now_ts: Optional[float] = None,
                                 ticker: Optional[str] = None) -> dict:
     """Canonical L2 book microstructure for one symbol — the ONE producer the engine's
     book_imbalance and the `/api/order-flow/microstructure` route both read. `data.content`
-    carries the live streaming book + top-of-book (order_flow_live_state.get_content_for_symbol);
+    carries the live streaming book + top-of-book (app.options.order_flow.state.get_content_for_symbol);
     `data.exchange_quote_ts` (optional) is the plane's exchange quote clock. The structural state
     is extracted/computed ONCE and memoized per (ticker, BOOK_TIME); a caller with the same
     unchanged book SERIALIZES the cached state instead of re-walking raw data. Only the age

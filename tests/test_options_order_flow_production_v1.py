@@ -53,7 +53,7 @@ def test_default_contract_from_banked_chain(tmp_path, monkeypatch):
 
 
 def test_live_payload_one_compute_includes_proxy_flow():
-    import order_flow_live_state as ofls
+    import app.options.order_flow.state as ofls
     from app.options.order_flow.live_payload import options_live_payload
 
     contract = "CDE   260904C00013000"
@@ -288,7 +288,7 @@ def test_real_subprocess_dead_owner_lock_is_reclaimed(tmp_path):
 
 def test_options_api_carries_flow_block():
     import json
-    import order_flow_live_state as ofls
+    import app.options.order_flow.state as ofls
     import server as srv
 
     contract = "SPY   260820C00767000"

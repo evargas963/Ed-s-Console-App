@@ -1,7 +1,7 @@
 """Replay persisted option observations through the canonical state owner.
 
 This module owns only historical I/O, bounds, and receive chronology. State
-transition semantics live in ``order_flow_live_state.OrderFlowState``.
+transition semantics live in ``app.options.order_flow.state.OrderFlowState``.
 """
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from instrument_identity import ticker_storage_key
-from order_flow_live_state import OrderFlowState
+from app.options.order_flow.state import OrderFlowState
 from stream_spine import resolve_stream_db_path
 
 

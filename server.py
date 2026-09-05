@@ -3547,7 +3547,7 @@ def _stream_spot_and_of_regime(symbol: str) -> tuple[Optional[float], Optional[s
     stream_spot = None
     stream_regime = None
     try:
-        from order_flow_live_state import get_content_for_symbol, get_top_of_book
+        from app.options.order_flow.state import get_content_for_symbol, get_top_of_book
         from app.options.order_flow.engine import OrderFlowEngine
     except ImportError:
         return None, None
@@ -4540,7 +4540,7 @@ def _fetch_and_store_mkt_ctx(client, pcr=None, prev_pcr=None):
     mkt_ctx_fetch_started_wall_ts = time.time()
     _stream_chg_fn = None
     try:
-        from order_flow_live_state import get_stream_chg_pct
+        from app.options.order_flow.state import get_stream_chg_pct
         _stream_chg_fn = get_stream_chg_pct
     except (ImportError, AttributeError):
         pass
@@ -6682,7 +6682,7 @@ def _fetch_state(
     # totalVolume: WebSocket TOTAL_VOLUME preferred; else chain underlying (include_underlying_quote)
     _total_vol = None
     try:
-        from order_flow_live_state import get_stream_volume
+        from app.options.order_flow.state import get_stream_volume
         _stream_vol = get_stream_volume(ticker)
         if _stream_vol is not None:
             _total_vol = _stream_vol
@@ -7825,7 +7825,7 @@ def _fetch_state(
         try:
             if _diag_on():
                 _diag_step("pre_get_content_for_symbol", ticker)
-            from order_flow_live_state import get_content_for_symbol
+            from app.options.order_flow.state import get_content_for_symbol
             _live_content = get_content_for_symbol(ticker)
             if _diag_on():
                 _diag_done("get_content_for_symbol", ticker)
@@ -14082,7 +14082,7 @@ def api_live_plane(ticker: str = Query(default=DEFAULT_TICKER)):
         base["plane_quote_authority"] = "rest_only"
     base["streaming_fallback_explicit"] = base.get("plane_quote_authority") == "rest_fallback_explicit"
     try:
-        from order_flow_live_state import get_stream_chg_pct, get_top_of_book_sizes
+        from app.options.order_flow.state import get_stream_chg_pct, get_top_of_book_sizes
 
         _scp = get_stream_chg_pct(t)
         if _scp is not None:
@@ -14090,7 +14090,7 @@ def api_live_plane(ticker: str = Query(default=DEFAULT_TICKER)):
         base.update(get_top_of_book_sizes(t))
     except Exception as e:
         log.warning(
-            "order_flow_live_state merge failed for /api/state ticker=%s: %s",
+            "app.options.order_flow.state merge failed for /api/state ticker=%s: %s",
             t,
             e,
             exc_info=True,
@@ -14113,7 +14113,7 @@ def api_order_flow_microstructure(ticker: str = Query(default=DEFAULT_TICKER)):
     _touch_tracked_ticker_view(t)
     data: dict = {}
     try:
-        from order_flow_live_state import get_content_for_symbol
+        from app.options.order_flow.state import get_content_for_symbol
         _content = get_content_for_symbol(t)
         if _content:
             data["content"] = _content

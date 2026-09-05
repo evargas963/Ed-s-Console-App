@@ -5,11 +5,11 @@ from __future__ import annotations
 import inspect
 
 import app.options.order_flow.engine as ofe
-import order_flow_live_state as ofls
+import app.options.order_flow.state as ofls
 from time_et import RTH_END_MINS, RTH_OPEN_MINS
 
 
-def test_order_flow_live_state_rth_uses_rth_open_mins_authority():
+def test_order_flow_state_rth_uses_rth_open_mins_authority():
     src = inspect.getsource(ofls.is_rth_open)
     assert "9 * 60 + 30" not in src
     assert "16 * 60" not in src
@@ -19,7 +19,7 @@ def test_order_flow_live_state_rth_uses_rth_open_mins_authority():
     assert RTH_END_MINS == 960
 
 
-def test_order_flow_live_state_rth_actually_behaves_at_the_boundaries(monkeypatch):
+def test_order_flow_state_rth_actually_behaves_at_the_boundaries(monkeypatch):
     """RC-298: the test above reads the SOURCE. This one runs the FUNCTION.
 
     Source assertions prove `is_rth_open` NAMES the authority constants; only calling it

@@ -14,7 +14,7 @@ import inspect
 
 import pytest
 
-import order_flow_live_state as ofls
+import app.options.order_flow.state as ofls
 import app.options.order_flow.streaming as ofs
 from stream_spine import CaptureWriter, book_msg, quote_msg
 
@@ -124,7 +124,7 @@ def test_mismatched_ticker_rows_are_not_replayed(tmp_path, monkeypatch):
     ofs._replay_new_rows(con, "SPY")
     con.close()
 
-    # order_flow_live_state's clear() zeroes _top's dict value rather than deleting the
+    # app.options.order_flow.state's clear() zeroes _top's dict value rather than deleting the
     # key (pre-existing behavior, unrelated to this repair), so a bare `== []` is not the
     # right invariant — assert the thing that would actually indicate cross-symbol leakage:
     # the QQQ row's price must not appear anywhere in SPY's replayed content.
