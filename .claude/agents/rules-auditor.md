@@ -24,9 +24,10 @@ Your single job: read the rule surfaces end-to-end and produce a structured repo
 **Primary always-on (repo root):**
 - `AGENTS.md` — the governing charter (operating model, laws, enforcement map)
 - `CLAUDE.md` — one-line pointer to AGENTS.md
-- `ACTIVE_PROGRAM.md` — current work record and operator-directed backlog
-- `MEMORY.md` — thin pointer + archive index
-- `.cursor/rules/*.mdc` — always-on Cursor rules
+- `ACTIVE_PROGRAM.md` — current operator-directed work (a record, not authority)
+- `OPEN_ITEMS.md` — acceptance specification (what "done" means; no queue, no law)
+- `governance/root_cause_log.md` — defects with clocks; `governance/unproven_register.md` — claims about the world
+- `.cursor/rules/00-always.mdc` — the one Cursor adapter (a pointer to AGENTS.md)
 
 **Process mechanics:**
 - `tools/session_closeout.py` (the worktree-handoff checker was removed 2026-08-24)

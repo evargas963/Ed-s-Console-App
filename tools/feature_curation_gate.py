@@ -18,7 +18,7 @@ candidate set + cluster map + drop/flag lists) for Cursor scrutiny + the ablatio
 
 Ablation harness (``--ablation``): manifest-only contract — **all four horizons**
 (1c / 5c / 15c / 60c) and **all seven stack models** on the placement grid. Partial-horizon
-or partial-model grids are rejected. See ``ACTIVE_PROGRAM.md`` §Feature placement matrix.
+or partial-model grids are rejected. See ``TRAINING_AND_MAINTENANCE.md`` §Feature placement matrix.
 
   - **Placement grid (binding):** ``feature × model × horizon`` where **model** is all seven
     layers (``xgb``, ``lstm``, ``transformer``, ``meta``, ``monte_carlo``, ``regime``, ``fusion``)

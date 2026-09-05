@@ -76,3 +76,18 @@ After any ed_server restart that is meant to clear WARN / malfunction debt or pr
 6. **fill_outcomes SLA:** `sqlite_bg_write_slow` at 5s+/10s+ remains WARNING (any-WARN FAIL). Live path
    caps work via `FILL_OUTCOMES_LIVE_BATCH_LIMIT` (newest-first) + prefetched cols (no N+1 SELECTs).
    Do not demote multi-second runs to INFO to pass the quiet window.
+
+## Daily ACT + RE-MEASURE pass (moved from the retired reports-side agent brief, 2026-09-05, RC-520)
+
+MEASURE and TRIAGE are automated by `tools/rehab_daily_scan.py`; this is the other half of the loop (RC-246 → RC-250 → RC-251). The backlog total is **not a work order**: a repo-wide autofix would touch the money path with no behavioural test per change, which is how a "cleanup" becomes an incident. Debt falls in increments that can each be proven safe.
+
+**Inputs (read all three; do not re-run the world):** `reports/rehab_latest.md` (human view), `reports/tqm_queue_latest.json` (the machine queue — **the only work list**), `reports/advisory_debt_latest.json` (per-check tally + per-file hotspots).
+
+1. **TRIAGE — accept or kill each item, out loud.** Work **only** `top_items` (max 5). Every item ships with `kill_criteria`; killing an item is a legitimate outcome — say why in one line.
+2. **ACT — smallest safe change, one item at a time.** Preferred: `ruff --fix` scoped to the single file, then that file's own test module. Types: annotate the one function the error names; do not restructure call sites. Length/complexity: extract *one* cohesive block with a behavioural test pinning before == after on real inputs (RC-19: a split to save seven lines added five circular imports; SHAPE metrics track but never block). Orphan keys: delete at the producer **and** prove no consumer reads it end-to-end — a static orphan can be a live field via dynamic access. **Never:** drive-by refactors, opportunistic renames, touching anything the item did not name, or touching `data/ed_console.db` (+ `-wal`/`-shm`) / `data/ed_console_claude.db`.
+3. **RE-MEASURE — same harness, same turn.** `python tools/rehab_daily_scan.py`, then record **before → after** for `advisory_total` and `delta` in the report and in the RC row. If the number did not move, say so; if it rose, find out why.
+4. **LEDGER — the row opens before the fix (`tools/mission_latch.py`) and closes only with the measured delta and the reproduce command.** If the host clock is still missing, the schedule half stays **PARTIAL**.
+
+**Boundaries:** advisory checks never return to the blocking commit path (RC-246; a control asserts it); no mass rewrites; no database deletion or "disk cleanup" as quality work; RC-166 / RC-227 / RC-243 close only on a live mid-RTH `sqlite-contention` reading; no product rename unless the operator says so.
+
+**Empty or stale queue:** an empty queue with a non-zero total means hotspots were dropped between the gate and the scan (that bug shipped once); check `hotspots` in `advisory_debt_latest.json`, then in the queue JSON. A stale report (>48 h) carries a P1 `rehab.advisory_report_stale` finding — fix the schedule before working the list.

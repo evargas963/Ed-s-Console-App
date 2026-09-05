@@ -34,7 +34,8 @@ Stack / ML horizon alignment (trader policy — 1 / 5 / 15 / 60 minute clocks on
 
   **`outcome_Nc` / `pred_Nc`:** Universal **bar-based** contract (Issues 3–4): anchor = **close** of the last completed **1m** canonical bar in `price_bars_1m` with `<= ts_utc` (`bar_end_ts_utc`); forward reference = **close** of the canonical **1m** bar keyed by `bar_start_ts_utc` (UTC grid). Never `snapshots.spot`. See `horizon_outcomes.py`, `db.fill_outcomes`, `db.upsert_1m_bars`. One-time invalidations: `ed_schema_flags.horizon_bar_v1_legacy_poll_invalidated`, `horizon_outcome_anchor_bar_close_v1`. Sparse similar-sets still use **explicit neutral thirds** (`insufficient_labeled_*`).
 
-  **Running gaps:** see project root **`OPEN_ITEMS.md`** (stays open until each row is resolved in code).
+  **Running gaps:** defects are rows in `governance/root_cause_log.md`; what "done" means for the
+  horizon stacks is the acceptance specification in `OPEN_ITEMS.md`.
 """
 
 # Canonical timeframe — primary candle source for live state, snapshots, features, training

@@ -18,7 +18,6 @@ tools/_build_section7_inventory.py::1
 tools/_build_section9_inventory.py::1
 tools/agent_error_report.py::1
 tools/audit_snapshot_columns.py::1
-tools/build_phase3_repo_cleanup.py::1
 tools/build_snapshot_sql_registry.py::1
 tools/check_institutional_correctness.py::12
 tools/check_one_producer.py::1

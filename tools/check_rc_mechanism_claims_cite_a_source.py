@@ -96,8 +96,8 @@ def violations(log_path: Path | None = None) -> list[str]:
         if len(cells) < 7:
             continue                      # schema breakage is rc_log_rows_keep_schema's job
         rc_id, opened = cells[0], cells[2]
-        if opened < MECHANISM_CITATION_CUTOVER:
-            continue
+        if opened < MECHANISM_CITATION_CUTOVER or cells[1] == "ARCHIVED":
+            continue                      # RC-520: settled history, judged when it closed
         body = " ".join(cells[4:7])
         hit = _MECHANISM_RE.search(body)
         if not hit or _CITATION_RE.search(body):

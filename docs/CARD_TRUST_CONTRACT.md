@@ -629,3 +629,13 @@ Consumers checked: UI freshness/transport diagnostics only.
 SCHWAB_CSV_CHECKED
 
 **Closure caveat:** T4 does not close card fidelity overall, `stale_withheld_rth_freshness`, universal runtime live proof, or real-money readiness.
+
+## No silent degradation (moved from the retired no-silent-degradation policy doc, 2026-09-05, RC-520)
+
+If **data**, **transport**, **DB**, **ticker completeness**, **calibration logging**, or **market session** state is degraded, the UI or validation report **must surface it**.
+
+**Banned:** a hidden fallback that looks fresh; STALE/LOADING as the only symptom when DB contention is active; guest partial data presented as the full stack without copy.
+
+**Required operator copy (guest partial):** `GUEST PARTIAL — normalized history unavailable`, `GUEST PARTIAL — histogram unavailable`, `GUEST PARTIAL — options layer unavailable`, `GUEST PARTIAL — ALL/PLAN reduced`.
+
+**Transport surfaces:** `dr-switch-state-chip` (switch timing states), `dr-db-contention-chip` (DB WAITING / DEGRADED / LOCKED), `dr-lane-stale-chip` (quote ahead / pending analytics).

@@ -1,6 +1,6 @@
 # Agent Operating Process v1 (RC-217)
 
-**Mechanical enforcer:** `tools/operating_process_lock.py` + `tools/process_lock_guard.py` (PreToolUse / pre-commit) + `tools/check_live_path_is_main.py` (RC-350, launch / pre-push / CI). This file is the checklist; `.py` BLOCKs.
+**Mechanical enforcer:** `tools/operating_process_lock.py` + `tools/process_lock_guard.py` (PreToolUse / pre-commit). This file is the checklist; `.py` BLOCKs. (`tools/check_live_path_is_main.py` is a report, not an enforcer — §6, RC-512; the earlier "launch / pre-push / CI" claim on this line was the contradiction RC-520 removed.)
 
 > **2026-08-24 Architecture A teardown.** The role, mission, GO-file and authority-rail
 > machinery this process once carried is REMOVED. The operator directs each session in
@@ -47,7 +47,7 @@
 
 **RC-512:** this line used to name `tools/check_live_path_is_main.py` as a fail-closed enforcer at "launch / pre-push / CI". Two of those never existed (`.pre-commit-config.yaml` declares `default_stages: [pre-commit]` and no workflow invokes it) and the launch one was removed: it made desk availability depend on repository position, and on 2026-09-03 it aborted the launcher because the production checkout was 9 commits behind `origin/main`, with no application defect. Governance controls agent actions, commit and merge — it does not decide whether the desk may run. The check remains available as an operator/agent-side report (`violations()`); it gates nothing on the runtime path.
 
-1. **Production = main == origin/main, always.** The live desk runs branch `main` at HEAD exactly equal to `origin/main` — never a feature branch, never detached, never ahead (a private divergent lineage) or behind (stale code). Asserted at every launch / push / CI (emergency bypass `ED_LIVE_PATH_UNLOCKED=1` for a downed desk only — every use is a logged admission the invariant broke).
+1. **Production = main == origin/main, always.** The live desk runs branch `main` at HEAD exactly equal to `origin/main` — never a feature branch, never detached, never ahead (a private divergent lineage) or behind (stale code). Reported by `tools/check_live_path_is_main.py`; not asserted at launch, push or CI (RC-512 above).
 2. **Development happens on the separate dev worktree** — one non-live development surface (`EdWebConsole-dev`, a linked git worktree), never in the production checkout.
 3. **One authorized AI writer at a time.** The dev surface is handed between agents serially; auditors are read-only. There is no per-vendor worktree assignment — the operator directs who writes each session (AGENTS.md operating model).
 4. **Assigned agents cannot change branches or app code in the production checkout.** The PreToolUse guard BLOCKs — at the moment of the command, not only at the next launch — any `git checkout` / `switch` / `branch` / `commit` / `merge` / `reset` / `rebase` / `cherry-pick` that TARGETS the production primary, and any Edit/Write of app code (`server.py`, `*.py`, `static/*.html|*.js`) inside it. Allowed on production: reads, `git fetch`, `git checkout main` (return-to-main), and the fast-forward update in (5). Dev worktrees are unconstrained.
@@ -67,6 +67,21 @@
 - **Objective: monotonic reduction of actual fixable repo debt** — never status manipulation.
 
 - **DONE when:** across the change, real fixable-debt retired ≥ the ratio for the expansion done, measured against the pre-change open/overdue baseline; stale-record reconciliations are reported separately from engineering-debt retirement.
+
+## 8. SIGN-OFF CHECKLIST (drift audit — run on yourself before any "MET / clean / verified" claim)
+
+Moved here from `.claude/skills/drift-audit/SKILL.md` (2026-09-05, RC-520); the skill file is now a
+pointer. A sign-off is INVALID unless every phase ran this turn with cited command output.
+
+1. **Intent & drift.** Restate what the OPERATOR wanted (not what the implementing agent reported); which principle it touches (zero-bias / data-driven / per model×horizon / fail-closed); whether scope slipped or a stage was marked done that is not; whether the acceptance GATE equals the principle or is weaker (presence-only).
+2. **Mechanical scans.** AST-scan every changed signature/arity/return with a same-turn `ast.walk` script over every caller (show the script and its output); run the relevant gates and tests yourself — never cite the implementing agent's pass count.
+3. **Known failure classes (check each, cite evidence):** arity / unpack; presence vs capability (present-but-inoperative); silent-swallow (`try/except` or a 0/0.5/"neutral"/empty default hiding absence); caller / consumer compatibility (producer→consumer trace); fail-closed on schema/width/version mismatch; the cited test actually exercises the path; stale vs live artifacts; gate strength (proxy vs principle); full-stack / all-N coverage (name every model / layer / ticker / horizon the principle spans — a gate over 3 of 7 that prints "full coverage" is a lie); side-channel consumers of removed traffic (liveness stamps, poll-suppression timers, health badges — trace the receiver before discarding); `EXPLAIN QUERY PLAN` before any ad-hoc JOIN on the production DB (index SEARCH on the join key or rewrite); classification-by-complement (enumerate the tag namespace before classifying `!= known-good`); patch / gate-relax (an env flag that skips a contract, a relax branch, a silent slice/fallback forcing incompatible data through — trace the bundle LOAD lineage, not just the output).
+4. **Completeness critic.** "What class did I NOT check? Where is the gate smaller than the goal?" — check it now; propose additions to this list to the operator (the list grows only on the operator's word).
+5. **Verdict.** CLEAN, or FINDINGS with file:line + evidence — no impression-verdicts.
+6. **Correction loop.** A precise fix directive (file:line, exact change, acceptance; paste-ready for another agent) and, if useful, a proposed rule for the operator — no self-landed law edits, no locks manufactured from a finding.
+7. **Sign-off** only after 1–6, stating: "drift-audit run; findings: <…>; corrections: <…>; gate hardened: <y/n>."
+
+Honest limit: this covers KNOWN failure classes and forces the critic; it cannot guarantee a novel class.
 
 ---
 

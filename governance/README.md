@@ -9,6 +9,14 @@
 their enforcement map). Nothing in this directory grants work authority; the operator directs
 each session in chat.
 
+**One owner per responsibility (RC-520, 2026-09-05):** law → `AGENTS.md`; target architecture →
+`docs/ARCHITECTURE.md`; current operator-directed work → `ACTIVE_PROGRAM.md`; acceptance
+specification → `OPEN_ITEMS.md`; defects with clocks → `root_cause_log.md` (CLOSED rows older
+than a month are compacted to `ARCHIVED` lines whose git pointer carries the full row); claims →
+`unproven_register.md`; operator decisions → `OPERATOR_DECISION_REGISTER.md`; agent procedure →
+`AGENT_OPERATING_PROCESS_V1.md`; host facts → `docs/host/`. `.claude/**` and `.cursor/**` are
+adapters that point at those owners and carry no law of their own.
+
 ## Live ledgers and registers
 
 | File | Holds |
