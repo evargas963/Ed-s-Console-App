@@ -55,6 +55,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
@@ -410,7 +411,10 @@ def refold_base_counts(
 # fresh measurement - the cache can cost seconds, never correctness.
 
 def _base_cache_path() -> Path | None:
-    r = _run(["git", "rev-parse", "--git-dir"])
+    """ONE cache per repository, shared by every worktree (RC-516: the boundary campaign
+    runs one worktree per base group; a base measured in any of them is proof for all of
+    them, because the key below is content-addressed, not worktree-addressed)."""
+    r = _run(["git", "rev-parse", "--git-common-dir"])
     if r.returncode != 0 or not r.stdout.strip():
         return None
     git_dir = Path(r.stdout.strip())
@@ -419,12 +423,23 @@ def _base_cache_path() -> Path | None:
     return git_dir / "delta_base_cache.json"
 
 
+_GATE_REL = "tools/check_institutional_correctness.py"
+
+
 def _base_cache_key(base_ref: str) -> str | None:
+    """Content identity of a base measurement: the base COMMIT, the gate blob that commit
+    carries (the roster and every check live there — a changed gate is a different
+    measurement even at the same tree elsewhere), THIS driver's bytes (its parsing decides
+    what a count is) and the interpreter."""
     r = _run(["git", "rev-parse", base_ref])
     if r.returncode != 0 or not r.stdout.strip():
         return None
+    gate = _run(["git", "rev-parse", f"{base_ref}:{_GATE_REL}"])
+    if gate.returncode != 0 or not gate.stdout.strip():
+        return None
     h = hashlib.sha256()
     h.update(r.stdout.strip().encode())
+    h.update(gate.stdout.strip().encode())
     try:
         h.update(Path(__file__).read_bytes())          # parsing logic lives here
     except OSError:
@@ -434,6 +449,9 @@ def _base_cache_key(base_ref: str) -> str | None:
 
 
 def _read_base_cache(key: str | None):
+    """A hit returns (counts, short sha, roster) from the entry whose key matches; the file
+    holds many entries (one per base identity) so concurrent campaigns never evict each
+    other. Any unreadable state is a MISS — the cache can cost seconds, never correctness."""
     if not key:
         return None
     path = _base_cache_path()
@@ -441,24 +459,42 @@ def _read_base_cache(key: str | None):
         if path is None or not path.is_file():
             return None
         doc = json.loads(path.read_text(encoding="utf-8"))
-        if doc.get("key") != key:
+        entries = doc.get("entries") if isinstance(doc, dict) else None
+        entry = entries.get(key) if isinstance(entries, dict) else (doc if doc.get("key") == key else None)
+        if not entry:
             return None
-        counts = {str(k): int(v) for k, v in doc["counts"].items()}
-        return counts, str(doc["sha"]), set(doc["roster"])
+        counts = {str(k): int(v) for k, v in entry["counts"].items()}
+        return counts, str(entry["sha"]), set(entry["roster"])
     except (OSError, ValueError, KeyError, TypeError, AttributeError):
         return None                                    # fail-open: recompute
 
 
 def _write_base_cache(key: str | None, counts, sha, roster) -> None:
+    """Evidence-bearing entry: the identity it was measured under, the roster it saw and the
+    time. Written atomically (temp file + replace) so a parallel writer can never be read
+    half-way; entries from other keys are preserved."""
     if not key:
         return
     path = _base_cache_path()
     if path is None:
         return
     try:
-        path.write_text(json.dumps({
+        entries: dict = {}
+        if path.is_file():
+            try:
+                old = json.loads(path.read_text(encoding="utf-8"))
+                if isinstance(old, dict) and isinstance(old.get("entries"), dict):
+                    entries = old["entries"]
+            except (OSError, ValueError):
+                entries = {}
+        entries[key] = {
             "key": key, "counts": counts, "sha": sha, "roster": sorted(roster),
-        }), encoding="utf-8")
+            "driver": _run(["git", "hash-object", str(Path(__file__))]).stdout.strip(),
+            "measured_at_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        }
+        tmp = path.with_name(path.name + f".{os.getpid()}.tmp")
+        tmp.write_text(json.dumps({"entries": entries}), encoding="utf-8")
+        os.replace(tmp, path)
     except OSError:
         pass                                           # cache is best-effort
 
@@ -481,8 +517,9 @@ def main(argv: list[str] | None = None) -> int:
     cached = _read_base_cache(cache_key)
     if cached is not None:
         base_counts, base_sha, base_roster = cached
-        print(f"base side: cache hit for {args.base} ({base_sha}) - re-measure with a "
-              f"changed base/driver/evidence, or delete .git/delta_base_cache.json")
+        print(f"base side: cache hit for {args.base} ({base_sha}) - keyed on the base commit, "
+              f"its gate blob, this driver and the interpreter; re-measure by changing any of "
+              f"those, or delete delta_base_cache.json in the common git dir")
     else:
         base_counts, base_sha, base_roster = enforced_counts(args.base)
         _write_base_cache(cache_key, base_counts, base_sha, base_roster)

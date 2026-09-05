@@ -29,6 +29,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -161,7 +162,16 @@ def _mutate_ledger(wt: Path, how: str) -> None:
     _git(wt, "add", "governance/INSTITUTIONAL_CLOSURE_SCHEMA.json")
 
 
+_SIDE_RE = re.compile(r"^(base \S+|staged INDEX) \((?P<sha>[0-9a-f]+)\): (?P<rest>.*)$")
+
+
+def _utc() -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+
 def run_case(wt: Path, head: str, bases: dict[str, str], case: dict) -> dict:
+    """One case through the real boundary. Every field the record needs is captured here so a
+    later crash cannot destroy completed proof (the caller flushes it immediately)."""
     base_key = case["base"]
     base_sha = bases[base_key]
     _git(wt, "checkout", "-q", "-f", base_sha)
@@ -170,55 +180,144 @@ def run_case(wt: Path, head: str, bases: dict[str, str], case: dict) -> dict:
         _write(wt, rel, text)
     if case.get("ledger_mutation"):
         _mutate_ledger(wt, case["ledger_mutation"])
+    started = _utc()
     t0 = time.time()
     proc = subprocess.run([sys.executable, "tools/check_delta_adds_no_debt.py", "--index", "--base", base_sha],
                           cwd=str(wt), capture_output=True, text=True, encoding="utf-8", errors="replace")
     out = proc.stdout + proc.stderr
-    verdict_lines = [ln for ln in out.splitlines() if ln.startswith(("[PASS]", "[FAIL]")) or ln.strip().startswith(case.get("check", "\x00"))]
+    lines = out.splitlines()
+    base_line = next((ln for ln in lines if ln.startswith("base ") and "(" in ln), "")
+    cand_line = next((ln for ln in lines if ln.startswith("staged INDEX")), "")
+    base_cached = any(ln.startswith("base side: cache hit") for ln in lines)
+    m = _SIDE_RE.match(cand_line)
+    candidate_sha = m.group("sha") if m else ""
+    verdict_lines = [ln for ln in lines if ln.startswith(("[PASS]", "[FAIL]")) or ln.strip().startswith(case.get("check", "\x00"))]
     got = "PASS" if proc.returncode == 0 else "FAIL"
-    named = case.get("check") is None or any(case["check"] in ln for ln in out.splitlines())
+    delta_lines = [ln.strip() for ln in lines if re.match(r"^\s+[a-z_0-9]+: \d+ -> \d+", ln)]
+    named = case.get("check") is None or any(ln.startswith(case["check"] + ":") for ln in delta_lines)
     return {
-        "id": case["id"], "expect": case["expect"], "exit_code": proc.returncode, "got": got,
-        "check_named_in_verdict": named if case["expect"] == "FAIL" else None,
+        "id": case["id"], "expect": case["expect"], "expected_violation": case.get("check"),
+        "base_sha": base_sha, "candidate_sha": candidate_sha,
+        "started_utc": started, "ended_utc": _utc(), "seconds": round(time.time() - t0, 1),
+        "base_gate_result": base_line, "base_side_cached": base_cached,
+        "candidate_gate_result": cand_line, "delta_lines": delta_lines,
+        "exit_code": proc.returncode, "got": got,
+        "failed_for_the_correct_reason": (got == "FAIL" and named) if case["expect"] == "FAIL" else None,
         "ok": got == case["expect"] and (named or case["expect"] == "PASS"),
-        "seconds": round(time.time() - t0, 1), "base": base_sha[:12], "verdict": verdict_lines[-6:],
+        "verdict": verdict_lines[-6:],
     }
+
+
+def preflight(out_path: Path | None) -> list[str]:
+    """Environment proof BEFORE the expensive part: nothing here changes what is measured.
+    Returns the problems found; an empty list means go."""
+    problems: list[str] = []
+    for mod in ("tools.check_institutional_correctness", "tools.check_one_producer",
+                "tools.check_institutional_closure_gate"):
+        try:
+            __import__(mod)
+        except Exception as exc:  # noqa: BLE001 - the point is to name the import failure
+            problems.append(f"{mod} does not import: {type(exc).__name__}: {exc}")
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")   # the gate prints em dashes
+    except (AttributeError, ValueError) as exc:
+        problems.append(f"stdout cannot be made utf-8 safe: {exc}")
+    if out_path is not None:
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            probe = out_path.parent / (out_path.name + ".probe")
+            probe.write_text("ok", encoding="utf-8")
+            probe.unlink()
+        except OSError as exc:
+            problems.append(f"result path not writable: {exc}")
+    probe_wt = Path(tempfile.mkdtemp(prefix="e2e-preflight-")) / "wt"
+    try:
+        _git(REPO, "worktree", "add", "--detach", "-q", str(probe_wt), "HEAD")
+        _git(REPO, "worktree", "remove", "--force", str(probe_wt))
+    except RuntimeError as exc:
+        problems.append(f"cannot materialise a worktree: {exc}")
+    finally:
+        shutil.rmtree(probe_wt.parent, ignore_errors=True)
+    if os.name == "nt":
+        listing = subprocess.run(["tasklist", "/FO", "CSV", "/NH"], capture_output=True, text=True,
+                                 encoding="utf-8", errors="replace").stdout.lower()
+        busy = [name for name in ("node.exe", "playwright") if name in listing]
+        if busy:
+            problems.append(f"competing workload running (the campaign owns the machine): {busy}")
+    return problems
 
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--out", default=None, help="JSON results path (scratch or reports/)")
     ap.add_argument("--only", action="append", default=[], help="case id prefix filter")
+    ap.add_argument("--base-group", action="append", default=[],
+                    help="run only cases on these base keys (head/dup/superseded/collision); "
+                         "the groups are independent, so four processes with one group each "
+                         "finish in the time of the longest group")
+    ap.add_argument("--skip-preflight", action="store_true")
     args = ap.parse_args(argv)
+    out_path = Path(args.out) if args.out else None
+    if not args.skip_preflight:
+        problems = preflight(out_path)
+        if problems:
+            for p in problems:
+                print("PREFLIGHT: " + p, flush=True)
+            print("campaign NOT STARTED: fix the environment first (nothing was measured)", flush=True)
+            return 2
     head = _git(REPO, "rev-parse", "HEAD").strip()
+    jsonl = out_path.with_suffix(".jsonl") if out_path else None   # flushed per case
     tmp = Path(tempfile.mkdtemp(prefix="e2e-campaign-"))
     wt = tmp / "wt"
     _git(REPO, "worktree", "add", "--detach", "-q", str(wt), head)
     results: list[dict] = []
+    wall0 = time.time()
     try:
+        wanted = [c for c in CASES
+                  if (not args.only or any(c["id"].startswith(p) for p in args.only))
+                  and (not args.base_group or c["base"] in args.base_group)]
         bases = {"head": head}
         for key, files in (("dup", BASE_DUP), ("superseded", BASE_SUPERSEDED), ("collision", BASE_COLLISION)):
+            if not any(c["base"] == key for c in wanted):
+                continue
             _git(wt, "checkout", "-q", "-f", head)
             _git(wt, "clean", "-qfd")
             for rel, text in files.items():
                 _write(wt, rel, text)
             bases[key] = _plumbing_commit(wt, head, f"e2e campaign base: {key}")
-        for case in CASES:
-            if args.only and not any(case["id"].startswith(p) for p in args.only):
-                continue
+        for case in wanted:
             r = run_case(wt, head, bases, case)
             results.append(r)
+            if jsonl is not None:   # completed proof survives any later crash
+                with jsonl.open("a", encoding="utf-8", newline="\n") as fh:
+                    fh.write(json.dumps({"head": head, **r}) + "\n")
             print(f"{'ok ' if r['ok'] else 'BAD'} {r['id']}: expect {r['expect']} got {r['got']} "
-                  f"(exit {r['exit_code']}, {r['seconds']}s)")
+                  f"(exit {r['exit_code']}, {r['seconds']}s, base "
+                  f"{'cached' if r['base_side_cached'] else 'measured'})", flush=True)
             for ln in r["verdict"]:
-                print("      " + ln[:160])
+                print("      " + ln[:160], flush=True)
     finally:
         _git(REPO, "worktree", "remove", "--force", str(wt), check=False)
         shutil.rmtree(tmp, ignore_errors=True)
-    payload = {"head": head, "cases": results, "all_ok": all(r["ok"] for r in results)}
-    if args.out:
-        Path(args.out).write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8", newline="\n")
-    print(f"campaign {'PASS' if payload['all_ok'] else 'FAIL'}: {sum(r['ok'] for r in results)}/{len(results)} cases as expected at {head[:12]}")
+    candidates = len(results)
+    bases_measured = sum(1 for r in results if not r["base_side_cached"])
+    perf = {
+        "real_gate_executions": candidates + bases_measured,
+        "candidate_executions": candidates,
+        "base_executions_measured": bases_measured,
+        "base_executions_avoided_by_cache": candidates - bases_measured,
+        "max_concurrency_in_this_process": 1,
+        "per_case_seconds": {r["id"]: r["seconds"] for r in results},
+        "proof_work_seconds": round(sum(r["seconds"] for r in results), 1),
+        "wall_clock_seconds": round(time.time() - wall0, 1),
+    }
+    payload = {"head": head, "cases": results, "all_ok": all(r["ok"] for r in results), "performance": perf}
+    if out_path is not None:
+        out_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8", newline="\n")
+    print(f"campaign {'PASS' if payload['all_ok'] else 'FAIL'}: {sum(r['ok'] for r in results)}/{len(results)} "
+          f"cases as expected at {head[:12]}; {perf['real_gate_executions']} real gate executions "
+          f"({perf['base_executions_avoided_by_cache']} base runs avoided by cache), "
+          f"wall {perf['wall_clock_seconds']}s", flush=True)
     return 0 if payload["all_ok"] else 1
 
 
