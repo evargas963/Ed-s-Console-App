@@ -10,7 +10,7 @@ from __future__ import annotations
 import math
 
 import l1_trade_observation as l1
-import order_flow_engine as ofe
+import app.options.order_flow.engine as ofe
 import order_flow_live_state as live_state
 
 
@@ -123,7 +123,7 @@ def test_mutation_vendor_time_sort_fails_receive_order():
     sorted_cvd = ofe._compute_cum_delta_proxy({"content": vendor_sorted})
     assert receive_cvd == 5
     assert sorted_cvd != receive_cvd
-    src = open("order_flow_engine.py", encoding="utf-8").read()
+    src = open("app/options/order_flow/engine.py", encoding="utf-8").read()
     assert "sorted(prints" not in src
     assert 'key=lambda x: x.get("time_millis")' not in src
 

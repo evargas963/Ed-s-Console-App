@@ -4,8 +4,9 @@
 Consensus plan v1.2: this process owns the ONLY Schwab stream (single-streamer-owner
 rule) and writes ONLY stream_capture.db.
 
-SINGLE-STREAM-AUTHORITY (root-fixed 2026-08-30): order_flow_streaming.py — the live UI's
-book/L1 feed — now reads these rows read-only instead of opening its own StreamClient.
+SINGLE-STREAM-AUTHORITY (root-fixed 2026-08-30):
+app/options/order_flow/streaming.py — the live UI's book/L1 feed — now reads these rows
+read-only instead of opening its own StreamClient.
 This process additionally captures NASDAQ_BOOK / NYSE_BOOK for the one symbol the server
 signals as the active UI viewer's ticker (stream_active_ticker.json, polled every ~1s by
 _active_ticker_book_poll_loop), and stores the native content dict for quotes alongside
@@ -1132,6 +1133,26 @@ async def run(symbols: list[str], duration_min: float, db_path: str | None) -> i
         release_owner_lock(lock_fd, lock)
 
 
+def _close_schwab_rest_client(client, *, reason: str) -> None:
+    """Close one generation's synchronous REST transport after stream login.
+
+    schwab-py's StreamClient uses the REST client only to fetch streamer
+    preferences during login; the websocket then carries the generation. Keeping
+    that HTTPX session for the daemon lifetime leaves a remotely closed HTTPS
+    socket in CLOSE_WAIT. Reconnects receive a freshly built client from
+    ``state_factory`` instead of reusing this closed generation.
+    """
+    session = getattr(client, "session", None)
+    close = getattr(session, "close", None)
+    if close is None:
+        return
+    try:
+        close()
+    except Exception as exc:  # noqa: BLE001 — transport cleanup must not mask stream state
+        print(f"close Schwab REST client ({reason}) failed "
+              f"({type(exc).__name__}: {exc})")
+
+
 async def _retire_stream_client(stream, *, reason: str,
                                 timeout: float = STREAM_RETIRE_TIMEOUT_SEC) -> None:
     """THE one seam that terminally retires a Schwab StreamClient. Never raises.
@@ -1301,8 +1322,16 @@ async def _run_locked(symbols: list[str], duration_min: float, db_path: str | No
         # ever opening a live epoch; reconciliation above is already committed, and the
         # `finally` closes the writer on this path exactly as on every other.
         cfg = build_config(str(ROOT))
-        state = build_client_from_token(api_key=cfg.api_key, app_secret=cfg.app_secret,
-                                        token_path=cfg.token_path)
+
+        def build_stream_client_state():
+            """One REST client per stream generation; each is closed after login."""
+            return build_client_from_token(
+                api_key=cfg.api_key,
+                app_secret=cfg.app_secret,
+                token_path=cfg.token_path,
+            )
+
+        state = build_stream_client_state()
         if not state.ok or state.client is None:
             print(f"FATAL: Schwab client init failed: {state.message}")
             return 2
@@ -1314,8 +1343,18 @@ async def _run_locked(symbols: list[str], duration_min: float, db_path: str | No
         _ui_future = bus.subscribe("quote.", policy=COALESCE)        # proves coalesce path live
         stop = asyncio.Event()
 
-        return await _run_streaming(symbols, duration_min, bus, health, stats,
-                                    writer, wsub, stop, state)
+        return await _run_streaming(
+            symbols,
+            duration_min,
+            bus,
+            health,
+            stats,
+            writer,
+            wsub,
+            stop,
+            state,
+            state_factory=build_stream_client_state,
+        )
     finally:
         writer.close()   # every exit path incl. auth/login/subscribe failure (round-3 MEDIUM)
 
@@ -1375,6 +1414,12 @@ async def _schwab_connect(state, symbols, bus, health, stats, stop, active_book_
         # never a verdict, and must not mask why the connect failed.
         await _retire_stream_client(stream, reason="partial connect failure")
         raise
+    finally:
+        # login() is the only point that needs the synchronous REST client: it fetches
+        # streamer preferences, then the websocket owns the generation. Close the HTTP
+        # transport immediately so a remote keep-alive close cannot sit in CLOSE_WAIT
+        # for the rest of this long-lived daemon.
+        _close_schwab_rest_client(state.client, reason="stream login complete")
 
 
 async def _schwab_connect_after_login(stream, symbols, bus, health, stats, stop, *,
@@ -1426,7 +1471,7 @@ async def _schwab_connect_after_login(stream, symbols, bus, health, stats, stop,
 
 
 async def _run_streaming(symbols, duration_min, bus, health, stats,
-                         writer, wsub, stop, state) -> int:
+                         writer, wsub, stop, state, *, state_factory=None) -> int:
     max_qdepth = 0
     # ── OWNED RESOURCES, DECLARED BEFORE THE LIFECYCLE BOUNDARY ─────────────────
     # Every async task and vendor session this function creates is named here and
@@ -1612,8 +1657,15 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
                 reconnect_option_contract = read_active_option_contract_signal()
                 option_state["contract"] = {"l1": None, "book": None}
                 try:
+                    reconnect_state = state
+                    if state_factory is not None:
+                        reconnect_state = state_factory()
+                        if not reconnect_state.ok or reconnect_state.client is None:
+                            raise RuntimeError(
+                                f"Schwab client rebuild failed: {reconnect_state.message}"
+                            )
                     stream, pump_task, option_state["contract"] = await _schwab_connect(
-                        state, symbols, bus, health, stats, stop,
+                        reconnect_state, symbols, bus, health, stats, stop,
                         active_book_ticker=book_state["ticker"],
                         active_option_contract=reconnect_option_contract,
                         writer=writer, epoch_state=option_epoch_state)

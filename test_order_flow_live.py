@@ -10,7 +10,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from order_flow_live_state import push_book, push_level_one, get_content_for_symbol, clear_symbol
-from order_flow_engine import OrderFlowEngine
+from app.options.order_flow.engine import OrderFlowEngine
 
 
 def main():

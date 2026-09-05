@@ -12,7 +12,7 @@ from __future__ import annotations
 import ast
 import inspect
 
-import order_flow_streaming as ofs
+import app.options.order_flow.streaming as ofs
 
 #: TEST_SYSTEM_REHAB_V2: requirement-letter A was a fresh run_census() call asserting
 #: the EXACT same fact (census["VIOLATION"] == []) as
@@ -123,7 +123,7 @@ def test_mutation_control_the_gate_actually_discriminates():
     gate.run_census = lambda: {
         "PRODUCTION_OWNER": ["tools/run_stream_capture.py:555"],
         "OFFLINE_TOOL": [], "TEST_ONLY": [],
-        "VIOLATION": ["order_flow_streaming.py:999"],
+        "VIOLATION": ["app/options/order_flow/streaming.py:999"],
     }
     try:
         assert gate.main() == 1

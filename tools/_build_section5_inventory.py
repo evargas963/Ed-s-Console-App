@@ -8,54 +8,54 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 
 SECTION5_FILES = [
-    "order_flow_engine.py",
+    "app/options/order_flow/engine.py",
     "order_flow_live_state.py",
-    "order_flow_streaming.py",
+    "app/options/order_flow/streaming.py",
     "debug_flow_snapshot.py",
 ]
 
 OVERRIDES: dict[tuple[str, str], tuple[str, str, str]] = {
-    ("order_flow_engine.py", "_compute_spread"): (
+    ("app/options/order_flow/engine.py", "_compute_spread"): (
         "quotes.quote.mark,streaming.MARK",
         "REPLACED",
         "spread_frac mark-denom only; removed bid+ask/2 mid synthesis.",
     ),
-    ("order_flow_engine.py", "_resolve_quote_mark"): (
+    ("app/options/order_flow/engine.py", "_resolve_quote_mark"): (
         "quotes.quote.mark,streaming.MARK",
         "PASS_THROUGH",
         "Mark leaf for spread denominator.",
     ),
-    ("order_flow_engine.py", "_resolve_bid_ask_prices"): (
+    ("app/options/order_flow/engine.py", "_resolve_bid_ask_prices"): (
         "streaming.BID/ASK,quotes.quote.bidPrice,askPrice",
         "PASS_THROUGH",
         "Bid/ask from stream or REST quote JSON.",
     ),
-    ("order_flow_engine.py", "_compute_book_imbalance"): (
+    ("app/options/order_flow/engine.py", "_compute_book_imbalance"): (
         "streaming.book levels",
         "KEEP_DERIVED",
         "Depth imbalance from bid/ask level sizes.",
     ),
-    ("order_flow_engine.py", "_compute_top_book_pressure"): (
+    ("app/options/order_flow/engine.py", "_compute_top_book_pressure"): (
         "streaming.book,quotes",
         "KEEP_DERIVED",
         "Top-of-book pressure composite.",
     ),
-    ("order_flow_engine.py", "_compute_tape_pressure"): (
+    ("app/options/order_flow/engine.py", "_compute_tape_pressure"): (
         "streaming.LAST_PRICE,SIZE",
         "KEEP_DERIVED",
         "Tape pressure from print stream.",
     ),
-    ("order_flow_engine.py", "_compute_cum_delta_proxy"): (
+    ("app/options/order_flow/engine.py", "_compute_cum_delta_proxy"): (
         "streaming prints,quotes",
         "KEEP_DERIVED",
         "Cumulative delta proxy when stream partial.",
     ),
-    ("order_flow_engine.py", "_compute_options_flow"): (
+    ("app/options/order_flow/engine.py", "_compute_options_flow"): (
         "chains.* volume,bidSize,askSize",
         "KEEP_DERIVED",
         "Options flow from chain/stream maps.",
     ),
-    ("order_flow_engine.py", "OrderFlowEngine.compute"): (
+    ("app/options/order_flow/engine.py", "OrderFlowEngine.compute"): (
         "aggregated OF metrics",
         "KEEP_DERIVED",
         "Public OF engine entry; composes sub-metrics.",
@@ -90,17 +90,17 @@ OVERRIDES: dict[tuple[str, str], tuple[str, str, str]] = {
         "NONE",
         "Nested int parse inside get_top_of_book_sizes.",
     ),
-    ("order_flow_streaming.py", "_run_stream_loop._async_run._book_handler"): (
+    ("app/options/order_flow/streaming.py", "_run_stream_loop._async_run._book_handler"): (
         "streaming book events",
         "PASS_THROUGH",
         "Async handler pushes book to live_state.",
     ),
-    ("order_flow_streaming.py", "_run_stream_loop._async_run._level_one_handler"): (
+    ("app/options/order_flow/streaming.py", "_run_stream_loop._async_run._level_one_handler"): (
         "streaming LEVEL_ONE",
         "PASS_THROUGH",
         "Async handler pushes L1 to live_state.",
     ),
-    ("order_flow_streaming.py", "start_order_flow_stream"): (
+    ("app/options/order_flow/streaming.py", "start_order_flow_stream"): (
         "Schwab stream client",
         "PASS_THROUGH",
         "Starts schwab-py stream subscription thread.",

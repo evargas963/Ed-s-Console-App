@@ -1773,7 +1773,7 @@ def check_one_producer() -> list[Violation]:
 
 def check_single_stream_authority() -> list[Violation]:
     """SINGLE-STREAM-AUTHORITY (2026-08-30) — exactly one production Schwab StreamClient
-    constructor, repo-wide. order_flow_streaming.py used to open a second, independent
+    constructor, repo-wide. app/options/order_flow/streaming.py used to open a second, independent
     session at server startup, racing the canonical capture daemon on the same account.
     Root-fixed: that module now reads the daemon's capture DB read-only and opens no
     Schwab session. This gate is the mutation-tested proof it stays that way — a future

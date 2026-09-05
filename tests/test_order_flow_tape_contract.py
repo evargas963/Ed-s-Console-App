@@ -3,7 +3,7 @@ missing, not coerce it to zero -- the same missing-vs-zero contract as the live
 tape state, proved here at the print-iteration seam specifically."""
 from __future__ import annotations
 
-import order_flow_engine as ofe
+import app.options.order_flow.engine as ofe
 
 
 def test_tape_prints_preserve_missing_size_instead_of_zero():

@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-import order_flow_engine as ofe
+import app.options.order_flow.engine as ofe
 
 
 def _book_snapshot() -> dict:
@@ -363,7 +363,7 @@ def test_changed_ladder_under_same_book_time_is_not_served_stale():
 def test_engine_and_route_read_the_same_canonical_state():
     """OrderFlowEngine.compute carries the SAME book_microstructure the route serializes, and its
     book_imbalance_1/3/5 ARE that state's depth imbalances — one faucet, not two producers."""
-    from order_flow_engine import OrderFlowEngine
+    from app.options.order_flow.engine import OrderFlowEngine
     ofe._MICRO_STRUCTURAL_CACHE.pop("SAME", None)
     data = _data()
     out = OrderFlowEngine().compute(data, ticker="SAME")
@@ -522,7 +522,7 @@ def test_mutation_control_single_snapshot_selection_loses_the_price():
 def test_groundedness_freshness_bound_matches_existing_streaming_stale_ms():
     """The Gap-1 bound must be THE existing canonical stream-health threshold, not a
     second, independently-invented number that could silently drift from it."""
-    import order_flow_streaming as ofs
+    import app.options.order_flow.streaming as ofs
     assert ofe.OF_TOP_OF_BOOK_FIELD_STALE_SEC * 1000.0 == ofs.STREAMING_STALE_MS
 
 
@@ -781,7 +781,7 @@ def test_size_g_production_replay_seams_thread_ts_recv_into_push_level_one():
     streaming path cannot silently fall back to an unbounded/approximated timestamp and
     bypass the freshness boundary this file proves above."""
     import inspect
-    import order_flow_streaming as ofs
+    import app.options.order_flow.streaming as ofs
     equity_src = inspect.getsource(ofs._replay_new_rows)
     assert "push_level_one(ticker, item, ts_recv=ts_recv)" in equity_src, (
         "equity replay seam must thread the real row ts_recv into push_level_one")

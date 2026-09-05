@@ -11,7 +11,7 @@ from math_exposure import (
     order_flow_opt_label,
     _book_direction,
 )
-from order_flow_engine import OrderFlowEngine
+from app.options.order_flow.engine import OrderFlowEngine
 
 
 def test_compute_order_flow_verdict_producer_is_retired():

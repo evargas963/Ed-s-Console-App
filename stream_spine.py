@@ -31,8 +31,8 @@ STREAM_CAPTURE_DB_PATH_ENV = "STREAM_CAPTURE_DB_PATH"
 
 def resolve_stream_db_path(default: "Path | str | None" = None) -> Path:
     """THE ONE canonical stream-capture DB path authority every producer and
-    consumer (tools/run_stream_capture.py's CaptureWriter, order_flow_streaming.py's
-    feed-loop reader) resolves through.
+    consumer (tools/run_stream_capture.py's CaptureWriter,
+    app/options/order_flow/streaming.py's feed-loop reader) resolves through.
 
     PR214_RTH_DEFECT_REMEDIATION_V1 (2026-08-31 RTH proof): STREAM_DB_DEFAULT alone
     is checkout-relative with no cross-process override -- a daemon launched with

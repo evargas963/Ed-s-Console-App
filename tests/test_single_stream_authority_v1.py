@@ -1,10 +1,10 @@
 """SINGLE-STREAM-AUTHORITY — PASS/FAIL/mutation controls for the census gate.
 
 tools/check_single_stream_authority.py is the mutation-testable proof that
-order_flow_streaming.py's retired second Schwab socket stays retired. These tests prove
-the gate actually DISCRIMINATES: it passes on the real (repaired) tree, and it FAILS when
-a second production StreamClient constructor is reintroduced — not merely that it prints
-something.
+app/options/order_flow/streaming.py's retired second Schwab socket stays retired. These
+tests prove the gate actually DISCRIMINATES: it passes on the real (repaired) tree, and
+it FAILS when a second production StreamClient constructor is reintroduced — not merely
+that it prints something.
 """
 
 from __future__ import annotations
@@ -53,9 +53,9 @@ def test_classify_production_owner_and_default_violation():
 
 
 def test_prose_mentioning_streamclient_is_not_a_false_positive(tmp_path):
-    """A docstring that explains this repair (order_flow_streaming.py's own module
-    docstring names schwab.streaming.StreamClient in prose) must not be counted — the
-    gate traces actual `Call` nodes through actual `import` statements, not text."""
+    """A repair docstring in app/options/order_flow/streaming.py may name
+    schwab.streaming.StreamClient in prose without counting as a constructor — the gate
+    traces actual `Call` nodes through actual `import` statements, not text."""
     p = tmp_path / "prose_only.py"
     p.write_text(textwrap.dedent('''
         """This module used to open its own schwab.streaming.StreamClient — a real
@@ -171,7 +171,7 @@ def test_mutation_reintroducing_a_second_production_streamclient_fails_the_gate(
     from tools import check_single_stream_authority as gate
 
     def fake_find(path: Path) -> list[int]:
-        if path.name == "order_flow_streaming.py":
+        if path.as_posix().endswith("app/options/order_flow/streaming.py"):
             # Simulate the exact regression this gate exists to catch: the retired
             # socket reappearing in the file it was removed from.
             return [999]
@@ -180,7 +180,7 @@ def test_mutation_reintroducing_a_second_production_streamclient_fails_the_gate(
     real_find = gate.find_stream_client_constructions
     monkeypatch.setattr(gate, "find_stream_client_constructions", fake_find)
     census = gate.run_census()
-    assert "order_flow_streaming.py:999" in census["VIOLATION"]
+    assert "app/options/order_flow/streaming.py:999" in census["VIOLATION"]
     # TEST_SYSTEM_REHAB_V2: main() re-derives its own census via a fresh run_census()
     # call, so asserting `gate.main() == 1` here used to trigger a SECOND full
     # tracked-tree AST scan (this was the 39.75s outlier in the local slowest-20).

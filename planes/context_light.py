@@ -25,7 +25,7 @@ _of_engine_singleton: Any = None
 def _get_order_flow_engine() -> Any:
     global _of_engine_singleton
     if _of_engine_singleton is None:
-        from order_flow_engine import OrderFlowEngine
+        from app.options.order_flow.engine import OrderFlowEngine
 
         _of_engine_singleton = OrderFlowEngine()
     return _of_engine_singleton

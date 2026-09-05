@@ -7,8 +7,8 @@ retirement end-to-end: the producers are gone and the engine emits None for the 
 from __future__ import annotations
 
 import math_exposure as me
-import order_flow_engine as ofe
-from order_flow_engine import OrderFlowEngine
+import app.options.order_flow.engine as ofe
+from app.options.order_flow.engine import OrderFlowEngine
 
 
 def test_compute_order_flow_verdict_producer_is_deleted():

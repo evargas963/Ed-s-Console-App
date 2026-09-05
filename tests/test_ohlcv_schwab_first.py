@@ -78,7 +78,7 @@ ZERO_INJECTION_FILE_ALLOWLIST: tuple[tuple[str, str], ...] = (
     ("ml_train.py", "training window max_ts_utc comparison guard"),
     ("realized_contract_eval.py", "contract eval PnL + SQL pool counts"),
     ("liquidity_value_engine.py", "bar sort key _ts (internal timestamp)"),
-    ("order_flow_engine.py", "Schwab print time_millis sort/cutoff (native leaf present)"),
+    ("app/options/order_flow/engine.py", "Schwab print time_millis sort/cutoff (native leaf present)"),
     ("snapshot_normalizer.py", "materialize row-count audit counters"),
     ("market_state.py", "wall-score audit diff (derived scores)"),
     ("db.py", "SQL COUNT aggregate int coercion"),

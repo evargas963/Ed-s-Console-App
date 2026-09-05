@@ -15,7 +15,7 @@ import inspect
 import pytest
 
 import order_flow_live_state as ofls
-import order_flow_streaming as ofs
+import app.options.order_flow.streaming as ofs
 from stream_spine import CaptureWriter, book_msg, quote_msg
 
 
@@ -166,7 +166,7 @@ def test_set_active_ticker_writes_the_daemon_signal(tmp_path, monkeypatch):
     """This is the ONLY channel by which this module influences the daemon's
     subscriptions — proves the write actually happens, not just that no error is raised."""
     calls = []
-    monkeypatch.setattr("order_flow_streaming.write_active_ticker_signal",
+    monkeypatch.setattr("app.options.order_flow.streaming.write_active_ticker_signal",
                         lambda t: calls.append(t))
     ofs._active_ticker = None
     ofs.set_streaming_active_ticker("spy")

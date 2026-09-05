@@ -15,7 +15,7 @@ import threading
 import time
 
 import order_flow_live_state as ofls
-import order_flow_streaming as ofs
+import app.options.order_flow.streaming as ofs
 from stream_spine import CaptureWriter, book_msg, options_quote_msg
 
 _SPY_CONTRACT = "SPY   260820C00767000"
@@ -137,10 +137,10 @@ def test_get_option_contract_book_microstructure_fails_closed_with_no_book():
 
 def test_set_active_option_contract_writes_signal_and_clears_old_symbol(tmp_path, monkeypatch):
     calls = []
-    monkeypatch.setattr("order_flow_streaming.write_active_option_contract_signal",
+    monkeypatch.setattr("app.options.order_flow.streaming.write_active_option_contract_signal",
                         lambda s: calls.append(s))
     cleared = []
-    monkeypatch.setattr("order_flow_streaming.clear_symbol", lambda s: cleared.append(s))
+    monkeypatch.setattr("app.options.order_flow.streaming.clear_symbol", lambda s: cleared.append(s))
     ofs._active_option_contract = "OLD   260101C00100000"
 
     ok = ofs.set_active_option_contract(_SPY_CONTRACT)
@@ -157,8 +157,8 @@ def test_feed_loop_replays_both_ticker_and_option_contract_independently(tmp_pat
     ofs._active_ticker = None
     ofs._l1_cursor = {}
     ofs._book_cursor = {}
-    monkeypatch.setattr("order_flow_streaming.write_active_ticker_signal", lambda *_a, **_k: None)
-    monkeypatch.setattr("order_flow_streaming.write_active_option_contract_signal", lambda *_a, **_k: None)
+    monkeypatch.setattr("app.options.order_flow.streaming.write_active_ticker_signal", lambda *_a, **_k: None)
+    monkeypatch.setattr("app.options.order_flow.streaming.write_active_option_contract_signal", lambda *_a, **_k: None)
 
     from stream_spine import quote_msg
     w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
@@ -213,8 +213,8 @@ def test_feed_loop_confines_every_db_touch_to_one_thread(tmp_path, monkeypatch):
     ofs._active_ticker = None
     ofs._l1_cursor = {}
     ofs._book_cursor = {}
-    monkeypatch.setattr("order_flow_streaming.write_active_ticker_signal", lambda *_a, **_k: None)
-    monkeypatch.setattr("order_flow_streaming.write_active_option_contract_signal", lambda *_a, **_k: None)
+    monkeypatch.setattr("app.options.order_flow.streaming.write_active_ticker_signal", lambda *_a, **_k: None)
+    monkeypatch.setattr("app.options.order_flow.streaming.write_active_option_contract_signal", lambda *_a, **_k: None)
     _write_option_l1_row(db, _SPY_CONTRACT, _REAL_LEVELONE_OPTIONS_CONTENT, ts_recv=1.0)
 
     seen_idents: set[int] = set()

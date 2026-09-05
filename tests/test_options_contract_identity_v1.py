@@ -9,7 +9,7 @@ from __future__ import annotations
 def test_real_cde_osi_is_not_ticker_c():
     """Prefix match is not identity: real CDE vendor symbol must not bind to C."""
     from instrument_identity import option_underlying_root, vendor_option_root
-    from order_flow_streaming import _contract_matches_underlying
+    from app.options.order_flow.streaming import _contract_matches_underlying
 
     cde = "CDE   260904C00005000"
     assert vendor_option_root(cde) == "CDE"
@@ -22,7 +22,7 @@ def test_real_cde_osi_is_not_ticker_c():
 def test_a_does_not_match_aa_or_aal_osi_roots():
     """Short equity roots must not prefix-match longer distinct underlyings."""
     from instrument_identity import vendor_option_root
-    from order_flow_streaming import _contract_matches_underlying
+    from app.options.order_flow.streaming import _contract_matches_underlying
 
     aa = "AA    260904C00050000"
     aal = "AAL   260904C00050000"
@@ -36,7 +36,7 @@ def test_a_does_not_match_aa_or_aal_osi_roots():
 
 
 def test_exact_underlying_matches_real_vendor_symbols():
-    from order_flow_streaming import _contract_matches_underlying
+    from app.options.order_flow.streaming import _contract_matches_underlying
 
     assert _contract_matches_underlying("CDE   260904C00013000", "CDE") is True
     assert _contract_matches_underlying("CRWD  260918C00038750", "CRWD") is True
@@ -47,7 +47,7 @@ def test_exact_underlying_matches_real_vendor_symbols():
 def test_index_alias_uses_broker_roots_not_invented_weeklies():
     """$SPX/SPX share OSI root SPX via BROKER_INDEX_BARE_ROOTS. SPXW is not aliased."""
     from instrument_identity import option_underlying_root, vendor_option_root
-    from order_flow_streaming import _contract_matches_underlying
+    from app.options.order_flow.streaming import _contract_matches_underlying
 
     assert option_underlying_root("$SPX") == "SPX"
     assert option_underlying_root("SPX") == "SPX"
@@ -62,7 +62,7 @@ def test_index_alias_uses_broker_roots_not_invented_weeklies():
 
 def test_non_osi_symbol_is_fail_closed():
     from instrument_identity import vendor_option_root
-    from order_flow_streaming import _contract_matches_underlying
+    from app.options.order_flow.streaming import _contract_matches_underlying
 
     assert vendor_option_root("CDE") == ""
     assert vendor_option_root("") == ""
@@ -85,7 +85,7 @@ def test_vendor_option_root_reads_symbol_never_constructs():
 
 
 def test_switch_underlying_replaces_stale_foreign_contract(monkeypatch):
-    import order_flow_streaming as ofs
+    import app.options.order_flow.streaming as ofs
 
     written = []
     monkeypatch.setattr(ofs, "write_active_ticker_signal", lambda *_a, **_k: None)
@@ -107,7 +107,7 @@ def test_switch_underlying_replaces_stale_foreign_contract(monkeypatch):
 
 
 def test_same_underlying_manual_contract_is_kept(monkeypatch):
-    import order_flow_streaming as ofs
+    import app.options.order_flow.streaming as ofs
 
     written = []
     monkeypatch.setattr(ofs, "write_active_ticker_signal", lambda *_a, **_k: None)
@@ -134,7 +134,7 @@ def test_spxw_matches_dollar_spx_only_via_banked_chain():
     Without chain evidence SPXW must not alias to $SPX (no invented weekly map).
     With the vendor chain, the same root matches $SPX and still does not match SPY.
     """
-    from order_flow_streaming import _contract_matches_underlying
+    from app.options.order_flow.streaming import _contract_matches_underlying
 
     weekly = "SPXW  260904C07735000"
     assert _contract_matches_underlying(weekly, "$SPX") is False
@@ -155,7 +155,7 @@ def test_spxw_matches_dollar_spx_only_via_banked_chain():
         return None
 
     import calibration.complete_chain_capture as ccc
-    import order_flow_streaming as ofs
+    import app.options.order_flow.streaming as ofs
     orig = ccc.nearest_complete_chain_capture
     ccc.nearest_complete_chain_capture = _nearest
     try:
@@ -169,7 +169,7 @@ def test_spxw_matches_dollar_spx_only_via_banked_chain():
 
 def test_switch_underlying_clears_when_no_replacement(monkeypatch):
     """CDE -> C with no banked C chain must not keep the CDE contract."""
-    import order_flow_streaming as ofs
+    import app.options.order_flow.streaming as ofs
 
     written = []
     monkeypatch.setattr(ofs, "write_active_ticker_signal", lambda *_a, **_k: None)

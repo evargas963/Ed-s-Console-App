@@ -1029,7 +1029,8 @@ async def _await_event(pred, *, timeout=25.0, what="condition"):
     raise AssertionError(f"timed out waiting for {what}")
 
 
-async def _drive_daemon(m, db, *, driver, symbols=("SPY",), probe=None):
+async def _drive_daemon(m, db, *, driver, symbols=("SPY",), probe=None,
+                        state=None, state_factory=None):
     """Run the REAL _run_streaming with the lifecycle-instrumented StreamClient."""
     writer = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
     bus = MessageBus()
@@ -1040,9 +1041,10 @@ async def _drive_daemon(m, db, *, driver, symbols=("SPY",), probe=None):
     stats.per_service["LEVELONE_EQUITIES"] = 1
 
     drv = asyncio.create_task(driver(stop, writer))
+    initial_state = state or SimpleNamespace(client=object())
     run = asyncio.create_task(
         m._run_streaming(list(symbols), 0.0, bus, health, stats, writer, wsub, stop,
-                         SimpleNamespace(client=object())))
+                         initial_state, state_factory=state_factory))
     try:
         await asyncio.wait_for(drv, timeout=45)
         await asyncio.wait_for(run, timeout=45)
@@ -1206,6 +1208,62 @@ def test_recycle_retires_the_old_generation_before_the_replacement_is_built(tmp_
         f"generation 1 must be logged out before generation 2 logs in: {labels}")
     assert _LifecycleStream.max_live <= 1, (
         f"two sessions were live at once (max {_LifecycleStream.max_live})")
+
+
+def test_each_stream_generation_closes_its_rest_transport_after_login(tmp_path,
+                                                                       monkeypatch):
+    """The websocket generation must not retain its one-shot preferences REST socket."""
+    import app.market_data.schwab.streaming.capture as m
+
+    db = tmp_path / "cap.db"
+    _reset_lifecycle()
+    _install_lifecycle_stream(monkeypatch)
+    monkeypatch.setattr(m, "STATUS_LOOP_INTERVAL_SEC", 0.02)
+    gate = asyncio.Event()
+    monkeypatch.setattr(m, "stream_needs_recycle", _one_shot_recycle(gate))
+    write_active_option_contract_signal(_A_CONTRACT)
+    sessions = []
+
+    class _RestSession:
+        def __init__(self):
+            self.close_count = 0
+
+        def close(self):
+            self.close_count += 1
+
+    def state_factory():
+        session = _RestSession()
+        sessions.append(session)
+        return SimpleNamespace(
+            ok=True,
+            message="ok",
+            client=SimpleNamespace(session=session),
+        )
+
+    initial_state = state_factory()
+
+    async def driver(stop, writer):
+        await _await_event(
+            lambda: any(e[0] == "login" and e[1] == 1 for e in _LifecycleStream.events),
+            what="generation 1 login",
+        )
+        gate.set()
+        await _await_event(
+            lambda: any(e[0] == "login" and e[1] == 2 for e in _LifecycleStream.events),
+            what="generation 2 login",
+        )
+        stop.set()
+
+    asyncio.run(_drive_daemon(
+        m,
+        db,
+        driver=driver,
+        state=initial_state,
+        state_factory=state_factory,
+    ))
+
+    assert len(sessions) == 2, "initial connect and one recycle need distinct REST clients"
+    assert [session.close_count for session in sessions] == [1, 1]
 
 
 def test_d2_shutdown_ended_ts_is_the_surrender_instant_not_the_drain_completion(
@@ -1852,7 +1910,7 @@ def _claim_barrier_env(tmp_path, monkeypatch, ttl=1.5):
 
     Both sides read one constant in production, so the test shrinks both together —
     shrinking only one would measure a mismatch that cannot occur."""
-    import order_flow_streaming as ofs
+    import app.options.order_flow.streaming as ofs
     import app.market_data.schwab.streaming.capture as d
     from stream_spine import CaptureWriter, CoverageWriteError
 
@@ -2008,7 +2066,7 @@ def _barrier_boundary_case(tmp_path, monkeypatch, *, path, ttl=1.5):
     was actually given up.
 
     `path` is "recycle" or "shutdown"; returns (ended_ts, actual_surrender_ts, waited)."""
-    import order_flow_streaming as ofs
+    import app.options.order_flow.streaming as ofs
     import app.market_data.schwab.streaming.capture as m
     from stream_spine import CoverageWriteError
 
@@ -2131,7 +2189,7 @@ def test_barrier_wait_is_not_counted_against_the_reconnect_cooldown(tmp_path, mo
 
     Measured through the real seam: the first cooldown reading after a barrier-delayed
     recycle must reflect the time since the RECONNECT, not since the recycle decision."""
-    import order_flow_streaming as ofs
+    import app.options.order_flow.streaming as ofs
     import app.market_data.schwab.streaming.capture as m
     from stream_spine import CoverageWriteError
 

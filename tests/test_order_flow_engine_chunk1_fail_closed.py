@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from order_flow_engine import OrderFlowEngine, _compute_rvol, _compute_spread
+from app.options.order_flow.engine import OrderFlowEngine, _compute_rvol, _compute_spread
 
 
 def test_rvol_fail_closed_when_avg_volume_missing():

@@ -22,6 +22,7 @@ class Mega1TraceableDerivation:
 
 MEGA1_FILES = frozenset(
     {
+        "app/api/routes/options_order_flow.py",
         "live_decision_bundle.py",
         "live_market_plane.py",
         "live_pipeline_diag.py",
@@ -476,7 +477,7 @@ MEGA1_TRACEABLE_INVENTORY: tuple[Mega1TraceableDerivation, ...] = (
     Mega1TraceableDerivation("server.py", 13935, "api_order_flow_options_microstructure", "ALLOWLISTED", None, (), 'mega1_live_plane_state', "Same ORDER_FLOW_MARKET_MICROSTRUCTURE_V1 shape as api_order_flow_microstructure, for one option contract's live book. This row serializes over in-memory live-plane state; the actual computation it delegates to (order_flow_streaming.get_option_contract_book_microstructure -> order_flow_engine.compute_book_microstructure, never a second book-imbalance computation) lives in mega2-owned files and is registered + chain-closed there, not re-derived here."),
     Mega1TraceableDerivation("server.py", 13955, "post_streaming_active_option_contract", "ALLOWLISTED", None, (), 'mega1_sqlite_internal', "Subscribes LEVELONE_OPTIONS+OPTIONS_BOOK to one option contract via the daemon signal file — mirrors post_streaming_active_ticker for the separate option-contract slot (post_streaming_active_option_contract)."),
     Mega1TraceableDerivation("server.py", 13964, "post_streaming_active_option_contract._apply", "NONE", None, (), None, "No market-field derivation: nested closure; offloads set_active_option_contract to the thread pool, same pattern as post_streaming_active_ticker._apply."),
-    Mega1TraceableDerivation("server.py", 14201, "api_options_history", "ALLOWLISTED", None, (), 'mega1_live_plane_state', "Same options live payload as api_order_flow_options_microstructure, computed from persisted stream_capture rows via app.options.history + live_payload; this row serializes, it does not re-derive book/tape math."),
+    Mega1TraceableDerivation("app/api/routes/options_order_flow.py", 16, "options_history", "ALLOWLISTED", None, (), 'mega1_live_plane_state', "Same options live payload as api_order_flow_options_microstructure, computed from persisted stream_capture rows via app.options.order_flow.history + live_payload; this route serializes, it does not re-derive book/tape math."),
     Mega1TraceableDerivation("snapshot_access.py", 31, "require_snapshot_timeframe", "ALLOWLISTED", None, (), 'mega1_sqlite_internal', "Enforces explicit timeframe on snapshot SQL reads."),
     Mega1TraceableDerivation("snapshot_access.py", 50, "is_canonical_timeframe", "NONE", None, (), None, "No market-field derivation: Compares to CANONICAL_TIMEFRAME constant."),
     Mega1TraceableDerivation("snapshot_normalizer.py", 54, "_connect", "NONE", None, (), None, "No market-field derivation: SQLite connection helper."),

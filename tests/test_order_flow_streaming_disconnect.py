@@ -1,17 +1,18 @@
 """Regression: staleness gating must not serve a frozen L1 cache.
 
-Rewritten for the single-stream-authority repair: order_flow_streaming.py no longer owns
-a Schwab socket (that disconnect-classification logic now lives solely in the canonical
-capture daemon), so `_is_stream_disconnect_error` no longer exists here. The BEHAVIOR this
-file protects — staleness must gate `streaming_l1_cache_usable` before it gates the
-coarser `get_plane_authority_for_ticker` bucket — is unchanged and still asserted.
+Rewritten for the single-stream-authority repair:
+app/options/order_flow/streaming.py no longer owns a Schwab socket (that
+disconnect-classification logic now lives solely in the canonical capture daemon), so
+`_is_stream_disconnect_error` no longer exists here. The BEHAVIOR this file protects —
+staleness must gate `streaming_l1_cache_usable` before it gates the coarser
+`get_plane_authority_for_ticker` bucket — is unchanged and still asserted.
 """
 
 from __future__ import annotations
 
 import time
 
-import order_flow_streaming as ofs
+import app.options.order_flow.streaming as ofs
 
 
 def _reset_feed_globals() -> None:

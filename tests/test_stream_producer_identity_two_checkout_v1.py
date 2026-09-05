@@ -24,7 +24,7 @@ from __future__ import annotations
 import time as _time
 
 import order_flow_live_state as ofls
-import order_flow_streaming as ofs
+import app.options.order_flow.streaming as ofs
 from stream_spine import CaptureWriter, quote_msg
 
 

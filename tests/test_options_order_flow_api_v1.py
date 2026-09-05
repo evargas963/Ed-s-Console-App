@@ -82,7 +82,7 @@ def test_options_microstructure_streaming_plane_reflects_real_diagnostics(monkey
     get_option_contract_streaming_diagnostics() state for the contract being served."""
     import json
 
-    import order_flow_streaming as ofs
+    import app.options.order_flow.streaming as ofs
     import server as srv
 
     ofs._feed_running = True
@@ -116,7 +116,7 @@ def test_active_option_contract_post_calls_the_real_setter(monkeypatch):
     import json
 
     calls = []
-    monkeypatch.setattr("order_flow_streaming.set_active_option_contract",
+    monkeypatch.setattr("app.options.order_flow.streaming.set_active_option_contract",
                         lambda c, **kw: calls.append(c) or True)
     import server as srv
 
@@ -148,7 +148,7 @@ def test_active_option_contract_post_surfaces_setter_failure(monkeypatch):
         invoked["contract"] = c
         invoked["generation"] = command_generation
         raise RuntimeError("signal write failed")
-    monkeypatch.setattr("order_flow_streaming.set_active_option_contract", _boom)
+    monkeypatch.setattr("app.options.order_flow.streaming.set_active_option_contract", _boom)
     import server as srv
 
     resp = asyncio.run(srv.post_streaming_active_option_contract(
@@ -232,7 +232,7 @@ def test_blocker1a_query_a_while_active_b_fails_closed():
     """REQUIRED 1: API A while active B -> mismatch fails closed."""
     import json
 
-    import order_flow_streaming as ofs
+    import app.options.order_flow.streaming as ofs
     import server as srv
 
     _force_live_option_plane(ofs, _QQQ_CONTRACT)          # plane is bound to B
@@ -259,7 +259,7 @@ def test_blocker1a_query_a_while_active_a_is_normal_health(monkeypatch, tmp_path
     requested A."""
     import json
 
-    import order_flow_streaming as ofs
+    import app.options.order_flow.streaming as ofs
     import server as srv
 
     _force_live_option_plane(ofs, _SPY_CONTRACT)
@@ -287,7 +287,7 @@ def test_gap1a_requested_b_while_producer_still_a_is_not_confirmed(monkeypatch, 
     physically still subscribed to A."""
     import json
 
-    import order_flow_streaming as ofs
+    import app.options.order_flow.streaming as ofs
     import server as srv
 
     _force_live_option_plane(ofs, _QQQ_CONTRACT)          # server REQUESTED B
@@ -311,7 +311,7 @@ def test_gap1a_producer_switches_to_b_then_identity_is_confirmed(monkeypatch, tm
     """...and once the producer's open epochs DO switch to B, identity is confirmed."""
     import json
 
-    import order_flow_streaming as ofs
+    import app.options.order_flow.streaming as ofs
     import server as srv
 
     _force_live_option_plane(ofs, _QQQ_CONTRACT)
@@ -336,7 +336,7 @@ def test_ambiguous_open_ledger_fails_closed_not_newest_row_wins(monkeypatch, tmp
     guard (1E) now makes this state unreachable through the normal path."""
     import json
 
-    import order_flow_streaming as ofs
+    import app.options.order_flow.streaming as ofs
     import server as srv
     from stream_spine import CaptureWriter, read_open_coverage_symbols
 
@@ -392,7 +392,7 @@ def test_gap1a_partial_producer_state_is_not_a_fully_healthy_plane(monkeypatch, 
     healthy B plane -- both option services are required for a full contract match."""
     import json
 
-    import order_flow_streaming as ofs
+    import app.options.order_flow.streaming as ofs
     import server as srv
 
     for i, book_state in enumerate((_SPY_CONTRACT, None)):  # BOOK on the OLD contract, or absent
@@ -417,7 +417,7 @@ def test_gap1a_partial_producer_state_is_not_a_fully_healthy_plane(monkeypatch, 
 def test_blocker1a_whole_plane_query_keeps_historical_unbound_answer():
     """No caller-specified subject -> contract_match is None (not fabricated), and the
     historical whole-plane answer is unchanged for existing callers."""
-    import order_flow_streaming as ofs
+    import app.options.order_flow.streaming as ofs
 
     _force_live_option_plane(ofs, _QQQ_CONTRACT)
     try:
@@ -435,13 +435,13 @@ def test_blocker1a_post_ack_health_is_bound_to_the_requested_contract(monkeypatc
     import asyncio
     import json
 
-    import order_flow_streaming as ofs
+    import app.options.order_flow.streaming as ofs
     import server as srv
 
     _force_live_option_plane(ofs, _QQQ_CONTRACT)
     # Setter stubbed to a no-op FAILURE so the active contract stays on B while the
     # request asks for A -- exactly the unbound-acknowledgement shape.
-    monkeypatch.setattr("order_flow_streaming.set_active_option_contract",
+    monkeypatch.setattr("app.options.order_flow.streaming.set_active_option_contract",
                         lambda _c, **kw: False)
     try:
         resp = asyncio.run(srv.post_streaming_active_option_contract(
@@ -468,7 +468,7 @@ def test_gap2_delayed_older_command_cannot_overwrite_newer_desired_state(monkeyp
     write FIRST, then let the delayed A write proceed. Final server desired state and
     signal file must both be B, and A must report as superseded — not as the successful
     current authority."""
-    import order_flow_streaming as ofs
+    import app.options.order_flow.streaming as ofs
     from stream_spine import read_active_option_contract_signal
 
     signal = tmp_path / "stream_active_option_contract.json"
@@ -504,7 +504,7 @@ def test_gap2_superseded_command_endpoint_reports_conflict_not_success(monkeypat
     import asyncio
     import json
 
-    import order_flow_streaming as ofs
+    import app.options.order_flow.streaming as ofs
     import server as srv
 
     signal = tmp_path / "stream_active_option_contract.json"
@@ -533,7 +533,7 @@ def test_gap2_superseded_command_endpoint_reports_conflict_not_success(monkeypat
 def test_gap2_a_command_with_no_generation_keeps_historical_behavior():
     """Internal/test callers that pass no generation are unaffected (single-caller
     assumption, encoded explicitly rather than silently)."""
-    import order_flow_streaming as ofs
+    import app.options.order_flow.streaming as ofs
 
     ofs._active_option_contract = None
     try:
@@ -592,7 +592,7 @@ def test_durable_truth_surrendered_epoch_is_never_producer_confirmation(tmp_path
     confirming them is that the live producer no longer CLAIMS those epoch ids."""
     import sqlite3
 
-    import order_flow_streaming as ofs
+    import app.options.order_flow.streaming as ofs
 
     db, open_ids = _surrendered_but_unclosed_db(tmp_path, monkeypatch, ofs, _SPY_CONTRACT)
 
@@ -626,7 +626,7 @@ def test_durable_truth_repeated_ticks_during_the_write_failure_stay_fail_closed(
     identity must read UNKNOWN throughout rather than naming the contract."""
     import asyncio
 
-    import order_flow_streaming as ofs
+    import app.options.order_flow.streaming as ofs
     import app.market_data.schwab.streaming.capture as d
     from stream_spine import CaptureWriter, CoverageWriteError
 
@@ -682,7 +682,7 @@ def test_durable_truth_a_producer_that_cannot_write_goes_unknown_not_confirmed(
     heartbeat is what must make that unknown — otherwise the last claim stands forever."""
     import time as _t
 
-    import order_flow_streaming as ofs
+    import app.options.order_flow.streaming as ofs
     from stream_spine import CaptureWriter
 
     db = tmp_path / "stale_producer.db"
@@ -714,7 +714,7 @@ def test_durable_truth_recovery_still_records_the_original_surrender_timestamp(t
     deferred close records the instant coverage was SURRENDERED, not the repair time."""
     import sqlite3
 
-    import order_flow_streaming as ofs
+    import app.options.order_flow.streaming as ofs
     import app.market_data.schwab.streaming.capture as d
     from stream_spine import CaptureWriter, CoverageWriteError
 

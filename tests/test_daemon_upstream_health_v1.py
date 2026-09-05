@@ -15,7 +15,7 @@ from __future__ import annotations
 import json
 import time
 
-import order_flow_streaming as ofs
+import app.options.order_flow.streaming as ofs
 
 
 def test_missing_status_file_reports_unknown_never_running(tmp_path, monkeypatch):

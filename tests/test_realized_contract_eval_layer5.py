@@ -481,7 +481,7 @@ def test_replay_module_imports_no_live_state():
         "server",
         "live_market_plane",
         "order_flow_live_state",
-        "order_flow_streaming",
+        "app.options.order_flow.streaming",
         "market_context",
         "schwab_client",
         "market_data_adapter",

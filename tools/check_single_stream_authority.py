@@ -2,7 +2,7 @@
 """SINGLE-STREAM-AUTHORITY — exactly one production Schwab StreamClient constructor.
 
 OPERATOR MANDATE (2026-08-30): "PRODUCTION_SCHWAB_STREAMCLIENT_CONSTRUCTORS = exactly 1
-or STOP with exact remaining violations." order_flow_streaming.py used to open a second,
+or STOP with exact remaining violations." app/options/order_flow/streaming.py used to open a second,
 independent `schwab.streaming.StreamClient` at server startup — racing the canonical
 capture daemon's own session for the same account's market truth. The repair retired that
 socket; this gate is the MUTATION-TESTABLE proof it stays retired, not a one-time cleanup
@@ -10,7 +10,7 @@ that could silently regress on the next PR that "just needs a quick stream for X
 
 WHAT IS COUNTED. A `StreamClient(...)` call, traced through actual `import` statements in
 the SAME file — not a substring match on the word "StreamClient", which a docstring
-explaining this very repair would trip (measured: order_flow_streaming.py's own comment
+explaining this very repair would trip (measured: app/options/order_flow/streaming.py's own comment
 mentions the class by name). Only calls resolvable to `schwab.streaming.StreamClient`
 count; an unrelated class of the same name in an unrelated module does not.
 
