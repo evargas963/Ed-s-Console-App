@@ -18,6 +18,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -701,6 +702,106 @@ def completion_claim_violations(text: str, repo: Path | None = None) -> list[str
     return out
 
 
+# ── RC-517: VERIFICATION EXECUTION — heavy jobs are inventoried, never guessed ─────────
+#: A CPU-heavy verification wave: the whole pytest suite (parallel or bare), the E2E stack,
+#: the delta gate (two clean worktrees, the whole catalog in each), the whole institutional
+#: catalog, and the real-boundary campaign. Two of these at once make both slower and their
+#: timing evidence meaningless (MEASURED 2026-09-04: the campaign's first case took 1661 s
+#: beside an 8-worker pytest wave, 464-1356 s alone). Judged on the COMMAND, never on prose.
+_HEAVY_SCRIPTS = (
+    "check_delta_adds_no_debt.py",
+    "check_institutional_correctness.py",
+    "institutional_e2e_boundary_campaign.py",
+)
+_PYTEST_TARGET_RE = re.compile(r"(?:^|[\s/\\])test_[\w-]+\.py(?:::|\s|$)|::test_", re.I)
+
+
+def heavy_verification_kind(cmd: str) -> str | None:
+    """The kind of CPU-heavy verification wave `cmd` launches, or None for anything else —
+    a targeted test run (named test files or node ids, no worker fan-out) is not heavy.
+    Read from the executed shell text; heredoc bodies and -c payloads are data."""
+    if not cmd:
+        return None
+    if re.search(r"\b(?:make\s+test-all|npm\s+run\s+test(?::all|:e2e)?|npx\s+playwright\s+test)\b", cmd, re.I):
+        return "e2e-suite"
+    for script in _HEAVY_SCRIPTS:
+        if script in cmd and "--rebaseline" not in cmd and "--heavy-jobs" not in cmd:
+            return script.replace(".py", "")
+    for seg in re.split(r"&&|\|\||;|\n", cmd):
+        if not re.search(r"\bpytest\b", seg, re.I):
+            continue
+        if re.search(r"\s-n\s*\d+\b|\s-n\s+auto\b|--dist\b|--numprocesses\b", seg):
+            return "pytest-parallel"
+        if not _PYTEST_TARGET_RE.search(seg):
+            return "pytest-whole-suite"
+    return None
+
+
+def heavy_verification_jobs(exclude_pids: set[int] | None = None) -> list[dict]:
+    """Every heavy verification process alive on this host right now: pid, kind, start time,
+    age, CPU seconds, children and command — the inventory the anomaly trigger and the
+    competing-wave block both read. Excludes this process and its ancestors (a guard running
+    inside a pytest must not report the pytest it runs in). psutil absent -> one
+    UNMEASURABLE row, never a fabricated 'nothing running'."""
+    try:
+        import psutil
+    except ImportError:
+        return [{"pid": 0, "kind": "UNMEASURABLE", "age_seconds": 0, "cpu_seconds": 0,
+                 "command": "", "note": "psutil not importable — install it; an inventory "
+                 "that cannot look is not an inventory"}]
+    me = psutil.Process()
+    skip = {me.pid} | {p.pid for p in me.parents()} | set(exclude_pids or ())
+    out: list[dict] = []
+    now = time.time()
+    for proc in psutil.process_iter(["pid", "cmdline", "create_time"]):
+        try:
+            if proc.info["pid"] in skip:
+                continue
+            cmd = " ".join(proc.info.get("cmdline") or [])
+            kind = heavy_verification_kind(cmd)
+            if not kind:
+                continue
+            cpu = proc.cpu_times()
+            out.append({
+                "pid": proc.info["pid"], "kind": kind,
+                "started_utc": datetime.fromtimestamp(proc.info["create_time"], tz=timezone.utc)
+                .strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "age_seconds": round(now - proc.info["create_time"]),
+                "cpu_seconds": round(cpu.user + cpu.system, 1),
+                "children": len(proc.children(recursive=True)),
+                "command": cmd[:240],
+            })
+        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+            continue
+    return sorted(out, key=lambda j: j["pid"])
+
+
+def competing_heavy_verification_violations(cmd: str, jobs: list[dict] | None = None) -> list[str]:
+    """RC-517 (AGENTS.md verification discipline, contention clause): launching a heavy
+    verification wave while another is alive is BLOCKED at the command. Investigate the
+    running job first (`python tools/operating_process_lock.py --heavy-jobs`): healthy ->
+    wait for it; stuck -> stop it and root-fix the cause. Parallelism that has been proven
+    isolated lives INSIDE the owner that proved it (the campaign's --parallel), so one
+    launch is one wave. Targeted runs are never gated."""
+    kind = heavy_verification_kind(cmd)
+    if not kind:
+        return []
+    active = heavy_verification_jobs() if jobs is None else jobs
+    if not active:
+        return []
+    lines = "; ".join(f"pid {j['pid']} {j['kind']} age {j.get('age_seconds', '?')}s cpu "
+                      f"{j.get('cpu_seconds', '?')}s: {(j.get('command') or j.get('note') or '')[:90]}"
+                      for j in active[:4])
+    return [
+        f"COMPETING_HEAVY_VERIFICATION (RC-517): this command launches a {kind} wave while "
+        f"{len(active)} heavy verification job(s) are alive — {lines}. Two waves on one host "
+        f"make both slower and their timing evidence meaningless (measured 2026-09-04). "
+        f"Inspect the running job with `python tools/operating_process_lock.py --heavy-jobs`; "
+        f"if it is healthy, wait for it; if it is stuck, stop it and root-fix the cause; then "
+        f"launch. Targeted runs (named test files or node ids, no -n) are not gated."
+    ]
+
+
 def commit_violations(repo: Path | None = None) -> list[str]:
     """Predicates for git commit PreToolUse / pre-commit."""
     root = repo or REPO
@@ -756,7 +857,16 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--pre-commit", action="store_true", help="pre-commit mode: exit 1 on violation")
     p.add_argument("--measure", action="store_true", help="print JSON measure report")
     p.add_argument("--commit-check", action="store_true", help="commit-time predicates only")
+    p.add_argument("--heavy-jobs", action="store_true",
+                   help="RC-517: inventory every CPU-heavy verification process alive on this "
+                        "host (pid, kind, start, age, CPU seconds, children, command) — the "
+                        "evidence a 'still running' claim must carry")
     args = p.parse_args(argv)
+    if args.heavy_jobs:
+        print(json.dumps({"measured_at_utc": datetime.now(tz=timezone.utc)
+                          .strftime("%Y-%m-%dT%H:%M:%SZ"),
+                          "heavy_jobs": heavy_verification_jobs()}, indent=2))
+        return 0
     if args.measure:
         print(json.dumps(measure_report(), indent=2))
         return 0

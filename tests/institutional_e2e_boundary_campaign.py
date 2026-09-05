@@ -208,6 +208,56 @@ def run_case(wt: Path, head: str, bases: dict[str, str], case: dict) -> dict:
     }
 
 
+def completed_cases(jsonl: Path | None, head: str) -> dict[str, dict]:
+    """Records already proven for THIS head (ok=True) — reused, never recomputed, unless
+    --force. A record for another head is a different candidate and is ignored."""
+    if jsonl is None or not jsonl.is_file():
+        return {}
+    out: dict[str, dict] = {}
+    for line in jsonl.read_text(encoding="utf-8").splitlines():
+        try:
+            rec = json.loads(line)
+        except ValueError:
+            continue
+        if rec.get("head") == head and rec.get("ok") is True and rec.get("id"):
+            out[rec["id"]] = rec
+    return out
+
+
+def _run_parallel(args, out_path: Path | None) -> int:
+    """One launch, four isolated children (one per base group). Isolation is structural: each
+    child materialises its own worktree, stages its own index, and the shared base cache is
+    content-keyed and written atomically. Results are merged into --out."""
+    if out_path is None:
+        print("--parallel needs --out (the merged record)", flush=True)
+        return 2
+    groups = sorted({c["base"] for c in CASES if not args.only or any(c["id"].startswith(p) for p in args.only)})
+    procs = []
+    for g in groups:
+        gout = out_path.with_name(f"{out_path.stem}.{g}.json")
+        cmd = [sys.executable, __file__, "--base-group", g, "--out", str(gout), "--skip-preflight"]
+        if args.force:
+            cmd.append("--force")
+        for p in args.only:
+            cmd += ["--only", p]
+        procs.append((g, gout, subprocess.Popen(cmd, cwd=str(REPO))))
+        print(f"launched group {g} pid {procs[-1][2].pid} -> {gout.name}", flush=True)
+    rc = 0
+    cases: list[dict] = []
+    for g, gout, proc in procs:
+        proc.wait()
+        rc |= proc.returncode
+        if gout.is_file():
+            cases.extend(json.loads(gout.read_text(encoding="utf-8")).get("cases", []))
+    head = _git(REPO, "rev-parse", "HEAD").strip()
+    payload = {"head": head, "cases": cases, "all_ok": bool(cases) and all(c["ok"] for c in cases),
+               "parallel_groups": groups, "max_concurrency": len(groups)}
+    out_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8", newline="\n")
+    print(f"campaign {'PASS' if payload['all_ok'] and rc == 0 else 'FAIL'}: "
+          f"{sum(c['ok'] for c in cases)}/{len(cases)} cases across {len(groups)} parallel groups", flush=True)
+    return 0 if payload["all_ok"] and rc == 0 else 1
+
+
 def preflight(out_path: Path | None) -> list[str]:
     """Environment proof BEFORE the expensive part: nothing here changes what is measured.
     Returns the problems found; an empty list means go."""
@@ -238,12 +288,14 @@ def preflight(out_path: Path | None) -> list[str]:
         problems.append(f"cannot materialise a worktree: {exc}")
     finally:
         shutil.rmtree(probe_wt.parent, ignore_errors=True)
-    if os.name == "nt":
-        listing = subprocess.run(["tasklist", "/FO", "CSV", "/NH"], capture_output=True, text=True,
-                                 encoding="utf-8", errors="replace").stdout.lower()
-        busy = [name for name in ("node.exe", "playwright") if name in listing]
+    try:   # RC-517: the same inventory the PreToolUse guard reads — one owner
+        from tools.operating_process_lock import heavy_verification_jobs
+        busy = heavy_verification_jobs()
         if busy:
-            problems.append(f"competing workload running (the campaign owns the machine): {busy}")
+            problems.append("competing heavy verification alive (the campaign owns the machine): "
+                            + "; ".join(f"pid {j['pid']} {j['kind']}" for j in busy[:4]))
+    except Exception as exc:  # noqa: BLE001
+        problems.append(f"heavy-job inventory unavailable: {type(exc).__name__}: {exc}")
     return problems
 
 
@@ -256,6 +308,11 @@ def main(argv: list[str] | None = None) -> int:
                          "the groups are independent, so four processes with one group each "
                          "finish in the time of the longest group")
     ap.add_argument("--skip-preflight", action="store_true")
+    ap.add_argument("--force", action="store_true",
+                    help="re-measure cases already recorded ok for this HEAD (proof reuse off)")
+    ap.add_argument("--parallel", action="store_true",
+                    help="run the four base groups as four child processes, one worktree each "
+                         "(proven isolated: separate worktree, index and cache entry); ONE launch")
     args = ap.parse_args(argv)
     out_path = Path(args.out) if args.out else None
     if not args.skip_preflight:
@@ -265,8 +322,11 @@ def main(argv: list[str] | None = None) -> int:
                 print("PREFLIGHT: " + p, flush=True)
             print("campaign NOT STARTED: fix the environment first (nothing was measured)", flush=True)
             return 2
+    if args.parallel:
+        return _run_parallel(args, out_path)
     head = _git(REPO, "rev-parse", "HEAD").strip()
     jsonl = out_path.with_suffix(".jsonl") if out_path else None   # flushed per case
+    completed = {} if args.force else completed_cases(jsonl, head)
     tmp = Path(tempfile.mkdtemp(prefix="e2e-campaign-"))
     wt = tmp / "wt"
     _git(REPO, "worktree", "add", "--detach", "-q", str(wt), head)
@@ -276,6 +336,13 @@ def main(argv: list[str] | None = None) -> int:
         wanted = [c for c in CASES
                   if (not args.only or any(c["id"].startswith(p) for p in args.only))
                   and (not args.base_group or c["base"] in args.base_group)]
+        for case in list(wanted):
+            if case["id"] in completed:      # PROOF REUSE: same HEAD, recorded ok, unchanged
+                rec = dict(completed[case["id"]], reused=True)
+                results.append(rec)
+                wanted.remove(case)
+                print(f"ok  {case['id']}: REUSED record for {head[:12]} "
+                      f"(exit {rec['exit_code']}, measured {rec.get('ended_utc', '?')})", flush=True)
         bases = {"head": head}
         for key, files in (("dup", BASE_DUP), ("superseded", BASE_SUPERSEDED), ("collision", BASE_COLLISION)):
             if not any(c["base"] == key for c in wanted):

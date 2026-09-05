@@ -68,6 +68,32 @@
 
 - **DONE when:** the delta gate passes at the final SHA and every material defect discovered on the connected path is CLOSED with evidence or `BLOCKED` on a named external event.
 
+## 8. VERIFICATION EXECUTION (RC-517 — the law is `AGENTS.md`, Verification discipline; this is the procedure)
+
+**What was observed (2026-09-04, this repository, two agents independently):** a serial real-boundary campaign projected at two hours; its first attempt lost 28 minutes to a console-encoding crash with no per-case record; the rerun launched beside an 8-worker pytest-full wave and both slowed; 43 minutes of blind waiting on buffered output; a full wave run on a copied venv missing two pinned dependencies; the same full suite rerun after every fix; fifteen state-bound test failures caused by concurrent worktree mutation, rerun in isolation for 30 minutes.
+
+**Order of work.**
+1. Targeted first: the tests that name the changed behaviour, then the affected suites. Green and stable before anything expensive.
+2. Preflight the expensive operation: interpreter is the repo `.venv` and imports the modules the run needs; the environment variables are the intended ones (`ED_CI_OFFLINE=1` + placeholder credentials for offline proof; real credentials and NO offline flag for a live claim — never inherited); test and runtime paths are isolated (`ED_TERRAIN_QUARANTINE_LEDGER` and the like point at scratch); the tree is the intended one (`git status --short` empty, HEAD is the SHA under proof, worktree is not the production checkout); `python tools/operating_process_lock.py --heavy-jobs` shows nothing alive. The boundary campaign runs this preflight itself and refuses to start otherwise.
+3. Launch ONE expensive wave at a time. Parallelism that is proven isolated (the campaign's base groups: one worktree, one index, one cache entry each) is launched as one command by the owner that proved it (`tests/institutional_e2e_boundary_campaign.py --parallel`), never as several agent-launched waves. The PreToolUse guard blocks a second heavy launch while one is alive.
+4. Watch with evidence, not with time. Every long run flushes per-case results as they finish (the campaign writes a JSONL record per case: id, base and candidate SHA, timestamps, both gate lines, exit status, expected violation, correct-reason flag). While waiting, the evidence of health is `--heavy-jobs` (pid, age, CPU seconds, children) plus output growth.
+5. Anomaly trigger — investigate, do not wait: when the run exceeds twice its last measured duration for the same operation on this host, or produces no new observable progress for 15 minutes, run `--heavy-jobs`, inspect the newest output, and decide: healthy (CPU advancing, phase advancing) → continue and state that proof; unhealthy (no CPU, no growth, blocked on a lock or an external wait) → stop it and root-fix; slow by design (serial independent work, repeated identical evidence) → fix the design before repeating. Reference durations on this host: one delta-gate side 8–13 min; the campaign's longest base group ≈ 45 min when run as four parallel groups; pytest-full `-n 8` ≈ 44 min.
+6. After a failure: classify it (candidate defect / harness defect / environment defect / state-bound test), fix the root cause, rerun ONLY the affected proof. Completed independent proof is reused when its identity is unchanged — the delta gate's base cache is keyed on base commit + gate blob + driver + interpreter, and the campaign reuses a recorded case for the same HEAD unless `--force`. A change to the gate, the roster, the driver's staging or the candidate invalidates the affected proof and only that proof.
+7. The required final verification runs ONCE at the final SHA: the commit hook battery, then required Hardening and pytest-full on the pushed commit. No further local full wave is launched to "be safe".
+
+**Classification of each requirement.**
+
+| Requirement | Class | Owner |
+|---|---|---|
+| No competing heavy waves | MECHANICALLY_ENFORCEABLE_EXISTING_OWNER | `tools/process_lock_guard.py` → `operating_process_lock.competing_heavy_verification_violations` (blocks a heavy launch while `heavy_verification_jobs()` is non-empty). Known blind spot, measured: a second launch issued within the first wave's process start-up window (about 2 s, before the interpreter exists in the process table) is not seen — the inventory reads processes, not intentions; two launches in one breath remain the agent's discipline |
+| Unchanged base-side proof is not recomputed | MECHANICALLY_ENFORCEABLE_EXISTING_OWNER | `tools/check_delta_adds_no_debt.py` base cache keyed on base commit + gate blob + driver + interpreter, shared across worktrees |
+| Completed campaign proof is not rerun after one group fails | MECHANICALLY_ENFORCEABLE_EXISTING_OWNER | `tests/institutional_e2e_boundary_campaign.py` per-case JSONL + reuse for the same HEAD (`--force` to override) |
+| Expensive-operation preflight | DECLARATIVE_ONLY, with a mechanical instance | the campaign's own preflight refuses to start; the general case is declarative because a guard cannot know what an arbitrary command intends to prove |
+| Targeted before expensive; known failure fixed first | NOT_RELIABLY_DETECTABLE | a guard cannot know which failure is "known" or whether the expensive run is the diagnosis; declarative in `AGENTS.md` |
+| Long-run observability and the anomaly trigger | DECLARATIVE_ONLY | the evidence tool exists (`--heavy-jobs`); the decision is the agent's and is judged by the operator on the stated proof |
+| Safe parallelism; selective rerun; self-healing | DECLARATIVE_ONLY | judgement over isolation and evidence identity; no reliable mechanical proxy |
+| Live claim with inherited `ED_CI_OFFLINE` / placeholder credentials | NOT_RELIABLY_DETECTABLE at the command seam | "claimed live" is prose; the launcher's `live_schwab_env.py --sanitize` owns the runtime case; declarative for agent probes |
+
 ---
 
 ## Quick commands
@@ -77,6 +103,7 @@
 | Measure | `.venv/Scripts/python.exe tools/operating_process_lock.py --measure` |
 | Pre-commit gate | `.venv/Scripts/python.exe tools/operating_process_lock.py --pre-commit` |
 | Commit check | `.venv/Scripts/python.exe tools/operating_process_lock.py --commit-check` |
+| Heavy verification inventory (RC-517) | `.venv/Scripts/python.exe tools/operating_process_lock.py --heavy-jobs` |
 | Live-checkout report | `.venv/Scripts/python.exe tools/check_live_path_is_main.py` (production should be branch main == origin/main; reports, does not gate the desk — RC-512) |
 
 No env kill-switch: `ED_PROCESS_LOCK_GUARD` cannot disable the hook (RC-450).
