@@ -716,23 +716,70 @@ _HEAVY_SCRIPTS = (
 _PYTEST_TARGET_RE = re.compile(r"(?:^|[\s/\\])test_[\w-]+\.py(?:::|\s|$)|::test_", re.I)
 
 
+_SEG_WRAPPERS = {"env", "timeout", "nice", "nohup", "cmd", "/c", "sudo"}
+
+
+def _segment_program(tokens: list[str]) -> tuple[str, list[str]]:
+    """(program basename, its arguments) for one shell segment, skipping VAR=val prefixes and
+    wrappers like `timeout 600` / `env`. The PROGRAM decides what runs; a word inside an
+    echo, a commit message or a log filter never does (RC-518: the first cut of this
+    classifier read `echo "pytest-full-rc=$?"` as a whole-suite launch and blocked a CI watch)."""
+    i = 0
+    while i < len(tokens):
+        t = tokens[i]
+        if re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", t):
+            i += 1
+            continue
+        low = t.lower()
+        if low in _SEG_WRAPPERS:
+            i += 2 if low == "timeout" and i + 1 < len(tokens) and tokens[i + 1].isdigit() else 1
+            continue
+        break
+    if i >= len(tokens):
+        return "", []
+    head = tokens[i].replace("\\", "/").rsplit("/", 1)[-1].lower()
+    return head, tokens[i + 1:]
+
+
 def heavy_verification_kind(cmd: str) -> str | None:
     """The kind of CPU-heavy verification wave `cmd` launches, or None for anything else —
     a targeted test run (named test files or node ids, no worker fan-out) is not heavy.
-    Read from the executed shell text; heredoc bodies and -c payloads are data."""
+    Judged per shell segment on the PROGRAM and its arguments, never on words (RC-518);
+    heredoc bodies and -c payloads are data and the caller strips them."""
     if not cmd:
         return None
-    if re.search(r"\b(?:make\s+test-all|npm\s+run\s+test(?::all|:e2e)?|npx\s+playwright\s+test)\b", cmd, re.I):
-        return "e2e-suite"
-    for script in _HEAVY_SCRIPTS:
-        if script in cmd and "--rebaseline" not in cmd and "--heavy-jobs" not in cmd:
-            return script.replace(".py", "")
-    for seg in re.split(r"&&|\|\||;|\n", cmd):
-        if not re.search(r"\bpytest\b", seg, re.I):
+    for seg in re.split(r"&&|\|\||;|\n|\|", cmd):
+        tokens = seg.strip().split()
+        if not tokens:
             continue
-        if re.search(r"\s-n\s*\d+\b|\s-n\s+auto\b|--dist\b|--numprocesses\b", seg):
+        head, args = _segment_program(tokens)
+        if not head:
+            continue
+        if head == "make" and "test-all" in args:
+            return "e2e-suite"
+        if head in ("npm", "npm.cmd") and args[:1] == ["run"] and any(a.startswith("test") for a in args[1:2]):
+            return "e2e-suite"
+        if head in ("npx", "npx.cmd") and args[:2] == ["playwright", "test"]:
+            return "e2e-suite"
+        if head == "playwright" and args[:1] == ["test"]:
+            return "e2e-suite"
+        pytest_args: list[str] | None = None
+        if head in ("pytest", "pytest.exe", "py.test"):
+            pytest_args = args
+        elif head.startswith(("python", "py.exe", "pypy")):
+            if args[:2] == ["-m", "pytest"]:
+                pytest_args = args[2:]
+            else:
+                for a in args:
+                    base = a.replace("\\", "/").rsplit("/", 1)[-1]
+                    if base in _HEAVY_SCRIPTS and "--rebaseline" not in args and "--heavy-jobs" not in args:
+                        return base.replace(".py", "")
+        if pytest_args is None:
+            continue
+        joined = " ".join(pytest_args)
+        if re.search(r"(?:^|\s)-n\s*(?:\d+|auto)\b|--dist\b|--numprocesses\b", joined):
             return "pytest-parallel"
-        if not _PYTEST_TARGET_RE.search(seg):
+        if not any(_PYTEST_TARGET_RE.search(a) for a in pytest_args):
             return "pytest-whole-suite"
     return None
 

@@ -65,13 +65,26 @@ def test_heavy_wave_commands_are_recognised(cmd, kind):
     "python -m pytest tests/test_one_producer_gate_v1.py -q",
     "python -m pytest tests/test_x.py::test_a -q -p no:cacheprovider",
     "python -m pytest tests/test_a.py tests/test_b.py -k collision",
+    ".venv/Scripts/python.exe -m pytest tests/test_verification_cost_governance_v1.py -q",
     "python tools/operating_process_lock.py --heavy-jobs",
     "python tools/check_institutional_correctness.py --rebaseline",
     "git status --short",
     "python -c \"import tools.check_institutional_correctness as C; print(len(C.CHECKS))\"",
+    # the observed false positive: the WORD pytest inside an echo / a log filter is not a launch
+    "gh run watch 33945309566 --exit-status --interval 60 2>&1 | tail -3; echo \"pytest-full-rc=$?\"",
+    "echo check_delta_adds_no_debt.py",
+    "git log --oneline --grep pytest -5",
+    "cat reports/pytest-full.log | tail -20",
 ])
 def test_targeted_and_light_commands_are_not_heavy(cmd):
     assert OPL.heavy_verification_kind(cmd) is None
+
+
+def test_the_observed_false_positive_is_closed_at_the_guard_seam(monkeypatch):
+    """A CI watch whose echo mentions pytest, issued while a real wave is alive, passes."""
+    monkeypatch.setattr(OPL, "heavy_verification_jobs", lambda exclude_pids=None: list(FAKE_WAVE))
+    cmd = "gh run watch 33945309566 --exit-status --interval 60 2>&1 | tail -3; echo \"pytest-full-rc=$?\""
+    assert plg.pretooluse_block("Bash", {"command": cmd}) == []
 
 
 # ── observed failure 2: competing full pytest while the campaign is alive → BLOCK ────
