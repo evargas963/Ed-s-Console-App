@@ -7,7 +7,6 @@
  */
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -61,12 +60,11 @@ function ensurePlaywrightReady() {
 
 ensurePlaywrightReady();
 
-const e2eStreamDb = path.join(os.tmpdir(), "ed-console-e2e-stream-capture.db");
 const testRun = spawnSync("npx", ["playwright", "test"], {
   cwd: root,
   stdio: "inherit",
   shell: true,
-  env: { ...process.env, STREAM_CAPTURE_DB_PATH: e2eStreamDb },
+  env: process.env,
 });
 if (testRun.status !== 0) {
   process.exit(testRun.status ?? 1);
