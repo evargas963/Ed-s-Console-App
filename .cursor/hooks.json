@@ -3,7 +3,7 @@
   "_comment": "Cursor's roster must stay identical to .claude/settings.json — a guard one host does not run is not a guard. tests/test_find_fix_execution_latch_v1.py asserts the two agree.",
   "hooks": {
     "preToolUse": [
-      {"command": ".venv/Scripts/python.exe tools/pretooluse_chain.py tools/pretooluse_guard.py tools/operator_law_guard.py tools/process_lock_guard.py"}
+      {"command": ".venv/Scripts/python.exe tools/pretooluse_chain.py tools/operator_law_guard.py tools/process_lock_guard.py"}
     ],
     "stop": [
       {"command": ".venv/Scripts/python.exe tools/stop_chain.py tools/stop_guard.py tools/honesty_guard.py tools/operator_law_guard.py"}

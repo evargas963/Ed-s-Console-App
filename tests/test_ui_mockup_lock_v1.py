@@ -374,7 +374,9 @@ def test_operator_law_guard_wired_for_edit_tools():
     assert "operator_law_guard" in cmds, (
         "operator_law_guard is not wired for Edit/Write — its ledger cannot see production "
         "edits and every edit-dependent Stop clause is blind (RC-205)")
-    assert "pretooluse_guard" in cmds, "pretooluse_guard unwired from Edit tools"
+    # BEDROCK 2026-09-06: pretooluse_guard is off the roster by design (its content gates and
+    # the mutation-side latch are removed); an inert rostered guard is the E-05/E-07 class.
+    assert "pretooluse_guard" not in cmds
 
 
 def test_ship_confirmation_required_for_approved_surface_changes():
@@ -393,8 +395,3 @@ def test_ship_confirmation_required_for_approved_surface_changes():
     assert cic.ship_confirmation_violations("tools/ui_mockup_lock.py", []) == []
 
 
-def test_front_end_is_wired():
-    """Clause 1 of check ui_mockup_approval, asserted directly: the PreToolUse guard names the
-    lock module, so the continuum's front end cannot silently unwire."""
-    guard = Path(__file__).resolve().parent.parent / "tools" / "pretooluse_guard.py"
-    assert "ui_mockup_lock" in guard.read_text(encoding="utf-8")

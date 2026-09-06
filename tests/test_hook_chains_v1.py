@@ -54,7 +54,10 @@ def test_edit_and_bash_rosters_carry_the_ledger_guard():
     edit-dependent Stop clauses go blind."""
     assert "tools.operator_law_guard" in ptc.EDIT_CHAIN
     assert "tools.operator_law_guard" in ptc.BASH_CHAIN
-    assert "tools.pretooluse_guard" in ptc.EDIT_CHAIN
+    # BEDROCK 2026-09-06: pretooluse_guard blocks nothing any more (content gates and the
+    # mutation-side latch removed) and is off both rosters — an inert rostered guard is the
+    # E-05/E-07 class. Its classify_path stays as an imported function.
+    assert "tools.pretooluse_guard" not in ptc.EDIT_CHAIN
     assert "tools.pretooluse_guard" not in ptc.BASH_CHAIN
 
 
@@ -220,15 +223,6 @@ def test_operator_law_guard_stop_member_block_equivalence(tmp_path):
         ledger.unlink(missing_ok=True)
     _assert_blocking_pair(standalone, chain,
                           ("BLOCKED (RC-93)", "RAN WITHOUT ERROR"))
-
-
-def test_pretooluse_guard_member_block_equivalence():
-    """RC-160 block: SPY-only framing written into an agent-instruction path (EDIT roster)."""
-    payload = {"tool_name": "Write",
-               "tool_input": {"file_path": str(ROOT / "AGENTS.md"),
-                              "content": "SPY-only coverage is complete."}}
-    standalone, chain = _pair(payload, "tools/pretooluse_guard.py")
-    _assert_blocking_pair(standalone, chain, ("RC-160",))
 
 
 def test_process_lock_guard_member_block_equivalence():

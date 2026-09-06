@@ -50,7 +50,7 @@ The operator names the active slice in chat (the pm_mission.json coordination fi
 | **T3 Stem / full** | Nightly Automation or pre-release only | `turn_self_audit` full stem / 1800+ — **not** every mission turn |
 | **T4 Pre-commit** | Every commit | Institutional hooks already run — do not re-run T3 in chat “to be safe” |
 
-**Rule:** red T3 failures that reproduce on pristine HEAD are **rehab backlog**, not blockers for an unrelated mission — unless they are in files this mission touched. File them into the queue rather than stalling every landing.
+**Rule:** red T3 failures that reproduce on pristine HEAD are **rehab backlog**, not blockers for an unrelated mission — unless they sit inside the mission's material blast radius (the mechanisms that read, enforce, quote or supersede the fact being changed; `AGENTS.md` Find → fix), in which case they are the mission's to repair. File the rest as rows rather than stalling every landing.
 
 ## LIVE closeout / post-restart DONE bar
 

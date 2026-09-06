@@ -7,7 +7,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": ".venv/Scripts/python.exe tools/pretooluse_chain.py tools/pretooluse_guard.py tools/operator_law_guard.py tools/process_lock_guard.py"
+            "command": ".venv/Scripts/python.exe tools/pretooluse_chain.py tools/operator_law_guard.py tools/process_lock_guard.py"
           }
         ]
       },

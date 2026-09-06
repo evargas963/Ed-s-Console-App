@@ -490,6 +490,9 @@ def _delegate(root: Path, raw_payload: str, members: tuple[str, ...]) -> tuple[i
 # subject cannot pick its judge or widen the door. Once the module imports again the next
 # call delegates normally; nothing is remembered. No token, no environment switch, no second
 # chain.
+#: The ONE tool a recovery may use. Edit is a bounded string replacement; Write and MultiEdit
+#: replace the file, and a recovery that can replace a guard wholesale is not narrow.
+RECOVERY_TOOL = "Edit"
 _BROKEN_FILE_RE = re.compile(r"\[broken file: ([^\]]+)\]")
 _TRACEBACK_FILE_RE = re.compile(r'File "([^"\n]+)", line \d+')
 
@@ -546,14 +549,17 @@ def _delegate_crashed(delegate_stderr: str) -> bool:
 def recovery_target(raw_payload: str, root: Path, delegate_stderr: str) -> Path | None:
     """The one file this payload may restore in `root`, or None.
 
-    Non-None only when: the delegate CRASHED (a verdict is not a crash), the payload is a
-    file-target mutation, and its path resolves to a file the crash itself named. A shell
+    Non-None only when: the delegate CRASHED (a verdict is not a crash), the tool is exactly
+    `Edit`, and its path resolves to a file the crash itself named. Exactly Edit — not the
+    `MUTATING_TOOLS` class: a Write replaces the guard file whole and a MultiEdit rewrites it
+    in bulk, which is a wider repair than the one narrow correction this door exists for
+    (operator correction, 2026-09-05 — the first cut accepted the whole class). A shell
     command is never a recovery — it has no single target to confine.
     """
     if not _delegate_crashed(delegate_stderr):
         return None
     data = _payload(raw_payload)
-    if data.get("tool_name") not in MUTATING_TOOLS:
+    if data.get("tool_name") != RECOVERY_TOOL:
         return None
     tool_input = data.get("tool_input")
     path = tool_input.get("file_path") if isinstance(tool_input, dict) else None

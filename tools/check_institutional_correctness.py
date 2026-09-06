@@ -193,28 +193,39 @@ def _rc_row_violations(log_path, n: int, rc_id: str, status: str,
     """
     out: list[Violation] = []
     why = cells[5] if len(cells) >= 6 else ""
-    depth = why.count("->")
-    if depth < 4:
-        out.append(Violation(
-            log_path, n,
-            f"{rc_id} has a why-chain only {depth + 1} level(s) deep. Five whys are "
-            f"required BEFORE the row is written - a shallow chain is how a symptom "
-            f"gets recorded as a root cause."))
+    # BEDROCK 2026-09-06: the arrow count is gone. It measured form, not cause: four `->`
+    # could be written in a minute and were, hundreds of times, and RC-315's chain was five
+    # deep on a false premise. Causal sufficiency (the chain ends at the wrong model,
+    # assumption, semantics, placement or computation, each link a measured fact) is judged
+    # in review. What a machine CAN check is that the cell is not empty.
+    if not why.strip():
+        out.append(Violation(log_path, n, f"{rc_id} has an empty why-chain cell."))
     if status in ("CLOSED", "REMEDIATED"):
         # REMEDIATED joined the evidence gate 2026-08-25 (audit round 2 red-team):
         # OPEN->REMEDIATED used to terminate an overdue row with no evidence and no
         # re-date reason — the same silencing CLOSED is gated against.
+        # BEDROCK 2026-09-06: "a digit plus one of four words" is replaced by the one
+        # checkable evidence property: a backticked command a reader can re-run.
         evidence = cells[6] if len(cells) >= 7 else ""
-        has_number = any(ch.isdigit() for ch in evidence)
-        has_proof = any(w in evidence.upper()
-                        for w in ("PROVEN", "VERIFIED", "MEASURED", "OBSERVED"))
-        if not (has_number and has_proof):
+        opened = cells[2] if len(cells) >= 3 else ""
+        # Forward-binding from the bedrock cutover, like every other row rule: rows closed
+        # under the old digit-plus-word rule are history and are not re-judged.
+        if opened >= CLOSE_COMMAND_CUTOVER and not _RUNNABLE_COMMAND_RE.search(evidence):
             out.append(Violation(
                 log_path, n,
-                f"{rc_id} is {status} without observed evidence. A terminal root cause must "
-                f"cite a measured value (numbers) and say it was proven/verified/measured "
-                f"- describing the code change is not proof that it works."))
+                f"{rc_id} is {status} without a re-runnable command in its evidence cell. "
+                f"Closure cites the exact command whose output proved the fix, in backticks; "
+                f"describing the code change is not proof that it works."))
     return out
+
+
+#: Bedrock doctrine cutover (2026-09-06): closure evidence is a re-runnable command.
+CLOSE_COMMAND_CUTOVER = "2026-09-06"
+
+#: A backticked span that is a command someone can run — the same standard the numeric
+#: claim rule holds, held once here for closure evidence.
+_RUNNABLE_COMMAND_RE = re.compile(
+    r"`[^`]*(?:python|pytest|node |curl |SELECT |sqlite3|tools/|\.py|\.ps1|git )[^`]*`")
 
 
 # Cutover date kept for the surviving no-terminal-null rules below (RC-470: the
@@ -392,7 +403,10 @@ def _root_cause_ledger_folded_violations() -> list[Violation]:
         ("rc_status_vocabulary", _rc_status_vocabulary_violations),
         ("rc_log_rows_keep_schema", _rc_log_rows_keep_schema_violations),
         ("rc_numeric_claims_cite_a_command", _rc_numeric_claims_cite_a_command_violations),
-        ("rc_mechanism_claims_cite_a_source", _rc_mechanism_claims_cite_a_source_violations),
+        # BEDROCK 2026-09-06: rc_mechanism_claims_cite_a_source is no longer folded. It
+        # matched English verbs ("pins price", "repels") in ledger prose — a control that
+        # decides a real question by matching free text is not enforcement (AGENTS.md).
+        # The law (cite a market mechanism or mark it unproven) stands; review judges it.
         ("closed_rows_ship_their_code", _closed_rows_ship_their_code_violations),
         ("adversarial_audits_are_answered", _adversarial_audits_are_answered_violations),
     ):
@@ -422,12 +436,6 @@ def check_rc_numeric_claims_cite_a_command() -> list[Violation]:
     """Wrapper kept importable for the negative controls; the substance runs inside
     check_root_cause_log (retired registration, governance/retired_checks.md)."""
     return _rc_numeric_claims_cite_a_command_violations()
-
-
-def check_rc_mechanism_claims_cite_a_source() -> list[Violation]:
-    """Wrapper kept importable for the negative controls; the substance runs inside
-    check_root_cause_log (retired registration, governance/retired_checks.md)."""
-    return _rc_mechanism_claims_cite_a_source_violations()
 
 
 def check_closed_rows_ship_their_code() -> list[Violation]:
@@ -633,104 +641,6 @@ def _self_comparison(test: ast.AST) -> str | None:
     if both_static and ast.dump(test.left) == ast.dump(test.comparators[0]):
         return "compares a value to itself"
     return None
-
-
-def _is_overdue(due: str) -> bool:
-    """True when `due` (YYYY-MM-DD) is in the past. An unparseable date is NOT counted here —
-    check_root_cause_log already fails loudly on a malformed due date, so this never
-    double-reports and never silently treats junk as compliant."""
-    try:
-        return datetime.date.fromisoformat(due.strip()) < datetime.date.today()
-    except (TypeError, ValueError):
-        return False
-
-
-def _overdue_governance_items(rc_path, reg_path) -> list[str]:
-    """RC-65: items that have actually ROTTED — open past their own due date.
-
-    Root-cause columns: id | status | opened | due | ...   (due = cells[3])
-    Register columns:   status | opened | due | claim | ... (due = cells[2])
-    """
-    out: list[str] = []
-    if rc_path.exists():
-        for line in rc_path.read_text(encoding="utf-8").splitlines():
-            if not line.startswith("| RC-"):
-                continue
-            cells = [c.strip() for c in line.strip("|").split("|")]
-            if len(cells) > 3 and cells[1] == "OPEN" and _is_overdue(cells[3]):
-                out.append(cells[0])
-    if reg_path.exists():
-        for line in reg_path.read_text(encoding="utf-8").splitlines():
-            if not line.startswith("|"):
-                continue
-            cells = [c.strip() for c in line.strip("|").split("|")]
-            if len(cells) > 3 and cells[0] in ("UNPROVEN", "DISPROVED") and _is_overdue(cells[2]):
-                out.append(f"register:{cells[3][:40]}")
-    return out
-
-
-def check_open_item_cap() -> list[Violation]:
-    """Governance ledgers must burn DOWN. The open count may never rise.
-
-    Operator 2026-07-19: the ledgers must resolve, not accumulate.
-
-    A fixed cap would repeat the mistake of the 800-line ceiling (RC-19): an arbitrary
-    number invites an arbitrary remedy, and a permanently-red gate teaches you to ignore
-    it. This is a RATCHET instead -- the same mechanism as advisory debt. The current open
-    count is the new ceiling the moment it drops, so the only permitted direction is down,
-    and no number had to be invented.
-
-    MEASURE CORRECTED 2026-07-26 (RC-65, operator: "i don't care about caps as long as we have
-    great code — i thought this was a mechanical lock"). Counting EVERY open item conflated two
-    opposite things: honest new tracking and deferral. On 2026-07-26 a session that found real
-    defects (RC-43's closure was wrong; RC-58's contamination set) FAILED this gate *because* it
-    recorded them — which teaches the agent to stay silent, the precise opposite of this repo's
-    purpose. A control that punishes discovery is worse than no control.
-
-    What actually means "deferred forever" is an item PAST ITS DUE DATE. So the ratchet now counts
-    OVERDUE dated items (root-cause rows and register claims both carry a due date) plus every
-    unchecked OPEN_ITEMS.md row, which has no due date and therefore stays a pure parking-lot
-    count. Opening a defect today with a real due date is free; letting it rot is not — and the
-    burn-down pressure the operator asked for in 2026-07-19 is preserved exactly where it belongs.
-    """
-    out: list[Violation] = []
-    rc = REPO / "governance" / "root_cause_log.md"
-    open_items = _overdue_governance_items(
-        rc, REPO / "governance" / "unproven_register.md")
-    # OPEN_ITEMS.md joined the ratchet 2026-07-20. WHAT WAS OBSERVED: the cap covered
-    # only the two governance ledgers, so OPEN_ITEMS.md was an UNGATED parking lot --
-    # a "flagged, not fixed" disposition could sit there forever, which is exactly the
-    # banned third state (operator: Fixed / Allowlisted-with-reason / Registered-with-
-    # due-date, nothing else). Counting its unchecked rows puts the same only-down
-    # pressure on it. VALIDATED BY PROTOTYPE: 39 unchecked rows at adoption (33 pre-existing + 6
-    # registered from the 2026-07-20 audit remainder); the ceiling was re-baselined
-    # 10 -> 49 IN THE SAME CHANGE (scope expansion, not backsliding) and
-    # may only fall from there.
-    # RC-280: RATCHET REMOVED 2026-08-07 on operator instruction ("WE DO NOT NEED RATCHETS.
-    # WE NEED GREAT CODE. WE NEED TO REMOVE ALL RATCHETS"), and this mission's done_criteria:
-    # no ceiling the operator did not name a number for. This check used to store a
-    # high-water mark in governance/open_item_ceiling.json and block whenever the count rose
-    # above it. MEASURED cost of that design: the ceiling stood at 37 against 39 items and
-    # blocked the commit carrying the adversarial-audit request the operator had already sent
-    # to Cursor, while 34 tests were red -- the control was spending the session on itself.
-    # An invented number also invites an invented remedy: the cheapest way past a count is to
-    # close a row rather than fix a defect, which is the opposite of the intent.
-    #
-    # What survives is the LAW without the number: a dated item may not rot. Zero overdue is
-    # a standard, not a tolerance, and it needs no baseline to compare against.
-    #
-    # DELIBERATELY DROPPED: the unchecked OPEN_ITEMS.md rows this also counted. They carry no
-    # due date, so they were pure parking-lot volume -- the quantity a ratchet measures and a
-    # law cannot. Requiring a due date on every parked row is the honest successor and is a
-    # separate change, not something to smuggle in here.
-    if open_items:
-        out.append(Violation(
-            rc, 0,
-            f"{len(open_items)} governance item(s) are PAST their due date: "
-            f"{', '.join(open_items[:8])}{'...' if len(open_items) > 8 else ''}. "
-            f"Finish it, or re-date it with the reason stated in the row. A due date that "
-            f"passes silently is a deferral wearing a schedule."))
-    return out
 
 
 #: Receivers whose .get() is not a dict read we can reason about (routes, env, vendor libs).
@@ -1792,47 +1702,6 @@ def check_single_stream_authority() -> list[Violation]:
         out.append(Violation(REPO / "tools" / "check_single_stream_authority.py", 0,
                              f"checker unavailable ({type(exc).__name__}: {exc}) — a gate "
                              f"that cannot run is not a gate"))
-    return out
-
-
-def _rc_mechanism_claims_cite_a_source_violations() -> list[Violation]:
-    """RC-319 — a claim about how the MARKET behaves must be checkable by a reader.
-
-    WHAT WAS OBSERVED (2026-08-09). "Hedging MAGNITUDE pins price regardless of net sign"
-    went into governance/mega2_traceable_inventory.py and a decision was built on it. It is
-    false — magnitude sets the SIZE of the re-hedging flow, the SIGN of the dealer position
-    sets whether it stabilises or repels — and an independent Cursor audit overturned it the
-    next day. The claim was not unknowable. It was UNCITED, so the only way to catch it was
-    to already know the mechanism.
-
-    WHY THE EXISTING LOCKS DID NOT FIRE. `rc_numeric_claims_cite_a_command` demands
-    provenance for NUMBERS and this claim has none. `five_why_recursive_lock` enforces a
-    chain's SHAPE, and RC-315's chain was five deep with a clean terminal root while resting
-    on a false premise. Depth was enforced; checkability was not — which is the gap the
-    operator named: "if we are not enforcing correctness then what the hell are we doing?"
-
-    THE RULE. Not "is the claim true" — no static check can know that, and asserting
-    otherwise would repeat the overreach. A row or a derivation justification that asserts a
-    market mechanism in the VERB sense must carry a DOI, a URL, a named paper, or a
-    backticked reproducible command. It makes the claim refutable in place.
-
-    VALIDATED BEFORE WIRING: 288 rows scanned, 36 mechanism mentions, one uncited; narrowed
-    to the verb sense because the noun "pin" is how the field is NAMED and matching it would
-    teach rewording instead of citing. Zero on merit in both scopes after the one real hit —
-    the corrected RC-315 line — was repaired by adding its sources, not exempted. The
-    negative control recovers the REAL false sentence with `git show 6f95a237:...` rather
-    than reconstructing it, which is the failure RC-317 records.
-    """
-    out: list[Violation] = []
-    try:
-        sys.path.insert(0, str(REPO / "tools"))
-        from check_rc_mechanism_claims_cite_a_source import violations as _v
-        for msg in _v():
-            out.append(Violation(REPO / msg.split(":")[0], 0, msg))
-    except Exception as exc:                                        # noqa: BLE001
-        out.append(Violation(REPO / "tools" / "check_rc_mechanism_claims_cite_a_source.py",
-                             0, f"checker unavailable ({type(exc).__name__}: {exc}) — a "
-                                f"gate that cannot run is not a gate"))
     return out
 
 
@@ -3396,8 +3265,12 @@ def check_measured_claims_cite_evidence() -> list[Violation]:
     ORIGINAL name so consolidation moves no violation on or off the surface.
     """
     out = _measured_claims_cite_evidence_own_violations()
+    # BEDROCK 2026-09-06: verdicts_declare_their_power is no longer folded. It matched
+    # verdict words (KILL / RETIRED / PROVEN) in ledger prose and demanded n= and CI
+    # tokens beside them — free-text matching, which AGENTS.md rules out as enforcement.
+    # The substance (a numeric finding cites its reproduce command) is the own-violations
+    # rule above; statistical power is judged in review, as the Framework doc requires.
     for folded_name, helper in (
-        ("verdicts_declare_their_power", _verdicts_declare_their_power_violations),
         ("unproven_register", _unproven_register_violations),
     ):
         out.extend(_apply_forward_only_grandfather(folded_name, helper()))
@@ -3543,8 +3416,6 @@ def check_universal_ticker_scope() -> list[Violation]:
         chart_spy_only_feature_violations,
         chart_ticker_path_violations,
         experiment_tool_paths,
-        is_prompt_or_agent_instruction_path,
-        spy_only_content_violation,
         spy_only_ticker_default_violations,
     )
 
@@ -3565,26 +3436,11 @@ def check_universal_ticker_scope() -> list[Violation]:
         for lineno, msg in chart_spy_only_feature_violations(csrc):
             out.append(Violation(chart, lineno, msg))
 
-    staged = _git_output_lines(["diff", "--cached", "--name-only"])
-    if staged is not None:
-        for raw in staged:
-            rel = raw.strip().replace("\\", "/")
-            if not rel or not is_prompt_or_agent_instruction_path(rel):
-                continue
-            path = REPO / rel
-            whole = _read_or_empty(path)
-            diff = _git_output_lines(["diff", "--cached", "-U0", "--", rel]) or []
-            added = "\n".join(
-                ln[1:] for ln in diff
-                if ln.startswith("+") and not ln.startswith("+++")
-            )
-            # Prefer ADDED text (binds new prompt framing); fall back to whole file for new files.
-            text = added if added.strip() else whole
-            reason = spy_only_content_violation(text)
-            if reason is None:
-                continue
-            out.append(Violation(path, 0, reason))
-
+    # BEDROCK 2026-09-06: rule 3 (SPY-only PHRASES in staged prompt prose) is retired. It was
+    # a free-text matcher, and AGENTS.md rules that out as enforcement. Rules 1 and 2 are the
+    # structural half — SPY-only ticker DEFAULTS in experiment tools and SPY-gated Chart
+    # features — and they stay, because they read code, not wording. The law itself
+    # (UNIVERSAL ticker scope) is unchanged in AGENTS.md.
     return out
 
 
@@ -3733,11 +3589,9 @@ def check_ui_mockup_approval() -> list[Violation]:
             reg, 0,
             "mockup-approval registry missing or unparseable — in this state the RC-186 law "
             "gates NOTHING (absence reads as no-surface-registered). Restore the registry."))
-    guard = REPO / "tools/pretooluse_guard.py"
-    if "ui_mockup_lock" not in _read_or_empty(guard):
-        out.append(Violation(guard, 0,
-                             "mockup-before-code front end unwired: pretooluse_guard.py no "
-                             "longer references ui_mockup_lock (RC-186 continuum broken)"))
+    # BEDROCK 2026-09-06: the front-end clause (pretooluse_guard must reference ui_mockup_lock)
+    # is gone — that guard blocks nothing any more by design, and this check is declared
+    # retired in governance/retired_checks.md (step 1); it leaves the roster in the step-2 delta.
     staged = _git_output_lines(["diff", "--cached", "--name-only"])
     if staged is None:
         return out
@@ -4336,7 +4190,9 @@ CHECKS = [
     # no_governance_duplication + checks_are_justified RETIRED 2026-08-24 (SIMPLICITY
     # REHAB, governance/retired_checks.md)
     ("no_tautological_assertions", check_no_tautological_assertions, True),  # catch, not pass
-    ("open_item_cap", check_open_item_cap, True),   # ledgers burn down, never accumulate  # 5 whys, restarted on every new cause
+    # open_item_cap REMOVED 2026-09-06 (step 2 of the two-step contract; declared retired on
+    # main 2026-09-02 in governance/retired_checks.md as a PROVEN DUPLICATE of root_cause_log's
+    # overdue clause and the register validator — one overdue item fails one check, not two).
     # RC-67 (operator 2026-07-26): ADVISORY, not enforced. It still computes and REPORTS every
     # metric delta, so a real regression stays visible — but a COUNT may no longer block a commit.
     # A counter cannot distinguish a regression from a false positive or from a deliberate,

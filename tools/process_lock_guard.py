@@ -407,62 +407,6 @@ def _owner_checkout(dest: Path) -> str:
     return ""
 
 
-def mission_shell_write_violations(cmd: str, payload_cwd: str = "") -> list[str]:
-    """RC-498: a SHELL mutation of production code needs the same durable mission state an
-    Edit/Write does. Otherwise the latch is a door with the window left open.
-
-    MEASURED on 334c5daf in the dev worktree, every one of these returned exit 0 with no row
-    anywhere: `sed -i 's/a/b/' server.py`, `cp /tmp/x.py server.py`, `mv /tmp/x.py server.py`,
-    `echo x | tee server.py`, `truncate -s 0 server.py`, `git apply /tmp/x.patch`, and a repo
-    tool invoked as `... --write server.py`. The existing shell rail only fires when the
-    destination lands inside the PRODUCTION primary checkout, so ordinary development mutation
-    was entirely ungoverned by it — correctly, since that rail answers a different question.
-    """
-    from tools.mission_latch import has_active_mission
-
-    # RC-501: BOTH questions — "is this production?" and "is there a mission?" — are resolved
-    # from the checkout that OWNS THE DESTINATION, never from this guard file's own repo.
-    # MEASURED against the previous version, whose `classify_path(..., repo=REPO)` judged any
-    # destination outside the guard's checkout to be a foreign tree: `sed -i server.py`,
-    # `cp x server.py`, `mv x server.py` and `tee server.py` ALL passed against a repository
-    # with no mission row at all. A guard that only governs the tree it happens to live in does
-    # not govern the tree the work happens in, which is the whole point of a linked worktree.
-    cwd_root = repo_root_of(_msys_to_windows(payload_cwd)) if payload_cwd else ""
-    base = cwd_root or payload_cwd or str(REPO)
-
-    out: list[str] = []
-    seen: set[str] = set()
-    for resolved in _shell_write_targets(cmd, payload_cwd, base_root=base):
-        owner = _owner_checkout(resolved)
-        if not owner:
-            continue                       # not inside any checkout: no ledger governs it
-        facts = classify_path(str(resolved), repo=owner)
-        if not (facts.governed and facts.production) or facts.rel in seen:
-            continue
-        if has_active_mission(repo=owner):
-            continue                       # that checkout is executing a mission: allowed
-        seen.add(facts.rel)
-        out.append(
-            f"FIND_FIX_MISSION_LATCH (RC-498/RC-501): this command writes production code "
-            f"({facts.rel}) in {owner}, which has no single active mission. Open ONE row for "
-            f"the session's mission in that checkout's governance/root_cause_log.md first — "
-            f"see the AGENTS.md Find -> Fix law. Editing governance/, tests/, docs/ and "
-            f"reports/ is never gated.")
-
-    # git apply / patch / restore name no destination, so they are judged against the checkout
-    # the command RUNS IN — the tree they would rewrite.
-    if not has_active_mission(repo=cwd_root or None):
-        for _seg_cwd, seg in iter_command_segments(cmd or "", payload_cwd or ""):
-            verb = _shell_rewrites_tracked_tree(seg)
-            if verb and verb not in seen:
-                seen.add(verb)
-                out.append(
-                    f"FIND_FIX_MISSION_LATCH (RC-498/RC-501): `{verb}` rewrites tracked files "
-                    f"from a patch or a git object without naming them, and this checkout has "
-                    f"no single active mission. Open ONE row for the session's mission first.")
-    return out
-
-
 def production_checkout_shell_app_write_violations(cmd: str, payload_cwd: str = "") -> list[str]:
     """PREVENT a materially-equivalent SHELL edit to app code in the PRODUCTION checkout — the
     Bash companion to production_checkout_app_edit_violations (Edit/Write) and to the universal
@@ -519,9 +463,10 @@ def pretooluse_block(tool: str, tool_input: dict, payload_cwd: str = "") -> list
         # Live-checkout invariant #4: a materially-equivalent SHELL write to production app code
         # (cp/mv/sed -i/tee/...) is blocked too, not only Edit/Write tool calls.
         out.extend(production_checkout_shell_app_write_violations(cmd, payload_cwd))
-        # RC-498 Find -> Fix latch: the same durable-mission requirement the Edit/Write seam
-        # applies, at the shell seam — otherwise the latch is a door with the window left open.
-        out.extend(mission_shell_write_violations(cmd, payload_cwd))
+        # BEDROCK 2026-09-06: the RC-498 shell-side mission latch is removed with its Edit-side
+        # twin (see pretooluse_guard.decide). Work identity is the branch and PR; defects get
+        # rows by doctrine; the Stop seam and the CLOSE contract hold what a mutation seam
+        # cannot see.
     return out
 
 

@@ -747,9 +747,19 @@ def test_only_the_file_the_crash_named_can_be_restored_and_only_by_an_edit(trees
         refused = run_from(primary, edit(other))
         assert refused.returncode != 0 and "GOVERNANCE RECOVERY" not in refused.stderr, (other, refused.stderr)
 
-    t = write_transcript(tmp_path / "s.jsonl", [bash_use(f'printf x >> "{helper}"')])
-    shell = run_from(primary, stop_payload(t))
-    assert shell.returncode != 0 and "GOVERNANCE RECOVERY" not in shell.stderr, shell.stderr
+    # Exactly Edit. The other file-target mutation tools replace or bulk-rewrite the file, and
+    # a recovery that can replace a guard wholesale is not the narrow door (operator correction).
+    for tool in ("Write", "MultiEdit", "NotebookEdit"):
+        for key in ("file_path", "notebook_path"):
+            wide = run_from(primary, {"tool_name": tool, "tool_input": {key: str(helper), "content": "x"}})
+            assert wide.returncode != 0 and "GOVERNANCE RECOVERY" not in wide.stderr, (tool, key, wide.stderr)
+
+    # A shell write to the exact file is never a recovery, whichever shell channel carries it.
+    for maker in (bash_use, monitor_use, lambda c: {"type": "assistant", "message": {"content": [
+            {"type": "tool_use", "name": "PowerShell", "input": {"command": c}}]}}):
+        t = write_transcript(tmp_path / "s.jsonl", [maker(f'printf x >> "{helper}"')])
+        shell = run_from(primary, stop_payload(t))
+        assert shell.returncode != 0 and "GOVERNANCE RECOVERY" not in shell.stderr, shell.stderr
 
 
 def test_normal_delegated_authority_resumes_by_itself_once_the_module_imports(trees):

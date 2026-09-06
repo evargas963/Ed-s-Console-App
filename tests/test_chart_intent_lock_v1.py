@@ -3,8 +3,6 @@
 """RC-163: Chart-intent soft-out + next-RTH Monday-proof lies — fire and quiet controls."""
 from __future__ import annotations
 
-import io
-import json
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -16,7 +14,6 @@ if str(ROOT) not in sys.path:
 
 import tools.chart_intent_lock as L  # noqa: E402
 import tools.check_institutional_correctness as C  # noqa: E402
-import tools.pretooluse_guard as PG  # noqa: E402
 
 ET = ZoneInfo("America/New_York")
 # Thursday evening after RTH close → next RTH is Friday (not Monday).
@@ -142,39 +139,3 @@ def test_check_chart_intent_and_next_rth_screams_on_staged_added(tmp_path, monke
     assert "Chart-intent" in msgs or "Banking" in msgs or "Monday" in msgs or "next RTH" in msgs
 
 
-def test_pretooluse_blocks_chart_intent_and_monday_proof_write(monkeypatch):
-    monkeypatch.setenv("ED_PRETOOLUSE_GUARD", "on")
-
-    def run(content: str) -> tuple[int, str]:
-        # T2-5: reports/** is ungated; a prompt-named file at a gated location drives it.
-        payload = {
-            "tool_name": "Write",
-            "tool_input": {
-                "file_path": str(ROOT / "zz_chart_intent_prompt.md"),
-                "content": content,
-            },
-        }
-        monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(payload)))
-        err = io.StringIO()
-        monkeypatch.setattr(sys, "stderr", err)
-        code = PG.main()
-        return code, err.getvalue()
-
-    # Pin next RTH away from Monday inside the lock module used by the guard.
-    monkeypatch.setattr(
-        L,
-        "next_rth_et_date",
-        lambda as_of=None: __import__("datetime").date(2026, 7, 31),
-    )
-
-    code, err = run(
-        "Collect slice ACCEPT. OUT-OF-SCOPE: Chart render / GEX bars. Monday live proof."
-    )
-    assert code == 2, f"Chart-intent/Monday residual Write not blocked (exit={code}, err={err!r})"
-    assert "RC-163" in err
-
-    code, err = run(
-        "STATUS PARTIAL with open CHART_CONSUMER residual. "
-        "NEXT_RTH_PROOF on 2026-07-31 Friday (is_trading_day_et)."
-    )
-    assert code == 0, f"honest PARTIAL residual was wrongly blocked: {err!r}"

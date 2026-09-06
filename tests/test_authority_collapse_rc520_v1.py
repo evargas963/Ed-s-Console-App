@@ -33,7 +33,6 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 import tools.check_institutional_correctness as gate  # noqa: E402
-import tools.check_rc_mechanism_claims_cite_a_source as mech  # noqa: E402
 import tools.mission_latch as latch  # noqa: E402
 
 CHECK = "authority_surfaces_have_one_owner"
@@ -221,17 +220,22 @@ def test_archive_compaction_is_exact_and_leaves_open_rows_alone():
     assert new.splitlines()[0] == text.splitlines()[0]
 
 
-def test_archived_rows_are_skipped_by_the_substance_validators(tmp_path):
-    """The same uncited mechanism claim is judged when CLOSED and ignored when ARCHIVED —
-    an archived line asserts nothing new; the pointer carries the judged text."""
-    row = "| RC-777 | {status} | 2026-08-20 | 2026-08-21 | Hedging magnitude pins price regardless of sign. | why | fix |"
-    closed = tmp_path / "closed.md"
-    closed.write_text(row.format(status="CLOSED") + "\n", encoding="utf-8")
-    archived = tmp_path / "archived.md"
-    archived.write_text(row.format(status="ARCHIVED") + "\n", encoding="utf-8")
-    live_only = mech.register_violations() + mech.docstring_violations()
-    assert len(mech.violations(closed)) == len(live_only) + 1
-    assert len(mech.violations(archived)) == len(live_only)
+def test_archived_rows_are_skipped_by_the_substance_validators(tmp_path, monkeypatch):
+    """The same command-less closure is judged when CLOSED and ignored when ARCHIVED — an
+    archived line asserts nothing new; the pointer carries the judged text. Driven through
+    the real ledger validator over a hermetic ledger."""
+    gov = tmp_path / "governance"
+    gov.mkdir()
+    (gov / "unproven_register.md").write_text("| status | opened | due | claim | evidence |\n",
+                                              encoding="utf-8")
+    row = "| RC-777 | {status} | 2026-09-06 | 2099-01-01 | d | why | fixed, no command cited |"
+    monkeypatch.setattr(gate, "REPO", tmp_path)
+    (gov / "root_cause_log.md").write_text(row.format(status="CLOSED") + "\n", encoding="utf-8")
+    closed_hits = [v for v in gate.check_root_cause_log() if "RC-777" in v.msg]
+    (gov / "root_cause_log.md").write_text(row.format(status="ARCHIVED") + "\n", encoding="utf-8")
+    archived_hits = [v for v in gate.check_root_cause_log() if "RC-777" in v.msg]
+    assert closed_hits and "re-runnable command" in closed_hits[0].msg
+    assert archived_hits == []
 
 
 # ── 5. the surviving owners still resolve ───────────────────────────────────────────────

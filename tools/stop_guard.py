@@ -45,14 +45,15 @@ unreadable ledger yields no rows, so the clause abstains. A control that cannot 
 not a control.
 
 Contract:
-  * BLOCKS when a row opened TODAY is OPEN and neither finished nor objectively blocked.
-  * BLOCKS when production files are modified in the working tree and NO row was opened today —
+  * BLOCKS when a row this worktree introduced is OPEN and neither finished nor objectively
+    blocked (RC-521: whatever day it was opened — a mission is not a calendar day).
+  * BLOCKS when production files are modified in the working tree and this worktree has no open row —
     the outcome-side companion to the RC-498 PreToolUse latch, which no choice of shell command
     form can evade (Phase 3: a defect surfaced mid-mission cannot vanish when the turn ends).
   * PASSES on the operator's explicit halt word, read from the operator's OWN message.
-  * Does NOT block on rows opened on earlier days: those are a dated backlog, and
-    `check_root_cause_log` already fails a commit on an overdue one. This guard is about work
-    started and abandoned WITHIN a session.
+  * The row's date is irrelevant (RC-521): a mission is not a calendar day, and an unfinished
+    row this worktree introduced holds the turn whether it was opened today or last week.
+    `check_root_cause_log` separately fails a commit on an overdue one.
   * No env kill-switch: ED_STOP_GUARD cannot disable this control (RC-450).
   * HONEST LIMIT: this reads the LEDGER and the WORKING TREE, not the agent's prose. A defect
     that is never written down and never touches a tracked production file is still invisible
@@ -113,34 +114,29 @@ def unfinished_rows_opened_today(today: str | None = None) -> list[tuple[str, st
 # read through tools/mission_latch.py.
 
 
-def _explain(blockers: list[tuple[str, str]], dirty: list[str], retry: bool) -> str:
+def _explain(blockers: list[tuple[str, str]], retry: bool) -> str:
     lines = ["BLOCKED: the turn is ending with a material defect undischarged "
              "(RC-72 / RC-498).\n\n"]
     if blockers:
-        lines.append("Root-cause rows opened TODAY that are not finished:\n")
+        lines.append("This worktree's OPEN root-cause rows that are not finished:\n")
         lines += [f"    {rc} — {why}\n" for rc, why in blockers]
-        lines.append("\n")
-    if dirty:
-        lines.append(
-            "Production files are modified in the working tree and NO row was opened today:\n")
-        lines += [f"    {p}\n" for p in dirty[:12]]
-        if len(dirty) > 12:
-            lines.append(f"    ... and {len(dirty) - 12} more\n")
         lines.append("\n")
     lines.append(
         'AGENTS.md: "Find something broken -> fix it. Discovery creates the obligation to\n'
         "remediate through the full blast radius in the active session. A material defect is\n"
         'never disposed as queued / logged / TODO / follow-up / pre-existing / out-of-scope."\n\n'
         "Do ONE of these, then continue:\n"
-        "  1. FINISH IT — drive the fix, then set the row CLOSED with measured evidence and\n"
-        "     END-TO-END scope. This is the expected outcome.\n"
+        "  1. FINISH IT — drive the fix, then set the row CLOSED with a cited, re-runnable\n"
+        "     command as evidence and the carrying commit. This is the expected outcome.\n"
         f"  2. OBJECTIVELY BLOCKED — set the row's STATUS cell to {mission_latch.BLOCKED_STATUS}\n"
         "     and give it a due date that has not passed. Say in the fix cell what is awaited\n"
         "     and what clears it, so a human can judge the claim. A blocked row still goes\n"
-        "     overdue, and it no longer authorizes production work — being blocked and being\n"
-        "     licensed to proceed are contradictory. Preference, scope convenience and running\n"
-        "     out of runway are not blockers.\n"
-        "  3. If production is dirty with no mission, open ONE row describing the work.\n\n"
+        "     overdue. Preference, scope convenience and running out of runway are not\n"
+        "     blockers; waiting on another row, the operator, a live session or data is.\n"
+        "  3. THE CONTROL IS WRONG — if this block refuses a state that measurement shows true\n"
+        "     and recorded authority permits, the control is the defect: open its row, repair it\n"
+        "     at its owner through the governed path, prove it. Never manufacture, relabel or\n"
+        "     backdate state to pass it (AGENTS.md, conflict rule).\n\n"
         'Renaming the work "follow-up", "out of scope", "pre-existing" or "next mission" does\n'
         "not clear this — those are the exact disposals the law names.\n")
     if retry:
@@ -169,15 +165,15 @@ def main() -> int:
     # worktree that held the work, so an honest same-day row read as a broken promise.
     repo = str(payload.get("cwd") or "") or None
     blockers = mission_latch.mission_blockers(repo=repo)
-    # Outcome-side companion to the PreToolUse latch, asked ONLY when there is no mission at
-    # all: once a row exists, the row's own state is the question and a dirty tree is simply
-    # the work in progress.
-    dirty = ([] if mission_latch.has_active_mission(repo=repo)
-             else mission_latch.dirty_production_files(Path(repo) if repo else None))
-    if not blockers and not dirty:
+    # BEDROCK 2026-09-06: the "production dirty with no row" clause is gone with the
+    # mutation-side latch. It was the same proxy at the other end of the turn — it could not
+    # tell feature work from an undocumented defect, so it taxed the former and let the latter
+    # through whenever a row of any kind existed. What a Stop seam CAN see is a row the agent
+    # itself opened and did not finish; that is the whole duty here.
+    if not blockers:
         return 0
 
-    sys.stderr.write(_explain(blockers, dirty, payload.get("stop_hook_active") is True))
+    sys.stderr.write(_explain(blockers, payload.get("stop_hook_active") is True))
     return 2                          # exit 2 = block the stop, agent keeps working
 
 

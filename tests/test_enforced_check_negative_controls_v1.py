@@ -10,7 +10,6 @@ single_spot_authority, ui_data_integration, and several ledger validators.
 """
 from __future__ import annotations
 
-import io
 import sys
 from pathlib import Path
 
@@ -28,41 +27,10 @@ TURN_AUDIT_OWNS = [
 
 
 
-def test_verdicts_check_screams_on_an_unproven_kill():
-    """RC-87's gate: a KILL/RETIRED row with no n=/CI must be flagged. This is the check whose
-    first version shipped with literal backspace bytes in its regex and could never match."""
-    log = ROOT / "governance" / "root_cause_log.md"
-    # RC-373 (RC-372 class): real-file round-trips restore BYTES — platform-newline
-    # text writes flapped the ledger's EOLs on every run.
-    orig_bytes = log.read_bytes()
-    orig = log.read_text(encoding="utf-8")
-    baseline = len(C.check_verdicts_declare_their_power())
-    try:
-        with io.open(log, "w", encoding="utf-8", newline="\n") as fh:
-            fh.write(orig + "| RC-9999 | CLOSED | 2026-07-27 | 2026-08-03 | t | w | "
-                            "The lead is RETIRED - it does not replicate. |\n")
-        injected = len(C.check_verdicts_declare_their_power())
-    finally:
-        log.write_bytes(orig_bytes)
-    assert log.read_bytes() == orig_bytes, "ledger restore was not byte-faithful"
-    assert injected == baseline + 1, "an unproven RETIRED verdict was not flagged"
-    assert len(C.check_verdicts_declare_their_power()) == baseline
-
-
-def test_verdicts_check_accepts_a_powered_verdict():
-    log = ROOT / "governance" / "root_cause_log.md"
-    # RC-373 (RC-372 class): byte-faithful restore, newline-pinned injection write.
-    orig_bytes = log.read_bytes()
-    orig = log.read_text(encoding="utf-8")
-    baseline = len(C.check_verdicts_declare_their_power())
-    try:
-        with io.open(log, "w", encoding="utf-8", newline="\n") as fh:
-            fh.write(orig + "| RC-9999 | CLOSED | 2026-07-27 | 2026-08-03 | t | w | "
-                            "RETIRED: n=412, 95% CI [-0.31,-0.12], power 0.86. |\n")
-        assert len(C.check_verdicts_declare_their_power()) == baseline
-    finally:
-        log.write_bytes(orig_bytes)
-    assert log.read_bytes() == orig_bytes, "ledger restore was not byte-faithful"
+# BEDROCK 2026-09-06: the verdict-power controls left with the verdict-power fold — it
+# matched KILL/RETIRED/PROVEN words in prose and demanded n=/CI tokens beside them, which
+# AGENTS.md rules out as enforcement. The evidence substance (a numeric finding cites its
+# reproduce command) is exercised by test_citation_check_* below.
 
 
 def test_spot_authority_check_is_alive_on_the_real_tree():

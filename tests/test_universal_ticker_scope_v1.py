@@ -3,8 +3,6 @@
 """RC-160: UNIVERSAL ticker-scope lock — fire on SPY-only, quiet on enrolled/UNIVERSAL."""
 from __future__ import annotations
 
-import io
-import json
 import sys
 from pathlib import Path
 
@@ -13,7 +11,6 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 import tools.check_institutional_correctness as C  # noqa: E402
-import tools.pretooluse_guard as PG  # noqa: E402
 import tools.universal_scope_lock as U  # noqa: E402
 
 
@@ -83,22 +80,6 @@ def test_chart_spy_only_feature_gate_blocks_and_parameterized_allows():
     )
 
 
-def test_spy_only_prompt_content_blocks_and_universal_allows():
-    bad = "Run this experiment on SPY only and report the result as complete."
-    assert U.spy_only_content_violation(bad), "SPY-only prompt prose was not flagged"
-
-    good = (
-        "UNIVERSAL: run this experiment on the enrolled universe (all enrolled tickers). "
-        "Do not treat a SPY sample as complete."
-    )
-    assert U.spy_only_content_violation(good) is None
-
-    waived = (
-        "OUT-OF-SCOPE: SPY only for this smoke, operator waiver — not a system answer."
-    )
-    assert U.spy_only_content_violation(waived) is None
-
-
 def test_check_universal_ticker_scope_screams_on_injected_tool(tmp_path, monkeypatch):
     """Full check path: a SPY-only liquidity tool under a fake repo must produce >=1 violation."""
     tools = tmp_path / "tools"
@@ -134,37 +115,6 @@ def test_check_universal_ticker_scope_screams_on_injected_tool(tmp_path, monkeyp
     assert C.check_universal_ticker_scope() == [], (
         "enrolled-universe default was wrongly blocked"
     )
-
-
-def test_pretooluse_blocks_spy_only_prompt_write(monkeypatch):
-    """Front-end: Write of a SPY-only prompt draft exits 2; UNIVERSAL draft exits 0."""
-    monkeypatch.setenv("ED_PRETOOLUSE_GUARD", "on")
-
-    def run(content: str) -> tuple[int, str]:
-        # T2-5 (SIMPLICITY REHAB 2026-08-24): reports/** is ungated now; a prompt-named
-        # file at a gated location (repo root) drives the same front-end clause.
-        payload = {
-            "tool_name": "Write",
-            "tool_input": {
-                "file_path": str(ROOT / "zz_cursor_prompt_spy.md"),
-                "content": content,
-            },
-        }
-        monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(payload)))
-        err = io.StringIO()
-        monkeypatch.setattr(sys, "stderr", err)
-        code = PG.main()
-        return code, err.getvalue()
-
-    code, err = run("Claude: implement Chart highlight for SPY only.")
-    assert code == 2, f"SPY-only prompt Write was not blocked (exit={code}, err={err!r})"
-    assert "RC-160" in err
-
-    code, err = run(
-        "Claude: UNIVERSAL — implement Chart highlight for the enrolled universe; "
-        "do not scope to SPY only without OUT-OF-SCOPE."
-    )
-    assert code == 0, f"UNIVERSAL prompt was wrongly blocked: {err!r}"
 
 
 def test_live_tree_liquidity_defaults_are_not_spy_only():

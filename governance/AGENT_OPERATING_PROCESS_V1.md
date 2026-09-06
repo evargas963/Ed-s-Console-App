@@ -55,18 +55,11 @@
 
 - **DONE when:** `check_live_path_is_main.py` reports no violation in the production checkout (branch==main, HEAD==origin/main, no uncommitted app code); dev work is on the dev worktree; production received its change only by fast-forward after the PR merged. This is an operating standard the operator reads and acts on — a violation means the desk is stale or divergent, never that it may not run (RC-512).
 
-## 7. DEBT-CONVERGENCE LAW (fixable repo debt goes down, not sideways)
+## 7. DEBT (no ratios)
 
-**No new machinery** — measured with the EXISTING ledgers/checkers: the open + overdue counts from `tools/check_institutional_correctness.py` (`check_root_cause_log`, `check_open_item_cap`), the merge-time delta gate `tools/check_delta_adds_no_debt.py --base origin/main` (which already BLOCKs NEW/WORSENED enforced debt — the hard "no net new debt" floor), and `git log` on `governance/root_cause_log.md`. This is an operating discipline over those numbers; it adds no queue, ratio ledger, or reporting surface.
+The ratios that stood here (2:1 / 3:1 / 5:1 retirements per expansion) were a ratchet, and the operator ruled ratchets out (RC-280: "we do not need ratchets, we need great code"). The surviving law is `AGENTS.md` **Backlog**: a dated row may not rot — it is finished, or BLOCKED with a live date and a stated reason — and the merge-time delta gate (`tools/check_delta_adds_no_debt.py --base origin/main`) refuses any change that adds or worsens enforced debt. Recording a newly discovered defect is always allowed and never counts as debt; closing already-fixed paperwork is reconciliation, not repair.
 
-- **Recording a newly discovered defect is always allowed and never counts as creating debt** — opening an honest RC row is how discovery is tracked (RC-65), the opposite of the failure mode.
-- **P0 / emergency correctness work is never delayed by the ratio.** Fix it now; the ratio governs only discretionary forward/expansion work.
-- **Discretionary expansion must retire real, pre-existing, FIXABLE engineering debt** in the same body of work. Floor = **2 debt items retired per 1 expansion unit**; normal target **3:1**; a dedicated rehab/cleanup pass targets **≥ 5:1**.
-- **What does NOT count as retired:** re-dating, postponing, moving, relabeling, or closing already-fixed stale paperwork. A retirement is a real fixable defect driven to root and proven fixed (or proven obsolete on the current tree). Bookkeeping reconciliation of stale records is legitimate and required, but it is counted SEPARATELY and never as engineering-debt retirement.
-- **Excluded from the burn denominator:** externally-blocked / data-accrual / operator-blocked rows (a `BLOCKED_ON_*` marker). They are honestly OPEN, not fixable-now — neither debt you must burn nor debt you retired.
-- **Objective: monotonic reduction of actual fixable repo debt** — never status manipulation.
-
-- **DONE when:** across the change, real fixable-debt retired ≥ the ratio for the expansion done, measured against the pre-change open/overdue baseline; stale-record reconciliations are reported separately from engineering-debt retirement.
+- **DONE when:** no overdue row of this worktree's own, and the delta gate reports no new or worsened enforced violation.
 
 ## 8. SIGN-OFF CHECKLIST (drift audit — run on yourself before any "MET / clean / verified" claim)
 
