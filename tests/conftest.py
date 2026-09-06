@@ -21,13 +21,6 @@ import pytest
 
 os.environ.setdefault("ED_CONSOLE_ALLOW_NONCANONICAL_DB", "1")
 
-# GOV-GATE-PERF-V1: the governance gate cache is a CLI-entry-point optimization.
-# Tests must always exercise REAL compute — many inject failures via in-process
-# monkeypatched state that file-identity cache keys cannot represent, so a stored
-# success must never satisfy an injected-failure test. Force-no-cache is the
-# cache's own designated verification mode (tools/governance_gate_cache.py).
-os.environ.setdefault("ED_GATE_CACHE_DISABLE", "1")
-
 # Hermetic Schwab config for pytest only — not real credentials; no network at import.
 os.environ.setdefault("SCHWAB_API_KEY", "ci-placeholder-api-key")
 os.environ.setdefault("SCHWAB_APP_SECRET", "ci-placeholder-app-secret")

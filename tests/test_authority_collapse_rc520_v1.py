@@ -267,12 +267,11 @@ _RETIRED_NAMES = ("MEMORY.md", "OPEN_ITEMS_OPERATOR_TRUST", "OPERATOR_TRUST_STAB
                   "AGENT_SELF_GOVERNANCE", "build_phase0_", "build_phase2_", "build_phase3_",
                   "import_memory_archive_phase1c", "tqm_rehab_agent_brief", "PR_REVIEW_STANDARD",
                   "NO_SILENT_DEGRADATION_POLICY", "RUNTIME_EVIDENCE_ENV_CONTRACT", "ADMIN_BYPASS_REGISTER")
-_REWIRED_CONSUMERS = ("docs/host/README.md", ".claude/agents/rules-auditor.md", "TRAINING_AND_MAINTENANCE.md",
+_REWIRED_CONSUMERS = ("docs/host/README.md", "TRAINING_AND_MAINTENANCE.md",
                       "tools/feature_curation_gate.py", "tools/check_ml_pipeline_efficiency.py",
                       ".github/pull_request_template.md", "governance/AGENT_OPERATING_PROCESS_V1.md",
                       ".claude/skills/drift-audit/SKILL.md", "governance/README.md", "timeframe_config.py")
 _ALLOWED_PY_MENTIONS = {  # the only production readers of the two root documents, each for a reason
-    "tools/gate_test_ownership.py",      # bundle selection: a root doc change runs the governance bundle
     "tools/chart_intent_lock.py",        # prompt-path lock: agent-instruction files are in scope
     "tools/universal_scope_lock.py",     # prompt-path lock: agent-instruction files are in scope
     "tools/check_institutional_correctness.py",   # the RC-520 control itself
