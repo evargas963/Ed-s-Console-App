@@ -444,18 +444,92 @@ def canonical_authority(raw_payload: str) -> tuple[tuple[Path, ...], str, str]:
 DELEGATED_ENV = "ED_GOVERNANCE_AUTHORITY_DELEGATED"
 
 
-def _delegate(root: Path, raw_payload: str, members: tuple[str, ...]) -> tuple[int, str]:
-    """Run the IDENTICAL roster under `root`'s governance; return (verdict, its stderr).
+#: Hook events this chain serves, and the tools that make an event a PreToolUse one.
+_PRETOOLUSE_TOOLS = MUTATING_TOOLS | BASH_TOOLS
 
-    The roster travels as argv, so the member list cannot be shortened on the way across and
-    `.claude/settings.json` stays the reviewable authority over which guards run. Fail-closed:
-    a delegate that crashes, times out, or cannot be spawned returns non-zero, because an
-    unmeasurable guard run is not a passing one (RC-57). The stderr comes back too, because a
-    crashed delegate names the file it crashed in and that name is the whole recovery boundary
-    (`recovery_files`, RC-520).
+
+def _payload_event(raw_payload: str) -> tuple[str, str]:
+    """`(event, tool_name)` — the event a payload belongs to, as the host would route it."""
+    data = _payload(raw_payload)
+    tool = data.get("tool_name")
+    tool = tool if isinstance(tool, str) else ""
+    event = data.get("hook_event_name")
+    if isinstance(event, str) and event:
+        return event, tool
+    return ("PreToolUse" if tool in _PRETOOLUSE_TOOLS else "Stop"), tool
+
+
+def tree_roster(root: Path, raw_payload: str) -> tuple[tuple[str, ...], str]:
+    """`(members, failure)`: the roster `root`'s OWN hook wiring registers for this event.
+
+    RC-522 (2026-09-06). The delegate used to run the roster the LAUNCH tree passed on argv.
+    The production checkout's wiring still named `tools/honesty_guard.py`; the branch worktree
+    it delegated to had retired that module by a signed program; the delegate crashed on an
+    import and every Stop of the session was blocked by a rule the authoritative tree did not
+    carry — the RC-512 shape again, one level up: not stale CODE crossing the boundary this
+    time, but stale WIRING. A tree's canonical roster is what its own `.claude/settings.json`
+    registers; that is the reviewable authority the tests pin, and it is the only roster the
+    tree can be judged under. Launch-tree roster state never crosses the boundary.
+
+    Read from the tree, never trusted from the payload. Fail-closed: no wiring file, an
+    unparseable one, no entry for this event, or an empty roster is a `failure`, and the caller
+    refuses to delegate to that tree (it is judged HERE instead, with the reason in the note).
+    """
+    wiring = root / ".claude" / "settings.json"
+    try:
+        data = json.loads(wiring.read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        return (), f"{root} carries no readable hook wiring at .claude/settings.json"
+    event, tool = _payload_event(raw_payload)
+    hooks = (data.get("hooks") or {}) if isinstance(data, dict) else {}
+    entries = hooks.get(event) if isinstance(hooks, dict) else None
+    if not isinstance(entries, list) or not entries:
+        return (), f"{root} registers no {event} hook in its wiring"
+    chosen = None
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        matcher = entry.get("matcher")
+        if event == "PreToolUse":
+            if not isinstance(matcher, str) or not tool:
+                continue
+            try:
+                if not re.fullmatch(matcher, tool):
+                    continue
+            except re.error:
+                continue
+        chosen = entry
+        break
+    if chosen is None:
+        return (), f"{root} registers no {event} hook for tool {tool!r} in its wiring"
+    commands = [h.get("command") for h in (chosen.get("hooks") or []) if isinstance(h, dict)]
+    command = next((c for c in commands if isinstance(c, str) and c.strip()), "")
+    argv = [t for t in command.split() if t.replace("\\", "/").startswith("tools/")
+            and "chain" not in t]
+    members = _argv_members(argv)
+    if not members:
+        return (), f"{root} registers an empty {event} roster in its wiring"
+    return members, ""
+
+
+def _delegate(root: Path, raw_payload: str) -> tuple[int, str]:
+    """Run `root`'s OWN roster under `root`'s governance; return (verdict, its stderr).
+
+    The roster is read from the delegate tree's hook wiring (`tree_roster`, RC-522) — never
+    from this tree's argv — so a rule this tree still registers cannot be run against a tree
+    that retired it, and a rule the delegate registers cannot be dropped on the way across.
+    Fail-closed: a delegate that crashes, times out, or cannot be spawned returns non-zero,
+    because an unmeasurable guard run is not a passing one (RC-57). The stderr comes back too,
+    because a crashed delegate names the file it crashed in and that name is the whole
+    recovery boundary (`recovery_files`, RC-520).
     """
     import os
 
+    members, failure = tree_roster(root, raw_payload)
+    if failure:
+        msg = f"GOVERNANCE AUTHORITY: delegation to {root} refused — {failure}.\n"
+        sys.stderr.write(msg)
+        return 2, msg
     entry = root / "tools" / "stop_chain.py"
     argv = [f"tools/{name.split('.')[-1]}.py" for name in members]
     env = dict(os.environ)
@@ -514,12 +588,22 @@ def _crash_site(exc: BaseException) -> str:
         files.append(tb.tb_frame.f_code.co_filename)
         tb = tb.tb_next
     root = REPO.resolve()
+    executors = {"tools/stop_chain.py", "tools/pretooluse_chain.py"}
     for name in reversed(files):
+        # RC-522: a frame name that is not a real file (`<frozen importlib._bootstrap>` on a
+        # missing module) used to RESOLVE under the cwd and be reported as the crash site. A
+        # site must exist on disk, and the chain executor that IMPORTED the member is never
+        # the site — a missing module has no file to repair, so the door stays shut.
         try:
-            rel = Path(name).resolve().relative_to(root)
+            candidate = Path(name)
+            if not candidate.is_file():
+                continue
+            rel = candidate.resolve().relative_to(root).as_posix()
         except (OSError, ValueError):
             continue
-        return rel.as_posix()
+        if rel in executors:
+            continue
+        return rel
     return ""
 
 
@@ -578,10 +662,18 @@ def recovery_target(raw_payload: str, root: Path, delegate_stderr: str) -> Path 
     return target if target in recovery_files(root, delegate_stderr) else None
 
 
-def _ineligible_reason(root: Path, members: tuple[str, ...]) -> str:
-    """Why `root` may not judge for itself — empty when it may."""
+def _ineligible_reason(root: Path, raw_payload: str) -> str:
+    """Why `root` may not judge for itself — empty when it may.
+
+    Eligibility is decided against the tree's OWN roster (RC-522): a tree with no canonical
+    wiring for this event cannot be handed authority, and the uncommitted-guard rule is asked
+    about the guards that tree actually registers, not the ones the launch tree does.
+    """
     if not (root / "tools" / "stop_chain.py").is_file():
         return f"{root} carries no chain to delegate to"
+    members, failure = tree_roster(root, raw_payload)
+    if failure:
+        return failure
     dirty = uncommitted_guard_files(root, members)
     if dirty:
         return (f"{root} has UNCOMMITTED guard files ({', '.join(dirty)}); a tree cannot be "
@@ -599,6 +691,9 @@ def resolve_authority(raw_payload: str, members: tuple[str, ...]) -> tuple[
     `run_here` is True whenever this tree must judge as well — because it is itself one of the
     materially touched trees, because nothing resolved, or because a resolved tree was refused
     authority. A refused tree is never simply dropped: something always judges for it.
+
+    `members` is THIS tree's roster (its argv); it governs only the run-here half. A delegate
+    is judged under its own wiring (`tree_roster`, RC-522).
     """
     import os
 
@@ -621,7 +716,7 @@ def resolve_authority(raw_payload: str, members: tuple[str, ...]) -> tuple[
         if root == REPO:
             run_here = True
             continue
-        reason = _ineligible_reason(root, members)
+        reason = _ineligible_reason(root, raw_payload)
         if reason:
             notes.append(reason)
             run_here = True          # judged here INSTEAD, never skipped
@@ -637,7 +732,7 @@ def run_chain(raw_payload: str, members: tuple[str, ...] = STOP_CHAIN) -> int:
     RC-57): its traceback goes to stderr and the chain reports exit 2.
 
     RC-512: before running anything, ask WHO should be running it. Every materially touched
-    worktree of this repository runs the identical roster and the WORST real verdict wins —
+    worktree of this repository runs ITS OWN registered roster (RC-522) and the WORST real verdict wins —
     adjudicated, not chosen, because any rule for choosing one tree is a rule an agent can
     satisfy on purpose. When this tree is among them, or when a resolved tree was refused
     authority, the roster also runs here and every BLOCK says so. No path skips the roster,
@@ -654,7 +749,7 @@ def run_chain(raw_payload: str, members: tuple[str, ...] = STOP_CHAIN) -> int:
             f"establish authority adds a block, it never removes one.\n")
         worst = 2
     for root in delegate_to:
-        rc, delegate_err = _delegate(root, raw_payload, members)
+        rc, delegate_err = _delegate(root, raw_payload)
         if rc:
             target = recovery_target(raw_payload, root, delegate_err)
             if target is not None:

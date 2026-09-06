@@ -107,7 +107,9 @@ WINDOW_END_PAD_MINS = 15
 #: Snapshots newer than this feed the producer-liveness (mc_paths) check.
 RECENT_MC_WINDOW_SECS = 900
 
-LOG_PATH = REPO / "reports" / "console_liveness_run.log"
+from runtime_layout import reports_dir as _artifact_reports_dir  # noqa: E402 — RC-523
+
+LOG_PATH = _artifact_reports_dir() / "console_liveness_run.log"
 
 
 def observed_rotation(con: sqlite3.Connection,

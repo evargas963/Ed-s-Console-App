@@ -3,7 +3,9 @@ Canonical SQLite database authority — classification, env policy, CLI enforcem
 
 Policy (encoded here and in db.EdDB / db._resolve_console_db_path):
 
-- **Canonical production file:** ``<project_root>/data/ed_console.db`` (resolved).
+- **Canonical production file:** ``<runtime_root>/data/ed_console.db`` (resolved), where
+  the runtime root is ``runtime_layout.RUNTIME_ROOT`` — the source checkout unless
+  ``ED_RUNTIME_ROOT`` moves it (RC-523, ARCHITECTURE §8).
 - **ED_CONSOLE_DB:** Optional absolute path to the single live DB for this deployment.
   If it does not resolve to the canonical file, ``ED_CONSOLE_ALLOW_NONCANONICAL_DB=1``
   is required (alternate volume / recovery).
@@ -28,8 +30,14 @@ def project_root() -> Path:
 
 
 def canonical_console_db_path() -> Path:
-    """The one intended canonical production database file on disk."""
-    return (project_root() / "data" / "ed_console.db").resolve()
+    """The one intended canonical production database file on disk.
+
+    Rooted in the RUNTIME root (RC-523), not the source checkout: with `ED_RUNTIME_ROOT`
+    unset the two are the same directory, so nothing moves until the operator moves it.
+    """
+    from runtime_layout import data_dir
+
+    return (data_dir() / "ed_console.db").resolve()
 
 
 def default_console_db_path() -> Path:

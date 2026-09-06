@@ -23,7 +23,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-STREAM_DB_DEFAULT = Path(__file__).resolve().parent / "data" / "stream_capture.db"
+from runtime_layout import data_dir as _runtime_data_dir  # RC-523: runtime root, not the source tree
+
+STREAM_DB_DEFAULT = _runtime_data_dir() / "stream_capture.db"
 
 #: env var name for resolve_stream_db_path's cross-checkout override.
 STREAM_CAPTURE_DB_PATH_ENV = "STREAM_CAPTURE_DB_PATH"
@@ -61,7 +63,7 @@ def resolve_stream_db_path(default: "Path | str | None" = None) -> Path:
 #: the canonical daemon polls it to dynamically add/drop book-depth subscription for that
 #: one symbol. This is the ONLY channel by which the server influences the daemon's Schwab
 #: subscriptions — it never opens its own StreamClient (single-stream-authority law).
-ACTIVE_TICKER_SIGNAL_DEFAULT = Path(__file__).resolve().parent / "data" / "stream_active_ticker.json"
+ACTIVE_TICKER_SIGNAL_DEFAULT = _runtime_data_dir() / "stream_active_ticker.json"
 
 #: Same channel, for the one option CONTRACT (OSI symbol, e.g. "SPY   260820C00767000")
 #: the daemon should stream LEVELONE_OPTIONS/OPTIONS_BOOK for. Options streaming is proven
@@ -70,7 +72,7 @@ ACTIVE_TICKER_SIGNAL_DEFAULT = Path(__file__).resolve().parent / "data" / "strea
 #: new probe. The contract symbol MUST come from a chain response's own "symbol" field
 #: (schwab_client.safe_get_chain), never constructed here: a prior manual probe attempt
 #: with a bare ticker failed "no option symbol from chain".
-ACTIVE_OPTION_CONTRACT_SIGNAL_DEFAULT = Path(__file__).resolve().parent / "data" / "stream_active_option_contract.json"
+ACTIVE_OPTION_CONTRACT_SIGNAL_DEFAULT = _runtime_data_dir() / "stream_active_option_contract.json"
 
 #: Queue policies. COALESCE keeps only the newest pending message per topic (quotes).
 #: COUNT_DROPS rejects new messages when full and counts them loudly (prints).

@@ -89,6 +89,29 @@ def _install_chain(tree: Path, guard_body: str) -> None:
     for mod in _chain_modules():
         (tools / f"{mod}.py").write_bytes((REPO / "tools" / f"{mod}.py").read_bytes())
     (tools / "demo_guard.py").write_text(guard_body, encoding="utf-8")
+    wire(tree)
+
+
+def wire(tree: Path, stop: tuple[str, ...] = ("tools/demo_guard.py",),
+         pre: tuple[str, ...] = ("tools/demo_guard.py",)) -> None:
+    """The tree's CANONICAL hook wiring — the roster a delegate is judged under (RC-522).
+
+    Real worktrees carry `.claude/settings.json`; a delegate reads its own. The fixture trees
+    must carry one too, or they have no canonical roster and cannot be handed authority.
+    """
+    def cmd(chain: str, members: tuple[str, ...]) -> str:
+        return " ".join(["python", f"tools/{chain}.py", *members])
+    settings = {"hooks": {
+        "PreToolUse": [
+            {"matcher": "Edit|Write|MultiEdit|NotebookEdit",
+             "hooks": [{"type": "command", "command": cmd("pretooluse_chain", pre)}]},
+            {"matcher": "Bash|PowerShell|Monitor",
+             "hooks": [{"type": "command", "command": cmd("pretooluse_chain", pre)}]},
+        ],
+        "Stop": [{"hooks": [{"type": "command", "command": cmd("stop_chain", stop)}]}],
+    }}
+    (tree / ".claude").mkdir(parents=True, exist_ok=True)
+    (tree / ".claude" / "settings.json").write_text(json.dumps(settings, indent=1), encoding="utf-8")
 
 
 def _commit_all(tree: Path, msg: str) -> None:
@@ -128,13 +151,16 @@ def set_guard(tree: Path, body: str, *, commit: bool = True) -> None:
         _commit_all(tree, "guard change")
 
 
-def run_from(tree: Path, payload: dict, env_extra: dict | None = None) -> subprocess.CompletedProcess:
-    """Invoke the chain the way the hook does: a roster on argv, the payload on stdin."""
+def run_from(tree: Path, payload: dict, env_extra: dict | None = None,
+             roster: tuple[str, ...] = ("tools/demo_guard.py",)) -> subprocess.CompletedProcess:
+    """Invoke the chain the way the hook does: the LAUNCH tree's roster on argv, the payload
+    on stdin. `roster` is what the launch tree's wiring would pass; a delegate ignores it and
+    reads its own wiring (RC-522)."""
     env = dict(os.environ)
     env.pop("ED_GOVERNANCE_AUTHORITY_DELEGATED", None)
     env.update(env_extra or {})
     return subprocess.run(
-        [sys.executable, str(tree / "tools" / "stop_chain.py"), "tools/demo_guard.py"],
+        [sys.executable, str(tree / "tools" / "stop_chain.py"), *roster],
         cwd=str(tree), input=json.dumps(payload), text=True, capture_output=True,
         env=env, timeout=600,
     )
@@ -812,3 +838,85 @@ def test_mutating_the_recovery_boundary_reopens_the_self_lock_or_the_bypass(tree
     leaked = run_from(primary, edit(alpha / "app.py"))
     assert leaked.returncode == 0 and "GOVERNANCE RECOVERY" in leaked.stderr, (
         "a widened boundary must admit an unrelated edit — that is the attack the boundary refuses")
+
+
+# ============================================================ RC-522: a delegate runs ITS OWN roster
+#
+# OBSERVED 2026-09-06 (live, this repository): the production checkout's wiring still passed
+# `tools/honesty_guard.py` on argv; the branch worktree it delegated to had retired that module
+# by a signed program; the delegate crashed on the import and every Stop of the session was
+# blocked by a rule the authoritative tree did not carry. RC-512 one level up: stale WIRING
+# crossing the authority boundary instead of stale code. A delegate is judged under the roster
+# its own `.claude/settings.json` registers, for eligibility and for execution.
+
+def test_a_delegate_runs_the_roster_its_own_wiring_registers_not_the_launch_trees(trees):
+    """The exact live shape: the launch tree still names a guard the delegate retired."""
+    primary, alpha, _beta = trees
+    launch_roster = ("tools/demo_guard.py", "tools/retired_guard.py")   # alpha never had it
+    result = run_from(primary, edit(alpha / "app.py"), roster=launch_roster)
+    assert result.returncode == 0, (
+        "the launch tree's argv roster crossed into the delegate and crashed it on a module "
+        f"the delegate retired (RC-522 unfixed).\nSTDERR:\n{result.stderr}")
+    assert "crashed" not in result.stderr and "retired_guard" not in result.stderr, result.stderr
+
+
+def test_the_launch_tree_cannot_drop_a_guard_the_delegate_registers(trees):
+    """The symmetric half: alpha's own wiring names a guard that BLOCKS there; a launch roster
+    that omits it must not launder the verdict."""
+    primary, alpha, _beta = trees
+    set_guard(primary, PASSING_GUARD)
+    set_guard(alpha, BLOCKING_GUARD)
+    (primary / "tools" / "quiet_guard.py").write_text(PASSING_GUARD, encoding="utf-8")
+    _commit_all(primary, "a launch roster that names only a quiet guard")
+    result = run_from(primary, edit(alpha / "app.py"), roster=("tools/quiet_guard.py",))
+    assert result.returncode != 0, "alpha's own registered guard was dropped by the launch roster"
+    assert "BLOCKED BY alpha" in result.stderr, result.stderr
+
+
+def test_a_tree_without_canonical_wiring_cannot_be_handed_authority(trees):
+    """No `.claude/settings.json` in the delegate -> refused, judged HERE, reason named."""
+    primary, alpha, _beta = trees
+    (alpha / ".claude" / "settings.json").unlink()
+    _commit_all(alpha, "wiring removed")
+    result = run_from(primary, edit(alpha / "app.py"))
+    assert result.returncode != 0, "a tree with no canonical roster was handed authority"
+    assert "no readable hook wiring" in result.stderr, result.stderr
+    assert "BLOCKED BY primary" in result.stderr, "the refused tree must be judged here"
+
+
+def test_the_delegate_roster_follows_the_event(trees, tmp_path):
+    """Stop and PreToolUse are separately registered; the delegate reads the one the payload
+    belongs to. alpha: Stop -> the blocking guard, PreToolUse -> a quiet one."""
+    primary, alpha, _beta = trees
+    set_guard(primary, PASSING_GUARD)
+    set_guard(alpha, BLOCKING_GUARD, commit=False)
+    (alpha / "tools" / "quiet_guard.py").write_text(PASSING_GUARD, encoding="utf-8")
+    wire(alpha, stop=("tools/demo_guard.py",), pre=("tools/quiet_guard.py",))
+    _commit_all(alpha, "event-specific rosters")
+    edited = run_from(primary, edit(alpha / "app.py"))
+    assert edited.returncode == 0, edited.stderr
+    t = write_transcript(tmp_path / "s.jsonl", [tool_use("Edit", alpha / "app.py")])
+    stopped = run_from(primary, stop_payload(t))
+    assert stopped.returncode != 0 and "BLOCKED BY alpha" in stopped.stderr, stopped.stderr
+
+
+def test_a_missing_module_is_a_block_that_names_no_recovery_file():
+    """RC-522 second finding: `_crash_site` resolved `<frozen importlib._bootstrap>` under the
+    cwd and reported it as the crash site. A site must exist on disk; a missing module has no
+    file to repair, so the recovery door must stay shut."""
+    import io
+
+    from tools.stop_chain import recovery_files, run_chain
+
+    captured = io.StringIO()
+    real_err = sys.stderr
+    sys.stderr = captured
+    try:
+        rc = run_chain(json.dumps({"hook_event_name": "Stop"}), ("tools.zz_absent_member_rc522",))
+    finally:
+        sys.stderr = real_err
+    err = captured.getvalue()
+    assert rc == 2 and "crashed: ModuleNotFoundError" in err, err
+    assert "[broken file:" not in err, f"a missing module named a crash site: {err}"
+    stderr = "STOP CHAIN: tools.zz crashed: ModuleNotFoundError: x [broken file: <frozen importlib._bootstrap>]\n"
+    assert recovery_files(REPO, stderr) == set()

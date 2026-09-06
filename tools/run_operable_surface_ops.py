@@ -24,12 +24,13 @@ if str(ROOT) not in sys.path:
 
 from calibration.backfill_outcomes import backfill
 from calibration.daily_scoreboard import BACKFILL_JOIN_TOL_SEC
+from runtime_layout import data_dir, reports_dir  # RC-523: runtime/artifacts roots
 from tools.operable_surface_gate import (
     evaluate_operable_surface,
     quarantine_old_unattached,
 )
 
-REPORT = ROOT / "reports" / "operable_surface_ops_latest.json"
+REPORT = reports_dir() / "operable_surface_ops_latest.json"
 HISTORICAL_ONE_SHOT_TOL = 59.0
 
 
@@ -58,7 +59,7 @@ def main(argv: list[str] | None = None) -> int:
         from db import DB_PATH
     except Exception:
         DB_PATH = None  # type: ignore[misc, assignment]
-    db_path = args.db or (Path(DB_PATH) if DB_PATH else ROOT / "data" / "ed_console.db")
+    db_path = args.db or (Path(DB_PATH) if DB_PATH else data_dir() / "ed_console.db")
     if not Path(db_path).is_file():
         print(f"run_operable_surface_ops: missing db {db_path}", file=sys.stderr)
         return 2

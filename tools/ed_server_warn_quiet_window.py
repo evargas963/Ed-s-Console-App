@@ -42,9 +42,11 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from runtime_layout import logs_dir, reports_dir  # noqa: E402 — RC-523: runtime/artifacts roots
+
 DEFAULT_HEALTH_URL = "http://127.0.0.1:8000/api/health"
-DEFAULT_LOG_PATH = ROOT / "logs" / "ed_server.log"
-DEFAULT_REPORT = ROOT / "reports" / "ed_server_warn_quiet_window_latest.json"
+DEFAULT_LOG_PATH = logs_dir() / "ed_server.log"
+DEFAULT_REPORT = reports_dir() / "ed_server_warn_quiet_window_latest.json"
 DEFAULT_WINDOW_SEC = 300
 
 # Any logger. Level >= WARNING (markers + stdlib levelname) OR traceback.

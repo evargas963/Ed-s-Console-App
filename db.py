@@ -313,7 +313,11 @@ def similarity_empirically_viable(labeled_by_col: dict[str, int]) -> bool:
 # path addressed, and it had already scattered rows into three sibling files.
 # ED_CONSOLE_DB or ED_DB_PATH: optional override; non-canonical targets require
 # ED_CONSOLE_ALLOW_NONCANONICAL_DB=1, with no sibling-file exemption.
-DB_DIR = Path(__file__).parent / "data"
+# RC-523: the data directory is the RUNTIME root's (runtime_layout), which is this checkout
+# unless ED_RUNTIME_ROOT moves it — source and runtime state are separate concerns (§8).
+from runtime_layout import data_dir as _runtime_data_dir  # noqa: E402
+
+DB_DIR = _runtime_data_dir()
 
 
 def _resolve_console_db_path() -> Path:

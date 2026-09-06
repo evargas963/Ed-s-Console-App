@@ -10,7 +10,9 @@ Truthy for most flags: `1`, `true`, `yes`, `on` (case-insensitive). Falsy: `0`, 
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `ED_CONSOLE_DB` | `data/ed_console.db` | SQLite path override |
+| `ED_RUNTIME_ROOT` | the source checkout | RC-523 (ARCHITECTURE §8): root of runtime STATE — `data/` (the live DB, barchart), `logs/`, `schwab_token.json`, `diagnostics/`. Read by `runtime_layout.py` at import (from the process environment or the repo-root `.env`). Set it to `C:\Users\<you>\Documents\Trading\runtime\EdWebConsole` after moving those directories there; unset, nothing moves. |
+| `ED_ARTIFACTS_ROOT` | `ED_RUNTIME_ROOT` | RC-523: root of runtime-written ARTIFACTS — `reports/` (terrain scorecard + history + quarantine ledger, operable-surface reports, the fp scoreboard the Desk reads). Defaults to the runtime root. |
+| `ED_CONSOLE_DB` | `<ED_RUNTIME_ROOT>/data/ed_console.db` | SQLite path override (wins over the runtime root; non-canonical targets still need the acknowledgement below) |
 | `ED_CONSOLE_ALLOW_NONCANONICAL_DB` | off | Allow non-canonical DB path (dangerous) |
 | `ED_SQLITE_BUSY_RETRIES` | `8` | Busy-handler retries |
 | `ED_SQLITE_BUSY_BASE_SLEEP_SEC` | `0.02` | Backoff base |

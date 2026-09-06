@@ -34,7 +34,6 @@ import sqlite3
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
-from pathlib import Path
 from typing import Any, Callable, Optional
 
 from instrument_identity import ticker_storage_key
@@ -107,7 +106,9 @@ GRACE_AFTER_SUBSCRIBE_SEC = 8.0
 #: masquerade as "Schwab stream connected" — _read_daemon_upstream_health is the ground
 #: truth for that distinct question, surfaced as its own field, never blended into
 #: streaming_healthy.
-_DAEMON_STATUS_PATH = Path(__file__).resolve().parent / "reports" / "stream_capture_status.json"
+from runtime_layout import reports_dir as _artifact_reports_dir  # RC-523: artifacts root
+
+_DAEMON_STATUS_PATH = _artifact_reports_dir() / "stream_capture_status.json"
 #: The daemon's write_status() loop runs on a 10s cadence — 3x that as a liveness bound on
 #: the STATUS FILE ITSELF (not the per-service health it carries): if the file hasn't been
 #: touched this recently, the daemon PROCESS may be dead, and every entry inside a dead
