@@ -379,37 +379,6 @@ def test_closed_row_cannot_close_on_an_empty_tree():
     )
 
 
-def test_mypy_metric_is_scoped_to_the_commit():
-    """RC-145: the debt count must describe the COMMITTED codebase, not whatever .py files this
-    disk happens to hold. Measured 2026-07-30: 501 of 1,115 in-scope .py files were untracked
-    (a nested worktree plus gitignored probes) and two of them contributed findings, while
-    `git status -uall` reported 0 dirty .py — so no amount of provenance could reconcile two
-    agents' integers."""
-    from tools import check_institutional_correctness as M
-
-    tracked = M._tracked_py_files()
-    assert tracked, "git could not list tracked .py — the scope filter cannot be verified"
-    assert "server.py" in tracked, "a core money-path file is missing from the tracked set"
-
-    # every finding the metric reports must belong to the commit
-    findings = dict((n, f) for n, f, _ in M.CHECKS)["mypy_types"]()
-    off_commit = [str(v) for v in findings
-                  if str(v).split(":")[0].strip().replace("\\", "/") not in tracked]
-    assert off_commit == [], (
-        f"the debt count includes files git does not track — unreproducible by anyone else: "
-        f"{off_commit[:3]}"
-    )
-
-    # and the filter must FAIL CLOSED: if git cannot answer, keep the raw result rather than
-    # silently reporting a smaller (cleaner) number.
-    import inspect
-    src = inspect.getsource(M.check_mypy_types)
-    assert "tracked is not None" in src, (
-        "the scope filter does not guard against git being unavailable — an unanswerable git "
-        "would silently shrink the metric toward 'clean'"
-    )
-
-
 # RC-470: test_close_contract_deferral_matches_whole_words_only removed with its
 # validator (see the note beside the close-contract controls above).
 
@@ -492,64 +461,4 @@ def test_rc246_precommit_path_excludes_advisory_checks():
         "the pre-commit blocking path no longer asks for the enforced-only path (RC-246)"
     )
 
-
-def test_rc246_enforced_only_mode_skips_every_advisory_check(monkeypatch, capsys):
-    import tools.check_institutional_correctness as gate
-
-    ran: list[str] = []
-    fake = [
-        ("fake_enforced", lambda: ran.append("fake_enforced") or [], True),
-        ("fake_advisory", lambda: ran.append("fake_advisory") or [], False),
-    ]
-    monkeypatch.setattr(gate, "CHECKS", fake)
-    gate.run_checks(mode="enforced")
-    capsys.readouterr()
-    assert ran == ["fake_enforced"], f"advisory check ran in the blocking path: {ran}"
-
-
-def test_rc246_advisory_mode_still_runs_them_and_records_the_debt(monkeypatch, tmp_path, capsys):
-    """The condition attached to P1's approval: advisory debt must not be silently dropped."""
-    import json
-
-    import tools.check_institutional_correctness as gate
-
-    ran: list[str] = []
-
-    def _two_violations():
-        ran.append("fake_advisory")
-        # real Violation objects — the grandfather filter reads v.path, so bare strings
-        # would test the fixture rather than the code
-        return [gate.Violation(tmp_path / "x.py", 1, "advisory debt one"),
-                gate.Violation(tmp_path / "y.py", 2, "advisory debt two")]
-
-    fake = [
-        ("fake_enforced", lambda: ran.append("fake_enforced") or [], True),
-        ("fake_advisory", _two_violations, False),
-    ]
-    monkeypatch.setattr(gate, "CHECKS", fake)
-    monkeypatch.setattr(gate, "REPO", tmp_path)
-    _, results, _hotspots = gate.run_checks(mode="advisory")
-    capsys.readouterr()
-    assert ran == ["fake_advisory"], f"enforced check ran in the advisory path: {ran}"
-
-    path = gate.write_advisory_report(results)
-    data = json.loads(path.read_text(encoding="utf-8"))
-    assert data["checks"]["fake_advisory"] == 2
-    assert data["total_advisory_violations"] == 2
-    assert isinstance(data.get("measured_at_utc"), float), "the record must be dated"
-
-
-def test_rc246_advisory_never_blocks_and_the_catalogue_keeps_all_seven():
-    """Advisory mode reports; it must never return non-zero. And the seven must still be
-    REGISTERED — moving them off the hook is not permission to delete them."""
-    import tools.check_institutional_correctness as gate
-
-    advisory = [n for n, _f, e in gate.CHECKS if not e]
-    for name in ("debt_ratchet", "orphan_dict_keys", "function_complexity", "function_length",
-                 "file_length", "ruff_quality", "mypy_types"):
-        assert name in advisory, f"advisory check {name} left the catalogue (RC-246)"
-    src = Path(gate.__file__).read_text(encoding="utf-8")
-    i = src.index('if "--advisory" in args:')
-    block = src[i:i + 700]
-    assert "return 0" in block, "advisory mode must never block a commit"
 

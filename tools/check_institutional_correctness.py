@@ -35,7 +35,6 @@ import ast
 import datetime
 import hashlib
 import json
-import os
 import re
 import subprocess
 import sys
@@ -448,126 +447,6 @@ def check_adversarial_audits_are_answered() -> list[Violation]:
     """Wrapper kept importable for the negative controls; the substance runs inside
     check_root_cause_log (retired registration, governance/retired_checks.md)."""
     return _adversarial_audits_are_answered_violations()
-
-
-def _ratchet_may_write() -> bool:
-    """A CHECK MUST NOT MUTATE THE REPO (RC-90).
-
-    check_debt_ratchet used to rewrite the baseline whenever a metric improved, and
-    check_open_item_cap the ceiling. pre-commit stashes unstaged work and runs hooks against the
-    STAGED-ONLY tree, so those counts legitimately differ from the working tree: the file was
-    rewritten on every single run, pre-commit treats a hook that modifies a tracked file as a
-    failure, and staging the rewrite could not help because the next run rewrote it again. Four
-    consecutive commits were blocked on 2026-07-27 while the gate itself printed PASS with all 32
-    enforced checks clean -- including the commit carrying the locks the operator had just
-    mandated.
-
-    Under a hook the ratchet still COMPARES and still BLOCKS on a real rise; it just does not
-    record the new floor. Recording is deliberate, exactly as the docstring always claimed:
-        python tools/check_institutional_correctness.py --rebaseline
-    """
-    if os.environ.get("PRE_COMMIT"):          # set by pre-commit for every hook it runs
-        return False
-    return os.environ.get("ED_RATCHET_NO_WRITE", "").strip().lower() not in ("1", "true", "on")
-
-
-def _debt_baseline_path():
-    return REPO / "governance" / "advisory_debt_baseline.json"
-
-
-# Correctness-shaped advisory debt — the ONLY metrics whose rise fails the commit.
-# Shape/style volume (file/function length, complexity, ruff SIM/ARG/etc.) is reported
-# but never blocks: elite institutional craft is judged by correctness and architecture,
-# not by shaving counters (RC-19: a file-length ceiling forced five circular imports to
-# save seven lines). Hard correctness already lives elsewhere (ENFORCED checks, pre-commit
-# ruff F401/F821/E9, market-correctness, 5-why). New advisory checks default to
-# track-only unless added here deliberately.
-_RATCHET_BLOCKS_ON_RISE = frozenset({
-    "no_fake_defaults",              # fabricated neutrals hide absence
-    "orphan_dict_keys",              # silent None / misspelled keys (RC-15/RC-20)
-    "tests_missing_explicit_assert", # tests that cannot fail on regression
-    # mypy_types intentionally excluded: checker is dormant until mypy is installed;
-    # a 0-vs-baseline honesty trip would brick every bare/.venv without mypy.
-})
-
-
-def check_debt_ratchet() -> list[Violation]:
-    """Correctness advisory debt may go DOWN or stay flat. It may never go UP.
-
-    Operator 2026-07-19: "mypy is not a report, it's a tool." Operator 2026-07-24/25:
-    the ratchet exists to stop CRUFT (fake defaults, orphan keys, assertion-free tests,
-    type holes) — not to police line counts, cyclomatic complexity, or stylistic ruff
-    volume. Those shape/style counters remain visible as ADVISORY checks and may float
-    with the codebase; they do not fail the gate. Allowlist = `_RATCHET_BLOCKS_ON_RISE`.
-
-    Baseline floor for blocked metrics still only descends (auto-rewrite on improvement).
-    Regenerate deliberately (after an accepted correctness-debt increase) with:
-        python tools/check_institutional_correctness.py --rebaseline
-    """
-    out: list[Violation] = []
-    path = _debt_baseline_path()
-    current = {name: len(fn()) for name, fn, enforced in CHECKS if not enforced
-               and name != "debt_ratchet"}
-    if not path.exists():
-        # RC-385: READ-ONLY. Seeding is an explicit act (--rebaseline), never a side
-        # effect of asking the gate a question.
-        out.append(Violation(path, 0,
-                             "advisory_debt_baseline.json is missing. Seed it deliberately: "
-                             "python tools/check_institutional_correctness.py --rebaseline"))
-        return out
-    try:
-        baseline = json.loads(path.read_text(encoding="utf-8"))
-    except ValueError:
-        out.append(Violation(path, 0, "advisory_debt_baseline.json is unparseable"))
-        return out
-
-    improved = False
-    for name, count in sorted(current.items()):
-        base = baseline.get(name)
-        if base is None:
-            baseline[name] = count
-            improved = True
-            continue
-        if count > base:
-            if name not in _RATCHET_BLOCKS_ON_RISE:
-                # Shape/style volume (or any future advisory not on the allowlist):
-                # track the new floor; never block a correct professional change.
-                baseline[name] = count
-                improved = True
-                continue
-            out.append(Violation(path, 0,
-                                 f"{name} rose {base} -> {count} (+{count - base}). Correctness "
-                                 f"advisory debt may never increase: clean what you added, or "
-                                 f"lower another correctness count to pay for it."))
-        elif count < base:
-            # HONESTY GUARD: a checker that fails and returns nothing is indistinguishable
-            # from a checker that found nothing. Recording that 0 as the new floor silently
-            # destroys the ratchet -- it happened to ruff_quality (1147 -> 0), which then
-            # blocked every commit with a phantom +1147. A collapse to zero from a large
-            # baseline is a tool failure until proven otherwise.
-            if count == 0 and base > 10 and name in _RATCHET_BLOCKS_ON_RISE:
-                out.append(Violation(
-                    path, 0,
-                    f"{name} reported 0 against a baseline of {base}. That is a checker "
-                    f"failure, not perfection - the baseline was NOT lowered. Investigate "
-                    f"the checker, then re-run."))
-                continue
-            if count == 0 and base > 10 and name not in _RATCHET_BLOCKS_ON_RISE:
-                # Track-only metrics: do not collapse a large baseline to 0 on checker flake,
-                # and do not fail the commit either — leave baseline unchanged.
-                continue
-            baseline[name] = count
-            improved = True
-    # RC-385: the ratchet READS its reference and never writes it. Measured 2026-08-15 on a
-    # pristine checkout of origin/main: one call moved file_length 37->49,
-    # function_complexity 462->547, ruff_quality 1081->1301 and flipped the file to CRLF, so
-    # the act of MEASURING left a clean clone dirty with RAISED debt ceilings — and anyone
-    # committing with blind staging would have legitimised them without deciding to. A gate
-    # may read its reference or change it, never both in one call. `improved` is still
-    # computed above because --rebaseline reuses this comparison; recording happens only
-    # there, which is what both docstrings have always claimed.
-    del improved
-    return out
 
 
 # check_no_governance_duplication RETIRED (SIMPLICITY REHAB 2026-08-24,
@@ -1423,85 +1302,9 @@ def _cyclomatic_complexity(func: ast.AST) -> int:
     return score
 
 
-def check_function_complexity() -> list[Violation]:
-    """Functions over the cyclomatic-complexity ceiling are too hard to read and to
-    fix safely — split them, or justify with '# institutional-complexity-ok: <reason>'."""
-    out: list[Violation] = []
-    for p in _production_py_files():
-        try:
-            src = p.read_text(encoding="utf-8")
-            tree = ast.parse(src, filename=str(p))
-        except (SyntaxError, UnicodeDecodeError):
-            continue
-        lines = src.splitlines()
-        for node in ast.walk(tree):
-            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                continue
-            cc = _cyclomatic_complexity(node)
-            if cc <= MAX_COMPLEXITY or _marker_in_span(lines, node, _COMPLEXITY_MARKER):
-                continue
-            out.append(
-                Violation(
-                    p,
-                    node.lineno,
-                    f"function '{node.name}' cyclomatic complexity {cc} > {MAX_COMPLEXITY} — "
-                    "split into smaller functions, or mark '# institutional-complexity-ok: <reason>'.",
-                )
-            )
-    return out
-
-
 MAX_FILE_LINES = 800       # a file above this is doing too much — split into focused modules
 MAX_FUNC_LINES = 80        # a function above this is hard to read/fix — split it
 _LENGTH_MARKER = "institutional-length-ok"
-
-
-def check_file_length() -> list[Violation]:
-    """Files over the line ceiling do too much — split into focused modules.
-
-    A file may exceed the ceiling by declaring `# institutional-length-ok: <reason>`, the
-    same escape the complexity check already offers.
-
-    WHY THIS EXISTS (RC-19, 2026-07-19): this gate file hit 807 lines against a ceiling of
-    800 and the response was to chop it in two. That produced a new module needing FIVE
-    circular-import workarounds (TYPE_CHECKING plus call-time imports) to save SEVEN lines
-    -- objectively worse code, created to move a counter. A threshold with no justification
-    path forces exactly that. The institutional question is "does splitting this improve
-    the code?", not "is the number under the limit?" When the answer is no, say so here.
-    """
-    out: list[Violation] = []
-    for p in _production_py_files():
-        try:
-            text = p.read_text(encoding="utf-8")
-        except UnicodeDecodeError:
-            continue
-        n = len(text.splitlines())
-        if _LENGTH_MARKER in text:
-            continue
-        if n > MAX_FILE_LINES:
-            out.append(Violation(p, 1, f"file has {n} lines > {MAX_FILE_LINES} — split into focused modules, or declare '# institutional-length-ok: <reason>' if splitting would make it worse"))
-    return out
-
-
-def check_function_length() -> list[Violation]:
-    """Functions over the line ceiling are hard to understand and fix — split them,
-    or justify with '# institutional-length-ok: <reason>'."""
-    out: list[Violation] = []
-    for p in _production_py_files():
-        try:
-            src = p.read_text(encoding="utf-8")
-            tree = ast.parse(src, filename=str(p))
-        except (SyntaxError, UnicodeDecodeError):
-            continue
-        lines = src.splitlines()
-        for node in ast.walk(tree):
-            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                continue
-            lo, hi = node.lineno, getattr(node, "end_lineno", node.lineno)
-            n = hi - lo + 1
-            if n > MAX_FUNC_LINES and not _marker_in_span(lines, node, _LENGTH_MARKER):
-                out.append(Violation(p, lo, f"function '{node.name}' is {n} lines > {MAX_FUNC_LINES} — split it"))
-    return out
 
 
 _TODO_RE = re.compile(r"#\s*(TODO|FIXME|HACK|XXX)\b", re.IGNORECASE)
@@ -1528,35 +1331,6 @@ def check_todo_without_tracking_id() -> list[Violation]:
 # is covered by our own function_complexity check above; cosmetic-only families
 # (E501 line length, UP annotation modernization) are auto-fixable separately via `ruff --fix`.
 _RUFF_RULES = "F,B,SIM,ARG,RET,PIE,F841"
-
-
-def check_ruff_quality() -> list[Violation]:
-    """Delegate dead-code / bug-prone / simplification lint to ruff (single mature tool)."""
-    try:
-        r = subprocess.run(
-            [sys.executable, "-m", "ruff", "check", ".", "--select", _RUFF_RULES,
-             "--exclude", "tests/archive,governance/archive,.venv,node_modules",
-             # --color never: ruff may still colorize "concise" under a TTY/FORCE_COLOR;
-             # ANSI breaks the line regex and collapses ~1147 findings to 0, which the
-             # debt_ratchet honesty guard correctly treats as a checker failure.
-             "--output-format", "concise", "--color", "never", "--no-cache"],
-            cwd=str(REPO), capture_output=True, text=True, timeout=300,
-        )
-    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
-        return []  # ruff unavailable in this env — the pre-commit ruff hook still runs its subset
-    out: list[Violation] = []
-    for line in r.stdout.splitlines():
-        m = re.match(r"^(.+?):(\d+):\d+:\s+(\S+)\s+(.*)$", line.strip())
-        if not m:
-            continue
-        rel = m.group(1)
-        try:
-            path = (REPO / rel).resolve()
-            path.relative_to(REPO)
-        except ValueError:
-            path = REPO / rel
-        out.append(Violation(path, int(m.group(2)), f"ruff {m.group(3)}: {m.group(4)}"))
-    return out
 
 
 _FAKE_DEFAULT_RE = re.compile(r"\bor\s+0\.5\b|\bor\s+100\b|\.get\([^)]*,\s*(?:0\.5|100)\s*\)")
@@ -1813,50 +1587,6 @@ def _tracked_py_files() -> set[str] | None:
     if r.returncode != 0:
         return None
     return {ln.strip().replace("\\", "/") for ln in r.stdout.splitlines() if ln.strip()}
-
-
-def check_mypy_types() -> list[Violation]:
-    """Delegate type checking to mypy. DORMANT until mypy is installed (returns nothing),
-    then activates automatically — no environment change forced.
-
-    RC-143: runs under mypy_interpreter(), not the caller's interpreter, so the count is a
-    property of the TREE plus that one pinned instrument rather than of the launcher.
-    RC-145: findings in files git does not track are DROPPED, so the number describes the
-    committed codebase instead of whatever scratch files happen to sit on this disk. Debt in
-    an untracked probe is not repo debt, and counting it made the metric unreproducible."""
-    try:
-        r = subprocess.run(
-            [mypy_interpreter(), "-m", "mypy", ".", "--ignore-missing-imports",
-             "--no-error-summary",
-             "--explicit-package-bases", "--namespace-packages",
-             "--exclude", r"(tests|archive|\.venv|node_modules)"],
-            cwd=str(REPO), capture_output=True, text=True, timeout=900,
-        )
-    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
-        return []  # mypy not installed / timed out — dormant, not "clean"
-    if "No module named mypy" in (r.stderr or ""):
-        return []
-    tracked = _tracked_py_files()
-    out: list[Violation] = []
-    for line in r.stdout.splitlines():
-        m = re.match(r"^(.+?):(\d+):\s*error:\s*(.*)$", line.strip())
-        if not m:
-            continue
-        rel = m.group(1).strip().replace("\\", "/")
-        # RC-145: scope the count to the COMMIT. When git cannot answer (tracked is None) the
-        # raw result stands rather than silently shrinking to "clean".
-        if tracked is not None and rel not in tracked:
-            continue
-        out.append(Violation(REPO / m.group(1), int(m.group(2)), f"mypy: {m.group(3)}"))
-    # HONESTY GUARD: exit 0/1 = mypy ran (clean/errors). Anything else = it FAILED to run,
-    # so an empty result is NOT "clean" — surface the failure instead of falsely passing.
-    if not out and r.returncode not in (0, 1):
-        out.append(
-            Violation(Path(__file__), 1,
-                      f"mypy could not run (exit {r.returncode}) — type check did NOT execute; "
-                      f"fix config. stderr: {(r.stderr or '').strip()[:200]}")
-        )
-    return out
 
 
 _UNPROVEN_REGISTER = REPO / "governance" / "unproven_register.md"
@@ -4193,16 +3923,11 @@ CHECKS = [
     # open_item_cap REMOVED 2026-09-06 (step 2 of the two-step contract; declared retired on
     # main 2026-09-02 in governance/retired_checks.md as a PROVEN DUPLICATE of root_cause_log's
     # overdue clause and the register validator — one overdue item fails one check, not two).
-    # RC-67 (operator 2026-07-26): ADVISORY, not enforced. It still computes and REPORTS every
-    # metric delta, so a real regression stays visible — but a COUNT may no longer block a commit.
-    # A counter cannot distinguish a regression from a false positive or from a deliberate,
-    # higher-quality addition: it failed the build when the operator-mandated PreToolUse guard
-    # read its own external hook payload (+3 orphan keys, all false positives). Correctness is
-    # judged by the checks that read the CODE (no_fake_defaults, no_silent_swallow,
-    # vendor_field_coercion, rth_only_market_measurement, domain_constants_are_derived,
-    # chain_width_single_faucet) and by the Code Health Panel's
-    # BLOCKING tier — same class as the RC-19 shape-metric ceilings, already ruled track-only.
-    ("debt_ratchet", check_debt_ratchet, False),
+    # debt_ratchet REMOVED 2026-09-06 (bedrock step 4b) with the advisory-debt loop: a counter
+    # cannot distinguish a regression from a false positive (RC-67), and the loop it fed —
+    # baseline file, daily scan, TQM queue, code-health panel — produced a 3,360-finding
+    # backlog the doctrine itself called "not a work order" (RC-280: no ratchets). Correctness
+    # is judged by the checks that read the CODE and by ruff in CI.
     ("single_spot_authority", check_single_spot_authority, True),  # one faucet (RC-14)
     ("no_silent_swallow", check_no_silent_swallow, True),           # driven to zero 2026-07-17
     ("no_todo_without_tracking_id", check_todo_without_tracking_id, True),
@@ -4236,11 +3961,14 @@ CHECKS = [
     # cannot fail on regression is not a test, and this was only blocking via the retired counter.
     # Driven to 0 by RC-46, so it binds on the code rather than on a delta.
     ("tests_missing_explicit_assert", check_tests_missing_explicit_assert, True),
+    # orphan_dict_keys stays REPORTED (not enforced): a silent-None lead is a real product
+    # class (RC-15/RC-20) with inherited volume; it is a report the operator reads, never a
+    # ratchet. function_complexity / function_length / file_length / ruff_quality / mypy_types
+    # and debt_ratchet REMOVED 2026-09-06 (bedrock step 4b): the advisory-debt loop (ratchet,
+    # baseline file, daily scan, TQM queue, code-health panel) produced a 3,360-finding backlog
+    # the doctrine itself called "not a work order"; shape/style counting was a ratchet
+    # (RC-280), and ruff runs in CI.
     ("orphan_dict_keys", check_no_orphan_dict_keys, False),   # silent-None leads (RC-15/RC-20)
-    ("function_complexity", check_function_complexity, False),      # too-branchy functions
-    ("function_length", check_function_length, False),             # over-long functions
-    ("file_length", check_file_length, False),                     # over-long files (split them)
-    ("ruff_quality", check_ruff_quality, False),                   # dead code / bugs / simplify (ruff)
     # RC-67: PROMOTED to directly ENFORCED. This was only ever blocking as a side effect of the
     # count-ratchet, so retiring the ratchet would have left fabricated neutrals unguarded — and a
     # fabricated 0.5 probability entering the decision path is the exact opposite of the quality
@@ -4266,10 +3994,9 @@ CHECKS = [
     # mechanism owned the terminator. Tests the OUTCOME — bytes on disk vs bytes in HEAD —
     # so it holds for any writer, not just the libraries that caused the known cases.
     ("eol_style_invariant", check_eol_style_invariant, True),
-    ("mypy_types", check_mypy_types, False),                       # dormant until mypy installed
 ]
 
-_MAX_PRINT = 15  # cap advisory output; full count is always reported
+_MAX_PRINT = 15  # cap per-check output; full count is always reported
 
 
 #: Operator PM GATE DECISION (2026-08-04 ~00:4x CT, mission one-faucet-closeout-v1, relayed
@@ -4308,12 +4035,6 @@ def _apply_forward_only_grandfather(name: str, violations: list) -> list:
     return out
 
 
-#: RC-246: where the ADVISORY run leaves its dated result so the debt stays visible daily
-#: even though it no longer blocks a commit. The PM's approval of P1 was conditional on
-#: exactly this — advisory debt must surface, debt_ratchet must not be silently dropped.
-ADVISORY_REPORT_REL = "reports/advisory_debt_latest.json"
-
-
 def run_checks(*, mode: str = "all") -> tuple[int, list[tuple[str, bool, int]]]:
     """Run the catalogue and return (enforced_violation_count, per-check results).
 
@@ -4326,34 +4047,20 @@ def run_checks(*, mode: str = "all") -> tuple[int, list[tuple[str, bool, int]]]:
       * "all" — unchanged default, so a human invoking the gate by hand still sees
         everything in one place.
     """
+    # BEDROCK 2026-09-06: the "advisory" mode, the hotspot tally and the debt report left with
+    # the advisory-debt loop; a non-enforced check is simply REPORTED here, never ratcheted.
     enforced_violations = 0
     results: list[tuple[str, bool, int]] = []
-    hotspots: dict[str, dict[str, int]] = {}
     for name, fn, enforced in CHECKS:
         if mode == "enforced" and not enforced:
             continue
-        if mode == "advisory" and enforced:
-            continue
-        tag = "ENFORCED" if enforced else "ADVISORY"
+        tag = "ENFORCED" if enforced else "REPORTED"
         violations = _apply_forward_only_grandfather(name, fn())
         results.append((name, enforced, len(violations)))
-        if not enforced and violations:
-            # RC-251: WHERE, not just how much. Per-file counts are what turn a total into a
-            # bounded work list; without them the only options are ignore or mass-rewrite.
-            per_file: dict[str, int] = {}
-            for v in violations:
-                try:
-                    rel = str(Path(v.path).resolve().relative_to(REPO.resolve())).replace("\\", "/")
-                except (ValueError, OSError, AttributeError):
-                    rel = str(getattr(v, "path", "?")).replace("\\", "/")
-                per_file[rel] = per_file.get(rel, 0) + 1
-            hotspots[name] = dict(
-                sorted(per_file.items(), key=lambda kv: -kv[1])[:20]
-            )
         if violations:
             if enforced:
                 enforced_violations += len(violations)
-            note = "" if enforced else " — advisory debt: drive to zero, then enforce"
+            note = "" if enforced else " — reported, not vetoing"
             print(f"FAIL [{name}] ({tag}) — {len(violations)} violation(s){note}:")
             for v in violations[:_MAX_PRINT]:
                 print(v)
@@ -4361,133 +4068,19 @@ def run_checks(*, mode: str = "all") -> tuple[int, list[tuple[str, bool, int]]]:
                 print(f"  … and {len(violations) - _MAX_PRINT} more")
         else:
             print(f"PASS [{name}] ({tag})")
-    return enforced_violations, results, hotspots
-
-
-def write_advisory_report(
-    results: list[tuple[str, bool, int]],
-    hotspots: dict[str, dict[str, int]] | None = None,
-) -> Path:
-    """Persist the advisory tally — the visibility half of P1's approval.
-
-    RC-251: a total is not a work list. The report now carries per-file HOTSPOTS alongside the
-    counts, because a number without a location supports no smallest-safe-change: the only
-    actions a bare total affords are 'ignore it' or 'mass-rewrite thousands of findings', and
-    the second is banned. `hotspots` maps check name -> {repo-relative path: count}.
-    """
-    import json as _json
-    import time as _time
-
-    payload = {
-        "measured_at_utc": _time.time(),
-        "checks": {name: count for name, enforced, count in results if not enforced},
-        "total_advisory_violations": sum(c for _n, e, c in results if not e),
-        "hotspots": hotspots or {},
-    }
-    out = REPO / ADVISORY_REPORT_REL
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(_json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
-    return out
-
-
-def rebaseline() -> int:
-    """RC-385: the ONLY writer of the advisory debt baseline. Deliberate, never a side effect.
-
-    Both `_ratchet_may_write` and `check_debt_ratchet` have pointed at `--rebaseline` as the
-    explicit recording path since RC-90 — and it was never implemented, so the only recording
-    that existed was the invisible auto-write this replaces. Raising a debt ceiling is now an
-    act someone performs and can be asked to justify.
-
-    Correctness metrics on `_RATCHET_BLOCKS_ON_RISE` are still refused a RISE here: this is a
-    recorder, not an amnesty. It lowers floors that genuinely improved, seeds a missing file,
-    and tracks shape/style counters that are allowed to float.
-    """
-    path = _debt_baseline_path()
-    current = {name: len(fn()) for name, fn, enforced in CHECKS
-               if not enforced and name != "debt_ratchet"}
-    try:
-        baseline = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
-    except ValueError:
-        print(f"REFUSED: {path} is unparseable — repair it before rebaselining.")
-        return 1
-
-    raised, changes = [], []
-    for name, count in sorted(current.items()):
-        base = baseline.get(name)
-        if base is None:
-            baseline[name] = count
-            changes.append(f"  seed  {name}: {count}")
-            continue
-        if count == base:
-            continue
-        if count > base and name in _RATCHET_BLOCKS_ON_RISE:
-            raised.append(f"  {name}: {base} -> {count} (+{count - base})")
-            continue
-        if count == 0 and base > 10:
-            # RC-90 honesty guard: a collapse to zero is a checker failure until proven
-            # otherwise, and recording it would silently destroy the ratchet.
-            print(f"REFUSED: {name} reported 0 against a baseline of {base} — checker failure, "
-                  f"not perfection. Nothing written.")
-            return 1
-        baseline[name] = count
-        changes.append(f"  {'lower' if count < base else 'track'} {name}: {base} -> {count}")
-
-    if raised:
-        print("REFUSED: correctness debt may not be rebaselined UPWARD. Clean it, or lower "
-              "another correctness count to pay for it:")
-        print("\n".join(raised))
-        return 1
-    if not changes:
-        print("advisory_debt_baseline.json already matches the tree — nothing to record.")
-        return 0
-    # newline pinned: this file is committed LF and an EOL flip would bury the real delta
-    # under a whole-file diff (RC-382/RC-383).
-    path.write_text(json.dumps(baseline, indent=2, sort_keys=True) + "\n",
-                    encoding="utf-8", newline="\n")
-    print(f"recorded {len(changes)} change(s) in {path}:")
-    print("\n".join(changes))
-    return 0
+    return enforced_violations, results
 
 
 def main(argv: list[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
-    if "--rebaseline" in args:
-        return rebaseline()
-    if "--enforced-only" in args:
-        enforced_violations, _, _ = run_checks(mode="enforced")
-        if enforced_violations:
-            print(f"\nINSTITUTIONAL CORRECTNESS GATE: FAIL "
-                  f"({enforced_violations} enforced violation(s))")
-            return 1
-        print("\nINSTITUTIONAL CORRECTNESS GATE: PASS (enforced checks clean; advisory debt "
-              f"runs on its own schedule and is recorded in {ADVISORY_REPORT_REL})")
-        return 0
-    if "--advisory" in args:
-        _, results, hotspots = run_checks(mode="advisory")
-        path = write_advisory_report(results, hotspots)
-        total = sum(c for _n, e, c in results if not e)
-        print(f"\nADVISORY DEBT: {total} violation(s) across "
-              f"{len([1 for _n, e, _c in results if not e])} checks — recorded in {path}")
-        return 0                      # advisory NEVER blocks; it reports
-    enforced_violations = 0
-    for name, fn, enforced in CHECKS:
-        tag = "ENFORCED" if enforced else "ADVISORY"
-        violations = _apply_forward_only_grandfather(name, fn())
-        if violations:
-            if enforced:
-                enforced_violations += len(violations)
-            note = "" if enforced else " — advisory debt: drive to zero, then enforce"
-            print(f"FAIL [{name}] ({tag}) — {len(violations)} violation(s){note}:")
-            for v in violations[:_MAX_PRINT]:
-                print(v)
-            if len(violations) > _MAX_PRINT:
-                print(f"  … and {len(violations) - _MAX_PRINT} more")
-        else:
-            print(f"PASS [{name}] ({tag})")
+    # BEDROCK 2026-09-06: --rebaseline and --advisory left with the advisory-debt loop.
+    mode = "enforced" if "--enforced-only" in args else "all"
+    enforced_violations, _results = run_checks(mode=mode)
     if enforced_violations:
         print(f"\nINSTITUTIONAL CORRECTNESS GATE: FAIL ({enforced_violations} enforced violation(s))")
         return 1
-    print("\nINSTITUTIONAL CORRECTNESS GATE: PASS (enforced checks clean; advisory debt shown above)")
+    print("\nINSTITUTIONAL CORRECTNESS GATE: PASS (enforced checks clean"
+          + ("; reported checks shown above)" if mode == "all" else ")"))
     return 0
 
 

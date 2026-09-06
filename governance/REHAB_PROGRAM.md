@@ -14,7 +14,7 @@ Charter restated: piece-by-piece, fix-by-fix, **end-to-end** — dual paths die 
 3. **No patches:** a fix that leaves the old producer callable as a silent second faucet is incomplete. Mark PARTIAL until the dead path is removed or hard-fails closed.
 4. **Whole continuum:** backend, frontend, SQL, config, governance — same standard. Spot, walls, volume, PDL, charm, levels — every named field can have a faucet debt.
 5. **Queue sources:** `reports/rehab_latest.md` + multi-faucet census artifacts + this file — RECORDS for the operator's triage; the operator opens each slice in chat; nothing self-opens.
-6. Daily scan (`tools/rehab_daily_scan.py` / Automation) is **recommend-only**; the operator turns findings into work.
+6. There is no daily debt scan any more (bedrock 2026-09-06: the advisory-debt loop — ratchet, baseline, TQM queue, code-health panel — was a queue nobody worked, by its own doctrine). Findings come from the enforced gate, ruff in CI, and the operator's read; the operator turns them into work.
 
 ## Standing facets (hunt these forever)
 
@@ -77,17 +77,6 @@ After any ed_server restart that is meant to clear WARN / malfunction debt or pr
    caps work via `FILL_OUTCOMES_LIVE_BATCH_LIMIT` (newest-first) + prefetched cols (no N+1 SELECTs).
    Do not demote multi-second runs to INFO to pass the quiet window.
 
-## Daily ACT + RE-MEASURE pass (moved from the retired reports-side agent brief, 2026-09-05, RC-520)
+## Working a quality finding (bedrock 2026-09-06 — replaces the daily ACT + RE-MEASURE pass)
 
-MEASURE and TRIAGE are automated by `tools/rehab_daily_scan.py`; this is the other half of the loop (RC-246 → RC-250 → RC-251). The backlog total is **not a work order**: a repo-wide autofix would touch the money path with no behavioural test per change, which is how a "cleanup" becomes an incident. Debt falls in increments that can each be proven safe.
-
-**Inputs (read all three; do not re-run the world):** `reports/rehab_latest.md` (human view), `reports/tqm_queue_latest.json` (the machine queue — **the only work list**), `reports/advisory_debt_latest.json` (per-check tally + per-file hotspots).
-
-1. **TRIAGE — accept or kill each item, out loud.** Work **only** `top_items` (max 5). Every item ships with `kill_criteria`; killing an item is a legitimate outcome — say why in one line.
-2. **ACT — smallest safe change, one item at a time.** Preferred: `ruff --fix` scoped to the single file, then that file's own test module. Types: annotate the one function the error names; do not restructure call sites. Length/complexity: extract *one* cohesive block with a behavioural test pinning before == after on real inputs (RC-19: a split to save seven lines added five circular imports; SHAPE metrics track but never block). Orphan keys: delete at the producer **and** prove no consumer reads it end-to-end — a static orphan can be a live field via dynamic access. **Never:** drive-by refactors, opportunistic renames, touching anything the item did not name, or touching `data/ed_console.db` (+ `-wal`/`-shm`) / `data/ed_console_claude.db`.
-3. **RE-MEASURE — same harness, same turn.** `python tools/rehab_daily_scan.py`, then record **before → after** for `advisory_total` and `delta` in the report and in the RC row. If the number did not move, say so; if it rose, find out why.
-4. **LEDGER — the row opens before the fix (`tools/mission_latch.py`) and closes only with the measured delta and the reproduce command.** If the host clock is still missing, the schedule half stays **PARTIAL**.
-
-**Boundaries:** advisory checks never return to the blocking commit path (RC-246; a control asserts it); no mass rewrites; no database deletion or "disk cleanup" as quality work; RC-166 / RC-227 / RC-243 close only on a live mid-RTH `sqlite-contention` reading; no product rename unless the operator says so.
-
-**Empty or stale queue:** an empty queue with a non-zero total means hotspots were dropped between the gate and the scan (that bug shipped once); check `hotspots` in `advisory_debt_latest.json`, then in the queue JSON. A stale report (>48 h) carries a P1 `rehab.advisory_report_stale` finding — fix the schedule before working the list.
+The daily scan, the TQM queue and the advisory-debt report were removed with the advisory-debt loop: a 3,360-finding backlog that this file itself called "not a work order" is a ratchet, not engineering. A quality finding now comes from the enforced gate, ruff in CI, the reported (non-vetoing) checks a person runs by hand (`python tools/check_institutional_correctness.py`), or the operator's read, and it is worked like any defect: smallest safe change, one item at a time; `ruff --fix` scoped to the single file and that file's own test module; annotate the one function a type error names; extract *one* cohesive block only with a behavioural test pinning before == after on real inputs (RC-19: a split to save seven lines added five circular imports); an orphan key is deleted at the producer **and** proven unread end-to-end. **Never:** drive-by refactors, opportunistic renames, touching anything the finding did not name, or touching `data/ed_console.db` (+ `-wal`/`-shm`) / `data/ed_console_claude.db`. Material defects get a ledger row; the row closes only with the re-runnable command that proved the fix.
