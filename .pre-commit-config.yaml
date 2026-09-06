@@ -16,28 +16,16 @@ repos:
       # stack) + generated-artifacts-clean-check (freshness of generated governance-
       # hygiene JSON) subsystems (2b). Required CI (pytest-full + the Hardening quality
       # job) is the authority; the pre-commit hooks below carry the mission-critical
-      # fast checks (ruff, money-path gate, no-grep, no-private-paths).
-      - id: no-grep-subprocess
-        name: no grep/rg subprocess in staged Python
-        entry: python tools/check_no_grep_subprocess.py
-        language: system
-        types: [python]
-      # ED CONSOLE SLIMMING 1B: the deferral-language and fix-everything-we-touch
-      # hooks (and their tools) were retired. Enforcement is now operator review
-      # per the one-page AGENTS.md charter; the money-path gate below plus the
-      # required pytest-full suite carry the mechanical checks that matter.
-      # PR41 privacy root cause: operator-home absolute paths must never land in
-      # tracked evidence or mission-authorization content (early lock; the same
-      # module is exercised by required-CI pytest-full via its adversarial tests).
-      - id: no-private-paths
-        name: no operator-home paths in tracked evidence
-        entry: python tools/check_private_paths.py
-        language: system
-        pass_filenames: false
-        always_run: true
-      - id: credential-leak
-        name: credential leak firewall (staged secrets / home paths)
-        entry: python tools/check_credential_leak.py
+      # fast checks (ruff, money-path gate, secrets-and-paths).
+      # BEDROCK 2026-09-06 (commit seam, dual-signoff): the no-grep-subprocess hook left with
+      # its tool — a code-style rule with no ledger row citing a catch since adoption; the
+      # agent-side no-grep law stays in operator_law_guard. The db-health hook left the
+      # commit path for the same measurement (zero product catches; one false block, RC-407)
+      # — `python tools/check_db_health.py` is run by hand. Two staged-content scanners
+      # (private paths in tracked evidence; secrets in the staged diff) are ONE hook below.
+      - id: secrets-and-paths
+        name: secrets and operator-home paths (staged diff + tracked evidence)
+        entry: python tools/check_credential_leak.py --and-private-paths
         language: system
         pass_filenames: false
         always_run: true
@@ -101,28 +89,8 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
-      # RC-270: db-health is wired because it PASSES ON MERIT -- 22 checks, 0
-      # failures, every rule extracted from a cited external standard. It reads
-      # the database on disk, which no other gate does, and returns 0 for an
-      # absent default database so a fresh clone is never blocked.
-      #
-      # duplication_audit and check_one_faucet_live are deliberately NOT wired.
-      # They cannot pass today, and the only way to wire them was a tolerance
-      # the operator never authorised: --kind scoping that silenced thirteen of
-      # fourteen duplication classes, and a --max ceiling set twice and wrong
-      # twice. Both have been removed. A tool that cannot pass does not get a
-      # gate built around it to hide that -- it gets run by hand until the
-      # defect is fixed:
+      # duplication_audit, check_one_faucet_live and (since bedrock 2026-09-06) check_db_health
+      # are deliberately NOT wired: hand-run tools —
       #     python tools/duplication_audit.py
       #     python tools/check_one_faucet_live.py
-      # RC-407 (latency, operator #4): db-health opens data/ed_console.db — in production the
-      # live ~34 GB Collect DB. `--precommit` makes it CHANGE-AWARE: it runs the full check on
-      # commit ONLY when a DB/schema/Collect file is staged, else skips fast, so an ordinary
-      # (docs/code) commit no longer opens the 34 GB DB. (The daily rehab scan that also ran
-      # it left with the advisory-debt loop, bedrock 2026-09-06; run it by hand when needed.)
-      - id: db-health
-        name: database health (DAMA dimensions + OHLC invariants, cited sources)
-        entry: python tools/run_with_repo_venv.py tools/check_db_health.py --precommit
-        language: system
-        pass_filenames: false
-        always_run: true
+      #     python tools/check_db_health.py

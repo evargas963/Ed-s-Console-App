@@ -45,12 +45,31 @@ _BANNED_CV = frozenset({
 })
 
 
+_PATH_TOKEN = re.compile(
+    r"(?:^|[\s`\"'(])((?:[\w.-]+/)+[\w.-]+\.(?:py|md|html|js|ts|tsx|jsx|css|sql|json))"
+)
+
+
 def _path_resolves(ref: str) -> bool:
-    try:
-        from tools.plus_player_locks import research_path_resolves
-    except ImportError:
-        from plus_player_locks import research_path_resolves  # type: ignore
-    return research_path_resolves(ref)
+    """A research/evidence reference resolves when it is a URL or names an existing repo file.
+
+    Inlined 2026-09-06 (bedrock) from tools/plus_player_locks.py, whose catalog
+    (governance/plus_player_attributes.json) no longer existed — this helper was the module's
+    only live caller.
+    """
+    r = (ref or "").strip()
+    if not r:
+        return False
+    if "http://" in r or "https://" in r:
+        return True
+    for m in _PATH_TOKEN.finditer(r):
+        rel = m.group(1).replace("\\", "/")
+        if (REPO / rel).is_file():
+            return True
+    first = r.split()[0].strip("`\"'")
+    if "/" in first and (REPO / first.replace("\\", "/")).is_file():
+        return True
+    return False
 
 
 def significance_substance_violations(text: str, *, rel: str = "") -> list[str]:

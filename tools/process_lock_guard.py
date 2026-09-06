@@ -21,7 +21,7 @@ if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
 import tools.operating_process_lock as OPL  # noqa: E402
-from tools.operator_law_guard import (  # noqa: E402
+from tools.shell_parse import (  # noqa: E402 — the ONE shell parser (BEDROCK 2026-09-06)
     _msys_to_windows,
     _tokens,
     iter_command_segments,

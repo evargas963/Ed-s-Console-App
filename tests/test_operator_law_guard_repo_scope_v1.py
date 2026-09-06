@@ -75,9 +75,7 @@ def marked_repo(tmp_path):
     (d / "governance").mkdir()
     (d / "tools" / "operator_law_guard.py").write_text("x", encoding="utf-8")
     (d / "governance" / "root_cause_log.md").write_text("x", encoding="utf-8")
-    (d / "governance" / "guard_applicability.json").write_text(
-        (REPO / "governance" / "guard_applicability.json").read_text(encoding="utf-8"),
-        encoding="utf-8")
+    # (the applicability file was archived 2026-09-06; identity follows `.git`, not markers)
     return d
 
 
@@ -309,7 +307,8 @@ def test_rc93_applicability_machinery_is_gone():
 
 
 def test_applicability_declaration_marks_the_rc93_entry_retired():
-    doc = json.loads((REPO / "governance" / "guard_applicability.json").read_text(encoding="utf-8"))
+    doc = json.loads((REPO / "governance" / "archive" / "guard_applicability.json")
+                     .read_text(encoding="utf-8"))
     mechs = {m.get("governing_mechanism_id"): m for m in doc.get("mechanisms") or []}
     rc93 = mechs.get("ED-OPERATOR-LAW-GUARD/RC-93-COMMIT-BEFORE-PROOF")
     assert rc93 is not None, "the historical declaration row must stay (append-only history)"

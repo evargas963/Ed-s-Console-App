@@ -202,12 +202,16 @@ reports/scorecard_run.log
 
 # runtime measurement log (RC-54 producer) - grows every session, never a repo artifact
 reports/flip_drift_log.jsonl
-# RC-251: append-only per-run TQM telemetry. The reviewable artifacts are
-# reports/rehab_latest.md and reports/tqm_queue_latest.json, which ARE tracked.
+# RC-251 / bedrock 2026-09-06: the rehab scan, TQM queue and advisory report are gone; any
+# stale local copies of their outputs stay ignored.
 reports/rehab_queue.jsonl
-# The raw machine dump embeds absolute operator-home paths and verbatim mission text
-# (the credential-leak hook refused it, correctly). The markdown carries the same findings.
 reports/rehab_latest.json
+reports/rehab_latest.md
+reports/tqm_queue_latest.json
+reports/advisory_debt_latest.json
+# Generated Schwab crosswalk outputs (tools/classify_schwab_csv_crosswalk.py,
+# tools/schwab_market_derivation_catalog_v1.py) — regenerated on demand, never tracked.
+reports/schwab_crosswalk/
 
 # RC-263: scratch has no lifecycle. 7,793 tracked files / 485,275,039 bytes -- 75% of the
 # repository -- was throwaway debugging output, including six committed Chrome browser

@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import re
 import subprocess
+import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
@@ -83,17 +84,28 @@ def find_credential_leaks(diff_text: str | None = None) -> list[str]:
     return hits
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    args = list(sys.argv[1:] if argv is None else argv)
     hits = find_credential_leaks()
+    rc = 0
     if hits:
         print("check_credential_leak: FAIL — secrets or private paths in staged diff:")
         for h in hits[:40]:
             print(f"  {h}")
         if len(hits) > 40:
             print(f"  … and {len(hits) - 40} more")
-        return 1
-    print("check_credential_leak: PASS (staged diff clean)")
-    return 0
+        rc = 1
+    else:
+        print("check_credential_leak: PASS (staged diff clean)")
+    if "--and-private-paths" in args:
+        # BEDROCK 2026-09-06: ONE secrets-and-paths hook at the commit seam. The tracked-
+        # evidence private-path scan (tools/check_private_paths.py) keeps its own module and
+        # suite; this flag runs it in the same hook so the seam has one owner.
+        if str(REPO) not in sys.path:
+            sys.path.insert(0, str(REPO))
+        from tools.check_private_paths import main as private_paths_main
+        rc = max(rc, private_paths_main())
+    return rc
 
 
 if __name__ == "__main__":

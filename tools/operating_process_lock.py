@@ -38,7 +38,6 @@ DB_REL = "db.py"
 ENFORCEMENT_PATHS: tuple[str, ...] = (
     CHECKER_REL,
     DB_REL,
-    "tools/plus_player_locks.py",
     "tools/find_prove_locks.py",
     "tools/pretooluse_guard.py",
     "tools/operator_law_guard.py",

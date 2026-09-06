@@ -242,7 +242,7 @@ def bash_mutation_targets(command: str, payload_cwd: str = "") -> tuple[list[str
     happens to be running the hook.
     """
     try:
-        from tools.operator_law_guard import iter_command_segments, iter_git_invocations
+        from tools.shell_parse import iter_command_segments, iter_git_invocations
         from tools.process_lock_guard import (
             _shell_rewrites_tracked_tree,
             _shell_write_targets,

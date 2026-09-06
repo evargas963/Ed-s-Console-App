@@ -27,7 +27,7 @@ adapters that point at those owners and carry no law of their own.
 | `OPERATOR_DECISION_REGISTER.md` | O-NN operator decision narratives |
 | `agent_error_log.md` | July-2026 historical error record (E-01..E-39) |
 | `host_scheduled_jobs.md` | The single visible inventory of Windows scheduled tasks |
-| `guard_applicability.json` | Append-only applicability history (the RC-93 entry is retired; the UNIVERSAL-SAFETY declaration stands; read by tests, not by live guard code) |
+| `archive/guard_applicability.json` | Applicability history of the retired RC-93 rule — archived 2026-09-06 (bedrock); read by one test, by no guard |
 
 ## Live program / process docs
 
@@ -43,10 +43,13 @@ adapters that point at those owners and carry no law of their own.
 
 ## Contracts, crosswalks, and generated inventories
 
-The `A1_*` / `A2_*` / `PILOT_*` contract docs, the Schwab CSV crosswalk CSVs/YAMLs, the
-`mega*_traceable_inventory.py` census tools, and `computation_registry.json` /
-`level_faucets.json` / `plus_player_attributes.json` are live references consumed by checks
-and tests; superseded contract versions resolve under `archive/`.
+The `A1_*` / `A2_*` / `PILOT_*` contract docs, the Schwab CSV crosswalk (ONE reference:
+`SCHWAB_CSV_DERIVED_FIELD_CROSSWALK_WORKING.csv`, plus the `_RESIDUAL.csv` the sync tools read —
+the classified/disposition/coverage CSVs it generated and the three unread YAML registers were
+removed 2026-09-06, bedrock; `tools/classify_schwab_csv_crosswalk.py` regenerates into
+`reports/schwab_crosswalk/`), the `mega*_traceable_inventory.py` census tools, and
+`computation_registry.json` / `level_faucets.json` are live references consumed by checks and
+tests; superseded contract versions resolve under `archive/`.
 
 `archive/` holds retired programs, the 2026-Q2 memory archive, and superseded artifacts —
 history, never authority.
