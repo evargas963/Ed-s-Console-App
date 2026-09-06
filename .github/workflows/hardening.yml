@@ -80,8 +80,9 @@ jobs:
           git fetch --no-tags origin main
           python tools/check_delta_adds_no_debt.py --base origin/main
 
-      - name: institutional closure gate (no inflated parent closures)
-        run: python tools/check_institutional_closure_gate.py
+      # The "institutional closure gate" step (tools/check_institutional_closure_gate.py) was
+      # removed 2026-09-06 (bedrock): it validated a parallel closure register that nothing
+      # had updated since 2026-07-13. Its lanes are OPEN_ITEMS.md acceptance rows now.
       - name: no-grep subprocess
         run: python tools/check_no_grep_subprocess.py
 

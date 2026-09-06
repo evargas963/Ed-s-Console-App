@@ -10,9 +10,10 @@ them (RC-520 authority collapse, 2026-09-05).
 `AGENTS.md`; target architecture → `docs/ARCHITECTURE.md`; current operator-directed work →
 `ACTIVE_PROGRAM.md`; defects being driven to root, with clocks → `governance/root_cause_log.md`;
 claims about the world → `governance/unproven_register.md`; operator decisions production
-consumes → `governance/OPERATOR_DECISION_REGISTER.md`; parent/sub-lane closure integrity →
-`governance/INSTITUTIONAL_CLOSURE_SCHEMA.json`; agent procedure →
-`governance/AGENT_OPERATING_PROCESS_V1.md`. An unmet item below that is a DEFECT under active
+consumes → `governance/OPERATOR_DECISION_REGISTER.md`; agent procedure →
+`governance/AGENT_OPERATING_PROCESS_V1.md`. (The parallel closure register
+`governance/INSTITUTIONAL_CLOSURE_SCHEMA.json` and the ML NOT_PROVEN matrix were folded into the
+rows and PA boards here on 2026-09-06 — bedrock: one acceptance specification, not two.) An unmet item below that is a DEFECT under active
 repair also has a ledger row; the criterion here says what must hold, the row says how it is being
 fixed. History lives in git.
 
@@ -52,6 +53,36 @@ closed rows were removed (git history). A row that is pure WORK moved to `ACTIVE
 - [ ] **MODEL-04 stale-model serving policy** — evidence delivered (per-ticker vintage table 2026-07-10; ten tickers on pre-correctness 2026-04-30 bundles; guests route through governed anchors). Serve/unserve/retrain policy = operator decision, held.
 - [ ] **BUILD-IDENTITY git_sha semantics** — `/api/build.git_sha` reads repo HEAD at request time, not the running process. `process_identity` block (startup SHA + PID) is the working method. Remaining: flip legacy top-level `git_sha` to process identity — operator call.
 - [ ] **UI-EXPLAIN orphan payload surfaces** — design approved, not rendered: `pred_headline` → explanation rail; `reversal_risk`/`reversal_label` → paired risk chip; closes with rendered DOM + RTH proof for all dispositioned fields. Universal RTH runtime proof (all enrolled tickers, browser DOM, live transport) remains open behind an RTH session window.
+
+### Closure lanes folded from `governance/INSTITUTIONAL_CLOSURE_SCHEMA.json` (2026-09-06)
+
+The schema kept 16 lanes × 19 proof dimensions and a CI gate that refused a parent lane closing over
+an unmet dimension. Nothing had updated it since 2026-07-13; the lanes that were still open ARE
+acceptance items, so they live here, once. The five lanes it recorded as CLOSED_WITH_EVIDENCE
+(GOV-GATE-PARITY-01, GOV-BRANCH-AUTHORIZATION-V1, ML-PIPE-ITEM4-FLEET-MIGRATION-V1,
+ML-PIPE-EXECUTION-IDENTITY-V1, UNIVERSAL-FIX-IMPACT-GATE-V1) are history: their evidence packets and
+final SHAs are in git at the schema's last revision (`git show 0a49e6bc:governance/INSTITUTIONAL_CLOSURE_SCHEMA.json`).
+UI-01, UI-05, ECON-01 and MODEL-04 already had rows above. The closure law the gate enforced is now
+the standing rule of this file: **a parent item is met only when every one of its listed criteria is
+met; a child criterion never closes its parent; real-money readiness (top table) is never implied by
+any component closure.**
+
+- [ ] **DOM_GUEST_SWITCH_SENTINEL** — guest-ticker DOM switch contamination. Unmet: render-milestone beacons (`cards_first_render_ms` / `tier_c_first_seen_ms`) never stamped post-commit; observed contamination NONE is observation, not prevention; no reproducibility or mechanical lock; RTH matrix coverage owed. Met when the beacons stamp on a live RTH switch, a prevention lock exists with a negative control, and the RTH matrix is re-proven.
+- SIG-01 is WORK (`ACTIVE_PROGRAM.md`); the schema's lane state (2 of 5 RTH accrual sessions) is recorded on that row, and it is met when five RTH sessions are accrued and the accrual reads back from the runtime, not from the harness.
+- [ ] **RAPID_VIX_SENTINEL** — never exercised: requires a live `|dVIX| > 3.0` at `VIX > 20` event, never simulated. Met on the first qualifying live event with the sentinel's fire recorded from the runtime.
+- [ ] **UI-04 operator design rails P1B/P1C/P1D** — operator-held design decisions; nothing built. Met when the operator decides and the decided rails render live.
+- [ ] **GOV-ROOT-LEDGER-SCAN** — design only ("scanner scope extension"). No criterion beyond: either a measured defect the scan would have prevented is cited and a row opened, or this item is removed as a mechanism without a proven failure (AGENTS.md).
+- [ ] **GOV-REMOTE-ENFORCEMENT** — `enforce_admins=false` on the protected branch leaves the admin direct-push channel open (evidence: PUSH_ROUTE_INVENTORY.json at the schema's last revision). Operator settings decision: enable `enforce_admins` / restrict admin tokens. Met when the branch protection shows `enforce_admins=true` and a direct push as admin is refused.
+- [ ] **ML_PIPELINE_CORRECTNESS** (parent of PA-6, PA-7, PA-11..PA-14, PA-33; was the ML NOT_PROVEN matrix, base head `3009ae1c`). Predictive validity NOT_PROVEN per the top table. Every criterion below is unmet unless its line says otherwise; each closes only with the re-runnable proof named:
+  - [ ] POINT_IN_TIME_FEATURE_CORRECTNESS — LSTM/Transformer history sequences must exclude bars with `ts_utc >= as_of`; per-row slicing must clamp against the preloaded hist upper bound. Proof: adversarial fixture hist DB, `_predict_lstm` at an early as-of with and without appended/mutated future rows, identical outputs (partly landed: `tests/test_ml_feature_provenance.py` as-of locks).
+  - [ ] NO_LOOKAHEAD_BIAS — no label window overlapping a feature window in training-set construction; no centered rolling anywhere in the training feature build. Proof: injection tests that a governance scan catches both, plus a per-horizon dataset-construction boundary test.
+  - [ ] NO_META_LEARNER_LEAKAGE — meta learner trained on OOF base predictions only; a missing base output fails closed, never neutral. Proof: overfit-base leakage trap; missing-base fail-closed test.
+  - [ ] MODEL_VERSION_PINNING — artifact-byte, configuration and calibration identity PROVEN (Item 4 fleet migration, all 88 bundles manifest-verified, `tests/test_model_contract_enforcement.py`); executable replay availability, environment/dependency identity, seed identity, numerical determinism and output equivalence NOT_PROVEN; pre-schema rows are UNRECOVERABLE_LEGACY by policy, so complete historical coverage can never be claimed.
+  - [ ] CALIBRATION_VERSION_PINNING — isolation lock landed (no current pointer read in historical eval); run-id pinned load NOT_PROVEN. Proof: mutate the current pointer after a fixture; the pinned artifact loaded by run_id is unchanged.
+  - [ ] FEATURE_SCHEMA_PARITY — dtype/order parity between DB and live adapters; no silent optional-field divergence. Proof: golden RAW_INPUT/ENGINEERED/MATRIX fixtures with schema hash and dtype/order locks.
+  - [ ] PURGED_TEMPORAL_VALIDATION + EMBARGO_ENFORCEMENT — every eval entry point uses the governed splitter; no label-window overlap at 15c/60c; no fitted state shared across folds. Proof: split entry-point registry test; adversarial overlap fixture per horizon; walk-forward-vs-purged equivalence on the overlap classes present.
+  - [ ] GOLDEN_FILE_PARITY + INVARIANT_ENFORCEMENT + CACHE_AND_FOLD_ISOLATION — cache keys carry fold/schema/calibration identity; no NaN-to-zero on a required feature in any path. Proof: golden chain fixtures, per-invariant mutation-style negative tests, cache-key audit.
+  - [ ] PRODUCTION_SHUFFLED_LABEL_CONTROL / BEATS_BASELINE / PREDICTIVE_VALIDITY — harness landed in required CI; production-family shuffled-label runs, the clean retrain sequence and the OOS baseline comparison are operator-host executions still owed.
 
 ## Candidate product directions (chase to see if they earn their place; sequence after FP-64 proves harvest)
 
