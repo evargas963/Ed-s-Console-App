@@ -12,8 +12,8 @@ behaved. The guards stay independently runnable — this file is wiring, not aut
 
 Chain members (each file is the lock; this list is the wiring contract the tests pin):
     tools/stop_guard.py
-    tools/honesty_guard.py
     tools/operator_law_guard.py
+    (tools/honesty_guard.py left the roster 2026-09-06 — bedrock doctrine, see STOP_CHAIN)
 process_lock_guard is deliberately NOT in the Stop chain: its Stop path measured 3.18s
 (the bulk of the whole chain) and the dereg landed (PR #187 / RC-471) —
 process_lock_guard remains on every PreToolUse, where its process-integrity rails
@@ -46,7 +46,10 @@ if str(REPO) not in sys.path:
 #: dereg'd from Stop per the docstring; it stays on PreToolUse).
 STOP_CHAIN = (
     "tools.stop_guard",
-    "tools.honesty_guard",
+    # honesty_guard REMOVED 2026-09-06 (bedrock doctrine, dual-signoff): it matched answer
+    # tokens, deflection phrases and "locked via .md" wording in the agent's prose — its own
+    # docstring said it "forces an answer TOKEN, not a correct or responsive answer". Matching
+    # English is not enforcement (AGENTS.md); the law stands and the operator is the detector.
     "tools.operator_law_guard",
 )
 

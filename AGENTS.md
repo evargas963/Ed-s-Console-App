@@ -67,7 +67,7 @@ Claims that cannot be measured now go in `governance/unproven_register.md`. Stag
 
 **Chart-intent + next-RTH residuals (RC-163).** Collect/accrual finish language cannot soft-out Chart render as OUT-OF-SCOPE without an open residual or a proven consumer — banking ≠ render Done. Forward residuals must not hardcode a weekday-named live-proof label when the next RTH is a different weekday. Escapes: `# chart-intent-ok:` / `# next-rth-ok:`.
 
-**Honesty / no dodge (RC-209).** Do not lie directly or by omission; do not dodge a plain yes/no or score question; do not substitute deflection for requested deliverables; do not claim a mechanical lock via `.md`/`.mdc`. `tools/honesty_guard.py` blocks detectable dodge and MD-as-lock patterns on Stop.
+**Honesty / no dodge (RC-209).** Do not lie directly or by omission; do not dodge a plain yes/no or score question; do not substitute deflection for requested deliverables; do not claim a mechanical lock via `.md`/`.mdc`. Declarative by design: the Stop guard that matched answer tokens and deflection phrases was retired under the bedrock doctrine (2026-09-06) because matching English is not enforcement; the operator, present in the same turn, is the detector.
 
 **Close contract.** A `CLOSED` root-cause row carries a causally sufficient why-chain (it ends at the wrong model, assumption, semantics, placement or computation, each link a measured fact), at least one backticked re-runnable command as its evidence, and, where it says a code change exists, the named files staged with the row or carried by a cited commit. Enforced by `check_root_cause_log` for the checkable parts (schema, dates, status vocabulary, the command, the carrying commit, overdue rows); causal sufficiency is judged in review, never by counting.
 

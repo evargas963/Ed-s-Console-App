@@ -27,9 +27,8 @@ _MATERIAL_GUARD_FILES = (
     "tools/pretooluse_guard.py",
     "tools/stop_guard.py",
     # proof_only_guard.py removed with the file (RC-504): it decided truth from prose.
-    "tools/honesty_guard.py",
+    # honesty_guard.py and pm_verify_lock.py removed 2026-09-06 (bedrock): prose matchers.
     "tools/operator_law_guard.py",
-    "tools/pm_verify_lock.py",
     "tools/ui_mockup_lock.py",
 )
 

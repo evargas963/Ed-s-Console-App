@@ -421,8 +421,8 @@ def test_claude_and_cursor_hook_configs_reach_the_same_guards():
     # BEDROCK 2026-09-06: pretooluse_guard left the roster (its gates and latch are gone).
     assert claude_edit == {"tools/operator_law_guard.py", "tools/process_lock_guard.py"}, claude_edit
     # RC-504: proof_only_guard is deliberately absent — removed as Stop authority and deleted.
-    assert claude_stop == {"tools/stop_guard.py", "tools/honesty_guard.py",
-                           "tools/operator_law_guard.py"}, claude_stop
+    # BEDROCK 2026-09-06: honesty_guard likewise — a prose matcher, retired with the doctrine.
+    assert claude_stop == {"tools/stop_guard.py", "tools/operator_law_guard.py"}, claude_stop
 
     # The Bash matcher is a separate registration and carries its own roster.
     claude_bash = _guards(claude["hooks"]["PreToolUse"][1]["hooks"][0]["command"])

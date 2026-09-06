@@ -148,10 +148,9 @@ def test_active_program_refuses_done_rows_and_standing_law(tmp_path):
 def test_stale_queue_status_grants_no_authority():
     """A stale NEXT/QUEUED/OPEN in a document cannot open a mission or block a turn: the
     latch and the Stop guards read the ledger only."""
-    import tools.honesty_guard as hg
     import tools.stop_guard as sg
 
-    for mod in (latch, sg, hg):
+    for mod in (latch, sg):
         src = inspect.getsource(mod)
         assert "ACTIVE_PROGRAM" not in src and "OPEN_ITEMS" not in src, mod.__name__
     rows = latch.all_rows(ROOT)
