@@ -18,7 +18,7 @@ interrupted verification no longer counts. HONEST LIMIT: a non-error result prov
 completed; whether its OUTPUT supports the close is the operator's read.
 The guard keeps that per-turn LEDGER of every command executed, cleared at Stop.
 
-  PreToolUse(Bash|PowerShell)
+  PreToolUse(shell-command tools — `stop_chain.BASH_TOOLS`: Bash, PowerShell, Shell, Monitor)
       * records the command in the turn ledger
       * BLOCKS: grep/rg against repo files (2026-05-22 law), destructive git, and any command
         that disables a lock
@@ -46,6 +46,12 @@ import tempfile
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
+if str(REPO) not in sys.path:
+    sys.path.insert(0, str(REPO))
+
+# RC-520: which tools carry a shell command is decided ONCE, in the chain wiring, and imported
+# here — a tool the chain treats as a shell channel is a tool this guard judges as one.
+from tools.stop_chain import BASH_TOOLS  # noqa: E402
 
 # ── the turn ledger ───────────────────────────────────────────────────────────────────────
 def _ledger_path(session_id: str) -> Path:
@@ -771,7 +777,7 @@ def turn_slice(transcript_path: str) -> tuple[str | None, list[str]]:
                         if c.get("type") == "text" and c.get("text", "").strip():
                             texts.append(c["text"])
                         elif (c.get("type") == "tool_use"
-                              and c.get("name") in ("Bash", "PowerShell", "Shell")):
+                              and c.get("name") in BASH_TOOLS):
                             cmd = (c.get("input") or {}).get("command")
                             if isinstance(cmd, str) and cmd.strip():
                                 cmds.append((str(c.get("id") or ""), cmd))
@@ -1246,7 +1252,7 @@ def main() -> int:
     # handled as UNRESOLVED rather than guessed — see resolve_target_repo.
     payload_cwd = str(payload.get("cwd") or "")
 
-    if tool in ("Bash", "PowerShell"):
+    if tool in BASH_TOOLS:                # one roster (stop_chain.BASH_TOOLS, RC-520)
         cmd = ti.get("command") or ""
         bad = bash_violations(cmd, ledger, payload_cwd)
         if bad:

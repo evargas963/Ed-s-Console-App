@@ -11,7 +11,11 @@ matchers selected it; no predicate is weakened and a block from ANY member still
 Chain members (each file is the lock; this list is the wiring contract the tests pin):
     Edit|Write|MultiEdit|NotebookEdit -> tools/pretooluse_guard.py,
         tools/operator_law_guard.py, tools/process_lock_guard.py
-    Bash|PowerShell -> tools/operator_law_guard.py, tools/process_lock_guard.py
+    Bash|PowerShell|Monitor -> tools/operator_law_guard.py, tools/process_lock_guard.py
+
+RC-520 (2026-09-05): Monitor joined the shell matcher. It runs a shell `command` exactly as
+Bash does and was unmatched, so a Monitor call rewrote a tracked guard module with no guard
+in the loop. The class itself is `tools.stop_chain.BASH_TOOLS`, imported by both shell guards.
 """
 from __future__ import annotations
 

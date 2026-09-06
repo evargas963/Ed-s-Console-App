@@ -29,6 +29,7 @@ from tools.operator_law_guard import (  # noqa: E402
     shell_executed_part,
 )
 from tools.pretooluse_guard import classify_path  # noqa: E402
+from tools.stop_chain import BASH_TOOLS  # noqa: E402 — the ONE shell-tool roster (RC-520)
 
 #: Cursor continuum tools that mutate files (RC-226: StrReplace/path were previously ignored).
 _EDIT_TOOLS = (
@@ -502,7 +503,7 @@ def pretooluse_block(tool: str, tool_input: dict, payload_cwd: str = "") -> list
         # Live-checkout invariant #4: the primary SESSION may not edit app code in the production
         # checkout (the symmetric companion to the linked->primary rail above).
         out.extend(production_checkout_app_edit_violations(tool_input))
-    if tool in ("Bash", "PowerShell", "Shell"):
+    if tool in BASH_TOOLS:                # one roster (stop_chain.BASH_TOOLS, RC-520)
         cmd = tool_input.get("command") or ""
         if re.search(r"\bgit\s+commit\b", cmd, re.I):
             out.extend(OPL.commit_violations())
@@ -561,7 +562,7 @@ def main() -> int:
     ti = payload.get("tool_input") or {}
     payload_cwd = str(payload.get("cwd") or "")
 
-    if tool in _EDIT_TOOLS or tool in ("Bash", "PowerShell", "Shell"):
+    if tool in _EDIT_TOOLS or tool in BASH_TOOLS:
         bad = pretooluse_block(tool, ti, payload_cwd)
     elif not tool or tool == "Stop":
         bad = stop_block(payload)

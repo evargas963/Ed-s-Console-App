@@ -33,6 +33,7 @@ from __future__ import annotations
 import importlib
 import io
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -181,7 +182,14 @@ MUTATING_TOOLS = frozenset({"Edit", "Write", "MultiEdit", "NotebookEdit"})
 #: subcommands that change a checkout, `-C <path>` resolved). `bash_mutation_targets` composes
 #: those. It parses nothing itself, because a second shell parser answering the same question
 #: is exactly the duplication this repo removes on sight.
-BASH_TOOLS = frozenset({"Bash", "PowerShell"})
+#:
+#: RC-520: this is THE roster of tools that carry a shell `command`, and the guards import it
+#: rather than keeping their own tuples. MEASURED 2026-09-05: `Monitor` runs a shell command
+#: exactly as Bash does, was absent from `.claude/settings.json`'s matcher and from three
+#: separate tool tuples in the guards, and rewrote `tools/mission_latch.py` through a Python
+#: one-liner that no guard judged. One roster, imported everywhere the class is decided, so a
+#: tool is either in the shell-mutation authority or it is not — never in one copy of it.
+BASH_TOOLS = frozenset({"Bash", "PowerShell", "Shell", "Monitor"})
 
 
 def _transcript_lines(path: Path) -> tuple[list[str], str]:
@@ -430,13 +438,15 @@ def canonical_authority(raw_payload: str) -> tuple[tuple[Path, ...], str, str]:
 DELEGATED_ENV = "ED_GOVERNANCE_AUTHORITY_DELEGATED"
 
 
-def _delegate(root: Path, raw_payload: str, members: tuple[str, ...]) -> int:
-    """Run the IDENTICAL roster under `root`'s governance and return its verdict.
+def _delegate(root: Path, raw_payload: str, members: tuple[str, ...]) -> tuple[int, str]:
+    """Run the IDENTICAL roster under `root`'s governance; return (verdict, its stderr).
 
     The roster travels as argv, so the member list cannot be shortened on the way across and
     `.claude/settings.json` stays the reviewable authority over which guards run. Fail-closed:
     a delegate that crashes, times out, or cannot be spawned returns non-zero, because an
-    unmeasurable guard run is not a passing one (RC-57).
+    unmeasurable guard run is not a passing one (RC-57). The stderr comes back too, because a
+    crashed delegate names the file it crashed in and that name is the whole recovery boundary
+    (`recovery_files`, RC-520).
     """
     import os
 
@@ -450,16 +460,110 @@ def _delegate(root: Path, raw_payload: str, members: tuple[str, ...]) -> int:
             input=raw_payload, text=True, capture_output=True, timeout=180,
         )
     except (OSError, subprocess.SubprocessError) as exc:
-        sys.stderr.write(
-            f"GOVERNANCE AUTHORITY: delegation to {root} failed "
-            f"({type(exc).__name__}: {exc}); blocking, because a guard run that did not "
-            f"happen is not a guard run that passed.\n")
-        return 2
+        msg = (f"GOVERNANCE AUTHORITY: delegation to {root} failed "
+               f"({type(exc).__name__}: {exc}); blocking, because a guard run that did not "
+               f"happen is not a guard run that passed.\n")
+        sys.stderr.write(msg)
+        return 2, msg
     if proc.stdout:
         sys.stdout.write(proc.stdout)
     if proc.stderr:
         sys.stderr.write(proc.stderr)
-    return proc.returncode
+    return proc.returncode, proc.stderr or ""
+
+
+# RC-520 — THE SELF-LOCK, and the one narrow way out of it.
+#
+# OBSERVED 2026-09-05. A guard-imported module (`tools/mission_latch.py`) in the delegated
+# worktree was left half-edited between two tool calls: a helper was referenced before the
+# call that defined it. From that moment every delegated run crashed with NameError before
+# adjudicating, the crash is a BLOCK by design (unmeasurable is never compliant), and the
+# Edit that would have restored the module was itself a hooked mutation judged by the same
+# crashing delegate. Fail-closed had become unrecoverable, and the only way back in was a
+# tool the hooks did not match at all — which is how the Monitor bypass above was found.
+#
+# THE RULE. A crashed delegate names the file it crashed in (`_crash_site`, written into its
+# own stderr). While it is broken, exactly ONE mutation is admitted for that tree: a
+# file-target edit whose path IS that file. Everything else stays BLOCKED. The admitted edit
+# is not ungoverned — the tree running the hook judges it under the IDENTICAL roster and says
+# so in its banner — and the file is chosen by the crash, never by the payload, so the
+# subject cannot pick its judge or widen the door. Once the module imports again the next
+# call delegates normally; nothing is remembered. No token, no environment switch, no second
+# chain.
+_BROKEN_FILE_RE = re.compile(r"\[broken file: ([^\]]+)\]")
+_TRACEBACK_FILE_RE = re.compile(r'File "([^"\n]+)", line \d+')
+
+
+def _crash_site(exc: BaseException) -> str:
+    """Repo-relative path of the file a member crashed IN — the deepest frame under REPO, or
+    the SyntaxError's own filename. Empty when the crash has no frame in this tree."""
+    files: list[str] = []
+    if isinstance(exc, SyntaxError) and exc.filename:
+        files.append(exc.filename)
+    tb = exc.__traceback__
+    while tb is not None:
+        files.append(tb.tb_frame.f_code.co_filename)
+        tb = tb.tb_next
+    root = REPO.resolve()
+    for name in reversed(files):
+        try:
+            rel = Path(name).resolve().relative_to(root)
+        except (OSError, ValueError):
+            continue
+        return rel.as_posix()
+    return ""
+
+
+def recovery_files(root: Path, delegate_stderr: str) -> set[Path]:
+    """The guard-module files a crashed delegate named as its own point of failure.
+
+    Two sources, both written by the crash and neither by the agent: the `[broken file: …]`
+    marker a caught member crash emits, and — when the delegate's chain could not even start —
+    the deepest `File "…"` frame of its traceback. Confined to `tools/*.py` under `root`,
+    because that is where guard-imported modules live; a crash elsewhere admits nothing.
+    """
+    resolved_root = root.resolve()
+    named: list[Path] = [resolved_root / rel for rel in _BROKEN_FILE_RE.findall(delegate_stderr)]
+    frames = _TRACEBACK_FILE_RE.findall(delegate_stderr)
+    if frames and not named:
+        named.append(Path(frames[-1]))
+    out: set[Path] = set()
+    for p in named:
+        try:
+            rel = p.resolve().relative_to(resolved_root)
+        except (OSError, ValueError):
+            continue
+        if len(rel.parts) == 2 and rel.parts[0] == "tools" and rel.suffix == ".py":
+            out.add(p.resolve())
+    return out
+
+
+def _delegate_crashed(delegate_stderr: str) -> bool:
+    return ("STOP CHAIN:" in delegate_stderr and " crashed: " in delegate_stderr) or \
+        "Traceback (most recent call last)" in delegate_stderr
+
+
+def recovery_target(raw_payload: str, root: Path, delegate_stderr: str) -> Path | None:
+    """The one file this payload may restore in `root`, or None.
+
+    Non-None only when: the delegate CRASHED (a verdict is not a crash), the payload is a
+    file-target mutation, and its path resolves to a file the crash itself named. A shell
+    command is never a recovery — it has no single target to confine.
+    """
+    if not _delegate_crashed(delegate_stderr):
+        return None
+    data = _payload(raw_payload)
+    if data.get("tool_name") not in MUTATING_TOOLS:
+        return None
+    tool_input = data.get("tool_input")
+    path = tool_input.get("file_path") if isinstance(tool_input, dict) else None
+    if not isinstance(path, str) or not path.strip():
+        return None
+    try:
+        target = Path(path).resolve()
+    except OSError:
+        return None
+    return target if target in recovery_files(root, delegate_stderr) else None
 
 
 def _ineligible_reason(root: Path, members: tuple[str, ...]) -> str:
@@ -538,7 +642,22 @@ def run_chain(raw_payload: str, members: tuple[str, ...] = STOP_CHAIN) -> int:
             f"establish authority adds a block, it never removes one.\n")
         worst = 2
     for root in delegate_to:
-        worst = max(worst, _delegate(root, raw_payload, members))
+        rc, delegate_err = _delegate(root, raw_payload, members)
+        if rc:
+            target = recovery_target(raw_payload, root, delegate_err)
+            if target is not None:
+                # RC-520: the delegate cannot adjudicate and this edit is the repair of the
+                # exact file it crashed in. Judged HERE under the identical roster — never
+                # waved through — and every other payload keeps blocking until it imports.
+                sys.stderr.write(
+                    f"GOVERNANCE RECOVERY: {root} could not adjudicate (its guard chain "
+                    f"crashed inside {target.relative_to(root.resolve()).as_posix()}) and this "
+                    f"edit targets exactly that file, so {REPO} judges it under the identical "
+                    f"roster instead. Nothing else is admitted for {root} until its chain "
+                    f"adjudicates again (RC-520).\n")
+                run_here = True
+                continue
+        worst = max(worst, rc)
     if not run_here:
         return 2 if worst else 0
     for name in members:
@@ -549,7 +668,9 @@ def run_chain(raw_payload: str, members: tuple[str, ...] = STOP_CHAIN) -> int:
         except SystemExit as exc:          # a guard that sys.exit()s inside main()
             rc = int(exc.code or 0)
         except Exception as exc:  # noqa: BLE001 — a broken guard must scream, not wave through
-            sys.stderr.write(f"STOP CHAIN: {name} crashed: {type(exc).__name__}: {exc}\n")
+            site = _crash_site(exc)
+            sys.stderr.write(f"STOP CHAIN: {name} crashed: {type(exc).__name__}: {exc}"
+                             + (f" [broken file: {site}]" if site else "") + "\n")
             rc = 2
         worst = max(worst, rc)
     if worst:
