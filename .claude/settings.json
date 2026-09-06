@@ -26,7 +26,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": ".venv/Scripts/python.exe tools/stop_chain.py tools/stop_guard.py tools/operator_law_guard.py"
+            "command": ".venv/Scripts/python.exe tools/stop_chain.py tools/stop_guard.py"
           }
         ]
       }

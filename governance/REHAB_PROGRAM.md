@@ -47,7 +47,7 @@ The operator names the active slice in chat (the pm_mission.json coordination fi
 |------|------|------|
 | **T1 Mission** | Before any green claim / commit | Only tests that name the changed behavior (here: ~32 levels/market_context tests) |
 | **T2 Adjacent** | If T1 green but import surface risky | One related file’s tests, not the whole stem |
-| **T3 Stem / full** | Nightly Automation or pre-release only | `turn_self_audit` full stem / 1800+ — **not** every mission turn |
+| **T3 Stem / full** | Nightly Automation or pre-release only | the full `pytest -n 8 --dist loadfile` suite — **not** every mission turn |
 | **T4 Pre-commit** | Every commit | Institutional hooks already run — do not re-run T3 in chat “to be safe” |
 
 **Rule:** red T3 failures that reproduce on pristine HEAD are **rehab backlog**, not blockers for an unrelated mission — unless they sit inside the mission's material blast radius (the mechanisms that read, enforce, quote or supersede the fact being changed; `AGENTS.md` Find → fix), in which case they are the mission's to repair. File the rest as rows rather than stalling every landing.

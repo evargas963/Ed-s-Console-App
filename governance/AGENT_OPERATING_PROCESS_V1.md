@@ -34,8 +34,8 @@
 - Disk changes to `db.py` collect-window gate are **DISK_ONLY_UNTIL_RESTART** until `:8000` process `StartTime` > `db.py` mtime.
 - **Never** write `LIVE_ENFORCED` / "live write path gated" / RC `CLOSED` for runtime seam without either:
   - `DISK_ONLY_UNTIL_RESTART` in the same sentence, or
-  - PROVEN restart (measure shows process newer than gate file).
-- **DONE when:** `live_collect_disk_only` is null OR prose declares DISK_ONLY.
+  - PROVEN restart (the `:8000` process start time, read by hand, is newer than the change).
+- **DONE when:** the restart is proven by measurement quoted in the row, or the row says DISK_ONLY. (BEDROCK 2026-09-06: the `live_collect_disk_only` probe and the completion-claim lock LOCK-5/RC-232 that read prose for COMPLETE/LIVE_ENFORCED words are removed from the hooks — this is a record standard the operator reads, held by the CLOSE contract, not a mechanism.)
 
 ## 5. EVIDENCE
 

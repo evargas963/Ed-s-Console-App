@@ -12,8 +12,8 @@ behaved. The guards stay independently runnable — this file is wiring, not aut
 
 Chain members (each file is the lock; this list is the wiring contract the tests pin):
     tools/stop_guard.py
-    tools/operator_law_guard.py
-    (tools/honesty_guard.py left the roster 2026-09-06 — bedrock doctrine, see STOP_CHAIN)
+    (tools/honesty_guard.py and tools/operator_law_guard.py left the roster 2026-09-06 —
+    bedrock doctrine, see STOP_CHAIN; the Stop seam has ONE owner)
 process_lock_guard is deliberately NOT in the Stop chain: its Stop path measured 3.18s
 (the bulk of the whole chain) and the dereg landed (PR #187 / RC-471) —
 process_lock_guard remains on every PreToolUse, where its process-integrity rails
@@ -50,7 +50,10 @@ STOP_CHAIN = (
     # tokens, deflection phrases and "locked via .md" wording in the agent's prose — its own
     # docstring said it "forces an answer TOKEN, not a correct or responsive answer". Matching
     # English is not enforcement (AGENTS.md); the law stands and the operator is the detector.
-    "tools.operator_law_guard",
+    # operator_law_guard REMOVED 2026-09-06 (bedrock, same signoff): its only Stop clause —
+    # "changed production code without a verification that RAN" — was a proxy for correctness
+    # that the CLOSE seam and the commit/CI gates already hold structurally. It stays on both
+    # PreToolUse rosters. The Stop seam is stop_guard's alone: an unfinished row blocks.
 )
 
 

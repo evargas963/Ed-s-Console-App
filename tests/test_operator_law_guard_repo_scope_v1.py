@@ -1,5 +1,9 @@
-"""RC-258 — operator_law_guard repository applicability, proof binding, commit detection,
-and the attempted-versus-executed ledger lifecycle.
+"""RC-258 — operator_law_guard repository applicability, proof binding and commit detection.
+
+BEDROCK 2026-09-06: the attempted-versus-executed ledger lifecycle (failure 5 below) and the
+RC-379 sibling-retry controls left with the guard's Stop role and its per-session ledger file;
+the ledger rows the CLOSE rule reads are now built from the transcript (`turn_ledger`), and the
+hand-built rows in this suite exercise the same binding.
 
 WHAT WAS MEASURED (2026-08-05, against the real hook entrypoint with isolated session ledgers):
 
@@ -346,87 +350,22 @@ def test_no_hardcoded_repository_exception_in_the_guard():
 # rc93 applicability machinery it exercised — the retirement lock above owns this ground.)
 
 
-# ── 5. attempted versus executed lifecycle ────────────────────────────────────────────────
-def _attempt(path, mtime_before, repo=None):
-    """A ledger row for an attempted edit.
-
-    FC-13: `repo` used to default to ED even for files written under tmp_path, so the row
-    claimed a repository that did not contain the file. That only worked because the pre-fix
-    classifier fell back to the absolute path when relativisation raised — the same fallback
-    that misclassified out-of-tree scratch files as production. The default now derives the
-    governing root from the path itself for absolute inputs, so the fixture is self-consistent;
-    relative inputs still mean "inside this repository".
-    """
-    if repo is None:
-        repo = str(Path(path).parent) if Path(path).is_absolute() else ED
-    return {"kind": "edit_attempt", "detail": path, "repo": repo, "mtime_before": mtime_before}
-
-
-def test_rejected_edit_does_not_become_completed_change_evidence(tmp_path):
-    """RC-258 failure 5: the file never changed, so no obligation may attach to it."""
-    f = tmp_path / "thing.py"
-    f.write_text("x", encoding="utf-8")
-    ledger = [_attempt(str(f), f.stat().st_mtime_ns)]     # unchanged since the attempt
-    assert G._production_edits(ledger) == []
-
-
-def test_executed_edit_does_count_as_a_production_change(tmp_path):
-    f = tmp_path / "thing.py"
-    f.write_text("x", encoding="utf-8")
-    ledger = [_attempt(str(f), f.stat().st_mtime_ns - 1)]  # mtime moved => the write landed
-    assert G._production_edits(ledger) == [str(f).replace("\\", "/")]
-
-
-def test_newly_created_file_counts_as_a_production_change(tmp_path):
-    f = tmp_path / "brand_new.py"
-    ledger = [_attempt(str(f), None)]                      # did not exist at attempt time
-    f.write_text("x", encoding="utf-8")
-    assert G._production_edits(ledger) == [str(f).replace("\\", "/")]
-
-
-def test_stop_raises_no_audit_obligation_for_a_rejected_edit(tmp_path):
-    f = tmp_path / "thing.py"
-    f.write_text("x", encoding="utf-8")
-    ledger = [_attempt(str(f), f.stat().st_mtime_ns)]
-    assert G._production_edits(ledger) == []
-    assert not any("RC-190" in v for v in G.stop_violations(ledger))
-
-
-def test_stop_still_raises_the_audit_obligation_for_a_real_change(tmp_path):
-    # RC-367 repair: the obligation text moved from an RC-190 cite to the plain
-    # changed-production-code clause when the supervised audit took over turn
-    # verification; 2026-08-25 the clause demands a verification that RAN WITHOUT
-    # ERROR (result, not issuance) — assert the real current clause.
-    f = tmp_path / "thing.py"
-    f.write_text("x", encoding="utf-8")
-    ledger = [_attempt(str(f), f.stat().st_mtime_ns - 1)]
-    assert any("changed production code without a verification that RAN WITHOUT ERROR" in v
-               for v in G.stop_violations(ledger))
-
-
-def test_legacy_edit_row_keeps_its_old_meaning():
-    """A row written before the lifecycle fix has no baseline — it must still count, so the
-    repair can never silently retire an obligation that used to fire."""
-    assert G._production_edits([led("edit", "server.py", ED)]) == ["server.py"]
-
-
-def test_unmeasurable_outcome_keeps_the_obligation():
-    """When the answer cannot be established the obligation must NOT silently drop."""
-    assert G._edit_took_effect({"detail": "Z:/nowhere/at/all/file.py",
-                                "mtime_before": None}) is True
-
-
-def test_governance_and_test_paths_are_still_not_production():
-    ledger = [_attempt("governance/root_cause_log.md", None),
-              _attempt("tests/test_x.py", None)]
-    assert G._production_edits(ledger) == []
-
-
 # ── 6. universal protections survive the scoping change ───────────────────────────────────
+# BEDROCK 2026-09-06: tree-destructive git has ONE owner on the same PreToolUse chain —
+# operating_process_lock.reset_guard_violations — so the three destructive spellings are
+# driven at that owner. It takes no repository at all, which is the property these controls
+# exist to pin: the checkout in front of the command never exempts it.
+DESTRUCTIVE_GIT = ("git reset --hard HEAD~1", "git clean -fd", "git push --force origin main")
+
+
+@pytest.mark.parametrize("cmd", DESTRUCTIVE_GIT)
+def test_destructive_git_has_one_owner_and_it_fires_unscoped(cmd):
+    import tools.operating_process_lock as OPL
+    assert any("destructive git" in v for v in OPL.reset_guard_violations(cmd)), cmd
+    assert not hasattr(G, "_DESTRUCTIVE_GIT"), "the second destructive-git rule came back"
+
+
 @pytest.mark.parametrize("cmd,needle", [
-    ("git reset --hard HEAD~1", "destructive git"),
-    ("git clean -fd", "destructive git"),
-    ("git push --force origin main", "destructive git"),
     ("$env:ED_OPERATOR_LAW_GUARD='off'", "disables a mechanical lock"),
     ("git add -A", "blind staging"),
     ("grep -r foo *.py", "shell grep"),
@@ -445,9 +384,6 @@ def test_rc360_head_grant_cannot_authorize_no_verify_in_this_repository():
 
 
 @pytest.mark.parametrize("cmd,needle", [
-    ("git reset --hard HEAD~1", "destructive git"),
-    ("git clean -fd", "destructive git"),
-    ("git push --force origin main", "destructive git"),
     ("$env:ED_UI_MOCKUP_LOCK='off'", "disables a mechanical lock"),
     ("git add -A", "blind staging"),
 ])
@@ -458,15 +394,19 @@ def test_universal_protections_fire_for_an_unrelated_repository(cmd, needle, oth
 
 
 def test_universal_protections_fire_when_identity_is_unresolved():
-    out = G.bash_violations("git reset --hard HEAD~1", [], payload_cwd="")
-    assert any("destructive git" in v for v in out), out
+    out = G.bash_violations("git add -A", [], payload_cwd="")
+    assert any("blind staging" in v for v in out), out
 
 
 def test_guard_does_not_return_early_for_an_out_of_scope_repository(other_repo):
-    """A destructive command AND a commit in one chain: the universal rule must still fire."""
-    out = G.bash_violations('cd "%s" && git reset --hard HEAD~1' % other_repo, [],
+    """A banned action AND a commit in one chain aimed at another repository: the universal
+    rule must still fire (RC-258: applicability is per rule, never an early return)."""
+    out = G.bash_violations('cd "%s" && git add -A && git commit -m x' % other_repo, [],
                             payload_cwd=str(REPO))
-    assert any("destructive git" in v for v in out), out
+    assert any("blind staging" in v for v in out), out
+    chain = 'cd "%s" && git reset --hard HEAD~1' % other_repo
+    import tools.operating_process_lock as OPL
+    assert OPL.reset_guard_violations(chain), chain
 
 
 def test_non_commit_commands_are_unaffected_by_repository_scoping():
@@ -512,22 +452,12 @@ def _hook(session, tool, tool_input, cwd=None):
 
 @pytest.fixture()
 def isolated_session(request):
-    sid = "PYTEST_RC258_" + request.node.name[:40]
-    G._ledger_path(sid).unlink(missing_ok=True)
-    yield sid
-    G._ledger_path(sid).unlink(missing_ok=True)
+    # BEDROCK 2026-09-06: no per-session ledger file exists any more; the id is just identity.
+    return "PYTEST_RC258_" + request.node.name[:40]
 
 
 def test_hook_permits_commit_without_proof(isolated_session):
     """SIMPLICITY REHAB: commit clause retired — the hook is quiet; pre-commit enforces."""
-    rc, err = _hook(isolated_session, "Bash", {"command": 'git commit -m "x"'}, cwd=REPO)
-    assert rc == 0, err
-
-
-def test_hook_permits_ed_console_commit_after_ed_console_proof(isolated_session):
-    _hook(isolated_session, "Bash", {"command": PYTEST_PROOF}, cwd=REPO)
-    entries = G._ledger(isolated_session)
-    assert entries and entries[0].get("repo") == ED, entries
     rc, err = _hook(isolated_session, "Bash", {"command": 'git commit -m "x"'}, cwd=REPO)
     assert rc == 0, err
 
@@ -544,15 +474,6 @@ def test_hook_does_not_subject_an_unmarked_repository_to_rc93(isolated_session, 
     rc, err = _hook(isolated_session, "Bash",
                     {"command": 'cd "%s" && git commit -m "x"' % other_repo}, cwd=REPO)
     assert rc == 0, err
-
-
-def test_hook_records_the_attempt_not_a_completed_edit(isolated_session):
-    rc, _ = _hook(isolated_session, "Edit",
-                  {"file_path": str(REPO / "tools" / "operator_law_guard.py"),
-                   "new_string": "x"}, cwd=REPO)
-    assert rc == 0
-    kinds = [e.get("kind") for e in G._ledger(isolated_session)]
-    assert kinds == ["edit_attempt"], kinds
 
 
 # ── 9. NEGATIVE CONTROLS — these prove the suite fails against the PRE-FIX implementation ──
@@ -575,33 +496,6 @@ def test_negative_control_pre_fix_proof_check_was_session_wide():
     foreign = [led("bash", PROBE_PROOF, "c:/somewhere/else")]
     assert pre_fix_has_verification(foreign) is True      # pre-fix: foreign proof counted
     assert G._has_verification(foreign, ED) is False      # post-fix: it does not
-
-
-def test_negative_control_pre_fix_counted_a_rejected_edit_as_production_change(tmp_path):
-    """The pre-fix `_production_edits` keyed on kind == 'edit' with no outcome confirmation."""
-    def pre_fix_production_edits(ledger):
-        out = []
-        for e in ledger:
-            p = e.get("detail", "").replace("\\", "/")
-            if e.get("kind") != "edit":
-                continue
-            # Literals, not production constants: an oracle that imports the thing it is
-            # meant to independently check is not an oracle. These reproduce the pre-fix
-            # tuples verbatim so the control keeps working after FC-13 deleted them.
-            if any(seg in p for seg in ("tests/", "tests\\", "governance/", "governance\\",
-                                        "docs/", "reports/", ".claude/", "calibration/")):
-                continue
-            if p.endswith((".py", ".html", ".js", ".css", ".ts", ".sql")):
-                out.append(p)
-        return out
-
-    f = tmp_path / "refused.py"
-    f.write_text("x", encoding="utf-8")
-    # what the PRE-FIX guard wrote for a refused edit, and what it concluded
-    assert pre_fix_production_edits([{"kind": "edit", "detail": str(f)}]) == [
-        str(f).replace("\\", "/")]
-    # what the POST-FIX guard writes for the same refused edit, and what it concludes
-    assert G._production_edits([_attempt(str(f), f.stat().st_mtime_ns)]) == []
 
 
 def test_negative_control_pre_fix_had_no_repository_resolution():
@@ -866,110 +760,6 @@ def test_rc367_live_path_lock_flags_behind_origin_main(tmp_path, monkeypatch):
     assert any("BEHIND origin/main" in v for v in out), out
 
 
-# ── RC-379: a sibling hook's Stop block is not this guard's forgery ────────────────────────
-#
-# MEASURED LIVE 2026-08-15: honesty_guard (RC-209) blocked a Stop, the HOST then set
-# stop_hook_active=True on every retry, and this guard refused each one because ITS OWN
-# ledger held no stop_blocked entry — 15+ identical blocks naming no unmet obligation, with
-# no output the agent could produce to clear it. The clauses below are driven through the
-# REAL entrypoint as a subprocess: the deadlock message must be gone AND the genuine Stop
-# policy must still fire under the same flag, proving the fix fell THROUGH to the policy
-# rather than past it.
-
-FORGERY_MSG = "a caller-controlled retry flag is not authority"
-UNVERIFIED_EDIT_MSG = "changed production code without a verification that RAN WITHOUT ERROR"
-
-
-def _write_ledger(sid: str, entries: list[dict]) -> Path:
-    path = G._ledger_path(sid)
-    with path.open("w", encoding="utf-8") as fh:
-        for e in entries:
-            fh.write(json.dumps(e) + "\n")
-    return path
-
-
-def _run_stop(sid: str, cwd: Path, *, retry_flag: bool):
-    """Drive the guard's Stop path exactly as the host does: JSON on stdin, no tool_name.
-
-    `cwd` is a CLEAN scratch repository on purpose. Pointing it at Ed Console would put the
-    working tree's own production changes in scope, and main() then spawns the full
-    supervised turn audit (~15 min) — measured while writing this test. The deadlock under
-    test lives ABOVE that branch, so a clean subject isolates it.
-    """
-    payload = {"session_id": sid, "cwd": str(cwd)}
-    if retry_flag:
-        payload["stop_hook_active"] = True
-    env = {k: v for k, v in os.environ.items() if k != "ED_OPERATOR_LAW_GUARD"}
-    proc = subprocess.run(
-        [sys.executable, str(REPO / "tools" / "operator_law_guard.py")],
-        input=json.dumps(payload), capture_output=True, text=True, env=env,
-        check=False, timeout=120,
-    )
-    return proc.returncode, (proc.stderr or "")
-
-
-#: A turn that owes nothing: clean tree, no production edits, and the RC-125 live probe
-#: actually recorded. Measured while writing this test — an EMPTY ledger is not "clean",
-#: it still owes the probe, and the guard names it. PROBE_PROOF alone does NOT satisfy
-#: RC-125 (it matches _VERIFICATION, not _LIVE_PROBE), so the entry below carries a real
-#: live-session command that _LIVE_PROBE recognises.
-LIVE_PROBE_CMD = 'curl -s -m 5 http://127.0.0.1:8000/api/build'
-SATISFIED_LEDGER = [led("bash", LIVE_PROBE_CMD)]
-
-
-@pytest.fixture()
-def clean_stop_subject(tmp_path, request):
-    """A clean repo and a ledger whose obligations are genuinely discharged."""
-    repo, _g = _lock_scratch_repo(tmp_path)
-    sid = f"rc379-{request.node.name}"
-    _write_ledger(sid, SATISFIED_LEDGER)
-    yield sid, repo
-    G._ledger_path(sid).unlink(missing_ok=True)
-
-
-def test_rc379_sibling_retry_flag_does_not_block_a_satisfied_turn(clean_stop_subject):
-    """THE DEADLOCK: pre-fix this returned 2 forever once any sibling hook had blocked,
-    no matter what the turn had actually done."""
-    sid, repo = clean_stop_subject
-    rc, err = _run_stop(sid, repo, retry_flag=True)
-    assert FORGERY_MSG not in err, (
-        "RC-379 regression: a sibling hook's Stop block is being read as a forged retry, "
-        f"which deadlocks every later Stop in the session. stderr={err!r}")
-    assert rc == 0, f"a turn that owes nothing must not be blocked by the retry flag: {err!r}"
-
-
-def test_rc379_the_flag_changes_nothing_about_the_verdict(clean_stop_subject):
-    sid, repo = clean_stop_subject
-    rc_flag, err_flag = _run_stop(sid, repo, retry_flag=True)
-    _write_ledger(sid, SATISFIED_LEDGER)
-    rc_plain, err_plain = _run_stop(sid, repo, retry_flag=False)
-    assert rc_flag == rc_plain == 0, (rc_flag, err_flag, rc_plain, err_plain)
-
-
-def test_rc379_the_policy_below_still_bites_under_the_flag(tmp_path, request):
-    """Fell THROUGH to the policy, not PAST it: an unverified production edit still blocks."""
-    repo, g = _lock_scratch_repo(tmp_path)
-    sid = f"rc379-{request.node.name}"
-    # An edit recorded against the scratch repo, with no verification command in the ledger.
-    _write_ledger(sid, [led("edit", str(repo / "app.py"), str(repo))])
-    try:
-        rc, err = _run_stop(sid, repo, retry_flag=True)
-        assert FORGERY_MSG not in err, err
-        assert rc == 2, f"the real Stop policy must still block an unverified edit: {err!r}"
-        assert UNVERIFIED_EDIT_MSG in err or "TURN AUDIT" in err, (
-            f"blocked, but named no genuine obligation: {err!r}")
-    finally:
-        G._ledger_path(sid).unlink(missing_ok=True)
-
-
-def test_rc379_sibling_retry_is_recorded_not_swallowed(clean_stop_subject):
-    """Absence of an own stop_blocked entry becomes evidence, never a fatal verdict."""
-    sid, repo = clean_stop_subject
-    _run_stop(sid, repo, retry_flag=True)
-    # A clean Stop clears the ledger on success, so read the record the guard wrote during
-    # the run rather than after it: re-run with a poisoned ledger kept alive by the block.
-    _write_ledger(sid, [led("edit", str(repo / "app.py"), str(repo))])
-    _run_stop(sid, repo, retry_flag=True)
-    kinds = [e.get("kind") for e in G._ledger(sid)]
-    assert "sibling_stop_retry" in kinds, (
-        f"the fall-through must leave an audit trail of the sibling retry; kinds={kinds}")
+# RC-379 (sibling-retry deadlock at Stop) controls were REMOVED 2026-09-06 with this guard's
+# Stop role: there is no Stop path here to deadlock. tools/stop_guard.py is the one Stop
+# owner and tests/test_stop_guard_v1.py pins its retry-flag behaviour.

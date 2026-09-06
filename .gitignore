@@ -117,7 +117,6 @@ reports/cursor_*_audit_*
 reports/*_audit_v*.md
 reports/*_latest.json
 reports/*_latest.txt
-reports/turn_self_audit_log.jsonl
 
 # Local analysis / audit scratch outputs (repo root)
 feature_ablation_universe.xlsx

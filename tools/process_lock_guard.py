@@ -1,11 +1,13 @@
 """Front-end hook for operating_process_lock (RC-217).
 
 Runs on PreToolUse (Edit/Write/StrReplace/Bash). RC-471 removed the Stop registration;
-stop_block() is retained for manual/test use. Exit 2 BLOCKS.
+BEDROCK 2026-09-06 removed the retained stop_block() with the completion-claim and
+LIVE-vs-DISK rules it carried — this guard has no Stop path. Exit 2 BLOCKS.
 No env kill-switch: ED_PROCESS_LOCK_GUARD cannot disable this control (RC-450).
 2026-08-24 teardown: the role/authority rails (writer_drift_lock, isolated-worktree
 boundary, mission gating, GO closeout) are gone with Architecture A — what remains is
-process integrity: index parity, LIVE-vs-DISK, destructive-git and piped-commit blocks.
+checkout protection (production primary, cross-checkout edits, shell writes into production
+app code), index parity at commit, destructive-git (the ONE owner) and piped-commit blocks.
 """
 from __future__ import annotations
 
@@ -470,30 +472,6 @@ def pretooluse_block(tool: str, tool_input: dict, payload_cwd: str = "") -> list
     return out
 
 
-def stop_block(payload: dict) -> list[str]:
-    out: list[str] = []
-    transcript = payload.get("transcript_path") or ""
-    text = ""
-    if transcript:
-        try:
-            from tools.operator_law_guard import last_assistant_text
-            text = last_assistant_text(transcript) or ""
-        except Exception:  # institutional-swallow-ok: guard must fail-open on transcript read, never hang a Stop; index/DISK checks below still run
-            pass
-    if text:
-        out.extend(OPL.completion_claim_violations(text))
-    mism = OPL.index_worktree_mismatches()
-    if mism:
-        out.append(
-            "AUDITOR WINDOW: index≠WT on enforcement paths — re-prove before ending turn: "
-            + "; ".join(mism[:5])
-        )
-    disk = OPL.live_collect_disk_only()
-    if disk:
-        out.append(f"LIVE vs DISK: {disk}")
-    return out
-
-
 def main() -> int:
     try:
         payload = json.load(sys.stdin)
@@ -509,10 +487,8 @@ def main() -> int:
 
     if tool in _EDIT_TOOLS or tool in BASH_TOOLS:
         bad = pretooluse_block(tool, ti, payload_cwd)
-    elif not tool or tool == "Stop":
-        bad = stop_block(payload)
     else:
-        return 0
+        return 0                          # no Stop path (BEDROCK 2026-09-06, docstring)
 
     if not bad:
         return 0

@@ -10,26 +10,32 @@ have suppressed the lock inventory the operator had just asked for.
 
 WHAT AN ACTION BAN LOOKS LIKE. The laws are about doing things without proof, so the enforcement
 is: the ACTION cannot proceed unless a proof-shaped command RAN WITHOUT ERROR this turn
-(operator requirement 2026-08-25 — issuance is not proof). The ledger written at PreToolUse
-supplies WHICH commands ran and against WHICH repo (RC-258); the transcript on the hook payload
-supplies the OUTCOME (each tool_use paired to its tool_result, is_error judged) — no new
-governance lane, the payload already carries transcript_path at every event. A failed or
-interrupted verification no longer counts. HONEST LIMIT: a non-error result proves the command
-completed; whether its OUTPUT supports the close is the operator's read.
-The guard keeps that per-turn LEDGER of every command executed, cleared at Stop.
+(operator requirement 2026-08-25 — issuance is not proof). The transcript on the hook payload
+supplies WHICH commands ran and their OUTCOME (each tool_use paired to its tool_result,
+is_error judged) — no new governance lane, the payload already carries transcript_path at every
+event; the repository each command ran against is resolved by the same parser the shell rules
+use (RC-258), so proof is never transferable between checkouts. A failed or interrupted
+verification does not count. HONEST LIMIT: a non-error result proves the command completed;
+whether its OUTPUT supports the close is the operator's read.
 
   PreToolUse(shell-command tools — `stop_chain.BASH_TOOLS`: Bash, PowerShell, Shell, Monitor)
-      * records the command in the turn ledger
-      * BLOCKS: grep/rg against repo files (2026-05-22 law), destructive git, and any command
-        that disables a lock
-  PreToolUse(Edit|Write|MultiEdit)
+      * BLOCKS: grep/rg against repo files (2026-05-22 law), blind staging, shell writes to
+        source or constructed paths, deletion under the unrecoverable trees, and any command
+        that disables a lock. (Tree-destructive git has ONE owner:
+        operating_process_lock.reset_guard_violations, on the same chain.)
+  PreToolUse(Edit|Write|MultiEdit|NotebookEdit)
       * BLOCKS writing status CLOSED into governance/root_cause_log.md when no verification
-        command RAN WITHOUT ERROR this turn. Closing a root cause IS the assertion that it is
-        fixed; the assertion is an action and it needs the evidence to exist first.
-  Stop
-      * BLOCKS ending a turn that CHANGED production code and ran no test/gate at all. Editing
-        the money path and stopping without executing anything is the action.
-      * clears the ledger for the next turn
+        command RAN WITHOUT ERROR this turn against that repository. Closing a root cause IS
+        the assertion that it is fixed; the assertion is an action and it needs the evidence
+        to exist first.
+
+BEDROCK 2026-09-06 (dual-signoff, operator order to REPAIR): this guard has no Stop role any
+more. Its Stop clause — "changed production code without a verification that RAN" — was a
+proxy: a completed command is not proof that the change is right, and an unverified change
+that reaches a CLOSE row or a commit is caught at those seams (the CLOSE rule above; the
+pre-commit battery; required CI). With the clause went the per-session ledger file it was
+written for: PreToolUse no longer records anything, and the Stop seam has one owner
+(tools/stop_guard.py — an unfinished row blocks the turn).
 
 Nothing here inspects prose. A turn may say whatever it likes; it may not DO these things without
 the proof having run. Architecture A (RC-450): ED_OPERATOR_LAW_GUARD cannot disable this
@@ -40,9 +46,7 @@ from __future__ import annotations
 import json
 import os
 import re
-import subprocess
 import sys
-import tempfile
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
@@ -52,67 +56,6 @@ if str(REPO) not in sys.path:
 # RC-520: which tools carry a shell command is decided ONCE, in the chain wiring, and imported
 # here — a tool the chain treats as a shell channel is a tool this guard judges as one.
 from tools.stop_chain import BASH_TOOLS  # noqa: E402
-
-# ── the turn ledger ───────────────────────────────────────────────────────────────────────
-def _ledger_path(session_id: str) -> Path:
-    safe = re.sub(r"[^A-Za-z0-9_.-]", "_", session_id or "nosession")[:80]
-    return Path(tempfile.gettempdir()) / f"ed_turn_ledger_{safe}.jsonl"
-
-
-def _record(session_id: str, kind: str, detail: str, repo: str = "") -> None:
-    """Append a ledger entry BOUND to the repository the action targeted (RC-258).
-
-    The `repo` field is what makes proof non-transferable. Without it the ledger was a
-    session-wide bearer token, MEASURED failing both ways on 2026-08-05: an Ed Console pytest
-    authorised an IEOS commit, and a probe run inside IEOS authorised an Ed Console commit.
-    An entry written with an unresolved target keeps `repo` empty, and an empty repo never
-    satisfies a repository-scoped rule — legacy entries are inert by the same clause.
-    """
-    try:
-        with _ledger_path(session_id).open("a", encoding="utf-8") as fh:
-            fh.write(json.dumps({"kind": kind, "detail": detail[:600], "repo": repo}) + "\n")
-    except OSError:
-        pass
-
-
-def _record_edit_attempt(session_id: str, path: str, repo: str = "") -> None:
-    """Record an edit REQUEST together with the file's pre-edit mtime (RC-258).
-
-    The baseline is captured here, before the tool runs, because that is the only moment the
-    "unmodified" state is observable. Stop compares against it to separate an edit that landed
-    from one a later hook refused.
-    """
-    try:
-        entry = {"kind": "edit_attempt", "detail": (path or "")[:600], "repo": repo,
-                 "mtime_before": _mtime_or_none(path)}
-        with _ledger_path(session_id).open("a", encoding="utf-8") as fh:
-            fh.write(json.dumps(entry) + "\n")
-    except OSError:
-        pass
-
-
-def _ledger(session_id: str) -> list[dict]:
-    p = _ledger_path(session_id)
-    if not p.exists():
-        return []
-    out = []
-    try:
-        for line in p.read_text(encoding="utf-8", errors="ignore").splitlines():
-            try:
-                out.append(json.loads(line))
-            except (json.JSONDecodeError, ValueError):
-                continue
-    except OSError:
-        return []
-    return out
-
-
-def _clear(session_id: str) -> None:
-    try:
-        _ledger_path(session_id).unlink(missing_ok=True)
-    except OSError:
-        pass
-
 
 # ── repository identity (RC-258) ──────────────────────────────────────────────────────────
 #: The guard is registered globally, so it sees commands aimed at ANY checkout on this host.
@@ -348,8 +291,7 @@ _VERIFICATION = re.compile(
 
 #: FC-13: this module used to carry its own production-surface geometry here. The constants
 #: were dead — nothing read them — but a dead copy of a semantic rule is still a second
-#: producer waiting to be picked up. The one authority is
-#: tools/pretooluse_guard.classify_path, reached through turn_self_audit.is_production_path.
+#: producer waiting to be picked up. The one authority is tools/pretooluse_guard.classify_path.
 
 #: The no-grep law (2026-05-22) as an ACTION predicate, replacing a spelling test that
 #: flipped on file extensions, downstream pipes and wrappers (audit 2026-08-25:
@@ -399,11 +341,6 @@ def _repo_search_violation(cmd: str) -> bool:
             if name == "rg" and idx == 0:
                 return True
     return False
-#: Deliberate split with operating_process_lock.reset_guard_violations (both stay firing):
-#: THIS regex bans the universal hard forms anywhere on the host; LOCK-2 over there bans the
-#: full reset/restore/checkout--/clean/stash verb class on protected/bare targets.
-_DESTRUCTIVE_GIT = re.compile(
-    r"\bgit\s+(?:reset\s+--hard|checkout\s+--\s|clean\s+-[a-z]*f|push\s+--force(?!-with-lease))", re.I)
 #: RC-273 — the trees that are gitignored and therefore UNRECOVERABLE.
 #: `.gitignore:31 data/*` means the 27 GB database has no history at all, so the
 #: single most valuable artefact in this repository is the one every
@@ -412,7 +349,7 @@ _DESTRUCTIVE_GIT = re.compile(
 #: MEASURED 2026-08-06: the agent destroyed data/ed_console.db TWICE in ten
 #: minutes. Once with `mv` to exercise a missing-file branch; once with `rm -f`
 #: while TESTING the ACL meant to prevent the first. Both were "just a test";
-#: both destroyed 27 GB. `_DESTRUCTIVE_GIT` refused `git checkout --` in that
+#: both destroyed 27 GB. The destructive-git rule refused `git checkout --` in that
 #: same session, so the guard was awake — it simply did not consider `rm` on an
 #: untracked file to be destruction.
 #:
@@ -662,8 +599,8 @@ def _successful_commands(transcript_path: str) -> frozenset[str] | None:
 # STRUCTURAL: they parse a JSONL transcript into text blocks and executed commands and make no
 # judgement about what any of it MEANS. The prose oracles that sat beside them — a
 # memory-citation word list, a verdict word list, a defect-report word list — were the retired
-# part. This module is where they belong: it already owns turn and session identity (the turn
-# ledger, the session id, which commands actually ran without error).
+# part. This module is where they belong: it already owns turn identity (which commands
+# actually ran without error this turn, and against which repository).
 
 
 def last_assistant_text(transcript_path: str) -> str | None:
@@ -846,15 +783,6 @@ def _verification_ran(detail: str) -> bool:
     return False
 
 
-def _has_verification_any(ledger: list[dict], ok_cmds: frozenset[str] | None) -> bool:
-    """Session-wide proof — the Stop clauses' question, which is about the TURN, not a repo.
-
-    RESULT, NOT ISSUANCE (operator requirement, 2026-08-25): the issuance entry counts only
-    when the same command's tool_result in the transcript is not an error."""
-    return any(_verification_ran(e.get("detail", "")) and _result_ok(e.get("detail", ""), ok_cmds)
-               for e in ledger if e.get("kind") == "bash")
-
-
 def _has_verification(ledger: list[dict], repo: str = "",
                       ok_cmds: frozenset[str] | None = None) -> bool:
     """Proof that ran AGAINST `repo` (RC-258) and ran WITHOUT ERROR (2026-08-25).
@@ -875,67 +803,6 @@ def _has_verification(ledger: list[dict], repo: str = "",
         if _verification_ran(e.get("detail", "")) and _result_ok(e.get("detail", ""), ok_cmds):
             return True
     return False
-
-
-def _mtime_or_none(path: str):
-    try:
-        return Path(path).stat().st_mtime_ns
-    except (OSError, ValueError, RuntimeError):
-        return None
-
-
-def _edit_took_effect(entry: dict) -> bool:
-    """Did this recorded edit ATTEMPT actually reach the disk (RC-258, fifth failure)?
-
-    PreToolUse fires before the tool runs and before every LATER hook has had its say, so an
-    edit this guard permits may still be refused downstream. It was: on 2026-08-05 an Edit to
-    tools/operator_law_guard.py was recorded as a production change, the operating-process lock
-    then blocked it, the file never changed — and the Stop clause demanded a self-adversarial
-    audit for work that did not exist. Intent is not outcome.
-
-    The signal is the file's own modification time, captured BEFORE the tool ran and compared
-    after. That is exact where git status is not: a file edited and then committed inside the
-    same turn is clean against HEAD yet genuinely changed, and dropping its obligation would
-    weaken the very clause this repairs.
-
-    Two deliberate biases, both toward keeping the obligation: an entry with no recorded
-    baseline (a legacy `edit` row, or a stat that failed) counts as changed, and so does any
-    case the comparison cannot decide. An unmeasurable outcome is never treated as "nothing
-    happened" — RC-57: unmeasurable is never compliant.
-    """
-    if "mtime_before" not in entry:
-        return True                      # legacy row — behave exactly as before
-    before = entry.get("mtime_before")
-    after = _mtime_or_none(entry.get("detail", ""))
-    if after is None and before is None:
-        return True                      # cannot tell either side
-    return after != before
-
-
-def _production_edits(ledger: list[dict], confirm=None) -> list[str]:
-    """Production surfaces this turn actually CHANGED — attempts that were refused drop out."""
-    try:
-        from tools.pretooluse_guard import classify_path
-    except ImportError:
-        from pretooluse_guard import classify_path  # type: ignore
-    confirm = _edit_took_effect if confirm is None else confirm
-    out = []
-    for e in ledger:
-        if e.get("kind") not in ("edit", "edit_attempt"):
-            continue
-        p = e.get("detail", "").replace("\\", "/")
-        # FC-13: the per-entry relativisation that used to sit here was a third producer of
-        # the path semantic, and it only worked when the ledger row carried a `repo` value —
-        # otherwise it fell through to the absolute path, which is exactly the case that
-        # misclassified session scratchpad files as production. The authority now owns both
-        # the relativisation and the classification, and fails closed on an unresolvable
-        # path. The ledger's own repo scope (RC-258) is passed through rather than reinvented.
-        if not classify_path(p, repo=e.get("repo") or None).production:
-            continue
-        if not confirm(e):
-            continue
-        out.append(p)
-    return out
 
 
 def shell_executed_part(cmd: str) -> str:
@@ -989,9 +856,10 @@ def bash_violations(cmd: str, ledger: list[dict], payload_cwd: str = "") -> list
                    "(2026-05-22): read files end-to-end or use structural/AST analysis. Filtering "
                    "a command's own stdout is allowed; searching the codebase is not. "
                    "Piping a search into head/wc does not make it a stdout filter.")
-    if _DESTRUCTIVE_GIT.search(cmd):
-        out.append("ACTION BLOCKED: destructive git can discard operator work. Hand it to the "
-                   "operator.")
+    # Tree-destructive git (reset --hard, checkout --, clean -f, push --force, and the
+    # restore/stash class on product paths) has ONE owner on this same chain:
+    # operating_process_lock.reset_guard_violations (BEDROCK 2026-09-06 — the universal
+    # forms that lived here as `_DESTRUCTIVE_GIT` moved there; two rules, one question).
     if _protected_path_violation(raw):
         out.append("ACTION BLOCKED (RC-273): this deletes, moves or truncates something under "
                    "data/, backups/ or models/. Those trees are gitignored -- there is NO "
@@ -1021,13 +889,31 @@ def bash_violations(cmd: str, ledger: list[dict], payload_cwd: str = "") -> list
     # (.pre-commit-config.yaml — ruff, market-correctness, institutional-correctness,
     # db-health), so "committing without having run anything" is unreachable, and the
     # unresolved-repo branch turned a resolver failure into a work stoppage. The
-    # close-a-row form (edit_violations) and the Stop-time "edited and ran nothing"
-    # clause stay.
+    # close-a-row form (edit_violations) stays; the Stop-time "edited and ran nothing"
+    # clause left with the ledger (BEDROCK 2026-09-06, module docstring).
+    return out
+
+
+def turn_ledger(executed, payload_cwd: str = "") -> list[dict]:
+    """This turn's successful commands as repository-bound rows (RC-258 binding).
+
+    BEDROCK 2026-09-06: the per-session ledger file written at PreToolUse and cleared at Stop
+    is gone with the Stop clause it served. The transcript already pairs every command with
+    its outcome (`turn_slice`); which repository each ran against is resolved HERE, once, by
+    the same resolver the shell rules use, so a proof stays non-transferable between
+    checkouts. A command whose target cannot be resolved gets an empty repo and is inert.
+    """
+    out: list[dict] = []
+    for cmd in executed or ():
+        repo, _why = resolve_target_repo(cmd, payload_cwd)
+        out.append({"kind": "bash", "detail": cmd, "repo": repo or ""})
     return out
 
 
 def edit_violations(path: str, new_text: str, ledger: list[dict],
                     ok_cmds: frozenset[str] | None = None) -> list[str]:
+    """`ledger` rows are `{"kind": "bash", "detail": <command>, "repo": <resolved repo>}` —
+    built by `turn_ledger` from the transcript at the hook, or hand-built by the suites."""
     p = (path or "").replace("\\", "/")
     if not p.endswith("governance/root_cause_log.md"):
         return []
@@ -1052,188 +938,6 @@ def edit_violations(path: str, new_text: str, ledger: list[dict],
 # RC-125 probe-every-turn RETIRED (SIMPLICITY REHAB 2026-08-24): the predicate was a
 # substring regex (any command mentioning `snapshots`/`schwab`/`sqlite3` satisfied it),
 # forcing a token rather than an observation, and it blocked pure governance/read turns.
-# The scoped form of the law survives: pm_verify_repo_violations (honesty_guard) blocks
-# a verdict about repo/live state that carries no same-turn measurement.
-
-
-def _supervisor_incomplete(message: str) -> dict:
-    """A typed parent-owned result for a child that produced no valid audit result."""
-    return {
-        "schema_version": 1,
-        "contract_id": "CLEAN_FOR_TURN_CONTRACT_V1",
-        "authoritative": True,
-        "completed": False,
-        "verdict": "INCOMPLETE",
-        "exit_code": 3,
-        "internal_errors": [message],
-    }
-
-
-def _write_turn_audit_receipt(
-    session_id: str,
-    result: dict,
-    *,
-    observed_exit_code: int,
-    validation_errors: list[str],
-) -> str | None:
-    """Persist parent-observed evidence atomically outside the repository.
-
-    Receipts are diagnostics, never inputs to Stop authorization.
-    """
-    safe_session = re.sub(r"[^A-Za-z0-9_.-]", "_", session_id)[:80]
-    run_id = re.sub(
-        r"[^A-Za-z0-9_.-]", "_", str(result.get("audit_run_id") or "unknown")
-    )[:80]
-    directory = Path(tempfile.gettempdir()) / "ed_turn_audit_receipts" / safe_session
-    target = directory / f"{run_id}.json"
-    payload = {
-        "observed_exit_code": observed_exit_code,
-        "validation_errors": validation_errors,
-        "result": result,
-        "recorded_at": __import__("time").time(),
-    }
-    try:
-        directory.mkdir(parents=True, exist_ok=True)
-        temporary = target.with_suffix(".tmp")
-        temporary.write_text(
-            json.dumps(payload, sort_keys=True), encoding="utf-8"
-        )
-        temporary.replace(target)
-    except OSError as exc:
-        return f"authoritative receipt write failed: {type(exc).__name__}: {exc}"
-    return None
-
-
-def supervise_turn_audit(
-    repo: str | Path,
-    session_id: str,
-    *,
-    command: list[str] | None = None,
-    timeout: float = 1800,
-    required_session_paths: list[str] | tuple[str, ...] | None = None,
-) -> tuple[list[str], dict]:
-    """Launch, observe, and validate the authoritative audit child for this Stop.
-
-    A repository artifact is never read here.  The only candidate result is the
-    stdout of this exact child process, whose actual exit status the parent owns.
-    """
-    root = Path(repo).resolve()
-    if not session_id:
-        result = _supervisor_incomplete("missing session identity")
-        return ["TURN AUDIT INCOMPLETE: missing session identity"], result
-    session_paths = sorted({
-        path.replace("\\", "/").removeprefix("./")
-        for path in required_session_paths or ()
-        if path
-    })
-    argv = command or [
-        sys.executable,
-        str(REPO / "tools" / "turn_self_audit.py"),
-        "--authoritative",
-        "--repo",
-        str(root),
-        "--session-id",
-        session_id,
-        *[
-            item
-            for path in session_paths
-            for item in ("--required-session-file", path)
-        ],
-    ]
-    try:
-        proc = subprocess.run(
-            argv,
-            cwd=str(REPO),
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=timeout,
-        )
-    except subprocess.TimeoutExpired:
-        result = _supervisor_incomplete(f"audit child timed out after {timeout}s")
-        return [f"TURN AUDIT INCOMPLETE: audit child timed out after {timeout}s"], result
-    except (OSError, subprocess.SubprocessError) as exc:
-        result = _supervisor_incomplete(
-            f"audit child launch failed: {type(exc).__name__}: {exc}"
-        )
-        return [f"TURN AUDIT INCOMPLETE: {result['internal_errors'][0]}"], result
-
-    raw = (proc.stdout or "").strip()
-    if proc.returncode not in (0, 1, 2, 3) and not raw:
-        message = (
-            f"audit child did not complete successfully (unexpected exit {proc.returncode})"
-        )
-        return [f"TURN AUDIT INCOMPLETE: {message}"], _supervisor_incomplete(message)
-    try:
-        result = json.loads(raw)
-    except (json.JSONDecodeError, ValueError):
-        message = (
-            f"malformed structured audit result from child exit {proc.returncode}: "
-            f"{raw[:200]!r}"
-        )
-        result = _supervisor_incomplete(message)
-        return [f"TURN AUDIT INCOMPLETE: {message}"], result
-    if not isinstance(result, dict):
-        message = "malformed structured audit result: top level is not an object"
-        return [f"TURN AUDIT INCOMPLETE: {message}"], _supervisor_incomplete(message)
-
-    try:
-        from tools.turn_self_audit import validate_result
-    except ImportError:
-        from turn_self_audit import validate_result  # type: ignore
-    try:
-        validation = validate_result(
-            result,
-            repo=root,
-            session_id=session_id,
-            observed_exit_code=proc.returncode,
-            required_session_paths=session_paths,
-        )
-    except Exception as exc:  # fail closed if the validator itself encounters hostile structure
-        validation = [
-            f"structured result validation crashed: {type(exc).__name__}: {exc}"
-        ]
-    violations = [f"TURN AUDIT RESULT REJECTED: {item}" for item in validation]
-    receipt_error = _write_turn_audit_receipt(
-        session_id,
-        result,
-        observed_exit_code=proc.returncode,
-        validation_errors=validation,
-    )
-    if receipt_error:
-        violations.append(f"TURN AUDIT INCOMPLETE: {receipt_error}")
-    verdict = str(result.get("verdict") or "")
-    if proc.returncode not in (0, 1, 2, 3):
-        violations.append(
-            f"TURN AUDIT INCOMPLETE: audit child did not complete successfully "
-            f"(unexpected exit {proc.returncode})"
-        )
-    if verdict not in ("CLEAN", "NO_RELEVANT_PRODUCTION_CHANGE"):
-        violations.append(f"TURN AUDIT BLOCKED: authoritative verdict is {verdict or 'UNKNOWN'}")
-    return violations, result
-
-
-def stop_violations(ledger: list[dict], ok_cmds: frozenset[str] | None = None) -> list[str]:
-    out: list[str] = []
-    # Stop clauses stay SESSION-scoped and behaviourally unchanged: they ask whether this TURN
-    # verified/audited/probed, which is a property of the turn rather than of a repository.
-    edits = _production_edits(ledger)
-    if edits and not _has_verification_any(ledger, ok_cmds):
-        out.append(f"ACTION BLOCKED: this turn changed production code without a verification "
-                   f"that RAN WITHOUT ERROR. "
-                   f"Edited: {', '.join(sorted(set(edits))[:6])}. Execute the affected tests or "
-                   f"a live probe — and it must complete — before ending the turn.")
-    # RC-190 same-turn turn_self_audit obligation RETIRED (SIMPLICITY REHAB 2026-08-24):
-    # it enforced ONE obligation twice (ledger clause + a 5.8s-measured Stop-time
-    # supervised child), and the same CHECKS roster runs at commit
-    # (tools/precommit_institutional.py) with the delta gate as merge authority
-    # (check_delta_adds_no_debt --base origin/main in hardening.yml) enforcing strictly
-    # more. tools/turn_self_audit.py stays available as a manual/CI tool.
-    # RC-125 probe-every-turn RETIRED here (SIMPLICITY REHAB 2026-08-24) — see the note
-    # where _LIVE_PROBE lived: a substring regex forced a token, not an observation, and
-    # blocked pure governance/read turns. pm_verify_repo_violations keeps the scoped form.
-    return out
 
 
 def main() -> int:
@@ -1243,10 +947,8 @@ def main() -> int:
         sys.stderr.write("BLOCKED: invalid hook payload — unmeasurable is not compliant.\n")
         return 2
 
-    sid = payload.get("session_id") or ""
     tool = payload.get("tool_name") or ""
     ti = payload.get("tool_input") or {}
-    ledger = _ledger(sid)
 
     # Claude Code supplies the working directory on the payload when it knows it. Absence is
     # handled as UNRESOLVED rather than guessed — see resolve_target_repo.
@@ -1254,73 +956,26 @@ def main() -> int:
 
     if tool in BASH_TOOLS:                # one roster (stop_chain.BASH_TOOLS, RC-520)
         cmd = ti.get("command") or ""
-        bad = bash_violations(cmd, ledger, payload_cwd)
+        bad = bash_violations(cmd, [], payload_cwd)
         if bad:
             sys.stderr.write("BLOCKED (RC-93) — OPERATOR LAW: ban the ACTION, not the word.\n\n"
                              + "\n".join(f"    {b}" for b in bad) + "\n")
             return 2
-        repo, _why = resolve_target_repo(cmd, payload_cwd)
-        _record(sid, "bash", cmd, repo)
         return 0
 
     if tool in ("Edit", "Write", "MultiEdit", "NotebookEdit"):
         path = ti.get("file_path") or ""
         body = ti.get("new_string") or ti.get("content") or ""
-        bad = edit_violations(path, body, ledger,
-                              _successful_commands(str(payload.get("transcript_path") or "")))
+        executed = _successful_commands(str(payload.get("transcript_path") or ""))
+        bad = edit_violations(path, body, turn_ledger(executed, payload_cwd), executed)
         if bad:
             sys.stderr.write("BLOCKED (RC-93) — OPERATOR LAW: ban the ACTION, not the word.\n\n"
                              + "\n".join(f"    {b}" for b in bad) + "\n")
             return 2
-        # ATTEMPTED, not executed: later hooks in the chain may still refuse this edit, and one
-        # did (RC-258 fifth failure). Capture the pre-edit mtime so Stop can tell whether the
-        # write ever landed, then confirm the outcome rather than assuming it.
-        _record_edit_attempt(sid, path, repo_root_of(path))
         return 0
 
-    # Stop
-    if not sid:
-        sys.stderr.write("BLOCKED: Stop payload has no session identity.\n")
-        return 2
-    if not payload_cwd:
-        sys.stderr.write(
-            "BLOCKED: Stop payload has no working-directory identity; "
-            "the repository/worktree subject cannot be proven.\n"
-        )
-        return 2
-    if payload.get("stop_hook_active") is True:
-        # The flag proves only that the host is retrying a blocked Stop. It grants no
-        # authorization: the complete Stop policy, including a fresh supervised audit,
-        # is evaluated again against the current subject below.
-        if not any(entry.get("kind") == "stop_blocked" for entry in ledger):
-            # RC-379: the HOST sets this flag after ANY Stop hook in the chain blocks, so a
-            # SIBLING guard's block (honesty_guard, RC-209) arrives here as a retry THIS guard
-            # never recorded. Reading that as forgery returned before stop_violations ever ran
-            # and deadlocked every later Stop for the rest of the session — measured live,
-            # 15+ identical blocks naming no unmet obligation while the turn's work was done.
-            # Absence of an own entry is now RECORDED and never fatal; the clauses below stay
-            # the sole gate, which is exactly what the comment above already promises. The
-            # entry is written with an empty repo, so it can never satisfy a repository-scoped
-            # rule (RC-258) — it is observability, not authority.
-            _record(sid, "sibling_stop_retry",
-                    "stop_hook_active with no own stop_blocked entry — a sibling Stop hook "
-                    "blocked first; falling through to the full Stop policy")
-    bad = stop_violations(ledger,
-                          _successful_commands(str(payload.get("transcript_path") or "")))
-    payload_repo = repo_root_of(payload_cwd) if payload_cwd else ""
-    # RC-190/RC-368 Stop-time supervised audit child RETIRED (SIMPLICITY REHAB, operator
-    # full-go 2026-08-24): the child re-ran the CHECKS roster at every Stop with
-    # production edits (5.8s measured) on top of the same roster running at commit
-    # (precommit_institutional) and the delta gate at merge (hardening.yml), which
-    # enforces strictly more. tools/turn_self_audit.py remains a manual/CI tool;
-    # supervise_turn_audit stays importable for its contract tests.
-    if bad:
-        _record(sid, "stop_blocked", "operator_law_guard", payload_repo or "")
-        sys.stderr.write("BLOCKED (RC-93) — OPERATOR LAW: ban the ACTION, not the word.\n\n"
-                         + "\n".join(f"    {b}" for b in bad)
-                         + "\n\nRun it, then end the turn.\n")
-        return 2
-    _clear(sid)
+    # No other event is this guard's to judge (BEDROCK 2026-09-06: the Stop role is gone —
+    # module docstring). A stray invocation is a no-op, never a verdict.
     return 0
 
 

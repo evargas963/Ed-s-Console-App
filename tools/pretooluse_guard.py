@@ -11,7 +11,7 @@ and PR; defects get rows by doctrine; the Stop seam holds an unfinished row and 
 requires cited evidence.
 
 What remains is `classify_path` — consumed by process_lock_guard (production-checkout rails)
-and turn_self_audit — and `decide`, kept importable for the path-facts tests; it returns 0.
+— and `decide`, kept importable for the path-facts tests; it returns 0.
 """
 from __future__ import annotations
 
@@ -201,7 +201,7 @@ def decide(payload: dict) -> int:
     #     get rows by doctrine; the Stop seam holds an unfinished row (stop_guard) and CLOSE
     #     requires cited evidence (check_root_cause_log).
     # What remains here is `classify_path`, the ONE owner of "is this path ours / production /
-    # compliance", consumed by process_lock_guard and turn_self_audit. `decide` stays
+    # compliance", consumed by process_lock_guard. `decide` stays
     # importable for the path-facts tests and returns 0 for every governed edit.
     _ = facts.rel
     return 0

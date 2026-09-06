@@ -24,7 +24,6 @@ import os
 import shutil
 import subprocess
 import sys
-import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -32,7 +31,6 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from tools.stop_chain import STOP_CHAIN, _argv_members, run_chain  # noqa: E402
-import tools.operator_law_guard as olg  # noqa: E402
 import tools.pretooluse_chain as ptc  # noqa: E402
 
 
@@ -43,15 +41,16 @@ def test_argv_roster_maps_hook_spellings_to_modules():
     assert _argv_members([]) == ()
 
 
-def test_default_stop_roster_names_the_two_guards():
+def test_default_stop_roster_names_the_one_guard():
     """RC-504: proof_only_guard was removed as Stop authority and deleted. BEDROCK 2026-09-06:
-    honesty_guard likewise — a prose matcher (answer tokens, deflection phrases)."""
-    assert STOP_CHAIN == ("tools.stop_guard", "tools.operator_law_guard")
+    honesty_guard likewise — a prose matcher (answer tokens, deflection phrases) — and
+    operator_law_guard left Stop with its proxy clause; the Stop seam has ONE owner."""
+    assert STOP_CHAIN == ("tools.stop_guard",)
 
 
 def test_edit_and_bash_rosters_carry_the_ledger_guard():
-    """RC-205's substance: operator_law_guard must see BOTH edits and commands, or the
-    edit-dependent Stop clauses go blind."""
+    """RC-205's substance: operator_law_guard must see BOTH edits and commands — the CLOSE
+    rule is judged at Edit from the commands the transcript says ran."""
     assert "tools.operator_law_guard" in ptc.EDIT_CHAIN
     assert "tools.operator_law_guard" in ptc.BASH_CHAIN
     # BEDROCK 2026-09-06: pretooluse_guard blocks nothing any more (content gates and the
@@ -154,8 +153,9 @@ def test_stop_guard_member_block_equivalence(tmp_path):
 
 # RC-504: test_proof_only_guard_member_block_equivalence was REMOVED with the guard, and
 # BEDROCK 2026-09-06 removed test_honesty_guard_member_block_equivalence with honesty_guard
-# (a prose matcher). The property is still proven for every SURVIVING member by the
-# stop_guard, operator_law_guard and process_lock_guard equivalence tests above and below.
+# (a prose matcher) and test_operator_law_guard_stop_member_block_equivalence with that
+# guard's Stop role. The property is still proven for every SURVIVING member by the
+# stop_guard and process_lock_guard equivalence tests above and below.
 
 
 def test_the_retired_prose_oracle_is_gone_from_every_live_surface(tmp_path):
@@ -179,45 +179,12 @@ def test_the_retired_prose_oracle_is_gone_from_every_live_surface(tmp_path):
     settings = json.loads((ROOT / ".claude" / "settings.json").read_text(encoding="utf-8"))
     stop_cmd = settings["hooks"]["Stop"][0]["hooks"][0]["command"]
     members = {t for t in stop_cmd.split() if t.startswith("tools/") and "chain" not in t}
-    assert members == {"tools/stop_guard.py", "tools/operator_law_guard.py"}, members
+    assert members == {"tools/stop_guard.py"}, members
     # BEDROCK 2026-09-06: and honesty_guard, the other prose oracle, is gone the same way —
-    # no successor under another name.
+    # no successor under another name; operator_law_guard's Stop proxy clause likewise.
     assert not (ROOT / "tools" / "honesty_guard.py").exists()
     assert "honesty_guard" not in stop_cmd
-
-
-def test_operator_law_guard_stop_member_block_equivalence(tmp_path):
-    """RC-93 Stop block: a recorded production edit with NOTHING run this turn.
-
-    The ledger is seeded through the guard's own recorder (module seam) into its real
-    per-session temp file; the entry is a legacy-shape `edit` row, which the guard
-    treats as a landed change (RC-57: unmeasurable is never 'nothing happened'). The
-    ledger is re-seeded to the identical single row before each subprocess, because a
-    block appends a `stop_blocked` observability row.
-    """
-    subject = tmp_path / "subject"
-    (subject / ".git").mkdir(parents=True)
-    (subject / "mod.py").write_text("VALUE = 1\n", encoding="utf-8")
-    sid = f"eqv-oplaw-{time.time_ns()}"
-    ledger = olg._ledger_path(sid)
-
-    def seed() -> None:
-        ledger.unlink(missing_ok=True)
-        olg._record(sid, "edit", str(subject / "mod.py"), olg.normalize_repo(subject))
-
-    payload = {"session_id": sid, "tool_name": "Stop", "cwd": str(subject)}
-    raw = json.dumps(payload)
-    try:
-        seed()
-        standalone = _pipe([sys.executable, str(ROOT / "tools" / "operator_law_guard.py")],
-                           raw, ROOT)
-        seed()
-        chain = _pipe([sys.executable, str(ROOT / "tools" / "stop_chain.py"),
-                       "tools/operator_law_guard.py"], raw, ROOT)
-    finally:
-        ledger.unlink(missing_ok=True)
-    _assert_blocking_pair(standalone, chain,
-                          ("BLOCKED (RC-93)", "RAN WITHOUT ERROR"))
+    assert "operator_law_guard" not in stop_cmd
 
 
 def test_process_lock_guard_member_block_equivalence():

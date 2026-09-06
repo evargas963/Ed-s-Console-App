@@ -17,8 +17,8 @@ from tools.ui_mockup_lock import (
     mockup_gated_entry,
 )
 
-# RC-368: declared direct owner — this suite drives stop_violations (RC-190) and the
-# mockup-lock clauses that live in the guard.
+# RC-368: declared direct owner — this suite drives the mockup-lock clauses that live in
+# the guard (the RC-190 Stop clause it also drove left with BEDROCK 2026-09-06).
 TURN_AUDIT_OWNS = [
     "tools/operator_law_guard.py",
 ]
@@ -300,37 +300,6 @@ def test_gate_screams_when_registry_is_unparseable(tmp_path, monkeypatch):
     assert any("registry" in r and ("unparseable" in r or "missing" in r) for r in reasons)
 
 
-def test_stop_still_blocks_edit_with_nothing_run():
-    """SIMPLICITY REHAB 2026-08-24: the RC-190 same-turn turn_self_audit ledger clause is
-    RETIRED (one obligation was enforced twice; commit + delta gate keep the roster).
-    The SURVIVING Stop clause is pinned here: a production edit with NOTHING executed
-    still blocks; running anything (tests/probe) clears exactly that block; and no
-    retired RC-190 message resurfaces."""
-    from tools.operator_law_guard import stop_violations
-    nothing_run = [{"kind": "edit", "detail": "server.py"}]
-    msgs = stop_violations(nothing_run)
-    assert any("RAN WITHOUT ERROR" in m for m in msgs)
-    cmd = ".venv/Scripts/python.exe -m pytest tests/x.py -q"
-    verified = nothing_run + [{"kind": "bash", "detail": cmd}]
-    # RESULT, NOT ISSUANCE (operator 2026-08-25): the seeded verification clears the block
-    # only when it also ran WITHOUT ERROR (present in the successful-command set).
-    assert stop_violations(verified, frozenset({cmd})) == []
-    # Issued but not proven-successful (no transcript / errored) still blocks.
-    assert stop_violations(verified, frozenset()) != []
-    assert not any("RC-190" in m for m in stop_violations(nothing_run))
-
-
-def test_turn_self_audit_blast_radius_and_suite_matching(tmp_path):
-    """RC-190: the audit tool's matcher pairs changed modules with the attack suites that
-    NAME them, and reports uncovered modules as findings rather than skipping them."""
-    from tools.turn_self_audit import matching_attack_suites
-    suites, uncovered = matching_attack_suites(["tools/ui_mockup_lock.py"])
-    assert "tests/test_ui_mockup_lock_v1.py" in suites and not uncovered
-    ghost = "zz_no_such_" + "module_zz"      # split so THIS file cannot satisfy the scan
-    suites2, uncovered2 = matching_attack_suites([f"tools/{ghost}.py"])
-    assert suites2 == [] and uncovered2 == [ghost]
-
-
 def test_domain_faucet_lock_blocks_second_faucets():
     """RC-212 negative controls (operator: two faucets 'in any other way they can
     manifest' are strictly prohibited). Drives the REAL callee six ways."""
@@ -393,5 +362,4 @@ def test_ship_confirmation_required_for_approved_surface_changes():
         ["static/chart.html", f"reports/{conf[-1].name}"])
     assert ok == [], f"a qualifying confirmation did not satisfy clause 5: {ok}"
     assert cic.ship_confirmation_violations("tools/ui_mockup_lock.py", []) == []
-
 
