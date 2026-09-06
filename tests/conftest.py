@@ -14,52 +14,59 @@ from __future__ import annotations
 
 import os
 import sys
+import tempfile
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import pytest
 
-os.environ.setdefault("ED_CONSOLE_ALLOW_NONCANONICAL_DB", "1")
+# RC-515: pytest owns one deterministic runtime boundary before any application
+# module imports. Host/live values never win through setdefault: every mutable
+# runtime path is under one process-private directory, and Schwab is explicitly
+# offline with a missing isolated token. Tests of live/offline semantics use
+# monkeypatch after this boundary and therefore state their inputs themselves.
+_PYTEST_RUNTIME_ROOT = Path(tempfile.mkdtemp(
+    prefix=f"ed-pytest-{os.environ.get('PYTEST_XDIST_WORKER', 'serial')}-{os.getpid()}-"
+)).resolve()
+_PYTEST_CONSOLE_DB = _PYTEST_RUNTIME_ROOT / "ed_console.db"
+_PYTEST_CONSOLE_DB.touch()
+
+os.environ["ED_CONSOLE_ALLOW_NONCANONICAL_DB"] = "1"
+os.environ["ED_CONSOLE_DB"] = str(_PYTEST_CONSOLE_DB)
+os.environ["STREAM_CAPTURE_DB_PATH"] = str(_PYTEST_RUNTIME_ROOT / "stream_capture.db")
+os.environ["SCHWAB_TOKEN_PATH"] = str(_PYTEST_RUNTIME_ROOT / "missing_schwab_token.json")
+os.environ["ED_CI_OFFLINE"] = "1"
+os.environ["SCHWAB_API_KEY"] = "ci-placeholder-api-key"
+os.environ["SCHWAB_APP_SECRET"] = "ci-placeholder-app-secret"
+os.environ["SCHWAB_CALLBACK_URL"] = "https://127.0.0.1:8182"
+os.environ["ED_TERRAIN_QUARANTINE_LEDGER"] = str(
+    _PYTEST_RUNTIME_ROOT / "terrain_quarantine_ledger.jsonl"
+)
 
 # GOV-GATE-PERF-V1: the governance gate cache is a CLI-entry-point optimization.
 # Tests must always exercise REAL compute — many inject failures via in-process
 # monkeypatched state that file-identity cache keys cannot represent, so a stored
 # success must never satisfy an injected-failure test. Force-no-cache is the
 # cache's own designated verification mode (tools/governance_gate_cache.py).
-os.environ.setdefault("ED_GATE_CACHE_DISABLE", "1")
-
-# Hermetic Schwab config for pytest only — not real credentials; no network at import.
-os.environ.setdefault("SCHWAB_API_KEY", "ci-placeholder-api-key")
-os.environ.setdefault("SCHWAB_APP_SECRET", "ci-placeholder-app-secret")
-os.environ.setdefault("SCHWAB_CALLBACK_URL", "https://127.0.0.1:8182")
-
-# TEARDOWN 2026-08-24: the tracked terrain quarantine ledger can never be a test's
-# write target, REGARDLESS of when server is imported — the env override is read at
-# server import time, and this line runs before any test module can import server
-# (CI caught a lazy mid-test import writing the real file; the autouse firewall
-# fixture below remains the byte-level backstop).
-import tempfile as _tempfile  # noqa: E402
-os.environ.setdefault(
-    "ED_TERRAIN_QUARANTINE_LEDGER",
-    str(Path(_tempfile.mkdtemp(prefix="ed-pytest-ledger-")) / "terrain_quarantine_ledger.jsonl"))
+os.environ["ED_GATE_CACHE_DISABLE"] = "1"
 
 
 def pytest_configure(config) -> None:
-    """xdist workers must not share one console DB file.
+    """Assert the import-time boundary remains intact in controller and workers."""
+    assert Path(os.environ["ED_CONSOLE_DB"]).parent == _PYTEST_RUNTIME_ROOT
+    assert Path(os.environ["STREAM_CAPTURE_DB_PATH"]).parent == _PYTEST_RUNTIME_ROOT
 
-    `db.DB_PATH` is resolved at import from ED_CONSOLE_DB. Each worker is a fresh
-    process; set the override here (before test modules import db) so schema-init
-    and writes cannot collide. Serial pytest is unchanged (no PYTEST_XDIST_WORKER).
-    """
-    worker = os.environ.get("PYTEST_XDIST_WORKER")
-    if not worker:
-        return
-    root = Path(os.environ.get("TMPDIR") or "/tmp") / f"ed-pytest-{worker}-{os.getpid()}"
-    root.mkdir(parents=True, exist_ok=True)
-    db = root / "ed_console.db"
-    db.touch()
-    os.environ["ED_CONSOLE_DB"] = str(db)
-    os.environ["ED_CONSOLE_ALLOW_NONCANONICAL_DB"] = "1"
+
+@pytest.fixture(autouse=True)
+def _stream_spine_fallback_stays_isolated(monkeypatch):
+    """Tests that remove the env override still cannot fall back to checkout state."""
+    import stream_spine
+
+    monkeypatch.setattr(
+        stream_spine,
+        "STREAM_DB_DEFAULT",
+        _PYTEST_RUNTIME_ROOT / "stream_capture.db",
+    )
 
 
 @pytest.fixture(autouse=True)

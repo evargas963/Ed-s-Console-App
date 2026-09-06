@@ -1,6 +1,6 @@
 """OPTIONS_ORDER_FLOW_V1 — order-flow/options semantic products.
 
-order_flow_live_state.push_level_one/push_book are symbol-generic and read Schwab's
+app.options.order_flow.state.push_level_one/push_book are symbol-generic and read Schwab's
 native field names, not an equity-specific schema — proven here by feeding them the REAL
 captured LEVELONE_OPTIONS/OPTIONS_BOOK shapes (reports/of_capability_probe/
 options_20260820T1354Z/) and reading the result back through the SAME producer equities
@@ -14,8 +14,8 @@ import asyncio
 import threading
 import time
 
-import order_flow_live_state as ofls
-import order_flow_streaming as ofs
+import app.options.order_flow.state as ofls
+import app.options.order_flow.streaming as ofs
 from stream_spine import CaptureWriter, book_msg, options_quote_msg
 
 _SPY_CONTRACT = "SPY   260820C00767000"
@@ -36,13 +36,20 @@ _REAL_OPTIONS_BOOK_CONTENT = {
 }
 
 
-def _reset(tmp_path):
+def _reset(tmp_path, monkeypatch):
     ofs._feed_running = False
     ofs._active_option_contract = None
     ofs._option_l1_cursor = {}
     ofs._option_book_cursor = {}
     ofls.clear_all_live_state()
-    return tmp_path / "stream_capture.db"
+    db = tmp_path / "stream_capture.db"
+    monkeypatch.setattr(ofs, "STREAM_DB_DEFAULT", db)
+    monkeypatch.delenv("STREAM_CAPTURE_DB_PATH", raising=False)
+    monkeypatch.setattr(
+        "app.options.contracts.default.default_option_contract",
+        lambda *a, **k: None,
+    )
+    return db
 
 
 def _write_option_l1_row(db, symbol, content, ts_recv):
@@ -62,9 +69,8 @@ def _write_option_book_row(db, symbol, content, ts_recv):
     w.close()
 
 
-def test_option_contract_l1_replays_into_order_flow_live_state(tmp_path, monkeypatch):
-    db = _reset(tmp_path)
-    monkeypatch.setattr(ofs, "STREAM_DB_DEFAULT", db)
+def test_option_contract_l1_replays_into_order_flow_state(tmp_path, monkeypatch):
+    db = _reset(tmp_path, monkeypatch)
     _write_option_l1_row(db, _SPY_CONTRACT, _REAL_LEVELONE_OPTIONS_CONTENT, ts_recv=1.0)
 
     con = ofs._open_capture_db_readonly(db)
@@ -76,8 +82,7 @@ def test_option_contract_l1_replays_into_order_flow_live_state(tmp_path, monkeyp
 
 
 def test_option_contract_book_replays_verbatim(tmp_path, monkeypatch):
-    db = _reset(tmp_path)
-    monkeypatch.setattr(ofs, "STREAM_DB_DEFAULT", db)
+    db = _reset(tmp_path, monkeypatch)
     _write_option_book_row(db, _SPY_CONTRACT, _REAL_OPTIONS_BOOK_CONTENT, ts_recv=1.0)
 
     con = ofs._open_capture_db_readonly(db)
@@ -92,8 +97,7 @@ def test_option_contract_replay_reads_only_options_book_service(tmp_path, monkey
     """A NASDAQ_BOOK/NYSE_BOOK row for the SAME symbol string (should never happen for an
     OSI contract symbol, but the query must not accidentally cross services) must not
     leak into the option contract's replayed content."""
-    db = _reset(tmp_path)
-    monkeypatch.setattr(ofs, "STREAM_DB_DEFAULT", db)
+    db = _reset(tmp_path, monkeypatch)
     w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
     w.insert(f"book.{_SPY_CONTRACT}", book_msg(
         symbol=_SPY_CONTRACT, service="NASDAQ_BOOK",
@@ -113,8 +117,7 @@ def test_option_contract_replay_reads_only_options_book_service(tmp_path, monkey
 def test_get_option_contract_book_microstructure_reuses_the_one_producer(tmp_path, monkeypatch):
     """The decisive proof: this is compute_book_microstructure itself (the SAME function
     the equity /api/order-flow/microstructure route calls), not a parallel computation."""
-    db = _reset(tmp_path)
-    monkeypatch.setattr(ofs, "STREAM_DB_DEFAULT", db)
+    db = _reset(tmp_path, monkeypatch)
     _write_option_book_row(db, _SPY_CONTRACT, _REAL_OPTIONS_BOOK_CONTENT, ts_recv=1.0)
     con = ofs._open_capture_db_readonly(db)
     ofs._replay_option_contract_rows(con, _SPY_CONTRACT)
@@ -134,10 +137,10 @@ def test_get_option_contract_book_microstructure_fails_closed_with_no_book():
 
 def test_set_active_option_contract_writes_signal_and_clears_old_symbol(tmp_path, monkeypatch):
     calls = []
-    monkeypatch.setattr("order_flow_streaming.write_active_option_contract_signal",
+    monkeypatch.setattr("app.options.order_flow.streaming.write_active_option_contract_signal",
                         lambda s: calls.append(s))
     cleared = []
-    monkeypatch.setattr("order_flow_streaming.clear_symbol", lambda s: cleared.append(s))
+    monkeypatch.setattr("app.options.order_flow.streaming.clear_symbol", lambda s: cleared.append(s))
     ofs._active_option_contract = "OLD   260101C00100000"
 
     ok = ofs.set_active_option_contract(_SPY_CONTRACT)
@@ -150,13 +153,12 @@ def test_set_active_option_contract_writes_signal_and_clears_old_symbol(tmp_path
 def test_feed_loop_replays_both_ticker_and_option_contract_independently(tmp_path, monkeypatch):
     """The equity active ticker and the option contract are independent slots — both must
     hydrate in the SAME poll tick without interfering with each other."""
-    db = _reset(tmp_path)
+    db = _reset(tmp_path, monkeypatch)
     ofs._active_ticker = None
     ofs._l1_cursor = {}
     ofs._book_cursor = {}
-    monkeypatch.setattr(ofs, "STREAM_DB_DEFAULT", db)
-    monkeypatch.setattr("order_flow_streaming.write_active_ticker_signal", lambda *_a, **_k: None)
-    monkeypatch.setattr("order_flow_streaming.write_active_option_contract_signal", lambda *_a, **_k: None)
+    monkeypatch.setattr("app.options.order_flow.streaming.write_active_ticker_signal", lambda *_a, **_k: None)
+    monkeypatch.setattr("app.options.order_flow.streaming.write_active_option_contract_signal", lambda *_a, **_k: None)
 
     from stream_spine import quote_msg
     w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
@@ -207,13 +209,12 @@ def test_feed_loop_confines_every_db_touch_to_one_thread(tmp_path, monkeypatch):
     cross-call thread reuse (not synthetic). Proves the fix directly: every DB-touching
     call across several poll ticks reports the SAME thread ident, not merely that no
     exception happened to surface this run."""
-    db = _reset(tmp_path)
+    db = _reset(tmp_path, monkeypatch)
     ofs._active_ticker = None
     ofs._l1_cursor = {}
     ofs._book_cursor = {}
-    monkeypatch.setattr(ofs, "STREAM_DB_DEFAULT", db)
-    monkeypatch.setattr("order_flow_streaming.write_active_ticker_signal", lambda *_a, **_k: None)
-    monkeypatch.setattr("order_flow_streaming.write_active_option_contract_signal", lambda *_a, **_k: None)
+    monkeypatch.setattr("app.options.order_flow.streaming.write_active_ticker_signal", lambda *_a, **_k: None)
+    monkeypatch.setattr("app.options.order_flow.streaming.write_active_option_contract_signal", lambda *_a, **_k: None)
     _write_option_l1_row(db, _SPY_CONTRACT, _REAL_LEVELONE_OPTIONS_CONTENT, ts_recv=1.0)
 
     seen_idents: set[int] = set()
@@ -337,3 +338,64 @@ def test_option_contract_streaming_diagnostics_independent_of_equity_slot():
     assert ofs._option_streaming_healthy() is True
     assert ofs.get_streaming_diagnostics()["streaming_healthy"] is False
     assert ofs.get_option_contract_streaming_diagnostics()["streaming_healthy"] is True
+
+
+def test_reused_readonly_feed_sees_later_option_commits(tmp_path, monkeypatch):
+    """The live plane reuses one readonly connection. A deferred SQLite snapshot
+    would hide later OPTIONS_BOOK commits (history hydrates; live stays no_book).
+    # universal-scope-ok: vendor OSI fixture, not a SPY-only product claim.
+    """
+    db = _reset(tmp_path, monkeypatch)
+    ofs._option_streaming_last_update_ts = None
+    CaptureWriter(db, batch_rows=1, batch_sec=10.0).close()
+    con = ofs._open_capture_db_readonly(db)
+    assert con is not None
+    assert con.isolation_level is None
+    ofs._replay_option_contract_rows(con, _SPY_CONTRACT)
+    assert ofs._option_streaming_last_update_ts is None
+    assert not any(i.get("BIDS") for i in ofls.get_content_for_symbol(_SPY_CONTRACT))
+
+    _write_option_l1_row(db, _SPY_CONTRACT, _REAL_LEVELONE_OPTIONS_CONTENT, ts_recv=2.0)
+    _write_option_book_row(db, _SPY_CONTRACT, _REAL_OPTIONS_BOOK_CONTENT, ts_recv=2.0)
+
+    ofs._replay_option_contract_rows(con, _SPY_CONTRACT)
+    con.close()
+    assert ofs._option_streaming_last_update_ts is not None
+    items = ofls.get_content_for_symbol(_SPY_CONTRACT)
+    assert any(i.get("LAST_PRICE") == 1.27 for i in items)
+    assert any(i.get("BIDS") == _REAL_OPTIONS_BOOK_CONTENT["BIDS"] for i in items)
+
+
+def test_first_tick_option_replay_is_snapshot_tail_not_lifetime(tmp_path, monkeypatch):
+    """A long-lived OPTIONS_BOOK history must not be fully replayed on bind.
+    # universal-scope-ok: vendor OSI fixture, not a SPY-only product claim.
+    """
+    db = _reset(tmp_path, monkeypatch)
+    old = dict(_REAL_OPTIONS_BOOK_CONTENT)
+    old = {**old, "BIDS": [{"BID_PRICE": 9.99, "TOTAL_VOLUME": 1}]}
+    latest = _REAL_OPTIONS_BOOK_CONTENT
+    _write_option_book_row(db, _SPY_CONTRACT, old, ts_recv=1.0)
+    _write_option_book_row(db, _SPY_CONTRACT, latest, ts_recv=2.0)
+    con = ofs._open_capture_db_readonly(db)
+    ofs._replay_option_contract_rows(con, _SPY_CONTRACT)
+    con.close()
+    items = ofls.get_content_for_symbol(_SPY_CONTRACT)
+    bids = [i.get("BIDS") for i in items if i.get("BIDS")]
+    assert latest["BIDS"] in bids
+    assert old["BIDS"] not in bids
+
+
+def test_ensure_default_adopts_matching_signal_file(tmp_path, monkeypatch):
+    """Process start with empty in-memory slot must bind the daemon's existing signal.
+    # universal-scope-ok: vendor OSI fixture, not a SPY-only product claim.
+    """
+    _reset(tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        ofs, "read_active_option_contract_signal", lambda: _SPY_CONTRACT)
+    written = []
+    monkeypatch.setattr(ofs, "write_active_option_contract_signal", lambda s: written.append(s))
+    monkeypatch.setattr(ofs, "_contract_matches_underlying", lambda c, t, **k: c == _SPY_CONTRACT)
+    ofs._active_option_contract = None
+    ofs._ensure_default_option_contract_for_ticker("SPY")
+    assert ofs._active_option_contract == _SPY_CONTRACT
+    assert written == [_SPY_CONTRACT]

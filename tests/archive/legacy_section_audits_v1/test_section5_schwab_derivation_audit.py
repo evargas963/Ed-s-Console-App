@@ -55,7 +55,7 @@ def test_section5_inventory_registered_in_replacement_register():
 
 
 def test_order_flow_spread_requires_schwab_mark_for_frac():
-    from order_flow_engine import _compute_spread
+    from app.options.order_flow.engine import _compute_spread
 
     with_mark = {"quote": {"bidPrice": 100.0, "askPrice": 100.2, "mark": 100.1}}
     spread = _compute_spread(with_mark)
@@ -67,7 +67,7 @@ def test_order_flow_spread_requires_schwab_mark_for_frac():
 
 
 def test_order_flow_engine_no_bid_ask_mid_in_spread():
-    src = (ROOT / "order_flow_engine.py").read_text(encoding="utf-8")
+    src = (ROOT / "app/options/order_flow/engine.py").read_text(encoding="utf-8")
     assert "(float(bid) + float(ask)) / 2" not in src.replace(" ", "")
 
 
@@ -98,7 +98,7 @@ def test_section5_no_bid_ask_mid_spread_fallback_repo_wide():
 
 
 def test_push_level_one_records_stream_fields():
-    import order_flow_live_state as ofs
+    import app.options.order_flow.state as ofs
 
     ofs.clear_symbol("TEST")
     ofs.push_level_one(

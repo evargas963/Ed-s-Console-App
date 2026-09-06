@@ -621,3 +621,21 @@ def test_blocker2_forced_duplicate_open_fails_loudly_for_the_right_reason(tmp_pa
         w.open_coverage_epoch("SPY", "OPTIONS_BOOK", reason="active_contract_set", ts=3.0)
     finally:
         w.close()
+
+def test_default_signal_paths_sit_beside_resolved_stream_db(tmp_path, monkeypatch):
+    """Signal files resolve next to the stream DB, not the checkout.
+
+    # universal-scope-ok: path-identity test; no ticker product claim.
+    """
+    import stream_spine as spine
+
+    db = tmp_path / "stream_capture.db"
+    monkeypatch.setenv("STREAM_CAPTURE_DB_PATH", str(db))
+    assert spine.default_active_option_contract_signal_path() == db.with_name(
+        "stream_active_option_contract.json")
+    assert spine.default_active_ticker_signal_path() == db.with_name(
+        "stream_active_ticker.json")
+    spine.write_active_option_contract_signal("SPY   260904C00772000")
+    assert spine.read_active_option_contract_signal() == "SPY   260904C00772000"
+    assert (tmp_path / "stream_active_option_contract.json").is_file()
+

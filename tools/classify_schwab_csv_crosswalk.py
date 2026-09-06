@@ -576,7 +576,7 @@ def _disambiguate_mechanical_row(row: dict[str, str]) -> tuple[str, str] | None:
                 "NOT_MARKET_DATA",
                 "streaming plane ingestion envelope unix (or stale mechanical snippet); quote tape remains QUOTE_TIME_MILLIS / TRADE_TIME_MILLIS parse (S017)",
             )
-        if path == "order_flow_streaming.py" and "time.time()" in code:
+        if path == "app/options/order_flow/streaming.py" and "time.time()" in code:
             return (
                 "NOT_MARKET_DATA",
                 "streaming health/diagnostics/staleness uses wall now vs last tick ts; not a quoteTime substitution (S017)",

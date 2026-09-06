@@ -12,9 +12,16 @@ import ast
 import asyncio
 import inspect
 
-import order_flow_streaming as ofs
-import order_flow_live_state as ofls
+import pytest
+
+import app.options.order_flow.state as ofls
+import app.options.order_flow.streaming as ofs
 from stream_spine import CaptureWriter, book_msg, quote_msg
+
+
+@pytest.fixture(autouse=True)
+def _isolate_stream_capture_env(monkeypatch):
+    monkeypatch.delenv("STREAM_CAPTURE_DB_PATH", raising=False)
 
 
 def _reset(tmp_path):
@@ -117,7 +124,7 @@ def test_mismatched_ticker_rows_are_not_replayed(tmp_path, monkeypatch):
     ofs._replay_new_rows(con, "SPY")
     con.close()
 
-    # order_flow_live_state's clear() zeroes _top's dict value rather than deleting the
+    # app.options.order_flow.state's clear() zeroes _top's dict value rather than deleting the
     # key (pre-existing behavior, unrelated to this repair), so a bare `== []` is not the
     # right invariant — assert the thing that would actually indicate cross-symbol leakage:
     # the QQQ row's price must not appear anywhere in SPY's replayed content.
@@ -159,7 +166,7 @@ def test_set_active_ticker_writes_the_daemon_signal(tmp_path, monkeypatch):
     """This is the ONLY channel by which this module influences the daemon's
     subscriptions — proves the write actually happens, not just that no error is raised."""
     calls = []
-    monkeypatch.setattr("order_flow_streaming.write_active_ticker_signal",
+    monkeypatch.setattr("app.options.order_flow.streaming.write_active_ticker_signal",
                         lambda t: calls.append(t))
     ofs._active_ticker = None
     ofs.set_streaming_active_ticker("spy")

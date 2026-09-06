@@ -44,3 +44,36 @@ def ticker_storage_key(ticker: str | None) -> str:
     if u in BROKER_INDEX_BARE_ROOTS:
         return "$" + u
     return u
+
+
+def vendor_option_root(symbol: str | None) -> str:
+    """Option root already encoded in a Schwab/OCC OSI vendor symbol.
+
+    Does not construct a symbol. Production Schwab ``symbol`` fields in this repo
+    are the 21-character OSI form: 6-char space-padded root + YYMMDD + C/P +
+    8-digit strike (see ``tests/fixtures/real_cde_complete_chain_half_dollar.json``).
+    """
+    raw = (symbol or "").strip().upper()
+    if len(raw) != 21:
+        return ""
+    if not raw[6:12].isdigit() or raw[12] not in "CP" or not raw[13:].isdigit():
+        return ""
+    return raw[:6].rstrip()
+
+
+def option_underlying_root(ticker: str | None) -> str:
+    """Ticker root to compare against ``vendor_option_root``.
+
+    Uses ``ticker_storage_key`` and the existing ``BROKER_INDEX_BARE_ROOTS`` alias
+    set. ``$SPX`` on disk is the same instrument as OSI root ``SPX``. Weekly
+    suffix roots (``SPXW``) are not invented here.
+    """
+    key = ticker_storage_key(ticker)
+    if not key:
+        return ""
+    if key.startswith("$"):
+        bare = key[1:]
+        if bare in BROKER_INDEX_BARE_ROOTS:
+            return bare
+    return key
+

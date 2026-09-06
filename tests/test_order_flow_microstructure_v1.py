@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-import order_flow_engine as ofe
+import app.options.order_flow.engine as ofe
 
 
 def _book_snapshot() -> dict:
@@ -363,7 +363,7 @@ def test_changed_ladder_under_same_book_time_is_not_served_stale():
 def test_engine_and_route_read_the_same_canonical_state():
     """OrderFlowEngine.compute carries the SAME book_microstructure the route serializes, and its
     book_imbalance_1/3/5 ARE that state's depth imbalances — one faucet, not two producers."""
-    from order_flow_engine import OrderFlowEngine
+    from app.options.order_flow.engine import OrderFlowEngine
     ofe._MICRO_STRUCTURAL_CACHE.pop("SAME", None)
     data = _data()
     out = OrderFlowEngine().compute(data, ticker="SAME")
@@ -449,9 +449,9 @@ def test_delta_f_no_valid_field_anywhere_resolves_to_none():
 
 
 def test_delta_g_contract_isolation_no_bleed_across_symbols():
-    """Storage-layer isolation through the REAL production path (order_flow_live_state),
+    """Storage-layer isolation through the REAL production path (app.options.order_flow.state),
     not a hand-built items list."""
-    import order_flow_live_state as ofls
+    import app.options.order_flow.state as ofls
     ofls.clear_symbol("RTH_TEST_CONTRACT_A")
     ofls.clear_symbol("RTH_TEST_CONTRACT_B")
     try:
@@ -472,8 +472,8 @@ def test_delta_g_contract_isolation_no_bleed_across_symbols():
 def test_storage_layer_merges_partial_ticks_not_overwrites():
     """push_level_one itself — the actual RTH-observed defect location, one layer below
     order_flow_engine's resolver: a size-only tick must not wipe a previously-stored
-    price out of order_flow_live_state._top[sym]."""
-    import order_flow_live_state as ofls
+    price out of app.options.order_flow.state._top[sym]."""
+    import app.options.order_flow.state as ofls
     ofls.clear_symbol("RTH_TEST_MUTTEST")
     try:
         ofls.push_level_one("RTH_TEST_MUTTEST",
@@ -515,19 +515,19 @@ def test_mutation_control_single_snapshot_selection_loses_the_price():
 # A carried-forward field is valid only within OF_TOP_OF_BOOK_FIELD_STALE_SEC (== the
 # EXISTING order_flow_streaming.STREAMING_STALE_MS canonical staleness policy, not an
 # invented number) of its own observation. These tests drive the REAL production path
-# (order_flow_live_state.push_level_one, which stamps a "{field}_TS_RECV" sibling per
+# (app.options.order_flow.state.push_level_one, which stamps a "{field}_TS_RECV" sibling per
 # field) with explicit `ts_recv`/`now_ts` so freshness is deterministic, not wall-clock.
 # ─────────────────────────────────────────────────────────────────────────────
 
 def test_groundedness_freshness_bound_matches_existing_streaming_stale_ms():
     """The Gap-1 bound must be THE existing canonical stream-health threshold, not a
     second, independently-invented number that could silently drift from it."""
-    import order_flow_streaming as ofs
+    import app.options.order_flow.streaming as ofs
     assert ofe.OF_TOP_OF_BOOK_FIELD_STALE_SEC * 1000.0 == ofs.STREAMING_STALE_MS
 
 
 def test_freshness_a_full_tick_then_immediate_size_only_delta_preserves_price():
-    import order_flow_live_state as ofls
+    import app.options.order_flow.state as ofls
     ofls.clear_symbol("RTH_FRESH_A")
     try:
         t0 = 1_000_000.0
@@ -543,7 +543,7 @@ def test_freshness_a_full_tick_then_immediate_size_only_delta_preserves_price():
 
 
 def test_freshness_b_several_fresh_deltas_keep_prior_price_usable():
-    import order_flow_live_state as ofls
+    import app.options.order_flow.state as ofls
     ofls.clear_symbol("RTH_FRESH_B")
     try:
         t0 = 1_000_000.0
@@ -562,7 +562,7 @@ def test_freshness_b_several_fresh_deltas_keep_prior_price_usable():
 
 
 def test_freshness_c_price_older_than_boundary_becomes_unavailable():
-    import order_flow_live_state as ofls
+    import app.options.order_flow.state as ofls
     ofls.clear_symbol("RTH_FRESH_C")
     try:
         t0 = 1_000_000.0
@@ -586,7 +586,7 @@ def test_freshness_d_previous_epoch_price_never_carries_forward_even_if_technica
     """Item D, freshness-aware: a still-within-window price from a PRIOR contract must
     never appear for a NEW contract on the same symbol slot after a switch -- epoch
     isolation (clear_symbol) takes precedence over recency."""
-    import order_flow_live_state as ofls
+    import app.options.order_flow.state as ofls
     ofls.clear_symbol("RTH_FRESH_D")
     try:
         t0 = 1_000_000.0
@@ -606,7 +606,7 @@ def test_freshness_d_previous_epoch_price_never_carries_forward_even_if_technica
 
 
 def test_freshness_e_fresh_bid_but_stale_ask_does_not_publish_a_falsely_complete_pair():
-    import order_flow_live_state as ofls
+    import app.options.order_flow.state as ofls
     ofls.clear_symbol("RTH_FRESH_E")
     try:
         t0 = 1_000_000.0
@@ -628,7 +628,7 @@ def test_freshness_e_fresh_bid_but_stale_ask_does_not_publish_a_falsely_complete
 
 
 def test_freshness_f_zero_remains_a_valid_value_under_the_freshness_bound():
-    import order_flow_live_state as ofls
+    import app.options.order_flow.state as ofls
     ofls.clear_symbol("RTH_FRESH_F")
     try:
         t0 = 1_000_000.0
@@ -650,12 +650,12 @@ def test_freshness_f_zero_remains_a_valid_value_under_the_freshness_bound():
 # per-field resolver Gap 1 already wired for BID_PRICE/ASK_PRICE/top_book_pressure.
 # Now bid_size/ask_size resolve through the SAME _latest_content_field authority, the
 # SAME now_ts, the SAME OF_TOP_OF_BOOK_FIELD_STALE_SEC boundary. These tests drive the
-# REAL production path (order_flow_live_state.push_level_one, explicit ts_recv) so
+# REAL production path (app.options.order_flow.state.push_level_one, explicit ts_recv) so
 # freshness is deterministic, matching the Gap 1 freshness tests above.
 # ─────────────────────────────────────────────────────────────────────────────
 
 def test_size_a_fresh_bid_and_ask_size_resolve_exactly():
-    import order_flow_live_state as ofls
+    import app.options.order_flow.state as ofls
     ofls.clear_symbol("SIZE_FRESH_A")
     try:
         t0 = 1_000_000.0
@@ -674,7 +674,7 @@ def test_size_a_fresh_bid_and_ask_size_resolve_exactly():
 
 
 def test_size_b_fresh_price_but_stale_bid_size_is_unavailable():
-    import order_flow_live_state as ofls
+    import app.options.order_flow.state as ofls
     ofls.clear_symbol("SIZE_FRESH_B")
     try:
         t0 = 1_000_000.0
@@ -698,7 +698,7 @@ def test_size_b_fresh_price_but_stale_bid_size_is_unavailable():
 
 
 def test_size_c_fresh_bid_size_but_stale_ask_size_is_unavailable():
-    import order_flow_live_state as ofls
+    import app.options.order_flow.state as ofls
     ofls.clear_symbol("SIZE_FRESH_C")
     try:
         t0 = 1_000_000.0
@@ -722,7 +722,7 @@ def test_size_c_fresh_bid_size_but_stale_ask_size_is_unavailable():
 
 
 def test_size_d_size_only_partial_delta_inside_window_survives():
-    import order_flow_live_state as ofls
+    import app.options.order_flow.state as ofls
     ofls.clear_symbol("SIZE_FRESH_D")
     try:
         t0 = 1_000_000.0
@@ -740,7 +740,7 @@ def test_size_d_size_only_partial_delta_inside_window_survives():
 
 
 def test_size_e_zero_bid_size_resolves_as_a_real_value():
-    import order_flow_live_state as ofls
+    import app.options.order_flow.state as ofls
     ofls.clear_symbol("SIZE_FRESH_E")
     try:
         t0 = 1_000_000.0
@@ -757,7 +757,7 @@ def test_size_e_zero_bid_size_resolves_as_a_real_value():
 
 
 def test_size_f_stale_price_and_stale_sizes_yield_no_falsely_complete_top_of_book():
-    import order_flow_live_state as ofls
+    import app.options.order_flow.state as ofls
     ofls.clear_symbol("SIZE_FRESH_F")
     try:
         t0 = 1_000_000.0
@@ -781,10 +781,26 @@ def test_size_g_production_replay_seams_thread_ts_recv_into_push_level_one():
     streaming path cannot silently fall back to an unbounded/approximated timestamp and
     bypass the freshness boundary this file proves above."""
     import inspect
-    import order_flow_streaming as ofs
+    import app.options.order_flow.streaming as ofs
     equity_src = inspect.getsource(ofs._replay_new_rows)
     assert "push_level_one(ticker, item, ts_recv=ts_recv)" in equity_src, (
         "equity replay seam must thread the real row ts_recv into push_level_one")
     options_src = inspect.getsource(ofs._replay_option_contract_rows)
     assert "push_level_one(contract_symbol, item, ts_recv=ts_recv)" in options_src, (
         "options replay seam must thread the real row ts_recv into push_level_one")
+
+
+def test_book_top_fills_bid_ask_when_l1_has_no_price():
+    """OPTIONS_BOOK / NASDAQ_BOOK already in content is the live top when L1 is size-only.
+    # universal-scope-ok: book shape fixture, not a SPY-only product claim.
+    """
+    items = [{
+        "BIDS": [{"BID_PRICE": 0.02, "TOTAL_VOLUME": 10}],
+        "ASKS": [{"ASK_PRICE": 0.03, "TOTAL_VOLUME": 12}],
+        "BOOK_TIME": 1,
+    }, {"ASK_SIZE": 12}]
+    bid, ask, bid_leaf, ask_leaf = ofe._resolve_bid_ask_prices({"content": items})
+    assert bid == 0.02
+    assert ask == 0.03
+    assert bid_leaf == "streaming.BOOK.BID_PRICE"
+    assert ask_leaf == "streaming.BOOK.ASK_PRICE"

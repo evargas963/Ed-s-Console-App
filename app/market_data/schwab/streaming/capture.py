@@ -4,8 +4,9 @@
 Consensus plan v1.2: this process owns the ONLY Schwab stream (single-streamer-owner
 rule) and writes ONLY stream_capture.db.
 
-SINGLE-STREAM-AUTHORITY (root-fixed 2026-08-30): order_flow_streaming.py — the live UI's
-book/L1 feed — now reads these rows read-only instead of opening its own StreamClient.
+SINGLE-STREAM-AUTHORITY (root-fixed 2026-08-30):
+app/options/order_flow/streaming.py — the live UI's book/L1 feed — now reads these rows
+read-only instead of opening its own StreamClient.
 This process additionally captures NASDAQ_BOOK / NYSE_BOOK for the one symbol the server
 signals as the active UI viewer's ticker (stream_active_ticker.json, polled every ~1s by
 _active_ticker_book_poll_loop), and stores the native content dict for quotes alongside
@@ -21,7 +22,7 @@ Acceptance instrumentation built in (measured, not asserted):
     original numeric maps parsed all-None and were caught by this exact mechanism).
 
 Usage:
-    python tools/run_stream_capture.py --symbols SPY,QQQ,IWM --duration-min 390
+    python -m app.market_data.schwab.streaming.capture --symbols SPY,QQQ,IWM --duration-min 0
 """
 
 from __future__ import annotations
@@ -30,12 +31,13 @@ import argparse
 import asyncio
 import inspect
 import json
+import os
 import statistics
 import sys
 import time
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(ROOT))
 
 from stream_spine import (  # noqa: E402
@@ -51,15 +53,26 @@ from stream_spine import (  # noqa: E402
     options_quote_msg,
     print_msg,
     quote_msg,
+    STREAM_CAPTURE_DB_PATH_ENV,
     read_active_option_contract_signal,
     read_active_ticker_signal,
+    resolve_stream_db_path,
 )
+from time_et import is_capturable_session  # noqa: E402
 
 STATUS_PATH = ROOT / "reports" / "stream_capture_status.json"
-OWNER_LOCK = ROOT / "data" / "stream_capture.lock"
 
 
-def acquire_owner_lock() -> int:
+def owner_lock_path(db_path: str | Path | None = None) -> Path:
+    """Lock sits beside the resolved stream DB, not the checkout.
+
+    A checkout-relative lock lets a worktree daemon and a production daemon
+    both open Schwab — the same split-brain PR214 closed for the DB path.
+    """
+    return resolve_stream_db_path(db_path).with_name("stream_capture.lock")
+
+
+def acquire_owner_lock(db_path: str | Path | None = None) -> tuple[int, Path]:
     """ENFORCE the single-streamer-owner rule (Cursor review HIGH: it was prose only).
 
     Exclusive pidfile: a second daemon refuses to start; a stale lock (dead pid) is
@@ -71,14 +84,16 @@ def acquire_owner_lock() -> int:
     way to violate single-streamer-owner: two copies of THIS daemon.
     """
     import os
+    lock = owner_lock_path(db_path)
+    lock.parent.mkdir(parents=True, exist_ok=True)
     for attempt in (1, 2):
         try:
-            fd = os.open(str(OWNER_LOCK), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            fd = os.open(str(lock), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
             os.write(fd, str(os.getpid()).encode())
-            return fd
+            return fd, lock
         except FileExistsError:
             try:
-                pid = int(OWNER_LOCK.read_text().strip() or 0)
+                pid = int(lock.read_text().strip() or 0)  # caps-ok: empty pidfile is not a live owner; 0 fails alive-check and reclaims
             except (OSError, ValueError):
                 pid = 0
             alive = False
@@ -90,20 +105,20 @@ def acquire_owner_lock() -> int:
                     alive = True   # can't verify -> fail closed, require manual removal
             if alive:
                 raise SystemExit(
-                    f"FATAL: another stream-capture owner holds {OWNER_LOCK} (pid {pid}). "
+                    f"FATAL: another stream-capture owner holds {lock} (pid {pid}). "
                     "Single-streamer-owner rule: stop it first, or remove a stale lock."
                 ) from None
             if attempt == 1:
-                OWNER_LOCK.unlink(missing_ok=True)   # stale (dead pid): reclaim once
-    raise SystemExit(f"FATAL: could not acquire {OWNER_LOCK}")
+                lock.unlink(missing_ok=True)   # stale (dead pid): reclaim once
+    raise SystemExit(f"FATAL: could not acquire {lock}")
 
 
-def release_owner_lock(fd: int) -> None:
+def release_owner_lock(fd: int, lock: Path) -> None:
     import os
     try:
         os.close(fd)
     finally:
-        OWNER_LOCK.unlink(missing_ok=True)
+        lock.unlink(missing_ok=True)
 
 #: VERIFIED live 2026-07-21 against reports/stream_raw_sample_levelone_equities.json:
 #: this schwab-py install labels fields by NAME (numeric map parsed all-None — caught by
@@ -164,11 +179,19 @@ STREAM_RETIRE_TIMEOUT_SEC = 5.0
 
 
 def stream_needs_recycle(age_sec: float | None, seen_data: bool,
-                         since_last_reconnect: float) -> bool:
-    """Half-open-guard decision (pure; unit-tested). Recycle ONLY when:
-    data has flowed before (a never-beat service is a subscribe problem, not a
-    half-open socket), the feed has been quiet past the stale bar, and the
-    cooldown has passed (quiet after-hours tape must not cycle logins)."""
+                         since_last_reconnect: float,
+                         collect_session_live: bool) -> bool:
+    """Half-open-guard decision (pure; unit-tested).
+
+    Recycle ONLY during an intended live collection session
+    (``time_et.is_capturable_session``: trading day, 04:00-20:00 ET).
+    Overnight / closed-market silence is not a half-open socket and must
+    not login-spam Schwab. During the live session: data has flowed before
+    (a never-beat service is a subscribe problem, not a half-open socket),
+    the feed has been quiet past the stale bar, and the cooldown has passed.
+    """
+    if not collect_session_live:
+        return False
     if age_sec is None or not seen_data:
         return False
     return (age_sec > STREAM_STALE_RECONNECT_SEC
@@ -611,7 +634,7 @@ async def _surrender_claim_or_wait_out_lease(writer, *, reason: str) -> float:
     started = time.monotonic()
     announced = False
     while True:
-        ts = getattr(writer, "positive_claim_published_ts", None)
+        ts = getattr(writer, "positive_claim_published_ts", None)  # caps-ok: optional claim timestamp; None means no standing claim
         if ts is None:
             break                      # nothing positive stands; surrender is safe
         remaining = (ts + PRODUCER_CLAIM_TTL_SEC) - time.time()
@@ -1096,13 +1119,34 @@ def write_status(bus: MessageBus, health: HealthRegistry, writer: CaptureWriter,
 
 
 async def run(symbols: list[str], duration_min: float, db_path: str | None) -> int:
-    lock_fd = acquire_owner_lock()
+    # Bind this process's signal/lock authority to the writer DB. Otherwise
+    # STREAM_DB_DEFAULT (checkout-relative) and `--db` can name two files, and
+    # the daemon writes quotes to production while polling a worktree signal.
+    resolved = resolve_stream_db_path(db_path)
+    os.environ[STREAM_CAPTURE_DB_PATH_ENV] = str(resolved)
+    lock_fd, lock = acquire_owner_lock(resolved)
     try:
         return await _run_locked(symbols, duration_min, db_path)
     finally:
         # The lock's lifetime is the WHOLE session — login/subscribe failures and
         # KeyboardInterrupt included (Cursor round-2 HIGH: it leaked on init paths).
-        release_owner_lock(lock_fd)
+        release_owner_lock(lock_fd, lock)
+
+
+def _close_schwab_rest_client(client, *, reason: str) -> None:
+    """Close one generation's synchronous REST transport after stream login.
+
+    schwab-py's StreamClient uses the REST client only to fetch streamer
+    preferences during login; the websocket then carries the generation. Keeping
+    that HTTPX session for the daemon lifetime leaves a remotely closed HTTPS
+    socket in CLOSE_WAIT. Reconnects receive a freshly built client from
+    ``state_factory`` instead of reusing this closed generation.
+    """
+    try:
+        client.session.close()
+    except Exception as exc:  # noqa: BLE001 — transport cleanup must not mask stream state
+        print(f"close Schwab REST client ({reason}) failed "
+              f"({type(exc).__name__}: {exc})")
 
 
 async def _retire_stream_client(stream, *, reason: str,
@@ -1129,7 +1173,7 @@ async def _retire_stream_client(stream, *, reason: str,
     so a timeout is REPORTED and then stepped past, never awaited indefinitely."""
     if stream is None:
         return
-    logout = getattr(stream, "logout", None)
+    logout = getattr(stream, "logout", None)  # caps-ok: optional schwab-py logout; missing means skip
     if logout is not None:
         try:
             await asyncio.wait_for(logout(), timeout=timeout)
@@ -1141,8 +1185,8 @@ async def _retire_stream_client(stream, *, reason: str,
                   f"({type(e).__name__}: {e}) — closing the transport anyway")
     # Close the transport whether or not the graceful logout landed: after a timed-out or
     # failed logout the socket is exactly what still has to go.
-    sock = getattr(stream, "_socket", None)
-    close = getattr(sock, "close", None)
+    sock = getattr(stream, "_socket", None)  # caps-ok: optional transport handle
+    close = getattr(sock, "close", None)  # caps-ok: optional closer; missing means already gone
     if close is None:
         return
     try:
@@ -1274,8 +1318,16 @@ async def _run_locked(symbols: list[str], duration_min: float, db_path: str | No
         # ever opening a live epoch; reconciliation above is already committed, and the
         # `finally` closes the writer on this path exactly as on every other.
         cfg = build_config(str(ROOT))
-        state = build_client_from_token(api_key=cfg.api_key, app_secret=cfg.app_secret,
-                                        token_path=cfg.token_path)
+
+        def build_stream_client_state():
+            """One REST client per stream generation; each is closed after login."""
+            return build_client_from_token(
+                api_key=cfg.api_key,
+                app_secret=cfg.app_secret,
+                token_path=cfg.token_path,
+            )
+
+        state = build_stream_client_state()
         if not state.ok or state.client is None:
             print(f"FATAL: Schwab client init failed: {state.message}")
             return 2
@@ -1287,8 +1339,18 @@ async def _run_locked(symbols: list[str], duration_min: float, db_path: str | No
         _ui_future = bus.subscribe("quote.", policy=COALESCE)        # proves coalesce path live
         stop = asyncio.Event()
 
-        return await _run_streaming(symbols, duration_min, bus, health, stats,
-                                    writer, wsub, stop, state)
+        return await _run_streaming(
+            symbols,
+            duration_min,
+            bus,
+            health,
+            stats,
+            writer,
+            wsub,
+            stop,
+            state,
+            state_factory=build_stream_client_state,
+        )
     finally:
         writer.close()   # every exit path incl. auth/login/subscribe failure (round-3 MEDIUM)
 
@@ -1348,6 +1410,12 @@ async def _schwab_connect(state, symbols, bus, health, stats, stop, active_book_
         # never a verdict, and must not mask why the connect failed.
         await _retire_stream_client(stream, reason="partial connect failure")
         raise
+    finally:
+        # login() is the only point that needs the synchronous REST client: it fetches
+        # streamer preferences, then the websocket owns the generation. Close the HTTP
+        # transport immediately so a remote keep-alive close cannot sit in CLOSE_WAIT
+        # for the rest of this long-lived daemon.
+        _close_schwab_rest_client(state.client, reason="stream login complete")
 
 
 async def _schwab_connect_after_login(stream, symbols, bus, health, stats, stop, *,
@@ -1399,7 +1467,7 @@ async def _schwab_connect_after_login(stream, symbols, bus, health, stats, stop,
 
 
 async def _run_streaming(symbols, duration_min, bus, health, stats,
-                         writer, wsub, stop, state) -> int:
+                         writer, wsub, stop, state, *, state_factory=None) -> int:
     max_qdepth = 0
     # ── OWNED RESOURCES, DECLARED BEFORE THE LIFECYCLE BOUNDARY ─────────────────
     # Every async task and vendor session this function creates is named here and
@@ -1480,10 +1548,24 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
         # nobody was draining. That window is small but real and entirely avoidable,
         # and it would have traded a deterministic leak for a data-loss race.
         writer_task = asyncio.create_task(writer.run(wsub, stop=stop))
+        # Same generation-start contract as recycle: a fresh StreamClient holds
+        # nothing. Applying the DB-adjacent option-contract (and ticker) signal
+        # HERE means LEVELONE_OPTIONS/OPTIONS_BOOK coverage is earned on the
+        # first generation, not only if the poll loop happens to be alive.
+        # MEASURED 2026-09-04 RTH: after stream_recycle, equities kept flowing
+        # while option epochs stayed closed — reconnect applied the signal,
+        # initial connect did not, and a checkout-relative signal file had
+        # pinned an expired OSI. Poll-only recovery is not generation-start.
+        boot_ticker = read_active_ticker_signal()
+        boot_option = read_active_option_contract_signal()
         stream, pump_task, option_state["contract"] = await _schwab_connect(
-            state, symbols, bus, health, stats, stop)
+            state, symbols, bus, health, stats, stop,
+            active_book_ticker=boot_ticker,
+            active_option_contract=boot_option,
+            writer=writer, epoch_state=option_epoch_state)
         book_state["stream"] = stream
         option_state["stream"] = stream
+        book_state["ticker"] = boot_ticker
         # CR-02 prints leg — optional co-producer on the SAME bus/writer/health. NOT part
         # of a Schwab stream generation: it owns its own Alpaca socket and survives
         # recycles.
@@ -1496,9 +1578,11 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
                          epoch_state=option_epoch_state)
             # half-open watchdog: quiet LEVELONE past the bar -> rebuild stream
             age = (health.report().get("LEVELONE_EQUITIES") or {}).get("age_sec")
-            seen = stats.per_service.get("LEVELONE_EQUITIES", 0) > 0
+            seen = stats.per_service.get("LEVELONE_EQUITIES", 0) > 0  # caps-ok: diagnostic unseen-count; 0 means never seen
             _coverage_forced = option_recycle_request.is_set()
-            if _coverage_forced or stream_needs_recycle(age, seen, time.monotonic() - last_reconnect):
+            if _coverage_forced or stream_needs_recycle(
+                    age, seen, time.monotonic() - last_reconnect,
+                    is_capturable_session()):
                 if _coverage_forced:
                     # gap 4: option coverage compensation failed — vendor state uncertain
                     # with no durable coverage. Same teardown/rebuild as the watchdog.
@@ -1569,8 +1653,15 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
                 reconnect_option_contract = read_active_option_contract_signal()
                 option_state["contract"] = {"l1": None, "book": None}
                 try:
+                    reconnect_state = state
+                    if state_factory is not None:
+                        reconnect_state = state_factory()
+                        if not reconnect_state.ok or reconnect_state.client is None:
+                            raise RuntimeError(
+                                f"Schwab client rebuild failed: {reconnect_state.message}"
+                            )
                     stream, pump_task, option_state["contract"] = await _schwab_connect(
-                        state, symbols, bus, health, stats, stop,
+                        reconnect_state, symbols, bus, health, stats, stop,
                         active_book_ticker=book_state["ticker"],
                         active_option_contract=reconnect_option_contract,
                         writer=writer, epoch_state=option_epoch_state)

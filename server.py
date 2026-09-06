@@ -65,6 +65,8 @@ from fastapi import Body, FastAPI, Query, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
+from app.api.routes.options_order_flow import router as options_order_flow_router
+
 # ── App directory = same folder as this file ─────────────────────────────────
 APP_DIR = str(Path(__file__).parent.resolve())
 sys.path.insert(0, APP_DIR)
@@ -3411,7 +3413,7 @@ def _fetch_fast_quote_payload(ticker: str) -> dict:
     """Fast lane: equity quote only. Authority follows order_flow_streaming.get_plane_authority_for_ticker."""
     tkr = ticker.upper().strip()
     try:
-        from order_flow_streaming import get_plane_authority_for_ticker
+        from app.options.order_flow.streaming import get_plane_authority_for_ticker
 
         auth = get_plane_authority_for_ticker(tkr)
     except Exception:
@@ -3421,7 +3423,7 @@ def _fetch_fast_quote_payload(ticker: str) -> dict:
 
     if auth == "streaming":
         try:
-            from order_flow_streaming import streaming_l1_cache_usable
+            from app.options.order_flow.streaming import streaming_l1_cache_usable
         except ImportError:
             streaming_l1_cache_usable = None  # type: ignore[misc, assignment]
         if (
@@ -3545,8 +3547,8 @@ def _stream_spot_and_of_regime(symbol: str) -> tuple[Optional[float], Optional[s
     stream_spot = None
     stream_regime = None
     try:
-        from order_flow_live_state import get_content_for_symbol, get_top_of_book
-        from order_flow_engine import OrderFlowEngine
+        from app.options.order_flow.state import get_content_for_symbol, get_top_of_book
+        from app.options.order_flow.engine import OrderFlowEngine
     except ImportError:
         return None, None
     content = get_content_for_symbol(symbol)
@@ -4538,7 +4540,7 @@ def _fetch_and_store_mkt_ctx(client, pcr=None, prev_pcr=None):
     mkt_ctx_fetch_started_wall_ts = time.time()
     _stream_chg_fn = None
     try:
-        from order_flow_live_state import get_stream_chg_pct
+        from app.options.order_flow.state import get_stream_chg_pct
         _stream_chg_fn = get_stream_chg_pct
     except (ImportError, AttributeError):
         pass
@@ -5567,21 +5569,7 @@ def _fetch_expiries_light(ticker: str) -> list[str]:
     if c_resp is None or c_resp.status_code != 200:
         raise HTTPException(status_code=502, detail="Option chain fetch failed")
     c_json = c_resp.json()
-    contracts_raw: list[dict] = []
-    for _side_key in ("callExpDateMap", "putExpDateMap"):
-        _side_map = c_json.get(_side_key) or {}
-        if not isinstance(_side_map, dict):
-            continue
-        for _exp_map in _side_map.values():
-            if not isinstance(_exp_map, dict):
-                continue
-            for _strike_list in _exp_map.values():
-                if not isinstance(_strike_list, list):
-                    continue
-                for _ct in _strike_list:
-                    if isinstance(_ct, dict):
-                        contracts_raw.append(_ct)
-    contracts = [dict(ct) for ct in contracts_raw]
+    contracts = flatten_chain_contracts(c_json)
     expiries = _expiries_from_contracts(contracts)
     today = now_et().strftime("%Y-%m-%d")
     return [e for e in expiries if e >= today]
@@ -6476,7 +6464,7 @@ def _tier_a_live_state_dict(ticker: str, expiry: Optional[str]) -> dict:
         "_endpoint": "/api/live/state",
     }
     try:
-        from order_flow_streaming import get_streaming_diagnostics, get_plane_authority_for_ticker
+        from app.options.order_flow.streaming import get_streaming_diagnostics, get_plane_authority_for_ticker
 
         out["streaming_plane"] = {
             **get_streaming_diagnostics(),
@@ -6694,7 +6682,7 @@ def _fetch_state(
     # totalVolume: WebSocket TOTAL_VOLUME preferred; else chain underlying (include_underlying_quote)
     _total_vol = None
     try:
-        from order_flow_live_state import get_stream_volume
+        from app.options.order_flow.state import get_stream_volume
         _stream_vol = get_stream_volume(ticker)
         if _stream_vol is not None:
             _total_vol = _stream_vol
@@ -7837,7 +7825,7 @@ def _fetch_state(
         try:
             if _diag_on():
                 _diag_step("pre_get_content_for_symbol", ticker)
-            from order_flow_live_state import get_content_for_symbol
+            from app.options.order_flow.state import get_content_for_symbol
             _live_content = get_content_for_symbol(ticker)
             if _diag_on():
                 _diag_done("get_content_for_symbol", ticker)
@@ -8786,20 +8774,7 @@ def _fetch_state(
                                     _wide_resp is not None
                                     and getattr(_wide_resp, "status_code", None) == 200
                                 ):
-                                    _wj = _wide_resp.json()
-                                    for _side_key in ("callExpDateMap", "putExpDateMap"):
-                                        _side_map = _wj.get(_side_key) or {}
-                                        if not isinstance(_side_map, dict):
-                                            continue
-                                        for _exp_map in _side_map.values():
-                                            if not isinstance(_exp_map, dict):
-                                                continue
-                                            for _strike_list in _exp_map.values():
-                                                if not isinstance(_strike_list, list):
-                                                    continue
-                                                for _ct in _strike_list:
-                                                    if isinstance(_ct, dict):
-                                                        _wide_contracts.append(dict(_ct))
+                                    _wide_contracts = flatten_chain_contracts(_wide_resp.json())
                                 if _wide_contracts:
                                     maybe_persist_morning_full_chain(
                                         _gex_db_path,
@@ -10116,7 +10091,7 @@ async def _app_lifespan(app):
     # architecture (a broken/expiring token would silently disable the live UI's quote
     # feed even though the daemon was capturing fine). Unconditional.
     try:
-        from order_flow_streaming import start_order_flow_stream
+        from app.options.order_flow.streaming import start_order_flow_stream
 
         # LIVE_OPERATOR_MODE_RESET_V1 Step 2 — single Tier C owner: the
         # tick-coherent recompute callback (_on_tick_broadcast_sync) is no
@@ -10176,7 +10151,7 @@ async def _app_lifespan(app):
     # Live-plane feed task (reads the canonical capture daemon's DB — no Schwab socket
     # of its own to close here since single-stream-authority root fix 2026-08-30).
     try:
-        from order_flow_streaming import stop_order_flow_stream
+        from app.options.order_flow.streaming import stop_order_flow_stream
 
         stop_order_flow_stream(join_timeout=40.0)
     except Exception as e:
@@ -10221,6 +10196,7 @@ async def _app_lifespan(app):
 
 
 app = FastAPI(title="Ed Console API", version="1.0", lifespan=_app_lifespan)
+app.include_router(options_order_flow_router)
 
 # F09: serve the JS projection from time_et on every request. Registered BEFORE
 # the StaticFiles mount so a committed or leftover disk blob cannot become a
@@ -14098,7 +14074,7 @@ def api_live_plane(ticker: str = Query(default=DEFAULT_TICKER)):
     row = _lmp.get_quote(t)
     base = dict(row) if row else {}
     try:
-        from order_flow_streaming import get_streaming_diagnostics, get_plane_authority_for_ticker
+        from app.options.order_flow.streaming import get_streaming_diagnostics, get_plane_authority_for_ticker
 
         base.update(get_streaming_diagnostics())
         base["plane_quote_authority"] = get_plane_authority_for_ticker(t)
@@ -14106,7 +14082,7 @@ def api_live_plane(ticker: str = Query(default=DEFAULT_TICKER)):
         base["plane_quote_authority"] = "rest_only"
     base["streaming_fallback_explicit"] = base.get("plane_quote_authority") == "rest_fallback_explicit"
     try:
-        from order_flow_live_state import get_stream_chg_pct, get_top_of_book_sizes
+        from app.options.order_flow.state import get_stream_chg_pct, get_top_of_book_sizes
 
         _scp = get_stream_chg_pct(t)
         if _scp is not None:
@@ -14114,7 +14090,7 @@ def api_live_plane(ticker: str = Query(default=DEFAULT_TICKER)):
         base.update(get_top_of_book_sizes(t))
     except Exception as e:
         log.warning(
-            "order_flow_live_state merge failed for /api/state ticker=%s: %s",
+            "app.options.order_flow.state merge failed for /api/state ticker=%s: %s",
             t,
             e,
             exc_info=True,
@@ -14128,7 +14104,7 @@ def api_order_flow_microstructure(ticker: str = Query(default=DEFAULT_TICKER)):
     spread, microprice, Top 1/3/5 depth totals + imbalance, depth-pressure curve, book slope,
     liquidity concentration, wall_candidates, and ages — every field classified
     NATIVE/DERIVED/PROXY. SERIALIZER, not a second producer: it delegates to the ONE canonical
-    order_flow_engine.compute_book_microstructure keyed by this ticker, which carries the
+    app.options.order_flow.engine.compute_book_microstructure keyed by this ticker, which carries the
     engine's already-computed structural state for the current book (memoized per ticker +
     BOOK_TIME) rather than re-walking the raw book. No Schwab REST quote call; the client
     renders, never recomputes."""
@@ -14137,7 +14113,7 @@ def api_order_flow_microstructure(ticker: str = Query(default=DEFAULT_TICKER)):
     _touch_tracked_ticker_view(t)
     data: dict = {}
     try:
-        from order_flow_live_state import get_content_for_symbol
+        from app.options.order_flow.state import get_content_for_symbol
         _content = get_content_for_symbol(t)
         if _content:
             data["content"] = _content
@@ -14146,7 +14122,7 @@ def api_order_flow_microstructure(ticker: str = Query(default=DEFAULT_TICKER)):
     _row = _lmp.get_quote(t)
     if _row and _row.get("exchange_quote_ts") is not None:
         data["exchange_quote_ts"] = _row.get("exchange_quote_ts")
-    from order_flow_engine import compute_book_microstructure
+    from app.options.order_flow.engine import compute_book_microstructure
     # ticker=t → serialize the canonical state carried per (ticker, BOOK_TIME); no independent recompute.
     payload = compute_book_microstructure(data, ticker=t)
     payload["ticker"] = t
@@ -14157,8 +14133,8 @@ def api_order_flow_microstructure(ticker: str = Query(default=DEFAULT_TICKER)):
 def api_order_flow_options_microstructure(contract: str = Query(...)):
     """Same canonical L2 book microstructure as /api/order-flow/microstructure, for one
     OPTION CONTRACT's live book. SERIALIZER, not a second producer: delegates to
-    order_flow_streaming.get_option_contract_book_microstructure, which itself delegates
-    to the SAME order_flow_engine.compute_book_microstructure the equity route reads — no
+    app.options.order_flow.streaming.get_option_contract_book_microstructure, which delegates
+    to the SAME app.options.order_flow.engine.compute_book_microstructure the equity route reads — no
     parallel book-imbalance computation for options. `contract` MUST be a chain response's
     own "symbol" field (OSI format, e.g. "SPY   260820C00767000"); this route does not
     construct or validate that format, it only serializes whatever content has been
@@ -14167,7 +14143,7 @@ def api_order_flow_options_microstructure(contract: str = Query(...)):
     c = (contract or "").strip()
     if not c:
         return JSONResponse({"error": "contract is required"}, status_code=400)
-    from order_flow_streaming import (
+    from app.options.order_flow.streaming import (
         get_option_contract_book_microstructure,
         get_option_contract_streaming_diagnostics,
     )
@@ -14185,14 +14161,12 @@ def api_order_flow_options_microstructure(contract: str = Query(...)):
     except Exception:  # diagnostics are informational only — never fail the book payload for them
         payload["streaming_plane"] = {}
     return JSONResponse(payload)
-
-
 @app.post("/api/streaming/active-option-contract")
 async def post_streaming_active_option_contract(payload: dict = Body(default={})):
     """Subscribe LEVELONE_OPTIONS+OPTIONS_BOOK to one option contract (dynamic; replaces
     prior subscription). Mirrors /api/streaming/active-ticker exactly, for the SEPARATE
     option-contract slot (an equity ticker and an option contract on that same underlying
-    can be watched at once — see order_flow_streaming.py's module docstring)."""
+    can be watched at once — see app/options/order_flow/streaming.py's module docstring)."""
     c = str(payload.get("contract") or "").strip()
     if not c:
         return JSONResponse({"ok": False, "error": "contract is required"}, status_code=400)
@@ -14202,14 +14176,14 @@ async def post_streaming_active_option_contract(payload: dict = Body(default={})
     # commands ARRIVED, not the order their thread-pool bodies happen to finish -- an
     # A admitted first but delayed must not overwrite a B admitted later that already
     # wrote. The browser token cannot cover this: it only suppresses a stale RESPONSE.
-    from order_flow_streaming import (
+    from app.options.order_flow.streaming import (
         StaleOptionCommandError,
         begin_option_contract_command,
     )
     generation = begin_option_contract_command()
 
     def _apply():
-        from order_flow_streaming import (
+        from app.options.order_flow.streaming import (
             set_active_option_contract,
             get_option_contract_streaming_diagnostics,
         )
@@ -14243,7 +14217,7 @@ async def post_streaming_active_ticker(payload: dict = Body(default={})):
     # switch. Running it on the async event loop froze the entire UI (all SSE/requests) for up to
     # 30s per switch. Offload the whole blocking block to the thread pool; the loop stays free.
     def _apply():
-        from order_flow_streaming import set_streaming_active_ticker, get_streaming_diagnostics, get_plane_authority_for_ticker
+        from app.options.order_flow.streaming import set_streaming_active_ticker, get_streaming_diagnostics, get_plane_authority_for_ticker
 
         ok = set_streaming_active_ticker(t)
         _lmp.reset_sse_push_cursor(t)
@@ -16084,21 +16058,8 @@ def debug_charm(ticker: str = DEFAULT_TICKER):
         if c_resp is None or c_resp.status_code != 200:
             return {"error": f"Chain fetch failed: status={getattr(c_resp, 'status_code', 'None')}"}
         chain_json = c_resp.json()
-        raw_cts: list[dict] = []
-        for _side_key in ("callExpDateMap", "putExpDateMap"):
-            _side_map = chain_json.get(_side_key) or {}
-            if not isinstance(_side_map, dict):
-                continue
-            for _exp_map in _side_map.values():
-                if not isinstance(_exp_map, dict):
-                    continue
-                for _strike_list in _exp_map.values():
-                    if not isinstance(_strike_list, list):
-                        continue
-                    for _ct in _strike_list:
-                        if isinstance(_ct, dict):
-                            raw_cts.append(_ct)
-        contracts = [dict(ct) for ct in raw_cts]
+        contracts = flatten_chain_contracts(chain_json)
+        raw_cts = contracts
 
         # Sample first contract raw fields
         first_raw = raw_cts[0] if raw_cts else {}

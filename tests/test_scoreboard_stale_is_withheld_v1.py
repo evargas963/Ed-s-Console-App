@@ -107,6 +107,28 @@ def test_the_db_health_row_declares_itself_live():
         "it will be marked stale whenever that tool file is older than the tree")
 
 
+def test_db_health_uses_the_canonical_isolated_db_seam(tmp_path, monkeypatch):
+    isolated = tmp_path / "isolated.db"
+    isolated.touch()
+    calls = []
+
+    class _Result:
+        returncode = 0
+
+    monkeypatch.setenv("ED_CONSOLE_DB", str(isolated))
+    monkeypatch.setattr(S.subprocess, "run", lambda argv, **kwargs: calls.append(argv) or _Result())
+
+    rows = S.row_db()
+
+    assert calls == [[
+        sys.executable,
+        os.path.join(S.REPO, "tools", "check_db_health.py"),
+        "--db",
+        str(isolated),
+    ]]
+    assert rows[0].key == "DB" and rows[0].live is True
+
+
 def test_unmeasured_and_error_rows_are_left_alone():
     for st in ("UNMEASURED", "ERROR"):
         rows = S._mark_stale_rows([_row(state=st, value="—")],

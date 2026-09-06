@@ -81,7 +81,7 @@ def test_section2_no_bid_ask_mid_spread_fallback_repo_wide():
 
 def test_order_flow_spread_requires_schwab_mark_for_frac():
     """Cross-section regression (order_flow_engine is §5 file)."""
-    from order_flow_engine import _compute_spread
+    from app.options.order_flow.engine import _compute_spread
 
     with_mark = {"quote": {"bidPrice": 100.0, "askPrice": 100.2, "mark": 100.1}}
     spread = _compute_spread(with_mark)
