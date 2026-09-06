@@ -343,7 +343,7 @@ def iter_git_invocations(cmd: str, payload_cwd: str = ""):
 #: checker, an audit, or a live probe. Reading a file is not proof; executing something is.
 _VERIFICATION = re.compile(
     r"\b(?:pytest|check_[a-z_]+\.py|tools/[a-z_]+_audit\.py|tools/[a-z_]+_report\.py|"
-    r"code_health_panel\.py|data_faucet_audit|repo_exposure_audit|ruff\s+check|mypy|"
+    r"data_faucet_audit|repo_exposure_audit|ruff\s+check|mypy|"
     r"node\s+--check|urllib\.request|127\.0\.0\.1:8000)\b", re.I)
 
 #: FC-13: this module used to carry its own production-surface geometry here. The constants
