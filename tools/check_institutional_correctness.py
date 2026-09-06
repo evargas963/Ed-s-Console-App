@@ -325,7 +325,6 @@ def check_no_terminal_null() -> list[Violation]:
     return out
 
 
-
 def check_root_cause_log() -> list[Violation]:
     """Every defect gets five whys, and finding a cause RESTARTS the count.
 
@@ -1661,146 +1660,6 @@ _RC_NUMBER_RE = re.compile(r"\b\d[\d,.]*\s*(?:GB|MB|KB|s|ms|%|x|rows|files|strik
 _RC_CITATION_MIN_NUMBERS = 3
 
 
-#: Rows written BEFORE check_verdicts_declare_their_power existed. Frozen: the rule binds
-#: NEW verdicts, exactly as the citation and justification rules do.
-_VERDICT_POWER_GRANDFATHERED = frozenset({
-    "RC-1",
-    "RC-10",
-    "RC-11",
-    "RC-12",
-    "RC-13",
-    "RC-14",
-    "RC-15",
-    "RC-16",
-    "RC-17",
-    "RC-18",
-    "RC-19",
-    "RC-2",
-    "RC-20",
-    "RC-21",
-    "RC-22",
-    "RC-23",
-    "RC-24",
-    "RC-25",
-    "RC-26",
-    "RC-27",
-    "RC-28",
-    "RC-29",
-    "RC-3",
-    "RC-30",
-    "RC-31",
-    "RC-32",
-    "RC-33",
-    "RC-34",
-    "RC-35",
-    "RC-36",
-    "RC-37",
-    "RC-38",
-    "RC-39",
-    "RC-4",
-    "RC-40",
-    "RC-41",
-    "RC-42",
-    "RC-43",
-    "RC-44",
-    "RC-45",
-    "RC-46",
-    "RC-47",
-    "RC-48",
-    "RC-49",
-    "RC-5",
-    "RC-50",
-    "RC-51",
-    "RC-52",
-    "RC-53",
-    "RC-54",
-    "RC-55",
-    "RC-56",
-    "RC-57",
-    "RC-58",
-    "RC-59",
-    "RC-6",
-    "RC-63",
-    "RC-65",
-    "RC-67",
-    "RC-68",
-    "RC-69",
-    "RC-7",
-    "RC-70",
-    "RC-72",
-    "RC-73",
-    "RC-74",
-    "RC-75",
-    "RC-76",
-    "RC-77",
-    "RC-78",
-    "RC-79",
-    "RC-8",
-    "RC-80",
-    "RC-81",
-    "RC-82",
-    "RC-83",
-    "RC-84",
-    "RC-85",
-    "RC-87",
-    "RC-9",
-})
-
-
-def _verdicts_declare_their_power_violations() -> list[Violation]:
-    """A recorded KILL / RETIRED / PROVEN must state the n and an interval it was decided on.
-
-    WHAT WAS OBSERVED (2026-07-27). 'GEX-R1 RETIRED BY MEASUREMENT' was cited as settled fact for
-    days. Re-derived on demand, the retirement study measured n=66, Spearman -0.051, 95% CI
-    [-0.289, +0.194] -- an interval that CONTAINS the founding -0.22 the verdict was used to
-    reject -- and 43% power against that effect, where 80% needs 160 sessions. The study could not
-    have distinguished 'no effect' from 'the claimed effect'. It was a coin flip recorded as a
-    kill.
-
-    WHY THE EXISTING LOCK DID NOT FIRE. `rc_numeric_claims_cite_a_command` already demands the
-    COMMAND behind a number, and that is necessary -- a sampled figure and an exact one read
-    identically. It is not sufficient: a perfectly reproducible command can still be run on a
-    sample far too small to support the verdict drawn from it. Reproducibility and power are
-    different properties, and only the first was gated.
-
-    Rule: a governance row asserting a hard verdict must carry `n=` AND one of a confidence
-    interval / power figure. Absence of evidence is not evidence of absence, and a row that
-    cannot show which of the two it holds must not record a kill.
-
-    HOW THE RULE WAS VALIDATED: prototyped against the log before enforcing; the grandfather set
-    freezes rows written before the rule so it binds new verdicts only -- the same design already
-    used by `rc_numeric_claims_cite_a_command` and `checks_are_justified`.
-    """
-    out: list[Violation] = []
-    log_path = REPO / "governance" / "root_cause_log.md"
-    if not log_path.exists():
-        return out
-    verdict = re.compile(r"\b(KILL|KILLED|RETIRED|PROVEN|DISPROVEN)\b")
-    has_n = re.compile(r"\bn\s*=\s*\d+", re.I)
-    has_interval = re.compile(r"(95%\s*CI|confidence interval|\bpower\b)", re.I)
-    for num, line in enumerate(log_path.read_text(encoding="utf-8").splitlines(), start=1):
-        if not line.startswith("| RC-"):
-            continue
-        cells = [c.strip() for c in line.strip("|").split("|")]
-        if len(cells) < 7:
-            continue
-        rc_id = cells[0]
-        if rc_id in _VERDICT_POWER_GRANDFATHERED or cells[1] == "ARCHIVED":
-            continue
-        body = " ".join(cells[4:])
-        if not verdict.search(body):
-            continue
-        if has_n.search(body) and has_interval.search(body):
-            continue
-        out.append(Violation(
-            log_path, num,
-            f"{rc_id} records a hard verdict without declaring the evidence that could support "
-            f"it. State n= and a 95% CI or power figure, or soften the verdict to UNPROVEN. "
-            f"A null at n=66 and a null at n=1000 read identically in prose; only the interval "
-            f"tells them apart, and GEX-R1 was killed on a CI that contained the effect."))
-    return out
-
-
 def _rc_numeric_claims_cite_a_command_violations() -> list[Violation]:
     """A row that asserts numbers must say how to reproduce them.
 
@@ -2340,7 +2199,6 @@ def _closed_rows_ship_their_code_violations() -> list[Violation]:
 # to real code by closed_rows_ship_their_code.
 
 
-
 #: RC-103 — files reading price_bars_1m with NO calendar authority when the rule was created.
 #: BURN-DOWN, visible and shrinking: remove an entry only by gating the file (or deleting it).
 #: Addition prohibited — that is the lock. Top of the burn-down by blast radius:
@@ -2725,10 +2583,6 @@ def check_scheduled_producers_are_not_inert() -> list[Violation]:
     return out
 
 
-
-
-
-
 #: RC-62 — domain constants that decide money-path behaviour must carry their derivation.
 #: Names that set a THRESHOLD/BOUND on market logic (not plumbing sizes like timeouts or buffers).
 _DOMAIN_CONST_RE = re.compile(
@@ -2984,15 +2838,14 @@ def check_measured_claims_cite_evidence() -> list[Violation]:
     One enforced check now runs every surviving evidence predicate:
       * the staged-governance-claims rule above (_measured_claims_cite_evidence_own_violations,
         RC-56 — a committed numeric finding carries its reproduce command or [UNVERIFIED]);
-      * the verdict-power rule (_verdicts_declare_their_power_violations, RC-6 — a recorded
-        KILL/RETIRED/PROVEN states n= and a CI/power figure);
       * the unproven-register rule (_unproven_register_violations — claims are evidenced or
         registered, overdue rows block, missing register fails closed).
 
-    The two folded registrations are declared retired in governance/retired_checks.md; their
-    public check_* wrappers stay importable so the negative controls keep driving the real
-    logic, and NO predicate was weakened. The forward-only grandfather is applied under each
-    ORIGINAL name so consolidation moves no violation on or off the surface.
+    The folded registration is declared retired in governance/retired_checks.md; its public
+    check_* wrapper stays importable so the negative controls keep driving the real logic, and
+    NO predicate was weakened. The forward-only grandfather is applied under the ORIGINAL name
+    so consolidation moves no violation on or off the surface. (The verdict-power rule that was
+    folded here too — a prose matcher — was unfolded and DELETED, bedrock 2026-09-06.)
     """
     out = _measured_claims_cite_evidence_own_violations()
     # BEDROCK 2026-09-06: verdicts_declare_their_power is no longer folded. It matched
@@ -3005,12 +2858,6 @@ def check_measured_claims_cite_evidence() -> list[Violation]:
     ):
         out.extend(_apply_forward_only_grandfather(folded_name, helper()))
     return out
-
-
-def check_verdicts_declare_their_power() -> list[Violation]:
-    """Wrapper kept importable for the negative controls; the substance runs inside
-    check_measured_claims_cite_evidence (retired registration, governance/retired_checks.md)."""
-    return _verdicts_declare_their_power_violations()
 
 
 def check_unproven_register() -> list[Violation]:
@@ -3382,7 +3229,6 @@ def ship_confirmation_violations(rel: str, staged_names: list) -> list[Violation
 #: replaced the mirror with the thing itself. `classify_path` is the single authority for
 #: "is this path ours, and is it a product surface"; a mirrored copy is a second producer
 #: that drifts, which is what this consolidation exists to remove.
-
 
 
 # RC-470: the plus_player catalog checks (plus_player_law, plus_player_cursor_hooks)
@@ -4010,7 +3856,7 @@ _MAX_PRINT = 15  # cap per-check output; full count is always reported
 RC_GRANDFATHER_CUTOFF = 227
 _GRANDFATHERED_ROW_CHECKS = frozenset({
     "closed_rows_ship_their_code",
-    "verdicts_declare_their_power", "rc_numeric_claims_cite_a_command",
+    "rc_numeric_claims_cite_a_command",
     "rc_citations_resolve", "root_cause_recurrence_declared",
     "fix_crosswalks_to_violated_lock",
 })

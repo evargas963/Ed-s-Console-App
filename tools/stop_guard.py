@@ -29,9 +29,10 @@ BLOCKED, or it blocks. Silence is no longer a pass, and silence is what made the
 
 ON THE RETRY FLAG. RC-72 returned 0 whenever `stop_hook_active` was set, reasoning that a guard
 which cannot be satisfied is a hang. That is true, and it also meant the entire control was
-clearable by stopping twice. This guard follows the precedent `operator_law_guard` already sets
-at this same seam: the flag proves only that the host is retrying a blocked Stop and grants no
-authorization — the policy is evaluated again. That is safe HERE because every blocking state
+clearable by stopping twice. Here the flag proves only that the host is retrying a blocked Stop
+and grants no authorization — the policy is evaluated again (BEDROCK 2026-09-06: this guard is
+the ONE Stop owner; operator_law_guard, whose precedent this once cited, has no Stop role). That
+is safe HERE because every blocking state
 has a named escape the agent can always reach, and `tests/test_stop_guard_v1.py` PROVES each one
 clears the block rather than asserting satisfiability in a comment:
 
