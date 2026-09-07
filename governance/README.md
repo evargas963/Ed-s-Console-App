@@ -47,9 +47,13 @@ The `A1_*` / `A2_*` / `PILOT_*` contract docs, the Schwab CSV crosswalk (ONE ref
 `SCHWAB_CSV_DERIVED_FIELD_CROSSWALK_WORKING.csv`, plus the `_RESIDUAL.csv` the sync tools read —
 the classified/disposition/coverage CSVs it generated and the three unread YAML registers were
 removed 2026-09-06, bedrock; `tools/classify_schwab_csv_crosswalk.py` regenerates into
-`reports/schwab_crosswalk/`), the `mega*_traceable_inventory.py` census tools, and
-`computation_registry.json` / `level_faucets.json` are live references consumed by checks and
-tests; superseded contract versions resolve under `archive/`.
+`reports/schwab_crosswalk/`), the provenance authority (`provenance_inventory.py` — the one
+Row type, resolver, allowlist and ROOT RULE; `provenance_rows.py` — the rows;
+`provenance_roots.py` — every served route classified, every MarketState field categorised,
+every decision-engine argument, and the exact OPEN list; RC-532 replaced the four `mega*`
+inventories and the every-function section gate), and `computation_registry.json` /
+`level_faucets.json` are live references consumed by checks and tests; superseded contract
+versions resolve under `archive/`.
 
 `archive/` holds retired programs, the 2026-Q2 memory archive, and superseded artifacts —
 history, never authority.
