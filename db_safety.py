@@ -24,7 +24,6 @@ import hashlib
 import json
 import os
 import re
-import shutil
 import sqlite3
 import time
 from datetime import datetime, timezone
@@ -154,7 +153,49 @@ def backup_console_database(
     if dest.resolve() == src.resolve():
         raise ValueError("backup destination cannot equal source path")
 
-    shutil.copy2(src, dest)
+    # NATIVE ONLINE BACKUP, not a file copy. `shutil.copy2` copies ONLY the .db file and
+    # never the -wal, and in WAL mode every transaction committed since the last
+    # checkpoint lives in the -wal. A copy taken then silently loses that data.
+    #
+    # PROVEN on a disposable WAL-mode DB against this very function: with 5000 rows
+    # COMMITTED and the WAL uncheckpointed, the resulting backup answered
+    # "no such table: t" -- the table itself was absent -- while PRAGMA quick_check on
+    # that same backup still returned "ok". Neither the manifest's size nor its SHA-256
+    # can detect this: they describe the bytes that were copied, not the transactions
+    # that should have been. The identical case through sqlite3's own backup API
+    # returned all 5000 rows, as did a run with concurrent writes and checkpoints.
+    #
+    # The preflight above does not cover it either: it runs BEGIN IMMEDIATE then COMMIT,
+    # so the write lock is released before the copy begins.
+    #
+    # Connection.backup() is SQLite's own online-backup API: it reads through the WAL and
+    # produces a transactionally consistent destination while writers continue. Minimum
+    # native mechanism -- no snapshot framework and no locking policy of our own.
+    try:
+        src_conn = sqlite3.connect(str(src), timeout=60.0)
+        try:
+            dest_conn = sqlite3.connect(str(dest))
+            try:
+                src_conn.backup(dest_conn)
+            finally:
+                dest_conn.close()
+        finally:
+            src_conn.close()
+    except BaseException:
+        # A partial destination must not survive a failed backup. The manifest is already
+        # safe -- it is written below, only after the backup returns, so a failure leaves
+        # no manifest (verified: an interrupted backup produced zero manifests). But the
+        # destination file DOES survive, and it is named exactly like a real recovery
+        # point (`<stamp>_ed_console.db`) while being unreadable -- measured: reverting
+        # this cleanup stranded `20260902_032346_ed_console.db`, a truncated file wearing
+        # a real recovery-point name. Remove it, so the recovery directory contains only
+        # backups that actually completed.
+        for _partial in (dest, Path(f"{dest}-wal"), Path(f"{dest}-shm")):
+            try:
+                _partial.unlink(missing_ok=True)
+            except OSError:
+                pass    # best effort: never mask the original backup failure
+        raise
     size_b = dest.stat().st_size
     sha = _sha256_file(dest)
     manifest: dict[str, Any] = {
