@@ -30,6 +30,11 @@ REPO = Path(__file__).resolve().parent.parent
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
+# The ONE shell segmenter (tools/shell_parse.py, stdlib-only, BEDROCK 2026-09-06): the class
+# rule below judges each chained statement on its own (RC-525), and a second splitter here
+# would be one truth with two answers.
+from tools.shell_parse import iter_command_segments  # noqa: E402
+
 CHECKER_REL = "tools/check_institutional_correctness.py"
 DB_REL = "db.py"
 
@@ -64,15 +69,37 @@ PROTECTED_PATHS: tuple[str, ...] = ENFORCEMENT_PATHS + (
 #: operator_law_guard, "deliberately split, both firing" — two rules answering one question.
 #: They are `_UNIVERSAL_DESTRUCTIVE_RE` below and refuse regardless of target; the class rule
 #: covers the full reset/restore/checkout--/clean/stash verb family on protected/bare targets.
+#:
+#: RC-525 (ported from #221's RC-508, re-measured on ac3f78fb 2026-09-06): three holes and one
+#: over-block. `git -C <other> reset --hard` passed because the global-option skip admitted
+#: only flags, not a flag WITH its argument; `git push -f` passed because only the long
+#: spelling was named; `git restore --staged x && git reset --mixed HEAD~1` passed because the
+#: safe list was searched across the WHOLE command, so one safe statement exempted everything
+#: chained after it; and `git reset --soft`, which moves HEAD and leaves index and worktree
+#: untouched, was refused although the repository's own merge authority runs it. The globals
+#: prefix admits an option with its argument; the push clause admits flags after the refspec
+#: and the short `-f`; the class rule is judged PER SEGMENT (below); `--soft` is safe.
+_GIT_GLOBAL_WITH_ARG: tuple[str, ...] = (
+    "-C", "-c", "--git-dir", "--work-tree", "--namespace", "--exec-path", "--config-env")
+_GIT_GLOBALS = (
+    r"(?:(?:" + "|".join(__import__("re").escape(o) for o in _GIT_GLOBAL_WITH_ARG)
+    + r")(?:=\S+|\s+\S+)\s+|-\S+\s+)*")
 _UNIVERSAL_DESTRUCTIVE_RE = __import__("re").compile(
-    r"\bgit\s+(?:-\S+\s+)*(?:reset\s+--hard|checkout\s+--\s|clean\s+-[a-z]*f"
-    r"|push\s+--force(?!-with-lease))",
+    r"\bgit\s+" + _GIT_GLOBALS + r"(?:"
+    r"reset\s+--hard"
+    r"|checkout\s+--\s"
+    r"|clean\s+-[a-z]*f"
+    r"|push\s+(?:[^|;&]*\s)?(?:--force(?!-with-lease)|-[a-zA-Z]*f[a-zA-Z]*(?=\s|$))"
+    r")",
     __import__("re").I)
 _RESET_GUARD_RE = __import__("re").compile(
-    r"\bgit\s+(?:-\S+\s+)*(reset\b|restore\b|checkout\s+(?:\S+\s+)*--\s|clean\b|stash\b)",
+    r"\bgit\s+" + _GIT_GLOBALS
+    + r"(reset\b|restore\b|checkout\s+(?:\S+\s+)*--\s|clean\b|stash\b)",
     __import__("re").I)
 _RESET_GUARD_SAFE_RE = __import__("re").compile(
-    r"\bgit\s+(?:-\S+\s+)*(restore\s+--staged\b(?!.*--worktree)|stash\s+list\b|checkout\s+-b\b|clean\s+(?:-\S*n\S*\b|--dry-run\b))",
+    r"\bgit\s+" + _GIT_GLOBALS
+    + r"(reset\s+--soft\b|restore\s+--staged\b(?!.*--worktree)|stash\s+list\b|checkout\s+-b\b"
+    r"|clean\s+(?:-\S*n\S*\b|--dry-run\b))",
     __import__("re").I)
 
 #: RC-252: the STATIC inventory of what must never be wiped, independent of any mission.
@@ -123,25 +150,31 @@ def _strip_command_payloads(cmd: str) -> str:
     return _MESSAGE_PAYLOAD_RE.sub(r"\1 <payload>", _HEREDOC_RE.sub("<heredoc>", cmd))
 
 
-def reset_guard_violations(command: str) -> list[str]:
-    """LOCK-2: BLOCK tree-destructive git against protected/product scope (RC-231/RC-252).
+def _judged_segments(cmd: str) -> list[str]:
+    """The statements of a payload-stripped command, each judged on its own (RC-525).
 
-    Not subject-disableable (RC-450): no env token or repo file can authorize a wipe.
-    `git restore --staged` (index-only), `git stash list`, `git checkout -b` stay legal.
-    The universal hard forms refuse on ANY target (host-wide; the checkout in front of the
-    command is irrelevant — RC-258 kept these unscoped on purpose).
+    `iter_command_segments` is the ONE splitter; it drops heredoc bodies as data. When the
+    command hands a heredoc to an interpreter, `_strip_command_payloads` has already kept the
+    body because there the body IS the instruction (RC-253), so its lines are segmented too.
+    Falls back to the whole command, which fails CLOSED: one big segment blocks at least as
+    much as its parts.
     """
-    cmd = _strip_command_payloads(command or "")
-    if _UNIVERSAL_DESTRUCTIVE_RE.search(cmd):
-        return [
-            "RESET_GUARD (LOCK-2/RC-231): destructive git can discard operator work — "
-            "reset --hard / checkout -- <path> / clean -f / push --force are refused on any "
-            "target. Hand it to the operator. Not subject-disableable (RC-450)."
-        ]
-    if not _RESET_GUARD_RE.search(cmd) or _RESET_GUARD_SAFE_RE.search(cmd):
+    try:
+        segs = [seg for _cwd, seg in iter_command_segments(cmd, "")]
+        if _INTERPRETER_RE.search(cmd):
+            for line in cmd.splitlines():
+                segs.extend(seg for _cwd, seg in iter_command_segments(line, ""))
+    except (OSError, ValueError):
+        segs = []
+    return segs or [cmd]
+
+
+def _reset_class_violation(seg: str) -> list[str]:
+    """The CLASS rule for ONE statement (RC-525): a chain cannot launder a later wipe."""
+    if not _RESET_GUARD_RE.search(seg) or _RESET_GUARD_SAFE_RE.search(seg):
         return []
-    touched = [p for p in PROTECTED_PATHS + PRODUCT_WIPE_PROTECTED if p in cmd]
-    bare = not any(tok in cmd for tok in (" -- ", ".py", ".html", ".json"))
+    touched = [p for p in PROTECTED_PATHS + PRODUCT_WIPE_PROTECTED if p in seg]
+    bare = not any(tok in seg for tok in (" -- ", ".py", ".html", ".json"))
     if touched or bare:
         return [
             "RESET_GUARD (LOCK-2/RC-231): tree-destructive git "
@@ -149,6 +182,35 @@ def reset_guard_violations(command: str) -> list[str]:
             "— three 2026-08-03 wipes used exactly this class. Not subject-disableable "
             "(Architecture A / RC-450)."
         ]
+    return []
+
+
+def reset_guard_violations(command: str) -> list[str]:
+    """LOCK-2: BLOCK tree-destructive git — the ONE owner of that question (RC-231/RC-252).
+
+    Two clauses, one predicate. The HARD forms (`reset --hard`, `checkout -- <any path>`,
+    `clean -f`, `push --force`/`-f`) discard work whatever they name, so they refuse on sight,
+    on ANY target (host-wide; the checkout in front of the command is irrelevant — RC-258 kept
+    these unscoped on purpose). The CLASS forms (the wider reset/restore/checkout--/clean/stash
+    family) refuse when they touch a protected/product path or take a bare whole-tree shape,
+    judged PER STATEMENT (RC-525) so a safe first statement cannot launder a later one.
+
+    Not subject-disableable (RC-450): no env token or repo file can authorize a wipe.
+    `git reset --soft`, `git restore --staged` (index-only), `git stash list`,
+    `git checkout -b` and `push --force-with-lease` stay legal.
+    """
+    cmd = _strip_command_payloads(command or "")
+    if _UNIVERSAL_DESTRUCTIVE_RE.search(cmd):
+        return [
+            "RESET_GUARD (LOCK-2/RC-231): destructive git can discard operator work — "
+            "reset --hard / checkout -- <path> / clean -f / push --force or -f are refused on "
+            "any target (`--force-with-lease` is the safe form). Hand it to the operator. Not "
+            "subject-disableable (RC-450)."
+        ]
+    for seg in _judged_segments(cmd):
+        hit = _reset_class_violation(seg)
+        if hit:
+            return hit
     return []
 
 #: Process-lock edits to governance process files are always allowed (compliance path).
