@@ -1,8 +1,7 @@
 """Dead / weak test surface audit (exact counts + classified presence locks).
 
-Not a delete list. Classifies living tests so landfill and theater stay visible:
+Not a delete list. Classifies living tests so theater stays visible:
 
-  ARCHIVE     — under tests/archive/ (not a living suite)
   SKIP_DECOR  — @pytest.mark.skip / skipif / unittest.skip on the test
   SKIP_CALL   — pytest.skip( / unittest.skip in the test body (or module)
   PRESENCE    — asserts a string is in source text; weak if that is the only contract
@@ -266,8 +265,11 @@ def classify_test(src: str, node: ast.FunctionDef | ast.AsyncFunctionDef) -> dic
 
 
 def scan() -> dict:
-    archive_files: list[str] = []
-    archive_tests: list[dict] = []
+    """Classify every test function under tests/.
+
+    There is no archive lane: tests/archive/ (the frozen legacy section audits) was deleted
+    by the bedrock program (RC-524), so every file under tests/ is the living suite.
+    """
     live_tests: list[dict] = []
     for p in sorted(TESTS.rglob("test_*.py")):
         rel = p.relative_to(REPO).as_posix()
@@ -276,18 +278,12 @@ def scan() -> dict:
             tree = ast.parse(src, filename=str(p))
         except (OSError, SyntaxError):
             continue
-        is_arch = "archive" in p.relative_to(TESTS).parts
-        if is_arch:
-            archive_files.append(rel)
         for node in ast.walk(tree):
             if not _is_test_func(node):
                 continue
             row = classify_test(src, node)
             row["file"] = rel
-            if is_arch:
-                archive_tests.append(row)
-            else:
-                live_tests.append(row)
+            live_tests.append(row)
 
     presence_only = [t for t in live_tests if t["presence_class"] == "PRESENCE_ONLY"]
     presence_mixed = [t for t in live_tests if t["presence_class"] == "PRESENCE_AND_RUNTIME"]
@@ -300,8 +296,6 @@ def scan() -> dict:
         "generated_utc": datetime.now(timezone.utc).isoformat(),
         "counts": {
             "live_test_functions": len(live_tests),
-            "archive_test_functions": len(archive_tests),
-            "archive_files": len(set(archive_files)),
             "skip_decorated": len(skip_decor),
             "skip_call_in_body": len(skip_call),
             "assert_free": len(assert_free),
@@ -310,9 +304,8 @@ def scan() -> dict:
         },
         "note": (
             "presence_only = APPROX classifier (source-substring contract, little/no runtime). "
-            "Not an automatic delete list. archive_* are landfill relative to the living suite."
+            "Not an automatic delete list."
         ),
-        "archive_files": sorted(set(archive_files)),
         "skip_decorated": [
             {"file": t["file"], "name": t["name"], "line": t["line"]} for t in skip_decor
         ],
@@ -344,7 +337,7 @@ def main(argv: list[str] | None = None) -> int:
     rep = scan()
     c = rep["counts"]
     print(
-        f"live={c['live_test_functions']} archive={c['archive_test_functions']} "
+        f"live={c['live_test_functions']} "
         f"skip_deco={c['skip_decorated']} skip_call={c['skip_call_in_body']} "
         f"assert_free={c['assert_free']} presence_only={c['presence_only']} "
         f"presence+runtime={c['presence_and_runtime']}"

@@ -842,9 +842,6 @@ def check_no_synthetic_domain_fixtures_in_tests() -> list[Violation]:
     for the domain whose correctness must be proven on real chains."""
     out: list[Violation] = []
     for p in sorted(TESTS.rglob("test_*.py")):
-        # tests/archive/ is frozen legacy — out of scope for the living standard.
-        if "archive" in p.relative_to(TESTS).parts:
-            continue
         src = _read_or_empty(p)
         if not src:
             continue   # RC-116: vanished mid-scan — nothing to police
