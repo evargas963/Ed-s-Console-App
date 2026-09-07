@@ -946,37 +946,110 @@ def test_a_delegated_run_in_a_tree_without_wiring_refuses(trees):
     assert "no readable hook wiring" in result.stderr and "RC-531" in result.stderr, result.stderr
 
 
-def _run_pretooluse_entry(tree: Path, payload: dict, roster: tuple[str, ...]) -> subprocess.CompletedProcess:
-    """The OTHER entrypoint, driven as a delegate: tools/pretooluse_chain.py with an explicit
-    argv roster and the delegated flag set. The fixture trees install only the Stop entry, so
-    the real PreToolUse entry is copied in beside it."""
-    (tree / "tools" / "pretooluse_chain.py").write_bytes(
-        (REPO / "tools" / "pretooluse_chain.py").read_bytes())
+# ── the SEAM, not the incident's path (Close contract, AGENTS.md) ─────────────────────────
+# RC-531's first control drove only the entry the crash came through (stop_chain.py); the
+# rule sat in that entry's main() while pretooluse_chain.py reached the same executor and
+# still trusted argv — and controls, CI and merge all passed. A recurrence control for a
+# hook-seam invariant therefore drives EVERY entry the tree's wiring registers, enumerated by
+# the seam owner (`tools.stop_chain.registered_entrypoints`), never a list kept here.
+
+
+def _run_entry(tree: Path, entry: str, payload: dict, roster: tuple[str, ...]) -> subprocess.CompletedProcess:
+    """Drive one registered entry of `tree` as a DELEGATE with an explicit argv roster. The
+    fixture trees install the Stop chain and its imports; any other real entry the wiring
+    registers is copied in from this repository so the real file is exercised."""
+    target = tree / entry
+    if not target.exists() and (REPO / entry).exists():
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes((REPO / entry).read_bytes())
     env = dict(os.environ)
     env.update(_DELEGATED)
     return subprocess.run(
-        [sys.executable, str(tree / "tools" / "pretooluse_chain.py"), *roster],
+        [sys.executable, str(target), *roster],
         cwd=str(tree), input=json.dumps(payload), text=True, capture_output=True,
         env=env, timeout=600,
     )
 
 
-def test_the_rule_binds_in_the_shared_executor_not_one_entrypoint(trees):
-    """RC-531 completion (closure reconciliation of #226): the rule first lived in
-    stop_chain.main() only, so pretooluse_chain.py — which enters run_chain directly — still
-    trusted argv on a delegated run. The property held only because the one launcher happens
-    to delegate through stop_chain.py: the sender-side shape RC-531 itself corrected. Driving
-    the other entrypoint as a delegate must give the same answers."""
+def _delegated_roster_violations(tree: Path) -> list[str]:
+    """For every entry `tree`'s wiring registers: a stale argv (naming a module the tree
+    neither wires nor has) must not cross into the delegated run. One string per entry that
+    lets it cross."""
+    from tools.stop_chain import registered_entrypoints
+
+    out: list[str] = []
+    for entry in registered_entrypoints(tree):
+        stale = _run_entry(tree, entry, edit(tree / "app.py"),
+                           ("tools/demo_guard.py", "tools/retired_guard.py"))
+        if stale.returncode != 0 or "crashed" in stale.stderr or "retired_guard" in stale.stderr:
+            out.append(f"{entry}: the launcher's argv crossed into the delegated run "
+                       f"(rc={stale.returncode}): {stale.stderr.strip()[-200:]}")
+    return out
+
+
+def test_every_registered_hook_entry_obeys_the_shared_delegated_roster_invariant(trees):
+    """Both halves, through every registered entry: a stale argv cannot crash the delegate, and
+    an argv that omits a wired guard cannot launder the verdict."""
+    from tools.stop_chain import registered_entrypoints
+
     _primary, alpha, _beta = trees
-    stale = _run_pretooluse_entry(alpha, edit(alpha / "app.py"),
-                                  ("tools/demo_guard.py", "tools/retired_guard.py"))
-    assert stale.returncode == 0 and "crashed" not in stale.stderr, stale.stderr
+    entries = registered_entrypoints(alpha)
+    assert set(entries) >= {"tools/stop_chain.py", "tools/pretooluse_chain.py"}, entries
+    assert _delegated_roster_violations(alpha) == []
 
     set_guard(alpha, BLOCKING_GUARD, commit=False)
     (alpha / "tools" / "quiet_guard.py").write_text(PASSING_GUARD, encoding="utf-8")
     _commit_all(alpha, "a quiet guard exists but is not wired")
-    dropped = _run_pretooluse_entry(alpha, edit(alpha / "app.py"), ("tools/quiet_guard.py",))
-    assert dropped.returncode != 0 and "BLOCKED BY alpha" in dropped.stderr, dropped.stderr
+    for entry in entries:
+        dropped = _run_entry(alpha, entry, edit(alpha / "app.py"), ("tools/quiet_guard.py",))
+        assert dropped.returncode != 0 and "BLOCKED BY alpha" in dropped.stderr, (entry, dropped.stderr)
+
+
+_LEAKY_ENTRY = '''"""A chain entry that runs whatever argv names — the RC-531 shape, wired as a third entry."""
+import importlib, io, sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+raw = sys.stdin.read()
+worst = 0
+for a in sys.argv[1:]:
+    mod = importlib.import_module("tools." + a.replace("\\\\", "/").removeprefix("tools/").removesuffix(".py"))
+    sys.stdin = io.StringIO(raw)
+    worst = max(worst, int(mod.main() or 0))
+sys.exit(worst)
+'''
+
+
+def test_a_newly_wired_entry_that_trusts_argv_cannot_escape_the_enumeration(trees):
+    """MUTATION CONTROL: wire a third entry that trusts argv (the exact RC-531 shape). Nobody
+    edits any list; the enumeration picks it up from the wiring and the invariant check names
+    it. The two real entries stay clean in the same run, so the control fails for the right
+    reason."""
+    from tools.stop_chain import registered_entrypoints
+
+    _primary, alpha, _beta = trees
+    (alpha / "tools" / "leaky_chain.py").write_text(_LEAKY_ENTRY, encoding="utf-8")
+    wiring = alpha / ".claude" / "settings.json"
+    settings = json.loads(wiring.read_text(encoding="utf-8"))
+    settings["hooks"]["Stop"].append(
+        {"hooks": [{"type": "command", "command": "python tools/leaky_chain.py tools/demo_guard.py"}]})
+    wiring.write_text(json.dumps(settings, indent=1), encoding="utf-8")
+    _commit_all(alpha, "a third entry, wired")
+
+    assert "tools/leaky_chain.py" in registered_entrypoints(alpha)
+    violations = _delegated_roster_violations(alpha)
+    assert any(v.startswith("tools/leaky_chain.py:") for v in violations), violations
+    assert not any(v.startswith(("tools/stop_chain.py:", "tools/pretooluse_chain.py:")) for v in violations), violations
+
+
+def test_the_live_wiring_registers_the_entries_the_controls_drive():
+    """The real tree's enumeration, read from its own wiring: both chain entries, nothing
+    hand-listed. If a third entry is wired here, the controls above exercise it unasked."""
+    from tools.stop_chain import registered_entrypoints
+
+    live = registered_entrypoints(REPO)
+    assert set(live) == {"tools/stop_chain.py", "tools/pretooluse_chain.py"}, live
+    for entry in live:
+        assert (REPO / entry).is_file(), entry
 
 
 def test_a_missing_module_is_a_block_that_names_no_recovery_file():

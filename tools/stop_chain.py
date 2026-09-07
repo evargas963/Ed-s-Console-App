@@ -444,6 +444,35 @@ def canonical_authority(raw_payload: str) -> tuple[tuple[Path, ...], str, str]:
 DELEGATED_ENV = "ED_GOVERNANCE_AUTHORITY_DELEGATED"
 
 
+def registered_entrypoints(root: Path) -> tuple[str, ...]:
+    """Every chain ENTRY the tree's own hook wiring registers, in wiring order.
+
+    The canonical enumeration of the hook seam (Close contract, AGENTS.md): a recurrence
+    control for an invariant of this seam drives every entry returned here, so a newly wired
+    entry is exercised the day it is wired and none is a hand-maintained list. Read from
+    `.claude/settings.json` exactly as `tree_roster` reads the members; an entry is a
+    `tools/*_chain.py` token in a hook command. Fail-closed: unreadable wiring returns ().
+    """
+    wiring = root / ".claude" / "settings.json"
+    try:
+        data = json.loads(wiring.read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        return ()
+    hooks = (data.get("hooks") or {}) if isinstance(data, dict) else {}
+    out: list[str] = []
+    for entries in (hooks.values() if isinstance(hooks, dict) else ()):
+        for entry in entries if isinstance(entries, list) else ():
+            if not isinstance(entry, dict):
+                continue
+            for h in entry.get("hooks") or []:
+                command = h.get("command") if isinstance(h, dict) else None
+                for tok in str(command or "").split():
+                    tok = tok.replace("\\", "/")
+                    if tok.startswith("tools/") and tok.endswith("_chain.py") and tok not in out:
+                        out.append(tok)
+    return tuple(out)
+
+
 #: Hook events this chain serves, and the tools that make an event a PreToolUse one.
 _PRETOOLUSE_TOOLS = MUTATING_TOOLS | BASH_TOOLS
 
