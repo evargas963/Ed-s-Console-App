@@ -77,7 +77,7 @@ class GitProbeFailed(RuntimeError):
 def _git(*args: str) -> str:
     """Raw stdout of a git probe, RAISING when the child did not exit 0.
 
-    RC-529 (ported from #219's RC-506; re-measured 2026-09-06 on ac3f78fb). The version that
+    RC-529 (ported from #219's row 506; re-measured 2026-09-06 on ac3f78fb). The version that
     returned `.stdout.strip()` and dropped the CompletedProcess: in a checkout on branch main
     with a clean tree and no resolvable `origin/main`, both `rev-list --count` probes exit 128
     and print nothing. The callers read `if ahead and ahead != "0"`, so an EMPTY string — a

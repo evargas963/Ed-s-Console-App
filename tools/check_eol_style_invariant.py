@@ -146,7 +146,7 @@ def violations(staged: bool = True) -> list[str]:
         # left on disk — for those paths a worktree/blob terminator difference is the
         # configured behaviour, not a violation.
         #
-        # RC-528 (ported from #221's RC-511): apply the pin to BOTH sides. This normalised
+        # RC-528 (ported from #221's row 511): apply the pin to BOTH sides. This normalised
         # `after` only, so a pinned path was compared stored-form against HEAD's raw form.
         # While every blob obeyed its pin the two agreed and the asymmetry was invisible; the
         # moment a blob VIOLATED its pin (a file committed CRLF before its pattern was pinned,

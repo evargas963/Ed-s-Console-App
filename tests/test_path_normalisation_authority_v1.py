@@ -1,6 +1,6 @@
 """RC-527: the spelling of a repo-relative path has ONE owner, and the consumers use it.
 
-WHY THIS FILE EXISTS (ported from #221's RC-508 control). Call sites hand-rolled the
+WHY THIS FILE EXISTS (ported from #221's row 508 control). Call sites hand-rolled the
 repo-relative spelling, and the idiom they copied was `str.lstrip("./")`, which strips
 CHARACTERS rather than a prefix and therefore eats the leading dot of every `.github` /
 `.claude` / `.cursor` path. Re-measured 2026-09-06 on ac3f78fb: three sites still carried it —

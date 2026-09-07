@@ -201,7 +201,7 @@ def test_a_pinned_path_with_a_real_content_change_is_still_silent(repo):
 
 
 def test_a_blob_that_violates_its_own_pin_can_be_repaired(repo):
-    """RC-528 (ported from #221's RC-511): the pin binds on BOTH sides of the comparison.
+    """RC-528 (ported from #221's row 511): the pin binds on BOTH sides of the comparison.
 
     It was applied to the worktree side only, so a path pinned `eol=lf` whose HEAD blob is
     CRLF was compared LF-against-CRLF, and the commit that RESTORES the pin was reported as a
