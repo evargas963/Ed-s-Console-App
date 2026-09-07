@@ -70,7 +70,7 @@ PROTECTED_PATHS: tuple[str, ...] = ENFORCEMENT_PATHS + (
 #: They are `_UNIVERSAL_DESTRUCTIVE_RE` below and refuse regardless of target; the class rule
 #: covers the full reset/restore/checkout--/clean/stash verb family on protected/bare targets.
 #:
-#: RC-525 (ported from #221's RC-508, re-measured on ac3f78fb 2026-09-06): three holes and one
+#: RC-525 (ported from #221's row 508, re-measured on ac3f78fb 2026-09-06): three holes and one
 #: over-block. `git -C <other> reset --hard` passed because the global-option skip admitted
 #: only flags, not a flag WITH its argument; `git push -f` passed because only the long
 #: spelling was named; `git restore --staged x && git reset --mixed HEAD~1` passed because the

@@ -333,7 +333,7 @@ def test_closed_row_must_ship_its_code_controls():
     )
     # QUIET 4 (RC-526, the false positive this replaced) — a closure that ships code may name
     # any number of suites it merely RAN, including ones it never touched, and a dot-prefixed
-    # workflow path is not mangled on the way (the RC-507 anchor bug).
+    # workflow path is not mangled on the way (the row 507 anchor bug).
     assert V([row("CLOSED", "FIXED. Verified by tests/test_hook_chains_v1.py and "
                             ".github/workflows/hardening.yml runs.")],
              staged={"tools/operating_process_lock.py"}) == [], (

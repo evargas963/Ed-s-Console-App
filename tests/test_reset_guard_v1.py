@@ -122,7 +122,7 @@ def test_live_path_wired_through_guard(monkeypatch, tmp_path):
     assert any("RESET_GUARD" in b for b in bad), "reset guard not on the live PreToolUse path"
 
 
-# ── RC-525 (ported from #221's RC-508): adjudicated by what the command can DESTROY ────────
+# ── RC-525 (ported from #221's row 508): adjudicated by what the command can DESTROY ────────
 # Re-measured on ac3f78fb 2026-09-06: `git push -f origin main`, `git -C ../other reset --hard`
 # and `git restore --staged x.py && git reset --mixed HEAD~1` all PASSED the one owner, and
 # `git reset --soft HEAD~1` (HEAD only; index and worktree untouched) was refused although the

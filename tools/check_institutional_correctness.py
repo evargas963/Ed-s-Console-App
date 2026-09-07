@@ -2045,7 +2045,7 @@ def _closed_row_code_not_shipped(
     code — shipped in the change that closes it, or carried by a commit the row cites — or it
     must say plainly that it changes no code.
 
-    RC-526 (ported from #221's RC-507/RC-508): THIS USED TO ASK AN UNANSWERABLE QUESTION. It
+    RC-526 (ported from #221's row 507/row 508): THIS USED TO ASK AN UNANSWERABLE QUESTION. It
     extracted every source path in the fix cell and treated each as a claim that THAT FILE
     had been repaired, so a closure citing the suite it RAN was indistinguishable from one
     claiming a file it never touched (#221 measured three correct rows rejected in one

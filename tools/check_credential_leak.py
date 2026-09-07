@@ -52,7 +52,7 @@ class StagedDiffUnreadable(RuntimeError):
 def _staged_text() -> str:
     """The staged diff, RAISING when git could not produce it.
 
-    RC-529 (ported from #219's RC-506; re-measured 2026-09-06 on ac3f78fb). This returned
+    RC-529 (ported from #219's row 506; re-measured 2026-09-06 on ac3f78fb). This returned
     `p.stdout or ""` and never read returncode, so any failure of the child — a broken or
     locked index, a corrupt object, git absent from PATH under a different launch context —
     yielded an empty diff. An empty diff scans clean, so this BLOCKING pre-commit secrets gate

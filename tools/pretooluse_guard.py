@@ -110,7 +110,7 @@ def classify_path(p: str, repo: str | Path | None = None) -> PathFacts:
 
 
 def normalize_repo_relative(p: str) -> str:
-    """THE spelling of a repo-relative path (FC-13 / RC-527, ported from #221's RC-508).
+    """THE spelling of a repo-relative path (FC-13 / RC-527, ported from #221's row 508).
 
     Forward slashes, dot-segments and duplicate separators collapsed, no leading `./`. A
     leading dot that is part of a NAME — `.github`, `.claude`, `.cursor` — is preserved,
@@ -120,7 +120,7 @@ def normalize_repo_relative(p: str) -> str:
     `str.lstrip("./")`, which strips CHARACTERS rather than a prefix: it ate the leading dot of
     every dot-prefixed path, so `.github/workflows/hardening.yml` was keyed as
     `github/workflows/hardening.yml` in the credential firewall's skip set and a closure that
-    shipped a workflow fix was refused as not shipping it (#221's RC-506/RC-507). The
+    shipped a workflow fix was refused as not shipping it (#221's row 506/row 507). The
     repository already declares a path AUTHORITY here — `classify_path` — but it answers the
     GOVERNANCE question (ours? product? compliance lane?) and offered no primitive for the
     string, so every caller needing the string built one. This is that primitive; it lives

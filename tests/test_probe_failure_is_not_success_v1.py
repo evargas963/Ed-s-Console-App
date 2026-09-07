@@ -1,6 +1,6 @@
 """RC-529 — a measurement that did not run is not a measurement that came back clean.
 
-THE CLASS (ported from #219's RC-506, re-measured 2026-09-06 on ac3f78fb). A check shells out
+THE CLASS (ported from #219's row 506, re-measured 2026-09-06 on ac3f78fb). A check shells out
 to git, keeps only the child's STDOUT, and decides from that text. When the child exits
 non-zero it usually prints nothing, so the check reads an empty string and takes the same
 branch it takes for a genuinely clean result. Green and "never looked" become byte-identical.
