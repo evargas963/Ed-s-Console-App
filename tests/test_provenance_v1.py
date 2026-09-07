@@ -138,7 +138,7 @@ def test_every_root_with_a_producer_closes_and_the_open_list_is_exact():
 def test_the_card_contract_fields_are_roots_or_declared_exclusions():
     """The card contract is a CONSUMER contract. Each emitted field points at a MarketState
     root (its api_key); it never becomes a provenance authority of its own."""
-    card = json.loads((ROOT / "governance/artifacts/CARD_CONSUMER_CONTRACT_V1.json").read_text(encoding="utf-8"))
+    card = json.loads((ROOT / "reports/artifacts/CARD_CONSUMER_CONTRACT_V1.json").read_text(encoding="utf-8"))
     bad = []
     for f in card["fields"]:
         key = f.get("provenance_root")

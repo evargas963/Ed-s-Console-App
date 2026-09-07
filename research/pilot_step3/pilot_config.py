@@ -9,7 +9,10 @@ from typing import Any
 
 _PRREG_PATH = Path(__file__).resolve().parent / "prereg_v1.json"
 
-# Must match governance/Framework-ED-Decision-Engine-v1.1.md and prereg_v1.json binding fields.
+# The framework document's BINDING IDENTITY as frozen in prereg_v1.json (content-hashed, never
+# rewritten). It is an id, not a path to resolve: the document itself now lives at
+# docs/Framework-ED-Decision-Engine-v1.1.md (PR D, 2026-09-07), and the frozen id keeps its
+# original spelling so the pre-registration stays byte-identical to what was registered.
 EXPECTED_FRAMEWORK_DOC_ID = "governance/Framework-ED-Decision-Engine-v1.1.md"
 EXPECTED_FRAMEWORK_DOC_VERSION = "1.1"
 
@@ -51,7 +54,7 @@ def validate_framework_binding(prereg: dict[str, Any]) -> None:
     if not fid or not fver:
         raise ValueError(
             "prereg_v1.json missing framework_doc_id or framework_doc_version; "
-            "amend prereg per governance/Framework-ED-Decision-Engine-v1.1.md"
+            "amend prereg per docs/Framework-ED-Decision-Engine-v1.1.md"
         )
     if fid != EXPECTED_FRAMEWORK_DOC_ID:
         raise ValueError(

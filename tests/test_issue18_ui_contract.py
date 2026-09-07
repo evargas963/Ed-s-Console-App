@@ -15,7 +15,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 REPO = ROOT
-CARD_CONSUMER_CONTRACT = ROOT / "governance" / "artifacts" / "CARD_CONSUMER_CONTRACT_V1.json"
+CARD_CONSUMER_CONTRACT = ROOT / "reports" / "artifacts" / "CARD_CONSUMER_CONTRACT_V1.json"
 CARD_TRUST_CONTRACT = ROOT / "docs" / "CARD_TRUST_CONTRACT.md"
 
 
@@ -1729,7 +1729,7 @@ def test_t2_registry_raf_latest_wins_render_scheduler_v1():
     import json
 
     reg = json.loads(
-        (ROOT / "governance/artifacts/CARD_CONSUMER_CONTRACT_V1.json").read_text(encoding="utf-8")
+        (ROOT / "reports/artifacts/CARD_CONSUMER_CONTRACT_V1.json").read_text(encoding="utf-8")
     )
     t2 = reg["raf_latest_wins_render_scheduler_v1"]
     assert t2["lane_id"] == "T2_RAF_LATEST_WINS_RENDER_SCHEDULER_V1"
@@ -1745,7 +1745,7 @@ def test_t1_contract_still_preserves_t1_non_implementation_list():
     import json
 
     reg = json.loads(
-        (ROOT / "governance/artifacts/CARD_CONSUMER_CONTRACT_V1.json").read_text(encoding="utf-8")
+        (ROOT / "reports/artifacts/CARD_CONSUMER_CONTRACT_V1.json").read_text(encoding="utf-8")
     )
     t1 = reg["stale_label_latency_contract_v1"]
     assert t1["lane_id"] == "T1_STALE_LABEL_AND_LATENCY_CONTRACT_V1"
@@ -1858,7 +1858,7 @@ def test_t3_registry_monotonic_sequence_gating_v1():
     import json
 
     reg = json.loads(
-        (ROOT / "governance/artifacts/CARD_CONSUMER_CONTRACT_V1.json").read_text(encoding="utf-8")
+        (ROOT / "reports/artifacts/CARD_CONSUMER_CONTRACT_V1.json").read_text(encoding="utf-8")
     )
     t3 = reg["monotonic_sequence_gating_v1"]
     assert t3["lane_id"] == "T3_MONOTONIC_SEQUENCE_GATING_V1"
@@ -2075,7 +2075,7 @@ def test_t4_registry_unified_money_path_snapshot_freshness_v1():
     import json
 
     reg = json.loads(
-        (ROOT / "governance/artifacts/CARD_CONSUMER_CONTRACT_V1.json").read_text(encoding="utf-8")
+        (ROOT / "reports/artifacts/CARD_CONSUMER_CONTRACT_V1.json").read_text(encoding="utf-8")
     )
     t4 = reg["unified_money_path_snapshot_freshness_v1"]
     assert t4["lane_id"] == "T4_UNIFIED_MONEY_PATH_SNAPSHOT_SSE_AND_FAIL_CLOSED_FRESHNESS_UI_V1"

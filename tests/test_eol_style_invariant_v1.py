@@ -209,7 +209,7 @@ def test_a_blob_that_violates_its_own_pin_can_be_repaired(repo):
     restoration. Invisible while every blob obeyed its pin, which is why it survived.
 
     MEASURED by #221 on the real tree: moving three artifacts out from under
-    `governance/artifacts/*.json text eol=lf` let git store the CRLF a Windows suite run had
+    `reports/artifacts/*.json text eol=lf` let git store the CRLF a Windows suite run had
     written, and re-pinning the new location was refused three times.
 
     Planted by committing CRLF with NO pin, then adding the pin — which is exactly how a blob

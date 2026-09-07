@@ -67,7 +67,7 @@ signal proves decision-critical).
 
 ## Console rebuild program — CR (v1.2 consensus-stamped; operator GO 2026-07-21)
 
-Design record and review findings: `governance/CONSOLE_REBUILD_PLAN_CR_V1.md`. The GO stands on the
+Design record and review findings: `docs/CONSOLE_REBUILD_PLAN_CR_V1.md`. The GO stands on the
 v1.2 spine; the v1.3 delta rides off the GO-critical path until the next consensus round.
 
 | ID | Status | Work item |

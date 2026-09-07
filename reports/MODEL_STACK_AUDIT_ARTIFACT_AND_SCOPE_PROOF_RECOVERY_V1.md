@@ -22,9 +22,9 @@ git status --short
  M AGENTS.md
  M CLAUDE.md
  M governance/artifacts/CHECK_STACK_INVENTORY.json
- M governance/artifacts/survivor_edge_probe.json
- M governance/artifacts/survivor_inference_backtest.json
- M governance/artifacts/survivor_validation_run.json
+ M reports/artifacts/survivor_edge_probe.json
+ M reports/artifacts/survivor_inference_backtest.json
+ M reports/artifacts/survivor_validation_run.json
  M governance/docs/AGENT_OPERATING_CONTRACT.md
  M governance/docs/CHECK_STACK_RIGHTSIZING.md
  M governance/mega1_traceable_inventory.py

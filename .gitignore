@@ -93,7 +93,7 @@ host_manifest.*.json
 
 
 # Operator/tool dry-run audits (local only)
-governance/audits/backfill_et_clock_from_ts_utc_v1_*.json
+reports/audits/backfill_et_clock_from_ts_utc_v1_*.json
 
 # Local auth / secrets (Schwab OAuth redirect capture — never commit)
 _schwab_auth_url.txt
@@ -134,7 +134,7 @@ static/redesign_mockup.html
 # Remaining model paths (candidates, archives, caches, run outputs) — not source
 models/**
 # GOV-GATE-PERF-V1: cross-process governance gate cache (success-only, full-identity keys)
-governance/artifacts/.gate_cache/
+reports/artifacts/.gate_cache/
 
 # EXEC_IDENTITY noncanonical runtime-proof scratch databases (local evidence only)
 data_proof/
@@ -181,7 +181,7 @@ reports/quantile_eval/
 # RC-89: generated audit artifacts carry absolute operator-home paths, so the credential-leak
 # hook rejects them on every commit. They were unstaged by hand three times on 2026-07-27 —
 # fixing the instance instead of the cause. They are regenerated output, never source.
-governance/audits/
+reports/audits/
 
 # RC-89 pattern: generated stream artifacts embed the absolute repo path, so the
 # credential-leak hook rejects them on every commit. They are regenerable output, never

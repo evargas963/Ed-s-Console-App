@@ -6,7 +6,7 @@ from pathlib import Path
 
 from research.stage1_target_foundation.rth_integrity_audit import audit
 
-GOV = Path(__file__).resolve().parents[1] / "governance" / "research" / "stage1_target_label_foundation"
+GOV = Path(__file__).resolve().parents[1] / "research" / "stage1_target_label_foundation"
 
 
 def _load(name: str) -> dict:

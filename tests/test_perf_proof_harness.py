@@ -10,7 +10,7 @@ import pytest
 from tests.perf_proof.validate import load_and_validate, validate_perf_proof
 
 ROOT = Path(__file__).resolve().parents[1]
-REPLACEMENTS = ROOT / "governance" / "artifacts" / "perf_proof" / "replacements"
+REPLACEMENTS = ROOT / "reports" / "artifacts" / "perf_proof" / "replacements"
 
 
 def test_validate_minimal_good():

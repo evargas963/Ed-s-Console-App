@@ -81,7 +81,7 @@ def pinned_eol(path: str) -> str | None:
     RC-383. A pinned path is one git NORMALISES on the way into the blob, so its worktree
     bytes are ALLOWED to differ from HEAD — that is the entire point of the pin.
     .claude/settings.json is 78 CRLF on disk and 78 LF in the index by design, and
-    governance/artifacts/*.json has been pinned the same way for months. Comparing raw
+    reports/artifacts/*.json has been pinned the same way for months. Comparing raw
     worktree bytes for such a path reports a flip on a file that is behaving exactly as
     configured, and a gate that cries wolf on a governed path gets switched off — taking
     the real protection with it. So the comparison is made on the form git will STORE.

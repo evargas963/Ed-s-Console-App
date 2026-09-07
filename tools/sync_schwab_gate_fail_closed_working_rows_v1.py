@@ -13,8 +13,8 @@ import csv
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-WORKING = ROOT / "governance" / "SCHWAB_CSV_DERIVED_FIELD_CROSSWALK_WORKING.csv"
-RESIDUAL = ROOT / "governance" / "SCHWAB_CSV_DERIVED_FIELD_CROSSWALK_RESIDUAL.csv"
+WORKING = ROOT / "schwab_field_inventory" / "SCHWAB_CSV_DERIVED_FIELD_CROSSWALK_WORKING.csv"
+RESIDUAL = ROOT / "schwab_field_inventory" / "SCHWAB_CSV_DERIVED_FIELD_CROSSWALK_RESIDUAL.csv"
 
 RISK_TAGS = frozenset({"DEFAULT_ZERO_OR", "GET_DEFAULT_ZERO"})
 

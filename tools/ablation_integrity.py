@@ -37,7 +37,7 @@ ZERO_BIAS_WHOLE_STACK_LAYERS: tuple[str, ...] = ("meta", "monte_carlo", "regime"
 def check_zero_bias_ablation_contract() -> list[str]:
     """AGENTS § ZERO-BIAS — survivor output is the only placement router (O-56)."""
     errors: list[str] = []
-    manifest_path = REPO_ROOT / "governance" / "artifacts" / "feature_ablation_manifest_leaf.json"
+    manifest_path = REPO_ROOT / "reports" / "artifacts" / "feature_ablation_manifest_leaf.json"
     if not manifest_path.is_file():
         errors.append(f"missing {manifest_path} — ZERO-BIAS requires live manifest")
         return errors
@@ -301,7 +301,7 @@ def check_feature_list_no_model_preassignment() -> list[str]:
     (This gate exists because 'stripped' was asserted repeatedly while the tags stayed in the data —
     now it's mechanically true or the build is red.)"""
     errors: list[str] = []
-    manifest = REPO_ROOT / "governance" / "artifacts" / "feature_ablation_manifest_leaf.json"
+    manifest = REPO_ROOT / "reports" / "artifacts" / "feature_ablation_manifest_leaf.json"
     if not manifest.is_file():
         return errors
     try:
@@ -922,7 +922,7 @@ def audit_ablation_placement_validity(
                 )
 
             manifest_path = (
-                REPO_ROOT / "governance" / "artifacts" / "feature_ablation_manifest_leaf.json"
+                REPO_ROOT / "reports" / "artifacts" / "feature_ablation_manifest_leaf.json"
             )
             if reference_checkpoint is not None and manifest_path.is_file():
                 from tools.feature_curation_gate import (
@@ -1149,7 +1149,7 @@ def run_ablation_integrity_audit(
                 whole_stack_fusion_cell_target,
             )
 
-            manifest_path = REPO_ROOT / "governance" / "artifacts" / "feature_ablation_manifest_leaf.json"
+            manifest_path = REPO_ROOT / "reports" / "artifacts" / "feature_ablation_manifest_leaf.json"
             manifest = load_ablation_manifest(manifest_path)
             pf = run_ablation_preflight(manifest, db_path=str(dbp), tickers=tickers or [])
             placement = audit_ablation_placement_validity()
