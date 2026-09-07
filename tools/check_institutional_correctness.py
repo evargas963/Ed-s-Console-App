@@ -1987,27 +1987,40 @@ def _staged_has_real_change(rel: str) -> bool:
     return False
 
 
-#: Source files a FIXED cell can name. Deliberately NOT .json/.jsonl/.md/.txt: report and
-#: ledger artifacts churn from daily runs, and treating them as "the fix" would make this
-#: check fire on unrelated evidence writes (RC-137's own false-positive analysis).
-#: RC-140: the first cut listed only py/html/js, so a closure naming a .ts or .css fix was
-#: unrecognized and therefore unchecked (v31 measured it) — every source extension the repo
-#: could plausibly ship a fix in is listed here now.
-_FIXED_SOURCE_FILE_RE = re.compile(
-    r"\b([\w][\w./\-]*\.(?:py|pyi|html|js|jsx|mjs|cjs|ts|tsx|css|scss|sql|ps1|bat|sh|yaml|yml))\b"
+#: What counts as CODE when a closure ships it. Deliberately NOT .json/.jsonl/.md/.txt: report
+#: and ledger artifacts churn from daily runs, and treating them as "the fix" would make this
+#: check fire on unrelated evidence writes (RC-137's own false-positive analysis). RC-140: the
+#: first cut listed only py/html/js, so a .ts or .css fix was invisible — every source
+#: extension the repo could plausibly ship a fix in is listed here.
+_SOURCE_EXTS: tuple[str, ...] = (
+    "py", "pyi", "html", "js", "jsx", "mjs", "cjs", "ts", "tsx", "css", "scss", "sql", "ps1",
+    "bat", "sh", "yaml", "yml",
 )
+
+
+def _is_source_path(rel: str) -> bool:
+    """True when `rel` is a code file — the ONE answer to "is this code?"."""
+    return "." in rel and rel.rsplit(".", 1)[-1].lower() in _SOURCE_EXTS
+
+
+def _norm_rel_path(p: str) -> str:
+    """The ONE repo-relative spelling (RC-527). Imported lazily: this gate is the heaviest
+    module in the package and must not pull the path-facts module in at import time."""
+    from tools.pretooluse_guard import normalize_repo_relative
+    return normalize_repo_relative(p)
+
+
 #: RC-141: RC-140 keyed this on the literal word FIXED, so dropping that token ("See VERIFIED
 #: below.") walked straight through — v32 measured it, the same omit-the-watched-token class
 #: as the prose escape it replaced. The obligation now attaches to CLOSING a row, not to any
-#: word in it: every new closure either names checkable source or declares it changed none.
-#: Kept only to describe the claim in messages, never as the trigger.
+#: word in it. Kept only to describe the claim in messages, never as the trigger.
 _FIXED_CLAIM_RE = re.compile(r"\bFIXED\b\s*[:\-]", re.I)
 #: The declared escape for closures that genuinely change no source (a disposition, a
 #: measurement, a deferral). Explicit, so "no code" is a STATEMENT rather than an omission.
 _NO_CODE_CLAIM_RE = re.compile(
     r"no code change|no source change|documentation only|ledger only|disposition only", re.I)
-#: Sentinel path reported when a FIXED claim names nothing machine-readable.
-_UNNAMED_FIX = "<FIXED: names no machine-readable source path>"
+#: Sentinel reported when a row is CLOSED with no repairing code and no no-code declaration.
+_UNSHIPPED_CLOSURE = "<CLOSED with no repairing code and no no-code declaration>"
 
 
 #: A commit SHA cited inside a row — how a closure points at code that landed earlier.
@@ -2020,87 +2033,87 @@ def _row_cells(row: str) -> list[str]:
 
 def _closed_row_code_not_shipped(
     added_rows: list[str],
-    dirty: frozenset[str] | set[str],
+    dirty: frozenset[str] | set[str] = frozenset(),
     *,
     removed_rows: tuple[str, ...] | list[str] = (),
     staged: frozenset[str] | set[str] = frozenset(),
-    sha_touches=None,
+    sha_ships_code=None,
 ) -> list[tuple[str, list[str]]]:
-    """PURE core of RC-137/RC-139: rows whose CLOSED claim is not backed by shipped code.
+    """PURE core of RC-137/RC-139: a closure must not assert a repair with no repairing code.
 
-    Two distinct escapes, both closed here:
-      DIRTY   (RC-134's shape) — the row names FIXED files that are sitting uncommitted, so
-              the ledger says fixed while HEAD does not have it.
-      ABSENT  (v30's shape) — the row is NEWLY closed and names FIXED files that are in
-              neither this commit nor any commit the row cites by SHA. A clean worktree is
-              not evidence: it reads identically whether the fix landed or was never written.
+    THE PROPERTY, and it is a git fact: a row BECOMING closed must be accompanied by real
+    code — shipped in the change that closes it, or carried by a commit the row cites — or it
+    must say plainly that it changes no code.
 
-    A row is checked only when THIS commit adds/rewrites it. ABSENT applies only to rows
-    BECOMING closed (a text edit to a long-closed row cannot re-litigate old history), and a
-    cited SHA that actually touched the file satisfies it — closures may point at where the
-    code landed instead of carrying it.
+    RC-526 (ported from #221's RC-507/RC-508): THIS USED TO ASK AN UNANSWERABLE QUESTION. It
+    extracted every source path in the fix cell and treated each as a claim that THAT FILE
+    had been repaired, so a closure citing the suite it RAN was indistinguishable from one
+    claiming a file it never touched (#221 measured three correct rows rejected in one
+    session), and its extractor's `\\b[\\w]` anchor plus `lstrip("./")` turned
+    `.github/workflows/hardening.yml` into `github/workflows/hardening.yml`, so a closure that
+    genuinely shipped a workflow fix was refused as not shipping it. Which named path is a
+    repair claim is a fact about English; whether the closing change shipped code is a fact
+    about git. The check now asks only the second, so evidence references are free and the
+    protection is unmoved. `dirty` is accepted and ignored: an unstaged file is simply not
+    shipped, which the staged set already says.
+
+    WHAT IS DELIBERATELY NOT CLAIMED. This proves a closure points at real, non-whitespace
+    work; it cannot prove that work is the RIGHT work. The previous form could not either —
+    its own docstring conceded that "a genuine but unrelated edit to a named file still
+    satisfies this" — so the per-path shell added ambiguity, not strength. Judging whether the
+    repair fits the defect remains the audit's job.
+
+    A row is judged only when this change makes it CLOSED; a text edit to an already-closed
+    row cannot re-litigate old history.
     """
     was_closed = {
         _row_cells(r)[0] for r in removed_rows
         if len(_row_cells(r)) >= 7 and _row_cells(r)[1].upper() == "CLOSED"
     }
+    # "Did this change ship code?" — staged paths are already filtered to those whose diff
+    # moves a non-blank line (RC-140, "touched != fixed"); source extension is what makes it
+    # CODE rather than a ledger or evidence write.
+    shipped = sorted(s for s in (_norm_rel_path(p) for p in staged) if _is_source_path(s))
     out: list[tuple[str, list[str]]] = []
     for row in added_rows:
         cells = _row_cells(row)
         if len(cells) < 7 or cells[1].upper() != "CLOSED":
             continue
         rc_id = cells[0]
+        if rc_id in was_closed:
+            continue                      # closed before this change — not a new claim
         body = " ".join(cells[6:])
+        if _NO_CODE_CLAIM_RE.search(body):
+            continue                      # an honest disposition-only closure stays legal
+        if shipped:
+            continue                      # this change carries real code
         shas = [s for s in _ROW_SHA_RE.findall(body) if not s.isdigit()]
-        bad: list[str] = []
-        # RC-140/RC-141: a closure naming nothing checkable is the emptiest of all — it
-        # asserts a repair while giving the machine nothing to verify. The trigger is CLOSING
-        # (not the word FIXED, which v32 showed could simply be omitted); an explicit no-code
-        # declaration satisfies it, so a disposition-only closure stays legal by SAYING so.
-        if (rc_id not in was_closed
-                and not _FIXED_SOURCE_FILE_RE.search(body)
-                and not _NO_CODE_CLAIM_RE.search(body)):
-            bad.append(_UNNAMED_FIX)
-        for m in _FIXED_SOURCE_FILE_RE.finditer(body):
-            rel = m.group(1).replace("\\", "/").lstrip("./")
-            if rel in bad or rel in staged:
-                continue
-            if rel in dirty:
-                bad.append(rel)
-                continue
-            if rc_id in was_closed:
-                continue      # already closed before this commit — not a new claim
-            if sha_touches and any(sha_touches(s, rel) for s in shas):
-                continue      # the row points at the commit that carried it
-            bad.append(rel)
-        if bad:
-            out.append((rc_id, sorted(bad)))
+        if sha_ships_code and any(sha_ships_code(s) for s in shas):
+            continue                      # the row points at the commit that carried it
+        out.append((rc_id, [_UNSHIPPED_CLOSURE]))
     return out
 
 
 def _closed_rows_ship_their_code_violations() -> list[Violation]:
-    """A CLOSED row must be backed by a real code change where it says one exists.
+    """A CLOSED row must be backed by a real code change unless it says it changes none.
 
-    Three shapes are blocked, each measured on this repo before enforcing:
-      DIRTY   (RC-134/RC-137) — the row names FIXED files sitting uncommitted, so the ledger
-              says fixed while HEAD does not have it.
-      ABSENT  (v30/RC-139)    — a NEW closure names FIXED files carried by neither this commit
-              nor any commit it cites. A clean worktree is not evidence: it reads identically
-              whether the fix landed or was never written.
-      UNNAMED (v31/RC-140, widened by v32/RC-141) — a NEW closure names nothing
-              machine-readable, so nothing about it can be verified. The trigger is CLOSING
-              the row, NOT the word "FIXED": keying on that token meant omitting it walked
-              through. A closure that genuinely changes no source stays legal by SAYING so
-              ("no code change" / "documentation only" / "disposition only").
+    ONE shape is blocked (RC-526 folded the three earlier shapes into the git question):
+    a row BECOMING closed while this change stages no real source change and cites no commit
+    that carried one, and does not declare itself code-free ("no code change" /
+    "documentation only" / "disposition only"). The founding escapes stay closed under it —
+    RC-134's DIRTY shape (the fix sat uncommitted: then it is not staged), v30/RC-139's clean
+    tree (not staged, nothing cited), v31/RC-140's unlisted language (every source extension
+    is in `_SOURCE_EXTS`) and v32/RC-141's omitted token (the trigger is CLOSING, never the
+    word FIXED).
 
     Both satisfying paths demand a REAL change: a staged file whose diff is only whitespace,
-    or a cited commit that merely touched the file without changing a non-blank line, does not
-    count (v31: "touched != fixed").
+    or a cited commit that is mode-only or whitespace-only, does not count ("touched != fixed").
 
     HONEST LIMIT, stated rather than hidden: no checker can decide whether a real change is
-    the RIGHT change — a genuine but unrelated edit to a named file still satisfies this. The
-    rule proves a closure points at real, non-whitespace work in the files it names; judging
-    that work remains the audit's job.
+    the RIGHT change — a genuine but unrelated source edit still satisfies this. The earlier
+    per-path form could not decide it either (its own docstring conceded as much) and paid for
+    the pretence by rejecting correct closures that cited the suites they ran; judging that
+    work remains the audit's job.
 
     WHAT WAS OBSERVED (2026-07-29, RC-137). RC-134 was written CLOSED with a FIXED cell naming
     terrain_engine.py, server.py, live_decision_bundle.py and liquidity_value_engine.py, and the
@@ -2124,68 +2137,49 @@ def _closed_rows_ship_their_code_violations() -> list[Violation]:
     if not added:
         return []
 
-    status = _git_output_lines(["status", "--porcelain"])
-    if status is None:
-        return []
-    dirty: set[str] = set()
-    for ln in status:
-        if len(ln) < 4:
-            continue
-        worktree_col, path = ln[1], ln[3:].strip().strip('"')
-        if " -> " in path:
-            path = path.split(" -> ")[-1].strip().strip('"')
-        if ln[:2] == "??" or worktree_col in ("M", "D"):
-            dirty.add(path.replace("\\", "/"))
-
     # RC-140 ("touched != fixed"): a staged path only counts when its diff changes a
     # non-blank line, so a whitespace-only edit cannot buy a closure.
     staged_files = {
-        p.replace("\\", "/")
+        _norm_rel_path(p)
         for p in (_git_output_lines(["diff", "--cached", "--name-only"]) or [])
         if p.strip() and _staged_has_real_change(p.strip())
     }
 
-    def _sha_touched(sha: str, rel: str) -> bool:
-        """True when `sha` really CHANGED `rel` — how a closure may point at code that landed
-        in an earlier commit. RC-140: name-only membership was too weak (a whitespace or
-        mode-only touch passed), so the commit's own diff for that path must carry a
-        non-blank +/- line."""
-        diff = _git_output_lines(["show", "-U0", "--pretty=format:", sha, "--", rel])
+    def _sha_ships_code(sha: str) -> bool:
+        """True when `sha` carried a real, non-whitespace change to a SOURCE file — how a
+        closure may point at code that landed in an earlier commit.
+
+        RC-526: this asked whether a sha touched a NAMED path, which required knowing which
+        named path was a repair claim. It now asks the question the row actually needs
+        answered. RC-140's "touched != fixed" survives intact: a mode-only or whitespace-only
+        commit still ships nothing.
+        """
+        diff = _git_output_lines(["show", "--numstat", "--pretty=format:", sha])
         if not diff:
             return False
-        return any(ln.startswith(("+", "-")) and not ln.startswith(("+++", "---"))
-                   and ln[1:].strip() for ln in diff)
+        for ln in diff:
+            parts = ln.split("\t")
+            if len(parts) != 3:
+                continue
+            adds, dels, path = parts
+            if adds == "-" or (adds == "0" and dels == "0"):
+                continue                  # binary, or a mode-only touch
+            if _is_source_path(_norm_rel_path(path)):
+                return True
+        return False
 
     out: list[Violation] = []
     gaps = _closed_row_code_not_shipped(
-        added, dirty, removed_rows=removed, staged=staged_files, sha_touches=_sha_touched)
-    for rc_id, files in gaps:
-        if _UNNAMED_FIX in files:
-            out.append(Violation(
-                REPO / log_rel, 0,
-                f"{rc_id} is being CLOSED with a FIXED claim that names no source file a "
-                f"machine can check, so nothing about the repair is verifiable (RC-140, the "
-                f"prose escape v31 measured). Name the files, or state the closure changes no "
-                f"code (\"no code change\" / \"documentation only\" / \"disposition only\")."))
-        files = [f for f in files if f != _UNNAMED_FIX]
-        still_dirty = sorted(f for f in files if f in dirty)
-        absent = sorted(f for f in files if f not in dirty)
-        if still_dirty:
-            out.append(Violation(
-                REPO / log_rel, 0,
-                f"{rc_id} is being committed as CLOSED but the code it names as FIXED is still "
-                f"dirty in the working tree: {', '.join(still_dirty)}. Stage the fix with its "
-                f"row, or the ledger asserts a repair that HEAD does not contain (RC-137: "
-                f"RC-134 shipped CLOSED while HEAD still had the defect and only the running "
-                f"process looked correct)."))
-        if absent:
-            out.append(Violation(
-                REPO / log_rel, 0,
-                f"{rc_id} is being CLOSED naming FIXED files this commit does not carry and no "
-                f"cited commit touched: {', '.join(absent)}. A clean worktree is not evidence — "
-                f"it looks identical whether the fix landed or was never written (RC-139, the "
-                f"escape v30 measured in RC-137's first cut). Stage the fix, or cite the SHA "
-                f"that carried it."))
+        added, removed_rows=removed, staged=staged_files, sha_ships_code=_sha_ships_code)
+    for rc_id, _reason in gaps:
+        out.append(Violation(
+            REPO / log_rel, 0,
+            f"{rc_id} is being CLOSED but this change ships no code and cites no commit that "
+            f"did. A clean worktree is not evidence — it reads identically whether the fix "
+            f"landed or was never written (RC-137: RC-134 shipped CLOSED while HEAD still had "
+            f"the defect, and only the running process looked correct). Stage the fix with its "
+            f"row, cite the SHA that carried it, or say the closure changes no code (\"no code "
+            f"change\" / \"documentation only\" / \"disposition only\")."))
     return out
 
 

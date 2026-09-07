@@ -36,7 +36,9 @@ def is_residual_language_path(rel: str) -> bool:
     gated surface — policing every report and agent-scratch markdown for Done-framing
     was 2026-07-30 program-era scope. The law still binds where the claims land:
     charter files, cursor rules, the ledger, and explicit handoff/prompt files."""
-    r = rel.replace("\\", "/").lstrip("./")
+    from tools.pretooluse_guard import normalize_repo_relative  # RC-527: ONE spelling
+
+    r = normalize_repo_relative(rel)
     if r in ("AGENTS.md", "CLAUDE.md", "ACTIVE_PROGRAM.md"):
         return True
     if r.startswith(".cursor/rules/"):

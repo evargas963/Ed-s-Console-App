@@ -58,7 +58,13 @@ def _staged_text() -> str:
 
 
 def _norm_path(path: str) -> str:
-    return path.replace("\\", "/").lstrip("./")
+    """The ONE repo-relative spelling (RC-527). `lstrip("./")` used to live here and ate the
+    leading dot of `.github/...`, so a dot-prefixed skip entry could never match."""
+    if str(REPO) not in sys.path:
+        sys.path.insert(0, str(REPO))
+    from tools.pretooluse_guard import normalize_repo_relative
+
+    return normalize_repo_relative(path)
 
 
 def find_credential_leaks(diff_text: str | None = None) -> list[str]:

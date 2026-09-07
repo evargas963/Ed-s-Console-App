@@ -11,11 +11,13 @@ and PR; defects get rows by doctrine; the Stop seam holds an unfinished row and 
 requires cited evidence.
 
 What remains is `classify_path` — consumed by process_lock_guard (production-checkout rails)
-— and `decide`, kept importable for the path-facts tests; it returns 0.
+— `normalize_repo_relative`, the ONE spelling of a repo-relative path (RC-527), and `decide`,
+kept importable for the path-facts tests; it returns 0.
 """
 from __future__ import annotations
 
 import json
+import posixpath
 import subprocess
 import sys
 from pathlib import Path
@@ -105,6 +107,34 @@ def classify_path(p: str, repo: str | Path | None = None) -> PathFacts:
         production=rel.endswith(PRODUCTION_SUFFIXES) and not rel.startswith(NOT_PRODUCT_PREFIXES),
         rc66_exempt=rel.startswith(ALWAYS_ALLOWED_PREFIXES),
     )
+
+
+def normalize_repo_relative(p: str) -> str:
+    """THE spelling of a repo-relative path (FC-13 / RC-527, ported from #221's RC-508).
+
+    Forward slashes, dot-segments and duplicate separators collapsed, no leading `./`. A
+    leading dot that is part of a NAME — `.github`, `.claude`, `.cursor` — is preserved,
+    because that is the whole point.
+
+    WHY THIS EXISTS. Call sites hand-rolled this, and the idiom they copied was
+    `str.lstrip("./")`, which strips CHARACTERS rather than a prefix: it ate the leading dot of
+    every dot-prefixed path, so `.github/workflows/hardening.yml` was keyed as
+    `github/workflows/hardening.yml` in the credential firewall's skip set and a closure that
+    shipped a workflow fix was refused as not shipping it (#221's RC-506/RC-507). The
+    repository already declares a path AUTHORITY here — `classify_path` — but it answers the
+    GOVERNANCE question (ours? product? compliance lane?) and offered no primitive for the
+    string, so every caller needing the string built one. This is that primitive; it lives
+    beside `classify_path` because it is the same semantic domain, and callers import it
+    lazily so a leaf lock consumes it without a cycle.
+
+    Foreign and escaping paths are NOT judged here: `../x/y.py` normalises to `../x/y.py` and
+    stays the caller's problem — deciding whether a path is ours is `classify_path`'s job.
+    """
+    s = str(p or "").strip().replace("\\", "/")
+    if not s:
+        return ""
+    out = posixpath.normpath(s)
+    return "" if out == "." else out
 
 
 def is_foreign_path(p: str) -> bool:
