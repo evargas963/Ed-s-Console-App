@@ -45,7 +45,20 @@ SECRET_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
 )
 
 
+class StagedDiffUnreadable(RuntimeError):
+    """`git diff --cached` did not run. An unread diff is not an empty diff."""
+
+
 def _staged_text() -> str:
+    """The staged diff, RAISING when git could not produce it.
+
+    RC-529 (ported from #219's RC-506; re-measured 2026-09-06 on ac3f78fb). This returned
+    `p.stdout or ""` and never read returncode, so any failure of the child — a broken or
+    locked index, a corrupt object, git absent from PATH under a different launch context —
+    yielded an empty diff. An empty diff scans clean, so this BLOCKING pre-commit secrets gate
+    would print its success line and let the commit through without having read a single byte
+    of what was being committed. "I could not look" is not "there is nothing".
+    """
     p = subprocess.run(
         ["git", "diff", "--cached", "--unified=0", "--no-color"],
         cwd=REPO,
@@ -54,6 +67,11 @@ def _staged_text() -> str:
         encoding="utf-8",
         errors="replace",
     )
+    if p.returncode != 0:
+        raise StagedDiffUnreadable(
+            f"git diff --cached exited {p.returncode}: "
+            f"{((p.stderr or '').strip().splitlines() or [''])[0]}"
+        )
     return p.stdout or ""
 
 
@@ -92,7 +110,17 @@ def find_credential_leaks(diff_text: str | None = None) -> list[str]:
 
 def main(argv: list[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
-    hits = find_credential_leaks()
+    try:
+        hits = find_credential_leaks()
+    except StagedDiffUnreadable as e:
+        # RC-529: fail CLOSED. Reporting "clean" for a diff nobody read is the one outcome a
+        # secrets gate must never produce.
+        print("check_credential_leak: FAIL — the staged diff could not be read, so nothing "
+              "was scanned:", file=sys.stderr)
+        print(f"  {e}", file=sys.stderr)
+        print("  This is NOT a clean result. Fix the repository state and commit again.",
+              file=sys.stderr)
+        return 1
     rc = 0
     if hits:
         print("check_credential_leak: FAIL — secrets or private paths in staged diff:")
