@@ -105,25 +105,37 @@ def wire(tree: Path, stop: tuple[str, ...] = ("tools/demo_guard.py",),
     into the real `.claude/settings.json` is wired into every fixture tree unasked, and the
     recurrence controls drive it without anyone editing a second population.
     """
+    def chain_of(command: str) -> str:
+        return next(t.replace("\\", "/") for t in command.split()
+                    if t.replace("\\", "/").startswith("tools/") and t.endswith("_chain.py"))
+
+    # Claude host — nested `hooks` under each matcher entry.
     real = json.loads((REPO / ".claude" / "settings.json").read_text(encoding="utf-8"))
     hooks: dict = {}
     for event, entries in real["hooks"].items():
-        members = stop if event == "Stop" else pre
+        members = stop if event.lower() == "stop" else pre
         derived = []
         for entry in entries:
-            cmds = []
-            for h in entry["hooks"]:
-                chain = next(t.replace("\\", "/") for t in h["command"].split()
-                             if t.replace("\\", "/").startswith("tools/") and t.endswith("_chain.py"))
-                cmds.append({"type": "command", "command": " ".join(["python", chain, *members])})
+            cmds = [{"type": "command", "command": " ".join(["python", chain_of(h["command"]), *members])}
+                    for h in entry["hooks"]]
             item = {"hooks": cmds}
             if "matcher" in entry:
                 item["matcher"] = entry["matcher"]
             derived.append(item)
         hooks[event] = derived
-    settings = {"hooks": hooks}
     (tree / ".claude").mkdir(parents=True, exist_ok=True)
-    (tree / ".claude" / "settings.json").write_text(json.dumps(settings, indent=1), encoding="utf-8")
+    (tree / ".claude" / "settings.json").write_text(json.dumps({"hooks": hooks}, indent=1), encoding="utf-8")
+
+    # Cursor host — `command` directly on each entry; the SAME live file, the same derivation.
+    cursor = json.loads((REPO / ".cursor" / "hooks.json").read_text(encoding="utf-8"))
+    chooks: dict = {}
+    for event, entries in cursor["hooks"].items():
+        members = stop if event.lower() == "stop" else pre
+        chooks[event] = [{"command": " ".join(["python", chain_of(entry["command"]), *members])}
+                         for entry in entries]
+    (tree / ".cursor").mkdir(parents=True, exist_ok=True)
+    (tree / ".cursor" / "hooks.json").write_text(
+        json.dumps({"version": cursor.get("version", 1), "hooks": chooks}, indent=1), encoding="utf-8")
 
 
 def _commit_all(tree: Path, msg: str) -> None:
@@ -1068,6 +1080,40 @@ def test_the_live_wiring_is_the_population_the_controls_drive(trees):
     for entry in live:
         assert (REPO / entry).is_file(), entry
     assert registered_entrypoints(alpha) == live
+
+
+def test_both_live_hosts_register_the_same_chain_entries():
+    """Claude and Cursor are both live in-session hook hosts. The population is their union,
+    and this proves the union is not hiding a host-only entry: on the real tree neither host
+    registers a chain entry the other does not."""
+    from tools.stop_chain import hook_wiring_divergence, registered_entrypoints
+
+    divergence = hook_wiring_divergence(REPO)
+    assert all(entries == () for entries in divergence.values()), divergence
+    assert registered_entrypoints(REPO, host="claude") == registered_entrypoints(REPO, host="cursor")
+
+
+def test_a_cursor_only_entry_that_trusts_argv_cannot_escape_the_enumeration(trees):
+    """MUTATION CONTROL, Cursor host: the leaky entry is wired into `.cursor/hooks.json` ONLY.
+    No list is edited. The union enumeration still carries it, the divergence proof names the
+    host that hides it, and the delegated-roster attack names it as leaking — while the real
+    entries stay clean in the same run."""
+    from tools.stop_chain import hook_wiring_divergence, registered_entrypoints
+
+    _primary, alpha, _beta = trees
+    (alpha / "tools" / "leaky_chain.py").write_text(_LEAKY_ENTRY, encoding="utf-8")
+    wiring = alpha / ".cursor" / "hooks.json"
+    cursor = json.loads(wiring.read_text(encoding="utf-8"))
+    cursor["hooks"]["stop"].append({"command": "python tools/leaky_chain.py tools/demo_guard.py"})
+    wiring.write_text(json.dumps(cursor, indent=1), encoding="utf-8")
+    _commit_all(alpha, "a leaky third entry, wired through Cursor only")
+
+    assert "tools/leaky_chain.py" in registered_entrypoints(alpha)
+    assert "tools/leaky_chain.py" not in registered_entrypoints(alpha, host="claude")
+    assert hook_wiring_divergence(alpha)["cursor"] == ("tools/leaky_chain.py",)
+    violations = _delegated_roster_violations(alpha)
+    assert any(v.startswith("tools/leaky_chain.py:") for v in violations), violations
+    assert not any(v.startswith(("tools/stop_chain.py:", "tools/pretooluse_chain.py:")) for v in violations), violations
 
 
 def test_a_missing_module_is_a_block_that_names_no_recovery_file():
