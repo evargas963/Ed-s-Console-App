@@ -271,7 +271,6 @@ _REWIRED_CONSUMERS = ("docs/host/README.md", "TRAINING_AND_MAINTENANCE.md",
                       ".github/pull_request_template.md", "governance/AGENT_OPERATING_PROCESS_V1.md",
                       ".claude/skills/drift-audit/SKILL.md", "governance/README.md", "timeframe_config.py")
 _ALLOWED_PY_MENTIONS = {  # the only production readers of the two root documents, each for a reason
-    "tools/chart_intent_lock.py",        # prompt-path lock: agent-instruction files are in scope
     "tools/universal_scope_lock.py",     # prompt-path lock: agent-instruction files are in scope
     "tools/check_institutional_correctness.py",   # the RC-520 control itself
     "tools/check_ml_pipeline_efficiency.py",      # cites the runbook that now owns the matrix

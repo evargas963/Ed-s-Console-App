@@ -227,102 +227,9 @@ _RUNNABLE_COMMAND_RE = re.compile(
     r"`[^`]*(?:python|pytest|node |curl |SELECT |sqlite3|tools/|\.py|\.ps1|git )[^`]*`")
 
 
-# Cutover date kept for the surviving no-terminal-null rules below (RC-470: the
-# five-why grammar lock that also used it is retired - governance/retired_checks.md).
-FIVE_WHY_LOCK_CUTOVER = "2026-07-24"
-
-
 # RC-470: _five_why_lock_violations (the recursive five-why grammar validator) is
 # retired with its check - governance/retired_checks.md. The surviving ledger
 # substance lives in _rc_row_violations (why-chain depth + CLOSED evidence) below.
-
-
-# Operator law 2026-07-24 (second clause of the lock): "There is no terminal
-# state of 'no solutions exist' - there is only engineering depth yet to be
-# unlocked." Mechanized as: a wall may be stated only by naming the door.
-_SURRENDER_PHRASES = (
-    "no solution", "unsolvable", "impossible to fix", "cannot be fixed",
-    "dead end", "abandon this", "give up",
-)
-NEXT_DEPTH_CUTOVER = "2026-07-25"
-
-
-def _surrender_violations(lines: list[str], log_path) -> list[Violation]:
-    """RC rows (post 5-why cutover): surrender vocabulary in why/fix cells is
-    legal ONLY alongside a NEXT-DEPTH: declaration naming the unlock."""
-    out: list[Violation] = []
-    for n, line in enumerate(lines, start=1):
-        if not line.startswith("| RC-"):
-            continue
-        cells = [c.strip() for c in line.strip().strip("|").split("|")]
-        if len(cells) < 7 or cells[2] < FIVE_WHY_LOCK_CUTOVER or cells[1] == "ARCHIVED":
-            continue
-        text = f"{cells[5]} {cells[6]}".lower()
-        for phrase in _SURRENDER_PHRASES:
-            if phrase in text and "NEXT-DEPTH:" not in f"{cells[5]} {cells[6]}".upper().replace(" ", ""):
-                out.append(Violation(
-                    log_path, n,
-                    f"{cells[0]}: declares a dead end ({phrase!r}) without NEXT-DEPTH:. "
-                    f"There is no terminal state of 'no solutions exist' - only "
-                    f"engineering depth yet to be unlocked. Name the door: "
-                    f"'NEXT-DEPTH: <the unlock>'."))
-    return out
-
-
-def _terminal_null_violations(report_dicts: list) -> list[Violation]:
-    """Study reports born after the cutover with a zero-survivor / null verdict
-    must carry a non-empty top-level 'next_depth' naming the successor bet."""
-    out: list[Violation] = []
-    for path, rep in report_dicts:
-        if not isinstance(rep, dict):
-            continue
-        generated = str(rep.get("generated_utc", ""))
-        if generated[:10] < NEXT_DEPTH_CUTOVER:
-            continue
-        verdictish = f"{rep.get('verdict', '')} {rep.get('status', '')}".upper()
-        is_null = (
-            rep.get("n_survivors") == 0
-            or "NO_SIGNAL" in verdictish
-            or "NULL" in verdictish
-        )
-        if not is_null:
-            continue
-        nd = rep.get("next_depth")
-        if not (isinstance(nd, str) and nd.strip()):
-            out.append(Violation(
-                path, 0,
-                "null-verdict study report without 'next_depth'. A null is never "
-                "terminal - only engineering depth yet to be unlocked. Add "
-                "next_depth: <the successor bet, data unlock, or generator>."))
-    return out
-
-
-def check_no_terminal_null() -> list[Violation]:
-    """No terminal nulls: every dead end must name the next engineering depth.
-
-    Operator law 2026-07-24. OBSERVED basis: four consecutive clean nulls this
-    week (F2 grid, meta-XGB v1, and the gamma-conditioned study twice over its
-    controls) each pointed at a concrete successor in prose - the reversion
-    generator, the greeks channel, the external-data unlock. Prose is goodwill
-    and goodwill fails; this makes the pointer mechanical. VALIDATED 2026-07-24:
-    the three live null reports carry next_depth; RC rows carry no surrender
-    vocabulary; both rules are cutover-dated so history is not retro-flagged.
-    """
-    out: list[Violation] = []
-    log_path = REPO / "governance" / "root_cause_log.md"
-    if log_path.exists():
-        out.extend(_surrender_violations(
-            log_path.read_text(encoding="utf-8").splitlines(), log_path))
-    reports: list = []
-    rdir = REPO / "reports"
-    if rdir.exists():
-        for p in sorted(rdir.glob("*.json")):
-            try:
-                reports.append((p, json.loads(p.read_text(encoding="utf-8"))))
-            except (ValueError, OSError):
-                continue
-    out.extend(_terminal_null_violations(reports))
-    return out
 
 
 def check_root_cause_log() -> list[Violation]:
@@ -3018,61 +2925,6 @@ def check_universal_ticker_scope() -> list[Violation]:
     return out
 
 
-def check_chart_intent_and_next_rth() -> list[Violation]:
-    """Chart-intent soft-out + next-RTH weekday lies in residual prose (RC-163).
-
-    WHAT WAS OBSERVED (operator 2026-07-30): Cursor repeatedly closed Collect /
-    accrual slices as ACCEPT/Done while Chart render (yellow OV / GEX bars) stayed
-    OUT-OF-SCOPE or soft OBSERVED with no open P0/CHART_CONSUMER residual — banking
-    was treated as product delivery. Separately, forward residuals used a hardcoded
-    weekday-named live-proof label when the next RTH (America/New_York +
-    is_trading_day_et) was Friday 2026-07-31. Both are the goodwill-instead-of-lock
-    class RC-66/RC-160 already named; Chart intent and residual calendars had no
-    detector.
-
-    Rule (practical — binds STAGED ADDED text on residual/handoff/RC/prompt paths,
-    not historical whole-file prose):
-      1. Collect/accrual/bank finish language + Chart OUT-OF-SCOPE / soft OBSERVED
-         without proven consumer / STATUS PARTIAL + Chart residual /
-         `# chart-intent-ok:` → BLOCK.
-      2. Chart mandate framed Done via bank/accrual alone without proven consumer
-         → BLOCK (same escape set).
-      3. Weekday-named live-proof phrases (Monday proof / Monday live proof /
-         MONDAY_PROOF / next Monday) when next RTH weekday ≠ Monday → BLOCK unless
-         `# next-rth-ok:` + computed date.
-
-    HOW THE RULE WAS VALIDATED: negative controls in
-    tests/test_chart_intent_lock_v1.py inject Done+Chart-OOS and Monday-proof-on-
-    Friday blobs and demand a scream; PARTIAL+CHART_CONSUMER, chart-intent-ok,
-    next-rth-ok, and NEXT_RTH_PROOF+Friday stay quiet. Live tree staged scan is
-    empty outside a commit context (no false block).
-    """
-    from tools.chart_intent_lock import (
-        is_residual_language_path,
-        residual_language_violations,
-    )
-
-    out: list[Violation] = []
-    staged = _git_output_lines(["diff", "--cached", "--name-only"])
-    if staged is None:
-        return out
-    for raw in staged:
-        rel = raw.strip().replace("\\", "/")
-        if not rel or not is_residual_language_path(rel):
-            continue
-        path = REPO / rel
-        whole = _read_or_empty(path)
-        diff = _git_output_lines(["diff", "--cached", "-U0", "--", rel]) or []
-        added = "\n".join(
-            ln[1:] for ln in diff
-            if ln.startswith("+") and not ln.startswith("+++")
-        )
-        text = added if added.strip() else whole
-        for reason in residual_language_violations(text):
-            out.append(Violation(path, 0, reason))
-    return out
-
-
 # (name, check, enforced). ENFORCED checks must be zero — they block pre-commit.
 # ADVISORY checks are visible debt being driven to zero, then flipped to enforced
 # (the ratchet: new code is held to them; existing debt is shown, never hidden).
@@ -3138,90 +2990,6 @@ def check_collect_window_single_law() -> list[Violation]:
     return out
 
 
-def check_ui_mockup_approval() -> list[Violation]:
-    """Mockup-before-code law on gated UI surfaces (RC-186, operator non-negotiable 2026-08-02).
-
-    WHAT WAS OBSERVED (RC-186): the operator ordered the Chart-tab redesign to render mockups
-    for approval BEFORE any code lands. VALIDATED: negative controls in
-    tests/test_ui_mockup_lock_v1.py drive the REAL mockup_approval_violation on pending /
-    approved / escape / unlisted registry states.
-
-    SIMPLICITY REHAB NOTE (2026-08-24): the audited cut list proposes retiring this gate
-    (the registry gates a completed 2026-08-02 project; PR review covers static/ surfaces).
-    Execution was classifier-denied this session — QUEUED FOR OPERATOR.
-    """
-    from tools.ui_mockup_lock import REGISTRY_REL, mockup_approval_violation
-
-    out: list[Violation] = []
-    reg = REPO / REGISTRY_REL
-    try:
-        reg_ok = isinstance(json.loads(_read_or_empty(reg) or "null"), dict)
-    except (ValueError, json.JSONDecodeError):
-        reg_ok = False
-    if not reg_ok:
-        out.append(Violation(
-            reg, 0,
-            "mockup-approval registry missing or unparseable — in this state the RC-186 law "
-            "gates NOTHING (absence reads as no-surface-registered). Restore the registry."))
-    # BEDROCK 2026-09-06: the front-end clause (pretooluse_guard must reference ui_mockup_lock)
-    # is gone — that guard blocks nothing any more by design, and this check is declared
-    # retired in governance/retired_checks.md (step 1); it leaves the roster in the step-2 delta.
-    staged = _git_output_lines(["diff", "--cached", "--name-only"])
-    if staged is None:
-        return out
-    for raw in staged:
-        rel = raw.strip().replace("\\", "/")
-        if not rel:
-            continue
-        diff = _git_output_lines(["diff", "--cached", "-U0", "--", rel]) or []
-        added = "\n".join(
-            ln[1:] for ln in diff
-            if ln.startswith("+") and not ln.startswith("+++")
-        )
-        if rel == REGISTRY_REL \
-                and re.search(r'"status"\s*:\s*"approved"', added) \
-                and '"operator_quote"' not in added:
-            out.append(Violation(REPO / rel, 0,
-                                 "registry flip to approved WITHOUT operator_quote in the "
-                                 "staged text — approval is the operator's action, and a bare "
-                                 "self-approve flip may not reach a commit (RC-189 GUN 1)."))
-        reason = mockup_approval_violation(rel, added)
-        if reason:
-            out.append(Violation(REPO / rel, 0, reason))
-        out.extend(ship_confirmation_violations(rel, staged))
-    return out
-
-
-def ship_confirmation_violations(rel: str, staged_names: list) -> list[Violation]:
-    """RC-194 (operator non-negotiable): confirm with actual code before ship.
-
-    OBSERVED (RC-194): the v6 Chart build shipped verified by structure and tests only; the
-    operator saw the first rendered pixel and found collisions and missing agreed features.
-    Rule: a staged change to an approved registry surface requires a co-staged
-    reports/ship_confirmation_*.md naming the surface plus the RENDERED-FRAME and
-    FEATURE-BY-FEATURE literals. VALIDATED: negative-control test drives this callee with and
-    without the co-staged confirmation.
-    """
-    from tools.ui_mockup_lock import mockup_gated_entry
-
-    rel = rel.replace("\\", "/")
-    entry = mockup_gated_entry(rel)
-    if entry is None or not entry.get("approved_variant"):
-        return []
-    names = {str(s).strip().replace("\\", "/") for s in (staged_names or [])}
-    for cand in names:
-        if cand.startswith("reports/ship_confirmation_") and cand.endswith(".md"):
-            body = _read_or_empty(REPO / cand)
-            if rel in body and "RENDERED-FRAME" in body and "FEATURE-BY-FEATURE" in body:
-                return []
-    return [Violation(
-        REPO / rel, 0,
-        f"{rel} is an APPROVED design surface and its change ships with NO co-staged "
-        f"reports/ship_confirmation_*.md carrying the surface name + RENDERED-FRAME + "
-        f"FEATURE-BY-FEATURE evidence. Operator law (RC-194): confirm the approved spec "
-        f"against actual code and an actual rendered frame BEFORE the ship claim.")]
-
-
 #: RC-205 production-surface geometry no longer MIRRORS tools/pretooluse_guard.py — FC-13
 #: replaced the mirror with the thing itself. `classify_path` is the single authority for
 #: "is this path ours, and is it a product surface"; a mirrored copy is a second producer
@@ -3233,42 +3001,6 @@ def ship_confirmation_violations(rel: str, staged_names: list) -> list[Violation
 # caught by the delta-gate roster comparison + declared-retirement manifest; hook-wiring
 # changes are reviewed by the operator at merge (RC-475 — the CODEOWNERS equivalence the
 # retirement rows cited was superseded when the authority model was torn down).
-
-
-def check_find_prove_significance_substance() -> list[Violation]:
-    """Staged Find&Prove reports: significance/Sharpe/alpha needs n_trials + method or [UNVERIFIED].
-
-    WHAT WAS OBSERVED (RC-210): Find&Prove substance scored ~5/10 — experiment reports could claim
-    significance/Sharpe/alpha with no trial ledger or multiple-testing correction, the Harvey–Liu–Zhu
-    (2016) and Bailey–López de Prado DSR (2014) failure class.
-
-    Rule: staged reports/** or governance/** experiment .md/.json with significance/Sharpe/alpha
-    language must carry n_trials + multiple_testing_method (bonferroni|bh|dsr|hlz) or [UNVERIFIED].
-
-    HOW VALIDATED: tests/test_find_prove_locks_v1.py injects bad/good report text -> BLOCK/clear.
-    """
-    staged = _git_output_lines(["diff", "--cached", "--name-only"])
-    if staged is None:
-        return []
-    try:
-        from tools.find_prove_locks import significance_substance_violations
-    except ImportError:
-        from find_prove_locks import significance_substance_violations  # type: ignore
-    out: list[Violation] = []
-    for rel in staged:
-        rel = rel.strip().replace("\\", "/")
-        if not rel.endswith((".md", ".json")):
-            continue
-        if not rel.startswith(("reports/", "governance/")):
-            continue
-        path = REPO / rel
-        try:
-            text = path.read_text(encoding="utf-8", errors="ignore")
-        except OSError:
-            continue
-        for msg in significance_substance_violations(text, rel=rel):
-            out.append(Violation(path, 0, msg))
-    return out
 
 
 def check_admission_evidence_resolves() -> list[Violation]:
@@ -3461,7 +3193,12 @@ def domain_faucet_violations(rel: str, added: str, registry_text: str,
         return [f"{rel}: level-faucet registry unparseable — the domain lock gates NOTHING "
                 f"in this state; restore governance/level_faucets.json"]
     if rel.endswith(".py"):
-        for m in re.finditer(r'@app\.(?:get|post)\(\s*"(/api/[^"]+)"', added):
+        # Clause A binds PRODUCERS. A test module cannot serve a route; the literal it
+        # carries is the negative-control fixture that proves this clause fires (measured
+        # 2026-09-06: moving that control between test files read as a "new producer").
+        route_sites = re.finditer(r'@app\.(?:get|post)\(\s*"(/api/[^"]+)"', added) \
+            if not rel.replace("\\", "/").startswith("tests/") else iter(())
+        for m in route_sites:
             path = m.group(1)
             if any(v in path.lower() for v in _LEVEL_DOMAIN_VOCAB) and path not in producers:
                 if '"operator_quote"' not in registry_staged_added:
@@ -3680,6 +3417,66 @@ def check_authority_surfaces_have_one_owner(root: Path | None = None) -> list[Vi
     return out
 
 
+def check_test_hygiene() -> list[Violation]:
+    """ONE registered test-hygiene lint (bedrock PR B, 2026-09-06; declared step 1 in
+    governance/retired_checks.md).
+
+    Eight structure lints over tests/ — no synthetic domain fixtures, no swallowed failures,
+    no duplicate bodies, no independent repo scans, no constant-true assertions, no
+    tautological assertions, no test without an assert, claims are executed — shared one
+    responsibility (a test that cannot fail, or fails for the wrong reason) under eight
+    roster names. Every predicate runs here unchanged and keeps its own docstring and
+    negative controls; the roster carries one name for one responsibility.
+    """
+    out: list[Violation] = []
+    for predicate in (
+        check_no_synthetic_domain_fixtures_in_tests,
+        check_no_swallowed_test_failures,
+        check_no_duplicate_tests,
+        check_no_new_independent_repo_scan_in_tests,
+        check_no_constant_true_or_assertions,
+        check_no_tautological_assertions,
+        check_tests_missing_explicit_assert,
+        check_test_claims_are_executed,
+    ):
+        out.extend(predicate())
+    return out
+
+
+def check_level_producers_have_consumers() -> list[Violation]:
+    """REPORTED: every registered level-domain producer route has a client consumer.
+
+    RC-163's structural half. The retired chart_intent_and_next_rth check matched "Done" and
+    "OUT-OF-SCOPE" in residual prose to catch a computed value shipped with no consumer; the
+    invariant underneath is measurable without prose: a route registered as a producer in
+    governance/level_faucets.json that no static asset fetches is a value nobody sees.
+    MEASURED 2026-09-06 on this tree: four registered routes have no static reference, so this
+    reports rather than enforces; it binds when the operator wires or retires them.
+    """
+    reg = REPO / "governance" / "level_faucets.json"
+    try:
+        producers = json.loads(reg.read_text(encoding="utf-8")).get("level_domain_producers") or {}
+    except (OSError, ValueError):
+        return [Violation(reg, 0, "governance/level_faucets.json unreadable — the producer register "
+                                  "cannot be measured")]
+    static_dir = REPO / "static"
+    corpus = "".join(
+        p.read_text(encoding="utf-8", errors="replace")
+        for p in sorted(static_dir.glob("*.html")) + sorted(static_dir.glob("*.js"))
+        if p.is_file())
+    out: list[Violation] = []
+    for route in sorted(producers):
+        if not isinstance(route, str) or not route.startswith("/api/"):
+            continue
+        if route not in corpus:
+            out.append(Violation(
+                reg, 0,
+                f"{route} is a registered level-domain producer with NO client consumer in "
+                f"static/ — a computed value nobody sees (RC-163 class). Wire a consumer or "
+                f"retire the route; a registered producer is not a delivered one."))
+    return out
+
+
 CHECKS = [
     # RC-520 (2026-09-05): one owner per responsibility, kept by refusing the shapes a
     # resurrected duplicate must take (retired surface present, second .cursor rule, ledger
@@ -3687,27 +3484,13 @@ CHECKS = [
     # heading in ACTIVE_PROGRAM.md). ENFORCED at 0 on the tree that removed them.
     ("authority_surfaces_have_one_owner", check_authority_surfaces_have_one_owner, True),
     # ENFORCED (must be zero — block pre-commit):
-    ("no_synthetic_domain_fixtures_in_tests", check_no_synthetic_domain_fixtures_in_tests, True),
-    ("no_swallowed_test_failures", check_no_swallowed_test_failures, True),  # printed failure must fail the run
-    # TEST_SYSTEM_REHAB_V2 (2026-08-31) recurrence lock 1/2: an exact-duplicate test
-    # body must not silently reappear. 0 on this tree (the 2 real groups this rehab
-    # found are marked '# institutional-duplicate-ok:' — genuinely distinct production
-    # modules, kept deliberately).
-    ("no_duplicate_tests", check_no_duplicate_tests, True),
-    # TEST_SYSTEM_REHAB_V2 recurrence lock 2/2: ENFORCED (2026-08-31, promoted from
-    # ADVISORY same day). All 18 originally-identified independent repo scans plus 7
-    # more the strengthened per-function/per-observation detector then found (the
-    # file-wide "repo_index appears somewhere" bypass had been hiding them) are
-    # migrated onto tests/conftest.py's shared `repo_index` — live count is 0.
-    ("no_new_independent_repo_scan_in_tests", check_no_new_independent_repo_scan_in_tests, True),
-    # TEST_SYSTEM_REHAB_V2 final remediation, recurrence lock 3: `assert X or True` /
-    # `assert True or X` can never fail (literal True disjunct) -- the 4 real
-    # instances the Cursor audit found were rewritten to assert the real condition;
-    # ENFORCED at 0 so the class cannot silently reappear. Narrowly scoped to this
-    # one mechanical shape only (see _is_constant_true_or_assertion) -- does not
-    # attempt to catch the broader, context-dependent `assert X or Y` weakness,
-    # which needs human judgment per instance.
-    ("no_constant_true_or_assertions", check_no_constant_true_or_assertions, True),
+    # BEDROCK PR B (2026-09-06, step 2 of the two-step contract; declared 2026-09-06 in
+    # governance/retired_checks.md): the eight test-hygiene lints — synthetic domain
+    # fixtures, swallowed failures, duplicate bodies, independent repo scans, constant-true
+    # assertions, tautological assertions, missing asserts, claims-not-executed — are ONE
+    # registered check. Every predicate runs unchanged inside check_test_hygiene; each keeps
+    # its own history in its docstring. One roster name for one responsibility.
+    ("test_hygiene", check_test_hygiene, True),
     # SIMPLICITY REHAB T2-2 (2026-08-24, governance/retired_checks.md): root_cause_log is
     # the ONE enforced ledger validator. The nine other ledger registrations
     # (rc_citations_resolve, rc_status_vocabulary, rc_log_rows_keep_schema,
@@ -3729,8 +3512,9 @@ CHECKS = [
     # check_measured_claims_cite_evidence, and their check_* wrappers stay importable.
     ("measured_claims_cite_evidence", check_measured_claims_cite_evidence, True),  # RC-56: a committed finding carries its reproduce command
     ("universal_ticker_scope", check_universal_ticker_scope, True),  # RC-160: no SPY-only work framed as complete
-    ("chart_intent_and_next_rth", check_chart_intent_and_next_rth, True),  # RC-163: Chart Done ≠ bank; no weekday-proof lies
-    ("ui_mockup_approval", check_ui_mockup_approval, True),  # RC-186: no UI redesign code before an approved mockup (retirement proposed — see cut list; classifier-denied this session, queued for operator)
+    # chart_intent_and_next_rth and ui_mockup_approval REMOVED 2026-09-06 (bedrock PR B, step 2;
+    # declared in governance/retired_checks.md): prose matchers over residual text and a second
+    # approval authority. RC-163's structural half is level_producers_have_consumers below.
     ("domain_faucet_registry", check_domain_faucet_registry, True),  # RC-212: one faucet per DOMAIN; greeks only at bs_*
     ("phase2a_single_level_computation", check_phase2a_single_level_computation, True),  # Phase 2A: one computation + one materialization per (ticker, level_id, scope, generation)
     # RC-470: rc_document_without_resolve RETIRED (governance/retired_checks.md) -
@@ -3747,7 +3531,8 @@ CHECKS = [
     # (governance/retired_checks.md) - roster demotions are caught by the delta-gate
     # roster comparison + declared-retirement manifest; hook-wiring changes are
     # operator-reviewed at merge (RC-475); honesty_guard.py itself stays on Stop.
-    ("find_prove_significance_substance", check_find_prove_significance_substance, True),  # RC-210: HLZ/DSR n_trials
+    # find_prove_significance_substance REMOVED 2026-09-06 (bedrock PR B; declared): matched
+    # significance vocabulary in staged prose. The structural Find&Prove checks stay below.
     ("admission_evidence_resolves", check_admission_evidence_resolves, True),  # RC-210: SR 11-7 evidence paths
     ("purged_cv_research", check_purged_cv_research, True),  # RC-210: AFML no plain KFold
     ("prereg_before_confirmatory", check_prereg_before_confirmatory, True),  # RC-210: Arnott/COS prereg
@@ -3759,10 +3544,11 @@ CHECKS = [
     ("collect_window_single_law", check_collect_window_single_law, True),  # RC-183: 08:15-15:15 CT at the ONE write seam
     ("price_bars_readers_name_their_session", check_price_bars_readers_name_their_session, True),  # RC-61: the log is a control, not an archive
     ("domain_constants_are_derived", check_domain_constants_are_derived, True),  # RC-62: a market threshold states where its value came from
-    ("no_terminal_null", check_no_terminal_null, True),                # every dead end names the next depth
+    # no_terminal_null REMOVED 2026-09-06 (bedrock PR B; declared): surrender vocabulary in
+    # ledger prose and next_depth tokens in null reports — a prose matcher; the law stays.
     # no_governance_duplication + checks_are_justified RETIRED 2026-08-24 (SIMPLICITY
     # REHAB, governance/retired_checks.md)
-    ("no_tautological_assertions", check_no_tautological_assertions, True),  # catch, not pass
+    # no_tautological_assertions: inside test_hygiene (bedrock PR B).
     # open_item_cap REMOVED 2026-09-06 (step 2 of the two-step contract; declared retired on
     # main 2026-09-02 in governance/retired_checks.md as a PROVEN DUPLICATE of root_cause_log's
     # overdue clause and the register validator — one overdue item fails one check, not two).
@@ -3803,7 +3589,7 @@ CHECKS = [
     # RC-67: PROMOTED to directly ENFORCED for the same reason as no_fake_defaults — a test that
     # cannot fail on regression is not a test, and this was only blocking via the retired counter.
     # Driven to 0 by RC-46, so it binds on the code rather than on a delta.
-    ("tests_missing_explicit_assert", check_tests_missing_explicit_assert, True),
+    # tests_missing_explicit_assert: inside test_hygiene (bedrock PR B).
     # orphan_dict_keys stays REPORTED (not enforced): a silent-None lead is a real product
     # class (RC-15/RC-20) with inherited volume; it is a report the operator reads, never a
     # ratchet. function_complexity / function_length / file_length / ruff_quality / mypy_types
@@ -3812,6 +3598,11 @@ CHECKS = [
     # the doctrine itself called "not a work order"; shape/style counting was a ratchet
     # (RC-280), and ruff runs in CI.
     ("orphan_dict_keys", check_no_orphan_dict_keys, False),   # silent-None leads (RC-15/RC-20)
+    # REPORTED (bedrock PR B, 2026-09-06): RC-163's structural invariant — every registered
+    # level-domain producer has a client consumer — measured over governance/level_faucets.json
+    # and static/. Reported, not enforced, because the tree carries orphans today; it binds
+    # when the operator wires or retires them (the repo's promote-at-zero pattern).
+    ("level_producers_have_consumers", check_level_producers_have_consumers, False),
     # RC-67: PROMOTED to directly ENFORCED. This was only ever blocking as a side effect of the
     # count-ratchet, so retiring the ratchet would have left fabricated neutrals unguarded — and a
     # fabricated 0.5 probability entering the decision path is the exact opposite of the quality
@@ -3825,7 +3616,7 @@ CHECKS = [
     # a claim is true; it refuses a file that could never find out. ENFORCED from the start
     # because it was driven to zero before wiring (one real offender repaired, zero
     # exemptions used), so it binds on merit rather than on a baseline.
-    ("test_claims_are_executed", check_test_claims_are_executed, True),
+    # test_claims_are_executed: inside test_hygiene (bedrock PR B).
     # RC-301: the seventh occurrence of absence-coerced-to-a-value, attacked as a CLASS.
     # The existing gates match expressions; this one matches the RETURN TYPE, which is
     # where the honest option gets foreclosed before the literal is ever written.

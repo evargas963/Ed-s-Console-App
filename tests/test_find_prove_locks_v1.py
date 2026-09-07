@@ -7,19 +7,6 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 
 
-def test_significance_substance_blocks_bare_claim():
-    from tools.find_prove_locks import significance_substance_violations
-
-    bad = "The strategy Sharpe is 1.4 and statistically significant at p<0.05."
-    assert significance_substance_violations(bad)
-    good = (
-        "Sharpe 1.4; n_trials: 12; multiple_testing_method: dsr; adjusted_p: 0.02."
-    )
-    assert significance_substance_violations(good) == []
-    tagged = "Sharpe might work [UNVERIFIED] pending trial ledger."
-    assert significance_substance_violations(tagged) == []
-
-
 def test_admission_evidence_resolves_blocks_missing_paths():
     from tools.find_prove_locks import admission_evidence_resolves_violations
 
@@ -112,38 +99,6 @@ def test_claude_cursor_guard_parity_is_retired():
     assert "claude_cursor_guard_parity" not in {name for name, _fn, _enf in cic.CHECKS}
     manifest = (REPO / "governance" / "retired_checks.md").read_text(encoding="utf-8")
     assert "claude_cursor_guard_parity" in manifest
-
-
-def test_find_prove_significance_substance_screams_on_staged_bad_report(
-    tmp_path, monkeypatch,
-):
-    """Full commit path: staged report with bare significance claim must BLOCK."""
-    import tools.check_institutional_correctness as C
-
-    reports = tmp_path / "reports"
-    reports.mkdir()
-    target = reports / "zz_fp_significance_bad.md"
-    target.write_text(
-        "The strategy Sharpe is 1.4 and statistically significant at p<0.05.\n",
-        encoding="utf-8",
-    )
-    monkeypatch.setattr(C, "REPO", tmp_path)
-
-    def fake_git(args: list[str]) -> list[str] | None:
-        if args[:3] == ["diff", "--cached", "--name-only"]:
-            return ["reports/zz_fp_significance_bad.md"]
-        return []
-
-    monkeypatch.setattr(C, "_git_output_lines", fake_git)
-    bad = C.check_find_prove_significance_substance()
-    assert bad, "staged significance claim without trial ledger was not blocked"
-    assert any("n_trials" in v.msg for v in bad)
-
-    target.write_text(
-        "Sharpe 1.4; n_trials: 12; multiple_testing_method: dsr; adjusted_p: 0.02.\n",
-        encoding="utf-8",
-    )
-    assert C.check_find_prove_significance_substance() == []
 
 
 def test_collect_datasheet_blocks_missing():
