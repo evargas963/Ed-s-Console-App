@@ -946,6 +946,39 @@ def test_a_delegated_run_in_a_tree_without_wiring_refuses(trees):
     assert "no readable hook wiring" in result.stderr and "RC-531" in result.stderr, result.stderr
 
 
+def _run_pretooluse_entry(tree: Path, payload: dict, roster: tuple[str, ...]) -> subprocess.CompletedProcess:
+    """The OTHER entrypoint, driven as a delegate: tools/pretooluse_chain.py with an explicit
+    argv roster and the delegated flag set. The fixture trees install only the Stop entry, so
+    the real PreToolUse entry is copied in beside it."""
+    (tree / "tools" / "pretooluse_chain.py").write_bytes(
+        (REPO / "tools" / "pretooluse_chain.py").read_bytes())
+    env = dict(os.environ)
+    env.update(_DELEGATED)
+    return subprocess.run(
+        [sys.executable, str(tree / "tools" / "pretooluse_chain.py"), *roster],
+        cwd=str(tree), input=json.dumps(payload), text=True, capture_output=True,
+        env=env, timeout=600,
+    )
+
+
+def test_the_rule_binds_in_the_shared_executor_not_one_entrypoint(trees):
+    """RC-531 completion (closure reconciliation of #226): the rule first lived in
+    stop_chain.main() only, so pretooluse_chain.py — which enters run_chain directly — still
+    trusted argv on a delegated run. The property held only because the one launcher happens
+    to delegate through stop_chain.py: the sender-side shape RC-531 itself corrected. Driving
+    the other entrypoint as a delegate must give the same answers."""
+    _primary, alpha, _beta = trees
+    stale = _run_pretooluse_entry(alpha, edit(alpha / "app.py"),
+                                  ("tools/demo_guard.py", "tools/retired_guard.py"))
+    assert stale.returncode == 0 and "crashed" not in stale.stderr, stale.stderr
+
+    set_guard(alpha, BLOCKING_GUARD, commit=False)
+    (alpha / "tools" / "quiet_guard.py").write_text(PASSING_GUARD, encoding="utf-8")
+    _commit_all(alpha, "a quiet guard exists but is not wired")
+    dropped = _run_pretooluse_entry(alpha, edit(alpha / "app.py"), ("tools/quiet_guard.py",))
+    assert dropped.returncode != 0 and "BLOCKED BY alpha" in dropped.stderr, dropped.stderr
+
+
 def test_a_missing_module_is_a_block_that_names_no_recovery_file():
     """RC-522 second finding: `_crash_site` resolved `<frozen importlib._bootstrap>` under the
     cwd and reported it as the crash site. A site must exist on disk; a missing module has no

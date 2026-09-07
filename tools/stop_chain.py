@@ -738,7 +738,24 @@ def run_chain(raw_payload: str, members: tuple[str, ...] = STOP_CHAIN) -> int:
     authority, the roster also runs here and every BLOCK says so. No path skips the roster,
     no verdict is softened on the way back, and authority that cannot be established REFUSES
     the event instead of picking a convenient tree.
+
+    RC-531: a DELEGATED run is judged under THIS tree's own wiring, whatever the launcher
+    passed on argv — decided here, in the one executor both entrypoints (stop_chain.py and
+    pretooluse_chain.py) share, so no entrypoint can trust argv by omission. RC-522 taught
+    the new launcher to forward the delegate's roster; a launcher at an older commit still
+    forwards its own, and the receiving seam is the only party that can read this tree's
+    wiring with certainty. No wiring -> refuse; argv is never the substitute.
     """
+    import os
+
+    if os.environ.get(DELEGATED_ENV) == "1":
+        own, roster_failure = tree_roster(REPO, raw_payload)
+        if roster_failure:
+            sys.stderr.write(
+                f"GOVERNANCE AUTHORITY: delegated run in {REPO} REFUSED — {roster_failure}; the "
+                f"launch tree's argv roster is not a substitute for this tree's wiring (RC-531).\n")
+            return 2
+        members = own
     delegate_to, run_here, source, notes, failure = resolve_authority(raw_payload, members)
     worst = 0
     if failure:
@@ -800,24 +817,8 @@ def _argv_members(argv: list[str]) -> tuple[str, ...]:
 
 
 def main() -> int:
-    import os
-
-    raw_payload = sys.stdin.read()
     members = _argv_members(sys.argv[1:]) or STOP_CHAIN
-    if os.environ.get(DELEGATED_ENV) == "1":
-        # RC-531: a delegated run is judged under THIS tree's own wiring, whatever the launcher
-        # passed on argv. RC-522 taught the new launcher to forward the delegate's roster; a
-        # launcher at an older commit (the production checkout until that change lands there)
-        # still forwards its own, and the receiving seam is the only party that can read this
-        # tree's wiring with certainty. No wiring -> refuse; argv is never the substitute.
-        own, failure = tree_roster(REPO, raw_payload)
-        if failure:
-            sys.stderr.write(
-                f"GOVERNANCE AUTHORITY: delegated run in {REPO} REFUSED — {failure}; the "
-                f"launch tree's argv roster is not a substitute for this tree's wiring (RC-531).\n")
-            return 2
-        members = own
-    return run_chain(raw_payload, members)
+    return run_chain(sys.stdin.read(), members)   # a delegated run re-reads its own roster inside
 
 
 if __name__ == "__main__":
