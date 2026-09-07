@@ -310,3 +310,16 @@ def test_adapters_point_at_the_owners_and_carry_no_law():
     process = (ROOT / "governance" / "AGENT_OPERATING_PROCESS_V1.md").read_text(encoding="utf-8")
     assert "## 8. SIGN-OFF CHECKLIST" in process
     assert "launch / pre-push / CI). This file" not in process
+
+
+def test_no_code_owner_file_exists_rc530():
+    """RC-530: AGENTS.md rules out per-file authority machinery, and the retirement manifest
+    once cited a code-owner review that owned nothing (no CODEOWNERS file was ever tracked,
+    so `require_code_owner_reviews` required a review from nobody). GitHub reads the file from
+    exactly three locations; none may appear."""
+    for rel in ("CODEOWNERS", ".github/CODEOWNERS", "docs/CODEOWNERS"):
+        assert not (ROOT / rel).exists(), f"{rel} exists — per-file authority machinery is back"
+    tracked = subprocess.run(
+        ["git", "ls-files", "CODEOWNERS", ".github/CODEOWNERS", "docs/CODEOWNERS"],
+        cwd=str(ROOT), capture_output=True, text=True, check=False).stdout.split()
+    assert tracked == [], tracked
