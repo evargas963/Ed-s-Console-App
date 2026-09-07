@@ -48,7 +48,7 @@ READER_CENSUS = frozenset({
     "monte_carlo.py",
     "server.py",
     "verify_snapshot_pipeline.py",
-    "governance/mega3_traceable_inventory.py",
+    "governance/provenance_roots.py",  # RC-532: names the MarketState FIELD mc_sigma_value with its category — a mention, not a reader (was mega3_traceable_inventory.py)
     "tools/mc_sigma_normalize_history_v1.py",
     "tests/test_bayesian_fusion_v2.py",
     "tests/test_mc_sigma_normalize_history_v1.py",
