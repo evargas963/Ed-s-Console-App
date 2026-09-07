@@ -98,20 +98,44 @@ def wire(tree: Path, stop: tuple[str, ...] = ("tools/demo_guard.py",),
 
     Real worktrees carry `.claude/settings.json`; a delegate reads its own. The fixture trees
     must carry one too, or they have no canonical roster and cannot be handed authority.
+
+    DERIVED from this repository's real wiring, never listed here (Close contract: the proof
+    population is the seam's own enumeration). The same events, matchers and chain ENTRIES as
+    the live file, with the fixture's roster substituted for the members — so an entry wired
+    into the real `.claude/settings.json` is wired into every fixture tree unasked, and the
+    recurrence controls drive it without anyone editing a second population.
     """
-    def cmd(chain: str, members: tuple[str, ...]) -> str:
-        return " ".join(["python", f"tools/{chain}.py", *members])
-    settings = {"hooks": {
-        "PreToolUse": [
-            {"matcher": "Edit|Write|MultiEdit|NotebookEdit",
-             "hooks": [{"type": "command", "command": cmd("pretooluse_chain", pre)}]},
-            {"matcher": "Bash|PowerShell|Monitor",
-             "hooks": [{"type": "command", "command": cmd("pretooluse_chain", pre)}]},
-        ],
-        "Stop": [{"hooks": [{"type": "command", "command": cmd("stop_chain", stop)}]}],
-    }}
+    def chain_of(command: str) -> str:
+        return next(t.replace("\\", "/") for t in command.split()
+                    if t.replace("\\", "/").startswith("tools/") and t.endswith("_chain.py"))
+
+    # Claude host — nested `hooks` under each matcher entry.
+    real = json.loads((REPO / ".claude" / "settings.json").read_text(encoding="utf-8"))
+    hooks: dict = {}
+    for event, entries in real["hooks"].items():
+        members = stop if event.lower() == "stop" else pre
+        derived = []
+        for entry in entries:
+            cmds = [{"type": "command", "command": " ".join(["python", chain_of(h["command"]), *members])}
+                    for h in entry["hooks"]]
+            item = {"hooks": cmds}
+            if "matcher" in entry:
+                item["matcher"] = entry["matcher"]
+            derived.append(item)
+        hooks[event] = derived
     (tree / ".claude").mkdir(parents=True, exist_ok=True)
-    (tree / ".claude" / "settings.json").write_text(json.dumps(settings, indent=1), encoding="utf-8")
+    (tree / ".claude" / "settings.json").write_text(json.dumps({"hooks": hooks}, indent=1), encoding="utf-8")
+
+    # Cursor host — `command` directly on each entry; the SAME live file, the same derivation.
+    cursor = json.loads((REPO / ".cursor" / "hooks.json").read_text(encoding="utf-8"))
+    chooks: dict = {}
+    for event, entries in cursor["hooks"].items():
+        members = stop if event.lower() == "stop" else pre
+        chooks[event] = [{"command": " ".join(["python", chain_of(entry["command"]), *members])}
+                         for entry in entries]
+    (tree / ".cursor").mkdir(parents=True, exist_ok=True)
+    (tree / ".cursor" / "hooks.json").write_text(
+        json.dumps({"version": cursor.get("version", 1), "hooks": chooks}, indent=1), encoding="utf-8")
 
 
 def _commit_all(tree: Path, msg: str) -> None:
@@ -946,37 +970,150 @@ def test_a_delegated_run_in_a_tree_without_wiring_refuses(trees):
     assert "no readable hook wiring" in result.stderr and "RC-531" in result.stderr, result.stderr
 
 
-def _run_pretooluse_entry(tree: Path, payload: dict, roster: tuple[str, ...]) -> subprocess.CompletedProcess:
-    """The OTHER entrypoint, driven as a delegate: tools/pretooluse_chain.py with an explicit
-    argv roster and the delegated flag set. The fixture trees install only the Stop entry, so
-    the real PreToolUse entry is copied in beside it."""
-    (tree / "tools" / "pretooluse_chain.py").write_bytes(
-        (REPO / "tools" / "pretooluse_chain.py").read_bytes())
+# ── the SEAM, not the incident's path (Close contract, AGENTS.md) ─────────────────────────
+# RC-531's first control drove only the entry the crash came through (stop_chain.py); the
+# rule sat in that entry's main() while pretooluse_chain.py reached the same executor and
+# still trusted argv — and controls, CI and merge all passed. A recurrence control for a
+# hook-seam invariant therefore drives EVERY entry the tree's wiring registers, enumerated by
+# the seam owner (`tools.stop_chain.registered_entrypoints`), never a list kept here.
+
+
+def _run_entry(tree: Path, entry: str, payload: dict, roster: tuple[str, ...]) -> subprocess.CompletedProcess:
+    """Drive one registered entry of `tree` as a DELEGATE with an explicit argv roster. The
+    fixture trees install the Stop chain and its imports; any other real entry the wiring
+    registers is copied in from this repository so the real file is exercised."""
+    target = tree / entry
+    if not target.exists() and (REPO / entry).exists():
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes((REPO / entry).read_bytes())
     env = dict(os.environ)
     env.update(_DELEGATED)
     return subprocess.run(
-        [sys.executable, str(tree / "tools" / "pretooluse_chain.py"), *roster],
+        [sys.executable, str(target), *roster],
         cwd=str(tree), input=json.dumps(payload), text=True, capture_output=True,
         env=env, timeout=600,
     )
 
 
-def test_the_rule_binds_in_the_shared_executor_not_one_entrypoint(trees):
-    """RC-531 completion (closure reconciliation of #226): the rule first lived in
-    stop_chain.main() only, so pretooluse_chain.py — which enters run_chain directly — still
-    trusted argv on a delegated run. The property held only because the one launcher happens
-    to delegate through stop_chain.py: the sender-side shape RC-531 itself corrected. Driving
-    the other entrypoint as a delegate must give the same answers."""
+def _delegated_roster_violations(tree: Path) -> list[str]:
+    """For every entry `tree`'s wiring registers: a stale argv (naming a module the tree
+    neither wires nor has) must not cross into the delegated run. One string per entry that
+    lets it cross."""
+    from tools.stop_chain import registered_entrypoints
+
+    out: list[str] = []
+    for entry in registered_entrypoints(tree):
+        stale = _run_entry(tree, entry, edit(tree / "app.py"),
+                           ("tools/demo_guard.py", "tools/retired_guard.py"))
+        if stale.returncode != 0 or "crashed" in stale.stderr or "retired_guard" in stale.stderr:
+            out.append(f"{entry}: the launcher's argv crossed into the delegated run "
+                       f"(rc={stale.returncode}): {stale.stderr.strip()[-200:]}")
+    return out
+
+
+def test_every_registered_hook_entry_obeys_the_shared_delegated_roster_invariant(trees):
+    """Both halves, through every registered entry: a stale argv cannot crash the delegate, and
+    an argv that omits a wired guard cannot launder the verdict."""
+    from tools.stop_chain import registered_entrypoints
+
     _primary, alpha, _beta = trees
-    stale = _run_pretooluse_entry(alpha, edit(alpha / "app.py"),
-                                  ("tools/demo_guard.py", "tools/retired_guard.py"))
-    assert stale.returncode == 0 and "crashed" not in stale.stderr, stale.stderr
+    entries = registered_entrypoints(alpha)
+    # The population under attack IS the live enumeration — the fixture wiring is derived from
+    # the repository's own file — so nothing here can lag the real seam.
+    assert entries and entries == registered_entrypoints(REPO), (entries, registered_entrypoints(REPO))
+    assert _delegated_roster_violations(alpha) == []
 
     set_guard(alpha, BLOCKING_GUARD, commit=False)
     (alpha / "tools" / "quiet_guard.py").write_text(PASSING_GUARD, encoding="utf-8")
     _commit_all(alpha, "a quiet guard exists but is not wired")
-    dropped = _run_pretooluse_entry(alpha, edit(alpha / "app.py"), ("tools/quiet_guard.py",))
-    assert dropped.returncode != 0 and "BLOCKED BY alpha" in dropped.stderr, dropped.stderr
+    for entry in entries:
+        dropped = _run_entry(alpha, entry, edit(alpha / "app.py"), ("tools/quiet_guard.py",))
+        assert dropped.returncode != 0 and "BLOCKED BY alpha" in dropped.stderr, (entry, dropped.stderr)
+
+
+_LEAKY_ENTRY = '''"""A chain entry that runs whatever argv names — the RC-531 shape, wired as a third entry."""
+import importlib, io, sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+raw = sys.stdin.read()
+worst = 0
+for a in sys.argv[1:]:
+    mod = importlib.import_module("tools." + a.replace("\\\\", "/").removeprefix("tools/").removesuffix(".py"))
+    sys.stdin = io.StringIO(raw)
+    worst = max(worst, int(mod.main() or 0))
+sys.exit(worst)
+'''
+
+
+def test_a_newly_wired_entry_that_trusts_argv_cannot_escape_the_enumeration(trees):
+    """MUTATION CONTROL: wire a third entry that trusts argv (the exact RC-531 shape). Nobody
+    edits any list; the enumeration picks it up from the wiring and the invariant check names
+    it. The two real entries stay clean in the same run, so the control fails for the right
+    reason."""
+    from tools.stop_chain import registered_entrypoints
+
+    _primary, alpha, _beta = trees
+    (alpha / "tools" / "leaky_chain.py").write_text(_LEAKY_ENTRY, encoding="utf-8")
+    wiring = alpha / ".claude" / "settings.json"
+    settings = json.loads(wiring.read_text(encoding="utf-8"))
+    settings["hooks"]["Stop"].append(
+        {"hooks": [{"type": "command", "command": "python tools/leaky_chain.py tools/demo_guard.py"}]})
+    wiring.write_text(json.dumps(settings, indent=1), encoding="utf-8")
+    _commit_all(alpha, "a third entry, wired")
+
+    assert "tools/leaky_chain.py" in registered_entrypoints(alpha)
+    violations = _delegated_roster_violations(alpha)
+    assert any(v.startswith("tools/leaky_chain.py:") for v in violations), violations
+    assert not any(v.startswith(("tools/stop_chain.py:", "tools/pretooluse_chain.py:")) for v in violations), violations
+
+
+def test_the_live_wiring_is_the_population_the_controls_drive(trees):
+    """No expected set is written down anywhere. The live enumeration is non-empty, every entry
+    it names is a real file, and the fixture trees carry exactly that enumeration — so a third
+    entry wired into the real file is driven by the attacks above the moment it exists, and a
+    test could not lag it even by forgetting."""
+    from tools.stop_chain import registered_entrypoints
+
+    _primary, alpha, _beta = trees
+    live = registered_entrypoints(REPO)
+    assert live, "the real wiring registers no chain entry"
+    for entry in live:
+        assert (REPO / entry).is_file(), entry
+    assert registered_entrypoints(alpha) == live
+
+
+def test_both_live_hosts_register_the_same_chain_entries():
+    """Claude and Cursor are both live in-session hook hosts. The population is their union,
+    and this proves the union is not hiding a host-only entry: on the real tree neither host
+    registers a chain entry the other does not."""
+    from tools.stop_chain import hook_wiring_divergence, registered_entrypoints
+
+    divergence = hook_wiring_divergence(REPO)
+    assert all(entries == () for entries in divergence.values()), divergence
+    assert registered_entrypoints(REPO, host="claude") == registered_entrypoints(REPO, host="cursor")
+
+
+def test_a_cursor_only_entry_that_trusts_argv_cannot_escape_the_enumeration(trees):
+    """MUTATION CONTROL, Cursor host: the leaky entry is wired into `.cursor/hooks.json` ONLY.
+    No list is edited. The union enumeration still carries it, the divergence proof names the
+    host that hides it, and the delegated-roster attack names it as leaking — while the real
+    entries stay clean in the same run."""
+    from tools.stop_chain import hook_wiring_divergence, registered_entrypoints
+
+    _primary, alpha, _beta = trees
+    (alpha / "tools" / "leaky_chain.py").write_text(_LEAKY_ENTRY, encoding="utf-8")
+    wiring = alpha / ".cursor" / "hooks.json"
+    cursor = json.loads(wiring.read_text(encoding="utf-8"))
+    cursor["hooks"]["stop"].append({"command": "python tools/leaky_chain.py tools/demo_guard.py"})
+    wiring.write_text(json.dumps(cursor, indent=1), encoding="utf-8")
+    _commit_all(alpha, "a leaky third entry, wired through Cursor only")
+
+    assert "tools/leaky_chain.py" in registered_entrypoints(alpha)
+    assert "tools/leaky_chain.py" not in registered_entrypoints(alpha, host="claude")
+    assert hook_wiring_divergence(alpha)["cursor"] == ("tools/leaky_chain.py",)
+    violations = _delegated_roster_violations(alpha)
+    assert any(v.startswith("tools/leaky_chain.py:") for v in violations), violations
+    assert not any(v.startswith(("tools/stop_chain.py:", "tools/pretooluse_chain.py:")) for v in violations), violations
 
 
 def test_a_missing_module_is_a_block_that_names_no_recovery_file():

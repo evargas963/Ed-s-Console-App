@@ -85,12 +85,13 @@ def repo_worktrees() -> set[Path]:
     return out
 
 
-def _member_files(members: tuple[str, ...]) -> list[str]:
-    """Repo-relative paths of the rostered guards plus the executor that runs them."""
-    out = ["tools/stop_chain.py", "tools/pretooluse_chain.py"]
+def _member_files(root: Path, members: tuple[str, ...]) -> list[str]:
+    """Repo-relative paths of the rostered guards plus every chain entry `root`'s own wiring
+    registers (the one population, `registered_entrypoints`) and this executor itself."""
+    out = {"tools/stop_chain.py", *registered_entrypoints(root)}
     for name in members:
-        out.append(name.replace(".", "/") + ".py")
-    return sorted(set(out))
+        out.add(name.replace(".", "/") + ".py")
+    return sorted(out)
 
 
 def uncommitted_guard_files(root: Path, members: tuple[str, ...]) -> list[str]:
@@ -102,7 +103,7 @@ def uncommitted_guard_files(root: Path, members: tuple[str, ...]) -> list[str]:
     controlled state cannot authorize around a mandatory one). A COMMITTED guard change is
     fine — that is ordinary development, and it answers to required CI at merge.
     """
-    status = _git(root, "status", "--porcelain", "--", *_member_files(members))
+    status = _git(root, "status", "--porcelain", "--", *_member_files(root, members))
     return sorted(line[3:].strip().strip('"') for line in status.splitlines() if len(line) > 3)
 
 
@@ -444,6 +445,69 @@ def canonical_authority(raw_payload: str) -> tuple[tuple[Path, ...], str, str]:
 DELEGATED_ENV = "ED_GOVERNANCE_AUTHORITY_DELEGATED"
 
 
+#: The live in-session hook hosts and their wiring files. Both wire the same chain entries
+#: (`.cursor/hooks.json` says so in its own header); the population below is their union and
+#: `hook_wiring_divergence` proves they agree.
+HOOK_WIRINGS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("claude", (".claude", "settings.json")),
+    ("cursor", (".cursor", "hooks.json")),
+)
+
+
+def _wiring_entries(root: Path, parts: tuple[str, ...]) -> list[str] | None:
+    """Chain entries (`tools/*_chain.py` tokens) in one wiring file, in wiring order; None when
+    the file is unreadable. Claude nests commands under `hooks`; Cursor puts `command` on the
+    entry — one reader for both shapes, so there is one parser of what an entry is."""
+    try:
+        data = json.loads(root.joinpath(*parts).read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        return None
+    hooks = (data.get("hooks") or {}) if isinstance(data, dict) else {}
+    out: list[str] = []
+    for entries in (hooks.values() if isinstance(hooks, dict) else ()):
+        for entry in entries if isinstance(entries, list) else ():
+            if not isinstance(entry, dict):
+                continue
+            nested = [h.get("command") for h in (entry.get("hooks") or []) if isinstance(h, dict)]
+            for command in nested or [entry.get("command")]:
+                for tok in str(command or "").split():
+                    tok = tok.replace("\\", "/")
+                    if tok.startswith("tools/") and tok.endswith("_chain.py") and tok not in out:
+                        out.append(tok)
+    return out
+
+
+def registered_entrypoints(root: Path, host: str | None = None) -> tuple[str, ...]:
+    """Every chain ENTRY the tree's own hook wiring registers, in wiring order — the union of
+    every live host wiring (HOOK_WIRINGS), or one host's when `host` names it.
+
+    The canonical enumeration of the hook seam (Close contract, AGENTS.md): a recurrence
+    control for an invariant of this seam drives every entry returned here, so an entry wired
+    into either host is exercised the day it is wired and none is a hand-maintained list —
+    this function is the only population; `_member_files` and `_crash_site` consume it. An
+    entry is a `tools/*_chain.py` token in a hook command. Fail-closed: an unreadable wiring
+    contributes nothing, and a tree with no readable wiring at all returns ().
+    """
+    out: list[str] = []
+    for name, parts in HOOK_WIRINGS:
+        if host is not None and name != host:
+            continue
+        for tok in _wiring_entries(root, parts) or []:
+            if tok not in out:
+                out.append(tok)
+    return tuple(out)
+
+
+def hook_wiring_divergence(root: Path) -> dict[str, tuple[str, ...]]:
+    """Entries one live host wires and the other does not — `{host: entries_only_there}`.
+    Empty tuples everywhere means the hosts register the same chain entries; anything else is
+    a second population the recurrence controls could not have seen through one host."""
+    seen = {name: tuple(_wiring_entries(root, parts) or ()) for name, parts in HOOK_WIRINGS}
+    return {name: tuple(e for e in entries
+                        if any(e not in other for oname, other in seen.items() if oname != name))
+            for name, entries in seen.items()}
+
+
 #: Hook events this chain serves, and the tools that make an event a PreToolUse one.
 _PRETOOLUSE_TOOLS = MUTATING_TOOLS | BASH_TOOLS
 
@@ -588,7 +652,9 @@ def _crash_site(exc: BaseException) -> str:
         files.append(tb.tb_frame.f_code.co_filename)
         tb = tb.tb_next
     root = REPO.resolve()
-    executors = {"tools/stop_chain.py", "tools/pretooluse_chain.py"}
+    # The executors are whatever this tree's wiring registers (the one population) plus this
+    # file itself — never a list written here.
+    executors = {"tools/stop_chain.py", *registered_entrypoints(REPO)}
     for name in reversed(files):
         # RC-522: a frame name that is not a real file (`<frozen importlib._bootstrap>` on a
         # missing module) used to RESOLVE under the cwd and be reported as the crash site. A
