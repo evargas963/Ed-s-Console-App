@@ -1,0 +1,45 @@
+{
+  "schema": "STAGE1_SESSION_COHORT_CONTRACT",
+  "schema_version": 1,
+  "authority": "RESEARCH FOUNDATION ONLY. Defines the cohort dimensions and cross-cohort transfer policy for a future Stage 2 competition and mechanically documents the current RTH-integrity contradiction. Does NOT change production session classification, accuracy surfaces, or training behavior in Stage 1.",
+  "canonical_time_binding": {
+    "reference": "research/stage1_target_label_foundation/time_session_contract_v1.json",
+    "storage_timezone": "UTC (immutable join/order/causal authority)",
+    "application_timezone": "America/Chicago (canonical research/cohort/display timezone)",
+    "rth_label_ct": "08:30-15:00 Central Time (equivalent UTC instants to the exchange's 09:30-16:00 ET)"
+  },
+  "canonical_session_authority": {
+    "function": "research/stage1_target_foundation/ct_session.py::classify_session",
+    "rule": "classify each ts_utc into a Central-Time session using America/Chicago (zoneinfo, DST-resolved) AND the exchange calendar (data/trading_calendar/us_equities.json) for full closures and half-days; RTH = 08:30-15:00 CT",
+    "principle": "a bar's session MUST be derived from ts_utc via the CT+calendar authority, NEVER from stored et_hour/et_minute/market_session (those were EST-fixed for rows before COH_I_A_ET_AUTHORITY_TS_UTC=1779237069.0 and are DST-skewed)",
+    "helper_sufficiency": "time_et.is_rth_ts_utc is DST-aware for RTH MEMBERSHIP but has NO holiday/half-day awareness -> INSUFFICIENT as the institutional cohort authority; ct_session.classify_session (calendar + DST) is sufficient within the calendar validity window (valid_through 2026-12-31)"
+  },
+  "cohort_dimensions": [
+    {"dim": "session", "values": ["rth", "premarket", "afterhours", "closed"], "source": "ts_utc->CT via ct_session.classify_session; note market_session stored col exists but must be recomputed from ts_utc; RTH is 08:30-15:00 CT"},
+    {"dim": "opening_window", "values": ["first_5m", "first_15m", "first_30m"], "source": "ts_utc offset from 08:30 CT (09:30 ET) RTH open"},
+    {"dim": "closing_window", "values": ["last_30m", "last_15m", "last_5m"], "source": "ts_utc offset to 15:00 CT (16:00 ET) RTH close; on early-close days the close moves to 12:00 CT (13:00 ET) per the calendar"},
+    {"dim": "intraday_bucket", "values": ["open", "morning", "midday", "afternoon", "close"], "source": "math_volatility.session_bucket — CURRENTLY computed from stored clock (skew-prone) and buckets out-of-session minutes to 'morning' (defect)"},
+    {"dim": "day_of_week", "values": ["Mon", "Tue", "Wed", "Thu", "Fri"], "source": "weekday_where_clause via strftime on ts_utc (correct)"},
+    {"dim": "half_day_early_close", "values": ["normal_rth", "early_close", "full_closure"], "source": "authoritative in Stage 1 RESEARCH via ct_session (reads early_closes/full_closures from the exchange calendar); NOT yet implemented in any PRODUCTION cohort path"},
+    {"dim": "volatility_regime", "values": ["low", "mid", "high"], "source": "math_volatility.vix_tier_token cuts 15/20/30 (value-derived, not time-skewed)"},
+    {"dim": "liquidity_regime", "values": ["NOT_IMPLEMENTED"], "source": "no dedicated liquidity-regime tagging exists; Stage 1 gap"}
+  ],
+  "cross_cohort_transfer_policy": {
+    "session": "FORBIDDEN to pool rth with premarket/afterhours/closed in a single training/eval cohort silently; session may be a MODEL FEATURE only when derived from ts_utc via the CT+calendar authority; cross-session generalization is an EXPLICIT EXPERIMENT, never a default",
+    "half_day_early_close": "CONDITIONALLY_TESTABLE — excluded from the primary cohort until the calendar classifier is authoritative; early_close/full_closure rows FORBIDDEN in RTH cohorts",
+    "opening_closing_window": "PERMITTED_AS_FEATURE and PERMITTED_AS_EXPERIMENT (open/close microstructure differs materially); never silently pooled with midday",
+    "volatility_regime": "PERMITTED_AS_FEATURE; regime-conditional calibration required (arch_competition.metrics supports it)",
+    "ticker": "SPY/QQQ/IWM pooling is EXPLICIT by design (ACTIVE_PROGRAM), disclosed, not a silent pool; expansion via ED_ML_SCHEDULER_TRAINING_EXPAND=1"
+  },
+  "rth_integrity_contradiction": {
+    "status": "OPEN — documented, NOT fixed in Stage 1 (fix would change production accuracy/audit surfaces; requires a separate authorized mission)",
+    "principle_violated": "one authority (ts_utc, DST-aware) is declared and the stored-clock SQL RTH filter is DEPRECATED (ml_data_common.rth_where_clause), yet live audit/accuracy cohorts still filter RTH on the skew-prone stored columns and a stored session label is fed back as a feature",
+    "contradiction_sites": [
+      {"site": "db.py:4417-4420", "surface": "EdDB.compute_accuracy rth_clause (operator-facing, rth_only=True 2026-07-06)", "defect": "selects RTH on stored (et_hour*60+et_minute); EST-skewed pre-COH-I-A rows drop/leak a ~1h band during EDT"},
+      {"site": "audit_model_readiness.py:29-34", "surface": "RTH_WHERE (model-readiness audit)", "defect": "same stored-clock RTH selection + weekday from stored ts_et string"},
+      {"site": "math_volatility.py:96-104", "surface": "session_bucket feature (XGB_CAT_COLS, fusion_model_input)", "defect": "computed from stored clock; buckets every out-of-session minute to 'morning'"}
+    ],
+    "correct_pattern": "filter/derive via ts_utc post-fetch: ml_data_common.filter_df_to_rth_ts_utc + stamp_et_clock_columns (already used correctly by ml_train.load_data)",
+    "stage1_action": "mechanically DETECTED and DISCLOSED by research/stage1_target_foundation/rth_integrity_audit.py; no production code changed"
+  }
+}

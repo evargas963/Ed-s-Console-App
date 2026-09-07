@@ -1,6 +1,6 @@
 {
   "prereg_id": "pilot_step3_prereg_v1",
-  "framework_doc_id": "governance/Framework-ED-Decision-Engine-v1.1.md",
+  "framework_doc_id": "docs/Framework-ED-Decision-Engine-v1.1.md",
   "framework_doc_version": "1.1",
   "pilot_scope": {
     "purpose": "Labeling and event-generation validation only for the replacement-core pilot. This pilot does NOT train final models, meta-layer, calibration, walk-forward/OOS execution, or decision policy.",

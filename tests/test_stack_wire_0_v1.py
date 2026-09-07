@@ -7,7 +7,7 @@ import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-MAP_PATH = ROOT / "governance" / "STACK_WIRING_INTEGRITY_MAP.md"
+MAP_PATH = ROOT / "docs" / "STACK_WIRING_INTEGRITY_MAP.md"
 SERVER_PY = ROOT / "server.py"
 
 _INGESTED_FINDS = frozenset(

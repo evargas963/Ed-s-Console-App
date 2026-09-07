@@ -22,7 +22,7 @@ def apply_a1_v2_calibration_to_raw_probability(
     Returns (calibrated_probability, lineage_id) on success, or (None, None) on
     any failure (invalid inputs, missing model, etc.).
 
-    Per governance/A1_ISOTONIC_ARTIFACT_LIFECYCLE_AND_RUNTIME_CONTRACT.md §8.
+    Per docs/contracts/A1_ISOTONIC_ARTIFACT_LIFECYCLE_AND_RUNTIME_CONTRACT.md §8.
     Never raises in production. Logs at debug.
     """
     try:

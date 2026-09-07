@@ -1,7 +1,7 @@
 {
   "prereg_id": "lightgbm_eval_v1_prereg_v1",
   "sibling_precedent": "research/elastic_net_eval_v1/prereg_v1.json",
-  "authority_contract": "governance/research/stage1_target_label_foundation/stage2_experiment_contract_v1.json",
+  "authority_contract": "research/stage1_target_label_foundation/stage2_experiment_contract_v1.json",
   "study_question": "Does a single LightGBM classifier, trained walk-forward on the same production engineered features and ternary labels as Study #4, clear the same MCC advancement screen on SPY/QQQ/IWM x {1c,5c,15c,60c}?",
   "study_class": "SIGNAL_EXISTENCE_DIAGNOSTIC",
   "explicitly_not": {

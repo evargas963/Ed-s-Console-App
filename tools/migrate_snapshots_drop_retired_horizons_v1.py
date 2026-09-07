@@ -402,7 +402,7 @@ def _index_sql(conn: sqlite3.Connection, table: str) -> dict[str, str]:
 
 
 def _write_audit_skeleton(audit: dict[str, Any], *, audit_root: Path | None) -> Path:
-    root = Path(audit_root).resolve() if audit_root is not None else (PROJECT_ROOT / "governance" / "audits")
+    root = Path(audit_root).resolve() if audit_root is not None else (PROJECT_ROOT / "reports" / "audits")
     root.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     path = root / f"snapshots_schema_drop_retired_horizons_v1_{stamp}.json"

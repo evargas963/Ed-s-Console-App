@@ -923,13 +923,13 @@ ABLATION_SURVIVOR_PROTECTED_SNAPSHOT_COLUMNS: frozenset[str] = frozenset(
 
 ABLATION_SURVIVORS_ENV = "ED_APPLY_ABLATION_SURVIVORS"
 ABLATION_DROP_GROUPS_ENV = "ED_ABLATION_DROP_GROUPS"
-LEGACY_COMPOUND_MANIFEST_PATH = Path("governance/artifacts/feature_ablation_manifest.json")
-ABLATION_LEAF_MANIFEST_PATH = Path("governance/artifacts/feature_ablation_manifest_leaf.json")
+LEGACY_COMPOUND_MANIFEST_PATH = Path("reports/artifacts/feature_ablation_manifest.json")
+ABLATION_LEAF_MANIFEST_PATH = Path("reports/artifacts/feature_ablation_manifest_leaf.json")
 ABLATION_MANIFEST_PATH = ABLATION_LEAF_MANIFEST_PATH
-LEGACY_COMPOUND_REPORT_PATH = Path("governance/artifacts/feature_ablation_report.json")
-ABLATION_LEAF_REPORT_PATH = Path("governance/artifacts/feature_ablation_report_leaf.json")
+LEGACY_COMPOUND_REPORT_PATH = Path("reports/artifacts/feature_ablation_report.json")
+ABLATION_LEAF_REPORT_PATH = Path("reports/artifacts/feature_ablation_report_leaf.json")
 ABLATION_REPORT_PATH = ABLATION_LEAF_REPORT_PATH
-ABLATION_SURVIVOR_STATUS_PATH = Path("governance/artifacts/ablation_survivor_status.json")
+ABLATION_SURVIVOR_STATUS_PATH = Path("reports/artifacts/ablation_survivor_status.json")
 ABLATION_LEAF_FEATURE_GRAIN = "schwab_expanded_atomic"
 ABLATION_AUTHORITATIVE_GRAINS = frozenset(
     {"atomic_leaf_or_derived_column", "schwab_expanded_atomic"}
@@ -1219,9 +1219,9 @@ def void_compound_ablation_survivors(*, write_artifacts: bool = True) -> dict:
         out["artifacts_stamped"].append(str(LEGACY_COMPOUND_REPORT_PATH))
 
     for rel in (
-        "governance/artifacts/survivor_edge_probe.json",
-        "governance/artifacts/survivor_validation_run.json",
-        "governance/artifacts/survivor_inference_backtest.json",
+        "reports/artifacts/survivor_edge_probe.json",
+        "reports/artifacts/survivor_validation_run.json",
+        "reports/artifacts/survivor_inference_backtest.json",
     ):
         p = Path(rel)
         data = _read_json_path(p)

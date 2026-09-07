@@ -1,7 +1,7 @@
 """FIND-LIVEUI-6 static guard — Phase 2 direction-withhold wiring.
 
 Locks the implementation shape that the LIVE-UI-1 inventory specified
-(governance/STACK_WIRING_INTEGRITY_MAP.md, "Live-UI direction transports
+(docs/STACK_WIRING_INTEGRITY_MAP.md, "Live-UI direction transports
 (LIVE-UI-1, Phase 2)"):
 
   * bundleDirectionWithheld(integrity, d, nowMs) helper — pure function, returns

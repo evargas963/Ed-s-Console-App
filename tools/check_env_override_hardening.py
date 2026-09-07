@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-ART = REPO_ROOT / "governance" / "artifacts"
+ART = REPO_ROOT / "reports" / "artifacts"
 INVENTORY_PATH = ART / "ENV_OVERRIDE_INVENTORY.json"
 
 # classification: safe_runtime_config | test_only | debug_only | production_dangerous | governance_sensitive

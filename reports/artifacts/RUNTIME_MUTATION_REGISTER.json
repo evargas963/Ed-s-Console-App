@@ -1,0 +1,762 @@
+{
+  "schema_version": 1,
+  "artifact": "reports/artifacts/RUNTIME_MUTATION_REGISTER.json",
+  "generated": "2026-06-15",
+  "summary": {
+    "total_mechanisms": 83,
+    "ed_env_var_count": 73,
+    "can_change_decisions_count": 16,
+    "without_deployment_count": 83,
+    "no_audit_count": 78,
+    "institutional_runtime_governance": false
+  },
+  "mutations": [
+    {
+      "mechanism": "ED_ALLOW_ACTIVE_SYNC",
+      "can_change_behavior": true,
+      "can_change_decisions": true,
+      "without_deployment": true,
+      "audit_type": "none",
+      "classification": "intentional_dev_unacceptable_institutional",
+      "location": "docs/host/ENVIRONMENT_VARIABLES.md"
+    },
+    {
+      "mechanism": "ED_ANALYTICS_BG_MAX_CONSECUTIVE_FAILURES",
+      "can_change_behavior": true,
+      "can_change_decisions": false,
+      "without_deployment": true,
+      "audit_type": "none",
+      "classification": "intentional_dev_unacceptable_institutional",
+      "location": "docs/host/ENVIRONMENT_VARIABLES.md"
+    },
+    {
+      "mechanism": "ED_BUILD_GENERATION",
+      "can_change_behavior": true,
+      "can_change_decisions": false,
+      "without_deployment": true,
+      "audit_type": "none",
+      "classification": "intentional_dev_unacceptable_institutional",
+      "location": "docs/host/ENVIRONMENT_VARIABLES.md"
+    },
+    {
+      "mechanism": "ED_CALIBRATION_LOG",
+      "can_change_behavior": true,
+      "can_change_decisions": true,
+      "without_deployment": true,
+      "audit_type": "none",
+      "classification": "intentional_dev_unacceptable_institutional",
+      "location": "docs/host/ENVIRONMENT_VARIABLES.md"
+    },
+    {
+      "mechanism": "ED_CONSOLE_ALLOW_NONCANONICAL_DB",
+      "can_change_behavior": true,
+      "can_change_decisions": false,
+      "without_deployment": true,
+      "audit_type": "none",
+      "classification": "intentional_dev_unacceptable_institutional",
+      "location": "docs/host/ENVIRONMENT_VARIABLES.md"
+    },
+    {
+      "mechanism": "ED_CONSOLE_ALLOW_PRED_OVERRIDE",
+      "can_change_behavior": true,
+      "can_change_decisions": true,
+      "without_deployment": true,
+      "audit_type": "none",
+      "classification": "intentional_dev_unacceptable_institutional",
+      "location": "docs/host/ENVIRONMENT_VARIABLES.md"
+    },
+    {
+      "mechanism": "ED_CONSOLE_DANGEROUS_SQL_UNRESTRICTED",
+      "can_change_behavior": true,
+      "can_change_decisions": false,
+      "without_deployment": true,
+      "audit_type": "none",
+      "classification": "intentional_dev_unacceptable_institutional",
+      "location": "docs/host/ENVIRONMENT_VARIABLES.md"
+    },
+    {
+      "mechanism": "ED_CONSOLE_DB",
+      "can_change_behavior": true,
+      "can_change_decisions": false,
+      "without_deployment": true,
+      "audit_type": "none",
+      "classification": "intentional_dev_unacceptable_institutional",
+      "location": "docs/host/ENVIRONMENT_VARIABLES.md"
+    },
+    {
+      "mechanism": "ED_CONSOLE_PORT",
+      "can_change_behavior": true,
+      "can_change_decisions": false,
+      "without_deployment": true,
+      "audit_type": "none",
+      "classification": "intentional_dev_unacceptable_institutional",
+      "location": "docs/host/ENVIRONMENT_VARIABLES.md"
+    },
+    {
+      "mechanism": "ED_CONSOLE_RELOAD_TOKEN",
+      "can_change_behavior": true,
+      "can_change_decisions": false,
+      "without_deployment": true,
+      "audit_type": "none",
+      "classification": "intentional_dev_unacceptable_institutional",
+      "location": "docs/host/ENVIRONMENT_VARIABLES.md"
+    },
+    {
+      "mechanism": "ED_CONSOLE_RELOAD_URL",
+      "can_change_behavior": true,
+      "can_change_decisions": false,
+      "without_deployment": true,
+      "audit_type": "none",
+      "classification": "intentional_dev_unacceptable_institutional",
+      "location": "docs/host/ENVIRONMENT_VARIABLES.md"
+    },
+    {
+      "mechanism": "ED_DB_SNAPSHOT_THROTTLE",
+      "can_change_behavior": true,
+      "can_change_decisions": false,
+      "without_deployment": true,
+      "audit_type": "none",
+      "classification": "intentional_dev_unacceptable_institutional",
+      "location": "docs/host/ENVIRONMENT_VARIABLES.md"
+    },
+    {
+      "mechanism": "ED_DIAG_BASE",
+      "can_change_behavior": true,
+      "can_change_decisions": false,
+      "without_deployment": true,
+      "audit_type": "none",
+      "classification": "intentional_dev_unacceptable_institutional",
+      "location": "docs/host/ENVIRONMENT_VARIABLES.md"
+    },
+    {
+      "mechanism": "ED_DIAG_EXPIRY",
+      "can_change_behavior": true,
+      "can_change_decisions": false,
+      "without_deployment": true,
+      "audit_type": "none",
+      "classification": "intentional_dev_unacceptable_institutional",
+      "location": "docs/host/ENVIRONMENT_VARIABLES.md"
+    },
+    {
+      "mechanism": "ED_DIAG_TOKEN",
+      "can_change_behavior": true,
+      "can_change_decisions": false,
+      "without_deployment": true,
+      "audit_type": "none",
+      "classification": "intentional_dev_unacceptable_institutional",
+      "location": "docs/host/ENVIRONMENT_VARIABLES.md"
+    },
+    {
+      "mechanism": "ED_DISABLE_AUTO_PROMOTE",
+      "can_change_behavior": true,
+      "can_change_decisions": true,
+      "without_deployment": true,
+      "audit_type": "none",
+      "classification": "intentional_dev_unacceptable_institutional",
+      "location": "docs/host/ENVIRONMENT_VARIABLES.md"
+    },
+    {
+      "mechanism": "ED_DISABLE_TORCH_RESUME",
+      "can_change_behavior": true,
+      "can_change_decisions": false,
+      "without_deployment": true,
+      "audit_type": "none",
+      "classification": "intentional_dev_unacceptable_institutional",
+      "location": "docs/host/ENVIRONMENT_VARIABLES.md"
+    },
+    {
+      "mechanism": "ED_FEATURE_CACHE_MAX_DIRS",
+      "can_change_behavior": true,
+      "can_change_decisions": false,
+      "without_deployment": true,
+      "audit_type": "none",
+      "classification": "intentional_dev_unacceptable_institutional",
+      "location": "docs/host/ENVIRONMENT_VARIABLES.md"
+    },
+    {
+      "mechanism": "ED_FEATURE_CACHE_MIN_AGE_SEC",
+      "can_change_behavior": true,
+      "can_change_decisions": false,
+      "without_deployment": true,
+      "audit_type": "none",
+      "classification": "intentional_dev_unacceptable_institutional",
+      "location": "docs/host/ENVIRONMENT_VARIABLES.md"
+    },
+    {
+      "mechanism": "ED_GOVERNANCE_ALLOW_REMOTE",
+      "can_change_behavior": true,
+      "can_change_decisions": false,
+      "without_deployment": true,
+      "audit_type": "none",
+      "classification": "intentional_dev_unacceptable_institutional",
+      "location": "docs/host/ENVIRONMENT_VARIABLES.md"
+    },
+    {
+      "mechanism": "ED_GOVERNANCE_UI_ACTIONS",
+      "can_change_behavior": true,
+      "can_change_decisions": false,
+      "without_deployment": true,
+      "audit_type": "none",
+      "classification": "intentional_dev_unacceptable_institutional",
+      "location": "docs/host/ENVIRONMENT_VARIABLES.md"
+    },
+    {
+      "mechanism": "ED_LIVE_DIAG",
+      "can_change_behavior": true,
+      "can_change_decisions": false,
+      "without_deployment": true,
+      "audit_type": "none",
+      "classification": "intentional_dev_unacceptable_institutional",
+      "location": "docs/host/ENVIRONMENT_VARIABLES.md"
+    },
+    {
+      "mechanism": "ED_LIVE_QUOTE_SSE_INTERVAL_SEC",
+      "can_change_behavior": true,
+      "can_change_decisions": false,
+      "without_deployment": true,
+      "audit_type": "none",
+      "classification": "intentional_dev_unacceptable_institutional",
+      "location": "docs/host/ENVIRONMENT_VARIABLES.md"
+    },
+    {
+      "mechanism": "ED_LIVE_SNAPSHOT_MATERIALIZE",
+      "can_change_behavior": true,
+      "can_change_decisions": false,
+      "without_deployment": true,
+      "audit_type": "none",
+      "classification": "intentional_dev_unacceptable_institutional",
+      "location": "docs/host/ENVIRONMENT_VARIABLES.md"
+    },
+    {
+      "mechanism": "ED_LOGGING_UNIVERSE_FIFO_EVICTION",
+      "can_change_behavior": true,
+      "can_change_decisions": false,
+      "without_deployment": true,
+      "audit_type": "none",
+      "classification": "intentional_dev_unacceptable_institutional",
+      "location": "docs/host/ENVIRONMENT_VARIABLES.md"
+    },
+    {
+      "mechanism": "ED_MANIFEST_MAX_AGE_DAYS",
+      "can_change_behavior": true,
+      "can_change_decisions": false,
+      "without_deployment": true,
+      "audit_type": "none",
+      "classification": "intentional_dev_unacceptable_institutional",
+      "location": "docs/host/ENVIRONMENT_VARIABLES.md"
+    },
+    {
+      "mechanism": "ED_MAX_CONSECUTIVE_SKIPS",
+      "can_change_behavior": true,
+      "can_change_decisions": false,
+      "without_deployment": true,
+      "audit_type": "none",
+      "classification": "intentional_dev_unacceptable_institutional",
+      "location": "docs/host/ENVIRONMENT_VARIABLES.md"
+    },
+    {
+      "mechanism": "ED_MAX_USER_PERSISTED_LOGGING_TICKERS",
+      "can_change_behavior": true,
+      "can_change_decisions": false,
+      "without_deployment": true,
+      "audit_type": "none",
+      "classification": "intentional_dev_unacceptable_institutional",
+      "location": "docs/host/ENVIRONMENT_VARIABLES.md"
+    },
+    {
+      "mechanism": "ED_META_TRAIN_MAX_ROWS",
+      "can_change_behavior": true,
+      "can_change_decisions": false,
+      "without_deployment": true,
+      "audit_type": "none",
+      "classification": "intentional_dev_unacceptable_institutional",
+      "location": "docs/host/ENVIRONMENT_VARIABLES.md"
+    },
+    {
+      "mechanism": "ED_MH_EMPIRICAL_SUPPORT",
+      "can_change_behavior": true,
+      "can_change_decisions": true,
+      "without_deployment": true,
+      "audit_type": "none",
+      "classification": "intentional_dev_unacceptable_institutional",
+      "location": "docs/host/ENVIRONMENT_VARIABLES.md"
+    },
+    {
+      "mechanism": "ED_MH_FALLBACK_CANONICAL_BLEND",
+      "can_change_behavior": true,
+      "can_change_decisions": false,
+      "without_deployment": true,
+      "audit_type": "none",
+      "classification": "intentional_dev_unacceptable_institutional",
+      "location": "docs/host/ENVIRONMENT_VARIABLES.md"
+    },
+    {
+      "mechanism": "ED_ML_SCHEDULER_HORIZON",
+      "can_change_behavior": true,
+      "can_change_decisions": false,
+      "without_deployment": true,
+      "audit_type": "none",
+      "classification": "intentional_dev_unacceptable_institutional",
+      "location": "docs/host/ENVIRONMENT_VARIABLES.md"
+    },
+    {
+      "mechanism": "ED_ML_SCHEDULER_TICKERS",
+      "can_change_behavior": true,
+      "can_change_decisions": false,
+      "without_deployment": true,
+      "audit_type": "none",
+      "classification": "intentional_dev_unacceptable_institutional",
+      "location": "docs/host/ENVIRONMENT_VARIABLES.md"
+    },
+    {
+      "mechanism": "ED_ML_SCHEDULER_TRAINING_EXPAND",
+      "can_change_behavior": true,
+      "can_change_decisions": false,
+      "without_deployment": true,
+      "audit_type": "none",
+      "classification": "intentional_dev_unacceptable_institutional",
+      "location": "docs/host/ENVIRONMENT_VARIABLES.md"
+    },
+    {
+      "mechanism": "ED_MODEL_ARCHIVE",
+      "can_change_behavior": true,
+      "can_change_decisions": false,
+      "without_deployment": true,
+      "audit_type": "none",
+      "classification": "intentional_dev_unacceptable_institutional",
+      "location": "docs/host/ENVIRONMENT_VARIABLES.md"
+    },
+    {
+      "mechanism": "ED_MODEL_ARCHIVE_MAX_AGE_DAYS",
+      "can_change_behavior": true,
+      "can_change_decisions": false,
+      "without_deployment": true,
+      "audit_type": "none",
+      "classification": "intentional_dev_unacceptable_institutional",
+      "location": "docs/host/ENVIRONMENT_VARIABLES.md"
+    },
+    {
+      "mechanism": "ED_MODEL_ARCHIVE_MAX_SNAPSHOTS",
+      "can_change_behavior": true,
+      "can_change_decisions": false,
+      "without_deployment": true,
+      "audit_type": "none",
+      "classification": "intentional_dev_unacceptable_institutional",
+      "location": "docs/host/ENVIRONMENT_VARIABLES.md"
+    },
+    {
+      "mechanism": "ED_NEWS_CONTEXT_DEADLINE_SEC",
+      "can_change_behavior": true,
+      "can_change_decisions": false,
+      "without_deployment": true,
+      "audit_type": "none",
+      "classification": "intentional_dev_unacceptable_institutional",
+      "location": "docs/host/ENVIRONMENT_VARIABLES.md"
+    },
+    {
+      "mechanism": "ED_NEWS_HTTP_TIMEOUT_SEC",
+      "can_change_behavior": true,
+      "can_change_decisions": false,
+      "without_deployment": true,
+      "audit_type": "none",
+      "classification": "intentional_dev_unacceptable_institutional",
+      "location": "docs/host/ENVIRONMENT_VARIABLES.md"
+    },
+    {
+      "mechanism": "ED_NEWS_THROTTLE_SEC",
+      "can_change_behavior": true,
+      "can_change_decisions": false,
+      "without_deployment": true,
+      "audit_type": "none",
+      "classification": "intentional_dev_unacceptable_institutional",
+      "location": "docs/host/ENVIRONMENT_VARIABLES.md"
+    },
+    {
+      "mechanism": "ED_NORMALIZED_REFRESH_DEBOUNCE_SEC",
+      "can_change_behavior": true,
+      "can_change_decisions": false,
+      "without_deployment": true,
+      "audit_type": "none",
+      "classification": "intentional_dev_unacceptable_institutional",
+      "location": "docs/host/ENVIRONMENT_VARIABLES.md"
+    },
+    {
+      "mechanism": "ED_NOTIFICATION_SINK_EMAIL_ENABLED",
+      "can_change_behavior": true,
+      "can_change_decisions": false,
+      "without_deployment": true,
+      "audit_type": "none",
+      "classification": "intentional_dev_unacceptable_institutional",
+      "location": "docs/host/ENVIRONMENT_VARIABLES.md"
+    },
+    {
+      "mechanism": "ED_NOTIFICATION_SINK_FILE",
+      "can_change_behavior": true,
+      "can_change_decisions": false,
+      "without_deployment": true,
+      "audit_type": "none",
+      "classification": "intentional_dev_unacceptable_institutional",
+      "location": "docs/host/ENVIRONMENT_VARIABLES.md"
+    },
+    {
+      "mechanism": "ED_NOTIFICATION_SINK_SLACK_ENABLED",
+      "can_change_behavior": true,
+      "can_change_decisions": false,
+      "without_deployment": true,
+      "audit_type": "none",
+      "classification": "intentional_dev_unacceptable_institutional",
+      "location": "docs/host/ENVIRONMENT_VARIABLES.md"
+    },
+    {
+      "mechanism": "ED_NOTIFICATION_WEBHOOK_ENABLED",
+      "can_change_behavior": true,
+      "can_change_decisions": false,
+      "without_deployment": true,
+      "audit_type": "none",
+      "classification": "intentional_dev_unacceptable_institutional",
+      "location": "docs/host/ENVIRONMENT_VARIABLES.md"
+    },
+    {
+      "mechanism": "ED_NOTIFICATION_WEBHOOK_URL",
+      "can_change_behavior": true,
+      "can_change_decisions": false,
+      "without_deployment": true,
+      "audit_type": "none",
+      "classification": "intentional_dev_unacceptable_institutional",
+      "location": "docs/host/ENVIRONMENT_VARIABLES.md"
+    },
+    {
+      "mechanism": "ED_OPS_ALLOW_REMOTE",
+      "can_change_behavior": true,
+      "can_change_decisions": false,
+      "without_deployment": true,
+      "audit_type": "none",
+      "classification": "intentional_dev_unacceptable_institutional",
+      "location": "docs/host/ENVIRONMENT_VARIABLES.md"
+    },
+    {
+      "mechanism": "ED_OPS_RUNNER",
+      "can_change_behavior": true,
+      "can_change_decisions": false,
+      "without_deployment": true,
+      "audit_type": "none",
+      "classification": "intentional_dev_unacceptable_institutional",
+      "location": "docs/host/ENVIRONMENT_VARIABLES.md"
+    },
+    {
+      "mechanism": "ED_PREDICT_ENRICHMENT",
+      "can_change_behavior": true,
+      "can_change_decisions": false,
+      "without_deployment": true,
+      "audit_type": "none",
+      "classification": "intentional_dev_unacceptable_institutional",
+      "location": "docs/host/ENVIRONMENT_VARIABLES.md"
+    },
+    {
+      "mechanism": "ED_SCHEDULER_AUTO_PROMOTE",
+      "can_change_behavior": true,
+      "can_change_decisions": true,
+      "without_deployment": true,
+      "audit_type": "none",
+      "classification": "intentional_dev_unacceptable_institutional",
+      "location": "docs/host/ENVIRONMENT_VARIABLES.md"
+    },
+    {
+      "mechanism": "ED_SCHEDULER_AUTO_PROMOTE_CORE_ONLY",
+      "can_change_behavior": true,
+      "can_change_decisions": false,
+      "without_deployment": true,
+      "audit_type": "none",
+      "classification": "intentional_dev_unacceptable_institutional",
+      "location": "docs/host/ENVIRONMENT_VARIABLES.md"
+    },
+    {
+      "mechanism": "ED_SCHEDULER_AUTO_PROMOTE_REQUIRE_VERIFY",
+      "can_change_behavior": true,
+      "can_change_decisions": false,
+      "without_deployment": true,
+      "audit_type": "none",
+      "classification": "intentional_dev_unacceptable_institutional",
+      "location": "docs/host/ENVIRONMENT_VARIABLES.md"
+    },
+    {
+      "mechanism": "ED_SCHEDULER_AUTO_PROMOTE_STRICT_CORE_FRESHNESS",
+      "can_change_behavior": true,
+      "can_change_decisions": false,
+      "without_deployment": true,
+      "audit_type": "none",
+      "classification": "intentional_dev_unacceptable_institutional",
+      "location": "docs/host/ENVIRONMENT_VARIABLES.md"
+    },
+    {
+      "mechanism": "ED_SCHEDULER_CACHE_SKIP_CAP",
+      "can_change_behavior": true,
+      "can_change_decisions": false,
+      "without_deployment": true,
+      "audit_type": "none",
+      "classification": "intentional_dev_unacceptable_institutional",
+      "location": "docs/host/ENVIRONMENT_VARIABLES.md"
+    },
+    {
+      "mechanism": "ED_SIGNAL_LAYER_FUSION_BLEND",
+      "can_change_behavior": true,
+      "can_change_decisions": true,
+      "without_deployment": true,
+      "audit_type": "none",
+      "classification": "intentional_dev_unacceptable_institutional",
+      "location": "docs/host/ENVIRONMENT_VARIABLES.md"
+    },
+    {
+      "mechanism": "ED_SQLITE_BUSY_BASE_SLEEP_SEC",
+      "can_change_behavior": true,
+      "can_change_decisions": false,
+      "without_deployment": true,
+      "audit_type": "none",
+      "classification": "intentional_dev_unacceptable_institutional",
+      "location": "docs/host/ENVIRONMENT_VARIABLES.md"
+    },
+    {
+      "mechanism": "ED_SQLITE_BUSY_MAX_SLEEP_SEC",
+      "can_change_behavior": true,
+      "can_change_decisions": false,
+      "without_deployment": true,
+      "audit_type": "none",
+      "classification": "intentional_dev_unacceptable_institutional",
+      "location": "docs/host/ENVIRONMENT_VARIABLES.md"
+    },
+    {
+      "mechanism": "ED_SQLITE_BUSY_RETRIES",
+      "can_change_behavior": true,
+      "can_change_decisions": false,
+      "without_deployment": true,
+      "audit_type": "none",
+      "classification": "intentional_dev_unacceptable_institutional",
+      "location": "docs/host/ENVIRONMENT_VARIABLES.md"
+    },
+    {
+      "mechanism": "ED_SQLITE_LOCK_WAIT_WARN_MS",
+      "can_change_behavior": true,
+      "can_change_decisions": false,
+      "without_deployment": true,
+      "audit_type": "none",
+      "classification": "intentional_dev_unacceptable_institutional",
+      "location": "docs/host/ENVIRONMENT_VARIABLES.md"
+    },
+    {
+      "mechanism": "ED_SQLITE_WRITE_SLOW_MS",
+      "can_change_behavior": true,
+      "can_change_decisions": false,
+      "without_deployment": true,
+      "audit_type": "none",
+      "classification": "intentional_dev_unacceptable_institutional",
+      "location": "docs/host/ENVIRONMENT_VARIABLES.md"
+    },
+    {
+      "mechanism": "ED_TICK_COHERENT_GATE_SEC",
+      "can_change_behavior": true,
+      "can_change_decisions": false,
+      "without_deployment": true,
+      "audit_type": "none",
+      "classification": "intentional_dev_unacceptable_institutional",
+      "location": "docs/host/ENVIRONMENT_VARIABLES.md"
+    },
+    {
+      "mechanism": "ED_TICK_COHERENT_MIN_SEC",
+      "can_change_behavior": true,
+      "can_change_decisions": false,
+      "without_deployment": true,
+      "audit_type": "none",
+      "classification": "intentional_dev_unacceptable_institutional",
+      "location": "docs/host/ENVIRONMENT_VARIABLES.md"
+    },
+    {
+      "mechanism": "ED_TICK_REFRESH_SPOT_ABS",
+      "can_change_behavior": true,
+      "can_change_decisions": false,
+      "without_deployment": true,
+      "audit_type": "none",
+      "classification": "intentional_dev_unacceptable_institutional",
+      "location": "docs/host/ENVIRONMENT_VARIABLES.md"
+    },
+    {
+      "mechanism": "ED_TICK_REFRESH_SPOT_PCT",
+      "can_change_behavior": true,
+      "can_change_decisions": false,
+      "without_deployment": true,
+      "audit_type": "none",
+      "classification": "intentional_dev_unacceptable_institutional",
+      "location": "docs/host/ENVIRONMENT_VARIABLES.md"
+    },
+    {
+      "mechanism": "ED_TORCH_CHECKPOINT_EVERY_N_EPOCHS",
+      "can_change_behavior": true,
+      "can_change_decisions": false,
+      "without_deployment": true,
+      "audit_type": "none",
+      "classification": "intentional_dev_unacceptable_institutional",
+      "location": "docs/host/ENVIRONMENT_VARIABLES.md"
+    },
+    {
+      "mechanism": "ED_TRAIN_ROLLING_DAYS_SEQUENCE",
+      "can_change_behavior": true,
+      "can_change_decisions": false,
+      "without_deployment": true,
+      "audit_type": "none",
+      "classification": "intentional_dev_unacceptable_institutional",
+      "location": "docs/host/ENVIRONMENT_VARIABLES.md"
+    },
+    {
+      "mechanism": "ED_TRAIN_ROLLING_DAYS_TABULAR",
+      "can_change_behavior": true,
+      "can_change_decisions": false,
+      "without_deployment": true,
+      "audit_type": "none",
+      "classification": "intentional_dev_unacceptable_institutional",
+      "location": "docs/host/ENVIRONMENT_VARIABLES.md"
+    },
+    {
+      "mechanism": "ED_TRAIN_ROLLING_RTH_SESSIONS_SEQUENCE",
+      "can_change_behavior": true,
+      "can_change_decisions": false,
+      "without_deployment": true,
+      "audit_type": "none",
+      "classification": "intentional_dev_unacceptable_institutional",
+      "location": "docs/host/ENVIRONMENT_VARIABLES.md"
+    },
+    {
+      "mechanism": "ED_TRAIN_ROLLING_RTH_SESSIONS_TABULAR",
+      "can_change_behavior": true,
+      "can_change_decisions": false,
+      "without_deployment": true,
+      "audit_type": "none",
+      "classification": "intentional_dev_unacceptable_institutional",
+      "location": "docs/host/ENVIRONMENT_VARIABLES.md"
+    },
+    {
+      "mechanism": "ED_VIEWER_SSE_REFRESH_SEC",
+      "can_change_behavior": true,
+      "can_change_decisions": false,
+      "without_deployment": true,
+      "audit_type": "none",
+      "classification": "intentional_dev_unacceptable_institutional",
+      "location": "docs/host/ENVIRONMENT_VARIABLES.md"
+    },
+    {
+      "mechanism": "ED_VIEWER_STATE_CACHE_TTL_SEC",
+      "can_change_behavior": true,
+      "can_change_decisions": false,
+      "without_deployment": true,
+      "audit_type": "none",
+      "classification": "intentional_dev_unacceptable_institutional",
+      "location": "docs/host/ENVIRONMENT_VARIABLES.md"
+    },
+    {
+      "mechanism": "ED_XGB_INCREMENTAL",
+      "can_change_behavior": true,
+      "can_change_decisions": false,
+      "without_deployment": true,
+      "audit_type": "none",
+      "classification": "intentional_dev_unacceptable_institutional",
+      "location": "docs/host/ENVIRONMENT_VARIABLES.md"
+    },
+    {
+      "mechanism": "ED_XGB_STRICT_ACTIVE_ONLY",
+      "can_change_behavior": true,
+      "can_change_decisions": true,
+      "without_deployment": true,
+      "audit_type": "none",
+      "classification": "intentional_dev_unacceptable_institutional",
+      "location": "docs/host/ENVIRONMENT_VARIABLES.md"
+    },
+    {
+      "mechanism": "manual copy to models/active/",
+      "can_change_behavior": true,
+      "can_change_decisions": true,
+      "without_deployment": true,
+      "audit_type": "none",
+      "classification": "unacceptable",
+      "location": "filesystem"
+    },
+    {
+      "mechanism": "sqlite write snapshots_1m_normalized",
+      "can_change_behavior": true,
+      "can_change_decisions": true,
+      "without_deployment": true,
+      "audit_type": "mutable",
+      "classification": "unacceptable",
+      "location": "data/ed_console.db"
+    },
+    {
+      "mechanism": "POST /api/prediction/override",
+      "can_change_behavior": true,
+      "can_change_decisions": true,
+      "without_deployment": true,
+      "audit_type": "none",
+      "classification": "unacceptable",
+      "location": "server.py"
+    },
+    {
+      "mechanism": "governance.json manifest edits",
+      "can_change_behavior": true,
+      "can_change_decisions": false,
+      "without_deployment": true,
+      "audit_type": "mutable",
+      "classification": "tolerated",
+      "location": "reports/artifacts/"
+    },
+    {
+      "mechanism": "feature_curation_overrides.json",
+      "can_change_behavior": true,
+      "can_change_decisions": true,
+      "without_deployment": true,
+      "audit_type": "mutable",
+      "classification": "unacceptable",
+      "location": "reports/artifacts/"
+    },
+    {
+      "mechanism": "ED_DISABLE_AUTO_PROMOTE=1",
+      "can_change_behavior": true,
+      "can_change_decisions": true,
+      "without_deployment": true,
+      "audit_type": "none",
+      "classification": "intentional",
+      "location": "runtime env"
+    },
+    {
+      "mechanism": "scheduler flags / ml_scheduler CLI",
+      "can_change_behavior": true,
+      "can_change_decisions": true,
+      "without_deployment": true,
+      "audit_type": "partial",
+      "classification": "tolerated",
+      "location": "ml_scheduler.py"
+    },
+    {
+      "mechanism": "POST /api/ops/run* when ED_OPS_RUNNER=1",
+      "can_change_behavior": true,
+      "can_change_decisions": true,
+      "without_deployment": true,
+      "audit_type": "partial",
+      "classification": "tolerated",
+      "location": "server.py"
+    },
+    {
+      "mechanism": "governance UI actions ED_GOVERNANCE_UI_ACTIONS",
+      "can_change_behavior": true,
+      "can_change_decisions": false,
+      "without_deployment": true,
+      "audit_type": "none",
+      "classification": "tolerated",
+      "location": "server.py"
+    },
+    {
+      "mechanism": ".env file edit + restart",
+      "can_change_behavior": true,
+      "can_change_decisions": true,
+      "without_deployment": true,
+      "audit_type": "none",
+      "classification": "unacceptable",
+      "location": "repo root .env"
+    }
+  ]
+}

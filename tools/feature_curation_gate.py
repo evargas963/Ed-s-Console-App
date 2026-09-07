@@ -13,7 +13,7 @@ Implements the agreed method (feature_assignment_matrix_v2 / deep-research):
   3. LEAKAGE FLAG — surface model-output-class columns that must NOT enter the feature set
      (pred_*/fusion_*/mc_*/regime_*/rules_*/validation_*) + combined_signal (verify pre-decision).
 
-Read-only on the DB. Output: governance/artifacts/feature_curation_gate.json (the clean
+Read-only on the DB. Output: reports/artifacts/feature_curation_gate.json (the clean
 candidate set + cluster map + drop/flag lists) for Cursor scrutiny + the ablation harness.
 
 Ablation harness (``--ablation``): manifest-only contract — **all four horizons**
@@ -100,13 +100,13 @@ CONTRACT_FORBIDDEN_PREFIXES = ("rules_", "pred_", "combined_", "policy_")  # == 
 LEAKAGE_PREFIXES = CONTRACT_FORBIDDEN_PREFIXES + (
     "fusion_", "fused_", "mc_", "regime_", "validation_", "xgb_", "lstm_", "transformer_",
 )
-OUT = Path("governance/artifacts/feature_curation_gate.json")
-OVERRIDES_PATH = Path("governance/artifacts/feature_curation_overrides.json")
-MANIFEST_PATH = Path("governance/artifacts/feature_ablation_manifest_leaf.json")
-LEGACY_COMPOUND_MANIFEST_PATH = Path("governance/artifacts/feature_ablation_manifest.json")
-ABLATION_REPORT_PATH = Path("governance/artifacts/feature_ablation_report_leaf.json")
-LEGACY_COMPOUND_REPORT_PATH = Path("governance/artifacts/feature_ablation_report.json")
-ABLATION_LOCK_PATH = Path("governance/artifacts/feature_ablation.run.lock")
+OUT = Path("reports/artifacts/feature_curation_gate.json")
+OVERRIDES_PATH = Path("reports/artifacts/feature_curation_overrides.json")
+MANIFEST_PATH = Path("reports/artifacts/feature_ablation_manifest_leaf.json")
+LEGACY_COMPOUND_MANIFEST_PATH = Path("reports/artifacts/feature_ablation_manifest.json")
+ABLATION_REPORT_PATH = Path("reports/artifacts/feature_ablation_report_leaf.json")
+LEGACY_COMPOUND_REPORT_PATH = Path("reports/artifacts/feature_ablation_report.json")
+ABLATION_LOCK_PATH = Path("reports/artifacts/feature_ablation.run.lock")
 REQUIRED_ABLATION_HORIZONS = ("1c", "5c", "15c", "60c")
 FULL_STACK_LAYERS = FULL_STACK_MODEL_LAYERS
 
@@ -4275,11 +4275,11 @@ def pipeline_status() -> dict:
     }
 
 
-SURVIVOR_EDGE_PROBE_PATH = Path("governance/artifacts/survivor_edge_probe.json")
-SURVIVOR_VALIDATION_RUN_PATH = Path("governance/artifacts/survivor_validation_run.json")
-SURVIVOR_INFERENCE_BACKTEST_PATH = Path("governance/artifacts/survivor_inference_backtest.json")
+SURVIVOR_EDGE_PROBE_PATH = Path("reports/artifacts/survivor_edge_probe.json")
+SURVIVOR_VALIDATION_RUN_PATH = Path("reports/artifacts/survivor_validation_run.json")
+SURVIVOR_INFERENCE_BACKTEST_PATH = Path("reports/artifacts/survivor_inference_backtest.json")
 SURVIVOR_STACK_REFIT_BACKTEST_PATH = Path(
-    "governance/artifacts/survivor_stack_refit_backtest.json"
+    "reports/artifacts/survivor_stack_refit_backtest.json"
 )
 SURVIVOR_EDGE_MCC_MIN = 0.01
 # Powered holdout floor for survivor quality gates (NOT "p<0.05" — use bootstrap CI in backtest).
@@ -4862,7 +4862,7 @@ def run_survivor_retrain_preflight(
             if compound_survivors_voided():
                 out["issues"].append(
                     "compound_ablation_survivors_void: re-ablate on "
-                    "governance/artifacts/feature_ablation_manifest_leaf.json"
+                    "reports/artifacts/feature_ablation_manifest_leaf.json"
                 )
             else:
                 out["issues"].append(

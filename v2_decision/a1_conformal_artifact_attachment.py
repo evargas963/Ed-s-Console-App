@@ -15,7 +15,7 @@ def attach_a1_conformal_artifact_to_ms_dict(ms_dict: dict[str, Any], *, ticker: 
     ``v2_decision/a1_isotonic_calibration_attachment.py`` injects
     ``a1_calibrated_probability`` and
     ``a1_calibrated_probability_lineage_id`` per
-    ``governance/A1_CALIBRATED_PROBABILITY_PROVENANCE_CONTRACT.md``. Both
+    ``docs/contracts/A1_CALIBRATED_PROBABILITY_PROVENANCE_CONTRACT.md``. Both
     helpers run in sequence at the server.py call sites.
     """
     horizon = str(ms_dict.get("primary_horizon") or "").strip().lower()

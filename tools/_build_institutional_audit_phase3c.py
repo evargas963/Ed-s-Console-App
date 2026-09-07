@@ -17,7 +17,7 @@ from datetime import date
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
-ART = REPO / "governance" / "artifacts"
+ART = REPO / "reports" / "artifacts"
 TODAY = date.today().isoformat()
 DB_PATH = REPO / "data" / "ed_console.db"
 
@@ -265,7 +265,7 @@ def main() -> int:
 
     evidence = {
         "schema_version": 1,
-        "artifact": "governance/artifacts/INSTITUTIONAL_AUDIT_PHASE3C_EVIDENCE.json",
+        "artifact": "reports/artifacts/INSTITUTIONAL_AUDIT_PHASE3C_EVIDENCE.json",
         "generated": TODAY,
         "phase": "3C",
         "label": "route inventory closure and bypass register reconciliation",

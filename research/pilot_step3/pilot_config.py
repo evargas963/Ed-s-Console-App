@@ -9,8 +9,8 @@ from typing import Any
 
 _PRREG_PATH = Path(__file__).resolve().parent / "prereg_v1.json"
 
-# Must match governance/Framework-ED-Decision-Engine-v1.1.md and prereg_v1.json binding fields.
-EXPECTED_FRAMEWORK_DOC_ID = "governance/Framework-ED-Decision-Engine-v1.1.md"
+# Must match docs/Framework-ED-Decision-Engine-v1.1.md and prereg_v1.json binding fields.
+EXPECTED_FRAMEWORK_DOC_ID = "docs/Framework-ED-Decision-Engine-v1.1.md"
 EXPECTED_FRAMEWORK_DOC_VERSION = "1.1"
 
 FROZEN_PILOT_PREREG_ID = "pilot_step3_prereg_v1"
@@ -51,7 +51,7 @@ def validate_framework_binding(prereg: dict[str, Any]) -> None:
     if not fid or not fver:
         raise ValueError(
             "prereg_v1.json missing framework_doc_id or framework_doc_version; "
-            "amend prereg per governance/Framework-ED-Decision-Engine-v1.1.md"
+            "amend prereg per docs/Framework-ED-Decision-Engine-v1.1.md"
         )
     if fid != EXPECTED_FRAMEWORK_DOC_ID:
         raise ValueError(
