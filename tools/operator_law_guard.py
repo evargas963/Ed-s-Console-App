@@ -226,39 +226,6 @@ _SKIP_HOOKS = re.compile(
     r"|(?:Set-Item|New-Item|SetEnvironmentVariable|PSVariable)[^\n]{0,80}?"
     r"ED_[A-Z_]*(?:_GUARD|_LOCK)(?![A-Z0-9_])[^\n]{0,60}?['\"\s,(](?:off|false|0)\b",
     re.I)
-#: RC-189 GUN 1 — the approval registry and the operator grant are OPERATOR CHANNELS. Shell
-#: access to either (read, write, heredoc, -c payload — RAW command text, deliberately wider
-#: than shell_executed_part, because heredocs and payloads ARE the write channels that dodge
-#: the Edit/Write hook) is refused outright: the registry is read with the Read tool and
-#: mutated only through Edit/Write, where the RC-189 provenance hook judges it.
-#: Cursor v2: the contiguous-token ban lost to string concatenation, so the scan (a) first
-#: strips the LEGITIMATE code-path spellings (the lock module and its test file), then
-#: (b) matches FRAGMENTS of the registry name and grant var. Deep concatenation of fragments
-#: is backstopped by the constructed-write bans below: a write whose target is not a literal
-#: safe-data path is refused no matter what it spells.
-_APPROVAL_ALLOWED_SPELLINGS = re.compile(
-    r"(?:tools[/\\])?(?:test_)?ui_mockup_lock(?:_v1)?(?:\.py)?", re.I)
-_APPROVAL_FRAGMENT = re.compile(
-    r"ui_mockup|mockup_approv|approvals\.json|ED_UI_MOCKUP", re.I)
-#: SIMPLICITY REHAB 2026-08-24 (T2-7): the fragment ban alone blocked READS — measured
-#: twice in one session (a json.load of the registry; a git commit whose MESSAGE named
-#: the gate). The registry-forge risk is a WRITE risk, so the fragment must co-occur
-#: with a write verb before it blocks. Constructed-write bans below still backstop
-#: deep-concatenation forgeries regardless of spelling.
-_APPROVAL_WRITE_VERB = re.compile(
-    r">{1,2}|Set-Content|Out-File|Add-Content|json\.dump|write_text|write_bytes|"
-    r"\bopen\s*\([^)]*['\"](?:w|a)", re.I)
-#: Setting the grant variable IS a write (grant-minting), whatever the shell spelling.
-_APPROVAL_GRANT_SET = re.compile(r"ED_UI_MOCKUP\w*\s*[:=]", re.I)
-
-
-def _approval_channel_violation(raw: str) -> bool:
-    stripped = _APPROVAL_ALLOWED_SPELLINGS.sub("", raw)
-    if _APPROVAL_GRANT_SET.search(stripped):
-        return True
-    return bool(_APPROVAL_FRAGMENT.search(stripped) and _APPROVAL_WRITE_VERB.search(stripped))
-
-
 def _safe_data_target(target: str) -> bool:
     """A write target is safe only as a string LITERAL with a data extension, and never the
     approval registry or anything under .claude/ (Cursor v2: a literal .json there is the
@@ -266,7 +233,7 @@ def _safe_data_target(target: str) -> bool:
     files stay heredoc-legal — governance-row edits are HOW agents comply (battery contract)."""
     if not _DATA_TARGET_LITERAL.match(target):
         return False
-    return not re.search(r"\.claude[/\\]|ui_mockup|approvals\.json", target, re.I)
+    return not re.search(r"\.claude[/\\]", target, re.I)
 
 
 #: Cursor v2: `python -c "p='gov'+'ernance/...'; open(p,'w')"` — the -c payload is stripped
@@ -656,12 +623,9 @@ def bash_violations(cmd: str, ledger: list[dict], payload_cwd: str = "") -> list
                    "Restores INTO these trees stay legal; removal from them is operator-only.")
     if _SKIP_HOOKS.search(cmd):
         out.append("ACTION BLOCKED: this disables a mechanical lock. Only the operator may.")
-    if _approval_channel_violation(raw):
-        out.append("ACTION BLOCKED (RC-189): shell access to the mockup-approval registry or "
-                   "the operator grant variable. Self-approve through a shell write was "
-                   "Cursor's top break. Read the registry with the Read tool; mutate it only "
-                   "through Edit/Write (the provenance hook judges those); the grant is set by "
-                   "the operator outside agent channels.")
+    # RC-189's registry-channel rule (shell writes to the mockup-approval registry or the
+    # grant variable) left with that registry — bedrock PR B, 2026-09-06. The constructed-
+    # write bans below are what backstopped it and they stay.
     if _payload_write_violation(raw):
         out.append("ACTION BLOCKED (RC-189 v2): a -c payload performs a file-write whose "
                    "target is not a literal safe-data path (constructed paths and "

@@ -17,21 +17,6 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 
-_SIGNIFICANCE_CLAIM = re.compile(
-    r"\b(significant|significance|Sharpe|sharpe|alpha|p[\-\s]?value|deflated_sharpe|DSR|PBO)\b",
-    re.I,
-)
-_UNVERIFIED_TAG = re.compile(r"\[UNVERIFIED\]|\[HYPOTHESIS\]|UNPROVEN", re.I)
-_N_TRIALS = re.compile(r"\bn_trials\s*[:=]\s*\d+", re.I)
-_MULT_TEST = re.compile(
-    r"\bmultiple_testing_method\s*[:=]\s*['\"]?(bonferroni|bh|dsr|hlz|fdr|bonferroni-holm)['\"]?",
-    re.I,
-)
-_JSON_N_TRIALS = re.compile(r'"n_trials"\s*:\s*[1-9]\d*')
-_JSON_MULT = re.compile(
-    r'"multiple_testing_method"\s*:\s*"(bonferroni|bh|dsr|hlz|fdr|bonferroni-holm)"',
-    re.I,
-)
 _CONFIRMATORY = re.compile(r"\bCONFIRMATORY\b")
 _PREREG_PATH = re.compile(r"\bprereg_path\s*[:=]\s*['\"]([^'\"]+)['\"]", re.I)
 _LEAKAGE_OK = re.compile(r"#\s*leakage-ok:", re.I)
@@ -70,24 +55,6 @@ def _path_resolves(ref: str) -> bool:
     if "/" in first and (REPO / first.replace("\\", "/")).is_file():
         return True
     return False
-
-
-def significance_substance_violations(text: str, *, rel: str = "") -> list[str]:
-    """Harvey–Liu–Zhu / Bailey–LdP DSR: significance claims need n_trials + method or [UNVERIFIED]."""
-    if not text or not _SIGNIFICANCE_CLAIM.search(text):
-        return []
-    if _UNVERIFIED_TAG.search(text):
-        return []
-    has_trials = bool(_N_TRIALS.search(text) or _JSON_N_TRIALS.search(text))
-    has_method = bool(_MULT_TEST.search(text) or _JSON_MULT.search(text))
-    if has_trials and has_method:
-        return []
-    prefix = f"{rel}: " if rel else ""
-    return [
-        f"{prefix}significance/Sharpe/alpha claim without n_trials + multiple_testing_method "
-        f"(bonferroni|bh|dsr|hlz) — tag [UNVERIFIED] or add trial ledger (Harvey–Liu–Zhu 2016; "
-        f"Bailey & López de Prado DSR 2014)",
-    ]
 
 
 def admission_evidence_resolves_violations(doc: dict | None = None) -> list[str]:

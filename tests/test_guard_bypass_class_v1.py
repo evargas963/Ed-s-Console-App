@@ -29,7 +29,7 @@ _MATERIAL_GUARD_FILES = (
     # proof_only_guard.py removed with the file (RC-504): it decided truth from prose.
     # honesty_guard.py and pm_verify_lock.py removed 2026-09-06 (bedrock): prose matchers.
     "tools/operator_law_guard.py",
-    "tools/ui_mockup_lock.py",
+    # ui_mockup_lock.py removed 2026-09-06 (bedrock PR B): the registry it gated is retired.
 )
 
 
