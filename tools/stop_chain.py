@@ -800,8 +800,24 @@ def _argv_members(argv: list[str]) -> tuple[str, ...]:
 
 
 def main() -> int:
+    import os
+
+    raw_payload = sys.stdin.read()
     members = _argv_members(sys.argv[1:]) or STOP_CHAIN
-    return run_chain(sys.stdin.read(), members)
+    if os.environ.get(DELEGATED_ENV) == "1":
+        # RC-531: a delegated run is judged under THIS tree's own wiring, whatever the launcher
+        # passed on argv. RC-522 taught the new launcher to forward the delegate's roster; a
+        # launcher at an older commit (the production checkout until that change lands there)
+        # still forwards its own, and the receiving seam is the only party that can read this
+        # tree's wiring with certainty. No wiring -> refuse; argv is never the substitute.
+        own, failure = tree_roster(REPO, raw_payload)
+        if failure:
+            sys.stderr.write(
+                f"GOVERNANCE AUTHORITY: delegated run in {REPO} REFUSED — {failure}; the "
+                f"launch tree's argv roster is not a substitute for this tree's wiring (RC-531).\n")
+            return 2
+        members = own
+    return run_chain(raw_payload, members)
 
 
 if __name__ == "__main__":

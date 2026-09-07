@@ -900,6 +900,52 @@ def test_the_delegate_roster_follows_the_event(trees, tmp_path):
     assert stopped.returncode != 0 and "BLOCKED BY alpha" in stopped.stderr, stopped.stderr
 
 
+# ── RC-531: the RECEIVING seam reads its own wiring, whatever the launcher passed ──────────
+# OBSERVED 2026-09-06 (live, after RC-522 landed on the branch): the production checkout's
+# launcher predates RC-522 and forwarded ITS argv roster into the branch worktrees; the delegate
+# saw the delegated flag, answered "already delegated; this IS the authority", and ran the argv
+# members — `tools.honesty_guard crashed` on every Stop. RC-522 bound its root at the sending
+# seam only. These drive the delegate DIRECTLY, the way an old launcher would.
+
+_DELEGATED = {"ED_GOVERNANCE_AUTHORITY_DELEGATED": "1"}
+
+
+def test_an_old_launcher_s_argv_cannot_choose_a_delegate_s_roster(trees):
+    """The exact live shape: launched as a delegate with an argv naming a module this tree
+    neither wires nor has. The tree's own roster runs; nothing crashes."""
+    _primary, alpha, _beta = trees
+    result = run_from(alpha, edit(alpha / "app.py"), env_extra=_DELEGATED,
+                      roster=("tools/demo_guard.py", "tools/retired_guard.py"))
+    assert result.returncode == 0, (
+        "an old launcher's argv crossed into the delegated run and crashed it on a module the "
+        f"tree retired (RC-531 unfixed).\nSTDERR:\n{result.stderr}")
+    assert "crashed" not in result.stderr and "retired_guard" not in result.stderr, result.stderr
+
+
+def test_an_old_launcher_s_argv_cannot_drop_a_guard_the_delegate_wires(trees):
+    """The symmetric half at the receiving seam: this tree wires a guard that BLOCKS; an argv
+    that omits it must not launder the verdict."""
+    _primary, alpha, _beta = trees
+    set_guard(alpha, BLOCKING_GUARD, commit=False)
+    (alpha / "tools" / "quiet_guard.py").write_text(PASSING_GUARD, encoding="utf-8")
+    _commit_all(alpha, "a quiet guard exists but is not wired")
+    result = run_from(alpha, edit(alpha / "app.py"), env_extra=_DELEGATED,
+                      roster=("tools/quiet_guard.py",))
+    assert result.returncode != 0, "the tree's own wired guard was dropped by the launcher's argv"
+    assert "BLOCKED BY alpha" in result.stderr, result.stderr
+
+
+def test_a_delegated_run_in_a_tree_without_wiring_refuses(trees):
+    """No `.claude/settings.json` here -> the delegated run refuses with the reason; it never
+    falls back to whatever argv carried."""
+    _primary, alpha, _beta = trees
+    (alpha / ".claude" / "settings.json").unlink()
+    _commit_all(alpha, "wiring removed")
+    result = run_from(alpha, edit(alpha / "app.py"), env_extra=_DELEGATED)
+    assert result.returncode != 0, "a delegated run with no canonical roster judged anyway"
+    assert "no readable hook wiring" in result.stderr and "RC-531" in result.stderr, result.stderr
+
+
 def test_a_missing_module_is_a_block_that_names_no_recovery_file():
     """RC-522 second finding: `_crash_site` resolved `<frozen importlib._bootstrap>` under the
     cwd and reported it as the crash site. A site must exist on disk; a missing module has no
