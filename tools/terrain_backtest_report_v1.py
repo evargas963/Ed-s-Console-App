@@ -46,12 +46,13 @@ from math_levels import (  # noqa: E402
     compute_gamma_profile,
     gamma_at_price,
 )
+from runtime_layout import data_dir, reports_dir  # noqa: E402 — RC-523: runtime/artifacts roots
 from terrain_engine import compute_terrain  # noqa: E402
 from time_et import ET, RTH_END_MINS, RTH_START_MINS  # noqa: E402
 
-DB = ROOT / "data" / "ed_console.db"
-OUT_MD = ROOT / "reports" / "terrain_backtest_latest.md"
-OUT_JSON = ROOT / "reports" / "terrain_backtest_latest.json"
+DB = data_dir() / "ed_console.db"
+OUT_MD = reports_dir() / "terrain_backtest_latest.md"
+OUT_JSON = reports_dir() / "terrain_backtest_latest.json"
 
 SENTINELS = {"SPY", "QQQ", "IWM"}
 #: Chain selection window around 10:00 ET — late enough for opening OI/greeks to settle,
@@ -654,7 +655,7 @@ def render_md(rep: dict) -> str:
 # Every daily run appends one line of history, computes the rolling window, and prints a
 # VERDICT with the rule that fired. Thresholds are operator policy — change them here,
 # with a comment, never ad-hoc.
-HISTORY = ROOT / "reports" / "terrain_scorecard_history.jsonl"
+HISTORY = reports_dir() / "terrain_scorecard_history.jsonl"     # RC-523: artifacts root
 PDCA_WINDOW_SESSIONS = 20          # rolling window before ACT decisions have footing
 PDCA_PROMOTE_PTS = 5.0             # gap >= +5pts  -> promote toward the economic test
 PDCA_ADJUST_PTS = -5.0             # gap <= -5pts  -> input change via registered tests

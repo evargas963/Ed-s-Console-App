@@ -4,8 +4,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent
-READINESS_LOOKUP_PATH = ROOT / "data" / "ticker_readiness_lookup_v1.json"
+from runtime_layout import data_dir as _runtime_data_dir  # RC-523: runtime data root
+
+READINESS_LOOKUP_PATH = _runtime_data_dir() / "ticker_readiness_lookup_v1.json"
 
 
 def load_ticker_readiness_lookup(path: Path | None = None) -> dict:

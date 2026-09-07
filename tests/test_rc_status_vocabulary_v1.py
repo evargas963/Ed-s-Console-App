@@ -38,7 +38,7 @@ PIPE = chr(124)
 
 def _row(status: str, rc_id: str = "RC-999") -> str:
     """A row that is deficient on purpose: no END-TO-END, no observed evidence."""
-    cells = [rc_id, status, "2026-08-01", "2026-08-09", "d",
+    cells = [rc_id, status, "2026-09-06", "2026-09-09", "d",
              "a -> b -> c -> d -> e ROOT: r", "FIXED: nothing. no code change"]
     return PIPE + PIPE.join(f" {c} " for c in cells) + PIPE
 
@@ -170,7 +170,10 @@ def test_remediated_rows_carry_the_same_evidence_gate_as_closed():
     deficient = _row("REMEDIATED")
     cells = [c.strip() for c in deficient.strip().strip(PIPE).split(PIPE)]
     hits = K._rc_row_violations(K.REPO, 1, cells[0], cells[1], cells)
-    assert hits and any("without observed evidence" in str(h) for h in hits), hits
+    assert hits and any("without a re-runnable command" in str(h) for h in hits), hits
+    # and the one checkable evidence property clears it: a backticked command a reader can run
+    cells[6] = "FIXED: `python -m pytest tests/test_x.py -q` 3 passed"
+    assert K._rc_row_violations(K.REPO, 1, cells[0], cells[1], cells) == []
 
 
 def test_check_is_registered_and_enforced():

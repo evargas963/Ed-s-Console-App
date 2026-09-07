@@ -17,9 +17,12 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_INPUT = ROOT / "governance" / "SCHWAB_CSV_DERIVED_FIELD_CROSSWALK_WORKING.csv"
-DEFAULT_OUTPUT = ROOT / "governance" / "SCHWAB_CSV_DERIVED_FIELD_CROSSWALK_CLASSIFIED.csv"
+# BEDROCK 2026-09-06: the classified and disposition CSVs are GENERATED from WORKING by this
+# tool (2 x 21,971 lines that no check or test read) — they are no longer tracked; they
+# regenerate here on demand. The residual stays in governance/ because the sync tools read it.
+DEFAULT_OUTPUT = ROOT / "reports" / "schwab_crosswalk" / "SCHWAB_CSV_DERIVED_FIELD_CROSSWALK_CLASSIFIED.csv"
 DEFAULT_RESIDUAL = ROOT / "governance" / "SCHWAB_CSV_DERIVED_FIELD_CROSSWALK_RESIDUAL.csv"
-DEFAULT_DISPOSITION = ROOT / "governance" / "SCHWAB_CSV_DERIVED_FIELD_DISPOSITION_REGISTER.csv"
+DEFAULT_DISPOSITION = ROOT / "reports" / "schwab_crosswalk" / "SCHWAB_CSV_DERIVED_FIELD_DISPOSITION_REGISTER.csv"
 
 NON_RUNTIME_PREFIXES = (
     ".claude/",

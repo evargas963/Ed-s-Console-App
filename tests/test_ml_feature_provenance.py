@@ -255,7 +255,7 @@ def test_inference_snapshot_parent_missing_lineage_fails():
 
 
 # ── ML-PIPE-V2 Phase 2: point-in-time causal boundary (as-of) adversarial locks ──
-# Matrix ref: governance/ML_CORRECTNESS_NOT_PROVEN_MATRIX_V2.json →
+# Acceptance ref: OPEN_ITEMS.md, ML_PIPELINE_CORRECTNESS →
 # POINT_IN_TIME_FEATURE_CORRECTNESS. The LSTM/Transformer history reads route
 # through EdDB.get_recent_snapshots(as_of_ts_utc=...) (strict ts_utc < as_of) and
 # ml_predict._require_as_of_ts_utc_for_sequence_db fails closed without as_of_ts.

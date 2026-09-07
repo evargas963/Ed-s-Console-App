@@ -89,6 +89,29 @@ def _install_chain(tree: Path, guard_body: str) -> None:
     for mod in _chain_modules():
         (tools / f"{mod}.py").write_bytes((REPO / "tools" / f"{mod}.py").read_bytes())
     (tools / "demo_guard.py").write_text(guard_body, encoding="utf-8")
+    wire(tree)
+
+
+def wire(tree: Path, stop: tuple[str, ...] = ("tools/demo_guard.py",),
+         pre: tuple[str, ...] = ("tools/demo_guard.py",)) -> None:
+    """The tree's CANONICAL hook wiring — the roster a delegate is judged under (RC-522).
+
+    Real worktrees carry `.claude/settings.json`; a delegate reads its own. The fixture trees
+    must carry one too, or they have no canonical roster and cannot be handed authority.
+    """
+    def cmd(chain: str, members: tuple[str, ...]) -> str:
+        return " ".join(["python", f"tools/{chain}.py", *members])
+    settings = {"hooks": {
+        "PreToolUse": [
+            {"matcher": "Edit|Write|MultiEdit|NotebookEdit",
+             "hooks": [{"type": "command", "command": cmd("pretooluse_chain", pre)}]},
+            {"matcher": "Bash|PowerShell|Monitor",
+             "hooks": [{"type": "command", "command": cmd("pretooluse_chain", pre)}]},
+        ],
+        "Stop": [{"hooks": [{"type": "command", "command": cmd("stop_chain", stop)}]}],
+    }}
+    (tree / ".claude").mkdir(parents=True, exist_ok=True)
+    (tree / ".claude" / "settings.json").write_text(json.dumps(settings, indent=1), encoding="utf-8")
 
 
 def _commit_all(tree: Path, msg: str) -> None:
@@ -128,13 +151,16 @@ def set_guard(tree: Path, body: str, *, commit: bool = True) -> None:
         _commit_all(tree, "guard change")
 
 
-def run_from(tree: Path, payload: dict, env_extra: dict | None = None) -> subprocess.CompletedProcess:
-    """Invoke the chain the way the hook does: a roster on argv, the payload on stdin."""
+def run_from(tree: Path, payload: dict, env_extra: dict | None = None,
+             roster: tuple[str, ...] = ("tools/demo_guard.py",)) -> subprocess.CompletedProcess:
+    """Invoke the chain the way the hook does: the LAUNCH tree's roster on argv, the payload
+    on stdin. `roster` is what the launch tree's wiring would pass; a delegate ignores it and
+    reads its own wiring (RC-522)."""
     env = dict(os.environ)
     env.pop("ED_GOVERNANCE_AUTHORITY_DELEGATED", None)
     env.update(env_extra or {})
     return subprocess.run(
-        [sys.executable, str(tree / "tools" / "stop_chain.py"), "tools/demo_guard.py"],
+        [sys.executable, str(tree / "tools" / "stop_chain.py"), *roster],
         cwd=str(tree), input=json.dumps(payload), text=True, capture_output=True,
         env=env, timeout=600,
     )
@@ -577,3 +603,366 @@ def test_this_repository_is_its_own_authority_for_its_own_files():
         json.dumps({"tool_input": {"file_path": str(REPO / "server.py")}}),
         ("tools.stop_guard",))
     assert failure == "" and delegate_to == () and run_here is True
+
+
+# ============================================================ RC-520 A: Monitor is a shell channel
+#
+# MEASURED 2026-09-05: the Monitor tool runs a shell `command` exactly as Bash does, was absent
+# from `.claude/settings.json`'s matcher and from three separate tool tuples in the guards, and
+# rewrote `tools/mission_latch.py` through a Python one-liner that no guard judged. The class is
+# now ONE roster (`stop_chain.BASH_TOOLS`) imported by both shell guards, and the matcher
+# carries Monitor. These controls drive the same real seams the Bash controls above drive.
+
+def monitor_use(command: str) -> dict:
+    return {"type": "assistant", "message": {"content": [
+        {"type": "tool_use", "name": "Monitor", "input": {"command": command}}]}}
+
+
+def run_pretooluse(payload: dict) -> subprocess.CompletedProcess:
+    """The REAL PreToolUse chain of this repository with the REAL shell roster, as the hook runs it."""
+    env = dict(os.environ)
+    env.pop("ED_GOVERNANCE_AUTHORITY_DELEGATED", None)
+    return subprocess.run(
+        [sys.executable, str(REPO / "tools" / "pretooluse_chain.py"),
+         "tools/operator_law_guard.py", "tools/process_lock_guard.py"],
+        cwd=str(REPO), input=json.dumps(payload), text=True, capture_output=True, env=env,
+        timeout=600)
+
+
+def _literal_shell_tuples(module_path: Path) -> list[str]:
+    """Container literals in `module_path` that name PowerShell — a private copy of the roster."""
+    tree = ast.parse(module_path.read_text(encoding="utf-8"))
+    found = []
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Tuple, ast.List, ast.Set)):
+            names = [e.value for e in node.elts if isinstance(e, ast.Constant) and isinstance(e.value, str)]
+            if "PowerShell" in names:
+                found.append(", ".join(names))
+    return found
+
+
+def test_monitor_is_in_the_one_shell_roster_and_the_hook_matcher():
+    import re as _re
+
+    import tools.operator_law_guard as olg
+    import tools.process_lock_guard as plg
+    from tools.stop_chain import BASH_TOOLS
+
+    assert {"Bash", "PowerShell", "Monitor"} <= BASH_TOOLS
+    assert olg.BASH_TOOLS is BASH_TOOLS and plg.BASH_TOOLS is BASH_TOOLS, "a guard kept its own copy"
+    for mod in (olg, plg):
+        assert _literal_shell_tuples(Path(mod.__file__)) == [], mod.__name__
+    settings = json.loads((REPO / ".claude" / "settings.json").read_text(encoding="utf-8"))
+    matcher = next(h["matcher"] for h in settings["hooks"]["PreToolUse"] if "Bash" in h["matcher"])
+    assert _re.fullmatch(matcher, "Monitor"), matcher
+    assert _re.fullmatch("Bash|PowerShell", "Monitor") is None, "the pre-RC-520 matcher never ran the hook for Monitor"
+
+
+def test_a_monitor_command_is_judged_exactly_like_the_same_bash_command():
+    """Through the real chain: a harmless read passes for both; the exact RC-520 bypass — a
+    `python -c` write to a guard module — is refused for both, for the same reason."""
+    bypass = ("python -c 'p=\"tools/mission_latch.py\"\ns=open(p).read()\n"
+              "open(p,\"w\").write(s)'")
+    for command, expect_block in ((f'git -C "{REPO}" status --porcelain', False), (bypass, True)):
+        verdicts = {}
+        for tool in ("Bash", "Monitor"):
+            r = run_pretooluse({"tool_name": tool, "tool_input": {"command": command},
+                                "cwd": str(REPO), "session_id": f"rc520-{tool}"})
+            verdicts[tool] = (r.returncode != 0, r.stderr)
+        assert verdicts["Bash"][0] is expect_block, verdicts["Bash"][1]
+        assert verdicts["Monitor"][0] is expect_block, verdicts["Monitor"][1]
+        if expect_block:
+            reason = lambda err: next(l for l in err.splitlines() if "ACTION BLOCKED" in l)  # noqa: E731
+            assert reason(verdicts["Monitor"][1]) == reason(verdicts["Bash"][1])
+
+
+def test_a_monitor_mutation_puts_its_worktree_in_the_set_and_removal_reopens_the_hole(trees, tmp_path):
+    """Session-record seam: a Monitor write to alpha makes alpha the authority exactly as a Bash
+    write does; a chain whose roster lacks Monitor falls back to the launch tree — the defect."""
+    primary, alpha, _beta = trees
+    command = f'echo "| RC-999 | OPEN |" >> "{alpha / "governance_row.md"}"'
+    for maker in (bash_use, monitor_use):
+        t = write_transcript(tmp_path / "s.jsonl", [maker(command)])
+        result = run_from(primary, stop_payload(t))
+        assert result.returncode == 0, result.stderr
+        assert "BLOCKED BY primary" not in result.stderr, result.stderr
+    chain = primary / "tools" / "stop_chain.py"
+    src = chain.read_text(encoding="utf-8")
+    assert src.count('"Shell", "Monitor"}') == 1
+    chain.write_text(src.replace('"Shell", "Monitor"}', '"Shell"}'), encoding="utf-8")
+    _commit_all(primary, "roster without Monitor (the pre-RC-520 state)")
+    t = write_transcript(tmp_path / "s.jsonl", [monitor_use(command)])
+    result = run_from(primary, stop_payload(t))
+    assert result.returncode != 0 and "BLOCKED BY primary" in result.stderr, result.stderr
+
+
+def test_the_resolver_reads_monitor_records_through_the_one_roster(monkeypatch):
+    from tools import stop_chain as sc
+
+    command = f'printf x >> "{REPO / "governance" / "root_cause_log.md"}"'
+    assert sc._mutation_targets_in(monitor_use(command)) == sc._mutation_targets_in(bash_use(command))
+    assert sc._mutation_targets_in(monitor_use(command))[0], "a Monitor write resolved to nothing"
+    monkeypatch.setattr(sc, "BASH_TOOLS", frozenset({"Bash", "PowerShell"}))
+    assert sc._mutation_targets_in(monitor_use(command)) == ([], [])
+
+
+# ============================================================ RC-520 B: the delegated chain self-lock
+#
+# OBSERVED 2026-09-05: a guard-imported module in the delegated worktree was left referencing
+# a helper before the call that defined it. Every delegated run crashed before adjudicating,
+# the crash is a BLOCK by design, and the Edit that would have restored the module was judged
+# by the same crashing delegate. The only way back in was an unhooked tool. The repair: a
+# crashed delegate names the file it crashed in, and exactly one mutation is admitted for that
+# tree — an edit of that file — judged by the launch tree under the identical roster.
+
+GUARD_USING_HELPER = '''"""A rostered guard that depends on a sibling module, like the real ones do."""
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from tools import demo_helper  # noqa: E402
+
+
+def main() -> int:
+    demo_helper.rows()
+    sys.stderr.write("BLOCKED BY %s\\n" % __file__.replace("\\\\", "/").split("/")[-3])
+    return 2
+'''
+
+BROKEN_HELPER = "def rows():\n    return _is_row('x')   # helper referenced before it was defined\n"
+GOOD_HELPER = "def _is_row(line):\n    return True\n\n\ndef rows():\n    return _is_row('x')\n"
+
+
+def break_delegate(tree: Path) -> Path:
+    (tree / "tools" / "demo_guard.py").write_text(GUARD_USING_HELPER, encoding="utf-8")
+    helper = tree / "tools" / "demo_helper.py"
+    helper.write_text(BROKEN_HELPER, encoding="utf-8")
+    _commit_all(tree, "guard-imported module left half-edited")
+    return helper
+
+
+def edit(path: Path) -> dict:
+    return {"tool_name": "Edit", "tool_input": {"file_path": str(path)}}
+
+
+def test_a_broken_guard_module_blocks_ordinary_work_and_names_itself(trees):
+    primary, alpha, _beta = trees
+    set_guard(primary, PASSING_GUARD)     # the launch tree would pass: the block is the crash
+    break_delegate(alpha)
+    result = run_from(primary, edit(alpha / "app.py"))
+    assert result.returncode != 0, "a crashed delegate was treated as a pass"
+    assert " crashed: NameError" in result.stderr, result.stderr
+    assert "[broken file: tools/demo_helper.py]" in result.stderr, result.stderr
+    assert "GOVERNANCE RECOVERY" not in result.stderr, result.stderr
+
+
+def test_only_the_file_the_crash_named_can_be_restored_and_only_by_an_edit(trees, tmp_path):
+    primary, alpha, _beta = trees
+    set_guard(primary, PASSING_GUARD)
+    helper = break_delegate(alpha)
+
+    admitted = run_from(primary, edit(helper))
+    assert admitted.returncode == 0, admitted.stderr
+    assert "GOVERNANCE RECOVERY" in admitted.stderr, admitted.stderr
+    assert str(primary.resolve()) in admitted.stderr.replace("\\\\", "\\"), "the judge was not named"
+
+    for other in (alpha / "app.py", alpha / "tools" / "demo_guard.py", alpha / "tools" / "stop_chain.py"):
+        refused = run_from(primary, edit(other))
+        assert refused.returncode != 0 and "GOVERNANCE RECOVERY" not in refused.stderr, (other, refused.stderr)
+
+    # Exactly Edit. The other file-target mutation tools replace or bulk-rewrite the file, and
+    # a recovery that can replace a guard wholesale is not the narrow door (operator correction).
+    for tool in ("Write", "MultiEdit", "NotebookEdit"):
+        for key in ("file_path", "notebook_path"):
+            wide = run_from(primary, {"tool_name": tool, "tool_input": {key: str(helper), "content": "x"}})
+            assert wide.returncode != 0 and "GOVERNANCE RECOVERY" not in wide.stderr, (tool, key, wide.stderr)
+
+    # A shell write to the exact file is never a recovery, whichever shell channel carries it.
+    for maker in (bash_use, monitor_use, lambda c: {"type": "assistant", "message": {"content": [
+            {"type": "tool_use", "name": "PowerShell", "input": {"command": c}}]}}):
+        t = write_transcript(tmp_path / "s.jsonl", [maker(f'printf x >> "{helper}"')])
+        shell = run_from(primary, stop_payload(t))
+        assert shell.returncode != 0 and "GOVERNANCE RECOVERY" not in shell.stderr, shell.stderr
+
+
+def test_normal_delegated_authority_resumes_by_itself_once_the_module_imports(trees):
+    primary, alpha, _beta = trees
+    set_guard(primary, PASSING_GUARD)
+    helper = break_delegate(alpha)
+    assert run_from(primary, edit(alpha / "app.py")).returncode != 0
+    helper.write_text(GOOD_HELPER, encoding="utf-8")          # the recovery edit, applied
+    for target in (alpha / "app.py", helper):
+        result = run_from(primary, edit(target))
+        assert "BLOCKED BY alpha" in result.stderr, (target, result.stderr)
+        assert "GOVERNANCE RECOVERY" not in result.stderr and "crashed" not in result.stderr, result.stderr
+
+
+def test_another_worktree_cannot_nominate_itself_as_recovery_authority(trees):
+    primary, alpha, beta = trees
+    set_guard(primary, PASSING_GUARD)
+    break_delegate(alpha)
+    set_guard(beta, BLOCKING_GUARD)
+    # beta's copy of the same file name is not the file alpha's crash named: beta judges it.
+    result = run_from(primary, edit(beta / "tools" / "demo_helper.py"))
+    assert "BLOCKED BY beta" in result.stderr and "GOVERNANCE RECOVERY" not in result.stderr, result.stderr
+    # a file outside every worktree of this repository is never a recovery of alpha either.
+    result = run_from(primary, edit(primary.parent / "elsewhere" / "tools" / "demo_helper.py"))
+    assert "GOVERNANCE RECOVERY" not in result.stderr, result.stderr
+
+
+def test_mutating_the_recovery_boundary_reopens_the_self_lock_or_the_bypass(trees):
+    primary, alpha, _beta = trees
+    set_guard(primary, PASSING_GUARD)
+    helper = break_delegate(alpha)
+    chain = primary / "tools" / "stop_chain.py"
+    pristine = chain.read_text(encoding="utf-8")
+
+    removed = pristine.replace("    if not _delegate_crashed(delegate_stderr):\n        return None\n",
+                               "    return None\n", 1)
+    assert removed != pristine
+    chain.write_text(removed, encoding="utf-8")
+    _commit_all(primary, "recovery boundary removed")
+    locked = run_from(primary, edit(helper))
+    assert locked.returncode != 0 and "GOVERNANCE RECOVERY" not in locked.stderr, (
+        "with the boundary removed the self-lock must return; it did not")
+
+    widened = pristine.replace(
+        "    return target if target in recovery_files(root, delegate_stderr) else None\n",
+        "    return target\n", 1)
+    assert widened != pristine
+    chain.write_text(widened, encoding="utf-8")
+    _commit_all(primary, "recovery boundary widened to any file")
+    leaked = run_from(primary, edit(alpha / "app.py"))
+    assert leaked.returncode == 0 and "GOVERNANCE RECOVERY" in leaked.stderr, (
+        "a widened boundary must admit an unrelated edit — that is the attack the boundary refuses")
+
+
+# ============================================================ RC-522: a delegate runs ITS OWN roster
+#
+# OBSERVED 2026-09-06 (live, this repository): the production checkout's wiring still passed
+# `tools/honesty_guard.py` on argv; the branch worktree it delegated to had retired that module
+# by a signed program; the delegate crashed on the import and every Stop of the session was
+# blocked by a rule the authoritative tree did not carry. RC-512 one level up: stale WIRING
+# crossing the authority boundary instead of stale code. A delegate is judged under the roster
+# its own `.claude/settings.json` registers, for eligibility and for execution.
+
+def test_a_delegate_runs_the_roster_its_own_wiring_registers_not_the_launch_trees(trees):
+    """The exact live shape: the launch tree still names a guard the delegate retired."""
+    primary, alpha, _beta = trees
+    launch_roster = ("tools/demo_guard.py", "tools/retired_guard.py")   # alpha never had it
+    result = run_from(primary, edit(alpha / "app.py"), roster=launch_roster)
+    assert result.returncode == 0, (
+        "the launch tree's argv roster crossed into the delegate and crashed it on a module "
+        f"the delegate retired (RC-522 unfixed).\nSTDERR:\n{result.stderr}")
+    assert "crashed" not in result.stderr and "retired_guard" not in result.stderr, result.stderr
+
+
+def test_the_launch_tree_cannot_drop_a_guard_the_delegate_registers(trees):
+    """The symmetric half: alpha's own wiring names a guard that BLOCKS there; a launch roster
+    that omits it must not launder the verdict."""
+    primary, alpha, _beta = trees
+    set_guard(primary, PASSING_GUARD)
+    set_guard(alpha, BLOCKING_GUARD)
+    (primary / "tools" / "quiet_guard.py").write_text(PASSING_GUARD, encoding="utf-8")
+    _commit_all(primary, "a launch roster that names only a quiet guard")
+    result = run_from(primary, edit(alpha / "app.py"), roster=("tools/quiet_guard.py",))
+    assert result.returncode != 0, "alpha's own registered guard was dropped by the launch roster"
+    assert "BLOCKED BY alpha" in result.stderr, result.stderr
+
+
+def test_a_tree_without_canonical_wiring_cannot_be_handed_authority(trees):
+    """No `.claude/settings.json` in the delegate -> refused, judged HERE, reason named."""
+    primary, alpha, _beta = trees
+    (alpha / ".claude" / "settings.json").unlink()
+    _commit_all(alpha, "wiring removed")
+    result = run_from(primary, edit(alpha / "app.py"))
+    assert result.returncode != 0, "a tree with no canonical roster was handed authority"
+    assert "no readable hook wiring" in result.stderr, result.stderr
+    assert "BLOCKED BY primary" in result.stderr, "the refused tree must be judged here"
+
+
+def test_the_delegate_roster_follows_the_event(trees, tmp_path):
+    """Stop and PreToolUse are separately registered; the delegate reads the one the payload
+    belongs to. alpha: Stop -> the blocking guard, PreToolUse -> a quiet one."""
+    primary, alpha, _beta = trees
+    set_guard(primary, PASSING_GUARD)
+    set_guard(alpha, BLOCKING_GUARD, commit=False)
+    (alpha / "tools" / "quiet_guard.py").write_text(PASSING_GUARD, encoding="utf-8")
+    wire(alpha, stop=("tools/demo_guard.py",), pre=("tools/quiet_guard.py",))
+    _commit_all(alpha, "event-specific rosters")
+    edited = run_from(primary, edit(alpha / "app.py"))
+    assert edited.returncode == 0, edited.stderr
+    t = write_transcript(tmp_path / "s.jsonl", [tool_use("Edit", alpha / "app.py")])
+    stopped = run_from(primary, stop_payload(t))
+    assert stopped.returncode != 0 and "BLOCKED BY alpha" in stopped.stderr, stopped.stderr
+
+
+# ── RC-531: the RECEIVING seam reads its own wiring, whatever the launcher passed ──────────
+# OBSERVED 2026-09-06 (live, after RC-522 landed on the branch): the production checkout's
+# launcher predates RC-522 and forwarded ITS argv roster into the branch worktrees; the delegate
+# saw the delegated flag, answered "already delegated; this IS the authority", and ran the argv
+# members — `tools.honesty_guard crashed` on every Stop. RC-522 bound its root at the sending
+# seam only. These drive the delegate DIRECTLY, the way an old launcher would.
+
+_DELEGATED = {"ED_GOVERNANCE_AUTHORITY_DELEGATED": "1"}
+
+
+def test_an_old_launcher_s_argv_cannot_choose_a_delegate_s_roster(trees):
+    """The exact live shape: launched as a delegate with an argv naming a module this tree
+    neither wires nor has. The tree's own roster runs; nothing crashes."""
+    _primary, alpha, _beta = trees
+    result = run_from(alpha, edit(alpha / "app.py"), env_extra=_DELEGATED,
+                      roster=("tools/demo_guard.py", "tools/retired_guard.py"))
+    assert result.returncode == 0, (
+        "an old launcher's argv crossed into the delegated run and crashed it on a module the "
+        f"tree retired (RC-531 unfixed).\nSTDERR:\n{result.stderr}")
+    assert "crashed" not in result.stderr and "retired_guard" not in result.stderr, result.stderr
+
+
+def test_an_old_launcher_s_argv_cannot_drop_a_guard_the_delegate_wires(trees):
+    """The symmetric half at the receiving seam: this tree wires a guard that BLOCKS; an argv
+    that omits it must not launder the verdict."""
+    _primary, alpha, _beta = trees
+    set_guard(alpha, BLOCKING_GUARD, commit=False)
+    (alpha / "tools" / "quiet_guard.py").write_text(PASSING_GUARD, encoding="utf-8")
+    _commit_all(alpha, "a quiet guard exists but is not wired")
+    result = run_from(alpha, edit(alpha / "app.py"), env_extra=_DELEGATED,
+                      roster=("tools/quiet_guard.py",))
+    assert result.returncode != 0, "the tree's own wired guard was dropped by the launcher's argv"
+    assert "BLOCKED BY alpha" in result.stderr, result.stderr
+
+
+def test_a_delegated_run_in_a_tree_without_wiring_refuses(trees):
+    """No `.claude/settings.json` here -> the delegated run refuses with the reason; it never
+    falls back to whatever argv carried."""
+    _primary, alpha, _beta = trees
+    (alpha / ".claude" / "settings.json").unlink()
+    _commit_all(alpha, "wiring removed")
+    result = run_from(alpha, edit(alpha / "app.py"), env_extra=_DELEGATED)
+    assert result.returncode != 0, "a delegated run with no canonical roster judged anyway"
+    assert "no readable hook wiring" in result.stderr and "RC-531" in result.stderr, result.stderr
+
+
+def test_a_missing_module_is_a_block_that_names_no_recovery_file():
+    """RC-522 second finding: `_crash_site` resolved `<frozen importlib._bootstrap>` under the
+    cwd and reported it as the crash site. A site must exist on disk; a missing module has no
+    file to repair, so the recovery door must stay shut."""
+    import io
+
+    from tools.stop_chain import recovery_files, run_chain
+
+    captured = io.StringIO()
+    real_err = sys.stderr
+    sys.stderr = captured
+    try:
+        rc = run_chain(json.dumps({"hook_event_name": "Stop"}), ("tools.zz_absent_member_rc522",))
+    finally:
+        sys.stderr = real_err
+    err = captured.getvalue()
+    assert rc == 2 and "crashed: ModuleNotFoundError" in err, err
+    assert "[broken file:" not in err, f"a missing module named a crash site: {err}"
+    stderr = "STOP CHAIN: tools.zz crashed: ModuleNotFoundError: x [broken file: <frozen importlib._bootstrap>]\n"
+    assert recovery_files(REPO, stderr) == set()

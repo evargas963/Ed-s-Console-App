@@ -67,6 +67,15 @@ See **`PIPELINE_QUALITY.md`** and **`/guide/pipeline-quality`** for the full TQM
 
 Optional flags (see each script’s `--help` if present): `ml_scheduler.py --force-retrain`, `--bypass-cache`.
 
+### Feature placement matrix (mechanically enforced — do not restate, just don't break)
+
+Survivor placement resolves per `(model, horizon)` from ablation output only; nothing pre-routes
+features. The survivor pre-train gate runs in order: **stack refit backtest**
+(`run_survivor_stack_refit_backtest`) → edge probe → validation run, before scheduler train.
+Lock: `tools/check_ml_pipeline_efficiency.py` via `tests/test_ml_feature_schema_parity.py`.
+(Moved here from `ACTIVE_PROGRAM.md` 2026-09-05, RC-520: a standing runtime rule is a runbook
+fact, not current work.)
+
 ### Canonical active layout (PR3)
 
 Production inference and `verify_active_models.py` expect each horizon’s **six-file bundle** under a single canonical directory:
@@ -147,7 +156,7 @@ If the API reports token failure, reauth as documented in server messages, e.g. 
 
 1. Revoke or rotate credentials in the Schwab developer portal if `schwab_token.json` or API secrets may have leaked.
 2. Regenerate `schwab_token.json` via `python reauth_schwab.py` on the **host** (never commit tokens — see [`docs/host/README.md`](docs/host/README.md)).
-3. If `config.py` still holds inline API key/secret, migrate to environment variables and rotate keys (see `ACTIVE_PROGRAM.md` Known Risks — credential-hygiene slice queued).
+3. If `config.py` still holds inline API key/secret, migrate to environment variables and rotate keys (`docs/host/ENVIRONMENT_VARIABLES.md` names the variables).
 4. Restart the console process after token refresh so market-data adapters pick up the new session.
 
 ---

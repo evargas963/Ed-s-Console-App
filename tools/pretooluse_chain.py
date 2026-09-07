@@ -9,9 +9,13 @@ matchers selected it; no predicate is weakened and a block from ANY member still
 (exit 2). The guards stay independently runnable — this file is wiring, not authority.
 
 Chain members (each file is the lock; this list is the wiring contract the tests pin):
-    Edit|Write|MultiEdit|NotebookEdit -> tools/pretooluse_guard.py,
-        tools/operator_law_guard.py, tools/process_lock_guard.py
-    Bash|PowerShell -> tools/operator_law_guard.py, tools/process_lock_guard.py
+    Edit|Write|MultiEdit|NotebookEdit -> tools/operator_law_guard.py, tools/process_lock_guard.py
+        (pretooluse_guard left the roster 2026-09-06 — bedrock doctrine; see EDIT_CHAIN)
+    Bash|PowerShell|Monitor -> tools/operator_law_guard.py, tools/process_lock_guard.py
+
+RC-520 (2026-09-05): Monitor joined the shell matcher. It runs a shell `command` exactly as
+Bash does and was unmatched, so a Monitor call rewrote a tracked guard module with no guard
+in the loop. The class itself is `tools.stop_chain.BASH_TOOLS`, imported by both shell guards.
 """
 from __future__ import annotations
 
@@ -26,7 +30,11 @@ if str(REPO) not in sys.path:
 from tools.stop_chain import run_chain  # noqa: E402 — same executor, different roster
 
 EDIT_TOOLS = ("Edit", "Write", "MultiEdit", "NotebookEdit")
-EDIT_CHAIN = ("tools.pretooluse_guard", "tools.operator_law_guard", "tools.process_lock_guard")
+# BEDROCK 2026-09-06: pretooluse_guard left the roster. Its three content gates (prose
+# matchers) and the mutation-side mission latch are removed; what it still owns,
+# `classify_path`, is a function the other guards import, not a hook. A rostered guard that
+# blocks nothing is an inert instrument wearing a name (agent_error_log E-05/E-07 class).
+EDIT_CHAIN = ("tools.operator_law_guard", "tools.process_lock_guard")
 BASH_CHAIN = ("tools.operator_law_guard", "tools.process_lock_guard")
 
 

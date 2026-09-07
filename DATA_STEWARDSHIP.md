@@ -81,3 +81,12 @@ The top bar includes **Ops & data** (this guide) and **Run tasks** (the ops pane
 ---
 
 *Last updated: maintenance runbook aligned with scripts in this repository. Extend the tables when you add new audits or backfills.*
+
+## Operable-surface "clean" claims (moved from `.cursor/rules/02-operable-surface-clean.mdc`, 2026-09-05, RC-520)
+
+Failure mode this prevents: labeling SPY/QQQ/IWM-only `old_missing=0` as `OPERABLE_SURFACE_CLEAN`, or citing a deleted `_tmp_*` script as the gate.
+
+1. **Authority:** `python -m tools.operable_surface_gate --db data/ed_console.db`. A same-turn re-run is required before any "clean/verified" Collect claim.
+2. **Scope:** operable = `calibration_trust='trusted' AND COALESCE(research_excluded,0)=0`, **all tickers**. A sentinel-only clean is `SENTINEL_SURFACE_CLEAN` only — never `OPERABLE_SURFACE_CLEAN` (AGENTS.md, UNIVERSAL ticker scope).
+3. **Do not widen** production `BACKFILL_JOIN_TOL_SEC` (29). The historical one-shot tol=59 is explicit ops, not a production default.
+4. **Recurring ops:** `python -m tools.run_operable_surface_ops` (backfill 29 + gate). Without it, young unattached rows age past 70m and regenerate `old_missing`.

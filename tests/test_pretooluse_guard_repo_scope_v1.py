@@ -97,23 +97,12 @@ def test_negative_control_foreign_test_file_is_allowed(tmp_path, capsys):
 # mission rows were open, red in CI where they were not. Both replacements are hermetic.
 
 
-def test_our_production_file_is_blocked_without_an_active_mission(monkeypatch, capsys):
-    """RC-498 supersedes RC-470 on this point. The RC-160/163/186 content gates are
-    unchanged, and the foreign-path controls above are untouched."""
-    import tools.mission_latch as ml
-
-    monkeypatch.setattr(ml, "has_active_mission", lambda *a, **k: False)
-    assert G.decide(_payload(str(REPO / "server.py"))) == 2
-    assert "RC-498" in capsys.readouterr().err
-
-
-def test_our_production_file_is_allowed_with_an_active_mission(monkeypatch, capsys):
-    """And the rule is narrow: with the session's mission open, ordinary work is untouched."""
-    import tools.mission_latch as ml
-
-    monkeypatch.setattr(ml, "has_active_mission", lambda *a, **k: True)
+def test_our_production_file_is_not_gated_by_a_mission_row(capsys):
+    """BEDROCK 2026-09-06: the RC-498 mutation-side latch is gone. Work identity is the branch
+    and PR; a defect gets a row by doctrine; the Stop seam holds an unfinished row. A production
+    edit is judged by the path facts alone here and passes."""
     assert G.decide(_payload(str(REPO / "server.py"))) == 0
-    assert "PRODUCTION file" not in capsys.readouterr().err
+    assert capsys.readouterr().err == ""
 
 
 def test_negative_control_our_allowlisted_paths_never_block():

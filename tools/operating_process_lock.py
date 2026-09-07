@@ -3,11 +3,16 @@
 Machine-checkable predicates for governance/AGENT_OPERATING_PROCESS_V1.md.
 The charter is operator-facing; THIS module BLOCKs — .md alone is not a lock.
 
-Child of RC-215 (index≠WT stash-strip), RC-216 (DISK_ONLY vs LIVE), RC-210 (dual-writer thrash).
+Child of RC-215 (index≠WT stash-strip), RC-210 (dual-writer thrash).
 
-Minimum BLOCK surfaces (2026-08-24 teardown: the role/GO/mission rails are gone):
-  (a) Stop on COMPLETE/LIVE/one-intentional-tree claims while index≠WT or live PID predates db.py gate
-  (b) git commit when index≠WT on staged enforcement paths; tree-destructive/piped git blocked at PreToolUse
+BLOCK surfaces (2026-08-24 teardown: the role/GO/mission rails are gone; BEDROCK 2026-09-06:
+the completion-claim lock LOCK-5/RC-232 and the LIVE-vs-DISK probe RC-216 are gone — the
+first matched COMPLETE/LIVE_ENFORCED words in prose, the second measured a running server's
+start time from inside a governance hook; neither is a mechanism deciding a structural fact):
+  (a) git commit when index≠WT on staged enforcement paths (pre-commit + PreToolUse)
+  (b) tree-destructive git — THE one owner of that class, universal hard forms included —
+      and pipe-masked commits, blocked at PreToolUse
+  (c) RC re-dating without lineage, at pre-commit
 """
 from __future__ import annotations
 
@@ -33,8 +38,6 @@ DB_REL = "db.py"
 ENFORCEMENT_PATHS: tuple[str, ...] = (
     CHECKER_REL,
     DB_REL,
-    "tools/honesty_guard.py",
-    "tools/plus_player_locks.py",
     "tools/find_prove_locks.py",
     "tools/pretooluse_guard.py",
     "tools/operator_law_guard.py",
@@ -56,9 +59,15 @@ PROTECTED_PATHS: tuple[str, ...] = ENFORCEMENT_PATHS + (
 #: 2026-08-03 (RC-210 x2, RC-229) used soft forms the literal-match ban never saw. A command
 #: matching a destructive verb AND touching a protected/product path (or bare, whole-tree
 #: forms) BLOCKS at PreToolUse in EVERY session wired to process_lock_guard.
-#: Deliberate split with operator_law_guard._DESTRUCTIVE_GIT (both stay firing): that regex
-#: bans the universal hard forms anywhere on the host; THIS class rule covers the full
-#: reset/restore/checkout--/clean/stash verb family on protected/bare targets.
+#: BEDROCK 2026-09-06: ONE owner. The universal hard forms (reset --hard, checkout -- <any
+#: path>, clean -f, push --force without lease) used to live as a second regex in
+#: operator_law_guard, "deliberately split, both firing" — two rules answering one question.
+#: They are `_UNIVERSAL_DESTRUCTIVE_RE` below and refuse regardless of target; the class rule
+#: covers the full reset/restore/checkout--/clean/stash verb family on protected/bare targets.
+_UNIVERSAL_DESTRUCTIVE_RE = __import__("re").compile(
+    r"\bgit\s+(?:-\S+\s+)*(?:reset\s+--hard|checkout\s+--\s|clean\s+-[a-z]*f"
+    r"|push\s+--force(?!-with-lease))",
+    __import__("re").I)
 _RESET_GUARD_RE = __import__("re").compile(
     r"\bgit\s+(?:-\S+\s+)*(reset\b|restore\b|checkout\s+(?:\S+\s+)*--\s|clean\b|stash\b)",
     __import__("re").I)
@@ -119,8 +128,16 @@ def reset_guard_violations(command: str) -> list[str]:
 
     Not subject-disableable (RC-450): no env token or repo file can authorize a wipe.
     `git restore --staged` (index-only), `git stash list`, `git checkout -b` stay legal.
+    The universal hard forms refuse on ANY target (host-wide; the checkout in front of the
+    command is irrelevant — RC-258 kept these unscoped on purpose).
     """
     cmd = _strip_command_payloads(command or "")
+    if _UNIVERSAL_DESTRUCTIVE_RE.search(cmd):
+        return [
+            "RESET_GUARD (LOCK-2/RC-231): destructive git can discard operator work — "
+            "reset --hard / checkout -- <path> / clean -f / push --force are refused on any "
+            "target. Hand it to the operator. Not subject-disableable (RC-450)."
+        ]
     if not _RESET_GUARD_RE.search(cmd) or _RESET_GUARD_SAFE_RE.search(cmd):
         return []
     touched = [p for p in PROTECTED_PATHS + PRODUCT_WIPE_PROTECTED if p in cmd]
@@ -142,21 +159,6 @@ def reset_guard_violations(command: str) -> list[str]:
 # edit the files that decide who is in charge.
 
 
-_COMPLETION_CLAIM = re.compile(
-    r"\b("
-    r"LIVE_ENFORCED|live write path gated|one intentional tree|iceberg ready|"
-    r"index=worktree|index parity (?:clean|pass|ok)|ready to commit|all green|"
-    r"mechanically locked and green|COMPLETE(?:/CLOSED)?(?:\s+for|\s+on|\s+—|\s+-|\s*:|\s+the|\s+collect|\s+live|\s+lock)"
-    r")\b",
-    re.I,
-)
-_LIVE_RC_CLAIM = re.compile(
-    r"\b(LIVE_ENFORCED|live write path gated|live enforcement|runtime enforced)\b",
-    re.I,
-)
-_DISK_ONLY_TOKEN = re.compile(r"\bDISK_ONLY_UNTIL_RESTART\b", re.I)
-
-
 def _git(args: list[str], *, cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         ["git", *args],
@@ -174,9 +176,6 @@ def _rel(p: str | Path) -> str:
         return Path(p).resolve().relative_to(REPO).as_posix()
     except (ValueError, OSError):
         return Path(p).as_posix().replace("\\", "/")
-
-
-
 
 
 def enforcement_paths(repo: Path | None = None) -> list[str]:
@@ -353,206 +352,6 @@ def precommit_orphan_patch_warnings(repo: Path | None = None) -> list[str]:
     return warnings
 
 
-def db_has_collect_window_gate(repo: Path | None = None) -> bool:
-    root = repo or REPO
-    text = _read_text(root / DB_REL) or ""
-    return "is_collect_window_bar_end_ts_utc" in text and "RC-183" in text
-
-
-def _listening_pid(port: int = 8000) -> int | None:
-    if sys.platform == "win32":
-        r = subprocess.run(
-            ["netstat", "-ano"],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=15,
-        )
-        if r.returncode != 0:
-            return None
-        for line in r.stdout.splitlines():
-            if f":{port}" in line and "LISTENING" in line.upper():
-                parts = line.split()
-                try:
-                    return int(parts[-1])
-                except (ValueError, IndexError):
-                    continue
-        return None
-    # RC-373: a probe must type its own absence — a host without iproute2 (`ss`)
-    # answers "cannot determine" (None), never FileNotFoundError up through
-    # completion_claim_violations / measure_report.
-    try:
-        r = subprocess.run(
-            ["ss", "-ltnp", f"sport = :{port}"],
-            capture_output=True,
-            text=True,
-            timeout=15,
-        )
-    except (FileNotFoundError, OSError, subprocess.SubprocessError):
-        return None
-    if r.returncode != 0:
-        return None
-    m = re.search(r"pid=(\d+)", r.stdout)
-    return int(m.group(1)) if m else None
-
-
-def _process_start_epoch(pid: int) -> float | None:
-    # RC-438: read start-time in-process via psutil (robust, cross-platform, epoch
-    # seconds) BEFORE any interpreter shell-out. The prior win32 path cold-started
-    # powershell, importing every powershell/CLR/AMSI failure mode into a check that
-    # measures process identity — a host powershell hang made a provably-clean runtime
-    # unmeasurable. Check LOGIC (fail if start < db_mtime) is unchanged.
-    try:
-        import psutil  # already a venv dependency
-        return float(psutil.Process(pid).create_time())
-    except Exception:  # institutional-swallow-ok: psutil missing/unreadable -> fall through to the win32/proc readers below (RC-438)
-        pass
-    if sys.platform == "win32":
-        # Fallback only if psutil is unavailable (see RC-438).
-        try:
-            r = subprocess.run(
-                [
-                    "powershell",
-                    "-NoProfile",
-                    "-Command",
-                    f"(Get-Process -Id {pid} -ErrorAction SilentlyContinue).StartTime.ToUniversalTime().Subtract([datetime]'1970-01-01').TotalSeconds",
-                ],
-                capture_output=True,
-                text=True,
-                timeout=20,
-            )
-        except (subprocess.SubprocessError, OSError):
-            return None
-        if r.returncode != 0 or not r.stdout.strip():
-            return None
-        try:
-            return float(r.stdout.strip())
-        except ValueError:
-            return None
-    proc = Path(f"/proc/{pid}")
-    if not proc.is_dir():
-        return None
-    try:
-        stat = proc.stat()
-        return float(stat.st_mtime)
-    except OSError:
-        return None
-
-
-def _db_content_change_epoch(root: Path, db_path: Path) -> float | None:
-    """When db.py's CONTENT last changed. For a db.py that is CLEAN vs HEAD, this is its git
-    COMMIT time — NOT the filesystem mtime, which a fresh `git worktree add`/checkout stamps to
-    "now" even though the content did not change (that artifact created a FALSE DISK_ONLY when
-    auditing an isolated worktree: the checkout mtime was newer than a legitimately-current
-    console). For a db.py that is locally MODIFIED, the fs mtime is correct — a real local edit
-    is newer than any commit. This keeps real DISK_ONLY detection intact (a console predating
-    db.py's true change still flags) while removing the checkout artifact."""
-    try:
-        fs_mtime = db_path.stat().st_mtime
-    except OSError:
-        return None
-    try:
-        dirty = subprocess.run(
-            ["git", "diff", "--quiet", "HEAD", "--", DB_REL],
-            cwd=str(root), timeout=15,
-        ).returncode != 0
-        if not dirty:
-            r = subprocess.run(
-                ["git", "log", "-1", "--format=%ct", "HEAD", "--", DB_REL],
-                cwd=str(root), capture_output=True, text=True, timeout=15,
-            )
-            if r.returncode == 0 and r.stdout.strip():
-                return float(r.stdout.strip())
-    except (OSError, subprocess.SubprocessError, ValueError):
-        pass
-    return fs_mtime
-
-
-def live_collect_disk_only(repo: Path | None = None, port: int = 8000) -> str | None:
-    """Return violation message when disk has gate but live process predates db.py's change."""
-    root = repo or REPO
-    if not db_has_collect_window_gate(root):
-        return None
-    db_path = root / DB_REL
-    db_mtime = _db_content_change_epoch(root, db_path)
-    if db_mtime is None:
-        return None
-    pid = _listening_pid(port)
-    if pid is None:
-        return None
-    start = _process_start_epoch(pid)
-    if start is None:
-        return f":{port} listener PID {pid} found but start time unreadable — treat collect gate as DISK_ONLY_UNTIL_RESTART"
-    if start < db_mtime - 1.0:
-        return (
-            f"DISK_ONLY: db.py gate mtime newer than :{port} PID {pid} start "
-            f"(process predates collect-window seam — restart required for LIVE_ENFORCED)"
-        )
-    return None
-
-
-
-def _git_diff_names(root: Path, a: str | None, b: str | None) -> list[str]:
-    """Changed path names between two revs (or worktree-vs-HEAD when both None)."""
-    args = ["git", "diff", "--name-only"]
-    if a and b:
-        args.append(f"{a}..{b}")
-    else:
-        args.append("HEAD")
-    try:
-        r = subprocess.run(args, cwd=str(root), capture_output=True, text=True,
-                           encoding="utf-8", errors="replace", timeout=30)
-    except (OSError, subprocess.SubprocessError):
-        return []
-    if r.returncode != 0:
-        return []
-    return [ln.replace("\\", "/").strip() for ln in r.stdout.splitlines() if ln.strip()]
-
-
-def _quiet_pass_required_violations(text: str, root: Path) -> list[str]:
-    """LOCK-5 (RC-232): COMPLETE / LIVE_ENFORCED / mission-complete claims require the
-    live quiet bar when the landing touched server.py/db.py — the quiet-window JSON must
-    read PASS. Honest escapes only: the DISK_ONLY_UNTIL_RESTART token in the same claim,
-    or an explicit operator '# quiet-bar-ok:' waiver."""
-    if not re.search(r"\b(COMPLETE\b|LIVE_ENFORCED\b|mission[- ]complete)\b", text):
-        return []
-    if _DISK_ONLY_TOKEN.search(text) or "# quiet-bar-ok:" in text:
-        return []
-    touched = set(_git_diff_names(root, "HEAD~1", "HEAD")) | set(
-        _git_diff_names(root, None, None))
-    if not ({"server.py", "db.py"} & touched):
-        return []
-    qp = root / "reports" / "ed_server_warn_quiet_window_latest.json"
-    try:
-        qj = json.loads(qp.read_text(encoding="utf-8"))
-        verdict = str(qj.get("verdict") or "")
-    except (OSError, ValueError, json.JSONDecodeError):
-        verdict = "MISSING"
-    if verdict == "PASS":
-        # A PASS measured BEFORE the claimed server.py/db.py change is not the live
-        # quiet bar for that change (audit 2026-08-25: a 200-day-old PASS satisfied a
-        # fresh claim). Comparator = the changed files' own worktree mtimes — no window
-        # constant. Unreadable mtimes keep the PASS (fail-open HERE only; the
-        # MISSING/FAIL branches below stay fail-closed).
-        try:
-            newest = max((root / rel).stat().st_mtime
-                         for rel in ({"server.py", "db.py"} & touched)
-                         if (root / rel).exists())
-            if qp.stat().st_mtime >= newest:
-                return []
-            verdict = "STALE_PASS (quiet json predates the claimed server.py/db.py change)"
-        except (OSError, ValueError):
-            return []
-    return [
-        f"QUIET_PASS_REQUIRED: completion claim with server.py/db.py touched but "
-        f"ed_server_warn_quiet_window_latest.json verdict={verdict!r} (LOCK-5/RC-232) — "
-        f"run the gate to PASS, or state DISK_ONLY_UNTIL_RESTART / obtain '# quiet-bar-ok:'."
-    ]
-
-
-
-
 _RC_ROW_RE = re.compile(r"^\| (RC-\d+) \|")
 
 
@@ -673,34 +472,6 @@ def commit_pipe_violations(cmd: str) -> list[str]:
     return []
 
 
-
-
-def completion_claim_violations(text: str, repo: Path | None = None) -> list[str]:
-    """BLOCK COMPLETE/LIVE/parity claims while measurable preconditions fail."""
-    if not text:
-        return []
-    root = repo or REPO
-    out: list[str] = []
-    # LOCK-5 (RC-232) triggers on its OWN claim regex — the legacy _COMPLETION_CLAIM tails
-    # missed plain forms like 'Mission COMPLETE: ...' (measured by its own fixture).
-    out.extend(_quiet_pass_required_violations(text, root))
-    if not _COMPLETION_CLAIM.search(text):
-        return out
-    mism = index_worktree_mismatches(root)
-    if mism:
-        out.append(
-            "completion claim while index≠WT on enforcement paths: "
-            + "; ".join(mism[:5])
-        )
-    disk = live_collect_disk_only(root)
-    if disk and _LIVE_RC_CLAIM.search(text) and not _DISK_ONLY_TOKEN.search(text):
-        out.append(f"completion claim LIVE_ENFORCED while {disk}")
-    # (LOCK-5 runs above via _quiet_pass_required_violations — independent trigger.)
-    # RC-463: saying "ready to commit" while a lock surface is staged is no longer a
-    # blocked claim - the assistant commits its own work, so there is nothing to grant.
-    return out
-
-
 def commit_violations(repo: Path | None = None) -> list[str]:
     """Predicates for git commit PreToolUse / pre-commit."""
     root = repo or REPO
@@ -736,7 +507,6 @@ def measure_report(repo: Path | None = None) -> dict:
     return {
         "index_worktree_mismatches": index_worktree_mismatches(root),
         "staged_checks_not_on_head": staged_enforced_checks_not_on_head(root),
-        "live_collect_disk_only": live_collect_disk_only(root),
         "enforcement_hashes": rows,
         "orphan_patch_warnings": precommit_orphan_patch_warnings(root),
     }
@@ -766,9 +536,6 @@ def main(argv: list[str] | None = None) -> int:
         v = all_precommit_violations(REPO)
     else:
         v = index_worktree_mismatches(REPO)
-        disk = live_collect_disk_only(REPO)
-        if disk:
-            v.append(disk)
     if v:
         for msg in v:
             print(msg, file=sys.stderr)

@@ -38,7 +38,8 @@ GOVERNANCE_DIRS = ("tools", "governance")
 
 #: The real runtime entry points: the served app, the ops runner the panel drives, the
 #: capture daemon spine, and the two leaves everything imports.
-RUNTIME_ENTRY_POINTS = ("server.py", "ops_runner.py", "stream_spine.py", "config.py", "db.py")
+RUNTIME_ENTRY_POINTS = ("server.py", "ops_runner.py", "stream_spine.py", "config.py", "db.py",
+                        "runtime_layout.py")   # RC-523: the runtime-root owner is a leaf too
 
 LAUNCHER = REPO / "start_ed_console.bat"
 

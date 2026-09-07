@@ -9,6 +9,14 @@
 their enforcement map). Nothing in this directory grants work authority; the operator directs
 each session in chat.
 
+**One owner per responsibility (RC-520, 2026-09-05):** law → `AGENTS.md`; target architecture →
+`docs/ARCHITECTURE.md`; current operator-directed work → `ACTIVE_PROGRAM.md`; acceptance
+specification → `OPEN_ITEMS.md`; defects with clocks → `root_cause_log.md` (CLOSED rows older
+than a month are compacted to `ARCHIVED` lines whose git pointer carries the full row); claims →
+`unproven_register.md`; operator decisions → `OPERATOR_DECISION_REGISTER.md`; agent procedure →
+`AGENT_OPERATING_PROCESS_V1.md`; host facts → `docs/host/`. `.claude/**` and `.cursor/**` are
+adapters that point at those owners and carry no law of their own.
+
 ## Live ledgers and registers
 
 | File | Holds |
@@ -19,7 +27,7 @@ each session in chat.
 | `OPERATOR_DECISION_REGISTER.md` | O-NN operator decision narratives |
 | `agent_error_log.md` | July-2026 historical error record (E-01..E-39) |
 | `host_scheduled_jobs.md` | The single visible inventory of Windows scheduled tasks |
-| `guard_applicability.json` | Append-only applicability history (the RC-93 entry is retired; the UNIVERSAL-SAFETY declaration stands; read by tests, not by live guard code) |
+| `archive/guard_applicability.json` | Applicability history of the retired RC-93 rule — archived 2026-09-06 (bedrock); read by one test, by no guard |
 
 ## Live program / process docs
 
@@ -35,10 +43,13 @@ each session in chat.
 
 ## Contracts, crosswalks, and generated inventories
 
-The `A1_*` / `A2_*` / `PILOT_*` contract docs, the Schwab CSV crosswalk CSVs/YAMLs, the
-`mega*_traceable_inventory.py` census tools, and `computation_registry.json` /
-`level_faucets.json` / `plus_player_attributes.json` are live references consumed by checks
-and tests; superseded contract versions resolve under `archive/`.
+The `A1_*` / `A2_*` / `PILOT_*` contract docs, the Schwab CSV crosswalk (ONE reference:
+`SCHWAB_CSV_DERIVED_FIELD_CROSSWALK_WORKING.csv`, plus the `_RESIDUAL.csv` the sync tools read —
+the classified/disposition/coverage CSVs it generated and the three unread YAML registers were
+removed 2026-09-06, bedrock; `tools/classify_schwab_csv_crosswalk.py` regenerates into
+`reports/schwab_crosswalk/`), the `mega*_traceable_inventory.py` census tools, and
+`computation_registry.json` / `level_faucets.json` are live references consumed by checks and
+tests; superseded contract versions resolve under `archive/`.
 
 `archive/` holds retired programs, the 2026-Q2 memory archive, and superseded artifacts —
 history, never authority.

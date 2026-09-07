@@ -12,8 +12,8 @@ behaved. The guards stay independently runnable — this file is wiring, not aut
 
 Chain members (each file is the lock; this list is the wiring contract the tests pin):
     tools/stop_guard.py
-    tools/honesty_guard.py
-    tools/operator_law_guard.py
+    (tools/honesty_guard.py and tools/operator_law_guard.py left the roster 2026-09-06 —
+    bedrock doctrine, see STOP_CHAIN; the Stop seam has ONE owner)
 process_lock_guard is deliberately NOT in the Stop chain: its Stop path measured 3.18s
 (the bulk of the whole chain) and the dereg landed (PR #187 / RC-471) —
 process_lock_guard remains on every PreToolUse, where its process-integrity rails
@@ -33,6 +33,7 @@ from __future__ import annotations
 import importlib
 import io
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -45,8 +46,14 @@ if str(REPO) not in sys.path:
 #: dereg'd from Stop per the docstring; it stays on PreToolUse).
 STOP_CHAIN = (
     "tools.stop_guard",
-    "tools.honesty_guard",
-    "tools.operator_law_guard",
+    # honesty_guard REMOVED 2026-09-06 (bedrock doctrine, dual-signoff): it matched answer
+    # tokens, deflection phrases and "locked via .md" wording in the agent's prose — its own
+    # docstring said it "forces an answer TOKEN, not a correct or responsive answer". Matching
+    # English is not enforcement (AGENTS.md); the law stands and the operator is the detector.
+    # operator_law_guard REMOVED 2026-09-06 (bedrock, same signoff): its only Stop clause —
+    # "changed production code without a verification that RAN" — was a proxy for correctness
+    # that the CLOSE seam and the commit/CI gates already hold structurally. It stays on both
+    # PreToolUse rosters. The Stop seam is stop_guard's alone: an unfinished row blocks.
 )
 
 
@@ -181,7 +188,14 @@ MUTATING_TOOLS = frozenset({"Edit", "Write", "MultiEdit", "NotebookEdit"})
 #: subcommands that change a checkout, `-C <path>` resolved). `bash_mutation_targets` composes
 #: those. It parses nothing itself, because a second shell parser answering the same question
 #: is exactly the duplication this repo removes on sight.
-BASH_TOOLS = frozenset({"Bash", "PowerShell"})
+#:
+#: RC-520: this is THE roster of tools that carry a shell `command`, and the guards import it
+#: rather than keeping their own tuples. MEASURED 2026-09-05: `Monitor` runs a shell command
+#: exactly as Bash does, was absent from `.claude/settings.json`'s matcher and from three
+#: separate tool tuples in the guards, and rewrote `tools/mission_latch.py` through a Python
+#: one-liner that no guard judged. One roster, imported everywhere the class is decided, so a
+#: tool is either in the shell-mutation authority or it is not — never in one copy of it.
+BASH_TOOLS = frozenset({"Bash", "PowerShell", "Shell", "Monitor"})
 
 
 def _transcript_lines(path: Path) -> tuple[list[str], str]:
@@ -228,7 +242,7 @@ def bash_mutation_targets(command: str, payload_cwd: str = "") -> tuple[list[str
     happens to be running the hook.
     """
     try:
-        from tools.operator_law_guard import iter_command_segments, iter_git_invocations
+        from tools.shell_parse import iter_command_segments, iter_git_invocations
         from tools.process_lock_guard import (
             _shell_rewrites_tracked_tree,
             _shell_write_targets,
@@ -430,16 +444,92 @@ def canonical_authority(raw_payload: str) -> tuple[tuple[Path, ...], str, str]:
 DELEGATED_ENV = "ED_GOVERNANCE_AUTHORITY_DELEGATED"
 
 
-def _delegate(root: Path, raw_payload: str, members: tuple[str, ...]) -> int:
-    """Run the IDENTICAL roster under `root`'s governance and return its verdict.
+#: Hook events this chain serves, and the tools that make an event a PreToolUse one.
+_PRETOOLUSE_TOOLS = MUTATING_TOOLS | BASH_TOOLS
 
-    The roster travels as argv, so the member list cannot be shortened on the way across and
-    `.claude/settings.json` stays the reviewable authority over which guards run. Fail-closed:
-    a delegate that crashes, times out, or cannot be spawned returns non-zero, because an
-    unmeasurable guard run is not a passing one (RC-57).
+
+def _payload_event(raw_payload: str) -> tuple[str, str]:
+    """`(event, tool_name)` — the event a payload belongs to, as the host would route it."""
+    data = _payload(raw_payload)
+    tool = data.get("tool_name")
+    tool = tool if isinstance(tool, str) else ""
+    event = data.get("hook_event_name")
+    if isinstance(event, str) and event:
+        return event, tool
+    return ("PreToolUse" if tool in _PRETOOLUSE_TOOLS else "Stop"), tool
+
+
+def tree_roster(root: Path, raw_payload: str) -> tuple[tuple[str, ...], str]:
+    """`(members, failure)`: the roster `root`'s OWN hook wiring registers for this event.
+
+    RC-522 (2026-09-06). The delegate used to run the roster the LAUNCH tree passed on argv.
+    The production checkout's wiring still named `tools/honesty_guard.py`; the branch worktree
+    it delegated to had retired that module by a signed program; the delegate crashed on an
+    import and every Stop of the session was blocked by a rule the authoritative tree did not
+    carry — the RC-512 shape again, one level up: not stale CODE crossing the boundary this
+    time, but stale WIRING. A tree's canonical roster is what its own `.claude/settings.json`
+    registers; that is the reviewable authority the tests pin, and it is the only roster the
+    tree can be judged under. Launch-tree roster state never crosses the boundary.
+
+    Read from the tree, never trusted from the payload. Fail-closed: no wiring file, an
+    unparseable one, no entry for this event, or an empty roster is a `failure`, and the caller
+    refuses to delegate to that tree (it is judged HERE instead, with the reason in the note).
+    """
+    wiring = root / ".claude" / "settings.json"
+    try:
+        data = json.loads(wiring.read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        return (), f"{root} carries no readable hook wiring at .claude/settings.json"
+    event, tool = _payload_event(raw_payload)
+    hooks = (data.get("hooks") or {}) if isinstance(data, dict) else {}
+    entries = hooks.get(event) if isinstance(hooks, dict) else None
+    if not isinstance(entries, list) or not entries:
+        return (), f"{root} registers no {event} hook in its wiring"
+    chosen = None
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        matcher = entry.get("matcher")
+        if event == "PreToolUse":
+            if not isinstance(matcher, str) or not tool:
+                continue
+            try:
+                if not re.fullmatch(matcher, tool):
+                    continue
+            except re.error:
+                continue
+        chosen = entry
+        break
+    if chosen is None:
+        return (), f"{root} registers no {event} hook for tool {tool!r} in its wiring"
+    commands = [h.get("command") for h in (chosen.get("hooks") or []) if isinstance(h, dict)]
+    command = next((c for c in commands if isinstance(c, str) and c.strip()), "")
+    argv = [t for t in command.split() if t.replace("\\", "/").startswith("tools/")
+            and "chain" not in t]
+    members = _argv_members(argv)
+    if not members:
+        return (), f"{root} registers an empty {event} roster in its wiring"
+    return members, ""
+
+
+def _delegate(root: Path, raw_payload: str) -> tuple[int, str]:
+    """Run `root`'s OWN roster under `root`'s governance; return (verdict, its stderr).
+
+    The roster is read from the delegate tree's hook wiring (`tree_roster`, RC-522) — never
+    from this tree's argv — so a rule this tree still registers cannot be run against a tree
+    that retired it, and a rule the delegate registers cannot be dropped on the way across.
+    Fail-closed: a delegate that crashes, times out, or cannot be spawned returns non-zero,
+    because an unmeasurable guard run is not a passing one (RC-57). The stderr comes back too,
+    because a crashed delegate names the file it crashed in and that name is the whole
+    recovery boundary (`recovery_files`, RC-520).
     """
     import os
 
+    members, failure = tree_roster(root, raw_payload)
+    if failure:
+        msg = f"GOVERNANCE AUTHORITY: delegation to {root} refused — {failure}.\n"
+        sys.stderr.write(msg)
+        return 2, msg
     entry = root / "tools" / "stop_chain.py"
     argv = [f"tools/{name.split('.')[-1]}.py" for name in members]
     env = dict(os.environ)
@@ -450,22 +540,140 @@ def _delegate(root: Path, raw_payload: str, members: tuple[str, ...]) -> int:
             input=raw_payload, text=True, capture_output=True, timeout=180,
         )
     except (OSError, subprocess.SubprocessError) as exc:
-        sys.stderr.write(
-            f"GOVERNANCE AUTHORITY: delegation to {root} failed "
-            f"({type(exc).__name__}: {exc}); blocking, because a guard run that did not "
-            f"happen is not a guard run that passed.\n")
-        return 2
+        msg = (f"GOVERNANCE AUTHORITY: delegation to {root} failed "
+               f"({type(exc).__name__}: {exc}); blocking, because a guard run that did not "
+               f"happen is not a guard run that passed.\n")
+        sys.stderr.write(msg)
+        return 2, msg
     if proc.stdout:
         sys.stdout.write(proc.stdout)
     if proc.stderr:
         sys.stderr.write(proc.stderr)
-    return proc.returncode
+    return proc.returncode, proc.stderr or ""
 
 
-def _ineligible_reason(root: Path, members: tuple[str, ...]) -> str:
-    """Why `root` may not judge for itself — empty when it may."""
+# RC-520 — THE SELF-LOCK, and the one narrow way out of it.
+#
+# OBSERVED 2026-09-05. A guard-imported module (`tools/mission_latch.py`) in the delegated
+# worktree was left half-edited between two tool calls: a helper was referenced before the
+# call that defined it. From that moment every delegated run crashed with NameError before
+# adjudicating, the crash is a BLOCK by design (unmeasurable is never compliant), and the
+# Edit that would have restored the module was itself a hooked mutation judged by the same
+# crashing delegate. Fail-closed had become unrecoverable, and the only way back in was a
+# tool the hooks did not match at all — which is how the Monitor bypass above was found.
+#
+# THE RULE. A crashed delegate names the file it crashed in (`_crash_site`, written into its
+# own stderr). While it is broken, exactly ONE mutation is admitted for that tree: a
+# file-target edit whose path IS that file. Everything else stays BLOCKED. The admitted edit
+# is not ungoverned — the tree running the hook judges it under the IDENTICAL roster and says
+# so in its banner — and the file is chosen by the crash, never by the payload, so the
+# subject cannot pick its judge or widen the door. Once the module imports again the next
+# call delegates normally; nothing is remembered. No token, no environment switch, no second
+# chain.
+#: The ONE tool a recovery may use. Edit is a bounded string replacement; Write and MultiEdit
+#: replace the file, and a recovery that can replace a guard wholesale is not narrow.
+RECOVERY_TOOL = "Edit"
+_BROKEN_FILE_RE = re.compile(r"\[broken file: ([^\]]+)\]")
+_TRACEBACK_FILE_RE = re.compile(r'File "([^"\n]+)", line \d+')
+
+
+def _crash_site(exc: BaseException) -> str:
+    """Repo-relative path of the file a member crashed IN — the deepest frame under REPO, or
+    the SyntaxError's own filename. Empty when the crash has no frame in this tree."""
+    files: list[str] = []
+    if isinstance(exc, SyntaxError) and exc.filename:
+        files.append(exc.filename)
+    tb = exc.__traceback__
+    while tb is not None:
+        files.append(tb.tb_frame.f_code.co_filename)
+        tb = tb.tb_next
+    root = REPO.resolve()
+    executors = {"tools/stop_chain.py", "tools/pretooluse_chain.py"}
+    for name in reversed(files):
+        # RC-522: a frame name that is not a real file (`<frozen importlib._bootstrap>` on a
+        # missing module) used to RESOLVE under the cwd and be reported as the crash site. A
+        # site must exist on disk, and the chain executor that IMPORTED the member is never
+        # the site — a missing module has no file to repair, so the door stays shut.
+        try:
+            candidate = Path(name)
+            if not candidate.is_file():
+                continue
+            rel = candidate.resolve().relative_to(root).as_posix()
+        except (OSError, ValueError):
+            continue
+        if rel in executors:
+            continue
+        return rel
+    return ""
+
+
+def recovery_files(root: Path, delegate_stderr: str) -> set[Path]:
+    """The guard-module files a crashed delegate named as its own point of failure.
+
+    Two sources, both written by the crash and neither by the agent: the `[broken file: …]`
+    marker a caught member crash emits, and — when the delegate's chain could not even start —
+    the deepest `File "…"` frame of its traceback. Confined to `tools/*.py` under `root`,
+    because that is where guard-imported modules live; a crash elsewhere admits nothing.
+    """
+    resolved_root = root.resolve()
+    named: list[Path] = [resolved_root / rel for rel in _BROKEN_FILE_RE.findall(delegate_stderr)]
+    frames = _TRACEBACK_FILE_RE.findall(delegate_stderr)
+    if frames and not named:
+        named.append(Path(frames[-1]))
+    out: set[Path] = set()
+    for p in named:
+        try:
+            rel = p.resolve().relative_to(resolved_root)
+        except (OSError, ValueError):
+            continue
+        if len(rel.parts) == 2 and rel.parts[0] == "tools" and rel.suffix == ".py":
+            out.add(p.resolve())
+    return out
+
+
+def _delegate_crashed(delegate_stderr: str) -> bool:
+    return ("STOP CHAIN:" in delegate_stderr and " crashed: " in delegate_stderr) or \
+        "Traceback (most recent call last)" in delegate_stderr
+
+
+def recovery_target(raw_payload: str, root: Path, delegate_stderr: str) -> Path | None:
+    """The one file this payload may restore in `root`, or None.
+
+    Non-None only when: the delegate CRASHED (a verdict is not a crash), the tool is exactly
+    `Edit`, and its path resolves to a file the crash itself named. Exactly Edit — not the
+    `MUTATING_TOOLS` class: a Write replaces the guard file whole and a MultiEdit rewrites it
+    in bulk, which is a wider repair than the one narrow correction this door exists for
+    (operator correction, 2026-09-05 — the first cut accepted the whole class). A shell
+    command is never a recovery — it has no single target to confine.
+    """
+    if not _delegate_crashed(delegate_stderr):
+        return None
+    data = _payload(raw_payload)
+    if data.get("tool_name") != RECOVERY_TOOL:
+        return None
+    tool_input = data.get("tool_input")
+    path = tool_input.get("file_path") if isinstance(tool_input, dict) else None
+    if not isinstance(path, str) or not path.strip():
+        return None
+    try:
+        target = Path(path).resolve()
+    except OSError:
+        return None
+    return target if target in recovery_files(root, delegate_stderr) else None
+
+
+def _ineligible_reason(root: Path, raw_payload: str) -> str:
+    """Why `root` may not judge for itself — empty when it may.
+
+    Eligibility is decided against the tree's OWN roster (RC-522): a tree with no canonical
+    wiring for this event cannot be handed authority, and the uncommitted-guard rule is asked
+    about the guards that tree actually registers, not the ones the launch tree does.
+    """
     if not (root / "tools" / "stop_chain.py").is_file():
         return f"{root} carries no chain to delegate to"
+    members, failure = tree_roster(root, raw_payload)
+    if failure:
+        return failure
     dirty = uncommitted_guard_files(root, members)
     if dirty:
         return (f"{root} has UNCOMMITTED guard files ({', '.join(dirty)}); a tree cannot be "
@@ -483,6 +691,9 @@ def resolve_authority(raw_payload: str, members: tuple[str, ...]) -> tuple[
     `run_here` is True whenever this tree must judge as well — because it is itself one of the
     materially touched trees, because nothing resolved, or because a resolved tree was refused
     authority. A refused tree is never simply dropped: something always judges for it.
+
+    `members` is THIS tree's roster (its argv); it governs only the run-here half. A delegate
+    is judged under its own wiring (`tree_roster`, RC-522).
     """
     import os
 
@@ -505,7 +716,7 @@ def resolve_authority(raw_payload: str, members: tuple[str, ...]) -> tuple[
         if root == REPO:
             run_here = True
             continue
-        reason = _ineligible_reason(root, members)
+        reason = _ineligible_reason(root, raw_payload)
         if reason:
             notes.append(reason)
             run_here = True          # judged here INSTEAD, never skipped
@@ -521,7 +732,7 @@ def run_chain(raw_payload: str, members: tuple[str, ...] = STOP_CHAIN) -> int:
     RC-57): its traceback goes to stderr and the chain reports exit 2.
 
     RC-512: before running anything, ask WHO should be running it. Every materially touched
-    worktree of this repository runs the identical roster and the WORST real verdict wins —
+    worktree of this repository runs ITS OWN registered roster (RC-522) and the WORST real verdict wins —
     adjudicated, not chosen, because any rule for choosing one tree is a rule an agent can
     satisfy on purpose. When this tree is among them, or when a resolved tree was refused
     authority, the roster also runs here and every BLOCK says so. No path skips the roster,
@@ -538,7 +749,22 @@ def run_chain(raw_payload: str, members: tuple[str, ...] = STOP_CHAIN) -> int:
             f"establish authority adds a block, it never removes one.\n")
         worst = 2
     for root in delegate_to:
-        worst = max(worst, _delegate(root, raw_payload, members))
+        rc, delegate_err = _delegate(root, raw_payload)
+        if rc:
+            target = recovery_target(raw_payload, root, delegate_err)
+            if target is not None:
+                # RC-520: the delegate cannot adjudicate and this edit is the repair of the
+                # exact file it crashed in. Judged HERE under the identical roster — never
+                # waved through — and every other payload keeps blocking until it imports.
+                sys.stderr.write(
+                    f"GOVERNANCE RECOVERY: {root} could not adjudicate (its guard chain "
+                    f"crashed inside {target.relative_to(root.resolve()).as_posix()}) and this "
+                    f"edit targets exactly that file, so {REPO} judges it under the identical "
+                    f"roster instead. Nothing else is admitted for {root} until its chain "
+                    f"adjudicates again (RC-520).\n")
+                run_here = True
+                continue
+        worst = max(worst, rc)
     if not run_here:
         return 2 if worst else 0
     for name in members:
@@ -549,7 +775,9 @@ def run_chain(raw_payload: str, members: tuple[str, ...] = STOP_CHAIN) -> int:
         except SystemExit as exc:          # a guard that sys.exit()s inside main()
             rc = int(exc.code or 0)
         except Exception as exc:  # noqa: BLE001 — a broken guard must scream, not wave through
-            sys.stderr.write(f"STOP CHAIN: {name} crashed: {type(exc).__name__}: {exc}\n")
+            site = _crash_site(exc)
+            sys.stderr.write(f"STOP CHAIN: {name} crashed: {type(exc).__name__}: {exc}"
+                             + (f" [broken file: {site}]" if site else "") + "\n")
             rc = 2
         worst = max(worst, rc)
     if worst:
@@ -572,8 +800,24 @@ def _argv_members(argv: list[str]) -> tuple[str, ...]:
 
 
 def main() -> int:
+    import os
+
+    raw_payload = sys.stdin.read()
     members = _argv_members(sys.argv[1:]) or STOP_CHAIN
-    return run_chain(sys.stdin.read(), members)
+    if os.environ.get(DELEGATED_ENV) == "1":
+        # RC-531: a delegated run is judged under THIS tree's own wiring, whatever the launcher
+        # passed on argv. RC-522 taught the new launcher to forward the delegate's roster; a
+        # launcher at an older commit (the production checkout until that change lands there)
+        # still forwards its own, and the receiving seam is the only party that can read this
+        # tree's wiring with certainty. No wiring -> refuse; argv is never the substitute.
+        own, failure = tree_roster(REPO, raw_payload)
+        if failure:
+            sys.stderr.write(
+                f"GOVERNANCE AUTHORITY: delegated run in {REPO} REFUSED — {failure}; the "
+                f"launch tree's argv roster is not a substitute for this tree's wiring (RC-531).\n")
+            return 2
+        members = own
+    return run_chain(raw_payload, members)
 
 
 if __name__ == "__main__":

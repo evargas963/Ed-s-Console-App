@@ -35,7 +35,6 @@ import ast
 import datetime
 import hashlib
 import json
-import os
 import re
 import subprocess
 import sys
@@ -193,28 +192,39 @@ def _rc_row_violations(log_path, n: int, rc_id: str, status: str,
     """
     out: list[Violation] = []
     why = cells[5] if len(cells) >= 6 else ""
-    depth = why.count("->")
-    if depth < 4:
-        out.append(Violation(
-            log_path, n,
-            f"{rc_id} has a why-chain only {depth + 1} level(s) deep. Five whys are "
-            f"required BEFORE the row is written - a shallow chain is how a symptom "
-            f"gets recorded as a root cause."))
+    # BEDROCK 2026-09-06: the arrow count is gone. It measured form, not cause: four `->`
+    # could be written in a minute and were, hundreds of times, and RC-315's chain was five
+    # deep on a false premise. Causal sufficiency (the chain ends at the wrong model,
+    # assumption, semantics, placement or computation, each link a measured fact) is judged
+    # in review. What a machine CAN check is that the cell is not empty.
+    if not why.strip():
+        out.append(Violation(log_path, n, f"{rc_id} has an empty why-chain cell."))
     if status in ("CLOSED", "REMEDIATED"):
         # REMEDIATED joined the evidence gate 2026-08-25 (audit round 2 red-team):
         # OPEN->REMEDIATED used to terminate an overdue row with no evidence and no
         # re-date reason — the same silencing CLOSED is gated against.
+        # BEDROCK 2026-09-06: "a digit plus one of four words" is replaced by the one
+        # checkable evidence property: a backticked command a reader can re-run.
         evidence = cells[6] if len(cells) >= 7 else ""
-        has_number = any(ch.isdigit() for ch in evidence)
-        has_proof = any(w in evidence.upper()
-                        for w in ("PROVEN", "VERIFIED", "MEASURED", "OBSERVED"))
-        if not (has_number and has_proof):
+        opened = cells[2] if len(cells) >= 3 else ""
+        # Forward-binding from the bedrock cutover, like every other row rule: rows closed
+        # under the old digit-plus-word rule are history and are not re-judged.
+        if opened >= CLOSE_COMMAND_CUTOVER and not _RUNNABLE_COMMAND_RE.search(evidence):
             out.append(Violation(
                 log_path, n,
-                f"{rc_id} is {status} without observed evidence. A terminal root cause must "
-                f"cite a measured value (numbers) and say it was proven/verified/measured "
-                f"- describing the code change is not proof that it works."))
+                f"{rc_id} is {status} without a re-runnable command in its evidence cell. "
+                f"Closure cites the exact command whose output proved the fix, in backticks; "
+                f"describing the code change is not proof that it works."))
     return out
+
+
+#: Bedrock doctrine cutover (2026-09-06): closure evidence is a re-runnable command.
+CLOSE_COMMAND_CUTOVER = "2026-09-06"
+
+#: A backticked span that is a command someone can run — the same standard the numeric
+#: claim rule holds, held once here for closure evidence.
+_RUNNABLE_COMMAND_RE = re.compile(
+    r"`[^`]*(?:python|pytest|node |curl |SELECT |sqlite3|tools/|\.py|\.ps1|git )[^`]*`")
 
 
 # Cutover date kept for the surviving no-terminal-null rules below (RC-470: the
@@ -245,7 +255,7 @@ def _surrender_violations(lines: list[str], log_path) -> list[Violation]:
         if not line.startswith("| RC-"):
             continue
         cells = [c.strip() for c in line.strip().strip("|").split("|")]
-        if len(cells) < 7 or cells[2] < FIVE_WHY_LOCK_CUTOVER:
+        if len(cells) < 7 or cells[2] < FIVE_WHY_LOCK_CUTOVER or cells[1] == "ARCHIVED":
             continue
         text = f"{cells[5]} {cells[6]}".lower()
         for phrase in _SURRENDER_PHRASES:
@@ -315,7 +325,6 @@ def check_no_terminal_null() -> list[Violation]:
     return out
 
 
-
 def check_root_cause_log() -> list[Violation]:
     """Every defect gets five whys, and finding a cause RESTARTS the count.
 
@@ -355,6 +364,8 @@ def check_root_cause_log() -> list[Violation]:
         if len(cells) < 5:
             continue
         rc_id, status, _opened, due = cells[0], cells[1], cells[2], cells[3]
+        if status == "ARCHIVED":
+            continue                      # settled history; substance lives at the git pointer
 
         out.extend(_rc_row_violations(log_path, n, rc_id, status, cells))
         # RC-503: BLOCKED is unfinished work, so it carries a due date and goes overdue exactly
@@ -390,7 +401,10 @@ def _root_cause_ledger_folded_violations() -> list[Violation]:
         ("rc_status_vocabulary", _rc_status_vocabulary_violations),
         ("rc_log_rows_keep_schema", _rc_log_rows_keep_schema_violations),
         ("rc_numeric_claims_cite_a_command", _rc_numeric_claims_cite_a_command_violations),
-        ("rc_mechanism_claims_cite_a_source", _rc_mechanism_claims_cite_a_source_violations),
+        # BEDROCK 2026-09-06: rc_mechanism_claims_cite_a_source is no longer folded. It
+        # matched English verbs ("pins price", "repels") in ledger prose — a control that
+        # decides a real question by matching free text is not enforcement (AGENTS.md).
+        # The law (cite a market mechanism or mark it unproven) stands; review judges it.
         ("closed_rows_ship_their_code", _closed_rows_ship_their_code_violations),
         ("adversarial_audits_are_answered", _adversarial_audits_are_answered_violations),
     ):
@@ -422,12 +436,6 @@ def check_rc_numeric_claims_cite_a_command() -> list[Violation]:
     return _rc_numeric_claims_cite_a_command_violations()
 
 
-def check_rc_mechanism_claims_cite_a_source() -> list[Violation]:
-    """Wrapper kept importable for the negative controls; the substance runs inside
-    check_root_cause_log (retired registration, governance/retired_checks.md)."""
-    return _rc_mechanism_claims_cite_a_source_violations()
-
-
 def check_closed_rows_ship_their_code() -> list[Violation]:
     """Wrapper kept importable for the negative controls; the substance runs inside
     check_root_cause_log (retired registration, governance/retired_checks.md)."""
@@ -438,126 +446,6 @@ def check_adversarial_audits_are_answered() -> list[Violation]:
     """Wrapper kept importable for the negative controls; the substance runs inside
     check_root_cause_log (retired registration, governance/retired_checks.md)."""
     return _adversarial_audits_are_answered_violations()
-
-
-def _ratchet_may_write() -> bool:
-    """A CHECK MUST NOT MUTATE THE REPO (RC-90).
-
-    check_debt_ratchet used to rewrite the baseline whenever a metric improved, and
-    check_open_item_cap the ceiling. pre-commit stashes unstaged work and runs hooks against the
-    STAGED-ONLY tree, so those counts legitimately differ from the working tree: the file was
-    rewritten on every single run, pre-commit treats a hook that modifies a tracked file as a
-    failure, and staging the rewrite could not help because the next run rewrote it again. Four
-    consecutive commits were blocked on 2026-07-27 while the gate itself printed PASS with all 32
-    enforced checks clean -- including the commit carrying the locks the operator had just
-    mandated.
-
-    Under a hook the ratchet still COMPARES and still BLOCKS on a real rise; it just does not
-    record the new floor. Recording is deliberate, exactly as the docstring always claimed:
-        python tools/check_institutional_correctness.py --rebaseline
-    """
-    if os.environ.get("PRE_COMMIT"):          # set by pre-commit for every hook it runs
-        return False
-    return os.environ.get("ED_RATCHET_NO_WRITE", "").strip().lower() not in ("1", "true", "on")
-
-
-def _debt_baseline_path():
-    return REPO / "governance" / "advisory_debt_baseline.json"
-
-
-# Correctness-shaped advisory debt — the ONLY metrics whose rise fails the commit.
-# Shape/style volume (file/function length, complexity, ruff SIM/ARG/etc.) is reported
-# but never blocks: elite institutional craft is judged by correctness and architecture,
-# not by shaving counters (RC-19: a file-length ceiling forced five circular imports to
-# save seven lines). Hard correctness already lives elsewhere (ENFORCED checks, pre-commit
-# ruff F401/F821/E9, market-correctness, 5-why). New advisory checks default to
-# track-only unless added here deliberately.
-_RATCHET_BLOCKS_ON_RISE = frozenset({
-    "no_fake_defaults",              # fabricated neutrals hide absence
-    "orphan_dict_keys",              # silent None / misspelled keys (RC-15/RC-20)
-    "tests_missing_explicit_assert", # tests that cannot fail on regression
-    # mypy_types intentionally excluded: checker is dormant until mypy is installed;
-    # a 0-vs-baseline honesty trip would brick every bare/.venv without mypy.
-})
-
-
-def check_debt_ratchet() -> list[Violation]:
-    """Correctness advisory debt may go DOWN or stay flat. It may never go UP.
-
-    Operator 2026-07-19: "mypy is not a report, it's a tool." Operator 2026-07-24/25:
-    the ratchet exists to stop CRUFT (fake defaults, orphan keys, assertion-free tests,
-    type holes) — not to police line counts, cyclomatic complexity, or stylistic ruff
-    volume. Those shape/style counters remain visible as ADVISORY checks and may float
-    with the codebase; they do not fail the gate. Allowlist = `_RATCHET_BLOCKS_ON_RISE`.
-
-    Baseline floor for blocked metrics still only descends (auto-rewrite on improvement).
-    Regenerate deliberately (after an accepted correctness-debt increase) with:
-        python tools/check_institutional_correctness.py --rebaseline
-    """
-    out: list[Violation] = []
-    path = _debt_baseline_path()
-    current = {name: len(fn()) for name, fn, enforced in CHECKS if not enforced
-               and name != "debt_ratchet"}
-    if not path.exists():
-        # RC-385: READ-ONLY. Seeding is an explicit act (--rebaseline), never a side
-        # effect of asking the gate a question.
-        out.append(Violation(path, 0,
-                             "advisory_debt_baseline.json is missing. Seed it deliberately: "
-                             "python tools/check_institutional_correctness.py --rebaseline"))
-        return out
-    try:
-        baseline = json.loads(path.read_text(encoding="utf-8"))
-    except ValueError:
-        out.append(Violation(path, 0, "advisory_debt_baseline.json is unparseable"))
-        return out
-
-    improved = False
-    for name, count in sorted(current.items()):
-        base = baseline.get(name)
-        if base is None:
-            baseline[name] = count
-            improved = True
-            continue
-        if count > base:
-            if name not in _RATCHET_BLOCKS_ON_RISE:
-                # Shape/style volume (or any future advisory not on the allowlist):
-                # track the new floor; never block a correct professional change.
-                baseline[name] = count
-                improved = True
-                continue
-            out.append(Violation(path, 0,
-                                 f"{name} rose {base} -> {count} (+{count - base}). Correctness "
-                                 f"advisory debt may never increase: clean what you added, or "
-                                 f"lower another correctness count to pay for it."))
-        elif count < base:
-            # HONESTY GUARD: a checker that fails and returns nothing is indistinguishable
-            # from a checker that found nothing. Recording that 0 as the new floor silently
-            # destroys the ratchet -- it happened to ruff_quality (1147 -> 0), which then
-            # blocked every commit with a phantom +1147. A collapse to zero from a large
-            # baseline is a tool failure until proven otherwise.
-            if count == 0 and base > 10 and name in _RATCHET_BLOCKS_ON_RISE:
-                out.append(Violation(
-                    path, 0,
-                    f"{name} reported 0 against a baseline of {base}. That is a checker "
-                    f"failure, not perfection - the baseline was NOT lowered. Investigate "
-                    f"the checker, then re-run."))
-                continue
-            if count == 0 and base > 10 and name not in _RATCHET_BLOCKS_ON_RISE:
-                # Track-only metrics: do not collapse a large baseline to 0 on checker flake,
-                # and do not fail the commit either — leave baseline unchanged.
-                continue
-            baseline[name] = count
-            improved = True
-    # RC-385: the ratchet READS its reference and never writes it. Measured 2026-08-15 on a
-    # pristine checkout of origin/main: one call moved file_length 37->49,
-    # function_complexity 462->547, ruff_quality 1081->1301 and flipped the file to CRLF, so
-    # the act of MEASURING left a clean clone dirty with RAISED debt ceilings — and anyone
-    # committing with blind staging would have legitimised them without deciding to. A gate
-    # may read its reference or change it, never both in one call. `improved` is still
-    # computed above because --rebaseline reuses this comparison; recording happens only
-    # there, which is what both docstrings have always claimed.
-    del improved
-    return out
 
 
 # check_no_governance_duplication RETIRED (SIMPLICITY REHAB 2026-08-24,
@@ -631,104 +519,6 @@ def _self_comparison(test: ast.AST) -> str | None:
     if both_static and ast.dump(test.left) == ast.dump(test.comparators[0]):
         return "compares a value to itself"
     return None
-
-
-def _is_overdue(due: str) -> bool:
-    """True when `due` (YYYY-MM-DD) is in the past. An unparseable date is NOT counted here —
-    check_root_cause_log already fails loudly on a malformed due date, so this never
-    double-reports and never silently treats junk as compliant."""
-    try:
-        return datetime.date.fromisoformat(due.strip()) < datetime.date.today()
-    except (TypeError, ValueError):
-        return False
-
-
-def _overdue_governance_items(rc_path, reg_path) -> list[str]:
-    """RC-65: items that have actually ROTTED — open past their own due date.
-
-    Root-cause columns: id | status | opened | due | ...   (due = cells[3])
-    Register columns:   status | opened | due | claim | ... (due = cells[2])
-    """
-    out: list[str] = []
-    if rc_path.exists():
-        for line in rc_path.read_text(encoding="utf-8").splitlines():
-            if not line.startswith("| RC-"):
-                continue
-            cells = [c.strip() for c in line.strip("|").split("|")]
-            if len(cells) > 3 and cells[1] == "OPEN" and _is_overdue(cells[3]):
-                out.append(cells[0])
-    if reg_path.exists():
-        for line in reg_path.read_text(encoding="utf-8").splitlines():
-            if not line.startswith("|"):
-                continue
-            cells = [c.strip() for c in line.strip("|").split("|")]
-            if len(cells) > 3 and cells[0] in ("UNPROVEN", "DISPROVED") and _is_overdue(cells[2]):
-                out.append(f"register:{cells[3][:40]}")
-    return out
-
-
-def check_open_item_cap() -> list[Violation]:
-    """Governance ledgers must burn DOWN. The open count may never rise.
-
-    Operator 2026-07-19: the ledgers must resolve, not accumulate.
-
-    A fixed cap would repeat the mistake of the 800-line ceiling (RC-19): an arbitrary
-    number invites an arbitrary remedy, and a permanently-red gate teaches you to ignore
-    it. This is a RATCHET instead -- the same mechanism as advisory debt. The current open
-    count is the new ceiling the moment it drops, so the only permitted direction is down,
-    and no number had to be invented.
-
-    MEASURE CORRECTED 2026-07-26 (RC-65, operator: "i don't care about caps as long as we have
-    great code — i thought this was a mechanical lock"). Counting EVERY open item conflated two
-    opposite things: honest new tracking and deferral. On 2026-07-26 a session that found real
-    defects (RC-43's closure was wrong; RC-58's contamination set) FAILED this gate *because* it
-    recorded them — which teaches the agent to stay silent, the precise opposite of this repo's
-    purpose. A control that punishes discovery is worse than no control.
-
-    What actually means "deferred forever" is an item PAST ITS DUE DATE. So the ratchet now counts
-    OVERDUE dated items (root-cause rows and register claims both carry a due date) plus every
-    unchecked OPEN_ITEMS.md row, which has no due date and therefore stays a pure parking-lot
-    count. Opening a defect today with a real due date is free; letting it rot is not — and the
-    burn-down pressure the operator asked for in 2026-07-19 is preserved exactly where it belongs.
-    """
-    out: list[Violation] = []
-    rc = REPO / "governance" / "root_cause_log.md"
-    open_items = _overdue_governance_items(
-        rc, REPO / "governance" / "unproven_register.md")
-    # OPEN_ITEMS.md joined the ratchet 2026-07-20. WHAT WAS OBSERVED: the cap covered
-    # only the two governance ledgers, so OPEN_ITEMS.md was an UNGATED parking lot --
-    # a "flagged, not fixed" disposition could sit there forever, which is exactly the
-    # banned third state (operator: Fixed / Allowlisted-with-reason / Registered-with-
-    # due-date, nothing else). Counting its unchecked rows puts the same only-down
-    # pressure on it. VALIDATED BY PROTOTYPE: 39 unchecked rows at adoption (33 pre-existing + 6
-    # registered from the 2026-07-20 audit remainder); the ceiling was re-baselined
-    # 10 -> 49 IN THE SAME CHANGE (scope expansion, not backsliding) and
-    # may only fall from there.
-    # RC-280: RATCHET REMOVED 2026-08-07 on operator instruction ("WE DO NOT NEED RATCHETS.
-    # WE NEED GREAT CODE. WE NEED TO REMOVE ALL RATCHETS"), and this mission's done_criteria:
-    # no ceiling the operator did not name a number for. This check used to store a
-    # high-water mark in governance/open_item_ceiling.json and block whenever the count rose
-    # above it. MEASURED cost of that design: the ceiling stood at 37 against 39 items and
-    # blocked the commit carrying the adversarial-audit request the operator had already sent
-    # to Cursor, while 34 tests were red -- the control was spending the session on itself.
-    # An invented number also invites an invented remedy: the cheapest way past a count is to
-    # close a row rather than fix a defect, which is the opposite of the intent.
-    #
-    # What survives is the LAW without the number: a dated item may not rot. Zero overdue is
-    # a standard, not a tolerance, and it needs no baseline to compare against.
-    #
-    # DELIBERATELY DROPPED: the unchecked OPEN_ITEMS.md rows this also counted. They carry no
-    # due date, so they were pure parking-lot volume -- the quantity a ratchet measures and a
-    # law cannot. Requiring a due date on every parked row is the honest successor and is a
-    # separate change, not something to smuggle in here.
-    if open_items:
-        out.append(Violation(
-            rc, 0,
-            f"{len(open_items)} governance item(s) are PAST their due date: "
-            f"{', '.join(open_items[:8])}{'...' if len(open_items) > 8 else ''}. "
-            f"Finish it, or re-date it with the reason stated in the row. A due date that "
-            f"passes silently is a deferral wearing a schedule."))
-    return out
 
 
 #: Receivers whose .get() is not a dict read we can reason about (routes, env, vendor libs).
@@ -1052,9 +842,6 @@ def check_no_synthetic_domain_fixtures_in_tests() -> list[Violation]:
     for the domain whose correctness must be proven on real chains."""
     out: list[Violation] = []
     for p in sorted(TESTS.rglob("test_*.py")):
-        # tests/archive/ is frozen legacy — out of scope for the living standard.
-        if "archive" in p.relative_to(TESTS).parts:
-            continue
         src = _read_or_empty(p)
         if not src:
             continue   # RC-116: vanished mid-scan — nothing to police
@@ -1511,85 +1298,9 @@ def _cyclomatic_complexity(func: ast.AST) -> int:
     return score
 
 
-def check_function_complexity() -> list[Violation]:
-    """Functions over the cyclomatic-complexity ceiling are too hard to read and to
-    fix safely — split them, or justify with '# institutional-complexity-ok: <reason>'."""
-    out: list[Violation] = []
-    for p in _production_py_files():
-        try:
-            src = p.read_text(encoding="utf-8")
-            tree = ast.parse(src, filename=str(p))
-        except (SyntaxError, UnicodeDecodeError):
-            continue
-        lines = src.splitlines()
-        for node in ast.walk(tree):
-            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                continue
-            cc = _cyclomatic_complexity(node)
-            if cc <= MAX_COMPLEXITY or _marker_in_span(lines, node, _COMPLEXITY_MARKER):
-                continue
-            out.append(
-                Violation(
-                    p,
-                    node.lineno,
-                    f"function '{node.name}' cyclomatic complexity {cc} > {MAX_COMPLEXITY} — "
-                    "split into smaller functions, or mark '# institutional-complexity-ok: <reason>'.",
-                )
-            )
-    return out
-
-
 MAX_FILE_LINES = 800       # a file above this is doing too much — split into focused modules
 MAX_FUNC_LINES = 80        # a function above this is hard to read/fix — split it
 _LENGTH_MARKER = "institutional-length-ok"
-
-
-def check_file_length() -> list[Violation]:
-    """Files over the line ceiling do too much — split into focused modules.
-
-    A file may exceed the ceiling by declaring `# institutional-length-ok: <reason>`, the
-    same escape the complexity check already offers.
-
-    WHY THIS EXISTS (RC-19, 2026-07-19): this gate file hit 807 lines against a ceiling of
-    800 and the response was to chop it in two. That produced a new module needing FIVE
-    circular-import workarounds (TYPE_CHECKING plus call-time imports) to save SEVEN lines
-    -- objectively worse code, created to move a counter. A threshold with no justification
-    path forces exactly that. The institutional question is "does splitting this improve
-    the code?", not "is the number under the limit?" When the answer is no, say so here.
-    """
-    out: list[Violation] = []
-    for p in _production_py_files():
-        try:
-            text = p.read_text(encoding="utf-8")
-        except UnicodeDecodeError:
-            continue
-        n = len(text.splitlines())
-        if _LENGTH_MARKER in text:
-            continue
-        if n > MAX_FILE_LINES:
-            out.append(Violation(p, 1, f"file has {n} lines > {MAX_FILE_LINES} — split into focused modules, or declare '# institutional-length-ok: <reason>' if splitting would make it worse"))
-    return out
-
-
-def check_function_length() -> list[Violation]:
-    """Functions over the line ceiling are hard to understand and fix — split them,
-    or justify with '# institutional-length-ok: <reason>'."""
-    out: list[Violation] = []
-    for p in _production_py_files():
-        try:
-            src = p.read_text(encoding="utf-8")
-            tree = ast.parse(src, filename=str(p))
-        except (SyntaxError, UnicodeDecodeError):
-            continue
-        lines = src.splitlines()
-        for node in ast.walk(tree):
-            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                continue
-            lo, hi = node.lineno, getattr(node, "end_lineno", node.lineno)
-            n = hi - lo + 1
-            if n > MAX_FUNC_LINES and not _marker_in_span(lines, node, _LENGTH_MARKER):
-                out.append(Violation(p, lo, f"function '{node.name}' is {n} lines > {MAX_FUNC_LINES} — split it"))
-    return out
 
 
 _TODO_RE = re.compile(r"#\s*(TODO|FIXME|HACK|XXX)\b", re.IGNORECASE)
@@ -1616,35 +1327,6 @@ def check_todo_without_tracking_id() -> list[Violation]:
 # is covered by our own function_complexity check above; cosmetic-only families
 # (E501 line length, UP annotation modernization) are auto-fixable separately via `ruff --fix`.
 _RUFF_RULES = "F,B,SIM,ARG,RET,PIE,F841"
-
-
-def check_ruff_quality() -> list[Violation]:
-    """Delegate dead-code / bug-prone / simplification lint to ruff (single mature tool)."""
-    try:
-        r = subprocess.run(
-            [sys.executable, "-m", "ruff", "check", ".", "--select", _RUFF_RULES,
-             "--exclude", "tests/archive,governance/archive,.venv,node_modules",
-             # --color never: ruff may still colorize "concise" under a TTY/FORCE_COLOR;
-             # ANSI breaks the line regex and collapses ~1147 findings to 0, which the
-             # debt_ratchet honesty guard correctly treats as a checker failure.
-             "--output-format", "concise", "--color", "never", "--no-cache"],
-            cwd=str(REPO), capture_output=True, text=True, timeout=300,
-        )
-    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
-        return []  # ruff unavailable in this env — the pre-commit ruff hook still runs its subset
-    out: list[Violation] = []
-    for line in r.stdout.splitlines():
-        m = re.match(r"^(.+?):(\d+):\d+:\s+(\S+)\s+(.*)$", line.strip())
-        if not m:
-            continue
-        rel = m.group(1)
-        try:
-            path = (REPO / rel).resolve()
-            path.relative_to(REPO)
-        except ValueError:
-            path = REPO / rel
-        out.append(Violation(path, int(m.group(2)), f"ruff {m.group(3)}: {m.group(4)}"))
-    return out
 
 
 _FAKE_DEFAULT_RE = re.compile(r"\bor\s+0\.5\b|\bor\s+100\b|\.get\([^)]*,\s*(?:0\.5|100)\s*\)")
@@ -1793,47 +1475,6 @@ def check_single_stream_authority() -> list[Violation]:
     return out
 
 
-def _rc_mechanism_claims_cite_a_source_violations() -> list[Violation]:
-    """RC-319 — a claim about how the MARKET behaves must be checkable by a reader.
-
-    WHAT WAS OBSERVED (2026-08-09). "Hedging MAGNITUDE pins price regardless of net sign"
-    went into governance/mega2_traceable_inventory.py and a decision was built on it. It is
-    false — magnitude sets the SIZE of the re-hedging flow, the SIGN of the dealer position
-    sets whether it stabilises or repels — and an independent Cursor audit overturned it the
-    next day. The claim was not unknowable. It was UNCITED, so the only way to catch it was
-    to already know the mechanism.
-
-    WHY THE EXISTING LOCKS DID NOT FIRE. `rc_numeric_claims_cite_a_command` demands
-    provenance for NUMBERS and this claim has none. `five_why_recursive_lock` enforces a
-    chain's SHAPE, and RC-315's chain was five deep with a clean terminal root while resting
-    on a false premise. Depth was enforced; checkability was not — which is the gap the
-    operator named: "if we are not enforcing correctness then what the hell are we doing?"
-
-    THE RULE. Not "is the claim true" — no static check can know that, and asserting
-    otherwise would repeat the overreach. A row or a derivation justification that asserts a
-    market mechanism in the VERB sense must carry a DOI, a URL, a named paper, or a
-    backticked reproducible command. It makes the claim refutable in place.
-
-    VALIDATED BEFORE WIRING: 288 rows scanned, 36 mechanism mentions, one uncited; narrowed
-    to the verb sense because the noun "pin" is how the field is NAMED and matching it would
-    teach rewording instead of citing. Zero on merit in both scopes after the one real hit —
-    the corrected RC-315 line — was repaired by adding its sources, not exempted. The
-    negative control recovers the REAL false sentence with `git show 6f95a237:...` rather
-    than reconstructing it, which is the failure RC-317 records.
-    """
-    out: list[Violation] = []
-    try:
-        sys.path.insert(0, str(REPO / "tools"))
-        from check_rc_mechanism_claims_cite_a_source import violations as _v
-        for msg in _v():
-            out.append(Violation(REPO / msg.split(":")[0], 0, msg))
-    except Exception as exc:                                        # noqa: BLE001
-        out.append(Violation(REPO / "tools" / "check_rc_mechanism_claims_cite_a_source.py",
-                             0, f"checker unavailable ({type(exc).__name__}: {exc}) — a "
-                                f"gate that cannot run is not a gate"))
-    return out
-
-
 def check_test_claims_are_executed() -> list[Violation]:
     """RC-298 — a test that string-matches prose cannot detect a false claim.
 
@@ -1944,50 +1585,6 @@ def _tracked_py_files() -> set[str] | None:
     return {ln.strip().replace("\\", "/") for ln in r.stdout.splitlines() if ln.strip()}
 
 
-def check_mypy_types() -> list[Violation]:
-    """Delegate type checking to mypy. DORMANT until mypy is installed (returns nothing),
-    then activates automatically — no environment change forced.
-
-    RC-143: runs under mypy_interpreter(), not the caller's interpreter, so the count is a
-    property of the TREE plus that one pinned instrument rather than of the launcher.
-    RC-145: findings in files git does not track are DROPPED, so the number describes the
-    committed codebase instead of whatever scratch files happen to sit on this disk. Debt in
-    an untracked probe is not repo debt, and counting it made the metric unreproducible."""
-    try:
-        r = subprocess.run(
-            [mypy_interpreter(), "-m", "mypy", ".", "--ignore-missing-imports",
-             "--no-error-summary",
-             "--explicit-package-bases", "--namespace-packages",
-             "--exclude", r"(tests|archive|\.venv|node_modules)"],
-            cwd=str(REPO), capture_output=True, text=True, timeout=900,
-        )
-    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
-        return []  # mypy not installed / timed out — dormant, not "clean"
-    if "No module named mypy" in (r.stderr or ""):
-        return []
-    tracked = _tracked_py_files()
-    out: list[Violation] = []
-    for line in r.stdout.splitlines():
-        m = re.match(r"^(.+?):(\d+):\s*error:\s*(.*)$", line.strip())
-        if not m:
-            continue
-        rel = m.group(1).strip().replace("\\", "/")
-        # RC-145: scope the count to the COMMIT. When git cannot answer (tracked is None) the
-        # raw result stands rather than silently shrinking to "clean".
-        if tracked is not None and rel not in tracked:
-            continue
-        out.append(Violation(REPO / m.group(1), int(m.group(2)), f"mypy: {m.group(3)}"))
-    # HONESTY GUARD: exit 0/1 = mypy ran (clean/errors). Anything else = it FAILED to run,
-    # so an empty result is NOT "clean" — surface the failure instead of falsely passing.
-    if not out and r.returncode not in (0, 1):
-        out.append(
-            Violation(Path(__file__), 1,
-                      f"mypy could not run (exit {r.returncode}) — type check did NOT execute; "
-                      f"fix config. stderr: {(r.stderr or '').strip()[:200]}")
-        )
-    return out
-
-
 _UNPROVEN_REGISTER = REPO / "governance" / "unproven_register.md"
 
 
@@ -2060,146 +1657,6 @@ _RC_NUMBER_RE = re.compile(r"\b\d[\d,.]*\s*(?:GB|MB|KB|s|ms|%|x|rows|files|strik
 _RC_CITATION_MIN_NUMBERS = 3
 
 
-#: Rows written BEFORE check_verdicts_declare_their_power existed. Frozen: the rule binds
-#: NEW verdicts, exactly as the citation and justification rules do.
-_VERDICT_POWER_GRANDFATHERED = frozenset({
-    "RC-1",
-    "RC-10",
-    "RC-11",
-    "RC-12",
-    "RC-13",
-    "RC-14",
-    "RC-15",
-    "RC-16",
-    "RC-17",
-    "RC-18",
-    "RC-19",
-    "RC-2",
-    "RC-20",
-    "RC-21",
-    "RC-22",
-    "RC-23",
-    "RC-24",
-    "RC-25",
-    "RC-26",
-    "RC-27",
-    "RC-28",
-    "RC-29",
-    "RC-3",
-    "RC-30",
-    "RC-31",
-    "RC-32",
-    "RC-33",
-    "RC-34",
-    "RC-35",
-    "RC-36",
-    "RC-37",
-    "RC-38",
-    "RC-39",
-    "RC-4",
-    "RC-40",
-    "RC-41",
-    "RC-42",
-    "RC-43",
-    "RC-44",
-    "RC-45",
-    "RC-46",
-    "RC-47",
-    "RC-48",
-    "RC-49",
-    "RC-5",
-    "RC-50",
-    "RC-51",
-    "RC-52",
-    "RC-53",
-    "RC-54",
-    "RC-55",
-    "RC-56",
-    "RC-57",
-    "RC-58",
-    "RC-59",
-    "RC-6",
-    "RC-63",
-    "RC-65",
-    "RC-67",
-    "RC-68",
-    "RC-69",
-    "RC-7",
-    "RC-70",
-    "RC-72",
-    "RC-73",
-    "RC-74",
-    "RC-75",
-    "RC-76",
-    "RC-77",
-    "RC-78",
-    "RC-79",
-    "RC-8",
-    "RC-80",
-    "RC-81",
-    "RC-82",
-    "RC-83",
-    "RC-84",
-    "RC-85",
-    "RC-87",
-    "RC-9",
-})
-
-
-def _verdicts_declare_their_power_violations() -> list[Violation]:
-    """A recorded KILL / RETIRED / PROVEN must state the n and an interval it was decided on.
-
-    WHAT WAS OBSERVED (2026-07-27). 'GEX-R1 RETIRED BY MEASUREMENT' was cited as settled fact for
-    days. Re-derived on demand, the retirement study measured n=66, Spearman -0.051, 95% CI
-    [-0.289, +0.194] -- an interval that CONTAINS the founding -0.22 the verdict was used to
-    reject -- and 43% power against that effect, where 80% needs 160 sessions. The study could not
-    have distinguished 'no effect' from 'the claimed effect'. It was a coin flip recorded as a
-    kill.
-
-    WHY THE EXISTING LOCK DID NOT FIRE. `rc_numeric_claims_cite_a_command` already demands the
-    COMMAND behind a number, and that is necessary -- a sampled figure and an exact one read
-    identically. It is not sufficient: a perfectly reproducible command can still be run on a
-    sample far too small to support the verdict drawn from it. Reproducibility and power are
-    different properties, and only the first was gated.
-
-    Rule: a governance row asserting a hard verdict must carry `n=` AND one of a confidence
-    interval / power figure. Absence of evidence is not evidence of absence, and a row that
-    cannot show which of the two it holds must not record a kill.
-
-    HOW THE RULE WAS VALIDATED: prototyped against the log before enforcing; the grandfather set
-    freezes rows written before the rule so it binds new verdicts only -- the same design already
-    used by `rc_numeric_claims_cite_a_command` and `checks_are_justified`.
-    """
-    out: list[Violation] = []
-    log_path = REPO / "governance" / "root_cause_log.md"
-    if not log_path.exists():
-        return out
-    verdict = re.compile(r"\b(KILL|KILLED|RETIRED|PROVEN|DISPROVEN)\b")
-    has_n = re.compile(r"\bn\s*=\s*\d+", re.I)
-    has_interval = re.compile(r"(95%\s*CI|confidence interval|\bpower\b)", re.I)
-    for num, line in enumerate(log_path.read_text(encoding="utf-8").splitlines(), start=1):
-        if not line.startswith("| RC-"):
-            continue
-        cells = [c.strip() for c in line.strip("|").split("|")]
-        if len(cells) < 7:
-            continue
-        rc_id = cells[0]
-        if rc_id in _VERDICT_POWER_GRANDFATHERED:
-            continue
-        body = " ".join(cells[4:])
-        if not verdict.search(body):
-            continue
-        if has_n.search(body) and has_interval.search(body):
-            continue
-        out.append(Violation(
-            log_path, num,
-            f"{rc_id} records a hard verdict without declaring the evidence that could support "
-            f"it. State n= and a 95% CI or power figure, or soften the verdict to UNPROVEN. "
-            f"A null at n=66 and a null at n=1000 read identically in prose; only the interval "
-            f"tells them apart, and GEX-R1 was killed on a CI that contained the effect."))
-    return out
-
-
 def _rc_numeric_claims_cite_a_command_violations() -> list[Violation]:
     """A row that asserts numbers must say how to reproduce them.
 
@@ -2236,7 +1693,7 @@ def _rc_numeric_claims_cite_a_command_violations() -> list[Violation]:
         if len(cells) < 7:
             continue
         rc_id = cells[0]
-        if rc_id in _RC_CITATION_GRANDFATHERED:
+        if rc_id in _RC_CITATION_GRANDFATHERED or cells[1] == "ARCHIVED":
             continue
         body = " ".join(cells[5:])
         if _RC_CITATION_RE.search(body):
@@ -2739,7 +2196,6 @@ def _closed_rows_ship_their_code_violations() -> list[Violation]:
 # to real code by closed_rows_ship_their_code.
 
 
-
 #: RC-103 — files reading price_bars_1m with NO calendar authority when the rule was created.
 #: BURN-DOWN, visible and shrinking: remove an entry only by gating the file (or deleting it).
 #: Addition prohibited — that is the lock. Top of the burn-down by blast radius:
@@ -2941,7 +2397,13 @@ def _adversarial_audits_are_answered_violations() -> list[Violation]:
 #: this very check polices, so an unrecognised or misspelled token fails loudly instead of
 #: silently granting or denying authority. It is NOT in CLOSED_CLASS: a blocked defect is
 #: unfinished work, so the close contract must not treat it as dealt with.
-DECLARED_RC_STATUSES: frozenset[str] = frozenset({"OPEN", "CLOSED", "REMEDIATED", "BLOCKED"})
+#: RC-520: ARCHIVED is a CLOSED row compacted to one line — id, dates, headline and a git
+#: pointer to the blob that carries its full five-why chain and evidence. It asserts nothing
+#: new (the close contract was satisfied when the row closed and is verifiable at the
+#: pointer), so the row-substance validators skip it; the id still resolves for citations
+#: and the row still keeps the seven-cell schema. `tools/mission_latch.py --archive-closed-before`
+#: is the ONE writer of that form.
+DECLARED_RC_STATUSES: frozenset[str] = frozenset({"OPEN", "CLOSED", "REMEDIATED", "BLOCKED", "ARCHIVED"})
 
 #: Statuses that assert the defect is dealt with, and therefore must satisfy
 #: the full close contract. Six independent clauses key on this classification.
@@ -3116,10 +2578,6 @@ def check_scheduled_producers_are_not_inert() -> list[Violation]:
             f"this: it withholds the stale artifact and the system merely looks quiet (RC-97). "
             f"Fix the runner, prove the artifact mtime advances, then clear the log."))
     return out
-
-
-
-
 
 
 #: RC-62 — domain constants that decide money-path behaviour must carry their derivation.
@@ -3377,29 +2835,26 @@ def check_measured_claims_cite_evidence() -> list[Violation]:
     One enforced check now runs every surviving evidence predicate:
       * the staged-governance-claims rule above (_measured_claims_cite_evidence_own_violations,
         RC-56 — a committed numeric finding carries its reproduce command or [UNVERIFIED]);
-      * the verdict-power rule (_verdicts_declare_their_power_violations, RC-6 — a recorded
-        KILL/RETIRED/PROVEN states n= and a CI/power figure);
       * the unproven-register rule (_unproven_register_violations — claims are evidenced or
         registered, overdue rows block, missing register fails closed).
 
-    The two folded registrations are declared retired in governance/retired_checks.md; their
-    public check_* wrappers stay importable so the negative controls keep driving the real
-    logic, and NO predicate was weakened. The forward-only grandfather is applied under each
-    ORIGINAL name so consolidation moves no violation on or off the surface.
+    The folded registration is declared retired in governance/retired_checks.md; its public
+    check_* wrapper stays importable so the negative controls keep driving the real logic, and
+    NO predicate was weakened. The forward-only grandfather is applied under the ORIGINAL name
+    so consolidation moves no violation on or off the surface. (The verdict-power rule that was
+    folded here too — a prose matcher — was unfolded and DELETED, bedrock 2026-09-06.)
     """
     out = _measured_claims_cite_evidence_own_violations()
+    # BEDROCK 2026-09-06: verdicts_declare_their_power is no longer folded. It matched
+    # verdict words (KILL / RETIRED / PROVEN) in ledger prose and demanded n= and CI
+    # tokens beside them — free-text matching, which AGENTS.md rules out as enforcement.
+    # The substance (a numeric finding cites its reproduce command) is the own-violations
+    # rule above; statistical power is judged in review, as the Framework doc requires.
     for folded_name, helper in (
-        ("verdicts_declare_their_power", _verdicts_declare_their_power_violations),
         ("unproven_register", _unproven_register_violations),
     ):
         out.extend(_apply_forward_only_grandfather(folded_name, helper()))
     return out
-
-
-def check_verdicts_declare_their_power() -> list[Violation]:
-    """Wrapper kept importable for the negative controls; the substance runs inside
-    check_measured_claims_cite_evidence (retired registration, governance/retired_checks.md)."""
-    return _verdicts_declare_their_power_violations()
 
 
 def check_unproven_register() -> list[Violation]:
@@ -3535,8 +2990,6 @@ def check_universal_ticker_scope() -> list[Violation]:
         chart_spy_only_feature_violations,
         chart_ticker_path_violations,
         experiment_tool_paths,
-        is_prompt_or_agent_instruction_path,
-        spy_only_content_violation,
         spy_only_ticker_default_violations,
     )
 
@@ -3557,26 +3010,11 @@ def check_universal_ticker_scope() -> list[Violation]:
         for lineno, msg in chart_spy_only_feature_violations(csrc):
             out.append(Violation(chart, lineno, msg))
 
-    staged = _git_output_lines(["diff", "--cached", "--name-only"])
-    if staged is not None:
-        for raw in staged:
-            rel = raw.strip().replace("\\", "/")
-            if not rel or not is_prompt_or_agent_instruction_path(rel):
-                continue
-            path = REPO / rel
-            whole = _read_or_empty(path)
-            diff = _git_output_lines(["diff", "--cached", "-U0", "--", rel]) or []
-            added = "\n".join(
-                ln[1:] for ln in diff
-                if ln.startswith("+") and not ln.startswith("+++")
-            )
-            # Prefer ADDED text (binds new prompt framing); fall back to whole file for new files.
-            text = added if added.strip() else whole
-            reason = spy_only_content_violation(text)
-            if reason is None:
-                continue
-            out.append(Violation(path, 0, reason))
-
+    # BEDROCK 2026-09-06: rule 3 (SPY-only PHRASES in staged prompt prose) is retired. It was
+    # a free-text matcher, and AGENTS.md rules that out as enforcement. Rules 1 and 2 are the
+    # structural half — SPY-only ticker DEFAULTS in experiment tools and SPY-gated Chart
+    # features — and they stay, because they read code, not wording. The law itself
+    # (UNIVERSAL ticker scope) is unchanged in AGENTS.md.
     return out
 
 
@@ -3725,11 +3163,9 @@ def check_ui_mockup_approval() -> list[Violation]:
             reg, 0,
             "mockup-approval registry missing or unparseable — in this state the RC-186 law "
             "gates NOTHING (absence reads as no-surface-registered). Restore the registry."))
-    guard = REPO / "tools/pretooluse_guard.py"
-    if "ui_mockup_lock" not in _read_or_empty(guard):
-        out.append(Violation(guard, 0,
-                             "mockup-before-code front end unwired: pretooluse_guard.py no "
-                             "longer references ui_mockup_lock (RC-186 continuum broken)"))
+    # BEDROCK 2026-09-06: the front-end clause (pretooluse_guard must reference ui_mockup_lock)
+    # is gone — that guard blocks nothing any more by design, and this check is declared
+    # retired in governance/retired_checks.md (step 1); it leaves the roster in the step-2 delta.
     staged = _git_output_lines(["diff", "--cached", "--name-only"])
     if staged is None:
         return out
@@ -3790,7 +3226,6 @@ def ship_confirmation_violations(rel: str, staged_names: list) -> list[Violation
 #: replaced the mirror with the thing itself. `classify_path` is the single authority for
 #: "is this path ours, and is it a product surface"; a mirrored copy is a second producer
 #: that drifts, which is what this consolidation exists to remove.
-
 
 
 # RC-470: the plus_player catalog checks (plus_player_law, plus_player_cursor_hooks)
@@ -4147,7 +3582,110 @@ def check_phase2a_single_level_computation() -> list[Violation]:
 # backlog growth stays enforced by open_item_cap and stop_guard's RC-72 turn block.
 
 
+#: RC-520 — surfaces that were retired because their responsibility has ONE owner now.
+#: MEASURED 2026-09-05 on 466378c6: each of these either restated another file's
+#: authority (MEMORY.md called itself an Active Rule Source; four .cursor rules restated
+#: AGENTS.md law), carried a queue/ledger nobody executed (the operator-trust ledger and its
+#: JSON gate had zero executable readers), or regenerated classification headers from a
+#: 2026-05 model (the consolidation builders). Resurrecting one re-creates the split the
+#: mission removed, so presence alone is the violation — what the file says is irrelevant.
+_RC520_RETIRED_SURFACES: tuple[tuple[str, str], ...] = (
+    ("MEMORY.md", "host facts live in docs/host/README.md; law in AGENTS.md"),
+    ("docs/OPEN_ITEMS_OPERATOR_TRUST.md", "acceptance lives in OPEN_ITEMS.md; defects in governance/root_cause_log.md"),
+    ("governance/OPERATOR_TRUST_STABILIZATION_GATE.json", "no executable reader; the required CI checks are the gate"),
+    ("docs/governance/AGENT_SELF_GOVERNANCE.md", "agent procedure lives in governance/AGENT_OPERATING_PROCESS_V1.md"),
+    ("docs/plans/GOVERNANCE_CONSOLIDATION_EXECUTION_PLAN.md", "a finished 2026-05 plan; history is git"),
+    ("governance/consolidation", "generated classification artifacts; nothing consumes them"),
+    ("tools/build_phase0_rule_classification.py", "classification headers are not regenerated from a retired model"),
+    ("tools/build_phase2_md_classification.py", "classification headers are not regenerated from a retired model"),
+    ("tools/build_phase0_do_not_rename.py", "consolidation builder with no consumer"),
+    ("tools/build_phase3_repo_cleanup.py", "consolidation builder with no consumer"),
+    ("tools/import_memory_archive_phase1c.py", "one-shot memory import; the archive is already in git"),
+    ("reports/tqm_rehab_agent_brief.md", "procedure lives in governance/REHAB_PROGRAM.md; reports/ holds measurements"),
+)
+
+#: The ONE Cursor adapter. Every other `.cursor/rules/*.mdc` was a restatement of AGENTS.md.
+_RC520_CURSOR_ADAPTER = "00-always.mdc"
+
+#: Headings that turned OPEN_ITEMS.md into a law + queue + history mixture (RC-520 census).
+_RC520_OPEN_ITEMS_FOREIGN_HEADINGS = ("GOVERNING LAW", "RECONCILIATION HISTORY", "LEDGER DENOMINATOR")
+_RC520_OPEN_SECTION = "## Open acceptance items"
+
+#: Headings that made ACTIVE_PROGRAM.md a second standing-truth surface.
+_RC520_ACTIVE_PROGRAM_FOREIGN_HEADINGS = ("KNOWN RISKS", "STANDING RUNTIME LAW", "FEATURE PLACEMENT MATRIX")
+
+
+def check_authority_surfaces_have_one_owner(root: Path | None = None) -> list[Violation]:
+    """RC-520 — one semantic responsibility has one canonical file, and stays that way.
+
+    WHAT WAS OBSERVED (2026-09-05, 466378c6). ACTIVE_PROGRAM.md called OPEN_ITEMS.md the
+    ledger while OPEN_ITEMS.md named governance/root_cause_log.md the single work ledger;
+    OPEN_ITEMS.md (101 KB) mixed acceptance verdicts with a restated GOVERNING LAW, a Now
+    list, queues, defects duplicated from the closure schema, an open-RC denominator and a
+    reconciliation history; MEMORY.md called itself an Active Rule Source; four .cursor rule
+    files restated AGENTS.md; the consolidation builders could regenerate 2026-05
+    classification headers over the whole tree. Every one of those was created by ADDING a
+    surface beside the last, and nothing refused the addition.
+
+    THE RULE, judged on presence and structure rather than on prose: the retired surfaces
+    stay deleted; `.cursor/rules/` holds exactly the one adapter; OPEN_ITEMS.md carries no
+    root-cause row, no closed checkbox in its open-items section and none of the foreign
+    headings; ACTIVE_PROGRAM.md carries no DONE row and no standing-law section. Each of
+    those is a shape a resurrected duplicate must take, so each is a mutation this refuses.
+    The acceptance board's own checked criteria are legitimate specification state and are
+    not touched.
+    """
+    root = root or REPO
+    out: list[Violation] = []
+    for rel, owner in _RC520_RETIRED_SURFACES:
+        p = root / rel
+        if p.exists():
+            out.append(Violation(p, 0, f"`{rel}` was retired by RC-520 ({owner}). Presence is the "
+                                       f"defect: a second surface for an owned responsibility "
+                                       f"re-creates the split authority the mission removed. Put "
+                                       f"the content with its owner and delete this."))
+    rules = root / ".cursor" / "rules"
+    if rules.is_dir():
+        for f in sorted(rules.iterdir()):
+            if f.name != _RC520_CURSOR_ADAPTER:
+                out.append(Violation(f, 0, f"`.cursor/rules/{f.name}` is a second Cursor rule surface; "
+                                           f"the one adapter is `{_RC520_CURSOR_ADAPTER}` and it points "
+                                           f"at AGENTS.md. Law lives in AGENTS.md, not in a vendor file."))
+    oi = root / "OPEN_ITEMS.md"
+    if oi.is_file():
+        in_open = False
+        for n, line in enumerate(oi.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
+            if line.startswith("## ") or line.startswith("# "):
+                in_open = line.startswith(_RC520_OPEN_SECTION)
+                if any(h in line.upper() for h in _RC520_OPEN_ITEMS_FOREIGN_HEADINGS):
+                    out.append(Violation(oi, n, f"OPEN_ITEMS.md is the acceptance specification only; "
+                                                f"the section {line.strip()!r} is law, a ledger "
+                                                f"snapshot or history, each of which has another owner."))
+            if line.startswith("| RC-"):
+                out.append(Violation(oi, n, "a root-cause row in OPEN_ITEMS.md: defects have ONE home, "
+                                            "governance/root_cause_log.md. Cite the row; do not copy it."))
+            if in_open and line.startswith("- [x] "):
+                out.append(Violation(oi, n, "a closed row in the open-acceptance-items section: closed "
+                                            "rows are history (git), not specification. Delete it."))
+    ap = root / "ACTIVE_PROGRAM.md"
+    if ap.is_file():
+        for n, line in enumerate(ap.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
+            if line.startswith("| ") and "| DONE |" in line:
+                out.append(Violation(ap, n, "a DONE row in ACTIVE_PROGRAM.md: it records CURRENT work; "
+                                            "finished work leaves the file and git keeps it."))
+            if line.startswith("#") and any(h in line.upper() for h in _RC520_ACTIVE_PROGRAM_FOREIGN_HEADINGS):
+                out.append(Violation(ap, n, f"the section {line.strip()!r} is standing truth, not "
+                                            f"current work; runtime rules live with their runbook "
+                                            f"(TRAINING_AND_MAINTENANCE.md) and risks with their owner."))
+    return out
+
+
 CHECKS = [
+    # RC-520 (2026-09-05): one owner per responsibility, kept by refusing the shapes a
+    # resurrected duplicate must take (retired surface present, second .cursor rule, ledger
+    # row or closed row or foreign heading in OPEN_ITEMS.md, DONE row or standing-law
+    # heading in ACTIVE_PROGRAM.md). ENFORCED at 0 on the tree that removed them.
+    ("authority_surfaces_have_one_owner", check_authority_surfaces_have_one_owner, True),
     # ENFORCED (must be zero — block pre-commit):
     ("no_synthetic_domain_fixtures_in_tests", check_no_synthetic_domain_fixtures_in_tests, True),
     ("no_swallowed_test_failures", check_no_swallowed_test_failures, True),  # printed failure must fail the run
@@ -4225,17 +3763,14 @@ CHECKS = [
     # no_governance_duplication + checks_are_justified RETIRED 2026-08-24 (SIMPLICITY
     # REHAB, governance/retired_checks.md)
     ("no_tautological_assertions", check_no_tautological_assertions, True),  # catch, not pass
-    ("open_item_cap", check_open_item_cap, True),   # ledgers burn down, never accumulate  # 5 whys, restarted on every new cause
-    # RC-67 (operator 2026-07-26): ADVISORY, not enforced. It still computes and REPORTS every
-    # metric delta, so a real regression stays visible — but a COUNT may no longer block a commit.
-    # A counter cannot distinguish a regression from a false positive or from a deliberate,
-    # higher-quality addition: it failed the build when the operator-mandated PreToolUse guard
-    # read its own external hook payload (+3 orphan keys, all false positives). Correctness is
-    # judged by the checks that read the CODE (no_fake_defaults, no_silent_swallow,
-    # vendor_field_coercion, rth_only_market_measurement, domain_constants_are_derived,
-    # chain_width_single_faucet) and by the Code Health Panel's
-    # BLOCKING tier — same class as the RC-19 shape-metric ceilings, already ruled track-only.
-    ("debt_ratchet", check_debt_ratchet, False),
+    # open_item_cap REMOVED 2026-09-06 (step 2 of the two-step contract; declared retired on
+    # main 2026-09-02 in governance/retired_checks.md as a PROVEN DUPLICATE of root_cause_log's
+    # overdue clause and the register validator — one overdue item fails one check, not two).
+    # debt_ratchet REMOVED 2026-09-06 (bedrock step 4b) with the advisory-debt loop: a counter
+    # cannot distinguish a regression from a false positive (RC-67), and the loop it fed —
+    # baseline file, daily scan, TQM queue, code-health panel — produced a 3,360-finding
+    # backlog the doctrine itself called "not a work order" (RC-280: no ratchets). Correctness
+    # is judged by the checks that read the CODE and by ruff in CI.
     ("single_spot_authority", check_single_spot_authority, True),  # one faucet (RC-14)
     ("no_silent_swallow", check_no_silent_swallow, True),           # driven to zero 2026-07-17
     ("no_todo_without_tracking_id", check_todo_without_tracking_id, True),
@@ -4269,11 +3804,14 @@ CHECKS = [
     # cannot fail on regression is not a test, and this was only blocking via the retired counter.
     # Driven to 0 by RC-46, so it binds on the code rather than on a delta.
     ("tests_missing_explicit_assert", check_tests_missing_explicit_assert, True),
+    # orphan_dict_keys stays REPORTED (not enforced): a silent-None lead is a real product
+    # class (RC-15/RC-20) with inherited volume; it is a report the operator reads, never a
+    # ratchet. function_complexity / function_length / file_length / ruff_quality / mypy_types
+    # and debt_ratchet REMOVED 2026-09-06 (bedrock step 4b): the advisory-debt loop (ratchet,
+    # baseline file, daily scan, TQM queue, code-health panel) produced a 3,360-finding backlog
+    # the doctrine itself called "not a work order"; shape/style counting was a ratchet
+    # (RC-280), and ruff runs in CI.
     ("orphan_dict_keys", check_no_orphan_dict_keys, False),   # silent-None leads (RC-15/RC-20)
-    ("function_complexity", check_function_complexity, False),      # too-branchy functions
-    ("function_length", check_function_length, False),             # over-long functions
-    ("file_length", check_file_length, False),                     # over-long files (split them)
-    ("ruff_quality", check_ruff_quality, False),                   # dead code / bugs / simplify (ruff)
     # RC-67: PROMOTED to directly ENFORCED. This was only ever blocking as a side effect of the
     # count-ratchet, so retiring the ratchet would have left fabricated neutrals unguarded — and a
     # fabricated 0.5 probability entering the decision path is the exact opposite of the quality
@@ -4299,10 +3837,9 @@ CHECKS = [
     # mechanism owned the terminator. Tests the OUTCOME — bytes on disk vs bytes in HEAD —
     # so it holds for any writer, not just the libraries that caused the known cases.
     ("eol_style_invariant", check_eol_style_invariant, True),
-    ("mypy_types", check_mypy_types, False),                       # dormant until mypy installed
 ]
 
-_MAX_PRINT = 15  # cap advisory output; full count is always reported
+_MAX_PRINT = 15  # cap per-check output; full count is always reported
 
 
 #: Operator PM GATE DECISION (2026-08-04 ~00:4x CT, mission one-faucet-closeout-v1, relayed
@@ -4316,7 +3853,7 @@ _MAX_PRINT = 15  # cap advisory output; full count is always reported
 RC_GRANDFATHER_CUTOFF = 227
 _GRANDFATHERED_ROW_CHECKS = frozenset({
     "closed_rows_ship_their_code",
-    "verdicts_declare_their_power", "rc_numeric_claims_cite_a_command",
+    "rc_numeric_claims_cite_a_command",
     "rc_citations_resolve", "root_cause_recurrence_declared",
     "fix_crosswalks_to_violated_lock",
 })
@@ -4341,12 +3878,6 @@ def _apply_forward_only_grandfather(name: str, violations: list) -> list:
     return out
 
 
-#: RC-246: where the ADVISORY run leaves its dated result so the debt stays visible daily
-#: even though it no longer blocks a commit. The PM's approval of P1 was conditional on
-#: exactly this — advisory debt must surface, debt_ratchet must not be silently dropped.
-ADVISORY_REPORT_REL = "reports/advisory_debt_latest.json"
-
-
 def run_checks(*, mode: str = "all") -> tuple[int, list[tuple[str, bool, int]]]:
     """Run the catalogue and return (enforced_violation_count, per-check results).
 
@@ -4359,34 +3890,20 @@ def run_checks(*, mode: str = "all") -> tuple[int, list[tuple[str, bool, int]]]:
       * "all" — unchanged default, so a human invoking the gate by hand still sees
         everything in one place.
     """
+    # BEDROCK 2026-09-06: the "advisory" mode, the hotspot tally and the debt report left with
+    # the advisory-debt loop; a non-enforced check is simply REPORTED here, never ratcheted.
     enforced_violations = 0
     results: list[tuple[str, bool, int]] = []
-    hotspots: dict[str, dict[str, int]] = {}
     for name, fn, enforced in CHECKS:
         if mode == "enforced" and not enforced:
             continue
-        if mode == "advisory" and enforced:
-            continue
-        tag = "ENFORCED" if enforced else "ADVISORY"
+        tag = "ENFORCED" if enforced else "REPORTED"
         violations = _apply_forward_only_grandfather(name, fn())
         results.append((name, enforced, len(violations)))
-        if not enforced and violations:
-            # RC-251: WHERE, not just how much. Per-file counts are what turn a total into a
-            # bounded work list; without them the only options are ignore or mass-rewrite.
-            per_file: dict[str, int] = {}
-            for v in violations:
-                try:
-                    rel = str(Path(v.path).resolve().relative_to(REPO.resolve())).replace("\\", "/")
-                except (ValueError, OSError, AttributeError):
-                    rel = str(getattr(v, "path", "?")).replace("\\", "/")
-                per_file[rel] = per_file.get(rel, 0) + 1
-            hotspots[name] = dict(
-                sorted(per_file.items(), key=lambda kv: -kv[1])[:20]
-            )
         if violations:
             if enforced:
                 enforced_violations += len(violations)
-            note = "" if enforced else " — advisory debt: drive to zero, then enforce"
+            note = "" if enforced else " — reported, not vetoing"
             print(f"FAIL [{name}] ({tag}) — {len(violations)} violation(s){note}:")
             for v in violations[:_MAX_PRINT]:
                 print(v)
@@ -4394,133 +3911,19 @@ def run_checks(*, mode: str = "all") -> tuple[int, list[tuple[str, bool, int]]]:
                 print(f"  … and {len(violations) - _MAX_PRINT} more")
         else:
             print(f"PASS [{name}] ({tag})")
-    return enforced_violations, results, hotspots
-
-
-def write_advisory_report(
-    results: list[tuple[str, bool, int]],
-    hotspots: dict[str, dict[str, int]] | None = None,
-) -> Path:
-    """Persist the advisory tally — the visibility half of P1's approval.
-
-    RC-251: a total is not a work list. The report now carries per-file HOTSPOTS alongside the
-    counts, because a number without a location supports no smallest-safe-change: the only
-    actions a bare total affords are 'ignore it' or 'mass-rewrite thousands of findings', and
-    the second is banned. `hotspots` maps check name -> {repo-relative path: count}.
-    """
-    import json as _json
-    import time as _time
-
-    payload = {
-        "measured_at_utc": _time.time(),
-        "checks": {name: count for name, enforced, count in results if not enforced},
-        "total_advisory_violations": sum(c for _n, e, c in results if not e),
-        "hotspots": hotspots or {},
-    }
-    out = REPO / ADVISORY_REPORT_REL
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(_json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
-    return out
-
-
-def rebaseline() -> int:
-    """RC-385: the ONLY writer of the advisory debt baseline. Deliberate, never a side effect.
-
-    Both `_ratchet_may_write` and `check_debt_ratchet` have pointed at `--rebaseline` as the
-    explicit recording path since RC-90 — and it was never implemented, so the only recording
-    that existed was the invisible auto-write this replaces. Raising a debt ceiling is now an
-    act someone performs and can be asked to justify.
-
-    Correctness metrics on `_RATCHET_BLOCKS_ON_RISE` are still refused a RISE here: this is a
-    recorder, not an amnesty. It lowers floors that genuinely improved, seeds a missing file,
-    and tracks shape/style counters that are allowed to float.
-    """
-    path = _debt_baseline_path()
-    current = {name: len(fn()) for name, fn, enforced in CHECKS
-               if not enforced and name != "debt_ratchet"}
-    try:
-        baseline = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
-    except ValueError:
-        print(f"REFUSED: {path} is unparseable — repair it before rebaselining.")
-        return 1
-
-    raised, changes = [], []
-    for name, count in sorted(current.items()):
-        base = baseline.get(name)
-        if base is None:
-            baseline[name] = count
-            changes.append(f"  seed  {name}: {count}")
-            continue
-        if count == base:
-            continue
-        if count > base and name in _RATCHET_BLOCKS_ON_RISE:
-            raised.append(f"  {name}: {base} -> {count} (+{count - base})")
-            continue
-        if count == 0 and base > 10:
-            # RC-90 honesty guard: a collapse to zero is a checker failure until proven
-            # otherwise, and recording it would silently destroy the ratchet.
-            print(f"REFUSED: {name} reported 0 against a baseline of {base} — checker failure, "
-                  f"not perfection. Nothing written.")
-            return 1
-        baseline[name] = count
-        changes.append(f"  {'lower' if count < base else 'track'} {name}: {base} -> {count}")
-
-    if raised:
-        print("REFUSED: correctness debt may not be rebaselined UPWARD. Clean it, or lower "
-              "another correctness count to pay for it:")
-        print("\n".join(raised))
-        return 1
-    if not changes:
-        print("advisory_debt_baseline.json already matches the tree — nothing to record.")
-        return 0
-    # newline pinned: this file is committed LF and an EOL flip would bury the real delta
-    # under a whole-file diff (RC-382/RC-383).
-    path.write_text(json.dumps(baseline, indent=2, sort_keys=True) + "\n",
-                    encoding="utf-8", newline="\n")
-    print(f"recorded {len(changes)} change(s) in {path}:")
-    print("\n".join(changes))
-    return 0
+    return enforced_violations, results
 
 
 def main(argv: list[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
-    if "--rebaseline" in args:
-        return rebaseline()
-    if "--enforced-only" in args:
-        enforced_violations, _, _ = run_checks(mode="enforced")
-        if enforced_violations:
-            print(f"\nINSTITUTIONAL CORRECTNESS GATE: FAIL "
-                  f"({enforced_violations} enforced violation(s))")
-            return 1
-        print("\nINSTITUTIONAL CORRECTNESS GATE: PASS (enforced checks clean; advisory debt "
-              f"runs on its own schedule and is recorded in {ADVISORY_REPORT_REL})")
-        return 0
-    if "--advisory" in args:
-        _, results, hotspots = run_checks(mode="advisory")
-        path = write_advisory_report(results, hotspots)
-        total = sum(c for _n, e, c in results if not e)
-        print(f"\nADVISORY DEBT: {total} violation(s) across "
-              f"{len([1 for _n, e, _c in results if not e])} checks — recorded in {path}")
-        return 0                      # advisory NEVER blocks; it reports
-    enforced_violations = 0
-    for name, fn, enforced in CHECKS:
-        tag = "ENFORCED" if enforced else "ADVISORY"
-        violations = _apply_forward_only_grandfather(name, fn())
-        if violations:
-            if enforced:
-                enforced_violations += len(violations)
-            note = "" if enforced else " — advisory debt: drive to zero, then enforce"
-            print(f"FAIL [{name}] ({tag}) — {len(violations)} violation(s){note}:")
-            for v in violations[:_MAX_PRINT]:
-                print(v)
-            if len(violations) > _MAX_PRINT:
-                print(f"  … and {len(violations) - _MAX_PRINT} more")
-        else:
-            print(f"PASS [{name}] ({tag})")
+    # BEDROCK 2026-09-06: --rebaseline and --advisory left with the advisory-debt loop.
+    mode = "enforced" if "--enforced-only" in args else "all"
+    enforced_violations, _results = run_checks(mode=mode)
     if enforced_violations:
         print(f"\nINSTITUTIONAL CORRECTNESS GATE: FAIL ({enforced_violations} enforced violation(s))")
         return 1
-    print("\nINSTITUTIONAL CORRECTNESS GATE: PASS (enforced checks clean; advisory debt shown above)")
+    print("\nINSTITUTIONAL CORRECTNESS GATE: PASS (enforced checks clean"
+          + ("; reported checks shown above)" if mode == "all" else ")"))
     return 0
 
 

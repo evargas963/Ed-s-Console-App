@@ -18,7 +18,8 @@ from pathlib import Path
 import pytest
 
 G = importlib.import_module("tools.pretooluse_guard")
-TSA = importlib.import_module("tools.turn_self_audit")
+# BEDROCK 2026-09-06: tools/turn_self_audit.py (the consumer these controls compared against
+# the authority) is deleted; the controls below pin the authority alone.
 
 REPO = Path(G.__file__).resolve().parent.parent
 
@@ -38,24 +39,21 @@ def test_negative_control_absolute_scratchpad_is_not_governed_production(tmp_pat
     facts = G.classify_path(str(p))
     assert facts.governed is False, "a path outside the repository is not ours to govern"
     assert facts.production is False, "not governed cannot be production"
-    assert TSA.is_production_path(str(p)) is False, "the consumer must agree with the authority"
 
 
 def test_legitimate_control_absolute_repo_production_path():
     """GOOD: absolute repo production .py -> governed + production."""
-    facts = G.classify_path(str(REPO / "tools" / "turn_self_audit.py"))
+    facts = G.classify_path(str(REPO / "tools" / "operator_law_guard.py"))
     assert facts.governed is True
     assert facts.production is True
-    assert TSA.is_production_path(str(REPO / "tools" / "turn_self_audit.py")) is True
 
 
 def test_legitimate_control_relative_repo_production_path():
     """GOOD: relative repo production .py -> governed + production."""
-    facts = G.classify_path("tools/turn_self_audit.py")
+    facts = G.classify_path("tools/operator_law_guard.py")
     assert facts.governed is True
     assert facts.production is True
-    assert facts.rel == "tools/turn_self_audit.py"
-    assert TSA.is_production_path("tools/turn_self_audit.py") is True
+    assert facts.rel == "tools/operator_law_guard.py"
 
 
 @pytest.mark.parametrize("rel", [
@@ -71,7 +69,6 @@ def test_legitimate_control_repo_non_production_paths(rel):
     facts = G.classify_path(rel)
     assert facts.governed is True, rel
     assert facts.production is False, rel
-    assert TSA.is_production_path(rel) is False, rel
 
 
 def test_fail_closed_unresolvable_path_is_not_silently_ungoverned(monkeypatch):
@@ -124,21 +121,6 @@ def test_single_producer_no_module_redefines_the_geometry(repo_index):
         "a second producer of the path geometry exists — one semantic truth, one computation: "
         + "; ".join(offenders)
     )
-
-
-def test_consumers_agree_with_the_authority_across_the_whole_tracked_tree():
-    """Every tracked file must get the same answer from the authority and from the consumer.
-
-    This is the property that a merge could silently break, and it is checked over real
-    repository contents rather than a handful of chosen examples.
-    """
-    import subprocess
-    files = subprocess.run(["git", "ls-files"], cwd=str(REPO), capture_output=True,
-                           text=True, encoding="utf-8", errors="replace").stdout.split()
-    assert len(files) > 100, "tracked-file discovery returned too little to be a real check"
-    disagreements = [f for f in files
-                     if G.classify_path(f).production != TSA.is_production_path(f)]
-    assert disagreements == [], f"consumer disagrees with authority on: {disagreements[:10]}"
 
 
 def test_rc66_lane_and_product_surface_are_distinct_questions():

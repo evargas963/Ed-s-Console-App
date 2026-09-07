@@ -20,4 +20,11 @@ This folder documents what belongs in **Git** (reproducible code + tracked produ
 .\scripts\export_host_manifest.ps1
 ```
 
-Related runbooks: [`TRAINING_AND_MAINTENANCE.md`](../../TRAINING_AND_MAINTENANCE.md), [`OPEN_ITEMS.md`](../../OPEN_ITEMS.md) § GitHub backup state.
+**Worktree and host facts** (moved here from the deleted root memory pointer file, 2026-09-05, RC-520):
+
+- **Per-worktree venv:** `python tools/bootstrap_worktree_venv.py` (isolated `.venv`; `run_with_repo_venv` re-execs into it).
+- **ONE DB:** every worktree resolves `data/ed_console.db` (override: `ED_CONSOLE_DB` / `ED_DB_PATH`; a non-canonical target needs `ED_CONSOLE_ALLOW_NONCANONICAL_DB=1`).
+- **Git lock defense:** `tools/check_git_index_lock.py` clears `index.lock` older than 60s (wired into `run_with_repo_venv`).
+- **Multi-agent sync:** HEAD is the shared brain; the operator assigns work per session in chat (no standing agent roles, no worktree hand-off checker).
+
+Related runbook: [`TRAINING_AND_MAINTENANCE.md`](../../TRAINING_AND_MAINTENANCE.md). Historical incident memories: `governance/archive/2026-Q2/memory_archive/`.

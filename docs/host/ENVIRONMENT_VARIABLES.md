@@ -10,7 +10,9 @@ Truthy for most flags: `1`, `true`, `yes`, `on` (case-insensitive). Falsy: `0`, 
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `ED_CONSOLE_DB` | `data/ed_console.db` | SQLite path override |
+| `ED_RUNTIME_ROOT` | the source checkout | RC-523 (ARCHITECTURE §8): root of runtime STATE — `data/` (the live DB, barchart), `logs/`, `schwab_token.json`, `diagnostics/`. Read by `runtime_layout.py` at import (from the process environment or the repo-root `.env`). Set it to `C:\Users\<you>\Documents\Trading\runtime\EdWebConsole` after moving those directories there; unset, nothing moves. |
+| `ED_ARTIFACTS_ROOT` | `ED_RUNTIME_ROOT` | RC-523: root of runtime-written ARTIFACTS — `reports/` (terrain scorecard + history + quarantine ledger, operable-surface reports, the fp scoreboard the Desk reads). Defaults to the runtime root. |
+| `ED_CONSOLE_DB` | `<ED_RUNTIME_ROOT>/data/ed_console.db` | SQLite path override (wins over the runtime root; non-canonical targets still need the acknowledgement below) |
 | `ED_CONSOLE_ALLOW_NONCANONICAL_DB` | off | Allow non-canonical DB path (dangerous) |
 | `ED_SQLITE_BUSY_RETRIES` | `8` | Busy-handler retries |
 | `ED_SQLITE_BUSY_BASE_SLEEP_SEC` | `0.02` | Backoff base |
@@ -136,3 +138,28 @@ Truthy for most flags: `1`, `true`, `yes`, `on` (case-insensitive). Falsy: `0`, 
 4. Optionally enable strict freshness for steady state.
 
 See [`TRAINING_AND_MAINTENANCE.md`](../../TRAINING_AND_MAINTENANCE.md) § Auto-promote.
+
+## Runtime evidence contract (moved from the retired runtime-evidence env contract doc, 2026-09-05, RC-520)
+
+### `ED_CALIBRATION_LOG`
+
+| Value | Effect |
+|-------|--------|
+| `1` / `true` / `yes` / `on` | `calibration_decision_log` rows written |
+| unset / other | Writer **silently skips** — evidence gap |
+
+**RTH proof rule:** if `ED_CALIBRATION_LOG` is disabled, a live validation report must **not** classify `PASS`; it classifies `EVIDENCE_GAP_ED_CALIBRATION_LOG_DISABLED`. The objective audit records a warning when it is disabled and does not fail startup. Local dev without calibration analysis may leave it off — the validation report then says what evidence is missing.
+
+### Console DB / `snapshots_1m_normalized` (pytest + CI objective-audit)
+
+| Situation | Contract |
+|-----------|----------|
+| Empty or schema-less `ED_CONSOLE_DB` / canonical `data/ed_console.db` | **In-scope** for `--objective-audit` and governance pytest — `db.ensure_console_db_training_schema()` bootstraps required tables before audit reads |
+| `db_training_fingerprint` / `db_training_floor_stats` on a schema-less file | **Fail-closed:** return `row_count: 0` / `labeled_rows: 0` with `schema_absent: true` — never a raw `OperationalError` |
+| Production RTH proof | The operator DB must contain labeled rows — bootstrap alone is not RTH PASS evidence |
+
+### Required env capture (every RTH validation report)
+
+`git_commit`, `branch`, `date/session` (UTC), `market_session_mode`, `ED_CALIBRATION_LOG` raw value + enabled bool, Schwab/Barchart mode env, `db_path`, WAL / busy timeout (from DB config when available), `server_pid`, `ticker_universe` note.
+
+**Minimum env for an RTH proof run:** market open / RTH; server at repo tip; `ED_CALIBRATION_LOG=1`; `window.ED_SWITCH_TIMING = true` in the browser for the switch matrix.
