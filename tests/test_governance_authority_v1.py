@@ -98,18 +98,30 @@ def wire(tree: Path, stop: tuple[str, ...] = ("tools/demo_guard.py",),
 
     Real worktrees carry `.claude/settings.json`; a delegate reads its own. The fixture trees
     must carry one too, or they have no canonical roster and cannot be handed authority.
+
+    DERIVED from this repository's real wiring, never listed here (Close contract: the proof
+    population is the seam's own enumeration). The same events, matchers and chain ENTRIES as
+    the live file, with the fixture's roster substituted for the members — so an entry wired
+    into the real `.claude/settings.json` is wired into every fixture tree unasked, and the
+    recurrence controls drive it without anyone editing a second population.
     """
-    def cmd(chain: str, members: tuple[str, ...]) -> str:
-        return " ".join(["python", f"tools/{chain}.py", *members])
-    settings = {"hooks": {
-        "PreToolUse": [
-            {"matcher": "Edit|Write|MultiEdit|NotebookEdit",
-             "hooks": [{"type": "command", "command": cmd("pretooluse_chain", pre)}]},
-            {"matcher": "Bash|PowerShell|Monitor",
-             "hooks": [{"type": "command", "command": cmd("pretooluse_chain", pre)}]},
-        ],
-        "Stop": [{"hooks": [{"type": "command", "command": cmd("stop_chain", stop)}]}],
-    }}
+    real = json.loads((REPO / ".claude" / "settings.json").read_text(encoding="utf-8"))
+    hooks: dict = {}
+    for event, entries in real["hooks"].items():
+        members = stop if event == "Stop" else pre
+        derived = []
+        for entry in entries:
+            cmds = []
+            for h in entry["hooks"]:
+                chain = next(t.replace("\\", "/") for t in h["command"].split()
+                             if t.replace("\\", "/").startswith("tools/") and t.endswith("_chain.py"))
+                cmds.append({"type": "command", "command": " ".join(["python", chain, *members])})
+            item = {"hooks": cmds}
+            if "matcher" in entry:
+                item["matcher"] = entry["matcher"]
+            derived.append(item)
+        hooks[event] = derived
+    settings = {"hooks": hooks}
     (tree / ".claude").mkdir(parents=True, exist_ok=True)
     (tree / ".claude" / "settings.json").write_text(json.dumps(settings, indent=1), encoding="utf-8")
 
@@ -994,7 +1006,9 @@ def test_every_registered_hook_entry_obeys_the_shared_delegated_roster_invariant
 
     _primary, alpha, _beta = trees
     entries = registered_entrypoints(alpha)
-    assert set(entries) >= {"tools/stop_chain.py", "tools/pretooluse_chain.py"}, entries
+    # The population under attack IS the live enumeration — the fixture wiring is derived from
+    # the repository's own file — so nothing here can lag the real seam.
+    assert entries and entries == registered_entrypoints(REPO), (entries, registered_entrypoints(REPO))
     assert _delegated_roster_violations(alpha) == []
 
     set_guard(alpha, BLOCKING_GUARD, commit=False)
@@ -1041,15 +1055,19 @@ def test_a_newly_wired_entry_that_trusts_argv_cannot_escape_the_enumeration(tree
     assert not any(v.startswith(("tools/stop_chain.py:", "tools/pretooluse_chain.py:")) for v in violations), violations
 
 
-def test_the_live_wiring_registers_the_entries_the_controls_drive():
-    """The real tree's enumeration, read from its own wiring: both chain entries, nothing
-    hand-listed. If a third entry is wired here, the controls above exercise it unasked."""
+def test_the_live_wiring_is_the_population_the_controls_drive(trees):
+    """No expected set is written down anywhere. The live enumeration is non-empty, every entry
+    it names is a real file, and the fixture trees carry exactly that enumeration — so a third
+    entry wired into the real file is driven by the attacks above the moment it exists, and a
+    test could not lag it even by forgetting."""
     from tools.stop_chain import registered_entrypoints
 
+    _primary, alpha, _beta = trees
     live = registered_entrypoints(REPO)
-    assert set(live) == {"tools/stop_chain.py", "tools/pretooluse_chain.py"}, live
+    assert live, "the real wiring registers no chain entry"
     for entry in live:
         assert (REPO / entry).is_file(), entry
+    assert registered_entrypoints(alpha) == live
 
 
 def test_a_missing_module_is_a_block_that_names_no_recovery_file():
