@@ -315,8 +315,8 @@ def _open_capture_db_readonly(db_path=None) -> Optional[sqlite3.Connection]:
 
     PR214_RTH_DEFECT_REMEDIATION_V1: goes through `resolve_stream_db_path`, the ONE
     canonical resolver `tools/run_stream_capture.py`'s CaptureWriter also uses, with
-    THIS module's own `STREAM_DB_DEFAULT` retained as a test-monkeypatchable explicit
-    reader default."""
+    THIS module's own `STREAM_DB_DEFAULT` (still test-monkeypatchable, unchanged) as
+    the fallback when no STREAM_CAPTURE_DB_PATH override is set."""
     if db_path is None:
         db_path = resolve_stream_db_path(STREAM_DB_DEFAULT)
     try:

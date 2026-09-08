@@ -30,8 +30,6 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT))
 
-from db_authority import canonical_console_db_path  # noqa: E402
-
 from calibration.db_guard import register_allow_noncanonical_flag, require_canonical_db_target
 from db import configure_sqlite_connection
 from features.inference_snapshot import build_inference_snapshot_v1_from_db_row
@@ -157,7 +155,7 @@ def _infer_row_movement_all_horizons(
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--db", type=Path, default=canonical_console_db_path())
+    ap.add_argument("--db", type=Path, default=ROOT / "data" / "ed_console.db")
     ap.add_argument("--commit-every", type=int, default=80)
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--limit-rows", type=int, default=0, help="0 = no limit")

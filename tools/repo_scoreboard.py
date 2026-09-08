@@ -32,11 +32,6 @@ import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if REPO not in sys.path:
-    sys.path.insert(0, REPO)
-
-from db_authority import canonical_console_db_path
-
 SKIP = {".venv", "node_modules", "__pycache__", "site-packages", ".git",
         ".mypy_cache", ".pytest_cache", "backups", "scratchpad"}
 
@@ -221,7 +216,7 @@ def row_faucets() -> list[Row]:
 
 
 def row_db() -> list[Row]:
-    db = str(canonical_console_db_path())
+    db = os.path.join(REPO, "data", "ed_console.db")
     if not os.path.exists(db):
         return [Row("DB", "data", "database health", "—", "0 failing", "UNMEASURED")]
     code = subprocess.run(

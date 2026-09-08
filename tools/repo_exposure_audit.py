@@ -40,8 +40,6 @@ REPO = Path(__file__).resolve().parent.parent
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
-from db_authority import canonical_console_db_path
-
 BASE = "http://127.0.0.1:8000"
 
 
@@ -151,7 +149,7 @@ def section_live() -> dict:
 def section_faucets() -> dict:
     try:
         from tools.data_faucet_audit import run as faucet_run
-        rep = faucet_run(str(canonical_console_db_path()))
+        rep = faucet_run(str(REPO / "data" / "ed_console.db"))
     except Exception as e:
         return {"unmeasurable": f"{type(e).__name__}: {e}"}
     return {"violations": len(rep.get("faucet_violations", [])),
@@ -162,7 +160,7 @@ def section_faucets() -> dict:
 
 
 def section_db() -> dict:
-    db = canonical_console_db_path()
+    db = REPO / "data" / "ed_console.db"
     if not db.exists():
         return {"unmeasurable": "data/ed_console.db missing"}
     out: dict = {"size_gb": round(db.stat().st_size / 1024 ** 3, 2)}

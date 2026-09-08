@@ -23,7 +23,6 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from calibration.db_guard import register_allow_noncanonical_flag, require_canonical_db_target
-from db_authority import canonical_console_db_path
 from db import EdDB, configure_sqlite_connection
 from features.fusion_replay_grade_v1 import fusion_replay_stack_grade_v1
 from features.replay_signal_input_v1 import signal_input_from_snapshot_row_dict
@@ -40,7 +39,7 @@ from tools.legacy.horizon_7.backfill_fusion_policy_columns_v1 import (
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--db", type=Path, default=canonical_console_db_path())
+    ap.add_argument("--db", type=Path, default=ROOT / "data" / "ed_console.db")
     ap.add_argument("--limit", type=int, default=None)
     ap.add_argument("--offset", type=int, default=0)
     ap.add_argument("--dry-run", action="store_true")

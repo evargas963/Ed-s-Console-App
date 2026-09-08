@@ -25,9 +25,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from db_authority import canonical_console_db_path  # noqa: E402
-
-DB = canonical_console_db_path()
+DB = ROOT / "data" / "ed_console.db"
 URL = "https://api.nasdaq.com/api/calendar/earnings?date={d}"
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
       " (KHTML, like Gecko) Chrome/126.0 Safari/537.36")

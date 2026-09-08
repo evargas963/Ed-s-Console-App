@@ -2,7 +2,7 @@
 """
 Directional diagnostics, failure analysis, candidate row filters, and edge re-evaluation.
 
-  python -m calibration.signal_engineering --db <run-private-calibration.db>
+  python -m calibration.signal_engineering --db data/calibration_accumulation_validation.db
 
 Writes data/calibration_signal_engineering_report.json and docs/calibration_signal_engineering_v1.md
 """

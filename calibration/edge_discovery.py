@@ -3,7 +3,7 @@
 Enumerate marginal and key 2D slices on trusted+anchored+labeled calibration rows.
 
   python -m calibration.edge_discovery
-  python -m calibration.edge_discovery --db <run-private-calibration.db>
+  python -m calibration.edge_discovery --db data/calibration_accumulation_validation.db
 
 Writes data/calibration_edge_discovery_report.json (full tables, no summarization).
 """
@@ -474,6 +474,7 @@ def pick_db_path(explicit: Path | None) -> Path:
         return explicit
     candidates = [
         canonical_console_db_path(),
+        ROOT / "data" / "calibration_accumulation_validation.db",
     ]
     for p in candidates:
         if not p.is_file():
@@ -487,7 +488,7 @@ def pick_db_path(explicit: Path | None) -> Path:
         conn.close()
         if n >= MIN_N:
             return p
-    return canonical_console_db_path()
+    return ROOT / "data" / "calibration_accumulation_validation.db"
 
 
 def _row_export(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:

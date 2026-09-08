@@ -47,7 +47,6 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 
-from db_authority import canonical_console_db_path  # noqa: E402
 from time_et import ET, RTH_START_MINS, is_trading_day_et  # noqa: E402
 
 # ── Sibling IC helpers (ATM residual / Spearman) ─────────────────────────────
@@ -85,7 +84,7 @@ _fmt = _ic._fmt
 _pct = _ic._pct
 
 STUDY = "liquidity_intraday_volume_ic_v1"
-DB = canonical_console_db_path()
+DB = REPO / "data" / "ed_console.db"
 OUT_JSON = REPO / "reports" / f"{STUDY}.json"
 OUT_MD = REPO / "reports" / f"{STUDY}.md"
 SEED = 20260730

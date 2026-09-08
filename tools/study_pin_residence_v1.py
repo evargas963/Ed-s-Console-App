@@ -23,7 +23,6 @@ if str(_ROOT) not in _sys.path:
 
 import sqlite3, statistics as st
 from datetime import datetime
-from db_authority import canonical_console_db_path
 from time_et import (
     ET,
     RTH_END_MINS,
@@ -34,7 +33,7 @@ from time_et import (
 BAND = 0.0025          # +/-0.25% of spot counts as "at the level"
 OBS_MIN = 600          # 10:00 ET
 
-con = sqlite3.connect(f"file:{canonical_console_db_path()}?mode=ro", uri=True, timeout=180)
+con = sqlite3.connect("file:data/ed_console.db?mode=ro", uri=True, timeout=180)
 con.row_factory = sqlite3.Row
 def et(ts):
     return datetime.fromtimestamp(ts, ET)

@@ -11,8 +11,6 @@ from typing import Any
 from urllib.error import URLError
 from urllib.request import Request, urlopen
 
-from db_authority import canonical_console_db_path
-
 ROOT = Path(__file__).resolve().parent.parent
 
 GUEST_SWITCH_MATRIX: tuple[tuple[str, str], ...] = (
@@ -125,7 +123,7 @@ def capture_runtime_env() -> dict[str, Any]:
         "ED_CALIBRATION_LOG": cal,
         "ED_CALIBRATION_LOG_enabled": str(cal).strip().lower() in {"1", "true", "yes", "on"},
         "schwab_mode": os.environ.get("ED_SCHWAB_MODE", "unknown"),
-        "db_path": str(canonical_console_db_path()),
+        "db_path": os.environ.get("ED_DB_PATH", str(ROOT / "data" / "ed_console.db")),
         "server_pid": os.getpid(),
         "ticker_universe_note": "operator-selected during RTH matrix",
     }

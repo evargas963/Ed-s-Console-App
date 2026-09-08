@@ -3,7 +3,7 @@
 D2 dual-label backtest — scratch DB builder (research-only; operator-approved
 mission D2_DUAL_LABEL_BACKTEST_EXECUTE, 2026-07-06).
 
-Builds an explicitly supplied run-private DB from the production DB opened READ-ONLY
+Builds data/research/d2_dual_label.db from the production DB opened READ-ONLY
 (sqlite URI mode=ro — mutation of the source is impossible by construction):
 
   1. Clones RTH-training-relevant ``snapshots`` columns (all columns EXCEPT the
@@ -46,7 +46,6 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from db_authority import canonical_console_db_path  # noqa: E402
 HORIZONS = {"1c": 1, "5c": 5, "15c": 15, "60c": 60}
 BASE_TICKERS = ("SPY", "QQQ", "IWM")
 BLOB_COLUMNS = ("option_chain_json", "replay_context_json")
@@ -168,20 +167,15 @@ def fit_k_for_horizon(
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="Build the D2 dual-label scratch DB")
-    ap.add_argument("--src", type=Path, default=canonical_console_db_path())
-    ap.add_argument(
-        "--out",
-        type=Path,
-        required=True,
-        help="explicit run-private path; the caller owns teardown",
-    )
+    ap.add_argument("--src", type=Path, default=ROOT / "data" / "ed_console.db")
+    ap.add_argument("--out", type=Path, default=ROOT / "data" / "research" / "d2_dual_label.db")
     ap.add_argument("--tickers", nargs="+", default=["SPY", "QQQ", "IWM", "AAPL", "TSLA"])
     args = ap.parse_args()
 
     t0 = time.time()
     args.out.parent.mkdir(parents=True, exist_ok=True)
     if args.out.exists():
-        raise FileExistsError(f"research scratch DB must start fresh: {args.out.resolve()}")
+        args.out.unlink()
 
     # READ-ONLY source: mutation of production is impossible on this handle.
     src = sqlite3.connect(f"file:{args.src.as_posix()}?mode=ro", uri=True)
@@ -219,7 +213,7 @@ def main() -> int:
         f"SELECT ticker, bar_start_ts_utc, bar_end_ts_utc, open, high, low, close, volume, source"
         f" FROM price_bars_1m WHERE ticker IN ({ph})", args.tickers
     ):
-        dst.execute("INSERT INTO price_bars_1m VALUES (?,?,?,?,?,?,?,?,?)", tuple(row))  # collect-window-ok: verbatim copy into caller-owned isolated scratch DB; source opened mode=ro (RC-183)
+        dst.execute("INSERT INTO price_bars_1m VALUES (?,?,?,?,?,?,?,?,?)", tuple(row))  # collect-window-ok: verbatim copy into isolated scratch DB data/research/d2_dual_label.db; source opened mode=ro (RC-183)
         n_bars += 1
     dst.commit()
 

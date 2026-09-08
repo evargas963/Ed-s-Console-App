@@ -55,7 +55,7 @@
   "barrier_versions": {
     "NONE": "no barrier; fixed-horizon forward-close outcome",
     "PILOT_TB_V1": "research/pilot_step3/labeling.py — stop/target/vertical + 15:55 ET force-flat; entry = next-bar open; Wilder ATR-14 anchored T-1; classes WIN/LOSS/TIMEOUT/FORCE_FLAT; 175-cell grid; NON-PROMOTED research.",
-    "D2_TB_V1": "tools/research/d2_build_dual_label_scratch_db.py — symmetric anchor +/- k_hz*ATR, vertical at N 1m bars, session-truncation flag; requires an explicit fresh run-private --out DB whose teardown is owned by the caller."
+    "D2_TB_V1": "tools/research/d2_build_dual_label_scratch_db.py — symmetric anchor +/- k_hz*ATR, vertical at N 1m bars, session-truncation flag; writes outcome_tb_{H} to data/research/d2_dual_label.db ONLY (scratch)."
   },
   "immutable_source": {
     "table": "price_bars_1m",

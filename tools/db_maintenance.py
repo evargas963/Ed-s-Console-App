@@ -20,13 +20,6 @@ import os
 import sqlite3
 import sys
 import time
-from pathlib import Path
-
-ROOT = Path(__file__).resolve().parents[1]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
-from db_authority import canonical_console_db_path
 
 
 def db_stats(conn: sqlite3.Connection) -> dict[str, int]:
@@ -100,5 +93,5 @@ def run_maintenance(db_path: str) -> int:
 
 if __name__ == "__main__":
     args = [a for a in sys.argv[1:] if a and not a.startswith("--")]
-    path = args[0] if args else str(canonical_console_db_path())
+    path = args[0] if args else os.path.join("data", "ed_console.db")
     sys.exit(run_maintenance(path))

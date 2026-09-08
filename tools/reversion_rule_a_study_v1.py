@@ -33,7 +33,6 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from research.incumbent_eval_v1.stats import holm_bonferroni  # noqa: E402
-from db_authority import canonical_console_db_path  # noqa: E402
 from research.pilot_step3.data_loader import Bar1m  # noqa: E402
 from research.pilot_step3.event_generation import PilotEvent  # noqa: E402
 from research.pilot_step3.f1_input_gates import gated_label_event_cell_f1  # noqa: E402
@@ -49,7 +48,7 @@ from research.pilot_step3.gamma_conditioned_study_v1 import (  # noqa: E402
     load_certified_gamma,
     session_gamma_medians,
 )
-DEFAULT_DB = str(canonical_console_db_path())
+DEFAULT_DB = str(REPO_ROOT / "data" / "ed_console.db")
 REPORT_PATH = REPO_ROOT / "reports" / "batch" / "reversion_rule_a_spy_v1.json"
 
 M_SIGMA = 1.5

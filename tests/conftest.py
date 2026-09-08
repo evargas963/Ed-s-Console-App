@@ -13,26 +13,12 @@ not set outside pytest. Fail-closed without secrets is locked by
 from __future__ import annotations
 
 import os
-import shutil
 import sys
-import tempfile
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import pytest
 
-# Every pytest process (serial runner, xdist controller, and each xdist worker) owns a
-# fresh runtime root. Unconditionally remove inherited production DB selectors before
-# any test module can import db/runtime_layout.
-os.environ.pop("ED_CONSOLE_DB", None)
-os.environ.pop("ED_DB_PATH", None)
-_PYTEST_RUNTIME_ROOT = Path(
-    tempfile.mkdtemp(
-        prefix=f"ed-pytest-{os.environ.get('PYTEST_XDIST_WORKER', 'serial')}-{os.getpid()}-"
-    )
-).resolve()
-os.environ["ED_RUNTIME_ROOT"] = str(_PYTEST_RUNTIME_ROOT)
-os.environ["ED_ARTIFACTS_ROOT"] = str(_PYTEST_RUNTIME_ROOT / "artifacts")
 os.environ.setdefault("ED_CONSOLE_ALLOW_NONCANONICAL_DB", "1")
 
 # Hermetic Schwab config for pytest only — not real credentials; no network at import.
@@ -45,14 +31,28 @@ os.environ.setdefault("SCHWAB_CALLBACK_URL", "https://127.0.0.1:8182")
 # server import time, and this line runs before any test module can import server
 # (CI caught a lazy mid-test import writing the real file; the autouse firewall
 # fixture below remains the byte-level backstop).
-os.environ["ED_TERRAIN_QUARANTINE_LEDGER"] = str(
-    _PYTEST_RUNTIME_ROOT / "terrain_quarantine_ledger.jsonl"
-)
+import tempfile as _tempfile  # noqa: E402
+os.environ.setdefault(
+    "ED_TERRAIN_QUARANTINE_LEDGER",
+    str(Path(_tempfile.mkdtemp(prefix="ed-pytest-ledger-")) / "terrain_quarantine_ledger.jsonl"))
 
-@pytest.fixture(scope="session", autouse=True)
-def _remove_pytest_runtime_after_session():
-    yield
-    shutil.rmtree(_PYTEST_RUNTIME_ROOT, ignore_errors=True)
+
+def pytest_configure(config) -> None:
+    """xdist workers must not share one console DB file.
+
+    `db.DB_PATH` is resolved at import from ED_CONSOLE_DB. Each worker is a fresh
+    process; set the override here (before test modules import db) so schema-init
+    and writes cannot collide. Serial pytest is unchanged (no PYTEST_XDIST_WORKER).
+    """
+    worker = os.environ.get("PYTEST_XDIST_WORKER")
+    if not worker:
+        return
+    root = Path(os.environ.get("TMPDIR") or "/tmp") / f"ed-pytest-{worker}-{os.getpid()}"
+    root.mkdir(parents=True, exist_ok=True)
+    db = root / "ed_console.db"
+    db.touch()
+    os.environ["ED_CONSOLE_DB"] = str(db)
+    os.environ["ED_CONSOLE_ALLOW_NONCANONICAL_DB"] = "1"
 
 
 @pytest.fixture(autouse=True)

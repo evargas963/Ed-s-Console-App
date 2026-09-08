@@ -29,8 +29,6 @@ TODAY = date.today().isoformat()
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
-from db_authority import canonical_console_db_path
-
 # ── helpers ─────────────────────────────────────────────────────────────
 
 
@@ -630,7 +628,7 @@ def build_release_object_schema() -> dict:
 
 
 def run_blind_reconstruction_test() -> dict:
-    db_path = canonical_console_db_path()
+    db_path = REPO / "data" / "ed_console.db"
     if not db_path.is_file():
         return {
             "schema_version": 2,

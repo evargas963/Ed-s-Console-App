@@ -37,7 +37,6 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 
-from db_authority import canonical_console_db_path  # noqa: E402
 from terrain_engine import compute_terrain  # noqa: E402
 from time_et import ET, RTH_END_MINS, RTH_START_MINS, is_trading_day_et  # noqa: E402
 
@@ -62,7 +61,7 @@ PASS = {
 }
 
 STUDY = "liquidity_gamma_levels_experiment_v1"
-DB = canonical_console_db_path()
+DB = REPO / "data" / "ed_console.db"
 
 
 # ── Bars / barriers (same discipline as synthesis pack) ──────────────────────

@@ -14,14 +14,13 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from horizon_outcomes import forward_bar_start_utc  # noqa: E402
-from db_authority import canonical_console_db_path  # noqa: E402
 from math_exposure import classify_direction_pts  # noqa: E402
 from movement_target_threshold import (  # noqa: E402
     load_movement_thresholds_by_horizon_v1,
     threshold_move_pts_for_slug,
 )
 
-DEFAULT_DB = canonical_console_db_path()
+DEFAULT_DB = ROOT / "data" / "ed_console.db"
 
 
 def _median(xs: list[float]) -> float | None:

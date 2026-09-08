@@ -16,7 +16,6 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from calibration.db_guard import register_allow_noncanonical_flag, require_canonical_db_target
-from db_authority import canonical_console_db_path
 from db import configure_sqlite_connection
 from lstm_data import STREAM_5M_LOOKBACK
 from ml_horizon import ML_HORIZON_SLUGS
@@ -50,7 +49,7 @@ def _sufficiency_class(n: int) -> str:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--db", type=Path, default=canonical_console_db_path())
+    ap.add_argument("--db", type=Path, default=ROOT / "data" / "ed_console.db")
     register_allow_noncanonical_flag(ap)
     args = ap.parse_args()
     require_canonical_db_target(args, tool_name="analyze_fused_xgb_comparison_dataset_v1", write_capable=False)

@@ -11,7 +11,6 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from calibration.db_guard import register_allow_noncanonical_flag, require_canonical_db_target
-from db_authority import canonical_console_db_path
 from db import configure_sqlite_connection
 from features.inference_snapshot import build_inference_snapshot_v1_from_db_row
 from ml_horizon import ML_HORIZON_SLUGS, normalize_ml_horizon_slug
@@ -26,7 +25,7 @@ GOV = (
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--db", type=Path, default=canonical_console_db_path())
+    ap.add_argument("--db", type=Path, default=ROOT / "data" / "ed_console.db")
     register_allow_noncanonical_flag(ap)
     args = ap.parse_args()
     require_canonical_db_target(args, tool_name="smoke_movement_heads_inference_v1", write_capable=False)

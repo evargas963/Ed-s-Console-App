@@ -15,10 +15,6 @@ from pathlib import Path
 from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
-
-from db_authority import canonical_console_db_path
 
 
 def enriched_rows_for_spec_build(
@@ -95,12 +91,7 @@ def _build_index(
     build_count: int,
 ) -> AblationStaticLockIndex:
     mpath = manifest_path or (repo_root / "reports" / "artifacts" / "feature_ablation_manifest_leaf.json")
-    if db_path is not None:
-        dbp = db_path
-    elif repo_root.resolve() == REPO_ROOT.resolve():
-        dbp = canonical_console_db_path()
-    else:
-        dbp = repo_root / "data" / "ed_console.db"
+    dbp = db_path if db_path is not None else (repo_root / "data" / "ed_console.db")
     db_exists = dbp.is_file() if dbp is not None else False
     db_resolved = dbp if db_exists else None
 

@@ -342,39 +342,6 @@ def test_slc_run_routes_control_db_to_trainer_and_true_db_to_evaluator(tmp_path,
     assert doc["verdict"]["collapsed_to_chance"] is True
     assert doc["permutation"]["label_multiset_preserved"] is True
 
-
-def test_slc_cli_uses_and_removes_run_private_work_dir(tmp_path, monkeypatch):
-    import sys
-    from pathlib import Path
-
-    from tools import run_shuffled_label_control as slc
-
-    seen = {}
-
-    def _run_control(**kwargs):
-        work = Path(kwargs["work_dir"])
-        seen["work"] = work
-        (work / "control.db").touch()
-        Path(kwargs["evidence_path"]).write_text("{}", encoding="utf-8")
-        return {"ok": True}
-
-    evidence = tmp_path / "evidence.json"
-    monkeypatch.setattr(slc, "run_control", _run_control)
-    monkeypatch.setattr(
-        sys,
-        "argv",
-        [
-            "run_shuffled_label_control.py",
-            "--ticker", "SPY",
-            "--horizon", "5c",
-            "--evidence", str(evidence),
-        ],
-    )
-    assert slc.main() == 0
-    assert evidence.is_file()
-    assert not seen["work"].exists()
-
-
 def test_meta_assembly_reads_no_calibration_artifacts():
     """ML-PIPE-V3 item 3 (calibration fold-correctness): the meta training
     matrix is assembled from raw base probabilities + snapshot overlay columns

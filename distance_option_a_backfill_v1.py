@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import shutil
 import sqlite3
 import sys
 import time
@@ -33,7 +34,7 @@ if str(ROOT) not in sys.path:
 from calibration.db_guard import register_allow_noncanonical_flag, require_canonical_db_target  # noqa: E402
 from calibration.paths import DEFAULT_DB  # noqa: E402
 from db_authority import is_canonical_db_path  # noqa: E402
-from db_safety import backup_permanent_database  # noqa: E402
+from db_safety import backup_console_database  # noqa: E402
 
 FLAG_KEY = "distance_magnitude_option_a_v1"
 FLAG_NONE = "none"
@@ -111,6 +112,25 @@ def distance_column_stats(conn: sqlite3.Connection, table: str) -> dict[str, Any
         "nearest_above_dist_null": nad_null,
         "nearest_below_dist_null": nbd_null,
     }
+
+
+def copy_db_file_backup(db_path: Path, *, label: str) -> Path:
+    """Legacy scratch/test copy; canonical main backups belong to db_safety."""
+    db_path = db_path.resolve()
+    if not db_path.is_file():
+        raise FileNotFoundError(f"database not found: {db_path}")
+    if is_canonical_db_path(db_path):
+        raise ValueError(
+            "copy_db_file_backup cannot back up canonical ed_console.db; "
+            "use db_safety.backup_console_database"
+        )
+    backup_root = db_path.parent / "backups"
+    backup_root.mkdir(parents=True, exist_ok=True)
+    ts = int(time.time())
+    dest = backup_root / f"{db_path.stem}.{label}.{ts}.db"
+    shutil.copy2(db_path, dest)
+    log.info("Backup written: %s", dest)
+    return dest
 
 
 def cleanup_verification_ticker_rows(
@@ -210,6 +230,7 @@ def run_distance_option_a_backfill_v1(
     *,
     dry_run: bool = False,
     force: bool = False,
+    skip_backup: bool = False,
 ) -> dict[str, Any]:
     """
     Transaction-wrapped backfill. Sets ed_schema_flags.distance_magnitude_option_a_v1.
@@ -251,11 +272,16 @@ def run_distance_option_a_backfill_v1(
             return audit
 
         backup_path: Optional[Path] = None
-        if is_canonical_db_path(db_path):
-            backup_path, manifest_path, _ = backup_permanent_database(
-                db_path, reason="pre_option_a_backfill_v1"
-            )
-            audit["backup_manifest_path"] = str(manifest_path)
+        if not skip_backup:
+            if is_canonical_db_path(db_path):
+                backup_path, manifest_path, _ = backup_console_database(
+                    db_path, operation_name="pre_option_a_backfill_v1"
+                )
+                audit["backup_manifest_path"] = str(manifest_path)
+            else:
+                backup_path = copy_db_file_backup(
+                    db_path, label="pre_option_a_backfill_v1"
+                )
         audit["backup_path"] = str(backup_path) if backup_path else None
 
         conn.execute("BEGIN IMMEDIATE")
@@ -396,6 +422,11 @@ def main() -> None:
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("--force", action="store_true", help="allow re-run when already complete")
     p.add_argument(
+        "--skip-backup",
+        action="store_true",
+        help="unsafe: skip file copy (testing only)",
+    )
+    p.add_argument(
         "--mark-writers-on",
         action="store_true",
         help=f"set {FLAG_KEY}={FLAG_WRITERS_ON} and exit",
@@ -451,6 +482,7 @@ def main() -> None:
         args.db,
         dry_run=args.dry_run,
         force=args.force,
+        skip_backup=args.skip_backup,
     )
     if not args.dry_run and out.get("status") == "backfill_complete":
         out["tier1_coverage_after"] = tier1_pool_coverage_report(args.db)
