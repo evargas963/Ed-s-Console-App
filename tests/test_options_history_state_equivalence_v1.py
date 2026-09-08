@@ -85,7 +85,12 @@ def _fixed_evaluation_time(sample: dict) -> float:
 
 
 def _point_history_at(monkeypatch, db: Path) -> None:
-    monkeypatch.setenv("STREAM_CAPTURE_DB_PATH", str(db.resolve()))
+    # RC-534 disabled the ambient STREAM_CAPTURE_DB_PATH override: the canonical resolver is
+    # the one seam. Point it at the test DB so BOTH an explicit-path hydrate and the no-arg
+    # path the options_history API takes read the same rows.
+    import stream_spine
+
+    monkeypatch.setattr(stream_spine, "canonical_stream_db_path", lambda: db.resolve())
 
 
 @pytest.mark.parametrize(
@@ -469,7 +474,7 @@ def test_history_api_serializes_the_same_canonical_payload(tmp_path, monkeypatch
     _write_db(db, [sample])
     evaluation_time = _fixed_evaluation_time(sample)
     monkeypatch.setattr(time, "time", lambda: evaluation_time)
-    monkeypatch.setenv("STREAM_CAPTURE_DB_PATH", str(db.resolve()))
+    _point_history_at(monkeypatch, db)
 
     content = history.hydrate_option_content(
         sample["symbol"], since_ts=evaluation_time - 900, db_path=db

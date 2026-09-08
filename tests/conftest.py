@@ -37,13 +37,11 @@ _PYTEST_RUNTIME_ROOT = Path(
 ).resolve()
 os.environ["ED_RUNTIME_ROOT"] = str(_PYTEST_RUNTIME_ROOT)
 os.environ["ED_ARTIFACTS_ROOT"] = str(_PYTEST_RUNTIME_ROOT / "artifacts")
-os.environ["ED_CONSOLE_ALLOW_NONCANONICAL_DB"] = "1"
-# Set the console DB explicitly to the same runtime-root path canonical resolution yields,
-# so readers preferring the env var and readers resolving through runtime_layout agree.
-_PYTEST_CONSOLE_DB = _PYTEST_RUNTIME_ROOT / "ed_console.db"
-_PYTEST_CONSOLE_DB.touch()
-os.environ["ED_CONSOLE_DB"] = str(_PYTEST_CONSOLE_DB)
-os.environ["STREAM_CAPTURE_DB_PATH"] = str(_PYTEST_RUNTIME_ROOT / "stream_capture.db")
+os.environ.setdefault("ED_CONSOLE_ALLOW_NONCANONICAL_DB", "1")
+# The console DB and stream-capture DB are NOT set by env: RC-534 disabled ambient
+# ED_CONSOLE_DB / STREAM_CAPTURE_DB_PATH overrides (db._resolve_console_db_path raises on
+# them). Both resolve canonically under ED_RUNTIME_ROOT above, which is the one isolation
+# knob — the _stream_spine_fallback fixture below still pins the stream reader default.
 
 # Schwab hermetic AND explicitly offline (RC-515): placeholders satisfy import-time config;
 # ED_CI_OFFLINE plus a missing token guarantee no test constructs a live Schwab client.
@@ -68,8 +66,11 @@ os.environ["ED_GATE_CACHE_DISABLE"] = "1"
 def pytest_configure(config) -> None:
     """The import-time runtime boundary holds in the controller and every xdist worker."""
     assert Path(os.environ["ED_RUNTIME_ROOT"]) == _PYTEST_RUNTIME_ROOT
-    assert Path(os.environ["ED_CONSOLE_DB"]).parent == _PYTEST_RUNTIME_ROOT
-    assert Path(os.environ["STREAM_CAPTURE_DB_PATH"]).parent == _PYTEST_RUNTIME_ROOT
+    assert "ED_CONSOLE_DB" not in os.environ  # RC-534: no ambient console-DB override
+    from db_authority import canonical_console_db_path, canonical_stream_db_path
+
+    assert _PYTEST_RUNTIME_ROOT in canonical_console_db_path().parents
+    assert _PYTEST_RUNTIME_ROOT in canonical_stream_db_path().parents
 
 
 @pytest.fixture(scope="session", autouse=True)

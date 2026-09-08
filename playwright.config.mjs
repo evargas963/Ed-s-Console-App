@@ -5,28 +5,33 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-// RC-515: this is the one E2E process boundary. The web server receives no live
-// runtime path, token, or credentials from its parent. Ticker/option signals stay
-// canonical — DB-adjacent through stream_spine — but the DB is process-private.
+// RC-515 + RC-534 reconciled: this is the one E2E process boundary. The web server
+// receives no live runtime path, token, or credentials from its parent. RC-534 disabled the
+// ambient ED_CONSOLE_DB / STREAM_CAPTURE_DB_PATH overrides (db.py raises on them), so
+// isolation is ONE knob — ED_RUNTIME_ROOT — under which the console DB, stream DB and the
+// DB-adjacent ticker/option signals all resolve canonically and process-private. Inherited
+// production selectors are deleted first so a live parent value can never win.
 export const e2eRuntimeRoot = fs.mkdtempSync(
   path.join(os.tmpdir(), 'ed-console-e2e-runtime-'),
 );
-const e2eConsoleDb = path.join(e2eRuntimeRoot, 'ed_console.db');
-fs.closeSync(fs.openSync(e2eConsoleDb, 'wx'));
-export const e2eServerEnv = {
-  ...process.env,
-  ED_CONSOLE_ALLOW_NONCANONICAL_DB: '1',
-  ED_CONSOLE_DB: e2eConsoleDb,
-  STREAM_CAPTURE_DB_PATH: path.join(e2eRuntimeRoot, 'stream_capture.db'),
-  SCHWAB_TOKEN_PATH: path.join(e2eRuntimeRoot, 'missing_schwab_token.json'),
-  ED_CI_OFFLINE: '1',
-  SCHWAB_API_KEY: 'ci-placeholder-api-key',
-  SCHWAB_APP_SECRET: 'ci-placeholder-app-secret',
-  SCHWAB_CALLBACK_URL: 'https://127.0.0.1:8182',
-  ED_TERRAIN_QUARANTINE_LEDGER: path.join(
+export const e2eServerEnv = (() => {
+  const env = { ...process.env };
+  delete env.ED_CONSOLE_DB;
+  delete env.ED_DB_PATH;
+  delete env.STREAM_CAPTURE_DB_PATH;
+  env.ED_RUNTIME_ROOT = e2eRuntimeRoot;
+  env.ED_ARTIFACTS_ROOT = path.join(e2eRuntimeRoot, 'artifacts');
+  env.ED_CONSOLE_ALLOW_NONCANONICAL_DB = '1';
+  env.SCHWAB_TOKEN_PATH = path.join(e2eRuntimeRoot, 'missing_schwab_token.json');
+  env.ED_CI_OFFLINE = '1';
+  env.SCHWAB_API_KEY = 'ci-placeholder-api-key';
+  env.SCHWAB_APP_SECRET = 'ci-placeholder-app-secret';
+  env.SCHWAB_CALLBACK_URL = 'https://127.0.0.1:8182';
+  env.ED_TERRAIN_QUARANTINE_LEDGER = path.join(
     e2eRuntimeRoot, 'terrain_quarantine_ledger.jsonl',
-  ),
-};
+  );
+  return env;
+})();
 
 export default defineConfig({
   testDir: 'tests/e2e',

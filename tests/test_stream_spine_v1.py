@@ -476,15 +476,15 @@ def test_db_path_e_explicit_test_path_still_bypasses_the_resolver(tmp_path):
 def test_production_stream_daemon_exposes_no_database_path_switch(monkeypatch, tmp_path):
     import sys
 
-    from tools import run_stream_capture
+    from app.market_data.schwab.streaming import capture
 
     monkeypatch.setattr(
         sys,
         "argv",
-        ["run_stream_capture.py", "--db", str(tmp_path / "fork.db")],
+        ["capture.py", "--db", str(tmp_path / "fork.db")],
     )
     with pytest.raises(SystemExit) as exc:
-        run_stream_capture.main()
+        capture.main()
     assert exc.value.code == 2
 
 
@@ -612,19 +612,22 @@ def test_blocker2_forced_duplicate_open_fails_loudly_for_the_right_reason(tmp_pa
         w.close()
 
 def test_default_signal_paths_sit_beside_resolved_stream_db(tmp_path, monkeypatch):
-    """Signal files resolve next to the stream DB, not the checkout.
+    """Signal files resolve next to the CANONICAL stream DB, not the checkout.
+
+    RC-534: the one resolver is canonical_stream_db_path (no ambient env override); the
+    signal paths are that DB's name-siblings, computed fresh each call.
 
     # universal-scope-ok: path-identity test; no ticker product claim.
     """
     import stream_spine as spine
 
-    db = tmp_path / "stream_capture.db"
-    monkeypatch.setenv("STREAM_CAPTURE_DB_PATH", str(db))
+    db = (tmp_path / "data" / "stream_capture.db").resolve()
+    monkeypatch.setattr(spine, "canonical_stream_db_path", lambda: db)
     assert spine.default_active_option_contract_signal_path() == db.with_name(
         "stream_active_option_contract.json")
     assert spine.default_active_ticker_signal_path() == db.with_name(
         "stream_active_ticker.json")
     spine.write_active_option_contract_signal("SPY   260904C00772000")
     assert spine.read_active_option_contract_signal() == "SPY   260904C00772000"
-    assert (tmp_path / "stream_active_option_contract.json").is_file()
+    assert db.with_name("stream_active_option_contract.json").is_file()
 

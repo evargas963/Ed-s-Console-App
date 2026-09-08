@@ -51,17 +51,23 @@ def _e2e_server_env(poison_root: Path) -> dict[str, str]:
 def test_pytest_boundary_overrides_host_runtime_state(monkeypatch):
     """Pytest is offline and all writable runtime state shares one private root."""
     from config import schwab_live_blocked_for
+    from db_authority import canonical_console_db_path
     from stream_spine import (
         default_active_option_contract_signal_path,
         default_active_ticker_signal_path,
         resolve_stream_db_path,
     )
 
-    root = Path(os.environ["ED_CONSOLE_DB"]).resolve().parent
+    # RC-534: no ambient ED_CONSOLE_DB override; ED_RUNTIME_ROOT is the one isolation knob
+    # and the canonical DBs/signals live under <root>/data.
+    root = Path(os.environ["ED_RUNTIME_ROOT"]).resolve()
     assert root.name.startswith("ed-pytest-")
-    assert resolve_stream_db_path().parent == root
-    assert default_active_option_contract_signal_path().parent == root
-    assert default_active_ticker_signal_path().parent == root
+    assert "ED_CONSOLE_DB" not in os.environ
+    data = root / "data"
+    assert canonical_console_db_path().parent == data
+    assert resolve_stream_db_path().parent == data
+    assert default_active_option_contract_signal_path().parent == data
+    assert default_active_ticker_signal_path().parent == data
     assert Path(os.environ["SCHWAB_TOKEN_PATH"]).parent == root
     assert Path(os.environ["ED_TERRAIN_QUARANTINE_LEDGER"]).parent == root
     assert os.environ["ED_CI_OFFLINE"] == "1"
@@ -69,10 +75,9 @@ def test_pytest_boundary_overrides_host_runtime_state(monkeypatch):
     assert os.environ["SCHWAB_APP_SECRET"] == PLACEHOLDER_SECRET
     assert schwab_live_blocked_for() is True
 
-    monkeypatch.delenv("STREAM_CAPTURE_DB_PATH")
-    assert resolve_stream_db_path().parent == root
-    assert default_active_option_contract_signal_path().parent == root
-    assert default_active_ticker_signal_path().parent == root
+    # There is no STREAM_CAPTURE_DB_PATH override to remove (RC-534); canonical stays canonical.
+    assert "STREAM_CAPTURE_DB_PATH" not in os.environ
+    assert resolve_stream_db_path().parent == data
 
 
 def test_e2e_boundary_rejects_poisoned_inherited_runtime_state(tmp_path):
@@ -81,12 +86,13 @@ def test_e2e_boundary_rejects_poisoned_inherited_runtime_state(tmp_path):
     root = Path(server_env.pop("_E2E_RUNTIME_ROOT")).resolve()
 
     assert root.name.startswith("ed-console-e2e-runtime-")
-    for key in (
-        "ED_CONSOLE_DB",
-        "STREAM_CAPTURE_DB_PATH",
-        "SCHWAB_TOKEN_PATH",
-        "ED_TERRAIN_QUARANTINE_LEDGER",
-    ):
+    # RC-534: the one isolation knob is ED_RUNTIME_ROOT; the forbidden ambient DB overrides
+    # are deleted from the server env, and the canonical DBs resolve under <root>/data.
+    assert Path(server_env["ED_RUNTIME_ROOT"]).resolve() == root
+    assert Path(server_env["ED_ARTIFACTS_ROOT"]).resolve() == root / "artifacts"
+    assert "ED_CONSOLE_DB" not in server_env
+    assert "STREAM_CAPTURE_DB_PATH" not in server_env
+    for key in ("SCHWAB_TOKEN_PATH", "ED_TERRAIN_QUARANTINE_LEDGER"):
         resolved = Path(server_env[key]).resolve()
         assert resolved.parent == root, (key, resolved)
         assert tmp_path not in resolved.parents
@@ -170,7 +176,9 @@ def test_e2e_signal_writes_cannot_touch_poisoned_parent_signals(tmp_path):
     )
     assert child.returncode == 0, child.stdout + child.stderr
     paths = json.loads(child.stdout.strip())
-    assert Path(paths["option"]).parent == e2e_root
-    assert Path(paths["ticker"]).parent == e2e_root
+    # RC-534: signals sit beside the canonical stream DB, under <root>/data.
+    e2e_data = e2e_root / "data"
+    assert Path(paths["option"]).parent == e2e_data
+    assert Path(paths["ticker"]).parent == e2e_data
     assert poison_option.read_text(encoding="utf-8") == "LIVE_OPTION_SENTINEL"
     assert poison_ticker.read_text(encoding="utf-8") == "LIVE_TICKER_SENTINEL"

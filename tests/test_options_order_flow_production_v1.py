@@ -109,15 +109,33 @@ def test_history_hydrates_from_stream_capture_only(tmp_path, monkeypatch):
     assert payload["status"] == "ok"
 
 
-def _isolated_stream_env(db_path):
-    """Child env: tmp DB wins over the live STREAM_CAPTURE_DB_PATH, Schwab is blocked."""
+def _isolated_stream_env(runtime_root):
+    """Child env: an isolated ED_RUNTIME_ROOT, Schwab blocked.
+
+    RC-534 disabled ambient STREAM_CAPTURE_DB_PATH / ED_CONSOLE_DB overrides — the daemon
+    resolves its DB and owner lock CANONICALLY under ED_RUNTIME_ROOT (db_authority /
+    stream_spine.resolve_stream_db_path). Isolation is one knob: point ED_RUNTIME_ROOT at a
+    tmp dir and the daemon's DB/lock live at ``<root>/data/stream_capture.{db,lock}``.
+    """
     import os
+    from pathlib import Path as _P
+    root = _P(runtime_root).resolve()
     env = os.environ.copy()
-    env["STREAM_CAPTURE_DB_PATH"] = str(db_path.resolve())
+    env.pop("ED_CONSOLE_DB", None)
+    env.pop("STREAM_CAPTURE_DB_PATH", None)
+    env["ED_RUNTIME_ROOT"] = str(root)
+    env["ED_ARTIFACTS_ROOT"] = str(root / "artifacts")
     env["ED_CI_OFFLINE"] = "1"
     env["SCHWAB_API_KEY"] = "ci-placeholder-key"
     env["SCHWAB_APP_SECRET"] = "ci-placeholder-secret"
     return env
+
+
+def _canonical_stream_paths(runtime_root):
+    """The daemon's canonical (db, lock) under an isolated ED_RUNTIME_ROOT."""
+    from pathlib import Path as _P
+    data = _P(runtime_root).resolve() / "data"
+    return data / "stream_capture.db", data / "stream_capture.lock"
 
 
 def test_real_subprocess_second_daemon_cannot_own_lock(tmp_path):
@@ -132,16 +150,13 @@ def test_real_subprocess_second_daemon_cannot_own_lock(tmp_path):
     from pathlib import Path as _P
 
     repo = _P(__file__).resolve().parents[1]
-    db = tmp_path / "stream_capture.db"
-    lock = tmp_path / "stream_capture.lock"
-    env = _isolated_stream_env(db)
+    db, lock = _canonical_stream_paths(tmp_path)
+    env = _isolated_stream_env(tmp_path)
     holder_src = (
-        "import os, sys, time\n"
+        "import sys, time\n"
         f"sys.path.insert(0, r'{repo}')\n"
-        "from app.market_data.schwab.streaming.capture import acquire_owner_lock, owner_lock_path\n"
-        f"db = r'{db}'\n"
-        "os.environ['STREAM_CAPTURE_DB_PATH'] = db\n"
-        "fd, held = acquire_owner_lock(db)\n"
+        "from app.market_data.schwab.streaming.capture import acquire_owner_lock\n"
+        "fd, held = acquire_owner_lock()\n"
         "print('LOCK_HELD', held, flush=True)\n"
         "time.sleep(90)\n"
     )
@@ -175,8 +190,6 @@ def test_real_subprocess_second_daemon_cannot_own_lock(tmp_path):
                 "SPY",
                 "--duration-min",
                 "0",
-                "--db",
-                str(db),
             ],
             cwd=str(repo),
             capture_output=True,
@@ -203,9 +216,8 @@ def test_real_subprocess_failed_schwab_is_not_started(tmp_path):
     from pathlib import Path as _P
 
     repo = _P(__file__).resolve().parents[1]
-    db = tmp_path / "stream_capture.db"
-    lock = tmp_path / "stream_capture.lock"
-    env = _isolated_stream_env(db)
+    db, lock = _canonical_stream_paths(tmp_path)
+    env = _isolated_stream_env(tmp_path)
     result = subprocess.run(
         [
             sys.executable,
@@ -214,8 +226,6 @@ def test_real_subprocess_failed_schwab_is_not_started(tmp_path):
             "SPY",
             "--duration-min",
             "0",
-            "--db",
-            str(db),
         ],
         cwd=str(repo),
         capture_output=True,
@@ -240,16 +250,13 @@ def test_real_subprocess_dead_owner_lock_is_reclaimed(tmp_path):
     from pathlib import Path as _P
 
     repo = _P(__file__).resolve().parents[1]
-    db = tmp_path / "stream_capture.db"
-    lock = tmp_path / "stream_capture.lock"
-    env = _isolated_stream_env(db)
+    db, lock = _canonical_stream_paths(tmp_path)
+    env = _isolated_stream_env(tmp_path)
     holder_src = (
         "import os, sys\n"
         f"sys.path.insert(0, r'{repo}')\n"
         "from app.market_data.schwab.streaming.capture import acquire_owner_lock\n"
-        f"db = r'{db}'\n"
-        "os.environ['STREAM_CAPTURE_DB_PATH'] = db\n"
-        "fd, held = acquire_owner_lock(db)\n"
+        "fd, held = acquire_owner_lock()\n"
         "os._exit(0)\n"
     )
     died = subprocess.run(
@@ -270,8 +277,6 @@ def test_real_subprocess_dead_owner_lock_is_reclaimed(tmp_path):
             "SPY",
             "--duration-min",
             "0",
-            "--db",
-            str(db),
         ],
         cwd=str(repo),
         capture_output=True,
