@@ -7,6 +7,7 @@
  */
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -60,12 +61,29 @@ function ensurePlaywrightReady() {
 
 ensurePlaywrightReady();
 
-const testRun = spawnSync("npx", ["playwright", "test"], {
-  cwd: root,
-  stdio: "inherit",
-  shell: true,
-  env: process.env,
-});
+const e2eRuntime = fs.mkdtempSync(path.join(os.tmpdir(), "ed-console-e2e-"));
+const e2eEnv = {
+  ...process.env,
+  ED_RUNTIME_ROOT: e2eRuntime,
+  ED_ARTIFACTS_ROOT: e2eRuntime,
+};
+delete e2eEnv.ED_CONSOLE_DB;
+delete e2eEnv.ED_DB_PATH;
+delete e2eEnv.STREAM_CAPTURE_DB_PATH;
+
+console.log(`[test:e2e] isolated runtime: ${e2eRuntime}`);
+let testRun;
+try {
+  testRun = spawnSync("npx", ["playwright", "test"], {
+    cwd: root,
+    stdio: "inherit",
+    shell: true,
+    env: e2eEnv,
+  });
+} finally {
+  fs.rmSync(e2eRuntime, { recursive: true, force: true });
+  console.log(`[test:e2e] removed isolated runtime: ${e2eRuntime}`);
+}
 if (testRun.status !== 0) {
   process.exit(testRun.status ?? 1);
 }

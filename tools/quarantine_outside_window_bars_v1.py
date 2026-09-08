@@ -8,7 +8,7 @@ write seam enforces (one law, one function; a second implementation here would b
 two-faucet defect all over again).
 
 Operator terms honoured verbatim:
-- fresh backup REQUIRED (refuses without a same-day backup file),
+- a fresh validated stable backup is REQUIRED before canonical execution,
 - dry-run is the DEFAULT; --execute only after the dry-run count is approved,
 - MOVE, never delete: schema-identical quarantine table + quarantined_at_utc + reason,
 - reversible: --restore moves every quarantined row back (the exact inverse),
@@ -31,7 +31,11 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from db_authority import canonical_console_db_path  # noqa: E402
+from calibration.db_guard import (  # noqa: E402
+    register_allow_noncanonical_flag,
+    require_canonical_db_target,
+)
+from db_authority import canonical_console_db_path, is_canonical_db_path  # noqa: E402
 from db_safety import backup_permanent_database  # noqa: E402
 from time_et import is_collect_window_bar_end_ts_utc  # noqa: E402
 
@@ -88,7 +92,11 @@ def main() -> int:
                     help="reverse: move every quarantined row back into price_bars_1m")
     ap.add_argument("--expected", type=int, default=None,
                     help="refuse to execute unless the dry-run count equals this number")
+    register_allow_noncanonical_flag(ap)
     args = ap.parse_args()
+    require_canonical_db_target(
+        args, tool_name="quarantine_outside_window_bars_v1", write_capable=True
+    )
 
     ok, err = _write_lock_free(args.db)
     if not ok:
@@ -104,7 +112,7 @@ def main() -> int:
     try:
         backup: str | None = None
         manifest_path: Path | None = None
-        if args.execute:
+        if args.execute and is_canonical_db_path(args.db):
             try:
                 backup_path, manifest_path, _ = backup_permanent_database(
                     Path(args.db), reason="pre_quarantine_outside_window_bars_v1"

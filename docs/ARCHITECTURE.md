@@ -521,7 +521,7 @@ Trading/worktrees/
 Source updates must not endanger runtime databases, logs, tokens, generated model artifacts, or
 recovery backups. Runtime state must not pollute the source checkout.
 
-**Mechanism (RC-523 / RC-533):** `runtime_layout.py` is the ONE owner of these roots.
+**Mechanism (RC-523 / RC-534):** `runtime_layout.py` is the ONE owner of these roots.
 `ED_RUNTIME_ROOT` moves the live database, logs, the Schwab token and diagnostics;
 `ED_ARTIFACTS_ROOT` (default: the runtime root) moves runtime-written reports and scorecards.
 Unset, a standalone checkout uses itself; a linked Git worktree reads Git's native

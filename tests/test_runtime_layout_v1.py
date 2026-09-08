@@ -16,6 +16,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
+import runtime_layout
 from runtime_layout import _default_runtime_root
 
 REPO = Path(__file__).resolve().parent.parent
@@ -57,6 +60,24 @@ def test_unset_roots_converge_on_git_primary_worktree():
     assert Path(got["token"]) == primary / "schwab_token.json"
     assert Path(got["terrain_json"]) == primary / "reports" / "terrain_backtest_latest.json"
     assert Path(got["operable_report"]) == primary / "reports" / "operable_surface_gate_latest.json"
+
+
+def test_linked_worktree_metadata_failure_refuses_local_runtime(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    linked = tmp_path / "linked"
+    linked.mkdir()
+    monkeypatch.setattr(runtime_layout, "SOURCE_ROOT", linked)
+
+    (linked / ".git").write_text("not-a-gitdir", encoding="utf-8")
+    with pytest.raises(RuntimeError, match="cannot resolve canonical runtime root"):
+        runtime_layout._default_runtime_root()
+
+    gitdir = tmp_path / "primary" / ".git" / "worktrees" / "linked"
+    gitdir.mkdir(parents=True)
+    (linked / ".git").write_text(f"gitdir: {gitdir}", encoding="utf-8")
+    with pytest.raises(RuntimeError, match="commondir missing"):
+        runtime_layout._default_runtime_root()
 
 
 def test_runtime_root_moves_database_token_and_data_and_artifacts_follow(tmp_path):

@@ -57,3 +57,5 @@ def test_exactly_two_permanent_database_identities(monkeypatch, tmp_path):
     assert auth.permanent_database_identity(runtime / "data" / "ed_console.db") == "ed_console"
     assert auth.permanent_database_identity(runtime / "data" / "stream_capture.db") == "stream_capture"
     assert auth.permanent_database_identity(runtime / "data" / "ed_console_claude.db") is None
+    assert auth.classify_db_path(runtime / "data" / "ed_console.db") == "canonical"
+    assert auth.classify_db_path(runtime / "data" / "stream_capture.db") == "canonical"

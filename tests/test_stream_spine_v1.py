@@ -430,7 +430,7 @@ def test_writer_init_closes_conn_if_schema_setup_fails(tmp_path, monkeypatch):
 # override) and was ALSO healthy -- both processes reported RUNNING while
 # attached to two different files, and the API truthfully returned `no_book`
 # because they never shared an actual data plane. resolve_stream_db_path is the
-# RC-533 removes that override after runtime_layout learned to resolve every linked
+# RC-534 removes that override after runtime_layout learned to resolve every linked
 # worktree through Git's primary worktree. Production now has no process-local path
 # switch; explicit paths exist only on direct test/recovery APIs.
 # ─────────────────────────────────────────────────────────────────────────────

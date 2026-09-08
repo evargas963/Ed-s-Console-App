@@ -10,7 +10,7 @@ Truthy for most flags: `1`, `true`, `yes`, `on` (case-insensitive). Falsy: `0`, 
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `ED_RUNTIME_ROOT` | primary Git worktree | RC-523/RC-533 (ARCHITECTURE §8): root of runtime STATE — `data/` (both permanent DBs, barchart), `logs/`, `schwab_token.json`, `diagnostics/`. Linked worktrees resolve the primary worktree automatically. An explicit dedicated non-worktree runtime root is supported; a linked source worktree is refused. |
+| `ED_RUNTIME_ROOT` | primary Git worktree | RC-523/RC-534 (ARCHITECTURE §8): root of runtime STATE — `data/` (both permanent DBs, barchart), `logs/`, `schwab_token.json`, `diagnostics/`. Linked worktrees resolve the primary worktree automatically. An explicit dedicated non-worktree runtime root is supported; a linked source worktree is refused. |
 | `ED_ARTIFACTS_ROOT` | `ED_RUNTIME_ROOT` | RC-523: root of runtime-written ARTIFACTS — `reports/` (terrain scorecard + history + quarantine ledger, operable-surface reports, the fp scoreboard the Desk reads). Defaults to the runtime root. |
 | `ED_CONSOLE_ALLOW_NONCANONICAL_DB` | off | Test/harness acknowledgement for an explicit `EdDB` path; never a production path selector |
 | `ED_SQLITE_BUSY_RETRIES` | `8` | Busy-handler retries |

@@ -310,7 +310,7 @@ def similarity_empirically_viable(labeled_by_col: dict[str, int]) -> bool:
 # RC-401 removed the per-agent fork that returned data/ed_console_claude.db under
 # ED_AGENT_ROLE=claude — ambient process state was deciding which database the money
 # path addressed, and it had already scattered rows into three sibling files.
-# RC-533 removed ED_CONSOLE_DB / ED_DB_PATH from default production selection after an
+# RC-534 removed ED_CONSOLE_DB / ED_DB_PATH from default production selection after an
 # acknowledged override created an actively written worktree-local console authority.
 # Recovery and tests pass explicit paths to EdDB; runtime placement belongs only to
 # runtime_layout.

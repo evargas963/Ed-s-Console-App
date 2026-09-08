@@ -34,7 +34,7 @@ def resolve_stream_db_path(default: "Path | str | None" = None) -> Path:
     consumer (tools/run_stream_capture.py's CaptureWriter, order_flow_streaming.py's
     feed-loop reader) resolves through.
 
-    RC-533 removed the ambient STREAM_CAPTURE_DB_PATH authority. Linked worktrees
+    RC-534 removed the ambient STREAM_CAPTURE_DB_PATH authority. Linked worktrees
     already converge through runtime_layout; recovery/tests pass an explicit path
     to the owning API instead of changing the production default process-wide.
     ``default`` remains solely for test-monkeypatched reader modules."""

@@ -5,7 +5,7 @@ Policy (encoded here and in db.EdDB / stream_spine):
 
 - **Permanent production files:** exactly ``ed_console.db`` and ``stream_capture.db``
   under ``runtime_layout.data_dir()``. Linked source worktrees resolve to the primary
-  worktree's runtime root (RC-533).
+  worktree's runtime root (RC-534).
 - **Ambient DB overrides:** never select a production authority. Recovery and tests pass
   explicit paths to the owning API, with explicit non-canonical acknowledgement.
 - **Harness / proof / backup:** Must never be targeted by mistake. CLI tools default
@@ -97,7 +97,7 @@ def classify_db_path(p: Path | str) -> Classification:
     """Best-effort classification for guardrails and error messages."""
     rp = Path(p).resolve()
     s = str(rp).replace("\\", "/")
-    if is_canonical_db_path(rp):
+    if permanent_database_identity(rp) is not None:
         return "canonical"
     if "calibration_accumulation_validation.db" in s:
         return "harness"

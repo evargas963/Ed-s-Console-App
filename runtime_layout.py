@@ -10,7 +10,7 @@ RC-523 (2026-09-06, bedrock step 7). Every runtime path was rooted in the source
 (`Path(__file__).parent / "data"`, `/ "logs"`, `/ "reports"`) with an override for the
 database alone, so a source update could endanger the live database and runtime output
 polluted the checkout — the two things §8 forbids — and the production checkout had to be
-the desk's cwd. RC-533 closes the remaining worktree split: a linked Git worktree resolves
+the desk's cwd. RC-534 closes the remaining worktree split: a linked Git worktree resolves
 runtime state to its primary worktree by reading Git's own ``.git`` / ``commondir`` metadata.
 A standalone checkout still owns its own runtime root. ``ED_RUNTIME_ROOT`` may move runtime
 state to a dedicated non-checkout directory, but may not select a linked source worktree.
@@ -66,20 +66,24 @@ def _default_runtime_root() -> Path:
     try:
         marker = dotgit.read_text(encoding="utf-8").strip()
         if not marker.lower().startswith("gitdir:"):
-            return SOURCE_ROOT
+            raise ValueError(f"invalid linked-worktree marker: {dotgit}")
         gitdir = Path(marker.split(":", 1)[1].strip())
         if not gitdir.is_absolute():
             gitdir = (SOURCE_ROOT / gitdir).resolve()
         commondir_file = gitdir / "commondir"
         if not commondir_file.is_file():
-            return SOURCE_ROOT
+            raise ValueError(f"linked-worktree commondir missing: {commondir_file}")
         common_git = (gitdir / commondir_file.read_text(encoding="utf-8").strip()).resolve()
         if common_git.name != ".git":
-            return SOURCE_ROOT
+            raise ValueError(f"linked-worktree commondir is not a .git directory: {common_git}")
         primary = common_git.parent.resolve()
-        return primary if primary.is_dir() else SOURCE_ROOT
-    except (OSError, ValueError):
-        return SOURCE_ROOT
+        if not primary.is_dir():
+            raise ValueError(f"linked-worktree primary root missing: {primary}")
+        return primary
+    except (OSError, ValueError) as exc:
+        raise RuntimeError(
+            f"cannot resolve canonical runtime root from linked worktree {SOURCE_ROOT}: {exc}"
+        ) from exc
 
 
 _load_env_file()
