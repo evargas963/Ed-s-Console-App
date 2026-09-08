@@ -3121,4 +3121,104 @@ ROWS: tuple[Row, ...] = (
         allowlist_id='analytics_cache_state',
         justification='Card freshness block derived from the same cache clock (RC-532).',
     ),
+    Row(
+        file='governed_stack_contract.py', derivation='resolve_guest_anchor_for_ticker', disposition='ALLOWLISTED',
+        allowlist_id='mega4_governed_stack_contract',
+        justification='Guest-anchor route from the governed stack contract (authoritative-ticker set, anchor affiliation); None when the ticker is authoritative.',
+    ),
+    Row(
+        file='multi_horizon_decision.py', derivation='_horizon_skill_weights_cached', disposition='ALLOWLISTED',
+        allowlist_id='mega1_sqlite_internal',
+        justification='Rolling horizon skill weights from the calibration DB (TTL-cached); equal weights fail-closed. The ONLY pool-weight source (RC-533: the pool_weights parameter is gone).',
+    ),
+    Row(
+        file='decision_gate.py', derivation='registry_path', disposition='ALLOWLISTED',
+        allowlist_id='mega1_env_config',
+        justification='Admissions registry path: ED_DECISION_ADMISSIONS_PATH override, else config/decision_path_admissions.json.',
+    ),
+    Row(
+        file='decision_gate.py', derivation='evaluate_decision_path_admission', disposition='ALLOWLISTED',
+        allowlist_id='mega1_filesystem',
+        justification='Reads the on-disk admissions registry JSON for DECISION_PATH_COMPONENT; fail-closed WAIT on every error (RC-533: the component parameter is gone).',
+    ),
+    Row(
+        file='setup_readiness.py', derivation='score_readiness', disposition='ALLOWLISTED',
+        allowlist_id='mega3_internal_helper',
+        justification='THE readiness scoring authority: tiers + probability + validation -> call_state / forecast_state; pure over already-typed inputs.',
+    ),
+    Row(
+        file='setup_readiness.py', derivation='compute_call_readiness', disposition='DERIVED',
+        producer_refs=('setup_readiness.py:score_readiness',),
+        justification='CALL-side tier classification feeding the one scorer.',
+    ),
+    Row(
+        file='setup_readiness.py', derivation='compute_put_readiness', disposition='DERIVED',
+        producer_refs=('setup_readiness.py:score_readiness',),
+        justification='PUT-side tier classification feeding the one scorer.',
+    ),
+    Row(
+        file='signals.py', derivation='production_fusion_payload_for_stack', disposition='DERIVED',
+        producer_refs=('market_state.py:build_market_state', 'features/inference_snapshot.py:build_inference_snapshot_v1_from_signal_input', 'bayesian_fusion.py:fuse', 'bayesian_fusion.py:build_fusion_tick_cache', 'mc_fusion_adjustment.py:fuse_payload_apply_mc_adjustment',),
+        justification='Per-horizon governed stack + Bayesian fusion payload; the fusion object every decision engine consumes.',
+    ),
+    Row(
+        file='signals.py', derivation='canonical_forecast_from_fusion', disposition='DERIVED',
+        producer_refs=('signals.py:production_fusion_payload_for_stack',),
+        justification='Canonical forecast triplet projected from the live-horizon fusion payload.',
+    ),
+    Row(
+        file='multi_horizon_ml_bundle.py', derivation='build_multi_horizon_ml_fusion_bundle', disposition='DERIVED',
+        producer_refs=('signals.py:production_fusion_payload_for_stack',),
+        justification='Authoritative multi-horizon ML fusion bundle from the primary-horizon fusion payloads.',
+    ),
+    Row(
+        file='rules_engine.py', derivation='compute_rules', disposition='DERIVED',
+        producer_refs=('market_state.py:build_market_state', 'features/inference_snapshot.py:build_inference_snapshot_v1_from_signal_input',),
+        justification='Right Now micro-regime card from SignalInput candles + MVP features.',
+    ),
+    Row(
+        file='db.py', derivation='EdDB.get_avg_move', disposition='ALLOWLISTED',
+        allowlist_id='mega1_sqlite_internal',
+        justification='Average-move statistics from persisted console rows (prediction empirical histograms).',
+    ),
+    Row(
+        file='prediction_engine.py', derivation='compute_prediction_core', disposition='DERIVED',
+        producer_refs=('market_state.py:build_market_state', 'db.py:EdDB.get_avg_move', 'regime_engine.py:classify_regime', 'signals.py:production_fusion_payload_for_stack', 'rules_engine.py:compute_rules', 'math_probabilities.py:compute_percentile_range', 'signals.py:canonical_forecast_from_fusion', 'multi_horizon_ml_bundle.py:build_multi_horizon_ml_fusion_bundle', 'features/inference_snapshot.py:build_inference_snapshot_v1_from_signal_input',),
+        justification='Hot-path prediction card (the object MH + The Call consume); compute_prediction wraps it with UI enrichment.',
+    ),
+    Row(
+        file='multi_horizon_decision.py', derivation='compute_multi_horizon_synthesis', disposition='DERIVED',
+        producer_refs=('market_state.py:build_market_state', 'prediction_engine.py:compute_prediction_core', 'signals.py:canonical_forecast_from_fusion', 'multi_horizon_ml_bundle.py:build_multi_horizon_ml_fusion_bundle', 'multi_horizon_decision.py:_horizon_skill_weights_cached', 'governed_stack_contract.py:resolve_guest_anchor_for_ticker',),
+        justification='THE multi-horizon verdict owner: pooled consensus -> final_bias / tradeable / wait_reason / size; the guest-anchor veto is applied here (RC-533).',
+    ),
+    Row(
+        file='call_engine.py', derivation='_validate_trade', disposition='DERIVED',
+        producer_refs=('market_state.py:build_market_state', 'prediction_engine.py:compute_prediction_core', 'signals.py:production_fusion_payload_for_stack', 'signals.py:canonical_forecast_from_fusion', 'regime_engine.py:classify_regime', 'volatility_regime.py:classify_volatility_regime',),
+        justification='Trade validation gate result (trade_valid) inside The Call.',
+    ),
+    Row(
+        file='call_engine.py', derivation='compute_position_size', disposition='DERIVED',
+        producer_refs=('market_state.py:build_market_state', 'regime_engine.py:classify_regime', 'signals.py:production_fusion_payload_for_stack', 'volatility_regime.py:classify_volatility_regime', 'call_engine.py:_validate_trade',),
+        justification='Position-size cue from the call verdict, regime, fusion, volatility and validation; every argument is computed by compute_call or its inputs.',
+    ),
+    Row(
+        file='call_engine.py', derivation='compute_call', disposition='DERIVED',
+        producer_refs=('market_state.py:build_market_state', 'rules_engine.py:compute_rules', 'prediction_engine.py:compute_prediction_core', 'regime_engine.py:classify_regime', 'signals.py:production_fusion_payload_for_stack', 'volatility_regime.py:classify_volatility_regime', 'signals.py:canonical_forecast_from_fusion', 'features/inference_snapshot.py:build_inference_snapshot_v1_from_signal_input', 'multi_horizon_decision.py:compute_multi_horizon_synthesis', 'decision_gate.py:evaluate_decision_path_admission', 'setup_readiness.py:compute_call_readiness', 'setup_readiness.py:compute_put_readiness', 'call_engine.py:_validate_trade', 'call_engine.py:compute_position_size',),
+        justification='THE Call owner: signal / conviction / call_state / forecast_state / trade plan; admission veto and readiness inside.',
+    ),
+    Row(
+        file='multi_horizon_decision.py', derivation='finalize_multi_horizon_bundle', disposition='DERIVED',
+        producer_refs=('multi_horizon_decision.py:compute_multi_horizon_synthesis', 'call_engine.py:compute_call', 'market_state.py:build_market_state', 'multi_horizon_ml_bundle.py:build_multi_horizon_ml_fusion_bundle',),
+        justification='Attaches the call-derived plan to the synthesis: final_bias / final_confidence / final_tradeable / entry_state / wait_reason / supporting assessments (mhap_rows).',
+    ),
+    Row(
+        file='market_state.py', derivation='is_bias_actionable', disposition='DERIVED',
+        producer_refs=('math_levels.py:build_summary_rows',),
+        justification='Exact-match bias gate over consensus_summary.bias_signal (summary row 0).',
+    ),
+    Row(
+        file='market_state.py', derivation='dte_style', disposition='DERIVED',
+        producer_refs=('market_state.py:_schwab_days_to_expiration_for_contract',),
+        justification="DTE warning label + colour from the selected contract's Schwab daysToExpiration.",
+    ),
 )

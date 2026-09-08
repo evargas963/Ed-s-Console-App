@@ -1682,11 +1682,9 @@ def _compute_signals_impl(inp: SignalInput, db=None, ticker: str = "",
 
     if _don():
         _dstep("signals_compute_call", ticker)
-    mh_syn = compute_multi_horizon_synthesis(inp, pred_for_stack, canonical, mh_ml_fusion_bundle)
-    if _guest_anchor is not None:
-        mh_syn.tradeable = False
-        mh_syn.size_modifier = 0.0
-        mh_syn.wait_reason = _guest_anchor.wait_reason
+    mh_syn = compute_multi_horizon_synthesis(
+        inp, pred_for_stack, canonical, mh_ml_fusion_bundle, guest_anchor=_guest_anchor
+    )
     call = compute_call(
         inp,
         rules,

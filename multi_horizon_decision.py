@@ -343,7 +343,8 @@ def compute_multi_horizon_synthesis(
     pred,
     canonical,
     mh_ml_bundle: Optional[MultiHorizonMLFusionBundle] = None,
-    pool_weights: Optional[dict[str, float]] = None,
+    *,
+    guest_anchor=None,
 ) -> MultiHorizonSynthesis:
     raw_mode = _infer_trade_mode(inp)
     mode = raw_mode if raw_mode is not None else "unknown"
@@ -425,10 +426,7 @@ def compute_multi_horizon_synthesis(
     # never a relay of the mode-selected primary and never a head-count vote.
     # The primary keeps the trade plan (entry/stop/targets/hold style) but does
     # not own the headline direction.
-    if pool_weights is not None:
-        pw, pw_fallback = dict(pool_weights), False
-    else:
-        pw, pw_fallback = _horizon_skill_weights_cached()
+    pw, pw_fallback = _horizon_skill_weights_cached()
     pooled = _pooled_consensus(hmap, pw, pw_fallback)
     final_bias, wait_reason = pooled.final_bias, pooled.wait_reason
     pooled_aligned_tradeable = 0
@@ -534,6 +532,13 @@ def compute_multi_horizon_synthesis(
         "selected_primary_horizon": selected,
         "primary_order_for_mode": list(order),
     }
+
+    if guest_anchor is not None:
+        # RC-533: the guest-anchor veto belongs to the owner of the verdict. A ticker served
+        # on a provisional anchor never trades; the anchor's wait_reason is the verdict's.
+        tradeable = False
+        size = 0.0
+        wait_reason = guest_anchor.wait_reason
 
     return MultiHorizonSynthesis(
         mode=mode,

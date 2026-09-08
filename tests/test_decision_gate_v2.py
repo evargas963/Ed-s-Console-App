@@ -31,6 +31,7 @@ from decision_gate import (
     STATE_INVALID,
     STATE_NOT_ADMITTED,
     _DEFAULT_REGISTRY_PATH,
+    _record_admits,
     evaluate_decision_path_admission,
     registry_path,
 )
@@ -165,12 +166,16 @@ def test_whitespace_padded_component_and_status_still_admit(tmp_path):
     assert v.registry_state == STATE_ADMITTED
 
 
-def test_custom_component_admits_only_itself(tmp_path):
-    p = _write_registry(tmp_path, [_admitted_record(component="other_component")])
-    v_other = evaluate_decision_path_admission("other_component", path=p)
-    assert v_other.admitted is True
-    assert v_other.registry_state == STATE_ADMITTED
-    v_call = evaluate_decision_path_admission(path=p)  # default: the_call
+def test_a_record_for_another_component_never_admits_the_decision_path(tmp_path):
+    # RC-533: the gate evaluates ONE component (DECISION_PATH_COMPONENT); the caller-supplied
+    # component parameter is gone. Record-level matching stays exact: a record admits only
+    # the component it names, and the gate never admits the decision path on another's record.
+    record = _admitted_record(component="other_component")
+    assert _record_admits(record, "other_component")[0] is True
+    ok, why = _record_admits(record, DECISION_PATH_COMPONENT)
+    assert ok is False and "other_component" in why
+    p = _write_registry(tmp_path, [record])
+    v_call = evaluate_decision_path_admission(path=p)
     assert v_call.admitted is False
     assert v_call.registry_state == STATE_NOT_ADMITTED
 
