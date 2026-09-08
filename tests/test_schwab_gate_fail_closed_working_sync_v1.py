@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
-WORKING = ROOT / "governance" / "SCHWAB_CSV_DERIVED_FIELD_CROSSWALK_WORKING.csv"
+WORKING = ROOT / "schwab_field_inventory" / "SCHWAB_CSV_DERIVED_FIELD_CROSSWALK_WORKING.csv"
 
 
 def test_working_call_engine_spot_validation_has_no_default_zero_tag():

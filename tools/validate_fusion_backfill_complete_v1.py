@@ -12,6 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from calibration.db_guard import register_allow_noncanonical_flag, require_canonical_db_target
+from db_authority import canonical_console_db_path
 from db import configure_sqlite_connection
 from lstm_data import STREAM_5M_LOOKBACK
 from ml_horizon import ML_HORIZON_SLUGS
@@ -24,7 +25,7 @@ MIN_COMPARABLE = 500
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--db", type=Path, default=ROOT / "data" / "ed_console.db")
+    ap.add_argument("--db", type=Path, default=canonical_console_db_path())
     register_allow_noncanonical_flag(ap)
     args = ap.parse_args()
     require_canonical_db_target(args, tool_name="validate_fusion_backfill_complete_v1", write_capable=False)

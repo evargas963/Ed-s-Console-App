@@ -41,7 +41,9 @@ CANDIDATES: list[str] = [
     "tools/_phase4a_proof_not_exists.py",
     "tools/_phase4a_quantify_anchor_miss.py",
     "tools/_phase4b_audits.py",
-] + [f"tools/_build_section{n}_inventory.py" for n in list(range(1, 4)) + list(range(5, 17))]
+]   # the tools/_build_section*_inventory.py builders and _section11_register_snippet.py were
+    # DELETED 2026-09-06 (bedrock step 3): the 2026-05 derivation audit they built is carried
+    # by the crosswalk register and computation_registry.json; nothing executed them.
 
 #: Listed in Wave A but protected by the SAME audit's do_not_casually_delete list and by the
 #: operator. Never deleted by this tool; reported so the contradiction stays visible.

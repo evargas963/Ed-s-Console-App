@@ -33,7 +33,9 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-DEFAULT_DB = str(REPO_ROOT / "data" / "ed_console.db")
+from db_authority import canonical_console_db_path  # noqa: E402
+
+DEFAULT_DB = str(canonical_console_db_path())
 BATCH_DIR = REPO_ROOT / "reports" / "batch"
 
 # Screen gates (template floors; every failure is named, never silent).

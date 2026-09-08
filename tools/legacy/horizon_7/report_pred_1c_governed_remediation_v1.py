@@ -20,6 +20,8 @@ ROOT = Path(__file__).resolve().parents[3]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from db_authority import canonical_console_db_path  # noqa: E402
+
 from calibration.db_guard import register_allow_noncanonical_flag, require_canonical_db_target
 
 # Same governed predicate as tools/_phase5_discrimination_audit_v1.py GOV_WHERE
@@ -42,7 +44,7 @@ TOL_SUM_EMPIRICAL_ROUNDED = 0.002
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--db", type=Path, default=ROOT / "data" / "ed_console.db")
+    ap.add_argument("--db", type=Path, default=canonical_console_db_path())
     register_allow_noncanonical_flag(ap)
     args = ap.parse_args()
     require_canonical_db_target(args, tool_name="report_pred_1c_governed_remediation_v1", write_capable=False)

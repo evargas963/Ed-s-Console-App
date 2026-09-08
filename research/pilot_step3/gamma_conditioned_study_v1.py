@@ -42,9 +42,10 @@ from .f2_tb_grid_runner import (
     deflated_sharpe_prob,
     evaluate_cell,
 )
+from db_authority import canonical_console_db_path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_DB = str(REPO_ROOT / "data" / "ed_console.db")
+DEFAULT_DB = str(canonical_console_db_path())
 REPORT_PATH = REPO_ROOT / "reports" / "gamma_conditioned_study_v1_latest.json"
 
 STALENESS_MAX_SEC = 900.0

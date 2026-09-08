@@ -5,7 +5,7 @@ Base tickers are the minimum institutional money-path universe per operator bind
 (2026-06-11 training anchors). Guest tickers may appear in UI but must not inherit
 base trust without explicit observability promotion proof.
 
-Policy artifact: governance/artifacts/base_ticker_money_path_contract.json
+Policy artifact: reports/artifacts/base_ticker_money_path_contract.json
 """
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ from instrument_identity import ticker_storage_key
 from scheduler_user_tickers import TRAINING_ANCHOR_TICKERS
 
 _REPO_ROOT = Path(__file__).resolve().parent
-_CONTRACT_PATH = _REPO_ROOT / "governance" / "artifacts" / "base_ticker_money_path_contract.json"
+_CONTRACT_PATH = _REPO_ROOT / "reports" / "artifacts" / "base_ticker_money_path_contract.json"
 
 BASE_MONEY_PATH_TICKERS: tuple[str, ...] = TRAINING_ANCHOR_TICKERS
 

@@ -1,12 +1,13 @@
 """
 Canonical SQLite database authority — classification, env policy, CLI enforcement.
 
-Policy (encoded here and in db.EdDB / db._resolve_console_db_path):
+Policy (encoded here and in db.EdDB / stream_spine):
 
-- **Canonical production file:** ``<project_root>/data/ed_console.db`` (resolved).
-- **ED_CONSOLE_DB:** Optional absolute path to the single live DB for this deployment.
-  If it does not resolve to the canonical file, ``ED_CONSOLE_ALLOW_NONCANONICAL_DB=1``
-  is required (alternate volume / recovery).
+- **Permanent production files:** exactly ``ed_console.db`` and ``stream_capture.db``
+  under ``runtime_layout.data_dir()``. Linked source worktrees resolve to the primary
+  worktree's runtime root (RC-534).
+- **Ambient DB overrides:** never select a production authority. Recovery and tests pass
+  explicit paths to the owning API, with explicit non-canonical acknowledgement.
 - **Harness / proof / backup:** Must never be targeted by mistake. CLI tools default
   to canonical; ``--allow-noncanonical-db`` opts in with explicit acknowledgement.
 - **Tests:** ``tests/conftest.py`` sets ``ED_CONSOLE_ALLOW_NONCANONICAL_DB`` so ``EdDB``
@@ -21,6 +22,7 @@ from pathlib import Path
 from typing import Literal
 
 Classification = Literal["canonical", "harness", "proof", "backup", "unknown"]
+PermanentDatabaseIdentity = Literal["ed_console", "stream_capture"]
 
 
 def project_root() -> Path:
@@ -28,8 +30,36 @@ def project_root() -> Path:
 
 
 def canonical_console_db_path() -> Path:
-    """The one intended canonical production database file on disk."""
-    return (project_root() / "data" / "ed_console.db").resolve()
+    """The one intended canonical production database file on disk.
+
+    Rooted in the RUNTIME root (RC-523), not the source checkout: with `ED_RUNTIME_ROOT`
+    unset the two are the same directory, so nothing moves until the operator moves it.
+    """
+    from runtime_layout import data_dir
+
+    return (data_dir() / "ed_console.db").resolve()
+
+
+def canonical_stream_db_path() -> Path:
+    """The one permanent raw receive-time market-event database."""
+    from runtime_layout import data_dir
+
+    return (data_dir() / "stream_capture.db").resolve()
+
+
+def canonical_permanent_db_paths() -> tuple[Path, Path]:
+    """The complete permanent SQLite population, in stable backup order."""
+    return canonical_console_db_path(), canonical_stream_db_path()
+
+
+def permanent_database_identity(p: Path | str) -> PermanentDatabaseIdentity | None:
+    """Return the approved permanent identity for an exact canonical path."""
+    resolved = Path(p).resolve()
+    if resolved == canonical_console_db_path():
+        return "ed_console"
+    if resolved == canonical_stream_db_path():
+        return "stream_capture"
+    return None
 
 
 def default_console_db_path() -> Path:
@@ -50,9 +80,8 @@ def default_console_db_path() -> Path:
     Honouring the fork would have been worse than the crash — the desk would have come up
     serving an empty history as if it were the record.
 
-    Explicit ``ED_CONSOLE_DB`` / ``ED_DB_PATH`` overrides are unaffected and still require
-    ``ED_CONSOLE_ALLOW_NONCANONICAL_DB=1``. Existing ``ed_console_claude.db`` files are
-    left on disk untouched; merging or removing operator data is not this call to make.
+    Existing ``ed_console_claude.db`` files are left on disk untouched; merging or
+    removing operator data is not this call to make.
     """
     return canonical_console_db_path()
 
@@ -68,13 +97,13 @@ def classify_db_path(p: Path | str) -> Classification:
     """Best-effort classification for guardrails and error messages."""
     rp = Path(p).resolve()
     s = str(rp).replace("\\", "/")
-    if is_canonical_db_path(rp):
+    if permanent_database_identity(rp) is not None:
         return "canonical"
     if "calibration_accumulation_validation.db" in s:
         return "harness"
     if "calibration_anchor_proof.db" in s:
         return "proof"
-    if "/data/backups/" in s or "\\data\\backups\\" in s:
+    if "/data/backups/" in s or "/backups/db/" in s:
         return "backup"
     return "unknown"
 
@@ -85,28 +114,6 @@ def env_allows_noncanonical_db() -> bool:
         "true",
         "yes",
     )
-
-
-def assert_ed_console_db_env_resolves_safely(resolved_path: Path) -> None:
-    """
-    When ED_CONSOLE_DB / ED_DB_PATH is set: path must exist. If it is not the canonical
-    file, ED_CONSOLE_ALLOW_NONCANONICAL_DB must be set (alternate deployment / recovery).
-
-    RC-401 removed a silent exemption here for any ``data/ed_console*.db`` under this
-    project root. That exemption let a sibling database be selected without the operator
-    ever acknowledging a non-canonical target, which is the same fork this module now
-    refuses to produce by default.
-    """
-    if not resolved_path.exists():
-        raise FileNotFoundError(f"ED_CONSOLE_DB path does not exist: {resolved_path}")
-    if is_canonical_db_path(resolved_path):
-        return
-    if not env_allows_noncanonical_db():
-        raise ValueError(
-            f"ED_CONSOLE_DB={resolved_path!r} is not the canonical file "
-            f"{canonical_console_db_path()!r} (classified: {classify_db_path(resolved_path)}). "
-            "Set ED_CONSOLE_ALLOW_NONCANONICAL_DB=1 only for intentional alternate or recovery DBs."
-        )
 
 
 def eddb_allow_noncanonical_path(explicit: bool | None) -> bool:

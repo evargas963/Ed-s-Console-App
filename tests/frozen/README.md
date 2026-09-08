@@ -15,9 +15,9 @@ Formats:
 - `mega2_inventory_names.txt`, `mega3_inventory_names.txt`, `mega4_inventory_names.txt` —
   `file.py::qualified_name` per traceable-inventory row
   (tests/test_mega2_traceable_audit.py and siblings).
-- `filesystem_scanner_files.txt` — `path.py::N` where N is the count of `.rglob("*.py")`
-  sites in that file; line numbers are stripped, but N keeps a NEW site inside an
-  already-listed file visible as a one-line diff
-  (tests/test_gate_scope_is_the_git_index_v1.py).
+- (`filesystem_scanner_files.txt` and its test were DELETED 2026-09-06, bedrock step 3: a
+  frozen census of scanner call sites is a ratchet over code shape, not a correctness lock —
+  the independent-repo-scan rule for tests is enforced directly by
+  `no_new_independent_repo_scan_in_tests`.)
 
 There is intentionally no `__init__.py`: this directory holds data, not code.

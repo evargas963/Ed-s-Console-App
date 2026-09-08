@@ -80,10 +80,12 @@ jobs:
           git fetch --no-tags origin main
           python tools/check_delta_adds_no_debt.py --base origin/main
 
-      - name: institutional closure gate (no inflated parent closures)
-        run: python tools/check_institutional_closure_gate.py
-      - name: no-grep subprocess
-        run: python tools/check_no_grep_subprocess.py
+      # The "institutional closure gate" step (tools/check_institutional_closure_gate.py) was
+      # removed 2026-09-06 (bedrock): it validated a parallel closure register that nothing
+      # had updated since 2026-07-13. Its lanes are OPEN_ITEMS.md acceptance rows now.
+      # The "no-grep subprocess" step left the same day with its tool: a code-style rule
+      # with no ledger row citing a catch; the agent-side no-grep law lives in
+      # tools/operator_law_guard.py.
 
       # --- RATCHET (visible, NON-blocking until HIGH findings are triaged) ---
       # These end in `|| true`, so they report but cannot fail the job. The name says so —

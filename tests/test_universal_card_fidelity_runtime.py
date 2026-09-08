@@ -11,7 +11,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 HARNESS = ROOT / "tools" / "run_universal_card_fidelity_runtime.py"
-CARD_CONSUMER_CONTRACT = ROOT / "governance" / "artifacts" / "CARD_CONSUMER_CONTRACT_V1.json"
+CARD_CONSUMER_CONTRACT = ROOT / "reports" / "artifacts" / "CARD_CONSUMER_CONTRACT_V1.json"
 
 _REQUIRED_FIELD_KEYS = frozenset(
     {
@@ -407,7 +407,7 @@ def test_card_consumer_contract_v1_registry_exists_and_schema():
     assert CARD_CONSUMER_CONTRACT.is_file()
     reg = _load_card_consumer_contract()
     assert reg["schema_version"] == 1
-    assert reg["artifact"] == "governance/artifacts/CARD_CONSUMER_CONTRACT_V1.json"
+    assert reg["artifact"] == "reports/artifacts/CARD_CONSUMER_CONTRACT_V1.json"
     assert len(reg.get("contract_rules") or []) >= 10
     assert "card_freshness_v1" in reg
     fields = reg.get("fields") or []

@@ -16,10 +16,12 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
+from db_authority import canonical_console_db_path
+
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--db", type=Path, default=ROOT / "data" / "ed_console.db")
+    ap.add_argument("--db", type=Path, default=canonical_console_db_path())
     ap.add_argument("--allow-noncanonical-db", action="store_true")
     args = ap.parse_args()
     py = sys.executable

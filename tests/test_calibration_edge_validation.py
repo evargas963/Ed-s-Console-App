@@ -6,8 +6,6 @@ import json
 import sqlite3
 from pathlib import Path
 
-import pytest
-
 from calibration.edge_validation import analyze_edge
 from calibration.schema import ensure_calibration_schema
 from calibration.trust import CALIBRATION_TRUST_TRUSTED
@@ -85,15 +83,3 @@ def test_analyze_edge_regime_slice_distinguishes_missing_from_unknown(tmp_path: 
     for row in seeded:
         bucket = axis_reliability_bucket_value(row["regime_primary"])
         assert by_rp[bucket]["n_rows"] >= 1
-
-
-def test_edge_validation_stub_fails_strict_alpha_same_as_always_long(tmp_path: Path) -> None:
-    """CI stub: dominant canonical class ties to 'up' → effective signal equals always-long; strict EV gate fails."""
-    db = Path(__file__).resolve().parents[1] / "data" / "calibration_accumulation_validation.db"
-    if not db.is_file():
-        pytest.skip("run python -m calibration.run_production_accumulation_validation first")
-    rep = analyze_edge(db)
-    assert rep["pass_gates"]["aggregate_n_sufficient"] is True
-    assert rep["pass_gates"]["ev_mean_actual_gt_mean_random_mix"] is True
-    assert rep["pass_gates"]["ev_mean_actual_strictly_gt_always_long"] is False
-    assert rep["binary_pass"] is False

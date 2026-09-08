@@ -41,7 +41,7 @@ if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
 DICTIONARY_PATH = REPO / "schwab_field_inventory" / "schwab_field_dictionary.csv"
-SYNC_STATE_PATH = REPO / "governance" / "artifacts" / "schwab_field_sync_state.json"
+SYNC_STATE_PATH = REPO / "reports" / "artifacts" / "schwab_field_sync_state.json"
 
 #: Original six columns stay first and unchanged so existing DictReader consumers
 #: (tools/build_feature_assignment_matrix_v2.py and the gates reading it) are untouched.

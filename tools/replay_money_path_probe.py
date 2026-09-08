@@ -424,7 +424,7 @@ def run_probe(*, day: datetime.date, tickers: list[str], db_path: Path) -> dict[
             "read_only": True,
             "tickers": [t.upper() for t in tickers],
             "base_universe_observability_ready": obs_report["meta"]["base_universe_ready"],
-            "ticker_tier_policy": "governance/artifacts/base_ticker_money_path_contract.json",
+            "ticker_tier_policy": "reports/artifacts/base_ticker_money_path_contract.json",
         },
         "base_ticker_observability": obs_report,
         "data_coverage_table": coverage_table,

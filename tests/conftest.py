@@ -13,6 +13,7 @@ not set outside pytest. Fail-closed without secrets is locked by
 from __future__ import annotations
 
 import os
+import shutil
 import sys
 import tempfile
 from datetime import date, datetime, timedelta
@@ -20,41 +21,61 @@ from pathlib import Path
 
 import pytest
 
-# RC-515: pytest owns one deterministic runtime boundary before any application
-# module imports. Host/live values never win through setdefault: every mutable
-# runtime path is under one process-private directory, and Schwab is explicitly
-# offline with a missing isolated token. Tests of live/offline semantics use
-# monkeypatch after this boundary and therefore state their inputs themselves.
-_PYTEST_RUNTIME_ROOT = Path(tempfile.mkdtemp(
-    prefix=f"ed-pytest-{os.environ.get('PYTEST_XDIST_WORKER', 'serial')}-{os.getpid()}-"
-)).resolve()
+# Every pytest process (serial runner, xdist controller, and each xdist worker) owns ONE
+# deterministic, process-private runtime boundary before any application module imports
+# (RC-523 runtime root + RC-515 explicit isolation, reconciled). Inherited production DB
+# selectors are cleared first so a host/live value can never win; every mutable runtime path
+# is then rooted under one directory, and Schwab is explicitly OFFLINE with a missing token
+# so no test can reach the live account. Tests of live/offline semantics monkeypatch after
+# this boundary and therefore state their own inputs.
+os.environ.pop("ED_CONSOLE_DB", None)
+os.environ.pop("ED_DB_PATH", None)
+_PYTEST_RUNTIME_ROOT = Path(
+    tempfile.mkdtemp(
+        prefix=f"ed-pytest-{os.environ.get('PYTEST_XDIST_WORKER', 'serial')}-{os.getpid()}-"
+    )
+).resolve()
+os.environ["ED_RUNTIME_ROOT"] = str(_PYTEST_RUNTIME_ROOT)
+os.environ["ED_ARTIFACTS_ROOT"] = str(_PYTEST_RUNTIME_ROOT / "artifacts")
+os.environ["ED_CONSOLE_ALLOW_NONCANONICAL_DB"] = "1"
+# Set the console DB explicitly to the same runtime-root path canonical resolution yields,
+# so readers preferring the env var and readers resolving through runtime_layout agree.
 _PYTEST_CONSOLE_DB = _PYTEST_RUNTIME_ROOT / "ed_console.db"
 _PYTEST_CONSOLE_DB.touch()
-
-os.environ["ED_CONSOLE_ALLOW_NONCANONICAL_DB"] = "1"
 os.environ["ED_CONSOLE_DB"] = str(_PYTEST_CONSOLE_DB)
 os.environ["STREAM_CAPTURE_DB_PATH"] = str(_PYTEST_RUNTIME_ROOT / "stream_capture.db")
-os.environ["SCHWAB_TOKEN_PATH"] = str(_PYTEST_RUNTIME_ROOT / "missing_schwab_token.json")
+
+# Schwab hermetic AND explicitly offline (RC-515): placeholders satisfy import-time config;
+# ED_CI_OFFLINE plus a missing token guarantee no test constructs a live Schwab client.
 os.environ["ED_CI_OFFLINE"] = "1"
+os.environ["SCHWAB_TOKEN_PATH"] = str(_PYTEST_RUNTIME_ROOT / "missing_schwab_token.json")
 os.environ["SCHWAB_API_KEY"] = "ci-placeholder-api-key"
 os.environ["SCHWAB_APP_SECRET"] = "ci-placeholder-app-secret"
 os.environ["SCHWAB_CALLBACK_URL"] = "https://127.0.0.1:8182"
+
+# TEARDOWN 2026-08-24: the tracked terrain quarantine ledger can never be a test's write
+# target, REGARDLESS of when server is imported (CI caught a lazy mid-test import writing
+# the real file; the autouse firewall fixture below remains the byte-level backstop).
 os.environ["ED_TERRAIN_QUARANTINE_LEDGER"] = str(
     _PYTEST_RUNTIME_ROOT / "terrain_quarantine_ledger.jsonl"
 )
 
-# GOV-GATE-PERF-V1: the governance gate cache is a CLI-entry-point optimization.
-# Tests must always exercise REAL compute — many inject failures via in-process
-# monkeypatched state that file-identity cache keys cannot represent, so a stored
-# success must never satisfy an injected-failure test. Force-no-cache is the
-# cache's own designated verification mode (tools/governance_gate_cache.py).
+# GOV-GATE-PERF-V1: tests always exercise REAL compute; a stored gate-cache success must
+# never satisfy an injected-failure test (tools/governance_gate_cache.py force-no-cache mode).
 os.environ["ED_GATE_CACHE_DISABLE"] = "1"
 
 
 def pytest_configure(config) -> None:
-    """Assert the import-time boundary remains intact in controller and workers."""
+    """The import-time runtime boundary holds in the controller and every xdist worker."""
+    assert Path(os.environ["ED_RUNTIME_ROOT"]) == _PYTEST_RUNTIME_ROOT
     assert Path(os.environ["ED_CONSOLE_DB"]).parent == _PYTEST_RUNTIME_ROOT
     assert Path(os.environ["STREAM_CAPTURE_DB_PATH"]).parent == _PYTEST_RUNTIME_ROOT
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _remove_pytest_runtime_after_session():
+    yield
+    shutil.rmtree(_PYTEST_RUNTIME_ROOT, ignore_errors=True)
 
 
 @pytest.fixture(autouse=True)
@@ -87,8 +108,9 @@ def _no_fusion_temperature_calibration(monkeypatch):
 def _equal_mh_pool_weights(monkeypatch):
     """Hermetic tests: never read the operator's live calibration DB for ALL-card
     pool weights. Equal weights = unweighted log opinion pool (the fail-closed
-    default). Tests exercising skill weighting pass pool_weights explicitly or
-    monkeypatch after this fixture (their setattr wins)."""
+    default). Tests exercising skill weighting monkeypatch after this fixture
+    (their setattr wins); _horizon_skill_weights_cached is the ONLY weight source
+    (RC-533 removed the pool_weights injection parameter)."""
     import multi_horizon_decision as mhd
 
     monkeypatch.setattr(

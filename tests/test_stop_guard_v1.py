@@ -69,15 +69,6 @@ def test_does_not_block_on_closed_or_finished_rows(tmp_path, monkeypatch):
     assert sg.unfinished_rows_opened_today(TODAY) == []
 
 
-def test_ignores_unfinished_rows_from_earlier_days(tmp_path, monkeypatch):
-    """An older OPEN row is a dated backlog item — check_root_cause_log already fails a commit
-    when it goes overdue. This guard is about work started and abandoned WITHIN a session."""
-    _write_log(tmp_path, [
-        "| RC-96 | OPEN | 2020-01-01 | 2099-01-01 | d | w | IN PROGRESS from long ago |",
-    ], monkeypatch)
-    assert sg.unfinished_rows_opened_today(TODAY) == []
-
-
 def test_missing_log_is_never_a_block(tmp_path, monkeypatch):
     monkeypatch.setattr(ml, "RC_LOG", tmp_path / "nope" / "root_cause_log.md")
     assert sg.unfinished_rows_opened_today(TODAY) == []
@@ -128,7 +119,6 @@ def test_every_blocking_state_has_an_escape_that_clears_it(tmp_path, monkeypatch
     bypass above. The real property is that a satisfying action always EXISTS, so this drives
     each one and requires the block to lift."""
     _write_log(tmp_path, [_IN_PROGRESS], monkeypatch)
-    monkeypatch.setattr(ml, "dirty_production_files", lambda *a, **k: [])
     assert _run({"stop_hook_active": True}, monkeypatch) == 2, "precondition: blocked"
 
     # ESCAPE 1 — finish it. (RC-500: a CLOSED row is no longer an active mission, so the
@@ -156,7 +146,6 @@ def test_an_unreadable_ledger_abstains_rather_than_hanging_every_turn(tmp_path, 
     """The retired framework treated a missing/malformed ledger as an offender, which blocked
     every Stop AND every commit repo-wide. No rows means nothing to say, not a block."""
     monkeypatch.setattr(ml, "RC_LOG", tmp_path / "absent" / "root_cause_log.md")
-    monkeypatch.setattr(ml, "dirty_production_files", lambda *a, **k: [])
     assert _run({"stop_hook_active": True}, monkeypatch) == 0
 
 

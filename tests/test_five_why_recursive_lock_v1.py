@@ -1,9 +1,11 @@
-"""Seams for the no-terminal-null clause and the RC-49 adversarial test-lock.
+"""Seams for the RTH-measurement, measured-claims and register validators.
 
 RC-470: the five-why grammar validator (_five_why_lock_violations) and its check are
-retired - governance/retired_checks.md - and their seven seams left with them. The
-surviving occupants of this file test checks that STAY: no_terminal_null (surrender
-vocabulary + null study reports) and the adversarial-audit test-lock family below.
+retired - governance/retired_checks.md - and their seven seams left with them. BEDROCK PR B
+(2026-09-06): the no_terminal_null clause (surrender vocabulary in ledger prose, next_depth
+tokens in null reports) is removed the same way — a prose matcher; the law stays in AGENTS.md.
+The surviving occupants test checks that STAY: rth_only_market_measurement,
+measured_claims_cite_evidence and the register validator.
 """
 from __future__ import annotations
 
@@ -22,39 +24,7 @@ def _row(rc="RC-90", status="OPEN", opened="2026-07-24", why=None, fix=None):
 # ── No-terminal-null clause (operator law 2026-07-24, second clause) ─────────
 
 
-def test_surrender_vocabulary_requires_next_depth():
-    from tools.check_institutional_correctness import _surrender_violations
-
-    bare = _row(why="(1) a -> (2) b -> (3) c -> (4) d -> (5) ROOT: this is a dead end")
-    v = _surrender_violations([bare], _P)
-    assert len(v) == 1 and "NEXT-DEPTH" in v[0].msg
-    doored = _row(
-        why="(1) a -> (2) b -> (3) c -> (4) d -> (5) ROOT: dead end at this depth. "
-            "NEXT-DEPTH: external multi-year data acquisition unlocks it"
-    )
-    assert _surrender_violations([doored], _P) == []
-    grandfathered = _row(opened="2026-07-19",
-                         why="(1) a -> (2) b -> (3) c -> (4) d -> (5) ROOT: dead end")
-    assert _surrender_violations([grandfathered], _P) == []
-
-
-def test_null_reports_require_next_depth_post_cutover():
-    from tools.check_institutional_correctness import _terminal_null_violations
-
-    null_no_door = (_P, {"generated_utc": "2026-07-26T01:00:00", "n_survivors": 0})
-    v = _terminal_null_violations([null_no_door])
-    assert len(v) == 1 and "next_depth" in v[0].msg
-    null_doored = (_P, {"generated_utc": "2026-07-26T01:00:00", "n_survivors": 0,
-                        "next_depth": "run the reversion generator prereg"})
-    assert _terminal_null_violations([null_doored]) == []
-    pre_cutover = (_P, {"generated_utc": "2026-07-24T01:00:00", "n_survivors": 0})
-    assert _terminal_null_violations([pre_cutover]) == []
-    survivor = (_P, {"generated_utc": "2026-07-26T01:00:00", "n_survivors": 2})
-    assert _terminal_null_violations([survivor]) == []
-
-
 # ── RC-49: adversarial-audit test-lock (every fix ships a locking test) ────────
-
 
 
 def _rth_scan(tmp_path, monkeypatch, name: str, src: str):
@@ -253,35 +223,7 @@ def _write_ledgers(tmp_path, rc_rows: list[str], reg_rows: list[str]):
     return g / "root_cause_log.md", g / "unproven_register.md"
 
 
-def test_open_item_ratchet_ignores_in_date_items_and_counts_overdue(tmp_path):
-    """A defect opened today with a real due date is HONEST TRACKING and must not fail the
-    gate; an item past its own due date is DEFERRAL and must. Counting all open items
-    conflated the two and made recording a real defect fail the build (RC-65)."""
-    from tools.check_institutional_correctness import _overdue_governance_items
-
-    rc, reg = _write_ledgers(
-        tmp_path,
-        ["| RC-90 | OPEN | 2026-07-26 | 2099-01-01 | d | w | f |",     # in date -> ignored
-         "| RC-91 | OPEN | 2026-07-01 | 2000-01-01 | d | w | f |",     # ROTTED -> counted
-         "| RC-92 | CLOSED | 2026-07-01 | 2000-01-01 | d | w | f |"],  # closed -> ignored
-        ["| UNPROVEN | 2026-07-26 | 2099-01-01 | fresh claim | e |",   # in date -> ignored
-         "| UNPROVEN | 2026-07-01 | 2000-01-01 | rotted claim | e |",  # ROTTED -> counted
-         "| PROVEN | 2026-07-01 | 2000-01-01 | settled claim | e |"],  # terminal -> ignored
-    )
-    items = _overdue_governance_items(rc, reg)
-    assert len(items) == 2, items
-    assert "RC-91" in items
-    assert any("rotted claim" in i for i in items)
-    assert "RC-90" not in items and "RC-92" not in items
-
-
-def test_open_item_ratchet_does_not_double_report_a_malformed_due_date(tmp_path):
-    """check_root_cause_log already fails loudly on an unparseable due date; the ratchet must
-    not ALSO count it, or one defect reads as two."""
-    from tools.check_institutional_correctness import _is_overdue, _overdue_governance_items
-
-    assert _is_overdue("not-a-date") is False
-    assert _is_overdue("") is False
-    rc, reg = _write_ledgers(
-        tmp_path, ["| RC-93 | OPEN | 2026-07-26 | garbage | d | w | f |"], [])
-    assert _overdue_governance_items(rc, reg) == []
+# BEDROCK 2026-09-06: the open_item_cap controls left with the check (two-step retirement,
+# declared on main 2026-09-02 as a proven duplicate of root_cause_log's overdue clause and the
+# register validator). Overdue behaviour is exercised by the register tests above and by
+# test_rc_status_vocabulary_v1 / check_root_cause_log on the live ledger.

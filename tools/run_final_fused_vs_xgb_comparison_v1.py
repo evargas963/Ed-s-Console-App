@@ -16,6 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from calibration.db_guard import register_allow_noncanonical_flag, require_canonical_db_target
+from db_authority import canonical_console_db_path
 from db import configure_sqlite_connection
 from ml_horizon import ML_HORIZON_SLUGS
 from sklearn.isotonic import IsotonicRegression
@@ -151,7 +152,7 @@ def _winner_from_votes(votes: list[str]) -> str:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--db", type=Path, default=ROOT / "data" / "ed_console.db")
+    ap.add_argument("--db", type=Path, default=canonical_console_db_path())
     ap.add_argument("--move-threshold", type=float, default=0.60)
     ap.add_argument("--dir-threshold", type=float, default=0.55)
     register_allow_noncanonical_flag(ap)

@@ -16,10 +16,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT))
 
+from db_authority import canonical_console_db_path  # noqa: E402
+
 from horizon_outcomes import OUTCOME_BAR_SPECS, forward_bar_start_utc  # noqa: E402
 from math_exposure import classify_direction  # noqa: E402
 
-DEFAULT_DB = ROOT / "data" / "ed_console.db"
+DEFAULT_DB = canonical_console_db_path()
 
 
 def main() -> None:

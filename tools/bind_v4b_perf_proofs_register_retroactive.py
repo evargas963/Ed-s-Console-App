@@ -15,8 +15,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 REGISTER = ROOT / "governance" / "SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.csv"
-PERF_DIR = ROOT / "governance" / "artifacts" / "perf_proof" / "replacements"
-REL_PERF = "governance/artifacts/perf_proof/replacements"
+PERF_DIR = ROOT / "reports" / "artifacts" / "perf_proof" / "replacements"
+REL_PERF = "reports/artifacts/perf_proof/replacements"
 
 # Concrete bundles only (composite gate bundle is synced from register union).
 PROOF_FILES = (

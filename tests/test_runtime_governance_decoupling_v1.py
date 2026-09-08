@@ -38,7 +38,8 @@ GOVERNANCE_DIRS = ("tools", "governance")
 
 #: The real runtime entry points: the served app, the ops runner the panel drives, the
 #: capture daemon spine, and the two leaves everything imports.
-RUNTIME_ENTRY_POINTS = ("server.py", "ops_runner.py", "stream_spine.py", "config.py", "db.py")
+RUNTIME_ENTRY_POINTS = ("server.py", "ops_runner.py", "stream_spine.py", "config.py", "db.py",
+                        "runtime_layout.py")   # RC-523: the runtime-root owner is a leaf too
 
 LAUNCHER = REPO / "start_ed_console.bat"
 
@@ -239,14 +240,12 @@ def test_no_runtime_module_reads_state_under_governance(repo_index):
     )
 
 
-#: `governance/artifacts/**` is the ML ablation / feature-curation artifact family. It is
-#: relocated to `reports/artifacts/**` by the GOVERNANCE_SIMPLIFICATION_V1 branch (PR #221,
-#: RC-509), which rewrites the same producer files. Re-doing it here would collide with that
-#: change for no added protection, so this control carves it out by name rather than
-#: pretending it is clean. It is NOT on the blocking path: every module that reads it is
-#: reached only through function-local imports, which is what
-#: `test_the_app_imports_and_answers_health_with_governance_unimportable` proves.
-_ARTIFACTS_OWNED_ELSEWHERE = ("governance/artifacts/",)
+#: The ML ablation / feature-curation artifact family lived under governance (its old
+#: `artifacts/` directory) and was carved out of this control by name while its relocation
+#: waited on another PR.
+#: PR D (2026-09-07) moved it to `reports/artifacts/**`, so the carve-out is gone and this
+#: control covers every path under `governance/`: nothing on the runtime path reads it.
+_ARTIFACTS_OWNED_ELSEWHERE: tuple[str, ...] = ()
 
 
 def _governance_path_constants(tree: ast.AST) -> list[ast.Constant]:

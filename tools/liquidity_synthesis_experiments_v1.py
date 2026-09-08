@@ -25,6 +25,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 
+from db_authority import canonical_console_db_path  # noqa: E402
 from liquidity_models import PlaybookConfig  # noqa: E402
 from liquidity_value_engine import (  # noqa: E402
     compute_opening_range,
@@ -802,7 +803,7 @@ def exp_E_fvg(sessions: list[dict], rnd: random.Random) -> dict:
 def _load_sessions(
     tickers: list[str], limit_sessions: int | None,
 ) -> tuple[list[dict], dict, dict]:
-    con = sqlite3.connect(f"file:{REPO / 'data' / 'ed_console.db'}?mode=ro", uri=True)
+    con = sqlite3.connect(f"file:{canonical_console_db_path()}?mode=ro", uri=True)
     sessions: list[dict] = []
     bar_counts = {}
     date_min, date_max = None, None

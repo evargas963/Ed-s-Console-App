@@ -22,10 +22,20 @@ def _parse_iso_utc(s: str) -> datetime:
     return datetime.fromisoformat(s).astimezone(timezone.utc)
 
 
+def test_playwright_server_uses_run_private_runtime() -> None:
+    runner = (ROOT / "scripts" / "run-playwright-e2e.mjs").read_text(encoding="utf-8")
+    config = (ROOT / "playwright.config.mjs").read_text(encoding="utf-8")
+    assert 'fs.mkdtempSync(path.join(os.tmpdir(), "ed-console-e2e-"))' in runner
+    assert "ED_RUNTIME_ROOT: e2eRuntime" in runner
+    assert "ED_ARTIFACTS_ROOT: e2eRuntime" in runner
+    assert "fs.rmSync(e2eRuntime, { recursive: true, force: true })" in runner
+    assert "reuseExistingServer: false" in config
+
+
 def test_playwright_was_executed():
     assert MARKER.is_file(), (
         "Playwright E2E has not completed successfully since the last clean checkout. "
-        "Pytest alone is not sufficient. Run: make test-all   (or: npm run test:e2e && python -m pytest)"
+        "Pytest alone is not sufficient. Run: make test-all   (or: npm run test:all)"
     )
     raw = MARKER.read_text(encoding="utf-8").strip()
     assert raw, f"{MARKER} is empty — re-run: npm run test:e2e"

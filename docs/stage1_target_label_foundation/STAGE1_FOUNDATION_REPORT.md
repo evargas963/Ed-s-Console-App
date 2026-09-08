@@ -28,7 +28,7 @@ Status uses the **separated model** (schema_version 2): `CAUSAL_CONTRACT_PROVEN`
 
 Key defects grounded first-hand: the committed `movement_target_thresholds_by_horizon_v1.json` is a **placeholder** (`selected_percentile: null`) inconsistent with the report's own selected p50 values; the DB materializes **only 4 horizons** (1c/5c/15c/60c) though the threshold JSON lists 7 (3c/8c/13c are O-10 diagnostic-only); movement labels cover **~9.1%** of governed rows; **no persisted movement/direction predictions** (movement-v1 FAIL).
 
-The machine-readable inventory is `governance/research/stage1_target_label_foundation/target_registry_v1.json`.
+The machine-readable inventory is `research/stage1_target_label_foundation/target_registry_v1.json`.
 
 ## C–D. Candidate target families & horizon contracts
 

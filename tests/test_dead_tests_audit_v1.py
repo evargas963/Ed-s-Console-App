@@ -33,10 +33,14 @@ def test_runtime():
     assert row["assert_free"] is False
 
 
-def test_scan_reports_archive_and_live_counts():
+def test_scan_reports_live_counts():
+    """RC-524: the scan classifies the living suite only. It used to pin `archive_test_functions
+    >= 1`, a presence pin on tests/archive/, which the bedrock program deleted on purpose
+    (498897ce) — a control that fails because landfill was removed protects the landfill."""
     rep = scan()
     assert rep["schema"] == "dead_tests_audit_v1"
     c = rep["counts"]
     assert c["live_test_functions"] > 1000
-    assert c["archive_test_functions"] >= 1
+    assert "archive_test_functions" not in c
+    assert "archive_files" not in rep
     assert "presence_only" in c

@@ -928,8 +928,13 @@ def evidence_rows(repo_root: str | Path | None = None,
     a screen can be judged against what was knowable, the one surface that adjudicates claims
     was the surface reading the future. It now refuses a scoreboard generated after `as_of_utc`.
     """
-    root = Path(repo_root) if repo_root else Path(__file__).resolve().parent
-    p = root / "reports" / "fp_scoreboard_latest.json"
+    if repo_root:
+        p = Path(repo_root) / "reports" / "fp_scoreboard_latest.json"
+    else:
+        # RC-523: a generated scoreboard is an ARTIFACT; read it from the artifacts root,
+        # which is this checkout unless ED_ARTIFACTS_ROOT / ED_RUNTIME_ROOT moves it.
+        from runtime_layout import reports_dir
+        p = reports_dir() / "fp_scoreboard_latest.json"
     # RC-174: the absolute path is the operator's home directory. This value is handed to a
     # browser, and this repo already forbids operator-home paths in tracked evidence for the
     # same reason — a path is an environment disclosure that tells a reader who is running the

@@ -3,11 +3,17 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import sys
 from collections import defaultdict
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-DB = ROOT / "data" / "ed_console.db"
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from db_authority import canonical_console_db_path  # noqa: E402
+
+DB = canonical_console_db_path()
 
 
 def main() -> None:

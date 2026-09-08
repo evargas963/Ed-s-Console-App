@@ -31,7 +31,6 @@ import argparse
 import asyncio
 import inspect
 import json
-import os
 import statistics
 import sys
 import time
@@ -53,7 +52,6 @@ from stream_spine import (  # noqa: E402
     options_quote_msg,
     print_msg,
     quote_msg,
-    STREAM_CAPTURE_DB_PATH_ENV,
     read_active_option_contract_signal,
     read_active_ticker_signal,
     resolve_stream_db_path,
@@ -1118,12 +1116,13 @@ def write_status(bus: MessageBus, health: HealthRegistry, writer: CaptureWriter,
     }, indent=2), encoding="utf-8")
 
 
-async def run(symbols: list[str], duration_min: float, db_path: str | None) -> int:
-    # Bind this process's signal/lock authority to the writer DB. Otherwise
-    # STREAM_DB_DEFAULT (checkout-relative) and `--db` can name two files, and
-    # the daemon writes quotes to production while polling a worktree signal.
+async def run(symbols: list[str], duration_min: float, db_path: str | Path | None = None) -> int:
+    # ONE canonical stream DB and ONE owner lock. RC-523/RC-534 root the stream DB in
+    # runtime_layout, so a worktree daemon and production converge on the same path and the
+    # ambient STREAM_CAPTURE_DB_PATH authority is gone. The lock still binds to the resolved
+    # DB so two checkouts cannot open two Schwab sockets (b35e3f2b): production resolves to
+    # the canonical DB, and acquire_owner_lock places the lock beside it.
     resolved = resolve_stream_db_path(db_path)
-    os.environ[STREAM_CAPTURE_DB_PATH_ENV] = str(resolved)
     lock_fd, lock = acquire_owner_lock(resolved)
     try:
         return await _run_locked(symbols, duration_min, db_path)
@@ -1284,7 +1283,9 @@ async def _shutdown_sequence(pump_task, writer_task, stop, wsub,
         print(f"shutdown: writer ended with {type(exc).__name__}: {exc}")
 
 
-async def _run_locked(symbols: list[str], duration_min: float, db_path: str | None) -> int:
+async def _run_locked(
+    symbols: list[str], duration_min: float, db_path: Path | None = None
+) -> int:
     from config import build_config
     from schwab_client import build_client_from_token
 
@@ -1297,7 +1298,7 @@ async def _run_locked(symbols: list[str], duration_min: float, db_path: str | No
     # precisely the historically-false observability 2A exists to prevent, and it
     # persisted for exactly as long as the operator's token stayed broken.
     # DB + reconciliation now come FIRST; the external vendor dependency comes after.
-    writer = CaptureWriter(db_path) if db_path else CaptureWriter()
+    writer = CaptureWriter(db_path)
     try:
         # Close any coverage epoch left open by a PRIOR daemon lifetime, BEFORE this one
         # opens any new live epoch. The reconciliation timestamp is an UPPER BOUND
@@ -1771,10 +1772,9 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--symbols", default="SPY,QQQ,IWM")
     ap.add_argument("--duration-min", type=float, default=0.0, help="0 = until Ctrl+C")
-    ap.add_argument("--db", default=None, help="override stream_capture.db path (tests)")
     a = ap.parse_args()
     syms = [s.strip().upper() for s in a.symbols.split(",") if s.strip()]
-    return asyncio.run(run(syms, a.duration_min, a.db))
+    return asyncio.run(run(syms, a.duration_min))
 
 
 if __name__ == "__main__":

@@ -1,9 +1,16 @@
 import json
 import sqlite3
+import sys
 from collections import defaultdict
 from pathlib import Path
 
-conn = sqlite3.connect(str(Path(__file__).resolve().parent.parent / "data" / "ed_console.db"))
+ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from db_authority import canonical_console_db_path  # noqa: E402
+
+conn = sqlite3.connect(str(canonical_console_db_path()))
 conn.row_factory = sqlite3.Row
 
 total = conn.execute("SELECT COUNT(*) AS n FROM snapshots WHERE timeframe='1m'").fetchone()["n"]

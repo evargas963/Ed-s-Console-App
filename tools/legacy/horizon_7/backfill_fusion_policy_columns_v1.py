@@ -21,6 +21,8 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT))
 
+from db_authority import canonical_console_db_path  # noqa: E402
+
 from calibration.db_guard import register_allow_noncanonical_flag, require_canonical_db_target
 from db import EdDB, configure_sqlite_connection
 from features.replay_signal_input_v1 import signal_input_from_snapshot_row_dict
@@ -104,7 +106,7 @@ def _incomplete_fused_sql() -> str:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--db", type=Path, default=ROOT / "data" / "ed_console.db")
+    ap.add_argument("--db", type=Path, default=canonical_console_db_path())
     ap.add_argument("--limit", type=int, default=None, help="Max rows to process (debug).")
     ap.add_argument("--offset", type=int, default=0)
     ap.add_argument("--dry-run", action="store_true", help="Compute but do not write SQLite.")

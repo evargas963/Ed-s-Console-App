@@ -3,11 +3,11 @@
 Operator mandate 2026-07-30: work is UNIVERSAL across the enrolled universe — SPY-only /
 sentinel-only framing without explicit OUT-OF-SCOPE + operator waiver is a breach.
 
-Shared by:
-  * tools/check_institutional_correctness.py  (pre-commit BLOCK)
-  * tools/pretooluse_guard.py                 (Edit/Write BLOCK for prompts / agent instructions)
-
-Keep this module lean — PreToolUse imports it on every edit.
+Consumed by tools/check_institutional_correctness.py (check_universal_ticker_scope). BEDROCK
+2026-09-06: the prose half (SPY-only PHRASES in prompt text, and the PreToolUse Edit gate that
+read them) is removed — free-text matching is not enforcement (AGENTS.md). What stays is the
+structural half: SPY-only ticker DEFAULTS in experiment tools (AST) and SPY-gated Chart
+features / hardcoded `?ticker=SPY` fetches in static/chart.html. The law is unchanged.
 """
 from __future__ import annotations
 
@@ -57,39 +57,6 @@ _PROMPT_PATH_HINT = re.compile(
     r"(?:prompt|agent.?instruction|claude.?finish|cursor.?prompt)",
     re.I,
 )
-
-
-def is_prompt_or_agent_instruction_path(rel: str) -> bool:
-    """Paths whose Write/Edit content is gated for SPY-only framing.
-
-    SIMPLICITY REHAB 2026-08-24 (T2-5): reports/** and .claude/** are DROPPED from the
-    gated surface — policing report prose and agent scratch for framing words was
-    2026-07-30 program-era scope; the law binds where instruction actually flows
-    (charter files, cursor rules, explicit prompt files). Code-side SPY-only defaults
-    stay separately enforced by spy_only_ticker_default_violations."""
-    r = rel.replace("\\", "/").lstrip("./")
-    if r in ("AGENTS.md", "CLAUDE.md", "ACTIVE_PROGRAM.md"):
-        return True
-    if r.startswith(".cursor/rules/"):
-        return True
-    if "prompt" in Path(r).name.lower() and r.endswith((".md", ".mdc", ".txt")) \
-            and not r.startswith(("reports/", ".claude/")):
-        return True
-    return False
-
-
-def spy_only_content_violation(text: str) -> str | None:
-    """Return a reason when text frames SPY/sentinel as complete without UNIVERSAL escape."""
-    if not text or not _SPY_ONLY_PHRASE.search(text):
-        return None
-    if _UNIVERSAL_OK.search(text):
-        return None
-    m = _SPY_ONLY_PHRASE.search(text)
-    snippet = (m.group(0) if m else "SPY-only").strip()
-    return (
-        f"SPY-only / sentinel-complete framing ({snippet!r}) without UNIVERSAL, "
-        f"enrolled-universe, or OUT-OF-SCOPE + operator waiver language (RC-160)"
-    )
 
 
 def _const_str(node: ast.AST) -> str | None:

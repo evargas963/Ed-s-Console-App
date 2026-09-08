@@ -134,7 +134,7 @@ def main() -> int:
         },
         "class_c_fixed": entries,
     }
-    out = ROOT / "governance" / "audits" / "repo_sweep_error_propagation_v3_20260520.json"
+    out = ROOT / "reports" / "audits" / "repo_sweep_error_propagation_v3_20260520.json"
     out.write_text(json.dumps(audit, indent=2) + "\n", encoding="utf-8")
     print(f"total fixed {total}, audit -> {out}")
     return 0 if total == 27 else 1

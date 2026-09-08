@@ -399,6 +399,8 @@ def _scorecard_body(tmp_path, monkeypatch, generated_utc):
             "pdca": {"plan": "x"},
         }), encoding="utf-8")
     monkeypatch.setattr(srv, "APP_DIR", str(tmp_path), raising=True)
+    # RC-523: the scorecard is read from the ARTIFACTS root, not APP_DIR.
+    monkeypatch.setattr(srv, "_artifact_reports_dir", lambda: tmp_path / "reports", raising=True)
     r = TestClient(srv.app).get("/api/terrain/scorecard")
     assert r.status_code == 200
     return r.json()

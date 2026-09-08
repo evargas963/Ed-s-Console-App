@@ -1,6 +1,6 @@
 """CR-01 streaming spine: topic bus + last-value cache + capture writer + feed health.
 
-Consensus plan v1.2 (governance/CONSOLE_REBUILD_PLAN_CR_V1.md §4). Laws encoded here:
+Consensus plan v1.2 (docs/CONSOLE_REBUILD_PLAN_CR_V1.md §4). Laws encoded here:
   - cache-then-publish: the cache is written BEFORE subscribers are notified, so any
     consumer can snapshot-then-ride-deltas without a poll-to-hydrate step.
   - every queue is BOUNDED with an explicit policy: quotes coalesce-to-latest,
@@ -23,10 +23,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-STREAM_DB_DEFAULT = Path(__file__).resolve().parent / "data" / "stream_capture.db"
+from db_authority import canonical_stream_db_path
 
-#: env var name for resolve_stream_db_path's cross-checkout override.
-STREAM_CAPTURE_DB_PATH_ENV = "STREAM_CAPTURE_DB_PATH"
+STREAM_DB_DEFAULT = canonical_stream_db_path()
 
 
 def resolve_stream_db_path(default: "Path | str | None" = None) -> Path:
@@ -34,49 +33,42 @@ def resolve_stream_db_path(default: "Path | str | None" = None) -> Path:
     consumer (tools/run_stream_capture.py's CaptureWriter,
     app/options/order_flow/streaming.py's feed-loop reader) resolves through.
 
-    PR214_RTH_DEFECT_REMEDIATION_V1 (2026-08-31 RTH proof): STREAM_DB_DEFAULT alone
-    is checkout-relative with no cross-process override -- a daemon launched with
-    `--db` against one checkout's file and a server defaulting to a DIFFERENT
-    checkout's own STREAM_DB_DEFAULT both reported healthy (real data flowing,
-    real subscriptions RUNNING) while structurally disconnected: the API served a
-    truthful `no_book` because the two processes were never reading the same file.
-    Same override shape config.py already uses for SCHWAB_TOKEN_PATH.
-
-    `STREAM_CAPTURE_DB_PATH`, when set, is checked FIRST and resolved to an
-    ABSOLUTE path — never used relative, since a relative override could mean two
-    different absolute files under two different processes' working directories,
-    silently reproducing the exact defect this closes. Only when unset does this
-    fall back to `default` (a caller's own, possibly test-monkeypatched, module
-    constant) or STREAM_DB_DEFAULT. Called fresh on every use, never bound as a
-    function/class default-argument value (which freezes at import/definition
-    time and can never see a later env var or monkeypatch)."""
-    override = os.environ.get(STREAM_CAPTURE_DB_PATH_ENV)
-    if override:
-        return Path(override).expanduser().resolve()
+    RC-534 removed the ambient STREAM_CAPTURE_DB_PATH authority. Linked worktrees
+    already converge through runtime_layout; recovery/tests pass an explicit path
+    to the owning API instead of changing the production default process-wide.
+    ``default`` remains solely for test-monkeypatched reader modules."""
     if default is not None:
         return Path(default).resolve()
-    return STREAM_DB_DEFAULT.resolve()
+    return canonical_stream_db_path()
 
 def default_active_ticker_signal_path(db_path: Path | str | None = None) -> Path:
-    """Ticker signal beside the resolved stream DB, not the checkout.
+    """Ticker signal beside the resolved stream DB — the ONE cross-process channel by which
+    the server tells the daemon which symbol's book to add/drop. The server never opens its
+    own StreamClient (single-stream-authority law).
 
-    Same split-brain class as the owner lock: a worktree daemon and a production
-    server otherwise write two files and the live StreamClient never sees the
-    contract the UI requested. Called fresh each time — never bound as a
-    function default (that freezes at import and misses STREAM_CAPTURE_DB_PATH).
+    Resolved fresh each call through the canonical `resolve_stream_db_path`, so a worktree
+    daemon and a production server converge on the same file (RC-523/RC-534 runtime_layout)
+    and the live StreamClient sees exactly the contract the UI requested — never bound as a
+    function default, which would freeze at import.
     """
     return resolve_stream_db_path(db_path).with_name("stream_active_ticker.json")
 
 
 def default_active_option_contract_signal_path(db_path: Path | str | None = None) -> Path:
-    """Option-contract signal beside the resolved stream DB, not the checkout."""
+    """Option-contract signal beside the resolved stream DB. Same one channel, for the one
+    option CONTRACT (OSI symbol, e.g. "SPY   260820C00767000") the daemon streams
+    LEVELONE_OPTIONS/OPTIONS_BOOK for. The symbol MUST come from a chain response's own
+    "symbol" field (schwab_client.safe_get_chain), never constructed here."""
     return resolve_stream_db_path(db_path).with_name("stream_active_option_contract.json")
 
 
-#: Checkout-relative names kept for tests that monkeypatch the constant. Production
-#: readers/writers resolve through default_active_*_signal_path() at call time.
-ACTIVE_TICKER_SIGNAL_DEFAULT = Path(__file__).resolve().parent / "data" / "stream_active_ticker.json"
-ACTIVE_OPTION_CONTRACT_SIGNAL_DEFAULT = Path(__file__).resolve().parent / "data" / "stream_active_option_contract.json"
+#: Import-time snapshots of the canonical resolver above, kept for tests that monkeypatch
+#: the module attribute and for callers that read a constant. Production writers/readers call
+#: default_active_*_signal_path() at call time; these are that same path resolved once here,
+#: so constant and function agree. ONE owner: the functions. (RC-534: the runtime_layout path
+#: subsumes the older _runtime_data_dir() constant and the removed STREAM_CAPTURE_DB_PATH env.)
+ACTIVE_TICKER_SIGNAL_DEFAULT = default_active_ticker_signal_path()
+ACTIVE_OPTION_CONTRACT_SIGNAL_DEFAULT = default_active_option_contract_signal_path()
 
 #: Queue policies. COALESCE keeps only the newest pending message per topic (quotes).
 #: COUNT_DROPS rejects new messages when full and counts them loudly (prints).
@@ -505,13 +497,9 @@ class CaptureWriter:
 
     def __init__(self, db_path: "Path | str | None" = None, *,
                  batch_rows: int = 500, batch_sec: float = 0.25) -> None:
-        # PR214_RTH_DEFECT_REMEDIATION_V1: `db_path: Path | str = STREAM_DB_DEFAULT`
-        # was a default-argument value, evaluated ONCE at class-definition time
-        # (import time) -- it could never see a later STREAM_CAPTURE_DB_PATH env
-        # var. `None` is the sentinel; an explicit `db_path` (e.g. a test's
-        # tmp_path, or the daemon's --db flag) still bypasses the resolver
-        # entirely, exactly as before -- only the "no explicit path given" case
-        # now goes through the one canonical, env-var-aware resolver.
+        # None always means the canonical permanent stream DB. An explicit path is
+        # retained for isolated tests/recovery APIs; the production daemon exposes no
+        # path option.
         p = resolve_stream_db_path() if db_path is None else Path(db_path).resolve()
         # RESOLVED path, not basename: `data/x/../ed_console.db`, symlinks and junctions
         # all collapse under resolve() (Cursor review 2026-07-21: basename-only guard

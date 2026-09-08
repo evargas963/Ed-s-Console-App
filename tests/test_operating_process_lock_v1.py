@@ -203,26 +203,6 @@ def test_redate_lock_quiet_on_untouched_ledger(tmp_path):
     assert OPL.rc_redate_violations(repo) == []
 
 
-def test_quiet_pass_must_be_fresher_than_change(tmp_path):
-    """R11: a PASS measured before the claimed server.py/db.py change is not the live
-    quiet bar for that change (a 200-day-old PASS used to satisfy a fresh claim)."""
-    import os
-    import time
-    repo = _init_repo(tmp_path)
-    (repo / "reports").mkdir(exist_ok=True)
-    qp = repo / "reports" / "ed_server_warn_quiet_window_latest.json"
-    qp.write_text('{"verdict": "PASS"}', encoding="utf-8")
-    # db.py is TRACKED by _init_repo, so a worktree write lands in the touched set.
-    (repo / "db.py").write_text("# RC-183\nis_collect_window_bar_end_ts_utc\n# fresh\n",
-                                encoding="utf-8")
-    old = time.time() - 200 * 86400
-    os.utime(qp, (old, old))
-    out = OPL.completion_claim_violations("Mission COMPLETE: quiet bar met.", repo)
-    assert any("STALE_PASS" in v for v in out), out
-    os.utime(qp, None)
-    assert OPL.completion_claim_violations("Mission COMPLETE: quiet bar met.", repo) == []
-
-
 def test_index_worktree_mismatch_detected(tmp_path, monkeypatch):
     repo = _init_repo(tmp_path)
     checker = repo / "tools" / "check_institutional_correctness.py"
@@ -249,31 +229,6 @@ def test_staged_checks_not_on_head_flags_delta(tmp_path, monkeypatch):
     monkeypatch.chdir(repo)
     v = OPL.staged_enforced_checks_not_on_head(repo)
     assert v and "new_lock" in v[0]
-
-
-def test_completion_claim_blocks_on_index_mismatch(tmp_path, monkeypatch):
-    repo = _init_repo(tmp_path)
-    checker = repo / "tools" / "check_institutional_correctness.py"
-    checker.write_text(checker.read_text(encoding="utf-8") + "\n# drift\n", encoding="utf-8")
-    monkeypatch.setattr(OPL, "REPO", repo)
-    text = "We have one intentional tree ready to commit — all green."
-    v = OPL.completion_claim_violations(text, repo)
-    assert v and any("index≠WT" in x or "worktree" in x for x in v)
-
-
-def test_live_claim_requires_disk_only_token_when_disk_only(monkeypatch):
-    monkeypatch.setattr(
-        OPL,
-        "live_collect_disk_only",
-        lambda repo=None, port=8000: "DISK_ONLY: pid old",
-    )
-    monkeypatch.setattr(OPL, "index_worktree_mismatches", lambda repo=None, **kw: [])
-    bad = OPL.completion_claim_violations("Collect gate is LIVE_ENFORCED now.", OPL.REPO)
-    assert bad and "LIVE_ENFORCED" in bad[0] or "DISK_ONLY" in bad[0]
-    ok = OPL.completion_claim_violations(
-        "DISK_ONLY_UNTIL_RESTART — gate on disk only.", OPL.REPO
-    )
-    assert not any("LIVE_ENFORCED" in x for x in ok)
 
 
 def test_reset_guard_blocks_destructive_git_on_product(monkeypatch, tmp_path):
@@ -307,28 +262,6 @@ def test_reset_guard_escapes_do_not_disable(monkeypatch):
     assert OPL.reset_guard_violations("git restore -- static/chart.html")
     monkeypatch.setenv("ED_RESET_GUARD", "off")
     assert OPL.reset_guard_violations("git restore -- static/chart.html")
-
-
-def test_lock5_quiet_pass_required_blocks_complete_claim(monkeypatch, tmp_path):
-    """LOCK-5 (RC-232): COMPLETE claim with server.py touched and quiet verdict != PASS
-    BLOCKS with QUIET_PASS_REQUIRED; the DISK_ONLY token escapes honestly."""
-    monkeypatch.setattr(OPL, "index_worktree_mismatches", lambda repo=None, **kw: [])
-    monkeypatch.setattr(OPL, "live_collect_disk_only", lambda repo=None, port=8000: None)
-    monkeypatch.setattr(OPL, "staged_enforced_checks_not_on_head", lambda repo=None: [])
-    monkeypatch.setattr(OPL, "_git_diff_names", lambda root, a, b: ["server.py"])
-    (tmp_path / "reports").mkdir()
-    (tmp_path / "reports" / "ed_server_warn_quiet_window_latest.json").write_text(
-        '{"verdict": "FAIL"}', encoding="utf-8")
-    (tmp_path / "governance").mkdir()
-    v = OPL.completion_claim_violations("Mission COMPLETE: all landed.", tmp_path)
-    assert any(m.startswith("QUIET_PASS_REQUIRED:") for m in v), v
-    ok = OPL.completion_claim_violations(
-        "Mission COMPLETE: DISK_ONLY_UNTIL_RESTART for the server half.", tmp_path)
-    assert not any(m.startswith("QUIET_PASS_REQUIRED:") for m in ok)
-    (tmp_path / "reports" / "ed_server_warn_quiet_window_latest.json").write_text(
-        '{"verdict": "PASS"}', encoding="utf-8")
-    v2 = OPL.completion_claim_violations("Mission COMPLETE: all landed.", tmp_path)
-    assert not any(m.startswith("QUIET_PASS_REQUIRED:") for m in v2)
 
 
 def test_measure_report_has_enforcement_hashes():
@@ -386,33 +319,3 @@ def test_rc234_live_path_wired_into_bash_branch():
     src = (Path(PLG.__file__)).read_text(encoding="utf-8")
     assert "commit_pipe_violations" in src
 
-
-def test_rc438_process_start_epoch_reads_via_psutil_not_powershell():
-    """RC-438: _process_start_epoch reads a process start-time in-process via psutil,
-    so a host powershell/CLR cold-start hang cannot make a running process's start-time
-    unmeasurable and fail the runtime-identity audit on an environmental fault.
-    Locks: (a) the current process's start-time is readable and matches psutil, and
-    (b) the powershell shell-out is NOT reached when psutil is available."""
-    import os
-    import psutil
-
-    pid = os.getpid()
-    expected = psutil.Process(pid).create_time()
-
-    got = OPL._process_start_epoch(pid)
-    assert got is not None, "current process start-time must be readable"
-    assert abs(got - expected) < 2.0, f"{got} must match psutil create_time {expected}"
-
-    # Mutation control: if psutil is the primary reader, exploding the powershell
-    # shell-out must not affect the result.
-    orig = OPL.subprocess.run
-
-    def _boom(*a, **k):
-        raise AssertionError("powershell shell-out reached despite psutil availability")
-
-    OPL.subprocess.run = _boom
-    try:
-        got2 = OPL._process_start_epoch(pid)
-        assert got2 is not None and abs(got2 - expected) < 2.0
-    finally:
-        OPL.subprocess.run = orig

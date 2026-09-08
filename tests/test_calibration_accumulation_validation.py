@@ -1,4 +1,4 @@
-"""Re-prove deterministic production-path accumulation gates in isolation (tmp DB)."""
+"""Re-prove the accumulation and downstream calibration path on one isolated temp DB."""
 
 from __future__ import annotations
 
@@ -63,15 +63,7 @@ def test_production_accumulation_harness_passes(tmp_path: Path, monkeypatch: pyt
     monkeypatch.setattr(accum, "N_ACCUM", len(restricted_rot))
 
     db = tmp_path / "acc.db"
-    rep = tmp_path / "rep.json"
-    monkeypatch.setattr(accum, "OUT_DB", db)
-    monkeypatch.setattr(accum, "OUT_REPORT", rep)
-
-    import db as db_mod
-
-    monkeypatch.setattr(db_mod, "DB_PATH", db)
-
-    out = accum.run()
+    out = accum.run(db)
     assert out["binary_pass"] is True
     assert out["counts"]["trusted_rows"] == accum.N_ACCUM
     assert accum.N_ACCUM >= 30
@@ -79,3 +71,66 @@ def test_production_accumulation_harness_passes(tmp_path: Path, monkeypatch: pyt
     assert out["outcome_join_first"]["verification_fail"] == 0
     assert out["unsafe_non_exact_join_rows_trusted"] == 0
     assert out["pass_gates"]["anchor_all_trusted_anchored"] is True
+
+    from calibration.edge_discovery import run_discovery
+    from calibration.edge_validation import analyze_edge
+    from calibration.signal_engineering import run_engineering
+
+    engineering = run_engineering(db)
+    assert "diagnostics" in engineering
+    assert "FINAL_RESULT" in engineering["FINAL_SYSTEM"]
+    long_n = engineering["diagnostics"]["pct_canonical_effective"]["long"]
+    assert isinstance(long_n, int) and long_n > 0
+
+    discovery = run_discovery(db)
+    assert discovery["meta"]["labeled_anchored_count"] >= 30
+    assert discovery["slices_all"]
+    assert "FINAL_SYSTEM_EDGE" in discovery["system_level"]
+
+    validation = analyze_edge(db)
+    assert validation["pass_gates"]["aggregate_n_sufficient"] is True
+    assert validation["pass_gates"]["ev_mean_actual_gt_mean_random_mix"] is True
+    assert validation["pass_gates"]["ev_mean_actual_strictly_gt_always_long"] is False
+    assert validation["binary_pass"] is False
+
+
+def test_harness_refuses_stale_database(tmp_path: Path) -> None:
+    db = tmp_path / "already-there.db"
+    db.write_bytes(b"stale")
+    with pytest.raises(FileExistsError, match="already exists"):
+        accum.run(db)
+
+
+def test_cli_database_is_run_private_and_removed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seen: list[Path] = []
+
+    def _run(db: Path) -> dict:
+        seen.append(db)
+        db.touch()
+        return {"binary_pass": True}
+
+    monkeypatch.setattr(accum, "run", _run)
+    monkeypatch.setattr(accum, "OUT_REPORT", tmp_path / "report.json")
+    assert accum.main() == 0
+    assert len(seen) == 1
+    assert not seen[0].exists()
+
+
+def test_anchor_proof_cli_database_is_run_private_and_removed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import calibration.build_trusted_anchor_proof_dataset as proof
+
+    seen: list[Path] = []
+
+    def _build(db: Path) -> int:
+        seen.append(db)
+        db.touch()
+        return 0
+
+    monkeypatch.setattr(proof, "_build", _build)
+    assert proof.main() == 0
+    assert len(seen) == 1
+    assert not seen[0].exists()

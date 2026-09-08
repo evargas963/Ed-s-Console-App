@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "artifact": "reports/artifacts/RELEASE_OBJECT_SCHEMA.json",
+  "generated": "2026-06-15",
+  "release_object_schema": {
+    "release_id": "string \u2014 immutable identifier",
+    "git_sha": "string \u2014 full commit SHA",
+    "model_hashes": "array \u2014 per ticker\u00d7horizon bundle content hashes",
+    "config_hash": "string \u2014 hash of pinned env manifest + governance artifact pins",
+    "approval_record": "string \u2014 four-eyes approval reference",
+    "artifact_manifest": "string \u2014 path or hash of full artifact listing",
+    "rollback_target": "string \u2014 prior release_id",
+    "created_at_utc": "string \u2014 ISO8601"
+  },
+  "example": {
+    "release_id": "rel-2026-06-11T12:00:00Z-abc123",
+    "git_sha": "3f977b048782f33f6fe4969071d85e480f4d5896",
+    "model_hashes": [
+      "sha256:\u2026/models/active/SPY/xgb_SPY_1c.pkl"
+    ],
+    "config_hash": "sha256:\u2026",
+    "approval_record": "github-pr-1234-approved-by-\u2026",
+    "artifact_manifest": "reports/artifacts/release_manifest_rel-\u2026.json",
+    "rollback_target": "rel-2026-06-10T\u2026",
+    "created_at_utc": "2026-06-11T12:00:00Z"
+  },
+  "current_state": {
+    "release_object_defined_in_code": false,
+    "production_decisions_reference_release": false,
+    "nearest_partial": "GET /api/build git_sha + calibration build_generation column",
+    "i26_dr_blocked_until_release_object": true,
+    "evidence": [
+      "PROMOTION_POLICY.md marked historical",
+      "calibration_decision_log.build_generation is partial \u2014 not full release manifest",
+      "live_decision_bundle does not stamp release_id"
+    ]
+  },
+  "proof_required": "Every production decision row must carry release_id resolvable to this schema"
+}

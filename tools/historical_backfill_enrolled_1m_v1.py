@@ -454,21 +454,11 @@ def run(
     from db_authority import is_canonical_db_path
     from db_safety import (
         assert_critical_row_counts_no_drop,
-        backup_console_database,
         critical_table_row_counts,
-        skip_automatic_backup,
     )
     if is_canonical_db_path(db_path):
         with db._connect() as _cbc:
             counts_before_bulk = critical_table_row_counts(_cbc)
-        if not skip_automatic_backup():
-            bp, mp, mf = backup_console_database(
-                db_path,
-                operation_name="historical_backfill_enrolled_1m_v1",
-            )
-            audit["preflight_backup_db"] = str(bp)
-            audit["preflight_backup_manifest"] = str(mp)
-            audit["preflight_backup_sha256"] = mf.get("sha256")
 
     windows_log: list[dict] = []
     total_written = 0

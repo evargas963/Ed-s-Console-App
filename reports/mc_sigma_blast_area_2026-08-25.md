@@ -29,7 +29,7 @@ modified. The remediation decision is the operator's (RC-478).
 
 Stored in `snapshots.mc_sigma_value` (`db.py:1294`, migration `db.py:2783`) and the
 materialized `snapshots_1m_normalized.mc_sigma_value` (cull-ledger verdict KEEP_LIVE,
-`governance/artifacts/snapshot_column_cull_ledger.json`).
+`reports/artifacts/snapshot_column_cull_ledger.json`).
 
 `snapshots`: 365,797 rows, 188,399 non-null. `snapshots_1m_normalized`: 248,954 rows,
 156,406 non-null. Reproduce (this and the era table):

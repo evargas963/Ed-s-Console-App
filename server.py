@@ -110,7 +110,11 @@ class _FlushingFileHandler(logging.FileHandler):
 
 # Quiet-window / LIVE closeout sink. Root handler so ANY logger (db, ed_server,
 # uvicorn, …) at INFO+ lands here; gate fails on WARNING+ / traceback.
-ED_SERVER_LOG_PATH = Path(__file__).resolve().parent / "logs" / "ed_server.log"
+# RC-523: under the RUNTIME root (runtime_layout), which is this checkout unless
+# ED_RUNTIME_ROOT moves it — runtime output must not pollute the source tree (§8).
+from runtime_layout import logs_dir as _runtime_logs_dir, reports_dir as _artifact_reports_dir  # noqa: E402
+
+ED_SERVER_LOG_PATH = _runtime_logs_dir() / "ed_server.log"
 
 
 def install_ed_server_file_sink(
@@ -7924,6 +7928,18 @@ def _fetch_state(
         _diag_step("pre_build_market_state", ticker)
     from db import utc_ts as _utc_ts_refresh
     _refresh_ts_utc = _utc_ts_refresh()
+    # RC-534: the emission facts The Call must consume — decision route class + market-data sanity
+    # (ticker, spot, spread age) — computed ONCE here by the gate's own validator on the facts known
+    # before the state is built, and handed to the owner through SignalInput. The Call vetoes itself;
+    # the post-build gate in stamp_decision_bundle stamps quarantine and blocks decision_id /
+    # persistence and REWRITES NOTHING (it was a second writer of the verdict).
+    from trade_impacting_gate import resolve_fetch_state_decision_route, validate_trade_impacting_gate
+
+    _decision_route = resolve_fetch_state_decision_route(update_source)
+    _emission_gate = validate_trade_impacting_gate(
+        {"ticker": ticker, "spot": spot_f, "spread_age_ms": _quote_spread_age_ms},
+        route=_decision_route,
+    )
     try:
         ms = build_market_state(
         ticker=ticker,
@@ -7992,6 +8008,7 @@ def _fetch_state(
         db=_ed_db,
         pred_override=_get_prediction_override(ticker),
         refresh_ts_utc=_refresh_ts_utc,
+        emission_gate=_emission_gate,
     )
     except Exception as _bms_e:
         _diag_crash("build_market_state", _bms_e, ticker)
@@ -9795,9 +9812,7 @@ def _fetch_state(
         if isinstance(sr, dict):
             sr["signals_engine_failed"] = True
     _apply_trader_horizon_contract(ms_dict)
-    from trade_impacting_gate import resolve_fetch_state_decision_route
-
-    _decision_route = resolve_fetch_state_decision_route(update_source)
+    # _decision_route was resolved before build_market_state (RC-534): one route, one gate fact.
     # execution_identity_v1: one cycle = one decision_id = one identity. Seed
     # the anchored pair so stamping binds the SAME decision the snapshot carries.
     _xid_pair = getattr(ms, "_execution_identity_pair", None)
@@ -11223,7 +11238,7 @@ TERRAIN_QUARANTINE_SOFT_MAX_SEC: float = 900.0
 #: class CI's ledger firewall caught 2026-08-24). Production never sets the variable.
 TERRAIN_QUARANTINE_LEDGER = Path(
     os.environ.get("ED_TERRAIN_QUARANTINE_LEDGER")
-    or (Path(APP_DIR) / "reports" / "terrain_quarantine_ledger.jsonl"))
+    or (_artifact_reports_dir() / "terrain_quarantine_ledger.jsonl"))   # RC-523: artifacts root
 
 _terrain_quarantine: dict[str, dict] = {}
 _terrain_consecutive_fails: dict[str, int] = {}
@@ -11804,7 +11819,7 @@ def _persist_universal_complete_chain(tk: str, client, contracts: list,
 #: cycles yields per-ticker intraday min/max/range. reports/ file, not a table — the
 #: operational DB grows by zero bytes (RC-6 discipline). flip=None is absence and is
 #: not logged; gaps read as gaps from the timestamps.
-_FLIP_DRIFT_LOG_PATH = Path(APP_DIR) / "reports" / "flip_drift_log.jsonl"
+_FLIP_DRIFT_LOG_PATH = _artifact_reports_dir() / "flip_drift_log.jsonl"   # RC-523: artifacts root
 _flip_drift_lock = threading.Lock()
 
 
@@ -13598,7 +13613,7 @@ def get_terrain_scorecard():
     The budget counts TRADING days, so Friday's scorecard is still current on
     Monday and stale on Tuesday. A wall-clock budget would condemn every
     scorecard each weekend and teach the operator to ignore the warning."""
-    p = Path(APP_DIR) / "reports" / "terrain_backtest_latest.json"
+    p = _artifact_reports_dir() / "terrain_backtest_latest.json"    # RC-523: artifacts root
     try:
         rep = json.loads(p.read_text(encoding="utf-8"))
     except (OSError, ValueError):

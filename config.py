@@ -112,11 +112,15 @@ def build_config(app_dir: str) -> AppConfig:
     if env_token:
         token_path = os.path.abspath(env_token)
     else:
-        token_path = os.path.abspath(os.path.join(app_dir, "schwab_token.json"))
-    diagnostics_dir = os.path.join(app_dir, "diagnostics")
+        # RC-523: the token is RUNTIME state — under the runtime root (this checkout unless
+        # ED_RUNTIME_ROOT moves it), never a source-tree fixture.
+        from runtime_layout import RUNTIME_ROOT
+        token_path = os.path.abspath(os.path.join(str(RUNTIME_ROOT), "schwab_token.json"))
+    from runtime_layout import RUNTIME_ROOT as _runtime_root, data_dir as _runtime_data_dir
+    diagnostics_dir = os.path.join(str(_runtime_root), "diagnostics")
 
-    # Barchart directories (canonical)
-    barchart_dir = os.path.join(app_dir, "data", "barchart")
+    # Barchart directories (canonical) — runtime data, under the runtime root (RC-523)
+    barchart_dir = os.path.join(str(_runtime_data_dir()), "barchart")
     barchart_raw_dir = os.path.join(barchart_dir, "raw")
     barchart_processed_dir = os.path.join(barchart_dir, "processed")
     barchart_output_dir = os.path.join(barchart_dir, "output")

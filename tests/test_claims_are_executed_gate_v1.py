@@ -154,5 +154,11 @@ def test_the_gate_is_registered_as_enforced():
     """A rule nobody calls is a comment."""
     src = (REPO / "tools" / "check_institutional_correctness.py").read_text(
         encoding="utf-8", errors="replace")
-    assert '("test_claims_are_executed", check_test_claims_are_executed, True)' in src, (
-        "the check is not registered ENFORCED in the institutional gate")
+    # BEDROCK PR B (2026-09-06): the eight test-hygiene lints are ONE registered check,
+    # `test_hygiene`; this predicate runs inside it, unchanged.
+    assert '("test_hygiene", check_test_hygiene, True)' in src, (
+        "test_hygiene is not registered ENFORCED in the institutional gate")
+    import tools.check_institutional_correctness as gate
+    import inspect
+    assert "check_test_claims_are_executed" in inspect.getsource(gate.check_test_hygiene), (
+        "test_hygiene no longer runs the claims-are-executed predicate")

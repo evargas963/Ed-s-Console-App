@@ -2,10 +2,15 @@
 ED_CONSOLE_DB_RO overrides the DB. Edit CUT for the window."""
 import os
 import sqlite3
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from db_authority import canonical_console_db_path  # noqa: E402
 
 DB = os.environ.get("ED_CONSOLE_DB_RO")
 if DB is None:
-    DB = "file:data/ed_console.db?mode=ro"
+    DB = f"file:{canonical_console_db_path()}?mode=ro"
 conn = sqlite3.connect(DB, uri=True)
 cur = conn.cursor()
 

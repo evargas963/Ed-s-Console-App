@@ -19,8 +19,8 @@ if str(ROOT) not in sys.path:
 
 from tools.classify_schwab_csv_crosswalk import _normalize_black_scholes_tag
 
-WORKING = ROOT / "governance" / "SCHWAB_CSV_DERIVED_FIELD_CROSSWALK_WORKING.csv"
-RESIDUAL = ROOT / "governance" / "SCHWAB_CSV_DERIVED_FIELD_CROSSWALK_RESIDUAL.csv"
+WORKING = ROOT / "schwab_field_inventory" / "SCHWAB_CSV_DERIVED_FIELD_CROSSWALK_WORKING.csv"
+RESIDUAL = ROOT / "schwab_field_inventory" / "SCHWAB_CSV_DERIVED_FIELD_CROSSWALK_RESIDUAL.csv"
 
 PRIMITIVE_DEFAULT_TAGS = frozenset({"DEFAULT_ZERO_OR", "GET_DEFAULT_ZERO", "DEFAULT_100_OR"})
 

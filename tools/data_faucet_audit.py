@@ -53,6 +53,8 @@ _ROOT = Path(__file__).resolve().parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
+from db_authority import canonical_console_db_path
+
 #: (regex over endpoint source, faucet id, liveness class, human note)
 SOURCE_SIGNATURES: tuple[tuple[str, str, str, str], ...] = (
     (r"resolve_spot\(",              "resolve_spot",        "LIVE",        "live vendor quote (cached ~1.25s)"),
@@ -486,7 +488,7 @@ def main(argv: list[str]) -> int:
         w = watch_live(secs)
         print(json.dumps(w, indent=2) if "--json" in argv else render_watch(w))
         return 0 if (w["levels_stable"] and w["volume_live"]) else 1
-    db = next((a for a in argv if not a.startswith("--")), os.path.join("data", "ed_console.db"))
+    db = next((a for a in argv if not a.startswith("--")), str(canonical_console_db_path()))
     rep = run(db)
     print(json.dumps(rep, indent=2) if "--json" in argv else render(rep))
     if "--check" in argv and rep["faucet_violations"]:

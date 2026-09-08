@@ -25,6 +25,8 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from calibration.daily_scoreboard import BACKFILL_JOIN_TOL_SEC
+from db_authority import canonical_console_db_path
+from runtime_layout import reports_dir  # RC-523: runtime/artifacts roots
 # The only write path to calibration_decision_log.research_excluded lives in
 # calibration/ (audited surface). This tool stays read-only.
 from calibration.operable_surface_quarantine import (  # noqa: F401 - re-exported for the CLI
@@ -38,7 +40,7 @@ LIVE_WINDOW_SEC = 30 * 60
 MAX_ATTACH_GAP_SEC = 59.0
 LIVE_COLOCATED_MIN_RATE = 0.95
 SENTINEL_TICKERS = ("SPY", "QQQ", "IWM")
-REPORT_LATEST = ROOT / "reports" / "operable_surface_gate_latest.json"
+REPORT_LATEST = reports_dir() / "operable_surface_gate_latest.json"
 
 
 def _connect(db_path: Path, *, readonly: bool) -> sqlite3.Connection:
@@ -289,11 +291,7 @@ def main(argv: list[str] | None = None) -> int:
         help="Exit 1 unless verdict is OPERABLE_SURFACE_CLEAN",
     )
     args = ap.parse_args(argv)
-    try:
-        from db import DB_PATH
-    except Exception:
-        DB_PATH = None  # type: ignore[misc, assignment]
-    db_path = args.db or (Path(DB_PATH) if DB_PATH else ROOT / "data" / "ed_console.db")
+    db_path = args.db or canonical_console_db_path()
     if not Path(db_path).is_file():
         print(f"operable_surface_gate: missing db {db_path}", file=sys.stderr)
         return 2
@@ -304,7 +302,7 @@ def main(argv: list[str] | None = None) -> int:
         REPORT_LATEST.parent.mkdir(parents=True, exist_ok=True)
         REPORT_LATEST.write_text(text + "\n", encoding="utf-8")
         # Keep triangulation-era filename current with honest label.
-        legacy = ROOT / "reports" / "fp_e2e_health_proof_latest.json"
+        legacy = reports_dir() / "fp_e2e_health_proof_latest.json"
         legacy.write_text(
             json.dumps(
                 {

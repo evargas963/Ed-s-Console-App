@@ -25,7 +25,7 @@
   "operator_visibility": [
     "build_model_serving_provenance.artifact_integrity per serve (VERIFIED_AGAINST_BUNDLE_MANIFEST / LEGACY_UNVERIFIED_NO_BUNDLE_MANIFEST / VERIFICATION_FAILED_CLOSED / NOT_LOADED) on the serve payload surface (MarketState.model_serving_provenance_v1 -> _ms_to_dict); HISTORICAL NOTE SUPERSEDED 2026-07-13: per-row identity persistence now exists via execution_identity_v1 (model_execution_identities + decision_persistence_ledger + linkage columns/triggers, final main 5947f79020bc) - the former OPEN_ITEMS per-row operator gate is retired; the serve-payload block itself remains a live-surface disclosure, not the per-row record",
     "python tools/ml_item4_fleet_migration.py --verify-fleet (exit 1 on any unverified active bundle)",
-    "governance/artifacts/ML_ITEM4_MIGRATION_STATE.json (report only; filesystem recompute is the trusted source)"
+    "reports/artifacts/ML_ITEM4_MIGRATION_STATE.json (report only; filesystem recompute is the trusted source)"
   ],
   "csv_first_declaration": {
     "Schwab CSV authority checked": "yes",

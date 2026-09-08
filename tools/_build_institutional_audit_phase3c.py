@@ -17,9 +17,14 @@ from datetime import date
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
-ART = REPO / "governance" / "artifacts"
+if str(REPO) not in sys.path:
+    sys.path.insert(0, str(REPO))
+
+from db_authority import canonical_console_db_path
+
+ART = REPO / "reports" / "artifacts"
 TODAY = date.today().isoformat()
-DB_PATH = REPO / "data" / "ed_console.db"
+DB_PATH = canonical_console_db_path()
 
 
 def _load_phase2():
@@ -265,7 +270,7 @@ def main() -> int:
 
     evidence = {
         "schema_version": 1,
-        "artifact": "governance/artifacts/INSTITUTIONAL_AUDIT_PHASE3C_EVIDENCE.json",
+        "artifact": "reports/artifacts/INSTITUTIONAL_AUDIT_PHASE3C_EVIDENCE.json",
         "generated": TODAY,
         "phase": "3C",
         "label": "route inventory closure and bypass register reconciliation",

@@ -6,6 +6,10 @@ test-e2e:
 # E2E must run first (writes .playwright_last_run_success); pytest enforces the marker.
 # Either step failing stops the recipe (non-zero exit).
 # Windows without make: npm run test:all
+# RC-535: both steps write their child's output to logs/ (file descriptors, never the
+# terminal pipe) and echo only a bounded tail, so a terminal that stops draining cannot
+# block the run. The pytest step is `python -m pytest -n auto --dist loadfile
+# --durations=20` inside scripts/run-pytest-full.mjs.
 test-all:
 	npm run test:e2e
-	python -m pytest -n auto --dist loadfile --durations=20
+	node scripts/run-pytest-full.mjs

@@ -1,4 +1,4 @@
-> **Classification:** Policy Specification | **Scope:** Execution plan; binding when ACTIVE_PROGRAM points here.
+> **Classification:** Historical Record | **Scope:** 2026-05 execution plan (PR1–PR4.1 landed; PR5–PR7 never started). Nothing points here; the `OPEN_ITEMS.md` G3/G4 queues it cites were retired (git history). Not binding (RC-520, 2026-09-05).
 
 # Training Pipeline Automation Plan
 

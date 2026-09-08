@@ -196,3 +196,19 @@ For each row below: destination exists under `models/active/`, source still exis
 - **VERIFY transformer_TSLA_1c.pt:** OK (archive_bytes=302466, active_bytes=302466)
 - **VERIFY transformer_TSLA_1c_meta.json:** OK (archive_bytes=1071, active_bytes=1071)
 - **VERIFY meta_TSLA_1c.pkl:** OK (archive_bytes=946, active_bytes=946)
+
+## Restore record formerly at `models/active/MODEL_RESTORE_LOG.md` (folded 2026-09-05, RC-520)
+
+## STEP A Restore Execution
+- timestamp: 2026-04-30T01:18:27.957900-05:00
+- branch: main
+- commit: 4b3dce4570e15a0111d437d830e66948a6470248
+- backup directory: `<repo>\models\active\_restore_backup_full_2026-04-30T01-18-27.957958-05-00`
+- files copied: 240
+- files backed up: 86
+- skipped pairs: 16
+- copy sha match/mismatch: 240/0
+- backup sha match/mismatch: 86/0
+- working tree new lines: 155
+- unexpected outside models/active: 0
+- result: PASS

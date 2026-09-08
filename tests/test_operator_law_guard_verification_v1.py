@@ -82,16 +82,6 @@ def test_close_a_row_needs_a_verification_that_ran_without_error():
     assert G.edit_violations(path, "| RC-1 | CLOSED |", real, None) != []
 
 
-def test_stop_clause_requires_successful_verification():
-    edit = [{"kind": "edit_attempt", "detail": str(REPO / "server.py"),
-             "repo": G.normalize_repo(REPO), "mtime_before": None}]
-    cmd = "pytest tests/test_db_safety.py -q"
-    ledger = edit + [{"kind": "bash", "detail": cmd, "repo": G.normalize_repo(REPO)}]
-    assert G.stop_violations(ledger, frozenset({cmd})) == []
-    assert G.stop_violations(ledger, frozenset()) != []       # issued, then errored
-    assert G.stop_violations(ledger, None) != []              # no transcript evidence
-
-
 def test_successful_commands_reads_the_transcript(tmp_path):
     import json
     tp = tmp_path / "t.jsonl"

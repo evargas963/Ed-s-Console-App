@@ -1,0 +1,89 @@
+{
+  "schema_version": 1,
+  "artifact": "reports/artifacts/GOVERNANCE_ADVERSARIAL_TEST_SPEC.json",
+  "generated": "2026-06-15",
+  "methodology": "Governance is proven by adversarial tests, not checker existence.",
+  "summary": {
+    "suites_defined": 7,
+    "suites_with_bypass_detection": 0,
+    "suites_partial_or_better": 2,
+    "institutional_grade": false
+  },
+  "suites": [
+    {
+      "suite_id": "GOV-FOUR-EYES",
+      "control_ids": [
+        "I-24"
+      ],
+      "scenario": "same actor authors and approves governance weakening",
+      "expected": "hard fail",
+      "implemented_test": null,
+      "status": "NOT_IMPLEMENTED"
+    },
+    {
+      "suite_id": "MKT-BAD-PRICE",
+      "control_ids": [
+        "I-28"
+      ],
+      "scenario": "inject SPY=0.01, SPY=50000, stale quote, clock skew, duplicate quote",
+      "expected": "quarantine + audit event + decision blocked",
+      "implemented_test": null,
+      "status": "NOT_IMPLEMENTED"
+    },
+    {
+      "suite_id": "PROMO-MANUAL-COPY",
+      "control_ids": [
+        "I-02",
+        "PL-PROMOTION"
+      ],
+      "scenario": "manual copy into models/active/ without execute_promotion_if_eligible",
+      "expected": "detection + audit + block at inference",
+      "implemented_test": "tests/test_arch_competition_auto_promote.py (unit \u2014 not bypass detection)",
+      "status": "PARTIAL"
+    },
+    {
+      "suite_id": "OVERRIDE-NO-TTL",
+      "control_ids": [
+        "I-30"
+      ],
+      "scenario": "override without TTL and without append-only registry",
+      "expected": "fail closed",
+      "implemented_test": null,
+      "status": "NOT_IMPLEMENTED"
+    },
+    {
+      "suite_id": "COMMIT-NO-VERIFY",
+      "control_ids": [
+        "PL-*"
+      ],
+      "scenario": "git commit --no-verify with governance weakening",
+      "expected": "block or immutable audit event",
+      "implemented_test": null,
+      "status": "NOT_IMPLEMENTED"
+    },
+    {
+      "suite_id": "RECON-BLIND",
+      "control_ids": [
+        "I-31"
+      ],
+      "scenario": "blind reconstruction from Decision ID only",
+      "expected": "full bundle in <60s single query",
+      "implemented_test": "tests/decision_reconstruction/test_immutable_decision_id.py",
+      "status": "PARTIAL"
+    },
+    {
+      "suite_id": "ROUTE-R005-BYPASS",
+      "control_ids": [
+        "I-29",
+        "I-28"
+      ],
+      "scenario": "no_valid_expiry path serves synthetic call without _validate_trade",
+      "expected": "block or explicit non-tradeable surface",
+      "implemented_test": null,
+      "status": "NOT_IMPLEMENTED"
+    }
+  ],
+  "phase1_cross_check": {
+    "controls_with_bypass_detection_test": 0
+  }
+}

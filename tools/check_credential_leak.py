@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import re
 import subprocess
+import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
@@ -44,7 +45,20 @@ SECRET_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
 )
 
 
+class StagedDiffUnreadable(RuntimeError):
+    """`git diff --cached` did not run. An unread diff is not an empty diff."""
+
+
 def _staged_text() -> str:
+    """The staged diff, RAISING when git could not produce it.
+
+    RC-529 (ported from #219's row 506; re-measured 2026-09-06 on ac3f78fb). This returned
+    `p.stdout or ""` and never read returncode, so any failure of the child — a broken or
+    locked index, a corrupt object, git absent from PATH under a different launch context —
+    yielded an empty diff. An empty diff scans clean, so this BLOCKING pre-commit secrets gate
+    would print its success line and let the commit through without having read a single byte
+    of what was being committed. "I could not look" is not "there is nothing".
+    """
     p = subprocess.run(
         ["git", "diff", "--cached", "--unified=0", "--no-color"],
         cwd=REPO,
@@ -53,11 +67,22 @@ def _staged_text() -> str:
         encoding="utf-8",
         errors="replace",
     )
+    if p.returncode != 0:
+        raise StagedDiffUnreadable(
+            f"git diff --cached exited {p.returncode}: "
+            f"{((p.stderr or '').strip().splitlines() or [''])[0]}"
+        )
     return p.stdout or ""
 
 
 def _norm_path(path: str) -> str:
-    return path.replace("\\", "/").lstrip("./")
+    """The ONE repo-relative spelling (RC-527). `lstrip("./")` used to live here and ate the
+    leading dot of `.github/...`, so a dot-prefixed skip entry could never match."""
+    if str(REPO) not in sys.path:
+        sys.path.insert(0, str(REPO))
+    from tools.pretooluse_guard import normalize_repo_relative
+
+    return normalize_repo_relative(path)
 
 
 def find_credential_leaks(diff_text: str | None = None) -> list[str]:
@@ -83,17 +108,38 @@ def find_credential_leaks(diff_text: str | None = None) -> list[str]:
     return hits
 
 
-def main() -> int:
-    hits = find_credential_leaks()
+def main(argv: list[str] | None = None) -> int:
+    args = list(sys.argv[1:] if argv is None else argv)
+    try:
+        hits = find_credential_leaks()
+    except StagedDiffUnreadable as e:
+        # RC-529: fail CLOSED. Reporting "clean" for a diff nobody read is the one outcome a
+        # secrets gate must never produce.
+        print("check_credential_leak: FAIL — the staged diff could not be read, so nothing "
+              "was scanned:", file=sys.stderr)
+        print(f"  {e}", file=sys.stderr)
+        print("  This is NOT a clean result. Fix the repository state and commit again.",
+              file=sys.stderr)
+        return 1
+    rc = 0
     if hits:
         print("check_credential_leak: FAIL — secrets or private paths in staged diff:")
         for h in hits[:40]:
             print(f"  {h}")
         if len(hits) > 40:
             print(f"  … and {len(hits) - 40} more")
-        return 1
-    print("check_credential_leak: PASS (staged diff clean)")
-    return 0
+        rc = 1
+    else:
+        print("check_credential_leak: PASS (staged diff clean)")
+    if "--and-private-paths" in args:
+        # BEDROCK 2026-09-06: ONE secrets-and-paths hook at the commit seam. The tracked-
+        # evidence private-path scan (tools/check_private_paths.py) keeps its own module and
+        # suite; this flag runs it in the same hook so the seam has one owner.
+        if str(REPO) not in sys.path:
+            sys.path.insert(0, str(REPO))
+        from tools.check_private_paths import main as private_paths_main
+        rc = max(rc, private_paths_main())
+    return rc
 
 
 if __name__ == "__main__":

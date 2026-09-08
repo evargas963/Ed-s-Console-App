@@ -111,7 +111,9 @@ GRACE_AFTER_SUBSCRIBE_SEC = 8.0
 #: masquerade as "Schwab stream connected" — _read_daemon_upstream_health is the ground
 #: truth for that distinct question, surfaced as its own field, never blended into
 #: streaming_healthy.
-_DAEMON_STATUS_PATH = Path(__file__).resolve().parent / "reports" / "stream_capture_status.json"
+from runtime_layout import reports_dir as _artifact_reports_dir  # RC-523: artifacts root
+
+_DAEMON_STATUS_PATH = _artifact_reports_dir() / "stream_capture_status.json"
 #: The daemon's write_status() loop runs on a 10s cadence — 3x that as a liveness bound on
 #: the STATUS FILE ITSELF (not the per-service health it carries): if the file hasn't been
 #: touched this recently, the daemon PROCESS may be dead, and every entry inside a dead
@@ -318,8 +320,8 @@ def _open_capture_db_readonly(db_path=None) -> Optional[sqlite3.Connection]:
 
     PR214_RTH_DEFECT_REMEDIATION_V1: goes through `resolve_stream_db_path`, the ONE
     canonical resolver `app.market_data.schwab.streaming.capture`'s CaptureWriter also uses, with
-    THIS module's own `STREAM_DB_DEFAULT` (still test-monkeypatchable, unchanged) as
-    the fallback when no STREAM_CAPTURE_DB_PATH override is set."""
+    THIS module's own `STREAM_DB_DEFAULT` (still test-monkeypatchable, unchanged) as the
+    explicit reader default; production resolves to the one runtime_layout path (RC-534)."""
     if db_path is None:
         db_path = resolve_stream_db_path(STREAM_DB_DEFAULT)
     try:

@@ -36,6 +36,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from db_authority import canonical_console_db_path  # noqa: E402
 from research.pilot_step3.f1_input_gates import gated_label_event_cell_f1  # noqa: E402
 from research.pilot_step3.f2_tb_grid_runner import _sessions_events, bootstrap_mean_ci  # noqa: E402
 from research.pilot_step3.gamma_conditioned_study_v1 import load_certified_gamma  # noqa: E402
@@ -48,7 +49,7 @@ from tools.reversion_rule_a_study_v1 import (  # noqa: E402
     scan_rule_a_candidates,
 )
 
-DEFAULT_DB = str(REPO_ROOT / "data" / "ed_console.db")
+DEFAULT_DB = str(canonical_console_db_path())
 REPORT_PATH = REPO_ROOT / "reports" / "batch" / "day_level_gex_study_spy_v1.json"
 
 COST_ROUND_TRIP_BP = 1.0

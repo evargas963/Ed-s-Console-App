@@ -3520,7 +3520,7 @@
         "ratio_max_to_min": null,
         "parity_ok": false
       },
-      "contract": "governance/artifacts/base_ticker_money_path_contract.json"
+      "contract": "reports/artifacts/base_ticker_money_path_contract.json"
     },
     "tickers": [
       {

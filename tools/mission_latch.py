@@ -13,16 +13,16 @@ production Edit/Write with no row anywhere passed, so did `sed -i` / `cp` / `mv`
 `truncate` / `git apply` / `--write` on production, and so did a Stop whose only record of the
 defect was prose. Reproduce: `pytest tests/test_find_fix_execution_latch_v1.py -q`.
 
-CONTRACT. Four questions, each answered once here and consumed by the guards that already
-exist — this module adds no hook, no registry and no tracked state file:
-  * `has_active_mission()`     — is a row opened today? (PreToolUse gate)
-  * `mission_blockers()`       — is that row finished or objectively blocked? (Stop gate)
-  * `dirty_production_files()` — what actually changed? (Stop gate, outcome side)
+CONTRACT (bedrock 2026-09-06). Two questions, each answered once here and consumed by the
+Stop guard — this module adds no hook, no registry and no tracked state file:
+  * `mission_blockers()`       — is a row THIS worktree introduced OPEN and neither finished
+                                 nor BLOCKED with a live date? (Stop gate)
   * `operator_halt_instruction()` — did the OPERATOR say stop? (the only escape)
-
-It re-derives nothing: paths come from `pretooluse_guard.classify_path`, shell write
-destinations from `process_lock_guard._shell_write_targets`, blocker vocabulary from the
-`BLOCKED_ON_*` tokens `operating_process_lock.rc_redate_violations` already enforces.
+The mutation-side half (`has_active_mission`, `dirty_production_files`) is REMOVED: "a row
+before a production mutation" was a proxy for "a defect found on the way gets recorded", a
+property no mutation seam can see; it made every feature edit a defect mission, expired at
+midnight (RC-521) and deadlocked on legitimate child rows. Work identity is the branch and
+PR; defects get rows by doctrine (AGENTS.md); CLOSE requires cited evidence (the gate).
 
 Fails OPEN on an unreadable ledger — no rows means nothing to say. The retired find-it-fix-it
 framework treated a missing ledger as an offender and so blocked every Stop and commit
@@ -78,6 +78,55 @@ UNFINISHED_MARKERS = ("IN PROGRESS", "VERIFICATION PENDING", "PENDING VERIFICATI
 #: authority. This is.
 BLOCKED_STATUS = "BLOCKED"
 
+#: RC-520: a CLOSED row whose full text has left the live ledger. The compact form keeps the
+#: seven cells (so every parser here and in the gate still reads it), the id (so citations
+#: resolve), the dates, a headline, the audit tags the row processed, and ONE git pointer to
+#: the blob that carries the complete five-why chain and evidence. Nothing about it is
+#: authority: it opens nothing, blocks nothing and is skipped by the substance validators.
+ARCHIVED_STATUS = "ARCHIVED"
+_HEADLINE_CHARS = 160
+_FIX_CHARS = 140
+_AUDIT_TAG_RE = re.compile(r"\bv\d+\b")
+_AUDIT_LINE_RE = re.compile(r"\baudit\b|\bprocessed\b", re.I)
+
+
+def archive_closed_rows(text: str, before: str, pointer_sha: str, keep_ids=()) -> tuple[str, list[str]]:
+    """Compact every CLOSED row opened before `before` (ISO date) to its ARCHIVED line.
+
+    The ONE writer of the ARCHIVED form (the gate declares the status, this owns the grammar).
+    `pointer_sha` must be a commit whose ledger carries the full rows — the caller passes the
+    HEAD the compaction is made against, so `git show <sha>:governance/root_cause_log.md`
+    reproduces every archived row verbatim. Rows in `keep_ids` and rows of any other status
+    are returned unchanged. Returns (new text, archived ids) and never touches non-row lines.
+    """
+    out_lines: list[str] = []
+    archived: list[str] = []
+    for line in text.splitlines():
+        if not _is_rc_row(line):
+            out_lines.append(line)
+            continue
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        if len(cells) < 7 or cells[1] != "CLOSED" or cells[0] in keep_ids or cells[2] >= before:
+            out_lines.append(line)
+            continue
+        rc_id, _status, opened, due, defect, _why, fix = cells[:7]
+        head = defect.split(". ", 1)[0].strip()
+        if len(head) > _HEADLINE_CHARS:
+            head = head[:_HEADLINE_CHARS - 1].rstrip() + "…"
+        tags = sorted(set(_AUDIT_TAG_RE.findall(line))) if _AUDIT_LINE_RE.search(line) else []
+        audit_note = f" Adversarial audit {' '.join(tags)} processed in this row." if tags else ""
+        why = (f"ARCHIVED {_today()}: the full five-why chain and closure evidence are carried "
+               f"verbatim by `git show {pointer_sha}:governance/root_cause_log.md` (RC-520 compaction; "
+               f"this line asserts nothing new).{audit_note}")
+        fix_head = fix.strip()
+        if len(fix_head) > _FIX_CHARS:
+            fix_head = fix_head[:_FIX_CHARS - 1].rstrip() + "…"
+        out_lines.append(f"| {rc_id} | {ARCHIVED_STATUS} | {opened} | {due} | {head} | {why} | "
+                         f"ARCHIVED (was CLOSED): {fix_head} |")
+        archived.append(rc_id)
+    new_text = "\n".join(out_lines) + ("\n" if text.endswith("\n") else "")
+    return new_text, archived
+
 #: Operator halt authority (AGENTS.md: "Operator halt words: STOP / PAUSE / HANG IT UP /
 #: DO NOT CONTINUE"). ANCHORED to the START of the operator's message, not searched inside it.
 #:
@@ -113,6 +162,11 @@ def ledger_path(repo: str | Path | None = None) -> Path:
         return RC_LOG
 
 
+def _is_rc_row(line: str) -> bool:
+    """The ONE recognizer of a ledger row line; `all_rows` parses, `archive_closed_rows` rewrites."""
+    return line.startswith("| RC-")
+
+
 def all_rows(repo: str | Path | None = None) -> list[MissionRow]:
     """Every parseable row in the ledger. The ONLY parser of this file's row grammar."""
     try:
@@ -121,7 +175,7 @@ def all_rows(repo: str | Path | None = None) -> list[MissionRow]:
         return []             # unreadable ledger -> no rows; see the module docstring on why
     out: list[MissionRow] = []
     for line in text.splitlines():
-        if not line.startswith("| RC-"):
+        if not _is_rc_row(line):
             continue
         cells = [c.strip() for c in line.strip().strip("|").split("|")]
         if len(cells) < 7:
@@ -169,55 +223,6 @@ def _rows_this_worktree_introduced(repo: str | Path | None = None) -> set[str]:
         return {m.group(1) for m in
                 (re.match(r"\+\| (RC-\d+) ", ln) for ln in r.stdout.splitlines()) if m}
     return None
-
-
-def active_mission_rows(today: str | None = None,
-                        repo: str | Path | None = None) -> list[MissionRow]:
-    """The mission(s) THIS worktree is executing right now.
-
-    Three conditions, and the last two are the RC-500 repair:
-
-      1. opened today          — session scope, unchanged.
-      2. status OPEN           — a CLOSED row is a FINISHED mission. It records what was done;
-                                 it does not authorize what comes next.
-      3. introduced HERE       — the row must be this worktree's own, not one that arrived on
-                                 the trunk. Authority binds to the mission being executed.
-    RC-502 added a fourth condition — not externally blocked — because a row that says the work
-    CANNOT PROCEED cannot authorize proceeding. RC-503 then made "blocked" a STATUS, so that
-    condition is now carried by `status == "OPEN"` itself: BLOCKED is a different token and is
-    excluded structurally, with no separate test to keep in step.
-
-    MEASURED before this repair: `has_active_mission` accepted any row opened today, so closing
-    RC-498 still authorized fresh production edits, and a row opened by unrelated work
-    authorized this worktree's. "Some row exists today" is a calendar fact; it was standing in
-    for authority it never established. MEASURED again on the blocked case: RC-499, carrying
-    BLOCKED_ON_OPERATOR, authorized every production edit of the session that opened it.
-
-    A blocked row regains authority the only honest way: by ceasing to claim it is blocked —
-    the disposition is removed and the row becomes ordinary active work again. Nothing else
-    changes, and no new state records the transition.
-    """
-    introduced = _rows_this_worktree_introduced(repo)
-    if introduced is None:
-        return []                      # unmeasurable -> no proof of a mission -> no authority
-    return [r for r in same_day_rows(today, repo)
-            if (r.status or "").strip() == "OPEN" and r.rc_id in introduced]
-
-
-def has_active_mission(today: str | None = None, repo: str | Path | None = None) -> bool:
-    """Is there exactly ONE unambiguous mission authorizing work here? Fails closed.
-
-    EXACTLY one, not at least one. With two OPEN same-day rows in the same checkout there is
-    no fact that says which of them a given edit belongs to, so either would authorize work it
-    has nothing to do with — worktree authority wearing a mission's name. MEASURED before this
-    clause: two unrelated rows both counted and `has_active_mission` returned True, so the
-    second licensed the first's edits and vice versa.
-
-    Zero and many therefore fail the same way, and both are honestly repairable: open the row,
-    or close the mission you are not executing. AGENTS.md already says ONE row for the
-    session's mission; this is that sentence made arithmetic.
-    """
-    return len(active_mission_rows(today, repo)) == 1
 
 
 # ── is the mission finished ───────────────────────────────────────────────────────────────
@@ -275,19 +280,21 @@ def row_blockers(row: MissionRow) -> list[str]:
 
 def mission_blockers(today: str | None = None,
                      repo: str | Path | None = None) -> list[tuple[str, str]]:
-    """(rc_id, reason) for every same-day row THIS worktree opened that forbids ending the turn.
+    """(rc_id, reason) for every row THIS worktree introduced that forbids ending the turn.
 
     Scoped to this worktree's own rows for the same reason authorization is: a row that arrived
     on the trunk is somebody else's landed work, and holding this turn hostage to it would make
-    the guard unsatisfiable by anything the agent can do.
+    the guard unsatisfiable by anything the agent can do. RC-521: the obligation follows the
+    worktree-owned unfinished row across midnight — the same rows that authorize work are the
+    rows that must be finished before the turn ends, whatever date they were opened.
     """
     introduced = _rows_this_worktree_introduced(repo)
     out: list[tuple[str, str]] = []
-    for row in same_day_rows(today, repo):
-        # None = the git question could not be measured; RC-72's duty then applies to every
-        # same-day row rather than none, because an unmeasurable state must not grant passage.
-        if introduced is not None and row.rc_id not in introduced:
-            continue
+    # None = the git question could not be measured; RC-72's duty then applies to every
+    # same-day row rather than none, because an unmeasurable state must not grant passage.
+    rows = (same_day_rows(today, repo) if introduced is None
+            else [r for r in all_rows(repo) if r.rc_id in introduced])
+    for row in rows:
         for reason in row_blockers(row):
             out.append((row.rc_id, reason))
     return out
@@ -344,42 +351,37 @@ def operator_halt_instruction(transcript_path: str) -> str | None:
 
 
 # ── the outcome question ──────────────────────────────────────────────────────────────────
-def dirty_production_files(repo: Path | None = None) -> list[str]:
-    """Production files currently modified in the working tree — the OUTCOME question.
+def main(argv: list[str] | None = None) -> int:
+    """Operator-invoked ledger housekeeping (RC-520): compact CLOSED rows opened before a date.
 
-    This is what makes the shell clause honest. The command-line enumerator
-    (`process_lock_guard._shell_write_targets`) recognises NAMED mutation forms and can be
-    evaded by choosing one it does not name — `python do_everything.py` can write any file and
-    no static reading of that command line can say so. This asks what actually CHANGED instead,
-    which no choice of command form evades. Prevention catches the known shapes at the moment
-    of the call; this catches the rest before the turn can end.
+        .venv/Scripts/python.exe tools/mission_latch.py --archive-closed-before 2026-09-01 --pointer-sha <HEAD>
 
-    Abstains (returns []) when git cannot be run: a clause that cannot measure must not block
-    on a guess, and the other clauses still bind.
+    The pointer must be the commit whose ledger still carries the full rows (the HEAD you are
+    compacting against). Prints the ids archived; exit 2 when the pointer does not resolve.
     """
-    root = (repo or REPO).resolve()
-    try:
-        r = subprocess.run(["git", "status", "--porcelain", "--untracked-files=no"],
-                           cwd=str(root), capture_output=True, text=True,
-                           encoding="utf-8", errors="replace", timeout=20)
-    except (OSError, subprocess.SubprocessError):
-        return []
-    if r.returncode != 0 or not r.stdout.strip():
-        return []
-    # Imported only once there is something to classify. `tests/test_hook_chains_v1.py` runs
-    # stop_guard inside a hermetic mini-checkout holding just the executor, this module and the
-    # guard; importing the path authority unconditionally would demand the whole guard tree
-    # there for a question that has no answer in a non-git directory anyway.
-    from tools.pretooluse_guard import classify_path
+    import argparse
+    ap = argparse.ArgumentParser(description=main.__doc__.splitlines()[0])
+    ap.add_argument("--archive-closed-before", metavar="YYYY-MM-DD", required=True)
+    ap.add_argument("--pointer-sha", required=True, help="commit carrying the full rows")
+    ap.add_argument("--keep", action="append", default=[], help="RC id to leave in full")
+    ap.add_argument("--ledger", default=None, help="ledger path (default: this repository's)")
+    args = ap.parse_args(argv)
+    path = Path(args.ledger) if args.ledger else RC_LOG
+    probe = subprocess.run(["git", "cat-file", "-e", f"{args.pointer_sha}:governance/root_cause_log.md"],
+                           cwd=str(path.parent.parent), capture_output=True, text=True)
+    if probe.returncode != 0:
+        print(f"pointer {args.pointer_sha} does not carry governance/root_cause_log.md; refusing to "
+              f"archive rows whose full text would have no home")
+        return 2
+    text = path.read_text(encoding="utf-8")
+    new_text, archived = archive_closed_rows(text, args.archive_closed_before, args.pointer_sha, set(args.keep))
+    path.write_text(new_text, encoding="utf-8", newline="\n")
+    print(f"archived {len(archived)} CLOSED row(s) opened before {args.archive_closed_before}: "
+          f"{', '.join(archived[:12])}{' ...' if len(archived) > 12 else ''}")
+    print(f"ledger {len(text):,} -> {len(new_text):,} bytes; full rows at git show "
+          f"{args.pointer_sha}:governance/root_cause_log.md")
+    return 0
 
-    out: list[str] = []
-    for line in r.stdout.splitlines():
-        rel = line[3:].strip().strip('"')
-        if " -> " in rel:                  # rename: the DESTINATION is what was written
-            rel = rel.split(" -> ", 1)[1]
-        if not rel:
-            continue
-        facts = classify_path(str(root / rel), repo=root)
-        if facts.governed and facts.production and facts.rel not in out:
-            out.append(facts.rel)
-    return out
+
+if __name__ == "__main__":
+    raise SystemExit(main())

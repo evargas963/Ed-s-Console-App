@@ -9,7 +9,6 @@ Phases: baseline JSON → optional backup → fetch/upsert per window → post-a
 CLI:
   python bar_rehydration_issue19_v1.py --db data/ed_console.db --dry-run
   python bar_rehydration_issue19_v1.py --db data/ed_console.db
-  python bar_rehydration_issue19_v1.py --db data/ed_console.db --skip-backup --no-repair
 """
 from __future__ import annotations
 
@@ -31,7 +30,8 @@ if str(ROOT) not in sys.path:
 from calibration.db_guard import register_allow_noncanonical_flag, require_canonical_db_target
 from calibration.paths import DEFAULT_DB
 from db import EdDB, get_snapshot_sql
-from distance_option_a_backfill_v1 import copy_db_file_backup
+from db_authority import is_canonical_db_path
+from db_safety import backup_permanent_database
 from horizon_outcomes import HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1, OUTCOME_BAR_SPECS
 from market_data_adapter import schwab_candles_to_bars
 from timeframe_config import CANONICAL_TIMEFRAME, DERIVED_TIMEFRAME
@@ -105,7 +105,6 @@ def run_rehydration(
     db_path: Path,
     *,
     dry_run: bool = False,
-    skip_backup: bool = False,
     window_days: int = 7,
     start_buffer_sec: float = DEFAULT_START_BUFFER_SEC,
     run_repair_after: bool = True,
@@ -143,8 +142,12 @@ def run_rehydration(
         out["status"] = "dry_run_complete"
         return out
 
-    if not skip_backup:
-        out["backup_path"] = str(copy_db_file_backup(db_path, label="pre_bar_rehydration_issue19_v1"))
+    if is_canonical_db_path(db_path):
+        backup_path, manifest_path, _ = backup_permanent_database(
+            db_path, reason="pre_bar_rehydration_issue19_v1"
+        )
+        out["backup_path"] = str(backup_path)
+        out["backup_manifest_path"] = str(manifest_path)
 
     db = EdDB(db_path)
     client = None
@@ -254,11 +257,19 @@ def run_rehydration(
 
     repair_audit: dict | None = None
     if run_repair_after and feasible > 0:
-        from pin_neutral_outcome_repair_v1 import run_repair as run_pin_repair
-
-        repair_audit = run_pin_repair(
-            db_path, dry_run=False, skip_backup=False, backup_label="pre_pin_neutral_after_bar_rehydration_issue19_v1"
+        from pin_neutral_outcome_repair_v1 import (
+            FLAG_COMPLETE as PIN_REPAIR_COMPLETE,
+            FLAG_KEY as PIN_REPAIR_FLAG,
         )
+
+        repair_audit = {
+            "schema": "pin_neutral_outcome_repair_v1",
+            "db_path": str(db_path),
+            "dry_run": False,
+        }
+        repair_audit.update(db.fill_outcomes_pin_neutral_backfill_v1(dry_run=False))
+        db.set_schema_flag(PIN_REPAIR_FLAG, PIN_REPAIR_COMPLETE)
+        repair_audit["flag_after"] = PIN_REPAIR_COMPLETE
         out["pin_neutral_repair"] = repair_audit
         rp = db_path.parent / "pin_neutral_repair_after_rehydration_issue19_v1.json"
         rp.write_text(json.dumps(repair_audit, indent=2, default=str) + "\n", encoding="utf-8")
@@ -289,7 +300,6 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--db", type=Path, default=DEFAULT_DB)
     ap.add_argument("--dry-run", action="store_true")
-    ap.add_argument("--skip-backup", action="store_true")
     ap.add_argument("--window-days", type=int, default=7)
     ap.add_argument(
         "--start-buffer-sec",
@@ -308,7 +318,6 @@ def main() -> None:
     r = run_rehydration(
         args.db,
         dry_run=args.dry_run,
-        skip_backup=args.skip_backup,
         window_days=args.window_days,
         start_buffer_sec=args.start_buffer_sec,
         run_repair_after=not args.no_repair,

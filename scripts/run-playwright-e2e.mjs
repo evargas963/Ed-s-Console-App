@@ -7,8 +7,11 @@
  */
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { logDir, runWithFileSink } from "./run-pytest-full.mjs";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -25,7 +28,9 @@ function ensurePlaywrightReady() {
   if (r.status !== 0) {
     fail("node not on PATH. Install Node.js LTS from https://nodejs.org/");
   }
-  r = spawnSync("npm", ["--version"], { encoding: "utf8", shell: true });
+  // Shell commands are handed over as one string: Node 24 (DEP0190) warns on an args
+  // array under `shell: true`, and that warning would land on the terminal (RC-535).
+  r = spawnSync("npm --version", { encoding: "utf8", shell: true });
   if (r.status !== 0) {
     fail("npm not on PATH — Node.js install should include npm.");
   }
@@ -33,7 +38,7 @@ function ensurePlaywrightReady() {
   if (!fs.existsSync(pwDir)) {
     fail("Playwright not installed — run: npm install");
   }
-  r = spawnSync("npx", ["playwright", "--version"], {
+  r = spawnSync("npx playwright --version", {
     cwd: root,
     encoding: "utf8",
     shell: true,
@@ -45,12 +50,14 @@ function ensurePlaywrightReady() {
         "\nFix: npm install in repo root."
     );
   }
-  r = spawnSync("npx", ["playwright", "install", "chromium"], {
+  // RC-535: a browser download prints unbounded progress; it goes to the log too.
+  const installCode = runWithFileSink("playwright-install", "npx", ["playwright", "install", "chromium"], {
+    logPath: path.join(logDir(), "test_e2e_install_last.log"),
     cwd: root,
-    stdio: "inherit",
     shell: true,
+    tailBytes: 0,
   });
-  if (r.status !== 0) {
+  if (installCode !== 0) {
     fail(
       "playwright install chromium failed (browser binaries required).\n" +
         "Fix: check network; on Linux try: npx playwright install-deps chromium"
@@ -60,14 +67,35 @@ function ensurePlaywrightReady() {
 
 ensurePlaywrightReady();
 
-const testRun = spawnSync("npx", ["playwright", "test"], {
-  cwd: root,
-  stdio: "inherit",
-  shell: true,
-  env: process.env,
-});
-if (testRun.status !== 0) {
-  process.exit(testRun.status ?? 1);
+const e2eRuntime = fs.mkdtempSync(path.join(os.tmpdir(), "ed-console-e2e-"));
+const e2eEnv = {
+  ...process.env,
+  ED_RUNTIME_ROOT: e2eRuntime,
+  ED_ARTIFACTS_ROOT: e2eRuntime,
+};
+delete e2eEnv.ED_CONSOLE_DB;
+delete e2eEnv.ED_DB_PATH;
+delete e2eEnv.STREAM_CAPTURE_DB_PATH;
+
+console.log(`[test:e2e] isolated runtime: ${e2eRuntime}`);
+// RC-535: the Playwright run (and the uvicorn webServer output it relays) goes to a log
+// file, never to this process's terminal pipe — a reader that stops draining cannot
+// block the run. Only the bounded tail is echoed.
+let exitCode;
+try {
+  exitCode = runWithFileSink("test:e2e", "npx", ["playwright", "test"], {
+    logPath: path.join(logDir(), "test_e2e_last.log"),
+    cwd: root,
+    shell: true,
+    env: e2eEnv,
+    tailBytes: 700,
+  });
+} finally {
+  fs.rmSync(e2eRuntime, { recursive: true, force: true });
+  console.log(`[test:e2e] removed isolated runtime: ${e2eRuntime}`);
+}
+if (exitCode !== 0) {
+  process.exit(exitCode);
 }
 
 // Issue 40/46 — unified enforcement: pytest requires this file after a successful E2E run.

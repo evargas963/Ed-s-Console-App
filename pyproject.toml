@@ -39,9 +39,9 @@ omit = ["tests/*", "*/node_modules/*", "models/*"]
 
 [tool.pytest.ini_options]
 # Collection stops sweeping the 1,278-file repo root for tests (measured: part of the
-# 43-68s collection cost) and the archive stays out explicitly instead of via a
-# conftest side effect. Parallelism stays a per-invocation choice (-n auto for full
+# 43-68s collection cost). Parallelism stays a per-invocation choice (-n auto for full
 # runs): hardwiring workers into addopts would make every 2s single-file run pay the
 # multi-second per-worker import chain (sklearn 15.8s / xgboost 15.5s / torch 12.9s).
+# tests/archive/ no longer exists (bedrock step 3, 498897ce; RC-524).
 testpaths = ["tests"]
-norecursedirs = ["tests/archive", "node_modules", ".venv", "models"]
+norecursedirs = ["node_modules", ".venv", "models"]
