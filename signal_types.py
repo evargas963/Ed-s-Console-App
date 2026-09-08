@@ -182,6 +182,15 @@ class SignalInput:
     candles_5m:     list = field(default_factory=list)   # list of Candle objects (last 20 bars)
     candles_1m:     list = field(default_factory=list)
 
+    # ── Emission facts (RC-534) ────────────────────────────────────────────────
+    # Computed ONCE before the state is built by trade_impacting_gate.validate_trade_impacting_gate
+    # on the facts known then (ticker, spot sanity, spread age, decision route class). The Call
+    # consumes them and vetoes ITSELF (WAIT / low, wait_blocker market_data_emission_gate), so every
+    # coupled field (option right, strike, no-trade, headline, plan) derives from the vetoed verdict.
+    # None = no fact supplied (replay / offline callers): NOT a veto. Only an explicit False vetoes.
+    production_emission_allowed: Optional[bool] = None
+    emission_block_reasons: tuple = ()
+
 @dataclass
 class CanonicalForecast:
     """

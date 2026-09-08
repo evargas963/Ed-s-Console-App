@@ -7940,6 +7940,18 @@ def _fetch_state(
         _diag_step("pre_build_market_state", ticker)
     from db import utc_ts as _utc_ts_refresh
     _refresh_ts_utc = _utc_ts_refresh()
+    # RC-534: the emission facts The Call must consume — decision route class + market-data sanity
+    # (ticker, spot, spread age) — computed ONCE here by the gate's own validator on the facts known
+    # before the state is built, and handed to the owner through SignalInput. The Call vetoes itself;
+    # the post-build gate in stamp_decision_bundle stamps quarantine and blocks decision_id /
+    # persistence and REWRITES NOTHING (it was a second writer of the verdict).
+    from trade_impacting_gate import resolve_fetch_state_decision_route, validate_trade_impacting_gate
+
+    _decision_route = resolve_fetch_state_decision_route(update_source)
+    _emission_gate = validate_trade_impacting_gate(
+        {"ticker": ticker, "spot": spot_f, "spread_age_ms": _quote_spread_age_ms},
+        route=_decision_route,
+    )
     try:
         ms = build_market_state(
         ticker=ticker,
@@ -8008,6 +8020,7 @@ def _fetch_state(
         db=_ed_db,
         pred_override=_get_prediction_override(ticker),
         refresh_ts_utc=_refresh_ts_utc,
+        emission_gate=_emission_gate,
     )
     except Exception as _bms_e:
         _diag_crash("build_market_state", _bms_e, ticker)
@@ -9824,9 +9837,7 @@ def _fetch_state(
         if isinstance(sr, dict):
             sr["signals_engine_failed"] = True
     _apply_trader_horizon_contract(ms_dict)
-    from trade_impacting_gate import resolve_fetch_state_decision_route
-
-    _decision_route = resolve_fetch_state_decision_route(update_source)
+    # _decision_route was resolved before build_market_state (RC-534): one route, one gate fact.
     # execution_identity_v1: one cycle = one decision_id = one identity. Seed
     # the anchored pair so stamping binds the SAME decision the snapshot carries.
     _xid_pair = getattr(ms, "_execution_identity_pair", None)

@@ -29,8 +29,12 @@ def test_wrong_spot_quarantines_production_decision(release_ready, spot):
     assert out.get("decision_gate_blocked") is True
     quarantine = out.get("market_data_quarantine") or {}
     assert quarantine.get("active") is True
-    assert out.get("call_signal") == "wait"
-    assert out.get("trade_valid") is False
+    # RC-534: the gate blocks emission (no decision_id, quarantine fact) and REWRITES NOTHING.
+    # The verdict is The Call's alone; on the live path the owner already vetoed itself on the
+    # same facts before this dict existed.
+    assert out.get("call_signal") == "long"
+    assert out.get("call_conviction") == "high"
+    assert "trade_valid" not in out
 
 
 def test_qqq_wrong_spot_quarantines(release_ready):
