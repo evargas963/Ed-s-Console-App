@@ -40,10 +40,9 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from db_authority import canonical_console_db_path  # noqa: E402
 from replay_bundle_coverage import REPLAY_BUNDLE_MIN_JSON_LENGTH  # noqa: E402
 
-DEFAULT_DB = str(canonical_console_db_path())
+DEFAULT_DB = str(REPO_ROOT / "data" / "ed_console.db")
 P0_REPORT = REPO_ROOT / "reports" / "backfill_greeks_p0_census_v1.json"
 P1_REPORT = REPO_ROOT / "reports" / "backfill_greeks_p1_certification_v1.json"
 

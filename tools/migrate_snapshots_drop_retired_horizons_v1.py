@@ -186,9 +186,10 @@ def run(
 
     from db_safety import (
         assert_critical_row_counts_no_drop,
-        backup_permanent_database,
+        backup_console_database,
         critical_table_row_counts,
         preflight_exclusive_sqlite_write,
+        skip_automatic_backup,
     )
 
     ok, err = preflight_exclusive_sqlite_write(db_path)
@@ -197,14 +198,17 @@ def run(
 
     with _connect(db_path) as _pre:
         counts_before = critical_table_row_counts(_pre)
-    _backup_root = Path(backup_root).resolve() if backup_root is not None else None
-    _backup_db, _manifest_path, backup_meta = backup_permanent_database(
-        db_path,
-        reason=SCHEMA,
-        backup_root=_backup_root,
-    )
-    audit["backup_db_path"] = str(_backup_db)
-    audit["backup_manifest_path"] = str(_manifest_path)
+    backup_meta: dict[str, Any] | None = None
+    if not skip_automatic_backup():
+        _backup_root = Path(backup_root).resolve() if backup_root is not None else None
+        _backup_db, _manifest_path, manifest = backup_console_database(
+            db_path,
+            operation_name=SCHEMA,
+            backup_root=_backup_root,
+        )
+        audit["backup_db_path"] = str(_backup_db)
+        audit["backup_manifest_path"] = str(_manifest_path)
+        backup_meta = manifest
 
     indexes_before: dict[str, str] = {}
     try:
@@ -251,7 +255,8 @@ def run(
 
     audit["status"] = "applied"
     audit["success"] = True
-    audit["backup_operation"] = backup_meta.get("reason")
+    if backup_meta is not None:
+        audit["backup_operation"] = backup_meta.get("operation_name")
     _finalize_audit(audit, audit_path)
     return audit
 

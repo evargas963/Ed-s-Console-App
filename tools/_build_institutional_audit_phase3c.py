@@ -17,14 +17,9 @@ from datetime import date
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
-if str(REPO) not in sys.path:
-    sys.path.insert(0, str(REPO))
-
-from db_authority import canonical_console_db_path
-
 ART = REPO / "reports" / "artifacts"
 TODAY = date.today().isoformat()
-DB_PATH = canonical_console_db_path()
+DB_PATH = REPO / "data" / "ed_console.db"
 
 
 def _load_phase2():

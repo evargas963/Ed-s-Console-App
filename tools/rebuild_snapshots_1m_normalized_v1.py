@@ -37,11 +37,9 @@ REPO = Path(__file__).resolve().parents[1]
 # tools/process_lock_guard.py and tools/pm_verify_lock.py already carry.
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
-from db_authority import canonical_console_db_path
-
-DEFAULT_DB = canonical_console_db_path()
-OUT_DEFAULT = DEFAULT_DB.with_name("ed_console_repaired.db")
-QUAR_DEFAULT = DEFAULT_DB.with_name("ed_console_pre_rc207_quarantine.db")
+DEFAULT_DB = REPO / "data" / "ed_console.db"
+OUT_DEFAULT = REPO / "data" / "ed_console_repaired.db"
+QUAR_DEFAULT = REPO / "data" / "ed_console_pre_rc207_quarantine.db"
 REPORT = REPO / "reports" / "rebuild_snapshots_1m_normalized_latest.json"
 TABLE = "snapshots_1m_normalized"
 INDEX = "idx_snap1m_ticker_tf_ts"

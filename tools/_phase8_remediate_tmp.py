@@ -1,16 +1,8 @@
 import json, sqlite3, statistics, time
-import sys
 from collections import defaultdict
-from pathlib import Path
 import numpy as np
 from sklearn.isotonic import IsotonicRegression
 from sklearn.linear_model import LogisticRegression
-
-ROOT = Path(__file__).resolve().parents[1]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
-from db_authority import canonical_console_db_path
 
 phase8=json.load(open('data/phase8_calibration_global_v1.json'))
 readiness=json.load(open('data/ticker_readiness_matrix_v1.json'))
@@ -67,7 +59,7 @@ def method_preds(name,p,y):
         return pred,model
     raise ValueError
 
-conn=sqlite3.connect(canonical_console_db_path()); conn.row_factory=sqlite3.Row
+conn=sqlite3.connect('data/ed_console.db'); conn.row_factory=sqlite3.Row
 results=[]; final_funcs={}; thresholds=[]; robustness=[]
 for family,colp,colo,valdir in [('move','pred_move_prob','outcome_move',False),('dir','pred_dir_up_prob','outcome_dir',True)]:
   final_funcs[family]={}

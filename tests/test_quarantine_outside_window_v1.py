@@ -41,8 +41,7 @@ def _mk_db(p: Path) -> tuple[int, int]:
 
 
 def _run(db: Path, *flags: str) -> dict:
-    r = subprocess.run([sys.executable, str(TOOL), "--db", str(db),
-                        "--allow-noncanonical-db", *flags],
+    r = subprocess.run([sys.executable, str(TOOL), "--db", str(db), *flags],
                        capture_output=True, text=True, timeout=300)
     last = [ln for ln in (r.stdout or "").splitlines() if ln.strip().startswith("{")][-1]
     return json.loads(last)
@@ -64,13 +63,16 @@ def test_dry_run_counts_and_never_writes(tmp_path):
 def test_execute_moves_exactly_and_restore_reverses(tmp_path, monkeypatch):
     db = tmp_path / "q.db"
     n_legal, n_illegal = _mk_db(db)
+    # the tool demands a fresh backup — point its glob at a fixture backup dir via cwd trickery
+    # is not possible (ROOT-anchored), so create a real dated backup file in the repo location
+    # would touch the real tree; instead call the module functions directly for execute.
     sys.path.insert(0, str(REPO / "tools"))
     import importlib
 
     m = importlib.import_module("quarantine_outside_window_bars_v1")
+    monkeypatch.setattr(m, "_fresh_backup_exists", lambda: "fixture-backup")
     monkeypatch.setattr(sys, "argv",
-                        ["x", "--db", str(db), "--allow-noncanonical-db",
-                         "--execute", "--expected", str(n_illegal)])
+                        ["x", "--db", str(db), "--execute", "--expected", str(n_illegal)])
     rc = m.main()
     assert rc == 0
     con = sqlite3.connect(str(db))
@@ -81,10 +83,7 @@ def test_execute_moves_exactly_and_restore_reverses(tmp_path, monkeypatch):
     con.close()
 
     # reversibility — the exact inverse
-    monkeypatch.setattr(
-        sys, "argv",
-        ["x", "--db", str(db), "--allow-noncanonical-db", "--restore", "--execute"],
-    )
+    monkeypatch.setattr(sys, "argv", ["x", "--db", str(db), "--restore", "--execute"])
     rc = m.main()
     assert rc == 0
     con = sqlite3.connect(str(db))
@@ -100,9 +99,6 @@ def test_expected_mismatch_refuses(tmp_path, monkeypatch):
     import importlib
 
     m = importlib.import_module("quarantine_outside_window_bars_v1")
-    monkeypatch.setattr(
-        sys, "argv",
-        ["x", "--db", str(db), "--allow-noncanonical-db",
-         "--execute", "--expected", "999"],
-    )
+    monkeypatch.setattr(m, "_fresh_backup_exists", lambda: "fixture-backup")
+    monkeypatch.setattr(sys, "argv", ["x", "--db", str(db), "--execute", "--expected", "999"])
     assert m.main() == 2, "a count mismatch must refuse to execute — that is the checkpoint"

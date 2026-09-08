@@ -21,7 +21,8 @@ from calibration.db_guard import (
 )
 from calibration.paths import DEFAULT_DB
 from db_authority import is_canonical_db_path
-from db_safety import backup_permanent_database
+from db_safety import backup_console_database
+from distance_option_a_backfill_v1 import copy_db_file_backup
 
 log = logging.getLogger(__name__)
 
@@ -33,6 +34,8 @@ def run_repair(
     db_path: Path,
     *,
     dry_run: bool = False,
+    skip_backup: bool = False,
+    backup_label: str = "pre_pin_neutral_outcome_repair_v1",
     allow_noncanonical: bool = False,
 ) -> dict:
     from db import EdDB
@@ -43,12 +46,15 @@ def run_repair(
         "db_path": str(db_path),
         "dry_run": dry_run,
     }
-    if not dry_run and is_canonical_db_path(db_path):
-        backup_path, manifest_path, _ = backup_permanent_database(
-            db_path, reason="pre_pin_neutral_outcome_repair_v1"
-        )
-        audit["backup_path"] = str(backup_path)
-        audit["backup_manifest_path"] = str(manifest_path)
+    if not dry_run and not skip_backup:
+        if is_canonical_db_path(db_path):
+            backup_path, manifest_path, _ = backup_console_database(
+                db_path, operation_name=backup_label
+            )
+            audit["backup_path"] = str(backup_path)
+            audit["backup_manifest_path"] = str(manifest_path)
+        else:
+            audit["backup_path"] = str(copy_db_file_backup(db_path, label=backup_label))
 
     db = EdDB(db_path, allow_noncanonical=allow_noncanonical)
     res = db.fill_outcomes_pin_neutral_backfill_v1(dry_run=dry_run)
@@ -70,6 +76,7 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--db", type=Path, default=DEFAULT_DB)
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--skip-backup", action="store_true")
     register_allow_noncanonical_flag(ap)
     args = ap.parse_args()
     if not args.db.is_file():
@@ -78,6 +85,7 @@ def main() -> None:
     r = run_repair(
         args.db,
         dry_run=args.dry_run,
+        skip_backup=args.skip_backup,
         allow_noncanonical=bool(getattr(args, "allow_noncanonical_db", False)),
     )
     print(json.dumps(r, indent=2))

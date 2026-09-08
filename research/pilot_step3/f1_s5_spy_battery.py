@@ -37,10 +37,9 @@ from .f1_input_gates import (
     build_label_quality_report,
 )
 from .labeling import TripleBarrierResult, build_atr_series
-from db_authority import canonical_console_db_path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_DB = str(canonical_console_db_path())
+DEFAULT_DB = str(REPO_ROOT / "data" / "ed_console.db")
 REPORT_PATH = REPO_ROOT / "reports" / "f1_s5_spy_battery_v1.json"
 
 # Declared draft cell (middle of the pilot's pledged barrier grid) + pilot

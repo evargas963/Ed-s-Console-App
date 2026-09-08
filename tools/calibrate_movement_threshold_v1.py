@@ -23,13 +23,12 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from calibration.db_guard import register_allow_noncanonical_flag, require_canonical_db_target
-from db_authority import canonical_console_db_path
 from db import configure_sqlite_connection
 from ml_data_common import head_rth_df_from_ts_utc, weekday_where_clause
 from movement_target_threshold import movement_threshold_pts_v1
 from timeframe_config import CANONICAL_TIMEFRAME
 
-DEFAULT_DB = canonical_console_db_path()
+DEFAULT_DB = ROOT / "data" / "ed_console.db"
 OUT_PATH = ROOT / "calibration" / "movement_target_threshold_v1.json"
 # Oversample SQL LIMIT then filter RTH on ts_utc (stored et_hour may skew pre-backfill rows).
 # Assumes ~50%+ RTH coverage in typical snapshots; tune up if dataset shifts off-hours-heavy.

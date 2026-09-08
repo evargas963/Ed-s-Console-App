@@ -18,8 +18,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT))
 
-from db_authority import canonical_console_db_path  # noqa: E402
-
 from calibration.db_guard import register_allow_noncanonical_flag, require_canonical_db_target
 from db import configure_sqlite_connection
 from ml_horizon import ML_HORIZON_SLUGS
@@ -44,7 +42,7 @@ def _snapshot_columns(conn: sqlite3.Connection) -> set[str]:
 
 def main() -> int:
     ap = __import__("argparse").ArgumentParser()
-    ap.add_argument("--db", type=Path, default=canonical_console_db_path())
+    ap.add_argument("--db", type=Path, default=ROOT / "data" / "ed_console.db")
     register_allow_noncanonical_flag(ap)
     args = ap.parse_args()
     require_canonical_db_target(args, tool_name="audit_fused_policy_history_sufficiency_v1", write_capable=False)

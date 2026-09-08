@@ -148,7 +148,7 @@ def run_cell(df: pd.DataFrame, hz: str, exclude_truncated: bool) -> dict | None:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="D2 dual-label learnability A/B")
-    ap.add_argument("--db", type=Path, required=True, help="explicit run-private research DB")
+    ap.add_argument("--db", type=Path, default=ROOT / "data" / "research" / "d2_dual_label.db")
     ap.add_argument("--out", type=Path, default=ROOT / "reports" / "d2_dual_label")
     args = ap.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)

@@ -19,8 +19,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT))
 
-from db_authority import canonical_console_db_path  # noqa: E402
-
 from db import configure_sqlite_connection
 from features.inference_snapshot import build_inference_snapshot_v1_from_db_row
 from ml_horizon import ML_HORIZON_SLUGS, normalize_ml_horizon_slug
@@ -194,7 +192,7 @@ def cold_start_table(db: Path, n_sample: int = 48) -> list[dict]:
 
 def main() -> int:
     ts = datetime.now(timezone.utc).isoformat()
-    db = (canonical_console_db_path()).resolve()
+    db = (ROOT / "data" / "ed_console.db").resolve()
 
     cleanup = json.loads((ROOT / "data" / "phase65_movement_cleanup_v1_result.json").read_text(encoding="utf-8"))
     isolation = json.loads((ROOT / "data" / "phase65_movement_isolation_v1_report.json").read_text(encoding="utf-8"))

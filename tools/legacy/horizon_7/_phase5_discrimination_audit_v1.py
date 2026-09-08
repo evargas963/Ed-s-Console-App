@@ -19,9 +19,7 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT))
 
-from db_authority import canonical_console_db_path  # noqa: E402
-
-DEFAULT_DB = canonical_console_db_path()
+DEFAULT_DB = ROOT / "data" / "ed_console.db"
 
 GOV_WHERE = """
 s.timeframe = '1m'

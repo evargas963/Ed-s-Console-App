@@ -21,7 +21,6 @@ _REPO = Path(__file__).resolve().parents[1]
 if str(_REPO) not in sys.path:
     sys.path.insert(0, str(_REPO))
 
-from db_authority import canonical_console_db_path
 from verification.db_sqlite_contention_impact_audit import (
     build_contention_impact_report,
     format_contention_markdown,
@@ -85,7 +84,7 @@ def _resolve_db_path() -> Path | None:
 
         return Path(DB_PATH)
     except Exception:
-        return canonical_console_db_path()
+        return _REPO / "data" / "ed_console.db"
 
 
 def run_db_contention_audit(

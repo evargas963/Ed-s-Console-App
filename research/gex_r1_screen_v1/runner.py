@@ -17,7 +17,6 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from db_authority import canonical_console_db_path
 from research.gex_r1_screen_v1.rules import day_rule_pnl
 from research.gex_r1_screen_v1.signal import attach_gex_z, load_morning_signals
 
@@ -384,7 +383,7 @@ def write_reports(result: dict[str, Any]) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="GEX-R1-SCREEN history screen")
-    ap.add_argument("--db", type=Path, default=canonical_console_db_path())
+    ap.add_argument("--db", type=Path, default=ROOT / "data" / "ed_console.db")
     args = ap.parse_args(argv)
     print(f"gex_r1_screen: loading {args.db} …", flush=True)
     result = run_screen(args.db)

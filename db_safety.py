@@ -1,6 +1,6 @@
 """
 Production SQLite safeguards: authorizer-based DROP denial, static SQL validation,
-stable Online Backups, single-writer preflight, and row-count invariants.
+stable validated backups, single-writer preflight, and row-count invariants.
 
 **Canonical DB connections** (``db_authority.is_canonical_db_path``) install
 ``sqlite3.Connection.set_authorizer`` to deny DROP/DETACH unless
@@ -10,32 +10,30 @@ stable Online Backups, single-writer preflight, and row-count invariants.
 ``VACUUM INTO``, etc.) for audited scripts — not wired on every ORM-style execute.
 
 **Backups**
-``backup_permanent_database`` is the sole producer. It accepts only either canonical
-permanent DB, uses SQLite's Online Backup API into a staging file, independently validates
-``quick_check`` and exact schema identity, then atomically promotes one stable DB and
-manifest per source. The previous validated backup is untouched until validation passes.
+- ``backup_console_database`` is the sole canonical main-DB backup producer.
+- It refreshes ``backups/db/ed_console_backup.db`` plus one stable manifest with
+  SQLite's Online Backup API, independently reopens and validates the staged DB,
+  and preserves the previous verified pair until replacement succeeds.
+- Existing callers may explicitly suppress their pre-mutation backup through the
+  pre-existing ``ED_CONSOLE_SKIP_AUTOMATIC_BACKUP`` / ``skip_backup`` controls.
 
 **Row counts**: ``assert_critical_row_counts_no_drop`` after migration / backfill bar writes.
 """
 from __future__ import annotations
 
-from contextlib import contextmanager
 import json
 import os
 import re
 import sqlite3
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from db_authority import (
-    canonical_permanent_db_paths,
-    is_canonical_db_path,
-    permanent_database_identity,
-)
-from runtime_layout import RUNTIME_ROOT
+from db_authority import is_canonical_db_path, project_root
 
 DANGEROUS_SQL_UNRESTRICTED_ENV = "ED_CONSOLE_DANGEROUS_SQL_UNRESTRICTED"
+SKIP_AUTOMATIC_BACKUP_ENV = "ED_CONSOLE_SKIP_AUTOMATIC_BACKUP"
 SQL_EXECUTE_GUARD_ENV = "ED_CONSOLE_SQL_EXECUTE_GUARD"
 
 
@@ -51,13 +49,21 @@ def dangerous_sql_unrestricted() -> bool:
     )
 
 
+def skip_automatic_backup() -> bool:
+    return os.environ.get(SKIP_AUTOMATIC_BACKUP_ENV, "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+
+
 def sql_execute_guard_enabled() -> bool:
     v = os.environ.get(SQL_EXECUTE_GUARD_ENV, "1").strip().lower()
     return v not in ("0", "false", "no", "off")
 
 
 def default_backup_root() -> Path:
-    return (RUNTIME_ROOT / "backups" / "db").resolve()
+    return (project_root() / "backups" / "db").resolve()
 
 
 def preflight_exclusive_sqlite_write(db_path: Path, *, timeout_s: float = 30.0) -> tuple[bool, str | None]:
@@ -117,16 +123,6 @@ def assert_critical_row_counts_no_drop(before: dict[str, int], after: dict[str, 
             )
 
 
-_BACKUP_FILENAMES = {
-    "ed_console": ("ed_console_backup.db", "ed_console_backup_manifest.json", {"snapshots"}),
-    "stream_capture": (
-        "stream_capture_backup.db",
-        "stream_capture_backup_manifest.json",
-        {"stream_quotes_raw", "stream_producer_heartbeat"},
-    ),
-}
-
-
 def _schema_identity(conn: sqlite3.Connection) -> tuple[tuple[str, str, str, str], ...]:
     return tuple(
         (str(row[0]), str(row[1]), str(row[2]), str(row[3] or ""))
@@ -137,11 +133,10 @@ def _schema_identity(conn: sqlite3.Connection) -> tuple[tuple[str, str, str, str
     )
 
 
-def _validate_backup(
+def _validate_console_backup(
     backup_path: Path,
     *,
     expected_schema: tuple[tuple[str, str, str, str], ...],
-    required_tables: set[str],
 ) -> str:
     conn = sqlite3.connect(f"{backup_path.as_uri()}?mode=ro", uri=True)
     try:
@@ -151,10 +146,9 @@ def _validate_backup(
         actual_schema = _schema_identity(conn)
         if actual_schema != expected_schema:
             raise RuntimeError("backup schema identity differs from source")
-        actual_tables = {row[1] for row in actual_schema if row[0] == "table"}
-        missing = sorted(required_tables - actual_tables)
-        if missing:
-            raise RuntimeError(f"backup database identity missing required tables: {missing}")
+        tables = {row[1] for row in actual_schema if row[0] == "table"}
+        if "snapshots" not in tables:
+            raise RuntimeError("backup database identity missing required table: snapshots")
     finally:
         conn.close()
     return "ok"
@@ -162,9 +156,8 @@ def _validate_backup(
 
 @contextmanager
 def _exclusive_backup_lock(root: Path):
-    """Serialize promotion so a DB and its manifest cannot be crossed by two callers."""
-    lock_path = root / ".backup.lock"
-    lock_file = lock_path.open("a+b")
+    """Serialize promotion so the stable DB and manifest cannot be crossed."""
+    lock_file = (root / ".backup.lock").open("a+b")
     locked = False
     try:
         lock_file.seek(0, os.SEEK_END)
@@ -183,7 +176,7 @@ def _exclusive_backup_lock(root: Path):
                 fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
             locked = True
         except OSError as exc:
-            raise RuntimeError(f"another permanent-database backup is already running: {exc}") from exc
+            raise RuntimeError(f"another console-database backup is already running: {exc}") from exc
         yield
     finally:
         try:
@@ -201,28 +194,26 @@ def _exclusive_backup_lock(root: Path):
             lock_file.close()
 
 
-def backup_permanent_database(
+def backup_console_database(
     source_db: Path,
     *,
-    reason: str,
+    operation_name: str,
     backup_root: Path | None = None,
 ) -> tuple[Path, Path, dict[str, Any]]:
-    """Refresh one approved stable backup using SQLite's Online Backup API."""
+    """Refresh the one stable canonical main-DB backup using SQLite Online Backup."""
     src = Path(source_db).resolve()
     if not src.is_file():
-        raise FileNotFoundError(f"backup source missing: {src}")
-    identity = permanent_database_identity(src)
-    if identity is None:
-        raise ValueError(f"backup source is not an approved canonical permanent database: {src}")
-    db_name, manifest_name, required_tables = _BACKUP_FILENAMES[identity]
+        raise FileNotFoundError(f"backup_console_database: source missing: {src}")
+    if backup_root is None and not is_canonical_db_path(src):
+        raise ValueError(f"backup source is not the canonical console database: {src}")
     root = Path(backup_root).resolve() if backup_root is not None else default_backup_root()
     root.mkdir(parents=True, exist_ok=True)
-    dest = root / db_name
-    manifest_path = root / manifest_name
-    staging = root / f".{db_name}.staging"
-    manifest_staging = root / f".{manifest_name}.staging"
-    rollback = root / f".{db_name}.previous"
-    manifest_rollback = root / f".{manifest_name}.previous"
+    dest = root / "ed_console_backup.db"
+    manifest_path = root / "ed_console_backup_manifest.json"
+    staging = root / ".ed_console_backup.db.staging"
+    manifest_staging = root / ".ed_console_backup_manifest.json.staging"
+    rollback = root / ".ed_console_backup.db.previous"
+    manifest_rollback = root / ".ed_console_backup_manifest.json.previous"
     if dest.resolve() == src.resolve():
         raise ValueError("backup destination cannot equal source path")
     with _exclusive_backup_lock(root):
@@ -257,31 +248,19 @@ def backup_permanent_database(
             finally:
                 source_conn.close()
 
-            validation = _validate_backup(
-                staging,
-                expected_schema=source_schema,
-                required_tables=required_tables,
-            )
-            source_size = src.stat().st_size
-            backup_size = staging.stat().st_size
+            validation = _validate_console_backup(staging, expected_schema=source_schema)
             manifest: dict[str, Any] = {
-                "database_identity": identity,
+                "database_identity": "ed_console",
                 "source": str(src),
                 "destination": str(dest),
                 "completed_utc": datetime.now(timezone.utc).isoformat(),
-                "source_size_bytes": source_size,
-                "backup_size_bytes": backup_size,
-                "reason": reason,
+                "source_size_bytes": src.stat().st_size,
+                "backup_size_bytes": staging.stat().st_size,
+                "operation_name": operation_name,
                 "validation": validation,
             }
             manifest_staging.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
-            companions = [
-                path for path in (
-                    Path(f"{dest}-wal"),
-                    Path(f"{dest}-shm"),
-                )
-                if path.exists()
-            ]
+            companions = [path for path in (Path(f"{dest}-wal"), Path(f"{dest}-shm")) if path.exists()]
             if companions:
                 raise RuntimeError(
                     f"backup destination has forbidden WAL/SHM companions: {companions}"
@@ -315,16 +294,6 @@ def backup_permanent_database(
             for temporary in staging_files:
                 temporary.unlink(missing_ok=True)
             raise
-
-
-def backup_all_permanent_databases(
-    *, reason: str, backup_root: Path | None = None
-) -> list[tuple[Path, Path, dict[str, Any]]]:
-    """Refresh both permanent authorities through the same producer."""
-    return [
-        backup_permanent_database(source, reason=reason, backup_root=backup_root)
-        for source in canonical_permanent_db_paths()
-    ]
 
 
 def _split_sql_statements(sql: str) -> list[str]:
@@ -425,3 +394,20 @@ def refuse_canonical_db_path_as_shutil_destination(dest: Path) -> None:
         f"refusing shutil-style write to canonical production DB path {d!r}. "
         "Use backups under backups/db/ or set ED_CONSOLE_DANGEROUS_SQL_UNRESTRICTED=1 with explicit ops sign-off."
     )
+
+
+def migration_backup_if_canonical(db_path: Path, *, operation_name: str) -> tuple[Path, Path, dict[str, Any]] | None:
+    """Backup + manifest before schema work on the canonical file."""
+    if not is_canonical_db_path(db_path):
+        return None
+    if skip_automatic_backup():
+        return None
+    ok, err = preflight_exclusive_sqlite_write(db_path)
+    if not ok:
+        raise RuntimeError(f"db_safety: cannot acquire exclusive write lock for backup: {err}")
+    return backup_console_database(db_path, operation_name=operation_name)
+
+
+def bulk_operation_backup_if_canonical(db_path: Path, *, operation_name: str) -> tuple[Path, Path, dict[str, Any]] | None:
+    """Same as migration backup hook; used before large bar backfills."""
+    return migration_backup_if_canonical(db_path, operation_name=operation_name)

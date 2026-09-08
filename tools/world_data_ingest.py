@@ -21,7 +21,6 @@ import io
 import json
 import logging
 import sqlite3
-import sys
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -31,13 +30,7 @@ from typing import Any
 
 log = logging.getLogger(__name__)
 
-ROOT = Path(__file__).resolve().parent.parent
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
-from db_authority import canonical_console_db_path  # noqa: E402
-
-DEFAULT_DB = canonical_console_db_path()
+DEFAULT_DB = Path(__file__).resolve().parent.parent / "data" / "ed_console.db"
 HTTP_TIMEOUT_SEC = 30.0
 # FINRA's CDN 403s non-browser agents (probed 2026-07-21); browser UA passes everywhere.
 USER_AGENT = (
