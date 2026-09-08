@@ -182,10 +182,14 @@ def test_batch_roots_close_in_the_authority():
             assert ok, f"{file}:{fn}/{arg} -> {producer}: {why}"
 
 
-def test_the_second_writer_survivors_stay_open_by_name():
+def test_the_former_second_writer_survivors_now_close_on_the_owner():
+    # Batch 1 left these OPEN because trade_impacting_gate rewrote them after The Call.
+    # RC-534 moved the emission veto into the owner; the gate writes no verdict field now.
+    idx = P.index(ROWS_MOD.ROWS)
     for field in BATCH_NOT_PROVEN:
-        assert R.MARKET_STATE[field][1] is None
-        assert field in R.OPEN_ROOTS
+        assert R.MARKET_STATE[field][1] == "call_engine.py:compute_call"
+        assert P.closes(R.MARKET_STATE[field][1], idx)[0]
+        assert field not in R.OPEN_ROOTS
 
 
 def test_the_verdict_owner_row_names_the_anchor_as_its_input():

@@ -1098,6 +1098,10 @@ def build_market_state(
     pred_override: dict | None = None,
     # Same instant as snapshots.ts_utc for this refresh (server: db.utc_ts() once per fetch)
     refresh_ts_utc: float | None = None,
+    # RC-534: trade_impacting_gate.TradeImpactingGateResult validated by the server BEFORE this
+    # build (route class + market-data sanity). Handed to The Call through SignalInput so the
+    # verdict owner vetoes itself. None = no fact supplied (offline callers): not a veto.
+    emission_gate=None,
 ) -> MarketState:
     """
     Build and return a fully-populated MarketState.
@@ -1445,6 +1449,13 @@ def build_market_state(
                 smart_money_score=smart_money_score,
                 breakout_score=breakout_score,
                 pin_score=pin_score,
+                # RC-534: the emission facts The Call vetoes itself on (None = no fact supplied).
+                production_emission_allowed=(
+                    bool(emission_gate.production_emission_allowed) if emission_gate is not None else None
+                ),
+                emission_block_reasons=(
+                    tuple(emission_gate.reasons) if emission_gate is not None else ()
+                ),
             )
 
             _sig_out = compute_signals(sig_inp, db=db, pred_override=pred_override)

@@ -2,6 +2,12 @@
 
 Every production decision emission must pass through this module before
 decision_id assignment or production_decision_records persistence.
+
+The gate computes FACTS (route class, market-data sanity, staleness, quarantine, whether
+production emission is permitted) and blocks emission / persistence / actionability on them.
+It does not compute or rewrite the trading verdict: The Call (call_engine.compute_call) is the
+one computation authority for call_signal / call_conviction, and it consumes these facts as an
+input (RC-534) — see validate_trade_impacting_gate at server._fetch_state before build_market_state.
 """
 from __future__ import annotations
 
@@ -286,26 +292,22 @@ def apply_trade_impacting_gate(
     *,
     route: str,
 ) -> TradeImpactingGateResult:
-    """Apply gate — mutates ms_dict with quarantine + non-tradeable fields when blocked."""
+    """Apply gate — stamps the route, its class and the market_data_quarantine FACT on ms_dict.
+
+    RC-534: this function used to rewrite the verdict (call_signal → wait, call_conviction → low,
+    nested call.signal, trade_valid, a fabricated validation_summary) when quarantined or on a
+    non-production route — a second writer of The Call after its owner had produced it, while
+    every coupled field (call_option_right, is_no_trade, rec_strike, headline, plan) stayed
+    derived from the pre-veto verdict. The owner now consumes the same facts BEFORE it decides
+    (server._fetch_state validates them and hands them to compute_call through SignalInput) and
+    vetoes itself. Here the gate keeps only its distinct responsibilities: the quarantine fact
+    for consumers, and — through stamp_decision_bundle / persist_stamped_decision / the operator
+    mirror — blocking decision_id, persistence and actionability. It rewrites no verdict field.
+    """
     result = validate_trade_impacting_gate(ms_dict, route=route)
     ms_dict["trade_impacting_route"] = route
     ms_dict["trade_impacting_route_class"] = result.route_class
     ms_dict["market_data_quarantine"] = result.market_data_quarantine()
-
-    if result.quarantined or result.route_class != "production":
-        ms_dict["trade_valid"] = False
-        if ms_dict.get("call_signal") in ("long", "short"):
-            ms_dict["call_signal"] = "wait"
-            ms_dict["call_conviction"] = "low"
-        call = ms_dict.get("call")
-        if isinstance(call, dict):
-            call = dict(call)
-            call["trade_valid"] = False
-            if call.get("signal") in ("long", "short"):
-                call["signal"] = "wait"
-            ms_dict["call"] = call
-        if not ms_dict.get("validation_summary"):
-            ms_dict["validation_summary"] = "GATED — " + "; ".join(result.reasons[:3])
     return result
 
 

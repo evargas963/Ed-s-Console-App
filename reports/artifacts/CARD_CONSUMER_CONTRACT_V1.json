@@ -930,7 +930,7 @@
       "allowed_values": "wait|long|short",
       "nullable": "no",
       "fallback_behavior": "conditional #dr-mh-promotion-chip only when mh_promoted_directional and long|short; omit chip otherwise; must not paint on horizon pills or #tf-execution-state-chip",
-      "stale_behavior": "chip hidden; payload may read wait when stale",
+      "stale_behavior": "chip hidden; payload carries the verdict The Call computed (never rewritten on stale serve, RC-534) with operator_card_actionable=false and market_data_quarantine.active",
       "pending_behavior": "chip hidden",
       "ticker_agnostic_rule": "supporting directional field — primary execution readiness is call_state on #tf-execution-state-chip",
       "test_required": "tests/test_universal_card_fidelity_runtime.py::test_call_signal_decision_rail_not_primary_execution_chip",

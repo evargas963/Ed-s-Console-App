@@ -3203,7 +3203,7 @@ ROWS: tuple[Row, ...] = (
     ),
     Row(
         file='call_engine.py', derivation='compute_call', disposition='DERIVED',
-        producer_refs=('market_state.py:build_market_state', 'rules_engine.py:compute_rules', 'prediction_engine.py:compute_prediction_core', 'regime_engine.py:classify_regime', 'signals.py:production_fusion_payload_for_stack', 'volatility_regime.py:classify_volatility_regime', 'signals.py:canonical_forecast_from_fusion', 'features/inference_snapshot.py:build_inference_snapshot_v1_from_signal_input', 'multi_horizon_decision.py:compute_multi_horizon_synthesis', 'decision_gate.py:evaluate_decision_path_admission', 'setup_readiness.py:compute_call_readiness', 'setup_readiness.py:compute_put_readiness', 'call_engine.py:_validate_trade', 'call_engine.py:compute_position_size',),
+        producer_refs=('market_state.py:build_market_state', 'rules_engine.py:compute_rules', 'prediction_engine.py:compute_prediction_core', 'regime_engine.py:classify_regime', 'signals.py:production_fusion_payload_for_stack', 'volatility_regime.py:classify_volatility_regime', 'signals.py:canonical_forecast_from_fusion', 'features/inference_snapshot.py:build_inference_snapshot_v1_from_signal_input', 'multi_horizon_decision.py:compute_multi_horizon_synthesis', 'decision_gate.py:evaluate_decision_path_admission', 'setup_readiness.py:compute_call_readiness', 'setup_readiness.py:compute_put_readiness', 'call_engine.py:_validate_trade', 'call_engine.py:compute_position_size', 'trade_impacting_gate.py:validate_trade_impacting_gate',),
         justification='THE Call owner: signal / conviction / call_state / forecast_state / trade plan; admission veto and readiness inside.',
     ),
     Row(
@@ -3220,5 +3220,10 @@ ROWS: tuple[Row, ...] = (
         file='market_state.py', derivation='dte_style', disposition='DERIVED',
         producer_refs=('market_state.py:_schwab_days_to_expiration_for_contract',),
         justification="DTE warning label + colour from the selected contract's Schwab daysToExpiration.",
+    ),
+    Row(
+        file='trade_impacting_gate.py', derivation='validate_trade_impacting_gate', disposition='DERIVED',
+        producer_refs=('server.py:_fetch_state',),
+        justification='Emission FACTS (route class, spot sanity, spread age, staleness, quarantine, production_emission_allowed) validated on the facts server._fetch_state knows before the state is built; consumed by The Call as an input (RC-534). Rewrites no verdict.',
     ),
 )

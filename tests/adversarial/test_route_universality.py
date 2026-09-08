@@ -24,9 +24,9 @@ def test_synthetic_no_valid_expiry_route_blocked_from_decision_id(release_ready)
     }
     apply_trade_impacting_gate(ms, route="server._fetch_state.no_valid_expiry")
     assert ms.get("trade_impacting_route_class") == "synthetic_non_production"
-    assert ms.get("trade_valid") is False
     quarantine = ms.get("market_data_quarantine") or {}
     assert quarantine.get("active") is True
+    assert "trade_valid" not in ms  # RC-534: the gate stamps facts; it writes no verdict/validity field
 
 
 def test_synthetic_route_does_not_persist_production_record(release_ready, tmp_path):

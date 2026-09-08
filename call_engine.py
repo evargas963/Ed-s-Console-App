@@ -173,6 +173,7 @@ WAIT_BLOCKER_REASON_VOL_REGIME = "vol_regime"
 WAIT_BLOCKER_REASON_GATES = "gates"
 WAIT_BLOCKER_REASON_TIME = "time"
 WAIT_BLOCKER_REASON_ADMISSION = "decision_path_admission"
+WAIT_BLOCKER_REASON_EMISSION = "market_data_emission_gate"
 
 
 def _readiness_canonical_fields(canonical: CanonicalForecast) -> tuple[str, float]:
@@ -1756,6 +1757,27 @@ def compute_call(
             }
             final_signal = "wait"
             conviction = "low"
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # RC-534 — EMISSION GATE VETO (the owner applies it, nobody downstream rewrites).
+    # trade_impacting_gate validated the decision route class and the market-data facts
+    # (ticker, spot sanity, spread age) BEFORE the state was built; the result rides on
+    # SignalInput. A quarantined market or a non-production route never yields a directional
+    # verdict, so option right / strike / no-trade / headline / plan all derive from WAIT.
+    # None (no fact supplied: replay, offline callers) is not a veto — only an explicit False.
+    # ══════════════════════════════════════════════════════════════════════════
+    if final_signal in ("long", "short") and getattr(inp, "production_emission_allowed", None) is False:
+        _emission_reasons = [str(r) for r in (getattr(inp, "emission_block_reasons", ()) or ())]
+        wait_blocker = {
+            "reason": WAIT_BLOCKER_REASON_EMISSION,
+            "detail": "production emission not allowed",
+            "full_detail": "; ".join(_emission_reasons) or "market data quarantine / non-production route",
+            "emission_block_reasons": _emission_reasons,
+            "gated_signal": final_signal,
+            "gated_conviction": conviction,
+        }
+        final_signal = "wait"
+        conviction = "low"
 
     # ══════════════════════════════════════════════════════════════════════════
     # STACK ORDER 9: Risk Engine ────────────────────────────────────────────────
