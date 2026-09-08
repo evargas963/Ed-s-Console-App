@@ -35,7 +35,7 @@ def test_playwright_server_uses_run_private_runtime() -> None:
 def test_playwright_was_executed():
     assert MARKER.is_file(), (
         "Playwright E2E has not completed successfully since the last clean checkout. "
-        "Pytest alone is not sufficient. Run: make test-all   (or: npm run test:e2e && python -m pytest)"
+        "Pytest alone is not sufficient. Run: make test-all   (or: npm run test:all)"
     )
     raw = MARKER.read_text(encoding="utf-8").strip()
     assert raw, f"{MARKER} is empty — re-run: npm run test:e2e"
