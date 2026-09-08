@@ -39,7 +39,6 @@ from pathlib import Path
 from datetime import datetime, timezone
 
 from db_authority import (
-    assert_ed_console_db_env_resolves_safely,
     classify_db_path,
     eddb_allow_noncanonical_path,
     is_canonical_db_path,
@@ -311,10 +310,10 @@ def similarity_empirically_viable(labeled_by_col: dict[str, int]) -> bool:
 # RC-401 removed the per-agent fork that returned data/ed_console_claude.db under
 # ED_AGENT_ROLE=claude — ambient process state was deciding which database the money
 # path addressed, and it had already scattered rows into three sibling files.
-# ED_CONSOLE_DB or ED_DB_PATH: optional override; non-canonical targets require
-# ED_CONSOLE_ALLOW_NONCANONICAL_DB=1, with no sibling-file exemption.
-# RC-523: the data directory is the RUNTIME root's (runtime_layout), which is this checkout
-# unless ED_RUNTIME_ROOT moves it — source and runtime state are separate concerns (§8).
+# RC-533 removed ED_CONSOLE_DB / ED_DB_PATH from default production selection after an
+# acknowledged override created an actively written worktree-local console authority.
+# Recovery and tests pass explicit paths to EdDB; runtime placement belongs only to
+# runtime_layout.
 from runtime_layout import data_dir as _runtime_data_dir  # noqa: E402
 
 DB_DIR = _runtime_data_dir()
@@ -323,14 +322,13 @@ DB_DIR = _runtime_data_dir()
 def _resolve_console_db_path() -> Path:
     from db_authority import default_console_db_path
 
-    env = (
-        os.environ.get("ED_CONSOLE_DB", "").strip()
-        or os.environ.get("ED_DB_PATH", "").strip()
-    )
-    if env:
-        p = Path(env).expanduser().resolve()
-        assert_ed_console_db_env_resolves_safely(p)
-        return p
+    blocked = [name for name in ("ED_CONSOLE_DB", "ED_DB_PATH") if os.environ.get(name, "").strip()]
+    if blocked:
+        raise RuntimeError(
+            "ambient console database overrides are disabled: "
+            f"{', '.join(blocked)}. Configure ED_RUNTIME_ROOT for a dedicated runtime, "
+            "or pass an explicit path to a recovery/test API."
+        )
     return default_console_db_path()
 
 
@@ -2653,16 +2651,6 @@ class EdDB:
     def _migrate_schema(self):
         """Add columns that may be missing from older databases.
         Safe to call repeatedly — silently skips columns that already exist."""
-        from db_safety import (
-            assert_critical_row_counts_no_drop,
-            backup_console_database,
-            critical_table_row_counts,
-            preflight_exclusive_sqlite_write,
-            skip_automatic_backup,
-        )
-
-        _counts_before: dict[str, int] = {}
-
         NEW_COLUMNS = [
             # (column_name, column_type)
             ("charm_magnitude",     "REAL"),
@@ -2867,31 +2855,6 @@ class EdDB:
         # Normalized training table must carry the same price-action columns or the
         # normalizer's column-intersection INSERT silently drops them (Issue 16 class).
         _PA_NEW_COLUMNS = [(c, t) for c, t in NEW_COLUMNS if c.startswith("pa_")]
-
-        _snapshot_migration_pending = False
-        if is_canonical_db_path(self.db_path) and not skip_automatic_backup():
-            try:
-                with self._connect() as _cxp:
-                    have_cols = {str(r[1]) for r in _cxp.execute("PRAGMA table_info(snapshots)")}
-            except sqlite3.OperationalError:
-                have_cols = set()
-            _snapshot_migration_pending = any(cn not in have_cols for cn, _ in NEW_COLUMNS)
-
-        if (
-            is_canonical_db_path(self.db_path)
-            and not skip_automatic_backup()
-            and _snapshot_migration_pending
-        ):
-            ok_w, err_w = preflight_exclusive_sqlite_write(self.db_path)
-            if not ok_w:
-                raise RuntimeError(f"EdDB._migrate_schema: DB lock preflight failed: {err_w}")
-            with self._connect() as _c0:
-                _counts_before = critical_table_row_counts(_c0)
-            _bpath, _mpath, _ = backup_console_database(
-                self.db_path,
-                operation_name="EdDB._migrate_schema",
-            )
-            log.info("db_safety: pre-migration backup %s manifest %s", _bpath, _mpath)
 
         added = 0
         with self._connect() as conn:
@@ -3143,11 +3106,6 @@ class EdDB:
         except sqlite3.OperationalError as exc:
             log.error("execution identity schema migration failed: %s", exc)
             raise
-
-        if _counts_before and is_canonical_db_path(self.db_path) and not skip_automatic_backup():
-            with self._connect() as _c1:
-                _after = critical_table_row_counts(_c1)
-            assert_critical_row_counts_no_drop(_counts_before, _after)
 
     def _migrate_horizon_bar_contract_v1(self) -> None:
         """

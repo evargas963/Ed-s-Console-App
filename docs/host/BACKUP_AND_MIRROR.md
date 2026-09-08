@@ -19,7 +19,7 @@ Git is **not** a full-disk mirror. It holds everything needed to **rebuild and o
 | Category | Paths / items | Backup approach |
 |----------|---------------|-----------------|
 | Secrets | `.env`, `schwab_token.json`, `*.key`, `*.pem` | Secure store / encrypted backup only |
-| Database | `data/ed_console.db` (default; override `ED_CONSOLE_DB`) | File copy, `sqlite3 .backup`, or restic |
+| Permanent databases | `<ED_RUNTIME_ROOT>/data/ed_console.db`, `<ED_RUNTIME_ROOT>/data/stream_capture.db` | `python -m tools.backup_permanent_databases --reason scheduled_refresh`; stable validated Online Backup API outputs under `<ED_RUNTIME_ROOT>/backups/db/` |
 | Training churn | `models/parallel/`, `models/cascade/`, `models/arch_competition/`, `models/cache/` | Optional NAS robocopy |
 | Bulk data | `data/*` (except trading calendar) | NAS / cloud folder |
 | Logs / temp | `*.log`, `benchmark_logs/`, `.runtime/` | Rotate or exclude |
@@ -32,7 +32,7 @@ Git is **not** a full-disk mirror. It holds everything needed to **rebuild and o
 These are documented in [ENVIRONMENT_VARIABLES.md](ENVIRONMENT_VARIABLES.md) and set in Task Scheduler, launch `.ps1`, or System Environment:
 
 - `ED_SCHEDULER_AUTO_PROMOTE` and related training flags
-- `ED_CONSOLE_DB`, `ED_CONSOLE_PORT`
+- `ED_RUNTIME_ROOT`, `ED_CONSOLE_PORT`
 - Schwab overrides: `SCHWAB_TOKEN_PATH`, `SCHWAB_API_KEY` (prefer env over editing `config.py` on new machines)
 
 Copy **variable names and intended values** into your private `.env` or launch script; do not commit live values.
@@ -43,25 +43,23 @@ Copy **variable names and intended values** into your private `.env` or launch s
 EdWebConsole/          ← git clone (source of truth for code + active models)
   .env                 ← local only (from .env.example)
   schwab_token.json    ← local only (from reauth_schwab.py)
-  data/ed_console.db   ← local only (large)
+  data/ed_console.db       ← permanent derived/history/decision authority
+  data/stream_capture.db   ← permanent raw receive-time event authority
+  backups/db/              ← one stable validated backup + manifest per permanent DB
   models/parallel/     ← local only (training)
 ```
 
 **Daily:** `git push` after commits (code + active models).  
-**Weekly:** robocopy or restic of entire `EdWebConsole` + confirmed DB path to NAS.
-
-Example robocopy (review `/MIR` — deletes extras on destination):
-
-```powershell
-robocopy "C:\Users\evarg\Documents\Trading\EdWebConsole" "\\NAS\backup\EdWebConsole" /MIR /XD .git node_modules __pycache__ .venv /XF *.log
-```
+**Daily:** run `python -m tools.backup_permanent_databases --reason scheduled_refresh`.
+The canonical database backups remain on the local C: runtime root under `backups/db/`.
 
 ## After clone on a new machine
 
 1. `git clone` + `pip install -r requirements.txt` (or your venv recipe).
 2. `copy .env.example .env` and fill values.
 3. `python reauth_schwab.py` → creates `schwab_token.json`.
-4. Restore `data/ed_console.db` from backup (or run ingest pipelines).
+4. Restore both permanent databases from their validated stable backups when disaster recovery
+   requires it; they own different irreplaceable histories.
 5. `python verify_active_models.py` — expect SPY/QQQ/IWM COMPLIANT if active trees were pushed.
 6. Run `.\scripts\export_host_manifest.ps1` and compare to prior host manifest if you have one.
 

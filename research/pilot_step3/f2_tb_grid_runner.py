@@ -30,6 +30,7 @@ from .event_generation import PilotEvent, generate_events
 from .f1_input_gates import gated_label_event_cell_f1
 from .f1_s5_spy_battery import F1_DRAFT_CANDIDATE_CONFIG, preflight
 from .labeling import build_atr_series
+from db_authority import canonical_console_db_path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 # Binding rule (ACTIVE_PROGRAM §F2 expansion): every ticker runs under its OWN
@@ -39,7 +40,7 @@ PREREG_PATHS: dict[str, Path] = {
     "QQQ": Path(__file__).resolve().parent / "f2_tb_grid_qqq_prereg_v1.json",
 }
 PREREG_PATH = PREREG_PATHS["SPY"]
-DEFAULT_DB = str(REPO_ROOT / "data" / "ed_console.db")
+DEFAULT_DB = str(canonical_console_db_path())
 REPORT_PATH = REPO_ROOT / "reports" / "f2_tb_grid_v1_latest.json"
 
 # no_terminal_null law: a null names its door, at the PRODUCER.

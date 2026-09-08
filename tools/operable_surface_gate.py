@@ -24,8 +24,9 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from runtime_layout import data_dir, reports_dir  # RC-523: runtime/artifacts roots
 from calibration.daily_scoreboard import BACKFILL_JOIN_TOL_SEC
+from db_authority import canonical_console_db_path
+from runtime_layout import reports_dir  # RC-523: runtime/artifacts roots
 # The only write path to calibration_decision_log.research_excluded lives in
 # calibration/ (audited surface). This tool stays read-only.
 from calibration.operable_surface_quarantine import (  # noqa: F401 - re-exported for the CLI
@@ -290,11 +291,7 @@ def main(argv: list[str] | None = None) -> int:
         help="Exit 1 unless verdict is OPERABLE_SURFACE_CLEAN",
     )
     args = ap.parse_args(argv)
-    try:
-        from db import DB_PATH
-    except Exception:
-        DB_PATH = None  # type: ignore[misc, assignment]
-    db_path = args.db or (Path(DB_PATH) if DB_PATH else data_dir() / "ed_console.db")
+    db_path = args.db or canonical_console_db_path()
     if not Path(db_path).is_file():
         print(f"operable_surface_gate: missing db {db_path}", file=sys.stderr)
         return 2

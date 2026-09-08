@@ -23,7 +23,7 @@ warnings.filterwarnings("ignore", category=FutureWarning)
 from calibration.db_guard import register_allow_noncanonical_flag, require_canonical_db_target
 from db import DB_PATH as _DB_PATH_OBJ
 
-DB_PATH = str(_DB_PATH_OBJ)  # same file as EdDB; honors ED_CONSOLE_DB via db.py
+DB_PATH = str(_DB_PATH_OBJ)  # same canonical file as EdDB
 MODEL_DIR = Path("models")
 from canonical_distances import canonicalize_distance_read
 from ml_horizon import (

@@ -24,7 +24,8 @@ if str(ROOT) not in sys.path:
 
 from calibration.backfill_outcomes import backfill
 from calibration.daily_scoreboard import BACKFILL_JOIN_TOL_SEC
-from runtime_layout import data_dir, reports_dir  # RC-523: runtime/artifacts roots
+from db_authority import canonical_console_db_path
+from runtime_layout import reports_dir  # RC-523: runtime/artifacts roots
 from tools.operable_surface_gate import (
     evaluate_operable_surface,
     quarantine_old_unattached,
@@ -55,11 +56,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--write-report", action="store_true", default=True)
     args = ap.parse_args(argv)
 
-    try:
-        from db import DB_PATH
-    except Exception:
-        DB_PATH = None  # type: ignore[misc, assignment]
-    db_path = args.db or (Path(DB_PATH) if DB_PATH else data_dir() / "ed_console.db")
+    db_path = args.db or canonical_console_db_path()
     if not Path(db_path).is_file():
         print(f"run_operable_surface_ops: missing db {db_path}", file=sys.stderr)
         return 2

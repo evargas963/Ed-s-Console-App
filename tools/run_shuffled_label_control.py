@@ -31,12 +31,15 @@ import random
 import sqlite3
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
+
+from db_authority import canonical_console_db_path  # noqa: E402
 
 CHANCE = 1.0 / 3.0
 
@@ -280,12 +283,10 @@ def main() -> int:
     ap.add_argument("--ticker", required=True)
     ap.add_argument("--horizon", required=True, help="1c | 5c | 15c | 60c")
     ap.add_argument("--seed", type=int, default=DEFAULT_SEED)
-    ap.add_argument("--db", default=str(REPO_ROOT / "data" / "ed_console.db"))
-    ap.add_argument("--work-dir", default=str(REPO_ROOT / "models" / "shuffled_label_control"))
+    ap.add_argument("--db", default=str(canonical_console_db_path()))
+    ap.add_argument("--work-dir", default=None, help="explicit debug-preservation directory")
     ap.add_argument("--evidence", default=None, help="evidence JSON output path")
     ap.add_argument("--dry-run", action="store_true", help="validate plan only (no copy/training)")
-    ap.add_argument("--eval-only", action="store_true",
-                    help="reuse existing control-DB copy + trained models; re-run ONLY the eval (no re-copy/retrain)")
     args = ap.parse_args()
 
     from ml_horizon import normalize_ml_horizon_slug
@@ -296,17 +297,29 @@ def main() -> int:
         print(json.dumps(plan, indent=2, sort_keys=True))
         return 0 if plan.get("ok") else 1
     evidence_path = args.evidence or str(
-        Path(args.work_dir) / f"evidence_{args.ticker.upper()}_{hz}_seed{args.seed}.json"
+        REPO_ROOT / "reports" / "shuffled_label_control"
+        / f"evidence_{args.ticker.upper()}_{hz}_seed{args.seed}.json"
     )
-    out = run_control(
-        db_path=args.db,
-        ticker=args.ticker,
-        hz=hz,
-        seed=args.seed,
-        work_dir=args.work_dir,
-        evidence_path=evidence_path,
-        eval_only=args.eval_only,
-    )
+    Path(evidence_path).parent.mkdir(parents=True, exist_ok=True)
+    if args.work_dir:
+        out = run_control(
+            db_path=args.db,
+            ticker=args.ticker,
+            hz=hz,
+            seed=args.seed,
+            work_dir=args.work_dir,
+            evidence_path=evidence_path,
+        )
+    else:
+        with tempfile.TemporaryDirectory(prefix="ed-shuffled-control-") as work_dir:
+            out = run_control(
+                db_path=args.db,
+                ticker=args.ticker,
+                hz=hz,
+                seed=args.seed,
+                work_dir=work_dir,
+                evidence_path=evidence_path,
+            )
     print(json.dumps({k: out[k] for k in out if k not in ("val_days",)}, indent=2, sort_keys=True, default=str))
     return 0 if out.get("ok") else 1
 

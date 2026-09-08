@@ -5,7 +5,8 @@ seed price_bars_1m + snapshots for anchor audit / backfill, write audit JSON.
 
   python -m calibration.build_trusted_anchor_proof_dataset
 
-Output: data/calibration_anchor_proof.db, data/calibration_anchor_proof_audit.json
+The run-private DB is removed on exit; the durable output is
+data/calibration_anchor_proof_audit.json.
 """
 
 from __future__ import annotations
@@ -14,6 +15,7 @@ import json
 import os
 import sqlite3
 import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -38,7 +40,6 @@ N_ROWS = 30
 BASE_TS = 1_712_100_000.0
 TS_STEP = 100.0
 
-PROOF_DB = ROOT / "data" / "calibration_anchor_proof.db"
 AUDIT_JSON = ROOT / "data" / "calibration_anchor_proof_audit.json"
 
 
@@ -56,7 +57,7 @@ def _seed_bars_and_snapshots(conn: sqlite3.Connection, plan: list[tuple[str, flo
         bs = be - 60.0
         conn.execute(
             """
-            INSERT INTO price_bars_1m (ticker, bar_start_ts_utc, bar_end_ts_utc, close, source) -- collect-window-ok: isolated proof DB data/calibration_anchor_proof.db, never canonical (RC-183)
+            INSERT INTO price_bars_1m (ticker, bar_start_ts_utc, bar_end_ts_utc, close, source) -- collect-window-ok: run-private isolated proof DB, never canonical (RC-183)
             VALUES (?, ?, ?, ?, 'anchor_proof')
             """,
             (tkr, bs, be, 450.0),
@@ -77,17 +78,18 @@ def _seed_bars_and_snapshots(conn: sqlite3.Connection, plan: list[tuple[str, flo
         )
 
 
-def main() -> int:
+def _build(proof_db: Path) -> int:
+    proof_db = Path(proof_db).resolve()
     _stub_models()
 
-    PROOF_DB.parent.mkdir(parents=True, exist_ok=True)
-    if PROOF_DB.exists():
-        PROOF_DB.unlink()
+    proof_db.parent.mkdir(parents=True, exist_ok=True)
+    if proof_db.exists():
+        raise FileExistsError(f"run-private proof DB already exists: {proof_db}")
 
-    _ = EdDB(PROOF_DB)
-    db_mod.DB_PATH = PROOF_DB
+    _ = EdDB(proof_db)
+    db_mod.DB_PATH = proof_db
 
-    conn = sqlite3.connect(str(PROOF_DB))
+    conn = sqlite3.connect(str(proof_db))
     configure_sqlite_connection(conn)
     ensure_calibration_schema(conn)
 
@@ -102,7 +104,7 @@ def main() -> int:
     conn.commit()
     conn.close()
 
-    edb = EdDB(PROOF_DB)
+    edb = EdDB(proof_db)
     for i in range(N_ROWS):
         ts = BASE_TS + float(i) * TS_STEP
         name = tickers_src[i]
@@ -116,7 +118,7 @@ def main() -> int:
 
         canonical = out.canonical_forecast
         append_live_v2_calibration_decision(
-            db_path=PROOF_DB,
+            db_path=proof_db,
             calibration_payload=out.calibration_payload,
             colocated_snapshot_ts_utc=float(ts),
             v2_decision=build_module_a_a1_decision(
@@ -134,11 +136,11 @@ def main() -> int:
             ),
         )
 
-    backfill(PROOF_DB, tol_sec=0.0)
+    backfill(proof_db, tol_sec=0.0)
 
-    rep = run_anchor_audit(PROOF_DB, sample_limit=None, seed_sample=False)
-    p3 = analyze_phase3(PROOF_DB)
-    p4 = analyze_phase4(PROOF_DB)
+    rep = run_anchor_audit(proof_db, sample_limit=None, seed_sample=False)
+    p3 = analyze_phase3(proof_db)
+    p4 = analyze_phase4(proof_db)
 
     out = {
         "anchor_audit": rep,
@@ -155,6 +157,11 @@ def main() -> int:
         return 2
     print(json.dumps({"ok": True, "trusted_rows_total": nt, "audit_json": str(AUDIT_JSON)}, indent=2))
     return 0
+
+
+def main() -> int:
+    with tempfile.TemporaryDirectory(prefix="ed-anchor-proof-") as run_dir:
+        return _build(Path(run_dir) / "anchor_proof.db")
 
 
 if __name__ == "__main__":

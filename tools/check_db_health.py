@@ -56,7 +56,12 @@ import sys
 from dataclasses import dataclass
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DEFAULT_DB = os.path.join(REPO, "data", "ed_console.db")
+if REPO not in sys.path:
+    sys.path.insert(0, REPO)
+
+from db_authority import canonical_console_db_path
+
+DEFAULT_DB = str(canonical_console_db_path())
 
 #: Zero-volume minutes are "suspicious" per the OHLC guide, not invalid: a
 #: thinly traded symbol genuinely prints no volume in a quiet minute. So this

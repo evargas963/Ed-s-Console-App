@@ -60,6 +60,8 @@ TESTS = REPO / "tests"
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
+from db_authority import canonical_console_db_path
+
 
 # A dict literal carrying these keys is an inline option CONTRACT built by hand.
 _CONTRACT_KEYS = {"putCall", "strikePrice"}
@@ -2598,7 +2600,7 @@ def check_single_faucet_provenance() -> list[Violation]:
                           f"faucet provenance is unmeasurable ({type(e).__name__}: {e}); a metric "
                           f"that cannot be measured must never report as compliant")]
     try:
-        rep = _faucet_run(str(REPO / "data" / "ed_console.db"))
+        rep = _faucet_run(str(canonical_console_db_path()))
     except Exception as e:
         return [Violation(REPO / "tools" / "data_faucet_audit.py", 0,
                           f"faucet audit failed to run: {type(e).__name__}: {e}")]

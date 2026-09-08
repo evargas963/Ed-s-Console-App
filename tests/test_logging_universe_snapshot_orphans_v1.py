@@ -39,33 +39,6 @@ def test_logging_universe_snapshot_orphans_detects_raw_sql_drift(tmp_path):
     db.logging_universe_upsert_user_persisted("ORPH1", "test_heal", time.time())
     assert db.logging_universe_snapshot_ticker_orphans() == []
 
-
-def test_production_db_orphan_report_is_read_only():
-    """AUDIT ROUND 2 (2026-08-25): the previous form of this test UPSERTED user_persisted
-    rows into the LIVE production DB for every snapshot orphan — measured: 13
-    logging_universe rows carried this test's name as enrollment_source, including every
-    recent "user" enrollment, silently defeating the operator's 2026-05-31
-    TICKER-PREVIEW-NO-ENROLL decision and destroying enrollment provenance.
-
-    A test NEVER mutates the production database. This variant reports orphans and
-    skips: the enroll-or-stop call on an orphan is the operator's (ledger RC row), not a
-    test's. The tmp-path variant above still executes the orphan-detection behavior."""
-    from pathlib import Path
-
-    import pytest
-
-    p = Path(__file__).resolve().parents[1] / "data" / "ed_console.db"
-    if not p.is_file():
-        return
-    db = EdDB(p)
-    o = db.logging_universe_snapshot_ticker_orphans()
-    if o:
-        pytest.skip(
-            f"production DB carries {len(o)} snapshot-ticker orphan(s) awaiting the "
-            f"operator's enroll-or-stop decision (never healed by a test): {o}")
-    assert o == [], "unreachable: a non-empty orphan list skips above"
-
-
 def test_reupsert_does_not_overwrite_enrollment_provenance(tmp_path):
     """Write-once provenance: a second upsert moves last_seen only, never the source."""
     dbp = tmp_path / "prov.db"

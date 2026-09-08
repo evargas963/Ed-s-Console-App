@@ -16,6 +16,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from runtime_layout import _default_runtime_root
+
 REPO = Path(__file__).resolve().parent.parent
 
 PROBE = r"""
@@ -44,16 +46,17 @@ def _probe(env_extra: dict[str, str]) -> dict:
     return json.loads(r.stdout.strip().splitlines()[-1])
 
 
-def test_unset_roots_are_the_source_checkout_so_nothing_moves():
+def test_unset_roots_converge_on_git_primary_worktree():
     got = _probe({})
-    root = str(REPO.resolve())
-    assert got["separated"] == "False"
+    primary = _default_runtime_root().resolve()
+    root = str(primary)
+    assert got["separated"] == str(primary != REPO.resolve())
     assert got["runtime_root"] == root and got["artifacts_root"] == root
-    assert Path(got["canonical_db"]) == REPO / "data" / "ed_console.db"
-    assert Path(got["db_path"]) == REPO / "data" / "ed_console.db"
-    assert Path(got["token"]) == REPO / "schwab_token.json"
-    assert Path(got["terrain_json"]) == REPO / "reports" / "terrain_backtest_latest.json"
-    assert Path(got["operable_report"]) == REPO / "reports" / "operable_surface_gate_latest.json"
+    assert Path(got["canonical_db"]) == primary / "data" / "ed_console.db"
+    assert Path(got["db_path"]) == primary / "data" / "ed_console.db"
+    assert Path(got["token"]) == primary / "schwab_token.json"
+    assert Path(got["terrain_json"]) == primary / "reports" / "terrain_backtest_latest.json"
+    assert Path(got["operable_report"]) == primary / "reports" / "operable_surface_gate_latest.json"
 
 
 def test_runtime_root_moves_database_token_and_data_and_artifacts_follow(tmp_path):
@@ -82,14 +85,92 @@ def test_artifacts_root_separates_reports_from_runtime_state(tmp_path):
     assert Path(got["operable_report"]) == art.resolve() / "reports" / "operable_surface_gate_latest.json"
 
 
-def test_the_explicit_db_override_still_wins_over_the_runtime_root(tmp_path):
+def test_ambient_db_override_is_refused(tmp_path):
     rt = tmp_path / "runtime"
     explicit = tmp_path / "elsewhere" / "ed_console.db"
     explicit.parent.mkdir(parents=True)
     explicit.write_bytes(b"")
-    got = _probe({"ED_RUNTIME_ROOT": str(rt), "ED_CONSOLE_DB": str(explicit)})
-    assert Path(got["db_path"]) == explicit.resolve()
-    assert Path(got["canonical_db"]) == (rt / "data" / "ed_console.db").resolve()
+    env = dict(os.environ)
+    env.update({"ED_RUNTIME_ROOT": str(rt), "ED_CONSOLE_DB": str(explicit)})
+    result = subprocess.run(
+        [sys.executable, "-c", "import db"],
+        cwd=str(REPO),
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert result.returncode != 0
+    assert "ambient console database overrides are disabled" in result.stderr
+
+
+def test_runtime_root_cannot_be_a_linked_worktree(tmp_path):
+    linked = tmp_path / "linked"
+    linked.mkdir()
+    (linked / ".git").write_text("gitdir: ../primary/.git/worktrees/linked", encoding="utf-8")
+    for runtime_root in (linked, linked / "runtime"):
+        env = dict(os.environ)
+        env["ED_RUNTIME_ROOT"] = str(runtime_root)
+        result = subprocess.run(
+            [sys.executable, "-c", "import runtime_layout"],
+            cwd=str(REPO),
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        assert result.returncode != 0
+        assert "cannot select a linked source worktree" in result.stderr
+
+
+def _pytest_path_probe(worker: str | None) -> dict:
+    script = r"""
+import json, runpy, shutil
+state = runpy.run_path("tests/conftest.py")
+import db, runtime_layout
+payload = {
+    "db": str(db.DB_PATH),
+    "runtime": str(runtime_layout.RUNTIME_ROOT),
+    "worker": __import__("os").environ.get("PYTEST_XDIST_WORKER"),
+}
+print(json.dumps(payload))
+shutil.rmtree(runtime_layout.RUNTIME_ROOT, ignore_errors=True)
+"""
+    env = dict(os.environ)
+    for name in ("ED_CONSOLE_DB", "ED_DB_PATH", "ED_RUNTIME_ROOT", "ED_ARTIFACTS_ROOT"):
+        env.pop(name, None)
+    if worker is None:
+        env.pop("PYTEST_XDIST_WORKER", None)
+    else:
+        env["PYTEST_XDIST_WORKER"] = worker
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=str(REPO),
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert result.returncode == 0, result.stderr
+    return json.loads(result.stdout.strip().splitlines()[-1])
+
+
+def test_serial_pytest_runs_get_distinct_temporary_databases():
+    first = _pytest_path_probe(None)
+    second = _pytest_path_probe(None)
+    assert first["db"] != second["db"]
+    assert Path(first["db"]).parent == Path(first["runtime"]) / "data"
+    assert Path(second["db"]).parent == Path(second["runtime"]) / "data"
+    assert not Path(first["db"]).is_relative_to(_default_runtime_root().resolve())
+    assert not Path(second["db"]).is_relative_to(_default_runtime_root().resolve())
+
+
+def test_xdist_workers_get_distinct_temporary_databases():
+    first = _pytest_path_probe("gw0")
+    second = _pytest_path_probe("gw1")
+    assert first["db"] != second["db"]
+    assert first["worker"] == "gw0"
+    assert second["worker"] == "gw1"
 
 
 def test_runtime_layout_imports_no_governance():

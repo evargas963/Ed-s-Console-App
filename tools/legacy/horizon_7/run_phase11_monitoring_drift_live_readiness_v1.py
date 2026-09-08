@@ -18,6 +18,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT))
 
+from db_authority import canonical_console_db_path  # noqa: E402
+
 from calibration.db_guard import register_allow_noncanonical_flag, require_canonical_db_target
 from db import configure_sqlite_connection
 
@@ -48,7 +50,7 @@ def _tier_for_condition(block: bool, warn: bool) -> str:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--db", type=Path, default=ROOT / "data" / "ed_console.db")
+    ap.add_argument("--db", type=Path, default=canonical_console_db_path())
     ap.add_argument("--stale-minutes", type=int, default=30)
     register_allow_noncanonical_flag(ap)
     args = ap.parse_args()

@@ -149,8 +149,14 @@ def test_apply_restores_db_py_declared_constraints_defaults_and_keeps_live_extra
     assert "production_only_metric" in audit["target_extra_live_columns"]
 
 
-def test_apply_creates_fresh_backup_using_configured_backup_root(tmp_path: Path) -> None:
-    db_path = tmp_path / "ed_console.db"
+def test_apply_creates_fresh_backup_using_configured_backup_root(
+    tmp_path: Path, monkeypatch
+) -> None:
+    import runtime_layout
+
+    monkeypatch.setattr(runtime_layout, "RUNTIME_ROOT", tmp_path)
+    db_path = tmp_path / "data" / "ed_console.db"
+    db_path.parent.mkdir()
     backup_root = tmp_path / "backups"
     _create_drifted_db(db_path)
 
@@ -297,7 +303,11 @@ def test_post_apply_indexes_and_analyze_exist(tmp_path: Path) -> None:
 
 
 def test_forced_apply_failure_preserves_source_table(tmp_path: Path, monkeypatch) -> None:
-    db_path = tmp_path / "ed_console.db"
+    import runtime_layout
+
+    monkeypatch.setattr(runtime_layout, "RUNTIME_ROOT", tmp_path)
+    db_path = tmp_path / "data" / "ed_console.db"
+    db_path.parent.mkdir()
     _create_drifted_db(db_path)
 
     def _boom(_db_path, *, tickers, clear_first):

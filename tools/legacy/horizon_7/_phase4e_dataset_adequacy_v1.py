@@ -16,7 +16,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT))
 
-DEFAULT_DB = ROOT / "data" / "ed_console.db"
+from db_authority import canonical_console_db_path  # noqa: E402
+
+DEFAULT_DB = canonical_console_db_path()
 
 HORIZON_COLS = [
     "outcome_1c",

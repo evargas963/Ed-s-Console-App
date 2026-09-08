@@ -12,6 +12,7 @@ if str(_ROOT) not in _sys.path:
 
 import sqlite3, statistics as st
 from datetime import datetime
+from db_authority import canonical_console_db_path
 from time_et import (
     ET,
     RTH_END_MINS,
@@ -20,7 +21,7 @@ from time_et import (
     snapshots_gamma_pin_is_terrain_analysis_safe,
 )
 
-con = sqlite3.connect("file:data/ed_console.db?mode=ro", uri=True, timeout=120)
+con = sqlite3.connect(f"file:{canonical_console_db_path()}?mode=ro", uri=True, timeout=120)
 con.row_factory = sqlite3.Row
 
 LEVELS = ["gamma_pin", "oi_center", "gamma_inflection", "wall_mid", "vanna_mid"]

@@ -934,7 +934,9 @@ def audit_ablation_placement_validity(
                 )
 
                 manifest = load_ablation_manifest(manifest_path)
-                dbp = REPO_ROOT / "data" / "ed_console.db"
+                from db import DB_PATH as _DBP
+
+                dbp = _DBP
                 enriched = (
                     build_ablation_enriched_row_sample(
                         db_path=str(dbp), manifest=manifest, tickers=probe_tickers
@@ -1138,7 +1140,11 @@ def run_ablation_integrity_audit(
     }
 
     if runtime:
-        dbp = Path(db_path) if db_path else REPO_ROOT / "data" / "ed_console.db"
+        if str(REPO_ROOT) not in sys.path:
+            sys.path.insert(0, str(REPO_ROOT))
+        from db import DB_PATH as _DBP
+
+        dbp = Path(db_path) if db_path else _DBP
         out["db_path"] = str(dbp)
         if dbp.is_file():
             if str(REPO_ROOT) not in sys.path:

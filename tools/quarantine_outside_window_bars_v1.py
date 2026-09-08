@@ -21,7 +21,6 @@ inserted==deleted before committing.
 from __future__ import annotations
 
 import argparse
-import glob
 import json
 import sqlite3
 import sys
@@ -32,7 +31,9 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from time_et import is_collect_window_bar_end_ts_utc, now_et  # noqa: E402
+from db_authority import canonical_console_db_path  # noqa: E402
+from db_safety import backup_permanent_database  # noqa: E402
+from time_et import is_collect_window_bar_end_ts_utc  # noqa: E402
 
 BATCH = 50_000
 
@@ -48,18 +49,6 @@ CREATE TABLE IF NOT EXISTS price_bars_1m_quarantine (
     PRIMARY KEY (ticker, bar_start_ts_utc)
 )
 """
-
-
-def _fresh_backup_exists() -> str | None:
-    today = now_et().date().strftime("%Y%m%d")
-    hits = sorted(glob.glob(str(ROOT / "backups" / "db" / f"{today}*ed_console.db")))
-    # yesterday-evening backups also count as fresh for an overnight run
-    if not hits:
-        import datetime as _dt
-
-        yday = (now_et().date() - _dt.timedelta(days=1)).strftime("%Y%m%d")
-        hits = sorted(glob.glob(str(ROOT / "backups" / "db" / f"{yday}*ed_console.db")))
-    return hits[-1] if hits else None
 
 
 def _write_lock_free(db_path: str) -> tuple[bool, str | None]:
@@ -92,7 +81,7 @@ def _outside_rowids(con: sqlite3.Connection) -> list[int]:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--db", default=str(ROOT / "data" / "ed_console.db"))
+    ap.add_argument("--db", default=str(canonical_console_db_path()))
     ap.add_argument("--execute", action="store_true",
                     help="perform the move; default is dry-run counts only")
     ap.add_argument("--restore", action="store_true",
@@ -113,6 +102,17 @@ def main() -> int:
     con.isolation_level = None
     con.execute("PRAGMA busy_timeout=30000")
     try:
+        backup: str | None = None
+        manifest_path: Path | None = None
+        if args.execute:
+            try:
+                backup_path, manifest_path, _ = backup_permanent_database(
+                    Path(args.db), reason="pre_quarantine_outside_window_bars_v1"
+                )
+                backup = str(backup_path)
+            except Exception as exc:
+                print(json.dumps({"status": "REFUSED_BACKUP_FAILED", "error": str(exc)}))
+                return 2
         if args.restore:
             con.execute(QUARANTINE_SQL)
             n = con.execute("SELECT COUNT(*) FROM price_bars_1m_quarantine").fetchone()[0]
@@ -127,7 +127,12 @@ def main() -> int:
                 "volume, source FROM price_bars_1m_quarantine")
             con.execute("DELETE FROM price_bars_1m_quarantine")
             con.execute("COMMIT")
-            print(json.dumps({"status": "RESTORED", "rows": n}))
+            print(json.dumps({
+                "status": "RESTORED",
+                "rows": n,
+                "backup_used": backup,
+                "backup_manifest": str(manifest_path) if manifest_path else None,
+            }))
             return 0
 
         t0 = time.time()
@@ -139,10 +144,6 @@ def main() -> int:
             print(json.dumps(report))
             return 0
 
-        backup = _fresh_backup_exists()
-        if backup is None:
-            print(json.dumps({"status": "REFUSED_NO_FRESH_BACKUP"}))
-            return 2
         if args.expected is not None and len(rowids) != args.expected:
             print(json.dumps({"status": "REFUSED_COUNT_MISMATCH",
                               "dry_run": len(rowids), "expected": args.expected}))
@@ -186,7 +187,8 @@ def main() -> int:
         print(json.dumps({"status": "EXECUTED" if residual == 0 else "EXECUTED_WITH_RESIDUAL",
                           "moved": moved, "quarantine_rows": qn, "canonical_rows": cn,
                           "canonical_outside_law_after": residual,
-                          "backup_used": backup}))
+                          "backup_used": backup,
+                          "backup_manifest": str(manifest_path) if manifest_path else None}))
         return 0 if residual == 0 else 1
     finally:
         con.close()

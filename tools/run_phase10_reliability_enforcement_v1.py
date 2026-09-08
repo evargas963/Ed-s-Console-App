@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from calibration.db_guard import register_allow_noncanonical_flag, require_canonical_db_target
+from db_authority import canonical_console_db_path
 from db import configure_sqlite_connection
 
 
@@ -55,7 +56,7 @@ def _apply_mapping(raw: float, mapping: dict) -> float:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--db", type=Path, default=ROOT / "data" / "ed_console.db")
+    ap.add_argument("--db", type=Path, default=canonical_console_db_path())
     ap.add_argument("--max-signals-per-cycle", type=int, default=250)
     ap.add_argument("--max-trades-per-ticker", type=int, default=1)
     ap.add_argument("--stale-minutes", type=int, default=30)

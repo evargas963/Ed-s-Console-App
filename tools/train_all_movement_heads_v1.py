@@ -21,6 +21,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from calibration.db_guard import register_allow_noncanonical_flag, require_canonical_db_target
+from db_authority import canonical_console_db_path
 from ml_horizon import ML_HORIZON_SLUGS, directional_label_column, move_label_column, normalize_ml_horizon_slug
 from ml_train import (
     TARGET_MODE_DIR,
@@ -45,7 +46,7 @@ def _tickers(conn: sqlite3.Connection) -> list[str]:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--db", type=Path, default=ROOT / "data" / "ed_console.db")
+    ap.add_argument("--db", type=Path, default=canonical_console_db_path())
     ap.add_argument("--min-rows-dir", type=int, default=MIN_ROWS_DIR)
     ap.add_argument("--min-rows-move", type=int, default=MIN_ROWS_MOVE)
     register_allow_noncanonical_flag(ap)

@@ -12,8 +12,9 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from db import EdDB  # noqa: E402
+from db_authority import canonical_console_db_path  # noqa: E402
 
-DEFAULT_DB = ROOT / "data" / "ed_console.db"
+DEFAULT_DB = canonical_console_db_path()
 
 
 def main() -> None:

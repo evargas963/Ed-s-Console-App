@@ -23,7 +23,9 @@ This folder documents what belongs in **Git** (reproducible code + tracked produ
 **Worktree and host facts** (moved here from the deleted root memory pointer file, 2026-09-05, RC-520):
 
 - **Per-worktree venv:** `python tools/bootstrap_worktree_venv.py` (isolated `.venv`; `run_with_repo_venv` re-execs into it).
-- **ONE DB:** every worktree resolves `data/ed_console.db` (override: `ED_CONSOLE_DB` / `ED_DB_PATH`; a non-canonical target needs `ED_CONSOLE_ALLOW_NONCANONICAL_DB=1`).
+- **TWO permanent DBs:** every linked worktree resolves the primary worktree's canonical
+  `data/ed_console.db` and `data/stream_capture.db`. Ambient per-database overrides are refused;
+  tests and recovery tools pass explicit non-canonical paths.
 - **Git lock defense:** `tools/check_git_index_lock.py` clears `index.lock` older than 60s (wired into `run_with_repo_venv`).
 - **Multi-agent sync:** HEAD is the shared brain; the operator assigns work per session in chat (no standing agent roles, no worktree hand-off checker).
 

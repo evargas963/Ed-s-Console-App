@@ -10,10 +10,10 @@ RC-523 (2026-09-06, bedrock step 7). Every runtime path was rooted in the source
 (`Path(__file__).parent / "data"`, `/ "logs"`, `/ "reports"`) with an override for the
 database alone, so a source update could endanger the live database and runtime output
 polluted the checkout — the two things §8 forbids — and the production checkout had to be
-the desk's cwd. With the two variables below unset nothing changes: both roots ARE the source
-root, so a fresh clone and every existing worktree behave exactly as before. Setting them
-moves the state without touching code; the operator's move is an operations step, not a
-merge.
+the desk's cwd. RC-533 closes the remaining worktree split: a linked Git worktree resolves
+runtime state to its primary worktree by reading Git's own ``.git`` / ``commondir`` metadata.
+A standalone checkout still owns its own runtime root. ``ED_RUNTIME_ROOT`` may move runtime
+state to a dedicated non-checkout directory, but may not select a linked source worktree.
 
 This module imports nothing from `tools/` or `governance/`: it is on the runtime path and
 governance does not decide whether the desk may run (RC-512). It reads `.env` at the source
@@ -41,12 +41,50 @@ def _dir_from_env(name: str, default: Path) -> Path:
     raw = os.environ.get(name, "").strip()
     if not raw:
         return default
-    return Path(raw).expanduser().resolve()
+    resolved = Path(raw).expanduser().resolve()
+    if name == "ED_RUNTIME_ROOT" and any(
+        (candidate / ".git").is_file() for candidate in (resolved, *resolved.parents)
+    ):
+        raise ValueError(
+            f"{name} cannot select a linked source worktree or any path inside it "
+            f"as production runtime: {resolved}"
+        )
+    return resolved
+
+
+def _default_runtime_root() -> Path:
+    """Return Git's primary worktree, or this standalone checkout.
+
+    Linked worktrees store a text ``.git`` file pointing into
+    ``<primary>/.git/worktrees/<name>``. Git's adjacent ``commondir`` file points back to
+    the primary ``.git`` directory. Reading those native files avoids a second path
+    registry and makes every linked checkout converge on the same runtime identity.
+    """
+    dotgit = SOURCE_ROOT / ".git"
+    if not dotgit.is_file():
+        return SOURCE_ROOT
+    try:
+        marker = dotgit.read_text(encoding="utf-8").strip()
+        if not marker.lower().startswith("gitdir:"):
+            return SOURCE_ROOT
+        gitdir = Path(marker.split(":", 1)[1].strip())
+        if not gitdir.is_absolute():
+            gitdir = (SOURCE_ROOT / gitdir).resolve()
+        commondir_file = gitdir / "commondir"
+        if not commondir_file.is_file():
+            return SOURCE_ROOT
+        common_git = (gitdir / commondir_file.read_text(encoding="utf-8").strip()).resolve()
+        if common_git.name != ".git":
+            return SOURCE_ROOT
+        primary = common_git.parent.resolve()
+        return primary if primary.is_dir() else SOURCE_ROOT
+    except (OSError, ValueError):
+        return SOURCE_ROOT
 
 
 _load_env_file()
-#: Live database, logs and tokens live under here. Default: the source checkout.
-RUNTIME_ROOT: Path = _dir_from_env("ED_RUNTIME_ROOT", SOURCE_ROOT)
+#: Live database, logs and tokens live here. Linked worktrees share the primary root.
+RUNTIME_ROOT: Path = _dir_from_env("ED_RUNTIME_ROOT", _default_runtime_root())
 #: Generated reports and scorecards live under here. Default: the runtime root.
 ARTIFACTS_ROOT: Path = _dir_from_env("ED_ARTIFACTS_ROOT", RUNTIME_ROOT)
 

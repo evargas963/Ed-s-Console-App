@@ -31,12 +31,12 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
+from db_authority import canonical_console_db_path
+
 #: The console DB the live server reads. This was named explicitly because ED_AGENT_ROLE
 #: used to route db.DB_PATH to a per-agent side DB holding none of the banked bars, which
-#: made this tool report "absent" for reasons unrelated to the code under test. RC-401
-#: removed that fork, so db.DB_PATH now resolves here too; the literal is kept because a
-#: sampler that states its own source is clearer than one that inherits it.
-CONSOLE_DB = REPO / "data" / "ed_console.db"
+#: made this tool report "absent" for reasons unrelated to the code under test.
+CONSOLE_DB = canonical_console_db_path()
 
 
 class _ReadOnlyDBHandle:
