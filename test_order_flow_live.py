@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Test Order Flow live integration.
-Seeds order_flow_live_state with mock streaming data, then runs the engine.
+Seeds app.options.order_flow.state with mock streaming data, then runs the engine.
 Run: python test_order_flow_live.py
 """
 import sys
@@ -9,8 +9,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from order_flow_live_state import push_book, push_level_one, get_content_for_symbol, clear_symbol
-from order_flow_engine import OrderFlowEngine
+from app.options.order_flow.state import push_book, push_level_one, get_content_for_symbol, clear_symbol
+from app.options.order_flow.engine import OrderFlowEngine
 
 
 def main():

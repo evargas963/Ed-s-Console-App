@@ -7,8 +7,8 @@ cannot be reconstructed.
 """
 from __future__ import annotations
 
-import order_flow_engine as ofe
-from order_flow_engine import _normalize, _weighted_mean_present
+import app.options.order_flow.engine as ofe
+from app.options.order_flow.engine import _normalize, _weighted_mean_present
 
 
 def test_weighted_mean_present_helper_respects_min_present():

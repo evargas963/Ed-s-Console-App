@@ -1,5 +1,5 @@
 """
-order_flow_engine.py — Order Flow Engine
+app/options/order_flow/engine.py — Order Flow Engine
 ========================================
 Computes order flow metrics from Schwab streaming/REST data using ONLY
 fields from the identified Schwab field list.
@@ -289,7 +289,7 @@ def _latest_content_field(
     preceding tick). `is not None`, never truthiness -- 0 is a real, valid size.
 
     `items` is ALREADY scoped to one symbol/contract by the caller
-    (order_flow_live_state.get_content_for_symbol keys its stores per symbol, and
+    (app.options.order_flow.state.get_content_for_symbol keys its stores per symbol, and
     set_active_option_contract/set_streaming_active_ticker clear_symbol() the prior
     one on switch) -- this function does not itself walk across a contract boundary,
     it walks only as far back as the one already-isolated `items` list given to it. A
@@ -298,7 +298,7 @@ def _latest_content_field(
 
     FRESHNESS BOUNDARY (PR214 remediation, Gap 1): a carried-forward field is only
     valid while it is within `max_age_sec` of its own observation timestamp.
-    order_flow_live_state.push_level_one stamps a sibling `"{field}_TS_RECV"` key
+    app.options.order_flow.state.push_level_one stamps a sibling `"{field}_TS_RECV"` key
     (the canonical stream_capture.db `ts_recv` receive clock during replay, or
     time.time() at push for a direct/live call -- ONE clock, never invented twice)
     alongside every field it writes into `_top[sym]`. When that sibling key is
@@ -380,6 +380,23 @@ def _resolve_bid_ask_prices(
         items, "ASK_PRICE", now=now, max_age_sec=OF_TOP_OF_BOOK_FIELD_STALE_SEC))
     bid_leaf = "streaming.BID_PRICE" if bid_p is not None else None
     ask_leaf = "streaming.ASK_PRICE" if ask_p is not None else None
+    if bid_p is None or ask_p is None:
+        # LEVELONE_* is often size-only after the last price tick. OPTIONS_BOOK /
+        # NASDAQ_BOOK already in `content` still carries a current top. Read that
+        # before REST quote/extended/underlying so a live book cannot be ignored
+        # while L1 prices stay null.
+        snapshot = _latest_book_snapshot(items)
+        if snapshot is not None:
+            if bid_p is None:
+                bid_lv = _sorted_valid_levels(_iter_bids_levels(snapshot), descending=True)
+                if bid_lv:
+                    bid_p = bid_lv[0][0]
+                    bid_leaf = "streaming.BOOK.BID_PRICE"
+            if ask_p is None:
+                ask_lv = _sorted_valid_levels(_iter_asks_levels(snapshot), descending=False)
+                if ask_lv:
+                    ask_p = ask_lv[0][0]
+                    ask_leaf = "streaming.BOOK.ASK_PRICE"
     if bid_p is None or ask_p is None:
         quote = data.get("quote") or {}
         extended = data.get("extended") or {}
@@ -735,7 +752,7 @@ def compute_book_microstructure(data: dict, *, now_ts: Optional[float] = None,
                                 ticker: Optional[str] = None) -> dict:
     """Canonical L2 book microstructure for one symbol — the ONE producer the engine's
     book_imbalance and the `/api/order-flow/microstructure` route both read. `data.content`
-    carries the live streaming book + top-of-book (order_flow_live_state.get_content_for_symbol);
+    carries the live streaming book + top-of-book (app.options.order_flow.state.get_content_for_symbol);
     `data.exchange_quote_ts` (optional) is the plane's exchange quote clock. The structural state
     is extracted/computed ONCE and memoized per (ticker, BOOK_TIME); a caller with the same
     unchanged book SERIALIZES the cached state instead of re-walking raw data. Only the age

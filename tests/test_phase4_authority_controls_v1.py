@@ -12,7 +12,7 @@ from __future__ import annotations
 import ast
 import inspect
 
-import order_flow_streaming as ofs
+import app.options.order_flow.streaming as ofs
 
 #: TEST_SYSTEM_REHAB_V2: requirement-letter A was a fresh run_census() call asserting
 #: the EXACT same fact (census["VIOLATION"] == []) as
@@ -84,7 +84,7 @@ def test_F_reconnect_after_recycle_has_no_concurrent_authorities():
     carries its own mutation control). What this test keeps is the structural guarantee
     those depend on: the recycle retires the whole generation BEFORE it reconnects, and
     the retirement actually awaits what it cancels."""
-    import tools.run_stream_capture as d
+    import app.market_data.schwab.streaming.capture as d
     src = inspect.getsource(d._run_streaming)
     retire_at = src.index("_retire_stream_generation(")
     reconnect_at = src.index("_schwab_connect(", retire_at)
@@ -103,7 +103,7 @@ def test_F_reconnect_after_recycle_has_no_concurrent_authorities():
 def test_G_live_plane_consumes_transported_observations_no_schwab_socket():
     """G. server/live plane continues consuming transported observations -> PASS
     without opening Schwab socket. See test_daemon_plane_feed_v1.py for the full
-    hydration proof (L1 + book rows replay into order_flow_live_state/live_market_plane)."""
+    hydration proof (L1 + book rows replay into app.options.order_flow.state/live_market_plane)."""
     src = inspect.getsource(ofs)
     tree = ast.parse(src)
     for node in ast.walk(tree):
@@ -123,7 +123,7 @@ def test_mutation_control_the_gate_actually_discriminates():
     gate.run_census = lambda: {
         "PRODUCTION_OWNER": ["tools/run_stream_capture.py:555"],
         "OFFLINE_TOOL": [], "TEST_ONLY": [],
-        "VIOLATION": ["order_flow_streaming.py:999"],
+        "VIOLATION": ["app/options/order_flow/streaming.py:999"],
     }
     try:
         assert gate.main() == 1

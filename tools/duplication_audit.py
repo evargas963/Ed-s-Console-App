@@ -358,7 +358,7 @@ def scan_universe() -> list[Finding]:
     """
     counts: dict[str, int] = {}
 
-    src = _read(os.path.join(REPO, "tools", "run_stream_capture.py"))
+    src = _read(os.path.join(REPO, "app", "market_data", "schwab", "streaming", "capture.py"))
     m = re.search(r'--symbols["\']\s*,\s*default\s*=\s*["\']([^"\']+)', src)
     if m:
         counts["stream capture --symbols default"] = len(m.group(1).split(","))

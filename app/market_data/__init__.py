@@ -1,0 +1,1 @@
+"""Collect: market-data ownership."""

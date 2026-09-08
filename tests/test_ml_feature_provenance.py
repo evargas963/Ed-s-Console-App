@@ -345,13 +345,13 @@ def test_inference_snapshot_constructor_is_single_row_pure():
     import features.inference_snapshot as mod
 
     tree = ast.parse(open(mod.__file__, encoding="utf-8").read())
-    banned = {"db", "server", "live_market_plane", "order_flow_live_state", "sqlite3"}
+    banned = {"db", "server", "live_market_plane", "app.options.order_flow.state", "sqlite3"}
     imported: set[str] = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
-            imported.update(a.name.split(".")[0] for a in node.names)
+            imported.update(a.name for a in node.names)
         elif isinstance(node, ast.ImportFrom) and node.module:
-            imported.add(node.module.split(".")[0])
+            imported.add(node.module)
     hits = imported & banned
     assert not hits, f"inference snapshot constructor must stay single-row pure: {hits}"
 

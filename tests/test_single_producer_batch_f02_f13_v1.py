@@ -396,7 +396,7 @@ def test_rc345_relative_volume_variants_are_distinct_and_fail_closed() -> None:
     assert np.isnan(out[1]) and np.isnan(out[2]), "median<=0/NaN must yield NaN, not a fake 1.0"
 
     # order_flow rvol never substitutes 1.0; missing average is an explicit unavailable reason.
-    from order_flow_engine import _compute_rvol
+    from app.options.order_flow.engine import _compute_rvol
     val, reason = _compute_rvol({"quote": {"totalVolume": 1_000_000}})  # no average anywhere
     assert val is None and reason == "avg_volume_unavailable"
 
@@ -416,7 +416,7 @@ def test_rc345_relative_volume_variants_are_distinct_and_fail_closed() -> None:
         "the ML feature consumer must take volume_ratio from fk_volume_ratio (F12/RC-345)")
     assert 'part.relative_volume' not in mlt, (
         "the ML feature path must not consume the signal-layer RVOL variant (F12/RC-345)")
-    ofe = _read("order_flow_engine.py")
+    ofe = _read("app/options/order_flow/engine.py")
     assert "_compute_rvol(data)" in ofe and '"rvol": rvol' in ofe, (
         "order-flow must emit its own session-vs-daily rvol as a primitive (F12/RC-345)")
     assert "OF_RVOL_READINESS_OK" not in ofe, (
@@ -626,7 +626,7 @@ def test_rc345_imbalance_taxonomy_is_distinct_and_named() -> None:
       options call/put VOLUME imbalance ATM      (flow_imbalance volume fallback, ±window)
       options call/put VOLUME imbalance full-chain (order_flow_engine options_flow_score)
     Same formula over a different option population is a different quantity, kept separate."""
-    ofe = _read("order_flow_engine.py")
+    ofe = _read("app/options/order_flow/engine.py")
     assert "options_flow_score = (call_vol - put_vol) / total_opt_vol" in ofe
     mp = _read("math_probabilities.py")
     # The ATM volume fallback is windowed (atm_flow_window_totals), a different population.

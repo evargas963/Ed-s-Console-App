@@ -24,15 +24,14 @@ from pathlib import Path
 from typing import Any
 
 from db_authority import canonical_stream_db_path
-from runtime_layout import data_dir as _runtime_data_dir
 
 STREAM_DB_DEFAULT = canonical_stream_db_path()
 
 
 def resolve_stream_db_path(default: "Path | str | None" = None) -> Path:
     """THE ONE canonical stream-capture DB path authority every producer and
-    consumer (tools/run_stream_capture.py's CaptureWriter, order_flow_streaming.py's
-    feed-loop reader) resolves through.
+    consumer (tools/run_stream_capture.py's CaptureWriter,
+    app/options/order_flow/streaming.py's feed-loop reader) resolves through.
 
     RC-534 removed the ambient STREAM_CAPTURE_DB_PATH authority. Linked worktrees
     already converge through runtime_layout; recovery/tests pass an explicit path
@@ -42,20 +41,34 @@ def resolve_stream_db_path(default: "Path | str | None" = None) -> Path:
         return Path(default).resolve()
     return canonical_stream_db_path()
 
-#: Cross-process signal: the server process (one active UI viewer's ticker) writes here;
-#: the canonical daemon polls it to dynamically add/drop book-depth subscription for that
-#: one symbol. This is the ONLY channel by which the server influences the daemon's Schwab
-#: subscriptions — it never opens its own StreamClient (single-stream-authority law).
-ACTIVE_TICKER_SIGNAL_DEFAULT = _runtime_data_dir() / "stream_active_ticker.json"
+def default_active_ticker_signal_path(db_path: Path | str | None = None) -> Path:
+    """Ticker signal beside the resolved stream DB — the ONE cross-process channel by which
+    the server tells the daemon which symbol's book to add/drop. The server never opens its
+    own StreamClient (single-stream-authority law).
 
-#: Same channel, for the one option CONTRACT (OSI symbol, e.g. "SPY   260820C00767000")
-#: the daemon should stream LEVELONE_OPTIONS/OPTIONS_BOOK for. Options streaming is proven
-#: live (reports/of_capability_probe/options_20260820T1354Z/: subs_ok=true both services,
-#: 91/90 frames) but was never wired into the canonical daemon — this is that wiring, not a
-#: new probe. The contract symbol MUST come from a chain response's own "symbol" field
-#: (schwab_client.safe_get_chain), never constructed here: a prior manual probe attempt
-#: with a bare ticker failed "no option symbol from chain".
-ACTIVE_OPTION_CONTRACT_SIGNAL_DEFAULT = _runtime_data_dir() / "stream_active_option_contract.json"
+    Resolved fresh each call through the canonical `resolve_stream_db_path`, so a worktree
+    daemon and a production server converge on the same file (RC-523/RC-534 runtime_layout)
+    and the live StreamClient sees exactly the contract the UI requested — never bound as a
+    function default, which would freeze at import.
+    """
+    return resolve_stream_db_path(db_path).with_name("stream_active_ticker.json")
+
+
+def default_active_option_contract_signal_path(db_path: Path | str | None = None) -> Path:
+    """Option-contract signal beside the resolved stream DB. Same one channel, for the one
+    option CONTRACT (OSI symbol, e.g. "SPY   260820C00767000") the daemon streams
+    LEVELONE_OPTIONS/OPTIONS_BOOK for. The symbol MUST come from a chain response's own
+    "symbol" field (schwab_client.safe_get_chain), never constructed here."""
+    return resolve_stream_db_path(db_path).with_name("stream_active_option_contract.json")
+
+
+#: Import-time snapshots of the canonical resolver above, kept for tests that monkeypatch
+#: the module attribute and for callers that read a constant. Production writers/readers call
+#: default_active_*_signal_path() at call time; these are that same path resolved once here,
+#: so constant and function agree. ONE owner: the functions. (RC-534: the runtime_layout path
+#: subsumes the older _runtime_data_dir() constant and the removed STREAM_CAPTURE_DB_PATH env.)
+ACTIVE_TICKER_SIGNAL_DEFAULT = default_active_ticker_signal_path()
+ACTIVE_OPTION_CONTRACT_SIGNAL_DEFAULT = default_active_option_contract_signal_path()
 
 #: Queue policies. COALESCE keeps only the newest pending message per topic (quotes).
 #: COUNT_DROPS rejects new messages when full and counts them loudly (prints).
@@ -322,30 +335,34 @@ def _read_json_signal(value_key: str, *, path: Path) -> str | None:
     return v or None
 
 
-def write_active_ticker_signal(ticker: str, *, path: Path = ACTIVE_TICKER_SIGNAL_DEFAULT) -> None:
+def write_active_ticker_signal(ticker: str, *, path: Path | None = None) -> None:
     """The server's ONE write into the daemon's book-subscription decision."""
-    _write_json_signal("ticker", ticker, path=path)
+    dest = path if path is not None else default_active_ticker_signal_path()
+    _write_json_signal("ticker", ticker, path=dest)
 
 
-def read_active_ticker_signal(*, path: Path = ACTIVE_TICKER_SIGNAL_DEFAULT) -> str | None:
+def read_active_ticker_signal(*, path: Path | None = None) -> str | None:
     """The daemon's read of the server's requested active ticker."""
-    return _read_json_signal("ticker", path=path)
+    dest = path if path is not None else default_active_ticker_signal_path()
+    return _read_json_signal("ticker", path=dest)
 
 
 def write_active_option_contract_signal(
-    contract_symbol: str, *, path: Path = ACTIVE_OPTION_CONTRACT_SIGNAL_DEFAULT,
+    contract_symbol: str, *, path: Path | None = None,
 ) -> None:
     """The server's ONE write into the daemon's options-subscription decision.
     `contract_symbol` MUST be a chain response's own "symbol" field — never constructed
-    here (see the module-level ACTIVE_OPTION_CONTRACT_SIGNAL_DEFAULT comment)."""
-    _write_json_signal("contract_symbol", contract_symbol, path=path)
+    here."""
+    dest = path if path is not None else default_active_option_contract_signal_path()
+    _write_json_signal("contract_symbol", contract_symbol, path=dest)
 
 
 def read_active_option_contract_signal(
-    *, path: Path = ACTIVE_OPTION_CONTRACT_SIGNAL_DEFAULT,
+    *, path: Path | None = None,
 ) -> str | None:
     """The daemon's read of the server's requested active option contract."""
-    return _read_json_signal("contract_symbol", path=path)
+    dest = path if path is not None else default_active_option_contract_signal_path()
+    return _read_json_signal("contract_symbol", path=dest)
 
 
 def print_msg(*, symbol: str, price=None, size=None, exchange=None, conditions=None,

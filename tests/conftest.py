@@ -21,9 +21,13 @@ from pathlib import Path
 
 import pytest
 
-# Every pytest process (serial runner, xdist controller, and each xdist worker) owns a
-# fresh runtime root. Unconditionally remove inherited production DB selectors before
-# any test module can import db/runtime_layout.
+# Every pytest process (serial runner, xdist controller, and each xdist worker) owns ONE
+# deterministic, process-private runtime boundary before any application module imports
+# (RC-523 runtime root + RC-515 explicit isolation, reconciled). Inherited production DB
+# selectors are cleared first so a host/live value can never win; every mutable runtime path
+# is then rooted under one directory, and Schwab is explicitly OFFLINE with a missing token
+# so no test can reach the live account. Tests of live/offline semantics monkeypatch after
+# this boundary and therefore state their own inputs.
 os.environ.pop("ED_CONSOLE_DB", None)
 os.environ.pop("ED_DB_PATH", None)
 _PYTEST_RUNTIME_ROOT = Path(
@@ -34,25 +38,58 @@ _PYTEST_RUNTIME_ROOT = Path(
 os.environ["ED_RUNTIME_ROOT"] = str(_PYTEST_RUNTIME_ROOT)
 os.environ["ED_ARTIFACTS_ROOT"] = str(_PYTEST_RUNTIME_ROOT / "artifacts")
 os.environ.setdefault("ED_CONSOLE_ALLOW_NONCANONICAL_DB", "1")
+# The console DB and stream-capture DB are NOT set by env: RC-534 disabled ambient
+# ED_CONSOLE_DB / STREAM_CAPTURE_DB_PATH overrides (db._resolve_console_db_path raises on
+# them). Both resolve canonically under ED_RUNTIME_ROOT above, which is the one isolation
+# knob — the _stream_spine_fallback fixture below still pins the stream reader default.
 
-# Hermetic Schwab config for pytest only — not real credentials; no network at import.
-os.environ.setdefault("SCHWAB_API_KEY", "ci-placeholder-api-key")
-os.environ.setdefault("SCHWAB_APP_SECRET", "ci-placeholder-app-secret")
-os.environ.setdefault("SCHWAB_CALLBACK_URL", "https://127.0.0.1:8182")
+# Schwab hermetic AND explicitly offline (RC-515): placeholders satisfy import-time config;
+# ED_CI_OFFLINE guarantees no test constructs a live Schwab client. SCHWAB_TOKEN_PATH is NOT
+# set — RC-534 resolves the token canonically under ED_RUNTIME_ROOT (a path with no token in
+# the private root, so still offline), and runtime_layout's own tests require it unset.
+os.environ["ED_CI_OFFLINE"] = "1"
+os.environ["SCHWAB_API_KEY"] = "ci-placeholder-api-key"
+os.environ["SCHWAB_APP_SECRET"] = "ci-placeholder-app-secret"
+os.environ["SCHWAB_CALLBACK_URL"] = "https://127.0.0.1:8182"
 
-# TEARDOWN 2026-08-24: the tracked terrain quarantine ledger can never be a test's
-# write target, REGARDLESS of when server is imported — the env override is read at
-# server import time, and this line runs before any test module can import server
-# (CI caught a lazy mid-test import writing the real file; the autouse firewall
-# fixture below remains the byte-level backstop).
+# TEARDOWN 2026-08-24: the tracked terrain quarantine ledger can never be a test's write
+# target, REGARDLESS of when server is imported (CI caught a lazy mid-test import writing
+# the real file; the autouse firewall fixture below remains the byte-level backstop).
 os.environ["ED_TERRAIN_QUARANTINE_LEDGER"] = str(
     _PYTEST_RUNTIME_ROOT / "terrain_quarantine_ledger.jsonl"
 )
+
+# GOV-GATE-PERF-V1: tests always exercise REAL compute; a stored gate-cache success must
+# never satisfy an injected-failure test (tools/governance_gate_cache.py force-no-cache mode).
+os.environ["ED_GATE_CACHE_DISABLE"] = "1"
+
+
+def pytest_configure(config) -> None:
+    """The import-time runtime boundary holds in the controller and every xdist worker."""
+    assert Path(os.environ["ED_RUNTIME_ROOT"]) == _PYTEST_RUNTIME_ROOT
+    assert "ED_CONSOLE_DB" not in os.environ  # RC-534: no ambient console-DB override
+    from db_authority import canonical_console_db_path, canonical_stream_db_path
+
+    assert _PYTEST_RUNTIME_ROOT in canonical_console_db_path().parents
+    assert _PYTEST_RUNTIME_ROOT in canonical_stream_db_path().parents
+
 
 @pytest.fixture(scope="session", autouse=True)
 def _remove_pytest_runtime_after_session():
     yield
     shutil.rmtree(_PYTEST_RUNTIME_ROOT, ignore_errors=True)
+
+
+@pytest.fixture(autouse=True)
+def _stream_spine_fallback_stays_isolated(monkeypatch):
+    """Tests that remove the env override still cannot fall back to checkout state."""
+    import stream_spine
+
+    monkeypatch.setattr(
+        stream_spine,
+        "STREAM_DB_DEFAULT",
+        _PYTEST_RUNTIME_ROOT / "stream_capture.db",
+    )
 
 
 @pytest.fixture(autouse=True)

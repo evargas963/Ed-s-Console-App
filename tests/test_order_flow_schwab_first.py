@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from order_flow_engine import (
+from app.options.order_flow.engine import (
     OrderFlowEngine,
     _compute_options_flow,
     _compute_rvol,
@@ -152,7 +152,7 @@ def test_candle_accumulator_session_reset_volume_source():
 
 
 def test_order_flow_engine_no_rvol_one_point_zero_in_source():
-    text = (ROOT / "order_flow_engine.py").read_text(encoding="utf-8")
+    text = (ROOT / "app/options/order_flow/engine.py").read_text(encoding="utf-8")
     assert "return 1.0  # no avg available" not in text
     assert "rvol or 1.0" not in text
 

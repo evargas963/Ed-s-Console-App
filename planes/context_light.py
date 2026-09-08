@@ -25,7 +25,7 @@ _of_engine_singleton: Any = None
 def _get_order_flow_engine() -> Any:
     global _of_engine_singleton
     if _of_engine_singleton is None:
-        from order_flow_engine import OrderFlowEngine
+        from app.options.order_flow.engine import OrderFlowEngine
 
         _of_engine_singleton = OrderFlowEngine()
     return _of_engine_singleton
@@ -128,7 +128,7 @@ def build_order_flow_input_probe(ticker: str, l0_row: Optional[dict[str, Any]]) 
     Lightweight fingerprint for quote-hook OF gating: plane quote + streaming buffer probe.
     Does not run OrderFlowEngine.
     """
-    from order_flow_live_state import get_l1_stream_input_probe
+    from app.options.order_flow.state import get_l1_stream_input_probe
 
     tkr = ticker_storage_key(ticker)  # RC-345/F25: canonical L1 context key
     sp = _safe_float(l0_row.get("spot")) if l0_row else None
@@ -158,7 +158,7 @@ def compute_order_flow_compact(
     """
     out: dict[str, Any] = {}
     try:
-        from order_flow_live_state import get_content_for_symbol
+        from app.options.order_flow.state import get_content_for_symbol
 
         _of_data: dict[str, Any] = {"content": get_content_for_symbol(ticker)}
         if l0_row and l0_row.get("spot") is not None:

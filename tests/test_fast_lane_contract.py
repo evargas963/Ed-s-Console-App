@@ -51,7 +51,7 @@ def test_fast_quote_auth_failure_serves_carried_forward_plane(monkeypatch):
     effect and generation-ID consistency this file never checked). This file's own
     contract is the /api/fast-quote HTTP response (its docstring), so only the HTTP
     round trip below remains -- it is what this file exists to prove."""
-    import order_flow_streaming as ofs
+    import app.options.order_flow.streaming as ofs
     import server as srv
 
     stale = {
@@ -88,7 +88,7 @@ def test_fast_quote_auth_failure_serves_carried_forward_plane(monkeypatch):
 
 
 def test_fast_quote_missing_token_file_returns_401_not_503(monkeypatch):
-    import order_flow_streaming as ofs
+    import app.options.order_flow.streaming as ofs
     import server as srv
     from fastapi import HTTPException
 

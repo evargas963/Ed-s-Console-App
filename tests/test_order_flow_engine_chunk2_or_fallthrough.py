@@ -9,7 +9,7 @@ that the composite is not produced and is not reintroduced.
 """
 from __future__ import annotations
 
-from order_flow_engine import OrderFlowEngine
+from app.options.order_flow.engine import OrderFlowEngine
 
 
 def _five_level_book() -> dict:

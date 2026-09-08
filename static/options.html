@@ -135,6 +135,8 @@
       <div class="row"><span class="k">mid / microprice</span><span class="v" id="mx-mid">&mdash;</span></div>
       <div class="row"><span class="k">spread</span><span class="v" id="mx-spread">&mdash;</span></div>
       <div class="row"><span class="k">book age</span><span class="v" id="mx-age">&mdash;</span></div>
+      <div class="row"><span class="k">tape 30s (PROXY)</span><span class="v" id="mx-tape">&mdash;</span></div>
+      <div class="row"><span class="k">cum delta (PROXY)</span><span class="v" id="mx-cvd">&mdash;</span></div>
       <table id="depth-tbl">
         <thead><tr><th>depth</th><th>bid</th><th>ask</th><th>imbalance</th></tr></thead>
         <tbody id="depth-body"></tbody>
@@ -390,6 +392,9 @@
     var ages = m.ages || {};
     document.getElementById('mx-age').textContent = ages.book_age_sec === null || ages.book_age_sec === undefined
       ? '—' : fmt(ages.book_age_sec, 1) + 's';
+    var flow = m.flow || {};
+    document.getElementById('mx-tape').textContent = fmt(flow.tape_pressure_30s, 3);
+    document.getElementById('mx-cvd').textContent = fmt(flow.cum_delta_proxy, 1);
 
     var depthBody = document.getElementById('depth-body');
     depthBody.innerHTML = '';

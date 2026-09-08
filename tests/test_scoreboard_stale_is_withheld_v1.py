@@ -107,6 +107,30 @@ def test_the_db_health_row_declares_itself_live():
         "it will be marked stale whenever that tool file is older than the tree")
 
 
+def test_db_health_uses_the_canonical_isolated_db_seam(tmp_path, monkeypatch):
+    """RC-534: row_db resolves the console DB CANONICALLY (the ambient ED_CONSOLE_DB override
+    is disabled) and runs tools/check_db_health.py with NO --db; check_db_health resolves the
+    SAME canonical DB from ED_RUNTIME_ROOT, so in an isolated pytest runtime the health check
+    targets the isolated DB, never production."""
+    isolated = tmp_path / "isolated.db"
+    isolated.touch()
+    calls = []
+
+    class _Result:
+        returncode = 0
+
+    monkeypatch.setattr(S, "canonical_console_db_path", lambda: isolated)
+    monkeypatch.setattr(S.subprocess, "run", lambda argv, **kwargs: calls.append(argv) or _Result())
+
+    rows = S.row_db()
+
+    assert calls == [[
+        sys.executable,
+        os.path.join(S.REPO, "tools", "check_db_health.py"),
+    ]]
+    assert rows[0].key == "DB" and rows[0].live is True
+
+
 def test_unmeasured_and_error_rows_are_left_alone():
     for st in ("UNMEASURED", "ERROR"):
         rows = S._mark_stale_rows([_row(state=st, value="—")],

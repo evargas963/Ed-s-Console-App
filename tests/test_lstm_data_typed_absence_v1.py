@@ -162,7 +162,7 @@ def test_direction_consumers_skip_none_signs():
 # ── order flow: absent legs are excluded, never neutral 0.0 mass ─────────────────────────
 
 def test_weighted_mean_present_never_zero_fills_absent_leg():
-    from order_flow_engine import _weighted_mean_present
+    from app.options.order_flow.engine import _weighted_mean_present
 
     terms = [(1.0, None, -1.0, 1.0), (1.0, 0.5, -1.0, 1.0)]
     # Zero-filling the absent leg would yield 0.25; exclusion yields 0.5 exactly.
@@ -172,7 +172,7 @@ def test_weighted_mean_present_never_zero_fills_absent_leg():
 def test_normalize_requires_a_present_value():
     # RC-318: _normalize's dead `None -> 0.0` branch is gone; absence is the caller's
     # concern (exclusion), so passing None is now a type error, not a neutral reading.
-    from order_flow_engine import _normalize
+    from app.options.order_flow.engine import _normalize
 
     with pytest.raises(TypeError):
         _normalize(None)  # type: ignore[arg-type]
