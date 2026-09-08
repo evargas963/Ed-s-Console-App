@@ -44,9 +44,10 @@ os.environ.setdefault("ED_CONSOLE_ALLOW_NONCANONICAL_DB", "1")
 # knob — the _stream_spine_fallback fixture below still pins the stream reader default.
 
 # Schwab hermetic AND explicitly offline (RC-515): placeholders satisfy import-time config;
-# ED_CI_OFFLINE plus a missing token guarantee no test constructs a live Schwab client.
+# ED_CI_OFFLINE guarantees no test constructs a live Schwab client. SCHWAB_TOKEN_PATH is NOT
+# set — RC-534 resolves the token canonically under ED_RUNTIME_ROOT (a path with no token in
+# the private root, so still offline), and runtime_layout's own tests require it unset.
 os.environ["ED_CI_OFFLINE"] = "1"
-os.environ["SCHWAB_TOKEN_PATH"] = str(_PYTEST_RUNTIME_ROOT / "missing_schwab_token.json")
 os.environ["SCHWAB_API_KEY"] = "ci-placeholder-api-key"
 os.environ["SCHWAB_APP_SECRET"] = "ci-placeholder-app-secret"
 os.environ["SCHWAB_CALLBACK_URL"] = "https://127.0.0.1:8182"

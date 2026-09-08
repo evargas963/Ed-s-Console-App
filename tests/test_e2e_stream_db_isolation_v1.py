@@ -68,7 +68,10 @@ def test_pytest_boundary_overrides_host_runtime_state(monkeypatch):
     assert resolve_stream_db_path().parent == data
     assert default_active_option_contract_signal_path().parent == data
     assert default_active_ticker_signal_path().parent == data
-    assert Path(os.environ["SCHWAB_TOKEN_PATH"]).parent == root
+    # RC-534: SCHWAB_TOKEN_PATH is not set; config resolves the token canonically under root.
+    from config import build_config
+    assert "SCHWAB_TOKEN_PATH" not in os.environ
+    assert Path(build_config(".").token_path).parent == root
     assert Path(os.environ["ED_TERRAIN_QUARANTINE_LEDGER"]).parent == root
     assert os.environ["ED_CI_OFFLINE"] == "1"
     assert os.environ["SCHWAB_API_KEY"] == PLACEHOLDER_KEY

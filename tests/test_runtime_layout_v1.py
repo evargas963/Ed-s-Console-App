@@ -212,7 +212,7 @@ def test_no_runtime_path_is_rooted_in_the_source_checkout_any_more():
     or `APP_DIR / "reports"` in the runtime modules and the report-writing tools."""
     offenders: list[str] = []
     for rel in ("server.py", "db.py", "db_authority.py", "config.py", "desk_store.py",
-                "stream_spine.py", "order_flow_streaming.py", "ticker_readiness_lookup.py",
+                "stream_spine.py", "app/options/order_flow/streaming.py", "ticker_readiness_lookup.py",
                 "tools/terrain_backtest_report_v1.py", "tools/operable_surface_gate.py",
                 "tools/run_operable_surface_ops.py", "tools/ed_server_warn_quiet_window.py",
                 "tools/console_liveness_check.py"):
