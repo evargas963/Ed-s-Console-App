@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from calibration.db_guard import register_allow_noncanonical_flag, require_canonical_db_target
+from db_authority import canonical_console_db_path
 from db import configure_sqlite_connection
 from ml_horizon import ML_HORIZON_SLUGS, normalize_ml_horizon_slug
 
@@ -75,7 +76,7 @@ def _brier(preds: list[float], y: list[int]) -> float:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--db", type=Path, default=ROOT / "data" / "ed_console.db")
+    ap.add_argument("--db", type=Path, default=canonical_console_db_path())
     register_allow_noncanonical_flag(ap)
     args = ap.parse_args()
     require_canonical_db_target(args, tool_name="run_phase8_calibration_global_v1", write_capable=False)

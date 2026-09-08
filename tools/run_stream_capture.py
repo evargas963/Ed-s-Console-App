@@ -1095,7 +1095,9 @@ def write_status(bus: MessageBus, health: HealthRegistry, writer: CaptureWriter,
     }, indent=2), encoding="utf-8")
 
 
-async def run(symbols: list[str], duration_min: float, db_path: str | None) -> int:
+async def run(
+    symbols: list[str], duration_min: float, db_path: Path | None = None
+) -> int:
     lock_fd = acquire_owner_lock()
     try:
         return await _run_locked(symbols, duration_min, db_path)
@@ -1240,7 +1242,9 @@ async def _shutdown_sequence(pump_task, writer_task, stop, wsub,
         print(f"shutdown: writer ended with {type(exc).__name__}: {exc}")
 
 
-async def _run_locked(symbols: list[str], duration_min: float, db_path: str | None) -> int:
+async def _run_locked(
+    symbols: list[str], duration_min: float, db_path: Path | None = None
+) -> int:
     from config import build_config
     from schwab_client import build_client_from_token
 
@@ -1253,7 +1257,7 @@ async def _run_locked(symbols: list[str], duration_min: float, db_path: str | No
     # precisely the historically-false observability 2A exists to prevent, and it
     # persisted for exactly as long as the operator's token stayed broken.
     # DB + reconciliation now come FIRST; the external vendor dependency comes after.
-    writer = CaptureWriter(db_path) if db_path else CaptureWriter()
+    writer = CaptureWriter(db_path)
     try:
         # Close any coverage epoch left open by a PRIOR daemon lifetime, BEFORE this one
         # opens any new live epoch. The reconciliation timestamp is an UPPER BOUND
@@ -1680,10 +1684,9 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--symbols", default="SPY,QQQ,IWM")
     ap.add_argument("--duration-min", type=float, default=0.0, help="0 = until Ctrl+C")
-    ap.add_argument("--db", default=None, help="override stream_capture.db path (tests)")
     a = ap.parse_args()
     syms = [s.strip().upper() for s in a.symbols.split(",") if s.strip()]
-    return asyncio.run(run(syms, a.duration_min, a.db))
+    return asyncio.run(run(syms, a.duration_min))
 
 
 if __name__ == "__main__":

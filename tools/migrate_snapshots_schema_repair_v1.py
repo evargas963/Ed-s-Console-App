@@ -20,6 +20,8 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from calibration.paths import DEFAULT_DB  # noqa: E402
+from db_authority import is_canonical_db_path  # noqa: E402
+from db_safety import backup_permanent_database  # noqa: E402
 from snapshot_normalizer import materialize_normalized_table, validate_normalization  # noqa: E402
 
 
@@ -85,8 +87,12 @@ def run(db_path: Path, *, apply: bool = False, backup_root: Path | None = None) 
             audit["would_apply"] = True
             return _success(audit)
 
-    backup_path = _backup_database(db_path, backup_root)
-    audit["backup_path"] = str(backup_path)
+    if is_canonical_db_path(db_path):
+        backup_path, manifest_path, _ = backup_permanent_database(
+            db_path, reason="pre_schema_repair_v1", backup_root=backup_root
+        )
+        audit["backup_path"] = str(backup_path)
+        audit["backup_manifest_path"] = str(manifest_path)
 
     try:
         with _connect(db_path) as conn:
@@ -352,22 +358,6 @@ def _preflight_refusal(audit: dict[str, Any]) -> tuple[str, str] | None:
     return None
 
 
-def _backup_database(db_path: Path, backup_root: Path) -> Path:
-    backup_root.mkdir(parents=True, exist_ok=True)
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-    backup_path = backup_root / f"{stamp}_pre_schema_repair_v1_ed_console.db"
-    src = sqlite3.connect(str(db_path))
-    try:
-        dst = sqlite3.connect(str(backup_path))
-        try:
-            src.backup(dst)
-        finally:
-            dst.close()
-    finally:
-        src.close()
-    return backup_path
-
-
 def _column_definition(col: dict[str, Any], *, normalized: bool = False) -> str:
     name = str(col["name"])
     if name == "snapshot_id":
@@ -506,12 +496,20 @@ def _fail(audit: dict[str, Any], status: str, message: str) -> dict[str, Any]:
 
 
 def main(argv: list[str] | None = None) -> int:
+    from calibration.db_guard import register_allow_noncanonical_flag, require_canonical_db_target
+
     ap = argparse.ArgumentParser(description="Repair snapshots schema drift. Defaults to dry-run.")
-    ap.add_argument("--db-path", type=Path, default=DEFAULT_DB)
+    ap.add_argument("--db-path", dest="db", type=Path, default=DEFAULT_DB)
     ap.add_argument("--backup-root", type=Path, default=None)
     ap.add_argument("--apply", action="store_true", help="Actually mutate the DB; default is dry-run.")
+    register_allow_noncanonical_flag(ap)
     args = ap.parse_args(argv)
-    out = run(args.db_path, apply=bool(args.apply), backup_root=args.backup_root)
+    require_canonical_db_target(
+        args,
+        tool_name="migrate_snapshots_schema_repair_v1",
+        write_capable=bool(args.apply),
+    )
+    out = run(args.db, apply=bool(args.apply), backup_root=args.backup_root)
     print(json.dumps(out, indent=2, default=str))
     return 0 if out.get("success") else 1
 

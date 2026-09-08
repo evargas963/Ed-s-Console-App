@@ -5,7 +5,7 @@ Same-sample edge metrics vs naive baselines (trusted, anchored, labeled calibrat
 Unlike phase4 snapshot baselines (different population), all baselines here use the **same rows**
 as the decision log for apples-to-apples EV comparison.
 
-  python -m calibration.edge_validation --db data/calibration_accumulation_validation.db
+  python -m calibration.edge_validation --db <run-private-calibration.db>
 """
 
 from __future__ import annotations

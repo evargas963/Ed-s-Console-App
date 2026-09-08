@@ -16,6 +16,15 @@ def _connect(path: Path) -> sqlite3.Connection:
     return conn
 
 
+def _canonical_test_db(tmp_path: Path, monkeypatch) -> Path:
+    import runtime_layout
+
+    monkeypatch.setattr(runtime_layout, "RUNTIME_ROOT", tmp_path)
+    path = tmp_path / "data" / "ed_console.db"
+    path.parent.mkdir()
+    return path
+
+
 def _retired_col_sql_type(col: str) -> str:
     if col.startswith("fused_contributing_models_") or col.startswith("fused_stack_status_"):
         return "TEXT"
@@ -90,8 +99,8 @@ def test_dry_run_does_not_mutate_and_reports_full_retired_delta(tmp_path: Path) 
     assert AUDIT_EXPECTED_KEYS <= set(payload.keys())
 
 
-def test_apply_drops_columns_preserves_rows_sets_flag(tmp_path: Path) -> None:
-    db_path = tmp_path / "ed_console.db"
+def test_apply_drops_columns_preserves_rows_sets_flag(tmp_path: Path, monkeypatch) -> None:
+    db_path = _canonical_test_db(tmp_path, monkeypatch)
     backup_root = tmp_path / "backups"
     audit_root = tmp_path / "audits"
     _create_seeded_db(db_path, n_rows=5)
@@ -119,8 +128,8 @@ def test_apply_drops_columns_preserves_rows_sets_flag(tmp_path: Path) -> None:
         assert int(bconn.execute("SELECT COUNT(*) FROM snapshots").fetchone()[0]) == row_before
 
 
-def test_second_apply_is_idempotent_already_applied(tmp_path: Path) -> None:
-    db_path = tmp_path / "ed_console.db"
+def test_second_apply_is_idempotent_already_applied(tmp_path: Path, monkeypatch) -> None:
+    db_path = _canonical_test_db(tmp_path, monkeypatch)
     audit_root = tmp_path / "audits"
     _create_seeded_db(db_path)
     first = mig.run(db_path, apply=True, backup_root=tmp_path / "backups", audit_root=audit_root)
@@ -135,8 +144,8 @@ def test_second_apply_is_idempotent_already_applied(tmp_path: Path) -> None:
     assert _column_names(db_path) == cols_after_first
 
 
-def test_backup_row_count_matches_source(tmp_path: Path) -> None:
-    db_path = tmp_path / "ed_console.db"
+def test_backup_row_count_matches_source(tmp_path: Path, monkeypatch) -> None:
+    db_path = _canonical_test_db(tmp_path, monkeypatch)
     _create_seeded_db(db_path, n_rows=7)
     with _connect(db_path) as conn:
         expected = int(conn.execute("SELECT COUNT(*) FROM snapshots").fetchone()[0])

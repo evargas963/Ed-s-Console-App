@@ -12,8 +12,9 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from horizon_outcomes import forward_bar_start_utc  # noqa: E402
+from db_authority import canonical_console_db_path  # noqa: E402
 
-DB = ROOT / "data" / "ed_console.db"
+DB = canonical_console_db_path()
 
 
 def main() -> None:

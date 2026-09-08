@@ -41,6 +41,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 
+from db_authority import canonical_console_db_path  # noqa: E402
 from math_exposure_core import (  # noqa: E402
     bucket_metric,
     compute_exposures_by_strike,
@@ -68,7 +69,7 @@ RTH_CLOSE_MIN = _sticky.RTH_CLOSE_MIN
 BAND_ATR_FRAC = _sticky.BAND_ATR_FRAC
 
 STUDY = "liquidity_gamma_vs_ov_pull_v1"
-DB = REPO / "data" / "ed_console.db"
+DB = canonical_console_db_path()
 OUT_JSON = REPO / "reports" / f"{STUDY}.json"
 OUT_MD = REPO / "reports" / f"{STUDY}.md"
 SEED = 20260730

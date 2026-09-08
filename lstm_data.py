@@ -36,7 +36,7 @@ def _positive_float_or_none(value) -> Optional[float]:
 
     return float_positive_or_none(value)
 
-# ── Database location (same resolver as db.DB_PATH / ED_CONSOLE_DB) ─────────
+# ── Database location (same canonical resolver as db.DB_PATH) ───────────────
 from db import DB_PATH
 
 # ── Canonical timeframe ───────────────────────────────────────────────────────

@@ -13,6 +13,7 @@ _REPO = Path(__file__).resolve().parents[1]
 if str(_REPO) not in sys.path:
     sys.path.insert(0, str(_REPO))
 
+from db_authority import canonical_console_db_path
 from verification.operator_trust_rth_validation import (
     build_dry_run_report,
     capture_runtime_env,
@@ -50,7 +51,7 @@ def _count_rows(db_path: Path) -> dict[str, Any]:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dry-run", action="store_true")
-    parser.add_argument("--db-path", type=Path, default=_REPO / "data" / "ed_console.db")
+    parser.add_argument("--db-path", type=Path, default=canonical_console_db_path())
     parser.add_argument("--audit-date", default=datetime.date.today().isoformat())
     args = parser.parse_args()
 

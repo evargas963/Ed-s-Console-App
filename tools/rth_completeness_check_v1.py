@@ -36,6 +36,7 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from db_authority import canonical_console_db_path  # noqa: E402
 from time_et import (  # noqa: E402
     COLLECT_WINDOW_START_MINS,
     collect_window_end_mins_for_et_date,
@@ -344,7 +345,7 @@ def run(db: str, et_date: str, max_missing: int, backfill: bool, report_path: Pa
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--db", default=str(ROOT / "data" / "ed_console.db"))
+    ap.add_argument("--db", default=str(canonical_console_db_path()))
     ap.add_argument("--date", default=None, help="ET date (YYYY-MM-DD); default today ET")
     ap.add_argument("--max-missing", type=int, default=0,
                     help="minutes of total shortfall tolerated before failing (default 0)")

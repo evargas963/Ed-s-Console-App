@@ -27,7 +27,6 @@ Usage:  python tools/flip_iv_sensitivity_v1.py [db_path]   (default data/ed_cons
 from __future__ import annotations
 
 import json
-import os
 import sqlite3
 import statistics
 import sys
@@ -40,6 +39,8 @@ from typing import Any
 _ROOT = str(Path(__file__).resolve().parent.parent)
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
+
+from db_authority import canonical_console_db_path  # noqa: E402
 
 MIN_CONTRACTS = 8
 DEFAULT_WING_PCT = 0.03
@@ -219,5 +220,5 @@ def run(db_path: str) -> dict[str, Any]:
 
 if __name__ == "__main__":
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
-    path = args[0] if args else os.path.join("data", "ed_console.db")
+    path = args[0] if args else str(canonical_console_db_path())
     print(json.dumps(run(path), indent=2))

@@ -510,7 +510,7 @@ def build_operational_policy_payload(
                 {
                     "condition_code": "insufficient_evidence_monitoring",
                     "severity": "info",
-                    "operator_action_recommendation": "Provide ED_CONSOLE_DB or db_path so fingerprint drift can be evaluated.",
+                    "operator_action_recommendation": "Provide an explicit db_path so fingerprint drift can be evaluated.",
                     "promotion_frozen": False,
                     "consider_rollback": False,
                     "retraining_required": False,

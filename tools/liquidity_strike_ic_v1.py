@@ -40,6 +40,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 
+from db_authority import canonical_console_db_path  # noqa: E402
 from math_exposure_core import (  # noqa: E402
     compute_exposures_by_strike,
     total_gex_dollars_at_strike,
@@ -71,7 +72,7 @@ BAND_ATR_FRAC = _sticky.BAND_ATR_FRAC
 PIERCE_ATR_MULT = _sticky.PIERCE_ATR_MULT
 
 STUDY = "liquidity_strike_ic_v1"
-DB = REPO / "data" / "ed_console.db"
+DB = canonical_console_db_path()
 OUT_JSON = REPO / "reports" / f"{STUDY}.json"
 OUT_MD = REPO / "reports" / f"{STUDY}.md"
 SEED = 20260730

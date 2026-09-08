@@ -18,6 +18,7 @@ import math
 import os
 import sqlite3
 import sys
+import tempfile
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -48,7 +49,6 @@ BASE_TS = 1_712_200_000.0
 TS_STEP = 100.0
 _TICKERS_ROT = (["SPY"] * 30 + ["QQQ"] * 30 + ["IWM"] * 30 + ["DIA"] * 30)
 
-OUT_DB = ROOT / "data" / "calibration_accumulation_validation.db"
 OUT_REPORT = ROOT / "data" / "calibration_accumulation_validation_report.json"
 
 
@@ -107,7 +107,7 @@ def _seed_bars_and_snapshots(conn: sqlite3.Connection, plan: list[tuple[str, flo
             vol = 1_200_000.0 + float(k_g) * 800.0
             conn.execute(
                 """
-                INSERT INTO price_bars_1m ( -- collect-window-ok: isolated validation DB data/calibration_accumulation_validation.db, never canonical (RC-183)
+                INSERT INTO price_bars_1m ( -- collect-window-ok: run-private isolated validation DB, never canonical (RC-183)
                     ticker, bar_start_ts_utc, bar_end_ts_utc, open, high, low, close, volume, source
                 )
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'accum_validation')
@@ -175,22 +175,24 @@ def _unsafe_non_exact_joins(conn: sqlite3.Connection) -> int:
     return int(r[0]) if r else 0
 
 
-def run() -> dict[str, Any]:
+def run(out_db: Path) -> dict[str, Any]:
+    out_db = Path(out_db).resolve()
     warnings: list[str] = []
     import ml_predict
 
     _orig_run_base = ml_predict.run_unified_stack_ml_once
+    _orig_db_path = db_mod.DB_PATH
     try:
         _stub_models()
 
-        OUT_DB.parent.mkdir(parents=True, exist_ok=True)
-        if OUT_DB.exists():
-            OUT_DB.unlink()
+        out_db.parent.mkdir(parents=True, exist_ok=True)
+        if out_db.exists():
+            raise FileExistsError(f"run-private calibration DB already exists: {out_db}")
 
-        _ = EdDB(OUT_DB)
-        db_mod.DB_PATH = OUT_DB
+        _ = EdDB(out_db)
+        db_mod.DB_PATH = out_db
 
-        conn = sqlite3.connect(str(OUT_DB))
+        conn = sqlite3.connect(str(out_db))
         configure_sqlite_connection(conn)
         ensure_calibration_schema(conn)
 
@@ -205,7 +207,7 @@ def run() -> dict[str, Any]:
         conn.commit()
         conn.close()
 
-        edb = EdDB(OUT_DB)
+        edb = EdDB(out_db)
         decision_events = 0
         for i in range(N_ACCUM):
             ts = BASE_TS + float(i) * TS_STEP
@@ -228,9 +230,9 @@ def run() -> dict[str, Any]:
                 _register_execution_identity_for_test as _reg_xid,
             )
 
-            _val_sha = _reg_xid(OUT_DB, _val_did)
+            _val_sha = _reg_xid(out_db, _val_did)
             append_live_v2_calibration_decision(
-                db_path=OUT_DB,
+                db_path=out_db,
                 calibration_payload=out.calibration_payload,
                 decision_id=_val_did,
                 execution_identity_sha256=_val_sha,
@@ -251,15 +253,15 @@ def run() -> dict[str, Any]:
             )
             decision_events += 1
 
-        bf1 = backfill(OUT_DB, tol_sec=0.0)
-        join1 = analyze_outcome_join(OUT_DB)
-        anchor1 = run_anchor_audit(OUT_DB, sample_limit=None, seed_sample=False)
-        leg1 = legacy_analyze(OUT_DB)
+        bf1 = backfill(out_db, tol_sec=0.0)
+        join1 = analyze_outcome_join(out_db)
+        anchor1 = run_anchor_audit(out_db, sample_limit=None, seed_sample=False)
+        leg1 = legacy_analyze(out_db)
 
-        bf2 = backfill(OUT_DB, tol_sec=0.0)
-        join2 = analyze_outcome_join(OUT_DB)
+        bf2 = backfill(out_db, tol_sec=0.0)
+        join2 = analyze_outcome_join(out_db)
 
-        conn = sqlite3.connect(str(OUT_DB))
+        conn = sqlite3.connect(str(out_db))
         configure_sqlite_connection(conn)
         conn.row_factory = sqlite3.Row
         dups = _duplicate_key_groups(conn)
@@ -303,7 +305,7 @@ def run() -> dict[str, Any]:
         report: dict[str, Any] = {
             "window": {
                 "kind": "deterministic_production_path_accumulation",
-                "db_path": str(OUT_DB.resolve()),
+                "db_path": str(out_db),
                 "n_decision_events": decision_events,
                 "base_ts_utc": BASE_TS,
                 "ts_step_sec": TS_STEP,
@@ -345,14 +347,17 @@ def run() -> dict[str, Any]:
         return report
     finally:
         ml_predict.run_unified_stack_ml_once = _orig_run_base
+        db_mod.DB_PATH = _orig_db_path
 
 
 def main() -> int:
-    try:
-        rep = run()
-    except Exception as e:
-        print(json.dumps({"error": str(e), "binary_pass": False}, indent=2))
-        return 2
+    with tempfile.TemporaryDirectory(prefix="ed-calibration-accumulation-") as run_dir:
+        try:
+            rep = run(Path(run_dir) / "accumulation.db")
+        except Exception as e:
+            print(json.dumps({"error": str(e), "binary_pass": False}, indent=2))
+            return 2
+    OUT_REPORT.parent.mkdir(parents=True, exist_ok=True)
     OUT_REPORT.write_text(json.dumps(rep, indent=2), encoding="utf-8")
     print(json.dumps(rep, indent=2))
     return 0 if rep.get("binary_pass") else 3

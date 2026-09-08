@@ -26,12 +26,13 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from calibration.db_guard import register_allow_noncanonical_flag, require_canonical_db_target
+from db_authority import canonical_console_db_path
 from db import configure_sqlite_connection
 from horizon_outcomes import OUTCOME_BAR_SPECS
 from ml_data_common import head_rth_df_from_ts_utc, weekday_where_clause
 from timeframe_config import CANONICAL_TIMEFRAME
 
-DEFAULT_DB = ROOT / "data" / "ed_console.db"
+DEFAULT_DB = canonical_console_db_path()
 OUT_CFG = ROOT / "calibration" / "movement_target_thresholds_by_horizon_v1.json"
 OUT_REPORT = ROOT / "data" / "movement_threshold_search_report_v1.json"
 

@@ -40,6 +40,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 
+from db_authority import canonical_console_db_path  # noqa: E402
 from liquidity_models import PlaybookConfig  # noqa: E402
 from liquidity_value_engine import (  # noqa: E402
     compute_opening_range,
@@ -153,7 +154,7 @@ def _placebo_levels(real: dict, rnd: random.Random) -> dict:
 
 
 def run(tickers: list[str], limit_sessions: int | None) -> dict:
-    con = sqlite3.connect(f"file:{REPO / 'data' / 'ed_console.db'}?mode=ro", uri=True)
+    con = sqlite3.connect(f"file:{canonical_console_db_path()}?mode=ro", uri=True)
     touches: list[dict] = []
     placebo_touches: list[dict] = []
     baseline: dict[int, dict[int, list[float]]] = {h: {} for h in HORIZONS}

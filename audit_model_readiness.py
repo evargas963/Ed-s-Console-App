@@ -16,7 +16,7 @@ from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).parent.resolve()
 sys.path.insert(0, str(SCRIPT_DIR))
-from db import DB_PATH  # noqa: E402 — canonical resolver (ED_CONSOLE_DB / data/ed_console.db)
+from db import DB_PATH  # noqa: E402 — canonical resolver
 
 MODEL_DIR = SCRIPT_DIR / "models"
 

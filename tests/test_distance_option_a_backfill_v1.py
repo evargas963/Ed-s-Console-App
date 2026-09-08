@@ -76,7 +76,6 @@ def test_discover_tables_includes_snapshots(db_mixed):
 def test_backfill_flips_negative_only_and_sets_flag(db_mixed):
     out = run_distance_option_a_backfill_v1(
         db_mixed,
-        skip_backup=True,
         force=True,
     )
     assert out["status"] == "backfill_complete"
@@ -128,6 +127,6 @@ def test_refuses_second_run_without_force(tmp_path):
     with db._connect() as conn:
         _insert_snapshot(conn, ticker="Y", ts=1.0, nad=1.0, nbd=-1.0)
         conn.commit()
-    run_distance_option_a_backfill_v1(dbp, skip_backup=True, force=True)
+    run_distance_option_a_backfill_v1(dbp, force=True)
     with pytest.raises(RuntimeError, match="NO-GO"):
-        run_distance_option_a_backfill_v1(dbp, skip_backup=True, force=False)
+        run_distance_option_a_backfill_v1(dbp, force=False)

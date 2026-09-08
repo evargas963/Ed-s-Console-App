@@ -46,11 +46,12 @@ from math_levels import (  # noqa: E402
     compute_gamma_profile,
     gamma_at_price,
 )
-from runtime_layout import data_dir, reports_dir  # noqa: E402 — RC-523: runtime/artifacts roots
+from db_authority import canonical_console_db_path  # noqa: E402
+from runtime_layout import reports_dir  # noqa: E402 — RC-523: runtime/artifacts roots
 from terrain_engine import compute_terrain  # noqa: E402
 from time_et import ET, RTH_END_MINS, RTH_START_MINS  # noqa: E402
 
-DB = data_dir() / "ed_console.db"
+DB = canonical_console_db_path()
 OUT_MD = reports_dir() / "terrain_backtest_latest.md"
 OUT_JSON = reports_dir() / "terrain_backtest_latest.json"
 

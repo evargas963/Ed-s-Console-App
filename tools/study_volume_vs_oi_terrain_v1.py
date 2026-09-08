@@ -41,8 +41,9 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from terrain_engine import compute_terrain  # noqa: E402
+from db_authority import canonical_console_db_path  # noqa: E402
 
-DB = ROOT / "data" / "ed_console.db"
+DB = canonical_console_db_path()
 OUT = ROOT / "reports" / "study_volume_vs_oi_terrain_v1.json"
 
 REGIME_AGREE_MIN_PCT = 75.0        # pre-registered bar (1)

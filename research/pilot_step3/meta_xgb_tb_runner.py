@@ -35,10 +35,11 @@ from .f2_tb_grid_runner import (
     deflated_sharpe_prob,
     evaluate_cell,
 )
+from db_authority import canonical_console_db_path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PREREG_PATH = Path(__file__).resolve().parent / "meta_xgb_tb_prereg_v1.json"
-DEFAULT_DB = str(REPO_ROOT / "data" / "ed_console.db")
+DEFAULT_DB = str(canonical_console_db_path())
 REPORT_PATH = REPO_ROOT / "reports" / "meta_xgb_tb_v1_latest.json"
 
 # no_terminal_null law: a null names its door, at the PRODUCER.

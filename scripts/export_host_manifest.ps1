@@ -54,10 +54,9 @@ Get-ChildItem Env:SCHWAB_* -ErrorAction SilentlyContinue | ForEach-Object {
 }
 $schwabEnvSet = $schwabEnvSet | Sort-Object -Unique
 
-$dbPath = $env:ED_CONSOLE_DB
-if (-not $dbPath) {
-    $dbPath = Join-Path $Root "data\ed_console.db"
-}
+$runtimeRoot = $env:ED_RUNTIME_ROOT
+if (-not $runtimeRoot) { $runtimeRoot = $Root }
+$dbPath = Join-Path $runtimeRoot "data\ed_console.db"
 $dbExists = Test-Path -LiteralPath $dbPath
 $dbSize = 0
 if ($dbExists) {

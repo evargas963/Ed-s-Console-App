@@ -36,6 +36,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from db_authority import canonical_console_db_path  # noqa: E402
 from time_et import et_date_str_from_ts_utc, is_trading_day_et  # noqa: E402
 
 
@@ -98,7 +99,7 @@ def quarantine_non_trading_option_rows(
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--db", default="data/ed_console.db")
+    ap.add_argument("--db", type=Path, default=canonical_console_db_path())
     ap.add_argument("--execute", action="store_true")
     args = ap.parse_args()
 

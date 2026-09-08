@@ -351,7 +351,7 @@ def holdout_class_metrics(
 # ------------------------------------------------------------------------------
 
 def _db_default_path() -> str:
-    """Matches db.DB_PATH (ED_CONSOLE_DB or data/ed_console.db)."""
+    """Matches the canonical db.DB_PATH."""
     from db import DB_PATH
 
     return str(DB_PATH)
