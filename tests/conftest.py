@@ -73,8 +73,9 @@ def _no_fusion_temperature_calibration(monkeypatch):
 def _equal_mh_pool_weights(monkeypatch):
     """Hermetic tests: never read the operator's live calibration DB for ALL-card
     pool weights. Equal weights = unweighted log opinion pool (the fail-closed
-    default). Tests exercising skill weighting pass pool_weights explicitly or
-    monkeypatch after this fixture (their setattr wins)."""
+    default). Tests exercising skill weighting monkeypatch after this fixture
+    (their setattr wins); _horizon_skill_weights_cached is the ONLY weight source
+    (RC-533 removed the pool_weights injection parameter)."""
     import multi_horizon_decision as mhd
 
     monkeypatch.setattr(

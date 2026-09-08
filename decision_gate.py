@@ -113,11 +113,13 @@ def _record_admits(record: object, component: str) -> tuple[bool, str]:
 
 
 def evaluate_decision_path_admission(
-    component: str = DECISION_PATH_COMPONENT,
     *,
     path: Path | None = None,
 ) -> AdmissionVerdict:
-    """Is ``component`` ADMITTED to authorize exposure? Fail-closed on every error."""
+    """Is the decision path (``DECISION_PATH_COMPONENT``) ADMITTED to authorize exposure?
+    Fail-closed on every error. ``path`` is a test/ops seam; production resolves
+    ``registry_path()``."""
+    component = DECISION_PATH_COMPONENT
     p = path if path is not None else registry_path()
     try:
         raw = p.read_text(encoding="utf-8")
