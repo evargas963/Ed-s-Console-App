@@ -39,11 +39,23 @@ _NOISY_LINE = "x" * 100
 #: noisy file starts writing within ~3 s; the pipe fills in well under a second after that.
 _CONTROL_STALL_SECONDS = 20
 
+#: Per-process runtime selectors exported by tests/conftest.py at import; a nested pytest
+#: owns its own runtime root and never reads this session's (see _child_env).
+_OUTER_SESSION_RUNTIME_SELECTORS = frozenset(
+    {"ED_RUNTIME_ROOT", "ED_ARTIFACTS_ROOT", "ED_TERRAIN_QUARANTINE_LEDGER"})
+
 
 def _child_env(log_dir: Path) -> dict[str, str]:
     """Env for the nested run: this suite's own pytest/xdist variables must not leak in,
-    and the runner's log goes to a private directory, never the checkout's logs/."""
-    env = {k: v for k, v in os.environ.items() if not k.startswith("PYTEST_")}
+    and the runner's log goes to a private directory, never the checkout's logs/.
+
+    The runtime selectors tests/conftest.py exports (ED_RUNTIME_ROOT, ED_ARTIFACTS_ROOT,
+    ED_TERRAIN_QUARANTINE_LEDGER) are dropped too, for the same reason the conftest states:
+    every pytest process owns a fresh runtime root; the nested run must never read or
+    write this session's.
+    """
+    env = {k: v for k, v in os.environ.items()
+           if not k.startswith("PYTEST_") and k not in _OUTER_SESSION_RUNTIME_SELECTORS}
     env["ED_TEST_LOG_DIR"] = str(log_dir)
     return env
 
@@ -60,9 +72,25 @@ def _noisy_test_file(tmp_path: Path) -> Path:
     return p
 
 
-def _runner_cmd(*pytest_args: str) -> list[str]:
+def _hermetic_args(rootdir: Path) -> list[str]:
+    """Pin pytest's rootdir to the temp directory that holds the target file.
+
+    Without it, a target under %TEMP% with cwd at the repo makes pytest pick the common
+    ancestor (the user's home) as rootdir and WALK every directory between it and the
+    target during collection — including %TEMP%, which concurrent xdist workers are
+    creating and deleting their own runtime roots in. MEASURED 2026-09-08 (outer run
+    `-n 4`): the nested pytest's rootdir was the user's home directory, its top `Dir`
+    collector (`..\\..\\..`) died with FileNotFoundError on a sibling worker's just-removed
+    `ed-pytest-gw0-...` entry under %TEMP%, and the runner correctly propagated exit 2 —
+    a collection race, not a stall, and not this runner's defect.
+    """
+    return ["--rootdir", str(rootdir)]
+
+
+def _runner_cmd(*pytest_args: str, rootdir: Path | None = None) -> list[str]:
     assert NODE, "node is required (the canonical runner is a Node script)"
-    return [NODE, str(RUNNER), *pytest_args, "-n", "0", "-p", "no:cacheprovider"]
+    hermetic = _hermetic_args(rootdir) if rootdir is not None else []
+    return [NODE, str(RUNNER), *pytest_args, *hermetic, "-n", "0", "-p", "no:cacheprovider"]
 
 
 def _spawn_with_non_draining_reader(cmd: list[str], env: dict[str, str]) -> subprocess.Popen:
@@ -80,7 +108,8 @@ def test_runner_completes_when_the_terminal_reader_never_drains(tmp_path):
     # NEGATIVE CONTROL — the pre-repair canonical path. Same noisy target, same
     # non-draining pipe, output straight from pytest into it: must NOT finish.
     control = _spawn_with_non_draining_reader(
-        [sys.executable, "-m", "pytest", str(noisy), "-s", "-n", "0", "-p", "no:cacheprovider", "-q"],
+        [sys.executable, "-m", "pytest", str(noisy), "-s", *_hermetic_args(tmp_path),
+         "-n", "0", "-p", "no:cacheprovider", "-q"],
         env,
     )
     try:
@@ -97,7 +126,7 @@ def test_runner_completes_when_the_terminal_reader_never_drains(tmp_path):
         control.wait(timeout=30)
 
     # THE REPAIR — same target, same non-draining pipe, through the canonical runner.
-    proc = _spawn_with_non_draining_reader(_runner_cmd(str(noisy), "-s"), env)
+    proc = _spawn_with_non_draining_reader(_runner_cmd(str(noisy), "-s", rootdir=tmp_path), env)
     try:
         rc = proc.wait(timeout=180)              # completes without the reader ever recovering
     except subprocess.TimeoutExpired:
@@ -115,7 +144,7 @@ def test_failure_exit_code_is_exact_and_the_log_is_retained(tmp_path):
     failing = tmp_path / "test_rc535_fails.py"
     failing.write_text("def test_boom():\n    assert 1 == 2, 'deliberate RC-535 failure'\n", encoding="utf-8")
     r = subprocess.run(
-        _runner_cmd(str(failing)), cwd=str(ROOT), env=_child_env(tmp_path / "logs"),
+        _runner_cmd(str(failing), rootdir=tmp_path), cwd=str(ROOT), env=_child_env(tmp_path / "logs"),
         capture_output=True, text=True, timeout=180,
     )
     assert r.returncode == 1, f"expected pytest's exit code 1, got {r.returncode}\n{r.stdout}"
