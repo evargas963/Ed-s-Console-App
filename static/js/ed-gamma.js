@@ -139,6 +139,13 @@
         if (window.EdShell) window.EdShell.setStrike(Number(c.getAttribute('data-strike')), c.getAttribute('data-expiry'));
       });
     });
+    // default the shared selection to the spot strike on first load, so Strike Detail and the
+    // GEX-by-strike highlight are populated on arrival (like the approved reference) instead of an
+    // empty placeholder. Never overrides a selection the operator has already made.
+    if (window.EdShell && window.EdShell.getState().selStrike == null && strikes.length && spotIdx >= 0) {
+      var _fe = (exps[frontCol >= 0 ? frontCol : 0] || {}).expiry || null;
+      window.EdShell.setStrike(strikes[spotIdx], _fe);
+    }
     applyStrikeHighlight(host);
     updateScope(surface);
   }

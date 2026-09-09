@@ -77,13 +77,12 @@ test.describe('#3 Gamma presentation-scope (view-window disclosure)', () => {
     const gbs = page.locator('#gbsBody');
     const note = gbs.locator('.scope-note');
     await expect(note).toBeVisible();
-    // AUTO: only the near-money window is shown, and the clip is disclosed (not silent)
+    // AUTO: only the near-money window is shown, and the clip is disclosed (not silent).
+    // spot 100, GBS base +/-6% -> strikes 94..106 -> 13 of 41 (deterministic; retrying counts).
     await expect(note).toContainText('Auto');
-    await expect(note).toContainText('of 41 strikes');
+    await expect(note).toContainText('13 of 41 strikes');
     await expect(note.locator('.clip')).toContainText('outside view');
-    const autoRows = await gbs.locator('.gbs-row').count();
-    expect(autoRows).toBeGreaterThan(0);
-    expect(autoRows).toBeLessThan(41);
+    await expect(gbs.locator('.gbs-row')).toHaveCount(13);
     await page.screenshot({ path: 'test-results/gamma-scope-auto.png', fullPage: false });
     // ALL AVAILABLE: every canonical strike, no clip warning
     await page.locator('#scopeCtl .scbtn', { hasText: 'All available' }).click();
@@ -91,11 +90,10 @@ test.describe('#3 Gamma presentation-scope (view-window disclosure)', () => {
     await expect(gbs.locator('.scope-note .clip')).toHaveCount(0);
     await expect(gbs.locator('.gbs-row')).toHaveCount(41);
     await page.screenshot({ path: 'test-results/gamma-scope-all.png', fullPage: false });
-    // WIDER falls between AUTO and ALL
+    // WIDER (+/-12% -> 88..112 -> 25 of 41) falls between AUTO and ALL
     await page.locator('#scopeCtl .scbtn', { hasText: 'Wider' }).click();
-    const widerRows = await gbs.locator('.gbs-row').count();
-    expect(widerRows).toBeGreaterThan(autoRows);
-    expect(widerRows).toBeLessThan(41);
+    await expect(note).toContainText('25 of 41 strikes');
+    await expect(gbs.locator('.gbs-row')).toHaveCount(25);
   });
 
   test('the Chart view also discloses its window and responds to the same control', async ({ page }) => {

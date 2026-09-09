@@ -167,6 +167,10 @@
   .placeholder .sm{font-size:11px;font-family:var(--ed-mono);max-width:52ch;line-height:1.5}
   .notproven{border:1px dashed var(--ed-proxy);color:var(--ed-proxy);border-radius:5px;
     padding:3px 9px;font-family:var(--ed-mono);font-size:10px;letter-spacing:.04em}
+  /* Order Flow: reserved-space notice, top-aligned + compact (never a fabricated blotter) */
+  .of-await{display:flex;flex-direction:column;gap:8px;align-items:flex-start}
+  .of-await .ln{font-family:var(--ed-mono);font-size:11px;color:var(--ed-ink-2);line-height:1.45}
+  .of-await .ln.dim{color:var(--ed-ink-3);max-width:46ch}
 
   /* key levels rail rows — compact operator rail, tight rows, strong numeric alignment */
   .kl-row{display:flex;align-items:baseline;justify-content:space-between;padding:3.5px 0;border-bottom:1px solid var(--ed-edge-soft)}
@@ -454,9 +458,10 @@
             <div class="panel">
               <div class="panel-h"><span class="t">Order Flow</span><span class="sub">microstructure</span><div class="r"><span class="prov native">NATIVE</span><span class="prov proxy">PROXY</span></div></div>
               <div class="panel-b" id="ofBody">
-                <div class="placeholder">
-                  <div class="sm">Real microstructure: top-of-book (NATIVE), spread/depth/imbalance (DERIVED), tape pressure / cum-Δ (PROXY), freshness + provenance.</div>
-                  <div class="notproven">NO SIGNED BUYS/SELLS — aggressor flow not canonical</div>
+                <div class="of-await">
+                  <div class="ln">Options Flow — reserved space; the Flow subview lands in a later PR.</div>
+                  <div class="ln dim">Real microstructure only when wired: top-of-book (NATIVE), spread / depth / imbalance (DERIVED), tape pressure / cum-Δ (PROXY), with freshness + provenance.</div>
+                  <div class="notproven">NO SIGNED BUYS / SELLS — aggressor flow is not canonical</div>
                 </div>
               </div>
             </div>
