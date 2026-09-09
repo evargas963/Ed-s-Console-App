@@ -74,6 +74,15 @@
     var spot = Number(surface.spot);
     // maxAbs over displayed cells — visual normalisation only, not a semantic value
     _lastSurface = surface;   // cached so a theme switch can re-render without a refetch
+    // #1: skip the full ~thousands-of-cells table rebuild when the canonical surface REVISION is
+    // unchanged (only the age advances between ~60s/roster terrain revisions). A theme switch clears
+    // _lastRevision so the recolour still rebuilds.
+    var rev = surfaceRevision(surface);
+    if (rev === _lastRevision && host.querySelector('.heat')) {
+      updateScope(surface); applyStrikeHighlight(host);
+      return;
+    }
+    _lastRevision = rev;
     var heat = readHeatColors();
     var maxAbs = 0;
     cells.forEach(function (r) { (r.gex || []).forEach(function (v) { if (v != null && Math.abs(v) > maxAbs) maxAbs = Math.abs(v); }); });
@@ -83,9 +92,13 @@
     var live = surface.live !== false, stale = !!surface.stale;
     var banner = '';
     if (!live || stale) {
+      // #1.3: a just-viewed ticker the terrain loop covers is WARMING (live surface arriving next
+      // cycle) — never let the morning reference look like the final state after Gamma was opened.
+      var warming = !live && surface.warming === true;
+      var label = warming ? 'LIVE SURFACE WARMING' : (!live ? 'MORNING REFERENCE' : 'STALE');
+      var cls = warming ? 'warming' : (!live ? 'ref' : 'stale');
       var msg = surface.degraded || (!live ? 'banked morning reference — not intraday' : 'live surface is stale');
-      banner = '<div class="heat-banner ' + (!live ? 'ref' : 'stale') + '">' +
-        (!live ? 'MORNING REFERENCE' : 'STALE') + ' — ' + escapeHtml(msg) + '</div>';
+      banner = '<div class="heat-banner ' + cls + '">' + label + ' — ' + escapeHtml(msg) + '</div>';
     }
     // #2: a NARROWED live chain basis (timeout ladder: full -> dte<=120 -> dte<=45) must not look
     // identical to the normal full basis — surface it prominently.
@@ -135,17 +148,7 @@
       });
     });
     applyStrikeHighlight(host);
-    var srcLabel = surface.source === 'terrain_live_cache'
-      ? (surface.complete === false ? 'LIVE·window' : 'LIVE')
-      : surface.source === 'banked_morning_reference' ? 'REF·morning' : (surface.source || '');
-    var age = surface.age_sec != null ? ' ' + Math.round(surface.age_sec) + 's' : '';
-    var basis = (surface.coverage && surface.coverage.chain_basis) ? ' ' + surface.coverage.chain_basis : '';
-    var scopeEl = document.getElementById('heatScope');
-    if (scopeEl) {
-      scopeEl.textContent = strikes.length + '×' + exps.length + ' · spot ' +
-        (isFinite(spot) ? spot.toFixed(2) : '—') + ' · ' + srcLabel + age + basis;
-      scopeEl.title = (surface.coverage && surface.coverage.note) || '';   // "not the full strike_range=ALL book"
-    }
+    updateScope(surface);
   }
 
   function applyStrikeHighlight(host) {
@@ -161,7 +164,27 @@
     return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]; }); }
 
   // ---- fetch + render, guarded (latest-wins) ----
-  var _gen = 0, _lastSurface = null;
+  var _gen = 0, _lastSurface = null, _lastRevision = null;
+
+  // server-owned revision identity — the cells are identical while these are unchanged, so we can
+  // skip the full table rebuild. Not a semantic client fingerprint of the data; just the canonical
+  // as-of / source / basis / freshness fields the server already stamps.
+  function surfaceRevision(s) {
+    if (!s || s.available === false) return 'unavailable|' + (s && s.source);
+    return [s.source, s.chain_as_of_ts_utc, s.spot_as_of_ts_utc, s.chain_basis, s.live, s.stale].join('|');
+  }
+  function updateScope(surface) {   // lightweight: only the age/scope tag in the panel header
+    var strikes = surface.strikes || [], exps = surface.expirations || [], spot = Number(surface.spot);
+    var srcLabel = surface.source === 'terrain_live_cache' ? (surface.complete === false ? 'LIVE·window' : 'LIVE')
+      : surface.source === 'banked_morning_reference' ? 'REF·morning' : (surface.source || '');
+    var age = surface.age_sec != null ? ' ' + Math.round(surface.age_sec) + 's' : '';
+    var basis = (surface.coverage && surface.coverage.chain_basis) ? ' ' + surface.coverage.chain_basis : '';
+    var el = document.getElementById('heatScope');
+    if (el) {
+      el.textContent = strikes.length + '×' + exps.length + ' · spot ' + (isFinite(spot) ? spot.toFixed(2) : '—') + ' · ' + srcLabel + age + basis;
+      el.title = (surface.coverage && surface.coverage.note) || '';
+    }
+  }
   function load() {
     var host = document.getElementById('heatBody');
     if (!host) return;
@@ -181,8 +204,8 @@
     document.addEventListener('ed:view', load);
     document.addEventListener('ed:refresh', function (e) { if (e.detail && e.detail.slow) load(); });
     document.addEventListener('ed:strike', function () { applyStrikeHighlight(); });   // A: cross-panel sync
-    document.addEventListener('ed:theme', function () {   // re-render solid heat fills for the new theme
-      var h = document.getElementById('heatBody'); if (h && _lastSurface) renderSurface(h, _lastSurface);
+    document.addEventListener('ed:theme', function () {   // recolour: force a rebuild (revision is unchanged but the palette changed)
+      var h = document.getElementById('heatBody'); if (h && _lastSurface) { _lastRevision = null; renderSurface(h, _lastSurface); }
     });
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', load);
     else load();

@@ -445,6 +445,40 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     expect(ms).toBeLessThan(1500);
   });
 
+  test('#1 perf: unchanged surface revision skips the table rebuild; changed revision rebuilds', async ({ page }) => {
+    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    const out = await page.evaluate(() => {
+      var host = document.getElementById('heatBody');
+      var mk = function (asof) {
+        return { available: true, source: 'terrain_live_cache', live: true, stale: false, spot: 583.41,
+          complete: false, chain_as_of_ts_utc: asof, spot_as_of_ts_utc: asof, chain_basis: 'full', age_sec: 3,
+          coverage: { chain_basis: 'full' }, expirations: [{ expiry: '2026-09-11', dte: 2 }],
+          strikes: [583], cells: [{ strike: 583, gex: [958600] }] };
+      };
+      window.EdGamma.renderSurface(host, mk(1000));
+      host.querySelector('.hcell').setAttribute('data-marker', '1');
+      window.EdGamma.renderSurface(host, mk(1000));                    // same as-of -> same revision -> skip rebuild
+      var persisted = !!host.querySelector('.hcell[data-marker="1"]');
+      window.EdGamma.renderSurface(host, mk(2000));                    // new as-of -> new revision -> rebuild
+      var rebuilt = !host.querySelector('.hcell[data-marker="1"]');
+      return { persisted: persisted, rebuilt: rebuilt };
+    });
+    expect(out.persisted).toBe(true);   // unchanged revision did NOT rebuild the ~4k-cell table
+    expect(out.rebuilt).toBe(true);     // changed revision DID rebuild
+  });
+
+  test('#1.3 a warming reference surface shows LIVE SURFACE WARMING (never a final state)', async ({ page }) => {
+    await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify(Object.assign({}, SURFACE, {
+        source: 'banked_morning_reference', live: false, stale: true, warming: true,
+        degraded: 'live terrain surface unavailable — showing banked morning wide reference',
+      })),
+    }));
+    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('.heat-banner.warming')).toContainText('LIVE SURFACE WARMING');
+  });
+
   test('responsive proof: 2560x1440 and 1920x1080 screenshots', async ({ page }) => {
     await page.setViewportSize({ width: 2560, height: 1440 });
     await page.goto('/console', { waitUntil: 'domcontentloaded' });

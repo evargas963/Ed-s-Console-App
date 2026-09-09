@@ -12080,7 +12080,13 @@ GAMMA_SURFACE_DEMAND_TTL = 300.0
 
 
 def _note_gamma_surface_demand(tk: str) -> None:
-    _gamma_surface_demand[tk] = time.time()
+    now = time.time()
+    _gamma_surface_demand[tk] = now
+    # opportunistic hygiene (no background thread): drop expired keys so the registry can't grow
+    # unbounded from arbitrary/expired tickers.
+    if len(_gamma_surface_demand) > 64:
+        for _k in [k for k, ts in list(_gamma_surface_demand.items()) if now - ts >= GAMMA_SURFACE_DEMAND_TTL]:
+            _gamma_surface_demand.pop(_k, None)
 
 
 def _gamma_surface_wanted(tk: str) -> bool:
@@ -12213,10 +12219,11 @@ def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
         # temporally coherent with terrain instead of a morning snapshot. Fail-closed: a projection
         # error leaves the field absent (endpoint falls back to the LABELLED banked-morning
         # reference); it must never take down the terrain refresh that feeds the live desk.
-        # RC-UI-1 #1 (perf): the per-expiry projection is measurable (~86 ms equity, ~1.36 s for a
-        # full SPXW book). Gate it to tickers whose gamma surface was actually requested recently, so
-        # an unviewed ticker pays ZERO surface cost; a viewed ticker gets the live surface each cycle
-        # (dwarfed by the seconds-long vendor fetch already in this cycle).
+        # RC-UI-1 #1 (perf): the per-expiry projection is measurable — SYNTHETIC SCALE BASELINE
+        # ~86 ms (equity, 3.6k contracts) / ~1.36 s (full SPXW book, 42k), median over repeats — the
+        # SPXW figure is material at the low end of this cycle's vendor fetch. Gate it to tickers whose
+        # gamma surface was requested recently so an unviewed ticker pays ZERO cost; a viewed ticker
+        # gets the live surface each cycle. Live RTH end-to-end terrain-cycle impact is proven in F.
         try:
             payload["_gamma_surface"] = (
                 project_gamma_surface(contracts, float(spot))
@@ -13473,13 +13480,15 @@ def get_exposure_book(ticker: str = Query(default=DEFAULT_TICKER)):
     return JSONResponse(payload)
 
 
-# RC-UI-1: strike × expiry GEX surface for the rebuilt Options→Gamma heatmap. This endpoint
-# is a PROJECTION over the one canonical exposure authority, not a second producer: it owns
-# only (1) selecting the newest banked wide chain, (2) partitioning it by native
-# expirationDate via the existing _filter_contracts_by_selected_expiry slice, (3) invoking
-# math_exposure_core.compute_exposures_by_strike on each slice, and (4) shaping the already-
-# computed net_gex_1pct cells into a strike × expiry grid. No gamma/GEX/multiplier/OI/spot/
-# sign/missingness math lives here. One DB read, zero vendor calls, 5-min cache.
+# RC-UI-1: strike × expiry GEX surface for the rebuilt Options→Gamma heatmap. A PROJECTION over the
+# one canonical exposure authority, not a second producer: it partitions a wide chain by native
+# expirationDate (via the existing _filter_contracts_by_selected_expiry slice) and invokes
+# math_exposure_core.compute_exposures_by_strike per slice, shaping net_gex_1pct cells into a grid.
+# No gamma/GEX/multiplier/OI/spot/sign/missingness math lives here.
+# SOURCE (current, post live-terrain rewire): PREFERRED is the live terrain projection —
+# _terrain_refresh_one projects it from the live wide chain + live spot it already fetches each cycle
+# and caches it (in-memory, zero extra vendor calls), demand-gated to viewed tickers. FALLBACK is the
+# banked MORNING wide reference (one DB read, 5-min cache) — labelled stale/not-intraday, never live.
 _GAMMA_SURFACE_CACHE: dict = {}
 
 
@@ -13607,8 +13616,12 @@ def get_options_gamma_surface(ticker: str = Query(default=DEFAULT_TICKER)):
     hit = _GAMMA_SURFACE_CACHE.get(tk)
     if hit and now - hit[0] < 300.0:
         return JSONResponse(hit[1])
+    # #1.3: "warming" is honest only when the terrain loop actually covers this ticker (a terrain
+    # snapshot exists), so the just-recorded demand WILL produce a live surface on its next cycle.
+    _warming = bool(live)
     payload: dict = {"ticker": tk, "symbol": tk, "available": False, "source": "unavailable",
-                     "live": False, "stale": True, "reason": "no live terrain surface and no banked wide chain"}
+                     "live": False, "stale": True, "warming": _warming,
+                     "reason": "no live terrain surface and no banked wide chain"}
     try:
         db = get_db()
         con = _sq.connect(f"file:{db.db_path}?mode=ro", uri=True, timeout=10.0)
@@ -13625,7 +13638,7 @@ def get_options_gamma_surface(ticker: str = Query(default=DEFAULT_TICKER)):
             surface = project_gamma_surface(json.loads(c1), spot1)
             payload = {
                 "ticker": tk, "symbol": tk, "available": True,
-                "source": "banked_morning_reference", "live": False, "stale": True,
+                "source": "banked_morning_reference", "live": False, "stale": True, "warming": _warming,
                 "degraded": ("live terrain surface unavailable — showing banked morning wide "
                              "reference (morning spot + morning Greeks; NOT intraday, NOT proven complete)"),
                 "et_date": et_date, "spot": spot1,
@@ -13900,9 +13913,9 @@ def desk_page():
 
 @app.get("/console", response_class=HTMLResponse)
 def console_page():
-    """RC-UI-1 — rebuilt Ed Console workstation shell (dark institutional terminal,
+    """RC-UI-1 — rebuilt Ed Console workstation shell (institutional terminal, light + dark,
     workspace rail + 3-tier nav + Options/Gamma workspace). Consumes existing canonical
-    endpoints only (no new producers, no client-side semantic computation). Served at a
+    endpoints only (no new producers, no independent semantic market computation). Served at a
     dev route during migration; converges to `/` once legacy surfaces are superseded."""
     p = static_dir / "console.html"
     if not p.exists():
