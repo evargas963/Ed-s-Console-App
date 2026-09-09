@@ -1,0 +1,75 @@
+/* Ed Console design tokens — single source of truth for the rebuilt shell (RC-UI-1).
+   Committed dark institutional terminal. Every color is painted explicitly; no theme
+   inheritance. Green/red are reserved for financial SIGN/STATE, blue is the one accent,
+   amber/red semantic states are for freshness/alert only. Numbers are tabular monospace. */
+:root {
+  /* ---- surfaces (darkest page -> lifted panels) ---- */
+  --ed-bg:        #0a0e17;   /* app canvas */
+  --ed-rail:      #0b1019;   /* left nav rail */
+  --ed-header:    #0c1119;   /* global header */
+  --ed-panel:     #10161f;   /* primary panel */
+  --ed-panel-2:   #131b26;   /* nested / row-alt */
+  --ed-panel-3:   #172232;   /* hover / raised */
+  --ed-edge:      #1e2a3b;   /* hairline border */
+  --ed-edge-soft: #172130;   /* subtle divider */
+  --ed-edge-strong:#2a3a50;  /* emphasized border */
+
+  /* ---- text ---- */
+  --ed-ink:       #e8edf4;   /* primary values */
+  --ed-ink-2:     #9fb0c3;   /* labels / secondary */
+  --ed-ink-3:     #6b7c92;   /* muted / captions */
+  --ed-ink-4:     #4a586c;   /* faint / disabled */
+
+  /* ---- one accent (interactive / selection) ---- */
+  --ed-accent:    #3d8bfd;
+  --ed-accent-2:  #61a5ff;
+  --ed-accent-bg: #12243d;   /* selected nav / active fill */
+  --ed-accent-edge:#28517f;
+
+  /* ---- financial sign (green = +$ exposure, red = -$ exposure) ---- */
+  --ed-pos:       #23c06b;
+  --ed-pos-ink:   #3ddc84;
+  --ed-neg:       #e5484d;
+  --ed-neg-ink:   #ff6b6b;
+
+  /* ---- semantic state (freshness / actionability — NOT decoration) ---- */
+  --ed-live:      #2ecc71;   /* LIVE / native fresh */
+  --ed-warn:      #e9b949;   /* degraded / approaching */
+  --ed-stale:     #d9822b;   /* stale */
+  --ed-alert:     #ff5d5d;   /* actionable / breaking */
+  --ed-quiet:     #5f6f84;   /* context, not actionable */
+
+  /* ---- provenance chips ---- */
+  --ed-native:    #2ecc71;
+  --ed-derived:   #3d8bfd;
+  --ed-proxy:     #e9b949;
+  --ed-research:  #a86fe3;
+  --ed-native-bg: #10281b;
+  --ed-derived-bg:#0f2338;
+  --ed-proxy-bg:  #2c2410;
+  --ed-research-bg:#241635;
+
+  /* ---- exposure heatmap ramp anchors (shade by |magnitude|) ---- */
+  --ed-heat-pos:  #23c06b;
+  --ed-heat-neg:  #e5484d;
+  --ed-heat-zero: #121a25;   /* near-zero recedes to panel */
+
+  /* ---- type ---- */
+  --ed-sans: 'Barlow Semi Condensed', 'Inter', system-ui, -apple-system, sans-serif;
+  --ed-mono: 'IBM Plex Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace;
+
+  /* ---- geometry ---- */
+  --ed-r:      5px;
+  --ed-r-lg:   8px;
+  --ed-rail-w: 56px;         /* collapsed rail */
+  --ed-rail-w-open: 210px;   /* expanded rail */
+  --ed-header-h: 46px;
+  --ed-subnav-h: 40px;
+  --ed-viewbar-h: 34px;
+
+  /* ---- density ---- */
+  --ed-gap-xs: 4px;
+  --ed-gap-sm: 8px;
+  --ed-gap-md: 12px;
+  --ed-gap-lg: 16px;
+}

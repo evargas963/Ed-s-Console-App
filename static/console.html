@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="en" data-workspace="options" data-subview="gamma" data-view="heatmap">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ed Console</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="/static/css/ed-tokens.css">
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{background:var(--ed-bg);color:var(--ed-ink);font-family:var(--ed-sans);font-size:13px;
+    -webkit-font-smoothing:antialiased;overflow:hidden}
+  .mono{font-family:var(--ed-mono);font-variant-numeric:tabular-nums}
+  .pos{color:var(--ed-pos-ink)} .neg{color:var(--ed-neg-ink)} .muted{color:var(--ed-ink-3)}
+  button{font-family:inherit;color:inherit;background:none;border:none;cursor:pointer}
+  ::-webkit-scrollbar{width:9px;height:9px}
+  ::-webkit-scrollbar-thumb{background:var(--ed-edge-strong);border-radius:5px}
+  ::-webkit-scrollbar-track{background:transparent}
+
+  /* ===== app grid ===== */
+  #app{display:grid;height:100vh;
+    grid-template-columns:var(--ed-rail-w) 1fr;
+    grid-template-rows:var(--ed-header-h) 1fr;
+    grid-template-areas:"rail header" "rail main";transition:grid-template-columns .14s ease}
+  #app.rail-open{grid-template-columns:var(--ed-rail-w-open) 1fr}
+
+  /* ===== header ===== */
+  header{grid-area:header;display:flex;align-items:center;gap:0;background:var(--ed-header);
+    border-bottom:1px solid var(--ed-edge);padding:0 14px}
+  .hx{display:flex;align-items:center;gap:7px}
+  .hx .sym{font-weight:700;font-size:19px;letter-spacing:.03em}
+  .hx .px{font-family:var(--ed-mono);font-size:18px;font-weight:600}
+  .hx .chg{font-family:var(--ed-mono);font-size:12px}
+  .hsep{width:1px;height:22px;background:var(--ed-edge);margin:0 13px}
+  .hkv{display:flex;flex-direction:column;line-height:1.12}
+  .hkv .k{font-size:8.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--ed-ink-3)}
+  .hkv .v{font-family:var(--ed-mono);font-size:12px}
+  .live{display:inline-flex;align-items:center;gap:6px;font-family:var(--ed-mono);font-size:11px}
+  .live .dot{width:8px;height:8px;border-radius:50%;background:var(--ed-live)}
+  .live .dot.warn{background:var(--ed-warn)} .live .dot.stale{background:var(--ed-stale)}
+  .search{margin-left:auto;display:flex;align-items:center;gap:7px;background:var(--ed-panel);
+    border:1px solid var(--ed-edge);border-radius:var(--ed-r);padding:6px 11px;width:280px;color:var(--ed-ink-3)}
+  .search input{flex:1;background:none;border:none;outline:none;color:var(--ed-ink);font-family:var(--ed-sans);font-size:12px}
+  .hbtn{width:30px;height:30px;display:flex;align-items:center;justify-content:center;border-radius:var(--ed-r);
+    color:var(--ed-ink-2);margin-left:8px}
+  .hbtn:hover{background:var(--ed-panel-2);color:var(--ed-ink)}
+
+  /* ===== left rail ===== */
+  #rail{grid-area:rail;background:var(--ed-rail);border-right:1px solid var(--ed-edge);
+    display:flex;flex-direction:column;overflow:hidden}
+  .brand{height:var(--ed-header-h);display:flex;align-items:center;gap:9px;padding:0 15px;
+    border-bottom:1px solid var(--ed-edge);flex:none}
+  .brand .logo{width:26px;height:26px;border-radius:6px;background:var(--ed-accent-bg);
+    border:1px solid var(--ed-accent-edge);display:flex;align-items:center;justify-content:center;
+    color:var(--ed-accent-2);font-weight:700;font-size:14px;flex:none}
+  .brand .name{font-weight:700;letter-spacing:.16em;font-size:13px;white-space:nowrap;opacity:0;transition:opacity .12s}
+  #app.rail-open .brand .name{opacity:1}
+  .rail-scroll{flex:1;overflow-y:auto;overflow-x:hidden;padding:8px 0}
+  .navitem{display:flex;align-items:center;gap:12px;height:40px;padding:0 15px;color:var(--ed-ink-2);
+    white-space:nowrap;position:relative}
+  .navitem:hover{background:var(--ed-panel-2);color:var(--ed-ink)}
+  .navitem.active{color:var(--ed-accent-2);background:var(--ed-accent-bg)}
+  .navitem.active::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--ed-accent)}
+  .navitem svg{width:19px;height:19px;flex:none;stroke:currentColor;fill:none;stroke-width:1.6}
+  .navitem .lbl{font-size:12.5px;letter-spacing:.04em;opacity:0;transition:opacity .12s}
+  #app.rail-open .navitem .lbl{opacity:1}
+  .rail-sep{height:1px;background:var(--ed-edge-soft);margin:8px 12px}
+
+  /* watchlist (rail bottom) */
+  .wl{flex:none;border-top:1px solid var(--ed-edge);padding:8px 0;max-height:44%;overflow-y:auto}
+  .wl-h{display:flex;align-items:center;gap:8px;padding:2px 15px 6px;color:var(--ed-ink-3);
+    font-size:9px;letter-spacing:.14em;text-transform:uppercase;white-space:nowrap}
+  #app:not(.rail-open) .wl-h span{opacity:0}
+  .wl-row{display:flex;align-items:center;gap:8px;height:30px;padding:0 12px;white-space:nowrap}
+  .wl-row:hover{background:var(--ed-panel-2)}
+  .wl-row.sel{background:var(--ed-accent-bg)}
+  .wl-row .tk{width:26px;height:26px;border-radius:5px;background:var(--ed-panel-2);flex:none;
+    display:flex;align-items:center;justify-content:center;font-weight:600;font-size:10px;color:var(--ed-ink-2)}
+  .wl-row.sel .tk{color:var(--ed-accent-2)}
+  .wl-row .info{display:flex;flex-direction:column;line-height:1.1;opacity:0;transition:opacity .12s;flex:1;min-width:0}
+  #app.rail-open .wl-row .info{opacity:1}
+  .wl-row .info .s{font-weight:600;font-size:12px}
+  .wl-row .info .p{font-family:var(--ed-mono);font-size:10px;color:var(--ed-ink-3)}
+  .wl-row .st{width:6px;height:6px;border-radius:50%;background:var(--ed-quiet);flex:none;margin-left:auto}
+  .wl-add{display:flex;align-items:center;gap:10px;height:30px;padding:0 15px;color:var(--ed-ink-3);
+    font-size:11px;white-space:nowrap}
+  .wl-add:hover{color:var(--ed-accent-2)}
+
+  /* ===== main ===== */
+  main{grid-area:main;display:flex;flex-direction:column;overflow:hidden;min-width:0}
+  .subnav{height:var(--ed-subnav-h);display:flex;align-items:center;gap:2px;padding:0 12px;
+    background:var(--ed-header);border-bottom:1px solid var(--ed-edge);flex:none;overflow-x:auto}
+  .subnav .wtitle{font-weight:700;letter-spacing:.1em;text-transform:uppercase;font-size:13px;margin-right:14px;white-space:nowrap}
+  .subnav .wtitle .chev{color:var(--ed-ink-3);margin:0 8px}
+  .tab{padding:6px 12px;font-size:12px;letter-spacing:.05em;color:var(--ed-ink-2);border-radius:var(--ed-r);white-space:nowrap}
+  .tab:hover{color:var(--ed-ink);background:var(--ed-panel-2)}
+  .tab.on{color:var(--ed-accent-2);background:var(--ed-accent-bg)}
+  .tab.na{color:var(--ed-ink-4)} .tab.na:hover{background:none;color:var(--ed-ink-4);cursor:not-allowed}
+  .tab .np{font-size:8px;letter-spacing:.1em;vertical-align:2px;margin-left:4px;color:var(--ed-ink-4)}
+
+  .viewbar{height:var(--ed-viewbar-h);display:flex;align-items:center;gap:2px;padding:0 12px;
+    background:var(--ed-panel);border-bottom:1px solid var(--ed-edge);flex:none;overflow-x:auto}
+  .vtab{padding:4px 11px;font-size:11px;letter-spacing:.06em;color:var(--ed-ink-2);border-radius:var(--ed-r);white-space:nowrap}
+  .vtab:hover{color:var(--ed-ink);background:var(--ed-panel-2)}
+  .vtab.on{color:var(--ed-ink);background:var(--ed-panel-3);box-shadow:inset 0 -2px 0 var(--ed-accent)}
+  .viewbar .ctrls{margin-left:auto;display:flex;align-items:center;gap:8px}
+  .sel{background:var(--ed-panel-2);border:1px solid var(--ed-edge);border-radius:var(--ed-r);
+    padding:4px 9px;font-family:var(--ed-mono);font-size:11px;color:var(--ed-ink);display:flex;align-items:center;gap:6px}
+  .sel .cap{color:var(--ed-ink-3);font-family:var(--ed-sans);font-size:9px;letter-spacing:.1em;text-transform:uppercase}
+  .aibtn{display:flex;align-items:center;gap:7px;padding:5px 12px;border:1px solid var(--ed-accent-edge);
+    border-radius:var(--ed-r);color:var(--ed-accent-2);font-size:11px;letter-spacing:.06em}
+  .aibtn:hover{background:var(--ed-accent-bg)}
+
+  /* workspace canvas */
+  .canvas{flex:1;overflow:auto;padding:12px;min-height:0}
+  .workspace{display:none;height:100%}
+  .workspace.on{display:block}
+
+  /* gamma workspace layout (matches approved image) */
+  .gamma-grid{display:grid;height:100%;gap:10px;
+    grid-template-columns:1fr 300px;
+    grid-template-rows:minmax(0,1.55fr) minmax(0,1fr);
+    grid-template-areas:"heat levels" "bottom bottom"}
+  .p-heat{grid-area:heat} .p-levels{grid-area:levels} .p-bottom{grid-area:bottom}
+  .p-bottom{display:grid;grid-template-columns:1.1fr 1fr 1.2fr;gap:10px}
+
+  .panel{background:var(--ed-panel);border:1px solid var(--ed-edge);border-radius:var(--ed-r-lg);
+    display:flex;flex-direction:column;overflow:hidden;min-width:0}
+  .panel-h{display:flex;align-items:center;gap:9px;padding:9px 12px;border-bottom:1px solid var(--ed-edge);flex:none}
+  .panel-h .t{font-size:12px;font-weight:600;letter-spacing:.02em}
+  .panel-h .sub{font-family:var(--ed-mono);font-size:10px;color:var(--ed-ink-3)}
+  .panel-h .r{margin-left:auto;display:flex;align-items:center;gap:8px}
+  .panel-b{flex:1;overflow:auto;padding:10px 12px;min-height:0}
+
+  .prov{font-family:var(--ed-mono);font-size:8.5px;letter-spacing:.05em;padding:1px 5px;border-radius:3px;font-weight:600;text-transform:uppercase}
+  .prov.native{background:var(--ed-native-bg);color:var(--ed-native)}
+  .prov.derived{background:var(--ed-derived-bg);color:var(--ed-derived)}
+  .prov.proxy{background:var(--ed-proxy-bg);color:var(--ed-proxy)}
+  .prov.research{background:var(--ed-research-bg);color:var(--ed-research)}
+
+  .placeholder{display:flex;flex-direction:column;align-items:center;justify-content:center;
+    height:100%;gap:8px;color:var(--ed-ink-3);text-align:center;padding:20px}
+  .placeholder .big{font-size:13px;color:var(--ed-ink-2);letter-spacing:.04em}
+  .placeholder .sm{font-size:11px;font-family:var(--ed-mono);max-width:52ch;line-height:1.5}
+  .notproven{border:1px dashed var(--ed-proxy);color:var(--ed-proxy);border-radius:5px;
+    padding:3px 9px;font-family:var(--ed-mono);font-size:10px;letter-spacing:.04em}
+
+  /* key levels rail rows */
+  .kl-row{display:flex;align-items:baseline;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--ed-edge-soft)}
+  .kl-row:last-child{border-bottom:none}
+  .kl-row .k{font-size:12px;color:var(--ed-ink-2);letter-spacing:.02em}
+  .kl-row .v{font-family:var(--ed-mono);font-size:13px;font-weight:500}
+  .kl-sec{font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--ed-ink-3);
+    margin:12px 0 4px;padding-top:8px;border-top:1px solid var(--ed-edge)}
+  .kl-sec:first-child{margin-top:0;border-top:none;padding-top:0}
+
+  /* gamma heatmap grid (presentation of /api/options/gamma-surface) */
+  .heat-wrap{overflow:auto;height:100%}
+  .heat{border-collapse:separate;border-spacing:0;font-family:var(--ed-mono);font-size:10.5px}
+  .heat th,.heat td{border-right:1px solid var(--ed-edge-soft);border-bottom:1px solid var(--ed-edge-soft)}
+  .heat thead th{position:sticky;top:0;z-index:2;background:var(--ed-header);color:var(--ed-ink-2);
+    padding:5px 8px;text-align:center;font-family:var(--ed-sans);letter-spacing:.03em;white-space:nowrap}
+  .heat .hcorner{left:0;z-index:3;text-align:left}
+  .heat .hexp .d{display:block;font-size:10px;color:var(--ed-ink)}
+  .heat .hexp .dte{display:block;font-size:8.5px;color:var(--ed-ink-3)}
+  .heat .hstrike{position:sticky;left:0;z-index:1;background:var(--ed-panel);color:var(--ed-ink-2);
+    padding:3px 10px;text-align:right;font-weight:500;white-space:nowrap}
+  .heat .hstrike.spot{color:var(--ed-ink);background:var(--ed-panel-3);box-shadow:inset 2px 0 0 var(--ed-accent)}
+  .heat .hcell{padding:3px 8px;text-align:right;font-variant-numeric:tabular-nums;cursor:pointer;white-space:nowrap}
+  .heat .hcell:hover{outline:1px solid var(--ed-accent);outline-offset:-1px}
+  .heat .hcell.sel{outline:2px solid var(--ed-accent);outline-offset:-2px}
+  .heat tr.spotrow td{box-shadow:inset 0 -1px 0 var(--ed-accent-edge)}
+
+  /* AI drawer */
+  #aidrawer{position:fixed;top:0;right:0;bottom:0;width:380px;background:var(--ed-panel);
+    border-left:1px solid var(--ed-edge-strong);transform:translateX(100%);transition:transform .16s ease;
+    z-index:60;display:flex;flex-direction:column}
+  #aidrawer.open{transform:translateX(0)}
+  .aid-h{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--ed-edge)}
+  .aid-h .t{font-weight:600;letter-spacing:.04em}
+  .aid-h .x{margin-left:auto;color:var(--ed-ink-3);font-size:18px}
+  .aid-b{flex:1;overflow:auto;padding:14px;display:flex;flex-direction:column;gap:12px}
+  .aid-ctx{background:var(--ed-panel-2);border:1px solid var(--ed-edge);border-radius:6px;padding:10px 12px}
+  .aid-ctx .cl{font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--ed-ink-3);margin-bottom:6px}
+  .aid-ctx .cr{display:flex;justify-content:space-between;font-family:var(--ed-mono);font-size:11px;padding:2px 0;color:var(--ed-ink-2)}
+  .aid-q{text-align:left;padding:8px 10px;border:1px solid var(--ed-edge);border-radius:6px;
+    color:var(--ed-ink-2);font-size:12px}
+  .aid-q:hover{border-color:var(--ed-accent-edge);color:var(--ed-ink)}
+</style>
+</head>
+<body>
+<div id="app" class="rail-open">
+
+  <!-- ===== LEFT RAIL ===== -->
+  <nav id="rail" aria-label="Workspaces">
+    <div class="brand">
+      <button class="logo" id="railToggle" title="Toggle navigation" aria-label="Toggle navigation">ED</button>
+      <span class="name">ED CONSOLE</span>
+    </div>
+    <div class="rail-scroll">
+      <a class="navitem" data-ws="trade-desk" title="Trade Desk"><svg viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-6"/></svg><span class="lbl">Trade Desk</span></a>
+      <a class="navitem" data-ws="order-flow" title="Order Flow"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h10M4 17h13"/><path d="M17 9l3 3-3 3"/></svg><span class="lbl">Order Flow</span></a>
+      <a class="navitem active" data-ws="options" title="Options"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 3v18M3 12h18"/></svg><span class="lbl">Options</span></a>
+      <a class="navitem" data-ws="liquidity" title="Liquidity"><svg viewBox="0 0 24 24"><path d="M12 3c4 5 6 8 6 11a6 6 0 0 1-12 0c0-3 2-6 6-11z"/></svg><span class="lbl">Liquidity</span></a>
+      <a class="navitem" data-ws="desk" title="Desk / Research"><svg viewBox="0 0 24 24"><path d="M4 5h16v12H4z"/><path d="M8 21h8M12 17v4"/></svg><span class="lbl">Desk / Research</span></a>
+      <a class="navitem" data-ws="portfolio" title="Portfolio / Risk"><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9v9z"/></svg><span class="lbl">Portfolio / Risk</span></a>
+      <a class="navitem" data-ws="system" title="System / Trust"><svg viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6z"/><path d="M9 12l2 2 4-4"/></svg><span class="lbl">System / Trust</span></a>
+    </div>
+    <div class="wl" id="watchlist">
+      <div class="wl-h"><span>Watchlist</span></div>
+      <!-- rows injected by ed-core.js; foundation is editable + localStorage-backed -->
+      <div class="wl-add" id="wlAdd"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 5v14M5 12h14"/></svg><span class="lbl-add">Add symbol</span></div>
+    </div>
+  </nav>
+
+  <!-- ===== HEADER ===== -->
+  <header>
+    <div class="hx">
+      <span class="sym" id="hSym">—</span>
+      <span class="px mono" id="hPx">—</span>
+      <span class="chg mono" id="hChg">—</span>
+    </div>
+    <div class="hsep"></div>
+    <div class="hkv"><span class="k">Bid × Ask</span><span class="v" id="hBidAsk">—</span></div>
+    <div class="hsep"></div>
+    <div class="live"><span class="dot" id="hFeedDot"></span><span id="hFeed">FEED —</span></div>
+    <div class="hsep"></div>
+    <div class="hkv"><span class="k">Data age</span><span class="v" id="hAge">—</span></div>
+    <div class="hsep"></div>
+    <div class="hkv"><span class="k" id="hClockDate">—</span><span class="v" id="hClock">--:--:-- CT</span></div>
+    <div class="search">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg>
+      <input id="symSearch" placeholder="Search symbol" autocomplete="off">
+    </div>
+  </header>
+
+  <!-- ===== MAIN ===== -->
+  <main>
+    <!-- tier 2: workspace subnav -->
+    <div class="subnav" id="subnav">
+      <span class="wtitle" id="wsTitle">OPTIONS</span>
+      <button class="tab on" data-sub="gamma">Gamma</button>
+      <button class="tab na" data-sub="vanna">Vanna<span class="np">AGG ONLY</span></button>
+      <button class="tab na" data-sub="charm">Charm<span class="np">WALLS ONLY</span></button>
+      <button class="tab na" data-sub="dex">Delta / DEX</button>
+      <button class="tab na" data-sub="oi">OI</button>
+      <button class="tab" data-sub="flow">Flow</button>
+      <button class="tab" data-sub="chain">Chain</button>
+      <button class="tab na" data-sub="structures">Structures<span class="np">NOT PROVEN</span></button>
+    </div>
+    <!-- tier 3: view controls -->
+    <div class="viewbar" id="viewbar">
+      <button class="vtab on" data-view="heatmap">Heatmap</button>
+      <button class="vtab" data-view="chart">Chart</button>
+      <button class="vtab" data-view="levels">Levels</button>
+      <button class="vtab" data-view="multimap">Multi-Map</button>
+      <div class="ctrls">
+        <div class="sel"><span class="cap">Sym</span><span id="cSym">—</span></div>
+        <div class="sel"><span class="cap">Expiry</span><span id="cExpiry">All</span></div>
+        <div class="sel"><span class="cap">Measure</span><span id="cMeasure">GEX</span></div>
+        <button class="aibtn" id="aiOpen"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 3a4 4 0 0 1 4 4c2 1 3 3 3 5a5 5 0 0 1-5 5H8a5 5 0 0 1-5-5c0-2 1-4 3-5a4 4 0 0 1 4-4z"/><path d="M9 20h6"/></svg>Analyst</button>
+      </div>
+    </div>
+
+    <!-- canvas -->
+    <div class="canvas">
+
+      <!-- OPTIONS / GAMMA workspace -->
+      <section class="workspace on" data-ws-pane="options">
+        <div class="gamma-grid">
+
+          <!-- heatmap -->
+          <div class="panel p-heat">
+            <div class="panel-h">
+              <span class="t">Gamma Exposure Heatmap</span>
+              <span class="sub" id="heatScope">strike × expiration</span>
+              <div class="r"><span class="prov derived">DERIVED</span></div>
+            </div>
+            <div class="panel-b" id="heatBody">
+              <div class="placeholder">
+                <div class="big">Strike × expiry heatmap</div>
+                <div class="sm">Canonical per-strike GEX$ exists; the multi-expiry grid is a scope decision (per-expiry canonical faucet). Wiring pending operator go-ahead.</div>
+                <div class="notproven">MULTI-EXPIRY SURFACE — AWAITING SCOPE DECISION</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- key levels rail -->
+          <div class="panel p-levels">
+            <div class="panel-h"><span class="t">Key Levels</span><div class="r"><span class="sub" id="klSrc">/api/terrain</span></div></div>
+            <div class="panel-b" id="klBody">
+              <div class="kl-sec">Levels</div>
+              <div class="kl-row"><span class="k">Spot</span><span class="v" id="klSpot">—</span></div>
+              <div class="kl-row"><span class="k">Gamma flip <span class="muted">(zero γ)</span></span><span class="v" id="klFlip">—</span></div>
+              <div class="kl-row"><span class="k">Call wall</span><span class="v" id="klCall">—</span></div>
+              <div class="kl-row"><span class="k">Put wall</span><span class="v" id="klPut">—</span></div>
+              <div class="kl-row"><span class="k">Absolute γ (pin)</span><span class="v" id="klAbs">—</span></div>
+              <div class="kl-row"><span class="k">Net GEX peak</span><span class="v" id="klPeak">—</span></div>
+              <div class="kl-sec">Exposure</div>
+              <div class="kl-row"><span class="k">Net GEX / 1%</span><span class="v" id="klNet">—</span></div>
+              <div class="kl-row"><span class="k">Dealer regime</span><span class="v" id="klRegime">—</span></div>
+              <div class="kl-row"><span class="k">PCR</span><span class="v" id="klPcr">—</span></div>
+              <div class="kl-sec">Not canonical — omitted</div>
+              <div class="kl-row"><span class="k muted">Volatility Trigger</span><span class="notproven">NOT PROVEN</span></div>
+              <div class="kl-row"><span class="k muted">Vanna Support</span><span class="notproven">AGG $ ONLY</span></div>
+              <div class="kl-row"><span class="k muted">Charm Resistance</span><span class="notproven">→ CHARM WALL</span></div>
+            </div>
+          </div>
+
+          <!-- bottom drill-down -->
+          <div class="p-bottom">
+            <div class="panel">
+              <div class="panel-h"><span class="t">Strike Detail</span><span class="sub" id="sdCtx">—</span><div class="r"><span class="prov native">CHAIN</span></div></div>
+              <div class="panel-b" id="sdBody"><div class="placeholder"><div class="sm">Select a strike/expiry. OI · volume · gamma · delta · IV from /api/chain (vendor).</div></div></div>
+            </div>
+            <div class="panel">
+              <div class="panel-h"><span class="t">GEX by Strike</span><span class="sub">net dealer γ / 1%</span><div class="r"><span class="prov derived">DERIVED</span></div></div>
+              <div class="panel-b" id="gbsBody"><div class="placeholder"><div class="sm">Per-strike net GEX$ around spot from /api/terrain/strikes.</div></div></div>
+            </div>
+            <div class="panel">
+              <div class="panel-h"><span class="t">Order Flow</span><span class="sub">microstructure</span><div class="r"><span class="prov native">NATIVE</span><span class="prov proxy">PROXY</span></div></div>
+              <div class="panel-b" id="ofBody">
+                <div class="placeholder">
+                  <div class="sm">Real microstructure: top-of-book (NATIVE), spread/depth/imbalance (DERIVED), tape pressure / cum-Δ (PROXY), freshness + provenance.</div>
+                  <div class="notproven">NO SIGNED BUYS/SELLS — aggressor flow not canonical</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- other workspaces: architectural homes preserved, honestly unimplemented -->
+      <section class="workspace" data-ws-pane="trade-desk"><div class="placeholder"><div class="big">Trade Desk — Right Now · Plan · Expression</div><div class="sm">Architectural home preserved. Detect → Frame → Confirm → Execute reasoning flow. THE CALL and 1m/5m/15m/60m horizons remain NOT_PROVEN and excluded until ticker-universal evidence earns them.</div><div class="notproven">HOME PRESERVED — DECISION AUTHORITY NOT_PROVEN</div></div></section>
+      <section class="workspace" data-ws-pane="order-flow"><div class="placeholder"><div class="big">Order Flow — Overview · Book/DOM · Heatmap · Tape · Options Book · History</div><div class="sm">Wires to /api/order-flow/microstructure, /api/order-flow/options-microstructure, /api/live/plane. Real book/depth/imbalance/freshness only. CVD / absorption / sweep NOT_PROVEN.</div></div></section>
+      <section class="workspace" data-ws-pane="liquidity"><div class="placeholder"><div class="big">Liquidity — Map · Profile · Levels · VWAP/Value · Session · History</div><div class="sm">Wires to /api/liquidity-snapshot (PDH/PDL/PDC/POC/VAH/VAL/ORB/VWAP±σ + fusion walls, tradeable_score) and /api/levels vwap_series. A visual liquidity map, not a table.</div></div></section>
+      <section class="workspace" data-ws-pane="desk"><div class="placeholder"><div class="big">Desk / Research — Radar · Brief · Dossier · Structures · Scenarios · Evidence · Replay · AI Research</div><div class="sm">Wires to /api/desk/* (all take as_of epoch — Knowledge-Time replay is real and temporally sealed). AI Research backend NOT_PROVEN.</div></div></section>
+      <section class="workspace" data-ws-pane="portfolio"><div class="placeholder"><div class="big">Portfolio / Risk — Positions · Exposure · Risk · Scenarios</div><div class="sm">Architectural home preserved. No canonical positions/risk producer today.</div><div class="notproven">HOME PRESERVED — NOT_PROVEN</div></div></section>
+      <section class="workspace" data-ws-pane="system"><div class="placeholder"><div class="big">System / Trust — Data Health · Feeds · Provenance · Models · Runtime</div><div class="sm">Can I trust what Ed Console is showing? Wires to /api/health, /api/build (process identity + code drift), /api/diagnostics/*, /api/governance/panel, /api/vol-observability, /api/release/current.</div></div></section>
+
+    </div>
+  </main>
+</div>
+
+<!-- ===== AI ANALYST DRAWER (access architecture; backend NOT_PROVEN) ===== -->
+<aside id="aidrawer" aria-label="AI Analyst" aria-hidden="true">
+  <div class="aid-h"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--ed-accent-2)" stroke-width="1.7"><path d="M12 3a4 4 0 0 1 4 4c2 1 3 3 3 5a5 5 0 0 1-5 5H8a5 5 0 0 1-5-5c0-2 1-4 3-5a4 4 0 0 1 4-4z"/><path d="M9 20h6"/></svg><span class="t">AI Analyst</span><button class="x" id="aiClose" aria-label="Close">×</button></div>
+  <div class="aid-b">
+    <div class="aid-ctx">
+      <div class="cl">Context sent automatically</div>
+      <div class="cr"><span>Ticker</span><span id="aiCtxSym">—</span></div>
+      <div class="cr"><span>Workspace</span><span id="aiCtxWs">Options · Gamma · Heatmap</span></div>
+      <div class="cr"><span>Expiry</span><span id="aiCtxExp">All</span></div>
+      <div class="cr"><span>Freshness</span><span id="aiCtxFresh">—</span></div>
+    </div>
+    <div class="notproven" style="align-self:flex-start">AI BACKEND NOT_PROVEN — access architecture only</div>
+    <div style="font-size:11px;color:var(--ed-ink-3);letter-spacing:.02em">Backend = canonical truth · AI = interpretation only. Intended questions:</div>
+    <button class="aid-q">Why is this level important?</button>
+    <button class="aid-q">What changed since I last looked?</button>
+    <button class="aid-q">What supports the upside case here?</button>
+    <button class="aid-q">What would invalidate this setup?</button>
+    <button class="aid-q">Explain what order flow is doing.</button>
+  </div>
+</aside>
+
+<script src="/static/js/ed-core.js" defer></script>
+<script src="/static/js/ed-gamma.js" defer></script>
+</body>
+</html>

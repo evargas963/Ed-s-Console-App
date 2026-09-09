@@ -2807,6 +2807,11 @@ ROWS: tuple[Row, ...] = (
         justification='RC-209: per-strike call/put GEX split, net DEX and volumes from the NEWEST banked wide chain, all through the shared exposure faucet.',
     ),
     Row(
+        file='server.py', derivation='get_options_gamma_surface', disposition='ALLOWLISTED',
+        allowlist_id='mega1_sqlite_internal',
+        justification='RC-UI-1: strike x expiry GEX$ surface for the Options/Gamma heatmap. Reads the NEWEST banked wide chain, partitions it by native expirationDate, and routes each expiry slice through the shared compute_exposures_by_strike faucet; the endpoint owns no gamma/GEX math and is a projection of the one exposure producer.',
+    ),
+    Row(
         file='server.py', derivation='get_exposure_flow', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='RC-208: serves banked option_chain_accrual frames for the latest banked session; reads rows this repo already persisted rather than re-deriving them.',

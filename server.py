@@ -13439,6 +13439,127 @@ def get_exposure_book(ticker: str = Query(default=DEFAULT_TICKER)):
     return JSONResponse(payload)
 
 
+# RC-UI-1: strike × expiry GEX surface for the rebuilt Options→Gamma heatmap. This endpoint
+# is a PROJECTION over the one canonical exposure authority, not a second producer: it owns
+# only (1) selecting the newest banked wide chain, (2) partitioning it by native
+# expirationDate via the existing _filter_contracts_by_selected_expiry slice, (3) invoking
+# math_exposure_core.compute_exposures_by_strike on each slice, and (4) shaping the already-
+# computed net_gex_1pct cells into a strike × expiry grid. No gamma/GEX/multiplier/OI/spot/
+# sign/missingness math lives here. One DB read, zero vendor calls, 5-min cache.
+_GAMMA_SURFACE_CACHE: dict = {}
+
+
+def project_gamma_surface(chain: list, spot: float) -> dict:
+    """PURE projection of a wide chain into a strike × expiry net_gex_1pct grid.
+
+    Owns only orchestration/shaping — NO exposure math. Every cell is produced by the one
+    canonical authority ``math_exposure_core.compute_exposures_by_strike`` run on the native
+    ``expirationDate`` slice for that expiry (via the existing _filter_contracts_by_selected_expiry
+    helper). Because the faucet buckets each contract independently, summing per-expiry cells at
+    a strike reconciles exactly to the full-book value at that strike (same spot). Contracts with
+    malformed/missing native expiry are excluded and counted — never reassigned to a column."""
+    from math_exposure_core import compute_exposures_by_strike as _cebs
+
+    total_contracts = len(chain) if isinstance(chain, list) else 0
+    expiries = _expiries_from_contracts(chain)
+    valid_exp_keys = {str(e)[:10] for e in expiries}
+    excluded_malformed = sum(
+        1 for ct in (chain or [])
+        if str((ct or {}).get("expirationDate") or "")[:10] not in valid_exp_keys
+    )
+
+    strike_set: set[float] = set()
+    per_expiry: dict[str, dict] = {}
+    exp_dte: dict[str, int | None] = {}
+    contracts_used = 0
+    for e in expiries:
+        slice_e, slice_src = _filter_contracts_by_selected_expiry(chain, e)
+        if slice_src != "schwab_expirationDate" or not slice_e:
+            continue
+        # THE canonical faucet — identical call the selected-expiry analytics path uses
+        exposures_e, _diag_e = _cebs(slice_e, spot=spot, require_oi=True)
+        per_expiry[e] = exposures_e
+        contracts_used += len(slice_e)
+        for k in exposures_e.keys():
+            strike_set.add(float(k))
+        for ct in slice_e:  # native DTE for the column header, never inferred
+            _d = ct.get("daysToExpiration")
+            if _d is not None:
+                try:
+                    exp_dte[e] = int(_d)
+                    break
+                except (TypeError, ValueError):
+                    pass
+
+    strikes = sorted(strike_set)
+    expirations = [{"expiry": e, "dte": exp_dte.get(e)} for e in expiries if e in per_expiry]
+    cells = []
+    for k in strikes:
+        row = []
+        for col in expirations:
+            bucket = per_expiry.get(col["expiry"], {}).get(k)
+            v = bucket.get("net_gex_1pct") if bucket is not None else None
+            row.append(round(float(v)) if v is not None else None)
+        cells.append({"strike": k, "gex": row})
+
+    return {
+        "expirations": expirations, "strikes": strikes, "cells": cells,
+        "contracts_total": total_contracts, "contracts_used": contracts_used,
+        "contracts_excluded_malformed_expiry": excluded_malformed,
+    }
+
+
+@app.get("/api/options/gamma-surface")
+def get_options_gamma_surface(ticker: str = Query(default=DEFAULT_TICKER)):
+    """Strike × expiration signed GEX$ surface, projected from the newest banked wide chain
+    through the canonical compute_exposures_by_strike faucet (one producer). Cell value is
+    ``net_gex_1pct`` ($ GEX per 1% spot move). Fail-closed to explicit unavailability."""
+    import sqlite3 as _sq
+
+    tk = ticker_storage_key(ticker or DEFAULT_TICKER)
+    now = time.time()
+    hit = _GAMMA_SURFACE_CACHE.get(tk)
+    if hit and now - hit[0] < 300.0:
+        return JSONResponse(hit[1])
+
+    payload: dict = {"ticker": tk, "symbol": tk, "available": False,
+                     "reason": "no banked wide chain"}
+    try:
+        db = get_db()
+        con = _sq.connect(f"file:{db.db_path}?mode=ro", uri=True, timeout=10.0)
+        try:
+            cand = con.execute(
+                "SELECT et_date, spot, chain_json FROM option_chain_morning_full "
+                "WHERE ticker=? ORDER BY et_date DESC LIMIT 12", (tk,)).fetchall()
+        finally:
+            con.close()
+        rows_t = [r for r in cand if r[0] and is_trading_day_et(str(r[0]))][:1]
+        if rows_t:
+            et_date, s1, c1 = rows_t[0]
+            spot1 = float(s1)
+            surface = project_gamma_surface(json.loads(c1), spot1)
+            payload = {
+                "ticker": tk, "symbol": tk, "available": True,
+                "et_date": et_date, "spot": spot1,
+                **surface,
+                "provenance": {
+                    "producer": "math_exposure_core.compute_exposures_by_strike",
+                    "source": "newest_banked_wide_chain:option_chain_morning_full",
+                    "classification": "DERIVED",
+                    "cell_metric": "net_gex_1pct",
+                    "spot_basis": "captured_wide_chain_spot",
+                },
+                "method": ("newest banked wide chain -> partition by native expirationDate "
+                           "(_filter_contracts_by_selected_expiry) -> compute_exposures_by_strike "
+                           "per expiry -> net_gex_1pct cell; captured spot; one producer, no vendor call"),
+            }
+    except Exception as e:  # fail-closed to explicit unavailability
+        payload = {"ticker": tk, "symbol": tk, "available": False,
+                   "reason": f"gamma-surface read failed: {e}"}
+    _GAMMA_SURFACE_CACHE[tk] = (now, payload)
+    return JSONResponse(payload)
+
+
 @app.get("/api/exposure/history")
 def get_exposure_history(ticker: str = Query(default=DEFAULT_TICKER)):
     """RC-209 (operator: multi-day scroll-back goes live): per-day per-strike net GEX$ for
@@ -13682,6 +13803,19 @@ def desk_page():
     p = static_dir / "desk.html"
     if not p.exists():
         return HTMLResponse("<p>static/desk.html not found</p>", status_code=404)
+    return HTMLResponse(p.read_text(encoding="utf-8"),
+                        headers={"Cache-Control": "no-store, no-cache, must-revalidate"})
+
+
+@app.get("/console", response_class=HTMLResponse)
+def console_page():
+    """RC-UI-1 — rebuilt Ed Console workstation shell (dark institutional terminal,
+    workspace rail + 3-tier nav + Options/Gamma workspace). Consumes existing canonical
+    endpoints only (no new producers, no client-side semantic computation). Served at a
+    dev route during migration; converges to `/` once legacy surfaces are superseded."""
+    p = static_dir / "console.html"
+    if not p.exists():
+        return HTMLResponse("<p>static/console.html not found</p>", status_code=404)
     return HTMLResponse(p.read_text(encoding="utf-8"),
                         headers={"Cache-Control": "no-store, no-cache, must-revalidate"})
 
