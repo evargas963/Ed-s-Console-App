@@ -9,9 +9,9 @@
   /* ---- shared, theme-independent ---- */
   --ed-sans: 'Barlow Semi Condensed', 'Inter', system-ui, -apple-system, sans-serif;
   --ed-mono: 'IBM Plex Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace;
-  --ed-r: 5px; --ed-r-lg: 8px;
-  --ed-rail-w: 56px; --ed-rail-w-open: 210px;
-  --ed-header-h: 46px; --ed-subnav-h: 40px; --ed-viewbar-h: 34px;
+  --ed-r: 4px; --ed-r-lg: 6px;
+  --ed-rail-w: 54px; --ed-rail-w-open: 208px;
+  --ed-header-h: 44px; --ed-subnav-h: 36px; --ed-viewbar-h: 32px;
   --ed-gap-xs: 4px; --ed-gap-sm: 8px; --ed-gap-md: 12px; --ed-gap-lg: 16px;
 }
 

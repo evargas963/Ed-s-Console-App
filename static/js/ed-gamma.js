@@ -95,37 +95,40 @@
     // freshness / source — fail stale visibly (RC-UI-1 live-source rewire)
     var live = surface.live !== false, stale = !!surface.stale;
     var banner = buildBanner(surface);   // status banners (warming/requested/stale/ref + narrowed)
-    // #7: compact shade legend (shade = |GEX$| magnitude; the actual dollar value is printed in every cell)
-    var legend = '<div class="heat-legend"><span>−' + formatUsd(maxAbs) + '</span><span class="grad"></span>' +
-      '<span>+' + formatUsd(maxAbs) + '</span><span style="margin-left:8px">shade = |GEX$| · value in each cell</span></div>';
     // C: emphasise the nearest-expiry (front) column — presentation only, no predictive meaning
     var frontCol = -1, minDte = Infinity;
     exps.forEach(function (e, ix) { if (e.dte != null && e.dte < minDte) { minDte = e.dte; frontCol = ix; } });
     // B: a STALE / REFERENCE surface visually recedes (in addition to the banner)
     var recede = (!live || stale) ? ' recede' : '';
-    var html = banner + legend + '<div class="heat-wrap' + recede + '"><table class="heat"><thead><tr>' +
-      '<th class="hcorner">Strike</th>';
+    var tbl = '<table class="heat"><thead><tr><th class="hcorner">Strike</th>';
     exps.forEach(function (e, ix) {
       var dte = (e.dte === 0) ? '0DTE' : (e.dte != null ? e.dte + 'DTE' : '');
-      html += '<th class="hexp' + (ix === frontCol ? ' col-front' : '') + '"><span class="d">' +
+      tbl += '<th class="hexp' + (ix === frontCol ? ' col-front' : '') + '"><span class="d">' +
         escapeHtml((e.expiry || '').slice(5)) + '</span><span class="dte">' + dte + '</span></th>';
     });
-    html += '</tr></thead><tbody>';
+    tbl += '</tr></thead><tbody>';
     for (var i = 0; i < cells.length; i++) {
       var row = cells[i], isSpot = (i === spotIdx);
-      html += '<tr' + (isSpot ? ' class="spotrow"' : '') + '>' +
+      tbl += '<tr' + (isSpot ? ' class="spotrow"' : '') + '>' +
         '<th class="hstrike' + (isSpot ? ' spot' : '') + '">' + fmtStrike(row.strike) + '</th>';
       for (var j = 0; j < exps.length; j++) {
         var v = (row.gex || [])[j];
         var st = cellStyle(v, maxAbs, heat);
-        html += '<td class="hcell' + (j === frontCol ? ' col-front' : '') + '" style="background:' + st.bg + ';color:' + st.fg + '" ' +
+        tbl += '<td class="hcell' + (j === frontCol ? ' col-front' : '') + '" style="background:' + st.bg + ';color:' + st.fg + '" ' +
           'data-strike="' + row.strike + '" data-expiry="' + escapeHtml(exps[j].expiry) + '" data-gex="' + (v == null ? '' : v) + '">' +
           (st.empty ? '' : formatUsd(v)) + '</td>';
       }
-      html += '</tr>';
+      tbl += '</tr>';
     }
-    html += '</tbody></table></div>';
-    host.innerHTML = html;
+    tbl += '</tbody></table>';
+    // the grid fills the panel; a compact vertical magnitude legend sits at its right edge (the
+    // dollar value is printed in every cell — shade = |GEX$|), matching the approved reference.
+    var vlegend = '<div class="heat-vlegend"><span class="bar"></span>' +
+      '<span class="caps"><span class="t">High<br>Call<br>GEX</span><span class="m">0</span>' +
+      '<span class="b">High<br>Put<br>GEX</span></span></div>';
+    host.innerHTML = banner +
+      '<div class="heat-host"><div class="heat-main"><div class="heat-wrap' + recede + '">' +
+      tbl + '</div></div>' + vlegend + '</div>';
 
     // scroll spot into view; presentation-only cell selection -> strike detail
     var srow = host.querySelector('.spotrow');

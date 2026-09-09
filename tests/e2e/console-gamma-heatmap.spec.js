@@ -119,8 +119,8 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     // a LIVE surface shows no stale/reference banner and is tagged a live WINDOW (not "complete")
     await expect(page.locator('.heat-banner')).toHaveCount(0);
     await expect(page.locator('#heatScope')).toContainText('LIVE·window');
-    // #7: shade legend present
-    await expect(page.locator('.heat-legend .grad')).toBeVisible();
+    // #7: shade legend present — vertical magnitude legend at the heatmap's right edge
+    await expect(page.locator('.heat-vlegend .bar')).toBeVisible();
     // C: nearest-expiry (front) column emphasised
     expect(await page.locator('.heat .hexp.col-front').count()).toBeGreaterThan(0);
     // A: clicking a heatmap cell syncs the selected strike across panels

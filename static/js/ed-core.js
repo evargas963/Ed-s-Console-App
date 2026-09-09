@@ -276,7 +276,7 @@
   function setTicker(sym) {
     state.ticker = (sym || '').toUpperCase();
     try { localStorage.setItem(TICKER_KEY, state.ticker); } catch (e) {}
-    ['hSym', 'cSym', 'aiCtxSym'].forEach(function (id) { var el = document.getElementById(id); if (el) el.textContent = state.ticker; });
+    ['hSym', 'cSym', 'aiCtxSym', 'mvTicker'].forEach(function (id) { var el = document.getElementById(id); if (el) el.textContent = state.ticker.replace('$', ''); });
     document.querySelectorAll('.wl-row').forEach(function (r) {
       var s = r.querySelector('.info .s'); r.classList.toggle('sel', s && s.textContent === state.ticker);
     });
