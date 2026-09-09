@@ -66,6 +66,18 @@
       ? profileSvg(bars, win, spot, terrain, lo, hi)
       : dotSvg(win, spot, terrain, lo, hi);
     host.innerHTML = legend + svg;
+    host.querySelectorAll('[data-strike]').forEach(function (el) {   // A: click a mark -> sync all panels
+      el.style.cursor = 'pointer';
+      el.addEventListener('click', function () { if (window.EdShell) window.EdShell.setStrike(Number(el.getAttribute('data-strike'))); });
+    });
+    applyChartHighlight(host);
+  }
+  function applyChartHighlight(host) {
+    host = host || document.getElementById('chartBody'); if (!host) return;
+    var sel = ((window.EdShell && window.EdShell.getState()) || {}).selStrike;
+    host.querySelectorAll('.gmark.csel').forEach(function (n) { n.classList.remove('csel'); });
+    if (sel == null) return;
+    host.querySelectorAll('.gmark[data-strike="' + sel + '"]').forEach(function (n) { n.classList.add('csel'); });
   }
 
   var W = 1000, H = 540, T = 12, B = 24, L = 52, R = 10;
@@ -123,7 +135,7 @@
     win.forEach(function (r) {
       var k = r[0], v = Number(r[1]) || 0, w = Math.abs(v) / maxAbs * halfW;
       var y = yOf(k, lo, hi), pos = v >= 0;
-      s += '<rect x="' + (pos ? cx : cx - w).toFixed(1) + '" y="' + (y - 3).toFixed(1) + '" width="' + w.toFixed(1) +
+      s += '<rect class="gmark" data-strike="' + k + '" x="' + (pos ? cx : cx - w).toFixed(1) + '" y="' + (y - 3).toFixed(1) + '" width="' + w.toFixed(1) +
         '" height="6" fill="' + (pos ? COL.pos : COL.neg) + '" opacity="0.85"/>';
     });
     // biggest-magnitude label
@@ -149,7 +161,7 @@
       var k = r[0], v = Number(r[1]) || 0, y = yOf(k, lo, hi);
       var rad = 3 + Math.sqrt(Math.abs(v) / maxAbs) * 22;
       var pos = v >= 0, x = cx + (pos ? 1 : -1) * (rad + 10);
-      s += '<circle cx="' + x.toFixed(1) + '" cy="' + y.toFixed(1) + '" r="' + rad.toFixed(1) +
+      s += '<circle class="gmark" data-strike="' + k + '" cx="' + x.toFixed(1) + '" cy="' + y.toFixed(1) + '" r="' + rad.toFixed(1) +
         '" fill="' + (pos ? COL.pos : COL.neg) + '" opacity="0.55" stroke="' + (pos ? COL.pos : COL.neg) + '"/>' +
         '<text x="' + (pos ? x + rad + 4 : x - rad - 4).toFixed(1) + '" y="' + (y + 3).toFixed(1) + '" text-anchor="' + (pos ? 'start' : 'end') +
         '" font-size="9" fill="var(--ed-ink-2)">' + esc(usd(v)) + '</text>';
@@ -179,6 +191,7 @@
   document.addEventListener('ed:view', load);
   document.addEventListener('ed:ticker', load);
   document.addEventListener('ed:refresh', function (e) { if (e.detail && e.detail.slow) load(); });
+  document.addEventListener('ed:strike', function () { applyChartHighlight(); });   // A: cross-panel sync
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function () { bindModes(); load(); });
   else { bindModes(); load(); }
 })();

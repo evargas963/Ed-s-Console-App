@@ -2809,7 +2809,7 @@ ROWS: tuple[Row, ...] = (
     Row(
         file='server.py', derivation='get_options_gamma_surface', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
-        justification='RC-UI-1: strike x expiry GEX$ surface for the Options/Gamma heatmap. Reads the NEWEST banked wide chain, partitions it by native expirationDate, and routes each expiry slice through the shared compute_exposures_by_strike faucet; the endpoint owns no gamma/GEX math and is a projection of the one exposure producer.',
+        justification='RC-UI-1: strike x expiry GEX$ surface (Options/Gamma heatmap). PREFERRED source is the LIVE terrain cache (current terrain-refresh contracts + live spot, bounded near-money window) — an in-memory read, no SQLite. This SQLite read is the FALLBACK ONLY: the banked morning wide reference (option_chain_morning_full), stale, not intraday, not proven complete. Both paths partition by native expirationDate and route each expiry slice through the shared compute_exposures_by_strike faucet; the endpoint owns no gamma/GEX math and is a projection of the one exposure producer.',
     ),
     Row(
         file='server.py', derivation='get_exposure_flow', disposition='ALLOWLISTED',

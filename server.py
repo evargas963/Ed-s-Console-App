@@ -13565,7 +13565,8 @@ def get_options_gamma_surface(ticker: str = Query(default=DEFAULT_TICKER)):
                 "strike_max": (strikes[-1] if strikes else None),
                 "expiry_count": len(surf.get("expirations") or []),
                 "note": ("near-money LIVE window (strike_count-bounded terrain chain) — NOT the "
-                         "full strike_range=ALL book; the complete book is the banked reference"),
+                         "full strike_range=ALL book. Proven-complete captures are per-expiry "
+                         "(complete_chain_captures), not exposed by this surface"),
             },
             **surf,
             "provenance": {
@@ -13602,13 +13603,14 @@ def get_options_gamma_surface(ticker: str = Query(default=DEFAULT_TICKER)):
             payload = {
                 "ticker": tk, "symbol": tk, "available": True,
                 "source": "banked_morning_reference", "live": False, "stale": True,
-                "degraded": ("live terrain surface unavailable — showing banked MORNING chain "
-                             "(reference only: morning spot + morning Greeks, NOT intraday)"),
+                "degraded": ("live terrain surface unavailable — showing banked morning wide "
+                             "reference (morning spot + morning Greeks; NOT intraday, NOT proven complete)"),
                 "et_date": et_date, "spot": spot1,
                 "chain_as_of_ts_utc": None, "spot_as_of_ts_utc": None, "age_sec": None,
-                "chain_basis": "banked_morning", "complete": None,
-                "coverage": {"window": "banked_morning_full", "strike_count": len(surface.get("strikes") or []),
-                             "note": "banked MORNING book (complete reference / history), not intraday"},
+                "chain_basis": "banked_morning", "complete": False,
+                "coverage": {"window": "banked_morning_wide", "strike_count": len(surface.get("strikes") or []),
+                             "note": ("banked morning wide reference — strike-count bounded, not intraday "
+                                      "and not proven complete (not strike_range=ALL)")},
                 **surface,
                 "provenance": {
                     "producer": "math_exposure_core.compute_exposures_by_strike",

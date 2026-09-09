@@ -50,6 +50,13 @@ const BARS = {
     return { t: 1757000000 + i * 60, o: c - 0.1, h: c + 0.2, l: c - 0.2, c: c, v: 1000 + i };
   }),
 };
+const CHAIN = {
+  ticker: '$SPX', spot: 583.41, expiry: '2026-09-11', status: 'ok',
+  contracts: [
+    { putCall: 'CALL', strikePrice: 583, openInterest: 1200, totalVolume: 540, gamma: 0.021, delta: 0.52, volatility: 12.3, expirationDate: '2026-09-11' },
+    { putCall: 'PUT', strikePrice: 583, openInterest: 980, totalVolume: 410, gamma: 0.019, delta: -0.48, volatility: 12.6, expirationDate: '2026-09-11' },
+  ],
+};
 
 async function intercept(page) {
   await page.route('**/api/**', (route) => {
@@ -59,6 +66,8 @@ async function intercept(page) {
     else if (url.includes('/api/terrain/strikes')) body = STRIKES;
     else if (url.includes('/api/terrain')) body = TERRAIN;
     else if (url.includes('/api/bars1m')) body = BARS;
+    else if (url.includes('/api/chain')) body = CHAIN;
+    else if (url.includes('/api/expiries')) body = { expiries: ['2026-09-11', '2026-09-18'] };
     else if (url.includes('/api/live/state')) body = LIVE;
     else if (url.includes('/api/health')) body = { status: 'ok', capabilities: { schwab: true } };
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
@@ -97,6 +106,13 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     // a LIVE surface shows no stale/reference banner and is tagged a live WINDOW (not "complete")
     await expect(page.locator('.heat-banner')).toHaveCount(0);
     await expect(page.locator('#heatScope')).toContainText('LIVE·window');
+    // C: nearest-expiry (front) column emphasised
+    expect(await page.locator('.heat .hexp.col-front').count()).toBeGreaterThan(0);
+    // A: clicking a heatmap cell syncs the selected strike across panels
+    await page.locator('.hcell[data-strike="583"][data-expiry="2026-09-11"]').click();
+    await expect(page.locator('.hcell.sel-strike')).toHaveCount(2);                 // both expiry cells at 583
+    await expect(page.locator('.gbs-row.gbs-sel[data-strike="583"]')).toHaveCount(1);  // GEX-by-strike synced
+    await expect(page.locator('#sdCtx')).toContainText('583');                       // Strike Detail loaded
   });
 
   test('stale/reference gamma surface fails stale visibly (no morning snapshot passed as live)', async ({ page }) => {
@@ -113,6 +129,17 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(banner).toContainText('MORNING REFERENCE');
     await expect(banner).toContainText('intraday');
     await expect(page.locator('#heatScope')).toContainText('REF');
+    // B: the reference surface visually recedes, not just a banner
+    await expect(page.locator('.heat-wrap.recede')).toBeVisible();
+  });
+
+  test('persists workspace/view across reload (D: UI state, not market truth)', async ({ page }) => {
+    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.locator('.navitem[data-ws="system"]').click();
+    await expect(page.locator('[data-ws-pane="system"]')).toBeVisible();
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await expect(page.locator('[data-ws-pane="system"]')).toBeVisible();       // restored from localStorage
+    await expect(page.locator('#subnav .wtitle')).toContainText('SYSTEM');
   });
 
   test('key levels rail reflects /api/terrain', async ({ page }) => {
@@ -177,17 +204,24 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(page.locator('#hPx')).toHaveText('222.22');          // not overwritten by the stale response
   });
 
-  test('header consumes the canonical L1 SSE push (not just polling) when available', async ({ page }) => {
-    // fulfil the SSE endpoint with a real l1_projection event; the header must paint from the PUSH
+  test('header consumes the canonical L1 SSE push (real server envelope) when available', async ({ page }) => {
+    // The server sends an ENVELOPE {scope, payload}; the quote lives on env.payload. This event
+    // is the ACTUAL production shape — a root-field parser would read undefined and never paint,
+    // so this test fails against the broken parser and passes only when the envelope is consumed.
+    const ts = Date.now() / 1000;
     await page.route('**/api/analytics/light/stream**', (route) => route.fulfill({
       status: 200, contentType: 'text/event-stream',
       body: 'event: l1_projection\ndata: ' + JSON.stringify({
-        ticker: 'SPY', spot: 601.23, spot_disp: '601.23', bid: 601.20, ask: 601.25,
-        l1_generation: 9, _server_build_ts: Date.now() / 1000,
+        l1_sse_schema: 1, scope: { ticker: 'SPY', expiry: '__auto__' },
+        l1_generation: 9, l1_server_build_ts: ts,
+        payload: {
+          ticker: 'SPY', selected_exp: '2026-09-11', spot: 601.23, spot_disp: '601.23',
+          bid: 601.20, ask: 601.25, l1_generation: 9, _server_build_ts: ts,
+        },
       }) + '\n\n',
     }));
     await page.goto('/console', { waitUntil: 'domcontentloaded' });
-    // 601.23 comes only from the SSE push; the /api/live/state poll fallback would show 583.41
+    // 601.23 comes only from env.payload; the /api/live/state poll fallback would show 583.41
     await expect(page.locator('#hPx')).toHaveText('601.23');
     await expect(page.locator('#hFeed')).toContainText('LIVE');
   });

@@ -97,8 +97,10 @@ def test_D_sign_preserved():
     assert (cell < 0) == (float(full[100.0]["net_gex_1pct"]) < 0)
 
 
-# F. COMPLETENESS — every OI-bearing expiry and strike in the chain is represented.
-def test_F_completeness():
+# F. INPUT-PROJECTION COVERAGE — every OI-bearing expiry/strike IN THE SUPPLIED CHAIN is projected.
+#    NOTE: this is input-projection coverage, NOT vendor strike_range=ALL chain completeness — the
+#    live terrain chain is strike_count-bounded and the API discloses complete=false/coverage.
+def test_F_input_projection_coverage():
     surface = project_gamma_surface(_chain(), SPOT)
     assert {e["expiry"] for e in surface["expirations"]} == {E1, E2}
     assert set(surface["strikes"]) == {95.0, 100.0, 105.0}

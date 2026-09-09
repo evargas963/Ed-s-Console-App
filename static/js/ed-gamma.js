@@ -65,12 +65,17 @@
       banner = '<div class="heat-banner ' + (!live ? 'ref' : 'stale') + '">' +
         (!live ? 'MORNING REFERENCE' : 'STALE') + ' — ' + escapeHtml(msg) + '</div>';
     }
-    var html = banner + '<div class="heat-wrap"><table class="heat"><thead><tr>' +
+    // C: emphasise the nearest-expiry (front) column — presentation only, no predictive meaning
+    var frontCol = -1, minDte = Infinity;
+    exps.forEach(function (e, ix) { if (e.dte != null && e.dte < minDte) { minDte = e.dte; frontCol = ix; } });
+    // B: a STALE / REFERENCE surface visually recedes (in addition to the banner)
+    var recede = (!live || stale) ? ' recede' : '';
+    var html = banner + '<div class="heat-wrap' + recede + '"><table class="heat"><thead><tr>' +
       '<th class="hcorner">Strike</th>';
-    exps.forEach(function (e) {
+    exps.forEach(function (e, ix) {
       var dte = (e.dte === 0) ? '0DTE' : (e.dte != null ? e.dte + 'DTE' : '');
-      html += '<th class="hexp"><span class="d">' + escapeHtml((e.expiry || '').slice(5)) + '</span>' +
-        '<span class="dte">' + dte + '</span></th>';
+      html += '<th class="hexp' + (ix === frontCol ? ' col-front' : '') + '"><span class="d">' +
+        escapeHtml((e.expiry || '').slice(5)) + '</span><span class="dte">' + dte + '</span></th>';
     });
     html += '</tr></thead><tbody>';
     for (var i = 0; i < cells.length; i++) {
@@ -80,7 +85,7 @@
       for (var j = 0; j < exps.length; j++) {
         var v = (row.gex || [])[j];
         var st = cellStyle(v, maxAbs);
-        html += '<td class="hcell" style="background:' + st.bg + ';color:' + st.fg + '" ' +
+        html += '<td class="hcell' + (j === frontCol ? ' col-front' : '') + '" style="background:' + st.bg + ';color:' + st.fg + '" ' +
           'data-strike="' + row.strike + '" data-expiry="' + escapeHtml(exps[j].expiry) + '" data-gex="' + (v == null ? '' : v) + '">' +
           (st.empty ? '' : formatUsd(v)) + '</td>';
       }
@@ -94,13 +99,11 @@
     if (srow && srow.scrollIntoView) srow.scrollIntoView({ block: 'center' });
     host.querySelectorAll('.hcell').forEach(function (c) {
       c.addEventListener('click', function () {
-        host.querySelectorAll('.hcell.sel').forEach(function (n) { n.classList.remove('sel'); });
-        c.classList.add('sel');
-        document.dispatchEvent(new CustomEvent('ed:strike', {
-          detail: { strike: Number(c.getAttribute('data-strike')), expiry: c.getAttribute('data-expiry'),
-                    gex: c.getAttribute('data-gex') } }));
+        // A: route through the shared selection so every panel syncs to this strike
+        if (window.EdShell) window.EdShell.setStrike(Number(c.getAttribute('data-strike')), c.getAttribute('data-expiry'));
       });
     });
+    applyStrikeHighlight(host);
     var srcLabel = surface.source === 'terrain_live_cache'
       ? (surface.complete === false ? 'LIVE·window' : 'LIVE')
       : surface.source === 'banked_morning_reference' ? 'REF·morning' : (surface.source || '');
@@ -112,6 +115,14 @@
         (isFinite(spot) ? spot.toFixed(2) : '—') + ' · ' + srcLabel + age + basis;
       scopeEl.title = (surface.coverage && surface.coverage.note) || '';   // "not the full strike_range=ALL book"
     }
+  }
+
+  function applyStrikeHighlight(host) {
+    host = host || document.getElementById('heatBody'); if (!host) return;
+    var sel = ((window.EdShell && window.EdShell.getState()) || {}).selStrike;
+    host.querySelectorAll('.hcell.sel-strike').forEach(function (n) { n.classList.remove('sel-strike'); });
+    if (sel == null) return;
+    host.querySelectorAll('.hcell[data-strike="' + sel + '"]').forEach(function (n) { n.classList.add('sel-strike'); });
   }
 
   function fmtStrike(k) { return (Math.round(k * 100) / 100).toString(); }
@@ -138,6 +149,7 @@
     document.addEventListener('ed:ticker', load);
     document.addEventListener('ed:view', load);
     document.addEventListener('ed:refresh', function (e) { if (e.detail && e.detail.slow) load(); });
+    document.addEventListener('ed:strike', function () { applyStrikeHighlight(); });   // A: cross-panel sync
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', load);
     else load();
   }

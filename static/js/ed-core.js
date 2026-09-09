@@ -48,12 +48,24 @@
       { id: 'provenance', label: 'Provenance' }, { id: 'models', label: 'Models' }, { id: 'runtime', label: 'Runtime' } ], views: [] }
   };
 
+  function _ls(k, d) { try { var v = localStorage.getItem(k); return (v == null || v === '') ? d : v; } catch (e) { return d; } }
+  function _lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+  // D: persist UI navigation state (client state, not market truth)
   var state = {
-    ticker: (localStorage.getItem(TICKER_KEY) || 'SPY').toUpperCase(),
-    workspace: app.getAttribute('data-workspace') || 'options',
-    subview: app.getAttribute('data-subview') || 'gamma',
-    view: app.getAttribute('data-view') || 'heatmap'
+    ticker: (_ls(TICKER_KEY, 'SPY')).toUpperCase(),
+    workspace: _ls('ed_ws', app.getAttribute('data-workspace') || 'options'),
+    subview: _ls('ed_sub', app.getAttribute('data-subview') || 'gamma'),
+    view: _ls('ed_view', app.getAttribute('data-view') || 'heatmap'),
+    selStrike: null, selExpiry: null
   };
+  function normalizeState() {   // restored state must be valid for the current NAV config
+    if (!NAV[state.workspace]) state.workspace = 'options';
+    var subs = NAV[state.workspace].subs.map(function (s) { return s.id; });
+    if (subs.indexOf(state.subview) === -1) state.subview = subs[0];
+    var v = (NAV[state.workspace].views && NAV[state.workspace].views[state.subview]) || [];
+    var vids = v.map(function (x) { return x.id; });
+    state.view = vids.indexOf(state.view) !== -1 ? state.view : (vids[0] || '');
+  }
 
   // ================= navigation =================
   function renderSubnav() {
@@ -114,6 +126,7 @@
     app.setAttribute('data-workspace', state.workspace);
     app.setAttribute('data-subview', state.subview);
     app.setAttribute('data-view', state.view);
+    _lsSet('ed_ws', state.workspace); _lsSet('ed_sub', state.subview); _lsSet('ed_view', state.view);
     document.querySelectorAll('.navitem[data-ws]').forEach(function (n) {
       n.classList.toggle('active', n.getAttribute('data-ws') === state.workspace);
     });
@@ -193,9 +206,17 @@
     document.querySelectorAll('.wl-row').forEach(function (r) {
       var s = r.querySelector('.info .s'); r.classList.toggle('sel', s && s.textContent === state.ticker);
     });
+    state.selStrike = null; state.selExpiry = null;   // a new ticker clears the shared selection
     openHeaderStream(state.ticker);   // (re)subscribe the SSE push to this ticker (one subscription)
     refreshHeader();                  // immediate paint while the stream connects
     document.dispatchEvent(new CustomEvent('ed:ticker', { detail: { ticker: state.ticker } }));
+  }
+
+  // A: one selected strike shared across heatmap / profile / dot map / GEX-by-strike / Strike Detail
+  function setStrike(strike, expiry) {
+    state.selStrike = (strike == null || isNaN(strike)) ? null : Number(strike);
+    state.selExpiry = expiry || null;
+    document.dispatchEvent(new CustomEvent('ed:strike', { detail: { strike: state.selStrike, expiry: state.selExpiry } }));
   }
 
   // ================= header live data (single coordinated poll; degrades honestly) =================
@@ -238,14 +259,21 @@
     try { _sse = new EventSource('/api/analytics/light/stream?ticker=' + encodeURIComponent(tk)); }
     catch (e) { _sse = null; return; }
     _sse.addEventListener('l1_projection', function (ev) {
-      var d; try { d = JSON.parse(ev.data); } catch (e) { return; }
+      // the server sends an ENVELOPE {l1_sse_schema, scope, l1_generation, l1_server_build_ts,
+      // payload}; the quote fields live on env.payload (server.py:_l1 envelope). Parse envelope,
+      // validate envelope+payload scope, guard the PAYLOAD's generation, render from the payload.
+      var env; try { env = JSON.parse(ev.data); } catch (e) { return; }
+      var p = env && env.payload; if (!p) return;
       var G = window.EdL1SseGuards;
-      if (G && !G.l1PayloadMatchesActiveScope(d.ticker, d.selected_exp, state.ticker, '')) return;
-      if (G && !G.l1ApplyTierBLightMonotonic(state.ticker, d.l1_generation, _l1Gen, d._server_build_ts, _l1Ts)) return;
+      if (G && !G.l1EnvelopeScopeMatches(env.scope, state.ticker, '')) return;
+      if (G && !G.l1PayloadMatchesActiveScope(p.ticker, p.selected_exp, state.ticker, '')) return;
+      var gen = (p.l1_generation != null ? p.l1_generation : env.l1_generation);
+      var bts = (p._server_build_ts != null ? p._server_build_ts : env.l1_server_build_ts);
+      if (G && !G.l1ApplyTierBLightMonotonic(state.ticker, gen, _l1Gen, bts, _l1Ts)) return;
       _sseUp = true; _lastSseTs = Date.now(); _hdrGen++;   // supersede any in-flight fallback poll
-      var ageMs = d._server_build_ts ? Math.max(0, Math.round(Date.now() - d._server_build_ts * 1000)) : null;
-      paintQuote({ spot_disp: d.spot_disp, spot: d.spot, bid: d.bid, ask: d.ask,
-        chgPct: chgPctFor(state.ticker, d.analytics_lightweight),
+      var ageMs = bts ? Math.max(0, Math.round(Date.now() - bts * 1000)) : null;
+      paintQuote({ spot_disp: p.spot_disp, spot: p.spot, bid: p.bid, ask: p.ask,
+        chgPct: chgPctFor(state.ticker, p.analytics_lightweight),
         feedCls: '', feedLabel: 'LIVE', ageLabel: ageMs != null ? ageMs + 'ms' : 'push' });
     });
     _sse.onerror = function () { _sseUp = false; };   // fall back to polling; the browser reconnects
@@ -301,8 +329,9 @@
     document.querySelectorAll('.navitem[data-ws]').forEach(function (n) {
       n.addEventListener('click', function () { setWorkspace(n.getAttribute('data-ws')); });
     });
-    // subnav/viewbar initial (Options/Gamma hardcoded in HTML; re-render to bind + data-drive)
-    renderSubnav(); renderViewbar(); syncAttrs();
+    // subnav/viewbar initial — restore persisted workspace/subview/view (D), validated to NAV
+    normalizeState();
+    renderSubnav(); renderViewbar(); showPane(); syncAttrs();
     // subnav/view tabs already in HTML are re-bound by renderSubnav/renderViewbar
     // watchlist
     renderWatchlist();
@@ -332,5 +361,5 @@
 
   // expose for view modules + tests (no trading logic here)
   window.EdShell = { getState: function () { return Object.assign({}, state); }, setTicker: setTicker,
-    addSymbol: addSymbol, removeSymbol: removeSymbol, setWorkspace: setWorkspace };
+    addSymbol: addSymbol, removeSymbol: removeSymbol, setWorkspace: setWorkspace, setStrike: setStrike };
 })();

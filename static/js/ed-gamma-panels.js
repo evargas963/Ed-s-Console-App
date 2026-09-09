@@ -69,6 +69,9 @@
       reg.textContent = rm.t; reg.style.color = rm.c;
     }
     txt('klPcr', '—');  // PCR lives on the analytics plane; wired with the header analytics pass
+    // B: the levels rail recedes when terrain reports stale
+    var klb = document.getElementById('klBody');
+    if (klb) klb.classList.toggle('recede', !!d.levels_stale);
     // freshness / provenance line
     var src = document.getElementById('klSrc');
     if (src) {
@@ -112,15 +115,26 @@
     win.forEach(function (r) {
       var k = r[0], v = Number(r[1]) || 0, w = Math.min(100, Math.abs(v) / maxAbs * 100);
       var pos = v >= 0;
-      h += '<div class="gbs-row' + (k === spotStrike ? ' spot' : '') + '">' +
+      h += '<div class="gbs-row' + (k === spotStrike ? ' spot' : '') + '" data-strike="' + k + '">' +
         '<span class="gbs-k">' + px(k, k % 1 ? 2 : 0) + '</span>' +
         '<span class="gbs-track"><i class="gbs-bar ' + (pos ? 'pos' : 'neg') + '" style="width:' + w.toFixed(1) + '%"></i></span>' +
         '<span class="gbs-v ' + (pos ? 'pos' : 'neg') + '">' + usd(v) + '</span></div>';
     });
     h += '</div>';
     host.innerHTML = h;
+    host.querySelectorAll('.gbs-row').forEach(function (rr) {   // A: click a strike -> sync all panels
+      rr.addEventListener('click', function () { if (window.EdShell) window.EdShell.setStrike(Number(rr.getAttribute('data-strike'))); });
+    });
+    applyGbsHighlight(host);
     var sr = host.querySelector('.gbs-row.spot');
     if (sr && sr.scrollIntoView) sr.scrollIntoView({ block: 'center' });
+  }
+  function applyGbsHighlight(host) {
+    host = host || document.getElementById('gbsBody'); if (!host) return;
+    var sel = ((window.EdShell && window.EdShell.getState()) || {}).selStrike;
+    host.querySelectorAll('.gbs-row.gbs-sel').forEach(function (n) { n.classList.remove('gbs-sel'); });
+    if (sel == null) return;
+    host.querySelectorAll('.gbs-row[data-strike="' + sel + '"]').forEach(function (n) { n.classList.add('gbs-sel'); });
   }
 
   // ---------- Strike Detail ----------
@@ -162,7 +176,8 @@
   document.addEventListener('ed:refresh', function (e) { if (e.detail && e.detail.slow) loadAll(); });
   document.addEventListener('ed:strike', function (e) {
     var det = e.detail || {}; _lastExpiry = det.expiry || _lastExpiry;
-    loadStrike(det.strike, det.expiry);
+    applyGbsHighlight();                       // A: sync the GEX-by-strike highlight
+    if (det.strike != null) loadStrike(det.strike, det.expiry);
   });
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', loadAll);
   else loadAll();
