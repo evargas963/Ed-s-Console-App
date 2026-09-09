@@ -172,6 +172,29 @@
   .heat .hcell.sel{outline:2px solid var(--ed-accent);outline-offset:-2px}
   .heat tr.spotrow td{box-shadow:inset 0 -1px 0 var(--ed-accent-edge)}
 
+  /* main-panel view switching (Heatmap / Chart / Levels / Multi-Map) */
+  .mvwrap{padding:0;position:relative}
+  .mv{display:none;height:100%} .mv.on{display:block;height:100%}
+  .mvbody{height:100%;overflow:auto;padding:10px 12px}
+  .chart-modes{display:inline-flex;gap:2px;margin-right:8px}
+  .cmode{font-family:var(--ed-sans);font-size:10px;letter-spacing:.04em;color:var(--ed-ink-2);
+    padding:3px 9px;border:1px solid var(--ed-edge);border-radius:var(--ed-r);cursor:pointer}
+  .cmode:hover{color:var(--ed-ink);border-color:var(--ed-edge-strong)}
+  .cmode.on{color:var(--ed-accent-2);background:var(--ed-accent-bg);border-color:var(--ed-accent-edge)}
+  .chart-svg{width:100%;height:100%;display:block}
+  .chart-svg text{font-family:var(--ed-mono);fill:var(--ed-ink-2)}
+  .chart-legend{display:flex;gap:14px;font-family:var(--ed-mono);font-size:10px;color:var(--ed-ink-3);padding:2px 0 6px}
+  .chart-legend .sw{display:inline-block;width:10px;height:10px;border-radius:2px;vertical-align:-1px;margin-right:4px}
+
+  /* levels view (detailed canonical levels contract) */
+  .lv{width:100%;border-collapse:collapse;font-family:var(--ed-mono);font-size:11px}
+  .lv th{font-family:var(--ed-sans);font-size:9px;letter-spacing:.09em;text-transform:uppercase;
+    color:var(--ed-ink-3);text-align:right;padding:5px 8px;border-bottom:1px solid var(--ed-edge)}
+  .lv th:first-child,.lv td:first-child{text-align:left}
+  .lv td{text-align:right;padding:5px 8px;border-bottom:1px solid var(--ed-edge-soft);color:var(--ed-ink)}
+  .lv td.fam{color:var(--ed-ink-2);font-family:var(--ed-sans);font-size:12px}
+  .lv .tier{font-size:8.5px;letter-spacing:.05em;padding:1px 5px;border-radius:3px;background:var(--ed-panel-3);color:var(--ed-ink-2)}
+
   /* GEX by strike (diverging bars from spot axis) */
   .gbs{display:flex;flex-direction:column;gap:2px;font-family:var(--ed-mono);font-size:10px}
   .gbs-row{display:flex;align-items:center;gap:6px;padding:1px 0}
@@ -292,19 +315,31 @@
       <section class="workspace on" data-ws-pane="options">
         <div class="gamma-grid">
 
-          <!-- heatmap -->
+          <!-- main working panel — view tabs (Heatmap/Chart/Levels/Multi-Map) swap this -->
           <div class="panel p-heat">
             <div class="panel-h">
-              <span class="t">Gamma Exposure Heatmap</span>
+              <span class="t" id="mvTitle">Gamma Exposure Heatmap</span>
               <span class="sub" id="heatScope">strike × expiration</span>
-              <div class="r"><span class="prov derived">DERIVED</span></div>
-            </div>
-            <div class="panel-b" id="heatBody">
-              <div class="placeholder">
-                <div class="big">Strike × expiry heatmap</div>
-                <div class="sm">Canonical per-strike GEX$ exists; the multi-expiry grid is a scope decision (per-expiry canonical faucet). Wiring pending operator go-ahead.</div>
-                <div class="notproven">MULTI-EXPIRY SURFACE — AWAITING SCOPE DECISION</div>
+              <div class="r">
+                <span class="chart-modes" id="chartModes" hidden>
+                  <button class="cmode on" data-cmode="profile">Price + GEX Profile</button>
+                  <button class="cmode" data-cmode="dotmap">Dot Map</button>
+                </span>
+                <span class="prov derived">DERIVED</span>
               </div>
+            </div>
+            <div class="panel-b mvwrap">
+              <div class="mv on" id="view-heatmap"><div id="heatBody" class="mvbody">
+                <div class="placeholder"><div class="big">Strike × expiry heatmap</div>
+                  <div class="sm">Canonical per-strike GEX$ per expiry via /api/options/gamma-surface.</div></div>
+              </div></div>
+              <div class="mv" id="view-chart"><div id="chartBody" class="mvbody"></div></div>
+              <div class="mv" id="view-levels"><div id="levelsBody" class="mvbody"></div></div>
+              <div class="mv" id="view-multimap"><div id="multimapBody" class="mvbody">
+                <div class="placeholder"><div class="big">Multi-Map</div>
+                  <div class="sm">A strike × expiry surface across measures (GEX / DEX / Vanna / Charm) reuses the heatmap grammar — but only GEX has a canonical strike×expiry projection today. DEX/Vanna/Charm strike×expiry surfaces are not yet canonical.</div>
+                  <div class="notproven">NOT YET — needs canonical DEX/Vanna/Charm strike×expiry surfaces</div></div>
+              </div></div>
             </div>
           </div>
 
@@ -389,5 +424,6 @@
 <script src="/static/js/ed-core.js" defer></script>
 <script src="/static/js/ed-gamma.js" defer></script>
 <script src="/static/js/ed-gamma-panels.js" defer></script>
+<script src="/static/js/ed-gamma-chart.js" defer></script>
 </body>
 </html>

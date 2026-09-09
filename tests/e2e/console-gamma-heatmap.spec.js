@@ -39,6 +39,12 @@ const LIVE = {
   analytics_lightweight: { spy_chg_pct: 0.38 },
   streaming_plane: { streaming_healthy: true, streaming_staleness_ms: 380 },
 };
+const BARS = {
+  ticker: '$SPX', n: 8,
+  bars: [582.6, 582.9, 583.1, 582.8, 583.3, 583.5, 583.2, 583.41].map(function (c, i) {
+    return { t: 1757000000 + i * 60, o: c - 0.1, h: c + 0.2, l: c - 0.2, c: c, v: 1000 + i };
+  }),
+};
 
 async function intercept(page) {
   await page.route('**/api/**', (route) => {
@@ -47,6 +53,7 @@ async function intercept(page) {
     if (url.includes('/api/options/gamma-surface')) body = SURFACE;
     else if (url.includes('/api/terrain/strikes')) body = STRIKES;
     else if (url.includes('/api/terrain')) body = TERRAIN;
+    else if (url.includes('/api/bars1m')) body = BARS;
     else if (url.includes('/api/live/state')) body = LIVE;
     else if (url.includes('/api/health')) body = { status: 'ok', capabilities: { schwab: true } };
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
@@ -104,6 +111,25 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     // add a symbol via the shell API (foundation is editable + localStorage-backed)
     await page.evaluate(() => window.EdShell.addSymbol('AMD'));
     await expect(page.locator('.wl-row .info .s', { hasText: 'AMD' })).toHaveCount(1);
+  });
+
+  test('chart view: Price + GEX Profile and Dot Map render from canonical inputs', async ({ page }) => {
+    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.locator('.vtab[data-view="chart"]').click();
+    await expect(page.locator('#view-chart')).toHaveClass(/on/);
+    // profile mode (default): price line + signed profile bars + flip level line + spot
+    const svg = page.locator('#chartBody svg');
+    await expect(svg).toBeVisible();
+    await expect(page.locator('#chartBody svg polyline')).toHaveCount(1);      // price line
+    expect(await page.locator('#chartBody svg rect').count()).toBeGreaterThan(0); // profile bars
+    await expect(page.locator('#chartBody svg')).toContainText('spot 583.41');
+    await expect(page.locator('#chartBody svg')).toContainText('flip');
+    await page.setViewportSize({ width: 2560, height: 1440 });
+    await page.screenshot({ path: require('path').join('test-results', 'console-gamma-chart-2560x1440.png') });
+    // dot map mode: per-strike dots
+    await page.locator('.cmode[data-cmode="dotmap"]').click();
+    expect(await page.locator('#chartBody svg circle').count()).toBeGreaterThan(0);
+    await expect(page.locator('#chartModes .cmode[data-cmode="dotmap"]')).toHaveClass(/on/);
   });
 
   test('responsive proof: 2560x1440 and 1920x1080 screenshots', async ({ page }) => {

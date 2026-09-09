@@ -98,6 +98,18 @@
     });
   }
 
+  var MV_TITLE = { heatmap: 'Gamma Exposure Heatmap', chart: 'Price + GEX Profile', levels: 'Levels', multimap: 'Multi-Map' };
+  function showMainView() {
+    if (!(state.workspace === 'options' && state.subview === 'gamma')) return;
+    ['heatmap', 'chart', 'levels', 'multimap'].forEach(function (v) {
+      var el = document.getElementById('view-' + v);
+      if (el) el.classList.toggle('on', v === state.view);
+    });
+    var t = document.getElementById('mvTitle'); if (t && MV_TITLE[state.view]) t.textContent = MV_TITLE[state.view];
+    var cm = document.getElementById('chartModes'); if (cm) cm.hidden = state.view !== 'chart';
+    var sc = document.getElementById('heatScope'); if (sc) sc.style.display = state.view === 'heatmap' ? '' : 'none';
+  }
+
   function syncAttrs() {
     app.setAttribute('data-workspace', state.workspace);
     app.setAttribute('data-subview', state.subview);
@@ -108,6 +120,7 @@
     var aiWs = document.getElementById('aiCtxWs');
     if (aiWs) aiWs.textContent = NAV[state.workspace].title.replace(/\s*\/\s*/g, ' / ') +
       (state.subview ? ' · ' + state.subview : '');
+    showMainView();
     document.dispatchEvent(new CustomEvent('ed:view', { detail: Object.assign({}, state) }));
   }
 
