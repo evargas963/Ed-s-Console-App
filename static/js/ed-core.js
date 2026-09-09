@@ -68,34 +68,22 @@
   }
 
   // ---- theme: SYSTEM / LIGHT / DARK — one token contract, two palettes (dark primary) ----
+  // Theme resolution/first-paint/OS-change is owned by window.EdTheme (the pre-CSS bootstrap in
+  // console.html). ed-core only CONSUMES it — delegates changes and reflects the control — so there
+  // is one canonical resolution path shared by first paint and runtime.
   var THEME_ICON = { system: '◐', light: '☀', dark: '☾' };
-  function _mqDark() { try { return window.matchMedia && matchMedia('(prefers-color-scheme: dark)'); } catch (e) { return null; } }
-  function resolveTheme(pref) {   // SYSTEM resolves from the OS; LIGHT/DARK are literal
-    if (pref === 'light' || pref === 'dark') return pref;
-    var mq = _mqDark(); return (mq && mq.matches) ? 'dark' : 'light';
+  function reflectThemeIcon() {
+    var t = window.EdTheme; if (!t) return;
+    var pref = t.getPref(), ic = document.getElementById('themeIcon'), btn = document.getElementById('themeBtn');
+    if (ic) ic.textContent = THEME_ICON[pref] || '◐';
+    if (btn) btn.title = 'Theme: ' + pref + ' (resolved ' + t.resolve(pref) + ')';
   }
-  function applyTheme(pref, opts) {
-    if (pref !== 'light' && pref !== 'dark') pref = 'system';
-    _lsSet('ed_theme', pref);                                    // persist the PREFERENCE
-    var eff = resolveTheme(pref);
-    document.documentElement.setAttribute('data-theme', eff);   // ALWAYS a concrete theme (never unset)
-    var ic = document.getElementById('themeIcon'); if (ic) ic.textContent = THEME_ICON[pref];
-    var btn = document.getElementById('themeBtn'); if (btn) btn.title = 'Theme: ' + pref + ' (resolved ' + eff + ')';
-    // presentation only — a theme change never alters market values or selections
-    if (!(opts && opts.silent)) document.dispatchEvent(new CustomEvent('ed:theme', { detail: { pref: pref, theme: eff } }));
-  }
+  function applyTheme(pref) { if (window.EdTheme) window.EdTheme.setPref(pref); }   // owner persists+applies+dispatches
   function cycleTheme() {
-    var cur = _ls('ed_theme', 'system');
+    var cur = (window.EdTheme && window.EdTheme.getPref()) || 'system';
     applyTheme(cur === 'system' ? 'light' : cur === 'light' ? 'dark' : 'system');
   }
-  // ONE theme owner: in SYSTEM mode an OS light<->dark change re-resolves and re-dispatches
-  // ed:theme, so the shell AND the JS-computed heatmap/chart update live. Explicit choices ignore it.
-  (function () {
-    var mq = _mqDark(); if (!mq) return;
-    var onOs = function () { if (_ls('ed_theme', 'system') === 'system') applyTheme('system'); };
-    if (mq.addEventListener) mq.addEventListener('change', onOs);
-    else if (mq.addListener) mq.addListener(onOs);
-  })();
+  document.addEventListener('ed:theme', reflectThemeIcon);   // the control follows the owner's changes
 
   // ================= navigation =================
   function renderSubnav() {
@@ -375,8 +363,8 @@
       app.classList.toggle('rail-open');
       try { localStorage.setItem(RAIL_KEY, app.classList.contains('rail-open') ? '1' : '0'); } catch (e) {}
     });
-    // theme control (first-paint script already applied the attr; this reflects it on the button)
-    applyTheme(_ls('ed_theme', 'system'), { silent: true });
+    // theme control — window.EdTheme owns resolution/first-paint/OS changes; reflect + wire the cycle
+    reflectThemeIcon();
     var themeBtn = document.getElementById('themeBtn');
     if (themeBtn) themeBtn.addEventListener('click', cycleTheme);
     // workspace nav

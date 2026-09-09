@@ -309,6 +309,21 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(page.locator('#hSym')).toHaveText('SPY');
   });
 
+  test('theme: ONE canonical owner (window.EdTheme) drives first-paint AND runtime resolution', async ({ page }) => {
+    await page.emulateMedia({ colorScheme: 'dark' });
+    await page.addInitScript(() => { try { localStorage.setItem('ed_theme', 'system'); } catch (e) {} });
+    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    // the owner exists and exposes the resolution API
+    expect(await page.evaluate(() => !!(window.EdTheme && window.EdTheme.resolve && window.EdTheme.setPref && window.EdTheme.getPref))).toBe(true);
+    // FIRST PAINT used the owner: data-theme === EdTheme.resolve(EdTheme.getPref())
+    expect(await page.evaluate(() => document.documentElement.getAttribute('data-theme') === window.EdTheme.resolve(window.EdTheme.getPref()))).toBe(true);
+    // RUNTIME goes through the SAME owner (EdShell delegates to EdTheme.setPref)
+    await page.evaluate(() => window.EdShell.setTheme('light'));
+    const rt = await page.evaluate(() => ({ dt: document.documentElement.getAttribute('data-theme'), pref: window.EdTheme.getPref(), resolved: window.EdTheme.resolve('light') }));
+    expect(rt.pref).toBe('light');
+    expect(rt.dt).toBe(rt.resolved);   // resolved via the one owner -> 'light'
+  });
+
   test('theme screenshots: dark and light at 2560x1440 and 1920x1080, no h-overflow', async ({ page }) => {
     const path = require('path');
     await page.goto('/console', { waitUntil: 'domcontentloaded' });

@@ -4,11 +4,24 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Ed Console</title>
-<script>/* first-paint theme guard: RESOLVE the effective theme (SYSTEM -> prefers-color-scheme) to a
-   single data-theme value before CSS paints, so there is never a flash and never an unset state. */
-(function(){try{var p=localStorage.getItem('ed_theme')||'system';
-var eff=(p==='light'||p==='dark')?p:((window.matchMedia&&matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'light');
-document.documentElement.setAttribute('data-theme',eff);}catch(e){document.documentElement.setAttribute('data-theme','dark');}})();</script>
+<script>/* window.EdTheme — the ONE canonical theme owner, loaded before CSS. Owns preference read,
+   SYSTEM resolution, concrete data-theme assignment (first paint, no flash), OS-change handling,
+   and the ed:theme presentation event. ed-core CONSUMES this owner; it does not re-implement the
+   resolution rule, so there is a single authority for this UI truth. */
+(function(){
+  var KEY='ed_theme';
+  function mqDark(){try{return window.matchMedia&&matchMedia('(prefers-color-scheme: dark)');}catch(e){return null;}}
+  function getPref(){try{var p=localStorage.getItem(KEY);return (p==='light'||p==='dark')?p:'system';}catch(e){return 'system';}}
+  function resolve(pref){pref=pref||getPref();if(pref==='light'||pref==='dark')return pref;var mq=mqDark();return (mq&&mq.matches)?'dark':'light';}
+  function apply(pref){var eff=resolve(pref);try{document.documentElement.setAttribute('data-theme',eff);}catch(e){}return eff;}
+  function notify(pref,eff){try{document.dispatchEvent(new CustomEvent('ed:theme',{detail:{pref:pref,theme:eff}}));}catch(e){}}
+  function setPref(p){if(p!=='light'&&p!=='dark')p='system';try{localStorage.setItem(KEY,p);}catch(e){}var eff=apply(p);notify(p,eff);return eff;}
+  window.EdTheme={KEY:KEY,getPref:getPref,resolve:resolve,apply:apply,setPref:setPref};
+  apply(getPref());   // first paint: concrete data-theme before CSS -> no flash, never unset
+  var mq=mqDark();
+  if(mq){var onOs=function(){if(getPref()==='system'){var eff=apply('system');notify('system',eff);}};
+    if(mq.addEventListener)mq.addEventListener('change',onOs);else if(mq.addListener)mq.addListener(onOs);}
+})();</script>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
 <link rel="stylesheet" href="/static/css/ed-tokens.css">
 <style>
