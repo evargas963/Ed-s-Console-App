@@ -402,6 +402,26 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     expect(postCount).toBe(2);
   });
 
+  test('#10 active-ticker ack is fail-closed (request-accepted only; bookBound NOT_PROVEN)', async ({ page }) => {
+    let mode = 'ok';
+    await page.route('**/api/streaming/active-ticker', (route) => {
+      var status = 200, body;
+      if (mode === 'missing') body = { ok: true };                       // ok but NO echoed ticker
+      else if (mode === 'wrong') body = { ok: true, ticker: 'QQQ' };      // echoed ticker != requested
+      else if (mode === 'err500') { status = 500; body = { ok: true, ticker: 'SPY' }; }  // non-2xx, valid-looking body
+      else body = { ok: true, ticker: 'SPY' };                           // exact 2xx + ok + matching ticker
+      return route.fulfill({ status: status, contentType: 'application/json', body: JSON.stringify(body) });
+    });
+    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    const run = () => page.evaluate(() => window.EdStream.setActiveTicker('SPY'));
+    mode = 'missing'; expect((await run()).requestAccepted).toBe(false);   // missing ticker -> rejected
+    mode = 'wrong';   expect((await run()).requestAccepted).toBe(false);   // mismatched ticker -> rejected
+    mode = 'err500';  expect((await run()).requestAccepted).toBe(false);   // non-2xx -> rejected
+    mode = 'ok';      const ok = await run();
+    expect(ok.requestAccepted).toBe(true);                                 // request accepted only
+    expect(ok.bookBound).toBeNull();                                       // book binding NOT_PROVEN here
+  });
+
   test('responsive proof: 2560x1440 and 1920x1080 screenshots', async ({ page }) => {
     await page.setViewportSize({ width: 2560, height: 1440 });
     await page.goto('/console', { waitUntil: 'domcontentloaded' });

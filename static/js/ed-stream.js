@@ -72,14 +72,20 @@
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ticker: ticker }),
     }).then(function (r) { return r.json().then(function (b) { return { status: r.status, body: b }; }, function () { return { status: r.status, body: null }; }); })
       .then(function (res) {
-        var b = res.body || {};
-        var acked = (b.ticker != null) ? String(b.ticker).toUpperCase() : null;
+        // FAIL-CLOSED. The endpoint canonically echoes `ticker` (server.py:post_streaming_active_ticker,
+        // both the 200 and the 500 body), so request-acceptance REQUIRES all of: HTTP 2xx, a parsed
+        // JSON object, ok===true, an echoed ticker PRESENT, and that ticker exactly equal to the
+        // requested canonical ticker. ok:true alone is never identity proof.
+        var ok2xx = !!res && typeof res.status === 'number' && res.status >= 200 && res.status < 300;
+        var b = (res && res.body && typeof res.body === 'object') ? res.body : null;
+        var acked = (b && b.ticker != null) ? String(b.ticker).toUpperCase() : null;
+        var accepted = ok2xx && !!b && b.ok === true && acked !== null && acked === ticker;
         return {
-          requestAccepted: (b.ok === true) && (acked === null || acked === ticker),   // validate the echoed ticker
-          acknowledgedTicker: acked, requested: ticker,
-          bookBound: null,   // NOT_PROVEN: no canonical active-book-producer identity on this endpoint
+          requestAccepted: accepted, acknowledgedTicker: acked, requested: ticker,
+          status: (res && res.status) || null,
+          bookBound: null,   // NOT_PROVEN: this endpoint exposes no active-book-producer identity
         };
-      }, function () { return { requestAccepted: false, requested: ticker, bookBound: null }; });
+      }, function () { return { requestAccepted: false, acknowledgedTicker: null, requested: ticker, bookBound: null }; });
   }
 
   window.EdStream = { setActiveContract: setActiveContract, setActiveTicker: setActiveTicker,
