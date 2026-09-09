@@ -65,7 +65,11 @@
   // ---- render the grid from a canonical surface payload (no math) ----
   function renderSurface(host, surface) {
     if (!surface || surface.available === false) {
-      host.innerHTML = '<div class="placeholder"><div class="big">Gamma surface unavailable</div>' +
+      // #1-A: even with no surface to draw, disclose the collection status honestly — a requested
+      // symbol that is NOT on the board must read "not currently active for this symbol", never a
+      // promised refresh. buildBanner is the ONE place that wording lives (warming/requested/board).
+      var b = surface ? buildBanner(surface) : '';
+      host.innerHTML = b + '<div class="placeholder"><div class="big">Gamma surface unavailable</div>' +
         '<div class="sm">' + escapeHtml((surface && surface.reason) || 'no console / no banked wide chain for this symbol') +
         '</div></div>';
       return;
@@ -168,10 +172,20 @@
     if (!live || stale) {
       var warming = !live && surface.warming === true;
       var requested = !live && !warming && surface.requested === true;
-      var label = warming ? 'LIVE SURFACE WARMING' : requested ? 'LIVE SURFACE REQUESTED'
+      // #1-A: distinguish "on the board, a refresh is coming" from "not on the board, nothing is
+      // collecting this symbol". Only the former may promise a next refresh.
+      var onBoard = surface.on_board === true;
+      var notCollecting = requested && !onBoard;
+      var label = warming ? 'LIVE SURFACE WARMING'
+        : notCollecting ? 'NOT COLLECTING'
+        : requested ? 'LIVE SURFACE REQUESTED'
         : (!live ? 'MORNING REFERENCE' : 'STALE');
-      var cls = (warming || requested) ? 'warming' : (!live ? 'ref' : 'stale');
-      var msg = requested ? (surface.degraded || 'awaiting next eligible terrain refresh')
+      var cls = warming ? 'warming'
+        : (requested && !notCollecting) ? 'warming'
+        : (!live ? 'ref' : 'stale');
+      var msg = notCollecting
+          ? (surface.degraded || 'live terrain collection is not currently active for this symbol')
+        : requested ? (surface.degraded || 'awaiting next eligible terrain refresh')
         : (surface.degraded || (!live ? 'banked morning reference — not intraday' : 'live surface is stale'));
       out += '<div class="heat-banner ' + cls + '">' + label + ' — ' + escapeHtml(msg) + '</div>';
     }

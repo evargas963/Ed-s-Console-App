@@ -12093,6 +12093,13 @@ def _gamma_surface_wanted(tk: str) -> bool:
     return (time.time() - _gamma_surface_demand.get(tk, 0.0)) < GAMMA_SURFACE_DEMAND_TTL
 
 
+def _ticker_on_terrain_board(tk: str) -> bool:
+    # canonical current board membership (the terrain loop's universe = the logger cycle set +
+    # core), read under the existing lock — NOT a new registry, and NOT merely "a snapshot exists".
+    with _logger_lock:
+        return tk in _logger_tickers or tk in CORE_TICKERS
+
+
 def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
     """Fetch one chain and compute terrain into the cache. Never raises.
 
@@ -13616,17 +13623,23 @@ def get_options_gamma_surface(ticker: str = Query(default=DEFAULT_TICKER)):
     hit = _GAMMA_SURFACE_CACHE.get(tk)
     if hit and now - hit[0] < 300.0:
         return JSONResponse(hit[1])
-    # #1.3: claim WARMING only when the terrain producer can ACTUALLY refresh THIS ticker. Reuse
-    # terrain_staleness's canonical output (already merged onto `live` by terrain_cache_get) — no
-    # copied scheduler policy: a snapshot exists (ticker is on the board) AND the loop is refreshing
-    # (session active) AND it is not quarantined/paused. Otherwise the ticker is on the board but not
-    # currently eligible (e.g. after hours) -> requested/awaiting, never a false "warming"; and a
-    # ticker with no snapshot at all (not on the board) gets neither claim.
-    _on_board = bool(live)
-    _warming = (_on_board and bool(live.get("levels_refresh_active"))
+    # #1-A: separate the two truths the UI must not conflate.
+    #   REQUESTED = this endpoint has actually recorded demand for the surface (above).
+    #   ON BOARD  = the ticker is in the ACTUAL current canonical terrain/logger board — read under
+    #               the board's own lock (_ticker_on_terrain_board), NOT inferred from "a cached
+    #               snapshot happens to exist". A stale snapshot is not proof of current membership.
+    #   WARMING   = requested AND on the board AND the terrain producer can refresh THIS ticker right
+    #               now — reusing terrain_staleness's canonical output merged onto `live`
+    #               (levels_refresh_active, not quarantined, not paused). No copied scheduler policy.
+    # A ticker not on the board is REQUESTED but NOT WARMING and no next refresh can occur for it —
+    # the UI must say collection is not active for this symbol, never "awaiting next refresh".
+    _requested = _gamma_surface_wanted(tk)
+    _on_board = _ticker_on_terrain_board(tk)
+    _warming = (_requested and _on_board and bool(live) and bool(live.get("levels_refresh_active"))
                 and not live.get("levels_quarantined") and not live.get("levels_paused_on_purpose"))
     payload: dict = {"ticker": tk, "symbol": tk, "available": False, "source": "unavailable",
-                     "live": False, "stale": True, "warming": _warming, "requested": _on_board,
+                     "live": False, "stale": True, "warming": _warming,
+                     "requested": _requested, "on_board": _on_board,
                      "reason": "no live terrain surface and no banked wide chain"}
     try:
         db = get_db()
@@ -13645,7 +13658,7 @@ def get_options_gamma_surface(ticker: str = Query(default=DEFAULT_TICKER)):
             payload = {
                 "ticker": tk, "symbol": tk, "available": True,
                 "source": "banked_morning_reference", "live": False, "stale": True,
-                "warming": _warming, "requested": _on_board,
+                "warming": _warming, "requested": _requested, "on_board": _on_board,
                 "degraded": ("live terrain surface unavailable — showing banked morning wide "
                              "reference (morning spot + morning Greeks; NOT intraday, NOT proven complete)"),
                 "et_date": et_date, "spot": spot1,
@@ -13666,7 +13679,8 @@ def get_options_gamma_surface(ticker: str = Query(default=DEFAULT_TICKER)):
             }
     except Exception as e:  # fail-closed to explicit unavailability
         payload = {"ticker": tk, "symbol": tk, "available": False, "source": "unavailable",
-                   "live": False, "stale": True, "warming": _warming, "requested": _on_board,
+                   "live": False, "stale": True, "warming": _warming,
+                   "requested": _requested, "on_board": _on_board,
                    "reason": f"gamma-surface read failed: {e}"}
     _GAMMA_SURFACE_CACHE[tk] = (now, payload)
     return JSONResponse(payload)

@@ -102,6 +102,42 @@ def test_warming_true_only_when_terrain_eligible(monkeypatch):
         server._GAMMA_SURFACE_CACHE.pop(tk, None)
 
 
+def test_warming_false_when_snapshot_exists_but_ticker_not_on_board(monkeypatch):
+    # #1-A negative control: a cached terrain snapshot is NOT proof of CURRENT board membership.
+    # A ticker with a refresh-eligible snapshot but absent from the canonical _logger_tickers/CORE
+    # board must read REQUESTED but NOT WARMING, and disclose it is not on the board — otherwise the
+    # UI would falsely promise a next refresh for a symbol nothing is collecting.
+    tk = ticker_storage_key("NFLX")
+    assert tk not in server.CORE_TICKERS
+    with server._logger_lock:
+        had = tk in server._logger_tickers
+        if had:
+            server._logger_tickers.remove(tk)
+    with server._terrain_cache_lock:
+        server._terrain_cache[tk] = {"computed_ts_utc": time.time(), "spot": 100.0}  # snapshot, no surface
+    server._GAMMA_SURFACE_CACHE.pop(tk, None)
+    # session/quarantine are eligible — the ONLY thing withholding warming is board membership
+    monkeypatch.setattr(server, "terrain_skip_reason", lambda t: None)
+    monkeypatch.setattr(server, "terrain_quarantine_reason", lambda t: None)
+    monkeypatch.setattr(server, "terrain_quarantine_state", lambda t: {})
+    monkeypatch.setattr(server, "_is_loggable_session", lambda: True)
+    try:
+        assert server._ticker_on_terrain_board(tk) is False
+        d = _call(tk)
+        assert d["requested"] is True
+        assert d["on_board"] is False
+        assert d["warming"] is False        # snapshot present + session eligible, but NOT on the board
+    finally:
+        with server._terrain_cache_lock:
+            server._terrain_cache.pop(tk, None)
+        server._GAMMA_SURFACE_CACHE.pop(tk, None)
+        server._gamma_surface_demand.pop(tk, None)
+        if had:
+            with server._logger_lock:
+                if tk not in server._logger_tickers:
+                    server._logger_tickers.append(tk)
+
+
 def test_fallback_is_labelled_not_live_never_intraday():
     tk = ticker_storage_key("ZZTESTX")   # no live cache, no banked chain in the offline test DB
     _clear(tk)
