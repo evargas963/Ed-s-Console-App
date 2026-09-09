@@ -1,0 +1,65 @@
+{
+"_tier": "A_live",
+"ticker": "$SPX",
+"selected_exp": null,
+"session_label": "RTH",
+"spot": 7633.33,
+"bid": null,
+"ask": null,
+"spot_disp": "7633.33",
+"bid_disp": "\u2014",
+"ask_disp": "\u2014",
+"quote_mid": null,
+"mid_source": null,
+"spread": null,
+"spread_semantic": "dollar",
+"spread_pts": null,
+"spread_source": null,
+"spread_pts_source": null,
+"quote_source_detail": {
+"spot": "lastPrice",
+"bid": "unavailable_missing_bid",
+"ask": "unavailable_missing_ask",
+"mid": "unavailable_missing_mark_and_bid_ask",
+"spread": "unavailable_missing_bid_or_ask",
+"quote_ts": "TRADE_TIME_MILLIS_proxy",
+"carried_forward": false
+},
+"quote_ingestion": "rest_tier_a",
+"quote_time_source": "schwab_rest_quote",
+"server_received_ts": 1788967083.2428813,
+"exchange_quote_ts": 1788967083.036,
+"fast_generation_id": 3,
+"_live_plane_fast_ts": 1788967083.036,
+"_server_build_ts": 1788967083.2429104,
+"_pipeline_ms": 217,
+"_endpoint": "/api/live/state",
+"streaming_plane": {
+"streaming_connected": true,
+"streaming_ticker": "SPY",
+"streaming_last_update_ts": 1788967082.8463094,
+"streaming_staleness_ms": 396.61407470703125,
+"streaming_healthy": true,
+"daemon_upstream_health": {
+"LEVELONE_EQUITIES": {
+"state": "RUNNING",
+"age_sec": 0.758
+}
+},
+"stream_db_identity": {
+"server_resolved_path": "<REPO>\\data\\stream_capture.db",
+"producer_heartbeat": {
+"daemon_pid": 10020,
+"heartbeat_ts": 1788967072.58751,
+"resolved_db_path": "<REPO>\\data\\stream_capture.db",
+"claimed_coverage": {
+"LEVELONE_OPTIONS": 389,
+"OPTIONS_BOOK": 390
+},
+"age_sec": 10.899184942245483
+},
+"identity_match": true
+},
+"plane_quote_authority": "rest_mismatch"
+}
+}

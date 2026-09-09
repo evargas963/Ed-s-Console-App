@@ -1,0 +1,81 @@
+{
+"_tier": "A_live",
+"ticker": "SPY",
+"selected_exp": null,
+"session_label": "RTH",
+"spot": 761.5601,
+"bid": null,
+"ask": null,
+"spot_disp": "761.56",
+"bid_disp": "\u2014",
+"ask_disp": "\u2014",
+"quote_mid": 761.5601,
+"mid_source": "schwab_streaming_mark",
+"spread": null,
+"spread_semantic": "dollar",
+"spread_pts": null,
+"spread_source": null,
+"spread_pts_source": null,
+"quote_source_detail": {
+"spot": "LAST_PRICE",
+"bid": null,
+"ask": null,
+"mid": "schwab_streaming_mark",
+"spread": "unavailable_missing_bid_or_ask",
+"quote_ts": "QUOTE_TIME_MILLIS",
+"carried_forward": false,
+"previous_spot_available": true,
+"previous_bid_available": true,
+"previous_ask_available": true
+},
+"quote_ingestion": "schwab_streaming_level_one",
+"quote_time_source": "schwab_streaming_level_one",
+"server_received_ts": 1788966927.894272,
+"exchange_quote_ts": 1788966926.84,
+"fast_generation_id": 11477,
+"_live_plane_fast_ts": 1788966926.84,
+"_server_build_ts": 1788966928.7155452,
+"_pipeline_ms": 0,
+"_endpoint": "/api/live/state",
+"streaming_plane": {
+"streaming_connected": true,
+"streaming_ticker": "SPY",
+"streaming_last_update_ts": 1788966928.2684402,
+"streaming_staleness_ms": 447.115421295166,
+"streaming_healthy": true,
+"daemon_upstream_health": {
+"LEVELONE_EQUITIES": {
+"state": "RUNNING",
+"age_sec": 0.382
+}
+},
+"stream_db_identity": {
+"server_resolved_path": "<REPO>\\data\\stream_capture.db",
+"producer_heartbeat": {
+"daemon_pid": 10020,
+"heartbeat_ts": 1788966927.3775373,
+"resolved_db_path": "<REPO>\\data\\stream_capture.db",
+"claimed_coverage": {
+"LEVELONE_OPTIONS": 389,
+"OPTIONS_BOOK": 390
+},
+"age_sec": 1.3537170886993408
+},
+"identity_match": true
+},
+"plane_quote_authority": "streaming"
+},
+"analytics_lightweight": {
+"vix": 16.47,
+"pcr_val": 2.227304708112651,
+"spy_chg_pct": -0.502637,
+"qqq_chg_pct": -0.33548639,
+"iwm_chg_pct": -1.09274782,
+"spy_last": 762.08,
+"qqq_last": 715.95,
+"iwm_last": 291.45,
+"dte_warn": "",
+"dte_color": "#9ca3af"
+},
+"_quote_authority": "live_market_plane"
+}
