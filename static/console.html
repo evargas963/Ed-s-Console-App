@@ -153,6 +153,13 @@
   .panel-h .t{font-size:11.5px;font-weight:600;letter-spacing:.02em}
   .panel-h .sub{font-family:var(--ed-mono);font-size:9.5px;color:var(--ed-ink-3)}
   .panel-h .r{margin-left:auto;display:flex;align-items:center;gap:7px}
+  /* #4: compact per-panel source/as-of badge - each panel discloses ITS OWN canonical freshness,
+     never a single global "LIVE". Formats server-owned source/age only (no client recomputation). */
+  .asof{font-family:var(--ed-mono);font-size:9px;letter-spacing:.02em;color:var(--ed-ink-3);
+    padding:1px 6px;border:1px solid var(--ed-edge);border-radius:3px;white-space:nowrap}
+  .asof.live{color:var(--ed-live);border-color:var(--ed-edge-strong)}
+  .asof.stale{color:var(--ed-stale);border-color:var(--ed-stale)}
+  .asof.ref{color:var(--ed-proxy);border-style:dashed;border-color:var(--ed-proxy)}
   .panel-b{flex:1;overflow:auto;padding:7px 10px;min-height:0}
 
   .prov{font-family:var(--ed-mono);font-size:8.5px;letter-spacing:.05em;padding:1px 5px;border-radius:3px;font-weight:600;text-transform:uppercase}
@@ -254,6 +261,7 @@
   .chart-svg{width:100%;height:100%;display:block}
   .chart-svg text{font-family:var(--ed-mono);fill:var(--ed-ink-2)}
   .chart-legend{display:flex;gap:14px;font-family:var(--ed-mono);font-size:10px;color:var(--ed-ink-3);padding:2px 0 6px}
+  .chart-asof{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:0 0 6px}
   .chart-legend .sw{display:inline-block;width:10px;height:10px;border-radius:2px;vertical-align:-1px;margin-right:4px}
 
   /* levels view (detailed canonical levels contract) */
@@ -448,11 +456,11 @@
           <!-- bottom drill-down -->
           <div class="p-bottom">
             <div class="panel">
-              <div class="panel-h"><span class="t">Strike Detail</span><span class="sub" id="sdCtx">—</span><div class="r"><span class="prov native">CHAIN</span></div></div>
+              <div class="panel-h"><span class="t">Strike Detail</span><span class="sub" id="sdCtx">—</span><div class="r"><span id="sdSrc"></span><span class="prov native">CHAIN</span></div></div>
               <div class="panel-b" id="sdBody"><div class="placeholder"><div class="sm">Select a strike/expiry. OI · volume · gamma · delta · IV from /api/chain (vendor).</div></div></div>
             </div>
             <div class="panel">
-              <div class="panel-h"><span class="t">GEX by Strike</span><span class="sub">net dealer γ / 1%</span><div class="r"><span class="prov derived">DERIVED</span></div></div>
+              <div class="panel-h"><span class="t">GEX by Strike</span><span class="sub">net dealer γ / 1%</span><div class="r"><span id="gbsSrc"></span><span class="prov derived">DERIVED</span></div></div>
               <div class="panel-b" id="gbsBody"><div class="placeholder"><div class="sm">Per-strike net GEX$ around spot from /api/terrain/strikes.</div></div></div>
             </div>
             <div class="panel">

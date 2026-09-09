@@ -62,7 +62,17 @@
 
     var note = (window.EdShell && window.EdShell.scopeNote)
       ? window.EdShell.scopeNote({ base: CHART_BASE, total: srows.length, shown: win.length, spot: spot }) : '';
-    var legend = note + '<div class="chart-legend">' +
+    // #4: the chart overlays TWO different canonical clocks - disclose each separately, never merged.
+    // price bars carry their own last-bar timestamp; the GEX profile rides the terrain generation.
+    var _ab = (window.EdShell && window.EdShell.asOfBadge) ? window.EdShell.asOfBadge : function () { return ''; };
+    var lastT = bars.length ? bars[bars.length - 1].t : null;
+    var barsBadge = lastT ? ('<span class="asof">price 1m · ' + ctTime(lastT) + ' CT</span>') : '';
+    var lvlSrc = strikesData && strikesData.today_source;
+    var lvlBadge = lvlSrc ? _ab({ label: 'GEX ' + (lvlSrc === 'terrain_live_cache' ? 'terrain live' : lvlSrc),
+      ageSec: strikesData.today_age_sec, stale: !!strikesData.levels_stale, reason: strikesData.levels_stale_reason,
+      live: (lvlSrc === 'terrain_live_cache' && !strikesData.levels_stale) }) : '';
+    var asofLine = (barsBadge || lvlBadge) ? ('<div class="chart-asof">' + barsBadge + lvlBadge + '</div>') : '';
+    var legend = note + asofLine + '<div class="chart-legend">' +
       '<span><span class="sw" style="background:var(--ed-pos)"></span>+GEX</span>' +
       '<span><span class="sw" style="background:var(--ed-neg)"></span>−GEX</span>' +
       '<span><span class="sw" style="background:var(--ed-ink)"></span>spot ' + (isFinite(spot) ? spot.toFixed(2) : '—') + '</span>' +

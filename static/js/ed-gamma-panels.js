@@ -97,7 +97,26 @@
       .then(function (d) { if (g === _ggen) renderGbs(host, d); })
       .catch(function () { if (g === _ggen) renderGbs(host, null); });
   }
+  var SRC_LABEL = { terrain_live_cache: 'terrain live' };
+  function srcLabel(s) {
+    if (!s) return '';
+    if (SRC_LABEL[s]) return SRC_LABEL[s];
+    if (s.indexOf('accrual_bank') === 0) return 'accrual bank';
+    return s;
+  }
+  function setGbsAsOf(d) {
+    var el = document.getElementById('gbsSrc'); if (!el) return;
+    if (!d || d.today_source == null) { el.innerHTML = ''; return; }
+    // reuse the terrain authority the server already merged (today_age_sec / levels_stale) - no
+    // client-side freshness computation; the badge only formats those server-owned fields.
+    el.innerHTML = (window.EdShell && window.EdShell.asOfBadge)
+      ? window.EdShell.asOfBadge({ label: srcLabel(d.today_source), ageSec: d.today_age_sec,
+          stale: !!d.levels_stale, reason: d.levels_stale_reason,
+          live: (d.today_source === 'terrain_live_cache' && !d.levels_stale) })
+      : '';
+  }
   function renderGbs(host, d) {
+    setGbsAsOf(d);
     var rows = d && d.today && d.today.all;
     if (!rows || !rows.length) {
       host.innerHTML = '<div class="placeholder"><div class="sm">' +
@@ -155,7 +174,25 @@
       .then(function (d) { if (g === _sgen) renderStrike(host, d, strike, expiry); })
       .catch(function () { if (g === _sgen) host.innerHTML = '<div class="placeholder"><div class="sm">no console serving /api/chain</div></div>'; });
   }
+  var SCOPE_LABEL = {
+    complete_single_expiry: { t: 'vendor · complete (ALL)', live: true },
+    expiry_scope_mismatch: { t: 'vendor · expiry mismatch', ref: true },
+    persisted_complete_capture_fallback: { t: 'vendor · captured', ref: true },
+    stored_analytical_snapshot_fallback: { t: 'vendor · analytical (not complete)', ref: true },
+  };
+  function setSdAsOf(d) {
+    var el = document.getElementById('sdSrc'); if (!el) return;
+    var sc = d && d.scope, kind = sc && sc.kind;
+    if (!kind) { el.innerHTML = ''; return; }
+    var m = SCOPE_LABEL[kind] || { t: kind };
+    // captured_age_sec is the server's own age for the fallback tiers; a live fetch has no age.
+    el.innerHTML = (window.EdShell && window.EdShell.asOfBadge)
+      ? window.EdShell.asOfBadge({ label: m.t, ageSec: (sc.captured_age_sec != null ? sc.captured_age_sec : null),
+          live: !!m.live, ref: !!m.ref, title: 'chain scope: ' + kind })
+      : '';
+  }
   function renderStrike(host, d, strike, expiry) {
+    setSdAsOf(d);
     var cs = (d && d.contracts) || [];
     if (!cs.length) { host.innerHTML = '<div class="placeholder"><div class="sm">no chain for this expiry</div></div>'; return; }
     function pick(side) {

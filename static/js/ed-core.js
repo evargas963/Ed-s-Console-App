@@ -227,6 +227,29 @@
     return '<div class="scope-note"><span>' + main + '</span>' + clip + '</div>';
   }
 
+  // #4: format a compact per-panel source/as-of badge. This ONLY formats server-owned fields
+  // (a source label + the server's own age_sec + its stale flag) - it never computes freshness and
+  // never merges panels into one global "LIVE". Panels that read the same canonical generation pass
+  // the same server age here, so their badges agree without a second computation.
+  function _escBadge(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
+    return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]; }); }
+  function fmtAge(s) {
+    if (s == null || isNaN(s)) return '';
+    s = Math.round(Number(s));
+    return s < 90 ? (s + 's') : s < 5400 ? (Math.round(s / 60) + 'm') : (Math.round(s / 3600) + 'h');
+  }
+  function asOfBadge(o) {
+    o = o || {};
+    var age = fmtAge(o.ageSec);
+    var cls = 'asof' + (o.stale ? ' stale' : (o.ref ? ' ref' : (o.live ? ' live' : '')));
+    var parts = [];
+    if (o.label) parts.push(_escBadge(o.label));
+    if (age) parts.push(age);
+    if (o.stale && o.reason) parts.push(_escBadge(o.reason));
+    return '<span class="' + cls + '" title="' + _escBadge(o.title || o.label || '') + '">' +
+      parts.join(' · ') + '</span>';
+  }
+
   // ================= watchlist (editable foundation, localStorage) =================
   function loadWL() {
     try { var v = JSON.parse(localStorage.getItem(WL_KEY)); if (Array.isArray(v) && v.length) return v; }
@@ -467,5 +490,5 @@
     addSymbol: addSymbol, removeSymbol: removeSymbol, setWorkspace: setWorkspace, setStrike: setStrike,
     setTheme: applyTheme,
     setScope: setScope, getScope: function () { return state.scope; },
-    scopeWindow: scopeWindow, scopeNote: scopeNote };
+    scopeWindow: scopeWindow, scopeNote: scopeNote, asOfBadge: asOfBadge };
 })();
