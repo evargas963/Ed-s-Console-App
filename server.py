@@ -13521,9 +13521,6 @@ def project_gamma_surface(chain: list, spot: float) -> dict:
     }
 
 
-GAMMA_SURFACE_LIVE_STALE_SEC = 180.0   # a live surface older than this reads STALE
-
-
 @app.get("/api/options/gamma-surface")
 def get_options_gamma_surface(ticker: str = Query(default=DEFAULT_TICKER)):
     """Strike × expiration signed GEX$ surface (cell = net_gex_1pct) through the ONE canonical
@@ -13544,17 +13541,32 @@ def get_options_gamma_surface(ticker: str = Query(default=DEFAULT_TICKER)):
     live = terrain_cache_get(tk)
     surf = (live or {}).get("_gamma_surface")
     if live and surf:
-        chain_ts = live.get("computed_ts_utc")
-        age = (now - float(chain_ts)) if chain_ts else None
-        stale = bool(live.get("levels_stale")) or (age is not None and age > GAMMA_SURFACE_LIVE_STALE_SEC)
+        # ONE freshness authority: terrain_staleness (RC-424) already merged onto the cache by
+        # terrain_cache_get — serialize it verbatim, never a second age policy for the same truth.
+        stale = bool(live.get("levels_stale"))
+        strikes = surf.get("strikes") or []
         return JSONResponse({
             "ticker": tk, "symbol": tk, "available": True,
             "source": "terrain_live_cache", "live": True, "stale": stale,
-            "degraded": live.get("levels_stale_reason") if live.get("levels_stale") else None,
+            "degraded": live.get("levels_stale_reason") if stale else None,
             "spot": live.get("spot"), "spot_source": live.get("spot_source"),
-            "chain_as_of_ts_utc": chain_ts, "spot_as_of_ts_utc": live.get("spot_as_of_ts_utc"),
-            "age_sec": round(age, 1) if age is not None else None,
+            "chain_as_of_ts_utc": live.get("computed_ts_utc"),
+            "spot_as_of_ts_utc": live.get("spot_as_of_ts_utc"),
+            "age_sec": live.get("levels_age_sec"),            # terrain's canonical age
+            "refresh_active": live.get("levels_refresh_active"),
             "chain_basis": live.get("chain_basis"),
+            # coverage: the live terrain chain is strike_count-bounded (near-money), NOT the full
+            # strike_range=ALL book — disclosed so the heatmap is never presented as a complete chain.
+            "complete": False,
+            "coverage": {
+                "window": "live_near_money", "chain_basis": live.get("chain_basis"),
+                "strike_count": len(strikes),
+                "strike_min": (strikes[0] if strikes else None),
+                "strike_max": (strikes[-1] if strikes else None),
+                "expiry_count": len(surf.get("expirations") or []),
+                "note": ("near-money LIVE window (strike_count-bounded terrain chain) — NOT the "
+                         "full strike_range=ALL book; the complete book is the banked reference"),
+            },
             **surf,
             "provenance": {
                 "producer": "math_exposure_core.compute_exposures_by_strike",
@@ -13594,7 +13606,9 @@ def get_options_gamma_surface(ticker: str = Query(default=DEFAULT_TICKER)):
                              "(reference only: morning spot + morning Greeks, NOT intraday)"),
                 "et_date": et_date, "spot": spot1,
                 "chain_as_of_ts_utc": None, "spot_as_of_ts_utc": None, "age_sec": None,
-                "chain_basis": "banked_morning",
+                "chain_basis": "banked_morning", "complete": None,
+                "coverage": {"window": "banked_morning_full", "strike_count": len(surface.get("strikes") or []),
+                             "note": "banked MORNING book (complete reference / history), not intraday"},
                 **surface,
                 "provenance": {
                     "producer": "math_exposure_core.compute_exposures_by_strike",

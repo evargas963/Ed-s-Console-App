@@ -193,7 +193,8 @@
     document.querySelectorAll('.wl-row').forEach(function (r) {
       var s = r.querySelector('.info .s'); r.classList.toggle('sel', s && s.textContent === state.ticker);
     });
-    refreshHeader();
+    openHeaderStream(state.ticker);   // (re)subscribe the SSE push to this ticker (one subscription)
+    refreshHeader();                  // immediate paint while the stream connects
     document.dispatchEvent(new CustomEvent('ed:ticker', { detail: { ticker: state.ticker } }));
   }
 
@@ -206,40 +207,75 @@
     if (a) a.textContent = age;
     var fresh = document.getElementById('aiCtxFresh'); if (fresh) fresh.textContent = label + (age && age !== '—' ? ' · ' + age : '');
   }
-  var _hdrGen = 0;   // monotonic latest-wins: an out-of-order response can never overwrite newer
-  function refreshHeader() {
+  // ---- header quote: PUSH via the canonical L1 SSE stream (/api/analytics/light/stream,
+  //      event l1_projection), which already carries spot/bid/ask (planes/context_light.py).
+  //      Ordering is the shared EdL1SseGuards monotonic l1_generation (+ _server_build_ts tie-
+  //      break). Polling /api/live/state is a FALLBACK ONLY, so there is ONE source per truth. ----
+  var _hdrGen = 0;                       // guards in-flight poll responses (latest-wins)
+  function paintQuote(q) {
+    var px = document.getElementById('hPx'), chg = document.getElementById('hChg'), ba = document.getElementById('hBidAsk');
+    if (px) px.textContent = q.spot_disp || fmt(q.spot);
+    if (ba) ba.textContent = fmt(q.bid) + ' × ' + fmt(q.ask);
+    if (chg) {  // formatting only — sign/value are canonical
+      if (q.chgPct !== undefined && q.chgPct !== null) {
+        chg.textContent = (q.chgPct >= 0 ? '+' : '') + fmt(q.chgPct) + '%';
+        chg.className = 'chg mono ' + (q.chgPct >= 0 ? 'pos' : 'neg');
+      } else chg.textContent = '';
+    }
+    setFeed(q.feedCls, q.feedLabel, q.ageLabel);
+  }
+  function chgPctFor(tkey, lw) {
+    if (!lw) return null;
+    var k = ({ SPY: 'spy', QQQ: 'qqq', IWM: 'iwm' })[tkey];
+    return k ? lw[k + '_chg_pct'] : null;
+  }
+
+  var _sse = null, _sseUp = false, _lastSseTs = 0, _l1Gen = {}, _l1Ts = {};
+  function closeHeaderStream() { if (_sse) { try { _sse.close(); } catch (e) {} } _sse = null; _sseUp = false; }
+  function openHeaderStream(tk) {
+    closeHeaderStream();
+    if (typeof EventSource === 'undefined') return;
+    try { _sse = new EventSource('/api/analytics/light/stream?ticker=' + encodeURIComponent(tk)); }
+    catch (e) { _sse = null; return; }
+    _sse.addEventListener('l1_projection', function (ev) {
+      var d; try { d = JSON.parse(ev.data); } catch (e) { return; }
+      var G = window.EdL1SseGuards;
+      if (G && !G.l1PayloadMatchesActiveScope(d.ticker, d.selected_exp, state.ticker, '')) return;
+      if (G && !G.l1ApplyTierBLightMonotonic(state.ticker, d.l1_generation, _l1Gen, d._server_build_ts, _l1Ts)) return;
+      _sseUp = true; _lastSseTs = Date.now(); _hdrGen++;   // supersede any in-flight fallback poll
+      var ageMs = d._server_build_ts ? Math.max(0, Math.round(Date.now() - d._server_build_ts * 1000)) : null;
+      paintQuote({ spot_disp: d.spot_disp, spot: d.spot, bid: d.bid, ask: d.ask,
+        chgPct: chgPctFor(state.ticker, d.analytics_lightweight),
+        feedCls: '', feedLabel: 'LIVE', ageLabel: ageMs != null ? ageMs + 'ms' : 'push' });
+    });
+    _sse.onerror = function () { _sseUp = false; };   // fall back to polling; the browser reconnects
+  }
+
+  function refreshHeader() {   // FALLBACK poll — only runs when the SSE push is not delivering
     var g = ++_hdrGen;
     fetch('/api/live/state?ticker=' + encodeURIComponent(state.ticker), { cache: 'no-store' })
       .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
       .then(function (d) {
-        if (g !== _hdrGen) return;                 // a newer request already landed
+        if (g !== _hdrGen) return;
         if (d.state_error) { setFeed('stale', 'DEGRADED', d.state_error); return; }
-        var px = document.getElementById('hPx'), chg = document.getElementById('hChg'), ba = document.getElementById('hBidAsk');
-        if (px) px.textContent = d.spot_disp || fmt(d.spot);
-        if (ba) ba.textContent = fmt(d.bid) + ' × ' + fmt(d.ask);
-        var lw = d.analytics_lightweight || {};
-        if (chg) {
-          // formatting only — sign/value are canonical
-          var s = lw[({SPY:'spy',QQQ:'qqq',IWM:'iwm'})[state.ticker] + '_chg_pct'];
-          if (s !== undefined && s !== null) { chg.textContent = (s >= 0 ? '+' : '') + fmt(s) + '%'; chg.className = 'chg mono ' + (s >= 0 ? 'pos' : 'neg'); }
-          else chg.textContent = '';
-        }
         var age = (d.streaming_plane && d.streaming_plane.streaming_staleness_ms != null)
           ? Math.round(d.streaming_plane.streaming_staleness_ms) + 'ms' : '—';
         var healthy = d.streaming_plane && d.streaming_plane.streaming_healthy;
-        setFeed(healthy ? '' : 'warn', healthy ? 'LIVE' : 'DEGRADED', age);
+        paintQuote({ spot_disp: d.spot_disp, spot: d.spot, bid: d.bid, ask: d.ask,
+          chgPct: chgPctFor(state.ticker, d.analytics_lightweight || {}),
+          feedCls: healthy ? '' : 'warn', feedLabel: healthy ? 'LIVE' : 'DEGRADED', ageLabel: age });
       })
       .catch(function () { if (g === _hdrGen) setFeed('stale', 'OFFLINE', 'no console'); });
   }
 
-  // ONE coordinated live-update scheduler (no independent polling loops / duplicate
-  // subscriptions). Fast plane (header quote) refreshes every tick; the banked gamma data
-  // (surface/terrain, 5-min server cache) refreshes on the slow cadence. Each consumer keeps
-  // its own monotonic latest-wins guard, so a slow response never overwrites a newer one.
+  // ONE coordinated scheduler. The header prefers the SSE push above; this timer only polls the
+  // header as a FALLBACK (SSE down/stalled) and drives the SLOW gamma/terrain refresh — that
+  // producer changes on a 60s/5min cadence, so coordinated POLLING (not SSE) is the correct,
+  // lowest-cost delivery for it. No duplicate subscriptions, no polling storm.
   var _tick = 0;
   function liveTick() {
     _tick++;
-    refreshHeader();
+    if (!_sseUp || (Date.now() - _lastSseTs > 9000)) refreshHeader();   // fallback only
     document.dispatchEvent(new CustomEvent('ed:refresh', { detail: { tick: _tick, slow: _tick % 4 === 0 } }));
   }
 

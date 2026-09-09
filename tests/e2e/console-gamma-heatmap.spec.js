@@ -17,6 +17,9 @@ const path = require('path');
 const SURFACE = {
   ticker: '$SPX', symbol: '$SPX', available: true, spot: 583.41,
   source: 'terrain_live_cache', live: true, stale: false, age_sec: 3,
+  complete: false,
+  coverage: { window: 'live_near_money', chain_basis: 'full', strike_count: 3,
+    note: 'near-money LIVE window (strike_count-bounded terrain chain) — NOT the full strike_range=ALL book' },
   chain_as_of_ts_utc: 1757000200, spot_as_of_ts_utc: 1757000200, spot_source: 'last',
   expirations: [{ expiry: '2026-09-11', dte: 2 }, { expiry: '2026-09-18', dte: 9 }],
   strikes: [580, 583, 586],
@@ -91,9 +94,9 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     expect(bg586).toMatch(/rgba?\(\s*229,\s*72,\s*77/);
     // spot row is the 583 strike (nearest 583.41)
     await expect(page.locator('tr.spotrow .hstrike')).toHaveText('583');
-    // a LIVE surface shows no stale/reference banner and tags the source LIVE
+    // a LIVE surface shows no stale/reference banner and is tagged a live WINDOW (not "complete")
     await expect(page.locator('.heat-banner')).toHaveCount(0);
-    await expect(page.locator('#heatScope')).toContainText('LIVE');
+    await expect(page.locator('#heatScope')).toContainText('LIVE·window');
   });
 
   test('stale/reference gamma surface fails stale visibly (no morning snapshot passed as live)', async ({ page }) => {
@@ -172,6 +175,21 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(page.locator('#hPx')).toHaveText('222.22');
     await page.waitForTimeout(1300);                                   // let the stale SPY response land
     await expect(page.locator('#hPx')).toHaveText('222.22');          // not overwritten by the stale response
+  });
+
+  test('header consumes the canonical L1 SSE push (not just polling) when available', async ({ page }) => {
+    // fulfil the SSE endpoint with a real l1_projection event; the header must paint from the PUSH
+    await page.route('**/api/analytics/light/stream**', (route) => route.fulfill({
+      status: 200, contentType: 'text/event-stream',
+      body: 'event: l1_projection\ndata: ' + JSON.stringify({
+        ticker: 'SPY', spot: 601.23, spot_disp: '601.23', bid: 601.20, ask: 601.25,
+        l1_generation: 9, _server_build_ts: Date.now() / 1000,
+      }) + '\n\n',
+    }));
+    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    // 601.23 comes only from the SSE push; the /api/live/state poll fallback would show 583.41
+    await expect(page.locator('#hPx')).toHaveText('601.23');
+    await expect(page.locator('#hFeed')).toContainText('LIVE');
   });
 
   test('responsive proof: 2560x1440 and 1920x1080 screenshots', async ({ page }) => {

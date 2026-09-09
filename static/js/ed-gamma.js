@@ -101,12 +101,17 @@
                     gex: c.getAttribute('data-gex') } }));
       });
     });
-    var srcLabel = surface.source === 'terrain_live_cache' ? 'LIVE'
+    var srcLabel = surface.source === 'terrain_live_cache'
+      ? (surface.complete === false ? 'LIVE·window' : 'LIVE')
       : surface.source === 'banked_morning_reference' ? 'REF·morning' : (surface.source || '');
     var age = surface.age_sec != null ? ' ' + Math.round(surface.age_sec) + 's' : '';
+    var basis = (surface.coverage && surface.coverage.chain_basis) ? ' ' + surface.coverage.chain_basis : '';
     var scopeEl = document.getElementById('heatScope');
-    if (scopeEl) scopeEl.textContent = strikes.length + '×' + exps.length + ' · spot ' +
-      (isFinite(spot) ? spot.toFixed(2) : '—') + ' · ' + srcLabel + age;
+    if (scopeEl) {
+      scopeEl.textContent = strikes.length + '×' + exps.length + ' · spot ' +
+        (isFinite(spot) ? spot.toFixed(2) : '—') + ' · ' + srcLabel + age + basis;
+      scopeEl.title = (surface.coverage && surface.coverage.note) || '';   // "not the full strike_range=ALL book"
+    }
   }
 
   function fmtStrike(k) { return (Math.round(k * 100) / 100).toString(); }
