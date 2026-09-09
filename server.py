@@ -12191,6 +12191,18 @@ def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
         # getattr, not attribute access: a snapshot without the map (older shape, or a stub) must
         # degrade to an EMPTY per-strike panel, never take down the whole terrain refresh.
         payload["_per_strike"] = getattr(snap, "per_strike", None) or {}
+        # RC-UI-1: the LIVE strike × expiry GEX surface, projected from the SAME live wide chain
+        # and live spot this cycle already holds (the RC-68 rationale, one step further) through
+        # the ONE canonical faucet (project_gamma_surface -> compute_exposures_by_strike). Zero
+        # extra vendor calls, one producer, current Greeks/spot — so /api/options/gamma-surface is
+        # temporally coherent with terrain instead of a morning snapshot. Fail-closed: a projection
+        # error leaves the field absent (endpoint falls back to the LABELLED banked-morning
+        # reference); it must never take down the terrain refresh that feeds the live desk.
+        try:
+            payload["_gamma_surface"] = project_gamma_surface(contracts, float(spot)) if spot else None
+        except Exception as _gs_e:  # institutional-swallow-ok: projection is a cache side-effect
+            payload["_gamma_surface"] = None
+            log.warning("gamma-surface projection failed for %s: %s", tk, _gs_e)
         with _terrain_cache_lock:
             _terrain_cache[tk] = payload
             _terrain_profile_cache[tk] = snap.profile
@@ -13509,21 +13521,58 @@ def project_gamma_surface(chain: list, spot: float) -> dict:
     }
 
 
+GAMMA_SURFACE_LIVE_STALE_SEC = 180.0   # a live surface older than this reads STALE
+
+
 @app.get("/api/options/gamma-surface")
 def get_options_gamma_surface(ticker: str = Query(default=DEFAULT_TICKER)):
-    """Strike × expiration signed GEX$ surface, projected from the newest banked wide chain
-    through the canonical compute_exposures_by_strike faucet (one producer). Cell value is
-    ``net_gex_1pct`` ($ GEX per 1% spot move). Fail-closed to explicit unavailability."""
+    """Strike × expiration signed GEX$ surface (cell = net_gex_1pct) through the ONE canonical
+    faucet compute_exposures_by_strike.
+
+    Source order is deliberate. PREFERRED is the LIVE surface: _terrain_refresh_one (the single
+    levels producer) projects it each cycle from the same live wide chain + live spot it already
+    fetches, and caches it (source=terrain_live_cache). FALLBACK is the banked MORNING wide chain,
+    used only when the live cache is cold and labelled a reference (live=false, stale=true) — a
+    morning snapshot is never presented as intraday. Exposes chain/spot as-of, source, and
+    stale/degraded so the UI can fail stale visibly."""
     import sqlite3 as _sq
 
     tk = ticker_storage_key(ticker or DEFAULT_TICKER)
     now = time.time()
+
+    # ---- LIVE: surface projected this cycle from the canonical live terrain wide chain ----
+    live = terrain_cache_get(tk)
+    surf = (live or {}).get("_gamma_surface")
+    if live and surf:
+        chain_ts = live.get("computed_ts_utc")
+        age = (now - float(chain_ts)) if chain_ts else None
+        stale = bool(live.get("levels_stale")) or (age is not None and age > GAMMA_SURFACE_LIVE_STALE_SEC)
+        return JSONResponse({
+            "ticker": tk, "symbol": tk, "available": True,
+            "source": "terrain_live_cache", "live": True, "stale": stale,
+            "degraded": live.get("levels_stale_reason") if live.get("levels_stale") else None,
+            "spot": live.get("spot"), "spot_source": live.get("spot_source"),
+            "chain_as_of_ts_utc": chain_ts, "spot_as_of_ts_utc": live.get("spot_as_of_ts_utc"),
+            "age_sec": round(age, 1) if age is not None else None,
+            "chain_basis": live.get("chain_basis"),
+            **surf,
+            "provenance": {
+                "producer": "math_exposure_core.compute_exposures_by_strike",
+                "source": "live_terrain_wide_chain (_terrain_refresh_one, strike_count-width basis)",
+                "classification": "DERIVED", "cell_metric": "net_gex_1pct",
+                "spot_basis": "live_resolve_spot",
+            },
+            "method": ("live terrain wide chain (current Greeks + live spot, this refresh cycle) -> "
+                       "partition by native expirationDate -> compute_exposures_by_strike per expiry "
+                       "-> net_gex_1pct cell; one producer, zero extra vendor calls"),
+        })
+
+    # ---- FALLBACK: banked MORNING wide chain — REFERENCE ONLY, never presented as intraday ----
     hit = _GAMMA_SURFACE_CACHE.get(tk)
     if hit and now - hit[0] < 300.0:
         return JSONResponse(hit[1])
-
-    payload: dict = {"ticker": tk, "symbol": tk, "available": False,
-                     "reason": "no banked wide chain"}
+    payload: dict = {"ticker": tk, "symbol": tk, "available": False, "source": "unavailable",
+                     "live": False, "stale": True, "reason": "no live terrain surface and no banked wide chain"}
     try:
         db = get_db()
         con = _sq.connect(f"file:{db.db_path}?mode=ro", uri=True, timeout=10.0)
@@ -13540,22 +13589,25 @@ def get_options_gamma_surface(ticker: str = Query(default=DEFAULT_TICKER)):
             surface = project_gamma_surface(json.loads(c1), spot1)
             payload = {
                 "ticker": tk, "symbol": tk, "available": True,
+                "source": "banked_morning_reference", "live": False, "stale": True,
+                "degraded": ("live terrain surface unavailable — showing banked MORNING chain "
+                             "(reference only: morning spot + morning Greeks, NOT intraday)"),
                 "et_date": et_date, "spot": spot1,
+                "chain_as_of_ts_utc": None, "spot_as_of_ts_utc": None, "age_sec": None,
+                "chain_basis": "banked_morning",
                 **surface,
                 "provenance": {
                     "producer": "math_exposure_core.compute_exposures_by_strike",
                     "source": "newest_banked_wide_chain:option_chain_morning_full",
-                    "classification": "DERIVED",
-                    "cell_metric": "net_gex_1pct",
-                    "spot_basis": "captured_wide_chain_spot",
+                    "classification": "DERIVED", "cell_metric": "net_gex_1pct",
+                    "spot_basis": "captured_morning_spot",
                 },
-                "method": ("newest banked wide chain -> partition by native expirationDate "
-                           "(_filter_contracts_by_selected_expiry) -> compute_exposures_by_strike "
-                           "per expiry -> net_gex_1pct cell; captured spot; one producer, no vendor call"),
+                "method": ("REFERENCE: newest banked MORNING wide chain -> per-expiry "
+                           "compute_exposures_by_strike; morning spot/Greeks, not intraday"),
             }
     except Exception as e:  # fail-closed to explicit unavailability
-        payload = {"ticker": tk, "symbol": tk, "available": False,
-                   "reason": f"gamma-surface read failed: {e}"}
+        payload = {"ticker": tk, "symbol": tk, "available": False, "source": "unavailable",
+                   "live": False, "stale": True, "reason": f"gamma-surface read failed: {e}"}
     _GAMMA_SURFACE_CACHE[tk] = (now, payload)
     return JSONResponse(payload)
 

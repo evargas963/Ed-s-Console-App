@@ -57,7 +57,15 @@
     cells.forEach(function (r) { (r.gex || []).forEach(function (v) { if (v != null && Math.abs(v) > maxAbs) maxAbs = Math.abs(v); }); });
 
     var spotIdx = nearestStrikeIndex(strikes, spot);
-    var html = '<div class="heat-wrap"><table class="heat"><thead><tr>' +
+    // freshness / source — fail stale visibly (RC-UI-1 live-source rewire)
+    var live = surface.live !== false, stale = !!surface.stale;
+    var banner = '';
+    if (!live || stale) {
+      var msg = surface.degraded || (!live ? 'banked morning reference — not intraday' : 'live surface is stale');
+      banner = '<div class="heat-banner ' + (!live ? 'ref' : 'stale') + '">' +
+        (!live ? 'MORNING REFERENCE' : 'STALE') + ' — ' + escapeHtml(msg) + '</div>';
+    }
+    var html = banner + '<div class="heat-wrap"><table class="heat"><thead><tr>' +
       '<th class="hcorner">Strike</th>';
     exps.forEach(function (e) {
       var dte = (e.dte === 0) ? '0DTE' : (e.dte != null ? e.dte + 'DTE' : '');
@@ -93,9 +101,12 @@
                     gex: c.getAttribute('data-gex') } }));
       });
     });
+    var srcLabel = surface.source === 'terrain_live_cache' ? 'LIVE'
+      : surface.source === 'banked_morning_reference' ? 'REF·morning' : (surface.source || '');
+    var age = surface.age_sec != null ? ' ' + Math.round(surface.age_sec) + 's' : '';
     var scopeEl = document.getElementById('heatScope');
-    if (scopeEl) scopeEl.textContent = strikes.length + ' strikes × ' + exps.length + ' expiries · spot ' + (isFinite(spot) ? spot.toFixed(2) : '—') +
-      (surface.et_date ? ' · ' + surface.et_date : '');
+    if (scopeEl) scopeEl.textContent = strikes.length + '×' + exps.length + ' · spot ' +
+      (isFinite(spot) ? spot.toFixed(2) : '—') + ' · ' + srcLabel + age;
   }
 
   function fmtStrike(k) { return (Math.round(k * 100) / 100).toString(); }

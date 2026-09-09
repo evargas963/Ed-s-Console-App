@@ -15,7 +15,9 @@ const { test, expect } = require('@playwright/test');
 const path = require('path');
 
 const SURFACE = {
-  ticker: '$SPX', symbol: '$SPX', available: true, et_date: '2026-09-08', spot: 583.41,
+  ticker: '$SPX', symbol: '$SPX', available: true, spot: 583.41,
+  source: 'terrain_live_cache', live: true, stale: false, age_sec: 3,
+  chain_as_of_ts_utc: 1757000200, spot_as_of_ts_utc: 1757000200, spot_source: 'last',
   expirations: [{ expiry: '2026-09-11', dte: 2 }, { expiry: '2026-09-18', dte: 9 }],
   strikes: [580, 583, 586],
   cells: [
@@ -89,6 +91,25 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     expect(bg586).toMatch(/rgba?\(\s*229,\s*72,\s*77/);
     // spot row is the 583 strike (nearest 583.41)
     await expect(page.locator('tr.spotrow .hstrike')).toHaveText('583');
+    // a LIVE surface shows no stale/reference banner and tags the source LIVE
+    await expect(page.locator('.heat-banner')).toHaveCount(0);
+    await expect(page.locator('#heatScope')).toContainText('LIVE');
+  });
+
+  test('stale/reference gamma surface fails stale visibly (no morning snapshot passed as live)', async ({ page }) => {
+    await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify(Object.assign({}, SURFACE, {
+        source: 'banked_morning_reference', live: false, stale: true,
+        degraded: 'live terrain surface unavailable — showing banked MORNING chain (reference only: morning spot + morning Greeks, NOT intraday)',
+      })),
+    }));
+    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    const banner = page.locator('.heat-banner.ref');
+    await expect(banner).toBeVisible();
+    await expect(banner).toContainText('MORNING REFERENCE');
+    await expect(banner).toContainText('intraday');
+    await expect(page.locator('#heatScope')).toContainText('REF');
   });
 
   test('key levels rail reflects /api/terrain', async ({ page }) => {
