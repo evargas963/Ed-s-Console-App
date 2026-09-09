@@ -26,12 +26,13 @@
     'options': { title: 'OPTIONS', subs: [
       { id: 'gamma', label: 'Gamma' }, { id: 'vanna', label: 'Vanna', state: 'na', note: 'AGG ONLY' },
       { id: 'charm', label: 'Charm', state: 'na', note: 'WALLS ONLY' },
-      { id: 'dex', label: 'Delta / DEX', state: 'na' }, { id: 'oi', label: 'OI', state: 'na' },
+      { id: 'dex', label: 'Delta / DEX', state: 'na' }, { id: 'oi', label: 'Open Interest', state: 'na' },
       { id: 'flow', label: 'Flow' }, { id: 'chain', label: 'Chain' },
       { id: 'structures', label: 'Structures', state: 'na', note: 'NOT PROVEN' } ],
       views: { gamma: [
         { id: 'heatmap', label: 'Heatmap' }, { id: 'chart', label: 'Chart' },
-        { id: 'levels', label: 'Levels' }, { id: 'multimap', label: 'Multi-Map' } ] } },
+        { id: 'levels', label: 'Levels' }, { id: 'multimap', label: 'Multi-Map' },
+        { id: 'term', label: 'Term Structure', state: 'na' }, { id: 'analytics', label: 'Analytics', state: 'na' } ] } },
     'liquidity': { title: 'LIQUIDITY', subs: [
       { id: 'map', label: 'Map' }, { id: 'profile', label: 'Profile' }, { id: 'levels', label: 'Levels' },
       { id: 'vwap', label: 'VWAP / Value' }, { id: 'session', label: 'Session' }, { id: 'history', label: 'History' } ], views: [] },
@@ -119,13 +120,16 @@
     // rebuild only the tab region, preserve the controls block
     var tabHtml = '';
     views.forEach(function (v) {
-      tabHtml += '<button class="vtab' + (v.id === state.view ? ' on' : '') + '" data-view="' + v.id + '">' + v.label + '</button>';
+      var na = v.state === 'na';
+      tabHtml += '<button class="vtab' + (v.id === state.view ? ' on' : '') + (na ? ' na' : '') +
+        '" data-view="' + v.id + '"' + (na ? ' title="not yet implemented"' : '') + '>' + v.label + '</button>';
     });
     // clear existing tabs
     Array.prototype.slice.call(bar.querySelectorAll('.vtab')).forEach(function (n) { n.remove(); });
     if (ctrls) ctrls.insertAdjacentHTML('beforebegin', tabHtml);
     else bar.insertAdjacentHTML('afterbegin', tabHtml);
     bar.querySelectorAll('.vtab').forEach(function (b) {
+      if (b.classList.contains('na')) return;   // unavailable shell tab — part of the IA, not clickable
       b.addEventListener('click', function () { setView(b.getAttribute('data-view')); });
     });
     bar.style.display = views.length ? '' : 'none';

@@ -115,8 +115,16 @@
           live: (d.today_source === 'terrain_live_cache' && !d.levels_stale) })
       : '';
   }
+  var _lastGbs = { rows: [], spot: null };
+  function gbsNetAt(strike) {   // canonical per-strike net GEX$ (from /api/terrain/strikes), for reuse
+    for (var i = 0; i < _lastGbs.rows.length; i++) {
+      if (Math.abs(Number(_lastGbs.rows[i][0]) - Number(strike)) < 0.01) return Number(_lastGbs.rows[i][1]);
+    }
+    return null;
+  }
   function renderGbs(host, d) {
     setGbsAsOf(d);
+    _lastGbs = { rows: (d && d.today && d.today.all) || [], spot: Number(d && d.spot) };
     var rows = d && d.today && d.today.all;
     if (!rows || !rows.length) {
       host.innerHTML = '<div class="placeholder"><div class="sm">' +
@@ -203,13 +211,19 @@
     var call = pick('CALL'), put = pick('PUT');
     txt('sdCtx', px(strike, strike % 1 ? 2 : 0) + (expiry ? ' · ' + esc(expiry.slice(5)) : ''));
     function cell(c, k, d2) { var v = c ? c[k] : null; return (v == null) ? '—' : (typeof v === 'number' ? v.toFixed(d2 == null ? 2 : d2) : esc(v)); }
+    // GEX ($) column: per-side GEX$ is NOT canonical from /api/chain (computing it would be frontend
+    // math) -> "—"; the NET row's GEX is the canonical per-strike net_gex_1pct$ from /api/terrain/strikes.
+    var net = gbsNetAt(strike);
+    var netCls = net == null ? '' : (net >= 0 ? 'pos' : 'neg');
     host.innerHTML =
-      '<table class="sd"><thead><tr><th></th><th>OI</th><th>Vol</th><th>Gamma</th><th>Delta</th><th>IV%</th></tr></thead><tbody>' +
+      '<table class="sd"><thead><tr><th></th><th>OI</th><th>Vol</th><th>Gamma</th><th>GEX $</th><th>Delta</th><th>IV%</th></tr></thead><tbody>' +
       '<tr><td class="side c">Call</td><td>' + cell(call, 'openInterest', 0) + '</td><td>' + cell(call, 'totalVolume', 0) +
-      '</td><td>' + cell(call, 'gamma', 4) + '</td><td>' + cell(call, 'delta', 3) + '</td><td>' + cell(call, 'volatility', 1) + '</td></tr>' +
+      '</td><td>' + cell(call, 'gamma', 4) + '</td><td class="dim">—</td><td>' + cell(call, 'delta', 3) + '</td><td>' + cell(call, 'volatility', 1) + '</td></tr>' +
       '<tr><td class="side p">Put</td><td>' + cell(put, 'openInterest', 0) + '</td><td>' + cell(put, 'totalVolume', 0) +
-      '</td><td>' + cell(put, 'gamma', 4) + '</td><td>' + cell(put, 'delta', 3) + '</td><td>' + cell(put, 'volatility', 1) + '</td></tr>' +
-      '</tbody></table><div class="sd-src">vendor chain fields · /api/chain</div>';
+      '</td><td>' + cell(put, 'gamma', 4) + '</td><td class="dim">—</td><td>' + cell(put, 'delta', 3) + '</td><td>' + cell(put, 'volatility', 1) + '</td></tr>' +
+      '<tr class="sd-net"><td class="side">Net</td><td>—</td><td>—</td><td>—</td><td class="' + netCls + '">' +
+      (net == null ? '—' : usd(net)) + '</td><td>—</td><td>—</td></tr>' +
+      '</tbody></table><div class="sd-src">vendor per-contract · /api/chain · net GEX$ · /api/terrain/strikes</div>';
   }
 
   // ---------- events ----------

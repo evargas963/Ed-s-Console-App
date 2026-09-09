@@ -17,7 +17,7 @@ const EXPS = [
   { expiry: '2026-10-17', dte: 36 }, { expiry: '2026-11-21', dte: 71 }, { expiry: '2026-12-19', dte: 99 },
   { expiry: '2027-01-15', dte: 126 }, { expiry: '2027-03-19', dte: 189 },
 ];
-const STRIKE_LIST = (function () { const a = []; for (let k = SPOT + 140; k >= SPOT - 140; k -= 20) a.push(k); return a; })();
+const STRIKE_LIST = (function () { const a = []; for (let k = SPOT + 100; k >= SPOT - 100; k -= 20) a.push(k); return a; })();
 function gexAt(k, ci) {
   // signed net GEX$ — magnitude peaks near spot / at round strikes, decays with distance and DTE, so
   // the grid has real K-to-M texture (presentation only, synthetic — clearly not live data).
@@ -69,7 +69,7 @@ async function intercept(page) {
   });
 }
 
-const VIEWPORTS = [{ w: 2560, h: 1440 }, { w: 1920, h: 1080 }];
+const VIEWPORTS = [{ w: 1672, h: 941 }, { w: 1920, h: 1080 }, { w: 2560, h: 1440 }];
 const THEMES = ['dark', 'light'];
 
 for (const theme of THEMES) {
