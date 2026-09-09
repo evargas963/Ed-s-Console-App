@@ -1,7 +1,8 @@
 /* Ed Console design tokens — ONE semantic contract, TWO palettes (RC-UI-1).
-   Components consume ONLY the semantic --ed-* names below; theme is a token-value swap, never a
-   second stylesheet. Dark is the approved primary (bare :root). Light is a professionally designed
-   second palette. SYSTEM follows prefers-color-scheme; LIGHT/DARK force via data-theme on <html>.
+   Components consume ONLY the semantic --ed-* names; theme is a token-value swap, never a second
+   stylesheet or forked component. The effective theme is ALWAYS resolved to a single data-theme
+   value on <html> (light or dark) — by the first-paint guard and the one theme owner in ed-core —
+   so the CSS needs exactly two palette blocks and there is no duplicated light/dark definition.
    Financial semantics never invert: --ed-pos/--ed-heat-pos are GREEN and --ed-neg/--ed-heat-neg
    are RED in BOTH themes; blue is interaction; amber is warning/stale. */
 :root {
@@ -12,8 +13,10 @@
   --ed-rail-w: 56px; --ed-rail-w-open: 210px;
   --ed-header-h: 46px; --ed-subnav-h: 40px; --ed-viewbar-h: 34px;
   --ed-gap-xs: 4px; --ed-gap-sm: 8px; --ed-gap-md: 12px; --ed-gap-lg: 16px;
+}
 
-  /* ================= DARK (approved primary; the default palette) ================= */
+/* ================= DARK (approved primary) ================= */
+:root[data-theme="dark"] {
   --ed-bg:#0a0e17; --ed-rail:#0b1019; --ed-header:#0c1119;
   --ed-panel:#10161f; --ed-panel-2:#131b26; --ed-panel-3:#172232;
   --ed-edge:#222c3b; --ed-edge-soft:#172130; --ed-edge-strong:#2a3a50;
@@ -40,21 +43,4 @@
   --ed-native-bg:#d8efe0; --ed-derived-bg:#dce7fb; --ed-proxy-bg:#f2e8cd; --ed-research-bg:#ebe0fb;
   --ed-heat-pos:#1a9e5c; --ed-heat-neg:#d63b3b; --ed-heat-zero:#e6ebf1;
   color-scheme: light;
-}
-
-/* SYSTEM mode (no explicit data-theme): a light OS gets the light palette */
-@media (prefers-color-scheme: light) {
-  :root:not([data-theme="dark"]) {
-    --ed-bg:#e9edf3; --ed-rail:#e3e8ef; --ed-header:#e6ebf1;
-    --ed-panel:#f6f8fb; --ed-panel-2:#eef2f7; --ed-panel-3:#e1e7f0;
-    --ed-edge:#c4cddb; --ed-edge-soft:#d6dde7; --ed-edge-strong:#a6b2c3;
-    --ed-ink:#172230; --ed-ink-2:#46536a; --ed-ink-3:#69758a; --ed-ink-4:#98a2b1;
-    --ed-accent:#2f6fe0; --ed-accent-2:#1f5fd0; --ed-accent-bg:#dce7fb; --ed-accent-edge:#a6c2f0;
-    --ed-pos:#1a9e5c; --ed-pos-ink:#0f7a45; --ed-neg:#d63b3b; --ed-neg-ink:#b21e1e;
-    --ed-live:#16a34a; --ed-warn:#a9750a; --ed-stale:#b45309; --ed-alert:#cf2e2e; --ed-quiet:#8a94a4;
-    --ed-native:#0f7a45; --ed-derived:#1f5fd0; --ed-proxy:#8a6300; --ed-research:#6d28d9;
-    --ed-native-bg:#d8efe0; --ed-derived-bg:#dce7fb; --ed-proxy-bg:#f2e8cd; --ed-research-bg:#ebe0fb;
-    --ed-heat-pos:#1a9e5c; --ed-heat-neg:#d63b3b; --ed-heat-zero:#e6ebf1;
-    color-scheme: light;
-  }
 }

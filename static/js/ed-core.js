@@ -69,19 +69,33 @@
 
   // ---- theme: SYSTEM / LIGHT / DARK — one token contract, two palettes (dark primary) ----
   var THEME_ICON = { system: '◐', light: '☀', dark: '☾' };
-  function applyTheme(mode, opts) {
-    if (mode === 'light' || mode === 'dark') document.documentElement.setAttribute('data-theme', mode);
-    else { mode = 'system'; document.documentElement.removeAttribute('data-theme'); }   // system = prefers-color-scheme
-    _lsSet('ed_theme', mode);
-    var ic = document.getElementById('themeIcon'); if (ic) ic.textContent = THEME_ICON[mode];
-    var btn = document.getElementById('themeBtn'); if (btn) btn.title = 'Theme: ' + mode + ' (click to change)';
-    // theme switch never changes market values — only presentation re-renders (heatmap/chart)
-    if (!(opts && opts.silent)) document.dispatchEvent(new CustomEvent('ed:theme', { detail: { mode: mode } }));
+  function _mqDark() { try { return window.matchMedia && matchMedia('(prefers-color-scheme: dark)'); } catch (e) { return null; } }
+  function resolveTheme(pref) {   // SYSTEM resolves from the OS; LIGHT/DARK are literal
+    if (pref === 'light' || pref === 'dark') return pref;
+    var mq = _mqDark(); return (mq && mq.matches) ? 'dark' : 'light';
+  }
+  function applyTheme(pref, opts) {
+    if (pref !== 'light' && pref !== 'dark') pref = 'system';
+    _lsSet('ed_theme', pref);                                    // persist the PREFERENCE
+    var eff = resolveTheme(pref);
+    document.documentElement.setAttribute('data-theme', eff);   // ALWAYS a concrete theme (never unset)
+    var ic = document.getElementById('themeIcon'); if (ic) ic.textContent = THEME_ICON[pref];
+    var btn = document.getElementById('themeBtn'); if (btn) btn.title = 'Theme: ' + pref + ' (resolved ' + eff + ')';
+    // presentation only — a theme change never alters market values or selections
+    if (!(opts && opts.silent)) document.dispatchEvent(new CustomEvent('ed:theme', { detail: { pref: pref, theme: eff } }));
   }
   function cycleTheme() {
     var cur = _ls('ed_theme', 'system');
     applyTheme(cur === 'system' ? 'light' : cur === 'light' ? 'dark' : 'system');
   }
+  // ONE theme owner: in SYSTEM mode an OS light<->dark change re-resolves and re-dispatches
+  // ed:theme, so the shell AND the JS-computed heatmap/chart update live. Explicit choices ignore it.
+  (function () {
+    var mq = _mqDark(); if (!mq) return;
+    var onOs = function () { if (_ls('ed_theme', 'system') === 'system') applyTheme('system'); };
+    if (mq.addEventListener) mq.addEventListener('change', onOs);
+    else if (mq.addListener) mq.addListener(onOs);
+  })();
 
   // ================= navigation =================
   function renderSubnav() {

@@ -4,8 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Ed Console</title>
-<script>/* first-paint theme guard: apply the saved explicit theme before CSS paints (no flash) */
-try{var _t=localStorage.getItem('ed_theme');if(_t==='light'||_t==='dark')document.documentElement.setAttribute('data-theme',_t);}catch(e){}</script>
+<script>/* first-paint theme guard: RESOLVE the effective theme (SYSTEM -> prefers-color-scheme) to a
+   single data-theme value before CSS paints, so there is never a flash and never an unset state. */
+(function(){try{var p=localStorage.getItem('ed_theme')||'system';
+var eff=(p==='light'||p==='dark')?p:((window.matchMedia&&matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'light');
+document.documentElement.setAttribute('data-theme',eff);}catch(e){document.documentElement.setAttribute('data-theme','dark');}})();</script>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
 <link rel="stylesheet" href="/static/css/ed-tokens.css">
 <style>

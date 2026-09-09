@@ -187,14 +187,14 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     const svg = page.locator('#chartBody svg');
     await expect(svg).toBeVisible();
     await expect(page.locator('#chartBody svg polyline')).toHaveCount(1);      // price line
-    expect(await page.locator('#chartBody svg rect').count()).toBeGreaterThan(0); // profile bars
+    await expect(page.locator('#chartBody svg rect').first()).toBeVisible();   // profile bars (retrying)
     await expect(page.locator('#chartBody svg')).toContainText('spot 583.41');
     await expect(page.locator('#chartBody svg')).toContainText('flip');
     await page.setViewportSize({ width: 2560, height: 1440 });
     await page.screenshot({ path: require('path').join('test-results', 'console-gamma-chart-2560x1440.png') });
     // dot map mode: per-strike dots
     await page.locator('.cmode[data-cmode="dotmap"]').click();
-    expect(await page.locator('#chartBody svg circle').count()).toBeGreaterThan(0);
+    await expect(page.locator('#chartBody svg circle').first()).toBeVisible();   // retrying
     await expect(page.locator('#chartModes .cmode[data-cmode="dotmap"]')).toHaveClass(/on/);
   });
 
@@ -252,13 +252,41 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
   });
 
-  test('theme C: system mode follows prefers-color-scheme (no explicit attribute)', async ({ page }) => {
+  test('theme C: SYSTEM resolves to a concrete data-theme (follows the OS at load)', async ({ page }) => {
     await page.emulateMedia({ colorScheme: 'light' });
     await page.addInitScript(() => { try { localStorage.setItem('ed_theme', 'system'); } catch (e) {} });
     await page.goto('/console', { waitUntil: 'domcontentloaded' });
-    await expect(page.locator('html')).not.toHaveAttribute('data-theme', /.+/);   // system = unset
-    const bg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
-    expect(bg).not.toBe('rgb(10, 14, 23)');   // resolves to the LIGHT canvas, not the dark #0a0e17
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');   // SYSTEM + OS light -> light
+  });
+
+  test('theme SYSTEM follows LIVE OS changes; explicit ignores them (A-F)', async ({ page }) => {
+    await page.emulateMedia({ colorScheme: 'dark' });
+    await page.addInitScript(() => { try { localStorage.setItem('ed_theme', 'system'); } catch (e) {} });
+    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');     // A: SYSTEM + OS dark -> dark
+    const cell = page.locator('.hcell[data-strike="583"][data-expiry="2026-09-11"]');
+    await cell.click();
+    const val = (await cell.textContent()).trim();
+    const darkBg = await cell.evaluate((el) => getComputedStyle(el).backgroundColor);
+    // B: OS dark->light while OPEN -> shell AND the JS-computed heatmap update
+    await page.emulateMedia({ colorScheme: 'light' });
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+    await expect.poll(() => cell.evaluate((el) => getComputedStyle(el).backgroundColor)).not.toBe(darkBg);
+    // C: OS light->dark -> both update back
+    await page.emulateMedia({ colorScheme: 'dark' });
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+    // F: value + selection unchanged through the transitions
+    await expect(cell).toHaveText(val);
+    await expect(page.locator('.hcell.sel-strike')).toHaveCount(2);
+    await expect(page.locator('#hSym')).toHaveText('SPY');
+    // D: explicit LIGHT ignores a later OS dark change
+    await page.evaluate(() => window.EdShell.setTheme('light'));
+    await page.emulateMedia({ colorScheme: 'dark' });
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+    // E: explicit DARK ignores a later OS light change
+    await page.evaluate(() => window.EdShell.setTheme('dark'));
+    await page.emulateMedia({ colorScheme: 'light' });
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
   });
 
   test('theme D/E/F: switch preserves values, sign mapping, and selection', async ({ page }) => {
