@@ -7,8 +7,11 @@
    are RED in BOTH themes; blue is interaction; amber is warning/stale. */
 :root {
   /* ---- shared, theme-independent ---- */
-  --ed-sans: 'Barlow Semi Condensed', 'Inter', system-ui, -apple-system, sans-serif;
-  --ed-mono: 'IBM Plex Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  /* the approved reference uses ONE clean humanist sans (Inter) everywhere, with tabular figures
+     for numeric columns - there is no monospace in the design. Both roles resolve to Inter; numeric
+     alignment comes from font-variant-numeric: tabular-nums on the number-bearing elements. */
+  --ed-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --ed-mono: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   --ed-r: 4px; --ed-r-lg: 6px;
   --ed-rail-w: 54px; --ed-rail-w-open: 208px;
   --ed-header-h: 44px; --ed-subnav-h: 36px; --ed-viewbar-h: 32px;
