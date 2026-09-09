@@ -339,6 +339,38 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     }
   });
 
+  test('#10 control-writer: newer contract command wins; a stale one cannot commit (two tabs safe)', async ({ page }) => {
+    await page.route('**/api/streaming/active-option-contract', async (route) => {
+      const body = JSON.parse(route.request().postData() || '{}');
+      if (String(body.contract).indexOf('AAA') === 0) {   // delay the FIRST command so the second overtakes it
+        await new Promise((r) => setTimeout(r, 400));
+        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, contract: body.contract, command_generation: 1 }) });
+      }
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, contract: body.contract, command_generation: 2 }) });
+    });
+    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    const out = await page.evaluate(async () => {
+      const A = 'AAA   260101C00100000', B = 'BBB   260101C00100000';
+      const pa = window.EdStream.setActiveContract(A);   // client token 1
+      const pb = window.EdStream.setActiveContract(B);   // client token 2 supersedes token 1
+      return { a: await pa, b: await pb };
+    });
+    expect(out.b.accepted).toBe(true);                   // newer command commits
+    expect(out.a.accepted).toBe(false);                  // older command is inert
+    expect(out.a.reason).toBe('superseded_client');
+  });
+
+  test('#10 control-writer: a server 409 superseded verdict never commits', async ({ page }) => {
+    await page.route('**/api/streaming/active-option-contract', (route) => route.fulfill({
+      status: 409, contentType: 'application/json',
+      body: JSON.stringify({ ok: false, superseded: true, contract: 'ZZZ', command_generation: 7 }),
+    }));
+    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    const res = await page.evaluate(async () => window.EdStream.setActiveContract('ZZZ   260101C00100000'));
+    expect(res.accepted).toBe(false);
+    expect(res.reason).toBe('superseded_server');
+  });
+
   test('responsive proof: 2560x1440 and 1920x1080 screenshots', async ({ page }) => {
     await page.setViewportSize({ width: 2560, height: 1440 });
     await page.goto('/console', { waitUntil: 'domcontentloaded' });
