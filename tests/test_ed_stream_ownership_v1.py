@@ -10,11 +10,15 @@ JS = ROOT / "static" / "js"
 
 
 def test_only_ed_stream_writes_streaming_control():
-    # ed-core / gamma modules issue GETs only — never the streaming-control POSTs
-    for f in ["ed-core.js", "ed-gamma.js", "ed-gamma-panels.js", "ed-gamma-chart.js"]:
-        src = (JS / f).read_text(encoding="utf-8")
-        assert "streaming/active-option-contract" not in src, f + " must route contract control through EdStream"
-        assert "streaming/active-ticker" not in src, f + " must route ticker control through EdStream"
+    # Future-proof: EVERY rebuilt-shell module (static/js/ed-*.js) EXCEPT ed-stream.js must route
+    # streaming control through EdStream. Globbed, not a fixed list — so Flow/Chain (and any new
+    # shell module) are covered automatically the moment they are added.
+    shell_js = sorted(p for p in JS.glob("ed-*.js") if p.name != "ed-stream.js")
+    assert shell_js, "expected ed-*.js shell modules"
+    for p in shell_js:
+        src = p.read_text(encoding="utf-8")
+        assert "streaming/active-option-contract" not in src, p.name + " must route contract control through EdStream"
+        assert "streaming/active-ticker" not in src, p.name + " must route ticker control through EdStream"
 
 
 def test_ed_stream_reuses_the_canonical_mechanism_not_a_new_owner():

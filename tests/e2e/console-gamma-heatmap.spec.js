@@ -371,6 +371,37 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     expect(res.reason).toBe('superseded_server');
   });
 
+  test('#10 shared slot: request-accepted != active; loss of binding fails visibly; no auto re-POST', async ({ page }) => {
+    let postCount = 0;
+    await page.route('**/api/streaming/active-option-contract', (route) => {
+      postCount++;
+      const c = JSON.parse(route.request().postData() || '{}').contract;
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, contract: c, command_generation: postCount }) });
+    });
+    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    const X = 'XXX   260101C00100000', Y = 'YYY   260101C00100000';
+
+    // A selects X -> REQUEST ACCEPTED, but NOT active until the producer confirms (empty plane)
+    expect((await page.evaluate((c) => window.EdStream.setActiveContract(c), X)).accepted).toBe(true);
+    expect((await page.evaluate((c) => window.EdStream.status({}, c), X)).active).toBe(false);
+    // producer binds X (A polls the plane for X) -> A ACTIVE
+    const boundX = { contract_match: true, producer_l1_contract: X, producer_book_contract: X };
+    expect((await page.evaluate(([p, c]) => window.EdStream.status(p, c), [boundX, X])).active).toBe(true);
+
+    // B selects Y (newer legitimate global intent) -> accepted; the global slot moves to Y
+    expect((await page.evaluate((c) => window.EdStream.setActiveContract(c), Y)).accepted).toBe(true);
+    // A now polls the plane for X and sees the producer is Y (contract_match:false) -> NOT ACTIVE,
+    // so A cannot render Y's data as if it were X. A does NOT re-POST X.
+    const aAfter = await page.evaluate(([p, c]) => window.EdStream.status(p, c), [{ contract_match: false, producer_l1_contract: Y, producer_book_contract: Y }, X]);
+    expect(aAfter.active).toBe(false);
+    expect(aAfter.bound).toBe(false);
+    // B polls the plane for Y and is ACTIVE
+    const boundY = { contract_match: true, producer_l1_contract: Y, producer_book_contract: Y };
+    expect((await page.evaluate(([p, c]) => window.EdStream.status(p, c), [boundY, Y])).active).toBe(true);
+    // no oscillation: exactly the two operator selections (X, Y) were POSTed — losing the slot re-POSTs nothing
+    expect(postCount).toBe(2);
+  });
+
   test('responsive proof: 2560x1440 and 1920x1080 screenshots', async ({ page }) => {
     await page.setViewportSize({ width: 2560, height: 1440 });
     await page.goto('/console', { waitUntil: 'domcontentloaded' });

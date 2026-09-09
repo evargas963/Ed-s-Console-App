@@ -15,10 +15,26 @@
   'use strict';
   var OS = window.EdOptionsSubscription;
   var gate = (OS && OS.createSubscriptionGate) ? OS.createSubscriptionGate() : null;
+  var _desired = null;   // the contract THIS tab last requested (its intent), for binding observation
+
+  // ONE global slot: a POST is REQUEST ACCEPTED only. A view must call status() against the live
+  // plane's producer identity to decide ACTIVE vs PENDING vs MOVED, and — critically — must NOT
+  // re-POST when it discovers it lost the slot to a newer legitimate selection (no oscillation).
+  function status(plane, contract) {
+    contract = contract || _desired;
+    plane = plane || {};
+    var state = (OS && OS.subscriptionState) ? OS.subscriptionState(plane, contract) : 'none';
+    var bound = (OS && OS.planeIsBoundToContract) ? OS.planeIsBoundToContract(plane, contract) : false;
+    // ACTIVE only when the canonical producer confirms THIS contract on both services; if the slot
+    // has moved to another contract, bound=false and active=false -> the view fails visibly inactive.
+    return { desired: contract, state: state, bound: bound, active: state === 'subscribed' && bound === true };
+  }
+  function getDesired() { return _desired; }
 
   function setActiveContract(contract) {
     contract = String(contract || '').trim();
     if (!contract) return Promise.resolve({ accepted: false, reason: 'empty' });
+    _desired = contract;                              // this tab's intent (used by status())
     var token = gate ? gate.begin(contract) : null;   // client generation: a later begin supersedes this
     var status = null;
     return fetch('/api/streaming/active-option-contract', {
@@ -44,16 +60,28 @@
   }
 
   function setActiveTicker(ticker) {
+    // Only a view that genuinely needs the single-symbol equity BOOK/DOM should call this — NOT on
+    // every shell ticker change (equity L1 is captured roster-wide). The endpoint is single-owner,
+    // last-writer-wins, NOT generation-guarded (only the option-contract slot is). It returns
+    // REQUEST ACCEPTED (ok + echoed ticker) but exposes NO canonical active-book-producer identity,
+    // so book binding is NOT_PROVEN here — Order Flow Book must confirm from producer truth (or mark
+    // NOT_PROVEN) before rendering the book as this ticker. We never manufacture success from ok alone.
     ticker = String(ticker || '').trim().toUpperCase();
-    if (!ticker) return Promise.resolve({ ok: false });
-    // The equity active-ticker slot is single-owner but NOT generation-guarded server-side (only the
-    // option-contract slot is). Last-writer-wins, no corruption. If ticker last-writer safety is later
-    // required, extend the SAME _option_command_seq mechanism server-side — never a client-side owner.
+    if (!ticker) return Promise.resolve({ requestAccepted: false, requested: ticker, bookBound: null });
     return fetch('/api/streaming/active-ticker', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ticker: ticker }),
-    }).then(function (r) { return r.json().then(function (b) { return b; }, function () { return {}; }); })
-      .then(function (b) { return { ok: !!(b && b.ok), ticker: ticker }; }, function () { return { ok: false }; });
+    }).then(function (r) { return r.json().then(function (b) { return { status: r.status, body: b }; }, function () { return { status: r.status, body: null }; }); })
+      .then(function (res) {
+        var b = res.body || {};
+        var acked = (b.ticker != null) ? String(b.ticker).toUpperCase() : null;
+        return {
+          requestAccepted: (b.ok === true) && (acked === null || acked === ticker),   // validate the echoed ticker
+          acknowledgedTicker: acked, requested: ticker,
+          bookBound: null,   // NOT_PROVEN: no canonical active-book-producer identity on this endpoint
+        };
+      }, function () { return { requestAccepted: false, requested: ticker, bookBound: null }; });
   }
 
-  window.EdStream = { setActiveContract: setActiveContract, setActiveTicker: setActiveTicker, gate: gate };
+  window.EdStream = { setActiveContract: setActiveContract, setActiveTicker: setActiveTicker,
+    status: status, getDesired: getDesired, gate: gate };
 })();
