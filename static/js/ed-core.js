@@ -206,10 +206,13 @@
     if (a) a.textContent = age;
     var fresh = document.getElementById('aiCtxFresh'); if (fresh) fresh.textContent = label + (age && age !== '—' ? ' · ' + age : '');
   }
+  var _hdrGen = 0;   // monotonic latest-wins: an out-of-order response can never overwrite newer
   function refreshHeader() {
+    var g = ++_hdrGen;
     fetch('/api/live/state?ticker=' + encodeURIComponent(state.ticker), { cache: 'no-store' })
       .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
       .then(function (d) {
+        if (g !== _hdrGen) return;                 // a newer request already landed
         if (d.state_error) { setFeed('stale', 'DEGRADED', d.state_error); return; }
         var px = document.getElementById('hPx'), chg = document.getElementById('hChg'), ba = document.getElementById('hBidAsk');
         if (px) px.textContent = d.spot_disp || fmt(d.spot);
@@ -226,7 +229,18 @@
         var healthy = d.streaming_plane && d.streaming_plane.streaming_healthy;
         setFeed(healthy ? '' : 'warn', healthy ? 'LIVE' : 'DEGRADED', age);
       })
-      .catch(function () { setFeed('stale', 'OFFLINE', 'no console'); });
+      .catch(function () { if (g === _hdrGen) setFeed('stale', 'OFFLINE', 'no console'); });
+  }
+
+  // ONE coordinated live-update scheduler (no independent polling loops / duplicate
+  // subscriptions). Fast plane (header quote) refreshes every tick; the banked gamma data
+  // (surface/terrain, 5-min server cache) refreshes on the slow cadence. Each consumer keeps
+  // its own monotonic latest-wins guard, so a slow response never overwrites a newer one.
+  var _tick = 0;
+  function liveTick() {
+    _tick++;
+    refreshHeader();
+    document.dispatchEvent(new CustomEvent('ed:refresh', { detail: { tick: _tick, slow: _tick % 4 === 0 } }));
   }
 
   // ================= CT clock =================
@@ -274,7 +288,7 @@
     // initial ticker + header
     setTicker(state.ticker);
     tickClock(); setInterval(tickClock, 1000);
-    setInterval(refreshHeader, 2500);
+    setInterval(liveTick, 3000);   // single scheduler drives header (fast) + gamma (slow)
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);

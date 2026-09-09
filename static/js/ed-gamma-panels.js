@@ -159,6 +159,7 @@
   function loadAll() { loadLevels(); loadGbs(); }
   document.addEventListener('ed:ticker', loadAll);
   document.addEventListener('ed:view', loadAll);
+  document.addEventListener('ed:refresh', function (e) { if (e.detail && e.detail.slow) loadAll(); });
   document.addEventListener('ed:strike', function (e) {
     var det = e.detail || {}; _lastExpiry = det.expiry || _lastExpiry;
     loadStrike(det.strike, det.expiry);

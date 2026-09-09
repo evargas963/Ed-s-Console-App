@@ -132,6 +132,27 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(page.locator('#chartModes .cmode[data-cmode="dotmap"]')).toHaveClass(/on/);
   });
 
+  test('live-update: single scheduler + monotonic latest-wins on the header quote', async ({ page }) => {
+    // a stale/slow response for the PREVIOUS ticker must never overwrite the newer one
+    await page.route('**/api/live/state**', async (route) => {
+      const url = route.request().url();
+      if (url.includes('ticker=SPY')) {
+        await new Promise((r) => setTimeout(r, 900));   // stale, arrives late
+        return route.fulfill({ status: 200, contentType: 'application/json',
+          body: JSON.stringify({ spot: 111.11, spot_disp: '111.11', bid: 111, ask: 111.2,
+            streaming_plane: { streaming_healthy: true, streaming_staleness_ms: 100 } }) });
+      }
+      return route.fulfill({ status: 200, contentType: 'application/json',
+        body: JSON.stringify({ spot: 222.22, spot_disp: '222.22', bid: 222, ask: 222.3,
+          streaming_plane: { streaming_healthy: true, streaming_staleness_ms: 100 } }) });
+    });
+    await page.goto('/console', { waitUntil: 'domcontentloaded' });   // init ticker SPY -> delayed 111.11
+    await page.evaluate(() => window.EdShell.setTicker('QQQ'));        // newer -> immediate 222.22
+    await expect(page.locator('#hPx')).toHaveText('222.22');
+    await page.waitForTimeout(1300);                                   // let the stale SPY response land
+    await expect(page.locator('#hPx')).toHaveText('222.22');          // not overwritten by the stale response
+  });
+
   test('responsive proof: 2560x1440 and 1920x1080 screenshots', async ({ page }) => {
     await page.setViewportSize({ width: 2560, height: 1440 });
     await page.goto('/console', { waitUntil: 'domcontentloaded' });

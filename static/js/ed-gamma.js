@@ -121,6 +121,7 @@
   if (typeof document !== 'undefined') {
     document.addEventListener('ed:ticker', load);
     document.addEventListener('ed:view', load);
+    document.addEventListener('ed:refresh', function (e) { if (e.detail && e.detail.slow) load(); });
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', load);
     else load();
   }
