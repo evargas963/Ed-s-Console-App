@@ -19,18 +19,38 @@
     return sign + '$' + s;
   }
 
-  // ---- pure colour: sign -> green/red, |value|/maxAbs -> intensity, ~0 -> recede ----
-  function cellStyle(n, maxAbs) {
+  // ---- theme-aware colour: sign -> green/red, |value|/maxAbs -> intensity, ~0 -> recede.
+  //      Fills are SOLID, interpolated from the active theme's heat tokens (zero -> pos/neg), so a
+  //      cell reads correctly on ANY background — never dark-mode rgba re-used over a light canvas.
+  //      Text contrast is picked from the resulting fill's luminance, so it is legible in both themes. ----
+  var DEFAULT_HEAT = { pos: [35, 192, 107], neg: [229, 72, 77], zero: [18, 26, 37] };  // dark defaults (node/test)
+  function _hex(h) {
+    h = String(h || '').trim(); if (h.charAt(0) === '#') h = h.slice(1);
+    if (h.length === 3) h = h.charAt(0) + h.charAt(0) + h.charAt(1) + h.charAt(1) + h.charAt(2) + h.charAt(2);
+    if (h.length < 6) return null;
+    var n = parseInt(h.slice(0, 6), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  }
+  function _mix(a, b, t) { return [Math.round(a[0] + (b[0] - a[0]) * t), Math.round(a[1] + (b[1] - a[1]) * t), Math.round(a[2] + (b[2] - a[2]) * t)]; }
+  function _rgb(c) { return 'rgb(' + c[0] + ',' + c[1] + ',' + c[2] + ')'; }
+  function _lum(c) { return 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2]; }
+  function cellStyle(n, maxAbs, colors) {
+    colors = colors || DEFAULT_HEAT;
     if (n === null || n === undefined || isNaN(n)) return { bg: 'transparent', fg: 'var(--ed-ink-4)', empty: true };
     var v = Number(n);
+    if (Math.abs(v) < 1) return { bg: _rgb(colors.zero), fg: 'var(--ed-ink-3)', empty: false };
     var t = maxAbs > 0 ? Math.min(1, Math.abs(v) / maxAbs) : 0;
-    // gamma cube-root so small-but-real cells stay visible; near-zero recedes to panel
-    var intensity = Math.pow(t, 0.34);
-    if (Math.abs(v) < 1) return { bg: 'var(--ed-heat-zero)', fg: 'var(--ed-ink-3)', empty: false };
-    var base = v > 0 ? '35,192,107' : '229,72,77';           // --ed-pos / --ed-neg rgb
-    var alpha = (0.10 + 0.80 * intensity).toFixed(3);
-    var fg = intensity > 0.55 ? '#0a0e17' : (v > 0 ? 'var(--ed-pos-ink)' : 'var(--ed-neg-ink)');
-    return { bg: 'rgba(' + base + ',' + alpha + ')', fg: fg, empty: false };
+    var intensity = Math.pow(t, 0.34);   // cube-root-ish so small-but-real cells stay visible
+    var mixed = _mix(colors.zero, (v > 0 ? colors.pos : colors.neg), intensity);
+    var fg = _lum(mixed) < 140 ? '#f4f7fb' : '#0a0e17';
+    return { bg: _rgb(mixed), fg: fg, empty: false, sign: (v > 0 ? 1 : -1) };
+  }
+  function readHeatColors() {   // the active theme's heat palette (falls back to dark defaults)
+    try {
+      var cs = getComputedStyle(document.documentElement);
+      var p = _hex(cs.getPropertyValue('--ed-heat-pos')), ng = _hex(cs.getPropertyValue('--ed-heat-neg')), z = _hex(cs.getPropertyValue('--ed-heat-zero'));
+      if (p && ng && z) return { pos: p, neg: ng, zero: z };
+    } catch (e) {}
+    return DEFAULT_HEAT;
   }
 
   function nearestStrikeIndex(strikes, spot) {
@@ -53,6 +73,8 @@
     var exps = surface.expirations || [], strikes = surface.strikes || [], cells = surface.cells || [];
     var spot = Number(surface.spot);
     // maxAbs over displayed cells — visual normalisation only, not a semantic value
+    _lastSurface = surface;   // cached so a theme switch can re-render without a refetch
+    var heat = readHeatColors();
     var maxAbs = 0;
     cells.forEach(function (r) { (r.gex || []).forEach(function (v) { if (v != null && Math.abs(v) > maxAbs) maxAbs = Math.abs(v); }); });
 
@@ -65,12 +87,21 @@
       banner = '<div class="heat-banner ' + (!live ? 'ref' : 'stale') + '">' +
         (!live ? 'MORNING REFERENCE' : 'STALE') + ' — ' + escapeHtml(msg) + '</div>';
     }
+    // #2: a NARROWED live chain basis (timeout ladder: full -> dte<=120 -> dte<=45) must not look
+    // identical to the normal full basis — surface it prominently.
+    if (live && surface.chain_basis && surface.chain_basis !== 'full') {
+      banner += '<div class="heat-banner degraded">NARROWED — live chain basis "' + escapeHtml(surface.chain_basis) +
+        '" (reduced expiry window under load), not the usual full basis</div>';
+    }
+    // #7: compact shade legend (shade = |GEX$| magnitude; the actual dollar value is printed in every cell)
+    var legend = '<div class="heat-legend"><span>−' + formatUsd(maxAbs) + '</span><span class="grad"></span>' +
+      '<span>+' + formatUsd(maxAbs) + '</span><span style="margin-left:8px">shade = |GEX$| · value in each cell</span></div>';
     // C: emphasise the nearest-expiry (front) column — presentation only, no predictive meaning
     var frontCol = -1, minDte = Infinity;
     exps.forEach(function (e, ix) { if (e.dte != null && e.dte < minDte) { minDte = e.dte; frontCol = ix; } });
     // B: a STALE / REFERENCE surface visually recedes (in addition to the banner)
     var recede = (!live || stale) ? ' recede' : '';
-    var html = banner + '<div class="heat-wrap' + recede + '"><table class="heat"><thead><tr>' +
+    var html = banner + legend + '<div class="heat-wrap' + recede + '"><table class="heat"><thead><tr>' +
       '<th class="hcorner">Strike</th>';
     exps.forEach(function (e, ix) {
       var dte = (e.dte === 0) ? '0DTE' : (e.dte != null ? e.dte + 'DTE' : '');
@@ -84,7 +115,7 @@
         '<th class="hstrike' + (isSpot ? ' spot' : '') + '">' + fmtStrike(row.strike) + '</th>';
       for (var j = 0; j < exps.length; j++) {
         var v = (row.gex || [])[j];
-        var st = cellStyle(v, maxAbs);
+        var st = cellStyle(v, maxAbs, heat);
         html += '<td class="hcell' + (j === frontCol ? ' col-front' : '') + '" style="background:' + st.bg + ';color:' + st.fg + '" ' +
           'data-strike="' + row.strike + '" data-expiry="' + escapeHtml(exps[j].expiry) + '" data-gex="' + (v == null ? '' : v) + '">' +
           (st.empty ? '' : formatUsd(v)) + '</td>';
@@ -130,7 +161,7 @@
     return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]; }); }
 
   // ---- fetch + render, guarded (latest-wins) ----
-  var _gen = 0;
+  var _gen = 0, _lastSurface = null;
   function load() {
     var host = document.getElementById('heatBody');
     if (!host) return;
@@ -150,6 +181,9 @@
     document.addEventListener('ed:view', load);
     document.addEventListener('ed:refresh', function (e) { if (e.detail && e.detail.slow) load(); });
     document.addEventListener('ed:strike', function () { applyStrikeHighlight(); });   // A: cross-panel sync
+    document.addEventListener('ed:theme', function () {   // re-render solid heat fills for the new theme
+      var h = document.getElementById('heatBody'); if (h && _lastSurface) renderSurface(h, _lastSurface);
+    });
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', load);
     else load();
   }

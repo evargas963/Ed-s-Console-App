@@ -67,6 +67,22 @@
     state.view = vids.indexOf(state.view) !== -1 ? state.view : (vids[0] || '');
   }
 
+  // ---- theme: SYSTEM / LIGHT / DARK — one token contract, two palettes (dark primary) ----
+  var THEME_ICON = { system: '◐', light: '☀', dark: '☾' };
+  function applyTheme(mode, opts) {
+    if (mode === 'light' || mode === 'dark') document.documentElement.setAttribute('data-theme', mode);
+    else { mode = 'system'; document.documentElement.removeAttribute('data-theme'); }   // system = prefers-color-scheme
+    _lsSet('ed_theme', mode);
+    var ic = document.getElementById('themeIcon'); if (ic) ic.textContent = THEME_ICON[mode];
+    var btn = document.getElementById('themeBtn'); if (btn) btn.title = 'Theme: ' + mode + ' (click to change)';
+    // theme switch never changes market values — only presentation re-renders (heatmap/chart)
+    if (!(opts && opts.silent)) document.dispatchEvent(new CustomEvent('ed:theme', { detail: { mode: mode } }));
+  }
+  function cycleTheme() {
+    var cur = _ls('ed_theme', 'system');
+    applyTheme(cur === 'system' ? 'light' : cur === 'light' ? 'dark' : 'system');
+  }
+
   // ================= navigation =================
   function renderSubnav() {
     var cfg = NAV[state.workspace];
@@ -279,12 +295,30 @@
     _sse.onerror = function () { _sseUp = false; };   // fall back to polling; the browser reconnects
   }
 
+  // #6: canonical market session (RTH / Pre-Market / After-Hours / Closed) — a DIFFERENT truth
+  // from feed liveness, so both are shown. session_label is the canonical carrier (/api/live/state).
+  function paintSession(label) {
+    var el = document.getElementById('hSession'); if (!el) return;
+    var m = { 'RTH': ['RTH', 'rth'], 'Pre-Market': ['PRE', 'pre'], 'After-Hours': ['AH', 'ah'], 'Closed': ['CLOSED', 'closed'] };
+    var v = m[label] || [(label || '—'), ''];
+    el.textContent = v[0]; el.className = 'sess ' + v[1];
+  }
+  var _sessGen = 0;
+  function refreshSession() {   // slow, session-only read used while the SSE push carries the quote
+    var g = ++_sessGen;
+    fetch('/api/live/state?ticker=' + encodeURIComponent(state.ticker), { cache: 'no-store' })
+      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+      .then(function (d) { if (g === _sessGen) paintSession(d.session_label); })
+      .catch(function () { if (g === _sessGen) paintSession(null); });
+  }
+
   function refreshHeader() {   // FALLBACK poll — only runs when the SSE push is not delivering
     var g = ++_hdrGen;
     fetch('/api/live/state?ticker=' + encodeURIComponent(state.ticker), { cache: 'no-store' })
       .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
       .then(function (d) {
         if (g !== _hdrGen) return;
+        paintSession(d.session_label);              // header poll also carries session (no extra read)
         if (d.state_error) { setFeed('stale', 'DEGRADED', d.state_error); return; }
         var age = (d.streaming_plane && d.streaming_plane.streaming_staleness_ms != null)
           ? Math.round(d.streaming_plane.streaming_staleness_ms) + 'ms' : '—';
@@ -303,7 +337,9 @@
   var _tick = 0;
   function liveTick() {
     _tick++;
-    if (!_sseUp || (Date.now() - _lastSseTs > 9000)) refreshHeader();   // fallback only
+    var sseHealthy = _sseUp && (Date.now() - _lastSseTs <= 9000);
+    if (!sseHealthy) refreshHeader();                 // fallback: paints quote + session
+    else if (_tick % 4 === 0) refreshSession();       // SSE covers the quote; slow session read
     document.dispatchEvent(new CustomEvent('ed:refresh', { detail: { tick: _tick, slow: _tick % 4 === 0 } }));
   }
 
@@ -325,6 +361,10 @@
       app.classList.toggle('rail-open');
       try { localStorage.setItem(RAIL_KEY, app.classList.contains('rail-open') ? '1' : '0'); } catch (e) {}
     });
+    // theme control (first-paint script already applied the attr; this reflects it on the button)
+    applyTheme(_ls('ed_theme', 'system'), { silent: true });
+    var themeBtn = document.getElementById('themeBtn');
+    if (themeBtn) themeBtn.addEventListener('click', cycleTheme);
     // workspace nav
     document.querySelectorAll('.navitem[data-ws]').forEach(function (n) {
       n.addEventListener('click', function () { setWorkspace(n.getAttribute('data-ws')); });
@@ -361,5 +401,6 @@
 
   // expose for view modules + tests (no trading logic here)
   window.EdShell = { getState: function () { return Object.assign({}, state); }, setTicker: setTicker,
-    addSymbol: addSymbol, removeSymbol: removeSymbol, setWorkspace: setWorkspace, setStrike: setStrike };
+    addSymbol: addSymbol, removeSymbol: removeSymbol, setWorkspace: setWorkspace, setStrike: setStrike,
+    setTheme: applyTheme };
 })();

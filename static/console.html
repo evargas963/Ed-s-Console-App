@@ -4,6 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Ed Console</title>
+<script>/* first-paint theme guard: apply the saved explicit theme before CSS paints (no flash) */
+try{var _t=localStorage.getItem('ed_theme');if(_t==='light'||_t==='dark')document.documentElement.setAttribute('data-theme',_t);}catch(e){}</script>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
 <link rel="stylesheet" href="/static/css/ed-tokens.css">
 <style>
@@ -39,6 +41,8 @@
   .live{display:inline-flex;align-items:center;gap:6px;font-family:var(--ed-mono);font-size:11px}
   .live .dot{width:8px;height:8px;border-radius:50%;background:var(--ed-live)}
   .live .dot.warn{background:var(--ed-warn)} .live .dot.stale{background:var(--ed-stale)}
+  .sess{font-family:var(--ed-mono);font-size:11px;font-weight:600;letter-spacing:.06em}
+  .sess.rth{color:var(--ed-live)} .sess.pre{color:var(--ed-warn)} .sess.ah{color:var(--ed-accent-2)} .sess.closed{color:var(--ed-ink-3)}
   .search{margin-left:auto;display:flex;align-items:center;gap:7px;background:var(--ed-panel);
     border:1px solid var(--ed-edge);border-radius:var(--ed-r);padding:6px 11px;width:280px;color:var(--ed-ink-3)}
   .search input{flex:1;background:none;border:none;outline:none;color:var(--ed-ink);font-family:var(--ed-sans);font-size:12px}
@@ -174,6 +178,9 @@
   .heat-banner{font-family:var(--ed-mono);font-size:10px;letter-spacing:.03em;padding:5px 10px;border-radius:5px;margin-bottom:8px}
   .heat-banner.stale{background:var(--ed-proxy-bg);color:var(--ed-stale);border:1px solid var(--ed-stale)}
   .heat-banner.ref{background:var(--ed-proxy-bg);color:var(--ed-proxy);border:1px dashed var(--ed-proxy)}
+  .heat-banner.degraded{background:var(--ed-proxy-bg);color:var(--ed-warn);border:1px solid var(--ed-warn)}
+  .heat-legend{display:flex;align-items:center;gap:8px;font-family:var(--ed-mono);font-size:9px;color:var(--ed-ink-3);padding:0 0 6px}
+  .heat-legend .grad{width:130px;height:9px;border-radius:2px;background:linear-gradient(90deg,var(--ed-neg),var(--ed-heat-zero) 50%,var(--ed-pos))}
   /* B: freshness-coupled dimming — stale/reference content recedes */
   .recede{opacity:.5;filter:saturate(.6);transition:opacity .12s}
   /* A: shared selected-strike highlight across panels */
@@ -285,11 +292,14 @@
     <div class="hsep"></div>
     <div class="hkv"><span class="k">Data age</span><span class="v" id="hAge">—</span></div>
     <div class="hsep"></div>
+    <div class="hkv"><span class="k">Session</span><span class="sess" id="hSession">—</span></div>
+    <div class="hsep"></div>
     <div class="hkv"><span class="k" id="hClockDate">—</span><span class="v" id="hClock">--:--:-- CT</span></div>
     <div class="search">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg>
       <input id="symSearch" placeholder="Search symbol" autocomplete="off">
     </div>
+    <button class="hbtn" id="themeBtn" title="Theme" aria-label="Toggle theme (system / light / dark)"><span id="themeIcon" aria-hidden="true">◐</span></button>
   </header>
 
   <!-- ===== MAIN ===== -->

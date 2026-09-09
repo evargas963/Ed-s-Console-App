@@ -16,7 +16,7 @@ const path = require('path');
 
 const SURFACE = {
   ticker: '$SPX', symbol: '$SPX', available: true, spot: 583.41,
-  source: 'terrain_live_cache', live: true, stale: false, age_sec: 3,
+  source: 'terrain_live_cache', live: true, stale: false, age_sec: 3, chain_basis: 'full',
   complete: false,
   coverage: { window: 'live_near_money', chain_basis: 'full', strike_count: 3,
     note: 'near-money LIVE window (strike_count-bounded terrain chain) — NOT the full strike_range=ALL book' },
@@ -40,7 +40,7 @@ const STRIKES = {
   today: { all: [[586, -264500, 1200], [583, 958600, 5400], [580, -90000, 900]] },
 };
 const LIVE = {
-  spot: 583.41, spot_disp: '583.41', bid: 583.40, ask: 583.42,
+  spot: 583.41, spot_disp: '583.41', bid: 583.40, ask: 583.42, session_label: 'RTH',
   analytics_lightweight: { spy_chg_pct: 0.38 },
   streaming_plane: { streaming_healthy: true, streaming_staleness_ms: 380 },
 };
@@ -88,6 +88,18 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     }
     await expect(page.locator('#subnav .wtitle')).toContainText('OPTIONS');
     await expect(page.locator('.vtab', { hasText: 'Heatmap' })).toBeVisible();
+    // #6: canonical market session shown in the header, distinct from feed liveness
+    await expect(page.locator('#hSession')).toHaveText('RTH');
+    await expect(page.locator('#hSession')).toHaveClass(/rth/);
+  });
+
+  test('narrowed live chain basis is surfaced prominently (#2)', async ({ page }) => {
+    await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify(Object.assign({}, SURFACE, { chain_basis: 'dte<=45' })),
+    }));
+    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('.heat-banner.degraded')).toContainText('NARROWED');
   });
 
   test('heatmap renders canonical cells verbatim (value == formatted payload; sign -> colour)', async ({ page }) => {
@@ -96,16 +108,19 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     const cell586 = page.locator('.hcell[data-strike="586"][data-expiry="2026-09-11"]');
     await expect(cell583).toHaveText('$958.6K');   // E: formatting-only of 958600
     await expect(cell586).toHaveText('-$264.5K');  // E: formatting-only of -264500
-    // D: positive -> green fill, negative -> red fill (no inversion)
-    const bg583 = await cell583.evaluate((el) => getComputedStyle(el).backgroundColor);
-    const bg586 = await cell586.evaluate((el) => getComputedStyle(el).backgroundColor);
-    expect(bg583).toMatch(/rgba?\(\s*35,\s*192,\s*107/);
-    expect(bg586).toMatch(/rgba?\(\s*229,\s*72,\s*77/);
+    // D: positive -> green-dominant fill, negative -> red-dominant fill (no inversion)
+    const rgbOf = (s) => { const m = /rgb\((\d+),\s*(\d+),\s*(\d+)\)/.exec(s); return [+m[1], +m[2], +m[3]]; };
+    const bg583 = rgbOf(await cell583.evaluate((el) => getComputedStyle(el).backgroundColor));
+    const bg586 = rgbOf(await cell586.evaluate((el) => getComputedStyle(el).backgroundColor));
+    expect(bg583[1]).toBeGreaterThan(bg583[0]);   // green channel dominant
+    expect(bg586[0]).toBeGreaterThan(bg586[1]);   // red channel dominant
     // spot row is the 583 strike (nearest 583.41)
     await expect(page.locator('tr.spotrow .hstrike')).toHaveText('583');
     // a LIVE surface shows no stale/reference banner and is tagged a live WINDOW (not "complete")
     await expect(page.locator('.heat-banner')).toHaveCount(0);
     await expect(page.locator('#heatScope')).toContainText('LIVE·window');
+    // #7: shade legend present
+    await expect(page.locator('.heat-legend .grad')).toBeVisible();
     // C: nearest-expiry (front) column emphasised
     expect(await page.locator('.heat .hexp.col-front').count()).toBeGreaterThan(0);
     // A: clicking a heatmap cell syncs the selected strike across panels
@@ -224,6 +239,61 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     // 601.23 comes only from env.payload; the /api/live/state poll fallback would show 583.41
     await expect(page.locator('#hPx')).toHaveText('601.23');
     await expect(page.locator('#hFeed')).toContainText('LIVE');
+  });
+
+  test('theme A/B: explicit dark and light selections persist across reload', async ({ page }) => {
+    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.evaluate(() => window.EdShell.setTheme('dark'));
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');   // first-paint guard
+    await page.evaluate(() => window.EdShell.setTheme('light'));
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+  });
+
+  test('theme C: system mode follows prefers-color-scheme (no explicit attribute)', async ({ page }) => {
+    await page.emulateMedia({ colorScheme: 'light' });
+    await page.addInitScript(() => { try { localStorage.setItem('ed_theme', 'system'); } catch (e) {} });
+    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('html')).not.toHaveAttribute('data-theme', /.+/);   // system = unset
+    const bg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+    expect(bg).not.toBe('rgb(10, 14, 23)');   // resolves to the LIGHT canvas, not the dark #0a0e17
+  });
+
+  test('theme D/E/F: switch preserves values, sign mapping, and selection', async ({ page }) => {
+    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.evaluate(() => window.EdShell.setTheme('dark'));
+    const cell = page.locator('.hcell[data-strike="583"][data-expiry="2026-09-11"]');
+    const darkVal = (await cell.textContent()).trim();
+    await cell.click();                                   // select strike 583
+    await page.evaluate(() => window.EdShell.setTheme('light'));
+    // D: the displayed dollar value is unchanged by theme
+    await expect(cell).toHaveText(darkVal);
+    // E: positive cell green-dominant, negative cell red-dominant in LIGHT (no inversion)
+    const rgbOf = (s) => { const m = /rgb\((\d+),\s*(\d+),\s*(\d+)\)/.exec(s); return [+m[1], +m[2], +m[3]]; };
+    const posBg = rgbOf(await cell.evaluate((el) => getComputedStyle(el).backgroundColor));
+    const negBg = rgbOf(await page.locator('.hcell[data-strike="586"][data-expiry="2026-09-11"]').evaluate((el) => getComputedStyle(el).backgroundColor));
+    expect(posBg[1]).toBeGreaterThan(posBg[0]);   // green channel dominant
+    expect(negBg[0]).toBeGreaterThan(negBg[1]);   // red channel dominant
+    // F: the selected strike + ticker survive the theme switch
+    await expect(page.locator('.hcell.sel-strike')).toHaveCount(2);
+    await expect(page.locator('#hSym')).toHaveText('SPY');
+  });
+
+  test('theme screenshots: dark and light at 2560x1440 and 1920x1080, no h-overflow', async ({ page }) => {
+    const path = require('path');
+    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    for (const theme of ['dark', 'light']) {
+      await page.evaluate((t) => window.EdShell.setTheme(t), theme);
+      for (const wh of [[2560, 1440], [1920, 1080]]) {
+        await page.setViewportSize({ width: wh[0], height: wh[1] });
+        await expect(page.locator('.hcell').first()).toBeVisible();
+        const ok = await page.evaluate(() => document.body.scrollWidth <= window.innerWidth + 2);
+        expect(ok).toBe(true);
+        await page.screenshot({ path: path.join('test-results', 'console-' + theme + '-' + wh[0] + 'x' + wh[1] + '.png') });
+      }
+    }
   });
 
   test('responsive proof: 2560x1440 and 1920x1080 screenshots', async ({ page }) => {

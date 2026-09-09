@@ -192,6 +192,7 @@
   document.addEventListener('ed:ticker', load);
   document.addEventListener('ed:refresh', function (e) { if (e.detail && e.detail.slow) load(); });
   document.addEventListener('ed:strike', function () { applyChartHighlight(); });   // A: cross-panel sync
+  document.addEventListener('ed:theme', load);   // re-render SVG for the new theme's tokens
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function () { bindModes(); load(); });
   else { bindModes(); load(); }
 })();

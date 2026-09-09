@@ -1,75 +1,60 @@
-/* Ed Console design tokens — single source of truth for the rebuilt shell (RC-UI-1).
-   Committed dark institutional terminal. Every color is painted explicitly; no theme
-   inheritance. Green/red are reserved for financial SIGN/STATE, blue is the one accent,
-   amber/red semantic states are for freshness/alert only. Numbers are tabular monospace. */
+/* Ed Console design tokens — ONE semantic contract, TWO palettes (RC-UI-1).
+   Components consume ONLY the semantic --ed-* names below; theme is a token-value swap, never a
+   second stylesheet. Dark is the approved primary (bare :root). Light is a professionally designed
+   second palette. SYSTEM follows prefers-color-scheme; LIGHT/DARK force via data-theme on <html>.
+   Financial semantics never invert: --ed-pos/--ed-heat-pos are GREEN and --ed-neg/--ed-heat-neg
+   are RED in BOTH themes; blue is interaction; amber is warning/stale. */
 :root {
-  /* ---- surfaces (darkest page -> lifted panels) ---- */
-  --ed-bg:        #0a0e17;   /* app canvas */
-  --ed-rail:      #0b1019;   /* left nav rail */
-  --ed-header:    #0c1119;   /* global header */
-  --ed-panel:     #10161f;   /* primary panel */
-  --ed-panel-2:   #131b26;   /* nested / row-alt */
-  --ed-panel-3:   #172232;   /* hover / raised */
-  --ed-edge:      #1e2a3b;   /* hairline border */
-  --ed-edge-soft: #172130;   /* subtle divider */
-  --ed-edge-strong:#2a3a50;  /* emphasized border */
-
-  /* ---- text ---- */
-  --ed-ink:       #e8edf4;   /* primary values */
-  --ed-ink-2:     #9fb0c3;   /* labels / secondary */
-  --ed-ink-3:     #6b7c92;   /* muted / captions */
-  --ed-ink-4:     #4a586c;   /* faint / disabled */
-
-  /* ---- one accent (interactive / selection) ---- */
-  --ed-accent:    #3d8bfd;
-  --ed-accent-2:  #61a5ff;
-  --ed-accent-bg: #12243d;   /* selected nav / active fill */
-  --ed-accent-edge:#28517f;
-
-  /* ---- financial sign (green = +$ exposure, red = -$ exposure) ---- */
-  --ed-pos:       #23c06b;
-  --ed-pos-ink:   #3ddc84;
-  --ed-neg:       #e5484d;
-  --ed-neg-ink:   #ff6b6b;
-
-  /* ---- semantic state (freshness / actionability — NOT decoration) ---- */
-  --ed-live:      #2ecc71;   /* LIVE / native fresh */
-  --ed-warn:      #e9b949;   /* degraded / approaching */
-  --ed-stale:     #d9822b;   /* stale */
-  --ed-alert:     #ff5d5d;   /* actionable / breaking */
-  --ed-quiet:     #5f6f84;   /* context, not actionable */
-
-  /* ---- provenance chips ---- */
-  --ed-native:    #2ecc71;
-  --ed-derived:   #3d8bfd;
-  --ed-proxy:     #e9b949;
-  --ed-research:  #a86fe3;
-  --ed-native-bg: #10281b;
-  --ed-derived-bg:#0f2338;
-  --ed-proxy-bg:  #2c2410;
-  --ed-research-bg:#241635;
-
-  /* ---- exposure heatmap ramp anchors (shade by |magnitude|) ---- */
-  --ed-heat-pos:  #23c06b;
-  --ed-heat-neg:  #e5484d;
-  --ed-heat-zero: #121a25;   /* near-zero recedes to panel */
-
-  /* ---- type ---- */
+  /* ---- shared, theme-independent ---- */
   --ed-sans: 'Barlow Semi Condensed', 'Inter', system-ui, -apple-system, sans-serif;
   --ed-mono: 'IBM Plex Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  --ed-r: 5px; --ed-r-lg: 8px;
+  --ed-rail-w: 56px; --ed-rail-w-open: 210px;
+  --ed-header-h: 46px; --ed-subnav-h: 40px; --ed-viewbar-h: 34px;
+  --ed-gap-xs: 4px; --ed-gap-sm: 8px; --ed-gap-md: 12px; --ed-gap-lg: 16px;
 
-  /* ---- geometry ---- */
-  --ed-r:      5px;
-  --ed-r-lg:   8px;
-  --ed-rail-w: 56px;         /* collapsed rail */
-  --ed-rail-w-open: 210px;   /* expanded rail */
-  --ed-header-h: 46px;
-  --ed-subnav-h: 40px;
-  --ed-viewbar-h: 34px;
+  /* ================= DARK (approved primary; the default palette) ================= */
+  --ed-bg:#0a0e17; --ed-rail:#0b1019; --ed-header:#0c1119;
+  --ed-panel:#10161f; --ed-panel-2:#131b26; --ed-panel-3:#172232;
+  --ed-edge:#222c3b; --ed-edge-soft:#172130; --ed-edge-strong:#2a3a50;
+  --ed-ink:#e8edf4; --ed-ink-2:#9fb0c3; --ed-ink-3:#6b7c92; --ed-ink-4:#4a586c;
+  --ed-accent:#3d8bfd; --ed-accent-2:#61a5ff; --ed-accent-bg:#12243d; --ed-accent-edge:#28517f;
+  --ed-pos:#23c06b; --ed-pos-ink:#3ddc84; --ed-neg:#e5484d; --ed-neg-ink:#ff6b6b;
+  --ed-live:#2ecc71; --ed-warn:#e9b949; --ed-stale:#d9822b; --ed-alert:#ff5d5d; --ed-quiet:#5f6f84;
+  --ed-native:#2ecc71; --ed-derived:#3d8bfd; --ed-proxy:#e9b949; --ed-research:#a86fe3;
+  --ed-native-bg:#10281b; --ed-derived-bg:#0f2338; --ed-proxy-bg:#2c2410; --ed-research-bg:#241635;
+  --ed-heat-pos:#23c06b; --ed-heat-neg:#e5484d; --ed-heat-zero:#121a25;
+  color-scheme: dark;
+}
 
-  /* ---- density ---- */
-  --ed-gap-xs: 4px;
-  --ed-gap-sm: 8px;
-  --ed-gap-md: 12px;
-  --ed-gap-lg: 16px;
+/* ================= LIGHT (professional light terminal — not generic SaaS white) ================= */
+:root[data-theme="light"] {
+  --ed-bg:#e9edf3; --ed-rail:#e3e8ef; --ed-header:#e6ebf1;
+  --ed-panel:#f6f8fb; --ed-panel-2:#eef2f7; --ed-panel-3:#e1e7f0;
+  --ed-edge:#c4cddb; --ed-edge-soft:#d6dde7; --ed-edge-strong:#a6b2c3;
+  --ed-ink:#172230; --ed-ink-2:#46536a; --ed-ink-3:#69758a; --ed-ink-4:#98a2b1;
+  --ed-accent:#2f6fe0; --ed-accent-2:#1f5fd0; --ed-accent-bg:#dce7fb; --ed-accent-edge:#a6c2f0;
+  --ed-pos:#1a9e5c; --ed-pos-ink:#0f7a45; --ed-neg:#d63b3b; --ed-neg-ink:#b21e1e;
+  --ed-live:#16a34a; --ed-warn:#a9750a; --ed-stale:#b45309; --ed-alert:#cf2e2e; --ed-quiet:#8a94a4;
+  --ed-native:#0f7a45; --ed-derived:#1f5fd0; --ed-proxy:#8a6300; --ed-research:#6d28d9;
+  --ed-native-bg:#d8efe0; --ed-derived-bg:#dce7fb; --ed-proxy-bg:#f2e8cd; --ed-research-bg:#ebe0fb;
+  --ed-heat-pos:#1a9e5c; --ed-heat-neg:#d63b3b; --ed-heat-zero:#e6ebf1;
+  color-scheme: light;
+}
+
+/* SYSTEM mode (no explicit data-theme): a light OS gets the light palette */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --ed-bg:#e9edf3; --ed-rail:#e3e8ef; --ed-header:#e6ebf1;
+    --ed-panel:#f6f8fb; --ed-panel-2:#eef2f7; --ed-panel-3:#e1e7f0;
+    --ed-edge:#c4cddb; --ed-edge-soft:#d6dde7; --ed-edge-strong:#a6b2c3;
+    --ed-ink:#172230; --ed-ink-2:#46536a; --ed-ink-3:#69758a; --ed-ink-4:#98a2b1;
+    --ed-accent:#2f6fe0; --ed-accent-2:#1f5fd0; --ed-accent-bg:#dce7fb; --ed-accent-edge:#a6c2f0;
+    --ed-pos:#1a9e5c; --ed-pos-ink:#0f7a45; --ed-neg:#d63b3b; --ed-neg-ink:#b21e1e;
+    --ed-live:#16a34a; --ed-warn:#a9750a; --ed-stale:#b45309; --ed-alert:#cf2e2e; --ed-quiet:#8a94a4;
+    --ed-native:#0f7a45; --ed-derived:#1f5fd0; --ed-proxy:#8a6300; --ed-research:#6d28d9;
+    --ed-native-bg:#d8efe0; --ed-derived-bg:#dce7fb; --ed-proxy-bg:#f2e8cd; --ed-research-bg:#ebe0fb;
+    --ed-heat-pos:#1a9e5c; --ed-heat-neg:#d63b3b; --ed-heat-zero:#e6ebf1;
+    color-scheme: light;
+  }
 }
