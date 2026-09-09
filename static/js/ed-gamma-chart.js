@@ -49,15 +49,20 @@
         (barsData || strikesData ? 'no bars / per-strike gamma for this symbol' : 'no console serving /api/bars1m + /api/terrain/strikes') + '</div></div>';
       return;
     }
-    // price domain over bars + strikes window (±4% of spot)
+    // #3: price domain over bars + a strikes window around spot. The window is the ONE shared Gamma
+    // scope (Auto ±4% / Wider / All available); srows is the current canonical input, disclosed below.
+    var CHART_BASE = 0.04;
+    var frac = (window.EdShell && window.EdShell.scopeWindow) ? window.EdShell.scopeWindow(CHART_BASE) : CHART_BASE;
     var lo = Infinity, hi = -Infinity;
     bars.forEach(function (b) { if (b.l != null) lo = Math.min(lo, b.l); if (b.h != null) hi = Math.max(hi, b.h); });
-    var win = srows.filter(function (r) { return isFinite(spot) ? Math.abs(r[0] - spot) <= spot * 0.04 : true; });
+    var win = srows.filter(function (r) { return (isFinite(spot) && isFinite(frac)) ? Math.abs(r[0] - spot) <= spot * frac : true; });
     win.forEach(function (r) { lo = Math.min(lo, r[0]); hi = Math.max(hi, r[0]); });
     if (!isFinite(lo) || !isFinite(hi) || lo === hi) { lo = (spot || 100) * 0.98; hi = (spot || 100) * 1.02; }
     var pad = (hi - lo) * 0.04; lo -= pad; hi += pad;
 
-    var legend = '<div class="chart-legend">' +
+    var note = (window.EdShell && window.EdShell.scopeNote)
+      ? window.EdShell.scopeNote({ base: CHART_BASE, total: srows.length, shown: win.length, spot: spot }) : '';
+    var legend = note + '<div class="chart-legend">' +
       '<span><span class="sw" style="background:var(--ed-pos)"></span>+GEX</span>' +
       '<span><span class="sw" style="background:var(--ed-neg)"></span>−GEX</span>' +
       '<span><span class="sw" style="background:var(--ed-ink)"></span>spot ' + (isFinite(spot) ? spot.toFixed(2) : '—') + '</span>' +
@@ -190,6 +195,7 @@
 
   document.addEventListener('ed:view', load);
   document.addEventListener('ed:ticker', load);
+  document.addEventListener('ed:scope', load);   // #3: re-window on a scope change
   document.addEventListener('ed:refresh', function (e) { if (e.detail && e.detail.slow) load(); });
   document.addEventListener('ed:strike', function () { applyChartHighlight(); });   // A: cross-panel sync
   document.addEventListener('ed:theme', load);   // re-render SVG for the new theme's tokens

@@ -51,11 +51,20 @@
   function _ls(k, d) { try { var v = localStorage.getItem(k); return (v == null || v === '') ? d : v; } catch (e) { return d; } }
   function _lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
   // D: persist UI navigation state (client state, not market truth)
+  // #3: ONE presentation-scope for the Gamma workspace. The chart/GEX-by-strike panels window the
+  // canonical strikes around spot for readability; this is the SINGLE control of that window, shared
+  // by every windowed panel so nothing is silently clipped. Modes: AUTO (each panel's near-money
+  // base), WIDER (2x that base), ALL (every strike in the current canonical input). Presentation
+  // only — the window never changes any value, only which canonical strikes are on screen.
+  var SCOPE_MODES = ['auto', 'wider', 'all'];
+  var SCOPE_WIDER_MULT = 2;
+  function _lsScope() { var v = _ls('ed_scope', 'auto'); return SCOPE_MODES.indexOf(v) !== -1 ? v : 'auto'; }
   var state = {
     ticker: (_ls(TICKER_KEY, 'SPY')).toUpperCase(),
     workspace: _ls('ed_ws', app.getAttribute('data-workspace') || 'options'),
     subview: _ls('ed_sub', app.getAttribute('data-subview') || 'gamma'),
     view: _ls('ed_view', app.getAttribute('data-view') || 'heatmap'),
+    scope: _lsScope(),
     selStrike: null, selExpiry: null
   };
   function normalizeState() {   // restored state must be valid for the current NAV config
@@ -139,6 +148,16 @@
     var cm = document.getElementById('chartModes'); if (cm) cm.hidden = state.view !== 'chart';
     var sc = document.getElementById('heatScope'); if (sc) sc.style.display = state.view === 'heatmap' ? '' : 'none';
   }
+  function reflectScopeVisibility() {
+    // #3: the scope control lives in the global view-controls bar. It governs the windowed Gamma
+    // panels — the Chart main view AND the GEX-by-strike side panel, which is on screen for every
+    // gamma view (heatmap included). So it shows for the whole gamma subview; the heatmap main view
+    // itself ignores scope (it serves the server's strike_count-bounded window whole). Hidden
+    // entirely outside options/gamma.
+    var scp = document.getElementById('scopeCtl'); if (!scp) return;
+    scp.hidden = !(state.workspace === 'options' && state.subview === 'gamma');
+    if (!scp.hidden) reflectScope();
+  }
 
   function syncAttrs() {
     app.setAttribute('data-workspace', state.workspace);
@@ -152,6 +171,7 @@
     if (aiWs) aiWs.textContent = NAV[state.workspace].title.replace(/\s*\/\s*/g, ' / ') +
       (state.subview ? ' · ' + state.subview : '');
     showMainView();
+    reflectScopeVisibility();
     document.dispatchEvent(new CustomEvent('ed:view', { detail: Object.assign({}, state) }));
   }
 
@@ -170,6 +190,42 @@
     renderSubnav(); renderViewbar(); syncAttrs();
   }
   function setView(v) { state.view = v; renderViewbar(); syncAttrs(); }
+
+  // #3: presentation-scope — one control, one state, one event for every windowed Gamma panel.
+  var SCOPE_LABEL = { auto: 'Auto', wider: 'Wider', all: 'All available' };
+  function reflectScope() {
+    var ctl = document.getElementById('scopeCtl');
+    if (ctl) ctl.querySelectorAll('.scbtn').forEach(function (b) {
+      b.classList.toggle('on', b.getAttribute('data-scope') === state.scope);
+    });
+  }
+  function setScope(mode) {
+    if (SCOPE_MODES.indexOf(mode) === -1 || mode === state.scope) { reflectScope(); return; }
+    state.scope = mode; _lsSet('ed_scope', mode); reflectScope();
+    document.dispatchEvent(new CustomEvent('ed:scope', { detail: { scope: mode } }));
+  }
+  // map a panel's AUTO near-money base fraction to the effective window for the current mode.
+  // ALL -> Infinity (no clip: every canonical strike). This is the ONE scope policy.
+  function scopeWindow(baseFrac) {
+    if (state.scope === 'all') return Infinity;
+    if (state.scope === 'wider') return baseFrac * SCOPE_WIDER_MULT;
+    return baseFrac;
+  }
+  // #3: the ONE disclosure line every windowed panel prints — states the mode, the window, and how
+  // many of the canonical strikes are on screen vs clipped. A clip is NEVER silent: when strikes are
+  // outside the window the count is shown with how to widen. total/shown are canonical-input counts.
+  function scopeNote(opts) {
+    opts = opts || {};
+    var total = opts.total | 0, shown = opts.shown | 0, hidden = Math.max(0, total - shown);
+    var frac = scopeWindow(opts.base || 0);
+    var winTxt = isFinite(frac) ? ('±' + (frac * 100).toFixed(frac * 100 < 10 ? 1 : 0) + '% around spot')
+      : 'all available strikes';
+    var main = (SCOPE_LABEL[state.scope] || state.scope) + ' · ' + winTxt + ' · ' +
+      shown + ' of ' + total + ' strikes';
+    var clip = hidden > 0
+      ? '<span class="clip">' + hidden + ' outside view — widen with Wider / All available</span>' : '';
+    return '<div class="scope-note"><span>' + main + '</span>' + clip + '</div>';
+  }
 
   // ================= watchlist (editable foundation, localStorage) =================
   function loadWL() {
@@ -371,6 +427,11 @@
     document.querySelectorAll('.navitem[data-ws]').forEach(function (n) {
       n.addEventListener('click', function () { setWorkspace(n.getAttribute('data-ws')); });
     });
+    // #3: presentation-scope control (one control for every windowed Gamma panel)
+    var scopeCtl = document.getElementById('scopeCtl');
+    if (scopeCtl) scopeCtl.querySelectorAll('.scbtn').forEach(function (b) {
+      b.addEventListener('click', function () { setScope(b.getAttribute('data-scope')); });
+    });
     // subnav/viewbar initial — restore persisted workspace/subview/view (D), validated to NAV
     normalizeState();
     renderSubnav(); renderViewbar(); showPane(); syncAttrs();
@@ -404,5 +465,7 @@
   // expose for view modules + tests (no trading logic here)
   window.EdShell = { getState: function () { return Object.assign({}, state); }, setTicker: setTicker,
     addSymbol: addSymbol, removeSymbol: removeSymbol, setWorkspace: setWorkspace, setStrike: setStrike,
-    setTheme: applyTheme };
+    setTheme: applyTheme,
+    setScope: setScope, getScope: function () { return state.scope; },
+    scopeWindow: scopeWindow, scopeNote: scopeNote };
 })();

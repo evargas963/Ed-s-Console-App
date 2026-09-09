@@ -105,13 +105,19 @@
       return;
     }
     var spot = Number(d.spot);
-    // window ±6% around spot for readability (presentation), high strikes on top
-    var win = rows.filter(function (r) { return isFinite(spot) ? Math.abs(r[0] - spot) <= spot * 0.06 : true; })
+    // #3: window around spot for readability (presentation), high strikes on top. The window is the
+    // ONE shared Gamma scope (Auto ±6% / Wider / All available); `rows` is the current canonical
+    // input, so the disclosure below states exactly how many of them are on screen vs clipped.
+    var GBS_BASE = 0.06;
+    var frac = (window.EdShell && window.EdShell.scopeWindow) ? window.EdShell.scopeWindow(GBS_BASE) : GBS_BASE;
+    var win = rows.filter(function (r) { return (isFinite(spot) && isFinite(frac)) ? Math.abs(r[0] - spot) <= spot * frac : true; })
       .sort(function (a, b) { return b[0] - a[0]; });
+    var note = (window.EdShell && window.EdShell.scopeNote)
+      ? window.EdShell.scopeNote({ base: GBS_BASE, total: rows.length, shown: win.length, spot: spot }) : '';
     var maxAbs = win.reduce(function (m, r) { return Math.max(m, Math.abs(Number(r[1]) || 0)); }, 0) || 1;
     var spotStrike = win.reduce(function (best, r) {
       return (best == null || Math.abs(r[0] - spot) < Math.abs(best - spot)) ? r[0] : best; }, null);
-    var h = '<div class="gbs">';
+    var h = note + '<div class="gbs">';
     win.forEach(function (r) {
       var k = r[0], v = Number(r[1]) || 0, w = Math.min(100, Math.abs(v) / maxAbs * 100);
       var pos = v >= 0;
@@ -173,6 +179,7 @@
   function loadAll() { loadLevels(); loadGbs(); }
   document.addEventListener('ed:ticker', loadAll);
   document.addEventListener('ed:view', loadAll);
+  document.addEventListener('ed:scope', loadGbs);   // #3: re-window the GEX-by-strike panel only
   document.addEventListener('ed:refresh', function (e) { if (e.detail && e.detail.slow) loadAll(); });
   document.addEventListener('ed:strike', function (e) {
     var det = e.detail || {}; _lastExpiry = det.expiry || _lastExpiry;

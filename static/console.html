@@ -217,6 +217,19 @@
     padding:3px 9px;border:1px solid var(--ed-edge);border-radius:var(--ed-r);cursor:pointer}
   .cmode:hover{color:var(--ed-ink);border-color:var(--ed-edge-strong)}
   .cmode.on{color:var(--ed-accent-2);background:var(--ed-accent-bg);border-color:var(--ed-accent-edge)}
+  /* #3: presentation-scope control (Auto / Wider / All available) */
+  .scope{display:inline-flex;align-items:center;gap:3px}
+  .scope .cap{margin-right:2px}
+  .scbtn{font-family:var(--ed-sans);font-size:10px;letter-spacing:.03em;color:var(--ed-ink-2);
+    padding:3px 8px;border:1px solid var(--ed-edge);border-radius:var(--ed-r);cursor:pointer;background:none}
+  .scbtn:hover{color:var(--ed-ink);border-color:var(--ed-edge-strong)}
+  .scbtn.on{color:var(--ed-accent-2);background:var(--ed-accent-bg);border-color:var(--ed-accent-edge)}
+  /* #3: per-panel window disclosure line — never let a clip be silent. Sticky so it stays visible
+     when the panel body auto-scrolls the spot strike into view. */
+  .scope-note{position:sticky;top:0;z-index:2;background:var(--ed-panel);font-family:var(--ed-mono);
+    font-size:10px;color:var(--ed-ink-3);padding:4px 0 6px;margin:-2px 0 2px;display:flex;gap:8px;
+    align-items:baseline;flex-wrap:wrap;border-bottom:1px solid var(--ed-edge)}
+  .scope-note .clip{color:var(--ed-warn)}
   .chart-svg{width:100%;height:100%;display:block}
   .chart-svg text{font-family:var(--ed-mono);fill:var(--ed-ink-2)}
   .chart-legend{display:flex;gap:14px;font-family:var(--ed-mono);font-size:10px;color:var(--ed-ink-3);padding:2px 0 6px}
@@ -343,6 +356,12 @@
         <div class="sel"><span class="cap">Sym</span><span id="cSym">—</span></div>
         <div class="sel"><span class="cap">Expiry</span><span id="cExpiry">All</span></div>
         <div class="sel"><span class="cap">Measure</span><span id="cMeasure">GEX</span></div>
+        <div class="scope" id="scopeCtl" hidden title="View window around spot for the chart / GEX-by-strike panels — presentation only, never changes a value">
+          <span class="cap">View</span>
+          <button class="scbtn on" data-scope="auto">Auto</button>
+          <button class="scbtn" data-scope="wider">Wider</button>
+          <button class="scbtn" data-scope="all">All available</button>
+        </div>
         <button class="aibtn" id="aiOpen"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 3a4 4 0 0 1 4 4c2 1 3 3 3 5a5 5 0 0 1-5 5H8a5 5 0 0 1-5-5c0-2 1-4 3-5a4 4 0 0 1 4-4z"/><path d="M9 20h6"/></svg>Analyst</button>
       </div>
     </div>
