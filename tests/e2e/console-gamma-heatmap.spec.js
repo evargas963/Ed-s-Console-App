@@ -422,6 +422,29 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     expect(ok.bookBound).toBeNull();                                       // book binding NOT_PROVEN here
   });
 
+  test('#1 perf: a large heatmap surface renders synchronously without pathological jank', async ({ page }) => {
+    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    const ms = await page.evaluate(() => {
+      var host = document.getElementById('heatBody');
+      var exps = [], strikes = [], cells = [];
+      for (var i = 0; i < 20; i++) exps.push({ expiry: '2026-' + (i < 4 ? '09' : '12') + '-' + String(10 + (i % 20)).padStart(2, '0'), dte: i * 3 });
+      for (var s = 0; s < 200; s++) strikes.push(500 + s);
+      for (var si = 0; si < strikes.length; si++) {
+        var row = [];
+        for (var j = 0; j < exps.length; j++) row.push((j % 2 ? 1 : -1) * 1000 * ((si % 50) + 1));
+        cells.push({ strike: strikes[si], gex: row });
+      }
+      var surface = { available: true, source: 'terrain_live_cache', live: true, spot: 600, complete: false,
+        coverage: { chain_basis: 'full' }, expirations: exps, strikes: strikes, cells: cells };
+      var t0 = performance.now();
+      window.EdGamma.renderSurface(host, surface);   // 200 strikes x 20 expiries = 4000 cells
+      var dt = performance.now() - t0;
+      return { dt: dt, cellCount: document.querySelectorAll('#heatBody .hcell').length };
+    }).then((r) => { console.log('[#1 perf] heatmap render:', Math.round(r.dt), 'ms for', r.cellCount, 'cells'); return r.dt; });
+    // no arbitrary tight SLA — a generous ceiling that only fails on pathological render behaviour
+    expect(ms).toBeLessThan(1500);
+  });
+
   test('responsive proof: 2560x1440 and 1920x1080 screenshots', async ({ page }) => {
     await page.setViewportSize({ width: 2560, height: 1440 });
     await page.goto('/console', { waitUntil: 'domcontentloaded' });

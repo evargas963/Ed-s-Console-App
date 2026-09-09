@@ -67,6 +67,17 @@ def test_freshness_is_the_one_terrain_authority_not_a_second_policy():
         _clear(tk)
 
 
+def test_surface_demand_gate_only_projects_viewed_tickers():
+    # perf gate (#1): the terrain loop projects the (measurable) surface ONLY for tickers whose
+    # surface was requested within the TTL — an unviewed ticker pays no surface cost.
+    tk = ticker_storage_key("NFLX")
+    server._gamma_surface_demand.pop(tk, None)
+    assert server._gamma_surface_wanted(tk) is False        # unviewed -> loop skips the projection
+    _call(tk)                                               # a request marks it wanted
+    assert server._gamma_surface_wanted(tk) is True
+    server._gamma_surface_demand.pop(tk, None)
+
+
 def test_fallback_is_labelled_not_live_never_intraday():
     tk = ticker_storage_key("ZZTESTX")   # no live cache, no banked chain in the offline test DB
     _clear(tk)

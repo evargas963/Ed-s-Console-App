@@ -12072,6 +12072,21 @@ def terrain_cycle_tickers(
     return sentinels + slice_now, deferred
 
 
+# RC-UI-1 #1: gamma-surface demand registry — the /api/options/gamma-surface endpoint marks a
+# ticker "wanted" on each request; _terrain_refresh_one projects the (measurable) strike x expiry
+# surface only for tickers wanted within the TTL, so unviewed tickers pay no surface cost.
+_gamma_surface_demand: dict = {}
+GAMMA_SURFACE_DEMAND_TTL = 300.0
+
+
+def _note_gamma_surface_demand(tk: str) -> None:
+    _gamma_surface_demand[tk] = time.time()
+
+
+def _gamma_surface_wanted(tk: str) -> bool:
+    return (time.time() - _gamma_surface_demand.get(tk, 0.0)) < GAMMA_SURFACE_DEMAND_TTL
+
+
 def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
     """Fetch one chain and compute terrain into the cache. Never raises.
 
@@ -12198,8 +12213,15 @@ def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
         # temporally coherent with terrain instead of a morning snapshot. Fail-closed: a projection
         # error leaves the field absent (endpoint falls back to the LABELLED banked-morning
         # reference); it must never take down the terrain refresh that feeds the live desk.
+        # RC-UI-1 #1 (perf): the per-expiry projection is measurable (~86 ms equity, ~1.36 s for a
+        # full SPXW book). Gate it to tickers whose gamma surface was actually requested recently, so
+        # an unviewed ticker pays ZERO surface cost; a viewed ticker gets the live surface each cycle
+        # (dwarfed by the seconds-long vendor fetch already in this cycle).
         try:
-            payload["_gamma_surface"] = project_gamma_surface(contracts, float(spot)) if spot else None
+            payload["_gamma_surface"] = (
+                project_gamma_surface(contracts, float(spot))
+                if (spot and _gamma_surface_wanted(tk)) else None
+            )
         except Exception as _gs_e:  # institutional-swallow-ok: projection is a cache side-effect
             payload["_gamma_surface"] = None
             log.warning("gamma-surface projection failed for %s: %s", tk, _gs_e)
@@ -13536,6 +13558,7 @@ def get_options_gamma_surface(ticker: str = Query(default=DEFAULT_TICKER)):
 
     tk = ticker_storage_key(ticker or DEFAULT_TICKER)
     now = time.time()
+    _note_gamma_surface_demand(tk)   # mark viewed -> the terrain loop will project this ticker's surface
 
     # ---- LIVE: surface projected this cycle from the canonical live terrain wide chain ----
     live = terrain_cache_get(tk)
