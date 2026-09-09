@@ -78,6 +78,30 @@ def test_surface_demand_gate_only_projects_viewed_tickers():
     server._gamma_surface_demand.pop(tk, None)
 
 
+def test_warming_true_only_when_terrain_eligible(monkeypatch):
+    # #1.3: WARMING is claimed only when the terrain producer can actually refresh THIS ticker,
+    # reusing terrain_staleness's canonical output (levels_refresh_active + not quarantined/paused).
+    tk = ticker_storage_key("SPY")
+    with server._terrain_cache_lock:
+        server._terrain_cache[tk] = {"computed_ts_utc": time.time(), "spot": 100.0}   # on the board, no surface yet
+    server._GAMMA_SURFACE_CACHE.pop(tk, None)
+    monkeypatch.setattr(server, "terrain_skip_reason", lambda t: None)
+    monkeypatch.setattr(server, "terrain_quarantine_reason", lambda t: None)
+    monkeypatch.setattr(server, "terrain_quarantine_state", lambda t: {})
+    try:
+        monkeypatch.setattr(server, "_is_loggable_session", lambda: True)   # eligible
+        d = _call(tk)
+        assert d["warming"] is True and d["requested"] is True
+        monkeypatch.setattr(server, "_is_loggable_session", lambda: False)  # out of session -> not warming
+        server._GAMMA_SURFACE_CACHE.pop(tk, None)
+        d2 = _call(tk)
+        assert d2["warming"] is False and d2["requested"] is True           # still on the board -> requested
+    finally:
+        with server._terrain_cache_lock:
+            server._terrain_cache.pop(tk, None)
+        server._GAMMA_SURFACE_CACHE.pop(tk, None)
+
+
 def test_fallback_is_labelled_not_live_never_intraday():
     tk = ticker_storage_key("ZZTESTX")   # no live cache, no banked chain in the offline test DB
     _clear(tk)

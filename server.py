@@ -13616,11 +13616,17 @@ def get_options_gamma_surface(ticker: str = Query(default=DEFAULT_TICKER)):
     hit = _GAMMA_SURFACE_CACHE.get(tk)
     if hit and now - hit[0] < 300.0:
         return JSONResponse(hit[1])
-    # #1.3: "warming" is honest only when the terrain loop actually covers this ticker (a terrain
-    # snapshot exists), so the just-recorded demand WILL produce a live surface on its next cycle.
-    _warming = bool(live)
+    # #1.3: claim WARMING only when the terrain producer can ACTUALLY refresh THIS ticker. Reuse
+    # terrain_staleness's canonical output (already merged onto `live` by terrain_cache_get) — no
+    # copied scheduler policy: a snapshot exists (ticker is on the board) AND the loop is refreshing
+    # (session active) AND it is not quarantined/paused. Otherwise the ticker is on the board but not
+    # currently eligible (e.g. after hours) -> requested/awaiting, never a false "warming"; and a
+    # ticker with no snapshot at all (not on the board) gets neither claim.
+    _on_board = bool(live)
+    _warming = (_on_board and bool(live.get("levels_refresh_active"))
+                and not live.get("levels_quarantined") and not live.get("levels_paused_on_purpose"))
     payload: dict = {"ticker": tk, "symbol": tk, "available": False, "source": "unavailable",
-                     "live": False, "stale": True, "warming": _warming,
+                     "live": False, "stale": True, "warming": _warming, "requested": _on_board,
                      "reason": "no live terrain surface and no banked wide chain"}
     try:
         db = get_db()
@@ -13638,7 +13644,8 @@ def get_options_gamma_surface(ticker: str = Query(default=DEFAULT_TICKER)):
             surface = project_gamma_surface(json.loads(c1), spot1)
             payload = {
                 "ticker": tk, "symbol": tk, "available": True,
-                "source": "banked_morning_reference", "live": False, "stale": True, "warming": _warming,
+                "source": "banked_morning_reference", "live": False, "stale": True,
+                "warming": _warming, "requested": _on_board,
                 "degraded": ("live terrain surface unavailable — showing banked morning wide "
                              "reference (morning spot + morning Greeks; NOT intraday, NOT proven complete)"),
                 "et_date": et_date, "spot": spot1,
@@ -13659,7 +13666,8 @@ def get_options_gamma_surface(ticker: str = Query(default=DEFAULT_TICKER)):
             }
     except Exception as e:  # fail-closed to explicit unavailability
         payload = {"ticker": tk, "symbol": tk, "available": False, "source": "unavailable",
-                   "live": False, "stale": True, "reason": f"gamma-surface read failed: {e}"}
+                   "live": False, "stale": True, "warming": _warming, "requested": _on_board,
+                   "reason": f"gamma-surface read failed: {e}"}
     _GAMMA_SURFACE_CACHE[tk] = (now, payload)
     return JSONResponse(payload)
 

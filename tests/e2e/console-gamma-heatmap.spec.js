@@ -445,26 +445,46 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     expect(ms).toBeLessThan(1500);
   });
 
-  test('#1 perf: unchanged surface revision skips the table rebuild; changed revision rebuilds', async ({ page }) => {
+  test('#1 revision: DATA change rebuilds; STATUS change updates without rebuild (A-D)', async ({ page }) => {
     await page.goto('/console', { waitUntil: 'domcontentloaded' });
-    const out = await page.evaluate(() => {
+    const r = await page.evaluate(() => {
       var host = document.getElementById('heatBody');
-      var mk = function (asof) {
-        return { available: true, source: 'terrain_live_cache', live: true, stale: false, spot: 583.41,
-          complete: false, chain_as_of_ts_utc: asof, spot_as_of_ts_utc: asof, chain_basis: 'full', age_sec: 3,
-          coverage: { chain_basis: 'full' }, expirations: [{ expiry: '2026-09-11', dte: 2 }],
-          strikes: [583], cells: [{ strike: 583, gex: [958600] }] };
+      var R = window.EdGamma.renderSurface;
+      var mark = function () { var c = host.querySelector('.hcell'); if (c) c.setAttribute('data-marker', '1'); };
+      var marked = function () { return !!host.querySelector('.hcell[data-marker="1"]'); };
+      var banner = function () { var b = host.querySelector('.heat-banner'); return b ? b.textContent : ''; };
+      var scope = function () { return document.getElementById('heatScope').textContent; };
+      var live = function (age, stale) {
+        return { available: true, source: 'terrain_live_cache', live: true, stale: !!stale, warming: false, spot: 583.41,
+          complete: false, chain_as_of_ts_utc: 1000, spot_as_of_ts_utc: 1000, chain_basis: 'full', age_sec: age,
+          coverage: { chain_basis: 'full' }, expirations: [{ expiry: '2026-09-11', dte: 2 }], strikes: [583], cells: [{ strike: 583, gex: [958600] }] };
       };
-      window.EdGamma.renderSurface(host, mk(1000));
-      host.querySelector('.hcell').setAttribute('data-marker', '1');
-      window.EdGamma.renderSurface(host, mk(1000));                    // same as-of -> same revision -> skip rebuild
-      var persisted = !!host.querySelector('.hcell[data-marker="1"]');
-      window.EdGamma.renderSurface(host, mk(2000));                    // new as-of -> new revision -> rebuild
-      var rebuilt = !host.querySelector('.hcell[data-marker="1"]');
-      return { persisted: persisted, rebuilt: rebuilt };
+      var banked = function (etd, warming) {
+        return { available: true, source: 'banked_morning_reference', live: false, stale: true, warming: warming, requested: true,
+          chain_as_of_ts_utc: null, spot_as_of_ts_utc: null, chain_basis: 'banked_morning', et_date: etd, age_sec: null,
+          coverage: { window: 'banked_morning_wide' }, degraded: 'banked morning wide reference (not intraday)',
+          expirations: [{ expiry: '2026-09-11', dte: 2 }], strikes: [583], cells: [{ strike: 583, gex: [100000] }] };
+      };
+      // A: same live DATA revision, age changes -> table preserved, scope age updates
+      R(host, live(3)); mark(); R(host, live(99));
+      var A = { preserved: marked(), scopeHasAge: scope().indexOf('99s') !== -1 };
+      // D: stale flips with no cell change -> no rebuild, but the STALE banner appears (not frozen)
+      R(host, live(3)); mark(); R(host, live(3, true));
+      var D = { preserved: marked(), staleBanner: banner().indexOf('STALE') !== -1 };
+      // B: banked et_date changes -> table rebuilds
+      R(host, banked('2026-09-08', false)); mark(); R(host, banked('2026-09-09', false));
+      var B = { rebuilt: !marked() };
+      // C: warming true->false, SAME banked et_date -> table preserved, banner changes
+      R(host, banked('2026-09-08', true)); mark();
+      var cWarm = banner();
+      R(host, banked('2026-09-08', false));
+      var C = { preserved: marked(), warmToRequested: cWarm.indexOf('WARMING') !== -1 && banner().indexOf('REQUESTED') !== -1 };
+      return { A: A, B: B, C: C, D: D };
     });
-    expect(out.persisted).toBe(true);   // unchanged revision did NOT rebuild the ~4k-cell table
-    expect(out.rebuilt).toBe(true);     // changed revision DID rebuild
+    expect(r.A.preserved).toBe(true); expect(r.A.scopeHasAge).toBe(true);
+    expect(r.D.preserved).toBe(true); expect(r.D.staleBanner).toBe(true);
+    expect(r.B.rebuilt).toBe(true);
+    expect(r.C.preserved).toBe(true); expect(r.C.warmToRequested).toBe(true);
   });
 
   test('#1.3 a warming reference surface shows LIVE SURFACE WARMING (never a final state)', async ({ page }) => {

@@ -79,7 +79,7 @@
     // _lastRevision so the recolour still rebuilds.
     var rev = surfaceRevision(surface);
     if (rev === _lastRevision && host.querySelector('.heat')) {
-      updateScope(surface); applyStrikeHighlight(host);
+      applyStatus(host, surface); applyStrikeHighlight(host);   // data unchanged: refresh status only
       return;
     }
     _lastRevision = rev;
@@ -90,22 +90,7 @@
     var spotIdx = nearestStrikeIndex(strikes, spot);
     // freshness / source — fail stale visibly (RC-UI-1 live-source rewire)
     var live = surface.live !== false, stale = !!surface.stale;
-    var banner = '';
-    if (!live || stale) {
-      // #1.3: a just-viewed ticker the terrain loop covers is WARMING (live surface arriving next
-      // cycle) — never let the morning reference look like the final state after Gamma was opened.
-      var warming = !live && surface.warming === true;
-      var label = warming ? 'LIVE SURFACE WARMING' : (!live ? 'MORNING REFERENCE' : 'STALE');
-      var cls = warming ? 'warming' : (!live ? 'ref' : 'stale');
-      var msg = surface.degraded || (!live ? 'banked morning reference — not intraday' : 'live surface is stale');
-      banner = '<div class="heat-banner ' + cls + '">' + label + ' — ' + escapeHtml(msg) + '</div>';
-    }
-    // #2: a NARROWED live chain basis (timeout ladder: full -> dte<=120 -> dte<=45) must not look
-    // identical to the normal full basis — surface it prominently.
-    if (live && surface.chain_basis && surface.chain_basis !== 'full') {
-      banner += '<div class="heat-banner degraded">NARROWED — live chain basis "' + escapeHtml(surface.chain_basis) +
-        '" (reduced expiry window under load), not the usual full basis</div>';
-    }
+    var banner = buildBanner(surface);   // status banners (warming/requested/stale/ref + narrowed)
     // #7: compact shade legend (shade = |GEX$| magnitude; the actual dollar value is printed in every cell)
     var legend = '<div class="heat-legend"><span>−' + formatUsd(maxAbs) + '</span><span class="grad"></span>' +
       '<span>+' + formatUsd(maxAbs) + '</span><span style="margin-left:8px">shade = |GEX$| · value in each cell</span></div>';
@@ -170,8 +155,39 @@
   // skip the full table rebuild. Not a semantic client fingerprint of the data; just the canonical
   // as-of / source / basis / freshness fields the server already stamps.
   function surfaceRevision(s) {
+    // DATA revision only — decides whether the expensive TABLE rebuilds. Status (live/stale/warming/
+    // age) is deliberately NOT here; it is refreshed every time via applyStatus. et_date discriminates
+    // banked captures (whose chain/spot as-of are null) so a new morning capture cannot reuse the grid.
     if (!s || s.available === false) return 'unavailable|' + (s && s.source);
-    return [s.source, s.chain_as_of_ts_utc, s.spot_as_of_ts_utc, s.chain_basis, s.live, s.stale].join('|');
+    return [s.source, s.chain_as_of_ts_utc, s.spot_as_of_ts_utc, s.chain_basis, s.et_date].join('|');
+  }
+  // lightweight STATUS: banner (warming/requested/stale/reference/degraded) + recede dimming + scope
+  // age — always refreshed, even when the DATA revision is unchanged, so nothing is left frozen.
+  function buildBanner(surface) {
+    var live = surface.live !== false, stale = !!surface.stale, out = '';
+    if (!live || stale) {
+      var warming = !live && surface.warming === true;
+      var requested = !live && !warming && surface.requested === true;
+      var label = warming ? 'LIVE SURFACE WARMING' : requested ? 'LIVE SURFACE REQUESTED'
+        : (!live ? 'MORNING REFERENCE' : 'STALE');
+      var cls = (warming || requested) ? 'warming' : (!live ? 'ref' : 'stale');
+      var msg = requested ? (surface.degraded || 'awaiting next eligible terrain refresh')
+        : (surface.degraded || (!live ? 'banked morning reference — not intraday' : 'live surface is stale'));
+      out += '<div class="heat-banner ' + cls + '">' + label + ' — ' + escapeHtml(msg) + '</div>';
+    }
+    if (live && surface.chain_basis && surface.chain_basis !== 'full') {
+      out += '<div class="heat-banner degraded">NARROWED — live chain basis "' + escapeHtml(surface.chain_basis) +
+        '" (reduced expiry window under load), not the usual full basis</div>';
+    }
+    return out;
+  }
+  function applyStatus(host, surface) {   // refresh status WITHOUT rebuilding the table
+    Array.prototype.slice.call(host.querySelectorAll('.heat-banner')).forEach(function (n) { n.remove(); });
+    var b = buildBanner(surface);
+    if (b) host.insertAdjacentHTML('afterbegin', b);
+    var wrap = host.querySelector('.heat-wrap');
+    if (wrap) wrap.classList.toggle('recede', surface.live === false || !!surface.stale);
+    updateScope(surface);
   }
   function updateScope(surface) {   // lightweight: only the age/scope tag in the panel header
     var strikes = surface.strikes || [], exps = surface.expirations || [], spot = Number(surface.spot);
