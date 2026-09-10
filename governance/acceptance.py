@@ -398,10 +398,13 @@ def trust_anchor_paths(root: Path) -> list[str]:
     by the BASE copy and lands only with a base-side `AUTHORIZE anchor:` row."""
     anchors: set[str] = set()
     sc = load_tree_module(root, "tools.stop_chain")
+    pi = load_tree_module(root, "tools.precommit_institutional")
+    for owner, fn in ((sc, "wired_executables"), (sc, "HOOK_WIRINGS"), (pi, "local_hooks")):
+        if not hasattr(owner, fn):
+            raise LookupError(f"{owner.__name__.rsplit('_', 2)[-2]}: the tree's owner has no {fn} (predates this contract)")
     anchors.update("/".join(parts) for _name, parts in sc.HOOK_WIRINGS)
     anchors.update(sc.wired_executables(root))
     anchors.add(".pre-commit-config.yaml")
-    pi = load_tree_module(root, "tools.precommit_institutional")
     for entry in pi.local_hooks(root).values():
         anchors.update(f"tools/{tok}.py" for tok in _TOOL_TOKEN_RE.findall(entry))
     anchors.update(workflow_files(root))

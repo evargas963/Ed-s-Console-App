@@ -732,7 +732,7 @@ def trusted_main(args) -> int:
         # ── trust anchors (REPAIR 3) ──
         try:
             anchors = A.trust_anchor_paths(base_wt)
-        except LookupError as e:
+        except (LookupError, AttributeError) as e:
             # the base predates an owner the derivation asks for (bootstrap): the anchors
             # are what the base can enumerate about itself, never less than the judge's set
             print(f"BOOTSTRAP: base cannot enumerate every anchor owner ({e}); using the judge's derivation on the base tree where it resolves")
