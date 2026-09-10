@@ -2,9 +2,17 @@
 gamma surface only for a demanded (viewed) ticker, exactly once with that cycle's contracts+spot, and
 a projection failure never fails the terrain refresh. Heavy leaf deps are monkeypatched (existing
 seam); no new production abstraction was created to make this testable."""
+import json
 import types
+from pathlib import Path
 
 import server
+
+#: A REAL complete Schwab capture (native rows verbatim) stands in for the cycle's flattened
+#: chain — the producer hands project_gamma_surface whatever flatten_chain_contracts returns.
+_REAL_CHAIN = json.loads(
+    (Path(__file__).resolve().parent / "fixtures" / "real_cde_complete_chain_half_dollar.json")
+    .read_text(encoding="utf-8"))["chain"]
 
 
 def _stub_terrain(monkeypatch, proj):
@@ -26,9 +34,7 @@ def _stub_terrain(monkeypatch, proj):
     monkeypatch.setattr(server, "_universal_capture_wanted", lambda t: (False, None))
     monkeypatch.setattr(server, "_terrain_strike_count", lambda t: 60)
     monkeypatch.setattr(server, "_gated_safe_get_chain", lambda *a, **k: (R(), 0.0, 0.0))
-    monkeypatch.setattr(server, "flatten_chain_contracts", lambda j: [
-        {"strikePrice": 100, "expirationDate": "2026-09-11", "daysToExpiration": 2, "putCall": "CALL",
-         "openInterest": 100, "multiplier": 100, "gamma": 0.02, "delta": 0.5, "volatility": 15.0, "totalVolume": 10}])
+    monkeypatch.setattr(server, "flatten_chain_contracts", lambda j: [dict(ct) for ct in _REAL_CHAIN])
     monkeypatch.setattr(server, "resolve_spot", lambda t, chain_json=None: (100.0, "stub", 0.0))
     monkeypatch.setattr(server, "_persist_universal_complete_chain", lambda *a, **k: None)
     monkeypatch.setattr(server, "_learn_strike_geometry", lambda *a, **k: None)
@@ -65,7 +71,7 @@ def test_producer_gates_projection_on_demand(monkeypatch):
     server._note_gamma_surface_demand(tk)
     server._terrain_refresh_one(tk)
     assert calls["n"] == 1
-    assert calls["args"] == (1, 100.0)
+    assert calls["args"] == (len(_REAL_CHAIN), 100.0)
     assert _cached_surface(tk) == {"expirations": [], "strikes": [], "cells": []}
 
     server._gamma_surface_demand.pop(tk, None)

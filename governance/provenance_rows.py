@@ -2882,6 +2882,11 @@ ROWS: tuple[Row, ...] = (
         justification='Nested: builds one per-strike row from the chain leaves; near/far split now via the canonical terrain_engine._dte_of (Cursor-audit F8, replacing the removed nested _dte).',
     ),
     Row(
+        file='server.py', derivation='project_gamma_surface', disposition='DERIVED',
+        producer_refs=('math_exposure_core.py:compute_exposures_by_strike', 'server.py:_filter_contracts_by_selected_expiry'),
+        justification='RC-UI-1 strike x expiry GEX surface (/api/options/gamma-surface payload owner): PURE projection - partitions the wide chain by native expirationDate through the existing selected-expiry slicer and runs the ONE exposure faucet per slice; every cell is that faucet net_gex_1pct, no exposure math of its own (tests/test_gamma_surface_projection_v1.py invariant I).',
+    ),
+    Row(
         file='server.py', derivation='get_terrain_strikes._side_sums', disposition='ALLOWLISTED',
         allowlist_id='mega1_internal_helper',
         justification="Nested: sums the already-computed per-strike GEX$ and volume per side of the payload's OWN spot. One aggregator, one spot basis — the in-browser re-sum was killed because a client loop could straddle a different spot and broke silently on payload changes.",

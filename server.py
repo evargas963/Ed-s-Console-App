@@ -12238,7 +12238,7 @@ def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
             )
         except Exception as _gs_e:  # institutional-swallow-ok: projection is a cache side-effect
             payload["_gamma_surface"] = None
-            log.warning("gamma-surface projection failed for %s: %s", tk, _gs_e)
+            log.warning("gamma-surface projection raised for %s (surface withheld this cycle): %s", tk, _gs_e)
         with _terrain_cache_lock:
             _terrain_cache[tk] = payload
             _terrain_profile_cache[tk] = snap.profile

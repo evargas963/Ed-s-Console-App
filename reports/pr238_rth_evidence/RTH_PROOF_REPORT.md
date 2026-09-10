@@ -107,3 +107,16 @@ NOT obtainable from production (endpoint is 404 on main - NEW in the branch), an
 - gamma projection timing at the real producer branch; first-view -> live-surface latency.
 
 These require a console running the PR #238 candidate as the SOLE console owner (server:app lifespan starts logger + terrain + bars producers, so a second console is not run). They belong at the next controlled RTH cutover.
+
+## Reproduce (read-only probes of the running console, during RTH)
+
+Every figure above is a live observation, so a re-run returns the values of THAT session, not
+these; what re-runs is the method. The probes are the canonical endpoints, read-only, against the
+one running console on :8000 (never a second console):
+
+- header / live source / identity: `curl -s "http://127.0.0.1:8000/api/live/state?ticker=SPY"` (also `$SPX`, `NVDA`, `SPXW`);
+- canonical levels + net GEX: `curl -s "http://127.0.0.1:8000/api/terrain?ticker=SPY"` (also `$SPX`, `NVDA`), read twice ~47s apart for the cadence / generation transition;
+- per-strike net_gex_1pct$: `curl -s "http://127.0.0.1:8000/api/terrain/strikes?ticker=%24SPX"`;
+- real expiration columns: `curl -s "http://127.0.0.1:8000/api/expiries?ticker=%24SPX"`;
+- Strike Detail chain: `curl -s "http://127.0.0.1:8000/api/chain?ticker=%24SPX&expiry=2026-09-09"`;
+- runtime identity (git_sha / dirty / process_id): `curl -s "http://127.0.0.1:8000/api/release/current"`.
