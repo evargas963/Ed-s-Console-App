@@ -160,6 +160,21 @@
   .canvas{flex:1;overflow:auto;padding:8px;min-height:0}
   .workspace{display:none;height:100%}
   .workspace.on{display:block}
+  /* options subviews (Gamma grid / Chain ladder / Flow) swap in the one canvas */
+  .sub-pane{display:none;height:100%}
+  .sub-pane.on{display:block;height:100%}
+  .sub-pane>.panel{height:100%}
+  /* chain ladder (D) — full vendor chain, one expiry */
+  .chn{width:100%;border-collapse:collapse;font-family:var(--ed-sans);font-size:13px;font-variant-numeric:tabular-nums}
+  .chn th{position:sticky;top:0;background:var(--ed-panel-2);font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;
+    color:var(--ed-ink-3);padding:7px 9px;border-bottom:1px solid var(--ed-edge);text-align:right}
+  .chn th.mid{text-align:center;color:var(--ed-ink);background:var(--ed-panel-3);letter-spacing:.06em}
+  .chn td{padding:6px 9px;border-bottom:1px solid var(--ed-edge-soft);text-align:right;color:var(--ed-ink)}
+  .chn td.k{text-align:center;font-weight:700;background:var(--ed-panel-2);color:var(--ed-ink)}
+  .chn tr.spot td.k{background:var(--ed-panel-3);color:var(--ed-accent-2);box-shadow:inset 0 0 0 1px var(--ed-accent-edge)}
+  .chn tr:hover{background:var(--ed-panel-2)}
+  .chn .cflag{color:var(--ed-pos-ink)} .chn .pflag{color:var(--ed-neg-ink)}
+  .chn-head{display:flex;justify-content:space-between;align-items:baseline;font-family:var(--ed-sans);font-size:12px;color:var(--ed-ink-3);padding:2px 2px 8px}
 
   /* gamma workspace layout — the heatmap is the HERO (dominant center), Key Levels a narrow right
      rail, and the bottom a subordinate supporting strip. Tight gaps/rhythm = terminal density. */
@@ -491,6 +506,7 @@
 
       <!-- OPTIONS / GAMMA workspace -->
       <section class="workspace on" data-ws-pane="options">
+        <div class="sub-pane on" data-sub-pane="gamma">
         <div class="gamma-grid">
 
           <!-- main working panel — view tabs (Heatmap/Chart/Levels/Multi-Map) swap this -->
@@ -581,6 +597,25 @@
             </div>
           </div>
         </div>
+        </div><!-- /sub-pane gamma -->
+
+        <!-- OPTIONS / CHAIN subview — the full vendor chain ladder (/api/chain + /api/expiries) -->
+        <div class="sub-pane" data-sub-pane="chain">
+          <div class="panel">
+            <div class="panel-h"><span class="hticker" id="chTicker">SPX</span><span class="t">Option Chain</span>
+              <div class="r"><span id="chSrc"></span><span class="prov native">CHAIN</span></div></div>
+            <div class="panel-b" id="chainBody"><div class="placeholder"><div class="sm">Full vendor chain ladder from /api/chain (strike_range=ALL, one expiry).</div></div></div>
+          </div>
+        </div>
+
+        <!-- OPTIONS / FLOW subview -->
+        <div class="sub-pane" data-sub-pane="flow">
+          <div class="panel">
+            <div class="panel-h"><span class="hticker" id="flTicker">SPX</span><span class="t">Options Flow</span>
+              <div class="r"><span id="flSrc"></span><span class="prov native">NATIVE</span><span class="prov proxy">PROXY</span></div></div>
+            <div class="panel-b" id="flowBody"><div class="placeholder"><div class="sm">Options microstructure from /api/order-flow/options-microstructure (real book / depth / imbalance / tape-PROXY / freshness; no fabricated signed flow).</div></div></div>
+          </div>
+        </div>
       </section>
 
       <!-- other workspaces: architectural homes preserved, honestly unimplemented -->
@@ -623,6 +658,7 @@
 <script src="/static/js/ed-gamma-panels.js" defer></script>
 <script src="/static/js/ed-gamma-chart.js" defer></script>
 <script src="/static/js/ed-gamma-levels.js" defer></script>
+<script src="/static/js/ed-gamma-chain.js" defer></script>
 <script src="/static/js/ed-stream.js" defer></script>
 </body>
 </html>

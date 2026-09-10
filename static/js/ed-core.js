@@ -133,12 +133,25 @@
       if (b.classList.contains('na')) return;   // unavailable shell tab — part of the IA, not clickable
       b.addEventListener('click', function () { setView(b.getAttribute('data-view')); });
     });
-    bar.style.display = views.length ? '' : 'none';
+    // keep the control bar for every options subview (the ticker/expiry dropdowns drive Chain too),
+    // even those with no view tabs; hide it only for workspaces that have neither views nor controls.
+    bar.style.display = (views.length || state.workspace === 'options') ? '' : 'none';
   }
 
   function showPane() {
     document.querySelectorAll('.workspace').forEach(function (w) {
       w.classList.toggle('on', w.getAttribute('data-ws-pane') === state.workspace);
+    });
+  }
+  // options subview panes (Gamma grid / Chain ladder / Flow) swap in the one options canvas; a
+  // subview with no dedicated pane falls back to the Gamma grid so the workspace is never blank.
+  function showSubPane() {
+    var panes = document.querySelectorAll('.sub-pane'); if (!panes.length) return;
+    var target = (state.workspace === 'options') ? state.subview : null;
+    var hasOwn = target && document.querySelector('.sub-pane[data-sub-pane="' + target + '"]');
+    panes.forEach(function (p) {
+      var id = p.getAttribute('data-sub-pane');
+      p.classList.toggle('on', !!target && (id === target || (id === 'gamma' && !hasOwn)));
     });
   }
 
@@ -211,6 +224,7 @@
     var aiWs = document.getElementById('aiCtxWs');
     if (aiWs) aiWs.textContent = NAV[state.workspace].title.replace(/\s*\/\s*/g, ' / ') +
       (state.subview ? ' · ' + state.subview : '');
+    showSubPane();
     showMainView();
     reflectScopeVisibility();
     renderRailChildren();
