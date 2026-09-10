@@ -267,6 +267,10 @@ def test_nc18_closure_commands_are_executed_not_matched(tmp_path):
     live = "| RC-9003 | CLOSED | 2026-09-10 | 2026-09-11 | d | w -> ROOT | fixed. `curl -s http://127.0.0.1:8000/api/build` |"
     assert GATE.executable_commands(good) == ["python -c pass"]
     assert GATE.executable_commands(live) == []
+    # a backticked FILE NAME that starts like an interpreter is not a command (the judge once
+    # executed `python -m pytest.yml` off a closure row that mentioned `pytest.yml`)
+    named = "| RC-9004 | CLOSED | 2026-09-10 | 2026-09-11 | d | w -> ROOT | edited `pytest.yml` and `python_notes.md`; proof `python -c pass` |"
+    assert GATE.executable_commands(named) == ["python -c pass"]
     assert GATE.run_closure_command(GATE.executable_commands(good)[0], tmp_path)[0] == 0
     assert GATE.run_closure_command(GATE.executable_commands(bad)[0], tmp_path)[0] == 3
     base = "| RC-9001 | OPEN | 2026-09-10 | 2026-09-11 | d | w | in progress |\n"

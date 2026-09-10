@@ -472,8 +472,10 @@ _LEDGER_ROW_RE = re.compile(r"^\|\s*(RC-\d+)\s*\|\s*([A-Z_]+)\s*\|")
 _BACKTICK_RE = re.compile(r"`([^`]+)`")
 #: Commands CI can execute as closure proof. Live probes (curl, SELECT, sqlite3 on the
 #: production DB, PowerShell) are evidence of a session, not of the tree.
-_EXECUTABLE_CMD_RE = re.compile(r"^\s*(?:\.venv[\\/]Scripts[\\/]python(?:\.exe)?|python3?|py|pytest|node|npm|npx|tools/)\b")
-_INTERPRETER_RE = re.compile(r"^\s*(?:\.venv[\\/]Scripts[\\/]python(?:\.exe)?|python3?|py)\b")
+#: The token must be the whole first word: `pytest.yml` or `python_probe.md` is a file name in
+#: backticks, not a command (the judge ran `python -m pytest.yml` before this anchor).
+_EXECUTABLE_CMD_RE = re.compile(r"^\s*(?:\.venv[\\/]Scripts[\\/]python(?:\.exe)?|python3?|py|pytest|node|npm|npx|tools/\S+\.py)(?:\s|$)")
+_INTERPRETER_RE = re.compile(r"^\s*(?:\.venv[\\/]Scripts[\\/]python(?:\.exe)?|python3?|py)(?=\s|$)")
 
 
 class Worktrees:
@@ -573,8 +575,17 @@ def marker_tokens(checker_source: str) -> set[str]:
     return toks
 
 
+_COMMENT_START_RE = re.compile(r"(?:#|//|<!--|/\*)")
+#: Files whose text about markers is the mechanism, never an escape: the gate that honours
+#: them, this judge, the executor, and every markdown file (prose describes, code escapes).
+_MARKER_MECHANISM_FILES = {CHECKER_REL, "tools/check_delta_adds_no_debt.py", _ACCEPTANCE_REL}
+
+
 def added_marker_lines(base_ref: str, cand_ref: str, tokens: set[str]) -> list[tuple[str, int, str]]:
-    """(path, line, token) for every ADDED line in the delta carrying an escape token."""
+    """(path, line, token) for every ADDED code line in the delta that carries an escape
+    token IN A COMMENT — the only position where the gate honours one (`# silent-zero-ok:`,
+    `// OUT-OF-SCOPE:`). A token inside a string literal (test data, a message) or in prose
+    escapes nothing and is not counted; the first judged run flagged its own test data."""
     r = _run(["git", "diff", "-U0", f"{base_ref}..{cand_ref}"])
     if r.returncode != 0:
         raise RuntimeError(f"git diff failed: {r.stderr[-300:]}")
@@ -591,13 +602,14 @@ def added_marker_lines(base_ref: str, cand_ref: str, tokens: set[str]) -> list[t
             continue
         if ln.startswith("+") and not ln.startswith("+++"):
             body = ln[1:]
-            if path in (CHECKER_REL, "OPEN_ITEMS.md", _LEDGER_REL) or (path.startswith("governance/") and path.endswith(".md")):
-                line += 1
-                continue                      # the gate's own token table and prose are not escapes
-            for tok in tokens:
-                if tok in body:
-                    out.append((path, line, tok))
-                    break
+            skip = path in _MARKER_MECHANISM_FILES or path.endswith((".md", ".txt", ".json", ".jsonl", ".csv"))
+            cm = None if skip else _COMMENT_START_RE.search(body)
+            if cm is not None:
+                comment = body[cm.start():]
+                for tok in tokens:
+                    if tok in comment:
+                        out.append((path, line, tok))
+                        break
             line += 1
     return out
 
