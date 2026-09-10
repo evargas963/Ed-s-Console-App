@@ -469,13 +469,20 @@ def test_monitor_is_in_the_one_shell_roster_and_the_hook_matcher():
     import re as _re
 
     import tools.operator_law_guard as olg
+    import tools.pretooluse_chain as ptc
     import tools.process_lock_guard as plg
-    from tools.stop_chain import BASH_TOOLS
+    from tools.stop_chain import BASH_TOOLS, MUTATING_TOOLS
 
     assert {"Bash", "PowerShell", "Monitor"} <= BASH_TOOLS
     assert olg.BASH_TOOLS is BASH_TOOLS and plg.BASH_TOOLS is BASH_TOOLS, "a guard kept its own copy"
     for mod in (olg, plg):
         assert _literal_shell_tuples(Path(mod.__file__)) == [], mod.__name__
+    # the file-mutating class is ONE roster too (four private copies until 2026-09-10)
+    assert {"Edit", "Write", "MultiEdit", "NotebookEdit", "StrReplace", "Delete"} <= MUTATING_TOOLS
+    assert plg._EDIT_TOOLS is MUTATING_TOOLS and ptc.EDIT_TOOLS is MUTATING_TOOLS and olg.MUTATING_TOOLS is MUTATING_TOOLS
+    for mod in (olg, plg, ptc):
+        src = Path(mod.__file__).read_text(encoding="utf-8")
+        assert '"NotebookEdit"' not in src, f"{mod.__name__} keeps a private edit-tool roster"
     settings = json.loads((REPO / ".claude" / "settings.json").read_text(encoding="utf-8"))
     matcher = next(h["matcher"] for h in settings["hooks"]["PreToolUse"] if "Bash" in h["matcher"])
     assert _re.fullmatch(matcher, "Monitor"), matcher

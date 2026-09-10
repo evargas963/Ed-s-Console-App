@@ -31,17 +31,11 @@ from tools.shell_parse import (  # noqa: E402 — the ONE shell parser (BEDROCK 
     shell_executed_part,
 )
 from tools.pretooluse_guard import classify_path  # noqa: E402
-from tools.stop_chain import BASH_TOOLS  # noqa: E402 — the ONE shell-tool roster (RC-520)
+from tools.stop_chain import BASH_TOOLS, MUTATING_TOOLS  # noqa: E402 — the ONE roster of each class
 
-#: Cursor continuum tools that mutate files (RC-226: StrReplace/path were previously ignored).
-_EDIT_TOOLS = (
-    "Edit",
-    "Write",
-    "MultiEdit",
-    "NotebookEdit",
-    "StrReplace",
-    "Delete",
-)
+#: The file-mutating tool class is decided ONCE (tools.stop_chain.MUTATING_TOOLS, Cursor's
+#: StrReplace/Delete included — RC-226) and imported here; no private copy.
+_EDIT_TOOLS = MUTATING_TOOLS
 
 
 #: Keys across the two continua that carry an edit target path.

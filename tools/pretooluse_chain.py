@@ -27,9 +27,9 @@ REPO = Path(__file__).resolve().parent.parent
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
-from tools.stop_chain import run_chain  # noqa: E402 — same executor, different roster
+from tools.stop_chain import MUTATING_TOOLS, run_chain  # noqa: E402 — same executor, different roster
 
-EDIT_TOOLS = ("Edit", "Write", "MultiEdit", "NotebookEdit")
+EDIT_TOOLS = MUTATING_TOOLS         # the ONE file-mutating roster (tools.stop_chain)
 # BEDROCK 2026-09-06: pretooluse_guard left the roster (its content gates and mutation-side
 # latch are gone); 2026-09-10 its hook entrypoint is deleted too — it is the path-facts
 # library the other guards import, not a hook.

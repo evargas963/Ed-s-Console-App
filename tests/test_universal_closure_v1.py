@@ -315,6 +315,12 @@ def test_nc18_closure_commands_are_executed_not_matched(tmp_path):
     # executed `python -m pytest.yml` off a closure row that mentioned `pytest.yml`)
     named = "| RC-9004 | CLOSED | 2026-09-10 | 2026-09-11 | d | w -> ROOT | edited `pytest.yml` and `python_notes.md`; proof `python -c pass` |"
     assert GATE.executable_commands(named) == ["python -c pass"]
+    # a bare tools/ path in backticks is a FILE MENTION, not a command (the first hardening run
+    # executed `tools/stop_chain.py` off a row that named the file it changed); a tool is cited
+    # as `python tools/x.py`
+    mention = "| RC-9005 | CLOSED | 2026-09-10 | 2026-09-11 | d | w -> ROOT | FIXED (`tools/stop_chain.py` 954 -> 481 lines); proof `python tools/check_venv_parity.py` |"
+    assert GATE.executable_commands(mention) == ["python tools/check_venv_parity.py"]
+    assert GATE.executable_commands("| RC-9006 | CLOSED | d | d | d | w | see `tools/check_delta_adds_no_debt.py --base origin/main` |") == []
     assert GATE.run_closure_command(GATE.executable_commands(good)[0], tmp_path)[0] == 0
     assert GATE.run_closure_command(GATE.executable_commands(bad)[0], tmp_path)[0] == 3
     base = "| RC-9001 | OPEN | 2026-09-10 | 2026-09-11 | d | w | in progress |\n"

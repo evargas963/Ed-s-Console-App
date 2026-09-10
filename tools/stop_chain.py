@@ -51,8 +51,11 @@ STOP_CHAIN = ("tools.stop_guard",)
 #: RC-520: THE roster of tools that carry a shell `command`; both shell guards import it.
 BASH_TOOLS = frozenset({"Bash", "PowerShell", "Shell", "Monitor"})
 
-#: File-target tools that MODIFY a tree (a Read/Grep/Glob payload names no work target).
-MUTATING_TOOLS = frozenset({"Edit", "Write", "MultiEdit", "NotebookEdit"})
+#: THE roster of file-target tools that MODIFY a tree (a Read/Grep/Glob payload names no work
+#: target): Claude's Edit/Write/MultiEdit/NotebookEdit and Cursor's StrReplace/Delete (RC-226).
+#: One roster, imported by every guard that decides the class — the four private copies that
+#: existed until 2026-09-10 were the RC-520 shape for the edit channel.
+MUTATING_TOOLS = frozenset({"Edit", "Write", "MultiEdit", "NotebookEdit", "StrReplace", "Delete"})
 
 #: Set on a delegated run so authority hops exactly ONCE and can never loop.
 DELEGATED_ENV = "ED_GOVERNANCE_AUTHORITY_DELEGATED"

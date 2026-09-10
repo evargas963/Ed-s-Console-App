@@ -295,10 +295,12 @@ def refold_base_counts(
 
 # ── closure commands: a closing ledger row cites one; the candidate lane executes it ────
 _BACKTICK_RE = re.compile(r"`([^`]+)`")
-#: Commands CI can execute as closure proof; the token must be the whole first word (a
-#: backticked `pytest.yml` is a file name). Live probes (curl, SELECT, PowerShell) are
-#: evidence of a session, not of the tree.
-_EXECUTABLE_CMD_RE = re.compile(r"^\s*(?:\.venv[\\/]Scripts[\\/]python(?:\.exe)?|python3?|py|pytest|node|npm|npx|tools/\S+\.py)(?:\s|$)")
+#: Commands CI can execute as closure proof: INTERPRETER-LED, and the interpreter must be the
+#: whole first word (a backticked `pytest.yml` is a file name; the first hardening run of this
+#: rule executed a backticked `tools/stop_chain.py` MENTION as a command, so a bare tools/ path
+#: is a file name too — a tool is cited as `python tools/x.py`). Live probes (curl, SELECT,
+#: PowerShell) are evidence of a session, not of the tree.
+_EXECUTABLE_CMD_RE = re.compile(r"^\s*(?:\.venv[\\/]Scripts[\\/]python(?:\.exe)?|python3?|py|pytest|node|npm|npx)(?:\s|$)")
 _INTERPRETER_RE = re.compile(r"^\s*(?:\.venv[\\/]Scripts[\\/]python(?:\.exe)?|python3?|py)(?=\s|$)")
 
 
@@ -330,8 +332,6 @@ def run_closure_command(cmd: str, wt: Path, timeout: int = 900) -> tuple[int, st
         text = _INTERPRETER_RE.sub(lambda _m: exe, text, count=1)
     elif text.startswith("pytest"):
         text = f'"{sys.executable}" -m {text}'
-    elif text.startswith("tools/"):
-        text = f'"{sys.executable}" {text}'
     try:
         r = subprocess.run(text, cwd=str(wt), shell=True, capture_output=True, text=True,
                            encoding="utf-8", errors="replace", timeout=timeout, env=_clean_env())
@@ -349,7 +349,7 @@ def execute_closures(base_ref: str, cand_wt: Path) -> list[str]:
     for rc, row in sorted(closing_rows(base_text, cand_text).items()):
         cmds = executable_commands(row)
         if not cmds:
-            failures.append(f"{rc} closes with no CI-executable command (python/pytest/node/tools/) in its evidence cell")
+            failures.append(f"{rc} closes with no CI-executable command (python/pytest/node/npm) in its evidence cell")
             continue
         code, tail = run_closure_command(cmds[0], cand_wt)
         print(f"closure {rc}: `{cmds[0][:120]}` -> exit {code}")
@@ -574,7 +574,7 @@ def trusted_main(args) -> int:
             if cmds:
                 close_obl[rc] = _obl("PROVEN", f"cites `{cmds[0][:120]}`; executed by the candidate lane (hardening)")
             else:
-                close_obl[rc] = _obl("FAIL", "closes with no CI-executable command (python/pytest/node/tools/) in its evidence cell")
+                close_obl[rc] = _obl("FAIL", "closes with no CI-executable command (python/pytest/node/npm) in its evidence cell")
                 blocks.append(f"{rc} closes without a CI-executable command; a live probe alone does not close a row")
         injected["REQ-GOV-CLOSURE-COMMANDS"] = {"canonical": sorted(closing), "obligations": close_obl}
 

@@ -52,9 +52,9 @@ REPO = Path(__file__).resolve().parent.parent
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
-# RC-520: which tools carry a shell command is decided ONCE, in the chain wiring, and imported
-# here — a tool the chain treats as a shell channel is a tool this guard judges as one.
-from tools.stop_chain import BASH_TOOLS  # noqa: E402
+# RC-520: which tools carry a shell command — and which mutate a file — is decided ONCE, in the
+# chain executor, and imported here; a tool the chain treats as a channel is one this guard judges.
+from tools.stop_chain import BASH_TOOLS, MUTATING_TOOLS  # noqa: E402
 
 # ── shell parsing: ONE owner, tools/shell_parse.py (BEDROCK 2026-09-06) ──────────────────
 # Re-exported here because this module's suites pin these names on it and because the
@@ -719,8 +719,8 @@ def main() -> int:
             return 2
         return 0
 
-    if tool in ("Edit", "Write", "MultiEdit", "NotebookEdit"):
-        path = ti.get("file_path") or ""
+    if tool in MUTATING_TOOLS:          # one roster (stop_chain.MUTATING_TOOLS)
+        path = ti.get("file_path") or ti.get("path") or ""
         body = ti.get("new_string") or ti.get("content") or ""
         executed = _successful_commands(str(payload.get("transcript_path") or ""))
         bad = edit_violations(path, body, turn_ledger(executed, payload_cwd), executed)
