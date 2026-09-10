@@ -83,6 +83,9 @@
         src.textContent = '/api/terrain · live';
         src.style.color = '';
       }
+      // #5: terrain levels are AGGREGATE across expiries; if the workspace filters to one expiry,
+      // disclose that these levels are still all-exp (never silently relabel them as selected-expiry).
+      if (window.EdShell && window.EdShell.getExpiry && window.EdShell.getExpiry()) src.textContent += ' · all-exp';
     }
   }
 
@@ -141,6 +144,10 @@
       .sort(function (a, b) { return b[0] - a[0]; });
     var note = (window.EdShell && window.EdShell.scopeNote)
       ? window.EdShell.scopeNote({ base: GBS_BASE, total: rows.length, shown: win.length, spot: spot }) : '';
+    // #5: /api/terrain/strikes is aggregate across expiries; if the workspace filters to one expiry,
+    // disclose that this ladder is still all-exp (per-expiry GEX-by-strike is not canonical here).
+    var expOn = window.EdShell && window.EdShell.getExpiry && window.EdShell.getExpiry();
+    if (expOn) note += '<div class="gbs-allexp">ALL-EXP terrain · per-expiry GEX-by-strike not canonical here</div>';
     var maxAbs = win.reduce(function (m, r) { return Math.max(m, Math.abs(Number(r[1]) || 0)); }, 0) || 1;
     var spotStrike = win.reduce(function (best, r) {
       return (best == null || Math.abs(r[0] - spot) < Math.abs(best - spot)) ? r[0] : best; }, null);
@@ -236,6 +243,12 @@
     var det = e.detail || {}; _lastExpiry = det.expiry || _lastExpiry;
     applyGbsHighlight();                       // A: sync the GEX-by-strike highlight
     if (det.strike != null) loadStrike(det.strike, det.expiry);
+  });
+  document.addEventListener('ed:expiry', function (e) {   // #5: expiry filter -> Strike Detail uses it; Levels/GBS stay aggregate + disclose
+    var exp = (e.detail && e.detail.expiry) || null;
+    loadLevels(); loadGbs();
+    var sel = ((window.EdShell && window.EdShell.getState()) || {}).selStrike;
+    if (sel != null) loadStrike(sel, exp || _lastExpiry);
   });
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', loadAll);
   else loadAll();

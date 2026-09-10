@@ -76,7 +76,14 @@
     }
     var exps = surface.expirations || [], strikes = surface.strikes || [], cells = surface.cells || [];
     var spot = Number(surface.spot);
-    // maxAbs over displayed cells — visual normalisation only, not a semantic value
+    // #5: expiry filter (from the canonical /api/expiries dropdown) is PRESENTATION — it selects which
+    // already-computed expiry column(s) to show; it never recomputes a value. All Expirations => every
+    // column present in the canonical surface input. A filter that matches nothing falls back to all.
+    var expFilter = (window.EdShell && window.EdShell.getExpiry) ? window.EdShell.getExpiry() : null;
+    var viewCols = [];
+    exps.forEach(function (e, ix) { if (!expFilter || e.expiry === expFilter) viewCols.push(ix); });
+    if (!viewCols.length) viewCols = exps.map(function (_e, ix) { return ix; });
+    // maxAbs over DISPLAYED cells — visual normalisation only, not a semantic value
     _lastSurface = surface;   // cached so a theme switch can re-render without a refetch
     // #1: skip the full ~thousands-of-cells table rebuild when the canonical surface REVISION is
     // unchanged (only the age advances between ~60s/roster terrain revisions). A theme switch clears
@@ -89,7 +96,7 @@
     _lastRevision = rev;
     var heat = readHeatColors();
     var maxAbs = 0;
-    cells.forEach(function (r) { (r.gex || []).forEach(function (v) { if (v != null && Math.abs(v) > maxAbs) maxAbs = Math.abs(v); }); });
+    cells.forEach(function (r) { viewCols.forEach(function (j) { var v = (r.gex || [])[j]; if (v != null && Math.abs(v) > maxAbs) maxAbs = Math.abs(v); }); });
 
     var spotIdx = nearestStrikeIndex(strikes, spot);
     // freshness / source — fail stale visibly (RC-UI-1 live-source rewire)
@@ -101,9 +108,9 @@
     // B: a STALE / REFERENCE surface visually recedes (in addition to the banner)
     var recede = (!live || stale) ? ' recede' : '';
     var tbl = '<table class="heat"><thead><tr><th class="hcorner">Strike</th>';
-    exps.forEach(function (e, ix) {
-      var dte = (e.dte === 0) ? '0DTE' : (e.dte != null ? e.dte + 'DTE' : '');
-      tbl += '<th class="hexp' + (ix === frontCol ? ' col-front' : '') + '"><span class="d">' +
+    viewCols.forEach(function (j) {
+      var e = exps[j]; var dte = (e.dte === 0) ? '0DTE' : (e.dte != null ? e.dte + 'DTE' : '');
+      tbl += '<th class="hexp' + (j === frontCol ? ' col-front' : '') + '"><span class="d">' +
         escapeHtml((e.expiry || '').slice(5)) + '</span><span class="dte">' + dte + '</span></th>';
     });
     tbl += '</tr></thead><tbody>';
@@ -111,11 +118,12 @@
       var row = cells[i], isSpot = (i === spotIdx);
       tbl += '<tr' + (isSpot ? ' class="spotrow"' : '') + '>' +
         '<th class="hstrike' + (isSpot ? ' spot' : '') + '">' + fmtStrike(row.strike) + '</th>';
-      for (var j = 0; j < exps.length; j++) {
-        var v = (row.gex || [])[j];
+      for (var jj = 0; jj < viewCols.length; jj++) {
+        var j2 = viewCols[jj];
+        var v = (row.gex || [])[j2];
         var st = cellStyle(v, maxAbs, heat);
-        tbl += '<td class="hcell' + (j === frontCol ? ' col-front' : '') + '" style="background:' + st.bg + ';color:' + st.fg + '" ' +
-          'data-strike="' + row.strike + '" data-expiry="' + escapeHtml(exps[j].expiry) + '" data-gex="' + (v == null ? '' : v) + '">' +
+        tbl += '<td class="hcell' + (j2 === frontCol ? ' col-front' : '') + '" style="background:' + st.bg + ';color:' + st.fg + '" ' +
+          'data-strike="' + row.strike + '" data-expiry="' + escapeHtml(exps[j2].expiry) + '" data-gex="' + (v == null ? '' : v) + '">' +
           (st.empty ? '' : formatUsd(v)) + '</td>';
       }
       tbl += '</tr>';
@@ -143,7 +151,7 @@
     // GEX-by-strike highlight are populated on arrival (like the approved reference) instead of an
     // empty placeholder. Never overrides a selection the operator has already made.
     if (window.EdShell && window.EdShell.getState().selStrike == null && strikes.length && spotIdx >= 0) {
-      var _fe = (exps[frontCol >= 0 ? frontCol : 0] || {}).expiry || null;
+      var _fe = expFilter || (exps[frontCol >= 0 ? frontCol : 0] || {}).expiry || null;
       window.EdShell.setStrike(strikes[spotIdx], _fe);
     }
     applyStrikeHighlight(host);
@@ -173,7 +181,10 @@
     // age) is deliberately NOT here; it is refreshed every time via applyStatus. et_date discriminates
     // banked captures (whose chain/spot as-of are null) so a new morning capture cannot reuse the grid.
     if (!s || s.available === false) return 'unavailable|' + (s && s.source);
-    return [s.source, s.chain_as_of_ts_utc, s.spot_as_of_ts_utc, s.chain_basis, s.et_date].join('|');
+    // ticker + expiry filter are part of WHICH cells are shown: a symbol change or an expiry-column
+    // change must always rebuild the grid, never reuse a prior symbol's/expiry's table.
+    var expFilter = (window.EdShell && window.EdShell.getExpiry) ? window.EdShell.getExpiry() : null;
+    return [s.ticker || s.symbol, s.source, s.chain_as_of_ts_utc, s.spot_as_of_ts_utc, s.chain_basis, s.et_date, expFilter].join('|');
   }
   // lightweight STATUS: banner (warming/requested/stale/reference/degraded) + recede dimming + scope
   // age — always refreshed, even when the DATA revision is unchanged, so nothing is left frozen.
@@ -246,6 +257,10 @@
     document.addEventListener('ed:strike', function () { applyStrikeHighlight(); });   // A: cross-panel sync
     document.addEventListener('ed:theme', function () {   // recolour: force a rebuild (revision is unchanged but the palette changed)
       var h = document.getElementById('heatBody'); if (h && _lastSurface) { _lastRevision = null; renderSurface(h, _lastSurface); }
+    });
+    document.addEventListener('ed:expiry', function () {   // #5: re-window columns to the selected expiry (client-side; same canonical surface)
+      var h = document.getElementById('heatBody'); if (!h) return; _lastRevision = null;
+      if (_lastSurface) renderSurface(h, _lastSurface); else load();
     });
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', load);
     else load();

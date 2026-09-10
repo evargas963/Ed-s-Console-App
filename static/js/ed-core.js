@@ -66,6 +66,7 @@
     subview: _ls('ed_sub', app.getAttribute('data-subview') || 'gamma'),
     view: _ls('ed_view', app.getAttribute('data-view') || 'heatmap'),
     scope: _lsScope(),
+    expiryFilter: null,   // null = All Expirations; else a single 'YYYY-MM-DD' from /api/expiries
     selStrike: null, selExpiry: null
   };
   function normalizeState() {   // restored state must be valid for the current NAV config
@@ -286,6 +287,7 @@
     host.querySelectorAll('[data-rm]').forEach(function (b) {
       b.addEventListener('click', function (e) { e.stopPropagation(); removeSymbol(b.getAttribute('data-rm')); });
     });
+    buildSymSelect();   // keep the ticker dropdown options in sync with the watchlist
   }
   function addSymbol(sym) {
     sym = (sym || '').trim().toUpperCase();
@@ -299,18 +301,66 @@
     saveWL(list); renderWatchlist();
   }
 
-  // ================= ticker store =================
+  // ================= ticker store (ONE selected-symbol state across every surface) =================
   function setTicker(sym) {
     state.ticker = (sym || '').toUpperCase();
     try { localStorage.setItem(TICKER_KEY, state.ticker); } catch (e) {}
-    ['hSym', 'cSym', 'aiCtxSym', 'mvTicker'].forEach(function (id) { var el = document.getElementById(id); if (el) el.textContent = state.ticker.replace('$', ''); });
+    ['hSym', 'aiCtxSym', 'mvTicker'].forEach(function (id) { var el = document.getElementById(id); if (el) el.textContent = state.ticker.replace('$', ''); });
+    var ss = document.getElementById('symSel'); if (ss) { buildSymSelect(); ss.value = state.ticker; }   // dropdown reflects the one state
     document.querySelectorAll('.wl-row').forEach(function (r) {
       var s = r.querySelector('.info .s'); r.classList.toggle('sel', s && s.textContent === state.ticker);
     });
     state.selStrike = null; state.selExpiry = null;   // a new ticker clears the shared selection
+    loadExpiries(state.ticker);       // refresh the expiry dropdown from /api/expiries for the new ticker
     openHeaderStream(state.ticker);   // (re)subscribe the SSE push to this ticker (one subscription)
     refreshHeader();                  // immediate paint while the stream connects
     document.dispatchEvent(new CustomEvent('ed:ticker', { detail: { ticker: state.ticker } }));
+  }
+
+  // ---- symbol dropdown: the value IS the control; options are the watchlist + current ticker ----
+  function buildSymSelect() {
+    var sel = document.getElementById('symSel'); if (!sel) return;
+    var list = loadWL().slice();
+    if (list.indexOf(state.ticker) === -1) list.unshift(state.ticker);
+    sel.innerHTML = list.map(function (s) {
+      return '<option value="' + s + '"' + (s === state.ticker ? ' selected' : '') + '>' + s.replace('$', '') + '</option>';
+    }).join('');
+  }
+
+  // ---- expiry dropdown: populated ONLY from the canonical /api/expiries (never hard-coded) ----
+  function _dteOf(iso) {
+    try {
+      var d = new Date(iso + 'T00:00:00Z'), now = new Date();
+      var t0 = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+      return Math.max(0, Math.round((d.getTime() - t0) / 86400000));
+    } catch (e) { return null; }
+  }
+  function _fmtExpOpt(iso) {
+    var parts = String(iso).split('-'); var dte = _dteOf(iso);
+    var md = parts.length === 3 ? (parts[1] + '/' + parts[2] + '/' + parts[0]) : iso;
+    return md + (dte != null ? (' · ' + dte + 'DTE') : '');
+  }
+  function loadExpiries(tk) {
+    var sel = document.getElementById('expSel'); if (!sel) return;
+    var prev = state.expiryFilter;
+    fetch('/api/expiries?ticker=' + encodeURIComponent(tk), { cache: 'no-store' })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) {
+        var exps = (d && (d.expiries || d.expirations)) || [];
+        var opts = '<option value="">All Expirations</option>';
+        exps.forEach(function (e) { opts += '<option value="' + e + '">' + _fmtExpOpt(e) + '</option>'; });
+        sel.innerHTML = opts;
+        if (prev && exps.indexOf(prev) !== -1) { sel.value = prev; }   // keep a still-valid selection
+        else { sel.value = ''; if (state.expiryFilter !== null) setExpiry(''); }   // invalid old expiry -> All (honest)
+      })
+      .catch(function () { /* keep the All Expirations default; a cold console just shows All */ });
+  }
+  function setExpiry(v) {
+    var nv = v || null;
+    if (nv === state.expiryFilter) return;
+    state.expiryFilter = nv;
+    var sel = document.getElementById('expSel'); if (sel) sel.value = nv || '';
+    document.dispatchEvent(new CustomEvent('ed:expiry', { detail: { expiry: nv } }));
   }
 
   // A: one selected strike shared across heatmap / profile / dot map / GEX-by-strike / Strike Detail
@@ -459,6 +509,12 @@
     if (scopeCtl) scopeCtl.querySelectorAll('.scbtn').forEach(function (b) {
       b.addEventListener('click', function () { setScope(b.getAttribute('data-scope')); });
     });
+    // operator dropdowns: ticker (one symbol state) + expiry (from /api/expiries)
+    buildSymSelect();
+    var symSel = document.getElementById('symSel');
+    if (symSel) symSel.addEventListener('change', function () { setTicker(symSel.value); });
+    var expSel = document.getElementById('expSel');
+    if (expSel) expSel.addEventListener('change', function () { setExpiry(expSel.value); });
     // subnav/viewbar initial — restore persisted workspace/subview/view (D), validated to NAV
     normalizeState();
     renderSubnav(); renderViewbar(); showPane(); syncAttrs();
@@ -494,5 +550,6 @@
     addSymbol: addSymbol, removeSymbol: removeSymbol, setWorkspace: setWorkspace, setStrike: setStrike,
     setTheme: applyTheme,
     setScope: setScope, getScope: function () { return state.scope; },
-    scopeWindow: scopeWindow, scopeNote: scopeNote, asOfBadge: asOfBadge };
+    scopeWindow: scopeWindow, scopeNote: scopeNote, asOfBadge: asOfBadge,
+    setExpiry: setExpiry, getExpiry: function () { return state.expiryFilter; } };
 })();

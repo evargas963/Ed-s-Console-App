@@ -127,11 +127,18 @@
   .vtab.on{color:var(--ed-ink);background:var(--ed-panel-3);box-shadow:inset 0 -2px 0 var(--ed-accent)}
   .vtab.na{color:var(--ed-ink-4);cursor:not-allowed}.vtab.na:hover{background:none;color:var(--ed-ink-4)}
   .viewbar .ctrls{margin-left:auto;display:flex;align-items:center;gap:8px}
-  .sel{background:var(--ed-panel-2);border:1px solid var(--ed-edge);border-radius:var(--ed-r);
-    padding:4px 9px;font-family:var(--ed-mono);font-size:11px;color:var(--ed-ink);display:flex;align-items:center;gap:6px}
-  .sel .cap{color:var(--ed-ink-3);font-family:var(--ed-sans);font-size:9px;letter-spacing:.1em;text-transform:uppercase}
-  .aibtn{display:flex;align-items:center;gap:7px;padding:5px 12px;border:1px solid var(--ed-accent-edge);
-    border-radius:var(--ed-r);color:var(--ed-accent-2);font-size:11px;letter-spacing:.06em}
+  /* real operator dropdowns (value IS the control) — ticker / expiry / measure */
+  .ctrl{position:relative;display:inline-flex;align-items:center}
+  .ctrl select{appearance:none;-webkit-appearance:none;-moz-appearance:none;background:var(--ed-panel-2);
+    color:var(--ed-ink);border:1px solid var(--ed-edge-strong);border-radius:var(--ed-r);font-family:var(--ed-sans);
+    font-size:13.5px;font-weight:600;letter-spacing:.01em;padding:6px 27px 6px 12px;cursor:pointer;outline:none}
+  .ctrl select:hover{border-color:var(--ed-accent-edge);background:var(--ed-panel-3)}
+  .ctrl select:focus-visible{border-color:var(--ed-accent);box-shadow:0 0 0 2px var(--ed-accent-bg)}
+  .ctrl select option{background:var(--ed-panel);color:var(--ed-ink)}
+  .ctrl .cv{position:absolute;right:10px;top:50%;transform:translateY(-50%);pointer-events:none;color:var(--ed-ink-3);font-size:8px}
+  .ctrl .cv::before{content:"▼"}
+  .aibtn{display:flex;align-items:center;gap:7px;padding:6px 13px;border:1px solid var(--ed-accent-edge);
+    border-radius:var(--ed-r);color:var(--ed-accent-2);font-size:12.5px;letter-spacing:.04em}
   .aibtn:hover{background:var(--ed-accent-bg)}
 
   /* workspace canvas */
@@ -302,6 +309,7 @@
   .gbs-bar.neg{background:var(--ed-neg);transform:translateX(-100%)}
   .gbs-v{width:70px;text-align:right;font-weight:500}
   .gbs-v.pos{color:var(--ed-pos-ink)} .gbs-v.neg{color:var(--ed-neg-ink)}
+  .gbs-allexp{font-family:var(--ed-sans);font-size:10px;color:var(--ed-stale);padding:0 0 5px}
 
   /* strike detail (vendor chain) */
   .sd{width:100%;border-collapse:collapse;font-family:var(--ed-sans);font-size:13px;font-variant-numeric:tabular-nums}
@@ -416,9 +424,9 @@
       <button class="vtab" data-view="levels">Levels</button>
       <button class="vtab" data-view="multimap">Multi-Map</button>
       <div class="ctrls">
-        <div class="sel"><span class="cap">Sym</span><span id="cSym">—</span></div>
-        <div class="sel"><span class="cap">Expiry</span><span id="cExpiry">All</span></div>
-        <div class="sel"><span class="cap">Measure</span><span id="cMeasure">GEX</span></div>
+        <label class="ctrl" title="Workspace symbol"><select id="symSel" aria-label="Symbol"></select><span class="cv"></span></label>
+        <label class="ctrl" title="Expiration filter (from /api/expiries)"><select id="expSel" aria-label="Expiration"><option value="">All Expirations</option></select><span class="cv"></span></label>
+        <label class="ctrl" title="Measure"><select id="measureSel" aria-label="Measure"><option value="gex">GEX</option></select><span class="cv"></span></label>
         <div class="scope" id="scopeCtl" hidden title="View window around spot for the chart / GEX-by-strike panels — presentation only, never changes a value">
           <span class="cap">View</span>
           <button class="scbtn on" data-scope="auto">Auto</button>
