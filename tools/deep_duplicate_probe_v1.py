@@ -33,7 +33,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-SKIP = ("tests/", "research/", "arch_competition/", "scratchpad/", "governance/archive/")
+SKIP = ("tests/", "research/", "arch_competition/", "scratchpad/")
 
 
 def tracked() -> list[str]:

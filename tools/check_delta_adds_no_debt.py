@@ -94,11 +94,10 @@ _BANNER = "INSTITUTIONAL CORRECTNESS GATE:"
 _TOTAL_RE = re.compile(r"GATE: FAIL \((\d+) enforced violation")
 
 CHECKER_REL = "tools/check_institutional_correctness.py"
-#: The commit seam's roster reader and the operating-process lock — invoked HERE by literal
-#: path so the local hook owners are demonstrably the remote owners (REQ-GOV-LOCAL-REMOTE-PARITY
-#: reads these tokens from this file).
-_PRECOMMIT_SEAM_REL = "tools/precommit_institutional.py"
-_OPL_REL = "tools/operating_process_lock.py"
+# The institutional gate, the commit seam's roster reader and the operating-process lock are
+# invoked below by LITERAL path inside the call that runs or loads them, so the local hook
+# owners are demonstrably the remote owners (REQ-GOV-LOCAL-REMOTE-PARITY follows tool paths
+# handed to calls, never mentions).
 
 #: Variables that BIND git to a specific repository, index or object store. A pre-commit
 #: hook runs with several of them exported, and they are inherited by every child process.
@@ -146,7 +145,7 @@ def _load_module(path: Path, name: str):
 
 def parse_roster(source: str) -> set[str]:
     """Enforced check names from the checker SOURCE; an empty read is a failed read."""
-    seam = _load_module(REPO / _PRECOMMIT_SEAM_REL, "_precommit_institutional")
+    seam = _load_module(REPO / "tools/precommit_institutional.py", "_precommit_institutional")
     names = seam._enforced_roster(source)
     if not names:
         raise RuntimeError(
@@ -234,7 +233,7 @@ def _stage_against(wt: Path, base_ref: str) -> None:
 def run_gate(wt: Path, ref_label: str) -> dict[str, int]:
     """Run the institutional gate that lives IN `wt` and return {check: violations},
     fail-closed on a crashed or unparseable run."""
-    proc = _run([sys.executable, CHECKER_REL, "--enforced-only"], cwd=wt)
+    proc = _run([sys.executable, "tools/check_institutional_correctness.py", "--enforced-only"], cwd=wt)
     # FAIL CLOSED (Cursor hole audit H1). As first shipped this returned
     # parse_counts(stdout) unconditionally, and parse_counts("") is {} — so a
     # crashed gate, an import error, or a changed output format rendered the side
@@ -320,38 +319,33 @@ def removed_enforced_checks(base_roster: set[str], head_roster: set[str]) -> lis
 # The roster comparison above refuses SILENT removal (RC-391). Before RC-468 it also
 # refused DELIBERATE removal, which made the enforced set append-only forever — the
 # governance surface could only grow, never be right-sized. RC-468's seam read the
-# manifest from the CANDIDATE, which the operator identified as self-authorization: the
+# declaration from the CANDIDATE, which the operator identified as self-authorization: the
 # same delta could declare a protection retired AND spend that declaration to pass this
 # gate. The declaration is therefore honored ONLY from the BASE (origin/main): retiring
-# a check is two operator-merged steps — (1) an ordinary delta adds the manifest row
-# (nothing is removed yet, the row is plainly visible in review), (2) a later delta
-# removes the check, legalized by the row that is ALREADY on main. A candidate-side row
-# excuses nothing.
-_RETIREMENT_MANIFEST = "governance/retired_checks.md"
-_MANIFEST_ROW_RE = re.compile(r"^\|\s*([a-z][a-z0-9_]*)\s*\|")
-
-
-def parse_retirements(text: str) -> set[str]:
-    """Check names declared retired in manifest TEXT: the first cell of each table row.
-    The header cell ("check") is excluded by name; the separator row cannot match the
-    catalog's lowercase snake_case name shape, so no further allowlist is kept."""
-    names: set[str] = set()
-    for line in text.splitlines():
-        m = _MANIFEST_ROW_RE.match(line)
-        if m and m.group(1) != "check":
-            names.add(m.group(1))
-    return names
+# a check is two operator-merged steps — (1) an ordinary delta adds the row (nothing is
+# removed yet, the row is plainly visible in review), (2) a later delta removes the
+# check, legalized by the row that is ALREADY on main. A candidate-side row excuses
+# nothing. UNIVERSAL_QUANTITATIVE_CLOSURE_V1: the declaration is an `AUTHORIZE retire:`
+# row of the OPEN_ITEMS.md Requirements contract — the ONE base-side grant mechanism
+# (anchors, markers, waivers, retirements); the former governance/retired_checks.md
+# manifest is git history.
+def _base_contract_rows(ref: str) -> list:
+    """The Requirements rows of the tree at `ref` (callers pass the BASE ref). A missing
+    or unreadable contract declares nothing — fail-closed toward blocking."""
+    proc = _run(["git", "show", f"{ref}:OPEN_ITEMS.md"], cwd=REPO)
+    if proc.returncode != 0:
+        return []
+    A = _load_module(REPO / _ACCEPTANCE_REL, "_acceptance_for_grants")
+    try:
+        return A.parse_contract(proc.stdout)
+    except A.ContractError:
+        return []
 
 
 def declared_retirements(ref: str) -> set[str]:
-    """Names the tree at `ref` declares retired. Callers MUST pass the BASE ref: a
-    declaration is honored only once it is already merged on main (two-step contract —
-    see the section comment above). A missing manifest declares nothing (fail-closed
-    toward blocking)."""
-    proc = _run(["git", "show", f"{ref}:{_RETIREMENT_MANIFEST}"], cwd=REPO)
-    if proc.returncode != 0:
-        return set()
-    return parse_retirements(proc.stdout)
+    """Names the tree at `ref` declares retired (`AUTHORIZE retire:<check>` rows)."""
+    A = _load_module(REPO / _ACCEPTANCE_REL, "_acceptance_for_grants")
+    return A.retirements(_base_contract_rows(ref))
 
 
 def split_removals(removed: list[str], declared: set[str]) -> tuple[list[str], list[str]]:
@@ -367,29 +361,14 @@ def split_removals(removed: list[str], declared: set[str]) -> tuple[list[str], l
 # inside a surviving check (e.g. rc_numeric_claims_cite_a_command inside root_cause_log).
 # The violations do not go away — they move to the survivor's name — so a pure per-name
 # count comparison reads the exact same standing debt as NEW debt on the survivor and
-# blocks an honest consolidation. The manifest row that legalises the retirement also
-# declares where the substance went ("... folded into <survivor> ..."), so the fold is
-# read from the SAME reviewed declaration and no second registry is introduced.
-_FOLD_DECL_RE = re.compile(r"folded into ([a-z][a-z0-9_]*)")
-
-
+# blocks an honest consolidation. The `retire:` row that legalises the retirement also
+# declares where the substance went ("... folded into <survivor> ..." in its criterion),
+# so the fold is read from the SAME reviewed declaration and no second registry exists.
 def declared_folds(ref: str) -> dict[str, str]:
-    """{retired check: declared survivor} from manifest rows whose rationale declares the
-    substance 'folded into <survivor>'. Callers MUST pass the BASE ref, exactly like
-    declared_retirements (two-step contract); a missing manifest (or a row with no fold
-    phrase) declares nothing — fail-closed toward blocking."""
-    proc = _run(["git", "show", f"{ref}:{_RETIREMENT_MANIFEST}"], cwd=REPO)
-    if proc.returncode != 0:
-        return {}
-    folds: dict[str, str] = {}
-    for line in proc.stdout.splitlines():
-        m = _MANIFEST_ROW_RE.match(line)
-        if not m or m.group(1) == "check":
-            continue
-        f = _FOLD_DECL_RE.search(line)
-        if f:
-            folds[m.group(1)] = f.group(1)
-    return folds
+    """{retired check: declared survivor} from the BASE contract's `retire:` rows whose
+    criterion says 'folded into <survivor>'; nothing declared -> fail-closed toward blocking."""
+    A = _load_module(REPO / _ACCEPTANCE_REL, "_acceptance_for_grants")
+    return A.folds(_base_contract_rows(ref))
 
 
 def refold_base_counts(
@@ -612,7 +591,7 @@ def added_marker_lines(base_ref: str, cand_ref: str, tokens: set[str]) -> list[t
             continue
         if ln.startswith("+") and not ln.startswith("+++"):
             body = ln[1:]
-            if path in (CHECKER_REL, "OPEN_ITEMS.md", _RETIREMENT_MANIFEST, _LEDGER_REL) or path.startswith("governance/") and path.endswith(".md"):
+            if path in (CHECKER_REL, "OPEN_ITEMS.md", _LEDGER_REL) or (path.startswith("governance/") and path.endswith(".md")):
                 line += 1
                 continue                      # the gate's own token table and prose are not escapes
             for tok in tokens:
@@ -712,7 +691,14 @@ def trusted_main(args) -> int:
         base_wt = wts.add(base_sha, "base")
         cand_wt = wts.add(cand_sha, "cand")
         _stage_against(cand_wt, base_sha)
-        A = _load_module(base_wt / _ACCEPTANCE_REL, "_base_acceptance")   # BASE acceptance code
+        # BASE acceptance code. In CI this file itself runs from the base branch, so the copy
+        # beside it IS the base's; a base that predates the module (the bootstrap delta that
+        # introduces it) has none, and the judge's own copy is the only trusted one there is.
+        acc_path = base_wt / _ACCEPTANCE_REL
+        if not acc_path.is_file():
+            acc_path = REPO / _ACCEPTANCE_REL
+            print(f"BOOTSTRAP: base {base_sha[:8]} carries no {_ACCEPTANCE_REL}; the judge's own copy is used")
+        A = _load_module(acc_path, "_base_acceptance")
 
         # ── contract (REPAIR 2) ──
         base_text = _show(base_sha, "OPEN_ITEMS.md") or ""
@@ -744,7 +730,19 @@ def trusted_main(args) -> int:
             blocks.append(f"acceptance contract weakened by the candidate: {x}")
 
         # ── trust anchors (REPAIR 3) ──
-        anchors = A.trust_anchor_paths(base_wt)
+        try:
+            anchors = A.trust_anchor_paths(base_wt)
+        except LookupError as e:
+            # the base predates an owner the derivation asks for (bootstrap): the anchors
+            # are what the base can enumerate about itself, never less than the judge's set
+            print(f"BOOTSTRAP: base cannot enumerate every anchor owner ({e}); using the judge's derivation on the base tree where it resolves")
+            anchors = sorted({".pre-commit-config.yaml", CHECKER_REL, "tools/check_delta_adds_no_debt.py"} |
+                             set(A.workflow_files(base_wt)) | set("/".join(p) for _n, p in A.load_tree_module(base_wt, "tools.stop_chain").HOOK_WIRINGS))
+            seen: set[str] = set()
+            for a in list(anchors):
+                if a.endswith(".py"):
+                    A._tools_imports(base_wt, a, seen)
+            anchors = sorted(set(anchors) | seen)
         changed_anchors = set(_diff_names(base_sha, cand_sha, anchors))
         # anchors the candidate ADDS under tools/ that base does not know are not anchors yet
         anchor_obl = {}
@@ -830,7 +828,7 @@ def trusted_main(args) -> int:
         injected["REQ-GOV-CLOSURE-COMMANDS"] = {"canonical": sorted(closing), "obligations": close_obl}
 
         # ── operating-process re-date rule (local hook parity) ──
-        opl = _load_module(base_wt / _OPL_REL, "_base_opl")
+        opl = _load_module(base_wt / "tools/operating_process_lock.py", "_base_opl")
         redate = opl.rc_redate_violations(cand_wt)
         for msg in redate:
             blocks.append(f"re-date rule (operating_process_lock): {msg}")
@@ -931,15 +929,15 @@ def main(argv: list[str] | None = None) -> int:
         print("\nPAID DOWN by this delta:")
         print("\n".join(improved))
     if folded_moves:
-        print("\nFOLDED by consolidation declared in governance/retired_checks.md "
+        print("\nFOLDED by consolidation declared in the base OPEN_ITEMS.md `retire:` rows "
               "(base-side standing debt re-attributed to the declared survivor — moved, "
               "not new, and anything ADDED beyond it still fails):")
         print("\n".join(folded_moves))
     if retired:
-        print("\nRETIRED by declaration in governance/retired_checks.md (RC-468):")
+        print("\nRETIRED by base-side `AUTHORIZE retire:` rows in OPEN_ITEMS.md (RC-468):")
         print("\n".join(f"  {name}" for name in retired))
     if not added and not removed:
-        tail = ("every removed check is declared retired in the manifest"
+        tail = ("every removed check is declared retired by a base-side row"
                 if retired else "removes no enforced check")
         print(f"\n[PASS] this delta adds no enforced violation the base did not already "
               f"carry, and {tail}.")
@@ -950,7 +948,7 @@ def main(argv: list[str] | None = None) -> int:
         print("\n".join(f"  {a.strip()}" for a in added))
     if removed:
         print("\n[FAIL] this delta REMOVES enforced check(s) from the CHECKS roster "
-              "without declaring them in governance/retired_checks.md. Deleting the "
+              "without a base-side `AUTHORIZE retire:` row in OPEN_ITEMS.md. Deleting the "
               "check that fails is not paying the debt:")
         print("\n".join(f"  {name}" for name in removed))
     print("\nThese checks are already owned by the repo and encode failure modes this "

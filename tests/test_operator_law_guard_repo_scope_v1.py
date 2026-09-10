@@ -306,13 +306,9 @@ def test_rc93_applicability_machinery_is_gone():
         assert not hasattr(G, name), name
 
 
-def test_applicability_declaration_marks_the_rc93_entry_retired():
-    doc = json.loads((REPO / "governance" / "archive" / "guard_applicability.json")
-                     .read_text(encoding="utf-8"))
-    mechs = {m.get("governing_mechanism_id"): m for m in doc.get("mechanisms") or []}
-    rc93 = mechs.get("ED-OPERATOR-LAW-GUARD/RC-93-COMMIT-BEFORE-PROOF")
-    assert rc93 is not None, "the historical declaration row must stay (append-only history)"
-    assert rc93.get("retired"), "the entry must be marked retired with its date/reason"
+# test_applicability_declaration_marks_the_rc93_entry_retired left with governance/archive/
+# (UNIVERSAL_QUANTITATIVE_CLOSURE_V1, 2026-09-10): git history is the archive, and a test
+# that read a retired declaration's JSON proved the file, not the guard.
 
 
 def test_no_hardcoded_repository_exception_in_the_guard():

@@ -81,9 +81,12 @@ def test_nc02_nc04_only_registered_canonical_authorities_enumerate(tmp_path):
         v = _verdict(vs, rid)
         assert v.verdict == "NOT_PROVEN" and not v.authority_resolved, rid
     with pytest.raises(LookupError):
-        A.resolve_population("tests.fake:sentinels", tmp_path)
-    # honest positive: a registered authority enumerates the real population
-    assert len(A.resolve_population("governance.acceptance:enforced_check_roster", ROOT)) >= 30
+        A.resolve_scope("tests.fake:sentinels", tmp_path)
+    with pytest.raises(LookupError):
+        A.resolve_scope("delta:only_the_gate", ROOT)
+    # honest positive: the judged tree's own owner enumerates the real population
+    assert len(A.resolve_scope("tools.precommit_institutional:enforced_roster", ROOT)) >= 30
+    assert set(A.resolve_scope("tools.check_ui_data_integration:page_status", ROOT)) >= {"static/index.html", "static/chart.html"}
 
 
 # ── NC-03 open-domain allowlist: a local narrowing is FAIL even when samples pass ──────
@@ -235,8 +238,10 @@ def test_evidence_class_rank_and_operator_accept_cannot_be_self_granted(tmp_path
 
 # ── NC-16 malformed hook payload: every wired executable refuses it ───────────────────
 def test_nc16_every_hook_executable_fails_closed_on_unreadable_payload():
-    status = A._hooks_fail_closed_status(ROOT)
+    status = A.resolve_scope("tools.stop_chain:fail_closed_status", ROOT)
     assert status and all(o.status == "PROVEN" for o in status.values()), {k: (o.status, o.detail) for k, o in status.items()}
+    assert {"tools/stop_guard.py", "tools/process_lock_guard.py", "tools/operator_law_guard.py",
+            "tools/stop_chain.py", "tools/pretooluse_chain.py"} <= set(status)
     # honest positive: a readable, benign PreToolUse payload passes the process lock
     r = subprocess.run([sys.executable, str(ROOT / "tools" / "process_lock_guard.py")], cwd=str(ROOT),
                        input=json.dumps({"tool_name": "Bash", "tool_input": {"command": "git status"}}),
@@ -251,7 +256,7 @@ def test_nc17_skip_routes_are_refused_and_every_local_hook_owner_runs_remotely()
         assert OLG._SKIP_HOOKS.search(cmd), cmd
     for cmd in ("git commit -m 'skip the typo'", "SKIPPED=1 python x.py", "echo pre-commit installed"):
         assert not OLG._SKIP_HOOKS.search(cmd), cmd
-    parity = A._precommit_parity_status(ROOT)
+    parity = A.resolve_scope("tools.precommit_institutional:local_remote_parity", ROOT)
     assert parity and all(o.status == "PROVEN" for o in parity.values()), {k: (o.status, o.detail) for k, o in parity.items()}
 
 
@@ -272,11 +277,16 @@ def test_nc18_closure_commands_are_executed_not_matched(tmp_path):
 
 # ── NC-19 one-computation slice: green slices never close the parent ──────────────────
 def test_nc19_registered_slices_green_do_not_close_one_computation():
-    rows = [r for r in A.load_contract(ROOT) if r.id == "REQ-ONE-COMPUTATION"]
-    v = _verdict(A.evaluate(ROOT, rows, base_contract=rows), "REQ-ONE-COMPUTATION")
+    rows = [r for r in A.load_contract(ROOT) if r.id in ("REQ-ONE-COMPUTATION", "REQ-DECISION-PATH-ADMISSION")]
+    vs = A.evaluate(ROOT, rows, base_contract=rows)
+    v = _verdict(vs, "REQ-ONE-COMPUTATION")
     assert v.proven > 0, "the registered slices ARE green"
     assert v.missing > 0 and v.verdict == "NOT_PROVEN"
     assert len(v.canonical) == v.proven + v.missing + v.failed + v.invalid
+    # the same mechanism, another domain: the empty admission registry is MISSING per entry,
+    # never a stored BUILT_EMPTY verdict
+    d = _verdict(vs, "REQ-DECISION-PATH-ADMISSION")
+    assert d.authority_resolved and len(d.canonical) == 5 and d.verdict == "NOT_PROVEN"
 
 
 # ── NC-20 the known-bad evidence package is rejected for general reasons ──────────────
@@ -328,8 +338,14 @@ def test_contract_shape_errors_raise_never_guess():
     for rid in ("REQ-GOV-TRUSTED-VALIDATOR", "REQ-GOV-TRUST-ANCHORS", "REQ-GOV-CONTRACT-MONOTONIC",
                 "REQ-GOV-CLOSURE-COMMANDS", "REQ-GOV-MARKER-AUTHORITY", "REQ-GOV-HOOKS-FAIL-CLOSED",
                 "REQ-GOV-LOCAL-REMOTE-PARITY", "REQ-GOV-EVIDENCE-CLASS", "REQ-GOV-REMOTE-NON-BYPASS",
-                "REQ-UI-PAGES-BOUND", "REQ-ONE-COMPUTATION", "REQ-UNIVERSAL-TICKER", "REQ-CONSOLE-GAMMA-UI"):
+                "REQ-UI-PAGES-BOUND", "REQ-ONE-COMPUTATION", "REQ-DECISION-PATH-ADMISSION",
+                "REQ-PREDICTIVE-VALIDITY", "REQ-REAL-MONEY-READINESS", "REQ-CARD-FIDELITY",
+                "REQ-UNIVERSAL-TICKER", "REQ-CONSOLE-GAMMA-UI"):
         assert rid in ids, rid
+    # ONE acceptance authority: no stored verdict table beside the computed contract
+    text = (ROOT / "OPEN_ITEMS.md").read_text(encoding="utf-8")
+    assert "## Top-level acceptance verdicts" not in text
+    assert "UNIVERSALITY_STATUS = PASS" not in text and "ONE_FAUCET_STATUS = PASS" not in text
 
 
 def test_report_carries_every_mandated_count_label(tmp_path):

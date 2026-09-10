@@ -498,6 +498,57 @@ def registered_entrypoints(root: Path, host: str | None = None) -> tuple[str, ..
     return tuple(out)
 
 
+def wired_executables(root: Path) -> list[str]:
+    """Every executable the hook seam runs on an event, repo-relative: the chain entries
+    both hosts wire (registered_entrypoints) plus every member of the `*_CHAIN` rosters those
+    executors declare — read statically from the tree at `root`, so a judge can enumerate a
+    tree it is not running in. The canonical enumeration the Close contract (AGENTS.md)
+    names; UNIVERSAL_QUANTITATIVE_CLOSURE_V1 made it the population of
+    REQ-GOV-HOOKS-FAIL-CLOSED. Fail-closed: an unreadable wiring contributes nothing."""
+    import ast as _ast
+    mods: list[str] = []
+    for entry in registered_entrypoints(root):
+        rel = entry.replace("\\", "/")
+        if rel not in mods:
+            mods.append(rel)
+        p = root / rel
+        if not p.is_file():
+            continue
+        try:
+            tree = _ast.parse(p.read_text(encoding="utf-8", errors="replace"))
+        except SyntaxError:
+            continue
+        for node in tree.body:
+            if isinstance(node, _ast.Assign) and any(
+                    isinstance(t, _ast.Name) and t.id.endswith("_CHAIN") for t in node.targets):
+                for c in _ast.walk(node.value):
+                    if isinstance(c, _ast.Constant) and isinstance(c.value, str) and c.value.startswith("tools."):
+                        member = "tools/" + c.value.split(".", 1)[1] + ".py"
+                        if member not in mods:
+                            mods.append(member)
+    return sorted(m for m in mods if (root / m).is_file())
+
+
+def fail_closed_status(root: Path) -> dict[str, dict[str, str]]:
+    """Run every wired executable on an UNREADABLE payload: `{path: {status, detail}}`.
+    A guard that exits 0 on input it cannot read waves the event through (RC-541); any
+    non-zero exit is a refusal. This is the verifier the acceptance contract names for
+    REQ-GOV-HOOKS-FAIL-CLOSED — the seam judges its own population."""
+    out: dict[str, dict[str, str]] = {}
+    for rel in wired_executables(root):
+        try:
+            r = subprocess.run([sys.executable, str(root / rel)], cwd=str(root), input="{not json",
+                               capture_output=True, text=True, encoding="utf-8", errors="replace",
+                               timeout=120)
+            rc = r.returncode
+        except (OSError, subprocess.SubprocessError) as e:
+            out[rel] = {"status": "INVALID", "detail": f"could not execute: {e}"}
+            continue
+        out[rel] = ({"status": "PROVEN", "detail": f"exit {rc} on an unreadable payload"} if rc != 0
+                    else {"status": "FAIL", "detail": "exit 0 on an unreadable payload - fails OPEN"})
+    return out
+
+
 def hook_wiring_divergence(root: Path) -> dict[str, tuple[str, ...]]:
     """Entries one live host wires and the other does not — `{host: entries_only_there}`.
     Empty tuples everywhere means the hosts register the same chain entries; anything else is

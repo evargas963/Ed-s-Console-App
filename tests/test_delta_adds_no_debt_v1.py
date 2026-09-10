@@ -309,8 +309,9 @@ def test_the_roster_is_read_from_the_repo_s_own_CHECKS_authority():
 
 def test_an_unreadable_or_empty_roster_raises_rather_than_reporting_none():
     """Fail closed: an empty roster would make every check removal invisible."""
-    for label, text in (("no sentinels", "Traceback (most recent call last):"),
-                        ("empty body", "ROSTER_BEGIN\n\nROSTER_END\n")):
+    for label, text in (("not python", "Traceback (most recent call last):"),
+                        ("no CHECKS", "x = 1\n"),
+                        ("empty CHECKS", "CHECKS = []\n")):
         try:
             GATE.parse_roster(text)
         except RuntimeError as exc:
@@ -395,17 +396,28 @@ def test_index_candidate_honours_partial_staging_of_one_file(tmp_path, monkeypat
     assert tree["kept.txt"] == "one\nSTAGED-HALF\n", tree["kept.txt"]
 
 
-def test_rc468_parse_retirements_reads_rows_not_header():
-    """The manifest parser: data rows yield names; header, separator and prose do not."""
-    text = (
-        "# Retired enforced checks\n"
-        "prose about the mechanism\n"
-        "| check | retired | rationale |\n"
-        "|---|---|---|\n"
-        "| log_law | 2026-08-24 | schema + closed_rows carry the substance |\n"
-        "| five_why_reaches_bedrock | 2026-08-24 | prose-terminology police |\n")
-    assert GATE.parse_retirements(text) == {"log_law", "five_why_reaches_bedrock"}
-    assert GATE.parse_retirements("") == set()
+_CONTRACT_WITH_RETIREMENTS = (
+    "# spec\n## Requirements\n"
+    "| ID | KIND | GATE | SCOPE | PROOF | PARENT | CRITERION |\n|---|---|---|---|---|---|---|\n"
+    "| AUTH-R1 | AUTHORIZE | - | retire:log_law@* | - | - | schema + closed_rows carry the substance |\n"
+    "| AUTH-R2 | AUTHORIZE | - | retire:rc_numeric@* | - | - | same file, one validator - substance folded into root_cause_log, which now runs it |\n"
+    "| AUTH-A1 | AUTHORIZE | - | anchor:tools/x.py@feature | - | - | not a retirement |\n"
+    "\n## Open acceptance items\n")
+
+
+def test_rc468_retirements_are_read_from_base_contract_rows_not_a_manifest():
+    """UNIVERSAL_QUANTITATIVE_CLOSURE_V1: the declaration that legalises a removal is an
+    `AUTHORIZE retire:` row of the OPEN_ITEMS.md contract — the one base-side grant
+    mechanism; a `retire:` row's criterion may also declare the fold."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("_acc_for_gate_test", REPO / "governance" / "acceptance.py")
+    A = importlib.util.module_from_spec(spec)
+    sys.modules["_acc_for_gate_test"] = A
+    spec.loader.exec_module(A)
+    rows = A.parse_contract(_CONTRACT_WITH_RETIREMENTS)
+    assert A.retirements(rows) == {"log_law", "rc_numeric"}
+    assert A.folds(rows) == {"rc_numeric": "root_cause_log"}
+    assert A.retirements(A.parse_contract("# spec\n## Requirements\n| ID | KIND | GATE | SCOPE | PROOF | PARENT | CRITERION |\n|---|---|---|---|---|---|---|\n\n## x\n")) == set()
 
 
 def test_rc468_undeclared_removal_still_blocks():
@@ -419,8 +431,8 @@ def test_rc468_undeclared_removal_still_blocks():
     assert retired2 == [] and blocked2 == ["a_check", "b_check"]
 
 
-def test_rc468_missing_manifest_declares_nothing(monkeypatch):
-    """Fail-closed toward blocking: an unreadable or absent manifest retires nothing."""
+def test_rc468_missing_base_contract_declares_nothing(monkeypatch):
+    """Fail-closed toward blocking: an unreadable or absent base contract retires nothing."""
     class _P:
         returncode = 128
         stdout = ""
@@ -430,22 +442,17 @@ def test_rc468_missing_manifest_declares_nothing(monkeypatch):
     assert GATE.declared_folds("HEAD") == {}
 
 
-_FOLD_MANIFEST = (
-    "| check | retired | rationale |\n|---|---|---|\n"
-    "| plain_retirement | 2026-08-24 | equivalent protection stated elsewhere |\n"
-    "| rc_numeric | 2026-08-24 | same file, one validator — substance folded into "
-    "root_cause_log, which now runs it as a helper |\n")
-
-
-def test_fold_declaration_is_parsed_from_the_manifest_rationale(monkeypatch):
-    """A row that declares 'folded into <survivor>' maps retired -> survivor; a plain
-    retirement row (no fold phrase) declares no fold."""
+def test_fold_declaration_is_parsed_from_the_base_contract_row(monkeypatch):
+    """A `retire:` row whose criterion declares 'folded into <survivor>' maps retired ->
+    survivor; a plain retirement row (no fold phrase) declares no fold; an `anchor:` row is
+    not a retirement."""
     class _P:
         returncode = 0
-        stdout = _FOLD_MANIFEST
+        stdout = _CONTRACT_WITH_RETIREMENTS
         stderr = ""
     monkeypatch.setattr(GATE, "_run", lambda *a, **k: _P())
     assert GATE.declared_folds("HEAD") == {"rc_numeric": "root_cause_log"}
+    assert GATE.declared_retirements("HEAD") == {"log_law", "rc_numeric"}
 
 
 def test_fold_moves_exactly_the_base_standing_debt_to_the_survivor():
@@ -501,19 +508,27 @@ def _load_pci():
 PCI = _load_pci()
 
 
-def test_base_retirements_parse_and_missing_manifest_declares_nothing():
-    """TEARDOWN 2026-08-24: the commit-path seam reads the BASE manifest (two-step
-    contract); an absent manifest declares nothing (fail-closed toward blocking)."""
-    text = ("| check | retired | rationale |\n|---|---|---|\n"
-            "| log_law | 2026-08-24 | covered elsewhere |\n")
+def _contract(*rows: str) -> str:
+    """An OPEN_ITEMS.md carrying only a Requirements table with the given rows."""
+    return ("# spec\n## Requirements\n"
+            "| ID | KIND | GATE | SCOPE | PROOF | PARENT | CRITERION |\n|---|---|---|---|---|---|---|\n"
+            + "".join(r + "\n" for r in rows) + "\n## Open acceptance items\n")
+
+
+def test_base_retirements_parse_and_missing_contract_declares_nothing():
+    """TEARDOWN 2026-08-24 / UNIVERSAL_QUANTITATIVE_CLOSURE_V1: the commit-path seam reads
+    the BASE contract's `retire:` rows (two-step contract); an absent or unreadable base
+    contract declares nothing (fail-closed toward blocking)."""
+    text = _contract("| AUTH-1 | AUTHORIZE | - | retire:log_law@* | - | - | covered elsewhere |")
     assert PCI._base_retirements(lambda spec: text, "origin/main") == {"log_law"}
     assert PCI._base_retirements(lambda spec: None, "origin/main") == set()
+    assert PCI._base_retirements(lambda spec: "# no contract here\n", "origin/main") == set()
 
 
-def _pci_main_rc(monkeypatch, base_manifest, staged_manifest="IGNORED-BY-DESIGN"):
+def _pci_main_rc(monkeypatch, base_contract, staged_contract="IGNORED-BY-DESIGN"):
     """Drive the real commit gate main() with a simulated base/candidate roster where
-    the candidate drops b_check. The BASE manifest is what may legalize it; a STAGED
-    manifest is served too so a regression back to candidate-side reading is caught."""
+    the candidate drops b_check. The BASE contract is what may legalize it; a STAGED
+    contract is served too so a regression back to candidate-side reading is caught."""
     base_src = 'CHECKS = [("a_check", check_a, True), ("b_check", check_b, True)]'
     cand_src = 'CHECKS = [("a_check", check_a, True)]'
 
@@ -522,10 +537,10 @@ def _pci_main_rc(monkeypatch, base_manifest, staged_manifest="IGNORED-BY-DESIGN"
             return base_src
         if spec == f":{PCI.CHECKER_REL}":
             return cand_src
-        if spec == f"origin/main:{PCI.MANIFEST_REL}":
-            return base_manifest
-        if spec == f":{PCI.MANIFEST_REL}":
-            return staged_manifest
+        if spec == "origin/main:OPEN_ITEMS.md":
+            return base_contract
+        if spec == ":OPEN_ITEMS.md":
+            return staged_contract
         return None
 
     monkeypatch.setattr(PCI, "_base_ref", lambda: "origin/main")
@@ -534,29 +549,25 @@ def _pci_main_rc(monkeypatch, base_manifest, staged_manifest="IGNORED-BY-DESIGN"
 
 
 def test_commit_gate_passes_a_BASE_declared_retirement(monkeypatch):
-    manifest = ("| check | retired | rationale |\n|---|---|---|\n"
-                "| b_check | 2026-08-24 | equivalent protection stated |\n")
-    assert _pci_main_rc(monkeypatch, base_manifest=manifest) == 0
+    base = _contract("| AUTH-1 | AUTHORIZE | - | retire:b_check@* | - | - | equivalent protection stated |")
+    assert _pci_main_rc(monkeypatch, base_contract=base) == 0
 
 
 def test_commit_gate_still_blocks_an_undeclared_removal(monkeypatch):
-    """RC-391 preserved on the commit path: no BASE manifest row, no removal."""
-    assert _pci_main_rc(monkeypatch, base_manifest=None) == 1
-    empty_manifest = "| check | retired | rationale |\n|---|---|---|\n"
-    assert _pci_main_rc(monkeypatch, base_manifest=empty_manifest) == 1
+    """RC-391 preserved on the commit path: no BASE `retire:` row, no removal."""
+    assert _pci_main_rc(monkeypatch, base_contract=None) == 1
+    assert _pci_main_rc(monkeypatch, base_contract=_contract()) == 1
+    other = _contract("| AUTH-1 | AUTHORIZE | - | anchor:tools/x.py@* | - | - | not a retirement |")
+    assert _pci_main_rc(monkeypatch, base_contract=other) == 1
 
 
 def test_commit_gate_refuses_a_candidate_only_declaration(monkeypatch):
     """THE SELF-AUTHORIZATION HOLE, closed (operator, 2026-08-24): a commit that both
-    declares b_check retired in its OWN staged manifest and removes it must BLOCK —
+    declares b_check retired in its OWN staged contract and removes it must BLOCK —
     the declaration is honored only once it is already merged on the base."""
-    candidate_row = ("| check | retired | rationale |\n|---|---|---|\n"
-                     "| b_check | 2026-08-24 | self-serving declaration |\n")
-    assert _pci_main_rc(monkeypatch, base_manifest=None,
-                        staged_manifest=candidate_row) == 1
-    empty = "| check | retired | rationale |\n|---|---|---|\n"
-    assert _pci_main_rc(monkeypatch, base_manifest=empty,
-                        staged_manifest=candidate_row) == 1
+    candidate = _contract("| AUTH-1 | AUTHORIZE | - | retire:b_check@* | - | - | self-serving declaration |")
+    assert _pci_main_rc(monkeypatch, base_contract=None, staged_contract=candidate) == 1
+    assert _pci_main_rc(monkeypatch, base_contract=_contract(), staged_contract=candidate) == 1
 
 
 def test_rc468_declaration_only_touches_removal_accounting():

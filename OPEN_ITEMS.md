@@ -19,46 +19,46 @@ fixed. History lives in git.
 
 ---
 
-## Top-level acceptance verdicts (change these only with evidence)
-
-| Fact | Status |
-|---|---|
-| Predictive validity (any horizon beats chance, OOS, net of costs) | **NOT_PROVEN** — 2026-06-01 gate verdict stands |
-| Real-money readiness | **NOT_APPROVED** |
-| Decision-path admission registry (`config/decision_path_admissions.json`) | **BUILT_EMPTY** — gate live in `call_engine.compute_call` via `decision_gate.py`; nothing admitted; directional calls force WAIT (running server picks this up on its next restart) |
-| Card fidelity overall / universal runtime live proof | **NOT_PROVEN** |
-| FP-03..FP-25 battery + LP-01 levels verdicts (kills AND signals) | **ERA-CONTAMINATED — not citable either direction until re-run under the clean protocol (operator 2026-08-01; see Validity notes below)** |
-
-
----
-
 ## Requirements (machine-read acceptance contract — executed by `governance/acceptance.py`)
 
 UNIVERSAL_QUANTITATIVE_CLOSURE_AND_NON_BYPASS_V1 (operator, 2026-09-10). This table is the
-executable half of this file. Every verdict is COMPUTED from it — nothing here stores PASS —
-by `governance/acceptance.py`, and the delta gate (`tools/check_delta_adds_no_debt.py
+ONE acceptance authority's executable form. Every verdict — the top-level product facts
+included — is COMPUTED from it (nothing here stores PASS, NOT_PROVEN or NOT_APPROVED as a
+fact) by `governance/acceptance.py`, and the delta gate (`tools/check_delta_adds_no_debt.py
 --trusted`, run from the BASE branch's code by `.github/workflows/trusted-closure.yml`)
-judges every candidate against the BASE copy of this table. Rules the machine holds:
+judges every candidate against the BASE copy of this table. The three parts of this file
+have three responsibilities and share no truth: this table judges (obligations, evidence
+class, computed verdict); the open acceptance items below state, in words, what "done"
+means for named items that have NO machine authority yet; the Project A board is the
+operator's durable criteria list for the same class. The moment an item gains a canonical
+authority it becomes a row here and leaves the prose — it never exists in both. Rules the
+machine holds:
 
-- **SCOPE names the canonical authority that owns the population** (`governance.acceptance:<fn>`
-  reads the router, the hook wiring, the check roster, the provenance roots — never a hand
-  list); `delta:<name>` populations are what THIS change does and only the delta gate can
-  enumerate them; `evidence:<REQ>` rows are proven by evidence records under
-  `reports/evidence/<REQ>/` of at least the declared PROOF class; `narrowing:<check>` names
-  the institutional check that detects known LOCAL narrowings of an open property whose
-  boundary authority is not yet measured (a hit is FAIL; a clean run proves nothing); `NONE`
-  states that no canonical authority is identified, which is NOT_PROVEN by construction,
-  never invented.
+- **SCOPE names the canonical authority that owns the population**: `module:function` is
+  called IN THE JUDGED TREE with the tree root (the router owner enumerates pages, the hook
+  seam enumerates its executables, the commit seam its hooks, the provenance authority its
+  roots — never a hand list, never this executor); it returns the population, or the
+  population with each obligation's proof; `delta:<name>` populations are what THIS change
+  does and only the delta gate can enumerate them; `evidence:<REQ>` rows are proven by
+  evidence records under `reports/evidence/<REQ>/` of at least the declared PROOF class;
+  `narrowing:<check>` names the institutional check that detects known LOCAL narrowings of
+  an open property whose boundary authority is not yet measured (a hit is FAIL; a clean run
+  proves nothing); `NONE` states that no canonical authority is identified, which is
+  NOT_PROVEN by construction, never invented. An owner that cannot answer is NOT_PROVEN.
 - **PROOF** is the minimum evidence class (`STATIC` < `ISOLATED_E2E` < `REAL_POPULATION` <
   `LIVE_RTH`) plus binding flags (`+EXACT_HEAD`, `+RUNTIME_IDENTITY`, `+OPERATOR_ACCEPT`).
   Lower-class evidence is INVALID for the row, never partial credit.
 - **GATE** `MERGE` rows must be PASS for a delta to merge; `PRODUCT` rows are reported with their
   counts and a delta may not make them worse than the base (a regression is a FAIL of the delta).
-- **AUTHORIZE rows are effective only from the base branch.** A candidate may ADD one (a visible
-  request); it is inert until merged, so no delta can grant itself an exclusion, a trust-anchor
-  edit or a marker. `anchor:<path>@<branch>` permits a trust-anchor change; `marker:<token>@<path>@<branch>`
-  permits an escape marker; `waive:<REQ>:<obligation>` excludes one obligation. Rows are removed
-  by the delta that lands after their use; git keeps them.
+- **AUTHORIZE rows are the ONE base-side grant mechanism and are effective only from the base
+  branch.** A candidate may ADD one (a visible request); it is inert until merged, so no delta
+  can grant itself an exclusion, a trust-anchor edit, a marker or a check retirement.
+  `anchor:<path>@<branch>` permits a trust-anchor change; `marker:<token>@<path>@<branch>`
+  permits an escape marker; `waive:<REQ>:<obligation>` excludes one obligation;
+  `retire:<check>@<branch>` legalises removing an enforced check from the institutional gate's
+  roster in a LATER delta (RC-468's two-step contract; a criterion saying `folded into
+  <survivor>` re-attributes the retired check's standing debt to the survivor). Rows are
+  removed by the delta that lands after their use; git keeps them.
 - **ACCEPT rows are the operator's acceptance of a requirement at an exact sha** (`<REQ>@<sha>`),
   landed from the base branch. Their trust rests on the credential boundary recorded under
   REQ-GOV-REMOTE-NON-BYPASS: until the agent's GitHub credential cannot merge around the
@@ -69,18 +69,22 @@ judges every candidate against the BASE copy of this table. Rules the machine ho
 
 | ID | KIND | GATE | SCOPE | PROOF | PARENT | CRITERION |
 |---|---|---|---|---|---|---|
-| REQ-GOV-TRUSTED-VALIDATOR | FINITE | MERGE | governance.acceptance:enforced_check_roster | STATIC | - | Every enforced check of the BASE roster judged the candidate tree running the BASE validator code (base tools overlaid on the candidate), and when the candidate changes a validator, its copy of every base check reports no fewer violations than the base copy on both trees — a validator cannot certify its own weakening. |
+| REQ-GOV-TRUSTED-VALIDATOR | FINITE | MERGE | delta:base_enforced_roster | STATIC | - | Every enforced check of the BASE roster judged the candidate tree running the BASE validator code (base tools overlaid on the candidate), and when the candidate changes a validator, its copy of every base check reports no fewer violations than the base copy on both trees — a validator cannot certify its own weakening. |
 | REQ-GOV-TRUST-ANCHORS | FINITE | MERGE | governance.acceptance:trust_anchor_paths | STATIC | - | Every file the enforcement path executes (hook wirings and their guards, the pre-commit config and its tools, every workflow, the institutional gate and its imports, the delta gate, the acceptance module, the retirement manifest) is byte-identical to base, or its change is authorized by a base-side `anchor:` row. |
 | REQ-GOV-CONTRACT-MONOTONIC | FINITE | MERGE | delta:base_requirements | STATIC | - | Every requirement row of the BASE contract survives in the candidate unweakened (same KIND, SCOPE, PARENT; PROOF and GATE no weaker); candidate-only AUTHORIZE/ACCEPT rows are listed as requests and have no effect. |
 | REQ-GOV-CLOSURE-COMMANDS | FINITE | MERGE | delta:closing_ledger_rows | STATIC | - | Every `governance/root_cause_log.md` row that becomes CLOSED or REMEDIATED in the delta cites at least one CI-executable command (`python`/`pytest`/`node`/`tools/`), and CI executed it in the candidate tree with exit 0. A regex match on a command string is not proof; a live-only probe (`curl`, `SELECT`) does not close a row by itself. |
 | REQ-GOV-MARKER-AUTHORITY | FINITE | MERGE | delta:added_escape_markers | STATIC | - | Every escape marker the delta ADDS (`institutional-synthetic-ok`, `silent-zero-ok`, `universal-scope-ok`, `fake-default-ok`, `vendor-coercion-ok`, `OUT-OF-SCOPE:` and the other `*-ok` tokens the gate honours) is authorized by a base-side `marker:` row for that token and path; a marker written by the same delta suppresses nothing. |
-| REQ-GOV-HOOKS-FAIL-CLOSED | FINITE | MERGE | governance.acceptance:hook_guard_modules | STATIC | - | Every executable the hook wiring runs (chain entries and every `*_CHAIN` roster member) exits non-zero on an unreadable payload. Verified by executing each with malformed stdin. |
-| REQ-GOV-LOCAL-REMOTE-PARITY | FINITE | MERGE | governance.acceptance:precommit_hooks | STATIC | - | Every local pre-commit hook's deciding owner is executed by a remote workflow (directly, or through the delta gate's imports), so a local `SKIP=`/`--no-verify` cannot create a remotely admissible violation. |
-| REQ-GOV-EVIDENCE-CLASS | OPEN | MERGE | governance.acceptance:evidence_status | STATIC | - | For all evidence records: a record of a lower class than the row requires, at a sha the code moved past, without runtime identity where required, or with descriptive payload labels standing in for provenance, never counts as proof. Adversarial mutations: `tests/test_universal_closure_v1.py` (NC-13/14/15). |
-| REQ-GOV-REMOTE-NON-BYPASS | OPEN | PRODUCT | NONE | STATIC | - | The trusted lane's verdict cannot be satisfied by a same-name status spoof, and the credential coding agents operate GitHub with cannot alter protection, merge around the trusted lane, forge an ACCEPT/AUTHORIZE row or modify the trust anchor. NOT_PROVEN until the external credential boundary is installed and the attack fails (see governance/root_cause_log.md RC-539). |
-| REQ-UI-PAGES-BOUND | FINITE | PRODUCT | governance.acceptance:ui_pages | STATIC | - | Every page the router serves ships no data cell as a dead `—` placeholder (the static-binding predicate of `tools/check_ui_data_integration.py`, over the router's PAGE population). |
-| REQ-ONE-COMPUTATION | FINITE | PRODUCT | governance.acceptance:provenance_roots | STATIC | - | Every material root (PRODUCER route, MarketState field, decision-engine argument) has a producer row closing it (PA-2 structural closure over `governance/provenance_roots.py`). Structural closure is not semantic truth: an OPEN root is MISSING, listed by name. |
-| REQ-UNIVERSAL-TICKER | OPEN | PRODUCT | narrowing:universal_ticker_scope | REAL_POPULATION | - | For all tickers the canonical enrollment accepts, the same canonical path serves them (PA-1). No boundary authority is machine-measured today, so the row is NOT_PROVEN by construction; the two known LOCAL NARROWINGS (`check_universal_ticker_scope`, RC-160: SPY-only experiment defaults, SPY-gated Chart features) are measured on every tree and any hit is a FAIL — a regression attack, never proof of the property. |
+| REQ-GOV-HOOKS-FAIL-CLOSED | FINITE | MERGE | tools.stop_chain:fail_closed_status | STATIC | - | Every executable the hook wiring runs (chain entries and every `*_CHAIN` roster member) exits non-zero on an unreadable payload. Verified by executing each with malformed stdin. |
+| REQ-GOV-LOCAL-REMOTE-PARITY | FINITE | MERGE | tools.precommit_institutional:local_remote_parity | STATIC | - | Every local pre-commit hook's deciding owner is executed by a remote workflow (directly, or through the delta gate's imports), so a local `SKIP=`/`--no-verify` cannot create a remotely admissible violation. |
+| REQ-GOV-EVIDENCE-CLASS | OPEN | MERGE | governance.acceptance:evidence_invariant_status | STATIC | - | For all evidence records: a record of a lower class than the row requires, at a sha the code moved past, without runtime identity where required, or with descriptive payload labels standing in for provenance, never counts as proof. Adversarial mutations: `tests/test_universal_closure_v1.py` (NC-13/14/15). |
+| REQ-GOV-REMOTE-NON-BYPASS | OPEN | PRODUCT | NONE | STATIC | - | The trusted lane's verdict cannot be satisfied by a same-name status spoof, and the credential coding agents operate GitHub with cannot alter protection, merge around the trusted lane, forge an ACCEPT/AUTHORIZE row or modify the trust anchor. MEASURED 2026-09-10 (`gh api repos/evargas963/Ed-s-Console-App/branches/main/protection`): `enforce_admins=true`, required checks `pytest-full` + `hardening` (strict, app_id 15368 = GitHub Actions), `required_approving_review_count=0`, no CODEOWNERS, no rulesets; the account that operates CI and merges is the account coding agents use. Met when (1) `trusted-closure` is a required check pinned to an expected source a same-named candidate check run cannot satisfy, and (2) the agent credential is a fine-grained token without `administration`, `environments`/`secrets` or bypass rights and an attempt to alter protection / merge around the trusted lane with it is refused. NOT_PROVEN until installed and attacked (RC-539). |
+| REQ-UI-PAGES-BOUND | FINITE | PRODUCT | tools.check_ui_data_integration:page_status | STATIC | - | Every page the router serves ships no data cell as a dead `—` placeholder (the static-binding predicate of `tools/check_ui_data_integration.py`, over the router's PAGE population). |
+| REQ-ONE-COMPUTATION | FINITE | PRODUCT | governance.provenance_inventory:root_status | STATIC | - | ONE FAUCET / single semantic authority (LIVE_REACHABLE_PRODUCERS(concept) == 1): every material root (PRODUCER route, MarketState field, decision-engine argument) has exactly one producer row closing it in `governance/provenance_roots.py`, across backend, training, serving, replay, backfill, SQL, frontend, cache/reconstruction and compatibility-shim producers; helpers, wrappers, builders, resolvers, selectors, normalizers, transformers, getters and inline calculations count when they independently compute truth; fallbacks never become second faucets; the frontend is never an independent money-path authority; replay and backfill never re-derive semantics; cache identity never substitutes stale truth; same meaning under different names is one concept and one name with different meanings is two. Structural closure is not semantic truth: an OPEN root is MISSING, listed by name, and the parent is not closed by green slices. |
+| REQ-DECISION-PATH-ADMISSION | FINITE | PRODUCT | governance.provenance_inventory:decision_path_admission_status | STATIC | - | No component may influence TRADE unless `config/decision_path_admissions.json` records it ADMITTED with evidence and an operator decision (AGENTS.md decision-path admission; gate live in `call_engine.compute_call` via `decision_gate.py`, so unadmitted influence forces WAIT). Population = the decision-engine entries (B1); each without an ADMITTED record is MISSING. The registry is built empty by design. |
+| REQ-PREDICTIVE-VALIDITY | OPEN | PRODUCT | NONE | REAL_POPULATION | - | Any horizon beats chance out of sample, net of costs, against trivial baselines (the 2026-06-01 gate verdict stands as NOT_PROVEN). The FP-03..FP-25 battery and the LP-01 levels verdicts (kills AND signals) are ERA-CONTAMINATED — not citable in either direction until re-run under the clean protocol (operator 2026-08-01; Validity notes below). No canonical boundary authority for "validity" exists yet, so the row is NOT_PROVEN by construction. |
+| REQ-REAL-MONEY-READINESS | OPEN | PRODUCT | NONE | LIVE_RTH+OPERATOR_ACCEPT | - | Real money is NOT approved: every PA-44 criterion (data truth, point-in-time, semantic authority, universality, train/serve/replay/backfill parity, model correctness, OOS edge, calibration, costs, slippage, risk engine, kill switches, decision replay, runtime proof, operator truth, no material NOT_PROVEN / open F-row / open RC defect / unclassified producer) holds AND the operator accepts at an exact sha. A child's PASS never closes this row. |
+| REQ-CARD-FIDELITY | OPEN | PRODUCT | NONE | LIVE_RTH+RUNTIME_IDENTITY | - | Card fidelity overall / universal runtime live proof: every card field renders its canonical backend value for every enrolled ticker on the live runtime (PA-36 operator truth, PA-43 runtime proof). No canonical runtime authority enumerates the card population yet, so NOT_PROVEN by construction. |
+| REQ-UNIVERSAL-TICKER | OPEN | PRODUCT | narrowing:universal_ticker_scope | REAL_POPULATION | - | UNIVERSALITY (hard parent): the repository is universal — SPY/QQQ/IWM are anchors, never scope boundaries; every fix is repo-wide and ticker-agnostic; no SPY-only or sentinel-only closure; anchors are representative validation points only; a newly introduced or guest ticker follows the same canonical semantic authority with the same preprocessing, train/serve, replay/backfill, artifact-identity, cache-identity, missingness, fallback, decision, UI, provenance and runtime-routing semantics; any legitimate ticker-specific exception is explicitly identified, economically justified and versioned/tested separately; anchor success never substitutes for universal construction proof; at least one non-anchor behavioural test exists where ticker-specific routing is material. No boundary authority is machine-measured today, so the row is NOT_PROVEN by construction; the two known LOCAL NARROWINGS (`check_universal_ticker_scope`, RC-160: SPY-only experiment defaults, SPY-gated Chart features) are measured on every tree and any hit is a FAIL — a regression attack, never proof of the property. |
 | REQ-CONSOLE-GAMMA-UI | OPEN | PRODUCT | evidence:REQ-CONSOLE-GAMMA-UI | LIVE_RTH+EXACT_HEAD+RUNTIME_IDENTITY+OPERATOR_ACCEPT | - | The Options/Gamma console (PR #238 objective) renders the canonical population on real RTH data, from the exact head as the sole console owner with runtime identity, and the operator accepts it at that sha. Synthetic, intercepted or premarket evidence is INVALID for this row; a screenshot is not an evidence record. |
 | AUTH-BOOTSTRAP-V1 | AUTHORIZE | - | anchor:*@claude/universal-quantitative-closure-v1 | - | - | The repair that introduces this contract changes every trust anchor; the base carries no contract to authorize it, so this row is the visible record. Remove after landing. |
 
@@ -125,8 +129,6 @@ any component closure.**
 - SIG-01 is WORK (`ACTIVE_PROGRAM.md`); the schema's lane state (2 of 5 RTH accrual sessions) is recorded on that row, and it is met when five RTH sessions are accrued and the accrual reads back from the runtime, not from the harness.
 - [ ] **RAPID_VIX_SENTINEL** — never exercised: requires a live `|dVIX| > 3.0` at `VIX > 20` event, never simulated. Met on the first qualifying live event with the sentinel's fire recorded from the runtime.
 - [ ] **UI-04 operator design rails P1B/P1C/P1D** — operator-held design decisions; nothing built. Met when the operator decides and the decided rails render live.
-- [ ] **GOV-ROOT-LEDGER-SCAN** — design only ("scanner scope extension"). No criterion beyond: either a measured defect the scan would have prevented is cited and a row opened, or this item is removed as a mechanism without a proven failure (AGENTS.md).
-- [ ] **GOV-REMOTE-ENFORCEMENT** — MEASURED 2026-09-10 (`gh api repos/evargas963/Ed-s-Console-App/branches/main/protection`): `enforce_admins=true`, required checks `pytest-full` + `hardening` (strict), `required_approving_review_count=0`, no CODEOWNERS, no rulesets — the earlier `enforce_admins=false` reading in this row was stale. What remains open is the credential boundary, not the switch: the account that operates CI and merges is the same account coding agents use, so the protection can be re-configured by the party it constrains. Met when (1) `trusted-closure` is a required check pinned to an expected source that a same-named candidate check run cannot satisfy, and (2) the agent credential is a fine-grained token without `administration`, `environments`/`secrets` or bypass rights and an attempt to alter protection / merge around the trusted lane with it is refused. Tracked as `REQ-GOV-REMOTE-NON-BYPASS` in the Requirements table (NOT_PROVEN) and RC-539.
 - [ ] **ML_PIPELINE_CORRECTNESS** (parent of PA-6, PA-7, PA-11..PA-14, PA-33; was the ML NOT_PROVEN matrix, base head `3009ae1c`). Predictive validity NOT_PROVEN per the top table. Every criterion below is unmet unless its line says otherwise; each closes only with the re-runnable proof named:
   - [ ] POINT_IN_TIME_FEATURE_CORRECTNESS — LSTM/Transformer history sequences must exclude bars with `ts_utc >= as_of`; per-row slicing must clamp against the preloaded hist upper bound. Proof: adversarial fixture hist DB, `_predict_lstm` at an early as-of with and without appended/mutated future rows, identical outputs (partly landed: `tests/test_ml_feature_provenance.py` as-of locks).
   - [ ] NO_LOOKAHEAD_BIAS — no label window overlapping a feature window in training-set construction; no centered rolling anywhere in the training feature build. Proof: injection tests that a governance scan catches both, plus a per-horizon dataset-construction boundary test.
@@ -296,10 +298,15 @@ back as a new row with fresh evidence.*
 # PROJECT A — INSTITUTIONAL REPO REHABILITATION MASTER BOARD
 
 > **Added 2026-08-12 (operator-authorized documentation-preservation write).** This is the durable
-> Project A master checklist. It is deliberately expansive and must not be shrunk. Rows are never
-> silently deleted — future changes use ADD / STATUS_CHANGE / RECONCILIATION. Checkbox rule:
+> Project A master checklist of criteria that have NO machine authority yet. Rows are never
+> silently deleted — a row leaves this board only by RECONCILIATION into a Requirements row
+> above once a canonical authority enumerates its population (PA-1 UNIVERSALITY and PA-2 ONE
+> FAUCET left this way on 2026-09-10 — `REQ-UNIVERSAL-TICKER`, `REQ-ONE-COMPUTATION`; the
+> top-level verdict table likewise — `REQ-PREDICTIVE-VALIDITY`, `REQ-REAL-MONEY-READINESS`,
+> `REQ-DECISION-PATH-ADMISSION`, `REQ-CARD-FIDELITY`), or by ADD / STATUS_CHANGE. Checkbox rule:
 > `[x]` ONLY for CLOSED_WITH_EVIDENCE (or a proven PASS); `[ ]` for everything else
-> (OPEN / FAIL / BLOCKED / NOT_PROVEN / HISTORICAL / GAP / unproven acceptance target).
+> (OPEN / FAIL / BLOCKED / NOT_PROVEN / HISTORICAL / GAP / unproven acceptance target). A
+> `*_STATUS = PASS` line is an acceptance target, never a stored verdict; the machine stores none.
 >
 > **Governing mission:** SEARCH → FIND → PROVE → FIX → TEST → IMPROVE → NEXT. Work the repo, not the
 > board. The board is durable memory of everything that still needs technical proof — statuses here
@@ -309,63 +316,10 @@ back as a new row with fresh evidence.*
 > closed. SPY/QQQ/IWM are anchors, not scope boundaries — all fixes repo-wide and ticker-universal
 > unless a proven economic reason requires otherwise.
 
-## PA-1 — UNIVERSALITY (HARD PARENT REQUIREMENT)
-The repository is universal. SPY/QQQ/IWM are anchors, not scope boundaries.
-- [ ] All fixes are repo-wide by default
-- [ ] All fixes are ticker-agnostic by default
-- [ ] No SPY-only closure
-- [ ] No SPY/QQQ/IWM-only closure
-- [ ] Anchor tickers used only as representative validation/control points
-- [ ] Guest/non-anchor ticker path proven where applicable
-- [ ] Newly introduced ticker follows same canonical semantic authority
-- [ ] No hardcoded anchor-ticker branch changes semantic truth
-- [ ] Same preprocessing semantics across tickers
-- [ ] Same train/serve semantics across tickers
-- [ ] Same replay/backfill semantics across tickers
-- [ ] Same artifact identity rules across tickers
-- [ ] Same cache identity rules across tickers
-- [ ] Same missingness semantics across tickers
-- [ ] Same fallback rules across tickers
-- [ ] Same decision rules across tickers unless intentionally ticker-specific
-- [ ] Same UI semantics across tickers
-- [ ] Same provenance contract across tickers
-- [ ] Same runtime routing rules across tickers
-- [ ] Any legitimate ticker-specific exception explicitly identified
-- [ ] Any legitimate ticker-specific exception economically justified
-- [ ] Any legitimate ticker-specific exception versioned/tested separately
-- [ ] Anchor success never substitutes for universal construction proof
-- [ ] At least one non-anchor/guest behavioral test where ticker-specific routing is material
-- [ ] **UNIVERSALITY_STATUS = PASS**
-
-## PA-2 — ONE FAUCET / SINGLE SEMANTIC AUTHORITY  (LIVE_REACHABLE_PRODUCERS(C) == 1)
-- [ ] Every material semantic concept identified
-- [ ] Backend producers identified
-- [ ] Training producers identified
-- [ ] Serving producers identified
-- [ ] Replay producers identified
-- [ ] Backfill producers identified
-- [ ] SQL-derived producers identified
-- [ ] Frontend-derived producers identified
-- [ ] Cache/reconstruction producers identified
-- [ ] Compatibility-shim producers identified
-- [ ] Helpers counted when they independently compute truth
-- [ ] Wrappers counted when they independently compute truth
-- [ ] Builders counted when they independently compute truth
-- [ ] Resolvers counted when they independently compute truth
-- [ ] Selectors counted when they independently compute truth
-- [ ] Normalizers counted when they independently compute truth
-- [ ] Transformers counted when they independently compute truth
-- [ ] Properties/getters counted when they independently compute truth
-- [ ] Inline calculations counted
-- [ ] Same meaning under different names searched
-- [ ] Same name with different meaning separated
-- [ ] Legitimately distinct economic concepts explicitly named distinctly
-- [ ] Fallbacks do not silently become second faucets
-- [ ] Frontend is never an independent money-path truth authority
-- [ ] Replay does not independently re-derive semantics differently
-- [ ] Backfill does not independently reinterpret semantics
-- [ ] Cache identity never substitutes stale semantic truth
-- [ ] **ONE_FAUCET_STATUS = PASS**
+## PA-1 / PA-2 — RECONCILED into the Requirements table (2026-09-10)
+UNIVERSALITY is `REQ-UNIVERSAL-TICKER` and ONE FAUCET is `REQ-ONE-COMPUTATION` above: computed
+rows with their populations (the provenance roots; the RC-160 narrowing detector), never a
+checklist with a status line. Their facets are the rows' criteria, verbatim in substance.
 
 ## PA-3 — CURRENT CANONICAL / EVIDENCED F-SERIES (F01–F42, gaps)
 > **Count (repo-grounded, corrected):** LOWEST = F01, HIGHEST = F42, **EVIDENCED ITEMS = 37** (supersedes Claude's earlier 34 — the difference is F33/F34/F37b, which ARE evidenced F-rows, not merely RC mappings). GAPS = F04, F16, F19, F28, F30, F37-parent (F37b exists). Explicit OPEN = **F10, F15, F25, F31, F39**. F32 = one-authority lock evidenced BUT broader RC-328/artifact-compatibility state NOT_PROVEN. F33/F34/F37b preserved; F35 kept distinct from F01.

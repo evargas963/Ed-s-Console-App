@@ -269,7 +269,7 @@ _RETIRED_NAMES = ("MEMORY.md", "OPEN_ITEMS_OPERATOR_TRUST", "OPERATOR_TRUST_STAB
 _REWIRED_CONSUMERS = ("docs/host/README.md", "TRAINING_AND_MAINTENANCE.md",
                       "tools/feature_curation_gate.py", "tools/check_ml_pipeline_efficiency.py",
                       ".github/pull_request_template.md", "governance/AGENT_OPERATING_PROCESS_V1.md",
-                      ".claude/skills/drift-audit/SKILL.md", "governance/README.md", "timeframe_config.py")
+                      ".claude/skills/drift-audit/SKILL.md", "timeframe_config.py")
 _ALLOWED_PY_MENTIONS = {  # the only production readers of the two root documents, each for a reason
     "tools/universal_scope_lock.py",     # prompt-path lock: agent-instruction files are in scope
     "tools/check_institutional_correctness.py",   # the RC-520 control itself
@@ -280,6 +280,7 @@ _ALLOWED_PY_MENTIONS = {  # the only production readers of the two root document
     # are readers by design — the acceptance owner became executable, it did not move.
     "governance/acceptance.py",
     "tools/check_delta_adds_no_debt.py",
+    "tools/precommit_institutional.py",   # reads the BASE contract's `retire:` rows at commit (RC-468 two-step)
 }
 
 
@@ -290,7 +291,7 @@ def test_moved_source_consumers_are_rewired(repo_index):
             assert name not in text, f"{rel} still cites retired {name}"
     for rel, text, _tree in repo_index.items():
         posix = rel.as_posix()
-        if posix.startswith(("tests/", "governance/archive/")):
+        if posix.startswith("tests/"):
             continue
         if posix != "tools/check_institutional_correctness.py":   # the control that names them
             for name in _RETIRED_NAMES:

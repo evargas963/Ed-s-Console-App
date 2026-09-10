@@ -3334,7 +3334,7 @@ _RC520_RETIRED_SURFACES: tuple[tuple[str, str], ...] = (
     ("tools/build_phase0_do_not_rename.py", "consolidation builder with no consumer"),
     ("tools/build_phase3_repo_cleanup.py", "consolidation builder with no consumer"),
     ("tools/import_memory_archive_phase1c.py", "one-shot memory import; the archive is already in git"),
-    ("reports/tqm_rehab_agent_brief.md", "procedure lives in governance/REHAB_PROGRAM.md; reports/ holds measurements"),
+    ("reports/tqm_rehab_agent_brief.md", "the rehab program is complete; its law (one authority, kill the second path) is AGENTS.md's ONE computation law; reports/ holds measurements"),
 )
 
 #: The ONE Cursor adapter. Every other `.cursor/rules/*.mdc` was a restatement of AGENTS.md.

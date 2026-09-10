@@ -240,6 +240,55 @@ def all_functions_in_file(rel: str) -> set[str]:
     return out
 
 
+def _roots_namespace(root: "Path | None" = None) -> dict:
+    """governance/provenance_roots.py of the tree at `root`, executed as data (a judge
+    reads the tree under judgment, not its own)."""
+    base = root or REPO
+    ns: dict = {}
+    exec(compile((base / "governance" / "provenance_roots.py").read_text(encoding="utf-8"),
+                 "provenance_roots", "exec"), ns)
+    return ns
+
+
+def root_status(root: "Path | None" = None) -> dict[str, dict[str, str]]:
+    """Every material root (PRODUCER route, MarketState field, engine-entry argument) with
+    its structural closure as an acceptance obligation: `{root: {status, detail}}` — PROVEN
+    when a producer row closes it, MISSING when OPEN. The ONE-computation population and its
+    proof from the provenance authority itself (the Requirements row REQ-ONE-COMPUTATION).
+    Structural closure is not semantic truth; the LIMITS above stand."""
+    ns = _roots_namespace(root)
+    out: dict[str, dict[str, str]] = {}
+    for r, (cls, prod) in ns["ROUTES"].items():
+        if cls == "PRODUCER":
+            out[f"route:{r}"] = {"status": "PROVEN" if prod else "MISSING", "detail": prod or "OPEN root"}
+    for f, (cat, prod) in ns["MARKET_STATE"].items():
+        out[f"market_state:{f}"] = {"status": "PROVEN" if prod else "MISSING", "detail": prod or f"OPEN ({cat})"}
+    for (file, fn), args in ns["ENGINE_INPUTS"].items():
+        for a, prod in args.items():
+            out[f"engine:{file}:{fn}:{a}"] = {"status": "PROVEN" if prod else "MISSING", "detail": prod or "OPEN"}
+    if not out:
+        raise LookupError("provenance roots empty")
+    return out
+
+
+def decision_path_admission_status(root: "Path | None" = None) -> dict[str, dict[str, str]]:
+    """Every decision-engine entry (B1, ENGINE_ENTRIES — the population that can shape TRADE)
+    against config/decision_path_admissions.json: PROVEN when an ADMITTED record names it,
+    MISSING otherwise. The registry is built empty by design until admissions land
+    (the Requirements row REQ-DECISION-PATH-ADMISSION)."""
+    import json as _json
+    base = root or REPO
+    try:
+        doc = _json.loads((base / "config" / "decision_path_admissions.json").read_text(encoding="utf-8"))
+        admitted = {str(a.get("component")) for a in (doc.get("admissions") or [])
+                    if str(a.get("status", "")).upper() == "ADMITTED"}
+    except (OSError, ValueError, AttributeError) as e:
+        raise LookupError(f"config/decision_path_admissions.json unreadable: {e}")
+    return {f"{file}:{fn}": ({"status": "PROVEN", "detail": "ADMITTED"} if f"{file}:{fn}" in admitted or fn in admitted
+                             else {"status": "MISSING", "detail": "no ADMITTED record"})
+            for file, fn in ENGINE_ENTRIES}
+
+
 def served_routes(rel: str = "server.py") -> list[tuple[str, str, str]]:
     """(method, route, handler) for every @app.get/@app.post in `rel`."""
     src = (REPO / rel).read_text(encoding="utf-8", errors="replace")

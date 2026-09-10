@@ -84,7 +84,7 @@ SOURCE_DENYLIST = frozenset({
 
 #: Directories whose Python is out of the live money-path (offline/vendored/generated).
 EXCLUDE_DIRS = (
-    ".claude", ".venv", "node_modules", "governance/archive", "research",
+    ".claude", ".venv", "node_modules", "research",
     "schwab-py-main", "__pycache__",
 )
 

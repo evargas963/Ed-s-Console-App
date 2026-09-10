@@ -47,16 +47,48 @@ REPO = Path(__file__).resolve().parents[1]
 _DATA_ID_RE = re.compile(r'id="((?:cv2|ct|dr|kl|hd)-[\w-]+)"[^>]*>\s*(?:<[^>]+>\s*)*—')
 
 
-def _served_pages(repo: Path) -> list[str]:
-    """The canonical page population. Unresolvable => raise: a gate that cannot name its
-    population must not report a clean run over an invented one."""
-    import importlib.util
-    import sys
-    spec = importlib.util.spec_from_file_location("_acceptance_for_pages", repo / "governance" / "acceptance.py")
-    mod = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = mod        # dataclasses resolve the defining module through sys.modules
-    spec.loader.exec_module(mod)  # type: ignore[union-attr]
-    return list(mod.ui_pages(repo))
+def served_pages(repo: Path | None = None) -> list[str]:
+    """The canonical page population: PAGE routes of the provenance root population
+    (governance/provenance_roots.py, reconciled with server.py by tests/test_provenance_v1.py)
+    resolved to the `static/*.html` literal their handler reads. The router is the authority;
+    a file under static/ that no route serves is not a page. Unresolvable => raise: a gate
+    that cannot name its population must not report a clean run over an invented one."""
+    import ast
+    root = repo or REPO
+    ns: dict = {}
+    exec(compile((root / "governance" / "provenance_roots.py").read_text(encoding="utf-8"), "provenance_roots", "exec"), ns)
+    page_routes = {r for r, (cls, _p) in ns["ROUTES"].items() if cls == "PAGE"}
+    pages: set[str] = set()
+    for node in ast.parse((root / "server.py").read_text(encoding="utf-8", errors="replace")).body:
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        if not any(isinstance(d, ast.Call) and isinstance(d.func, ast.Attribute) and d.func.attr in ("get", "post")
+                   and d.args and isinstance(d.args[0], ast.Constant) and d.args[0].value in page_routes
+                   for d in node.decorator_list):
+            continue
+        for c in ast.walk(node):
+            if isinstance(c, ast.Constant) and isinstance(c.value, str) and c.value.endswith(".html"):
+                rel = c.value.replace("\\", "/")
+                if "static/" in rel:
+                    pages.add(rel[rel.index("static/"):])
+                elif "/" not in rel:
+                    pages.add(f"static/{rel}")
+    if not pages:
+        raise LookupError("no PAGE route resolves to a static HTML file")
+    return sorted(p for p in pages if (root / p).is_file())
+
+
+def page_status(repo: Path | None = None) -> dict[str, dict[str, str]]:
+    """Per served page, the Tier-1 predicate as an acceptance obligation
+    (`{page: {status, detail}}`) — the population and its proof from ONE owner
+    (the Requirements row REQ-UI-PAGES-BOUND)."""
+    root = repo or REPO
+    pages = served_pages(root)
+    bad: dict[str, list[str]] = {}
+    for rel, line, msg in _tier1_static_binding(pages, root):
+        bad.setdefault(rel, []).append(f"{line}: {msg}")
+    return {p: ({"status": "FAIL", "detail": "; ".join(bad[p][:3])} if p in bad
+                else {"status": "PROVEN", "detail": "static binding clean"}) for p in pages}
 
 #: Endpoints that must return real data, with a callable asserting "this JSON is real".
 _ENDPOINTS = {
@@ -99,7 +131,7 @@ def _tier1_static_binding(pages: list[str] | None = None,
     out: list[tuple[str, int, str]] = []
     if pages is None:
         try:
-            pages = _served_pages(root)
+            pages = served_pages(root)
         except Exception as e:  # noqa: BLE001 — an unreadable population is a violation, not a pass
             return [("governance/provenance_roots.py", 0,
                      f"the served-page population could not be resolved from the router: {e!r}")]
