@@ -174,7 +174,34 @@
   .chn tr.spot td.k{background:var(--ed-panel-3);color:var(--ed-accent-2);box-shadow:inset 0 0 0 1px var(--ed-accent-edge)}
   .chn tr:hover{background:var(--ed-panel-2)}
   .chn .cflag{color:var(--ed-pos-ink)} .chn .pflag{color:var(--ed-neg-ink)}
+  .chn td.chn-call,.chn td.chn-put{cursor:pointer}
+  .chn td.chn-call:hover,.chn td.chn-put:hover{background:var(--ed-accent-bg)}
+  .chn td.chn-selc{background:var(--ed-accent-bg);color:var(--ed-accent-2);font-weight:600}
   .chn-head{display:flex;justify-content:space-between;align-items:baseline;font-family:var(--ed-sans);font-size:12px;color:var(--ed-ink-3);padding:2px 2px 8px}
+  .chn-head .chn-default{color:var(--ed-stale)} .chn-head .chn-dup{color:var(--ed-warn)}
+  /* Flow subview (D) — one selected contract's microstructure; server classifications are authority */
+  .fl-head{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;padding:2px 2px 12px;border-bottom:1px solid var(--ed-edge);margin-bottom:12px}
+  .fl-head .fl-lab{display:block;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ed-ink-3);margin-bottom:3px}
+  .fl-head .fl-sym{font-family:var(--ed-sans);font-size:15px;font-weight:700;color:var(--ed-ink);font-variant-numeric:tabular-nums;letter-spacing:.02em}
+  .fl-head .fl-meta{margin-left:9px;font-size:12px;color:var(--ed-ink-3)}
+  .fl-sub{text-align:right}
+  .fl-badge{display:inline-block;font-size:12px;font-weight:700;letter-spacing:.06em;padding:3px 11px;border-radius:var(--ed-r);border:1px solid var(--ed-edge-strong);color:var(--ed-ink-2)}
+  .fl-badge.live{color:var(--ed-live);border-color:var(--ed-live)}
+  .fl-badge.warn{color:var(--ed-warn);border-color:var(--ed-warn)}
+  .fl-badge.stale{color:var(--ed-stale);border-color:var(--ed-stale)}
+  .fl-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}
+  .fl-sec{border:1px solid var(--ed-edge);border-radius:var(--ed-r);padding:9px 11px;background:var(--ed-panel-2)}
+  .fl-sec.fl-dim{opacity:.55}
+  .fl-sec-h{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--ed-ink-2);margin-bottom:6px;display:flex;align-items:center;gap:7px}
+  .fl-row{display:flex;align-items:baseline;gap:8px;padding:3.5px 0;border-bottom:1px solid var(--ed-edge-soft)}
+  .fl-row:last-child{border-bottom:none}
+  .fl-row .k{font-size:12.5px;color:var(--ed-ink-3);flex:1}
+  .fl-row .v{font-family:var(--ed-sans);font-size:13.5px;font-weight:600;color:var(--ed-ink);font-variant-numeric:tabular-nums}
+  .fl-tag{font-family:var(--ed-sans);font-size:8.5px;letter-spacing:.06em;padding:1px 5px;border-radius:3px;font-weight:600}
+  .fl-tag.native{background:var(--ed-native-bg);color:var(--ed-native)}
+  .fl-tag.derived{background:var(--ed-derived-bg);color:var(--ed-derived)}
+  .fl-tag.proxy{background:var(--ed-proxy-bg);color:var(--ed-proxy)}
+  .fl-foot{font-family:var(--ed-sans);font-size:10.5px;color:var(--ed-ink-4);padding:12px 2px 0;line-height:1.5}
 
   /* gamma workspace layout — the heatmap is the HERO (dominant center), Key Levels a narrow right
      rail, and the bottom a subordinate supporting strip. Tight gaps/rhythm = terminal density. */
@@ -385,6 +412,7 @@
   .lv .lv-age{color:var(--ed-ink-3);text-align:right}.lv .lv-age.stale{color:var(--ed-stale)}
   .lv-row{cursor:pointer}.lv-row:hover{background:var(--ed-panel-2)}
   .lv-row.near-spot{background:var(--ed-panel-3);box-shadow:inset 2px 0 0 var(--ed-accent)}
+  .lv-row.lv-sel{outline:1px solid var(--ed-accent);outline-offset:-1px;background:var(--ed-accent-bg)}
   .lv-foot{display:flex;flex-wrap:wrap;gap:12px;font-family:var(--ed-sans);font-size:10.5px;color:var(--ed-ink-4);padding:10px 2px 0}
   .lv-foot .lv-absent{color:var(--ed-stale)}
   /* Options Flow — reference card structure; truthful empty state inside the table */
@@ -660,5 +688,6 @@
 <script src="/static/js/ed-gamma-levels.js" defer></script>
 <script src="/static/js/ed-gamma-chain.js" defer></script>
 <script src="/static/js/ed-stream.js" defer></script>
+<script src="/static/js/ed-gamma-flow.js" defer></script>
 </body>
 </html>

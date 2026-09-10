@@ -64,10 +64,15 @@
     if ((d.degraded || []).length) foot += '<span class="lv-absent">degraded: ' + esc((d.degraded || []).join(', ')) + '</span>';
     foot += '<span class="lv-provsrc">/api/levels · schema v' + esc(d.schema_version) + '</span></div>';
     host.innerHTML = head + body + foot;
-    // clicking a level with a canonical price syncs the shared strike selection (cross-panel)
+    // A canonical level PRICE (VWAP / value / liquidity / structural) is NOT necessarily a listed
+    // option strike, so a level click must never write selStrike (that identity belongs to a real
+    // option strike). Clicking only highlights the level locally — presentation, no global state,
+    // no rounding, no snap-to-strike, no inferred strike.
     host.querySelectorAll('.lv-row').forEach(function (tr) {
-      var p = Number(tr.querySelector('.lv-px') && tr.querySelector('.lv-px').textContent);
-      if (isFinite(p)) tr.addEventListener('click', function () { if (window.EdShell) window.EdShell.setStrike(p); });
+      tr.addEventListener('click', function () {
+        host.querySelectorAll('.lv-row.lv-sel').forEach(function (n) { n.classList.remove('lv-sel'); });
+        tr.classList.add('lv-sel');
+      });
     });
   }
 

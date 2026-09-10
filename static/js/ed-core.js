@@ -153,6 +153,7 @@
       var id = p.getAttribute('data-sub-pane');
       p.classList.toggle('on', !!target && (id === target || (id === 'gamma' && !hasOwn)));
     });
+    relabelExpiryDefault();   // the null-expiry label is subview-contextual (Chain = Default Expiry)
   }
 
   var MV_TITLE = { heatmap: 'Gamma Exposure Heatmap', chart: 'Price + GEX Profile', levels: 'Levels', multimap: 'Multi-Map' };
@@ -403,6 +404,7 @@
         sel.innerHTML = opts;
         if (prev && exps.indexOf(prev) !== -1) { sel.value = prev; }   // keep a still-valid selection
         else { sel.value = ''; if (state.expiryFilter !== null) setExpiry(''); }   // invalid old expiry -> All (honest)
+        relabelExpiryDefault();
       })
       .catch(function () { /* keep the All Expirations default; a cold console just shows All */ });
   }
@@ -412,6 +414,15 @@
     state.expiryFilter = nv;
     var sel = document.getElementById('expSel'); if (sel) sel.value = nv || '';
     document.dispatchEvent(new CustomEvent('ed:expiry', { detail: { expiry: nv } }));
+  }
+  // B: /api/chain is a COMPLETE SINGLE-EXPIRY surface, so the null option must NOT read
+  // "All Expirations" while Chain is active — the server returns ONE (default) expiry. In every
+  // other subview null legitimately means all expirations. One expiry authority; label only.
+  function relabelExpiryDefault() {
+    var sel = document.getElementById('expSel'); if (!sel || !sel.options.length) return;
+    var first = sel.options[0];
+    if (first && first.value === '') first.textContent =
+      (state.workspace === 'options' && state.subview === 'chain') ? 'Default Expiry' : 'All Expirations';
   }
 
   // A: one selected strike shared across heatmap / profile / dot map / GEX-by-strike / Strike Detail

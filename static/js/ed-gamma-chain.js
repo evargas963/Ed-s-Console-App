@@ -46,37 +46,84 @@
     setSrc(d);
     var cs = (d && d.contracts) || [];
     if (!cs.length) { host.innerHTML = '<div class="placeholder"><div class="sm">no chain for this expiry</div></div>'; return; }
-    var byK = {};
+    // D: preserve EVERY exact vendor contract identity — group by strike into ARRAYS per side, so a
+    // second contract that shares (strike, side) is never silently overwritten. One display row per
+    // duplicate index; a "dup" marker discloses when the single-expiry surface is not strike-unique.
+    var byK = {}, dup = false;
     cs.forEach(function (c) {
       var k = Number(c.strikePrice); if (!isFinite(k)) return;
-      byK[k] = byK[k] || {};
-      byK[k][(c.putCall || '').toUpperCase() === 'PUT' ? 'p' : 'c'] = c;
+      byK[k] = byK[k] || { c: [], p: [] };
+      var side = (c.putCall || '').toUpperCase() === 'PUT' ? 'p' : 'c';
+      byK[k][side].push(c);
+      if (byK[k][side].length > 1) dup = true;
     });
     var strikes = Object.keys(byK).map(Number).sort(function (a, b) { return b - a; });
     var spot = Number(d.spot);
     var spotK = strikes.reduce(function (best, k) { return (best == null || Math.abs(k - spot) < Math.abs(best - spot)) ? k : best; }, null);
-    var head = '<div class="chn-head"><span>' + esc(d.expiry || '') + ' · ' + strikes.length + ' strikes</span>' +
+    var desired = (window.EdStream && window.EdStream.getDesired && window.EdStream.getDesired()) || null;
+    // B: /api/chain is a COMPLETE SINGLE-EXPIRY surface — say so, name the exact expiry returned, and
+    // flag when the workspace filter was null (the server chose the default expiry).
+    var filterNull = !(window.EdShell && window.EdShell.getExpiry && window.EdShell.getExpiry());
+    var head = '<div class="chn-head"><span>SINGLE EXPIRY · ' + esc(d.expiry || '—') +
+      (filterNull ? ' <span class="chn-default">(server default)</span>' : '') + ' · ' + strikes.length + ' strikes' +
+      (dup ? ' · <span class="chn-dup">duplicate contracts retained</span>' : '') + '</span>' +
       '<span>spot ' + (isFinite(spot) ? spot.toFixed(2) : '—') + (d.spot_source ? ' · ' + esc(d.spot_source) : '') + '</span></div>';
     function cell(c, k, dg) { var v = c ? c[k] : null; return (v == null) ? '—' : (typeof v === 'number' ? v.toFixed(dg == null ? 2 : dg) : esc(v)); }
+    function sym(c) { return c && c.symbol ? String(c.symbol) : ''; }
+    function selAttr(c) { var s = sym(c); return s ? (' data-sym="' + esc(s) + '"' + (s === desired ? ' data-selc="1"' : '')) : ''; }
     var h = head + '<table class="chn"><thead><tr>' +
       '<th colspan="4" class="cflag" style="text-align:center">Calls</th><th class="mid">Strike</th>' +
       '<th colspan="4" class="pflag" style="text-align:center">Puts</th></tr>' +
       '<tr><th>OI</th><th>Vol</th><th>IV%</th><th>Δ</th><th class="mid"></th><th>Δ</th><th>IV%</th><th>Vol</th><th>OI</th></tr></thead><tbody>';
     strikes.forEach(function (k) {
-      var c = byK[k].c, p = byK[k].p;
-      h += '<tr' + (k === spotK ? ' class="spot"' : '') + ' data-strike="' + k + '">' +
-        '<td>' + cell(c, 'openInterest', 0) + '</td><td>' + cell(c, 'totalVolume', 0) + '</td>' +
-        '<td>' + cell(c, 'volatility', 1) + '</td><td>' + cell(c, 'delta', 3) + '</td>' +
-        '<td class="k">' + px(k, k % 1 ? 2 : 0) + '</td>' +
-        '<td>' + cell(p, 'delta', 3) + '</td><td>' + cell(p, 'volatility', 1) + '</td>' +
-        '<td>' + cell(p, 'totalVolume', 0) + '</td><td>' + cell(p, 'openInterest', 0) + '</td></tr>';
+      var g = byK[k], n = Math.max(g.c.length, g.p.length);
+      for (var i = 0; i < n; i++) {
+        var c = g.c[i] || null, p = g.p[i] || null;
+        var cSel = (c && sym(c) === desired) ? ' chn-selc' : '', pSel = (p && sym(p) === desired) ? ' chn-selc' : '';
+        h += '<tr' + (k === spotK && i === 0 ? ' class="spot"' : '') + ' data-strike="' + k + '"' +
+          (c ? ' data-csym="' + esc(sym(c)) + '"' : '') + (p ? ' data-psym="' + esc(sym(p)) + '"' : '') + '>' +
+          '<td class="chn-call' + cSel + '"' + selAttr(c) + '>' + cell(c, 'openInterest', 0) + '</td>' +
+          '<td class="chn-call' + cSel + '">' + cell(c, 'totalVolume', 0) + '</td>' +
+          '<td class="chn-call' + cSel + '">' + cell(c, 'volatility', 1) + '</td>' +
+          '<td class="chn-call' + cSel + '">' + cell(c, 'delta', 3) + '</td>' +
+          '<td class="k">' + (i === 0 ? px(k, k % 1 ? 2 : 0) : '·') + '</td>' +
+          '<td class="chn-put' + pSel + '">' + cell(p, 'delta', 3) + '</td>' +
+          '<td class="chn-put' + pSel + '">' + cell(p, 'volatility', 1) + '</td>' +
+          '<td class="chn-put' + pSel + '">' + cell(p, 'totalVolume', 0) + '</td>' +
+          '<td class="chn-put' + pSel + '">' + cell(p, 'openInterest', 0) + '</td></tr>';
+      }
     });
     h += '</tbody></table>';
     host.innerHTML = h;
-    host.querySelectorAll('tr[data-strike]').forEach(function (tr) {   // click a strike -> shared selection
-      tr.addEventListener('click', function () { if (window.EdShell) window.EdShell.setStrike(Number(tr.getAttribute('data-strike')), d.expiry); });
+    // C: the CALL side selects the exact CALL vendor symbol, the PUT side the exact PUT symbol; the
+    // centre Strike selects ONLY the shared strike. The symbol is the vendor's own, verbatim — never
+    // reconstructed. An explicit contract click routes through the ONE control owner (EdStream).
+    host.querySelectorAll('tr[data-strike]').forEach(function (tr) {
+      tr.addEventListener('click', function (e) {
+        var k = Number(tr.getAttribute('data-strike'));
+        var cell = e.target.closest ? e.target.closest('td') : null;
+        if (cell && cell.classList.contains('chn-call') && tr.getAttribute('data-csym')) return selectContract(tr.getAttribute('data-csym'), k, d.expiry);
+        if (cell && cell.classList.contains('chn-put') && tr.getAttribute('data-psym')) return selectContract(tr.getAttribute('data-psym'), k, d.expiry);
+        if (window.EdShell) window.EdShell.setStrike(k, d.expiry);   // centre strike -> shared strike only
+      });
     });
     var sr = host.querySelector('tr.spot'); if (sr && sr.scrollIntoView) sr.scrollIntoView({ block: 'center' });
+  }
+
+  function selectContract(symbol, strike, expiry) {
+    if (window.EdShell) window.EdShell.setStrike(strike, expiry);      // exact strike + expiry = shared context
+    var det = { contract: symbol, strike: strike, expiry: expiry };
+    if (window.EdStream && window.EdStream.setActiveContract) {
+      var pr = window.EdStream.setActiveContract(symbol);              // ONE explicit control request
+      // re-notify once the control request RESOLVES so Flow moves off REQUESTED to
+      // ACTIVE/PENDING/FAILED per the canonical ACK — a single request, not a re-POST.
+      if (pr && pr.then) pr.then(function () { document.dispatchEvent(new CustomEvent('ed:contract', { detail: det })); });
+    }
+    var host = document.getElementById('chainBody'); if (host) {
+      host.querySelectorAll('.chn-selc').forEach(function (n) { n.classList.remove('chn-selc'); });
+      host.querySelectorAll('[data-sym="' + (window.CSS && CSS.escape ? CSS.escape(symbol) : symbol) + '"]').forEach(function (n) { n.classList.add('chn-selc'); });
+    }
+    document.dispatchEvent(new CustomEvent('ed:contract', { detail: det }));   // immediate: shows REQUESTED
   }
 
   if (typeof document !== 'undefined') {

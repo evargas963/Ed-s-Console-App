@@ -16,6 +16,8 @@
   var OS = window.EdOptionsSubscription;
   var gate = (OS && OS.createSubscriptionGate) ? OS.createSubscriptionGate() : null;
   var _desired = null;   // the contract THIS tab last requested (its intent), for binding observation
+  var _accepted = false; // whether the POST for the CURRENT _desired was accepted (control-request state)
+  var _ctl = 'none';     // control-request lifecycle for the CURRENT desired: none|requested|accepted|failed
 
   // ONE global slot: a POST is REQUEST ACCEPTED only. A view must call status() against the live
   // plane's producer identity to decide ACTIVE vs PENDING vs MOVED, and — critically — must NOT
@@ -30,11 +32,22 @@
     return { desired: contract, state: state, bound: bound, active: state === 'subscribed' && bound === true };
   }
   function getDesired() { return _desired; }
+  // control-request state (belongs to the ONE owner, not to Flow/Chain/ed-core/localStorage):
+  // whether the current desired contract's POST was ACCEPTED. Not the same as ACTIVE (that needs
+  // producer binding via status()). A view must not poll a contract that was never accepted.
+  function acceptedForDesired() { return _accepted === true && _desired != null; }
+  // control-request lifecycle for the current desired contract (Flow uses it to fail closed: only
+  // 'accepted' begins microstructure observation; 'requested' shows pending; 'failed' never polls).
+  function controlState() { return _desired == null ? 'none' : _ctl; }
+  // clear THIS tab's local intent (ticker/expiry context change). LOCAL ONLY — never POSTs, never
+  // fights the global slot; a fresh explicit selection is required to request a contract again.
+  function clearDesired() { _desired = null; _accepted = false; _ctl = 'none'; }
 
   function setActiveContract(contract) {
     contract = String(contract || '').trim();
     if (!contract) return Promise.resolve({ accepted: false, reason: 'empty' });
     _desired = contract;                              // this tab's intent (used by status())
+    _accepted = false; _ctl = 'requested';            // POST in flight — not accepted until a validated ACK
     var token = gate ? gate.begin(contract) : null;   // client generation: a later begin supersedes this
     var status = null;
     return fetch('/api/streaming/active-option-contract', {
@@ -50,11 +63,13 @@
       if (gate && !gate.mayCommit(token, contract)) return { accepted: false, reason: 'superseded_client' };
       // the server's 409/superseded verdict never commits either (server layer)
       if (result.status === 409 || (result.body && result.body.superseded)) {
+        if (_desired === contract) _ctl = 'failed';
         return { accepted: false, reason: 'superseded_server', command_generation: result.body && result.body.command_generation };
       }
       var verdict = OS ? OS.validateSubscriptionAck(contract, result)
         : { accepted: !!(result.body && result.body.ok === true && String(result.body.contract) === contract) };
-      if (!verdict.accepted) return { accepted: false, reason: verdict.reason || 'ack_not_ok' };
+      if (!verdict.accepted) { if (_desired === contract) _ctl = 'failed'; return { accepted: false, reason: verdict.reason || 'ack_not_ok' }; }
+      if (_desired === contract) { _accepted = true; _ctl = 'accepted'; }   // accepted ONLY for the still-current desired
       return { accepted: true, contract: contract, command_generation: result.body && result.body.command_generation };
     });
   }
@@ -89,5 +104,6 @@
   }
 
   window.EdStream = { setActiveContract: setActiveContract, setActiveTicker: setActiveTicker,
-    status: status, getDesired: getDesired, gate: gate };
+    status: status, getDesired: getDesired, acceptedForDesired: acceptedForDesired,
+    controlState: controlState, clearDesired: clearDesired, gate: gate };
 })();

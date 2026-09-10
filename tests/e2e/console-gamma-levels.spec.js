@@ -63,10 +63,13 @@ test.describe('D — Gamma Levels view', () => {
     await page.screenshot({ path: 'test-results/gamma-levels-1672x941.png', fullPage: false });
   });
 
-  test('a level click drives the shared strike selection', async ({ page }) => {
+  test('a level click highlights locally but NEVER writes selStrike (a level price is not a strike)', async ({ page }) => {
     await page.goto('/console', { waitUntil: 'domcontentloaded' });
-    await page.locator('#levelsBody .lv-row', { hasText: 'Prior Day High' }).click();
-    const sel = await page.evaluate(() => window.EdShell.getState().selStrike);
-    expect(sel).toBe(101.5);
+    const before = await page.evaluate(() => window.EdShell.getState().selStrike);
+    await page.locator('#levelsBody .lv-row', { hasText: 'Prior Day High' }).click();  // price 101.5
+    await expect(page.locator('#levelsBody .lv-row.lv-sel')).toHaveCount(1);            // local highlight only
+    const after = await page.evaluate(() => window.EdShell.getState().selStrike);
+    expect(after).toBe(before);                                                          // selStrike unchanged
+    expect(after).not.toBe(101.5);                                                       // never the level price
   });
 });
