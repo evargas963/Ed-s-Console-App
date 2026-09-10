@@ -478,8 +478,13 @@ def live_orphans(tmp_path_factory, worker_id: str):
 # test; if the file GREW during the test, it is truncated back to the snapshot FIRST
 # (the tracked file must never stay polluted) and the test then FAILS naming the hole.
 # Proven end-to-end by tests/test_terrain_ledger_isolation_v1.py.
-_TRACKED_TERRAIN_LEDGER = (
-    Path(__file__).resolve().parent.parent / "reports" / "terrain_quarantine_ledger.jsonl"
+_TRACKED_TERRAIN_LEDGER = Path(
+    # The firewall's WATCHED path is injectable so the isolation prover can point an inner
+    # pytest at a private copy: under xdist every worker polices the same tracked file, and a
+    # deliberate probe on the shared path was being healed by a neighbour's fixture before
+    # the prover's own run observed it (RC-547).
+    os.environ.get("ED_TEST_TRACKED_TERRAIN_LEDGER")
+    or Path(__file__).resolve().parent.parent / "reports" / "terrain_quarantine_ledger.jsonl"
 )
 
 

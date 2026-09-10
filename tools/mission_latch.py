@@ -73,9 +73,7 @@ UNFINISHED_MARKERS = ("IN PROGRESS", "VERIFICATION PENDING", "PENDING VERIFICATI
 #: place still violating it.
 #:
 #: The fix cell still SAYS which blocker and what clears it — that is how a human reviews the
-#: claim, and `operating_process_lock.rc_redate_violations` separately requires the
-#: `RE-DATED old->new: BLOCKED_ON_*` justification when a due date MOVES. Neither of those is
-#: authority. This is.
+#: claim. It is not authority. This is.
 BLOCKED_STATUS = "BLOCKED"
 
 #: RC-520: a CLOSED row whose full text has left the live ledger. The compact form keeps the

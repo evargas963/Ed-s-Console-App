@@ -223,6 +223,14 @@ def _rc_row_violations(log_path, n: int, rc_id: str, status: str,
 #: Bedrock doctrine cutover (2026-09-06): closure evidence is a re-runnable command.
 CLOSE_COMMAND_CUTOVER = "2026-09-06"
 
+#: Deliberate retirements of ENFORCED checks, declared in the same diff that removes them so
+#: the removal is visible to review and to the delta gate (tools/check_delta_adds_no_debt.py):
+#: `{check_name: reason}`; a reason saying `folded into <survivor>` moves the retired check's
+#: standing debt onto the survivor. A check removed from CHECKS without an entry here fails
+#: the required hardening check (RC-391: deleting the failing check is not paying the debt).
+#: Entries are removed once the retirement has landed on main; git keeps them.
+RETIRED_CHECKS: dict[str, str] = {}
+
 #: A backticked span that is a command someone can run — the same standard the numeric
 #: claim rule holds, held once here for closure evidence.
 _RUNNABLE_COMMAND_RE = re.compile(
@@ -2720,7 +2728,10 @@ def _measured_claims_cite_evidence_own_violations() -> list[Violation]:
             stripped = re.sub(r"\d{4}-\d{2}-\d{2}|RC-\d+|#\d+", "", body)
             if len(_RC_NUMBER_RE.findall(stripped)) < 2:
                 continue
-            if _RC_CITATION_RE.search(body) or _RC_CITATION_RE.search(whole):
+            # The citation must sit on the claiming line itself (a ledger/register row is one
+            # line). Until 2026-09-10 ANY citation anywhere in the file exempted every claim in
+            # it (RC-540 measurement), which made the rule vacuous on a 500-row ledger.
+            if _RC_CITATION_RE.search(body):
                 continue
             out.append(Violation(
                 path, 0,

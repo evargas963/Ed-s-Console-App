@@ -1,45 +1,33 @@
-"""OPERATOR LAW GUARD — bans ACTIONS, not words (RC-93).
+"""OPERATOR LAW GUARD — three host-wide ACTION bans on shell commands (RC-93: ban the action,
+never the word). PreToolUse for the shell-command tools (`hook_chain.BASH_TOOLS`); exit 2 blocks.
 
-OPERATOR 2026-07-27: "i don't want you to ban the terms i want you to ban the actions. non
-negotiable."
+What survives, and the concrete failure each prevents (KEEP/MERGE/DELETE, 2026-09-10):
 
-He is right, and the first version of this file was wrong. It matched phrases — assumption words,
-completion words — which is word-policing: any agent can rephrase around a list and the underlying
-behaviour is untouched. Worse, it fired on its own author for DOCUMENTING the list, which would
-have suppressed the lock inventory the operator had just asked for.
+  * UNRECOVERABLE-TREE DESTRUCTION (RC-273). `.gitignore` excludes data/, backups/ and models/,
+    so the 27 GB database has no history at all. The agent destroyed it TWICE in ten minutes
+    (`mv` to exercise a missing-file branch, `rm -f` while testing the ACL meant to prevent the
+    first). An OS ACL cannot carry this — the account owns the file and can rewrite the DACL
+    (proven with a canary). Nothing native protects an untracked file from `rm`.
+  * BLIND STAGING. `git add -A` / `-u` / `.` / `*` swept another agent's in-flight files into a
+    commit twice in one day (a 530 KB runtime log; audit scratch). A commit asserts authorship of
+    everything in it; stage explicit paths.
+  * LOCK DISABLE. `--no-verify`, `-n`, `core.hooksPath`, `SKIP=<hook>` and `pre-commit uninstall`
+    bypass the pre-commit battery the operator asked for. Required CI would still catch the
+    result, but only after the commit exists; refusing the bypass in session is cheap and blocks
+    nothing legitimate.
 
-WHAT AN ACTION BAN LOOKS LIKE. The laws are about doing things without proof, so the enforcement
-is: the ACTION cannot proceed unless a proof-shaped command RAN WITHOUT ERROR this turn
-(operator requirement 2026-08-25 — issuance is not proof). The transcript on the hook payload
-supplies WHICH commands ran and their OUTCOME (each tool_use paired to its tool_result,
-is_error judged) — no new governance lane, the payload already carries transcript_path at every
-event; the repository each command ran against is resolved by the same parser the shell rules
-use (RC-258), so proof is never transferable between checkouts. A failed or interrupted
-verification does not count. HONEST LIMIT: a non-error result proves the command completed;
-whether its OUTPUT supports the close is the operator's read.
-
-  PreToolUse(shell-command tools — `stop_chain.BASH_TOOLS`: Bash, PowerShell, Shell, Monitor)
-      * BLOCKS: grep/rg against repo files (2026-05-22 law), blind staging, shell writes to
-        source or constructed paths, deletion under the unrecoverable trees, and any command
-        that disables a lock. (Tree-destructive git has ONE owner:
-        operating_process_lock.reset_guard_violations, on the same chain.)
-  PreToolUse(Edit|Write|MultiEdit|NotebookEdit)
-      * BLOCKS writing status CLOSED into governance/root_cause_log.md when no verification
-        command RAN WITHOUT ERROR this turn against that repository. Closing a root cause IS
-        the assertion that it is fixed; the assertion is an action and it needs the evidence
-        to exist first.
-
-BEDROCK 2026-09-06 (dual-signoff, operator order to REPAIR): this guard has no Stop role any
-more. Its Stop clause — "changed production code without a verification that RAN" — was a
-proxy: a completed command is not proof that the change is right, and an unverified change
-that reaches a CLOSE row or a commit is caught at those seams (the CLOSE rule above; the
-pre-commit battery; required CI). With the clause went the per-session ledger file it was
-written for: PreToolUse no longer records anything, and the Stop seam has one owner
-(tools/stop_guard.py — an unfinished row blocks the turn).
-
-Nothing here inspects prose. A turn may say whatever it likes; it may not DO these things without
-the proof having run. Architecture A (RC-450): ED_OPERATOR_LAW_GUARD cannot disable this
-control; --no-verify has no grant path.
+What was DELETED, and why (nothing replaced it):
+  * the no-grep rule: it blocked read-only stdout filters three times in one session — governance
+    obstructing inspection; the rule's stated value (read files whole) is a working style, not a
+    protection.
+  * heredoc / redirect / `-c` payload / PowerShell source-write bans: they existed because shell
+    writes once mangled escapes; ruff and pytest at commit and in CI catch a mangled file, and the
+    retired mockup-approval registry they also guarded is gone.
+  * the CLOSE-a-row-needs-a-verification-this-turn rule and its transcript readers: every ledger
+    row a delta closes has its cited command EXECUTED by required CI (tools/check_delta_adds_no_debt.py);
+    a transcript-derived turn ledger was a second, weaker judge of the same fact — and the last
+    transcript reader on the PreToolUse path (RC-544 class).
+  * the `ED_*_GUARD=off` spellings in the lock-disable regex: no such switch exists (RC-450).
 """
 from __future__ import annotations
 
@@ -52,126 +40,11 @@ REPO = Path(__file__).resolve().parent.parent
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
-# RC-520: which tools carry a shell command — and which mutate a file — is decided ONCE, in the
-# chain executor, and imported here; a tool the chain treats as a channel is one this guard judges.
-from tools.stop_chain import BASH_TOOLS, MUTATING_TOOLS  # noqa: E402
+from tools.hook_chain import BASH_TOOLS  # noqa: E402 — the ONE shell-tool roster (RC-520)
+from tools.shell_parse import shell_executed_part  # noqa: E402 — the ONE shell parser
 
-# ── shell parsing: ONE owner, tools/shell_parse.py (BEDROCK 2026-09-06) ──────────────────
-# Re-exported here because this module's suites pin these names on it and because the
-# action rules below read a command through exactly this parser and no other.
-from tools.shell_parse import (  # noqa: E402,F401
-    _WINDOWS,
-    _SEG_SPLIT,
-    _ARG,
-    _CD_RE,
-    _GIT_C_RE,
-    _GIT_DIR_RE,
-    _TOKEN_RE,
-    _ABS_RE,
-    _MSYS_DRIVE_RE,
-    _msys_to_windows,
-    _arg_value,
-    normalize_repo,
-    repo_root_of,
-    _tokens,
-    is_git_commit,
-    _join_dir,
-    resolve_target_repo,
-    _CMD_WRAPPERS,
-    iter_command_segments,
-    _segment_head,
-    iter_git_invocations,
-    shell_executed_part,
-)
-
-# ── applicability machinery: REMOVED 2026-08-25 (independent-audit round 2) ────────────────
-# rc93_applies_to/_load_applicability/_mechanism scoped the RC-93 commit-before-proof rule,
-# which was retired 2026-08-24 (SIMPLICITY REHAB — see the commit-clause notes below). The
-# machinery had no production callers left; governance/archive/guard_applicability.json
-# marks the ED-OPERATOR-LAW-GUARD/RC-93-COMMIT-BEFORE-PROOF entry retired.
-
-# ── what counts as PROOF HAVING RUN ───────────────────────────────────────────────────────
-#: A command that produces evidence about this repo's behaviour: the test suite, a gate, a
-#: checker, an audit, or a live probe. Reading a file is not proof; executing something is.
-_VERIFICATION = re.compile(
-    r"\b(?:pytest|check_[a-z_]+\.py|tools/[a-z_]+_audit\.py|tools/[a-z_]+_report\.py|"
-    r"data_faucet_audit|repo_exposure_audit|ruff\s+check|mypy|"
-    r"node\s+--check|urllib\.request|127\.0\.0\.1:8000)\b", re.I)
-
-#: FC-13: this module used to carry its own production-surface geometry here. The constants
-#: were dead — nothing read them — but a dead copy of a semantic rule is still a second
-#: producer waiting to be picked up. The one authority is tools/pretooluse_guard.classify_path.
-
-#: The no-grep law (2026-05-22) as an ACTION predicate, replacing a spelling test that
-#: flipped on file extensions, downstream pipes and wrappers (audit 2026-08-25:
-#: 'grep foo x.py | head' passed, 'git grep -r foo .' passed, bare 'rg foo' passed,
-#: while 'grep foo config.yaml' blocked and 'grep foo config.yml' passed). Violation =
-#: a searcher (grep/egrep/fgrep/rg, incl. `git grep`) with a positional file/dir
-#: operand beyond the pattern, a recursive/--include/--type/--glob form, an xargs
-#: feed, `git grep` in any form (it always searches the tree, never stdin), or bare
-#: `rg` at pipeline head (its default IS a recursive cwd search). Filtering another
-#: command's stdout — later pipeline stage, no file operand — stays legal. A
-#: downstream pipe never launders a file search. PowerShell's native searcher
-#: (Select-String / sls) is in the set — the agent shell on this host IS PowerShell
-#: (red-team 2026-08-25). HONEST LIMIT: `cat *.py | grep foo` rides the stdout-filter
-#: carve-out while cat does the codebase read — an accepted, unmechanized bypass
-#: (detecting it means classifying every upstream stage; operator review covers it).
-_SEARCHERS = frozenset({"grep", "egrep", "fgrep", "rg", "select-string", "sls"})
-
-
-def _repo_search_violation(cmd: str) -> bool:
-    for stmt in re.split(r"&&|\|\||;|\n", cmd):
-        for idx, stage in enumerate(stmt.split("|")):
-            toks = [t.strip("\"'") for t in _tokens(stage.strip())]
-            fed_by_xargs = False
-            while toks and Path(toks[0]).name.lower().removesuffix(".exe") in (
-                    "time", "env", "nice", "sudo", "xargs"):
-                fed_by_xargs |= Path(toks[0]).name.lower().removesuffix(".exe") == "xargs"
-                toks = toks[1:]
-            if not toks:
-                continue
-            name = Path(toks[0]).name.lower().removesuffix(".exe")
-            args = toks[1:]
-            if name == "git":
-                if any(a == "grep" for a in args):
-                    return True
-                continue
-            if name not in _SEARCHERS:
-                continue
-            flags = [a for a in args if a.startswith("-")]
-            positionals = [a for a in args if not a.startswith("-")]
-            recursive = any(
-                a in ("-r", "-R", "--recursive", "-t") or
-                a.startswith(("--include", "--type", "--glob")) or
-                (len(a) > 1 and a[1] != "-" and ("r" in a[1:] or "R" in a[1:]))
-                for a in flags)
-            if positionals[1:] or recursive or fed_by_xargs:
-                return True
-            if name == "rg" and idx == 0:
-                return True
-    return False
-#: RC-273 — the trees that are gitignored and therefore UNRECOVERABLE.
-#: `.gitignore:31 data/*` means the 27 GB database has no history at all, so the
-#: single most valuable artefact in this repository is the one every
-#: version-control-shaped rule above was built to ignore.
-#:
-#: MEASURED 2026-08-06: the agent destroyed data/ed_console.db TWICE in ten
-#: minutes. Once with `mv` to exercise a missing-file branch; once with `rm -f`
-#: while TESTING the ACL meant to prevent the first. Both were "just a test";
-#: both destroyed 27 GB. The destructive-git rule refused `git checkout --` in that
-#: same session, so the guard was awake — it simply did not consider `rm` on an
-#: untracked file to be destruction.
-#:
-#: An OS ACL cannot carry this: the account OWNS the file and a Windows owner
-#: can always rewrite the DACL. Proven by a canary that deleted cleanly with
-#: deny rules in place. A file-level ACL now exists as defence in depth, but the
-#: binding lock has to be here, in the agent channel that actually failed.
-#:
-#: Destructive is defined by the TARGET's recoverability, never by the verb.
-#: Path-SEGMENT anchored (audit 2026-08-25): the bare substring matched 'AppData/' in
-#: every Windows temp/scratchpad path, misreading scratch redirects as truncation under
-#: data/. The lookbehind refuses a word character before the tree name: foo/data/,
-#: "data/, >data/ still match; AppData/, mydata/, _data/ do not.
+#: RC-273 — the trees that are gitignored and therefore UNRECOVERABLE. Path-SEGMENT anchored:
+#: `AppData/`, `mydata/`, `_data/` do not match; `foo/data/`, `"data/`, `>data/` do.
 _PROTECTED_TREE = r"(?<![A-Za-z0-9_.-])(?:data|backups|models)[\\/]"
 _PROTECTED_DESTRUCTIVE = re.compile(
     r"(?:\brm\b|\bdel\b|\berase\b|\brmdir\b|Remove-Item|\bunlink\b|shutil\.rmtree"
@@ -186,439 +59,47 @@ _PROTECTED_DESTRUCTIVE = re.compile(
 def _protected_path_violation(raw: str) -> bool:
     """True when a command would delete, move or truncate an unrecoverable artefact.
 
-    Reads the RAW command text, including heredocs and -c payloads, because
-    those are the channels that dodge the Edit/Write hook.
-
-    A COPY INTO a protected tree is a restore and stays legal — restoring the
-    database from backups/ is the recovery path and must never be blocked. It
-    is removal of what is already there that has no undo.
+    Reads the RAW command text, heredocs and payloads included, because those are the
+    channels that dodge the Edit/Write hook. A commit does not touch the working tree (a
+    message DESCRIBING the incident contains the command text); a COPY INTO a protected tree
+    is a restore and stays legal — removal is what has no undo.
     """
     if not raw:
         return False
-    # A commit does not touch the working tree. This rule fired on its OWN
-    # landing commit, because the message DESCRIBES the incident and therefore
-    # contains the command text that caused it. A lock that stops you writing
-    # down what went wrong is a lock that gets deleted -- and the honest record
-    # is the whole point of the row. `git commit` cannot remove a file.
     if re.search(r"\bgit\s+commit\b", raw, re.I):
         return False
     if re.search(r"\b(?:cp|copy|Copy-Item)\b", raw, re.I) and not re.search(
             r"(?:\brm\b|\bdel\b|Remove-Item|\bmv\b|Move-Item)", raw, re.I):
         return False
     return bool(_PROTECTED_DESTRUCTIVE.search(raw))
-# RC-186 self-audit finding (2026-08-02): the enumerated list covered only the four *_GUARD
-# names, so the mockup lock's ED_UI_MOCKUP_LOCK=off escape was silently agent-usable the day it
-# shipped. Generalized: ANY ED_*_GUARD/ED_*_LOCK=off is a lock-disable action — operator-only.
-# RC-189 GUN 2 (Cursor audit v1): the generalization kept the single unquoted-POSIX SHAPE while
-# this host's agent shell is PowerShell. Widened to quoted values, spaced assignment, $env:,
-# Set-Item/New-Item on the env: drive, and [Environment]::SetEnvironmentVariable. The negative
-# lookahead keeps ED_*_GUARD_TIMEOUT-style names out; grant vars (ED_UI_MOCKUP_APPROVE=1) and
-# non-disable values ('on', '1') never match.
-# Cursor v2 residuals sealed (RC-189): `${env:NAME}` braces, `PSVariable.Set`, and a COMPUTED
-# value (`("o"+"ff")`) — a lock variable has no legitimate computed assignment, so ANY
-# parenthesized/expression value is refused outright rather than pattern-matching its pieces.
+
+
+#: Blind staging: `-A`, `--all`, `-u`, `--update`, `*`, `.` are the same action in other flags.
+_BLIND_STAGE = re.compile(
+    r"\bgit\s+add\s+(?:--\s+)?(?:-A\b|--all\b|-u\b|--update\b|\*|\.(?:\s|$))")
+
+#: Lock-disable routes: git's own (`--no-verify`, `-n` on commit, `core.hooksPath`) and
+#: pre-commit's own (`SKIP=<hook-id>`, `$env:SKIP=`, `pre-commit uninstall`) — RC-541.
 _SKIP_HOOKS = re.compile(
     r"--no-verify"
     r"|hooksPath"
     r"|\bgit\s+commit\b[^\n]*?(?:\s-n\b)"
-    # UNIVERSAL_QUANTITATIVE_CLOSURE_V1 (RC-541): pre-commit's own bypass routes — the SKIP
-    # environment variable (`SKIP=<hook-id> git commit`, `$env:SKIP=`), uninstalling the
-    # hooks, and the long spelling on push. Measured before this row: none of them matched.
     r"|(?:^|[\s;&|(])(?:\$env:)?SKIP\s*=\s*['\"]?[A-Za-z0-9_,\-]"
-    r"|\bpre-commit\s+uninstall\b"
-    r"|(?:\$\{?env:)?ED_[A-Z_]*(?:_GUARD|_LOCK)(?![A-Z0-9_])['\"\s\]\}]*=\s*"
-    r"(?:['\"]?\s*(?:off|false|0)\b|\()"
-    r"|(?:Set-Item|New-Item|SetEnvironmentVariable|PSVariable)[^\n]{0,80}?"
-    r"ED_[A-Z_]*(?:_GUARD|_LOCK)(?![A-Z0-9_])[^\n]{0,60}?['\"\s,(](?:off|false|0)\b",
+    r"|\bpre-commit\s+uninstall\b",
     re.I)
-def _safe_data_target(target: str) -> bool:
-    """A write target is safe only as a string LITERAL with a data extension, and never the
-    approval registry or anything under .claude/ (Cursor v2: a literal .json there is the
-    registry-forge / grant-mint channel wearing a legal extension). Other governance data
-    files stay heredoc-legal — governance-row edits are HOW agents comply (battery contract)."""
-    if not _DATA_TARGET_LITERAL.match(target):
-        return False
-    return not re.search(r"\.claude[/\\]", target, re.I)
 
 
-#: Cursor v2: `python -c "p='gov'+'ernance/...'; open(p,'w')"` — the -c payload is stripped
-#: from the executed-part scan as data, but the WRITE it performs is an action. Payload writes
-#: obey the same E-37 rule as heredocs: literal safe-data targets only. This also closes the
-#: compounding escape `python -c "open('static/chart.html','w')"` — .html is not a data
-#: extension, so a production-surface write from a payload is refused.
-_C_PAYLOAD = re.compile(r"-c\s+(['\"])((?:\\.|(?!\1).)*)\1", re.S)
-
-
-_INTERPRETER_HEADS = frozenset({
-    "python", "python3", "py", "pwsh", "powershell", "sh", "bash", "zsh",
-    "node", "perl", "ruby"})
-
-
-def _payload_write_violation(raw: str) -> bool:
-    # A commit/tag MESSAGE that DESCRIBES a payload write is data, not a write — the
-    # same lesson _protected_path_violation already applies for RC-273 incidents.
-    raw = re.sub(r"-m\s+(['\"])(?:\\.|(?!\1).)*\1", " -m MESSAGE ", raw, flags=re.S)
-    for pm in _C_PAYLOAD.finditer(raw):
-        # -c is an interpreter payload only when an INTERPRETER launches it (grep -c
-        # is a counter, sqlite3 -c is config; blocking those stopped honest work).
-        seg_start = max((raw.rfind(ch, 0, pm.start()) for ch in ";|&\n"), default=-1) + 1
-        head_toks = _tokens(raw[seg_start:pm.start()])
-        if not head_toks:
-            continue
-        exe = Path(head_toks[0].strip("\"'")).name.lower().removesuffix(".exe")
-        if exe not in _INTERPRETER_HEADS and not exe.startswith("python"):
-            continue
-        body = pm.group(2)
-        for m in _HEREDOC_WRITE_SITE.finditer(body):
-            if m.group(3):
-                return True
-            target = (m.group(1) or "").strip()
-            if m.group(2) is not None:
-                tm = re.search(r"\(\s*(['\"][^'\"]+['\"])\s*\)\s*$", m.group(2))
-                target = tm.group(1) if tm else ""
-            if not _safe_data_target(target):
-                return True
-    return False
-
-
-#: Cursor v2: PowerShell write cmdlets with a CONSTRUCTED destination (Join-Path, $(),
-#: string concat) or a destination in the governance/.claude trees or with a production
-#: suffix dodge every token ban by never spelling the name. Source and governance mutations
-#: go through Edit/Write, where the hooks judge them.
-_PS_WRITE_BAD = re.compile(
-    r"(?:Copy-Item|Move-Item|Set-Content|Add-Content|Out-File)\b[^\n;|]{0,160}?"
-    r"(?:Join-Path|\$\(|['\"]\s*\+|governance[/\\]|\.claude[/\\]|"
-    r"\.(?:py|html|js|css|ts|sql)\b)", re.I)
-_GIT_COMMIT = re.compile(r"\bgit\s+commit\b", re.I)
-#: 2026-07-28: `git add -A` swept another agent's in-flight files into MY commits twice in one
-#: day (a 530KB runtime log; audit scratch). In a two-agent worktree, blind staging asserts
-#: authorship over work the committer never saw.
-#: v18 widened: `*`, `-- .`, and `-u` are the same blind action wearing other flags.
-_BLIND_STAGE = re.compile(
-    r"\bgit\s+add\s+(?:--\s+)?(?:-A\b|--all\b|-u\b|--update\b|\*|\.(?:\s|$))")
-#: 2026-07-28 (E-15 class, 4th recurrence today): writing SOURCE files through shell-heredoc
-#: python scripts keeps mangling escapes (literal \n breaking string literals, backspace bytes
-#: in regexes). The Edit/Write tools are the sanctioned path for source; heredoc scripts stay
-#: legal for governance-row edits and data tasks. The scan looks at the RAW command because the
-#: banned ACTION is the write performed by the interpreter the shell launches.
-#: v18 widened; GRADUATED 2026-07-29 (E-37): the stated variable-path escape was demonstrated
-#: the SAME DAY it was written down — a heredoc broke a test file through
-#: `p='tests/x.py'; io.open(p,'w')`, exactly the named boundary. Per the graduation clause:
-#: every heredoc file-write is now inspected; it is legal ONLY when the opened path is a
-#: string LITERAL ending in a data extension (.md/.json/.jsonl/.txt/.csv/.log). A variable
-#: path cannot be verified from the command text, so it is refused outright.
-_HEREDOC_WRITE_SITE = re.compile(
-    r"(?:(?:io\.)?open\(\s*([^,)]+?)\s*,\s*['\"][wa]b?['\"]"
-    r"|([A-Za-z_][\w.()'\"/\\-]*)\.write_text\("
-    r"|\.py(['\"])\s*\)\s*\.open\(\s*(['\"])[wa]\4)", re.S)
-_DATA_TARGET_LITERAL = re.compile(r"^['\"][^'\"]+\.(?:md|json|jsonl|txt|csv|log)['\"]$")
-
-
-def _heredoc_write_violation(raw: str) -> bool:
-    """True when a heredoc body performs a file-write whose target is not a verifiable
-    safe-data string literal (E-37 graduation; Cursor v2 tightened governance/.claude out
-    of the legal target set — see _safe_data_target)."""
-    hd = re.search(r"<<-?\s*(['\"]?)(\w+)\1(.*?)^\s*\2\s*$", raw, re.S | re.M)
-    if not hd:
-        return False
-    body = hd.group(3)
-    for m in _HEREDOC_WRITE_SITE.finditer(body):
-        if m.group(3):                       # Path('x.py').open('w') — source, always banned
-            return True
-        target = (m.group(1) or "").strip()
-        if m.group(2) is not None:           # <expr>.write_text( — target is the expr's path
-            pm = re.search(r"\(\s*(['\"][^'\"]+['\"])\s*\)\s*$", m.group(2))
-            target = pm.group(1) if pm else ""
-        if not _safe_data_target(target):
-            return True
-    return False
-#: v19: `cat > foo.py <<EOF` writes source through the SHELL itself — no interpreter involved,
-#: so the heredoc rule never saw it. Any shell redirect INTO a .py file is the same banned
-#: action (writing source outside Edit/Write); .py targets only, so log/json redirects stay legal.
-_SHELL_REDIRECT_SOURCE = re.compile(r"(?:^|[^&\d])>{1,2}\s*([^\s;|&<>]+\.py)\b")
-
-
-def _redirect_source_violation(cmd: str) -> bool:
-    """SIMPLICITY REHAB 2026-08-24 (T2-8): the bare regex blocked writing a scratch
-    analyzer to the session TEMP directory — outside any repository, not repo source,
-    not the law's stated subject. The ban now binds only targets that resolve INSIDE a
-    git repository (relative targets count: the working directory is a repo checkout);
-    an absolute .py target outside every repo is scratch tooling and stays legal."""
-    for m in _SHELL_REDIRECT_SOURCE.finditer(cmd):
-        target = m.group(1).strip("'\"")
-        if not _ABS_RE.match(_msys_to_windows(target)):
-            return True                   # relative → lands in the repo checkout
-        if repo_root_of(Path(_msys_to_windows(target)).parent):
-            return True
-    return False
-
-
-_EMITTERS = frozenset({"echo", "printf", "rem", "write-host", "write-output"})
-_VERIF_WRAPPERS = ("time", "env", "nice", "xargs", "sudo")
-_PROBE_TOKEN = re.compile(r"\burllib\.request\b|\b127\.0\.0\.1:8000\b", re.I)
-
-
-def _successful_commands(transcript_path: str) -> frozenset[str] | None:
-    """The commands that RAN WITHOUT ERROR this turn, from the transcript (2026-08-25).
-
-    The ledger is written at PreToolUse and cannot know outcomes; the transcript pairs
-    every tool_use with its tool_result and carries is_error (shape verified live:
-    181/182 Bash tool_use ids in this session's transcript had a paired result, the
-    unpaired one being the in-flight call). ONE producer: `turn_slice` below computes exactly
-    this slice and every guard that needs it calls that one function, so they all agree on what
-    "ran this turn" means. Returns None when the payload carries no transcript_path at all:
-    unmeasurable, which the callers treat as no proof.
-    """
-    if not transcript_path:
-        return None
-    _text, executed = turn_slice(transcript_path)
-    return frozenset(executed)
-
-
-# ── transcript readers (RC-504) ───────────────────────────────────────────────────────────
-# These moved here when tools/proof_only_guard.py was retired as Stop authority. They are
-# STRUCTURAL: they parse a JSONL transcript into text blocks and executed commands and make no
-# judgement about what any of it MEANS. The prose oracles that sat beside them — a
-# memory-citation word list, a verdict word list, a defect-report word list — were the retired
-# part. This module is where they belong: it already owns turn identity (which commands
-# actually ran without error this turn, and against which repository).
-
-
-def last_assistant_text(transcript_path: str) -> str | None:
-    """Concatenated text of the final assistant message in the transcript."""
-    p = Path(transcript_path)
-    if not p.exists():
-        return None
-    last: str | None = None
-    try:
-        with p.open(encoding="utf-8", errors="ignore") as fh:
-            for line in fh:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    rec = json.loads(line)
-                except (json.JSONDecodeError, ValueError):
-                    continue
-                msg = rec.get("message") or {}
-                if rec.get("type") != "assistant" and msg.get("role") != "assistant":
-                    continue
-                content = msg.get("content")
-                if isinstance(content, str):
-                    last = content
-                elif isinstance(content, list):
-                    parts = [c.get("text", "") for c in content
-                             if isinstance(c, dict) and c.get("type") == "text"]
-                    if any(parts):
-                        last = "\n".join(parts)
-    except OSError:
-        return None
-    return last
-
-
-def last_user_text(transcript_path: str) -> str | None:
-    """Concatenated text of the final USER message (the turn's trigger)."""
-    p = Path(transcript_path)
-    if not p.exists():
-        return None
-    last: str | None = None
-    try:
-        with p.open(encoding="utf-8", errors="ignore") as fh:
-            for line in fh:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    rec = json.loads(line)
-                except (json.JSONDecodeError, ValueError):
-                    continue
-                msg = rec.get("message") or {}
-                if rec.get("type") != "user" and msg.get("role") != "user":
-                    continue
-                content = msg.get("content")
-                if isinstance(content, str):
-                    last = content
-                elif isinstance(content, list):
-                    parts = [c.get("text", "") for c in content
-                             if isinstance(c, dict) and c.get("type") == "text"]
-                    if any(parts):
-                        last = "\n".join(parts)
-    except OSError:
-        return None
-    return last
-
-
-def turn_slice(transcript_path: str) -> tuple[str | None, list[str]]:
-    """(assistant text of THIS turn, shell commands that RAN WITHOUT ERROR this turn).
-
-    The turn boundary is the LAST user record carrying real text (tool_result records are
-    user-role but carry no text block). Assistant text is every text block after that boundary
-    concatenated. Commands are the input.command of every Bash/PowerShell tool_use block after
-    the boundary; command-carrying tools only — a Read file_path is not an executed command.
-
-    RESULT, NOT ISSUANCE (operator requirement, 2026-08-25): a command counts only when its
-    tool_result exists in the same transcript and does not carry is_error=true — issuing
-    `pytest` that then FAILED is not proof. A command with no result record at all (interrupted
-    mid-call) does not count either. HONEST LIMIT: is_error=false proves the tool call completed
-    without a harness-level error; it cannot judge whether the OUTPUT supports a claim.
-    """
-    p = Path(transcript_path)
-    if not p.exists():
-        return None, []
-    records: list[tuple[str, list[str], list[tuple[str, str]]]] = []
-    result_error_by_id: dict[str, bool] = {}
-    try:
-        with p.open(encoding="utf-8", errors="ignore") as fh:
-            for line in fh:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    rec = json.loads(line)
-                except (json.JSONDecodeError, ValueError):
-                    continue
-                msg = rec.get("message") or {}
-                role = (rec.get("type") if rec.get("type") in ("user", "assistant")
-                        else msg.get("role"))
-                if role not in ("user", "assistant"):
-                    continue
-                content = msg.get("content")
-                texts: list[str] = []
-                cmds: list[tuple[str, str]] = []
-                if isinstance(content, str):
-                    if content.strip():
-                        texts.append(content)
-                elif isinstance(content, list):
-                    for c in content:
-                        if not isinstance(c, dict):
-                            continue
-                        if c.get("type") == "text" and c.get("text", "").strip():
-                            texts.append(c["text"])
-                        elif (c.get("type") == "tool_use"
-                              and c.get("name") in BASH_TOOLS):
-                            cmd = (c.get("input") or {}).get("command")
-                            if isinstance(cmd, str) and cmd.strip():
-                                cmds.append((str(c.get("id") or ""), cmd))
-                        elif c.get("type") == "tool_result":
-                            tid = str(c.get("tool_use_id") or "")
-                            if tid:
-                                result_error_by_id[tid] = bool(c.get("is_error"))
-                records.append((role, texts, cmds))
-    except OSError:
-        return None, []
-    boundary = -1
-    for i, (role, texts, _c) in enumerate(records):
-        if role == "user" and texts:
-            boundary = i
-    texts_out: list[str] = []
-    cmds_out: list[str] = []
-    for role, texts, cmds in records[boundary + 1:]:
-        if role == "assistant":
-            texts_out.extend(texts)
-            for tid, cmd in cmds:
-                # RESULT REQUIRED: no result record, or is_error=true -> not proof.
-                if tid and result_error_by_id.get(tid) is False:
-                    cmds_out.append(cmd)
-    return ("\n".join(texts_out) if texts_out else None), cmds_out
-
-
-def _result_ok(detail: str, ok_cmds: frozenset[str] | None) -> bool:
-    """True only when THIS ledger command's tool_result exists and is not an error."""
-    return ok_cmds is not None and detail in ok_cmds
-
-
-def _verification_ran(detail: str) -> bool:
-    """A proof-shaped token counts only where it could EXECUTE (audit 2026-08-25):
-    scanned against shell_executed_part (so -m messages, -c payloads and heredoc bodies
-    are data), in a segment whose head is not an output emitter ('echo pytest all
-    green' used to mint proof), and in COMMAND position — the head token pair, or the
-    script/module argument of a python interpreter. Probe URLs may ride as arguments
-    of a non-emitter command (curl/Invoke-WebRequest). SHAPE ONLY: this classifies the
-    command; whether it ran without error is judged separately (_result_ok against the
-    transcript), so issuing `pytest` that then failed no longer mints proof."""
-    for seg in _SEG_SPLIT.split(shell_executed_part(detail or "")):
-        toks = [t.strip("\"'") for t in _tokens(seg.strip())]
-        while toks and Path(toks[0]).name.lower().removesuffix(".exe") in _VERIF_WRAPPERS:
-            toks = toks[1:]
-        if not toks:
-            continue
-        head = Path(toks[0]).name.lower().removesuffix(".exe")
-        if head in _EMITTERS:
-            continue
-        if _PROBE_TOKEN.search(seg):
-            return True
-        cands = [" ".join(toks[:2])]     # 'ruff check', 'node --check', 'pytest -q', 'tools/x_audit.py'
-        if head.startswith("python") or head == "py":
-            args = toks[1:]
-            script = next((a for a in args if not a.startswith("-")), "")
-            if script:
-                cands.append(script)
-            # A `-m <module>` is executed only when no `-c` precedes it: a -c payload
-            # consumes the interpreter and a following -m is inert argv (red-team
-            # 2026-08-25: `python -c "pass" -m pytest` never runs pytest).
-            if "-m" in args and not ("-c" in args and args.index("-c") < args.index("-m")):
-                i = args.index("-m")
-                cands.extend(args[i + 1:i + 2])
-        if any(_VERIFICATION.search(c) for c in cands):
-            return True
-    return False
-
-
-def _has_verification(ledger: list[dict], repo: str = "",
-                      ok_cmds: frozenset[str] | None = None) -> bool:
-    """Proof that ran AGAINST `repo` (RC-258) and ran WITHOUT ERROR (2026-08-25).
-
-    An entry whose `repo` is missing or empty can never satisfy this: legacy unscoped rows and
-    commands whose target could not be resolved are inert rather than universally valid, which
-    is the difference between a bearer token and a bound credential. An entry whose command has
-    no non-error tool_result in the transcript is equally inert: a verification that FAILED is
-    an argument against closing, not for it.
-    """
-    if not repo:
-        return False
-    for e in ledger:
-        if e.get("kind") != "bash":
-            continue
-        if (e.get("repo") or "") != repo:
-            continue
-        if _verification_ran(e.get("detail", "")) and _result_ok(e.get("detail", ""), ok_cmds):
-            return True
-    return False
-
-
-def bash_violations(cmd: str, ledger: list[dict], payload_cwd: str = "") -> list[str]:
-    """Every UNIVERSAL protection, plus the repository-SCOPED ones where they are declared.
-
-    Applicability is decided per rule, never by returning early (RC-258). Returning early for a
-    non-Ed-Console target would have exempted that repository from destructive-git, blind-stage,
-    lock-disable and unsafe-write protections, which are host-wide safety rules that have
-    nothing to do with which checkout is in front of them.
-    """
-    raw = cmd
-    cmd = shell_executed_part(cmd)
+def bash_violations(cmd: str, ledger=None, payload_cwd: str = "") -> list[str]:
+    """Every host-wide ban that fires on `cmd`. Applicability is per rule, never an early
+    return (RC-258: a foreign-repository target exempts nothing host-wide). `ledger` and
+    `payload_cwd` are accepted for the suites' call shape; no rule reads a repository."""
+    raw = cmd or ""
+    cmd = shell_executed_part(raw)
     out: list[str] = []
     if _BLIND_STAGE.search(cmd):
         out.append("ACTION BLOCKED: blind staging (git add -A/--all/.) swept another agent's "
                    "in-flight files into a commit twice on 2026-07-28. Stage EXPLICIT paths — "
                    "a commit asserts authorship of everything in it.")
-    if _heredoc_write_violation(raw):
-        out.append("ACTION BLOCKED (E-37 graduation): heredoc file-writes are legal ONLY to a "
-                   "string-LITERAL data target (.md/.json/.jsonl/.txt/.csv/.log). Variable "
-                   "paths and source files are refused — the variable-path escape broke a test "
-                   "file the same day it was written down as a boundary. Use Edit/Write.")
-    if _redirect_source_violation(cmd):
-        out.append("ACTION BLOCKED: shell redirect into a .py file writes source outside the "
-                   "Edit/Write tools (v19: `cat > x.py <<EOF` walked around the heredoc rule). "
-                   "Same action, same ban; non-source redirects stay legal.")
-    if _repo_search_violation(cmd):
-        out.append("ACTION BLOCKED: shell grep/rg pointed at repo FILES. Standing law "
-                   "(2026-05-22): read files end-to-end or use structural/AST analysis. Filtering "
-                   "a command's own stdout is allowed; searching the codebase is not. "
-                   "Piping a search into head/wc does not make it a stdout filter.")
-    # Tree-destructive git (reset --hard, checkout --, clean -f, push --force, and the
-    # restore/stash class on product paths) has ONE owner on this same chain:
-    # operating_process_lock.reset_guard_violations (BEDROCK 2026-09-06 — the universal
-    # forms that lived here as `_DESTRUCTIVE_GIT` moved there; two rules, one question).
     if _protected_path_violation(raw):
         out.append("ACTION BLOCKED (RC-273): this deletes, moves or truncates something under "
                    "data/, backups/ or models/. Those trees are gitignored -- there is NO "
@@ -628,72 +109,7 @@ def bash_violations(cmd: str, ledger: list[dict], payload_cwd: str = "") -> list
                    "Restores INTO these trees stay legal; removal from them is operator-only.")
     if _SKIP_HOOKS.search(cmd):
         out.append("ACTION BLOCKED: this disables a mechanical lock. Only the operator may.")
-    # RC-189's registry-channel rule (shell writes to the mockup-approval registry or the
-    # grant variable) left with that registry — bedrock PR B, 2026-09-06. The constructed-
-    # write bans below are what backstopped it and they stay.
-    if _payload_write_violation(raw):
-        out.append("ACTION BLOCKED (RC-189 v2): a -c payload performs a file-write whose "
-                   "target is not a literal safe-data path (constructed paths and "
-                   "governance/.claude/source targets are how self-approve dodged the token "
-                   "ban). Use the Edit/Write tools — the hooks judge those.")
-    if _PS_WRITE_BAD.search(cmd):
-        out.append("ACTION BLOCKED (RC-189 v2): PowerShell write cmdlet with a constructed, "
-                   "governance/.claude, or production-suffix destination. Use the Edit/Write "
-                   "tools — a destination the command never spells cannot be audited.")
-    # RC-258 commit-needs-prior-verification RETIRED (SIMPLICITY REHAB, operator full-go
-    # 2026-08-24): a commit cannot run without executing the pre-commit battery
-    # (.pre-commit-config.yaml — ruff, market-correctness, institutional-correctness,
-    # db-health), so "committing without having run anything" is unreachable, and the
-    # unresolved-repo branch turned a resolver failure into a work stoppage. The
-    # close-a-row form (edit_violations) stays; the Stop-time "edited and ran nothing"
-    # clause left with the ledger (BEDROCK 2026-09-06, module docstring).
     return out
-
-
-def turn_ledger(executed, payload_cwd: str = "") -> list[dict]:
-    """This turn's successful commands as repository-bound rows (RC-258 binding).
-
-    BEDROCK 2026-09-06: the per-session ledger file written at PreToolUse and cleared at Stop
-    is gone with the Stop clause it served. The transcript already pairs every command with
-    its outcome (`turn_slice`); which repository each ran against is resolved HERE, once, by
-    the same resolver the shell rules use, so a proof stays non-transferable between
-    checkouts. A command whose target cannot be resolved gets an empty repo and is inert.
-    """
-    out: list[dict] = []
-    for cmd in executed or ():
-        repo, _why = resolve_target_repo(cmd, payload_cwd)
-        out.append({"kind": "bash", "detail": cmd, "repo": repo or ""})
-    return out
-
-
-def edit_violations(path: str, new_text: str, ledger: list[dict],
-                    ok_cmds: frozenset[str] | None = None) -> list[str]:
-    """`ledger` rows are `{"kind": "bash", "detail": <command>, "repo": <resolved repo>}` —
-    built by `turn_ledger` from the transcript at the hook, or hand-built by the suites."""
-    p = (path or "").replace("\\", "/")
-    if not p.endswith("governance/root_cause_log.md"):
-        return []
-    if not re.search(r"\|\s*CLOSED\s*\|", new_text or ""):
-        return []
-    # The suffix test above matches ANY repository's same-named ledger, so the proof required
-    # is the proof for the repository that file lives in (RC-258).
-    repo = repo_root_of(path)
-    if not repo:
-        return [f"ACTION BLOCKED (RC-258): cannot resolve which repository owns {p}, so no "
-                f"verification can be matched to it. Closing a row is an assertion about a "
-                f"specific repository's code."]
-    if _has_verification(ledger, repo, ok_cmds):
-        return []
-    return [f"ACTION BLOCKED: closing a root-cause row in {repo} without a verification that "
-            f"RAN WITHOUT ERROR against that repository this turn. Closing IS the assertion "
-            f"that the defect is fixed; a command that was merely issued, or that failed, is "
-            f"not that proof. Run the test that locks it, or the gate, or a live probe — "
-            f"then close."]
-
-
-# RC-125 probe-every-turn RETIRED (SIMPLICITY REHAB 2026-08-24): the predicate was a
-# substring regex (any command mentioning `snapshots`/`schwab`/`sqlite3` satisfied it),
-# forcing a token rather than an observation, and it blocked pure governance/read turns.
 
 
 def main() -> int:
@@ -702,36 +118,17 @@ def main() -> int:
     except (json.JSONDecodeError, ValueError):
         sys.stderr.write("BLOCKED: invalid hook payload — unmeasurable is not compliant.\n")
         return 2
-
-    tool = payload.get("tool_name") or ""
-    ti = payload.get("tool_input") or {}
-
-    # Claude Code supplies the working directory on the payload when it knows it. Absence is
-    # handled as UNRESOLVED rather than guessed — see resolve_target_repo.
-    payload_cwd = str(payload.get("cwd") or "")
-
-    if tool in BASH_TOOLS:                # one roster (stop_chain.BASH_TOOLS, RC-520)
-        cmd = ti.get("command") or ""
-        bad = bash_violations(cmd, [], payload_cwd)
-        if bad:
-            sys.stderr.write("BLOCKED (RC-93) — OPERATOR LAW: ban the ACTION, not the word.\n\n"
-                             + "\n".join(f"    {b}" for b in bad) + "\n")
-            return 2
-        return 0
-
-    if tool in MUTATING_TOOLS:          # one roster (stop_chain.MUTATING_TOOLS)
-        path = ti.get("file_path") or ti.get("path") or ""
-        body = ti.get("new_string") or ti.get("content") or ""
-        executed = _successful_commands(str(payload.get("transcript_path") or ""))
-        bad = edit_violations(path, body, turn_ledger(executed, payload_cwd), executed)
-        if bad:
-            sys.stderr.write("BLOCKED (RC-93) — OPERATOR LAW: ban the ACTION, not the word.\n\n"
-                             + "\n".join(f"    {b}" for b in bad) + "\n")
-            return 2
-        return 0
-
-    # No other event is this guard's to judge (BEDROCK 2026-09-06: the Stop role is gone —
-    # module docstring). A stray invocation is a no-op, never a verdict.
+    if not isinstance(payload, dict):
+        sys.stderr.write("BLOCKED: the hook payload is not an object.\n")
+        return 2
+    if payload.get("tool_name") not in BASH_TOOLS:
+        return 0                          # file edits carry no shell action to judge
+    cmd = (payload.get("tool_input") or {}).get("command") or ""
+    bad = bash_violations(cmd, [], str(payload.get("cwd") or ""))
+    if bad:
+        sys.stderr.write("BLOCKED (RC-93) — OPERATOR LAW: ban the ACTION, not the word.\n\n"
+                         + "\n".join(f"    {b}" for b in bad) + "\n")
+        return 2
     return 0
 
 

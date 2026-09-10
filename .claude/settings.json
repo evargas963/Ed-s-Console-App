@@ -1,5 +1,5 @@
 {
-  "_comment": "Hook wiring only. Each guard file IS its own authority and documents why it exists; this file decides which guards run on which event. The ED_*_GUARD env keys were removed: they never disabled anything (RC-450), so listing them advertised switches that do not exist. History lives in git.",
+  "_comment": "Hook wiring only. Each guard file IS its own authority and documents why it exists; this file decides which guards run on which event. tools/hook_chain.py runs the listed guards in one process from THIS checkout; nothing is remembered between events (RC-544).",
   "hooks": {
     "PreToolUse": [
       {
@@ -7,7 +7,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": ".venv/Scripts/python.exe tools/pretooluse_chain.py tools/operator_law_guard.py tools/process_lock_guard.py"
+            "command": ".venv/Scripts/python.exe tools/hook_chain.py tools/operator_law_guard.py tools/process_lock_guard.py"
           }
         ]
       },
@@ -16,7 +16,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": ".venv/Scripts/python.exe tools/pretooluse_chain.py tools/operator_law_guard.py tools/process_lock_guard.py"
+            "command": ".venv/Scripts/python.exe tools/hook_chain.py tools/operator_law_guard.py tools/process_lock_guard.py"
           }
         ]
       }
@@ -26,7 +26,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": ".venv/Scripts/python.exe tools/stop_chain.py tools/stop_guard.py"
+            "command": ".venv/Scripts/python.exe tools/hook_chain.py tools/stop_guard.py"
           }
         ]
       }

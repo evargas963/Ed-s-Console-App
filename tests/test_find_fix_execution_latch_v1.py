@@ -412,12 +412,11 @@ def test_claude_and_cursor_hook_configs_reach_the_same_guards():
     cursor_stop = _guards(cursor["hooks"]["stop"][0]["command"])
     assert claude_stop == cursor_stop, (claude_stop, cursor_stop)
 
-    # PIN THE LIVE ROSTERS, not a default constant. tools/stop_chain.py builds the roster it
+    # PIN THE LIVE ROSTERS, not a default constant. tools/hook_chain.py builds the roster it
     # actually runs from argv (`_argv_members(sys.argv[1:]) or STOP_CHAIN`), and these config
     # files supply that argv — so a guard deleted from the command line here stops running
     # while STOP_CHAIN, the constant other tests assert, stays untouched and green. Nothing
-    # else compares hook rosters: precommit_institutional and check_delta_adds_no_debt both
-    # compare only the CHECKS registry.
+    # else compares hook rosters: check_delta_adds_no_debt compares only the CHECKS registry.
     # BEDROCK 2026-09-06: pretooluse_guard left the roster (its gates and latch are gone).
     assert claude_edit == {"tools/operator_law_guard.py", "tools/process_lock_guard.py"}, claude_edit
     # RC-504: proof_only_guard is deliberately absent — removed as Stop authority and deleted.

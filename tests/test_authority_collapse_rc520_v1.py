@@ -275,12 +275,6 @@ _ALLOWED_PY_MENTIONS = {  # the only production readers of the two root document
     "tools/check_institutional_correctness.py",   # the RC-520 control itself
     "tools/check_ml_pipeline_efficiency.py",      # cites the runbook that now owns the matrix
     "timeframe_config.py",               # docstring: says where horizon-stack acceptance lives
-    # UNIVERSAL_QUANTITATIVE_CLOSURE_V1 (RC-540): OPEN_ITEMS.md carries the machine-read
-    # Requirements contract; its ONE executor and the trusted judge that reads the BASE copy
-    # are readers by design — the acceptance owner became executable, it did not move.
-    "governance/acceptance.py",
-    "tools/check_delta_adds_no_debt.py",
-    "tools/precommit_institutional.py",   # reads the BASE contract's `retire:` rows at commit (RC-468 two-step)
 }
 
 

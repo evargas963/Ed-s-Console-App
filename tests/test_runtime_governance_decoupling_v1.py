@@ -411,23 +411,9 @@ def test_the_agent_seam_still_refuses_to_move_the_production_checkout():
     assert prod_checkout_git_move_violations('git -C "/tmp/some-dev-worktree" checkout -b wip') == []
 
 
-def test_payload_work_tree_reads_only_what_the_payload_actually_names():
-    """The narrow half of authority resolution. The full behaviour — including the Stop /
-    no-file case and the delegation it drives — is proven end to end against real worktrees
-    in tests/test_governance_authority_v1.py.
-    """
-    from tools.stop_chain import payload_work_tree
-
-    assert payload_work_tree(json.dumps({
-        "tool_name": "Edit", "tool_input": {"file_path": str(REPO / "server.py")},
-    })) == REPO
-
-    for empty in (json.dumps({"tool_name": "Stop"}),
-                  json.dumps({"tool_name": "Bash", "tool_input": {"command": "ls"}}),
-                  "not json at all",
-                  json.dumps(["a", "list"]),
-                  json.dumps({"tool_input": {"file_path": "   "}})):
-        assert payload_work_tree(empty) is None, empty[:40]
+# test_payload_work_tree_reads_only_what_the_payload_actually_names was removed 2026-09-10
+# with the cross-worktree authority resolver it exercised (RC-544): the session's checkout
+# judges every event from its own payload; tests/test_hook_chain_v1.py holds the proofs.
 
 
 def test_the_repository_lineage_check_is_no_longer_wired_to_anything_runtime():

@@ -70,7 +70,7 @@ def test_no_exec_call_remains_on_the_hook_path() -> None:
     the docstring that EXPLAINS the defect — the same describe-it-and-trip-your-own-scanner
     class as RC-253. A call is a call node; prose about a call is not.
     """
-    for rel in ("tools/run_with_repo_venv.py", "tools/precommit_institutional.py"):
+    for rel in ("tools/run_with_repo_venv.py", "tools/operating_process_lock.py"):
         tree = ast.parse((ROOT / rel).read_text(encoding="utf-8"))
         calls = [
             n for n in ast.walk(tree)
@@ -85,49 +85,29 @@ def test_no_exec_call_remains_on_the_hook_path() -> None:
         )
 
 
-def test_the_institutional_hook_carries_the_gates_verdict() -> None:
-    """End-to-end at the real seam: the hook's exit code must BE its own verdict (RC-254).
+def test_a_real_precommit_hook_through_the_wrapper_carries_its_verdict(tmp_path: Path) -> None:
+    """End-to-end at the real seam: a hook routed through the wrapper must surface ITS exit
+    code (RC-254). The `operating-process` hook is driven in both directions on a scratch
+    repository: clean index==WT -> 0; a working-tree edit of an enforcement path -> 1."""
+    import shutil
 
-    RC-406 relocated the whole-tree ADDED-VIOLATION delta to CI (hardening.yml, the authority
-    before merge); the commit-path hook now reads the enforced-check ROSTER — base (origin/main)
-    vs the staged index — and BLOCKS on a deletion/downgrade, the single most valuable thing to
-    catch locally (RC-391). RC-254's property is unchanged: the verdict must reach pre-commit,
-    not be swallowed. Proven here against the roster check, in BOTH directions, by driving the
-    `_git_show` seam so no real index or trunk state is needed.
-    """
-    import importlib.util
+    repo = tmp_path / "r"
+    (repo / "tools").mkdir(parents=True)
+    shutil.copy(ROOT / "tools" / "operating_process_lock.py", repo / "tools" / "operating_process_lock.py")
+    shutil.copy(ROOT / "tools" / "shell_parse.py", repo / "tools" / "shell_parse.py")
+    (repo / "tools" / "__init__.py").write_text("", encoding="utf-8")
+    (repo / "tools" / "check_institutional_correctness.py").write_text("CHECKS = []\n", encoding="utf-8")
+    (repo / "db.py").write_text("x = 1\n", encoding="utf-8")
 
-    spec = importlib.util.spec_from_file_location(
-        "precommit_exit", ROOT / "tools" / "precommit_institutional.py")
-    seam = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(seam)
-
-    both_enforced = 'CHECKS = [("a", check_a, True), ("b", check_b, True)]'
-    real_show, real_base = seam._git_show, seam._base_ref
-    seam._base_ref = lambda: "origin/main"  # roster comparison needs no live trunk here
-
-    # Intact roster: candidate keeps every enforced check the base carried -> verdict 0 reaches exit.
-    seam._git_show = lambda spec: both_enforced
-    try:
-        assert seam.main() == 0, (
-            "an intact roster must pass — the 0 verdict must reach pre-commit (RC-254)")
-    finally:
-        seam._git_show = real_show
-
-    # A DOWNGRADED check on the staged-index side -> verdict 1 reaches the exit code.
-    def _show(spec: str):
-        # the staged index (':<path>') drops "b" to advisory; base/HEAD keep both enforced.
-        return 'CHECKS = [("a", check_a, True), ("b", check_b, False)]' if spec.startswith(":") else both_enforced
-
-    seam._git_show = _show
-    try:
-        assert seam.main() == 1, (
-            "a deleted/downgraded enforced check must BLOCK — the 1 verdict must reach "
-            "pre-commit (RC-254/RC-391)")
-    finally:
-        seam._git_show, seam._base_ref = real_show, real_base
-
-    # …and the real, unmocked seam still runs end to end and returns an integer verdict.
-    hook = subprocess.run([sys.executable, str(ROOT / "tools" / "precommit_institutional.py")],
-                          cwd=str(ROOT), capture_output=True, text=True)
-    assert isinstance(hook.returncode, int), "the real seam did not produce an exit code"
+    def g(*a: str) -> None:
+        subprocess.run(["git", *a], cwd=str(repo), check=True, capture_output=True)
+    g("init", "-q"); g("config", "user.email", "t@t"); g("config", "user.name", "t")
+    g("add", "-A"); g("commit", "-qm", "seed")
+    lock = repo / "tools" / "operating_process_lock.py"
+    clean = subprocess.run([sys.executable, str(WRAPPER), str(lock), "--pre-commit"],
+                           cwd=str(repo), capture_output=True, text=True)
+    assert clean.returncode == 0, (clean.stdout, clean.stderr)
+    (repo / "db.py").write_text("x = 2\n", encoding="utf-8")        # index != worktree
+    dirty = subprocess.run([sys.executable, str(WRAPPER), str(lock), "--pre-commit"],
+                           cwd=str(repo), capture_output=True, text=True)
+    assert dirty.returncode == 1, (dirty.stdout, dirty.stderr)

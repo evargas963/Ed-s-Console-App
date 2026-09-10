@@ -1,13 +1,17 @@
-"""Front-end hook for operating_process_lock (RC-217).
+"""PreToolUse guard for the two things git cannot refuse by itself (RC-217 / RC-350 / RC-231).
 
-Runs on PreToolUse (Edit/Write/StrReplace/Bash). RC-471 removed the Stop registration;
-BEDROCK 2026-09-06 removed the retained stop_block() with the completion-claim and
-LIVE-vs-DISK rules it carried — this guard has no Stop path. Exit 2 BLOCKS.
-No env kill-switch: ED_PROCESS_LOCK_GUARD cannot disable this control (RC-450).
-2026-08-24 teardown: the role/authority rails (writer_drift_lock, isolated-worktree
-boundary, mission gating, GO closeout) are gone with Architecture A — what remains is
-checkout protection (production primary, cross-checkout edits, shell writes into production
-app code), index parity at commit, destructive-git (the ONE owner) and piped-commit blocks.
+  * LIVE-CHECKOUT PROTECTION: the production primary (`EdWebConsole`, `.git` a directory)
+    is `main == origin/main` and never edited in place. An Edit/Write of app code inside it,
+    a shell write (`cp`/`sed -i`/`tee`/redirect) into it, a linked worktree reaching into it,
+    and any git verb that moves it off main are refused at the moment of the command
+    (RC-350: the desk went down on a feature branch; RC-442: a side checkout edited the desk).
+  * TREE-DESTRUCTIVE GIT (`operating_process_lock.reset_guard_violations`, the ONE owner):
+    `reset --hard`, `checkout -- <path>`, `clean -f`, `push --force` on any target, and the
+    restore/stash class on product paths — three wipes on 2026-08-03 used exactly these.
+  * PIPED COMMITS (RC-234): `git commit | tail` reports the filter's exit code and hides a
+    failed hook; refused before it runs.
+
+Exit 2 BLOCKS. No env kill-switch (RC-450). No Stop path. Reads nothing but the payload.
 """
 from __future__ import annotations
 
@@ -31,9 +35,9 @@ from tools.shell_parse import (  # noqa: E402 — the ONE shell parser (BEDROCK 
     shell_executed_part,
 )
 from tools.pretooluse_guard import classify_path  # noqa: E402
-from tools.stop_chain import BASH_TOOLS, MUTATING_TOOLS  # noqa: E402 — the ONE roster of each class
+from tools.hook_chain import BASH_TOOLS, MUTATING_TOOLS  # noqa: E402 — the ONE roster of each class
 
-#: The file-mutating tool class is decided ONCE (tools.stop_chain.MUTATING_TOOLS, Cursor's
+#: The file-mutating tool class is decided ONCE (tools.hook_chain.MUTATING_TOOLS, Cursor's
 #: StrReplace/Delete included — RC-226) and imported here; no private copy.
 _EDIT_TOOLS = MUTATING_TOOLS
 
@@ -443,11 +447,12 @@ def pretooluse_block(tool: str, tool_input: dict, payload_cwd: str = "") -> list
         # Live-checkout invariant #4: the primary SESSION may not edit app code in the production
         # checkout (the symmetric companion to the linked->primary rail above).
         out.extend(production_checkout_app_edit_violations(tool_input))
-    if tool in BASH_TOOLS:                # one roster (stop_chain.BASH_TOOLS, RC-520)
+    if tool in BASH_TOOLS:                # one roster (hook_chain.BASH_TOOLS, RC-520)
         cmd = tool_input.get("command") or ""
         if re.search(r"\bgit\s+commit\b", cmd, re.I):
-            out.extend(OPL.commit_violations())
             # RC-234: piped commits mask hook failures as exit 0 — block BEFORE it runs.
+            # (The index≠WT parity check that also ran here was a duplicate of the
+            # `operating-process` pre-commit hook in the target tree — deleted 2026-09-10.)
             out.extend(OPL.commit_pipe_violations(cmd))
         # LOCK-2 (RC-231): the tree-destructive git CLASS blocks BEFORE the tree is touched —
         # three 2026-08-03 wipes used soft forms the old --hard-literal ban never matched.

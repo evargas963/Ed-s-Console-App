@@ -71,16 +71,19 @@ jobs:
       # The delta owner enforces MORE than the old step did, not less:
       #   NEW violation                  -> BLOCK
       #   WORSENED count                 -> BLOCK
-      #   REMOVED/DEMOTED enforced check -> BLOCK  (deleting the failing check is not paying)
+      #   REMOVED/DEMOTED enforced check -> BLOCK unless declared in the checker's
+      #                                     RETIRED_CHECKS (visible in the same diff)
       #   crash / unreadable output      -> BLOCK  (silence is not cleanliness)
-      #   a ledger row this delta CLOSES whose first cited CI-executable command
-      #   does not exit 0 in the candidate tree -> BLOCK (UNIVERSAL_QUANTITATIVE_CLOSURE_V1,
-      #   RC-540/RC-545: closure executes its proof HERE, in the candidate lane — the trusted
-      #   lane judges the candidate as data and executes no candidate code)
+      #   a ledger row this delta CLOSES whose first cited interpreter-led command
+      #   does not exit 0 in the candidate tree -> BLOCK (RC-540/RC-545: closure executes
+      #   its proof here, in ordinary CI, on the delta that introduces it)
       #   unchanged inherited debt       -> PASS
       #   improvement                    -> PASS
-      # One implementation, one CHECKS roster, two callers — no second delta tool.
-      - name: institutional debt delta + closure execution (same owner as local pre-commit)
+      # When the checker itself changed, the step prints VALIDATOR CHANGED: the counts come
+      # from each tree's own predicates and the checker diff is what review must read. The
+      # "trusted" lane that tried to judge the candidate with the base checker was deleted
+      # 2026-09-10 (RC-546): it executed candidate root modules under a trusted label.
+      - name: institutional debt delta + closure execution
         run: |
           git fetch --no-tags origin main
           python tools/check_delta_adds_no_debt.py --base origin/main

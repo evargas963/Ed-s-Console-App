@@ -166,29 +166,30 @@ def test_operator_law_guard_action_battery():
     directions, so widening a lock reruns the whole surface."""
     from pathlib import Path as _P
 
-    from tools.operator_law_guard import bash_violations, normalize_repo
-    # RC-258: proof is now bound to the repository it ran against, and the target repository is
-    # resolved from the caller's working directory. This battery drives the pure callee, so it
-    # supplies both exactly as the hook does — the SPELLINGS under test are unchanged.
+    from tools.operator_law_guard import bash_violations
+    from tools.shell_parse import normalize_repo
     _repo = _P(__file__).resolve().parent.parent
     _cwd = str(_repo)
     led = [{"kind": "bash", "detail": "pytest ok", "repo": normalize_repo(_repo)}]
+    # KEEP/MERGE/DELETE 2026-09-10: the heredoc / redirect source-write bans are deleted (ruff
+    # and pytest catch a mangled file; the retired registry they guarded is gone), so those
+    # spellings moved from `fire` to `quiet`. Blind staging, protected-tree destruction and
+    # lock-disable are the surviving bans.
     fire = [
         "git add -A", "git add --all", "git add .", "git add -u", "git add *", "git add -- .",
-        "python - <<EOF\nio.open('tests/x.py','w').write(s)\nEOF",
-        "python - <<EOF\nopen('tools/x.py', 'w').write(s)\nEOF",
-        "python - <<EOF\nfrom pathlib import Path\nPath('tests/x.py').write_text(s)\nEOF",
-        "python - <<EOF\nPath('tools/x.py').open('w').write(s)\nEOF",   # v19
-        "cat > foo.py <<EOF\nx = 1\nEOF",                               # v19: shell redirect
-        "echo 'x = 1' > tools/probe.py",
+        "rm -rf data/ed_console.db", "git commit --no-verify -m x", "SKIP=ruff-correctness git commit -m x",
     ]
     quiet = [
         "git add server.py tools/x.py", "git add -- server.py",
         "git commit -m \"note: git add -A and open(x.py,w) are banned\"",
         "python - <<EOF\nio.open('governance/root_cause_log.md','w').write(s)\nEOF",
         "python - <<EOF\nPath('reports/out.json').write_text(s)\nEOF",
+        "python - <<EOF\nopen('tools/x.py', 'w').write(s)\nEOF",
+        "cat > foo.py <<EOF\nx = 1\nEOF",
+        "echo 'x = 1' > tools/probe.py",
         "python x.py > reports/run.log 2>&1",
         "pytest tests/test_x.py -q",
+        "grep -r foo tools/",
     ]
     for c in fire:
         assert bash_violations(c, led, _cwd), f"DID NOT FIRE: {c[:60]!r}"
@@ -457,21 +458,15 @@ def test_rc246_precommit_path_excludes_advisory_checks():
     (153s of a 244s wall) bought nothing and made the gate expensive enough to route around —
     a cost this repo already paid in piped commits and hooks killed mid-run.
 
-    RC-391 moved WHERE the flag is passed without changing the property: the seam now
-    delegates its verdict to tools/check_delta_adds_no_debt.py, which is what runs the gate
-    — with --enforced-only — on each side. This control follows the seam rather than
-    asserting a literal at an address that has moved, and still fails if any link in the
-    chain starts paying for verdicts that cannot veto.
+    RC-391 moved WHERE the flag is passed without changing the property, and RC-406 moved
+    the blocking path to CI: tools/check_delta_adds_no_debt.py (hardening.yml) is what runs
+    the gate — with --enforced-only — on each side. This control follows that owner and
+    still fails if it starts paying for verdicts that cannot veto.
     """
     import tools.check_institutional_correctness as gate
 
     tools_dir = Path(gate.__file__).parent
-    seam = (tools_dir / "precommit_institutional.py").read_text(encoding="utf-8")
-    decider = "check_delta_adds_no_debt.py"
-    if decider in seam:
-        src = (tools_dir / decider).read_text(encoding="utf-8")
-    else:
-        src = seam
+    src = (tools_dir / "check_delta_adds_no_debt.py").read_text(encoding="utf-8")
     assert '"--enforced-only"' in src, (
         "the pre-commit blocking path no longer asks for the enforced-only path (RC-246)"
     )

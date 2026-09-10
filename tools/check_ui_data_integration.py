@@ -7,8 +7,8 @@ expensive-and-live:
 
   TIER 1 — STATIC BINDING (always; no server): every data cell in EVERY page the router
     serves (the PAGE routes of governance/provenance_roots.py resolved to their static file
-    by governance.acceptance.ui_pages — the router is the population, never a hand list;
-    UNIVERSAL_QUANTITATIVE_CLOSURE_V1 replaced the two-file tuple that stood in for it)
+    by `served_pages` below — the router is the population, never a hand list; 2026-09-10
+    replaced the two-file tuple that stood in for it, which audited 2 of 7 pages)
     that ships initialised to the "—" placeholder MUST have a JavaScript
     writer (a T('id', …) / getElementById('id') / el('id') reference in a <script>). An
     element that renders "—" forever because nothing populates it is a dead placeholder,
@@ -43,7 +43,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 
 #: The id-prefixes that mark a *data* cell (not chrome). The PAGES audited are not listed
-#: here: they are every page the router serves (governance.acceptance.ui_pages).
+#: here: they are every page the router serves (`served_pages`).
 _DATA_ID_RE = re.compile(r'id="((?:cv2|ct|dr|kl|hd)-[\w-]+)"[^>]*>\s*(?:<[^>]+>\s*)*—')
 
 
@@ -77,18 +77,6 @@ def served_pages(repo: Path | None = None) -> list[str]:
         raise LookupError("no PAGE route resolves to a static HTML file")
     return sorted(p for p in pages if (root / p).is_file())
 
-
-def page_status(repo: Path | None = None) -> dict[str, dict[str, str]]:
-    """Per served page, the Tier-1 predicate as an acceptance obligation
-    (`{page: {status, detail}}`) — the population and its proof from ONE owner
-    (the Requirements row REQ-UI-PAGES-BOUND)."""
-    root = repo or REPO
-    pages = served_pages(root)
-    bad: dict[str, list[str]] = {}
-    for rel, line, msg in _tier1_static_binding(pages, root):
-        bad.setdefault(rel, []).append(f"{line}: {msg}")
-    return {p: ({"status": "FAIL", "detail": "; ".join(bad[p][:3])} if p in bad
-                else {"status": "PROVEN", "detail": "static binding clean"}) for p in pages}
 
 #: Endpoints that must return real data, with a callable asserting "this JSON is real".
 _ENDPOINTS = {

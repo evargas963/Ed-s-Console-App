@@ -40,7 +40,7 @@ def test_db_health_precommit_regex_classifies_db_relevant_vs_unrelated():
     ):
         assert r.search(db_file), f"{db_file} must be DB-relevant (db-health should run)"
     for other in (
-        "server.py", "README.md", "static/chart.html", "tools/precommit_institutional.py",
+        "server.py", "README.md", "static/chart.html", "tools/operating_process_lock.py",
         "governance/root_cause_log.md", ".github/workflows/pytest.yml",
     ):
         assert not r.search(other), f"{other} must NOT be DB-relevant (db-health should skip)"
