@@ -3,7 +3,8 @@
 test-e2e:
 	npm run test:e2e
 
-# E2E must run first (writes .playwright_last_run_success); pytest enforces the marker.
+# E2E runs first, then the full pytest suite; each step's exit code is its proof (the
+# marker file pytest used to require was retired by RC-542).
 # Either step failing stops the recipe (non-zero exit).
 # Windows without make: npm run test:all
 # RC-535: both steps write their child's output to logs/ (file descriptors, never the

@@ -5,8 +5,11 @@ so it can verify code + endpoints yet still ship a screen full of "—" or stati
 shapes. This gate closes that loophole in three tiers, from cheap-and-always-on to
 expensive-and-live:
 
-  TIER 1 — STATIC BINDING (always; no server): every data cell in static/index.html and
-    static/chart.html that ships initialised to the "—" placeholder MUST have a JavaScript
+  TIER 1 — STATIC BINDING (always; no server): every data cell in EVERY page the router
+    serves (the PAGE routes of governance/provenance_roots.py resolved to their static file
+    by governance.acceptance.ui_pages — the router is the population, never a hand list;
+    UNIVERSAL_QUANTITATIVE_CLOSURE_V1 replaced the two-file tuple that stood in for it)
+    that ships initialised to the "—" placeholder MUST have a JavaScript
     writer (a T('id', …) / getElementById('id') / el('id') reference in a <script>). An
     element that renders "—" forever because nothing populates it is a dead placeholder,
     and this fails the build. This is the tier wired into pre-commit — pure text parse,
@@ -39,9 +42,21 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 
-#: Frontend files to audit and the id-prefixes that mark a *data* cell (not chrome).
-_HTML_FILES = ("static/index.html", "static/chart.html")
+#: The id-prefixes that mark a *data* cell (not chrome). The PAGES audited are not listed
+#: here: they are every page the router serves (governance.acceptance.ui_pages).
 _DATA_ID_RE = re.compile(r'id="((?:cv2|ct|dr|kl|hd)-[\w-]+)"[^>]*>\s*(?:<[^>]+>\s*)*—')
+
+
+def _served_pages(repo: Path) -> list[str]:
+    """The canonical page population. Unresolvable => raise: a gate that cannot name its
+    population must not report a clean run over an invented one."""
+    import importlib.util
+    import sys
+    spec = importlib.util.spec_from_file_location("_acceptance_for_pages", repo / "governance" / "acceptance.py")
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod        # dataclasses resolve the defining module through sys.modules
+    spec.loader.exec_module(mod)  # type: ignore[union-attr]
+    return list(mod.ui_pages(repo))
 
 #: Endpoints that must return real data, with a callable asserting "this JSON is real".
 _ENDPOINTS = {
@@ -78,11 +93,20 @@ def _get_json(url: str, timeout: float = 16.0) -> dict | None:
 
 
 # ── TIER 1 ─────────────────────────────────────────────────────────────────────────────
-def _tier1_static_binding() -> list[tuple[str, int, str]]:
+def _tier1_static_binding(pages: list[str] | None = None,
+                          repo: Path | None = None) -> list[tuple[str, int, str]]:
+    root = repo or REPO
     out: list[tuple[str, int, str]] = []
-    for rel in _HTML_FILES:
-        p = REPO / rel
+    if pages is None:
+        try:
+            pages = _served_pages(root)
+        except Exception as e:  # noqa: BLE001 — an unreadable population is a violation, not a pass
+            return [("governance/provenance_roots.py", 0,
+                     f"the served-page population could not be resolved from the router: {e!r}")]
+    for rel in pages:
+        p = root / rel
         if not p.exists():
+            out.append((rel, 0, "a PAGE route serves this file and it does not exist"))
             continue
         text = p.read_text(encoding="utf-8", errors="replace")
         # every <script> body concatenated — a data cell is "wired" if its id appears here.
@@ -236,10 +260,12 @@ def _tier3_render(base: str) -> list[tuple[str, int, str]]:
     return [("(rendered DOM)", 0, f"cell shows placeholder, not real data: {b}") for b in bad]
 
 
-def static_binding_violations() -> list[tuple[str, int, str]]:
+def static_binding_violations(pages: list[str] | None = None,
+                              repo: Path | None = None) -> list[tuple[str, int, str]]:
     """Tier 1 only — the fast, server-free, deterministic check wired into pre-commit.
-    Every data cell that ships as the '—' placeholder must have a JavaScript writer."""
-    return _tier1_static_binding()
+    Every data cell that ships as the '—' placeholder must have a JavaScript writer, on
+    every page the router serves (or the explicit `pages` a caller judges)."""
+    return _tier1_static_binding(pages, repo)
 
 
 def ui_data_integration_violations() -> list[tuple[str, int, str]]:

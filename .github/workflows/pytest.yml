@@ -126,14 +126,16 @@ jobs:
           # Pin the worker count to the runner's nproc — same suite, more cores.
           echo "CI_CPUS nproc=$(nproc) cpu_count=$(python -c 'import os; print(os.cpu_count())') process_cpu_count=$(python -c 'import os; p=getattr(os,"process_cpu_count",None); print(p() if p else None)')"
           # Overlap E2E with the pytest wave. MEASURED on 32235863378: E2E is
-          # 78 passed / 54.4s serial *before* pytest's 232s. The marker file
-          # is written at E2E success; the two tests in
-          # tests/test_playwright_must_run.py still run after E2E (not skipped).
+          # 78 passed / 54.4s serial *before* pytest's 232s. Both exit codes decide
+          # this job directly. UNIVERSAL_QUANTITATIVE_CLOSURE_V1 (RC-542): the
+          # `.playwright_last_run_success` marker and tests/test_playwright_must_run.py
+          # are retired — a tracked, hand-editable JSON stamp compared to file mtimes
+          # was a proxy for the run this job already performs and reports exactly.
           # Local `npm run test:all` stays serial.
           set +e
           npm run test:e2e &
           e2e_pid=$!
-          python -m pytest -n "$(nproc)" --dist loadfile --durations=20 --ignore=tests/test_playwright_must_run.py
+          python -m pytest -n "$(nproc)" --dist loadfile --durations=20
           pytest_rc=$?
           wait "$e2e_pid"
           e2e_rc=$?
@@ -142,5 +144,4 @@ jobs:
             echo "Playwright E2E failed with ${e2e_rc}"
             exit "$e2e_rc"
           fi
-          python -m pytest tests/test_playwright_must_run.py --tb=short
           exit "$pytest_rc"

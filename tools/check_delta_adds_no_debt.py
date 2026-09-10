@@ -35,6 +35,7 @@ Usage:
     python tools/check_delta_adds_no_debt.py                 # origin/main -> HEAD
     python tools/check_delta_adds_no_debt.py --base <ref>
     python tools/check_delta_adds_no_debt.py --index         # origin/main -> staged INDEX
+    python tools/check_delta_adds_no_debt.py --trusted --candidate <ref> [--branch <name>]
 
 RC-391 added the two things the pre-commit seam needs from it:
   * --index measures the EXACT staged index, not HEAD. At pre-commit, HEAD is the commit
@@ -44,14 +45,35 @@ RC-391 added the two things the pre-commit seam needs from it:
     authority (check_institutional_correctness.CHECKS) on each side. Counts alone cannot
     tell "fixed the violations" from "deleted the check", and the second reads as a large
     paydown.
+
+UNIVERSAL_QUANTITATIVE_CLOSURE_AND_NON_BYPASS_V1 (2026-09-10, RC-539/RC-540) made this the
+TRUSTED cross-tree judge (`--trusted`, run from the BASE branch's copy of this file by
+.github/workflows/trusted-closure.yml):
+  * the candidate is judged by the BASE validator — the base's trust-anchor files
+    (governance.acceptance.trust_anchor_paths, derived from the enforcement wiring) are
+    overlaid onto a copy of the candidate tree before the institutional gate runs, so a
+    predicate weakened in the candidate never judges the candidate;
+  * a candidate change to any trust anchor needs a base-side AUTHORIZE row; when authorized,
+    the candidate's validator must report no fewer violations than the base's on BOTH trees
+    (a validator cannot certify its own weakening);
+  * the BASE acceptance contract (OPEN_ITEMS.md Requirements) judges the candidate: rows
+    may not be deleted or weakened, MERGE rows must PASS, PRODUCT rows may not regress;
+  * escape markers the delta ADDS need a base-side `marker:` authorization;
+  * ledger rows the delta CLOSES have their cited command EXECUTED here, exit 0 required;
+  * the operating-process re-date rule runs here too (local hook parity).
+Every result is reported as counts in the acceptance report; nothing is a percentage.
 """
 from __future__ import annotations
 
 import argparse
+import fnmatch
 import hashlib
+import importlib.util
 import json
 import os
 import re
+import shlex
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -71,21 +93,12 @@ _BANNER = "INSTITUTIONAL CORRECTNESS GATE:"
 #: authority my per-check parse must reconcile with (RC-390).
 _TOTAL_RE = re.compile(r"GATE: FAIL \((\d+) enforced violation")
 
-
-#: Read the ROSTER of enforced checks from a materialised side, using that side's OWN
-#: `check_institutional_correctness.CHECKS` — the repo's existing authority on what is
-#: enforced. RC-391: violation COUNTS alone cannot see a check being deleted or renamed;
-#: a removed check reports 0 on the candidate side, which reads as a paydown. No second
-#: registry is introduced: the roster IS CHECKS, read where it lives.
-_ROSTER_CODE = (
-    "import importlib.util,sys;"
-    "s=importlib.util.spec_from_file_location('_cic','tools/check_institutional_correctness.py');"
-    "m=importlib.util.module_from_spec(s);sys.modules['_cic']=m;s.loader.exec_module(m);"
-    "print('ROSTER_BEGIN');"
-    "print('\\n'.join(sorted(n for n,_f,e in m.CHECKS if e)));"
-    "print('ROSTER_END')"
-)
-
+CHECKER_REL = "tools/check_institutional_correctness.py"
+#: The commit seam's roster reader and the operating-process lock — invoked HERE by literal
+#: path so the local hook owners are demonstrably the remote owners (REQ-GOV-LOCAL-REMOTE-PARITY
+#: reads these tokens from this file).
+_PRECOMMIT_SEAM_REL = "tools/precommit_institutional.py"
+_OPL_REL = "tools/operating_process_lock.py"
 
 #: Variables that BIND git to a specific repository, index or object store. A pre-commit
 #: hook runs with several of them exported, and they are inherited by every child process.
@@ -119,30 +132,36 @@ def parse_counts(stdout: str) -> dict[str, int]:
     return {m.group(1): int(m.group(2)) for m in _FAIL_RE.finditer(stdout)}
 
 
-def parse_roster(stdout: str) -> set[str]:
-    """Enforced check names between the sentinels; anything else is a failed read."""
-    if "ROSTER_BEGIN" not in stdout or "ROSTER_END" not in stdout:
-        raise RuntimeError(
-            "could not read the enforced-check roster: the CHECKS sentinels are absent. "
-            "An unreadable roster is not an empty roster — refusing to report one.")
-    body = stdout.split("ROSTER_BEGIN", 1)[1].split("ROSTER_END", 1)[0]
-    names = {line.strip() for line in body.splitlines() if line.strip()}
+# ── the enforced roster: ONE static reader (precommit_institutional._enforced_roster) ──
+# RC-391 read the roster by EXECUTING each side's checker module. The trusted judge must
+# read the candidate as DATA, so the roster is now the same static AST parse the commit
+# seam uses — one reader, two callers (REQ-GOV-LOCAL-REMOTE-PARITY).
+def _load_module(path: Path, name: str):
+    spec = importlib.util.spec_from_file_location(name, path)
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[name] = mod             # dataclasses resolve the defining module through sys.modules
+    spec.loader.exec_module(mod)  # type: ignore[union-attr]
+    return mod
+
+
+def parse_roster(source: str) -> set[str]:
+    """Enforced check names from the checker SOURCE; an empty read is a failed read."""
+    seam = _load_module(REPO / _PRECOMMIT_SEAM_REL, "_precommit_institutional")
+    names = seam._enforced_roster(source)
     if not names:
         raise RuntimeError(
             "the enforced-check roster came back EMPTY. check_institutional_correctness."
             "CHECKS has enforced entries by construction, so an empty read is a broken "
             "read, and a broken read would let every check removal pass.")
-    return names
+    return set(names)
 
 
 def enforced_roster(wt: Path) -> set[str]:
     """The enforced names declared by CHECKS *in the materialised side at `wt`*."""
-    proc = _run([sys.executable, "-c", _ROSTER_CODE], cwd=wt)
-    if proc.returncode != 0:
-        raise RuntimeError(
-            f"cannot read CHECKS roster (rc={proc.returncode}); silence is not an empty "
-            f"roster.\n--- tail ---\n{(proc.stderr or proc.stdout)[-600:]}")
-    return parse_roster(proc.stdout)
+    p = wt / CHECKER_REL
+    if not p.is_file():
+        raise RuntimeError(f"{CHECKER_REL} missing in {wt}; an absent checker is not an empty roster")
+    return parse_roster(p.read_text(encoding="utf-8", errors="replace"))
 
 
 def index_candidate() -> str:
@@ -203,6 +222,55 @@ def _stage_the_delta(wt: Path, ref: str) -> None:
         raise RuntimeError(f"cannot stage the delta in the worktree: {reset.stderr[-300:]}")
 
 
+def _stage_against(wt: Path, base_ref: str) -> None:
+    """Stage the WHOLE branch delta (base..candidate) in `wt`, so staged-scope checks see
+    every change the merge would land, not only the last commit (the trusted judge asks
+    what the PR does, not what its tip commit does)."""
+    reset = _run(["git", "reset", "--soft", base_ref], cwd=wt)
+    if reset.returncode != 0:
+        raise RuntimeError(f"cannot stage the branch delta in the worktree: {reset.stderr[-300:]}")
+
+
+def run_gate(wt: Path, ref_label: str) -> dict[str, int]:
+    """Run the institutional gate that lives IN `wt` and return {check: violations},
+    fail-closed on a crashed or unparseable run."""
+    proc = _run([sys.executable, CHECKER_REL, "--enforced-only"], cwd=wt)
+    # FAIL CLOSED (Cursor hole audit H1). As first shipped this returned
+    # parse_counts(stdout) unconditionally, and parse_counts("") is {} — so a
+    # crashed gate, an import error, or a changed output format rendered the side
+    # as ZERO violations, printed PASS, and invented a "PAID DOWN" line. A lock
+    # that cannot distinguish CLEAN from SILENT is the RC-90 class. The gate's own
+    # summary banner is the proof it actually ran to completion.
+    if proc.returncode not in (0, 1) or _BANNER not in proc.stdout:
+        raise RuntimeError(
+            f"gate did not complete for {ref_label} (rc={proc.returncode}, banner "
+            f"{'present' if _BANNER in proc.stdout else 'MISSING'}). Refusing to "
+            f"report a count: silence is not cleanliness.\n"
+            f"--- tail ---\n{(proc.stdout or proc.stderr)[-600:]}")
+    counts = parse_counts(proc.stdout)
+    # RC-390 — residual fail-open, found by Cursor AFTER the first H1 fix. The
+    # banner and exit code prove the gate RAN; they do not prove I UNDERSTOOD it.
+    # If the per-check regex misses (format drift, a renamed check), counts is {}
+    # while the banner still says FAIL, and compare() then reports a fabricated
+    # "71 -> 0 (-71)" and PASSES. Reproduced before fixing. The gate prints its own
+    # total, so reconcile against it: a parse that disagrees with the authority is
+    # a PARSE FAILURE, never a finding — and a silent misparse always reads in the
+    # flattering direction.
+    declared = _TOTAL_RE.search(proc.stdout)
+    if declared:
+        total = int(declared.group(1))
+        if total and not counts:
+            raise RuntimeError(
+                f"gate declared {total} enforced violation(s) for {ref_label} but the "
+                f"per-check parser matched NONE — output format has drifted. An "
+                f"unreadable FAIL is not a clean tree.")
+        if sum(counts.values()) != total:
+            raise RuntimeError(
+                f"parsed {sum(counts.values())} violation(s) for {ref_label} but the gate "
+                f"declared {total}; parser and authority disagree, refusing both.")
+    return counts
+
+
 def enforced_counts(ref: str, stage_delta: bool = False) -> tuple[dict[str, int], str, set[str]]:
     """({check: violations}, short sha, enforced roster) measured in a CLEAN worktree.
 
@@ -218,42 +286,7 @@ def enforced_counts(ref: str, stage_delta: bool = False) -> tuple[dict[str, int]
         try:
             if stage_delta:
                 _stage_the_delta(wt, ref)
-            proc = _run([sys.executable, "tools/check_institutional_correctness.py",
-                         "--enforced-only"], cwd=wt)
-            # FAIL CLOSED (Cursor hole audit H1). As first shipped this returned
-            # parse_counts(stdout) unconditionally, and parse_counts("") is {} — so a
-            # crashed gate, an import error, or a changed output format rendered the side
-            # as ZERO violations, printed PASS, and invented a "PAID DOWN" line. A lock
-            # that cannot distinguish CLEAN from SILENT is the RC-90 class. The gate's own
-            # summary banner is the proof it actually ran to completion.
-            if proc.returncode not in (0, 1) or _BANNER not in proc.stdout:
-                raise RuntimeError(
-                    f"gate did not complete for {ref} (rc={proc.returncode}, banner "
-                    f"{'present' if _BANNER in proc.stdout else 'MISSING'}). Refusing to "
-                    f"report a count: silence is not cleanliness.\n"
-                    f"--- tail ---\n{(proc.stdout or proc.stderr)[-600:]}")
-            counts = parse_counts(proc.stdout)
-            # RC-390 — residual fail-open, found by Cursor AFTER the first H1 fix. The
-            # banner and exit code prove the gate RAN; they do not prove I UNDERSTOOD it.
-            # If the per-check regex misses (format drift, a renamed check), counts is {}
-            # while the banner still says FAIL, and compare() then reports a fabricated
-            # "71 -> 0 (-71)" and PASSES. Reproduced before fixing. The gate prints its own
-            # total, so reconcile against it: a parse that disagrees with the authority is
-            # a PARSE FAILURE, never a finding — and a silent misparse always reads in the
-            # flattering direction.
-            declared = _TOTAL_RE.search(proc.stdout)
-            if declared:
-                total = int(declared.group(1))
-                if total and not counts:
-                    raise RuntimeError(
-                        f"gate declared {total} enforced violation(s) for {ref} but the "
-                        f"per-check parser matched NONE — output format has drifted. An "
-                        f"unreadable FAIL is not a clean tree.")
-                if sum(counts.values()) != total:
-                    raise RuntimeError(
-                        f"parsed {sum(counts.values())} violation(s) for {ref} but the gate "
-                        f"declared {total}; parser and authority disagree, refusing both.")
-            return counts, sha, enforced_roster(wt)
+            return run_gate(wt, ref), sha, enforced_roster(wt)
         finally:
             _run(["git", "worktree", "remove", "--force", str(wt)])
 
@@ -389,7 +422,6 @@ def refold_base_counts(
     return out, moved
 
 
-
 # ── BASE-SIDE CACHE (RC-466) ────────────────────────────────────────────────────────
 # The base measurement is a pure function of: the base COMMIT (content-addressed), THIS
 # driver file (its parsing regexes decide what a count is), the copied-in local evidence
@@ -452,6 +484,403 @@ def _write_base_cache(key: str | None, counts, sha, roster) -> None:
         pass                                           # cache is best-effort
 
 
+# ═════════════════════════════════════════════════════════════════════════════════════
+# TRUSTED JUDGE (UNIVERSAL_QUANTITATIVE_CLOSURE_AND_NON_BYPASS_V1)
+# ═════════════════════════════════════════════════════════════════════════════════════
+_ACCEPTANCE_REL = "governance/acceptance.py"
+_LEDGER_REL = "governance/root_cause_log.md"
+_LEDGER_ROW_RE = re.compile(r"^\|\s*(RC-\d+)\s*\|\s*([A-Z_]+)\s*\|")
+_BACKTICK_RE = re.compile(r"`([^`]+)`")
+#: Commands CI can execute as closure proof. Live probes (curl, SELECT, sqlite3 on the
+#: production DB, PowerShell) are evidence of a session, not of the tree.
+_EXECUTABLE_CMD_RE = re.compile(r"^\s*(?:\.venv[\\/]Scripts[\\/]python(?:\.exe)?|python3?|py|pytest|node|npm|npx|tools/)\b")
+_INTERPRETER_RE = re.compile(r"^\s*(?:\.venv[\\/]Scripts[\\/]python(?:\.exe)?|python3?|py)\b")
+
+
+class Worktrees:
+    """Materialised clean trees for the trusted run; removed on exit."""
+
+    def __init__(self) -> None:
+        self.tmp = Path(tempfile.mkdtemp(prefix="trusted-"))
+        self.paths: list[Path] = []
+
+    def add(self, ref: str, name: str) -> Path:
+        wt = self.tmp / name
+        add = _run(["git", "worktree", "add", "--detach", str(wt), ref])
+        if add.returncode != 0:
+            raise RuntimeError(f"cannot materialise {ref}: {add.stderr[-300:]}")
+        self.paths.append(wt)
+        return wt
+
+    def copy(self, src: Path, name: str) -> Path:
+        """A second copy of a materialised tree (same git dir binding via .git file)."""
+        dst = self.tmp / name
+        shutil.copytree(src, dst, symlinks=True)
+        self.paths.append(dst)
+        return dst
+
+    def close(self) -> None:
+        for wt in self.paths:
+            _run(["git", "worktree", "remove", "--force", str(wt)])
+        shutil.rmtree(self.tmp, ignore_errors=True)
+        _run(["git", "worktree", "prune"])
+
+
+def overlay(src_root: Path, dst_root: Path, rels: list[str]) -> list[str]:
+    """Copy `rels` from src_root over dst_root (mkdir as needed). Returns what was copied.
+    A path absent in src is left as the destination has it (the base declares no opinion)."""
+    copied = []
+    for rel in rels:
+        s = src_root / rel
+        if not s.is_file():
+            continue
+        d = dst_root / rel
+        d.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(s, d)
+        copied.append(rel)
+    return copied
+
+
+def _diff_names(base_ref: str, cand_ref: str, paths: list[str] | None = None) -> list[str]:
+    args = ["git", "diff", "--name-only", f"{base_ref}..{cand_ref}"]
+    if paths:
+        args += ["--", *paths]
+    r = _run(args)
+    if r.returncode != 0:
+        raise RuntimeError(f"git diff failed: {r.stderr[-300:]}")
+    return [l.strip().replace("\\", "/") for l in r.stdout.splitlines() if l.strip()]
+
+
+def _show(ref: str, rel: str) -> str | None:
+    r = _run(["git", "show", f"{ref}:{rel}"])
+    return r.stdout if r.returncode == 0 else None
+
+
+def _branch_name(explicit: str | None) -> str:
+    if explicit:
+        return explicit
+    for var in ("GITHUB_HEAD_REF",):
+        if os.environ.get(var):
+            return os.environ[var]
+    r = _run(["git", "rev-parse", "--abbrev-ref", "HEAD"])
+    return r.stdout.strip() if r.returncode == 0 else ""
+
+
+def _auth_matches(auths, kind: str, subject: str, branch: str, token: str | None = None) -> bool:
+    """A base-side AUTHORIZE row covers (kind, subject, branch)."""
+    for a in auths:
+        parts = a.scope.split(":", 1)
+        if len(parts) != 2 or parts[0] != kind:
+            continue
+        body = parts[1]
+        if kind == "anchor":
+            pat, _, br = body.partition("@")
+            if fnmatch.fnmatch(subject, pat) and (br in ("*", branch)):
+                return True
+        elif kind == "marker":
+            tok, _, rest = body.partition("@")
+            pat, _, br = rest.partition("@")
+            if token == tok and fnmatch.fnmatch(subject, pat) and (br in ("*", branch)):
+                return True
+    return False
+
+
+def marker_tokens(checker_source: str) -> set[str]:
+    """Every escape token the base gate honours, read from the gate's own source: string
+    constants shaped `<word>-ok` (plus `OUT-OF-SCOPE`, the universal-scope escape)."""
+    toks = set(re.findall(r"['\"]([a-z][a-z0-9\-]*-ok)['\"]", checker_source))
+    toks |= set(re.findall(r"#\s*([a-z][a-z0-9\-]*-ok)\s*:", checker_source))
+    toks.add("OUT-OF-SCOPE")
+    return toks
+
+
+def added_marker_lines(base_ref: str, cand_ref: str, tokens: set[str]) -> list[tuple[str, int, str]]:
+    """(path, line, token) for every ADDED line in the delta carrying an escape token."""
+    r = _run(["git", "diff", "-U0", f"{base_ref}..{cand_ref}"])
+    if r.returncode != 0:
+        raise RuntimeError(f"git diff failed: {r.stderr[-300:]}")
+    out: list[tuple[str, int, str]] = []
+    path, line = "", 0
+    for ln in r.stdout.splitlines():
+        if ln.startswith("+++ "):
+            path = ln[4:].strip()
+            path = path[2:] if path.startswith("b/") else path
+            continue
+        m = re.match(r"^@@ -\d+(?:,\d+)? \+(\d+)", ln)
+        if m:
+            line = int(m.group(1))
+            continue
+        if ln.startswith("+") and not ln.startswith("+++"):
+            body = ln[1:]
+            if path in (CHECKER_REL, "OPEN_ITEMS.md", _RETIREMENT_MANIFEST, _LEDGER_REL) or path.startswith("governance/") and path.endswith(".md"):
+                line += 1
+                continue                      # the gate's own token table and prose are not escapes
+            for tok in tokens:
+                if tok in body:
+                    out.append((path, line, tok))
+                    break
+            line += 1
+    return out
+
+
+def ledger_rows(text: str) -> dict[str, str]:
+    return {m.group(1): m.group(2) for m in (_LEDGER_ROW_RE.match(l) for l in text.splitlines()) if m}
+
+
+def closing_rows(base_text: str | None, cand_text: str) -> dict[str, str]:
+    """{rc_id: full row} for rows that are CLOSED/REMEDIATED in the candidate and were not
+    in the base (absent, or another status)."""
+    base = ledger_rows(base_text or "")
+    out: dict[str, str] = {}
+    for line in cand_text.splitlines():
+        m = _LEDGER_ROW_RE.match(line)
+        if not m:
+            continue
+        rc, st = m.group(1), m.group(2)
+        if st in ("CLOSED", "REMEDIATED") and base.get(rc) not in ("CLOSED", "REMEDIATED"):
+            out[rc] = line
+    return out
+
+
+def executable_commands(row: str) -> list[str]:
+    cells = [c.strip() for c in row.strip().strip("|").split("|")]
+    evidence = cells[6] if len(cells) >= 7 else row
+    return [c.strip() for c in _BACKTICK_RE.findall(evidence) if _EXECUTABLE_CMD_RE.match(c.strip())]
+
+
+def run_closure_command(cmd: str, wt: Path, timeout: int = 900) -> tuple[int, str]:
+    """Execute one cited command in the candidate tree with THIS interpreter substituted for
+    the repo-venv spellings; the exit code is the proof."""
+    text = cmd
+    exe = shlex.quote(sys.executable) if os.name != "nt" else f'"{sys.executable}"'
+    if _INTERPRETER_RE.match(text):
+        # a callable replacement: a Windows interpreter path carries backslashes that a
+        # replacement STRING would read as regex escapes (`\U` -> PatternError)
+        text = _INTERPRETER_RE.sub(lambda _m: exe, text, count=1)
+    elif text.startswith("pytest"):
+        text = f'"{sys.executable}" -m {text}'
+    elif text.startswith("tools/"):
+        text = f'"{sys.executable}" {text}'
+    try:
+        r = subprocess.run(text, cwd=str(wt), shell=True, capture_output=True, text=True,
+                           encoding="utf-8", errors="replace", timeout=timeout, env=_clean_env())
+    except subprocess.TimeoutExpired:
+        return 124, "timed out"
+    return r.returncode, (r.stdout + r.stderr)[-800:]
+
+
+def _obl(status: str, detail: str = "") -> dict:
+    return {"status": status, "detail": detail}
+
+
+def validator_weakening(base_roster: set[str], removed: list[str],
+                        cand_self: dict[str, int], trusted_counts: dict[str, int],
+                        cand_on_base: dict[str, int], base_counts: dict[str, int]) -> dict[str, str]:
+    """{check: why} for every base check the CANDIDATE validator reports FEWER violations
+    for than the BASE validator on the same tree — on the candidate tree (own vs trusted)
+    or on the base tree (candidate validator vs base validator). A stricter validator
+    reports more and is never flagged; a name-preserving gut (NC-09) reports fewer on the
+    tree that carries what it stopped seeing."""
+    out: dict[str, str] = {}
+    for name in sorted(base_roster):
+        if name in removed:
+            continue
+        weaker = []
+        if cand_self.get(name, 0) < trusted_counts.get(name, 0):
+            weaker.append(f"candidate tree: own {cand_self.get(name, 0)} < base validator {trusted_counts.get(name, 0)}")
+        if cand_on_base.get(name, 0) < base_counts.get(name, 0):
+            weaker.append(f"base tree: candidate validator {cand_on_base.get(name, 0)} < base validator {base_counts.get(name, 0)}")
+        if weaker:
+            out[name] = "; ".join(weaker)
+    return out
+
+
+def trusted_main(args) -> int:
+    branch = _branch_name(args.branch)
+    base_ref = args.base
+    cand_ref = args.candidate or "HEAD"
+    base_sha = _run(["git", "rev-parse", base_ref]).stdout.strip()
+    cand_sha = _run(["git", "rev-parse", cand_ref]).stdout.strip()
+    if not base_sha or not cand_sha:
+        print(f"[FAIL] cannot resolve base {base_ref!r} or candidate {cand_ref!r}")
+        return 1
+    print(f"TRUSTED CLOSURE: base {base_ref} ({base_sha[:8]}) judges candidate {cand_ref} ({cand_sha[:8]}) on branch {branch!r}")
+    blocks: list[str] = []
+    injected: dict[str, dict] = {}
+    wts = Worktrees()
+    try:
+        base_wt = wts.add(base_sha, "base")
+        cand_wt = wts.add(cand_sha, "cand")
+        _stage_against(cand_wt, base_sha)
+        A = _load_module(base_wt / _ACCEPTANCE_REL, "_base_acceptance")   # BASE acceptance code
+
+        # ── contract (REPAIR 2) ──
+        base_text = _show(base_sha, "OPEN_ITEMS.md") or ""
+        cand_text = (cand_wt / "OPEN_ITEMS.md").read_text(encoding="utf-8", errors="replace")
+        bootstrap = not A._SECTION_RE.search(base_text)
+        try:
+            cand_contract = A.parse_contract(cand_text)
+        except A.ContractError as e:
+            blocks.append(f"candidate OPEN_ITEMS.md contract unreadable: {e}")
+            cand_contract = []
+        if bootstrap:
+            print("BOOTSTRAP: the base carries no Requirements contract; the candidate's contract is the trusted contract for this delta only.")
+            base_contract = cand_contract
+        else:
+            base_contract = A.parse_contract(base_text)
+        auths = A.authorizations(base_contract)
+        regressions = A.contract_regressions(base_contract, cand_contract) if not bootstrap else []
+        requests = A.candidate_only_grants(base_contract, cand_contract)
+        base_reqs = [r.id for r in A.requirements(base_contract)]
+        injected["REQ-GOV-CONTRACT-MONOTONIC"] = {
+            "canonical": base_reqs,
+            "obligations": {rid: (_obl("FAIL", "; ".join(x for x in regressions if x.startswith(rid + ":")))
+                                  if any(x.startswith(rid + ":") for x in regressions) else _obl("PROVEN", "row intact"))
+                            for rid in base_reqs},
+            "notes": ([f"candidate-only grant requested, not effective: {r.id} {r.scope}" for r in requests]
+                      + (["bootstrap: base carries no contract"] if bootstrap else [])),
+        }
+        for x in regressions:
+            blocks.append(f"acceptance contract weakened by the candidate: {x}")
+
+        # ── trust anchors (REPAIR 3) ──
+        anchors = A.trust_anchor_paths(base_wt)
+        changed_anchors = set(_diff_names(base_sha, cand_sha, anchors))
+        # anchors the candidate ADDS under tools/ that base does not know are not anchors yet
+        anchor_obl = {}
+        for rel in anchors:
+            if rel not in changed_anchors:
+                anchor_obl[rel] = _obl("PROVEN", "identical to base")
+            elif _auth_matches(auths, "anchor", rel, branch):
+                anchor_obl[rel] = _obl("PROVEN", "changed; authorized by a base-side anchor: row")
+            else:
+                anchor_obl[rel] = _obl("BYPASS", "changed with NO base-side authorization")
+                blocks.append(f"trust anchor {rel} changed without a base-side AUTHORIZE anchor: row")
+        injected["REQ-GOV-TRUST-ANCHORS"] = {"canonical": anchors, "obligations": anchor_obl}
+
+        # ── the judged tree: candidate data under the BASE validator ──
+        judged = wts.copy(cand_wt, "judged")
+        copied = overlay(base_wt, judged, anchors)
+        print(f"judged tree: candidate + {len(copied)} base trust-anchor file(s) overlaid")
+        base_counts = run_gate(base_wt, "base")
+        base_roster = enforced_roster(base_wt)
+        trusted_counts = run_gate(judged, "candidate (base validator)")
+        cand_roster = enforced_roster(cand_wt)
+        retired, removed = split_removals(removed_enforced_checks(base_roster, cand_roster),
+                                          declared_retirements(base_ref))
+        base_counts_f, folded = refold_base_counts(base_counts, declared_folds(base_ref), set(retired), cand_roster)
+        added, improved = compare(base_counts_f, trusted_counts)
+        roster_obl: dict[str, dict] = {}
+        for name in sorted(base_roster):
+            b, h = base_counts_f.get(name, 0), trusted_counts.get(name, 0)
+            if name in removed:
+                roster_obl[name] = _obl("BYPASS", "removed from the candidate roster without a base-side retirement row")
+            elif h > b:
+                roster_obl[name] = _obl("FAIL", f"{b} -> {h} under the base validator")
+            else:
+                roster_obl[name] = _obl("PROVEN", f"{b} -> {h} under the base validator")
+        for a in added:
+            blocks.append(f"adds enforced violation(s) under the BASE validator: {a.strip()}")
+        for n in removed:
+            blocks.append(f"removes enforced check {n} without a base-side retirement row")
+
+        # ── validator monotonicity (only when a validator changed, and was authorized) ──
+        validator_changed = any(rel.endswith(".py") for rel in changed_anchors)
+        if validator_changed and not any(o["status"] == "BYPASS" for o in anchor_obl.values()):
+            cand_self = run_gate(cand_wt, "candidate (own validator)")
+            base_under_cand = wts.copy(base_wt, "base_under_cand")
+            overlay(cand_wt, base_under_cand, [a for a in anchors if a.endswith(".py")])
+            cand_on_base = run_gate(base_under_cand, "base (candidate validator)")
+            for name, why in validator_weakening(base_roster, removed, cand_self, trusted_counts,
+                                                 cand_on_base, base_counts).items():
+                roster_obl[name] = _obl("BYPASS", "validator weakened: " + why)
+                blocks.append(f"validator weakened for {name}: " + why)
+            print("validator monotonicity measured on both trees (candidate validator vs base validator)")
+        injected["REQ-GOV-TRUSTED-VALIDATOR"] = {"canonical": sorted(base_roster), "obligations": roster_obl,
+                                                "notes": ([f"retired by base-side declaration: {', '.join(retired)}"] if retired else []) + folded}
+
+        # ── escape markers (REPAIR 5) ──
+        tokens = marker_tokens((base_wt / CHECKER_REL).read_text(encoding="utf-8", errors="replace"))
+        added_markers = added_marker_lines(base_sha, cand_sha, tokens)
+        marker_obl = {}
+        for path, line, tok in added_markers:
+            key = f"{path}:{line}:{tok}"
+            if _auth_matches(auths, "marker", path, branch, token=tok):
+                marker_obl[key] = _obl("PROVEN", "authorized by a base-side marker: row")
+            else:
+                marker_obl[key] = _obl("BYPASS", "escape marker added by the same delta with no base-side authorization")
+                blocks.append(f"escape marker {tok} added at {path}:{line} without a base-side AUTHORIZE marker: row")
+        injected["REQ-GOV-MARKER-AUTHORITY"] = {"canonical": sorted(marker_obl), "obligations": marker_obl}
+
+        # ── closure commands execute (REPAIR 5) ──
+        closing = closing_rows(_show(base_sha, _LEDGER_REL), (cand_wt / _LEDGER_REL).read_text(encoding="utf-8", errors="replace"))
+        close_obl = {}
+        for rc, row in sorted(closing.items()):
+            cmds = executable_commands(row)
+            if not cmds:
+                close_obl[rc] = _obl("FAIL", "closes with no CI-executable command (python/pytest/node/tools/) in its evidence cell")
+                blocks.append(f"{rc} closes without a CI-executable command; a live probe alone does not close a row")
+                continue
+            code, tail = run_closure_command(cmds[0], cand_wt)
+            if code == 0:
+                close_obl[rc] = _obl("PROVEN", f"executed `{cmds[0][:120]}` -> exit 0")
+            else:
+                close_obl[rc] = _obl("FAIL", f"executed `{cmds[0][:120]}` -> exit {code}: {tail[-300:]}")
+                blocks.append(f"{rc}: cited closure command exited {code}")
+        injected["REQ-GOV-CLOSURE-COMMANDS"] = {"canonical": sorted(closing), "obligations": close_obl}
+
+        # ── operating-process re-date rule (local hook parity) ──
+        opl = _load_module(base_wt / _OPL_REL, "_base_opl")
+        redate = opl.rc_redate_violations(cand_wt)
+        for msg in redate:
+            blocks.append(f"re-date rule (operating_process_lock): {msg}")
+
+        # ── evidence-class invariant: the owner's own falsifiers ──
+        run, caught, fails = A.evidence_adversarial()
+        injected["REQ-GOV-EVIDENCE-CLASS"] = {
+            "canonical": ["evidence_status"], "adversarial_run": run, "adversarial_caught": caught,
+            "obligations": {"evidence_status": _obl("PROVEN" if not fails else "FAIL", "; ".join(fails) or f"{caught}/{run} mutations caught")},
+            "notes": fails,
+        }
+        if fails:
+            blocks.append("evidence-class invariant: " + "; ".join(fails))
+
+        # ── acceptance verdicts: candidate (base module, judged tree) vs base ──
+        cand_verdicts = A.evaluate(judged, cand_contract, base_contract=base_contract, injected=injected)
+        base_verdicts = {v.requirement.id: v for v in A.evaluate(base_wt, base_contract, base_contract=base_contract)} if not bootstrap else {}
+        rank = {"PASS": 2, "NOT_PROVEN": 1, "FAIL": 0}
+        for v in cand_verdicts:
+            rid, gate = v.requirement.id, v.requirement.gate
+            if gate == "MERGE" and v.verdict != "PASS":
+                blocks.append(f"MERGE requirement {rid} is {v.verdict}")
+            bv = base_verdicts.get(rid)
+            if bv is not None and gate == "PRODUCT":
+                if rank[v.verdict] < rank[bv.verdict] or v.missing > bv.missing or v.failed > bv.failed:
+                    blocks.append(f"PRODUCT requirement {rid} regressed: base {bv.verdict} (missing {bv.missing}, fail {bv.failed}) -> candidate {v.verdict} (missing {v.missing}, fail {v.failed})")
+        print("\n".join(A.report_lines(cand_verdicts)))
+        if args.report_json:
+            Path(args.report_json).write_text(json.dumps({
+                "base": base_sha, "candidate": cand_sha, "branch": branch, "bootstrap": bootstrap,
+                "blocks": blocks, "requests": [f"{r.id} {r.scope}" for r in requests],
+                "improved": [i.strip() for i in improved],
+                **A.report_json(cand_verdicts)}, indent=1), encoding="utf-8")
+    finally:
+        wts.close()
+
+    if improved:
+        print("\nPAID DOWN by this delta:")
+        print("\n".join(improved))
+    if requests:
+        print("\nAUTHORIZATION/ACCEPT rows this candidate REQUESTS (inert until merged):")
+        print("\n".join(f"  {r.id}: {r.scope}" for r in requests))
+    if blocks:
+        print("\n[FAIL] TRUSTED CLOSURE — this delta may not merge:")
+        print("\n".join(f"  - {b}" for b in blocks))
+        return 1
+    print("\n[PASS] TRUSTED CLOSURE — every MERGE requirement PASS, no PRODUCT regression, no bypass.")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
         description="Fail if the candidate adds an enforced violation the base did not carry")
@@ -459,7 +888,15 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--index", action="store_true",
                     help="measure the exact staged INDEX (the pre-commit question) instead "
                          "of HEAD; unstaged work is structurally excluded")
+    ap.add_argument("--trusted", action="store_true",
+                    help="the trusted cross-tree judge: base validator + base contract judge the candidate")
+    ap.add_argument("--candidate", default=None, help="candidate ref for --trusted (default HEAD)")
+    ap.add_argument("--branch", default=None, help="candidate branch name for AUTHORIZE matching (default: GITHUB_HEAD_REF or the checked-out branch)")
+    ap.add_argument("--report-json", default=None, help="write the acceptance report JSON here")
     args = ap.parse_args(argv)
+
+    if args.trusted:
+        return trusted_main(args)
 
     if args.index:
         candidate_ref, candidate_label = index_candidate(), "staged INDEX"

@@ -814,6 +814,18 @@ def run_chain(raw_payload: str, members: tuple[str, ...] = STOP_CHAIN) -> int:
     """
     import os
 
+    # UNIVERSAL_QUANTITATIVE_CLOSURE_V1 (RC-541): an unreadable payload became {} and every
+    # member judged a blank event — the chain exited 0. The executor refuses it first, so no
+    # roster ever sees an event it cannot read.
+    try:
+        parsed = json.loads(raw_payload)
+    except (json.JSONDecodeError, ValueError, TypeError):
+        parsed = None
+    if not isinstance(parsed, dict):
+        sys.stderr.write("STOP CHAIN: the hook payload is not a readable JSON object; the event "
+                         "cannot be judged and is refused. Unreadable is not clean.\n")
+        return 2
+
     if os.environ.get(DELEGATED_ENV) == "1":
         own, roster_failure = tree_roster(REPO, raw_payload)
         if roster_failure:

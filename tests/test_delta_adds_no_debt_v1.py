@@ -170,11 +170,13 @@ def test_a_completed_gate_with_zero_violations_is_still_accepted(monkeypatch):
     def fake_run(args, cwd=None, timeout=3600, env=None):
         if args[:2] == ["git", "worktree"] or args[:2] == ["git", "rev-parse"]:
             return sp.CompletedProcess(args, 0, "deadbeef\n", "")
-        if "-c" in args:                                  # the CHECKS roster read
-            return sp.CompletedProcess(args, 0, "ROSTER_BEGIN\nvenv_parity\nROSTER_END\n", "")
         return FakeProc()
 
     monkeypatch.setattr(GATE, "_run", fake_run)
+    # UNIVERSAL_QUANTITATIVE_CLOSURE_V1: the roster is a STATIC parse of the materialised
+    # side's checker source (the commit seam's own reader), no longer an executed `-c`
+    # read — so the stub supplies the parse, not a sentinel-wrapped subprocess.
+    monkeypatch.setattr(GATE, "enforced_roster", lambda wt: {"venv_parity"})
     counts, sha, roster = GATE.enforced_counts("HEAD")
     assert counts == {} and sha == "deadbeef" and roster == {"venv_parity"}
 
@@ -195,9 +197,10 @@ def test_the_tool_measures_in_a_clean_worktree_not_the_dirty_tree(monkeypatch):
     calls: list[tuple[list[str], object]] = []
     banner = "INSTITUTIONAL CORRECTNESS GATE: PASS (enforced checks clean)"
     # RC-391 widened enforced_counts to also read the CHECKS roster from the SAME
-    # materialised side, and an unreadable roster is fail-closed. So the stub speaks that
-    # contract too; a bare banner is (correctly) refused.
-    roster = "ROSTER_BEGIN\nvenv_parity\nroot_cause_log\nROSTER_END"
+    # materialised side, and an unreadable roster is fail-closed. UNIVERSAL_QUANTITATIVE_
+    # CLOSURE_V1 made that read a static parse of the side's checker source; the stub
+    # records WHICH tree the roster was read from so the property below covers it too.
+    roster_reads: list[object] = []
 
     def recording_run(args, cwd=None, timeout=3600):
         calls.append((list(args), cwd))
@@ -205,11 +208,14 @@ def test_the_tool_measures_in_a_clean_worktree_not_the_dirty_tree(monkeypatch):
             return sp.CompletedProcess(args, 0, "deadbeef\n", "")
         if args[:2] == ["git", "worktree"]:
             return sp.CompletedProcess(args, 0, "", "")
-        if any("ROSTER_BEGIN" in str(a) for a in args):
-            return sp.CompletedProcess(args, 0, roster, "")
         return sp.CompletedProcess(args, 0, banner, "")
 
+    def recording_roster(wt):
+        roster_reads.append(wt)
+        return {"venv_parity", "root_cause_log"}
+
     monkeypatch.setattr(GATE, "_run", recording_run)
+    monkeypatch.setattr(GATE, "enforced_roster", recording_roster)
     counts, sha, roster_names = GATE.enforced_counts("HEAD")
     assert (counts, sha) == ({}, "deadbeef")
     assert roster_names, "the roster was read as empty; an unreadable roster is not empty"
@@ -230,6 +236,8 @@ def test_the_tool_measures_in_a_clean_worktree_not_the_dirty_tree(monkeypatch):
         f"the gate was measured in {gate_cwd!r}, not in the clean worktree {wt!r} — a "
         f"dirty tree's scratch files would be counted as part of the delta")
     assert str(gate_cwd) != str(REPO), "the gate was measured in the live repository tree"
+    assert roster_reads and all(str(r) == str(wt) for r in roster_reads), (
+        f"the roster was read from {roster_reads}, not from the clean worktree {wt!r}")
 
     removed = [a for a, _ in calls if a[:3] == ["git", "worktree", "remove"]]
     assert removed and str(wt) in removed[-1], (

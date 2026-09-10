@@ -221,6 +221,11 @@ _SKIP_HOOKS = re.compile(
     r"--no-verify"
     r"|hooksPath"
     r"|\bgit\s+commit\b[^\n]*?(?:\s-n\b)"
+    # UNIVERSAL_QUANTITATIVE_CLOSURE_V1 (RC-541): pre-commit's own bypass routes — the SKIP
+    # environment variable (`SKIP=<hook-id> git commit`, `$env:SKIP=`), uninstalling the
+    # hooks, and the long spelling on push. Measured before this row: none of them matched.
+    r"|(?:^|[\s;&|(])(?:\$env:)?SKIP\s*=\s*['\"]?[A-Za-z0-9_,\-]"
+    r"|\bpre-commit\s+uninstall\b"
     r"|(?:\$\{?env:)?ED_[A-Z_]*(?:_GUARD|_LOCK)(?![A-Z0-9_])['\"\s\]\}]*=\s*"
     r"(?:['\"]?\s*(?:off|false|0)\b|\()"
     r"|(?:Set-Item|New-Item|SetEnvironmentVariable|PSVariable)[^\n]{0,80}?"

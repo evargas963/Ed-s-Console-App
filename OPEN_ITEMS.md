@@ -32,6 +32,60 @@ fixed. History lives in git.
 
 ---
 
+## Requirements (machine-read acceptance contract — executed by `governance/acceptance.py`)
+
+UNIVERSAL_QUANTITATIVE_CLOSURE_AND_NON_BYPASS_V1 (operator, 2026-09-10). This table is the
+executable half of this file. Every verdict is COMPUTED from it — nothing here stores PASS —
+by `governance/acceptance.py`, and the delta gate (`tools/check_delta_adds_no_debt.py
+--trusted`, run from the BASE branch's code by `.github/workflows/trusted-closure.yml`)
+judges every candidate against the BASE copy of this table. Rules the machine holds:
+
+- **SCOPE names the canonical authority that owns the population** (`governance.acceptance:<fn>`
+  reads the router, the hook wiring, the check roster, the provenance roots — never a hand
+  list); `delta:<name>` populations are what THIS change does and only the delta gate can
+  enumerate them; `evidence:<REQ>` rows are proven by evidence records under
+  `reports/evidence/<REQ>/` of at least the declared PROOF class; `narrowing:<check>` names
+  the institutional check that detects known LOCAL narrowings of an open property whose
+  boundary authority is not yet measured (a hit is FAIL; a clean run proves nothing); `NONE`
+  states that no canonical authority is identified, which is NOT_PROVEN by construction,
+  never invented.
+- **PROOF** is the minimum evidence class (`STATIC` < `ISOLATED_E2E` < `REAL_POPULATION` <
+  `LIVE_RTH`) plus binding flags (`+EXACT_HEAD`, `+RUNTIME_IDENTITY`, `+OPERATOR_ACCEPT`).
+  Lower-class evidence is INVALID for the row, never partial credit.
+- **GATE** `MERGE` rows must be PASS for a delta to merge; `PRODUCT` rows are reported with their
+  counts and a delta may not make them worse than the base (a regression is a FAIL of the delta).
+- **AUTHORIZE rows are effective only from the base branch.** A candidate may ADD one (a visible
+  request); it is inert until merged, so no delta can grant itself an exclusion, a trust-anchor
+  edit or a marker. `anchor:<path>@<branch>` permits a trust-anchor change; `marker:<token>@<path>@<branch>`
+  permits an escape marker; `waive:<REQ>:<obligation>` excludes one obligation. Rows are removed
+  by the delta that lands after their use; git keeps them.
+- **ACCEPT rows are the operator's acceptance of a requirement at an exact sha** (`<REQ>@<sha>`),
+  landed from the base branch. Their trust rests on the credential boundary recorded under
+  REQ-GOV-REMOTE-NON-BYPASS: until the agent's GitHub credential cannot merge around the
+  trusted lane, an ACCEPT row is operator-authored by working agreement, not by proof.
+- A candidate may add rows or make a row stricter; deleting a row, changing its SCOPE, weakening
+  its PROOF, demoting its GATE or moving its PARENT is a FAIL of the candidate. A child's PASS
+  never closes its parent.
+
+| ID | KIND | GATE | SCOPE | PROOF | PARENT | CRITERION |
+|---|---|---|---|---|---|---|
+| REQ-GOV-TRUSTED-VALIDATOR | FINITE | MERGE | governance.acceptance:enforced_check_roster | STATIC | - | Every enforced check of the BASE roster judged the candidate tree running the BASE validator code (base tools overlaid on the candidate), and when the candidate changes a validator, its copy of every base check reports no fewer violations than the base copy on both trees — a validator cannot certify its own weakening. |
+| REQ-GOV-TRUST-ANCHORS | FINITE | MERGE | governance.acceptance:trust_anchor_paths | STATIC | - | Every file the enforcement path executes (hook wirings and their guards, the pre-commit config and its tools, every workflow, the institutional gate and its imports, the delta gate, the acceptance module, the retirement manifest) is byte-identical to base, or its change is authorized by a base-side `anchor:` row. |
+| REQ-GOV-CONTRACT-MONOTONIC | FINITE | MERGE | delta:base_requirements | STATIC | - | Every requirement row of the BASE contract survives in the candidate unweakened (same KIND, SCOPE, PARENT; PROOF and GATE no weaker); candidate-only AUTHORIZE/ACCEPT rows are listed as requests and have no effect. |
+| REQ-GOV-CLOSURE-COMMANDS | FINITE | MERGE | delta:closing_ledger_rows | STATIC | - | Every `governance/root_cause_log.md` row that becomes CLOSED or REMEDIATED in the delta cites at least one CI-executable command (`python`/`pytest`/`node`/`tools/`), and CI executed it in the candidate tree with exit 0. A regex match on a command string is not proof; a live-only probe (`curl`, `SELECT`) does not close a row by itself. |
+| REQ-GOV-MARKER-AUTHORITY | FINITE | MERGE | delta:added_escape_markers | STATIC | - | Every escape marker the delta ADDS (`institutional-synthetic-ok`, `silent-zero-ok`, `universal-scope-ok`, `fake-default-ok`, `vendor-coercion-ok`, `OUT-OF-SCOPE:` and the other `*-ok` tokens the gate honours) is authorized by a base-side `marker:` row for that token and path; a marker written by the same delta suppresses nothing. |
+| REQ-GOV-HOOKS-FAIL-CLOSED | FINITE | MERGE | governance.acceptance:hook_guard_modules | STATIC | - | Every executable the hook wiring runs (chain entries and every `*_CHAIN` roster member) exits non-zero on an unreadable payload. Verified by executing each with malformed stdin. |
+| REQ-GOV-LOCAL-REMOTE-PARITY | FINITE | MERGE | governance.acceptance:precommit_hooks | STATIC | - | Every local pre-commit hook's deciding owner is executed by a remote workflow (directly, or through the delta gate's imports), so a local `SKIP=`/`--no-verify` cannot create a remotely admissible violation. |
+| REQ-GOV-EVIDENCE-CLASS | OPEN | MERGE | governance.acceptance:evidence_status | STATIC | - | For all evidence records: a record of a lower class than the row requires, at a sha the code moved past, without runtime identity where required, or with descriptive payload labels standing in for provenance, never counts as proof. Adversarial mutations: `tests/test_universal_closure_v1.py` (NC-13/14/15). |
+| REQ-GOV-REMOTE-NON-BYPASS | OPEN | PRODUCT | NONE | STATIC | - | The trusted lane's verdict cannot be satisfied by a same-name status spoof, and the credential coding agents operate GitHub with cannot alter protection, merge around the trusted lane, forge an ACCEPT/AUTHORIZE row or modify the trust anchor. NOT_PROVEN until the external credential boundary is installed and the attack fails (see governance/root_cause_log.md RC-539). |
+| REQ-UI-PAGES-BOUND | FINITE | PRODUCT | governance.acceptance:ui_pages | STATIC | - | Every page the router serves ships no data cell as a dead `—` placeholder (the static-binding predicate of `tools/check_ui_data_integration.py`, over the router's PAGE population). |
+| REQ-ONE-COMPUTATION | FINITE | PRODUCT | governance.acceptance:provenance_roots | STATIC | - | Every material root (PRODUCER route, MarketState field, decision-engine argument) has a producer row closing it (PA-2 structural closure over `governance/provenance_roots.py`). Structural closure is not semantic truth: an OPEN root is MISSING, listed by name. |
+| REQ-UNIVERSAL-TICKER | OPEN | PRODUCT | narrowing:universal_ticker_scope | REAL_POPULATION | - | For all tickers the canonical enrollment accepts, the same canonical path serves them (PA-1). No boundary authority is machine-measured today, so the row is NOT_PROVEN by construction; the two known LOCAL NARROWINGS (`check_universal_ticker_scope`, RC-160: SPY-only experiment defaults, SPY-gated Chart features) are measured on every tree and any hit is a FAIL — a regression attack, never proof of the property. |
+| REQ-CONSOLE-GAMMA-UI | OPEN | PRODUCT | evidence:REQ-CONSOLE-GAMMA-UI | LIVE_RTH+EXACT_HEAD+RUNTIME_IDENTITY+OPERATOR_ACCEPT | - | The Options/Gamma console (PR #238 objective) renders the canonical population on real RTH data, from the exact head as the sole console owner with runtime identity, and the operator accepts it at that sha. Synthetic, intercepted or premarket evidence is INVALID for this row; a screenshot is not an evidence record. |
+| AUTH-BOOTSTRAP-V1 | AUTHORIZE | - | anchor:*@claude/universal-quantitative-closure-v1 | - | - | The repair that introduces this contract changes every trust anchor; the base carries no contract to authorize it, so this row is the visible record. Remove after landing. |
+
+---
+
 ## Open acceptance items (unmet; each survives exactly once, here)
 
 Rows moved from the former Now / FINDs / queue / audit-remainder / defects sections on 2026-09-05;
@@ -72,7 +126,7 @@ any component closure.**
 - [ ] **RAPID_VIX_SENTINEL** — never exercised: requires a live `|dVIX| > 3.0` at `VIX > 20` event, never simulated. Met on the first qualifying live event with the sentinel's fire recorded from the runtime.
 - [ ] **UI-04 operator design rails P1B/P1C/P1D** — operator-held design decisions; nothing built. Met when the operator decides and the decided rails render live.
 - [ ] **GOV-ROOT-LEDGER-SCAN** — design only ("scanner scope extension"). No criterion beyond: either a measured defect the scan would have prevented is cited and a row opened, or this item is removed as a mechanism without a proven failure (AGENTS.md).
-- [ ] **GOV-REMOTE-ENFORCEMENT** — `enforce_admins=false` on the protected branch leaves the admin direct-push channel open (evidence: PUSH_ROUTE_INVENTORY.json at the schema's last revision). Operator settings decision: enable `enforce_admins` / restrict admin tokens. Met when the branch protection shows `enforce_admins=true` and a direct push as admin is refused.
+- [ ] **GOV-REMOTE-ENFORCEMENT** — MEASURED 2026-09-10 (`gh api repos/evargas963/Ed-s-Console-App/branches/main/protection`): `enforce_admins=true`, required checks `pytest-full` + `hardening` (strict), `required_approving_review_count=0`, no CODEOWNERS, no rulesets — the earlier `enforce_admins=false` reading in this row was stale. What remains open is the credential boundary, not the switch: the account that operates CI and merges is the same account coding agents use, so the protection can be re-configured by the party it constrains. Met when (1) `trusted-closure` is a required check pinned to an expected source that a same-named candidate check run cannot satisfy, and (2) the agent credential is a fine-grained token without `administration`, `environments`/`secrets` or bypass rights and an attempt to alter protection / merge around the trusted lane with it is refused. Tracked as `REQ-GOV-REMOTE-NON-BYPASS` in the Requirements table (NOT_PROVEN) and RC-539.
 - [ ] **ML_PIPELINE_CORRECTNESS** (parent of PA-6, PA-7, PA-11..PA-14, PA-33; was the ML NOT_PROVEN matrix, base head `3009ae1c`). Predictive validity NOT_PROVEN per the top table. Every criterion below is unmet unless its line says otherwise; each closes only with the re-runnable proof named:
   - [ ] POINT_IN_TIME_FEATURE_CORRECTNESS — LSTM/Transformer history sequences must exclude bars with `ts_utc >= as_of`; per-row slicing must clamp against the preloaded hist upper bound. Proof: adversarial fixture hist DB, `_predict_lstm` at an early as-of with and without appended/mutated future rows, identical outputs (partly landed: `tests/test_ml_feature_provenance.py` as-of locks).
   - [ ] NO_LOOKAHEAD_BIAS — no label window overlapping a feature window in training-set construction; no centered rolling anywhere in the training feature build. Proof: injection tests that a governance scan catches both, plus a per-horizon dataset-construction boundary test.
