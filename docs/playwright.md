@@ -32,8 +32,9 @@ Until 2026-09-10 the E2E runner wrote `.playwright_last_run_success` (a JSON sta
 the E2E sources. That was a proxy for a run, not a run: the stamp was a tracked, hand-editable
 file (its committed copy was dated 2026-05-25 while CI had executed E2E on every PR since), and
 a timestamp compared to file mtimes proves nothing about what executed. Both are gone. What
-survives is the runtime-isolation contract in `tests/test_playwright_runtime_isolation.py`
-(the E2E server must never touch the production DB), which guards a real boundary.
+survives is the runtime-isolation contract, `test_playwright_server_uses_run_private_runtime`
+in `tests/test_playwright_enforcement.py` (the E2E server must never touch the production
+DB), which guards a real boundary.
 
 ### Output goes to a log file, never to the terminal pipe (RC-535)
 

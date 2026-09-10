@@ -307,17 +307,21 @@ def test_the_roster_is_read_from_the_repo_s_own_CHECKS_authority():
     assert authority, "precondition: the repo declares enforced checks"
 
 
-def test_an_unreadable_or_empty_roster_raises_rather_than_reporting_none():
-    """Fail closed: an empty roster would make every check removal invisible."""
+def test_an_unreadable_or_empty_roster_raises_rather_than_reporting_none(tmp_path):
+    """Fail closed: an empty roster would make every check removal invisible. The gate has
+    ONE roster reader — the commit seam's — and wraps its refusal, never its own parse."""
     for label, text in (("not python", "Traceback (most recent call last):"),
                         ("no CHECKS", "x = 1\n"),
                         ("empty CHECKS", "CHECKS = []\n")):
+        (tmp_path / "tools").mkdir(exist_ok=True)
+        (tmp_path / GATE.CHECKER_REL).write_text(text, encoding="utf-8")
         try:
-            GATE.parse_roster(text)
+            GATE.enforced_roster(tmp_path)
         except RuntimeError as exc:
             assert "roster" in str(exc), (label, str(exc))
         else:
             raise AssertionError(f"{label}: a broken roster read was reported as a roster")
+    assert not hasattr(GATE, "parse_roster")
 
 
 # ---------------------------------------------------------------------------
@@ -689,8 +693,9 @@ def test_the_candidate_worktree_presents_the_change_as_STAGED(tmp_path, monkeypa
     Several enforced checks ask `git diff --cached` what is being committed. In a plain
     materialised worktree HEAD is the candidate and the index matches it, so that question
     answers EMPTY on both sides and those checks fall silent at the exact seam they were
-    written for. `_stage_the_delta` moves HEAD back to the parent, leaving the index holding
-    the candidate tree, so the staged set IS the change under commit.
+    written for. `_stage` moves HEAD back to the base, leaving the index holding the
+    candidate tree, so the staged set IS the change under commit (one function for both
+    lanes: the candidate lane passes the candidate's parent, the trusted lane the base).
     """
     repo = _seeded_repo(tmp_path)
     (repo / "added.txt").write_text("new\n", encoding="utf-8")
@@ -703,7 +708,7 @@ def test_the_candidate_worktree_presents_the_change_as_STAGED(tmp_path, monkeypa
     try:
         assert _git(wt, "diff", "--cached", "--name-only").split() == [], (
             "precondition: a plain materialised worktree shows NOTHING staged")
-        GATE._stage_the_delta(wt, sha)
+        GATE._stage(wt, f"{sha}^")
         assert _git(wt, "diff", "--cached", "--name-only").split() == ["added.txt"], (
             "the change under commit is not visible to the checks that ask for it")
         assert _git(wt, "rev-parse", "HEAD").strip() == \
@@ -835,74 +840,13 @@ def test_the_precommit_seam_refuses_when_no_base_trunk_resolves(monkeypatch):
         assert "cannot resolve a base trunk" in str(exc), str(exc)
     else:
         raise AssertionError("an unmeasurable commit was allowed to proceed")
-# ── RC-466: the BASE-SIDE CACHE must never trade correctness for speed ──────────────
-# The base measurement is a pure function of (base commit, driver bytes, local evidence,
-# interpreter); the cache key must cover EVERY one of those inputs, a corrupt or stale
-# cache must fall back to a fresh measurement, and the candidate side is never cached.
+# ── RC-466's base-side cache is DELETED (2026-09-10): RC-406 moved this gate off the commit
+# path, CI runners have no persistent .git, so the cache served only hand runs — a second
+# responsibility with no measured need. Both sides are measured fresh on every run.
 
 
-def test_rc466_cache_roundtrip_and_wrong_key_miss(tmp_path, monkeypatch):
-    """A written entry is returned for ITS key only; any other key recomputes."""
-    monkeypatch.setattr(GATE, "_base_cache_path", lambda: tmp_path / "cache.json")
-    counts = {"root_cause_log": 3}
-    GATE._write_base_cache("k1", counts, "abc1234", {"root_cause_log", "log_law"})
-    hit = GATE._read_base_cache("k1")
-    assert hit is not None
-    got_counts, got_sha, got_roster = hit
-    assert got_counts == counts and got_sha == "abc1234"
-    assert got_roster == {"root_cause_log", "log_law"}
-    assert GATE._read_base_cache("k2") is None, "a stale key must MISS, never serve"
-    assert GATE._read_base_cache(None) is None
-
-
-def test_rc466_corrupt_cache_falls_back_to_fresh(tmp_path, monkeypatch):
-    """Fail-open on the CACHE, never on the gate: garbage on disk means recompute."""
-    f = tmp_path / "cache.json"
-    monkeypatch.setattr(GATE, "_base_cache_path", lambda: f)
-    for garbage in (b"not-json", b"{}", b'{"key": "k1"}',
-                    b'{"key": "k1", "counts": "wrong-shape", "sha": 1, "roster": 2}'):
-        f.write_bytes(garbage)
-        assert GATE._read_base_cache("k1") is None, garbage
-
-
-def test_rc466_key_refuses_an_unresolvable_ref():
-    """An unresolvable ref yields NO key (never a guessable one, never a stale hit).
-    (The gitignored local-evidence input this key once also covered was removed with
-    `research_before_act` — 2026-08-24 teardown; the key now hashes ref + parser + python.)"""
-    assert GATE._base_cache_key("HEAD"), "a real ref must produce a key"
-    assert GATE._base_cache_key("no-such-ref-xyz") is None
-
-
-def test_rc466_different_commits_never_share_a_key():
-    """Two different base commits must produce different keys (content-addressed)."""
-    k_head = GATE._base_cache_key("HEAD")
-    k_prev = GATE._base_cache_key("HEAD~1")
-    assert k_head, "a real ref must produce a key"
-    assert k_prev, "this repo has history; HEAD~1 must resolve"
-    assert k_head != k_prev
-
-
-def test_rc466_candidate_side_is_never_cached():
-    """Only the BASE lookup consults the cache; the candidate is measured every run."""
+def test_no_base_side_cache_survives():
     import inspect
-    src_main = inspect.getsource(GATE.main)
-    assert "_read_base_cache" in src_main, "base side must consult the cache"
-    # The candidate measurement must be an UNCONDITIONAL statement: exactly one call,
-    # not nested under any cache branch.
-    tree = ast.parse(src_main)
-    fn = tree.body[0]
-    candidate_calls = [
-        n for n in ast.walk(fn)
-        if isinstance(n, ast.Call)
-        and getattr(n.func, "id", "") == "enforced_counts"
-        and any(k.arg == "stage_delta" for k in n.keywords)
-    ]
-    assert len(candidate_calls) == 1, "exactly one candidate measurement"
-    # It must live directly in main's top-level body (not inside an if/else guard).
-    top_level_assign_calls = [
-        n for stmt in fn.body if isinstance(stmt, ast.Assign)
-        for n in ast.walk(stmt)
-        if isinstance(n, ast.Call) and getattr(n.func, "id", "") == "enforced_counts"
-        and any(k.arg == "stage_delta" for k in n.keywords)
-    ]
-    assert top_level_assign_calls, "candidate measurement must be unconditional"
+    for name in ("_base_cache_path", "_base_cache_key", "_read_base_cache", "_write_base_cache"):
+        assert not hasattr(GATE, name), name
+    assert "cache" not in inspect.getsource(GATE.main)

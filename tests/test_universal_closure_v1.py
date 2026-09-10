@@ -164,22 +164,28 @@ def test_nc07_child_pass_does_not_close_parent(tmp_path):
     assert _verdict(vs, "REQ-P").verdict == "NOT_PROVEN" and _verdict(vs, "REQ-P").missing == 1
 
 
-# ── NC-09 name-preserving check gut: the candidate validator reports fewer ─────────────
-def test_nc09_validator_weakening_is_measured_on_both_trees():
-    roster = {"root_cause_log", "test_hygiene"}
-    base_counts = {"root_cause_log": 3, "test_hygiene": 0}
-    trusted_cand = {"root_cause_log": 3, "test_hygiene": 1}
-    # gutted predicate: the candidate's own checker sees fewer on the candidate tree
-    weak = GATE.validator_weakening(roster, [], {"root_cause_log": 0, "test_hygiene": 1}, trusted_cand,
-                                    {"root_cause_log": 0, "test_hygiene": 0}, base_counts)
-    assert "root_cause_log" in weak and "test_hygiene" not in weak
-    # honest positives: identical or stricter validators are never flagged
-    assert GATE.validator_weakening(roster, [], trusted_cand, trusted_cand, base_counts, base_counts) == {}
-    assert GATE.validator_weakening(roster, [], {"root_cause_log": 5, "test_hygiene": 2}, trusted_cand,
-                                    {"root_cause_log": 4, "test_hygiene": 1}, base_counts) == {}
-    # a check retired by base declaration is judged by the retirement rule, not here
-    assert GATE.validator_weakening(roster, ["root_cause_log"], {"root_cause_log": 0, "test_hygiene": 1},
-                                    trusted_cand, {"root_cause_log": 0, "test_hygiene": 0}, base_counts) == {}
+# ── NC-09 the trusted lane executes NO candidate code: the candidate is data ──────────
+def test_nc09_the_trusted_lane_never_executes_the_candidate_validator():
+    """The validator-monotonicity measurement ran the CANDIDATE's own gate inside the trusted
+    lane. A validator change is a trust-anchor change (operator-authorized, reviewed); the
+    trusted lane judges the candidate under the BASE validator only. Structural: `trusted_main`
+    runs the gate on the base tree and on the judged (overlaid) tree — never on `cand_wt`."""
+    import ast as _ast
+    import inspect
+    src = inspect.getsource(GATE.trusted_main)
+    fn = _ast.parse(src).body[0]
+    gate_runs = [n for n in _ast.walk(fn) if isinstance(n, _ast.Call) and getattr(n.func, "id", "") == "run_gate"]
+    targets = {getattr(c.args[0], "id", "?") for c in gate_runs}
+    assert targets == {"base_wt", "judged"}, targets
+    closure_runs = [n for n in _ast.walk(fn) if isinstance(n, _ast.Call)
+                    and getattr(n.func, "id", "") in ("run_closure_command", "execute_closures")]
+    assert closure_runs == [], "the trusted lane executes a candidate-cited command"
+    assert not hasattr(GATE, "validator_weakening")
+    # the candidate lane is where closure proof executes (hardening runs this owner)
+    wf = (ROOT / ".github" / "workflows" / "hardening.yml").read_text(encoding="utf-8")
+    assert "check_delta_adds_no_debt.py --base origin/main" in wf
+    main_src = inspect.getsource(GATE.main)
+    assert "execute_closures(" in main_src
 
 
 # ── NC-10 / NC-12 trust anchors: unauthorized change of a workflow/validator is a bypass ─
@@ -188,19 +194,24 @@ def test_nc10_nc12_trust_anchor_changes_need_base_side_authorization(tmp_path):
         row("AUTH-A", "AUTHORIZE", "-", "anchor:.github/workflows/pytest.yml@feature/x", "-"),
         row("AUTH-B", "AUTHORIZE", "-", "anchor:tools/check_*.py@*", "-"),
         row("AUTH-M", "AUTHORIZE", "-", "marker:silent-zero-ok@app/**@feature/x", "-"))))
-    assert not GATE._auth_matches(auths, "anchor", ".github/workflows/pytest.yml", "feature/y")
-    assert GATE._auth_matches(auths, "anchor", ".github/workflows/pytest.yml", "feature/x")
-    assert GATE._auth_matches(auths, "anchor", "tools/check_institutional_correctness.py", "any")
-    assert not GATE._auth_matches(auths, "anchor", "tools/stop_guard.py", "any")
-    assert GATE._auth_matches(auths, "marker", "app/x.py", "feature/x", token="silent-zero-ok")
-    assert not GATE._auth_matches(auths, "marker", "app/x.py", "feature/x", token="fake-default-ok")
-    assert not GATE._auth_matches([], "anchor", ".github/workflows/pytest.yml", "feature/x")
-    # the population is derived from the wiring, and the workflows are in it
-    anchors = A.trust_anchor_paths(ROOT)
+    assert not A.authorized(auths, "anchor", ".github/workflows/pytest.yml", "feature/y")
+    assert A.authorized(auths, "anchor", ".github/workflows/pytest.yml", "feature/x")
+    assert A.authorized(auths, "anchor", "tools/check_institutional_correctness.py", "any")
+    assert not A.authorized(auths, "anchor", "tools/stop_guard.py", "any")
+    assert A.authorized(auths, "marker", "app/x.py", "feature/x", token="silent-zero-ok")
+    assert not A.authorized(auths, "marker", "app/x.py", "feature/x", token="fake-default-ok")
+    assert not A.authorized([], "anchor", ".github/workflows/pytest.yml", "feature/x")
+    # the population is derived from the wiring by its owner (the enforcement-path seam), and
+    # the acceptance executor holds no population of its own
+    PCI = _load("tools/precommit_institutional.py", "_pci_nc10")
+    anchors = PCI.trust_anchor_paths(ROOT)
+    assert A.resolve_scope("tools.precommit_institutional:trust_anchor_paths", ROOT) == anchors
+    assert not hasattr(A, "trust_anchor_paths")
     for rel in (".github/workflows/pytest.yml", ".github/workflows/hardening.yml",
                 ".github/workflows/trusted-closure.yml", ".claude/settings.json", ".pre-commit-config.yaml",
                 "tools/check_institutional_correctness.py", "tools/check_delta_adds_no_debt.py",
-                "tools/stop_guard.py", "tools/process_lock_guard.py", "governance/acceptance.py"):
+                "tools/stop_guard.py", "tools/process_lock_guard.py", "governance/acceptance.py",
+                "tools/precommit_institutional.py"):
         assert rel in anchors, rel
     # NC-12: the judged tree carries the BASE validator, whatever the candidate wrote
     base = tmp_path / "base"; cand = tmp_path / "cand"
@@ -216,9 +227,42 @@ def test_nc10_nc12_trust_anchor_changes_need_base_side_authorization(tmp_path):
 
 # ── NC-13 / NC-14 / NC-15 / NC-21 evidence class, identity, provenance ────────────────
 def test_nc13_nc14_nc15_evidence_falsifiers_all_caught(tmp_path):
-    run, caught, failures = A.evidence_adversarial(tmp_path)
-    assert failures == [], failures
-    assert run == caught >= 9
+    """The falsifiers live HERE (required CI), not inside the executor: a judge that runs its
+    own self-test on every trusted run certifies itself. NC-13 synthetic-as-live, NC-14 wrong
+    identity / moved code, NC-15 missing provenance, and the honest positive NC-21."""
+    import os
+    req = A.Requirement("REQ-X", "OPEN", "PRODUCT", "evidence:REQ-X", "LIVE_RTH+EXACT_HEAD+RUNTIME_IDENTITY", "-", "", 0)
+    root = tmp_path / "repo"
+    root.mkdir()
+    env = {**os.environ, "GIT_AUTHOR_NAME": "nc", "GIT_AUTHOR_EMAIL": "nc@local",
+           "GIT_COMMITTER_NAME": "nc", "GIT_COMMITTER_EMAIL": "nc@local"}
+
+    def g(*a: str) -> str:
+        return subprocess.run(["git", *a], cwd=str(root), capture_output=True, text=True, env=env, check=True).stdout.strip()
+    g("init", "-q")
+    (root / "app.py").write_text("x = 1\n", encoding="utf-8")
+    g("add", "app.py"); g("commit", "-q", "-m", "one")
+    sha1 = g("rev-parse", "HEAD")
+    base = {"requirement_id": "REQ-X", "evidence_class": "LIVE_RTH", "candidate_sha": sha1,
+            "environment": "LIVE_RTH", "source": "capture.mjs", "captured_at": "2026-09-10T14:00:00Z",
+            "population": {"authority": "router", "digest": "abc", "count": 7},
+            "runtime_identity": {"git_sha": sha1, "dirty": False}}
+    cases = [
+        ("NC-21 honest positive", dict(base), "PROVEN"),
+        ("NC-13 synthetic offered as live (class ISOLATED_E2E)", {**base, "evidence_class": "ISOLATED_E2E"}, "INVALID"),
+        ("NC-13 payload label live:true is not provenance", {**base, "environment": "OFFLINE_CI", "payload": {"live": True, "source": "terrain_live_cache"}}, "INVALID"),
+        ("NC-14 wrong sha", {**base, "candidate_sha": "0" * 40, "runtime_identity": {"git_sha": "0" * 40, "dirty": False}}, "INVALID"),
+        ("NC-14 dirty runtime", {**base, "runtime_identity": {"git_sha": sha1, "dirty": True}}, "INVALID"),
+        ("NC-15 missing runtime identity", {k: v for k, v in base.items() if k != "runtime_identity"}, "INVALID"),
+        ("NC-15 missing population", {k: v for k, v in base.items() if k != "population"}, "INVALID"),
+        ("NC-15 missing source", {k: v for k, v in base.items() if k != "source"}, "INVALID"),
+    ]
+    for name, rec, expect in cases:
+        assert A.evidence_status(rec, req, root).status == expect, name
+    (root / "app.py").write_text("x = 2\n", encoding="utf-8")
+    g("add", "app.py"); g("commit", "-q", "-m", "two")
+    assert A.evidence_status(dict(base), req, root).status == "INVALID", "NC-14 code moved past the evidence sha"
+    assert not hasattr(A, "evidence_adversarial") and not hasattr(A, "evidence_invariant_status")
 
 
 def test_evidence_class_rank_and_operator_accept_cannot_be_self_granted(tmp_path):
@@ -275,8 +319,22 @@ def test_nc18_closure_commands_are_executed_not_matched(tmp_path):
     assert GATE.run_closure_command(GATE.executable_commands(bad)[0], tmp_path)[0] == 3
     base = "| RC-9001 | OPEN | 2026-09-10 | 2026-09-11 | d | w | in progress |\n"
     cand = "\n".join([good, bad, live]) + "\n"
-    assert sorted(GATE.closing_rows(base, cand)) == ["RC-9001", "RC-9002", "RC-9003"]
+    closing = GATE.closing_rows(base, cand)
+    assert sorted(closing) == ["RC-9001", "RC-9002", "RC-9003"]
+    assert GATE.executable_commands(closing["RC-9001"]) == ["python -c pass"]   # a parsed row works too
     assert GATE.closing_rows(cand, cand) == {}          # already closed on base: not re-judged
+    # the CANDIDATE lane executes: the failing and the live-only rows fail it, the good one passes
+    (tmp_path / "governance").mkdir()
+    (tmp_path / "governance" / "root_cause_log.md").write_text(cand, encoding="utf-8")
+    ledger_base = base
+    failures = []
+    for rc, r in sorted(GATE.closing_rows(ledger_base, cand).items()):
+        cmds = GATE.executable_commands(r)
+        if not cmds:
+            failures.append(rc)
+        elif GATE.run_closure_command(cmds[0], tmp_path)[0] != 0:
+            failures.append(rc)
+    assert failures == ["RC-9002", "RC-9003"]
 
 
 # ── NC-19 one-computation slice: green slices never close the parent ──────────────────
@@ -341,7 +399,7 @@ def test_contract_shape_errors_raise_never_guess():
     ids = {r.id for r in A.load_contract(ROOT)}
     for rid in ("REQ-GOV-TRUSTED-VALIDATOR", "REQ-GOV-TRUST-ANCHORS", "REQ-GOV-CONTRACT-MONOTONIC",
                 "REQ-GOV-CLOSURE-COMMANDS", "REQ-GOV-MARKER-AUTHORITY", "REQ-GOV-HOOKS-FAIL-CLOSED",
-                "REQ-GOV-LOCAL-REMOTE-PARITY", "REQ-GOV-EVIDENCE-CLASS", "REQ-GOV-REMOTE-NON-BYPASS",
+                "REQ-GOV-LOCAL-REMOTE-PARITY", "REQ-GOV-REMOTE-NON-BYPASS",
                 "REQ-UI-PAGES-BOUND", "REQ-ONE-COMPUTATION", "REQ-DECISION-PATH-ADMISSION",
                 "REQ-PREDICTIVE-VALIDITY", "REQ-REAL-MONEY-READINESS", "REQ-CARD-FIDELITY",
                 "REQ-UNIVERSAL-TICKER", "REQ-CONSOLE-GAMMA-UI"):

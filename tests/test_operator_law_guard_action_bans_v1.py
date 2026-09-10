@@ -16,14 +16,9 @@ import json
 from pathlib import Path
 
 
-def test_guard_git_reads_utf8_governance_content_without_locale_decode_errors():
-    """RC-187 lock: the guard's `_git` must decode git output as UTF-8, not the locale
-    codepage. Before the pin, `git show HEAD:governance/root_cause_log.md` threw
-    UnicodeDecodeError in the capture reader thread on cp1252 hosts and silently degraded
-    the RC-66 check to never-block. Drives the REAL callee against the REAL log."""
-    from tools.pretooluse_guard import _git
-    out = _git(["show", "HEAD:governance/root_cause_log.md"])
-    assert out is not None and "| RC-" in out
+# RC-187 (the guard's `_git` must decode UTF-8): that `_git` was the RC-66 lane's reader in
+# tools/pretooluse_guard.py, retired with the lane; the module is a path-facts library now and
+# runs no git. The surviving git readers pin `encoding="utf-8"` at their own sites.
 
 
 def test_v2_payload_and_ps_constructed_writes_block():

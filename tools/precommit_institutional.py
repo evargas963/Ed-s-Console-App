@@ -10,8 +10,7 @@ scan is RELOCATED to CI, NOT skipped.
 
 What STAYS on the commit path, fast and fail-closed: the single most valuable thing to detect
 LOCALLY is an enforced check being DELETED or DOWNGRADED (RC-391) — violation counts alone read
-that as a paydown, and `operating_process_lock.staged_enforced_checks_not_on_head` only detects
-checks ADDED (`wt - head`), never removed. That comparison needs neither the whole-tree catalog
+that as a paydown. That comparison needs neither the whole-tree catalog
 nor a worktree: it is the enforced ROSTER of `check_institutional_correctness.py`, read from the
 base (origin/main) and the candidate (staged index) with `git show` + a static AST parse
 (milliseconds). If the candidate drops any check the base enforced, this hook BLOCKS. Everything
@@ -25,6 +24,13 @@ candidate checker to learn its roster); a deliberate retirement is declared by a
 rule every other grant follows — the former governance/retired_checks.md manifest is git
 history); `local_hooks` / `local_remote_parity` enumerate this seam's own hooks and prove each
 owner runs remotely (REQ-GOV-LOCAL-REMOTE-PARITY).
+
+This file is also the owner of THE ENFORCEMENT-PATH POPULATION (`trust_anchor_paths`): every
+file whose content decides what the commit seam, the hook seam and the remote workflows DO,
+derived from the wirings themselves (the hook owner `tools.stop_chain` enumerates its
+executables, this seam its hook entries, GitHub its workflow directory) plus every tools/
+module those transitively import or run. The acceptance executor (governance/acceptance.py)
+holds no population of its own; it calls this owner in the judged tree.
 """
 from __future__ import annotations
 
@@ -37,6 +43,10 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 CHECKER_REL = "tools/check_institutional_correctness.py"
 _TOOL_TOKEN_RE = re.compile(r"tools[/\\]([A-Za-z0-9_]+)\.py")
+#: Callees that run or load the path they are handed (the only string context that is behaviour).
+_EXECUTING_CALLEES = frozenset({"run", "Popen", "call", "check_call", "check_output", "spec_from_file_location",
+                                "import_module", "run_path", "exec_module", "_run", "_pipe", "_load_module",
+                                "load_tree_module", "runWithFileSink", "spawnSync"})
 
 
 def _acceptance():
@@ -126,13 +136,109 @@ def local_hooks(root: Path | None = None) -> dict[str, str]:
     return out
 
 
+def _callee_name(call: ast.Call) -> str:
+    f = call.func
+    return f.attr if isinstance(f, ast.Attribute) else (f.id if isinstance(f, ast.Name) else "")
+
+
+def _tools_imports(root: Path, rel: str, seen: set[str]) -> None:
+    """Transitive tools/* modules `rel` imports or runs (a tools/ path handed to a call that
+    EXECUTES or LOADS it is behaviour; a path in a docstring or an allowlist is a mention)."""
+    p = root / rel
+    if rel in seen or not p.is_file():
+        return
+    seen.add(rel)
+    try:
+        tree = ast.parse(p.read_text(encoding="utf-8", errors="replace"))
+    except SyntaxError:
+        return
+    names: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and _callee_name(node) in _EXECUTING_CALLEES:
+            for arg in list(node.args) + [k.value for k in node.keywords]:
+                for c in ast.walk(arg):
+                    if isinstance(c, ast.Constant) and isinstance(c.value, str):
+                        names.update(_TOOL_TOKEN_RE.findall(c.value))
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            mod = node.module
+            if mod.startswith("tools."):
+                names.add(mod.split(".", 1)[1].split(".")[0])
+            elif node.level == 0 and rel.startswith("tools/") and (root / "tools" / f"{mod}.py").is_file():
+                names.add(mod)
+            if mod == "tools":
+                names.update(a.name for a in node.names)
+        elif isinstance(node, ast.Import):
+            for a in node.names:
+                if a.name.startswith("tools."):
+                    names.add(a.name.split(".", 1)[1].split(".")[0])
+    for n in sorted(names):
+        _tools_imports(root, f"tools/{n}.py", seen)
+
+
+def workflow_files(root: Path) -> list[str]:
+    """Every workflow GitHub can run: the directory IS the population by GitHub's definition."""
+    d = root / ".github" / "workflows"
+    if not d.is_dir():
+        raise LookupError(".github/workflows missing")
+    return sorted(f".github/workflows/{p.name}" for p in d.iterdir() if p.suffix in (".yml", ".yaml"))
+
+
+def remote_invoked_tools(root: Path) -> set[str]:
+    """Tool basenames (and `python -m` modules) the workflows execute, transitively through
+    imports and subprocess strings - what a remote lane actually runs."""
+    direct: set[str] = set()
+    for wf in workflow_files(root):
+        text = (root / wf).read_text(encoding="utf-8", errors="replace")
+        direct.update(_TOOL_TOKEN_RE.findall(text))
+        direct.update(m.group(1) for m in re.finditer(r"python\s+-m\s+([A-Za-z0-9_\.]+)", text))
+    seen: set[str] = set()
+    for tok in sorted(direct):
+        _tools_imports(root, f"tools/{tok}.py", seen)
+    return direct | {s.removeprefix("tools/").removesuffix(".py") for s in seen}
+
+
+def trust_anchor_paths(root: Path) -> list[str]:
+    """The files whose content decides what the enforcement path DOES, derived from the
+    wiring itself: the hook wirings and every executable they run (tools.stop_chain owns that
+    enumeration), the pre-commit config and the tools its entries run (this seam), every
+    workflow and the tools they run, the institutional gate, the delta gate, the acceptance
+    executor, every tools/ module any of those import, and every owner a Requirements SCOPE
+    names. A candidate change to any of them is judged by the BASE copy and lands only with a
+    base-side `AUTHORIZE anchor:` row. Raises LookupError when the tree cannot enumerate its
+    own seam — the judge reports NOT_PROVEN, never a smaller population."""
+    A = _acceptance()
+    sc = A.load_tree_module(root, "tools.stop_chain")
+    for fn in ("wired_executables", "HOOK_WIRINGS"):
+        if not hasattr(sc, fn):
+            raise LookupError(f"tools.stop_chain in {root} has no {fn} (predates this contract)")
+    anchors: set[str] = set()
+    anchors.update("/".join(parts) for _name, parts in sc.HOOK_WIRINGS)
+    anchors.update(sc.wired_executables(root))
+    anchors.add(".pre-commit-config.yaml")
+    for entry in local_hooks(root).values():
+        anchors.update(f"tools/{tok}.py" for tok in _TOOL_TOKEN_RE.findall(entry))
+    anchors.update(workflow_files(root))
+    for wf in workflow_files(root):
+        anchors.update(f"tools/{tok}.py" for tok in _TOOL_TOKEN_RE.findall((root / wf).read_text(encoding="utf-8", errors="replace")))
+    anchors.update({CHECKER_REL, "tools/check_delta_adds_no_debt.py", "governance/acceptance.py"})
+    for r in A.requirements(A.load_contract(root)):
+        if ":" in r.scope and not r.scope.startswith(("delta:", "evidence:", "narrowing:")):
+            anchors.add(Path(*r.scope.split(":", 1)[0].split(".")).with_suffix(".py").as_posix())
+    seen: set[str] = set()
+    for a in sorted(anchors):
+        if a.startswith("tools/") and a.endswith(".py"):
+            _tools_imports(root, a, seen)
+    anchors.update(seen)
+    return sorted(a for a in anchors if (root / a).is_file())
+
+
 def local_remote_parity(root: Path | None = None) -> dict[str, dict[str, str]]:
     """Per local hook: its deciding owner (the last tools/ token of the entry, or the
     `python -m <module>` it runs) is executed by a remote workflow, directly or through the
     delta gate's imports. A hook whose owner never runs remotely is a rule a `SKIP=` or
     `--no-verify` locally turns into a remotely admissible violation."""
     base = root or REPO
-    remote = _acceptance().remote_invoked_tools(base)
+    remote = remote_invoked_tools(base)
     out: dict[str, dict[str, str]] = {}
     for hook, entry in local_hooks(base).items():
         toks = _TOOL_TOKEN_RE.findall(entry)

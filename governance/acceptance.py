@@ -18,13 +18,20 @@ no requirement, no waiver and no verdict lives here. Every verdict is COMPUTED f
 
 A sample may falsify; it never establishes. No percentages, no partial credit.
 
+Shape: PARSE the contract -> RECEIVE authoritative results (SCOPE owners called in the judged
+tree, the delta gate's injected populations, evidence records under reports/evidence/) ->
+COMPUTE M/F/E/B and the verdict -> EMIT the counts. Populations live with their owners
+(`tools.precommit_institutional.trust_anchor_paths` for the enforcement path, the hook seam,
+the router, the provenance authority); the falsifiers of `evidence_status` live in the test
+suite (tests/test_universal_closure_v1.py), never in this module.
+
 The delta gate (tools/check_delta_adds_no_debt.py --trusted) is the caller that compares the
 BASE contract against a CANDIDATE tree; `python governance/acceptance.py --tree <root>` prints
 the same computation for one tree.
 """
 from __future__ import annotations
 
-import ast
+import fnmatch
 import importlib.util
 import json
 import re
@@ -317,115 +324,6 @@ def resolve_scope(scope: str, root: Path):
     raise LookupError(f"{scope} returned {type(result).__name__}, not a population")
 
 
-# ── trust anchors (REPAIR 3): derived from the enforcement wiring, never listed ─────────
-_TOOL_TOKEN_RE = re.compile(r"tools[/\\]([A-Za-z0-9_]+)\.py")
-#: Callees that run or load the path they are handed (the only string context that is behaviour).
-_EXECUTING_CALLEES = frozenset({"run", "Popen", "call", "check_call", "check_output", "spec_from_file_location",
-                                "import_module", "run_path", "exec_module", "_run", "_pipe", "_load_module",
-                                "load_tree_module", "runWithFileSink", "spawnSync"})
-
-
-def _callee_name(call: ast.Call) -> str:
-    f = call.func
-    return f.attr if isinstance(f, ast.Attribute) else (f.id if isinstance(f, ast.Name) else "")
-
-
-def _tools_imports(root: Path, rel: str, seen: set[str]) -> None:
-    """Transitive tools/* modules `rel` imports or runs (subprocess argv strings count)."""
-    p = root / rel
-    if rel in seen or not p.is_file():
-        return
-    seen.add(rel)
-    try:
-        tree = ast.parse(p.read_text(encoding="utf-8", errors="replace"))
-    except SyntaxError:
-        return
-    names: set[str] = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Call) and _callee_name(node) in _EXECUTING_CALLEES:
-            # a tools/ path handed to a call that EXECUTES or LOADS it (subprocess argv,
-            # spec_from_file_location) is behaviour; a path in a docstring, a data tuple
-            # or an allowlist handed to a filter is a mention
-            for arg in list(node.args) + [k.value for k in node.keywords]:
-                for c in ast.walk(arg):
-                    if isinstance(c, ast.Constant) and isinstance(c.value, str):
-                        names.update(_TOOL_TOKEN_RE.findall(c.value))
-        elif isinstance(node, ast.ImportFrom) and node.module:
-            mod = node.module
-            if mod.startswith("tools."):
-                names.add(mod.split(".", 1)[1].split(".")[0])
-            elif node.level == 0 and rel.startswith("tools/") and (root / "tools" / f"{mod}.py").is_file():
-                names.add(mod)
-            if mod == "tools":
-                names.update(a.name for a in node.names)
-        elif isinstance(node, ast.Import):
-            for a in node.names:
-                if a.name.startswith("tools."):
-                    names.add(a.name.split(".", 1)[1].split(".")[0])
-    for n in sorted(names):
-        _tools_imports(root, f"tools/{n}.py", seen)
-
-
-def workflow_files(root: Path) -> list[str]:
-    """Every workflow GitHub can run: the directory IS the population by GitHub's definition."""
-    d = root / ".github" / "workflows"
-    if not d.is_dir():
-        raise LookupError(".github/workflows missing")
-    return sorted(f".github/workflows/{p.name}" for p in d.iterdir() if p.suffix in (".yml", ".yaml"))
-
-
-def remote_invoked_tools(root: Path) -> set[str]:
-    """Tool basenames (and `python -m` modules) the workflows execute, transitively through
-    imports and subprocess strings - what a remote lane actually runs."""
-    direct: set[str] = set()
-    for wf in workflow_files(root):
-        text = (root / wf).read_text(encoding="utf-8", errors="replace")
-        direct.update(_TOOL_TOKEN_RE.findall(text))
-        direct.update(m.group(1) for m in re.finditer(r"python\s+-m\s+([A-Za-z0-9_\.]+)", text))
-    seen: set[str] = set()
-    for tok in sorted(direct):
-        _tools_imports(root, f"tools/{tok}.py", seen)
-    return direct | {s.removeprefix("tools/").removesuffix(".py") for s in seen}
-
-
-def trust_anchor_paths(root: Path) -> list[str]:
-    """The files whose content decides what the enforcement path DOES, derived from the
-    wiring itself: the hook wirings and every executable they run (tools.stop_chain owns that
-    enumeration), the pre-commit config and the tools its entries run
-    (tools.precommit_institutional owns that one), every workflow and the tools they run, the
-    institutional gate, the delta gate, this module, every tools/ module any of those import,
-    and every owner a Requirements SCOPE names. A candidate change to any of them is judged
-    by the BASE copy and lands only with a base-side `AUTHORIZE anchor:` row."""
-    anchors: set[str] = set()
-    sc = load_tree_module(root, "tools.stop_chain")
-    pi = load_tree_module(root, "tools.precommit_institutional")
-    for owner, fn in ((sc, "wired_executables"), (sc, "HOOK_WIRINGS"), (pi, "local_hooks")):
-        if not hasattr(owner, fn):
-            raise LookupError(f"{owner.__name__.rsplit('_', 2)[-2]}: the tree's owner has no {fn} (predates this contract)")
-    anchors.update("/".join(parts) for _name, parts in sc.HOOK_WIRINGS)
-    anchors.update(sc.wired_executables(root))
-    anchors.add(".pre-commit-config.yaml")
-    for entry in pi.local_hooks(root).values():
-        anchors.update(f"tools/{tok}.py" for tok in _TOOL_TOKEN_RE.findall(entry))
-    anchors.update(workflow_files(root))
-    for wf in workflow_files(root):
-        anchors.update(f"tools/{tok}.py" for tok in _TOOL_TOKEN_RE.findall((root / wf).read_text(encoding="utf-8", errors="replace")))
-    anchors.update({"tools/check_institutional_correctness.py", "tools/check_delta_adds_no_debt.py",
-                    "governance/acceptance.py"})
-    try:
-        for r in requirements(load_contract(root)):
-            if ":" in r.scope and not r.scope.startswith(("delta:", "evidence:", "narrowing:")):
-                anchors.add(Path(*r.scope.split(":", 1)[0].split(".")).with_suffix(".py").as_posix())
-    except ContractError:
-        pass
-    seen: set[str] = set()
-    for a in sorted(anchors):
-        if a.startswith("tools/") and a.endswith(".py"):
-            _tools_imports(root, a, seen)
-    anchors.update(seen)
-    return sorted(a for a in anchors if (root / a).is_file())
-
-
 # ── evidence records (REPAIR 4) ──────────────────────────────────────────────────────────
 EVIDENCE_DIR = "reports/evidence"
 _REQUIRED_FIELDS = ("requirement_id", "evidence_class", "candidate_sha", "environment", "source", "captured_at")
@@ -489,14 +387,6 @@ def evidence_status(rec: dict, req: Requirement, root: Path) -> ObligationResult
     return ObligationResult("PROVEN", f"{cls} {sha[:8]} {rec.get('source')}")
 
 
-def evidence_invariant_status(root: Path | None = None) -> dict[str, dict[str, str]]:
-    """The OPEN evidence-class requirement as an obligation: PROVEN only when every
-    falsifier of `evidence_adversarial` is caught (a SCOPE authority like any other)."""
-    run, caught, failures = evidence_adversarial()
-    return {"evidence_status": ({"status": "PROVEN", "detail": f"{caught}/{run} falsifiers caught"} if not failures
-                                else {"status": "FAIL", "detail": "; ".join(failures)})}
-
-
 def evidence_records(root: Path, req_id: str) -> list[tuple[Path, dict]]:
     d = root / EVIDENCE_DIR / req_id
     out: list[tuple[Path, dict]] = []
@@ -509,61 +399,28 @@ def evidence_records(root: Path, req_id: str) -> list[tuple[Path, dict]]:
     return out
 
 
-def evidence_adversarial(work: Path | None = None) -> tuple[int, int, list[str]]:
-    """The evidence-class invariant carries its own falsifiers (an OPEN requirement is proven
-    by attacks failing, never by an example passing): NC-13 synthetic-as-live, NC-14 wrong
-    identity, NC-15 missing provenance, and the honest positive (NC-21), driven through
-    `evidence_status` on a scratch git repository. Returns (run, caught, failures)."""
-    import os
-    import tempfile
-    req = Requirement("REQ-X", "OPEN", "PRODUCT", "evidence:REQ-X", "LIVE_RTH+EXACT_HEAD+RUNTIME_IDENTITY", "-", "", 0)
-    failures: list[str] = []
-    with tempfile.TemporaryDirectory(prefix="evidence-nc-") as tmp:
-        root = Path(work or tmp) / "repo"
-        root.mkdir(parents=True, exist_ok=True)
-        env = {**os.environ, "GIT_AUTHOR_NAME": "nc", "GIT_AUTHOR_EMAIL": "nc@local",
-               "GIT_COMMITTER_NAME": "nc", "GIT_COMMITTER_EMAIL": "nc@local"}
-
-        def g(*a: str) -> str:
-            return subprocess.run(["git", *a], cwd=str(root), capture_output=True, text=True, env=env, check=True).stdout.strip()
-        g("init", "-q")
-        (root / "app.py").write_text("x = 1\n", encoding="utf-8")
-        g("add", "app.py"); g("commit", "-q", "-m", "one")
-        sha1 = g("rev-parse", "HEAD")
-        base = {"requirement_id": "REQ-X", "evidence_class": "LIVE_RTH", "candidate_sha": sha1,
-                "environment": "LIVE_RTH", "source": "capture.mjs", "captured_at": "2026-09-10T14:00:00Z",
-                "population": {"authority": "router", "digest": "abc", "count": 7},
-                "runtime_identity": {"git_sha": sha1, "dirty": False}}
-        cases = [
-            ("NC-21 honest positive", dict(base), "PROVEN"),
-            ("NC-13 synthetic offered as live (class ISOLATED_E2E)", {**base, "evidence_class": "ISOLATED_E2E"}, "INVALID"),
-            ("NC-13 payload label live:true is not provenance", {**base, "environment": "OFFLINE_CI", "payload": {"live": True, "source": "terrain_live_cache"}}, "INVALID"),
-            ("NC-14 wrong sha", {**base, "candidate_sha": "0" * 40, "runtime_identity": {"git_sha": "0" * 40, "dirty": False}}, "INVALID"),
-            ("NC-14 dirty runtime", {**base, "runtime_identity": {"git_sha": sha1, "dirty": True}}, "INVALID"),
-            ("NC-15 missing runtime identity", {k: v for k, v in base.items() if k != "runtime_identity"}, "INVALID"),
-            ("NC-15 missing population", {k: v for k, v in base.items() if k != "population"}, "INVALID"),
-            ("NC-15 missing source", {k: v for k, v in base.items() if k != "source"}, "INVALID"),
-        ]
-        run = caught = 0
-        for name, rec, expect in cases:
-            run += 1
-            got = evidence_status(rec, req, root).status
-            if got == expect:
-                caught += 1
-            else:
-                failures.append(f"{name}: expected {expect}, got {got}")
-        (root / "app.py").write_text("x = 2\n", encoding="utf-8")
-        g("add", "app.py"); g("commit", "-q", "-m", "two")
-        run += 1
-        got = evidence_status(dict(base), req, root).status
-        if got == "INVALID":
-            caught += 1
-        else:
-            failures.append(f"NC-14 code moved past evidence sha: expected INVALID, got {got}")
-    return run, caught, failures
-
-
 # ── verdict computation ──────────────────────────────────────────────────────────────────
+def authorized(auths: list[Requirement], kind: str, subject: str, branch: str,
+               token: str | None = None) -> bool:
+    """A base-side AUTHORIZE row covers (kind, subject, branch[, token]) — the grant grammar:
+    `anchor:<glob>@<branch|*>`, `marker:<token>@<glob>@<branch|*>`."""
+    for a in auths:
+        parts = a.scope.split(":", 1)
+        if len(parts) != 2 or parts[0] != kind:
+            continue
+        body = parts[1]
+        if kind == "anchor":
+            pat, _, br = body.partition("@")
+            if fnmatch.fnmatch(subject, pat) and (br in ("*", branch)):
+                return True
+        elif kind == "marker":
+            tok, _, rest = body.partition("@")
+            pat, _, br = rest.partition("@")
+            if token == tok and fnmatch.fnmatch(subject, pat) and (br in ("*", branch)):
+                return True
+    return False
+
+
 def _waived(req: Requirement, auths: list[Requirement]) -> list[str]:
     out = []
     for a in auths:

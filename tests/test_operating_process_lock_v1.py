@@ -218,19 +218,6 @@ def test_index_parity_passes_when_clean(tmp_path, monkeypatch):
     assert OPL.index_worktree_mismatches(repo) == []
 
 
-def test_staged_checks_not_on_head_flags_delta(tmp_path, monkeypatch):
-    repo = _init_repo(tmp_path)
-    checker = repo / "tools" / "check_institutional_correctness.py"
-    checker.write_text(
-        'CHECKS = [\n    ("old_check", None, True),\n    ("new_lock", None, True),\n]\n',
-        encoding="utf-8",
-    )
-    subprocess.run(["git", "add", checker], cwd=repo, check=True, capture_output=True)
-    monkeypatch.chdir(repo)
-    v = OPL.staged_enforced_checks_not_on_head(repo)
-    assert v and "new_lock" in v[0]
-
-
 def test_reset_guard_blocks_destructive_git_on_product(monkeypatch, tmp_path):
     """LOCK-2 (RC-231): soft tree-destructive git against product scope BLOCKS.
 

@@ -167,12 +167,9 @@ def _is_rc_row(line: str) -> bool:
     return line.startswith("| RC-")
 
 
-def all_rows(repo: str | Path | None = None) -> list[MissionRow]:
-    """Every parseable row in the ledger. The ONLY parser of this file's row grammar."""
-    try:
-        text = ledger_path(repo).read_text(encoding="utf-8", errors="ignore")
-    except OSError:
-        return []             # unreadable ledger -> no rows; see the module docstring on why
+def rows_from_text(text: str) -> list[MissionRow]:
+    """Every parseable row in a ledger TEXT. The ONLY parser of this file's row grammar — the
+    trusted judge hands it a base ledger read from git, the guards hand it the file."""
     out: list[MissionRow] = []
     for line in text.splitlines():
         if not _is_rc_row(line):
@@ -182,6 +179,15 @@ def all_rows(repo: str | Path | None = None) -> list[MissionRow]:
             continue
         out.append(MissionRow(*cells[:7]))
     return out
+
+
+def all_rows(repo: str | Path | None = None) -> list[MissionRow]:
+    """Every parseable row in the ledger of `repo` (unreadable ledger -> no rows; docstring)."""
+    try:
+        text = ledger_path(repo).read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return []
+    return rows_from_text(text)
 
 
 def same_day_rows(today: str | None = None, repo: str | Path | None = None) -> list[MissionRow]:

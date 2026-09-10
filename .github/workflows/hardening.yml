@@ -17,7 +17,8 @@ on:
 jobs:
   hardening:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # 20 -> 35 (2026-09-10): the delta step now also executes each closing row's cited proof.
+    timeout-minutes: 35
     # RC-396: this job once exported a fabricated `ED_AGENT_ROLE: cursor` and the required
     # run read a whole PR as the wrong agent's drift (`writer_no_drift: 0 -> 27`). The role
     # machinery was removed entirely in the 2026-08-24 Architecture A teardown; CI carries
@@ -72,10 +73,14 @@ jobs:
       #   WORSENED count                 -> BLOCK
       #   REMOVED/DEMOTED enforced check -> BLOCK  (deleting the failing check is not paying)
       #   crash / unreadable output      -> BLOCK  (silence is not cleanliness)
+      #   a ledger row this delta CLOSES whose first cited CI-executable command
+      #   does not exit 0 in the candidate tree -> BLOCK (UNIVERSAL_QUANTITATIVE_CLOSURE_V1,
+      #   RC-540/RC-545: closure executes its proof HERE, in the candidate lane — the trusted
+      #   lane judges the candidate as data and executes no candidate code)
       #   unchanged inherited debt       -> PASS
       #   improvement                    -> PASS
       # One implementation, one CHECKS roster, two callers — no second delta tool.
-      - name: institutional debt delta (same owner as local pre-commit)
+      - name: institutional debt delta + closure execution (same owner as local pre-commit)
         run: |
           git fetch --no-tags origin main
           python tools/check_delta_adds_no_debt.py --base origin/main

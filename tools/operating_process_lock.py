@@ -17,7 +17,6 @@ start time from inside a governance hook; neither is a mechanism deciding a stru
 from __future__ import annotations
 
 import argparse
-import ast
 import json
 import os
 import re
@@ -328,62 +327,10 @@ def index_worktree_mismatches(
     return out
 
 
-def _read_text(path: Path) -> str | None:
-    try:
-        return path.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return None
-
-
-def _head_text(repo: Path, rel: str) -> str | None:
-    r = _git(["show", f"HEAD:{rel}"], cwd=repo)
-    return r.stdout if r.returncode == 0 else None
-
-
-def _parse_enforced_checks(source: str) -> set[str]:
-    """Extract enforced check names from CHECKS = [...] in checker source."""
-    try:
-        tree = ast.parse(source)
-    except SyntaxError:
-        return set()
-    for node in tree.body:
-        if isinstance(node, ast.Assign):
-            for tgt in node.targets:
-                if isinstance(tgt, ast.Name) and tgt.id == "CHECKS":
-                    if not isinstance(node.value, ast.List):
-                        continue
-                    names: set[str] = set()
-                    for elt in node.value.elts:
-                        if isinstance(elt, ast.Tuple) and len(elt.elts) >= 3:
-                            name_node = elt.elts[0]
-                            en_node = elt.elts[2]
-                            if (
-                                isinstance(name_node, ast.Constant)
-                                and isinstance(name_node.value, str)
-                                and isinstance(en_node, ast.Constant)
-                                and en_node.value is True
-                            ):
-                                names.add(name_node.value)
-                    return names
-    return set()
-
-
-def staged_enforced_checks_not_on_head(repo: Path | None = None) -> list[str]:
-    """CHECKS enforced in WT/index checker but absent from HEAD checker."""
-    root = repo or REPO
-    sr = _git(["diff", "--cached", "--name-only", "--", CHECKER_REL], cwd=root)
-    if sr.returncode != 0 or CHECKER_REL not in sr.stdout:
-        return []
-    wt_text = _read_text(root / CHECKER_REL)
-    head_text = _head_text(root, CHECKER_REL)
-    if not wt_text:
-        return [f"{CHECKER_REL} unreadable in worktree"]
-    wt_checks = _parse_enforced_checks(wt_text)
-    head_checks = _parse_enforced_checks(head_text or "")
-    delta = sorted(wt_checks - head_checks)
-    if not delta:
-        return []
-    return [f"staged-only ENFORCED check(s) not on HEAD: {', '.join(delta)}"]
+# The enforced-check ROSTER has ONE static reader: tools/precommit_institutional._enforced_roster
+# (the commit seam compares base vs staged roster there). The `_parse_enforced_checks` /
+# `staged_enforced_checks_not_on_head` copy that lived here was a second parser of the same
+# CHECKS literal with no caller but the measure report — removed 2026-09-10 (KEEP/MERGE/DELETE).
 
 
 def precommit_orphan_patch_warnings(repo: Path | None = None) -> list[str]:
@@ -568,7 +515,6 @@ def measure_report(repo: Path | None = None) -> dict:
         })
     return {
         "index_worktree_mismatches": index_worktree_mismatches(root),
-        "staged_checks_not_on_head": staged_enforced_checks_not_on_head(root),
         "enforcement_hashes": rows,
         "orphan_patch_warnings": precommit_orphan_patch_warnings(root),
     }

@@ -30,10 +30,9 @@ if str(REPO) not in sys.path:
 from tools.stop_chain import run_chain  # noqa: E402 — same executor, different roster
 
 EDIT_TOOLS = ("Edit", "Write", "MultiEdit", "NotebookEdit")
-# BEDROCK 2026-09-06: pretooluse_guard left the roster. Its three content gates (prose
-# matchers) and the mutation-side mission latch are removed; what it still owns,
-# `classify_path`, is a function the other guards import, not a hook. A rostered guard that
-# blocks nothing is an inert instrument wearing a name (agent_error_log E-05/E-07 class).
+# BEDROCK 2026-09-06: pretooluse_guard left the roster (its content gates and mutation-side
+# latch are gone); 2026-09-10 its hook entrypoint is deleted too — it is the path-facts
+# library the other guards import, not a hook.
 EDIT_CHAIN = ("tools.operator_law_guard", "tools.process_lock_guard")
 BASH_CHAIN = ("tools.operator_law_guard", "tools.process_lock_guard")
 

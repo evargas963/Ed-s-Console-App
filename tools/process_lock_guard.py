@@ -466,9 +466,8 @@ def pretooluse_block(tool: str, tool_input: dict, payload_cwd: str = "") -> list
         # (cp/mv/sed -i/tee/...) is blocked too, not only Edit/Write tool calls.
         out.extend(production_checkout_shell_app_write_violations(cmd, payload_cwd))
         # BEDROCK 2026-09-06: the RC-498 shell-side mission latch is removed with its Edit-side
-        # twin (see pretooluse_guard.decide). Work identity is the branch and PR; defects get
-        # rows by doctrine; the Stop seam and the CLOSE contract hold what a mutation seam
-        # cannot see.
+        # twin. Work identity is the branch and PR; defects get rows by doctrine; the Stop seam
+        # and the CLOSE contract hold what a mutation seam cannot see.
     return out
 
 
