@@ -169,6 +169,14 @@
     grid-template-areas:"heat levels" "bottom bottom"}
   .p-heat{grid-area:heat} .p-levels{grid-area:levels} .p-bottom{grid-area:bottom}
   .p-bottom{display:grid;grid-template-columns:1.05fr 1fr 1.15fr;gap:7px}
+  /* #8: maximize the main analytical panel (Heatmap/Chart) — presentation only; the shared ticker /
+     strike / expiry / scope state is untouched, so restore returns to the exact same context. */
+  .gamma-grid.maxed{grid-template-columns:1fr;grid-template-rows:1fr;grid-template-areas:"heat"}
+  .gamma-grid.maxed .p-levels,.gamma-grid.maxed .p-bottom{display:none}
+  .maxbtn{width:27px;height:27px;display:inline-flex;align-items:center;justify-content:center;
+    border-radius:var(--ed-r);color:var(--ed-ink-3)}
+  .maxbtn:hover{background:var(--ed-panel-3);color:var(--ed-ink)}
+  .maxbtn.on{color:var(--ed-accent-2);background:var(--ed-accent-bg)}
 
   .panel{background:var(--ed-panel);border:1px solid var(--ed-edge);border-radius:var(--ed-r-lg);
     display:flex;flex-direction:column;overflow:hidden;min-width:0}
@@ -482,6 +490,7 @@
                   <button class="cmode" data-cmode="dotmap">Dot Map</button>
                 </span>
                 <span class="prov derived">DERIVED</span>
+                <button class="maxbtn" id="maxBtn" title="Maximize panel (Esc to restore)" aria-label="Maximize panel"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
               </div>
             </div>
             <div class="panel-b mvwrap">

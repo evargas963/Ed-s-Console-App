@@ -173,6 +173,22 @@
     active.insertAdjacentElement('afterend', box);
   }
 
+  // #8: maximize the Gamma main analytical panel (Heatmap/Chart). PRESENTATION ONLY — it toggles a
+  // grid class that hides the Key Levels rail + bottom strip; the shared ticker / strike / expiry /
+  // scope state is never touched, so Restore returns to the exact same context. Persisted + Esc.
+  var MAX_KEY = 'ed_gamma_max';
+  function applyMaximize(on) {
+    var grid = document.querySelector('.gamma-grid'); if (!grid) return;
+    grid.classList.toggle('maxed', !!on);
+    var b = document.getElementById('maxBtn');
+    if (b) { b.classList.toggle('on', !!on); b.title = on ? 'Restore panel (Esc)' : 'Maximize panel (Esc to restore)'; }
+    _lsSet(MAX_KEY, on ? '1' : '0');
+  }
+  function toggleMaximize() {
+    var grid = document.querySelector('.gamma-grid');
+    applyMaximize(!(grid && grid.classList.contains('maxed')));
+  }
+
   function reflectScopeVisibility() {
     // #3: the scope control lives in the global view-controls bar. It governs the windowed Gamma
     // panels — the Chart main view AND the GEX-by-strike side panel, which is on screen for every
@@ -553,6 +569,13 @@
     if (symSel) symSel.addEventListener('change', function () { setTicker(symSel.value); });
     var expSel = document.getElementById('expSel');
     if (expSel) expSel.addEventListener('change', function () { setExpiry(expSel.value); });
+    // #8: maximize / restore the Gamma main panel
+    var maxBtn = document.getElementById('maxBtn');
+    if (maxBtn) maxBtn.addEventListener('click', toggleMaximize);
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') { var g = document.querySelector('.gamma-grid'); if (g && g.classList.contains('maxed')) applyMaximize(false); }
+    });
+    try { if (localStorage.getItem(MAX_KEY) === '1') applyMaximize(true); } catch (e) {}
     // subnav/viewbar initial — restore persisted workspace/subview/view (D), validated to NAV
     normalizeState();
     renderSubnav(); renderViewbar(); showPane(); syncAttrs();
@@ -589,5 +612,6 @@
     setTheme: applyTheme,
     setScope: setScope, getScope: function () { return state.scope; },
     scopeWindow: scopeWindow, scopeNote: scopeNote, asOfBadge: asOfBadge,
-    setExpiry: setExpiry, getExpiry: function () { return state.expiryFilter; } };
+    setExpiry: setExpiry, getExpiry: function () { return state.expiryFilter; },
+    setMaximize: applyMaximize, toggleMaximize: toggleMaximize };
 })();
