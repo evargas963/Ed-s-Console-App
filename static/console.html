@@ -72,11 +72,13 @@
     display:flex;flex-direction:column;overflow:hidden}
   .brand{height:var(--ed-header-h);display:flex;align-items:center;gap:9px;padding:0 15px;
     border-bottom:1px solid var(--ed-edge);flex:none}
-  .brand .logo{width:26px;height:26px;border-radius:6px;background:var(--ed-accent-bg);
+  .brand .logo{width:30px;height:30px;border-radius:6px;background:var(--ed-accent-bg);
     border:1px solid var(--ed-accent-edge);display:flex;align-items:center;justify-content:center;
-    color:var(--ed-accent-2);font-weight:700;font-size:14px;flex:none}
-  .brand .name{font-weight:700;letter-spacing:.16em;font-size:13px;white-space:nowrap;opacity:0;transition:opacity .12s}
-  #app.rail-open .brand .name{opacity:1}
+    color:var(--ed-accent-2);font-weight:700;font-size:15px;flex:none}
+  .brand .bwrap{display:flex;flex-direction:column;line-height:1.05;opacity:0;transition:opacity .12s;overflow:hidden}
+  #app.rail-open .brand .bwrap{opacity:1}
+  .brand .name{font-weight:700;letter-spacing:.14em;font-size:15px;white-space:nowrap;color:var(--ed-ink)}
+  .brand .tag{font-size:7px;letter-spacing:.02em;color:var(--ed-ink-3);white-space:nowrap;margin-top:2px}
   .rail-scroll{flex:1;overflow-y:auto;overflow-x:hidden;padding:8px 0}
   .navitem{display:flex;align-items:center;gap:12px;height:40px;padding:0 15px;color:var(--ed-ink-2);
     white-space:nowrap;position:relative}
@@ -86,6 +88,14 @@
   .navitem svg{width:19px;height:19px;flex:none;stroke:currentColor;fill:none;stroke-width:1.6}
   .navitem .lbl{font-size:13.5px;letter-spacing:.02em;opacity:0;transition:opacity .12s}
   #app.rail-open .navitem .lbl{opacity:1}
+  /* active-workspace children expanded in the rail (matches the reference Options tree) */
+  .rail-children{display:flex;flex-direction:column;padding:1px 0 6px}
+  #app:not(.rail-open) .rail-children{display:none}
+  .rail-child{display:block;padding:5px 0 5px 47px;font-size:12.5px;color:var(--ed-ink-3);white-space:nowrap;cursor:pointer;position:relative}
+  .rail-child:hover{color:var(--ed-ink)}
+  .rail-child.on{color:var(--ed-accent-2);font-weight:600}
+  .rail-child.on::before{content:"";position:absolute;left:26px;top:50%;transform:translateY(-50%);width:5px;height:5px;border-radius:50%;background:var(--ed-accent)}
+  .rail-child.na{color:var(--ed-ink-4);cursor:not-allowed}
   .rail-sep{height:1px;background:var(--ed-edge-soft);margin:8px 12px}
 
   /* watchlist (rail bottom) */
@@ -310,6 +320,9 @@
   .gbs-v{width:70px;text-align:right;font-weight:500}
   .gbs-v.pos{color:var(--ed-pos-ink)} .gbs-v.neg{color:var(--ed-neg-ink)}
   .gbs-allexp{font-family:var(--ed-sans);font-size:10px;color:var(--ed-stale);padding:0 0 5px}
+  .gbs-scale{display:flex;justify-content:space-between;font-family:var(--ed-sans);font-size:10px;
+    color:var(--ed-ink-3);padding:6px 0 0;margin-top:5px;border-top:1px solid var(--ed-edge-soft)}
+  .gbs-scale .neg{color:var(--ed-neg-ink)} .gbs-scale .pos{color:var(--ed-pos-ink)}
 
   /* strike detail (vendor chain) */
   .sd{width:100%;border-collapse:collapse;font-family:var(--ed-sans);font-size:13px;font-variant-numeric:tabular-nums}
@@ -361,7 +374,7 @@
   <nav id="rail" aria-label="Workspaces">
     <div class="brand">
       <button class="logo" id="railToggle" title="Toggle navigation" aria-label="Toggle navigation">ED</button>
-      <span class="name">ED CONSOLE</span>
+      <span class="bwrap"><span class="name">ED CONSOLE</span><span class="tag">MARKETS · FLOW · RISK · IN REAL TIME</span></span>
     </div>
     <div class="rail-scroll">
       <a class="navitem" data-ws="trade-desk" title="Trade Desk"><svg viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-6"/></svg><span class="lbl">Trade Desk</span></a>

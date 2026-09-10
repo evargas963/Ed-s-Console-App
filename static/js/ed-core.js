@@ -153,6 +153,26 @@
     var cm = document.getElementById('chartModes'); if (cm) cm.hidden = state.view !== 'chart';
     var sc = document.getElementById('heatScope'); if (sc) sc.style.display = state.view === 'heatmap' ? '' : 'none';
   }
+  // active-workspace children expanded under it in the rail (the reference Options tree). Reuses the
+  // NAV subs; clicking a child sets the subview — same one nav state as the horizontal subnav.
+  function renderRailChildren() {
+    Array.prototype.slice.call(document.querySelectorAll('.rail-children')).forEach(function (n) { n.remove(); });
+    var active = document.querySelector('.navitem[data-ws="' + state.workspace + '"]');
+    var cfg = NAV[state.workspace];
+    if (!active || !cfg || !cfg.subs || !cfg.subs.length) return;
+    var box = document.createElement('div');
+    box.className = 'rail-children';
+    cfg.subs.forEach(function (s) {
+      var na = s.state === 'na';
+      var el = document.createElement('a');
+      el.className = 'rail-child' + (s.id === state.subview ? ' on' : '') + (na ? ' na' : '');
+      el.textContent = s.label;
+      if (!na) el.addEventListener('click', function () { setSubview(s.id); });
+      box.appendChild(el);
+    });
+    active.insertAdjacentElement('afterend', box);
+  }
+
   function reflectScopeVisibility() {
     // #3: the scope control lives in the global view-controls bar. It governs the windowed Gamma
     // panels — the Chart main view AND the GEX-by-strike side panel, which is on screen for every
@@ -177,6 +197,7 @@
       (state.subview ? ' · ' + state.subview : '');
     showMainView();
     reflectScopeVisibility();
+    renderRailChildren();
     document.dispatchEvent(new CustomEvent('ed:view', { detail: Object.assign({}, state) }));
   }
 

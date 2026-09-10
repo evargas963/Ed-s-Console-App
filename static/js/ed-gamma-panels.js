@@ -161,6 +161,8 @@
         '<span class="gbs-v ' + (pos ? 'pos' : 'neg') + '">' + usd(v) + '</span></div>';
     });
     h += '</div>';
+    // magnitude scale (reference shows a -/0/+ GEX$ axis under the ladder)
+    h += '<div class="gbs-scale"><span class="neg">−' + usd(maxAbs) + '</span><span>0</span><span class="pos">+' + usd(maxAbs) + '</span></div>';
     host.innerHTML = h;
     host.querySelectorAll('.gbs-row').forEach(function (rr) {   // A: click a strike -> sync all panels
       rr.addEventListener('click', function () { if (window.EdShell) window.EdShell.setStrike(Number(rr.getAttribute('data-strike'))); });
