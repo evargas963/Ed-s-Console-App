@@ -216,3 +216,35 @@ def test_tier_a_live_state_rest_bootstrap_row_uses_schwab_time_not_wall_clock(mo
     assert out["exchange_quote_ts"] == 1_778_018_399.0
     assert out["quote_time_source"] == "schwab_rest_quote"
     assert isinstance(out["server_received_ts"], float)
+
+
+def test_tier_a_lightweight_carries_the_tier_c_bundle_generation(monkeypatch):
+    """PR #238 D-PCR identity: analytics_lightweight.analytics_version is the SAME entry-level
+    generation every /api/analytics/state response reports (_attach_analytics_freshness_contract
+    reads entry["analytics_version"]), so a consumer caching a Tier C value can see the bundle
+    advance on the plane it already polls and re-read once — no second clock, no per-tick read."""
+    import time as _t
+
+    monkeypatch.setattr(server._lmp, "get_quote", lambda _ticker: None)
+    monkeypatch.setattr(server._lmp, "next_fast_generation", lambda _ticker: 99)
+    monkeypatch.setattr(server, "get_client", lambda: object())
+    monkeypatch.setattr(server, "_safe_get_quote_with_retry", lambda *_args, **_kwargs: _Resp())
+
+    key = ("SPY", "2099-01-16")          # a scope no other test seeds; newest entry for the ticker
+    now = _t.time() + 3600.0
+    server._state_cache[key] = {
+        "ts": now, "generated_at": now, "analytics_version": 42,
+        "ms_dict": {"ticker": "SPY", "selected_exp": key[1], "pcr_val": 0.87},
+        "pcr_val": 0.87, "spot_f": 500.0, "vix": None,
+        "price_levels": None, "pl_date": "", "pl_generation": None, "pl_mono": None,
+    }
+    try:
+        out = server._tier_a_live_state_dict("SPY", None)
+        lw = out["analytics_lightweight"]
+        assert lw["pcr_val"] == 0.87
+        assert lw["analytics_version"] == 42 == server._state_cache[key]["analytics_version"]
+        # the generation is the bundle's, so advancing the bundle advances the plane
+        server._state_cache[key]["analytics_version"] = 43
+        assert server._tier_a_live_state_dict("SPY", None)["analytics_lightweight"]["analytics_version"] == 43
+    finally:
+        server._state_cache.pop(key, None)

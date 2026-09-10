@@ -516,12 +516,26 @@
     var v = m[label] || [(label || '—'), ''];
     el.textContent = v[0]; el.className = 'sess ' + v[1];
   }
+  // Canonical plane identity the view modules cache against (no second clock in JS): the market
+  // session state and the Tier C bundle generation (analytics_lightweight.analytics_version), both
+  // carried by /api/live/state, which the shell already reads on its slow tick / fallback poll.
+  // A change dispatches ONE ed:plane event; nothing here decides what a view does with it.
+  var _plane = { ticker: null, session: null, analyticsVersion: null };
+  function notePlane(d) {
+    var lw = d.analytics_lightweight || {};
+    var next = { ticker: state.ticker, session: (d.session_label != null ? d.session_label : null),
+      analyticsVersion: (lw.analytics_version != null ? lw.analytics_version : null) };
+    if (next.ticker === _plane.ticker && next.session === _plane.session && next.analyticsVersion === _plane.analyticsVersion) return;
+    _plane = next;
+    document.dispatchEvent(new CustomEvent('ed:plane', { detail: Object.assign({}, _plane) }));
+  }
+
   var _sessGen = 0;
   function refreshSession() {   // slow, session-only read used while the SSE push carries the quote
     var g = ++_sessGen;
     fetch('/api/live/state?ticker=' + encodeURIComponent(state.ticker), { cache: 'no-store' })
       .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
-      .then(function (d) { if (g === _sessGen) paintSession(d.session_label); })
+      .then(function (d) { if (g === _sessGen) { paintSession(d.session_label); notePlane(d); } })
       .catch(function () { if (g === _sessGen) paintSession(null); });
   }
 
@@ -532,6 +546,7 @@
       .then(function (d) {
         if (g !== _hdrGen) return;
         paintSession(d.session_label);              // header poll also carries session (no extra read)
+        notePlane(d);
         if (d.state_error) { setFeed('stale', 'DEGRADED', d.state_error); return; }
         var age = (d.streaming_plane && d.streaming_plane.streaming_staleness_ms != null)
           ? Math.round(d.streaming_plane.streaming_staleness_ms) + 'ms' : '—';
@@ -638,5 +653,6 @@
     setScope: setScope, getScope: function () { return state.scope; },
     scopeWindow: scopeWindow, scopeNote: scopeNote, asOfBadge: asOfBadge,
     setExpiry: setExpiry, getExpiry: function () { return state.expiryFilter; },
+    getPlane: function () { return Object.assign({}, _plane); },
     setMaximize: applyMaximize, toggleMaximize: toggleMaximize };
 })();

@@ -6502,6 +6502,14 @@ def _tier_a_live_state_dict(ticker: str, expiry: Optional[str]) -> dict:
         ):
             if k in md0 and md0[k] is not None:
                 lw[k] = md0[k]
+        # The Tier C bundle's own generation (the SAME entry-level analytics_version every
+        # /api/analytics/state response carries via _attach_analytics_freshness_contract), so a
+        # consumer that caches a Tier C value (the shell's put/call OI row) can see the
+        # generation advance on the plane it already polls and re-read ONCE — never per tick,
+        # never forever stale. Not a second clock: it is the bundle's existing identity.
+        _ver = ck_hit.get("analytics_version")
+        if _ver is not None:
+            lw["analytics_version"] = int(_ver)
     if lw:
         out["analytics_lightweight"] = lw
     _lmp.merge_into_state(out, tkr)

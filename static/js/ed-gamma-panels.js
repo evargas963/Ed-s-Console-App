@@ -93,26 +93,47 @@
   // = put OI / call OI over EVERY strike of the SELECTED-EXPIRY chain (contracts_use), served as
   // `pcr_val` beside `selected_exp`. That pair is read here so the expiry the ratio is scoped to is
   // always disclosed; the lightweight plane's bare pcr_val carries no expiry and is not used.
-  // Read ONCE per (ticker, expiry-filter) context — an open-interest ratio moves with the daily OI
-  // update, not per tick — and while the analytics plane is still warming (pending shell) a bounded
-  // re-read rides the slow tick. /api/analytics/state is cache-first (stale-while-refresh).
+  // CACHE IDENTITY = ticker + expiry-filter + the bundle's CANONICAL generation, never wall-clock:
+  //   * `analytics_version` — the Tier C bundle's own generation, which the shell already receives
+  //     on its slow /api/live/state read (analytics_lightweight.analytics_version; EdShell.getPlane).
+  //     Same generation -> no re-read. New generation -> one re-read. This is what actually moves
+  //     the value (a recompute over a re-fetched chain carrying the day's OI publication).
+  //   * `session_label` — the canonical market-session state on the same read. A session
+  //     transition (e.g. Closed -> Pre-Market on the next trading day) re-reads once, which also
+  //     schedules the Tier C recompute when no other viewer has kept it warm; the generation
+  //     advance that follows lands the fresh value through the rule above.
+  //   * ticker / expiry change -> re-read (new context).
+  // While the analytics plane is warming (pending shell) the bounded re-read rides the slow tick.
+  // /api/analytics/state is cache-first (stale-while-refresh); this never polls it per tick.
   var _pcrGen = 0, _pcrKey = null, _pcrPending = false, _pcrTries = 0, PCR_MAX_TRIES = 10;
+  var _pcrVer = null, _pcrSession = null;        // identity of the value currently displayed
   function expiryFilter() { return (window.EdShell && window.EdShell.getExpiry && window.EdShell.getExpiry()) || ''; }
+  function plane() { return (window.EdShell && window.EdShell.getPlane && window.EdShell.getPlane()) || {}; }
   function paintPcr(v, scope) {
     txt('klPcr', v == null ? '—' : Number(v).toFixed(2));   // formatting only
     txt('klPcrScope', scope || '');
   }
   function loadPcr() {
     if (!isGamma() || !document.getElementById('klPcr')) return;
-    var tk = ticker(), ex = expiryFilter(), key = tk + '|' + ex;
-    if (key === _pcrKey && !(_pcrPending && _pcrTries < PCR_MAX_TRIES)) return;   // once per context
-    if (key !== _pcrKey) { _pcrKey = key; _pcrTries = 0; _pcrPending = false; paintPcr(null, 'warming'); }
+    var tk = ticker(), ex = expiryFilter(), key = tk + '|' + ex, pl = plane();
+    var newContext = key !== _pcrKey;
+    var newGen = pl.analyticsVersion != null && _pcrVer != null && pl.analyticsVersion !== _pcrVer;
+    var newSession = pl.session != null && _pcrSession != null && pl.session !== _pcrSession;
+    var retry = _pcrPending && _pcrTries < PCR_MAX_TRIES;
+    if (!newContext && !newGen && !newSession && !retry) return;   // same identity: no redundant re-read
+    if (newContext) { _pcrKey = key; _pcrTries = 0; _pcrPending = false; _pcrVer = null; _pcrSession = null; paintPcr(null, 'warming'); }
+    if (newGen || newSession) { _pcrTries = 0; }
     _pcrTries++;
     var g = ++_pcrGen;
     fetch('/api/analytics/state?ticker=' + encodeURIComponent(tk) + (ex ? '&expiry=' + encodeURIComponent(ex) : ''), { cache: 'no-store' })
       .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
       .then(function (d) {
         if (g !== _pcrGen) return;
+        // the identity this response answers for: its own generation (falls back to the plane's
+        // when the response carries none) and the session it was read under
+        var pn = plane();
+        _pcrVer = (d.analytics_version != null) ? d.analytics_version : (pn.analyticsVersion != null ? pn.analyticsVersion : null);
+        _pcrSession = pn.session != null ? pn.session : null;
         if (d.state_error) { _pcrPending = false; paintPcr(null, 'analytics error'); return; }
         if (d.analytics_pending_shell) { _pcrPending = true; paintPcr(null, 'warming'); return; }
         _pcrPending = false;
@@ -273,6 +294,7 @@
   function loadAll() { loadLevels(); loadGbs(); loadPcr(); }   // loadPcr is a no-op unless its context changed or it is still warming
   document.addEventListener('ed:ticker', loadAll);
   document.addEventListener('ed:expiry', loadPcr);   // the ratio is scoped to the selected expiry -> re-read for the new context
+  document.addEventListener('ed:plane', loadPcr);    // the bundle generation or the market session changed -> identity check
   document.addEventListener('ed:view', loadAll);
   document.addEventListener('ed:scope', loadGbs);   // #3: re-window the GEX-by-strike panel only
   document.addEventListener('ed:refresh', function (e) { if (e.detail && e.detail.slow) loadAll(); });

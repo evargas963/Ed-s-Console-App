@@ -39,11 +39,15 @@ const STRIKES = {
   ticker: '$SPX', spot: 583.41,
   today: { all: [[586, -264500, 1200], [583, 958600, 5400], [580, -90000, 900]] },
 };
-const LIVE = {
-  spot: 583.41, spot_disp: '583.41', bid: 583.40, ask: 583.42, session_label: 'RTH',
-  analytics_lightweight: { spy_chg_pct: 0.38 },
-  streaming_plane: { streaming_healthy: true, streaming_staleness_ms: 380 },
-};
+// The plane identity a Tier C consumer caches against: the market session and the Tier C bundle
+// generation (analytics_lightweight.analytics_version) — both carried by /api/live/state. Mutable so
+// a test can advance the generation / flip the session with ticker + expiry held constant.
+const PLANE = { session: 'RTH', analytics_version: 7 };
+function liveNow() {
+  return { spot: 583.41, spot_disp: '583.41', bid: 583.40, ask: 583.42, session_label: PLANE.session,
+    analytics_lightweight: { spy_chg_pct: 0.38, analytics_version: PLANE.analytics_version },
+    streaming_plane: { streaming_healthy: true, streaming_staleness_ms: 380 } };
+}
 const BARS = {
   ticker: '$SPX', n: 8,
   bars: [582.6, 582.9, 583.1, 582.8, 583.3, 583.5, 583.2, 583.41].map(function (c, i) {
@@ -62,8 +66,10 @@ const CHAIN = {
 // scoped to (server._fetch_state -> totals[0].pcr_oi over the selected-expiry chain).
 function analyticsFor(url) {
   const exp = decodeURIComponent((url.match(/[?&]expiry=([^&]+)/) || [])[1] || '2026-09-11');
+  // the bundle answers with its own generation; a newer generation carries a newer OI ratio
+  const base = exp === '2026-09-18' ? 1.13 : 0.87;
   return { _tier: 'C_analytics', ticker: '$SPX', selected_exp: exp, analytics_pending_shell: false,
-    pcr_val: exp === '2026-09-18' ? 1.13 : 0.87 };
+    analytics_version: PLANE.analytics_version, pcr_val: +(base + 0.01 * (PLANE.analytics_version - 7)).toFixed(2) };
 }
 
 async function intercept(page) {
@@ -77,7 +83,7 @@ async function intercept(page) {
     else if (url.includes('/api/bars1m')) body = BARS;
     else if (url.includes('/api/chain')) body = CHAIN;
     else if (url.includes('/api/expiries')) body = { expiries: ['2026-09-11', '2026-09-18'] };
-    else if (url.includes('/api/live/state')) body = LIVE;
+    else if (url.includes('/api/live/state')) body = liveNow();
     else if (url.includes('/api/health')) body = { status: 'ok', capabilities: { schwab: true } };
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
@@ -209,6 +215,32 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(page.locator('#klPcrScope')).toContainText('2026-09-18');
     expect(hits[hits.length - 1]).toContain('expiry=2026-09-18');
     expect(hits.length).toBe(settled + 1);
+  });
+
+  test('D-PCR NEGATIVE CONTROL: a new bundle generation / market session with ticker+expiry constant refreshes EXACTLY once (never stale forever, never per tick)', async ({ page }) => {
+    PLANE.session = 'RTH'; PLANE.analytics_version = 7;
+    const hits = [];
+    await page.route('**/api/analytics/state**', (route) => {
+      hits.push(route.request().url());
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(analyticsFor(route.request().url())) });
+    });
+    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#klPcr')).toHaveText('0.87');
+    await page.waitForTimeout(13000);                                      // > one slow tick, same generation, same session
+    const settled = hits.length;
+    expect(settled).toBeLessThanOrEqual(2);                                // no per-tick stream while identity is unchanged
+    // 1) the Tier C bundle generation advances on the plane (ticker + expiry unchanged)
+    PLANE.analytics_version = 8;                                           // the plane the shell already polls reports it
+    await expect(page.locator('#klPcr')).toHaveText('0.88', { timeout: 20000 });   // the old ratio is NOT retained
+    await page.waitForTimeout(13000);
+    expect(hits.length).toBe(settled + 1);                                 // exactly one refresh for the new generation
+    // 2) the market session transitions (the next trading day's canonical trigger), generation unchanged
+    PLANE.session = 'After-Hours';
+    await expect(page.locator('#hSession')).toHaveText('AH', { timeout: 20000 });
+    await page.waitForTimeout(13000);
+    expect(hits.length).toBe(settled + 2);                                 // exactly one refresh for the session transition
+    expect(hits.every((u) => u.includes('ticker=SPY') && !u.includes('expiry='))).toBe(true);   // context never changed
+    PLANE.session = 'RTH'; PLANE.analytics_version = 7;
   });
 
   test('workspace switching + editable watchlist foundation', async ({ page }) => {
