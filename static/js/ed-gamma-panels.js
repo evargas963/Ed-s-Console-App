@@ -96,8 +96,12 @@
   // CACHE IDENTITY = ticker + expiry-filter + the bundle's CANONICAL generation, never wall-clock:
   //   * `analytics_version` — the Tier C bundle's own generation, which the shell already receives
   //     on its slow /api/live/state read (analytics_lightweight.analytics_version; EdShell.getPlane).
-  //     Same generation -> no re-read. New generation -> one re-read. This is what actually moves
-  //     the value (a recompute over a re-fetched chain carrying the day's OI publication).
+  //     Tier C state is keyed by (ticker, expiry) and the generation is PER ENTRY, so the plane read
+  //     carries the same expiry context as the PCR read (/api/live/state?ticker=X&expiry=E resolves
+  //     entry (X,E); no expiry -> the newest entry for X, the same rule /api/analytics/state uses
+  //     without expiry) and a generation is compared ONLY when the plane record names this exact
+  //     context. Same generation -> no re-read. New generation -> one re-read. This is what actually
+  //     moves the value (a recompute over a re-fetched chain carrying the day's OI publication).
   //   * `session_label` — the canonical market-session state on the same read. A session
   //     transition (e.g. Closed -> Pre-Market on the next trading day) re-reads once, which also
   //     schedules the Tier C recompute when no other viewer has kept it warm; the generation
@@ -117,7 +121,9 @@
     if (!isGamma() || !document.getElementById('klPcr')) return;
     var tk = ticker(), ex = expiryFilter(), key = tk + '|' + ex, pl = plane();
     var newContext = key !== _pcrKey;
-    var newGen = pl.analyticsVersion != null && _pcrVer != null && pl.analyticsVersion !== _pcrVer;
+    // the plane's generation counts only when its record was read for THIS (ticker, expiry) context
+    var sameCtx = pl.ticker === tk && (pl.expiry || '') === ex;
+    var newGen = sameCtx && pl.analyticsVersion != null && _pcrVer != null && pl.analyticsVersion !== _pcrVer;
     var newSession = pl.session != null && _pcrSession != null && pl.session !== _pcrSession;
     var retry = _pcrPending && _pcrTries < PCR_MAX_TRIES;
     if (!newContext && !newGen && !newSession && !retry) return;   // same identity: no redundant re-read
@@ -131,8 +137,8 @@
         if (g !== _pcrGen) return;
         // the identity this response answers for: its own generation (falls back to the plane's
         // when the response carries none) and the session it was read under
-        var pn = plane();
-        _pcrVer = (d.analytics_version != null) ? d.analytics_version : (pn.analyticsVersion != null ? pn.analyticsVersion : null);
+        var pn = plane(), pnSame = pn.ticker === tk && (pn.expiry || '') === ex;
+        _pcrVer = (d.analytics_version != null) ? d.analytics_version : (pnSame && pn.analyticsVersion != null ? pn.analyticsVersion : null);
         _pcrSession = pn.session != null ? pn.session : null;
         if (d.state_error) { _pcrPending = false; paintPcr(null, 'analytics error'); return; }
         if (d.analytics_pending_shell) { _pcrPending = true; paintPcr(null, 'warming'); return; }

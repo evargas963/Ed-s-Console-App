@@ -238,6 +238,12 @@ def test_tier_a_lightweight_carries_the_tier_c_bundle_generation(monkeypatch):
         "pcr_val": 0.87, "spot_f": 500.0, "vix": None,
         "price_levels": None, "pl_date": "", "pl_generation": None, "pl_mono": None,
     }
+    # a SECOND, OLDER entry for the same ticker at another expiry with its own generation: Tier C
+    # state is keyed by (ticker, expiry) and the generation is per entry, never shared per ticker
+    key2 = ("SPY", "2099-02-20")
+    server._state_cache[key2] = dict(server._state_cache[key], ts=now - 60.0, generated_at=now - 60.0,
+                                     analytics_version=7,
+                                     ms_dict={"ticker": "SPY", "selected_exp": key2[1], "pcr_val": 1.13})
     try:
         out = server._tier_a_live_state_dict("SPY", None)
         lw = out["analytics_lightweight"]
@@ -246,5 +252,18 @@ def test_tier_a_lightweight_carries_the_tier_c_bundle_generation(monkeypatch):
         # the generation is the bundle's, so advancing the bundle advances the plane
         server._state_cache[key]["analytics_version"] = 43
         assert server._tier_a_live_state_dict("SPY", None)["analytics_lightweight"]["analytics_version"] == 43
+        # EXPIRY CONTEXT: /api/live/state?expiry=E answers from entry (SPY, E) — the same entry
+        # /api/analytics/state?expiry=E reads — not from the ticker's newest entry
+        lw2 = server._tier_a_live_state_dict("SPY", key2[1])["analytics_lightweight"]
+        assert lw2["analytics_version"] == 7 and lw2["pcr_val"] == 1.13
+        server._state_cache[key2]["analytics_version"] = 8
+        assert server._tier_a_live_state_dict("SPY", key2[1])["analytics_lightweight"]["analytics_version"] == 8
+        assert server._tier_a_live_state_dict("SPY", None)["analytics_lightweight"]["analytics_version"] == 43
+        # DEFAULT CONTEXT: both carriers resolve "no expiry" to the ticker's newest entry by the
+        # same freshest-ts rule (the analytics route via _latest_cached_ms_and_key_for_ticker)
+        _md, newest_key = server._latest_cached_ms_and_key_for_ticker("SPY")
+        assert newest_key == key
+        assert server._latest_cache_entry_for_ticker("SPY")[0] == key
     finally:
         server._state_cache.pop(key, None)
+        server._state_cache.pop(key2, None)

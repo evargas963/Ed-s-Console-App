@@ -520,33 +520,42 @@
   // session state and the Tier C bundle generation (analytics_lightweight.analytics_version), both
   // carried by /api/live/state, which the shell already reads on its slow tick / fallback poll.
   // A change dispatches ONE ed:plane event; nothing here decides what a view does with it.
-  var _plane = { ticker: null, session: null, analyticsVersion: null };
-  function notePlane(d) {
+  // Tier C state is keyed by (ticker, expiry) and its generation is per entry, so the read carries
+  // the workspace's expiry context (server: _tier_a_live_state_dict(tkr, expiry) resolves THAT
+  // entry; without one, the newest entry for the ticker — the same rule /api/analytics/state uses
+  // for a request without expiry). The plane record names the context it was read for.
+  var _plane = { ticker: null, expiry: null, session: null, analyticsVersion: null };
+  function liveStateUrl() {
+    var ex = state.expiryFilter || '';
+    return '/api/live/state?ticker=' + encodeURIComponent(state.ticker) + (ex ? '&expiry=' + encodeURIComponent(ex) : '');
+  }
+  function notePlane(d, expiry) {
     var lw = d.analytics_lightweight || {};
-    var next = { ticker: state.ticker, session: (d.session_label != null ? d.session_label : null),
+    var next = { ticker: state.ticker, expiry: expiry || '', session: (d.session_label != null ? d.session_label : null),
       analyticsVersion: (lw.analytics_version != null ? lw.analytics_version : null) };
-    if (next.ticker === _plane.ticker && next.session === _plane.session && next.analyticsVersion === _plane.analyticsVersion) return;
+    if (next.ticker === _plane.ticker && next.expiry === _plane.expiry && next.session === _plane.session &&
+        next.analyticsVersion === _plane.analyticsVersion) return;
     _plane = next;
     document.dispatchEvent(new CustomEvent('ed:plane', { detail: Object.assign({}, _plane) }));
   }
 
   var _sessGen = 0;
   function refreshSession() {   // slow, session-only read used while the SSE push carries the quote
-    var g = ++_sessGen;
-    fetch('/api/live/state?ticker=' + encodeURIComponent(state.ticker), { cache: 'no-store' })
+    var g = ++_sessGen, ex = state.expiryFilter || '';
+    fetch(liveStateUrl(), { cache: 'no-store' })
       .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
-      .then(function (d) { if (g === _sessGen) { paintSession(d.session_label); notePlane(d); } })
+      .then(function (d) { if (g === _sessGen) { paintSession(d.session_label); notePlane(d, ex); } })
       .catch(function () { if (g === _sessGen) paintSession(null); });
   }
 
   function refreshHeader() {   // FALLBACK poll — only runs when the SSE push is not delivering
-    var g = ++_hdrGen;
-    fetch('/api/live/state?ticker=' + encodeURIComponent(state.ticker), { cache: 'no-store' })
+    var g = ++_hdrGen, ex = state.expiryFilter || '';
+    fetch(liveStateUrl(), { cache: 'no-store' })
       .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
       .then(function (d) {
         if (g !== _hdrGen) return;
         paintSession(d.session_label);              // header poll also carries session (no extra read)
-        notePlane(d);
+        notePlane(d, ex);
         if (d.state_error) { setFeed('stale', 'DEGRADED', d.state_error); return; }
         var age = (d.streaming_plane && d.streaming_plane.streaming_staleness_ms != null)
           ? Math.round(d.streaming_plane.streaming_staleness_ms) + 'ms' : '—';

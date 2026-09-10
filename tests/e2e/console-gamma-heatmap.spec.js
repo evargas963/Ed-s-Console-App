@@ -42,10 +42,17 @@ const STRIKES = {
 // The plane identity a Tier C consumer caches against: the market session and the Tier C bundle
 // generation (analytics_lightweight.analytics_version) — both carried by /api/live/state. Mutable so
 // a test can advance the generation / flip the session with ticker + expiry held constant.
-const PLANE = { session: 'RTH', analytics_version: 7 };
-function liveNow() {
+// Tier C state is keyed by (ticker, expiry) and its generation is PER ENTRY: '' is the no-expiry
+// (newest-entry) context, the dated keys are explicit expiry entries. Both carriers answer from the
+// entry the request's expiry= names, exactly as the server does.
+const BASE_VERSION = { '': 7, '2026-09-11': 7, '2026-09-18': 20 };
+const PLANE = { session: 'RTH', versions: Object.assign({}, BASE_VERSION) };
+function expiryOf(url) { return decodeURIComponent((url.match(/[?&]expiry=([^&]+)/) || [])[1] || ''); }
+function liveNow(url) {
+  const exp = expiryOf(url);
   return { spot: 583.41, spot_disp: '583.41', bid: 583.40, ask: 583.42, session_label: PLANE.session,
-    analytics_lightweight: { spy_chg_pct: 0.38, analytics_version: PLANE.analytics_version },
+    selected_exp: exp || null,
+    analytics_lightweight: { spy_chg_pct: 0.38, analytics_version: PLANE.versions[exp] },
     streaming_plane: { streaming_healthy: true, streaming_staleness_ms: 380 } };
 }
 const BARS = {
@@ -65,11 +72,12 @@ const CHAIN = {
 // Tier C analytics bundle (only the fields the rail reads): pcr_val is served BESIDE the expiry it is
 // scoped to (server._fetch_state -> totals[0].pcr_oi over the selected-expiry chain).
 function analyticsFor(url) {
-  const exp = decodeURIComponent((url.match(/[?&]expiry=([^&]+)/) || [])[1] || '2026-09-11');
-  // the bundle answers with its own generation; a newer generation carries a newer OI ratio
+  const exp = expiryOf(url);                       // '' = no expiry requested -> the newest entry
+  // the bundle answers with ITS OWN generation; a newer generation carries a newer OI ratio
   const base = exp === '2026-09-18' ? 1.13 : 0.87;
-  return { _tier: 'C_analytics', ticker: '$SPX', selected_exp: exp, analytics_pending_shell: false,
-    analytics_version: PLANE.analytics_version, pcr_val: +(base + 0.01 * (PLANE.analytics_version - 7)).toFixed(2) };
+  const version = PLANE.versions[exp];
+  return { _tier: 'C_analytics', ticker: '$SPX', selected_exp: exp || '2026-09-11', analytics_pending_shell: false,
+    analytics_version: version, pcr_val: +(base + 0.01 * (version - BASE_VERSION[exp])).toFixed(2) };
 }
 
 async function intercept(page) {
@@ -83,7 +91,7 @@ async function intercept(page) {
     else if (url.includes('/api/bars1m')) body = BARS;
     else if (url.includes('/api/chain')) body = CHAIN;
     else if (url.includes('/api/expiries')) body = { expiries: ['2026-09-11', '2026-09-18'] };
-    else if (url.includes('/api/live/state')) body = liveNow();
+    else if (url.includes('/api/live/state')) body = liveNow(url);
     else if (url.includes('/api/health')) body = { status: 'ok', capabilities: { schwab: true } };
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
@@ -218,7 +226,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   });
 
   test('D-PCR NEGATIVE CONTROL: a new bundle generation / market session with ticker+expiry constant refreshes EXACTLY once (never stale forever, never per tick)', async ({ page }) => {
-    PLANE.session = 'RTH'; PLANE.analytics_version = 7;
+    PLANE.session = 'RTH'; PLANE.versions = Object.assign({}, BASE_VERSION);
     const hits = [];
     await page.route('**/api/analytics/state**', (route) => {
       hits.push(route.request().url());
@@ -229,8 +237,8 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await page.waitForTimeout(13000);                                      // > one slow tick, same generation, same session
     const settled = hits.length;
     expect(settled).toBeLessThanOrEqual(2);                                // no per-tick stream while identity is unchanged
-    // 1) the Tier C bundle generation advances on the plane (ticker + expiry unchanged)
-    PLANE.analytics_version = 8;                                           // the plane the shell already polls reports it
+    // 1) the Tier C bundle generation advances on the plane (ticker + expiry unchanged; default context)
+    PLANE.versions[''] = 8;                                                // the plane the shell already polls reports it
     await expect(page.locator('#klPcr')).toHaveText('0.88', { timeout: 20000 });   // the old ratio is NOT retained
     await page.waitForTimeout(13000);
     expect(hits.length).toBe(settled + 1);                                 // exactly one refresh for the new generation
@@ -240,7 +248,69 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await page.waitForTimeout(13000);
     expect(hits.length).toBe(settled + 2);                                 // exactly one refresh for the session transition
     expect(hits.every((u) => u.includes('ticker=SPY') && !u.includes('expiry='))).toBe(true);   // context never changed
-    PLANE.session = 'RTH'; PLANE.analytics_version = 7;
+    PLANE.session = 'RTH'; PLANE.versions = Object.assign({}, BASE_VERSION);
+  });
+
+  test('D-PCR IDENTITY IS THE SAME (ticker, expiry) BUNDLE: an explicit expiry follows ITS entry generation only', async ({ page }) => {
+    test.setTimeout(300000);
+    PLANE.session = 'RTH'; PLANE.versions = Object.assign({}, BASE_VERSION);
+    const hits = [];
+    await page.route('**/api/analytics/state**', (route) => {
+      hits.push(route.request().url());
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(analyticsFor(route.request().url())) });
+    });
+    const planeReads = [];
+    await page.route('**/api/live/state**', (route) => {
+      planeReads.push(route.request().url());
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(liveNow(route.request().url())) });
+    });
+    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#klPcr')).toHaveText('0.87');
+    // (1) ticker SPY, expiry A = 2026-09-18 (its entry is at generation 20) -> PCR A displayed
+    await page.locator('#expSel').selectOption('2026-09-18');
+    await expect(page.locator('#klPcr')).toHaveText('1.13');
+    await expect(page.locator('#klPcrScope')).toContainText('2026-09-18');
+    expect(hits[hits.length - 1]).toContain('expiry=2026-09-18');
+    await page.waitForTimeout(13000);
+    const s1 = hits.length;
+    // the shell's OWN plane read now carries the same context, so both carriers name entry (SPY, A)
+    expect(planeReads[planeReads.length - 1]).toContain('expiry=2026-09-18');
+    // (2) entry A advances 20 -> 21 while the default / other entries stay -> PCR A refreshes exactly once
+    PLANE.versions['2026-09-18'] = 21;
+    await expect(page.locator('#klPcr')).toHaveText('1.14', { timeout: 20000 });
+    await page.waitForTimeout(13000);
+    expect(hits.length).toBe(s1 + 1);
+    expect(hits[hits.length - 1]).toContain('expiry=2026-09-18');
+    // (3) OTHER entries advance (default + 2026-09-11) while A stays at 21 -> PCR A does NOT refresh
+    PLANE.versions[''] = 9; PLANE.versions['2026-09-11'] = 9;
+    await page.waitForTimeout(15000);
+    expect(hits.length).toBe(s1 + 1);
+    await expect(page.locator('#klPcr')).toHaveText('1.14');
+    // (4) same ticker / expiry / generation / session -> no redundant read
+    await page.waitForTimeout(13000);
+    expect(hits.length).toBe(s1 + 1);
+    // (5) ticker change -> exactly one read, for the new ticker in the same expiry context
+    await page.locator('#symSel').selectOption('QQQ');
+    await expect.poll(() => hits.length, { timeout: 20000 }).toBe(s1 + 2);
+    expect(hits[hits.length - 1]).toContain('ticker=QQQ');
+    await page.waitForTimeout(13000);
+    expect(hits.length).toBe(s1 + 2);
+    // (6) expiry change -> exactly one read, PCR re-scoped to that entry (2026-09-11 is at generation 9)
+    await page.locator('#expSel').selectOption('2026-09-11');
+    await expect(page.locator('#klPcr')).toHaveText('0.89');
+    await expect(page.locator('#klPcrScope')).toContainText('2026-09-11');
+    expect(hits[hits.length - 1]).toContain('expiry=2026-09-11');
+    expect(hits.length).toBe(s1 + 3);
+    await page.waitForTimeout(13000);
+    expect(hits.length).toBe(s1 + 3);
+    // (7) a session transition is one deliberate re-read, and afterwards the identity is STILL the
+    //     entry's generation: the default entry advancing again does not touch this expiry's PCR
+    PLANE.session = 'After-Hours';
+    await expect.poll(() => hits.length, { timeout: 20000 }).toBe(s1 + 4);
+    PLANE.versions[''] = 10;
+    await page.waitForTimeout(15000);
+    expect(hits.length).toBe(s1 + 4);
+    PLANE.session = 'RTH'; PLANE.versions = Object.assign({}, BASE_VERSION);
   });
 
   test('workspace switching + editable watchlist foundation', async ({ page }) => {

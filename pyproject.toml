@@ -45,7 +45,3 @@ omit = ["tests/*", "*/node_modules/*", "models/*"]
 # tests/archive/ no longer exists (bedrock step 3, 498897ce; RC-524).
 testpaths = ["tests"]
 norecursedirs = ["node_modules", ".venv", "models"]
-# Every run names its skips with their reasons (and keeps pytest's default failure/error
-# summary: a bare -rs REPLACES -rfE), so a local/CI population difference is read from the
-# two logs, never inferred (PR #238 proof).
-addopts = "-rfEs"
