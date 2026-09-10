@@ -58,11 +58,20 @@ const CHAIN = {
   ],
 };
 
+// Tier C analytics bundle (only the fields the rail reads): pcr_val is served BESIDE the expiry it is
+// scoped to (server._fetch_state -> totals[0].pcr_oi over the selected-expiry chain).
+function analyticsFor(url) {
+  const exp = decodeURIComponent((url.match(/[?&]expiry=([^&]+)/) || [])[1] || '2026-09-11');
+  return { _tier: 'C_analytics', ticker: '$SPX', selected_exp: exp, analytics_pending_shell: false,
+    pcr_val: exp === '2026-09-18' ? 1.13 : 0.87 };
+}
+
 async function intercept(page) {
   await page.route('**/api/**', (route) => {
     const url = route.request().url();
     let body = { available: false };
     if (url.includes('/api/options/gamma-surface')) body = SURFACE;
+    else if (url.includes('/api/analytics/state')) body = analyticsFor(url);
     else if (url.includes('/api/terrain/strikes')) body = STRIKES;
     else if (url.includes('/api/terrain')) body = TERRAIN;
     else if (url.includes('/api/bars1m')) body = BARS;
@@ -167,6 +176,39 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(page.locator('#klRegime')).toContainText('Long γ');
     // NOT_PROVEN items are honestly labelled, never fabricated
     await expect(page.locator('#klBody')).toContainText('NOT PROVEN');
+    // D-PCR: the put/call OPEN-INTEREST ratio comes from /api/analytics/state, formatted only, and the
+    // expiry it is scoped to is disclosed on the row (it is a selected-expiry ratio, not all-exp).
+    await expect(page.locator('#klPcr')).toHaveText('0.87');
+    await expect(page.locator('#klPcrScope')).toContainText('OI');
+    await expect(page.locator('#klPcrScope')).toContainText('2026-09-11');
+  });
+
+  test('D-PCR: read once per (ticker, expiry) context — not per tick; warming shell retries; expiry re-scopes', async ({ page }) => {
+    const hits = [];
+    let pending = true;   // first answer: Tier C still warming (pending shell, no pcr_val)
+    await page.route('**/api/analytics/state**', (route) => {
+      const url = route.request().url(); hits.push(url);
+      const body = pending ? { _tier: 'C_analytics', ticker: '$SPX', selected_exp: null, analytics_pending_shell: true, expiries: [], totals_rows: [] }
+        : analyticsFor(url);
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+    });
+    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#klFlip')).toHaveText('582.90');          // rail is up (terrain)
+    await expect(page.locator('#klPcr')).toHaveText('—');                 // warming: no value fabricated
+    await expect(page.locator('#klPcrScope')).toHaveText('warming');
+    expect(hits.length).toBeLessThanOrEqual(2);                           // init (ed:view/ed:ticker) — never a per-3s-tick stream
+    pending = false;                                                       // Tier C completes
+    await expect(page.locator('#klPcr')).toHaveText('0.87', { timeout: 20000 });   // bounded re-read on the slow tick (12s)
+    const settled = hits.length;                                           // 2 (the warming retry), never one per 3s tick
+    expect(settled).toBeLessThanOrEqual(3);
+    await page.waitForTimeout(13000);                                      // > one slow tick with a value already held
+    expect(hits.length).toBe(settled);                                     // no re-read once the context has its value
+    // the expiry filter is part of the context: a selected expiry re-reads WITH expiry= and the row re-scopes
+    await page.locator('#expSel').selectOption('2026-09-18');
+    await expect(page.locator('#klPcr')).toHaveText('1.13');
+    await expect(page.locator('#klPcrScope')).toContainText('2026-09-18');
+    expect(hits[hits.length - 1]).toContain('expiry=2026-09-18');
+    expect(hits.length).toBe(settled + 1);
   });
 
   test('workspace switching + editable watchlist foundation', async ({ page }) => {

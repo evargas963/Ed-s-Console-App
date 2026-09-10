@@ -182,8 +182,10 @@ test.describe('D — Gamma Flow subview (EdStream contract binding)', () => {
     await expect(rowTag(page, 'depth.5.ask_total')).toHaveText(bc['depth.*.ask_total']);
     // Feed health is not a classified metric: no tag is manufactured for it.
     await expect(rowTag(page, 'streaming_plane.streaming_healthy')).toHaveCount(0);
-    // No section-level (hardcoded) tag exists anywhere: every tag sits in a row.
+    // No section-level (hardcoded) tag exists anywhere: every tag sits in a row — and the panel header
+    // carries no static NATIVE/PROXY chips either (a classification claim nothing served).
     await expect(page.locator('#flowBody .fl-sec-h .fl-tag')).toHaveCount(0);
+    await expect(page.locator('[data-sub-pane="flow"] .panel-h .prov')).toHaveCount(0);
   });
 
   test('changing a classification in the payload changes the tag; a missing classification reads UNKNOWN', async ({ page }) => {

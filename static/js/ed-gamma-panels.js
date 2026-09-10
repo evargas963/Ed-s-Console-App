@@ -44,7 +44,7 @@
       .catch(function () { if (g === _lgen) renderLevels(null); });
   }
   function renderLevels(d) {
-    var ids = ['klSpot', 'klFlip', 'klCall', 'klPut', 'klAbs', 'klPeak', 'klNet', 'klRegime', 'klPcr'];
+    var ids = ['klSpot', 'klFlip', 'klCall', 'klPut', 'klAbs', 'klPeak', 'klNet', 'klRegime'];   // klPcr: analytics plane, own reader below
     if (!d || d.error) {
       ids.forEach(function (id) { txt(id, '—'); });
       txt('klSrc', d && d.error ? 'terrain not ready' : 'offline');
@@ -68,7 +68,6 @@
       var rm = REGIME[d.regime] || { t: (d.regime || '—'), c: 'var(--ed-ink-2)' };
       reg.textContent = rm.t; reg.style.color = rm.c;
     }
-    txt('klPcr', '—');  // PCR lives on the analytics plane; wired with the header analytics pass
     // B: the levels rail recedes when terrain reports stale
     var klb = document.getElementById('klBody');
     if (klb) klb.classList.toggle('recede', !!d.levels_stale);
@@ -87,6 +86,40 @@
       // disclose that these levels are still all-exp (never silently relabel them as selected-expiry).
       if (window.EdShell && window.EdShell.getExpiry && window.EdShell.getExpiry()) src.textContent += ' · all-exp';
     }
+  }
+
+  // ---------- Put/Call OI ratio (Key Levels · Exposure) <- GET /api/analytics/state ----------
+  // Canonical producer: server._fetch_state -> build_totals_rows(...)[0].pcr_oi, the CONSENSUS window
+  // = put OI / call OI over EVERY strike of the SELECTED-EXPIRY chain (contracts_use), served as
+  // `pcr_val` beside `selected_exp`. That pair is read here so the expiry the ratio is scoped to is
+  // always disclosed; the lightweight plane's bare pcr_val carries no expiry and is not used.
+  // Read ONCE per (ticker, expiry-filter) context — an open-interest ratio moves with the daily OI
+  // update, not per tick — and while the analytics plane is still warming (pending shell) a bounded
+  // re-read rides the slow tick. /api/analytics/state is cache-first (stale-while-refresh).
+  var _pcrGen = 0, _pcrKey = null, _pcrPending = false, _pcrTries = 0, PCR_MAX_TRIES = 10;
+  function expiryFilter() { return (window.EdShell && window.EdShell.getExpiry && window.EdShell.getExpiry()) || ''; }
+  function paintPcr(v, scope) {
+    txt('klPcr', v == null ? '—' : Number(v).toFixed(2));   // formatting only
+    txt('klPcrScope', scope || '');
+  }
+  function loadPcr() {
+    if (!isGamma() || !document.getElementById('klPcr')) return;
+    var tk = ticker(), ex = expiryFilter(), key = tk + '|' + ex;
+    if (key === _pcrKey && !(_pcrPending && _pcrTries < PCR_MAX_TRIES)) return;   // once per context
+    if (key !== _pcrKey) { _pcrKey = key; _pcrTries = 0; _pcrPending = false; paintPcr(null, 'warming'); }
+    _pcrTries++;
+    var g = ++_pcrGen;
+    fetch('/api/analytics/state?ticker=' + encodeURIComponent(tk) + (ex ? '&expiry=' + encodeURIComponent(ex) : ''), { cache: 'no-store' })
+      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+      .then(function (d) {
+        if (g !== _pcrGen) return;
+        if (d.state_error) { _pcrPending = false; paintPcr(null, 'analytics error'); return; }
+        if (d.analytics_pending_shell) { _pcrPending = true; paintPcr(null, 'warming'); return; }
+        _pcrPending = false;
+        if (d.pcr_val == null) { paintPcr(null, 'unavailable'); return; }
+        paintPcr(d.pcr_val, 'OI · exp ' + (d.selected_exp || '—'));
+      })
+      .catch(function () { if (g === _pcrGen) { _pcrPending = true; paintPcr(null, 'offline'); } });
   }
 
   // ---------- GEX by Strike ----------
@@ -237,8 +270,9 @@
   }
 
   // ---------- events ----------
-  function loadAll() { loadLevels(); loadGbs(); }
+  function loadAll() { loadLevels(); loadGbs(); loadPcr(); }   // loadPcr is a no-op unless its context changed or it is still warming
   document.addEventListener('ed:ticker', loadAll);
+  document.addEventListener('ed:expiry', loadPcr);   // the ratio is scoped to the selected expiry -> re-read for the new context
   document.addEventListener('ed:view', loadAll);
   document.addEventListener('ed:scope', loadGbs);   // #3: re-window the GEX-by-strike panel only
   document.addEventListener('ed:refresh', function (e) { if (e.detail && e.detail.slow) loadAll(); });

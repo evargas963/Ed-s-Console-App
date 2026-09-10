@@ -262,6 +262,7 @@
   .kl-row{display:flex;align-items:baseline;justify-content:space-between;padding:3.5px 0;border-bottom:1px solid var(--ed-edge-soft)}
   .kl-row:last-child{border-bottom:none}
   .kl-row .k{font-size:13px;color:var(--ed-ink-2);letter-spacing:.01em}
+  .kl-row .k .kl-scope{font-size:10px;color:var(--ed-ink-4);margin-left:6px;letter-spacing:.02em}   /* per-row scope disclosure (e.g. the expiry a ratio is scoped to) */
   .kl-row .v{font-family:var(--ed-sans);font-size:15.5px;font-weight:700;color:var(--ed-ink);font-variant-numeric:tabular-nums}
   .kl-sec{font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:var(--ed-ink-3);
     margin:7px 0 2px;padding-top:6px;border-top:1px solid var(--ed-edge)}
@@ -593,7 +594,7 @@
               <div class="kl-row"><span class="k muted">Charm Resistance</span><span class="notproven">→ CHARM WALL</span></div>
               <div class="kl-sec">Exposure</div>
               <div class="kl-row"><span class="k">Net GEX / 1%</span><span class="v" id="klNet">—</span></div>
-              <div class="kl-row"><span class="k">PCR</span><span class="v" id="klPcr">—</span></div>
+              <div class="kl-row"><span class="k">Put/Call OI <span class="kl-scope" id="klPcrScope"></span></span><span class="v" id="klPcr">—</span></div>
               <div class="kl-regime-box">
                 <span class="rlab">Dealer Regime</span>
                 <span class="rval" id="klRegime">—</span>
@@ -641,7 +642,7 @@
         <div class="sub-pane" data-sub-pane="flow">
           <div class="panel">
             <div class="panel-h"><span class="hticker" id="flTicker">SPX</span><span class="t">Options Flow</span>
-              <div class="r"><span id="flSrc"></span><span class="prov native">NATIVE</span><span class="prov proxy">PROXY</span></div></div>
+              <div class="r"><span id="flSrc"></span></div></div>
             <div class="panel-b" id="flowBody"><div class="placeholder"><div class="sm">Options microstructure from /api/order-flow/options-microstructure (real book / depth / imbalance / tape-PROXY / freshness; no fabricated signed flow).</div></div></div>
           </div>
         </div>
