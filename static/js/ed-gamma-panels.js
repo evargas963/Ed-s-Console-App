@@ -80,7 +80,7 @@
           (d.levels_stale_reason ? ' · ' + d.levels_stale_reason : '');
         src.style.color = 'var(--ed-stale)';
       } else {
-        src.textContent = '/api/terrain · live';
+        src.textContent = 'terrain · live';
         src.style.color = '';
       }
       // #5: terrain levels are AGGREGATE across expiries; if the workspace filters to one expiry,
@@ -151,19 +151,20 @@
     var maxAbs = win.reduce(function (m, r) { return Math.max(m, Math.abs(Number(r[1]) || 0)); }, 0) || 1;
     var spotStrike = win.reduce(function (best, r) {
       return (best == null || Math.abs(r[0] - spot) < Math.abs(best - spot)) ? r[0] : best; }, null);
-    var h = note + '<div class="gbs">';
+    var bars = '';
     win.forEach(function (r) {
       var k = r[0], v = Number(r[1]) || 0, w = Math.min(100, Math.abs(v) / maxAbs * 100);
       var pos = v >= 0;
-      h += '<div class="gbs-row' + (k === spotStrike ? ' spot' : '') + '" data-strike="' + k + '">' +
+      bars += '<div class="gbs-row' + (k === spotStrike ? ' spot' : '') + '" data-strike="' + k + '">' +
         '<span class="gbs-k">' + px(k, k % 1 ? 2 : 0) + '</span>' +
         '<span class="gbs-track"><i class="gbs-bar ' + (pos ? 'pos' : 'neg') + '" style="width:' + w.toFixed(1) + '%"></i></span>' +
         '<span class="gbs-v ' + (pos ? 'pos' : 'neg') + '">' + usd(v) + '</span></div>';
     });
-    h += '</div>';
-    // magnitude scale (reference shows a -/0/+ GEX$ axis under the ladder)
-    h += '<div class="gbs-scale"><span class="neg">−' + usd(maxAbs) + '</span><span>0</span><span class="pos">+' + usd(maxAbs) + '</span></div>';
-    host.innerHTML = h;
+    // the bars scroll in their own area; the -/0/+ magnitude axis is PINNED at the foot so it is
+    // always visible without scrolling (reference behaviour).
+    host.innerHTML = '<div class="gbs-top">' + note + '</div>' +
+      '<div class="gbs-scroll"><div class="gbs">' + bars + '</div></div>' +
+      '<div class="gbs-scale"><span class="neg">−' + usd(maxAbs) + '</span><span>0</span><span class="pos">+' + usd(maxAbs) + '</span></div>';
     host.querySelectorAll('.gbs-row').forEach(function (rr) {   // A: click a strike -> sync all panels
       rr.addEventListener('click', function () { if (window.EdShell) window.EdShell.setStrike(Number(rr.getAttribute('data-strike'))); });
     });
@@ -225,7 +226,7 @@
     var net = gbsNetAt(strike);
     var netCls = net == null ? '' : (net >= 0 ? 'pos' : 'neg');
     host.innerHTML =
-      '<table class="sd"><thead><tr><th></th><th>OI</th><th>Vol</th><th>Gamma</th><th>GEX $</th><th>Delta</th><th>IV%</th></tr></thead><tbody>' +
+      '<table class="sd"><thead><tr><th>Type</th><th>OI</th><th>Vol</th><th>Gamma</th><th>GEX $</th><th>Delta</th><th>IV%</th></tr></thead><tbody>' +
       '<tr><td class="side c">Call</td><td>' + cell(call, 'openInterest', 0) + '</td><td>' + cell(call, 'totalVolume', 0) +
       '</td><td>' + cell(call, 'gamma', 4) + '</td><td class="dim">—</td><td>' + cell(call, 'delta', 3) + '</td><td>' + cell(call, 'volatility', 1) + '</td></tr>' +
       '<tr><td class="side p">Put</td><td>' + cell(put, 'openInterest', 0) + '</td><td>' + cell(put, 'totalVolume', 0) +

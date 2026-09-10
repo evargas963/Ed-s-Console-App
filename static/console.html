@@ -92,10 +92,10 @@
   /* active-workspace children expanded in the rail (matches the reference Options tree) */
   .rail-children{display:flex;flex-direction:column;padding:2px 0 6px}
   #app:not(.rail-open) .rail-children{display:none}
-  .rail-child{display:block;padding:8px 12px 8px 51px;font-size:13.5px;color:var(--ed-ink-2);white-space:nowrap;cursor:pointer;position:relative}
+  .rail-child{display:block;margin:1px 10px;padding:8px 12px 8px 41px;font-size:13.5px;color:var(--ed-ink-2);
+    white-space:nowrap;cursor:pointer;border-radius:6px}
   .rail-child:hover{color:var(--ed-ink);background:var(--ed-panel-2)}
-  .rail-child.on{color:var(--ed-accent-2);font-weight:600;background:var(--ed-accent-bg)}
-  .rail-child.on::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--ed-accent)}
+  .rail-child.on{color:#fff;font-weight:600;background:var(--ed-accent)}
   .rail-child.na{color:var(--ed-ink-4);cursor:not-allowed}.rail-child.na:hover{background:none;color:var(--ed-ink-4)}
   .rail-sep{height:1px;background:var(--ed-edge-soft);margin:8px 12px}
 
@@ -165,7 +165,7 @@
      rail, and the bottom a subordinate supporting strip. Tight gaps/rhythm = terminal density. */
   .gamma-grid{display:grid;height:100%;gap:8px;
     grid-template-columns:1fr minmax(340px,25%);
-    grid-template-rows:minmax(0,1.8fr) minmax(0,1fr);
+    grid-template-rows:minmax(0,2.15fr) minmax(0,1fr);
     grid-template-areas:"heat levels" "bottom bottom"}
   .p-heat{grid-area:heat} .p-levels{grid-area:levels} .p-bottom{grid-area:bottom}
   .p-bottom{display:grid;grid-template-columns:1.05fr 1fr 1.15fr;gap:7px}
@@ -177,6 +177,9 @@
   .panel-h .hticker{font-size:16px;font-weight:700;letter-spacing:.03em;color:var(--ed-ink)}
   .panel-h .t{font-size:14.5px;font-weight:600;letter-spacing:.01em;color:var(--ed-ink)}
   .panel-h .sub{font-family:var(--ed-sans);font-size:11px;color:var(--ed-ink-3)}
+  /* provenance/telemetry is REQUIRED truth but must not compete with panel titles — demote it */
+  #heatScope{font-size:9.5px;color:var(--ed-ink-4);font-weight:400}
+  .panel-h #klSrc{font-size:10px;color:var(--ed-ink-4)}
   .panel-h .r{margin-left:auto;display:flex;align-items:center;gap:7px}
   /* #4: compact per-panel source/as-of badge - each panel discloses ITS OWN canonical freshness,
      never a single global "LIVE". Formats server-owned source/age only (no client recomputation). */
@@ -326,8 +329,12 @@
   .gbs-v{width:70px;text-align:right;font-weight:500}
   .gbs-v.pos{color:var(--ed-pos-ink)} .gbs-v.neg{color:var(--ed-neg-ink)}
   .gbs-allexp{font-family:var(--ed-sans);font-size:10px;color:var(--ed-stale);padding:0 0 5px}
-  .gbs-scale{display:flex;justify-content:space-between;font-family:var(--ed-sans);font-size:10px;
-    color:var(--ed-ink-3);padding:6px 0 0;margin-top:5px;border-top:1px solid var(--ed-edge-soft)}
+  /* pinned-axis layout: note fixed on top, bars scroll, magnitude axis pinned at the foot */
+  #gbsBody{display:flex;flex-direction:column;overflow:hidden;padding:7px 10px}
+  .gbs-top{flex:none}
+  .gbs-scroll{flex:1;overflow:auto;min-height:0}
+  .gbs-scale{flex:none;display:flex;justify-content:space-between;font-family:var(--ed-sans);font-size:10.5px;
+    color:var(--ed-ink-3);padding:7px 0 0;margin-top:6px;border-top:1px solid var(--ed-edge)}
   .gbs-scale .neg{color:var(--ed-neg-ink)} .gbs-scale .pos{color:var(--ed-pos-ink)}
 
   /* strike detail (vendor chain) */
@@ -347,9 +354,9 @@
   .of-tab{font-size:11.5px;color:var(--ed-ink-2);padding:3px 10px;border:1px solid var(--ed-edge);border-radius:var(--ed-r)}
   .of-tab.on{color:var(--ed-accent-2);background:var(--ed-accent-bg);border-color:var(--ed-accent-edge)}
   .of-tab.na{color:var(--ed-ink-4);cursor:not-allowed}
-  .of{width:100%;border-collapse:collapse;font-family:var(--ed-sans);font-size:12px;font-variant-numeric:tabular-nums}
-  .of th{font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--ed-ink-3);text-align:right;
-    padding:5px 8px;border-bottom:1px solid var(--ed-edge)}
+  .of{width:100%;height:100%;border-collapse:collapse;font-family:var(--ed-sans);font-size:12px;font-variant-numeric:tabular-nums}
+  .of th{font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--ed-ink-3);text-align:right;
+    padding:8px 9px;border-bottom:1px solid var(--ed-edge)}
   .of th:first-child{text-align:left}
   .of .of-empty td{text-align:center;padding:26px 12px;vertical-align:middle}
   .of .oe-lab{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--ed-ink-3);margin-bottom:8px}
@@ -501,7 +508,7 @@
                 <button class="kl-tab na" title="not yet implemented">Metrics</button>
                 <button class="kl-tab na" title="not yet implemented">Context</button>
               </div>
-              <span class="sub" id="klSrc">/api/terrain</span>
+              <span class="sub" id="klSrc">terrain</span>
             </div>
             <div class="panel-b klbody" id="klBody">
               <div class="kl-sec">Levels</div>
