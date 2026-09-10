@@ -176,7 +176,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(page.locator('#subnav .wtitle')).toContainText('SYSTEM');
     // add a symbol via the shell API (foundation is editable + localStorage-backed)
     await page.evaluate(() => window.EdShell.addSymbol('AMD'));
-    await expect(page.locator('.wl-row .info .s', { hasText: 'AMD' })).toHaveCount(1);
+    await expect(page.locator('.wl-row .wl-sym', { hasText: 'AMD' })).toHaveCount(1);
   });
 
   test('chart view: Price + GEX Profile and Dot Map render from canonical inputs', async ({ page }) => {

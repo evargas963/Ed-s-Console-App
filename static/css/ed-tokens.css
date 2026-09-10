@@ -20,10 +20,10 @@
 
 /* ================= DARK (approved primary) ================= */
 :root[data-theme="dark"] {
-  --ed-bg:#070b12; --ed-rail:#090e17; --ed-header:#0a1019;
-  --ed-panel:#0e141d; --ed-panel-2:#141c28; --ed-panel-3:#1b2636;
-  --ed-edge:#2a3648; --ed-edge-soft:#1c2634; --ed-edge-strong:#3a4a62;
-  --ed-ink:#f4f8fd; --ed-ink-2:#c6d3e3; --ed-ink-3:#93a3b7; --ed-ink-4:#5c6c82;
+  --ed-bg:#060a11; --ed-rail:#0a101a; --ed-header:#0c131d;
+  --ed-panel:#0f1622; --ed-panel-2:#17202e; --ed-panel-3:#202c3e;
+  --ed-edge:#324055; --ed-edge-soft:#212d3d; --ed-edge-strong:#465873;
+  --ed-ink:#f6f9fd; --ed-ink-2:#d3ddeb; --ed-ink-3:#a7b6c9; --ed-ink-4:#6a7b91;
   --ed-accent:#3d8bfd; --ed-accent-2:#61a5ff; --ed-accent-bg:#12243d; --ed-accent-edge:#28517f;
   --ed-pos:#23c06b; --ed-pos-ink:#3ddc84; --ed-neg:#e5484d; --ed-neg-ink:#ff6b6b;
   --ed-live:#2ecc71; --ed-warn:#e9b949; --ed-stale:#d9822b; --ed-alert:#ff5d5d; --ed-quiet:#5f6f84;
@@ -35,10 +35,10 @@
 
 /* ================= LIGHT (professional light terminal — not generic SaaS white) ================= */
 :root[data-theme="light"] {
-  --ed-bg:#e7ecf3; --ed-rail:#dfe5ed; --ed-header:#e3e9f0;
-  --ed-panel:#f7f9fc; --ed-panel-2:#eceff5; --ed-panel-3:#dde5f0;
-  --ed-edge:#b7c2d2; --ed-edge-soft:#ccd5e1; --ed-edge-strong:#93a1b5;
-  --ed-ink:#0b131f; --ed-ink-2:#37455b; --ed-ink-3:#5b6a80; --ed-ink-4:#8a95a6;
+  --ed-bg:#e4eaf2; --ed-rail:#dbe2eb; --ed-header:#dfe6ee;
+  --ed-panel:#f8fafc; --ed-panel-2:#eaeff4; --ed-panel-3:#d8e1ee;
+  --ed-edge:#aeb9ca; --ed-edge-soft:#c6cfdc; --ed-edge-strong:#8593aa;
+  --ed-ink:#08101b; --ed-ink-2:#2f3d53; --ed-ink-3:#4f5e74; --ed-ink-4:#828da0;
   --ed-accent:#2f6fe0; --ed-accent-2:#1f5fd0; --ed-accent-bg:#dce7fb; --ed-accent-edge:#a6c2f0;
   --ed-pos:#1a9e5c; --ed-pos-ink:#0f7a45; --ed-neg:#d63b3b; --ed-neg-ink:#b21e1e;
   --ed-live:#16a34a; --ed-warn:#a9750a; --ed-stale:#b45309; --ed-alert:#cf2e2e; --ed-quiet:#8a94a4;

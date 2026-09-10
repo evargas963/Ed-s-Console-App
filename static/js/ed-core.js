@@ -292,11 +292,11 @@
     list.forEach(function (sym) {
       var row = document.createElement('div');
       row.className = 'wl-row' + (sym === state.ticker ? ' sel' : '');
-      row.innerHTML = '<span class="tk">' + sym.replace('$', '') + '</span>' +
-        '<span class="info"><span class="s">' + sym + '</span><span class="p mono" data-wlpx="' + sym + '">—</span></span>' +
-        '<span class="st" title="event state not yet canonical"></span>' +
+      row.innerHTML = '<span class="wl-sym s">' + sym.replace('$', '') + '</span>' +
+        '<span class="wl-px" data-wlpx="' + sym + '">—</span>' +
+        '<span class="wl-chg" data-wlchg="' + sym + '">—</span>' +
         '<button class="st-x" data-rm="' + sym + '" aria-label="Remove ' + sym + '" ' +
-        'style="background:none;border:none;color:var(--ed-ink-4);font-size:13px;padding:0 2px;display:none">×</button>';
+        'style="background:none;border:none;color:var(--ed-ink-4);font-size:14px;padding:0 2px;display:none">×</button>';
       row.addEventListener('click', function (e) {
         if (e.target.getAttribute('data-rm')) return;
         setTicker(sym);
@@ -329,7 +329,7 @@
     ['hSym', 'aiCtxSym', 'mvTicker'].forEach(function (id) { var el = document.getElementById(id); if (el) el.textContent = state.ticker.replace('$', ''); });
     var ss = document.getElementById('symSel'); if (ss) { buildSymSelect(); ss.value = state.ticker; }   // dropdown reflects the one state
     document.querySelectorAll('.wl-row').forEach(function (r) {
-      var s = r.querySelector('.info .s'); r.classList.toggle('sel', s && s.textContent === state.ticker);
+      var s = r.querySelector('.wl-sym'); r.classList.toggle('sel', s && s.textContent === state.ticker.replace('$', ''));
     });
     state.selStrike = null; state.selExpiry = null;   // a new ticker clears the shared selection
     loadExpiries(state.ticker);       // refresh the expiry dropdown from /api/expiries for the new ticker
@@ -416,11 +416,26 @@
       } else chg.textContent = '';
     }
     setFeed(q.feedCls, q.feedLabel, q.ageLabel);
+    setWlRow(state.ticker, (q.spot != null ? q.spot : null), q.chgPct);   // the selected row reuses this one quote
   }
   function chgPctFor(tkey, lw) {
     if (!lw) return null;
     var k = ({ SPY: 'spy', QQQ: 'qqq', IWM: 'iwm' })[tkey];
     return k ? lw[k + '_chg_pct'] : null;
+  }
+  // watchlist quotes: NO second owner — the values come ONLY from the same header quote / analytics
+  // the shell already reads (selected ticker's spot+chg; SPY/QQQ/IWM chg from analytics_lightweight).
+  // Every other row honestly shows "—" (no canonical multi-ticker quote source in this shell).
+  function setWlRow(sym, spot, chgPct) {
+    var key = (sym || '').replace('$', '');
+    var pe = document.querySelector('.wl-px[data-wlpx="' + sym + '"]') || document.querySelector('.wl-px[data-wlpx="' + key + '"]');
+    if (pe && spot != null) pe.textContent = fmt(spot);
+    var ce = document.querySelector('.wl-chg[data-wlchg="' + sym + '"]') || document.querySelector('.wl-chg[data-wlchg="' + key + '"]');
+    if (ce && chgPct != null) { ce.textContent = (chgPct >= 0 ? '+' : '') + fmt(chgPct) + '%'; ce.className = 'wl-chg ' + (chgPct >= 0 ? 'pos' : 'neg'); }
+  }
+  function paintWatchlistLW(lw) {   // SPY/QQQ/IWM change from the already-fetched analytics_lightweight
+    if (!lw) return;
+    setWlRow('SPY', null, lw.spy_chg_pct); setWlRow('QQQ', null, lw.qqq_chg_pct); setWlRow('IWM', null, lw.iwm_chg_pct);
   }
 
   var _sse = null, _sseUp = false, _lastSseTs = 0, _l1Gen = {}, _l1Ts = {};
@@ -447,6 +462,7 @@
       paintQuote({ spot_disp: p.spot_disp, spot: p.spot, bid: p.bid, ask: p.ask,
         chgPct: chgPctFor(state.ticker, p.analytics_lightweight),
         feedCls: '', feedLabel: 'LIVE', ageLabel: ageMs != null ? ageMs + 'ms' : 'push' });
+      paintWatchlistLW(p.analytics_lightweight);
     });
     _sse.onerror = function () { _sseUp = false; };   // fall back to polling; the browser reconnects
   }
@@ -482,6 +498,7 @@
         paintQuote({ spot_disp: d.spot_disp, spot: d.spot, bid: d.bid, ask: d.ask,
           chgPct: chgPctFor(state.ticker, d.analytics_lightweight || {}),
           feedCls: healthy ? '' : 'warn', feedLabel: healthy ? 'LIVE' : 'DEGRADED', ageLabel: age });
+        paintWatchlistLW(d.analytics_lightweight);
       })
       .catch(function () { if (g === _hdrGen) setFeed('stale', 'OFFLINE', 'no console'); });
   }

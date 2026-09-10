@@ -87,7 +87,7 @@ test.describe('ticker / expiry / measure controls', () => {
     await expect(page.locator('#symSel')).toHaveValue('SPY');
     await page.locator('#symSel').selectOption('QQQ');
     await expect(page.locator('#hSym')).toHaveText('QQQ');                        // header
-    await expect(page.locator('.wl-row.sel .info .s')).toHaveText('QQQ');         // watchlist selection
+    await expect(page.locator('.wl-row.sel .wl-sym')).toHaveText('QQQ');          // watchlist selection
     await expect(page.locator('#mvTicker')).toHaveText('QQQ');                    // panel header
     // the heatmap refetched for QQQ (spot 480 -> a 480 strike row exists)
     await expect(page.locator('#view-heatmap .hstrike', { hasText: '480' }).first()).toBeVisible();
@@ -95,7 +95,7 @@ test.describe('ticker / expiry / measure controls', () => {
 
   test('watchlist click keeps the ticker dropdown synchronized', async ({ page }) => {
     await page.goto('/console', { waitUntil: 'domcontentloaded' });
-    await page.locator('.wl-row .info .s', { hasText: 'IWM' }).click();
+    await page.locator('.wl-row .wl-sym', { hasText: 'IWM' }).click();
     await expect(page.locator('#symSel')).toHaveValue('IWM');
   });
 });
