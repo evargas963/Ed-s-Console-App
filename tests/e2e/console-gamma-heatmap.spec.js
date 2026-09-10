@@ -356,10 +356,12 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(banner).toContainText('PRIOR SESSION REFERENCE');
     await expect(banner).toContainText('2026-09-09');
     expect((await banner.getAttribute('title') || '').length).toBeGreaterThan(20);
-    // WIDER
+    // WIDER: 23 rows, up to twice the Auto column budget (nearest unexpired first, expired labelled)
     await page.locator('#scopeCtl .scbtn', { hasText: 'Wider' }).click();
     await expect(rows).toHaveCount(23);
     await expect(page.locator('#heatBody .scope-note')).toContainText('23 of 116 strikes');
+    const widerCols = await cols.count();
+    expect(widerCols).toBeGreaterThanOrEqual(nCols); expect(widerCols).toBeLessThanOrEqual(2 * nCols);
     // ALL AVAILABLE: the complete population, every column (expired one labelled), same row height, scrolls
     await page.locator('#scopeCtl .scbtn', { hasText: 'All available' }).click();
     await expect(rows).toHaveCount(116);
@@ -371,8 +373,14 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     expect(await page.locator('#heatBody .hcell').count()).toBe(116 * 16);                  // no data loss
     const allRowH = await rows.first().evaluate((el) => el.getBoundingClientRect().height);
     expect(allRowH).toBeGreaterThanOrEqual(30);                                              // never shrunk to fit
+    // columns are never crushed either: every expiration column keeps a legible width and the grid
+    // scrolls horizontally past the panel instead of compressing (MEASURED live 216x34 overprinted)
+    const colWidths = await cols.evaluateAll((els) => els.map((el) => el.getBoundingClientRect().width));
+    expect(Math.min(...colWidths)).toBeGreaterThanOrEqual(80);
     const scrolls = await page.locator('#heatBody .heat-wrap').evaluate((el) => el.scrollHeight > el.clientHeight + 40);
     expect(scrolls).toBe(true);
+    const scrollsX = await page.locator('#heatBody .heat-wrap').evaluate((el) => el.scrollWidth > el.clientWidth + 40);
+    expect(scrollsX).toBe(true);
     await page.screenshot({ path: 'test-results/gamma-real-116x16-all.png', fullPage: false });
     await page.locator('#scopeCtl .scbtn', { hasText: 'Auto' }).click();
     await expect(rows).toHaveCount(11);

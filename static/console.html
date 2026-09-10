@@ -399,8 +399,13 @@
 
   /* REAL-DATA DENSITY REPAIR (2026-09-10): the approved workstation shows ~11 legible strike rows in
      the hero. Rows keep this height in every scope; All available scrolls the complete population. */
-  .heat{font-size:13.5px}
+  .heat{font-size:13.5px;width:max-content;min-width:100%}
   .heat th,.heat td{height:31px}
+  /* MEASURED on the live 216x34 surface (2026-09-10): without a floor, 34 expiration columns compressed
+     into the panel width and overprinted. A column never renders narrower than a legible signed value;
+     the grid grows past the panel and .heat-wrap scrolls horizontally (Wider / All available). */
+  .heat .hexp,.heat .hcell{min-width:84px}
+  .heat .hstrike,.heat .hcorner{min-width:70px}
   .heat .hstrike{font-weight:600;font-size:13.5px}
   .heat .hstrike.spot{font-weight:800;font-size:14px}
   .heat tr.spotrow td{box-shadow:inset 0 -2px 0 var(--ed-accent),inset 0 2px 0 var(--ed-accent)}

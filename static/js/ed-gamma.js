@@ -103,8 +103,12 @@
       var pool = unexpired.length ? unexpired : allCols;      // nothing unexpired: show what exists, labelled
       viewCols = pool.slice(0, autoColCount(host));
       expiredHidden = allCols.length - unexpired.length;
+    } else if (scope === 'wider') {
+      // twice the Auto column budget: nearest unexpired first, then expired (labelled); the grid scrolls
+      var expiredCols = allCols.filter(function (ix) { return exps[ix].expired === true; });
+      viewCols = unexpired.concat(expiredCols).slice(0, 2 * autoColCount(host)).sort(function (a, b) { return a - b; });
     } else {
-      viewCols = allCols;
+      viewCols = allCols;                                       // every canonical column, scrolled at legible width
     }
     _lastSurface = surface;   // cached so a theme switch can re-render without a refetch
     // #1: skip the full table rebuild when the canonical surface REVISION (and the viewport choice)
