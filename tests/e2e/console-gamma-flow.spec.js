@@ -252,7 +252,7 @@ test.describe('D — Gamma Flow subview (EdStream contract binding)', () => {
     await page.locator('#subnav .tab', { hasText: 'Flow' }).click();
     expect(ctx.posts).toBe(posts1);
     // ticker change clears the desired locally, no POST
-    await page.locator('#symSel').selectOption('QQQ');
+    await page.locator('#symInput').fill('QQQ'); await page.locator('#symInput').press('Enter');
     await expect(page.locator('#flowBody')).toContainText('Select a Call or Put contract');
     expect(await page.evaluate(() => window.EdStream.getDesired())).toBeNull();
     expect(ctx.posts).toBe(posts1);                                                // clearing never POSTs

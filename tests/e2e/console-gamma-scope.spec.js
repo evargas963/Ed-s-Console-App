@@ -16,8 +16,10 @@
  */
 const { test, expect } = require('@playwright/test');
 
-// spot 100, 41 strikes 80..120 step 1. AUTO GEX ±6% -> 94..106 (13). WIDER ±12% -> 88..112 (25).
-// ALL -> 41. Chart AUTO ±4% -> 96..104 (9).
+// spot 100, 41 strikes 80..120 step 1. The ONE scope policy is a strike COUNT around spot (real-data
+// repair 2026-09-10: a percentage window kept 61 of 116 real SPY strikes and crushed the panels):
+// AUTO -> 11 strikes centred on spot (95..105). WIDER -> 23 (89..111). ALL -> 41. Same policy for the
+// heatmap, the Chart and GEX-by-strike.
 const STRIKES_WIDE = (function () {
   const all = [];
   for (let k = 120; k >= 80; k--) all.push([k, (k % 2 ? 1 : -1) * (100000 + k * 10), 1000]);
@@ -78,11 +80,17 @@ test.describe('#3 Gamma presentation-scope (view-window disclosure)', () => {
     const note = gbs.locator('.scope-note');
     await expect(note).toBeVisible();
     // AUTO: only the near-money window is shown, and the clip is disclosed (not silent).
-    // spot 100, GBS base +/-6% -> strikes 94..106 -> 13 of 41 (deterministic; retrying counts).
+    // spot 100, 11 strikes around spot -> 95..105 -> 11 of 41 (deterministic; retrying counts).
     await expect(note).toContainText('Auto');
-    await expect(note).toContainText('13 of 41 strikes');
+    await expect(note).toContainText('11 strikes around spot');
+    await expect(note).toContainText('11 of 41 strikes');
     await expect(note.locator('.clip')).toContainText('outside view');
-    await expect(gbs.locator('.gbs-row')).toHaveCount(13);
+    await expect(gbs.locator('.gbs-row')).toHaveCount(11);
+    await expect(gbs.locator('.gbs-row').first().locator('.gbs-k')).toHaveText('105');
+    await expect(gbs.locator('.gbs-row').last().locator('.gbs-k')).toHaveText('95');
+    // rows keep a legible height at real strike counts (never shrunk to fit)
+    const rowH = await gbs.locator('.gbs-row').first().evaluate((el) => el.getBoundingClientRect().height);
+    expect(rowH).toBeGreaterThanOrEqual(24);
     await page.screenshot({ path: 'test-results/gamma-scope-auto.png', fullPage: false });
     // ALL AVAILABLE: every canonical strike, no clip warning
     await page.locator('#scopeCtl .scbtn', { hasText: 'All available' }).click();
@@ -90,10 +98,13 @@ test.describe('#3 Gamma presentation-scope (view-window disclosure)', () => {
     await expect(gbs.locator('.scope-note .clip')).toHaveCount(0);
     await expect(gbs.locator('.gbs-row')).toHaveCount(41);
     await page.screenshot({ path: 'test-results/gamma-scope-all.png', fullPage: false });
-    // WIDER (+/-12% -> 88..112 -> 25 of 41) falls between AUTO and ALL
+    // ALL AVAILABLE keeps the same row height and SCROLLS the complete population
+    const allRowH = await gbs.locator('.gbs-row').first().evaluate((el) => el.getBoundingClientRect().height);
+    expect(allRowH).toBeGreaterThanOrEqual(24);
+    // WIDER (23 strikes around spot -> 89..111 -> 23 of 41) falls between AUTO and ALL
     await page.locator('#scopeCtl .scbtn', { hasText: 'Wider' }).click();
-    await expect(note).toContainText('25 of 41 strikes');
-    await expect(gbs.locator('.gbs-row')).toHaveCount(25);
+    await expect(note).toContainText('23 of 41 strikes');
+    await expect(gbs.locator('.gbs-row')).toHaveCount(23);
   });
 
   test('the Chart view also discloses its window and responds to the same control', async ({ page }) => {

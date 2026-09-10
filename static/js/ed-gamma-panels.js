@@ -75,11 +75,16 @@
     var src = document.getElementById('klSrc');
     if (src) {
       if (d.levels_stale) {
-        src.textContent = 'STALE ' + (d.levels_age_sec != null ? Math.round(d.levels_age_sec) + 's' : '') +
-          (d.levels_stale_reason ? ' · ' + d.levels_stale_reason : '');
+        // compact status grammar: state + age on the panel; the full reason is disclosed in the
+        // tooltip (title) rather than as a paragraph that consumes the Key Levels rail
+        var age = (window.EdShell && window.EdShell.fmtAge) ? window.EdShell.fmtAge(d.levels_age_sec)
+          : (d.levels_age_sec != null ? Math.round(d.levels_age_sec) + 's' : '');
+        src.textContent = 'STALE' + (age ? ' · ' + age : '');
+        src.title = d.levels_stale_reason || 'terrain levels are stale';
         src.style.color = 'var(--ed-stale)';
       } else {
         src.textContent = 'terrain · live';
+        src.title = '';
         src.style.color = '';
       }
       // #5: terrain levels are AGGREGATE across expiries; if the workspace filters to one expiry,
@@ -196,14 +201,18 @@
     }
     var spot = Number(d.spot);
     // #3: window around spot for readability (presentation), high strikes on top. The window is the
-    // ONE shared Gamma scope (Auto ±6% / Wider / All available); `rows` is the current canonical
-    // input, so the disclosure below states exactly how many of them are on screen vs clipped.
-    var GBS_BASE = 0.06;
-    var frac = (window.EdShell && window.EdShell.scopeWindow) ? window.EdShell.scopeWindow(GBS_BASE) : GBS_BASE;
-    var win = rows.filter(function (r) { return (isFinite(spot) && isFinite(frac)) ? Math.abs(r[0] - spot) <= spot * frac : true; })
-      .sort(function (a, b) { return b[0] - a[0]; });
+    // ONE shared Gamma scope policy (EdShell.scopeSelect: Auto 11 strikes around spot / Wider / All
+    // available) — a COUNT, never a percentage (real SPY terrain is 216 strikes at $1 spacing; a
+    // ±6% window kept 92 of them and crushed the panel). `rows` is the current canonical input, so
+    // the disclosure below states exactly how many of them are on screen vs clipped; All available
+    // scrolls the complete population at the same row height.
+    var asc = rows.slice().sort(function (a, b) { return a[0] - b[0]; });
+    var sel = (window.EdShell && window.EdShell.scopeSelect)
+      ? window.EdShell.scopeSelect(asc.map(function (r) { return r[0]; }), spot)
+      : { idx: asc.map(function (_r, i) { return i; }), shown: asc.length, total: asc.length };
+    var win = sel.idx.map(function (i) { return asc[i]; }).sort(function (a, b) { return b[0] - a[0]; });
     var note = (window.EdShell && window.EdShell.scopeNote)
-      ? window.EdShell.scopeNote({ base: GBS_BASE, total: rows.length, shown: win.length, spot: spot }) : '';
+      ? window.EdShell.scopeNote({ total: rows.length, shown: win.length }) : '';
     // #5: /api/terrain/strikes is aggregate across expiries; if the workspace filters to one expiry,
     // disclose that this ladder is still all-exp (per-expiry GEX-by-strike is not canonical here).
     var expOn = window.EdShell && window.EdShell.getExpiry && window.EdShell.getExpiry();

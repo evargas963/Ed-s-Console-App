@@ -50,18 +50,21 @@
       return;
     }
     // #3: price domain over bars + a strikes window around spot. The window is the ONE shared Gamma
-    // scope (Auto ±4% / Wider / All available); srows is the current canonical input, disclosed below.
-    var CHART_BASE = 0.04;
-    var frac = (window.EdShell && window.EdShell.scopeWindow) ? window.EdShell.scopeWindow(CHART_BASE) : CHART_BASE;
+    // scope policy (EdShell.scopeSelect: a strike COUNT around spot — Auto 11 / Wider / All available,
+    // shared with the heatmap and GEX-by-strike); srows is the current canonical input, disclosed below.
+    var asc = srows.slice().sort(function (a, b) { return a[0] - b[0]; });
+    var sel = (window.EdShell && window.EdShell.scopeSelect)
+      ? window.EdShell.scopeSelect(asc.map(function (r) { return r[0]; }), spot)
+      : { idx: asc.map(function (_r, i) { return i; }), shown: asc.length, total: asc.length };
+    var win = sel.idx.map(function (i) { return asc[i]; });
     var lo = Infinity, hi = -Infinity;
     bars.forEach(function (b) { if (b.l != null) lo = Math.min(lo, b.l); if (b.h != null) hi = Math.max(hi, b.h); });
-    var win = srows.filter(function (r) { return (isFinite(spot) && isFinite(frac)) ? Math.abs(r[0] - spot) <= spot * frac : true; });
     win.forEach(function (r) { lo = Math.min(lo, r[0]); hi = Math.max(hi, r[0]); });
     if (!isFinite(lo) || !isFinite(hi) || lo === hi) { lo = (spot || 100) * 0.98; hi = (spot || 100) * 1.02; }
     var pad = (hi - lo) * 0.04; lo -= pad; hi += pad;
 
     var note = (window.EdShell && window.EdShell.scopeNote)
-      ? window.EdShell.scopeNote({ base: CHART_BASE, total: srows.length, shown: win.length, spot: spot }) : '';
+      ? window.EdShell.scopeNote({ total: srows.length, shown: win.length }) : '';
     // #4: the chart overlays TWO different canonical clocks - disclose each separately, never merged.
     // price bars carry their own last-bar timestamp; the GEX profile rides the terrain generation.
     var _ab = (window.EdShell && window.EdShell.asOfBadge) ? window.EdShell.asOfBadge : function () { return ''; };

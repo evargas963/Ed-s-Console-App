@@ -76,65 +76,95 @@
     }
     var exps = surface.expirations || [], strikes = surface.strikes || [], cells = surface.cells || [];
     var spot = Number(surface.spot);
+    var ES = window.EdShell;
     // #5: expiry filter (from the canonical /api/expiries dropdown) is PRESENTATION — it selects which
-    // already-computed expiry column(s) to show; it never recomputes a value. All Expirations => every
-    // column present in the canonical surface input. A filter that matches nothing falls back to all.
-    var expFilter = (window.EdShell && window.EdShell.getExpiry) ? window.EdShell.getExpiry() : null;
-    var viewCols = [];
-    exps.forEach(function (e, ix) { if (!expFilter || e.expiry === expFilter) viewCols.push(ix); });
-    if (!viewCols.length) viewCols = exps.map(function (_e, ix) { return ix; });
-    // maxAbs over DISPLAYED cells — visual normalisation only, not a semantic value
+    // already-computed expiry column(s) to show; it never recomputes a value.
+    var expFilter = (ES && ES.getExpiry) ? ES.getExpiry() : null;
+    var scope = (ES && ES.getScope) ? ES.getScope() : 'auto';
+    // VIEWPORT (real-data repair 2026-09-10): the canonical surface is served complete (the live SPY
+    // reference is 116 strikes x 16 expirations) and the heatmap used to draw ALL of it, collapsing
+    // the approved ~11-row workstation into an unreadable dump. The display now SELECTS a viewport:
+    //   rows    = the ONE shell scope policy (EdShell.scopeSelect: Auto 11 strikes around spot,
+    //             Wider 23, All available = every canonical strike, scrolled at the same row height);
+    //   columns = the expiry filter's column, else in Auto the nearest UNEXPIRED expirations that fit
+    //             legibly (server-stamped `expired`; a prior session's 0DTE is never shown as current
+    //             structure), else every canonical column with expired ones labelled EXPIRED.
+    // Selection only: every cell value is the API value; nothing is dropped from the payload, and the
+    // counts (canonical vs shown) are disclosed in the header and the scope note.
+    var rowSel = (ES && ES.scopeSelect) ? ES.scopeSelect(strikes, spot)
+      : { idx: strikes.map(function (_s, i) { return i; }), shown: strikes.length, total: strikes.length };
+    var allCols = exps.map(function (_e, ix) { return ix; });
+    var unexpired = allCols.filter(function (ix) { return exps[ix].expired !== true; });
+    var viewCols, expiredHidden = 0;
+    if (expFilter) {
+      viewCols = allCols.filter(function (ix) { return exps[ix].expiry === expFilter; });
+      if (!viewCols.length) viewCols = allCols;
+    } else if (scope === 'auto') {
+      var pool = unexpired.length ? unexpired : allCols;      // nothing unexpired: show what exists, labelled
+      viewCols = pool.slice(0, autoColCount(host));
+      expiredHidden = allCols.length - unexpired.length;
+    } else {
+      viewCols = allCols;
+    }
     _lastSurface = surface;   // cached so a theme switch can re-render without a refetch
-    // #1: skip the full ~thousands-of-cells table rebuild when the canonical surface REVISION is
-    // unchanged (only the age advances between ~60s/roster terrain revisions). A theme switch clears
+    // #1: skip the full table rebuild when the canonical surface REVISION (and the viewport choice)
+    // is unchanged (only the age advances between terrain revisions). A theme switch clears
     // _lastRevision so the recolour still rebuilds.
-    var rev = surfaceRevision(surface);
+    var rev = surfaceRevision(surface) + '|' + scope + '|' + viewCols.length;
     if (rev === _lastRevision && host.querySelector('.heat')) {
       applyStatus(host, surface); applyStrikeHighlight(host);   // data unchanged: refresh status only
       return;
     }
     _lastRevision = rev;
     var heat = readHeatColors();
+    // maxAbs over DISPLAYED cells — visual normalisation only, not a semantic value
     var maxAbs = 0;
-    cells.forEach(function (r) { viewCols.forEach(function (j) { var v = (r.gex || [])[j]; if (v != null && Math.abs(v) > maxAbs) maxAbs = Math.abs(v); }); });
+    rowSel.idx.forEach(function (i) { var r = cells[i] || {}; viewCols.forEach(function (j) { var v = (r.gex || [])[j]; if (v != null && Math.abs(v) > maxAbs) maxAbs = Math.abs(v); }); });
 
     var spotIdx = nearestStrikeIndex(strikes, spot);
     // freshness / source — fail stale visibly (RC-UI-1 live-source rewire)
     var live = surface.live !== false, stale = !!surface.stale;
     var banner = buildBanner(surface);   // status banners (warming/requested/stale/ref + narrowed)
-    // C: emphasise the nearest-expiry (front) column — presentation only, no predictive meaning
+    // C: emphasise the nearest UNEXPIRED expiry (front) column — presentation only, no predictive meaning
     var frontCol = -1, minDte = Infinity;
-    exps.forEach(function (e, ix) { if (e.dte != null && e.dte < minDte) { minDte = e.dte; frontCol = ix; } });
+    exps.forEach(function (e, ix) { if (e.expired !== true && e.dte != null && e.dte < minDte) { minDte = e.dte; frontCol = ix; } });
     // B: a STALE / REFERENCE surface visually recedes (in addition to the banner)
     var recede = (!live || stale) ? ' recede' : '';
     var tbl = '<table class="heat"><thead><tr><th class="hcorner">Strike</th>';
     viewCols.forEach(function (j) {
-      var e = exps[j]; var dte = (e.dte === 0) ? '0DTE' : (e.dte != null ? e.dte + 'DTE' : '');
-      tbl += '<th class="hexp' + (j === frontCol ? ' col-front' : '') + '"><span class="d">' +
-        escapeHtml((e.expiry || '').slice(5)) + '</span><span class="dte">' + dte + '</span></th>';
+      var e = exps[j], expired = e.expired === true;
+      var dte = expired ? 'EXPIRED' : (e.dte === 0) ? '0DTE' : (e.dte != null ? e.dte + 'DTE' : '');
+      tbl += '<th class="hexp' + (j === frontCol ? ' col-front' : '') + (expired ? ' expired' : '') + '"' +
+        (expired ? ' title="this expiration has already expired — a prior-session column kept for reference, not current structure"' : '') +
+        '><span class="d">' + escapeHtml((e.expiry || '').slice(5)) + '</span><span class="dte">' + dte + '</span></th>';
     });
     tbl += '</tr></thead><tbody>';
-    for (var i = 0; i < cells.length; i++) {
-      var row = cells[i], isSpot = (i === spotIdx);
+    rowSel.idx.forEach(function (i) {
+      var row = cells[i] || { strike: strikes[i], gex: [] }, isSpot = (i === spotIdx);
       tbl += '<tr' + (isSpot ? ' class="spotrow"' : '') + '>' +
         '<th class="hstrike' + (isSpot ? ' spot' : '') + '">' + fmtStrike(row.strike) + '</th>';
       for (var jj = 0; jj < viewCols.length; jj++) {
         var j2 = viewCols[jj];
         var v = (row.gex || [])[j2];
         var st = cellStyle(v, maxAbs, heat);
-        tbl += '<td class="hcell' + (j2 === frontCol ? ' col-front' : '') + '" style="background:' + st.bg + ';color:' + st.fg + '" ' +
+        tbl += '<td class="hcell' + (j2 === frontCol ? ' col-front' : '') + (exps[j2].expired === true ? ' expired' : '') +
+          '" style="background:' + st.bg + ';color:' + st.fg + '" ' +
           'data-strike="' + row.strike + '" data-expiry="' + escapeHtml(exps[j2].expiry) + '" data-gex="' + (v == null ? '' : v) + '">' +
           (st.empty ? '' : formatUsd(v)) + '</td>';
       }
       tbl += '</tr>';
-    }
+    });
     tbl += '</tbody></table>';
+    // #3: the ONE disclosure line — how many canonical strikes / expirations are on screen vs clipped
+    var colsTxt = viewCols.length + ' of ' + exps.length + ' expirations' +
+      (expiredHidden ? ' (' + expiredHidden + ' expired hidden in Auto)' : '');
+    var note = (ES && ES.scopeNote) ? ES.scopeNote({ total: strikes.length, shown: rowSel.shown, extra: colsTxt }) : '';
     // the grid fills the panel; a compact vertical magnitude legend sits at its right edge (the
     // dollar value is printed in every cell — shade = |GEX$|), matching the approved reference.
     var vlegend = '<div class="heat-vlegend"><span class="bar"></span>' +
       '<span class="caps"><span class="t">High<br>Call<br>GEX</span><span class="m">0</span>' +
       '<span class="b">High<br>Put<br>GEX</span></span></div>';
-    host.innerHTML = banner +
+    host.innerHTML = banner + note +
       '<div class="heat-host"><div class="heat-main"><div class="heat-wrap' + recede + '">' +
       tbl + '</div></div>' + vlegend + '</div>';
 
@@ -166,6 +196,16 @@
     host.querySelectorAll('.hcell[data-strike="' + sel + '"]').forEach(function (n) { n.classList.add('sel-strike'); });
   }
 
+  // Auto column budget: the nearest expirations that stay legible at the approved cell width. The
+  // approved workstation shows ~11 columns at 1672px; a column narrower than MIN_COL_PX collapses
+  // the header and the signed value, so the count is capped by width, never the other way round.
+  var MIN_COL_PX = 84, MAX_AUTO_COLS = 11, MIN_AUTO_COLS = 3;
+  function autoColCount(host) {
+    var w = (host && host.clientWidth) || 0;
+    if (!w) return MAX_AUTO_COLS;
+    var avail = w - 70 /* strike column */ - 64 /* magnitude legend */;
+    return Math.max(MIN_AUTO_COLS, Math.min(MAX_AUTO_COLS, Math.floor(avail / MIN_COL_PX)));
+  }
   function fmtStrike(k) { return (Math.round(k * 100) / 100).toString(); }
   function escapeHtml(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
     return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]; }); }
@@ -197,18 +237,32 @@
       // collecting this symbol". Only the former may promise a next refresh.
       var onBoard = surface.on_board === true;
       var notCollecting = requested && !onBoard;
-      var label = warming ? 'LIVE SURFACE WARMING'
+      // WHAT is on screen (identity, server-stamped): a banked reference from a PRIOR session is named
+      // as such — a 2026-09-09 morning chain viewed on 2026-09-10 is never dressed as today's structure.
+      var prior = surface.prior_session === true;
+      var refLabel = !live ? ((prior ? 'PRIOR SESSION REFERENCE' : 'MORNING REFERENCE') +
+        (surface.et_date ? ' · ' + escapeHtml(surface.et_date) : '')) : '';
+      // WHERE the live surface stands (state)
+      var stateLabel = warming ? 'LIVE SURFACE WARMING'
         : notCollecting ? 'NOT COLLECTING'
         : requested ? 'LIVE SURFACE REQUESTED'
-        : (!live ? 'MORNING REFERENCE' : 'STALE');
-      var cls = warming ? 'warming'
+        : (live ? 'STALE' : '');
+      // identity class first (a reference surface always reads as REFERENCE), live-state class beside it
+      var cls = (!live ? 'ref ' : '') + (warming ? 'warming'
         : (requested && !notCollecting) ? 'warming'
-        : (!live ? 'ref' : 'stale');
-      var msg = notCollecting
-          ? (surface.degraded || 'live terrain collection is not currently active for this symbol')
-        : requested ? (surface.degraded || 'awaiting next eligible terrain refresh')
-        : (surface.degraded || (!live ? 'banked morning reference — not intraday' : 'live surface is stale'));
-      out += '<div class="heat-banner ' + cls + '">' + label + ' — ' + escapeHtml(msg) + '</div>';
+        : (live ? 'stale' : ''));
+      // CONCISE primary line; the full reason is disclosed in the tooltip (title) — never a paragraph
+      // that consumes the analytical panel.
+      var brief = !live
+        ? (prior ? 'banked chain from a prior session — not this session, not intraday' : 'banked morning chain — not intraday')
+        : 'live surface is stale';
+      var detail = surface.degraded
+        || (notCollecting ? 'live terrain collection is not currently active for this symbol'
+          : requested ? 'awaiting next eligible terrain refresh' : brief);
+      var text = [refLabel, stateLabel].filter(Boolean).join(' — ') + ' · ' + brief +
+        (notCollecting ? ' · collection is not currently active for this symbol' : '');
+      out += '<div class="heat-banner ' + cls + '" title="' + escapeHtml(detail) + '"><span class="hb-main">' + text +
+        '</span><span class="hb-more" aria-label="details">details</span></div>';
     }
     if (live && surface.chain_basis && surface.chain_basis !== 'full') {
       out += '<div class="heat-banner degraded">NARROWED — live chain basis "' + escapeHtml(surface.chain_basis) +
@@ -232,7 +286,10 @@
     var basis = (surface.coverage && surface.coverage.chain_basis) ? ' ' + surface.coverage.chain_basis : '';
     var el = document.getElementById('heatScope');
     if (el) {
-      el.textContent = strikes.length + '×' + exps.length + ' · spot ' + (isFinite(spot) ? spot.toFixed(2) : '—') + ' · ' + srcLabel + age + basis;
+      var shownRows = document.querySelectorAll('#heatBody .heat tbody tr').length;
+      var shownCols = document.querySelectorAll('#heatBody .heat thead .hexp').length;
+      var shown = (shownRows && shownCols) ? ' · ' + shownRows + '×' + shownCols + ' shown' : '';
+      el.textContent = strikes.length + '×' + exps.length + ' canonical' + shown + ' · spot ' + (isFinite(spot) ? spot.toFixed(2) : '—') + ' · ' + srcLabel + age + basis;
       el.title = (surface.coverage && surface.coverage.note) || '';
     }
   }
@@ -259,6 +316,10 @@
       var h = document.getElementById('heatBody'); if (h && _lastSurface) { _lastRevision = null; renderSurface(h, _lastSurface); }
     });
     document.addEventListener('ed:expiry', function () {   // #5: re-window columns to the selected expiry (client-side; same canonical surface)
+      var h = document.getElementById('heatBody'); if (!h) return; _lastRevision = null;
+      if (_lastSurface) renderSurface(h, _lastSurface); else load();
+    });
+    document.addEventListener('ed:scope', function () {    // #3: Auto / Wider / All available re-selects the viewport (same canonical surface)
       var h = document.getElementById('heatBody'); if (!h) return; _lastRevision = null;
       if (_lastSurface) renderSurface(h, _lastSurface); else load();
     });

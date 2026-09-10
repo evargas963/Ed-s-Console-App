@@ -151,6 +151,13 @@
   .ctrl select:focus-visible{border-color:var(--ed-accent);box-shadow:0 0 0 2px var(--ed-accent-bg)}
   .ctrl select option{background:var(--ed-panel);color:var(--ed-ink)}
   .ctrl .cv{position:absolute;right:10px;top:50%;transform:translateY(-50%);pointer-events:none;color:var(--ed-ink-3);font-size:8px}
+  /* active-instrument control: a typed symbol (same chrome as the selects); invalid form flashes */
+  .ctrl input{appearance:none;background:var(--ed-panel-2);color:var(--ed-ink);border:1px solid var(--ed-edge);border-radius:var(--ed-r);
+    font-family:var(--ed-sans);font-size:13px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:5px 10px;width:104px;outline:none}
+  .ctrl input:hover{border-color:var(--ed-accent-edge);background:var(--ed-panel-3)}
+  .ctrl input:focus-visible{border-color:var(--ed-accent);box-shadow:0 0 0 2px var(--ed-accent-bg)}
+  .ctrl input.invalid{border-color:var(--ed-neg);box-shadow:0 0 0 2px var(--ed-neg-bg,transparent)}
+  .ctrl input::placeholder{color:var(--ed-ink-4);font-weight:500}
   .ctrl .cv::before{content:"▼"}
   .aibtn{display:flex;align-items:center;gap:7px;padding:6px 13px;border:1px solid var(--ed-accent-edge);
     border-radius:var(--ed-r);color:var(--ed-accent-2);font-size:12.5px;letter-spacing:.04em}
@@ -388,6 +395,29 @@
   .gbs-scale{flex:none;display:flex;justify-content:space-between;font-family:var(--ed-sans);font-size:10.5px;
     color:var(--ed-ink-3);padding:7px 0 0;margin-top:6px;border-top:1px solid var(--ed-edge)}
   .gbs-scale .neg{color:var(--ed-neg-ink)} .gbs-scale .pos{color:var(--ed-pos-ink)}
+  .gbs-row{min-height:25px}   /* real strike counts never shrink a bar row; All available scrolls */
+
+  /* REAL-DATA DENSITY REPAIR (2026-09-10): the approved workstation shows ~11 legible strike rows in
+     the hero. Rows keep this height in every scope; All available scrolls the complete population. */
+  .heat{font-size:13.5px}
+  .heat th,.heat td{height:31px}
+  .heat .hstrike{font-weight:600;font-size:13.5px}
+  .heat .hstrike.spot{font-weight:800;font-size:14px}
+  .heat tr.spotrow td{box-shadow:inset 0 -2px 0 var(--ed-accent),inset 0 2px 0 var(--ed-accent)}
+  .heat tr.spotrow th.hstrike{box-shadow:inset 3px 0 0 var(--ed-accent)}
+  /* an expired expiration (server-stamped): kept for reference in Wider / All available, never
+     presented as current structure */
+  .heat .hexp.expired .d{color:var(--ed-ink-4);text-decoration:line-through}
+  .heat .hexp.expired .dte{color:var(--ed-stale);font-weight:700}
+  .heat .hcell.expired{opacity:.42;filter:saturate(.35)}
+  #heatBody .scope-note{position:static;padding:0 0 6px}
+  /* concise status banner: one line, details in the tooltip */
+  .heat-banner{display:flex;align-items:center;justify-content:space-between;gap:12px;cursor:help;white-space:nowrap;overflow:hidden}
+  .heat-banner .hb-main{overflow:hidden;text-overflow:ellipsis}
+  .heat-banner .hb-more{flex:none;opacity:.7;text-decoration:underline dotted}
+  /* a REFERENCE surface always looks like a reference (identity), whatever the live-surface state;
+     the accent stripe marks a live refresh pending/warming */
+  .heat-banner.ref.warming,.heat-banner.ref.stale{background:var(--ed-proxy-bg);color:var(--ed-proxy);border:1px dashed var(--ed-proxy);box-shadow:inset 3px 0 0 var(--ed-accent)}
 
   /* strike detail (vendor chain) */
   .sd{width:100%;border-collapse:collapse;font-family:var(--ed-sans);font-size:13.5px;font-variant-numeric:tabular-nums}
@@ -518,7 +548,7 @@
       <button class="vtab" data-view="levels">Levels</button>
       <button class="vtab" data-view="multimap">Multi-Map</button>
       <div class="ctrls">
-        <label class="ctrl" title="Workspace symbol"><select id="symSel" aria-label="Symbol"></select><span class="cv"></span></label>
+        <label class="ctrl ctrl-sym" title="Active instrument — type any Schwab symbol and press Enter; the watchlist is not changed"><input id="symInput" list="symList" aria-label="Symbol" autocomplete="off" spellcheck="false" maxlength="13" placeholder="SYMBOL"><datalist id="symList"></datalist></label>
         <label class="ctrl" title="Expiration filter (from /api/expiries)"><select id="expSel" aria-label="Expiration"><option value="">All Expirations</option></select><span class="cv"></span></label>
         <label class="ctrl" title="Measure"><select id="measureSel" aria-label="Measure"><option value="gex">GEX</option></select><span class="cv"></span></label>
         <div class="scope" id="scopeCtl" hidden title="View window around spot for the chart / GEX-by-strike panels — presentation only, never changes a value">

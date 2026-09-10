@@ -290,7 +290,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await page.waitForTimeout(13000);
     expect(hits.length).toBe(s1 + 1);
     // (5) ticker change -> exactly one read, for the new ticker in the same expiry context
-    await page.locator('#symSel').selectOption('QQQ');
+    await page.locator('#symInput').fill('QQQ'); await page.locator('#symInput').press('Enter');
     await expect.poll(() => hits.length, { timeout: 20000 }).toBe(s1 + 2);
     expect(hits[hits.length - 1]).toContain('ticker=QQQ');
     await page.waitForTimeout(13000);
@@ -311,6 +311,72 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await page.waitForTimeout(15000);
     expect(hits.length).toBe(s1 + 4);
     PLANE.session = 'RTH'; PLANE.versions = Object.assign({}, BASE_VERSION);
+  });
+
+  // REAL-DATA VIEWPORT PROOF (2026-09-10 visual FAIL on the running candidate): the fixture is the
+  // REAL /api/options/gamma-surface response captured from the candidate at 06:35 CDT — SPY, 116
+  // strikes x 16 expirations, banked_morning_reference from 2026-09-09 — plus the two fields the
+  // server now stamps (session_date_et / prior_session / per-expiration expired; the pre-fix capture
+  // predates them). Nothing else is altered. The proof: the canonical population is intact and
+  // disclosed, Auto selects a legible viewport, Wider widens it, All available exposes everything at
+  // the same row height, and an expired prior-session column is never dressed as current structure.
+  test('REAL-DATA VIEWPORT: 116x16 canonical surface -> Auto 11 rows x <=11 unexpired columns; Wider 23; All 116x16 legible + EXPIRED labelled; no data loss', async ({ page }) => {
+    const REAL = require('./fixtures/real_spy_gamma_surface_116x16_premarket_20260910.json');
+    const stamped = Object.assign({}, REAL, {
+      session_date_et: '2026-09-10', prior_session: true,
+      expirations: REAL.expirations.map((e) => Object.assign({}, e, { expired: e.expiry < '2026-09-10' })),
+    });
+    expect(stamped.strikes.length).toBe(116); expect(stamped.expirations.length).toBe(16);
+    expect(stamped.expirations.filter((e) => e.expired).map((e) => e.expiry)).toEqual(['2026-09-09']);
+    await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(stamped) }));
+    await page.setViewportSize({ width: 1672, height: 941 });
+    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    const rows = page.locator('#heatBody .heat tbody tr');
+    const cols = page.locator('#heatBody .heat thead .hexp');
+    // canonical population disclosed; Auto viewport = 11 rows centred on spot 764.15 -> 759..769
+    await expect(page.locator('#heatScope')).toContainText('116×16 canonical');
+    await expect(rows).toHaveCount(11);
+    await expect(page.locator('#heatBody .scope-note')).toContainText('11 of 116 strikes');
+    await expect(page.locator('#heatBody .scope-note .clip')).toContainText('105 outside view');
+    await expect(rows.first().locator('.hstrike')).toHaveText('759');
+    await expect(rows.last().locator('.hstrike')).toHaveText('769');
+    await expect(page.locator('#heatBody tr.spotrow .hstrike')).toHaveText('764');
+    const nCols = await cols.count();
+    expect(nCols).toBeGreaterThanOrEqual(3); expect(nCols).toBeLessThanOrEqual(11);
+    await expect(page.locator('#heatBody .heat thead .hexp.expired')).toHaveCount(0);       // the expired 09-09 column is not current structure
+    await expect(page.locator('#heatBody .scope-note')).toContainText('1 expired hidden in Auto');
+    await expect(page.locator('#heatBody .scope-note')).toContainText(nCols + ' of 16 expirations');
+    // legible density: rows at the approved height, cell text at the workstation size
+    const rowH = await rows.first().evaluate((el) => el.getBoundingClientRect().height);
+    expect(rowH).toBeGreaterThanOrEqual(30);
+    const cellFont = await page.locator('#heatBody .hcell').first().evaluate((el) => parseFloat(getComputedStyle(el).fontSize));
+    expect(cellFont).toBeGreaterThanOrEqual(13);
+    // prior-session reference is unmistakable and concise (details in the tooltip, not a paragraph)
+    const banner = page.locator('#heatBody .heat-banner.ref');
+    await expect(banner).toContainText('PRIOR SESSION REFERENCE');
+    await expect(banner).toContainText('2026-09-09');
+    expect((await banner.getAttribute('title') || '').length).toBeGreaterThan(20);
+    // WIDER
+    await page.locator('#scopeCtl .scbtn', { hasText: 'Wider' }).click();
+    await expect(rows).toHaveCount(23);
+    await expect(page.locator('#heatBody .scope-note')).toContainText('23 of 116 strikes');
+    // ALL AVAILABLE: the complete population, every column (expired one labelled), same row height, scrolls
+    await page.locator('#scopeCtl .scbtn', { hasText: 'All available' }).click();
+    await expect(rows).toHaveCount(116);
+    await expect(cols).toHaveCount(16);
+    await expect(page.locator('#heatBody .heat thead .hexp.expired')).toHaveCount(1);
+    await expect(page.locator('#heatBody .heat thead .hexp.expired .dte')).toHaveText('EXPIRED');
+    await expect(page.locator('#heatBody .scope-note')).toContainText('116 of 116 strikes');
+    await expect(page.locator('#heatBody .scope-note .clip')).toHaveCount(0);
+    expect(await page.locator('#heatBody .hcell').count()).toBe(116 * 16);                  // no data loss
+    const allRowH = await rows.first().evaluate((el) => el.getBoundingClientRect().height);
+    expect(allRowH).toBeGreaterThanOrEqual(30);                                              // never shrunk to fit
+    const scrolls = await page.locator('#heatBody .heat-wrap').evaluate((el) => el.scrollHeight > el.clientHeight + 40);
+    expect(scrolls).toBe(true);
+    await page.screenshot({ path: 'test-results/gamma-real-116x16-all.png', fullPage: false });
+    await page.locator('#scopeCtl .scbtn', { hasText: 'Auto' }).click();
+    await expect(rows).toHaveCount(11);
+    await page.screenshot({ path: 'test-results/gamma-real-116x16-auto.png', fullPage: false });
   });
 
   test('workspace switching + editable watchlist foundation', async ({ page }) => {

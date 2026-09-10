@@ -13567,6 +13567,24 @@ def project_gamma_surface(chain: list, spot: float) -> dict:
     }
 
 
+def _stamp_surface_session(surface: dict, *, reference_date: Optional[str]) -> dict:
+    """Session identity for a projected surface, stamped by the ONE ET clock (server side — a
+    browser never decides what day it is): today's ET session date, whether the surface is a
+    PRIOR-session reference (a banked capture from an earlier trading day viewed today), and which
+    expiration columns have already expired relative to today. Presentation reads these flags to
+    label an expired 0DTE column and a prior-session reference for what they are; it never infers
+    them. No cell value is touched."""
+    today = now_et().strftime("%Y-%m-%d")      # time_et: the ONE ET clock / session-calendar authority
+    out = dict(surface)
+    out["expirations"] = [
+        dict(e, expired=bool(e.get("expiry") and str(e["expiry"]) < today))
+        for e in (surface.get("expirations") or [])
+    ]
+    out["session_date_et"] = today
+    out["prior_session"] = bool(reference_date and str(reference_date) < today)
+    return out
+
+
 @app.get("/api/options/gamma-surface")
 def get_options_gamma_surface(ticker: str = Query(default=DEFAULT_TICKER)):
     """Strike × expiration signed GEX$ surface (cell = net_gex_1pct) through the ONE canonical
@@ -13615,7 +13633,7 @@ def get_options_gamma_surface(ticker: str = Query(default=DEFAULT_TICKER)):
                          "full strike_range=ALL book. Proven-complete captures are per-expiry "
                          "(complete_chain_captures), not exposed by this surface"),
             },
-            **surf,
+            **_stamp_surface_session(surf, reference_date=None),
             "provenance": {
                 "producer": "math_exposure_core.compute_exposures_by_strike",
                 "source": "live_terrain_wide_chain (_terrain_refresh_one, strike_count-width basis)",
@@ -13675,7 +13693,7 @@ def get_options_gamma_surface(ticker: str = Query(default=DEFAULT_TICKER)):
                 "coverage": {"window": "banked_morning_wide", "strike_count": len(surface.get("strikes") or []),
                              "note": ("banked morning wide reference — strike-count bounded, not intraday "
                                       "and not proven complete (not strike_range=ALL)")},
-                **surface,
+                **_stamp_surface_session(surface, reference_date=str(et_date)),
                 "provenance": {
                     "producer": "math_exposure_core.compute_exposures_by_strike",
                     "source": "newest_banked_wide_chain:option_chain_morning_full",

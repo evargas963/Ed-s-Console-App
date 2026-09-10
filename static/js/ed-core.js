@@ -58,7 +58,6 @@
   // base), WIDER (2x that base), ALL (every strike in the current canonical input). Presentation
   // only — the window never changes any value, only which canonical strikes are on screen.
   var SCOPE_MODES = ['auto', 'wider', 'all'];
-  var SCOPE_WIDER_MULT = 2;
   function _lsScope() { var v = _ls('ed_scope', 'auto'); return SCOPE_MODES.indexOf(v) !== -1 ? v : 'auto'; }
   var state = {
     ticker: (_ls(TICKER_KEY, 'SPY')).toUpperCase(),
@@ -261,24 +260,40 @@
     state.scope = mode; _lsSet('ed_scope', mode); reflectScope();
     document.dispatchEvent(new CustomEvent('ed:scope', { detail: { scope: mode } }));
   }
-  // map a panel's AUTO near-money base fraction to the effective window for the current mode.
-  // ALL -> Infinity (no clip: every canonical strike). This is the ONE scope policy.
-  function scopeWindow(baseFrac) {
-    if (state.scope === 'all') return Infinity;
-    if (state.scope === 'wider') return baseFrac * SCOPE_WIDER_MULT;
-    return baseFrac;
+  // The ONE scope policy is a COUNT of canonical strikes around spot — never a percentage.
+  // MEASURED 2026-09-10 on the live SPY reference surface (116 strikes at $1 spacing, spot 764):
+  // a ±4% window kept 61 strikes and the heatmap rendered all 116, collapsing the approved ~11-row
+  // workstation into an unreadable dump. Auto = the approved workstation density; Wider = a larger
+  // window; All available = every canonical strike (scrolled at the same row height, never shrunk).
+  // This selects WHICH canonical rows are displayed; no value is computed or changed here.
+  var SCOPE_ROWS = { auto: 11, wider: 23 };
+  function scopeRows() { return state.scope === 'all' ? Infinity : (SCOPE_ROWS[state.scope] || SCOPE_ROWS.auto); }
+  // Indices into an ASCENDING strike array: the scopeRows() strikes nearest to spot, centred on the
+  // strike nearest spot and clamped to the array's ends (so a spot near the edge still shows a full
+  // window). ALL -> every index. Pure presentation selection.
+  function scopeSelect(strikes, spot) {
+    var total = strikes.length, n = scopeRows();
+    if (!total) return { idx: [], shown: 0, total: 0 };
+    if (!isFinite(n) || n >= total) return { idx: strikes.map(function (_s, i) { return i; }), shown: total, total: total };
+    var sp = Number(spot), c = Math.floor(total / 2), best = Infinity;
+    if (isFinite(sp)) strikes.forEach(function (k, i) { var d = Math.abs(Number(k) - sp); if (d < best) { best = d; c = i; } });
+    var lo = c - Math.floor((n - 1) / 2), hi = lo + n - 1;
+    if (lo < 0) { hi -= lo; lo = 0; }
+    if (hi > total - 1) { lo -= (hi - (total - 1)); hi = total - 1; if (lo < 0) lo = 0; }
+    var idx = []; for (var i = lo; i <= hi; i++) idx.push(i);
+    return { idx: idx, shown: idx.length, total: total };
   }
   // #3: the ONE disclosure line every windowed panel prints — states the mode, the window, and how
   // many of the canonical strikes are on screen vs clipped. A clip is NEVER silent: when strikes are
-  // outside the window the count is shown with how to widen. total/shown are canonical-input counts.
+  // outside the window the count is shown with how to widen. total/shown are canonical-input counts;
+  // `extra` lets a panel add its own second dimension (the heatmap's expiration columns).
   function scopeNote(opts) {
     opts = opts || {};
     var total = opts.total | 0, shown = opts.shown | 0, hidden = Math.max(0, total - shown);
-    var frac = scopeWindow(opts.base || 0);
-    var winTxt = isFinite(frac) ? ('±' + (frac * 100).toFixed(frac * 100 < 10 ? 1 : 0) + '% around spot')
-      : 'all available strikes';
+    var n = scopeRows();
+    var winTxt = isFinite(n) ? (n + ' strikes around spot') : 'all available strikes';
     var main = (SCOPE_LABEL[state.scope] || state.scope) + ' · ' + winTxt + ' · ' +
-      shown + ' of ' + total + ' strikes';
+      shown + ' of ' + total + ' strikes' + (opts.extra ? ' · ' + opts.extra : '');
     var clip = hidden > 0
       ? '<span class="clip">' + hidden + ' outside view — widen with Wider / All available</span>' : '';
     return '<div class="scope-note"><span>' + main + '</span>' + clip + '</div>';
@@ -302,9 +317,10 @@
     var parts = [];
     if (o.label) parts.push(_escBadge(o.label));
     if (age) parts.push(age);
-    if (o.stale && o.reason) parts.push(_escBadge(o.reason));
-    return '<span class="' + cls + '" title="' + _escBadge(o.title || o.label || '') + '">' +
-      parts.join(' · ') + '</span>';
+    if (o.stale) parts.push('STALE');
+    // the detailed reason is DISCLOSED in the tooltip — never as a paragraph inside an analytical panel
+    var title = (o.stale && o.reason) ? o.reason : (o.title || o.label || '');
+    return '<span class="' + cls + '" title="' + _escBadge(title) + '">' + parts.join(' · ') + '</span>';
   }
 
   // ================= watchlist (editable foundation, localStorage) =================
@@ -339,14 +355,24 @@
     host.querySelectorAll('[data-rm]').forEach(function (b) {
       b.addEventListener('click', function (e) { e.stopPropagation(); removeSymbol(b.getAttribute('data-rm')); });
     });
-    buildSymSelect();   // keep the ticker dropdown options in sync with the watchlist
+    buildSymList();   // the watchlist is only a SUGGESTION list for the instrument control
   }
+  // WATCHLIST = persistent symbols the operator chose to monitor. Adding is an explicit action
+  // (the rail's "+ Add symbol"); analysing an instrument never adds it.
   function addSymbol(sym) {
-    sym = (sym || '').trim().toUpperCase();
+    sym = normSym(sym);
     if (!sym) return;
     var list = loadWL();
     if (list.indexOf(sym) === -1) { list.push(sym); saveWL(list); }
     renderWatchlist(); setTicker(sym);
+  }
+  // ACTIVE INSTRUMENT = any supported Schwab symbol the operator wants to analyse now. The client
+  // only normalises the FORM (upper-case, the vendor's symbol alphabet); whether the instrument is
+  // real/supported is decided by the backend, which fails closed (state_error / no chain) — nothing
+  // is fabricated for an unknown symbol, and no hard-coded allowlist exists here.
+  function normSym(raw) {
+    var s = String(raw || '').trim().toUpperCase();
+    return /^[$^]?[A-Z0-9][A-Z0-9.\-\/]{0,11}$/.test(s) ? s : null;
   }
   function removeSymbol(sym) {
     var list = loadWL().filter(function (s) { return s !== sym; });
@@ -358,7 +384,7 @@
     state.ticker = (sym || '').toUpperCase();
     try { localStorage.setItem(TICKER_KEY, state.ticker); } catch (e) {}
     ['hSym', 'aiCtxSym', 'mvTicker'].forEach(function (id) { var el = document.getElementById(id); if (el) el.textContent = state.ticker.replace('$', ''); });
-    var ss = document.getElementById('symSel'); if (ss) { buildSymSelect(); ss.value = state.ticker; }   // dropdown reflects the one state
+    var si = document.getElementById('symInput'); if (si) { si.value = state.ticker; buildSymList(); }   // the control reflects the ONE state
     document.querySelectorAll('.wl-row').forEach(function (r) {
       var s = r.querySelector('.wl-sym'); r.classList.toggle('sel', s && s.textContent === state.ticker.replace('$', ''));
     });
@@ -369,14 +395,21 @@
     document.dispatchEvent(new CustomEvent('ed:ticker', { detail: { ticker: state.ticker } }));
   }
 
-  // ---- symbol dropdown: the value IS the control; options are the watchlist + current ticker ----
-  function buildSymSelect() {
-    var sel = document.getElementById('symSel'); if (!sel) return;
+  // ---- instrument control: a typed symbol IS the control (institutional selector: type -> Enter ->
+  //      the whole workspace changes context). The watchlist only feeds the suggestion list; it is
+  //      never a membership test and never changes when an instrument is analysed. ----
+  function buildSymList() {
+    var dl = document.getElementById('symList'); if (!dl) return;
     var list = loadWL().slice();
     if (list.indexOf(state.ticker) === -1) list.unshift(state.ticker);
-    sel.innerHTML = list.map(function (s) {
-      return '<option value="' + s + '"' + (s === state.ticker ? ' selected' : '') + '>' + s.replace('$', '') + '</option>';
-    }).join('');
+    dl.innerHTML = list.map(function (s) { return '<option value="' + s + '"></option>'; }).join('');
+  }
+  function commitSymInput(input) {
+    var v = normSym(input.value);
+    if (!v) { input.value = state.ticker; input.classList.add('invalid'); setTimeout(function () { input.classList.remove('invalid'); }, 900); return; }
+    input.value = v;
+    if (v !== state.ticker) setTicker(v);   // analyse it; the watchlist is untouched
+    input.blur();
   }
 
   // ---- expiry dropdown: populated ONLY from the canonical /api/expiries (never hard-coded) ----
@@ -613,9 +646,14 @@
       b.addEventListener('click', function () { setScope(b.getAttribute('data-scope')); });
     });
     // operator dropdowns: ticker (one symbol state) + expiry (from /api/expiries)
-    buildSymSelect();
-    var symSel = document.getElementById('symSel');
-    if (symSel) symSel.addEventListener('change', function () { setTicker(symSel.value); });
+    buildSymList();
+    var symInput = document.getElementById('symInput');
+    if (symInput) {
+      symInput.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); commitSymInput(symInput); } if (e.key === 'Escape') { symInput.value = state.ticker; symInput.blur(); } });
+      symInput.addEventListener('change', function () { commitSymInput(symInput); });   // datalist pick / focus-out with an edit
+      symInput.addEventListener('focus', function () { symInput.select(); });
+      symInput.addEventListener('blur', function () { if (!symInput.value.trim()) symInput.value = state.ticker; });
+    }
     var expSel = document.getElementById('expSel');
     if (expSel) expSel.addEventListener('change', function () { setExpiry(expSel.value); });
     // #8: maximize / restore the Gamma main panel
@@ -631,13 +669,13 @@
     // subnav/view tabs already in HTML are re-bound by renderSubnav/renderViewbar
     // watchlist
     renderWatchlist();
-    document.getElementById('wlAdd').addEventListener('click', function () {
-      var s = window.prompt('Add symbol to watchlist'); if (s) addSymbol(s);
+    document.getElementById('wlAdd').addEventListener('click', function () {   // EXPLICIT watchlist add
+      var s = window.prompt('Add symbol to watchlist', state.ticker); if (s) addSymbol(s);
     });
-    // search
+    // header search: analyse a symbol (active-instrument change only — never a watchlist mutation)
     var search = document.getElementById('symSearch');
     if (search) search.addEventListener('keydown', function (e) {
-      if (e.key === 'Enter' && search.value.trim()) { addSymbol(search.value); search.value = ''; }
+      if (e.key === 'Enter' && search.value.trim()) { var v = normSym(search.value); if (v) { setTicker(v); search.value = ''; } }
     });
     // AI drawer
     document.getElementById('aiOpen').addEventListener('click', function () {
@@ -660,7 +698,7 @@
     addSymbol: addSymbol, removeSymbol: removeSymbol, setWorkspace: setWorkspace, setStrike: setStrike,
     setTheme: applyTheme,
     setScope: setScope, getScope: function () { return state.scope; },
-    scopeWindow: scopeWindow, scopeNote: scopeNote, asOfBadge: asOfBadge,
+    scopeRows: scopeRows, scopeSelect: scopeSelect, scopeNote: scopeNote, asOfBadge: asOfBadge, fmtAge: fmtAge,
     setExpiry: setExpiry, getExpiry: function () { return state.expiryFilter; },
     getPlane: function () { return Object.assign({}, _plane); },
     setMaximize: applyMaximize, toggleMaximize: toggleMaximize };
