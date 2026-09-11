@@ -448,3 +448,75 @@ def test_rc246_precommit_path_excludes_advisory_checks():
     )
 
 
+# ── RC-551: the enforced registrations that had no negative control ─────────────────────
+# Each drives the REAL check over a constructed tree: a planted defect is reported, the
+# repaired shape is not. An enforced check nothing can show catching anything is NOT_PROVEN.
+
+
+def _tree(tmp_path, monkeypatch, files: dict[str, str]):
+    from tools import check_institutional_correctness as M
+    for rel, text in files.items():
+        p = tmp_path / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(text, encoding="utf-8")
+    monkeypatch.setattr(M, "REPO", tmp_path)
+    return M
+
+
+def test_snapshots_timeframe_check_screams_on_an_unindexed_order_and_accepts_the_indexed_one(tmp_path, monkeypatch):
+    """RC-103 class: a snapshots read ordered by ts_utc that filters ticker but not timeframe
+    cannot be served by idx_snap_ticker_tf_ts (MEASURED >300 s vs 0.002 s)."""
+    bad = 'q = "SELECT spot FROM snapshots WHERE ticker=? ORDER BY ts_utc DESC LIMIT 1"\n'
+    good = 'q = "SELECT spot FROM snapshots WHERE ticker=? AND timeframe=? ORDER BY ts_utc DESC LIMIT 1"\n'
+    M = _tree(tmp_path, monkeypatch, {"reader.py": bad})
+    hits = M.check_snapshots_read_names_the_timeframe()
+    assert [ (v.path.name, v.line) for v in hits ] == [("reader.py", 1)] and "timeframe" in hits[0].msg
+    (tmp_path / "reader.py").write_text(good, encoding="utf-8")
+    assert M.check_snapshots_read_names_the_timeframe() == []
+
+
+def test_shutdown_bound_check_screams_on_an_unarmed_lifespan_and_a_pytest_blind_watchdog(tmp_path, monkeypatch):
+    """OBSERVED 2026-07-20: a lifespan joining workers with wait=True and no watchdog made the
+    console unkillable; a watchdog that does not refuse under pytest os._exit(0)'d the runner."""
+    unarmed = ("async def _app_lifespan(app):\n    pool.shutdown(wait=True)\n\n"
+               "@app.get('/x')\ndef x():\n    return 1\n"
+               "def _arm_shutdown_watchdog():\n    pass\n")
+    M = _tree(tmp_path, monkeypatch, {"server.py": unarmed})
+    msgs = [v.msg for v in M.check_shutdown_is_bounded()]
+    assert len(msgs) == 2 and any("without arming" in m for m in msgs) and any("refuse under pytest" in m for m in msgs)
+    armed = ("async def _app_lifespan(app):\n    _arm_shutdown_watchdog()\n    pool.shutdown(wait=True)\n\n"
+             "@app.get('/x')\ndef x():\n    return 1\n"
+             "def _arm_shutdown_watchdog():\n    if os.environ.get('PYTEST_CURRENT_TEST'):\n        return\n")
+    (tmp_path / "server.py").write_text(armed, encoding="utf-8")
+    assert M.check_shutdown_is_bounded() == []
+
+
+def test_sqlite_wal_check_screams_on_a_default_timeout_connect_and_a_missing_pragma(tmp_path, monkeypatch):
+    """Concurrent writers on a DELETE-mode DB with the 5 s default lock storm; every connect in
+    db.py must pass timeout= and the helper must set WAL/NORMAL/busy_timeout."""
+    bad = ("def configure_sqlite_connection(conn):\n    conn.execute('PRAGMA synchronous=NORMAL')\n"
+           "    conn.execute('PRAGMA busy_timeout=30000')\n\nconn = sqlite3.connect(str(path))\n")
+    M = _tree(tmp_path, monkeypatch, {"db.py": bad})
+    msgs = [v.msg for v in M.check_sqlite_wal_contract()]
+    assert any("journal_mode=WAL" in m for m in msgs) and any("without timeout=" in m for m in msgs)
+    good = ("def configure_sqlite_connection(conn):\n    conn.execute('PRAGMA journal_mode=WAL')\n"
+            "    conn.execute('PRAGMA synchronous=NORMAL')\n    conn.execute('PRAGMA busy_timeout=30000')\n\n"
+            "conn = sqlite3.connect(str(path), timeout=30.0)\n")
+    (tmp_path / "db.py").write_text(good, encoding="utf-8")
+    assert M.check_sqlite_wal_contract() == []
+
+
+def test_level_producer_consumer_report_names_the_route_nobody_fetches(tmp_path, monkeypatch):
+    """RC-163's structural half: a registered producer route with no static consumer is a value
+    nobody sees; one that a page fetches is not reported."""
+    import json
+    reg = json.dumps({"level_domain_producers": {"/api/levels/seen": "x", "/api/levels/unseen": "y"}})
+    M = _tree(tmp_path, monkeypatch, {"governance/level_faucets.json": reg,
+                                      "static/index.html": "<script>fetch('/api/levels/seen')</script>"})
+    hits = M.check_level_producers_have_consumers()
+    assert len(hits) == 1 and "/api/levels/unseen" in hits[0].msg
+    (tmp_path / "static" / "index.html").write_text(
+        "<script>fetch('/api/levels/seen');fetch('/api/levels/unseen')</script>", encoding="utf-8")
+    assert M.check_level_producers_have_consumers() == []
+
+

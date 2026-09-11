@@ -243,6 +243,16 @@ RETIRED_CHECKS: dict[str, str] = {
     "authority_surfaces_have_one_owner": "retired 2026-09-11: refused twelve retired file NAMES "
                    "and heading shapes in two prose documents — a ban on filenames, not a "
                    "correctness predicate; a duplicate under any other name passed it.",
+    # 2026-09-11 (RC-551): two comment-vocabulary rules — English matched in free text is not
+    # enforcement (AGENTS.md), and neither had a negative control or a cited catch.
+    "no_todo_without_tracking_id": "retired 2026-09-11: a TODO comment without an id string is "
+                   "a comment shape; no ledger row records a defect it caught and no test drove "
+                   "it. Review reads TODOs.",
+    "domain_constants_are_derived": "retired 2026-09-11: required the words MEASURED/OBSERVED/"
+                   "DERIVED/operator/vendor in the comment above a threshold constant — prose "
+                   "matching; the eight real trading-policy constants were grandfathered, so it "
+                   "never bound on the case (RC-62) that motivated it. Where a value came from is "
+                   "a review question.",
 }
 
 #: A backticked span that is a command someone can run — the same standard the numeric
@@ -1232,25 +1242,6 @@ def _cyclomatic_complexity(func: ast.AST) -> int:
 MAX_FILE_LINES = 800       # a file above this is doing too much — split into focused modules
 MAX_FUNC_LINES = 80        # a function above this is hard to read/fix — split it
 _LENGTH_MARKER = "institutional-length-ok"
-
-
-_TODO_RE = re.compile(r"#\s*(TODO|FIXME|HACK|XXX)\b", re.IGNORECASE)
-_TRACK_ID_RE = re.compile(r"[A-Z][A-Z0-9]+-\d+|\[[A-Z][A-Z0-9-]+\]")  # e.g. FIND-GATE-1 or [OPEN-ITEMS]
-
-
-def check_todo_without_tracking_id() -> list[Violation]:
-    """TODO/FIXME/HACK without a tracking id is a patch waiting to be forgotten —
-    file an OPEN_ITEMS entry and reference its id."""
-    out: list[Violation] = []
-    for p in _production_py_files():
-        try:
-            lines = p.read_text(encoding="utf-8").splitlines()
-        except UnicodeDecodeError:
-            continue
-        for i, ln in enumerate(lines, 1):
-            if _TODO_RE.search(ln) and not _TRACK_ID_RE.search(ln):
-                out.append(Violation(p, i, "TODO/FIXME/HACK without a tracking id — file it in OPEN_ITEMS and reference the id"))
-    return out
 
 
 # Meaningful ruff rules (delegated to the mature tool, not hand-rolled): dead code,
@@ -2449,93 +2440,6 @@ def rc_row_schema_violations(text: str, log: Path) -> list[Violation]:
     return out
 
 
-#: RC-62 — domain constants that decide money-path behaviour must carry their derivation.
-#: Names that set a THRESHOLD/BOUND on market logic (not plumbing sizes like timeouts or buffers).
-_DOMAIN_CONST_RE = re.compile(
-    r"^[A-Z][A-Z0-9_]*(_MIN_[A-Z0-9_]*PCT|_MAX_[A-Z0-9_]*PCT|_PCT|_THRESHOLD|_SPAN|_MARGIN|"
-    r"_MIN_SPAN|_CUTOFF|_FLOOR|_CEILING)$")
-#: A derivation is: a measurement, a citation, a named source, or an explicit operator decision.
-_DERIVATION_RE = re.compile(
-    r"MEASURED|OBSERVED|PROVEN|VERIFIED|DERIVED|per [A-Z]|operator|vendor|"
-    r"industry standard|https?://|RC-\d+|\bsee \w+\.py|convergence", re.I)
-_DOMAIN_CONST_FILES = ("math_levels.py", "math_exposure_core.py", "math_probabilities.py")
-#: FROZEN grandfather set (prototyped 2026-07-26: exactly these). These are TRADING-POLICY numbers
-#: — stop-loss bands, a direction threshold, a greek-bias cut — whose correct values are an
-#: operator decision, not something an agent may invent a derivation for. They are visible debt to
-#: be justified or re-set deliberately; the rule binds every NEW market threshold immediately.
-_DOMAIN_CONST_GRANDFATHERED = frozenset({
-    ("math_exposure_core.py", "GREEK_BIAS_THRESHOLD"),
-    ("math_probabilities.py", "DIRECTION_THRESHOLD_PCT"),
-    ("math_probabilities.py", "STOP_BASE_PCT"),
-    ("math_probabilities.py", "STOP_TIME_DECAY_PCT"),
-    ("math_probabilities.py", "STOP_VIX_MED_PCT"),
-    ("math_probabilities.py", "STOP_VIX_HIGH_PCT"),
-    ("math_probabilities.py", "STOP_FLOOR_PCT"),
-    ("math_probabilities.py", "STOP_CEILING_PCT"),
-})
-
-
-def check_domain_constants_are_derived() -> list[Violation]:
-    """A market-logic threshold must state where its VALUE came from, not just what it does.
-
-    WHAT WAS OBSERVED (2026-07-26, RC-62): the operator asked who set GAMMA_FLIP_MIN_SPAN_PCT =
-    0.05 and what is scientific about it. Nothing was: its entire justification was a comment
-    restating the value ("chain must reach +/-5% around spot before the flip is trusted"). That
-    one number decides how many strikes EVERY live chain fetch requests and whether the operator
-    is told a flip is TRUSTED or LOW_CONFIDENCE — including declaring $SPX untrustworthy. The
-    repo already forces new GATE CHECKS to justify themselves (checks_are_justified) but nothing
-    forced the same of DOMAIN CONSTANTS, which carry more decision weight.
-
-    Rule: in the math modules, a constant whose name marks it as a market threshold (…_PCT,
-    …_THRESHOLD, …_SPAN, …_MARGIN, …_FLOOR, …_CEILING) must have a nearby comment or docstring
-    containing a derivation marker — MEASURED/OBSERVED/PROVEN/DERIVED, a named source, a vendor
-    or operator decision, an RC id, or a convergence study. Restating the value is not a
-    derivation.
-
-    HOW THE RULE WAS VALIDATED: prototyped against the math modules before enforcing; scoped to
-    the three math files (where market thresholds live) rather than repo-wide, so plumbing
-    constants — timeouts, buffer sizes, retry counts — are never flagged. Constants that ARE
-    already derived (e.g. STRIKE_COUNT_MARGIN, which explains Schwab's off-centre strike
-    placement) pass unchanged.
-    """
-    out: list[Violation] = []
-    for fname in _DOMAIN_CONST_FILES:
-        path = REPO / fname
-        if not path.exists():
-            continue
-        try:
-            lines = path.read_text(encoding="utf-8", errors="ignore").splitlines()
-        except OSError:
-            continue
-        for n, line in enumerate(lines, start=1):
-            if "=" not in line or line.startswith((" ", "\t")):
-                continue
-            name = line.split("=", 1)[0].strip()
-            if not _DOMAIN_CONST_RE.match(name):
-                continue
-            if (fname, name) in _DOMAIN_CONST_GRANDFATHERED:
-                continue
-            # The derivation must belong to THIS constant: its own line plus the CONTIGUOUS
-            # comment block directly above it. A wider window let a neighbour's comment vouch
-            # for it — the first draft of this check passed GAMMA_FLIP_MIN_SPAN_PCT itself
-            # because the following constant's comment used the word "derived".
-            block = [line]
-            k = n - 2                       # 0-based index of the line above
-            while k >= 0 and lines[k].lstrip().startswith("#"):
-                block.append(lines[k])
-                k -= 1
-            if _DERIVATION_RE.search("\n".join(block)):
-                continue
-            out.append(Violation(
-                path, n,
-                f"{name} is a market-logic threshold with no stated derivation. This value "
-                f"decides product behaviour, so a comment restating it is not justification "
-                f"(RC-62: GAMMA_FLIP_MIN_SPAN_PCT=0.05 governed every chain fetch width and every "
-                f"TRUSTED verdict on nothing but assertion). State the measurement, the source, "
-                f"or the operator decision that produced this number."))
-    return out
-
-
 def check_single_faucet_provenance() -> list[Violation]:
     """Every rendered field is fed by DECLARED sources only — measured, never assumed (RC-73).
 
@@ -3407,7 +3311,6 @@ CHECKS = [
     ("single_faucet_provenance", check_single_faucet_provenance, True),  # RC-73: measured, not asserted
     ("collect_window_single_law", check_collect_window_single_law, True),  # RC-183: 08:15-15:15 CT at the ONE write seam
     ("price_bars_readers_name_their_session", check_price_bars_readers_name_their_session, True),  # RC-61: the log is a control, not an archive
-    ("domain_constants_are_derived", check_domain_constants_are_derived, True),  # RC-62: a market threshold states where its value came from
     # no_terminal_null REMOVED 2026-09-06 (bedrock PR B; declared): surrender vocabulary in
     # ledger prose and next_depth tokens in null reports — a prose matcher; the law stays.
     # no_governance_duplication + checks_are_justified RETIRED 2026-08-24 (SIMPLICITY
@@ -3423,7 +3326,6 @@ CHECKS = [
     # is judged by the checks that read the CODE and by ruff in CI.
     ("single_spot_authority", check_single_spot_authority, True),  # one faucet (RC-14)
     ("no_silent_swallow", check_no_silent_swallow, True),           # driven to zero 2026-07-17
-    ("no_todo_without_tracking_id", check_todo_without_tracking_id, True),
     # RC-470: five_why_reaches_bedrock RETIRED with the five-why grammar family
     # (governance/retired_checks.md) - it regex-judged chain-ending terminology; chain
     # presence and depth stay enforced by root_cause_log.
