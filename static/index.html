@@ -4358,6 +4358,17 @@ function setActiveTicker(rawTicker, rawExpiry) {
       window._fastLaneSpotDisp = null;
     } catch (e) {}
     window._prevOfChartSpotFast = null;
+    // MEASURED 2026-09-11: _lastLiquidityMapPayload was invalidated on a FAILED poll
+    // (_markLiquidityMapUnavailable) but never on a successful ticker CHANGE -- the prior
+    // ticker's accepted liquidity snapshot stayed in place until the new ticker's own poll
+    // happened to complete. In that window, patchLiquidityMapSummaryFromLivePlane() (an
+    // independent consumer the quote-driven mark-to-market refresh calls on its own) had no
+    // ticker check of its own and would repaint the OLD ticker's summary as if current.
+    // setActiveTicker is the one place a ticker change is committed for every trigger
+    // (header, watchlist, radar, cross-tab) -- invalidating here, the same way every other
+    // ticker-scoped piece of state above is reset, closes the gap at its actual source rather
+    // than adding a ticker check to every downstream consumer separately.
+    if (typeof _markLiquidityMapUnavailable === 'function') { try { _markLiquidityMapUnavailable(t); } catch (e) {} }
     const restored = _snapshotCacheRestore(t);
     if (restored) {
       if (_switchDiagSession) {
@@ -6728,6 +6739,11 @@ function patchLiquidityMapSummaryFromLivePlane() {
   const lm = window._lastLiquidityMapPayload;
   const summaryEl = $('lm-summary-section');
   if (!lm || !lm.summary || !summaryEl || summaryEl.style.display === 'none') return;
+  // Defense in depth alongside setActiveTicker's own invalidation (which already nulls this
+  // payload on a ticker change): this is an independent consumer with no fetch/generation
+  // logic of its own, so it re-verifies the payload it is about to repaint from is still for
+  // the ticker actually on screen, the same way every fetch path checks activeTicker itself.
+  if (lm.ticker && String(lm.ticker).toUpperCase() !== activeTicker) return;
   summaryEl.innerHTML = buildLiquidityMapSummaryHtml(lm);
 }
 
@@ -9487,6 +9503,11 @@ function _markLiquidityMapUnavailable(ticker) {
   if (vwapSection) vwapSection.style.display = 'none';
   const summaryEl = $('lm-summary-section');
   if (summaryEl) summaryEl.innerHTML = '';
+  // MEASURED 2026-09-11: renderLiquidityMap paints #lm-auction-path from lm.summary
+  // separately from #lm-summary-section -- clearing only the latter left the prior ticker's
+  // auction interpretation visibly on screen alongside an UNAVAILABLE badge.
+  const auctionPathEl = $('lm-auction-path');
+  if (auctionPathEl) { auctionPathEl.innerHTML = ''; auctionPathEl.style.display = 'none'; }
 }
 async function pollLiquiditySnapshot() {
   // ONE authoritative ticker/generation identity -- the same one every other fetch path in
@@ -13499,6 +13520,10 @@ function edCheckRadarAlerts(rows) {
   }
   /* real sparklines from /api/bars1m (recent close series), fetched in parallel on load
      and every 60s (slow-moving). Blank on failure — never a fabricated shape. */
+  //: symbols whose % change is owned by the sentinel market-context fields below
+  //: (spy_chg_pct/qqq_chg_pct/iwm_chg_pct) -- loadSparks() never writes data-chg for these,
+  //: so there is exactly one writer per symbol, never two racing on the same cell.
+  var _WL_SENTINEL_CHG_OWNED = { SPY: true, QQQ: true, IWM: true };
   async function loadSparks() {
     await Promise.all([].map.call(wlHost.children, function (row) {
       var sym = row.getAttribute('data-sym'), svg = row.querySelector('.cv-spark');
@@ -13513,6 +13538,22 @@ function edCheckRadarAlerts(rows) {
           var pts = closes.map(function (c, i) { return (i * (64 / (closes.length - 1))).toFixed(1) + ',' + (21 - (c - lo) / rng * 20).toFixed(1); }).join(' ');
           var up = closes[closes.length - 1] >= closes[0];
           svg.innerHTML = '<polyline fill="none" stroke="' + (up ? 'var(--cv-up)' : 'var(--cv-dn)') + '" stroke-width="1.5" points="' + pts + '"/>';
+          // MEASURED 2026-09-11: WL names every enrolled watchlist symbol (SPY/QQQ/IWM/NVDA/
+          // TSLA), but the % change dict paint() reads from is hardcoded to the three
+          // sentinel fields (spy_chg_pct/qqq_chg_pct/iwm_chg_pct) -- a name added to WL never
+          // got a corresponding backend field, so its cell showed "—" unconditionally, even
+          // though real close data for it was already being fetched right here for the
+          // sparkline. Derive the same real quantity (first vs last close in this window)
+          // for every symbol the sentinel dict does not own, instead of leaving it blank.
+          if (!_WL_SENTINEL_CHG_OWNED[sym]) {
+            var out = row.querySelector('[data-chg]');
+            var first = closes[0];
+            if (out && first) {
+              var pct = (closes[closes.length - 1] - first) / first * 100;
+              out.textContent = (pct >= 0 ? '+' : '−') + Math.abs(pct).toFixed(2) + '%';
+              out.className = 'cv-chg ' + (pct >= 0 ? 'cv-up' : 'cv-dn');
+            }
+          }
         })
         .catch(function () { svg.innerHTML = ''; });
     }));

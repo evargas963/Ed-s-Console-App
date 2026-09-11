@@ -133,15 +133,23 @@ test('liquidity snapshot: valid render (actual zone numbers) -> failure invalida
     window.setActiveTicker('IWM', null);
     const zoneRangeTexts = () => Array.from(document.querySelectorAll('#lm-zones .lm-zone-price')).map((e) => e.textContent);
 
-    // 1) valid response renders the ACTUAL zone numbers, not merely a ticker/badge match.
+    // 1) valid response renders the ACTUAL zone numbers, not merely a ticker/badge match --
+    // and a REAL, recognized summary (value_state/vwap_relation/auction_interpretation are the
+    // fields buildLiquidityMapSummaryHtml actually reads; an unrecognized fixture like {x:1}
+    // renders as an empty string regardless of whether invalidation happened, which would make
+    // the "cleared by failure" assertion below pass even with no invalidation at all).
     window.fetch = async (url) => String(url).includes('liquidity-snapshot')
-      ? { ok: true, json: async () => ({ ticker: 'IWM', snapshot_type: 'live', summary: { x: 1 }, zones: [{ zone_type: 'value_area', zone_low: 1, zone_high: 2 }] }) }
+      ? { ok: true, json: async () => ({
+          ticker: 'IWM', snapshot_type: 'live',
+          summary: { value_state: 'shifted_higher', vwap_relation: 'above_value', auction_interpretation: 'bullish_acceptance' },
+          zones: [{ zone_type: 'value_area', zone_low: 1, zone_high: 2 }] }) }
       : realFetch(url);
     await window.pollLiquiditySnapshot();
     const afterValid = {
       badge: document.getElementById('lm-snapshot-badge')?.textContent,
       payload: window._lastLiquidityMapPayload?.ticker,
       zoneRanges: zoneRangeTexts(),
+      summaryHtml: document.getElementById('lm-summary-section')?.innerHTML,
     };
 
     // 2) failure must invalidate the STORED payload and the rendered zones/summary, not only
@@ -184,6 +192,9 @@ test('liquidity snapshot: valid render (actual zone numbers) -> failure invalida
   expect(r.afterValid.badge).toBe('LIVE');
   expect(r.afterValid.payload).toBe('IWM');
   expect(r.afterValid.zoneRanges).toEqual(['1.00 – 2.00']);
+  // Precondition: the summary fixture must actually render REAL, recognizable content --
+  // otherwise the "cleared by failure" assertions below would pass even with no invalidation.
+  expect(r.afterValid.summaryHtml).toContain('bullish acceptance');
 
   // REGRESSION LOCK: pre-fix the badge stayed 'LIVE', the payload/zones were left as IWM's
   // valid data, and the independent downstream consumer kept painting from it.
@@ -200,6 +211,80 @@ test('liquidity snapshot: valid render (actual zone numbers) -> failure invalida
   // REGRESSION LOCK: a same-ticker-only check would pass even if stale zone numbers survived.
   expect(r.afterRecovery.zoneRanges).toEqual(['30.00 – 40.00']);
   expect(r.afterRecovery.zoneRanges).not.toEqual(r.afterValid.zoneRanges);
+});
+
+test('a SUCCESSFUL ticker switch invalidates the prior ticker liquidity snapshot immediately', async ({ page }) => {
+  // MEASURED 2026-09-11 (independent review of the merged fix): _lastLiquidityMapPayload was
+  // invalidated on a FAILED poll but never on a successful ticker CHANGE -- the prior ticker's
+  // accepted snapshot stayed in place, with no ticker check of its own, until the NEW ticker's
+  // poll happened to complete. setActiveTicker (the one commit point for every switch trigger)
+  // now invalidates it directly, the same way every other ticker-scoped piece of state is reset.
+  const r = await page.evaluate(async () => {
+    const realFetch = window.fetch.bind(window);
+    window.setActiveTicker('SPY', null);
+    window.fetch = async (url) => String(url).includes('liquidity-snapshot')
+      ? { ok: true, json: async () => ({ ticker: 'SPY', snapshot_type: 'live', summary: { auction_interpretation: 'bullish_acceptance' }, zones: [{ zone_type: 'value_area', zone_low: 1, zone_high: 2 }] }) }
+      : realFetch(url);
+    await window.pollLiquiditySnapshot();
+    const beforeSwitch = {
+      payload: window._lastLiquidityMapPayload?.ticker,
+      badge: document.getElementById('lm-snapshot-badge')?.textContent,
+      auctionPathVisible: document.getElementById('lm-auction-path')?.style.display,
+    };
+    // switch to QQQ -- do NOT let its own poll resolve; check state IMMEDIATELY.
+    window.fetch = () => new Promise(() => {}); // never resolves
+    window.setActiveTicker('QQQ', null);
+    const afterSwitchBeforeAnyResponse = {
+      payload: window._lastLiquidityMapPayload,
+      badge: document.getElementById('lm-snapshot-badge')?.textContent,
+      zoneRanges: Array.from(document.querySelectorAll('#lm-zones .lm-zone-price')).map((e) => e.textContent),
+      auctionPathHtml: document.getElementById('lm-auction-path')?.innerHTML,
+      // the independent downstream consumer must have nothing stale left to repaint either
+      summaryAfterDownstreamConsumerCall: (window.patchLiquidityMapSummaryFromLivePlane(),
+        document.getElementById('lm-summary-section')?.innerHTML),
+    };
+    window.fetch = realFetch;
+    return { beforeSwitch, afterSwitchBeforeAnyResponse };
+  });
+  expect(r.beforeSwitch.payload).toBe('SPY');
+  expect(r.beforeSwitch.badge).toBe('LIVE');
+  expect(r.beforeSwitch.auctionPathVisible).toBe('block');
+  // REGRESSION LOCK: pre-fix, all of these stayed SPY's valid data until QQQ's own poll
+  // completed -- which in this test never happens, proving the invalidation is immediate and
+  // does not depend on the new ticker's request finishing.
+  expect(r.afterSwitchBeforeAnyResponse.payload).toBeNull();
+  expect(r.afterSwitchBeforeAnyResponse.badge).toBe('UNAVAILABLE');
+  expect(r.afterSwitchBeforeAnyResponse.zoneRanges).toEqual([]);
+  expect(r.afterSwitchBeforeAnyResponse.auctionPathHtml).toBe('');
+  expect(r.afterSwitchBeforeAnyResponse.summaryAfterDownstreamConsumerCall).toBe('');
+});
+
+test('watchlist % change renders for a non-sentinel symbol from real bars data, not an unconditional dash', async ({ page }) => {
+  // MEASURED 2026-09-11 (independent review): WL names every enrolled watchlist symbol
+  // (SPY/QQQ/IWM/NVDA/TSLA), but the % change dict paint() reads from is hardcoded to the
+  // three sentinel market-context fields (spy_chg_pct/qqq_chg_pct/iwm_chg_pct) -- NVDA and
+  // TSLA showed "--" unconditionally regardless of what the backend actually had, because
+  // /api/bars1m data for them (already fetched for the sparkline) was never used to derive one.
+  // loadSparks() is a closure-private function (not exposed on window), so this exercises it
+  // through the real page-load path it actually runs on, via network interception.
+  await page.route('**/api/bars1m?ticker=NVDA', (route) => route.fulfill({
+    status: 200, contentType: 'application/json',
+    body: JSON.stringify({ bars: [{ c: 100 }, { c: 101 }, { c: 105 }] }),
+  }));
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => {
+    const row = document.querySelector('.cv-wlrow[data-sym="NVDA"]');
+    const out = row ? row.querySelector('[data-chg]') : null;
+    return out && out.textContent !== '—';
+  }, undefined, { timeout: 20000 });
+  const r = await page.evaluate(() => {
+    const row = document.querySelector('.cv-wlrow[data-sym="NVDA"]');
+    const out = row ? row.querySelector('[data-chg]') : null;
+    return { text: out ? out.textContent : null, cls: out ? out.className : null };
+  });
+  // REGRESSION LOCK: pre-fix this was unconditionally "--" / "cv-chg cv-mu" for NVDA/TSLA.
+  expect(r.text).toBe('+5.00%');
+  expect(r.cls).toContain('cv-up');
 });
 
 test('an empty or malformed 200 response is treated as UNAVAILABLE, not a confident LIVE label', async ({ page }) => {
