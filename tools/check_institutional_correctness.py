@@ -1571,6 +1571,11 @@ _RC_CITATION_RE = re.compile(
 #: A numeric CLAIM — a bare digit run, optionally with a unit. Dates and RC ids are excluded
 #: by the callers stripping them, so "2026-07-20" does not read as three claims.
 _RC_NUMBER_RE = re.compile(r"\b\d[\d,.]*\s*(?:GB|MB|KB|s|ms|%|x|rows|files|strikes|tests)?\b")
+#: Digit-carrying tokens that are NOT a numeric finding: a date (full or year-month), a record
+#: id (`RC-43`, `O-09`, `INF-1`, `REQ-7`) and an issue number. THE one definition, stripped by
+#: both numeric-claim rules before the numbers on a line are counted (RC-548: `O-09` and
+#: `INF-1` were counted as two findings by the staged-claims rule).
+_NON_FINDING_TOKENS = re.compile(r"\d{4}-\d{2}(?:-\d{2})?|\b[A-Z][A-Z0-9]{0,7}-\d+\b|#\d+")
 _RC_CITATION_MIN_NUMBERS = 3
 
 
@@ -1615,8 +1620,7 @@ def _rc_numeric_claims_cite_a_command_violations() -> list[Violation]:
         body = " ".join(cells[5:])
         if _RC_CITATION_RE.search(body):
             continue
-        # strip ISO dates and RC ids so they are not counted as numeric claims
-        stripped = re.sub(r"\d{4}-\d{2}-\d{2}|RC-\d+", "", body)
+        stripped = _NON_FINDING_TOKENS.sub("", body)      # dates and record ids are not claims
         if len(_RC_NUMBER_RE.findall(stripped)) >= _RC_CITATION_MIN_NUMBERS:
             out.append(Violation(
                 log_path, n,
@@ -2670,9 +2674,12 @@ def check_chain_width_single_faucet() -> list[Violation]:
 
 #: RC-56 — a measured claim committed to the governance record must carry its evidence.
 #: Claim vocabulary: words that assert a FINDING (not mere description).
+#: Whole words only (RC-548): without the closing boundary `PROVEN` matched inside
+#: "provenance" and `mean` inside "meaning"/"means", so a pointer note about historical
+#: provenance was judged a measurement.
 _CLAIM_WORDS = re.compile(
     r"\b(MEASURED|PROVEN|VERIFIED|OBSERVED|CONFIRMED|median|mean|percentile|"
-    r"correlation|accuracy|hit rate|p-value|significan)", re.I)
+    r"correlation|accuracy|hit rate|p-value|significan(?:t|tly|ce))\b", re.I)
 #: An explicit hypothesis tag exempts a line — an untested claim may be RECORDED, never asserted.
 _UNVERIFIED_TAG = re.compile(r"\[UNVERIFIED\]|\[HYPOTHESIS\]|UNPROVEN", re.I)
 
@@ -2725,7 +2732,7 @@ def _measured_claims_cite_evidence_own_violations() -> list[Violation]:
             body = ln[1:]
             if _UNVERIFIED_TAG.search(body) or not _CLAIM_WORDS.search(body):
                 continue
-            stripped = re.sub(r"\d{4}-\d{2}-\d{2}|RC-\d+|#\d+", "", body)
+            stripped = _NON_FINDING_TOKENS.sub("", body)
             if len(_RC_NUMBER_RE.findall(stripped)) < 2:
                 continue
             # The citation must sit on the claiming line itself (a ledger/register row is one

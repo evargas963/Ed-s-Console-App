@@ -193,7 +193,10 @@ def index_candidate() -> str:
 def _stage(wt: Path, base_ref: str) -> None:
     """Make the delta `base_ref..HEAD` appear STAGED inside `wt` (RC-391, second order):
     staged-scope checks ask `git diff --cached` what is being committed, and in a plain
-    materialised worktree that answers EMPTY."""
+    materialised worktree that answers EMPTY. The caller passes the BASE the delta is judged
+    against, never the candidate's parent (RC-548): a PR is several commits, and on a
+    `pull_request` run the candidate is the merge commit whose parent IS the base, so
+    `HEAD^` staged the whole delta in CI and only the tip commit locally — two answers."""
     reset = _run(["git", "reset", "--soft", base_ref], cwd=wt)
     if reset.returncode != 0:
         raise RuntimeError(f"cannot stage the delta in the worktree: {reset.stderr[-300:]}")
@@ -368,7 +371,7 @@ def main(argv: list[str] | None = None) -> int:
     wts = Worktrees()
     try:
         cand_wt = wts.add(candidate_ref, "cand")
-        _stage(cand_wt, f"{candidate_ref}^")          # the change under commit appears STAGED
+        _stage(cand_wt, args.base)                    # the whole delta since base appears STAGED
         head_sha = _run(["git", "rev-parse", "--short", candidate_ref]).stdout.strip()
         head_counts, head_roster = run_gate(cand_wt, candidate_label), enforced_roster(cand_wt)
         retirements = declared_retirements(cand_wt)

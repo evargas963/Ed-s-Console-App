@@ -143,6 +143,24 @@ def test_claims_lock_does_not_count_dates_or_rc_ids_as_claims(tmp_path, monkeypa
     assert _claims_scan(tmp_path, monkeypatch, line) == []
 
 
+def test_claims_lock_does_not_read_provenance_or_record_ids_as_a_finding(tmp_path, monkeypatch):
+    """RC-548 — the false positive that failed PR #239's required `hardening` run: a pointer
+    note whose only claim word was the PROVEN inside 'provenance' and whose only numbers were
+    the year-month 2026-07 and the record ids O-09 / INF-1. Neither is a measurement."""
+    line = ("retired Source citations are historical provenance, not live references; the "
+            "2026-07 slimming retired them, and O-09 refers to the INF-1 queue sections")
+    assert _claims_scan(tmp_path, monkeypatch, line) == []
+    assert _claims_scan(tmp_path, monkeypatch, "the meaning of the means test: 12 rows of 30") == []
+
+
+def test_claims_lock_still_fires_on_a_real_finding_beside_record_ids(tmp_path, monkeypatch):
+    line = "MEASURED per O-09 and INF-1 on 2026-07: hit rate 52.0 percent across 1582 ticker-days"
+    v = _claims_scan(tmp_path, monkeypatch, line)
+    assert len(v) == 1 and "no reproducible command" in v[0].msg
+    assert _claims_scan(tmp_path, monkeypatch, "the mean is 5.2 across 30 chains") and \
+        _claims_scan(tmp_path, monkeypatch, "significant at 0.01 on 118 chains")
+
+
 # ── The isolation fix must not weaken unproven-register enforcement ──────────
 
 

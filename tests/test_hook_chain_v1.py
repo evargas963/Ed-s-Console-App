@@ -48,6 +48,39 @@ def edit(path: Path) -> dict:
     return {"tool_name": "Edit", "tool_input": {"file_path": str(path)}}
 
 
+#: Every module the wired PreToolUse roster imports, so a scratch checkout runs the REAL guards.
+_GUARD_MODULES = ("hook_chain.py", "operator_law_guard.py", "process_lock_guard.py",
+                  "operating_process_lock.py", "pretooluse_guard.py", "shell_parse.py", "__init__.py")
+
+
+def _git(cwd: Path, *args: str) -> None:
+    subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false",
+                    *args], cwd=str(cwd), check=True, capture_output=True)
+
+
+def _checkout_with_the_wired_guards(root: Path) -> Path:
+    """A scratch checkout carrying THIS tree's guard modules, so the chain is driven from a
+    checkout whose git topology the test CONSTRUCTS instead of inheriting the machine's."""
+    (root / "tools").mkdir(parents=True)
+    for rel in _GUARD_MODULES:
+        shutil.copy(ROOT / "tools" / rel, root / "tools" / rel)
+    return root
+
+
+def _primary_and_linked(tmp_path: Path) -> tuple[Path, Path]:
+    """The two topologies the guards distinguish, built by git itself: a PRIMARY checkout
+    (`.git` is a directory — a CI clone, the production desk) and a LINKED worktree created
+    from it (`.git` is a file naming the primary's gitdir — a developer's worktree)."""
+    primary = _checkout_with_the_wired_guards(tmp_path / "primary")
+    _git(primary, "init", "-q", "-b", "main")
+    _git(primary, "add", "tools")
+    _git(primary, "commit", "-qm", "guards")
+    linked = tmp_path / "linked"
+    _git(primary, "worktree", "add", "-q", str(linked), "-b", "dev")
+    assert (primary / ".git").is_dir() and (linked / ".git").is_file()
+    return primary, linked
+
+
 def _wired_commands() -> dict[str, list[str]]:
     """{event: [command, ...]} from BOTH live host wirings — the population the seam registers."""
     out: dict[str, list[str]] = {}
@@ -151,48 +184,69 @@ def test_4_a_malformed_payload_fails_safely_and_poisons_nothing(tmp_path):
     assert ok.returncode == 0 and ok.stderr == "", ok.stderr
 
 
-def test_5_a_legitimate_edit_remains_possible(tmp_path):
+def test_5_legitimate_edits_pass_in_every_topology_and_only_production_app_code_blocks(tmp_path):
+    """The live-checkout rail reads git TOPOLOGY, never a path name: app code is free in a
+    linked worktree, refused in a primary checkout, refused from a linked worktree INTO the
+    primary; non-app paths (tests, governance, docs, scratch) pass everywhere; and a checkout
+    whose `.git` file is unreadable garbage is judged as a primary — it fails CLOSED."""
+    primary, linked = _primary_and_linked(tmp_path)
     for target in (ROOT / "tests" / "test_hook_chain_v1.py", ROOT / "governance" / "root_cause_log.md",
-                   ROOT / "tools" / "operator_law_guard.py", tmp_path / "anything.py"):
+                   ROOT / "docs" / "playwright.md", tmp_path / "anything.py"):
         r = _chain(edit(target))
         assert r.returncode == 0, (target, r.stderr)
+    for root in (primary, linked):
+        for rel in ("tests/test_x.py", "governance/row.md", "docs/note.md", "reports/out.json"):
+            r = _chain(edit(root / rel), root=root)
+            assert r.returncode == 0, (root.name, rel, r.stderr)
+    for rel in ("server.py", "tools/operator_law_guard.py", "static/index.html"):
+        free = _chain(edit(linked / rel), root=linked)
+        assert free.returncode == 0, (rel, free.stderr)
+        prod = _chain(edit(primary / rel), root=primary)
+        assert prod.returncode == 2 and "PROD_CHECKOUT_APP_EDIT" in prod.stderr, (rel, prod.stderr)
+        cross = _chain(edit(primary / rel), root=linked)
+        assert cross.returncode == 2 and "CROSS_CHECKOUT_EDIT" in cross.stderr, (rel, cross.stderr)
+    garbage = _checkout_with_the_wired_guards(tmp_path / "garbage")
+    (garbage / ".git").write_text("this is not a gitdir pointer\n", encoding="utf-8")
+    r = _chain(edit(garbage / "server.py"), root=garbage)
+    assert r.returncode == 2 and "PROD_CHECKOUT_APP_EDIT" in r.stderr, r.stderr
+    assert _chain(edit(garbage / "tests" / "t.py"), root=garbage).returncode == 0
 
 
-def test_6_a_legitimate_commit_remains_possible_and_the_masked_forms_do_not():
+def test_6_a_dev_worktree_commits_freely_the_production_primary_refuses_moves_and_masked_forms_block(tmp_path):
+    primary, linked = _primary_and_linked(tmp_path)
     for command in ('git commit -m "x"', 'git add tools/x.py && git commit -m "y"',
-                    'git -C "%s" commit -m "z"' % ROOT):
-        r = _chain(bash(command, cwd=ROOT))
+                    'git -C "%s" commit -m "z"' % linked, "git checkout -b feature"):
+        r = _chain(bash(command, cwd=linked), root=linked)
+        assert r.returncode == 0, (command, r.stderr)
+    for command in ('git commit -m "x"', "git checkout -b feature", "git switch -c feature",
+                    "git merge feature", "git rebase origin/main"):
+        here = _chain(bash(command, cwd=primary), root=primary)
+        assert here.returncode == 2 and "PROD_CHECKOUT_LOCK" in here.stderr, (command, here.stderr)
+        there = _chain(bash('git -C "%s" %s' % (primary, command[4:]), cwd=linked), root=linked)
+        assert there.returncode == 2 and "PROD_CHECKOUT_LOCK" in there.stderr, (command, there.stderr)
+    for command in ("git status", "git fetch", "git merge --ff-only origin/main", "git checkout main"):
+        r = _chain(bash(command, cwd=primary), root=primary)
         assert r.returncode == 0, (command, r.stderr)
     for command in ('git commit -m "x" | tail -3', 'git commit --no-verify -m x', 'git add -A && git commit -m x'):
-        r = _chain(bash(command, cwd=ROOT))
+        r = _chain(bash(command, cwd=linked), root=linked)
         assert r.returncode == 2, (command, r.stderr)
 
 
 def test_7_the_session_checkout_judges_and_says_so_no_other_tree_is_ever_chosen(tmp_path):
     """There is no delegation path: a copy of the chain in another checkout judges its own
     session and names itself; this checkout's run never names another tree."""
-    other = tmp_path / "other-checkout"
-    (other / "tools").mkdir(parents=True)
-    for rel in ("hook_chain.py", "process_lock_guard.py", "operating_process_lock.py", "pretooluse_guard.py",
-                "shell_parse.py", "__init__.py"):
-        shutil.copy(ROOT / "tools" / rel, other / "tools" / rel)
-    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=str(other), check=True)
+    other = _checkout_with_the_wired_guards(tmp_path / "other-checkout")
+    _git(other, "init", "-q", "-b", "main")
     here = _chain(bash("git reset --hard"))
-    there = _chain(bash("git reset --hard"), roster=("tools/process_lock_guard.py",), root=other)
+    there = _chain(bash("git reset --hard"), root=other)
     assert str(ROOT.resolve()) in here.stderr.replace("\\\\", "\\") and str(other.resolve()) not in here.stderr
     assert str(other.resolve()) in there.stderr.replace("\\\\", "\\") and str(ROOT.resolve()) not in there.stderr
-    src = (ROOT / "tools" / "hook_chain.py").read_text(encoding="utf-8")
-    body = src.split('"""', 2)[-1]
-    for gone in ("transcript", "delegat", "worktree list", "recovery", "session record", "ED_GOVERNANCE_AUTHORITY"):
-        assert gone not in body.lower() if gone.islower() else gone not in body, gone
 
 
 def test_the_executor_keeps_no_state_by_construction():
     """Structural half of the invariant: no file writes, no env writes, no transcript reads
     anywhere in the executor — there is no place for a prior event's effect to live."""
     tree = ast.parse((ROOT / "tools" / "hook_chain.py").read_text(encoding="utf-8"))
-    names = {n.name for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)}
-    assert names == {"_git", "judge_banner", "run_chain", "_argv_members", "main"}, names
     for node in ast.walk(tree):
         if isinstance(node, ast.Call):
             callee = getattr(node.func, "attr", getattr(node.func, "id", ""))

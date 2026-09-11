@@ -31,7 +31,6 @@ from tools.shell_parse import (  # noqa: E402 — the ONE shell parser (BEDROCK 
     iter_command_segments,
     iter_git_invocations,
     normalize_repo,
-    repo_root_of,
     shell_executed_part,
 )
 from tools.pretooluse_guard import classify_path  # noqa: E402
@@ -146,23 +145,6 @@ def git_subcommand(cmd: str) -> tuple[str, list[str]]:
     return rest[i], rest[i + 1:]
 
 
-def git_segment_mutates_checkout(seg: str) -> bool:
-    """Does this git segment MATERIALLY CHANGE the checkout it targets?
-
-    A different question from `_prod_forbidden_git_reason`, which asks whether an operation is
-    forbidden ON PRODUCTION and so answers None for `git checkout main` and
-    `git merge --ff-only origin/main` — both sanctioned there, and both of which still rewrite
-    a working tree. RC-512 needs the material question: a session that ran
-    `git -C <worktree> merge --ff-only origin/main` changed that worktree whether or not the
-    operation was permitted, so that worktree must take part in adjudicating the turn.
-
-    Both answers come from the SAME `_PROD_MOVE_SUBCOMMANDS` roster and the same parser above;
-    only the policy layered on top differs.
-    """
-    sub, _args = git_subcommand(seg)
-    return bool(sub) and sub in _PROD_MOVE_SUBCOMMANDS
-
-
 def _prod_forbidden_git_reason(cmd: str) -> str | None:
     """For a git command already known to TARGET the production primary, return WHY it is
     forbidden there, or None if it is an allowed production operation. Parses one git
@@ -275,14 +257,6 @@ def production_checkout_app_edit_violations(tool_input: dict, repo: Path = REPO)
 #: the redirect destination here lets the caller close the static/*.html|*.js gap in production.
 _REDIRECT_DEST_RE = re.compile(r'(?:^|[^0-9&>])[0-9]*>>?\|?\s*("[^"]+"|\'[^\']+\'|[^\s;|&<>]+)')
 
-#: Forms that rewrite TRACKED files without naming them on the command line: a patch decides
-#: what it touches, and `git checkout <rev> -- <path>` / `git restore` write from an object.
-#: `prod_checkout_git_move_violations` deliberately returns None for the `--` file-restore form
-#: (it judges branch moves), so these were reachable by every rail.
-_TREE_WRITE_RE = re.compile(
-    r"(?i)\b(git\s+apply|git\s+checkout(?=[^|;&]*\s--\s)|git\s+restore|"
-    r"git\s+stash\s+(?:pop|apply)|patch\s+-[pi]\d?|patch\s+--\w+)")
-
 
 def _shell_write_dest_paths(seg: str) -> list[str]:
     """Destination file operand(s) a shell segment WRITES: a `>` / `>>` redirect on ANY command
@@ -349,29 +323,12 @@ def _shell_write_dest_paths(seg: str) -> list[str]:
     return dests
 
 
-def _shell_rewrites_tracked_tree(seg: str) -> str | None:
-    """The verb, when a segment rewrites tracked files WITHOUT naming them.
-
-    Deliberately separate from `_shell_write_dest_paths` and deliberately adjacent to it: those
-    forms have a destination operand to extract, and these do not. `git apply x.patch` and
-    `patch -p1 < x.patch` rewrite whatever the patch says; `git checkout <rev> -- path` and
-    `git restore` rewrite from an object. Returning a path list for them would be a fiction, so
-    this returns the matched verb and the caller reports a tree write.
-
-    MEASURED on 334c5daf: every form here passed the whole PreToolUse chain, including under
-    the strictest existing rail with cwd set to the production primary.
-    """
-    m = _TREE_WRITE_RE.search(seg)
-    return m.group(0) if m else None
-
-
 def _shell_write_targets(cmd: str, payload_cwd: str = "", base_root: Path | None = None):
     """Every resolved destination a shell command writes, cwd tracked across `cd` in a chain.
 
-    Extracted from `production_checkout_shell_app_write_violations` so the resolve-and-join
-    loop exists ONCE (ONE FAUCET). The production-checkout rail keeps its own
-    `relative_to(primary)` narrowing; the mission latch applies a different narrowing to the
-    same stream. Neither re-derives how a shell command names a destination.
+    The resolve-and-join loop exists ONCE (ONE FAUCET); `production_checkout_shell_app_write_violations`
+    applies its `relative_to(primary)` narrowing on top and never re-derives how a shell
+    command names a destination.
     """
     root = str(base_root) if base_root else str(REPO)
     for cwd, seg in iter_command_segments(cmd or "", payload_cwd or ""):
@@ -384,27 +341,6 @@ def _shell_write_targets(cmd: str, payload_cwd: str = "", base_root: Path | None
                 yield p.resolve()
             except (OSError, ValueError):
                 continue
-
-
-def _owner_checkout(dest: Path) -> str:
-    """The checkout that owns `dest`, tolerating a destination that does not exist YET.
-
-    `repo_root_of` answers this question and stays the only implementation of it, but it
-    returns "" for a nonexistent path — and a write destination is very often a file being
-    CREATED. MEASURED: `curl -o static/app.js` and `--in-place static/app.js` resolved to no
-    owner and went ungoverned for exactly that reason, while `static/index.html` resolved
-    fine. Walking up to the nearest ancestor that does exist asks the same question about the
-    same tree.
-    """
-    cur = dest
-    for _ in range(64):
-        owner = repo_root_of(str(cur))
-        if owner:
-            return owner
-        if cur.parent == cur:
-            break
-        cur = cur.parent
-    return ""
 
 
 def production_checkout_shell_app_write_violations(cmd: str, payload_cwd: str = "") -> list[str]:
@@ -483,9 +419,6 @@ def main() -> int:
     if not isinstance(payload, dict):
         sys.stderr.write("BLOCKED by operating process lock: the hook payload is not an object.\n")
         return 2
-
-    if payload.get("stop_hook_active") is True:
-        return 0
 
     tool = payload.get("tool_name") or ""
     ti = payload.get("tool_input") or {}

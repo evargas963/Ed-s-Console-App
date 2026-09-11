@@ -374,8 +374,16 @@ def test_the_index_candidate_still_honours_an_explicit_GIT_INDEX_FILE(tmp_path, 
     assert "only-in-alt-index.txt" in tree
 
 
-def test_the_candidate_worktree_presents_the_change_as_STAGED(tmp_path, monkeypatch):
+def test_the_candidate_worktree_presents_the_whole_delta_since_base_as_STAGED(tmp_path, monkeypatch):
+    """Staged against the BASE, not the candidate's parent (RC-548): a PR is several commits and
+    the staged-scope rules must see every line the delta adds. With `HEAD^` the local gate
+    PASSED b0bb211f while the required `hardening` run failed it (+1): on a `pull_request` run
+    the candidate is the merge commit whose parent IS main, locally it was the tip commit."""
     repo = _seeded_repo(tmp_path)
+    base = _git(repo, "rev-parse", "HEAD").strip()
+    (repo / "first.txt").write_text("a\n", encoding="utf-8")
+    _git(repo, "add", "first.txt")
+    _git(repo, "commit", "-qm", "an earlier commit of the same delta")
     (repo / "added.txt").write_text("new\n", encoding="utf-8")
     _git(repo, "add", "added.txt")
     monkeypatch.setattr(GATE, "REPO", repo)
@@ -384,11 +392,16 @@ def test_the_candidate_worktree_presents_the_change_as_STAGED(tmp_path, monkeypa
     _git(repo, "worktree", "add", "--detach", str(wt), sha)
     try:
         assert _git(wt, "diff", "--cached", "--name-only").split() == []
-        GATE._stage(wt, f"{sha}^")
+        GATE._stage(wt, f"{sha}^")                      # the parent: the earlier commit is invisible
         assert _git(wt, "diff", "--cached", "--name-only").split() == ["added.txt"]
-        assert _git(wt, "rev-parse", "HEAD").strip() == _git(repo, "rev-parse", "HEAD").strip()
+        _git(wt, "reset", "-q", "--soft", sha)
+        GATE._stage(wt, base)                           # the base: the whole delta is staged
+        assert _git(wt, "diff", "--cached", "--name-only").split() == ["added.txt", "first.txt"]
+        assert _git(wt, "rev-parse", "HEAD").strip() == base
     finally:
         _git(repo, "worktree", "remove", "--force", str(wt))
+    main_src = inspect.getsource(GATE.main)
+    assert "_stage(cand_wt, args.base)" in main_src and "_stage(cand_wt, f\"{candidate_ref}^\")" not in main_src
 
 
 # ── wiring ────────────────────────────────────────────────────────────────────────────
