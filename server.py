@@ -16366,13 +16366,23 @@ def get_liquidity_snapshot(
                 spot=spot_for_zones,
                 canonical=_canon,
             )
+            # MEASURED 2026-09-11: this used to reassign spot_for_zones itself to the VWAP
+            # value and report it as spot_used_for_scoring below -- but build_live_snapshot
+            # was ALREADY called with spot=None on this path (the reassignment happens after
+            # the call), so that field claimed a spot was used for scoring when neither a real
+            # spot NOR this VWAP number actually was. A VWAP price is a different financial
+            # quantity than spot; reporting it under a field named "spot" is exactly the
+            # fabricated-default this codebase's own law forbids ("no fabricated defaults, no
+            # silent fallbacks"). Absence now stays absent under that name; the VWAP estimate,
+            # when available, is reported under its own honestly-named field instead.
+            spot_estimate_vwap_fallback = None
             if spot_for_zones is None:
                 _rv = (out.raw_levels or {}).get("vwap")
                 if _rv is not None:
                     try:
-                        spot_for_zones = float(_rv)
+                        spot_estimate_vwap_fallback = float(_rv)
                     except (TypeError, ValueError):
-                        spot_for_zones = None
+                        spot_estimate_vwap_fallback = None
         else:
             out = generate_liquidity_value_snapshot(
                 ticker=ticker_upper,
@@ -16429,6 +16439,10 @@ def get_liquidity_snapshot(
             result["as_of_cutoff_et"] = (out.raw_levels or {}).get("cutoff_et")
             result["expiry_used_for_fusion"] = expiry.strip() if expiry else None
             result["spot_used_for_scoring"] = spot_for_zones
+            # Honest, separately-named -- see the comment above the assignment: this is VWAP,
+            # a different financial quantity than spot, not a value spot_used_for_scoring may
+            # silently stand in for.
+            result["spot_estimate_vwap_fallback"] = spot_estimate_vwap_fallback
             # Phase 2A carriage stamp: which snapshot generation these level values ARE.
             # Two carriers that agree on the number but not on the generation are still
             # two answers — the generation travels so the skew is visible, never silent.
@@ -16447,6 +16461,14 @@ def get_liquidity_snapshot(
         return result
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=400)
+    except HTTPException as e:
+        # MEASURED 2026-09-11: get_client() raises HTTPException(503, ...) when Schwab auth is
+        # genuinely unavailable -- a real, distinct, already-correct classification (missing/
+        # invalid credentials is not "the server is broken"). The blanket `except Exception`
+        # below caught it too, along with everything else, and re-issued it as a bare 500 with
+        # only the message text -- discarding the status code FastAPI's own exception handling
+        # would otherwise have propagated correctly. Preserve it instead of replacing it.
+        return JSONResponse({"error": e.detail}, status_code=e.status_code)
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
 

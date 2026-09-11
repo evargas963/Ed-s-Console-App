@@ -4358,6 +4358,17 @@ function setActiveTicker(rawTicker, rawExpiry) {
       window._fastLaneSpotDisp = null;
     } catch (e) {}
     window._prevOfChartSpotFast = null;
+    // MEASURED 2026-09-11: _lastLiquidityMapPayload was invalidated on a FAILED poll
+    // (_markLiquidityMapUnavailable) but never on a successful ticker CHANGE -- the prior
+    // ticker's accepted liquidity snapshot stayed in place until the new ticker's own poll
+    // happened to complete. In that window, patchLiquidityMapSummaryFromLivePlane() (an
+    // independent consumer the quote-driven mark-to-market refresh calls on its own) had no
+    // ticker check of its own and would repaint the OLD ticker's summary as if current.
+    // setActiveTicker is the one place a ticker change is committed for every trigger
+    // (header, watchlist, radar, cross-tab) -- invalidating here, the same way every other
+    // ticker-scoped piece of state above is reset, closes the gap at its actual source rather
+    // than adding a ticker check to every downstream consumer separately.
+    if (typeof _markLiquidityMapUnavailable === 'function') { try { _markLiquidityMapUnavailable(t); } catch (e) {} }
     const restored = _snapshotCacheRestore(t);
     if (restored) {
       if (_switchDiagSession) {
@@ -4386,6 +4397,19 @@ function setActiveTicker(rawTicker, rawExpiry) {
     // Mirror confirmed ticker back to DOM so display stays consistent
     const el = $('ticker-input');
     if (el && el.value.trim().toUpperCase() !== t) el.value = t;
+    // RC-close-2026-09-11: the VISIBLE header ticker chip (#cv2-hd-ticker) has its own
+    // independent writers (commitTicker's Enter/blur handler, paintHeader's periodic catch-up)
+    // and neither runs on a switch triggered elsewhere (watchlist click, radar click, cross-tab
+    // storage sync) -- so the chip could show the PRIOR ticker for however long it took the next
+    // scheduled paintHeader() to run (seconds, longer under a degraded/retrying backend), while
+    // every other surface (activeTicker, #ticker-input, and everything the fetch pipeline reads)
+    // had already moved to the new ticker. setActiveTicker is the ONE writer of activeTicker by
+    // construction (RC-123) -- it is now also the one place that keeps the operator-visible
+    // ticker identity in sync with it, immediately, for every caller. Skipped while the operator
+    // is actively editing that field (same guard paintHeader uses) so a switch driven from
+    // elsewhere never clobbers an in-progress edit.
+    const hdEl = $('cv2-hd-ticker');
+    if (hdEl && document.activeElement !== hdEl && hdEl.value.trim().toUpperCase() !== t) hdEl.value = t;
     if (DIAG) console.log('[setActiveTicker] committed', { ticker: t, expiry: e, generation: requestGeneration });
     if (changed) {
       _scheduleServerAnalyticsWarm(t, 'ticker_switch');
@@ -6715,6 +6739,11 @@ function patchLiquidityMapSummaryFromLivePlane() {
   const lm = window._lastLiquidityMapPayload;
   const summaryEl = $('lm-summary-section');
   if (!lm || !lm.summary || !summaryEl || summaryEl.style.display === 'none') return;
+  // Defense in depth alongside setActiveTicker's own invalidation (which already nulls this
+  // payload on a ticker change): this is an independent consumer with no fetch/generation
+  // logic of its own, so it re-verifies the payload it is about to repaint from is still for
+  // the ticker actually on screen, the same way every fetch path checks activeTicker itself.
+  if (lm.ticker && String(lm.ticker).toUpperCase() !== activeTicker) return;
   summaryEl.innerHTML = buildLiquidityMapSummaryHtml(lm);
 }
 
@@ -9318,7 +9347,16 @@ function renderLiquidityMap(lm) {
     const fusion = lm.fusion != null ? `fusion: ${lm.fusion}` : '';
     const bars = lm.bar_merge != null ? `bars: ${lm.bar_merge}` : '';
     const asOf = lm.as_of_cutoff_et ? `as-of ${etHHMMtoCT(lm.as_of_cutoff_et.slice(11, 16))} CT` : '';
-    const spotSc = lm.spot_used_for_scoring != null ? `spot ${Number(lm.spot_used_for_scoring).toFixed(2)}` : '';
+    // MEASURED 2026-09-11: this used to render lm.spot_used_for_scoring unconditionally as an
+    // unqualified "spot N.NN" -- the backend was silently back-filling that field with VWAP, a
+    // different financial quantity, whenever no real spot was available. The backend no longer
+    // does that (spot_used_for_scoring is null in that case, honestly); this reads the VWAP
+    // estimate from its own, separately-named field and labels it as an estimate, never as spot.
+    const spotSc = lm.spot_used_for_scoring != null
+      ? `spot ${Number(lm.spot_used_for_scoring).toFixed(2)}`
+      : (lm.spot_estimate_vwap_fallback != null
+        ? `spot ≈${Number(lm.spot_estimate_vwap_fallback).toFixed(2)} (vwap est.)`
+        : '');
     lmMeta.textContent = [fusion, bars, asOf, spotSc].filter(Boolean).join(' · ') || 'Live snapshot — load ticker (main refresh) so 1m overlay + cache populate';
   }
   const activeStage = getActiveStageFromET();
@@ -9436,19 +9474,79 @@ function renderLiquidityMap(lm) {
   }
 }
 let _lmPollTid = null;
+let _lmLastMarkedTicker = null;
+/** Per-dispatch sequence, independent of ticker/generation. MEASURED 2026-09-11: two
+ * overlapping requests for the SAME (ticker, generation) -- e.g. the 60s interval firing again
+ * before a prior poll resolves -- are not distinguished by ticker/gen equality alone; whichever
+ * response happened to ARRIVE last won, even when it was DISPATCHED first and is now
+ * chronologically stale. Admitting only the response whose sequence matches the most recently
+ * DISPATCHED request prevents freshness from regressing within an otherwise-unchanged context,
+ * the same way requestGeneration already prevents it across a ticker/expiry change. */
+let _lmRequestSeq = 0;
+/** MEASURED 2026-09-11 (two connected gaps in the first pass, found by independent review):
+ * (1) neither failure branch of pollLiquiditySnapshot cleared window._lastLiquidityMapPayload,
+ * so patchLiquidityMapSummaryFromLivePlane() -- called independently on every scheduled
+ * mark-to-market spot refresh -- kept repainting the summary section from the STALE payload
+ * regardless of the badge; (2) the zones list and vwap section were left showing the prior
+ * ticker's content underneath the badge. Invalidation must reach every consumer of the
+ * snapshot, not just the one label this function originally touched. */
+function _markLiquidityMapUnavailable(ticker) {
+  window._lastLiquidityMapPayload = null;
+  if (_lmLastMarkedTicker === ticker) return; // badge/DOM already reflect this; don't re-flash
+  _lmLastMarkedTicker = ticker;
+  domIf('lm-snapshot-badge', el => { el.textContent = 'UNAVAILABLE'; });
+  const lmMeta = $('lm-live-meta');
+  if (lmMeta) lmMeta.textContent = `Liquidity snapshot UNAVAILABLE for ${ticker}`;
+  const zonesEl = $('lm-zones');
+  if (zonesEl) zonesEl.innerHTML = '';
+  const vwapSection = $('lm-vwap-section');
+  if (vwapSection) vwapSection.style.display = 'none';
+  const summaryEl = $('lm-summary-section');
+  if (summaryEl) summaryEl.innerHTML = '';
+  // MEASURED 2026-09-11: renderLiquidityMap paints #lm-auction-path from lm.summary
+  // separately from #lm-summary-section -- clearing only the latter left the prior ticker's
+  // auction interpretation visibly on screen alongside an UNAVAILABLE badge.
+  const auctionPathEl = $('lm-auction-path');
+  if (auctionPathEl) { auctionPathEl.innerHTML = ''; auctionPathEl.style.display = 'none'; }
+}
 async function pollLiquiditySnapshot() {
-  const ticker = ($('ticker-input')?.value || '').trim().toUpperCase();
+  // ONE authoritative ticker/generation identity -- the same one every other fetch path in
+  // this file reads (activeTicker/requestGeneration via setActiveTicker), not a second,
+  // independent read of the DOM. MEASURED 2026-09-11: reading #ticker-input directly here
+  // meant a switch away from `ticker` mid-flight was invisible to this function -- a slow
+  // response for the ticker requested when the poll STARTED still rendered, unconditionally,
+  // even after the operator had already moved to a different ticker.
+  const myGen = requestGeneration;
+  const ticker = activeTicker;
   if (!ticker) return;
-  const exp = ($('expiry-select')?.value || '').trim();
+  const exp = activeExpiry || '';
+  const mySeq = ++_lmRequestSeq;
   let url = `/api/liquidity-snapshot?ticker=${encodeURIComponent(ticker)}&snapshot=live`;
   if (exp) url += `&expiry=${encodeURIComponent(exp)}`;
+  const stillCurrent = () => myGen === requestGeneration && ticker === activeTicker && mySeq === _lmRequestSeq;
   try {
     const resp = await fetch(url);
-    if (!resp.ok) return;
+    if (!stillCurrent()) return; // superseded while in flight -- drop, do not render
+    if (!resp.ok) { _markLiquidityMapUnavailable(ticker); return; }
     const data = await resp.json();
-    if (data.error) return;
+    if (!stillCurrent()) return; // superseded while parsing -- drop, do not render
+    // Required native response identity: a well-formed snapshot NAMES the ticker it is for,
+    // and that name must match what was actually requested. MEASURED 2026-09-11: an empty or
+    // malformed 200 (e.g. `{}`) previously slipped through here -- `data.ticker` was falsy, so
+    // the mismatch check short-circuited to false -- and rendered with a confident LIVE badge
+    // and no real content. Requiring the field to be PRESENT, not merely "matching if present",
+    // closes that. A legitimate empty result (the real ticker, genuinely zero zones right now)
+    // still renders normally: only identity is required here, never a non-empty population.
+    if (!data || typeof data !== 'object' || Array.isArray(data) || data.error
+        || !data.ticker || String(data.ticker).toUpperCase() !== ticker) {
+      _markLiquidityMapUnavailable(ticker);
+      return;
+    }
+    _lmLastMarkedTicker = null;
     renderLiquidityMap(data);
-  } catch (e) { /* silent */ }
+  } catch (e) {
+    if (stillCurrent()) _markLiquidityMapUnavailable(ticker);
+  }
 }
 function startLiquidityMapPoll() {
   if (_lmPollTid) clearInterval(_lmPollTid);
@@ -13422,6 +13520,10 @@ function edCheckRadarAlerts(rows) {
   }
   /* real sparklines from /api/bars1m (recent close series), fetched in parallel on load
      and every 60s (slow-moving). Blank on failure — never a fabricated shape. */
+  //: symbols whose % change is owned by the sentinel market-context fields below
+  //: (spy_chg_pct/qqq_chg_pct/iwm_chg_pct) -- loadSparks() never writes data-chg for these,
+  //: so there is exactly one writer per symbol, never two racing on the same cell.
+  var _WL_SENTINEL_CHG_OWNED = { SPY: true, QQQ: true, IWM: true };
   async function loadSparks() {
     await Promise.all([].map.call(wlHost.children, function (row) {
       var sym = row.getAttribute('data-sym'), svg = row.querySelector('.cv-spark');
@@ -13436,6 +13538,22 @@ function edCheckRadarAlerts(rows) {
           var pts = closes.map(function (c, i) { return (i * (64 / (closes.length - 1))).toFixed(1) + ',' + (21 - (c - lo) / rng * 20).toFixed(1); }).join(' ');
           var up = closes[closes.length - 1] >= closes[0];
           svg.innerHTML = '<polyline fill="none" stroke="' + (up ? 'var(--cv-up)' : 'var(--cv-dn)') + '" stroke-width="1.5" points="' + pts + '"/>';
+          // MEASURED 2026-09-11: WL names every enrolled watchlist symbol (SPY/QQQ/IWM/NVDA/
+          // TSLA), but the % change dict paint() reads from is hardcoded to the three
+          // sentinel fields (spy_chg_pct/qqq_chg_pct/iwm_chg_pct) -- a name added to WL never
+          // got a corresponding backend field, so its cell showed "—" unconditionally, even
+          // though real close data for it was already being fetched right here for the
+          // sparkline. Derive the same real quantity (first vs last close in this window)
+          // for every symbol the sentinel dict does not own, instead of leaving it blank.
+          if (!_WL_SENTINEL_CHG_OWNED[sym]) {
+            var out = row.querySelector('[data-chg]');
+            var first = closes[0];
+            if (out && first) {
+              var pct = (closes[closes.length - 1] - first) / first * 100;
+              out.textContent = (pct >= 0 ? '+' : '−') + Math.abs(pct).toFixed(2) + '%';
+              out.className = 'cv-chg ' + (pct >= 0 ? 'cv-up' : 'cv-dn');
+            }
+          }
         })
         .catch(function () { svg.innerHTML = ''; });
     }));
@@ -13743,7 +13861,14 @@ function edCheckRadarAlerts(rows) {
     try { saved = (localStorage.getItem('ed_ticker') || '').trim().toUpperCase(); } catch (e) {}
     if (saved && hdTk && hdTk.value !== saved) { hdTk.value = saved; commitTicker(); }
     window.addEventListener('storage', function (e) {
-      if (e.key === 'ed_ticker' && e.newValue && hdTk && hdTk.value !== e.newValue) {
+      // MEASURED 2026-09-11: this write had no "operator is actively editing" guard, unlike
+      // every other #cv2-hd-ticker writer (paintHeader, setActiveTicker) -- a parallel-tab
+      // ticker change landing while the operator was mid-draft in THIS tab's header silently
+      // overwrote what they were typing, then committed the OTHER tab's ticker as if they had.
+      // Deferred, not dropped: the operator's own commit (Enter/blur) still runs against
+      // whatever they were actually typing; the cross-tab value simply does not preempt it.
+      if (e.key === 'ed_ticker' && e.newValue && hdTk && document.activeElement !== hdTk
+          && hdTk.value !== e.newValue) {
         hdTk.value = e.newValue; commitTicker();
       }
     });

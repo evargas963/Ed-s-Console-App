@@ -18,8 +18,12 @@ repos:
       # job) is the authority; the pre-commit hooks below carry the mission-critical
       # fast checks (ruff, money-path gate, secrets-and-paths).
       # BEDROCK 2026-09-06 (commit seam, dual-signoff): the no-grep-subprocess hook left with
-      # its tool — a code-style rule with no ledger row citing a catch since adoption; the
-      # agent-side no-grep law stays in operator_law_guard. The db-health hook left the
+      # its tool — a code-style rule with no ledger row citing a catch since adoption. The
+      # agent-side no-grep law itself was later fully retired too (RC-93, 2026-09-11,
+      # universal-quantitative-closure-v1): it blocked read-only stdout filters three times in
+      # one session — governance obstructing inspection, not a protection — and operator_law_guard
+      # now bans only unrecoverable-tree destruction, blind staging and lock-disable; no no-grep
+      # rule survives anywhere in the hook chain. The db-health hook left the
       # commit path for the same measurement (zero product catches; one false block, RC-407)
       # — `python tools/check_db_health.py` is run by hand. Two staged-content scanners
       # (private paths in tracked evidence; secrets in the staged diff) are ONE hook below.
@@ -64,27 +68,15 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
-      # Institutional Correctness gate — the ONE lock (GOVERNING LAW, OPEN_ITEMS).
-      # The repo is institutional in nature; new correctness requirements register as
-      # CHECKS inside this one gate, never as new separate locks. Check 1: no synthetic
-      # option-chain fixtures in tests — correctness is proven on REAL data
-      # (tests/fixtures/); fail-closed/edge tests declare themselves with
-      # '# institutional-synthetic-ok: <reason>'.
-      # run_with_repo_venv re-execs under .venv locally (CI falls through).
-      # RC-406 (latency): the whole-tree ADDED-VIOLATION delta (two detached worktrees +
-      # the enforced catalog run twice, ~250s/commit) is RELOCATED to CI — the SAME owner
-      # runs in .github/workflows/hardening.yml on every PR, the authority before merge. On
-      # commit this hook now runs fast; enforced-check-SURFACE edits (removing/downgrading a
-      # check) stay gated at commit by the operating-process hook below.
-      - id: institutional-correctness
-        name: institutional correctness (one gate — no fake tests, single source of truth)
-        entry: python tools/precommit_institutional.py
-        language: system
-        pass_filenames: false
-        always_run: true
-      # RC-217: index=WT parity + staged ENFORCED checks on HEAD before commit lands.
+      # The Institutional Correctness gate (tools/check_institutional_correctness.py, the ONE
+      # roster of correctness CHECKS) is enforced at MERGE by the required `hardening` check
+      # (tools/check_delta_adds_no_debt.py --base origin/main: no new enforced violation, no
+      # undeclared check removal, every closing ledger row's cited command executed). The
+      # commit-time roster diff that ran here duplicated that CI decision and was deleted
+      # 2026-09-10; the whole-tree delta left the commit path under RC-406 (~250s/commit).
+      # RC-217: index=WT parity on the enforcement paths before a commit lands.
       - id: operating-process
-        name: operating process (index parity, staged checks, orphan patch warn)
+        name: operating process (index parity on enforcement paths)
         entry: python tools/run_with_repo_venv.py tools/operating_process_lock.py --pre-commit
         language: system
         pass_filenames: false

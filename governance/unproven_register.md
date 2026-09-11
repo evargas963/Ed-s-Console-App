@@ -14,7 +14,7 @@ rows end at CLOSED with observed evidence.
 
 A defect is not a claim. Two rows had leaked across (test order-independence, the charm
 sign convention); both are defects and live in the root-cause log only. Boundary maintained
-by review (the duplication heuristic was retired 2026-08-24 — `governance/retired_checks.md`);
+by review (the duplication heuristic was retired 2026-08-24; that declaration is git history, and retirements are now `AUTHORIZE retire:` rows of `OPEN_ITEMS.md`);
 overdue rows are blocked by the register validation folded into `check_measured_claims_cite_evidence`.
 
 **Dispositions — only two are terminal:**

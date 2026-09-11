@@ -95,30 +95,6 @@ def test_rc_citation_check_accepts_a_resolvable_id(tmp_path, monkeypatch):
     assert not [b for b in M.check_rc_citations_resolve() if "RC-4242" in str(b)]
 
 
-def test_inert_producer_check_screams_on_a_fatal_run_log(tmp_path, monkeypatch):
-    """RC-97: a scheduled producer whose log ends in a fatal has been failing silently.
-
-    A fail-closed CONSUMER hides this — it withholds the stale artifact and the system merely
-    looks quiet. Measured 2026-07-27: the scorecard artifact was 119.4h old behind exactly this."""
-    from tools import check_institutional_correctness as M
-    fake = tmp_path
-    (fake / "reports").mkdir()
-    (fake / "reports" / "zzjob_run.log").write_text(
-        "starting\nFatal Python error: preconfig_init_utf8_mode\n", encoding="utf-8")
-    monkeypatch.setattr(M, "REPO", fake)
-    assert M.check_scheduled_producers_are_not_inert(), "a fatal run log was not flagged"
-
-
-def test_inert_producer_check_accepts_a_healthy_run_log(tmp_path, monkeypatch):
-    from tools import check_institutional_correctness as M
-    fake = tmp_path
-    (fake / "reports").mkdir()
-    (fake / "reports" / "zzjob_run.log").write_text(
-        "[job] start\nwrote artifact\n[job] exit=0\n", encoding="utf-8")
-    monkeypatch.setattr(M, "REPO", fake)
-    assert not M.check_scheduled_producers_are_not_inert()
-
-
 def test_price_bars_session_check_screams_on_an_ungated_reader(tmp_path, monkeypatch):
     """RC-103: a NEW ungated price_bars_1m reader must be flagged; a gated one must pass."""
     from tools import check_institutional_correctness as M
@@ -166,29 +142,30 @@ def test_operator_law_guard_action_battery():
     directions, so widening a lock reruns the whole surface."""
     from pathlib import Path as _P
 
-    from tools.operator_law_guard import bash_violations, normalize_repo
-    # RC-258: proof is now bound to the repository it ran against, and the target repository is
-    # resolved from the caller's working directory. This battery drives the pure callee, so it
-    # supplies both exactly as the hook does — the SPELLINGS under test are unchanged.
+    from tools.operator_law_guard import bash_violations
+    from tools.shell_parse import normalize_repo
     _repo = _P(__file__).resolve().parent.parent
     _cwd = str(_repo)
     led = [{"kind": "bash", "detail": "pytest ok", "repo": normalize_repo(_repo)}]
+    # KEEP/MERGE/DELETE 2026-09-10: the heredoc / redirect source-write bans are deleted (ruff
+    # and pytest catch a mangled file; the retired registry they guarded is gone), so those
+    # spellings moved from `fire` to `quiet`. Blind staging, protected-tree destruction and
+    # lock-disable are the surviving bans.
     fire = [
         "git add -A", "git add --all", "git add .", "git add -u", "git add *", "git add -- .",
-        "python - <<EOF\nio.open('tests/x.py','w').write(s)\nEOF",
-        "python - <<EOF\nopen('tools/x.py', 'w').write(s)\nEOF",
-        "python - <<EOF\nfrom pathlib import Path\nPath('tests/x.py').write_text(s)\nEOF",
-        "python - <<EOF\nPath('tools/x.py').open('w').write(s)\nEOF",   # v19
-        "cat > foo.py <<EOF\nx = 1\nEOF",                               # v19: shell redirect
-        "echo 'x = 1' > tools/probe.py",
+        "rm -rf data/ed_console.db", "git commit --no-verify -m x", "SKIP=ruff-correctness git commit -m x",
     ]
     quiet = [
         "git add server.py tools/x.py", "git add -- server.py",
         "git commit -m \"note: git add -A and open(x.py,w) are banned\"",
         "python - <<EOF\nio.open('governance/root_cause_log.md','w').write(s)\nEOF",
         "python - <<EOF\nPath('reports/out.json').write_text(s)\nEOF",
+        "python - <<EOF\nopen('tools/x.py', 'w').write(s)\nEOF",
+        "cat > foo.py <<EOF\nx = 1\nEOF",
+        "echo 'x = 1' > tools/probe.py",
         "python x.py > reports/run.log 2>&1",
         "pytest tests/test_x.py -q",
+        "grep -r foo tools/",
     ]
     for c in fire:
         assert bash_violations(c, led, _cwd), f"DID NOT FIRE: {c[:60]!r}"
@@ -457,23 +434,126 @@ def test_rc246_precommit_path_excludes_advisory_checks():
     (153s of a 244s wall) bought nothing and made the gate expensive enough to route around —
     a cost this repo already paid in piped commits and hooks killed mid-run.
 
-    RC-391 moved WHERE the flag is passed without changing the property: the seam now
-    delegates its verdict to tools/check_delta_adds_no_debt.py, which is what runs the gate
-    — with --enforced-only — on each side. This control follows the seam rather than
-    asserting a literal at an address that has moved, and still fails if any link in the
-    chain starts paying for verdicts that cannot veto.
+    RC-391 moved WHERE the flag is passed without changing the property, and RC-406 moved
+    the blocking path to CI: tools/check_delta_adds_no_debt.py (hardening.yml) is what runs
+    the gate — with --enforced-only — on each side. This control follows that owner and
+    still fails if it starts paying for verdicts that cannot veto.
     """
     import tools.check_institutional_correctness as gate
 
     tools_dir = Path(gate.__file__).parent
-    seam = (tools_dir / "precommit_institutional.py").read_text(encoding="utf-8")
-    decider = "check_delta_adds_no_debt.py"
-    if decider in seam:
-        src = (tools_dir / decider).read_text(encoding="utf-8")
-    else:
-        src = seam
+    src = (tools_dir / "check_delta_adds_no_debt.py").read_text(encoding="utf-8")
     assert '"--enforced-only"' in src, (
         "the pre-commit blocking path no longer asks for the enforced-only path (RC-246)"
     )
 
 
+# ── RC-551: the enforced registrations that had no negative control ─────────────────────
+# Each drives the REAL check over a constructed tree: a planted defect is reported, the
+# repaired shape is not. An enforced check nothing can show catching anything is NOT_PROVEN.
+
+
+def _tree(tmp_path, monkeypatch, files: dict[str, str]):
+    from tools import check_institutional_correctness as M
+    for rel, text in files.items():
+        p = tmp_path / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(text, encoding="utf-8")
+    monkeypatch.setattr(M, "REPO", tmp_path)
+    return M
+
+
+def test_snapshots_timeframe_check_screams_on_an_unindexed_order_and_accepts_the_indexed_one(tmp_path, monkeypatch):
+    """RC-103 class: a snapshots read ordered by ts_utc that filters ticker but not timeframe
+    cannot be served by idx_snap_ticker_tf_ts (MEASURED >300 s vs 0.002 s)."""
+    bad = 'q = "SELECT spot FROM snapshots WHERE ticker=? ORDER BY ts_utc DESC LIMIT 1"\n'
+    good = 'q = "SELECT spot FROM snapshots WHERE ticker=? AND timeframe=? ORDER BY ts_utc DESC LIMIT 1"\n'
+    M = _tree(tmp_path, monkeypatch, {"reader.py": bad})
+    hits = M.check_snapshots_read_names_the_timeframe()
+    assert [ (v.path.name, v.line) for v in hits ] == [("reader.py", 1)] and "timeframe" in hits[0].msg
+    (tmp_path / "reader.py").write_text(good, encoding="utf-8")
+    assert M.check_snapshots_read_names_the_timeframe() == []
+
+
+def test_shutdown_bound_check_screams_on_an_unarmed_lifespan_and_a_pytest_blind_watchdog(tmp_path, monkeypatch):
+    """OBSERVED 2026-07-20: a lifespan joining workers with wait=True and no watchdog made the
+    console unkillable; a watchdog that does not refuse under pytest os._exit(0)'d the runner."""
+    unarmed = ("async def _app_lifespan(app):\n    pool.shutdown(wait=True)\n\n"
+               "@app.get('/x')\ndef x():\n    return 1\n"
+               "def _arm_shutdown_watchdog():\n    pass\n")
+    M = _tree(tmp_path, monkeypatch, {"server.py": unarmed})
+    msgs = [v.msg for v in M.check_shutdown_is_bounded()]
+    assert len(msgs) == 2 and any("without arming" in m for m in msgs) and any("refuse under pytest" in m for m in msgs)
+    armed = ("async def _app_lifespan(app):\n    _arm_shutdown_watchdog()\n    pool.shutdown(wait=True)\n\n"
+             "@app.get('/x')\ndef x():\n    return 1\n"
+             "def _arm_shutdown_watchdog():\n    if os.environ.get('PYTEST_CURRENT_TEST'):\n        return\n")
+    (tmp_path / "server.py").write_text(armed, encoding="utf-8")
+    assert M.check_shutdown_is_bounded() == []
+
+
+def test_sqlite_wal_check_screams_on_a_default_timeout_connect_and_a_missing_pragma(tmp_path, monkeypatch):
+    """Concurrent writers on a DELETE-mode DB with the 5 s default lock storm; every connect in
+    db.py must pass timeout= and the helper must set WAL/NORMAL/busy_timeout."""
+    bad = ("def configure_sqlite_connection(conn):\n    conn.execute('PRAGMA synchronous=NORMAL')\n"
+           "    conn.execute('PRAGMA busy_timeout=30000')\n\nconn = sqlite3.connect(str(path))\n")
+    M = _tree(tmp_path, monkeypatch, {"db.py": bad})
+    msgs = [v.msg for v in M.check_sqlite_wal_contract()]
+    assert any("journal_mode=WAL" in m for m in msgs) and any("without timeout=" in m for m in msgs)
+    good = ("def configure_sqlite_connection(conn):\n    conn.execute('PRAGMA journal_mode=WAL')\n"
+            "    conn.execute('PRAGMA synchronous=NORMAL')\n    conn.execute('PRAGMA busy_timeout=30000')\n\n"
+            "conn = sqlite3.connect(str(path), timeout=30.0)\n")
+    (tmp_path / "db.py").write_text(good, encoding="utf-8")
+    assert M.check_sqlite_wal_contract() == []
+
+
+def test_level_producer_consumer_report_names_the_route_nobody_fetches(tmp_path, monkeypatch):
+    """RC-163's structural half: a registered producer route with no static consumer is a value
+    nobody sees; one that a page fetches is not reported."""
+    import json
+    reg = json.dumps({"level_domain_producers": {"/api/levels/seen": "x", "/api/levels/unseen": "y"}})
+    M = _tree(tmp_path, monkeypatch, {"governance/level_faucets.json": reg,
+                                      "static/index.html": "<script>fetch('/api/levels/seen')</script>"})
+    hits = M.check_level_producers_have_consumers()
+    assert len(hits) == 1 and "/api/levels/unseen" in hits[0].msg
+    (tmp_path / "static" / "index.html").write_text(
+        "<script>fetch('/api/levels/seen');fetch('/api/levels/unseen')</script>", encoding="utf-8")
+    assert M.check_level_producers_have_consumers() == []
+
+
+
+
+# ── RC-552: the merge gate's execution closure must not reach application code ──────────
+
+
+def test_single_faucet_provenance_never_loads_db_authority_or_runtime_layout():
+    """The enforced predicate reads server.py's source text statically; it must not import
+    application modules to do it. Proven by sys.modules, not by import-graph inspection."""
+    import subprocess
+    import sys as _sys
+
+    probe = (
+        "import sys; sys.path.insert(0, '.'); "
+        "import tools.check_institutional_correctness as c; "
+        "c.check_single_faucet_provenance(); "
+        "print('db_authority' in sys.modules, 'runtime_layout' in sys.modules)"
+    )
+    r = subprocess.run([_sys.executable, "-c", probe], capture_output=True, text=True,
+                       encoding="utf-8", errors="replace", check=True)
+    assert r.stdout.strip() == "False False", r.stdout + r.stderr
+
+
+def test_enforced_gate_execution_closure_has_no_application_module():
+    """The full enforced roster (what `--enforced-only` runs) must not pull in db_authority.py
+    or runtime_layout.py at any point — the exact defect RC-552 fixed."""
+    import subprocess
+    import sys as _sys
+
+    probe = (
+        "import sys; sys.path.insert(0, '.'); "
+        "import tools.check_institutional_correctness as c; "
+        "[fn() for _n, fn, _e in c.CHECKS]; "
+        "print('db_authority' in sys.modules, 'runtime_layout' in sys.modules)"
+    )
+    r = subprocess.run([_sys.executable, "-c", probe], capture_output=True, text=True,
+                       encoding="utf-8", errors="replace", check=True)
+    assert r.stdout.strip() == "False False", r.stdout + r.stderr

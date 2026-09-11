@@ -29,4 +29,4 @@ This folder documents what belongs in **Git** (reproducible code + tracked produ
 - **Git lock defense:** `tools/check_git_index_lock.py` clears `index.lock` older than 60s (wired into `run_with_repo_venv`).
 - **Multi-agent sync:** HEAD is the shared brain; the operator assigns work per session in chat (no standing agent roles, no worktree hand-off checker).
 
-Related runbook: [`TRAINING_AND_MAINTENANCE.md`](../../TRAINING_AND_MAINTENANCE.md). Historical incident memories: `governance/archive/2026-Q2/memory_archive/`.
+Related runbook: [`TRAINING_AND_MAINTENANCE.md`](../../TRAINING_AND_MAINTENANCE.md). Historical incident memories: git history (`git show a360416a:governance/archive/2026-Q2/memory_archive/`; the archive directory was removed 2026-09-10 — git is the archive).

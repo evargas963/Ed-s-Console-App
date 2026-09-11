@@ -19,23 +19,23 @@ jobs:
     timeout-minutes: 45
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
         with:
           # FULL_FIXES_ONLY_V2: FINAL_SHA verification needs full history
           fetch-depth: 0
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
         with:
           python-version: "3.13"
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86  # v5
         with:
           enable-cache: true
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4
         with:
           node-version: "22"
           cache: npm
@@ -49,7 +49,7 @@ jobs:
         run: npm ci
 
       - name: Cache Playwright browsers
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830  # v4
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
@@ -126,14 +126,16 @@ jobs:
           # Pin the worker count to the runner's nproc — same suite, more cores.
           echo "CI_CPUS nproc=$(nproc) cpu_count=$(python -c 'import os; print(os.cpu_count())') process_cpu_count=$(python -c 'import os; p=getattr(os,"process_cpu_count",None); print(p() if p else None)')"
           # Overlap E2E with the pytest wave. MEASURED on 32235863378: E2E is
-          # 78 passed / 54.4s serial *before* pytest's 232s. The marker file
-          # is written at E2E success; the two tests in
-          # tests/test_playwright_must_run.py still run after E2E (not skipped).
+          # 78 passed / 54.4s serial *before* pytest's 232s. Both exit codes decide
+          # this job directly. UNIVERSAL_QUANTITATIVE_CLOSURE_V1 (RC-542): the
+          # `.playwright_last_run_success` marker and tests/test_playwright_must_run.py
+          # are retired — a tracked, hand-editable JSON stamp compared to file mtimes
+          # was a proxy for the run this job already performs and reports exactly.
           # Local `npm run test:all` stays serial.
           set +e
           npm run test:e2e &
           e2e_pid=$!
-          python -m pytest -n "$(nproc)" --dist loadfile --durations=20 --ignore=tests/test_playwright_must_run.py
+          python -m pytest -n "$(nproc)" --dist loadfile --durations=20
           pytest_rc=$?
           wait "$e2e_pid"
           e2e_rc=$?
@@ -142,5 +144,4 @@ jobs:
             echo "Playwright E2E failed with ${e2e_rc}"
             exit "$e2e_rc"
           fi
-          python -m pytest tests/test_playwright_must_run.py --tb=short
           exit "$pytest_rc"

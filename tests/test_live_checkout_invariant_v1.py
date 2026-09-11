@@ -75,6 +75,31 @@ def test_prod_checkout_allows_reads_fetch_ffupdate_and_return_to_main(tmp_path, 
         assert plg.prod_checkout_git_move_violations(cmd, cwd) == [], f"must ALLOW on production: {cmd}"
 
 
+def test_prod_checkout_ff_update_survives_a_trailing_redirect(tmp_path, monkeypatch):
+    """MEASURED 2026-09-11: `git merge --ff-only origin/main 2>&1` -- the sanctioned production
+    update, only with its own stderr redirected, which any caller may reasonably do -- was
+    wrongly BLOCKED: `2>&1` was read as an extra ref, so `refs` no longer matched the allowed
+    `["origin/main"]` shape. A legitimate operation must not become forbidden just because it
+    redirects its own output."""
+    prim = _make_primary(tmp_path)
+    monkeypatch.setattr(plg, "REPO", prim)
+    cwd = str(prim)
+    for cmd in (
+        "git merge --ff-only origin/main 2>&1",
+        "git pull --ff-only 2>&1",
+        "git fetch origin 2>&1",
+        "git status 2>/dev/null",
+        "git log --oneline -5 > /tmp/log.txt",
+    ):
+        assert plg.prod_checkout_git_move_violations(cmd, cwd) == [], \
+            f"a redirect must not turn a sanctioned production command into a violation: {cmd}"
+    # ...but a redirect must not LAUNDER a genuine violation either.
+    assert plg.prod_checkout_git_move_violations("git checkout -b evil 2>&1", cwd), \
+        "a redirect must not hide a real branch-move violation"
+    assert plg.prod_checkout_git_move_violations("git merge feature-branch 2>&1", cwd), \
+        "a redirect must not hide a real non-ff-only merge violation"
+
+
 def test_prod_checkout_move_ban_leaves_dev_worktrees_free(tmp_path, monkeypatch):
     prim = _make_primary(tmp_path)
     wt = _make_linked(tmp_path, prim)
@@ -214,6 +239,72 @@ def test_prod_checkout_shell_app_write_blocks_material_edits(tmp_path, monkeypat
     ):
         assert plg.production_checkout_shell_app_write_violations(cmd, cwd), \
             f"materially-equivalent shell edit to production app code must BLOCK: {cmd}"
+
+
+def test_prod_checkout_powershell_write_blocks_material_edits(tmp_path, monkeypatch):
+    """MEASURED 2026-09-11 against the real production primary: Set-Content, Add-Content,
+    Out-File, Copy-Item and Move-Item all wrote an unguarded .py canary with no block from any
+    layer, after operator_law_guard's universal `_PS_WRITE_BAD` was retired 2026-09-10 without a
+    replacement in the production-checkout rail. This is the negative control for the fix."""
+    prim = _make_primary(tmp_path)
+    monkeypatch.setattr(plg, "REPO", prim)
+    (prim / "server.py").write_text("x = 1\n", encoding="utf-8")
+    (prim / "static").mkdir()
+    (prim / "static" / "index.html").write_text("<h1>", encoding="utf-8")
+    cwd = str(prim)
+    for cmd in (
+        'Set-Content -Path "server.py" -Value "x = 2"',
+        'Set-Content server.py "x = 2"',                         # positional form
+        'Add-Content -Path server.py -Value "y = 1"',
+        '"x = 2" | Set-Content server.py',                       # piped-in value, positional dest
+        'Out-File -FilePath server.py -InputObject "x = 2"',
+        '"x = 2" | Out-File -FilePath static/index.html',
+        'Copy-Item -Path C:\\tmp\\evil.py -Destination server.py',
+        'Copy-Item C:\\tmp\\evil.py server.py',                  # positional source + dest
+        'Move-Item -Path C:\\tmp\\evil.py -Destination server.py',
+    ):
+        assert plg.production_checkout_shell_app_write_violations(cmd, cwd), \
+            f"materially-equivalent PowerShell edit to production app code must BLOCK: {cmd}"
+
+
+def test_prod_checkout_powershell_write_exempts_reads_nonapp_and_worktrees(tmp_path, monkeypatch):
+    prim = _make_primary(tmp_path)
+    wt = _make_linked(tmp_path, prim)
+    (prim / "server.py").write_text("x = 1\n", encoding="utf-8")
+    monkeypatch.setattr(plg, "REPO", prim)
+    for cmd, cwd in (
+        ('Get-Content server.py', str(prim)),                    # pure read
+        ('Copy-Item server.py /tmp/backup.py', str(prim)),       # server.py is the SOURCE here
+        ('Set-Content -Path notes.md -Value "x"', str(prim)),    # not app code
+        (f'Set-Content -Path {wt}/server.py -Value "x"', str(prim)),  # dest is the dev worktree
+        ('Set-Content -Path server.py -Value "x"', str(wt)),     # session cwd is the dev worktree
+    ):
+        assert plg.production_checkout_shell_app_write_violations(cmd, cwd) == [], f"must ALLOW: {cmd}"
+
+
+def test_prod_checkout_rails_are_not_evaded_by_a_bare_newline(tmp_path, monkeypatch):
+    """MEASURED 2026-09-11: a `cd`/`Set-Location`-headed segment followed by the real command on
+    its OWN LINE (no `;`) used to be read as ONE segment and never split — the exact same shape
+    that blocks correctly with a `;` instead of a newline evaded both the git-move ban and the
+    shell-write ban. An ordinary multi-line script is the common case, not an adversarial one."""
+    prim = _make_primary(tmp_path)
+    monkeypatch.setattr(plg, "REPO", prim)
+    (prim / "server.py").write_text("x = 1\n", encoding="utf-8")
+    cwd = str(prim)
+    assert plg.prod_checkout_git_move_violations(
+        f"cd {prim}\ngit checkout -b evil-branch", cwd), \
+        "a git branch-move on its own line after cd must still BLOCK"
+    assert plg.production_checkout_shell_app_write_violations(
+        f'Set-Location "{prim}"\nSet-Content -Path server.py -Value bad', cwd), \
+        "a PowerShell write on its own line after Set-Location must still BLOCK"
+    assert plg.production_checkout_shell_app_write_violations(
+        f"cd {prim}\ncp /tmp/evil.py server.py", cwd), \
+        "a POSIX write on its own line after cd must still BLOCK"
+    # a genuine line continuation (trailing `\`) is NOT a statement break — it must still block
+    # the single logical command it forms, not be split into two harmless halves.
+    assert plg.production_checkout_shell_app_write_violations(
+        f"cp /tmp/evil.py \\\nserver.py", cwd), \
+        "a backslash-continued single command must still be read as one command and BLOCK"
 
 
 def test_prod_checkout_shell_app_write_exempts_reads_nonapp_and_worktrees(tmp_path, monkeypatch):

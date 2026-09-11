@@ -72,11 +72,25 @@ def test_the_three_policy_reads_are_no_longer_reported(live_orphans):
         "the policy-backed reads are still flagged as orphans")
 
 
-def test_the_check_did_not_go_blind_a_genuine_orphan_is_still_reported(live_orphans):
-    """The load-bearing negative control: widening the SEARCH must not widen the EXEMPTIONS."""
-    violations = live_orphans
-    assert len(violations) > 100, (
-        f"only {len(violations)} orphans reported — the check has been blinded, not fixed")
+def test_the_check_did_not_go_blind_a_genuine_orphan_is_still_reported(tmp_path, monkeypatch):
+    """The load-bearing negative control: widening the SEARCH must not widen the EXEMPTIONS.
+
+    Driven on a CONSTRUCTED population, not on a count of the live tree's orphans: the
+    `len(violations) > 100` pin this replaced measured the tree's history, not the check's
+    sight — it failed on 2026-09-10 when unrelated deletions left exactly 100 (RC-549)."""
+    prod = tmp_path / "prod"
+    prod.mkdir()
+    writer, reader = prod / "writer.py", prod / "reader.py"
+    writer.write_text('def produce():\n    return {"zz_written_key": 1}\n', encoding="utf-8")
+    reader.write_text(
+        'def consume(d):\n    return d.get("zz_written_key"), d.get("zz_orphan_key"), d.get("strict_default")\n',
+        encoding="utf-8")
+    monkeypatch.setattr(GATE, "_production_py_files", lambda: [reader, writer])
+    reported = {v.msg.split("key '", 1)[1].split("'", 1)[0] for v in GATE.check_no_orphan_dict_keys()}
+    assert "zz_orphan_key" in reported, "a key nothing writes went unreported — the check is blind"
+    assert "zz_written_key" not in reported, "a key the population writes was reported — a false positive"
+    assert "strict_default" in reported, (
+        "a policy-file key excuses a read ONLY in its named reader; in an unlisted reader it is still an orphan")
 
 
 def test_the_allowlist_is_explicit_not_a_glob():

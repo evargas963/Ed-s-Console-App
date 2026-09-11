@@ -16,21 +16,17 @@ import json
 from pathlib import Path
 
 
-def test_guard_git_reads_utf8_governance_content_without_locale_decode_errors():
-    """RC-187 lock: the guard's `_git` must decode git output as UTF-8, not the locale
-    codepage. Before the pin, `git show HEAD:governance/root_cause_log.md` threw
-    UnicodeDecodeError in the capture reader thread on cp1252 hosts and silently degraded
-    the RC-66 check to never-block. Drives the REAL callee against the REAL log."""
-    from tools.pretooluse_guard import _git
-    out = _git(["show", "HEAD:governance/root_cause_log.md"])
-    assert out is not None and "| RC-" in out
+# RC-187 (the guard's `_git` must decode UTF-8): that `_git` was the RC-66 lane's reader in
+# tools/pretooluse_guard.py, retired with the lane; the module is a path-facts library now and
+# runs no git. The surviving git readers pin `encoding="utf-8"` at their own sites.
 
 
-def test_v2_payload_and_ps_constructed_writes_block():
-    """Cursor v2: -c payload writes to constructed / governance / production targets refuse;
-    literal safe-data targets stay legal."""
+def test_v2_payload_and_ps_constructed_writes_are_no_longer_banned():
+    """KEEP/MERGE/DELETE 2026-09-10: the -c payload / PowerShell constructed-write bans guarded
+    the retired mockup-approval registry and a mangling risk ruff and pytest already catch; the
+    Edit/Write tools remain the ordinary path, the bans are gone with no successor."""
     from tools.operator_law_guard import bash_violations
-    blocked = (
+    formerly_blocked = (
         "python -c \"p='x'+'y.json'; open(p,'w').write('1')\"",
         "python -c \"open('.claude/zzz.json','w').write('1')\"",
         "python -c \"open('static/chart.html','w').write('1')\"",
@@ -38,15 +34,15 @@ def test_v2_payload_and_ps_constructed_writes_block():
         "Out-File -FilePath $(Resolve-Path x) -InputObject 1",
         "Copy-Item a.html static/b.html",
     )
-    for cmd in blocked:
-        assert any("RC-189 v2" in v or "RC-189" in v for v in bash_violations(cmd, [])), cmd
+    for cmd in formerly_blocked:
+        assert bash_violations(cmd, []) == [], cmd
     legal = (
         "python -c \"open('reports/x.jsonl','a').write('1')\"",
         "python -c \"open('governance/root_cause_log.md','a').write('row')\"",
         "python -c \"print(open('db.py').read())\"",
     )
     for cmd in legal:
-        assert not any("RC-189 v2" in v for v in bash_violations(cmd, [])), cmd
+        assert bash_violations(cmd, []) == [], cmd
 
 
 def test_v2_ledger_status_prose_honesty_clause():
@@ -64,48 +60,19 @@ def test_v2_ledger_status_prose_honesty_clause():
     assert not any("RC-996" in m for m in msgs)
 
 
-def test_gun2_powershell_and_quoted_disable_forms_block():
-    """RC-189 GUN 2: every Cursor escape form must match the skip-hooks ban; grant vars and
-    non-disable values must not."""
+def test_lock_disable_routes_are_git_and_precommits_own():
+    """The lock-disable ban names the routes that actually bypass the battery — git's
+    (`--no-verify`, `-n`, `core.hooksPath`) and pre-commit's (`SKIP=`, uninstall). The
+    `ED_*_GUARD=off` spellings it once also policed name switches that do not exist (RC-450)
+    and were deleted 2026-09-10."""
     from tools.operator_law_guard import _SKIP_HOOKS
-    for cmd in (
-        'ED_UI_MOCKUP_LOCK="off" git commit',
-        "ED_UI_MOCKUP_LOCK='off' pytest",
-        "ED_UI_MOCKUP_LOCK = off",
-        '$env:ED_UI_MOCKUP_LOCK="off"; git commit',
-        "$Env:ED_STOP_GUARD='false'",
-        "Set-Item env:ED_UI_MOCKUP_LOCK off",
-        'Set-Item -Path env:ED_UI_MOCKUP_LOCK -Value "off"',
-        "New-Item Env:\\ED_UI_MOCKUP_LOCK -Value off",
-        "[Environment]::SetEnvironmentVariable('ED_UI_MOCKUP_LOCK','off')",
-        "os.environ['ED_UI_MOCKUP_LOCK']='off'",
-        '${env:ED_UI_MOCKUP_LOCK}="off"',
-        "$ExecutionContext.SessionState.PSVariable.Set('ED_UI_MOCKUP_LOCK','off')",
-        '$env:ED_UI_MOCKUP_LOCK=("o"+"ff")',
-    ):
+    for cmd in ("git commit --no-verify -m x", "git commit -n -m x", "git -c core.hooksPath=/dev/null commit",
+                "SKIP=institutional-correctness git commit -m x", "$env:SKIP='ruff-correctness'; git commit -m x",
+                "pre-commit uninstall"):
         assert _SKIP_HOOKS.search(cmd), cmd
-    for cmd in (
-        "ED_UI_GATE_LIVE=1 pytest",
-        "ED_UI_MOCKUP_APPROVE=1 echo hi",
-        "$env:ED_UI_MOCKUP_LOCK='on'",
-        "ED_STOP_GUARD_TIMEOUT=0.5 run",
-        "git commit -m 'normal'",
-    ):
+    for cmd in ("git commit -m 'skip the typo'", "SKIPPED=1 python x.py", "echo pre-commit installed",
+                "git push -n origin main", "ED_UI_MOCKUP_LOCK=off git commit", "git commit -m 'normal'"):
         assert _SKIP_HOOKS.search(cmd) is None, cmd
-
-
-def test_lock_disable_env_is_a_blocked_action():
-    """Self-audit finding 2026-08-02: operator_law_guard's skip-hooks ban enumerated only the
-    four *_GUARD names, so ED_UI_MOCKUP_LOCK=off was silently agent-usable the day the lock
-    shipped. Drives the REAL regex: every lock-disable env form must match; a benign env that
-    merely contains GATE/LIVE must not."""
-    from tools.operator_law_guard import _SKIP_HOOKS
-    for cmd in ("ED_UI_MOCKUP_LOCK=off git commit", "ED_PRETOOLUSE_GUARD=off python x.py",
-                "ED_STOP_GUARD=0 echo", "ED_PROOF_ONLY_GUARD=false echo",
-                "ED_OPERATOR_LAW_GUARD=off echo"):
-        assert _SKIP_HOOKS.search(cmd), cmd
-    assert _SKIP_HOOKS.search("ED_UI_GATE_LIVE=1 pytest") is None
-    assert _SKIP_HOOKS.search("git commit -m 'normal'") is None
 
 
 def test_domain_faucet_lock_blocks_second_faucets():

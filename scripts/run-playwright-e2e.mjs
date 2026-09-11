@@ -97,24 +97,8 @@ try {
 if (exitCode !== 0) {
   process.exit(exitCode);
 }
-
-// Issue 40/46 — unified enforcement: pytest requires this file after a successful E2E run.
-const markerPath = path.join(root, ".playwright_last_run_success");
-try {
-  fs.writeFileSync(
-    markerPath,
-    JSON.stringify(
-      {
-        ok: true,
-        finishedAt: new Date().toISOString(),
-        runner: "scripts/run-playwright-e2e.mjs",
-      },
-      null,
-      2
-    ),
-    "utf8"
-  );
-} catch (e) {
-  console.error("[test:e2e] failed to write .playwright_last_run_success:", e);
-  process.exit(1);
-}
+// UNIVERSAL_QUANTITATIVE_CLOSURE_V1 (RC-542): the `.playwright_last_run_success` marker this
+// runner used to write (Issue 40/46) is retired. The run's exit code is its proof, and
+// required CI executes this runner directly; a tracked, hand-editable stamp compared to
+// spec mtimes was a proxy that could be edited into a pass (its tracked copy was dated
+// 2026-05-25 while CI had run E2E daily). `npm run test:all` still runs E2E first.

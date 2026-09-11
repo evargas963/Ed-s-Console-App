@@ -37,7 +37,18 @@ import pytest
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / "tools"))
 
-import operator_law_guard as G  # noqa: E402
+import types as _types  # noqa: E402
+
+import operator_law_guard as _olg  # noqa: E402
+import shell_parse as _sp  # noqa: E402
+
+# The repository-identity resolver moved to tools/shell_parse.py (BEDROCK 2026-09-06) and
+# the guard no longer re-exports it (2026-09-10, the re-export block was test-only surface):
+# this namespace presents both modules under the name the controls were written against.
+_merged = {k: v for k, v in vars(_sp).items() if not k.startswith("__")}
+_merged.update({k: v for k, v in vars(_olg).items() if not k.startswith("__")})
+G = _types.SimpleNamespace(**_merged)
+G.__file__ = _olg.__file__
 
 # RC-368: declared direct owner — this suite drives the guard's repo-scope resolution
 # and the RC-360 grant reader.
@@ -267,9 +278,9 @@ def test_malformed_quoting_does_not_crash_and_does_not_silently_resolve():
 
 
 # ── 3. repository-bound verification — commit clause RETIRED (SIMPLICITY REHAB) ──────────
-# The repo-scoped proof machinery survives ONLY for edit_violations' close-a-row clause;
-# commits are quiet for this guard regardless of ledger state (pre-commit battery is the
-# enforcement). One contract test replaces the five per-shape blocked-commit controls.
+# Commits are quiet for this guard regardless of ledger state (the pre-commit battery and
+# required CI are the enforcement); the close-a-row clause that once consumed the ledger rows
+# below was deleted 2026-09-10. The `ledger` argument is accepted and ignored.
 def test_commit_is_quiet_regardless_of_ledger_proof_state(other_repo):
     for ledger in ([], [led("bash", PYTEST_PROOF, ED)],
                    [led("bash", PROBE_PROOF, G.normalize_repo(other_repo))],
@@ -306,13 +317,9 @@ def test_rc93_applicability_machinery_is_gone():
         assert not hasattr(G, name), name
 
 
-def test_applicability_declaration_marks_the_rc93_entry_retired():
-    doc = json.loads((REPO / "governance" / "archive" / "guard_applicability.json")
-                     .read_text(encoding="utf-8"))
-    mechs = {m.get("governing_mechanism_id"): m for m in doc.get("mechanisms") or []}
-    rc93 = mechs.get("ED-OPERATOR-LAW-GUARD/RC-93-COMMIT-BEFORE-PROOF")
-    assert rc93 is not None, "the historical declaration row must stay (append-only history)"
-    assert rc93.get("retired"), "the entry must be marked retired with its date/reason"
+# test_applicability_declaration_marks_the_rc93_entry_retired left with governance/archive/
+# (UNIVERSAL_QUANTITATIVE_CLOSURE_V1, 2026-09-10): git history is the archive, and a test
+# that read a retired declaration's JSON proved the file, not the guard.
 
 
 def test_no_hardcoded_repository_exception_in_the_guard():
@@ -365,9 +372,9 @@ def test_destructive_git_has_one_owner_and_it_fires_unscoped(cmd):
 
 
 @pytest.mark.parametrize("cmd,needle", [
-    ("$env:ED_OPERATOR_LAW_GUARD='off'", "disables a mechanical lock"),
+    ("git commit --no-verify -m x", "disables a mechanical lock"),
     ("git add -A", "blind staging"),
-    ("grep -r foo *.py", "shell grep"),
+    ("rm -rf data/ed_console.db", "RC-273"),
 ])
 def test_universal_protections_fire_in_this_repository(cmd, needle):
     out = G.bash_violations(cmd, [], payload_cwd=str(REPO))
@@ -383,7 +390,7 @@ def test_rc360_head_grant_cannot_authorize_no_verify_in_this_repository():
 
 
 @pytest.mark.parametrize("cmd,needle", [
-    ("$env:ED_UI_MOCKUP_LOCK='off'", "disables a mechanical lock"),
+    ("git commit --no-verify -m x", "disables a mechanical lock"),
     ("git add -A", "blind staging"),
 ])
 def test_universal_protections_fire_for_an_unrelated_repository(cmd, needle, other_repo):
@@ -417,26 +424,17 @@ def test_non_commit_commands_are_unaffected_by_repository_scoping():
 def test_operator_escape_remains_operator_only():
     src = (REPO / "tools" / "operator_law_guard.py").read_text(encoding="utf-8")
     assert 'os.environ.get("ED_OPERATOR_LAW_GUARD"' not in src
-    out = G.bash_violations("ED_OPERATOR_LAW_GUARD=off python x.py", [], payload_cwd=str(REPO))
+    out = G.bash_violations("git commit --no-verify -m x", [], payload_cwd=str(REPO))
     assert any("disables a mechanical lock" in v for v in out), out
 
 
-# ── 7. root-cause-row closure is bound to its own repository ──────────────────────────────
-def test_closing_a_row_requires_proof_for_that_repository():
-    path = str(REPO / "governance" / "root_cause_log.md")
-    ok = frozenset({PYTEST_PROOF})
-    assert G.edit_violations(path, "| RC-1 | CLOSED |", [], ok) != []
-    assert G.edit_violations(path, "| RC-1 | CLOSED |",
-                             [led("bash", PYTEST_PROOF, ED)], ok) == []
-    # 2026-08-25 tightening: the same ledger row WITHOUT a successful result no longer closes.
-    assert G.edit_violations(path, "| RC-1 | CLOSED |",
-                             [led("bash", PYTEST_PROOF, ED)], frozenset()) != []
-
-
-def test_closing_a_row_rejects_proof_from_another_repository(other_repo):
-    path = str(REPO / "governance" / "root_cause_log.md")
-    ledger = [led("bash", PYTEST_PROOF, G.normalize_repo(other_repo))]
-    assert G.edit_violations(path, "| RC-1 | CLOSED |", ledger) != []
+# ── 7. root-cause-row closure at Edit time — RETIRED 2026-09-10 ──────────────────────────
+# The CLOSE-needs-a-verification-this-turn rule read the session transcript (the RC-544 class)
+# and duplicated a stronger judge: required CI EXECUTES every closing row's cited command
+# (tools/check_delta_adds_no_debt.py). No rule reads a ledger row at Edit time any more.
+def test_no_edit_time_ledger_rule_survives():
+    for gone in ("edit_violations", "_has_verification", "turn_ledger", "_successful_commands"):
+        assert not hasattr(_olg, gone), gone
 
 
 # ── 8. end-to-end through the real hook entrypoint ────────────────────────────────────────
@@ -484,17 +482,6 @@ def test_negative_control_pre_fix_detector_misses_git_dash_c():
     assert _PRE_FIX_GIT_COMMIT.search('git commit -m "x"')
     assert not _PRE_FIX_GIT_COMMIT.search('git -C . commit -m "x"')
     assert not _PRE_FIX_GIT_COMMIT.search('git --git-dir=.git --work-tree=. commit -m "x"')
-
-
-def test_negative_control_pre_fix_proof_check_was_session_wide():
-    """The pre-fix `_has_verification(ledger)` ignored the repository entirely."""
-    def pre_fix_has_verification(ledger):
-        return any(G._VERIFICATION.search(e.get("detail", ""))
-                   for e in ledger if e.get("kind") == "bash")
-
-    foreign = [led("bash", PROBE_PROOF, "c:/somewhere/else")]
-    assert pre_fix_has_verification(foreign) is True      # pre-fix: foreign proof counted
-    assert G._has_verification(foreign, ED) is False      # post-fix: it does not
 
 
 def test_negative_control_pre_fix_had_no_repository_resolution():

@@ -17,17 +17,18 @@ on:
 jobs:
   hardening:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # 20 -> 35 (2026-09-10): the delta step now also executes each closing row's cited proof.
+    timeout-minutes: 35
     # RC-396: this job once exported a fabricated `ED_AGENT_ROLE: cursor` and the required
     # run read a whole PR as the wrong agent's drift (`writer_no_drift: 0 -> 27`). The role
     # machinery was removed entirely in the 2026-08-24 Architecture A teardown; CI carries
     # no agent identity because there is none to carry.
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
         with:
           # FULL_FIXES_ONLY_V2: FINAL_SHA verification needs full history
           fetch-depth: 0
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
         with:
           python-version: "3.13"
           cache: pip
@@ -70,12 +71,28 @@ jobs:
       # The delta owner enforces MORE than the old step did, not less:
       #   NEW violation                  -> BLOCK
       #   WORSENED count                 -> BLOCK
-      #   REMOVED/DEMOTED enforced check -> BLOCK  (deleting the failing check is not paying)
+      #   REMOVED/DEMOTED enforced check -> BLOCK unless declared in the checker's
+      #                                     RETIRED_CHECKS (visible in the same diff)
       #   crash / unreadable output      -> BLOCK  (silence is not cleanliness)
+      #   a ledger row this delta CLOSES whose first cited interpreter-led command
+      #   does not exit 0 in the candidate tree -> BLOCK (RC-540/RC-545: closure executes
+      #   its proof here, in ordinary CI, on the delta that introduces it)
       #   unchanged inherited debt       -> PASS
       #   improvement                    -> PASS
-      # One implementation, one CHECKS roster, two callers — no second delta tool.
-      - name: institutional debt delta (same owner as local pre-commit)
+      # When the checker itself changed, the step prints VALIDATOR CHANGED: the counts come
+      # from each tree's own predicates and the checker diff is what review must read. The
+      # "trusted" lane that tried to judge the candidate with the base checker was deleted
+      # 2026-09-10 (RC-546): it executed candidate root modules under a trusted label.
+      #
+      # WHAT THIS STEP IS NOT (attack matrix 2026-09-11, RC-539): a non-bypass boundary. It
+      # runs the candidate's own gate, from the candidate's own copy of this file, and the
+      # required status is matched by NAME from the GitHub Actions app. MEASURED on scratch
+      # PRs #240/#241 from 1a2eaafe: a weakened predicate (name kept) turned both required
+      # checks green; this step replaced by `true` turned `hardening` green. Everything here
+      # is regression detection for an honest candidate; the boundary that would stop a
+      # candidate from changing its judge is an identity the coding agent does not hold
+      # (OPEN_ITEMS.md, GOV-REMOTE-ENFORCEMENT), which no file in this repository can create.
+      - name: institutional debt delta + closure execution
         run: |
           git fetch --no-tags origin main
           python tools/check_delta_adds_no_debt.py --base origin/main

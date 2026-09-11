@@ -1,13 +1,17 @@
-"""Front-end hook for operating_process_lock (RC-217).
+"""PreToolUse guard for the two things git cannot refuse by itself (RC-217 / RC-350 / RC-231).
 
-Runs on PreToolUse (Edit/Write/StrReplace/Bash). RC-471 removed the Stop registration;
-BEDROCK 2026-09-06 removed the retained stop_block() with the completion-claim and
-LIVE-vs-DISK rules it carried — this guard has no Stop path. Exit 2 BLOCKS.
-No env kill-switch: ED_PROCESS_LOCK_GUARD cannot disable this control (RC-450).
-2026-08-24 teardown: the role/authority rails (writer_drift_lock, isolated-worktree
-boundary, mission gating, GO closeout) are gone with Architecture A — what remains is
-checkout protection (production primary, cross-checkout edits, shell writes into production
-app code), index parity at commit, destructive-git (the ONE owner) and piped-commit blocks.
+  * LIVE-CHECKOUT PROTECTION: the production primary (`EdWebConsole`, `.git` a directory)
+    is `main == origin/main` and never edited in place. An Edit/Write of app code inside it,
+    a shell write (`cp`/`sed -i`/`tee`/redirect) into it, a linked worktree reaching into it,
+    and any git verb that moves it off main are refused at the moment of the command
+    (RC-350: the desk went down on a feature branch; RC-442: a side checkout edited the desk).
+  * TREE-DESTRUCTIVE GIT (`operating_process_lock.reset_guard_violations`, the ONE owner):
+    `reset --hard`, `checkout -- <path>`, `clean -f`, `push --force` on any target, and the
+    restore/stash class on product paths — three wipes on 2026-08-03 used exactly these.
+  * PIPED COMMITS (RC-234): `git commit | tail` reports the filter's exit code and hides a
+    failed hook; refused before it runs.
+
+Exit 2 BLOCKS. No env kill-switch (RC-450). No Stop path. Reads nothing but the payload.
 """
 from __future__ import annotations
 
@@ -27,21 +31,14 @@ from tools.shell_parse import (  # noqa: E402 — the ONE shell parser (BEDROCK 
     iter_command_segments,
     iter_git_invocations,
     normalize_repo,
-    repo_root_of,
     shell_executed_part,
 )
 from tools.pretooluse_guard import classify_path  # noqa: E402
-from tools.stop_chain import BASH_TOOLS  # noqa: E402 — the ONE shell-tool roster (RC-520)
+from tools.hook_chain import BASH_TOOLS, MUTATING_TOOLS  # noqa: E402 — the ONE roster of each class
 
-#: Cursor continuum tools that mutate files (RC-226: StrReplace/path were previously ignored).
-_EDIT_TOOLS = (
-    "Edit",
-    "Write",
-    "MultiEdit",
-    "NotebookEdit",
-    "StrReplace",
-    "Delete",
-)
+#: The file-mutating tool class is decided ONCE (tools.hook_chain.MUTATING_TOOLS, Cursor's
+#: StrReplace/Delete included — RC-226) and imported here; no private copy.
+_EDIT_TOOLS = MUTATING_TOOLS
 
 
 #: Keys across the two continua that carry an edit target path.
@@ -118,6 +115,15 @@ _GIT_GLOBAL_WITH_ARG = frozenset({"-C", "-c", "--git-dir", "--work-tree", "--nam
                                   "--super-prefix", "--exec-path"})
 
 
+#: A shell redirect operator token — `2>&1`, `>out.log`, `>>out.log`, `<in`, bare `>`/`<` — MEASURED
+#: 2026-09-11: `git merge --ff-only origin/main 2>&1` (the exact sanctioned production
+#: fast-forward, only with its own stderr redirected) was read as `refs = ["origin/main", "2>&1"]`
+#: by the naive "every non-flag token is a ref" rule, which does not match the allowed
+#: `["origin/main"]` shape and wrongly BLOCKS a legitimate operation the moment a caller redirects
+#: it — exactly the "obstructs normal development" failure mode this guard must not create.
+_REDIRECT_TOKEN_RE = re.compile(r"^[0-9]*(?:>{1,2}|<)")
+
+
 def git_subcommand(cmd: str) -> tuple[str, list[str]]:
     """`(subcommand, its args)` for one git invocation — `("", [])` when there is no git call.
 
@@ -132,6 +138,10 @@ def git_subcommand(cmd: str) -> tuple[str, list[str]]:
     if gi < 0:
         return "", []
     rest = toks[gi + 1:]
+    for ri, t in enumerate(rest):            # shell redirection is not a git argument — stop
+        if _REDIRECT_TOKEN_RE.match(t):      # reading positional args at the first redirect token
+            rest = rest[:ri]
+            break
     i = 0
     while i < len(rest):                 # skip git GLOBAL options up to the subcommand
         t = rest[i]
@@ -146,23 +156,6 @@ def git_subcommand(cmd: str) -> tuple[str, list[str]]:
     if i >= len(rest):
         return "", []                    # bare `git` with no subcommand
     return rest[i], rest[i + 1:]
-
-
-def git_segment_mutates_checkout(seg: str) -> bool:
-    """Does this git segment MATERIALLY CHANGE the checkout it targets?
-
-    A different question from `_prod_forbidden_git_reason`, which asks whether an operation is
-    forbidden ON PRODUCTION and so answers None for `git checkout main` and
-    `git merge --ff-only origin/main` — both sanctioned there, and both of which still rewrite
-    a working tree. RC-512 needs the material question: a session that ran
-    `git -C <worktree> merge --ff-only origin/main` changed that worktree whether or not the
-    operation was permitted, so that worktree must take part in adjudicating the turn.
-
-    Both answers come from the SAME `_PROD_MOVE_SUBCOMMANDS` roster and the same parser above;
-    only the policy layered on top differs.
-    """
-    sub, _args = git_subcommand(seg)
-    return bool(sub) and sub in _PROD_MOVE_SUBCOMMANDS
 
 
 def _prod_forbidden_git_reason(cmd: str) -> str | None:
@@ -277,14 +270,6 @@ def production_checkout_app_edit_violations(tool_input: dict, repo: Path = REPO)
 #: the redirect destination here lets the caller close the static/*.html|*.js gap in production.
 _REDIRECT_DEST_RE = re.compile(r'(?:^|[^0-9&>])[0-9]*>>?\|?\s*("[^"]+"|\'[^\']+\'|[^\s;|&<>]+)')
 
-#: Forms that rewrite TRACKED files without naming them on the command line: a patch decides
-#: what it touches, and `git checkout <rev> -- <path>` / `git restore` write from an object.
-#: `prod_checkout_git_move_violations` deliberately returns None for the `--` file-restore form
-#: (it judges branch moves), so these were reachable by every rail.
-_TREE_WRITE_RE = re.compile(
-    r"(?i)\b(git\s+apply|git\s+checkout(?=[^|;&]*\s--\s)|git\s+restore|"
-    r"git\s+stash\s+(?:pop|apply)|patch\s+-[pi]\d?|patch\s+--\w+)")
-
 
 def _shell_write_dest_paths(seg: str) -> list[str]:
     """Destination file operand(s) a shell segment WRITES: a `>` / `>>` redirect on ANY command
@@ -341,39 +326,62 @@ def _shell_write_dest_paths(seg: str) -> list[str]:
             dests.append(inline)
         dests += [t for t in args[idx + 1:] if not t.startswith("-")]
         break
-    # PowerShell's write cmdlets are DELIBERATELY not enumerated here. operator_law_guard's
-    # _PS_WRITE_BAD already bans Set-Content/Add-Content/Out-File/Copy-Item/Move-Item against a
-    # production-suffix destination universally — MEASURED: `Set-Content server.py 'x=1'` blocks
-    # today with no mission row and no help from this table. A second PowerShell pattern here
-    # would be a second producer of one question (ONE FAUCET). Its residual gap is a destination
-    # built from a bare `$variable`, which no static table closes; that is a limit of the ban,
-    # not something a duplicate here would fix.
+    dests += _ps_write_dest_paths(seg)
     return dests
 
 
-def _shell_rewrites_tracked_tree(seg: str) -> str | None:
-    """The verb, when a segment rewrites tracked files WITHOUT naming them.
+#: PowerShell write-cmdlet destination parameter, keyed by cmdlet name (lower-case). Copy-Item
+#: and Move-Item read their first positional (the source, `-Path`) and write their SECOND
+#: (`-Destination`); Set-Content/Add-Content/Out-File write their only positional (`-Path` /
+#: `-FilePath`). RC-close-2026-09-11: this table used to be unnecessary — operator_law_guard's
+#: `_PS_WRITE_BAD` banned these same five cmdlets against a production-suffix destination
+#: universally. That mechanism was retired 2026-09-10 for a sound reason that does not transfer
+#: here: it existed to catch a shell write that MANGLES a file before it reaches ruff/pytest at
+#: commit and in CI, and a write that goes through commit/CI gets caught there regardless. A
+#: write landing directly in the PRODUCTION checkout never reaches a commit or CI at all — that
+#: is the entire point of the live-checkout invariant this file enforces — so the retirement
+#: left this table's five cmdlets as the one write path with no surviving guard. MEASURED
+#: 2026-09-11: `Set-Content`/`Add-Content`/`Out-File`/`Copy-Item`/`Move-Item` each wrote an
+#: unguarded `.py` canary in the actual production primary with no block from any layer,
+#: while the equivalent Edit/Write tool call on the same path was refused. This table closes
+#: exactly that gap, scoped to the production-checkout rail only — it does not resurrect a
+#: universal PowerShell-write ban, which stays retired for dev worktrees on the same reasoning
+#: that retired it (ruff/pytest catch a mangled write once it is committed).
+_PS_DEST_PARAM = {
+    "set-content": "-path", "add-content": "-path", "out-file": "-filepath",
+    "copy-item": "-destination", "move-item": "-destination",
+}
 
-    Deliberately separate from `_shell_write_dest_paths` and deliberately adjacent to it: those
-    forms have a destination operand to extract, and these do not. `git apply x.patch` and
-    `patch -p1 < x.patch` rewrite whatever the patch says; `git checkout <rev> -- path` and
-    `git restore` rewrite from an object. Returning a path list for them would be a fiction, so
-    this returns the matched verb and the caller reports a tree write.
 
-    MEASURED on 334c5daf: every form here passed the whole PreToolUse chain, including under
-    the strictest existing rail with cwd set to the production primary.
-    """
-    m = _TREE_WRITE_RE.search(seg)
-    return m.group(0) if m else None
+def _ps_write_dest_paths(seg: str) -> list[str]:
+    """Destination path a PowerShell write cmdlet targets in one segment, named or positional.
+
+    A residual, documented limit: a destination built from a bare `$variable` (no literal path
+    token) is not resolvable by this or any static table — the same limit the retired universal
+    ban carried."""
+    toks = [t.strip("\"'") for t in _tokens(seg)]
+    if not toks:
+        return []
+    verb = Path(toks[0]).name.lower()
+    dest_flag = _PS_DEST_PARAM.get(verb)
+    if not dest_flag:
+        return []
+    args = toks[1:]
+    for i, a in enumerate(args):
+        if a.lower() == dest_flag and i + 1 < len(args):
+            return [args[i + 1]]
+    positionals = [a for a in args if not a.startswith("-")]
+    if verb in ("copy-item", "move-item"):
+        return positionals[1:2]              # first positional is -Path (the source, a read)
+    return positionals[:1]
 
 
 def _shell_write_targets(cmd: str, payload_cwd: str = "", base_root: Path | None = None):
     """Every resolved destination a shell command writes, cwd tracked across `cd` in a chain.
 
-    Extracted from `production_checkout_shell_app_write_violations` so the resolve-and-join
-    loop exists ONCE (ONE FAUCET). The production-checkout rail keeps its own
-    `relative_to(primary)` narrowing; the mission latch applies a different narrowing to the
-    same stream. Neither re-derives how a shell command names a destination.
+    The resolve-and-join loop exists ONCE (ONE FAUCET); `production_checkout_shell_app_write_violations`
+    applies its `relative_to(primary)` narrowing on top and never re-derives how a shell
+    command names a destination.
     """
     root = str(base_root) if base_root else str(REPO)
     for cwd, seg in iter_command_segments(cmd or "", payload_cwd or ""):
@@ -386,27 +394,6 @@ def _shell_write_targets(cmd: str, payload_cwd: str = "", base_root: Path | None
                 yield p.resolve()
             except (OSError, ValueError):
                 continue
-
-
-def _owner_checkout(dest: Path) -> str:
-    """The checkout that owns `dest`, tolerating a destination that does not exist YET.
-
-    `repo_root_of` answers this question and stays the only implementation of it, but it
-    returns "" for a nonexistent path — and a write destination is very often a file being
-    CREATED. MEASURED: `curl -o static/app.js` and `--in-place static/app.js` resolved to no
-    owner and went ungoverned for exactly that reason, while `static/index.html` resolved
-    fine. Walking up to the nearest ancestor that does exist asks the same question about the
-    same tree.
-    """
-    cur = dest
-    for _ in range(64):
-        owner = repo_root_of(str(cur))
-        if owner:
-            return owner
-        if cur.parent == cur:
-            break
-        cur = cur.parent
-    return ""
 
 
 def production_checkout_shell_app_write_violations(cmd: str, payload_cwd: str = "") -> list[str]:
@@ -449,11 +436,12 @@ def pretooluse_block(tool: str, tool_input: dict, payload_cwd: str = "") -> list
         # Live-checkout invariant #4: the primary SESSION may not edit app code in the production
         # checkout (the symmetric companion to the linked->primary rail above).
         out.extend(production_checkout_app_edit_violations(tool_input))
-    if tool in BASH_TOOLS:                # one roster (stop_chain.BASH_TOOLS, RC-520)
+    if tool in BASH_TOOLS:                # one roster (hook_chain.BASH_TOOLS, RC-520)
         cmd = tool_input.get("command") or ""
         if re.search(r"\bgit\s+commit\b", cmd, re.I):
-            out.extend(OPL.commit_violations())
             # RC-234: piped commits mask hook failures as exit 0 — block BEFORE it runs.
+            # (The index≠WT parity check that also ran here was a duplicate of the
+            # `operating-process` pre-commit hook in the target tree — deleted 2026-09-10.)
             out.extend(OPL.commit_pipe_violations(cmd))
         # LOCK-2 (RC-231): the tree-destructive git CLASS blocks BEFORE the tree is touched —
         # three 2026-08-03 wipes used soft forms the old --hard-literal ban never matched.
@@ -466,9 +454,8 @@ def pretooluse_block(tool: str, tool_input: dict, payload_cwd: str = "") -> list
         # (cp/mv/sed -i/tee/...) is blocked too, not only Edit/Write tool calls.
         out.extend(production_checkout_shell_app_write_violations(cmd, payload_cwd))
         # BEDROCK 2026-09-06: the RC-498 shell-side mission latch is removed with its Edit-side
-        # twin (see pretooluse_guard.decide). Work identity is the branch and PR; defects get
-        # rows by doctrine; the Stop seam and the CLOSE contract hold what a mutation seam
-        # cannot see.
+        # twin. Work identity is the branch and PR; defects get rows by doctrine; the Stop seam
+        # and the CLOSE contract hold what a mutation seam cannot see.
     return out
 
 
@@ -476,10 +463,15 @@ def main() -> int:
     try:
         payload = json.load(sys.stdin)
     except (json.JSONDecodeError, ValueError):
-        return 0
-
-    if payload.get("stop_hook_active") is True:
-        return 0
+        # UNIVERSAL_QUANTITATIVE_CLOSURE_V1 (RC-541): an unreadable payload used to return 0 —
+        # a guard that cannot read the event waved it through. stop_guard already refuses
+        # its unreadable input; this guard now does the same. Exit 2 is the hosts' block code.
+        sys.stderr.write("BLOCKED by operating process lock: the hook payload is not readable "
+                         "JSON, so the tool call cannot be judged. Unreadable is not clean.\n")
+        return 2
+    if not isinstance(payload, dict):
+        sys.stderr.write("BLOCKED by operating process lock: the hook payload is not an object.\n")
+        return 2
 
     tool = payload.get("tool_name") or ""
     ti = payload.get("tool_input") or {}
