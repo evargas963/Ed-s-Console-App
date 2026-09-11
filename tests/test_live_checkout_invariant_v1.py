@@ -249,9 +249,9 @@ def test_prod_checkout_powershell_write_exempts_reads_nonapp_and_worktrees(tmp_p
     monkeypatch.setattr(plg, "REPO", prim)
     for cmd, cwd in (
         ('Get-Content server.py', str(prim)),                    # pure read
-        ('Copy-Item server.py C:\\tmp\\backup.py', str(prim)),   # server.py is the SOURCE here
+        ('Copy-Item server.py /tmp/backup.py', str(prim)),       # server.py is the SOURCE here
         ('Set-Content -Path notes.md -Value "x"', str(prim)),    # not app code
-        (f'Set-Content -Path {wt}\\server.py -Value "x"', str(prim)),  # dest is the dev worktree
+        (f'Set-Content -Path {wt}/server.py -Value "x"', str(prim)),  # dest is the dev worktree
         ('Set-Content -Path server.py -Value "x"', str(wt)),     # session cwd is the dev worktree
     ):
         assert plg.production_checkout_shell_app_write_violations(cmd, cwd) == [], f"must ALLOW: {cmd}"
