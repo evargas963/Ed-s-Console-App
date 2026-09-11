@@ -4386,6 +4386,19 @@ function setActiveTicker(rawTicker, rawExpiry) {
     // Mirror confirmed ticker back to DOM so display stays consistent
     const el = $('ticker-input');
     if (el && el.value.trim().toUpperCase() !== t) el.value = t;
+    // RC-close-2026-09-11: the VISIBLE header ticker chip (#cv2-hd-ticker) has its own
+    // independent writers (commitTicker's Enter/blur handler, paintHeader's periodic catch-up)
+    // and neither runs on a switch triggered elsewhere (watchlist click, radar click, cross-tab
+    // storage sync) -- so the chip could show the PRIOR ticker for however long it took the next
+    // scheduled paintHeader() to run (seconds, longer under a degraded/retrying backend), while
+    // every other surface (activeTicker, #ticker-input, and everything the fetch pipeline reads)
+    // had already moved to the new ticker. setActiveTicker is the ONE writer of activeTicker by
+    // construction (RC-123) -- it is now also the one place that keeps the operator-visible
+    // ticker identity in sync with it, immediately, for every caller. Skipped while the operator
+    // is actively editing that field (same guard paintHeader uses) so a switch driven from
+    // elsewhere never clobbers an in-progress edit.
+    const hdEl = $('cv2-hd-ticker');
+    if (hdEl && document.activeElement !== hdEl && hdEl.value.trim().toUpperCase() !== t) hdEl.value = t;
     if (DIAG) console.log('[setActiveTicker] committed', { ticker: t, expiry: e, generation: requestGeneration });
     if (changed) {
       _scheduleServerAnalyticsWarm(t, 'ticker_switch');
