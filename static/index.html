@@ -9331,7 +9331,16 @@ function renderLiquidityMap(lm) {
     const fusion = lm.fusion != null ? `fusion: ${lm.fusion}` : '';
     const bars = lm.bar_merge != null ? `bars: ${lm.bar_merge}` : '';
     const asOf = lm.as_of_cutoff_et ? `as-of ${etHHMMtoCT(lm.as_of_cutoff_et.slice(11, 16))} CT` : '';
-    const spotSc = lm.spot_used_for_scoring != null ? `spot ${Number(lm.spot_used_for_scoring).toFixed(2)}` : '';
+    // MEASURED 2026-09-11: this used to render lm.spot_used_for_scoring unconditionally as an
+    // unqualified "spot N.NN" -- the backend was silently back-filling that field with VWAP, a
+    // different financial quantity, whenever no real spot was available. The backend no longer
+    // does that (spot_used_for_scoring is null in that case, honestly); this reads the VWAP
+    // estimate from its own, separately-named field and labels it as an estimate, never as spot.
+    const spotSc = lm.spot_used_for_scoring != null
+      ? `spot ${Number(lm.spot_used_for_scoring).toFixed(2)}`
+      : (lm.spot_estimate_vwap_fallback != null
+        ? `spot ≈${Number(lm.spot_estimate_vwap_fallback).toFixed(2)} (vwap est.)`
+        : '');
     lmMeta.textContent = [fusion, bars, asOf, spotSc].filter(Boolean).join(' · ') || 'Live snapshot — load ticker (main refresh) so 1m overlay + cache populate';
   }
   const activeStage = getActiveStageFromET();
