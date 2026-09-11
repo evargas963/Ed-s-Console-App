@@ -62,6 +62,74 @@ def test_a_preexisting_backlog_never_masks_a_fresh_regression():
     assert added and any("checks_are_justified" in a for a in added), added
 
 
+# ── identity delta (RC-close-2026-09-11: count alone cannot see a substitution) ──────────
+def _gate_stdout(*checks: tuple[str, list[str]]) -> str:
+    """Build synthetic checker stdout in the REAL printed shape: `FAIL [name] (ENFORCED) —
+    N violation(s):` / `PASS [name] (ENFORCED)`, one `  path:line  msg` line per violation."""
+    lines = []
+    for name, violations in checks:
+        if not violations:
+            lines.append(f"PASS [{name}] (ENFORCED)")
+            continue
+        lines.append(f"FAIL [{name}] (ENFORCED) — {len(violations)} violation(s):")
+        lines.extend(violations)
+    return "\n".join(lines)
+
+
+def test_same_count_different_violation_is_a_substitution_and_fails():
+    """THE defect this section closes: violation A fixed, violation B introduced under the
+    SAME check, count unchanged 1 -> 1. compare() alone reads this as clean; the gate as a
+    whole must not."""
+    base = GATE.parse_violation_identities(_gate_stdout(
+        ("some_check", ["  server.py:10  old violation A"])))
+    head = GATE.parse_violation_identities(_gate_stdout(
+        ("some_check", ["  server.py:40  different violation B"])))
+    added, _ = GATE.compare({"some_check": 1}, {"some_check": 1})
+    assert added == [], "precondition: the count comparison alone must NOT catch this"
+    substituted = GATE.identity_regressions(base, head)
+    assert substituted and "some_check" in substituted[0], substituted
+
+
+def test_genuinely_unchanged_violation_is_not_flagged():
+    stdout = _gate_stdout(("some_check", ["  server.py:10  the exact same violation"]))
+    base = GATE.parse_violation_identities(stdout)
+    head = GATE.parse_violation_identities(stdout)
+    assert GATE.identity_regressions(base, head) == []
+
+
+def test_fixing_an_inherited_violation_is_not_flagged():
+    """HEAD carries a strict SUBSET of BASE's violations under a check (one of two fixed) —
+    paying down debt must never itself read as a new violation."""
+    base = GATE.parse_violation_identities(_gate_stdout(
+        ("some_check", ["  server.py:10  violation A", "  server.py:20  violation B"])))
+    head = GATE.parse_violation_identities(_gate_stdout(
+        ("some_check", ["  server.py:20  violation B"])))
+    assert GATE.identity_regressions(base, head) == []
+
+
+def test_an_unrelated_line_shift_does_not_false_positive():
+    """Ordinary development must not be made harder: editing unrelated lines ABOVE a violation
+    shifts its line number without changing what the violation IS. Line number is deliberately
+    excluded from the identity for exactly this reason."""
+    base = GATE.parse_violation_identities(_gate_stdout(
+        ("some_check", ["  server.py:10  the exact same violation"])))
+    head = GATE.parse_violation_identities(_gate_stdout(
+        ("some_check", ["  server.py:37  the exact same violation"])))  # same file+msg, moved
+    assert GATE.identity_regressions(base, head) == []
+
+
+def test_a_truncated_side_is_not_treated_as_a_complete_population():
+    base = GATE.parse_violation_identities(_gate_stdout(
+        ("some_check", ["  server.py:10  violation A", "  … and 20 more"])))
+    head = GATE.parse_violation_identities(_gate_stdout(
+        ("some_check", ["  server.py:99  brand new violation Z"])))
+    # base's own set is incomplete (truncated) -- a "new" identity on head cannot be proven
+    # new against an incomplete base population, so this must NOT be asserted as a substitution
+    # (the unconditional count comparison in compare() still catches the count growing, if it
+    # does -- this identity layer simply declines to claim more than it can prove).
+    assert GATE.identity_regressions(base, head) == []
+
+
 def test_parser_reads_the_real_gate_output_shape():
     for dash in ("-", "—"):
         text = (f"FAIL [root_cause_log] (ENFORCED) {dash} 71 violation(s):\n"
@@ -141,8 +209,8 @@ def test_the_tool_measures_in_a_clean_worktree_not_the_dirty_tree(monkeypatch):
 
     monkeypatch.setattr(GATE, "_run", recording_run)
     monkeypatch.setattr(GATE, "enforced_roster", lambda wt: {"venv_parity", "root_cause_log"})
-    counts, sha, roster = GATE.enforced_counts("HEAD")
-    assert (counts, sha) == ({}, "deadbeef") and roster
+    counts, identities, sha, roster = GATE.enforced_counts("HEAD")
+    assert (counts, identities, sha) == ({}, {}, "deadbeef") and roster
     add = next(a for a, _ in calls if a[:3] == ["git", "worktree", "add"])
     assert "--detach" in add and add[-1] == "HEAD"
     wt = add[-2]
@@ -166,9 +234,9 @@ def test_each_tree_is_measured_in_its_own_process_never_imported(tmp_path):
             f"print('FAIL [root_cause_log] (ENFORCED) - {n} violation(s):')\n"
             f"print('INSTITUTIONAL CORRECTNESS GATE: FAIL ({n} enforced violation(s))')\n"
             "sys.exit(1)\n", encoding="utf-8")
-    assert GATE.run_gate(tmp_path / "a", "a") == {"root_cause_log": 3}
-    assert GATE.run_gate(tmp_path / "b", "b") == {"root_cause_log": 5}
-    assert GATE.run_gate(tmp_path / "a", "a") == {"root_cause_log": 3}   # no cached module wins
+    assert GATE.run_gate(tmp_path / "a", "a")[0] == {"root_cause_log": 3}
+    assert GATE.run_gate(tmp_path / "b", "b")[0] == {"root_cause_log": 5}
+    assert GATE.run_gate(tmp_path / "a", "a")[0] == {"root_cause_log": 3}   # no cached module wins
     src = (REPO / "tools" / "check_delta_adds_no_debt.py").read_text(encoding="utf-8")
     tree = ast.parse(src)
     imported = {getattr(n, "module", None) or a.name for n in ast.walk(tree)
