@@ -513,13 +513,20 @@
       } else chg.textContent = '';
     }
     setFeed(q.feedCls, q.feedLabel, q.ageLabel);
-    setWlRow(state.ticker, (q.spot != null ? q.spot : null), q.chgPct);   // the selected row reuses this one quote
+    // The header (#hPx/#hChg above) and the watchlist rows are DECOUPLED on purpose: the
+    // header shows whatever this specific quote push/poll carried (best-effort, can be
+    // momentarily incomplete — e.g. a streamed ticker's spot arrives before its percent-
+    // change field does). Measured live: that left the active ticker's OWN watchlist row
+    // blank far more often than pollWatchlistQuotes's REST-backed batch read, which is
+    // reliably correct for it exactly as it is for every other row. Two writers racing on
+    // the same cell (paintQuote's often-incomplete push vs. pollWatchlistQuotes's reliable
+    // poll) would flicker the value depending on which happened to run last — so the
+    // watchlist rows have exactly ONE writer now (pollWatchlistQuotes, all rows uniformly,
+    // active ticker included); paintQuote owns the header display only.
   }
-  // Watchlist quotes: ONE writer per row — setWlRow, called either from paintQuote (the
-  // active ticker's own row, reusing the header's one quote) or pollWatchlistQuotes (every
-  // other row, via the backend's now-universal chg_pct — see resolve_chg_pct server-side).
-  // A null field CLEARS to "—" rather than leaving the previous text: failure and recovery
-  // must not leave a stale-but-current-looking number on screen.
+  // Watchlist quotes: setWlRow is the ONE writer for every wl-px/wl-chg cell, called only
+  // from pollWatchlistQuotes. A null field CLEARS to "—" rather than leaving the previous
+  // text: failure and recovery must not leave a stale-but-current-looking number on screen.
   function setWlRow(sym, spot, chgPct) {
     var key = (sym || '').replace('$', '');
     var pe = document.querySelector('.wl-px[data-wlpx="' + sym + '"]') || document.querySelector('.wl-px[data-wlpx="' + key + '"]');
@@ -530,14 +537,14 @@
       else { ce.textContent = '—'; ce.className = 'wl-chg'; }
     }
   }
-  // Bounded round-robin poll: ONE batched /api/watchlist-quotes request per slow tick for
-  // every row OTHER than the active ticker (whose row is already painted by paintQuote —
-  // no second writer for that symbol). Every requested symbol is explicitly resolved
+  // Bounded batch poll: ONE /api/watchlist-quotes request per slow tick for the WHOLE
+  // watchlist, active ticker included — one vendor round trip regardless of list size, not
+  // N sequential single-symbol polls. Every requested symbol is explicitly resolved
   // (present -> its value, absent from the batch response -> null), so a symbol the vendor
   // dropped from the response gets cleared via setWlRow's null path above, never left
   // showing its last good number.
   function pollWatchlistQuotes() {
-    var list = loadWL().filter(function (s) { return s !== state.ticker; });
+    var list = loadWL();
     if (!list.length) return;
     fetch('/api/watchlist-quotes?tickers=' + encodeURIComponent(list.join(',')), { cache: 'no-store' })
       .then(function (r) { return r.ok ? r.json() : {}; })
