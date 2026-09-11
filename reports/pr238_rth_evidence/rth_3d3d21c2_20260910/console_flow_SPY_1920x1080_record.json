@@ -1,0 +1,250 @@
+{
+  "captured_local": "Thu Sep 10 2026 08:58:44 GMT-0500 (Central Daylight Time)",
+  "viewport": "1920x1080",
+  "ticker": "SPY",
+  "page_errors": [],
+  "build": {
+    "git_sha": "3d3d21c245dcbc6da85f115d1d9b458437e3ab6a",
+    "pid": 25056,
+    "dirty": false
+  },
+  "chain": {
+    "rows": 165,
+    "spot_text": "7272228217.70.501757-0.50017.7854275332",
+    "sample": [
+      {
+        "sym": "SPY   260910C00950000",
+        "strike": null,
+        "text": "0183250.30.000950-1.000250.300"
+      },
+      {
+        "sym": "SPY   260910C00945000",
+        "strike": null,
+        "text": "00244.90.000945-1.000244.900"
+      },
+      {
+        "sym": "SPY   260910C00940000",
+        "strike": null,
+        "text": "00239.50.000940-1.000239.500"
+      }
+    ]
+  },
+  "spot": 758.18,
+  "selected_row": {
+    "sym": "SPY   260910C00756000",
+    "strike": null,
+    "text": "534871818.30.607756-0.39318.3566262909"
+  },
+  "desired": "SPY   260910C00756000",
+  "badge": "ACTIVE",
+  "seconds_to_badge": 12,
+  "flow_dom": {
+    "badge": "ACTIVE",
+    "sym": "SPY   260910C00756000",
+    "foot": "signed aggressor classification NOT PROVEN — native_aggressor_available=false; tape_classification=PROXY_RECONSTRUCTED_L1_TICK; no signed buys/sells, CVD, or bull/bear verdict is canonical.",
+    "rows": [
+      {
+        "k": "top_of_book.bid",
+        "v": "1.96",
+        "tag": "NATIVE",
+        "tagcls": "fl-tag native"
+      },
+      {
+        "k": "top_of_book.ask",
+        "v": "1.97",
+        "tag": "NATIVE",
+        "tagcls": "fl-tag native"
+      },
+      {
+        "k": "top_of_book.bid_size",
+        "v": "120",
+        "tag": "NATIVE",
+        "tagcls": "fl-tag native"
+      },
+      {
+        "k": "top_of_book.ask_size",
+        "v": "56",
+        "tag": "NATIVE",
+        "tagcls": "fl-tag native"
+      },
+      {
+        "k": "mid",
+        "v": "1.96",
+        "tag": "DERIVED",
+        "tagcls": "fl-tag derived"
+      },
+      {
+        "k": "microprice",
+        "v": "1.97",
+        "tag": "DERIVED",
+        "tagcls": "fl-tag derived"
+      },
+      {
+        "k": "spread_pts",
+        "v": "0.01",
+        "tag": "DERIVED",
+        "tagcls": "fl-tag derived"
+      },
+      {
+        "k": "depth.1.imbalance",
+        "v": "0.260",
+        "tag": "DERIVED",
+        "tagcls": "fl-tag derived"
+      },
+      {
+        "k": "depth.3.imbalance",
+        "v": "0.263",
+        "tag": "DERIVED",
+        "tagcls": "fl-tag derived"
+      },
+      {
+        "k": "depth.5.imbalance",
+        "v": "0.263",
+        "tag": "DERIVED",
+        "tagcls": "fl-tag derived"
+      },
+      {
+        "k": "depth.5.bid_total",
+        "v": "1060",
+        "tag": "DERIVED",
+        "tagcls": "fl-tag derived"
+      },
+      {
+        "k": "depth.5.ask_total",
+        "v": "619",
+        "tag": "DERIVED",
+        "tagcls": "fl-tag derived"
+      },
+      {
+        "k": "flow.top_book_pressure",
+        "v": "0.364",
+        "tag": "DERIVED",
+        "tagcls": "fl-tag derived"
+      },
+      {
+        "k": "flow.tape_pressure_30s",
+        "v": "0.667",
+        "tag": "PROXY",
+        "tagcls": "fl-tag proxy"
+      },
+      {
+        "k": "flow.tape_pressure_2m",
+        "v": "0.667",
+        "tag": "PROXY",
+        "tagcls": "fl-tag proxy"
+      },
+      {
+        "k": "flow.tape_pressure_5m",
+        "v": "0.667",
+        "tag": "PROXY",
+        "tagcls": "fl-tag proxy"
+      },
+      {
+        "k": "flow.cum_delta_proxy",
+        "v": "6.0",
+        "tag": "PROXY",
+        "tagcls": "fl-tag proxy"
+      },
+      {
+        "k": "flow.cum_delta_slope",
+        "v": "2.020",
+        "tag": "PROXY",
+        "tagcls": "fl-tag proxy"
+      },
+      {
+        "k": "ages.book_age_sec",
+        "v": "2s",
+        "tag": "DERIVED",
+        "tagcls": "fl-tag derived"
+      },
+      {
+        "k": "ages.quote_age_sec",
+        "v": "—",
+        "tag": "DERIVED",
+        "tagcls": "fl-tag derived"
+      },
+      {
+        "k": "streaming_plane.streaming_healthy",
+        "v": "healthy · 930ms"
+      }
+    ],
+    "header_static_chips": 0
+  },
+  "flow_api": {
+    "contract": "SPY   260910C00756000",
+    "flow": {
+      "tape_pressure_30s": 0.34285714285714286,
+      "tape_pressure_2m": 0.34285714285714286,
+      "tape_pressure_5m": 0.34285714285714286,
+      "cum_delta_proxy": 12,
+      "cum_delta_slope": 0.6023555395545606,
+      "top_book_pressure": 0.8556701030927835,
+      "classification": {
+        "tape_pressure_30s": "PROXY",
+        "tape_pressure_2m": "PROXY",
+        "tape_pressure_5m": "PROXY",
+        "cum_delta_proxy": "PROXY",
+        "cum_delta_slope": "PROXY",
+        "top_book_pressure": "DERIVED"
+      },
+      "tape_classification": "PROXY_RECONSTRUCTED_L1_TICK",
+      "native_aggressor_available": false
+    },
+    "ages": {
+      "book_age_sec": 1.304,
+      "quote_age_sec": null
+    },
+    "classification": {
+      "top_of_book.bid": "NATIVE",
+      "top_of_book.ask": "NATIVE",
+      "top_of_book.bid_size": "NATIVE",
+      "top_of_book.ask_size": "NATIVE",
+      "mid": "DERIVED",
+      "microprice": "DERIVED",
+      "crossed": "DERIVED",
+      "spread_pts": "DERIVED",
+      "spread_frac": "DERIVED",
+      "depth.*.bid_total": "DERIVED",
+      "depth.*.ask_total": "DERIVED",
+      "depth.*.imbalance": "DERIVED",
+      "depth_pressure": "DERIVED",
+      "book_slope": "DERIVED",
+      "liquidity_concentration": "DERIVED",
+      "wall_candidates": "DERIVED-HEURISTIC (size-outlier convention; see wall_method)",
+      "ages.book_age_sec": "DERIVED",
+      "ages.quote_age_sec": "DERIVED",
+      "provenance.book_time_ms": "NATIVE",
+      "provenance.exchange_quote_ts": "NATIVE",
+      "provenance.server_received_ts": "DERIVED"
+    },
+    "top_of_book": {
+      "bid": 1.96,
+      "ask": 1.97,
+      "bid_size": 180,
+      "ask_size": 14
+    },
+    "mid": 1.9649999999999999,
+    "microprice": 1.969278350515464,
+    "spread_pts": 0.01,
+    "streaming_plane": {
+      "producer_l1_contract": "SPY   260910C00756000",
+      "producer_book_contract": "SPY   260910C00756000",
+      "daemon_pid": 12856,
+      "keys": [
+        "streaming_connected",
+        "option_contract",
+        "server_requested_contract",
+        "producer_l1_contract",
+        "producer_book_contract",
+        "queried_contract",
+        "contract_match",
+        "streaming_last_update_ts",
+        "streaming_staleness_ms",
+        "streaming_healthy",
+        "daemon_upstream_health",
+        "stream_db_identity"
+      ]
+    }
+  },
+  "screenshot": "console_flow_SPY_1920x1080.png"
+}
