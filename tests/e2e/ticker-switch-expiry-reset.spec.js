@@ -44,6 +44,43 @@ test('ticker switch resets expiry scope and clears the stale select', async ({ p
   expect(committed.selectValue).not.toBe('2099-01-02');
 });
 
+test('a ticker switch triggered outside the header field syncs the visible header chip immediately', async ({ page }) => {
+  // MEASURED 2026-09-11: a watchlist-row click (or a radar click, or the cross-tab storage
+  // sync) calls setActiveTicker() directly -- it never goes through the header input's own
+  // commitTicker() handler, which is the ONLY other place that wrote #cv2-hd-ticker besides
+  // paintHeader()'s periodic full-render catch-up. Before the fix, the visible header chip
+  // kept showing the PRIOR ticker for however long it took the next paintHeader() to run
+  // (observed several seconds against a live dev instance, longer under a degraded/retrying
+  // backend) while activeTicker, #ticker-input, and every panel that reads them had already
+  // moved to the new ticker -- the operator-visible ticker identity disagreed with what was
+  // actually being rendered. setActiveTicker must now mirror the header chip itself,
+  // synchronously, with no dependency on a later render cycle.
+  const r = await page.evaluate(() => {
+    const hd = document.getElementById('cv2-hd-ticker');
+    hd.value = 'SPY'; // known starting chip value, independent of whatever loaded last
+    window.setActiveTicker('QQQ', null); // the watchlist/radar-click entry point, called directly
+    return { hdImmediatelyAfter: hd.value, activeTicker: window.__edTestHooks.getActiveTicker() };
+  });
+  expect(r.activeTicker).toBe('QQQ');
+  // REGRESSION LOCK: pre-fix this stayed 'SPY' until an unrelated paintHeader() call caught up.
+  expect(r.hdImmediatelyAfter).toBe('QQQ');
+});
+
+test('an in-progress header edit is not clobbered by a switch triggered elsewhere', async ({ page }) => {
+  // The synchronous mirror above must still respect the same "operator is actively typing"
+  // guard paintHeader already used -- a concurrent switch must not eat a draft symbol.
+  const r = await page.evaluate(() => {
+    const hd = document.getElementById('cv2-hd-ticker');
+    hd.focus();
+    hd.value = 'DRAFT';
+    window.setActiveTicker('TSLA', null);
+    const whileFocused = hd.value;
+    return { whileFocused, activeTicker: window.__edTestHooks.getActiveTicker() };
+  });
+  expect(r.activeTicker).toBe('TSLA');
+  expect(r.whileFocused).toBe('DRAFT');
+});
+
 test('transport diag lastFullRenderSource leaves init after a full render and persists across syncs', async ({ page }) => {
   // Lane-2 lock: pre-fix, render wrote only window._lastFullRenderSource while
   // _edTransportSync rebuilt __edTransport from the module-level variable, so the
