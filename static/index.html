@@ -9449,19 +9449,48 @@ function renderLiquidityMap(lm) {
   }
 }
 let _lmPollTid = null;
+let _lmLastMarkedTicker = null;
+/** MEASURED 2026-09-11: neither failure branch of pollLiquiditySnapshot cleared the display --
+ * a network error or a non-OK response just returned, leaving whatever the PRIOR successful
+ * poll rendered on screen with no indication it was no longer current. Reuses the same
+ * UNAVAILABLE vocabulary the rest of this file already uses for exactly this condition. */
+function _markLiquidityMapUnavailable(ticker) {
+  if (_lmLastMarkedTicker === ticker) return; // already showing it; don't re-flash the DOM
+  _lmLastMarkedTicker = ticker;
+  domIf('lm-snapshot-badge', el => { el.textContent = 'UNAVAILABLE'; });
+  const lmMeta = $('lm-live-meta');
+  if (lmMeta) lmMeta.textContent = `Liquidity snapshot UNAVAILABLE for ${ticker}`;
+}
 async function pollLiquiditySnapshot() {
-  const ticker = ($('ticker-input')?.value || '').trim().toUpperCase();
+  // ONE authoritative ticker/generation identity -- the same one every other fetch path in
+  // this file reads (activeTicker/requestGeneration via setActiveTicker), not a second,
+  // independent read of the DOM. MEASURED 2026-09-11: reading #ticker-input directly here
+  // meant a switch away from `ticker` mid-flight was invisible to this function -- a slow
+  // response for the ticker requested when the poll STARTED still rendered, unconditionally,
+  // even after the operator had already moved to a different ticker.
+  const myGen = requestGeneration;
+  const ticker = activeTicker;
   if (!ticker) return;
-  const exp = ($('expiry-select')?.value || '').trim();
+  const exp = activeExpiry || '';
   let url = `/api/liquidity-snapshot?ticker=${encodeURIComponent(ticker)}&snapshot=live`;
   if (exp) url += `&expiry=${encodeURIComponent(exp)}`;
+  const stillCurrent = () => myGen === requestGeneration && ticker === activeTicker;
   try {
     const resp = await fetch(url);
-    if (!resp.ok) return;
+    if (!stillCurrent()) return; // superseded while in flight -- drop, do not render
+    if (!resp.ok) { _markLiquidityMapUnavailable(ticker); return; }
     const data = await resp.json();
-    if (data.error) return;
+    if (!stillCurrent()) return; // superseded while parsing -- drop, do not render
+    if (!data || typeof data !== 'object' || Array.isArray(data) || data.error
+        || (data.ticker && String(data.ticker).toUpperCase() !== ticker)) {
+      _markLiquidityMapUnavailable(ticker);
+      return;
+    }
+    _lmLastMarkedTicker = null;
     renderLiquidityMap(data);
-  } catch (e) { /* silent */ }
+  } catch (e) {
+    if (stillCurrent()) _markLiquidityMapUnavailable(ticker);
+  }
 }
 function startLiquidityMapPoll() {
   if (_lmPollTid) clearInterval(_lmPollTid);
@@ -13756,7 +13785,14 @@ function edCheckRadarAlerts(rows) {
     try { saved = (localStorage.getItem('ed_ticker') || '').trim().toUpperCase(); } catch (e) {}
     if (saved && hdTk && hdTk.value !== saved) { hdTk.value = saved; commitTicker(); }
     window.addEventListener('storage', function (e) {
-      if (e.key === 'ed_ticker' && e.newValue && hdTk && hdTk.value !== e.newValue) {
+      // MEASURED 2026-09-11: this write had no "operator is actively editing" guard, unlike
+      // every other #cv2-hd-ticker writer (paintHeader, setActiveTicker) -- a parallel-tab
+      // ticker change landing while the operator was mid-draft in THIS tab's header silently
+      // overwrote what they were typing, then committed the OTHER tab's ticker as if they had.
+      // Deferred, not dropped: the operator's own commit (Enter/blur) still runs against
+      // whatever they were actually typing; the cross-tab value simply does not preempt it.
+      if (e.key === 'ed_ticker' && e.newValue && hdTk && document.activeElement !== hdTk
+          && hdTk.value !== e.newValue) {
         hdTk.value = e.newValue; commitTicker();
       }
     });

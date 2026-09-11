@@ -81,6 +81,92 @@ test('an in-progress header edit is not clobbered by a switch triggered elsewher
   expect(r.whileFocused).toBe('DRAFT');
 });
 
+test('a cross-tab ticker change does not clobber an in-progress header draft', async ({ page }) => {
+  // MEASURED 2026-09-11: the storage-event handler wrote #cv2-hd-ticker unconditionally, with
+  // no "operator is actively editing" guard -- unlike every other writer of that field. A
+  // parallel-tab ticker change landing while the operator was mid-draft silently overwrote
+  // what they were typing and committed the OTHER tab's ticker as if they had typed it.
+  const r = await page.evaluate(() => {
+    const hd = document.getElementById('cv2-hd-ticker');
+    hd.focus();
+    hd.value = 'DRAFT2';
+    window.dispatchEvent(new StorageEvent('storage', {
+      key: 'ed_ticker', newValue: 'MSFT', oldValue: 'SPY', storageArea: window.localStorage,
+    }));
+    return { whileFocused: hd.value };
+  });
+  expect(r.whileFocused).toBe('DRAFT2');
+});
+
+test('a delayed liquidity-snapshot response for the PRIOR ticker is dropped, not rendered', async ({ page }) => {
+  // MEASURED 2026-09-11: pollLiquiditySnapshot() read #ticker-input directly and carried no
+  // generation/ticker guard, unlike every other fetch path in this file -- a response for the
+  // ticker requested when the poll STARTED rendered unconditionally, even after the operator
+  // had already switched to a different ticker while it was in flight.
+  const r = await page.evaluate(async () => {
+    const realFetch = window.fetch.bind(window);
+    let resolveDelayed;
+    window.fetch = (url, opts) => String(url).includes('/api/liquidity-snapshot')
+      ? new Promise((res) => { resolveDelayed = res; })
+      : realFetch(url, opts);
+    window._lastLiquidityMapPayload = null;
+    window.setActiveTicker('SPY', null);
+    const p = window.pollLiquiditySnapshot();
+    await new Promise((r2) => setTimeout(r2, 20));
+    window.setActiveTicker('QQQ', null); // switch BEFORE the SPY response arrives
+    resolveDelayed({ ok: true, json: async () => ({ ticker: 'SPY', snapshot_type: 'live', zones: [] }) });
+    await p;
+    window.fetch = realFetch;
+    return {
+      activeTicker: window.__edTestHooks.getActiveTicker(),
+      lastPayloadTicker: window._lastLiquidityMapPayload ? window._lastLiquidityMapPayload.ticker : null,
+    };
+  });
+  expect(r.activeTicker).toBe('QQQ');
+  // REGRESSION LOCK: pre-fix this rendered, and lastPayloadTicker would read 'SPY'.
+  expect(r.lastPayloadTicker).toBeNull();
+});
+
+test('liquidity snapshot: valid render -> failure marks UNAVAILABLE, not stale-as-current -> recovery renders fresh data', async ({ page }) => {
+  const r = await page.evaluate(async () => {
+    const realFetch = window.fetch.bind(window);
+    window.setActiveTicker('IWM', null);
+
+    window.fetch = async (url) => String(url).includes('liquidity-snapshot')
+      ? { ok: true, json: async () => ({ ticker: 'IWM', snapshot_type: 'live', zones: [{ zone_type: 'value_area', zone_low: 1, zone_high: 2 }] }) }
+      : realFetch(url);
+    await window.pollLiquiditySnapshot();
+    const afterValid = {
+      badge: document.getElementById('lm-snapshot-badge')?.textContent,
+      payload: window._lastLiquidityMapPayload?.ticker,
+    };
+
+    window.fetch = async (url) => String(url).includes('liquidity-snapshot')
+      ? Promise.reject(new TypeError('network error'))
+      : realFetch(url);
+    await window.pollLiquiditySnapshot();
+    const afterFailure = { badge: document.getElementById('lm-snapshot-badge')?.textContent };
+
+    window.fetch = async (url) => String(url).includes('liquidity-snapshot')
+      ? { ok: true, json: async () => ({ ticker: 'IWM', snapshot_type: 'live', zones: [{ zone_type: 'value_area', zone_low: 3, zone_high: 4 }] }) }
+      : realFetch(url);
+    await window.pollLiquiditySnapshot();
+    const afterRecovery = {
+      badge: document.getElementById('lm-snapshot-badge')?.textContent,
+      payload: window._lastLiquidityMapPayload?.ticker,
+    };
+
+    window.fetch = realFetch;
+    return { afterValid, afterFailure, afterRecovery };
+  });
+  expect(r.afterValid.badge).toBe('LIVE');
+  expect(r.afterValid.payload).toBe('IWM');
+  // REGRESSION LOCK: pre-fix the badge stayed 'LIVE' here -- stale data presented as current.
+  expect(r.afterFailure.badge).toBe('UNAVAILABLE');
+  expect(r.afterRecovery.badge).toBe('LIVE');
+  expect(r.afterRecovery.payload).toBe('IWM');
+});
+
 test('transport diag lastFullRenderSource leaves init after a full render and persists across syncs', async ({ page }) => {
   // Lane-2 lock: pre-fix, render wrote only window._lastFullRenderSource while
   // _edTransportSync rebuilt __edTransport from the module-level variable, so the
