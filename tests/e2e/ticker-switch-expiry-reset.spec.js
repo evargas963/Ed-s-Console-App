@@ -127,33 +127,55 @@ test('a delayed liquidity-snapshot response for the PRIOR ticker is dropped, not
   expect(r.lastPayloadTicker).toBeNull();
 });
 
-test('liquidity snapshot: valid render -> failure marks UNAVAILABLE, not stale-as-current -> recovery renders fresh data', async ({ page }) => {
+test('liquidity snapshot: valid render (actual zone numbers) -> failure invalidates payload/zones/summary, not just the badge -> recovery renders REPLACEMENT values', async ({ page }) => {
   const r = await page.evaluate(async () => {
     const realFetch = window.fetch.bind(window);
     window.setActiveTicker('IWM', null);
+    const zoneRangeTexts = () => Array.from(document.querySelectorAll('#lm-zones .lm-zone-price')).map((e) => e.textContent);
 
+    // 1) valid response renders the ACTUAL zone numbers, not merely a ticker/badge match.
     window.fetch = async (url) => String(url).includes('liquidity-snapshot')
-      ? { ok: true, json: async () => ({ ticker: 'IWM', snapshot_type: 'live', zones: [{ zone_type: 'value_area', zone_low: 1, zone_high: 2 }] }) }
+      ? { ok: true, json: async () => ({ ticker: 'IWM', snapshot_type: 'live', summary: { x: 1 }, zones: [{ zone_type: 'value_area', zone_low: 1, zone_high: 2 }] }) }
       : realFetch(url);
     await window.pollLiquiditySnapshot();
     const afterValid = {
       badge: document.getElementById('lm-snapshot-badge')?.textContent,
       payload: window._lastLiquidityMapPayload?.ticker,
+      zoneRanges: zoneRangeTexts(),
     };
 
+    // 2) failure must invalidate the STORED payload and the rendered zones/summary, not only
+    // the badge text -- patchLiquidityMapSummaryFromLivePlane() is an INDEPENDENT consumer
+    // (the periodic mark-to-market spot refresh calls it on its own) that reads
+    // window._lastLiquidityMapPayload directly; if the fix only touched the badge, this
+    // downstream call would still repaint the summary from the stale payload's content.
     window.fetch = async (url) => String(url).includes('liquidity-snapshot')
       ? Promise.reject(new TypeError('network error'))
       : realFetch(url);
     await window.pollLiquiditySnapshot();
-    const afterFailure = { badge: document.getElementById('lm-snapshot-badge')?.textContent };
+    const summaryEl = document.getElementById('lm-summary-section');
+    const summaryClearedByFailure = summaryEl ? summaryEl.innerHTML : null;
+    window.patchLiquidityMapSummaryFromLivePlane(); // the independent downstream consumer, called directly
+    const afterFailure = {
+      badge: document.getElementById('lm-snapshot-badge')?.textContent,
+      payload: window._lastLiquidityMapPayload,
+      zoneRanges: zoneRangeTexts(),
+      summaryClearedByFailure,
+      // REGRESSION TARGET: if the payload were still the stale IWM one, this call would
+      // repaint it with x:1's summary HTML -- it must stay whatever the failure left it as.
+      summaryAfterDownstreamConsumerCall: summaryEl ? summaryEl.innerHTML : null,
+    };
 
+    // 3) recovery must show REPLACEMENT values -- a different zone range, not the same numbers
+    // re-rendered, which would pass a same-ticker-only check without proving fresh data landed.
     window.fetch = async (url) => String(url).includes('liquidity-snapshot')
-      ? { ok: true, json: async () => ({ ticker: 'IWM', snapshot_type: 'live', zones: [{ zone_type: 'value_area', zone_low: 3, zone_high: 4 }] }) }
+      ? { ok: true, json: async () => ({ ticker: 'IWM', snapshot_type: 'live', zones: [{ zone_type: 'value_area', zone_low: 30, zone_high: 40 }] }) }
       : realFetch(url);
     await window.pollLiquiditySnapshot();
     const afterRecovery = {
       badge: document.getElementById('lm-snapshot-badge')?.textContent,
       payload: window._lastLiquidityMapPayload?.ticker,
+      zoneRanges: zoneRangeTexts(),
     };
 
     window.fetch = realFetch;
@@ -161,10 +183,92 @@ test('liquidity snapshot: valid render -> failure marks UNAVAILABLE, not stale-a
   });
   expect(r.afterValid.badge).toBe('LIVE');
   expect(r.afterValid.payload).toBe('IWM');
-  // REGRESSION LOCK: pre-fix the badge stayed 'LIVE' here -- stale data presented as current.
+  expect(r.afterValid.zoneRanges).toEqual(['1.00 – 2.00']);
+
+  // REGRESSION LOCK: pre-fix the badge stayed 'LIVE', the payload/zones were left as IWM's
+  // valid data, and the independent downstream consumer kept painting from it.
   expect(r.afterFailure.badge).toBe('UNAVAILABLE');
+  expect(r.afterFailure.payload).toBeNull();
+  expect(r.afterFailure.zoneRanges).toEqual([]);
+  expect(r.afterFailure.summaryClearedByFailure).toBe('');
+  // REGRESSION TARGET: with the payload still stale, this call would have repainted the OLD
+  // summary HTML; with it invalidated, the independent consumer has nothing to repaint from.
+  expect(r.afterFailure.summaryAfterDownstreamConsumerCall).toBe('');
+
   expect(r.afterRecovery.badge).toBe('LIVE');
   expect(r.afterRecovery.payload).toBe('IWM');
+  // REGRESSION LOCK: a same-ticker-only check would pass even if stale zone numbers survived.
+  expect(r.afterRecovery.zoneRanges).toEqual(['30.00 – 40.00']);
+  expect(r.afterRecovery.zoneRanges).not.toEqual(r.afterValid.zoneRanges);
+});
+
+test('an empty or malformed 200 response is treated as UNAVAILABLE, not a confident LIVE label', async ({ page }) => {
+  // MEASURED 2026-09-11: `{}` has a falsy .ticker, so `data.ticker && mismatch` short-circuited
+  // to false and the empty object was accepted and rendered with snapshot_type defaulting to
+  // 'live'. A well-formed EMPTY result (the real ticker, genuinely zero zones) must still be
+  // accepted -- this is the "preserve legitimate empty states" half of the same fix.
+  const r = await page.evaluate(async () => {
+    const realFetch = window.fetch.bind(window);
+    window.setActiveTicker('SPY', null);
+    window.fetch = async (url) => String(url).includes('liquidity-snapshot')
+      ? { ok: true, json: async () => ({}) }
+      : realFetch(url);
+    await window.pollLiquiditySnapshot();
+    const afterEmptyObject = { badge: document.getElementById('lm-snapshot-badge')?.textContent };
+
+    window.fetch = async (url) => String(url).includes('liquidity-snapshot')
+      ? { ok: true, json: async () => ({ ticker: 'SPY', snapshot_type: 'live', zones: [] }) }
+      : realFetch(url);
+    await window.pollLiquiditySnapshot();
+    const afterLegitimateEmpty = {
+      badge: document.getElementById('lm-snapshot-badge')?.textContent,
+      payload: window._lastLiquidityMapPayload?.ticker,
+    };
+    window.fetch = realFetch;
+    return { afterEmptyObject, afterLegitimateEmpty };
+  });
+  // REGRESSION LOCK: pre-fix this was 'LIVE' with no ticker and no real content.
+  expect(r.afterEmptyObject.badge).toBe('UNAVAILABLE');
+  expect(r.afterLegitimateEmpty.badge).toBe('LIVE');
+  expect(r.afterLegitimateEmpty.payload).toBe('SPY');
+});
+
+test('an older response cannot overwrite a newer one within the same unchanged ticker/generation', async ({ page }) => {
+  // MEASURED 2026-09-11: two overlapping requests for the SAME (ticker, generation) are not
+  // distinguished by ticker/gen equality alone -- whichever response ARRIVES last wins, even
+  // when it was DISPATCHED first and is chronologically stale by the time it resolves.
+  const r = await page.evaluate(async () => {
+    const realFetch = window.fetch.bind(window);
+    window.setActiveTicker('TSLA', null);
+    const zoneRangeTexts = () => Array.from(document.querySelectorAll('#lm-zones .lm-zone-price')).map((e) => e.textContent);
+
+    let resolveOld;
+    let dispatchCount = 0;
+    window.fetch = (url) => {
+      if (!String(url).includes('liquidity-snapshot')) return realFetch(url);
+      dispatchCount += 1;
+      if (dispatchCount === 1) {
+        return new Promise((res) => { resolveOld = res; }); // held open -- the OLDER dispatch
+      }
+      // the NEWER dispatch resolves immediately, first
+      return Promise.resolve({ ok: true, json: async () => ({ ticker: 'TSLA', snapshot_type: 'live', zones: [{ zone_type: 'value_area', zone_low: 9, zone_high: 10 }] }) });
+    };
+    const pOld = window.pollLiquiditySnapshot();       // dispatch 1 -- held
+    await new Promise((r2) => setTimeout(r2, 10));
+    const pNew = window.pollLiquiditySnapshot();        // dispatch 2 -- resolves first, renders
+    await pNew;
+    const afterNewer = { zoneRanges: zoneRangeTexts() };
+    // now let the OLDER, held-open request resolve -- LAST to arrive, but chronologically stale
+    resolveOld({ ok: true, json: async () => ({ ticker: 'TSLA', snapshot_type: 'live', zones: [{ zone_type: 'value_area', zone_low: 1, zone_high: 2 }] }) });
+    await pOld;
+    const afterOlderArrivesLate = { zoneRanges: zoneRangeTexts() };
+
+    window.fetch = realFetch;
+    return { afterNewer, afterOlderArrivesLate };
+  });
+  expect(r.afterNewer.zoneRanges).toEqual(['9.00 – 10.00']);
+  // REGRESSION LOCK: pre-fix the older, later-arriving response overwrote the newer one here.
+  expect(r.afterOlderArrivesLate.zoneRanges).toEqual(['9.00 – 10.00']);
 });
 
 test('transport diag lastFullRenderSource leaves init after a full render and persists across syncs', async ({ page }) => {
