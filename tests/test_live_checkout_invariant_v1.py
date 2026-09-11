@@ -75,6 +75,31 @@ def test_prod_checkout_allows_reads_fetch_ffupdate_and_return_to_main(tmp_path, 
         assert plg.prod_checkout_git_move_violations(cmd, cwd) == [], f"must ALLOW on production: {cmd}"
 
 
+def test_prod_checkout_ff_update_survives_a_trailing_redirect(tmp_path, monkeypatch):
+    """MEASURED 2026-09-11: `git merge --ff-only origin/main 2>&1` -- the sanctioned production
+    update, only with its own stderr redirected, which any caller may reasonably do -- was
+    wrongly BLOCKED: `2>&1` was read as an extra ref, so `refs` no longer matched the allowed
+    `["origin/main"]` shape. A legitimate operation must not become forbidden just because it
+    redirects its own output."""
+    prim = _make_primary(tmp_path)
+    monkeypatch.setattr(plg, "REPO", prim)
+    cwd = str(prim)
+    for cmd in (
+        "git merge --ff-only origin/main 2>&1",
+        "git pull --ff-only 2>&1",
+        "git fetch origin 2>&1",
+        "git status 2>/dev/null",
+        "git log --oneline -5 > /tmp/log.txt",
+    ):
+        assert plg.prod_checkout_git_move_violations(cmd, cwd) == [], \
+            f"a redirect must not turn a sanctioned production command into a violation: {cmd}"
+    # ...but a redirect must not LAUNDER a genuine violation either.
+    assert plg.prod_checkout_git_move_violations("git checkout -b evil 2>&1", cwd), \
+        "a redirect must not hide a real branch-move violation"
+    assert plg.prod_checkout_git_move_violations("git merge feature-branch 2>&1", cwd), \
+        "a redirect must not hide a real non-ff-only merge violation"
+
+
 def test_prod_checkout_move_ban_leaves_dev_worktrees_free(tmp_path, monkeypatch):
     prim = _make_primary(tmp_path)
     wt = _make_linked(tmp_path, prim)

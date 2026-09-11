@@ -115,6 +115,15 @@ _GIT_GLOBAL_WITH_ARG = frozenset({"-C", "-c", "--git-dir", "--work-tree", "--nam
                                   "--super-prefix", "--exec-path"})
 
 
+#: A shell redirect operator token — `2>&1`, `>out.log`, `>>out.log`, `<in`, bare `>`/`<` — MEASURED
+#: 2026-09-11: `git merge --ff-only origin/main 2>&1` (the exact sanctioned production
+#: fast-forward, only with its own stderr redirected) was read as `refs = ["origin/main", "2>&1"]`
+#: by the naive "every non-flag token is a ref" rule, which does not match the allowed
+#: `["origin/main"]` shape and wrongly BLOCKS a legitimate operation the moment a caller redirects
+#: it — exactly the "obstructs normal development" failure mode this guard must not create.
+_REDIRECT_TOKEN_RE = re.compile(r"^[0-9]*(?:>{1,2}|<)")
+
+
 def git_subcommand(cmd: str) -> tuple[str, list[str]]:
     """`(subcommand, its args)` for one git invocation — `("", [])` when there is no git call.
 
@@ -129,6 +138,10 @@ def git_subcommand(cmd: str) -> tuple[str, list[str]]:
     if gi < 0:
         return "", []
     rest = toks[gi + 1:]
+    for ri, t in enumerate(rest):            # shell redirection is not a git argument — stop
+        if _REDIRECT_TOKEN_RE.match(t):      # reading positional args at the first redirect token
+            rest = rest[:ri]
+            break
     i = 0
     while i < len(rest):                 # skip git GLOBAL options up to the subcommand
         t = rest[i]
