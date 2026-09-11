@@ -520,3 +520,40 @@ def test_level_producer_consumer_report_names_the_route_nobody_fetches(tmp_path,
     assert M.check_level_producers_have_consumers() == []
 
 
+
+
+# ── RC-552: the merge gate's execution closure must not reach application code ──────────
+
+
+def test_single_faucet_provenance_never_loads_db_authority_or_runtime_layout():
+    """The enforced predicate reads server.py's source text statically; it must not import
+    application modules to do it. Proven by sys.modules, not by import-graph inspection."""
+    import subprocess
+    import sys as _sys
+
+    probe = (
+        "import sys; sys.path.insert(0, '.'); "
+        "import tools.check_institutional_correctness as c; "
+        "c.check_single_faucet_provenance(); "
+        "print('db_authority' in sys.modules, 'runtime_layout' in sys.modules)"
+    )
+    r = subprocess.run([_sys.executable, "-c", probe], capture_output=True, text=True,
+                       encoding="utf-8", errors="replace", check=True)
+    assert r.stdout.strip() == "False False", r.stdout + r.stderr
+
+
+def test_enforced_gate_execution_closure_has_no_application_module():
+    """The full enforced roster (what `--enforced-only` runs) must not pull in db_authority.py
+    or runtime_layout.py at any point — the exact defect RC-552 fixed."""
+    import subprocess
+    import sys as _sys
+
+    probe = (
+        "import sys; sys.path.insert(0, '.'); "
+        "import tools.check_institutional_correctness as c; "
+        "[fn() for _n, fn, _e in c.CHECKS]; "
+        "print('db_authority' in sys.modules, 'runtime_layout' in sys.modules)"
+    )
+    r = subprocess.run([_sys.executable, "-c", probe], capture_output=True, text=True,
+                       encoding="utf-8", errors="replace", check=True)
+    assert r.stdout.strip() == "False False", r.stdout + r.stderr

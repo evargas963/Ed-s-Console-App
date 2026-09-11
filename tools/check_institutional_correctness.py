@@ -60,8 +60,6 @@ TESTS = REPO / "tests"
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
-from db_authority import canonical_console_db_path
-
 
 # A dict literal carrying these keys is an inline option CONTRACT built by hand.
 _CONTRACT_KEYS = {"putCall", "strikePrice"}
@@ -2470,7 +2468,15 @@ def check_single_faucet_provenance() -> list[Violation]:
                           f"faucet provenance is unmeasurable ({type(e).__name__}: {e}); a metric "
                           f"that cannot be measured must never report as compliant")]
     try:
-        rep = _faucet_run(str(canonical_console_db_path()))
+        # RC-552: this predicate's verdict is a STATIC read of server.py's source
+        # (endpoint_sources), never of database contents â data_faucet_audit.run()'s
+        # db_path argument only feeds measure_ages(), whose result (rep["stale_sources"])
+        # this check never consumes. Passing the real canonical path pulled in
+        # db_authority.py + runtime_layout.py (application modules) as part of an
+        # ENFORCED merge-gate predicate for no reason this check's output depends on
+        # (2026-09-11 census). A path that cannot exist makes measure_ages() a no-op
+        # (it checks os.path.exists first) with byte-identical output for this check.
+        rep = _faucet_run("/dev/null/no-db-needed-for-static-provenance-check")
     except Exception as e:
         return [Violation(REPO / "tools" / "data_faucet_audit.py", 0,
                           f"faucet audit failed to run: {type(e).__name__}: {e}")]
