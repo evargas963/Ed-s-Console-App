@@ -46,3 +46,20 @@ def test_e2e_smoke_spec_present():
 def test_playwright_config_exists():
     p = ROOT / "playwright.config.mjs"
     assert p.is_file(), "playwright.config.mjs missing — E2E cannot run."
+
+
+def test_playwright_server_uses_run_private_runtime() -> None:
+    """The E2E server runs in a run-private runtime root and never touches the production DB.
+
+    Lived in tests/test_playwright_must_run.py beside the `.playwright_last_run_success`
+    marker tests until RC-542 (UNIVERSAL_QUANTITATIVE_CLOSURE_V1): a tracked, hand-editable
+    stamp compared to spec mtimes proved a file, not a run, and required CI runs E2E directly.
+    The isolation contract guards a real boundary and survives here; the runner writes no marker."""
+    runner = (ROOT / "scripts" / "run-playwright-e2e.mjs").read_text(encoding="utf-8")
+    config = (ROOT / "playwright.config.mjs").read_text(encoding="utf-8")
+    assert 'fs.mkdtempSync(path.join(os.tmpdir(), "ed-console-e2e-"))' in runner
+    assert "ED_RUNTIME_ROOT: e2eRuntime" in runner
+    assert "ED_ARTIFACTS_ROOT: e2eRuntime" in runner
+    assert "fs.rmSync(e2eRuntime, { recursive: true, force: true })" in runner
+    assert "reuseExistingServer: false" in config
+    assert "fs.writeFileSync(\n    markerPath" not in runner

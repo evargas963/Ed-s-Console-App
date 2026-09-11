@@ -97,8 +97,8 @@ def test_claude_cursor_guard_parity_is_retired():
     assert not hasattr(cic, "check_claude_cursor_guard_parity")
     assert not hasattr(fpl, "claude_cursor_parity_violations")
     assert "claude_cursor_guard_parity" not in {name for name, _fn, _enf in cic.CHECKS}
-    manifest = (REPO / "governance" / "retired_checks.md").read_text(encoding="utf-8")
-    assert "claude_cursor_guard_parity" in manifest
+    # the declaration that legalised the removal is git history (governance/retired_checks.md
+    # at 2026-08-24; retirements are now `AUTHORIZE retire:` rows of OPEN_ITEMS.md)
 
 
 def test_collect_datasheet_blocks_missing():

@@ -152,7 +152,15 @@ def main() -> int:
     try:
         payload = json.load(sys.stdin)
     except (json.JSONDecodeError, ValueError):
-        payload = {}                  # unreadable input must NOT wave the checks through
+        # UNIVERSAL_QUANTITATIVE_CLOSURE_V1 (RC-541): an unreadable payload used to become {}
+        # and the checks ran blind — no transcript, no cwd, so no halt authority and no
+        # worktree ledger; that read as "no blockers" and exited 0. Unreadable is refused.
+        sys.stderr.write("STOP GUARD: the hook payload is not readable JSON; the turn cannot be "
+                         "judged, so it is not ended. Unreadable is not clean.\n")
+        return 2
+    if not isinstance(payload, dict):
+        sys.stderr.write("STOP GUARD: the hook payload is not an object; refused.\n")
+        return 2
 
     # Operator halt authority (AGENTS.md: STOP / PAUSE / HANG IT UP / DO NOT CONTINUE), read
     # from the operator's OWN message. The agent authors assistant records, so reading the

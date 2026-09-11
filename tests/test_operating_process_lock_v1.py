@@ -107,102 +107,6 @@ def test_rail_fails_open_on_unreadable_topology(tmp_path):
         {"file_path": str(tmp_path / "anything.py")}, repo=wt) == []
 
 
-# ── REDATE_LOCK (audit rounds 2-3, 2026-08-25): a promised due date moves only when the
-# row is BLOCKED on something outside the repository, declared as BLOCKED_ON_<CLASS> with
-# specifics (operator: fixable defects get fixed, not administratively postponed).
-# Measured basis: 67 historical due-cell moves, 61 on already-overdue rows, 2 with no
-# reason anywhere.
-
-_ROW = "| RC-900 | {status} | 2026-08-01 | {due} | defect text | why -> chain | {fix} |"
-
-
-def _ledger_repo(tmp_path, head_due="2026-08-10", head_status="OPEN"):
-    repo = _init_repo(tmp_path)
-    led = repo / "governance" / "root_cause_log.md"
-    led.write_text(_ROW.format(status=head_status, due=head_due, fix="FIXED: x") + "\n",
-                   encoding="utf-8")
-    subprocess.run(["git", "add", "-A"], cwd=repo, check=True, capture_output=True)
-    subprocess.run(["git", "commit", "-m", "ledger"], cwd=repo, check=True,
-                   capture_output=True)
-    return repo, led
-
-
-def _stage(repo, led, row_text):
-    led.write_text(row_text + "\n", encoding="utf-8")
-    subprocess.run(["git", "add", str(led)], cwd=repo, check=True, capture_output=True)
-
-
-def test_redate_lock_blocks_a_silent_due_move(tmp_path):
-    repo, led = _ledger_repo(tmp_path)
-    _stage(repo, led, _ROW.format(status="OPEN", due="2026-09-10", fix="FIXED: x"))
-    out = OPL.rc_redate_violations(repo)
-    assert out and "REDATE_LOCK" in out[0] and "RC-900" in out[0], out
-
-
-def test_redate_lock_passes_with_a_declared_blocker_class(tmp_path):
-    repo, led = _ledger_repo(tmp_path)
-    _stage(repo, led, _ROW.format(
-        status="OPEN", due="2026-09-10",
-        fix="FIXED: x RE-DATED 2026-08-10->2026-09-10: BLOCKED_ON_DATA_ACCRUAL — "
-            "wide-capture n reaches 30 sessions on 2026-09-10"))
-    assert OPL.rc_redate_violations(repo) == []
-
-
-def test_redate_lock_blocks_a_free_text_reason(tmp_path):
-    """Operator round 3 (2026-08-25): a reason alone no longer legitimizes postponement —
-    'need more time' is exactly the administrative deferral the requirement bans."""
-    repo, led = _ledger_repo(tmp_path)
-    _stage(repo, led, _ROW.format(
-        status="OPEN", due="2026-09-10",
-        fix="FIXED: x RE-DATED 2026-08-10->2026-09-10: need more time on this"))
-    out = OPL.rc_redate_violations(repo)
-    assert out and "administratively postponed" in out[0], out
-
-
-def test_redate_lock_blocks_a_bare_blocker_class_with_no_specifics(tmp_path):
-    repo, led = _ledger_repo(tmp_path)
-    _stage(repo, led, _ROW.format(
-        status="OPEN", due="2026-09-10",
-        fix="FIXED: x RE-DATED 2026-08-10->2026-09-10: BLOCKED_ON_OPERATOR"))
-    assert OPL.rc_redate_violations(repo), "the class without WHAT is awaited is a rubber stamp"
-
-
-def test_redate_lock_blocks_an_empty_reason(tmp_path):
-    repo, led = _ledger_repo(tmp_path)
-    _stage(repo, led, _ROW.format(
-        status="OPEN", due="2026-09-10",
-        fix="FIXED: x RE-DATED 2026-08-10->2026-09-10: "))
-    assert OPL.rc_redate_violations(repo), "an empty reason is not a reason"
-
-
-def test_redate_lock_blocks_wrong_lineage(tmp_path):
-    repo, led = _ledger_repo(tmp_path)
-    _stage(repo, led, _ROW.format(
-        status="OPEN", due="2026-09-10",
-        fix="FIXED: x RE-DATED 2026-08-09->2026-09-10: reason with wrong old date"))
-    assert OPL.rc_redate_violations(repo), "lineage must name the actual old due date"
-
-
-def test_redate_lock_exempts_a_closing_row(tmp_path):
-    repo, led = _ledger_repo(tmp_path)
-    _stage(repo, led, _ROW.format(status="CLOSED", due="2026-08-25",
-                                  fix="FIXED and VERIFIED: 3 tests"))
-    assert OPL.rc_redate_violations(repo) == []
-
-
-def test_redate_lock_ignores_new_rows_and_non_due_edits(tmp_path):
-    repo, led = _ledger_repo(tmp_path)
-    _stage(repo, led,
-           _ROW.format(status="OPEN", due="2026-08-10", fix="FIXED: x plus more detail")
-           + "\n| RC-901 | OPEN | 2026-08-25 | 2026-09-30 | new defect | why -> chain | NEXT-DEPTH: y |")
-    assert OPL.rc_redate_violations(repo) == []
-
-
-def test_redate_lock_quiet_on_untouched_ledger(tmp_path):
-    repo, _led = _ledger_repo(tmp_path)
-    assert OPL.rc_redate_violations(repo) == []
-
-
 def test_index_worktree_mismatch_detected(tmp_path, monkeypatch):
     repo = _init_repo(tmp_path)
     checker = repo / "tools" / "check_institutional_correctness.py"
@@ -216,19 +120,6 @@ def test_index_parity_passes_when_clean(tmp_path, monkeypatch):
     repo = _init_repo(tmp_path)
     monkeypatch.chdir(repo)
     assert OPL.index_worktree_mismatches(repo) == []
-
-
-def test_staged_checks_not_on_head_flags_delta(tmp_path, monkeypatch):
-    repo = _init_repo(tmp_path)
-    checker = repo / "tools" / "check_institutional_correctness.py"
-    checker.write_text(
-        'CHECKS = [\n    ("old_check", None, True),\n    ("new_lock", None, True),\n]\n',
-        encoding="utf-8",
-    )
-    subprocess.run(["git", "add", checker], cwd=repo, check=True, capture_output=True)
-    monkeypatch.chdir(repo)
-    v = OPL.staged_enforced_checks_not_on_head(repo)
-    assert v and "new_lock" in v[0]
 
 
 def test_reset_guard_blocks_destructive_git_on_product(monkeypatch, tmp_path):

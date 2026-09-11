@@ -1,29 +1,23 @@
-"""Operating-process mechanical lock (RC-217).
+"""Operating-process mechanical lock (RC-217): two predicates, one owner each.
 
-Machine-checkable predicates for governance/AGENT_OPERATING_PROCESS_V1.md.
-The charter is operator-facing; THIS module BLOCKs — .md alone is not a lock.
-
-Child of RC-215 (index≠WT stash-strip), RC-210 (dual-writer thrash).
-
-BLOCK surfaces (2026-08-24 teardown: the role/GO/mission rails are gone; BEDROCK 2026-09-06:
-the completion-claim lock LOCK-5/RC-232 and the LIVE-vs-DISK probe RC-216 are gone — the
-first matched COMPLETE/LIVE_ENFORCED words in prose, the second measured a running server's
-start time from inside a governance hook; neither is a mechanism deciding a structural fact):
-  (a) git commit when index≠WT on staged enforcement paths (pre-commit + PreToolUse)
+  (a) index≠WT parity on the enforcement paths, at the `operating-process` pre-commit hook —
+      a pre-commit stash strip (RC-215) once committed a checker the working tree did not hold;
   (b) tree-destructive git — THE one owner of that class, universal hard forms included —
-      and pipe-masked commits, blocked at PreToolUse
-  (c) RC re-dating without lineage, at pre-commit
+      and pipe-masked commits (RC-234), consumed by tools/process_lock_guard.py at PreToolUse.
+
+DELETED 2026-09-10 (KEEP/MERGE/DELETE): the re-date rule (`RE-DATED old->new: BLOCKED_ON_*`
+lineage on ledger rows — prose policing of a bookkeeping field; an overdue row is already
+visible debt to `check_root_cause_log`), the orphan-patch heuristic (blocked commits on
+stale pre-commit cache files), and the PreToolUse copy of the index-parity check (the
+pre-commit hook in the target tree is the one owner).
 """
 from __future__ import annotations
 
 import argparse
-import ast
 import json
-import os
 import re
 import subprocess
 import sys
-from datetime import datetime, timezone
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
@@ -328,180 +322,10 @@ def index_worktree_mismatches(
     return out
 
 
-def _read_text(path: Path) -> str | None:
-    try:
-        return path.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return None
-
-
-def _head_text(repo: Path, rel: str) -> str | None:
-    r = _git(["show", f"HEAD:{rel}"], cwd=repo)
-    return r.stdout if r.returncode == 0 else None
-
-
-def _parse_enforced_checks(source: str) -> set[str]:
-    """Extract enforced check names from CHECKS = [...] in checker source."""
-    try:
-        tree = ast.parse(source)
-    except SyntaxError:
-        return set()
-    for node in tree.body:
-        if isinstance(node, ast.Assign):
-            for tgt in node.targets:
-                if isinstance(tgt, ast.Name) and tgt.id == "CHECKS":
-                    if not isinstance(node.value, ast.List):
-                        continue
-                    names: set[str] = set()
-                    for elt in node.value.elts:
-                        if isinstance(elt, ast.Tuple) and len(elt.elts) >= 3:
-                            name_node = elt.elts[0]
-                            en_node = elt.elts[2]
-                            if (
-                                isinstance(name_node, ast.Constant)
-                                and isinstance(name_node.value, str)
-                                and isinstance(en_node, ast.Constant)
-                                and en_node.value is True
-                            ):
-                                names.add(name_node.value)
-                    return names
-    return set()
-
-
-def staged_enforced_checks_not_on_head(repo: Path | None = None) -> list[str]:
-    """CHECKS enforced in WT/index checker but absent from HEAD checker."""
-    root = repo or REPO
-    sr = _git(["diff", "--cached", "--name-only", "--", CHECKER_REL], cwd=root)
-    if sr.returncode != 0 or CHECKER_REL not in sr.stdout:
-        return []
-    wt_text = _read_text(root / CHECKER_REL)
-    head_text = _head_text(root, CHECKER_REL)
-    if not wt_text:
-        return [f"{CHECKER_REL} unreadable in worktree"]
-    wt_checks = _parse_enforced_checks(wt_text)
-    head_checks = _parse_enforced_checks(head_text or "")
-    delta = sorted(wt_checks - head_checks)
-    if not delta:
-        return []
-    return [f"staged-only ENFORCED check(s) not on HEAD: {', '.join(delta)}"]
-
-
-def precommit_orphan_patch_warnings(repo: Path | None = None) -> list[str]:
-    """Best-effort: pre-commit stash patch left in cache may mean incomplete restore (RC-215)."""
-    warnings: list[str] = []
-    candidates: list[Path] = []
-    local = os.environ.get("LOCALAPPDATA")
-    if local:
-        cache = Path(local) / "pre-commit" / "patch"
-        if cache.is_dir():
-            candidates.extend(cache.glob("patch*"))
-    home_cache = Path.home() / ".cache" / "pre-commit" / "patch"
-    if home_cache.is_dir():
-        candidates.extend(home_cache.glob("patch*"))
-    recent: list[Path] = []
-    now = datetime.now(timezone.utc).timestamp()
-    for p in candidates:
-        try:
-            if now - p.stat().st_mtime < 24 * 3600:
-                recent.append(p)
-        except OSError:
-            continue
-    for p in sorted(recent)[-3:]:
-        warnings.append(
-            f"pre-commit orphan patch candidate {p.name} (mtime within 24h) — "
-            f"verify index=WT before claiming green; see RC-215"
-        )
-    return warnings
-
-
-_RC_ROW_RE = re.compile(r"^\| (RC-\d+) \|")
-
-
-def _rc_row_map(text: str) -> dict[str, tuple[str, str, str]]:
-    """rc_id -> (status, due, full_row) for every RC row in a ledger text."""
-    out: dict[str, tuple[str, str, str]] = {}
-    for line in text.splitlines():
-        m = _RC_ROW_RE.match(line)
-        if not m:
-            continue
-        cells = [c.strip() for c in line.strip().strip("|").split("|")]
-        if len(cells) >= 4:
-            out[m.group(1)] = (cells[1], cells[3], line)
-    return out
-
-
-def rc_redate_violations(repo: Path | None = None) -> list[str]:
-    """REDATE_LOCK: a due date the ledger already promised may move only when the row is
-    BLOCKED on something the agent cannot fix in this repository, and the row records
-    which: 'RE-DATED <old>-><new>: BLOCKED_ON_<CLASS> — <specifics>'.
-
-    OPERATOR REQUIREMENT (audit round 3, 2026-08-25): "the real requirement is that
-    fixable defects get fixed, not administratively postponed." A free-text reason no
-    longer passes — 'need more time' and 'deprioritized' are exactly the administrative
-    postponements the requirement bans. If the defect is fixable in-repo, the fix ships
-    and the date never moves; a row that is late stays OVERDUE in plain sight, which is
-    a signal, not something to re-date away. The declared blocker classes each name a
-    dependency outside the agent's reach:
-      BLOCKED_ON_OPERATOR      — needs an operator decision or an operator-run action
-      BLOCKED_ON_LIVE_SESSION  — evidence observable only during a market session
-      BLOCKED_ON_DATA_ACCRUAL  — needs more collected data before it can be judged
-      BLOCKED_ON_EXTERNAL      — vendor/third-party dependency
-    Specifics after the class token are mandatory (WHAT is awaited), so the class cannot
-    become a rubber stamp. This forces the blocker claim to EXIST with correct lineage;
-    it cannot prove the claim TRUE — a false BLOCKED_ON_* is a lie in a reviewed diff.
-
-    Staged index vs HEAD — the same seam as the rest of this lock. New rows are free
-    (opening a defect with a due date is honest tracking, RC-65); a row leaving OPEN is
-    free (closing defers nothing). Repeat re-dates accumulate a visible chain in the row.
-    MEASURED basis (audit 2026-08-25): 67 due-cell moves in history, 61 on already-overdue
-    rows, 2 with no reason recorded anywhere (4ecb1cb7 RC-210, b13b117b RC-257).
-    Deliberately NO extension ceiling and NO re-date count cap (RC-280: no ratchets) —
-    a thrice-re-dated row visibly carries all three RE-DATED entries for operator review.
-    Fail-closed: an unreadable staged side refuses the commit.
-    HONEST LIMITS (red-team 2026-08-25): (a) binds at local pre-commit only — commits
-    from unhooked checkouts or the GitHub web UI bypass it, and CI does not re-check
-    lineage; (b) the close-then-reopen two-commit dance can move a due date without
-    lineage — partially mitigated because the transient terminal row must satisfy the
-    ledger's terminal-evidence gate; (c) governance/unproven_register.md due dates are
-    out of scope. Extending any of these is the operator's call, not an auto-hardening."""
-    root = repo or REPO
-    rel = "governance/root_cause_log.md"
-    sr = _git(["diff", "--cached", "--name-only", "--", rel], cwd=root)
-    if sr.returncode != 0:
-        return [f"REDATE_LOCK: git diff --cached unavailable for {rel} — refusing an "
-                f"unverifiable ledger edit"]
-    if rel not in sr.stdout:
-        return []
-    head = _git(["show", f"HEAD:{rel}"], cwd=root)
-    staged = _git(["show", f":{rel}"], cwd=root)
-    if head.returncode != 0:
-        return []  # ledger new at HEAD — nothing already promised
-    if staged.returncode != 0:
-        return [f"REDATE_LOCK: cannot read staged {rel} — refusing an unverifiable ledger edit"]
-    old_rows, new_rows = _rc_row_map(head.stdout), _rc_row_map(staged.stdout)
-    out: list[str] = []
-    for rc in sorted(set(old_rows) & set(new_rows)):
-        _old_status, old_due, _ = old_rows[rc]
-        new_status, new_due, new_line = new_rows[rc]
-        if old_due == new_due or new_status != "OPEN":
-            continue
-        token = f"RE-DATED {old_due}->{new_due}:"
-        i = new_line.find(token)
-        rest = "" if i < 0 else new_line[i + len(token):].split("|", 1)[0].strip()
-        m = re.match(
-            r"BLOCKED_ON_(OPERATOR|LIVE_SESSION|DATA_ACCRUAL|EXTERNAL)\b[\s—:-]*(\S.*)?",
-            rest)
-        if i < 0 or m is None or not (m.group(2) or "").strip():
-            out.append(
-                f"REDATE_LOCK: {rc} due {old_due} -> {new_due} refused. Fixable defects "
-                f"get FIXED, not administratively postponed (operator, 2026-08-25). A "
-                f"promised date moves only when the row is blocked on something outside "
-                f"this repository, recorded in the row as '{token} BLOCKED_ON_OPERATOR|"
-                f"BLOCKED_ON_LIVE_SESSION|BLOCKED_ON_DATA_ACCRUAL|BLOCKED_ON_EXTERNAL "
-                f"— <what is awaited>'. Otherwise ship the fix, or leave the row overdue "
-                f"in plain sight (61 of 67 historical re-dates were on already-overdue "
-                f"rows).")
-    return out
+# The enforced-check ROSTER has ONE static reader: tools/check_delta_adds_no_debt.py (the
+# required hardening check compares base vs candidate roster there). The second parser of
+# the same CHECKS literal that lived here had no caller but the measure report — removed
+# 2026-09-10 (KEEP/MERGE/DELETE).
 
 
 _QUOTED_STRING_RE = re.compile(r"\"(?:[^\"\\]|\\.)*\"|'(?:[^'\\]|\\.)*'")
@@ -534,20 +358,6 @@ def commit_pipe_violations(cmd: str) -> list[str]:
     return []
 
 
-def commit_violations(repo: Path | None = None) -> list[str]:
-    """Predicates for git commit PreToolUse / pre-commit."""
-    root = repo or REPO
-    out: list[str] = []
-    mism = index_worktree_mismatches(root, only_staged=True)
-    if mism:
-        out.append("commit BLOCKED: staged enforcement path index≠WT — " + "; ".join(mism))
-    out.extend(precommit_orphan_patch_warnings(root))
-    # RC-463/RC-475: no PERMISSION gate here. Authority changes are approved by the
-    # operator's explicit word in chat; required CI is the machine gate at merge. Only
-    # mechanical integrity is checked above.
-    return out
-
-
 def measure_report(repo: Path | None = None) -> dict:
     """MEASURE-before-claim artifact for operators."""
     root = repo or REPO
@@ -568,36 +378,23 @@ def measure_report(repo: Path | None = None) -> dict:
         })
     return {
         "index_worktree_mismatches": index_worktree_mismatches(root),
-        "staged_checks_not_on_head": staged_enforced_checks_not_on_head(root),
         "enforcement_hashes": rows,
-        "orphan_patch_warnings": precommit_orphan_patch_warnings(root),
     }
 
 
 def all_precommit_violations(repo: Path | None = None) -> list[str]:
-    root = repo or REPO
-    out = index_worktree_mismatches(root)
-    out.extend(precommit_orphan_patch_warnings(root))
-    out.extend(rc_redate_violations(root))
-    # RC-463: permission is a merge-review question, not a pre-commit question.
-    return out
+    return index_worktree_mismatches(repo or REPO)
 
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description="Operating process lock (RC-217)")
     p.add_argument("--pre-commit", action="store_true", help="pre-commit mode: exit 1 on violation")
     p.add_argument("--measure", action="store_true", help="print JSON measure report")
-    p.add_argument("--commit-check", action="store_true", help="commit-time predicates only")
     args = p.parse_args(argv)
     if args.measure:
         print(json.dumps(measure_report(), indent=2))
         return 0
-    if args.commit_check:
-        v = commit_violations(REPO)
-    elif args.pre_commit:
-        v = all_precommit_violations(REPO)
-    else:
-        v = index_worktree_mismatches(REPO)
+    v = all_precommit_violations(REPO)
     if v:
         for msg in v:
             print(msg, file=sys.stderr)

@@ -27,7 +27,7 @@ F39_WEIGHTED_PUSH_PRODUCERS = frozenset(
 # copies are not production compute sites. `.git`/`__pycache__`/`node_modules`/`.venv`
 # are gone from this list because the git index cannot contain them by construction —
 # a skip entry for something that cannot appear is the drift RC-286 removed.
-SKIP_PREFIXES = ("tests/", "archive/", "governance/archive/")
+SKIP_PREFIXES = ("tests/", "archive/")
 SKIP_PARTS = frozenset({"archive"})
 
 

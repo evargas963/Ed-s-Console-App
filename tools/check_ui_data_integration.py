@@ -5,8 +5,11 @@ so it can verify code + endpoints yet still ship a screen full of "—" or stati
 shapes. This gate closes that loophole in three tiers, from cheap-and-always-on to
 expensive-and-live:
 
-  TIER 1 — STATIC BINDING (always; no server): every data cell in static/index.html and
-    static/chart.html that ships initialised to the "—" placeholder MUST have a JavaScript
+  TIER 1 — STATIC BINDING (always; no server): every data cell in EVERY page the router
+    serves (the PAGE routes of governance/provenance_roots.py resolved to their static file
+    by `served_pages` below — the router is the population, never a hand list; 2026-09-10
+    replaced the two-file tuple that stood in for it, which audited 2 of 7 pages)
+    that ships initialised to the "—" placeholder MUST have a JavaScript
     writer (a T('id', …) / getElementById('id') / el('id') reference in a <script>). An
     element that renders "—" forever because nothing populates it is a dead placeholder,
     and this fails the build. This is the tier wired into pre-commit — pure text parse,
@@ -39,9 +42,41 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 
-#: Frontend files to audit and the id-prefixes that mark a *data* cell (not chrome).
-_HTML_FILES = ("static/index.html", "static/chart.html")
+#: The id-prefixes that mark a *data* cell (not chrome). The PAGES audited are not listed
+#: here: they are every page the router serves (`served_pages`).
 _DATA_ID_RE = re.compile(r'id="((?:cv2|ct|dr|kl|hd)-[\w-]+)"[^>]*>\s*(?:<[^>]+>\s*)*—')
+
+
+def served_pages(repo: Path | None = None) -> list[str]:
+    """The canonical page population: PAGE routes of the provenance root population
+    (governance/provenance_roots.py, reconciled with server.py by tests/test_provenance_v1.py)
+    resolved to the `static/*.html` literal their handler reads. The router is the authority;
+    a file under static/ that no route serves is not a page. Unresolvable => raise: a gate
+    that cannot name its population must not report a clean run over an invented one."""
+    import ast
+    root = repo or REPO
+    ns: dict = {}
+    exec(compile((root / "governance" / "provenance_roots.py").read_text(encoding="utf-8"), "provenance_roots", "exec"), ns)
+    page_routes = {r for r, (cls, _p) in ns["ROUTES"].items() if cls == "PAGE"}
+    pages: set[str] = set()
+    for node in ast.parse((root / "server.py").read_text(encoding="utf-8", errors="replace")).body:
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        if not any(isinstance(d, ast.Call) and isinstance(d.func, ast.Attribute) and d.func.attr in ("get", "post")
+                   and d.args and isinstance(d.args[0], ast.Constant) and d.args[0].value in page_routes
+                   for d in node.decorator_list):
+            continue
+        for c in ast.walk(node):
+            if isinstance(c, ast.Constant) and isinstance(c.value, str) and c.value.endswith(".html"):
+                rel = c.value.replace("\\", "/")
+                if "static/" in rel:
+                    pages.add(rel[rel.index("static/"):])
+                elif "/" not in rel:
+                    pages.add(f"static/{rel}")
+    if not pages:
+        raise LookupError("no PAGE route resolves to a static HTML file")
+    return sorted(p for p in pages if (root / p).is_file())
+
 
 #: Endpoints that must return real data, with a callable asserting "this JSON is real".
 _ENDPOINTS = {
@@ -78,11 +113,20 @@ def _get_json(url: str, timeout: float = 16.0) -> dict | None:
 
 
 # ── TIER 1 ─────────────────────────────────────────────────────────────────────────────
-def _tier1_static_binding() -> list[tuple[str, int, str]]:
+def _tier1_static_binding(pages: list[str] | None = None,
+                          repo: Path | None = None) -> list[tuple[str, int, str]]:
+    root = repo or REPO
     out: list[tuple[str, int, str]] = []
-    for rel in _HTML_FILES:
-        p = REPO / rel
+    if pages is None:
+        try:
+            pages = served_pages(root)
+        except Exception as e:  # noqa: BLE001 — an unreadable population is a violation, not a pass
+            return [("governance/provenance_roots.py", 0,
+                     f"the served-page population could not be resolved from the router: {e!r}")]
+    for rel in pages:
+        p = root / rel
         if not p.exists():
+            out.append((rel, 0, "a PAGE route serves this file and it does not exist"))
             continue
         text = p.read_text(encoding="utf-8", errors="replace")
         # every <script> body concatenated — a data cell is "wired" if its id appears here.
@@ -236,10 +280,12 @@ def _tier3_render(base: str) -> list[tuple[str, int, str]]:
     return [("(rendered DOM)", 0, f"cell shows placeholder, not real data: {b}") for b in bad]
 
 
-def static_binding_violations() -> list[tuple[str, int, str]]:
+def static_binding_violations(pages: list[str] | None = None,
+                              repo: Path | None = None) -> list[tuple[str, int, str]]:
     """Tier 1 only — the fast, server-free, deterministic check wired into pre-commit.
-    Every data cell that ships as the '—' placeholder must have a JavaScript writer."""
-    return _tier1_static_binding()
+    Every data cell that ships as the '—' placeholder must have a JavaScript writer, on
+    every page the router serves (or the explicit `pages` a caller judges)."""
+    return _tier1_static_binding(pages, repo)
 
 
 def ui_data_integration_violations() -> list[tuple[str, int, str]]:

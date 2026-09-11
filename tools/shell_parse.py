@@ -1,9 +1,9 @@
 """SHELL PARSE — the ONE owner of "what does this shell command do, and where".
 
 BEDROCK 2026-09-06 (dual-signoff, one owner per responsibility): this parser used to live
-inside tools/operator_law_guard.py, and tools/process_lock_guard.py and tools/stop_chain.py
-imported it from there — the checkout-protection rails and the Stop authority resolver
-depended on the action-ban module to read a command. The code is unchanged; only its home is.
+inside tools/operator_law_guard.py, and tools/process_lock_guard.py imported it from there —
+the checkout-protection rails depended on the action-ban module to read a command. The code
+is unchanged; only its home is.
 Every rule that needs to segment a command, track `cd` across a chain, find the git
 invocations, resolve the repository a command targets, or strip the DATA out of a command
 (heredoc bodies, -c payloads, -m messages) imports it from here. No policy lives in this file:
