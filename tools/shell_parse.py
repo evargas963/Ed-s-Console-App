@@ -23,8 +23,16 @@ from pathlib import Path
 #: command's own execution context — never defaulted to this file's repository.
 _WINDOWS = os.name == "nt"
 #: Command segmentation. `shell_executed_part` has already removed heredoc bodies, -c payloads
-#: and -m messages, so quoted separators inside DATA cannot reach this split.
-_SEG_SPLIT = re.compile(r"\s*(?:&&|\|\||[;&|])\s*")
+#: and -m messages (and joined `\`-newline continuations), so quoted separators inside DATA
+#: cannot reach this split. A BARE newline is also a statement separator — both bash and
+#: PowerShell run one statement per line without a `;` — and MEASURED 2026-09-11 its omission
+#: was a real gap, not a theoretical one: `Set-Location <primary>\nSet-Content server.py bad`
+#: (and the git-verb equivalent, `Set-Location <primary>\ngit checkout -b evil`) both evaded
+#: every production-checkout rail that depends on this segmenter, because the entire two-line
+#: script was read as a single `Set-Location`-headed segment and never split at the newline the
+#: way it would have been at a `;` in the exact same shape. An ordinary multi-line script is the
+#: common case this parser must not silently swallow.
+_SEG_SPLIT = re.compile(r"\s*(?:&&|\|\||[;&|])\s*|\r?\n+")
 #: One shell argument: double-quoted, single-quoted, or bare. Quoted forms carry spaces, which
 #: is the whole point on Windows (`C:/Program Files/...`).
 _ARG = r"""(?:"([^"]*)"|'([^']*)'|([^\s;&|]+))"""
@@ -252,4 +260,8 @@ def shell_executed_part(cmd: str) -> str:
     # guard that fires on descriptions is the word-policing failure again (same lesson as
     # heredocs, same day it was written).
     cmd = re.sub(r"-m\s+(['\"])(?:\\.|(?!\1).)*\1", " -m MESSAGE ", cmd, flags=re.S)
+    # Join a POSIX line continuation (trailing `\` before a newline) into one logical line —
+    # it is NOT a statement break, and joining it before the newline split below keeps it from
+    # being misread as one.
+    cmd = re.sub(r"\\\r?\n", " ", cmd)
     return cmd

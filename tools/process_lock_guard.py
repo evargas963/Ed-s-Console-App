@@ -313,14 +313,54 @@ def _shell_write_dest_paths(seg: str) -> list[str]:
             dests.append(inline)
         dests += [t for t in args[idx + 1:] if not t.startswith("-")]
         break
-    # PowerShell's write cmdlets are DELIBERATELY not enumerated here. operator_law_guard's
-    # _PS_WRITE_BAD already bans Set-Content/Add-Content/Out-File/Copy-Item/Move-Item against a
-    # production-suffix destination universally — MEASURED: `Set-Content server.py 'x=1'` blocks
-    # today with no mission row and no help from this table. A second PowerShell pattern here
-    # would be a second producer of one question (ONE FAUCET). Its residual gap is a destination
-    # built from a bare `$variable`, which no static table closes; that is a limit of the ban,
-    # not something a duplicate here would fix.
+    dests += _ps_write_dest_paths(seg)
     return dests
+
+
+#: PowerShell write-cmdlet destination parameter, keyed by cmdlet name (lower-case). Copy-Item
+#: and Move-Item read their first positional (the source, `-Path`) and write their SECOND
+#: (`-Destination`); Set-Content/Add-Content/Out-File write their only positional (`-Path` /
+#: `-FilePath`). RC-close-2026-09-11: this table used to be unnecessary — operator_law_guard's
+#: `_PS_WRITE_BAD` banned these same five cmdlets against a production-suffix destination
+#: universally. That mechanism was retired 2026-09-10 for a sound reason that does not transfer
+#: here: it existed to catch a shell write that MANGLES a file before it reaches ruff/pytest at
+#: commit and in CI, and a write that goes through commit/CI gets caught there regardless. A
+#: write landing directly in the PRODUCTION checkout never reaches a commit or CI at all — that
+#: is the entire point of the live-checkout invariant this file enforces — so the retirement
+#: left this table's five cmdlets as the one write path with no surviving guard. MEASURED
+#: 2026-09-11: `Set-Content`/`Add-Content`/`Out-File`/`Copy-Item`/`Move-Item` each wrote an
+#: unguarded `.py` canary in the actual production primary with no block from any layer,
+#: while the equivalent Edit/Write tool call on the same path was refused. This table closes
+#: exactly that gap, scoped to the production-checkout rail only — it does not resurrect a
+#: universal PowerShell-write ban, which stays retired for dev worktrees on the same reasoning
+#: that retired it (ruff/pytest catch a mangled write once it is committed).
+_PS_DEST_PARAM = {
+    "set-content": "-path", "add-content": "-path", "out-file": "-filepath",
+    "copy-item": "-destination", "move-item": "-destination",
+}
+
+
+def _ps_write_dest_paths(seg: str) -> list[str]:
+    """Destination path a PowerShell write cmdlet targets in one segment, named or positional.
+
+    A residual, documented limit: a destination built from a bare `$variable` (no literal path
+    token) is not resolvable by this or any static table — the same limit the retired universal
+    ban carried."""
+    toks = [t.strip("\"'") for t in _tokens(seg)]
+    if not toks:
+        return []
+    verb = Path(toks[0]).name.lower()
+    dest_flag = _PS_DEST_PARAM.get(verb)
+    if not dest_flag:
+        return []
+    args = toks[1:]
+    for i, a in enumerate(args):
+        if a.lower() == dest_flag and i + 1 < len(args):
+            return [args[i + 1]]
+    positionals = [a for a in args if not a.startswith("-")]
+    if verb in ("copy-item", "move-item"):
+        return positionals[1:2]              # first positional is -Path (the source, a read)
+    return positionals[:1]
 
 
 def _shell_write_targets(cmd: str, payload_cwd: str = "", base_root: Path | None = None):
