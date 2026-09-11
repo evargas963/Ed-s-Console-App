@@ -130,6 +130,11 @@
   #app:not(.rail-open) .wl-empty{display:none}
   .wl-msg{padding:0 15px 4px;font-size:11px;color:var(--ed-ink-3);min-height:14px}
   #app:not(.rail-open) .wl-msg{display:none}
+  /* A degraded poll keeps the last real numbers on screen (blanking them would be its own
+     kind of dishonesty) but must not look identical to a healthy one. #app.rail-open's own
+     opacity:1 rule for .wl-px/.wl-chg carries an ID, so this override needs one too. */
+  #app.rail-open .wl.wl-degraded .wl-px,#app.rail-open .wl.wl-degraded .wl-chg{opacity:.4}
+  .wl.wl-degraded .wl-msg{color:var(--ed-neg-ink)}
   .wl-add{display:flex;align-items:center;gap:10px;height:32px;padding:0 15px;color:var(--ed-ink-3);
     font-size:12.5px;white-space:nowrap}
   .wl-add:hover{color:var(--ed-accent-2)}

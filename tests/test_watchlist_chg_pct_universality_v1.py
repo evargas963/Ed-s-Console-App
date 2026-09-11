@@ -170,3 +170,104 @@ def test_safe_get_quotes_retries_once_after_token_refresh(monkeypatch):
     resp = sc.safe_get_quotes(_BadClient(), ["SPY", "QQQ"], refresh_client_fn=lambda: _GoodClient())
     assert resp == "ok-response"
     assert calls["n"] == 2  # one failed attempt on the bad client, one retry on the refreshed one
+
+
+def test_chg_pct_backfill_is_the_shared_authority_for_live_state_and_l1(monkeypatch):
+    """An independent review found /api/live/state getting a real chg_pct after its own
+    fix while the SSE-pushed header stayed blank -- the L1 build path had no backfill at
+    all, a second, unfixed copy of the same problem. Both must now call the ONE shared
+    _chg_pct_with_rest_backfill, not each decide independently (or one of them not decide
+    at all)."""
+    import inspect
+    import server as srv
+
+    assert "_chg_pct_with_rest_backfill" in inspect.getsource(srv._tier_a_live_state_dict)
+    assert "_chg_pct_with_rest_backfill" in inspect.getsource(srv._project_l1)
+    assert "_chg_pct_with_rest_backfill" in inspect.getsource(srv._l1_http_get_projection)
+
+
+def test_chg_pct_with_rest_backfill_resolves_via_rest_when_stream_and_row_are_both_empty(monkeypatch):
+    import server as srv
+    import app.options.order_flow.state as ofs
+
+    monkeypatch.setattr(ofs, "get_stream_chg_pct", lambda t: None)
+
+    class _FakeResp:
+        status_code = 200
+
+        def json(self):
+            return {"ZZZTEST": {"quote": {"netPercentChange": 3.33}}}
+
+    monkeypatch.setattr(srv, "_memoized_quote_response", lambda t, client=None: _FakeResp())
+    got = srv._chg_pct_with_rest_backfill("ZZZTEST", {"spot": 10.0, "chg_pct": None}, client=object())
+    assert got == 3.33
+
+
+def test_watchlist_quotes_route_reports_auth_failure_distinctly(monkeypatch):
+    """The pre-review shape collapsed auth/vendor/transport failure into the SAME bare {}
+    a genuinely-empty-coverage success would return -- indistinguishable. ok:false + a
+    reason must now be present."""
+    import server as srv
+    from fastapi import HTTPException
+    from starlette.testclient import TestClient
+
+    def _raise_auth_unavailable():
+        raise HTTPException(status_code=503, detail="Schwab auth failed: token_invalid")
+
+    monkeypatch.setattr(srv, "get_client", _raise_auth_unavailable)
+    with TestClient(srv.app) as client:
+        r = client.get("/api/watchlist-quotes", params={"tickers": "SPY,QQQ"})
+        assert r.status_code == 200  # the route itself succeeds; failure is IN the payload
+        body = r.json()
+        assert body["ok"] is False
+        assert body["error"]
+        assert body["quotes"] == {}
+
+
+def test_watchlist_quotes_route_success_shape(monkeypatch):
+    import server as srv
+    from starlette.testclient import TestClient
+
+    class _FakeResp:
+        status_code = 200
+
+        def json(self):
+            return {"ZZZTEST": {"quote": {"lastPrice": 55.0, "netPercentChange": 1.11}}}
+
+    monkeypatch.setattr(srv, "get_client", lambda: object())
+    monkeypatch.setattr("schwab_client.safe_get_quotes", lambda client, tickers: _FakeResp())
+    with TestClient(srv.app) as client:
+        r = client.get("/api/watchlist-quotes", params={"tickers": "ZZZTEST"})
+        body = r.json()
+        assert body["ok"] is True
+        assert body["error"] is None
+        assert body["quotes"]["ZZZTEST"]["spot"] == 55.0
+        assert body["quotes"]["ZZZTEST"]["chg_pct"] == 1.11
+
+
+def test_watchlist_quotes_route_no_invented_count_cap(monkeypatch):
+    """A prior version of this route silently truncated the ticker list at an invented
+    500-symbol cap with no vendor/transport evidence behind the number (caught in review).
+    A large request must be passed through, not silently cut down."""
+    import server as srv
+    from starlette.testclient import TestClient
+
+    requested = {}
+
+    class _FakeResp:
+        status_code = 200
+
+        def json(self):
+            return {}
+
+    def _fake_safe_get_quotes(client, tickers):
+        requested["tickers"] = list(tickers)
+        return _FakeResp()
+
+    monkeypatch.setattr(srv, "get_client", lambda: object())
+    monkeypatch.setattr("schwab_client.safe_get_quotes", _fake_safe_get_quotes)
+    many = ["T{}".format(i) for i in range(600)]
+    with TestClient(srv.app) as client:
+        r = client.get("/api/watchlist-quotes", params={"tickers": ",".join(many)})
+        assert r.status_code == 200
+        assert len(requested["tickers"]) == 600  # nothing silently dropped

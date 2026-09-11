@@ -551,20 +551,50 @@
   // stale data for whatever symbols both requests shared. Same pattern this file already
   // uses for the header poll (_hdrGen).
   var _wlPollGen = 0;
+  // A failed/degraded poll must not look identical to a healthy one: values already on
+  // screen are real numbers from the LAST successful poll, so blanking them on a single
+  // transient failure would be its own kind of dishonesty (implying no data exists at
+  // all). Instead the whole list gets a visible "stale" mark (dimmed, #wl-h shows age)
+  // until a poll succeeds again — the mark, not the numbers, carries the truth.
+  var _wlLastGoodTs = null;
+  function markWlDegraded(reason) {
+    var host = document.getElementById('watchlist');
+    if (host) host.classList.add('wl-degraded');
+    wlNotify(reason);
+  }
+  function markWlHealthy() {
+    var host = document.getElementById('watchlist');
+    if (host) host.classList.remove('wl-degraded');
+    _wlLastGoodTs = Date.now();
+  }
   function pollWatchlistQuotes() {
     var list = loadWL();
     if (!list.length) return;
     var myGen = ++_wlPollGen;
     fetch('/api/watchlist-quotes?tickers=' + encodeURIComponent(list.join(',')), { cache: 'no-store' })
-      .then(function (r) { return r.ok ? r.json() : {}; })
+      .then(function (r) {
+        if (!r.ok) throw new Error('http_' + r.status);
+        return r.json();
+      })
       .then(function (data) {
         if (myGen !== _wlPollGen) return;   // superseded by a newer poll — drop this stale response
+        if (!data || data.ok === false) {
+          // The WHOLE batch call failed (auth/vendor/transport) -- distinct from a symbol
+          // simply having no data right now (data.quotes just omits it, handled below).
+          markWlDegraded('Quotes unavailable' + (data && data.error ? ' (' + data.error + ')' : ''));
+          return;
+        }
+        markWlHealthy();
+        var quotes = data.quotes || {};
         list.forEach(function (sym) {
-          var row = data && data[sym];
+          var row = quotes[sym];
           setWlRow(sym, row ? row.spot : null, row ? row.chg_pct : null);
         });
       })
-      .catch(function () {});   // a failed poll leaves rows as they are until the next cycle; no fabrication
+      .catch(function () {
+        if (myGen !== _wlPollGen) return;
+        markWlDegraded('Connection lost — showing last known values');
+      });
   }
 
   var _sse = null, _sseUp = false, _lastSseTs = 0, _l1Gen = {}, _l1Ts = {};
@@ -588,9 +618,17 @@
       if (G && !G.l1ApplyTierBLightMonotonic(state.ticker, gen, _l1Gen, bts, _l1Ts)) return;
       _sseUp = true; _lastSseTs = Date.now(); _hdrGen++;   // supersede any in-flight fallback poll
       var ageMs = bts ? Math.max(0, Math.round(Date.now() - bts * 1000)) : null;
+      // TRUTHFUL LIVE: receiving an SSE event only proves the SERVER pushed a projection
+      // promptly — it does not prove the underlying quote is fresh (the server can build
+      // and push on schedule from an L0 row that itself stopped updating). p.l1_stale is
+      // the payload's own real freshness verdict (build_l1_context: stale when the L0
+      // spot is missing or unusable) — use it, not "an event arrived", to label LIVE vs
+      // STALE. Same reasoning the poll-fallback path already applies via streaming_healthy.
+      var stale = !!p.l1_stale;
       paintQuote({ spot_disp: p.spot_disp, spot: p.spot, bid: p.bid, ask: p.ask,
         chgPct: p.chg_pct,
-        feedCls: '', feedLabel: 'LIVE', ageLabel: ageMs != null ? ageMs + 'ms' : 'push' });
+        feedCls: stale ? 'stale' : '', feedLabel: stale ? 'STALE' : 'LIVE',
+        ageLabel: ageMs != null ? ageMs + 'ms' : 'push' });
     });
     _sse.onerror = function () { _sseUp = false; };   // fall back to polling; the browser reconnects
   }

@@ -6027,6 +6027,13 @@ def _project_l1(ticker: str, expiry: Optional[str], *, reason: str = "unknown") 
         l1_generation=gen,
     )
     out = build_l1_context(ctx, derive_vwap_side_fn=derive_vwap_side)
+    # build_l1_context stays pure (its own contract: no chain/DB/ML/REST) and resolves
+    # chg_pct only from ctx.l0_row (stream-preferred via resolve_chg_pct) — so a ticker
+    # whose spot streams but whose percent-change never does gets the same REST backfill
+    # /api/live/state already gets, closing the gap where the SSE-pushed header stayed
+    # blank even after that route was fixed (caught in review — a route-level fix does not
+    # reach a browser path that never calls that route).
+    out["chg_pct"] = _chg_pct_with_rest_backfill(tkr, row)
     out["_l1_input_fingerprint"] = build_input_fingerprint(row, ent)
     of_block = out.get("order_flow") or {}
     out["_l1_of_signature"] = order_flow_compact_signature(of_block)
@@ -6198,6 +6205,12 @@ def _l1_http_get_projection(ticker: str, expiry: Optional[str], *, force: bool =
     _l1_instrumentation["l1_http_cache_hit_total"] += 1
     out = deepcopy(cached)
     _lmp.apply_l1_live_quote_overlay(out, tkr)
+    # Same re-resolve-as-last-word discipline _tier_a_live_state_dict uses after
+    # merge_into_state: the overlay above can only ADD/refresh chg_pct when the CURRENT
+    # plane row happens to carry a usable one, or clobber it to a stale row's None — it
+    # cannot backfill. Re-resolve fresh (stream, then the row the overlay just applied,
+    # then REST) so a cache-hit SSE/HTTP read gets the same live answer a fresh build would.
+    out["chg_pct"] = _chg_pct_with_rest_backfill(tkr, _lmp.get_quote(tkr))
     _l1_touch_scope(key)
     built = float(out.get("as_of_ts") or out.get("_server_build_ts") or l1_eval_wall_ts)
     age = max(0.0, l1_eval_wall_ts - built)
@@ -6331,6 +6344,45 @@ def _latest_cache_entry_for_ticker(ticker: str) -> Optional[tuple[tuple, dict]]:
     return (best_k, _state_cache[best_k])
 
 
+def _chg_pct_with_rest_backfill(tkr: str, row: Optional[dict], *, client=None) -> Optional[float]:
+    """
+    ONE backfill implementation, shared by /api/live/state (_tier_a_live_state_dict) and the
+    L1/SSE projection build (_project_l1) — a duplicate second copy of this exact backfill
+    was the reason /api/live/state got a real chg_pct while the SSE-pushed header stayed
+    blank (caught in review): each consumer of the L0 row needs the same treatment, not its
+    own copy of it.
+
+    market_context.resolve_chg_pct first (stream-primary, REST-row-fallback). If still None:
+    MEASURED (this preview, live) — a ticker with plane_quote_authority=="streaming" can have
+    a real, fresh streamed SPOT while its streamed percent-change field genuinely never lands
+    (the L1 subscription's field set decides that, not this function), and REST is otherwise
+    skipped once spot is already streaming. Spot and percent-change are different vendor
+    fields; one streaming does not guarantee the other. Backfill via the same memoized REST
+    quote /api/fast-quote already shares (RC-112) — usually a cache hit, not a second network
+    call — rather than leaving a consumer blank while another one (e.g. the watchlist, which
+    always polls REST) shows a real number for the same ticker.
+    """
+    from market_context import resolve_chg_pct
+
+    chg_pct = resolve_chg_pct(tkr, (row or {}).get("chg_pct"))
+    if chg_pct is not None:
+        return chg_pct
+    if client is None:
+        try:
+            client = get_client()
+        except HTTPException:
+            return None
+    try:
+        q_resp = _memoized_quote_response(tkr, client=client)
+        if q_resp and q_resp.status_code == 200:
+            _qj = q_resp.json()
+            _node = _qj.get(tkr.upper()) or _qj.get(tkr) or {}
+            return resolve_chg_pct(tkr, _parse_quote_node_session_fields(_node).get("chg_pct"))
+    except Exception:
+        pass
+    return None
+
+
 def _tier_a_live_state_dict(ticker: str, expiry: Optional[str]) -> dict:
     """
     Tier A — live-only JSON for GET /api/live/state.
@@ -6445,29 +6497,7 @@ def _tier_a_live_state_dict(ticker: str, expiry: Optional[str]) -> dict:
     spread_dollar = None
     if bid is not None and ask is not None:
         spread_dollar = round(ask - bid, 4)
-    # ONE authority (market_context.resolve_chg_pct) — covers the early-return path too
-    # (row served from the plane cache, never reaching the REST bootstrap branch above),
-    # so a ticker already streaming still gets its own chg_pct without a second decision.
-    from market_context import resolve_chg_pct
-    chg_pct = resolve_chg_pct(tkr, row.get("chg_pct"))
-    # MEASURED (this preview, live): a ticker with plane_quote_authority=="streaming" can
-    # have a real, fresh streamed SPOT while its streamed percent-change field genuinely
-    # never lands (the L1 subscription's field set, not this route, decides that) — and
-    # since streaming already supplied spot, the REST bootstrap above is skipped entirely,
-    # so chg_pct never even gets a REST value to fall back to. Spot and percent-change are
-    # different vendor fields; one streaming does not guarantee the other. Backfill via the
-    # SAME memoized REST quote /api/fast-quote already shares (RC-112) — usually a cache
-    # hit, not a second network call — rather than leaving the active ticker's own header
-    # blank while its watchlist row (which always polls REST) shows a real number.
-    if chg_pct is None and client is not None:
-        try:
-            q_resp = _memoized_quote_response(tkr, client=client)
-            if q_resp and q_resp.status_code == 200:
-                _qj = q_resp.json()
-                _node = _qj.get(tkr.upper()) or _qj.get(tkr) or {}
-                chg_pct = resolve_chg_pct(tkr, _parse_quote_node_session_fields(_node).get("chg_pct"))
-        except Exception:
-            pass
+    chg_pct = _chg_pct_with_rest_backfill(tkr, row, client=client)
     out: dict = {
         "_tier": "A_live",
         "ticker": tkr,
@@ -14843,25 +14873,30 @@ async def fast_quote(ticker: str = Query(default=DEFAULT_TICKER)):
 
 #: No Schwab-documented batch-quote symbol ceiling exists anywhere in this repo (checked:
 #: schwab_client.py, schwab_field_dictionary*, tools/sync_schwab_field_dictionary.py).
-#: This is therefore a DEFENSIVE request-size guard only — not a product watchlist limit —
-#: sized well above any realistic operator watchlist so it can never silently bite one. A
-#: request over it is REJECTED with a clear 400 (so an oversized list fails loudly), never
-#: silently truncated (which would leave rows the operator added showing no data at all
-#: with no indication why).
-WATCHLIST_QUOTES_REQUEST_GUARD_MAX: int = 500
-
-
 @app.get("/api/watchlist-quotes")
 async def api_watchlist_quotes(tickers: str = Query(default="")):
     """
     ONE batched Schwab quote read (client.get_quotes) for every row of a client-held
     watchlist — not N sequential single-symbol polls, and not a second quote authority:
     parsing (_parse_quote_node_session_fields) and chg_pct precedence (resolve_chg_pct)
-    are the exact same functions /api/fast-quote and /api/live/state use. Returns
-    {SYMBOL: {spot, spot_disp, chg_pct, exchange_quote_ts}} for every requested ticker
-    that resolved to a real quote; a ticker with no usable data is simply absent from the
-    response (never fabricated), so the caller renders it honestly unavailable rather than
-    stale-but-labeled-live.
+    are the exact same functions /api/fast-quote and /api/live/state use.
+
+    No numeric ticker-count cap: no Schwab-documented batch-size ceiling exists anywhere in
+    this repo to justify one (checked: schwab_client.py, schwab_field_dictionary*,
+    tools/sync_schwab_field_dictionary.py), and a real operator watchlist is nowhere near
+    any plausible vendor/transport limit — an invented number would be a product-shaped
+    guess dressed as a constraint (caught in review). A genuinely oversized request fails
+    honestly through the real failure paths below (ASGI/reverse-proxy URL-length rejection
+    before this handler even runs, or a real vendor HTTP error reported as such) instead of
+    a silently-guessed threshold.
+
+    Returns {"ok": bool, "error": str|None, "quotes": {SYMBOL: {spot, spot_disp, chg_pct,
+    exchange_quote_ts}}}. A symbol simply absent from `quotes` genuinely has no usable quote
+    right now (never fabricated) — that is a DIFFERENT fact from ok:false, which means the
+    WHOLE batch call failed (auth/vendor/transport) before any symbol could be evaluated.
+    Collapsing both into the same bare {} (this route's pre-review shape) made a live
+    console with zero current coverage indistinguishable from an offline one; the caller
+    could not tell "no data for these symbols right now" from "the vendor call never ran".
     """
     raw = [t.strip().upper() for t in (tickers or "").split(",") if t.strip()]
     seen: list[str] = []
@@ -14869,18 +14904,15 @@ async def api_watchlist_quotes(tickers: str = Query(default="")):
         if t not in seen:
             seen.append(t)
     if not seen:
-        return JSONResponse({})
-    if len(seen) > WATCHLIST_QUOTES_REQUEST_GUARD_MAX:
-        raise HTTPException(
-            status_code=400,
-            detail=f"{len(seen)} tickers requested, exceeds the {WATCHLIST_QUOTES_REQUEST_GUARD_MAX}-symbol request guard",
-        )
+        return JSONResponse({"ok": True, "error": None, "quotes": {}})
 
     def _build() -> dict:
         try:
             client = get_client()
-        except HTTPException:
-            return {}
+        except HTTPException as he:
+            reason = "token_invalid" if _schwab_auth_http_unavailable(he) else "auth_unavailable"
+            log.warning("watchlist_quotes auth unavailable tickers=%s reason=%s", seen, reason)
+            return {"ok": False, "error": reason, "quotes": {}}
         from schwab_client import safe_get_quotes
         from market_context import resolve_chg_pct
 
@@ -14888,13 +14920,16 @@ async def api_watchlist_quotes(tickers: str = Query(default="")):
             resp = safe_get_quotes(client, seen)
         except Exception as e:
             log.warning("watchlist_quotes batch fetch failed tickers=%s: %s", seen, e)
-            return {}
+            return {"ok": False, "error": "vendor_call_failed", "quotes": {}}
         if resp is None or getattr(resp, "status_code", None) != 200:
-            return {}
+            status = getattr(resp, "status_code", None)
+            log.warning("watchlist_quotes batch fetch non-200 tickers=%s status=%s", seen, status)
+            return {"ok": False, "error": f"vendor_http_{status}", "quotes": {}}
         try:
             q_json = resp.json()
-        except Exception:
-            return {}
+        except Exception as e:
+            log.warning("watchlist_quotes batch response unparseable tickers=%s: %s", seen, e)
+            return {"ok": False, "error": "malformed_vendor_response", "quotes": {}}
         out: dict = {}
         for t in seen:
             node = q_json.get(t) or q_json.get(t.upper()) or {}
@@ -14910,7 +14945,7 @@ async def api_watchlist_quotes(tickers: str = Query(default="")):
                 "chg_pct": resolve_chg_pct(t, pq.get("chg_pct")),
                 "exchange_quote_ts": pq.get("quote_ts"),
             }
-        return out
+        return {"ok": True, "error": None, "quotes": out}
 
     loop = asyncio.get_event_loop()
     payload = await loop.run_in_executor(_get_quote_hot_executor(), _build)
