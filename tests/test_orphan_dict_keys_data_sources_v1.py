@@ -80,11 +80,12 @@ def test_the_check_did_not_go_blind_a_genuine_orphan_is_still_reported(tmp_path,
     sight — it failed on 2026-09-10 when unrelated deletions left exactly 100 (RC-549)."""
     prod = tmp_path / "prod"
     prod.mkdir()
-    (prod / "writer.py").write_text('def produce():\n    return {"zz_written_key": 1}\n', encoding="utf-8")
-    (prod / "reader.py").write_text(
+    writer, reader = prod / "writer.py", prod / "reader.py"
+    writer.write_text('def produce():\n    return {"zz_written_key": 1}\n', encoding="utf-8")
+    reader.write_text(
         'def consume(d):\n    return d.get("zz_written_key"), d.get("zz_orphan_key"), d.get("strict_default")\n',
         encoding="utf-8")
-    monkeypatch.setattr(GATE, "_production_py_files", lambda: sorted(prod.glob("*.py")))
+    monkeypatch.setattr(GATE, "_production_py_files", lambda: [reader, writer])
     reported = {v.msg.split("key '", 1)[1].split("'", 1)[0] for v in GATE.check_no_orphan_dict_keys()}
     assert "zz_orphan_key" in reported, "a key nothing writes went unreported — the check is blind"
     assert "zz_written_key" not in reported, "a key the population writes was reported — a false positive"
