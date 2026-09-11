@@ -9,7 +9,21 @@ violations reported separately, never summed into a verdict.
 
 Run by .github/workflows/hardening.yml (required check) as
     python tools/check_delta_adds_no_debt.py --base origin/main
-and by hand; `--index` measures the exact staged index instead of HEAD.
+and by hand. (The `--index` mode that measured the staged index for a pre-commit hook was
+deleted 2026-09-11: its only caller, tools/precommit_institutional.py, left with RC-546.)
+
+WHAT THIS IS, AND IS NOT (attack matrix on 1a2eaafe, 2026-09-11, RC-539): REGRESSION DETECTION
+for a candidate that does not touch its judge. It runs the CANDIDATE's checker, in the
+CANDIDATE's tree, from the CANDIDATE's workflow file, under the credential that also
+administers the repository. A candidate that weakens a predicate (name kept), rubber-stamps
+this script, retires the check that sees its violation, deletes the negative controls,
+neutralises a module the checker imports without touching the checker, or replaces the
+workflow step with `true` obtains the required `hardening` status — every one was executed
+and passed (`tests/test_delta_adds_no_debt_v1.py` names the class; the scratch PRs #240 and
+#241 carried the GitHub-side proofs). The VALIDATOR CHANGED line is disclosure for a reviewer,
+not prevention. Non-bypass is an IDENTITY boundary the repository cannot hold: a reviewer
+the coding agent is not, and a token that cannot administer the repository or push workflow
+files (GOV-REMOTE-ENFORCEMENT in OPEN_ITEMS.md).
 
 What it decides, entirely:
   1. no enforced check reports MORE violations on the candidate than on the base;
@@ -165,29 +179,6 @@ class Worktrees:
             _run(["git", "worktree", "remove", "--force", str(wt)])
         shutil.rmtree(self.tmp, ignore_errors=True)
         _run(["git", "worktree", "prune"])
-
-
-def index_candidate() -> str:
-    """A dangling commit whose tree is the EXACT staged INDEX, parented on HEAD (RC-391): the
-    pre-commit question is "does what I am ABOUT TO COMMIT add debt?", which neither HEAD nor
-    the working tree can answer. AMBIENT env here, deliberately: git points a hook at the
-    index under commit via GIT_INDEX_FILE."""
-    env = dict(os.environ)
-    env.update({
-        "GIT_AUTHOR_NAME": "delta-gate", "GIT_AUTHOR_EMAIL": "delta-gate@local",
-        "GIT_COMMITTER_NAME": "delta-gate", "GIT_COMMITTER_EMAIL": "delta-gate@local",
-    })
-    tree = _run(["git", "write-tree"], env=env)
-    if tree.returncode != 0 or not tree.stdout.strip():
-        raise RuntimeError(f"cannot snapshot the index: {tree.stderr[-300:]}")
-    head = _run(["git", "rev-parse", "HEAD"], env=env)
-    if head.returncode != 0 or not head.stdout.strip():
-        raise RuntimeError(f"cannot resolve HEAD: {head.stderr[-300:]}")
-    made = _run(["git", "commit-tree", tree.stdout.strip(), "-p", head.stdout.strip(),
-                 "-m", "delta-gate index candidate (unreferenced)"], env=env)
-    if made.returncode != 0 or not made.stdout.strip():
-        raise RuntimeError(f"cannot build the index candidate: {made.stderr[-300:]}")
-    return made.stdout.strip()
 
 
 def _stage(wt: Path, base_ref: str) -> None:
@@ -357,15 +348,8 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
         description="Fail if the candidate adds an enforced violation the base did not carry")
     ap.add_argument("--base", default="origin/main")
-    ap.add_argument("--index", action="store_true",
-                    help="measure the exact staged INDEX (the pre-commit question) instead "
-                         "of HEAD; unstaged work is structurally excluded")
     args = ap.parse_args(argv)
-
-    if args.index:
-        candidate_ref, candidate_label = index_candidate(), "staged INDEX"
-    else:
-        candidate_ref, candidate_label = "HEAD", "HEAD"
+    candidate_ref, candidate_label = "HEAD", "HEAD"
 
     base_counts, base_sha, base_roster = enforced_counts(args.base)
     wts = Worktrees()

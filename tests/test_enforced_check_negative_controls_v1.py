@@ -95,30 +95,6 @@ def test_rc_citation_check_accepts_a_resolvable_id(tmp_path, monkeypatch):
     assert not [b for b in M.check_rc_citations_resolve() if "RC-4242" in str(b)]
 
 
-def test_inert_producer_check_screams_on_a_fatal_run_log(tmp_path, monkeypatch):
-    """RC-97: a scheduled producer whose log ends in a fatal has been failing silently.
-
-    A fail-closed CONSUMER hides this — it withholds the stale artifact and the system merely
-    looks quiet. Measured 2026-07-27: the scorecard artifact was 119.4h old behind exactly this."""
-    from tools import check_institutional_correctness as M
-    fake = tmp_path
-    (fake / "reports").mkdir()
-    (fake / "reports" / "zzjob_run.log").write_text(
-        "starting\nFatal Python error: preconfig_init_utf8_mode\n", encoding="utf-8")
-    monkeypatch.setattr(M, "REPO", fake)
-    assert M.check_scheduled_producers_are_not_inert(), "a fatal run log was not flagged"
-
-
-def test_inert_producer_check_accepts_a_healthy_run_log(tmp_path, monkeypatch):
-    from tools import check_institutional_correctness as M
-    fake = tmp_path
-    (fake / "reports").mkdir()
-    (fake / "reports" / "zzjob_run.log").write_text(
-        "[job] start\nwrote artifact\n[job] exit=0\n", encoding="utf-8")
-    monkeypatch.setattr(M, "REPO", fake)
-    assert not M.check_scheduled_producers_are_not_inert()
-
-
 def test_price_bars_session_check_screams_on_an_ungated_reader(tmp_path, monkeypatch):
     """RC-103: a NEW ungated price_bars_1m reader must be flagged; a gated one must pass."""
     from tools import check_institutional_correctness as M

@@ -83,6 +83,15 @@ jobs:
       # from each tree's own predicates and the checker diff is what review must read. The
       # "trusted" lane that tried to judge the candidate with the base checker was deleted
       # 2026-09-10 (RC-546): it executed candidate root modules under a trusted label.
+      #
+      # WHAT THIS STEP IS NOT (attack matrix 2026-09-11, RC-539): a non-bypass boundary. It
+      # runs the candidate's own gate, from the candidate's own copy of this file, and the
+      # required status is matched by NAME from the GitHub Actions app. MEASURED on scratch
+      # PRs #240/#241 from 1a2eaafe: a weakened predicate (name kept) turned both required
+      # checks green; this step replaced by `true` turned `hardening` green. Everything here
+      # is regression detection for an honest candidate; the boundary that would stop a
+      # candidate from changing its judge is an identity the coding agent does not hold
+      # (OPEN_ITEMS.md, GOV-REMOTE-ENFORCEMENT), which no file in this repository can create.
       - name: institutional debt delta + closure execution
         run: |
           git fetch --no-tags origin main

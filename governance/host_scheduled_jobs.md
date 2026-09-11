@@ -74,8 +74,10 @@ schtasks /Create /TN "EdConsoleLivenessWatch" /TR "'<REPO>\.venv\Scripts\pythonw
 ```
 
 Same-day visibility comes from the task's own non-zero `Last Result` (the re-verify one-liner
-at the bottom of this file) and the fatal line in the run log; the existing
-`check_scheduled_producers_are_not_inert` gate is the commit-time backstop.
+at the bottom of this file), the fatal line in the run log, and `EdConsoleLivenessWatch`'s
+artifact-staleness alerts. (The `check_scheduled_producers_are_not_inert` gate registration
+was retired 2026-09-11, RC-550: it read `reports/*_run.log`, which exists only on the
+production host, so no dev worktree or CI clone could ever see the failure it named.)
 
 ### Terminated-mid-run reading (measured 2026-08-04, not diagnosed)
 
@@ -171,9 +173,10 @@ configuration is required — the server and this task already run on the same h
   the close — so no run could ever score a complete session. All three defects were invisible
   precisely because the task definition lived outside version control and outside any inventory.
 - The launcher is now `tools/run_terrain_scorecard.bat`, in the repo, reviewed, with the quoting
-  and parity checks inside it. `check_scheduled_producers_are_not_inert` (ENFORCED) fails the
-  gate when any `reports/*_run.log` ends in a fatal — a silent producer plus a fail-closed
-  consumer reads exactly like a quiet system, and only a log-scanning lock breaks that.
+  and parity checks inside it. A silent producer plus a fail-closed consumer reads exactly like
+  a quiet system; the run log's fatal line and the liveness watchdog's staleness alert are what
+  break that on the host (the commit-gate registration that scanned `reports/*_run.log` was
+  retired 2026-09-11, RC-550 — the log never exists in a tree a commit gate judges).
 
 ## Re-verify (the whole table, any time)
 

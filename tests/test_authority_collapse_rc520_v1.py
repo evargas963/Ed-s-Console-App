@@ -1,32 +1,24 @@
-"""RC-520 — one semantic responsibility has one canonical file, and the repository refuses
-the shapes a resurrected duplicate must take.
+"""RC-520 — one semantic responsibility has one canonical file.
 
 WHAT WAS OBSERVED (2026-09-05, 466378c6). Law, current work, defect state, acceptance,
-claims, decisions, procedure and history were spread across overlapping files: ACTIVE_PROGRAM.md
-called OPEN_ITEMS.md the ledger while OPEN_ITEMS.md named governance/root_cause_log.md the
-single work ledger; OPEN_ITEMS.md mixed a restated GOVERNING LAW, queues, duplicated defects,
-an open-RC denominator and a reconciliation history with the acceptance board; MEMORY.md
-called itself an Active Rule Source; four `.cursor/rules` files restated AGENTS.md; the
-consolidation builders could regenerate 2026-05 classification headers; the ledger carried
-405 CLOSED rows (1.37 MB) in the default read path of 33 executable consumers.
+claims, decisions, procedure and history were spread across overlapping files; the ledger
+carried 405 CLOSED rows (1.37 MB) in the default read path of 33 executable consumers.
 
-These controls drive the REAL owners — `check_authority_surfaces_have_one_owner` in the ONE
-gate, `tools.mission_latch.archive_closed_rows`, `check_rc_mechanism_claims_cite_a_source`,
-git itself — against planted duplicates and against the live tree. Every control names the
-defect it would have caught on 466378c6.
+These controls drive the REAL owners — `tools.mission_latch.archive_closed_rows`, the ledger
+validators, git itself. The filename-ban check that once sat beside them
+(`authority_surfaces_have_one_owner`) was retired 2026-09-11 (RC-550): it refused twelve
+retired file NAMES and two documents' heading shapes, which a duplicate under any other
+name walked past; its tests went with it.
 
     pytest tests/test_authority_collapse_rc520_v1.py -q
 """
 from __future__ import annotations
 
-import importlib.util
 import inspect
 import re
 import subprocess
 import sys
 from pathlib import Path
-
-import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
@@ -35,7 +27,6 @@ if str(ROOT) not in sys.path:
 import tools.check_institutional_correctness as gate  # noqa: E402
 import tools.mission_latch as latch  # noqa: E402
 
-CHECK = "authority_surfaces_have_one_owner"
 LEDGER = ROOT / "governance" / "root_cause_log.md"
 
 
@@ -55,96 +46,7 @@ def _bold_ids(text: str) -> set[str]:
     return ids
 
 
-def _plant(tmp_path: Path, rel: str, text: str = "x\n") -> Path:
-    p = tmp_path / rel
-    p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(text, encoding="utf-8")
-    return p
-
-
-# ── 1. the control is a real member of the ONE gate ─────────────────────────────────────
-def test_one_owner_check_is_registered_and_enforced():
-    entry = [(n, f, e) for n, f, e in gate.CHECKS if n == CHECK]
-    assert len(entry) == 1, "the RC-520 control must be rostered exactly once in the ONE gate"
-    assert entry[0][1] is gate.check_authority_surfaces_have_one_owner
-    assert entry[0][2] is True, "an advisory control would not have refused 466378c6's duplicates"
-
-
-def test_live_tree_has_one_owner_per_surface():
-    assert gate.check_authority_surfaces_have_one_owner() == []
-
-
-# ── 2. mutation controls: the shapes a resurrected duplicate must take ───────────────────
-@pytest.mark.parametrize("rel", [
-    "MEMORY.md",
-    "docs/OPEN_ITEMS_OPERATOR_TRUST.md",
-    "tools/build_phase2_md_classification.py",
-    "reports/tqm_rehab_agent_brief.md",
-])
-def test_resurrected_retired_surface_is_refused(tmp_path, rel):
-    assert gate.check_authority_surfaces_have_one_owner(tmp_path) == []
-    planted = _plant(tmp_path, rel)
-    hits = gate.check_authority_surfaces_have_one_owner(tmp_path)
-    assert [v.path for v in hits] == [planted]
-    assert "RC-520" in hits[0].msg
-
-
-def test_classification_artifact_directory_is_refused(tmp_path):
-    (tmp_path / "governance" / "consolidation" / "phase2").mkdir(parents=True)
-    hits = gate.check_authority_surfaces_have_one_owner(tmp_path)
-    assert [str(v.path.relative_to(tmp_path)).replace("\\", "/") for v in hits] == ["governance/consolidation"]
-
-
-def test_second_cursor_rule_is_refused_and_the_adapter_alone_is_not(tmp_path):
-    _plant(tmp_path, ".cursor/rules/00-always.mdc", "Read and follow /AGENTS.md before repository work.\n")
-    assert gate.check_authority_surfaces_have_one_owner(tmp_path) == []
-    fork = _plant(tmp_path, ".cursor/rules/01-find-prove-no-soft-stop.mdc", "# a second law\n")
-    hits = gate.check_authority_surfaces_have_one_owner(tmp_path)
-    assert [v.path for v in hits] == [fork]
-
-
-def test_open_items_refuses_ledger_rows_closed_rows_and_foreign_headings(tmp_path):
-    _plant(tmp_path, "OPEN_ITEMS.md", "\n".join([
-        "# Open items",
-        "## GOVERNING LAW",                                   # law has one owner: AGENTS.md
-        "| RC-9 | OPEN | 2026-09-01 | 2026-09-02 | d | w | f |",   # defects: the ledger
-        "## Open acceptance items",
-        "- [x] **DONE-THING** — closed rows are history",     # closed row in the open section
-        "- [ ] **OPEN-THING** — legal",
-        "# OPEN ROOT-CAUSE LEDGER DENOMINATOR",               # a ledger snapshot
-        "",
-    ]))
-    hits = gate.check_authority_surfaces_have_one_owner(tmp_path)
-    assert sorted(v.line for v in hits) == [2, 3, 5, 7]
-
-
-def test_open_items_board_criteria_may_be_checked(tmp_path):
-    """The acceptance board's own met criteria are specification state, not history."""
-    _plant(tmp_path, "OPEN_ITEMS.md", "\n".join([
-        "## Open acceptance items",
-        "- [ ] **OPEN-THING** — unmet",
-        "## PA-6 — POINT-IN-TIME",
-        "- [x] Snapshot fingerprint includes full material content",
-        "- [ ] Behavioral regression proof confirmed",
-        "",
-    ]))
-    assert gate.check_authority_surfaces_have_one_owner(tmp_path) == []
-
-
-def test_active_program_refuses_done_rows_and_standing_law(tmp_path):
-    _plant(tmp_path, "ACTIVE_PROGRAM.md", "\n".join([
-        "# ACTIVE_PROGRAM.md",
-        "| FP-03 | DONE | finished long ago |",
-        "| FP-64 | QUEUED | legal |",
-        "## Standing runtime law (mechanically enforced)",
-        "## Known risks",
-        "",
-    ]))
-    hits = gate.check_authority_surfaces_have_one_owner(tmp_path)
-    assert sorted(v.line for v in hits) == [2, 4, 5]
-
-
-# ── 3. the queue is a record: no authority path reads it ────────────────────────────────
+# ── the queue is a record: no authority path reads it ───────────────────────────────────
 def test_stale_queue_status_grants_no_authority():
     """A stale NEXT/QUEUED/OPEN in a document cannot open a mission or block a turn: the
     latch and the Stop guards read the ledger only."""
@@ -170,7 +72,7 @@ def test_defect_rows_live_only_in_the_ledger(repo_index):
     """No tracked .py file carries a `| RC-n | <status> |` row of its own — a second parser
     target would be a second ledger — and the ledger is where every id resolves."""
     ledger_ids = {r[0] for r in _rows(LEDGER.read_text(encoding="utf-8"))}
-    assert len(ledger_ids) > 400
+    assert ledger_ids, "the ledger parsed to no rows — the row grammar or the file moved"
     row_re = re.compile(r"^\| RC-\d+ \| (OPEN|CLOSED|BLOCKED|ARCHIVED) \|", re.M)
     for rel, text, _tree in repo_index.items():
         if rel.parts[0] == "tests" and rel.name == Path(__file__).name:
@@ -185,7 +87,7 @@ def _archived_rows() -> list[list[str]]:
 
 def test_archived_rows_resolve_through_their_git_pointer():
     rows = _archived_rows()
-    assert len(rows) > 300, "the compaction that made the ledger readable is missing"
+    assert rows, "no ARCHIVED row: the compaction that made the ledger readable is missing"
     shas = {m for r in rows for m in re.findall(r"git show ([0-9a-f]{7,40}):governance/root_cause_log\.md", r[5])}
     assert shas, "an ARCHIVED row without a git pointer cannot be audited"
     assert all(re.search(r"git show [0-9a-f]{7,40}:governance/root_cause_log\.md", r[5]) for r in rows)
@@ -261,41 +163,10 @@ def test_served_pipeline_quality_is_the_document_not_a_stub():
     assert 'Path(APP_DIR) / "PIPELINE_QUALITY.md"' in server
 
 
-# ── 6. every consumer of a moved source was rewired ─────────────────────────────────────
-_RETIRED_NAMES = ("MEMORY.md", "OPEN_ITEMS_OPERATOR_TRUST", "OPERATOR_TRUST_STABILIZATION_GATE",
-                  "AGENT_SELF_GOVERNANCE", "build_phase0_", "build_phase2_", "build_phase3_",
-                  "import_memory_archive_phase1c", "tqm_rehab_agent_brief", "PR_REVIEW_STANDARD",
-                  "NO_SILENT_DEGRADATION_POLICY", "RUNTIME_EVIDENCE_ENV_CONTRACT", "ADMIN_BYPASS_REGISTER")
-_REWIRED_CONSUMERS = ("docs/host/README.md", "TRAINING_AND_MAINTENANCE.md",
-                      "tools/feature_curation_gate.py", "tools/check_ml_pipeline_efficiency.py",
-                      ".github/pull_request_template.md", "governance/AGENT_OPERATING_PROCESS_V1.md",
-                      ".claude/skills/drift-audit/SKILL.md", "timeframe_config.py")
-_ALLOWED_PY_MENTIONS = {  # the only production readers of the two root documents, each for a reason
-    "tools/universal_scope_lock.py",     # prompt-path lock: agent-instruction files are in scope
-    "tools/check_institutional_correctness.py",   # the RC-520 control itself
-    "tools/check_ml_pipeline_efficiency.py",      # cites the runbook that now owns the matrix
-    "timeframe_config.py",               # docstring: says where horizon-stack acceptance lives
-}
-
-
-def test_moved_source_consumers_are_rewired(repo_index):
-    for rel in _REWIRED_CONSUMERS:
-        text = (ROOT / rel).read_text(encoding="utf-8")
-        for name in _RETIRED_NAMES:
-            assert name not in text, f"{rel} still cites retired {name}"
-    for rel, text, _tree in repo_index.items():
-        posix = rel.as_posix()
-        if posix.startswith("tests/"):
-            continue
-        if posix != "tools/check_institutional_correctness.py":   # the control that names them
-            for name in _RETIRED_NAMES:
-                assert name not in text, f"{posix} still cites retired {name}"
-        if "ACTIVE_PROGRAM.md" in text or "OPEN_ITEMS.md" in text:
-            assert posix in _ALLOWED_PY_MENTIONS, f"{posix} reads a root document it has no reason to"
-    assert importlib.util.find_spec("tools.build_phase2_md_classification") is None
-    assert not (ROOT / "governance" / "consolidation").exists()
-    ml = (ROOT / "TRAINING_AND_MAINTENANCE.md").read_text(encoding="utf-8")
-    assert "run_survivor_stack_refit_backtest" in ml and "stack refit backtest" in ml
+# test_moved_source_consumers_are_rewired was deleted 2026-09-11 (RC-550): a one-time migration
+# check that had become a permanent ban on thirteen strings and on any .py file MENTIONING a
+# root document — a docstring citation read as "reads a root document it has no reason to".
+# Mention is not a read; a string ban is not a control.
 
 
 def test_adapters_point_at_the_owners_and_carry_no_law():
@@ -311,14 +182,8 @@ def test_adapters_point_at_the_owners_and_carry_no_law():
     assert "launch / pre-push / CI). This file" not in process
 
 
-def test_no_code_owner_file_exists_rc530():
-    """RC-530: AGENTS.md rules out per-file authority machinery, and the retirement manifest
-    once cited a code-owner review that owned nothing (no CODEOWNERS file was ever tracked,
-    so `require_code_owner_reviews` required a review from nobody). GitHub reads the file from
-    exactly three locations; none may appear."""
-    for rel in ("CODEOWNERS", ".github/CODEOWNERS", "docs/CODEOWNERS"):
-        assert not (ROOT / rel).exists(), f"{rel} exists — per-file authority machinery is back"
-    tracked = subprocess.run(
-        ["git", "ls-files", "CODEOWNERS", ".github/CODEOWNERS", "docs/CODEOWNERS"],
-        cwd=str(ROOT), capture_output=True, text=True, check=False).stdout.split()
-    assert tracked == [], tracked
+# test_no_code_owner_file_exists_rc530 was deleted 2026-09-11 (RC-550): it forbade a CODEOWNERS
+# file on the premise that no reviewer identity exists. A CODEOWNERS review by an identity the
+# coding agent does not hold is the only native GitHub boundary that stops a candidate from
+# weakening its own judge (attack matrix on b0bb211f/1a2eaafe, RC-539); a test that refuses
+# the boundary is not a control.

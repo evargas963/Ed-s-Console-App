@@ -40,7 +40,21 @@ def test_scan_reports_live_counts():
     rep = scan()
     assert rep["schema"] == "dead_tests_audit_v1"
     c = rep["counts"]
-    assert c["live_test_functions"] > 1000
+    assert c["live_test_functions"] >= 1
     assert "archive_test_functions" not in c
     assert "archive_files" not in rep
     assert "presence_only" in c
+
+
+def test_scan_counts_a_constructed_suite_exactly(tmp_path, monkeypatch):
+    """The `> 1000` pin this replaced (RC-549/RC-550 class) measured the tree's size, not the
+    scanner: a constructed suite of two tests, one assert-free, must count as exactly that."""
+    import tools.dead_tests_audit_v1 as mod
+    tests = tmp_path / "tests"
+    tests.mkdir()
+    (tests / "test_two.py").write_text(
+        "def test_a():\n    assert 1 == 1\n\n\ndef test_b():\n    x = 1\n", encoding="utf-8")
+    monkeypatch.setattr(mod, "REPO", tmp_path)
+    monkeypatch.setattr(mod, "TESTS", tests)
+    c = mod.scan()["counts"]
+    assert c["live_test_functions"] == 2 and c["assert_free"] == 1

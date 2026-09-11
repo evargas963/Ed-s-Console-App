@@ -229,7 +229,21 @@ CLOSE_COMMAND_CUTOVER = "2026-09-06"
 #: standing debt onto the survivor. A check removed from CHECKS without an entry here fails
 #: the required hardening check (RC-391: deleting the failing check is not paying the debt).
 #: Entries are removed once the retirement has landed on main; git keeps them.
-RETIRED_CHECKS: dict[str, str] = {}
+RETIRED_CHECKS: dict[str, str] = {
+    # 2026-09-11 (PR #239, RC-550): three registrations that measured something other than
+    # the tree they were asked to judge.
+    "venv_parity": "retired 2026-09-11: a property of the interpreter running the gate, not of "
+                   "the tree; it fired in every scratch worktree the delta gate materialises and "
+                   "is exempt in CI. The pre-commit hook `venv-parity` (tools/check_venv_parity.py) "
+                   "is its one owner.",
+    "scheduled_producers_are_not_inert": "retired 2026-09-11: read reports/*_run.log, a "
+                   "gitignored runtime artefact of the production host; a dev worktree or a CI "
+                   "clone never carries it, so a commit gate could not see the failure it named "
+                   "(RC-97). Producer liveness is an operations monitor, not a tree predicate.",
+    "authority_surfaces_have_one_owner": "retired 2026-09-11: refused twelve retired file NAMES "
+                   "and heading shapes in two prose documents — a ban on filenames, not a "
+                   "correctness predicate; a duplicate under any other name passed it.",
+}
 
 #: A backticked span that is a command someone can run — the same standard the numeric
 #: claim rule holds, held once here for closure evidence.
@@ -1750,21 +1764,6 @@ def check_shutdown_is_bounded() -> list[Violation]:
     return out
 
 
-def check_venv_parity() -> list[Violation]:
-    """Active interpreter must live under repo .venv (multi-agent parity).
-
-    OBSERVED (2026-07-25): Claude/Cursor share the filesystem but not the
-    interpreter — global Python313 vs a project venv silently diverges packages
-    and hook installs. VALIDATED: tools/check_venv_parity.py path resolve;
-    CI (GITHUB_ACTIONS/CI) exempt because runners have no repo .venv.
-    """
-    if str(REPO) not in sys.path:
-        sys.path.insert(0, str(REPO))
-    from tools.check_venv_parity import venv_parity_violations
-
-    return [Violation(REPO / ".venv", 0, msg) for msg in venv_parity_violations()]
-
-
 def check_credential_leak() -> list[Violation]:
     """Staged diffs must not introduce secrets, JWTs, or operator home paths.
 
@@ -2447,51 +2446,6 @@ def rc_row_schema_violations(text: str, log: Path) -> list[Violation]:
                 log, n,
                 f"{parts[0]}: status CLOSED with an IN PROGRESS fix cell — the mirrored "
                 f"dishonesty of the RC-189 case."))
-    return out
-
-
-def check_scheduled_producers_are_not_inert() -> list[Violation]:
-    """A scheduled PRODUCER that fails every run must not stay silent (RC-97).
-
-    WHAT WAS OBSERVED (2026-07-27). The daily terrain scorecard was registered as a scheduled task
-    and had been dying at Python PRE-INIT on every run: its task command used the inline form
-    `set PYTHONUTF8=1 && python …`, and cmd.exe assigns everything between '=' and '&&' to the
-    variable, so PYTHONUTF8 became '1 ' with a trailing space. reports/scorecard_run.log ended in
-    `Fatal Python error: preconfig_init_utf8_mode`, the artifact was 119.4 HOURS old, and nothing
-    in the repo objected. The consumer was correctly fail-closed (RC-78 withholds stale figures),
-    and a silent producer plus a polite consumer reads exactly like a quiet system — fail-closed
-    on the READ side hid the WRITE side.
-
-    Rule: a runner log that ends in a fatal/traceback marker is a FINDING, whatever the artifact
-    downstream does about it. Absence of output is not evidence the job had nothing to do.
-
-    HOW VALIDATED: run against the live tree at authoring time, where it flagged
-    reports/scorecard_run.log on the exact fatal line above; it returns [] when the log is absent
-    (a job that has never run is RC-70's cadence problem, tracked separately) so it cannot cry
-    wolf on a clean checkout.
-    """
-    fatal = re.compile(r"Fatal Python error|Traceback \(most recent call last\)|"
-                       r"ModuleNotFoundError|SyntaxError:", re.I)
-    out: list[Violation] = []
-    reports = REPO / "reports"
-    if not reports.exists():
-        return out
-    for log in sorted(reports.glob("*_run.log")):
-        try:
-            text = log.read_text(encoding="utf-8", errors="ignore")
-        except OSError:
-            continue
-        if not text.strip():
-            continue
-        m = fatal.search(text)
-        if not m:
-            continue
-        out.append(Violation(
-            log, 0,
-            f"scheduled producer log ends in a fatal error ({m.group(0)!r}) — the job is "
-            f"SCHEDULED BUT INERT and has been failing silently. A fail-closed consumer hides "
-            f"this: it withholds the stale artifact and the system merely looks quiet (RC-97). "
-            f"Fix the runner, prove the artifact mtime advances, then clear the log."))
     return out
 
 
@@ -3333,104 +3287,6 @@ def check_phase2a_single_level_computation() -> list[Violation]:
 # backlog growth stays enforced by open_item_cap and stop_guard's RC-72 turn block.
 
 
-#: RC-520 — surfaces that were retired because their responsibility has ONE owner now.
-#: MEASURED 2026-09-05 on 466378c6: each of these either restated another file's
-#: authority (MEMORY.md called itself an Active Rule Source; four .cursor rules restated
-#: AGENTS.md law), carried a queue/ledger nobody executed (the operator-trust ledger and its
-#: JSON gate had zero executable readers), or regenerated classification headers from a
-#: 2026-05 model (the consolidation builders). Resurrecting one re-creates the split the
-#: mission removed, so presence alone is the violation — what the file says is irrelevant.
-_RC520_RETIRED_SURFACES: tuple[tuple[str, str], ...] = (
-    ("MEMORY.md", "host facts live in docs/host/README.md; law in AGENTS.md"),
-    ("docs/OPEN_ITEMS_OPERATOR_TRUST.md", "acceptance lives in OPEN_ITEMS.md; defects in governance/root_cause_log.md"),
-    ("governance/OPERATOR_TRUST_STABILIZATION_GATE.json", "no executable reader; the required CI checks are the gate"),
-    ("docs/governance/AGENT_SELF_GOVERNANCE.md", "agent procedure lives in governance/AGENT_OPERATING_PROCESS_V1.md"),
-    ("docs/plans/GOVERNANCE_CONSOLIDATION_EXECUTION_PLAN.md", "a finished 2026-05 plan; history is git"),
-    ("governance/consolidation", "generated classification artifacts; nothing consumes them"),
-    ("tools/build_phase0_rule_classification.py", "classification headers are not regenerated from a retired model"),
-    ("tools/build_phase2_md_classification.py", "classification headers are not regenerated from a retired model"),
-    ("tools/build_phase0_do_not_rename.py", "consolidation builder with no consumer"),
-    ("tools/build_phase3_repo_cleanup.py", "consolidation builder with no consumer"),
-    ("tools/import_memory_archive_phase1c.py", "one-shot memory import; the archive is already in git"),
-    ("reports/tqm_rehab_agent_brief.md", "the rehab program is complete; its law (one authority, kill the second path) is AGENTS.md's ONE computation law; reports/ holds measurements"),
-)
-
-#: The ONE Cursor adapter. Every other `.cursor/rules/*.mdc` was a restatement of AGENTS.md.
-_RC520_CURSOR_ADAPTER = "00-always.mdc"
-
-#: Headings that turned OPEN_ITEMS.md into a law + queue + history mixture (RC-520 census).
-_RC520_OPEN_ITEMS_FOREIGN_HEADINGS = ("GOVERNING LAW", "RECONCILIATION HISTORY", "LEDGER DENOMINATOR")
-_RC520_OPEN_SECTION = "## Open acceptance items"
-
-#: Headings that made ACTIVE_PROGRAM.md a second standing-truth surface.
-_RC520_ACTIVE_PROGRAM_FOREIGN_HEADINGS = ("KNOWN RISKS", "STANDING RUNTIME LAW", "FEATURE PLACEMENT MATRIX")
-
-
-def check_authority_surfaces_have_one_owner(root: Path | None = None) -> list[Violation]:
-    """RC-520 — one semantic responsibility has one canonical file, and stays that way.
-
-    WHAT WAS OBSERVED (2026-09-05, 466378c6). ACTIVE_PROGRAM.md called OPEN_ITEMS.md the
-    ledger while OPEN_ITEMS.md named governance/root_cause_log.md the single work ledger;
-    OPEN_ITEMS.md (101 KB) mixed acceptance verdicts with a restated GOVERNING LAW, a Now
-    list, queues, defects duplicated from the closure schema, an open-RC denominator and a
-    reconciliation history; MEMORY.md called itself an Active Rule Source; four .cursor rule
-    files restated AGENTS.md; the consolidation builders could regenerate 2026-05
-    classification headers over the whole tree. Every one of those was created by ADDING a
-    surface beside the last, and nothing refused the addition.
-
-    THE RULE, judged on presence and structure rather than on prose: the retired surfaces
-    stay deleted; `.cursor/rules/` holds exactly the one adapter; OPEN_ITEMS.md carries no
-    root-cause row, no closed checkbox in its open-items section and none of the foreign
-    headings; ACTIVE_PROGRAM.md carries no DONE row and no standing-law section. Each of
-    those is a shape a resurrected duplicate must take, so each is a mutation this refuses.
-    The acceptance board's own checked criteria are legitimate specification state and are
-    not touched.
-    """
-    root = root or REPO
-    out: list[Violation] = []
-    for rel, owner in _RC520_RETIRED_SURFACES:
-        p = root / rel
-        if p.exists():
-            out.append(Violation(p, 0, f"`{rel}` was retired by RC-520 ({owner}). Presence is the "
-                                       f"defect: a second surface for an owned responsibility "
-                                       f"re-creates the split authority the mission removed. Put "
-                                       f"the content with its owner and delete this."))
-    rules = root / ".cursor" / "rules"
-    if rules.is_dir():
-        for f in sorted(rules.iterdir()):
-            if f.name != _RC520_CURSOR_ADAPTER:
-                out.append(Violation(f, 0, f"`.cursor/rules/{f.name}` is a second Cursor rule surface; "
-                                           f"the one adapter is `{_RC520_CURSOR_ADAPTER}` and it points "
-                                           f"at AGENTS.md. Law lives in AGENTS.md, not in a vendor file."))
-    oi = root / "OPEN_ITEMS.md"
-    if oi.is_file():
-        in_open = False
-        for n, line in enumerate(oi.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
-            if line.startswith("## ") or line.startswith("# "):
-                in_open = line.startswith(_RC520_OPEN_SECTION)
-                if any(h in line.upper() for h in _RC520_OPEN_ITEMS_FOREIGN_HEADINGS):
-                    out.append(Violation(oi, n, f"OPEN_ITEMS.md is the acceptance specification only; "
-                                                f"the section {line.strip()!r} is law, a ledger "
-                                                f"snapshot or history, each of which has another owner."))
-            if line.startswith("| RC-"):
-                out.append(Violation(oi, n, "a root-cause row in OPEN_ITEMS.md: defects have ONE home, "
-                                            "governance/root_cause_log.md. Cite the row; do not copy it."))
-            if in_open and line.startswith("- [x] "):
-                out.append(Violation(oi, n, "a closed row in the open-acceptance-items section: closed "
-                                            "rows are history (git), not specification. Delete it."))
-    ap = root / "ACTIVE_PROGRAM.md"
-    if ap.is_file():
-        for n, line in enumerate(ap.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
-            if line.startswith("| ") and "| DONE |" in line:
-                out.append(Violation(ap, n, "a DONE row in ACTIVE_PROGRAM.md: it records CURRENT work; "
-                                            "finished work leaves the file and git keeps it."))
-            if line.startswith("#") and any(h in line.upper() for h in _RC520_ACTIVE_PROGRAM_FOREIGN_HEADINGS):
-                out.append(Violation(ap, n, f"the section {line.strip()!r} is standing truth, not "
-                                            f"current work; runtime rules live with their runbook "
-                                            f"(TRAINING_AND_MAINTENANCE.md) and risks with their owner."))
-    return out
-
-
 def check_test_hygiene() -> list[Violation]:
     """ONE registered test-hygiene lint (bedrock PR B, 2026-09-06; declared step 1 in
     governance/retired_checks.md).
@@ -3492,11 +3348,6 @@ def check_level_producers_have_consumers() -> list[Violation]:
 
 
 CHECKS = [
-    # RC-520 (2026-09-05): one owner per responsibility, kept by refusing the shapes a
-    # resurrected duplicate must take (retired surface present, second .cursor rule, ledger
-    # row or closed row or foreign heading in OPEN_ITEMS.md, DONE row or standing-law
-    # heading in ACTIVE_PROGRAM.md). ENFORCED at 0 on the tree that removed them.
-    ("authority_surfaces_have_one_owner", check_authority_surfaces_have_one_owner, True),
     # ENFORCED (must be zero — block pre-commit):
     # BEDROCK PR B (2026-09-06, step 2 of the two-step contract; declared 2026-09-06 in
     # governance/retired_checks.md): the eight test-hygiene lints — synthetic domain
@@ -3554,7 +3405,6 @@ CHECKS = [
     ("collect_datasheet_staged", check_collect_datasheet_staged, True),  # RC-210: Gebru datasheets
     ("chain_width_single_faucet", check_chain_width_single_faucet, True),  # RC-59: one strike-count authority
     ("single_faucet_provenance", check_single_faucet_provenance, True),  # RC-73: measured, not asserted
-    ("scheduled_producers_are_not_inert", check_scheduled_producers_are_not_inert, True),
     ("collect_window_single_law", check_collect_window_single_law, True),  # RC-183: 08:15-15:15 CT at the ONE write seam
     ("price_bars_readers_name_their_session", check_price_bars_readers_name_their_session, True),  # RC-61: the log is a control, not an archive
     ("domain_constants_are_derived", check_domain_constants_are_derived, True),  # RC-62: a market threshold states where its value came from
@@ -3587,7 +3437,6 @@ CHECKS = [
     ("single_stream_authority", check_single_stream_authority, True),
     ("snapshots_read_names_the_timeframe", check_snapshots_read_names_the_timeframe, True),  # query PLAN, not code shape
     ("shutdown_is_bounded", check_shutdown_is_bounded, True),  # Ctrl+C must always work
-    ("venv_parity", check_venv_parity, True),  # one interpreter — .venv only (CI exempt)
     ("credential_leak", check_credential_leak, True),  # staged secrets / home paths
     ("sqlite_wal_contract", check_sqlite_wal_contract, True),  # WAL + timeout on connects
     ("ui_data_integration", check_ui_data_integration, True),  # no dead "—" placeholders (Tier 1)

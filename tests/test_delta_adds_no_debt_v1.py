@@ -285,7 +285,7 @@ def test_execute_closures_fails_the_failing_and_live_only_rows_and_passes_the_go
     assert [f.split(":")[0].split(" ")[0] for f in failures] == ["RC-9002", "RC-9003"], failures
 
 
-# ── the index candidate (RC-391), proven against real git ─────────────────────────────
+# ── staging, proven against real git ──────────────────────────────────────────────────
 def _git(repo, *args):
     env = dict(os.environ, GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@t", GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@t")
     out = subprocess.run(["git", *args], cwd=str(repo), capture_output=True, text=True, encoding="utf-8", errors="replace", env=env)
@@ -302,46 +302,6 @@ def _seeded_repo(tmp_path):
     _git(repo, "add", "-A")
     _git(repo, "commit", "-qm", "base")
     return repo
-
-
-def _candidate_tree(monkeypatch, repo):
-    monkeypatch.setattr(GATE, "REPO", repo)
-    sha = GATE.index_candidate()
-    listing = _git(repo, "ls-tree", "-r", "--name-only", sha).split()
-    return sha, {p: _git(repo, "show", f"{sha}:{p}") for p in listing}
-
-
-def test_index_candidate_is_the_staged_tree_and_excludes_unstaged_work(tmp_path, monkeypatch):
-    repo = _seeded_repo(tmp_path)
-    (repo / "kept.txt").write_text("STAGED\n", encoding="utf-8")
-    _git(repo, "add", "kept.txt")
-    (repo / "kept.txt").write_text("UNSTAGED CONTAMINATION\n", encoding="utf-8")
-    (repo / "scratch.tmp").write_text("not part of the commit\n", encoding="utf-8")
-    _, tree = _candidate_tree(monkeypatch, repo)
-    assert tree["kept.txt"] == "STAGED\n" and "scratch.tmp" not in tree
-
-
-def test_index_candidate_includes_staged_additions_and_deletions_and_partial_staging(tmp_path, monkeypatch):
-    repo = _seeded_repo(tmp_path)
-    (repo / "added.txt").write_text("new\n", encoding="utf-8")
-    _git(repo, "add", "added.txt")
-    _git(repo, "rm", "-q", "doomed.txt")
-    (repo / "kept.txt").write_text("one\nSTAGED-HALF\n", encoding="utf-8")
-    _git(repo, "add", "kept.txt")
-    (repo / "kept.txt").write_text("one\nSTAGED-HALF\nUNSTAGED-HALF\n", encoding="utf-8")
-    _, tree = _candidate_tree(monkeypatch, repo)
-    assert tree.get("added.txt") == "new\n" and "doomed.txt" not in tree and tree["kept.txt"] == "one\nSTAGED-HALF\n"
-
-
-def test_index_candidate_is_parented_on_head_and_leaves_no_residue(tmp_path, monkeypatch):
-    repo = _seeded_repo(tmp_path)
-    (repo / "added.txt").write_text("new\n", encoding="utf-8")
-    _git(repo, "add", "added.txt")
-    before_head, before_refs, before_status = (_git(repo, "rev-parse", "HEAD").strip(), _git(repo, "show-ref"), _git(repo, "status", "--porcelain"))
-    sha, _ = _candidate_tree(monkeypatch, repo)
-    assert _git(repo, "rev-parse", f"{sha}^").strip() == before_head
-    assert _git(repo, "rev-parse", "HEAD").strip() == before_head and _git(repo, "show-ref") == before_refs
-    assert _git(repo, "status", "--porcelain") == before_status
 
 
 def test_measurement_worktrees_do_not_inherit_the_caller_s_git_bindings():
@@ -363,17 +323,6 @@ def test_measurement_worktrees_do_not_inherit_the_caller_s_git_bindings():
                 os.environ[k] = v
 
 
-def test_the_index_candidate_still_honours_an_explicit_GIT_INDEX_FILE(tmp_path, monkeypatch):
-    repo = _seeded_repo(tmp_path)
-    alt = tmp_path / "alt-index"
-    monkeypatch.setenv("GIT_INDEX_FILE", str(alt))
-    _git(repo, "read-tree", "HEAD")
-    (repo / "only-in-alt-index.txt").write_text("staged elsewhere\n", encoding="utf-8")
-    _git(repo, "add", "only-in-alt-index.txt")
-    _, tree = _candidate_tree(monkeypatch, repo)
-    assert "only-in-alt-index.txt" in tree
-
-
 def test_the_candidate_worktree_presents_the_whole_delta_since_base_as_STAGED(tmp_path, monkeypatch):
     """Staged against the BASE, not the candidate's parent (RC-548): a PR is several commits and
     the staged-scope rules must see every line the delta adds. With `HEAD^` the local gate
@@ -386,8 +335,9 @@ def test_the_candidate_worktree_presents_the_whole_delta_since_base_as_STAGED(tm
     _git(repo, "commit", "-qm", "an earlier commit of the same delta")
     (repo / "added.txt").write_text("new\n", encoding="utf-8")
     _git(repo, "add", "added.txt")
+    _git(repo, "commit", "-qm", "the tip commit of the same delta")
     monkeypatch.setattr(GATE, "REPO", repo)
-    sha = GATE.index_candidate()
+    sha = _git(repo, "rev-parse", "HEAD").strip()
     wt = tmp_path / "wt"
     _git(repo, "worktree", "add", "--detach", str(wt), sha)
     try:
