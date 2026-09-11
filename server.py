@@ -6459,6 +6459,24 @@ def _tier_a_live_state_dict(ticker: str, expiry: Optional[str]) -> dict:
     # so a ticker already streaming still gets its own chg_pct without a second decision.
     from market_context import resolve_chg_pct
     chg_pct = resolve_chg_pct(tkr, row.get("chg_pct"))
+    # MEASURED (this preview, live): a ticker with plane_quote_authority=="streaming" can
+    # have a real, fresh streamed SPOT while its streamed percent-change field genuinely
+    # never lands (the L1 subscription's field set, not this route, decides that) — and
+    # since streaming already supplied spot, the REST bootstrap above is skipped entirely,
+    # so chg_pct never even gets a REST value to fall back to. Spot and percent-change are
+    # different vendor fields; one streaming does not guarantee the other. Backfill via the
+    # SAME memoized REST quote /api/fast-quote already shares (RC-112) — usually a cache
+    # hit, not a second network call — rather than leaving the active ticker's own header
+    # blank while its watchlist row (which always polls REST) shows a real number.
+    if chg_pct is None and client is not None:
+        try:
+            q_resp = _memoized_quote_response(tkr, client=client)
+            if q_resp and q_resp.status_code == 200:
+                _qj = q_resp.json()
+                _node = _qj.get(tkr.upper()) or _qj.get(tkr) or {}
+                chg_pct = resolve_chg_pct(tkr, _parse_quote_node_session_fields(_node).get("chg_pct"))
+        except Exception:
+            pass
     out: dict = {
         "_tier": "A_live",
         "ticker": tkr,
