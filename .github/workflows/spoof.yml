@@ -1,8 +1,0 @@
-name: Spoof
-on:
-  pull_request:
-jobs:
-  hardening:
-    runs-on: ubuntu-latest
-    steps:
-      - run: "true"

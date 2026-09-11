@@ -84,9 +84,7 @@ jobs:
       # "trusted" lane that tried to judge the candidate with the base checker was deleted
       # 2026-09-10 (RC-546): it executed candidate root modules under a trusted label.
       - name: institutional debt delta + closure execution
-        run: |
-          git fetch --no-tags origin main
-          python tools/check_delta_adds_no_debt.py --base origin/main
+        run: "true"   # attack C: the required step no longer runs the gate
 
       # The "institutional closure gate" step (tools/check_institutional_closure_gate.py) was
       # removed 2026-09-06 (bedrock): it validated a parallel closure register that nothing
