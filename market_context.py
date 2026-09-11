@@ -640,6 +640,35 @@ def _derive_session() -> str:
     return "Closed"
 
 
+def resolve_chg_pct(ticker: str, rest_chg_pct: Optional[float], *,
+                     stream_chg_pct_fn: Optional[Callable[[str], Optional[float]]] = None) -> Optional[float]:
+    """
+    ONE authority for percent-change source precedence, for ANY ticker: streaming wins
+    when present, REST-derived value is the fallback. Every caller that needs a ticker's
+    chg_pct (the sentinel fetch below, /api/fast-quote, /api/live/state, the L1/SSE
+    payload) goes through this single function so "which value wins" is decided once,
+    not re-implemented per call site.
+
+    stream_chg_pct_fn defaults to app.options.order_flow.state.get_stream_chg_pct
+    (imported lazily to avoid a hard dependency at module load); callers may inject a
+    fake for testing, same as fetch_market_context already does below.
+    """
+    fn = stream_chg_pct_fn
+    if fn is None:
+        try:
+            from app.options.order_flow.state import get_stream_chg_pct as fn
+        except Exception:
+            fn = None
+    if fn is not None:
+        try:
+            stream_chg = fn(ticker)
+            if stream_chg is not None:
+                return stream_chg
+        except Exception:
+            pass
+    return rest_chg_pct
+
+
 def fetch_market_context(client, safe_get_quote_fn,
                          pcr: Optional[float] = None,
                          prev_pcr: Optional[float] = None,
@@ -663,12 +692,9 @@ def fetch_market_context(client, safe_get_quote_fn,
         return {}
 
     def _chg_for(sym: str, rest_chg: Optional[float]) -> Optional[float]:
-        """Stream chg_pct primary; REST derivation fallback."""
-        if stream_chg_pct_fn:
-            stream_chg = stream_chg_pct_fn(sym)
-            if stream_chg is not None:
-                return stream_chg
-        return rest_chg
+        """Thin wrapper over the one resolve_chg_pct authority (keeps this function's
+        existing call sites below unchanged while removing the duplicate branch)."""
+        return resolve_chg_pct(sym, rest_chg, stream_chg_pct_fn=stream_chg_pct_fn)
 
     # VIX — macro fear gauge; legacy ctx.vix semantics frozen (DUAL_GAUGE_HYBRID macro arm).
     vix_json = _fetch("$VIX")

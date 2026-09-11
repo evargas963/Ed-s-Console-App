@@ -486,6 +486,49 @@ def safe_get_quote(client, ticker: str, *, refresh_client_fn=None, attempt_hook=
                 raise retry_e
         raise
 
+
+def safe_get_quotes(client, tickers: list, *, refresh_client_fn=None, attempt_hook=None):
+    """Batch quote fetch — ONE vendor call for many symbols (client.get_quotes), not N
+    single-symbol calls. Same token-refresh-and-retry-once shape as safe_get_quote.
+    """
+    _block_live_schwab_in_ci_offline()
+    if attempt_hook is not None:
+        try:
+            attempt_hook()
+        except Exception as e:
+            log.debug("quotes attempt_hook: %s", e, exc_info=True)
+    try:
+        resp = client.get_quotes(tickers)
+        try:
+            from api_pressure import record_schwab_http_response
+
+            record_schwab_http_response(resp, f"quotes:{len(tickers)}")
+        except ImportError:
+            pass
+        return resp
+    except Exception as e:
+        if refresh_client_fn is not None and _is_token_error(e):
+            try:
+                new_client = refresh_client_fn()
+                if new_client:
+                    if attempt_hook is not None:
+                        try:
+                            attempt_hook()
+                        except Exception as e:
+                            log.debug("quotes attempt_hook: %s", e, exc_info=True)
+                    resp = new_client.get_quotes(tickers)
+                    try:
+                        from api_pressure import record_schwab_http_response
+
+                        record_schwab_http_response(resp, f"quotes:{len(tickers)}")
+                    except ImportError:
+                        pass
+                    return resp
+            except Exception as retry_e:
+                raise retry_e
+        raise
+
+
 def safe_get_price_history(client, ticker: str, *, frequency_minutes: int = 5, period_days: int = 1):
     """Fetch intraday price history from Schwab. Returns response or None.
 

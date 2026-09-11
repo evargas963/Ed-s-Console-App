@@ -3358,6 +3358,8 @@ def _build_rest_fast_quote_payload(tkr: str, quote_ingestion: str) -> dict:
     t_parse1 = time.perf_counter()
     quote_ts = pq["quote_ts"]
     server_received_ts = time.time()
+    from market_context import resolve_chg_pct
+    chg_pct = resolve_chg_pct(tkr, pq.get("chg_pct"))
     total_ms = (time.perf_counter() - t0) * 1000.0
     log.info(
         "fast_quote_timing ticker=%s thread=%s total_ms=%.2f get_client_ms=%.3f "
@@ -3376,6 +3378,7 @@ def _build_rest_fast_quote_payload(tkr: str, quote_ingestion: str) -> dict:
     return {
         "ticker": tkr,
         "spot": float(spot_f) if spot_f is not None else None,
+        "chg_pct": chg_pct,
         "bid": float(bid) if bid is not None else None,
         "ask": float(ask) if ask is not None else None,
         "spot_disp": f"{spot_f:.2f}" if spot_f is not None else "—",
@@ -5674,9 +5677,23 @@ def _parse_quote_node_session_fields(node: dict) -> dict[str, Any]:
     total_volume = _safe_float_quote(_q.get("totalVolume"))
     if total_volume is None:
         total_volume = _safe_float_quote(_ext.get("totalVolume"))
+    # Percent change — SAME extraction market_context._extract_quote already uses for
+    # SPY/QQQ/IWM/sectors/constituents (netPercentChange, then the regular-session leaf,
+    # then a netChange/last derivation). Generic per the vendor node, not per symbol name.
+    from numeric_contract import float_finite_or_none as _fin_chg
+    pct_chg = _fin_chg(_q.get("netPercentChange"))
+    if pct_chg is None:
+        pct_chg = _fin_chg(_reg.get("regularMarketPercentChange"))
+    if pct_chg is None:
+        net_chg = _fin_chg(_q.get("netChange"))
+        if net_chg is None:
+            net_chg = _fin_chg(_reg.get("regularMarketNetChange"))
+        if net_chg is not None and last and (float(last) - net_chg) != 0:
+            pct_chg = net_chg / (float(last) - net_chg) * 100.0
     return {
         "last": last,
         "mark": mark,
+        "chg_pct": pct_chg,
         "bid": bid,
         "ask": ask,
         "bid_size": bid_size,
@@ -6366,9 +6383,12 @@ def _tier_a_live_state_dict(ticker: str, expiry: Optional[str]) -> dict:
                 sf = float(spot)
                 quote_ts = pq["quote_ts"]
                 server_received_ts = time.time()
+                from market_context import resolve_chg_pct
+                chg_pct = resolve_chg_pct(tkr, pq.get("chg_pct"))
                 row = {
                     "ticker": tkr,
                     "spot": sf,
+                    "chg_pct": chg_pct,
                     "bid": bid,
                     "ask": ask,
                     "spot_disp": f"{sf:.2f}",
@@ -6434,12 +6454,18 @@ def _tier_a_live_state_dict(ticker: str, expiry: Optional[str]) -> dict:
     spread_dollar = None
     if bid is not None and ask is not None:
         spread_dollar = round(ask - bid, 4)
+    # ONE authority (market_context.resolve_chg_pct) — covers the early-return path too
+    # (row served from the plane cache, never reaching the REST bootstrap branch above),
+    # so a ticker already streaming still gets its own chg_pct without a second decision.
+    from market_context import resolve_chg_pct
+    chg_pct = resolve_chg_pct(tkr, row.get("chg_pct"))
     out: dict = {
         "_tier": "A_live",
         "ticker": tkr,
         "selected_exp": expiry,
         "session_label": sess,
         "spot": spot_f,
+        "chg_pct": chg_pct,
         "bid": bid,
         "ask": ask,
         "spot_disp": row.get("spot_disp"),
@@ -14797,6 +14823,82 @@ async def fast_quote(ticker: str = Query(default=DEFAULT_TICKER)):
             )
         log.error(f"Fast quote failed for {ticker}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+#: No Schwab-documented batch-quote symbol ceiling exists anywhere in this repo (checked:
+#: schwab_client.py, schwab_field_dictionary*, tools/sync_schwab_field_dictionary.py).
+#: This is therefore a DEFENSIVE request-size guard only — not a product watchlist limit —
+#: sized well above any realistic operator watchlist so it can never silently bite one. A
+#: request over it is REJECTED with a clear 400 (so an oversized list fails loudly), never
+#: silently truncated (which would leave rows the operator added showing no data at all
+#: with no indication why).
+WATCHLIST_QUOTES_REQUEST_GUARD_MAX: int = 500
+
+
+@app.get("/api/watchlist-quotes")
+async def api_watchlist_quotes(tickers: str = Query(default="")):
+    """
+    ONE batched Schwab quote read (client.get_quotes) for every row of a client-held
+    watchlist — not N sequential single-symbol polls, and not a second quote authority:
+    parsing (_parse_quote_node_session_fields) and chg_pct precedence (resolve_chg_pct)
+    are the exact same functions /api/fast-quote and /api/live/state use. Returns
+    {SYMBOL: {spot, spot_disp, chg_pct, exchange_quote_ts}} for every requested ticker
+    that resolved to a real quote; a ticker with no usable data is simply absent from the
+    response (never fabricated), so the caller renders it honestly unavailable rather than
+    stale-but-labeled-live.
+    """
+    raw = [t.strip().upper() for t in (tickers or "").split(",") if t.strip()]
+    seen: list[str] = []
+    for t in raw:
+        if t not in seen:
+            seen.append(t)
+    if not seen:
+        return JSONResponse({})
+    if len(seen) > WATCHLIST_QUOTES_REQUEST_GUARD_MAX:
+        raise HTTPException(
+            status_code=400,
+            detail=f"{len(seen)} tickers requested, exceeds the {WATCHLIST_QUOTES_REQUEST_GUARD_MAX}-symbol request guard",
+        )
+
+    def _build() -> dict:
+        try:
+            client = get_client()
+        except HTTPException:
+            return {}
+        from schwab_client import safe_get_quotes
+        from market_context import resolve_chg_pct
+
+        try:
+            resp = safe_get_quotes(client, seen)
+        except Exception as e:
+            log.warning("watchlist_quotes batch fetch failed tickers=%s: %s", seen, e)
+            return {}
+        if resp is None or getattr(resp, "status_code", None) != 200:
+            return {}
+        try:
+            q_json = resp.json()
+        except Exception:
+            return {}
+        out: dict = {}
+        for t in seen:
+            node = q_json.get(t) or q_json.get(t.upper()) or {}
+            if not node:
+                continue
+            pq = _parse_quote_node_session_fields(node)
+            spot = pq.get("spot")
+            if spot is None:
+                continue
+            out[t] = {
+                "spot": spot,
+                "spot_disp": f"{spot:.2f}",
+                "chg_pct": resolve_chg_pct(t, pq.get("chg_pct")),
+                "exchange_quote_ts": pq.get("quote_ts"),
+            }
+        return out
+
+    loop = asyncio.get_event_loop()
+    payload = await loop.run_in_executor(_get_quote_hot_executor(), _build)
+    return JSONResponse(payload)
 
 
 @app.get("/api/stream")

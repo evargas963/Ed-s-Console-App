@@ -12,6 +12,7 @@ from collections import deque
 from typing import Any, Optional
 from time_et import now_et, RTH_END_MINS, RTH_OPEN_MINS
 from instrument_identity import ticker_storage_key
+from numeric_contract import float_finite_or_none
 from l1_trade_observation import (
     TAPE_COMPLETENESS,
     is_adjacent_restatement,
@@ -123,16 +124,16 @@ class OrderFlowState:
             except (TypeError, ValueError):
                 pass
 
-        chg = content_item.get("REGULAR_MARKET_CHANGE_PERCENT") or content_item.get(
-            "CHANGE_PERCENT"
-        )
-        if chg is not None:
-            try:
-                cf = float(chg)
-                with self._lock:
-                    self._stream_chg_pct[sym] = cf
-            except (TypeError, ValueError):
-                pass
+        # `or` would drop a legitimate 0.0 (flat) REGULAR_MARKET_CHANGE_PERCENT and fall
+        # through to CHANGE_PERCENT instead; check presence explicitly. float_finite_or_none
+        # also rejects NaN/Infinity, which raw float() would silently accept from a bad tick.
+        chg = content_item.get("REGULAR_MARKET_CHANGE_PERCENT")
+        if chg is None:
+            chg = content_item.get("CHANGE_PERCENT")
+        cf = float_finite_or_none(chg)
+        if cf is not None:
+            with self._lock:
+                self._stream_chg_pct[sym] = cf
 
         try:
             now_et_dt = now_et()
