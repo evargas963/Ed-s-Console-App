@@ -9450,16 +9450,34 @@ function renderLiquidityMap(lm) {
 }
 let _lmPollTid = null;
 let _lmLastMarkedTicker = null;
-/** MEASURED 2026-09-11: neither failure branch of pollLiquiditySnapshot cleared the display --
- * a network error or a non-OK response just returned, leaving whatever the PRIOR successful
- * poll rendered on screen with no indication it was no longer current. Reuses the same
- * UNAVAILABLE vocabulary the rest of this file already uses for exactly this condition. */
+/** Per-dispatch sequence, independent of ticker/generation. MEASURED 2026-09-11: two
+ * overlapping requests for the SAME (ticker, generation) -- e.g. the 60s interval firing again
+ * before a prior poll resolves -- are not distinguished by ticker/gen equality alone; whichever
+ * response happened to ARRIVE last won, even when it was DISPATCHED first and is now
+ * chronologically stale. Admitting only the response whose sequence matches the most recently
+ * DISPATCHED request prevents freshness from regressing within an otherwise-unchanged context,
+ * the same way requestGeneration already prevents it across a ticker/expiry change. */
+let _lmRequestSeq = 0;
+/** MEASURED 2026-09-11 (two connected gaps in the first pass, found by independent review):
+ * (1) neither failure branch of pollLiquiditySnapshot cleared window._lastLiquidityMapPayload,
+ * so patchLiquidityMapSummaryFromLivePlane() -- called independently on every scheduled
+ * mark-to-market spot refresh -- kept repainting the summary section from the STALE payload
+ * regardless of the badge; (2) the zones list and vwap section were left showing the prior
+ * ticker's content underneath the badge. Invalidation must reach every consumer of the
+ * snapshot, not just the one label this function originally touched. */
 function _markLiquidityMapUnavailable(ticker) {
-  if (_lmLastMarkedTicker === ticker) return; // already showing it; don't re-flash the DOM
+  window._lastLiquidityMapPayload = null;
+  if (_lmLastMarkedTicker === ticker) return; // badge/DOM already reflect this; don't re-flash
   _lmLastMarkedTicker = ticker;
   domIf('lm-snapshot-badge', el => { el.textContent = 'UNAVAILABLE'; });
   const lmMeta = $('lm-live-meta');
   if (lmMeta) lmMeta.textContent = `Liquidity snapshot UNAVAILABLE for ${ticker}`;
+  const zonesEl = $('lm-zones');
+  if (zonesEl) zonesEl.innerHTML = '';
+  const vwapSection = $('lm-vwap-section');
+  if (vwapSection) vwapSection.style.display = 'none';
+  const summaryEl = $('lm-summary-section');
+  if (summaryEl) summaryEl.innerHTML = '';
 }
 async function pollLiquiditySnapshot() {
   // ONE authoritative ticker/generation identity -- the same one every other fetch path in
@@ -9472,17 +9490,25 @@ async function pollLiquiditySnapshot() {
   const ticker = activeTicker;
   if (!ticker) return;
   const exp = activeExpiry || '';
+  const mySeq = ++_lmRequestSeq;
   let url = `/api/liquidity-snapshot?ticker=${encodeURIComponent(ticker)}&snapshot=live`;
   if (exp) url += `&expiry=${encodeURIComponent(exp)}`;
-  const stillCurrent = () => myGen === requestGeneration && ticker === activeTicker;
+  const stillCurrent = () => myGen === requestGeneration && ticker === activeTicker && mySeq === _lmRequestSeq;
   try {
     const resp = await fetch(url);
     if (!stillCurrent()) return; // superseded while in flight -- drop, do not render
     if (!resp.ok) { _markLiquidityMapUnavailable(ticker); return; }
     const data = await resp.json();
     if (!stillCurrent()) return; // superseded while parsing -- drop, do not render
+    // Required native response identity: a well-formed snapshot NAMES the ticker it is for,
+    // and that name must match what was actually requested. MEASURED 2026-09-11: an empty or
+    // malformed 200 (e.g. `{}`) previously slipped through here -- `data.ticker` was falsy, so
+    // the mismatch check short-circuited to false -- and rendered with a confident LIVE badge
+    // and no real content. Requiring the field to be PRESENT, not merely "matching if present",
+    // closes that. A legitimate empty result (the real ticker, genuinely zero zones right now)
+    // still renders normally: only identity is required here, never a non-empty population.
     if (!data || typeof data !== 'object' || Array.isArray(data) || data.error
-        || (data.ticker && String(data.ticker).toUpperCase() !== ticker)) {
+        || !data.ticker || String(data.ticker).toUpperCase() !== ticker) {
       _markLiquidityMapUnavailable(ticker);
       return;
     }
