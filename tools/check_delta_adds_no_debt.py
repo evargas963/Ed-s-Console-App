@@ -68,6 +68,18 @@ _BANNER = "INSTITUTIONAL CORRECTNESS GATE:"
 #: The gate's OWN total, which the per-check parse must reconcile with (RC-390).
 _TOTAL_RE = re.compile(r"GATE: FAIL \((\d+) enforced violation")
 
+#: A count comparison alone cannot tell "the same violation persisted" from "a different
+#: violation appeared" under the same check while the count happens not to change — fix one,
+#: introduce another, and 1 -> 1 reads as clean. `Violation.__str__` already prints
+#: `  {path}:{line}  {msg}` for every violation the checker's own _MAX_PRINT cap allows, so the
+#: identity for that is already ON STDOUT; nothing needs to change in the checker itself.
+#: A PASS/FAIL header line for a check, and one violation line under it.
+_CHECK_HEADER_RE = re.compile(r"^(?:FAIL|PASS) \[([a-z_0-9]+)\]")
+_VIOLATION_LINE_RE = re.compile(r"^  (.+):(\d+)  (.+)$")
+#: The checker's own truncation note ("  … and N more") — printed instead of the remaining
+#: violation lines once a check exceeds its _MAX_PRINT cap.
+_TRUNCATED_RE = re.compile(r"^  … and \d+ more$")
+
 CHECKER_REL = "tools/check_institutional_correctness.py"
 _LEDGER_REL = "governance/root_cause_log.md"
 
@@ -97,6 +109,58 @@ def _run(args: list[str], cwd: Path | None = None, timeout: int = 3600,
 
 def parse_counts(stdout: str) -> dict[str, int]:
     return {m.group(1): int(m.group(2)) for m in _FAIL_RE.finditer(stdout)}
+
+
+def parse_violation_identities(stdout: str) -> dict[str, tuple[frozenset[tuple[str, str]], bool]]:
+    """{check: (identities, truncated)} from the SAME stdout parse_counts reads. An identity is
+    (path, msg) — the LINE NUMBER is deliberately excluded: an unrelated edit elsewhere in the
+    file that shifts a violation down a few lines is not a new violation, and comparing on line
+    would fail ordinary development that never touched the violating code. `truncated` is True
+    when the checker's own _MAX_PRINT cap hid some of this check's violations — the identity set
+    is then incomplete, and the caller must not read a missing identity as proof of absence."""
+    out: dict[str, tuple[set[tuple[str, str]], bool]] = {}
+    current: str | None = None
+    for line in stdout.splitlines():
+        header = _CHECK_HEADER_RE.match(line)
+        if header:
+            current = header.group(1)
+            out.setdefault(current, (set(), False))
+            continue
+        if current is None:
+            continue
+        if _TRUNCATED_RE.match(line):
+            ids, _ = out[current]
+            out[current] = (ids, True)
+            continue
+        v = _VIOLATION_LINE_RE.match(line)
+        if v:
+            ids, truncated = out[current]
+            ids.add((v.group(1), v.group(3)))
+            out[current] = (ids, truncated)
+    return {name: (frozenset(ids), truncated) for name, (ids, truncated) in out.items()}
+
+
+def identity_regressions(
+        base: dict[str, tuple[frozenset[tuple[str, str]], bool]],
+        head: dict[str, tuple[frozenset[tuple[str, str]], bool]]) -> list[str]:
+    """Checks where HEAD reports a violation identity BASE's set for that check does not
+    contain — a SUBSTITUTION the count comparison alone misses (fix violation A, introduce
+    different violation B under the same check: count stays 1 -> 1). Skipped when either side's
+    set for that check was truncated by the checker's own _MAX_PRINT cap: an incomplete set
+    cannot prove a new identity is genuinely new, and the unconditional count comparison in
+    `compare()` already refuses a truncated check's total from growing regardless."""
+    out: list[str] = []
+    for name in sorted(set(base) & set(head)):
+        base_ids, base_truncated = base[name]
+        head_ids, head_truncated = head[name]
+        if base_truncated or head_truncated:
+            continue
+        new = head_ids - base_ids
+        if new:
+            examples = "; ".join(f"{p}:{m}" for p, m in sorted(new)[:3])
+            more = f" (+{len(new) - 3} more)" if len(new) > 3 else ""
+            out.append(f"  {name}: {len(new)} violation(s) not present on base{more} — {examples}")
+    return out
 
 
 # ── the checker's declarations, read STATICALLY (the candidate is data here) ────────────
@@ -193,9 +257,10 @@ def _stage(wt: Path, base_ref: str) -> None:
         raise RuntimeError(f"cannot stage the delta in the worktree: {reset.stderr[-300:]}")
 
 
-def run_gate(wt: Path, ref_label: str) -> dict[str, int]:
-    """Run the institutional gate that lives IN `wt`; {check: violations}, fail-closed on a
-    crashed, silent or unparseable run (H1 / RC-390)."""
+def run_gate(wt: Path, ref_label: str
+             ) -> tuple[dict[str, int], dict[str, tuple[frozenset[tuple[str, str]], bool]]]:
+    """Run the institutional gate that lives IN `wt`; ({check: violations}, {check: (violation
+    identities, truncated)}), fail-closed on a crashed, silent or unparseable run (H1 / RC-390)."""
     proc = _run([sys.executable, "tools/check_institutional_correctness.py", "--enforced-only"], cwd=wt)
     if proc.returncode not in (0, 1) or _BANNER not in proc.stdout:
         raise RuntimeError(
@@ -216,16 +281,19 @@ def run_gate(wt: Path, ref_label: str) -> dict[str, int]:
             raise RuntimeError(
                 f"parsed {sum(counts.values())} violation(s) for {ref_label} but the gate "
                 f"declared {total}; parser and authority disagree, refusing both.")
-    return counts
+    return counts, parse_violation_identities(proc.stdout)
 
 
-def enforced_counts(ref: str) -> tuple[dict[str, int], str, set[str]]:
-    """({check: violations}, short sha, enforced roster) of `ref`, measured in a CLEAN worktree."""
+def enforced_counts(ref: str) -> tuple[dict[str, int], dict[str, tuple[frozenset[tuple[str, str]], bool]],
+                                        str, set[str]]:
+    """({check: violations}, {check: (violation identities, truncated)}, short sha, enforced
+    roster) of `ref`, measured in a CLEAN worktree."""
     sha = _run(["git", "rev-parse", "--short", ref]).stdout.strip()
     wts = Worktrees()
     try:
         wt = wts.add(ref, "wt")
-        return run_gate(wt, ref), sha, enforced_roster(wt)
+        counts, identities = run_gate(wt, ref)
+        return counts, identities, sha, enforced_roster(wt)
     finally:
         wts.close()
 
@@ -351,18 +419,19 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
     candidate_ref, candidate_label = "HEAD", "HEAD"
 
-    base_counts, base_sha, base_roster = enforced_counts(args.base)
+    base_counts, base_ids, base_sha, base_roster = enforced_counts(args.base)
     wts = Worktrees()
     try:
         cand_wt = wts.add(candidate_ref, "cand")
         _stage(cand_wt, args.base)                    # the whole delta since base appears STAGED
         head_sha = _run(["git", "rev-parse", "--short", candidate_ref]).stdout.strip()
-        head_counts, head_roster = run_gate(cand_wt, candidate_label), enforced_roster(cand_wt)
+        (head_counts, head_ids), head_roster = run_gate(cand_wt, candidate_label), enforced_roster(cand_wt)
         retirements = declared_retirements(cand_wt)
         retired, removed = split_removals(removed_enforced_checks(base_roster, head_roster), set(retirements))
         folds = {n: m.group(1) for n, why in retirements.items() if (m := _FOLD_RE.search(why))}
         base_counts, folded_moves = refold_base_counts(base_counts, folds, set(retired), head_roster)
         added, improved = compare(base_counts, head_counts)
+        substituted = identity_regressions(base_ids, head_ids)
         checker_changed = _run(["git", "diff", "--quiet", f"{args.base}", candidate_ref, "--", CHECKER_REL]).returncode != 0
         closure_failures = execute_closures(args.base, cand_wt)
     finally:
@@ -385,7 +454,7 @@ def main(argv: list[str] | None = None) -> int:
     if retired:
         print("\nRETIRED by declaration in the checker's RETIRED_CHECKS (visible in this diff):")
         print("\n".join(f"  {name}: {retirements[name]}" for name in retired))
-    if not added and not removed and not closure_failures:
+    if not added and not substituted and not removed and not closure_failures:
         print("\n[PASS] this delta adds no enforced violation the base did not already carry, "
               "removes no undeclared enforced check, and every row it closes ran its cited "
               "command to exit 0.")
@@ -394,6 +463,10 @@ def main(argv: list[str] | None = None) -> int:
         print("\n[FAIL] this delta ADDS enforced violations — not done, whatever the "
               "hand-written tests say:")
         print("\n".join(f"  {a.strip()}" for a in added))
+    if substituted:
+        print("\n[FAIL] this delta SUBSTITUTES a different enforced violation under an "
+              "unchanged count — fixing one and introducing another is not paying the debt:")
+        print("\n".join(substituted))
     if removed:
         print("\n[FAIL] this delta REMOVES enforced check(s) from the CHECKS roster without "
               f"declaring the retirement in RETIRED_CHECKS of {CHECKER_REL}. Deleting the check "
