@@ -15,10 +15,13 @@ undeclared check removal, every closing ledger row's cited command executed). Me
 not prose: those checks run CANDIDATE code, branch protection matches them by NAME, and the
 operator's credential is the one coding agents use — so the repository cannot mechanically
 defend the checker's predicates against its own author; review of a checker diff (the
-`hardening` log prints VALIDATOR CHANGED when one exists) and the credential boundary recorded
-under GOV-REMOTE-ENFORCEMENT (OPEN_ITEMS.md) are the boundary. A "trusted" lane that judged
-the candidate with base code was built and deleted on 2026-09-10 (RC-546): its overlay still
-executed candidate root modules, and its contract froze ownership.
+`hardening` log prints VALIDATOR CHANGED when one exists) is the entire boundary. A
+credential-scoped boundary was proposed under GOV-REMOTE-ENFORCEMENT (OPEN_ITEMS.md) and the
+operator explicitly descoped it 2026-09-11 — containing a repository administrator who
+deliberately rewrites its own judge is not this repository's job; that row records the ruling,
+not an active mechanism. A "trusted" lane that judged the candidate with base code was built
+and deleted on 2026-09-10 (RC-546): its overlay still executed candidate root modules, and its
+contract froze ownership.
 
 Ed Console is a clean trading intelligence system, institutional in this exact sense: every
 claim rests on a measurement anyone can re-run from the tree; every material fact has one
@@ -38,7 +41,7 @@ It does three things, in order:
 
 **Removal rule:** every file materially serves Collect, Find & Prove, or Decide, or is a supporting control that directly protects one — anything else is removed.
 
-**Placement rule:** the removal rule says what belongs in the repository; [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) says *where*. It is the canonical target architecture, and the repository is migrating toward it incrementally rather than by rewrite. When work materially touches an area, move the touched files, responsibilities, imports and ownership toward their canonical owner **when that movement is safe and cohesive** — do not create structure that moves away from the target, do not preserve misplaced code merely because tests import it there today, and do not broaden into unrelated repository-wide migration. If the target is wrong, impossible, or materially inferior for something you encounter, raise the specific evidence-based objection *before* building a competing design. The operator decides architectural amendments; agents do not silently change the architecture. Like the rest of this file, that is specification: no check enforces it.
+**Placement rule:** the removal rule says what belongs in the repository; [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) says *where*. It documents the current target architecture as intent and hypothesis, not as proof the architecture is good — like every other document in this repository, it is evidence to inspect against professional engineering judgment, not authority to obey because it is written down. When work materially touches an area, move the touched files, responsibilities, imports and ownership toward the documented target **when independent judgment finds the target sound and the movement safe and cohesive** — do not preserve misplaced code merely because tests import it there today, and do not broaden into unrelated repository-wide migration. If the target itself is wrong, impossible, or materially inferior for something you encounter, say so with the evidence and fix it — reversing a demonstrably bad prior design is expected engineering, not an amendment that waits on permission. What still needs the operator is a genuine product or business tradeoff with no answer available in engineering evidence, not a disagreement the code and its behavior can settle. Like the rest of this file, that is specification: no check enforces it.
 
 ## Operating model
 
