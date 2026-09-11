@@ -325,8 +325,15 @@
 
   // ================= watchlist (editable foundation, localStorage) =================
   function loadWL() {
-    try { var v = JSON.parse(localStorage.getItem(WL_KEY)); if (Array.isArray(v) && v.length) return v; }
-    catch (e) {}
+    // An explicitly saved EMPTY list (every ticker removed) must stay empty — only an
+    // absent key (never saved before) falls back to defaults. `[].length` is falsy, so a
+    // naive truthiness check on the parsed array silently resurrected the defaults here.
+    try {
+      var raw = localStorage.getItem(WL_KEY);
+      if (raw == null) return DEFAULT_WL.slice();
+      var v = JSON.parse(raw);
+      if (Array.isArray(v)) return v;
+    } catch (e) {}
     return DEFAULT_WL.slice();
   }
   function saveWL(list) { try { localStorage.setItem(WL_KEY, JSON.stringify(list)); } catch (e) {} }
@@ -335,35 +342,51 @@
     var list = loadWL();
     var host = document.getElementById('watchlist');
     var add = document.getElementById('wlAdd');
-    host.querySelectorAll('.wl-row').forEach(function (n) { n.remove(); });
+    host.querySelectorAll('.wl-row, .wl-empty').forEach(function (n) { n.remove(); });
+    if (!list.length) {
+      var empty = document.createElement('div');
+      empty.className = 'wl-empty';
+      empty.textContent = 'Watchlist is empty — use + Add symbol below';
+      host.insertBefore(empty, add);
+    }
     list.forEach(function (sym) {
       var row = document.createElement('div');
       row.className = 'wl-row' + (sym === state.ticker ? ' sel' : '');
+      // Remove is a real <button> in normal flow (not display:none swapped by hover JS), so
+      // Tab reaches it and Enter/Space activates it natively — CSS (:hover/:focus-within/
+      // :focus) alone controls its visibility, no mouse required to discover or use it.
       row.innerHTML = '<span class="wl-sym s">' + sym.replace('$', '') + '</span>' +
         '<span class="wl-px" data-wlpx="' + sym + '">—</span>' +
         '<span class="wl-chg" data-wlchg="' + sym + '">—</span>' +
-        '<button class="st-x" data-rm="' + sym + '" aria-label="Remove ' + sym + '" ' +
-        'style="background:none;border:none;color:var(--ed-ink-4);font-size:14px;padding:0 2px;display:none">×</button>';
+        '<button class="st-x" data-rm="' + sym + '" aria-label="Remove ' + sym + ' from watchlist">×</button>';
       row.addEventListener('click', function (e) {
         if (e.target.getAttribute('data-rm')) return;
         setTicker(sym);
       });
-      row.addEventListener('mouseenter', function () { var x = row.querySelector('[data-rm]'); if (x && app.classList.contains('rail-open')) x.style.display = ''; });
-      row.addEventListener('mouseleave', function () { var x = row.querySelector('[data-rm]'); if (x) x.style.display = 'none'; });
       host.insertBefore(row, add);
     });
     host.querySelectorAll('[data-rm]').forEach(function (b) {
       b.addEventListener('click', function (e) { e.stopPropagation(); removeSymbol(b.getAttribute('data-rm')); });
     });
     buildSymList();   // the watchlist is only a SUGGESTION list for the instrument control
+    pollWatchlistQuotes();   // don't make a newly-added row (or first load) wait out a full slow tick
+  }
+  var _wlMsgTimer = null;
+  function wlNotify(msg) {   // understandable feedback for invalid/duplicate add — aria-live, self-clearing
+    var el = document.getElementById('wlMsg'); if (!el) return;
+    el.textContent = msg;
+    if (_wlMsgTimer) clearTimeout(_wlMsgTimer);
+    _wlMsgTimer = setTimeout(function () { el.textContent = ''; }, 3000);
   }
   // WATCHLIST = persistent symbols the operator chose to monitor. Adding is an explicit action
   // (the rail's "+ Add symbol"); analysing an instrument never adds it.
   function addSymbol(sym) {
+    var raw = sym;
     sym = normSym(sym);
-    if (!sym) return;
+    if (!sym) { wlNotify('Not a valid symbol: "' + raw + '"'); return; }
     var list = loadWL();
-    if (list.indexOf(sym) === -1) { list.push(sym); saveWL(list); }
+    if (list.indexOf(sym) !== -1) { wlNotify(sym + ' is already on the watchlist'); setTicker(sym); return; }
+    list.push(sym); saveWL(list);
     renderWatchlist(); setTicker(sym);
   }
   // ACTIVE INSTRUMENT = any supported Schwab symbol the operator wants to analyse now. The client
@@ -492,24 +515,39 @@
     setFeed(q.feedCls, q.feedLabel, q.ageLabel);
     setWlRow(state.ticker, (q.spot != null ? q.spot : null), q.chgPct);   // the selected row reuses this one quote
   }
-  function chgPctFor(tkey, lw) {
-    if (!lw) return null;
-    var k = ({ SPY: 'spy', QQQ: 'qqq', IWM: 'iwm' })[tkey];
-    return k ? lw[k + '_chg_pct'] : null;
-  }
-  // watchlist quotes: NO second owner — the values come ONLY from the same header quote / analytics
-  // the shell already reads (selected ticker's spot+chg; SPY/QQQ/IWM chg from analytics_lightweight).
-  // Every other row honestly shows "—" (no canonical multi-ticker quote source in this shell).
+  // Watchlist quotes: ONE writer per row — setWlRow, called either from paintQuote (the
+  // active ticker's own row, reusing the header's one quote) or pollWatchlistQuotes (every
+  // other row, via the backend's now-universal chg_pct — see resolve_chg_pct server-side).
+  // A null field CLEARS to "—" rather than leaving the previous text: failure and recovery
+  // must not leave a stale-but-current-looking number on screen.
   function setWlRow(sym, spot, chgPct) {
     var key = (sym || '').replace('$', '');
     var pe = document.querySelector('.wl-px[data-wlpx="' + sym + '"]') || document.querySelector('.wl-px[data-wlpx="' + key + '"]');
-    if (pe && spot != null) pe.textContent = fmt(spot);
+    if (pe) pe.textContent = (spot != null) ? fmt(spot) : '—';
     var ce = document.querySelector('.wl-chg[data-wlchg="' + sym + '"]') || document.querySelector('.wl-chg[data-wlchg="' + key + '"]');
-    if (ce && chgPct != null) { ce.textContent = (chgPct >= 0 ? '+' : '') + fmt(chgPct) + '%'; ce.className = 'wl-chg ' + (chgPct >= 0 ? 'pos' : 'neg'); }
+    if (ce) {
+      if (chgPct != null) { ce.textContent = (chgPct >= 0 ? '+' : '') + fmt(chgPct) + '%'; ce.className = 'wl-chg ' + (chgPct >= 0 ? 'pos' : 'neg'); }
+      else { ce.textContent = '—'; ce.className = 'wl-chg'; }
+    }
   }
-  function paintWatchlistLW(lw) {   // SPY/QQQ/IWM change from the already-fetched analytics_lightweight
-    if (!lw) return;
-    setWlRow('SPY', null, lw.spy_chg_pct); setWlRow('QQQ', null, lw.qqq_chg_pct); setWlRow('IWM', null, lw.iwm_chg_pct);
+  // Bounded round-robin poll: ONE batched /api/watchlist-quotes request per slow tick for
+  // every row OTHER than the active ticker (whose row is already painted by paintQuote —
+  // no second writer for that symbol). Every requested symbol is explicitly resolved
+  // (present -> its value, absent from the batch response -> null), so a symbol the vendor
+  // dropped from the response gets cleared via setWlRow's null path above, never left
+  // showing its last good number.
+  function pollWatchlistQuotes() {
+    var list = loadWL().filter(function (s) { return s !== state.ticker; });
+    if (!list.length) return;
+    fetch('/api/watchlist-quotes?tickers=' + encodeURIComponent(list.join(',')), { cache: 'no-store' })
+      .then(function (r) { return r.ok ? r.json() : {}; })
+      .then(function (data) {
+        list.forEach(function (sym) {
+          var row = data && data[sym];
+          setWlRow(sym, row ? row.spot : null, row ? row.chg_pct : null);
+        });
+      })
+      .catch(function () {});   // a failed poll leaves rows as they are until the next cycle; no fabrication
   }
 
   var _sse = null, _sseUp = false, _lastSseTs = 0, _l1Gen = {}, _l1Ts = {};
@@ -534,9 +572,8 @@
       _sseUp = true; _lastSseTs = Date.now(); _hdrGen++;   // supersede any in-flight fallback poll
       var ageMs = bts ? Math.max(0, Math.round(Date.now() - bts * 1000)) : null;
       paintQuote({ spot_disp: p.spot_disp, spot: p.spot, bid: p.bid, ask: p.ask,
-        chgPct: chgPctFor(state.ticker, p.analytics_lightweight),
+        chgPct: p.chg_pct,
         feedCls: '', feedLabel: 'LIVE', ageLabel: ageMs != null ? ageMs + 'ms' : 'push' });
-      paintWatchlistLW(p.analytics_lightweight);
     });
     _sse.onerror = function () { _sseUp = false; };   // fall back to polling; the browser reconnects
   }
@@ -594,9 +631,8 @@
           ? Math.round(d.streaming_plane.streaming_staleness_ms) + 'ms' : '—';
         var healthy = d.streaming_plane && d.streaming_plane.streaming_healthy;
         paintQuote({ spot_disp: d.spot_disp, spot: d.spot, bid: d.bid, ask: d.ask,
-          chgPct: chgPctFor(state.ticker, d.analytics_lightweight || {}),
+          chgPct: d.chg_pct,
           feedCls: healthy ? '' : 'warn', feedLabel: healthy ? 'LIVE' : 'DEGRADED', ageLabel: age });
-        paintWatchlistLW(d.analytics_lightweight);
       })
       .catch(function () { if (g === _hdrGen) setFeed('stale', 'OFFLINE', 'no console'); });
   }
@@ -611,6 +647,7 @@
     var sseHealthy = _sseUp && (Date.now() - _lastSseTs <= 9000);
     if (!sseHealthy) refreshHeader();                 // fallback: paints quote + session
     else if (_tick % 4 === 0) refreshSession();       // SSE covers the quote; slow session read
+    if (_tick % 4 === 0) pollWatchlistQuotes();       // every non-active row, same slow cadence
     document.dispatchEvent(new CustomEvent('ed:refresh', { detail: { tick: _tick, slow: _tick % 4 === 0 } }));
   }
 
