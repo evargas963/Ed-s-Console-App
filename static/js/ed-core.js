@@ -543,12 +543,22 @@
   // (present -> its value, absent from the batch response -> null), so a symbol the vendor
   // dropped from the response gets cleared via setWlRow's null path above, never left
   // showing its last good number.
+  //
+  // _wlPollGen guards against overlapping/out-of-order responses — this fires on the slow
+  // tick AND immediately after every add/remove (renderWatchlist), so a fast add/remove can
+  // legitimately have two requests in flight at once. Without a generation check, an OLDER
+  // request that happens to resolve AFTER a newer one would overwrite fresher data with
+  // stale data for whatever symbols both requests shared. Same pattern this file already
+  // uses for the header poll (_hdrGen).
+  var _wlPollGen = 0;
   function pollWatchlistQuotes() {
     var list = loadWL();
     if (!list.length) return;
+    var myGen = ++_wlPollGen;
     fetch('/api/watchlist-quotes?tickers=' + encodeURIComponent(list.join(',')), { cache: 'no-store' })
       .then(function (r) { return r.ok ? r.json() : {}; })
       .then(function (data) {
+        if (myGen !== _wlPollGen) return;   // superseded by a newer poll — drop this stale response
         list.forEach(function (sym) {
           var row = data && data[sym];
           setWlRow(sym, row ? row.spot : null, row ? row.chg_pct : null);

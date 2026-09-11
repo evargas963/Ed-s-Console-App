@@ -5677,19 +5677,10 @@ def _parse_quote_node_session_fields(node: dict) -> dict[str, Any]:
     total_volume = _safe_float_quote(_q.get("totalVolume"))
     if total_volume is None:
         total_volume = _safe_float_quote(_ext.get("totalVolume"))
-    # Percent change — SAME extraction market_context._extract_quote already uses for
-    # SPY/QQQ/IWM/sectors/constituents (netPercentChange, then the regular-session leaf,
-    # then a netChange/last derivation). Generic per the vendor node, not per symbol name.
-    from numeric_contract import float_finite_or_none as _fin_chg
-    pct_chg = _fin_chg(_q.get("netPercentChange"))
-    if pct_chg is None:
-        pct_chg = _fin_chg(_reg.get("regularMarketPercentChange"))
-    if pct_chg is None:
-        net_chg = _fin_chg(_q.get("netChange"))
-        if net_chg is None:
-            net_chg = _fin_chg(_reg.get("regularMarketNetChange"))
-        if net_chg is not None and last and (float(last) - net_chg) != 0:
-            pct_chg = net_chg / (float(last) - net_chg) * 100.0
+    # Percent change — the ONE parser (market_context.extract_pct_change), not a second
+    # copy of the formula. Generic per the vendor node, not per symbol name.
+    from market_context import extract_pct_change
+    pct_chg = extract_pct_change(_q, _reg, last)
     return {
         "last": last,
         "mark": mark,
@@ -6557,6 +6548,13 @@ def _tier_a_live_state_dict(ticker: str, expiry: Optional[str]) -> dict:
     if lw:
         out["analytics_lightweight"] = lw
     _lmp.merge_into_state(out, tkr)
+    # merge_into_state (correctly, per its own fix) overwrites chg_pct unconditionally
+    # whenever the CURRENT plane row carries the key at all, including a stale/None value —
+    # that row was never told about the resolve_chg_pct/backfill result just computed above
+    # (this route intentionally does not write its transient backfill into the shared plane
+    # cache), so a stale plane-row chg_pct here would silently undo it. The value already
+    # resolved above is this response's actual answer; re-assert it as the last word.
+    out["chg_pct"] = chg_pct
     return out
 
 
