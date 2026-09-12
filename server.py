@@ -10199,7 +10199,7 @@ async def _app_lifespan(app):
     # architecture (a broken/expiring token would silently disable the live UI's quote
     # feed even though the daemon was capturing fine). Unconditional.
     try:
-        from app.options.order_flow.streaming import start_order_flow_stream
+        from app.options.order_flow.streaming import start_order_flow_stream, set_streamed_greeks_hook
 
         # LIVE_OPERATOR_MODE_RESET_V1 Step 2 — single Tier C owner: the
         # tick-coherent recompute callback (_on_tick_broadcast_sync) is no
@@ -10207,6 +10207,11 @@ async def _app_lifespan(app):
         # The quote lane (live_market_plane → live_quote SSE) still updates
         # per tick via record_from_level_one_equity.
         start_order_flow_stream(None, None, DEFAULT_TICKER)
+        # RC-UI-2: freshen a cached gamma surface the instant its active option
+        # contract's stream carries new GAMMA/DELTA/OPEN_INTEREST, instead of waiting
+        # for the next ~60s wide-chain REST cycle. See refresh_gamma_surface_from_stream's
+        # own docstring for why this is still the one faucet, not a second computation.
+        set_streamed_greeks_hook(refresh_gamma_surface_from_stream)
     except ImportError as ie:
         log.debug(f"Order flow streaming not started: {ie}")
     except Exception as e:
@@ -12205,6 +12210,102 @@ def _gamma_surface_wanted(tk: str) -> bool:
     return (time.time() - _gamma_surface_demand.get(tk, 0.0)) < GAMMA_SURFACE_DEMAND_TTL
 
 
+#: A streamed GAMMA/DELTA/OPEN_INTEREST value older than this is not trusted over a same-cycle
+#: REST chain read — an app-side bound (not a vendor-documented cadence), chosen to be well
+#: inside a stalled-feed operator would notice, not a MEASURED optimum.
+GAMMA_SURFACE_STREAM_STALENESS_SEC = 10.0
+
+
+def _gamma_surface_contracts_with_stream_overlay(tk: str, contracts: list) -> tuple[list, int]:
+    """Overlay the currently-streaming option contract's freshest known GAMMA/DELTA/
+    OPEN_INTEREST onto `contracts` before projection, IF that contract belongs to `tk`.
+
+    Still the ONE canonical faucet (project_gamma_surface -> compute_exposures_by_strike,
+    RC-UI-1): this changes no formula and adds no second producer, it only lets those three
+    inputs be fresher than the REST chain snapshot they arrived in, for whichever single
+    contract is actively streaming today (app/options/order_flow/streaming.py's one-contract
+    subscription ceiling — see that module's docstring; extending this to every subscribed
+    contract at once needs no change here, only a larger `streamed_by_symbol` mapping).
+
+    Fails closed to the unmodified `contracts` on any error or when nothing applies — this is
+    a best-effort freshening, never a precondition for the projection to run at all."""
+    try:
+        from app.options.order_flow.streaming import get_active_option_contract
+        from app.options.order_flow.state import get_stream_greeks
+        from instrument_identity import vendor_option_root, option_underlying_root
+        from math_exposure_core import overlay_streamed_contract_fields
+
+        contract_symbol = get_active_option_contract()
+        if not contract_symbol or vendor_option_root(contract_symbol) != option_underlying_root(tk):
+            return contracts, 0
+        greeks = get_stream_greeks(contract_symbol)
+        if not greeks:
+            return contracts, 0
+        return overlay_streamed_contract_fields(
+            contracts, {contract_symbol: greeks},
+            max_staleness_sec=GAMMA_SURFACE_STREAM_STALENESS_SEC)
+    except Exception as e:  # institutional-swallow-ok: best-effort freshening, never load-bearing
+        log.debug("gamma-surface stream overlay skipped for %s: %s", tk, e)
+        return contracts, 0
+
+
+def refresh_gamma_surface_from_stream(contract_symbol: str, ts_recv: float) -> str:
+    """Eagerly freshen a cached ticker's gamma surface the instant a streamed L1 tick carries
+    new GAMMA/DELTA/OPEN_INTEREST for its currently-active option contract, instead of waiting
+    for the next ~60s wide-chain REST cycle (_terrain_refresh_one). Registered with
+    app.options.order_flow.streaming.set_streamed_greeks_hook at startup.
+
+    Still the ONE canonical faucet: re-runs project_gamma_surface on the SAME RAW REST chain
+    (`_contracts_rest`, stamped by _terrain_refresh_one) with ONLY this one contract's fields
+    overlaid via overlay_streamed_contract_fields — never a second exposure formula, and
+    always overlaid onto the untouched REST base so repeated eager refreshes never compound
+    away from what the vendor's chain actually reported.
+
+    Returns a status string (never raises) — diagnostic/test surface only, never load-bearing:
+    a caller that ignores the return value still gets the fail-closed no-op on any failure.
+    """
+    try:
+        from instrument_identity import vendor_option_root, option_underlying_root
+        root = vendor_option_root(contract_symbol)
+        if not root:
+            return "not_an_option_symbol"
+        with _terrain_cache_lock:
+            tk = next((k for k in _terrain_cache if option_underlying_root(k) == root), None)
+            if tk is None:
+                return "no_cached_ticker"
+            payload = _terrain_cache.get(tk) or {}
+            base_contracts = payload.get("_contracts_rest")
+            spot = payload.get("_contracts_rest_spot")
+        if not base_contracts or not spot:
+            return "no_rest_baseline"
+        from app.options.order_flow.state import get_stream_greeks
+        from math_exposure_core import overlay_streamed_contract_fields
+        greeks = get_stream_greeks(contract_symbol)
+        if not greeks:
+            return "no_streamed_greeks"
+        overlaid, n = overlay_streamed_contract_fields(
+            base_contracts, {contract_symbol: greeks},
+            max_staleness_sec=GAMMA_SURFACE_STREAM_STALENESS_SEC)
+        if n == 0:
+            return "no_change"
+        new_surface = project_gamma_surface(overlaid, spot)
+        applied_ts = time.time()
+        if new_surface is not None:
+            new_surface["stream_overlay_contracts"] = n
+            new_surface["stream_overlay_applied_ts_utc"] = applied_ts
+            if ts_recv:
+                new_surface["stream_overlay_latency_ms"] = round((applied_ts - ts_recv) * 1000.0, 1)
+        with _terrain_cache_lock:
+            payload = _terrain_cache.get(tk)
+            if payload is None:      # evicted/replaced between the read above and now
+                return "cache_evicted"
+            payload["_gamma_surface"] = new_surface
+        return "ok"
+    except Exception as e:  # never let a best-effort freshening take the feed loop down
+        log.debug("refresh_gamma_surface_from_stream failed for %s: %s", contract_symbol, e)
+        return f"error:{type(e).__name__}"
+
+
 def _ticker_on_terrain_board(tk: str) -> bool:
     # canonical current board membership (the terrain loop's universe = the logger cycle set +
     # core), read under the existing lock — NOT a new registry, and NOT merely "a snapshot exists".
@@ -12344,10 +12445,20 @@ def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
         # gamma surface was requested recently so an unviewed ticker pays ZERO cost; a viewed ticker
         # gets the live surface each cycle. Live RTH end-to-end terrain-cycle impact is proven in F.
         try:
-            payload["_gamma_surface"] = (
-                project_gamma_surface(contracts, float(spot))
-                if (spot and _gamma_surface_wanted(tk)) else None
-            )
+            if spot and _gamma_surface_wanted(tk):
+                _overlaid_contracts, _overlay_n = _gamma_surface_contracts_with_stream_overlay(tk, contracts)
+                payload["_gamma_surface"] = project_gamma_surface(_overlaid_contracts, float(spot))
+                if payload["_gamma_surface"] is not None:
+                    payload["_gamma_surface"]["stream_overlay_contracts"] = _overlay_n
+                # RC-UI-2: retained so a LATER streamed tick (arriving between this cycle and
+                # the next ~60s REST refresh) can freshen the cached surface immediately without
+                # a second vendor fetch — see refresh_gamma_surface_from_stream. Always the RAW
+                # REST base, never a previously-overlaid result, so repeated eager freshenings
+                # never compound away from what the vendor's chain actually reported.
+                payload["_contracts_rest"] = contracts
+                payload["_contracts_rest_spot"] = float(spot)
+            else:
+                payload["_gamma_surface"] = None
         except Exception as _gs_e:  # institutional-swallow-ok: projection is a cache side-effect
             payload["_gamma_surface"] = None
             log.warning("gamma-surface projection raised for %s (surface withheld this cycle): %s", tk, _gs_e)

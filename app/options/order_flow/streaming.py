@@ -94,6 +94,24 @@ _option_last_subscribe_completed_ts: Optional[float] = None
 
 _on_tick_callback: Optional[Callable[[str], None]] = None
 
+#: Called with (contract_symbol, ts_recv) whenever an option L1 tick is replayed that carries
+#: GAMMA/DELTA/OPEN_INTEREST -- lets a consumer (server.py's gamma-surface cache) freshen
+#: itself the instant new Greeks/OI are known, instead of waiting for the next wide-chain REST
+#: cycle. Same shape/precedent as `_on_tick_callback` above; kept separate because ITS payload
+#: (an option contract symbol + the field's own receive time) is different from a bare ticker,
+#: and a caller wanting only one of the two must not be forced to filter the other's calls.
+_streamed_greeks_hook: Optional[Callable[[str, float], None]] = None
+
+
+def set_streamed_greeks_hook(fn: Optional[Callable[[str, float], None]]) -> None:
+    """Register (or clear, with None) the callback `_replay_option_contract_rows` invokes
+    after every option L1 tick that carries GAMMA/DELTA/OPEN_INTEREST. One slot, like
+    `_on_tick_callback` -- the daemon has exactly one composition root (server.py's startup)
+    that wires this, not a list of subscribers to fan out to."""
+    global _streamed_greeks_hook
+    _streamed_greeks_hook = fn
+
+
 STREAMING_STALE_MS = 25_000.0
 GRACE_AFTER_SUBSCRIBE_SEC = 8.0
 
@@ -439,6 +457,12 @@ def _replay_option_contract_rows(con: sqlite3.Connection, contract_symbol: str) 
             continue
         push_level_one(contract_symbol, item, ts_recv=ts_recv)
         _option_streaming_last_update_ts = time.time()
+        if _streamed_greeks_hook is not None and (
+                "GAMMA" in item or "DELTA" in item or "OPEN_INTEREST" in item):
+            try:
+                _streamed_greeks_hook(contract_symbol, float(ts_recv))
+            except Exception as e:
+                log.debug("streamed-greeks hook failed for %s: %s", contract_symbol, e)
         _option_l1_cursor[contract_symbol] = (float(ts_recv), int(rowid))
     if first_l1 and contract_symbol not in _option_l1_cursor:
         _option_l1_cursor[contract_symbol] = (0.0, 0)
@@ -557,6 +581,19 @@ def _contract_matches_underlying(
         if vendor_option_root(str(raw.get("symbol") or "")) == osi_root:
             return True
     return False
+
+
+def get_active_option_contract() -> Optional[str]:
+    """The DESIRED option contract symbol (this daemon's own signal), or None.
+
+    This is REQUESTED/desired state, same caveat as `_active_option_contract`'s other
+    readers (see the PR214 premerge gap 1A note below at the diagnostics endpoint): it can
+    be ahead of what the vendor has actually confirmed for one tick. Callers using this to
+    freshen a computation with streamed data already tolerate that (the data simply is not
+    there yet if the vendor hasn't caught up), so no additional confirmation is required
+    here — unlike stopping a process, freshening a projection has no destructive downside
+    to occasionally reading one tick early."""
+    return _active_option_contract
 
 
 def clear_active_option_contract(*, reason: str) -> None:

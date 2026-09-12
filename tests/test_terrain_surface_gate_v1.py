@@ -72,7 +72,12 @@ def test_producer_gates_projection_on_demand(monkeypatch):
     server._terrain_refresh_one(tk)
     assert calls["n"] == 1
     assert calls["args"] == (len(_REAL_CHAIN), 100.0)
-    assert _cached_surface(tk) == {"expirations": [], "strikes": [], "cells": []}
+    # RC-UI-2: the producer now stamps how many contracts the streaming overlay touched this
+    # cycle (0 here -- no option contract is streaming in this test) alongside the faucet's
+    # own cells/strikes/expirations, which are otherwise unchanged.
+    assert _cached_surface(tk) == {
+        "expirations": [], "strikes": [], "cells": [], "stream_overlay_contracts": 0,
+    }
 
     server._gamma_surface_demand.pop(tk, None)
 
@@ -88,4 +93,42 @@ def test_projection_failure_does_not_fail_terrain_refresh(monkeypatch):
     res = server._terrain_refresh_one(tk)          # wanted, but the projection raises
     assert not str(res).startswith("error")        # terrain refresh still succeeded
     assert _cached_surface(tk) is None             # surface absent -> endpoint falls back to reference
+    server._gamma_surface_demand.pop(tk, None)
+
+
+def test_producer_overlays_the_active_streaming_contract_before_projecting(monkeypatch):
+    """RC-UI-2: when an option contract for THIS ticker is actively streaming fresher
+    GAMMA/DELTA/OPEN_INTEREST than the cycle's own REST chain, the producer must pass the
+    OVERLAID contracts to project_gamma_surface, not the raw REST list -- and it must persist
+    the raw REST list + spot so a LATER streamed tick can refresh the cache eagerly
+    (refresh_gamma_surface_from_stream) without a second vendor fetch."""
+    contract_symbol = _REAL_CHAIN[0]["symbol"]                # "CDE   260904C00005000"
+    tk = server.ticker_storage_key("CDE")                     # must match the streaming root
+    streamed = {"gamma": 0.777, "gamma_ts_recv": None}  # ts_recv patched to "now" below
+
+    def proj(contracts, spot):
+        return {"expirations": [], "strikes": [], "cells": [],
+                "_overlaid_gamma": contracts[0].get("gamma")}
+
+    _stub_terrain(monkeypatch, proj)
+    import time as _time
+    streamed["gamma_ts_recv"] = _time.time()
+    monkeypatch.setattr(
+        "app.options.order_flow.streaming.get_active_option_contract",
+        lambda: contract_symbol)
+    monkeypatch.setattr(
+        "app.options.order_flow.state.get_stream_greeks",
+        lambda sym: streamed if sym == contract_symbol else None)
+
+    server._note_gamma_surface_demand(tk)
+    server._terrain_refresh_one(tk)
+
+    surf = _cached_surface(tk)
+    assert surf["_overlaid_gamma"] == 0.777, "project_gamma_surface must see the overlaid gamma"
+    assert surf["stream_overlay_contracts"] == 1
+
+    cached = server.terrain_cache_get(tk)
+    assert cached["_contracts_rest"] == _REAL_CHAIN, "the RAW REST chain is retained, unoverlaid"
+    assert cached["_contracts_rest_spot"] == 100.0
+
     server._gamma_surface_demand.pop(tk, None)

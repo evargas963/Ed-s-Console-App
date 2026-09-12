@@ -355,6 +355,78 @@ def compute_exposures_by_strike(
     )
 
 
+#: streamed-state key -> (chain contract field it overlays, that field's own freshness key).
+#: Native Schwab LEVELONE_OPTIONS fields (schwab-py's LevelOneOptionFields: DELTA=28, GAMMA=29,
+#: OPEN_INTEREST=9) map onto the SAME field names compute_exposures_by_strike already reads
+#: from a REST chain contract (`gamma`, `delta`, `openInterest`) -- this overlay changes no
+#: formula and adds no second computation path; it only lets those three inputs be fresher
+#: than the chain snapshot they arrived in, for whichever contract is actively streaming.
+_STREAMED_GREEK_FIELDS: tuple[tuple[str, str, str], ...] = (
+    ("gamma", "gamma", "gamma_ts_recv"),
+    ("delta", "delta", "delta_ts_recv"),
+    ("open_interest", "openInterest", "open_interest_ts_recv"),
+)
+
+
+def overlay_streamed_contract_fields(
+    contracts: List[dict],
+    streamed_by_symbol: Dict[str, dict],
+    *,
+    max_staleness_sec: float | None = None,
+    now: float | None = None,
+) -> tuple[List[dict], int]:
+    """Merge freshly-streamed GAMMA/DELTA/OPEN_INTEREST onto a base REST chain contract list,
+    matched by each contract's own `symbol` field (the same OSI-style option symbol the
+    streaming daemon subscribes and app.options.order_flow.state keys its per-symbol state by).
+
+    Sparse, non-destructive, and PURE (returns a new list; `contracts` and its dicts are never
+    mutated): a contract absent from `streamed_by_symbol`, or one whose streamed entry carries
+    none of the three fields, is passed through UNCHANGED (same dict, not a copy) -- only a
+    contract that actually gets at least one field overlaid is copied. This is the same "fill
+    fresher, never fabricate" discipline as live_market_plane's quote overlay, applied to the
+    exposure faucet's own inputs instead of a second exposure computation.
+
+    `max_staleness_sec`, when given, additionally requires the field's own `_ts_recv` be within
+    that many seconds of `now` (defaults to the real clock) -- a streamed value from a stalled or
+    long-disconnected feed must not silently outrank a same-cycle REST chain read forever.
+
+    Returns (new_contracts, overlaid_count) -- the count is for tests and latency/coverage
+    diagnostics, never load-bearing for the projection itself.
+    """
+    if not contracts:
+        return [], 0
+    if not streamed_by_symbol:
+        return list(contracts), 0
+    if now is None:
+        import time as _time
+        now = _time.time()
+    out: List[dict] = []
+    overlaid = 0
+    for ct in contracts:
+        sym = ct.get("symbol") if isinstance(ct, dict) else None
+        streamed = streamed_by_symbol.get(sym) if sym else None
+        if not streamed:
+            out.append(ct)
+            continue
+        new_ct = None
+        for streamed_key, chain_key, ts_key in _STREAMED_GREEK_FIELDS:
+            val = streamed.get(streamed_key)
+            if val is None:
+                continue
+            ts = streamed.get(ts_key)
+            if max_staleness_sec is not None and (ts is None or (now - ts) > max_staleness_sec):
+                continue
+            if new_ct is None:
+                new_ct = dict(ct)
+            new_ct[chain_key] = val
+        if new_ct is not None:
+            overlaid += 1
+            out.append(new_ct)
+        else:
+            out.append(ct)
+    return out, overlaid
+
+
 # ── Strike selection helpers ─────────────────────────────────────────────────
 # (foundational — used by both levels and volatility modules)
 

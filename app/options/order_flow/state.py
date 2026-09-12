@@ -53,6 +53,7 @@ class OrderFlowState:
         self._receive_log: dict[str, deque] = {}
         self._stream_volume: dict[str, float] = {}
         self._stream_chg_pct: dict[str, float] = {}
+        self._stream_greeks: dict[str, dict] = {}
         # A newly constructed instance is already empty. If it is created during
         # RTH (as isolated history states are), mark that session current so its
         # first L1 observation cannot erase an earlier book observation from the
@@ -174,6 +175,30 @@ class OrderFlowState:
             with self._lock:
                 self._stream_chg_pct[sym] = cf
 
+        # GAMMA/DELTA/OPEN_INTEREST: native Schwab LEVELONE_OPTIONS fields (confirmed in the
+        # installed SDK's field enum, schwab/streaming.py LevelOneOptionFields) that this state
+        # class never captured before -- every option L1 tick discarded exactly the fields a
+        # live GEX recompute needs, keeping the heatmap's exposure numbers bound to the ~60s
+        # wide-chain REST cadence even for the one contract already streaming. Each field is
+        # merged independently (not as a group) and stamped with ITS OWN receive time: a quote
+        # tick that carries BID_PRICE/ASK_PRICE but not GAMMA this update must not blank out
+        # (or misdate) an OPEN_INTEREST value observed on an earlier tick -- the same
+        # explicit-presence discipline as chg_pct/volume above, extended per-field because these
+        # three genuinely arrive independently of each other and of the last-trade fields below.
+        gamma = float_finite_or_none(content_item.get("GAMMA")) if "GAMMA" in content_item else None
+        delta = float_finite_or_none(content_item.get("DELTA")) if "DELTA" in content_item else None
+        oi = (float_nonnegative_or_none(content_item.get("OPEN_INTEREST"))
+              if "OPEN_INTEREST" in content_item else None)
+        if gamma is not None or delta is not None or oi is not None:
+            with self._lock:
+                g = self._stream_greeks.setdefault(sym, {})
+                if gamma is not None:
+                    g["gamma"], g["gamma_ts_recv"] = gamma, ts_recv
+                if delta is not None:
+                    g["delta"], g["delta_ts_recv"] = delta, ts_recv
+                if oi is not None:
+                    g["open_interest"], g["open_interest_ts_recv"] = oi, ts_recv
+
         with self._lock:
             top_item = dict(
                 self._top.get(sym)
@@ -285,6 +310,7 @@ class OrderFlowState:
             values.clear()
         self._stream_volume.clear()
         self._stream_chg_pct.clear()
+        self._stream_greeks.clear()
 
     def forget_unsubscribed_symbols(self, old: list[str], new: list[str]) -> None:
         """Clear state for symbols leaving a subscription set."""
@@ -317,6 +343,7 @@ class OrderFlowState:
                 self._receive_log[sym].clear()
             self._stream_volume.pop(sym, None)
             self._stream_chg_pct.pop(sym, None)
+            self._stream_greeks.pop(sym, None)
 
     def get_stream_volume(self, symbol: str) -> Optional[float]:
         """Return the latest positive streamed total volume."""
@@ -333,6 +360,20 @@ class OrderFlowState:
             return None
         with self._lock:
             return self._stream_chg_pct.get(sym)
+
+    def get_stream_greeks(self, symbol: str) -> Optional[dict]:
+        """Return the latest streamed GAMMA/DELTA/OPEN_INTEREST for one OPTION contract
+        symbol, each field paired with its own ``_ts_recv`` (the field's own last-update
+        wall-clock receive time, not merely this call's time) -- a per-field freshness
+        stamp is what lets a caller judge one field newer than a same-tick sibling that
+        was absent this update, per the sparse-overlay pattern below. Returns None when
+        nothing has ever been observed for this symbol (never a dict of Nones)."""
+        sym = ticker_storage_key(symbol)
+        if not sym:
+            return None
+        with self._lock:
+            g = self._stream_greeks.get(sym)
+            return dict(g) if g else None
 
     def get_top_of_book_sizes(self, symbol: str) -> dict[str, Optional[int]]:
         """Return latest L1 bid/ask sizes for one symbol."""
@@ -422,6 +463,12 @@ def get_stream_volume(symbol: str) -> Optional[float]:
 def get_stream_chg_pct(symbol: str) -> Optional[float]:
     """Return REGULAR_MARKET_CHANGE_PERCENT or CHANGE_PERCENT from WebSocket for symbol, or None."""
     return _LIVE_STATE.get_stream_chg_pct(symbol)
+
+
+def get_stream_greeks(symbol: str) -> Optional[dict]:
+    """Return the live singleton's latest streamed GAMMA/DELTA/OPEN_INTEREST for one option
+    contract symbol (each paired with its own `_ts_recv`), or None if never observed."""
+    return _LIVE_STATE.get_stream_greeks(symbol)
 
 
 def get_top_of_book_sizes(symbol: str) -> dict[str, Optional[int]]:
