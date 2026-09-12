@@ -138,7 +138,9 @@ def ensure_port_free(port: int, *, out=print) -> int:
     cmd = command_line_for_pid(pid)
     shape_matches = is_ed_console_command_line(cmd)
     # Only spend the HTTP round trip when the cheap filter already passed.
-    identity_confirmed = is_actually_ed_console(port) if shape_matches else False
+    identity_confirmed = False
+    if shape_matches:
+        identity_confirmed = is_actually_ed_console(port)
     if not (shape_matches and identity_confirmed):
         out(f"WARNING: port {port} is held by PID {pid}, NOT confirmed as an Ed Console server:")
         out(f"  {cmd or '(command line unavailable -- process may already have exited)'}")

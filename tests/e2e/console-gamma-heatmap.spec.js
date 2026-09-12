@@ -333,13 +333,16 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await page.goto('/console', { waitUntil: 'domcontentloaded' });
     const rows = page.locator('#heatBody .heat tbody tr');
     const cols = page.locator('#heatBody .heat thead .hexp');
-    // canonical population disclosed; Auto viewport = 11 rows centred on spot 764.15 -> 759..769
+    // canonical population disclosed; Auto viewport = 11 rows centred on spot 764.15 -> 759..769,
+    // rendered highest strike first (operator decision 2026-09-11: "highest strike at the top,
+    // lowest at the bottom" -- static/js/ed-gamma.js renderSurface reverses presentation order
+    // only; the shared ascending scopeSelect() contract other consumers rely on is untouched).
     await expect(page.locator('#heatScope')).toContainText('116×16 canonical');
     await expect(rows).toHaveCount(11);
     await expect(page.locator('#heatBody .scope-note')).toContainText('11 of 116 strikes');
     await expect(page.locator('#heatBody .scope-note .clip')).toContainText('105 outside view');
-    await expect(rows.first().locator('.hstrike')).toHaveText('759');
-    await expect(rows.last().locator('.hstrike')).toHaveText('769');
+    await expect(rows.first().locator('.hstrike')).toHaveText('769');
+    await expect(rows.last().locator('.hstrike')).toHaveText('759');
     await expect(page.locator('#heatBody tr.spotrow .hstrike')).toHaveText('764');
     const nCols = await cols.count();
     expect(nCols).toBeGreaterThanOrEqual(3); expect(nCols).toBeLessThanOrEqual(11);
