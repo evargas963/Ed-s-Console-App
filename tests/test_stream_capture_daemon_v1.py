@@ -2316,8 +2316,11 @@ def test_retire_all_extra_option_coverage_closes_every_additional_symbols_epoch(
     assert epoch_state[qqq_key] is None
 
 
-def test_retire_all_extra_option_coverage_is_a_noop_with_no_epoch_state(tmp_path):
+def test_retire_all_extra_option_coverage_is_a_noop_with_no_epoch_state():
     """Negative-input control: a None epoch_state (the no-ledger test/unit-call shape
-    every other helper here already tolerates) must not raise."""
+    every other helper here already tolerates) must not raise, and must do nothing --
+    checked explicitly via the function's own documented None return, not merely by the
+    absence of a raised exception."""
     from app.market_data.schwab.streaming.capture import _retire_all_extra_option_coverage
-    _retire_all_extra_option_coverage(None, None, reason="stream_recycle", surrendered_ts=1.0)
+    result = _retire_all_extra_option_coverage(None, None, reason="stream_recycle", surrendered_ts=1.0)
+    assert result is None, "a None epoch_state must be tolerated as a true no-op"

@@ -46,8 +46,28 @@ def _put_rest_baseline(*, computed_ts_utc=None):
     server._gamma_surface_seq.pop(TK, None)
 
 
+def _drain_l1_sse_thread_queue():
+    """refresh_gamma_surface_from_stream -> _next_gamma_surface_seq pushes a
+    gamma_surface_seq SSE notify through server._l1_sse_thread_queue -- a module-level
+    GLOBAL queue shared by every test in the process (see server.py's own
+    _l1_notify_sse_after_authoritative_build users, e.g. tests/test_l1_light_sse.py).
+    Independent-review-adjacent finding: an undrained entry left here by one of this
+    file's own calls was FIFO-popped by test_l1_light_sse.py's
+    test_notify_enqueues_when_subscribed as if it were that test's own fresh SPY
+    notification -- CRWD (this file's ticker) instead of SPY, failing an assertion that
+    has nothing to do with this file. Drained before AND after every test here so this
+    file never leaks state into, or inherits it from, tests run earlier in the process."""
+    import server as srv
+    while not srv._l1_sse_thread_queue.empty():
+        try:
+            srv._l1_sse_thread_queue.get_nowait()
+        except Exception:
+            break
+
+
 def setup_function(_fn):
     _clear_cache()
+    _drain_l1_sse_thread_queue()
     # RC-UI-3 (2026-09-12): refresh_gamma_surface_from_stream now gathers streamed
     # greeks for EVERY currently-desired contract (_desired_stream_greeks_for_ticker),
     # not just the one it was called for -- in production this hook only ever fires for
@@ -63,6 +83,7 @@ def setup_function(_fn):
 
 def teardown_function(_fn):
     _clear_cache()
+    _drain_l1_sse_thread_queue()
     import app.options.order_flow.streaming as _ofs
     _ofs._active_option_contract = None
     _ofs._active_option_contracts = []
