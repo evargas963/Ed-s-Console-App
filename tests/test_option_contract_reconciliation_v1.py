@@ -42,6 +42,7 @@ import app.market_data.schwab.streaming.capture as rsc
 from app.market_data.schwab.streaming.capture import (
     _active_option_contract_poll_loop,
     _apply_active_option_contract_subs,
+    _apply_extra_option_contract_subs,
     _close_coverage_epoch_tracked,
     _reconcile_option_service,
     _retry_pending_epoch_closes,
@@ -1352,6 +1353,83 @@ def test_multi_E_claimed_coverage_scans_primary_and_every_extra_key():
     assert sorted(claimed["LEVELONE_OPTIONS"]) == [1, 3]
     assert sorted(claimed["OPTIONS_BOOK"]) == [2], (
         "book:extra: is not a recognized prefix -- id 4 must never be claimed")
+
+
+def test_multi_F_extra_symbol_coverage_open_write_fails_compensates_by_unsubscribing(
+        tmp_path, monkeypatch):
+    """Mirrors test_B (the primary-contract case) for an ADDITIONAL symbol: the vendor ADD
+    succeeds, the durable OPEN write fails -- the same compensation (give the vendor
+    subscription back, never fabricate durable coverage) must hold through the
+    generalized _apply_extra_option_contract_subs path. This is not assumed to transfer
+    from the primary case merely because both call the same _reconcile_option_service --
+    it is checked directly, adversarially, against a real durable-write failure."""
+    monkeypatch.setattr(rsc, "read_active_option_contract_signal", lambda: None)
+    monkeypatch.setattr(rsc, "read_active_option_contracts_signal", lambda: [_QQQ_CONTRACT])
+    stream = _FlakyOptionStream()
+    writer = CaptureWriter(tmp_path / "cap.db", batch_rows=1, batch_sec=10.0)
+
+    def _boom(*a, **k):
+        raise CoverageWriteError("simulated durable-write outage")
+    monkeypatch.setattr(writer, "open_coverage_epoch", _boom)
+    epoch_state: dict = {}
+    contract_state: dict = {}
+
+    async def go():
+        return await _apply_active_option_contract_subs(
+            stream, contract_state, writer=writer, epoch_state=epoch_state)
+    new_state = asyncio.run(go())
+    writer.close()
+
+    qqq_key = "l1:extra:" + _QQQ_CONTRACT
+    assert new_state.get(qqq_key) is None, (
+        "a vendor subscription whose coverage start cannot be durably recorded must be "
+        "compensated away, not carried into steady state")
+    assert epoch_state.get(qqq_key) is None, "durable truth must never be fabricated"
+    assert stream.held["LEVELONE_OPTIONS"] == set(), (
+        "the compensating unsubscribe must actually have been issued to the vendor")
+    assert _epochs(tmp_path / "cap.db") == [], (
+        "no epoch row may exist when open_coverage_epoch was made to fail")
+
+
+def test_multi_G_extra_symbol_close_failure_never_touches_the_vendor_and_is_not_pruned(
+        tmp_path, monkeypatch):
+    """Mirrors test_coverage_A_close_failure_never_touches_the_vendor for an ADDITIONAL
+    symbol being DROPPED: when the durable close fails, the vendor must not be touched at
+    all (no unsubscribe), the symbol stays genuinely held, and it must NOT be pruned from
+    contract_state/epoch_state while a retry is still owed -- pruning here would silently
+    stop retrying a close that never landed, leaking an id that never actually closed."""
+    db = tmp_path / "cap.db"
+    w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
+    try:
+        qqq_key = "l1:extra:" + _QQQ_CONTRACT
+        eid = w.open_coverage_epoch(_QQQ_CONTRACT, "LEVELONE_OPTIONS",
+                                    reason="active_contract_set", ts=1.0)
+        epoch_state = {qqq_key: eid}
+        contract_state = {qqq_key: _QQQ_CONTRACT}
+        monkeypatch.setattr(w, "close_coverage_epoch", _failing_close)
+        stream = _FlakyOptionStream()
+        # Establish the realistic precondition directly: QQQ is ALREADY genuinely held at
+        # the vendor from a prior tick (this test isolates the drop/close-failure path,
+        # not the earlier subscribe that put it there).
+        stream.held["LEVELONE_OPTIONS"] = {_QQQ_CONTRACT}
+
+        async def go():
+            await _apply_extra_option_contract_subs(
+                stream, contract_state, set(),  # QQQ dropped: no longer requested
+                writer=w, epoch_state=epoch_state)
+        asyncio.run(go())
+
+        assert stream.calls == [], (
+            "the vendor must not be touched at all when the durable close failed")
+        assert stream.held["LEVELONE_OPTIONS"] == {_QQQ_CONTRACT}, (
+            "QQQ must still be genuinely held at the vendor -- the close never landed")
+        assert qqq_key in contract_state and contract_state[qqq_key] == _QQQ_CONTRACT, (
+            "must not be pruned while a retry is still owed")
+        assert qqq_key in epoch_state and epoch_state[qqq_key] == eid
+        rows = _one_service_open(db, "LEVELONE_OPTIONS")
+        assert len(rows) == 1 and rows[0][1] == _QQQ_CONTRACT
+    finally:
+        w.close()
 
 
 def test_coverage_bidirectional_invariant_holds_at_every_tick_boundary(tmp_path, monkeypatch):

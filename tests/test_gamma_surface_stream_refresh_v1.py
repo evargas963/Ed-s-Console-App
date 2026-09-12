@@ -434,3 +434,31 @@ def test_a_dropped_from_the_desired_set_no_longer_lingers_in_a_later_b_refresh(m
         cached = server._terrain_cache[TK]["_gamma_surface"]
     assert cached["cells"] == expected["cells"], "A must not linger once it truly stops being desired"
     assert cached["stream_overlay_contracts"] == 1
+
+
+def test_desired_stream_greeks_excludes_an_additional_contract_on_a_foreign_ticker(monkeypatch):
+    """The primary-contract role already proves contract_matches_underlying excludes a
+    foreign ticker's contract (test_gamma_surface_contracts_with_stream_overlay_ignores_a_
+    foreign_ticker). _desired_stream_greeks_for_ticker applies that SAME filter uniformly
+    to primary AND every additional contract in one loop -- adversarially checked here
+    for the additional role specifically, not assumed to transfer from the primary case."""
+    import app.options.order_flow.streaming as ofs
+
+    foreign = "SPY   260911C00583000"   # a real-shaped OSI symbol, but SPY -- not CRWD
+    ofs._active_option_contract = None   # no primary this tick
+    ofs._active_option_contracts = [ofs.ticker_storage_key(foreign)]
+
+    baseline_ts = time.time() - 10.0
+    _put_rest_baseline(computed_ts_utc=baseline_ts)
+    now = time.time()
+    monkeypatch.setattr(
+        "app.options.order_flow.state.get_stream_greeks",
+        lambda sym: {"gamma": 0.99, "gamma_ts_recv": now} if sym == foreign else None)
+
+    streamed = server._desired_stream_greeks_for_ticker(TK)
+    assert streamed == {}, (
+        f"a foreign ticker's additional contract must never overlay onto CRWD: {streamed}")
+
+    out, n = server._gamma_surface_contracts_with_stream_overlay(TK, _CONTRACTS)
+    assert n == 0
+    assert out == _CONTRACTS
