@@ -440,7 +440,7 @@ def _replay_new_rows(con: sqlite3.Connection, ticker: str) -> None:
         _book_cursor[ticker] = 0.0
 
 
-def _replay_option_contract_rows(con: sqlite3.Connection, contract_symbol: str) -> None:
+def _replay_option_contract_rows(con: sqlite3.Connection, contract_symbol: str) -> "float | None":
     """Same replay shape as _replay_new_rows, for the one option CONTRACT this feed is
     tracking. LEVELONE_OPTIONS rows read via push_level_one and OPTIONS_BOOK rows via
     push_book — app.options.order_flow.state's functions are symbol-generic (they read Schwab's
@@ -452,7 +452,12 @@ def _replay_option_contract_rows(con: sqlite3.Connection, contract_symbol: str) 
 
     First tick is a snapshot tail so a late UI bind hydrates the current book instead
     of walking every OPTIONS_BOOK row ever stored for the contract.
-    """
+
+    Returns the freshest ts_recv among this call's own L1 rows that carried GAMMA/DELTA/
+    OPEN_INTEREST/TOTAL_VOLUME/VOLUME (None if none did) -- the CALLER (_feed_loop) is
+    responsible for invoking `_streamed_greeks_hook`, coalescing across every contract
+    replayed in the same poll iteration, not just across this one contract's own rows.
+    This function no longer calls the hook itself (see _feed_loop's own comment for why)."""
     global _option_streaming_last_update_ts
     first_l1 = contract_symbol not in _option_l1_cursor
     if first_l1:
@@ -488,13 +493,31 @@ def _replay_option_contract_rows(con: sqlite3.Connection, contract_symbol: str) 
     # every row's push_level_one still runs (app.options.order_flow.state always holds the
     # true latest observation), but the hook -- the expensive part -- fires ONCE for the whole
     # batch, using the LAST qualifying row's ts_recv (the freshest observation in this batch).
-    # This bounds the worst-case recompute rate to "at most one per poll-loop iteration that
-    # actually has new data" (POLL_INTERVAL_SEC, currently 0.5s, or the computation's own
-    # duration if longer -- never per-tick), reusing this existing replay owner's own natural
-    # batching instead of adding a second scheduler/queue/daemon. It also closes a second
-    # finding (a leading-edge debounce could silently and permanently drop the LAST update of
-    # a burst, with nothing scheduling a trailing publication): there is no silent rejection
-    # here at all -- every batch that has qualifying rows gets exactly one real attempt.
+    # This bounds the worst-case recompute rate, FOR THIS ONE CONTRACT, to "at most one per
+    # poll-loop iteration that actually has new data" (POLL_INTERVAL_SEC, currently 0.5s, or
+    # the computation's own duration if longer -- never per-tick), reusing this existing
+    # replay owner's own natural batching instead of adding a second scheduler/queue/daemon.
+    # It also closes a second finding (a leading-edge debounce could silently and permanently
+    # drop the LAST update of a burst, with nothing scheduling a trailing publication): there
+    # is no silent rejection here at all -- every batch that has qualifying rows gets exactly
+    # one real attempt.
+    #
+    # Independent-review finding (2026-09-12), REPRODUCED at the level ABOVE this one: this
+    # per-contract coalescing bounds repeats WITHIN one contract's own batch, but with
+    # multiple desired contracts (a primary plus one or more additional -- RC-UI-3), _feed_loop
+    # used to call this function once per contract EVERY poll tick, and each call fired the
+    # hook independently whenever ITS contract had a qualifying row -- three contracts each
+    # ticking in the same poll iteration still cost three full expensive whole-surface
+    # recomputes, even though the hook's own consumer (server.refresh_gamma_surface_from_stream
+    # -> _desired_stream_greeks_for_ticker) already re-gathers EVERY currently-desired
+    # contract's live state fresh on every single call -- making the first two of three calls
+    # pure waste, superseded before their own result could even be read. Fixed by no longer
+    # calling the hook here at all: this function only RETURNS its own freshest qualifying
+    # ts_recv (or None); _feed_loop coalesces across every contract replayed in the SAME poll
+    # iteration and fires the hook at most once per underlying ticker per tick (see its own
+    # comment). No captured event is lost by this change: every row for every contract still
+    # updates OrderFlowState below, unconditionally, exactly as before -- only the expensive
+    # hook invocation moved up one level to where the real redundancy actually lived.
     last_qualifying_ts_recv: float | None = None
     for rowid, ts_recv, native_json in rows:
         try:
@@ -508,11 +531,6 @@ def _replay_option_contract_rows(con: sqlite3.Connection, contract_symbol: str) 
                 or "TOTAL_VOLUME" in item or "VOLUME" in item):
             last_qualifying_ts_recv = float(ts_recv)
         _option_l1_cursor[contract_symbol] = (float(ts_recv), int(rowid))
-    if _streamed_greeks_hook is not None and last_qualifying_ts_recv is not None:
-        try:
-            _streamed_greeks_hook(contract_symbol, last_qualifying_ts_recv)
-        except Exception as e:
-            log.debug("streamed-greeks hook failed for %s: %s", contract_symbol, e)
     if first_l1 and contract_symbol not in _option_l1_cursor:
         _option_l1_cursor[contract_symbol] = (0.0, 0)
 
@@ -543,6 +561,7 @@ def _replay_option_contract_rows(con: sqlite3.Connection, contract_symbol: str) 
         _option_book_cursor[contract_symbol] = (float(ts_recv), int(rowid))
     if first_book and contract_symbol not in _option_book_cursor:
         _option_book_cursor[contract_symbol] = (0.0, 0)
+    return last_qualifying_ts_recv
 
 
 async def _feed_loop() -> None:
@@ -577,9 +596,45 @@ async def _feed_loop() -> None:
             contracts_to_replay = [s for s in dict.fromkeys([contract, *_active_option_contracts]) if s]
             if con is not None and (tkr or contracts_to_replay):
                 try:
+                    # Independent-review finding (2026-09-12), REPRODUCED: with more than one
+                    # desired contract (a primary plus one or more additional -- RC-UI-3), this
+                    # loop used to let EACH contract's own _replay_option_contract_rows call
+                    # fire the (expensive, whole-surface) streamed-greeks hook independently --
+                    # three contracts each ticking in the same poll iteration cost three full
+                    # recomputes, even though the hook's own consumer already re-gathers every
+                    # currently-desired contract's live state fresh on every call, making all
+                    # but the LAST of those calls pure waste. _replay_option_contract_rows no
+                    # longer calls the hook itself; it only returns this contract's own
+                    # freshest qualifying ts_recv (or None). Coalesced HERE, one level up,
+                    # exactly the same way that function already coalesces across a single
+                    # contract's own rows: group this tick's qualifying contracts by vendor
+                    # root (a cheap, symbol-only proxy for "same underlying, same terrain-cache
+                    # entry" -- the identity the hook's own consumer resolves via
+                    # contract_matches_underlying), and fire the hook AT MOST ONCE per
+                    # underlying per poll tick, with that group's freshest ts_recv and any one
+                    # of its symbols (the hook re-gathers every desired contract for that
+                    # ticker regardless of which symbol names the call). No captured event is
+                    # lost: every row for every contract still updates OrderFlowState inside
+                    # _replay_option_contract_rows, unconditionally, exactly as before.
+                    qualifying: list[tuple[str, float]] = []
                     for sym in contracts_to_replay:
-                        await loop.run_in_executor(
+                        ts = await loop.run_in_executor(
                             executor, _replay_option_contract_rows, con, sym)
+                        if ts is not None:
+                            qualifying.append((sym, ts))
+                    if qualifying and _streamed_greeks_hook is not None:
+                        groups: dict[str, tuple[str, float]] = {}
+                        for sym, ts in qualifying:
+                            root = vendor_option_root(sym) or sym
+                            cur = groups.get(root)
+                            if cur is None or ts > cur[1]:
+                                groups[root] = (sym, ts)
+                        for rep_sym, rep_ts in groups.values():
+                            try:
+                                await loop.run_in_executor(
+                                    executor, _streamed_greeks_hook, rep_sym, rep_ts)
+                            except Exception as e:
+                                log.debug("streamed-greeks hook failed for %s: %s", rep_sym, e)
                     if tkr:
                         await loop.run_in_executor(executor, _replay_new_rows, con, tkr)
                 except sqlite3.Error as e:

@@ -133,6 +133,56 @@ class _FlakyOptionStream:
         await self._unsubs("OPTIONS_BOOK", "options_book_unsub", syms)
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Independent-review finding (2026-09-12): "validate simulated vendor semantics
+# separately from production behavior." _FlakyOptionStream's SUBS=replace / ADD=union /
+# UNSUBS=remove-named-only model was previously justified only by a docstring citation
+# of the schwab-py readthedocs page -- correct, but not itself a machine-checked claim.
+# This validates the model against the ACTUALLY INSTALLED schwab-py package this
+# repo runs against: the real StreamClient exposes exactly these six method names for
+# these two services, and each real method sends the EXACT command string
+# ('SUBS'/'ADD'/'UNSUBS') the fake's method of the same name models -- read directly
+# from the installed SDK's own source, not asserted from memory of its docs.
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_flaky_option_stream_double_matches_the_installed_schwab_py_method_surface():
+    """The fake's six option-service methods must exist, with these exact names, on the
+    REAL installed schwab.streaming.StreamClient -- if the vendor SDK ever renamed or
+    dropped one of these, this fails BEFORE any test built on the fake's behavior could
+    silently keep passing against a fake that no longer models anything real."""
+    import schwab.streaming as real_streaming
+
+    for name in ("level_one_option_subs", "level_one_option_add", "level_one_option_unsubs",
+                 "options_book_subs", "options_book_add", "options_book_unsubs"):
+        assert hasattr(real_streaming.StreamClient, name), (
+            f"the installed schwab-py SDK no longer exposes StreamClient.{name} -- "
+            f"_FlakyOptionStream's method surface no longer matches the real vendor client")
+
+
+def test_flaky_option_stream_double_matches_the_installed_schwab_py_subs_add_unsubs_commands():
+    """Each real StreamClient.<method> must send the EXACT wire command
+    ('SUBS'/'ADD'/'UNSUBS') the fake of the same name models as REPLACE/UNION/REMOVE --
+    read directly from the installed SDK's own source (inspect.getsource), not from a
+    comment or a remembered reading of its docs. A vendor SDK update that changed which
+    command a method sends would fail this immediately."""
+    import inspect
+
+    import schwab.streaming as real_streaming
+
+    expected_command = {
+        "level_one_option_subs": "SUBS", "level_one_option_add": "ADD",
+        "level_one_option_unsubs": "UNSUBS", "options_book_subs": "SUBS",
+        "options_book_add": "ADD", "options_book_unsubs": "UNSUBS",
+    }
+    for name, command in expected_command.items():
+        src = inspect.getsource(getattr(real_streaming.StreamClient, name))
+        assert f"'{command}'" in src, (
+            f"the installed schwab-py SDK's StreamClient.{name} no longer appears to send "
+            f"the '{command}' command -- _FlakyOptionStream's {name} models "
+            f"{'REPLACE' if command == 'SUBS' else 'UNION' if command == 'ADD' else 'REMOVE'} "
+            f"semantics for this exact command; re-verify against the real source:\n{src}")
+
+
 def _epochs(db_path):
     con = sqlite3.connect(db_path)
     rows = con.execute(

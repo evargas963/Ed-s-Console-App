@@ -59,54 +59,43 @@ def test_set_streamed_greeks_hook_registers_and_clears():
     assert ofs._streamed_greeks_hook is None
 
 
-def test_hook_fires_on_a_tick_carrying_greeks_or_open_interest(tmp_path, monkeypatch):
+def test_replay_returns_the_qualifying_ts_on_a_tick_carrying_greeks_or_open_interest(tmp_path, monkeypatch):
+    """_replay_option_contract_rows no longer calls the hook itself (see _feed_loop, which
+    now coalesces the hook call across every desired contract replayed in one poll tick,
+    not just across one contract's own rows) -- it only REPORTS its own freshest qualifying
+    ts_recv back to the caller. This is that contract, proven directly."""
     db = _reset(tmp_path, monkeypatch)
     _write_option_l1_row(db, _SPY_CONTRACT, _REAL_LEVELONE_OPTIONS_CONTENT, ts_recv=1700000000.0)
-    calls = []
-    ofs.set_streamed_greeks_hook(lambda sym, ts: calls.append((sym, ts)))
-    try:
-        con = ofs._open_capture_db_readonly(db)
-        ofs._replay_option_contract_rows(con, _SPY_CONTRACT)
-        con.close()
-    finally:
-        ofs.set_streamed_greeks_hook(None)
-    assert calls == [(_SPY_CONTRACT, 1700000000.0)]
+    con = ofs._open_capture_db_readonly(db)
+    result = ofs._replay_option_contract_rows(con, _SPY_CONTRACT)
+    con.close()
+    assert result == 1700000000.0
 
 
-def test_hook_does_not_fire_on_a_bid_ask_only_tick(tmp_path, monkeypatch):
+def test_replay_returns_none_on_a_bid_ask_only_tick(tmp_path, monkeypatch):
     """A tick with no GAMMA/DELTA/OPEN_INTEREST at all is not worth an eager recompute --
     nothing changed that the exposure formula reads."""
     db = _reset(tmp_path, monkeypatch)
     _write_option_l1_row(db, _SPY_CONTRACT, _BID_ASK_ONLY_CONTENT, ts_recv=1700000000.0)
-    calls = []
-    ofs.set_streamed_greeks_hook(lambda sym, ts: calls.append((sym, ts)))
-    try:
-        con = ofs._open_capture_db_readonly(db)
-        ofs._replay_option_contract_rows(con, _SPY_CONTRACT)
-        con.close()
-    finally:
-        ofs.set_streamed_greeks_hook(None)
-    assert calls == []
+    con = ofs._open_capture_db_readonly(db)
+    result = ofs._replay_option_contract_rows(con, _SPY_CONTRACT)
+    con.close()
+    assert result is None
 
 
-def test_hook_fires_on_a_volume_only_tick_with_no_greeks_present(tmp_path, monkeypatch):
+def test_replay_returns_the_qualifying_ts_on_a_volume_only_tick_with_no_greeks_present(tmp_path, monkeypatch):
     """Independent-review finding (2026-09-12): 'the current hook is triggered by
     GAMMA/DELTA/OPEN_INTEREST; that does not complete volume-only update delivery.' A tick
-    that carries ONLY TOTAL_VOLUME (no Greeks/OI at all) must still fire the hook, since
+    that carries ONLY TOTAL_VOLUME (no Greeks/OI at all) must still qualify, since
     _per_strike's volume column and compute_exposures_by_strike's own volume aggregation both
     read a contract's totalVolume directly."""
     db = _reset(tmp_path, monkeypatch)
     volume_only = dict(_BID_ASK_ONLY_CONTENT, TOTAL_VOLUME=54321)
     _write_option_l1_row(db, _SPY_CONTRACT, volume_only, ts_recv=1700000000.0)
-    calls = []
-    ofs.set_streamed_greeks_hook(lambda sym, ts: calls.append((sym, ts)))
-    try:
-        con = ofs._open_capture_db_readonly(db)
-        ofs._replay_option_contract_rows(con, _SPY_CONTRACT)
-        con.close()
-    finally:
-        ofs.set_streamed_greeks_hook(None)
-    assert calls == [(_SPY_CONTRACT, 1700000000.0)]
+    con = ofs._open_capture_db_readonly(db)
+    result = ofs._replay_option_contract_rows(con, _SPY_CONTRACT)
+    con.close()
+    assert result == 1700000000.0
 
 
 def test_no_hook_registered_does_not_break_the_replay(tmp_path, monkeypatch):
@@ -121,91 +110,56 @@ def test_no_hook_registered_does_not_break_the_replay(tmp_path, monkeypatch):
     assert any(i.get("LAST_PRICE") == 1.27 for i in items)
 
 
-def test_a_hook_that_raises_does_not_break_the_replay(tmp_path, monkeypatch):
-    db = _reset(tmp_path, monkeypatch)
-    _write_option_l1_row(db, _SPY_CONTRACT, _REAL_LEVELONE_OPTIONS_CONTENT, ts_recv=1700000000.0)
-
-    def _boom(sym, ts):
-        raise RuntimeError("simulated hook failure")
-
-    ofs.set_streamed_greeks_hook(_boom)
-    try:
-        con = ofs._open_capture_db_readonly(db)
-        ofs._replay_option_contract_rows(con, _SPY_CONTRACT)  # must not raise
-        con.close()
-    finally:
-        ofs.set_streamed_greeks_hook(None)
-    items = ofls.get_content_for_symbol(_SPY_CONTRACT)
-    assert any(i.get("LAST_PRICE") == 1.27 for i in items), (
-        "a failing hook must not prevent the real observation from being applied"
-    )
-
-
-def test_a_burst_of_rows_in_one_poll_batch_fires_the_hook_exactly_once(tmp_path, monkeypatch):
+def test_a_burst_of_rows_in_one_poll_batch_reports_exactly_one_qualifying_ts(tmp_path, monkeypatch):
     """Independent-review finding (2026-09-12), REPRODUCED then fixed: calling the hook once
     PER ROW meant a burst of N rows landing in one poll batch triggered N sequential expensive
-    recomputes on the consumer side (MEASURED: ~3.1s each on a full SPXW-scale book -- three
-    sequential calls, 9.3s total, zero suppressed). Three rows are written here BEFORE the
-    daemon ever replays them (simulating a burst that accumulated between poll ticks, a real
-    shape: CaptureWriter and the replay poll are independent), so ONE _replay_option_contract_rows
-    call sees all three in a single query -- proving the hook fires exactly once for the whole
-    batch, not three times, while EVERY row still lands in OrderFlowState (nothing is dropped
-    from the state itself, only the expensive recompute is coalesced)."""
+    recomputes on the consumer side. Three rows are written here BEFORE the daemon ever
+    replays them (simulating a burst that accumulated between poll ticks, a real shape:
+    CaptureWriter and the replay poll are independent), so ONE _replay_option_contract_rows
+    call sees all three in a single query -- proving it reports exactly ONE qualifying
+    ts_recv for the whole batch (the caller fires the hook at most once from it), stamped
+    with the FRESHEST row, while EVERY row still lands in OrderFlowState (nothing is
+    dropped from the state itself, only the expensive recompute is coalesced)."""
     db = _reset(tmp_path, monkeypatch)
     _write_option_l1_row(db, _SPY_CONTRACT, dict(_REAL_LEVELONE_OPTIONS_CONTENT, GAMMA=0.01), ts_recv=1700000000.0)
     _write_option_l1_row(db, _SPY_CONTRACT, dict(_REAL_LEVELONE_OPTIONS_CONTENT, GAMMA=0.02), ts_recv=1700000001.0)
     _write_option_l1_row(db, _SPY_CONTRACT, dict(_REAL_LEVELONE_OPTIONS_CONTENT, GAMMA=0.03), ts_recv=1700000002.0)
 
-    calls = []
-    ofs.set_streamed_greeks_hook(lambda sym, ts: calls.append((sym, ts)))
-    try:
-        con = ofs._open_capture_db_readonly(db)
-        ofs._replay_option_contract_rows(con, _SPY_CONTRACT)  # ONE call sees all three rows
-        con.close()
-    finally:
-        ofs.set_streamed_greeks_hook(None)
+    con = ofs._open_capture_db_readonly(db)
+    result = ofs._replay_option_contract_rows(con, _SPY_CONTRACT)  # ONE call sees all three rows
+    con.close()
 
-    assert calls == [(_SPY_CONTRACT, 1700000002.0)], (
-        "exactly one hook call for the whole batch, stamped with the FRESHEST row's ts_recv"
+    assert result == 1700000002.0, (
+        "exactly one qualifying ts_recv for the whole batch, the FRESHEST row's ts_recv"
     )
     # every row still reached OrderFlowState -- push_level_one ran for all three, the LATEST
     # (gamma=0.03) is what a consumer reading state now sees, nothing from the batch was lost
     assert ofls.get_stream_greeks(_SPY_CONTRACT)["gamma"] == 0.03
 
 
-def test_a_batch_with_no_qualifying_rows_never_fires_the_hook(tmp_path, monkeypatch):
+def test_a_batch_with_no_qualifying_rows_reports_none(tmp_path, monkeypatch):
     db = _reset(tmp_path, monkeypatch)
     _write_option_l1_row(db, _SPY_CONTRACT, _BID_ASK_ONLY_CONTENT, ts_recv=1700000000.0)
     _write_option_l1_row(db, _SPY_CONTRACT, dict(_BID_ASK_ONLY_CONTENT, LAST_PRICE=1.35), ts_recv=1700000001.0)
 
-    calls = []
-    ofs.set_streamed_greeks_hook(lambda sym, ts: calls.append((sym, ts)))
-    try:
-        con = ofs._open_capture_db_readonly(db)
-        ofs._replay_option_contract_rows(con, _SPY_CONTRACT)
-        con.close()
-    finally:
-        ofs.set_streamed_greeks_hook(None)
-    assert calls == []
+    con = ofs._open_capture_db_readonly(db)
+    result = ofs._replay_option_contract_rows(con, _SPY_CONTRACT)
+    con.close()
+    assert result is None
 
 
-def test_a_batch_with_one_qualifying_row_among_several_fires_once_with_that_rows_ts(tmp_path, monkeypatch):
+def test_a_batch_with_one_qualifying_row_among_several_reports_that_rows_ts(tmp_path, monkeypatch):
     """A qualifying row in the MIDDLE of a batch (not the last row overall) must still be the
-    one whose ts_recv is used -- 'freshest QUALIFYING row', not 'last row in the batch'."""
+    one whose ts_recv is reported -- 'freshest QUALIFYING row', not 'last row in the batch'."""
     db = _reset(tmp_path, monkeypatch)
     _write_option_l1_row(db, _SPY_CONTRACT, _BID_ASK_ONLY_CONTENT, ts_recv=1700000000.0)
     _write_option_l1_row(db, _SPY_CONTRACT, dict(_REAL_LEVELONE_OPTIONS_CONTENT, GAMMA=0.05), ts_recv=1700000001.0)
     _write_option_l1_row(db, _SPY_CONTRACT, dict(_BID_ASK_ONLY_CONTENT, LAST_PRICE=1.40), ts_recv=1700000002.0)
 
-    calls = []
-    ofs.set_streamed_greeks_hook(lambda sym, ts: calls.append((sym, ts)))
-    try:
-        con = ofs._open_capture_db_readonly(db)
-        ofs._replay_option_contract_rows(con, _SPY_CONTRACT)
-        con.close()
-    finally:
-        ofs.set_streamed_greeks_hook(None)
-    assert calls == [(_SPY_CONTRACT, 1700000001.0)]
+    con = ofs._open_capture_db_readonly(db)
+    result = ofs._replay_option_contract_rows(con, _SPY_CONTRACT)
+    con.close()
+    assert result == 1700000001.0
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -298,6 +252,7 @@ def test_hook_coalescing_avoids_the_real_per_call_cost_at_spxw_scale(tmp_path, m
     # short-circuits to zero real cost -- there is no real fixture at this contract's
     # exact identity inside a genuine 42,001-contract synthetic scale book.
     """
+    import asyncio
     import time as _t
 
     import server as srv
@@ -306,16 +261,24 @@ def test_hook_coalescing_avoids_the_real_per_call_cost_at_spxw_scale(tmp_path, m
     db = _reset(tmp_path, monkeypatch)
     tk = srv.ticker_storage_key("SPY")
     contracts = _synthetic_full_book_contracts()
-    # _SPY_CONTRACT must be a genuine MEMBER of the REST baseline, or
-    # overlay_streamed_contract_fields finds nothing to overlay and
-    # refresh_gamma_surface_from_stream short-circuits to "no_change" BEFORE ever running
-    # the real projection cost this benchmark exists to measure.
-    contracts = contracts + [{
-        "symbol": _SPY_CONTRACT, "putCall": "CALL", "strikePrice": 767.0,
-        "openInterest": 2097, "multiplier": 100.0, "gamma": 0.018, "delta": 0.5,
-        "totalVolume": 4000, "volatility": 22.0,
-        "expirationDate": "2026-09-18T20:00:00.000+00:00", "daysToExpiration": 7,
-    }]
+    # Independent-review finding (2026-09-12), connected work: with MULTIPLE desired
+    # contracts sharing one underlying (a primary plus additional -- RC-UI-3), _feed_loop
+    # itself is the real site of redundant hook firing (see its own comment), not just a
+    # single contract's own row burst. Three real, distinct, OSI-shaped SPY contracts --
+    # not the "SYN..." placeholder symbols _synthetic_full_book_contracts generates --
+    # must be genuine MEMBERS of the REST baseline (vendor_option_root("SPY...") groups
+    # them together) or overlay_streamed_contract_fields finds nothing to overlay and the
+    # real hook short-circuits to "no_change" before running the real projection cost.
+    _CONTRACT_A = "SPY   260918C00600000"
+    _CONTRACT_B = "SPY   260918C00610000"
+    _CONTRACT_C = "SPY   260918C00620000"
+    for sym, strike in ((_CONTRACT_A, 600.0), (_CONTRACT_B, 610.0), (_CONTRACT_C, 620.0)):
+        contracts = contracts + [{
+            "symbol": sym, "putCall": "CALL", "strikePrice": strike,
+            "openInterest": 2097, "multiplier": 100.0, "gamma": 0.018, "delta": 0.5,
+            "totalVolume": 4000, "volatility": 22.0,
+            "expirationDate": "2026-09-18T20:00:00.000+00:00", "daysToExpiration": 7,
+        }]
     spot = 400.0
     with srv._terrain_cache_lock:
         srv._terrain_cache[tk] = {
@@ -324,57 +287,119 @@ def test_hook_coalescing_avoids_the_real_per_call_cost_at_spxw_scale(tmp_path, m
             "_contracts_rest_computed_ts": _t.time() - 30.0,
         }
     srv._gamma_surface_seq.pop(tk, None)
-    ofs._active_option_contract = ofs.ticker_storage_key(_SPY_CONTRACT)
     try:
         # Baseline: measure ONE real call's cost directly against the real consumer.
-        def _stream_greeks(sym):
-            return {"gamma": 0.02, "gamma_ts_recv": _t.time()} if sym == _SPY_CONTRACT else None
-        monkeypatch.setattr("app.options.order_flow.state.get_stream_greeks", _stream_greeks)
+        def _stream_greeks_one(sym):
+            return {"gamma": 0.02, "gamma_ts_recv": _t.time()} if sym == _CONTRACT_A else None
+        monkeypatch.setattr("app.options.order_flow.state.get_stream_greeks", _stream_greeks_one)
+        ofs._active_option_contract = ofs.ticker_storage_key(_CONTRACT_A)
 
         t0 = _t.perf_counter()
-        status = srv.refresh_gamma_surface_from_stream(_SPY_CONTRACT, _t.time())
+        status = srv.refresh_gamma_surface_from_stream(_CONTRACT_A, _t.time())
         one_call_sec = _t.perf_counter() - t0
         assert status == "ok", (
             f"benchmark call must actually run the real projection, not short-circuit: {status}")
         print(f"[perf] refresh_gamma_surface_from_stream, {len(contracts)}-contract "
               f"synthetic SPXW-scale book: {one_call_sec * 1000:.1f} ms/call")
 
-        # Reset the REST generation so the second measurement below is a fresh, comparable
+        # Reset the REST generation so the real _feed_loop run below is a fresh, comparable
         # compute-and-publish, not a "stale_baseline_superseded" no-op.
         with srv._terrain_cache_lock:
             srv._terrain_cache[tk]["_contracts_rest_computed_ts"] = _t.time() - 30.0
 
-        # The real proof: three L1 rows land in ONE poll batch (a real burst shape --
-        # CaptureWriter and the replay poll run independently) with the hook wired to the
-        # REAL production function -- only ONE real call's worth of wall-clock time must be
-        # paid for the whole batch, not three.
-        ofs.set_streamed_greeks_hook(srv.refresh_gamma_surface_from_stream)
-        _write_option_l1_row(db, _SPY_CONTRACT, dict(_REAL_LEVELONE_OPTIONS_CONTENT, GAMMA=0.01), ts_recv=1700000000.0)
-        _write_option_l1_row(db, _SPY_CONTRACT, dict(_REAL_LEVELONE_OPTIONS_CONTENT, GAMMA=0.02), ts_recv=1700000001.0)
-        _write_option_l1_row(db, _SPY_CONTRACT, dict(_REAL_LEVELONE_OPTIONS_CONTENT, GAMMA=0.03), ts_recv=1700000002.0)
-        con = ofs._open_capture_db_readonly(db)
-        t0 = _t.perf_counter()
-        ofs._replay_option_contract_rows(con, _SPY_CONTRACT)   # 3 rows, ONE poll batch
-        batch_sec = _t.perf_counter() - t0
-        con.close()
-        ofs.set_streamed_greeks_hook(None)
-        print(f"[perf] one poll batch carrying 3 qualifying rows, real hook wired: "
-              f"{batch_sec * 1000:.1f} ms total (one-call baseline was "
-              f"{one_call_sec * 1000:.1f} ms)")
+        # The real proof: THREE DISTINCT CONTRACTS (primary A, additional B and C -- all
+        # sharing the SPY root) each get one fresh qualifying L1 row BEFORE one real
+        # _feed_loop poll tick runs. A counting wrapper around the REAL production hook
+        # measures how many times it actually fires; the hook must fire ONCE for this
+        # tick, not three times, and the tick's total wall-clock cost must be close to
+        # ONE real call, not three.
+        ofs._active_option_contract = ofs.ticker_storage_key(_CONTRACT_A)
+        ofs._active_option_contracts = [ofs.ticker_storage_key(_CONTRACT_B), ofs.ticker_storage_key(_CONTRACT_C)]
+        live = {_CONTRACT_A: {"gamma": 0.03, "gamma_ts_recv": _t.time()},
+                _CONTRACT_B: {"gamma": 0.04, "gamma_ts_recv": _t.time()},
+                _CONTRACT_C: {"gamma": 0.05, "gamma_ts_recv": _t.time()}}
+        monkeypatch.setattr("app.options.order_flow.state.get_stream_greeks", lambda sym: live.get(sym))
+        hook_calls = []
+        real_hook = srv.refresh_gamma_surface_from_stream
 
+        def _counting_hook(sym, ts):
+            hook_calls.append(sym)
+            return real_hook(sym, ts)
+        ofs.set_streamed_greeks_hook(_counting_hook)
+        for sym in (_CONTRACT_A, _CONTRACT_B, _CONTRACT_C):
+            _write_option_l1_row(db, sym, dict(_REAL_LEVELONE_OPTIONS_CONTENT, key=sym, GAMMA=0.05), ts_recv=1700000000.0)
+
+        async def _run_one_tick():
+            ofs._feed_running = True
+            t0 = _t.perf_counter()
+            task = asyncio.get_event_loop().create_task(ofs._feed_loop())
+            # Independent-review-caught test bug (2026-09-12): a FIXED short sleep here
+            # (POLL_INTERVAL_SEC + 0.4s) let a genuinely buggy per-contract-hook-call
+            # implementation pass this test anyway -- cancelling mid-flight while the
+            # loop's FIRST slow hook call (~one_call_sec) was still in progress hid the
+            # 2nd/3rd calls that would only fire AFTER it, since run_in_executor's
+            # in-flight work is not interrupted by task.cancel() and the loop never
+            # reaches its next iteration before _feed_running is set False. Proven
+            # directly: the exact same fixed-sleep version of this test passed unchanged
+            # against the pre-fix per-contract hook call. Fixed with an IDLE-DETECTED
+            # wait: poll until hook activity goes quiet (no new call for ~1s) or a
+            # ceiling generous enough for three FULL sequential real calls to complete
+            # elapses -- so a regression back to firing once per contract has the time to
+            # actually reveal itself, not be raced past.
+            ceiling = max(10.0, one_call_sec * 4.0 + 2.0)
+            step = 0.25
+            waited = 0.0
+            idle_checks = 0
+            last_count = -1
+            while waited < ceiling:
+                await asyncio.sleep(step)
+                waited += step
+                if len(hook_calls) == last_count:
+                    idle_checks += 1
+                    if idle_checks >= 4 and len(hook_calls) > 0:   # ~1s idle, >=1 call seen
+                        break
+                else:
+                    idle_checks = 0
+                    last_count = len(hook_calls)
+            ofs._feed_running = False
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+            return _t.perf_counter() - t0
+
+        tick_sec = asyncio.run(_run_one_tick())
+        ofs.set_streamed_greeks_hook(None)
+        print(f"[perf] one _feed_loop poll tick, 3 desired contracts each qualifying, real "
+              f"hook wired: {tick_sec * 1000:.1f} ms total, hook fired {len(hook_calls)}x "
+              f"(one-call baseline was {one_call_sec * 1000:.1f} ms)")
+
+        assert len(hook_calls) == 1, (
+            f"3 contracts each ticking in the SAME poll iteration must fire the real "
+            f"whole-surface hook ONCE, not {len(hook_calls)} times -- refresh_gamma_surface_"
+            f"from_stream's own _desired_stream_greeks_for_ticker already re-gathers every "
+            f"desired contract fresh on every call, so any call before the last is pure "
+            f"waste: {hook_calls}")
+        # every contract's row still reached OrderFlowState -- no captured event lost by
+        # moving the hook invocation up to _feed_loop
+        for sym in (_CONTRACT_A, _CONTRACT_B, _CONTRACT_C):
+            assert ofls.get_stream_greeks(sym) is not None, f"{sym}'s row must still reach OrderFlowState"
         with srv._terrain_cache_lock:
             published = srv._terrain_cache[tk]["_gamma_surface"]
         assert published is not None and published.get("stream_overlay_contracts", 0) >= 1, (
-            "the batch's real projection must have actually published -- otherwise this "
-            "measured zero real cost, not the coalescing benefit it claims to prove")
+            "the coalesced tick's real projection must have actually published -- otherwise "
+            "this measured zero real cost, not the coalescing benefit it claims to prove")
         # Generous 2x ceiling (not a tight SLA) -- this only fails if coalescing regresses
-        # toward per-row firing (which would cost close to 3x one_call_sec).
-        assert batch_sec < one_call_sec * 2.0, (
-            f"a 3-row batch cost {batch_sec * 1000:.1f} ms -- close to 3x one real call's "
-            f"{one_call_sec * 1000:.1f} ms, suggesting the hook fired more than once for "
-            f"this batch")
+        # toward one hook call per contract (which would cost close to 3x one_call_sec).
+        assert tick_sec < one_call_sec * 2.0 + 1.0, (
+            f"one poll tick with 3 qualifying contracts cost {tick_sec * 1000:.1f} ms -- "
+            f"close to 3x one real call's {one_call_sec * 1000:.1f} ms, suggesting the hook "
+            f"fired more than once for this tick")
     finally:
         ofs.set_streamed_greeks_hook(None)
+        ofs._active_option_contract = None
+        ofs._active_option_contracts = []
         with srv._terrain_cache_lock:
             srv._terrain_cache.pop(tk, None)
         srv._gamma_surface_seq.pop(tk, None)
