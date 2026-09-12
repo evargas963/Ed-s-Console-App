@@ -95,19 +95,24 @@ _option_last_subscribe_completed_ts: Optional[float] = None
 _on_tick_callback: Optional[Callable[[str], None]] = None
 
 #: Called with (contract_symbol, ts_recv) whenever an option L1 tick is replayed that carries
-#: GAMMA/DELTA/OPEN_INTEREST -- lets a consumer (server.py's gamma-surface cache) freshen
-#: itself the instant new Greeks/OI are known, instead of waiting for the next wide-chain REST
-#: cycle. Same shape/precedent as `_on_tick_callback` above; kept separate because ITS payload
-#: (an option contract symbol + the field's own receive time) is different from a bare ticker,
-#: and a caller wanting only one of the two must not be forced to filter the other's calls.
+#: GAMMA/DELTA/OPEN_INTEREST/TOTAL_VOLUME -- lets a consumer (server.py's gamma-surface cache)
+#: freshen itself the instant new Greeks/OI/volume are known, instead of waiting for the next
+#: wide-chain REST cycle. TOTAL_VOLUME is included (not just the Greeks) so a volume-only tick
+#: -- no Greeks/OI change -- still reaches the per-strike volume column and
+#: compute_exposures_by_strike's own call/put volume aggregation, not just the ticker-level
+#: header display; independent-review finding (2026-09-12): "the current hook is triggered by
+#: GAMMA/DELTA/OPEN_INTEREST; that does not complete volume-only update delivery." Same
+#: shape/precedent as `_on_tick_callback` above; kept separate because ITS payload (an option
+#: contract symbol + the field's own receive time) is different from a bare ticker, and a
+#: caller wanting only one of the two must not be forced to filter the other's calls.
 _streamed_greeks_hook: Optional[Callable[[str, float], None]] = None
 
 
 def set_streamed_greeks_hook(fn: Optional[Callable[[str, float], None]]) -> None:
     """Register (or clear, with None) the callback `_replay_option_contract_rows` invokes
-    after every option L1 tick that carries GAMMA/DELTA/OPEN_INTEREST. One slot, like
-    `_on_tick_callback` -- the daemon has exactly one composition root (server.py's startup)
-    that wires this, not a list of subscribers to fan out to."""
+    after every option L1 tick that carries GAMMA/DELTA/OPEN_INTEREST/TOTAL_VOLUME. One slot,
+    like `_on_tick_callback` -- the daemon has exactly one composition root (server.py's
+    startup) that wires this, not a list of subscribers to fan out to."""
     global _streamed_greeks_hook
     _streamed_greeks_hook = fn
 
@@ -458,7 +463,8 @@ def _replay_option_contract_rows(con: sqlite3.Connection, contract_symbol: str) 
         push_level_one(contract_symbol, item, ts_recv=ts_recv)
         _option_streaming_last_update_ts = time.time()
         if _streamed_greeks_hook is not None and (
-                "GAMMA" in item or "DELTA" in item or "OPEN_INTEREST" in item):
+                "GAMMA" in item or "DELTA" in item or "OPEN_INTEREST" in item
+                or "TOTAL_VOLUME" in item or "VOLUME" in item):
             try:
                 _streamed_greeks_hook(contract_symbol, float(ts_recv))
             except Exception as e:
@@ -581,6 +587,29 @@ def _contract_matches_underlying(
         if vendor_option_root(str(raw.get("symbol") or "")) == osi_root:
             return True
     return False
+
+
+def contract_matches_underlying(contract: str | None, ticker: str) -> bool:
+    """Public wrapper for `_contract_matches_underlying` that resolves the chain DB path
+    itself, for callers outside this module (server.py's streaming-overlay wiring) that
+    should not need to know about DB_PATH plumbing to ask "does this option contract
+    belong to this ticker".
+
+    Independent-review finding (2026-09-12): server.py's own bare
+    `vendor_option_root(contract) == option_underlying_root(ticker)` equality check silently
+    excludes a valid contract whose vendor root genuinely differs from the underlying's
+    (Schwab's $SPX -> SPXW weekly root is the canonical example) -- the exact case
+    `_contract_matches_underlying`'s chain-aware fallback already exists to handle, and which
+    this repo's own default-contract selection already relies on
+    (`_ensure_default_option_contract_for_ticker`). Reusing it here means a legitimate weekly
+    or adjusted-root contract's streamed Greeks are not silently dropped from the overlay."""
+    chain_db: Path | str | None = None
+    try:
+        from db import DB_PATH
+        chain_db = DB_PATH
+    except Exception:
+        chain_db = None
+    return _contract_matches_underlying(contract, ticker, chain_db_path=chain_db)
 
 
 def get_active_option_contract() -> Optional[str]:

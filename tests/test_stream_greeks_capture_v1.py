@@ -29,6 +29,48 @@ def test_gamma_delta_open_interest_are_captured_from_a_real_l1_tick():
     assert g["open_interest"] == 4200.0
 
 
+def test_total_volume_is_captured_alongside_the_greeks():
+    """Independent-review finding (2026-09-12): 'the current hook is triggered by
+    GAMMA/DELTA/OPEN_INTEREST; that does not complete volume-only update delivery.'
+    TOTAL_VOLUME is captured into the SAME per-symbol record, with its own freshness stamp,
+    so the exposure/per-strike overlay can apply the same newer-than-REST precedence rule to
+    it that gamma/delta/open_interest already get."""
+    st = LiveOrderFlowState()
+    st.push_level_one("SPY   260116C00580000", {"TOTAL_VOLUME": 12345}, ts_recv=500.0)
+    g = st.get_stream_greeks("SPY   260116C00580000")
+    assert g["total_volume"] == 12345.0
+    assert g["total_volume_ts_recv"] == 500.0
+
+
+def test_a_volume_only_tick_alone_is_captured_without_any_greek_present():
+    st = LiveOrderFlowState()
+    st.push_level_one("SPY   260116C00580000", {"TOTAL_VOLUME": 777})
+    g = st.get_stream_greeks("SPY   260116C00580000")
+    assert g == {"total_volume": 777.0, "total_volume_ts_recv": g["total_volume_ts_recv"]}
+
+
+def test_a_genuine_zero_volume_is_captured_not_dropped():
+    st = LiveOrderFlowState()
+    st.push_level_one("SPY   260116C00580000", {"TOTAL_VOLUME": 0})
+    g = st.get_stream_greeks("SPY   260116C00580000")
+    assert g["total_volume"] == 0.0
+
+
+def test_a_negative_volume_is_rejected_not_stored_in_greeks_either():
+    st = LiveOrderFlowState()
+    st.push_level_one("SPY   260116C00580000", {"TOTAL_VOLUME": -1})
+    assert st.get_stream_greeks("SPY   260116C00580000") is None
+
+
+def test_a_gamma_only_tick_does_not_blank_a_previously_observed_volume():
+    st = LiveOrderFlowState()
+    st.push_level_one("SPY   260116C00580000", {"TOTAL_VOLUME": 500})
+    st.push_level_one("SPY   260116C00580000", {"GAMMA": 0.02})
+    g = st.get_stream_greeks("SPY   260116C00580000")
+    assert g["total_volume"] == 500.0
+    assert g["gamma"] == 0.02
+
+
 def test_never_observed_symbol_returns_none_not_a_dict_of_nones():
     st = LiveOrderFlowState()
     assert st.get_stream_greeks("SPY   260116C00580000") is None

@@ -54,7 +54,17 @@ def listening_pid(port: int) -> int | None:
     """PID of the process LISTENING on <port> (any local interface), or None if
     the scan ran and found no such listener. Raises PortInspectionError if the
     scan itself could not run (e.g. psutil missing/unsupported here) -- that is
-    an unknown state, not a free port."""
+    an unknown state, not a free port.
+
+    Independent-review finding (2026-09-12): psutil can report a LISTENING socket
+    whose own `.pid` is None (a common, real shape -- Windows without elevated
+    privilege, or a socket psutil cannot attribute to a process) -- REPRODUCED
+    directly against this function. The old code returned that None straight
+    through, which the caller read as "no listener" and reported the port FREE,
+    even though something IS genuinely listening there. A socket found with an
+    unreadable owner is the same "I cannot tell you whose this is" as a failed
+    scan, and must fail the same way -- never silently promoted to 'nothing is
+    here'."""
     if psutil is None:
         raise PortInspectionError("psutil is not available -- cannot inspect listening sockets")
     try:
@@ -63,6 +73,10 @@ def listening_pid(port: int) -> int | None:
         raise PortInspectionError(f"psutil.net_connections failed: {e}") from e
     for conn in conns:
         if conn.status == psutil.CONN_LISTEN and conn.laddr and conn.laddr.port == port:
+            if conn.pid is None:
+                raise PortInspectionError(
+                    f"port {port} has a LISTENING socket but psutil could not attribute it "
+                    f"to a process (pid is None) -- ownership cannot be determined")
             return conn.pid
     return None
 
@@ -101,7 +115,15 @@ def is_actually_ed_console(port: int, *, timeout: float = 2.0) -> bool:
     identity via /api/build -- this app's existing identity endpoint (git_sha +
     release_id), already relied on throughout this project's own verification.
     A coincidentally command-line-matching but unrelated process will not answer
-    this shape."""
+    this shape.
+
+    Independent-review finding (2026-09-12), REPRODUCED directly against this
+    function: a body of `{"git_sha": null, "release_id": null}` has both KEYS
+    present and passed the old `"git_sha" in body` check, which tests key
+    membership, not a real value. Any unrelated JSON endpoint that happens to
+    name these two keys -- with nothing behind them -- was misidentified as Ed
+    Console. Ownership requires actual non-empty identity values, not merely
+    their names appearing in the response."""
     try:
         with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/build", timeout=timeout) as resp:
             if resp.status != 200:
@@ -109,7 +131,10 @@ def is_actually_ed_console(port: int, *, timeout: float = 2.0) -> bool:
             body = json.loads(resp.read())
     except Exception:
         return False
-    return isinstance(body, dict) and "git_sha" in body and "release_id" in body
+    if not isinstance(body, dict):
+        return False
+    git_sha, release_id = body.get("git_sha"), body.get("release_id")
+    return bool(git_sha) and bool(release_id) and isinstance(git_sha, str) and isinstance(release_id, str)
 
 
 def port_is_free(port: int) -> bool:

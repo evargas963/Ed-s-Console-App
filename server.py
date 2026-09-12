@@ -12210,13 +12210,67 @@ def _gamma_surface_wanted(tk: str) -> bool:
     return (time.time() - _gamma_surface_demand.get(tk, 0.0)) < GAMMA_SURFACE_DEMAND_TTL
 
 
-#: A streamed GAMMA/DELTA/OPEN_INTEREST value older than this is not trusted over a same-cycle
-#: REST chain read — an app-side bound (not a vendor-documented cadence), chosen to be well
-#: inside a stalled-feed operator would notice, not a MEASURED optimum.
+#: A streamed GAMMA/DELTA/OPEN_INTEREST value older than this is not trusted AT ALL, even if
+#: it is newer than the REST baseline it would override — an app-side absolute bound (not a
+#: vendor-documented cadence), chosen to be well inside a stalled-feed operator would notice,
+#: composed with (never a substitute for) the REST-baseline precedence check below.
 GAMMA_SURFACE_STREAM_STALENESS_SEC = 10.0
 
+#: Minimum spacing between successive eager recomputes for the SAME ticker — bounds the worst
+#: case a burst of rapid ticks can create. MEASURED (2026-09-12, SYNTHETIC SCALE BASELINE: a
+#: real captured chain's own contract shapes, strikes varied to reach scale, following the
+#: existing RC-UI-1 #1 baseline convention): a single refresh_gamma_surface_from_stream call
+#: (overlay + project_gamma_surface + the per-strike view) took ~18ms at a realistic 236-contract
+#: single-name book, ~210ms scaled to ~3.6k contracts, and ~3.1s scaled to a full SPXW-class
+#: book (~42k contracts). This runs SYNCHRONOUSLY inside the daemon's single replay-poll worker
+#: (app.options.order_flow.streaming._feed_loop's dedicated single-thread executor) — a burst of
+#: N ticks for a large-book contract would otherwise queue LINEARLY (N * ~3.1s) and starve every
+#: OTHER ticker/contract sharing that one worker, the opposite of the "near-instant" goal this
+#: mechanism exists to serve. This debounce does not reduce the per-call cost; it bounds how
+#: OFTEN that cost is paid regardless of tick rate, so a burst degrades to "one refresh per
+#: interval" rather than "one refresh per tick, however many arrive." The in-memory streamed
+#: state itself is never lost between debounced calls (app.options.order_flow.state always
+#: keeps the LATEST observation), so a debounced tick's data is still reflected the next time
+#: this function actually runs. NOT a complete answer for large-book contracts at high tick
+#: rates — genuinely reducing the per-call cost (e.g. an incremental/windowed recompute instead
+#: of a full book re-projection) is unaddressed, disclosed rather than hidden.
+GAMMA_SURFACE_STREAM_REFRESH_MIN_INTERVAL_SEC = 0.25
+_gamma_surface_stream_refresh_last_ts: dict[str, float] = {}
 
-def _gamma_surface_contracts_with_stream_overlay(tk: str, contracts: list) -> tuple[list, int]:
+#: Per-ticker counter bumped every time `_gamma_surface` is (re)published — by the REST cycle
+#: or the eager stream refresh alike. Independent-review finding (2026-09-12), REPRODUCED: the
+#: browser's renderSurface() skips its table rebuild when its own revision key (built from
+#: chain_as_of_ts_utc/spot_as_of_ts_utc — REST-only fields) is unchanged; the eager refresh
+#: changes cell VALUES without ever touching those REST fields, so a genuinely new surface
+#: rendered as the old one until the next REST cycle happened to land. This counter is a
+#: revision identity ANY publication bumps, REST or streamed, so the browser has something
+#: that actually changes when the data does. Guarded by _terrain_cache_lock, like the cache
+#: it describes.
+_gamma_surface_seq: dict[str, int] = {}
+
+
+def _next_gamma_surface_seq(tk: str) -> int:
+    """Caller must hold _terrain_cache_lock."""
+    n = _gamma_surface_seq.get(tk, 0) + 1
+    _gamma_surface_seq[tk] = n
+    return n
+
+
+def _per_strike_view_from_contracts(contracts: list, spot: float) -> dict:
+    """The exact {all, near, far} shape /api/terrain/strikes serves, computed directly from
+    `contracts` via the SAME reusable, pure functions terrain_engine.compute_terrain already
+    calls internally (compute_exposures_by_strike -> _per_strike_scopes) — not a second
+    formula, just called directly so a caller that already has an OVERLAID contract list (and
+    does not want to pay for the rest of compute_terrain's unrelated fields: pin, walls,
+    regime, confidence) can get a consistent per-strike view from it."""
+    from math_exposure_core import compute_exposures_by_strike as _cebs
+    from terrain_engine import _per_strike_scopes
+    exposures, _diag = _cebs(contracts, spot=spot, require_oi=True)
+    return _per_strike_scopes(exposures, contracts, spot)
+
+
+def _gamma_surface_contracts_with_stream_overlay(
+        tk: str, contracts: list, *, newer_than_ts: float | None = None) -> tuple[list, int]:
     """Overlay the currently-streaming option contract's freshest known GAMMA/DELTA/
     OPEN_INTEREST onto `contracts` before projection, IF that contract belongs to `tk`.
 
@@ -12227,55 +12281,88 @@ def _gamma_surface_contracts_with_stream_overlay(tk: str, contracts: list) -> tu
     subscription ceiling — see that module's docstring; extending this to every subscribed
     contract at once needs no change here, only a larger `streamed_by_symbol` mapping).
 
+    `newer_than_ts`, when given, is passed straight through as the REST-baseline precedence
+    bound (see overlay_streamed_contract_fields) — independent-review finding (2026-09-12):
+    "being received within ten seconds does not establish that a stream value is newer than
+    the REST input it replaces."
+
+    Native contract identity uses app.options.order_flow.streaming.contract_matches_underlying
+    (chain-aware: a vendor root that genuinely differs from the ticker's own root, e.g.
+    Schwab's $SPX -> SPXW weekly, is still recognized via the nearest banked complete chain) —
+    independent-review finding (2026-09-12): a bare vendor-root == ticker-root equality check
+    silently excludes exactly this legitimate case.
+
     Fails closed to the unmodified `contracts` on any error or when nothing applies — this is
     a best-effort freshening, never a precondition for the projection to run at all."""
     try:
-        from app.options.order_flow.streaming import get_active_option_contract
+        from app.options.order_flow.streaming import get_active_option_contract, contract_matches_underlying
         from app.options.order_flow.state import get_stream_greeks
-        from instrument_identity import vendor_option_root, option_underlying_root
         from math_exposure_core import overlay_streamed_contract_fields
 
         contract_symbol = get_active_option_contract()
-        if not contract_symbol or vendor_option_root(contract_symbol) != option_underlying_root(tk):
+        if not contract_symbol or not contract_matches_underlying(contract_symbol, tk):
             return contracts, 0
         greeks = get_stream_greeks(contract_symbol)
         if not greeks:
             return contracts, 0
         return overlay_streamed_contract_fields(
             contracts, {contract_symbol: greeks},
-            max_staleness_sec=GAMMA_SURFACE_STREAM_STALENESS_SEC)
+            newer_than_ts=newer_than_ts, max_staleness_sec=GAMMA_SURFACE_STREAM_STALENESS_SEC)
     except Exception as e:  # institutional-swallow-ok: best-effort freshening, never load-bearing
         log.debug("gamma-surface stream overlay skipped for %s: %s", tk, e)
         return contracts, 0
 
 
 def refresh_gamma_surface_from_stream(contract_symbol: str, ts_recv: float) -> str:
-    """Eagerly freshen a cached ticker's gamma surface the instant a streamed L1 tick carries
-    new GAMMA/DELTA/OPEN_INTEREST for its currently-active option contract, instead of waiting
-    for the next ~60s wide-chain REST cycle (_terrain_refresh_one). Registered with
+    """Eagerly freshen a cached ticker's gamma surface AND per-strike view the instant a
+    streamed L1 tick carries new GAMMA/DELTA/OPEN_INTEREST for its currently-active option
+    contract, instead of waiting for the next ~60s wide-chain REST cycle
+    (_terrain_refresh_one). Registered with
     app.options.order_flow.streaming.set_streamed_greeks_hook at startup.
 
-    Still the ONE canonical faucet: re-runs project_gamma_surface on the SAME RAW REST chain
-    (`_contracts_rest`, stamped by _terrain_refresh_one) with ONLY this one contract's fields
-    overlaid via overlay_streamed_contract_fields — never a second exposure formula, and
-    always overlaid onto the untouched REST base so repeated eager refreshes never compound
-    away from what the vendor's chain actually reported.
+    Still the ONE canonical faucet: re-runs project_gamma_surface AND
+    _per_strike_view_from_contracts on the SAME RAW REST chain (`_contracts_rest`, stamped by
+    _terrain_refresh_one) with ONLY this one contract's fields overlaid via
+    overlay_streamed_contract_fields — never a second exposure formula, and always overlaid
+    onto the untouched REST base so repeated eager refreshes never compound away from what the
+    vendor's chain actually reported.
+
+    Two independent-review findings (2026-09-12), both REPRODUCED, are fixed together here
+    because they share one cause (this function used to touch `_gamma_surface` alone):
+      - the heatmap (_gamma_surface) and the Strike Detail / GEX-by-strike panel (_per_strike)
+        disagreed on the SAME strike, because only one of the two was ever refreshed from the
+        overlay -- fixed by publishing both from the SAME overlaid contracts, together.
+      - a REST refresh landing WHILE this function was computing could be silently overwritten
+        by this function's stale-baseline result once it finally wrote back -- fixed by a
+        compare-and-swap on the REST generation marker (_contracts_rest_computed_ts): if the
+        cache's generation changed between this function's read and its write, the computed
+        result is DISCARDED, never published over a generation newer than the one it was
+        computed from.
 
     Returns a status string (never raises) — diagnostic/test surface only, never load-bearing:
     a caller that ignores the return value still gets the fail-closed no-op on any failure.
     """
     try:
-        from instrument_identity import vendor_option_root, option_underlying_root
-        root = vendor_option_root(contract_symbol)
-        if not root:
+        from instrument_identity import vendor_option_root
+        from app.options.order_flow.streaming import contract_matches_underlying
+        if not vendor_option_root(contract_symbol):
             return "not_an_option_symbol"
         with _terrain_cache_lock:
-            tk = next((k for k in _terrain_cache if option_underlying_root(k) == root), None)
+            tk = next((k for k in _terrain_cache if contract_matches_underlying(contract_symbol, k)), None)
             if tk is None:
                 return "no_cached_ticker"
+            # Debounce BEFORE any expensive work (see GAMMA_SURFACE_STREAM_REFRESH_MIN_INTERVAL_SEC's
+            # own comment for the measured backlog risk this bounds) -- checked first so a
+            # debounced call pays none of the overlay/projection cost at all.
+            now_check = time.time()
+            last_refresh = _gamma_surface_stream_refresh_last_ts.get(tk, 0.0)
+            if now_check - last_refresh < GAMMA_SURFACE_STREAM_REFRESH_MIN_INTERVAL_SEC:
+                return "debounced"
+            _gamma_surface_stream_refresh_last_ts[tk] = now_check
             payload = _terrain_cache.get(tk) or {}
             base_contracts = payload.get("_contracts_rest")
             spot = payload.get("_contracts_rest_spot")
+            read_generation = payload.get("_contracts_rest_computed_ts")
         if not base_contracts or not spot:
             return "no_rest_baseline"
         from app.options.order_flow.state import get_stream_greeks
@@ -12285,21 +12372,37 @@ def refresh_gamma_surface_from_stream(contract_symbol: str, ts_recv: float) -> s
             return "no_streamed_greeks"
         overlaid, n = overlay_streamed_contract_fields(
             base_contracts, {contract_symbol: greeks},
-            max_staleness_sec=GAMMA_SURFACE_STREAM_STALENESS_SEC)
+            newer_than_ts=read_generation, max_staleness_sec=GAMMA_SURFACE_STREAM_STALENESS_SEC)
         if n == 0:
             return "no_change"
         new_surface = project_gamma_surface(overlaid, spot)
+        new_per_strike = _per_strike_view_from_contracts(overlaid, spot)
+        # RC-UI-2 latency label (independent-review finding 2026-09-12): this timestamp is the
+        # instant the OVERLAID computation finished and was about to be offered for cache
+        # publication — it is NOT when the browser received or rendered anything, and it
+        # excludes the compare-and-swap / lock / transport / render legs entirely. Named and
+        # documented for exactly what it measures, not what it does not.
         applied_ts = time.time()
         if new_surface is not None:
             new_surface["stream_overlay_contracts"] = n
-            new_surface["stream_overlay_applied_ts_utc"] = applied_ts
+            new_surface["stream_overlay_computed_ts_utc"] = applied_ts
             if ts_recv:
-                new_surface["stream_overlay_latency_ms"] = round((applied_ts - ts_recv) * 1000.0, 1)
+                new_surface["stream_overlay_receipt_to_computed_ms"] = round((applied_ts - ts_recv) * 1000.0, 1)
         with _terrain_cache_lock:
             payload = _terrain_cache.get(tk)
             if payload is None:      # evicted/replaced between the read above and now
                 return "cache_evicted"
+            if payload.get("_contracts_rest_computed_ts") != read_generation:
+                # A REST cycle published a NEWER generation while this ran on the OLD baseline.
+                # That generation's own numbers are already correct and current; publishing
+                # this stale-baseline result over them would silently regress the cache to
+                # older data while claiming success. Discard rather than overwrite.
+                return "stale_baseline_superseded"
+            seq = _next_gamma_surface_seq(tk)
+            if new_surface is not None:
+                new_surface["surface_seq"] = seq
             payload["_gamma_surface"] = new_surface
+            payload["_per_strike"] = new_per_strike
         return "ok"
     except Exception as e:  # never let a best-effort freshening take the feed loop down
         log.debug("refresh_gamma_surface_from_stream failed for %s: %s", contract_symbol, e)
@@ -12446,17 +12549,38 @@ def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
         # gets the live surface each cycle. Live RTH end-to-end terrain-cycle impact is proven in F.
         try:
             if spot and _gamma_surface_wanted(tk):
-                _overlaid_contracts, _overlay_n = _gamma_surface_contracts_with_stream_overlay(tk, contracts)
+                _overlaid_contracts, _overlay_n = _gamma_surface_contracts_with_stream_overlay(
+                    tk, contracts, newer_than_ts=payload["computed_ts_utc"])
                 payload["_gamma_surface"] = project_gamma_surface(_overlaid_contracts, float(spot))
+                if _overlay_n:
+                    # RC-UI-2/finding#2 fix (independent review, 2026-09-12, REPRODUCED): the
+                    # heatmap and the Strike Detail / GEX-by-strike panel disagreed on the SAME
+                    # strike because only _gamma_surface was ever refreshed from the overlay
+                    # while _per_strike (above) came from `snap` -- this ticker's UN-overlaid
+                    # `compute_terrain` result. Only recomputed when the overlay actually
+                    # changed something (_overlay_n > 0): the ordinary, nothing-is-streaming
+                    # cycle pays zero extra cost and keeps `snap`'s own per_strike, which is
+                    # also what _accrue_chain_observation banks below — a persisted historical
+                    # observation must reflect what the VENDOR's REST chain actually reported,
+                    # never a streamed freshening, so `snap` itself is never built from
+                    # `_overlaid_contracts`.
+                    payload["_per_strike"] = _per_strike_view_from_contracts(_overlaid_contracts, float(spot))
+                with _terrain_cache_lock:
+                    seq = _next_gamma_surface_seq(tk)
                 if payload["_gamma_surface"] is not None:
                     payload["_gamma_surface"]["stream_overlay_contracts"] = _overlay_n
+                    payload["_gamma_surface"]["surface_seq"] = seq
                 # RC-UI-2: retained so a LATER streamed tick (arriving between this cycle and
                 # the next ~60s REST refresh) can freshen the cached surface immediately without
                 # a second vendor fetch — see refresh_gamma_surface_from_stream. Always the RAW
                 # REST base, never a previously-overlaid result, so repeated eager freshenings
                 # never compound away from what the vendor's chain actually reported.
+                # `_contracts_rest_computed_ts` doubles as the generation marker
+                # refresh_gamma_surface_from_stream compare-and-swaps against, so a REST cycle
+                # landing mid-eager-computation is never silently overwritten by a stale result.
                 payload["_contracts_rest"] = contracts
                 payload["_contracts_rest_spot"] = float(spot)
+                payload["_contracts_rest_computed_ts"] = payload["computed_ts_utc"]
             else:
                 payload["_gamma_surface"] = None
         except Exception as _gs_e:  # institutional-swallow-ok: projection is a cache side-effect

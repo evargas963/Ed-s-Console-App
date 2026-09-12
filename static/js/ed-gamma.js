@@ -236,7 +236,14 @@
     // ticker + expiry filter are part of WHICH cells are shown: a symbol change or an expiry-column
     // change must always rebuild the grid, never reuse a prior symbol's/expiry's table.
     var expFilter = (window.EdShell && window.EdShell.getExpiry) ? window.EdShell.getExpiry() : null;
-    return [s.ticker || s.symbol, s.source, s.chain_as_of_ts_utc, s.spot_as_of_ts_utc, s.chain_basis, s.et_date, expFilter].join('|');
+    // Independent-review finding (2026-09-12), REPRODUCED: a streamed update can change cell
+    // VALUES (server.py's eager refresh_gamma_surface_from_stream) without touching
+    // chain_as_of_ts_utc/spot_as_of_ts_utc at all — those are stamped only by the ~60s REST
+    // cycle. With only REST-only fields in this key, a genuinely new surface hashed identical
+    // to the old one and the table silently kept showing stale cells. surface_seq is a
+    // server-owned counter bumped on EVERY publication, REST or streamed (server.py's
+    // _next_gamma_surface_seq) — its inclusion is what makes a streamed-only change visible.
+    return [s.ticker || s.symbol, s.source, s.chain_as_of_ts_utc, s.spot_as_of_ts_utc, s.chain_basis, s.et_date, expFilter, s.surface_seq].join('|');
   }
   // lightweight STATUS: banner (warming/requested/stale/reference/degraded) + recede dimming + scope
   // age — always refreshed, even when the DATA revision is unchanged, so nothing is left frozen.

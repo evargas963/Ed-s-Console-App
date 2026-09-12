@@ -82,6 +82,23 @@ def test_is_actually_ed_console_false_when_body_is_missing_expected_keys(monkeyp
     assert lpg.is_actually_ed_console(8000) is False
 
 
+def test_is_actually_ed_console_false_when_the_identity_values_are_null(monkeypatch):
+    """Independent-review finding (2026-09-12), REPRODUCED directly against this function:
+    `"git_sha" in body` tests KEY MEMBERSHIP, not a real value -- a body of
+    {"git_sha": null, "release_id": null} has both keys present and passed the old check.
+    Any unrelated JSON endpoint naming these two keys with nothing behind them must not be
+    misidentified as Ed Console."""
+    body = b'{"git_sha": null, "release_id": null}'
+    monkeypatch.setattr(lpg.urllib.request, "urlopen", lambda url, timeout=None: _FakeResponse(200, body))
+    assert lpg.is_actually_ed_console(8000) is False
+
+
+def test_is_actually_ed_console_false_when_the_identity_values_are_empty_strings(monkeypatch):
+    body = b'{"git_sha": "", "release_id": ""}'
+    monkeypatch.setattr(lpg.urllib.request, "urlopen", lambda url, timeout=None: _FakeResponse(200, body))
+    assert lpg.is_actually_ed_console(8000) is False
+
+
 class _FakeProcess:
     """Stand-in for psutil.Process -- records .kill() calls without touching a
     real OS process."""
@@ -160,3 +177,46 @@ def test_a_failed_port_inspection_is_not_treated_as_a_free_port(monkeypatch):
     monkeypatch.setattr(lpg, "listening_pid", _raise)
     rc = lpg.ensure_port_free(8000, out=lambda *a: None)
     assert rc == 2, "an inspection failure must never be reported as a confirmed-free port"
+
+
+class _FakeListenConn:
+    """Stand-in for a psutil connection object -- just the attributes listening_pid reads."""
+
+    def __init__(self, status, port, pid):
+        self.status = status
+        self.laddr = _FakeLaddr(port)
+        self.pid = pid
+
+
+class _FakeLaddr:
+    def __init__(self, port):
+        self.port = port
+
+
+def test_listening_pid_raises_when_a_real_listener_has_no_attributable_pid(monkeypatch):
+    """Independent-review finding (2026-09-12), REPRODUCED directly against this function:
+    psutil can report a LISTENING socket whose own .pid is None (Windows without elevated
+    privilege, or a socket psutil cannot attribute) -- the old code returned that None
+    straight through, which read as 'nothing is listening'. A genuinely occupied port with
+    an unreadable owner is an inspection gap, not a free port."""
+    fake_conn = _FakeListenConn(lpg.psutil.CONN_LISTEN, 8000, None)
+    monkeypatch.setattr(lpg.psutil, "net_connections", lambda kind="inet": [fake_conn])
+    try:
+        lpg.listening_pid(8000)
+        assert False, "must raise PortInspectionError, never return None for an unattributable listener"
+    except lpg.PortInspectionError:
+        pass
+
+
+def test_ensure_port_free_fails_closed_when_the_listener_has_no_attributable_pid(monkeypatch):
+    fake_conn = _FakeListenConn(lpg.psutil.CONN_LISTEN, 8000, None)
+    monkeypatch.setattr(lpg.psutil, "net_connections", lambda kind="inet": [fake_conn])
+    rc = lpg.ensure_port_free(8000, out=lambda *a: None)
+    assert rc == 2, "an unattributable listener must never be reported as a confirmed-free port"
+
+
+def test_listening_pid_returns_the_real_pid_when_attributable(monkeypatch):
+    """Not every listener lacks a pid -- the ordinary case must still work."""
+    fake_conn = _FakeListenConn(lpg.psutil.CONN_LISTEN, 8000, 4242)
+    monkeypatch.setattr(lpg.psutil, "net_connections", lambda kind="inet": [fake_conn])
+    assert lpg.listening_pid(8000) == 4242

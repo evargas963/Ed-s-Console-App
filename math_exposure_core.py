@@ -357,14 +357,19 @@ def compute_exposures_by_strike(
 
 #: streamed-state key -> (chain contract field it overlays, that field's own freshness key).
 #: Native Schwab LEVELONE_OPTIONS fields (schwab-py's LevelOneOptionFields: DELTA=28, GAMMA=29,
-#: OPEN_INTEREST=9) map onto the SAME field names compute_exposures_by_strike already reads
-#: from a REST chain contract (`gamma`, `delta`, `openInterest`) -- this overlay changes no
-#: formula and adds no second computation path; it only lets those three inputs be fresher
-#: than the chain snapshot they arrived in, for whichever contract is actively streaming.
+#: OPEN_INTEREST=9, TOTAL_VOLUME=8) map onto the SAME field names compute_exposures_by_strike
+#: already reads from a REST chain contract (`gamma`, `delta`, `openInterest`, `totalVolume`)
+#: -- this overlay changes no formula and adds no second computation path; it only lets these
+#: inputs be fresher than the chain snapshot they arrived in, for whichever contract is
+#: actively streaming. `total_volume` closes the "near-instant options volume" requirement:
+#: without it, a volume-only tick (no Greeks/OI change) never reached ANY display, since
+#: _per_strike's volume column and compute_exposures_by_strike's own call/put volume both read
+#: a contract's `totalVolume` directly, not the ticker-level ``_stream_volume`` cache.
 _STREAMED_GREEK_FIELDS: tuple[tuple[str, str, str], ...] = (
     ("gamma", "gamma", "gamma_ts_recv"),
     ("delta", "delta", "delta_ts_recv"),
     ("open_interest", "openInterest", "open_interest_ts_recv"),
+    ("total_volume", "totalVolume", "total_volume_ts_recv"),
 )
 
 
@@ -372,6 +377,7 @@ def overlay_streamed_contract_fields(
     contracts: List[dict],
     streamed_by_symbol: Dict[str, dict],
     *,
+    newer_than_ts: float | None = None,
     max_staleness_sec: float | None = None,
     now: float | None = None,
 ) -> tuple[List[dict], int]:
@@ -386,9 +392,19 @@ def overlay_streamed_contract_fields(
     fresher, never fabricate" discipline as live_market_plane's quote overlay, applied to the
     exposure faucet's own inputs instead of a second exposure computation.
 
-    `max_staleness_sec`, when given, additionally requires the field's own `_ts_recv` be within
-    that many seconds of `now` (defaults to the real clock) -- a streamed value from a stalled or
-    long-disconnected feed must not silently outrank a same-cycle REST chain read forever.
+    `newer_than_ts` is the PRIMARY precedence rule: a field applies only when its own
+    `_ts_recv` is strictly AFTER `newer_than_ts` (the REST baseline's own as-of timestamp,
+    e.g. `computed_ts_utc`) -- independent-review finding (2026-09-12): "being received
+    within ten seconds does not establish that a stream value is newer than the REST input
+    it replaces." A streamed value 8 seconds old is not "fresher" than a REST snapshot
+    fetched 2 seconds ago just because 8 < some absolute bound; it is fresher only when it
+    is more recent than the SPECIFIC baseline it would override.
+
+    `max_staleness_sec`, when given, is a SEPARATE, secondary absolute-age guard (relative
+    to `now`, defaulting to the real clock) -- a streamed value can be newer than a
+    long-stale REST baseline while still being, in absolute terms, too old for any consumer
+    to trust (e.g. the REST cycle itself has been down for an hour). Composable with
+    `newer_than_ts`; either, both, or neither may be supplied.
 
     Returns (new_contracts, overlaid_count) -- the count is for tests and latency/coverage
     diagnostics, never load-bearing for the projection itself.
@@ -397,7 +413,7 @@ def overlay_streamed_contract_fields(
         return [], 0
     if not streamed_by_symbol:
         return list(contracts), 0
-    if now is None:
+    if max_staleness_sec is not None and now is None:
         import time as _time
         now = _time.time()
     out: List[dict] = []
@@ -414,6 +430,8 @@ def overlay_streamed_contract_fields(
             if val is None:
                 continue
             ts = streamed.get(ts_key)
+            if newer_than_ts is not None and (ts is None or ts <= newer_than_ts):
+                continue
             if max_staleness_sec is not None and (ts is None or (now - ts) > max_staleness_sec):
                 continue
             if new_ct is None:

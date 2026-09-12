@@ -125,6 +125,45 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(page.locator('.heat-banner.degraded')).toContainText('NARROWED');
   });
 
+  test('a streamed-only surface update still triggers a re-render even when every REST field is unchanged (RC-UI-2 finding #1)', async ({ page }) => {
+    // Independent-review finding (2026-09-12), REPRODUCED: server.py's eager
+    // refresh_gamma_surface_from_stream changes _gamma_surface's CELL VALUES without ever
+    // touching chain_as_of_ts_utc/spot_as_of_ts_utc/chain_basis/et_date -- those are stamped
+    // only by the ~60s REST cycle. surfaceRevision()'s old key was built ENTIRELY from those
+    // REST-only fields, so a genuinely new surface hashed identical to the old one and
+    // renderSurface()'s "cells unchanged, skip the rebuild" branch left the DOM showing the
+    // stale value forever. Fixed by including the server-owned surface_seq counter (bumped on
+    // every publication, REST or streamed) in the revision key. This test exercises the REAL
+    // event listener (`ed:refresh`) and the REAL renderer against two live fetches through an
+    // actual browser DOM -- a stubbed "no existing heatmap" harness could never have
+    // distinguished the revision-skip branch from a normal rebuild.
+    let call = 0;
+    await page.route('**/api/options/gamma-surface**', (route) => {
+      call += 1;
+      const value = call === 1 ? 1000 : 2000;
+      route.fulfill({
+        status: 200, contentType: 'application/json',
+        body: JSON.stringify(Object.assign({}, SURFACE, {
+          strikes: [583], expirations: [{ expiry: '2026-09-11', dte: 2 }],
+          cells: [{ strike: 583, gex: [value] }],
+          surface_seq: call,
+          // chain_as_of_ts_utc / spot_as_of_ts_utc / chain_basis / et_date are DELIBERATELY
+          // identical to SURFACE's own (unmodified) values on both fetches -- exactly what an
+          // eager streaming refresh does: change a cell, touch no REST-cycle field.
+        })),
+      });
+    });
+    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    const cell = page.locator('.hcell[data-strike="583"][data-expiry="2026-09-11"]');
+    await expect(cell).toHaveText('$1.0K');
+
+    // The real slow-refresh trigger (ed-core.js's liveTick, every 4th 3s tick) dispatches this
+    // exact event; firing it directly here exercises the REAL ed-gamma.js listener without
+    // waiting out the real ~12s cadence.
+    await page.evaluate(() => document.dispatchEvent(new CustomEvent('ed:refresh', { detail: { slow: true } })));
+    await expect(cell).toHaveText('$2.0K');
+  });
+
   test('heatmap renders canonical cells verbatim (value == formatted payload; sign -> colour)', async ({ page }) => {
     await page.goto('/console', { waitUntil: 'domcontentloaded' });
     const cell583 = page.locator('.hcell[data-strike="583"][data-expiry="2026-09-11"]');

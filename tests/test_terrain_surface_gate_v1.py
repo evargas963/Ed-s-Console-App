@@ -52,6 +52,7 @@ def _cached_surface(tk):
 
 def test_producer_gates_projection_on_demand(monkeypatch):
     tk = server.ticker_storage_key("SPY")
+    server._gamma_surface_seq.pop(tk, None)   # surface_seq is a running per-ticker counter
     calls = {"n": 0, "args": None}
 
     def proj(contracts, spot):
@@ -73,10 +74,12 @@ def test_producer_gates_projection_on_demand(monkeypatch):
     assert calls["n"] == 1
     assert calls["args"] == (len(_REAL_CHAIN), 100.0)
     # RC-UI-2: the producer now stamps how many contracts the streaming overlay touched this
-    # cycle (0 here -- no option contract is streaming in this test) alongside the faucet's
-    # own cells/strikes/expirations, which are otherwise unchanged.
+    # cycle (0 here -- no option contract is streaming in this test) and a per-ticker
+    # publication counter (surface_seq), alongside the faucet's own cells/strikes/expirations,
+    # which are otherwise unchanged.
     assert _cached_surface(tk) == {
         "expirations": [], "strikes": [], "cells": [], "stream_overlay_contracts": 0,
+        "surface_seq": 1,
     }
 
     server._gamma_surface_demand.pop(tk, None)
@@ -104,6 +107,7 @@ def test_producer_overlays_the_active_streaming_contract_before_projecting(monke
     (refresh_gamma_surface_from_stream) without a second vendor fetch."""
     contract_symbol = _REAL_CHAIN[0]["symbol"]                # "CDE   260904C00005000"
     tk = server.ticker_storage_key("CDE")                     # must match the streaming root
+    server._gamma_surface_seq.pop(tk, None)
     streamed = {"gamma": 0.777, "gamma_ts_recv": None}  # ts_recv patched to "now" below
 
     def proj(contracts, spot):
@@ -112,7 +116,12 @@ def test_producer_overlays_the_active_streaming_contract_before_projecting(monke
 
     _stub_terrain(monkeypatch, proj)
     import time as _time
-    streamed["gamma_ts_recv"] = _time.time()
+    # Newer-than-REST-baseline precedence (RC-UI-2): the producer stamps computed_ts_utc
+    # DURING _terrain_refresh_one below, after this line runs -- a plain "now" here would
+    # make the streamed value OLDER than the REST baseline it is meant to override, and the
+    # precedence rule would correctly reject it. A far-future stamp keeps this test about the
+    # overlay WIRING, not about winning a race against the producer's own clock read.
+    streamed["gamma_ts_recv"] = _time.time() + 3600.0
     monkeypatch.setattr(
         "app.options.order_flow.streaming.get_active_option_contract",
         lambda: contract_symbol)
@@ -126,9 +135,24 @@ def test_producer_overlays_the_active_streaming_contract_before_projecting(monke
     surf = _cached_surface(tk)
     assert surf["_overlaid_gamma"] == 0.777, "project_gamma_surface must see the overlaid gamma"
     assert surf["stream_overlay_contracts"] == 1
+    assert surf["surface_seq"] == 1
 
     cached = server.terrain_cache_get(tk)
     assert cached["_contracts_rest"] == _REAL_CHAIN, "the RAW REST chain is retained, unoverlaid"
     assert cached["_contracts_rest_spot"] == 100.0
+    assert cached["_contracts_rest_computed_ts"] == cached["computed_ts_utc"], (
+        "the compare-and-swap generation marker must match this cycle's own as-of stamp"
+    )
+
+    # finding #2 (independent review, 2026-09-12), REPRODUCED then fixed: the heatmap
+    # (_gamma_surface, asserted above via _overlaid_gamma) and the Strike Detail /
+    # GEX-by-strike panel (_per_strike) must NOT disagree on the same strike -- _per_strike
+    # must ALSO be built from the overlaid contracts, not `snap`'s own un-overlaid ones.
+    overlaid_contracts = [dict(c) for c in _REAL_CHAIN]
+    overlaid_contracts[0]["gamma"] = 0.777
+    expected_per_strike = server._per_strike_view_from_contracts(overlaid_contracts, 100.0)
+    assert cached["_per_strike"] == expected_per_strike, (
+        "_per_strike must be rebuilt from the SAME overlaid contracts as _gamma_surface"
+    )
 
     server._gamma_surface_demand.pop(tk, None)

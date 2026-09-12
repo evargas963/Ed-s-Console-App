@@ -89,6 +89,26 @@ def test_hook_does_not_fire_on_a_bid_ask_only_tick(tmp_path, monkeypatch):
     assert calls == []
 
 
+def test_hook_fires_on_a_volume_only_tick_with_no_greeks_present(tmp_path, monkeypatch):
+    """Independent-review finding (2026-09-12): 'the current hook is triggered by
+    GAMMA/DELTA/OPEN_INTEREST; that does not complete volume-only update delivery.' A tick
+    that carries ONLY TOTAL_VOLUME (no Greeks/OI at all) must still fire the hook, since
+    _per_strike's volume column and compute_exposures_by_strike's own volume aggregation both
+    read a contract's totalVolume directly."""
+    db = _reset(tmp_path, monkeypatch)
+    volume_only = dict(_BID_ASK_ONLY_CONTENT, TOTAL_VOLUME=54321)
+    _write_option_l1_row(db, _SPY_CONTRACT, volume_only, ts_recv=1700000000.0)
+    calls = []
+    ofs.set_streamed_greeks_hook(lambda sym, ts: calls.append((sym, ts)))
+    try:
+        con = ofs._open_capture_db_readonly(db)
+        ofs._replay_option_contract_rows(con, _SPY_CONTRACT)
+        con.close()
+    finally:
+        ofs.set_streamed_greeks_hook(None)
+    assert calls == [(_SPY_CONTRACT, 1700000000.0)]
+
+
 def test_no_hook_registered_does_not_break_the_replay(tmp_path, monkeypatch):
     """The default (unregistered) state -- must not raise or skip the ordinary push_level_one."""
     db = _reset(tmp_path, monkeypatch)

@@ -88,6 +88,57 @@ def test_only_the_matching_symbol_is_copied_others_stay_the_original_object():
     assert out[1] is contracts[1], "an unmatched contract must never be copied either"
 
 
+def test_a_streamed_value_older_than_the_rest_baseline_is_not_applied():
+    """Independent-review finding (2026-09-12): 'being received within ten seconds does not
+    establish that a stream value is newer than the REST input it replaces.' Here the
+    streamed value (ts_recv=100) is only 2s old relative to `now` (102) -- well inside any
+    reasonable absolute bound -- but the REST baseline it would override was fetched AFTER
+    it (newer_than_ts=101). The absolute-age framing alone would wrongly apply it."""
+    contracts = [_contract("A", gamma=0.01)]
+    streamed = {"A": {"gamma": 0.99, "gamma_ts_recv": 100.0}}
+    out, n = overlay_streamed_contract_fields(
+        contracts, streamed, newer_than_ts=101.0)
+    assert n == 0, "a streamed value from BEFORE the REST baseline must not override it"
+    assert out[0]["gamma"] == 0.01
+
+
+def test_a_streamed_value_newer_than_the_rest_baseline_is_applied():
+    contracts = [_contract("A", gamma=0.01)]
+    streamed = {"A": {"gamma": 0.99, "gamma_ts_recv": 102.0}}
+    out, n = overlay_streamed_contract_fields(
+        contracts, streamed, newer_than_ts=101.0)
+    assert n == 1
+    assert out[0]["gamma"] == 0.99
+
+
+def test_a_streamed_value_exactly_at_the_rest_baseline_is_not_applied():
+    """Equal-timestamp is not PROVEN newer -- ties go to the REST baseline, never the stream."""
+    contracts = [_contract("A", gamma=0.01)]
+    streamed = {"A": {"gamma": 0.99, "gamma_ts_recv": 101.0}}
+    out, n = overlay_streamed_contract_fields(
+        contracts, streamed, newer_than_ts=101.0)
+    assert n == 0
+
+
+def test_a_field_with_no_ts_recv_is_never_applied_under_a_newer_than_bound():
+    contracts = [_contract("A", gamma=0.01)]
+    streamed = {"A": {"gamma": 0.99}}  # no gamma_ts_recv at all
+    out, n = overlay_streamed_contract_fields(contracts, streamed, newer_than_ts=101.0)
+    assert n == 0
+
+
+def test_newer_than_ts_and_max_staleness_sec_are_both_applied_when_both_given():
+    """A value can be newer than the REST baseline yet still absolutely too old to trust --
+    both guards are independent and composable."""
+    contracts = [_contract("A", gamma=0.01)]
+    streamed = {"A": {"gamma": 0.99, "gamma_ts_recv": 50.0}}
+    out, n = overlay_streamed_contract_fields(
+        contracts, streamed, newer_than_ts=10.0,       # newer than REST baseline: passes
+        max_staleness_sec=5.0, now=200.0)               # but 150s old in absolute terms: fails
+    assert n == 0
+    assert out[0]["gamma"] == 0.01
+
+
 def test_a_stale_streamed_value_beyond_max_staleness_is_not_applied():
     contracts = [_contract("A", gamma=0.01)]
     streamed = {"A": {"gamma": 0.99, "gamma_ts_recv": 100.0}}
