@@ -118,7 +118,10 @@ if errorlevel 1 (
 )
 
 REM Also check the separate developer-preview port (8322) so a stray preview
-REM instance and this launch do not both end up running unnoticed.
+REM instance and this launch do not both end up running unnoticed. Best-effort
+REM and non-blocking on purpose: 8322 is not required for THIS launch to
+REM succeed, so its result (printed above by the script itself) is informational
+REM only -- deliberately not gated on errorlevel here.
 "%VENV_PY%" "%~dp0launcher_port_guard.py" 8322
 
 set "PF86=%ProgramFiles(x86)%"
@@ -128,7 +131,15 @@ if not exist "%EDGE_EXE%" set "EDGE_EXE=%ProgramFiles%\Microsoft\Edge\Applicatio
 REM Open Edge to the NEW UI (/console) once the server actually answers,
 REM instead of a blind fixed-delay guess. See wait_for_ready_then_open.py
 REM (app root, not tools\ -- same RC-512 reasoning as above).
-start "" "%VENV_PY%" "%~dp0wait_for_ready_then_open.py" http://localhost:8000/console "%EDGE_EXE%"
+REM
+REM This runs DETACHED (start) so it does not block the uvicorn launch below,
+REM which means this .bat process itself never sees its exit code (0 ready /
+REM 1 unhealthy / 2 timeout -- see the script's own docstring). Independent-
+REM review finding (2026-09-12): a detached failure that prints to a window
+REM nobody is looking at is not a visible failure. Giving it a titled window
+REM (instead of "") keeps a genuine unhealthy/timeout warning on screen for the
+REM operator to see, since the exit code itself cannot reach this script.
+start "Ed Console - Browser Launch" "%VENV_PY%" "%~dp0wait_for_ready_then_open.py" http://localhost:8000/console "%EDGE_EXE%"
 
 REM --timeout-graceful-shutdown: Ctrl+C must terminate even while browser tabs
 REM hold SSE streams open (uvicorn's default waits forever for them to close).

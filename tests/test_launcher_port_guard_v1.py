@@ -43,63 +43,109 @@ def test_rejects_a_coincidental_substring_match():
     assert lpg.is_ed_console_command_line(cmd) is False
 
 
+class _FakeResponse:
+    def __init__(self, status, body_bytes):
+        self.status = status
+        self._body = body_bytes
+
+    def read(self):
+        return self._body
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+def test_is_actually_ed_console_true_when_build_endpoint_matches(monkeypatch):
+    body = b'{"git_sha": "abc123", "release_id": "r1"}'
+    monkeypatch.setattr(lpg.urllib.request, "urlopen", lambda url, timeout=None: _FakeResponse(200, body))
+    assert lpg.is_actually_ed_console(8000) is True
+
+
+def test_is_actually_ed_console_false_when_shape_matches_but_identity_endpoint_disagrees(monkeypatch):
+    """The exact adversarial case named in this module's docstring: an unrelated
+    process with a matching command-line SHAPE must not answer /api/build with
+    the expected identity -- here it doesn't answer at all (connection refused),
+    which must read as NOT confirmed, never as confirmed by default."""
+    def _raise(url, timeout=None):
+        raise ConnectionRefusedError("nothing listening with this identity")
+
+    monkeypatch.setattr(lpg.urllib.request, "urlopen", _raise)
+    assert lpg.is_actually_ed_console(8000) is False
+
+
+def test_is_actually_ed_console_false_when_body_is_missing_expected_keys(monkeypatch):
+    body = b'{"unrelated": "app"}'
+    monkeypatch.setattr(lpg.urllib.request, "urlopen", lambda url, timeout=None: _FakeResponse(200, body))
+    assert lpg.is_actually_ed_console(8000) is False
+
+
+class _FakeProcess:
+    """Stand-in for psutil.Process -- records .kill() calls without touching a
+    real OS process."""
+
+    def __init__(self, pid, *, calls):
+        self.pid = pid
+        self._calls = calls
+
+    def kill(self):
+        self._calls["kill"] += 1
+
+
 def test_ensure_port_free_leaves_an_unrelated_process_running(monkeypatch):
-    """Negative control for the original defect: taskkill must NOT be invoked when
-    the occupying process is not an Ed Console server."""
-    calls = {"taskkill": 0}
-    monkeypatch.setattr(lpg, "listening_pid", lambda port: "4242")
+    """Negative control for the original defect: nothing must be killed when the
+    occupying process's command line does not even match the Ed Console shape."""
+    calls = {"kill": 0}
+    monkeypatch.setattr(lpg, "listening_pid", lambda port: 4242)
     monkeypatch.setattr(lpg, "command_line_for_pid", lambda pid: "C:\\other\\thing.exe")
-
-    def _fake_run(args, **kwargs):
-        if args and args[0] == "taskkill":
-            calls["taskkill"] += 1
-        class _R:
-            pass
-        return _R()
-
-    monkeypatch.setattr(lpg.subprocess, "run", _fake_run)
+    monkeypatch.setattr(lpg.psutil, "Process", lambda pid: _FakeProcess(pid, calls=calls))
     rc = lpg.ensure_port_free(8000, out=lambda *a: None)
     assert rc == 1
-    assert calls["taskkill"] == 0, "an unrelated process on the port must never be killed"
+    assert calls["kill"] == 0, "an unrelated process on the port must never be killed"
 
 
-def test_ensure_port_free_stops_a_real_ed_console_instance(monkeypatch):
-    calls = {"taskkill": 0}
-    monkeypatch.setattr(lpg, "listening_pid", lambda port: "5151")
+def test_ensure_port_free_leaves_a_shape_matching_but_unconfirmed_process_running(monkeypatch):
+    """Independent-review finding (2026-09-11/12): invocation SHAPE alone is not
+    proof of ownership -- an unrelated app using the same common uvicorn/
+    server:app naming would pass the regex too. Must not be killed unless
+    /api/build identity is ALSO confirmed."""
+    calls = {"kill": 0}
+    monkeypatch.setattr(lpg, "listening_pid", lambda port: 4343)
     monkeypatch.setattr(
         lpg, "command_line_for_pid",
         lambda pid: r'C:\...\python.exe -m uvicorn server:app --host 0.0.0.0 --port 8000',
     )
+    monkeypatch.setattr(lpg, "is_actually_ed_console", lambda port, **kw: False)
+    monkeypatch.setattr(lpg.psutil, "Process", lambda pid: _FakeProcess(pid, calls=calls))
+    rc = lpg.ensure_port_free(8000, out=lambda *a: None)
+    assert rc == 1
+    assert calls["kill"] == 0, "shape match without confirmed /api/build identity must not be killed"
 
-    def _fake_run(args, **kwargs):
-        if args and args[0] == "taskkill":
-            calls["taskkill"] += 1
-        class _R:
-            pass
-        return _R()
 
-    monkeypatch.setattr(lpg.subprocess, "run", _fake_run)
+def test_ensure_port_free_stops_a_real_ed_console_instance(monkeypatch):
+    calls = {"kill": 0}
+    monkeypatch.setattr(lpg, "listening_pid", lambda port: 5151)
+    monkeypatch.setattr(
+        lpg, "command_line_for_pid",
+        lambda pid: r'C:\...\python.exe -m uvicorn server:app --host 0.0.0.0 --port 8000',
+    )
+    monkeypatch.setattr(lpg, "is_actually_ed_console", lambda port, **kw: True)
+    monkeypatch.setattr(lpg.psutil, "Process", lambda pid: _FakeProcess(pid, calls=calls))
     monkeypatch.setattr(lpg, "port_is_free", lambda port: True)  # freed immediately after stop
     rc = lpg.ensure_port_free(8000, out=lambda *a: None)
     assert rc == 0
-    assert calls["taskkill"] == 1
+    assert calls["kill"] == 1
 
 
 def test_ensure_port_free_is_a_noop_when_the_port_is_already_free(monkeypatch):
-    calls = {"taskkill": 0}
+    calls = {"kill": 0}
     monkeypatch.setattr(lpg, "listening_pid", lambda port: None)
-
-    def _fake_run(args, **kwargs):
-        if args and args[0] == "taskkill":
-            calls["taskkill"] += 1
-        class _R:
-            pass
-        return _R()
-
-    monkeypatch.setattr(lpg.subprocess, "run", _fake_run)
+    monkeypatch.setattr(lpg.psutil, "Process", lambda pid: _FakeProcess(pid, calls=calls))
     rc = lpg.ensure_port_free(8000, out=lambda *a: None)
     assert rc == 0
-    assert calls["taskkill"] == 0
+    assert calls["kill"] == 0
 
 
 def test_a_failed_port_inspection_is_not_treated_as_a_free_port(monkeypatch):

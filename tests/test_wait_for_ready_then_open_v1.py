@@ -17,6 +17,11 @@ if str(ROOT) not in sys.path:
 import wait_for_ready_then_open as wr
 
 
+class _FakeResponse:
+    def __init__(self, status):
+        self.status = status
+
+
 def test_returns_ready_as_soon_as_the_server_answers_200(monkeypatch):
     calls = {"n": 0}
 
@@ -24,13 +29,23 @@ def test_returns_ready_as_soon_as_the_server_answers_200(monkeypatch):
         calls["n"] += 1
         if calls["n"] < 3:
             raise ConnectionRefusedError("not up yet")
-        return object()
+        return _FakeResponse(200)
 
     monkeypatch.setattr(wr.urllib.request, "urlopen", _fake_urlopen)
     monkeypatch.setattr(wr.time, "sleep", lambda s: None)  # don't actually wait in the test
     result = wr.wait_until_ready("http://localhost:8000/console", timeout_sec=5)
     assert result == "ready"
     assert calls["n"] == 3
+
+
+def test_a_204_response_is_reported_as_unhealthy_not_ready(monkeypatch):
+    """Independent-review finding (2026-09-12): urllib.request.urlopen only
+    raises HTTPError for 4xx/5xx -- a 204 (No Content) returns normally without
+    raising, so a bare `except HTTPError` treated it as 'ready' despite this
+    function's own stated 200-only contract. Exact negative control for that bug."""
+    monkeypatch.setattr(wr.urllib.request, "urlopen", lambda url, timeout=None: _FakeResponse(204))
+    result = wr.wait_until_ready("http://localhost:8000/console", timeout_sec=5)
+    assert result == "unhealthy"
 
 
 def test_an_http_error_status_is_reported_as_unhealthy_not_ready(monkeypatch):

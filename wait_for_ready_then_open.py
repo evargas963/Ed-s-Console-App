@@ -37,17 +37,24 @@ POLL_INTERVAL_SEC = 0.25
 
 def wait_until_ready(url: str, timeout_sec: float = DEFAULT_TIMEOUT_SEC) -> str:
     """Poll `url` until it answers or `timeout_sec` elapses.
-    Returns "ready" (200), "unhealthy" (answered, non-200), or "timeout" (never
-    answered)."""
+    Returns "ready" (status == 200, exactly), "unhealthy" (answered with any
+    other status, including other 2xx like 204), or "timeout" (never answered).
+
+    Independent-review finding (2026-09-12): urllib.request.urlopen only raises
+    HTTPError for 4xx/5xx -- ANY 2xx (200-299) returns normally without raising,
+    so a bare `except HTTPError` treated every 2xx as "ready" including a 204
+    (No Content), despite this function's own stated 200-only contract. Fixed by
+    checking the actual status code on the non-raising path too.
+    """
     deadline = time.monotonic() + timeout_sec
     while time.monotonic() < deadline:
         try:
-            urllib.request.urlopen(url, timeout=2)
-            return "ready"
+            resp = urllib.request.urlopen(url, timeout=2)
+            return "ready" if resp.status == 200 else "unhealthy"
         except urllib.error.HTTPError:
             # The server IS up and routing requests -- just not a 200 for this
-            # exact path. Worth reporting distinctly, not silently equated with
-            # "ready".
+            # exact path (4xx/5xx here). Worth reporting distinctly, not
+            # silently equated with "ready".
             return "unhealthy"
         except Exception:
             time.sleep(POLL_INTERVAL_SEC)
