@@ -417,6 +417,12 @@
   .gbs-bar.neg{background:var(--ed-neg);transform:translateX(-100%)}
   .gbs-v{width:70px;text-align:right;font-weight:500}
   .gbs-v.pos{color:var(--ed-pos-ink)} .gbs-v.neg{color:var(--ed-neg-ink)}
+  /* Independent-review finding (2026-09-12): the per-strike volume field (already computed
+     and, for the actively-streamed contract, kept fresh by server.py's overlay) reached this
+     row's own data but was never rendered -- "the GEX bar renderer does not display the newly
+     updated per-strike volume field." Compact, muted -- a secondary number beside the primary
+     signed GEX$ value, not competing with it. */
+  .gbs-vol{width:52px;text-align:right;color:var(--ed-ink-2);font-size:10px;font-variant-numeric:tabular-nums}
   .gbs-allexp{font-family:var(--ed-sans);font-size:10px;color:var(--ed-stale);padding:0 0 5px}
   /* pinned-axis layout: note fixed on top, bars scroll, magnitude axis pinned at the foot */
   #gbsBody{display:flex;flex-direction:column;overflow:hidden;padding:7px 10px}

@@ -164,6 +164,109 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(cell).toHaveText('$2.0K');
   });
 
+  test('a genuine SSE push delivers the update in well under the 12s slow-poll cadence, with no manual event dispatch (RC-UI-2 finding #1, delivery timing)', async ({ page }) => {
+    // Independent-review finding (2026-09-12): "the browser still polls every 12 seconds ...
+    // manually triggers the refresh event, bypassing that wait. It proves rendering after
+    // delivery, not timely delivery." The test above proves the RENDERER; this test proves
+    // DELIVERY -- no `document.dispatchEvent` anywhere here. /api/analytics/light/stream is
+    // intercepted with a REAL SSE-framed response (the browser's native EventSource parses it,
+    // not a simulated DOM event), carrying one genuine `gamma_surface_seq` event -- exactly
+    // what server.py's _next_gamma_surface_seq now pushes through this same connection on
+    // every publication (see tests/test_gamma_surface_sse_push_v1.py for that push's own
+    // construction). A tight timeout well under the 12s poll cadence is the actual claim under
+    // test: if this only resolved via the slow poll, it would not resolve this fast.
+    let surfaceCalls = 0;
+    await page.route('**/api/options/gamma-surface**', (route) => {
+      surfaceCalls += 1;
+      const value = surfaceCalls === 1 ? 1000 : 2000;
+      route.fulfill({
+        status: 200, contentType: 'application/json',
+        body: JSON.stringify(Object.assign({}, SURFACE, {
+          strikes: [583], expirations: [{ expiry: '2026-09-11', dte: 2 }],
+          cells: [{ strike: 583, gex: [value] }],
+          surface_seq: surfaceCalls,
+        })),
+      });
+    });
+    await page.route('**/api/analytics/light/stream**', async (route) => {
+      // Deferred (not instant) fulfillment: without a real gap, the whole SSE body (including
+      // the push event) can arrive before the FIRST gamma-surface render is even observable,
+      // making the intermediate "$1.0K" state a flaky race rather than a real assertion. A
+      // real streamed contract's Greeks/OI genuinely arrive some time after initial page load
+      // too -- this models that, not just working around test timing.
+      await new Promise((r) => setTimeout(r, 500));
+      route.fulfill({
+        status: 200, contentType: 'text/event-stream',
+        body: ': ok\n\nevent: gamma_surface_seq\ndata: {"scope":{"ticker":"SPY"},"surface_seq":2}\n\n',
+      });
+    });
+    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    const cell = page.locator('.hcell[data-strike="583"][data-expiry="2026-09-11"]');
+    await expect(cell).toHaveText('$1.0K');
+    // No document.dispatchEvent call anywhere above or below -- only the intercepted SSE
+    // connection's own (real, browser-parsed) event, arriving ~500ms after initial render,
+    // can cause this -- and it must land well before the ~12s slow-poll cadence would have.
+    await expect(cell).toHaveText('$2.0K', { timeout: 3000 });
+    expect(surfaceCalls).toBeGreaterThanOrEqual(2);
+  });
+
+  test('GEX-by-strike displays each row\'s own session volume, not just signed GEX$ (RC-UI-2 finding #5a)', async ({ page }) => {
+    // Independent-review finding (2026-09-12), REPRODUCED: "GEX-by-strike does not display its
+    // row's volume field" -- terrain_engine._per_strike_rows' own shape is
+    // [strike, net_gex_1pct$, session_volume]; the THIRD element was read into _lastGbs but
+    // never rendered anywhere. STRIKES.today.all above already carries real volume numbers
+    // (1200/5400/900) -- this proves they actually reach the DOM now.
+    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    const row583 = page.locator('.gbs-row[data-strike="583"]');
+    await expect(row583.locator('.gbs-vol')).toHaveText('5.4K');   // fmtVol(5400)
+    await expect(row583).toHaveAttribute('data-volume', '5400');
+    const row580 = page.locator('.gbs-row[data-strike="580"]');
+    await expect(row580.locator('.gbs-vol')).toHaveText('900');    // fmtVol(900), no K suffix under 1000
+  });
+
+  test('Strike Detail reloads on the slow refresh tick, not just on a new strike selection (RC-UI-2 finding #5b)', async ({ page }) => {
+    // Independent-review finding (2026-09-12), REPRODUCED: "Strike Detail reads volume from
+    // /api/chain. Its refresh handler does not reload that detail." loadAll() (wired to
+    // ed:refresh) never included Strike Detail, so a selected strike's OI/Vol/Gamma/Delta/IV
+    // froze at whatever they were when first clicked -- even as the underlying /api/chain (and
+    // now streamed) data kept moving.
+    // A flag the test itself flips between phases -- not a raw call count, since the FIRST
+    // strike selection can legitimately trigger more than one /api/chain fetch (e.g. a
+    // selection also touching the expiry filter) before settling. What matters for THIS
+    // finding is only: does /api/chain get RE-FETCHED (any settled value updates) once
+    // ed:refresh fires, without a new strike being clicked.
+    let updated = false;
+    let chainCalls = 0;
+    await page.route('**/api/chain**', (route) => {
+      chainCalls += 1;
+      const vol = updated ? 999999 : 540;
+      route.fulfill({
+        status: 200, contentType: 'application/json',
+        body: JSON.stringify({
+          ticker: '$SPX', spot: 583.41, expiry: '2026-09-11', status: 'ok',
+          contracts: [
+            { putCall: 'CALL', strikePrice: 583, openInterest: 1200, totalVolume: vol, gamma: 0.021, delta: 0.52, volatility: 12.3, expirationDate: '2026-09-11' },
+            { putCall: 'PUT', strikePrice: 583, openInterest: 980, totalVolume: 410, gamma: 0.019, delta: -0.48, volatility: 12.6, expirationDate: '2026-09-11' },
+          ],
+        }),
+      });
+    });
+    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.locator('.hcell[data-strike="583"][data-expiry="2026-09-11"]').click();
+    await expect(page.locator('#sdCtx')).toContainText('583');
+    const callVolCell = page.locator('.sd tbody tr').first().locator('td').nth(2);   // Type, OI, Vol
+    await expect(callVolCell).toHaveText('540');
+    const callsBeforeRefresh = chainCalls;
+    updated = true;   // the NEXT /api/chain fetch (whenever it happens) must answer with this
+
+    // The real slow-refresh trigger (liveTick's ed:refresh at tick % 4 === 0, or the new SSE
+    // push) -- fired directly here to exercise the REAL ed-gamma-panels.js listener without
+    // waiting out the real cadence, exactly as the heatmap's own revision test above does.
+    await page.evaluate(() => document.dispatchEvent(new CustomEvent('ed:refresh', { detail: { slow: true } })));
+    await expect(callVolCell).toHaveText('999999');
+    expect(chainCalls).toBeGreaterThan(callsBeforeRefresh);
+  });
+
   test('heatmap renders canonical cells verbatim (value == formatted payload; sign -> colour)', async ({ page }) => {
     await page.goto('/console', { waitUntil: 'domcontentloaded' });
     const cell583 = page.locator('.hcell[data-strike="583"][data-expiry="2026-09-11"]');

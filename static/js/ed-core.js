@@ -630,6 +630,18 @@
         feedCls: stale ? 'stale' : '', feedLabel: stale ? 'STALE' : 'LIVE',
         ageLabel: ageMs != null ? ageMs + 'ms' : 'push' });
     });
+    // Independent-review finding (2026-09-12): the heatmap only ever refetched on the 3s/12s
+    // slow-tick poll (liveTick's `ed:refresh` at tick % 4 === 0) -- a Playwright test that
+    // manually dispatches that event proves rendering after delivery, not TIMELY delivery.
+    // This reuses the ALREADY-OPEN SSE connection (no new daemon/connection) that server.py's
+    // refresh_gamma_surface_from_stream now pushes a `gamma_surface_seq` event on the instant
+    // it publishes -- the browser reacts to the PUSH instead of waiting out the slow poll. The
+    // poll remains as the fallback path (SSE down/stalled), unchanged.
+    _sse.addEventListener('gamma_surface_seq', function (ev) {
+      var env; try { env = JSON.parse(ev.data); } catch (e) { return; }
+      if (!env || !env.scope || String(env.scope.ticker || '').toUpperCase() !== String(state.ticker || '').toUpperCase()) return;
+      document.dispatchEvent(new CustomEvent('ed:refresh', { detail: { slow: true, pushed: true } }));
+    });
     _sse.onerror = function () { _sseUp = false; };   // fall back to polling; the browser reconnects
   }
 

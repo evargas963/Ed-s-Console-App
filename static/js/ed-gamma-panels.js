@@ -16,6 +16,15 @@
     return s + '$' + a.toFixed(0);
   };
   function px(n, d) { return (n == null || isNaN(n)) ? '—' : Number(n).toFixed(d == null ? 2 : d); }
+  // Compact SESSION VOLUME (native totalVolume, never OI or last-trade size — see the row
+  // source below) for the GEX-by-strike row. No sign/color: volume is a magnitude, not signed.
+  function fmtVol(n) {
+    if (n == null || isNaN(n)) return '—';
+    var a = Math.abs(Number(n));
+    if (a >= 1e6) return (a / 1e6).toFixed(1) + 'M';
+    if (a >= 1e3) return (a / 1e3).toFixed(1) + 'K';
+    return String(Math.round(a));
+  }
   function txt(id, v) { var e = document.getElementById(id); if (e) e.textContent = v; }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
     return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]; }); }
@@ -222,12 +231,17 @@
       return (best == null || Math.abs(r[0] - spot) < Math.abs(best - spot)) ? r[0] : best; }, null);
     var bars = '';
     win.forEach(function (r) {
-      var k = r[0], v = Number(r[1]) || 0, w = Math.min(100, Math.abs(v) / maxAbs * 100);
+      // r = [strike, net_gex_1pct$, session_volume] -- terrain_engine._per_strike_rows' own
+      // shape (server.py's _per_strike_view_from_contracts keeps it, streamed or not).
+      // Independent-review finding (2026-09-12): r[2] (volume) reached this row and was never
+      // rendered. It is a MAGNITUDE (native totalVolume), never signed/colored like GEX$.
+      var k = r[0], v = Number(r[1]) || 0, vol = r[2], w = Math.min(100, Math.abs(v) / maxAbs * 100);
       var pos = v >= 0;
-      bars += '<div class="gbs-row' + (k === spotStrike ? ' spot' : '') + '" data-strike="' + k + '">' +
+      bars += '<div class="gbs-row' + (k === spotStrike ? ' spot' : '') + '" data-strike="' + k + '" data-volume="' + (vol == null ? '' : vol) + '">' +
         '<span class="gbs-k">' + px(k, k % 1 ? 2 : 0) + '</span>' +
         '<span class="gbs-track"><i class="gbs-bar ' + (pos ? 'pos' : 'neg') + '" style="width:' + w.toFixed(1) + '%"></i></span>' +
-        '<span class="gbs-v ' + (pos ? 'pos' : 'neg') + '">' + usd(v) + '</span></div>';
+        '<span class="gbs-v ' + (pos ? 'pos' : 'neg') + '">' + usd(v) + '</span>' +
+        '<span class="gbs-vol" title="session volume">' + fmtVol(vol) + '</span></div>';
     });
     // the bars scroll in their own area; the -/0/+ magnitude axis is PINNED at the foot so it is
     // always visible without scrolling (reference behaviour).
@@ -312,7 +326,19 @@
   document.addEventListener('ed:plane', loadPcr);    // the bundle generation or the market session changed -> identity check
   document.addEventListener('ed:view', loadAll);
   document.addEventListener('ed:scope', loadGbs);   // #3: re-window the GEX-by-strike panel only
-  document.addEventListener('ed:refresh', function (e) { if (e.detail && e.detail.slow) loadAll(); });
+  document.addEventListener('ed:refresh', function (e) {
+    if (!e.detail || !e.detail.slow) return;
+    loadAll();
+    // Independent-review finding (2026-09-12): "Strike Detail reads volume from /api/chain.
+    // Its refresh handler does not reload that detail." loadAll() never included Strike
+    // Detail, so a selected strike's OI/Vol/Gamma/Delta/IV froze at whatever they were when
+    // the strike was first clicked -- never refreshed by the slow poll OR the new SSE push
+    // (ed-core.js's gamma_surface_seq listener), even though the underlying chain/streamed
+    // data keeps moving. Reload it too, exactly like ed:expiry already does below, whenever a
+    // strike is currently selected.
+    var sel = ((window.EdShell && window.EdShell.getState()) || {}).selStrike;
+    if (sel != null) loadStrike(sel, _lastExpiry);
+  });
   document.addEventListener('ed:strike', function (e) {
     var det = e.detail || {}; _lastExpiry = det.expiry || _lastExpiry;
     applyGbsHighlight();                       // A: sync the GEX-by-strike highlight

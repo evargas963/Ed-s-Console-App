@@ -30,7 +30,6 @@ TK = ticker_storage_key("CRWD")
 def _clear_cache():
     with server._terrain_cache_lock:
         server._terrain_cache.pop(TK, None)
-    server._gamma_surface_stream_refresh_last_ts.pop(TK, None)
 
 
 def _put_rest_baseline(*, computed_ts_utc=None):
@@ -151,9 +150,6 @@ def test_repeated_eager_refreshes_never_compound_away_from_the_rest_baseline(mon
         lambda sym: {"gamma": 0.11, "gamma_ts_recv": now})
     assert refresh_gamma_surface_from_stream(_CONTRACT_SYMBOL, now) == "ok"
 
-    # bypass the debounce (a separate property, covered by its own tests below) so this test's
-    # own concern -- compounding across repeated REAL executions -- is actually exercised.
-    server._gamma_surface_stream_refresh_last_ts.pop(TK, None)
     later = time.time()
     monkeypatch.setattr(
         "app.options.order_flow.state.get_stream_greeks",
@@ -289,32 +285,15 @@ def test_a_volume_only_streamed_update_reaches_both_per_strike_and_gamma_surface
     assert row[2] == 999999, "the streamed volume must reach the per-strike volume column"
 
 
-def test_a_burst_of_ticks_is_debounced_to_bound_backlog(monkeypatch):
-    """MEASURED (2026-09-12, SYNTHETIC SCALE BASELINE): a single refresh_gamma_surface_from_stream
-    call takes ~3.1s on a full SPXW-scale book (~42k contracts) and runs synchronously inside
-    the daemon's one replay-poll worker -- an unbounded burst of ticks for a large-book contract
-    would otherwise queue linearly and starve every other ticker sharing that worker. A second
-    call within the debounce window must be skipped entirely (no overlay/projection work), not
-    merely produce the same result more expensively."""
-    baseline_ts = time.time() - 10.0
-    _put_rest_baseline(computed_ts_utc=baseline_ts)
-    now = time.time()
-    calls = {"n": 0}
-
-    def _spy_greeks(sym):
-        calls["n"] += 1
-        return {"gamma": 0.11, "gamma_ts_recv": now}
-
-    monkeypatch.setattr("app.options.order_flow.state.get_stream_greeks", _spy_greeks)
-    assert refresh_gamma_surface_from_stream(_CONTRACT_SYMBOL, now) == "ok"
-    assert calls["n"] == 1
-    # immediately after -- well inside the debounce window -- must be skipped BEFORE even
-    # reading streamed greeks (proves the expensive path is never entered, not just short-circuited late)
-    assert refresh_gamma_surface_from_stream(_CONTRACT_SYMBOL, time.time()) == "debounced"
-    assert calls["n"] == 1, "a debounced call must not even read streamed greeks, let alone recompute"
-
-
-def test_debounce_clears_after_the_minimum_interval_elapses(monkeypatch):
+def test_rapid_successive_calls_are_never_silently_dropped(monkeypatch):
+    """RETIRED (2026-09-12): a leading-edge per-ticker debounce used to live in this function.
+    Independent review MEASURED it directly and found it gave zero protection against slow
+    computations (a call's own duration already exceeds any reasonable window by the time the
+    next one can arrive) while still being ABLE to silently drop the final update of a burst
+    with nothing scheduling a trailing publication. Removed in favour of coalescing at the
+    actual replay layer (see tests/test_streamed_greeks_hook_v1.py for that proof) -- this
+    function itself must now execute EVERY call it is given, back to back, with no artificial
+    rejection of its own."""
     baseline_ts = time.time() - 10.0
     _put_rest_baseline(computed_ts_utc=baseline_ts)
     now = time.time()
@@ -322,41 +301,15 @@ def test_debounce_clears_after_the_minimum_interval_elapses(monkeypatch):
         "app.options.order_flow.state.get_stream_greeks",
         lambda sym: {"gamma": 0.11, "gamma_ts_recv": now})
     assert refresh_gamma_surface_from_stream(_CONTRACT_SYMBOL, now) == "ok"
-    # simulate real elapsed time having passed, rather than sleeping the test
-    server._gamma_surface_stream_refresh_last_ts[TK] -= (
-        server.GAMMA_SURFACE_STREAM_REFRESH_MIN_INTERVAL_SEC + 0.01)
+
     later = time.time()
     monkeypatch.setattr(
         "app.options.order_flow.state.get_stream_greeks",
         lambda sym: {"gamma": 0.22, "gamma_ts_recv": later})
-    assert refresh_gamma_surface_from_stream(_CONTRACT_SYMBOL, later) == "ok"
-
-
-def test_debounce_is_per_ticker_not_global(monkeypatch):
-    """A burst on one ticker's contract must not delay a genuinely different ticker."""
-    other_tk = ticker_storage_key("CDE")
-    other_symbol = "CDE   260904C00005000"
-    other_contracts = [dict(_CONTRACTS[0], symbol=other_symbol, strikePrice=5.0)]
+    assert refresh_gamma_surface_from_stream(_CONTRACT_SYMBOL, later) == "ok", (
+        "an immediately-successive call must execute in full, never return a synthetic "
+        "'debounced'/skipped status"
+    )
     with server._terrain_cache_lock:
-        server._terrain_cache[other_tk] = {
-            "_contracts_rest": other_contracts, "_contracts_rest_spot": _SPOT,
-            "_contracts_rest_computed_ts": time.time() - 10.0,
-            "_gamma_surface": project_gamma_surface(other_contracts, _SPOT),
-            "computed_ts_utc": time.time() - 10.0,
-        }
-    server._gamma_surface_stream_refresh_last_ts.pop(other_tk, None)
-    try:
-        now = time.time()
-        _put_rest_baseline(computed_ts_utc=now - 10.0)
-        monkeypatch.setattr(
-            "app.options.order_flow.state.get_stream_greeks",
-            lambda sym: {"gamma": 0.11, "gamma_ts_recv": now}
-            if sym == _CONTRACT_SYMBOL else {"gamma": 0.22, "gamma_ts_recv": now})
-        assert refresh_gamma_surface_from_stream(_CONTRACT_SYMBOL, now) == "ok"
-        assert refresh_gamma_surface_from_stream(other_symbol, now) == "ok", (
-            "a different ticker's contract must not be debounced by the first ticker's activity"
-        )
-    finally:
-        with server._terrain_cache_lock:
-            server._terrain_cache.pop(other_tk, None)
-        server._gamma_surface_stream_refresh_last_ts.pop(other_tk, None)
+        cached = server._terrain_cache[TK]["_gamma_surface"]
+    assert cached["surface_seq"] == 2, "both calls must have actually published"

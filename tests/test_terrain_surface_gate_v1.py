@@ -3,6 +3,7 @@ gamma surface only for a demanded (viewed) ticker, exactly once with that cycle'
 a projection failure never fails the terrain refresh. Heavy leaf deps are monkeypatched (existing
 seam); no new production abstraction was created to make this testable."""
 import json
+import time
 import types
 from pathlib import Path
 
@@ -140,8 +141,14 @@ def test_producer_overlays_the_active_streaming_contract_before_projecting(monke
     cached = server.terrain_cache_get(tk)
     assert cached["_contracts_rest"] == _REAL_CHAIN, "the RAW REST chain is retained, unoverlaid"
     assert cached["_contracts_rest_spot"] == 100.0
-    assert cached["_contracts_rest_computed_ts"] == cached["computed_ts_utc"], (
-        "the compare-and-swap generation marker must match this cycle's own as-of stamp"
+    # finding #4 (independent review, 2026-09-12), REPRODUCED then fixed: the CAS/precedence
+    # generation marker must be the REST FETCH instant, not this cycle's full-computation
+    # completion time (compute_terrain can take real, non-trivial time) -- otherwise a stream
+    # value that genuinely postdates the REST DATA but arrives before compute_terrain finishes
+    # is wrongly judged "not newer than REST" and discarded. The two are therefore no longer
+    # required to be equal -- only ordered, fetch always at or before the cycle's own finish.
+    assert cached["_contracts_rest_computed_ts"] <= cached["computed_ts_utc"], (
+        "the REST-fetch generation marker must be at or before this cycle's full computation finish"
     )
 
     # finding #2 (independent review, 2026-09-12), REPRODUCED then fixed: the heatmap
@@ -154,5 +161,69 @@ def test_producer_overlays_the_active_streaming_contract_before_projecting(monke
     assert cached["_per_strike"] == expected_per_strike, (
         "_per_strike must be rebuilt from the SAME overlaid contracts as _gamma_surface"
     )
+
+    server._gamma_surface_demand.pop(tk, None)
+
+
+def test_a_stream_observation_between_rest_fetch_and_computation_completion_is_admitted(monkeypatch):
+    """Independent-review finding (2026-09-12), REPRODUCED against this exact production path
+    before being fixed: 'I supplied REST data at time 400, a stream update at 401, and
+    computation completion at 402. The update was rejected because 402 became the supposed REST
+    freshness boundary.' The old code stamped the CAS/precedence marker AFTER compute_terrain
+    (a real computation, not the REST observation) -- a stream value causally AFTER the REST
+    fetch but arriving DURING that computation was incorrectly judged older than the REST data
+    it should have overlaid. This drives a real elapsed gap between fetch and computation
+    completion (a controlled sleep in the compute_terrain stub, not a hand-set timestamp), and
+    proves a stream observation timestamped inside that real gap is admitted."""
+    tk = server.ticker_storage_key("CDE")
+    contract_symbol = _REAL_CHAIN[0]["symbol"]
+
+    captured = {}
+
+    class Snap:
+        profile = {}
+        per_strike = {}
+        oi_by_strike = {}
+        confidence = None
+        def to_dict(self):
+            return {}
+
+    def slow_compute_terrain(*a, **k):
+        # This runs AFTER the REST fetch (server.py captures _rest_fetch_ts immediately once
+        # the 200 response is in hand, before this is ever called) and BEFORE
+        # payload["computed_ts_utc"] is stamped -- a real elapsed window between the two.
+        captured["mid_computation_ts"] = time.time()
+        time.sleep(0.05)
+        return Snap()
+
+    def proj(contracts, spot):
+        return {"expirations": [], "strikes": [], "cells": [],
+                "_overlaid_gamma": contracts[0].get("gamma")}
+
+    _stub_terrain(monkeypatch, proj)
+    monkeypatch.setattr(server, "compute_terrain", slow_compute_terrain)
+    monkeypatch.setattr(
+        "app.options.order_flow.streaming.get_active_option_contract",
+        lambda: contract_symbol)
+
+    def _stream_arrived_mid_computation(sym):
+        # The streamed observation's OWN receive time: causally after the REST fetch (which
+        # already completed by the time compute_terrain started) but before compute_terrain
+        # -- and therefore payload["computed_ts_utc"] -- finishes.
+        return {"gamma": 0.777, "gamma_ts_recv": captured["mid_computation_ts"] + 0.001}
+
+    monkeypatch.setattr(
+        "app.options.order_flow.state.get_stream_greeks", _stream_arrived_mid_computation)
+
+    server._gamma_surface_seq.pop(tk, None)
+    server._note_gamma_surface_demand(tk)
+    server._terrain_refresh_one(tk)
+
+    surf = _cached_surface(tk)
+    assert surf["stream_overlay_contracts"] == 1, (
+        "a stream observation that postdates the REST fetch must be admitted even when it "
+        "arrives before the REST cycle's own (later) computation finishes"
+    )
+    assert surf["_overlaid_gamma"] == 0.777
 
     server._gamma_surface_demand.pop(tk, None)

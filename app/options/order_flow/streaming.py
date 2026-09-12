@@ -94,14 +94,19 @@ _option_last_subscribe_completed_ts: Optional[float] = None
 
 _on_tick_callback: Optional[Callable[[str], None]] = None
 
-#: Called with (contract_symbol, ts_recv) whenever an option L1 tick is replayed that carries
-#: GAMMA/DELTA/OPEN_INTEREST/TOTAL_VOLUME -- lets a consumer (server.py's gamma-surface cache)
-#: freshen itself the instant new Greeks/OI/volume are known, instead of waiting for the next
-#: wide-chain REST cycle. TOTAL_VOLUME is included (not just the Greeks) so a volume-only tick
-#: -- no Greeks/OI change -- still reaches the per-strike volume column and
-#: compute_exposures_by_strike's own call/put volume aggregation, not just the ticker-level
-#: header display; independent-review finding (2026-09-12): "the current hook is triggered by
-#: GAMMA/DELTA/OPEN_INTEREST; that does not complete volume-only update delivery." Same
+#: Called with (contract_symbol, ts_recv) at most ONCE per _replay_option_contract_rows poll
+#: batch that carries at least one row with GAMMA/DELTA/OPEN_INTEREST/TOTAL_VOLUME (ts_recv is
+#: the FRESHEST such row's own receive time, not every qualifying row's) -- lets a consumer
+#: (server.py's gamma-surface cache) freshen itself the instant new Greeks/OI/volume are known,
+#: instead of waiting for the next wide-chain REST cycle. TOTAL_VOLUME is included (not just
+#: the Greeks) so a volume-only tick -- no Greeks/OI change -- still reaches the per-strike
+#: volume column and compute_exposures_by_strike's own call/put volume aggregation, not just
+#: the ticker-level header display; independent-review finding (2026-09-12): "the current hook
+#: is triggered by GAMMA/DELTA/OPEN_INTEREST; that does not complete volume-only update
+#: delivery." Once-per-batch (not once-per-row) is itself a fix for a separate independent-
+#: review finding (2026-09-12), REPRODUCED: calling this per row meant a burst of N rows in one
+#: poll batch triggered N sequential expensive recomputes on the consumer side -- see
+#: _replay_option_contract_rows's own comment for the measurement and full reasoning. Same
 #: shape/precedent as `_on_tick_callback` above; kept separate because ITS payload (an option
 #: contract symbol + the field's own receive time) is different from a bare ticker, and a
 #: caller wanting only one of the two must not be forced to filter the other's calls.
@@ -109,10 +114,10 @@ _streamed_greeks_hook: Optional[Callable[[str, float], None]] = None
 
 
 def set_streamed_greeks_hook(fn: Optional[Callable[[str, float], None]]) -> None:
-    """Register (or clear, with None) the callback `_replay_option_contract_rows` invokes
-    after every option L1 tick that carries GAMMA/DELTA/OPEN_INTEREST/TOTAL_VOLUME. One slot,
-    like `_on_tick_callback` -- the daemon has exactly one composition root (server.py's
-    startup) that wires this, not a list of subscribers to fan out to."""
+    """Register (or clear, with None) the callback `_replay_option_contract_rows` invokes at
+    most once per poll batch that contains a row carrying GAMMA/DELTA/OPEN_INTEREST/
+    TOTAL_VOLUME. One slot, like `_on_tick_callback` -- the daemon has exactly one composition
+    root (server.py's startup) that wires this, not a list of subscribers to fan out to."""
     global _streamed_greeks_hook
     _streamed_greeks_hook = fn
 
@@ -455,6 +460,24 @@ def _replay_option_contract_rows(con: sqlite3.Connection, contract_symbol: str) 
             "WHERE symbol = ? AND (ts_recv > ? OR (ts_recv = ? AND rowid > ?)) "
             "ORDER BY ts_recv, rowid",
             (contract_symbol, cursor_ts, cursor_ts, cursor_rowid)).fetchall()
+    # Independent-review finding (2026-09-12), REPRODUCED: calling the hook once PER ROW meant
+    # a burst of N rows landing in one poll batch triggered N sequential expensive recomputes
+    # (MEASURED: ~3.1s each on a full SPXW-scale book) -- "three sequential calls, 9.3s total,
+    # zero suppressed" -- because a leading-edge time debounce cannot throttle calls whose own
+    # prior duration already exceeds the debounce window; by the time call #2 arrives, more
+    # than enough wall-clock time has always already elapsed. The fix is not a bigger
+    # scheduler: this loop already reads a BATCH of every row new since the last poll tick, so
+    # every row's push_level_one still runs (app.options.order_flow.state always holds the
+    # true latest observation), but the hook -- the expensive part -- fires ONCE for the whole
+    # batch, using the LAST qualifying row's ts_recv (the freshest observation in this batch).
+    # This bounds the worst-case recompute rate to "at most one per poll-loop iteration that
+    # actually has new data" (POLL_INTERVAL_SEC, currently 0.5s, or the computation's own
+    # duration if longer -- never per-tick), reusing this existing replay owner's own natural
+    # batching instead of adding a second scheduler/queue/daemon. It also closes a second
+    # finding (a leading-edge debounce could silently and permanently drop the LAST update of
+    # a burst, with nothing scheduling a trailing publication): there is no silent rejection
+    # here at all -- every batch that has qualifying rows gets exactly one real attempt.
+    last_qualifying_ts_recv: float | None = None
     for rowid, ts_recv, native_json in rows:
         try:
             item = json.loads(native_json)
@@ -462,14 +485,15 @@ def _replay_option_contract_rows(con: sqlite3.Connection, contract_symbol: str) 
             continue
         push_level_one(contract_symbol, item, ts_recv=ts_recv)
         _option_streaming_last_update_ts = time.time()
-        if _streamed_greeks_hook is not None and (
-                "GAMMA" in item or "DELTA" in item or "OPEN_INTEREST" in item
+        if ("GAMMA" in item or "DELTA" in item or "OPEN_INTEREST" in item
                 or "TOTAL_VOLUME" in item or "VOLUME" in item):
-            try:
-                _streamed_greeks_hook(contract_symbol, float(ts_recv))
-            except Exception as e:
-                log.debug("streamed-greeks hook failed for %s: %s", contract_symbol, e)
+            last_qualifying_ts_recv = float(ts_recv)
         _option_l1_cursor[contract_symbol] = (float(ts_recv), int(rowid))
+    if _streamed_greeks_hook is not None and last_qualifying_ts_recv is not None:
+        try:
+            _streamed_greeks_hook(contract_symbol, last_qualifying_ts_recv)
+        except Exception as e:
+            log.debug("streamed-greeks hook failed for %s: %s", contract_symbol, e)
     if first_l1 and contract_symbol not in _option_l1_cursor:
         _option_l1_cursor[contract_symbol] = (0.0, 0)
 

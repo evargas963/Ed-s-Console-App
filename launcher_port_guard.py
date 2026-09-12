@@ -110,20 +110,37 @@ def is_ed_console_command_line(cmd: str) -> bool:
     return bool(_ED_CONSOLE_INVOCATION_RE.search(cmd))
 
 
-def is_actually_ed_console(port: int, *, timeout: float = 2.0) -> bool:
+def is_actually_ed_console(port: int, *, pid: int | None = None, timeout: float = 2.0) -> bool:
     """Definitive ownership check: ask whatever is listening on `port` for its own
-    identity via /api/build -- this app's existing identity endpoint (git_sha +
-    release_id), already relied on throughout this project's own verification.
-    A coincidentally command-line-matching but unrelated process will not answer
-    this shape.
+    identity via /api/build -- this app's existing identity endpoint -- and cross-validate
+    the claim against real, hard-to-coincide-with evidence.
 
-    Independent-review finding (2026-09-12), REPRODUCED directly against this
-    function: a body of `{"git_sha": null, "release_id": null}` has both KEYS
-    present and passed the old `"git_sha" in body` check, which tests key
-    membership, not a real value. Any unrelated JSON endpoint that happens to
-    name these two keys -- with nothing behind them -- was misidentified as Ed
-    Console. Ownership requires actual non-empty identity values, not merely
-    their names appearing in the response."""
+    Independent-review finding (2026-09-12), REPRODUCED directly against this function
+    (round 1): a body of `{"git_sha": null, "release_id": null}` has both KEYS present and
+    passed the old `"git_sha" in body` check, which tests key membership, not a real value.
+    Fixed by requiring truthy string values.
+
+    Independent-review finding (2026-09-12), REPRODUCED directly against this function
+    (round 2): "an unrelated matching uvicorn process with ordinary nonempty build
+    identifiers still passes." Truthy strings alone are still forgeable by any unrelated app
+    that happens to expose SOME endpoint naming these two generic keys with SOME nonempty
+    values -- neither "git_sha" nor "release_id" is unique to this codebase. Fixed with two
+    independent, much harder to coincidentally satisfy checks:
+
+      1. `contract == "meet_or_exceed_v1"` and `git_sha_semantics ==
+         "startup_process_identity"` -- fixed, app-specific magic strings this exact
+         /api/build route emits (server.py:api_build), not generic field names.
+      2. THE definitive check, when `pid` is supplied (the psutil-observed OS pid actually
+         LISTENING on `port`, from listening_pid): `process_identity.process_id` --
+         captured via `os.getpid()` once at THIS process's own startup
+         (server.py:_capture_process_identity) -- must equal that real OS pid. An unrelated
+         process cannot produce this match without literally reporting ITS OWN real pid
+         inside this exact nested response shape, which only server.py's own /api/build
+         route does; a copy-pasted or coincidentally similar app reports a DIFFERENT pid
+         (its own), not this one's.
+
+    Both `contract`/`git_sha_semantics` and (when `pid` is given) the process_id cross-check
+    must pass, on top of the truthy git_sha/release_id values, for ownership to be confirmed."""
     try:
         with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/build", timeout=timeout) as resp:
             if resp.status != 200:
@@ -134,7 +151,18 @@ def is_actually_ed_console(port: int, *, timeout: float = 2.0) -> bool:
     if not isinstance(body, dict):
         return False
     git_sha, release_id = body.get("git_sha"), body.get("release_id")
-    return bool(git_sha) and bool(release_id) and isinstance(git_sha, str) and isinstance(release_id, str)
+    if not (bool(git_sha) and bool(release_id) and isinstance(git_sha, str) and isinstance(release_id, str)):
+        return False
+    if body.get("contract") != "meet_or_exceed_v1":
+        return False
+    if body.get("git_sha_semantics") != "startup_process_identity":
+        return False
+    identity = body.get("process_identity")
+    if not isinstance(identity, dict) or identity.get("startup_git_sha") != git_sha:
+        return False
+    if pid is not None and identity.get("process_id") != pid:
+        return False
+    return True
 
 
 def port_is_free(port: int) -> bool:
@@ -165,7 +193,7 @@ def ensure_port_free(port: int, *, out=print) -> int:
     # Only spend the HTTP round trip when the cheap filter already passed.
     identity_confirmed = False
     if shape_matches:
-        identity_confirmed = is_actually_ed_console(port)
+        identity_confirmed = is_actually_ed_console(port, pid=pid)
     if not (shape_matches and identity_confirmed):
         out(f"WARNING: port {port} is held by PID {pid}, NOT confirmed as an Ed Console server:")
         out(f"  {cmd or '(command line unavailable -- process may already have exited)'}")

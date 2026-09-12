@@ -58,10 +58,87 @@ class _FakeResponse:
         return False
 
 
+def _real_build_body(**overrides):
+    """The genuine /api/build response shape (server.py:api_build), as a JSON body. Tests
+    override individual fields to construct adversarial variants."""
+    import json
+    body = {
+        "git_sha": "abc123", "contract": "meet_or_exceed_v1", "release_id": "r1",
+        "process_identity": {"startup_git_sha": "abc123", "process_id": 4242},
+        "git_sha_semantics": "startup_process_identity",
+    }
+    body.update(overrides)
+    return json.dumps(body).encode()
+
+
 def test_is_actually_ed_console_true_when_build_endpoint_matches(monkeypatch):
-    body = b'{"git_sha": "abc123", "release_id": "r1"}'
-    monkeypatch.setattr(lpg.urllib.request, "urlopen", lambda url, timeout=None: _FakeResponse(200, body))
+    monkeypatch.setattr(
+        lpg.urllib.request, "urlopen",
+        lambda url, timeout=None: _FakeResponse(200, _real_build_body()))
     assert lpg.is_actually_ed_console(8000) is True
+
+
+def test_is_actually_ed_console_true_when_the_reported_pid_matches_the_real_listener(monkeypatch):
+    monkeypatch.setattr(
+        lpg.urllib.request, "urlopen",
+        lambda url, timeout=None: _FakeResponse(200, _real_build_body()))
+    assert lpg.is_actually_ed_console(8000, pid=4242) is True
+
+
+def test_is_actually_ed_console_false_when_the_reported_pid_does_not_match_the_real_listener(monkeypatch):
+    """Independent-review finding (2026-09-12), REPRODUCED directly against this function
+    (round 2): 'an unrelated matching uvicorn process with ordinary nonempty build
+    identifiers still passes.' Nonempty git_sha/release_id, and even the app-specific
+    contract/git_sha_semantics magic strings, are not proof by themselves -- an unrelated
+    process reporting SOME identity cannot be reporting THIS process's real OS pid unless it
+    genuinely is this process. listening_pid(port) found pid 4242 actually listening; this
+    body claims process_identity.process_id=99999 -- a different process's own self-report."""
+    monkeypatch.setattr(
+        lpg.urllib.request, "urlopen",
+        lambda url, timeout=None: _FakeResponse(200, _real_build_body(
+            process_identity={"startup_git_sha": "abc123", "process_id": 99999})))
+    assert lpg.is_actually_ed_console(8000, pid=4242) is False
+
+
+def test_is_actually_ed_console_false_when_the_contract_string_does_not_match(monkeypatch):
+    """The magic-string check alone, independent of the pid cross-check (pid=None here)."""
+    monkeypatch.setattr(
+        lpg.urllib.request, "urlopen",
+        lambda url, timeout=None: _FakeResponse(200, _real_build_body(contract="some_other_app")))
+    assert lpg.is_actually_ed_console(8000) is False
+
+
+def test_is_actually_ed_console_false_when_git_sha_semantics_does_not_match(monkeypatch):
+    monkeypatch.setattr(
+        lpg.urllib.request, "urlopen",
+        lambda url, timeout=None: _FakeResponse(200, _real_build_body(git_sha_semantics="something_else")))
+    assert lpg.is_actually_ed_console(8000) is False
+
+
+def test_is_actually_ed_console_false_when_process_identity_is_missing(monkeypatch):
+    monkeypatch.setattr(
+        lpg.urllib.request, "urlopen",
+        lambda url, timeout=None: _FakeResponse(200, _real_build_body(process_identity=None)))
+    assert lpg.is_actually_ed_console(8000) is False
+
+
+def test_is_actually_ed_console_false_when_process_identity_startup_sha_disagrees_with_top_level(monkeypatch):
+    """process_identity.startup_git_sha must equal the top-level git_sha (server.py's own
+    documented invariant) -- an internally inconsistent body is not this app's real response."""
+    monkeypatch.setattr(
+        lpg.urllib.request, "urlopen",
+        lambda url, timeout=None: _FakeResponse(200, _real_build_body(
+            process_identity={"startup_git_sha": "different_sha", "process_id": 4242})))
+    assert lpg.is_actually_ed_console(8000) is False
+
+
+def test_is_actually_ed_console_true_without_a_pid_argument_when_everything_else_matches(monkeypatch):
+    """pid is optional (callers other than ensure_port_free may not have one) -- when omitted,
+    the pid cross-check is simply skipped, not treated as a failure."""
+    monkeypatch.setattr(
+        lpg.urllib.request, "urlopen",
+        lambda url, timeout=None: _FakeResponse(200, _real_build_body()))
+    assert lpg.is_actually_ed_console(8000, pid=None) is True
 
 
 def test_is_actually_ed_console_false_when_shape_matches_but_identity_endpoint_disagrees(monkeypatch):
@@ -139,6 +216,28 @@ def test_ensure_port_free_leaves_a_shape_matching_but_unconfirmed_process_runnin
     rc = lpg.ensure_port_free(8000, out=lambda *a: None)
     assert rc == 1
     assert calls["kill"] == 0, "shape match without confirmed /api/build identity must not be killed"
+
+
+def test_ensure_port_free_leaves_an_unrelated_process_running_that_reports_a_different_pid(monkeypatch):
+    """Independent-review finding (2026-09-12), REPRODUCED then fixed, through the REAL
+    ensure_port_free call path (not just is_actually_ed_console in isolation): an unrelated
+    process with a matching command-line shape and a genuinely nonempty, even app-specific,
+    /api/build-shaped identity body must still not be killed if that body's own claimed
+    process_identity.process_id does not match the pid actually found listening."""
+    calls = {"kill": 0}
+    monkeypatch.setattr(lpg, "listening_pid", lambda port: 4242)
+    monkeypatch.setattr(
+        lpg, "command_line_for_pid",
+        lambda pid: r'C:\...\python.exe -m uvicorn server:app --host 0.0.0.0 --port 8000',
+    )
+    monkeypatch.setattr(
+        lpg.urllib.request, "urlopen",
+        lambda url, timeout=None: _FakeResponse(200, _real_build_body(
+            process_identity={"startup_git_sha": "abc123", "process_id": 99999})))
+    monkeypatch.setattr(lpg.psutil, "Process", lambda pid: _FakeProcess(pid, calls=calls))
+    rc = lpg.ensure_port_free(8000, out=lambda *a: None)
+    assert rc == 1
+    assert calls["kill"] == 0, "a self-reported pid mismatch must block the kill even with an otherwise-valid body"
 
 
 def test_ensure_port_free_stops_a_real_ed_console_instance(monkeypatch):

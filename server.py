@@ -12216,26 +12216,20 @@ def _gamma_surface_wanted(tk: str) -> bool:
 #: composed with (never a substitute for) the REST-baseline precedence check below.
 GAMMA_SURFACE_STREAM_STALENESS_SEC = 10.0
 
-#: Minimum spacing between successive eager recomputes for the SAME ticker — bounds the worst
-#: case a burst of rapid ticks can create. MEASURED (2026-09-12, SYNTHETIC SCALE BASELINE: a
-#: real captured chain's own contract shapes, strikes varied to reach scale, following the
-#: existing RC-UI-1 #1 baseline convention): a single refresh_gamma_surface_from_stream call
-#: (overlay + project_gamma_surface + the per-strike view) took ~18ms at a realistic 236-contract
-#: single-name book, ~210ms scaled to ~3.6k contracts, and ~3.1s scaled to a full SPXW-class
-#: book (~42k contracts). This runs SYNCHRONOUSLY inside the daemon's single replay-poll worker
-#: (app.options.order_flow.streaming._feed_loop's dedicated single-thread executor) — a burst of
-#: N ticks for a large-book contract would otherwise queue LINEARLY (N * ~3.1s) and starve every
-#: OTHER ticker/contract sharing that one worker, the opposite of the "near-instant" goal this
-#: mechanism exists to serve. This debounce does not reduce the per-call cost; it bounds how
-#: OFTEN that cost is paid regardless of tick rate, so a burst degrades to "one refresh per
-#: interval" rather than "one refresh per tick, however many arrive." The in-memory streamed
-#: state itself is never lost between debounced calls (app.options.order_flow.state always
-#: keeps the LATEST observation), so a debounced tick's data is still reflected the next time
-#: this function actually runs. NOT a complete answer for large-book contracts at high tick
-#: rates — genuinely reducing the per-call cost (e.g. an incremental/windowed recompute instead
-#: of a full book re-projection) is unaddressed, disclosed rather than hidden.
-GAMMA_SURFACE_STREAM_REFRESH_MIN_INTERVAL_SEC = 0.25
-_gamma_surface_stream_refresh_last_ts: dict[str, float] = {}
+#: RETIRED (2026-09-12): a leading-edge per-ticker time debounce used to live here. Independent
+#: review MEASURED it directly and found it provided ZERO protection against the exact backlog
+#: it was written for: a leading-edge debounce rejects a call only if it arrives too soon after
+#: the PREVIOUS call's own start, but when the computation itself is slow (MEASURED ~3.1s on a
+#: full SPXW-scale book, SYNTHETIC SCALE BASELINE), that previous call's own duration already
+#: exceeds any reasonable debounce window by the time the next one can even arrive -- three
+#: sequential bursts each still paid the full ~3.1s (9.3s total, zero suppressed). Worse, a
+#: debounced call was silently dropped with nothing scheduling a trailing publication, so the
+#: LAST update of a burst could go permanently unpublished. Replaced with per-batch coalescing
+#: in app.options.order_flow.streaming._replay_option_contract_rows itself: every row in a poll
+#: batch still updates OrderFlowState, but the (expensive) hook fires ONCE per batch using the
+#: freshest row, not once per row -- bounding the real worst-case rate to "one recompute per
+#: poll-loop iteration that has new data" without ever silently discarding the batch's own
+#: latest observation. See that function's own comment for the full reasoning.
 
 #: Per-ticker counter bumped every time `_gamma_surface` is (re)published — by the REST cycle
 #: or the eager stream refresh alike. Independent-review finding (2026-09-12), REPRODUCED: the
@@ -12250,9 +12244,30 @@ _gamma_surface_seq: dict[str, int] = {}
 
 
 def _next_gamma_surface_seq(tk: str) -> int:
-    """Caller must hold _terrain_cache_lock."""
+    """Caller must hold _terrain_cache_lock. Also PUSHES a lightweight SSE notify -- no data of
+    its own, just {ticker, surface_seq} -- to any /api/analytics/light/stream client currently
+    viewing this ticker, so the browser refetches the instant a new generation publishes
+    instead of waiting out the slow 3s/12s poll.
+
+    Independent-review finding (2026-09-12): "the browser still polls every 12 seconds. The
+    new Playwright test manually triggers the refresh event, bypassing that wait. It proves
+    rendering after delivery, not timely delivery." True of the prior commit: surface_seq made
+    a change DETECTABLE once the browser next asked, but nothing made it ASK sooner. This
+    reuses the EXISTING SSE connection/queue/dispatch pipe wholesale
+    (_l1_put_thread_queue_notify -> _l1_light_sse_dispatch_loop -> the /api/analytics/light/
+    stream generator, which now picks the wire event name from the envelope instead of
+    hardcoding "l1_projection") -- no second SSE endpoint, connection, or daemon. Best-effort:
+    a failed push here still leaves surface_seq bumped and the slow poll as an honest fallback
+    (SSE down/stalled already falls back to polling on the client)."""
     n = _gamma_surface_seq.get(tk, 0) + 1
     _gamma_surface_seq[tk] = n
+    try:
+        _l1_put_thread_queue_notify(
+            (tk, "__auto__"),
+            {"_sse_event_name": "gamma_surface_seq", "scope": {"ticker": tk}, "surface_seq": n},
+        )
+    except Exception as e:  # institutional-swallow-ok: push notify is best-effort; poll fallback still exists
+        log.debug("gamma_surface_seq SSE notify failed for %s: %s", tk, e)
     return n
 
 
@@ -12351,14 +12366,6 @@ def refresh_gamma_surface_from_stream(contract_symbol: str, ts_recv: float) -> s
             tk = next((k for k in _terrain_cache if contract_matches_underlying(contract_symbol, k)), None)
             if tk is None:
                 return "no_cached_ticker"
-            # Debounce BEFORE any expensive work (see GAMMA_SURFACE_STREAM_REFRESH_MIN_INTERVAL_SEC's
-            # own comment for the measured backlog risk this bounds) -- checked first so a
-            # debounced call pays none of the overlay/projection cost at all.
-            now_check = time.time()
-            last_refresh = _gamma_surface_stream_refresh_last_ts.get(tk, 0.0)
-            if now_check - last_refresh < GAMMA_SURFACE_STREAM_REFRESH_MIN_INTERVAL_SEC:
-                return "debounced"
-            _gamma_surface_stream_refresh_last_ts[tk] = now_check
             payload = _terrain_cache.get(tk) or {}
             base_contracts = payload.get("_contracts_rest")
             spot = payload.get("_contracts_rest_spot")
@@ -12490,6 +12497,18 @@ def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
             _note_terrain_failure(tk, _msg, _classify_chain_failure(
                 _code, "timeout-at-all-rungs" if resp is None else None))
             return "error:chain_http"
+        # Independent-review finding (2026-09-12), REPRODUCED: the generation marker used below
+        # for stream-precedence ("is a streamed value newer than this REST data") was stamped
+        # AFTER compute_terrain -- a real, non-trivial computation, not the REST observation
+        # itself. A stream tick that arrived causally AFTER this REST response but BEFORE
+        # compute_terrain finished was judged "not newer than REST" and discarded, even though
+        # it genuinely postdated the REST DATA it would have overlaid. `_rest_fetch_ts` is
+        # captured HERE -- the instant the 200 response is in hand, before any parsing or
+        # computation -- and is what the overlay/eager-refresh precedence check (below) and the
+        # compare-and-swap generation marker (_contracts_rest_computed_ts) actually use.
+        # `payload["computed_ts_utc"]` keeps its own, different meaning (this cycle's full
+        # computation finish time, used for display staleness/age) and is not reused for this.
+        _rest_fetch_ts = time.time()
         c_json = resp.json()
         contracts = flatten_chain_contracts(c_json)
         # ONE spot authority (RC-14) — never the chain underlying on its own.
@@ -12550,7 +12569,7 @@ def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
         try:
             if spot and _gamma_surface_wanted(tk):
                 _overlaid_contracts, _overlay_n = _gamma_surface_contracts_with_stream_overlay(
-                    tk, contracts, newer_than_ts=payload["computed_ts_utc"])
+                    tk, contracts, newer_than_ts=_rest_fetch_ts)
                 payload["_gamma_surface"] = project_gamma_surface(_overlaid_contracts, float(spot))
                 if _overlay_n:
                     # RC-UI-2/finding#2 fix (independent review, 2026-09-12, REPRODUCED): the
@@ -12580,7 +12599,7 @@ def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
                 # landing mid-eager-computation is never silently overwritten by a stale result.
                 payload["_contracts_rest"] = contracts
                 payload["_contracts_rest_spot"] = float(spot)
-                payload["_contracts_rest_computed_ts"] = payload["computed_ts_utc"]
+                payload["_contracts_rest_computed_ts"] = _rest_fetch_ts
             else:
                 payload["_gamma_surface"] = None
         except Exception as _gs_e:  # institutional-swallow-ok: projection is a cache side-effect
@@ -14601,6 +14620,15 @@ async def get_analytics_light(
     return JSONResponse(out)
 
 
+def _sse_event_name_for_envelope(env) -> str:
+    """The wire `event:` name for one /api/analytics/light/stream envelope. Every existing L1
+    envelope omits `_sse_event_name` and gets "l1_projection" exactly as before this function
+    existed; `_next_gamma_surface_seq`'s gamma-surface publish notify is the one caller that
+    sets it, to "gamma_surface_seq". A small pure function (not inlined in the generator) so it
+    is directly unit-testable without driving the async generator/SSE connection."""
+    return env.get("_sse_event_name", "l1_projection") if isinstance(env, dict) else "l1_projection"
+
+
 @app.get("/api/analytics/light/stream")
 async def get_analytics_light_stream(
     request: Request,
@@ -14628,7 +14656,11 @@ async def get_analytics_light_stream(
             while True:
                 try:
                     env = await asyncio.wait_for(q.get(), timeout=30.0)
-                    yield f"event: l1_projection\ndata: {json.dumps(env, default=str)}\n\n"
+                    # RC-UI-2 (independent-review finding, 2026-09-12): this connection/queue/
+                    # dispatch pipe is entirely generic (see _l1_light_sse_dispatch_loop's own
+                    # docstring — it scope-matches and forwards the raw env, nothing L1-specific)
+                    # except the wire event name — see _sse_event_name_for_envelope.
+                    yield f"event: {_sse_event_name_for_envelope(env)}\ndata: {json.dumps(env, default=str)}\n\n"
                 except asyncio.TimeoutError:
                     yield ": heartbeat\n\n"
         finally:

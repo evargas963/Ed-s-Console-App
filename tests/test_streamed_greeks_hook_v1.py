@@ -139,3 +139,70 @@ def test_a_hook_that_raises_does_not_break_the_replay(tmp_path, monkeypatch):
     assert any(i.get("LAST_PRICE") == 1.27 for i in items), (
         "a failing hook must not prevent the real observation from being applied"
     )
+
+
+def test_a_burst_of_rows_in_one_poll_batch_fires_the_hook_exactly_once(tmp_path, monkeypatch):
+    """Independent-review finding (2026-09-12), REPRODUCED then fixed: calling the hook once
+    PER ROW meant a burst of N rows landing in one poll batch triggered N sequential expensive
+    recomputes on the consumer side (MEASURED: ~3.1s each on a full SPXW-scale book -- three
+    sequential calls, 9.3s total, zero suppressed). Three rows are written here BEFORE the
+    daemon ever replays them (simulating a burst that accumulated between poll ticks, a real
+    shape: CaptureWriter and the replay poll are independent), so ONE _replay_option_contract_rows
+    call sees all three in a single query -- proving the hook fires exactly once for the whole
+    batch, not three times, while EVERY row still lands in OrderFlowState (nothing is dropped
+    from the state itself, only the expensive recompute is coalesced)."""
+    db = _reset(tmp_path, monkeypatch)
+    _write_option_l1_row(db, _SPY_CONTRACT, dict(_REAL_LEVELONE_OPTIONS_CONTENT, GAMMA=0.01), ts_recv=1700000000.0)
+    _write_option_l1_row(db, _SPY_CONTRACT, dict(_REAL_LEVELONE_OPTIONS_CONTENT, GAMMA=0.02), ts_recv=1700000001.0)
+    _write_option_l1_row(db, _SPY_CONTRACT, dict(_REAL_LEVELONE_OPTIONS_CONTENT, GAMMA=0.03), ts_recv=1700000002.0)
+
+    calls = []
+    ofs.set_streamed_greeks_hook(lambda sym, ts: calls.append((sym, ts)))
+    try:
+        con = ofs._open_capture_db_readonly(db)
+        ofs._replay_option_contract_rows(con, _SPY_CONTRACT)  # ONE call sees all three rows
+        con.close()
+    finally:
+        ofs.set_streamed_greeks_hook(None)
+
+    assert calls == [(_SPY_CONTRACT, 1700000002.0)], (
+        "exactly one hook call for the whole batch, stamped with the FRESHEST row's ts_recv"
+    )
+    # every row still reached OrderFlowState -- push_level_one ran for all three, the LATEST
+    # (gamma=0.03) is what a consumer reading state now sees, nothing from the batch was lost
+    assert ofls.get_stream_greeks(_SPY_CONTRACT)["gamma"] == 0.03
+
+
+def test_a_batch_with_no_qualifying_rows_never_fires_the_hook(tmp_path, monkeypatch):
+    db = _reset(tmp_path, monkeypatch)
+    _write_option_l1_row(db, _SPY_CONTRACT, _BID_ASK_ONLY_CONTENT, ts_recv=1700000000.0)
+    _write_option_l1_row(db, _SPY_CONTRACT, dict(_BID_ASK_ONLY_CONTENT, LAST_PRICE=1.35), ts_recv=1700000001.0)
+
+    calls = []
+    ofs.set_streamed_greeks_hook(lambda sym, ts: calls.append((sym, ts)))
+    try:
+        con = ofs._open_capture_db_readonly(db)
+        ofs._replay_option_contract_rows(con, _SPY_CONTRACT)
+        con.close()
+    finally:
+        ofs.set_streamed_greeks_hook(None)
+    assert calls == []
+
+
+def test_a_batch_with_one_qualifying_row_among_several_fires_once_with_that_rows_ts(tmp_path, monkeypatch):
+    """A qualifying row in the MIDDLE of a batch (not the last row overall) must still be the
+    one whose ts_recv is used -- 'freshest QUALIFYING row', not 'last row in the batch'."""
+    db = _reset(tmp_path, monkeypatch)
+    _write_option_l1_row(db, _SPY_CONTRACT, _BID_ASK_ONLY_CONTENT, ts_recv=1700000000.0)
+    _write_option_l1_row(db, _SPY_CONTRACT, dict(_REAL_LEVELONE_OPTIONS_CONTENT, GAMMA=0.05), ts_recv=1700000001.0)
+    _write_option_l1_row(db, _SPY_CONTRACT, dict(_BID_ASK_ONLY_CONTENT, LAST_PRICE=1.40), ts_recv=1700000002.0)
+
+    calls = []
+    ofs.set_streamed_greeks_hook(lambda sym, ts: calls.append((sym, ts)))
+    try:
+        con = ofs._open_capture_db_readonly(db)
+        ofs._replay_option_contract_rows(con, _SPY_CONTRACT)
+        con.close()
+    finally:
+        ofs.set_streamed_greeks_hook(None)
+    assert calls == [(_SPY_CONTRACT, 1700000001.0)]
