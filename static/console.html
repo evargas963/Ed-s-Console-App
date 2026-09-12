@@ -22,8 +22,13 @@
   if(mq){var onOs=function(){if(getPref()==='system'){var eff=apply('system');notify('system',eff);}};
     if(mq.addEventListener)mq.addEventListener('change',onOs);else if(mq.addListener)mq.addListener(onOs);}
 })();</script>
-<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<!-- Operator finding (2026-09-11): this page loaded Inter from Google's CDN, a
+     render-blocking dependency on a third-party origin during first paint. The
+     --ed-sans/--ed-mono token stack (ed-tokens.css) already lists a full native
+     fallback -- system-ui, Segoe UI (Windows), Roboto, Helvetica, Arial -- so
+     removing the external request changes typography (no Inter glyphs) but
+     never blocks or breaks rendering; a workstation with no network path to
+     Google now paints exactly as fast as one with it. -->
 <link rel="stylesheet" href="/static/css/ed-tokens.css">
 <style>
   *{box-sizing:border-box;margin:0;padding:0}

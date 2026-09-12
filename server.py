@@ -10053,7 +10053,25 @@ async def _app_lifespan(app):
     # Schwab auth diagnostics (helps debug link vs manual launch)
     _log_schwab_startup_diagnostics()
 
-    # Lightweight auth validation — don't wait for first /api/state to discover issues
+    # Lightweight auth validation — don't wait for first /api/state to discover issues.
+    #
+    # MEASURED (operator finding, 2026-09-11): this block used to (a) build a SEPARATE
+    # client via build_client_from_token() instead of the canonical cached owner
+    # get_client() — so the ~400ms construction cost (schwab_capability_state's own
+    # docstring measurement) was paid AGAIN on the first real request, and (b) issue a
+    # BLOCKING live client.get_quote("SPY") call here, before `yield` below — since
+    # FastAPI does not accept ANY HTTP request (including Schwab-independent ones, like
+    # static assets) until this lifespan function reaches `yield`, a slow or unavailable
+    # vendor delayed the whole app's first byte, not just Schwab-dependent routes.
+    #
+    # Fix: the file-based inspection above stays synchronous (cheap, local, no network).
+    # Client construction now goes through get_client() — the SAME cache every other
+    # consumer uses, so it is built here ONCE, not rebuilt on first use. The actual vendor
+    # round-trip (the real "does the token work" proof) is dispatched as a background task
+    # and does NOT block `yield` — HTTP serving is available immediately once the (fast,
+    # local) construction step above returns; the live-quote verdict lands in the log a
+    # moment later. No decision restriction changes: schwab_capability_state()/get_client()
+    # are still the SAME enforcement points every route already calls at decision time.
     try:
         _inv_startup = inspect_token_file(cfg.token_path)
         log.info(
@@ -10079,47 +10097,42 @@ async def _app_lifespan(app):
                 "Schwab startup: token exists but NOT refreshable (no refresh_token). "
                 "Remediation: python reauth_schwab.py --manual",
             )
-        state = build_client_from_token(
-            api_key=cfg.api_key,
-            app_secret=cfg.app_secret,
-            token_path=cfg.token_path,
-        )
-        if not state.ok or state.client is None:
+        try:
+            startup_client = get_client()
+        except HTTPException as ce:
+            startup_client = None
             log.error(
                 "Schwab auth invalid at startup: %s — Remediation: run python reauth_schwab.py",
-                state.message,
+                ce.detail,
             )
-        else:
-            r_near_expiry = None
-            if _inv_startup.is_expiring_soon:
-                log.info("Token near expiry — performing refresh validation")
+
+        if startup_client is not None:
+            def _validate_schwab_quote_sync(client):
                 try:
-                    r_near_expiry = state.client.get_quote("SPY")
-                    if not r_near_expiry or getattr(r_near_expiry, "status_code", 0) != 200:
-                        log.warning("Refresh validation failed: bad response")
-                except Exception as e:
-                    log.error("Refresh validation failed: %s", e)
-                    r_near_expiry = None
-            # Validate token works with a minimal call (reuse SPY quote if near-expiry already fetched)
-            try:
-                r = r_near_expiry if r_near_expiry is not None else state.client.get_quote("SPY")
-                if not r or getattr(r, "status_code", 0) != 200:
-                    log.warning(
-                        "Schwab token validation failed (SPY quote returned %s). "
-                        "Token may be expired. Remediation: python reauth_schwab.py",
-                        getattr(r, "status_code", "None"),
-                    )
-                else:
-                    log.info("Schwab auth validated at startup")
-            except Exception as ve:
-                from schwab_client import _is_token_error
-                if _is_token_error(ve):
-                    log.error(
-                        "Schwab token invalid at startup: %s — Remediation: python reauth_schwab.py",
-                        ve,
-                    )
-                else:
-                    log.warning("Schwab startup validation: %s", ve)
+                    r = client.get_quote("SPY")
+                    if not r or getattr(r, "status_code", 0) != 200:
+                        log.warning(
+                            "Schwab token validation failed (SPY quote returned %s). "
+                            "Token may be expired. Remediation: python reauth_schwab.py",
+                            getattr(r, "status_code", "None"),
+                        )
+                    else:
+                        log.info("Schwab auth validated at startup (background)")
+                except Exception as ve:
+                    from schwab_client import _is_token_error
+                    if _is_token_error(ve):
+                        log.error(
+                            "Schwab token invalid at startup: %s — Remediation: python reauth_schwab.py",
+                            ve,
+                        )
+                    else:
+                        log.warning("Schwab startup validation: %s", ve)
+
+            if _inv_startup.is_expiring_soon:
+                log.info("Token near expiry — background validation will also exercise refresh")
+            asyncio.get_event_loop().run_in_executor(
+                None, _validate_schwab_quote_sync, startup_client
+            )
     except Exception as e:
         log.warning("Schwab auth check: %s", e)
 
