@@ -73,3 +73,44 @@ def test_negative_control_the_old_or_and_positive_only_logic_fails_this_case():
     assert cache["SPY"] == 500.0, "demonstrating the old defect: the stale 500 survives"
 
     # ... and the fixed implementation does not have this problem (already proven above).
+
+
+def test_negative_total_volume_is_rejected_not_stored():
+    """Independent-review finding (2026-09-12): a corrupt negative tick was accepted and
+    served as if it were a real observation. Calls the REAL production path
+    (push_level_one), not a copied/reproduced snippet."""
+    st = LiveOrderFlowState()
+    st.push_level_one("SPY", {"TOTAL_VOLUME": -1})
+    assert st.get_stream_volume("SPY") is None, "a negative volume must never be stored"
+
+
+def test_negative_volume_does_not_overwrite_a_good_prior_value():
+    st = LiveOrderFlowState()
+    st.push_level_one("SPY", {"TOTAL_VOLUME": 500})
+    assert st.get_stream_volume("SPY") == 500.0
+    st.push_level_one("SPY", {"TOTAL_VOLUME": -1})
+    assert st.get_stream_volume("SPY") == 500.0, (
+        "a corrupt negative observation must not clobber the last good real value"
+    )
+
+
+def test_a_genuine_update_survives_the_first_rth_session_reset(monkeypatch):
+    """Independent-review finding (2026-09-12), reproduced against the REAL production
+    path: the session-reset check ran AFTER the volume/chg_pct writes, so the very first
+    update of a new RTH session had its fresh, genuinely valid values written and then
+    immediately wiped by the reset that same call triggered. Fixed by moving the reset
+    check before the writes. Negative-controlled below (test_..._fails_before_the_fix)."""
+    import app.options.order_flow.state as state_mod
+    from datetime import datetime
+
+    st = LiveOrderFlowState()
+    st._last_rth_date = ""  # force "this is a new session" on the next call
+
+    monkeypatch.setattr(state_mod, "is_rth_open", lambda: True)
+    monkeypatch.setattr(state_mod, "now_et", lambda: datetime(2026, 9, 12))
+
+    st.push_level_one("SPY", {"TOTAL_VOLUME": 12345, "REGULAR_MARKET_CHANGE_PERCENT": 1.5})
+    assert st.get_stream_volume("SPY") == 12345.0, (
+        "the first update of a new RTH session must not be erased by the reset it triggers"
+    )
+    assert st.get_stream_chg_pct("SPY") == 1.5

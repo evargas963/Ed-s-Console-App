@@ -822,9 +822,14 @@ ROWS: tuple[Row, ...] = (
         justification='Multi-symbol quote fetch via safe_get_quote wrapper.',
     ),
     Row(
-        file='market_context.py', derivation='fetch_market_context._chg_for', disposition='SCHWAB_LEAF',
+        # RC (2026-09-11): fetch_market_context._chg_for was a nested closure; consolidated
+        # into a functools.partial (native capability, not a hand-written forwarding
+        # function -- caught in independent review) over the module-level extract_pct_change,
+        # which is where the real netPercentChange parsing now lives, module-level and
+        # shared by every chg_pct caller (not just fetch_market_context's sentinels).
+        file='market_context.py', derivation='extract_pct_change', disposition='SCHWAB_LEAF',
         schwab_leaf='quotes.quote.netPercentChange',
-        justification='Nested pct change helper from quote JSON.',
+        justification='Percent-change parser from quote JSON, shared by every chg_pct caller.',
     ),
     Row(
         file='market_context.py', derivation='fetch_market_context._fetch', disposition='SCHWAB_LEAF',
@@ -2745,6 +2750,15 @@ ROWS: tuple[Row, ...] = (
         file='server.py', derivation='fast_quote', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (fast_quote).',
+    ),
+    Row(
+        # api_watchlist_quotes (/api/watchlist-quotes): the ONE batched Schwab quote read
+        # for a whole client-held watchlist (client.get_quotes), reusing the same
+        # _parse_quote_node_session_fields parser and resolve_chg_pct authority every
+        # other quote route shares -- not a second quote computation.
+        file='server.py', derivation='api_watchlist_quotes', disposition='SCHWAB_LEAF',
+        schwab_leaf='quotes.quote.lastPrice',
+        justification='Batched multi-symbol quote fetch (client.get_quotes) via safe_get_quotes.',
     ),
     Row(
         file='server.py', derivation='flatten_chain_contracts', disposition='SCHWAB_LEAF',

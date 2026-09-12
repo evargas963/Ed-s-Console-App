@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from tools import wait_for_ready_then_open as wr
+import wait_for_ready_then_open as wr
 
 
 def test_returns_ready_as_soon_as_the_server_answers_200(monkeypatch):

@@ -6378,8 +6378,8 @@ def _chg_pct_with_rest_backfill(tkr: str, row: Optional[dict], *, client=None) -
             _qj = q_resp.json()
             _node = _qj.get(tkr.upper()) or _qj.get(tkr) or {}
             return resolve_chg_pct(tkr, _parse_quote_node_session_fields(_node).get("chg_pct"))
-    except Exception:
-        pass
+    except Exception as e:
+        log.debug("chg_pct REST backfill failed for %s: %s", tkr, e)
     return None
 
 

@@ -99,8 +99,9 @@ REM     .venv\Scripts\python.exe tools\check_live_path_is_main.py
 REM Stop any prior instance on port 8000 -- ownership-verified: only a process
 REM whose own command line names an Ed Console server (uvicorn ... server:app)
 REM is stopped. An unrelated process holding the port is left running and
-REM reported. See tools/launcher_port_guard.py.
-"%VENV_PY%" "%~dp0tools\launcher_port_guard.py" 8000
+REM reported. See launcher_port_guard.py (app root, not tools\ -- RC-512: the
+REM launch path executes nothing out of the governance tools directory).
+"%VENV_PY%" "%~dp0launcher_port_guard.py" 8000
 if errorlevel 2 (
     echo  LAUNCH BLOCKED: could not determine whether port 8000 is free ^(see
     echo  warning above^). Refusing to guess and launch into a possibly-occupied
@@ -118,15 +119,16 @@ if errorlevel 1 (
 
 REM Also check the separate developer-preview port (8322) so a stray preview
 REM instance and this launch do not both end up running unnoticed.
-"%VENV_PY%" "%~dp0tools\launcher_port_guard.py" 8322
+"%VENV_PY%" "%~dp0launcher_port_guard.py" 8322
 
 set "PF86=%ProgramFiles(x86)%"
 set "EDGE_EXE=%PF86%\Microsoft\Edge\Application\msedge.exe"
 if not exist "%EDGE_EXE%" set "EDGE_EXE=%ProgramFiles%\Microsoft\Edge\Application\msedge.exe"
 
 REM Open Edge to the NEW UI (/console) once the server actually answers,
-REM instead of a blind fixed-delay guess. See tools/wait_for_ready_then_open.py.
-start "" "%VENV_PY%" "%~dp0tools\wait_for_ready_then_open.py" http://localhost:8000/console "%EDGE_EXE%"
+REM instead of a blind fixed-delay guess. See wait_for_ready_then_open.py
+REM (app root, not tools\ -- same RC-512 reasoning as above).
+start "" "%VENV_PY%" "%~dp0wait_for_ready_then_open.py" http://localhost:8000/console "%EDGE_EXE%"
 
 REM --timeout-graceful-shutdown: Ctrl+C must terminate even while browser tabs
 REM hold SSE streams open (uvicorn's default waits forever for them to close).

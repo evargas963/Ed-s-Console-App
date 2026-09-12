@@ -12,7 +12,7 @@ from collections import deque
 from typing import Any, Optional
 from time_et import now_et, RTH_END_MINS, RTH_OPEN_MINS
 from instrument_identity import ticker_storage_key
-from numeric_contract import float_finite_or_none
+from numeric_contract import float_finite_or_none, float_nonnegative_or_none
 from l1_trade_observation import (
     TAPE_COMPLETENESS,
     is_adjacent_restatement,
@@ -114,19 +114,51 @@ class OrderFlowState:
         if ts_recv is None:
             ts_recv = _time.time()
 
+        # Operator finding (2026-09-11): this session-reset check used to run AFTER the
+        # volume/chg_pct writes below. On the FIRST update of a new RTH session, that order
+        # applied the fresh, genuinely-valid observation and then immediately discarded it:
+        # _clear_all_session_state_unlocked() wipes _stream_volume/_stream_chg_pct
+        # unconditionally, so the very update that should have seeded the new session was
+        # erased by the reset the same call triggered. The reset must happen BEFORE a new
+        # observation is applied, never after, so a fresh value is never sacrificed to the
+        # transition it arrived on.
+        # Operator finding (2026-09-11): this session-reset check used to run AFTER the
+        # volume/chg_pct writes below. On the FIRST update of a new RTH session, that order
+        # applied the fresh, genuinely-valid observation and then immediately discarded it:
+        # _clear_all_session_state_unlocked() wipes _stream_volume/_stream_chg_pct
+        # unconditionally, so the very update that should have seeded the new session was
+        # erased by the reset the same call triggered. The reset must happen BEFORE a new
+        # observation is applied, never after, so a fresh value is never sacrificed to the
+        # transition it arrived on.
+        try:
+            now_et_dt = now_et()
+            current_date = now_et_dt.strftime("%Y-%m-%d")
+            if is_rth_open() and current_date != self._last_rth_date:
+                with self._lock:
+                    self._clear_all_session_state_unlocked()
+                    self._last_rth_date = current_date
+                log.info(
+                    "RTH open — full state reset "
+                    "(tape + book + top + prev_trade) for all symbols"
+                )
+        except Exception as e:
+            log.debug("RTH reset check failed (continuing): %s", e)
+
         # Operator finding (2026-09-11): `or` drops a legitimate 0 TOTAL_VOLUME (the honest
         # state before any trade prints today, or for a contract with genuinely no volume
         # yet) and falls through to VOLUME instead -- the same class of bug already fixed
-        # below for chg_pct. `vf > 0` compounded it: a genuine 0 was rejected outright, so a
-        # symbol that legitimately has zero volume so far never gets an entry at all, and a
-        # symbol whose cache already held a real number from earlier in the session keeps
-        # showing that STALE number if a later observation is honestly 0 (e.g. session
-        # reset) -- accepted presence, rejected value. float_finite_or_none rejects NaN/Inf
-        # (a bad tick) while admitting a real, finite zero.
+        # below for chg_pct. `vf > 0` compounded it further: a genuine 0 was rejected
+        # outright, and a negative value was accepted outright -- so a symbol that
+        # legitimately has zero volume so far never got an entry, a corrupt negative tick
+        # was stored and served as if real, and a symbol whose cache already held a real
+        # number kept showing that STALE number if a later observation was honestly 0.
+        # float_nonnegative_or_none (the repo's existing canonical reader for vendor
+        # counts like totalVolume/size) rejects negative and non-finite values while
+        # admitting a real, finite zero.
         vol = content_item.get("TOTAL_VOLUME")
         if vol is None:
             vol = content_item.get("VOLUME")
-        vf = float_finite_or_none(vol)
+        vf = float_nonnegative_or_none(vol)
         if vf is not None:
             with self._lock:
                 self._stream_volume[sym] = vf
@@ -141,20 +173,6 @@ class OrderFlowState:
         if cf is not None:
             with self._lock:
                 self._stream_chg_pct[sym] = cf
-
-        try:
-            now_et_dt = now_et()
-            current_date = now_et_dt.strftime("%Y-%m-%d")
-            if is_rth_open() and current_date != self._last_rth_date:
-                with self._lock:
-                    self._clear_all_session_state_unlocked()
-                    self._last_rth_date = current_date
-                log.info(
-                    "RTH open — full state reset "
-                    "(tape + book + top + prev_trade) for all symbols"
-                )
-        except Exception as e:
-            log.debug("RTH reset check failed (continuing): %s", e)
 
         with self._lock:
             top_item = dict(

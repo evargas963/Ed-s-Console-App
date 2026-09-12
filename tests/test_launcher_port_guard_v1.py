@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from tools import launcher_port_guard as lpg
+import launcher_port_guard as lpg
 
 
 def test_recognizes_a_real_ed_console_command_line():

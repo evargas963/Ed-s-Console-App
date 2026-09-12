@@ -81,6 +81,7 @@ ROUTES: dict[str, tuple[str, str | None]] = {
     '/api/terrain/scorecard': ('PRODUCER', None),
     '/api/terrain/strikes': ('PRODUCER', 'server.py:get_terrain_strikes'),
     '/api/vol-observability': ('DIAGNOSTIC', None),
+    '/api/watchlist-quotes': ('PRODUCER', 'server.py:api_watchlist_quotes'),
     '/chart': ('PAGE', None),
     '/console': ('PAGE', None),
     '/desk': ('PAGE', None),

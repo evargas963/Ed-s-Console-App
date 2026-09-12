@@ -684,8 +684,8 @@ def resolve_chg_pct(ticker: str, rest_chg_pct: Optional[float], *,
             stream_chg = fn(ticker)
             if stream_chg is not None:
                 return stream_chg
-        except Exception:
-            pass
+        except Exception as e:
+            log.debug("resolve_chg_pct: stream_chg_pct_fn failed for %s: %s", ticker, e)
     return rest_chg_pct
 
 
