@@ -1210,4 +1210,133 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await page.waitForTimeout(150);   // let any (incorrect) late-commit attempt land
     expect(await page.evaluate(() => window.EdStream.getDesiredAdditional())).toEqual(A);
   });
+
+  test('retrying a clear after the clear itself failed sends a fresh request, not a stale cache hit (RC-UI-3)', async ({ page }) => {
+    // Independent-review finding (2026-09-12), REPRODUCED: request A (left pending),
+    // then a clear ([]) FAILS (503), then A's late response arrives and is correctly
+    // ignored (superseded) -- so far identical to the sibling test above. The NEW
+    // finding: retrying the SAME clear again used to match the UNTOUCHED initial
+    // _desiredAdditional (still [], since nothing had ever actually committed a value)
+    // and short-circuit with accepted:true/unchanged:true WITHOUT sending another
+    // request -- even though the FAILED clear never actually removed anything, and A's
+    // own request was never confirmed either way once superseded. A coincidental match
+    // against a STALE cached value must never substitute for a fresh confirmation.
+    const A = ['SPY   260911C00583000', 'SPY   260911P00583000'];
+    const keyOf = (arr) => arr.slice().sort().join(',');
+    /** @type {string[]} */
+    const seen = [];
+    let hungOnceForA = false;
+    let clearShouldFail = false;
+    /** @type {((v: any) => void) | null} */
+    let releaseA = null;
+    await page.route('**/api/streaming/active-option-contracts', async (route) => {
+      const body = JSON.parse(route.request().postData() || '{}');
+      const key = keyOf(body.contracts || []);
+      seen.push(key);
+      if (key === keyOf(A) && !hungOnceForA) {
+        hungOnceForA = true;
+        await new Promise((resolve) => { releaseA = resolve; });   // A hangs, once
+        return route.fulfill({ status: 200, contentType: 'application/json',
+          body: JSON.stringify({ ok: true, contracts: body.contracts || [] }) });
+      }
+      if (key === keyOf([]) && clearShouldFail) {
+        clearShouldFail = false;   // fail exactly once
+        return route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ ok: false }) });
+      }
+      return route.fulfill({ status: 200, contentType: 'application/json',
+        body: JSON.stringify({ ok: true, contracts: body.contracts || [] }) });
+    });
+    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(200);   // let any unrelated page-load auto-request settle first
+
+    const pendingA = page.evaluate((set) => window.EdStream.setAdditionalContracts(set), A);
+    await expect.poll(() => seen.includes(keyOf(A))).toBe(true);   // A's request is in flight, hanging
+
+    // The clear FAILS while A is still pending.
+    clearShouldFail = true;
+    const seenBeforeClear = seen.length;
+    const clearResult = await page.evaluate(() => window.EdStream.setAdditionalContracts([]));
+    expect(seen.length).toBe(seenBeforeClear + 1);
+    expect(clearResult.accepted).toBe(false);
+
+    // Release A's late response -- it must be ignored (superseded), not committed.
+    if (releaseA) releaseA(undefined);
+    await pendingA;
+    await page.waitForTimeout(100);
+
+    // Retry the SAME clear -- must send a FRESH request, not a stale cache hit against
+    // the untouched initial (coincidentally matching) desired value.
+    const seenBeforeRetry = seen.length;
+    const retryResult = await page.evaluate(() => window.EdStream.setAdditionalContracts([]));
+    expect(seen.length).toBe(seenBeforeRetry + 1);   // a REAL new request, not a fabricated accept
+    expect(seen[seen.length - 1]).toBe(keyOf([]));
+    expect(retryResult.accepted).toBe(true);
+    expect(retryResult.unchanged).toBe(false);
+    expect(await page.evaluate(() => window.EdStream.getDesiredAdditional())).toEqual([]);
+  });
+
+  test('retrying a return-to-prior-value after it failed sends a fresh request, not a stale cache hit (RC-UI-3)', async ({ page }) => {
+    // Independent-review finding (2026-09-12), REPRODUCED, the mirror case: accept A,
+    // request B (pending), the return to A FAILS, B's late response arrives and is
+    // correctly ignored (superseded) -- then retrying the return to A again used to
+    // match the STALE _desiredAdditional=A (confirmed BEFORE B was ever dispatched) and
+    // short-circuit without a fresh request -- even though the intervening B dispatch
+    // means the server's actual state cannot be assumed to still be A without asking
+    // again.
+    const A = ['SPY   260911C00583000', 'SPY   260911P00583000'];
+    const B = ['SPY   260911C00586000', 'SPY   260911P00586000'];
+    const keyOf = (arr) => arr.slice().sort().join(',');
+    /** @type {string[]} */
+    const seen = [];
+    let hungOnceForB = false;
+    let returnToAShouldFail = false;
+    /** @type {((v: any) => void) | null} */
+    let releaseB = null;
+    await page.route('**/api/streaming/active-option-contracts', async (route) => {
+      const body = JSON.parse(route.request().postData() || '{}');
+      const key = keyOf(body.contracts || []);
+      seen.push(key);
+      if (key === keyOf(B) && !hungOnceForB) {
+        hungOnceForB = true;
+        await new Promise((resolve) => { releaseB = resolve; });   // B hangs, once
+        return route.fulfill({ status: 200, contentType: 'application/json',
+          body: JSON.stringify({ ok: true, contracts: body.contracts || [] }) });
+      }
+      if (key === keyOf(A) && returnToAShouldFail) {
+        returnToAShouldFail = false;   // fail exactly once
+        return route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ ok: false }) });
+      }
+      return route.fulfill({ status: 200, contentType: 'application/json',
+        body: JSON.stringify({ ok: true, contracts: body.contracts || [] }) });
+    });
+    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(200);
+
+    const acceptA = await page.evaluate((set) => window.EdStream.setAdditionalContracts(set), A);
+    expect(acceptA.accepted).toBe(true);
+
+    const pendingB = page.evaluate((set) => window.EdStream.setAdditionalContracts(set), B);
+    await expect.poll(() => seen.includes(keyOf(B))).toBe(true);   // B's request is in flight, hanging
+
+    // The return to A FAILS while B is still pending.
+    returnToAShouldFail = true;
+    const seenBeforeReturn = seen.length;
+    const returnResult = await page.evaluate((set) => window.EdStream.setAdditionalContracts(set), A);
+    expect(seen.length).toBe(seenBeforeReturn + 1);
+    expect(returnResult.accepted).toBe(false);
+
+    // Release B's late response -- it must be ignored (superseded), not committed.
+    if (releaseB) releaseB(undefined);
+    await pendingB;
+    await page.waitForTimeout(100);
+
+    // Retry the return to A -- must send a FRESH request, not a stale cache hit against
+    // the confirmed-before-B value.
+    const seenBeforeRetry = seen.length;
+    const retryResult = await page.evaluate((set) => window.EdStream.setAdditionalContracts(set), A);
+    expect(seen.length).toBe(seenBeforeRetry + 1);   // a REAL new request, not a fabricated accept
+    expect(seen[seen.length - 1]).toBe(keyOf(A));
+    expect(retryResult.accepted).toBe(true);
+    expect(await page.evaluate(() => window.EdStream.getDesiredAdditional())).toEqual(A);
+  });
 });

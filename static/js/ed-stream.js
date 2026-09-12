@@ -118,6 +118,8 @@
     return true;
   }
   var _desiredAdditional = [];    // last set a response actually CONFIRMED accepted
+  var _desiredAdditionalGen = 0;  // the _additionalGen value AT THE MOMENT _desiredAdditional
+                                   // was confirmed -- see the "unchanged" short-circuit below
   var _pendingAdditional = null;  // set currently in flight, or null
   var _additionalGen = 0;         // monotonic token: only the LATEST request may commit
   function setAdditionalContracts(symbols) {
@@ -151,21 +153,49 @@
     // the requested value matches whatever is CURRENTLY AUTHORITATIVE -- the in-flight
     // request's target if one exists, else the last confirmed value -- never the
     // confirmed value alone while something else is in flight for a different target.
+    //
+    // Independent-review finding (2026-09-12), REPRODUCED, connected: the currentTarget
+    // check above closes the case where something is CURRENTLY pending, but not the
+    // case where something WAS dispatched and is no longer pending -- because its
+    // outcome was either a definitive REJECTION or a SUPERSESSION whose result this
+    // module chose not to trust. Two real sequences this still let through:
+    //   (a) request A (pending) -> a clear ([]) FAILS (503) -> A's late response then
+    //       arrives (correctly ignored, superseded) -> retrying the SAME clear again
+    //       matched _desiredAdditional (still [], the untouched initial value) and
+    //       reported accepted:true/unchanged:true WITHOUT a new request -- even though
+    //       the server may have already applied A (that request was never confirmed
+    //       either way from this module's perspective once superseded) and the FAILED
+    //       clear never actually removed it.
+    //   (b) accept A -> request B (pending) -> a return to A FAILS -> B's late response
+    //       then arrives (correctly ignored, superseded) -> retrying the return to A
+    //       again matched the STALE _desiredAdditional=A (confirmed BEFORE B was ever
+    //       dispatched) and short-circuited -- even though an intervening dispatch (B)
+    //       means the server's actual current state cannot be assumed to still be A
+    //       without a fresh confirmation.
+    // The root fix: `_desiredAdditional`'s value is trustworthy for the "nothing to do"
+    // short-circuit ONLY when NOTHING has been dispatched since the tick it was last
+    // confirmed -- tracked by `_desiredAdditionalGen`, which is set to match
+    // `_additionalGen` ONLY at the exact moment of a genuine accepted commit. Any
+    // dispatch at all (accepted, rejected, or later superseded) advances `_additionalGen`
+    // without advancing `_desiredAdditionalGen`, so the cached value stops being
+    // trustworthy the instant anything else is attempted, and only becomes trustworthy
+    // again once a fresh accept re-synchronizes the two counters.
     var currentTarget = (_pendingAdditional !== null) ? _pendingAdditional : _desiredAdditional;
-    if (_sortedEqual(dedup, currentTarget)) {
-      if (_pendingAdditional !== null) {
-        // Identical to what is ALREADY in flight -- do not fire a duplicate concurrent
-        // request (Strike Detail can call this on every render); let the one in-flight
-        // fetch resolve and commit on its own (its token is still current, untouched).
-        return Promise.resolve({ accepted: false, unchanged: false, pending: true, contracts: dedup });
-      }
+    var cacheTrustworthy = _pendingAdditional === null && _desiredAdditionalGen === _additionalGen;
+    if (cacheTrustworthy && _sortedEqual(dedup, currentTarget)) {
       return Promise.resolve({ accepted: true, unchanged: true, contracts: _desiredAdditional });
     }
-    // The requested value genuinely DIFFERS from whatever is authoritative right now
-    // (confirmed or in flight) -- a real new intent. Bump the generation so any STALE
-    // in-flight request for the superseded target can never commit once this one lands,
-    // even when this new target happens to equal an EARLIER confirmed value (returning
-    // to A while B is pending must still supersede B, not merely match A's own history).
+    if (_pendingAdditional !== null && _sortedEqual(dedup, currentTarget)) {
+      // Identical to what is ALREADY in flight -- do not fire a duplicate concurrent
+      // request (Strike Detail can call this on every render); let the one in-flight
+      // fetch resolve and commit on its own (its token is still current, untouched).
+      return Promise.resolve({ accepted: false, unchanged: false, pending: true, contracts: dedup });
+    }
+    // Either the requested value genuinely DIFFERS from whatever is authoritative right
+    // now, or it coincidentally matches a STALE cached value that an intervening dispatch
+    // has made untrustworthy -- either way, a real new request is required to get a fresh
+    // confirmation. Bump the generation so any STALE in-flight OR previously-superseded
+    // request can never retroactively be treated as still authoritative.
     var token = ++_additionalGen;   // supersedes any earlier in-flight request's ability to commit
     _pendingAdditional = dedup;
     return fetch('/api/streaming/active-option-contracts', {
@@ -187,7 +217,10 @@
         var identityOk = acked !== null && _sortedEqual(acked, dedup);
         var accepted = ok2xx && !!b && b.ok === true && identityOk;
         if (isCurrent) {
-          if (accepted) _desiredAdditional = dedup;   // commit ONLY on a confirmed accept
+          if (accepted) {
+            _desiredAdditional = dedup;      // commit ONLY on a confirmed accept
+            _desiredAdditionalGen = token;   // and re-synchronize the trust generation
+          }
           _pendingAdditional = null;
         }
         return { accepted: accepted, unchanged: false, contracts: dedup, status: res.status,
