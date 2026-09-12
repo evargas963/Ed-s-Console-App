@@ -336,14 +336,26 @@ def _write_json_signal(value_key: str, value: str, *, path: Path) -> None:
     tmp.replace(path)
 
 
-def _read_json_signal(value_key: str, *, path: Path) -> str | None:
-    """Shared read: None on any absence/corruption — a missing signal means 'no
-    subscription', never a guessed value."""
+def _read_json_signal_body(path: Path) -> dict:
+    """Shared malformed-content guard for every signal reader below (singular and
+    plural): any read/parse failure, OR valid JSON whose root is not an object (a bare
+    list, string, number, `true`/`false`, or `null` -- all legal JSON, none of them a
+    signal body), returns {} uniformly. Independent-review finding (2026-09-12): both
+    _read_json_signal and _read_json_list_signal called `.get(value_key)` directly on
+    the parsed root, raising AttributeError on `[]` or `null` content instead of the
+    fail-closed 'nothing requested' every caller here documents and depends on -- a
+    malformed signal must never raise into the daemon's poll loop."""
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
-        return None
-    v = str(data.get(value_key) or "").upper().strip()
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _read_json_signal(value_key: str, *, path: Path) -> str | None:
+    """Shared read: None on any absence/corruption/malformed-root content — a missing or
+    unusable signal means 'no subscription', never a guessed value."""
+    v = str(_read_json_signal_body(path).get(value_key) or "").upper().strip()
     return v or None
 
 
@@ -402,14 +414,11 @@ def _write_json_list_signal(value_key: str, values: "list[str]", *, path: Path) 
 
 
 def _read_json_list_signal(value_key: str, *, path: Path) -> "list[str]":
-    """PLURAL counterpart to _read_json_signal: [] on any absence/corruption or malformed
-    (non-list) value — a missing/broken signal means 'no additional contracts', never a
-    guessed set, exactly the same fail-closed discipline the singular signal already uses."""
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return []
-    raw = data.get(value_key)
+    """PLURAL counterpart to _read_json_signal: [] on any absence/corruption, malformed
+    root, or malformed (non-list) value — a missing/broken signal means 'no additional
+    contracts', never a guessed set, exactly the same fail-closed discipline the singular
+    signal uses (see _read_json_signal_body)."""
+    raw = _read_json_signal_body(path).get(value_key)
     if not isinstance(raw, list):
         return []
     return sorted({str(v or "").upper().strip() for v in raw} - {""})

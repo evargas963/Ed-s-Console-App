@@ -548,12 +548,14 @@ class OptionCoverageCompensationError(RuntimeError):
 COVERAGE_CLAIM_SERVICES = {"l1": "LEVELONE_OPTIONS", "book": "OPTIONS_BOOK"}
 
 #: epoch_state key PREFIX -> service, for the additional-symbol keys
-#: _apply_extra_option_contract_subs creates (f"{svc_key}:extra:{symbol}"). Multi-contract
+#: _apply_extra_option_contract_subs creates (f"l1:extra:{symbol}"). Multi-contract
 #: coverage (RC-UI-3, 2026-09-12) needs an unbounded number of concurrently-open epochs
-#: per service, not the single fixed key COVERAGE_CLAIM_SERVICES was built for -- this is
-#: the second (and only other) place claimed-epoch scanning happens, kept beside it so
-#: the two can never drift about which keys belong to which service.
-EXTRA_COVERAGE_CLAIM_KEY_PREFIXES = {"l1:extra:": "LEVELONE_OPTIONS", "book:extra:": "OPTIONS_BOOK"}
+#: for LEVELONE_OPTIONS, not the single fixed key COVERAGE_CLAIM_SERVICES was built for
+#: -- this is the second (and only other) place claimed-epoch scanning happens, kept
+#: beside it so the two can never drift about which keys belong to which service.
+#: LEVELONE_OPTIONS only (see EXTRA_OPTION_CONTRACT_SVC_KEY): OPTIONS_BOOK never gets a
+#: namespaced extra key, so it has no entry here.
+EXTRA_COVERAGE_CLAIM_KEY_PREFIXES = {"l1:extra:": "LEVELONE_OPTIONS"}
 
 
 def _claimed_coverage_from_epoch_state(epoch_state: dict) -> "dict[str, list[int]]":
@@ -824,6 +826,30 @@ def _retry_pending_epoch_closes(writer, epoch_state: dict, key: str, *, reason: 
     _publish_coverage_claim(writer, epoch_state)
 
 
+def _retire_all_extra_option_coverage(writer, epoch_state: "dict | None", *, reason: str,
+                                      surrendered_ts: float) -> None:
+    """Close and retry EVERY namespaced additional-symbol coverage epoch (RC-UI-3) at a
+    stream recycle/teardown — the dying stream's subscription window ends for ALL its
+    held symbols, not just the primary "l1"/"book" pair. Independent-review finding
+    (2026-09-12): the recycle path only ever closed "l1"/"book" explicitly, leaving any
+    additional symbol's epoch row open (`ended_ts IS NULL`) after the socket that held it
+    was torn down — a false coverage claim across exactly the window this ledger exists
+    to prevent, and (via `_claimed_coverage_from_epoch_state`) a claim that would keep
+    NAMING a symbol the fresh stream does not yet, and may never again, hold.
+
+    Symmetric with the primary pair's own recycle handling: `epoch_state` keeps each
+    closed key (value set to None, not deleted) exactly like "l1"/"book" already do, so a
+    reader mid-transition sees a consistent shape either way."""
+    if epoch_state is None:
+        return
+    prefix = f"{EXTRA_OPTION_CONTRACT_SVC_KEY}:extra:"
+    keys = sorted(k for k in epoch_state if k.startswith(prefix) and not k.endswith("_pending_close"))
+    for key in keys:
+        _retry_pending_epoch_closes(writer, epoch_state, key, reason=reason)
+        _close_coverage_epoch_tracked(writer, epoch_state, key, reason=reason,
+                                      surrendered_ts=surrendered_ts)
+
+
 async def _reconcile_option_service(stream, held: str | None, requested: str | None, *,
                                     subs_fn, unsubs_fn, writer, epoch_state: dict | None,
                                     epoch_key: str, service_name: str) -> str | None:
@@ -1020,22 +1046,86 @@ async def _reconcile_option_service(stream, held: str | None, requested: str | N
     return held
 
 
+#: Prefix for the ADDITIONAL-symbols' namespaced epoch/contract-state keys. LEVELONE_
+#: OPTIONS only (survivor-challenge finding, 2026-09-12): the heatmap/GEX/volume
+#: consumers this mechanism serves need per-contract GREEKS/OI/VOLUME, which is
+#: LEVELONE_OPTIONS content -- they have no use for OPTIONS_BOOK (order-flow/book
+#: microstructure), which stays reserved for the ONE primary/pinned Flow-view contract
+#: under the plain "book" key. Requiring OPTIONS_BOOK for every additional contract
+#: merely because the primary slot happens to need both services would double the
+#: vendor subscription surface for a service no consumer of the extra set reads.
+EXTRA_OPTION_CONTRACT_SVC_KEY = "l1"
+EXTRA_OPTION_CONTRACT_SERVICE_NAME = "LEVELONE_OPTIONS"
+
+
+def _any_other_symbol_held(contract_state: dict, svc_key: str, exclude_key: str) -> bool:
+    """Is ANYTHING besides `exclude_key` currently vendor-held for `svc_key` (the primary
+    key or any namespaced extra key)? The single source of truth for the SUBS-vs-ADD
+    decision in `_subs_or_add` below: recomputed fresh from `contract_state` at the
+    instant of each subscribe call, never a separately-tracked flag -- correct after a
+    stream recycle (contract_state is reset there, a plain dict replacement — see `run`'s
+    recycle path) and correct mid-tick as symbols newly succeed within the SAME tick.
+    `exclude_key` is always the key currently being reconciled: its own pre-call value in
+    contract_state is stale (about to be overwritten by the caller once this reconcile
+    returns) and must never be read as "something else is held"."""
+    if exclude_key != svc_key and contract_state.get(svc_key) is not None:
+        return True
+    prefix = f"{svc_key}:extra:"
+    for key, value in contract_state.items():
+        if key == exclude_key or not key.startswith(prefix):
+            continue
+        if value is not None:
+            return True
+    return False
+
+
+def _subs_or_add(contract_state: dict, svc_key: str, exclude_key: str, subs_fn, add_fn):
+    """Native-semantics-correct 'subscribe' operation for one service (survivor-challenge
+    finding, 2026-09-12: verified against the installed schwab-py SDK and its official
+    docs at https://schwab-py.readthedocs.io/en/latest/streaming.html). Those docs are
+    explicit: "When subscriptions are called multiple times on the same stream, the
+    results vary... it's recommended not to call a subscription function more than once
+    for any given stream" -- calling `*_subs` a second time is UNDEFINED and can clobber
+    an already-established subscription, which is exactly what the PRIOR per-symbol-
+    reconciler design did (one independent `*_subs([symbol])` call per extra symbol,
+    every one of them on the SAME stream). The documented, safe way to extend an
+    established subscription is `*_add` (confirmed present on the installed SDK for both
+    LEVELONE_OPTIONS and OPTIONS_BOOK: `level_one_option_add`, `options_book_add`) --
+    `*_unsubs` with an explicit symbol list is separately confirmed safe and scoped
+    ("symbols which were not explicitly unsubscribed remain subscribed"), so no change
+    was needed there.
+
+    Returns a callable matching `subs_fn`'s own signature (one `symbols` list arg) that
+    chooses SUBS (nothing else is currently held for this service -- bootstrap a fresh
+    subscription; the historical, unchanged, single-contract behavior) or ADD (something
+    else is already held -- extend it, never re-issue SUBS), decided at call time via
+    `_any_other_symbol_held`."""
+    async def _op(symbols):
+        if _any_other_symbol_held(contract_state, svc_key, exclude_key):
+            await add_fn(symbols)
+        else:
+            await subs_fn(symbols)
+    return _op
+
+
 async def _apply_extra_option_contract_subs(stream, contract_state: dict, extra_requested: set, *,
-                                            writer, epoch_state: dict | None, svc_key: str,
-                                            subs_fn, unsubs_fn, service_name: str) -> None:
-    """Reconcile ADDITIONAL concurrently-desired symbols for one service (RC-UI-3,
+                                            writer, epoch_state: dict | None) -> None:
+    """Reconcile ADDITIONAL concurrently-desired symbols for LEVELONE_OPTIONS (RC-UI-3,
     2026-09-12 multi-contract coverage), beside the one primary/pinned contract
-    `_apply_active_option_contract_subs` reconciles under the plain "l1"/"book" keys.
+    `_apply_active_option_contract_subs` reconciles under the plain "l1" key. LEVELONE_
+    OPTIONS only — see EXTRA_OPTION_CONTRACT_SVC_KEY.
 
     Deliberately reuses `_reconcile_option_service` UNCHANGED, once per extra symbol,
-    under a NAMESPACED key f"{svc_key}:extra:{symbol}" — fully independent of the primary
-    key and of every other extra symbol's key, so the causality-critical close-before-
-    unsub-before-sub-before-open ordering that function implements, and the ~1600 lines
-    of tests proving it, apply identically here with zero new state-machine code. Each
+    under a NAMESPACED key f"l1:extra:{symbol}" — fully independent of the primary key
+    and of every other extra symbol's key, so the causality-critical close-before-unsub-
+    before-sub-before-open ordering that function implements, and the ~1600 lines of
+    tests proving it, apply identically here with zero new state-machine code. Each
     namespaced key always reconciles held==requested==the SAME symbol (never a switch
     from one symbol to another within one key) — "add a contract" and "drop a contract"
     are the only two transitions a key ever makes, which is exactly the subscribe/
-    unsubscribe halves _reconcile_option_service already implements.
+    unsubscribe halves _reconcile_option_service already implements. The actual vendor
+    subscribe call is `_subs_or_add`-wrapped (SUBS only if nothing else is held for
+    LEVELONE_OPTIONS at that instant, ADD otherwise — see its docstring).
 
     `in_play` is the union of every symbol that still needs a reconcile call this tick:
     desired extras, symbols contract_state still remembers holding, and symbols
@@ -1043,7 +1133,7 @@ async def _apply_extra_option_contract_subs(stream, contract_state: dict, extra_
     the desired set must keep reconciling (to actually unsubscribe/close) until BOTH
     dicts agree nothing is left, at which point its keys are pruned so contract_state/
     epoch_state do not grow without bound over a long session."""
-    prefix = f"{svc_key}:extra:"
+    prefix = f"{EXTRA_OPTION_CONTRACT_SVC_KEY}:extra:"
     in_play: set[str] = {k[len(prefix):] for k in contract_state if k.startswith(prefix)}
     in_play |= set(extra_requested)
     if epoch_state is not None:
@@ -1060,8 +1150,11 @@ async def _apply_extra_option_contract_subs(stream, contract_state: dict, extra_
         want = symbol if symbol in extra_requested else None
         held_now = await _reconcile_option_service(
             stream, contract_state.get(epoch_key), want,
-            subs_fn=subs_fn, unsubs_fn=unsubs_fn,
-            writer=writer, epoch_state=epoch_state, epoch_key=epoch_key, service_name=service_name)
+            subs_fn=_subs_or_add(contract_state, EXTRA_OPTION_CONTRACT_SVC_KEY, epoch_key,
+                                 stream.level_one_option_subs, stream.level_one_option_add),
+            unsubs_fn=stream.level_one_option_unsubs,
+            writer=writer, epoch_state=epoch_state, epoch_key=epoch_key,
+            service_name=EXTRA_OPTION_CONTRACT_SERVICE_NAME)
         fully_clear = held_now is None and want is None and (
             epoch_state is None or (
                 epoch_state.get(epoch_key) is None
@@ -1082,13 +1175,21 @@ async def _apply_active_option_contract_subs(stream, contract_state: dict, *,
     _reconcile_option_service).
 
     ONE primary/pinned contract (the pre-existing singular signal, "l1"/"book" keys,
-    unchanged behavior and unchanged signature) plus any number of ADDITIONALLY desired
-    contracts (the new plural signal, read_active_option_contracts_signal — RC-UI-3,
-    2026-09-12: "historical coverage failures establish properties to preserve; they do
-    not establish that single-contract operation must survive," operator-authorized).
-    The desired set for each service is the union of the two; a symbol present in both
-    is reconciled once, under the primary key, and excluded from the extra pass so a
-    single symbol never carries two live subscriptions to the same service.
+    unchanged behavior/signature — both services, for the Flow view's order-flow book)
+    plus any number of ADDITIONALLY desired contracts (the new plural signal,
+    read_active_option_contracts_signal — RC-UI-3, 2026-09-12: "historical coverage
+    failures establish properties to preserve; they do not establish that single-contract
+    operation must survive," operator-authorized). LEVELONE_OPTIONS only for the
+    additional set (survivor-challenge finding: the heatmap/GEX/volume consumers it
+    serves read greeks/OI/volume, never book depth — see EXTRA_OPTION_CONTRACT_SVC_KEY).
+    A symbol present in both the primary and additional sets is reconciled once, under
+    the primary key, and excluded from the extra pass so a single symbol never carries
+    two live LEVELONE_OPTIONS subscriptions.
+
+    Every subscribe transition (primary or extra) goes through `_subs_or_add`: only the
+    very first symbol established for a service on the current stream uses the native
+    SUBS command; every symbol after that uses ADD (survivor-challenge finding — see
+    `_subs_or_add`'s docstring for why a second `*_subs` call is unsafe).
 
     `requested` MUST already be a chain response's own "symbol" field (enforced by
     stream_spine.write_active_option_contract_signal's caller, not re-validated here) —
@@ -1097,18 +1198,19 @@ async def _apply_active_option_contract_subs(stream, contract_state: dict, *,
     in the plural signal (write_active_option_contracts_signal's caller).
 
     ``contract_state``: {"l1": symbol|None, "book": symbol|None, "l1:extra:<symbol>":
-    symbol|None, "book:extra:<symbol>": symbol|None, ...} — the symbol currently held AT
-    THE VENDOR for each key; mutated in place and returned. ``writer``/``epoch_state``:
-    when given, durably records COVERAGE EPOCHS (which windows this contract was
-    actually subscribed, per service) — mutated in place, same key shape, plus
-    retry-tracking keys per epoch key — so a gap in stream_options_quotes_raw is later
-    interpretable as "not subscribed" vs "subscribed, vendor silent" for EVERY
-    concurrently-held contract, not just the primary one. Optional: tests exercising
-    only the subscribe-diff behavior can omit both."""
+    symbol|None, ...} — the symbol currently held AT THE VENDOR for each key; mutated in
+    place and returned. ``writer``/``epoch_state``: when given, durably records COVERAGE
+    EPOCHS (which windows this contract was actually subscribed, per service) — mutated
+    in place, same key shape, plus retry-tracking keys per epoch key — so a gap in
+    stream_options_quotes_raw is later interpretable as "not subscribed" vs "subscribed,
+    vendor silent" for EVERY concurrently-held contract, not just the primary one.
+    Optional: tests exercising only the subscribe-diff behavior can omit both."""
     requested = read_active_option_contract_signal()
     contract_state["l1"] = await _reconcile_option_service(
         stream, contract_state.get("l1"), requested,
-        subs_fn=stream.level_one_option_subs, unsubs_fn=stream.level_one_option_unsubs,
+        subs_fn=_subs_or_add(contract_state, "l1", "l1",
+                             stream.level_one_option_subs, stream.level_one_option_add),
+        unsubs_fn=stream.level_one_option_unsubs,
         writer=writer, epoch_state=epoch_state, epoch_key="l1", service_name="LEVELONE_OPTIONS")
     contract_state["book"] = await _reconcile_option_service(
         stream, contract_state.get("book"), requested,
@@ -1116,13 +1218,7 @@ async def _apply_active_option_contract_subs(stream, contract_state: dict, *,
         writer=writer, epoch_state=epoch_state, epoch_key="book", service_name="OPTIONS_BOOK")
     extra_requested = {s for s in read_active_option_contracts_signal() if s != requested}
     await _apply_extra_option_contract_subs(
-        stream, contract_state, extra_requested, writer=writer, epoch_state=epoch_state,
-        svc_key="l1", subs_fn=stream.level_one_option_subs, unsubs_fn=stream.level_one_option_unsubs,
-        service_name="LEVELONE_OPTIONS")
-    await _apply_extra_option_contract_subs(
-        stream, contract_state, extra_requested, writer=writer, epoch_state=epoch_state,
-        svc_key="book", subs_fn=stream.options_book_subs, unsubs_fn=stream.options_book_unsubs,
-        service_name="OPTIONS_BOOK")
+        stream, contract_state, extra_requested, writer=writer, epoch_state=epoch_state)
     return contract_state
 
 
@@ -1750,6 +1846,12 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
                                               surrendered_ts=recycle_surrendered_ts)
                 _close_coverage_epoch_tracked(writer, option_epoch_state, "book", reason="stream_recycle",
                                               surrendered_ts=recycle_surrendered_ts)
+                # RC-UI-3 (2026-09-12): the primary "l1"/"book" pair above is not the whole
+                # of what this stream may have held — every additional (extra) symbol's own
+                # epoch must be closed here too, or its row stays open past the socket that
+                # actually carried it. See _retire_all_extra_option_coverage's docstring.
+                _retire_all_extra_option_coverage(writer, option_epoch_state, reason="stream_recycle",
+                                                  surrendered_ts=recycle_surrendered_ts)
                 # The RECONNECT TARGET is the operator's current desired symbol, read fresh
                 # from the signal file — not the (about-to-be-discarded) per-service held
                 # state, which may be stale or partially set from a prior partial failure.
@@ -1842,7 +1944,15 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
                                       surrendered_ts=shutdown_surrendered_ts)
         _close_coverage_epoch_tracked(writer, option_epoch_state, "book", reason="shutdown",
                                       surrendered_ts=shutdown_surrendered_ts)
-        for _key in ("l1", "book"):
+        # RC-UI-3 (2026-09-12): every additional symbol's own epoch must close on shutdown
+        # too — see _retire_all_extra_option_coverage's docstring (same reasoning as the
+        # stream-recycle call site above).
+        _retire_all_extra_option_coverage(writer, option_epoch_state, reason="shutdown",
+                                          surrendered_ts=shutdown_surrendered_ts)
+        _extra_keys_at_shutdown = sorted(
+            k for k in option_epoch_state
+            if k.startswith(f"{EXTRA_OPTION_CONTRACT_SVC_KEY}:extra:") and not k.endswith("_pending_close"))
+        for _key in ("l1", "book", *_extra_keys_at_shutdown):
             _pending = option_epoch_state.get(f"{_key}_pending_close")
             if _pending:
                 print(f"WARNING: shutdown leaves {len(_pending)} unclosed coverage "

@@ -893,4 +893,42 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     expect(overflow).toBe(true);
     await page.screenshot({ path: path.join('test-results', 'console-gamma-1920x1080.png'), fullPage: false });
   });
+
+  test('selecting a strike connects it to live streaming via the plural subscription endpoint (RC-UI-3)', async ({ page }) => {
+    // Independent-review finding (2026-09-12), REPRODUCED: "The new UI does not call the
+    // plural subscription endpoint." Strike Detail is the one panel with a genuinely
+    // resolved, DISPLAYED per-contract identity (the heatmap itself is a computed
+    // aggregate with no per-cell OSI symbol) -- selecting a strike must request BOTH its
+    // call AND put vendor symbols ("both sides where required") via
+    // /api/streaming/active-option-contracts, the real endpoint, through the real
+    // ed-stream.js/ed-gamma-panels.js wiring -- not a synthetic call into the JS module.
+    await page.route('**/api/chain**', (route) => route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({
+        ticker: '$SPX', spot: 583.41, expiry: '2026-09-11', status: 'ok',
+        contracts: [
+          { symbol: 'SPY   260911C00583000', putCall: 'CALL', strikePrice: 583,
+            openInterest: 1200, totalVolume: 540, gamma: 0.021, delta: 0.52, volatility: 12.3,
+            expirationDate: '2026-09-11' },
+          { symbol: 'SPY   260911P00583000', putCall: 'PUT', strikePrice: 583,
+            openInterest: 980, totalVolume: 410, gamma: 0.019, delta: -0.48, volatility: 12.6,
+            expirationDate: '2026-09-11' },
+        ],
+      }),
+    }));
+    /** @type {any[]} */
+    const requests = [];
+    await page.route('**/api/streaming/active-option-contracts', (route) => {
+      requests.push(JSON.parse(route.request().postData() || '{}'));
+      route.fulfill({ status: 200, contentType: 'application/json',
+        body: JSON.stringify({ ok: true, contracts: [] }) });
+    });
+    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.locator('.hcell[data-strike="583"][data-expiry="2026-09-11"]').click();
+    await expect(page.locator('#sdCtx')).toContainText('583');
+
+    await expect.poll(() => requests.length).toBeGreaterThan(0);
+    const sent = requests[requests.length - 1].contracts.slice().sort();
+    expect(sent).toEqual(['SPY   260911C00583000', 'SPY   260911P00583000']);
+  });
 });

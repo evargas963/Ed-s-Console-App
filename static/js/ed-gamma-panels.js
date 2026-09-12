@@ -317,6 +317,18 @@
       '<tr class="sd-net"><td class="side">Net</td><td>—</td><td>—</td><td>—</td><td class="' + netCls + '">' +
       (net == null ? '—' : usd(net)) + '</td><td>—</td><td>—</td></tr>' +
       '</tbody></table><div class="sd-src">vendor per-contract · /api/chain · net GEX$ · /api/terrain/strikes</div>';
+    // RC-UI-3 (2026-09-12): connect the displayed strike's own vendor contract identity
+    // (both sides -- call AND put, "both sides where required") to LIVE streaming, so its
+    // gamma/delta/OI/volume can freshen sub-second instead of waiting the ~60s REST cycle.
+    // Independent-review finding: the new UI never called the plural subscription
+    // endpoint at all. This is the ONE panel with a genuinely resolved, DISPLAYED
+    // per-contract identity (the heatmap itself is a computed aggregate projection with
+    // no per-cell contract symbol) -- see EdStream.setAdditionalContracts for the
+    // request-dedup discipline that keeps this safe to call on every render.
+    if (window.EdStream && window.EdStream.setAdditionalContracts) {
+      var wanted = [call && call.symbol, put && put.symbol].filter(Boolean);
+      if (wanted.length) window.EdStream.setAdditionalContracts(wanted);
+    }
   }
 
   // ---------- events ----------

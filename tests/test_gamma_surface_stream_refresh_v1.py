@@ -24,6 +24,7 @@ _REAL = json.loads((_FX / "real_crwd_complete_chain_quarter.json").read_text(enc
 _SPOT = float(_REAL["spot"])
 _CONTRACTS = [dict(ct) for ct in _REAL["chain"]]
 _CONTRACT_SYMBOL = _CONTRACTS[0]["symbol"]
+_CONTRACT_SYMBOL_B = _CONTRACTS[1]["symbol"]
 TK = ticker_storage_key("CRWD")
 
 
@@ -47,10 +48,24 @@ def _put_rest_baseline(*, computed_ts_utc=None):
 
 def setup_function(_fn):
     _clear_cache()
+    # RC-UI-3 (2026-09-12): refresh_gamma_surface_from_stream now gathers streamed
+    # greeks for EVERY currently-desired contract (_desired_stream_greeks_for_ticker),
+    # not just the one it was called for -- in production this hook only ever fires for
+    # a contract that IS currently desired (it is driven by _feed_loop's replay, which
+    # only replays desired contracts). Establish that same realistic precondition here:
+    # _CONTRACT_SYMBOL is the primary desired contract by default. Individual tests that
+    # need different desired-state wiring (e.g. testing a foreign ticker or "nothing
+    # active") monkeypatch get_active_option_contract themselves, which overrides this.
+    import app.options.order_flow.streaming as _ofs
+    _ofs._active_option_contract = _CONTRACT_SYMBOL
+    _ofs._active_option_contracts = []
 
 
 def teardown_function(_fn):
     _clear_cache()
+    import app.options.order_flow.streaming as _ofs
+    _ofs._active_option_contract = None
+    _ofs._active_option_contracts = []
 
 
 def test_not_an_option_symbol_short_circuits():
@@ -313,3 +328,88 @@ def test_rapid_successive_calls_are_never_silently_dropped(monkeypatch):
     with server._terrain_cache_lock:
         cached = server._terrain_cache[TK]["_gamma_surface"]
     assert cached["surface_seq"] == 2, "both calls must have actually published"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# RC-UI-3 (2026-09-12) — the A-then-B overwrite reproduction. Independent-review finding,
+# REPRODUCED against these exact production functions: refreshing_gamma_surface_from_stream
+# used to overlay a single-entry {contract_symbol: greeks} map for whichever ONE contract's
+# tick triggered THAT call, onto the untouched RAW REST baseline -- so B's refresh silently
+# discarded A's already-applied fresh overlay, even though A's fresh value remained
+# genuinely available. Fixed by _desired_stream_greeks_for_ticker: every refresh gathers
+# EVERY currently-desired contract's live streamed state fresh, every time.
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_refreshing_b_does_not_undo_a_the_a_then_b_overwrite_reproduction(monkeypatch):
+    """A is primary (setup_function's default), B is additional. A ticks first and its
+    overlay applies; B ticks second and its own overlay must apply TOGETHER WITH A's,
+    not instead of it."""
+    import app.options.order_flow.streaming as ofs
+    ofs._active_option_contracts = [ofs.ticker_storage_key(_CONTRACT_SYMBOL_B)]
+
+    baseline_ts = time.time() - 10.0
+    _put_rest_baseline(computed_ts_utc=baseline_ts)
+    now_a = time.time()
+    streamed_a = {"gamma": 0.5, "gamma_ts_recv": now_a}
+    streamed_b = {"gamma": 0.7, "gamma_ts_recv": now_a}
+    live = {_CONTRACT_SYMBOL: streamed_a, _CONTRACT_SYMBOL_B: streamed_b}
+    monkeypatch.setattr(
+        "app.options.order_flow.state.get_stream_greeks", lambda sym: live.get(sym))
+
+    assert refresh_gamma_surface_from_stream(_CONTRACT_SYMBOL, now_a) == "ok"
+    with server._terrain_cache_lock:
+        after_a = server._terrain_cache[TK]["_gamma_surface"]
+    overlaid_a_only, n_a = overlay_streamed_contract_fields(_CONTRACTS, {_CONTRACT_SYMBOL: streamed_a})
+    assert n_a == 1
+    assert after_a["cells"] == project_gamma_surface(overlaid_a_only, _SPOT)["cells"], (
+        "A's own overlay must apply first")
+
+    # B ticks. A's streamed value is STILL live (the mock is unchanged) -- never surrendered.
+    now_b = now_a + 0.01
+    assert refresh_gamma_surface_from_stream(_CONTRACT_SYMBOL_B, now_b) == "ok"
+
+    overlaid_both, n_both = overlay_streamed_contract_fields(
+        _CONTRACTS, {_CONTRACT_SYMBOL: streamed_a, _CONTRACT_SYMBOL_B: streamed_b})
+    assert n_both == 2
+    expected_after_b = project_gamma_surface(overlaid_both, _SPOT)
+    with server._terrain_cache_lock:
+        after_b = server._terrain_cache[TK]["_gamma_surface"]
+    assert after_b["cells"] == expected_after_b["cells"], (
+        "refreshing B must not undo A's already-applied fresh overlay -- THE defect "
+        "as independently reproduced")
+    assert after_b["stream_overlay_contracts"] == 2, (
+        "the published surface must report BOTH contracts as overlaid, not just the "
+        "one that triggered this particular refresh")
+
+
+def test_a_dropped_from_the_desired_set_no_longer_lingers_in_a_later_b_refresh(monkeypatch):
+    """The converse control: once A genuinely stops being desired (dropped from both the
+    primary and additional slots — its coverage has actually ended), a LATER B refresh
+    must reflect ONLY the currently-desired set. Proves this is reconstructed fresh on
+    every call, not an unbounded accumulator that never forgets a symbol."""
+    import app.options.order_flow.streaming as ofs
+    ofs._active_option_contracts = [ofs.ticker_storage_key(_CONTRACT_SYMBOL_B)]
+
+    baseline_ts = time.time() - 10.0
+    _put_rest_baseline(computed_ts_utc=baseline_ts)
+    now = time.time()
+    streamed_a = {"gamma": 0.5, "gamma_ts_recv": now}
+    streamed_b = {"gamma": 0.7, "gamma_ts_recv": now}
+    live = {_CONTRACT_SYMBOL: streamed_a, _CONTRACT_SYMBOL_B: streamed_b}
+    monkeypatch.setattr(
+        "app.options.order_flow.state.get_stream_greeks", lambda sym: live.get(sym))
+    assert refresh_gamma_surface_from_stream(_CONTRACT_SYMBOL, now) == "ok"
+
+    # A's coverage genuinely ends: no longer primary, never additional, and its live
+    # streamed state is gone (clear_symbol removes it in production).
+    ofs._active_option_contract = None
+    del live[_CONTRACT_SYMBOL]
+
+    assert refresh_gamma_surface_from_stream(_CONTRACT_SYMBOL_B, now + 0.01) == "ok"
+    overlaid_b_only, n_b = overlay_streamed_contract_fields(_CONTRACTS, {_CONTRACT_SYMBOL_B: streamed_b})
+    assert n_b == 1
+    expected = project_gamma_surface(overlaid_b_only, _SPOT)
+    with server._terrain_cache_lock:
+        cached = server._terrain_cache[TK]["_gamma_surface"]
+    assert cached["cells"] == expected["cells"], "A must not linger once it truly stops being desired"
+    assert cached["stream_overlay_contracts"] == 1

@@ -103,7 +103,41 @@
       }, function () { return { requestAccepted: false, acknowledgedTicker: null, requested: ticker, bookBound: null }; });
   }
 
+  // RC-UI-3 (2026-09-12): the ADDITIONAL-contracts slot, beside the ONE primary contract
+  // above -- POST /api/streaming/active-option-contracts, mirrored server-side on its own
+  // independent generation counter (server.py:post_streaming_active_option_contracts /
+  // app.options.order_flow.streaming.set_active_option_contracts). Deliberately simpler
+  // than setActiveContract: there is no per-view "is THIS additional contract active"
+  // status the shell renders today (unlike Flow's subscribe-state badge), so this is a
+  // fire-and-forget request-acceptance report, deduplicated against this tab's own last
+  // request so a caller may call it on every render without spamming the endpoint.
+  var _desiredAdditional = [];
+  function setAdditionalContracts(symbols) {
+    var next = (symbols || []).map(function (s) { return String(s || '').trim().toUpperCase(); })
+      .filter(function (s) { return s; });
+    var dedup = []; next.forEach(function (s) { if (dedup.indexOf(s) < 0) dedup.push(s); });
+    var sortedNext = dedup.slice().sort();
+    var sortedPrev = _desiredAdditional.slice().sort();
+    var unchanged = sortedNext.length === sortedPrev.length
+      && sortedNext.every(function (s, i) { return s === sortedPrev[i]; });
+    if (unchanged) return Promise.resolve({ accepted: true, unchanged: true, contracts: _desiredAdditional });
+    _desiredAdditional = dedup;
+    return fetch('/api/streaming/active-option-contracts', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contracts: dedup }),
+    }).then(function (r) {
+      return r.json().then(function (b) { return { status: r.status, body: b }; },
+                           function () { return { status: r.status, body: null }; });
+    }, function () { return { status: null, body: null }; })
+      .then(function (res) {
+        var ok2xx = typeof res.status === 'number' && res.status >= 200 && res.status < 300;
+        var accepted = ok2xx && !!res.body && res.body.ok === true;
+        return { accepted: accepted, unchanged: false, contracts: dedup, status: res.status };
+      });
+  }
+  function getDesiredAdditional() { return _desiredAdditional.slice(); }
+
   window.EdStream = { setActiveContract: setActiveContract, setActiveTicker: setActiveTicker,
+    setAdditionalContracts: setAdditionalContracts, getDesiredAdditional: getDesiredAdditional,
     status: status, getDesired: getDesired, acceptedForDesired: acceptedForDesired,
     controlState: controlState, clearDesired: clearDesired, gate: gate };
 })();

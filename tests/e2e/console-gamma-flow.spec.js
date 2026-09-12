@@ -56,6 +56,16 @@ async function setup(page, ctx) {
   }
   await page.route('**/api/**', (route, request) => {
     const url = request.url();
+    // RC-UI-3 (2026-09-12): /api/streaming/active-option-contractS (plural) is a SEPARATE
+    // endpoint driven by the heatmap's Strike Detail panel (which auto-populates to the
+    // spot strike on load -- see ed-gamma.js's "default the shared selection" comment),
+    // sharing this same page/shell. The singular-endpoint substring below would also match
+    // it, double-counting ctx.posts for a request this test's contract-binding assertions
+    // are not about; fulfilled separately here and excluded from the singular match.
+    if (url.includes('/api/streaming/active-option-contracts')) {
+      return route.fulfill({ status: 200, contentType: 'application/json',
+        body: JSON.stringify({ ok: true, contracts: [] }) });
+    }
     if (url.includes('/api/streaming/active-option-contract') && request.method() === 'POST') {
       ctx.posts++;
       let contract = ''; try { contract = JSON.parse(request.postData() || '{}').contract || ''; } catch (e) {}

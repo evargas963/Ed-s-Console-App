@@ -12284,44 +12284,72 @@ def _per_strike_view_from_contracts(contracts: list, spot: float) -> dict:
     return _per_strike_scopes(exposures, contracts, spot)
 
 
+def _desired_stream_greeks_for_ticker(tk: str) -> dict:
+    """Every currently-live streamed GAMMA/DELTA/OPEN_INTEREST/VOLUME entry for a
+    contract belonging to `tk` — the PRIMARY/pinned contract AND every ADDITIONALLY-
+    desired contract (RC-UI-3 multi-contract coverage), gathered FRESH on every call.
+
+    Independent-review finding (2026-09-12), root cause of the "refreshing B loses A's
+    update" defect: the two callers below used to build a single-entry
+    `{contract_symbol: greeks}` map for whichever ONE contract triggered that particular
+    refresh, then overlay it onto the untouched REST baseline — so refreshing B always
+    discarded A's already-fresh streamed value, because the baseline itself carries no
+    memory of a prior overlay. Fixed at the root by never relying on such memory: this
+    reconstructs the FULL multi-contract streamed set from scratch every call.
+    `get_stream_greeks` IS the live per-symbol store (app.options.order_flow.state),
+    cleared exactly when a symbol's coverage genuinely ends (clear_symbol) — so
+    re-querying it for every currently-desired symbol on every refresh, no matter which
+    one triggered it, always reconstructs every symbol's latest known state, and a symbol
+    whose coverage has ended is correctly absent (never lingers as a stale entry here).
+
+    Native contract identity uses app.options.order_flow.streaming.contract_matches_underlying
+    (chain-aware: a vendor root that genuinely differs from the ticker's own root, e.g.
+    Schwab's $SPX -> SPXW weekly, is still recognized via the nearest banked complete chain) —
+    independent-review finding (2026-09-12): a bare vendor-root == ticker-root equality check
+    silently excludes exactly this legitimate case."""
+    from app.options.order_flow.streaming import (
+        get_active_option_contract, get_active_option_contracts, contract_matches_underlying)
+    from app.options.order_flow.state import get_stream_greeks
+    out: dict = {}
+    candidates = list(get_active_option_contracts())
+    primary = get_active_option_contract()
+    if primary:
+        candidates.append(primary)
+    for sym in candidates:
+        if not sym or sym in out or not contract_matches_underlying(sym, tk):
+            continue
+        greeks = get_stream_greeks(sym)
+        if greeks:
+            out[sym] = greeks
+    return out
+
+
 def _gamma_surface_contracts_with_stream_overlay(
         tk: str, contracts: list, *, newer_than_ts: float | None = None) -> tuple[list, int]:
-    """Overlay the currently-streaming option contract's freshest known GAMMA/DELTA/
-    OPEN_INTEREST onto `contracts` before projection, IF that contract belongs to `tk`.
+    """Overlay EVERY currently-streaming option contract's freshest known GAMMA/DELTA/
+    OPEN_INTEREST/VOLUME onto `contracts` before projection, for whichever of them
+    belong to `tk` (RC-UI-3: primary AND every additional contract — see
+    _desired_stream_greeks_for_ticker).
 
     Still the ONE canonical faucet (project_gamma_surface -> compute_exposures_by_strike,
-    RC-UI-1): this changes no formula and adds no second producer, it only lets those three
-    inputs be fresher than the REST chain snapshot they arrived in, for whichever single
-    contract is actively streaming today (app/options/order_flow/streaming.py's one-contract
-    subscription ceiling — see that module's docstring; extending this to every subscribed
-    contract at once needs no change here, only a larger `streamed_by_symbol` mapping).
+    RC-UI-1): this changes no formula and adds no second producer, it only lets those
+    fields be fresher than the REST chain snapshot they arrived in.
 
     `newer_than_ts`, when given, is passed straight through as the REST-baseline precedence
     bound (see overlay_streamed_contract_fields) — independent-review finding (2026-09-12):
     "being received within ten seconds does not establish that a stream value is newer than
     the REST input it replaces."
 
-    Native contract identity uses app.options.order_flow.streaming.contract_matches_underlying
-    (chain-aware: a vendor root that genuinely differs from the ticker's own root, e.g.
-    Schwab's $SPX -> SPXW weekly, is still recognized via the nearest banked complete chain) —
-    independent-review finding (2026-09-12): a bare vendor-root == ticker-root equality check
-    silently excludes exactly this legitimate case.
-
     Fails closed to the unmodified `contracts` on any error or when nothing applies — this is
     a best-effort freshening, never a precondition for the projection to run at all."""
     try:
-        from app.options.order_flow.streaming import get_active_option_contract, contract_matches_underlying
-        from app.options.order_flow.state import get_stream_greeks
         from math_exposure_core import overlay_streamed_contract_fields
 
-        contract_symbol = get_active_option_contract()
-        if not contract_symbol or not contract_matches_underlying(contract_symbol, tk):
-            return contracts, 0
-        greeks = get_stream_greeks(contract_symbol)
-        if not greeks:
+        streamed = _desired_stream_greeks_for_ticker(tk)
+        if not streamed:
             return contracts, 0
         return overlay_streamed_contract_fields(
-            contracts, {contract_symbol: greeks},
+            contracts, streamed,
             newer_than_ts=newer_than_ts, max_staleness_sec=GAMMA_SURFACE_STREAM_STALENESS_SEC)
     except Exception as e:  # institutional-swallow-ok: best-effort freshening, never load-bearing
         log.debug("gamma-surface stream overlay skipped for %s: %s", tk, e)
@@ -12337,13 +12365,14 @@ def refresh_gamma_surface_from_stream(contract_symbol: str, ts_recv: float) -> s
 
     Still the ONE canonical faucet: re-runs project_gamma_surface AND
     _per_strike_view_from_contracts on the SAME RAW REST chain (`_contracts_rest`, stamped by
-    _terrain_refresh_one) with ONLY this one contract's fields overlaid via
+    _terrain_refresh_one) with EVERY currently-desired contract's fields overlaid via
     overlay_streamed_contract_fields — never a second exposure formula, and always overlaid
     onto the untouched REST base so repeated eager refreshes never compound away from what the
     vendor's chain actually reported.
 
-    Two independent-review findings (2026-09-12), both REPRODUCED, are fixed together here
-    because they share one cause (this function used to touch `_gamma_surface` alone):
+    Three independent-review findings (2026-09-12), all REPRODUCED, are fixed together here
+    because they share one cause (this function used to touch only `_gamma_surface`, and only
+    the ONE triggering contract's overlay):
       - the heatmap (_gamma_surface) and the Strike Detail / GEX-by-strike panel (_per_strike)
         disagreed on the SAME strike, because only one of the two was ever refreshed from the
         overlay -- fixed by publishing both from the SAME overlaid contracts, together.
@@ -12353,6 +12382,13 @@ def refresh_gamma_surface_from_stream(contract_symbol: str, ts_recv: float) -> s
         cache's generation changed between this function's read and its write, the computed
         result is DISCARDED, never published over a generation newer than the one it was
         computed from.
+      - refreshing B (RC-UI-3 multi-contract coverage) silently discarded A's already-fresh
+        overlaid value, because this always rebuilt a single-entry `{contract_symbol: greeks}`
+        map for whichever ONE contract's tick triggered the call, overlaid onto the untouched
+        REST baseline -- which carries no memory of A's prior overlay. Fixed at the root by
+        gathering EVERY currently-desired contract's live streamed state fresh on every call
+        (_desired_stream_greeks_for_ticker), so A's freshness is included even when B's tick is
+        what triggered this particular refresh.
 
     Returns a status string (never raises) — diagnostic/test surface only, never load-bearing:
     a caller that ignores the return value still gets the fail-closed no-op on any failure.
@@ -12372,13 +12408,17 @@ def refresh_gamma_surface_from_stream(contract_symbol: str, ts_recv: float) -> s
             read_generation = payload.get("_contracts_rest_computed_ts")
         if not base_contracts or not spot:
             return "no_rest_baseline"
-        from app.options.order_flow.state import get_stream_greeks
         from math_exposure_core import overlay_streamed_contract_fields
-        greeks = get_stream_greeks(contract_symbol)
-        if not greeks:
+        streamed = _desired_stream_greeks_for_ticker(tk)
+        if contract_symbol not in streamed:
+            # The contract whose tick triggered THIS call has nothing to offer (already
+            # stale-gated, or its coverage ended between the hook firing and this running)
+            # -- still a real "nothing new from this call" outcome, even though some OTHER
+            # desired contract might have data (that contract's own tick will trigger its
+            # own call when it changes).
             return "no_streamed_greeks"
         overlaid, n = overlay_streamed_contract_fields(
-            base_contracts, {contract_symbol: greeks},
+            base_contracts, streamed,
             newer_than_ts=read_generation, max_staleness_sec=GAMMA_SURFACE_STREAM_STALENESS_SEC)
         if n == 0:
             return "no_change"

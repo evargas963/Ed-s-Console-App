@@ -40,6 +40,7 @@ _REAL_OPTIONS_BOOK_CONTENT = {
 def _reset(tmp_path, monkeypatch):
     ofs._feed_running = False
     ofs._active_option_contract = None
+    ofs._active_option_contracts = []
     ofs._option_l1_cursor = {}
     ofs._option_book_cursor = {}
     ofls.clear_all_live_state()
@@ -172,6 +173,76 @@ def test_set_active_option_contracts_writes_plural_signal_and_clears_only_droppe
     ofs._active_option_contracts = []
 
 
+def test_dropping_an_additional_contract_that_is_still_primary_does_not_clear_it(monkeypatch):
+    """Independent-review finding (2026-09-12), REPRODUCED: removing a symbol from the
+    ADDITIONAL list used to unconditionally clear_symbol() it, even when that EXACT
+    symbol remains the PRIMARY/pinned contract -- wiping the one shared per-symbol live
+    store (cursors, streamed greeks, book state) out from under a subscription that is
+    still actively depending on it."""
+    monkeypatch.setattr("app.options.order_flow.streaming.write_active_option_contracts_signal",
+                        lambda *_a, **_k: None)
+    cleared = []
+    monkeypatch.setattr("app.options.order_flow.streaming.clear_symbol", lambda s: cleared.append(s))
+    try:
+        ofs._active_option_contract = _SPY_CONTRACT     # SPY is (and stays) the primary
+        ofs._active_option_contracts = [_SPY_CONTRACT]  # SPY is ALSO currently additional
+
+        ok = ofs.set_active_option_contracts([])         # drop SPY from the additional set
+        assert ok is True
+        assert cleared == [], (
+            f"SPY must not be cleared while it remains the primary contract: {cleared}")
+        assert ofs._active_option_contract == _SPY_CONTRACT, (
+            "the primary slot must be entirely unaffected by the additional set's change")
+    finally:
+        ofs._active_option_contract = None
+        ofs._active_option_contracts = []
+
+
+def test_switching_the_primary_away_does_not_clear_a_symbol_still_additional(monkeypatch):
+    """The mirror case: the primary switches from SPY to QQQ while SPY remains desired in
+    the ADDITIONAL set -- SPY must not be cleared either, for the same reason (its shared
+    live store is still needed by the additional-contracts subscription)."""
+    monkeypatch.setattr("app.options.order_flow.streaming.write_active_option_contract_signal",
+                        lambda *_a, **_k: None)
+    cleared = []
+    monkeypatch.setattr("app.options.order_flow.streaming.clear_symbol", lambda s: cleared.append(s))
+    try:
+        ofs._active_option_contract = _SPY_CONTRACT
+        ofs._active_option_contracts = [_SPY_CONTRACT]  # SPY is ALSO desired as additional
+
+        ok = ofs.set_active_option_contract(_QQQ_CONTRACT)   # primary switches SPY -> QQQ
+        assert ok is True
+        assert cleared == [], (
+            f"SPY must not be cleared while it remains desired in the additional set: {cleared}")
+        assert ofs._active_option_contract == _QQQ_CONTRACT
+        assert ofs._active_option_contracts == [_SPY_CONTRACT], (
+            "the additional set is entirely unaffected by the primary's switch")
+    finally:
+        ofs._active_option_contract = None
+        ofs._active_option_contracts = []
+
+
+def test_dropping_an_additional_contract_not_also_primary_still_clears_it(monkeypatch):
+    """Negative control on the two tests above: a symbol dropped from the additional set
+    that is genuinely NOT the primary must still be cleared -- the guard must be scoped
+    to the actual cross-slot overlap, not disable clearing altogether."""
+    monkeypatch.setattr("app.options.order_flow.streaming.write_active_option_contracts_signal",
+                        lambda *_a, **_k: None)
+    cleared = []
+    monkeypatch.setattr("app.options.order_flow.streaming.clear_symbol", lambda s: cleared.append(s))
+    try:
+        ofs._active_option_contract = _SPY_CONTRACT       # primary is SPY, unrelated to QQQ
+        ofs._active_option_contracts = [_QQQ_CONTRACT]
+
+        ok = ofs.set_active_option_contracts([])
+        assert ok is True
+        assert cleared == [_QQQ_CONTRACT], (
+            "QQQ genuinely stops being desired anywhere and must still be cleared")
+    finally:
+        ofs._active_option_contract = None
+        ofs._active_option_contracts = []
+
+
 def test_feed_loop_replays_both_ticker_and_option_contract_independently(tmp_path, monkeypatch):
     """The equity active ticker and the option contract are independent slots — both must
     hydrate in the SAME poll tick without interfering with each other."""
@@ -221,6 +292,77 @@ def test_feed_loop_replays_both_ticker_and_option_contract_independently(tmp_pat
 
     assert any(i.get("LAST_PRICE") == 450.0 for i in ofls.get_content_for_symbol("SPY"))
     assert any(i.get("LAST_PRICE") == 1.27 for i in ofls.get_content_for_symbol(_SPY_CONTRACT))
+
+
+async def _run_feed_loop_until(predicate, *, timeout=10.0):
+    """Shared driver for the feed-loop replay tests below: same poll-for-condition
+    discipline as test_feed_loop_replays_both_ticker_and_option_contract_independently
+    (a fixed sleep is load-sensitive and produces false failures under real contention)."""
+    ofs._feed_running = True
+    task = asyncio.get_event_loop().create_task(ofs._feed_loop())
+    deadline = time.monotonic() + timeout
+    try:
+        while time.monotonic() < deadline:
+            if predicate():
+                break
+            await asyncio.sleep(0.05)
+    finally:
+        ofs._feed_running = False
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+
+def test_feed_loop_replays_an_additional_only_contract_with_no_primary(tmp_path, monkeypatch):
+    """Independent-review finding (2026-09-12), REPRODUCED: with ONLY an additional
+    contract requested (no primary), _feed_loop used to read solely
+    `_active_option_contract` (None) and replay NOTHING -- the additional contract's rows
+    never reached live state at all, no matter how long the daemon ran."""
+    db = _reset(tmp_path, monkeypatch)
+    monkeypatch.setattr("app.options.order_flow.streaming.write_active_option_contract_signal",
+                        lambda *_a, **_k: None)
+    monkeypatch.setattr("app.options.order_flow.streaming.write_active_option_contracts_signal",
+                        lambda *_a, **_k: None)
+    _write_option_l1_row(db, _QQQ_CONTRACT,
+                         {**_REAL_LEVELONE_OPTIONS_CONTENT, "key": _QQQ_CONTRACT, "UNDERLYING": "QQQ"},
+                         ts_recv=1.0)
+
+    async def go():
+        ofs.set_active_option_contracts([_QQQ_CONTRACT])   # additional only -- no primary
+        assert ofs._active_option_contract is None, "sanity: no primary is set"
+        await _run_feed_loop_until(
+            lambda: any(i.get("LAST_PRICE") == 1.27 for i in ofls.get_content_for_symbol(_QQQ_CONTRACT)))
+    asyncio.run(go())
+
+    assert any(i.get("LAST_PRICE") == 1.27 for i in ofls.get_content_for_symbol(_QQQ_CONTRACT)), (
+        "an additional-only contract (no primary) must still reach live state")
+
+
+def test_feed_loop_replays_primary_and_additional_contracts_together(tmp_path, monkeypatch):
+    """Both the primary AND every additional contract must replay in the same running
+    daemon -- not merely whichever one happens to be set alone."""
+    db = _reset(tmp_path, monkeypatch)
+    monkeypatch.setattr("app.options.order_flow.streaming.write_active_option_contract_signal",
+                        lambda *_a, **_k: None)
+    monkeypatch.setattr("app.options.order_flow.streaming.write_active_option_contracts_signal",
+                        lambda *_a, **_k: None)
+    _write_option_l1_row(db, _SPY_CONTRACT, _REAL_LEVELONE_OPTIONS_CONTENT, ts_recv=1.0)
+    _write_option_l1_row(db, _QQQ_CONTRACT,
+                         {**_REAL_LEVELONE_OPTIONS_CONTENT, "key": _QQQ_CONTRACT, "UNDERLYING": "QQQ"},
+                         ts_recv=1.0)
+
+    async def go():
+        ofs.set_active_option_contract(_SPY_CONTRACT)
+        ofs.set_active_option_contracts([_QQQ_CONTRACT])
+        await _run_feed_loop_until(
+            lambda: (any(i.get("LAST_PRICE") == 1.27 for i in ofls.get_content_for_symbol(_SPY_CONTRACT))
+                    and any(i.get("LAST_PRICE") == 1.27 for i in ofls.get_content_for_symbol(_QQQ_CONTRACT))))
+    asyncio.run(go())
+
+    assert any(i.get("LAST_PRICE") == 1.27 for i in ofls.get_content_for_symbol(_SPY_CONTRACT))
+    assert any(i.get("LAST_PRICE") == 1.27 for i in ofls.get_content_for_symbol(_QQQ_CONTRACT))
 
 
 def test_feed_loop_confines_every_db_touch_to_one_thread(tmp_path, monkeypatch):
@@ -275,6 +417,7 @@ def test_feed_loop_confines_every_db_touch_to_one_thread(tmp_path, monkeypatch):
 def _reset_option_feed_globals():
     ofs._feed_running = False
     ofs._active_option_contract = None
+    ofs._active_option_contracts = []
     ofs._option_streaming_last_update_ts = None
     ofs._option_last_subscribe_completed_ts = None
     ofs._option_l1_cursor = {}

@@ -56,31 +56,80 @@ def _failing_close(*_a, **_k):
     raise CoverageWriteError("simulated durable-write outage on close")
 
 
+class _MultipleSubsProtocolViolation(AssertionError):
+    """Raised by _FlakyOptionStream when *_subs is called a second time on a service that
+    already has held symbols -- the exact protocol violation the installed schwab-py
+    SDK's own docs warn is UNDEFINED and can clobber an existing subscription
+    (https://schwab-py.readthedocs.io/en/latest/streaming.html: "it's recommended not to
+    call a subscription function more than once for any given stream"). A correct
+    reconciler must use *_add once anything is already held for that service."""
+
+
 class _FlakyOptionStream:
-    """Records (un)subscribe calls; can be configured to raise on specific calls, so a
-    partial-failure tick (one service ok, one erroring) can be reproduced deterministically
-    — never a synthetic shortcut around the real async call shape _reconcile_option_service
-    actually drives."""
+    """PROTOCOL-FAITHFUL fake vendor stream (survivor-challenge finding, 2026-09-12):
+    tracks ACTUAL held-symbol membership per service in `self.held`, not merely call
+    counts/args, so a test can prove genuine concurrent vendor membership across multiple
+    contracts -- and raises _MultipleSubsProtocolViolation the instant `*_subs` is called
+    while the service already holds something, catching the exact defect this fake
+    replaces a looser double to guard against.
+
+        *_subs(syms):   REPLACES the service's held set with exactly `syms` (the vendor's
+                         own SUBS semantics: a fresh subscription request). Raises if
+                         anything is already held for that service -- use *_add instead.
+        *_add(syms):    UNIONS `syms` into the service's held set (extends it without
+                         disturbing what is already there).
+        *_unsubs(syms): REMOVES `syms` from the held set; every other held symbol is
+                         UNCHANGED ("symbols which were not explicitly unsubscribed
+                         remain subscribed" -- same docs).
+
+    Also records every (un)subscribe/add call in order, and can be configured to raise a
+    SIMULATED vendor failure on specific named calls, so a partial-failure tick (one
+    service ok, one erroring) can be reproduced deterministically — never a synthetic
+    shortcut around the real async call shape _reconcile_option_service actually drives.
+    A simulated failure never mutates `held` (a failed vendor call changes nothing)."""
     def __init__(self, *, fail_calls: set[str] | None = None):
         self.calls: list[tuple] = []
         self.fail_calls = fail_calls or set()
+        self.held: dict[str, set] = {"LEVELONE_OPTIONS": set(), "OPTIONS_BOOK": set()}
 
     async def _maybe_fail(self, name, syms):
         self.calls.append((name, tuple(syms)))
         if name in self.fail_calls:
             raise RuntimeError(f"simulated vendor failure: {name}")
 
+    async def _subs(self, service, name, syms):
+        await self._maybe_fail(name, syms)
+        if self.held[service]:
+            raise _MultipleSubsProtocolViolation(
+                f"{name} called again while {sorted(self.held[service])} already held "
+                f"for {service} -- must use the *_add method instead")
+        self.held[service] = set(syms)
+
+    async def _add(self, service, name, syms):
+        await self._maybe_fail(name, syms)
+        self.held[service] |= set(syms)
+
+    async def _unsubs(self, service, name, syms):
+        await self._maybe_fail(name, syms)
+        self.held[service] -= set(syms)
+
     async def level_one_option_subs(self, syms):
-        await self._maybe_fail("l1_option_sub", syms)
+        await self._subs("LEVELONE_OPTIONS", "l1_option_sub", syms)
+
+    async def level_one_option_add(self, syms):
+        await self._add("LEVELONE_OPTIONS", "l1_option_add", syms)
 
     async def options_book_subs(self, syms):
-        await self._maybe_fail("options_book_sub", syms)
+        await self._subs("OPTIONS_BOOK", "options_book_sub", syms)
+
+    async def options_book_add(self, syms):
+        await self._add("OPTIONS_BOOK", "options_book_add", syms)
 
     async def level_one_option_unsubs(self, syms):
-        await self._maybe_fail("l1_option_unsub", syms)
+        await self._unsubs("LEVELONE_OPTIONS", "l1_option_unsub", syms)
 
     async def options_book_unsubs(self, syms):
-        await self._maybe_fail("options_book_unsub", syms)
+        await self._unsubs("OPTIONS_BOOK", "options_book_unsub", syms)
 
 
 def _epochs(db_path):
@@ -1140,21 +1189,31 @@ def test_multi_A_primary_and_one_extra_symbol_both_subscribe_and_open_durably(
 
     assert new_state["l1"] == _SPY_CONTRACT and new_state["book"] == _SPY_CONTRACT
     assert new_state["l1:extra:" + _QQQ_CONTRACT] == _QQQ_CONTRACT
-    assert new_state["book:extra:" + _QQQ_CONTRACT] == _QQQ_CONTRACT
+    # LEVELONE_OPTIONS only for the additional set (survivor-challenge finding: the
+    # heatmap/GEX/volume consumers it serves never read book depth) -- no "book:extra:"
+    # key is ever created.
+    assert "book:extra:" + _QQQ_CONTRACT not in new_state
     assert epoch_state["l1"] is not None and epoch_state["book"] is not None
     assert epoch_state["l1:extra:" + _QQQ_CONTRACT] is not None
-    assert epoch_state["book:extra:" + _QQQ_CONTRACT] is not None
-    # Both symbols durably open, on both services, as SEPARATE rows -- exactly the
-    # concurrent coverage this design exists to allow.
+    assert "book:extra:" + _QQQ_CONTRACT not in epoch_state
+    # Both symbols durably open on LEVELONE_OPTIONS, as SEPARATE rows -- exactly the
+    # concurrent coverage this design exists to allow. OPTIONS_BOOK carries only the
+    # primary contract.
     l1_open = {r[1] for r in _one_service_open(tmp_path / "cap.db", "LEVELONE_OPTIONS")}
     book_open = {r[1] for r in _one_service_open(tmp_path / "cap.db", "OPTIONS_BOOK")}
     assert l1_open == {_SPY_CONTRACT, _QQQ_CONTRACT}
-    assert book_open == {_SPY_CONTRACT, _QQQ_CONTRACT}
+    assert book_open == {_SPY_CONTRACT}
+    # Native vendor semantics (survivor-challenge finding): SPY is the first symbol
+    # subscribed on LEVELONE_OPTIONS this tick -> SUBS. QQQ is the second -> ADD, never a
+    # second SUBS call (which the fake stream would refuse as a protocol violation).
+    assert stream.held["LEVELONE_OPTIONS"] == {_SPY_CONTRACT, _QQQ_CONTRACT}, (
+        "genuine concurrent vendor membership, not merely two recorded calls")
+    assert stream.held["OPTIONS_BOOK"] == {_SPY_CONTRACT}
     subs = {c for c in stream.calls if c[0].endswith("_sub")}
+    adds = {c for c in stream.calls if c[0].endswith("_add")}
     assert ("l1_option_sub", (_SPY_CONTRACT,)) in subs
-    assert ("l1_option_sub", (_QQQ_CONTRACT,)) in subs
+    assert ("l1_option_add", (_QQQ_CONTRACT,)) in adds
     assert ("options_book_sub", (_SPY_CONTRACT,)) in subs
-    assert ("options_book_sub", (_QQQ_CONTRACT,)) in subs
 
 
 def test_multi_B_dropping_an_extra_symbol_unsubscribes_closes_and_prunes_state(
@@ -1179,38 +1238,46 @@ def test_multi_B_dropping_an_extra_symbol_unsubscribes_closes_and_prunes_state(
     asyncio.run(tick())   # tick 2: QQQ dropped from the desired set
     writer.close()
 
-    qqq_l1_key, qqq_book_key = "l1:extra:" + _QQQ_CONTRACT, "book:extra:" + _QQQ_CONTRACT
+    qqq_l1_key = "l1:extra:" + _QQQ_CONTRACT
     assert qqq_l1_key not in contract_state, "a fully-closed extra key must be pruned"
-    assert qqq_book_key not in contract_state
     assert qqq_l1_key not in epoch_state
-    assert qqq_book_key not in epoch_state
     # The primary contract is entirely unaffected by the extra's removal.
     assert contract_state["l1"] == _SPY_CONTRACT and contract_state["book"] == _SPY_CONTRACT
     unsubs = {c for c in stream.calls if c[0].endswith("_unsub")}
     assert ("l1_option_unsub", (_QQQ_CONTRACT,)) in unsubs
-    assert ("options_book_unsub", (_QQQ_CONTRACT,)) in unsubs
+    # OPTIONS_BOOK was never subscribed for QQQ (LEVELONE_OPTIONS-only extras), so there
+    # is nothing to unsubscribe there.
+    assert not any(c[0] == "options_book_unsub" and _QQQ_CONTRACT in c[1] for c in stream.calls)
     l1_open = {r[1] for r in _one_service_open(tmp_path / "cap.db", "LEVELONE_OPTIONS")}
     assert l1_open == {_SPY_CONTRACT}, "QQQ's coverage must be durably closed, not merely dropped"
+    assert stream.held["LEVELONE_OPTIONS"] == {_SPY_CONTRACT}, (
+        "QQQ must be genuinely dropped from vendor membership, not merely uncalled")
 
 
 def test_multi_C_two_extras_one_fails_the_other_still_reaches_steady_state(
         tmp_path, monkeypatch):
     """Each extra symbol reconciles independently (per-symbol namespaced key, its own
     call to the unchanged _reconcile_option_service) -- a vendor failure subscribing ONE
-    extra must not block another extra, or the primary, from reaching steady state."""
+    extra must not block another extra, or the primary, from reaching steady state.
+
+    Symbols reconcile in sorted order (MSFT before QQQ), and the primary (SPY) reconciles
+    first of all -- so by the time these two extras run, LEVELONE_OPTIONS already holds
+    SPY, meaning BOTH extras go through *_add (never *_subs). Failing `l1_option_add`
+    therefore reproduces "one extra's vendor call fails" under the REAL native-semantics
+    call path, not the old (now-incorrect) assumption that extras use *_subs."""
     monkeypatch.setattr(rsc, "read_active_option_contract_signal", lambda: _SPY_CONTRACT)
     monkeypatch.setattr(rsc, "read_active_option_contracts_signal",
                         lambda: sorted([_QQQ_CONTRACT, _MSFT_CONTRACT]))
-    stream = _FlakyOptionStream(fail_calls={"l1_option_sub"})
-    # Each extra symbol gets its OWN l1 sub call (namespaced key, independent
-    # reconcile). Make QQQ's fail and MSFT's succeed, regardless of call order.
+    stream = _FlakyOptionStream()
+    # fail_calls is name-keyed, and MSFT/QQQ share the SAME call name (l1_option_add) --
+    # a per-symbol override is needed to fail only QQQ's.
 
-    async def _l1_sub(syms):
+    async def _l1_add(syms):
+        stream.calls.append(("l1_option_add", tuple(syms)))
         if tuple(syms) == (_QQQ_CONTRACT,):
-            await stream._maybe_fail("l1_option_sub", syms)
-            return
-        stream.calls.append(("l1_option_sub", tuple(syms)))
-    stream.level_one_option_subs = _l1_sub
+            raise RuntimeError("simulated vendor failure: l1_option_add")
+        stream.held["LEVELONE_OPTIONS"] |= set(syms)
+    stream.level_one_option_add = _l1_add
 
     writer = CaptureWriter(tmp_path / "cap.db", batch_rows=1, batch_sec=10.0)
     epoch_state: dict = {}
@@ -1228,9 +1295,10 @@ def test_multi_C_two_extras_one_fails_the_other_still_reaches_steady_state(
     assert new_state["l1:extra:" + _MSFT_CONTRACT] == _MSFT_CONTRACT, (
         "a sibling extra's vendor failure must not block this one"
     )
-    # OPTIONS_BOOK never touched l1's stub, so both extras succeed there.
-    assert new_state["book:extra:" + _QQQ_CONTRACT] == _QQQ_CONTRACT
-    assert new_state["book:extra:" + _MSFT_CONTRACT] == _MSFT_CONTRACT
+    # Genuine vendor membership, not just call bookkeeping: QQQ never landed, SPY+MSFT did.
+    assert stream.held["LEVELONE_OPTIONS"] == {_SPY_CONTRACT, _MSFT_CONTRACT}
+    assert "book:extra:" + _QQQ_CONTRACT not in new_state
+    assert "book:extra:" + _MSFT_CONTRACT not in new_state
 
 
 def test_multi_D_a_symbol_in_both_primary_and_plural_signals_is_reconciled_once(
@@ -1264,20 +1332,26 @@ def test_multi_D_a_symbol_in_both_primary_and_plural_signals_is_reconciled_once(
 def test_multi_E_claimed_coverage_scans_primary_and_every_extra_key():
     """_claimed_coverage_from_epoch_state (the function _publish_coverage_claim and
     write_status both now call) must find epoch ids under the primary "l1"/"book" keys
-    AND every namespaced "svc:extra:symbol" key, skip non-epoch bookkeeping entries
-    (the *_pending_close dicts), and never include a None placeholder as a claimed id."""
+    AND every namespaced "l1:extra:symbol" key (LEVELONE_OPTIONS only -- see
+    EXTRA_OPTION_CONTRACT_SVC_KEY), skip non-epoch bookkeeping entries (the
+    *_pending_close dicts), and never include a None placeholder as a claimed id. A
+    "book:extra:" key is included here purely to prove it is IGNORED -- that prefix
+    cannot occur through the real orchestrator (extras never touch OPTIONS_BOOK), but a
+    hand-edited or legacy epoch_state must not have it silently confirm phantom book
+    coverage for a contract book was never subscribed for."""
     from app.market_data.schwab.streaming.capture import _claimed_coverage_from_epoch_state
 
     epoch_state = {
         "l1": 1, "book": 2,
         "l1:extra:" + _QQQ_CONTRACT: 3,
-        "book:extra:" + _QQQ_CONTRACT: 4,
+        "book:extra:" + _QQQ_CONTRACT: 4,         # unrecognized prefix -- must be ignored
         "l1:extra:" + _MSFT_CONTRACT: None,       # not (yet) open -- must be excluded
         "l1:extra:" + _MSFT_CONTRACT + "_pending_close": {5: 100.0},  # bookkeeping, not an id
     }
     claimed = _claimed_coverage_from_epoch_state(epoch_state)
     assert sorted(claimed["LEVELONE_OPTIONS"]) == [1, 3]
-    assert sorted(claimed["OPTIONS_BOOK"]) == [2, 4]
+    assert sorted(claimed["OPTIONS_BOOK"]) == [2], (
+        "book:extra: is not a recognized prefix -- id 4 must never be claimed")
 
 
 def test_coverage_bidirectional_invariant_holds_at_every_tick_boundary(tmp_path, monkeypatch):

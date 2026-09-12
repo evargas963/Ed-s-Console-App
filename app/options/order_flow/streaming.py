@@ -548,11 +548,19 @@ async def _feed_loop() -> None:
                 con = await loop.run_in_executor(executor, _open_capture_db_readonly)
             tkr = _active_ticker
             contract = _active_option_contract
-            if con is not None and (tkr or contract):
+            # RC-UI-3 (2026-09-12, independent-review finding): this loop used to replay
+            # ONLY the primary `_active_option_contract`, so an additionally-desired
+            # contract (the plural signal's own set, `_active_option_contracts`) never
+            # reached live state at all -- with only an additional contract requested and
+            # no primary, NOTHING replayed. dict.fromkeys de-duplicates while preserving
+            # order (the primary first, matching the historical single-contract replay
+            # order) in case the caller's additional set happens to also name the primary.
+            contracts_to_replay = [s for s in dict.fromkeys([contract, *_active_option_contracts]) if s]
+            if con is not None and (tkr or contracts_to_replay):
                 try:
-                    if contract:
+                    for sym in contracts_to_replay:
                         await loop.run_in_executor(
-                            executor, _replay_option_contract_rows, con, contract)
+                            executor, _replay_option_contract_rows, con, sym)
                     if tkr:
                         await loop.run_in_executor(executor, _replay_new_rows, con, tkr)
                 except sqlite3.Error as e:
@@ -659,7 +667,9 @@ def clear_active_option_contract(*, reason: str) -> None:
     """
     global _active_option_contract, _option_streaming_last_update_ts
     old = _active_option_contract
-    if old:
+    # Same guard as set_active_option_contract: do not wipe a symbol's shared live store
+    # while the ADDITIONAL set still desires it.
+    if old and old not in _active_option_contracts:
         clear_symbol(old)
         _log_stream("OPTION_CONTRACT_CLEARED", old=old, reason=reason)
     write_active_option_contract_signal("")
@@ -796,7 +806,12 @@ def set_active_option_contract(contract_symbol: str,
             return True
         old = _active_option_contract
         _log_stream("OPTION_CONTRACT_RESUBSCRIBE_START", old=old, new=t)
-        if old:
+        # Independent-review finding (2026-09-12), mirror case: a symbol the primary slot
+        # is switching AWAY from must not be cleared if it is STILL desired in the
+        # ADDITIONAL set (_active_option_contracts) -- clear_symbol wipes the one shared
+        # per-symbol live store regardless of which slot(s) name it, so clearing it here
+        # would erase state the additional-contracts subscription still depends on.
+        if old and old not in _active_option_contracts:
             clear_symbol(old)
         write_active_option_contract_signal(t)
         _active_option_contract = t
@@ -868,9 +883,14 @@ def set_active_option_contracts(contract_symbols: "list[str]",
             return True
         _log_stream("OPTION_CONTRACTS_RESUBSCRIBE_START", old=old, new=symbols)
         # Only a symbol actually being DROPPED needs its replay cursors forgotten -- one
-        # still (or newly) requested keeps replaying without a spurious reset.
+        # still (or newly) requested keeps replaying without a spurious reset. Independent-
+        # review finding (2026-09-12): a symbol dropped from the ADDITIONAL set that is
+        # STILL the primary/pinned contract (_active_option_contract) must not be cleared
+        # either -- clear_symbol wipes the one shared per-symbol live store (cursors,
+        # streamed greeks, book state) regardless of which slot(s) named it, so clearing it
+        # here would erase state the primary subscription is still actively depending on.
         for s in old:
-            if s not in symbols:
+            if s not in symbols and s != _active_option_contract:
                 clear_symbol(s)
         write_active_option_contracts_signal(symbols)
         _active_option_contracts = symbols
@@ -1005,15 +1025,32 @@ def get_option_contract_streaming_diagnostics(
     queried = ticker_storage_key(for_contract) if for_contract else None
     contract_match: Optional[bool] = None
     if queried:
-        requested_ok = (_active_option_contract == queried)
-        producer_ok = (queried in producer["LEVELONE_OPTIONS"]
-                       and queried in producer["OPTIONS_BOOK"])
+        # Independent-review finding (2026-09-12): this used to recognize ONLY the
+        # primary/pinned contract as a legitimate requested subject -- a queried contract
+        # that was genuinely requested and confirmed as an ADDITIONAL contract (RC-UI-3)
+        # was always rejected, because `requested_ok` never checked
+        # `_active_option_contracts` at all. Fixed by recognizing either role.
+        is_primary_request = (_active_option_contract == queried)
+        is_extra_request = queried in _active_option_contracts
+        requested_ok = is_primary_request or is_extra_request
+        if is_primary_request:
+            # The primary slot always requests BOTH services (the Flow view needs book
+            # depth too), so a full match still requires both to confirm.
+            producer_ok = (queried in producer["LEVELONE_OPTIONS"]
+                           and queried in producer["OPTIONS_BOOK"])
+        else:
+            # An ADDITIONAL-only contract requests LEVELONE_OPTIONS alone (survivor-
+            # challenge finding: the heatmap/GEX/volume consumers it serves never read
+            # book depth -- see EXTRA_OPTION_CONTRACT_SVC_KEY in capture.py). Requiring
+            # OPTIONS_BOOK confirmation here would fail this contract closed FOREVER,
+            # since book is never subscribed for it in the first place.
+            producer_ok = queried in producer["LEVELONE_OPTIONS"]
         contract_match = bool(requested_ok and producer_ok)
         if not contract_match:
             # Either the plane is bound elsewhere, or the producer has not yet confirmed
-            # this contract on both services. No live evidence about the queried contract
-            # exists in either case -- fail closed rather than lending another contract's
-            # health, or a not-yet-established subscription's, to this one.
+            # this contract on its required service(s). No live evidence about the queried
+            # contract exists in either case -- fail closed rather than lending another
+            # contract's health, or a not-yet-established subscription's, to this one.
             healthy = False
     return {
         "streaming_connected": bool(_feed_running),
