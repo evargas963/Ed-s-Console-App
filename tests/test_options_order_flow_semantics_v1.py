@@ -19,6 +19,7 @@ import app.options.order_flow.streaming as ofs
 from stream_spine import CaptureWriter, book_msg, options_quote_msg
 
 _SPY_CONTRACT = "SPY   260820C00767000"
+_QQQ_CONTRACT = "QQQ   260820C00450000"
 
 #: Real content shapes from the live-proven probe — not invented.
 _REAL_LEVELONE_OPTIONS_CONTENT = {
@@ -148,6 +149,27 @@ def test_set_active_option_contract_writes_signal_and_clears_old_symbol(tmp_path
     assert calls == [_SPY_CONTRACT]
     assert cleared == ["OLD   260101C00100000"]
     assert ofs._active_option_contract == _SPY_CONTRACT
+
+
+def test_set_active_option_contracts_writes_plural_signal_and_clears_only_dropped(monkeypatch):
+    """RC-UI-3 (2026-09-12): set_active_option_contracts mirrors set_active_option_contract
+    for the ADDITIONAL-symbols slot, except a symbol still (or newly) requested must keep
+    replaying -- only a symbol actually DROPPED from the desired set gets its cursor
+    cleared, otherwise every unchanged tick would spuriously reset a live replay."""
+    calls = []
+    monkeypatch.setattr("app.options.order_flow.streaming.write_active_option_contracts_signal",
+                        lambda s: calls.append(list(s)))
+    cleared = []
+    monkeypatch.setattr("app.options.order_flow.streaming.clear_symbol", lambda s: cleared.append(s))
+    old = "OLD   260101C00100000"
+    ofs._active_option_contracts = [old, _SPY_CONTRACT]
+
+    ok = ofs.set_active_option_contracts([_SPY_CONTRACT, _QQQ_CONTRACT])
+    assert ok is True
+    assert calls == [sorted([_SPY_CONTRACT, _QQQ_CONTRACT])]
+    assert cleared == [old], "only the dropped symbol is cleared; SPY keeps replaying"
+    assert sorted(ofs._active_option_contracts) == sorted([_SPY_CONTRACT, _QQQ_CONTRACT])
+    ofs._active_option_contracts = []
 
 
 def test_feed_loop_replays_both_ticker_and_option_contract_independently(tmp_path, monkeypatch):

@@ -14879,6 +14879,38 @@ async def post_streaming_active_option_contract(payload: dict = Body(default={})
     return JSONResponse(out)
 
 
+@app.post("/api/streaming/active-option-contracts")
+async def post_streaming_active_option_contracts(payload: dict = Body(default={})):
+    """Subscribe LEVELONE_OPTIONS+OPTIONS_BOOK to a SET of ADDITIONAL option contracts,
+    beside the one primary contract /api/streaming/active-option-contract manages (RC-UI-3,
+    2026-09-12 multi-contract coverage). Mirrors that endpoint's generation-guarded write
+    exactly, on its own independent generation counter -- see
+    app.options.order_flow.streaming.set_active_option_contracts."""
+    raw = payload.get("contracts")
+    contracts = [str(s).strip() for s in raw] if isinstance(raw, list) else []
+    contracts = [c for c in contracts if c]
+
+    from app.options.order_flow.streaming import (
+        StaleOptionCommandError,
+        begin_option_contracts_command,
+    )
+    generation = begin_option_contracts_command()
+
+    def _apply():
+        from app.options.order_flow.streaming import set_active_option_contracts
+        ok = set_active_option_contracts(contracts, command_generation=generation)
+        return {"ok": ok, "contracts": contracts, "command_generation": generation}
+    try:
+        out = await asyncio.get_event_loop().run_in_executor(_get_fast_quote_executor(), _apply)
+    except StaleOptionCommandError as e:
+        return JSONResponse({"ok": False, "error": str(e), "contracts": contracts,
+                             "superseded": True, "command_generation": generation},
+                            status_code=409)
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e), "contracts": contracts}, status_code=500)
+    return JSONResponse(out)
+
+
 @app.post("/api/streaming/active-ticker")
 async def post_streaming_active_ticker(payload: dict = Body(default={})):
     """Subscribe Schwab L1+book to the active UI ticker (dynamic; replaces prior subscription)."""

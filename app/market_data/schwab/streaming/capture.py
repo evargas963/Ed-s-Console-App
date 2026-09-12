@@ -53,6 +53,7 @@ from stream_spine import (  # noqa: E402
     print_msg,
     quote_msg,
     read_active_option_contract_signal,
+    read_active_option_contracts_signal,
     read_active_ticker_signal,
     resolve_stream_db_path,
 )
@@ -546,6 +547,37 @@ class OptionCoverageCompensationError(RuntimeError):
 #: reads, so a published claim cannot drift from the coverage rows it refers to.
 COVERAGE_CLAIM_SERVICES = {"l1": "LEVELONE_OPTIONS", "book": "OPTIONS_BOOK"}
 
+#: epoch_state key PREFIX -> service, for the additional-symbol keys
+#: _apply_extra_option_contract_subs creates (f"{svc_key}:extra:{symbol}"). Multi-contract
+#: coverage (RC-UI-3, 2026-09-12) needs an unbounded number of concurrently-open epochs
+#: per service, not the single fixed key COVERAGE_CLAIM_SERVICES was built for -- this is
+#: the second (and only other) place claimed-epoch scanning happens, kept beside it so
+#: the two can never drift about which keys belong to which service.
+EXTRA_COVERAGE_CLAIM_KEY_PREFIXES = {"l1:extra:": "LEVELONE_OPTIONS", "book:extra:": "OPTIONS_BOOK"}
+
+
+def _claimed_coverage_from_epoch_state(epoch_state: dict) -> "dict[str, list[int]]":
+    """Scan `epoch_state` for every currently-open coverage epoch id, per service, as a
+    LIST (RC-UI-3: multiple concurrently-open epochs per service are now normal, not an
+    error). Covers both the primary keys (COVERAGE_CLAIM_SERVICES) and every namespaced
+    extra-symbol key (EXTRA_COVERAGE_CLAIM_KEY_PREFIXES) -- one scan, so a claim can never
+    describe only the primary contract while extras are silently un-asserted."""
+    claimed: "dict[str, list[int]]" = {svc: [] for svc in COVERAGE_CLAIM_SERVICES.values()}
+    for key, service in COVERAGE_CLAIM_SERVICES.items():
+        epoch_id = epoch_state.get(key)
+        if isinstance(epoch_id, int) and not isinstance(epoch_id, bool):
+            claimed[service].append(epoch_id)
+    for key, value in epoch_state.items():
+        if key in COVERAGE_CLAIM_SERVICES or key.endswith("_pending_close"):
+            continue
+        if not isinstance(value, int) or isinstance(value, bool):
+            continue
+        for prefix, service in EXTRA_COVERAGE_CLAIM_KEY_PREFIXES.items():
+            if key.startswith(prefix):
+                claimed[service].append(value)
+                break
+    return claimed
+
 
 def _publish_coverage_claim(writer, epoch_state: dict) -> bool:
     """Publish WHAT THIS PRODUCER CURRENTLY CLAIMS to be subscribed, per option service.
@@ -578,9 +610,7 @@ def _publish_coverage_claim(writer, epoch_state: dict) -> bool:
     if writer is None or epoch_state is None:
         return False
     try:
-        writer.write_heartbeat(claimed_coverage={
-            service: epoch_state.get(key)
-            for key, service in COVERAGE_CLAIM_SERVICES.items()})
+        writer.write_heartbeat(claimed_coverage=_claimed_coverage_from_epoch_state(epoch_state))
         return True
     except Exception as e:  # noqa: BLE001 — reported to the caller, see above
         print(f"coverage claim publish FAILED — the previously published claim still "
@@ -990,27 +1020,91 @@ async def _reconcile_option_service(stream, held: str | None, requested: str | N
     return held
 
 
+async def _apply_extra_option_contract_subs(stream, contract_state: dict, extra_requested: set, *,
+                                            writer, epoch_state: dict | None, svc_key: str,
+                                            subs_fn, unsubs_fn, service_name: str) -> None:
+    """Reconcile ADDITIONAL concurrently-desired symbols for one service (RC-UI-3,
+    2026-09-12 multi-contract coverage), beside the one primary/pinned contract
+    `_apply_active_option_contract_subs` reconciles under the plain "l1"/"book" keys.
+
+    Deliberately reuses `_reconcile_option_service` UNCHANGED, once per extra symbol,
+    under a NAMESPACED key f"{svc_key}:extra:{symbol}" — fully independent of the primary
+    key and of every other extra symbol's key, so the causality-critical close-before-
+    unsub-before-sub-before-open ordering that function implements, and the ~1600 lines
+    of tests proving it, apply identically here with zero new state-machine code. Each
+    namespaced key always reconciles held==requested==the SAME symbol (never a switch
+    from one symbol to another within one key) — "add a contract" and "drop a contract"
+    are the only two transitions a key ever makes, which is exactly the subscribe/
+    unsubscribe halves _reconcile_option_service already implements.
+
+    `in_play` is the union of every symbol that still needs a reconcile call this tick:
+    desired extras, symbols contract_state still remembers holding, and symbols
+    epoch_state still has an open epoch or a pending close for — a symbol dropped from
+    the desired set must keep reconciling (to actually unsubscribe/close) until BOTH
+    dicts agree nothing is left, at which point its keys are pruned so contract_state/
+    epoch_state do not grow without bound over a long session."""
+    prefix = f"{svc_key}:extra:"
+    in_play: set[str] = {k[len(prefix):] for k in contract_state if k.startswith(prefix)}
+    in_play |= set(extra_requested)
+    if epoch_state is not None:
+        for key, value in epoch_state.items():
+            if not key.startswith(prefix):
+                continue
+            if key.endswith("_pending_close"):
+                if value:  # non-empty pending-close map: a retry is still owed
+                    in_play.add(key[len(prefix):-len("_pending_close")])
+            else:
+                in_play.add(key[len(prefix):])
+    for symbol in sorted(in_play):
+        epoch_key = f"{prefix}{symbol}"
+        want = symbol if symbol in extra_requested else None
+        held_now = await _reconcile_option_service(
+            stream, contract_state.get(epoch_key), want,
+            subs_fn=subs_fn, unsubs_fn=unsubs_fn,
+            writer=writer, epoch_state=epoch_state, epoch_key=epoch_key, service_name=service_name)
+        fully_clear = held_now is None and want is None and (
+            epoch_state is None or (
+                epoch_state.get(epoch_key) is None
+                and not epoch_state.get(f"{epoch_key}_pending_close")))
+        if fully_clear:
+            contract_state.pop(epoch_key, None)
+            if epoch_state is not None:
+                epoch_state.pop(epoch_key, None)
+                epoch_state.pop(f"{epoch_key}_pending_close", None)
+        else:
+            contract_state[epoch_key] = held_now
+
+
 async def _apply_active_option_contract_subs(stream, contract_state: dict, *,
                                              writer=None, epoch_state: dict | None = None) -> dict:
-    """Diff the server's requested active OPTION CONTRACT against what is currently held,
-    PER SERVICE (LEVELONE_OPTIONS and OPTIONS_BOOK reconciled independently — see
-    _reconcile_option_service). Same bounded-key shape as the equity book poll: at most
-    ONE contract carries each service at a time (2 services x 1 contract = 2 keys),
-    independent of anything else the daemon watches.
+    """Diff the server's requested active OPTION CONTRACT(s) against what is currently
+    held, PER SERVICE (LEVELONE_OPTIONS and OPTIONS_BOOK reconciled independently — see
+    _reconcile_option_service).
+
+    ONE primary/pinned contract (the pre-existing singular signal, "l1"/"book" keys,
+    unchanged behavior and unchanged signature) plus any number of ADDITIONALLY desired
+    contracts (the new plural signal, read_active_option_contracts_signal — RC-UI-3,
+    2026-09-12: "historical coverage failures establish properties to preserve; they do
+    not establish that single-contract operation must survive," operator-authorized).
+    The desired set for each service is the union of the two; a symbol present in both
+    is reconciled once, under the primary key, and excluded from the extra pass so a
+    single symbol never carries two live subscriptions to the same service.
 
     `requested` MUST already be a chain response's own "symbol" field (enforced by
     stream_spine.write_active_option_contract_signal's caller, not re-validated here) —
     a bare ticker was PROVEN to fail this exact subscribe call ("no option symbol from
-    chain", reports/of_schwab_live_capability_matrix_20260820.md).
+    chain", reports/of_schwab_live_capability_matrix_20260820.md). Same for every entry
+    in the plural signal (write_active_option_contracts_signal's caller).
 
-    ``contract_state``: {"l1": symbol|None, "book": symbol|None} — the symbol currently
-    held AT THE VENDOR for each service; mutated in place and returned. ``writer``/
-    ``epoch_state``: when given, durably records COVERAGE EPOCHS (which windows this
-    contract was actually subscribed, per service) — mutated in place ({"l1": epoch_id|
-    None, "book": epoch_id|None} plus retry-tracking keys) so a gap in
-    stream_options_quotes_raw is later interpretable as "not subscribed" vs "subscribed,
-    vendor silent". Optional: tests exercising only the subscribe-diff behavior can omit
-    both."""
+    ``contract_state``: {"l1": symbol|None, "book": symbol|None, "l1:extra:<symbol>":
+    symbol|None, "book:extra:<symbol>": symbol|None, ...} — the symbol currently held AT
+    THE VENDOR for each key; mutated in place and returned. ``writer``/``epoch_state``:
+    when given, durably records COVERAGE EPOCHS (which windows this contract was
+    actually subscribed, per service) — mutated in place, same key shape, plus
+    retry-tracking keys per epoch key — so a gap in stream_options_quotes_raw is later
+    interpretable as "not subscribed" vs "subscribed, vendor silent" for EVERY
+    concurrently-held contract, not just the primary one. Optional: tests exercising
+    only the subscribe-diff behavior can omit both."""
     requested = read_active_option_contract_signal()
     contract_state["l1"] = await _reconcile_option_service(
         stream, contract_state.get("l1"), requested,
@@ -1020,6 +1114,15 @@ async def _apply_active_option_contract_subs(stream, contract_state: dict, *,
         stream, contract_state.get("book"), requested,
         subs_fn=stream.options_book_subs, unsubs_fn=stream.options_book_unsubs,
         writer=writer, epoch_state=epoch_state, epoch_key="book", service_name="OPTIONS_BOOK")
+    extra_requested = {s for s in read_active_option_contracts_signal() if s != requested}
+    await _apply_extra_option_contract_subs(
+        stream, contract_state, extra_requested, writer=writer, epoch_state=epoch_state,
+        svc_key="l1", subs_fn=stream.level_one_option_subs, unsubs_fn=stream.level_one_option_unsubs,
+        service_name="LEVELONE_OPTIONS")
+    await _apply_extra_option_contract_subs(
+        stream, contract_state, extra_requested, writer=writer, epoch_state=epoch_state,
+        svc_key="book", subs_fn=stream.options_book_subs, unsubs_fn=stream.options_book_unsubs,
+        service_name="OPTIONS_BOOK")
     return contract_state
 
 
@@ -1093,9 +1196,8 @@ def write_status(bus: MessageBus, health: HealthRegistry, writer: CaptureWriter,
     # (as well as on every epoch transition) is what makes a daemon that has stopped
     # writing go UNKNOWN rather than leaving its last claim standing indefinitely.
     try:
-        writer.write_heartbeat(claimed_coverage=None if epoch_state is None else {
-            service: epoch_state.get(key)
-            for key, service in COVERAGE_CLAIM_SERVICES.items()})
+        writer.write_heartbeat(claimed_coverage=None if epoch_state is None
+                                else _claimed_coverage_from_epoch_state(epoch_state))
     except Exception as e:  # noqa: BLE001 — a heartbeat write failure must not kill the daemon's status loop
         print(f"write_heartbeat failed (continuing): {type(e).__name__}: {e}")
     STATUS_PATH.parent.mkdir(parents=True, exist_ok=True)

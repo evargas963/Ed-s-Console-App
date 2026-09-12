@@ -46,6 +46,7 @@ from stream_spine import (
     resolve_stream_db_path,
     read_active_option_contract_signal,
     write_active_option_contract_signal,
+    write_active_option_contracts_signal,
     write_active_ticker_signal,
 )
 
@@ -806,6 +807,78 @@ def set_active_option_contract(contract_symbol: str,
         return True
 
 
+#: The ADDITIONAL option contracts to stream beside the one primary/pinned
+#: `_active_option_contract` (RC-UI-3, 2026-09-12 multi-contract coverage --
+#: operator-authorized: "historical coverage failures establish properties to preserve;
+#: they do not establish that single-contract operation must survive"). A separate slot,
+#: mirroring `_active_option_contract` exactly, so the daemon's plural desired-state
+#: signal (stream_spine.write_active_option_contracts_signal) has a server-side writer
+#: symmetric to the existing singular one.
+_active_option_contracts: "list[str]" = []
+
+#: Independent generation counter for plural commands (see _option_command_seq for the
+#: primary slot's identical mechanism). Kept SEPARATE rather than shared: the primary and
+#: additional-contracts slots are independent desired-state signals, so a delayed primary
+#: command must not be blocked by, and must not block, a plural-contracts command.
+_option_contracts_command_seq: int = 0
+_option_contracts_command_lock = threading.Lock()
+
+
+def get_active_option_contracts() -> "list[str]":
+    """The DESIRED additional option-contract symbols (this daemon's own plural signal),
+    beside the one primary contract get_active_option_contract reports. Same
+    requested/desired-state caveat as get_active_option_contract."""
+    return list(_active_option_contracts)
+
+
+def begin_option_contracts_command() -> int:
+    """Admit a plural subscription command and return its generation -- same ordering
+    mechanism as begin_option_contract_command, on the independent counter above."""
+    global _option_contracts_command_seq
+    with _option_contracts_command_lock:
+        _option_contracts_command_seq += 1
+        return _option_contracts_command_seq
+
+
+def set_active_option_contracts(contract_symbols: "list[str]",
+                                command_generation: Optional[int] = None) -> bool:
+    """Request LEVELONE_OPTIONS+OPTIONS_BOOK for these ADDITIONAL option contracts,
+    beside the one primary contract set_active_option_contract manages. Symbols MUST
+    already be chain-response "symbol" fields, same requirement as
+    set_active_option_contract -- never constructed here.
+
+    Same command-generation staleness guard as the primary slot (see
+    set_active_option_contract's docstring for why), on the independent counter above so
+    ordering a plural command never depends on how many primary commands ran meanwhile."""
+    global _active_option_contracts
+    symbols = sorted({ticker_storage_key(s) for s in (contract_symbols or [])
+                      if ticker_storage_key(s)})
+    with _option_contracts_command_lock:
+        if command_generation is not None and command_generation < _option_contracts_command_seq:
+            _log_stream("OPTION_CONTRACTS_COMMAND_SUPERSEDED",
+                        contracts=symbols, generation=command_generation,
+                        newest=_option_contracts_command_seq)
+            raise StaleOptionCommandError(
+                f"subscription command for {symbols} (generation {command_generation}) "
+                f"was superseded by a newer command (generation "
+                f"{_option_contracts_command_seq}); refusing to overwrite newer desired "
+                f"state")
+        old = _active_option_contracts
+        if set(old) == set(symbols):
+            return True
+        _log_stream("OPTION_CONTRACTS_RESUBSCRIBE_START", old=old, new=symbols)
+        # Only a symbol actually being DROPPED needs its replay cursors forgotten -- one
+        # still (or newly) requested keeps replaying without a spurious reset.
+        for s in old:
+            if s not in symbols:
+                clear_symbol(s)
+        write_active_option_contracts_signal(symbols)
+        _active_option_contracts = symbols
+        log.info("Live-plane feed additional option contracts -> %s", symbols)
+        _log_stream("OPTION_CONTRACTS_RESUBSCRIBE_DONE", contracts=symbols)
+        return True
+
+
 def get_option_contract_book_microstructure(contract_symbol: str) -> dict:
     """The order-flow SEMANTIC PRODUCT for one option contract: book + PROXY flow.
 
@@ -836,13 +909,15 @@ def _option_streaming_healthy() -> bool:
 OPTION_PRODUCER_SERVICES: tuple[str, ...] = ("LEVELONE_OPTIONS", "OPTIONS_BOOK")
 
 
-def _read_producer_option_contracts() -> dict[str, Optional[str]]:
-    """Current open coverage symbol per option service, from the canonical stream DB.
-    Fails closed to None per service on any read problem: an unreadable ledger is
-    'unknown', and unknown must never be treated as producer confirmation."""
+def _read_producer_option_contracts() -> dict[str, list[str]]:
+    """Currently open coverage SYMBOLS per option service, from the canonical stream DB
+    (RC-UI-3, 2026-09-12: a service can now durably hold more than one concurrently-open
+    contract, so this is a list, not a single symbol-or-None). Fails closed to an empty
+    list per service on any read problem: an unreadable ledger is 'unknown', and unknown
+    must never be treated as producer confirmation."""
     con = _open_capture_db_readonly()
     if con is None:
-        return {s: None for s in OPTION_PRODUCER_SERVICES}
+        return {s: [] for s in OPTION_PRODUCER_SERVICES}
     try:
         # An open coverage row confirms only while the LIVE producer still claims that
         # epoch: a failed durable close leaves the row open on a subscription the daemon
@@ -852,9 +927,28 @@ def _read_producer_option_contracts() -> dict[str, Optional[str]]:
             con, OPTION_PRODUCER_SERVICES,
             stale_sec=STREAM_PRODUCER_HEARTBEAT_STALE_SEC)
     except Exception:   # noqa: BLE001 — diagnostics must never raise into a route
-        return {s: None for s in OPTION_PRODUCER_SERVICES}
+        return {s: [] for s in OPTION_PRODUCER_SERVICES}
     finally:
         con.close()
+
+
+def _pick_producer_contract(symbols: "list[str]", queried: Optional[str]) -> Optional[str]:
+    """Reduce a service's list of currently-confirmed producer symbols to the single
+    value the back-compat `producer_l1_contract`/`producer_book_contract` diagnostic
+    fields report (RC-UI-3: those fields predate multi-contract coverage and every
+    existing caller — the JS binding-status renderers, the order-flow subscription
+    panel — still expects a single symbol or None). Prefers the QUERIED contract when it
+    is among the confirmed symbols, since that is the subject the caller actually asked
+    about; otherwise falls back to the first (the list is already sorted, so this is
+    deterministic) so a caller not asking about a specific contract still sees SOME live
+    evidence instead of a fabricated absence. Single-contract operation is unaffected:
+    with at most one symbol ever confirmed, this always returns exactly that symbol or
+    None, identical to the pre-RC-UI-3 scalar behavior."""
+    if not symbols:
+        return None
+    if queried is not None and queried in symbols:
+        return queried
+    return symbols[0]
 
 
 def get_option_contract_streaming_diagnostics(
@@ -912,8 +1006,8 @@ def get_option_contract_streaming_diagnostics(
     contract_match: Optional[bool] = None
     if queried:
         requested_ok = (_active_option_contract == queried)
-        producer_ok = (producer["LEVELONE_OPTIONS"] == queried
-                       and producer["OPTIONS_BOOK"] == queried)
+        producer_ok = (queried in producer["LEVELONE_OPTIONS"]
+                       and queried in producer["OPTIONS_BOOK"])
         contract_match = bool(requested_ok and producer_ok)
         if not contract_match:
             # Either the plane is bound elsewhere, or the producer has not yet confirmed
@@ -926,8 +1020,8 @@ def get_option_contract_streaming_diagnostics(
         # Back-compatible name; it has always been the SERVER-REQUESTED contract.
         "option_contract": _active_option_contract,
         "server_requested_contract": _active_option_contract,
-        "producer_l1_contract": producer["LEVELONE_OPTIONS"],
-        "producer_book_contract": producer["OPTIONS_BOOK"],
+        "producer_l1_contract": _pick_producer_contract(producer["LEVELONE_OPTIONS"], queried),
+        "producer_book_contract": _pick_producer_contract(producer["OPTIONS_BOOK"], queried),
         "queried_contract": queried,
         "contract_match": contract_match,
         "streaming_last_update_ts": last,

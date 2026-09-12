@@ -107,10 +107,11 @@ CREATE INDEX IF NOT EXISTS idx_soqr_sym_ts ON stream_options_quotes_raw(symbol, 
 -- between "we were not subscribed" (a hole in coverage) and "we were subscribed and
 -- nothing changed" (the vendor's silence IS the observation) — without this record both
 -- read identically as "no rows", and a reader would mistake our subscription window for
--- a market fact. Options streaming watches at most ONE contract at a time (bounded by
--- construction, see _apply_active_option_contract_subs), so this is a single open-interval
--- ledger per (symbol, service), not the historical branch's multi-contract rotation
--- policy — that complexity does not apply to this design.
+-- a market fact. Multiple option contracts may be concurrently open now (RC-UI-3,
+-- 2026-09-12): this remains one open-interval ledger per (symbol, service) — each
+-- concurrently-streamed contract gets its OWN row per service, closed and reopened
+-- independently of every other contract's row, via _apply_active_option_contract_subs'
+-- one-reconciler-instance-per-desired-symbol design (capture.py).
 CREATE TABLE IF NOT EXISTS stream_coverage_epochs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     symbol TEXT NOT NULL,
@@ -198,32 +199,26 @@ def read_producer_heartbeat(conn: sqlite3.Connection) -> "dict | None":
 def read_open_coverage_symbols(conn: sqlite3.Connection,
                                services: "tuple[str, ...]", *,
                                stale_sec: float,
-                               now: "float | None" = None) -> "dict[str, str | None]":
+                               now: "float | None" = None) -> "dict[str, list[str]]":
     """PRODUCER-SIDE subscription identity, read from THIS connection's own
     stream_capture.db (PR214 premerge gap 1A).
 
-    The active-contract SIGNAL FILE is DESIRED state -- what the server asked for. The
+    The active-contract SIGNAL FILE(s) are DESIRED state -- what the server asked for. The
     OPEN COVERAGE EPOCH is PRODUCER state -- what the daemon actually holds a vendor
     subscription for, written only after a confirmed subscribe. Between an operator's
-    request for B and the daemon's next poll, those disagree, and a health verdict built
-    on desired state alone would claim B is live while the producer still physically
-    holds A.
+    request and the daemon's next poll, those disagree, and a health verdict built on
+    desired state alone would claim a contract is live while the producer still physically
+    holds a different (or no) set.
 
-    Returns {service: symbol or None}:
-      0 open rows -> None (not subscribed, as far as the durable ledger knows)
-      1 open row  -> that symbol (the only confirming case)
-      2+ open rows -> None, AMBIGUOUS -- explicitly NOT confirmed
+    Returns {service: [confirmed_symbol, ...]} -- MULTIPLE concurrently-open, independently
+    confirmed symbols per service are the NORMAL case as of RC-UI-3 (2026-09-12,
+    multi-contract coverage; previously this returned {service: symbol|None} because the
+    daemon's reconciler could only ever hold one symbol per service at all). Each OPEN row
+    is confirmed or refused entirely on ITS OWN claimed epoch id -- one row's confirmation
+    or refusal never depends on how many OTHER rows are also open for the same service.
 
-    A missing table or unreadable DB likewise yields None for every service: unknown is
-    never confirmation.
-
-    The ambiguous case must never be resolved by picking a row. An earlier version used
-    `ORDER BY id DESC LIMIT 1`, which silently answered "B" whenever a contradictory
-    A-open/B-open pair existed -- newest-row-wins, i.e. inventing a confident producer
-    identity out of a ledger that cannot support one, and greening health on it. The
-    CaptureWriter service-wide uniqueness guard makes that state unreachable through the
-    normal path; this reader still fails closed so a corrupted or hand-edited ledger
-    cannot be laundered into a confident answer here.
+    A missing table, unreadable DB, or stale/absent producer heartbeat likewise yields []
+    for every service: unknown is never confirmation.
 
     AN OPEN ROW IS NOT BY ITSELF A CLAIM (PR214 durable producer truth). `ended_ts IS
     NULL` used to be sufficient, and it lied: when a durable CLOSE fails, the row stays
@@ -234,18 +229,26 @@ def read_open_coverage_symbols(conn: sqlite3.Connection,
     nothing, while this function kept naming the contract.
 
     A row therefore confirms only when the LIVE producer currently asserts that exact
-    epoch id, via `claimed_coverage` on its heartbeat. That closes both directions of the
-    failure:
+    epoch id, via `claimed_coverage` on its heartbeat (now {service: [epoch_id, ...]} --
+    the SET of epoch ids this producer currently claims for that service, not one bare
+    id). That closes both directions of the failure:
       * daemon alive, close failed -> it republishes the claim immediately (the surrendered
-        id is gone from it), so this returns None even though the row is still open;
+        id is gone from the list), so that ROW returns unconfirmed even though it is still
+        open in the table;
       * daemon cannot write at all -> the heartbeat itself goes stale past `stale_sec`,
         and a stale producer confirms nothing.
     A durable-write failure can therefore make producer identity UNKNOWN. It can no longer
     manufacture a false positive.
 
+    A DUPLICATE symbol -- the SAME symbol open on the SAME service via two different rows
+    -- remains refused for that symbol even though the underlying CaptureWriter guard
+    (open_coverage_epoch's per-(symbol,service) uniqueness check) should make it
+    unreachable through the normal path; a corrupted or hand-edited ledger must not be
+    laundered into a confident double-confirmation here.
+
     `stale_sec` is required, not defaulted: there is no correct "ungated" read of this
     table, and an optional gate is one a caller can forget."""
-    out: "dict[str, str | None]" = {s: None for s in services}
+    out: "dict[str, list[str]]" = {s: [] for s in services}
     beat = read_producer_heartbeat(conn)
     if beat is None:
         return out              # no producer has ever asserted anything here
@@ -262,14 +265,23 @@ def read_open_coverage_symbols(conn: sqlite3.Connection,
                 "SELECT id, symbol FROM stream_coverage_epochs "
                 "WHERE service = ? AND ended_ts IS NULL", (service,)).fetchall()
         except sqlite3.OperationalError:
-            return {s: None for s in services}
-        if len(rows) != 1:
-            continue            # 0 -> not subscribed; 2+ -> ambiguous, never confirmed
-        claimed_id = claimed.get(service)
-        if isinstance(claimed_id, bool) or not isinstance(claimed_id, int):
-            continue            # no live claim for this service (surrendered, or unknown)
-        if claimed_id == rows[0][0]:
-            out[service] = rows[0][1]
+            return {s: [] for s in services}
+        if not rows:
+            continue             # not subscribed to anything, as far as the ledger knows
+        claimed_ids = claimed.get(service)
+        if not isinstance(claimed_ids, list):
+            continue             # no live claim for this service at all (surrendered/unknown)
+        claimed_id_set = {v for v in claimed_ids if isinstance(v, int) and not isinstance(v, bool)}
+        symbol_row_counts: dict[str, int] = {}
+        for _row_id, sym in rows:
+            symbol_row_counts[sym] = symbol_row_counts.get(sym, 0) + 1
+        confirmed: list[str] = []
+        for row_id, sym in rows:
+            if symbol_row_counts[sym] != 1:
+                continue          # the SAME symbol open twice on one service: refuse it
+            if row_id in claimed_id_set:
+                confirmed.append(sym)
+        out[service] = sorted(confirmed)
     return out
 
 
@@ -363,6 +375,65 @@ def read_active_option_contract_signal(
     """The daemon's read of the server's requested active option contract."""
     dest = path if path is not None else default_active_option_contract_signal_path()
     return _read_json_signal("contract_symbol", path=dest)
+
+
+def default_active_option_contracts_signal_path(db_path: Path | str | None = None) -> Path:
+    """PLURAL companion to default_active_option_contract_signal_path (RC-UI-3, 2026-09-12:
+    "historical coverage failures establish properties to preserve; they do not establish
+    that single-contract operation must survive" — operator authorization to move past the
+    single-contract ceiling). A SEPARATE file/key from the singular signal, not a shape
+    change to it: every existing reader of the singular signal is completely unaffected,
+    and the daemon's reconciler (capture.py) treats the union of "the one pinned contract"
+    (singular signal, unchanged) and "additionally desired contracts" (this, plural) as the
+    full requested set — see _apply_active_option_contract_subs."""
+    return resolve_stream_db_path(db_path).with_name("stream_active_option_contracts.json")
+
+
+def _write_json_list_signal(value_key: str, values: "list[str]", *, path: Path) -> None:
+    """PLURAL counterpart to _write_json_signal: a de-duplicated, normalized (upper/strip,
+    empties dropped) JSON list under `value_key`, same atomic write-temp-then-replace
+    discipline so the daemon (polling on its own schedule) never observes a half-written
+    body."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    norm = sorted({str(v or "").upper().strip() for v in (values or [])} - {""})
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(json.dumps({value_key: norm, "requested_at": time.time()}), encoding="utf-8")
+    tmp.replace(path)
+
+
+def _read_json_list_signal(value_key: str, *, path: Path) -> "list[str]":
+    """PLURAL counterpart to _read_json_signal: [] on any absence/corruption or malformed
+    (non-list) value — a missing/broken signal means 'no additional contracts', never a
+    guessed set, exactly the same fail-closed discipline the singular signal already uses."""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    raw = data.get(value_key)
+    if not isinstance(raw, list):
+        return []
+    return sorted({str(v or "").upper().strip() for v in raw} - {""})
+
+
+def write_active_option_contracts_signal(
+    symbols: "list[str]", *, path: Path | None = None,
+) -> None:
+    """The server's write of the ADDITIONAL (beyond the one singular/pinned contract)
+    option contracts it wants concurrently streamed. Each symbol MUST be a chain
+    response's own "symbol" field, exactly like the singular signal — never constructed
+    here. Passing an empty list clears the additional set (the singular contract, if any,
+    is unaffected — it has its own signal)."""
+    dest = path if path is not None else default_active_option_contracts_signal_path()
+    _write_json_list_signal("contract_symbols", symbols, path=dest)
+
+
+def read_active_option_contracts_signal(
+    *, path: Path | None = None,
+) -> "list[str]":
+    """The daemon's read of the server's ADDITIONALLY-requested option contracts (beyond
+    the one singular/pinned contract, which keeps reading from its own unchanged signal)."""
+    dest = path if path is not None else default_active_option_contracts_signal_path()
+    return _read_json_list_signal("contract_symbols", path=dest)
 
 
 def print_msg(*, symbol: str, price=None, size=None, exchange=None, conditions=None,
@@ -599,17 +670,26 @@ class CaptureWriter:
     #: Canonical reason stamped on epochs left open by a prior daemon lifetime.
     COVERAGE_ORPHAN_REASON = "daemon_restart_orphan"
 
-    #: Services this architecture subscribes for AT MOST ONE contract at a time (see
-    #: tools/run_stream_capture.py::_apply_active_option_contract_subs and
-    #: stream_spine.ACTIVE_OPTION_CONTRACT_SIGNAL_DEFAULT — one active option contract,
-    #: by design, not by accident). For these, "one open epoch per (symbol, service)" is
-    #: too weak: A and B are different symbols, so a switch whose close failed could open
-    #: B while A was still open, leaving TWO open epochs on one service. Since these
-    #: epochs are also read as PRODUCER SUBSCRIPTION IDENTITY, that state is not merely
-    #: untidy — it makes "what is this service subscribed to" unanswerable. Scoped
-    #: deliberately to the two canonical option services; equity/book services subscribe
-    #: many symbols concurrently and are NOT covered by this stricter rule.
-    SINGLE_CONTRACT_SERVICES: frozenset[str] = frozenset({"LEVELONE_OPTIONS", "OPTIONS_BOOK"})
+    #: RETIRED (2026-09-12, RC-UI-3 multi-contract coverage — operator-authorized:
+    #: "historical coverage failures establish properties to preserve; they do not
+    #: establish that single-contract operation must survive"). Previously named
+    #: LEVELONE_OPTIONS/OPTIONS_BOOK here to scope their open-epoch uniqueness check to
+    #: the WHOLE SERVICE regardless of symbol, because the two-key ("l1"/"book")
+    #: reconciler in capture.py could only ever hold ONE symbol per service, and a
+    #: switch whose close failed could otherwise open a SECOND symbol's epoch while the
+    #: first was still open. That reconciler now runs one independent instance PER
+    #: desired symbol (still using this exact per-(symbol,service) uniqueness check
+    #: below, in the `else` branch, which already existed for every OTHER service) — so
+    #: the constraint this set existed to add is now redundant with, and strictly
+    #: weaker than, the ordinary per-(symbol,service) rule every service gets: two
+    #: DIFFERENT symbols legitimately open at once is the whole point of multi-contract
+    #: coverage; the SAME symbol open twice remains refused, exactly as for any other
+    #: service. `claimed_coverage`'s shape changed accordingly (server.py's
+    #: _publish_coverage_claim publishes a LIST of currently-claimed epoch ids per
+    #: service, not one bare id) — see read_open_coverage_symbols below, which now
+    #: confirms EACH open row against its OWN claimed epoch id instead of refusing
+    #: whenever more than one row is open.
+    SINGLE_CONTRACT_SERVICES: frozenset[str] = frozenset()
 
     def reconcile_orphan_coverage_epochs(self, *, reason: str | None = None,
                                          ts: float | None = None) -> int:
@@ -699,7 +779,7 @@ class CaptureWriter:
             raise CoverageWriteError(f"open_coverage_epoch({symbol},{service}): {e}") from e
 
     def write_heartbeat(self, *, pid: int | None = None, ts: float | None = None,
-                        claimed_coverage: "dict[str, int | None] | None" = None) -> None:
+                        claimed_coverage: "dict[str, list[int]] | None" = None) -> None:
         """Producer identity/liveness signal written INTO the canonical stream_capture.db
         itself (PR214_RTH_DEFECT_REMEDIATION_FINAL_GAPS, Gap 2) -- not a separate
         checkout-relative status file. A consumer opening its OWN resolved db_path and
@@ -727,8 +807,13 @@ class CaptureWriter:
             raise CoverageWriteError(f"write_heartbeat: {e}") from e
         # Only a LANDED write changes the outstanding lease. A publication that claims
         # nothing clears it; one that names any epoch starts a fresh one at `t`.
+        # RC-UI-3 (2026-09-12): claimed_coverage's per-service values are now LISTS of
+        # epoch ids (multi-contract), not a bare id-or-None -- an EMPTY list must count
+        # as "nothing claimed for this service", the same as the old None did, so this is
+        # a plain truthiness check (an empty list, like None, is falsy) rather than the
+        # old `is not None` (which would have misread {} as a positive claim).
         self._positive_claim_ts = t if (
-            claimed_coverage and any(v is not None for v in claimed_coverage.values())
+            claimed_coverage and any(v for v in claimed_coverage.values())
         ) else None
 
     @property

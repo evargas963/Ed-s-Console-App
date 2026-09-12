@@ -1052,24 +1052,37 @@ def test_coverage_D_switch_completes_cleanly_once_the_db_recovers(tmp_path, monk
         w.close()
 
 
-def test_coverage_E_service_wide_duplicate_open_is_blocked(tmp_path):
-    """1G-E (defect 1E). A OPEN must mechanically prevent B OPEN on the SAME service,
-    even though the symbols differ -- the old (symbol, service) guard let this through,
-    which is exactly how the measured A-open/B-open contradiction was written."""
+def test_coverage_E_service_wide_open_is_no_longer_single_contract(tmp_path):
+    """1G-E RETIRED (RC-UI-3, 2026-09-12, operator-authorized multi-contract coverage:
+    "historical coverage failures establish properties to preserve; they do not
+    establish that single-contract operation must survive"). SINGLE_CONTRACT_SERVICES is
+    now empty, so LEVELONE_OPTIONS/OPTIONS_BOOK use the SAME per-(symbol, service)
+    uniqueness scope every other service already had -- two DIFFERENT symbols may both
+    be open at once (the entire point of multi-contract coverage), while the SAME
+    symbol opened twice on one service is still refused, exactly as for any other
+    service (see test_coverage_G below and the NASDAQ_BOOK control here, both unchanged
+    from before this retirement)."""
     db = tmp_path / "cap.db"
     w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
     try:
         for service in ("LEVELONE_OPTIONS", "OPTIONS_BOOK"):
             w.open_coverage_epoch(_SPY_CONTRACT, service, reason="active_contract_set", ts=1.0)
+            # A DIFFERENT symbol on the same service now opens concurrently -- no longer
+            # refused, since that refusal was the property being retired.
+            w.open_coverage_epoch(_QQQ_CONTRACT, service, reason="active_contract_set", ts=2.0)
+            assert len(_one_service_open(db, service)) == 2, (
+                "two different symbols must both be open at once on one option service")
+            # The SAME symbol opened again on the same service is STILL refused -- that
+            # per-(symbol, service) guard never left.
             with pytest.raises(CoverageWriteError) as exc:
-                w.open_coverage_epoch(_QQQ_CONTRACT, service,
-                                      reason="active_contract_set", ts=2.0)
+                w.open_coverage_epoch(_SPY_CONTRACT, service,
+                                      reason="active_contract_set", ts=3.0)
             msg = str(exc.value)
             assert "refusing to open a second epoch" in msg
-            assert f"service {service}" in msg, (
-                "the refusal must be scoped to the SERVICE, not to (symbol, service)")
-            assert len(_one_service_open(db, service)) == 1
-        # A non-single-contract service keeps the historical per-(symbol, service) scope.
+            assert f"({_SPY_CONTRACT}, {service})" in msg, (
+                "the refusal is scoped to (symbol, service), same as any other service")
+        # A non-option service keeps the identical per-(symbol, service) scope it
+        # always had -- multi-contract coverage changed nothing here.
         w.open_coverage_epoch("SPY", "NASDAQ_BOOK", reason="x", ts=1.0)
         w.open_coverage_epoch("QQQ", "NASDAQ_BOOK", reason="x", ts=1.0)
         assert len(_one_service_open(db, "NASDAQ_BOOK")) == 2, (
@@ -1096,6 +1109,175 @@ def test_coverage_G_normal_switch_path_is_unchanged(tmp_path):
         assert len(rows) == 1 and rows[0][1] == _QQQ_CONTRACT
     finally:
         w.close()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# RC-UI-3 (2026-09-12) — multi-contract coverage: additional concurrently-desired
+# symbols, reconciled through the UNCHANGED _reconcile_option_service under namespaced
+# f"{svc}:extra:{symbol}" keys, entirely alongside the primary "l1"/"book" pair above.
+# ─────────────────────────────────────────────────────────────────────────────
+
+_MSFT_CONTRACT = "MSFT  260820C00430000"
+
+
+def test_multi_A_primary_and_one_extra_symbol_both_subscribe_and_open_durably(
+        tmp_path, monkeypatch):
+    """The primary contract (singular signal) and one additional contract (plural
+    signal) both reach steady state in a single tick: vendor-held on both services for
+    both symbols, and a durable coverage epoch open for each, under independent keys."""
+    monkeypatch.setattr(rsc, "read_active_option_contract_signal", lambda: _SPY_CONTRACT)
+    monkeypatch.setattr(rsc, "read_active_option_contracts_signal", lambda: [_QQQ_CONTRACT])
+    stream = _FlakyOptionStream()
+    writer = CaptureWriter(tmp_path / "cap.db", batch_rows=1, batch_sec=10.0)
+    epoch_state: dict = {}
+    contract_state: dict = {}
+
+    async def go():
+        return await _apply_active_option_contract_subs(
+            stream, contract_state, writer=writer, epoch_state=epoch_state)
+    new_state = asyncio.run(go())
+    writer.close()
+
+    assert new_state["l1"] == _SPY_CONTRACT and new_state["book"] == _SPY_CONTRACT
+    assert new_state["l1:extra:" + _QQQ_CONTRACT] == _QQQ_CONTRACT
+    assert new_state["book:extra:" + _QQQ_CONTRACT] == _QQQ_CONTRACT
+    assert epoch_state["l1"] is not None and epoch_state["book"] is not None
+    assert epoch_state["l1:extra:" + _QQQ_CONTRACT] is not None
+    assert epoch_state["book:extra:" + _QQQ_CONTRACT] is not None
+    # Both symbols durably open, on both services, as SEPARATE rows -- exactly the
+    # concurrent coverage this design exists to allow.
+    l1_open = {r[1] for r in _one_service_open(tmp_path / "cap.db", "LEVELONE_OPTIONS")}
+    book_open = {r[1] for r in _one_service_open(tmp_path / "cap.db", "OPTIONS_BOOK")}
+    assert l1_open == {_SPY_CONTRACT, _QQQ_CONTRACT}
+    assert book_open == {_SPY_CONTRACT, _QQQ_CONTRACT}
+    subs = {c for c in stream.calls if c[0].endswith("_sub")}
+    assert ("l1_option_sub", (_SPY_CONTRACT,)) in subs
+    assert ("l1_option_sub", (_QQQ_CONTRACT,)) in subs
+    assert ("options_book_sub", (_SPY_CONTRACT,)) in subs
+    assert ("options_book_sub", (_QQQ_CONTRACT,)) in subs
+
+
+def test_multi_B_dropping_an_extra_symbol_unsubscribes_closes_and_prunes_state(
+        tmp_path, monkeypatch):
+    """Removing a symbol from the plural signal drives the SAME close-before-unsub
+    ordering as the primary contract, then PRUNES its namespaced keys from both dicts
+    once nothing is left open or pending -- state must not grow without bound over a
+    long session as desired extras come and go."""
+    monkeypatch.setattr(rsc, "read_active_option_contract_signal", lambda: _SPY_CONTRACT)
+    monkeypatch.setattr(rsc, "read_active_option_contracts_signal", lambda: [_QQQ_CONTRACT])
+    stream = _FlakyOptionStream()
+    writer = CaptureWriter(tmp_path / "cap.db", batch_rows=1, batch_sec=10.0)
+    epoch_state: dict = {}
+    contract_state: dict = {}
+
+    async def tick():
+        return await _apply_active_option_contract_subs(
+            stream, contract_state, writer=writer, epoch_state=epoch_state)
+    asyncio.run(tick())   # tick 1: QQQ opens as an extra
+
+    monkeypatch.setattr(rsc, "read_active_option_contracts_signal", lambda: [])
+    asyncio.run(tick())   # tick 2: QQQ dropped from the desired set
+    writer.close()
+
+    qqq_l1_key, qqq_book_key = "l1:extra:" + _QQQ_CONTRACT, "book:extra:" + _QQQ_CONTRACT
+    assert qqq_l1_key not in contract_state, "a fully-closed extra key must be pruned"
+    assert qqq_book_key not in contract_state
+    assert qqq_l1_key not in epoch_state
+    assert qqq_book_key not in epoch_state
+    # The primary contract is entirely unaffected by the extra's removal.
+    assert contract_state["l1"] == _SPY_CONTRACT and contract_state["book"] == _SPY_CONTRACT
+    unsubs = {c for c in stream.calls if c[0].endswith("_unsub")}
+    assert ("l1_option_unsub", (_QQQ_CONTRACT,)) in unsubs
+    assert ("options_book_unsub", (_QQQ_CONTRACT,)) in unsubs
+    l1_open = {r[1] for r in _one_service_open(tmp_path / "cap.db", "LEVELONE_OPTIONS")}
+    assert l1_open == {_SPY_CONTRACT}, "QQQ's coverage must be durably closed, not merely dropped"
+
+
+def test_multi_C_two_extras_one_fails_the_other_still_reaches_steady_state(
+        tmp_path, monkeypatch):
+    """Each extra symbol reconciles independently (per-symbol namespaced key, its own
+    call to the unchanged _reconcile_option_service) -- a vendor failure subscribing ONE
+    extra must not block another extra, or the primary, from reaching steady state."""
+    monkeypatch.setattr(rsc, "read_active_option_contract_signal", lambda: _SPY_CONTRACT)
+    monkeypatch.setattr(rsc, "read_active_option_contracts_signal",
+                        lambda: sorted([_QQQ_CONTRACT, _MSFT_CONTRACT]))
+    stream = _FlakyOptionStream(fail_calls={"l1_option_sub"})
+    # Each extra symbol gets its OWN l1 sub call (namespaced key, independent
+    # reconcile). Make QQQ's fail and MSFT's succeed, regardless of call order.
+
+    async def _l1_sub(syms):
+        if tuple(syms) == (_QQQ_CONTRACT,):
+            await stream._maybe_fail("l1_option_sub", syms)
+            return
+        stream.calls.append(("l1_option_sub", tuple(syms)))
+    stream.level_one_option_subs = _l1_sub
+
+    writer = CaptureWriter(tmp_path / "cap.db", batch_rows=1, batch_sec=10.0)
+    epoch_state: dict = {}
+    contract_state: dict = {}
+
+    async def go():
+        return await _apply_active_option_contract_subs(
+            stream, contract_state, writer=writer, epoch_state=epoch_state)
+    new_state = asyncio.run(go())
+    writer.close()
+
+    assert new_state["l1"] == _SPY_CONTRACT, "the primary contract must be unaffected"
+    assert new_state["l1:extra:" + _QQQ_CONTRACT] is None, (
+        "the failed extra stays unheld, retried next tick")
+    assert new_state["l1:extra:" + _MSFT_CONTRACT] == _MSFT_CONTRACT, (
+        "a sibling extra's vendor failure must not block this one"
+    )
+    # OPTIONS_BOOK never touched l1's stub, so both extras succeed there.
+    assert new_state["book:extra:" + _QQQ_CONTRACT] == _QQQ_CONTRACT
+    assert new_state["book:extra:" + _MSFT_CONTRACT] == _MSFT_CONTRACT
+
+
+def test_multi_D_a_symbol_in_both_primary_and_plural_signals_is_reconciled_once(
+        tmp_path, monkeypatch):
+    """The union of primary + plural is de-duplicated: a symbol requested as BOTH the
+    pinned primary contract and an additional contract must not carry two live
+    subscriptions to the same service -- it is reconciled once, under the primary key,
+    and excluded from the extra pass."""
+    monkeypatch.setattr(rsc, "read_active_option_contract_signal", lambda: _SPY_CONTRACT)
+    monkeypatch.setattr(rsc, "read_active_option_contracts_signal",
+                        lambda: [_SPY_CONTRACT, _QQQ_CONTRACT])
+    stream = _FlakyOptionStream()
+    writer = CaptureWriter(tmp_path / "cap.db", batch_rows=1, batch_sec=10.0)
+    epoch_state: dict = {}
+    contract_state: dict = {}
+
+    async def go():
+        return await _apply_active_option_contract_subs(
+            stream, contract_state, writer=writer, epoch_state=epoch_state)
+    new_state = asyncio.run(go())
+    writer.close()
+
+    assert "l1:extra:" + _SPY_CONTRACT not in new_state, (
+        "the primary symbol must not also get a namespaced extra key")
+    l1_subs = [c for c in stream.calls if c == ("l1_option_sub", (_SPY_CONTRACT,))]
+    assert len(l1_subs) == 1, "SPY must be subscribed exactly once, not twice"
+    l1_open = {r[1] for r in _one_service_open(tmp_path / "cap.db", "LEVELONE_OPTIONS")}
+    assert l1_open == {_SPY_CONTRACT, _QQQ_CONTRACT}
+
+
+def test_multi_E_claimed_coverage_scans_primary_and_every_extra_key():
+    """_claimed_coverage_from_epoch_state (the function _publish_coverage_claim and
+    write_status both now call) must find epoch ids under the primary "l1"/"book" keys
+    AND every namespaced "svc:extra:symbol" key, skip non-epoch bookkeeping entries
+    (the *_pending_close dicts), and never include a None placeholder as a claimed id."""
+    from app.market_data.schwab.streaming.capture import _claimed_coverage_from_epoch_state
+
+    epoch_state = {
+        "l1": 1, "book": 2,
+        "l1:extra:" + _QQQ_CONTRACT: 3,
+        "book:extra:" + _QQQ_CONTRACT: 4,
+        "l1:extra:" + _MSFT_CONTRACT: None,       # not (yet) open -- must be excluded
+        "l1:extra:" + _MSFT_CONTRACT + "_pending_close": {5: 100.0},  # bookkeeping, not an id
+    }
+    claimed = _claimed_coverage_from_epoch_state(epoch_state)
+    assert sorted(claimed["LEVELONE_OPTIONS"]) == [1, 3]
+    assert sorted(claimed["OPTIONS_BOOK"]) == [2, 4]
 
 
 def test_coverage_bidirectional_invariant_holds_at_every_tick_boundary(tmp_path, monkeypatch):
