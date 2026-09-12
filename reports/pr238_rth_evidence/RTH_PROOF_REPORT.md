@@ -7,7 +7,7 @@ not established. See the classification section below.
 
 ## Provenance / metadata
 - **Capture window (UTC):** T0 batch 2026-09-09T15:10:07Z; live/state + cadence samples through ~2026-09-09T15:33Z. All during RTH.
-- **Production runtime observed (console probed, :8000):** git_sha `a360416a` (origin/main), process_id 12228, **dirty=True**. This was the ONLY console running with real Schwab data; it was probed READ-ONLY. Production topology was NOT altered.
+- **Production runtime observed (console probed, :8000):** git_sha `a360416a` (origin/main), process_id 12228, **dirty=True**. This was the ONLY console running with real Schwab data; it was probed READ-ONLY. Production topology was NOT altered. (reproduce identity fields: `curl -s http://127.0.0.1:8000/api/build`; raw capture at reports/pr238_rth_evidence/raw/build_t0.json)
 - **Code candidate (PR #238):** `1c35efb2` (the evidence-bearing branch code).
 - **Current PR #238 head:** `5708f31e` - an evidence-only commit layered over `1c35efb2` (adds this report + raw captures; no code change).
 
@@ -35,7 +35,7 @@ They belong at the next controlled RTH cutover when the #238 candidate runs as t
 ## Runtime identity observed
 - Console :8000 git_sha = `a360416a3081b65ec088b3320be61f1a6c004344` (origin/main), process_id=12228, dirty=True.
 - This is PRODUCTION MAIN, **not** the PR #238 branch (candidate code `1c35efb2`).
-- `GET /api/options/gamma-surface` returns **404 Not Found** on :8000 - that endpoint is NEW in the branch, so its live transition CANNOT be observed on production. Every other endpoint below is canonical and branch-independent.
+- `GET /api/options/gamma-surface` returns **404 Not Found** on :8000 - that endpoint is NEW in the branch, so its live transition CANNOT be observed on production (reproduce: `curl -s "http://127.0.0.1:8000/api/options/gamma-surface?ticker=SPY"` against a production-main-only console). Every other endpoint below is canonical and branch-independent.
 
 ## 1+2+6. Header / live source / identity (real RTH quotes)
 
@@ -168,7 +168,7 @@ PASS (live, exact head, sole owner):
 - zero tracebacks / errors in the candidate's own log for the whole session.
 
 NOT_PROVEN / observed but not a proof:
-- expired-column grammar under RTH: no expiration had expired at capture time (0DTE 09-10 is live), so the EXPIRED header state is proven only on the pre-market real-data fixture test, not in this live window;
+- expired-column grammar under RTH: no expiration had expired at capture time (0DTE 09-10 is live), so the EXPIRED header state is [UNVERIFIED] in this live window -- it is exercised only by a separate pre-market fixture test, not reproduced here;
 - AAPL / AMZN / AVGO live transition: not selected in this session, so only the honest reference state was observed;
 - watchlist last-price cells for QQQ/IWM show "-" although the same analytics_lightweight payload carries `qqq_last`/`iwm_last` (the shell paints only the change column from that payload, per the design comment in ed-core.js). Legibility gap, no second faucet involved; operator decision whether to paint it.
 
