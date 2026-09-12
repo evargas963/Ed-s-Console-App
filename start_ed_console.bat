@@ -40,11 +40,10 @@ if errorlevel 1 (
     exit /b 1
 )
 
-echo  Starting server at http://localhost:8000
+echo  Starting server at http://localhost:8000/console
 echo  Press Ctrl+C to stop.
 echo  (CWD set to script dir - token path resolves from app dir)
 echo  Ops panel /Run tasks/ click-to-run: ON  (localhost only unless ED_OPS_ALLOW_REMOTE=1)
-echo  Opening Microsoft Edge to http://localhost:8000 in a few seconds...
 echo.
 
 set ED_OPS_RUNNER=1
@@ -97,30 +96,30 @@ REM agent/commit/merge concern and stays there; it does not decide whether the d
 REM Operator-side lineage remains readable on demand:
 REM     .venv\Scripts\python.exe tools\check_live_path_is_main.py
 
-REM Stop any prior instance still bound to port 8000 (plain-line for /f - safe batch syntax)
-for /f "tokens=5" %%P in ('netstat -ano ^| findstr ":8000" ^| findstr "LISTENING"') do taskkill /F /PID %%P 2>nul
-
-REM RC-497 FAIL CLOSED: the stop above is best-effort (taskkill can fail on a
-REM privileged/foreign-owned PID, or the socket can still be held). Give it a
-REM moment, then PROVE port 8000 is actually free before launching. If anything
-REM still answers on 8000, refuse rather than launch a second uvicorn into an
-REM occupied port and hand the operator an ambiguous "which server am I on?"
-timeout /t 1 /nobreak >nul
-"%VENV_PY%" -c "import socket,sys; s=socket.socket(); s.settimeout(1); sys.exit(1 if s.connect_ex(('127.0.0.1',8000))==0 else 0)"
+REM Stop any prior instance on port 8000 -- ownership-verified: only a process
+REM whose own command line names an Ed Console server (uvicorn ... server:app)
+REM is stopped. An unrelated process holding the port is left running and
+REM reported. See tools/launcher_port_guard.py.
+"%VENV_PY%" "%~dp0tools\launcher_port_guard.py" 8000
 if errorlevel 1 (
-    echo  LAUNCH BLOCKED: port 8000 is still occupied after the stop attempt.
-    echo  Refusing to launch a second server into an occupied port. Stop the
-    echo  process holding 8000, then relaunch.  ^(netstat -ano ^| findstr :8000^)
+    echo  LAUNCH BLOCKED: port 8000 is occupied by something that is not an Ed
+    echo  Console server ^(see warning above^). Refusing to launch into it, and
+    echo  refusing to kill a process this launcher does not recognize.
     pause
     exit /b 1
 )
+
+REM Also check the separate developer-preview port (8322) so a stray preview
+REM instance and this launch do not both end up running unnoticed.
+"%VENV_PY%" "%~dp0tools\launcher_port_guard.py" 8322
 
 set "PF86=%ProgramFiles(x86)%"
 set "EDGE_EXE=%PF86%\Microsoft\Edge\Application\msedge.exe"
 if not exist "%EDGE_EXE%" set "EDGE_EXE=%ProgramFiles%\Microsoft\Edge\Application\msedge.exe"
 
-REM Original working pattern: delayed open in background subprocess (Edge only, not Chrome)
-start "" cmd /c "timeout /t 2 /nobreak >nul & "%EDGE_EXE%" http://localhost:8000"
+REM Open Edge to the NEW UI (/console) once the server actually answers,
+REM instead of a blind fixed-delay guess. See tools/wait_for_ready_then_open.py.
+start "" "%VENV_PY%" "%~dp0tools\wait_for_ready_then_open.py" http://localhost:8000/console "%EDGE_EXE%"
 
 REM --timeout-graceful-shutdown: Ctrl+C must terminate even while browser tabs
 REM hold SSE streams open (uvicorn's default waits forever for them to close).
