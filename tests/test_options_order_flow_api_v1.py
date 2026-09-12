@@ -345,6 +345,7 @@ def _reset_option_plane(ofs):
     ofs._active_option_contracts = []
     ofs._option_streaming_last_update_ts = None
     ofs._option_last_subscribe_completed_ts = None
+    ofs._option_contract_last_update_ts = {}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -427,6 +428,90 @@ def test_additional_contract_never_requires_options_book(monkeypatch, tmp_path):
         plane = json.loads(srv.api_order_flow_options_microstructure(
             contract=_SPY_CONTRACT).body)["streaming_plane"]
         assert plane["contract_match"] is True
+    finally:
+        _reset_option_plane(ofs)
+
+
+def test_additional_only_contract_healthy_with_no_primary_at_all(monkeypatch, tmp_path):
+    """Independent-review finding #4 (2026-09-12), REPRODUCED: _option_streaming_healthy()
+    used to unconditionally require the PRIMARY slot (_active_option_contract) to be set
+    -- `if not (_feed_running and _active_option_contract): return False` -- even when the
+    caller queried a genuinely requested and producer-confirmed ADDITIONAL-only contract
+    with NO primary requested at all. get_option_contract_streaming_diagnostics never
+    overrode that False back to True on a real per-contract match (contract_match only
+    ever forced healthy -> False on a mismatch). Reproduced exactly: no primary, SPY
+    requested and producer-confirmed as an additional contract, SPY's own feed genuinely
+    fresh -- must read healthy end to end."""
+    import json
+    import time as _t
+
+    import app.options.order_flow.streaming as ofs
+    import server as srv
+
+    _reset_option_plane(ofs)
+    ofs._feed_running = True
+    ofs._active_option_contract = None                       # NO primary requested at all
+    ofs._active_option_contracts = [ofs.ticker_storage_key(_SPY_CONTRACT)]
+    ofs._option_contract_last_update_ts = {ofs.ticker_storage_key(_SPY_CONTRACT): _t.time()}
+    _seed_multi_contract_producer_epochs(ofs, monkeypatch, tmp_path, extra=[_SPY_CONTRACT])
+    try:
+        plane = json.loads(srv.api_order_flow_options_microstructure(
+            contract=_SPY_CONTRACT).body)["streaming_plane"]
+        assert plane["contract_match"] is True
+        assert plane["streaming_healthy"] is True, (
+            f"an additional-only contract with no primary at all, requested and "
+            f"producer-confirmed, with a genuinely fresh per-contract feed, must read "
+            f"healthy: {plane}")
+    finally:
+        _reset_option_plane(ofs)
+
+
+def test_per_contract_freshness_not_borrowed_between_primary_and_additional(monkeypatch, tmp_path):
+    """Independent-review finding #4 (2026-09-12), second half ("inspect contract-
+    specific freshness as well as membership"), REPRODUCED: `streaming_staleness_ms`/
+    `streaming_healthy` used to read the ONE global `_option_streaming_last_update_ts`,
+    which every contract's rows -- primary OR any additional one -- all bump together.
+    Here QQQ (primary) has gone genuinely STALE on its OWN feed while SPY (additional)
+    remains genuinely fresh, but the shared global clock was last touched by SPY's own
+    recent tick. A query for QQQ must not borrow SPY's freshness through that shared
+    clock -- it must read unhealthy on its own per-contract staleness, while SPY still
+    correctly reads healthy."""
+    import json
+    import time as _t
+
+    import app.options.order_flow.streaming as ofs
+    import server as srv
+
+    _reset_option_plane(ofs)
+    ofs._feed_running = True
+    ofs._active_option_contract = ofs.ticker_storage_key(_QQQ_CONTRACT)
+    ofs._active_option_contracts = [ofs.ticker_storage_key(_SPY_CONTRACT)]
+    # The shared global clock reads FRESH (SPY's own recent tick last touched it) --
+    # the exact condition that used to let a stale primary borrow an additional
+    # contract's freshness (or vice versa) before per-contract tracking existed.
+    ofs._option_streaming_last_update_ts = _t.time()
+    ofs._option_contract_last_update_ts = {
+        ofs.ticker_storage_key(_QQQ_CONTRACT): _t.time() - 30.0,   # QQQ: genuinely stale
+        ofs.ticker_storage_key(_SPY_CONTRACT): _t.time(),          # SPY: genuinely fresh
+    }
+    _seed_multi_contract_producer_epochs(
+        ofs, monkeypatch, tmp_path, primary=_QQQ_CONTRACT, extra=[_SPY_CONTRACT])
+    try:
+        primary_plane = json.loads(srv.api_order_flow_options_microstructure(
+            contract=_QQQ_CONTRACT).body)["streaming_plane"]
+        assert primary_plane["contract_match"] is True    # requested + producer-confirmed
+        assert primary_plane["streaming_healthy"] is False, (
+            f"QQQ's own feed is 30s stale -- it must not read healthy by borrowing "
+            f"SPY's fresher tick through a shared clock: {primary_plane}")
+        assert primary_plane["streaming_staleness_ms"] >= 30_000.0
+
+        extra_plane = json.loads(srv.api_order_flow_options_microstructure(
+            contract=_SPY_CONTRACT).body)["streaming_plane"]
+        assert extra_plane["contract_match"] is True
+        assert extra_plane["streaming_healthy"] is True, (
+            f"SPY's own feed is genuinely fresh; QQQ's staleness must not drag it down: "
+            f"{extra_plane}")
+        assert extra_plane["streaming_staleness_ms"] < 1000.0
     finally:
         _reset_option_plane(ofs)
 

@@ -919,9 +919,12 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     /** @type {any[]} */
     const requests = [];
     await page.route('**/api/streaming/active-option-contracts', (route) => {
-      requests.push(JSON.parse(route.request().postData() || '{}'));
+      const body = JSON.parse(route.request().postData() || '{}');
+      requests.push(body);
+      // Echo the real server's contract: `contracts` in the response is the ACKNOWLEDGED
+      // set, which ed-stream.js's identity check now requires to match what was sent.
       route.fulfill({ status: 200, contentType: 'application/json',
-        body: JSON.stringify({ ok: true, contracts: [] }) });
+        body: JSON.stringify({ ok: true, contracts: body.contracts || [] }) });
     });
     await page.goto('/console', { waitUntil: 'domcontentloaded' });
     await page.locator('.hcell[data-strike="583"][data-expiry="2026-09-11"]').click();
@@ -930,5 +933,158 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect.poll(() => requests.length).toBeGreaterThan(0);
     const sent = requests[requests.length - 1].contracts.slice().sort();
     expect(sent).toEqual(['SPY   260911C00583000', 'SPY   260911P00583000']);
+  });
+
+  test('a failed additional-contracts request is retried, not falsely reported accepted (RC-UI-3)', async ({ page }) => {
+    // Independent-review finding (2026-09-12), REPRODUCED against the real
+    // EdStream.setAdditionalContracts: the first request received HTTP 503; repeating
+    // the SAME request afterward returned {accepted:true, unchanged:true} with only ONE
+    // HTTP request ever having occurred -- _desiredAdditional was committed optimistically
+    // BEFORE the fetch resolved, so a failed attempt was indistinguishable from a
+    // successful one on the very next call. Also proves: a call repeated WHILE the first
+    // is still pending must not fire a duplicate concurrent request, and a response whose
+    // acknowledged `contracts` do not match what was sent must not be accepted either.
+    let requestCount = 0;
+    /** @type {((v: any) => void) | null} */
+    let releasePending = null;
+    let mode = 'fail';   // 'fail' -> 503, 'hang' -> never resolves until released, 'ok' -> echoes back, 'wrong' -> echoes a different set
+    await page.route('**/api/streaming/active-option-contracts', async (route) => {
+      requestCount += 1;
+      const body = JSON.parse(route.request().postData() || '{}');
+      if (mode === 'fail') {
+        return route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ ok: false }) });
+      }
+      if (mode === 'hang') {
+        await new Promise((resolve) => { releasePending = resolve; });
+        return route.fulfill({ status: 200, contentType: 'application/json',
+          body: JSON.stringify({ ok: true, contracts: body.contracts || [] }) });
+      }
+      if (mode === 'wrong') {
+        return route.fulfill({ status: 200, contentType: 'application/json',
+          body: JSON.stringify({ ok: true, contracts: ['SPY   260911C00999000'] }) });
+      }
+      return route.fulfill({ status: 200, contentType: 'application/json',
+        body: JSON.stringify({ ok: true, contracts: body.contracts || [] }) });
+    });
+    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+
+    const SET = ['SPY   260911C00583000', 'SPY   260911P00583000'];
+
+    // 1) First request fails (503) -- must not be reported accepted.
+    const r1 = await page.evaluate((set) => window.EdStream.setAdditionalContracts(set), SET);
+    expect(r1.accepted).toBe(false);
+    expect(requestCount).toBe(1);
+
+    // 2) Repeating the SAME set after a failure must retry -- a real second HTTP request,
+    // not a false accepted:true/unchanged:true short-circuit.
+    const r2 = await page.evaluate((set) => window.EdStream.setAdditionalContracts(set), SET);
+    expect(requestCount).toBe(2);
+    expect(r2.unchanged).toBe(false);
+
+    // 3) A response acknowledging the WRONG contract set must not be accepted.
+    mode = 'wrong';
+    const r3 = await page.evaluate((set) => window.EdStream.setAdditionalContracts(set), SET);
+    expect(r3.accepted).toBe(false);
+    expect(requestCount).toBe(3);
+
+    // 4) Repetition WHILE the request is still pending must not fire a duplicate.
+    mode = 'hang';
+    const pendingPromise = page.evaluate((set) => window.EdStream.setAdditionalContracts(set), SET);
+    await page.waitForTimeout(100);   // let the request actually reach the route handler
+    expect(requestCount).toBe(4);
+    const r4b = await page.evaluate((set) => window.EdStream.setAdditionalContracts(set), SET);
+    expect(requestCount).toBe(4);     // no NEW request while the same set is still in flight
+    expect(r4b.pending).toBe(true);
+    expect(r4b.accepted).toBe(false);
+    if (releasePending) releasePending(undefined);
+    const r4a = await pendingPromise;
+    expect(r4a.accepted).toBe(true);
+
+    // 5) Now genuinely accepted -- calling again with the SAME set must not re-POST.
+    mode = 'ok';
+    const before = requestCount;
+    const r5 = await page.evaluate((set) => window.EdStream.setAdditionalContracts(set), SET);
+    expect(r5.accepted).toBe(true);
+    expect(r5.unchanged).toBe(true);
+    expect(requestCount).toBe(before);
+  });
+
+  test('switching ticker while a strike-detail chain fetch is in flight discards the stale response (RC-UI-2 finding #3)', async ({ page }) => {
+    // Independent-review finding (2026-09-12), REPRODUCED: ed-core.js's setTicker() already
+    // clears the SHARED state.selStrike before dispatching 'ed:ticker' (confirmed correct),
+    // but ed-gamma-panels.js's own 'ed:ticker' listener used to be just `loadAll` -- it never
+    // bumped Strike Detail's OWN generation counter (_sgen) or reset its DOM/subscription
+    // state. A /api/chain fetch already in flight for the OLD ticker at switch time still
+    // passed the unchanged `g === _sgen` guard on arrival, rendering the old ticker's stale
+    // OI/Vol/Gamma/Delta/IV and re-requesting the OLD ticker's vendor contracts into the
+    // plural streaming endpoint UNDER THE NEW TICKER'S CONTEXT. Reproduced here exactly:
+    // select strike 583 on SPY (delayed /api/chain), switch to QQQ before the response
+    // arrives, then deliver it -- Strike Detail must stay reset (no SPY table rendered) and
+    // SPY's contract symbols must never reach /api/streaming/active-option-contracts.
+    let chainCalls = 0;
+    let releaseChain = null;
+    function contractsFor(strike) {
+      return [
+        { symbol: 'SPY   260911C00' + strike + '000', putCall: 'CALL', strikePrice: strike,
+          openInterest: 1200, totalVolume: 540, gamma: 0.021, delta: 0.52, volatility: 12.3,
+          expirationDate: '2026-09-11' },
+        { symbol: 'SPY   260911P00' + strike + '000', putCall: 'PUT', strikePrice: strike,
+          openInterest: 980, totalVolume: 410, gamma: 0.019, delta: -0.48, volatility: 12.6,
+          expirationDate: '2026-09-11' },
+      ];
+    }
+    await page.route('**/api/chain**', async (route) => {
+      chainCalls += 1;
+      const strike = chainCalls === 1 ? 583 : 586;   // first select resolves immediately; second is delayed
+      if (chainCalls > 1) await new Promise((resolve) => { releaseChain = resolve; });
+      route.fulfill({
+        status: 200, contentType: 'application/json',
+        body: JSON.stringify({ ticker: 'SPY', spot: 583.41, expiry: '2026-09-11', status: 'ok',
+          contracts: contractsFor(strike) }),
+      });
+    });
+    /** @type {any[]} */
+    const requests = [];
+    await page.route('**/api/streaming/active-option-contracts', (route) => {
+      const body = JSON.parse(route.request().postData() || '{}');
+      requests.push(body.contracts || []);
+      route.fulfill({ status: 200, contentType: 'application/json',
+        body: JSON.stringify({ ok: true, contracts: body.contracts || [] }) });
+    });
+    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+
+    // select strike 583 on SPY -- resolves immediately, its contracts are ACCEPTED into the
+    // plural subscription (a real non-empty desired state, not the initial empty one)
+    await page.locator('.hcell[data-strike="583"][data-expiry="2026-09-11"]').click();
+    await expect(page.locator('#sdCtx')).toContainText('583');
+    await expect.poll(() => requests.length).toBeGreaterThan(0);
+    expect(requests[requests.length - 1].slice().sort()).toEqual(
+      ['SPY   260911C00583000', 'SPY   260911P00583000'].sort());
+
+    // select strike 586 -- fires the SECOND (delayed) /api/chain fetch, nothing resolves yet
+    await page.locator('.hcell[data-strike="586"][data-expiry="2026-09-11"]').click();
+    await expect.poll(() => releaseChain !== null).toBe(true);
+
+    // switch ticker BEFORE the delayed 586 chain response arrives
+    await page.evaluate(() => window.EdShell.setTicker('QQQ'));
+    // reset fires synchronously off the 'ed:ticker' listener: placeholder restored immediately,
+    // and the additional-contracts demand is cleared ([]) -- both BEFORE the stale data lands
+    await expect(page.locator('#sdBody')).toContainText('Select a strike/expiry');
+    await expect.poll(() => requests[requests.length - 1]).toEqual([]);
+    const requestsAtSwitch = requests.length;
+
+    // now deliver the stale (586, SPY) response
+    releaseChain(undefined);
+    await page.waitForTimeout(300);   // let any (incorrect) render/post attempt land
+
+    // Strike Detail must still show the reset placeholder, not SPY's stale 586 table
+    await expect(page.locator('#sdBody')).toContainText('Select a strike/expiry');
+    await expect(page.locator('.sd')).toHaveCount(0);
+    // SPY's 586 contract symbols must never have been (re-)posted to the plural endpoint
+    expect(requests.length).toBe(requestsAtSwitch);
+    for (const r of requests) {
+      expect(r).not.toContain('SPY   260911C00586000');
+      expect(r).not.toContain('SPY   260911P00586000');
+    }
   });
 });

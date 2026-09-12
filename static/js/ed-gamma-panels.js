@@ -292,10 +292,24 @@
           live: !!m.live, ref: !!m.ref, title: 'chain scope: ' + kind })
       : '';
   }
+  // Independent-review finding (2026-09-12): an empty/failed chain result left Strike
+  // Detail showing "no chain" while the PREVIOUS strike's additional-contract
+  // subscription stayed active forever -- nothing ever told the plural endpoint that
+  // demand had ended. Every path out of renderStrike must state the additional-contract
+  // demand for the current render, including "none".
+  function _setAdditionalContractsDemand(symbols) {
+    if (window.EdStream && window.EdStream.setAdditionalContracts) {
+      window.EdStream.setAdditionalContracts(symbols || []);
+    }
+  }
   function renderStrike(host, d, strike, expiry) {
     setSdAsOf(d);
     var cs = (d && d.contracts) || [];
-    if (!cs.length) { host.innerHTML = '<div class="placeholder"><div class="sm">no chain for this expiry</div></div>'; return; }
+    if (!cs.length) {
+      host.innerHTML = '<div class="placeholder"><div class="sm">no chain for this expiry</div></div>';
+      _setAdditionalContractsDemand([]);
+      return;
+    }
     function pick(side) {
       return cs.filter(function (c) {
         return (c.putCall || '').toUpperCase() === side &&
@@ -324,16 +338,37 @@
     // endpoint at all. This is the ONE panel with a genuinely resolved, DISPLAYED
     // per-contract identity (the heatmap itself is a computed aggregate projection with
     // no per-cell contract symbol) -- see EdStream.setAdditionalContracts for the
-    // request-dedup discipline that keeps this safe to call on every render.
-    if (window.EdStream && window.EdStream.setAdditionalContracts) {
-      var wanted = [call && call.symbol, put && put.symbol].filter(Boolean);
-      if (wanted.length) window.EdStream.setAdditionalContracts(wanted);
+    // request-dedup discipline that keeps this safe to call on every render. Always
+    // stated, even when empty (neither side found for this strike) -- a silent "do
+    // nothing" here would leave a PRIOR strike's contracts subscribed indefinitely.
+    _setAdditionalContractsDemand([call && call.symbol, put && put.symbol].filter(Boolean));
+  }
+
+  // Independent-review finding (2026-09-12), REPRODUCED: switching the active ticker did
+  // not invalidate Strike Detail's in-flight /api/chain fetch generation (_sgen) or reset
+  // its rendered content -- ed-core.js's setTicker() already clears the SHARED selStrike
+  // (a fresh strike click is required before loadStrike fires again), but a chain fetch
+  // for the OLD ticker that was already in flight when the switch happened still passed
+  // the (unchanged) `g === _sgen` guard on arrival, rendering the OLD ticker's values and
+  // re-requesting the OLD ticker's contracts into the plural endpoint under the NEW
+  // ticker's context. Reproduced: request AMD's chain, switch to NVDA, deliver the
+  // delayed AMD response -- Strike Detail rendered AMD's values and requested AMD's
+  // contracts. Fixed by invalidating the generation and clearing all Strike Detail state
+  // (DOM placeholder + additional-contracts demand) the instant the ticker changes, same
+  // discipline `_setAdditionalContractsDemand([])` already gives an empty/failed chain.
+  function resetStrikeDetailForTickerChange() {
+    _sgen++;   // any response already in flight for the OLD ticker can never pass g === _sgen again
+    var host = document.getElementById('sdBody');
+    if (host) {
+      host.innerHTML = '<div class="placeholder"><div class="sm">Select a strike/expiry. '
+        + 'OI · volume · gamma · delta · IV from /api/chain (vendor).</div></div>';
     }
+    _setAdditionalContractsDemand([]);
   }
 
   // ---------- events ----------
   function loadAll() { loadLevels(); loadGbs(); loadPcr(); }   // loadPcr is a no-op unless its context changed or it is still warming
-  document.addEventListener('ed:ticker', loadAll);
+  document.addEventListener('ed:ticker', function () { resetStrikeDetailForTickerChange(); loadAll(); });
   document.addEventListener('ed:expiry', loadPcr);   // the ratio is scoped to the selected expiry -> re-read for the new context
   document.addEventListener('ed:plane', loadPcr);    // the bundle generation or the market session changed -> identity check
   document.addEventListener('ed:view', loadAll);

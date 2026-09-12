@@ -359,38 +359,80 @@ def test_rapid_successive_calls_are_never_silently_dropped(monkeypatch):
 # discarded A's already-applied fresh overlay, even though A's fresh value remained
 # genuinely available. Fixed by _desired_stream_greeks_for_ticker: every refresh gathers
 # EVERY currently-desired contract's live streamed state fresh, every time.
+#
+# Independent-review test-quality finding (2026-09-12), REPRODUCED against the original
+# choice of contracts (_CONTRACT_SYMBOL / _CONTRACT_SYMBOL_B, the fixture's first two
+# rows): both are deep-in-the-money (delta=0.999, strikes 38.75/40 vs spot 205.40) and
+# the SECOND row carries real openInterest=0. Two independent, compounding problems:
+#   1. compute_exposures_by_strike's own require_oi gate (`if oi <= 0: continue`, the
+#      SAME quality gate the faucet always enforces) drops a zero-OI contract from the
+#      aggregate entirely -- no gamma value injected onto it, plausible or not, can ever
+#      reach a cell. Verified: with the pre-fix version of this test's own two rows,
+#      overlaying vs NOT overlaying contract B's streamed gamma produces IDENTICAL
+#      published cells, because B never contributes regardless.
+#   2. gamma_is_plausible() (this app's own quality gate -- see math_exposure_core.py)
+#      rejects a non-near-zero gamma paired with a deep-ITM/OTM delta
+#      (`abs(delta) >= DELTA_DEEP_ABS_FOR_GAMMA=0.98` and `gamma > 1e-4`). The original
+#      test injected gamma=0.5/0.7 onto contracts whose real delta=0.999 -- both
+#      rejected by the app's own gate, so contract A's assertion passed VACUOUSLY too:
+#      the ORIGINAL real gamma=0.0 (plausible, since near-zero) and the INJECTED 0.5
+#      (implausible, so also contributes zero) compute the identical net_gamma=0.0
+#      either way. A production regression that dropped the overlay entirely would have
+#      passed this test unchanged.
+# Fixed by using two REAL, liquid, near-the-money contracts from this same captured
+# fixture (delta ~0.4-0.5, real nonzero OI in the hundreds/thousands, at two DISTINCT
+# strikes) and injecting gamma magnitudes representative of real listed-option gamma
+# (0.02-0.09, clearly distinct from each contract's own real 0.018 baseline) -- large
+# enough to move each contract's $-GEX cell measurably, small enough to stay well clear
+# of both quality gates, so the published cells can only match the independently
+# recomputed expectation when the production overlay genuinely ran.
 # ─────────────────────────────────────────────────────────────────────────────
+_ATM_CONTRACT_A = "CRWD  260918C00205000"   # real: OI=1606, delta=0.500, gamma=0.018
+_ATM_CONTRACT_B = "CRWD  260918C00210000"   # real: OI=3897, delta=0.413, gamma=0.018
+
 
 def test_refreshing_b_does_not_undo_a_the_a_then_b_overwrite_reproduction(monkeypatch):
-    """A is primary (setup_function's default), B is additional. A ticks first and its
-    overlay applies; B ticks second and its own overlay must apply TOGETHER WITH A's,
-    not instead of it."""
+    """A is primary, B is additional. A ticks first and its overlay applies; B ticks
+    second and its own overlay must apply TOGETHER WITH A's, not instead of it."""
     import app.options.order_flow.streaming as ofs
-    ofs._active_option_contracts = [ofs.ticker_storage_key(_CONTRACT_SYMBOL_B)]
+    ofs._active_option_contract = ofs.ticker_storage_key(_ATM_CONTRACT_A)
+    ofs._active_option_contracts = [ofs.ticker_storage_key(_ATM_CONTRACT_B)]
 
     baseline_ts = time.time() - 10.0
     _put_rest_baseline(computed_ts_utc=baseline_ts)
     now_a = time.time()
-    streamed_a = {"gamma": 0.5, "gamma_ts_recv": now_a}
-    streamed_b = {"gamma": 0.7, "gamma_ts_recv": now_a}
-    live = {_CONTRACT_SYMBOL: streamed_a, _CONTRACT_SYMBOL_B: streamed_b}
+    streamed_a = {"gamma": 0.05, "gamma_ts_recv": now_a}
+    streamed_b = {"gamma": 0.08, "gamma_ts_recv": now_a}
+    # B's own streamed value is not YET live when A ticks -- _desired_stream_greeks_for_ticker
+    # gathers EVERY currently-desired contract's CURRENT state on every call (that is the
+    # RC-UI-3 fix this test exists to protect), so if B's mocked data existed from the
+    # start, "A's own tick" would already legitimately reflect B too, and the "A-only"
+    # comparison below would not describe what production actually did.
+    live = {_ATM_CONTRACT_A: streamed_a}
     monkeypatch.setattr(
         "app.options.order_flow.state.get_stream_greeks", lambda sym: live.get(sym))
 
-    assert refresh_gamma_surface_from_stream(_CONTRACT_SYMBOL, now_a) == "ok"
+    assert refresh_gamma_surface_from_stream(_ATM_CONTRACT_A, now_a) == "ok"
     with server._terrain_cache_lock:
         after_a = server._terrain_cache[TK]["_gamma_surface"]
-    overlaid_a_only, n_a = overlay_streamed_contract_fields(_CONTRACTS, {_CONTRACT_SYMBOL: streamed_a})
+    overlaid_a_only, n_a = overlay_streamed_contract_fields(_CONTRACTS, {_ATM_CONTRACT_A: streamed_a})
     assert n_a == 1
     assert after_a["cells"] == project_gamma_surface(overlaid_a_only, _SPOT)["cells"], (
         "A's own overlay must apply first")
+    # Sanity the overlay is not vacuous: A's injected gamma (0.05, real OI=1606) must
+    # actually move the published surface away from the untouched REST baseline.
+    assert after_a["cells"] != project_gamma_surface(_CONTRACTS, _SPOT)["cells"], (
+        "the injected overlay must be quality-gate-plausible and economically material "
+        "-- if this fires, the test's own inputs are vacuous again")
 
-    # B ticks. A's streamed value is STILL live (the mock is unchanged) -- never surrendered.
+    # B ticks -- ITS OWN data becomes live now, A's streamed value is STILL live too
+    # (the mock's A entry is unchanged) -- never surrendered.
     now_b = now_a + 0.01
-    assert refresh_gamma_surface_from_stream(_CONTRACT_SYMBOL_B, now_b) == "ok"
+    live[_ATM_CONTRACT_B] = streamed_b
+    assert refresh_gamma_surface_from_stream(_ATM_CONTRACT_B, now_b) == "ok"
 
     overlaid_both, n_both = overlay_streamed_contract_fields(
-        _CONTRACTS, {_CONTRACT_SYMBOL: streamed_a, _CONTRACT_SYMBOL_B: streamed_b})
+        _CONTRACTS, {_ATM_CONTRACT_A: streamed_a, _ATM_CONTRACT_B: streamed_b})
     assert n_both == 2
     expected_after_b = project_gamma_surface(overlaid_both, _SPOT)
     with server._terrain_cache_lock:
@@ -401,6 +443,10 @@ def test_refreshing_b_does_not_undo_a_the_a_then_b_overwrite_reproduction(monkey
     assert after_b["stream_overlay_contracts"] == 2, (
         "the published surface must report BOTH contracts as overlaid, not just the "
         "one that triggered this particular refresh")
+    # Sanity B's own overlay is not vacuous either: it must differ from A-only.
+    assert after_b["cells"] != after_a["cells"], (
+        "B's own strike must show B's own injected gamma, not merely repeat A's cells "
+        "-- if this fires, B's injected value never reached the surface")
 
 
 def test_a_dropped_from_the_desired_set_no_longer_lingers_in_a_later_b_refresh(monkeypatch):
@@ -409,31 +455,36 @@ def test_a_dropped_from_the_desired_set_no_longer_lingers_in_a_later_b_refresh(m
     must reflect ONLY the currently-desired set. Proves this is reconstructed fresh on
     every call, not an unbounded accumulator that never forgets a symbol."""
     import app.options.order_flow.streaming as ofs
-    ofs._active_option_contracts = [ofs.ticker_storage_key(_CONTRACT_SYMBOL_B)]
+    ofs._active_option_contract = ofs.ticker_storage_key(_ATM_CONTRACT_A)
+    ofs._active_option_contracts = [ofs.ticker_storage_key(_ATM_CONTRACT_B)]
 
     baseline_ts = time.time() - 10.0
     _put_rest_baseline(computed_ts_utc=baseline_ts)
     now = time.time()
-    streamed_a = {"gamma": 0.5, "gamma_ts_recv": now}
-    streamed_b = {"gamma": 0.7, "gamma_ts_recv": now}
-    live = {_CONTRACT_SYMBOL: streamed_a, _CONTRACT_SYMBOL_B: streamed_b}
+    streamed_a = {"gamma": 0.05, "gamma_ts_recv": now}
+    streamed_b = {"gamma": 0.08, "gamma_ts_recv": now}
+    live = {_ATM_CONTRACT_A: streamed_a, _ATM_CONTRACT_B: streamed_b}
     monkeypatch.setattr(
         "app.options.order_flow.state.get_stream_greeks", lambda sym: live.get(sym))
-    assert refresh_gamma_surface_from_stream(_CONTRACT_SYMBOL, now) == "ok"
+    assert refresh_gamma_surface_from_stream(_ATM_CONTRACT_A, now) == "ok"
 
     # A's coverage genuinely ends: no longer primary, never additional, and its live
     # streamed state is gone (clear_symbol removes it in production).
     ofs._active_option_contract = None
-    del live[_CONTRACT_SYMBOL]
+    del live[_ATM_CONTRACT_A]
 
-    assert refresh_gamma_surface_from_stream(_CONTRACT_SYMBOL_B, now + 0.01) == "ok"
-    overlaid_b_only, n_b = overlay_streamed_contract_fields(_CONTRACTS, {_CONTRACT_SYMBOL_B: streamed_b})
+    assert refresh_gamma_surface_from_stream(_ATM_CONTRACT_B, now + 0.01) == "ok"
+    overlaid_b_only, n_b = overlay_streamed_contract_fields(_CONTRACTS, {_ATM_CONTRACT_B: streamed_b})
     assert n_b == 1
     expected = project_gamma_surface(overlaid_b_only, _SPOT)
     with server._terrain_cache_lock:
         cached = server._terrain_cache[TK]["_gamma_surface"]
     assert cached["cells"] == expected["cells"], "A must not linger once it truly stops being desired"
     assert cached["stream_overlay_contracts"] == 1
+    # Sanity: this is a REAL regression control only if A's lingering would have been
+    # visible -- confirm A's own strike differs from the untouched-A expectation.
+    assert cached["cells"] != project_gamma_surface(
+        _CONTRACTS, _SPOT)["cells"], "B's own overlay must still be visible in this surface"
 
 
 def test_desired_stream_greeks_excludes_an_additional_contract_on_a_foreign_ticker(monkeypatch):

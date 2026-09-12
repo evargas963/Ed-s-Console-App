@@ -1168,6 +1168,93 @@ async def _apply_extra_option_contract_subs(stream, contract_state: dict, extra_
             contract_state[epoch_key] = held_now
 
 
+async def _apply_option_primary_role_transfer(stream, contract_state: dict, epoch_state: "dict | None", *,
+                                              requested: "str | None", plural_requested_raw: set,
+                                              writer) -> None:
+    """Move durable coverage + vendor-held bookkeeping between the primary "l1" key and a
+    namespaced extra key WITHOUT touching the vendor, when a role transfer (primary <->
+    additional) is simply relabeling an ALREADY-live subscription rather than genuinely
+    starting or ending one.
+
+    Independent-review finding (2026-09-12), REPRODUCED: promoting an additional symbol
+    B to primary while B was already held under its own "l1:extra:B" epoch used to run
+    the ordinary close-then-resubscribe cycle on the "l1" key — B's fresh "l1" epoch open
+    collided with its OWN still-open "l1:extra:B" row (the writer's per-(symbol,service)
+    uniqueness guard), which FAILED and triggered compensation: B was genuinely
+    unsubscribed from the vendor and its coverage closed, self-healing only on the NEXT
+    tick. Measured: `stream.held["LEVELONE_OPTIONS"]` went to the empty set mid-promotion.
+    A concurrent reader of the coverage ledger could see the (now-closed) epoch's
+    republished claim lag behind the vendor's real state for that same window.
+
+    Fixed at the root: a role transfer is now a PURE KEY RENAME (same epoch row, same
+    started_ts, same id — the underlying subscription is understood to be CONTINUOUS
+    across a role change, not two separate windows), run once before ANY reconcile call
+    this tick, so every reconcile call downstream already sees the post-transfer state
+    and has nothing left to do for the transferred symbol(s):
+
+    - PROMOTION (`requested` is currently held under its own "l1:extra:{requested}" key):
+      rename that key to "l1". If "l1" is currently occupied by a DIFFERENT symbol that
+      is not itself being demoted to an extra this same tick, that old primary is first
+      given a REAL close-then-unsubscribe (it is genuinely ending, not being relabeled)
+      through the unchanged `_reconcile_option_service` — the promotion's rename lands
+      only once that drop actually completes; a failed/retrying drop leaves the promoted
+      symbol under its extra key for this tick rather than risk overwriting a still-live
+      "l1" entry.
+    - DEMOTION (the current primary is not the new `requested` but IS still desired in
+      the additional set): rename "l1" to that symbol's own "l1:extra:{symbol}" key.
+
+    Both may apply in the same tick (A demoted, B promoted): demotion's rename runs
+    first, vacating "l1", then promotion's rename lands — disjoint keys, no collision,
+    and the whole swap costs zero vendor calls, exactly as it should for two contracts
+    that both remain continuously held throughout."""
+    def _pop(key):
+        c = contract_state.pop(key, None)
+        e = epoch_state.pop(key, None) if epoch_state is not None else None
+        p = epoch_state.pop(f"{key}_pending_close", None) if epoch_state is not None else None
+        return c, e, p
+
+    def _put(key, c, e, p):
+        if c is not None:
+            contract_state[key] = c
+        if epoch_state is not None:
+            if e is not None:
+                epoch_state[key] = e
+            if p:
+                epoch_state[f"{key}_pending_close"] = p
+
+    old_primary = contract_state.get("l1")
+    promote_key = f"l1:extra:{requested}" if requested else None
+    is_promotion = bool(requested) and contract_state.get(promote_key) == requested
+    is_demotion = bool(old_primary) and old_primary != requested and old_primary in plural_requested_raw
+
+    if not is_promotion and not is_demotion:
+        return
+
+    if is_demotion:
+        c, e, p = _pop("l1")
+        _put(f"l1:extra:{old_primary}", c, e, p)
+    elif is_promotion and old_primary and old_primary != requested:
+        # old_primary is being DROPPED outright (not demoted, not staying) -- it must go
+        # through a REAL close-then-unsubscribe before the promoted symbol's rename may
+        # safely occupy "l1"; a role-transfer rename must never silently orphan a
+        # genuinely-ending subscription.
+        dropped = await _reconcile_option_service(
+            stream, old_primary, None,
+            subs_fn=_subs_or_add(contract_state, "l1", "l1",
+                                 stream.level_one_option_subs, stream.level_one_option_add),
+            unsubs_fn=stream.level_one_option_unsubs,
+            writer=writer, epoch_state=epoch_state, epoch_key="l1", service_name="LEVELONE_OPTIONS")
+        contract_state["l1"] = dropped
+        if dropped is not None:
+            # the drop failed or is retrying (durable close or vendor unsub did not
+            # land) -- "l1" is still legitimately occupied; do not promote yet.
+            return
+
+    if is_promotion:
+        c, e, p = _pop(promote_key)
+        _put("l1", c, e, p)
+
+
 async def _apply_active_option_contract_subs(stream, contract_state: dict, *,
                                              writer=None, epoch_state: dict | None = None) -> dict:
     """Diff the server's requested active OPTION CONTRACT(s) against what is currently
@@ -1206,6 +1293,12 @@ async def _apply_active_option_contract_subs(stream, contract_state: dict, *,
     vendor silent" for EVERY concurrently-held contract, not just the primary one.
     Optional: tests exercising only the subscribe-diff behavior can omit both."""
     requested = read_active_option_contract_signal()
+    plural_requested_raw = set(read_active_option_contracts_signal())
+    # Role-transfer pre-pass (independent-review finding, 2026-09-12): must run before
+    # any reconcile call this tick — see _apply_option_primary_role_transfer's docstring.
+    await _apply_option_primary_role_transfer(
+        stream, contract_state, epoch_state,
+        requested=requested, plural_requested_raw=plural_requested_raw, writer=writer)
     contract_state["l1"] = await _reconcile_option_service(
         stream, contract_state.get("l1"), requested,
         subs_fn=_subs_or_add(contract_state, "l1", "l1",
@@ -1216,7 +1309,7 @@ async def _apply_active_option_contract_subs(stream, contract_state: dict, *,
         stream, contract_state.get("book"), requested,
         subs_fn=stream.options_book_subs, unsubs_fn=stream.options_book_unsubs,
         writer=writer, epoch_state=epoch_state, epoch_key="book", service_name="OPTIONS_BOOK")
-    extra_requested = {s for s in read_active_option_contracts_signal() if s != requested}
+    extra_requested = {s for s in plural_requested_raw if s != requested}
     await _apply_extra_option_contract_subs(
         stream, contract_state, extra_requested, writer=writer, epoch_state=epoch_state)
     return contract_state

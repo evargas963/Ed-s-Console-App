@@ -92,6 +92,13 @@ _option_book_cursor: dict[str, tuple[float, int]] = {}
 #: alongside a ticker must be able to go stale (or come up fresh) independently.
 _option_streaming_last_update_ts: Optional[float] = None
 _option_last_subscribe_completed_ts: Optional[float] = None
+#: PER-CONTRACT staleness clock (RC-UI-3 finding #4, 2026-09-12, REPRODUCED): the single
+#: scalar above is updated by ANY contract's row -- primary OR any additional one (see
+#: _replay_option_contract_rows) -- so a fresh additional contract can mask a genuinely
+#: stale primary, and vice versa: querying one contract's health answered with another
+#: contract's heartbeat. Keyed by the SAME ticker_storage_key identity
+#: set_active_option_contract/set_active_option_contracts already normalize to.
+_option_contract_last_update_ts: dict[str, float] = {}
 
 _on_tick_callback: Optional[Callable[[str], None]] = None
 
@@ -462,11 +469,21 @@ def _replay_option_contract_rows(con: sqlite3.Connection, contract_symbol: str) 
             "ORDER BY ts_recv, rowid",
             (contract_symbol, cursor_ts, cursor_ts, cursor_rowid)).fetchall()
     # Independent-review finding (2026-09-12), REPRODUCED: calling the hook once PER ROW meant
-    # a burst of N rows landing in one poll batch triggered N sequential expensive recomputes
-    # (MEASURED: ~3.1s each on a full SPXW-scale book) -- "three sequential calls, 9.3s total,
-    # zero suppressed" -- because a leading-edge time debounce cannot throttle calls whose own
-    # prior duration already exceeds the debounce window; by the time call #2 arrives, more
-    # than enough wall-clock time has always already elapsed. The fix is not a bigger
+    # a burst of N rows landing in one poll batch triggered N sequential expensive recomputes,
+    # because a leading-edge time debounce cannot throttle calls whose own prior duration
+    # already exceeds the debounce window; by the time call #2 arrives, more than enough
+    # wall-clock time has always already elapsed. Independent-review performance-assurance
+    # finding (2026-09-12), separately: the original "~3.1s each, three calls, 9.3s total"
+    # figure cited here was an ad-hoc session claim with no reproducible benchmark committed
+    # to the repo, and a call-count test alone ("fires once, not three times") proves an
+    # opportunity for repeated computation existed, not real production latency saved.
+    # tests/test_streamed_greeks_hook_v1.py::test_hook_coalescing_avoids_the_real_per_call_
+    # cost_at_spxw_scale now measures the REAL production hook (server.refresh_gamma_surface_
+    # from_stream, the actual function wired here) against a real-scale (42,001-contract)
+    # SYNTHETIC SCALE BASELINE with the app's own wall clock, rerunnable on demand: MEASURED
+    # 2026-09-12 ~1.95s for one real call, and a genuine 3-row poll batch through this exact
+    # coalescing path cost ~2.09s total (not ~3x) -- both numbers trace to that test's own
+    # output, not to this comment. The fix is not a bigger
     # scheduler: this loop already reads a BATCH of every row new since the last poll tick, so
     # every row's push_level_one still runs (app.options.order_flow.state always holds the
     # true latest observation), but the hook -- the expensive part -- fires ONCE for the whole
@@ -486,6 +503,7 @@ def _replay_option_contract_rows(con: sqlite3.Connection, contract_symbol: str) 
             continue
         push_level_one(contract_symbol, item, ts_recv=ts_recv)
         _option_streaming_last_update_ts = time.time()
+        _option_contract_last_update_ts[contract_symbol] = _option_streaming_last_update_ts
         if ("GAMMA" in item or "DELTA" in item or "OPEN_INTEREST" in item
                 or "TOTAL_VOLUME" in item or "VOLUME" in item):
             last_qualifying_ts_recv = float(ts_recv)
@@ -521,6 +539,7 @@ def _replay_option_contract_rows(con: sqlite3.Connection, contract_symbol: str) 
             continue
         push_book(contract_symbol, item)
         _option_streaming_last_update_ts = time.time()
+        _option_contract_last_update_ts[contract_symbol] = _option_streaming_last_update_ts
         _option_book_cursor[contract_symbol] = (float(ts_recv), int(rowid))
     if first_book and contract_symbol not in _option_book_cursor:
         _option_book_cursor[contract_symbol] = (0.0, 0)
@@ -671,6 +690,7 @@ def clear_active_option_contract(*, reason: str) -> None:
     # while the ADDITIONAL set still desires it.
     if old and old not in _active_option_contracts:
         clear_symbol(old)
+        _option_contract_last_update_ts.pop(old, None)
         _log_stream("OPTION_CONTRACT_CLEARED", old=old, reason=reason)
     write_active_option_contract_signal("")
     _active_option_contract = None
@@ -892,6 +912,7 @@ def set_active_option_contracts(contract_symbols: "list[str]",
         for s in old:
             if s not in symbols and s != _active_option_contract:
                 clear_symbol(s)
+                _option_contract_last_update_ts.pop(s, None)
         write_active_option_contracts_signal(symbols)
         _active_option_contracts = symbols
         log.info("Live-plane feed additional option contracts -> %s", symbols)
@@ -912,10 +933,36 @@ def get_option_contract_book_microstructure(contract_symbol: str) -> dict:
     return options_live_payload(t)
 
 
-def _option_streaming_healthy() -> bool:
-    if not (_feed_running and _active_option_contract):
+def _option_streaming_healthy(*, for_contract: Optional[str] = None) -> bool:
+    """RC-UI-3 finding #4 (2026-09-12), REPRODUCED: the top-line guard below used to
+    unconditionally require `_active_option_contract` (the PRIMARY slot) to be set,
+    even when the caller was asking about an ADDITIONAL-only contract with genuinely
+    fresh, confirmed coverage -- with no primary requested, this returned False no
+    matter how healthy the additional contract's own feed was, and
+    get_option_contract_streaming_diagnostics never overrode that False back to True
+    (it only ever forced healthy -> False on a mismatch, never healthy -> True on a
+    match). Passing `for_contract` answers health for THAT contract alone, from its
+    own PER-CONTRACT last-update timestamp -- not the single global clock every
+    contract's rows all update together (see _option_contract_last_update_ts), so one
+    contract's freshness can never mask or borrow another's. `for_contract=None`
+    keeps the historical whole-plane (primary-gated) answer for back-compat callers
+    that do not name a specific contract."""
+    if not _feed_running:
         return False
     now = time.time()
+    if for_contract is not None:
+        key = ticker_storage_key(for_contract)
+        if not key:
+            return False
+        last = _option_contract_last_update_ts.get(key)
+        if last is not None:
+            return (now - last) * 1000.0 <= STREAMING_STALE_MS
+        is_requested = key == _active_option_contract or key in _active_option_contracts
+        return bool(
+            is_requested and _option_last_subscribe_completed_ts is not None
+            and (now - _option_last_subscribe_completed_ts) < GRACE_AFTER_SUBSCRIBE_SEC)
+    if not _active_option_contract:
+        return False
     if _option_streaming_last_update_ts is not None:
         return (now - _option_streaming_last_update_ts) * 1000.0 <= STREAMING_STALE_MS
     if (_option_last_subscribe_completed_ts is not None
@@ -995,7 +1042,14 @@ def get_option_contract_streaming_diagnostics(
     (no caller-specified subject) keeps the historical whole-plane answer, with
     `contract_match` left None rather than fabricated."""
     now = time.time()
-    last = _option_streaming_last_update_ts
+    queried = ticker_storage_key(for_contract) if for_contract else None
+    # RC-UI-3 finding #4 (2026-09-12), REPRODUCED: `last`/`stale_ms` used to read ONLY the
+    # single global `_option_streaming_last_update_ts`, which every contract's rows (primary
+    # OR any additional one) all bump together -- so a query about a genuinely stale
+    # contract could report a fresh `streaming_staleness_ms` borrowed entirely from a
+    # DIFFERENT contract's own recent traffic. When a specific contract is queried, answer
+    # from THAT contract's own per-contract clock instead.
+    last = _option_contract_last_update_ts.get(queried) if queried else _option_streaming_last_update_ts
     stale_ms: Optional[float]
     if last is not None:
         stale_ms = max(0.0, (now - last) * 1000.0)
@@ -1006,7 +1060,7 @@ def get_option_contract_streaming_diagnostics(
         stale_ms = None
 
     db_identity = _stream_db_identity_status()
-    healthy = _option_streaming_healthy()
+    healthy = _option_streaming_healthy(for_contract=queried) if queried else _option_streaming_healthy()
     if _identity_forces_unhealthy(db_identity, _option_last_subscribe_completed_ts, now):
         healthy = False   # fail closed — see get_streaming_diagnostics' identical guard
 
@@ -1022,7 +1076,6 @@ def get_option_contract_streaming_diagnostics(
     # read from the CANONICAL open coverage epochs in the same stream DB, and a full
     # contract match now requires requested AND both producer services to agree.
     producer = _read_producer_option_contracts()
-    queried = ticker_storage_key(for_contract) if for_contract else None
     contract_match: Optional[bool] = None
     if queried:
         # Independent-review finding (2026-09-12): this used to recognize ONLY the
@@ -1111,6 +1164,7 @@ def stop_order_flow_stream(*, join_timeout: float = STREAM_THREAD_JOIN_TIMEOUT_S
     _active_ticker = None
     _active_option_contract = None
     _option_streaming_last_update_ts = None
+    _option_contract_last_update_ts.clear()
     clear_all_live_state()
     task = _feed_task
     if task is not None and not task.done():

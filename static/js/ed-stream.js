@@ -111,17 +111,38 @@
   // status the shell renders today (unlike Flow's subscribe-state badge), so this is a
   // fire-and-forget request-acceptance report, deduplicated against this tab's own last
   // request so a caller may call it on every render without spamming the endpoint.
-  var _desiredAdditional = [];
+  function _sortedEqual(a, b) {
+    if (a.length !== b.length) return false;
+    var as = a.slice().sort(), bs = b.slice().sort();
+    for (var i = 0; i < as.length; i++) { if (as[i] !== bs[i]) return false; }
+    return true;
+  }
+  var _desiredAdditional = [];    // last set a response actually CONFIRMED accepted
+  var _pendingAdditional = null;  // set currently in flight, or null
+  var _additionalGen = 0;         // monotonic token: only the LATEST request may commit
   function setAdditionalContracts(symbols) {
     var next = (symbols || []).map(function (s) { return String(s || '').trim().toUpperCase(); })
       .filter(function (s) { return s; });
     var dedup = []; next.forEach(function (s) { if (dedup.indexOf(s) < 0) dedup.push(s); });
-    var sortedNext = dedup.slice().sort();
-    var sortedPrev = _desiredAdditional.slice().sort();
-    var unchanged = sortedNext.length === sortedPrev.length
-      && sortedNext.every(function (s, i) { return s === sortedPrev[i]; });
-    if (unchanged) return Promise.resolve({ accepted: true, unchanged: true, contracts: _desiredAdditional });
-    _desiredAdditional = dedup;
+    // Independent-review finding (2026-09-12), REPRODUCED: _desiredAdditional used to be
+    // set to `dedup` HERE, unconditionally, before the fetch even started -- so a request
+    // that received a real HTTP 503 still left _desiredAdditional pointing at the set that
+    // was NEVER actually accepted. A second call for the identical (still-unaccepted) set
+    // then matched the "unchanged" short-circuit below and reported accepted:true,
+    // unchanged:true WITHOUT issuing any new HTTP request at all -- false acceptance with
+    // zero retry. Fixed by only ever committing _desiredAdditional on an ACTUALLY
+    // confirmed-accepted response (see the .then() below), never optimistically.
+    if (_sortedEqual(dedup, _desiredAdditional)) {
+      return Promise.resolve({ accepted: true, unchanged: true, contracts: _desiredAdditional });
+    }
+    // A second call for the exact set ALREADY in flight must not fire a duplicate
+    // concurrent request (Strike Detail can call this on every render) -- report it as
+    // still pending rather than fabricating either an accepted or a fresh-request result.
+    if (_pendingAdditional && _sortedEqual(dedup, _pendingAdditional)) {
+      return Promise.resolve({ accepted: false, unchanged: false, pending: true, contracts: dedup });
+    }
+    var token = ++_additionalGen;   // supersedes any earlier in-flight request's ability to commit
+    _pendingAdditional = dedup;
     return fetch('/api/streaming/active-option-contracts', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contracts: dedup }),
     }).then(function (r) {
@@ -129,9 +150,23 @@
                            function () { return { status: r.status, body: null }; });
     }, function () { return { status: null, body: null }; })
       .then(function (res) {
+        var isCurrent = token === _additionalGen;
         var ok2xx = typeof res.status === 'number' && res.status >= 200 && res.status < 300;
-        var accepted = ok2xx && !!res.body && res.body.ok === true;
-        return { accepted: accepted, unchanged: false, contracts: dedup, status: res.status };
+        var b = (res.body && typeof res.body === 'object') ? res.body : null;
+        // Identity check (independent-review finding: "a successful response acknowledging
+        // the wrong contract set" must not be treated as acceptance of THIS request's set)
+        // -- the server echoes `contracts` in its response; it must match what was sent,
+        // exactly like setActiveContract's own ack-identity check above.
+        var acked = (b && Array.isArray(b.contracts))
+          ? b.contracts.map(function (s) { return String(s || '').toUpperCase(); }) : null;
+        var identityOk = acked !== null && _sortedEqual(acked, dedup);
+        var accepted = ok2xx && !!b && b.ok === true && identityOk;
+        if (isCurrent) {
+          if (accepted) _desiredAdditional = dedup;   // commit ONLY on a confirmed accept
+          _pendingAdditional = null;
+        }
+        return { accepted: accepted, unchanged: false, contracts: dedup, status: res.status,
+                 superseded: !isCurrent };
       });
   }
   function getDesiredAdditional() { return _desiredAdditional.slice(); }

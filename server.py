@@ -12217,19 +12217,24 @@ def _gamma_surface_wanted(tk: str) -> bool:
 GAMMA_SURFACE_STREAM_STALENESS_SEC = 10.0
 
 #: RETIRED (2026-09-12): a leading-edge per-ticker time debounce used to live here. Independent
-#: review MEASURED it directly and found it provided ZERO protection against the exact backlog
-#: it was written for: a leading-edge debounce rejects a call only if it arrives too soon after
-#: the PREVIOUS call's own start, but when the computation itself is slow (MEASURED ~3.1s on a
-#: full SPXW-scale book, SYNTHETIC SCALE BASELINE), that previous call's own duration already
-#: exceeds any reasonable debounce window by the time the next one can even arrive -- three
-#: sequential bursts each still paid the full ~3.1s (9.3s total, zero suppressed). Worse, a
-#: debounced call was silently dropped with nothing scheduling a trailing publication, so the
-#: LAST update of a burst could go permanently unpublished. Replaced with per-batch coalescing
-#: in app.options.order_flow.streaming._replay_option_contract_rows itself: every row in a poll
+#: review found it provided ZERO protection against the exact backlog it was written for: a
+#: leading-edge debounce rejects a call only if it arrives too soon after the PREVIOUS call's
+#: own start, but when the computation itself is slow, that previous call's own duration
+#: already exceeds any reasonable debounce window by the time the next one can even arrive --
+#: sequential bursts each still paid the full per-call cost. Worse, a debounced call was
+#: silently dropped with nothing scheduling a trailing publication, so the LAST update of a
+#: burst could go permanently unpublished. Replaced with per-batch coalescing in
+#: app.options.order_flow.streaming._replay_option_contract_rows itself: every row in a poll
 #: batch still updates OrderFlowState, but the (expensive) hook fires ONCE per batch using the
 #: freshest row, not once per row -- bounding the real worst-case rate to "one recompute per
 #: poll-loop iteration that has new data" without ever silently discarding the batch's own
-#: latest observation. See that function's own comment for the full reasoning.
+#: latest observation. See that function's own comment for the full reasoning, and
+#: tests/test_streamed_greeks_hook_v1.py::test_hook_coalescing_avoids_the_real_per_call_
+#: cost_at_spxw_scale for the actual, reproducible, rerunnable per-call latency this hook's
+#: real consumer (refresh_gamma_surface_from_stream, below) pays at full SPXW scale --
+#: independent-review performance-assurance finding (2026-09-12): the per-call cost figure
+#: previously hardcoded here traced to no committed benchmark; it now traces to that test's
+#: own measured output instead.
 
 #: Per-ticker counter bumped every time `_gamma_surface` is (re)published — by the REST cycle
 #: or the eager stream refresh alike. Independent-review finding (2026-09-12), REPRODUCED: the

@@ -1432,6 +1432,136 @@ def test_multi_G_extra_symbol_close_failure_never_touches_the_vendor_and_is_not_
         w.close()
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Independent-review finding (2026-09-12), REPRODUCED: promoting an additional symbol to
+# primary used to run an ordinary close-then-resubscribe cycle, which collided with the
+# symbol's own still-open extra-key epoch and triggered compensation -- genuinely
+# unsubscribing it from the vendor mid-promotion, self-healing only on the NEXT tick.
+# _apply_option_primary_role_transfer fixes this with a pure key rename.
+# ─────────────────────────────────────────────────────────────────────────────
+
+async def _promote_tick(stream, contract_state, writer, epoch_state, *, primary, extras):
+    """`primary`/`extras` are documentation only (the actual desired state comes from the
+    monkeypatched signal readers at call time) -- named so each call site reads as a
+    labeled tick rather than a bare function call."""
+    return await _apply_active_option_contract_subs(
+        stream, contract_state, writer=writer, epoch_state=epoch_state)
+
+
+def test_multi_H_promoting_an_extra_to_primary_never_touches_the_vendor(tmp_path, monkeypatch):
+    """Primary SPY, additional QQQ -> promote QQQ to primary (drop SPY entirely, QQQ no
+    longer in the additional set). QQQ's own LEVELONE_OPTIONS epoch must be the SAME
+    open row throughout (never closed, never reopened) and the vendor must see ZERO
+    subscribe/add/unsub calls for QQQ during its own promotion -- only SPY's real
+    close+unsubscribe (it is genuinely ending, not being relabeled)."""
+    monkeypatch.setattr(rsc, "read_active_option_contract_signal", lambda: _SPY_CONTRACT)
+    monkeypatch.setattr(rsc, "read_active_option_contracts_signal", lambda: [_QQQ_CONTRACT])
+    stream = _FlakyOptionStream()
+    writer = CaptureWriter(tmp_path / "cap.db", batch_rows=1, batch_sec=10.0)
+    contract_state: dict = {}
+    epoch_state: dict = {}
+    asyncio.run(_promote_tick(stream, contract_state, writer, epoch_state,
+                              primary=_SPY_CONTRACT, extras=[_QQQ_CONTRACT]))
+    qqq_epoch_id_before = epoch_state["l1:extra:" + _QQQ_CONTRACT]
+    calls_before = len(stream.calls)
+
+    monkeypatch.setattr(rsc, "read_active_option_contract_signal", lambda: _QQQ_CONTRACT)
+    monkeypatch.setattr(rsc, "read_active_option_contracts_signal", lambda: [])
+    asyncio.run(_promote_tick(stream, contract_state, writer, epoch_state,
+                              primary=_QQQ_CONTRACT, extras=[]))
+    writer.close()
+
+    new_calls = stream.calls[calls_before:]
+    assert not any(c[0] in ("l1_option_sub", "l1_option_add", "l1_option_unsub")
+                   and _QQQ_CONTRACT in c[1] for c in new_calls), (
+        f"QQQ must see zero LEVELONE_OPTIONS vendor calls during its own promotion; got {new_calls}")
+    assert _QQQ_CONTRACT in stream.held["LEVELONE_OPTIONS"], (
+        "QQQ must remain genuinely held at the vendor throughout the promotion")
+    assert contract_state["l1"] == _QQQ_CONTRACT
+    assert epoch_state["l1"] == qqq_epoch_id_before, (
+        "the SAME epoch row must continue under the primary key -- not closed and reopened")
+    assert "l1:extra:" + _QQQ_CONTRACT not in contract_state
+    rows = _one_service_open(tmp_path / "cap.db", "LEVELONE_OPTIONS")
+    assert rows == [(qqq_epoch_id_before, _QQQ_CONTRACT)], (
+        "exactly one open LEVELONE_OPTIONS row, QQQ's original row, still open")
+    assert not any(r[1] == _SPY_CONTRACT for r in rows), "SPY's epoch must be closed (genuinely dropped)"
+    assert _SPY_CONTRACT not in stream.held["LEVELONE_OPTIONS"], "SPY must be genuinely unsubscribed"
+
+
+def test_multi_I_simultaneous_swap_costs_zero_vendor_calls_for_either_symbol(tmp_path, monkeypatch):
+    """Primary SPY, additional QQQ -> swap roles in one tick (QQQ promoted to primary,
+    SPY demoted to additional). Both symbols remain continuously vendor-held; the swap
+    itself must cost ZERO vendor calls for either."""
+    monkeypatch.setattr(rsc, "read_active_option_contract_signal", lambda: _SPY_CONTRACT)
+    monkeypatch.setattr(rsc, "read_active_option_contracts_signal", lambda: [_QQQ_CONTRACT])
+    stream = _FlakyOptionStream()
+    writer = CaptureWriter(tmp_path / "cap.db", batch_rows=1, batch_sec=10.0)
+    contract_state: dict = {}
+    epoch_state: dict = {}
+    asyncio.run(_promote_tick(stream, contract_state, writer, epoch_state,
+                              primary=_SPY_CONTRACT, extras=[_QQQ_CONTRACT]))
+    spy_epoch_id = epoch_state["l1"]
+    qqq_epoch_id = epoch_state["l1:extra:" + _QQQ_CONTRACT]
+    calls_before = len(stream.calls)
+
+    monkeypatch.setattr(rsc, "read_active_option_contract_signal", lambda: _QQQ_CONTRACT)
+    monkeypatch.setattr(rsc, "read_active_option_contracts_signal", lambda: [_SPY_CONTRACT])
+    asyncio.run(_promote_tick(stream, contract_state, writer, epoch_state,
+                              primary=_QQQ_CONTRACT, extras=[_SPY_CONTRACT]))
+    writer.close()
+
+    new_calls = stream.calls[calls_before:]
+    l1_calls = [c for c in new_calls if c[0].startswith("l1_option")]
+    assert l1_calls == [], (
+        f"a pure role swap must cost zero LEVELONE_OPTIONS vendor calls for either "
+        f"symbol; got {l1_calls}")
+    # OPTIONS_BOOK genuinely DOES move: it is primary-only (extras never hold it), so
+    # demoted SPY legitimately loses its book subscription and promoted QQQ legitimately
+    # gains one -- this is real, expected work, not the bug under test.
+    book_calls = {c[0] for c in new_calls if c[0].startswith("options_book")}
+    assert book_calls == {"options_book_unsub", "options_book_sub"}
+    assert contract_state["l1"] == _QQQ_CONTRACT
+    assert contract_state["l1:extra:" + _SPY_CONTRACT] == _SPY_CONTRACT
+    assert epoch_state["l1"] == qqq_epoch_id, "QQQ's original epoch row continues under the primary key"
+    assert epoch_state["l1:extra:" + _SPY_CONTRACT] == spy_epoch_id, (
+        "SPY's original epoch row continues under its new extra key")
+    rows = {r[1]: r[0] for r in _one_service_open(tmp_path / "cap.db", "LEVELONE_OPTIONS")}
+    assert rows == {_QQQ_CONTRACT: qqq_epoch_id, _SPY_CONTRACT: spy_epoch_id}, (
+        "both original rows remain open, unchanged, under the swap")
+
+
+def test_multi_J_promotion_deferred_when_old_primarys_drop_is_still_retrying(tmp_path, monkeypatch):
+    """If the OLD primary's durable close fails when it is being dropped outright (not
+    demoted), the promotion must NOT overwrite "l1" this tick -- the promoted symbol
+    stays under its extra key, retried next tick, rather than risk losing track of the
+    still-legitimately-occupied primary slot."""
+    monkeypatch.setattr(rsc, "read_active_option_contract_signal", lambda: _SPY_CONTRACT)
+    monkeypatch.setattr(rsc, "read_active_option_contracts_signal", lambda: [_QQQ_CONTRACT])
+    stream = _FlakyOptionStream()
+    writer = CaptureWriter(tmp_path / "cap.db", batch_rows=1, batch_sec=10.0)
+    contract_state: dict = {}
+    epoch_state: dict = {}
+    asyncio.run(_promote_tick(stream, contract_state, writer, epoch_state,
+                              primary=_SPY_CONTRACT, extras=[_QQQ_CONTRACT]))
+    qqq_epoch_id = epoch_state["l1:extra:" + _QQQ_CONTRACT]
+
+    monkeypatch.setattr(writer, "close_coverage_epoch", _failing_close)
+    monkeypatch.setattr(rsc, "read_active_option_contract_signal", lambda: _QQQ_CONTRACT)
+    monkeypatch.setattr(rsc, "read_active_option_contracts_signal", lambda: [])
+    asyncio.run(_promote_tick(stream, contract_state, writer, epoch_state,
+                              primary=_QQQ_CONTRACT, extras=[]))
+    writer.close()
+
+    assert contract_state["l1"] == _SPY_CONTRACT, (
+        "l1 must still legitimately show SPY -- its close never landed")
+    assert contract_state["l1:extra:" + _QQQ_CONTRACT] == _QQQ_CONTRACT, (
+        "QQQ must stay under its extra key this tick, not be promoted over an occupied primary")
+    assert epoch_state["l1:extra:" + _QQQ_CONTRACT] == qqq_epoch_id
+    assert _QQQ_CONTRACT in stream.held["LEVELONE_OPTIONS"], "QQQ was never touched"
+    assert _SPY_CONTRACT in stream.held["LEVELONE_OPTIONS"], (
+        "SPY must still be genuinely held -- the vendor is never touched before a failed durable close")
+
+
 def test_coverage_bidirectional_invariant_holds_at_every_tick_boundary(tmp_path, monkeypatch):
     """The full BIDIRECTIONAL invariant, checked against the REAL table:
        VENDOR_HELD(X)    IFF exactly one open epoch, symbol == X
