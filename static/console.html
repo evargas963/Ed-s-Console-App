@@ -136,10 +136,12 @@
   .wl-msg{padding:0 15px 4px;font-size:11px;color:var(--ed-ink-3);min-height:14px}
   #app:not(.rail-open) .wl-msg{display:none}
   /* A degraded poll keeps the last real numbers on screen (blanking them would be its own
-     kind of dishonesty) but must not look identical to a healthy one. #app.rail-open's own
-     opacity:1 rule for .wl-px/.wl-chg carries an ID, so this override needs one too. */
-  #app.rail-open .wl.wl-degraded .wl-px,#app.rail-open .wl.wl-degraded .wl-chg{opacity:.4}
-  .wl.wl-degraded .wl-msg{color:var(--ed-neg-ink)}
+     kind of dishonesty) but must not look identical to a healthy one. Operator finding
+     (2026-09-11): opacity:.4 on the numbers themselves made real values hard to read right
+     when the operator most needs to trust what they can see. The status lives in the
+     message text (below) and a persistent border on the list, not in dimmed numbers. */
+  .wl.wl-degraded{outline:1px dashed var(--ed-stale);outline-offset:-1px}
+  .wl.wl-degraded .wl-msg{color:var(--ed-stale)}
   .wl-add{display:flex;align-items:center;gap:10px;height:32px;padding:0 15px;color:var(--ed-ink-3);
     font-size:12.5px;white-space:nowrap}
   .wl-add:hover{color:var(--ed-accent-2)}
@@ -349,7 +351,14 @@
   .heat-legend{display:flex;align-items:center;gap:8px;font-family:var(--ed-mono);font-size:9px;color:var(--ed-ink-3);padding:0 0 6px}
   .heat-legend .grad{width:130px;height:9px;border-radius:2px;background:linear-gradient(90deg,var(--ed-neg),var(--ed-heat-zero) 50%,var(--ed-pos))}
   /* B: freshness-coupled dimming — stale/reference content recedes */
-  .recede{opacity:.5;filter:saturate(.6);transition:opacity .12s}
+  /* Operator finding (2026-09-11): opacity:.5 + saturate(.6) here blanket-dimmed every
+     cell's TEXT and COLOR, making the actual numbers hard to read whenever a surface was
+     stale/reference -- exactly when an operator most needs to read them clearly to judge
+     whether to trust what's on screen. The banner (buildBanner) is the truthful status
+     disclosure; this class's only job is a persistent, unmistakable-but-non-obscuring
+     visual mark. A dashed --ed-stale outline reads as "this container is flagged" without
+     touching a single cell's contrast. */
+  .recede{outline:2px dashed var(--ed-stale);outline-offset:-2px;border-radius:6px}
   /* A: shared selected-strike highlight across panels */
   .heat .hcell.sel-strike{outline:2px solid var(--ed-accent);outline-offset:-2px}
   .gbs-row.gbs-sel{outline:1px solid var(--ed-accent);outline-offset:-1px;background:var(--ed-accent-bg)}

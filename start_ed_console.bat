@@ -101,6 +101,13 @@ REM whose own command line names an Ed Console server (uvicorn ... server:app)
 REM is stopped. An unrelated process holding the port is left running and
 REM reported. See tools/launcher_port_guard.py.
 "%VENV_PY%" "%~dp0tools\launcher_port_guard.py" 8000
+if errorlevel 2 (
+    echo  LAUNCH BLOCKED: could not determine whether port 8000 is free ^(see
+    echo  warning above^). Refusing to guess and launch into a possibly-occupied
+    echo  port. Check manually:  netstat -ano ^| findstr :8000
+    pause
+    exit /b 1
+)
 if errorlevel 1 (
     echo  LAUNCH BLOCKED: port 8000 is occupied by something that is not an Ed
     echo  Console server ^(see warning above^). Refusing to launch into it, and

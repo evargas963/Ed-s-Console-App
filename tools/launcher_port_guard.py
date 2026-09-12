@@ -3,34 +3,48 @@
 Operator finding (2026-09-11): the launcher used to `taskkill /F` whatever PID held
 the target port, with no check on WHAT it was -- an unrelated process that happened
 to be using that port would be killed too, silently. This script only stops a
-process whose own command line names an Ed Console server entry point
-(uvicorn ... server:app); anything else is left alone and reported so the operator
-can decide, matching the adversarial requirement "an unrelated process occupying
-the intended port -- leave that process intact".
+process whose own command line matches the real Ed Console invocation shape
+(python[.exe] -m uvicorn ... server:app); anything else is left alone and
+reported so the operator can decide, matching the adversarial requirement "an
+unrelated process occupying the intended port -- leave that process intact".
 
 Usage: python tools/launcher_port_guard.py <port>
-Exit 0: the port was already free, or an Ed Console instance was found and
+Exit 0: the port was CONFIRMED free, or an Ed Console instance was found and
         stopped and the port is now free.
 Exit 1: the port is held by something that is NOT an Ed Console server (left
         running), or an Ed Console instance was stopped but the port is still
         occupied after stopping it.
+Exit 2: port state could not be determined (netstat/process inspection
+        failed) -- this is NOT treated as "the port is free"; the launcher
+        must not guess and proceed into a possibly-occupied port.
 """
 from __future__ import annotations
 
+import re
 import socket
 import subprocess
 import sys
 import time
 
 
+class PortInspectionError(Exception):
+    """Raised when netstat/process inspection itself fails -- a genuinely UNKNOWN
+    port state, never to be treated as 'confirmed free' (operator finding:
+    a netstat failure used to fall through to `None`, which `ensure_port_free`
+    read as 'nothing is listening' and launched anyway)."""
+
+
 def listening_pid(port: int) -> str | None:
-    """PID of the process LISTENING on 127.0.0.1:<port>, or None if nothing is."""
+    """PID of the process LISTENING on 127.0.0.1:<port>, or None if netstat ran
+    successfully and found no such listener. Raises PortInspectionError if
+    netstat itself could not be run/parsed -- that is an unknown state, not
+    a free port."""
     try:
         out = subprocess.run(
-            ["netstat", "-ano"], capture_output=True, text=True, timeout=10
+            ["netstat", "-ano"], capture_output=True, text=True, timeout=10, check=True,
         ).stdout
-    except Exception:
-        return None
+    except Exception as e:
+        raise PortInspectionError(f"netstat -ano failed: {e}") from e
     needle = f":{port} "
     for line in out.splitlines():
         if needle in line and "LISTENING" in line:
@@ -41,7 +55,11 @@ def listening_pid(port: int) -> str | None:
 
 
 def command_line_for_pid(pid: str) -> str:
-    """The full command line of `pid`, or '' if it cannot be read (e.g. already exited)."""
+    """The full command line of `pid`, or '' if it cannot be read (e.g. already exited).
+    Deliberately NOT a PortInspectionError: a process that exited between the netstat
+    read and this lookup is a real, common race, not an inspection failure -- an empty
+    command line correctly fails is_ed_console_command_line's check below and the
+    caller reports it rather than guessing either way."""
     try:
         out = subprocess.run(
             [
@@ -55,11 +73,25 @@ def command_line_for_pid(pid: str) -> str:
         return ""
 
 
+# Operator finding (2026-09-11): the previous check was `"uvicorn" in c and
+# "server:app" in c` -- true for ANY command line containing both substrings
+# ANYWHERE (e.g. a text editor with a file path mentioning both words), not
+# just a real Ed Console invocation. This anchors the two tokens to the actual
+# shape every launch entry in this repo (launch.json, start_ed_console.bat)
+# uses: a python[.exe] interpreter, `-m uvicorn`, and `server:app` as the
+# ASGI target, in that relative order.
+_ED_CONSOLE_INVOCATION_RE = re.compile(
+    r"python(?:\.exe)?\"?\s+-m\s+uvicorn\b[^\r\n]*\bserver:app\b", re.IGNORECASE,
+)
+
+
 def is_ed_console_command_line(cmd: str) -> bool:
-    """True only for an Ed Console uvicorn server process -- the one shape this
-    launcher is ever allowed to stop on its own authority."""
-    c = (cmd or "").lower()
-    return "uvicorn" in c and "server:app" in c
+    """True only for a command line matching the real Ed Console server
+    invocation shape -- the one thing this launcher is ever allowed to stop
+    on its own authority."""
+    if not cmd:
+        return False
+    return bool(_ED_CONSOLE_INVOCATION_RE.search(cmd))
 
 
 def port_is_free(port: int) -> bool:
@@ -73,9 +105,15 @@ def port_is_free(port: int) -> bool:
 
 def ensure_port_free(port: int, *, out=print) -> int:
     """Stop a prior Ed Console instance on `port` if one is found; leave anything
-    else alone. Returns a process exit code (0 = free / stopped, 1 = still held
-    by something that should not be touched, or that failed to stop)."""
-    pid = listening_pid(port)
+    else alone. Returns a process exit code: 0 = confirmed free / stopped,
+    1 = held by something not to be touched (or failed to clear), 2 = port
+    state could not be determined at all (fail closed -- never guess free)."""
+    try:
+        pid = listening_pid(port)
+    except PortInspectionError as e:
+        out(f"WARNING: could not determine whether port {port} is free ({e}).")
+        out("Refusing to guess -- treating this as NOT confirmed free.")
+        return 2
     if pid is None:
         out(f"Port {port} is free.")
         return 0

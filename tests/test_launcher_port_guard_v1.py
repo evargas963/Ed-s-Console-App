@@ -1,5 +1,6 @@
 """launcher_port_guard: the launcher must never kill a process just for occupying
-the target port -- only a verified Ed Console server. Negative-controlled below."""
+the target port -- only a verified Ed Console server -- and must never treat a
+failed port inspection as proof the port is free. Negative-controlled below."""
 from __future__ import annotations
 
 import sys
@@ -30,6 +31,16 @@ def test_rejects_an_unrelated_process_on_the_same_port():
 def test_rejects_empty_or_unavailable_command_line():
     assert lpg.is_ed_console_command_line("") is False
     assert lpg.is_ed_console_command_line(None) is False  # process already exited
+
+
+def test_rejects_a_coincidental_substring_match():
+    """Operator finding (2026-09-11): the original check was `"uvicorn" in c and
+    "server:app" in c` -- true for ANY command line containing both words
+    anywhere, not just a real invocation. This is the exact negative control:
+    a command that mentions both words but is not the real invocation shape
+    must NOT be classified as an Ed Console server."""
+    cmd = r'C:\Windows\notepad.exe "C:\notes\uvicorn and server:app migration plan.txt"'
+    assert lpg.is_ed_console_command_line(cmd) is False
 
 
 def test_ensure_port_free_leaves_an_unrelated_process_running(monkeypatch):
@@ -89,3 +100,17 @@ def test_ensure_port_free_is_a_noop_when_the_port_is_already_free(monkeypatch):
     rc = lpg.ensure_port_free(8000, out=lambda *a: None)
     assert rc == 0
     assert calls["taskkill"] == 0
+
+
+def test_a_failed_port_inspection_is_not_treated_as_a_free_port(monkeypatch):
+    """Negative control for the original defect: listening_pid() used to swallow
+    a netstat failure and return None, which ensure_port_free read as 'nothing
+    is listening' -- silently proceeding to launch a second server into a port
+    whose real state was actually unknown. Must now fail closed (exit 2), never
+    exit 0."""
+    def _raise(port):
+        raise lpg.PortInspectionError("netstat -ano failed: simulated")
+
+    monkeypatch.setattr(lpg, "listening_pid", _raise)
+    rc = lpg.ensure_port_free(8000, out=lambda *a: None)
+    assert rc == 2, "an inspection failure must never be reported as a confirmed-free port"

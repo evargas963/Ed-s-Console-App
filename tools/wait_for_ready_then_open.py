@@ -8,7 +8,20 @@ page well before the server was listening. This polls the real endpoint until
 it answers, then opens the browser -- native capability (Python's own
 urllib + subprocess), no new service.
 
+Operator finding (2026-09-11): the first version always opened the browser and
+always exited 0, whether the server answered 200, answered something else, or
+never answered at all within the timeout -- "browser opened" was being used as
+proof of "app started successfully", which a timeout or an error response does
+not establish. This version distinguishes the three outcomes and reports (via
+both stdout and process exit code) which one happened; only a genuine timeout
+skips opening the browser at all, since there is then nothing real to show.
+
 Usage: python tools/wait_for_ready_then_open.py <url> <browser_exe> [timeout_sec]
+Exit 0: the URL answered 200 -- opened the browser.
+Exit 1: the URL answered, but not with 200 (server up, not healthy at this
+        route) -- opened the browser anyway (something real to look at), but
+        this is reported distinctly, not as clean success.
+Exit 2: the URL never answered within the timeout -- did NOT open the browser.
 """
 from __future__ import annotations
 
@@ -22,23 +35,23 @@ DEFAULT_TIMEOUT_SEC = 90.0
 POLL_INTERVAL_SEC = 0.25
 
 
-def wait_until_ready(url: str, timeout_sec: float = DEFAULT_TIMEOUT_SEC) -> bool:
-    """Poll `url` until it returns any HTTP response (readiness proxy: the ASGI
-    app is accepting requests), or `timeout_sec` elapses. Returns whether it
-    became ready."""
+def wait_until_ready(url: str, timeout_sec: float = DEFAULT_TIMEOUT_SEC) -> str:
+    """Poll `url` until it answers or `timeout_sec` elapses.
+    Returns "ready" (200), "unhealthy" (answered, non-200), or "timeout" (never
+    answered)."""
     deadline = time.monotonic() + timeout_sec
     while time.monotonic() < deadline:
         try:
             urllib.request.urlopen(url, timeout=2)
-            return True
+            return "ready"
         except urllib.error.HTTPError:
-            # Any HTTP status (even 404/500) proves the server is accepting
-            # connections and routing requests -- that is what "ready to open
-            # a browser at" means here, not "every subsystem is warm".
-            return True
+            # The server IS up and routing requests -- just not a 200 for this
+            # exact path. Worth reporting distinctly, not silently equated with
+            # "ready".
+            return "unhealthy"
         except Exception:
             time.sleep(POLL_INTERVAL_SEC)
-    return False
+    return "timeout"
 
 
 def main(argv: list[str]) -> int:
@@ -47,11 +60,17 @@ def main(argv: list[str]) -> int:
         return 2
     url, browser_exe = argv[1], argv[2]
     timeout_sec = float(argv[3]) if len(argv) == 4 else DEFAULT_TIMEOUT_SEC
-    ready = wait_until_ready(url, timeout_sec)
-    if not ready:
-        print(f"wait_for_ready_then_open: {url} did not answer within {timeout_sec}s -- opening anyway.")
-    subprocess.Popen([browser_exe, url])
-    return 0
+    result = wait_until_ready(url, timeout_sec)
+    if result == "ready":
+        subprocess.Popen([browser_exe, url])
+        return 0
+    if result == "unhealthy":
+        print(f"WARNING: {url} answered but not with 200 -- opening it anyway so you can see the actual response.")
+        subprocess.Popen([browser_exe, url])
+        return 1
+    print(f"WARNING: {url} never answered within {timeout_sec}s -- NOT opening the browser. "
+          f"Check the server's own console window for the actual failure.")
+    return 2
 
 
 if __name__ == "__main__":
