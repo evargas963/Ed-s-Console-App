@@ -64,4 +64,60 @@ assert.ok(rgb(G.cellStyle(-800000, 1000000, LIGHT).bg)[0] > rgb(G.cellStyle(-800
 assert.strictEqual(G.nearestStrikeIndex([90, 100, 110], 101), 1);
 assert.strictEqual(G.nearestStrikeIndex([90, 100, 110], 104.9), 1);
 
+// ---- F: heatmap rows render highest strike at the top, lowest at the bottom (operator
+// finding, 2026-09-11) -- calls the REAL renderSurface against a minimal DOM/EdShell stub,
+// so this proves actual row order and actual per-row strike/gex binding, not source text.
+global.document = {
+  documentElement: {},
+  getElementById: () => null,
+  querySelectorAll: () => [],
+  addEventListener: () => {},
+};
+global.window = {};
+global.getComputedStyle = () => ({ getPropertyValue: () => '' });
+
+function makeHost() {
+  return { innerHTML: '', querySelector: () => null, querySelectorAll: () => [] };
+}
+
+const strikes = [759, 760, 761, 762, 763, 764, 765, 766, 767, 768, 769]; // ascending, as the API serves them
+const cells = strikes.map((k, i) => ({ strike: k, gex: [1000 * (i + 1)] }));
+const surface = {
+  available: true,
+  spot: 764,
+  strikes,
+  cells,
+  expirations: [{ expiry: '2026-09-11', dte: 0, expired: false }],
+  live: true,
+  stale: false,
+};
+
+const host1 = makeHost();
+G.renderSurface(host1, surface);
+const rowStrikes = [...host1.innerHTML.matchAll(/data-strike="(\d+)"/g)].map((m) => Number(m[1]));
+// one data-strike per <td> per row (single expiry column here) -> one value per row, in
+// render order
+assert.deepStrictEqual(rowStrikes, [...strikes].reverse(),
+  'heatmap rows must descend from the highest strike to the lowest');
+
+// each row's own gex value travels with its own strike (no cross-row value shuffle from the
+// reversal -- this is the "preserve identity" requirement, checked against the real cell text)
+const rows = [...host1.innerHTML.matchAll(/data-strike="(\d+)"[^>]*data-gex="(-?\d+)"/g)];
+for (const [, strikeStr, gexStr] of rows) {
+  const strike = Number(strikeStr);
+  const expectedGex = cells[strikes.indexOf(strike)].gex[0];
+  assert.strictEqual(Number(gexStr), expectedGex, `strike ${strike} lost its own gex value under reversal`);
+}
+
+// the "all available" fallback path (no EdShell.scopeSelect) must ALSO descend -- this is the
+// path a bare surface actually exercises when EdShell is absent, and it is the same path real
+// scopeSelect output flows through, so this proves the render loop's own reversal, not a
+// scopeSelect-specific behaviour.
+const host2 = makeHost();
+G.renderSurface(host2, { ...surface, strikes: [100, 200, 300], cells: [
+  { strike: 100, gex: [1] }, { strike: 200, gex: [2] }, { strike: 300, gex: [3] },
+] });
+const rowStrikes2 = [...host2.innerHTML.matchAll(/data-strike="(\d+)"/g)].map((m) => Number(m[1]));
+assert.deepStrictEqual(rowStrikes2, [300, 200, 100]);
+
 console.log('ed_gamma: all assertions passed');

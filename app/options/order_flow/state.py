@@ -114,15 +114,22 @@ class OrderFlowState:
         if ts_recv is None:
             ts_recv = _time.time()
 
-        vol = content_item.get("TOTAL_VOLUME") or content_item.get("VOLUME")
-        if vol is not None:
-            try:
-                vf = float(vol)
-                if vf > 0:
-                    with self._lock:
-                        self._stream_volume[sym] = vf
-            except (TypeError, ValueError):
-                pass
+        # Operator finding (2026-09-11): `or` drops a legitimate 0 TOTAL_VOLUME (the honest
+        # state before any trade prints today, or for a contract with genuinely no volume
+        # yet) and falls through to VOLUME instead -- the same class of bug already fixed
+        # below for chg_pct. `vf > 0` compounded it: a genuine 0 was rejected outright, so a
+        # symbol that legitimately has zero volume so far never gets an entry at all, and a
+        # symbol whose cache already held a real number from earlier in the session keeps
+        # showing that STALE number if a later observation is honestly 0 (e.g. session
+        # reset) -- accepted presence, rejected value. float_finite_or_none rejects NaN/Inf
+        # (a bad tick) while admitting a real, finite zero.
+        vol = content_item.get("TOTAL_VOLUME")
+        if vol is None:
+            vol = content_item.get("VOLUME")
+        vf = float_finite_or_none(vol)
+        if vf is not None:
+            with self._lock:
+                self._stream_volume[sym] = vf
 
         # `or` would drop a legitimate 0.0 (flat) REGULAR_MARKET_CHANGE_PERCENT and fall
         # through to CHANGE_PERCENT instead; check presence explicitly. float_finite_or_none

@@ -143,7 +143,15 @@
         '><span class="d">' + escapeHtml((e.expiry || '').slice(5)) + '</span><span class="dte">' + dte + '</span></th>';
     });
     tbl += '</tr></thead><tbody>';
-    rowSel.idx.forEach(function (i) {
+    // Operator finding (2026-09-11): rowSel.idx is ascending-index order into the
+    // ascending `strikes` array (scopeSelect's own contract — shared by GEX-by-Strike
+    // and other consumers, so it stays ascending there). The heatmap specifically must
+    // read like a real strike ladder: highest strike at the top, lowest at the bottom.
+    // Reversed here, in the render loop only -- a presentation-only iteration order, not
+    // a mutation of rowSel.idx (still ascending for maxAbs above and any other reader)
+    // or of any row's own strike/expiry/gex/isSpot binding, which is looked up by index
+    // `i` exactly as before.
+    rowSel.idx.slice().reverse().forEach(function (i) {
       var row = cells[i] || { strike: strikes[i], gex: [] }, isSpot = (i === spotIdx);
       tbl += '<tr' + (isSpot ? ' class="spotrow"' : '') + '>' +
         '<th class="hstrike' + (isSpot ? ' spot' : '') + '">' + fmtStrike(row.strike) + '</th>';
