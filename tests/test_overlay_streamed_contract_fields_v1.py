@@ -16,6 +16,12 @@ from math_exposure_core import overlay_streamed_contract_fields
 
 
 def _contract(symbol, **fields):
+    # institutional-synthetic-ok: overlay_streamed_contract_fields is pure dict-merge
+    # mechanics (which fields land where, mutation, staleness) with no exposure math of
+    # its own -- compute_exposures_by_strike's own correctness is proven on real chains
+    # elsewhere (test_gamma_surface_projection_v1.py). A synthetic contract with
+    # deterministic field values makes the merge assertions exact and readable; nothing
+    # here depends on any field being a real market observation.
     base = {"symbol": symbol, "strikePrice": 580.0, "putCall": "CALL",
             "gamma": 0.01, "delta": 0.40, "openInterest": 100}
     base.update(fields)
@@ -120,6 +126,9 @@ def test_no_staleness_bound_applies_regardless_of_age():
 
 
 def test_a_contract_with_no_symbol_field_is_untouched_never_raises():
+    # institutional-synthetic-ok: exercising the missing-'symbol'-key edge case needs a
+    # contract that specifically lacks it -- a real captured chain's own contracts always
+    # carry one, so this fail-closed shape cannot be sourced from tests/fixtures/.
     contracts = [{"strikePrice": 580.0, "putCall": "CALL"}]
     out, n = overlay_streamed_contract_fields(contracts, {"A": {"gamma": 0.5}})
     assert n == 0
