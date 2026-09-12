@@ -10320,9 +10320,28 @@ app.add_api_route(
     include_in_schema=False,
 )
 
+class _RevalidateStaticFiles(StaticFiles):
+    """StaticFiles sends no Cache-Control at all, leaving freshness to each browser's own
+    heuristic (commonly ~10% of Last-Modified age, RFC 7234). MEASURED (2026-09-11): after a
+    real code change + server restart, a browser served a stale ed-gamma.js across THREE
+    separate full navigations (not just a soft reload) with zero requests reaching this
+    server for that file -- silent staleness a `curl` or a direct no-store fetch never
+    reveals, because it only affects the browser's own normal navigation path. `no-cache`
+    forces revalidation on every load (the existing ETag/Last-Modified still make an
+    unchanged file a cheap 304, so this costs nothing beyond a round trip) instead of
+    trusting a heuristic a shipped fix cannot control. Same reasoning already applied to
+    rth_clock_authority.js above, generalized to every static asset.
+    """
+
+    async def get_response(self, path: str, scope):
+        response = await super().get_response(path, scope)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
+
+
 static_dir = Path(APP_DIR) / "static"
 static_dir.mkdir(exist_ok=True)
-app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+app.mount("/static", _RevalidateStaticFiles(directory=str(static_dir)), name="static")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
