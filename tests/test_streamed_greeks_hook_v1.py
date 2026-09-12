@@ -497,7 +497,12 @@ def test_suppressed_replay_to_state_writes_are_caught_by_the_pipeline_assertions
     pipeline assertions (checking OrderFlowState's ACTUAL per-contract gamma value, and
     the publication's overlay count) correctly FAIL under that exact fault -- run here
     directly against the real functions, with push_level_one genuinely suppressed, not a
-    remembered claim about what a suppressed write would do."""
+    remembered claim about what a suppressed write would do.
+
+    # institutional-synthetic-ok: a minimal 3-contract REST baseline, built inline for
+    # exactly this adversarial control's purpose (proving the pipeline assertions fail
+    # under a suppressed write) -- no real fixture is more informative than these small,
+    # purpose-built contracts at this specific identity."""
     import server as srv
 
     _drain_l1_sse_thread_queue()
