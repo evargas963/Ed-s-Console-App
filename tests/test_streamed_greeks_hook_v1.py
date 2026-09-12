@@ -459,7 +459,12 @@ def test_disabling_the_hook_leaves_no_fresh_multi_contract_publication(tmp_path,
     publication) still passed -- proving those assertions established nothing about the
     batch itself. This test proves the NEW assertions (surface_seq strictly increases;
     stream_overlay_contracts reflects every batch contract) correctly FAIL under that
-    exact disabled-hook condition, so the benchmark's freshness checks are not vacuous."""
+    exact disabled-hook condition, so the benchmark's freshness checks are not vacuous.
+
+    # institutional-synthetic-ok: a minimal single-contract REST baseline, built inline
+    # for exactly this control's purpose (proving an assertion correctly fails) -- no
+    # real fixture is needed or more informative than one deliberately simple contract.
+    """
     import server as srv
 
     _drain_l1_sse_thread_queue()
@@ -522,7 +527,13 @@ def test_hook_fires_once_per_underlying_when_two_underlyings_qualify_in_one_tick
     over-coalesce across GENUINELY DIFFERENT underlyings sharing one poll tick -- two
     SPY contracts and one QQQ contract qualifying together must fire the hook exactly
     TWICE (once per underlying), not once (wrongly merging distinct terrain-cache
-    entries) and not three times (falling back to the pre-fix per-contract behavior)."""
+    entries) and not three times (falling back to the pre-fix per-contract behavior).
+
+    # institutional-synthetic-ok: two minimal, distinct-underlying REST baselines built
+    # inline for exactly this control's purpose (two real SPY strikes, one real QQQ
+    # strike, at a scale this specific grouping proof needs) -- no real fixture would be
+    # more informative than these deliberately simple, clearly-labeled contracts.
+    """
     import server as srv
 
     _drain_l1_sse_thread_queue()
