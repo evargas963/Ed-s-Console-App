@@ -249,7 +249,15 @@ def _synthetic_full_book_contracts(n_expiries=42, n_strikes=500):
     which would let this app's own quality gates (require_oi, gamma_is_plausible) skip most
     of the aggregate and understate the real per-call cost, exactly the vacuous-test trap
     the A-then-B overwrite tests (tests/test_gamma_surface_stream_refresh_v1.py) were found
-    to have fallen into with too-thin synthetic inputs."""
+    to have fallen into with too-thin synthetic inputs.
+
+    # institutional-synthetic-ok: no real captured chain at genuine full SPXW scale
+    # (~42,000 contracts) is committed under tests/fixtures/, and this benchmark's own
+    # point is to measure cost at that exact scale with every quality-gate-relevant
+    # field (OI, delta, gamma) deliberately in a plausible, non-degenerate range -- a
+    # real fixture at this size would also need to be hand-verified for the same
+    # properties, with no more provenance than a labeled synthetic one.
+    """
     import datetime
     base = datetime.date(2026, 9, 18)
     contracts = []
@@ -281,7 +289,15 @@ def _synthetic_full_book_contracts(n_expiries=42, n_strikes=500):
 def test_hook_coalescing_avoids_the_real_per_call_cost_at_spxw_scale(tmp_path, monkeypatch):
     """Wires the REAL production hook against a real-scale synthetic book and measures its
     REAL wall-clock cost, proving end to end that a 3-row poll batch pays roughly ONE real
-    call's worth of latency, not three -- the actual production claim, not a call count."""
+    call's worth of latency, not three -- the actual production claim, not a call count.
+
+    # institutional-synthetic-ok: the appended _SPY_CONTRACT entry below must be a
+    # MEMBER of the same synthetic-scale book _synthetic_full_book_contracts builds
+    # (see that function's own institutional-synthetic-ok note) or
+    # overlay_streamed_contract_fields finds nothing to overlay and this benchmark
+    # short-circuits to zero real cost -- there is no real fixture at this contract's
+    # exact identity inside a genuine 42,001-contract synthetic scale book.
+    """
     import time as _t
 
     import server as srv
