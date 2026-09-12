@@ -944,6 +944,19 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     // successful one on the very next call. Also proves: a call repeated WHILE the first
     // is still pending must not fire a duplicate concurrent request, and a response whose
     // acknowledged `contracts` do not match what was sent must not be accepted either.
+    //
+    // Independent-review-adjacent flake, self-diagnosed (2026-09-12): the shell's own
+    // background auto-select-on-load (Strike Detail auto-selecting the nearest-to-spot
+    // strike -- the default CHAIN fixture's contracts have no `symbol` field, so it
+    // resolves to a genuine "clear" demand, setAdditionalContracts([])) can still be
+    // in flight when this test's own SET request is dispatched. Once the "latest
+    // intent always wins, even over an in-flight request for a different target" fix
+    // landed (the exact behavior these subscription tests exist to prove), that
+    // background clear correctly SUPERSEDES this test's own in-flight SET request if
+    // it lands mid-flight -- firing a genuine extra network call this test did not
+    // expect, not a bug in the fix. Settled the same way the newer subscription-state-
+    // machine tests already do: wait for the page's own background auto-select to
+    // finish before starting this test's own explicit sequence.
     let requestCount = 0;
     /** @type {((v: any) => void) | null} */
     let releasePending = null;
@@ -967,6 +980,8 @@ test.describe('Ed Console shell + gamma heatmap', () => {
         body: JSON.stringify({ ok: true, contracts: body.contracts || [] }) });
     });
     await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#sdCtx')).toContainText('583');   // background auto-select settled
+    requestCount = 0;   // discard the auto-select's own settle-time request(s), if any
 
     const SET = ['SPY   260911C00583000', 'SPY   260911P00583000'];
 
@@ -1086,5 +1101,113 @@ test.describe('Ed Console shell + gamma heatmap', () => {
       expect(r).not.toContain('SPY   260911C00586000');
       expect(r).not.toContain('SPY   260911P00586000');
     }
+  });
+
+  test('clearing demand while a request is still pending is not overridden by that request\'s late acceptance (RC-UI-3)', async ({ page }) => {
+    // Independent-review finding (2026-09-12), REPRODUCED: request A (left pending),
+    // then clear ([]) BEFORE A resolves. Because _desiredAdditional was still [] (A had
+    // never actually committed), the clear matched the OLD "unchanged" short-circuit
+    // against the CONFIRMED value alone and returned accepted:true WITHOUT sending any
+    // cancellation to the server and WITHOUT invalidating A's in-flight generation token
+    // -- so when A's late response finally arrived, it was still "current" and silently
+    // committed, overriding the operator's explicit clear intent. The real invariant:
+    // the LATEST call always wins, including a return to an empty/no-longer-desired set.
+    // Body-keyed request tracking (not a raw ordinal count): the shell's own unrelated
+    // background behavior (e.g. auto-selecting the spot strike on first load) can fire
+    // its own additional-contracts calls independent of this test's own sequence, so
+    // "the Nth request" is not a reliable handle -- "a request naming exactly this set
+    // has arrived" is.
+    const A = ['SPY   260911C00583000', 'SPY   260911P00583000'];
+    const keyOf = (arr) => arr.slice().sort().join(',');
+    /** @type {string[]} */
+    const seen = [];
+    let hungOnceForA = false;
+    /** @type {((v: any) => void) | null} */
+    let releaseA = null;
+    await page.route('**/api/streaming/active-option-contracts', async (route) => {
+      const body = JSON.parse(route.request().postData() || '{}');
+      const key = keyOf(body.contracts || []);
+      seen.push(key);
+      if (key === keyOf(A) && !hungOnceForA) {
+        hungOnceForA = true;
+        await new Promise((resolve) => { releaseA = resolve; });   // A hangs, once
+      }
+      route.fulfill({ status: 200, contentType: 'application/json',
+        body: JSON.stringify({ ok: true, contracts: body.contracts || [] }) });
+    });
+    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(200);   // let any unrelated page-load auto-request settle first
+
+    const seenBeforeA = seen.length;
+    const pendingA = page.evaluate((set) => window.EdStream.setAdditionalContracts(set), A);
+    await expect.poll(() => seen.includes(keyOf(A))).toBe(true);   // A's request is in flight, hanging
+    expect(seen.length).toBe(seenBeforeA + 1);   // exactly one new request, for A
+
+    // Clear BEFORE A resolves -- must send a REAL cancellation request, not a fabricated
+    // accept with zero network activity.
+    const clearResult = await page.evaluate(() => window.EdStream.setAdditionalContracts([]));
+    expect(seen.length).toBe(seenBeforeA + 2);   // the clear must have fired its OWN real request
+    expect(seen[seen.length - 1]).toBe(keyOf([]));
+    expect(clearResult.accepted).toBe(true);
+    expect(await page.evaluate(() => window.EdStream.getDesiredAdditional())).toEqual([]);
+
+    // NOW release A's late response -- it must NOT be able to override the clear.
+    if (releaseA) releaseA(undefined);
+    await pendingA;
+    await page.waitForTimeout(150);   // let any (incorrect) late-commit attempt land
+    expect(await page.evaluate(() => window.EdStream.getDesiredAdditional())).toEqual([]);
+  });
+
+  test('returning to a previously-accepted set while a newer request is pending is not overridden by that request\'s late acceptance (RC-UI-3)', async ({ page }) => {
+    // Independent-review finding (2026-09-12), REPRODUCED, the mirror case: accept A,
+    // then request B (left pending), then explicitly return to A BEFORE B resolves.
+    // Because A equals the CONFIRMED _desiredAdditional, returning to it matched the OLD
+    // "unchanged" short-circuit and did not bump the generation token -- B's in-flight
+    // request was still "current" when it resolved, silently overriding the operator's
+    // explicit return-to-A intent.
+    const A = ['SPY   260911C00583000', 'SPY   260911P00583000'];
+    const B = ['SPY   260911C00586000', 'SPY   260911P00586000'];
+    const keyOf = (arr) => arr.slice().sort().join(',');
+    /** @type {string[]} */
+    const seen = [];
+    let hungOnceForB = false;
+    /** @type {((v: any) => void) | null} */
+    let releaseB = null;
+    await page.route('**/api/streaming/active-option-contracts', async (route) => {
+      const body = JSON.parse(route.request().postData() || '{}');
+      const key = keyOf(body.contracts || []);
+      seen.push(key);
+      if (key === keyOf(B) && !hungOnceForB) {
+        hungOnceForB = true;
+        await new Promise((resolve) => { releaseB = resolve; });   // B hangs, once
+      }
+      route.fulfill({ status: 200, contentType: 'application/json',
+        body: JSON.stringify({ ok: true, contracts: body.contracts || [] }) });
+    });
+    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(200);   // let any unrelated page-load auto-request settle first
+
+    const acceptA = await page.evaluate((set) => window.EdStream.setAdditionalContracts(set), A);
+    expect(acceptA.accepted).toBe(true);
+    expect(seen[seen.length - 1]).toBe(keyOf(A));
+
+    const seenBeforeB = seen.length;
+    const pendingB = page.evaluate((set) => window.EdStream.setAdditionalContracts(set), B);
+    await expect.poll(() => seen.includes(keyOf(B))).toBe(true);   // B's request is in flight, hanging
+    expect(seen.length).toBe(seenBeforeB + 1);   // exactly one new request, for B
+
+    // Return to A BEFORE B resolves -- must send a REAL request reasserting A, not a
+    // fabricated accept that leaves B's stale in-flight token free to win.
+    const returnToA = await page.evaluate((set) => window.EdStream.setAdditionalContracts(set), A);
+    expect(seen.length).toBe(seenBeforeB + 2);   // the return-to-A must have fired its OWN real request
+    expect(seen[seen.length - 1]).toBe(keyOf(A));
+    expect(returnToA.accepted).toBe(true);
+    expect(await page.evaluate(() => window.EdStream.getDesiredAdditional())).toEqual(A);
+
+    // NOW release B's late response -- it must NOT be able to override the return to A.
+    if (releaseB) releaseB(undefined);
+    await pendingB;
+    await page.waitForTimeout(150);   // let any (incorrect) late-commit attempt land
+    expect(await page.evaluate(() => window.EdStream.getDesiredAdditional())).toEqual(A);
   });
 });

@@ -132,15 +132,40 @@
     // unchanged:true WITHOUT issuing any new HTTP request at all -- false acceptance with
     // zero retry. Fixed by only ever committing _desiredAdditional on an ACTUALLY
     // confirmed-accepted response (see the .then() below), never optimistically.
-    if (_sortedEqual(dedup, _desiredAdditional)) {
+    //
+    // Independent-review finding (2026-09-12), REPRODUCED, connected: the "unchanged"
+    // short-circuit below used to compare ONLY against _desiredAdditional (the last
+    // CONFIRMED value), ignoring whatever was currently _pendingAdditional (in flight for
+    // a DIFFERENT value). Two real sequences this let through:
+    //   (a) request A (pending) -> clear ([]) before A resolves: since _desiredAdditional
+    //       was still [] (A never committed yet), the clear matched "unchanged" and
+    //       returned accepted:true WITHOUT sending any cancellation to the server, and
+    //       without bumping the generation -- A's stale in-flight token was still
+    //       "current" when it eventually resolved, so A's late acceptance silently WON
+    //       over the operator's clear intent.
+    //   (b) accept A -> request B (pending) -> return to A before B resolves: matched
+    //       "unchanged" against the confirmed A, again with no generation bump -- B's
+    //       stale in-flight token was still "current" when it resolved, so B silently
+    //       WON over the operator's explicit return-to-A intent.
+    // The real invariant: the LATEST call always wins. "Nothing to do" is only true when
+    // the requested value matches whatever is CURRENTLY AUTHORITATIVE -- the in-flight
+    // request's target if one exists, else the last confirmed value -- never the
+    // confirmed value alone while something else is in flight for a different target.
+    var currentTarget = (_pendingAdditional !== null) ? _pendingAdditional : _desiredAdditional;
+    if (_sortedEqual(dedup, currentTarget)) {
+      if (_pendingAdditional !== null) {
+        // Identical to what is ALREADY in flight -- do not fire a duplicate concurrent
+        // request (Strike Detail can call this on every render); let the one in-flight
+        // fetch resolve and commit on its own (its token is still current, untouched).
+        return Promise.resolve({ accepted: false, unchanged: false, pending: true, contracts: dedup });
+      }
       return Promise.resolve({ accepted: true, unchanged: true, contracts: _desiredAdditional });
     }
-    // A second call for the exact set ALREADY in flight must not fire a duplicate
-    // concurrent request (Strike Detail can call this on every render) -- report it as
-    // still pending rather than fabricating either an accepted or a fresh-request result.
-    if (_pendingAdditional && _sortedEqual(dedup, _pendingAdditional)) {
-      return Promise.resolve({ accepted: false, unchanged: false, pending: true, contracts: dedup });
-    }
+    // The requested value genuinely DIFFERS from whatever is authoritative right now
+    // (confirmed or in flight) -- a real new intent. Bump the generation so any STALE
+    // in-flight request for the superseded target can never commit once this one lands,
+    // even when this new target happens to equal an EARLIER confirmed value (returning
+    // to A while B is pending must still supersede B, not merely match A's own history).
     var token = ++_additionalGen;   // supersedes any earlier in-flight request's ability to commit
     _pendingAdditional = dedup;
     return fetch('/api/streaming/active-option-contracts', {

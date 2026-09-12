@@ -147,6 +147,24 @@ put or on an agent's memory of it.
     unproven, rather than letting a strong result at one tier stand in for another. Review every
     CHANGED test and validator in the candidate for weakened expectations (a loosened assertion,
     a widened tolerance, a dropped negative control) as carefully as the production code itself.
+    **Layered-testing clarification (2026-09-12, independent-review request):** the tiers above
+    map onto four questions, each answered by a DIFFERENT kind of test, never substituted for one
+    another: **component** (does this one responsibility produce an independently-justified
+    result, checked against an expected value NOT produced by calling the same production
+    calculation on both sides — AGENTS.md's "ONE computation" clarifications); **integration**
+    (do connected components preserve identity, ordering, data, and failure behavior across the
+    seam — real inputs through real plumbing, external dependencies doubled only where a live one
+    is genuinely unavailable, and that doubling's own behavior validated against the real
+    dependency's documented/installed contract per requirement 9); **system acceptance** (does the
+    operator's complete workflow deliver the required visible outcome, end to end); **runtime
+    verification** (does the deployed application, with its ACTUAL dependencies — live vendor,
+    live browser, the authorized process entry point — accomplish that outcome). A pass at a
+    higher tier never overrides a valid failure demonstrated at a lower one. Adversarial cases
+    (requirement 9) apply at every tier, not only the one a change happens to touch. Changing a
+    test's expectation to match a new implementation is legitimate ONLY when the required
+    behavior itself changed or was previously mis-stated — "the new code behaves differently" is
+    not, by itself, a reason; cite the required-behavior basis for the change in the same place
+    the test changes.
 13. **Proactive repair.** Complete the necessary connected engineering work within the existing
     authorization before stopping — do not pause mid-mission for a separate go-ahead on work
     already authorized, and do not let an unrelated correction (a documentation fix, a drive-by

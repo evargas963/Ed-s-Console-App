@@ -1170,7 +1170,7 @@ async def _apply_extra_option_contract_subs(stream, contract_state: dict, extra_
 
 async def _apply_option_primary_role_transfer(stream, contract_state: dict, epoch_state: "dict | None", *,
                                               requested: "str | None", plural_requested_raw: set,
-                                              writer) -> None:
+                                              writer) -> "str | None":
     """Move durable coverage + vendor-held bookkeeping between the primary "l1" key and a
     namespaced extra key WITHOUT touching the vendor, when a role transfer (primary <->
     additional) is simply relabeling an ALREADY-live subscription rather than genuinely
@@ -1206,7 +1206,43 @@ async def _apply_option_primary_role_transfer(stream, contract_state: dict, epoc
     Both may apply in the same tick (A demoted, B promoted): demotion's rename runs
     first, vacating "l1", then promotion's rename lands — disjoint keys, no collision,
     and the whole swap costs zero vendor calls, exactly as it should for two contracts
-    that both remain continuously held throughout."""
+    that both remain continuously held throughout.
+
+    Returns the symbol whose promotion was DEFERRED this tick (old primary's drop
+    failed or is still retrying), or None otherwise (no transfer, demotion-only, or a
+    promotion that landed). Independent-review finding (2026-09-12), REPRODUCED,
+    connected to the original fix above: the caller (_apply_active_option_contract_subs)
+    used to run its OWN unconditional primary ("l1"/"book") reconcile immediately after
+    this pre-pass, REGARDLESS of whether the pre-pass had already deferred the
+    promotion. Three compounding defects resulted while deferred:
+      1. That second, independent reconcile call ALSO tried to close the old primary and
+         subscribe the promoted symbol under "l1" via the ORDINARY switch-symbols path
+         (not this function's pure-rename path) -- if it ever succeeded on a later tick
+         (a close that fails once, then succeeds), it opened a FRESH "l1" epoch for the
+         promoted symbol while that symbol's OWN "l1:extra:{symbol}" epoch was still
+         open, reintroducing the exact writer per-(symbol,service) uniqueness collision
+         (and the false coverage gap that follows from its compensation) the original
+         fix in this function exists to prevent.
+      2. The caller's extra_requested set excluded the promotion target from the
+         additional-contracts reconcile pass purely because it EQUALED the signal's
+         `requested` value -- not because it had actually become primary.
+      3. Independent-review finding (2026-09-12), REPRODUCED, a THIRD compounding
+         defect beyond (2): the real operator-driven signal for "promote X" naturally
+         DROPS X from the plural additional-contracts set entirely (X is becoming the
+         primary, not staying additional) -- so X is not even a CANDIDATE in
+         plural_requested_raw during a deferred tick, regardless of fix (2)'s equality
+         guard. With X absent from the desired set altogether, the additional-contracts
+         reconciler's own "in_play" bookkeeping (which tracks every symbol contract_state
+         still remembers holding) saw X's still-open extra-key row as simply
+         "no longer desired" and issued a REAL unsubscribe for it -- dropping a
+         continuously-desired contract's ONLY live coverage for no reason connected to
+         any actual failure of ITS OWN, DURING a role-transfer that has not yet happened.
+    All three are fixed at the caller: gating the ordinary primary reconcile on this
+    return value; excluding a symbol from extras only once contract_state["l1"]
+    genuinely equals it; and, when this function returns a deferred symbol, forcing
+    that EXACT symbol back into the additional-contracts reconcile pass for this tick
+    regardless of what the raw signal itself currently says — see
+    _apply_active_option_contract_subs."""
     def _pop(key):
         c = contract_state.pop(key, None)
         e = epoch_state.pop(key, None) if epoch_state is not None else None
@@ -1228,7 +1264,7 @@ async def _apply_option_primary_role_transfer(stream, contract_state: dict, epoc
     is_demotion = bool(old_primary) and old_primary != requested and old_primary in plural_requested_raw
 
     if not is_promotion and not is_demotion:
-        return
+        return None
 
     if is_demotion:
         c, e, p = _pop("l1")
@@ -1247,12 +1283,17 @@ async def _apply_option_primary_role_transfer(stream, contract_state: dict, epoc
         contract_state["l1"] = dropped
         if dropped is not None:
             # the drop failed or is retrying (durable close or vendor unsub did not
-            # land) -- "l1" is still legitimately occupied; do not promote yet.
-            return
+            # land) -- "l1" is still legitimately occupied; do not promote yet, and tell
+            # the caller EXACTLY which symbol is deferred so it does not ALSO run its
+            # own primary reconcile (which would duplicate this attempt) or drop the
+            # promoted symbol's still-live extra coverage (see this function's own
+            # docstring, defects 1-3).
+            return requested
 
     if is_promotion:
         c, e, p = _pop(promote_key)
         _put("l1", c, e, p)
+    return None
 
 
 async def _apply_active_option_contract_subs(stream, contract_state: dict, *,
@@ -1296,20 +1337,50 @@ async def _apply_active_option_contract_subs(stream, contract_state: dict, *,
     plural_requested_raw = set(read_active_option_contracts_signal())
     # Role-transfer pre-pass (independent-review finding, 2026-09-12): must run before
     # any reconcile call this tick — see _apply_option_primary_role_transfer's docstring.
-    await _apply_option_primary_role_transfer(
+    #
+    # Independent-review finding (2026-09-12), REPRODUCED, connected: the primary/book
+    # reconcile calls below used to run UNCONDITIONALLY, even when the pre-pass just
+    # DEFERRED a promotion (old primary's drop failed/retrying) -- duplicating that
+    # drop attempt through the ordinary switch-symbols path, which, once it eventually
+    # succeeded, opened a second live "l1" epoch for the promoted symbol while its own
+    # "l1:extra:{symbol}" epoch was still open (the exact writer uniqueness collision
+    # the pre-pass exists to prevent). Skipped entirely while deferred: the pre-pass's
+    # own reconcile call already owns retrying the drop, with its own epoch-state
+    # tracking: this tick simply reflects reality (old primary still legitimately held)
+    # and tries again next tick, the same way it always has.
+    deferred_symbol = await _apply_option_primary_role_transfer(
         stream, contract_state, epoch_state,
         requested=requested, plural_requested_raw=plural_requested_raw, writer=writer)
-    contract_state["l1"] = await _reconcile_option_service(
-        stream, contract_state.get("l1"), requested,
-        subs_fn=_subs_or_add(contract_state, "l1", "l1",
-                             stream.level_one_option_subs, stream.level_one_option_add),
-        unsubs_fn=stream.level_one_option_unsubs,
-        writer=writer, epoch_state=epoch_state, epoch_key="l1", service_name="LEVELONE_OPTIONS")
-    contract_state["book"] = await _reconcile_option_service(
-        stream, contract_state.get("book"), requested,
-        subs_fn=stream.options_book_subs, unsubs_fn=stream.options_book_unsubs,
-        writer=writer, epoch_state=epoch_state, epoch_key="book", service_name="OPTIONS_BOOK")
-    extra_requested = {s for s in plural_requested_raw if s != requested}
+    if deferred_symbol is None:
+        contract_state["l1"] = await _reconcile_option_service(
+            stream, contract_state.get("l1"), requested,
+            subs_fn=_subs_or_add(contract_state, "l1", "l1",
+                                 stream.level_one_option_subs, stream.level_one_option_add),
+            unsubs_fn=stream.level_one_option_unsubs,
+            writer=writer, epoch_state=epoch_state, epoch_key="l1", service_name="LEVELONE_OPTIONS")
+        contract_state["book"] = await _reconcile_option_service(
+            stream, contract_state.get("book"), requested,
+            subs_fn=stream.options_book_subs, unsubs_fn=stream.options_book_unsubs,
+            writer=writer, epoch_state=epoch_state, epoch_key="book", service_name="OPTIONS_BOOK")
+    # Independent-review finding (2026-09-12), REPRODUCED, connected: excluding a symbol
+    # from the ADDITIONAL-contracts pass merely because it EQUALS `requested` used to run
+    # regardless of whether that symbol had actually become primary. While a promotion is
+    # deferred, the promoted symbol is STILL held only under its own extra key -- but this
+    # exclusion made the extra-contracts reconcile see it as "no longer wanted" and issue
+    # a real unsubscribe for a continuously-desired contract's ONLY live coverage. Fixed:
+    # a symbol is excluded from extras only once contract_state["l1"] genuinely equals it.
+    extra_requested = {s for s in plural_requested_raw
+                       if not (s == requested and contract_state.get("l1") == requested)}
+    # Independent-review finding (2026-09-12), REPRODUCED, a further connected defect:
+    # the OPERATOR's own real signal for "promote X" naturally drops X from the plural
+    # additional set entirely (X is BECOMING primary, not staying additional) -- so X is
+    # not even a candidate in plural_requested_raw above, regardless of the equality
+    # guard. While the promotion is deferred, X's ONLY live coverage is still its extra
+    # key; force it back into this tick's additional-contracts pass so the reconciler
+    # never sees it as "no longer wanted" purely because the signal already reflects the
+    # NEXT state that has not actually landed yet.
+    if deferred_symbol is not None:
+        extra_requested.add(deferred_symbol)
     await _apply_extra_option_contract_subs(
         stream, contract_state, extra_requested, writer=writer, epoch_state=epoch_state)
     return contract_state
