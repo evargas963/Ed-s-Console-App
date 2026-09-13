@@ -107,6 +107,14 @@
     // ago, not the surface currently being rendered.
     var _priorSurfaceForFlash = _lastSurface;
     if (!surface || surface.available === false) {
+      // Independent-review finding (2026-09-13), REPRODUCED: an unavailable result (no
+      // chain, delisted, not on board) never cleared the heatmap's own streamed-contract
+      // demand, so a ticker that stops being available kept the LAST successful render's
+      // contracts subscribed indefinitely. Every exit from this function states demand,
+      // including "none" -- same discipline Strike Detail's renderStrike already applies.
+      if (window.EdStream && window.EdStream.setAdditionalContracts) {
+        window.EdStream.setAdditionalContracts([], 'heatmap');
+      }
       // #1-A: even with no surface to draw, disclose the collection status honestly — a requested
       // symbol that is NOT on the board must read "not currently active for this symbol", never a
       // promised refresh. buildBanner is the ONE place that wording lives (warming/requested/board).
@@ -152,6 +160,51 @@
     } else {
       viewCols = allCols;                                       // every canonical column, scrolled at legible width
     }
+    // C: emphasise the nearest UNEXPIRED expiry (front) column — presentation only, no predictive meaning
+    var frontCol = -1, minDte = Infinity;
+    exps.forEach(function (e, ix) { if (e.expired !== true && e.dte != null && e.dte < minDte) { minDte = e.dte; frontCol = ix; } });
+    // Live-heatmap coverage (state-authority review, 2026-09-12): every OTHER cell on this
+    // grid only ever refreshed on the ~60s wide-chain REST cycle -- nothing had ever asked
+    // the streaming layer to keep the cells the operator is ACTUALLY LOOKING AT fresh
+    // sub-second, only whatever one strike Strike Detail happened to have separately
+    // selected. Each surface cell now carries its own vendor OSI symbols (server.py's
+    // project_gamma_surface), so the heatmap can declare its OWN demand through the same
+    // single-owner endpoint EdStream already owns (setAdditionalContracts's ownerKey,
+    // 'heatmap' -- coexists with Strike Detail's own 'default'-owner demand, unioned).
+    // Deliberately bounded to the DEFAULT ("auto") scope's visible strikes and only the
+    // FRONT (nearest-unexpired) expiry column -- the column traders actually watch
+    // tick-to-tick, and a contract count (<= MAX_AUTO_COLS strikes x 2 sides) already
+    // within this session's own measured-safe replay-loop budget. "Wider"/"All available"
+    // are an explicit operator zoom-out to the full book and stay REST-cadence only, same
+    // as before -- the full-book vendor-side subscription capacity remains a separate,
+    // NOT_PROVEN, operator-authorized question this does not silently reopen.
+    //
+    // Independent-review findings (2026-09-13), BOTH REPRODUCED, fixed together here:
+    // (a) "demand can target a different expiry from the displayed cells" -- this always
+    //     demanded the FRONT column regardless of an explicit single-expiry filter, so
+    //     picking (e.g.) Sept 25 while the nearer Sept 18 was still the computed "front"
+    //     kept streaming Sept 18's contracts while Sept 25's cells sat on the REST cadence.
+    //     Fixed: when an explicit expFilter is active, viewCols IS that one column
+    //     regardless of scope (see the branch above) -- the same bounded single-column
+    //     cost the front-column policy already allows -- so demand now follows viewCols,
+    //     not always "front", whenever a filter narrows the view.
+    // (b) "demand stays cleared after leaving and returning to an unchanged surface" --
+    //     this call used to live INSIDE the full-table-rebuild branch below, gated by the
+    //     `rev === _lastRevision` fast-path (module state that outlives a leave/return
+    //     cycle). Leaving the heatmap explicitly clears demand (see load()); returning to
+    //     an otherwise-unchanged surface then hit the fast path and never re-declared it.
+    //     Fixed by moving this out of the fast-path gate entirely -- it now runs on EVERY
+    //     render, full rebuild or not (setAdditionalContracts is dedup-safe to call
+    //     repeatedly with the same set, by the same design panels.js already documents).
+    // Computed unconditionally (not just when EdStream exists) -- the column-header
+    // coverage disclosure below reads `demandCols` regardless of whether anything is
+    // actually listening for the demand notification (e.g. the node test harness, which
+    // renders this exact function with no `window`/EdStream at all).
+    var demandCols = expFilter ? viewCols : (scope === 'auto' && frontCol >= 0 ? [frontCol] : []);
+    if (window.EdStream && window.EdStream.setAdditionalContracts) {
+      var frontDemand = demandCols.length ? _heatmapVisibleContracts(cells, rowSel, demandCols) : [];
+      window.EdStream.setAdditionalContracts(frontDemand, 'heatmap');
+    }
     _lastSurface = surface;   // cached so a theme switch can re-render without a refetch
     // #1: skip the full table rebuild when the canonical surface REVISION (and the viewport choice)
     // is unchanged (only the age advances between terrain revisions). A theme switch clears
@@ -171,37 +224,26 @@
     // freshness / source — fail stale visibly (RC-UI-1 live-source rewire)
     var live = surface.live !== false, stale = !!surface.stale;
     var banner = buildBanner(surface);   // status banners (warming/requested/stale/ref + narrowed)
-    // C: emphasise the nearest UNEXPIRED expiry (front) column — presentation only, no predictive meaning
-    var frontCol = -1, minDte = Infinity;
-    exps.forEach(function (e, ix) { if (e.expired !== true && e.dte != null && e.dte < minDte) { minDte = e.dte; frontCol = ix; } });
-    // Live-heatmap coverage (state-authority review, 2026-09-12): every OTHER cell on this
-    // grid only ever refreshed on the ~60s wide-chain REST cycle -- nothing had ever asked
-    // the streaming layer to keep the cells the operator is ACTUALLY LOOKING AT fresh
-    // sub-second, only whatever one strike Strike Detail happened to have separately
-    // selected. Each surface cell now carries its own vendor OSI symbols (server.py's
-    // project_gamma_surface), so the heatmap can declare its OWN demand through the same
-    // single-owner endpoint EdStream already owns (setAdditionalContracts's ownerKey,
-    // 'heatmap' -- coexists with Strike Detail's own 'default'-owner demand, unioned).
-    // Deliberately bounded to the DEFAULT ("auto") scope's visible strikes and only the
-    // FRONT (nearest-unexpired) expiry column -- the column traders actually watch
-    // tick-to-tick, and a contract count (<= MAX_AUTO_COLS strikes x 2 sides) already
-    // within this session's own measured-safe replay-loop budget. "Wider"/"All available"
-    // are an explicit operator zoom-out to the full book and stay REST-cadence only, same
-    // as before -- the full-book vendor-side subscription capacity remains a separate,
-    // NOT_PROVEN, operator-authorized question this does not silently reopen.
-    if (window.EdStream && window.EdStream.setAdditionalContracts) {
-      var frontDemand = (scope === 'auto' && frontCol >= 0)
-        ? _heatmapVisibleContracts(cells, rowSel, [frontCol]) : [];
-      window.EdStream.setAdditionalContracts(frontDemand, 'heatmap');
-    }
     // B: a STALE / REFERENCE surface visually recedes (in addition to the banner)
     var recede = (!live || stale) ? ' recede' : '';
     var tbl = '<table class="heat"><thead><tr><th class="hcorner">Strike</th>';
+    // Coverage disclosure (mandate: "coverage limitations must be visible... never silently
+    // become a narrower definition of completion"): only the column(s) in `demandCols`
+    // above actually receive sub-second streaming updates; every OTHER column -- including
+    // every column when Wider/All is selected with no expiry filter -- still refreshes on
+    // the ~60s REST cadence only. This states that distinction on the column itself rather
+    // than leaving the visual col-front highlight to imply a meaning it never spelled out.
+    var demandColSet = {}; demandCols.forEach(function (dc) { demandColSet[dc] = true; });
     viewCols.forEach(function (j) {
-      var e = exps[j], expired = e.expired === true;
+      var e = exps[j], expired = e.expired === true, streamed = !!demandColSet[j];
       var dte = expired ? 'EXPIRED' : (e.dte === 0) ? '0DTE' : (e.dte != null ? e.dte + 'DTE' : '');
+      var title = expired
+        ? 'this expiration has already expired — a prior-session column kept for reference, not current structure'
+        : streamed
+          ? 'sub-second streaming updates active for this column'
+          : 'REST-cadence only (refreshes ~60s) — not sub-second streamed; Auto shows one streamed column at a time';
       tbl += '<th class="hexp' + (j === frontCol ? ' col-front' : '') + (expired ? ' expired' : '') + '"' +
-        (expired ? ' title="this expiration has already expired — a prior-session column kept for reference, not current structure"' : '') +
+        ' title="' + escapeHtml(title) + '"' +
         '><span class="d">' + escapeHtml((e.expiry || '').slice(5)) + '</span><span class="dte">' + dte + '</span></th>';
     });
     tbl += '</tr></thead><tbody>';
@@ -410,18 +452,26 @@
   // stale/hung fetch the coalescing loader happens to still be waiting on (state-authority
   // review, 2026-09-13: reproduced exactly this way in ed-gamma-flow.js's analogous "clear
   // intent" branch — see that file's stillFlow fix for the identical class of bug).
-  function loadImpl(ticker) {
+  // ROUND 8 (2026-09-13, independent-review finding, REPRODUCED): the round-7 coalescing
+  // loader merged EVERY trigger into the same in-flight slot, so a held/slow fetch for an
+  // ABANDONED ticker blocked the newly-selected ticker from ever loading. Fixed by keying
+  // the loader on ticker (makeCoalescedLoader now aborts+restarts immediately on a key
+  // change instead of waiting) and passing the fetch its AbortSignal.
+  function loadImpl(ticker, signal) {
     var host = document.getElementById('heatBody');
     if (!host || !stillCurrent(ticker)) return;
     host.setAttribute('aria-busy', 'true');
-    return fetch('/api/options/gamma-surface?ticker=' + encodeURIComponent(ticker), { cache: 'no-store' })
+    return fetch('/api/options/gamma-surface?ticker=' + encodeURIComponent(ticker), { cache: 'no-store', signal: signal })
       .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
       .then(function (d) { if (stillCurrent(ticker)) renderSurface(host, d); })
-      .catch(function () { if (stillCurrent(ticker)) renderSurface(host, { available: false, reason: 'no console serving /api/options/gamma-surface' }); });
+      .catch(function (e) {
+        if (e && e.name === 'AbortError') return;   // superseded by a newer ticker -- that load renders instead
+        if (stillCurrent(ticker)) renderSurface(host, { available: false, reason: 'no console serving /api/options/gamma-surface' });
+      });
   }
   var _pendingTicker = null;
   var _loader = (typeof window !== 'undefined' && window.EdL1SseGuards && window.EdL1SseGuards.makeCoalescedLoader)
-    ? window.EdL1SseGuards.makeCoalescedLoader(function () { return loadImpl(_pendingTicker); })
+    ? window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadImpl(_pendingTicker, signal); })
     : { trigger: function () { loadImpl(_pendingTicker); }, reset: function () {} };
   function load() {
     var host = document.getElementById('heatBody');
@@ -437,7 +487,7 @@
       return;
     }
     _pendingTicker = st.ticker || 'SPY';
-    _loader.trigger();
+    _loader.trigger(_pendingTicker);
   }
 
   if (typeof document !== 'undefined') {

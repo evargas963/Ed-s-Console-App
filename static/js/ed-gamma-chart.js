@@ -30,23 +30,25 @@
   // changed mid-flight is checked at resolution time (stillChart), not inferred from a
   // counter.
   function stillChart(tk) { return isChart() && ticker() === tk; }
-  function loadImpl() {
+  // ROUND 8 (2026-09-13): keyed on ticker so a held/slow fetch for an ABANDONED ticker is
+  // aborted immediately once a different ticker is selected, instead of blocking it.
+  function loadImpl(tk, signal) {
     var host = document.getElementById('chartBody');
-    if (!host || !isChart()) return;
-    var tk = ticker();
+    if (!host || !stillChart(tk)) return;
     host.setAttribute('aria-busy', 'true');
     return Promise.all([
-      fetch('/api/bars1m?ticker=' + encodeURIComponent(tk) + '&limit=180', { cache: 'no-store' }).then(okJson).catch(nullp),
-      fetch('/api/terrain/strikes?ticker=' + encodeURIComponent(tk), { cache: 'no-store' }).then(okJson).catch(nullp),
-      fetch('/api/terrain?ticker=' + encodeURIComponent(tk), { cache: 'no-store' }).then(okJson).catch(nullp),
+      fetch('/api/bars1m?ticker=' + encodeURIComponent(tk) + '&limit=180', { cache: 'no-store', signal: signal }).then(okJson).catch(nullp),
+      fetch('/api/terrain/strikes?ticker=' + encodeURIComponent(tk), { cache: 'no-store', signal: signal }).then(okJson).catch(nullp),
+      fetch('/api/terrain?ticker=' + encodeURIComponent(tk), { cache: 'no-store', signal: signal }).then(okJson).catch(nullp),
     ]).then(function (res) {
       if (!stillChart(tk)) return;
       render(host, res[0], res[1], res[2]);
     });
   }
   var _loader = (typeof window !== 'undefined' && window.EdL1SseGuards && window.EdL1SseGuards.makeCoalescedLoader)
-    ? window.EdL1SseGuards.makeCoalescedLoader(loadImpl) : { trigger: loadImpl, reset: function () {} };
-  function load() { _loader.trigger(); }
+    ? window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadImpl(ticker(), signal); })
+    : { trigger: function () { loadImpl(ticker()); }, reset: function () {} };
+  function load() { _loader.trigger(ticker()); }
   function okJson(r){ if(!r.ok) throw new Error(r.status); return r.json(); }
   function nullp(){ return null; }
 

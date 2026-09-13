@@ -19,19 +19,24 @@
   // per-call generation counter live-locks once pushes outrun the round trip. Context
   // invalidation is `stillLevels()`, checked at resolution time.
   function stillLevels(tk) { return isLevels() && ticker() === tk; }
-  function loadImpl() {
+  // ROUND 8 (2026-09-13): keyed on ticker so a held/slow fetch for an ABANDONED ticker is
+  // aborted immediately once a different ticker is selected, instead of blocking it.
+  function loadImpl(tk, signal) {
     var host = document.getElementById('levelsBody');
-    if (!host || !isLevels()) return;
-    var tk = ticker();
+    if (!host || !stillLevels(tk)) return;
     host.setAttribute('aria-busy', 'true');
-    return fetch('/api/levels?ticker=' + encodeURIComponent(tk), { cache: 'no-store' })
+    return fetch('/api/levels?ticker=' + encodeURIComponent(tk), { cache: 'no-store', signal: signal })
       .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
       .then(function (d) { if (stillLevels(tk)) render(host, d); })
-      .catch(function () { if (stillLevels(tk)) host.innerHTML = '<div class="placeholder"><div class="sm">no console serving /api/levels</div></div>'; });
+      .catch(function (e) {
+        if (e && e.name === 'AbortError') return;
+        if (stillLevels(tk)) host.innerHTML = '<div class="placeholder"><div class="sm">no console serving /api/levels</div></div>';
+      });
   }
   var _loader = (typeof window !== 'undefined' && window.EdL1SseGuards && window.EdL1SseGuards.makeCoalescedLoader)
-    ? window.EdL1SseGuards.makeCoalescedLoader(loadImpl) : { trigger: loadImpl, reset: function () {} };
-  function load() { _loader.trigger(); }
+    ? window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadImpl(ticker(), signal); })
+    : { trigger: function () { loadImpl(ticker()); }, reset: function () {} };
+  function load() { _loader.trigger(ticker()); }
 
   function render(host, d) {
     var levels = (d && d.levels) || [];

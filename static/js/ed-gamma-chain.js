@@ -35,21 +35,25 @@
   // invalidation (ticker or expiry filter changed mid-flight) is `stillChain()`, checked at
   // resolution time.
   function stillChain(tk, exp) { return isChain() && (st().ticker || 'SPY') === tk && curExpiry() === exp; }
-  function loadImpl() {
+  // ROUND 8 (2026-09-13): keyed on ticker+expiry so a held/slow fetch for an ABANDONED
+  // context is aborted immediately once a different one is selected, instead of blocking it.
+  function loadImpl(tk, exp, signal) {
     var host = document.getElementById('chainBody');
-    if (!host || !isChain()) return;
-    var tk = st().ticker || 'SPY';
-    var exp = curExpiry();
+    if (!host || !stillChain(tk, exp)) return;
     var tkEl = document.getElementById('chTicker'); if (tkEl) tkEl.textContent = tk.replace('$', '');
     host.setAttribute('aria-busy', 'true');
-    return fetch('/api/chain?ticker=' + encodeURIComponent(tk) + (exp ? '&expiry=' + encodeURIComponent(exp) : ''), { cache: 'no-store' })
+    return fetch('/api/chain?ticker=' + encodeURIComponent(tk) + (exp ? '&expiry=' + encodeURIComponent(exp) : ''), { cache: 'no-store', signal: signal })
       .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
       .then(function (d) { if (stillChain(tk, exp)) render(host, d); })
-      .catch(function () { if (stillChain(tk, exp)) host.innerHTML = '<div class="placeholder"><div class="sm">no console serving /api/chain</div></div>'; });
+      .catch(function (e) {
+        if (e && e.name === 'AbortError') return;
+        if (stillChain(tk, exp)) host.innerHTML = '<div class="placeholder"><div class="sm">no console serving /api/chain</div></div>';
+      });
   }
   var _loader = (typeof window !== 'undefined' && window.EdL1SseGuards && window.EdL1SseGuards.makeCoalescedLoader)
-    ? window.EdL1SseGuards.makeCoalescedLoader(loadImpl) : { trigger: loadImpl, reset: function () {} };
-  function load() { _loader.trigger(); }
+    ? window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadImpl(st().ticker || 'SPY', curExpiry(), signal); })
+    : { trigger: function () { loadImpl(st().ticker || 'SPY', curExpiry()); }, reset: function () {} };
+  function load() { _loader.trigger((st().ticker || 'SPY') + '|' + (curExpiry() || '')); }
 
   function render(host, d) {
     setSrc(d);

@@ -310,6 +310,43 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     expect(finalText).toBe('$' + call.toFixed(1) + 'K');
   });
 
+  test('a held fetch for an abandoned ticker does not block the newly selected ticker from loading (2026-09-13, independent-review finding)', async ({ page }) => {
+    // Independent-review finding (2026-09-13), REPRODUCED: the round-7 coalescing loader
+    // merged EVERY trigger into the SAME in-flight slot regardless of context -- switching
+    // ticker while the PREVIOUS ticker's fetch was still outstanding just queued the new
+    // ticker behind it instead of loading immediately, so a slow (or hung) request for a
+    // ticker the operator has already left kept the newly-selected ticker waiting
+    // indefinitely. Fixed by keying the loader on ticker and aborting the abandoned
+    // request the instant a different one is wanted (l1_sse_guards.js:makeCoalescedLoader).
+    let releaseSpy;
+    const spyGate = new Promise((r) => { releaseSpy = r; });
+    await page.route('**/api/options/gamma-surface**', async (route) => {
+      const tk = new URL(route.request().url()).searchParams.get('ticker');
+      if (tk === 'SPY') await spyGate;   // hangs until this test explicitly releases it
+      const value = tk === 'SPY' ? 1000 : 9000;
+      route.fulfill({
+        status: 200, contentType: 'application/json',
+        body: JSON.stringify(Object.assign({}, SURFACE, {
+          ticker: tk, symbol: tk,
+          strikes: [583], expirations: [{ expiry: '2026-09-11', dte: 2 }],
+          cells: [{ strike: 583, gex: [value] }],
+          surface_seq: 1,
+        })),
+      });
+    });
+    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    // The initial SPY load is now hung (spyGate not released yet). Switch to AAPL WHILE
+    // it is still outstanding -- this must not be forced to wait for SPY's hung request.
+    await page.locator('#symInput').fill('AAPL');
+    await page.locator('#symInput').press('Enter');
+    const cell = page.locator('.hcell[data-strike="583"][data-expiry="2026-09-11"]');
+    await expect(cell).toHaveText('$9.0K', { timeout: 3000 });
+    // Releasing the hung SPY response now must never resurrect it under AAPL's label.
+    releaseSpy();
+    await page.waitForTimeout(300);
+    await expect(cell).toHaveText('$9.0K');
+  });
+
   test('GEX-by-strike displays each row\'s own session volume, not just signed GEX$ (RC-UI-2 finding #5a)', async ({ page }) => {
     // Independent-review finding (2026-09-12), REPRODUCED: "GEX-by-strike does not display its
     // row's volume field" -- terrain_engine._per_strike_rows' own shape is

@@ -186,4 +186,67 @@ assert(typeof G.makeCoalescedLoader === 'function', 'makeCoalescedLoader missing
   assert.strictEqual(calls, 2, 'a synchronous throw must still settle the loader, not wedge it in-flight forever');
 }
 
+// makeCoalescedLoader ROUND 8 (2026-09-13) — context-change abort. Independent-review
+// finding, REPRODUCED: the round-7 loader coalesced EVERY trigger into the SAME in-flight
+// slot regardless of context, so a held/slow request for an ABANDONED ticker (or contract,
+// or strike) blocked the newly-selected one from ever loading -- e.g. switch ticker while
+// the previous ticker's fetch is artificially delayed, and the new ticker's panel never
+// loads until the old one finally settles (or never, if it hangs). Fixed with a keyed
+// trigger(key): same key as the in-flight request still coalesces (unchanged), a
+// DIFFERENT key aborts the in-flight request and starts the new one immediately.
+{
+  let calls = 0;
+  const runs = [];   // { key, signal }
+  function run(signal) {
+    const rec = { key: runs.length, signal };
+    runs.push(rec);
+    calls++;
+    return new Promise((res, rej) => { rec.res = res; rec.rej = rej; });
+  }
+  const loader = G.makeCoalescedLoader(run);
+
+  loader.trigger('A');
+  assert.strictEqual(calls, 1, 'first trigger for context A starts immediately');
+  assert.strictEqual(runs[0].signal.aborted, false, 'a fresh request is not pre-aborted');
+
+  // The exact defect: a DIFFERENT context (B) is requested while A is still in flight.
+  // The old coalescing behavior would have silently merged this into "run once more when
+  // A finishes" -- B must never wait for A.
+  loader.trigger('B');
+  assert.strictEqual(calls, 2, 'a context change must start the new context immediately, not wait for the old one');
+  assert.strictEqual(runs[0].signal.aborted, true, "the abandoned context A's in-flight request must be aborted");
+  assert.strictEqual(runs[1].signal.aborted, false, 'the new context B request is not itself aborted');
+
+  // A's aborted request settling LATE (its real-world equivalent: fetch's AbortError
+  // rejection, which arrives asynchronously) must not corrupt B's now-current state.
+  runs[0].rej(Object.assign(new Error('aborted'), { name: 'AbortError' }));
+  await Promise.resolve(); await Promise.resolve();
+  assert.strictEqual(calls, 2, "A's stale settle must not spawn a spurious third call");
+
+  // A same-key trigger while B is in flight still coalesces (round-7 behavior preserved).
+  loader.trigger('B');
+  assert.strictEqual(calls, 2, 'same-key trigger mid-flight coalesces, does not abort/restart');
+  assert.strictEqual(runs[1].signal.aborted, false, 'coalescing a same-key trigger must not abort the in-flight request');
+
+  runs[1].res({ ok: true });
+  await Promise.resolve(); await Promise.resolve();
+  assert.strictEqual(calls, 3, 'the coalesced same-key trigger fires its one trailing call once B settles');
+  assert.strictEqual(runs[2].key, 2);
+
+  runs[2].res({ ok: true });
+  await Promise.resolve(); await Promise.resolve();
+  assert.strictEqual(calls, 3, 'fully settled with nothing pending -> idle, no phantom fourth call');
+
+  // reset() aborts whatever is currently in flight.
+  loader.trigger('C');
+  assert.strictEqual(calls, 4);
+  assert.strictEqual(runs[3].signal.aborted, false);
+  loader.reset();
+  assert.strictEqual(runs[3].signal.aborted, true, 'reset() must abort the in-flight request');
+  runs[3].rej(Object.assign(new Error('aborted'), { name: 'AbortError' }));
+  await Promise.resolve(); await Promise.resolve();
+  loader.trigger('D');
+  assert.strictEqual(calls, 5, 'the loader is usable again immediately after reset()');
+}
+
 console.log('l1_sse_guards_node: ok');

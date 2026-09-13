@@ -47,17 +47,22 @@
   // fires on every streamed gamma_surface_seq push, not just the 12s poll tick; a naive
   // per-call generation counter live-locks once pushes outrun the round trip.
   function stillLevelsCtx(tk) { return isGamma() && !!document.getElementById('klSpot') && ticker() === tk; }
-  function loadLevelsImpl() {
-    if (!isGamma() || !document.getElementById('klSpot')) return;
-    var tk = ticker();
-    return fetch('/api/terrain?ticker=' + encodeURIComponent(tk), { cache: 'no-store' })
+  // ROUND 8 (2026-09-13): keyed on ticker so a held/slow fetch for an ABANDONED ticker is
+  // aborted immediately once a different ticker is selected, instead of blocking it.
+  function loadLevelsImpl(tk, signal) {
+    if (!stillLevelsCtx(tk)) return;
+    return fetch('/api/terrain?ticker=' + encodeURIComponent(tk), { cache: 'no-store', signal: signal })
       .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
       .then(function (d) { if (stillLevelsCtx(tk)) renderLevels(d); })
-      .catch(function () { if (stillLevelsCtx(tk)) renderLevels(null); });
+      .catch(function (e) {
+        if (e && e.name === 'AbortError') return;
+        if (stillLevelsCtx(tk)) renderLevels(null);
+      });
   }
   var _levelsLoader = (typeof window !== 'undefined' && window.EdL1SseGuards && window.EdL1SseGuards.makeCoalescedLoader)
-    ? window.EdL1SseGuards.makeCoalescedLoader(loadLevelsImpl) : { trigger: loadLevelsImpl, reset: function () {} };
-  function loadLevels() { _levelsLoader.trigger(); }
+    ? window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadLevelsImpl(ticker(), signal); })
+    : { trigger: function () { loadLevelsImpl(ticker()); }, reset: function () {} };
+  function loadLevels() { _levelsLoader.trigger(ticker()); }
   function renderLevels(d) {
     var ids = ['klSpot', 'klFlip', 'klCall', 'klPut', 'klAbs', 'klPeak', 'klNet', 'klRegime'];   // klPcr: analytics plane, own reader below
     if (!d || d.error) {
@@ -146,7 +151,9 @@
   // most one is ever in flight, and re-evaluates that decision fresh (against
   // possibly-just-updated _pcrVer/_pcrSession) for any trigger that arrived mid-flight.
   function stillPcrCtx(tk, ex) { return isGamma() && !!document.getElementById('klPcr') && ticker() === tk && expiryFilter() === ex; }
-  function loadPcrImpl() {
+  // ROUND 8 (2026-09-13): keyed on ticker+expiry (see loadPcr()) so a held/slow fetch for
+  // an ABANDONED context is aborted immediately once a different one is selected.
+  function loadPcrImpl(signal) {
     if (!isGamma() || !document.getElementById('klPcr')) return;
     var tk = ticker(), ex = expiryFilter(), key = tk + '|' + ex, pl = plane();
     var newContext = key !== _pcrKey;
@@ -159,7 +166,7 @@
     if (newContext) { _pcrKey = key; _pcrTries = 0; _pcrPending = false; _pcrVer = null; _pcrSession = null; paintPcr(null, 'warming'); }
     if (newGen || newSession) { _pcrTries = 0; }
     _pcrTries++;
-    return fetch('/api/analytics/state?ticker=' + encodeURIComponent(tk) + (ex ? '&expiry=' + encodeURIComponent(ex) : ''), { cache: 'no-store' })
+    return fetch('/api/analytics/state?ticker=' + encodeURIComponent(tk) + (ex ? '&expiry=' + encodeURIComponent(ex) : ''), { cache: 'no-store', signal: signal })
       .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
       .then(function (d) {
         if (!stillPcrCtx(tk, ex)) return;
@@ -174,29 +181,38 @@
         if (d.pcr_val == null) { paintPcr(null, 'unavailable'); return; }
         paintPcr(d.pcr_val, 'OI · exp ' + (d.selected_exp || '—'));
       })
-      .catch(function () { if (stillPcrCtx(tk, ex)) { _pcrPending = true; paintPcr(null, 'offline'); } });
+      .catch(function (e) {
+        if (e && e.name === 'AbortError') return;
+        if (stillPcrCtx(tk, ex)) { _pcrPending = true; paintPcr(null, 'offline'); }
+      });
   }
   var _pcrLoader = (typeof window !== 'undefined' && window.EdL1SseGuards && window.EdL1SseGuards.makeCoalescedLoader)
-    ? window.EdL1SseGuards.makeCoalescedLoader(loadPcrImpl) : { trigger: loadPcrImpl, reset: function () {} };
-  function loadPcr() { _pcrLoader.trigger(); }
+    ? window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadPcrImpl(signal); })
+    : { trigger: function () { loadPcrImpl(); }, reset: function () {} };
+  function loadPcr() { _pcrLoader.trigger(ticker() + '|' + expiryFilter()); }
 
   // ---------- GEX by Strike ----------
   // Coalesced load (see l1_sse_guards.js:makeCoalescedLoader) -- `ed:refresh{slow}` also
   // fires on every streamed gamma_surface_seq push, not just the 12s poll tick; a naive
   // per-call generation counter live-locks once pushes outrun the round trip.
   function stillGbsCtx(tk) { var host = document.getElementById('gbsBody'); return isGamma() && !!host && ticker() === tk; }
-  function loadGbsImpl() {
+  // ROUND 8 (2026-09-13): keyed on ticker so a held/slow fetch for an ABANDONED ticker is
+  // aborted immediately once a different ticker is selected, instead of blocking it.
+  function loadGbsImpl(tk, signal) {
     var host = document.getElementById('gbsBody');
-    if (!isGamma() || !host) return;
-    var tk = ticker();
-    return fetch('/api/terrain/strikes?ticker=' + encodeURIComponent(tk), { cache: 'no-store' })
+    if (!stillGbsCtx(tk)) return;
+    return fetch('/api/terrain/strikes?ticker=' + encodeURIComponent(tk), { cache: 'no-store', signal: signal })
       .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
-      .then(function (d) { if (stillGbsCtx(tk)) renderGbs(host, d); })
-      .catch(function () { if (stillGbsCtx(tk)) renderGbs(host, null); });
+      .then(function (d) { if (stillGbsCtx(tk)) renderGbs(host, d, tk); })
+      .catch(function (e) {
+        if (e && e.name === 'AbortError') return;
+        if (stillGbsCtx(tk)) renderGbs(host, null, tk);
+      });
   }
   var _gbsLoader = (typeof window !== 'undefined' && window.EdL1SseGuards && window.EdL1SseGuards.makeCoalescedLoader)
-    ? window.EdL1SseGuards.makeCoalescedLoader(loadGbsImpl) : { trigger: loadGbsImpl, reset: function () {} };
-  function loadGbs() { _gbsLoader.trigger(); }
+    ? window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadGbsImpl(ticker(), signal); })
+    : { trigger: function () { loadGbsImpl(ticker()); }, reset: function () {} };
+  function loadGbs() { _gbsLoader.trigger(ticker()); }
   var SRC_LABEL = { terrain_live_cache: 'terrain live' };
   function srcLabel(s) {
     if (!s) return '';
@@ -215,8 +231,16 @@
           live: (d.today_source === 'terrain_live_cache' && !d.levels_stale) })
       : '';
   }
-  var _lastGbs = { rows: [], spot: null };
-  function gbsNetAt(strike) {   // canonical per-strike net GEX$ (from /api/terrain/strikes), for reuse
+  var _lastGbs = { ticker: null, rows: [], spot: null };
+  // Independent-review finding (2026-09-13), REPRODUCED ("Strike Detail can combine a new
+  // ticker's chain with the previous ticker's cached Net GEX"): _lastGbs carried no ticker
+  // identity, so gbsNetAt matched purely on STRIKE NUMBER -- a $150 strike exists for many
+  // tickers, so a ticker switch whose /api/chain resolved before /api/terrain/strikes had
+  // re-run for the new ticker painted the OLD ticker's $150-strike net GEX under the NEW
+  // ticker's OI/Vol/Gamma/Delta. Fixed: refuse a lookup for any ticker but the one _lastGbs
+  // actually holds data for.
+  function gbsNetAt(tk, strike) {   // canonical per-strike net GEX$ (from /api/terrain/strikes), for reuse
+    if (_lastGbs.ticker !== tk) return null;
     for (var i = 0; i < _lastGbs.rows.length; i++) {
       if (Math.abs(Number(_lastGbs.rows[i][0]) - Number(strike)) < 0.01) return Number(_lastGbs.rows[i][1]);
     }
@@ -241,13 +265,13 @@
     if (sel == null) return;
     var cell = document.querySelector('#sdBody .sd-net td:nth-child(5)');
     if (!cell) return;   // Strike Detail is not currently rendering a strike -- nothing to sync
-    var net = gbsNetAt(sel);
+    var net = gbsNetAt(ticker(), sel);
     cell.className = net == null ? '' : (net >= 0 ? 'pos' : 'neg');
     cell.textContent = net == null ? '—' : usd(net);
   }
-  function renderGbs(host, d) {
+  function renderGbs(host, d, tk) {
     setGbsAsOf(d);
-    _lastGbs = { rows: (d && d.today && d.today.all) || [], spot: Number(d && d.spot) };
+    _lastGbs = { ticker: tk != null ? tk : ticker(), rows: (d && d.today && d.today.all) || [], spot: Number(d && d.spot) };
     _resyncStrikeDetailNetCell();
     var rows = d && d.today && d.today.all;
     if (!rows || !rows.length) {
@@ -323,19 +347,36 @@
   function stillStrikeCtx(tk, strike, expiry) {
     return ticker() === tk && _sdDesired.strike === strike && _sdDesired.expiry === expiry;
   }
-  function loadStrikeImpl() {
+  // ROUND 8 (2026-09-13): keyed on ticker+strike+expiry so a held/slow fetch for an
+  // ABANDONED strike is aborted immediately once a different one is selected, instead of
+  // blocking it. Independent-review finding, REPRODUCED ("retain previous contract demand
+  // after a failed chain read"): a network-level failure (this catch) bypassed renderStrike
+  // entirely and never cleared additional-contract demand, unlike a successful-but-empty
+  // chain (renderStrike's own "no chain for this expiry" path already clears it) -- the
+  // PREVIOUS strike's contracts stayed subscribed forever after a genuine fetch failure.
+  function loadStrikeImpl(strike, expiry, signal) {
     var host = document.getElementById('sdBody');
-    if (!host || _sdDesired.strike == null) return;
-    var strike = _sdDesired.strike, expiry = _sdDesired.expiry, tk = ticker();
+    if (!host || !stillStrikeCtx(ticker(), strike, expiry)) return;
+    var tk = ticker();
     var q = '/api/chain?ticker=' + encodeURIComponent(tk) + (expiry ? '&expiry=' + encodeURIComponent(expiry) : '');
-    return fetch(q, { cache: 'no-store' })
+    return fetch(q, { cache: 'no-store', signal: signal })
       .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
       .then(function (d) { if (stillStrikeCtx(tk, strike, expiry)) renderStrike(host, d, strike, expiry); })
-      .catch(function () { if (stillStrikeCtx(tk, strike, expiry)) host.innerHTML = '<div class="placeholder"><div class="sm">no console serving /api/chain</div></div>'; });
+      .catch(function (e) {
+        if (e && e.name === 'AbortError') return;   // superseded by a newer strike -- that load renders instead
+        if (stillStrikeCtx(tk, strike, expiry)) {
+          host.innerHTML = '<div class="placeholder"><div class="sm">no console serving /api/chain</div></div>';
+          _setAdditionalContractsDemand([]);
+        }
+      });
   }
   var _sdLoader = (typeof window !== 'undefined' && window.EdL1SseGuards && window.EdL1SseGuards.makeCoalescedLoader)
-    ? window.EdL1SseGuards.makeCoalescedLoader(loadStrikeImpl) : { trigger: loadStrikeImpl, reset: function () {} };
-  function loadStrike(strike, expiry) { _sdDesired = { strike: strike, expiry: expiry }; _sdLoader.trigger(); }
+    ? window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadStrikeImpl(_sdDesired.strike, _sdDesired.expiry, signal); })
+    : { trigger: function () { loadStrikeImpl(_sdDesired.strike, _sdDesired.expiry); }, reset: function () {} };
+  function loadStrike(strike, expiry) {
+    _sdDesired = { strike: strike, expiry: expiry };
+    _sdLoader.trigger(ticker() + '|' + strike + '|' + (expiry || ''));
+  }
   var SCOPE_LABEL = {
     complete_single_expiry: { t: 'vendor · complete (ALL)', live: true },
     expiry_scope_mismatch: { t: 'vendor · expiry mismatch', ref: true },
@@ -381,7 +422,7 @@
     function cell(c, k, d2) { var v = c ? c[k] : null; return (v == null) ? '—' : (typeof v === 'number' ? v.toFixed(d2 == null ? 2 : d2) : esc(v)); }
     // GEX ($) column: per-side GEX$ is NOT canonical from /api/chain (computing it would be frontend
     // math) -> "—"; the NET row's GEX is the canonical per-strike net_gex_1pct$ from /api/terrain/strikes.
-    var net = gbsNetAt(strike);
+    var net = gbsNetAt(ticker(), strike);
     var netCls = net == null ? '' : (net >= 0 ? 'pos' : 'neg');
     host.innerHTML =
       '<table class="sd"><thead><tr><th>Type</th><th>OI</th><th>Vol</th><th>Gamma</th><th>GEX $</th><th>Delta</th><th>IV%</th></tr></thead><tbody>' +

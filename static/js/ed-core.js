@@ -448,18 +448,30 @@
     var md = parts.length === 3 ? (parts[1] + '/' + parts[2] + '/' + parts[0]) : iso;
     return md + (dte != null ? (' · ' + dte + 'DTE') : '');
   }
+  // Independent-review finding (2026-09-13), REPRODUCED ("revert the selected expiry on a
+  // pushed refresh"): `prev` was captured ONCE at call time and used, unchanged, when the
+  // response finally resolved -- if the operator picked a different expiry WHILE this fetch
+  // was in flight, the delayed callback still judged that fresh pick against the STALE
+  // `prev`, and could revert it back to All Expirations even though the new pick was
+  // perfectly valid. Separately, the callback never checked whether `tk` was still the
+  // active ticker, so a rapid double ticker-switch could paint an ABANDONED ticker's expiry
+  // list into the dropdown under the ticker actually selected now -- the same "stale
+  // response, no context check" defect class fixed everywhere else in the gamma views.
+  // Fixed: check ticker identity before applying anything, and judge validity against the
+  // CURRENT state.expiryFilter at resolution time, never a value captured before the fetch.
   function loadExpiries(tk) {
     var sel = document.getElementById('expSel'); if (!sel) return;
-    var prev = state.expiryFilter;
     fetch('/api/expiries?ticker=' + encodeURIComponent(tk), { cache: 'no-store' })
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (d) {
+        if (state.ticker !== tk) return;   // a newer ticker switch superseded this request
         var exps = (d && (d.expiries || d.expirations)) || [];
         var opts = '<option value="">All Expirations</option>';
         exps.forEach(function (e) { opts += '<option value="' + e + '">' + _fmtExpOpt(e) + '</option>'; });
         sel.innerHTML = opts;
-        if (prev && exps.indexOf(prev) !== -1) { sel.value = prev; }   // keep a still-valid selection
-        else { sel.value = ''; if (state.expiryFilter !== null) setExpiry(''); }   // invalid old expiry -> All (honest)
+        var cur = state.expiryFilter;   // CURRENT selection, not one captured before this fetch started
+        if (cur && exps.indexOf(cur) !== -1) { sel.value = cur; }   // keep a still-valid selection
+        else { sel.value = ''; if (state.expiryFilter !== null) setExpiry(''); }   // invalid current expiry -> All (honest)
         relabelExpiryDefault();
       })
       .catch(function () { /* keep the All Expirations default; a cold console just shows All */ });

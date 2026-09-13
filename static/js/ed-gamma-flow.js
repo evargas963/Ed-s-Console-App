@@ -38,9 +38,19 @@
   // tick; a naive per-call generation counter live-locks (never applies a response) once
   // pushes outrun the round trip -- see l1_sse_guards.js:makeCoalescedLoader, which every
   // gamma view module now uses for this same reason.
+  // Independent-review finding (2026-09-13), REPRODUCED ("Flow can repaint ACTIVE from an
+  // older observation after a newer subscription attempt has failed"): `stillFlow` checked
+  // only DESIRED-CONTRACT identity, not the CURRENT control state. Scenario: contract A is
+  // desired and accepted, a microstructure fetch for A starts; a reconnect/resubscribe
+  // attempt for the SAME desired contract A then fails (controlState() -> 'failed'), but
+  // the earlier in-flight fetch for A still resolves -- `desired` never changed, so the old
+  // check let it through and painted ACTIVE/live data over what should now read FAILED.
+  // Fixed: a response is only current if BOTH the desired contract AND the control state
+  // it was fetched under are still what they were.
   function stillFlow(desired) {
     var ES = window.EdStream;
-    return isFlow() && ((ES && ES.getDesired && ES.getDesired()) || null) === desired;
+    return isFlow() && ((ES && ES.getDesired && ES.getDesired()) || null) === desired
+      && ((ES && ES.controlState && ES.controlState()) || 'none') === 'accepted';
   }
   // Only the actual microstructure fetch is coalesced. The NONE/REQUESTED/FAILED branches are
   // synchronous, state-authority-visible renders (no network) and must run the INSTANT load()
@@ -50,18 +60,25 @@
   // contract is still in flight; wrapping this whole function in the coalescing loader made
   // that repaint wait for the hung fetch to settle (it never does), so the NONE state never
   // appeared and the eventual late response was the only thing left to (wrongly) render.
-  function loadImpl(desired) {
+  //
+  // ROUND 8 (2026-09-13): the loader is now keyed on the desired contract symbol, so a held
+  // fetch for an ABANDONED contract is aborted immediately once a DIFFERENT contract becomes
+  // desired, instead of blocking the new contract's own first observation.
+  function loadImpl(desired, signal) {
     var h = host();
     if (!h || !stillFlow(desired)) return;
     h.setAttribute('aria-busy', 'true');
-    return fetch('/api/order-flow/options-microstructure?contract=' + encodeURIComponent(desired), { cache: 'no-store' })
+    return fetch('/api/order-flow/options-microstructure?contract=' + encodeURIComponent(desired), { cache: 'no-store', signal: signal })
       .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
       .then(function (d) { if (stillFlow(desired)) render(h, desired, d); })
-      .catch(function () { if (stillFlow(desired)) shell(h, desired, 'DEGRADED', 'no console serving options-microstructure', null); });
+      .catch(function (e) {
+        if (e && e.name === 'AbortError') return;   // superseded by a newer contract -- that load renders instead
+        if (stillFlow(desired)) shell(h, desired, 'DEGRADED', 'no console serving options-microstructure', null);
+      });
   }
   var _pendingDesired = null;
   var _loader = (typeof window !== 'undefined' && window.EdL1SseGuards && window.EdL1SseGuards.makeCoalescedLoader)
-    ? window.EdL1SseGuards.makeCoalescedLoader(function () { return loadImpl(_pendingDesired); })
+    ? window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadImpl(_pendingDesired, signal); })
     : { trigger: function () { loadImpl(_pendingDesired); }, reset: function () {} };
   function load() {
     var h = host(); if (!h || !isFlow()) return;
@@ -74,7 +91,7 @@
     if (ctl === 'failed') { return shell(h, desired, 'FAILED', 'control request was not accepted — no observation started', null); }
     // I: only an ACCEPTED control request begins normal microstructure observation.
     _pendingDesired = desired;
-    _loader.trigger();
+    _loader.trigger(desired);
   }
 
   // subscription state from the CANONICAL producer truth (EdStream.status over the payload's plane).

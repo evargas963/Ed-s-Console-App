@@ -264,6 +264,15 @@
 
   var expSelect = document.getElementById('exp-select');
 
+  // Independent-review finding (2026-09-13), REPRODUCED ("the retained options page still
+  // accepts an old ticker's price response"): renderChain painted #m-spot/#m-expiry/the
+  // whole table unconditionally, with no comparison against the CURRENTLY selected ticker
+  // -- unlike the new /console UI's equivalent loaders (all fixed the same way), this page
+  // never checked whether a response was still for the ticker actually on screen. A ticker
+  // switch racing this page's own 30s auto-refresh (setInterval(loadChain, 30000) below),
+  // or two fast manual switches, could let a stale ticker's spot price and chain paint
+  // under the new ticker's already-updated label. Fixed by capturing the requested ticker
+  // and discarding the response if the current selection has since moved on.
   function loadChain(){
     var t = (tkEl.value || 'SPY').toUpperCase().trim();
     var url = '/api/chain?ticker=' + encodeURIComponent(t);
@@ -271,8 +280,14 @@
     if (exp) url += '&expiry=' + encodeURIComponent(exp);
     fetch(url)
       .then(function(r){ return r.json(); })
-      .then(renderChain)
-      .catch(function(){ notice('Chain fetch failed.'); });
+      .then(function(payload){
+        if ((tkEl.value || 'SPY').toUpperCase().trim() !== t) return;   // superseded by a newer ticker switch
+        renderChain(payload);
+      })
+      .catch(function(){
+        if ((tkEl.value || 'SPY').toUpperCase().trim() !== t) return;
+        notice('Chain fetch failed.');
+      });
   }
 
   // The complete expiry universe, operator-accessible (round-2 requirement): populate the
@@ -284,6 +299,10 @@
     fetch('/api/expiries?ticker=' + encodeURIComponent(t))
       .then(function(r){ return r.json(); })
       .then(function(j){
+        // same class of fix as loadChain() above: a ticker switch while THIS expiries
+        // fetch was in flight must not paint the ABANDONED ticker's expiry list under
+        // the ticker actually selected now.
+        if ((tkEl.value || 'SPY').toUpperCase().trim() !== t) return;
         var exps = j.expiries || [];
         var prev = expSelect.value;
         expSelect.innerHTML = '';

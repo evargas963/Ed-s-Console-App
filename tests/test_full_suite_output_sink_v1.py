@@ -186,71 +186,98 @@ def test_the_canonical_commands_route_through_the_sink():
     assert '"-m", "pytest", "-n", "auto", "--dist", "loadfile", "--durations=20"' in runner
 
     e2e = E2E_RUNNER.read_text(encoding="utf-8")
-    # Independent-review finding (2026-09-12), REPRODUCED and fixed: this used to be a
-    # hardcoded `["playwright", "test"]` literal, discarding any CLI selection arguments
-    # (`-g`, a spec path, etc.) this runner was itself invoked with. The array must still
-    # start with the same two elements (native Playwright CLI invocation, unchanged), but
-    # now spreads the caller's own forwarded, shell-quoted argv onto it — see
-    # test_shell_quote_arg_forwards_playwright_selection_safely below for the
-    # actual-behavior proof of the quoting/forwarding logic itself, not just this shape.
-    assert 'runWithFileSink("test:e2e", "npx", ["playwright", "test", ...quotedForwardedArgs]' in e2e
+    # Independent-review finding (2026-09-12), REPRODUCED and fixed, then found STILL
+    # BROKEN by a second independent review (2026-09-13): the first fix forwarded the
+    # caller's argv but still routed it through `npx` under `shell: true` (a joined
+    # command string re-parsed by a shell) with a hand-rolled quoting function that could
+    # not actually make that safe on this repo's real (Windows) host. The array must still
+    # start with the native Playwright CLI entry point (now resolved directly, not via
+    # npx) followed by "test", then the caller's OWN forwarded argv verbatim (no quoting
+    # function in between) under shell:false — see
+    # test_forwarded_selection_arguments_reach_the_native_playwright_cli below for the
+    # actual-behavior proof that this spawn mechanism cannot be shell-reinterpreted, not
+    # just this shape.
+    e2e_call_marker = 'runWithFileSink("test:e2e", process.execPath, [PLAYWRIGHT_CLI, "test", ...forwardedArgs]'
+    assert e2e_call_marker in e2e
     assert "const forwardedArgs = process.argv.slice(2);" in e2e
-    assert "export function shellQuoteArg(arg)" in e2e
+    assert "function shellQuoteArg" not in e2e, "the shell-reinterpretation risk this hand-rolled quoting could not close must be deleted, not re-quoted"
+    # the runWithFileSink call site for the actual Playwright invocation, up to its own
+    # closing `});`, must never opt into `shell: true` -- that is exactly the reinterpretation
+    # risk this round's fix removes (ensurePlaywrightReady()'s own OTHER, fixed-literal,
+    # no-forwarded-argv calls may still legitimately use shell:true to resolve npm/npx).
+    e2e_call_block = e2e.split(e2e_call_marker, 1)[1].split("});", 1)[0]
+    assert "shell" not in e2e_call_block, "the forwarded-argv Playwright invocation itself must never go through a shell"
     assert 'stdio: "inherit"' not in e2e.split("ensurePlaywrightReady();", 1)[1], (
         "the Playwright run itself must not inherit the terminal pipe"
     )
 
 
-def test_shell_quote_arg_forwards_playwright_selection_safely():
-    """Independent-review finding (2026-09-12), REPRODUCED and fixed: run-playwright-e2e.mjs
-    used to hardcode `["playwright", "test"]` regardless of any CLI arguments this runner
-    was itself invoked with, so `npm run test:e2e -- -g "some pattern"` (or
-    `node scripts/run-playwright-e2e.mjs tests/e2e/some.spec.js`) silently ran the FULL,
-    unfiltered suite every time, discarding the caller's own selection.
+def test_forwarded_selection_arguments_reach_the_native_playwright_cli(tmp_path):
+    """Independent-review finding (2026-09-12), REPRODUCED and fixed, then found STILL
+    BROKEN by a second independent review (2026-09-13): run-playwright-e2e.mjs used to
+    hardcode `["playwright", "test"]`, discarding any CLI selection arguments this runner
+    was itself invoked with. The 2026-09-12 fix forwarded the caller's argv but still
+    routed it through `npx` under `runWithFileSink(..., shell: true)` -- which joins the
+    whole command into ONE STRING and hands it to a shell to re-parse -- guarded only by a
+    hand-rolled `shellQuoteArg` that wrapped values in double quotes. That does not survive
+    POSIX `$(...)`/backtick substitution inside double quotes, and does not match cmd.exe's
+    own (unrelated) escaping rules on this repo's actual Windows host, so a forwarded
+    argument containing either could still be reinterpreted rather than forwarded verbatim.
 
-    This test imports the REAL, exported `shellQuoteArg` from the real runner (not a
-    reimplementation of its quoting rules) and exercises it against realistic Playwright
-    selection arguments -- including this repo's own test names, which are full of
-    spaces, parentheses, and commas that would be mis-split if re-joined unquoted into
-    the ONE shell command string `runWithFileSink` builds.
-
-    A genuine full-process re-execution of this runner (does `-g` really narrow which
-    tests npx runs) was MEASURED BY HAND instead of wired into this suite:
-    playwright.config.mjs pins a single fixed webServer port (8765), and a second live
-    run from inside this pytest suite collided with the CI job's own official
-    `npm run test:e2e` step on that exact port (observed directly in CI, not a
-    hypothetical). The measured, reproduced negative control (2026-09-12, not re-run
-    here — see the commit message / PR description for the exact figures): the pre-fix
-    runner given `-g "shell structure"` ignored the filter and ran all 175 tests in 5.7
-    minutes; the fixed runner ran the one matching test in ~24s. The main-guard
-    refactor that exports `shellQuoteArg` (see run-playwright-e2e.mjs) does not change
-    the runner's own CLI behavior — reverified by hand after the refactor.
+    The fix deletes the shell (and npx) from this path entirely: run-playwright-e2e.mjs now
+    resolves Playwright's own CLI entry point directly and spawns it with
+    `runWithFileSink(..., shell: false)`, i.e. `spawnSync(cmd, args, {stdio})` with NO shell
+    at all. This test proves the property that fix actually relies on -- not by
+    reimplementing or re-inspecting quoting logic (there is none left to inspect), but by
+    round-tripping a battery of arguments a shell WOULD mangle (a bare space, an embedded
+    double quote, POSIX `$(...)`/backtick command substitution, a Windows `%VAR%`
+    environment-variable reference, and shell control operators `;`, `|`, `&`) through the
+    exact `runWithFileSink` function run-playwright-e2e.mjs now calls, confirming every one
+    of them arrives at the child process byte-for-byte unchanged, in order, as SEPARATE
+    argv entries.
     """
+    marker = tmp_path / "argv_dump.json"
+    log_path = tmp_path / "probe.log"
+    dangerous_args = [
+        "tests/e2e/some.spec.js",
+        "-g",
+        "shell structure",
+        "failed additional-contracts request (RC-UI-3)",
+        'a "quoted" name',
+        "$(touch PWNED_POSIX)",
+        "`touch PWNED_BACKTICK`",
+        "%WINDIR%",
+        "a;b|c&d",
+        "a^b",
+    ]
+    # The child just dumps the argv it actually received (everything after the `--`
+    # separator `node -e` uses to distinguish its own script from forwarded args) to a
+    # file -- proving receipt without relying on runWithFileSink's own log-file plumbing.
+    child_code = (
+        "const fs = require('fs');"
+        "fs.writeFileSync(process.env.ARGV_MARKER, JSON.stringify(process.argv.slice(1)));"
+    )
     script = (
-        "import(" + json.dumps(E2E_RUNNER.as_uri()) + ").then(m => {\n"
-        "  const cases = [\n"
-        "    ['tests/e2e/some.spec.js', 'tests/e2e/some.spec.js'],\n"
-        "    ['-g', '-g'],\n"
-        "    ['shell structure', '\"shell structure\"'],\n"
-        "    ['failed additional-contracts request (RC-UI-3)',\n"
-        "     '\"failed additional-contracts request (RC-UI-3)\"'],\n"
-        "    ['a \"quoted\" name', '\"a \\\\\"quoted\\\\\" name\"'],\n"
-        "  ];\n"
-        "  let ok = true;\n"
-        "  for (const [input, expected] of cases) {\n"
-        "    const got = m.shellQuoteArg(input);\n"
-        "    if (got !== expected) {\n"
-        "      console.error('MISMATCH for ' + JSON.stringify(input) + ': got ' +\n"
-        "        JSON.stringify(got) + ' want ' + JSON.stringify(expected));\n"
-        "      ok = false;\n"
-        "    }\n"
-        "  }\n"
-        "  console.log(ok ? 'ok' : 'fail');\n"
-        "  process.exit(ok ? 0 : 1);\n"
+        "import(" + json.dumps(RUNNER.as_uri()) + ").then(m => {\n"
+        "  const code = m.runWithFileSink(\n"
+        "    'argv-probe', process.execPath,\n"
+        "    ['-e', " + json.dumps(child_code) + ", '--', ..." + json.dumps(dangerous_args) + "],\n"
+        "    { logPath: " + json.dumps(str(log_path)) + ", shell: false,\n"
+        "      env: { ...process.env, ARGV_MARKER: " + json.dumps(str(marker)) + " } }\n"
+        "  );\n"
+        "  process.exit(code);\n"
         "});\n"
     )
     r = subprocess.run(
         [NODE, "-e", script], cwd=str(ROOT), capture_output=True, text=True, timeout=30,
     )
     assert r.returncode == 0, r.stdout + r.stderr
-    assert "ok" in r.stdout, r.stdout + r.stderr
+    assert marker.exists(), "child process never ran / never received its ARGV_MARKER env var\n" + r.stdout + r.stderr
+    got = json.loads(marker.read_text(encoding="utf-8"))
+    assert got == dangerous_args, (
+        f"an argument was reinterpreted in transit: got {got!r}, expected {dangerous_args!r}"
+    )
+    # No POSIX command substitution actually ran (would prove a real shell reparsed
+    # `$(touch ...)` / `` `touch ...` `` instead of forwarding it as an inert string).
+    assert not (ROOT / "PWNED_POSIX").exists(), "a shell executed $(...) inside a forwarded argument"
+    assert not (ROOT / "PWNED_BACKTICK").exists(), "a shell executed a backtick substitution inside a forwarded argument"

@@ -472,6 +472,50 @@ def test_backfill_weighted_pushes_uses_quote_ticks(tmp_path):
     assert row[0] is not None
 
 
+def test_backfill_weighted_pushes_includes_goog_contribution(tmp_path):
+    """Independent-review finding (2026-09-13), REPRODUCED then FIXED: backfill_weighted_pushes'
+    own SELECT omitted goog_chg_pct even though SYMBOL_TO_SNAPSHOT_CHG_COL maps GOOG to that
+    column and GOOG carries a real, non-trivial SPY_TOP weight -- `row = dict(r)` had no
+    "goog_chg_pct" key at all, so snapshot_row_chg_map's row.get() silently returned None and
+    weighted_push_from_constituents treated GOOG as always-missing.
+
+    This snapshot sets goog_chg_pct as the ONLY populated SPY_TOP constituent (every other
+    SPY_TOP name is NULL): if GOOG is still excluded, weighted_push_from_constituents finds
+    zero usable weight and returns None outright, so this is a decisive presence/absence
+    check, not a numeric-tolerance one -- a non-None spy_weighted_push is only possible if
+    GOOG's column actually reached the computation.
+    """
+    import sqlite3
+
+    from backfill_snapshot_derived import backfill_weighted_pushes
+    from db import EdDB
+
+    dbp = tmp_path / "bf_goog.db"
+    EdDB(dbp, allow_noncanonical=True)   # applies schema + migrations, including goog_chg_pct
+    con = sqlite3.connect(str(dbp))
+    con.execute(
+        """
+        INSERT INTO snapshots (
+            ticker, timeframe, ts_utc, ts_et, spot, spy_weighted_push, goog_chg_pct
+        ) VALUES ('SPY', '1m', 2000.0, '2026-01-02 10:00:00', 500.0, NULL, 1.25)
+        """
+    )
+    con.commit()
+    con.close()
+
+    stats = backfill_weighted_pushes(dbp)
+    assert stats["spy_filled"] == 1
+    con = sqlite3.connect(str(dbp))
+    row = con.execute(
+        "SELECT spy_weighted_push FROM snapshots WHERE ticker='SPY'"
+    ).fetchone()
+    con.close()
+    assert row[0] is not None, (
+        "GOOG's chg_pct was not picked up by the backfill's own SELECT -- "
+        "weighted_push_from_constituents found zero usable weight and returned None"
+    )
+
+
 def test_fetch_latest_confluence_quote_chg(tmp_path):
     from db import EdDB
 

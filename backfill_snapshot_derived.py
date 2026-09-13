@@ -193,13 +193,23 @@ def backfill_weighted_pushes(db_path: Path) -> dict[str, int]:
             return None
         return series[idx][1]
 
+    # Independent-review finding (2026-09-13), REPRODUCED: this SELECT omitted goog_chg_pct
+    # even though SYMBOL_TO_SNAPSHOT_CHG_COL maps GOOG to that column and GOOG carries a
+    # real, non-trivial SPY/QQQ weight (market_context.SPY_TOP/QQQ_TOP). `row = dict(r)`
+    # below is a plain dict with no "goog_chg_pct" key at all when it isn't selected, so
+    # merged_snapshot_chg_map -> snapshot_row_chg_map's `row.get("goog_chg_pct")` silently
+    # returned None on every row -- weighted_push_from_constituents then treated GOOG as
+    # always-missing and dropped its contribution from every weighted-push value this
+    # backfill recomputes, a regression of the exact live-path bug goog_chg_pct itself was
+    # added to fix (db.py:2984's own comment). Fixed by selecting the column that already
+    # exists in the schema (db.py:1226, migrated idempotently at db.py:2990).
     need_tick_syms = symbols_without_snapshot_chg_col()
     rows = cur.execute(
         """
         SELECT snapshot_id, ts_utc,
                spy_weighted_push, qqq_weighted_push, iwm_weighted_push,
                nvda_chg_pct, aapl_chg_pct, msft_chg_pct, amzn_chg_pct,
-               googl_chg_pct, avgo_chg_pct, meta_chg_pct, tsla_chg_pct,
+               googl_chg_pct, goog_chg_pct, avgo_chg_pct, meta_chg_pct, tsla_chg_pct,
                kre_chg_pct, xbi_chg_pct, psci_chg_pct, xrt_chg_pct
         FROM snapshots
         WHERE spy_weighted_push IS NULL
