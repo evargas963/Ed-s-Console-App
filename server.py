@@ -13958,6 +13958,7 @@ def project_gamma_surface(chain: list, spot: float) -> dict:
     a strike reconciles exactly to the full-book value at that strike (same spot). Contracts with
     malformed/missing native expiry are excluded and counted — never reassigned to a column."""
     from math_exposure_core import compute_exposures_by_strike as _cebs
+    from numeric_contract import float_finite_or_none
 
     total_contracts = len(chain) if isinstance(chain, list) else 0
     expiries = _expiries_from_contracts(chain)
@@ -14002,12 +14003,13 @@ def project_gamma_surface(chain: list, spot: float) -> dict:
                         pass
             side = (ct.get("putCall") or "").upper()
             sym = ct.get("symbol")
-            _sk = ct.get("strikePrice")
+            # Same canonical vendor-numeric coercion compute_exposures_by_strike itself
+            # uses for this exact field (math_exposure_core._f -> float_finite_or_none) --
+            # a raw float() here would be a second, ad-hoc coercion authority for a Schwab
+            # vendor field.
+            _sk = float_finite_or_none(ct.get("strikePrice"))
             if sym and side in ("CALL", "PUT") and _sk is not None:
-                try:
-                    sym_map.setdefault(float(_sk), {})[side.lower()] = str(sym)
-                except (TypeError, ValueError):
-                    pass
+                sym_map.setdefault(_sk, {})[side.lower()] = str(sym)
         symbols_by_expiry[e] = sym_map
 
     strikes = sorted(strike_set)
