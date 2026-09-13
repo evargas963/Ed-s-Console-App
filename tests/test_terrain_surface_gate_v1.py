@@ -165,6 +165,76 @@ def test_producer_overlays_the_active_streaming_contract_before_projecting(monke
     server._gamma_surface_demand.pop(tk, None)
 
 
+def test_surface_seq_publication_is_atomic_with_the_cache_write(monkeypatch):
+    """Independent-review finding (2026-09-12, state-authority review), REPRODUCED: the seq
+    bump (_next_gamma_surface_seq, which ALSO pushes the SSE 'gamma_surface_seq' notify) used
+    to run inside its OWN, EARLIER `with _terrain_cache_lock:` block -- a real gap of several
+    statements (and a possible exception) before `_terrain_cache[tk] = payload` in a SECOND,
+    later lock acquisition. Any reader in that window (an SSE subscriber reacting to the
+    notify by immediately re-fetching, or an ordinary concurrent poll) could acquire the
+    now-released lock and observe the NEW surface_seq while `_terrain_cache[tk]` still held
+    the PREVIOUS cycle's payload -- publication announced before the published data was
+    visible ("the REST producer can announce surface revision 2 while the serving cache
+    still returns revision 1").
+
+    This proves the STRUCTURAL fix directly rather than racing real threads against a gap of
+    a few Python statements (unreliable to hit deterministically): the seq bump and the
+    cache write must now occur under the SAME lock acquisition (the same `with
+    _terrain_cache_lock:` __enter__ call), so no other thread can ever acquire that lock in
+    between them -- exactly how refresh_gamma_surface_from_stream (the eager stream path)
+    already does it correctly.
+    """
+    tk = server.ticker_storage_key("SPY")
+    server._gamma_surface_seq.pop(tk, None)
+
+    class _CountingLockWrapper:
+        def __init__(self, real):
+            self._real = real
+            self.enter_count = 0
+
+        def __enter__(self):
+            self.enter_count += 1
+            return self._real.__enter__()
+
+        def __exit__(self, *a):
+            return self._real.__exit__(*a)
+
+    wrapper = _CountingLockWrapper(server._terrain_cache_lock)
+    monkeypatch.setattr(server, "_terrain_cache_lock", wrapper)
+
+    seen = {"seq_call_enter_n": None, "cache_write_enter_n": None}
+    real_next_seq = server._next_gamma_surface_seq
+
+    def spy_next_seq(tk_):
+        seen["seq_call_enter_n"] = wrapper.enter_count
+        return real_next_seq(tk_)
+    monkeypatch.setattr(server, "_next_gamma_surface_seq", spy_next_seq)
+
+    class _WatchedCache(dict):
+        def __setitem__(self, key, value):
+            if key == tk:
+                seen["cache_write_enter_n"] = wrapper.enter_count
+            return super().__setitem__(key, value)
+    monkeypatch.setattr(server, "_terrain_cache", _WatchedCache())
+
+    def proj(contracts, spot):
+        return {"expirations": [], "strikes": [], "cells": []}
+
+    _stub_terrain(monkeypatch, proj)
+    server._note_gamma_surface_demand(tk)
+    server._terrain_refresh_one(tk)
+
+    assert seen["seq_call_enter_n"] is not None, "the surface-seq path was not exercised"
+    assert seen["cache_write_enter_n"] is not None, "the cache write for this ticker never happened"
+    assert seen["seq_call_enter_n"] == seen["cache_write_enter_n"], (
+        f"the seq bump (lock __enter__ #{seen['seq_call_enter_n']}) and the cache write "
+        f"(lock __enter__ #{seen['cache_write_enter_n']}) happened under DIFFERENT lock "
+        f"acquisitions -- a concurrent reader could acquire the lock in the gap between "
+        f"them and observe the new surface_seq with the old cached payload"
+    )
+    server._gamma_surface_demand.pop(tk, None)
+
+
 def test_a_stream_observation_between_rest_fetch_and_computation_completion_is_admitted(monkeypatch):
     """Independent-review finding (2026-09-12), REPRODUCED against this exact production path
     before being fixed: 'I supplied REST data at time 400, a stream update at 401, and

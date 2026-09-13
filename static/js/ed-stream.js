@@ -122,6 +122,19 @@
                                    // was confirmed -- see the "unchanged" short-circuit below
   var _pendingAdditional = null;  // set currently in flight, or null
   var _additionalGen = 0;         // monotonic token: only the LATEST request may commit
+  // Independent-review finding (2026-09-12, state-authority review), REPRODUCED: on a
+  // FRESH page, before this module has ever dispatched a single request,
+  // `_desiredAdditionalGen` (0) trivially equals `_additionalGen` (0) -- a sentinel
+  // meaning "never touched", not "confirmed by the server". The shell's own
+  // background auto-select-on-load calls setAdditionalContracts([]) as its first-ever
+  // call in the common case (no contract auto-selected), which matched that untouched
+  // pair and short-circuited with accepted:true/unchanged:true WITHOUT ever contacting
+  // the server -- a LOCAL DEFAULT masquerading as CONFIRMED SERVER STATE. A real
+  // server that still holds some OTHER additional-contracts selection (a prior tab, a
+  // server that did not reset) would never be told to clear it. `_desiredAdditionalGen
+  // === _additionalGen` alone cannot distinguish "confirmed" from "never asked" --
+  // an explicit flag, set true ONLY by a genuine accepted commit, is required.
+  var _desiredAdditionalConfirmed = false;
   function setAdditionalContracts(symbols) {
     var next = (symbols || []).map(function (s) { return String(s || '').trim().toUpperCase(); })
       .filter(function (s) { return s; });
@@ -181,7 +194,8 @@
     // trustworthy the instant anything else is attempted, and only becomes trustworthy
     // again once a fresh accept re-synchronizes the two counters.
     var currentTarget = (_pendingAdditional !== null) ? _pendingAdditional : _desiredAdditional;
-    var cacheTrustworthy = _pendingAdditional === null && _desiredAdditionalGen === _additionalGen;
+    var cacheTrustworthy = _pendingAdditional === null && _desiredAdditionalGen === _additionalGen
+      && _desiredAdditionalConfirmed;
     if (cacheTrustworthy && _sortedEqual(dedup, currentTarget)) {
       return Promise.resolve({ accepted: true, unchanged: true, contracts: _desiredAdditional });
     }
@@ -220,6 +234,7 @@
           if (accepted) {
             _desiredAdditional = dedup;      // commit ONLY on a confirmed accept
             _desiredAdditionalGen = token;   // and re-synchronize the trust generation
+            _desiredAdditionalConfirmed = true;   // the cache is now backed by a real ack
           }
           _pendingAdditional = null;
         }

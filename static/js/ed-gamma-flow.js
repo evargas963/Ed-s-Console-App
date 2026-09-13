@@ -30,6 +30,24 @@
   function load() {
     var h = host(); if (!h || !isFlow()) return;
     set();
+    // Independent-review finding (2026-09-12, state-authority review), REPRODUCED
+    // ("Flow resurrection"): `_gen` used to be bumped only on the branch that actually
+    // dispatches a new fetch (below), which requires `desired != null && ctl ===
+    // 'accepted'`. A ticker switch calls EdStream.clearDesired() then load(): `desired`
+    // is now null, so load() returned at the very next line WITHOUT ever bumping
+    // `_gen` -- an in-flight fetch for the OLD ticker's contract (still holding the
+    // OLD `g === _gen`) stayed "current" through the switch and through the new
+    // ticker's own 'requested'/'failed' states (which ALSO return before reaching the
+    // bump). Reproduced exactly: PLTR contract active, switch to AMD (clears desired,
+    // AMD's own POST still in flight) -> PLTR's delayed response arrives -> `g ===
+    // _gen` still true -> render() paints PLTR's bid/ACTIVE badge under the AMD
+    // ticker label already written by set() above. Every OTHER subview here
+    // (ed-gamma-chain.js, ed-gamma-chart.js, ed-gamma-levels.js) bumps its own `_gen`
+    // unconditionally at the top of `load()`, before any state-dependent early
+    // return -- Flow is fixed to match: the generation must advance on every call
+    // that could invalidate a prior fetch's relevance, not only on the call that
+    // itself dispatches a new one.
+    var g = ++_gen;
     var ES = window.EdStream;
     var desired = (ES && ES.getDesired && ES.getDesired()) || null;
     var ctl = (ES && ES.controlState && ES.controlState()) || 'none';
@@ -37,7 +55,6 @@
     if (ctl === 'requested') { return shell(h, desired, 'REQUESTED', 'control request sent — awaiting acknowledgement', null); }
     if (ctl === 'failed') { return shell(h, desired, 'FAILED', 'control request was not accepted — no observation started', null); }
     // I: only an ACCEPTED control request begins normal microstructure observation.
-    var g = ++_gen;
     h.setAttribute('aria-busy', 'true');
     fetch('/api/order-flow/options-microstructure?contract=' + encodeURIComponent(desired), { cache: 'no-store' })
       .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })

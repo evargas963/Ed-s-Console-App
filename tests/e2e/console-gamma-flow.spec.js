@@ -40,7 +40,7 @@ function microFor(plane, mutate) {
 }
 
 function makeContext() {
-  return { post: { status: 200, ok: true, echo: DESIRED }, plane: { contract_match: true, streaming_healthy: true, streaming_staleness_ms: 300 }, mutate: null, posts: 0, microGets: 0 };
+  return { post: { status: 200, ok: true, echo: DESIRED }, plane: { contract_match: true, streaming_healthy: true, streaming_staleness_ms: 300 }, mutate: null, posts: 0, microGets: 0, hangMicro: false, releaseMicro: null };
 }
 
 async function setup(page, ctx) {
@@ -73,7 +73,16 @@ async function setup(page, ctx) {
       return route.fulfill({ status: p.status, contentType: 'application/json',
         body: JSON.stringify({ ok: p.ok, contract: (p.echo != null ? p.echo : contract), command_generation: 1, superseded: p.status === 409 }) });
     }
-    if (url.includes('/api/order-flow/options-microstructure')) { ctx.microGets++; return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(microFor(ctx.plane, ctx.mutate)) }); }
+    if (url.includes('/api/order-flow/options-microstructure')) {
+      ctx.microGets++;
+      const body = JSON.stringify(microFor(ctx.plane, ctx.mutate));
+      if (ctx.hangMicro) {
+        return new Promise((resolve) => {
+          ctx.releaseMicro = () => resolve(route.fulfill({ status: 200, contentType: 'application/json', body }));
+        });
+      }
+      return route.fulfill({ status: 200, contentType: 'application/json', body });
+    }
     let body = { available: false };
     if (url.includes('/api/chain')) body = chain();
     else if (url.includes('/api/options/gamma-surface')) body = { ticker: 'SPY', available: true, spot: 100, source: 'terrain_live_cache', live: true, stale: false, expirations: [{ expiry: '2026-09-11', dte: 2 }], strikes: [100], cells: [{ strike: 100, gex: [1] }] };
@@ -266,5 +275,45 @@ test.describe('D — Gamma Flow subview (EdStream contract binding)', () => {
     await expect(page.locator('#flowBody')).toContainText('Select a Call or Put contract');
     expect(await page.evaluate(() => window.EdStream.getDesired())).toBeNull();
     expect(ctx.posts).toBe(posts1);                                                // clearing never POSTs
+  });
+
+  test('a delayed microstructure response for the OLD contract cannot resurrect after a ticker switch clears intent (state-authority review)', async ({ page }) => {
+    // Independent-review finding (2026-09-12, state-authority review), REPRODUCED
+    // ("Flow resurrection"): ed-gamma-flow.js's `_gen` guard used to be bumped only on
+    // the branch that dispatches a NEW fetch (requires desired!=null && ctl==='accepted'),
+    // never on the branch that CLEARS it. A ticker switch calls EdStream.clearDesired()
+    // then load(): desired is now null, so load() returned before ever bumping `_gen`.
+    // An in-flight microstructure fetch dispatched for the OLD contract (still holding
+    // the OLD `g === _gen`) stayed "current" through the switch -- its late response
+    // would render the OLD contract's ACTIVE badge/bid under the NEW ticker's label
+    // (already updated by set()). Reproduced here: select SPY's contract (microstructure
+    // fetch hangs), switch ticker to QQQ (clears desired, Flow shows NONE), THEN release
+    // the hung SPY response -- it must not repaint anything.
+    const ctx = makeContext(); await setup(page, ctx);
+    ctx.hangMicro = true;
+    await selectCallAndOpenFlow(page);
+    await expect.poll(() => ctx.microGets).toBeGreaterThanOrEqual(1);   // the SPY fetch is in flight, hanging
+    expect(await page.evaluate(() => window.EdStream.getDesired())).toBe(DESIRED);
+
+    // Switch ticker BEFORE the hung SPY response resolves.
+    await page.locator('#symInput').fill('QQQ'); await page.locator('#symInput').press('Enter');
+    await expect(page.locator('#flowBody')).toContainText('Select a Call or Put contract');
+    expect(await page.evaluate(() => window.EdStream.getDesired())).toBeNull();
+
+    // NOW release the stale SPY response -- it must not resurrect ACTIVE/the old contract.
+    // A plain `expect(locator).toContainText(...)` auto-retries for up to its timeout, so
+    // a TRANSIENT bad paint that a LATER, unrelated event happens to correct before the
+    // retry window elapses would silently pass -- this reproduced exactly that way on
+    // first draft (a momentary resurrection, corrected moments later by an unrelated
+    // poll tick, still read back as a pass). A single, non-retrying snapshot of the DOM
+    // taken immediately after the release is the only way to catch the transient itself.
+    ctx.hangMicro = false;
+    if (ctx.releaseMicro) ctx.releaseMicro();
+    await page.waitForTimeout(150);   // let any (incorrect) late-render attempt land
+    const html = await page.locator('#flowBody').innerHTML();
+    expect(html).not.toContain('ACTIVE');
+    expect(html).not.toContain(DESIRED);
+    expect(html).toContain('Select a Call or Put contract');
+    expect(html).toContain('>NONE<');
   });
 });

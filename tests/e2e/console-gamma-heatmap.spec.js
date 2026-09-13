@@ -267,6 +267,69 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     expect(chainCalls).toBeGreaterThan(callsBeforeRefresh);
   });
 
+  test('Strike Detail\'s Net GEX$ cell re-syncs when GEX-by-Strike updates, not just on its own /api/chain fetch (state-authority review)', async ({ page }) => {
+    // Independent-review finding (2026-09-12, state-authority review), REPRODUCED: "Strike
+    // Detail can retain $1.0K after GEX by Strike updates to $3.0K." Strike Detail's Net
+    // GEX$ cell reads gbsNetAt(strike), sourced from _lastGbs -- a module-level cache that
+    // ONLY renderGbs() (GEX-by-Strike's own render) ever updates. loadGbs() (->
+    // /api/terrain/strikes) and loadStrike() (-> /api/chain) are two independent,
+    // unsynchronized fetches with no cross-panel version check: if /api/chain resolves
+    // FIRST on a refresh tick, Strike Detail bakes in whatever _lastGbs still holds from
+    // the PREVIOUS cycle; when /api/terrain/strikes resolves LATER and updates _lastGbs
+    // (repainting GEX-by-Strike's own bars), nothing told Strike Detail its
+    // already-rendered Net cell was now stale -- it kept showing the old value.
+    let strikesNet = 1000;
+    let strikesCalls = 0;
+    let hangNextStrikes = false;
+    let releaseStrikes = null;
+    await page.route('**/api/terrain/strikes**', (route) => {
+      strikesCalls += 1;
+      const body = JSON.stringify({ ticker: '$SPX', spot: 583.41,
+        today: { all: [[583, strikesNet, 5400], [580, -90000, 900], [586, -264500, 1200]] } });
+      if (hangNextStrikes) {
+        hangNextStrikes = false;
+        return new Promise((resolve) => {
+          releaseStrikes = () => resolve(route.fulfill({ status: 200, contentType: 'application/json', body }));
+        });
+      }
+      return route.fulfill({ status: 200, contentType: 'application/json', body });
+    });
+    let chainCalls = 0;
+    await page.route('**/api/chain**', (route) => {
+      chainCalls += 1;
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(CHAIN) });
+    });
+
+    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.locator('.hcell[data-strike="583"][data-expiry="2026-09-11"]').click();
+    await expect(page.locator('#sdCtx')).toContainText('583');
+    const netCell = page.locator('#sdBody .sd-net td').nth(4);   // Net, OI, Vol, Gamma, GEX$
+    await expect(netCell).toHaveText('$1.0K');
+
+    // The NEXT /api/terrain/strikes response hangs; /api/chain resolves normally and fast,
+    // so renderStrike() runs FIRST and bakes in the still-stale $1.0K from _lastGbs.
+    strikesNet = 3000;
+    hangNextStrikes = true;
+    const chainCallsBeforeRefresh = chainCalls;
+    await page.evaluate(() => document.dispatchEvent(new CustomEvent('ed:refresh', { detail: { slow: true } })));
+    await expect.poll(() => strikesCalls).toBeGreaterThanOrEqual(2);   // the new terrain/strikes request is in flight, hanging
+    await expect.poll(() => chainCalls).toBeGreaterThan(chainCallsBeforeRefresh);   // /api/chain already settled
+    await expect(netCell).toHaveText('$1.0K');   // still the OLD value
+
+    // NOW release the delayed /api/terrain/strikes response -- the Net cell must re-sync
+    // to $3.0K WITHOUT a new /api/chain fetch (a direct push, not a re-fetch). A plain
+    // `expect(locator).toHaveText(...)` auto-retries for its whole timeout, so it would
+    // still eventually pass if some LATER, unrelated periodic refresh happened to
+    // re-fetch /api/chain and pick up the by-then-updated value on its own -- that would
+    // prove an unrelated mechanism works, not this fix. A short, bounded, non-retrying
+    // check immediately after release is the only way to catch the direct resync itself.
+    const chainCallsBeforeRelease = chainCalls;
+    if (releaseStrikes) releaseStrikes();
+    await page.waitForTimeout(150);
+    expect(await netCell.textContent()).toBe('$3.0K');
+    expect(chainCalls).toBe(chainCallsBeforeRelease);
+  });
+
   test('heatmap renders canonical cells verbatim (value == formatted payload; sign -> colour)', async ({ page }) => {
     await page.goto('/console', { waitUntil: 'domcontentloaded' });
     const cell583 = page.locator('.hcell[data-strike="583"][data-expiry="2026-09-11"]');
@@ -933,6 +996,44 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect.poll(() => requests.length).toBeGreaterThan(0);
     const sent = requests[requests.length - 1].contracts.slice().sort();
     expect(sent).toEqual(['SPY   260911C00583000', 'SPY   260911P00583000']);
+  });
+
+  test('the first-ever additional-contracts request on a fresh page confirms with the server, not just a local default (state-authority review)', async ({ page }) => {
+    // Independent-review finding (2026-09-12, state-authority review), REPRODUCED: on a
+    // FRESH page, before this module has ever dispatched a single request,
+    // `_desiredAdditionalGen` (0) trivially equalled `_additionalGen` (0) -- a sentinel
+    // meaning "never touched", not "confirmed by the server". The shell's own background
+    // auto-select-on-load resolves to a genuine clear demand (setAdditionalContracts([]),
+    // the empty default fixture's contracts have no `symbol` field) as its first-ever
+    // call -- this matched the untouched pair and short-circuited with
+    // accepted:true/unchanged:true WITHOUT ever contacting the server, a LOCAL DEFAULT
+    // masquerading as CONFIRMED SERVER STATE. A real server that still holds some OTHER
+    // additional-contracts selection (a prior tab, a server that did not reset) would
+    // never be told to clear it. Fixed with an explicit `_desiredAdditionalConfirmed`
+    // flag, set true ONLY by a genuine accepted commit -- `_desiredAdditionalGen ===
+    // _additionalGen` alone cannot distinguish "confirmed" from "never asked".
+    let requestCount = 0;
+    let firstBody = null;
+    await page.route('**/api/streaming/active-option-contracts', async (route) => {
+      requestCount += 1;
+      const body = JSON.parse(route.request().postData() || '{}');
+      if (firstBody === null) firstBody = body;
+      return route.fulfill({ status: 200, contentType: 'application/json',
+        body: JSON.stringify({ ok: true, contracts: body.contracts || [] }) });
+    });
+    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#sdCtx')).toContainText('583');   // background auto-select settled
+
+    expect(requestCount).toBeGreaterThanOrEqual(1);
+    expect(firstBody && firstBody.contracts).toEqual([]);
+
+    // A second identical call, now genuinely confirmed, is correctly free to short-circuit
+    // -- the fix does not remove the caching optimization, only when it may be trusted.
+    const before = requestCount;
+    const again = await page.evaluate(() => window.EdStream.setAdditionalContracts([]));
+    expect(again.accepted).toBe(true);
+    expect(again.unchanged).toBe(true);
+    expect(requestCount).toBe(before);
   });
 
   test('a failed additional-contracts request is retried, not falsely reported accepted (RC-UI-3)', async ({ page }) => {

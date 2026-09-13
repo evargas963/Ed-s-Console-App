@@ -199,9 +199,33 @@
     }
     return null;
   }
+  // Independent-review finding (2026-09-12, state-authority review), REPRODUCED: Strike
+  // Detail's Net GEX$ cell reads gbsNetAt(strike) -- a value SOURCED FROM _lastGbs, which
+  // only GEX-by-Strike's own renderGbs() ever updates -- but renderStrike() only reads it
+  // at the moment ITS OWN /api/chain fetch resolves. loadGbs() (-> /api/terrain/strikes)
+  // and loadStrike() (-> /api/chain) are two independent, unsynchronized fetches with no
+  // cross-panel version check: if /api/chain resolves first, Strike Detail bakes in
+  // whatever _lastGbs still holds from the PREVIOUS cycle (e.g. $1.0K); when
+  // /api/terrain/strikes later resolves and renderGbs() updates _lastGbs to the new value
+  // (e.g. $3.0K) and repaints the bar chart, nothing tells Strike Detail its own
+  // already-rendered Net cell is now stale -- it keeps showing $1.0K until the NEXT
+  // independent trigger of loadStrike. Fixed by re-syncing JUST that one derived cell
+  // the instant its actual source (_lastGbs) changes, without re-fetching /api/chain or
+  // touching Strike Detail's other (unrelated, already-correct) OI/Vol/Gamma/Delta/IV
+  // cells.
+  function _resyncStrikeDetailNetCell() {
+    var sel = ((window.EdShell && window.EdShell.getState()) || {}).selStrike;
+    if (sel == null) return;
+    var cell = document.querySelector('#sdBody .sd-net td:nth-child(5)');
+    if (!cell) return;   // Strike Detail is not currently rendering a strike -- nothing to sync
+    var net = gbsNetAt(sel);
+    cell.className = net == null ? '' : (net >= 0 ? 'pos' : 'neg');
+    cell.textContent = net == null ? '—' : usd(net);
+  }
   function renderGbs(host, d) {
     setGbsAsOf(d);
     _lastGbs = { rows: (d && d.today && d.today.all) || [], spot: Number(d && d.spot) };
+    _resyncStrikeDetailNetCell();
     var rows = d && d.today && d.today.all;
     if (!rows || !rows.length) {
       host.innerHTML = '<div class="placeholder"><div class="sm">' +

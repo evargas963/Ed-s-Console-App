@@ -12612,6 +12612,7 @@ def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
         # SPXW figure is material at the low end of this cycle's vendor fetch. Gate it to tickers whose
         # gamma surface was requested recently so an unviewed ticker pays ZERO cost; a viewed ticker
         # gets the live surface each cycle. Live RTH end-to-end terrain-cycle impact is proven in F.
+        _stamp_surface_seq = False
         try:
             if spot and _gamma_surface_wanted(tk):
                 _overlaid_contracts, _overlay_n = _gamma_surface_contracts_with_stream_overlay(
@@ -12630,11 +12631,22 @@ def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
                     # never a streamed freshening, so `snap` itself is never built from
                     # `_overlaid_contracts`.
                     payload["_per_strike"] = _per_strike_view_from_contracts(_overlaid_contracts, float(spot))
-                with _terrain_cache_lock:
-                    seq = _next_gamma_surface_seq(tk)
                 if payload["_gamma_surface"] is not None:
                     payload["_gamma_surface"]["stream_overlay_contracts"] = _overlay_n
-                    payload["_gamma_surface"]["surface_seq"] = seq
+                    # Independent-review finding (2026-09-12, state-authority review),
+                    # REPRODUCED: `_next_gamma_surface_seq` (bumps _gamma_surface_seq[tk] AND
+                    # pushes the SSE "gamma_surface_seq" notify) used to run HERE, in its own
+                    # EARLIER `with _terrain_cache_lock:` block -- a real gap of several
+                    # statements (and a possible exception) before `_terrain_cache[tk] =
+                    # payload` below, in a SECOND, later lock acquisition. Any reader in that
+                    # window (an SSE subscriber reacting to the notify by immediately
+                    # re-fetching, or an ordinary poll) could observe the NEW surface_seq while
+                    # `_terrain_cache[tk]` still held the PREVIOUS cycle's payload -- publication
+                    # announced before the published data was actually visible. Deferred: only
+                    # the DECISION to stamp a seq is made here; the seq itself is assigned (and
+                    # the SSE notify fired) atomically with the cache write below, exactly like
+                    # refresh_gamma_surface_from_stream already does it correctly.
+                    _stamp_surface_seq = True
                 # RC-UI-2: retained so a LATER streamed tick (arriving between this cycle and
                 # the next ~60s REST refresh) can freshen the cached surface immediately without
                 # a second vendor fetch — see refresh_gamma_surface_from_stream. Always the RAW
@@ -12652,6 +12664,8 @@ def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
             payload["_gamma_surface"] = None
             log.warning("gamma-surface projection raised for %s (surface withheld this cycle): %s", tk, _gs_e)
         with _terrain_cache_lock:
+            if _stamp_surface_seq:
+                payload["_gamma_surface"]["surface_seq"] = _next_gamma_surface_seq(tk)
             _terrain_cache[tk] = payload
             _terrain_profile_cache[tk] = snap.profile
         # RC-159 (operator mandate 2026-07-30): ACCRUE the wide chain across
