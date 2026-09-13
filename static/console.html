@@ -196,31 +196,30 @@
   .sub-pane>.panel{height:100%}
   /* chain ladder (D) — full vendor chain, one expiry.
      Independent-review finding (2026-09-13), REPRODUCED by direct browser measurement, then
-     CORRECTED by a fourth review's challenge and a fresh, more precise measurement: the first
-     finding claimed sticky <th> "never engages in this engine" -- too broad, and wrong. A clean
-     single-row sticky <thead><tr> DOES stick correctly here (Chromium's TablesNG genuinely
-     supports it, confirmed in an isolated baseline page with zero app CSS). The real, narrower
-     defect, reproduced with a from-scratch minimal table in this exact container: a <thead>
-     with TWO stacked sticky rows (this ladder's "Calls/Strike/Puts" row plus its
-     "OI/Vol/IV%/..." column-label row) fails to stick EITHER row, regardless of colspan --
-     confirmed by isolating row count as the one variable that flips the result (1 sticky row:
-     sticks; 2 sticky rows in the same thead: neither sticks). Since this ladder genuinely needs
-     two visually distinct header rows, the two-row requirement itself -- not a blanket "sticky
-     tables don't work" -- is what rules out a single native <table><thead> here. The smallest
-     structure that still uses a native, unambiguously-supported primitive: ONE sticky element
-     (a plain <div>, proven to stick correctly in this same container) wraps a small, ordinary
-     (non-sticky) table holding both header rows for layout only, immediately followed by a
-     second, separate body-only table; a shared fixed-percentage <colgroup> (written by
-     ed-gamma-chain.js) keeps every column pixel-aligned between the two despite them being
-     unrelated table layouts. */
+     CORRECTED by a fourth review's challenge: single-row sticky <thead><tr> DOES work
+     (Chromium's TablesNG genuinely supports it); the real, narrower defect was a <thead> with
+     TWO stacked sticky rows, which fails to stick EITHER row. That was fixed with one sticky
+     <div> wrapping a small header-only table beside a separate body table -- but the operator
+     kept reproducing a real, moving visual fault (a shifting header with a gap opening above
+     it) on real trackpad/wheel scrolling that no programmatic or synthetic scroll event in
+     this session's own testing ever reproduced, surviving TWO follow-up fixes (a compositing-
+     layer promotion, then an overscroll-behavior containment) neither of which could be
+     proven to address the actual mechanism, because neither could be proven to reproduce it
+     in the first place.
+     Root-caused instead of patched again: `position:sticky` is fundamentally the wrong tool
+     here regardless of which of ITS OWN failure modes was actually firing (compositing,
+     scroll-chaining, or something else never isolated) -- it is a well-documented source of
+     exactly this class of intermittent, hard-to-reproduce, engine/driver-dependent visual bug
+     across browsers. The header does not need to LOOK stuck via a positioning trick; it can
+     simply never be part of the scrolling region at all -- the standard "frozen header"
+     pattern: #chainBody is now a non-scrolling flex column holding the (non-sticky) header
+     table directly, with a SEPARATE, genuinely scrollable `.chn-scroll` div beneath it holding
+     only the body table. There is no sticky positioning anywhere in this design, so there is
+     nothing left for a compositor or scroll-chaining bug to intermittently get wrong. */
   .chn{width:100%;border-collapse:collapse;table-layout:fixed;font-family:var(--ed-sans);font-size:13px;font-variant-numeric:tabular-nums}
-  /* Independent-review finding (2026-09-13), REPRODUCED: the operator's own real (non-scripted)
-     scrolling left a ghost strip of body-row digits visible in a gap directly above the sticky
-     header, that a programmatic scrollTop-driven test never surfaced -- a real Chromium
-     compositing quirk where a sticky element repainted by ordinary invalidation (not its own
-     layer) can leave stale rasterized pixels behind it. `transform:translateZ(0)` promotes it
-     to its own compositing layer so it is always freshly composited, not repainted-and-hoped. */
-  .chn-headwrap{position:sticky;top:0;z-index:2;background:var(--ed-panel-2);transform:translateZ(0)}
+  #chainBody{display:flex;flex-direction:column;overflow:hidden}
+  .chn-scroll{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain}
+  .chn-headtbl{flex:none}
   .chn th{background:var(--ed-panel-2);font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;
     color:var(--ed-ink-3);padding:7px 9px;border-bottom:1px solid var(--ed-edge);text-align:right}
   .chn th.mid{text-align:center;color:var(--ed-ink);background:var(--ed-panel-3);letter-spacing:.06em}

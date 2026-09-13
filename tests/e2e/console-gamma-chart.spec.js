@@ -98,10 +98,15 @@ test.describe('Options/Gamma Chart subview', () => {
     // Strike Detail resolved the REAL, vendor-verbatim call AND put symbols for strike 102 at
     // this expiry, and demanded streaming for exactly those -- the complete workflow, not just
     // the numeric strike+expiry handoff.
+    //
+    // A SEVENTH independent review (2026-09-13), REPRODUCED: this assertion only ever
+    // checked CALL_SYM was present -- a regression that dropped PUT_SYM from the demand set
+    // entirely (e.g. a call-only bug in the strike-to-contracts resolution) would have passed
+    // this test unnoticed. Both legs of the same strike must be demanded together.
     await expect.poll(() => demandCalls.length).toBeGreaterThan(0);
     const lastDemand = demandCalls[demandCalls.length - 1];
-    expect([lastDemand.contract, ...(lastDemand.contracts || [])].filter(Boolean)).toEqual(
-      expect.arrayContaining([CALL_SYM]));
+    const demanded = [lastDemand.contract, ...(lastDemand.contracts || [])].filter(Boolean);
+    expect(demanded).toEqual(expect.arrayContaining([CALL_SYM, PUT_SYM]));
   });
 
   test('with no expiry filter set, a Chart click leaves selExpiry null (no invented expiry)', async ({ page }) => {

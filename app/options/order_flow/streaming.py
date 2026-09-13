@@ -78,6 +78,20 @@ FIRST_TICK_BOOK_LIMIT = 1
 #    no dedicated thread/loop needed once nothing here opens a socket) ──
 _feed_task: Optional[asyncio.Task] = None
 _feed_running = False
+#: A FIFTH independent review (2026-09-13), REPRODUCED: `_feed_running` alone cannot tell
+#: "this dispatched work belongs to the CURRENT feed lifecycle" from "some earlier
+#: lifecycle also happened to leave `_feed_running` True" -- a stop() then a start() BEFORE
+#: an old queued task drains flips `_feed_running` False then back to True, and a check of
+#: the boolean alone cannot distinguish the two lifecycles. Concretely reproduced: hold an
+#: AMD hook call, queue a PLTR dispatch behind it, stop the feed (PLTR still queued,
+#: unstarted), RESTART the feed (`_feed_running` -> True again, a NEW lifecycle), THEN
+#: release AMD -- PLTR's task, dispatched under the OLD lifecycle, incorrectly ran under
+#: the NEW one because `_run_streamed_greeks_hook_if_live`'s own re-check only ever asked
+#: "is SOME feed running right now," never "is the SAME feed running that queued me."
+#: Bumped once per `start_order_flow_stream` call; each dispatched hook task captures the
+#: generation active when `_feed_loop` itself started and must match it again at actual
+#: execution time, not just find `_feed_running` true.
+_feed_generation = 0
 _active_ticker: Optional[str] = None
 _streaming_last_update_ts: Optional[float] = None
 _last_subscribe_completed_ts: Optional[float] = None
@@ -135,7 +149,7 @@ def set_streamed_greeks_hook(fn: Optional[Callable[[str, float], None]]) -> None
     _streamed_greeks_hook = fn
 
 
-def _run_streamed_greeks_hook_if_live(rep_sym: str, rep_ts: float) -> str:
+def _run_streamed_greeks_hook_if_live(rep_sym: str, rep_ts: float, generation: int) -> str:
     """The actual executor-thread entry point `_start_hook_task` submits, in place of calling
     `_streamed_greeks_hook` directly.
 
@@ -155,8 +169,16 @@ def _run_streamed_greeks_hook_if_live(rep_sym: str, rep_ts: float) -> str:
     executing on the worker thread (not when it was submitted) and skip the real hook body
     entirely if the feed has already stopped -- closing the gap `_done`'s existing shutdown
     check (RC-556) only ever covered for a same-root trailing rerun, never a different root's
-    independently-submitted fresh dispatch."""
-    if not _feed_running:
+    independently-submitted fresh dispatch.
+
+    A FIFTH independent review (2026-09-13), REPRODUCED: `_feed_running` alone is not enough --
+    a stop() followed by a restart() before this task drains flips it back to True for a NEW
+    lifecycle, and this check alone would then wrongly treat OLD, pre-restart work as
+    belonging to the current one. `generation` is the lifecycle identifier `_feed_loop`
+    captured for itself when IT started; this only runs the real hook body when that captured
+    generation still matches the CURRENT `_feed_generation` -- not merely when some feed
+    happens to be running right now."""
+    if not _feed_running or generation != _feed_generation:
         return "feed_stopped"
     if _streamed_greeks_hook is None:
         return "no_hook_registered"
@@ -646,6 +668,11 @@ async def _feed_loop() -> None:
     crosses threads. The executor is scoped to this loop's own lifetime, not module-level,
     so a start/stop/restart cycle never risks a stale worker thread from a prior run."""
     global _feed_running
+    # This lifecycle's own identity (see `_feed_generation`'s module-level docstring) --
+    # captured ONCE here, not re-read per dispatch, so every hook task this ONE loop
+    # invocation ever submits carries the SAME generation number regardless of how many
+    # times `_feed_generation` itself is bumped by a LATER, unrelated restart.
+    my_generation = _feed_generation
     con: Optional[sqlite3.Connection] = None
     executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="daemon-plane-feed-db")
     # Independent-review finding (2026-09-12, state-authority review), REPRODUCED: the
@@ -690,7 +717,8 @@ async def _feed_loop() -> None:
     _hook_pending_by_root: "dict[str, tuple[str, float]]" = {}
 
     def _start_hook_task(root: str, rep_sym: str, rep_ts: float) -> None:
-        fut = loop.run_in_executor(hook_executor, _run_streamed_greeks_hook_if_live, rep_sym, rep_ts)
+        fut = loop.run_in_executor(
+            hook_executor, _run_streamed_greeks_hook_if_live, rep_sym, rep_ts, my_generation)
         task = asyncio.ensure_future(fut)
         hook_tasks.add(task)
 
@@ -708,7 +736,14 @@ async def _feed_loop() -> None:
             # the loop has already exited. A task already in flight at shutdown still runs
             # to completion (existing CAS-protected, harmless-if-late publish); this only
             # stops a NEW one from ever being scheduled into a lifecycle that has ended.
-            if nxt is not None and _feed_running:
+            #
+            # A FIFTH independent review (2026-09-13), REPRODUCED: `_feed_running` alone
+            # let a trailing rerun queued under THIS generation start under a LATER one --
+            # a stop() then a restart() between this callback firing and its own check
+            # flips `_feed_running` back to True for a NEW lifecycle. `my_generation ==
+            # _feed_generation` closes that gap the same way `_run_streamed_greeks_hook_
+            # if_live` now does for a fresh dispatch.
+            if nxt is not None and _feed_running and my_generation == _feed_generation:
                 _hook_inflight_roots.add(_root)
                 _start_hook_task(_root, nxt[0], nxt[1])
         task.add_done_callback(_done)
@@ -1333,7 +1368,7 @@ def start_order_flow_stream(
 ) -> bool:
     """`client`/`account_id` are accepted, not used: this feed opens no Schwab session
     of its own, so it has no account dependency — kept for call-site compatibility."""
-    global _feed_task, _feed_running, _on_tick_callback
+    global _feed_task, _feed_running, _feed_generation, _on_tick_callback
     it = (initial_ticker or "").upper().strip()
     if not it:
         log.warning("Live-plane feed: no initial ticker")
@@ -1343,6 +1378,10 @@ def start_order_flow_stream(
         return True
     _on_tick_callback = on_tick_callback
     _feed_running = True
+    # A new lifecycle -- see `_feed_generation`'s module-level docstring. Bumped here
+    # (never in stop_order_flow_stream) so a restart is what invalidates in-flight work
+    # from before it, matching exactly the reproduced stop-then-restart-before-drain gap.
+    _feed_generation += 1
     set_streaming_active_ticker(it)
     _feed_task = asyncio.get_event_loop().create_task(_feed_loop(), name="daemon-plane-feed")
     log.info("Live-plane feed started (initial ticker %s, source=canonical capture daemon)", it)

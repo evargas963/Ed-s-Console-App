@@ -107,25 +107,24 @@
     function cell(c, k, dg) { var v = c ? c[k] : null; return (v == null) ? '—' : (typeof v === 'number' ? v.toFixed(dg == null ? 2 : dg) : esc(v)); }
     function sym(c) { return c && c.symbol ? String(c.symbol) : ''; }
     function selAttr(c) { var s = sym(c); return s ? (' data-sym="' + esc(s) + '"' + (s === desired ? ' data-selc="1"' : '')) : ''; }
-    // Independent-review finding (2026-09-13), REPRODUCED then CORRECTED by a fourth review's
-    // challenge (Chromium's TablesNG genuinely supports native sticky <th> -- confirmed in an
-    // isolated baseline page with zero app CSS: a single sticky <thead><tr> sticks correctly).
-    // Re-measured precisely in this exact container: the real, narrow defect is a <thead> with
-    // TWO stacked sticky rows (this ladder needs both "Calls/Strike/Puts" AND its own column
-    // labels) -- isolating row-count as the one variable that flips the result (1 sticky row:
-    // sticks every time; 2 sticky rows in the same thead: neither sticks, regardless of
-    // colspan). Given this ladder genuinely needs two header rows, the smallest structure that
-    // still uses a native, unambiguously-supported primitive is ONE sticky element (a plain
-    // <div>, proven to stick correctly here) wrapping an ordinary (non-sticky) table that holds
-    // both header rows for layout only, immediately followed by a SECOND, separate <table> for
-    // the body rows -- a shared <colgroup> with fixed percentage widths on both tables keeps
-    // every column pixel-aligned between the two.
+    // Independent-review finding (2026-09-13), REPRODUCED then narrowed to a two-sticky-row
+    // defect, then a further review confirmed the operator kept seeing a real, moving visual
+    // fault on genuine trackpad scrolling that neither `position:sticky` fix (a compositing-
+    // layer promotion, then overscroll containment) could be proven to address, because
+    // neither could be proven to reproduce the exact mechanism. Root-caused by removing
+    // `position:sticky` entirely: the header table is now a FROZEN (non-scrolling) sibling of
+    // a separate, genuinely scrollable `.chn-scroll` div holding only the body table (see
+    // console.html's #chainBody/.chn-scroll rules) -- a standard "frozen header" layout with
+    // no sticky positioning anywhere for a compositor or scroll-chaining bug to intermittently
+    // mishandle. A shared fixed-percentage <colgroup> on both tables keeps every column
+    // pixel-aligned between them despite being unrelated table layouts.
     var COLGROUP = '<colgroup><col style="width:10%"><col style="width:10%"><col style="width:10%"><col style="width:10%">' +
       '<col style="width:20%"><col style="width:10%"><col style="width:10%"><col style="width:10%"><col style="width:10%"></colgroup>';
-    var h = head + '<div class="chn-headwrap"><table class="chn chn-headtbl">' + COLGROUP + '<thead><tr>' +
+    var h = '<table class="chn chn-headtbl">' + COLGROUP + '<thead><tr>' +
       '<th colspan="4" class="cflag" style="text-align:center">Calls</th><th class="mid">Strike</th>' +
       '<th colspan="4" class="pflag" style="text-align:center">Puts</th></tr>' +
-      '<tr><th>OI</th><th>Vol</th><th>IV%</th><th>Δ</th><th class="mid"></th><th>Δ</th><th>IV%</th><th>Vol</th><th>OI</th></tr></thead></table></div>' +
+      '<tr><th>OI</th><th>Vol</th><th>IV%</th><th>Δ</th><th class="mid"></th><th>Δ</th><th>IV%</th><th>Vol</th><th>OI</th></tr></thead></table>' +
+      '<div class="chn-scroll" id="chainScroll">' + head +
       '<table class="chn chn-bodytbl">' + COLGROUP + '<tbody>';
     strikes.forEach(function (k) {
       var g = byK[k], n = Math.max(g.c.length, g.p.length);
@@ -145,7 +144,16 @@
           '<td class="chn-put' + pSel + '">' + cell(p, 'openInterest', 0) + '</td></tr>';
       }
     });
-    h += '</tbody></table>';
+    h += '</tbody></table></div>';   // close .chn-scroll
+    // Independent-review finding (2026-09-13), REPRODUCED by the frozen-header redesign's own
+    // new regression test: `.chn-scroll` (the actual scrolling element) is a NEW DOM node on
+    // every render now, unlike the old design where #chainBody itself never got replaced and
+    // so kept its own scrollTop across re-renders for free. Captured here, before the old
+    // `.chn-scroll` is torn out by the innerHTML replacement below, and restored onto the new
+    // one afterward -- same "leave the operator's own scroll position alone on a routine
+    // refresh" contract as before, just made explicit now that nothing does it automatically.
+    var oldScroll = host.querySelector('.chn-scroll');
+    var savedScrollTop = oldScroll ? oldScroll.scrollTop : 0;
     host.innerHTML = h;
     // C: the CALL side selects the exact CALL vendor symbol, the PUT side the exact PUT symbol; the
     // centre Strike selects ONLY the shared strike. The symbol is the vendor's own, verbatim — never
@@ -164,6 +172,9 @@
     _lastScrollContext = context;
     if (isNewContext) {
       var sr = host.querySelector('tr.spot'); if (sr && sr.scrollIntoView) sr.scrollIntoView({ block: 'center' });
+    } else {
+      var newScroll = host.querySelector('.chn-scroll');
+      if (newScroll) newScroll.scrollTop = savedScrollTop;
     }
   }
 

@@ -33,14 +33,15 @@ def _clear_cache():
         server._terrain_cache.pop(TK, None)
 
 
-def _put_rest_baseline(*, computed_ts_utc=None):
+def _put_rest_baseline(*, computed_ts_utc=None, contracts=None):
     ts = time.time() if computed_ts_utc is None else computed_ts_utc
+    cts = _CONTRACTS if contracts is None else contracts
     with server._terrain_cache_lock:
         server._terrain_cache[TK] = {
-            "_contracts_rest": _CONTRACTS,
+            "_contracts_rest": cts,
             "_contracts_rest_spot": _SPOT,
             "_contracts_rest_computed_ts": ts,
-            "_gamma_surface": project_gamma_surface(_CONTRACTS, _SPOT),
+            "_gamma_surface": project_gamma_surface(cts, _SPOT),
             "computed_ts_utc": ts,
         }
     server._gamma_surface_seq.pop(TK, None)
@@ -149,6 +150,10 @@ def test_a_fresh_streamed_update_recomputes_and_caches_the_overlaid_surface(monk
     assert cached["strikes"] == expected_surface["strikes"]
     assert cached["expirations"] == expected_surface["expirations"]
     assert cached["stream_overlay_contracts"] == 1
+    # A SIXTH independent review (2026-09-13): the COUNT alone cannot tell a consumer WHICH
+    # contract was actually freshened -- see _overlaid_symbols's own docstring finding. The
+    # heatmap's per-column 'observed' promotion needs this identity, not just a nonzero count.
+    assert cached["stream_overlay_symbols"] == [_CONTRACT_SYMBOL]
     assert cached["stream_overlay_receipt_to_computed_ms"] >= 0
     assert cached["surface_seq"] == 1
     # finding #2 (independent review, 2026-09-12): the eager refresh must publish _per_strike
@@ -160,18 +165,61 @@ def test_a_fresh_streamed_update_recomputes_and_caches_the_overlaid_surface(monk
         assert server._terrain_cache[TK]["_contracts_rest"] == _CONTRACTS
 
 
+def test_stream_overlay_symbols_names_only_the_contract_actually_freshened_not_every_desired_one(monkeypatch):
+    """A SIXTH independent review (2026-09-13), REPRODUCED: the heatmap's 'observed' demand
+    state used to promote to 'observed' off `stream_overlay_contracts > 0` alone -- a single
+    surface-wide COUNT that says nothing about WHICH contract received it. With TWO desired
+    contracts on this ticker (A and B) but only B's stream data fresh enough to overlay,
+    `stream_overlay_symbols` must name B alone, never both, so a client can correctly leave
+    A's own column at 'accepted' (requested, not yet evidenced) while promoting B's."""
+    baseline_ts = time.time() - 10.0
+    _put_rest_baseline(computed_ts_utc=baseline_ts)
+    now = time.time()
+    fresh = {"gamma": 0.5, "gamma_ts_recv": now}
+    stale = {"gamma": 0.6, "gamma_ts_recv": 0.0}   # far older than max_staleness_sec
+
+    import app.options.order_flow.streaming as _ofs
+    _ofs._active_option_contract = _CONTRACT_SYMBOL
+    _ofs._active_option_contracts = [_CONTRACT_SYMBOL_B]
+    try:
+        monkeypatch.setattr(
+            "app.options.order_flow.state.get_stream_greeks",
+            lambda sym: fresh if sym == _CONTRACT_SYMBOL_B else (stale if sym == _CONTRACT_SYMBOL else None))
+
+        status = refresh_gamma_surface_from_stream(_CONTRACT_SYMBOL_B, now)
+        assert status == "ok"
+        with server._terrain_cache_lock:
+            cached = server._terrain_cache[TK]["_gamma_surface"]
+        assert cached["stream_overlay_symbols"] == [_CONTRACT_SYMBOL_B], (
+            f"only the genuinely-fresh contract must be named, not the stale desired one too: "
+            f"{cached['stream_overlay_symbols']}")
+    finally:
+        _ofs._active_option_contract = None
+        _ofs._active_option_contracts = []
+
+
 def test_a_streamed_value_older_than_the_rest_baseline_is_rejected(monkeypatch):
     """Independent-review finding (2026-09-12): 'being received within ten seconds does not
     establish that a stream value is newer than the REST input it replaces.' A value only 2s
-    old is still OLDER than a REST baseline fetched 1s ago."""
+    old is still OLDER than a REST baseline fetched 1s ago.
+
+    Independent-review finding (2026-09-13): a real chain contract carries its OWN native
+    `quoteTimeInLong`, which now governs overlay precedence in preference to the shared
+    REST-fetch instant (see overlay_streamed_contract_fields's fifth-review fix) -- the
+    fixture's own captured quote time is whatever it happened to be when it was recorded,
+    unrelated to this test's synthetic `now`, so the contract under test must be stamped
+    with the scenario's own REST-baseline instant or the ordering guard this test exists to
+    prove is not the one actually exercised."""
     now = time.time()
-    _put_rest_baseline(computed_ts_utc=now - 1.0)
+    contracts = [dict(ct) for ct in _CONTRACTS]
+    contracts[0]["quoteTimeInLong"] = (now - 1.0) * 1000.0
+    _put_rest_baseline(computed_ts_utc=now - 1.0, contracts=contracts)
     monkeypatch.setattr(
         "app.options.order_flow.state.get_stream_greeks",
         lambda sym: {"gamma": 0.99, "gamma_ts_recv": now - 2.0})
     assert refresh_gamma_surface_from_stream(_CONTRACT_SYMBOL, now) == "no_change"
     with server._terrain_cache_lock:
-        assert server._terrain_cache[TK]["_gamma_surface"] == project_gamma_surface(_CONTRACTS, _SPOT)
+        assert server._terrain_cache[TK]["_gamma_surface"] == project_gamma_surface(contracts, _SPOT)
 
 
 def test_repeated_eager_refreshes_never_compound_away_from_the_rest_baseline(monkeypatch):
@@ -264,10 +312,11 @@ def test_gamma_surface_contracts_with_stream_overlay_ignores_a_foreign_ticker(mo
     monkeypatch.setattr(
         "app.options.order_flow.state.get_stream_greeks",
         lambda sym: {"gamma": 0.99, "gamma_ts_recv": time.time()})
-    out, n = server._gamma_surface_contracts_with_stream_overlay(
+    out, n, syms = server._gamma_surface_contracts_with_stream_overlay(
         ticker_storage_key("SPY"), _CONTRACTS)  # asking for SPY, not CRWD
     assert n == 0
     assert out == _CONTRACTS
+    assert syms == []
 
 
 def test_gamma_surface_contracts_with_stream_overlay_applies_for_the_matching_ticker(monkeypatch):
@@ -277,17 +326,19 @@ def test_gamma_surface_contracts_with_stream_overlay_applies_for_the_matching_ti
     monkeypatch.setattr(
         "app.options.order_flow.state.get_stream_greeks",
         lambda sym: {"gamma": 0.99, "gamma_ts_recv": time.time()})
-    out, n = server._gamma_surface_contracts_with_stream_overlay(TK, _CONTRACTS)
+    out, n, syms = server._gamma_surface_contracts_with_stream_overlay(TK, _CONTRACTS)
     assert n == 1
     assert out[0]["gamma"] == 0.99
+    assert syms == [_CONTRACT_SYMBOL]
 
 
 def test_gamma_surface_contracts_with_stream_overlay_noop_with_no_active_contract(monkeypatch):
     monkeypatch.setattr(
         "app.options.order_flow.streaming.get_active_option_contract", lambda: None)
-    out, n = server._gamma_surface_contracts_with_stream_overlay(TK, _CONTRACTS)
+    out, n, syms = server._gamma_surface_contracts_with_stream_overlay(TK, _CONTRACTS)
     assert n == 0
     assert out is _CONTRACTS
+    assert syms == []
 
 
 def test_a_volume_only_streamed_update_reaches_both_per_strike_and_gamma_surface(monkeypatch):
@@ -510,6 +561,7 @@ def test_desired_stream_greeks_excludes_an_additional_contract_on_a_foreign_tick
     assert streamed == {}, (
         f"a foreign ticker's additional contract must never overlay onto CRWD: {streamed}")
 
-    out, n = server._gamma_surface_contracts_with_stream_overlay(TK, _CONTRACTS)
+    out, n, syms = server._gamma_surface_contracts_with_stream_overlay(TK, _CONTRACTS)
     assert n == 0
     assert out == _CONTRACTS
+    assert syms == []

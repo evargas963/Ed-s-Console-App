@@ -12330,8 +12330,26 @@ def _desired_stream_greeks_for_ticker(tk: str) -> dict:
     return out
 
 
+def _overlaid_symbols(pre: list, post: list) -> list[str]:
+    """Which contracts' own dicts `overlay_streamed_contract_fields` actually replaced with a
+    freshened copy -- that function's own contract is "sparse, non-destructive... a contract
+    absent from streamed_by_symbol is passed through UNCHANGED (SAME dict, not a copy)", so a
+    changed contract is identifiable by object identity alone (`is not`), with no need to
+    diff field values or touch that function's own return signature.
+
+    A SIXTH independent review (2026-09-13), REPRODUCED: the heatmap's 'observed' demand
+    state promoted EVERY currently-accepted column the instant `stream_overlay_contracts`
+    (a single surface-wide COUNT) was merely nonzero, whichever contract or expiry
+    actually received the freshening -- one overlaid contract on an UNRELATED expiry
+    incorrectly marked a completely different column as carrying real observed evidence.
+    This is the missing piece: WHICH symbols were actually freshened, so a consumer can
+    bind 'observed' to the specific column/contracts it actually covers."""
+    return [new.get("symbol") for orig, new in zip(pre, post)
+            if new is not orig and isinstance(new, dict) and new.get("symbol")]
+
+
 def _gamma_surface_contracts_with_stream_overlay(
-        tk: str, contracts: list, *, newer_than_ts: float | None = None) -> tuple[list, int]:
+        tk: str, contracts: list, *, newer_than_ts: float | None = None) -> tuple[list, int, list[str]]:
     """Overlay EVERY currently-streaming option contract's freshest known GAMMA/DELTA/
     OPEN_INTEREST/VOLUME onto `contracts` before projection, for whichever of them
     belong to `tk` (RC-UI-3: primary AND every additional contract — see
@@ -12353,13 +12371,14 @@ def _gamma_surface_contracts_with_stream_overlay(
 
         streamed = _desired_stream_greeks_for_ticker(tk)
         if not streamed:
-            return contracts, 0
-        return overlay_streamed_contract_fields(
+            return contracts, 0, []
+        overlaid, n = overlay_streamed_contract_fields(
             contracts, streamed,
             newer_than_ts=newer_than_ts, max_staleness_sec=GAMMA_SURFACE_STREAM_STALENESS_SEC)
+        return overlaid, n, _overlaid_symbols(contracts, overlaid)
     except Exception as e:  # institutional-swallow-ok: best-effort freshening, never load-bearing
         log.debug("gamma-surface stream overlay skipped for %s: %s", tk, e)
-        return contracts, 0
+        return contracts, 0, []
 
 
 def refresh_gamma_surface_from_stream(contract_symbol: str, ts_recv: float) -> str:
@@ -12438,6 +12457,11 @@ def refresh_gamma_surface_from_stream(contract_symbol: str, ts_recv: float) -> s
         applied_ts = time.time()
         if new_surface is not None:
             new_surface["stream_overlay_contracts"] = n
+            # A SIXTH independent review (2026-09-13): see _overlaid_symbols's own docstring
+            # finding -- the count alone let one overlaid contract on an unrelated expiry
+            # promote every OTHER currently-accepted column to 'observed' too. Named here so
+            # a client can bind that promotion to the specific symbols actually freshened.
+            new_surface["stream_overlay_symbols"] = _overlaid_symbols(base_contracts, overlaid)
             new_surface["stream_overlay_computed_ts_utc"] = applied_ts
             if ts_recv:
                 new_surface["stream_overlay_receipt_to_computed_ms"] = round((applied_ts - ts_recv) * 1000.0, 1)
@@ -12615,7 +12639,7 @@ def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
         _stamp_surface_seq = False
         try:
             if spot and _gamma_surface_wanted(tk):
-                _overlaid_contracts, _overlay_n = _gamma_surface_contracts_with_stream_overlay(
+                _overlaid_contracts, _overlay_n, _overlay_syms = _gamma_surface_contracts_with_stream_overlay(
                     tk, contracts, newer_than_ts=_rest_fetch_ts)
                 payload["_gamma_surface"] = project_gamma_surface(_overlaid_contracts, float(spot))
                 if _overlay_n:
@@ -12633,6 +12657,12 @@ def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
                     payload["_per_strike"] = _per_strike_view_from_contracts(_overlaid_contracts, float(spot))
                 if payload["_gamma_surface"] is not None:
                     payload["_gamma_surface"]["stream_overlay_contracts"] = _overlay_n
+                    # A SIXTH independent review (2026-09-13): the COUNT alone cannot tell a
+                    # consumer WHICH column/contracts actually received evidence -- see
+                    # _overlaid_symbols's own docstring finding. Exposed alongside the count
+                    # so a client can bind "observed" to the specific symbols it demanded,
+                    # never to "something, somewhere on this surface, was fresher."
+                    payload["_gamma_surface"]["stream_overlay_symbols"] = _overlay_syms
                     # Independent-review finding (2026-09-12, state-authority review),
                     # REPRODUCED: `_next_gamma_surface_seq` (bumps _gamma_surface_seq[tk] AND
                     # pushes the SSE "gamma_surface_seq" notify) used to run HERE, in its own
@@ -15782,7 +15812,7 @@ def get_chain(ticker: str = Query(default=DEFAULT_TICKER),
                 # below stores the PRE-overlay `contracts`, so the durable "complete REST
                 # capture" record (tier 1's own contract: a proven, complete, live REST read)
                 # is never silently blended with streamed fields it cannot itself timestamp.
-                response_contracts, overlay_n = _gamma_surface_contracts_with_stream_overlay(
+                response_contracts, overlay_n, _ = _gamma_surface_contracts_with_stream_overlay(
                     t, contracts, newer_than_ts=_rest_fetch_ts)
                 if returned_exps == [resolved_expiry]:
                     try:
@@ -15837,7 +15867,7 @@ def get_chain(ticker: str = Query(default=DEFAULT_TICKER),
             # Same overlay faucet as the live tiers above, bounded here by the capture's
             # OWN as-of (a streamed field only overlays a banked capture when it is
             # genuinely newer than that specific capture, not merely "recent").
-            cap_contracts, cap_overlay_n = _gamma_surface_contracts_with_stream_overlay(
+            cap_contracts, cap_overlay_n, _ = _gamma_surface_contracts_with_stream_overlay(
                 t, cap["contracts"], newer_than_ts=cap["ts_utc"])
             return JSONResponse({
                 "ticker": t, "spot": cap["spot"], "expiry": resolved_expiry,
@@ -15865,7 +15895,7 @@ def get_chain(ticker: str = Query(default=DEFAULT_TICKER),
     # A FOURTH independent review (2026-09-13), REPRODUCED: same newer_than_ts=None ordering
     # bug as the live-fetch tier above, here against a STORED snapshot's own row ts_utc
     # (now returned by _latest_chain_and_spot) instead of a live fetch's instant.
-    contracts, overlay_n = _gamma_surface_contracts_with_stream_overlay(
+    contracts, overlay_n, _ = _gamma_surface_contracts_with_stream_overlay(
         t, contracts, newer_than_ts=stored_ts)
     return JSONResponse({
         "ticker": t, "spot": spot, "expiry": stored_expiry, "contracts": contracts,

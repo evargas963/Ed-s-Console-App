@@ -392,18 +392,32 @@ def overlay_streamed_contract_fields(
     fresher, never fabricate" discipline as live_market_plane's quote overlay, applied to the
     exposure faucet's own inputs instead of a second exposure computation.
 
-    `newer_than_ts` is the PRIMARY precedence rule: a field applies only when its own
-    `_ts_recv` is strictly AFTER `newer_than_ts` (the REST baseline's own as-of timestamp,
-    e.g. `computed_ts_utc`) -- independent-review finding (2026-09-12): "being received
-    within ten seconds does not establish that a stream value is newer than the REST input
-    it replaces." A streamed value 8 seconds old is not "fresher" than a REST snapshot
-    fetched 2 seconds ago just because 8 < some absolute bound; it is fresher only when it
-    is more recent than the SPECIFIC baseline it would override.
+    `newer_than_ts` is the FALLBACK precedence baseline, used only for a contract that
+    carries no native vendor observation time of its own (see `quoteTimeInLong` below) --
+    e.g. a test fixture or non-Schwab-shaped dict. Independent-review finding (2026-09-12):
+    "being received within ten seconds does not establish that a stream value is newer than
+    the REST input it replaces." A streamed value 8 seconds old is not "fresher" than a REST
+    snapshot fetched 2 seconds ago just because 8 < some absolute bound; it is fresher only
+    when it is more recent than the baseline it would override.
+
+    A FIFTH independent review (2026-09-13), REPRODUCED: a single scalar `newer_than_ts`
+    (the REST FETCH's own completion instant, the same for every contract in the response)
+    is the wrong baseline whenever the vendor's OWN report for a SPECIFIC contract already
+    lagged behind that instant -- Schwab's chain contracts each carry their own
+    `quoteTimeInLong` (epoch ms), and an illiquid strike can genuinely go un-requoted for
+    tens of seconds inside one otherwise-fresh chain response. Reproduced: REST fetch
+    completes "now", but this contract's own `quoteTimeInLong` is "now-30s" (its last real
+    quote); a stream tick for the SAME contract received at "now-1s" is genuinely newer than
+    what the vendor itself last reported for it -- yet comparing against the fetch's
+    completion instant ("now") wrongly rejected it as not-newer-enough. Fixed: each
+    contract's own native `quoteTimeInLong`, when present, IS this contract's precedence
+    baseline (never the shared fetch-completion instant); `newer_than_ts` only fills in for
+    a contract that has no native observation time to compare against.
 
     `max_staleness_sec`, when given, is a SEPARATE, secondary absolute-age guard (relative
     to `now`, defaulting to the real clock) -- a streamed value can be newer than a
-    long-stale REST baseline while still being, in absolute terms, too old for any consumer
-    to trust (e.g. the REST cycle itself has been down for an hour). Composable with
+    long-stale baseline while still being, in absolute terms, too old for any consumer to
+    trust (e.g. the REST cycle itself has been down for an hour). Composable with
     `newer_than_ts`; either, both, or neither may be supplied.
 
     Returns (new_contracts, overlaid_count) -- the count is for tests and latency/coverage
@@ -424,13 +438,22 @@ def overlay_streamed_contract_fields(
         if not streamed:
             out.append(ct)
             continue
+        # This contract's OWN vendor-reported observation time, not the shared REST-fetch
+        # instant -- see the docstring's fifth-review finding. Schwab reports
+        # `quoteTimeInLong` in epoch milliseconds; `_ts_recv` values are epoch seconds.
+        native_qt = ct.get("quoteTimeInLong") if isinstance(ct, dict) else None
+        try:
+            native_baseline = float(native_qt) / 1000.0 if native_qt else None
+        except (TypeError, ValueError):
+            native_baseline = None
+        baseline = native_baseline if native_baseline is not None else newer_than_ts
         new_ct = None
         for streamed_key, chain_key, ts_key in _STREAMED_GREEK_FIELDS:
             val = streamed.get(streamed_key)
             if val is None:
                 continue
             ts = streamed.get(ts_key)
-            if newer_than_ts is not None and (ts is None or ts <= newer_than_ts):
+            if baseline is not None and (ts is None or ts <= baseline):
                 continue
             if max_staleness_sec is not None and (ts is None or (now - ts) > max_staleness_sec):
                 continue

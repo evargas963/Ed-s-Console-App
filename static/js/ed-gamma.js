@@ -62,18 +62,26 @@
   // strike while keeping the other column's contracts for that SAME strike (independent-
   // review finding, 2026-09-13, REPRODUCED: at 244 visible contracts a plain 240-slice cut
   // through the last row's second column instead of dropping a whole column cleanly).
+  //
+  // `rows` (a SEVENTH independent review, 2026-09-13, REPRODUCED) groups each column's own
+  // symbols by STRIKE ROW, in the same order `symbols` lists them -- a caller that must
+  // PARTIALLY cover an over-budget column (never splitting one strike's own call+put pair)
+  // can slice by whole rows from this list, which `symbols` alone (already flattened) cannot
+  // safely support.
   function _heatmapVisibleContractsByColumn(cells, rowSel, cols) {
     return cols.map(function (j) {
-      var seen = {}, symbols = [];
+      var seen = {}, symbols = [], rows = [];
       rowSel.idx.forEach(function (i) {
         var row = cells[i]; if (!row) return;
         var c = (row.contracts || [])[j];
         if (!c) return;
+        var rowSyms = [];
         [c.call, c.put].forEach(function (sym) {
-          if (sym && !seen[sym]) { seen[sym] = true; symbols.push(sym); }
+          if (sym && !seen[sym]) { seen[sym] = true; symbols.push(sym); rowSyms.push(sym); }
         });
+        if (rowSyms.length) rows.push(rowSyms);
       });
-      return { col: j, symbols: symbols };
+      return { col: j, symbols: symbols, rows: rows };
     });
   }
   function _heatmapVisibleContracts(cells, rowSel, cols) {
@@ -128,7 +136,7 @@
       if (window.EdStream && window.EdStream.setAdditionalContracts) {
         window.EdStream.setAdditionalContracts([], 'heatmap');
       }
-      ++_demandGen; _demandState = 'none';   // invalidate any in-flight confirm/reject from a prior available render
+      ++_demandGen; _demandStateByCol = {}; _demandSymbolsByCol = {};   // invalidate any in-flight confirm/reject from a prior available render
       // Independent-review finding (2026-09-13), REPRODUCED ("unavailable heatmap
       // lifecycle"): _lastSurface/_lastRevision used to survive an unavailable result
       // untouched (this branch returned before either was ever assigned), so a LATER
@@ -202,7 +210,7 @@
         ++_demandGen;
         window.EdStream.setAdditionalContracts([], 'heatmap');
       }
-      _demandState = 'none';
+      _demandStateByCol = {}; _demandSymbolsByCol = {};
       _lastSurface = surface;
       _lastRevision = 'filter-missing:' + expFilter;   // never matches a real column set's rev
       host.innerHTML = '<div class="placeholder"><div class="big">Expiry ' + escapeHtml(expFilter) +
@@ -290,45 +298,96 @@
     // total would exceed the ceiling, never by slicing through one -- `_cappedCols` names
     // exactly which columns this excluded, so their own tooltip can honestly say so instead
     // of claiming the same coverage as a column that was never cut.
+    //
+    // A SEVENTH independent review (2026-09-13), REPRODUCED: that column-dropping cap zeroed
+    // out a column ENTIRELY the instant it alone exceeded the ceiling -- concretely, a single
+    // explicitly-selected expiry with 121 strikes (242 contracts) submitted ZERO streaming
+    // demand, worse than useless for exactly the "I picked one expiry to watch" scenario an
+    // operator cares about most. Fixed: the ONE column that first crosses the ceiling is now
+    // given PARTIAL coverage -- as many WHOLE STRIKE ROWS (never one strike's call+put split
+    // across the cut) as fit in the remaining budget -- rather than being dropped outright;
+    // `_partialCols` names it distinctly from `_cappedCols` (a column excluded ENTIRELY,
+    // which can still happen for a column AFTER the one that already consumed the remaining
+    // budget) so its own tooltip discloses partial, not total, exclusion.
     var MAX_DEMAND_CONTRACTS = 240;
-    var frontDemand = [], _cappedCols = {};
+    var frontDemand = [], _cappedCols = {}, _partialCols = {}, _newSymbolsByCol = {};
     if (demandCols.length) {
       var byCol = _heatmapVisibleContractsByColumn(cells, rowSel, demandCols);
       var seen = {}, total = 0;
       for (var _bc = 0; _bc < byCol.length; _bc++) {
-        var entry = byCol[_bc], fresh = entry.symbols.filter(function (s) { return !seen[s]; });
-        if (total + fresh.length > MAX_DEMAND_CONTRACTS) { _cappedCols[entry.col] = true; continue; }
-        fresh.forEach(function (s) { seen[s] = true; frontDemand.push(s); });
-        total += fresh.length;
+        var entry = byCol[_bc];
+        // This column's own rows, filtered to symbols not already claimed by an EARLIER
+        // column in this loop -- row grouping preserved, so a partial cut below can still
+        // never split one strike's own call+put pair.
+        var freshRows = entry.rows.map(function (r) { return r.filter(function (s) { return !seen[s]; }); })
+                                   .filter(function (r) { return r.length > 0; });
+        var freshCount = freshRows.reduce(function (n, r) { return n + r.length; }, 0);
+        if (total + freshCount <= MAX_DEMAND_CONTRACTS) {
+          freshRows.forEach(function (r) { r.forEach(function (s) { seen[s] = true; frontDemand.push(s); }); });
+          total += freshCount;
+          // The FULL symbol set for this column (both call and put, every visible row) --
+          // not just the fresh/deduped subset -- so this column's own 'observed' check
+          // below intersects against everything it actually covers.
+          _newSymbolsByCol[entry.col] = entry.symbols;
+          continue;
+        }
+        // Does not fully fit -- take as many WHOLE ROWS as remain in the budget.
+        var remaining = MAX_DEMAND_CONTRACTS - total, taken = [];
+        for (var _r = 0; _r < freshRows.length; _r++) {
+          var r = freshRows[_r];
+          if (r.length > remaining) break;
+          r.forEach(function (s) { seen[s] = true; frontDemand.push(s); taken.push(s); });
+          remaining -= r.length;
+        }
+        total = MAX_DEMAND_CONTRACTS - remaining;
+        if (taken.length) {
+          _partialCols[entry.col] = taken.length + '/' + entry.symbols.length;
+          _newSymbolsByCol[entry.col] = taken;   // 'observed' evidence checked only against what was actually demanded
+        } else {
+          _cappedCols[entry.col] = true;
+        }
       }
     }
-    var demandCapped = Object.keys(_cappedCols).length > 0;
+    var demandCapped = Object.keys(_cappedCols).length > 0 || Object.keys(_partialCols).length > 0;
+    var demandedCols = Object.keys(_newSymbolsByCol).map(Number);
+    _demandSymbolsByCol = _newSymbolsByCol;
     if (window.EdStream && window.EdStream.setAdditionalContracts) {
       var myDemandGen = ++_demandGen;
-      _demandState = frontDemand.length ? 'pending' : 'none';
+      demandedCols.forEach(function (c) { _demandStateByCol[c] = frontDemand.length ? 'pending' : 'none'; });
       window.EdStream.setAdditionalContracts(frontDemand, 'heatmap').then(function (res) {
         if (myDemandGen !== _demandGen) return;   // superseded by a newer demand call
-        if (!frontDemand.length) { _demandState = 'none'; return; }
+        if (!frontDemand.length) {
+          demandedCols.forEach(function (c) { _demandStateByCol[c] = 'none'; });
+          return;
+        }
         // 'accepted' names a server-ACKed subscribe REQUEST -- real observed data, checked
-        // against the latest surface below (this render's, or any later one), is what
-        // actually promotes this to 'observed'.
-        _demandState = (res && (res.accepted || res.unchanged))
-          ? (_lastSurface && _lastSurface.stream_overlay_contracts > 0 ? 'observed' : 'accepted')
-          : (res && res.pending) ? 'pending' : 'rejected';
+        // per-column against the latest surface below (this render's, or any later one), is
+        // what actually promotes THAT column to 'observed'. A SIXTH independent review
+        // (2026-09-13): each column is judged against its OWN demanded symbols
+        // (_colHasObservedEvidence), never a surface-wide count that a peer column's
+        // evidence could satisfy on this column's behalf.
+        var verdict = (res && (res.accepted || res.unchanged))
+          ? 'accepted' : (res && res.pending) ? 'pending' : 'rejected';
+        demandedCols.forEach(function (c) {
+          _demandStateByCol[c] = (verdict === 'accepted' && _colHasObservedEvidence(c, _lastSurface))
+            ? 'observed' : verdict;
+        });
         applyDemandTitles(document.getElementById('heatBody'));
       });
     } else {
-      _demandState = frontDemand.length ? 'pending' : 'none';
+      demandedCols.forEach(function (c) { _demandStateByCol[c] = frontDemand.length ? 'pending' : 'none'; });
     }
     // Independent-review finding (2026-09-13), REPRODUCED: acceptance was treated as the
     // final word -- a demand accepted on an EARLIER render never got upgraded once a LATER,
     // routine refresh's surface finally carried real overlay evidence for it. Checked on
     // every render (not only the render that issued the request) so a demand that was merely
     // 'accepted' when first requested still becomes honestly 'observed' the moment evidence
-    // for it actually arrives.
-    if (_demandState === 'accepted' && surface.stream_overlay_contracts > 0) {
-      _demandState = 'observed';
-    }
+    // for it actually arrives -- per column, per the SAME identity-bound check above.
+    Object.keys(_demandStateByCol).forEach(function (c) {
+      if (_demandStateByCol[c] === 'accepted' && _colHasObservedEvidence(Number(c), surface)) {
+        _demandStateByCol[c] = 'observed';
+      }
+    });
     _lastSurface = surface;   // cached so a theme switch can re-render without a refetch
     // #1: skip the full table rebuild when the canonical surface REVISION (and the viewport choice)
     // is unchanged (only the age advances between terrain revisions). A theme switch clears
@@ -360,18 +419,29 @@
     var demandColSet = {}; demandCols.forEach(function (dc) { demandColSet[dc] = true; });
     viewCols.forEach(function (j) {
       var e = exps[j], expired = e.expired === true;
-      // A column the cap excluded (`_cappedCols`) was NEVER actually demanded, whatever
-      // `demandColSet` says it was asked for -- its own tooltip must say so, distinctly from
-      // a column that was never touched by the cap at all.
-      var streamed = !!demandColSet[j] && !_cappedCols[j];
+      // A column the cap excluded ENTIRELY (`_cappedCols`) was NEVER actually demanded,
+      // whatever `demandColSet` says it was asked for. A PARTIALLY-covered column
+      // (`_partialCols`) WAS genuinely demanded, just not for every strike -- its own
+      // tooltip must say so distinctly from both a fully-excluded column and one the cap
+      // never touched at all. Excluded from `streamed`/`.stream-demand` the same as a fully
+      // capped column (not just `_cappedCols`): `applyDemandTitles` (a separate function
+      // with no access to this render's own `_partialCols` closure) patches EVERY
+      // `.stream-demand` th's title from the async accept/observed state the instant that
+      // promise resolves -- REPRODUCED clobbering this column's static "PARTIALLY covered"
+      // disclosure with a generic "subscription accepted" title the moment it fired, unless
+      // this column is excluded from that class the same way a fully-capped one already is.
+      var streamed = !!demandColSet[j] && !_cappedCols[j] && !_partialCols[j];
       var dte = expired ? 'EXPIRED' : (e.dte === 0) ? '0DTE' : (e.dte != null ? e.dte + 'DTE' : '');
       var title = expired
         ? 'this expiration has already expired — a prior-session column kept for reference, not current structure'
         : _cappedCols[j]
         ? 'streaming demand for this column was excluded by the ' + MAX_DEMAND_CONTRACTS + '-contract subscription-size safety limit — REST-cadence only'
-        : demandTitle(streamed);
+        : _partialCols[j]
+        ? 'streaming demand for this column was PARTIALLY covered (' + _partialCols[j] + ' contracts) by the ' +
+          MAX_DEMAND_CONTRACTS + '-contract subscription-size safety limit — remaining strikes REST-cadence only'
+        : demandTitle(streamed, j);
       tbl += '<th class="hexp' + (j === frontCol ? ' col-front' : '') + (expired ? ' expired' : '') + (streamed ? ' stream-demand' : '') + '"' +
-        ' title="' + escapeHtml(title) + '"' +
+        ' data-col="' + j + '" title="' + escapeHtml(title) + '"' +
         '><span class="d">' + escapeHtml((e.expiry || '').slice(5)) + '</span><span class="dte">' + dte + '</span></th>';
     });
     tbl += '</tr></thead><tbody>';
@@ -412,11 +482,19 @@
     tbl += '</tbody></table>';
     // #3: the ONE disclosure line — how many canonical strikes / expirations are on screen vs clipped
     var cappedExps = Object.keys(_cappedCols).map(function (j) { return (exps[j] || {}).expiry; }).filter(Boolean);
+    // A SEVENTH independent review (2026-09-13): a column given PARTIAL coverage (its own
+    // strikes exceeded the remaining budget, so only a whole-row-aligned subset of it was
+    // demanded) is named separately from one excluded ENTIRELY -- collapsing the two into one
+    // "excluded" list would misreport a column that IS still genuinely streaming, in part.
+    var partialExpsTxt = Object.keys(_partialCols).map(function (j) {
+      return ((exps[j] || {}).expiry || '') + ' (' + _partialCols[j] + ' contracts)';
+    }).filter(Boolean);
     var colsTxt = viewCols.length + ' of ' + exps.length + ' expirations' +
       (expiredHidden ? ' (' + expiredHidden + ' expired hidden in Auto)' : '') +
       (demandCapped ? ' · streaming demand capped at ' + MAX_DEMAND_CONTRACTS +
-        ' contracts (subscription-size safety limit, untested at full scale) — excluded: ' +
-        cappedExps.join(', ') : '');
+        ' contracts (subscription-size safety limit, untested at full scale)' +
+        (cappedExps.length ? ' — excluded: ' + cappedExps.join(', ') : '') +
+        (partialExpsTxt.length ? ' — partially covered: ' + partialExpsTxt.join(', ') : '') : '');
     var note = (ES && ES.scopeNote) ? ES.scopeNote({ total: strikes.length, shown: rowSel.shown, extra: colsTxt }) : '';
     // the grid fills the panel; a compact vertical magnitude legend sits at its right edge (the
     // dollar value is printed in every cell — shade = |GEX$|), matching the approved reference.
@@ -484,12 +562,35 @@
   // carries a genuinely-overlaid streamed field for -- real evidence, not a request outcome)
   // is greater than zero while this demand is still live -- only then does the state become
   // 'observed', and only then does the tooltip claim streaming is actually active.
-  var _demandGen = 0, _demandState = 'none';   // 'none' | 'pending' | 'accepted' | 'observed' | 'rejected'
-  function demandTitle(streamed) {
+  // A SIXTH independent review (2026-09-13), REPRODUCED: `_demandState` was ONE global
+  // string shared by every demanded column -- the instant `stream_overlay_contracts` (a
+  // single surface-wide COUNT) went nonzero for ANY reason, EVERY currently-'accepted'
+  // column was promoted to 'observed' together, even a column for a completely different
+  // expiry than whatever actually got freshened. Concretely reproduced: two accepted
+  // columns A and B; only B's contract genuinely streams; A's own tooltip still claimed
+  // "sub-second streaming updates observed" with zero real evidence for A specifically.
+  // Fixed: state and the demanded symbol set are now BOTH keyed by column, and promotion
+  // to 'observed' requires THIS column's own demanded symbols to intersect the surface's
+  // `stream_overlay_symbols` (server.py's _overlaid_symbols) -- real, identity-bound
+  // evidence for that specific column, never a peer column's.
+  var _demandGen = 0;
+  var _demandStateByCol = {};      // col index -> 'pending' | 'accepted' | 'observed' | 'rejected'
+  var _demandSymbolsByCol = {};    // col index -> the vendor symbols demanded for that column
+  function _colHasObservedEvidence(col, surface) {
+    var syms = _demandSymbolsByCol[col] || [];
+    if (!syms.length || !surface) return false;
+    var overlaid = surface.stream_overlay_symbols || [];
+    for (var i = 0; i < overlaid.length; i++) {
+      if (syms.indexOf(overlaid[i]) !== -1) return true;
+    }
+    return false;
+  }
+  function demandTitle(streamed, col) {
     if (!streamed) return 'REST-cadence only (refreshes ~60s) — not sub-second streamed; Auto shows one streamed column at a time';
-    if (_demandState === 'observed') return 'sub-second streaming updates observed for this column';
-    if (_demandState === 'accepted') return 'streaming subscription accepted for this column — awaiting the first observed update';
-    if (_demandState === 'rejected') return 'streaming subscription for this column was NOT accepted by the server — falling back to REST-cadence only';
+    var st = _demandStateByCol[col];
+    if (st === 'observed') return 'sub-second streaming updates observed for this column';
+    if (st === 'accepted') return 'streaming subscription accepted for this column — awaiting the first observed update';
+    if (st === 'rejected') return 'streaming subscription for this column was NOT accepted by the server — falling back to REST-cadence only';
     return 'streaming subscription requested for this column — awaiting confirmation';   // 'pending' or transiently unset
   }
   // Patches the demanded column(s)' tooltip in place once the confirm/reject response
@@ -500,7 +601,7 @@
     var ths = host.querySelectorAll('.heat thead th.hexp.stream-demand');
     for (var i = 0; i < ths.length; i++) {
       if (ths[i].classList.contains('expired')) continue;
-      ths[i].setAttribute('title', demandTitle(true));
+      ths[i].setAttribute('title', demandTitle(true, Number(ths[i].getAttribute('data-col'))));
     }
   }
 
@@ -648,7 +749,7 @@
       if (window.EdStream && window.EdStream.setAdditionalContracts) {
         window.EdStream.setAdditionalContracts([], 'heatmap');
       }
-      ++_demandGen; _demandState = 'none';   // invalidate any in-flight confirm/reject from the view just left
+      ++_demandGen; _demandStateByCol = {}; _demandSymbolsByCol = {};   // invalidate any in-flight confirm/reject from the view just left
       return;
     }
     _pendingTicker = st.ticker || 'SPY';

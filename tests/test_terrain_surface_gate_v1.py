@@ -77,10 +77,14 @@ def test_producer_gates_projection_on_demand(monkeypatch):
     # RC-UI-2: the producer now stamps how many contracts the streaming overlay touched this
     # cycle (0 here -- no option contract is streaming in this test) and a per-ticker
     # publication counter (surface_seq), alongside the faucet's own cells/strikes/expirations,
-    # which are otherwise unchanged.
+    # which are otherwise unchanged. A SIXTH independent review (2026-09-13) added
+    # `stream_overlay_symbols` alongside the count -- WHICH symbols were overlaid, not just
+    # how many -- so the heatmap can bind 'observed' coverage to a specific column's own
+    # demanded contracts (see _overlaid_symbols in server.py); empty here for the same
+    # reason the count is zero.
     assert _cached_surface(tk) == {
         "expirations": [], "strikes": [], "cells": [], "stream_overlay_contracts": 0,
-        "surface_seq": 1,
+        "stream_overlay_symbols": [], "surface_seq": 1,
     }
 
     server._gamma_surface_demand.pop(tk, None)

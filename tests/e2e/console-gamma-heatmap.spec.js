@@ -1851,14 +1851,23 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   // "sub-second streaming updates active" claim) fired the instant setAdditionalContracts
   // resolved with the server's own subscribe-request ACK -- a control-plane acceptance, never
   // checked against whether the producer has actually delivered one real observation. Fixed:
-  // 'accepted' names the ACK; only a LATER surface poll's own `stream_overlay_contracts > 0`
-  // (real evidence a streamed field actually overlaid something) promotes it to 'observed',
-  // which is the only state whose tooltip claims streaming is actually active.
+  // 'accepted' names the ACK; only a LATER surface poll's own real evidence promotes it to
+  // 'observed', which is the only state whose tooltip claims streaming is actually active.
+  //
+  // A SIXTH independent review (2026-09-13), REPRODUCED then repaired: that "real evidence"
+  // used to be `stream_overlay_contracts > 0` alone -- a surface-wide COUNT satisfied by ANY
+  // contract anywhere, not necessarily one this column actually demanded. Now the evidence
+  // must be `stream_overlay_symbols` naming a symbol THIS column's own demand set covers
+  // (see `_colHasObservedEvidence` in ed-gamma.js) -- this test's fixture carries both the
+  // legacy count (kept for a client that hasn't wired the sixth-review fix at all) and the
+  // real per-symbol identity `surfaceWithContracts(1, 3)`'s own column 0 actually demands.
   test('an accepted subscription is honestly disclosed as accepted, not claimed active, until real observed data arrives', async ({ page }) => {
-    let overlayCount = 0;
+    let overlaySymbols = [];
     await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({
       status: 200, contentType: 'application/json',
-      body: JSON.stringify(Object.assign({}, surfaceWithContracts(1, 3), { stream_overlay_contracts: overlayCount })),
+      body: JSON.stringify(Object.assign({}, surfaceWithContracts(1, 3), {
+        stream_overlay_contracts: overlaySymbols.length, stream_overlay_symbols: overlaySymbols,
+      })),
     }));
     await page.route('**/api/streaming/active-option-contracts', (route) => {
       const body = JSON.parse(route.request().postData() || '{}');
@@ -1868,15 +1877,54 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await page.goto('/console', { waitUntil: 'domcontentloaded' });
     const col = page.locator('.heat thead th.hexp.stream-demand');
     await expect(col).toHaveCount(1);
-    // Accepted, but never overclaiming "active" while stream_overlay_contracts stays 0.
+    // Accepted, but never overclaiming "active" while no symbol has actually overlaid.
     await expect(col).toHaveAttribute('title', /subscription accepted.*awaiting the first observed update/, { timeout: 3000 });
     await expect(col).not.toHaveAttribute('title', /streaming updates observed/);
 
-    // A later poll's surface now carries real overlay evidence -- ONLY NOW may the tooltip
-    // claim streaming is actually active.
-    overlayCount = 2;
+    // A later poll's surface now carries real overlay evidence FOR THIS COLUMN'S OWN
+    // demanded symbol -- ONLY NOW may the tooltip claim streaming is actually active.
+    overlaySymbols = ['C580X2026-09-11'];
     await page.evaluate(() => document.dispatchEvent(new CustomEvent('ed:refresh', { detail: { slow: true } })));
     await expect(col).toHaveAttribute('title', /streaming updates observed for this column/, { timeout: 3000 });
+  });
+
+  // A SIXTH independent review (2026-09-13), REPRODUCED: `stream_overlay_contracts` is a
+  // single surface-wide COUNT -- nonzero the instant ANY contract anywhere overlaid, even one
+  // belonging to a completely different, unrelated column. That count alone used to promote
+  // EVERY currently-accepted column to 'observed' together. This test proves TWO accepted
+  // columns are judged INDEPENDENTLY: only the column whose own demanded symbol actually
+  // appears in `stream_overlay_symbols` is promoted; its sibling, with real overlay evidence
+  // for a totally different contract, must stay 'accepted'.
+  test('one column\'s overlay evidence does not promote an unrelated accepted column to observed', async ({ page }) => {
+    // 2 columns x 1 strike -- demandCols under Wider/All-style scope names both, well under
+    // the 240-contract cap, so both accept.
+    let overlaySymbols = [];
+    await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify(Object.assign({}, surfaceWithContracts(2, 1), {
+        stream_overlay_contracts: overlaySymbols.length, stream_overlay_symbols: overlaySymbols,
+      })),
+    }));
+    await page.route('**/api/streaming/active-option-contracts', (route) => {
+      const body = JSON.parse(route.request().postData() || '{}');
+      return route.fulfill({ status: 200, contentType: 'application/json',
+        body: JSON.stringify({ ok: true, contracts: body.contracts || [] }) });
+    });
+    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.locator('#scopeCtl .scbtn', { hasText: 'All available' }).click();
+    const cols = page.locator('.heat thead th.hexp.stream-demand');
+    await expect(cols).toHaveCount(2, { timeout: 3000 });
+    await expect(cols.nth(0)).toHaveAttribute('title', /subscription accepted/, { timeout: 3000 });
+    await expect(cols.nth(1)).toHaveAttribute('title', /subscription accepted/, { timeout: 3000 });
+
+    // Only column 0's own demanded symbol (strike 580, expiry 2026-09-11) actually overlaid.
+    overlaySymbols = ['C580X2026-09-11'];
+    await page.evaluate(() => document.dispatchEvent(new CustomEvent('ed:refresh', { detail: { slow: true } })));
+    await expect(cols.nth(0)).toHaveAttribute('title', /streaming updates observed for this column/, { timeout: 3000 });
+    // Column 1 (a different expiry's symbol, e.g. C580X2026-09-12) has NO overlay evidence
+    // of its own -- it must stay 'accepted', never borrow column 0's evidence.
+    await expect(cols.nth(1)).toHaveAttribute('title', /subscription accepted.*awaiting the first observed update/);
+    await expect(cols.nth(1)).not.toHaveAttribute('title', /streaming updates observed/);
   });
 
   // A FOURTH independent review (2026-09-13), REPRODUCED: at 244 visible contracts (2 columns
@@ -1885,9 +1933,17 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   // cell in that same column stayed covered, with the column's own tooltip still claiming full
   // coverage. Fixed: the cap drops whole trailing COLUMNS, and a capped column's own tooltip
   // says so distinctly from an uncapped one's.
-  test('the streaming-demand cap drops whole columns, never a partial strike, and discloses exactly which columns', async ({ page }) => {
+  // A SEVENTH independent review (2026-09-13), REPRODUCED then repaired: this test used to
+  // require the SECOND column be excluded WHOLESALE once the running total crossed 240.
+  // That is no longer the corrected behavior for the column that FIRST crosses the ceiling --
+  // it now gets PARTIAL coverage (as many whole strike rows as fit) rather than being zeroed.
+  // Column 0 alone (122 contracts) still fits fully under budget and is untouched; column 1
+  // is the one that crosses the ceiling, so it is the one that must come back PARTIAL, never
+  // an outright drop -- proving the redesign, not the retired all-or-nothing behavior.
+  test('the streaming-demand cap partially covers the column that crosses the ceiling, never splitting one strike', async ({ page }) => {
     // 2 columns x 61 strikes x 2 sides = 244 contracts; column 0 alone is 122 (fits under
-    // 240), column 0 + column 1 is 244 (exceeds it) -- column 1 must be excluded WHOLESALE.
+    // 240); column 0 + column 1 is 244 (exceeds it by 4) -- column 1 must come back with
+    // 118 of its own 122 contracts (59 whole strikes), never zero and never a split strike.
     await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({
       status: 200, contentType: 'application/json', body: JSON.stringify(surfaceWithContracts(2, 61)),
     }));
@@ -1903,20 +1959,60 @@ test.describe('Ed Console shell + gamma heatmap', () => {
 
     const lastDemand = demandCalls[demandCalls.length - 1];
     expect(lastDemand.length).toBeLessThanOrEqual(240);
-    // Every demanded symbol belongs to column 0 (its contracts are named "...X<col0-expiry>");
-    // NONE belong to column 1 -- a whole-column exclusion, not a strike sliced out of it.
-    const cols = await page.evaluate(() => {
-      const s = window.EdShell.getState();
-      return s;
-    });
+    expect(lastDemand.length).toBe(240);   // 122 (col 0, whole) + 118 (col 1, partial)
+    const col1Symbols = lastDemand.filter((s) => /X2026-09-12$/.test(s));
+    expect(col1Symbols.length).toBe(118);
+    // Never a split strike: 118 is even (59 whole call+put pairs), and every strike named
+    // in col1Symbols must appear as BOTH its call and put.
+    const strikesOf = (syms) => syms.map((s) => s.match(/^[CP](\d+)X/)[1]);
+    const col1Strikes = strikesOf(col1Symbols);
+    const counts = {};
+    col1Strikes.forEach((k) => { counts[k] = (counts[k] || 0) + 1; });
+    Object.values(counts).forEach((n) => expect(n).toBe(2));
+
     const colTitles = await page.locator('.heat thead th.hexp').evaluateAll(
       (ths) => ths.map((th) => ({ text: th.querySelector('.d')?.textContent, title: th.getAttribute('title') })));
     expect(colTitles.length).toBe(2);
-    const cappedCol = colTitles.find((c) => /excluded by the 240-contract subscription-size safety limit/.test(c.title || ''));
-    const activeCol = colTitles.find((c) => c !== cappedCol);
-    expect(cappedCol).toBeTruthy();
-    expect(activeCol.title).not.toMatch(/excluded/);
-    // The scope note names the excluded expiry explicitly (not just a bare count).
-    await expect(page.locator('#heatBody .scope-note')).toContainText('excluded: ' + cappedCol.text.replace(/^(\d\d)-(\d\d)$/, '2026-$1-$2'));
+    const partialCol = colTitles.find((c) => /PARTIALLY covered \(118\/122 contracts\)/.test(c.title || ''));
+    const fullCol = colTitles.find((c) => c !== partialCol);
+    expect(partialCol).toBeTruthy();
+    expect(fullCol.title).not.toMatch(/PARTIALLY|excluded/);
+    // The scope note names the partially-covered expiry explicitly, with its own count.
+    await expect(page.locator('#heatBody .scope-note')).toContainText(
+      'partially covered: ' + partialCol.text.replace(/^(\d\d)-(\d\d)$/, '2026-$1-$2') + ' (118/122 contracts)');
+  });
+
+  // A SEVENTH independent review (2026-09-13), REPRODUCED: the operator's own most-common
+  // case -- filtering to ONE specific expiry with more than 240 contracts (121 strikes x 2
+  // sides = 242) -- used to submit ZERO streaming demand, because the cap's only tool was
+  // dropping the whole (and only) column. This is the exact reproduction from that finding.
+  test('a single explicitly-selected expiry with 242 contracts gets 240 partial, never zero', async ({ page }) => {
+    await page.route('**/api/expiries*', (r) => r.fulfill({ status: 200, contentType: 'application/json',
+      body: JSON.stringify({ expiries: ['2026-09-11'] }) }));
+    await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({
+      status: 200, contentType: 'application/json', body: JSON.stringify(surfaceWithContracts(1, 121)),
+    }));
+    const demandCalls = [];
+    await page.route('**/api/streaming/active-option-contracts', (route) => {
+      const body = JSON.parse(route.request().postData() || '{}');
+      demandCalls.push(body.contracts || []);
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, contracts: body.contracts || [] }) });
+    });
+    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    // Row visibility (which STRIKES show) is the scope policy, independent of the expiry
+    // filter (which COLUMN shows) -- 'all' is needed so all 121 strikes are actually visible
+    // rows, not just Auto's default ~11-around-spot window.
+    await page.evaluate(() => window.EdShell.setScope('all'));
+    await page.locator('#expSel').selectOption('2026-09-11');
+    await expect.poll(() => demandCalls.length).toBeGreaterThan(0);
+
+    const lastDemand = demandCalls[demandCalls.length - 1];
+    expect(lastDemand.length).toBe(240);   // NOT zero -- 120 whole strikes (240 contracts) of the 121
+    expect(lastDemand.length).not.toBe(0);
+
+    const col = page.locator('.heat thead th.hexp');
+    await expect(col).toHaveCount(1);
+    await expect(col).toHaveAttribute('title', /PARTIALLY covered \(240\/242 contracts\)/);
+    await expect(page.locator('#heatBody .scope-note')).toContainText('partially covered: 2026-09-11 (240/242 contracts)');
   });
 });

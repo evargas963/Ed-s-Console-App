@@ -1182,3 +1182,90 @@ def test_a_second_underlyings_queued_hook_does_not_run_after_shutdown(tmp_path, 
         "stopped, even though its task was submitted to the executor before shutdown -- "
         f"saw hook_calls={hook_calls}"
     )
+
+
+def test_a_queued_hook_does_not_run_under_a_lifecycle_that_restarted_before_it_drained(tmp_path, monkeypatch):
+    """A FIFTH independent review (2026-09-13), REPRODUCED: the fix above (`_feed_running`
+    re-checked at actual execution time) closes "stopped and STAYED stopped" but not "stopped
+    then RESTARTED before the old queued task drained" -- `_feed_running` goes False then
+    True again across a restart, so a bare boolean check cannot tell the NEW lifecycle from
+    the one that queued the old work. Concretely reproduced: a held AMD hook call occupies
+    the one worker thread; a genuinely NEW dispatch for PLTR queues behind it. The feed is
+    stopped (PLTR still queued, unstarted) and then RESTARTED (`_feed_running` -> True again,
+    a NEW lifecycle) BEFORE AMD is released. Only THEN is AMD released, freeing the worker
+    for PLTR's still-queued task. Under a bare `_feed_running` check, PLTR's task would see
+    `_feed_running is True` (the NEW lifecycle) and incorrectly run as if it belonged to it.
+
+    Fixed with the lifecycle-generation counter (`_feed_generation`): PLTR's task carries the
+    generation number that was current when IT was dispatched (the OLD lifecycle, before the
+    restart bumped the counter), and `_run_streamed_greeks_hook_if_live` now requires that
+    captured generation to still match the CURRENT one, not merely that some feed is running.
+    """
+    _drain_l1_sse_thread_queue()
+    db = _reset(tmp_path, monkeypatch)
+    AMD_SYM = "AMD   260918C00160000"
+    PLTR_SYM = "PLTR  260918C00050000"
+    ofs._active_option_contracts = [ofs.ticker_storage_key(AMD_SYM), ofs.ticker_storage_key(PLTR_SYM)]
+
+    amd_hook_started = threading.Event()
+    release_amd_hook = threading.Event()
+    hook_calls = []
+
+    def _hook(sym, ts):
+        hook_calls.append(sym)
+        if sym == AMD_SYM:
+            amd_hook_started.set()
+            release_amd_hook.wait(timeout=10.0)
+    ofs.set_streamed_greeks_hook(_hook)
+
+    _write_option_l1_row(db, AMD_SYM, dict(_REAL_LEVELONE_OPTIONS_CONTENT, key=AMD_SYM, GAMMA=0.01, UNDERLYING="AMD"),
+                         ts_recv=1700000000.0)
+
+    async def _run():
+        ofs._feed_running = True
+        ofs._feed_generation += 1
+        task = asyncio.get_event_loop().create_task(ofs._feed_loop())
+        await _wait_until(lambda: amd_hook_started.is_set(), timeout_sec=5.0,
+                          what="AMD's hook call to start and block")
+
+        # PLTR's dispatch is submitted under THIS (about-to-be-old) lifecycle, queued behind
+        # AMD, unstarted.
+        _write_option_l1_row(db, PLTR_SYM, dict(_REAL_LEVELONE_OPTIONS_CONTENT, key=PLTR_SYM, GAMMA=0.02, UNDERLYING="PLTR"),
+                             ts_recv=1700000000.0)
+        await _wait_until(lambda: (ofls.get_stream_greeks(PLTR_SYM) or {}).get("gamma") == 0.02,
+                          timeout_sec=5.0, what="OrderFlowState to advance PLTR's gamma")
+        assert PLTR_SYM not in hook_calls, "PLTR's hook must not have started while AMD still holds the one worker"
+
+        # Stop the feed loop WHILE AMD is still held and PLTR sits queued, unstarted...
+        ofs._feed_running = False
+        await asyncio.sleep(0.05)
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+        # ...then RESTART it -- a genuinely NEW lifecycle, `_feed_generation` bumped past
+        # whatever PLTR's still-queued task captured. The old `_feed_loop` task is gone
+        # (cancelled above); PLTR's dispatched-but-unstarted hook task on the shared
+        # `hook_executor` is untouched by that cancellation and is still sitting queued.
+        ofs._feed_running = True
+        ofs._feed_generation += 1
+
+        # NOW release AMD -- the worker frees up and would normally pick up PLTR's queued
+        # task next, under the NEW lifecycle's `_feed_running is True`.
+        release_amd_hook.set()
+        await asyncio.sleep(0.5)
+
+    asyncio.run(_run())
+    ofs.set_streamed_greeks_hook(None)
+    ofs._active_option_contracts = []
+    ofs._feed_running = False
+    _drain_l1_sse_thread_queue()
+
+    assert AMD_SYM in hook_calls, "AMD's own held call must still have run to completion (already in flight, harmless)"
+    assert PLTR_SYM not in hook_calls, (
+        "PLTR's hook body must never have actually executed once the lifecycle that queued "
+        "it had ended, even though the feed was RESTARTED (making a bare `_feed_running` "
+        f"check true again) before its task drained -- saw hook_calls={hook_calls}"
+    )

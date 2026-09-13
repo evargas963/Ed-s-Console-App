@@ -132,6 +132,30 @@
   var W = 1000, H = 540, T = 12, B = 24, L = 52, R = 10;
   function yOf(p, lo, hi) { return T + (1 - (p - lo) / (hi - lo)) * (H - T - B); }
 
+  // A SEVENTH independent review (2026-09-13), REPRODUCED: `.gmark-hit`'s fixed minimum
+  // size (10px half-height / radius, so a tiny visible bar/dot stays real-pointer-clickable
+  // -- see the click-target-widening comments below) never shrank back down at DENSE scope.
+  // At 61 strikes the adjacent-strike pixel spacing can fall well under 20px, so three
+  // neighboring strikes' fixed-10px hit targets all cover the SAME point at the middle
+  // strike's own center -- reproduced: strikes 119/120/121's hit rects all overlap strike
+  // 120's centre, making a real click there ambiguous among three strikes instead of
+  // unambiguously hitting one. Fixed at the root: the hit target's half-size is capped to
+  // half the ACTUAL minimum pixel gap between any two adjacent visible strikes (never
+  // assumed uniform -- real chains mix $0.50/$1/$5 strike spacing), so adjacent targets can
+  // touch but never overlap, even though that means shrinking below the 10px minimum at the
+  // very densest scopes (a smaller-but-unambiguous target beats a larger-but-ambiguous one).
+  function _hitTargetHalfSize(win, lo, hi, desiredHalf) {
+    if (!win || win.length < 2) return desiredHalf;
+    var ys = win.map(function (r) { return yOf(r[0], lo, hi); }).sort(function (a, b) { return a - b; });
+    var minGap = Infinity;
+    for (var i = 1; i < ys.length; i++) {
+      var gap = ys[i] - ys[i - 1];
+      if (gap > 0 && gap < minGap) minGap = gap;
+    }
+    if (!isFinite(minGap)) return desiredHalf;
+    return Math.min(desiredHalf, minGap / 2);
+  }
+
   // Independent-review finding (2026-09-13), REPRODUCED: a level line (flip/call-wall/put-wall)
   // drawn at the SAME price as a visible strike mark sits on top of it in SVG paint order and
   // intercepted real pointer clicks meant for that mark -- not a test artifact (a real Playwright
@@ -187,6 +211,7 @@
     // GEX profile in the right region, signed bars from a zero axis
     var maxAbs = win.reduce(function (m, r) { return Math.max(m, Math.abs(Number(r[1]) || 0)); }, 0) || 1;
     var cx = xSplit + 8, right = W - R - 4, halfW = (right - cx);
+    var hitHalfH = _hitTargetHalfSize(win, lo, hi, 10);
     s += '<line x1="' + cx + '" x2="' + cx + '" y1="' + T + '" y2="' + (H - B) + '" stroke="' + COL.axis + '" stroke-width="1"/>';
     win.forEach(function (r) {
       var k = r[0], v = Number(r[1]) || 0, w = Math.abs(v) / maxAbs * halfW;
@@ -201,8 +226,11 @@
       // two overlapping same-class elements competing for one pointer event intercepted each
       // other regardless of paint order (reproduced with a real Playwright click); giving the
       // hit target its OWN class makes it the one and only interactive element at this spot.
-      s += '<rect class="gmark-hit" data-strike="' + k + '" x="' + (cx - halfW).toFixed(1) + '" y="' + (y - 10).toFixed(1) +
-        '" width="' + (2 * halfW).toFixed(1) + '" height="20" fill="transparent"/>';
+      // `hitHalfH` (a SEVENTH independent review, 2026-09-13) caps that height to the actual
+      // inter-strike spacing at DENSE scope -- see `_hitTargetHalfSize`'s own docstring --
+      // so adjacent strikes' hit rects can never overlap each other's centre.
+      s += '<rect class="gmark-hit" data-strike="' + k + '" x="' + (cx - halfW).toFixed(1) + '" y="' + (y - hitHalfH).toFixed(1) +
+        '" width="' + (2 * halfW).toFixed(1) + '" height="' + (2 * hitHalfH).toFixed(1) + '" fill="transparent"/>';
     });
     // biggest-magnitude label
     var top = win.slice().sort(function (a, b) { return Math.abs(b[1]) - Math.abs(a[1]); })[0];
@@ -211,8 +239,13 @@
     s += levelLines(terrain, lo, hi, L, W - R);
     if (isFinite(spot)) {
       var ys = yOf(spot, lo, hi).toFixed(1);
-      s += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + ys + '" y2="' + ys + '" stroke="' + COL.spot + '" stroke-width="1.2" stroke-dasharray="2 2"/>' +
-        '<text x="' + (L + 3) + '" y="' + (Number(ys) - 3) + '" font-size="10" fill="' + COL.spot + '">spot ' + spot.toFixed(2) + '</text>';
+      // Independent-review finding (2026-09-13): the spot line/label, unlike levelLines and
+      // priceAxis right above, was never wrapped in `pointer-events="none"` -- the same real
+      // paint-order click interception those two were fixed for (a mark drawn UNDER a
+      // non-interactive overlay line at the same screen height loses the click to the line)
+      // remains possible here whenever a strike's own y-position coincides with spot's.
+      s += '<g pointer-events="none"><line x1="' + L + '" x2="' + (W - R) + '" y1="' + ys + '" y2="' + ys + '" stroke="' + COL.spot + '" stroke-width="1.2" stroke-dasharray="2 2"/>' +
+        '<text x="' + (L + 3) + '" y="' + (Number(ys) - 3) + '" font-size="10" fill="' + COL.spot + '">spot ' + spot.toFixed(2) + '</text></g>';
     }
     return s + '</svg>';
   }
@@ -222,6 +255,7 @@
     s += priceAxis(lo, hi);
     var cx = Math.round(W * 0.5);
     var maxAbs = win.reduce(function (m, r) { return Math.max(m, Math.abs(Number(r[1]) || 0)); }, 0) || 1;
+    var hitR = _hitTargetHalfSize(win, lo, hi, 10);
     s += '<line x1="' + cx + '" x2="' + cx + '" y1="' + T + '" y2="' + (H - B) + '" stroke="' + COL.axis + '" stroke-width="0.5" opacity="0.4"/>';
     win.forEach(function (r) {
       var k = r[0], v = Number(r[1]) || 0, y = yOf(k, lo, hi);
@@ -231,8 +265,11 @@
         '" fill="' + (pos ? COL.pos : COL.neg) + '" opacity="0.55" stroke="' + (pos ? COL.pos : COL.neg) + '"/>' +
         // Same click-target widening as profileSvg's bars, on its own `gmark-hit` class (see
         // that comment) -- a small-magnitude dot can shrink to a real-pointer-unfriendly few
-        // pixels; the invisible hit circle never shrinks below a usable minimum radius.
-        '<circle class="gmark-hit" data-strike="' + k + '" cx="' + x.toFixed(1) + '" cy="' + y.toFixed(1) + '" r="' + Math.max(rad, 10).toFixed(1) +
+        // pixels; the invisible hit circle never shrinks below a usable minimum radius UNLESS
+        // (a SEVENTH independent review, 2026-09-13) the actual inter-strike spacing at dense
+        // scope is itself narrower than that minimum -- `hitR` caps to that spacing so
+        // adjacent strikes' hit circles can never overlap each other's centre.
+        '<circle class="gmark-hit" data-strike="' + k + '" cx="' + x.toFixed(1) + '" cy="' + y.toFixed(1) + '" r="' + hitR.toFixed(1) +
         '" fill="transparent"/>' +
         '<text x="' + (pos ? x + rad + 4 : x - rad - 4).toFixed(1) + '" y="' + (y + 3).toFixed(1) + '" text-anchor="' + (pos ? 'start' : 'end') +
         '" font-size="9" fill="var(--ed-ink-2)">' + esc(usd(v)) + '</text>';
@@ -240,8 +277,10 @@
     s += levelLines(terrain, lo, hi, L, W - R);
     if (isFinite(spot)) {
       var ys = yOf(spot, lo, hi).toFixed(1);
-      s += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + ys + '" y2="' + ys + '" stroke="' + COL.spot + '" stroke-width="1.2" stroke-dasharray="2 2"/>' +
-        '<text x="' + (L + 3) + '" y="' + (Number(ys) - 3) + '" font-size="10" fill="' + COL.spot + '">spot ' + spot.toFixed(2) + '</text>';
+      // Independent-review finding (2026-09-13): see profileSvg's identical fix -- the spot
+      // line/label was never wrapped in `pointer-events="none"` like levelLines/priceAxis.
+      s += '<g pointer-events="none"><line x1="' + L + '" x2="' + (W - R) + '" y1="' + ys + '" y2="' + ys + '" stroke="' + COL.spot + '" stroke-width="1.2" stroke-dasharray="2 2"/>' +
+        '<text x="' + (L + 3) + '" y="' + (Number(ys) - 3) + '" font-size="10" fill="' + COL.spot + '">spot ' + spot.toFixed(2) + '</text></g>';
     }
     return s + '</svg>';
   }

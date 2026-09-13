@@ -107,51 +107,73 @@ test.describe('D — Gamma Chain subview', () => {
     expect(await page.evaluate(() => window.EdStream.getDesired())).toBe('SPY   260911C00102000');
   });
 
-  // Independent-review finding (2026-09-13), REPRODUCED by direct browser measurement (not
-  // source inspection): the column headers never actually stuck to the top while scrolling --
-  // confirmed the fix (a separate sticky-wrapped header table + a body table sharing one
-  // <colgroup>) with a real, long ladder (far more strikes than fit the viewport at once).
-  //
-  // A FOURTH independent review (2026-09-13) found this test checked only the FIRST header
-  // row and never verified column alignment between the two independent tables, or behaviour
-  // at a representative viewport size. Strengthened to check BOTH rows, column alignment
-  // against the body table, and a resized (smaller) viewport.
-  test('column headers stay pinned to the top, both rows, aligned to the body columns, at a representative size (state-authority review)', async ({ page }) => {
-    const BIG = { ticker: 'SPY', spot: 100, expiry: '2026-09-11', status: 'ok',
+  // Independent-review finding (2026-09-13), REPRODUCED by direct browser measurement, then
+  // narrowed to a two-sticky-row defect and "fixed" with a sticky div wrapping a header table
+  // -- but the operator kept reproducing a real, moving visual fault on genuine trackpad
+  // scrolling that survived TWO follow-up `position:sticky` fixes (a compositing-layer
+  // promotion, then overscroll containment), neither provably addressing the actual
+  // mechanism because neither could be reproduced by any scroll technique available in this
+  // test harness. Root-caused instead of patched again: `position:sticky` is removed
+  // entirely. The header is now a FROZEN (non-scrolling) sibling of a separate `.chn-scroll`
+  // div that holds only the body table -- there is no sticky positioning anywhere left for a
+  // compositor or scroll-chaining bug to intermittently mishandle, so the header's position
+  // is asserted EXACTLY constant (no pixel tolerance needed, unlike the old sticky-offset
+  // math), including through a real mouse-wheel scroll (not just programmatic scrollTop) and
+  // a concurrent data refresh.
+  test('the header table never moves regardless of scrolling the body, including real wheel scroll during a refresh (state-authority review)', async ({ page }) => {
+    let vol = 10;
+    const BIG = () => ({ ticker: 'SPY', spot: 100, expiry: '2026-09-11', status: 'ok',
       scope: { kind: 'complete_single_expiry', completeness_basis: 'strike_range=ALL' },
-      contracts: Array.from({ length: 80 }, (_, i) => ct('CALL', 50 + i, 'SPY   260911C00' + (50 + i) + '000', 10, 10, 10, 0.1)) };
-    await page.route('**/api/chain*', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(BIG) }));
+      contracts: Array.from({ length: 80 }, (_, i) => ct('CALL', 50 + i, 'SPY   260911C00' + (50 + i) + '000', 10, vol, 10, 0.1)) });
+    await page.route('**/api/chain*', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(BIG()) }));
     await page.setViewportSize({ width: 900, height: 640 });   // a representative, not maximal, size
     await toChain(page);
     await expect(page.locator('#chainBody tbody tr')).toHaveCount(80);
 
-    const rowsTop = () => page.locator('.chn-headwrap thead tr').evaluateAll(
-      (trs) => trs.map((tr) => tr.getBoundingClientRect().top));
-    const containerTop = await page.locator('#chainBody').boundingBox().then((b) => b.y);
+    const headBox = () => page.locator('.chn-headtbl').boundingBox();
+    const before = await headBox();
+    expect(before).toBeTruthy();
 
-    await page.evaluate(() => { document.getElementById('chainBody').scrollTop = 0; });
-    await page.evaluate(() => { document.getElementById('chainBody').scrollTop = 1200; });
-    const y1 = await rowsTop();
-    await page.evaluate(() => { document.getElementById('chainBody').scrollTop = 2600; });
-    const y2 = await rowsTop();
+    // A real wheel scroll (not a programmatic scrollTop assignment) on the actual scroll
+    // element, exercising the same input path a real trackpad/mouse produces.
+    await page.locator('#chainScroll').hover();
+    await page.mouse.wheel(0, 1200);
+    await page.waitForTimeout(100);
+    const duringScroll = await headBox();
 
-    expect(y1.length).toBe(2);   // both header rows present
-    // Stuck: EACH row at the same position at two different (large) scroll depths.
-    expect(Math.abs(y1[0] - y2[0])).toBeLessThan(2);
-    expect(Math.abs(y1[1] - y2[1])).toBeLessThan(2);
-    // The first row sits at the container's own top edge; the second sits BELOW the first
-    // (stacked, not overlapping it).
-    expect(Math.abs(y1[0] - containerTop)).toBeLessThan(15);
-    expect(y1[1]).toBeGreaterThan(y1[0] + 5);
+    // Fire a background refresh (same context) WHILE scrolled, with genuinely changed data,
+    // and confirm both the new value lands AND the header still has not moved at all.
+    vol = 25;
+    await page.evaluate(() => document.dispatchEvent(new CustomEvent('ed:refresh', { detail: { slow: true } })));
+    await expect(page.locator('#chainBody tbody tr').first().locator('td').nth(1)).toHaveText('25');
+    const afterRefresh = await headBox();
+
+    await page.mouse.wheel(0, 2000);
+    await page.waitForTimeout(100);
+    const afterMoreScroll = await headBox();
+
+    // Exact equality: a frozen (non-scrolling) header cannot move by even one pixel, at any
+    // point in this sequence -- this is a structural guarantee now, not an approximation.
+    expect(duringScroll.y).toBe(before.y);
+    expect(afterRefresh.y).toBe(before.y);
+    expect(afterMoreScroll.y).toBe(before.y);
+    expect(duringScroll.x).toBe(before.x);
+    expect(afterMoreScroll.x).toBe(before.x);
 
     // Column alignment: the header table and the body table are unrelated table layouts
     // sharing only a <colgroup> -- prove a header cell's left edge and width actually match
     // its corresponding body column, not merely that both tables render.
-    const headCell = await page.locator('.chn-headtbl tbody, .chn-headtbl thead tr').last()
-      .locator('th').first().boundingBox();
+    const headCell = await page.locator('.chn-headtbl thead tr').last().locator('th').first().boundingBox();
     const bodyCell = await page.locator('.chn-bodytbl tbody tr').first().locator('td').first().boundingBox();
     expect(Math.abs(headCell.x - bodyCell.x)).toBeLessThan(1);
     expect(Math.abs(headCell.width - bodyCell.width)).toBeLessThan(1);
+
+    // No gap and no overlap between the two header rows: the second row's top must equal
+    // (within sub-pixel rounding) the first row's own bottom edge.
+    const rows = await page.locator('.chn-headtbl thead tr').evaluateAll(
+      (trs) => trs.map((tr) => tr.getBoundingClientRect()));
+    expect(rows.length).toBe(2);
+    expect(Math.abs(rows[1].top - rows[0].bottom)).toBeLessThan(1);
 
     await page.setViewportSize({ width: 1280, height: 800 });   // restore default
   });
@@ -171,8 +193,8 @@ test.describe('D — Gamma Chain subview', () => {
     await expect(page.locator('#chainBody tbody tr')).toHaveCount(80);
     await expect(page.locator('#chainBody tbody tr').first().locator('td').nth(1)).toHaveText('10');
 
-    await page.evaluate(() => { document.getElementById('chainBody').scrollTop = 1800; });
-    const before = await page.evaluate(() => document.getElementById('chainBody').scrollTop);
+    await page.evaluate(() => { document.getElementById('chainScroll').scrollTop = 1800; });
+    const before = await page.evaluate(() => document.getElementById('chainScroll').scrollTop);
 
     // The NEXT chain fetch carries a genuinely different value -- proof a refresh actually
     // completed comes from the DOM showing THIS new value, not merely from time having passed.
@@ -182,7 +204,7 @@ test.describe('D — Gamma Chain subview', () => {
 
     // A routine background refresh (same ticker/expiry context) must not recentre the ladder,
     // even though it just genuinely re-rendered with new data.
-    const after = await page.evaluate(() => document.getElementById('chainBody').scrollTop);
+    const after = await page.evaluate(() => document.getElementById('chainScroll').scrollTop);
     expect(after).toBe(before);
   });
 
