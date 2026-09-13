@@ -98,7 +98,18 @@
     host.innerHTML = legend + svg;
     host.querySelectorAll('[data-strike]').forEach(function (el) {   // A: click a mark -> sync all panels
       el.style.cursor = 'pointer';
-      el.addEventListener('click', function () { if (window.EdShell) window.EdShell.setStrike(Number(el.getAttribute('data-strike'))); });
+      // Independent-review finding (2026-09-13), REPRODUCED: this click always passed NO
+      // expiry, unlike the heatmap (real per-column expiry) and Chain (the one displayed
+      // expiry) -- both of which always supply setStrike a real expiry. /api/terrain/strikes
+      // is a genuine all-expiry aggregate (no per-mark expiry exists to attribute), but a
+      // Chart click is still a deliberate strike selection and should carry through whatever
+      // workspace expiry filter is currently set, the same as every other view does, instead
+      // of unconditionally clobbering state.selExpiry to null via ed-core.js:setStrike.
+      el.addEventListener('click', function () {
+        if (!window.EdShell) return;
+        var expFilter = window.EdShell.getExpiry ? window.EdShell.getExpiry() : null;
+        window.EdShell.setStrike(Number(el.getAttribute('data-strike')), expFilter || null);
+      });
     });
     applyChartHighlight(host);
   }

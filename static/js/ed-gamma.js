@@ -157,10 +157,15 @@
       : { idx: strikes.map(function (_s, i) { return i; }), shown: strikes.length, total: strikes.length };
     var allCols = exps.map(function (_e, ix) { return ix; });
     var unexpired = allCols.filter(function (ix) { return exps[ix].expired !== true; });
-    var viewCols, expiredHidden = 0;
+    var viewCols, expiredHidden = 0, filterMissing = false;
     if (expFilter) {
       viewCols = allCols.filter(function (ix) { return exps[ix].expiry === expFilter; });
-      if (!viewCols.length) viewCols = allCols;
+      // Independent-review finding (2026-09-13), REPRODUCED: this fallback avoided a blank grid
+      // when the operator's selected expiry isn't in the surface, but said nothing about it --
+      // the dropdown kept showing the requested expiry while the grid silently displayed EVERY
+      // expiration instead, with no visible difference from an "All Expirations" choice.
+      // Disclosed below via colsTxt so the operator can tell the two apart.
+      if (!viewCols.length) { viewCols = allCols; filterMissing = true; }
     } else if (scope === 'auto') {
       var pool = unexpired.length ? unexpired : allCols;      // nothing unexpired: show what exists, labelled
       viewCols = pool.slice(0, autoColCount(host));
@@ -336,6 +341,7 @@
     // #3: the ONE disclosure line — how many canonical strikes / expirations are on screen vs clipped
     var colsTxt = viewCols.length + ' of ' + exps.length + ' expirations' +
       (expiredHidden ? ' (' + expiredHidden + ' expired hidden in Auto)' : '') +
+      (filterMissing ? ' · selected expiry ' + expFilter + ' not in this surface — showing all instead' : '') +
       (demandCapped ? ' · streaming demand capped at ' + MAX_DEMAND_CONTRACTS + ' contracts (subscription-size safety limit, untested at full scale)' : '');
     var note = (ES && ES.scopeNote) ? ES.scopeNote({ total: strikes.length, shown: rowSel.shown, extra: colsTxt }) : '';
     // the grid fills the panel; a compact vertical magnitude legend sits at its right edge (the

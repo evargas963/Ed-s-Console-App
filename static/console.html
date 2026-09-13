@@ -194,9 +194,17 @@
   .sub-pane{display:none;height:100%}
   .sub-pane.on{display:block;height:100%}
   .sub-pane>.panel{height:100%}
-  /* chain ladder (D) — full vendor chain, one expiry */
-  .chn{width:100%;border-collapse:collapse;font-family:var(--ed-sans);font-size:13px;font-variant-numeric:tabular-nums}
-  .chn th{position:sticky;top:0;background:var(--ed-panel-2);font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;
+  /* chain ladder (D) — full vendor chain, one expiry.
+     Independent-review finding (2026-09-13), REPRODUCED by direct browser measurement:
+     `position:sticky` on a <th> never engages in this engine (proven with the real table and a
+     minimal from-scratch reproduction) even though the identical container correctly sticks a
+     plain <div> -- so the header rows now live in their OWN small table inside a sticky
+     `.chn-headwrap` div, immediately followed by a second, separate body-only table; a shared
+     fixed-percentage <colgroup> (written by ed-gamma-chain.js) on both tables keeps every
+     column pixel-aligned between the two despite them being unrelated table layouts. */
+  .chn{width:100%;border-collapse:collapse;table-layout:fixed;font-family:var(--ed-sans);font-size:13px;font-variant-numeric:tabular-nums}
+  .chn-headwrap{position:sticky;top:0;z-index:2;background:var(--ed-panel-2)}
+  .chn th{background:var(--ed-panel-2);font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;
     color:var(--ed-ink-3);padding:7px 9px;border-bottom:1px solid var(--ed-edge);text-align:right}
   .chn th.mid{text-align:center;color:var(--ed-ink);background:var(--ed-panel-3);letter-spacing:.06em}
   .chn td{padding:6px 9px;border-bottom:1px solid var(--ed-edge-soft);text-align:right;color:var(--ed-ink)}

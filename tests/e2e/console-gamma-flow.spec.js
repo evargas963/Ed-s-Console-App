@@ -98,7 +98,7 @@ async function setup(page, ctx) {
 async function selectCallAndOpenFlow(page) {
   await page.goto('/console', { waitUntil: 'domcontentloaded' });
   await page.locator('#subnav .tab', { hasText: 'Chain' }).click();
-  await expect(page.locator('#chainBody table.chn')).toBeVisible();
+  await expect(page.locator('#chainBody table.chn-bodytbl')).toBeVisible();
   await page.locator('#chainBody tr[data-csym="' + DESIRED + '"] td.chn-call').first().click();
   await page.locator('#subnav .tab', { hasText: 'Flow' }).click();
   await expect(page.locator('#flowBody')).toBeVisible();

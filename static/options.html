@@ -273,19 +273,29 @@
   // or two fast manual switches, could let a stale ticker's spot price and chain paint
   // under the new ticker's already-updated label. Fixed by capturing the requested ticker
   // and discarding the response if the current selection has since moved on.
+  //
+  // Second independent-review finding (2026-09-13), REPRODUCED: the same race exists at the
+  // EXPIRY granularity -- only tkEl.value was ever re-checked, so a fast expiry-dropdown
+  // change (A -> B) whose in-flight A-response resolves AFTER B's own request can still pass
+  // the ticker check and paint expiry-A's chain under the now-selected expiry-B label. Fixed
+  // by capturing expSelect.value at issue time too and discarding the response if either the
+  // ticker or the expiry selection has since moved on.
   function loadChain(){
     var t = (tkEl.value || 'SPY').toUpperCase().trim();
-    var url = '/api/chain?ticker=' + encodeURIComponent(t);
     var exp = expSelect.value;
+    var url = '/api/chain?ticker=' + encodeURIComponent(t);
     if (exp) url += '&expiry=' + encodeURIComponent(exp);
+    function stale(){
+      return (tkEl.value || 'SPY').toUpperCase().trim() !== t || expSelect.value !== exp;
+    }
     fetch(url)
       .then(function(r){ return r.json(); })
       .then(function(payload){
-        if ((tkEl.value || 'SPY').toUpperCase().trim() !== t) return;   // superseded by a newer ticker switch
+        if (stale()) return;   // superseded by a newer ticker or expiry switch
         renderChain(payload);
       })
       .catch(function(){
-        if ((tkEl.value || 'SPY').toUpperCase().trim() !== t) return;
+        if (stale()) return;
         notice('Chain fetch failed.');
       });
   }

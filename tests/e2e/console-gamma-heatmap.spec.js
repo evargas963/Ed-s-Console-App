@@ -5,8 +5,19 @@
  * Proves the FRONTEND presentation contract in a real browser: the heatmap renders the
  * canonical /api/options/gamma-surface payload VERBATIM (cell text == formatted backend value,
  * invariant E), sign -> colour with no inversion (invariant D), spot row highlight, and the Key
- * Levels rail reflects /api/terrain. The endpoint==faucet equality is proven separately in
- * tests/test_gamma_surface_projection_v1.py; together they cover end-to-end.
+ * Levels rail reflects /api/terrain. The endpoint==faucet equality (the projected payload equals
+ * compute_exposures_by_strike) is proven separately in tests/test_gamma_surface_projection_v1.py.
+ *
+ * Independent-review finding (2026-09-13), REPRODUCED: this docstring previously claimed the two
+ * suites "together cover end-to-end" -- overstated. Every /api/** call here is intercepted with a
+ * synthetic payload (`intercept()` below), so no request in this file ever reaches the real
+ * FastAPI route, and the projection test calls the projection function directly rather than
+ * through a live HTTP round trip. Together they prove frontend-renders-what-the-contract-says
+ * and backend-computes-what-the-contract-says, NOT that the real route/HTTP/fetch layer
+ * connecting the two actually behaves that way end-to-end; that HTTP-through-render path is
+ * covered per-feature elsewhere when it exists (e.g. the streamed-volume overlay in
+ * tests/test_chain_api_v1.py, itself a direct-call proof of the route body rather than a
+ * TestClient/HTTP round trip -- see that file's own header comment) rather than by this suite.
  *
  * Endpoints are intercepted with synthetic payloads so the proof is deterministic and offline —
  * it exercises the real shell HTML/JS, not stubbed rendering.
@@ -1780,5 +1791,23 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     expect(seen[seen.length - 1]).toBe(keyOf(A));
     expect(retryResult.accepted).toBe(true);
     expect(await page.evaluate(() => window.EdStream.getDesiredAdditional())).toEqual(A);
+  });
+
+  // Independent-review finding (2026-09-13), REPRODUCED: when the operator's selected expiry
+  // filter isn't present in the surface, the heatmap already fell back to showing every column
+  // instead of a blank grid -- but said NOTHING about it. The dropdown kept showing the
+  // requested (missing) expiry while the grid silently rendered exactly what "All Expirations"
+  // would have shown, with no way to tell the two apart. Fixed: the scope note now discloses
+  // the fallback by name.
+  test('a selected expiry absent from the surface is disclosed, not silently swapped for all columns', async ({ page }) => {
+    await page.route('**/api/expiries*', (r) => r.fulfill({ status: 200, contentType: 'application/json',
+      body: JSON.stringify({ expiries: ['2026-09-11', '2026-09-18', '2026-09-25'] }) }));
+    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#view-heatmap .hcell').first()).toBeVisible();
+
+    // '2026-09-25' is listed in /api/expiries but absent from SURFACE.expirations.
+    await page.locator('#expSel').selectOption('2026-09-25');
+    await expect(page.locator('#heatBody .hexp')).toHaveCount(2);   // fell back to both real columns
+    await expect(page.locator('#heatBody .scope-note')).toContainText('selected expiry 2026-09-25 not in this surface');
   });
 });

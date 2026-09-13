@@ -43,7 +43,9 @@ async function intercept(page) {
 async function toChain(page) {
   await page.goto('/console', { waitUntil: 'domcontentloaded' });
   await page.locator('#subnav .tab', { hasText: 'Chain' }).click();
-  await expect(page.locator('#chainBody table.chn')).toBeVisible();
+  // the ladder now renders as two separate tables (header + body) so the header can genuinely
+  // stick on scroll -- see ed-gamma-chain.js's chn-headwrap/chn-bodytbl split (2026-09-13).
+  await expect(page.locator('#chainBody table.chn-bodytbl')).toBeVisible();
 }
 
 test.describe('D — Gamma Chain subview', () => {
@@ -93,5 +95,78 @@ test.describe('D — Gamma Chain subview', () => {
     await page.locator('#chainBody tr[data-csym="SPY   260911C00102000"] td.chn-call').first().click();
     // exactly the fixture symbol, spaces and all — no OCC construction
     expect(await page.evaluate(() => window.EdStream.getDesired())).toBe('SPY   260911C00102000');
+  });
+
+  // Independent-review finding (2026-09-13), REPRODUCED by direct browser measurement (not
+  // source inspection): the column headers never actually stuck to the top while scrolling --
+  // confirmed the fix (a separate sticky-wrapped header table + a body table sharing one
+  // <colgroup>) with a real, long ladder (far more strikes than fit the viewport at once).
+  test('column headers stay pinned to the top while scrolling a long ladder (state-authority review)', async ({ page }) => {
+    const BIG = { ticker: 'SPY', spot: 100, expiry: '2026-09-11', status: 'ok',
+      scope: { kind: 'complete_single_expiry', completeness_basis: 'strike_range=ALL' },
+      contracts: Array.from({ length: 80 }, (_, i) => ct('CALL', 50 + i, 'SPY   260911C00' + (50 + i) + '000', 10, 10, 10, 0.1)) };
+    await page.route('**/api/chain*', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(BIG) }));
+    await toChain(page);
+    await expect(page.locator('#chainBody tbody tr')).toHaveCount(80);
+
+    const headerTop = () => page.locator('.chn-headwrap thead tr').first().boundingBox().then((b) => b.y);
+    const containerTop = await page.locator('#chainBody').boundingBox().then((b) => b.y);
+
+    await page.evaluate(() => { document.getElementById('chainBody').scrollTop = 0; });
+    await page.evaluate(() => { document.getElementById('chainBody').scrollTop = 1200; });
+    const y1 = await headerTop();
+    await page.evaluate(() => { document.getElementById('chainBody').scrollTop = 2600; });
+    const y2 = await headerTop();
+
+    // Stuck: the same position at two different (large) scroll depths, and at the container's
+    // own top edge -- not silently scrolling away with the body content underneath it.
+    expect(Math.abs(y1 - y2)).toBeLessThan(2);
+    expect(Math.abs(y1 - containerTop)).toBeLessThan(15);
+  });
+
+  test('a routine background refresh does not reset a manually-scrolled position', async ({ page }) => {
+    const BIG = { ticker: 'SPY', spot: 100, expiry: '2026-09-11', status: 'ok',
+      scope: { kind: 'complete_single_expiry', completeness_basis: 'strike_range=ALL' },
+      contracts: Array.from({ length: 80 }, (_, i) => ct('CALL', 50 + i, 'SPY   260911C00' + (50 + i) + '000', 10, 10, 10, 0.1)) };
+    await page.route('**/api/chain*', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(BIG) }));
+    await toChain(page);
+    await expect(page.locator('#chainBody tbody tr')).toHaveCount(80);
+
+    await page.evaluate(() => { document.getElementById('chainBody').scrollTop = 1800; });
+    const before = await page.evaluate(() => document.getElementById('chainBody').scrollTop);
+    // A routine background refresh (same ticker/expiry context) must not recentre the ladder.
+    await page.evaluate(() => document.dispatchEvent(new CustomEvent('ed:refresh', { detail: { slow: true } })));
+    await page.waitForTimeout(300);
+    const after = await page.evaluate(() => document.getElementById('chainBody').scrollTop);
+    expect(after).toBe(before);
+  });
+
+  // V01 (test-quality review, 2026-09-13): this file's own CHAIN fixture returns the SAME
+  // contracts for every requested expiry, so nothing here could ever tell a correct re-fetch
+  // apart from a frozen/stale display on an expiry switch. Closed with a mock that returns
+  // DISTINGUISHABLE, expiry-keyed contracts and an assertion that the rendered ladder actually
+  // changes to match each requested expiry -- this would fail if curExpiry()'s wiring broke and
+  // the view kept showing a stale expiry's data after the dropdown moved.
+  test('switching the expiry dropdown re-fetches and renders that expiry\'s own distinct contracts', async ({ page }) => {
+    const EXP_A = '2026-09-11', EXP_B = '2026-09-18';
+    await page.route('**/api/expiries*', (r) => r.fulfill({ status: 200, contentType: 'application/json',
+      body: JSON.stringify({ expiries: [EXP_A, EXP_B] }) }));
+    await page.route('**/api/chain*', (route) => {
+      const exp = new URL(route.request().url()).searchParams.get('expiry') || EXP_A;
+      const strike = exp === EXP_A ? 100 : 200;   // distinct strike AND distinct symbol per expiry
+      const body = { ticker: 'SPY', spot: strike, expiry: exp, status: 'ok',
+        scope: { kind: 'complete_single_expiry', completeness_basis: 'strike_range=ALL' },
+        contracts: [ct('CALL', strike, 'SPY   FIXTURE_' + exp + 'C', 1, 1, 1, 0.1)] };
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+    });
+    await toChain(page);
+    await expect(page.locator('#chainBody .chn-head')).toContainText('SINGLE EXPIRY · ' + EXP_A);
+    await expect(page.locator('#chainBody tbody tr td.k')).toHaveText('100');
+
+    await page.locator('#expSel').selectOption(EXP_B);
+    await expect(page.locator('#chainBody .chn-head')).toContainText('SINGLE EXPIRY · ' + EXP_B);
+    await expect(page.locator('#chainBody tbody tr td.k')).toHaveText('200');
+    await expect(page.locator('#chainBody tr[data-csym="SPY   FIXTURE_' + EXP_B + 'C"]')).toHaveCount(1);
+    await expect(page.locator('#chainBody tr[data-csym="SPY   FIXTURE_' + EXP_A + 'C"]')).toHaveCount(0);
   });
 });

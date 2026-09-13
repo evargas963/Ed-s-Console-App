@@ -28,6 +28,15 @@
           live: !!m.live, ref: !!m.ref, title: 'chain scope: ' + kind }) : '';
   }
 
+  // Independent-review finding (2026-09-13), REPRODUCED: render()'s scrollIntoView ran
+  // UNCONDITIONALLY on every resolved load() -- including every routine ~12s ed:refresh{slow}
+  // tick and every streamed gamma_surface_seq push, not just a genuine new ticker/expiry
+  // context -- forcibly recentering on the spot row and discarding any manual scroll position
+  // the operator had set in a long chain ladder. Fixed by only auto-scrolling the first time a
+  // given ticker+expiry context is rendered; a routine data refresh of an already-rendered
+  // context leaves the operator's own scroll position alone.
+  var _lastScrollContext = null;
+
   function curExpiry() { return (window.EdShell && window.EdShell.getExpiry && window.EdShell.getExpiry()) || null; }
   // Coalesced load (see l1_sse_guards.js:makeCoalescedLoader) -- `ed:refresh{slow}` also
   // fires on every streamed gamma_surface_seq push, not just the 12s poll tick; a naive
@@ -84,10 +93,25 @@
     function cell(c, k, dg) { var v = c ? c[k] : null; return (v == null) ? '—' : (typeof v === 'number' ? v.toFixed(dg == null ? 2 : dg) : esc(v)); }
     function sym(c) { return c && c.symbol ? String(c.symbol) : ''; }
     function selAttr(c) { var s = sym(c); return s ? (' data-sym="' + esc(s) + '"' + (s === desired ? ' data-selc="1"' : '')) : ''; }
-    var h = head + '<table class="chn"><thead><tr>' +
+    // Independent-review finding (2026-09-13), REPRODUCED via direct browser measurement (not
+    // source inspection): `position:sticky` on a <th> inside this scrolling container never
+    // engaged AT ALL in the running browser -- confirmed with the real table AND a minimal
+    // from-scratch <table><thead><th style="position:sticky"> reproduction in the same
+    // container, versus a plain sticky <div> in the identical spot which DID stick. This is a
+    // real engine limitation for sticky table cells, not a CSS mistake fixable by adjusting
+    // `.chn th{top:...}` offsets (the originally-suspected "two overlapping rows" framing
+    // undersold the defect: the header did not stick at all, at any offset). Fixed by moving
+    // the two header rows into their OWN small <table> inside a `position:sticky` wrapper div
+    // (sticky on a div is proven to work), with a SECOND, separate <table> for the body rows
+    // directly below it in the same scroll container -- a shared <colgroup> with fixed
+    // percentage widths on both tables keeps every column pixel-aligned between the two.
+    var COLGROUP = '<colgroup><col style="width:10%"><col style="width:10%"><col style="width:10%"><col style="width:10%">' +
+      '<col style="width:20%"><col style="width:10%"><col style="width:10%"><col style="width:10%"><col style="width:10%"></colgroup>';
+    var h = head + '<div class="chn-headwrap"><table class="chn chn-headtbl">' + COLGROUP + '<thead><tr>' +
       '<th colspan="4" class="cflag" style="text-align:center">Calls</th><th class="mid">Strike</th>' +
       '<th colspan="4" class="pflag" style="text-align:center">Puts</th></tr>' +
-      '<tr><th>OI</th><th>Vol</th><th>IV%</th><th>Δ</th><th class="mid"></th><th>Δ</th><th>IV%</th><th>Vol</th><th>OI</th></tr></thead><tbody>';
+      '<tr><th>OI</th><th>Vol</th><th>IV%</th><th>Δ</th><th class="mid"></th><th>Δ</th><th>IV%</th><th>Vol</th><th>OI</th></tr></thead></table></div>' +
+      '<table class="chn chn-bodytbl">' + COLGROUP + '<tbody>';
     strikes.forEach(function (k) {
       var g = byK[k], n = Math.max(g.c.length, g.p.length);
       for (var i = 0; i < n; i++) {
@@ -120,7 +144,12 @@
         if (window.EdShell) window.EdShell.setStrike(k, d.expiry);   // centre strike -> shared strike only
       });
     });
-    var sr = host.querySelector('tr.spot'); if (sr && sr.scrollIntoView) sr.scrollIntoView({ block: 'center' });
+    var context = (st().ticker || 'SPY') + '|' + (d.expiry || '');
+    var isNewContext = context !== _lastScrollContext;
+    _lastScrollContext = context;
+    if (isNewContext) {
+      var sr = host.querySelector('tr.spot'); if (sr && sr.scrollIntoView) sr.scrollIntoView({ block: 'center' });
+    }
   }
 
   function selectContract(symbol, strike, expiry) {
