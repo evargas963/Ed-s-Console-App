@@ -15748,6 +15748,23 @@ def get_chain(ticker: str = Query(default=DEFAULT_TICKER),
                     str(c.get("expirationDate") or "")[:10]
                     for c in contracts if isinstance(c, dict) and c.get("expirationDate")
                 })
+                # Independent-review finding (2026-09-13), REPRODUCED: this route always
+                # returned the vendor REST chain's own `totalVolume`/greeks verbatim, even
+                # though a real streamed tick for the SAME contract can already be sitting in
+                # app.options.order_flow.state, correctly advanced (proven by a controlled
+                # SQLite-replay+OrderFlowState reproduction) -- it simply never reached here.
+                # `_gamma_surface_contracts_with_stream_overlay` is the SAME faucet
+                # refresh_gamma_surface_from_stream already uses to freshen the terrain/
+                # gamma-surface path (ONE overlay mechanism, not a second one for Chain);
+                # `newer_than_ts=None` because this fetch has no PRIOR REST-baseline
+                # timestamp to compare against (it is itself the freshest REST read at the
+                # instant it returns) -- max_staleness_sec still bounds how old an overlaid
+                # streamed value may be. `stream_overlay_contracts` names how many contracts
+                # this response actually carries a streamed field for, so a caller (or a
+                # test) can tell a genuinely fresher chain from a REST-only one without
+                # inspecting timestamps by hand.
+                contracts, overlay_n = _gamma_surface_contracts_with_stream_overlay(
+                    t, contracts, newer_than_ts=None)
                 if returned_exps == [resolved_expiry]:
                     try:
                         persist_complete_chain_capture(
@@ -15760,6 +15777,7 @@ def get_chain(ticker: str = Query(default=DEFAULT_TICKER),
                     return JSONResponse({
                         "ticker": t, "spot": spot, "expiry": resolved_expiry,
                         "contracts": contracts, "status": "ok" if contracts else "no_chain",
+                        "stream_overlay_contracts": overlay_n,
                         "scope": {"kind": "complete_single_expiry",
                                  "requested_expiry": resolved_expiry,
                                  "returned_expiries": returned_exps,
@@ -15772,6 +15790,7 @@ def get_chain(ticker: str = Query(default=DEFAULT_TICKER),
                     return JSONResponse({
                         "ticker": t, "spot": spot, "expiry": resolved_expiry,
                         "contracts": contracts, "status": "ok",
+                        "stream_overlay_contracts": overlay_n,
                         "scope": {"kind": "expiry_scope_mismatch",
                                  "requested_expiry": resolved_expiry,
                                  "returned_expiries": returned_exps,
@@ -15796,9 +15815,15 @@ def get_chain(ticker: str = Query(default=DEFAULT_TICKER),
             log.debug("chain: persisted-capture read failed for %s %s: %s",
                      t, resolved_expiry, e)
         if cap:
+            # Same overlay faucet as the live tiers above, bounded here by the capture's
+            # OWN as-of (a streamed field only overlays a banked capture when it is
+            # genuinely newer than that specific capture, not merely "recent").
+            cap_contracts, cap_overlay_n = _gamma_surface_contracts_with_stream_overlay(
+                t, cap["contracts"], newer_than_ts=cap["ts_utc"])
             return JSONResponse({
                 "ticker": t, "spot": cap["spot"], "expiry": resolved_expiry,
-                "contracts": cap["contracts"], "status": "ok",
+                "contracts": cap_contracts, "status": "ok",
+                "stream_overlay_contracts": cap_overlay_n,
                 "scope": {"kind": "persisted_complete_capture_fallback",
                          "requested_expiry": resolved_expiry,
                          "completeness_basis": cap["completeness_basis"],
@@ -15818,8 +15843,11 @@ def get_chain(ticker: str = Query(default=DEFAULT_TICKER),
         if isinstance(ct, dict) and ct.get("expirationDate"):
             stored_expiry = str(ct["expirationDate"])[:10]
             break
+    contracts, overlay_n = _gamma_surface_contracts_with_stream_overlay(
+        t, contracts, newer_than_ts=None)
     return JSONResponse({
         "ticker": t, "spot": spot, "expiry": stored_expiry, "contracts": contracts,
+        "stream_overlay_contracts": overlay_n,
         "status": "ok",
         "scope": {"kind": "stored_analytical_snapshot_fallback",
                  "note": "bounded analytical snapshot, NOT proven complete — live "

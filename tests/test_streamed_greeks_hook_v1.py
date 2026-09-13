@@ -1008,3 +1008,95 @@ def test_a_slow_hook_for_one_underlying_does_not_delay_replay_for_another(tmp_pa
         f"blocked -- state capture for one underlying must not wait behind another's slow "
         f"hook computation")
     assert hook_calls[0] == _SPY_A or ofs._hook_grouping_key(hook_calls[0]) == ofs._hook_grouping_key(_SPY_A)
+
+
+def test_backlog_coalesces_across_ticks_and_a_shutdown_drops_the_pending_rerun(tmp_path, monkeypatch):
+    """Independent-review finding (2026-09-13), REPRODUCED then FIXED: "coalescing within
+    each poll does not bound work across polls." Holding the hook callback while four
+    qualifying poll batches arrived for the SAME underlying used to queue FOUR independent
+    tasks on the single-worker hook executor (one dispatch per qualifying tick, no check
+    for "is a call for this root already in flight"); stopping the feed loop after only the
+    first had started still let the other three run afterward, because each was already an
+    independently submitted `run_in_executor` future the executor's own non-blocking
+    shutdown lets finish to completion.
+
+    Reproduced and fixed here with the REAL _feed_loop, a real threading.Event-blocked
+    hook, and real captured rows -- not a reimplementation of the dispatch logic. Proves
+    BOTH halves of the fix:
+      (1) four qualifying ticks for the same root while a call is already in flight
+          coalesce into AT MOST ONE trailing re-run, never one-per-tick -- the underlying
+          OrderFlowState still advances through every one of them (nothing is lost), only
+          the (wasteful, redundant -- the hook always re-gathers fresh state on every
+          real run) hook CALL COUNT is bounded.
+      (2) once the feed loop has been stopped, releasing the in-flight call must NOT let
+          the coalesced trailing call start -- new work must never be scheduled into a
+          lifecycle that has already ended, even though the trailing rerun was already
+          "queued" in the coalescing sense.
+    """
+    _drain_l1_sse_thread_queue()
+    db = _reset(tmp_path, monkeypatch)
+    SYM = "SPY   260918C00650000"
+    ofs._active_option_contracts = [ofs.ticker_storage_key(SYM)]
+
+    first_hook_started = threading.Event()
+    release_first_hook = threading.Event()
+    hook_calls = []
+
+    def _hook(sym, ts):
+        hook_calls.append((sym, ts))
+        if len(hook_calls) == 1:
+            first_hook_started.set()
+            release_first_hook.wait(timeout=10.0)
+    ofs.set_streamed_greeks_hook(_hook)
+
+    _write_option_l1_row(db, SYM, dict(_REAL_LEVELONE_OPTIONS_CONTENT, key=SYM, GAMMA=0.01),
+                          ts_recv=1700000000.0)
+
+    async def _run():
+        ofs._feed_running = True
+        task = asyncio.get_event_loop().create_task(ofs._feed_loop())
+        await _wait_until(lambda: first_hook_started.is_set(), timeout_sec=5.0,
+                          what="the first hook call to start and block")
+
+        # Four MORE qualifying ticks for the SAME underlying while the first call is still
+        # blocked. State must advance through every one of them -- matching the reviewer's
+        # own "state correctly advanced 222 -> 333" observation -- even though the hook
+        # call count must NOT grow one-per-tick.
+        for i, gamma in enumerate((0.02, 0.03, 0.04, 0.05), start=1):
+            _write_option_l1_row(db, SYM, dict(_REAL_LEVELONE_OPTIONS_CONTENT, key=SYM, GAMMA=gamma),
+                                  ts_recv=1700000000.0 + i)
+            await _wait_until(lambda g=gamma: (ofls.get_stream_greeks(SYM) or {}).get("gamma") == g,
+                              timeout_sec=5.0, what=f"OrderFlowState to advance to gamma={gamma}")
+
+        # All four ticks have now been replayed into state AND had their chance to dispatch
+        # a hook call; only the first is actually running (blocked), so a live-locked or
+        # unbounded implementation would show 4-5 calls here -- the fix must show exactly 1.
+        assert len(hook_calls) == 1, (
+            f"four qualifying ticks arriving while the first hook call is still in flight "
+            f"must coalesce, not queue one call per tick -- saw {len(hook_calls)} calls "
+            f"before the first was even released")
+
+        # Stop the feed loop WHILE the first call is still blocked -- the reviewer's own
+        # "after the feed loop stops" ordering.
+        ofs._feed_running = False
+        await asyncio.sleep(0.05)
+
+        # NOW release the first (only) call and give any wrongly-scheduled trailing task a
+        # real chance to start.
+        release_first_hook.set()
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        await asyncio.sleep(0.5)
+
+    asyncio.run(_run())
+    ofs.set_streamed_greeks_hook(None)
+    ofs._active_option_contracts = []
+    _drain_l1_sse_thread_queue()
+
+    assert len(hook_calls) == 1, (
+        f"a coalesced trailing hook call must never start once the feed loop has already "
+        f"stopped -- saw {len(hook_calls)} total calls (expected exactly 1); obsolete work "
+        f"was scheduled into a lifecycle that had already ended")

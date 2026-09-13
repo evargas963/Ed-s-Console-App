@@ -335,7 +335,23 @@
   }
 
   // ---------- Strike Detail ----------
-  var _lastExpiry = null;
+  // Independent-review finding (2026-09-13), REPRODUCED: a private `_lastExpiry` variable
+  // here duplicated the CANONICAL "which expiry is this strike selected under" fact that
+  // ed-core.js's setStrike() already stores as state.selExpiry, but only the `ed:strike`
+  // handler kept it in sync -- `ed:expiry` (a workspace expiry-filter CHANGE) called
+  // loadStrike with the fresh filter but never updated `_lastExpiry`, so the two fell out
+  // of agreement the instant the operator changed the expiry filter without re-clicking a
+  // strike. The next `ed:refresh` tick then used the now-STALE `_lastExpiry`, reverting
+  // Strike Detail to the OLD expiry while the workspace shell stayed on the new one --
+  // reproduced exactly as select Sept 18 -> switch filter to Sept 25 -> ed:refresh ->
+  // chain requests go 18 -> 25 -> 18. Fixed by deleting the second authority entirely:
+  // `strikeDetailExpiry()` resolves the expiry to use FRESH, every time, from the same two
+  // canonical sources the original code was trying to shadow (the workspace filter, else
+  // the selected strike's own expiry) -- there is nothing left to fall out of sync.
+  function strikeDetailExpiry() {
+    var s = (window.EdShell && window.EdShell.getState()) || {};
+    return expiryFilter() || s.selExpiry || null;
+  }
   // Coalesced load (see l1_sse_guards.js:makeCoalescedLoader) -- `ed:refresh{slow}` also
   // fires on every streamed gamma_surface_seq push, not just the 12s poll tick; a naive
   // per-call generation counter live-locks once pushes outrun the round trip. loadStrike()
@@ -487,18 +503,17 @@
     // data keeps moving. Reload it too, exactly like ed:expiry already does below, whenever a
     // strike is currently selected.
     var sel = ((window.EdShell && window.EdShell.getState()) || {}).selStrike;
-    if (sel != null) loadStrike(sel, _lastExpiry);
+    if (sel != null) loadStrike(sel, strikeDetailExpiry());
   });
   document.addEventListener('ed:strike', function (e) {
-    var det = e.detail || {}; _lastExpiry = det.expiry || _lastExpiry;
+    var det = e.detail || {};
     applyGbsHighlight();                       // A: sync the GEX-by-strike highlight
     if (det.strike != null) loadStrike(det.strike, det.expiry);
   });
-  document.addEventListener('ed:expiry', function (e) {   // #5: expiry filter -> Strike Detail uses it; Levels/GBS stay aggregate + disclose
-    var exp = (e.detail && e.detail.expiry) || null;
+  document.addEventListener('ed:expiry', function () {   // #5: expiry filter -> Strike Detail uses it; Levels/GBS stay aggregate + disclose
     loadLevels(); loadGbs();
     var sel = ((window.EdShell && window.EdShell.getState()) || {}).selStrike;
-    if (sel != null) loadStrike(sel, exp || _lastExpiry);
+    if (sel != null) loadStrike(sel, strikeDetailExpiry());
   });
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', loadAll);
   else loadAll();

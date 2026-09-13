@@ -30,6 +30,30 @@ const SURFACE = {
   ],
   provenance: { producer: 'math_exposure_core.compute_exposures_by_strike', classification: 'DERIVED' },
 };
+// A surface WITH real per-cell vendor contract identity (server.py's project_gamma_surface
+// always carries this in production; the plain SURFACE fixture above never needed it before
+// the demand-declaration tests below, which specifically exercise _heatmapVisibleContracts —
+// an empty `contracts` field on every cell would make ANY scope's demand list empty,
+// masking exactly the coverage difference these tests exist to prove).
+function surfaceWithContracts(nExps, nStrikes) {
+  var expirations = [];
+  for (var e = 0; e < nExps; e++) {
+    var d = new Date(Date.UTC(2026, 8, 11 + e));
+    expirations.push({ expiry: d.toISOString().slice(0, 10), dte: e + 1 });
+  }
+  var strikes = [];
+  for (var s = 0; s < nStrikes; s++) strikes.push(580 + s);
+  var cells = strikes.map(function (k) {
+    return {
+      strike: k,
+      gex: expirations.map(function () { return 1000; }),
+      contracts: expirations.map(function (exp) {
+        return { call: 'C' + k + 'X' + exp.expiry, put: 'P' + k + 'X' + exp.expiry };
+      }),
+    };
+  });
+  return Object.assign({}, SURFACE, { expirations: expirations, strikes: strikes, cells: cells });
+}
 const TERRAIN = {
   ticker: '$SPX', spot: 583.41, gamma_flip: 582.90, call_wall: 586, put_wall: 580,
   absolute_gamma_strike: 583, net_gex_peak: 583, net_gex_at_spot: 2140000000,
@@ -345,6 +369,126 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     releaseSpy();
     await page.waitForTimeout(300);
     await expect(cell).toHaveText('$9.0K');
+  });
+
+  test('Strike Detail keeps following the workspace expiry filter after a selection, never reverting on refresh (2026-09-13, independent-review finding)', async ({ page }) => {
+    // Independent-review finding (2026-09-13), REPRODUCED: ed-gamma-panels.js kept a
+    // private `_lastExpiry` variable in sync ONLY on `ed:strike` -- switching the
+    // workspace expiry filter (`ed:expiry`) called loadStrike with the fresh filter but
+    // never updated `_lastExpiry`, so the next `ed:refresh` tick used the now-stale value
+    // and reverted Strike Detail's chain request back to the OLD expiry. Reproduced
+    // exactly: select a strike under Sept 18, switch the filter to Sept 25 (no re-click),
+    // then a refresh tick -- chain requests must read 18 -> 25 -> 25, never back to 18.
+    const chainExpiryRequests = [];
+    await page.route('**/api/chain**', (route) => {
+      const url = new URL(route.request().url());
+      chainExpiryRequests.push(url.searchParams.get('expiry'));
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(CHAIN) });
+    });
+    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.evaluate(() => window.EdShell.setStrike(583, '2026-09-18'));
+    await expect.poll(() => chainExpiryRequests[chainExpiryRequests.length - 1]).toBe('2026-09-18');
+    await page.evaluate(() => window.EdShell.setExpiry('2026-09-25'));
+    await expect.poll(() => chainExpiryRequests[chainExpiryRequests.length - 1]).toBe('2026-09-25');
+    await page.evaluate(() => document.dispatchEvent(new CustomEvent('ed:refresh', { detail: { slow: true } })));
+    await page.waitForTimeout(200);
+    expect(chainExpiryRequests[chainExpiryRequests.length - 1]).toBe('2026-09-25');
+  });
+
+  test('an unavailable heatmap surface is not resurrected by a later theme/expiry/scope event (2026-09-13, independent-review finding)', async ({ page }) => {
+    // Independent-review finding (2026-09-13), REPRODUCED: _lastSurface used to survive an
+    // unavailable render untouched, so a LATER presentation-only event (ed:theme here; also
+    // ed:expiry/ed:scope) reused it as if still current -- repainting the stale AVAILABLE
+    // data and reissuing its streamed-contract demand, resurrecting exactly the
+    // subscription the unavailable branch had just cleared.
+    let available = true;
+    await page.route('**/api/options/gamma-surface**', (route) => {
+      const body = available
+        ? Object.assign({}, SURFACE, { strikes: [583], expirations: [{ expiry: '2026-09-11', dte: 2 }], cells: [{ strike: 583, gex: [1000] }] })
+        : { available: false, reason: 'not currently active for this symbol' };
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+    });
+    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    const cell = page.locator('.hcell[data-strike="583"][data-expiry="2026-09-11"]');
+    await expect(cell).toHaveText('$1.0K');
+
+    available = false;
+    await page.evaluate(() => document.dispatchEvent(new CustomEvent('ed:refresh', { detail: { slow: true } })));
+    await expect(page.locator('#heatBody .placeholder .big')).toHaveText('Gamma surface unavailable');
+
+    // A theme toggle must not repaint the old $1.0K cell back onto the screen. A plain
+    // `expect(locator).toHaveText(...)` auto-retries for up to its own timeout, so a
+    // TRANSIENT resurrection that a LATER, unrelated real periodic tick (the page's own
+    // live liveTick scheduler, still running for real in this test) happens to correct
+    // before the retry window elapses would silently read back as a pass -- exactly the
+    // same trap this branch's own Flow tests already document. A single, non-retrying
+    // snapshot of the DOM taken immediately after the theme toggle is the only way to
+    // catch the transient resurrection itself.
+    await page.evaluate(() => window.EdShell.setTheme('dark'));
+    await page.waitForTimeout(150);
+    const html = await page.locator('#heatBody').innerHTML();
+    expect(html).not.toContain('$1.0K');
+    expect(html).toContain('Gamma surface unavailable');
+  });
+
+  test('heatmap column tooltip reflects the real subscription outcome, not just what was requested (2026-09-13, independent-review finding)', async ({ page }) => {
+    // Independent-review finding (2026-09-13), REPRODUCED: the column tooltip claimed
+    // "sub-second streaming updates active for this column" the instant a column was in
+    // demandCols -- but that only names what the CLIENT asked for. With the streaming-
+    // control endpoint returning a real HTTP 503 (confirmed contracts stay empty), the
+    // tooltip kept claiming active streaming anyway. It must now say REQUESTED (pending),
+    // then flip to the real REJECTED wording once the server's own answer comes back.
+    await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({
+      status: 200, contentType: 'application/json', body: JSON.stringify(surfaceWithContracts(3, 3)),
+    }));
+    // A deliberate delay makes the transient PENDING state actually observable (a mocked
+    // local route can otherwise resolve faster than the first assertion poll, making the
+    // real, correct intermediate state invisible to the test -- not a defect in the fix).
+    await page.route('**/api/streaming/active-option-contracts', async (route) => {
+      await new Promise((r) => setTimeout(r, 300));
+      route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ ok: false }) });
+    });
+    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    const col = page.locator('.heat thead th.hexp.stream-demand');
+    await expect(col).toHaveCount(1);
+    await expect(col).toHaveAttribute('title', /awaiting confirmation/);
+    await expect(col).toHaveAttribute('title', /NOT accepted by the server/, { timeout: 3000 });
+    await expect(col).not.toHaveAttribute('title', /streaming updates active/);
+  });
+
+  test('Wider and All scope declare real streaming demand for what they display, not zero (2026-09-13, operator-directed)', async ({ page }) => {
+    // Independent-review finding (2026-09-13), operator-directed: Wider/All used to demand
+    // ZERO contracts unconditionally, regardless of what they actually displayed --
+    // "vendor-capacity uncertainty does not explain away that application behavior." They
+    // now demand exactly the columns they display, the same rule an explicit expiry filter
+    // already used; Auto's own measured front-column-only policy is unchanged.
+    // 16 unexpired expirations x 3 strikes: enough columns that Auto (front column only,
+    // 1 col x 3 strikes x 2 sides = 6 symbols) and Wider (min(2*autoColCount,16) columns)
+    // genuinely differ in how many contracts they cover.
+    await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({
+      status: 200, contentType: 'application/json', body: JSON.stringify(surfaceWithContracts(16, 3)),
+    }));
+    const demandCalls = [];
+    await page.route('**/api/streaming/active-option-contracts', (route) => {
+      const body = JSON.parse(route.request().postData() || '{}');
+      demandCalls.push(body.contracts || []);
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, contracts: body.contracts || [] }) });
+    });
+    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await expect.poll(() => demandCalls.length).toBeGreaterThan(0);
+    const autoContracts = demandCalls[demandCalls.length - 1].length;
+
+    demandCalls.length = 0;
+    await page.evaluate(() => window.EdShell.setScope('wider'));
+    await expect.poll(() => demandCalls.length).toBeGreaterThan(0);
+    const widerContracts = demandCalls[demandCalls.length - 1].length;
+    expect(widerContracts).toBeGreaterThan(autoContracts);
+
+    demandCalls.length = 0;
+    await page.evaluate(() => window.EdShell.setScope('all'));
+    await expect.poll(() => demandCalls.length).toBeGreaterThan(0);
+    const allContracts = demandCalls[demandCalls.length - 1].length;
+    expect(allContracts).toBeGreaterThanOrEqual(widerContracts);
   });
 
   test('GEX-by-strike displays each row\'s own session volume, not just signed GEX$ (RC-UI-2 finding #5a)', async ({ page }) => {

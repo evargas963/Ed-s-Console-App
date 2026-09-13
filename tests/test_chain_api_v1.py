@@ -228,6 +228,83 @@ def test_chain_fractional_strikes_survive_vendor_to_api_unchanged(monkeypatch, t
     assert api_row == vendor_row, "no rounding, no coercion, no field loss on a real fractional strike"
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Streamed-volume overlay (independent review, 2026-09-13)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_chain_overlays_streamed_volume_onto_the_rest_snapshot(monkeypatch, tmp_path):
+    """Independent-review finding (2026-09-13), REPRODUCED then FIXED: a controlled test
+    wrote a streamed TOTAL_VOLUME observation into SQLite, ran it through the REAL replay
+    path (push_level_one -> OrderFlowState), confirmed the in-memory state correctly
+    advanced, then hit the actual /api/chain route and got the REST-only volume back
+    unchanged -- the streamed value never reached this response at all. This route now
+    calls the SAME overlay faucet (_gamma_surface_contracts_with_stream_overlay ->
+    overlay_streamed_contract_fields) refresh_gamma_surface_from_stream already uses for
+    the terrain/gamma-surface path, so a genuinely fresher streamed volume overrides the
+    REST snapshot's own value for the exact contract it belongs to -- and only that one.
+
+    Uses the REAL TSLA fixture and the REAL push_level_one ingestion write (not a
+    reimplementation of the merge/freshness logic), exactly like
+    tests/test_streamed_greeks_hook_v1.py already does for the gamma-surface path.
+    """
+    import json
+    import time
+
+    import app.options.order_flow.streaming as ofs
+    import server as srv
+    from app.options.order_flow.state import push_level_one
+
+    target = _TSLA_CONTRACTS[0]
+    target_symbol = target["symbol"]
+    rest_volume = target["totalVolume"]
+    streamed_volume = (rest_volume or 0) + 4321   # unambiguously different from the REST value
+    assert streamed_volume != rest_volume
+
+    # Establish the realistic precondition: this contract IS currently desired (in
+    # production, refresh_gamma_surface_from_stream's own hook only ever fires for a
+    # contract _feed_loop is actively replaying, which is always a desired one).
+    prior_contract, prior_contracts = ofs._active_option_contract, ofs._active_option_contracts
+    ofs._active_option_contract = target_symbol
+    ofs._active_option_contracts = []
+    try:
+        push_level_one(target_symbol, {
+            "key": target_symbol, "assetMainType": "OPTION", "UNDERLYING": "TSLA",
+            "TOTAL_VOLUME": streamed_volume, "TRADE_TIME_MILLIS": int(time.time() * 1000),
+        })
+
+        monkeypatch.setattr(srv, "get_client", lambda: object())
+        monkeypatch.setattr(srv, "_fetch_expiries_light", lambda t: [_TSLA_EXPIRY])
+        _fake_db(monkeypatch, srv, tmp_path)
+        c_json = _chain_json_for(_TSLA_CONTRACTS)
+        c_json["underlying"] = {"last": _TSLA_COMPLETE.get("spot")}
+        monkeypatch.setattr(srv, "_gated_safe_get_chain", _fake_gated_isolating_ALL(c_json, []))
+
+        body = json.loads(srv.get_chain(ticker="TSLA", expiry=None).body)
+    finally:
+        ofs._active_option_contract, ofs._active_option_contracts = prior_contract, prior_contracts
+        from app.options.order_flow.state import clear_symbol
+        clear_symbol(target_symbol)
+
+    assert body["scope"]["kind"] == "complete_single_expiry"
+    assert body.get("stream_overlay_contracts", 0) >= 1, "the response must disclose that a streamed field actually overlaid something"
+    overlaid = next(c for c in body["contracts"] if c["symbol"] == target_symbol)
+    assert overlaid["totalVolume"] == streamed_volume, (
+        f"streamed volume ({streamed_volume}) never reached /api/chain -- "
+        f"still serving the REST snapshot's own value ({overlaid['totalVolume']})"
+    )
+    # Every OTHER field on this exact contract, and every OTHER contract entirely, must be
+    # untouched -- this is a sparse overlay of one field on one contract, never a second
+    # exposure/formula path and never collateral change to unrelated rows.
+    for k, v in target.items():
+        if k == "totalVolume":
+            continue
+        assert overlaid[k] == v, f"unrelated field {k!r} was changed by the volume overlay"
+    other_symbol = next(c["symbol"] for c in _TSLA_CONTRACTS if c["symbol"] != target_symbol)
+    other_vendor = next(c for c in _TSLA_CONTRACTS if c["symbol"] == other_symbol)
+    other_api = next(c for c in body["contracts"] if c["symbol"] == other_symbol)
+    assert other_api == other_vendor, "a contract with no streamed data must be byte-for-byte untouched"
+
+
 def test_chain_live_fetch_persists_the_complete_capture(monkeypatch, tmp_path):
     """VENDOR -> PERSISTED set equivalence: a successful complete_single_expiry response
     durably writes the exact contract set to complete_chain_captures — proven by reading

@@ -115,6 +115,18 @@
       if (window.EdStream && window.EdStream.setAdditionalContracts) {
         window.EdStream.setAdditionalContracts([], 'heatmap');
       }
+      ++_demandGen; _demandState = 'none';   // invalidate any in-flight confirm/reject from a prior available render
+      // Independent-review finding (2026-09-13), REPRODUCED ("unavailable heatmap
+      // lifecycle"): _lastSurface/_lastRevision used to survive an unavailable result
+      // untouched (this branch returned before either was ever assigned), so a LATER
+      // presentation-only event -- ed:theme, or the "else load()" branches missing entirely
+      // -- reused the LAST AVAILABLE surface as if it were still current: ed:theme's
+      // `if (h && _lastSurface) renderSurface(h, _lastSurface)` repainted the stale data as
+      // available AND reissued its streamed-contract demand, resurrecting exactly the
+      // subscription this branch just cleared. Fixed by invalidating the cache here too --
+      // a presentation-only re-render has nothing left to reuse and correctly falls back to
+      // a fresh load() instead of resurrecting stale state.
+      _lastSurface = null; _lastRevision = null;
       // #1-A: even with no surface to draw, disclose the collection status honestly — a requested
       // symbol that is NOT on the board must read "not currently active for this symbol", never a
       // promised refresh. buildBanner is the ONE place that wording lives (warming/requested/board).
@@ -200,10 +212,51 @@
     // coverage disclosure below reads `demandCols` regardless of whether anything is
     // actually listening for the demand notification (e.g. the node test harness, which
     // renders this exact function with no `window`/EdStream at all).
-    var demandCols = expFilter ? viewCols : (scope === 'auto' && frontCol >= 0 ? [frontCol] : []);
+    // Independent-review finding (2026-09-13, operator-directed): Wider/All used to demand
+    // ZERO contracts unconditionally -- a silent narrowing of the coverage objective that
+    // the operator explicitly rejected as unjustified ("vendor-capacity uncertainty does
+    // not explain away that application behavior"). Wider/All now demand exactly the
+    // columns they DISPLAY (viewCols), the same rule an explicit expiry filter already
+    // used. Auto's own measured, capacity-safe front-column-only policy (round 6's
+    // deliberately bounded DEFAULT-scope budget) is unchanged -- it was never the
+    // complaint, and nothing here reopens it.
+    var demandCols = expFilter ? viewCols : (scope === 'auto' && frontCol >= 0 ? [frontCol] : viewCols);
+    // Independent-review finding (2026-09-13), REPRODUCED: the column-header tooltip
+    // claimed "sub-second streaming updates active for this column" the instant a column
+    // was in `demandCols` -- but `demandCols` only names what THIS module ASKED for; the
+    // single-owner streaming-control endpoint can reject that ask (confirmed with a real
+    // HTTP 503 in the reproduction) and contracts stayed empty while the tooltip kept
+    // claiming active streaming. `setAdditionalContracts` already returns a promise
+    // resolving to the server's own accepted/rejected verdict (ed-stream.js) -- this was
+    // simply never read. Fixed: track REQUESTED vs CONFIRMED vs REJECTED per dispatch,
+    // synchronously default new demand to "pending" (never "active") until the response
+    // actually confirms it, and patch the live column title in place once it resolves
+    // (applyDemandTitles) rather than claiming a fresh column has already streamed anything.
+    var frontDemand = demandCols.length ? _heatmapVisibleContracts(cells, rowSel, demandCols) : [];
+    // Deliberate, DISCLOSED safety ceiling on the number of symbols submitted in one
+    // active-option-contracts request -- extending real coverage to Wider/All (above) means
+    // a wide "All" configuration (many strikes x many expirations) could otherwise name
+    // thousands of contracts in a single POST. The true vendor-side subscription capacity
+    // at that scale has never been measured against live Schwab and remains its own
+    // NOT_PROVEN question (round 6); this cap does not silently avoid that question -- it
+    // states plainly what this client actually attempts and discloses (scope note below)
+    // whenever the true displayed coverage exceeds it, rather than either fabricating full
+    // coverage or silently submitting an unbounded request.
+    var MAX_DEMAND_CONTRACTS = 240;
+    var demandCapped = frontDemand.length > MAX_DEMAND_CONTRACTS;
+    if (demandCapped) frontDemand = frontDemand.slice(0, MAX_DEMAND_CONTRACTS);
     if (window.EdStream && window.EdStream.setAdditionalContracts) {
-      var frontDemand = demandCols.length ? _heatmapVisibleContracts(cells, rowSel, demandCols) : [];
-      window.EdStream.setAdditionalContracts(frontDemand, 'heatmap');
+      var myDemandGen = ++_demandGen;
+      _demandState = frontDemand.length ? 'pending' : 'none';
+      window.EdStream.setAdditionalContracts(frontDemand, 'heatmap').then(function (res) {
+        if (myDemandGen !== _demandGen) return;   // superseded by a newer demand call
+        if (!frontDemand.length) { _demandState = 'none'; return; }
+        _demandState = (res && (res.accepted || res.unchanged)) ? 'confirmed'
+          : (res && res.pending) ? 'pending' : 'rejected';
+        applyDemandTitles(document.getElementById('heatBody'));
+      });
+    } else {
+      _demandState = frontDemand.length ? 'pending' : 'none';
     }
     _lastSurface = surface;   // cached so a theme switch can re-render without a refetch
     // #1: skip the full table rebuild when the canonical surface REVISION (and the viewport choice)
@@ -239,10 +292,8 @@
       var dte = expired ? 'EXPIRED' : (e.dte === 0) ? '0DTE' : (e.dte != null ? e.dte + 'DTE' : '');
       var title = expired
         ? 'this expiration has already expired — a prior-session column kept for reference, not current structure'
-        : streamed
-          ? 'sub-second streaming updates active for this column'
-          : 'REST-cadence only (refreshes ~60s) — not sub-second streamed; Auto shows one streamed column at a time';
-      tbl += '<th class="hexp' + (j === frontCol ? ' col-front' : '') + (expired ? ' expired' : '') + '"' +
+        : demandTitle(streamed);
+      tbl += '<th class="hexp' + (j === frontCol ? ' col-front' : '') + (expired ? ' expired' : '') + (streamed ? ' stream-demand' : '') + '"' +
         ' title="' + escapeHtml(title) + '"' +
         '><span class="d">' + escapeHtml((e.expiry || '').slice(5)) + '</span><span class="dte">' + dte + '</span></th>';
     });
@@ -284,7 +335,8 @@
     tbl += '</tbody></table>';
     // #3: the ONE disclosure line — how many canonical strikes / expirations are on screen vs clipped
     var colsTxt = viewCols.length + ' of ' + exps.length + ' expirations' +
-      (expiredHidden ? ' (' + expiredHidden + ' expired hidden in Auto)' : '');
+      (expiredHidden ? ' (' + expiredHidden + ' expired hidden in Auto)' : '') +
+      (demandCapped ? ' · streaming demand capped at ' + MAX_DEMAND_CONTRACTS + ' contracts (subscription-size safety limit, untested at full scale)' : '');
     var note = (ES && ES.scopeNote) ? ES.scopeNote({ total: strikes.length, shown: rowSel.shown, extra: colsTxt }) : '';
     // the grid fills the panel; a compact vertical magnitude legend sits at its right edge (the
     // dollar value is printed in every cell — shade = |GEX$|), matching the approved reference.
@@ -339,6 +391,26 @@
 
   // ---- fetch + render, guarded (latest-wins) ----
   var _lastSurface = null, _lastRevision = null;
+  // Streaming-demand confirmation state (2026-09-13) — see the demand-dispatch block in
+  // renderSurface for why this exists: `demandCols` is only a REQUEST, not a guarantee.
+  var _demandGen = 0, _demandState = 'none';   // 'none' | 'pending' | 'confirmed' | 'rejected'
+  function demandTitle(streamed) {
+    if (!streamed) return 'REST-cadence only (refreshes ~60s) — not sub-second streamed; Auto shows one streamed column at a time';
+    if (_demandState === 'confirmed') return 'sub-second streaming updates active for this column';
+    if (_demandState === 'rejected') return 'streaming subscription for this column was NOT accepted by the server — falling back to REST-cadence only';
+    return 'streaming subscription requested for this column — awaiting confirmation';   // 'pending' or transiently unset
+  }
+  // Patches the demanded column(s)' tooltip in place once the confirm/reject response
+  // lands, WITHOUT a full table rebuild -- the demand promise can resolve well after
+  // renderSurface has already returned, possibly across several unrelated re-renders.
+  function applyDemandTitles(host) {
+    if (!host) return;
+    var ths = host.querySelectorAll('.heat thead th.hexp.stream-demand');
+    for (var i = 0; i < ths.length; i++) {
+      if (ths[i].classList.contains('expired')) continue;
+      ths[i].setAttribute('title', demandTitle(true));
+    }
+  }
 
   // server-owned revision identity — the cells are identical while these are unchanged, so we can
   // skip the full table rebuild. Not a semantic client fingerprint of the data; just the canonical
@@ -484,6 +556,7 @@
       if (window.EdStream && window.EdStream.setAdditionalContracts) {
         window.EdStream.setAdditionalContracts([], 'heatmap');
       }
+      ++_demandGen; _demandState = 'none';   // invalidate any in-flight confirm/reject from the view just left
       return;
     }
     _pendingTicker = st.ticker || 'SPY';

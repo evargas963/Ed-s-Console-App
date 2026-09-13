@@ -643,18 +643,55 @@ async def _feed_loop() -> None:
     hook_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="daemon-plane-feed-hook")
     hook_tasks: "set[asyncio.Task]" = set()
     loop = asyncio.get_event_loop()
+    # Independent-review finding (2026-09-13), REPRODUCED: this dispatched one hook task
+    # PER QUALIFYING TICK, per root, unconditionally -- with no check for "is a call for
+    # this root already queued or running." Holding the hook callback while four
+    # qualifying poll batches arrived queued FOUR separate tasks on the single-worker
+    # executor; stopping the feed loop after only the first had started still let the
+    # other THREE start running afterward, because each was already an independently
+    # submitted `run_in_executor` future the executor's own non-blocking shutdown lets
+    # finish. Coalescing within one tick already existed (the groups.values() loop above);
+    # nothing bounded it ACROSS ticks. Fixed the same way the client-side coalescing
+    # loader does it: at most one call in flight per root, and a call requested while one
+    # is already in flight is coalesced into exactly one trailing re-run -- never piled up.
+    # The hook itself (_desired_stream_greeks_for_ticker, called fresh every run) always
+    # re-gathers the CURRENT state of every desired contract regardless of which symbol's
+    # tick triggered the call, so a coalesced trailing run loses nothing a discarded
+    # duplicate call would have captured.
+    _hook_inflight_roots: "set[str]" = set()
+    _hook_pending_by_root: "dict[str, tuple[str, float]]" = {}
 
-    def _dispatch_hook_background(rep_sym: str, rep_ts: float) -> None:
+    def _start_hook_task(root: str, rep_sym: str, rep_ts: float) -> None:
         fut = loop.run_in_executor(hook_executor, _streamed_greeks_hook, rep_sym, rep_ts)
         task = asyncio.ensure_future(fut)
         hook_tasks.add(task)
 
-        def _done(t: "asyncio.Task", _sym: str = rep_sym) -> None:
+        def _done(t: "asyncio.Task", _root: str = root, _sym: str = rep_sym) -> None:
             hook_tasks.discard(t)
+            _hook_inflight_roots.discard(_root)
             exc = t.exception() if not t.cancelled() else None
             if exc is not None:
                 log.debug("streamed-greeks hook failed for %s: %s", _sym, exc)
+            nxt = _hook_pending_by_root.pop(_root, None)
+            # Independent-review finding (2026-09-13), REPRODUCED, connected: the trailing
+            # coalesced run must NOT start once this loop has stopped -- `_feed_running`
+            # going False is this loop's own shutdown signal, checked here (not just at the
+            # top of the while-loop below) precisely because this callback can fire AFTER
+            # the loop has already exited. A task already in flight at shutdown still runs
+            # to completion (existing CAS-protected, harmless-if-late publish); this only
+            # stops a NEW one from ever being scheduled into a lifecycle that has ended.
+            if nxt is not None and _feed_running:
+                _hook_inflight_roots.add(_root)
+                _start_hook_task(_root, nxt[0], nxt[1])
         task.add_done_callback(_done)
+
+    def _dispatch_hook_background(rep_sym: str, rep_ts: float) -> None:
+        root = _hook_grouping_key(rep_sym)
+        if root in _hook_inflight_roots:
+            _hook_pending_by_root[root] = (rep_sym, rep_ts)
+            return
+        _hook_inflight_roots.add(root)
+        _start_hook_task(root, rep_sym, rep_ts)
     try:
         while _feed_running:
             if con is None:
