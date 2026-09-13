@@ -193,3 +193,63 @@ def test_I_no_second_gex_computation():
     assert "* 0.01" not in src
     # the only exposure computation is the shared faucet
     assert "compute_exposures_by_strike" in src
+
+
+# J. LIVE-HEATMAP CONTRACT IDENTITY (state-authority review, 2026-09-12) — every cell must carry
+#    the vendor OSI symbol(s) that produced it, verbatim, so the browser can ask the streaming
+#    layer to keep exactly its VISIBLE cells fresh instead of only whatever one strike a
+#    different panel happened to have separately selected. Never invented: read straight off the
+#    same real contract rows compute_exposures_by_strike already aggregates for this cell.
+def test_J_cell_carries_the_real_vendor_symbols_for_its_strike_and_expiry():
+    chain = _chain()
+    surface = project_gamma_surface(chain, SPOT)
+    col1 = [i for i, e in enumerate(surface["expirations"]) if e["expiry"] == E1][0]
+    row95 = [r for r in surface["cells"] if r["strike"] == 95.0][0]
+    contracts95 = row95["contracts"][col1]
+    real_call = next(ct["symbol"] for ct in CRWD["chain"]
+                      if ct["strikePrice"] == 95.0 and ct["putCall"] == "CALL")
+    real_put = next(ct["symbol"] for ct in CRWD["chain"]
+                     if ct["strikePrice"] == 95.0 and ct["putCall"] == "PUT")
+    assert contracts95 == {"call": real_call, "put": real_put}
+    assert contracts95["call"] == "CRWD  260918C00095000"
+    assert contracts95["put"] == "CRWD  260918P00095000"
+
+
+def test_J_a_side_with_no_real_contract_reports_null_not_a_fabricated_symbol():
+    """The complete-chain fixture happens to carry both sides at every real strike (a
+    genuinely one-sided real strike is not available in tests/fixtures) -- this constructs
+    the ABSENT-side case directly from ONE real row plus its exact synthetic mirror struck
+    at a strike no other row in the chain uses, so only ITS OWN presence/absence is under
+    test, nothing about its neighbours.
+    # institutional-synthetic-ok: a single real CALL row, re-struck to an otherwise-unused
+    # strike so no PUT row exists there -- the minimal input this specific absent-side
+    # identity check needs.
+    """
+    probe = dict(max(CRWD["chain"], key=lambda ct: ct.get("openInterest") or 0))
+    lonely_strike = max(ct["strikePrice"] for ct in CRWD["chain"]) + 1000.0
+    probe["strikePrice"] = lonely_strike
+    probe["symbol"] = "CRWD  260918C" + str(int(lonely_strike * 1000)).zfill(8)
+    probe["putCall"] = "CALL"
+    surface = project_gamma_surface([probe], SPOT)
+    row = [r for r in surface["cells"] if r["strike"] == lonely_strike][0]
+    assert row["contracts"][0]["call"] == probe["symbol"]
+    assert row["contracts"][0]["put"] is None
+
+
+def test_J_negative_control_a_missing_symbol_field_reports_null_not_a_stale_or_wrong_value():
+    """Independent-review finding (2026-09-12, state-authority review), REPRODUCED against the
+    pre-fix project_gamma_surface (no `contracts` field existed at all -- confirmed by direct
+    reversion to HEAD a25de5e5 and re-running this exact test, which raised KeyError on
+    `row["contracts"]`, restored afterward). A contract missing its own `symbol` field must
+    never silently borrow a strike-mate's symbol or fall back to a stale cached value -- it must
+    report None, the same fail-closed rule the rest of this file already proves for missing OI/
+    expiry."""
+    probe = max(CRWD["chain"], key=lambda ct: ct.get("openInterest") or 0)
+    no_symbol = dict(probe)
+    no_symbol.pop("symbol", None)
+    chain = [no_symbol]
+    surface = project_gamma_surface(chain, SPOT)
+    k = float(probe["strikePrice"])
+    row = [r for r in surface["cells"] if r["strike"] == k][0]
+    side = "call" if probe["putCall"] == "CALL" else "put"
+    assert row["contracts"][0][side] is None

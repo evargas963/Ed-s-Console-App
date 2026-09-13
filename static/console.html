@@ -333,6 +333,17 @@
   .heat .hcell{padding:0 8px;text-align:center;font-variant-numeric:tabular-nums;font-weight:500;cursor:pointer;white-space:nowrap}
   .heat .hcell:hover{outline:1px solid var(--ed-accent);outline-offset:-1px}
   .heat .hcell.sel{outline:2px solid var(--ed-accent);outline-offset:-2px}
+  /* Just-updated flash (state-authority review, 2026-09-12): "actual Schwab updates
+     visibly change the appropriate values and colors" needs a cue a trader can actually
+     notice, not just a technically-correct DOM change -- a box-shadow ring (never the
+     cell's own semantic background/foreground, which stays the sign-colored value) that
+     fades out once, applied only to a cell whose value genuinely differs from what this
+     exact (strike, expiry) showed a moment ago (ed-gamma.js renderSurface). */
+  .heat .hcell.flash-update{animation:hcellFlash 900ms ease-out}
+  @keyframes hcellFlash{
+    0%{box-shadow:inset 0 0 0 2px var(--ed-accent)}
+    100%{box-shadow:inset 0 0 0 2px transparent}
+  }
   .heat tr.spotrow td{box-shadow:inset 0 -1px 0 var(--ed-accent-edge)}
   /* vertical magnitude legend at the heatmap's right edge (matches the approved reference:
      labelled scale, green High Call GEX at top -> 0 -> red High Put GEX at bottom) */

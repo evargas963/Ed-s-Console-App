@@ -164,6 +164,44 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(cell).toHaveText('$2.0K');
   });
 
+  test('a cell whose value actually changed gets a one-shot visual flash; an unchanged cell does not (state-authority review)', async ({ page }) => {
+    // Independent-review finding (2026-09-12, state-authority review): "actual Schwab
+    // updates visibly change the appropriate values and colors" -- the pre-fix renderer
+    // did a full, unconditional table rebuild on every update with no cue distinguishing
+    // "the table was rebuilt" from "this specific value just moved", so a real, correct
+    // change could go unnoticed on a busy grid. Two strikes: 583's value genuinely
+    // changes between fetches, 586's does not -- only 583's cell may flash, and neither
+    // may flash on the very FIRST render (nothing to compare against yet).
+    let call = 0;
+    await page.route('**/api/options/gamma-surface**', (route) => {
+      call += 1;
+      const changedValue = call === 1 ? 1000 : 2000;
+      route.fulfill({
+        status: 200, contentType: 'application/json',
+        body: JSON.stringify(Object.assign({}, SURFACE, {
+          strikes: [583, 586], expirations: [{ expiry: '2026-09-11', dte: 2 }],
+          cells: [
+            { strike: 583, gex: [changedValue] },
+            { strike: 586, gex: [-50000] },   // identical on every fetch
+          ],
+          surface_seq: call,
+        })),
+      });
+    });
+    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    const changedCell = page.locator('.hcell[data-strike="583"][data-expiry="2026-09-11"]');
+    const unchangedCell = page.locator('.hcell[data-strike="586"][data-expiry="2026-09-11"]');
+    await expect(changedCell).toHaveText('$1.0K');
+    // First render: no prior state exists to compare against -- must not flash anything.
+    await expect(changedCell).not.toHaveClass(/flash-update/);
+    await expect(unchangedCell).not.toHaveClass(/flash-update/);
+
+    await page.evaluate(() => document.dispatchEvent(new CustomEvent('ed:refresh', { detail: { slow: true } })));
+    await expect(changedCell).toHaveText('$2.0K');
+    await expect(changedCell).toHaveClass(/flash-update/);
+    await expect(unchangedCell).not.toHaveClass(/flash-update/);
+  });
+
   test('a genuine SSE push delivers the update in well under the 12s slow-poll cadence, with no manual event dispatch (RC-UI-2 finding #1, delivery timing)', async ({ page }) => {
     // Independent-review finding (2026-09-12): "the browser still polls every 12 seconds ...
     // manually triggers the refresh event, bypassing that wait. It proves rendering after
@@ -996,6 +1034,66 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect.poll(() => requests.length).toBeGreaterThan(0);
     const sent = requests[requests.length - 1].contracts.slice().sort();
     expect(sent).toEqual(['SPY   260911C00583000', 'SPY   260911P00583000']);
+  });
+
+  test('the heatmap declares live-streaming demand for its own visible front-column contracts (state-authority review)', async ({ page }) => {
+    // Independent-review finding (2026-09-12, state-authority review), REPRODUCED: the
+    // heatmap grid itself was never actually live -- only whatever ONE strike Strike
+    // Detail had separately selected ever reached the streaming layer, so the rest of
+    // the visible grid only ever refreshed on the ~60s wide-chain REST cycle. Every
+    // surface cell now carries its own vendor OSI symbols (server.py's project_gamma_
+    // surface); the heatmap declares its OWN demand for them through EdStream's
+    // multi-owner additional-contracts slot ('heatmap', coexisting with Strike Detail's
+    // own 'default'-owner demand), bounded to the default Auto scope's visible strikes
+    // and only the FRONT (nearest-unexpired) expiry column.
+    const surfaceWithContracts = Object.assign({}, SURFACE, {
+      cells: [
+        { strike: 580, gex: [-90000, null],
+          contracts: [{ call: 'SPXW  260911C00580000', put: 'SPXW  260911P00580000' }, { call: null, put: null }] },
+        { strike: 583, gex: [958600, 300000],
+          contracts: [{ call: 'SPXW  260911C00583000', put: 'SPXW  260911P00583000' },
+                      { call: 'SPXW  260918C00583000', put: 'SPXW  260918P00583000' }] },
+        { strike: 586, gex: [-264500, 120000],
+          contracts: [{ call: 'SPXW  260911C00586000', put: 'SPXW  260911P00586000' },
+                      { call: 'SPXW  260918C00586000', put: 'SPXW  260918P00586000' }] },
+      ],
+    });
+    await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({
+      status: 200, contentType: 'application/json', body: JSON.stringify(surfaceWithContracts),
+    }));
+    // Strike Detail's own auto-select-on-load (an unrelated, already-covered demand
+    // source) is suppressed here by giving /api/chain an empty result, so the posted
+    // union under test is unambiguously the heatmap's own contribution alone.
+    await page.route('**/api/chain**', (route) => route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({ ticker: '$SPX', spot: 583.41, expiry: '2026-09-11', status: 'ok', contracts: [] }),
+    }));
+    /** @type {any[]} */
+    const requests = [];
+    await page.route('**/api/streaming/active-option-contracts', (route) => {
+      const body = JSON.parse(route.request().postData() || '{}');
+      requests.push(body);
+      route.fulfill({ status: 200, contentType: 'application/json',
+        body: JSON.stringify({ ok: true, contracts: body.contracts || [] }) });
+    });
+
+    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await expect.poll(() => requests.length).toBeGreaterThan(0);
+    const sent = requests[requests.length - 1].contracts.slice().sort();
+    // The front (nearest-unexpired, 2026-09-11) column's call+put for every visible
+    // strike -- the 2026-09-18 column's contracts must NOT appear (only the front
+    // column is bounded live-streamed; the rest stays REST-cadence).
+    expect(sent).toEqual([
+      'SPXW  260911C00580000', 'SPXW  260911C00583000', 'SPXW  260911C00586000',
+      'SPXW  260911P00580000', 'SPXW  260911P00583000', 'SPXW  260911P00586000',
+    ].sort());
+
+    // Leaving the Gamma workspace must clear the heatmap's OWN demand (not keep the
+    // last-viewed ticker's contracts subscribed forever once nobody is looking).
+    const beforeLeave = requests.length;
+    await page.locator('.navitem[data-ws="order-flow"]').click();
+    await expect.poll(() => requests.length).toBeGreaterThan(beforeLeave);
+    expect(requests[requests.length - 1].contracts).toEqual([]);
   });
 
   test('the first-ever additional-contracts request on a fresh page confirms with the server, not just a local default (state-authority review)', async ({ page }) => {

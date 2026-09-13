@@ -53,6 +53,24 @@
     return DEFAULT_HEAT;
   }
 
+  // The real vendor OSI symbols backing a set of VISIBLE (strike-row, expiry-column)
+  // cells -- read straight off the surface's own per-cell `contracts` field (server.py's
+  // project_gamma_surface), never invented or reconstructed here.
+  function _heatmapVisibleContracts(cells, rowSel, cols) {
+    var seen = {}, out = [];
+    rowSel.idx.forEach(function (i) {
+      var row = cells[i]; if (!row) return;
+      cols.forEach(function (j) {
+        var c = (row.contracts || [])[j];
+        if (!c) return;
+        [c.call, c.put].forEach(function (sym) {
+          if (sym && !seen[sym]) { seen[sym] = true; out.push(sym); }
+        });
+      });
+    });
+    return out;
+  }
+
   function nearestStrikeIndex(strikes, spot) {
     var best = -1, bd = Infinity;
     for (var i = 0; i < strikes.length; i++) {
@@ -62,8 +80,32 @@
     return best;
   }
 
+  // The per-(strike, expiry) value a PRIOR rendered surface reported, for the
+  // just-updated flash below -- {} (nothing "changed") on the very first render, when
+  // there is no real prior state to compare against.
+  function _priorValueMap(priorSurface) {
+    var map = {};
+    if (!priorSurface) return map;
+    var priorExps = priorSurface.expirations || [], priorCells = priorSurface.cells || [];
+    priorCells.forEach(function (row) {
+      (row.gex || []).forEach(function (v, j) {
+        var e = priorExps[j];
+        if (e) map[row.strike + '|' + e.expiry] = v;
+      });
+    });
+    return map;
+  }
+
   // ---- render the grid from a canonical surface payload (no math) ----
   function renderSurface(host, surface) {
+    // Independent-review finding (2026-09-12, state-authority review): "actual Schwab
+    // updates visibly change the appropriate values and colors" -- a full unconditional
+    // table rebuild on every update changes the DOM correctly but gives a trader no cue
+    // WHICH cell just moved; on a busy grid a real, correct update can go unnoticed.
+    // Captured here, before `_lastSurface` below is overwritten with the incoming
+    // surface, so the diff below compares against what was actually on screen a moment
+    // ago, not the surface currently being rendered.
+    var _priorSurfaceForFlash = _lastSurface;
     if (!surface || surface.available === false) {
       // #1-A: even with no surface to draw, disclose the collection status honestly — a requested
       // symbol that is NOT on the board must read "not currently active for this symbol", never a
@@ -132,6 +174,26 @@
     // C: emphasise the nearest UNEXPIRED expiry (front) column — presentation only, no predictive meaning
     var frontCol = -1, minDte = Infinity;
     exps.forEach(function (e, ix) { if (e.expired !== true && e.dte != null && e.dte < minDte) { minDte = e.dte; frontCol = ix; } });
+    // Live-heatmap coverage (state-authority review, 2026-09-12): every OTHER cell on this
+    // grid only ever refreshed on the ~60s wide-chain REST cycle -- nothing had ever asked
+    // the streaming layer to keep the cells the operator is ACTUALLY LOOKING AT fresh
+    // sub-second, only whatever one strike Strike Detail happened to have separately
+    // selected. Each surface cell now carries its own vendor OSI symbols (server.py's
+    // project_gamma_surface), so the heatmap can declare its OWN demand through the same
+    // single-owner endpoint EdStream already owns (setAdditionalContracts's ownerKey,
+    // 'heatmap' -- coexists with Strike Detail's own 'default'-owner demand, unioned).
+    // Deliberately bounded to the DEFAULT ("auto") scope's visible strikes and only the
+    // FRONT (nearest-unexpired) expiry column -- the column traders actually watch
+    // tick-to-tick, and a contract count (<= MAX_AUTO_COLS strikes x 2 sides) already
+    // within this session's own measured-safe replay-loop budget. "Wider"/"All available"
+    // are an explicit operator zoom-out to the full book and stay REST-cadence only, same
+    // as before -- the full-book vendor-side subscription capacity remains a separate,
+    // NOT_PROVEN, operator-authorized question this does not silently reopen.
+    if (window.EdStream && window.EdStream.setAdditionalContracts) {
+      var frontDemand = (scope === 'auto' && frontCol >= 0)
+        ? _heatmapVisibleContracts(cells, rowSel, [frontCol]) : [];
+      window.EdStream.setAdditionalContracts(frontDemand, 'heatmap');
+    }
     // B: a STALE / REFERENCE surface visually recedes (in addition to the banner)
     var recede = (!live || stale) ? ' recede' : '';
     var tbl = '<table class="heat"><thead><tr><th class="hcorner">Strike</th>';
@@ -143,6 +205,13 @@
         '><span class="d">' + escapeHtml((e.expiry || '').slice(5)) + '</span><span class="dte">' + dte + '</span></th>';
     });
     tbl += '</tr></thead><tbody>';
+    // Just-updated flash (state-authority review, 2026-09-12): a cell whose value
+    // genuinely differs from what THIS SAME (strike, expiry) showed a moment ago gets a
+    // one-shot CSS highlight (see .hcell.flash-update in console.html) -- the ONLY signal
+    // that separates "this table was rebuilt" from "this specific value just moved" on a
+    // grid otherwise indistinguishable before and after a live tick. Never flashes on the
+    // very first render (no real prior state exists yet to compare against).
+    var priorValues = _priorValueMap(_priorSurfaceForFlash);
     // Operator finding (2026-09-11): rowSel.idx is ascending-index order into the
     // ascending `strikes` array (scopeSelect's own contract — shared by GEX-by-Strike
     // and other consumers, so it stays ascending there). The heatmap specifically must
@@ -159,7 +228,11 @@
         var j2 = viewCols[jj];
         var v = (row.gex || [])[j2];
         var st = cellStyle(v, maxAbs, heat);
+        var priorKey = row.strike + '|' + exps[j2].expiry;
+        var justChanged = _priorSurfaceForFlash &&
+          Object.prototype.hasOwnProperty.call(priorValues, priorKey) && priorValues[priorKey] !== v;
         tbl += '<td class="hcell' + (j2 === frontCol ? ' col-front' : '') + (exps[j2].expired === true ? ' expired' : '') +
+          (justChanged ? ' flash-update' : '') +
           '" style="background:' + st.bg + ';color:' + st.fg + '" ' +
           'data-strike="' + row.strike + '" data-expiry="' + escapeHtml(exps[j2].expiry) + '" data-gex="' + (v == null ? '' : v) + '">' +
           (st.empty ? '' : formatUsd(v)) + '</td>';
@@ -315,10 +388,25 @@
   function load() {
     var host = document.getElementById('heatBody');
     if (!host) return;
-    var st = (window.EdShell && window.EdShell.getState()) || {};
-    if (st.workspace !== 'options' || st.subview !== 'gamma' || st.view !== 'heatmap') return;
-    var ticker = st.ticker || 'SPY';
+    // Independent-review finding (2026-09-12, state-authority review), REPRODUCED: this
+    // generation bump used to run AFTER the workspace/view check below -- a ticker switch
+    // while the heatmap was hidden (a different workspace/view) never invalidated an
+    // in-flight fetch for the OLD ticker, so its late response could still pass `mygen
+    // === _gen` and paint the wrong ticker's surface into #heatBody (and _lastSurface)
+    // the instant the operator returned to the heatmap. Every OTHER subview here already
+    // bumps its own generation unconditionally, before any early return (Chain/Chart/
+    // Levels) -- the heatmap is fixed to match.
     var mygen = ++_gen;
+    var st = (window.EdShell && window.EdShell.getState()) || {};
+    if (st.workspace !== 'options' || st.subview !== 'gamma' || st.view !== 'heatmap') {
+      // Leaving the heatmap: its own streamed-contract demand (see renderSurface) must not
+      // keep the last-viewed ticker's contracts subscribed forever once nobody is looking.
+      if (window.EdStream && window.EdStream.setAdditionalContracts) {
+        window.EdStream.setAdditionalContracts([], 'heatmap');
+      }
+      return;
+    }
+    var ticker = st.ticker || 'SPY';
     host.setAttribute('aria-busy', 'true');
     fetch('/api/options/gamma-surface?ticker=' + encodeURIComponent(ticker), { cache: 'no-store' })
       .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })

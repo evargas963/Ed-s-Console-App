@@ -620,7 +620,41 @@ async def _feed_loop() -> None:
     global _feed_running
     con: Optional[sqlite3.Connection] = None
     executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="daemon-plane-feed-db")
+    # Independent-review finding (2026-09-12, state-authority review), REPRODUCED: the
+    # streamed-greeks hook call (below) used to be AWAITED on this SAME single-worker DB
+    # executor before this loop could proceed to the next poll tick -- a real, structurally
+    # guaranteed cost, not a hypothetical: the hook's own committed benchmark
+    # (tests/test_streamed_greeks_hook_v1.py::test_hook_coalescing_avoids_the_real_per_
+    # call_cost_at_spxw_scale) MEASURED ~1.95s for one real call at full SPXW scale (42,001
+    # contracts). Because state capture for the CURRENT tick's own newer rows (and every
+    # OTHER contract/ticker this loop replays) only resumes once the awaited hook call
+    # returns, a single slow surface recompute for one ticker delayed CAPTURE -- not just
+    # publication -- for every ticker, by however long that one ticker's hook took.
+    # Fixed by decoupling the two: the hook is dispatched as a background task on its own
+    # dedicated executor (a pure Python computation with no SQLite handle of its own, so it
+    # has no reason to share `executor`, which the thread-affine `con` requires) and this
+    # loop's own progression to the next tick's state capture no longer waits for it.
+    # Safe to run detached: refresh_gamma_surface_from_stream already compare-and-swaps
+    # against the cache's own generation marker (_contracts_rest_computed_ts) before
+    # publishing, so an overlapping or out-of-order background hook call for the same
+    # ticker can only ever be silently superseded, never corrupt a newer result -- the
+    # exact protection this file's own history (RC-UI-2/finding#2, the CAS fix) already
+    # established for a REST cycle landing mid-eager-computation.
+    hook_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="daemon-plane-feed-hook")
+    hook_tasks: "set[asyncio.Task]" = set()
     loop = asyncio.get_event_loop()
+
+    def _dispatch_hook_background(rep_sym: str, rep_ts: float) -> None:
+        fut = loop.run_in_executor(hook_executor, _streamed_greeks_hook, rep_sym, rep_ts)
+        task = asyncio.ensure_future(fut)
+        hook_tasks.add(task)
+
+        def _done(t: "asyncio.Task", _sym: str = rep_sym) -> None:
+            hook_tasks.discard(t)
+            exc = t.exception() if not t.cancelled() else None
+            if exc is not None:
+                log.debug("streamed-greeks hook failed for %s: %s", _sym, exc)
+        task.add_done_callback(_done)
     try:
         while _feed_running:
             if con is None:
@@ -671,11 +705,7 @@ async def _feed_loop() -> None:
                             if cur is None or ts > cur[1]:
                                 groups[root] = (sym, ts)
                         for rep_sym, rep_ts in groups.values():
-                            try:
-                                await loop.run_in_executor(
-                                    executor, _streamed_greeks_hook, rep_sym, rep_ts)
-                            except Exception as e:
-                                log.debug("streamed-greeks hook failed for %s: %s", rep_sym, e)
+                            _dispatch_hook_background(rep_sym, rep_ts)
                     if tkr:
                         await loop.run_in_executor(executor, _replay_new_rows, con, tkr)
                 except sqlite3.Error as e:
@@ -693,6 +723,12 @@ async def _feed_loop() -> None:
             except sqlite3.Error:
                 pass
         executor.shutdown(wait=False)
+        # A background hook dispatch already submitted to hook_executor keeps running on
+        # its worker thread to completion even after this loop stops (same non-blocking
+        # shutdown discipline as `executor` above) -- its CAS in refresh_gamma_surface_
+        # from_stream makes a late publish after a restart harmless (superseded by
+        # whatever the next real cycle computes), never corrupting.
+        hook_executor.shutdown(wait=False)
         _log_stream("FEED_LOOP_STOP_DONE")
 
 

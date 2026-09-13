@@ -235,6 +235,66 @@ def test_surface_seq_publication_is_atomic_with_the_cache_write(monkeypatch):
     server._gamma_surface_demand.pop(tk, None)
 
 
+def test_terrain_loop_refreshes_a_previewed_ticker_not_on_the_enrolled_board(monkeypatch):
+    """Independent-review finding (2026-09-12, state-authority review), REPRODUCED: a ticker
+    merely PREVIEWED (never enrolled onto _logger_tickers -- TICKER-PREVIEW-NO-ENROLL) got
+    exactly ONE on-demand terrain compute (the /api/terrain cache-miss priority path) and
+    then NOTHING -- _terrain_loop only ever iterated the enrolled board, so its cache entry
+    sat frozen forever while /api/options/gamma-surface kept serving it "live: True" (sourced
+    from the live pathway, not "currently fresh") alongside a growing stale age. "Universally
+    across supported tickers" requires that viewing ANY ticker keeps it refreshing, not only
+    the pre-enrolled board.
+
+    Proven with a REAL cycle of the actual loop function, in a real background thread --
+    only the heavy vendor-facing leaves are stubbed (the existing _stub_terrain seam this
+    file already uses); the loop's own ticker-selection logic runs unmodified.
+    """
+    import threading
+
+    calls: list[str] = []
+
+    def proj(contracts, spot):
+        return {"expirations": [], "strikes": [], "cells": []}
+    _stub_terrain(monkeypatch, proj)
+    monkeypatch.setattr(server, "_seed_strike_geometry_from_storage", lambda: None)
+    monkeypatch.setattr(server, "_is_loggable_session", lambda: True)
+    monkeypatch.setattr(server, "TERRAIN_REFRESH_SEC", 0.2)
+    real_refresh = server._terrain_refresh_one
+
+    def spy_refresh(tk, priority=False):
+        calls.append(tk)
+        return real_refresh(tk, priority=priority)
+    monkeypatch.setattr(server, "_terrain_refresh_one", spy_refresh)
+
+    enrolled_tk = server.ticker_storage_key("SPY")
+    previewed_tk = server.ticker_storage_key("ZZPREVIEWONLY")
+    with server._logger_lock:
+        prev_logger_tickers = list(server._logger_tickers)
+        server._logger_tickers[:] = [enrolled_tk]
+    server._gamma_surface_demand.pop(previewed_tk, None)
+    server._note_gamma_surface_demand(previewed_tk)   # "viewed" but never enrolled
+
+    server._terrain_loop_running = True
+    t = threading.Thread(target=server._terrain_loop, daemon=True)
+    t.start()
+    try:
+        deadline = time.time() + 5.0
+        while time.time() < deadline and previewed_tk not in calls:
+            time.sleep(0.05)
+    finally:
+        server._terrain_loop_running = False
+        t.join(timeout=5.0)
+        with server._logger_lock:
+            server._logger_tickers[:] = prev_logger_tickers
+        server._gamma_surface_demand.pop(previewed_tk, None)
+
+    assert enrolled_tk in calls, "the enrolled ticker must still refresh as before"
+    assert previewed_tk in calls, (
+        "a ticker with live view demand but never enrolled must still be refreshed by the "
+        "terrain loop -- viewing ANY supported ticker must keep it live, not only the "
+        "pre-enrolled board")
+
+
 def test_a_stream_observation_between_rest_fetch_and_computation_completion_is_admitted(monkeypatch):
     """Independent-review finding (2026-09-12), REPRODUCED against this exact production path
     before being fixed: 'I supplied REST data at time 400, a stream update at 401, and

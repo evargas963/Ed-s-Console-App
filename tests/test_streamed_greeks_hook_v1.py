@@ -7,6 +7,7 @@ CaptureWriter), not a reimplementation of its dispatch logic."""
 from __future__ import annotations
 
 import asyncio
+import threading
 import time
 
 import app.options.order_flow.state as ofls
@@ -935,3 +936,75 @@ def test_hook_coalesces_a_bare_spx_and_weekly_spxw_contract_into_one_group(tmp_p
             srv._terrain_cache.pop(spx_tk, None)
         srv._gamma_surface_seq.pop(spx_tk, None)
         _drain_l1_sse_thread_queue()
+
+
+def test_a_slow_hook_for_one_underlying_does_not_delay_replay_for_another(tmp_path, monkeypatch):
+    """Independent-review finding (2026-09-12, state-authority review), REPRODUCED: the hook
+    call used to be AWAITED on _feed_loop's single-worker DB executor before the loop could
+    proceed to the NEXT poll tick's own state capture -- a slow hook for ONE underlying (the
+    committed SPXW benchmark above measures ~1.95s at full scale) delayed OrderFlowState
+    updates for every OTHER ticker/contract by however long that one hook took, not just its
+    own publication. Fixed by dispatching the hook as a background task on its own dedicated
+    executor, decoupled from this loop's own tick cadence.
+
+    Reproduced/proven here with a REAL threading.Event (the hook runs on a real OS thread via
+    run_in_executor, not the asyncio loop, so a synchronous block is the correct primitive):
+    SPY's hook is held open indefinitely while a genuinely NEW row for QQQ -- a different
+    underlying, its own coalescing group -- is written AFTER SPY's hook has already started.
+    QQQ's row must reach OrderFlowState well within the SPY hook's hold duration, not after it.
+    """
+    _drain_l1_sse_thread_queue()
+    db = _reset(tmp_path, monkeypatch)
+    _SPY_A = "SPY   260918C00600000"
+    _QQQ_A = "QQQ   260918C00500000"
+    ofs._active_option_contracts = [ofs.ticker_storage_key(_SPY_A), ofs.ticker_storage_key(_QQQ_A)]
+
+    spy_hook_started = threading.Event()
+    release_spy_hook = threading.Event()
+    hook_calls = []
+
+    def _hook(sym, ts):
+        hook_calls.append(sym)
+        if ofs._hook_grouping_key(sym) == ofs._hook_grouping_key(_SPY_A):
+            spy_hook_started.set()
+            release_spy_hook.wait(timeout=10.0)   # held open -- simulates the measured SPXW cost
+    ofs.set_streamed_greeks_hook(_hook)
+
+    _write_option_l1_row(db, _SPY_A, dict(_REAL_LEVELONE_OPTIONS_CONTENT, key=_SPY_A, GAMMA=0.05),
+                          ts_recv=1700000000.0)
+
+    async def _run():
+        ofs._feed_running = True
+        task = asyncio.get_event_loop().create_task(ofs._feed_loop())
+        await _wait_until(lambda: spy_hook_started.is_set(), timeout_sec=5.0,
+                          what="SPY's hook to start and block")
+        start = time.time()
+        # A genuinely NEW row for a DIFFERENT underlying, written only now -- while SPY's
+        # hook is still blocked -- must still reach OrderFlowState promptly.
+        _write_option_l1_row(db, _QQQ_A, dict(_REAL_LEVELONE_OPTIONS_CONTENT, key=_QQQ_A, GAMMA=0.09),
+                              ts_recv=1700000005.0)
+        await _wait_until(lambda: ofls.get_stream_greeks(_QQQ_A) is not None, timeout_sec=5.0,
+                          what="QQQ's new row to reach OrderFlowState while SPY's hook is still blocked")
+        elapsed = time.time() - start
+        release_spy_hook.set()
+        await _wait_until(lambda: ofs._hook_grouping_key(_QQQ_A) in
+                          [ofs._hook_grouping_key(s) for s in hook_calls[1:]] or len(hook_calls) >= 2,
+                          timeout_sec=5.0, what="QQQ's own hook call to fire")
+        ofs._feed_running = False
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        return elapsed
+
+    elapsed = asyncio.run(_run())
+    ofs.set_streamed_greeks_hook(None)
+    ofs._active_option_contracts = []
+    _drain_l1_sse_thread_queue()
+
+    assert elapsed < 2.0, (
+        f"QQQ's row took {elapsed:.2f}s to reach OrderFlowState while SPY's hook was still "
+        f"blocked -- state capture for one underlying must not wait behind another's slow "
+        f"hook computation")
+    assert hook_calls[0] == _SPY_A or ofs._hook_grouping_key(hook_calls[0]) == ofs._hook_grouping_key(_SPY_A)

@@ -12750,11 +12750,27 @@ def _terrain_loop() -> None:
                 tickers = list(_logger_tickers)
         except Exception:
             tickers = list(CORE_TICKERS)
+        # Independent-review finding (2026-09-12, state-authority review), REPRODUCED: a
+        # ticker merely PREVIEWED (never enrolled onto _logger_tickers -- see
+        # TICKER-PREVIEW-NO-ENROLL below) got exactly ONE on-demand terrain compute (the
+        # /api/terrain cache-miss priority path) and then NOTHING -- this loop only ever
+        # iterated the enrolled board, so its cache entry sat frozen forever while
+        # /api/options/gamma-surface kept serving it "live: True" (meaning "sourced from
+        # the live pathway", not "currently fresh") alongside a growing stale age with no
+        # honest "never enrolled" reason surfaced. Any ticker with LIVE view demand
+        # (_gamma_surface_wanted -- the SAME signal /api/options/gamma-surface already
+        # records on every request) is folded into this cycle so viewing ANY supported
+        # ticker keeps it refreshing for as long as it is actually being viewed, not only
+        # the pre-enrolled board. A snapshot of the keys, never the live dict, since
+        # another thread's concurrent _note_gamma_surface_demand write must not raise
+        # "dictionary changed size during iteration" here.
+        _previewed = [tk for tk in list(_gamma_surface_demand.keys())
+                      if tk not in tickers and _gamma_surface_wanted(tk)]
         # RC-146: a skip reason is only true for the cycle that recorded it. Cleared at the TOP
         # of every cycle so a pause that has ended cannot keep telling the operator to wait —
         # the branch below re-records it while, and only while, it still applies.
         _clear_terrain_skips()
-        if tickers and _is_loggable_session():
+        if (tickers or _previewed) and _is_loggable_session():
             # During the morning wide-chain window (09:30-10:00 ET) SPY/QQQ/IWM already
             # take 100-strike gated fetches on the money path. Do not pile a full-universe
             # terrain sweep on top of that — refresh sentinels only until the window ends.
@@ -12787,6 +12803,13 @@ def _terrain_loop() -> None:
                     f"the accrual cadence ({ACCRUAL_MIN_INTERVAL_OTHER_SEC:.0f}s) instead of "
                     f"being held out, so this ticker still accrues inside the window",
                 )
+            if _previewed:
+                # Previewed tickers are a deliberate, ad-hoc operator action (someone typed
+                # or clicked a ticker outside the enrolled board) -- they bypass
+                # terrain_cycle_tickers' morning-contention throttle (built for the
+                # enrolled board's own chain-slot budget) rather than being silently
+                # dropped by a mechanism that was never about them.
+                tickers = tickers + [tk for tk in _previewed if tk not in tickers]
             with concurrent.futures.ThreadPoolExecutor(max_workers=TERRAIN_WORKERS) as pool:
                 list(pool.map(_terrain_refresh_one, tickers))
         elapsed = time.monotonic() - cycle_start
@@ -13947,6 +13970,16 @@ def project_gamma_surface(chain: list, spot: float) -> dict:
     strike_set: set[float] = set()
     per_expiry: dict[str, dict] = {}
     exp_dte: dict[str, int | None] = {}
+    # Live-heatmap coverage (state-authority review, 2026-09-12): the heatmap grid itself
+    # had no per-cell contract identity, so nothing could ever ask the streaming layer to
+    # keep its VISIBLE cells fresh sub-second -- only whatever ONE strike Strike Detail had
+    # separately selected ever streamed live. This is the vendor OSI symbol already present
+    # on each native contract (never invented, never a second identity authority), carried
+    # alongside the existing net_gex_1pct aggregate so the browser can ask for exactly the
+    # contracts backing what it is actually showing. Never fed into compute_exposures_by_
+    # strike (the canonical exposure-math faucet stays untouched) -- a plain per-(strike,
+    # expiry) lookup built from the same `slice_e` this loop already holds.
+    symbols_by_expiry: dict[str, dict[float, dict[str, str]]] = {}
     contracts_used = 0
     for e in expiries:
         slice_e, slice_src = _filter_contracts_by_selected_expiry(chain, e)
@@ -13958,25 +13991,38 @@ def project_gamma_surface(chain: list, spot: float) -> dict:
         contracts_used += len(slice_e)
         for k in exposures_e.keys():
             strike_set.add(float(k))
+        sym_map: dict[float, dict[str, str]] = {}
         for ct in slice_e:  # native DTE for the column header, never inferred
-            _d = ct.get("daysToExpiration")
-            if _d is not None:
+            if e not in exp_dte:
+                _d = ct.get("daysToExpiration")
+                if _d is not None:
+                    try:
+                        exp_dte[e] = int(_d)
+                    except (TypeError, ValueError):
+                        pass
+            side = (ct.get("putCall") or "").upper()
+            sym = ct.get("symbol")
+            _sk = ct.get("strikePrice")
+            if sym and side in ("CALL", "PUT") and _sk is not None:
                 try:
-                    exp_dte[e] = int(_d)
-                    break
+                    sym_map.setdefault(float(_sk), {})[side.lower()] = str(sym)
                 except (TypeError, ValueError):
                     pass
+        symbols_by_expiry[e] = sym_map
 
     strikes = sorted(strike_set)
     expirations = [{"expiry": e, "dte": exp_dte.get(e)} for e in expiries if e in per_expiry]
     cells = []
     for k in strikes:
         row = []
+        contracts_row = []
         for col in expirations:
             bucket = per_expiry.get(col["expiry"], {}).get(k)
             v = bucket.get("net_gex_1pct") if bucket is not None else None
             row.append(round(float(v)) if v is not None else None)
-        cells.append({"strike": k, "gex": row})
+            syms = symbols_by_expiry.get(col["expiry"], {}).get(k) or {}
+            contracts_row.append({"call": syms.get("call"), "put": syms.get("put")})
+        cells.append({"strike": k, "gex": row, "contracts": contracts_row})
 
     return {
         "expirations": expirations, "strikes": strikes, "cells": cells,

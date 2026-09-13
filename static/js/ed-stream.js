@@ -135,9 +135,38 @@
   // === _additionalGen` alone cannot distinguish "confirmed" from "never asked" --
   // an explicit flag, set true ONLY by a genuine accepted commit, is required.
   var _desiredAdditionalConfirmed = false;
-  function setAdditionalContracts(symbols) {
-    var next = (symbols || []).map(function (s) { return String(s || '').trim().toUpperCase(); })
-      .filter(function (s) { return s; });
+  // Live-heatmap coverage (state-authority review, 2026-09-12): this endpoint/slot is
+  // SINGLE-OWNER server-side (one POST replaces the whole additional-contracts set) --
+  // until now the ONLY caller was Strike Detail's one selected strike's call+put. Making
+  // the visible HEATMAP GRID live (not just whatever one strike happens to be selected
+  // elsewhere) means a second, independent caller needs to declare its OWN demand without
+  // the two callers clobbering each other (last-caller-wins would make Strike Detail and
+  // the heatmap fight over this one slot on every render). `ownerKey` is optional and
+  // defaults to a fixed key so every EXISTING caller (Strike Detail, every existing test)
+  // is completely unaffected -- with only ever one owner registered, the "union" below is
+  // exactly that owner's own set, identical to today. A caller that wants to coexist with
+  // another (the heatmap) passes its own distinct ownerKey; the ACTUAL POST always carries
+  // the union of every owner's current demand, deduplicated, computed fresh on every call
+  // so an owner's OWN change (including going back to empty) is reflected immediately.
+  var _additionalDemandByOwner = {};
+  function _unionedAdditionalDemand() {
+    var seen = {}, out = [];
+    Object.keys(_additionalDemandByOwner).forEach(function (owner) {
+      (_additionalDemandByOwner[owner] || []).forEach(function (s) {
+        if (!seen[s]) { seen[s] = true; out.push(s); }
+      });
+    });
+    return out;
+  }
+  function setAdditionalContracts(symbols, ownerKey) {
+    var owner = ownerKey || 'default';
+    _additionalDemandByOwner[owner] = (symbols || []).map(function (s) {
+      return String(s || '').trim().toUpperCase();
+    }).filter(function (s) { return s; });
+    return _dispatchAdditionalContracts(_unionedAdditionalDemand());
+  }
+  function _dispatchAdditionalContracts(symbols) {
+    var next = symbols || [];
     var dedup = []; next.forEach(function (s) { if (dedup.indexOf(s) < 0) dedup.push(s); });
     // Independent-review finding (2026-09-12), REPRODUCED: _desiredAdditional used to be
     // set to `dedup` HERE, unconditionally, before the fetch even started -- so a request
