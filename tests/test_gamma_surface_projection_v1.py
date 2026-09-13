@@ -253,3 +253,82 @@ def test_J_negative_control_a_missing_symbol_field_reports_null_not_a_stale_or_w
     row = [r for r in surface["cells"] if r["strike"] == k][0]
     side = "call" if probe["putCall"] == "CALL" else "put"
     assert row["contracts"][0][side] is None
+
+
+# K. DEX/VANNA/OI/VOLUME — a SEVENTH independent review (2026-09-13, operator field-inventory
+# audit): compute_exposures_by_strike already computes net_dex_dollars, call_vanna/put_vanna
+# (RC-211's exact BS-vanna faucet) and call_oi/put_oi/call_volume/put_volume in the SAME bucket
+# net_gex_1pct comes from, for every cell this projection already builds -- they were discarded
+# before reaching a cell. No second computation: this proves each new field equals the SAME
+# canonical faucet call test_A already anchors net_gex_1pct against, on the same real two-expiry
+# union.
+def test_K_dex_cell_equals_the_same_canonical_faucet_net_dex_dollars():
+    chain = _chain()
+    surface = project_gamma_surface(chain, SPOT)
+    checked = 0
+    for exp in (E1, E2):
+        exposures_e, _ = compute_exposures_by_strike(_slice(chain, exp), spot=SPOT, require_oi=True)
+        col = [i for i, e in enumerate(surface["expirations"]) if e["expiry"] == exp][0]
+        for k, bucket in exposures_e.items():
+            row = [r for r in surface["cells"] if r["strike"] == float(k)][0]
+            assert row["dex"][col] == round(float(bucket["net_dex_dollars"]))
+            checked += 1
+    assert checked > 20
+
+
+def test_K_vanna_cell_equals_call_vanna_minus_put_vanna_the_same_dealer_convention_as_net_gex():
+    chain = _chain()
+    surface = project_gamma_surface(chain, SPOT)
+    checked = 0
+    for exp in (E1, E2):
+        exposures_e, _ = compute_exposures_by_strike(_slice(chain, exp), spot=SPOT, require_oi=True)
+        col = [i for i, e in enumerate(surface["expirations"]) if e["expiry"] == exp][0]
+        for k, bucket in exposures_e.items():
+            if bucket.get("call_vanna") is None and bucket.get("put_vanna") is None:
+                continue
+            row = [r for r in surface["cells"] if r["strike"] == float(k)][0]
+            expected = round(float((bucket.get("call_vanna") or 0.0) - (bucket.get("put_vanna") or 0.0)))
+            assert row["vanna"][col] == expected
+            checked += 1
+    assert checked > 20
+
+
+def test_K_oi_and_volume_cells_equal_the_same_canonical_faucets_call_and_put_totals():
+    chain = _chain()
+    surface = project_gamma_surface(chain, SPOT)
+    checked = 0
+    for exp in (E1, E2):
+        exposures_e, _ = compute_exposures_by_strike(_slice(chain, exp), spot=SPOT, require_oi=True)
+        col = [i for i, e in enumerate(surface["expirations"]) if e["expiry"] == exp][0]
+        for k, bucket in exposures_e.items():
+            row = [r for r in surface["cells"] if r["strike"] == float(k)][0]
+            exp_oi = {"call": round(float(bucket["call_oi"])) if bucket.get("call_oi") is not None else None,
+                      "put": round(float(bucket["put_oi"])) if bucket.get("put_oi") is not None else None}
+            assert row["oi"][col] == exp_oi
+            exp_vol = {"call": round(float(bucket["call_volume"])) if bucket.get("call_volume") is not None else None,
+                       "put": round(float(bucket["put_volume"])) if bucket.get("put_volume") is not None else None}
+            assert row["volume"][col] == exp_vol
+            checked += 1
+    assert checked > 20
+
+
+def test_K_a_strike_absent_from_one_expirys_own_slice_reports_null_there_not_zero():
+    """A strike that exists in the two-expiry union surface (present in E2's real book) but has
+    no contract at all in E1's own slice must report None for dex/vanna/oi/volume in the E1
+    column specifically -- the same fail-closed rule the pre-existing `gex` field already
+    follows (see project_gamma_surface's own `bucket is not None` guard). A silent 0.0 there
+    would be indistinguishable from "genuinely zero dealer DEX/vanna/OI/volume at this strike",
+    which is a real, different fact."""
+    chain = _chain()
+    surface = project_gamma_surface(chain, SPOT)
+    e1_col = [i for i, e in enumerate(surface["expirations"]) if e["expiry"] == E1][0]
+    e1_strikes = {float(ct["strikePrice"]) for ct in _slice(chain, E1)}
+    e2_only_strikes = [k for k in surface["strikes"] if k not in e1_strikes]
+    assert e2_only_strikes, "the two real captures must not share every strike, or this proves nothing"
+    k = e2_only_strikes[0]
+    row = [r for r in surface["cells"] if r["strike"] == k][0]
+    assert row["gex"][e1_col] is None   # the pre-existing field's own fail-closed behavior
+    assert row["dex"][e1_col] is None
+    assert row["vanna"][e1_col] is None
+    assert row["oi"][e1_col] == {"call": None, "put": None}
+    assert row["volume"][e1_col] == {"call": None, "put": None}

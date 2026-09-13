@@ -2901,6 +2901,26 @@ ROWS: tuple[Row, ...] = (
         justification='RC-UI-1 strike x expiry GEX surface (/api/options/gamma-surface payload owner): PURE projection - partitions the wide chain by native expirationDate through the existing selected-expiry slicer and runs the ONE exposure faucet per slice; every cell is that faucet net_gex_1pct, no exposure math of its own (tests/test_gamma_surface_projection_v1.py invariant I).',
     ),
     Row(
+        file='server.py', derivation='get_vanna_by_strike', disposition='DERIVED',
+        producer_refs=('math_exposure_core.py:compute_exposures_by_strike',),
+        justification='Operator field-inventory audit (2026-09-13): /api/options/vanna-by-strike payload owner. Aggregates the live wide chain (every expiry) through the SAME canonical faucet the Gamma/DEX heatmaps already use and reads its own call_vanna/put_vanna accumulators (RC-211s exact BS-vanna faucet) straight off the per-strike bucket - net_vanna = call_vanna - put_vanna, the identical +call/-put dealer convention net_gex_1pct/net_charm_daily already use. No exposure math of its own (tests/test_vanna_charm_by_strike_v1.py).',
+    ),
+    Row(
+        file='server.py', derivation='get_charm_by_strike', disposition='DERIVED',
+        producer_refs=('math_levels.py:compute_charm_by_strike',),
+        justification='Operator field-inventory audit (2026-09-13): /api/options/charm-by-strike payload owner. Row-shapes the live wide chain through math_levels.compute_charm_by_strike, the SAME faucet /api/forces charm_below/charm_above already sum, for a per-strike bar chart. No charm math of its own (tests/test_vanna_charm_by_strike_v1.py).',
+    ),
+    Row(
+        file='server.py', derivation='get_options_tape', disposition='DERIVED',
+        producer_refs=('app/options/order_flow/history.py:tape_rows_for_symbol',),
+        justification='Operator field-inventory audit (2026-09-13): /api/options/tape payload owner (the Options Flow tape). Resolves which contract(s) are currently desired for the ticker (the same identity _desired_stream_greeks_for_ticker already uses) and merges tape_rows_for_symbols own de-duplicated native trade-print rows newest-first. No trade/quote parsing of its own, and no aggressor-side (buy/sell) classification is ever produced anywhere on this path (tests/test_options_flow_tape_v1.py).',
+    ),
+    Row(
+        file='app/options/order_flow/history.py', derivation='tape_rows_for_symbol', disposition='ALLOWLISTED',
+        allowlist_id='mega2_schwab_stream_l1',
+        justification='Operator field-inventory audit (2026-09-13): reads the persisted native LEVELONE_OPTIONS stream rows (stream_options_quotes_raw.native_json) directly for one contract symbol, oldest to newest. A tick counts as a trade print only when it carries its OWN LAST_PRICE and TRADE_TIME_MILLIS together (a partial tick can bump LAST_SIZE alone with no fresh price, and must not mint a null-priced trade row); de-dupes on (TRADE_TIME_MILLIS, LAST_PRICE, LAST_SIZE); static contract context (STRIKE_TYPE/CONTRACT_TYPE/EXPIRATION_*/MULTIPLIER/UNDERLYING) is carried forward from whichever prior tick last reported it, since the vendor does not repeat it on every partial update. classification is a mechanical BID_PRICE/ASK_PRICE comparison against that same ticks own quote, never an aggressor-side (buy/sell) inference (tests/test_options_flow_tape_v1.py).',
+    ),
+    Row(
         file='server.py', derivation='get_terrain_strikes._side_sums', disposition='ALLOWLISTED',
         allowlist_id='mega1_internal_helper',
         justification="Nested: sums the already-computed per-strike GEX$ and volume per side of the payload's OWN spot. One aggregator, one spot basis — the in-browser re-sum was killed because a client loop could straddle a different spot and broke silently on payload changes.",

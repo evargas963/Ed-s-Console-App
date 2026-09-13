@@ -24,15 +24,21 @@
       { id: 'heatmap', label: 'Heatmap', state: 'na' }, { id: 'tape', label: 'Tape' },
       { id: 'options-book', label: 'Options Book' }, { id: 'history', label: 'History' } ], views: [] },
     'options': { title: 'OPTIONS', subs: [
-      { id: 'gamma', label: 'Gamma' }, { id: 'vanna', label: 'Vanna', state: 'na', note: 'AGG ONLY' },
-      { id: 'charm', label: 'Charm', state: 'na', note: 'WALLS ONLY' },
-      { id: 'dex', label: 'Delta / DEX', state: 'na' }, { id: 'oi', label: 'Open Interest', state: 'na' },
+      { id: 'gamma', label: 'Gamma' }, { id: 'vanna', label: 'Vanna', note: 'AGG BY STRIKE' },
+      { id: 'charm', label: 'Charm', note: 'AGG BY STRIKE' },
+      { id: 'dex', label: 'Delta / DEX' }, { id: 'oi', label: 'Open Interest' },
       { id: 'flow', label: 'Flow' }, { id: 'chain', label: 'Chain' },
-      { id: 'structures', label: 'Structures', state: 'na', note: 'NOT PROVEN' } ],
-      views: { gamma: [
-        { id: 'heatmap', label: 'Heatmap' }, { id: 'chart', label: 'Chart' },
-        { id: 'levels', label: 'Levels' }, { id: 'multimap', label: 'Multi-Map' },
-        { id: 'term', label: 'Term Structure', state: 'na' }, { id: 'analytics', label: 'Analytics', state: 'na' } ] } },
+      { id: 'structures', label: 'Structures' } ],
+      views: (function () {
+        // dex/oi present the SAME strike x expiry grid + view family gamma does (heatmap/
+        // chart/levels/multi-map), just a different `measure` (see MEASURE_BY_SUBVIEW) --
+        // one shared view list, not three copies to keep in sync by hand.
+        var gammaViews = [
+          { id: 'heatmap', label: 'Heatmap' }, { id: 'chart', label: 'Chart' },
+          { id: 'levels', label: 'Levels' }, { id: 'multimap', label: 'Multi-Map' },
+          { id: 'term', label: 'Term Structure', state: 'na' }, { id: 'analytics', label: 'Analytics', state: 'na' } ];
+        return { gamma: gammaViews, dex: gammaViews, oi: gammaViews };
+      })() },
     'liquidity': { title: 'LIQUIDITY', subs: [
       { id: 'map', label: 'Map' }, { id: 'profile', label: 'Profile' }, { id: 'levels', label: 'Levels' },
       { id: 'vwap', label: 'VWAP / Value' }, { id: 'session', label: 'Session' }, { id: 'history', label: 'History' } ], views: [] },
@@ -66,7 +72,14 @@
     view: _ls('ed_view', app.getAttribute('data-view') || 'heatmap'),
     scope: _lsScope(),
     expiryFilter: null,   // null = All Expirations; else a single 'YYYY-MM-DD' from /api/expiries
-    selStrike: null, selExpiry: null
+    selStrike: null, selExpiry: null,
+    // Operator field-inventory audit (2026-09-13): the Gamma heatmap grid, Strike Detail's
+    // native fields, and the strike x expiry PROJECTION (server.py project_gamma_surface)
+    // already carry dex/vanna/oi/volume per cell alongside gex -- one canonical faucet, four
+    // more measures the SAME grid can present, not a second computation or a second UI. This
+    // is that ONE measure switch: 'gex' | 'dex' | 'oi' | 'volume'. Vanna stays aggregate-only
+    // today (see the Key Levels 'AGG $ ONLY' badge) since it has no per-expiry column yet.
+    measure: 'gex'
   };
   function normalizeState() {   // restored state must be valid for the current NAV config
     if (!NAV[state.workspace]) state.workspace = 'options';
@@ -75,6 +88,13 @@
     var v = (NAV[state.workspace].views && NAV[state.workspace].views[state.subview]) || [];
     var vids = v.map(function (x) { return x.id; });
     state.view = vids.indexOf(state.view) !== -1 ? state.view : (vids[0] || '');
+    // A page reload restores `subview` from localStorage (ed_sub) but `measure` was never
+    // itself persisted -- reproduced live: reloading on the Open Interest tab showed GEX's
+    // own dollar values under an "Open Interest Heatmap" title, because state.measure
+    // defaulted back to 'gex' while state.subview correctly restored to 'oi'. Re-derived
+    // from the restored subview here, the same rule setSubview's own click path already
+    // applies, so a reload and a click land on the identical measure for the same tab.
+    if (MEASURE_BY_SUBVIEW[state.subview]) state.measure = MEASURE_BY_SUBVIEW[state.subview];
   }
 
   // ---- theme: SYSTEM / LIGHT / DARK — one token contract, two palettes (dark primary) ----
@@ -155,14 +175,23 @@
     relabelExpiryDefault();   // the null-expiry label is subview-contextual (Chain = Default Expiry)
   }
 
-  var MV_TITLE = { heatmap: 'Gamma Exposure Heatmap', chart: 'Price + GEX Profile', levels: 'Levels', multimap: 'Multi-Map' };
+  // Measure-adaptive panel title for the 'heatmap' view -- dex/oi (and gex itself) all share
+  // this ONE grid (see state.measure's own comment), so its title must name whichever
+  // measure is actually selected, not always say "Gamma Exposure Heatmap" while showing DEX.
+  var MEASURE_TITLE = { gex: 'Gamma Exposure Heatmap', dex: 'Delta Exposure (DEX) Heatmap',
+    oi: 'Open Interest Heatmap', volume: 'Volume Heatmap' };
+  var MV_TITLE = { chart: 'Price + GEX Profile', levels: 'Levels', multimap: 'Multi-Map' };
   function showMainView() {
-    if (!(state.workspace === 'options' && state.subview === 'gamma')) return;
+    // dex/oi are the SAME gamma pane (see NAV/MEASURE_BY_SUBVIEW) under a different subview
+    // id -- the view-switching/title logic below applies to all three, not gamma alone.
+    if (!(state.workspace === 'options' && (state.subview === 'gamma' || state.subview === 'dex' || state.subview === 'oi'))) return;
     ['heatmap', 'chart', 'levels', 'multimap'].forEach(function (v) {
       var el = document.getElementById('view-' + v);
       if (el) el.classList.toggle('on', v === state.view);
     });
-    var t = document.getElementById('mvTitle'); if (t && MV_TITLE[state.view]) t.textContent = MV_TITLE[state.view];
+    var t = document.getElementById('mvTitle');
+    if (t) t.textContent = (state.view === 'heatmap')
+      ? (MEASURE_TITLE[state.measure] || MEASURE_TITLE.gex) : (MV_TITLE[state.view] || '');
     var cm = document.getElementById('chartModes'); if (cm) cm.hidden = state.view !== 'chart';
     var sc = document.getElementById('heatScope'); if (sc) sc.style.display = state.view === 'heatmap' ? '' : 'none';
   }
@@ -239,13 +268,40 @@
     state.view = (v[0] || {}).id || '';
     renderSubnav(); renderViewbar(); showPane(); syncAttrs();
   }
+  // Which measure a given Options subview presents on the SAME strike x expiry grid the
+  // Gamma tab already renders -- see `state.measure`'s own comment. A subview absent here
+  // (chain/flow/structures/vanna/charm — vanna/charm have no per-expiry surface yet) leaves
+  // the measure untouched, so returning to Gamma after visiting Chain still shows whichever
+  // measure was last selected there, exactly like `scope` already persists across subviews.
+  var MEASURE_BY_SUBVIEW = { gamma: 'gex', dex: 'dex', oi: 'oi' };
   function setSubview(sv) {
     state.subview = sv;
     var v = (NAV[state.workspace].views && NAV[state.workspace].views[sv]) || [];
     state.view = (v[0] || {}).id || '';
+    if (MEASURE_BY_SUBVIEW[sv]) setMeasure(MEASURE_BY_SUBVIEW[sv], /*fromSubview*/ true);
     renderSubnav(); renderViewbar(); syncAttrs();
   }
   function setView(v) { state.view = v; renderViewbar(); syncAttrs(); }
+
+  // #dex/#oi: ONE canonical strike x expiry projection (server.py project_gamma_surface)
+  // already carries dex/oi/volume alongside gex per cell -- this switches which of those
+  // the SAME heatmap grid, Key Levels, and legend present, never a second surface or a
+  // second computation. `fromSubview` suppresses the redundant nav re-render setSubview is
+  // already about to do for a tab-driven switch; a direct #measureSel change (fromSubview
+  // falsy) still needs its own reflect + redraw.
+  function reflectMeasure() {
+    var sel = document.getElementById('measureSel');
+    if (sel && sel.value !== state.measure) sel.value = state.measure;
+  }
+  function setMeasure(m, fromSubview) {
+    if (m === state.measure) { reflectMeasure(); return; }
+    state.measure = m;
+    reflectMeasure();
+    showMainView();   // the heatmap panel title names the measure (see MEASURE_TITLE)
+    if (!fromSubview) {
+      document.dispatchEvent(new CustomEvent('ed:measure', { detail: { measure: m } }));
+    }
+  }
 
   // #3: presentation-scope — one control, one state, one event for every windowed Gamma panel.
   var SCOPE_LABEL = { auto: 'Auto', wider: 'Wider', all: 'All available' };
@@ -761,6 +817,13 @@
     if (scopeCtl) scopeCtl.querySelectorAll('.scbtn').forEach(function (b) {
       b.addEventListener('click', function () { setScope(b.getAttribute('data-scope')); });
     });
+    // ONE canonical strike x expiry projection presents gex/dex/oi/volume -- this control
+    // switches which one, on the same grid (see state.measure's own comment).
+    var measureSel = document.getElementById('measureSel');
+    if (measureSel) {
+      reflectMeasure();
+      measureSel.addEventListener('change', function () { setMeasure(measureSel.value); });
+    }
     // operator dropdowns: ticker (one symbol state) + expiry (from /api/expiries)
     buildSymList();
     var symInput = document.getElementById('symInput');
@@ -781,6 +844,12 @@
     try { if (localStorage.getItem(MAX_KEY) === '1') applyMaximize(true); } catch (e) {}
     // subnav/viewbar initial — restore persisted workspace/subview/view (D), validated to NAV
     normalizeState();
+    // Reflect AGAIN, now that normalizeState() may have just corrected state.measure to
+    // match a persisted subview (e.g. a reload landing on Open Interest) -- the earlier
+    // reflectMeasure() at bind time ran before normalizeState() and would otherwise leave
+    // the dropdown showing "GEX" while the grid itself correctly renders OI (reproduced
+    // live: reloading on the Open Interest tab left the control reading GEX).
+    reflectMeasure();
     renderSubnav(); renderViewbar(); showPane(); syncAttrs();
     // subnav/view tabs already in HTML are re-bound by renderSubnav/renderViewbar
     // watchlist
@@ -816,6 +885,7 @@
     setScope: setScope, getScope: function () { return state.scope; },
     scopeRows: scopeRows, scopeSelect: scopeSelect, scopeNote: scopeNote, asOfBadge: asOfBadge, fmtAge: fmtAge,
     setExpiry: setExpiry, getExpiry: function () { return state.expiryFilter; },
+    setMeasure: setMeasure, getMeasure: function () { return state.measure; },
     getPlane: function () { return Object.assign({}, _plane); },
     setMaximize: applyMaximize, toggleMaximize: toggleMaximize };
 })();

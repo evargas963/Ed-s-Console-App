@@ -13740,6 +13740,147 @@ def get_bars1m(ticker: str = Query(default=DEFAULT_TICKER),
     return JSONResponse({"ticker": tk, "bars": bars, "n": len(bars)})
 
 
+def _live_terrain_contracts_and_spot(tk: str) -> tuple[list | None, float | None]:
+    """The SAME live wide chain + live spot the terrain loop already fetched THIS cycle for
+    `tk` (_terrain_cache[tk]["_contracts_rest"]/["_contracts_rest_spot"]) -- zero extra
+    vendor calls, ONE FAUCET. None/None when the ticker has not been viewed/warmed (the
+    cache entry, or that specific field, does not exist yet) — callers fail closed to
+    'unavailable', never to a banked/stale substitute silently presented as live."""
+    with _terrain_cache_lock:
+        payload = _terrain_cache.get(tk) or {}
+        contracts = payload.get("_contracts_rest")
+        spot = payload.get("_contracts_rest_spot")
+    if not contracts or not spot:
+        return None, None
+    return contracts, float(spot)
+
+
+@app.get("/api/options/vanna-by-strike")
+def get_vanna_by_strike(ticker: str = Query(default=DEFAULT_TICKER)):
+    """Per-strike dealer VANNA exposure (operator field-inventory audit, 2026-09-13): the
+    SAME canonical faucet (math_exposure_core.compute_exposures_by_strike) the Gamma/DEX
+    heatmaps already use, aggregated across every expiry in the live wide chain (Vanna has
+    no per-expiry SURFACE yet — see the Multi-Map subview's own note — so this is the
+    aggregate-by-strike tier the Key Levels 'AGG $ ONLY' badge already discloses, not a
+    narrower or different computation). net_vanna = call_vanna - put_vanna, the SAME
+    +call/-put dealer-book convention net_gex_1pct and net_charm_daily already use (RC-211's
+    exact BS-vanna faucet, math_levels.bs_vanna, independently FD-verified)."""
+    from math_exposure_core import compute_exposures_by_strike as _cebs
+    from numeric_contract import float_finite_or_none as _fin
+
+    tk = ticker_storage_key(ticker or DEFAULT_TICKER)
+    _touch_tracked_ticker_view(tk)
+    contracts, spot = _live_terrain_contracts_and_spot(tk)
+    if not contracts:
+        return JSONResponse({"ticker": tk, "available": False,
+                             "reason": "no live wide chain cached yet for this ticker"})
+    exposures, _diag = _cebs(contracts, spot=spot, require_oi=True)
+    rows = []
+    for k, b in exposures.items():
+        cv, pv = b.get("call_vanna"), b.get("put_vanna")
+        if cv is None and pv is None:
+            continue
+        net = _fin(cv or 0.0) - _fin(pv or 0.0) if (_fin(cv) is not None or _fin(pv) is not None) else None
+        if net is None:
+            continue
+        rows.append([round(float(k), 2), round(net, 2)])
+    rows.sort(key=lambda r: r[0])
+    return JSONResponse({
+        "ticker": tk, "available": True, "spot": spot, "rows": rows,
+        "method": ("live wide chain -> compute_exposures_by_strike (same faucet the Gamma/"
+                   "DEX heatmaps use) -> net_vanna = call_vanna - put_vanna, aggregated "
+                   "across every expiry (no per-expiry surface yet)"),
+    })
+
+
+@app.get("/api/options/charm-by-strike")
+def get_charm_by_strike(ticker: str = Query(default=DEFAULT_TICKER)):
+    """Per-strike dealer CHARM exposure (operator field-inventory audit, 2026-09-13): the
+    SAME canonical faucet (math_levels.compute_charm_by_strike, the exact function
+    /api/forces's charm_below/charm_above already sum) applied to the live wide chain, row-
+    shaped for a strike bar chart the same way /api/terrain/strikes already is. Units:
+    delta-shares decaying per day (RC-179 dealer convention: +call/-put)."""
+    from math_levels import compute_charm_by_strike as _ccs
+
+    tk = ticker_storage_key(ticker or DEFAULT_TICKER)
+    _touch_tracked_ticker_view(tk)
+    contracts, spot = _live_terrain_contracts_and_spot(tk)
+    if not contracts:
+        return JSONResponse({"ticker": tk, "available": False,
+                             "reason": "no live wide chain cached yet for this ticker"})
+    per_ch = _ccs(contracts, spot)
+    rows = sorted(
+        [round(float(k), 2), round(float(b["net_charm"]), 4)]
+        for k, b in per_ch.items() if b.get("net_charm") is not None
+    )
+    return JSONResponse({
+        "ticker": tk, "available": bool(rows), "spot": spot, "rows": rows,
+        "reason": None if rows else "charm_by_strike produced no usable strikes for this chain",
+        "method": ("live wide chain -> math_levels.compute_charm_by_strike (the same faucet "
+                   "/api/forces's charm_below/charm_above already sum) -> net_charm = "
+                   "call_charm - put_charm per strike, delta-shares/day"),
+    })
+
+
+@app.get("/api/options/tape")
+def get_options_tape(ticker: str = Query(default=DEFAULT_TICKER),
+                     contract: Optional[str] = Query(default=None),
+                     limit: int = Query(default=100)):
+    """Discrete option TRADE prints (operator field-inventory audit, 2026-09-13) — the
+    Options Flow tape, locked to the operator's own required schema: Time/Symbol/Expiry/
+    Type/Strike/Bid x Size/Ask x Size/Trade/Size/Premium/Volume/OI/IV/Delta/provenance.
+    Sourced from app.options.order_flow.history.tape_rows_for_symbol, which reads the
+    ALREADY-CAPTURED native LEVELONE_OPTIONS ticks in stream_options_quotes_raw verbatim —
+    no new capture, no derived/estimated field, no fabricated buy/sell aggressor side.
+
+    `contract`, when given, scopes to exactly that vendor symbol. Otherwise scopes to every
+    CURRENTLY DESIRED contract for `ticker` (the primary + additional option contracts the
+    operator has actually selected — the same identity `_desired_stream_greeks_for_ticker`
+    already resolves for the gamma-surface overlay), merged newest-first and capped at
+    `limit` across the whole merge, not per-contract."""
+    from app.options.order_flow.streaming import (
+        get_active_option_contract, get_active_option_contracts, contract_matches_underlying)
+    from app.options.order_flow.history import tape_rows_for_symbol
+
+    tk = ticker_storage_key(ticker or DEFAULT_TICKER)
+    try:
+        bounded_limit = max(1, min(500, int(limit)))
+    except (TypeError, ValueError):
+        bounded_limit = 100
+
+    if contract:
+        symbols = [contract]
+    else:
+        candidates = list(get_active_option_contracts())
+        primary = get_active_option_contract()
+        if primary:
+            candidates.append(primary)
+        seen: set[str] = set()
+        symbols = []
+        for sym in candidates:
+            if sym and sym not in seen and contract_matches_underlying(sym, tk):
+                seen.add(sym)
+                symbols.append(sym)
+
+    if not symbols:
+        return JSONResponse({"ticker": tk, "available": False, "rows": [],
+                             "reason": "no active/additional option contract selected for this ticker"})
+
+    rows: list[dict] = []
+    for sym in symbols:
+        rows.extend(tape_rows_for_symbol(sym, since_ts=0.0, limit=bounded_limit))
+    rows.sort(key=lambda r: r["ts_recv"], reverse=True)
+    rows = rows[:bounded_limit]
+    return JSONResponse({
+        "ticker": tk, "available": bool(rows), "symbols": symbols, "rows": rows,
+        "reason": None if rows else "no trade prints captured yet for the selected contract(s)",
+        "method": ("stream_options_quotes_raw (native LEVELONE_OPTIONS capture, already "
+                   "retained) -> tape_rows_for_symbol (de-duplicated genuine trade prints, "
+                   "context carried forward) -> merged newest-first across every currently "
+                   "desired contract for this ticker"),
+    })
+
+
 #: RC-192/RC-199 FORCES (RE-LANDED 2026-08-02 after a worktree reset destroyed the
 #: uncommitted originals — RC-210): ΔOI/DEX from the two newest banked wide chains; the
 #: strip's GEX/OV rows come from the live strikes payload client-side; ΔOI and DEX need the
@@ -14044,17 +14185,54 @@ def project_gamma_surface(chain: list, spot: float) -> dict:
 
     strikes = sorted(strike_set)
     expirations = [{"expiry": e, "dte": exp_dte.get(e)} for e in expiries if e in per_expiry]
+    # A SEVENTH independent review (2026-09-13, operator field-inventory audit): this loop
+    # already builds `bucket` (== compute_exposures_by_strike's own per-(strike,expiry)-slice
+    # dict) for every cell to read ONE field (net_gex_1pct) out of it -- but that SAME bucket
+    # already carries net_dex_dollars (dollar delta exposure), call_vanna/put_vanna (BS vanna,
+    # RC-211's exact-formula faucet), and call_oi/put_oi/call_volume/put_volume, computed by
+    # the ONE canonical faucet every GEX cell already uses, for FREE -- no second computation,
+    # no new formula. They were being discarded before ever reaching a cell. Carried through
+    # here so the SAME strike x expiry grid can serve a DEX, Open Interest, or Volume measure
+    # (net_gex_1pct's own siblings) without a second projection function; Vanna's own natural
+    # per-cell value (call_vanna - put_vanna, matching compute_net_vanna's +call/-put dealer
+    # convention) is carried too, though today's UI surfaces Vanna aggregated by strike (its
+    # own aggregate-only maturity today: see AGG_$_ONLY), not yet as a per-expiry column.
+    def _bf(v):
+        fv = float_finite_or_none(v)
+        return round(fv) if fv is not None else None
+
     cells = []
     for k in strikes:
         row = []
+        dex_row = []
+        vanna_row = []
+        oi_row = []
+        vol_row = []
         contracts_row = []
         for col in expirations:
             bucket = per_expiry.get(col["expiry"], {}).get(k)
-            v = bucket.get("net_gex_1pct") if bucket is not None else None
-            row.append(round(float(v)) if v is not None else None)
+            row.append(_bf(bucket.get("net_gex_1pct")) if bucket is not None else None)
+            dex_row.append(_bf(bucket.get("net_dex_dollars")) if bucket is not None else None)
+            # call_vanna/put_vanna are pre-initialized to a real 0.0 by _strike_bucket
+            # (compute_exposures_by_strike, math_exposure_core.py) -- the SAME "always a
+            # real accumulator, never absent" contract net_gex_1pct/net_dex_dollars
+            # already have, so this needs no None-guard or `or 0.0` fallback (a repo-wide
+            # static gate correctly flagged the earlier `.get(...) or 0.0` form here as
+            # indistinguishable-from-absence, the exact silent-zero-injection shape
+            # RC-276 already names elsewhere in this file -- call_oi/put_oi/call_volume/
+            # put_volume, right below, are the genuinely-optional fields and correctly
+            # keep their own None-preserving .get()).
+            vanna_row.append(_bf(bucket["call_vanna"] - bucket["put_vanna"]) if bucket is not None else None)
+            call_oi, put_oi = (bucket or {}).get("call_oi"), (bucket or {}).get("put_oi")
+            oi_row.append({"call": _bf(call_oi), "put": _bf(put_oi)} if bucket is not None else {"call": None, "put": None})
+            call_vol, put_vol = (bucket or {}).get("call_volume"), (bucket or {}).get("put_volume")
+            vol_row.append({"call": _bf(call_vol), "put": _bf(put_vol)} if bucket is not None else {"call": None, "put": None})
             syms = symbols_by_expiry.get(col["expiry"], {}).get(k) or {}
             contracts_row.append({"call": syms.get("call"), "put": syms.get("put")})
-        cells.append({"strike": k, "gex": row, "contracts": contracts_row})
+        cells.append({
+            "strike": k, "gex": row, "dex": dex_row, "vanna": vanna_row,
+            "oi": oi_row, "volume": vol_row, "contracts": contracts_row,
+        })
 
     return {
         "expirations": expirations, "strikes": strikes, "cells": cells,

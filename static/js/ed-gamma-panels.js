@@ -485,8 +485,231 @@
     _setAdditionalContractsDemand([]);
   }
 
+  // ---------- Vanna / Charm by strike (operator field-inventory audit, 2026-09-13) ----------
+  // Both reuse the EXACT diverging-bar grammar GEX by Strike already uses (same CSS classes,
+  // same spot-centred scope window, same click-a-strike-to-select behavior) against the two
+  // new by-strike endpoints -- neither computes anything: /api/options/vanna-by-strike and
+  // /api/options/charm-by-strike both wrap already-canonical, already-tested faucets
+  // (math_exposure_core's call_vanna/put_vanna, math_levels.compute_charm_by_strike). No
+  // volume column (these endpoints carry none) and no Strike-Detail cross-sync (unlike GEX,
+  // neither panel is a value Strike Detail's own Net cell reads).
+  function _mkStrikeBar(kind, endpoint, hostId, srcId) {
+    function inSub() {
+      var s = (window.EdShell && window.EdShell.getState()) || {};
+      return s.workspace === 'options' && s.subview === kind;
+    }
+    function stillCtx(tk) { var host = document.getElementById(hostId); return inSub() && !!host && ticker() === tk; }
+    function renderIt(host, d, tk) {
+      var src = document.getElementById(srcId); if (src) src.textContent = '';
+      if (!d || !d.available || !d.rows || !d.rows.length) {
+        host.innerHTML = '<div class="placeholder"><div class="sm">' +
+          (d && d.reason ? esc(d.reason) : ('no console serving ' + endpoint)) + '</div></div>';
+        return;
+      }
+      var spot = Number(d.spot);
+      var asc = d.rows.slice().sort(function (a, b) { return a[0] - b[0]; });
+      var sel = (window.EdShell && window.EdShell.scopeSelect)
+        ? window.EdShell.scopeSelect(asc.map(function (r) { return r[0]; }), spot)
+        : { idx: asc.map(function (_r, i) { return i; }), shown: asc.length, total: asc.length };
+      var win = sel.idx.map(function (i) { return asc[i]; }).sort(function (a, b) { return b[0] - a[0]; });
+      var note = (window.EdShell && window.EdShell.scopeNote)
+        ? window.EdShell.scopeNote({ total: d.rows.length, shown: win.length }) : '';
+      var maxAbs = win.reduce(function (m, r) { return Math.max(m, Math.abs(Number(r[1]) || 0)); }, 0) || 1;
+      var spotStrike = win.reduce(function (best, r) {
+        return (best == null || Math.abs(r[0] - spot) < Math.abs(best - spot)) ? r[0] : best; }, null);
+      var bars = '';
+      win.forEach(function (r) {
+        var k = r[0], v = Number(r[1]) || 0, w = Math.min(100, Math.abs(v) / maxAbs * 100), pos = v >= 0;
+        bars += '<div class="gbs-row' + (k === spotStrike ? ' spot' : '') + '" data-strike="' + k + '">' +
+          '<span class="gbs-k">' + px(k, k % 1 ? 2 : 0) + '</span>' +
+          '<span class="gbs-track"><i class="gbs-bar ' + (pos ? 'pos' : 'neg') + '" style="width:' + w.toFixed(1) + '%"></i></span>' +
+          '<span class="gbs-v ' + (pos ? 'pos' : 'neg') + '">' + usd(v) + '</span></div>';
+      });
+      host.innerHTML = '<div class="gbs-top">' + note + '</div>' +
+        '<div class="gbs-scroll"><div class="gbs">' + bars + '</div></div>' +
+        '<div class="gbs-scale"><span class="neg">−' + usd(maxAbs) + '</span><span>0</span><span class="pos">+' + usd(maxAbs) + '</span></div>';
+      host.querySelectorAll('.gbs-row').forEach(function (rr) {
+        rr.addEventListener('click', function () { if (window.EdShell) window.EdShell.setStrike(Number(rr.getAttribute('data-strike'))); });
+      });
+      var sr = host.querySelector('.gbs-row.spot');
+      if (sr && sr.scrollIntoView) sr.scrollIntoView({ block: 'center' });
+    }
+    function impl(tk, signal) {
+      var host = document.getElementById(hostId);
+      if (!stillCtx(tk)) return;
+      return fetch(endpoint + '?ticker=' + encodeURIComponent(tk), { cache: 'no-store', signal: signal })
+        .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+        .then(function (d) { if (stillCtx(tk)) renderIt(host, d, tk); })
+        .catch(function (e) {
+          if (e && e.name === 'AbortError') return;
+          if (stillCtx(tk)) renderIt(host, null, tk);
+        });
+    }
+    var loader = (typeof window !== 'undefined' && window.EdL1SseGuards && window.EdL1SseGuards.makeCoalescedLoader)
+      ? window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return impl(ticker(), signal); })
+      : { trigger: function () { impl(ticker()); }, reset: function () {} };
+    return function load() { if (inSub()) loader.trigger(ticker()); };
+  }
+  var loadVanna = _mkStrikeBar('vanna', '/api/options/vanna-by-strike', 'vnBody', 'vnSrc');
+  var loadCharm = _mkStrikeBar('charm', '/api/options/charm-by-strike', 'chmBody', 'chmSrc');
+
+  // ---------- Structures — contract-safety metadata (operator field-inventory audit) ------
+  // Already-flowing /api/chain fields (multiplier/nonStandard/deliverables/settlementType/
+  // exerciseType/expirationType/lastTradingDay/pennyPilot) that the Chain ladder never
+  // surfaces -- one strike per row, both sides, no new computation, no second fetch shape
+  // (same /api/chain response Chain and Strike Detail already read).
+  function inStructures() {
+    var s = (window.EdShell && window.EdShell.getState()) || {};
+    return s.workspace === 'options' && s.subview === 'structures';
+  }
+  function stillStructuresCtx(tk, exp) {
+    var host = document.getElementById('stBody');
+    return inStructures() && !!host && ticker() === tk &&
+      (exp == null || (window.EdShell && window.EdShell.getExpiry && window.EdShell.getExpiry()) === exp);
+  }
+  function _flag(label, on) { return '<span class="st-flag' + (on ? ' on' : '') + '">' + esc(label) + '</span>'; }
+  // lastTradingDay is native epoch MILLISECONDS (the same convention as quoteTimeInLong/
+  // tradeTimeInLong), not an ISO date string -- reproduced live: String(...).slice(0,10) on
+  // 1789430400000 printed the meaningless digit-string "1789430400", not a date.
+  function fmtEpochMs(ms) {
+    if (ms == null || isNaN(ms)) return '—';
+    var d = new Date(Number(ms));
+    if (isNaN(d.getTime())) return '—';
+    return d.toISOString().slice(0, 10);
+  }
+  // A contract's own optionDeliverablesList is populated for EVERY ordinary equity option
+  // (one entry: 100 shares of the underlying itself) -- reproduced live: a plain SPY monthly
+  // call had a non-empty list and this flag lit for every single row, "DELIVERABLES" on 100%
+  // of a perfectly ordinary chain. The flag now fires only when the deliverable structure
+  // ACTUALLY departs from that routine one-entry/100-units/same-underlying/STOCK shape --
+  // the case this whole Structures tab exists to catch (a merger/spinoff-adjusted contract).
+  function _hasUnusualDeliverables(rep, tk) {
+    var list = rep.optionDeliverablesList;
+    if (!list || !list.length) return false;
+    if (list.length > 1) return true;
+    var d0 = list[0] || {};
+    var plain = d0.assetType === 'STOCK' && Number(d0.deliverableUnits) === 100 &&
+      String(d0.symbol || '').toUpperCase() === String(tk || '').toUpperCase();
+    return !plain;
+  }
+  function renderStructures(host, d, tk) {
+    var src = document.getElementById('stSrc'); if (src) src.textContent = '';
+    var cs = (d && d.contracts) || [];
+    if (!cs.length) {
+      host.innerHTML = '<div class="placeholder"><div class="sm">' +
+        (d ? 'no chain for this expiry' : 'no console serving /api/chain') + '</div></div>';
+      return;
+    }
+    var byStrike = {};
+    cs.forEach(function (c) {
+      var k = Number(c.strikePrice);
+      var b = byStrike[k] || (byStrike[k] = {});
+      b[(c.putCall || '').toUpperCase() === 'PUT' ? 'put' : 'call'] = c;
+    });
+    var strikes = Object.keys(byStrike).map(Number).sort(function (a, b) { return b - a; });
+    var rows = strikes.map(function (k) {
+      var b = byStrike[k], rep = b.call || b.put;   // settlement/exercise/expiration/multiplier are contract-level, same both sides at one strike/expiry
+      var flags = [
+        _flag('NON-STD', rep.nonStandard === true),
+        _flag('PENNY', rep.pennyPilot === true),
+        _flag('ADJUSTED DELIVERABLE', _hasUnusualDeliverables(rep, tk)),
+      ].join('');
+      return '<tr><td class="side">' + px(k, k % 1 ? 2 : 0) + '</td>' +
+        '<td>' + (rep.multiplier == null ? '—' : rep.multiplier) + '</td>' +
+        '<td>' + esc(rep.settlementType || '—') + '</td>' +
+        '<td>' + esc(rep.exerciseType || '—') + '</td>' +
+        '<td>' + esc(rep.expirationType || '—') + '</td>' +
+        '<td>' + fmtEpochMs(rep.lastTradingDay) + '</td>' +
+        '<td>' + flags + '</td></tr>';
+    }).join('');
+    host.innerHTML = '<div class="gbs-scroll"><table class="sd st-tbl">' +
+      '<thead><tr><th>Strike</th><th>Multiplier</th><th>Settlement</th><th>Exercise</th><th>Exp. Type</th><th>Last Trading Day</th><th>Flags</th></tr></thead>' +
+      '<tbody>' + rows + '</tbody></table></div>' +
+      '<div class="sd-src">vendor per-contract · /api/chain — no field here is inferred or defaulted</div>';
+  }
+  function loadStructuresImpl(tk, exp, signal) {
+    var host = document.getElementById('stBody');
+    if (!stillStructuresCtx(tk, exp)) return;
+    var url = '/api/chain?ticker=' + encodeURIComponent(tk) + (exp ? '&expiry=' + encodeURIComponent(exp) : '');
+    return fetch(url, { cache: 'no-store', signal: signal })
+      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+      .then(function (d) { if (stillStructuresCtx(tk, exp)) renderStructures(host, d, tk); })
+      .catch(function (e) {
+        if (e && e.name === 'AbortError') return;
+        if (stillStructuresCtx(tk, exp)) renderStructures(host, null, tk);
+      });
+  }
+  var _structuresLoader = (typeof window !== 'undefined' && window.EdL1SseGuards && window.EdL1SseGuards.makeCoalescedLoader)
+    ? window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadStructuresImpl(ticker(), (window.EdShell && window.EdShell.getExpiry && window.EdShell.getExpiry()), signal); })
+    : { trigger: function () { loadStructuresImpl(ticker(), (window.EdShell && window.EdShell.getExpiry && window.EdShell.getExpiry())); }, reset: function () {} };
+  function loadStructures() { if (inStructures()) _structuresLoader.trigger(); }
+
+  // ---------- Options Flow tape (operator field-inventory audit, 2026-09-13) ------------
+  // The embedded tape widget on the Gamma pane (#ofBody) -- real native trade prints for
+  // whichever contract(s) are currently desired (the same identity Strike Detail's own
+  // _setAdditionalContractsDemand already established), never a fabricated buy/sell side.
+  var OF_CLS_LABEL = { at_bid: 'at bid', at_ask: 'at ask', inside_spread: 'inside',
+    outside_spread_low: 'below bid', outside_spread_high: 'above ask', unknown: '—' };
+  function fmtOfPrice(n) { return (n == null || isNaN(n)) ? '—' : Number(n).toFixed(2); }
+  function fmtOfSize(n) { return (n == null || isNaN(n)) ? '—' : String(n); }
+  function fmtOfTime(tsRecv) {
+    if (tsRecv == null) return '—';
+    var d = new Date(tsRecv * 1000);
+    return d.toLocaleTimeString('en-US', { hour12: false, timeZone: 'America/Chicago' });
+  }
+  function stillOfCtx(tk) { var host = document.getElementById('ofBody'); return isGamma() && !!host && ticker() === tk; }
+  function renderOf(host, d) {
+    var src = document.getElementById('ofSrc'); if (src) src.textContent = '';
+    var rows = (d && d.rows) || [];
+    if (!rows.length) {
+      host.innerHTML = '<table class="of"><thead><tr><th>Time</th><th>Symbol</th><th>Exp</th><th>Type</th><th>Strike</th>' +
+        '<th>Bid×Size</th><th>Ask×Size</th><th>Trade</th><th>Size</th><th>Premium</th>' +
+        '<th>Vol</th><th>OI</th><th>IV%</th><th>Δ</th><th>vs Market</th></tr></thead>' +
+        '<tbody><tr class="of-empty"><td colspan="14"><div class="oe-sub">' +
+        esc((d && d.reason) || 'no console serving /api/options/tape') + '</div></td></tr></tbody></table>';
+      return;
+    }
+    var body = rows.map(function (r) {
+      return '<tr>' +
+        '<td>' + fmtOfTime(r.ts_recv) + '</td>' +
+        '<td class="of-sym">' + esc(r.symbol || '—') + '</td>' +
+        '<td>' + esc(r.expiry ? r.expiry.slice(5) : '—') + '</td>' +
+        '<td>' + esc(r.type || '—') + '</td>' +
+        '<td>' + (r.strike == null ? '—' : px(r.strike, r.strike % 1 ? 2 : 0)) + '</td>' +
+        '<td>' + fmtOfPrice(r.bid) + '×' + fmtOfSize(r.bid_size) + '</td>' +
+        '<td>' + fmtOfPrice(r.ask) + '×' + fmtOfSize(r.ask_size) + '</td>' +
+        '<td>' + fmtOfPrice(r.trade) + '</td>' +
+        '<td>' + fmtOfSize(r.size) + '</td>' +
+        '<td>' + (r.premium == null ? '—' : usd(r.premium)) + '</td>' +
+        '<td>' + fmtVol(r.volume) + '</td>' +
+        '<td>' + fmtOfSize(r.oi) + '</td>' +
+        '<td>' + (r.iv == null ? '—' : Number(r.iv).toFixed(1)) + '</td>' +
+        '<td>' + (r.delta == null ? '—' : Number(r.delta).toFixed(3)) + '</td>' +
+        '<td><span class="of-cls ' + esc(r.classification || 'unknown') + '">' +
+          esc(OF_CLS_LABEL[r.classification] || '—') + '</span></td></tr>';
+    }).join('');
+    host.innerHTML = '<table class="of"><thead><tr><th>Time</th><th>Symbol</th><th>Exp</th><th>Type</th><th>Strike</th>' +
+      '<th>Bid×Size</th><th>Ask×Size</th><th>Trade</th><th>Size</th><th>Premium</th>' +
+      '<th>Vol</th><th>OI</th><th>IV%</th><th>Δ</th><th>vs Market</th></tr></thead><tbody>' + body + '</tbody></table>';
+  }
+  function loadOfImpl(tk, signal) {
+    var host = document.getElementById('ofBody');
+    if (!stillOfCtx(tk)) return;
+    return fetch('/api/options/tape?ticker=' + encodeURIComponent(tk), { cache: 'no-store', signal: signal })
+      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+      .then(function (d) { if (stillOfCtx(tk)) renderOf(host, d); })
+      .catch(function (e) {
+        if (e && e.name === 'AbortError') return;
+        if (stillOfCtx(tk)) renderOf(host, null);
+      });
+  }
+  var _ofLoader = (typeof window !== 'undefined' && window.EdL1SseGuards && window.EdL1SseGuards.makeCoalescedLoader)
+    ? window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadOfImpl(ticker(), signal); })
+    : { trigger: function () { loadOfImpl(ticker()); }, reset: function () {} };
+  function loadOf() { if (isGamma()) _ofLoader.trigger(ticker()); }
+
   // ---------- events ----------
-  function loadAll() { loadLevels(); loadGbs(); loadPcr(); }   // loadPcr is a no-op unless its context changed or it is still warming
+  function loadAll() { loadLevels(); loadGbs(); loadPcr(); loadVanna(); loadCharm(); loadStructures(); loadOf(); }   // loadPcr is a no-op unless its context changed or it is still warming
   document.addEventListener('ed:ticker', function () { resetStrikeDetailForTickerChange(); loadAll(); });
   document.addEventListener('ed:expiry', loadPcr);   // the ratio is scoped to the selected expiry -> re-read for the new context
   document.addEventListener('ed:plane', loadPcr);    // the bundle generation or the market session changed -> identity check
@@ -509,9 +732,15 @@
     var det = e.detail || {};
     applyGbsHighlight();                       // A: sync the GEX-by-strike highlight
     if (det.strike != null) loadStrike(det.strike, det.expiry);
+    // The tape scopes to whichever contract(s) are DESIRED server-side -- that identity is
+    // only current once the streaming demand POST Strike Detail just issued resolves, so a
+    // short delay (not the full ~12s slow-refresh cadence) is a deliberate, disclosed
+    // approximation, not a race: loadOf() itself re-verifies isGamma()/ticker() at the
+    // moment it actually runs, same as every other coalesced loader in this file.
+    if (det.strike != null) setTimeout(loadOf, 600);
   });
   document.addEventListener('ed:expiry', function () {   // #5: expiry filter -> Strike Detail uses it; Levels/GBS stay aggregate + disclose
-    loadLevels(); loadGbs();
+    loadLevels(); loadGbs(); loadStructures();   // Structures is expiry-scoped, same as Chain/Strike Detail
     var sel = ((window.EdShell && window.EdShell.getState()) || {}).selStrike;
     if (sel != null) loadStrike(sel, strikeDetailExpiry());
   });

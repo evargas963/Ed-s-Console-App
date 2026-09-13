@@ -19,6 +19,24 @@
     return sign + '$' + s;
   }
 
+  // ---- compact CONTRACT COUNT (1.0K, 23.1K) — no $ sign: Open Interest and Volume are
+  // contract counts, not dollars, and formatting them through formatUsd (operator
+  // field-inventory audit, 2026-09-13 — reproduced live: the Open Interest heatmap showed
+  // "$1.0K" for 1,206 contracts) misrepresents the unit, not just the label. ----
+  function formatCount(n) {
+    if (n === null || n === undefined || isNaN(n)) return '';
+    var v = Number(n), a = Math.abs(v), sign = v < 0 ? '-' : '';
+    var s;
+    if (a >= 1e9) s = (a / 1e9).toFixed(1) + 'B';
+    else if (a >= 1e6) s = (a / 1e6).toFixed(1) + 'M';
+    else if (a >= 1e3) s = (a / 1e3).toFixed(1) + 'K';
+    else s = a.toFixed(0);
+    return sign + s;
+  }
+  function formatMeasureValue(n, measure) {
+    return (measure === 'oi' || measure === 'volume') ? formatCount(n) : formatUsd(n);
+  }
+
   // ---- theme-aware colour: sign -> green/red, |value|/maxAbs -> intensity, ~0 -> recede.
   //      Fills are SOLID, interpolated from the active theme's heat tokens (zero -> pos/neg), so a
   //      cell reads correctly on ANY background — never dark-mode rgba re-used over a light canvas.
@@ -101,15 +119,35 @@
     return best;
   }
 
+  // Operator field-inventory audit (2026-09-13): the ONE canonical strike x expiry
+  // projection (server.py project_gamma_surface) carries dex/oi/volume per cell alongside
+  // gex, computed by the SAME faucet every gex cell already comes from -- no second
+  // computation. This is the ONE place that picks which of those a render actually reads,
+  // so every consumer (maxAbs, the cell loop, the just-updated flash map) agrees on the
+  // same measure the operator selected, never a mix of measures across the same render.
+  // oi/volume are {call, put} per cell (unlike gex/dex, which are signed dealer-net
+  // dollars) -- summed to a magnitude (call + put) for heatmap coloring, since OI/volume
+  // concentration, not a net dealer sign, is the question those two measures answer.
+  function _measureRow(row, measure) {
+    if (measure === 'oi' || measure === 'volume') {
+      return (row[measure] || []).map(function (cp) {
+        if (!cp) return null;
+        var c = cp.call, p = cp.put;
+        return (c == null && p == null) ? null : (c || 0) + (p || 0);
+      });
+    }
+    return row[measure] || row.gex || [];
+  }
+
   // The per-(strike, expiry) value a PRIOR rendered surface reported, for the
   // just-updated flash below -- {} (nothing "changed") on the very first render, when
   // there is no real prior state to compare against.
-  function _priorValueMap(priorSurface) {
+  function _priorValueMap(priorSurface, measure) {
     var map = {};
     if (!priorSurface) return map;
     var priorExps = priorSurface.expirations || [], priorCells = priorSurface.cells || [];
     priorCells.forEach(function (row) {
-      (row.gex || []).forEach(function (v, j) {
+      _measureRow(row, measure).forEach(function (v, j) {
         var e = priorExps[j];
         if (e) map[row.strike + '|' + e.expiry] = v;
       });
@@ -164,6 +202,9 @@
     // already-computed expiry column(s) to show; it never recomputes a value.
     var expFilter = (ES && ES.getExpiry) ? ES.getExpiry() : null;
     var scope = (ES && ES.getScope) ? ES.getScope() : 'auto';
+    // Operator field-inventory audit (2026-09-13): which of the SAME surface's own
+    // gex/dex/oi/volume fields this render presents -- see _measureRow's own comment.
+    var measure = (ES && ES.getMeasure) ? ES.getMeasure() : 'gex';
     // VIEWPORT (real-data repair 2026-09-10): the canonical surface is served complete (the live SPY
     // reference is 116 strikes x 16 expirations) and the heatmap used to draw ALL of it, collapsing
     // the approved ~11-row workstation into an unreadable dump. The display now SELECTS a viewport:
@@ -392,7 +433,7 @@
     // #1: skip the full table rebuild when the canonical surface REVISION (and the viewport choice)
     // is unchanged (only the age advances between terrain revisions). A theme switch clears
     // _lastRevision so the recolour still rebuilds.
-    var rev = surfaceRevision(surface) + '|' + scope + '|' + viewCols.length;
+    var rev = surfaceRevision(surface) + '|' + scope + '|' + viewCols.length + '|' + measure;
     if (rev === _lastRevision && host.querySelector('.heat')) {
       applyStatus(host, surface); applyStrikeHighlight(host);   // data unchanged: refresh status only
       return;
@@ -401,7 +442,7 @@
     var heat = readHeatColors();
     // maxAbs over DISPLAYED cells — visual normalisation only, not a semantic value
     var maxAbs = 0;
-    rowSel.idx.forEach(function (i) { var r = cells[i] || {}; viewCols.forEach(function (j) { var v = (r.gex || [])[j]; if (v != null && Math.abs(v) > maxAbs) maxAbs = Math.abs(v); }); });
+    rowSel.idx.forEach(function (i) { var r = cells[i] || {}; var mr = _measureRow(r, measure); viewCols.forEach(function (j) { var v = mr[j]; if (v != null && Math.abs(v) > maxAbs) maxAbs = Math.abs(v); }); });
 
     var spotIdx = nearestStrikeIndex(strikes, spot);
     // freshness / source — fail stale visibly (RC-UI-1 live-source rewire)
@@ -451,7 +492,7 @@
     // that separates "this table was rebuilt" from "this specific value just moved" on a
     // grid otherwise indistinguishable before and after a live tick. Never flashes on the
     // very first render (no real prior state exists yet to compare against).
-    var priorValues = _priorValueMap(_priorSurfaceForFlash);
+    var priorValues = _priorValueMap(_priorSurfaceForFlash, measure);
     // Operator finding (2026-09-11): rowSel.idx is ascending-index order into the
     // ascending `strikes` array (scopeSelect's own contract — shared by GEX-by-Strike
     // and other consumers, so it stays ascending there). The heatmap specifically must
@@ -462,11 +503,15 @@
     // `i` exactly as before.
     rowSel.idx.slice().reverse().forEach(function (i) {
       var row = cells[i] || { strike: strikes[i], gex: [] }, isSpot = (i === spotIdx);
+      var mrow = _measureRow(row, measure);
       tbl += '<tr' + (isSpot ? ' class="spotrow"' : '') + '>' +
         '<th class="hstrike' + (isSpot ? ' spot' : '') + '">' + fmtStrike(row.strike) + '</th>';
       for (var jj = 0; jj < viewCols.length; jj++) {
         var j2 = viewCols[jj];
-        var v = (row.gex || [])[j2];
+        // `data-gex` kept as the DOM attribute name for back-compat with existing tests/
+        // tooling that read a heatmap cell's value -- it now holds whichever measure is
+        // selected (gex/dex/oi/volume), not literally GEX specifically.
+        var v = mrow[j2];
         var st = cellStyle(v, maxAbs, heat);
         var priorKey = row.strike + '|' + exps[j2].expiry;
         var justChanged = _priorSurfaceForFlash &&
@@ -475,7 +520,7 @@
           (justChanged ? ' flash-update' : '') +
           '" style="background:' + st.bg + ';color:' + st.fg + '" ' +
           'data-strike="' + row.strike + '" data-expiry="' + escapeHtml(exps[j2].expiry) + '" data-gex="' + (v == null ? '' : v) + '">' +
-          (st.empty ? '' : formatUsd(v)) + '</td>';
+          (st.empty ? '' : formatMeasureValue(v, measure)) + '</td>';
       }
       tbl += '</tr>';
     });
@@ -498,9 +543,21 @@
     var note = (ES && ES.scopeNote) ? ES.scopeNote({ total: strikes.length, shown: rowSel.shown, extra: colsTxt }) : '';
     // the grid fills the panel; a compact vertical magnitude legend sits at its right edge (the
     // dollar value is printed in every cell — shade = |GEX$|), matching the approved reference.
+    // Measure-adaptive legend labels: gex/dex are signed dealer-net measures (call-side
+    // high at top, put-side high at bottom, matching net_gex_1pct/net_dex_dollars' own
+    // +call/-put sign convention); oi/volume are unsigned magnitudes (call+put), so the
+    // legend reads "High"/"Low" concentration instead of a call/put polarity that does
+    // not exist for those two measures.
+    var MEASURE_LEGEND = {
+      gex: ['High<br>Call<br>GEX', 'High<br>Put<br>GEX'],
+      dex: ['High<br>Call<br>DEX', 'High<br>Put<br>DEX'],
+      oi: ['High<br>Open<br>Interest', 'Low<br>Open<br>Interest'],
+      volume: ['High<br>Volume', 'Low<br>Volume'],
+    };
+    var legendPair = MEASURE_LEGEND[measure] || MEASURE_LEGEND.gex;
     var vlegend = '<div class="heat-vlegend"><span class="bar"></span>' +
-      '<span class="caps"><span class="t">High<br>Call<br>GEX</span><span class="m">0</span>' +
-      '<span class="b">High<br>Put<br>GEX</span></span></div>';
+      '<span class="caps"><span class="t">' + legendPair[0] + '</span><span class="m">0</span>' +
+      '<span class="b">' + legendPair[1] + '</span></span></div>';
     host.innerHTML = banner + note +
       '<div class="heat-host"><div class="heat-main"><div class="heat-wrap' + recede + '">' +
       tbl + '</div></div>' + vlegend + '</div>';
@@ -707,9 +764,18 @@
   // fast as the round trip allows, continuously, not only once traffic goes quiet. Context
   // invalidation (ticker/view changed while the fetch was in flight) is now `stillCurrent()`,
   // checked at resolution time instead of inferred from a counter.
+  // Operator field-inventory audit (2026-09-13): dex/oi are the SAME heatmap pane gamma
+  // renders (see state.measure / MEASURE_BY_SUBVIEW in ed-core.js), reached via a
+  // DIFFERENT subview id -- every "am I still looking at the heatmap" check in this file
+  // must recognize all three, or switching to Delta/DEX or Open Interest looks like
+  // "left the heatmap" to this module: `load()`'s own guard bailed out treating it as a
+  // navigate-away (clearing streamed-contract demand and never calling renderSurface at
+  // all), leaving the OLD measure's numbers on screen under the NEW measure's title --
+  // reproduced live: the Open Interest tab showed DEX's own dollar values unchanged.
+  function _isGammaFamilySubview(sv) { return sv === 'gamma' || sv === 'dex' || sv === 'oi'; }
   function stillCurrent(ticker) {
     var s = (window.EdShell && window.EdShell.getState()) || {};
-    return s.workspace === 'options' && s.subview === 'gamma' && s.view === 'heatmap' && (s.ticker || 'SPY') === ticker;
+    return s.workspace === 'options' && _isGammaFamilySubview(s.subview) && s.view === 'heatmap' && (s.ticker || 'SPY') === ticker;
   }
   // Only the actual network fetch is coalesced. The "leaving the heatmap" cleanup below is
   // synchronous and state-authority-visible (it releases streamed-contract demand) -- it must
@@ -742,7 +808,7 @@
     var host = document.getElementById('heatBody');
     if (!host) return;
     var st = (window.EdShell && window.EdShell.getState()) || {};
-    if (st.workspace !== 'options' || st.subview !== 'gamma' || st.view !== 'heatmap') {
+    if (st.workspace !== 'options' || !_isGammaFamilySubview(st.subview) || st.view !== 'heatmap') {
       // Leaving the heatmap: its own streamed-contract demand (see renderSurface) must not
       // keep the last-viewed ticker's contracts subscribed forever once nobody is looking.
       // Runs immediately -- never coalesced behind an in-flight/hung surface fetch.
@@ -769,6 +835,13 @@
       if (_lastSurface) renderSurface(h, _lastSurface); else load();
     });
     document.addEventListener('ed:scope', function () {    // #3: Auto / Wider / All available re-selects the viewport (same canonical surface)
+      var h = document.getElementById('heatBody'); if (!h) return; _lastRevision = null;
+      if (_lastSurface) renderSurface(h, _lastSurface); else load();
+    });
+    // A direct #measureSel change (not a subview switch, which already re-renders via
+    // ed:view) -- the SAME already-fetched surface, presenting a different one of its own
+    // gex/dex/oi/volume fields (see _measureRow's own comment). No refetch needed.
+    document.addEventListener('ed:measure', function () {
       var h = document.getElementById('heatBody'); if (!h) return; _lastRevision = null;
       if (_lastSurface) renderSurface(h, _lastSurface); else load();
     });

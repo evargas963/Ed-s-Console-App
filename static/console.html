@@ -511,6 +511,13 @@
   .sd td.dim{color:var(--ed-ink-4)}
   .sd tr.sd-net td{border-top:1px solid var(--ed-edge);border-bottom:none;color:var(--ed-ink-2);font-weight:600}
   .sd-src{font-family:var(--ed-sans);font-size:10px;color:var(--ed-ink-3);margin-top:8px}
+  /* Structures (contract-safety metadata, operator field-inventory audit) — reuses .sd's
+     table styling; strike is the row label (like .sd td.side), flags are quiet unless ON */
+  .st-tbl td:first-child{text-align:left;font-weight:600}
+  .st-tbl th:first-child{text-align:left}
+  .st-flag{display:inline-block;margin:0 4px 0 0;padding:1px 6px;border-radius:4px;font-size:10px;
+    letter-spacing:.03em;color:var(--ed-ink-4);background:transparent}
+  .st-flag.on{color:var(--ed-warn);background:var(--ed-proxy-bg);border:1px solid var(--ed-warn)}
   /* Levels view (D) — serializes /api/levels; no computation */
   .lv-head{display:flex;justify-content:space-between;font-family:var(--ed-sans);font-size:12px;color:var(--ed-ink-3);padding:2px 2px 9px}
   .lv-head .lv-spot{color:var(--ed-ink-2)}
@@ -540,6 +547,15 @@
   .of .oe-lab{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--ed-ink-3);margin-bottom:8px}
   .of .oe-sub{font-size:11px;color:var(--ed-ink-4);margin-top:10px;max-width:44ch;margin-left:auto;margin-right:auto;line-height:1.5}
   .of .notproven{display:inline-block}
+  /* Options Flow tape rows (operator field-inventory audit, 2026-09-13) — native trade
+     prints; classification is a mechanical bid/ask comparison, never an aggressor side. */
+  .of td{padding:5px 8px;text-align:right;border-bottom:1px solid var(--ed-edge-soft);color:var(--ed-ink)}
+  .of td:first-child,.of td.of-sym{text-align:left}
+  .of td.of-sym{font-weight:600}
+  .of-cls{font-size:9.5px;letter-spacing:.02em;padding:1px 5px;border-radius:3px;color:var(--ed-ink-4)}
+  .of-cls.at_bid{color:var(--ed-neg-ink);background:var(--ed-neg-bg,transparent)}
+  .of-cls.at_ask{color:var(--ed-pos-ink);background:var(--ed-pos-bg,transparent)}
+  .of-cls.outside_spread_low,.of-cls.outside_spread_high{color:var(--ed-warn)}
 
   /* AI drawer */
   #aidrawer{position:fixed;top:0;right:0;bottom:0;width:380px;background:var(--ed-panel);
@@ -631,7 +647,10 @@
       <div class="ctrls">
         <label class="ctrl ctrl-sym" title="Active instrument — type any Schwab symbol and press Enter; the watchlist is not changed"><input id="symInput" list="symList" aria-label="Symbol" autocomplete="off" spellcheck="false" maxlength="13" placeholder="SYMBOL"><datalist id="symList"></datalist></label>
         <label class="ctrl" title="Expiration filter (from /api/expiries)"><select id="expSel" aria-label="Expiration"><option value="">All Expirations</option></select><span class="cv"></span></label>
-        <label class="ctrl" title="Measure"><select id="measureSel" aria-label="Measure"><option value="gex">GEX</option></select><span class="cv"></span></label>
+        <label class="ctrl" title="Measure"><select id="measureSel" aria-label="Measure">
+          <option value="gex">GEX</option><option value="dex">DEX</option>
+          <option value="oi">Open Interest</option><option value="volume">Volume</option>
+        </select><span class="cv"></span></label>
         <div class="scope" id="scopeCtl" hidden title="View window around spot for the chart / GEX-by-strike panels — presentation only, never changes a value">
           <span class="cap">View</span>
           <button class="scbtn on" data-scope="auto">Auto</button>
@@ -725,14 +744,14 @@
               <div class="panel-b" id="gbsBody"><div class="placeholder"><div class="sm">Per-strike net GEX$ around spot from /api/terrain/strikes.</div></div></div>
             </div>
             <div class="panel">
-              <div class="panel-h"><span class="t">Options Flow</span><span class="sub">tape</span>
-                <div class="r"><span class="of-tabs"><button class="of-tab on">All</button><button class="of-tab na" title="not yet implemented">Buys</button><button class="of-tab na" title="not yet implemented">Sells</button></span><span class="prov proxy">PROXY</span></div></div>
+              <div class="panel-h"><span class="t">Options Flow</span><span class="sub">tape · desired contracts</span>
+                <div class="r"><span id="ofSrc"></span><span class="prov native">NATIVE · NO AGGRESSOR SIDE</span></div></div>
               <div class="panel-b" id="ofBody">
-                <table class="of"><thead><tr><th>Time</th><th>Ticker</th><th>Strike</th><th>Exp</th><th>Type</th><th>Size</th><th>Price</th></tr></thead>
-                  <tbody><tr class="of-empty"><td colspan="7">
-                    <div class="oe-lab">SIGNED AGGRESSOR CLASSIFICATION</div>
-                    <div class="notproven">NOT PROVEN</div>
-                    <div class="oe-sub">No canonical row-level signed buys/sells available.</div>
+                <table class="of"><thead><tr><th>Time</th><th>Symbol</th><th>Exp</th><th>Type</th><th>Strike</th>
+                  <th>Bid×Size</th><th>Ask×Size</th><th>Trade</th><th>Size</th><th>Premium</th>
+                  <th>Vol</th><th>OI</th><th>IV%</th><th>Δ</th><th>vs Market</th></tr></thead>
+                  <tbody><tr class="of-empty"><td colspan="14">
+                    <div class="oe-sub">Select a Call or Put contract in Chain — the tape shows its real native trade prints.</div>
                   </td></tr></tbody></table>
               </div>
             </div>
@@ -755,6 +774,42 @@
             <div class="panel-h"><span class="hticker" id="flTicker">SPX</span><span class="t">Options Flow</span>
               <div class="r"><span id="flSrc"></span></div></div>
             <div class="panel-b" id="flowBody"><div class="placeholder"><div class="sm">Options microstructure from /api/order-flow/options-microstructure (real book / depth / imbalance / tape-PROXY / freshness; no fabricated signed flow).</div></div></div>
+          </div>
+        </div>
+
+        <!-- OPTIONS / VANNA subview — dealer vanna exposure by strike (operator field-inventory
+             audit, 2026-09-13). Aggregate-by-strike tier only: Vanna has no per-expiry strike x
+             expiry SURFACE yet (see the Gamma > Multi-Map subview's own note) — this reuses the
+             SAME diverging-bar grammar GEX by Strike already uses, on math_exposure_core's
+             already-canonical call_vanna/put_vanna (RC-211's exact BS-vanna faucet). -->
+        <div class="sub-pane" data-sub-pane="vanna">
+          <div class="panel">
+            <div class="panel-h"><span class="hticker" id="vnTicker">SPX</span><span class="t">Vanna by Strike</span><span class="sub">dealer net vanna · agg all expiries</span>
+              <div class="r"><span id="vnSrc"></span><span class="prov derived">DERIVED</span></div></div>
+            <div class="panel-b" id="vnBody"><div class="placeholder"><div class="sm">Net dealer vanna (call_vanna − put_vanna) per strike from /api/options/vanna-by-strike.</div></div></div>
+          </div>
+        </div>
+
+        <!-- OPTIONS / CHARM subview — dealer charm exposure by strike, the SAME faucet
+             /api/forces's charm_below/charm_above already sum (math_levels.compute_charm_by_strike). -->
+        <div class="sub-pane" data-sub-pane="charm">
+          <div class="panel">
+            <div class="panel-h"><span class="hticker" id="chmTicker">SPX</span><span class="t">Charm by Strike</span><span class="sub">dealer net charm · Δ-shares/day · agg all expiries</span>
+              <div class="r"><span id="chmSrc"></span><span class="prov derived">DERIVED</span></div></div>
+            <div class="panel-b" id="chmBody"><div class="placeholder"><div class="sm">Net dealer charm (call_charm − put_charm) per strike from /api/options/charm-by-strike.</div></div></div>
+          </div>
+        </div>
+
+        <!-- OPTIONS / STRUCTURES subview — contract-safety/identity metadata that is already
+             flowing through every /api/chain contract dict verbatim (operator field-inventory
+             audit, 2026-09-13): multiplier, non-standard/deliverable flags, settlement/exercise/
+             expiration type, last trading day, penny-pilot. Prevents an adjusted or specially-
+             settled contract from silently being treated like an ordinary 100-share monthly. -->
+        <div class="sub-pane" data-sub-pane="structures">
+          <div class="panel">
+            <div class="panel-h"><span class="hticker" id="stTicker">SPX</span><span class="t">Contract Structures</span><span class="sub">non-standard · settlement · exercise · deliverables</span>
+              <div class="r"><span id="stSrc"></span><span class="prov native">CHAIN</span></div></div>
+            <div class="panel-b" id="stBody"><div class="placeholder"><div class="sm">Contract-safety metadata (multiplier, non-standard, deliverables, settlement/exercise/expiration type, last trading day, penny pilot) from /api/chain — vendor-native, never inferred.</div></div></div>
           </div>
         </div>
       </section>
