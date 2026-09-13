@@ -26,28 +26,46 @@
   function host() { return document.getElementById('flowBody'); }
   function set(label) { var el = document.getElementById('flTicker'); if (el) el.textContent = (st().ticker || 'SPY').replace('$', ''); }
 
-  var _gen = 0;
+  // Independent-review finding (2026-09-12, state-authority review), REPRODUCED
+  // ("Flow resurrection"): a ticker switch calls EdStream.clearDesired() then load();
+  // with `desired` now null the old code path returned before ever invalidating a fetch
+  // still in flight for the PRIOR contract, so its late response could still land and
+  // paint under the new ticker's label. Fixed by checking desired identity AT RESOLUTION
+  // time (stillFlow) instead of a generation counter captured at issue time.
+  //
+  // ROOT-CAUSE FIX (2026-09-13, controlled reproduction confirmed): separately, `ed:refresh
+  // {slow}` also fires on every streamed gamma_surface_seq push now, not just the 12s poll
+  // tick; a naive per-call generation counter live-locks (never applies a response) once
+  // pushes outrun the round trip -- see l1_sse_guards.js:makeCoalescedLoader, which every
+  // gamma view module now uses for this same reason.
+  function stillFlow(desired) {
+    var ES = window.EdStream;
+    return isFlow() && ((ES && ES.getDesired && ES.getDesired()) || null) === desired;
+  }
+  // Only the actual microstructure fetch is coalesced. The NONE/REQUESTED/FAILED branches are
+  // synchronous, state-authority-visible renders (no network) and must run the INSTANT load()
+  // is called -- never deferred behind a stale/hung fetch the coalescing loader is still
+  // waiting on. Reproduced exactly this way (2026-09-13): a ticker switch clears `desired` and
+  // must repaint Flow to NONE immediately even while a HUNG microstructure fetch for the OLD
+  // contract is still in flight; wrapping this whole function in the coalescing loader made
+  // that repaint wait for the hung fetch to settle (it never does), so the NONE state never
+  // appeared and the eventual late response was the only thing left to (wrongly) render.
+  function loadImpl(desired) {
+    var h = host();
+    if (!h || !stillFlow(desired)) return;
+    h.setAttribute('aria-busy', 'true');
+    return fetch('/api/order-flow/options-microstructure?contract=' + encodeURIComponent(desired), { cache: 'no-store' })
+      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+      .then(function (d) { if (stillFlow(desired)) render(h, desired, d); })
+      .catch(function () { if (stillFlow(desired)) shell(h, desired, 'DEGRADED', 'no console serving options-microstructure', null); });
+  }
+  var _pendingDesired = null;
+  var _loader = (typeof window !== 'undefined' && window.EdL1SseGuards && window.EdL1SseGuards.makeCoalescedLoader)
+    ? window.EdL1SseGuards.makeCoalescedLoader(function () { return loadImpl(_pendingDesired); })
+    : { trigger: function () { loadImpl(_pendingDesired); }, reset: function () {} };
   function load() {
     var h = host(); if (!h || !isFlow()) return;
     set();
-    // Independent-review finding (2026-09-12, state-authority review), REPRODUCED
-    // ("Flow resurrection"): `_gen` used to be bumped only on the branch that actually
-    // dispatches a new fetch (below), which requires `desired != null && ctl ===
-    // 'accepted'`. A ticker switch calls EdStream.clearDesired() then load(): `desired`
-    // is now null, so load() returned at the very next line WITHOUT ever bumping
-    // `_gen` -- an in-flight fetch for the OLD ticker's contract (still holding the
-    // OLD `g === _gen`) stayed "current" through the switch and through the new
-    // ticker's own 'requested'/'failed' states (which ALSO return before reaching the
-    // bump). Reproduced exactly: PLTR contract active, switch to AMD (clears desired,
-    // AMD's own POST still in flight) -> PLTR's delayed response arrives -> `g ===
-    // _gen` still true -> render() paints PLTR's bid/ACTIVE badge under the AMD
-    // ticker label already written by set() above. Every OTHER subview here
-    // (ed-gamma-chain.js, ed-gamma-chart.js, ed-gamma-levels.js) bumps its own `_gen`
-    // unconditionally at the top of `load()`, before any state-dependent early
-    // return -- Flow is fixed to match: the generation must advance on every call
-    // that could invalidate a prior fetch's relevance, not only on the call that
-    // itself dispatches a new one.
-    var g = ++_gen;
     var ES = window.EdStream;
     var desired = (ES && ES.getDesired && ES.getDesired()) || null;
     var ctl = (ES && ES.controlState && ES.controlState()) || 'none';
@@ -55,11 +73,8 @@
     if (ctl === 'requested') { return shell(h, desired, 'REQUESTED', 'control request sent — awaiting acknowledgement', null); }
     if (ctl === 'failed') { return shell(h, desired, 'FAILED', 'control request was not accepted — no observation started', null); }
     // I: only an ACCEPTED control request begins normal microstructure observation.
-    h.setAttribute('aria-busy', 'true');
-    fetch('/api/order-flow/options-microstructure?contract=' + encodeURIComponent(desired), { cache: 'no-store' })
-      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
-      .then(function (d) { if (g === _gen) render(h, desired, d); })
-      .catch(function () { if (g === _gen) shell(h, desired, 'DEGRADED', 'no console serving options-microstructure', null); });
+    _pendingDesired = desired;
+    _loader.trigger();
   }
 
   // subscription state from the CANONICAL producer truth (EdStream.status over the payload's plane).

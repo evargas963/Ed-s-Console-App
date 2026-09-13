@@ -112,4 +112,78 @@ assert.strictEqual(G.l1ApplyTierBLightMonotonic(sk, 5, gen5, 200, ts5), true);
 assert.strictEqual(G.l1ApplyTierBLightMonotonic(sk, 5, gen5, 201, ts5), true);
 assert.strictEqual(ts5[sk], 201);
 
+// makeCoalescedLoader (RC-UI-1 round 7, 2026-09-13) — the fix for a controlled, measured
+// production failure: server.py's gamma_surface_seq SSE push fires on every streamed
+// publish, dispatched client-side as the SAME `ed:refresh{slow}` event the 12s poll tick
+// uses. Every gamma view module's load() bumped a per-call generation counter and only
+// applied a response whose generation still matched on arrival — correct for invalidating
+// a stale context, but once triggers arrive faster than the round trip, NO response's
+// generation ever survives, so the display freezes until traffic stops. Reproduced with real
+// numbers: 500ms triggers against a 750ms round trip left the heatmap showing $1,000 while
+// incoming values had already advanced past $7,000, updating only once the pushes stopped.
+assert(typeof G.makeCoalescedLoader === 'function', 'makeCoalescedLoader missing');
+{
+  let calls = 0;
+  let resolvers = [];
+  function run() { calls++; return new Promise((res) => { resolvers.push(res); }); }
+  const loader = G.makeCoalescedLoader(run);
+
+  loader.trigger();
+  assert.strictEqual(calls, 1, 'first trigger starts a call immediately');
+
+  // The exact defect: a burst of triggers arrives while the one call is still in flight
+  // (this is what "notifications every 500ms, response takes 750ms" looks like). A naive
+  // per-trigger fetch would start 3 more overlapping calls here (and orphan the first).
+  loader.trigger();
+  loader.trigger();
+  loader.trigger();
+  assert.strictEqual(calls, 1, 'triggers arriving mid-flight must not start overlapping calls');
+
+  // Settling the in-flight call must apply immediately AND fire exactly one trailing call —
+  // the burst is coalesced to one, never dropped (freeze) and never replayed per-trigger
+  // (pile-up).
+  resolvers[0]();
+  await Promise.resolve(); await Promise.resolve();
+  assert.strictEqual(calls, 2, 'a coalesced burst must fire exactly one trailing call, not zero (freeze) and not three (pile-up)');
+
+  resolvers[1]();
+  await Promise.resolve(); await Promise.resolve();
+  assert.strictEqual(calls, 2, 'no trigger arrived mid-flight this time -> settling must not spawn a third call');
+
+  // Once fully idle, a fresh trigger starts immediately — nothing is left permanently stuck.
+  loader.trigger();
+  assert.strictEqual(calls, 3, 'idle loader answers the next trigger immediately');
+  resolvers[2]();
+  await Promise.resolve();
+}
+{
+  // Direct reproduction of the measured scenario: 6 triggers fired back-to-back (modelling
+  // pushes ~500ms apart) against one slow (~750ms) load. The failure this fixes made EVERY
+  // one of these triggers' responses arrive too late to apply — this must instead make
+  // exactly ONE call, then exactly one trailing call, then go idle: bounded work, nothing
+  // dropped, no permanent freeze.
+  let calls = 0;
+  let resolvers = [];
+  function run() { calls++; return new Promise((res) => { resolvers.push(res); }); }
+  const loader = G.makeCoalescedLoader(run);
+  for (let i = 0; i < 6; i++) loader.trigger();
+  assert.strictEqual(calls, 1, 'a burst of triggers only ever starts ONE call');
+  resolvers[0]();
+  await Promise.resolve(); await Promise.resolve();
+  assert.strictEqual(calls, 2, 'the burst coalesces to exactly one trailing call once the first settles');
+  resolvers[1]();
+  await Promise.resolve(); await Promise.resolve();
+  assert.strictEqual(calls, 2, 'traffic stopped -> the loader goes idle instead of chasing a phantom third call');
+}
+{
+  // A run() that throws synchronously must still settle (and honor a coalesced trailing
+  // trigger) rather than wedging the loader in "in flight" forever.
+  let calls = 0;
+  function run() { calls++; if (calls === 1) throw new Error('boom'); return null; }
+  const loader = G.makeCoalescedLoader(run);
+  assert.throws(() => loader.trigger(), /boom/);
+  loader.trigger();
+  assert.strictEqual(calls, 2, 'a synchronous throw must still settle the loader, not wedge it in-flight forever');
+}
+
 console.log('l1_sse_guards_node: ok');

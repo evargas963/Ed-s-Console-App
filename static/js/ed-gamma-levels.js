@@ -14,17 +14,24 @@
   }
   function ticker() { return ((window.EdShell && window.EdShell.getState()) || {}).ticker || 'SPY'; }
 
-  var _gen = 0;
-  function load() {
+  // Coalesced load (see l1_sse_guards.js:makeCoalescedLoader) -- `ed:refresh{slow}` also
+  // fires on every streamed gamma_surface_seq push, not just the 12s poll tick; a naive
+  // per-call generation counter live-locks once pushes outrun the round trip. Context
+  // invalidation is `stillLevels()`, checked at resolution time.
+  function stillLevels(tk) { return isLevels() && ticker() === tk; }
+  function loadImpl() {
     var host = document.getElementById('levelsBody');
     if (!host || !isLevels()) return;
-    var g = ++_gen, tk = ticker();
+    var tk = ticker();
     host.setAttribute('aria-busy', 'true');
-    fetch('/api/levels?ticker=' + encodeURIComponent(tk), { cache: 'no-store' })
+    return fetch('/api/levels?ticker=' + encodeURIComponent(tk), { cache: 'no-store' })
       .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
-      .then(function (d) { if (g === _gen) render(host, d); })
-      .catch(function () { if (g === _gen) host.innerHTML = '<div class="placeholder"><div class="sm">no console serving /api/levels</div></div>'; });
+      .then(function (d) { if (stillLevels(tk)) render(host, d); })
+      .catch(function () { if (stillLevels(tk)) host.innerHTML = '<div class="placeholder"><div class="sm">no console serving /api/levels</div></div>'; });
   }
+  var _loader = (typeof window !== 'undefined' && window.EdL1SseGuards && window.EdL1SseGuards.makeCoalescedLoader)
+    ? window.EdL1SseGuards.makeCoalescedLoader(loadImpl) : { trigger: loadImpl, reset: function () {} };
+  function load() { _loader.trigger(); }
 
   function render(host, d) {
     var levels = (d && d.levels) || [];

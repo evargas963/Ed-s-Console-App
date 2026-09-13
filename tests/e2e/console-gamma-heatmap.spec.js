@@ -248,6 +248,68 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     expect(surfaceCalls).toBeGreaterThanOrEqual(2);
   });
 
+  test('a burst of pushes faster than the round trip converges the display live, not only once the pushes stop (2026-09-13 controlled reproduction)', async ({ page }) => {
+    // Operator-reported controlled failure, reproduced then fixed: refresh notifications
+    // (server.py's gamma_surface_seq push, dispatched client-side as `ed:refresh{slow,
+    // pushed}`) arriving every ~500ms against a measured ~750ms round trip left the heatmap
+    // frozen at its FIRST value while incoming values advanced far past it -- the display
+    // only updated once the notifications stopped. Root cause: ed-gamma.js's load() bumped
+    // a per-call generation counter on every push and only applied a response whose
+    // generation still matched on arrival; once pushes outran the round trip, no response's
+    // generation ever survived long enough to be applied -- a live-lock, not mere staleness.
+    // Fixed with a coalescing loader (l1_sse_guards.js:makeCoalescedLoader): at most one
+    // fetch in flight, a push arriving mid-flight coalesces into exactly one trailing
+    // re-fetch, so the table keeps converging toward the latest surface DURING the burst.
+    let call = 0;
+    await page.route('**/api/options/gamma-surface**', async (route) => {
+      call += 1;
+      const value = call * 1000;
+      await new Promise((r) => setTimeout(r, 750));   // the measured round trip
+      route.fulfill({
+        status: 200, contentType: 'application/json',
+        body: JSON.stringify(Object.assign({}, SURFACE, {
+          strikes: [583], expirations: [{ expiry: '2026-09-11', dte: 2 }],
+          cells: [{ strike: 583, gex: [value] }],
+          surface_seq: call,
+        })),
+      });
+    });
+    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    const cell = page.locator('.hcell[data-strike="583"][data-expiry="2026-09-11"]');
+    await expect(cell).toHaveText('$1.0K');   // the initial render (call 1)
+
+    // The measured cadence: a push every 500ms (inside the 750ms round trip) for 3s -- long
+    // enough that several pushes land while a fetch is still outstanding, exactly the
+    // condition that live-locked the old generation-counter guard. The mid-burst read below
+    // is a single instantaneous DOM snapshot (`textContent()`, no auto-retry) taken WHILE
+    // traffic is still arriving -- unlike `expect(...).not.toHaveText(...)`, which polls for
+    // up to its own timeout and would eventually pass even under the live-lock once the
+    // final, unopposed push resolves after traffic quiets. A snapshot mid-burst is the only
+    // way to actually distinguish "frozen through the whole burst" from "kept converging".
+    for (let i = 0; i < 6; i++) {
+      await page.waitForTimeout(500);
+      await page.evaluate(() => document.dispatchEvent(
+        new CustomEvent('ed:refresh', { detail: { slow: true, pushed: true } })));
+      if (i === 2) {
+        // Traffic is still actively arriving here (3 more pushes still queued below) --
+        // the pre-fix code stayed at $1.0K through the entire burst, discarding every
+        // intervening response because a newer push always beat it to `_gen`.
+        const midBurstText = await cell.textContent();
+        expect(midBurstText, 'display must already be tracking updates mid-burst, not frozen at its starting value').not.toBe('$1.0K');
+      }
+    }
+
+    // Traffic has stopped. Convergence to whatever value the burst actually produced last
+    // must not require anything beyond the loader's own bounded trailing re-fetch chain --
+    // never "wait for the next unrelated 12s refresh cycle". `call` (this closure's own
+    // request counter) names the exact value the surface last settled on, whatever the real
+    // coalescing schedule produced -- the claim under test is convergence and correctness,
+    // not a specific call count.
+    await page.waitForTimeout(2200);   // generous settle margin: >= 2 round trips
+    const finalText = await cell.textContent();
+    expect(finalText).toBe('$' + call.toFixed(1) + 'K');
+  });
+
   test('GEX-by-strike displays each row\'s own session volume, not just signed GEX$ (RC-UI-2 finding #5a)', async ({ page }) => {
     // Independent-review finding (2026-09-12), REPRODUCED: "GEX-by-strike does not display its
     // row's volume field" -- terrain_engine._per_strike_rows' own shape is

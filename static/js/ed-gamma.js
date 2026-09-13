@@ -296,7 +296,7 @@
     return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]; }); }
 
   // ---- fetch + render, guarded (latest-wins) ----
-  var _gen = 0, _lastSurface = null, _lastRevision = null;
+  var _lastSurface = null, _lastRevision = null;
 
   // server-owned revision identity — the cells are identical while these are unchanged, so we can
   // skip the full table rebuild. Not a semantic client fingerprint of the data; just the canonical
@@ -385,33 +385,59 @@
       el.title = (surface.coverage && surface.coverage.note) || '';
     }
   }
+  // ROOT-CAUSE FIX (2026-09-13, controlled reproduction confirmed): server.py pushes a
+  // `gamma_surface_seq` SSE event on EVERY streamed publish (ed-core.js dispatches it as
+  // `ed:refresh{slow:true, pushed:true}`) -- unboundedly frequent, not the 12s slow-poll
+  // cadence this handler was written against. The old guard bumped `_gen` on every call and
+  // only applied a response whose generation still matched on arrival: correct for
+  // invalidating a stale ticker/view, but fatal once pushes arrive faster than the ~fetch
+  // round trip -- a newer call always bumps `_gen` before the older fetch can land, so NO
+  // response's generation ever survives, and the heatmap freezes until pushes stop (measured:
+  // 500ms triggers vs a 750ms round trip left cells at their starting value while incoming
+  // values advanced far past it). Fixed with EdL1SseGuards.makeCoalescedLoader: at most one
+  // fetch in flight, a trigger that arrives mid-flight coalesces into exactly one trailing
+  // re-run (never dropped, never piled up) -- so the table converges to the latest surface as
+  // fast as the round trip allows, continuously, not only once traffic goes quiet. Context
+  // invalidation (ticker/view changed while the fetch was in flight) is now `stillCurrent()`,
+  // checked at resolution time instead of inferred from a counter.
+  function stillCurrent(ticker) {
+    var s = (window.EdShell && window.EdShell.getState()) || {};
+    return s.workspace === 'options' && s.subview === 'gamma' && s.view === 'heatmap' && (s.ticker || 'SPY') === ticker;
+  }
+  // Only the actual network fetch is coalesced. The "leaving the heatmap" cleanup below is
+  // synchronous and state-authority-visible (it releases streamed-contract demand) -- it must
+  // run the INSTANT the view changes, every time load() is called, never deferred behind a
+  // stale/hung fetch the coalescing loader happens to still be waiting on (state-authority
+  // review, 2026-09-13: reproduced exactly this way in ed-gamma-flow.js's analogous "clear
+  // intent" branch — see that file's stillFlow fix for the identical class of bug).
+  function loadImpl(ticker) {
+    var host = document.getElementById('heatBody');
+    if (!host || !stillCurrent(ticker)) return;
+    host.setAttribute('aria-busy', 'true');
+    return fetch('/api/options/gamma-surface?ticker=' + encodeURIComponent(ticker), { cache: 'no-store' })
+      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+      .then(function (d) { if (stillCurrent(ticker)) renderSurface(host, d); })
+      .catch(function () { if (stillCurrent(ticker)) renderSurface(host, { available: false, reason: 'no console serving /api/options/gamma-surface' }); });
+  }
+  var _pendingTicker = null;
+  var _loader = (typeof window !== 'undefined' && window.EdL1SseGuards && window.EdL1SseGuards.makeCoalescedLoader)
+    ? window.EdL1SseGuards.makeCoalescedLoader(function () { return loadImpl(_pendingTicker); })
+    : { trigger: function () { loadImpl(_pendingTicker); }, reset: function () {} };
   function load() {
     var host = document.getElementById('heatBody');
     if (!host) return;
-    // Independent-review finding (2026-09-12, state-authority review), REPRODUCED: this
-    // generation bump used to run AFTER the workspace/view check below -- a ticker switch
-    // while the heatmap was hidden (a different workspace/view) never invalidated an
-    // in-flight fetch for the OLD ticker, so its late response could still pass `mygen
-    // === _gen` and paint the wrong ticker's surface into #heatBody (and _lastSurface)
-    // the instant the operator returned to the heatmap. Every OTHER subview here already
-    // bumps its own generation unconditionally, before any early return (Chain/Chart/
-    // Levels) -- the heatmap is fixed to match.
-    var mygen = ++_gen;
     var st = (window.EdShell && window.EdShell.getState()) || {};
     if (st.workspace !== 'options' || st.subview !== 'gamma' || st.view !== 'heatmap') {
       // Leaving the heatmap: its own streamed-contract demand (see renderSurface) must not
       // keep the last-viewed ticker's contracts subscribed forever once nobody is looking.
+      // Runs immediately -- never coalesced behind an in-flight/hung surface fetch.
       if (window.EdStream && window.EdStream.setAdditionalContracts) {
         window.EdStream.setAdditionalContracts([], 'heatmap');
       }
       return;
     }
-    var ticker = st.ticker || 'SPY';
-    host.setAttribute('aria-busy', 'true');
-    fetch('/api/options/gamma-surface?ticker=' + encodeURIComponent(ticker), { cache: 'no-store' })
-      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
-      .then(function (d) { if (mygen === _gen) renderSurface(host, d); })
-      .catch(function () { if (mygen === _gen) renderSurface(host, { available: false, reason: 'no console serving /api/options/gamma-surface' }); });
+    _pendingTicker = st.ticker || 'SPY';
+    _loader.trigger();
   }
 
   if (typeof document !== 'undefined') {

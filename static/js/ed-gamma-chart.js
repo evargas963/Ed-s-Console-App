@@ -19,24 +19,34 @@
   function isChart(){var s=(window.EdShell&&window.EdShell.getState())||{};return s.workspace==='options'&&s.subview==='gamma'&&s.view==='chart';}
   function ticker(){return((window.EdShell&&window.EdShell.getState())||{}).ticker||'SPY';}
 
-  var _mode = 'profile', _gen = 0;
+  var _mode = 'profile';
   var COL = { pos: 'var(--ed-pos)', neg: 'var(--ed-neg)', spot: 'var(--ed-ink)', flip: 'var(--ed-accent)',
     call: 'var(--ed-neg)', put: 'var(--ed-pos)', axis: 'var(--ed-edge)', ink3: 'var(--ed-ink-3)' };
 
-  function load() {
+  // Coalesced load (see l1_sse_guards.js:makeCoalescedLoader) -- required because
+  // `ed:refresh{slow}` now also fires on every streamed gamma_surface_seq push (ed-core.js),
+  // not just the 12s poll tick; a naive per-call generation counter live-locks (never applies
+  // a response) once pushes arrive faster than this 3-endpoint round trip. Ticker/view
+  // changed mid-flight is checked at resolution time (stillChart), not inferred from a
+  // counter.
+  function stillChart(tk) { return isChart() && ticker() === tk; }
+  function loadImpl() {
     var host = document.getElementById('chartBody');
     if (!host || !isChart()) return;
-    var g = ++_gen, tk = ticker();
+    var tk = ticker();
     host.setAttribute('aria-busy', 'true');
-    Promise.all([
+    return Promise.all([
       fetch('/api/bars1m?ticker=' + encodeURIComponent(tk) + '&limit=180', { cache: 'no-store' }).then(okJson).catch(nullp),
       fetch('/api/terrain/strikes?ticker=' + encodeURIComponent(tk), { cache: 'no-store' }).then(okJson).catch(nullp),
       fetch('/api/terrain?ticker=' + encodeURIComponent(tk), { cache: 'no-store' }).then(okJson).catch(nullp),
     ]).then(function (res) {
-      if (g !== _gen) return;
+      if (!stillChart(tk)) return;
       render(host, res[0], res[1], res[2]);
     });
   }
+  var _loader = (typeof window !== 'undefined' && window.EdL1SseGuards && window.EdL1SseGuards.makeCoalescedLoader)
+    ? window.EdL1SseGuards.makeCoalescedLoader(loadImpl) : { trigger: loadImpl, reset: function () {} };
+  function load() { _loader.trigger(); }
   function okJson(r){ if(!r.ok) throw new Error(r.status); return r.json(); }
   function nullp(){ return null; }
 

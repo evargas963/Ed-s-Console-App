@@ -28,19 +28,28 @@
           live: !!m.live, ref: !!m.ref, title: 'chain scope: ' + kind }) : '';
   }
 
-  var _gen = 0;
-  function load() {
+  function curExpiry() { return (window.EdShell && window.EdShell.getExpiry && window.EdShell.getExpiry()) || null; }
+  // Coalesced load (see l1_sse_guards.js:makeCoalescedLoader) -- `ed:refresh{slow}` also
+  // fires on every streamed gamma_surface_seq push, not just the 12s poll tick; a naive
+  // per-call generation counter live-locks once pushes outrun the round trip. Context
+  // invalidation (ticker or expiry filter changed mid-flight) is `stillChain()`, checked at
+  // resolution time.
+  function stillChain(tk, exp) { return isChain() && (st().ticker || 'SPY') === tk && curExpiry() === exp; }
+  function loadImpl() {
     var host = document.getElementById('chainBody');
     if (!host || !isChain()) return;
-    var g = ++_gen, tk = st().ticker || 'SPY';
-    var exp = (window.EdShell && window.EdShell.getExpiry && window.EdShell.getExpiry()) || null;
+    var tk = st().ticker || 'SPY';
+    var exp = curExpiry();
     var tkEl = document.getElementById('chTicker'); if (tkEl) tkEl.textContent = tk.replace('$', '');
     host.setAttribute('aria-busy', 'true');
-    fetch('/api/chain?ticker=' + encodeURIComponent(tk) + (exp ? '&expiry=' + encodeURIComponent(exp) : ''), { cache: 'no-store' })
+    return fetch('/api/chain?ticker=' + encodeURIComponent(tk) + (exp ? '&expiry=' + encodeURIComponent(exp) : ''), { cache: 'no-store' })
       .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
-      .then(function (d) { if (g === _gen) render(host, d); })
-      .catch(function () { if (g === _gen) host.innerHTML = '<div class="placeholder"><div class="sm">no console serving /api/chain</div></div>'; });
+      .then(function (d) { if (stillChain(tk, exp)) render(host, d); })
+      .catch(function () { if (stillChain(tk, exp)) host.innerHTML = '<div class="placeholder"><div class="sm">no console serving /api/chain</div></div>'; });
   }
+  var _loader = (typeof window !== 'undefined' && window.EdL1SseGuards && window.EdL1SseGuards.makeCoalescedLoader)
+    ? window.EdL1SseGuards.makeCoalescedLoader(loadImpl) : { trigger: loadImpl, reset: function () {} };
+  function load() { _loader.trigger(); }
 
   function render(host, d) {
     setSrc(d);

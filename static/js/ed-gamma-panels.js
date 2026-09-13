@@ -43,15 +43,21 @@
   };
 
   // ---------- Key Levels rail ----------
-  var _lgen = 0;
-  function loadLevels() {
+  // Coalesced load (see l1_sse_guards.js:makeCoalescedLoader) -- `ed:refresh{slow}` also
+  // fires on every streamed gamma_surface_seq push, not just the 12s poll tick; a naive
+  // per-call generation counter live-locks once pushes outrun the round trip.
+  function stillLevelsCtx(tk) { return isGamma() && !!document.getElementById('klSpot') && ticker() === tk; }
+  function loadLevelsImpl() {
     if (!isGamma() || !document.getElementById('klSpot')) return;
-    var g = ++_lgen, tk = ticker();
-    fetch('/api/terrain?ticker=' + encodeURIComponent(tk), { cache: 'no-store' })
+    var tk = ticker();
+    return fetch('/api/terrain?ticker=' + encodeURIComponent(tk), { cache: 'no-store' })
       .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
-      .then(function (d) { if (g === _lgen) renderLevels(d); })
-      .catch(function () { if (g === _lgen) renderLevels(null); });
+      .then(function (d) { if (stillLevelsCtx(tk)) renderLevels(d); })
+      .catch(function () { if (stillLevelsCtx(tk)) renderLevels(null); });
   }
+  var _levelsLoader = (typeof window !== 'undefined' && window.EdL1SseGuards && window.EdL1SseGuards.makeCoalescedLoader)
+    ? window.EdL1SseGuards.makeCoalescedLoader(loadLevelsImpl) : { trigger: loadLevelsImpl, reset: function () {} };
+  function loadLevels() { _levelsLoader.trigger(); }
   function renderLevels(d) {
     var ids = ['klSpot', 'klFlip', 'klCall', 'klPut', 'klAbs', 'klPeak', 'klNet', 'klRegime'];   // klPcr: analytics plane, own reader below
     if (!d || d.error) {
@@ -123,7 +129,7 @@
   //   * ticker / expiry change -> re-read (new context).
   // While the analytics plane is warming (pending shell) the bounded re-read rides the slow tick.
   // /api/analytics/state is cache-first (stale-while-refresh); this never polls it per tick.
-  var _pcrGen = 0, _pcrKey = null, _pcrPending = false, _pcrTries = 0, PCR_MAX_TRIES = 10;
+  var _pcrKey = null, _pcrPending = false, _pcrTries = 0, PCR_MAX_TRIES = 10;
   var _pcrVer = null, _pcrSession = null;        // identity of the value currently displayed
   function expiryFilter() { return (window.EdShell && window.EdShell.getExpiry && window.EdShell.getExpiry()) || ''; }
   function plane() { return (window.EdShell && window.EdShell.getPlane && window.EdShell.getPlane()) || {}; }
@@ -131,7 +137,16 @@
     txt('klPcr', v == null ? '—' : Number(v).toFixed(2));   // formatting only
     txt('klPcrScope', scope || '');
   }
-  function loadPcr() {
+  // Coalesced load (see l1_sse_guards.js:makeCoalescedLoader) -- `ed:refresh{slow}` also
+  // fires on every streamed gamma_surface_seq push, not just the 12s poll tick, so this can
+  // be invoked far more often than its own round trip; without coalescing, two overlapping
+  // fetches could both see the pre-update identity (newGen) and race, each orphaning the
+  // other's generation counter. The identity dedup below (newContext/newGen/newSession/retry)
+  // is unchanged -- it decides WHETHER a read is needed at all; coalescing only ensures at
+  // most one is ever in flight, and re-evaluates that decision fresh (against
+  // possibly-just-updated _pcrVer/_pcrSession) for any trigger that arrived mid-flight.
+  function stillPcrCtx(tk, ex) { return isGamma() && !!document.getElementById('klPcr') && ticker() === tk && expiryFilter() === ex; }
+  function loadPcrImpl() {
     if (!isGamma() || !document.getElementById('klPcr')) return;
     var tk = ticker(), ex = expiryFilter(), key = tk + '|' + ex, pl = plane();
     var newContext = key !== _pcrKey;
@@ -144,11 +159,10 @@
     if (newContext) { _pcrKey = key; _pcrTries = 0; _pcrPending = false; _pcrVer = null; _pcrSession = null; paintPcr(null, 'warming'); }
     if (newGen || newSession) { _pcrTries = 0; }
     _pcrTries++;
-    var g = ++_pcrGen;
-    fetch('/api/analytics/state?ticker=' + encodeURIComponent(tk) + (ex ? '&expiry=' + encodeURIComponent(ex) : ''), { cache: 'no-store' })
+    return fetch('/api/analytics/state?ticker=' + encodeURIComponent(tk) + (ex ? '&expiry=' + encodeURIComponent(ex) : ''), { cache: 'no-store' })
       .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
       .then(function (d) {
-        if (g !== _pcrGen) return;
+        if (!stillPcrCtx(tk, ex)) return;
         // the identity this response answers for: its own generation (falls back to the plane's
         // when the response carries none) and the session it was read under
         var pn = plane(), pnSame = pn.ticker === tk && (pn.expiry || '') === ex;
@@ -160,20 +174,29 @@
         if (d.pcr_val == null) { paintPcr(null, 'unavailable'); return; }
         paintPcr(d.pcr_val, 'OI · exp ' + (d.selected_exp || '—'));
       })
-      .catch(function () { if (g === _pcrGen) { _pcrPending = true; paintPcr(null, 'offline'); } });
+      .catch(function () { if (stillPcrCtx(tk, ex)) { _pcrPending = true; paintPcr(null, 'offline'); } });
   }
+  var _pcrLoader = (typeof window !== 'undefined' && window.EdL1SseGuards && window.EdL1SseGuards.makeCoalescedLoader)
+    ? window.EdL1SseGuards.makeCoalescedLoader(loadPcrImpl) : { trigger: loadPcrImpl, reset: function () {} };
+  function loadPcr() { _pcrLoader.trigger(); }
 
   // ---------- GEX by Strike ----------
-  var _ggen = 0;
-  function loadGbs() {
+  // Coalesced load (see l1_sse_guards.js:makeCoalescedLoader) -- `ed:refresh{slow}` also
+  // fires on every streamed gamma_surface_seq push, not just the 12s poll tick; a naive
+  // per-call generation counter live-locks once pushes outrun the round trip.
+  function stillGbsCtx(tk) { var host = document.getElementById('gbsBody'); return isGamma() && !!host && ticker() === tk; }
+  function loadGbsImpl() {
     var host = document.getElementById('gbsBody');
     if (!isGamma() || !host) return;
-    var g = ++_ggen, tk = ticker();
-    fetch('/api/terrain/strikes?ticker=' + encodeURIComponent(tk), { cache: 'no-store' })
+    var tk = ticker();
+    return fetch('/api/terrain/strikes?ticker=' + encodeURIComponent(tk), { cache: 'no-store' })
       .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
-      .then(function (d) { if (g === _ggen) renderGbs(host, d); })
-      .catch(function () { if (g === _ggen) renderGbs(host, null); });
+      .then(function (d) { if (stillGbsCtx(tk)) renderGbs(host, d); })
+      .catch(function () { if (stillGbsCtx(tk)) renderGbs(host, null); });
   }
+  var _gbsLoader = (typeof window !== 'undefined' && window.EdL1SseGuards && window.EdL1SseGuards.makeCoalescedLoader)
+    ? window.EdL1SseGuards.makeCoalescedLoader(loadGbsImpl) : { trigger: loadGbsImpl, reset: function () {} };
+  function loadGbs() { _gbsLoader.trigger(); }
   var SRC_LABEL = { terrain_live_cache: 'terrain live' };
   function srcLabel(s) {
     if (!s) return '';
@@ -288,17 +311,31 @@
   }
 
   // ---------- Strike Detail ----------
-  var _sgen = 0, _lastExpiry = null;
-  function loadStrike(strike, expiry) {
-    var host = document.getElementById('sdBody');
-    if (!host) return;
-    var g = ++_sgen, tk = ticker();
-    var q = '/api/chain?ticker=' + encodeURIComponent(tk) + (expiry ? '&expiry=' + encodeURIComponent(expiry) : '');
-    fetch(q, { cache: 'no-store' })
-      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
-      .then(function (d) { if (g === _sgen) renderStrike(host, d, strike, expiry); })
-      .catch(function () { if (g === _sgen) host.innerHTML = '<div class="placeholder"><div class="sm">no console serving /api/chain</div></div>'; });
+  var _lastExpiry = null;
+  // Coalesced load (see l1_sse_guards.js:makeCoalescedLoader) -- `ed:refresh{slow}` also
+  // fires on every streamed gamma_surface_seq push, not just the 12s poll tick; a naive
+  // per-call generation counter live-locks once pushes outrun the round trip. loadStrike()
+  // callers pass the desired (strike, expiry) explicitly (like EdStream's desired-contract
+  // pattern elsewhere): the coalescing loader always re-fetches the CURRENT desired pair, so
+  // a burst of loadStrike() calls for different strikes converges on the latest one, never a
+  // stale one landing after it.
+  var _sdDesired = { strike: null, expiry: null };
+  function stillStrikeCtx(tk, strike, expiry) {
+    return ticker() === tk && _sdDesired.strike === strike && _sdDesired.expiry === expiry;
   }
+  function loadStrikeImpl() {
+    var host = document.getElementById('sdBody');
+    if (!host || _sdDesired.strike == null) return;
+    var strike = _sdDesired.strike, expiry = _sdDesired.expiry, tk = ticker();
+    var q = '/api/chain?ticker=' + encodeURIComponent(tk) + (expiry ? '&expiry=' + encodeURIComponent(expiry) : '');
+    return fetch(q, { cache: 'no-store' })
+      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+      .then(function (d) { if (stillStrikeCtx(tk, strike, expiry)) renderStrike(host, d, strike, expiry); })
+      .catch(function () { if (stillStrikeCtx(tk, strike, expiry)) host.innerHTML = '<div class="placeholder"><div class="sm">no console serving /api/chain</div></div>'; });
+  }
+  var _sdLoader = (typeof window !== 'undefined' && window.EdL1SseGuards && window.EdL1SseGuards.makeCoalescedLoader)
+    ? window.EdL1SseGuards.makeCoalescedLoader(loadStrikeImpl) : { trigger: loadStrikeImpl, reset: function () {} };
+  function loadStrike(strike, expiry) { _sdDesired = { strike: strike, expiry: expiry }; _sdLoader.trigger(); }
   var SCOPE_LABEL = {
     complete_single_expiry: { t: 'vendor · complete (ALL)', live: true },
     expiry_scope_mismatch: { t: 'vendor · expiry mismatch', ref: true },
@@ -369,19 +406,20 @@
   }
 
   // Independent-review finding (2026-09-12), REPRODUCED: switching the active ticker did
-  // not invalidate Strike Detail's in-flight /api/chain fetch generation (_sgen) or reset
-  // its rendered content -- ed-core.js's setTicker() already clears the SHARED selStrike
-  // (a fresh strike click is required before loadStrike fires again), but a chain fetch
-  // for the OLD ticker that was already in flight when the switch happened still passed
-  // the (unchanged) `g === _sgen` guard on arrival, rendering the OLD ticker's values and
-  // re-requesting the OLD ticker's contracts into the plural endpoint under the NEW
-  // ticker's context. Reproduced: request AMD's chain, switch to NVDA, deliver the
-  // delayed AMD response -- Strike Detail rendered AMD's values and requested AMD's
-  // contracts. Fixed by invalidating the generation and clearing all Strike Detail state
+  // not invalidate Strike Detail's in-flight /api/chain fetch or reset its rendered content
+  // -- ed-core.js's setTicker() already clears the SHARED selStrike (a fresh strike click is
+  // required before loadStrike fires again), but a chain fetch for the OLD ticker that was
+  // already in flight when the switch happened still landed under the NEW ticker's context.
+  // Reproduced: request AMD's chain, switch to NVDA, deliver the delayed AMD response --
+  // Strike Detail rendered AMD's values and requested AMD's contracts. Fixed by clearing the
+  // desired (strike, expiry) so `stillStrikeCtx`'s ticker check discards any in-flight
+  // response for the OLD ticker (2026-09-13: this now doubles as the fix's context-identity
+  // check, replacing the old `_sgen` generation counter) and no pending strike is left to
+  // fetch under the new ticker without a fresh click, plus clearing all Strike Detail state
   // (DOM placeholder + additional-contracts demand) the instant the ticker changes, same
   // discipline `_setAdditionalContractsDemand([])` already gives an empty/failed chain.
   function resetStrikeDetailForTickerChange() {
-    _sgen++;   // any response already in flight for the OLD ticker can never pass g === _sgen again
+    _sdDesired = { strike: null, expiry: null };
     var host = document.getElementById('sdBody');
     if (host) {
       host.innerHTML = '<div class="placeholder"><div class="sm">Select a strike/expiry. '
