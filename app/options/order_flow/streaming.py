@@ -37,7 +37,12 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Callable, Optional
 
-from instrument_identity import option_underlying_root, ticker_storage_key, vendor_option_root
+from instrument_identity import (
+    BROKER_INDEX_BARE_ROOTS,
+    option_underlying_root,
+    ticker_storage_key,
+    vendor_option_root,
+)
 from stream_spine import (
     PRODUCER_CLAIM_TTL_SEC,
     STREAM_DB_DEFAULT,
@@ -564,6 +569,42 @@ def _replay_option_contract_rows(con: sqlite3.Connection, contract_symbol: str) 
     return last_qualifying_ts_recv
 
 
+def _hook_grouping_key(symbol: str) -> str:
+    """The cheap, symbol-only proxy _feed_loop's hook-coalescing groups by: "which
+    contracts likely share one underlying / one terrain-cache entry."
+
+    Independent-review finding (2026-09-12), REPRODUCED: grouping by the RAW
+    `vendor_option_root` alone treats a bare-rooted contract (root "SPX") and a
+    weekly-rooted contract (root "SPXW") as two DIFFERENT groups, even when both
+    genuinely belong to the SAME underlying ($SPX) -- refresh_gamma_surface_from_stream
+    itself resolves this correctly via contract_matches_underlying's chain-aware
+    fallback, but that fallback needs a candidate TICKER and a live chain-DB read;
+    _feed_loop has neither readily available (it operates on bare option-contract
+    symbols, with no reverse symbol->ticker mapping and no visibility into server.py's
+    enrolled-ticker roster) and must not add a per-tick chain-DB dependency just to
+    group cheaply. Root-caused with a NARROW, non-invented canonicalization: Schwab/OCC
+    weekly-root suffixes for the specific handful of BROKER-INDEX products this repo
+    already names as `$`-prefixed bare roots (BROKER_INDEX_BARE_ROOTS: SPX, NDX, RUT,
+    DJX, XSP, OEX, ...) are that SAME bare root plus a trailing "W" (SPXW, NDXW, RUTW,
+    ...) -- a real, documented vendor/exchange convention for these specific products,
+    not a guess. Stripping a trailing "W" is applied ONLY when the resulting bare root
+    is in that SAME small, curated set, so an unrelated real equity root that happens
+    to end in "W" is never affected (it would have to coincidentally equal one of the
+    ~11 named index roots after stripping, which real stock tickers do not). This does
+    NOT replace contract_matches_underlying's full chain-aware equivalence check
+    anywhere it is used for correctness (subscription reconciliation, coverage epochs,
+    the hook's own terrain-cache resolution) -- it exists ONLY to avoid an
+    over-eager, redundant-but-still-individually-correct extra hook call for this one
+    well-known aliasing case; a contract this heuristic fails to group correctly still
+    gets its own (still individually correct, merely less coalesced) hook call."""
+    root = vendor_option_root(symbol) or symbol
+    if root.endswith("W") and len(root) > 1:
+        bare = root[:-1]
+        if bare in BROKER_INDEX_BARE_ROOTS:
+            return bare
+    return root
+
+
 async def _feed_loop() -> None:
     """A sqlite3.Connection is THREAD-AFFINE (check_same_thread=True by default) — it may
     only be touched from the OS thread that created it. This loop opens ONE read-only
@@ -625,7 +666,7 @@ async def _feed_loop() -> None:
                     if qualifying and _streamed_greeks_hook is not None:
                         groups: dict[str, tuple[str, float]] = {}
                         for sym, ts in qualifying:
-                            root = vendor_option_root(sym) or sym
+                            root = _hook_grouping_key(sym)
                             cur = groups.get(root)
                             if cur is None or ts > cur[1]:
                                 groups[root] = (sym, ts)

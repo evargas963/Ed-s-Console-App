@@ -318,6 +318,41 @@ def test_qqq_weighted_push_full_top_matches_build_confluence():
     assert backfill["qqq_weighted_push"] == live
 
 
+def test_snapshot_row_chg_map_does_not_substitute_goog_for_googl():
+    """Independent-review finding (2026-09-12), REPRODUCED: SYMBOL_TO_SNAPSHOT_CHG_COL
+    used to point BOTH "GOOGL" and "GOOG" at the same googl_chg_pct column, so
+    snapshot_row_chg_map() reported out["GOOG"] == out["GOOGL"] from a persisted
+    snapshot row even on a day the two share classes genuinely diverged -- silently
+    double-counting GOOGL's move (once at GOOGL's SPY_TOP/QQQ_TOP weight, once at
+    GOOG's) and discarding GOOG's own price action entirely from every weighted_push
+    backfill/recompute. Fixed with a dedicated goog_chg_pct column (db.py), written
+    from GOOG's own quote (server.py), and its own entry in SYMBOL_TO_SNAPSHOT_CHG_COL.
+
+    Negative control: temporarily pointing "GOOG" back at "googl_chg_pct" (the exact
+    pre-fix mapping) on a row where the two genuinely differ reproduces the collision
+    this test would otherwise miss.
+    """
+    from market_context import SYMBOL_TO_SNAPSHOT_CHG_COL, snapshot_row_chg_map
+
+    row = {"googl_chg_pct": 0.10, "goog_chg_pct": -0.35}
+
+    out = snapshot_row_chg_map(row)
+    assert out["GOOGL"] == 0.10
+    assert out["GOOG"] == -0.35, (
+        "GOOG must read its OWN column, not borrow GOOGL's — these are distinct "
+        "share classes that genuinely diverge")
+    assert out["GOOG"] != out["GOOGL"]
+
+    # Negative control: the pre-fix alias, applied to this exact row, collapses the
+    # two distinct values into one — proving this test can actually detect the defect.
+    pre_fix_map = dict(SYMBOL_TO_SNAPSHOT_CHG_COL)
+    pre_fix_map["GOOG"] = "googl_chg_pct"
+    pre_fix_out = {sym: row.get(col) for sym, col in pre_fix_map.items()}
+    assert pre_fix_out["GOOG"] == pre_fix_out["GOOGL"] == 0.10, (
+        "negative control setup is broken: the pre-fix alias must actually collapse "
+        "GOOG onto GOOGL's value for this test to prove anything")
+
+
 def test_iwm_weighted_push_matches_blended_participation():
     from market_context import (
         IWM_HOLDINGS_WEIGHT_SUM,

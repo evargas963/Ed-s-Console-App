@@ -830,3 +830,108 @@ def test_hook_fires_once_per_underlying_when_two_underlyings_qualify_in_one_tick
         srv._gamma_surface_seq.pop(spy_tk, None)
         srv._gamma_surface_seq.pop(qqq_tk, None)
         _drain_l1_sse_thread_queue()
+
+
+def test_hook_coalesces_a_bare_spx_and_weekly_spxw_contract_into_one_group(tmp_path, monkeypatch):
+    """Independent-review finding (2026-09-12), REPRODUCED: _feed_loop's hook-coalescing
+    grouped qualifying contracts by the RAW `vendor_option_root(sym) or sym` value alone
+    -- a bare-SPX-rooted contract (root "SPX") and a weekly-SPXW-rooted contract (root
+    "SPXW") on the exact SAME $SPX underlying produced two DIFFERENT raw roots, landing
+    in two different coalescing groups and firing the hook TWICE in one poll tick for
+    what is genuinely one underlying's one terrain-cache entry -- not corrupting, but
+    exactly the redundant-recompute defect this coalescing was built to close (see
+    test_hook_fires_once_per_underlying_when_two_underlyings_qualify_in_one_tick above).
+
+    Root-caused and fixed with `_hook_grouping_key`, a narrow canonicalization that
+    strips a trailing "W" ONLY when the resulting bare root is in the existing,
+    curated `BROKER_INDEX_BARE_ROOTS` set (SPX, NDX, RUT, DJX, XSP, OEX, ...) -- a real
+    documented Schwab/OCC weekly-root convention, not an invented alias. This does not
+    touch `contract_matches_underlying`'s own full chain-aware equivalence check used
+    for correctness elsewhere (subscription reconciliation, coverage epochs); it exists
+    only to avoid an over-eager extra hook call for this one well-known aliasing case.
+
+    Negative control below reproduces the pre-fix disagreement directly with the exact
+    production `vendor_option_root` function (not a reimplementation), before proving
+    the current `_hook_grouping_key` unifies the two roots and the real `_feed_loop`
+    fires the hook exactly once for this tick.
+
+    # institutional-synthetic-ok: one minimal, real-shaped bare-SPX and weekly-SPXW
+    # contract built inline for exactly this grouping control -- both use real
+    # Schwab/OCC OSI symbol structure (6-char root + YYMMDD + C/P + 8-digit strike);
+    # no real fixture would be more informative than these deliberately simple,
+    # clearly-labeled contracts.
+    """
+    import server as srv
+
+    _SPX_A = "SPX   260918C05600000"
+    _SPXW_A = "SPXW  260918C05600000"
+
+    # Negative control: the pre-fix grouping (raw vendor_option_root only, with no
+    # BROKER_INDEX_BARE_ROOTS canonicalization) genuinely disagrees between these two
+    # contracts -- if it did not, this test would prove nothing about the fix.
+    pre_fix_root_a = ofs.vendor_option_root(_SPX_A) or _SPX_A
+    pre_fix_root_b = ofs.vendor_option_root(_SPXW_A) or _SPXW_A
+    assert pre_fix_root_a == "SPX" and pre_fix_root_b == "SPXW" and pre_fix_root_a != pre_fix_root_b, (
+        "negative control setup is broken: the raw vendor roots must actually differ "
+        "between a bare-SPX and a weekly-SPXW contract for this test to prove anything")
+
+    # The current, fixed grouping key must agree.
+    assert ofs._hook_grouping_key(_SPX_A) == ofs._hook_grouping_key(_SPXW_A) == "SPX"
+
+    _drain_l1_sse_thread_queue()
+    db = _reset(tmp_path, monkeypatch)
+    spx_tk = srv.ticker_storage_key("SPX")
+    assert spx_tk == "$SPX"
+    with srv._terrain_cache_lock:
+        srv._terrain_cache[spx_tk] = {
+            "_contracts_rest": [
+                {"symbol": _SPX_A, "putCall": "CALL", "strikePrice": 5600.0, "openInterest": 500,
+                 "multiplier": 100.0, "gamma": 0.02, "delta": 0.5,
+                 "expirationDate": "2026-09-18T20:00:00.000+00:00", "daysToExpiration": 7},
+                {"symbol": _SPXW_A, "putCall": "CALL", "strikePrice": 5600.0, "openInterest": 500,
+                 "multiplier": 100.0, "gamma": 0.02, "delta": 0.5,
+                 "expirationDate": "2026-09-18T20:00:00.000+00:00", "daysToExpiration": 7},
+            ],
+            "_contracts_rest_spot": 5600.0, "_contracts_rest_computed_ts": time.time() - 30.0,
+        }
+    srv._gamma_surface_seq.pop(spx_tk, None)
+    try:
+        ofs._active_option_contract = ofs.ticker_storage_key(_SPX_A)
+        ofs._active_option_contracts = [ofs.ticker_storage_key(_SPXW_A)]
+
+        hook_started = []
+
+        def _counting_hook(sym, ts):
+            hook_started.append(sym)
+        ofs.set_streamed_greeks_hook(_counting_hook)
+        for sym in (_SPX_A, _SPXW_A):
+            _write_option_l1_row(db, sym, dict(_REAL_LEVELONE_OPTIONS_CONTENT, key=sym, GAMMA=0.08),
+                                  ts_recv=1700000000.0)
+
+        async def _run_one_tick():
+            ofs._feed_running = True
+            task = asyncio.get_event_loop().create_task(ofs._feed_loop())
+            await _wait_until(lambda: len(hook_started) >= 1, timeout_sec=15.0,
+                              what="the coalesced SPX/SPXW hook call")
+            # Give a would-be SECOND call (the pre-fix, un-coalesced behavior) a full
+            # extra poll interval to land before declaring the tick settled.
+            await asyncio.sleep(1.0)
+            ofs._feed_running = False
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+        asyncio.run(_run_one_tick())
+
+        assert len(hook_started) == 1, (
+            f"a bare-SPX and a weekly-SPXW contract on the SAME $SPX underlying must "
+            f"coalesce into exactly ONE hook call per tick, not {len(hook_started)}: {hook_started}")
+    finally:
+        ofs.set_streamed_greeks_hook(None)
+        ofs._active_option_contract = None
+        ofs._active_option_contracts = []
+        with srv._terrain_cache_lock:
+            srv._terrain_cache.pop(spx_tk, None)
+        srv._gamma_surface_seq.pop(spx_tk, None)
+        _drain_l1_sse_thread_queue()

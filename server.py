@@ -8652,6 +8652,7 @@ def _fetch_state(
                         msft_chg_pct=_const_map.get("MSFT"),
                         amzn_chg_pct=_const_map.get("AMZN"),
                         googl_chg_pct=_const_map.get("GOOGL"),
+                        goog_chg_pct=_const_map.get("GOOG"),
                         avgo_chg_pct=_const_map.get("AVGO"),
                         meta_chg_pct=_const_map.get("META"),
                         tsla_chg_pct=_const_map.get("TSLA"),

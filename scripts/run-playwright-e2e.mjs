@@ -78,12 +78,35 @@ delete e2eEnv.ED_DB_PATH;
 delete e2eEnv.STREAM_CAPTURE_DB_PATH;
 
 console.log(`[test:e2e] isolated runtime: ${e2eRuntime}`);
+// Independent-review finding (2026-09-12), REPRODUCED: this runner used to hardcode
+// ["playwright", "test"] regardless of any CLI arguments this script itself was
+// invoked with -- `npm run test:e2e -- -g "some pattern"` or `node
+// scripts/run-playwright-e2e.mjs tests/e2e/some.spec.js` silently ran the FULL,
+// unfiltered suite every time, with the caller's own selection arguments discarded.
+// Native Playwright CLI selection (a spec file path, -g/--grep, --project, etc.) is
+// now forwarded verbatim. Quoted before re-joining into the ONE shell command string
+// `runWithFileSink` builds (shell:true -> [cmd, ...args].join(" ")): argv has already
+// split e.g. `-g "a failed additional-contracts request is retried, not falsely
+// reported accepted (RC-UI-3)"` into two elements with the quoting already stripped by
+// the CALLING shell -- naively re-joining with a bare space would let the RE-INVOKED
+// shell re-split a spaced grep pattern (this repo's own Playwright test names are full
+// of them) back into many arguments, breaking the selection instead of forwarding it.
+function shellQuoteArg(arg) {
+  const s = String(arg);
+  if (/^[A-Za-z0-9_\-./:@]+$/.test(s)) return s;   // safe unquoted (paths, plain flags)
+  return '"' + s.replace(/"/g, '\\"') + '"';
+}
+const forwardedArgs = process.argv.slice(2);
+if (forwardedArgs.length) {
+  console.log(`[test:e2e] forwarding native selection arguments: ${forwardedArgs.join(" ")}`);
+}
+const quotedForwardedArgs = forwardedArgs.map(shellQuoteArg);
 // RC-535: the Playwright run (and the uvicorn webServer output it relays) goes to a log
 // file, never to this process's terminal pipe — a reader that stops draining cannot
 // block the run. Only the bounded tail is echoed.
 let exitCode;
 try {
-  exitCode = runWithFileSink("test:e2e", "npx", ["playwright", "test"], {
+  exitCode = runWithFileSink("test:e2e", "npx", ["playwright", "test", ...quotedForwardedArgs], {
     logPath: path.join(logDir(), "test_e2e_last.log"),
     cwd: root,
     shell: true,

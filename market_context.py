@@ -440,13 +440,22 @@ def _build_iwm_confluence(sectors: list) -> ConfluenceRead:
 
 
 # Snapshot column for each symbol used in confluence backfill / row recompute.
+#
+# Independent-review finding (2026-09-12), REPRODUCED: GOOG used to point at this same
+# googl_chg_pct column. GOOG (Alphabet class C) and GOOGL (Alphabet class A) are distinct
+# instruments with their own weights in SPY_TOP/QQQ_TOP below and can genuinely diverge
+# intraday -- aliasing GOOG onto GOOGL's column made snapshot_row_chg_map() report
+# out["GOOG"] == out["GOOGL"] always, so weighted_push_from_constituents() double-counted
+# GOOGL's move (once at each symbol's weight) and silently discarded GOOG's own. GOOG now
+# has its own db.py column (goog_chg_pct), written from its own quote, same as every other
+# constituent here.
 SYMBOL_TO_SNAPSHOT_CHG_COL: dict[str, str] = {
     "NVDA": "nvda_chg_pct",
     "AAPL": "aapl_chg_pct",
     "MSFT": "msft_chg_pct",
     "AMZN": "amzn_chg_pct",
     "GOOGL": "googl_chg_pct",
-    "GOOG": "googl_chg_pct",
+    "GOOG": "goog_chg_pct",
     "AVGO": "avgo_chg_pct",
     "META": "meta_chg_pct",
     "TSLA": "tsla_chg_pct",
@@ -532,8 +541,6 @@ def merged_snapshot_chg_map(
             continue
         col = SYMBOL_TO_SNAPSHOT_CHG_COL.get(s)
         if col is None or chg.get(s) is None:
-            chg[s] = fv
-        elif s == "GOOG":
             chg[s] = fv
     return chg
 
