@@ -267,6 +267,13 @@ def merge_into_state(ms_dict: dict[str, Any], ticker: str) -> None:
     ):
         if k in q and q[k] is not None:
             ms_dict[k] = q[k]
+    # chg_pct is deliberately OUTSIDE the sparse-overlay loop above: that loop only ever
+    # fills gaps (skips None), so a ticker whose percent-change genuinely went unavailable
+    # on the latest fetch would leave a STALE number sitting in ms_dict forever. record_quote
+    # replaces the whole plane row per fetch (never a merge), so "chg_pct" in q reflects the
+    # newest attempt's real verdict, including an honest None — overwrite unconditionally.
+    if "chg_pct" in q:
+        ms_dict["chg_pct"] = q["chg_pct"]
     fts = q.get("exchange_quote_ts")
     if fts is not None:
         ms_dict["_live_plane_fast_ts"] = fts
@@ -309,6 +316,13 @@ def apply_l1_live_quote_overlay(l1_payload: dict[str, Any], ticker: str) -> None
     ):
         if k in q and q[k] is not None:
             l1_payload[k] = q[k]
+    # chg_pct OUTSIDE the loop, unconditional overwrite when present — see merge_into_state's
+    # comment. This is the path that most needed it: an L1 payload can be served from cache
+    # across many HTTP/SSE reads before the next rebuild, so a sparse (None-skipping) overlay
+    # here would let a stale percentage from the PREVIOUS build survive an interim fetch that
+    # genuinely came back without one — a truthfulness gap the sparse loop cannot close.
+    if "chg_pct" in q:
+        l1_payload["chg_pct"] = q["chg_pct"]
     fts = q.get("exchange_quote_ts")
     if fts is not None:
         l1_payload["_live_plane_fast_ts"] = fts

@@ -1,0 +1,426 @@
+/* Ed Console — Options/Gamma supporting panels (RC-UI-1). PRESENTATION ONLY.
+   Key Levels rail  <- GET /api/terrain      (canonical levels SSOT)
+   GEX by Strike    <- GET /api/terrain/strikes  (per-strike net_gex_1pct$)
+   Strike Detail    <- GET /api/chain         (vendor per-contract OI/vol/greeks)
+   No trading semantics are computed here. Bar scaling is visual normalisation over the
+   already-computed displayed values; distances/positions are formatting only. */
+(function () {
+  'use strict';
+
+  var usd = (window.EdGamma && window.EdGamma.formatUsd) || function (n) {
+    if (n == null || isNaN(n)) return '';
+    var a = Math.abs(n), s = n < 0 ? '-' : '';
+    if (a >= 1e9) return s + '$' + (a / 1e9).toFixed(1) + 'B';
+    if (a >= 1e6) return s + '$' + (a / 1e6).toFixed(1) + 'M';
+    if (a >= 1e3) return s + '$' + (a / 1e3).toFixed(1) + 'K';
+    return s + '$' + a.toFixed(0);
+  };
+  function px(n, d) { return (n == null || isNaN(n)) ? '—' : Number(n).toFixed(d == null ? 2 : d); }
+  // Compact SESSION VOLUME (native totalVolume, never OI or last-trade size — see the row
+  // source below) for the GEX-by-strike row. No sign/color: volume is a magnitude, not signed.
+  function fmtVol(n) {
+    if (n == null || isNaN(n)) return '—';
+    var a = Math.abs(Number(n));
+    if (a >= 1e6) return (a / 1e6).toFixed(1) + 'M';
+    if (a >= 1e3) return (a / 1e3).toFixed(1) + 'K';
+    return String(Math.round(a));
+  }
+  function txt(id, v) { var e = document.getElementById(id); if (e) e.textContent = v; }
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
+    return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]; }); }
+
+  function isGamma() {
+    var s = (window.EdShell && window.EdShell.getState()) || {};
+    return s.workspace === 'options' && s.subview === 'gamma';
+  }
+  function ticker() { return ((window.EdShell && window.EdShell.getState()) || {}).ticker || 'SPY'; }
+
+  var REGIME = {
+    LONG_GAMMA_CHOP: { t: 'Long γ · chop', c: 'var(--ed-pos-ink)' },
+    SHORT_GAMMA_TREND: { t: 'Short γ · trend', c: 'var(--ed-warn)' },
+    SIGN_UNPROVEN: { t: 'sign unproven', c: 'var(--ed-ink-3)' },
+    UNAVAILABLE: { t: 'unavailable', c: 'var(--ed-ink-3)' },
+  };
+
+  // ---------- Key Levels rail ----------
+  var _lgen = 0;
+  function loadLevels() {
+    if (!isGamma() || !document.getElementById('klSpot')) return;
+    var g = ++_lgen, tk = ticker();
+    fetch('/api/terrain?ticker=' + encodeURIComponent(tk), { cache: 'no-store' })
+      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+      .then(function (d) { if (g === _lgen) renderLevels(d); })
+      .catch(function () { if (g === _lgen) renderLevels(null); });
+  }
+  function renderLevels(d) {
+    var ids = ['klSpot', 'klFlip', 'klCall', 'klPut', 'klAbs', 'klPeak', 'klNet', 'klRegime'];   // klPcr: analytics plane, own reader below
+    if (!d || d.error) {
+      ids.forEach(function (id) { txt(id, '—'); });
+      txt('klSrc', d && d.error ? 'terrain not ready' : 'offline');
+      return;
+    }
+    txt('klSpot', px(d.spot));
+    txt('klFlip', px(d.gamma_flip));
+    txt('klCall', px(d.call_wall));
+    txt('klPut', px(d.put_wall));
+    txt('klAbs', px(d.absolute_gamma_strike));
+    txt('klPeak', px(d.net_gex_peak));
+    // Net GEX / 1% move — signed $, coloured by sign (formatting only)
+    var net = document.getElementById('klNet');
+    if (net) {
+      var v = d.net_gex_at_spot;
+      net.textContent = (v == null) ? '—' : usd(v);
+      net.style.color = (v == null) ? '' : (v >= 0 ? 'var(--ed-pos-ink)' : 'var(--ed-neg-ink)');
+    }
+    var reg = document.getElementById('klRegime');
+    if (reg) {
+      var rm = REGIME[d.regime] || { t: (d.regime || '—'), c: 'var(--ed-ink-2)' };
+      reg.textContent = rm.t; reg.style.color = rm.c;
+    }
+    // B: the levels rail recedes when terrain reports stale
+    var klb = document.getElementById('klBody');
+    if (klb) klb.classList.toggle('recede', !!d.levels_stale);
+    // freshness / provenance line
+    var src = document.getElementById('klSrc');
+    if (src) {
+      if (d.levels_stale) {
+        // compact status grammar: state + age on the panel; the full reason is disclosed in the
+        // tooltip (title) rather than as a paragraph that consumes the Key Levels rail
+        var age = (window.EdShell && window.EdShell.fmtAge) ? window.EdShell.fmtAge(d.levels_age_sec)
+          : (d.levels_age_sec != null ? Math.round(d.levels_age_sec) + 's' : '');
+        src.textContent = 'STALE' + (age ? ' · ' + age : '');
+        src.title = d.levels_stale_reason || 'terrain levels are stale';
+        src.style.color = 'var(--ed-stale)';
+      } else {
+        src.textContent = 'terrain · live';
+        src.title = '';
+        src.style.color = '';
+      }
+      // #5: terrain levels are AGGREGATE across expiries; if the workspace filters to one expiry,
+      // disclose that these levels are still all-exp (never silently relabel them as selected-expiry).
+      if (window.EdShell && window.EdShell.getExpiry && window.EdShell.getExpiry()) src.textContent += ' · all-exp';
+    }
+  }
+
+  // ---------- Put/Call OI ratio (Key Levels · Exposure) <- GET /api/analytics/state ----------
+  // Canonical producer: server._fetch_state -> build_totals_rows(...)[0].pcr_oi, the CONSENSUS window
+  // = put OI / call OI over EVERY strike of the SELECTED-EXPIRY chain (contracts_use), served as
+  // `pcr_val` beside `selected_exp`. That pair is read here so the expiry the ratio is scoped to is
+  // always disclosed; the lightweight plane's bare pcr_val carries no expiry and is not used.
+  // CACHE IDENTITY = ticker + expiry-filter + the bundle's CANONICAL generation, never wall-clock:
+  //   * `analytics_version` — the Tier C bundle's own generation, which the shell already receives
+  //     on its slow /api/live/state read (analytics_lightweight.analytics_version; EdShell.getPlane).
+  //     Tier C state is keyed by (ticker, expiry) and the generation is PER ENTRY, so the plane read
+  //     carries the same expiry context as the PCR read (/api/live/state?ticker=X&expiry=E resolves
+  //     entry (X,E); no expiry -> the newest entry for X, the same rule /api/analytics/state uses
+  //     without expiry) and a generation is compared ONLY when the plane record names this exact
+  //     context. Same generation -> no re-read. New generation -> one re-read. This is what actually
+  //     moves the value (a recompute over a re-fetched chain carrying the day's OI publication).
+  //   * `session_label` — the canonical market-session state on the same read. A session
+  //     transition (e.g. Closed -> Pre-Market on the next trading day) re-reads once, which also
+  //     schedules the Tier C recompute when no other viewer has kept it warm; the generation
+  //     advance that follows lands the fresh value through the rule above.
+  //   * ticker / expiry change -> re-read (new context).
+  // While the analytics plane is warming (pending shell) the bounded re-read rides the slow tick.
+  // /api/analytics/state is cache-first (stale-while-refresh); this never polls it per tick.
+  var _pcrGen = 0, _pcrKey = null, _pcrPending = false, _pcrTries = 0, PCR_MAX_TRIES = 10;
+  var _pcrVer = null, _pcrSession = null;        // identity of the value currently displayed
+  function expiryFilter() { return (window.EdShell && window.EdShell.getExpiry && window.EdShell.getExpiry()) || ''; }
+  function plane() { return (window.EdShell && window.EdShell.getPlane && window.EdShell.getPlane()) || {}; }
+  function paintPcr(v, scope) {
+    txt('klPcr', v == null ? '—' : Number(v).toFixed(2));   // formatting only
+    txt('klPcrScope', scope || '');
+  }
+  function loadPcr() {
+    if (!isGamma() || !document.getElementById('klPcr')) return;
+    var tk = ticker(), ex = expiryFilter(), key = tk + '|' + ex, pl = plane();
+    var newContext = key !== _pcrKey;
+    // the plane's generation counts only when its record was read for THIS (ticker, expiry) context
+    var sameCtx = pl.ticker === tk && (pl.expiry || '') === ex;
+    var newGen = sameCtx && pl.analyticsVersion != null && _pcrVer != null && pl.analyticsVersion !== _pcrVer;
+    var newSession = pl.session != null && _pcrSession != null && pl.session !== _pcrSession;
+    var retry = _pcrPending && _pcrTries < PCR_MAX_TRIES;
+    if (!newContext && !newGen && !newSession && !retry) return;   // same identity: no redundant re-read
+    if (newContext) { _pcrKey = key; _pcrTries = 0; _pcrPending = false; _pcrVer = null; _pcrSession = null; paintPcr(null, 'warming'); }
+    if (newGen || newSession) { _pcrTries = 0; }
+    _pcrTries++;
+    var g = ++_pcrGen;
+    fetch('/api/analytics/state?ticker=' + encodeURIComponent(tk) + (ex ? '&expiry=' + encodeURIComponent(ex) : ''), { cache: 'no-store' })
+      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+      .then(function (d) {
+        if (g !== _pcrGen) return;
+        // the identity this response answers for: its own generation (falls back to the plane's
+        // when the response carries none) and the session it was read under
+        var pn = plane(), pnSame = pn.ticker === tk && (pn.expiry || '') === ex;
+        _pcrVer = (d.analytics_version != null) ? d.analytics_version : (pnSame && pn.analyticsVersion != null ? pn.analyticsVersion : null);
+        _pcrSession = pn.session != null ? pn.session : null;
+        if (d.state_error) { _pcrPending = false; paintPcr(null, 'analytics error'); return; }
+        if (d.analytics_pending_shell) { _pcrPending = true; paintPcr(null, 'warming'); return; }
+        _pcrPending = false;
+        if (d.pcr_val == null) { paintPcr(null, 'unavailable'); return; }
+        paintPcr(d.pcr_val, 'OI · exp ' + (d.selected_exp || '—'));
+      })
+      .catch(function () { if (g === _pcrGen) { _pcrPending = true; paintPcr(null, 'offline'); } });
+  }
+
+  // ---------- GEX by Strike ----------
+  var _ggen = 0;
+  function loadGbs() {
+    var host = document.getElementById('gbsBody');
+    if (!isGamma() || !host) return;
+    var g = ++_ggen, tk = ticker();
+    fetch('/api/terrain/strikes?ticker=' + encodeURIComponent(tk), { cache: 'no-store' })
+      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+      .then(function (d) { if (g === _ggen) renderGbs(host, d); })
+      .catch(function () { if (g === _ggen) renderGbs(host, null); });
+  }
+  var SRC_LABEL = { terrain_live_cache: 'terrain live' };
+  function srcLabel(s) {
+    if (!s) return '';
+    if (SRC_LABEL[s]) return SRC_LABEL[s];
+    if (s.indexOf('accrual_bank') === 0) return 'accrual bank';
+    return s;
+  }
+  function setGbsAsOf(d) {
+    var el = document.getElementById('gbsSrc'); if (!el) return;
+    if (!d || d.today_source == null) { el.innerHTML = ''; return; }
+    // reuse the terrain authority the server already merged (today_age_sec / levels_stale) - no
+    // client-side freshness computation; the badge only formats those server-owned fields.
+    el.innerHTML = (window.EdShell && window.EdShell.asOfBadge)
+      ? window.EdShell.asOfBadge({ label: srcLabel(d.today_source), ageSec: d.today_age_sec,
+          stale: !!d.levels_stale, reason: d.levels_stale_reason,
+          live: (d.today_source === 'terrain_live_cache' && !d.levels_stale) })
+      : '';
+  }
+  var _lastGbs = { rows: [], spot: null };
+  function gbsNetAt(strike) {   // canonical per-strike net GEX$ (from /api/terrain/strikes), for reuse
+    for (var i = 0; i < _lastGbs.rows.length; i++) {
+      if (Math.abs(Number(_lastGbs.rows[i][0]) - Number(strike)) < 0.01) return Number(_lastGbs.rows[i][1]);
+    }
+    return null;
+  }
+  // Independent-review finding (2026-09-12, state-authority review), REPRODUCED: Strike
+  // Detail's Net GEX$ cell reads gbsNetAt(strike) -- a value SOURCED FROM _lastGbs, which
+  // only GEX-by-Strike's own renderGbs() ever updates -- but renderStrike() only reads it
+  // at the moment ITS OWN /api/chain fetch resolves. loadGbs() (-> /api/terrain/strikes)
+  // and loadStrike() (-> /api/chain) are two independent, unsynchronized fetches with no
+  // cross-panel version check: if /api/chain resolves first, Strike Detail bakes in
+  // whatever _lastGbs still holds from the PREVIOUS cycle (e.g. $1.0K); when
+  // /api/terrain/strikes later resolves and renderGbs() updates _lastGbs to the new value
+  // (e.g. $3.0K) and repaints the bar chart, nothing tells Strike Detail its own
+  // already-rendered Net cell is now stale -- it keeps showing $1.0K until the NEXT
+  // independent trigger of loadStrike. Fixed by re-syncing JUST that one derived cell
+  // the instant its actual source (_lastGbs) changes, without re-fetching /api/chain or
+  // touching Strike Detail's other (unrelated, already-correct) OI/Vol/Gamma/Delta/IV
+  // cells.
+  function _resyncStrikeDetailNetCell() {
+    var sel = ((window.EdShell && window.EdShell.getState()) || {}).selStrike;
+    if (sel == null) return;
+    var cell = document.querySelector('#sdBody .sd-net td:nth-child(5)');
+    if (!cell) return;   // Strike Detail is not currently rendering a strike -- nothing to sync
+    var net = gbsNetAt(sel);
+    cell.className = net == null ? '' : (net >= 0 ? 'pos' : 'neg');
+    cell.textContent = net == null ? '—' : usd(net);
+  }
+  function renderGbs(host, d) {
+    setGbsAsOf(d);
+    _lastGbs = { rows: (d && d.today && d.today.all) || [], spot: Number(d && d.spot) };
+    _resyncStrikeDetailNetCell();
+    var rows = d && d.today && d.today.all;
+    if (!rows || !rows.length) {
+      host.innerHTML = '<div class="placeholder"><div class="sm">' +
+        (d ? 'no banked per-strike gamma for this symbol' : 'no console serving /api/terrain/strikes') + '</div></div>';
+      return;
+    }
+    var spot = Number(d.spot);
+    // #3: window around spot for readability (presentation), high strikes on top. The window is the
+    // ONE shared Gamma scope policy (EdShell.scopeSelect: Auto 11 strikes around spot / Wider / All
+    // available) — a COUNT, never a percentage (real SPY terrain is 216 strikes at $1 spacing; a
+    // ±6% window kept 92 of them and crushed the panel). `rows` is the current canonical input, so
+    // the disclosure below states exactly how many of them are on screen vs clipped; All available
+    // scrolls the complete population at the same row height.
+    var asc = rows.slice().sort(function (a, b) { return a[0] - b[0]; });
+    var sel = (window.EdShell && window.EdShell.scopeSelect)
+      ? window.EdShell.scopeSelect(asc.map(function (r) { return r[0]; }), spot)
+      : { idx: asc.map(function (_r, i) { return i; }), shown: asc.length, total: asc.length };
+    var win = sel.idx.map(function (i) { return asc[i]; }).sort(function (a, b) { return b[0] - a[0]; });
+    var note = (window.EdShell && window.EdShell.scopeNote)
+      ? window.EdShell.scopeNote({ total: rows.length, shown: win.length }) : '';
+    // #5: /api/terrain/strikes is aggregate across expiries; if the workspace filters to one expiry,
+    // disclose that this ladder is still all-exp (per-expiry GEX-by-strike is not canonical here).
+    var expOn = window.EdShell && window.EdShell.getExpiry && window.EdShell.getExpiry();
+    if (expOn) note += '<div class="gbs-allexp">ALL-EXP terrain · per-expiry GEX-by-strike not canonical here</div>';
+    var maxAbs = win.reduce(function (m, r) { return Math.max(m, Math.abs(Number(r[1]) || 0)); }, 0) || 1;
+    var spotStrike = win.reduce(function (best, r) {
+      return (best == null || Math.abs(r[0] - spot) < Math.abs(best - spot)) ? r[0] : best; }, null);
+    var bars = '';
+    win.forEach(function (r) {
+      // r = [strike, net_gex_1pct$, session_volume] -- terrain_engine._per_strike_rows' own
+      // shape (server.py's _per_strike_view_from_contracts keeps it, streamed or not).
+      // Independent-review finding (2026-09-12): r[2] (volume) reached this row and was never
+      // rendered. It is a MAGNITUDE (native totalVolume), never signed/colored like GEX$.
+      var k = r[0], v = Number(r[1]) || 0, vol = r[2], w = Math.min(100, Math.abs(v) / maxAbs * 100);
+      var pos = v >= 0;
+      bars += '<div class="gbs-row' + (k === spotStrike ? ' spot' : '') + '" data-strike="' + k + '" data-volume="' + (vol == null ? '' : vol) + '">' +
+        '<span class="gbs-k">' + px(k, k % 1 ? 2 : 0) + '</span>' +
+        '<span class="gbs-track"><i class="gbs-bar ' + (pos ? 'pos' : 'neg') + '" style="width:' + w.toFixed(1) + '%"></i></span>' +
+        '<span class="gbs-v ' + (pos ? 'pos' : 'neg') + '">' + usd(v) + '</span>' +
+        '<span class="gbs-vol" title="session volume">' + fmtVol(vol) + '</span></div>';
+    });
+    // the bars scroll in their own area; the -/0/+ magnitude axis is PINNED at the foot so it is
+    // always visible without scrolling (reference behaviour).
+    host.innerHTML = '<div class="gbs-top">' + note + '</div>' +
+      '<div class="gbs-scroll"><div class="gbs">' + bars + '</div></div>' +
+      '<div class="gbs-scale"><span class="neg">−' + usd(maxAbs) + '</span><span>0</span><span class="pos">+' + usd(maxAbs) + '</span></div>';
+    host.querySelectorAll('.gbs-row').forEach(function (rr) {   // A: click a strike -> sync all panels
+      rr.addEventListener('click', function () { if (window.EdShell) window.EdShell.setStrike(Number(rr.getAttribute('data-strike'))); });
+    });
+    applyGbsHighlight(host);
+    var sr = host.querySelector('.gbs-row.spot');
+    if (sr && sr.scrollIntoView) sr.scrollIntoView({ block: 'center' });
+  }
+  function applyGbsHighlight(host) {
+    host = host || document.getElementById('gbsBody'); if (!host) return;
+    var sel = ((window.EdShell && window.EdShell.getState()) || {}).selStrike;
+    host.querySelectorAll('.gbs-row.gbs-sel').forEach(function (n) { n.classList.remove('gbs-sel'); });
+    if (sel == null) return;
+    host.querySelectorAll('.gbs-row[data-strike="' + sel + '"]').forEach(function (n) { n.classList.add('gbs-sel'); });
+  }
+
+  // ---------- Strike Detail ----------
+  var _sgen = 0, _lastExpiry = null;
+  function loadStrike(strike, expiry) {
+    var host = document.getElementById('sdBody');
+    if (!host) return;
+    var g = ++_sgen, tk = ticker();
+    var q = '/api/chain?ticker=' + encodeURIComponent(tk) + (expiry ? '&expiry=' + encodeURIComponent(expiry) : '');
+    fetch(q, { cache: 'no-store' })
+      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+      .then(function (d) { if (g === _sgen) renderStrike(host, d, strike, expiry); })
+      .catch(function () { if (g === _sgen) host.innerHTML = '<div class="placeholder"><div class="sm">no console serving /api/chain</div></div>'; });
+  }
+  var SCOPE_LABEL = {
+    complete_single_expiry: { t: 'vendor · complete (ALL)', live: true },
+    expiry_scope_mismatch: { t: 'vendor · expiry mismatch', ref: true },
+    persisted_complete_capture_fallback: { t: 'vendor · captured', ref: true },
+    stored_analytical_snapshot_fallback: { t: 'vendor · analytical (not complete)', ref: true },
+  };
+  function setSdAsOf(d) {
+    var el = document.getElementById('sdSrc'); if (!el) return;
+    var sc = d && d.scope, kind = sc && sc.kind;
+    if (!kind) { el.innerHTML = ''; return; }
+    var m = SCOPE_LABEL[kind] || { t: kind };
+    // captured_age_sec is the server's own age for the fallback tiers; a live fetch has no age.
+    el.innerHTML = (window.EdShell && window.EdShell.asOfBadge)
+      ? window.EdShell.asOfBadge({ label: m.t, ageSec: (sc.captured_age_sec != null ? sc.captured_age_sec : null),
+          live: !!m.live, ref: !!m.ref, title: 'chain scope: ' + kind })
+      : '';
+  }
+  // Independent-review finding (2026-09-12): an empty/failed chain result left Strike
+  // Detail showing "no chain" while the PREVIOUS strike's additional-contract
+  // subscription stayed active forever -- nothing ever told the plural endpoint that
+  // demand had ended. Every path out of renderStrike must state the additional-contract
+  // demand for the current render, including "none".
+  function _setAdditionalContractsDemand(symbols) {
+    if (window.EdStream && window.EdStream.setAdditionalContracts) {
+      window.EdStream.setAdditionalContracts(symbols || []);
+    }
+  }
+  function renderStrike(host, d, strike, expiry) {
+    setSdAsOf(d);
+    var cs = (d && d.contracts) || [];
+    if (!cs.length) {
+      host.innerHTML = '<div class="placeholder"><div class="sm">no chain for this expiry</div></div>';
+      _setAdditionalContractsDemand([]);
+      return;
+    }
+    function pick(side) {
+      return cs.filter(function (c) {
+        return (c.putCall || '').toUpperCase() === side &&
+          Math.abs(Number(c.strikePrice) - Number(strike)) < 0.01; })[0];
+    }
+    var call = pick('CALL'), put = pick('PUT');
+    txt('sdCtx', px(strike, strike % 1 ? 2 : 0) + (expiry ? ' · ' + esc(expiry.slice(5)) : ''));
+    function cell(c, k, d2) { var v = c ? c[k] : null; return (v == null) ? '—' : (typeof v === 'number' ? v.toFixed(d2 == null ? 2 : d2) : esc(v)); }
+    // GEX ($) column: per-side GEX$ is NOT canonical from /api/chain (computing it would be frontend
+    // math) -> "—"; the NET row's GEX is the canonical per-strike net_gex_1pct$ from /api/terrain/strikes.
+    var net = gbsNetAt(strike);
+    var netCls = net == null ? '' : (net >= 0 ? 'pos' : 'neg');
+    host.innerHTML =
+      '<table class="sd"><thead><tr><th>Type</th><th>OI</th><th>Vol</th><th>Gamma</th><th>GEX $</th><th>Delta</th><th>IV%</th></tr></thead><tbody>' +
+      '<tr><td class="side c">Call</td><td>' + cell(call, 'openInterest', 0) + '</td><td>' + cell(call, 'totalVolume', 0) +
+      '</td><td>' + cell(call, 'gamma', 4) + '</td><td class="dim">—</td><td>' + cell(call, 'delta', 3) + '</td><td>' + cell(call, 'volatility', 1) + '</td></tr>' +
+      '<tr><td class="side p">Put</td><td>' + cell(put, 'openInterest', 0) + '</td><td>' + cell(put, 'totalVolume', 0) +
+      '</td><td>' + cell(put, 'gamma', 4) + '</td><td class="dim">—</td><td>' + cell(put, 'delta', 3) + '</td><td>' + cell(put, 'volatility', 1) + '</td></tr>' +
+      '<tr class="sd-net"><td class="side">Net</td><td>—</td><td>—</td><td>—</td><td class="' + netCls + '">' +
+      (net == null ? '—' : usd(net)) + '</td><td>—</td><td>—</td></tr>' +
+      '</tbody></table><div class="sd-src">vendor per-contract · /api/chain · net GEX$ · /api/terrain/strikes</div>';
+    // RC-UI-3 (2026-09-12): connect the displayed strike's own vendor contract identity
+    // (both sides -- call AND put, "both sides where required") to LIVE streaming, so its
+    // gamma/delta/OI/volume can freshen sub-second instead of waiting the ~60s REST cycle.
+    // Independent-review finding: the new UI never called the plural subscription
+    // endpoint at all. This is the ONE panel with a genuinely resolved, DISPLAYED
+    // per-contract identity (the heatmap itself is a computed aggregate projection with
+    // no per-cell contract symbol) -- see EdStream.setAdditionalContracts for the
+    // request-dedup discipline that keeps this safe to call on every render. Always
+    // stated, even when empty (neither side found for this strike) -- a silent "do
+    // nothing" here would leave a PRIOR strike's contracts subscribed indefinitely.
+    _setAdditionalContractsDemand([call && call.symbol, put && put.symbol].filter(Boolean));
+  }
+
+  // Independent-review finding (2026-09-12), REPRODUCED: switching the active ticker did
+  // not invalidate Strike Detail's in-flight /api/chain fetch generation (_sgen) or reset
+  // its rendered content -- ed-core.js's setTicker() already clears the SHARED selStrike
+  // (a fresh strike click is required before loadStrike fires again), but a chain fetch
+  // for the OLD ticker that was already in flight when the switch happened still passed
+  // the (unchanged) `g === _sgen` guard on arrival, rendering the OLD ticker's values and
+  // re-requesting the OLD ticker's contracts into the plural endpoint under the NEW
+  // ticker's context. Reproduced: request AMD's chain, switch to NVDA, deliver the
+  // delayed AMD response -- Strike Detail rendered AMD's values and requested AMD's
+  // contracts. Fixed by invalidating the generation and clearing all Strike Detail state
+  // (DOM placeholder + additional-contracts demand) the instant the ticker changes, same
+  // discipline `_setAdditionalContractsDemand([])` already gives an empty/failed chain.
+  function resetStrikeDetailForTickerChange() {
+    _sgen++;   // any response already in flight for the OLD ticker can never pass g === _sgen again
+    var host = document.getElementById('sdBody');
+    if (host) {
+      host.innerHTML = '<div class="placeholder"><div class="sm">Select a strike/expiry. '
+        + 'OI · volume · gamma · delta · IV from /api/chain (vendor).</div></div>';
+    }
+    _setAdditionalContractsDemand([]);
+  }
+
+  // ---------- events ----------
+  function loadAll() { loadLevels(); loadGbs(); loadPcr(); }   // loadPcr is a no-op unless its context changed or it is still warming
+  document.addEventListener('ed:ticker', function () { resetStrikeDetailForTickerChange(); loadAll(); });
+  document.addEventListener('ed:expiry', loadPcr);   // the ratio is scoped to the selected expiry -> re-read for the new context
+  document.addEventListener('ed:plane', loadPcr);    // the bundle generation or the market session changed -> identity check
+  document.addEventListener('ed:view', loadAll);
+  document.addEventListener('ed:scope', loadGbs);   // #3: re-window the GEX-by-strike panel only
+  document.addEventListener('ed:refresh', function (e) {
+    if (!e.detail || !e.detail.slow) return;
+    loadAll();
+    // Independent-review finding (2026-09-12): "Strike Detail reads volume from /api/chain.
+    // Its refresh handler does not reload that detail." loadAll() never included Strike
+    // Detail, so a selected strike's OI/Vol/Gamma/Delta/IV froze at whatever they were when
+    // the strike was first clicked -- never refreshed by the slow poll OR the new SSE push
+    // (ed-core.js's gamma_surface_seq listener), even though the underlying chain/streamed
+    // data keeps moving. Reload it too, exactly like ed:expiry already does below, whenever a
+    // strike is currently selected.
+    var sel = ((window.EdShell && window.EdShell.getState()) || {}).selStrike;
+    if (sel != null) loadStrike(sel, _lastExpiry);
+  });
+  document.addEventListener('ed:strike', function (e) {
+    var det = e.detail || {}; _lastExpiry = det.expiry || _lastExpiry;
+    applyGbsHighlight();                       // A: sync the GEX-by-strike highlight
+    if (det.strike != null) loadStrike(det.strike, det.expiry);
+  });
+  document.addEventListener('ed:expiry', function (e) {   // #5: expiry filter -> Strike Detail uses it; Levels/GBS stay aggregate + disclose
+    var exp = (e.detail && e.detail.expiry) || null;
+    loadLevels(); loadGbs();
+    var sel = ((window.EdShell && window.EdShell.getState()) || {}).selStrike;
+    if (sel != null) loadStrike(sel, exp || _lastExpiry);
+  });
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', loadAll);
+  else loadAll();
+})();

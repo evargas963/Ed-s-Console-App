@@ -167,6 +167,52 @@ def test_spxw_matches_dollar_spx_only_via_banked_chain():
         ccc.nearest_complete_chain_capture = orig
 
 
+def test_public_contract_matches_underlying_wrapper_resolves_the_weekly_root(monkeypatch):
+    """server.py's streaming-overlay wiring (_gamma_surface_contracts_with_stream_overlay,
+    refresh_gamma_surface_from_stream) uses the PUBLIC contract_matches_underlying wrapper so
+    it does not need to know about DB_PATH/chain_db_path plumbing. Independent-review finding
+    (2026-09-12): a bare vendor-root == ticker-root equality check would silently exclude this
+    exact SPXW/$SPX case -- proving the wrapper reaches the SAME chain-aware fallback as
+    _contract_matches_underlying's own test above, not a narrower reimplementation."""
+    from app.options.order_flow.streaming import contract_matches_underlying
+
+    weekly = "SPXW  260904C07735000"
+    cap = {"ticker": "$SPX", "expiry": "2026-09-04", "contracts": [{"symbol": weekly}]}
+
+    def _nearest(db_path, ticker, *, on_or_after_expiry):
+        tk = (ticker or "").strip().upper()
+        return cap if tk in ("$SPX", "SPX") else None
+
+    import calibration.complete_chain_capture as ccc
+    orig = ccc.nearest_complete_chain_capture
+    ccc.nearest_complete_chain_capture = _nearest
+    try:
+        assert contract_matches_underlying(weekly, "$SPX") is True
+        assert contract_matches_underlying(weekly, "SPY") is False
+        assert contract_matches_underlying("SPY   260904C00772000", "$SPX") is False
+    finally:
+        ccc.nearest_complete_chain_capture = orig
+
+
+def test_public_contract_matches_underlying_wrapper_survives_a_missing_db_path(monkeypatch):
+    """If `from db import DB_PATH` itself fails, the wrapper must degrade to the fast
+    root-equality path rather than raising -- ownership checks are best-effort, never a hard
+    dependency on the DB module being importable."""
+    from app.options.order_flow.streaming import contract_matches_underlying
+    import builtins
+
+    real_import = builtins.__import__
+
+    def _blocked_import(name, *args, **kwargs):
+        if name == "db":
+            raise ImportError("simulated: db module unavailable")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", _blocked_import)
+    assert contract_matches_underlying("SPY   260904C00772000", "SPY") is True
+    assert contract_matches_underlying("SPY   260904C00772000", "QQQ") is False
+
+
 def test_switch_underlying_clears_when_no_replacement(monkeypatch):
     """CDE -> C with no banked C chain must not keep the CDE contract."""
     import app.options.order_flow.streaming as ofs

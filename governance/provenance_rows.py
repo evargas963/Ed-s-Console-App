@@ -822,9 +822,14 @@ ROWS: tuple[Row, ...] = (
         justification='Multi-symbol quote fetch via safe_get_quote wrapper.',
     ),
     Row(
-        file='market_context.py', derivation='fetch_market_context._chg_for', disposition='SCHWAB_LEAF',
+        # RC (2026-09-11): fetch_market_context._chg_for was a nested closure; consolidated
+        # into a functools.partial (native capability, not a hand-written forwarding
+        # function -- caught in independent review) over the module-level extract_pct_change,
+        # which is where the real netPercentChange parsing now lives, module-level and
+        # shared by every chg_pct caller (not just fetch_market_context's sentinels).
+        file='market_context.py', derivation='extract_pct_change', disposition='SCHWAB_LEAF',
         schwab_leaf='quotes.quote.netPercentChange',
-        justification='Nested pct change helper from quote JSON.',
+        justification='Percent-change parser from quote JSON, shared by every chg_pct caller.',
     ),
     Row(
         file='market_context.py', derivation='fetch_market_context._fetch', disposition='SCHWAB_LEAF',
@@ -2747,6 +2752,15 @@ ROWS: tuple[Row, ...] = (
         justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (fast_quote).',
     ),
     Row(
+        # api_watchlist_quotes (/api/watchlist-quotes): the ONE batched Schwab quote read
+        # for a whole client-held watchlist (client.get_quotes), reusing the same
+        # _parse_quote_node_session_fields parser and resolve_chg_pct authority every
+        # other quote route shares -- not a second quote computation.
+        file='server.py', derivation='api_watchlist_quotes', disposition='SCHWAB_LEAF',
+        schwab_leaf='quotes.quote.lastPrice',
+        justification='Batched multi-symbol quote fetch (client.get_quotes) via safe_get_quotes.',
+    ),
+    Row(
         file='server.py', derivation='flatten_chain_contracts', disposition='SCHWAB_LEAF',
         schwab_leaf='chains.callExpDateMap.*.strikePrice',
         justification='Flattens the Schwab chain response into a contract list; single source shared by _fetch_state and the terrain loop.',
@@ -2805,6 +2819,11 @@ ROWS: tuple[Row, ...] = (
         file='server.py', derivation='get_exposure_book', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='RC-209: per-strike call/put GEX split, net DEX and volumes from the NEWEST banked wide chain, all through the shared exposure faucet.',
+    ),
+    Row(
+        file='server.py', derivation='get_options_gamma_surface', disposition='ALLOWLISTED',
+        allowlist_id='mega1_sqlite_internal',
+        justification='RC-UI-1: strike x expiry GEX$ surface (Options/Gamma heatmap). PREFERRED source is the LIVE terrain cache (current terrain-refresh contracts + live spot, bounded near-money window) — an in-memory read, no SQLite. This SQLite read is the FALLBACK ONLY: the banked morning wide reference (option_chain_morning_full), stale, not intraday, not proven complete. Both paths partition by native expirationDate and route each expiry slice through the shared compute_exposures_by_strike faucet; the endpoint owns no gamma/GEX math and is a projection of the one exposure producer.',
     ),
     Row(
         file='server.py', derivation='get_exposure_flow', disposition='ALLOWLISTED',
@@ -2875,6 +2894,11 @@ ROWS: tuple[Row, ...] = (
         file='server.py', derivation='get_terrain_strikes._per_strike', disposition='SCHWAB_LEAF',
         schwab_leaf='chains.*.daysToExpiration',
         justification='Nested: builds one per-strike row from the chain leaves; near/far split now via the canonical terrain_engine._dte_of (Cursor-audit F8, replacing the removed nested _dte).',
+    ),
+    Row(
+        file='server.py', derivation='project_gamma_surface', disposition='DERIVED',
+        producer_refs=('math_exposure_core.py:compute_exposures_by_strike', 'server.py:_filter_contracts_by_selected_expiry'),
+        justification='RC-UI-1 strike x expiry GEX surface (/api/options/gamma-surface payload owner): PURE projection - partitions the wide chain by native expirationDate through the existing selected-expiry slicer and runs the ONE exposure faucet per slice; every cell is that faucet net_gex_1pct, no exposure math of its own (tests/test_gamma_surface_projection_v1.py invariant I).',
     ),
     Row(
         file='server.py', derivation='get_terrain_strikes._side_sums', disposition='ALLOWLISTED',

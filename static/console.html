@@ -1,0 +1,778 @@
+<!DOCTYPE html>
+<html lang="en" data-workspace="options" data-subview="gamma" data-view="heatmap">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ed Console</title>
+<script>/* window.EdTheme — the ONE canonical theme owner, loaded before CSS. Owns preference read,
+   SYSTEM resolution, concrete data-theme assignment (first paint, no flash), OS-change handling,
+   and the ed:theme presentation event. ed-core CONSUMES this owner; it does not re-implement the
+   resolution rule, so there is a single authority for this UI truth. */
+(function(){
+  var KEY='ed_theme';
+  function mqDark(){try{return window.matchMedia&&matchMedia('(prefers-color-scheme: dark)');}catch(e){return null;}}
+  function getPref(){try{var p=localStorage.getItem(KEY);return (p==='light'||p==='dark')?p:'system';}catch(e){return 'system';}}
+  function resolve(pref){pref=pref||getPref();if(pref==='light'||pref==='dark')return pref;var mq=mqDark();return (mq&&mq.matches)?'dark':'light';}
+  function apply(pref){var eff=resolve(pref);try{document.documentElement.setAttribute('data-theme',eff);}catch(e){}return eff;}
+  function notify(pref,eff){try{document.dispatchEvent(new CustomEvent('ed:theme',{detail:{pref:pref,theme:eff}}));}catch(e){}}
+  function setPref(p){if(p!=='light'&&p!=='dark')p='system';try{localStorage.setItem(KEY,p);}catch(e){}var eff=apply(p);notify(p,eff);return eff;}
+  window.EdTheme={KEY:KEY,getPref:getPref,resolve:resolve,apply:apply,setPref:setPref};
+  apply(getPref());   // first paint: concrete data-theme before CSS -> no flash, never unset
+  var mq=mqDark();
+  if(mq){var onOs=function(){if(getPref()==='system'){var eff=apply('system');notify('system',eff);}};
+    if(mq.addEventListener)mq.addEventListener('change',onOs);else if(mq.addListener)mq.addListener(onOs);}
+})();</script>
+<!-- Operator finding (2026-09-11): this page loaded Inter from Google's CDN, a
+     render-blocking dependency on a third-party origin during first paint. The
+     --ed-sans/--ed-mono token stack (ed-tokens.css) already lists a full native
+     fallback -- system-ui, Segoe UI (Windows), Roboto, Helvetica, Arial -- so
+     removing the external request changes typography (no Inter glyphs) but
+     never blocks or breaks rendering; a workstation with no network path to
+     Google now paints exactly as fast as one with it. -->
+<link rel="stylesheet" href="/static/css/ed-tokens.css">
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{background:var(--ed-bg);color:var(--ed-ink);font-family:var(--ed-sans);font-size:14px;
+    -webkit-font-smoothing:antialiased;overflow:hidden}
+  .mono{font-family:var(--ed-mono);font-variant-numeric:tabular-nums}
+  .pos{color:var(--ed-pos-ink)} .neg{color:var(--ed-neg-ink)} .muted{color:var(--ed-ink-3)}
+  button{font-family:inherit;color:inherit;background:none;border:none;cursor:pointer}
+  ::-webkit-scrollbar{width:9px;height:9px}
+  ::-webkit-scrollbar-thumb{background:var(--ed-edge-strong);border-radius:5px}
+  ::-webkit-scrollbar-track{background:transparent}
+
+  /* ===== app grid ===== */
+  #app{display:grid;height:100vh;
+    grid-template-columns:var(--ed-rail-w) 1fr;
+    grid-template-rows:var(--ed-header-h) 1fr;
+    grid-template-areas:"rail header" "rail main";transition:grid-template-columns .14s ease}
+  #app.rail-open{grid-template-columns:var(--ed-rail-w-open) 1fr}
+
+  /* ===== header ===== */
+  header{grid-area:header;display:flex;align-items:center;gap:0;background:var(--ed-header);
+    border-bottom:1px solid var(--ed-edge);padding:0 14px}
+  .hx{display:flex;align-items:center;gap:7px}
+  .hx{gap:9px}
+  .hx .sym{font-weight:700;font-size:22px;letter-spacing:.02em;color:var(--ed-ink)}
+  .hx .px{font-family:var(--ed-sans);font-size:26px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--ed-ink)}
+  .hx .chg{font-family:var(--ed-sans);font-size:15px;font-weight:600;font-variant-numeric:tabular-nums}
+  .hsep{width:1px;height:22px;background:var(--ed-edge);margin:0 13px}
+  .hkv{display:flex;flex-direction:column;line-height:1.12}
+  .hkv .k{font-size:9px;letter-spacing:.11em;text-transform:uppercase;color:var(--ed-ink-3)}
+  .hkv .v{font-family:var(--ed-sans);font-size:13px;font-variant-numeric:tabular-nums;color:var(--ed-ink-2)}
+  .live{display:inline-flex;align-items:center;gap:6px;font-family:var(--ed-mono);font-size:11px}
+  .live .dot{width:8px;height:8px;border-radius:50%;background:var(--ed-live)}
+  .live .dot.warn{background:var(--ed-warn)} .live .dot.stale{background:var(--ed-stale)}
+  .sess{font-family:var(--ed-mono);font-size:11px;font-weight:600;letter-spacing:.06em}
+  .sess.rth{color:var(--ed-live)} .sess.pre{color:var(--ed-warn)} .sess.ah{color:var(--ed-accent-2)} .sess.closed{color:var(--ed-ink-3)}
+  .search{margin-left:auto;display:flex;align-items:center;gap:7px;background:var(--ed-panel);
+    border:1px solid var(--ed-edge);border-radius:var(--ed-r);padding:6px 11px;width:280px;color:var(--ed-ink-3)}
+  .search input{flex:1;background:none;border:none;outline:none;color:var(--ed-ink);font-family:var(--ed-sans);font-size:12px}
+  .hbtn{width:30px;height:30px;display:flex;align-items:center;justify-content:center;border-radius:var(--ed-r);
+    color:var(--ed-ink-2);margin-left:8px}
+  .hbtn:hover{background:var(--ed-panel-2);color:var(--ed-ink)}
+
+  /* ===== left rail ===== */
+  #rail{grid-area:rail;background:var(--ed-rail);border-right:1px solid var(--ed-edge);
+    display:flex;flex-direction:column;overflow:hidden}
+  .brand{height:var(--ed-header-h);display:flex;align-items:center;gap:9px;padding:0 15px;
+    border-bottom:1px solid var(--ed-edge);flex:none}
+  .brand .logo{width:30px;height:30px;border-radius:6px;background:var(--ed-accent-bg);
+    border:1px solid var(--ed-accent-edge);display:flex;align-items:center;justify-content:center;
+    color:var(--ed-accent-2);font-weight:700;font-size:15px;flex:none}
+  .brand .bwrap{display:flex;flex-direction:column;line-height:1.05;opacity:0;transition:opacity .12s;overflow:hidden}
+  #app.rail-open .brand .bwrap{opacity:1}
+  .brand .name{font-weight:700;letter-spacing:.14em;font-size:15px;white-space:nowrap;color:var(--ed-ink)}
+  .brand .tag{font-size:7px;letter-spacing:.02em;color:var(--ed-ink-3);white-space:nowrap;margin-top:2px}
+  .rail-scroll{flex:1;overflow-y:auto;overflow-x:hidden;padding:8px 0}
+  .navitem{display:flex;align-items:center;gap:12px;height:40px;padding:0 15px;color:var(--ed-ink-2);
+    white-space:nowrap;position:relative}
+  .navitem:hover{background:var(--ed-panel-2);color:var(--ed-ink)}
+  .navitem.active{color:var(--ed-accent-2);background:var(--ed-accent-bg)}
+  .navitem.active::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--ed-accent)}
+  .navitem svg{width:19px;height:19px;flex:none;stroke:currentColor;fill:none;stroke-width:1.6}
+  .navitem .lbl{font-size:14.5px;letter-spacing:.01em;color:var(--ed-ink-2);opacity:0;transition:opacity .12s}
+  #app.rail-open .navitem .lbl{opacity:1}
+  /* active-workspace children expanded in the rail (matches the reference Options tree) */
+  .rail-children{display:flex;flex-direction:column;padding:2px 0 6px}
+  #app:not(.rail-open) .rail-children{display:none}
+  .rail-child{display:block;margin:1px 10px;padding:8px 12px 8px 41px;font-size:13.5px;color:var(--ed-ink-2);
+    white-space:nowrap;cursor:pointer;border-radius:6px}
+  .rail-child:hover{color:var(--ed-ink);background:var(--ed-panel-2)}
+  .rail-child.on{color:#fff;font-weight:600;background:var(--ed-accent)}
+  .rail-child.na{color:var(--ed-ink-4);cursor:not-allowed}.rail-child.na:hover{background:none;color:var(--ed-ink-4)}
+  .rail-sep{height:1px;background:var(--ed-edge-soft);margin:8px 12px}
+
+  /* watchlist (rail bottom) */
+  .wl{flex:none;border-top:1px solid var(--ed-edge);padding:8px 0;max-height:44%;overflow-y:auto}
+  .wl-h{display:flex;align-items:center;gap:8px;padding:4px 15px 7px;color:var(--ed-ink-3);
+    font-size:10px;letter-spacing:.14em;text-transform:uppercase;white-space:nowrap}
+  #app:not(.rail-open) .wl-h span{opacity:0}
+  .wl-row{display:grid;grid-template-columns:1fr auto 58px 18px;align-items:baseline;gap:9px;height:34px;
+    padding:0 14px;white-space:nowrap;cursor:pointer;position:relative}
+  .wl-row:hover{background:var(--ed-panel-2)}
+  .wl-row.sel{background:var(--ed-accent-bg)}
+  .wl-row.sel::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--ed-accent)}
+  .wl-sym{font-weight:700;font-size:14px;color:var(--ed-ink);letter-spacing:.02em;overflow:hidden;text-overflow:ellipsis}
+  .wl-row.sel .wl-sym{color:var(--ed-accent-2)}
+  .wl-px{font-family:var(--ed-sans);font-size:12.5px;font-variant-numeric:tabular-nums;color:var(--ed-ink-2);
+    text-align:right;opacity:0;transition:opacity .12s}
+  .wl-chg{font-family:var(--ed-sans);font-size:12px;font-variant-numeric:tabular-nums;text-align:right;
+    color:var(--ed-ink-3);opacity:0;transition:opacity .12s}
+  .wl-chg.pos{color:var(--ed-pos-ink)} .wl-chg.neg{color:var(--ed-neg-ink)}
+  #app.rail-open .wl-px,#app.rail-open .wl-chg{opacity:1}
+  #app:not(.rail-open) .wl-px,#app:not(.rail-open) .wl-chg{display:none}
+  #app:not(.rail-open) .wl-row{grid-template-columns:1fr;padding:0 8px}
+  /* Remove control: a real button in normal grid flow (not display:none toggled by JS hover
+     handlers) so Tab reaches it and Enter/Space activates it — CSS alone hides it visually
+     until hover/focus, on either pointer or keyboard, expanded rail only. */
+  .st-x{background:none;border:none;color:var(--ed-ink-4);font-size:14px;line-height:1;padding:0 2px;
+    cursor:pointer;opacity:0;transition:opacity .12s}
+  #app.rail-open .wl-row:hover .st-x,#app.rail-open .wl-row:focus-within .st-x,#app.rail-open .st-x:focus{opacity:1}
+  #app:not(.rail-open) .st-x{display:none}
+  .wl-empty{padding:6px 14px;font-size:12px;color:var(--ed-ink-3);white-space:normal}
+  #app:not(.rail-open) .wl-empty{display:none}
+  .wl-msg{padding:0 15px 4px;font-size:11px;color:var(--ed-ink-3);min-height:14px}
+  #app:not(.rail-open) .wl-msg{display:none}
+  /* A degraded poll keeps the last real numbers on screen (blanking them would be its own
+     kind of dishonesty) but must not look identical to a healthy one. Operator finding
+     (2026-09-11): opacity:.4 on the numbers themselves made real values hard to read right
+     when the operator most needs to trust what they can see. The status lives in the
+     message text (below) and a persistent border on the list, not in dimmed numbers. */
+  .wl.wl-degraded{outline:1px dashed var(--ed-stale);outline-offset:-1px}
+  .wl.wl-degraded .wl-msg{color:var(--ed-stale)}
+  .wl-add{display:flex;align-items:center;gap:10px;height:32px;padding:0 15px;color:var(--ed-ink-3);
+    font-size:12.5px;white-space:nowrap}
+  .wl-add:hover{color:var(--ed-accent-2)}
+
+  /* ===== main ===== */
+  main{grid-area:main;display:flex;flex-direction:column;overflow:hidden;min-width:0}
+  .subnav{height:var(--ed-subnav-h);display:flex;align-items:center;gap:2px;padding:0 12px;
+    background:var(--ed-header);border-bottom:1px solid var(--ed-edge);flex:none;overflow-x:auto}
+  .subnav .wtitle{font-weight:700;letter-spacing:.09em;text-transform:uppercase;font-size:14px;color:var(--ed-ink);margin-right:14px;white-space:nowrap}
+  .subnav .wtitle .chev{color:var(--ed-ink-3);margin:0 8px}
+  .tab{padding:7px 14px;font-size:14.5px;letter-spacing:.02em;color:var(--ed-ink-2);border-radius:var(--ed-r);white-space:nowrap}
+  .tab:hover{color:var(--ed-ink);background:var(--ed-panel-2)}
+  .tab.on{color:var(--ed-accent-2);background:var(--ed-accent-bg)}
+  .tab.na{color:var(--ed-ink-4)} .tab.na:hover{background:none;color:var(--ed-ink-4);cursor:not-allowed}
+  .tab .np{font-size:8px;letter-spacing:.1em;vertical-align:2px;margin-left:4px;color:var(--ed-ink-4)}
+
+  .viewbar{height:var(--ed-viewbar-h);display:flex;align-items:center;gap:2px;padding:0 12px;
+    background:var(--ed-panel);border-bottom:1px solid var(--ed-edge);flex:none;overflow-x:auto}
+  .vtab{padding:6px 13px;font-size:13.5px;letter-spacing:.02em;color:var(--ed-ink-2);border-radius:var(--ed-r);white-space:nowrap}
+  .vtab:hover{color:var(--ed-ink);background:var(--ed-panel-2)}
+  .vtab.on{color:var(--ed-ink);background:var(--ed-panel-3);box-shadow:inset 0 -2px 0 var(--ed-accent)}
+  .vtab.na{color:var(--ed-ink-4);cursor:not-allowed}.vtab.na:hover{background:none;color:var(--ed-ink-4)}
+  .viewbar .ctrls{margin-left:auto;display:flex;align-items:center;gap:8px}
+  /* real operator dropdowns (value IS the control) — ticker / expiry / measure */
+  .ctrl{position:relative;display:inline-flex;align-items:center}
+  .ctrl select{appearance:none;-webkit-appearance:none;-moz-appearance:none;background:var(--ed-panel-2);
+    color:var(--ed-ink);border:1px solid var(--ed-edge-strong);border-radius:var(--ed-r);font-family:var(--ed-sans);
+    font-size:13.5px;font-weight:600;letter-spacing:.01em;padding:6px 27px 6px 12px;cursor:pointer;outline:none}
+  .ctrl select:hover{border-color:var(--ed-accent-edge);background:var(--ed-panel-3)}
+  .ctrl select:focus-visible{border-color:var(--ed-accent);box-shadow:0 0 0 2px var(--ed-accent-bg)}
+  .ctrl select option{background:var(--ed-panel);color:var(--ed-ink)}
+  .ctrl .cv{position:absolute;right:10px;top:50%;transform:translateY(-50%);pointer-events:none;color:var(--ed-ink-3);font-size:8px}
+  /* active-instrument control: a typed symbol (same chrome as the selects); invalid form flashes */
+  .ctrl input{appearance:none;background:var(--ed-panel-2);color:var(--ed-ink);border:1px solid var(--ed-edge);border-radius:var(--ed-r);
+    font-family:var(--ed-sans);font-size:13px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:5px 10px;width:104px;outline:none}
+  .ctrl input:hover{border-color:var(--ed-accent-edge);background:var(--ed-panel-3)}
+  .ctrl input:focus-visible{border-color:var(--ed-accent);box-shadow:0 0 0 2px var(--ed-accent-bg)}
+  .ctrl input.invalid{border-color:var(--ed-neg);box-shadow:0 0 0 2px var(--ed-neg-bg,transparent)}
+  .ctrl input::placeholder{color:var(--ed-ink-4);font-weight:500}
+  .ctrl .cv::before{content:"▼"}
+  .aibtn{display:flex;align-items:center;gap:7px;padding:6px 13px;border:1px solid var(--ed-accent-edge);
+    border-radius:var(--ed-r);color:var(--ed-accent-2);font-size:12.5px;letter-spacing:.04em}
+  .aibtn:hover{background:var(--ed-accent-bg)}
+
+  /* workspace canvas */
+  .canvas{flex:1;overflow:auto;padding:8px;min-height:0}
+  .workspace{display:none;height:100%}
+  .workspace.on{display:block}
+  /* options subviews (Gamma grid / Chain ladder / Flow) swap in the one canvas */
+  .sub-pane{display:none;height:100%}
+  .sub-pane.on{display:block;height:100%}
+  .sub-pane>.panel{height:100%}
+  /* chain ladder (D) — full vendor chain, one expiry */
+  .chn{width:100%;border-collapse:collapse;font-family:var(--ed-sans);font-size:13px;font-variant-numeric:tabular-nums}
+  .chn th{position:sticky;top:0;background:var(--ed-panel-2);font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;
+    color:var(--ed-ink-3);padding:7px 9px;border-bottom:1px solid var(--ed-edge);text-align:right}
+  .chn th.mid{text-align:center;color:var(--ed-ink);background:var(--ed-panel-3);letter-spacing:.06em}
+  .chn td{padding:6px 9px;border-bottom:1px solid var(--ed-edge-soft);text-align:right;color:var(--ed-ink)}
+  .chn td.k{text-align:center;font-weight:700;background:var(--ed-panel-2);color:var(--ed-ink)}
+  .chn tr.spot td.k{background:var(--ed-panel-3);color:var(--ed-accent-2);box-shadow:inset 0 0 0 1px var(--ed-accent-edge)}
+  .chn tr:hover{background:var(--ed-panel-2)}
+  .chn .cflag{color:var(--ed-pos-ink)} .chn .pflag{color:var(--ed-neg-ink)}
+  .chn td.chn-call,.chn td.chn-put{cursor:pointer}
+  .chn td.chn-call:hover,.chn td.chn-put:hover{background:var(--ed-accent-bg)}
+  .chn td.chn-selc{background:var(--ed-accent-bg);color:var(--ed-accent-2);font-weight:600}
+  .chn-head{display:flex;justify-content:space-between;align-items:baseline;font-family:var(--ed-sans);font-size:12px;color:var(--ed-ink-3);padding:2px 2px 8px}
+  .chn-head .chn-default{color:var(--ed-stale)} .chn-head .chn-dup{color:var(--ed-warn)}
+  /* Flow subview (D) — one selected contract's microstructure; server classifications are authority */
+  .fl-head{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;padding:2px 2px 12px;border-bottom:1px solid var(--ed-edge);margin-bottom:12px}
+  .fl-head .fl-lab{display:block;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ed-ink-3);margin-bottom:3px}
+  .fl-head .fl-sym{font-family:var(--ed-sans);font-size:15px;font-weight:700;color:var(--ed-ink);font-variant-numeric:tabular-nums;letter-spacing:.02em}
+  .fl-head .fl-meta{margin-left:9px;font-size:12px;color:var(--ed-ink-3)}
+  .fl-sub{text-align:right}
+  .fl-badge{display:inline-block;font-size:12px;font-weight:700;letter-spacing:.06em;padding:3px 11px;border-radius:var(--ed-r);border:1px solid var(--ed-edge-strong);color:var(--ed-ink-2)}
+  .fl-badge.live{color:var(--ed-live);border-color:var(--ed-live)}
+  .fl-badge.warn{color:var(--ed-warn);border-color:var(--ed-warn)}
+  .fl-badge.stale{color:var(--ed-stale);border-color:var(--ed-stale)}
+  .fl-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}
+  .fl-sec{border:1px solid var(--ed-edge);border-radius:var(--ed-r);padding:9px 11px;background:var(--ed-panel-2)}
+  .fl-sec.fl-dim{opacity:.55}
+  .fl-sec-h{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--ed-ink-2);margin-bottom:6px;display:flex;align-items:center;gap:7px}
+  .fl-row{display:flex;align-items:baseline;gap:8px;padding:3.5px 0;border-bottom:1px solid var(--ed-edge-soft)}
+  .fl-row:last-child{border-bottom:none}
+  .fl-row .k{font-size:12.5px;color:var(--ed-ink-3);flex:1}
+  .fl-row .v{font-family:var(--ed-sans);font-size:13.5px;font-weight:600;color:var(--ed-ink);font-variant-numeric:tabular-nums}
+  .fl-tag{font-family:var(--ed-sans);font-size:8.5px;letter-spacing:.06em;padding:1px 5px;border-radius:3px;font-weight:600}
+  .fl-tag.native{background:var(--ed-native-bg);color:var(--ed-native)}
+  .fl-tag.derived{background:var(--ed-derived-bg);color:var(--ed-derived)}
+  .fl-tag.proxy{background:var(--ed-proxy-bg);color:var(--ed-proxy)}
+  .fl-tag.unknown{background:var(--ed-panel-3);color:var(--ed-ink-4)}   /* served value the backend did not classify */
+  .fl-foot{font-family:var(--ed-sans);font-size:10.5px;color:var(--ed-ink-4);padding:12px 2px 0;line-height:1.5}
+
+  /* gamma workspace layout — the heatmap is the HERO (dominant center), Key Levels a narrow right
+     rail, and the bottom a subordinate supporting strip. Tight gaps/rhythm = terminal density. */
+  .gamma-grid{display:grid;height:100%;gap:8px;
+    grid-template-columns:1fr minmax(340px,25%);
+    grid-template-rows:minmax(0,2.15fr) minmax(0,1fr);
+    grid-template-areas:"heat levels" "bottom bottom"}
+  .p-heat{grid-area:heat} .p-levels{grid-area:levels} .p-bottom{grid-area:bottom}
+  .p-bottom{display:grid;grid-template-columns:1.05fr 1fr 1.15fr;gap:7px}
+  /* #8: maximize the main analytical panel (Heatmap/Chart) — presentation only; the shared ticker /
+     strike / expiry / scope state is untouched, so restore returns to the exact same context. */
+  .gamma-grid.maxed{grid-template-columns:1fr;grid-template-rows:1fr;grid-template-areas:"heat"}
+  .gamma-grid.maxed .p-levels,.gamma-grid.maxed .p-bottom{display:none}
+  .maxbtn{width:27px;height:27px;display:inline-flex;align-items:center;justify-content:center;
+    border-radius:var(--ed-r);color:var(--ed-ink-3)}
+  .maxbtn:hover{background:var(--ed-panel-3);color:var(--ed-ink)}
+  .maxbtn.on{color:var(--ed-accent-2);background:var(--ed-accent-bg)}
+
+  .panel{background:var(--ed-panel);border:1px solid var(--ed-edge);border-radius:var(--ed-r-lg);
+    display:flex;flex-direction:column;overflow:hidden;min-width:0}
+  .panel-h{display:flex;align-items:center;gap:9px;padding:8px 12px;border-bottom:1px solid var(--ed-edge);
+    background:var(--ed-panel-2);flex:none}
+  .panel-h .hticker{font-size:16px;font-weight:700;letter-spacing:.03em;color:var(--ed-ink)}
+  .panel-h .t{font-size:14.5px;font-weight:600;letter-spacing:.01em;color:var(--ed-ink)}
+  .panel-h .sub{font-family:var(--ed-sans);font-size:11px;color:var(--ed-ink-3)}
+  /* provenance/telemetry is REQUIRED truth but must not compete with panel titles — demote it */
+  #heatScope{font-size:9.5px;color:var(--ed-ink-4);font-weight:400}
+  .panel-h #klSrc{font-size:10px;color:var(--ed-ink-4)}
+  .panel-h .r{margin-left:auto;display:flex;align-items:center;gap:7px}
+  /* #4: compact per-panel source/as-of badge - each panel discloses ITS OWN canonical freshness,
+     never a single global "LIVE". Formats server-owned source/age only (no client recomputation). */
+  .asof{font-family:var(--ed-mono);font-size:9px;letter-spacing:.02em;color:var(--ed-ink-3);
+    padding:1px 6px;border:1px solid var(--ed-edge);border-radius:3px;white-space:nowrap}
+  .asof.live{color:var(--ed-live);border-color:var(--ed-edge-strong)}
+  .asof.stale{color:var(--ed-stale);border-color:var(--ed-stale)}
+  .asof.ref{color:var(--ed-proxy);border-style:dashed;border-color:var(--ed-proxy)}
+  .panel-b{flex:1;overflow:auto;padding:7px 10px;min-height:0}
+
+  .prov{font-family:var(--ed-mono);font-size:8.5px;letter-spacing:.05em;padding:1px 5px;border-radius:3px;font-weight:600;text-transform:uppercase}
+  .prov.native{background:var(--ed-native-bg);color:var(--ed-native)}
+  .prov.derived{background:var(--ed-derived-bg);color:var(--ed-derived)}
+  .prov.proxy{background:var(--ed-proxy-bg);color:var(--ed-proxy)}
+  .prov.research{background:var(--ed-research-bg);color:var(--ed-research)}
+
+  .placeholder{display:flex;flex-direction:column;align-items:center;justify-content:center;
+    height:100%;gap:8px;color:var(--ed-ink-3);text-align:center;padding:20px}
+  .placeholder .big{font-size:13px;color:var(--ed-ink-2);letter-spacing:.04em}
+  .placeholder .sm{font-size:11px;font-family:var(--ed-mono);max-width:52ch;line-height:1.5}
+  .notproven{border:1px dashed var(--ed-proxy);color:var(--ed-proxy);border-radius:5px;
+    padding:3px 9px;font-family:var(--ed-mono);font-size:10px;letter-spacing:.04em}
+  /* Order Flow: reserved-space notice, top-aligned + compact (never a fabricated blotter) */
+  .of-await{display:flex;flex-direction:column;gap:8px;align-items:flex-start}
+  .of-await .ln{font-family:var(--ed-mono);font-size:11px;color:var(--ed-ink-2);line-height:1.45}
+  .of-await .ln.dim{color:var(--ed-ink-3);max-width:46ch}
+
+  /* key levels rail rows — operator rail; roomy rows fill the rail, strong numeric alignment */
+  .kl-row{display:flex;align-items:baseline;justify-content:space-between;padding:3.5px 0;border-bottom:1px solid var(--ed-edge-soft)}
+  .kl-row:last-child{border-bottom:none}
+  .kl-row .k{font-size:13px;color:var(--ed-ink-2);letter-spacing:.01em}
+  .kl-row .k .kl-scope{font-size:10px;color:var(--ed-ink-4);margin-left:6px;letter-spacing:.02em}   /* per-row scope disclosure (e.g. the expiry a ratio is scoped to) */
+  .kl-row .v{font-family:var(--ed-sans);font-size:15.5px;font-weight:700;color:var(--ed-ink);font-variant-numeric:tabular-nums}
+  .kl-sec{font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:var(--ed-ink-3);
+    margin:7px 0 2px;padding-top:6px;border-top:1px solid var(--ed-edge)}
+  .kl-sec:first-child{margin-top:0;border-top:none;padding-top:0}
+  /* dealer-regime callout at the foot of the rail (matches the approved reference) */
+  /* Key Levels tab chrome (Key Levels active; Details/Metrics/Context are IA shells) */
+  .kl-h{padding:0 10px 0 12px;align-items:stretch}
+  .kl-tabs{display:flex;gap:2px;flex:1;align-items:stretch}
+  .kl-tab{font-size:13.5px;color:var(--ed-ink-3);padding:0 9px;border-bottom:2px solid transparent;background:none;letter-spacing:.01em}
+  .kl-tab.on{color:var(--ed-ink);border-bottom-color:var(--ed-accent);font-weight:600}
+  .kl-tab.na{color:var(--ed-ink-4);cursor:not-allowed}
+  .kl-h .sub{align-self:center}
+  .klbody{display:flex;flex-direction:column}
+  .kl-regime-box{margin-top:10px;border:1px solid var(--ed-edge-strong);border-radius:var(--ed-r);
+    padding:8px 11px;display:flex;flex-direction:column;gap:2px;background:var(--ed-panel-2)}
+  .kl-regime-box .rlab{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--ed-ink-3)}
+  .kl-regime-box .rval{font-size:16px;font-weight:700;letter-spacing:.02em}
+  .kl-regime-box .rsub{font-size:11px;color:var(--ed-ink-3)}
+
+  /* gamma heatmap grid (presentation of /api/options/gamma-surface) — the HERO: the grid fills the
+     whole panel, columns share the width evenly (fixed layout), rows stretch to fill the height. */
+  .heat-host{display:flex;flex:1;gap:8px;min-height:0}
+  .heat-main{flex:1;min-width:0;display:flex;flex-direction:column;min-height:0}
+  .heat-wrap{overflow:auto;height:100%;flex:1;min-height:0}
+  .heat{border-collapse:separate;border-spacing:0;font-family:var(--ed-sans);font-size:13px;
+    font-variant-numeric:tabular-nums;width:100%;height:100%;table-layout:fixed}
+  /* Inter is proportional; keep numeric columns aligned across the terminal */
+  .hx .px,.hx .chg,.hkv .v,.gbs-k,.gbs-v,.sd,.sd td,.kl-row .v,#heatScope,.asof{font-variant-numeric:tabular-nums}
+  .heat th,.heat td{border-right:1px solid var(--ed-edge-soft);border-bottom:1px solid var(--ed-edge-soft)}
+  .heat thead th{position:sticky;top:0;z-index:2;background:var(--ed-header);color:var(--ed-ink-2);
+    padding:6px 8px;text-align:center;font-family:var(--ed-sans);letter-spacing:.03em;white-space:nowrap}
+  .heat .hcorner{left:0;z-index:3;text-align:left;width:66px}
+  .heat .hexp .d{display:block;font-size:12px;color:var(--ed-ink);font-weight:600}
+  .heat .hexp .dte{display:block;font-size:10px;color:var(--ed-ink-3)}
+  .heat .hstrike{position:sticky;left:0;z-index:1;width:70px;background:var(--ed-panel);color:var(--ed-ink);
+    padding:0 10px;text-align:right;font-size:13px;font-weight:600;white-space:nowrap;font-variant-numeric:tabular-nums}
+  .heat .hstrike.spot{color:var(--ed-ink);background:var(--ed-panel-3);box-shadow:inset 2px 0 0 var(--ed-accent)}
+  .heat .hcell{padding:0 8px;text-align:center;font-variant-numeric:tabular-nums;font-weight:500;cursor:pointer;white-space:nowrap}
+  .heat .hcell:hover{outline:1px solid var(--ed-accent);outline-offset:-1px}
+  .heat .hcell.sel{outline:2px solid var(--ed-accent);outline-offset:-2px}
+  /* Just-updated flash (state-authority review, 2026-09-12): "actual Schwab updates
+     visibly change the appropriate values and colors" needs a cue a trader can actually
+     notice, not just a technically-correct DOM change -- a box-shadow ring (never the
+     cell's own semantic background/foreground, which stays the sign-colored value) that
+     fades out once, applied only to a cell whose value genuinely differs from what this
+     exact (strike, expiry) showed a moment ago (ed-gamma.js renderSurface). */
+  .heat .hcell.flash-update{animation:hcellFlash 900ms ease-out}
+  @keyframes hcellFlash{
+    0%{box-shadow:inset 0 0 0 2px var(--ed-accent)}
+    100%{box-shadow:inset 0 0 0 2px transparent}
+  }
+  .heat tr.spotrow td{box-shadow:inset 0 -1px 0 var(--ed-accent-edge)}
+  /* vertical magnitude legend at the heatmap's right edge (matches the approved reference:
+     labelled scale, green High Call GEX at top -> 0 -> red High Put GEX at bottom) */
+  .heat-vlegend{flex:none;display:flex;align-items:stretch;gap:5px;padding:2px 0 2px 2px}
+  .heat-vlegend .bar{width:10px;border-radius:3px;
+    background:linear-gradient(to bottom,var(--ed-pos),var(--ed-heat-zero) 50%,var(--ed-neg))}
+  .heat-vlegend .caps{display:flex;flex-direction:column;justify-content:space-between;
+    font-family:var(--ed-sans);font-size:8.5px;line-height:1.05;color:var(--ed-ink-3);width:34px}
+  .heat-vlegend .caps .t{color:var(--ed-pos-ink)} .heat-vlegend .caps .b{color:var(--ed-neg-ink)}
+  .heat-vlegend .caps .m{color:var(--ed-ink-4);text-align:left}
+  .heat-banner{font-family:var(--ed-mono);font-size:10px;letter-spacing:.03em;padding:5px 10px;border-radius:5px;margin-bottom:8px}
+  .heat-banner.stale{background:var(--ed-proxy-bg);color:var(--ed-stale);border:1px solid var(--ed-stale)}
+  .heat-banner.ref{background:var(--ed-proxy-bg);color:var(--ed-proxy);border:1px dashed var(--ed-proxy)}
+  .heat-banner.degraded{background:var(--ed-proxy-bg);color:var(--ed-warn);border:1px solid var(--ed-warn)}
+  .heat-banner.warming{background:var(--ed-accent-bg);color:var(--ed-accent-2);border:1px solid var(--ed-accent-edge)}
+  .heat-legend{display:flex;align-items:center;gap:8px;font-family:var(--ed-mono);font-size:9px;color:var(--ed-ink-3);padding:0 0 6px}
+  .heat-legend .grad{width:130px;height:9px;border-radius:2px;background:linear-gradient(90deg,var(--ed-neg),var(--ed-heat-zero) 50%,var(--ed-pos))}
+  /* B: freshness-coupled dimming — stale/reference content recedes */
+  /* Operator finding (2026-09-11): opacity:.5 + saturate(.6) here blanket-dimmed every
+     cell's TEXT and COLOR, making the actual numbers hard to read whenever a surface was
+     stale/reference -- exactly when an operator most needs to read them clearly to judge
+     whether to trust what's on screen. The banner (buildBanner) is the truthful status
+     disclosure; this class's only job is a persistent, unmistakable-but-non-obscuring
+     visual mark. A dashed --ed-stale outline reads as "this container is flagged" without
+     touching a single cell's contrast. */
+  .recede{outline:2px dashed var(--ed-stale);outline-offset:-2px;border-radius:6px}
+  /* A: shared selected-strike highlight across panels */
+  .heat .hcell.sel-strike{outline:2px solid var(--ed-accent);outline-offset:-2px}
+  .gbs-row.gbs-sel{outline:1px solid var(--ed-accent);outline-offset:-1px;background:var(--ed-accent-bg)}
+  .chart-svg .gmark.csel{stroke:var(--ed-accent);stroke-width:2.5}
+  /* C: nearest-expiry (front) column emphasis — presentation only */
+  .heat .hexp.col-front{background:var(--ed-panel-3);box-shadow:inset 0 -2px 0 var(--ed-accent-edge)}
+  .heat .hcell.col-front{box-shadow:inset 1px 0 0 var(--ed-edge-strong),inset -1px 0 0 var(--ed-edge-strong)}
+
+  /* main-panel view switching (Heatmap / Chart / Levels / Multi-Map) */
+  .mvwrap{padding:0;position:relative}
+  .mv{display:none;height:100%} .mv.on{display:block;height:100%}
+  .mvbody{height:100%;overflow:auto;padding:10px 12px}
+  /* the heatmap body is a flex column so the grid (hero) fills all space under the status banner */
+  #heatBody{display:flex;flex-direction:column;padding:7px 8px}
+  .chart-modes{display:inline-flex;gap:2px;margin-right:8px}
+  .cmode{font-family:var(--ed-sans);font-size:10px;letter-spacing:.04em;color:var(--ed-ink-2);
+    padding:3px 9px;border:1px solid var(--ed-edge);border-radius:var(--ed-r);cursor:pointer}
+  .cmode:hover{color:var(--ed-ink);border-color:var(--ed-edge-strong)}
+  .cmode.on{color:var(--ed-accent-2);background:var(--ed-accent-bg);border-color:var(--ed-accent-edge)}
+  /* #3: presentation-scope control (Auto / Wider / All available) */
+  .scope{display:inline-flex;align-items:center;gap:3px}
+  .scope .cap{margin-right:2px}
+  .scbtn{font-family:var(--ed-sans);font-size:10px;letter-spacing:.03em;color:var(--ed-ink-2);
+    padding:3px 8px;border:1px solid var(--ed-edge);border-radius:var(--ed-r);cursor:pointer;background:none}
+  .scbtn:hover{color:var(--ed-ink);border-color:var(--ed-edge-strong)}
+  .scbtn.on{color:var(--ed-accent-2);background:var(--ed-accent-bg);border-color:var(--ed-accent-edge)}
+  /* #3: per-panel window disclosure line — never let a clip be silent. Sticky so it stays visible
+     when the panel body auto-scrolls the spot strike into view. */
+  .scope-note{position:sticky;top:0;z-index:2;background:var(--ed-panel);font-family:var(--ed-mono);
+    font-size:10px;color:var(--ed-ink-3);padding:4px 0 6px;margin:-2px 0 2px;display:flex;gap:8px;
+    align-items:baseline;flex-wrap:wrap;border-bottom:1px solid var(--ed-edge)}
+  .scope-note .clip{color:var(--ed-warn)}
+  .chart-svg{width:100%;height:100%;display:block}
+  .chart-svg text{font-family:var(--ed-mono);fill:var(--ed-ink-2)}
+  .chart-legend{display:flex;gap:14px;font-family:var(--ed-mono);font-size:10px;color:var(--ed-ink-3);padding:2px 0 6px}
+  .chart-asof{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:0 0 6px}
+  .chart-legend .sw{display:inline-block;width:10px;height:10px;border-radius:2px;vertical-align:-1px;margin-right:4px}
+
+  /* levels view (detailed canonical levels contract) */
+  .lv{width:100%;border-collapse:collapse;font-family:var(--ed-mono);font-size:11px}
+  .lv th{font-family:var(--ed-sans);font-size:9px;letter-spacing:.09em;text-transform:uppercase;
+    color:var(--ed-ink-3);text-align:right;padding:5px 8px;border-bottom:1px solid var(--ed-edge)}
+  .lv th:first-child,.lv td:first-child{text-align:left}
+  .lv td{text-align:right;padding:5px 8px;border-bottom:1px solid var(--ed-edge-soft);color:var(--ed-ink)}
+  .lv td.fam{color:var(--ed-ink-2);font-family:var(--ed-sans);font-size:12px}
+  .lv .tier{font-size:8.5px;letter-spacing:.05em;padding:1px 5px;border-radius:3px;background:var(--ed-panel-3);color:var(--ed-ink-2)}
+
+  /* GEX by strike (diverging bars from spot axis) */
+  .gbs{display:flex;flex-direction:column;gap:2px;font-family:var(--ed-sans);font-size:12.5px;font-variant-numeric:tabular-nums}
+  .gbs-row{display:flex;align-items:center;gap:8px;padding:2.5px 0}
+  .gbs-row.spot{background:var(--ed-panel-3);box-shadow:inset 2px 0 0 var(--ed-accent)}
+  .gbs-k{width:58px;text-align:right;color:var(--ed-ink-2);font-weight:500}
+  .gbs-track{flex:1;height:13px;position:relative;background:var(--ed-panel-2);border-radius:2px;overflow:hidden}
+  .gbs-bar{position:absolute;left:50%;top:0;bottom:0}
+  .gbs-bar.pos{background:var(--ed-pos)}
+  .gbs-bar.neg{background:var(--ed-neg);transform:translateX(-100%)}
+  .gbs-v{width:70px;text-align:right;font-weight:500}
+  .gbs-v.pos{color:var(--ed-pos-ink)} .gbs-v.neg{color:var(--ed-neg-ink)}
+  /* Independent-review finding (2026-09-12): the per-strike volume field (already computed
+     and, for the actively-streamed contract, kept fresh by server.py's overlay) reached this
+     row's own data but was never rendered -- "the GEX bar renderer does not display the newly
+     updated per-strike volume field." Compact, muted -- a secondary number beside the primary
+     signed GEX$ value, not competing with it. */
+  .gbs-vol{width:52px;text-align:right;color:var(--ed-ink-2);font-size:10px;font-variant-numeric:tabular-nums}
+  .gbs-allexp{font-family:var(--ed-sans);font-size:10px;color:var(--ed-stale);padding:0 0 5px}
+  /* pinned-axis layout: note fixed on top, bars scroll, magnitude axis pinned at the foot */
+  #gbsBody{display:flex;flex-direction:column;overflow:hidden;padding:7px 10px}
+  .gbs-top{flex:none}
+  .gbs-scroll{flex:1;overflow:auto;min-height:0}
+  .gbs-scale{flex:none;display:flex;justify-content:space-between;font-family:var(--ed-sans);font-size:10.5px;
+    color:var(--ed-ink-3);padding:7px 0 0;margin-top:6px;border-top:1px solid var(--ed-edge)}
+  .gbs-scale .neg{color:var(--ed-neg-ink)} .gbs-scale .pos{color:var(--ed-pos-ink)}
+  .gbs-row{min-height:25px}   /* real strike counts never shrink a bar row; All available scrolls */
+
+  /* REAL-DATA DENSITY REPAIR (2026-09-10): the approved workstation shows ~11 legible strike rows in
+     the hero. Rows keep this height in every scope; All available scrolls the complete population. */
+  .heat{font-size:13.5px;width:max-content;min-width:100%}
+  .heat th,.heat td{height:31px}
+  /* MEASURED on the live 216x34 surface (2026-09-10): without a floor, 34 expiration columns compressed
+     into the panel width and overprinted. A column never renders narrower than a legible signed value;
+     the grid grows past the panel and .heat-wrap scrolls horizontally (Wider / All available). */
+  .heat .hexp,.heat .hcell{min-width:84px}
+  .heat .hstrike,.heat .hcorner{min-width:70px}
+  .heat .hstrike{font-weight:600;font-size:13.5px}
+  .heat .hstrike.spot{font-weight:800;font-size:14px}
+  .heat tr.spotrow td{box-shadow:inset 0 -2px 0 var(--ed-accent),inset 0 2px 0 var(--ed-accent)}
+  .heat tr.spotrow th.hstrike{box-shadow:inset 3px 0 0 var(--ed-accent)}
+  /* an expired expiration (server-stamped): kept for reference in Wider / All available, never
+     presented as current structure */
+  .heat .hexp.expired .d{color:var(--ed-ink-4);text-decoration:line-through}
+  .heat .hexp.expired .dte{color:var(--ed-stale);font-weight:700}
+  .heat .hcell.expired{opacity:.42;filter:saturate(.35)}
+  #heatBody .scope-note{position:static;padding:0 0 6px}
+  /* concise status banner: one line, details in the tooltip */
+  .heat-banner{display:flex;align-items:center;justify-content:space-between;gap:12px;cursor:help;white-space:nowrap;overflow:hidden}
+  .heat-banner .hb-main{overflow:hidden;text-overflow:ellipsis}
+  .heat-banner .hb-more{flex:none;opacity:.7;text-decoration:underline dotted}
+  /* a REFERENCE surface always looks like a reference (identity), whatever the live-surface state;
+     the accent stripe marks a live refresh pending/warming */
+  .heat-banner.ref.warming,.heat-banner.ref.stale{background:var(--ed-proxy-bg);color:var(--ed-proxy);border:1px dashed var(--ed-proxy);box-shadow:inset 3px 0 0 var(--ed-accent)}
+
+  /* strike detail (vendor chain) */
+  .sd{width:100%;border-collapse:collapse;font-family:var(--ed-sans);font-size:13.5px;font-variant-numeric:tabular-nums}
+  .sd th{font-family:var(--ed-sans);font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;
+    color:var(--ed-ink-3);text-align:right;padding:9px 9px;border-bottom:1px solid var(--ed-edge)}
+  .sd th:first-child{text-align:left}
+  .sd td{text-align:right;padding:12px 9px;border-bottom:1px solid var(--ed-edge-soft);color:var(--ed-ink)}
+  .sd td.side{text-align:left;font-family:var(--ed-sans);font-weight:600}
+  .sd td.side.c{color:var(--ed-pos-ink)} .sd td.side.p{color:var(--ed-neg-ink)}
+  .sd td.pos{color:var(--ed-pos-ink);font-weight:600} .sd td.neg{color:var(--ed-neg-ink);font-weight:600}
+  .sd td.dim{color:var(--ed-ink-4)}
+  .sd tr.sd-net td{border-top:1px solid var(--ed-edge);border-bottom:none;color:var(--ed-ink-2);font-weight:600}
+  .sd-src{font-family:var(--ed-sans);font-size:10px;color:var(--ed-ink-3);margin-top:8px}
+  /* Levels view (D) — serializes /api/levels; no computation */
+  .lv-head{display:flex;justify-content:space-between;font-family:var(--ed-sans);font-size:12px;color:var(--ed-ink-3);padding:2px 2px 9px}
+  .lv-head .lv-spot{color:var(--ed-ink-2)}
+  .lv{width:100%;border-collapse:collapse;font-family:var(--ed-sans);font-size:13px;font-variant-numeric:tabular-nums}
+  .lv th{font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--ed-ink-3);text-align:left;padding:8px 9px;border-bottom:1px solid var(--ed-edge)}
+  .lv th:nth-child(3),.lv th:nth-child(6){text-align:right}
+  .lv td{padding:9px 9px;border-bottom:1px solid var(--ed-edge-soft);color:var(--ed-ink)}
+  .lv .lv-px{font-weight:600;text-align:right}
+  .lv .lv-fam{color:var(--ed-ink-2);text-transform:capitalize}
+  .lv .lv-ev,.lv .lv-src{color:var(--ed-ink-3);font-size:12px}
+  .lv .lv-age{color:var(--ed-ink-3);text-align:right}.lv .lv-age.stale{color:var(--ed-stale)}
+  .lv-row{cursor:pointer}.lv-row:hover{background:var(--ed-panel-2)}
+  .lv-row.near-spot{background:var(--ed-panel-3);box-shadow:inset 2px 0 0 var(--ed-accent)}
+  .lv-row.lv-sel{outline:1px solid var(--ed-accent);outline-offset:-1px;background:var(--ed-accent-bg)}
+  .lv-foot{display:flex;flex-wrap:wrap;gap:12px;font-family:var(--ed-sans);font-size:10.5px;color:var(--ed-ink-4);padding:10px 2px 0}
+  .lv-foot .lv-absent{color:var(--ed-stale)}
+  /* Options Flow — reference card structure; truthful empty state inside the table */
+  .of-tabs{display:inline-flex;gap:2px;margin-right:6px}
+  .of-tab{font-size:11.5px;color:var(--ed-ink-2);padding:3px 10px;border:1px solid var(--ed-edge);border-radius:var(--ed-r)}
+  .of-tab.on{color:var(--ed-accent-2);background:var(--ed-accent-bg);border-color:var(--ed-accent-edge)}
+  .of-tab.na{color:var(--ed-ink-4);cursor:not-allowed}
+  .of{width:100%;height:100%;border-collapse:collapse;font-family:var(--ed-sans);font-size:12px;font-variant-numeric:tabular-nums}
+  .of th{font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--ed-ink-3);text-align:right;
+    padding:8px 9px;border-bottom:1px solid var(--ed-edge)}
+  .of th:first-child{text-align:left}
+  .of .of-empty td{text-align:center;padding:26px 12px;vertical-align:middle}
+  .of .oe-lab{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--ed-ink-3);margin-bottom:8px}
+  .of .oe-sub{font-size:11px;color:var(--ed-ink-4);margin-top:10px;max-width:44ch;margin-left:auto;margin-right:auto;line-height:1.5}
+  .of .notproven{display:inline-block}
+
+  /* AI drawer */
+  #aidrawer{position:fixed;top:0;right:0;bottom:0;width:380px;background:var(--ed-panel);
+    border-left:1px solid var(--ed-edge-strong);transform:translateX(100%);transition:transform .16s ease;
+    z-index:60;display:flex;flex-direction:column}
+  #aidrawer.open{transform:translateX(0)}
+  .aid-h{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--ed-edge)}
+  .aid-h .t{font-weight:600;letter-spacing:.04em}
+  .aid-h .x{margin-left:auto;color:var(--ed-ink-3);font-size:18px}
+  .aid-b{flex:1;overflow:auto;padding:14px;display:flex;flex-direction:column;gap:12px}
+  .aid-ctx{background:var(--ed-panel-2);border:1px solid var(--ed-edge);border-radius:6px;padding:10px 12px}
+  .aid-ctx .cl{font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--ed-ink-3);margin-bottom:6px}
+  .aid-ctx .cr{display:flex;justify-content:space-between;font-family:var(--ed-mono);font-size:11px;padding:2px 0;color:var(--ed-ink-2)}
+  .aid-q{text-align:left;padding:8px 10px;border:1px solid var(--ed-edge);border-radius:6px;
+    color:var(--ed-ink-2);font-size:12px}
+  .aid-q:hover{border-color:var(--ed-accent-edge);color:var(--ed-ink)}
+</style>
+</head>
+<body>
+<div id="app" class="rail-open">
+
+  <!-- ===== LEFT RAIL ===== -->
+  <nav id="rail" aria-label="Workspaces">
+    <div class="brand">
+      <button class="logo" id="railToggle" title="Toggle navigation" aria-label="Toggle navigation">ED</button>
+      <span class="bwrap"><span class="name">ED CONSOLE</span><span class="tag">MARKETS · FLOW · RISK · IN REAL TIME</span></span>
+    </div>
+    <div class="rail-scroll">
+      <a class="navitem" data-ws="trade-desk" title="Trade Desk"><svg viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-6"/></svg><span class="lbl">Trade Desk</span></a>
+      <a class="navitem" data-ws="order-flow" title="Order Flow"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h10M4 17h13"/><path d="M17 9l3 3-3 3"/></svg><span class="lbl">Order Flow</span></a>
+      <a class="navitem active" data-ws="options" title="Options"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 3v18M3 12h18"/></svg><span class="lbl">Options</span></a>
+      <a class="navitem" data-ws="liquidity" title="Liquidity"><svg viewBox="0 0 24 24"><path d="M12 3c4 5 6 8 6 11a6 6 0 0 1-12 0c0-3 2-6 6-11z"/></svg><span class="lbl">Liquidity</span></a>
+      <a class="navitem" data-ws="desk" title="Desk / Research"><svg viewBox="0 0 24 24"><path d="M4 5h16v12H4z"/><path d="M8 21h8M12 17v4"/></svg><span class="lbl">Desk / Research</span></a>
+      <a class="navitem" data-ws="portfolio" title="Portfolio / Risk"><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9v9z"/></svg><span class="lbl">Portfolio / Risk</span></a>
+      <a class="navitem" data-ws="system" title="System / Trust"><svg viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6z"/><path d="M9 12l2 2 4-4"/></svg><span class="lbl">System / Trust</span></a>
+    </div>
+    <div class="wl" id="watchlist">
+      <div class="wl-h"><span>Watchlist</span></div>
+      <!-- rows injected by ed-core.js; foundation is editable + localStorage-backed -->
+      <div class="wl-add" id="wlAdd"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 5v14M5 12h14"/></svg><span class="lbl-add">Add symbol</span></div>
+      <div class="wl-msg" id="wlMsg" aria-live="polite"></div>
+    </div>
+  </nav>
+
+  <!-- ===== HEADER ===== -->
+  <header>
+    <div class="hx">
+      <span class="sym" id="hSym">—</span>
+      <span class="px mono" id="hPx">—</span>
+      <span class="chg mono" id="hChg">—</span>
+    </div>
+    <div class="hsep"></div>
+    <div class="hkv"><span class="k">Bid × Ask</span><span class="v" id="hBidAsk">—</span></div>
+    <div class="hsep"></div>
+    <div class="live"><span class="dot" id="hFeedDot"></span><span id="hFeed">FEED —</span></div>
+    <div class="hsep"></div>
+    <div class="hkv"><span class="k">Data age</span><span class="v" id="hAge">—</span></div>
+    <div class="hsep"></div>
+    <div class="hkv"><span class="k">Session</span><span class="sess" id="hSession">—</span></div>
+    <div class="hsep"></div>
+    <div class="hkv"><span class="k" id="hClockDate">—</span><span class="v" id="hClock">--:--:-- CT</span></div>
+    <div class="search">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg>
+      <input id="symSearch" placeholder="Search symbol" autocomplete="off">
+    </div>
+    <button class="hbtn" id="themeBtn" title="Theme" aria-label="Toggle theme (system / light / dark)"><span id="themeIcon" aria-hidden="true">◐</span></button>
+  </header>
+
+  <!-- ===== MAIN ===== -->
+  <main>
+    <!-- tier 2: workspace subnav -->
+    <div class="subnav" id="subnav">
+      <span class="wtitle" id="wsTitle">OPTIONS</span>
+      <button class="tab on" data-sub="gamma">Gamma</button>
+      <button class="tab na" data-sub="vanna">Vanna<span class="np">AGG ONLY</span></button>
+      <button class="tab na" data-sub="charm">Charm<span class="np">WALLS ONLY</span></button>
+      <button class="tab na" data-sub="dex">Delta / DEX</button>
+      <button class="tab na" data-sub="oi">OI</button>
+      <button class="tab" data-sub="flow">Flow</button>
+      <button class="tab" data-sub="chain">Chain</button>
+      <button class="tab na" data-sub="structures">Structures<span class="np">NOT PROVEN</span></button>
+    </div>
+    <!-- tier 3: view controls -->
+    <div class="viewbar" id="viewbar">
+      <button class="vtab on" data-view="heatmap">Heatmap</button>
+      <button class="vtab" data-view="chart">Chart</button>
+      <button class="vtab" data-view="levels">Levels</button>
+      <button class="vtab" data-view="multimap">Multi-Map</button>
+      <div class="ctrls">
+        <label class="ctrl ctrl-sym" title="Active instrument — type any Schwab symbol and press Enter; the watchlist is not changed"><input id="symInput" list="symList" aria-label="Symbol" autocomplete="off" spellcheck="false" maxlength="13" placeholder="SYMBOL"><datalist id="symList"></datalist></label>
+        <label class="ctrl" title="Expiration filter (from /api/expiries)"><select id="expSel" aria-label="Expiration"><option value="">All Expirations</option></select><span class="cv"></span></label>
+        <label class="ctrl" title="Measure"><select id="measureSel" aria-label="Measure"><option value="gex">GEX</option></select><span class="cv"></span></label>
+        <div class="scope" id="scopeCtl" hidden title="View window around spot for the chart / GEX-by-strike panels — presentation only, never changes a value">
+          <span class="cap">View</span>
+          <button class="scbtn on" data-scope="auto">Auto</button>
+          <button class="scbtn" data-scope="wider">Wider</button>
+          <button class="scbtn" data-scope="all">All available</button>
+        </div>
+        <button class="aibtn" id="aiOpen"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 3a4 4 0 0 1 4 4c2 1 3 3 3 5a5 5 0 0 1-5 5H8a5 5 0 0 1-5-5c0-2 1-4 3-5a4 4 0 0 1 4-4z"/><path d="M9 20h6"/></svg>Analyst</button>
+      </div>
+    </div>
+
+    <!-- canvas -->
+    <div class="canvas">
+
+      <!-- OPTIONS / GAMMA workspace -->
+      <section class="workspace on" data-ws-pane="options">
+        <div class="sub-pane on" data-sub-pane="gamma">
+        <div class="gamma-grid">
+
+          <!-- main working panel — view tabs (Heatmap/Chart/Levels/Multi-Map) swap this -->
+          <div class="panel p-heat">
+            <div class="panel-h">
+              <span class="hticker" id="mvTicker">SPX</span>
+              <span class="t" id="mvTitle">Gamma Exposure Heatmap</span>
+              <div class="r">
+                <span class="sub" id="heatScope">strike × expiration</span>
+                <span class="chart-modes" id="chartModes" hidden>
+                  <button class="cmode on" data-cmode="profile">Price + GEX Profile</button>
+                  <button class="cmode" data-cmode="dotmap">Dot Map</button>
+                </span>
+                <span class="prov derived">DERIVED</span>
+                <button class="maxbtn" id="maxBtn" title="Maximize panel (Esc to restore)" aria-label="Maximize panel"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
+              </div>
+            </div>
+            <div class="panel-b mvwrap">
+              <div class="mv on" id="view-heatmap"><div id="heatBody" class="mvbody">
+                <div class="placeholder"><div class="big">Strike × expiry heatmap</div>
+                  <div class="sm">Canonical per-strike GEX$ per expiry via /api/options/gamma-surface.</div></div>
+              </div></div>
+              <div class="mv" id="view-chart"><div id="chartBody" class="mvbody"></div></div>
+              <div class="mv" id="view-levels"><div id="levelsBody" class="mvbody"></div></div>
+              <div class="mv" id="view-multimap"><div id="multimapBody" class="mvbody">
+                <div class="placeholder"><div class="big">Multi-Map</div>
+                  <div class="sm">A strike × expiry surface across measures (GEX / DEX / Vanna / Charm) reuses the heatmap grammar — but only GEX has a canonical strike×expiry projection today. DEX/Vanna/Charm strike×expiry surfaces are not yet canonical.</div>
+                  <div class="notproven">NOT YET — needs canonical DEX/Vanna/Charm strike×expiry surfaces</div></div>
+              </div></div>
+            </div>
+          </div>
+
+          <!-- key levels rail -->
+          <div class="panel p-levels">
+            <div class="panel-h kl-h">
+              <div class="kl-tabs">
+                <button class="kl-tab on">Key Levels</button>
+                <button class="kl-tab na" title="not yet implemented">Details</button>
+                <button class="kl-tab na" title="not yet implemented">Metrics</button>
+                <button class="kl-tab na" title="not yet implemented">Context</button>
+              </div>
+              <span class="sub" id="klSrc">terrain</span>
+            </div>
+            <div class="panel-b klbody" id="klBody">
+              <div class="kl-sec">Levels</div>
+              <div class="kl-row"><span class="k">Spot</span><span class="v" id="klSpot">—</span></div>
+              <div class="kl-row"><span class="k">Gamma Flip</span><span class="v" id="klFlip">—</span></div>
+              <div class="kl-row"><span class="k">Call Wall</span><span class="v" id="klCall">—</span></div>
+              <div class="kl-row"><span class="k">Put Wall</span><span class="v" id="klPut">—</span></div>
+              <div class="kl-row"><span class="k">Absolute γ (pin)</span><span class="v" id="klAbs">—</span></div>
+              <div class="kl-row"><span class="k">Net GEX peak</span><span class="v" id="klPeak">—</span></div>
+              <div class="kl-row"><span class="k muted">Zero Gamma</span><span class="notproven">NOT PROVEN</span></div>
+              <div class="kl-row"><span class="k muted">Volatility Trigger</span><span class="notproven">NOT PROVEN</span></div>
+              <div class="kl-row"><span class="k muted">Vanna Support</span><span class="notproven">AGG $ ONLY</span></div>
+              <div class="kl-row"><span class="k muted">Charm Resistance</span><span class="notproven">→ CHARM WALL</span></div>
+              <div class="kl-sec">Exposure</div>
+              <div class="kl-row"><span class="k">Net GEX / 1%</span><span class="v" id="klNet">—</span></div>
+              <div class="kl-row"><span class="k">Put/Call OI <span class="kl-scope" id="klPcrScope"></span></span><span class="v" id="klPcr">—</span></div>
+              <div class="kl-regime-box">
+                <span class="rlab">Dealer Regime</span>
+                <span class="rval" id="klRegime">—</span>
+                <span class="rsub" id="klRegimeSub">dealer-sign gated per ticker</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- bottom drill-down -->
+          <div class="p-bottom">
+            <div class="panel">
+              <div class="panel-h"><span class="t">Strike Detail</span><span class="sub" id="sdCtx">—</span><div class="r"><span id="sdSrc"></span><span class="prov native">CHAIN</span></div></div>
+              <div class="panel-b" id="sdBody"><div class="placeholder"><div class="sm">Select a strike/expiry. OI · volume · gamma · delta · IV from /api/chain (vendor).</div></div></div>
+            </div>
+            <div class="panel">
+              <div class="panel-h"><span class="t">GEX by Strike</span><span class="sub">net dealer γ / 1%</span><div class="r"><span id="gbsSrc"></span><span class="prov derived">DERIVED</span></div></div>
+              <div class="panel-b" id="gbsBody"><div class="placeholder"><div class="sm">Per-strike net GEX$ around spot from /api/terrain/strikes.</div></div></div>
+            </div>
+            <div class="panel">
+              <div class="panel-h"><span class="t">Options Flow</span><span class="sub">tape</span>
+                <div class="r"><span class="of-tabs"><button class="of-tab on">All</button><button class="of-tab na" title="not yet implemented">Buys</button><button class="of-tab na" title="not yet implemented">Sells</button></span><span class="prov proxy">PROXY</span></div></div>
+              <div class="panel-b" id="ofBody">
+                <table class="of"><thead><tr><th>Time</th><th>Ticker</th><th>Strike</th><th>Exp</th><th>Type</th><th>Size</th><th>Price</th></tr></thead>
+                  <tbody><tr class="of-empty"><td colspan="7">
+                    <div class="oe-lab">SIGNED AGGRESSOR CLASSIFICATION</div>
+                    <div class="notproven">NOT PROVEN</div>
+                    <div class="oe-sub">No canonical row-level signed buys/sells available.</div>
+                  </td></tr></tbody></table>
+              </div>
+            </div>
+          </div>
+        </div>
+        </div><!-- /sub-pane gamma -->
+
+        <!-- OPTIONS / CHAIN subview — the full vendor chain ladder (/api/chain + /api/expiries) -->
+        <div class="sub-pane" data-sub-pane="chain">
+          <div class="panel">
+            <div class="panel-h"><span class="hticker" id="chTicker">SPX</span><span class="t">Option Chain</span>
+              <div class="r"><span id="chSrc"></span><span class="prov native">CHAIN</span></div></div>
+            <div class="panel-b" id="chainBody"><div class="placeholder"><div class="sm">Full vendor chain ladder from /api/chain (strike_range=ALL, one expiry).</div></div></div>
+          </div>
+        </div>
+
+        <!-- OPTIONS / FLOW subview -->
+        <div class="sub-pane" data-sub-pane="flow">
+          <div class="panel">
+            <div class="panel-h"><span class="hticker" id="flTicker">SPX</span><span class="t">Options Flow</span>
+              <div class="r"><span id="flSrc"></span></div></div>
+            <div class="panel-b" id="flowBody"><div class="placeholder"><div class="sm">Options microstructure from /api/order-flow/options-microstructure (real book / depth / imbalance / tape-PROXY / freshness; no fabricated signed flow).</div></div></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- other workspaces: architectural homes preserved, honestly unimplemented -->
+      <section class="workspace" data-ws-pane="trade-desk"><div class="placeholder"><div class="big">Trade Desk — Right Now · Plan · Expression</div><div class="sm">Architectural home preserved. Detect → Frame → Confirm → Execute reasoning flow. THE CALL and 1m/5m/15m/60m horizons remain NOT_PROVEN and excluded until ticker-universal evidence earns them.</div><div class="notproven">HOME PRESERVED — DECISION AUTHORITY NOT_PROVEN</div></div></section>
+      <section class="workspace" data-ws-pane="order-flow"><div class="placeholder"><div class="big">Order Flow — Overview · Book/DOM · Heatmap · Tape · Options Book · History</div><div class="sm">Wires to /api/order-flow/microstructure, /api/order-flow/options-microstructure, /api/live/plane. Real book/depth/imbalance/freshness only. CVD / absorption / sweep NOT_PROVEN.</div></div></section>
+      <section class="workspace" data-ws-pane="liquidity"><div class="placeholder"><div class="big">Liquidity — Map · Profile · Levels · VWAP/Value · Session · History</div><div class="sm">Wires to /api/liquidity-snapshot (PDH/PDL/PDC/POC/VAH/VAL/ORB/VWAP±σ + fusion walls, tradeable_score) and /api/levels vwap_series. A visual liquidity map, not a table.</div></div></section>
+      <section class="workspace" data-ws-pane="desk"><div class="placeholder"><div class="big">Desk / Research — Radar · Brief · Dossier · Structures · Scenarios · Evidence · Replay · AI Research</div><div class="sm">Wires to /api/desk/* (all take as_of epoch — Knowledge-Time replay is real and temporally sealed). AI Research backend NOT_PROVEN.</div></div></section>
+      <section class="workspace" data-ws-pane="portfolio"><div class="placeholder"><div class="big">Portfolio / Risk — Positions · Exposure · Risk · Scenarios</div><div class="sm">Architectural home preserved. No canonical positions/risk producer today.</div><div class="notproven">HOME PRESERVED — NOT_PROVEN</div></div></section>
+      <section class="workspace" data-ws-pane="system"><div class="placeholder"><div class="big">System / Trust — Data Health · Feeds · Provenance · Models · Runtime</div><div class="sm">Can I trust what Ed Console is showing? Wires to /api/health, /api/build (process identity + code drift), /api/diagnostics/*, /api/governance/panel, /api/vol-observability, /api/release/current.</div></div></section>
+
+    </div>
+  </main>
+</div>
+
+<!-- ===== AI ANALYST DRAWER (access architecture; backend NOT_PROVEN) ===== -->
+<aside id="aidrawer" aria-label="AI Analyst" aria-hidden="true">
+  <div class="aid-h"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--ed-accent-2)" stroke-width="1.7"><path d="M12 3a4 4 0 0 1 4 4c2 1 3 3 3 5a5 5 0 0 1-5 5H8a5 5 0 0 1-5-5c0-2 1-4 3-5a4 4 0 0 1 4-4z"/><path d="M9 20h6"/></svg><span class="t">AI Analyst</span><button class="x" id="aiClose" aria-label="Close">×</button></div>
+  <div class="aid-b">
+    <div class="aid-ctx">
+      <div class="cl">Context sent automatically</div>
+      <div class="cr"><span>Ticker</span><span id="aiCtxSym">—</span></div>
+      <div class="cr"><span>Workspace</span><span id="aiCtxWs">Options · Gamma · Heatmap</span></div>
+      <div class="cr"><span>Expiry</span><span id="aiCtxExp">All</span></div>
+      <div class="cr"><span>Freshness</span><span id="aiCtxFresh">—</span></div>
+    </div>
+    <div class="notproven" style="align-self:flex-start">AI BACKEND NOT_PROVEN — access architecture only</div>
+    <div style="font-size:11px;color:var(--ed-ink-3);letter-spacing:.02em">Backend = canonical truth · AI = interpretation only. Intended questions:</div>
+    <button class="aid-q">Why is this level important?</button>
+    <button class="aid-q">What changed since I last looked?</button>
+    <button class="aid-q">What supports the upside case here?</button>
+    <button class="aid-q">What would invalidate this setup?</button>
+    <button class="aid-q">Explain what order flow is doing.</button>
+  </div>
+</aside>
+
+<script src="/static/js/l1_sse_guards.js" defer></script>
+<script src="/static/js/options_subscription.js" defer></script>
+<script src="/static/js/ed-core.js" defer></script>
+<script src="/static/js/ed-gamma.js" defer></script>
+<script src="/static/js/ed-gamma-panels.js" defer></script>
+<script src="/static/js/ed-gamma-chart.js" defer></script>
+<script src="/static/js/ed-gamma-levels.js" defer></script>
+<script src="/static/js/ed-gamma-chain.js" defer></script>
+<script src="/static/js/ed-stream.js" defer></script>
+<script src="/static/js/ed-gamma-flow.js" defer></script>
+</body>
+</html>

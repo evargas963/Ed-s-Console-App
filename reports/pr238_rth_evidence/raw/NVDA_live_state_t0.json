@@ -1,0 +1,65 @@
+{
+"_tier": "A_live",
+"ticker": "NVDA",
+"selected_exp": null,
+"session_label": "RTH",
+"spot": 224.31,
+"bid": 224.3,
+"ask": 224.32,
+"spot_disp": "224.31",
+"bid_disp": "224.30",
+"ask_disp": "224.32",
+"quote_mid": 224.31,
+"mid_source": "schwab_quote_mark",
+"spread": 0.02,
+"spread_semantic": "dollar",
+"spread_pts": 0.02,
+"spread_source": "derived_bid_ask_pts",
+"spread_pts_source": "derived_bid_ask_pts",
+"quote_source_detail": {
+"spot": "lastPrice",
+"bid": "bidPrice",
+"ask": "askPrice",
+"mid": "schwab_quote_mark",
+"spread": "schwab_bid_ask",
+"quote_ts": "QUOTE_TIME_MILLIS",
+"carried_forward": false
+},
+"quote_ingestion": "rest_tier_a",
+"quote_time_source": "schwab_rest_quote",
+"server_received_ts": 1788967085.802397,
+"exchange_quote_ts": 1788967085.479,
+"fast_generation_id": 2,
+"_live_plane_fast_ts": 1788967085.479,
+"_server_build_ts": 1788967085.8024406,
+"_pipeline_ms": 293,
+"_endpoint": "/api/live/state",
+"streaming_plane": {
+"streaming_connected": true,
+"streaming_ticker": "SPY",
+"streaming_last_update_ts": 1788967085.515695,
+"streaming_staleness_ms": 286.7553234100342,
+"streaming_healthy": true,
+"daemon_upstream_health": {
+"LEVELONE_EQUITIES": {
+"state": "RUNNING",
+"age_sec": 0.863
+}
+},
+"stream_db_identity": {
+"server_resolved_path": "<REPO>\\data\\stream_capture.db",
+"producer_heartbeat": {
+"daemon_pid": 10020,
+"heartbeat_ts": 1788967083.821743,
+"resolved_db_path": "<REPO>\\data\\stream_capture.db",
+"claimed_coverage": {
+"LEVELONE_OPTIONS": 389,
+"OPTIONS_BOOK": 390
+},
+"age_sec": 1.9914782047271729
+},
+"identity_match": true
+},
+"plane_quote_authority": "rest_mismatch"
+}
+}

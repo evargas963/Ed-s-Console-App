@@ -61,20 +61,128 @@ The ratios that stood here (2:1 / 3:1 / 5:1 retirements per expansion) were a ra
 
 - **DONE when:** no overdue row of this worktree's own, and the delta gate reports no new or worsened enforced violation.
 
-## 8. SIGN-OFF CHECKLIST (drift audit — run on yourself before any "MET / clean / verified" claim)
+## 8. CANONICAL REVIEW STANDARD (fourteen requirements — run before any "MET / clean / verified / PASS" claim)
 
-Moved here from `.claude/skills/drift-audit/SKILL.md` (2026-09-05, RC-520); the skill file is now a
-pointer. A sign-off is INVALID unless every phase ran this turn with cited command output.
+This is the ONE detailed review standard for this repository (AGENTS.md states the governing
+principles; this section carries the detail — see AGENTS.md's "Agent operating process" law and
+its "Evidence before assertion" law). It supersedes and replaces the former drift-audit checklist
+(moved here 2026-09-05, RC-520; superseded 2026-09-12) — `.claude/skills/drift-audit/SKILL.md`
+remains a pointer to "§8 of this file," unchanged, and now resolves here. It applies to any
+candidate change, audit, or completion claim in this repository — not only the mission active
+when this section was last revised. A review is INVALID unless every requirement below actually
+ran this turn, against the real current repository state (`git` state, not a pasted summary —
+see AGENTS.md's "Research, then act" and "Agent truth" laws), with cited command output where a
+requirement calls for evidence.
 
-1. **Intent & drift.** Restate what the OPERATOR wanted (not what the implementing agent reported); which principle it touches (zero-bias / data-driven / per model×horizon / fail-closed); whether scope slipped or a stage was marked done that is not; whether the acceptance GATE equals the principle or is weaker (presence-only).
-2. **Mechanical scans.** AST-scan every changed signature/arity/return with a same-turn `ast.walk` script over every caller (show the script and its output); run the relevant gates and tests yourself — never cite the implementing agent's pass count.
-3. **Known failure classes (check each, cite evidence):** arity / unpack; presence vs capability (present-but-inoperative); silent-swallow (`try/except` or a 0/0.5/"neutral"/empty default hiding absence); caller / consumer compatibility (producer→consumer trace); fail-closed on schema/width/version mismatch; the cited test actually exercises the path; stale vs live artifacts; gate strength (proxy vs principle); full-stack / all-N coverage (name every model / layer / ticker / horizon the principle spans — a gate over 3 of 7 that prints "full coverage" is a lie); side-channel consumers of removed traffic (liveness stamps, poll-suppression timers, health badges — trace the receiver before discarding); `EXPLAIN QUERY PLAN` before any ad-hoc JOIN on the production DB (index SEARCH on the join key or rewrite); classification-by-complement (enumerate the tag namespace before classifying `!= known-good`); patch / gate-relax (an env flag that skips a contract, a relax branch, a silent slice/fallback forcing incompatible data through — trace the bundle LOAD lineage, not just the output).
-4. **Completeness critic.** "What class did I NOT check? Where is the gate smaller than the goal?" — check it now; propose additions to this list to the operator (the list grows only on the operator's word).
-5. **Verdict.** CLEAN, or FINDINGS with file:line + evidence — no impression-verdicts.
-6. **Correction loop.** A precise fix directive (file:line, exact change, acceptance; paste-ready for another agent) and, if useful, a proposed rule for the operator — no self-landed law edits, no locks manufactured from a finding.
-7. **Sign-off** only after 1–6, stating: "drift-audit run; findings: <…>; corrections: <…>; gate hardened: <y/n>."
+Google's [Code Review Developer Guide](https://google.github.io/eng-practices/review/) is a
+useful **supporting** reference for design, complexity, test validity, and general code health —
+consult it for that judgment. It is not an operative requirement of this repository: the fourteen
+items below are self-contained here so their meaning never depends on an external page staying
+put or on an agent's memory of it.
 
-Honest limit: this covers KNOWN failure classes and forces the critic; it cannot guarantee a novel class.
+1. **Inspect reality first.** Establish the required behavior independently of the current
+   implementation — from the product requirement, verified external semantics (a vendor's own
+   documented contract, not an assumption about it), and engineering evidence. Treat code, tests,
+   governance documents, comments, and architecture documents as CLAIMS to examine against that
+   independently-established requirement, never as the requirement itself.
+2. **Professional standards.** Specify observable acceptance criteria before judging or
+   implementing. They must describe the COMPLETE required behavior — universality (no
+   arbitrary narrowing to a convenient example), data semantics (identity, freshness,
+   provenance, missingness vs. a genuine zero), lifecycle (start, steady state, change,
+   shutdown/failure, restart), and failure behavior.
+3. **Proactive findings.** Challenge the requirements encoded in EXISTING tests, not only the
+   code. Identify a test that preserves a defective assumption, or that asserts internal
+   activity occurred (a function was called, a flag was set) without proving the required
+   externally-observable RESULT.
+4. **Architecture challenge.** Inspect existing ownership before adding a new mechanism —
+   `docs/ARCHITECTURE.md` states the target and, per its own §9, what a touched responsibility
+   must expose for review. Consolidate duplicate responsibilities and resolve contradictory
+   instructions rather than accommodating them (AGENTS.md's "Conflict rule"). A genuine
+   architecture-amendment disagreement is judged by AGENTS.md's Placement rule: an engineering
+   determination is fixed on the evidence, not queued for permission; only a genuine product or
+   business tradeoff with no engineering answer needs the operator.
+5. **Root-cause repair.** Correct every materially connected producer, consumer, persistence
+   layer, configuration surface, runtime path, and test required for closure — not only the one
+   file where the symptom was observed. Calling one canonical computation repeatedly across
+   different inputs does not itself create a duplicate computation authority (AGENTS.md's "ONE
+   computation" law) — do not fork a second implementation to "fix" ordinary repeated use.
+6. **Product outcome.** Demonstrate the actual operator workflow the change is for, driven
+   end to end in the running product — not a proxy for it, and not merely its parts proven in
+   isolation. Name the concrete chain the workflow must complete for the mission at hand (for
+   example: a subscription request must reach the vendor, capture, replay, coherent
+   application state, the calculation, and a visible, truthful update — stated in whatever
+   terms the actual workflow under review requires).
+7. **Reality reconstruction.** Trace inputs, state transitions, scope, provenance, timestamps,
+   ownership, and failure propagation through the COMPLETE workflow, not just its entry and
+   exit points.
+8. **Architecture judgment.** Give every materially touched responsibility cohesive canonical
+   placement with an explicit input/output contract and explicit failure behavior. Rewire
+   consumers and remove superseded implementations — do not leave both the old and new path
+   live. Direct market-data display must remain available independently of optional
+   research/model capabilities (`docs/ARCHITECTURE.md` §4/§7: a capability failure degrades
+   that capability, never the application shell). Proof that one module works in isolation
+   must be accompanied by proof that the connections between the touched modules actually work
+   — passing each module's own tests cannot by itself close a multi-module workflow.
+9. **Adversarial behavior.** Derive the expected result independently before checking the
+   actual one. For a material correctness defect, prove the CURRENTLY-broken production
+   behavior actually fails the test meant to catch it (a negative control) — a test that would
+   pass against the known-broken code proves nothing. Validate every test double's simulated
+   behavior against the actual external contract (the real vendor/library's documented or
+   installed behavior) before trusting it, and state plainly which claims rest on simulated
+   behavior versus behavior actually verified against the real dependency.
+10. **Survivor challenge.** Every mechanism added or retained must satisfy ALL of: the required
+    behavior genuinely needs it; no sufficient native or already-canonical capability exists
+    that would do the same job; it owns one distinct required responsibility, not a duplicate
+    of another mechanism's; and removing it would break required behavior or a required failure
+    boundary. A mechanism failing any one of these is removed or consolidated, not kept "to be
+    safe."
+11. **Quality delta.** Require before-and-after evidence covering correctness, ownership,
+    minimum-complete design, removed superseded paths, completed consumer migration, failure
+    handling, and performance where the change could affect it. Test totals, line-count
+    changes, completed paperwork, and a green required check are NOT by themselves that
+    evidence — they show the candidate satisfies whatever the tests/checks encode, not that the
+    encoding itself was sufficient or that anything actually improved.
+12. **Proof standard.** Separate unit, integration, real-browser, real-runtime, real-production,
+    and live-market evidence explicitly — state what EACH tier actually proves and what remains
+    unproven, rather than letting a strong result at one tier stand in for another. Review every
+    CHANGED test and validator in the candidate for weakened expectations (a loosened assertion,
+    a widened tolerance, a dropped negative control) as carefully as the production code itself.
+    **Layered-testing clarification (2026-09-12, independent-review request):** the tiers above
+    map onto four questions, each answered by a DIFFERENT kind of test, never substituted for one
+    another: **component** (does this one responsibility produce an independently-justified
+    result, checked against an expected value NOT produced by calling the same production
+    calculation on both sides — AGENTS.md's "ONE computation" clarifications); **integration**
+    (do connected components preserve identity, ordering, data, and failure behavior across the
+    seam — real inputs through real plumbing, external dependencies doubled only where a live one
+    is genuinely unavailable, and that doubling's own behavior validated against the real
+    dependency's documented/installed contract per requirement 9); **system acceptance** (does the
+    operator's complete workflow deliver the required visible outcome, end to end); **runtime
+    verification** (does the deployed application, with its ACTUAL dependencies — live vendor,
+    live browser, the authorized process entry point — accomplish that outcome). A pass at a
+    higher tier never overrides a valid failure demonstrated at a lower one. Adversarial cases
+    (requirement 9) apply at every tier, not only the one a change happens to touch. Changing a
+    test's expectation to match a new implementation is legitimate ONLY when the required
+    behavior itself changed or was previously mis-stated — "the new code behaves differently" is
+    not, by itself, a reason; cite the required-behavior basis for the change in the same place
+    the test changes.
+13. **Proactive repair.** Complete the necessary connected engineering work within the existing
+    authorization before stopping — do not pause mid-mission for a separate go-ahead on work
+    already authorized, and do not let an unrelated correction (a documentation fix, a drive-by
+    cleanup) become an excuse to leave connected active-mission work undone, or the reverse.
+    Preserve existing product surfaces (routes, launcher behavior, authorized entry points)
+    unless the mission explicitly authorizes removing them.
+14. **Final answer.** Report against every requirement above with the exact revision reviewed
+    and the supporting evidence for each. Verdict vocabulary is PASS / FAIL / NOT_PROVEN:
+    **PASS** requires every required condition actually proven; **FAIL** is any demonstrated
+    violation of a required condition, regardless of what else passed; otherwise **NOT_PROVEN**
+    for any required condition that is missing proof. Do not report PASS, or claim a mission or
+    audit complete, while a required condition is FAIL or NOT_PROVEN.
+
+**Honest limit.** This structures what a review must check and forces the reviewer to look; it
+does not mechanically guarantee that a review actually ran, that it ran correctly, or that
+following it prevents every failure mode — no document can. Durability comes from keeping the
+requirements themselves in the version-controlled repository, not from any promise that reading
+them substitutes for applying them to the actual change in front of the reviewer.
 
 ---
 

@@ -441,50 +441,72 @@ def _block_live_schwab_in_ci_offline() -> None:
         )
 
 
-def safe_get_quote(client, ticker: str, *, refresh_client_fn=None, attempt_hook=None):
+def _quote_call_with_retry(client, vendor_method: str, args: tuple, *,
+                            refresh_client_fn=None, attempt_hook=None, response_tag: str):
     """
-    Fetch quote. On InvalidTokenError: if refresh_client_fn provided, rebuild client
-    and retry once. Returns response or raises. refresh_client_fn() returns new client.
+    ONE token-refresh-and-retry-once implementation for a Schwab quote call, single or
+    batch. safe_get_quote and safe_get_quotes below differ only in which vendor method
+    they call and how they label it — this function used to be duplicated verbatim
+    between them (caught in review); now it exists once.
 
-    attempt_hook: optional callable invoked immediately before each get_quote attempt
-    (primary and token-refresh retry) for timing / observability.
+    attempt_hook: optional callable invoked immediately before each attempt (primary and
+    token-refresh retry) for timing / observability. On InvalidTokenError: if
+    refresh_client_fn is provided, rebuild the client and retry once.
     """
     _block_live_schwab_in_ci_offline()
-    if attempt_hook is not None:
-        try:
-            attempt_hook()
-        except Exception as e:
-            log.debug("quote attempt_hook: %s", e, exc_info=True)
-    try:
-        resp = client.get_quote(ticker)
+
+    def _attempt():
+        if attempt_hook is not None:
+            try:
+                attempt_hook()
+            except Exception as e:
+                log.debug("%s attempt_hook: %s", response_tag, e, exc_info=True)
+
+    def _record(resp):
         try:
             from api_pressure import record_schwab_http_response
 
-            record_schwab_http_response(resp, f"quote:{ticker}")
+            record_schwab_http_response(resp, response_tag)
         except ImportError:
             pass
         return resp
+
+    _attempt()
+    try:
+        return _record(getattr(client, vendor_method)(*args))
     except Exception as e:
         if refresh_client_fn is not None and _is_token_error(e):
             try:
                 new_client = refresh_client_fn()
                 if new_client:
-                    if attempt_hook is not None:
-                        try:
-                            attempt_hook()
-                        except Exception as e:
-                            log.debug("quote attempt_hook: %s", e, exc_info=True)
-                    resp = new_client.get_quote(ticker)
-                    try:
-                        from api_pressure import record_schwab_http_response
-
-                        record_schwab_http_response(resp, f"quote:{ticker}")
-                    except ImportError:
-                        pass
-                    return resp
+                    _attempt()
+                    return _record(getattr(new_client, vendor_method)(*args))
             except Exception as retry_e:
                 raise retry_e
         raise
+
+
+def safe_get_quote(client, ticker: str, *, refresh_client_fn=None, attempt_hook=None):
+    """
+    Fetch quote. On InvalidTokenError: if refresh_client_fn provided, rebuild client
+    and retry once. Returns response or raises. refresh_client_fn() returns new client.
+    """
+    return _quote_call_with_retry(
+        client, "get_quote", (ticker,),
+        refresh_client_fn=refresh_client_fn, attempt_hook=attempt_hook,
+        response_tag=f"quote:{ticker}")
+
+
+def safe_get_quotes(client, tickers: list, *, refresh_client_fn=None, attempt_hook=None):
+    """Batch quote fetch — ONE vendor call for many symbols (client.get_quotes), not N
+    single-symbol calls. Same token-refresh-and-retry-once implementation as
+    safe_get_quote (_quote_call_with_retry), not a second copy of it.
+    """
+    return _quote_call_with_retry(
+        client, "get_quotes", (tickers,),
+        refresh_client_fn=refresh_client_fn, attempt_hook=attempt_hook,
+        response_tag=f"quotes:{len(tickers)}")
+
 
 def safe_get_price_history(client, ticker: str, *, frequency_minutes: int = 5, period_days: int = 1):
     """Fetch intraday price history from Schwab. Returns response or None.

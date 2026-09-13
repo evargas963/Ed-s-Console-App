@@ -12,6 +12,7 @@ from collections import deque
 from typing import Any, Optional
 from time_et import now_et, RTH_END_MINS, RTH_OPEN_MINS
 from instrument_identity import ticker_storage_key
+from numeric_contract import float_finite_or_none, float_nonnegative_or_none
 from l1_trade_observation import (
     TAPE_COMPLETENESS,
     is_adjacent_restatement,
@@ -52,6 +53,7 @@ class OrderFlowState:
         self._receive_log: dict[str, deque] = {}
         self._stream_volume: dict[str, float] = {}
         self._stream_chg_pct: dict[str, float] = {}
+        self._stream_greeks: dict[str, dict] = {}
         # A newly constructed instance is already empty. If it is created during
         # RTH (as isolated history states are), mark that session current so its
         # first L1 observation cannot erase an earlier book observation from the
@@ -113,27 +115,22 @@ class OrderFlowState:
         if ts_recv is None:
             ts_recv = _time.time()
 
-        vol = content_item.get("TOTAL_VOLUME") or content_item.get("VOLUME")
-        if vol is not None:
-            try:
-                vf = float(vol)
-                if vf > 0:
-                    with self._lock:
-                        self._stream_volume[sym] = vf
-            except (TypeError, ValueError):
-                pass
-
-        chg = content_item.get("REGULAR_MARKET_CHANGE_PERCENT") or content_item.get(
-            "CHANGE_PERCENT"
-        )
-        if chg is not None:
-            try:
-                cf = float(chg)
-                with self._lock:
-                    self._stream_chg_pct[sym] = cf
-            except (TypeError, ValueError):
-                pass
-
+        # Operator finding (2026-09-11): this session-reset check used to run AFTER the
+        # volume/chg_pct writes below. On the FIRST update of a new RTH session, that order
+        # applied the fresh, genuinely-valid observation and then immediately discarded it:
+        # _clear_all_session_state_unlocked() wipes _stream_volume/_stream_chg_pct
+        # unconditionally, so the very update that should have seeded the new session was
+        # erased by the reset the same call triggered. The reset must happen BEFORE a new
+        # observation is applied, never after, so a fresh value is never sacrificed to the
+        # transition it arrived on.
+        # Operator finding (2026-09-11): this session-reset check used to run AFTER the
+        # volume/chg_pct writes below. On the FIRST update of a new RTH session, that order
+        # applied the fresh, genuinely-valid observation and then immediately discarded it:
+        # _clear_all_session_state_unlocked() wipes _stream_volume/_stream_chg_pct
+        # unconditionally, so the very update that should have seeded the new session was
+        # erased by the reset the same call triggered. The reset must happen BEFORE a new
+        # observation is applied, never after, so a fresh value is never sacrificed to the
+        # transition it arrived on.
         try:
             now_et_dt = now_et()
             current_date = now_et_dt.strftime("%Y-%m-%d")
@@ -147,6 +144,69 @@ class OrderFlowState:
                 )
         except Exception as e:
             log.debug("RTH reset check failed (continuing): %s", e)
+
+        # Operator finding (2026-09-11): `or` drops a legitimate 0 TOTAL_VOLUME (the honest
+        # state before any trade prints today, or for a contract with genuinely no volume
+        # yet) and falls through to VOLUME instead -- the same class of bug already fixed
+        # below for chg_pct. `vf > 0` compounded it further: a genuine 0 was rejected
+        # outright, and a negative value was accepted outright -- so a symbol that
+        # legitimately has zero volume so far never got an entry, a corrupt negative tick
+        # was stored and served as if real, and a symbol whose cache already held a real
+        # number kept showing that STALE number if a later observation was honestly 0.
+        # float_nonnegative_or_none (the repo's existing canonical reader for vendor
+        # counts like totalVolume/size) rejects negative and non-finite values while
+        # admitting a real, finite zero.
+        vol = content_item.get("TOTAL_VOLUME")
+        if vol is None:
+            vol = content_item.get("VOLUME")
+        vf = float_nonnegative_or_none(vol)
+        if vf is not None:
+            with self._lock:
+                self._stream_volume[sym] = vf
+
+        # `or` would drop a legitimate 0.0 (flat) REGULAR_MARKET_CHANGE_PERCENT and fall
+        # through to CHANGE_PERCENT instead; check presence explicitly. float_finite_or_none
+        # also rejects NaN/Infinity, which raw float() would silently accept from a bad tick.
+        chg = content_item.get("REGULAR_MARKET_CHANGE_PERCENT")
+        if chg is None:
+            chg = content_item.get("CHANGE_PERCENT")
+        cf = float_finite_or_none(chg)
+        if cf is not None:
+            with self._lock:
+                self._stream_chg_pct[sym] = cf
+
+        # GAMMA/DELTA/OPEN_INTEREST/TOTAL_VOLUME: native Schwab LEVELONE_OPTIONS fields
+        # (confirmed in the installed SDK's field enum, schwab/streaming.py
+        # LevelOneOptionFields) that this state class never captured before -- every option L1
+        # tick discarded exactly the fields a live GEX recompute (and the per-strike volume
+        # column, which reads a contract's OWN totalVolume, not this symbol's ticker-level
+        # _stream_volume above) needs, keeping the heatmap and volume displays bound to the
+        # ~60s wide-chain REST cadence even for the one contract already streaming. Each field
+        # is merged independently (not as a group) and stamped with ITS OWN receive time: a
+        # quote tick that carries BID_PRICE/ASK_PRICE but not GAMMA this update must not blank
+        # out (or misdate) an OPEN_INTEREST value observed on an earlier tick -- the same
+        # explicit-presence discipline as chg_pct/volume above, extended per-field because
+        # these genuinely arrive independently of each other and of the last-trade fields
+        # below. `vf` is the SAME TOTAL_VOLUME/VOLUME value already resolved above -- stored a
+        # second time, per-field-stamped, so the overlay used by the exposure/per-strike faucet
+        # (which reads a contract's OWN totalVolume) can apply the SAME newer-than-REST
+        # precedence rule already used for gamma/delta/open_interest, instead of a bare
+        # ticker-level number with no freshness of its own.
+        gamma = float_finite_or_none(content_item.get("GAMMA")) if "GAMMA" in content_item else None
+        delta = float_finite_or_none(content_item.get("DELTA")) if "DELTA" in content_item else None
+        oi = (float_nonnegative_or_none(content_item.get("OPEN_INTEREST"))
+              if "OPEN_INTEREST" in content_item else None)
+        if gamma is not None or delta is not None or oi is not None or vf is not None:
+            with self._lock:
+                g = self._stream_greeks.setdefault(sym, {})
+                if gamma is not None:
+                    g["gamma"], g["gamma_ts_recv"] = gamma, ts_recv
+                if delta is not None:
+                    g["delta"], g["delta_ts_recv"] = delta, ts_recv
+                if oi is not None:
+                    g["open_interest"], g["open_interest_ts_recv"] = oi, ts_recv
+                if vf is not None:
+                    g["total_volume"], g["total_volume_ts_recv"] = vf, ts_recv
 
         with self._lock:
             top_item = dict(
@@ -259,6 +319,7 @@ class OrderFlowState:
             values.clear()
         self._stream_volume.clear()
         self._stream_chg_pct.clear()
+        self._stream_greeks.clear()
 
     def forget_unsubscribed_symbols(self, old: list[str], new: list[str]) -> None:
         """Clear state for symbols leaving a subscription set."""
@@ -291,6 +352,7 @@ class OrderFlowState:
                 self._receive_log[sym].clear()
             self._stream_volume.pop(sym, None)
             self._stream_chg_pct.pop(sym, None)
+            self._stream_greeks.pop(sym, None)
 
     def get_stream_volume(self, symbol: str) -> Optional[float]:
         """Return the latest positive streamed total volume."""
@@ -307,6 +369,20 @@ class OrderFlowState:
             return None
         with self._lock:
             return self._stream_chg_pct.get(sym)
+
+    def get_stream_greeks(self, symbol: str) -> Optional[dict]:
+        """Return the latest streamed GAMMA/DELTA/OPEN_INTEREST/TOTAL_VOLUME for one OPTION
+        contract symbol, each field paired with its own ``_ts_recv`` (the field's own
+        last-update wall-clock receive time, not merely this call's time) -- a per-field
+        freshness stamp is what lets a caller judge one field newer than a same-tick sibling
+        that was absent this update, per the sparse-overlay pattern below. Returns None when
+        nothing has ever been observed for this symbol (never a dict of Nones)."""
+        sym = ticker_storage_key(symbol)
+        if not sym:
+            return None
+        with self._lock:
+            g = self._stream_greeks.get(sym)
+            return dict(g) if g else None
 
     def get_top_of_book_sizes(self, symbol: str) -> dict[str, Optional[int]]:
         """Return latest L1 bid/ask sizes for one symbol."""
@@ -396,6 +472,12 @@ def get_stream_volume(symbol: str) -> Optional[float]:
 def get_stream_chg_pct(symbol: str) -> Optional[float]:
     """Return REGULAR_MARKET_CHANGE_PERCENT or CHANGE_PERCENT from WebSocket for symbol, or None."""
     return _LIVE_STATE.get_stream_chg_pct(symbol)
+
+
+def get_stream_greeks(symbol: str) -> Optional[dict]:
+    """Return the live singleton's latest streamed GAMMA/DELTA/OPEN_INTEREST for one option
+    contract symbol (each paired with its own `_ts_recv`), or None if never observed."""
+    return _LIVE_STATE.get_stream_greeks(symbol)
 
 
 def get_top_of_book_sizes(symbol: str) -> dict[str, Optional[int]]:

@@ -186,7 +186,71 @@ def test_the_canonical_commands_route_through_the_sink():
     assert '"-m", "pytest", "-n", "auto", "--dist", "loadfile", "--durations=20"' in runner
 
     e2e = E2E_RUNNER.read_text(encoding="utf-8")
-    assert 'runWithFileSink("test:e2e", "npx", ["playwright", "test"]' in e2e
+    # Independent-review finding (2026-09-12), REPRODUCED and fixed: this used to be a
+    # hardcoded `["playwright", "test"]` literal, discarding any CLI selection arguments
+    # (`-g`, a spec path, etc.) this runner was itself invoked with. The array must still
+    # start with the same two elements (native Playwright CLI invocation, unchanged), but
+    # now spreads the caller's own forwarded, shell-quoted argv onto it — see
+    # test_shell_quote_arg_forwards_playwright_selection_safely below for the
+    # actual-behavior proof of the quoting/forwarding logic itself, not just this shape.
+    assert 'runWithFileSink("test:e2e", "npx", ["playwright", "test", ...quotedForwardedArgs]' in e2e
+    assert "const forwardedArgs = process.argv.slice(2);" in e2e
+    assert "export function shellQuoteArg(arg)" in e2e
     assert 'stdio: "inherit"' not in e2e.split("ensurePlaywrightReady();", 1)[1], (
         "the Playwright run itself must not inherit the terminal pipe"
     )
+
+
+def test_shell_quote_arg_forwards_playwright_selection_safely():
+    """Independent-review finding (2026-09-12), REPRODUCED and fixed: run-playwright-e2e.mjs
+    used to hardcode `["playwright", "test"]` regardless of any CLI arguments this runner
+    was itself invoked with, so `npm run test:e2e -- -g "some pattern"` (or
+    `node scripts/run-playwright-e2e.mjs tests/e2e/some.spec.js`) silently ran the FULL,
+    unfiltered suite every time, discarding the caller's own selection.
+
+    This test imports the REAL, exported `shellQuoteArg` from the real runner (not a
+    reimplementation of its quoting rules) and exercises it against realistic Playwright
+    selection arguments -- including this repo's own test names, which are full of
+    spaces, parentheses, and commas that would be mis-split if re-joined unquoted into
+    the ONE shell command string `runWithFileSink` builds.
+
+    A genuine full-process re-execution of this runner (does `-g` really narrow which
+    tests npx runs) was MEASURED BY HAND instead of wired into this suite:
+    playwright.config.mjs pins a single fixed webServer port (8765), and a second live
+    run from inside this pytest suite collided with the CI job's own official
+    `npm run test:e2e` step on that exact port (observed directly in CI, not a
+    hypothetical). The measured, reproduced negative control (2026-09-12, not re-run
+    here — see the commit message / PR description for the exact figures): the pre-fix
+    runner given `-g "shell structure"` ignored the filter and ran all 175 tests in 5.7
+    minutes; the fixed runner ran the one matching test in ~24s. The main-guard
+    refactor that exports `shellQuoteArg` (see run-playwright-e2e.mjs) does not change
+    the runner's own CLI behavior — reverified by hand after the refactor.
+    """
+    script = (
+        "import(" + json.dumps(E2E_RUNNER.as_uri()) + ").then(m => {\n"
+        "  const cases = [\n"
+        "    ['tests/e2e/some.spec.js', 'tests/e2e/some.spec.js'],\n"
+        "    ['-g', '-g'],\n"
+        "    ['shell structure', '\"shell structure\"'],\n"
+        "    ['failed additional-contracts request (RC-UI-3)',\n"
+        "     '\"failed additional-contracts request (RC-UI-3)\"'],\n"
+        "    ['a \"quoted\" name', '\"a \\\\\"quoted\\\\\" name\"'],\n"
+        "  ];\n"
+        "  let ok = true;\n"
+        "  for (const [input, expected] of cases) {\n"
+        "    const got = m.shellQuoteArg(input);\n"
+        "    if (got !== expected) {\n"
+        "      console.error('MISMATCH for ' + JSON.stringify(input) + ': got ' +\n"
+        "        JSON.stringify(got) + ' want ' + JSON.stringify(expected));\n"
+        "      ok = false;\n"
+        "    }\n"
+        "  }\n"
+        "  console.log(ok ? 'ok' : 'fail');\n"
+        "  process.exit(ok ? 0 : 1);\n"
+        "});\n"
+    )
+    r = subprocess.run(
+        [NODE, "-e", script], cwd=str(ROOT), capture_output=True, text=True, timeout=30,
+    )
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "ok" in r.stdout, r.stdout + r.stderr

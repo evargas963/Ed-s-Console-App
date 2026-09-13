@@ -1,0 +1,172 @@
+{
+  "ages": {
+    "book_age_sec": 23903.525,
+    "quote_age_sec": null
+  },
+  "book_slope": {
+    "ask": 10499.99999999999,
+    "bid": 9999.99999999999
+  },
+  "classification": {
+    "ages.book_age_sec": "DERIVED",
+    "ages.quote_age_sec": "DERIVED",
+    "book_slope": "DERIVED",
+    "crossed": "DERIVED",
+    "depth.*.ask_total": "DERIVED",
+    "depth.*.bid_total": "DERIVED",
+    "depth.*.imbalance": "DERIVED",
+    "depth_pressure": "DERIVED",
+    "liquidity_concentration": "DERIVED",
+    "microprice": "DERIVED",
+    "mid": "DERIVED",
+    "provenance.book_time_ms": "NATIVE",
+    "provenance.exchange_quote_ts": "NATIVE",
+    "provenance.server_received_ts": "DERIVED",
+    "spread_frac": "DERIVED",
+    "spread_pts": "DERIVED",
+    "top_of_book.ask": "NATIVE",
+    "top_of_book.ask_size": "NATIVE",
+    "top_of_book.bid": "NATIVE",
+    "top_of_book.bid_size": "NATIVE",
+    "wall_candidates": "DERIVED-HEURISTIC (size-outlier convention; see wall_method)"
+  },
+  "contract": "SPY   260911C00100000",
+  "crossed": false,
+  "deferred": [
+    "aggressor_side (PROXY: needs trade-vs-quote classification history)",
+    "cvd / cum_delta (PROXY: exists as cum_delta_proxy in the engine, tape-based)",
+    "absorption / replenishment (PROXY: exists in the engine, 2-snapshot compare)",
+    "iceberg / add-pull / institutional_flow (PROXY: no evidence base in this slice)"
+  ],
+  "depth": {
+    "1": {
+      "ask_total": 55.0,
+      "bid_total": 40.0,
+      "imbalance": -0.15789473684210525
+    },
+    "3": {
+      "ask_total": 210.0,
+      "bid_total": 200.0,
+      "imbalance": -0.024390243902439025
+    },
+    "5": {
+      "ask_total": 210.0,
+      "bid_total": 200.0,
+      "imbalance": -0.024390243902439025
+    }
+  },
+  "depth_pressure": {
+    "ask": [
+      {
+        "cum": 55.0,
+        "price": 1.25,
+        "volume": 55.0
+      },
+      {
+        "cum": 140.0,
+        "price": 1.26,
+        "volume": 85.0
+      },
+      {
+        "cum": 210.0,
+        "price": 1.27,
+        "volume": 70.0
+      }
+    ],
+    "bid": [
+      {
+        "cum": 40.0,
+        "price": 1.2,
+        "volume": 40.0
+      },
+      {
+        "cum": 120.0,
+        "price": 1.19,
+        "volume": 80.0
+      },
+      {
+        "cum": 200.0,
+        "price": 1.18,
+        "volume": 80.0
+      }
+    ]
+  },
+  "flow": {
+    "classification": {
+      "cum_delta_proxy": "PROXY",
+      "cum_delta_slope": "PROXY",
+      "tape_pressure_2m": "PROXY",
+      "tape_pressure_30s": "PROXY",
+      "tape_pressure_5m": "PROXY",
+      "top_book_pressure": "DERIVED"
+    },
+    "cum_delta_proxy": 35.0,
+    "cum_delta_slope": 1.499999970869977,
+    "native_aggressor_available": false,
+    "tape_classification": "PROXY_RECONSTRUCTED_L1_TICK",
+    "tape_pressure_2m": 0.5384615384615384,
+    "tape_pressure_30s": 0.3333333333333333,
+    "tape_pressure_5m": 0.4666666666666667,
+    "top_book_pressure": -0.15789473684210525
+  },
+  "liquidity_concentration": {
+    "ask": 0.2619047619047619,
+    "bid": 0.2
+  },
+  "microprice": 1.2210526315789474,
+  "mid": 1.225,
+  "provenance": {
+    "book_source": "schwab_streaming_book",
+    "book_time_ms": 1789000000000.0,
+    "exchange_quote_ts": null,
+    "n_ask_levels": 3,
+    "n_bid_levels": 3,
+    "server_received_ts": 1789023903.524546,
+    "top_of_book_ask_leaf": "streaming.ASK_PRICE",
+    "top_of_book_bid_leaf": "streaming.BID_PRICE"
+  },
+  "spread_frac": null,
+  "spread_pts": 0.05,
+  "status": "ok",
+  "streaming_plane": {
+    "contract_match": false,
+    "daemon_upstream_health": {
+      "LEVELONE_OPTIONS": {
+        "age_sec": null,
+        "state": "UNKNOWN"
+      },
+      "OPTIONS_BOOK": {
+        "age_sec": null,
+        "state": "UNKNOWN"
+      }
+    },
+    "option_contract": null,
+    "producer_book_contract": null,
+    "producer_l1_contract": null,
+    "queried_contract": "SPY   260911C00100000",
+    "server_requested_contract": null,
+    "stream_db_identity": {
+      "identity_match": null,
+      "producer_heartbeat": null,
+      "server_resolved_path": "<isolated-runtime>/data/stream_capture.db"
+    },
+    "streaming_connected": false,
+    "streaming_healthy": false,
+    "streaming_last_update_ts": null,
+    "streaming_staleness_ms": null
+  },
+  "top_of_book": {
+    "ask": 1.25,
+    "ask_size": 55,
+    "bid": 1.2,
+    "bid_size": 40
+  },
+  "wall_candidates": [],
+  "wall_method": {
+    "basis": "displayed level TOTAL_VOLUME >= mult x median top-N level size",
+    "depth": 5,
+    "heuristic": true,
+    "mult": 3.0,
+    "note": "size-outlier candidates in the DISPLAYED book only; blind to hidden/reserve size; NOT an objectively-known liquidity wall"
+  }
+}

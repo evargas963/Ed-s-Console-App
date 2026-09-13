@@ -9,11 +9,40 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { logDir, runWithFileSink } from "./run-pytest-full.mjs";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
+
+// Independent-review finding (2026-09-12), REPRODUCED: this runner used to hardcode
+// ["playwright", "test"] regardless of any CLI arguments this script itself was
+// invoked with -- `npm run test:e2e -- -g "some pattern"` or `node
+// scripts/run-playwright-e2e.mjs tests/e2e/some.spec.js` silently ran the FULL,
+// unfiltered suite every time, with the caller's own selection arguments discarded.
+// Native Playwright CLI selection (a spec file path, -g/--grep, --project, etc.) is
+// now forwarded verbatim. Quoted before re-joining into the ONE shell command string
+// `runWithFileSink` builds (shell:true -> [cmd, ...args].join(" ")): argv has already
+// split e.g. `-g "a failed additional-contracts request is retried, not falsely
+// reported accepted (RC-UI-3)"` into two elements with the quoting already stripped by
+// the CALLING shell -- naively re-joining with a bare space would let the RE-INVOKED
+// shell re-split a spaced grep pattern (this repo's own Playwright test names are full
+// of them) back into many arguments, breaking the selection instead of forwarding it.
+//
+// Exported (not just a local function) so tests/test_full_suite_output_sink_v1.py's
+// unit-level regression test can import and exercise the exact quoting logic without
+// spawning a second real Playwright run -- a real end-to-end run of THIS runner
+// collides in CI with playwright.config.mjs's fixed webServer port (8765) when it
+// lands close to the suite's own official `npm run test:e2e` step. That full,
+// real-execution proof (this exact command, `-g "shell structure"`, running only the
+// one matching test) was measured by hand instead -- see the commit message / PR
+// description for the exact figures (pre-fix: all 175 tests, 5.7 minutes; fixed: the
+// one matching test, ~24s).
+export function shellQuoteArg(arg) {
+  const s = String(arg);
+  if (/^[A-Za-z0-9_\-./:@]+$/.test(s)) return s;   // safe unquoted (paths, plain flags)
+  return '"' + s.replace(/"/g, '\\"') + '"';
+}
 
 function fail(msg) {
   console.error("[test:e2e] " + msg);
@@ -65,40 +94,55 @@ function ensurePlaywrightReady() {
   }
 }
 
-ensurePlaywrightReady();
+function main() {
+  ensurePlaywrightReady();
 
-const e2eRuntime = fs.mkdtempSync(path.join(os.tmpdir(), "ed-console-e2e-"));
-const e2eEnv = {
-  ...process.env,
-  ED_RUNTIME_ROOT: e2eRuntime,
-  ED_ARTIFACTS_ROOT: e2eRuntime,
-};
-delete e2eEnv.ED_CONSOLE_DB;
-delete e2eEnv.ED_DB_PATH;
-delete e2eEnv.STREAM_CAPTURE_DB_PATH;
+  const e2eRuntime = fs.mkdtempSync(path.join(os.tmpdir(), "ed-console-e2e-"));
+  const e2eEnv = {
+    ...process.env,
+    ED_RUNTIME_ROOT: e2eRuntime,
+    ED_ARTIFACTS_ROOT: e2eRuntime,
+  };
+  delete e2eEnv.ED_CONSOLE_DB;
+  delete e2eEnv.ED_DB_PATH;
+  delete e2eEnv.STREAM_CAPTURE_DB_PATH;
 
-console.log(`[test:e2e] isolated runtime: ${e2eRuntime}`);
-// RC-535: the Playwright run (and the uvicorn webServer output it relays) goes to a log
-// file, never to this process's terminal pipe — a reader that stops draining cannot
-// block the run. Only the bounded tail is echoed.
-let exitCode;
-try {
-  exitCode = runWithFileSink("test:e2e", "npx", ["playwright", "test"], {
-    logPath: path.join(logDir(), "test_e2e_last.log"),
-    cwd: root,
-    shell: true,
-    env: e2eEnv,
-    tailBytes: 700,
-  });
-} finally {
-  fs.rmSync(e2eRuntime, { recursive: true, force: true });
-  console.log(`[test:e2e] removed isolated runtime: ${e2eRuntime}`);
+  console.log(`[test:e2e] isolated runtime: ${e2eRuntime}`);
+  const forwardedArgs = process.argv.slice(2);
+  if (forwardedArgs.length) {
+    console.log(`[test:e2e] forwarding native selection arguments: ${forwardedArgs.join(" ")}`);
+  }
+  const quotedForwardedArgs = forwardedArgs.map(shellQuoteArg);
+  // RC-535: the Playwright run (and the uvicorn webServer output it relays) goes to a log
+  // file, never to this process's terminal pipe — a reader that stops draining cannot
+  // block the run. Only the bounded tail is echoed.
+  let exitCode;
+  try {
+    exitCode = runWithFileSink("test:e2e", "npx", ["playwright", "test", ...quotedForwardedArgs], {
+      logPath: path.join(logDir(), "test_e2e_last.log"),
+      cwd: root,
+      shell: true,
+      env: e2eEnv,
+      tailBytes: 700,
+    });
+  } finally {
+    fs.rmSync(e2eRuntime, { recursive: true, force: true });
+    console.log(`[test:e2e] removed isolated runtime: ${e2eRuntime}`);
+  }
+  if (exitCode !== 0) {
+    process.exit(exitCode);
+  }
+  // UNIVERSAL_QUANTITATIVE_CLOSURE_V1 (RC-542): the `.playwright_last_run_success` marker this
+  // runner used to write (Issue 40/46) is retired. The run's exit code is its proof, and
+  // required CI executes this runner directly; a tracked, hand-editable stamp compared to
+  // spec mtimes was a proxy that could be edited into a pass (its tracked copy was dated
+  // 2026-05-25 while CI had run E2E daily). `npm run test:all` still runs E2E first.
 }
-if (exitCode !== 0) {
-  process.exit(exitCode);
+
+// Run only when invoked directly (`node scripts/run-playwright-e2e.mjs ...`), never on
+// import -- lets tests/test_full_suite_output_sink_v1.py import shellQuoteArg above
+// without triggering ensurePlaywrightReady() and a real Playwright run as a side effect.
+const isMainModule = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+if (isMainModule) {
+  main();
 }
-// UNIVERSAL_QUANTITATIVE_CLOSURE_V1 (RC-542): the `.playwright_last_run_success` marker this
-// runner used to write (Issue 40/46) is retired. The run's exit code is its proof, and
-// required CI executes this runner directly; a tracked, hand-editable stamp compared to
-// spec mtimes was a proxy that could be edited into a pass (its tracked copy was dated
-// 2026-05-25 while CI had run E2E daily). `npm run test:all` still runs E2E first.

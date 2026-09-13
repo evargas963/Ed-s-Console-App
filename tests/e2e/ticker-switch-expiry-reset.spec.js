@@ -127,6 +127,48 @@ test('a delayed liquidity-snapshot response for the PRIOR ticker is dropped, not
   expect(r.lastPayloadTicker).toBeNull();
 });
 
+test('a delayed /api/terrain response for the PRIOR ticker cannot overwrite the Terrain card after a switch (state-authority review)', async ({ page }) => {
+  // Independent-review finding (2026-09-12, state-authority review), REPRODUCED: unlike
+  // fetchState (requestGeneration) and pollLiquiditySnapshot (test above, its own
+  // ticker-check fix), edLoadTerrain() carried no requestGeneration guard at all -- a
+  // response for the ticker requested when edLoadTerrain() STARTED rendered
+  // unconditionally, even after the operator had already switched ticker while it was
+  // in flight (the 5s Terrain-tab poll timer, or a fast radar-row double-click).
+  // Reproduced exactly: PLTR's /api/terrain request in flight, switch to AMD BEFORE it
+  // resolves, then deliver PLTR's late response -- it must not overwrite tv-sym/
+  // tv-contracts (already showing/reflecting AMD) with PLTR's data.
+  const r = await page.evaluate(async () => {
+    const realFetch = window.fetch.bind(window);
+    let resolveDelayed;
+    window.fetch = (url, opts) => String(url).includes('/api/terrain?ticker=PLTR')
+      ? new Promise((res) => { resolveDelayed = res; })
+      : realFetch(url, opts);
+    window.setActiveTicker('PLTR', null);
+    const p = window.edLoadTerrain();
+    await new Promise((r2) => setTimeout(r2, 20));
+    window.setActiveTicker('AMD', null);   // switch BEFORE PLTR's response arrives
+    const tvSymBeforeLateResponse = (document.getElementById('tv-sym') || {}).textContent;
+    resolveDelayed({
+      ok: true,
+      json: async () => ({
+        ticker: 'PLTR', spot: 20, gamma_flip: 19, confidence: 'TRUSTED',
+        contracts_used: 500, strikes_used: 20, computed_ts_utc: Date.now() / 1000,
+      }),
+    });
+    await p;
+    window.fetch = realFetch;
+    return {
+      activeTicker: window.__edTestHooks.getActiveTicker(),
+      tvSymBeforeLateResponse,
+      tvSymAfterLateResponse: (document.getElementById('tv-sym') || {}).textContent,
+    };
+  });
+  expect(r.activeTicker).toBe('AMD');
+  // REGRESSION LOCK: pre-fix, the late PLTR response repainted tv-sym to 'PLTR' here.
+  expect(r.tvSymAfterLateResponse).toBe(r.tvSymBeforeLateResponse);
+  expect(r.tvSymAfterLateResponse).not.toBe('PLTR');
+});
+
 test('liquidity snapshot: valid render (actual zone numbers) -> failure invalidates payload/zones/summary, not just the badge -> recovery renders REPLACEMENT values', async ({ page }) => {
   const r = await page.evaluate(async () => {
     const realFetch = window.fetch.bind(window);

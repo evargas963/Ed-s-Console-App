@@ -219,8 +219,14 @@ class _FakeOptionStream:
     async def level_one_option_subs(self, syms):
         self.calls.append(("l1_option_sub", tuple(syms)))
 
+    async def level_one_option_add(self, syms):
+        self.calls.append(("l1_option_add", tuple(syms)))
+
     async def options_book_subs(self, syms):
         self.calls.append(("options_book_sub", tuple(syms)))
+
+    async def options_book_add(self, syms):
+        self.calls.append(("options_book_add", tuple(syms)))
 
     async def level_one_option_unsubs(self, syms):
         self.calls.append(("l1_option_unsub", tuple(syms)))
@@ -416,8 +422,14 @@ class _FakeSchwabStreamClient:
     async def level_one_option_subs(self, syms):
         self.calls.append(("l1_option_sub", tuple(syms)))
 
+    async def level_one_option_add(self, syms):
+        self.calls.append(("l1_option_add", tuple(syms)))
+
     async def options_book_subs(self, syms):
         self.calls.append(("options_book_sub", tuple(syms)))
+
+    async def options_book_add(self, syms):
+        self.calls.append(("options_book_add", tuple(syms)))
 
     async def level_one_option_unsubs(self, syms):
         self.calls.append(("l1_option_unsub", tuple(syms)))
@@ -961,8 +973,14 @@ class _LifecycleStream:
     async def level_one_option_subs(self, syms):
         await self._vendor("level_one_option_subs", syms)
 
+    async def level_one_option_add(self, syms):
+        await self._vendor("level_one_option_add", syms)
+
     async def options_book_subs(self, syms):
         await self._vendor("options_book_subs", syms)
+
+    async def options_book_add(self, syms):
+        await self._vendor("options_book_add", syms)
 
     async def level_one_option_unsubs(self, syms):
         await self._vendor("level_one_option_unsubs", syms)
@@ -2258,3 +2276,51 @@ def test_forced_surrender_mutation_control_without_the_barrier(tmp_path, monkeyp
             "the standing claim still confirming the contract")
     finally:
         env.w.close()
+
+
+def test_retire_all_extra_option_coverage_closes_every_additional_symbols_epoch(tmp_path, monkeypatch):
+    """Independent-review finding (2026-09-12): the stream-recycle/shutdown paths only
+    ever closed the primary 'l1'/'book' pair's coverage epochs explicitly, leaving any
+    ADDITIONAL symbol's epoch row open (ended_ts IS NULL) after the socket that held it
+    was torn down -- a false coverage claim across exactly the window this ledger exists
+    to prevent. _retire_all_extra_option_coverage is the fix these paths now call;
+    proven directly here against a REAL durable epoch."""
+    from app.market_data.schwab.streaming.capture import (
+        _apply_extra_option_contract_subs, _retire_all_extra_option_coverage)
+    stream = _FakeOptionStream()
+    writer = CaptureWriter(tmp_path / "cap.db", batch_rows=1, batch_sec=10.0)
+    contract_state: dict = {}
+    epoch_state: dict = {}
+
+    async def go():
+        await _apply_extra_option_contract_subs(
+            stream, contract_state, {_QQQ_CONTRACT}, writer=writer, epoch_state=epoch_state)
+    asyncio.run(go())
+
+    qqq_key = "l1:extra:" + _QQQ_CONTRACT
+    assert epoch_state[qqq_key] is not None, "sanity: QQQ's epoch is genuinely open"
+
+    _retire_all_extra_option_coverage(writer, epoch_state, reason="stream_recycle",
+                                      surrendered_ts=200.0)
+    writer.close()
+
+    import sqlite3
+    con = sqlite3.connect(tmp_path / "cap.db")
+    row = con.execute(
+        "SELECT ended_ts FROM stream_coverage_epochs WHERE symbol=? AND service='LEVELONE_OPTIONS'",
+        (_QQQ_CONTRACT,)).fetchone()
+    con.close()
+    assert row == (200.0,), (
+        "the additional symbol's epoch must be durably closed by the recycle-time retire "
+        "call, not left open past the socket that carried it")
+    assert epoch_state[qqq_key] is None
+
+
+def test_retire_all_extra_option_coverage_is_a_noop_with_no_epoch_state():
+    """Negative-input control: a None epoch_state (the no-ledger test/unit-call shape
+    every other helper here already tolerates) must not raise, and must do nothing --
+    checked explicitly via the function's own documented None return, not merely by the
+    absence of a raised exception."""
+    from app.market_data.schwab.streaming.capture import _retire_all_extra_option_coverage
+    result = _retire_all_extra_option_coverage(None, None, reason="stream_recycle", surrendered_ts=1.0)
+    assert result is None, "a None epoch_state must be tolerated as a true no-op"

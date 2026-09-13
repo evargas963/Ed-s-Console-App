@@ -12581,15 +12581,28 @@ function edPaintTokenWarn(d) {
 
 async function edLoadTerrain() {
   const tk = (typeof activeTicker === 'string' && activeTicker) ? activeTicker : 'SPY';
+  // Independent-review finding (2026-09-12, state-authority review), REPRODUCED: unlike
+  // fetchState (requestGeneration, line ~10297) and the two Terrain-tab refresh() loops
+  // (their own closure-captured `stale()` guard), edLoadTerrain never captured
+  // requestGeneration or re-checked it after its own await -- a ticker switch bumps
+  // requestGeneration and fires a NEW /api/terrain request for the new ticker, but an
+  // OLDER in-flight request for the PREVIOUS ticker (the 5s poll timer, or a fast
+  // double-click) was never invalidated: its response, on arrival, unconditionally
+  // overwrote tv-sym/tv-contracts/tv-title/the ladder/levels with the OLD ticker's data,
+  // even though the header already showed the NEW ticker. Fixed with the SAME
+  // requestGeneration mechanism this file already uses everywhere else.
+  const myGen = requestGeneration;
   let d;
   try {
     const r = await fetch('/api/terrain?ticker=' + encodeURIComponent(tk), { cache: 'no-store' });
     d = await r.json();
   } catch (e) {
+    if (myGen !== requestGeneration) return;   // a newer ticker/expiry commit supersedes this failure too
     const t = document.getElementById('tv-title');
     if (t) t.textContent = 'TERRAIN UNREACHABLE — STAND ASIDE';
     return;
   }
+  if (myGen !== requestGeneration) return;   // superseded by a ticker/expiry commit while this was in flight
   const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
 
   // ONE FAUCET: the browser already holds the live price the header renders. Prefer it

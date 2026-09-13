@@ -3358,6 +3358,8 @@ def _build_rest_fast_quote_payload(tkr: str, quote_ingestion: str) -> dict:
     t_parse1 = time.perf_counter()
     quote_ts = pq["quote_ts"]
     server_received_ts = time.time()
+    from market_context import resolve_chg_pct
+    chg_pct = resolve_chg_pct(tkr, pq.get("chg_pct"))
     total_ms = (time.perf_counter() - t0) * 1000.0
     log.info(
         "fast_quote_timing ticker=%s thread=%s total_ms=%.2f get_client_ms=%.3f "
@@ -3376,6 +3378,7 @@ def _build_rest_fast_quote_payload(tkr: str, quote_ingestion: str) -> dict:
     return {
         "ticker": tkr,
         "spot": float(spot_f) if spot_f is not None else None,
+        "chg_pct": chg_pct,
         "bid": float(bid) if bid is not None else None,
         "ask": float(ask) if ask is not None else None,
         "spot_disp": f"{spot_f:.2f}" if spot_f is not None else "—",
@@ -5674,9 +5677,14 @@ def _parse_quote_node_session_fields(node: dict) -> dict[str, Any]:
     total_volume = _safe_float_quote(_q.get("totalVolume"))
     if total_volume is None:
         total_volume = _safe_float_quote(_ext.get("totalVolume"))
+    # Percent change — the ONE parser (market_context.extract_pct_change), not a second
+    # copy of the formula. Generic per the vendor node, not per symbol name.
+    from market_context import extract_pct_change
+    pct_chg = extract_pct_change(_q, _reg, last)
     return {
         "last": last,
         "mark": mark,
+        "chg_pct": pct_chg,
         "bid": bid,
         "ask": ask,
         "bid_size": bid_size,
@@ -6019,6 +6027,13 @@ def _project_l1(ticker: str, expiry: Optional[str], *, reason: str = "unknown") 
         l1_generation=gen,
     )
     out = build_l1_context(ctx, derive_vwap_side_fn=derive_vwap_side)
+    # build_l1_context stays pure (its own contract: no chain/DB/ML/REST) and resolves
+    # chg_pct only from ctx.l0_row (stream-preferred via resolve_chg_pct) — so a ticker
+    # whose spot streams but whose percent-change never does gets the same REST backfill
+    # /api/live/state already gets, closing the gap where the SSE-pushed header stayed
+    # blank even after that route was fixed (caught in review — a route-level fix does not
+    # reach a browser path that never calls that route).
+    out["chg_pct"] = _chg_pct_with_rest_backfill(tkr, row)
     out["_l1_input_fingerprint"] = build_input_fingerprint(row, ent)
     of_block = out.get("order_flow") or {}
     out["_l1_of_signature"] = order_flow_compact_signature(of_block)
@@ -6190,6 +6205,12 @@ def _l1_http_get_projection(ticker: str, expiry: Optional[str], *, force: bool =
     _l1_instrumentation["l1_http_cache_hit_total"] += 1
     out = deepcopy(cached)
     _lmp.apply_l1_live_quote_overlay(out, tkr)
+    # Same re-resolve-as-last-word discipline _tier_a_live_state_dict uses after
+    # merge_into_state: the overlay above can only ADD/refresh chg_pct when the CURRENT
+    # plane row happens to carry a usable one, or clobber it to a stale row's None — it
+    # cannot backfill. Re-resolve fresh (stream, then the row the overlay just applied,
+    # then REST) so a cache-hit SSE/HTTP read gets the same live answer a fresh build would.
+    out["chg_pct"] = _chg_pct_with_rest_backfill(tkr, _lmp.get_quote(tkr))
     _l1_touch_scope(key)
     built = float(out.get("as_of_ts") or out.get("_server_build_ts") or l1_eval_wall_ts)
     age = max(0.0, l1_eval_wall_ts - built)
@@ -6323,6 +6344,45 @@ def _latest_cache_entry_for_ticker(ticker: str) -> Optional[tuple[tuple, dict]]:
     return (best_k, _state_cache[best_k])
 
 
+def _chg_pct_with_rest_backfill(tkr: str, row: Optional[dict], *, client=None) -> Optional[float]:
+    """
+    ONE backfill implementation, shared by /api/live/state (_tier_a_live_state_dict) and the
+    L1/SSE projection build (_project_l1) — a duplicate second copy of this exact backfill
+    was the reason /api/live/state got a real chg_pct while the SSE-pushed header stayed
+    blank (caught in review): each consumer of the L0 row needs the same treatment, not its
+    own copy of it.
+
+    market_context.resolve_chg_pct first (stream-primary, REST-row-fallback). If still None:
+    MEASURED (this preview, live) — a ticker with plane_quote_authority=="streaming" can have
+    a real, fresh streamed SPOT while its streamed percent-change field genuinely never lands
+    (the L1 subscription's field set decides that, not this function), and REST is otherwise
+    skipped once spot is already streaming. Spot and percent-change are different vendor
+    fields; one streaming does not guarantee the other. Backfill via the same memoized REST
+    quote /api/fast-quote already shares (RC-112) — usually a cache hit, not a second network
+    call — rather than leaving a consumer blank while another one (e.g. the watchlist, which
+    always polls REST) shows a real number for the same ticker.
+    """
+    from market_context import resolve_chg_pct
+
+    chg_pct = resolve_chg_pct(tkr, (row or {}).get("chg_pct"))
+    if chg_pct is not None:
+        return chg_pct
+    if client is None:
+        try:
+            client = get_client()
+        except HTTPException:
+            return None
+    try:
+        q_resp = _memoized_quote_response(tkr, client=client)
+        if q_resp and q_resp.status_code == 200:
+            _qj = q_resp.json()
+            _node = _qj.get(tkr.upper()) or _qj.get(tkr) or {}
+            return resolve_chg_pct(tkr, _parse_quote_node_session_fields(_node).get("chg_pct"))
+    except Exception as e:
+        log.debug("chg_pct REST backfill failed for %s: %s", tkr, e)
+    return None
+
+
 def _tier_a_live_state_dict(ticker: str, expiry: Optional[str]) -> dict:
     """
     Tier A — live-only JSON for GET /api/live/state.
@@ -6366,9 +6426,12 @@ def _tier_a_live_state_dict(ticker: str, expiry: Optional[str]) -> dict:
                 sf = float(spot)
                 quote_ts = pq["quote_ts"]
                 server_received_ts = time.time()
+                from market_context import resolve_chg_pct
+                chg_pct = resolve_chg_pct(tkr, pq.get("chg_pct"))
                 row = {
                     "ticker": tkr,
                     "spot": sf,
+                    "chg_pct": chg_pct,
                     "bid": bid,
                     "ask": ask,
                     "spot_disp": f"{sf:.2f}",
@@ -6434,12 +6497,14 @@ def _tier_a_live_state_dict(ticker: str, expiry: Optional[str]) -> dict:
     spread_dollar = None
     if bid is not None and ask is not None:
         spread_dollar = round(ask - bid, 4)
+    chg_pct = _chg_pct_with_rest_backfill(tkr, row, client=client)
     out: dict = {
         "_tier": "A_live",
         "ticker": tkr,
         "selected_exp": expiry,
         "session_label": sess,
         "spot": spot_f,
+        "chg_pct": chg_pct,
         "bid": bid,
         "ask": ask,
         "spot_disp": row.get("spot_disp"),
@@ -6502,9 +6567,24 @@ def _tier_a_live_state_dict(ticker: str, expiry: Optional[str]) -> dict:
         ):
             if k in md0 and md0[k] is not None:
                 lw[k] = md0[k]
+        # The Tier C bundle's own generation (the SAME entry-level analytics_version every
+        # /api/analytics/state response carries via _attach_analytics_freshness_contract), so a
+        # consumer that caches a Tier C value (the shell's put/call OI row) can see the
+        # generation advance on the plane it already polls and re-read ONCE — never per tick,
+        # never forever stale. Not a second clock: it is the bundle's existing identity.
+        _ver = ck_hit.get("analytics_version")
+        if _ver is not None:
+            lw["analytics_version"] = int(_ver)
     if lw:
         out["analytics_lightweight"] = lw
     _lmp.merge_into_state(out, tkr)
+    # merge_into_state (correctly, per its own fix) overwrites chg_pct unconditionally
+    # whenever the CURRENT plane row carries the key at all, including a stale/None value —
+    # that row was never told about the resolve_chg_pct/backfill result just computed above
+    # (this route intentionally does not write its transient backfill into the shared plane
+    # cache), so a stale plane-row chg_pct here would silently undo it. The value already
+    # resolved above is this response's actual answer; re-assert it as the last word.
+    out["chg_pct"] = chg_pct
     return out
 
 
@@ -8572,6 +8652,7 @@ def _fetch_state(
                         msft_chg_pct=_const_map.get("MSFT"),
                         amzn_chg_pct=_const_map.get("AMZN"),
                         googl_chg_pct=_const_map.get("GOOGL"),
+                        goog_chg_pct=_const_map.get("GOOG"),
                         avgo_chg_pct=_const_map.get("AVGO"),
                         meta_chg_pct=_const_map.get("META"),
                         tsla_chg_pct=_const_map.get("TSLA"),
@@ -9973,7 +10054,25 @@ async def _app_lifespan(app):
     # Schwab auth diagnostics (helps debug link vs manual launch)
     _log_schwab_startup_diagnostics()
 
-    # Lightweight auth validation — don't wait for first /api/state to discover issues
+    # Lightweight auth validation — don't wait for first /api/state to discover issues.
+    #
+    # MEASURED (operator finding, 2026-09-11): this block used to (a) build a SEPARATE
+    # client via build_client_from_token() instead of the canonical cached owner
+    # get_client() — so the ~400ms construction cost (schwab_capability_state's own
+    # docstring measurement) was paid AGAIN on the first real request, and (b) issue a
+    # BLOCKING live client.get_quote("SPY") call here, before `yield` below — since
+    # FastAPI does not accept ANY HTTP request (including Schwab-independent ones, like
+    # static assets) until this lifespan function reaches `yield`, a slow or unavailable
+    # vendor delayed the whole app's first byte, not just Schwab-dependent routes.
+    #
+    # Fix: the file-based inspection above stays synchronous (cheap, local, no network).
+    # Client construction now goes through get_client() — the SAME cache every other
+    # consumer uses, so it is built here ONCE, not rebuilt on first use. The actual vendor
+    # round-trip (the real "does the token work" proof) is dispatched as a background task
+    # and does NOT block `yield` — HTTP serving is available immediately once the (fast,
+    # local) construction step above returns; the live-quote verdict lands in the log a
+    # moment later. No decision restriction changes: schwab_capability_state()/get_client()
+    # are still the SAME enforcement points every route already calls at decision time.
     try:
         _inv_startup = inspect_token_file(cfg.token_path)
         log.info(
@@ -9999,47 +10098,42 @@ async def _app_lifespan(app):
                 "Schwab startup: token exists but NOT refreshable (no refresh_token). "
                 "Remediation: python reauth_schwab.py --manual",
             )
-        state = build_client_from_token(
-            api_key=cfg.api_key,
-            app_secret=cfg.app_secret,
-            token_path=cfg.token_path,
-        )
-        if not state.ok or state.client is None:
+        try:
+            startup_client = get_client()
+        except HTTPException as ce:
+            startup_client = None
             log.error(
                 "Schwab auth invalid at startup: %s — Remediation: run python reauth_schwab.py",
-                state.message,
+                ce.detail,
             )
-        else:
-            r_near_expiry = None
-            if _inv_startup.is_expiring_soon:
-                log.info("Token near expiry — performing refresh validation")
+
+        if startup_client is not None:
+            def _validate_schwab_quote_sync(client):
                 try:
-                    r_near_expiry = state.client.get_quote("SPY")
-                    if not r_near_expiry or getattr(r_near_expiry, "status_code", 0) != 200:
-                        log.warning("Refresh validation failed: bad response")
-                except Exception as e:
-                    log.error("Refresh validation failed: %s", e)
-                    r_near_expiry = None
-            # Validate token works with a minimal call (reuse SPY quote if near-expiry already fetched)
-            try:
-                r = r_near_expiry if r_near_expiry is not None else state.client.get_quote("SPY")
-                if not r or getattr(r, "status_code", 0) != 200:
-                    log.warning(
-                        "Schwab token validation failed (SPY quote returned %s). "
-                        "Token may be expired. Remediation: python reauth_schwab.py",
-                        getattr(r, "status_code", "None"),
-                    )
-                else:
-                    log.info("Schwab auth validated at startup")
-            except Exception as ve:
-                from schwab_client import _is_token_error
-                if _is_token_error(ve):
-                    log.error(
-                        "Schwab token invalid at startup: %s — Remediation: python reauth_schwab.py",
-                        ve,
-                    )
-                else:
-                    log.warning("Schwab startup validation: %s", ve)
+                    r = client.get_quote("SPY")
+                    if not r or getattr(r, "status_code", 0) != 200:
+                        log.warning(
+                            "Schwab token validation failed (SPY quote returned %s). "
+                            "Token may be expired. Remediation: python reauth_schwab.py",
+                            getattr(r, "status_code", "None"),
+                        )
+                    else:
+                        log.info("Schwab auth validated at startup (background)")
+                except Exception as ve:
+                    from schwab_client import _is_token_error
+                    if _is_token_error(ve):
+                        log.error(
+                            "Schwab token invalid at startup: %s — Remediation: python reauth_schwab.py",
+                            ve,
+                        )
+                    else:
+                        log.warning("Schwab startup validation: %s", ve)
+
+            if _inv_startup.is_expiring_soon:
+                log.info("Token near expiry — background validation will also exercise refresh")
+            asyncio.get_event_loop().run_in_executor(
+                None, _validate_schwab_quote_sync, startup_client
+            )
     except Exception as e:
         log.warning("Schwab auth check: %s", e)
 
@@ -10106,7 +10200,7 @@ async def _app_lifespan(app):
     # architecture (a broken/expiring token would silently disable the live UI's quote
     # feed even though the daemon was capturing fine). Unconditional.
     try:
-        from app.options.order_flow.streaming import start_order_flow_stream
+        from app.options.order_flow.streaming import start_order_flow_stream, set_streamed_greeks_hook
 
         # LIVE_OPERATOR_MODE_RESET_V1 Step 2 — single Tier C owner: the
         # tick-coherent recompute callback (_on_tick_broadcast_sync) is no
@@ -10114,6 +10208,11 @@ async def _app_lifespan(app):
         # The quote lane (live_market_plane → live_quote SSE) still updates
         # per tick via record_from_level_one_equity.
         start_order_flow_stream(None, None, DEFAULT_TICKER)
+        # RC-UI-2: freshen a cached gamma surface the instant its active option
+        # contract's stream carries new GAMMA/DELTA/OPEN_INTEREST, instead of waiting
+        # for the next ~60s wide-chain REST cycle. See refresh_gamma_surface_from_stream's
+        # own docstring for why this is still the one faucet, not a second computation.
+        set_streamed_greeks_hook(refresh_gamma_surface_from_stream)
     except ImportError as ie:
         log.debug(f"Order flow streaming not started: {ie}")
     except Exception as e:
@@ -10227,9 +10326,28 @@ app.add_api_route(
     include_in_schema=False,
 )
 
+class _RevalidateStaticFiles(StaticFiles):
+    """StaticFiles sends no Cache-Control at all, leaving freshness to each browser's own
+    heuristic (commonly ~10% of Last-Modified age, RFC 7234). MEASURED (2026-09-11): after a
+    real code change + server restart, a browser served a stale ed-gamma.js across THREE
+    separate full navigations (not just a soft reload) with zero requests reaching this
+    server for that file -- silent staleness a `curl` or a direct no-store fetch never
+    reveals, because it only affects the browser's own normal navigation path. `no-cache`
+    forces revalidation on every load (the existing ETag/Last-Modified still make an
+    unchanged file a cheap 304, so this costs nothing beyond a round trip) instead of
+    trusting a heuristic a shipped fix cannot control. Same reasoning already applied to
+    rth_clock_authority.js above, generalized to every static asset.
+    """
+
+    async def get_response(self, path: str, scope):
+        response = await super().get_response(path, scope)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
+
+
 static_dir = Path(APP_DIR) / "static"
 static_dir.mkdir(exist_ok=True)
-app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+app.mount("/static", _RevalidateStaticFiles(directory=str(static_dir)), name="static")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -12072,6 +12190,285 @@ def terrain_cycle_tickers(
     return sentinels + slice_now, deferred
 
 
+# RC-UI-1 #1: gamma-surface demand registry — the /api/options/gamma-surface endpoint marks a
+# ticker "wanted" on each request; _terrain_refresh_one projects the (measurable) strike x expiry
+# surface only for tickers wanted within the TTL, so unviewed tickers pay no surface cost.
+_gamma_surface_demand: dict = {}
+GAMMA_SURFACE_DEMAND_TTL = 300.0
+
+
+def _note_gamma_surface_demand(tk: str) -> None:
+    now = time.time()
+    _gamma_surface_demand[tk] = now
+    # opportunistic hygiene (no background thread): drop expired keys so the registry can't grow
+    # unbounded from arbitrary/expired tickers.
+    if len(_gamma_surface_demand) > 64:
+        for _k in [k for k, ts in list(_gamma_surface_demand.items()) if now - ts >= GAMMA_SURFACE_DEMAND_TTL]:
+            _gamma_surface_demand.pop(_k, None)
+
+
+def _gamma_surface_wanted(tk: str) -> bool:
+    return (time.time() - _gamma_surface_demand.get(tk, 0.0)) < GAMMA_SURFACE_DEMAND_TTL
+
+
+#: A streamed GAMMA/DELTA/OPEN_INTEREST value older than this is not trusted AT ALL, even if
+#: it is newer than the REST baseline it would override — an app-side absolute bound (not a
+#: vendor-documented cadence), chosen to be well inside a stalled-feed operator would notice,
+#: composed with (never a substitute for) the REST-baseline precedence check below.
+GAMMA_SURFACE_STREAM_STALENESS_SEC = 10.0
+
+#: RETIRED (2026-09-12): a leading-edge per-ticker time debounce used to live here. Independent
+#: review found it provided ZERO protection against the exact backlog it was written for: a
+#: leading-edge debounce rejects a call only if it arrives too soon after the PREVIOUS call's
+#: own start, but when the computation itself is slow, that previous call's own duration
+#: already exceeds any reasonable debounce window by the time the next one can even arrive --
+#: sequential bursts each still paid the full per-call cost. Worse, a debounced call was
+#: silently dropped with nothing scheduling a trailing publication, so the LAST update of a
+#: burst could go permanently unpublished. Replaced with per-batch coalescing in
+#: app.options.order_flow.streaming._replay_option_contract_rows itself: every row in a poll
+#: batch still updates OrderFlowState, but the (expensive) hook fires ONCE per batch using the
+#: freshest row, not once per row -- bounding the real worst-case rate to "one recompute per
+#: poll-loop iteration that has new data" without ever silently discarding the batch's own
+#: latest observation. See that function's own comment for the full reasoning, and
+#: tests/test_streamed_greeks_hook_v1.py::test_hook_coalescing_avoids_the_real_per_call_
+#: cost_at_spxw_scale for the actual, reproducible, rerunnable per-call latency this hook's
+#: real consumer (refresh_gamma_surface_from_stream, below) pays at full SPXW scale --
+#: independent-review performance-assurance finding (2026-09-12): the per-call cost figure
+#: previously hardcoded here traced to no committed benchmark; it now traces to that test's
+#: own measured output instead.
+
+#: Per-ticker counter bumped every time `_gamma_surface` is (re)published — by the REST cycle
+#: or the eager stream refresh alike. Independent-review finding (2026-09-12), REPRODUCED: the
+#: browser's renderSurface() skips its table rebuild when its own revision key (built from
+#: chain_as_of_ts_utc/spot_as_of_ts_utc — REST-only fields) is unchanged; the eager refresh
+#: changes cell VALUES without ever touching those REST fields, so a genuinely new surface
+#: rendered as the old one until the next REST cycle happened to land. This counter is a
+#: revision identity ANY publication bumps, REST or streamed, so the browser has something
+#: that actually changes when the data does. Guarded by _terrain_cache_lock, like the cache
+#: it describes.
+_gamma_surface_seq: dict[str, int] = {}
+
+
+def _next_gamma_surface_seq(tk: str) -> int:
+    """Caller must hold _terrain_cache_lock. Also PUSHES a lightweight SSE notify -- no data of
+    its own, just {ticker, surface_seq} -- to any /api/analytics/light/stream client currently
+    viewing this ticker, so the browser refetches the instant a new generation publishes
+    instead of waiting out the slow 3s/12s poll.
+
+    Independent-review finding (2026-09-12): "the browser still polls every 12 seconds. The
+    new Playwright test manually triggers the refresh event, bypassing that wait. It proves
+    rendering after delivery, not timely delivery." True of the prior commit: surface_seq made
+    a change DETECTABLE once the browser next asked, but nothing made it ASK sooner. This
+    reuses the EXISTING SSE connection/queue/dispatch pipe wholesale
+    (_l1_put_thread_queue_notify -> _l1_light_sse_dispatch_loop -> the /api/analytics/light/
+    stream generator, which now picks the wire event name from the envelope instead of
+    hardcoding "l1_projection") -- no second SSE endpoint, connection, or daemon. Best-effort:
+    a failed push here still leaves surface_seq bumped and the slow poll as an honest fallback
+    (SSE down/stalled already falls back to polling on the client)."""
+    n = _gamma_surface_seq.get(tk, 0) + 1
+    _gamma_surface_seq[tk] = n
+    try:
+        _l1_put_thread_queue_notify(
+            (tk, "__auto__"),
+            {"_sse_event_name": "gamma_surface_seq", "scope": {"ticker": tk}, "surface_seq": n},
+        )
+    except Exception as e:  # institutional-swallow-ok: push notify is best-effort; poll fallback still exists
+        log.debug("gamma_surface_seq SSE notify failed for %s: %s", tk, e)
+    return n
+
+
+def _per_strike_view_from_contracts(contracts: list, spot: float) -> dict:
+    """The exact {all, near, far} shape /api/terrain/strikes serves, computed directly from
+    `contracts` via the SAME reusable, pure functions terrain_engine.compute_terrain already
+    calls internally (compute_exposures_by_strike -> _per_strike_scopes) — not a second
+    formula, just called directly so a caller that already has an OVERLAID contract list (and
+    does not want to pay for the rest of compute_terrain's unrelated fields: pin, walls,
+    regime, confidence) can get a consistent per-strike view from it."""
+    from math_exposure_core import compute_exposures_by_strike as _cebs
+    from terrain_engine import _per_strike_scopes
+    exposures, _diag = _cebs(contracts, spot=spot, require_oi=True)
+    return _per_strike_scopes(exposures, contracts, spot)
+
+
+def _desired_stream_greeks_for_ticker(tk: str) -> dict:
+    """Every currently-live streamed GAMMA/DELTA/OPEN_INTEREST/VOLUME entry for a
+    contract belonging to `tk` — the PRIMARY/pinned contract AND every ADDITIONALLY-
+    desired contract (RC-UI-3 multi-contract coverage), gathered FRESH on every call.
+
+    Independent-review finding (2026-09-12), root cause of the "refreshing B loses A's
+    update" defect: the two callers below used to build a single-entry
+    `{contract_symbol: greeks}` map for whichever ONE contract triggered that particular
+    refresh, then overlay it onto the untouched REST baseline — so refreshing B always
+    discarded A's already-fresh streamed value, because the baseline itself carries no
+    memory of a prior overlay. Fixed at the root by never relying on such memory: this
+    reconstructs the FULL multi-contract streamed set from scratch every call.
+    `get_stream_greeks` IS the live per-symbol store (app.options.order_flow.state),
+    cleared exactly when a symbol's coverage genuinely ends (clear_symbol) — so
+    re-querying it for every currently-desired symbol on every refresh, no matter which
+    one triggered it, always reconstructs every symbol's latest known state, and a symbol
+    whose coverage has ended is correctly absent (never lingers as a stale entry here).
+
+    Native contract identity uses app.options.order_flow.streaming.contract_matches_underlying
+    (chain-aware: a vendor root that genuinely differs from the ticker's own root, e.g.
+    Schwab's $SPX -> SPXW weekly, is still recognized via the nearest banked complete chain) —
+    independent-review finding (2026-09-12): a bare vendor-root == ticker-root equality check
+    silently excludes exactly this legitimate case."""
+    from app.options.order_flow.streaming import (
+        get_active_option_contract, get_active_option_contracts, contract_matches_underlying)
+    from app.options.order_flow.state import get_stream_greeks
+    out: dict = {}
+    candidates = list(get_active_option_contracts())
+    primary = get_active_option_contract()
+    if primary:
+        candidates.append(primary)
+    for sym in candidates:
+        if not sym or sym in out or not contract_matches_underlying(sym, tk):
+            continue
+        greeks = get_stream_greeks(sym)
+        if greeks:
+            out[sym] = greeks
+    return out
+
+
+def _gamma_surface_contracts_with_stream_overlay(
+        tk: str, contracts: list, *, newer_than_ts: float | None = None) -> tuple[list, int]:
+    """Overlay EVERY currently-streaming option contract's freshest known GAMMA/DELTA/
+    OPEN_INTEREST/VOLUME onto `contracts` before projection, for whichever of them
+    belong to `tk` (RC-UI-3: primary AND every additional contract — see
+    _desired_stream_greeks_for_ticker).
+
+    Still the ONE canonical faucet (project_gamma_surface -> compute_exposures_by_strike,
+    RC-UI-1): this changes no formula and adds no second producer, it only lets those
+    fields be fresher than the REST chain snapshot they arrived in.
+
+    `newer_than_ts`, when given, is passed straight through as the REST-baseline precedence
+    bound (see overlay_streamed_contract_fields) — independent-review finding (2026-09-12):
+    "being received within ten seconds does not establish that a stream value is newer than
+    the REST input it replaces."
+
+    Fails closed to the unmodified `contracts` on any error or when nothing applies — this is
+    a best-effort freshening, never a precondition for the projection to run at all."""
+    try:
+        from math_exposure_core import overlay_streamed_contract_fields
+
+        streamed = _desired_stream_greeks_for_ticker(tk)
+        if not streamed:
+            return contracts, 0
+        return overlay_streamed_contract_fields(
+            contracts, streamed,
+            newer_than_ts=newer_than_ts, max_staleness_sec=GAMMA_SURFACE_STREAM_STALENESS_SEC)
+    except Exception as e:  # institutional-swallow-ok: best-effort freshening, never load-bearing
+        log.debug("gamma-surface stream overlay skipped for %s: %s", tk, e)
+        return contracts, 0
+
+
+def refresh_gamma_surface_from_stream(contract_symbol: str, ts_recv: float) -> str:
+    """Eagerly freshen a cached ticker's gamma surface AND per-strike view the instant a
+    streamed L1 tick carries new GAMMA/DELTA/OPEN_INTEREST for its currently-active option
+    contract, instead of waiting for the next ~60s wide-chain REST cycle
+    (_terrain_refresh_one). Registered with
+    app.options.order_flow.streaming.set_streamed_greeks_hook at startup.
+
+    Still the ONE canonical faucet: re-runs project_gamma_surface AND
+    _per_strike_view_from_contracts on the SAME RAW REST chain (`_contracts_rest`, stamped by
+    _terrain_refresh_one) with EVERY currently-desired contract's fields overlaid via
+    overlay_streamed_contract_fields — never a second exposure formula, and always overlaid
+    onto the untouched REST base so repeated eager refreshes never compound away from what the
+    vendor's chain actually reported.
+
+    Three independent-review findings (2026-09-12), all REPRODUCED, are fixed together here
+    because they share one cause (this function used to touch only `_gamma_surface`, and only
+    the ONE triggering contract's overlay):
+      - the heatmap (_gamma_surface) and the Strike Detail / GEX-by-strike panel (_per_strike)
+        disagreed on the SAME strike, because only one of the two was ever refreshed from the
+        overlay -- fixed by publishing both from the SAME overlaid contracts, together.
+      - a REST refresh landing WHILE this function was computing could be silently overwritten
+        by this function's stale-baseline result once it finally wrote back -- fixed by a
+        compare-and-swap on the REST generation marker (_contracts_rest_computed_ts): if the
+        cache's generation changed between this function's read and its write, the computed
+        result is DISCARDED, never published over a generation newer than the one it was
+        computed from.
+      - refreshing B (RC-UI-3 multi-contract coverage) silently discarded A's already-fresh
+        overlaid value, because this always rebuilt a single-entry `{contract_symbol: greeks}`
+        map for whichever ONE contract's tick triggered the call, overlaid onto the untouched
+        REST baseline -- which carries no memory of A's prior overlay. Fixed at the root by
+        gathering EVERY currently-desired contract's live streamed state fresh on every call
+        (_desired_stream_greeks_for_ticker), so A's freshness is included even when B's tick is
+        what triggered this particular refresh.
+
+    Returns a status string (never raises) — diagnostic/test surface only, never load-bearing:
+    a caller that ignores the return value still gets the fail-closed no-op on any failure.
+    """
+    try:
+        from instrument_identity import vendor_option_root
+        from app.options.order_flow.streaming import contract_matches_underlying
+        if not vendor_option_root(contract_symbol):
+            return "not_an_option_symbol"
+        with _terrain_cache_lock:
+            tk = next((k for k in _terrain_cache if contract_matches_underlying(contract_symbol, k)), None)
+            if tk is None:
+                return "no_cached_ticker"
+            payload = _terrain_cache.get(tk) or {}
+            base_contracts = payload.get("_contracts_rest")
+            spot = payload.get("_contracts_rest_spot")
+            read_generation = payload.get("_contracts_rest_computed_ts")
+        if not base_contracts or not spot:
+            return "no_rest_baseline"
+        from math_exposure_core import overlay_streamed_contract_fields
+        streamed = _desired_stream_greeks_for_ticker(tk)
+        if contract_symbol not in streamed:
+            # The contract whose tick triggered THIS call has nothing to offer (already
+            # stale-gated, or its coverage ended between the hook firing and this running)
+            # -- still a real "nothing new from this call" outcome, even though some OTHER
+            # desired contract might have data (that contract's own tick will trigger its
+            # own call when it changes).
+            return "no_streamed_greeks"
+        overlaid, n = overlay_streamed_contract_fields(
+            base_contracts, streamed,
+            newer_than_ts=read_generation, max_staleness_sec=GAMMA_SURFACE_STREAM_STALENESS_SEC)
+        if n == 0:
+            return "no_change"
+        new_surface = project_gamma_surface(overlaid, spot)
+        new_per_strike = _per_strike_view_from_contracts(overlaid, spot)
+        # RC-UI-2 latency label (independent-review finding 2026-09-12): this timestamp is the
+        # instant the OVERLAID computation finished and was about to be offered for cache
+        # publication — it is NOT when the browser received or rendered anything, and it
+        # excludes the compare-and-swap / lock / transport / render legs entirely. Named and
+        # documented for exactly what it measures, not what it does not.
+        applied_ts = time.time()
+        if new_surface is not None:
+            new_surface["stream_overlay_contracts"] = n
+            new_surface["stream_overlay_computed_ts_utc"] = applied_ts
+            if ts_recv:
+                new_surface["stream_overlay_receipt_to_computed_ms"] = round((applied_ts - ts_recv) * 1000.0, 1)
+        with _terrain_cache_lock:
+            payload = _terrain_cache.get(tk)
+            if payload is None:      # evicted/replaced between the read above and now
+                return "cache_evicted"
+            if payload.get("_contracts_rest_computed_ts") != read_generation:
+                # A REST cycle published a NEWER generation while this ran on the OLD baseline.
+                # That generation's own numbers are already correct and current; publishing
+                # this stale-baseline result over them would silently regress the cache to
+                # older data while claiming success. Discard rather than overwrite.
+                return "stale_baseline_superseded"
+            seq = _next_gamma_surface_seq(tk)
+            if new_surface is not None:
+                new_surface["surface_seq"] = seq
+            payload["_gamma_surface"] = new_surface
+            payload["_per_strike"] = new_per_strike
+        return "ok"
+    except Exception as e:  # never let a best-effort freshening take the feed loop down
+        log.debug("refresh_gamma_surface_from_stream failed for %s: %s", contract_symbol, e)
+        return f"error:{type(e).__name__}"
+
+
+def _ticker_on_terrain_board(tk: str) -> bool:
+    # canonical current board membership (the terrain loop's universe = the logger cycle set +
+    # core), read under the existing lock — NOT a new registry, and NOT merely "a snapshot exists".
+    with _logger_lock:
+        return tk in _logger_tickers or tk in CORE_TICKERS
+
+
 def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
     """Fetch one chain and compute terrain into the cache. Never raises.
 
@@ -12146,6 +12543,18 @@ def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
             _note_terrain_failure(tk, _msg, _classify_chain_failure(
                 _code, "timeout-at-all-rungs" if resp is None else None))
             return "error:chain_http"
+        # Independent-review finding (2026-09-12), REPRODUCED: the generation marker used below
+        # for stream-precedence ("is a streamed value newer than this REST data") was stamped
+        # AFTER compute_terrain -- a real, non-trivial computation, not the REST observation
+        # itself. A stream tick that arrived causally AFTER this REST response but BEFORE
+        # compute_terrain finished was judged "not newer than REST" and discarded, even though
+        # it genuinely postdated the REST DATA it would have overlaid. `_rest_fetch_ts` is
+        # captured HERE -- the instant the 200 response is in hand, before any parsing or
+        # computation -- and is what the overlay/eager-refresh precedence check (below) and the
+        # compare-and-swap generation marker (_contracts_rest_computed_ts) actually use.
+        # `payload["computed_ts_utc"]` keeps its own, different meaning (this cycle's full
+        # computation finish time, used for display staleness/age) and is not reused for this.
+        _rest_fetch_ts = time.time()
         c_json = resp.json()
         contracts = flatten_chain_contracts(c_json)
         # ONE spot authority (RC-14) — never the chain underlying on its own.
@@ -12191,7 +12600,72 @@ def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
         # getattr, not attribute access: a snapshot without the map (older shape, or a stub) must
         # degrade to an EMPTY per-strike panel, never take down the whole terrain refresh.
         payload["_per_strike"] = getattr(snap, "per_strike", None) or {}
+        # RC-UI-1: the LIVE strike × expiry GEX surface, projected from the SAME live wide chain
+        # and live spot this cycle already holds (the RC-68 rationale, one step further) through
+        # the ONE canonical faucet (project_gamma_surface -> compute_exposures_by_strike). Zero
+        # extra vendor calls, one producer, current Greeks/spot — so /api/options/gamma-surface is
+        # temporally coherent with terrain instead of a morning snapshot. Fail-closed: a projection
+        # error leaves the field absent (endpoint falls back to the LABELLED banked-morning
+        # reference); it must never take down the terrain refresh that feeds the live desk.
+        # RC-UI-1 #1 (perf): the per-expiry projection is measurable — SYNTHETIC SCALE BASELINE
+        # ~86 ms (equity, 3.6k contracts) / ~1.36 s (full SPXW book, 42k), median over repeats — the
+        # SPXW figure is material at the low end of this cycle's vendor fetch. Gate it to tickers whose
+        # gamma surface was requested recently so an unviewed ticker pays ZERO cost; a viewed ticker
+        # gets the live surface each cycle. Live RTH end-to-end terrain-cycle impact is proven in F.
+        _stamp_surface_seq = False
+        try:
+            if spot and _gamma_surface_wanted(tk):
+                _overlaid_contracts, _overlay_n = _gamma_surface_contracts_with_stream_overlay(
+                    tk, contracts, newer_than_ts=_rest_fetch_ts)
+                payload["_gamma_surface"] = project_gamma_surface(_overlaid_contracts, float(spot))
+                if _overlay_n:
+                    # RC-UI-2/finding#2 fix (independent review, 2026-09-12, REPRODUCED): the
+                    # heatmap and the Strike Detail / GEX-by-strike panel disagreed on the SAME
+                    # strike because only _gamma_surface was ever refreshed from the overlay
+                    # while _per_strike (above) came from `snap` -- this ticker's UN-overlaid
+                    # `compute_terrain` result. Only recomputed when the overlay actually
+                    # changed something (_overlay_n > 0): the ordinary, nothing-is-streaming
+                    # cycle pays zero extra cost and keeps `snap`'s own per_strike, which is
+                    # also what _accrue_chain_observation banks below — a persisted historical
+                    # observation must reflect what the VENDOR's REST chain actually reported,
+                    # never a streamed freshening, so `snap` itself is never built from
+                    # `_overlaid_contracts`.
+                    payload["_per_strike"] = _per_strike_view_from_contracts(_overlaid_contracts, float(spot))
+                if payload["_gamma_surface"] is not None:
+                    payload["_gamma_surface"]["stream_overlay_contracts"] = _overlay_n
+                    # Independent-review finding (2026-09-12, state-authority review),
+                    # REPRODUCED: `_next_gamma_surface_seq` (bumps _gamma_surface_seq[tk] AND
+                    # pushes the SSE "gamma_surface_seq" notify) used to run HERE, in its own
+                    # EARLIER `with _terrain_cache_lock:` block -- a real gap of several
+                    # statements (and a possible exception) before `_terrain_cache[tk] =
+                    # payload` below, in a SECOND, later lock acquisition. Any reader in that
+                    # window (an SSE subscriber reacting to the notify by immediately
+                    # re-fetching, or an ordinary poll) could observe the NEW surface_seq while
+                    # `_terrain_cache[tk]` still held the PREVIOUS cycle's payload -- publication
+                    # announced before the published data was actually visible. Deferred: only
+                    # the DECISION to stamp a seq is made here; the seq itself is assigned (and
+                    # the SSE notify fired) atomically with the cache write below, exactly like
+                    # refresh_gamma_surface_from_stream already does it correctly.
+                    _stamp_surface_seq = True
+                # RC-UI-2: retained so a LATER streamed tick (arriving between this cycle and
+                # the next ~60s REST refresh) can freshen the cached surface immediately without
+                # a second vendor fetch — see refresh_gamma_surface_from_stream. Always the RAW
+                # REST base, never a previously-overlaid result, so repeated eager freshenings
+                # never compound away from what the vendor's chain actually reported.
+                # `_contracts_rest_computed_ts` doubles as the generation marker
+                # refresh_gamma_surface_from_stream compare-and-swaps against, so a REST cycle
+                # landing mid-eager-computation is never silently overwritten by a stale result.
+                payload["_contracts_rest"] = contracts
+                payload["_contracts_rest_spot"] = float(spot)
+                payload["_contracts_rest_computed_ts"] = _rest_fetch_ts
+            else:
+                payload["_gamma_surface"] = None
+        except Exception as _gs_e:  # institutional-swallow-ok: projection is a cache side-effect
+            payload["_gamma_surface"] = None
+            log.warning("gamma-surface projection raised for %s (surface withheld this cycle): %s", tk, _gs_e)
         with _terrain_cache_lock:
+            if _stamp_surface_seq:
+                payload["_gamma_surface"]["surface_seq"] = _next_gamma_surface_seq(tk)
             _terrain_cache[tk] = payload
             _terrain_profile_cache[tk] = snap.profile
         # RC-159 (operator mandate 2026-07-30): ACCRUE the wide chain across
@@ -12276,11 +12750,27 @@ def _terrain_loop() -> None:
                 tickers = list(_logger_tickers)
         except Exception:
             tickers = list(CORE_TICKERS)
+        # Independent-review finding (2026-09-12, state-authority review), REPRODUCED: a
+        # ticker merely PREVIEWED (never enrolled onto _logger_tickers -- see
+        # TICKER-PREVIEW-NO-ENROLL below) got exactly ONE on-demand terrain compute (the
+        # /api/terrain cache-miss priority path) and then NOTHING -- this loop only ever
+        # iterated the enrolled board, so its cache entry sat frozen forever while
+        # /api/options/gamma-surface kept serving it "live: True" (meaning "sourced from
+        # the live pathway", not "currently fresh") alongside a growing stale age with no
+        # honest "never enrolled" reason surfaced. Any ticker with LIVE view demand
+        # (_gamma_surface_wanted -- the SAME signal /api/options/gamma-surface already
+        # records on every request) is folded into this cycle so viewing ANY supported
+        # ticker keeps it refreshing for as long as it is actually being viewed, not only
+        # the pre-enrolled board. A snapshot of the keys, never the live dict, since
+        # another thread's concurrent _note_gamma_surface_demand write must not raise
+        # "dictionary changed size during iteration" here.
+        _previewed = [tk for tk in list(_gamma_surface_demand.keys())
+                      if tk not in tickers and _gamma_surface_wanted(tk)]
         # RC-146: a skip reason is only true for the cycle that recorded it. Cleared at the TOP
         # of every cycle so a pause that has ended cannot keep telling the operator to wait —
         # the branch below re-records it while, and only while, it still applies.
         _clear_terrain_skips()
-        if tickers and _is_loggable_session():
+        if (tickers or _previewed) and _is_loggable_session():
             # During the morning wide-chain window (09:30-10:00 ET) SPY/QQQ/IWM already
             # take 100-strike gated fetches on the money path. Do not pile a full-universe
             # terrain sweep on top of that — refresh sentinels only until the window ends.
@@ -12313,6 +12803,13 @@ def _terrain_loop() -> None:
                     f"the accrual cadence ({ACCRUAL_MIN_INTERVAL_OTHER_SEC:.0f}s) instead of "
                     f"being held out, so this ticker still accrues inside the window",
                 )
+            if _previewed:
+                # Previewed tickers are a deliberate, ad-hoc operator action (someone typed
+                # or clicked a ticker outside the enrolled board) -- they bypass
+                # terrain_cycle_tickers' morning-contention throttle (built for the
+                # enrolled board's own chain-slot budget) rather than being silently
+                # dropped by a mechanism that was never about them.
+                tickers = tickers + [tk for tk in _previewed if tk not in tickers]
             with concurrent.futures.ThreadPoolExecutor(max_workers=TERRAIN_WORKERS) as pool:
                 list(pool.map(_terrain_refresh_one, tickers))
         elapsed = time.monotonic() - cycle_start
@@ -13439,6 +13936,248 @@ def get_exposure_book(ticker: str = Query(default=DEFAULT_TICKER)):
     return JSONResponse(payload)
 
 
+# RC-UI-1: strike × expiry GEX surface for the rebuilt Options→Gamma heatmap. A PROJECTION over the
+# one canonical exposure authority, not a second producer: it partitions a wide chain by native
+# expirationDate (via the existing _filter_contracts_by_selected_expiry slice) and invokes
+# math_exposure_core.compute_exposures_by_strike per slice, shaping net_gex_1pct cells into a grid.
+# No gamma/GEX/multiplier/OI/spot/sign/missingness math lives here.
+# SOURCE (current, post live-terrain rewire): PREFERRED is the live terrain projection —
+# _terrain_refresh_one projects it from the live wide chain + live spot it already fetches each cycle
+# and caches it (in-memory, zero extra vendor calls), demand-gated to viewed tickers. FALLBACK is the
+# banked MORNING wide reference (one DB read, 5-min cache) — labelled stale/not-intraday, never live.
+_GAMMA_SURFACE_CACHE: dict = {}
+
+
+def project_gamma_surface(chain: list, spot: float) -> dict:
+    """PURE projection of a wide chain into a strike × expiry net_gex_1pct grid.
+
+    Owns only orchestration/shaping — NO exposure math. Every cell is produced by the one
+    canonical authority ``math_exposure_core.compute_exposures_by_strike`` run on the native
+    ``expirationDate`` slice for that expiry (via the existing _filter_contracts_by_selected_expiry
+    helper). Because the faucet buckets each contract independently, summing per-expiry cells at
+    a strike reconciles exactly to the full-book value at that strike (same spot). Contracts with
+    malformed/missing native expiry are excluded and counted — never reassigned to a column."""
+    from math_exposure_core import compute_exposures_by_strike as _cebs
+    from numeric_contract import float_finite_or_none
+
+    total_contracts = len(chain) if isinstance(chain, list) else 0
+    expiries = _expiries_from_contracts(chain)
+    valid_exp_keys = {str(e)[:10] for e in expiries}
+    excluded_malformed = sum(
+        1 for ct in (chain or [])
+        if str((ct or {}).get("expirationDate") or "")[:10] not in valid_exp_keys
+    )
+
+    strike_set: set[float] = set()
+    per_expiry: dict[str, dict] = {}
+    exp_dte: dict[str, int | None] = {}
+    # Live-heatmap coverage (state-authority review, 2026-09-12): the heatmap grid itself
+    # had no per-cell contract identity, so nothing could ever ask the streaming layer to
+    # keep its VISIBLE cells fresh sub-second -- only whatever ONE strike Strike Detail had
+    # separately selected ever streamed live. This is the vendor OSI symbol already present
+    # on each native contract (never invented, never a second identity authority), carried
+    # alongside the existing net_gex_1pct aggregate so the browser can ask for exactly the
+    # contracts backing what it is actually showing. Never fed into compute_exposures_by_
+    # strike (the canonical exposure-math faucet stays untouched) -- a plain per-(strike,
+    # expiry) lookup built from the same `slice_e` this loop already holds.
+    symbols_by_expiry: dict[str, dict[float, dict[str, str]]] = {}
+    contracts_used = 0
+    for e in expiries:
+        slice_e, slice_src = _filter_contracts_by_selected_expiry(chain, e)
+        if slice_src != "schwab_expirationDate" or not slice_e:
+            continue
+        # THE canonical faucet — identical call the selected-expiry analytics path uses
+        exposures_e, _diag_e = _cebs(slice_e, spot=spot, require_oi=True)
+        per_expiry[e] = exposures_e
+        contracts_used += len(slice_e)
+        for k in exposures_e.keys():
+            strike_set.add(float(k))
+        sym_map: dict[float, dict[str, str]] = {}
+        for ct in slice_e:  # native DTE for the column header, never inferred
+            if e not in exp_dte:
+                _d = ct.get("daysToExpiration")
+                if _d is not None:
+                    try:
+                        exp_dte[e] = int(_d)
+                    except (TypeError, ValueError):
+                        pass
+            side = (ct.get("putCall") or "").upper()
+            sym = ct.get("symbol")
+            # Same canonical vendor-numeric coercion compute_exposures_by_strike itself
+            # uses for this exact field (math_exposure_core._f -> float_finite_or_none) --
+            # a raw float() here would be a second, ad-hoc coercion authority for a Schwab
+            # vendor field.
+            _sk = float_finite_or_none(ct.get("strikePrice"))
+            if sym and side in ("CALL", "PUT") and _sk is not None:
+                sym_map.setdefault(_sk, {})[side.lower()] = str(sym)
+        symbols_by_expiry[e] = sym_map
+
+    strikes = sorted(strike_set)
+    expirations = [{"expiry": e, "dte": exp_dte.get(e)} for e in expiries if e in per_expiry]
+    cells = []
+    for k in strikes:
+        row = []
+        contracts_row = []
+        for col in expirations:
+            bucket = per_expiry.get(col["expiry"], {}).get(k)
+            v = bucket.get("net_gex_1pct") if bucket is not None else None
+            row.append(round(float(v)) if v is not None else None)
+            syms = symbols_by_expiry.get(col["expiry"], {}).get(k) or {}
+            contracts_row.append({"call": syms.get("call"), "put": syms.get("put")})
+        cells.append({"strike": k, "gex": row, "contracts": contracts_row})
+
+    return {
+        "expirations": expirations, "strikes": strikes, "cells": cells,
+        "contracts_total": total_contracts, "contracts_used": contracts_used,
+        "contracts_excluded_malformed_expiry": excluded_malformed,
+    }
+
+
+def _stamp_surface_session(surface: dict, *, reference_date: Optional[str]) -> dict:
+    """Session identity for a projected surface, stamped by the ONE ET clock (server side — a
+    browser never decides what day it is): today's ET session date, whether the surface is a
+    PRIOR-session reference (a banked capture from an earlier trading day viewed today), and which
+    expiration columns have already expired relative to today. Presentation reads these flags to
+    label an expired 0DTE column and a prior-session reference for what they are; it never infers
+    them. No cell value is touched."""
+    today = now_et().strftime("%Y-%m-%d")      # time_et: the ONE ET clock / session-calendar authority
+    out = dict(surface)
+    out["expirations"] = [
+        dict(e, expired=bool(e.get("expiry") and str(e["expiry"]) < today))
+        for e in (surface.get("expirations") or [])
+    ]
+    out["session_date_et"] = today
+    out["prior_session"] = bool(reference_date and str(reference_date) < today)
+    return out
+
+
+@app.get("/api/options/gamma-surface")
+def get_options_gamma_surface(ticker: str = Query(default=DEFAULT_TICKER)):
+    """Strike × expiration signed GEX$ surface (cell = net_gex_1pct) through the ONE canonical
+    faucet compute_exposures_by_strike.
+
+    Source order is deliberate. PREFERRED is the LIVE surface: _terrain_refresh_one (the single
+    levels producer) projects it each cycle from the same live wide chain + live spot it already
+    fetches, and caches it (source=terrain_live_cache). FALLBACK is the banked MORNING wide chain,
+    used only when the live cache is cold and labelled a reference (live=false, stale=true) — a
+    morning snapshot is never presented as intraday. Exposes chain/spot as-of, source, and
+    stale/degraded so the UI can fail stale visibly."""
+    import sqlite3 as _sq
+
+    tk = ticker_storage_key(ticker or DEFAULT_TICKER)
+    now = time.time()
+    _note_gamma_surface_demand(tk)   # mark viewed -> the terrain loop will project this ticker's surface
+
+    # ---- LIVE: surface projected this cycle from the canonical live terrain wide chain ----
+    live = terrain_cache_get(tk)
+    surf = (live or {}).get("_gamma_surface")
+    if live and surf:
+        # ONE freshness authority: terrain_staleness (RC-424) already merged onto the cache by
+        # terrain_cache_get — serialize it verbatim, never a second age policy for the same truth.
+        stale = bool(live.get("levels_stale"))
+        strikes = surf.get("strikes") or []
+        return JSONResponse({
+            "ticker": tk, "symbol": tk, "available": True,
+            "source": "terrain_live_cache", "live": True, "stale": stale,
+            "degraded": live.get("levels_stale_reason") if stale else None,
+            "spot": live.get("spot"), "spot_source": live.get("spot_source"),
+            "chain_as_of_ts_utc": live.get("computed_ts_utc"),
+            "spot_as_of_ts_utc": live.get("spot_as_of_ts_utc"),
+            "age_sec": live.get("levels_age_sec"),            # terrain's canonical age
+            "refresh_active": live.get("levels_refresh_active"),
+            "chain_basis": live.get("chain_basis"),
+            # coverage: the live terrain chain is strike_count-bounded (near-money), NOT the full
+            # strike_range=ALL book — disclosed so the heatmap is never presented as a complete chain.
+            "complete": False,
+            "coverage": {
+                "window": "live_near_money", "chain_basis": live.get("chain_basis"),
+                "strike_count": len(strikes),
+                "strike_min": (strikes[0] if strikes else None),
+                "strike_max": (strikes[-1] if strikes else None),
+                "expiry_count": len(surf.get("expirations") or []),
+                "note": ("near-money LIVE window (strike_count-bounded terrain chain) — NOT the "
+                         "full strike_range=ALL book. Proven-complete captures are per-expiry "
+                         "(complete_chain_captures), not exposed by this surface"),
+            },
+            **_stamp_surface_session(surf, reference_date=None),
+            "provenance": {
+                "producer": "math_exposure_core.compute_exposures_by_strike",
+                "source": "live_terrain_wide_chain (_terrain_refresh_one, strike_count-width basis)",
+                "classification": "DERIVED", "cell_metric": "net_gex_1pct",
+                "spot_basis": "live_resolve_spot",
+            },
+            "method": ("live terrain wide chain (current Greeks + live spot, this refresh cycle) -> "
+                       "partition by native expirationDate -> compute_exposures_by_strike per expiry "
+                       "-> net_gex_1pct cell; one producer, zero extra vendor calls"),
+        })
+
+    # ---- FALLBACK: banked MORNING wide chain — REFERENCE ONLY, never presented as intraday ----
+    hit = _GAMMA_SURFACE_CACHE.get(tk)
+    if hit and now - hit[0] < 300.0:
+        return JSONResponse(hit[1])
+    # #1-A: separate the two truths the UI must not conflate.
+    #   REQUESTED = this endpoint has actually recorded demand for the surface (above).
+    #   ON BOARD  = the ticker is in the ACTUAL current canonical terrain/logger board — read under
+    #               the board's own lock (_ticker_on_terrain_board), NOT inferred from "a cached
+    #               snapshot happens to exist". A stale snapshot is not proof of current membership.
+    #   WARMING   = requested AND on the board AND the terrain producer can refresh THIS ticker right
+    #               now — reusing terrain_staleness's canonical output merged onto `live`
+    #               (levels_refresh_active, not quarantined, not paused). No copied scheduler policy.
+    # A ticker not on the board is REQUESTED but NOT WARMING and no next refresh can occur for it —
+    # the UI must say collection is not active for this symbol, never "awaiting next refresh".
+    _requested = _gamma_surface_wanted(tk)
+    _on_board = _ticker_on_terrain_board(tk)
+    _warming = (_requested and _on_board and bool(live) and bool(live.get("levels_refresh_active"))
+                and not live.get("levels_quarantined") and not live.get("levels_paused_on_purpose"))
+    payload: dict = {"ticker": tk, "symbol": tk, "available": False, "source": "unavailable",
+                     "live": False, "stale": True, "warming": _warming,
+                     "requested": _requested, "on_board": _on_board,
+                     "reason": "no live terrain surface and no banked wide chain"}
+    try:
+        db = get_db()
+        con = _sq.connect(f"file:{db.db_path}?mode=ro", uri=True, timeout=10.0)
+        try:
+            cand = con.execute(
+                "SELECT et_date, spot, chain_json FROM option_chain_morning_full "
+                "WHERE ticker=? ORDER BY et_date DESC LIMIT 12", (tk,)).fetchall()
+        finally:
+            con.close()
+        rows_t = [r for r in cand if r[0] and is_trading_day_et(str(r[0]))][:1]
+        if rows_t:
+            et_date, s1, c1 = rows_t[0]
+            spot1 = float(s1)
+            surface = project_gamma_surface(json.loads(c1), spot1)
+            payload = {
+                "ticker": tk, "symbol": tk, "available": True,
+                "source": "banked_morning_reference", "live": False, "stale": True,
+                "warming": _warming, "requested": _requested, "on_board": _on_board,
+                "degraded": ("live terrain surface unavailable — showing banked morning wide "
+                             "reference (morning spot + morning Greeks; NOT intraday, NOT proven complete)"),
+                "et_date": et_date, "spot": spot1,
+                "chain_as_of_ts_utc": None, "spot_as_of_ts_utc": None, "age_sec": None,
+                "chain_basis": "banked_morning", "complete": False,
+                "coverage": {"window": "banked_morning_wide", "strike_count": len(surface.get("strikes") or []),
+                             "note": ("banked morning wide reference — strike-count bounded, not intraday "
+                                      "and not proven complete (not strike_range=ALL)")},
+                **_stamp_surface_session(surface, reference_date=str(et_date)),
+                "provenance": {
+                    "producer": "math_exposure_core.compute_exposures_by_strike",
+                    "source": "newest_banked_wide_chain:option_chain_morning_full",
+                    "classification": "DERIVED", "cell_metric": "net_gex_1pct",
+                    "spot_basis": "captured_morning_spot",
+                },
+                "method": ("REFERENCE: newest banked MORNING wide chain -> per-expiry "
+                           "compute_exposures_by_strike; morning spot/Greeks, not intraday"),
+            }
+    except Exception as e:  # fail-closed to explicit unavailability
+        payload = {"ticker": tk, "symbol": tk, "available": False, "source": "unavailable",
+                   "live": False, "stale": True, "warming": _warming,
+                   "requested": _requested, "on_board": _on_board,
+                   "reason": f"gamma-surface read failed: {e}"}
+    _GAMMA_SURFACE_CACHE[tk] = (now, payload)
+    return JSONResponse(payload)
+
+
 @app.get("/api/exposure/history")
 def get_exposure_history(ticker: str = Query(default=DEFAULT_TICKER)):
     """RC-209 (operator: multi-day scroll-back goes live): per-day per-strike net GEX$ for
@@ -13682,6 +14421,19 @@ def desk_page():
     p = static_dir / "desk.html"
     if not p.exists():
         return HTMLResponse("<p>static/desk.html not found</p>", status_code=404)
+    return HTMLResponse(p.read_text(encoding="utf-8"),
+                        headers={"Cache-Control": "no-store, no-cache, must-revalidate"})
+
+
+@app.get("/console", response_class=HTMLResponse)
+def console_page():
+    """RC-UI-1 — rebuilt Ed Console workstation shell (institutional terminal, light + dark,
+    workspace rail + 3-tier nav + Options/Gamma workspace). Consumes existing canonical
+    endpoints only (no new producers, no independent semantic market computation). Served at a
+    dev route during migration; converges to `/` once legacy surfaces are superseded."""
+    p = static_dir / "console.html"
+    if not p.exists():
+        return HTMLResponse("<p>static/console.html not found</p>", status_code=404)
     return HTMLResponse(p.read_text(encoding="utf-8"),
                         headers={"Cache-Control": "no-store, no-cache, must-revalidate"})
 
@@ -13976,6 +14728,15 @@ async def get_analytics_light(
     return JSONResponse(out)
 
 
+def _sse_event_name_for_envelope(env) -> str:
+    """The wire `event:` name for one /api/analytics/light/stream envelope. Every existing L1
+    envelope omits `_sse_event_name` and gets "l1_projection" exactly as before this function
+    existed; `_next_gamma_surface_seq`'s gamma-surface publish notify is the one caller that
+    sets it, to "gamma_surface_seq". A small pure function (not inlined in the generator) so it
+    is directly unit-testable without driving the async generator/SSE connection."""
+    return env.get("_sse_event_name", "l1_projection") if isinstance(env, dict) else "l1_projection"
+
+
 @app.get("/api/analytics/light/stream")
 async def get_analytics_light_stream(
     request: Request,
@@ -14003,7 +14764,11 @@ async def get_analytics_light_stream(
             while True:
                 try:
                     env = await asyncio.wait_for(q.get(), timeout=30.0)
-                    yield f"event: l1_projection\ndata: {json.dumps(env, default=str)}\n\n"
+                    # RC-UI-2 (independent-review finding, 2026-09-12): this connection/queue/
+                    # dispatch pipe is entirely generic (see _l1_light_sse_dispatch_loop's own
+                    # docstring — it scope-matches and forwards the raw env, nothing L1-specific)
+                    # except the wire event name — see _sse_event_name_for_envelope.
+                    yield f"event: {_sse_event_name_for_envelope(env)}\ndata: {json.dumps(env, default=str)}\n\n"
                 except asyncio.TimeoutError:
                     yield ": heartbeat\n\n"
         finally:
@@ -14219,6 +14984,38 @@ async def post_streaming_active_option_contract(payload: dict = Body(default={})
                             status_code=409)
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e), "contract": c}, status_code=500)
+    return JSONResponse(out)
+
+
+@app.post("/api/streaming/active-option-contracts")
+async def post_streaming_active_option_contracts(payload: dict = Body(default={})):
+    """Subscribe LEVELONE_OPTIONS+OPTIONS_BOOK to a SET of ADDITIONAL option contracts,
+    beside the one primary contract /api/streaming/active-option-contract manages (RC-UI-3,
+    2026-09-12 multi-contract coverage). Mirrors that endpoint's generation-guarded write
+    exactly, on its own independent generation counter -- see
+    app.options.order_flow.streaming.set_active_option_contracts."""
+    raw = payload.get("contracts")
+    contracts = [str(s).strip() for s in raw] if isinstance(raw, list) else []
+    contracts = [c for c in contracts if c]
+
+    from app.options.order_flow.streaming import (
+        StaleOptionCommandError,
+        begin_option_contracts_command,
+    )
+    generation = begin_option_contracts_command()
+
+    def _apply():
+        from app.options.order_flow.streaming import set_active_option_contracts
+        ok = set_active_option_contracts(contracts, command_generation=generation)
+        return {"ok": ok, "contracts": contracts, "command_generation": generation}
+    try:
+        out = await asyncio.get_event_loop().run_in_executor(_get_fast_quote_executor(), _apply)
+    except StaleOptionCommandError as e:
+        return JSONResponse({"ok": False, "error": str(e), "contracts": contracts,
+                             "superseded": True, "command_generation": generation},
+                            status_code=409)
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e), "contracts": contracts}, status_code=500)
     return JSONResponse(out)
 
 
@@ -14511,6 +15308,87 @@ async def fast_quote(ticker: str = Query(default=DEFAULT_TICKER)):
             )
         log.error(f"Fast quote failed for {ticker}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+#: No Schwab-documented batch-quote symbol ceiling exists anywhere in this repo (checked:
+#: schwab_client.py, schwab_field_dictionary*, tools/sync_schwab_field_dictionary.py).
+@app.get("/api/watchlist-quotes")
+async def api_watchlist_quotes(tickers: str = Query(default="")):
+    """
+    ONE batched Schwab quote read (client.get_quotes) for every row of a client-held
+    watchlist — not N sequential single-symbol polls, and not a second quote authority:
+    parsing (_parse_quote_node_session_fields) and chg_pct precedence (resolve_chg_pct)
+    are the exact same functions /api/fast-quote and /api/live/state use.
+
+    No numeric ticker-count cap: no Schwab-documented batch-size ceiling exists anywhere in
+    this repo to justify one (checked: schwab_client.py, schwab_field_dictionary*,
+    tools/sync_schwab_field_dictionary.py), and a real operator watchlist is nowhere near
+    any plausible vendor/transport limit — an invented number would be a product-shaped
+    guess dressed as a constraint (caught in review). A genuinely oversized request fails
+    honestly through the real failure paths below (ASGI/reverse-proxy URL-length rejection
+    before this handler even runs, or a real vendor HTTP error reported as such) instead of
+    a silently-guessed threshold.
+
+    Returns {"ok": bool, "error": str|None, "quotes": {SYMBOL: {spot, spot_disp, chg_pct,
+    exchange_quote_ts}}}. A symbol simply absent from `quotes` genuinely has no usable quote
+    right now (never fabricated) — that is a DIFFERENT fact from ok:false, which means the
+    WHOLE batch call failed (auth/vendor/transport) before any symbol could be evaluated.
+    Collapsing both into the same bare {} (this route's pre-review shape) made a live
+    console with zero current coverage indistinguishable from an offline one; the caller
+    could not tell "no data for these symbols right now" from "the vendor call never ran".
+    """
+    raw = [t.strip().upper() for t in (tickers or "").split(",") if t.strip()]
+    seen: list[str] = []
+    for t in raw:
+        if t not in seen:
+            seen.append(t)
+    if not seen:
+        return JSONResponse({"ok": True, "error": None, "quotes": {}})
+
+    def _build() -> dict:
+        try:
+            client = get_client()
+        except HTTPException as he:
+            reason = "token_invalid" if _schwab_auth_http_unavailable(he) else "auth_unavailable"
+            log.warning("watchlist_quotes auth unavailable tickers=%s reason=%s", seen, reason)
+            return {"ok": False, "error": reason, "quotes": {}}
+        from schwab_client import safe_get_quotes
+        from market_context import resolve_chg_pct
+
+        try:
+            resp = safe_get_quotes(client, seen)
+        except Exception as e:
+            log.warning("watchlist_quotes batch fetch failed tickers=%s: %s", seen, e)
+            return {"ok": False, "error": "vendor_call_failed", "quotes": {}}
+        if resp is None or getattr(resp, "status_code", None) != 200:
+            status = getattr(resp, "status_code", None)
+            log.warning("watchlist_quotes batch fetch non-200 tickers=%s status=%s", seen, status)
+            return {"ok": False, "error": f"vendor_http_{status}", "quotes": {}}
+        try:
+            q_json = resp.json()
+        except Exception as e:
+            log.warning("watchlist_quotes batch response unparseable tickers=%s: %s", seen, e)
+            return {"ok": False, "error": "malformed_vendor_response", "quotes": {}}
+        out: dict = {}
+        for t in seen:
+            node = q_json.get(t) or q_json.get(t.upper()) or {}
+            if not node:
+                continue
+            pq = _parse_quote_node_session_fields(node)
+            spot = pq.get("spot")
+            if spot is None:
+                continue
+            out[t] = {
+                "spot": spot,
+                "spot_disp": f"{spot:.2f}",
+                "chg_pct": resolve_chg_pct(t, pq.get("chg_pct")),
+                "exchange_quote_ts": pq.get("quote_ts"),
+            }
+        return {"ok": True, "error": None, "quotes": out}
+
+    loop = asyncio.get_event_loop()
+    payload = await loop.run_in_executor(_get_quote_hot_executor(), _build)
+    return JSONResponse(payload)
 
 
 @app.get("/api/stream")

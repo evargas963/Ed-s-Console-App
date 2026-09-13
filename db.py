@@ -522,6 +522,9 @@ class SnapshotRow:
     msft_chg_pct:       Optional[float] = None
     amzn_chg_pct:       Optional[float] = None
     googl_chg_pct:      Optional[float] = None
+    goog_chg_pct:       Optional[float] = None  # RC-UI-3 (2026-09-12): GOOG is Alphabet's OWN
+    # class-C share, a distinct instrument from GOOGL (class A) with its own confluence
+    # weight in SPY_TOP/QQQ_TOP (market_context.py) -- it must not read GOOGL's column.
     avgo_chg_pct:       Optional[float] = None
     meta_chg_pct:       Optional[float] = None
     tsla_chg_pct:       Optional[float] = None
@@ -1220,6 +1223,7 @@ class EdDB:
                 msft_chg_pct        REAL,
                 amzn_chg_pct        REAL,
                 googl_chg_pct       REAL,
+                goog_chg_pct        REAL,
                 avgo_chg_pct        REAL,
                 meta_chg_pct        REAL,
                 tsla_chg_pct        REAL,
@@ -2967,6 +2971,23 @@ class EdDB:
                     pass
 
         for col_name, col_type in (("logger_source", "TEXT"),):
+            for tbl in ("snapshots", "snapshots_1m_normalized"):
+                try:
+                    with self._connect() as conn:
+                        conn.execute(f"ALTER TABLE {tbl} ADD COLUMN {col_name} {col_type}")
+                    log.info("DB migration: added %s to %s", col_name, tbl)
+                except sqlite3.OperationalError:
+                    pass
+
+        # Independent-review finding (2026-09-12), REPRODUCED: market_context.py's
+        # SYMBOL_TO_SNAPSHOT_CHG_COL aliased GOOG onto this same googl_chg_pct column
+        # (there was no goog_chg_pct to point to), so every confluence recompute silently
+        # substituted GOOGL's change for GOOG's own -- double-counting GOOGL's move at both
+        # symbols' weights in SPY_TOP/QQQ_TOP and dropping GOOG's real, independently
+        # diverging price action entirely. GOOG is Alphabet's class-C share, a distinct
+        # instrument from GOOGL (class A); it gets its own column, same as every other
+        # constituent.
+        for col_name, col_type in (("goog_chg_pct", "REAL"),):
             for tbl in ("snapshots", "snapshots_1m_normalized"):
                 try:
                     with self._connect() as conn:
