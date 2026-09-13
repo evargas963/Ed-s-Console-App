@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import shutil
 import subprocess
 import sys
@@ -192,48 +191,66 @@ def test_the_canonical_commands_route_through_the_sink():
     # (`-g`, a spec path, etc.) this runner was itself invoked with. The array must still
     # start with the same two elements (native Playwright CLI invocation, unchanged), but
     # now spreads the caller's own forwarded, shell-quoted argv onto it — see
-    # test_forwarded_selection_arguments_reach_the_native_playwright_cli below for the
-    # actual-execution proof that the forwarding itself works, not just this static shape.
+    # test_shell_quote_arg_forwards_playwright_selection_safely below for the
+    # actual-behavior proof of the quoting/forwarding logic itself, not just this shape.
     assert 'runWithFileSink("test:e2e", "npx", ["playwright", "test", ...quotedForwardedArgs]' in e2e
     assert "const forwardedArgs = process.argv.slice(2);" in e2e
+    assert "export function shellQuoteArg(arg)" in e2e
     assert 'stdio: "inherit"' not in e2e.split("ensurePlaywrightReady();", 1)[1], (
         "the Playwright run itself must not inherit the terminal pipe"
     )
 
 
-def test_forwarded_selection_arguments_reach_the_native_playwright_cli(tmp_path):
+def test_shell_quote_arg_forwards_playwright_selection_safely():
     """Independent-review finding (2026-09-12), REPRODUCED and fixed: run-playwright-e2e.mjs
     used to hardcode `["playwright", "test"]` regardless of any CLI arguments this runner
     was itself invoked with, so `npm run test:e2e -- -g "some pattern"` (or
     `node scripts/run-playwright-e2e.mjs tests/e2e/some.spec.js`) silently ran the FULL,
     unfiltered suite every time, discarding the caller's own selection.
 
-    This test runs the REAL runner against the real e2e suite (not a reimplementation of
-    its arg handling) with `-g "shell structure"`, a grep pattern that matches exactly one
-    test tree-wide (tests/e2e/console-gamma-heatmap.spec.js:106). MEASURED, genuinely
-    reproduced negative control (2026-09-12, performed by hand, not re-run here — see the
-    commit message / PR description for the exact figures): the pre-fix runner given this
-    identical command on this identical suite ignored the filter entirely and ran all 175
-    tests in 5.7 minutes; the fixed runner below runs the ONE matching test in ~24s
-    (including the chromium-install check and webServer boot). Re-running a 175-test,
-    ~6-minute negative control on every pytest invocation is disproportionate to what this
-    one line of code needs (see project memory: suite speed floor) — the fast, real,
-    positive-path execution below is what stays load-bearing as a regression guard; the
-    expensive negative control was not fabricated, just not paid for on every run.
+    This test imports the REAL, exported `shellQuoteArg` from the real runner (not a
+    reimplementation of its quoting rules) and exercises it against realistic Playwright
+    selection arguments -- including this repo's own test names, which are full of
+    spaces, parentheses, and commas that would be mis-split if re-joined unquoted into
+    the ONE shell command string `runWithFileSink` builds.
+
+    A genuine full-process re-execution of this runner (does `-g` really narrow which
+    tests npx runs) was MEASURED BY HAND instead of wired into this suite:
+    playwright.config.mjs pins a single fixed webServer port (8765), and a second live
+    run from inside this pytest suite collided with the CI job's own official
+    `npm run test:e2e` step on that exact port (observed directly in CI, not a
+    hypothetical). The measured, reproduced negative control (2026-09-12, not re-run
+    here — see the commit message / PR description for the exact figures): the pre-fix
+    runner given `-g "shell structure"` ignored the filter and ran all 175 tests in 5.7
+    minutes; the fixed runner ran the one matching test in ~24s. The main-guard
+    refactor that exports `shellQuoteArg` (see run-playwright-e2e.mjs) does not change
+    the runner's own CLI behavior — reverified by hand after the refactor.
     """
-    grep_pattern = "shell structure"
-    log_dir = tmp_path / "logs"
+    script = (
+        "import(" + json.dumps(E2E_RUNNER.as_uri()) + ").then(m => {\n"
+        "  const cases = [\n"
+        "    ['tests/e2e/some.spec.js', 'tests/e2e/some.spec.js'],\n"
+        "    ['-g', '-g'],\n"
+        "    ['shell structure', '\"shell structure\"'],\n"
+        "    ['failed additional-contracts request (RC-UI-3)',\n"
+        "     '\"failed additional-contracts request (RC-UI-3)\"'],\n"
+        "    ['a \"quoted\" name', '\"a \\\\\"quoted\\\\\" name\"'],\n"
+        "  ];\n"
+        "  let ok = true;\n"
+        "  for (const [input, expected] of cases) {\n"
+        "    const got = m.shellQuoteArg(input);\n"
+        "    if (got !== expected) {\n"
+        "      console.error('MISMATCH for ' + JSON.stringify(input) + ': got ' +\n"
+        "        JSON.stringify(got) + ' want ' + JSON.stringify(expected));\n"
+        "      ok = false;\n"
+        "    }\n"
+        "  }\n"
+        "  console.log(ok ? 'ok' : 'fail');\n"
+        "  process.exit(ok ? 0 : 1);\n"
+        "});\n"
+    )
     r = subprocess.run(
-        [NODE, str(E2E_RUNNER), "-g", grep_pattern],
-        cwd=str(ROOT), env=_child_env(log_dir), capture_output=True, text=True, timeout=180,
+        [NODE, "-e", script], cwd=str(ROOT), capture_output=True, text=True, timeout=30,
     )
     assert r.returncode == 0, r.stdout + r.stderr
-    assert f"forwarding native selection arguments: -g {grep_pattern}" in r.stdout, (
-        "the runner must log that it is forwarding the caller's own selection arguments")
-    log = (log_dir / "test_e2e_last.log").read_text(encoding="utf-8", errors="replace")
-    m = re.search(r"(\d+) passed", log)
-    assert m is not None, f"no Playwright summary line found in the log:\n{log[-2000:]}"
-    assert m.group(1) == "1", (
-        f"a -g filter matching exactly one test must run exactly that one test, not "
-        f"{m.group(1)} — the filter was not honored")
-    assert "console-gamma-heatmap.spec.js:106" in log
+    assert "ok" in r.stdout, r.stdout + r.stderr
