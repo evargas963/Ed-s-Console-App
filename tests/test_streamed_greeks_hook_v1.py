@@ -1100,3 +1100,85 @@ def test_backlog_coalesces_across_ticks_and_a_shutdown_drops_the_pending_rerun(t
         f"a coalesced trailing hook call must never start once the feed loop has already "
         f"stopped -- saw {len(hook_calls)} total calls (expected exactly 1); obsolete work "
         f"was scheduled into a lifecycle that had already ended")
+
+
+def test_a_second_underlyings_queued_hook_does_not_run_after_shutdown(tmp_path, monkeypatch):
+    """A FOURTH independent review (2026-09-13), REPRODUCED: the fix above (RC-556) only
+    ever gated a coalesced TRAILING RERUN of the SAME root that was already in flight when
+    shutdown happened -- it added no check for a DIFFERENT root's fresh, non-coalesced
+    dispatch, submitted to the shared single-worker `hook_executor` (max_workers=1) while a
+    first root's call is still running. Concretely: a held AMD hook call occupies the one
+    worker thread; a genuinely NEW dispatch for PLTR (a different root, never in-flight
+    before) is submitted and sits queued behind AMD in the executor's own internal queue,
+    invisible to `_hook_inflight_roots`/`_feed_running` bookkeeping. Stopping the feed loop
+    while AMD is still held, then releasing AMD, let PLTR's already-queued task start
+    running regardless of shutdown, because nothing upstream of the task's own entry point
+    ever re-checked liveness.
+
+    Fixed with `_run_streamed_greeks_hook_if_live`: every hook invocation funnels through
+    one wrapper that re-checks `_feed_running` the instant it ACTUALLY starts executing on
+    the worker thread (not when it was submitted), regardless of which root or dispatch
+    path submitted it.
+    """
+    _drain_l1_sse_thread_queue()
+    db = _reset(tmp_path, monkeypatch)
+    AMD_SYM = "AMD   260918C00160000"
+    PLTR_SYM = "PLTR  260918C00050000"
+    ofs._active_option_contracts = [ofs.ticker_storage_key(AMD_SYM), ofs.ticker_storage_key(PLTR_SYM)]
+
+    amd_hook_started = threading.Event()
+    release_amd_hook = threading.Event()
+    hook_calls = []
+
+    def _hook(sym, ts):
+        hook_calls.append(sym)
+        if sym == AMD_SYM:
+            amd_hook_started.set()
+            release_amd_hook.wait(timeout=10.0)
+    ofs.set_streamed_greeks_hook(_hook)
+
+    _write_option_l1_row(db, AMD_SYM, dict(_REAL_LEVELONE_OPTIONS_CONTENT, key=AMD_SYM, GAMMA=0.01, UNDERLYING="AMD"),
+                         ts_recv=1700000000.0)
+
+    async def _run():
+        ofs._feed_running = True
+        task = asyncio.get_event_loop().create_task(ofs._feed_loop())
+        await _wait_until(lambda: amd_hook_started.is_set(), timeout_sec=5.0,
+                          what="AMD's hook call to start and block")
+
+        # A genuinely NEW dispatch for a DIFFERENT root (PLTR) while AMD's call occupies the
+        # single-worker executor -- PLTR's task is submitted (not coalesced -- it was never
+        # in flight before) and queues behind AMD at the executor's own thread-pool level.
+        _write_option_l1_row(db, PLTR_SYM, dict(_REAL_LEVELONE_OPTIONS_CONTENT, key=PLTR_SYM, GAMMA=0.02, UNDERLYING="PLTR"),
+                             ts_recv=1700000000.0)
+        await _wait_until(lambda: (ofls.get_stream_greeks(PLTR_SYM) or {}).get("gamma") == 0.02,
+                          timeout_sec=5.0, what="OrderFlowState to advance PLTR's gamma")
+        # PLTR's task has been SUBMITTED (state advanced) but cannot have STARTED yet --
+        # the one worker thread is still occupied by AMD.
+        assert PLTR_SYM not in hook_calls, "PLTR's hook must not have started while AMD still holds the one worker"
+
+        # Stop the feed loop WHILE AMD is still held and PLTR sits queued, unstarted.
+        ofs._feed_running = False
+        await asyncio.sleep(0.05)
+
+        # Release AMD -- the worker frees up and would normally pick up PLTR's queued task
+        # next. Give it a real chance to actually start.
+        release_amd_hook.set()
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        await asyncio.sleep(0.5)
+
+    asyncio.run(_run())
+    ofs.set_streamed_greeks_hook(None)
+    ofs._active_option_contracts = []
+    _drain_l1_sse_thread_queue()
+
+    assert AMD_SYM in hook_calls, "AMD's own held call must still have run to completion (already in flight, harmless)"
+    assert PLTR_SYM not in hook_calls, (
+        "PLTR's hook body must never have actually executed once the feed loop had already "
+        "stopped, even though its task was submitted to the executor before shutdown -- "
+        f"saw hook_calls={hook_calls}"
+    )

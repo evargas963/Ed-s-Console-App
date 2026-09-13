@@ -135,6 +135,34 @@ def set_streamed_greeks_hook(fn: Optional[Callable[[str, float], None]]) -> None
     _streamed_greeks_hook = fn
 
 
+def _run_streamed_greeks_hook_if_live(rep_sym: str, rep_ts: float) -> str:
+    """The actual executor-thread entry point `_start_hook_task` submits, in place of calling
+    `_streamed_greeks_hook` directly.
+
+    A FOURTH independent review (2026-09-13), REPRODUCED: `_dispatch_hook_background`'s fresh-
+    dispatch path (a root not already in `_hook_inflight_roots`) submits straight to
+    `hook_executor` with NO `_feed_running` check at all -- only `_done`'s trailing-rerun path
+    checks it. `hook_executor` is single-worker (RC-556): two different underlyings' tasks
+    (e.g. a long-running AMD hook and a freshly-dispatched PLTR hook) can both be legitimately
+    SUBMITTED while only one runs at a time, so PLTR's task can still be sitting queued, not
+    yet started, at the instant shutdown sets `_feed_running = False` -- and `executor.shutdown
+    (wait=False)` does not cancel queued-but-unstarted work, so PLTR's task WILL eventually run
+    once AMD's finishes, regardless of shutdown, because nothing upstream of the task's own
+    entry point ever re-checks liveness.
+
+    Fixed here, at the one point every hook invocation funnels through regardless of which root
+    or dispatch path submitted it: re-check `_feed_running` the instant this actually starts
+    executing on the worker thread (not when it was submitted) and skip the real hook body
+    entirely if the feed has already stopped -- closing the gap `_done`'s existing shutdown
+    check (RC-556) only ever covered for a same-root trailing rerun, never a different root's
+    independently-submitted fresh dispatch."""
+    if not _feed_running:
+        return "feed_stopped"
+    if _streamed_greeks_hook is None:
+        return "no_hook_registered"
+    return _streamed_greeks_hook(rep_sym, rep_ts)
+
+
 STREAMING_STALE_MS = 25_000.0
 GRACE_AFTER_SUBSCRIBE_SEC = 8.0
 
@@ -662,7 +690,7 @@ async def _feed_loop() -> None:
     _hook_pending_by_root: "dict[str, tuple[str, float]]" = {}
 
     def _start_hook_task(root: str, rep_sym: str, rep_ts: float) -> None:
-        fut = loop.run_in_executor(hook_executor, _streamed_greeks_hook, rep_sym, rep_ts)
+        fut = loop.run_in_executor(hook_executor, _run_streamed_greeks_hook_if_live, rep_sym, rep_ts)
         task = asyncio.ensure_future(fut)
         hook_tasks.add(task)
 

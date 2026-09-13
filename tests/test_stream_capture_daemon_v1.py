@@ -1343,8 +1343,17 @@ def test_d2_shutdown_ended_ts_is_the_surrender_instant_not_the_drain_completion(
         f"capture was already impossible; over-claim was {over_claim:.3f}s")
     assert ended < marks["drain_done"], (
         f"ended_ts ({ended}) must precede drain completion ({marks['drain_done']})")
-    # Conservative direction: the boundary is at or BEFORE the stop request.
-    assert ended <= marks["stop_requested"] + 0.05, (
+    # Conservative direction: the boundary is at or BEFORE the stop request, with a margin
+    # wide enough to absorb real OS-scheduling jitter under a loaded test run (this test's own
+    # wakeup loop is sleep-based, not Event.wait()-based -- a fourth independent review traced
+    # a real, load-sensitive full-suite failure to exactly this margin, previously 0.05s,
+    # against a full round trip of: wake from a polled sleep, exit the loop, then run
+    # `_surrender_claim_or_wait_out_lease` before the timestamp is finally taken). 0.05s was
+    # never the thing under test — the drain's own 0.75s sleep (`drain_done - drain_start`,
+    # asserted above) is the actual signal this test distinguishes "surrender" from
+    # "completion" by, and 0.4s stays a comfortable 2x margin below that while tolerating
+    # scheduling delays a tight 50ms budget could not.
+    assert ended <= marks["stop_requested"] + 0.4, (
         f"ended_ts ({ended}) must be the surrender boundary, not a later instant; "
         f"stop was requested at {marks['stop_requested']}")
 

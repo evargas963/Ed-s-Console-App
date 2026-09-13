@@ -44,19 +44,33 @@
   // invalidation (ticker or expiry filter changed mid-flight) is `stillChain()`, checked at
   // resolution time.
   function stillChain(tk, exp) { return isChain() && (st().ticker || 'SPY') === tk && curExpiry() === exp; }
+  // Independent-review finding (2026-09-13), REPRODUCED: A -> B -> A can still let the FIRST
+  // A request's response paint over the THIRD (fresh) A request's response. `stillChain`
+  // proves the identity (ticker, expiry) still matches NOW, but two different requests issued
+  // at different times for the identical identity are indistinguishable to it -- whichever
+  // resolves LAST wins, not whichever was issued last. The loader's own AbortController
+  // SHOULD prevent the stale first request from ever resolving normally, but does not
+  // guarantee it (an abort raced against an already-buffered response can still resolve).
+  // Fixed with an explicit monotonic request sequence, independent of AbortController
+  // reliability: only the response whose sequence number is still the LATEST ISSUED one may
+  // paint, so an old, superseded request for the SAME identity can never win a race against a
+  // newer one for that identity, not merely against a DIFFERENT identity.
+  var _reqSeq = 0;
   // ROUND 8 (2026-09-13): keyed on ticker+expiry so a held/slow fetch for an ABANDONED
   // context is aborted immediately once a different one is selected, instead of blocking it.
   function loadImpl(tk, exp, signal) {
     var host = document.getElementById('chainBody');
     if (!host || !stillChain(tk, exp)) return;
+    var mySeq = ++_reqSeq;
+    function current() { return mySeq === _reqSeq && stillChain(tk, exp); }
     var tkEl = document.getElementById('chTicker'); if (tkEl) tkEl.textContent = tk.replace('$', '');
     host.setAttribute('aria-busy', 'true');
     return fetch('/api/chain?ticker=' + encodeURIComponent(tk) + (exp ? '&expiry=' + encodeURIComponent(exp) : ''), { cache: 'no-store', signal: signal })
       .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
-      .then(function (d) { if (stillChain(tk, exp)) render(host, d); })
+      .then(function (d) { if (current()) render(host, d); })
       .catch(function (e) {
         if (e && e.name === 'AbortError') return;
-        if (stillChain(tk, exp)) host.innerHTML = '<div class="placeholder"><div class="sm">no console serving /api/chain</div></div>';
+        if (current()) host.innerHTML = '<div class="placeholder"><div class="sm">no console serving /api/chain</div></div>';
       });
   }
   var _loader = (typeof window !== 'undefined' && window.EdL1SseGuards && window.EdL1SseGuards.makeCoalescedLoader)
@@ -93,18 +107,19 @@
     function cell(c, k, dg) { var v = c ? c[k] : null; return (v == null) ? '—' : (typeof v === 'number' ? v.toFixed(dg == null ? 2 : dg) : esc(v)); }
     function sym(c) { return c && c.symbol ? String(c.symbol) : ''; }
     function selAttr(c) { var s = sym(c); return s ? (' data-sym="' + esc(s) + '"' + (s === desired ? ' data-selc="1"' : '')) : ''; }
-    // Independent-review finding (2026-09-13), REPRODUCED via direct browser measurement (not
-    // source inspection): `position:sticky` on a <th> inside this scrolling container never
-    // engaged AT ALL in the running browser -- confirmed with the real table AND a minimal
-    // from-scratch <table><thead><th style="position:sticky"> reproduction in the same
-    // container, versus a plain sticky <div> in the identical spot which DID stick. This is a
-    // real engine limitation for sticky table cells, not a CSS mistake fixable by adjusting
-    // `.chn th{top:...}` offsets (the originally-suspected "two overlapping rows" framing
-    // undersold the defect: the header did not stick at all, at any offset). Fixed by moving
-    // the two header rows into their OWN small <table> inside a `position:sticky` wrapper div
-    // (sticky on a div is proven to work), with a SECOND, separate <table> for the body rows
-    // directly below it in the same scroll container -- a shared <colgroup> with fixed
-    // percentage widths on both tables keeps every column pixel-aligned between the two.
+    // Independent-review finding (2026-09-13), REPRODUCED then CORRECTED by a fourth review's
+    // challenge (Chromium's TablesNG genuinely supports native sticky <th> -- confirmed in an
+    // isolated baseline page with zero app CSS: a single sticky <thead><tr> sticks correctly).
+    // Re-measured precisely in this exact container: the real, narrow defect is a <thead> with
+    // TWO stacked sticky rows (this ladder needs both "Calls/Strike/Puts" AND its own column
+    // labels) -- isolating row-count as the one variable that flips the result (1 sticky row:
+    // sticks every time; 2 sticky rows in the same thead: neither sticks, regardless of
+    // colspan). Given this ladder genuinely needs two header rows, the smallest structure that
+    // still uses a native, unambiguously-supported primitive is ONE sticky element (a plain
+    // <div>, proven to stick correctly here) wrapping an ordinary (non-sticky) table that holds
+    // both header rows for layout only, immediately followed by a SECOND, separate <table> for
+    // the body rows -- a shared <colgroup> with fixed percentage widths on both tables keeps
+    // every column pixel-aligned between the two.
     var COLGROUP = '<colgroup><col style="width:10%"><col style="width:10%"><col style="width:10%"><col style="width:10%">' +
       '<col style="width:20%"><col style="width:10%"><col style="width:10%"><col style="width:10%"><col style="width:10%"></colgroup>';
     var h = head + '<div class="chn-headwrap"><table class="chn chn-headtbl">' + COLGROUP + '<thead><tr>' +

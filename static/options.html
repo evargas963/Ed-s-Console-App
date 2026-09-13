@@ -280,18 +280,32 @@
   // the ticker check and paint expiry-A's chain under the now-selected expiry-B label. Fixed
   // by capturing expSelect.value at issue time too and discarding the response if either the
   // ticker or the expiry selection has since moved on.
+  //
+  // Third independent-review finding (2026-09-13), REPRODUCED: A -> B -> A still fails --
+  // the guard above proves the CURRENT ticker/expiry selection matches, but two different
+  // requests for the SAME (ticker, expiry) identity (the first A, and the third A issued
+  // after returning from B) are indistinguishable to it; whichever happens to resolve LAST
+  // wins, not whichever was issued last. A held first-A response can therefore still overwrite
+  // the fresh third-A response's newer spot/chain data. Fixed with an explicit monotonic
+  // request sequence: only the response belonging to the LATEST issued request may paint,
+  // covering same-identity races (A -> B -> A) that a ticker/expiry equality check alone
+  // cannot distinguish, and also covering two overlapping requests for the identical
+  // (ticker, expiry) (e.g. a manual refresh landing close to the 30s auto-refresh).
+  var chainReqSeq = 0;
   function loadChain(){
     var t = (tkEl.value || 'SPY').toUpperCase().trim();
     var exp = expSelect.value;
     var url = '/api/chain?ticker=' + encodeURIComponent(t);
     if (exp) url += '&expiry=' + encodeURIComponent(exp);
+    var mySeq = ++chainReqSeq;
     function stale(){
-      return (tkEl.value || 'SPY').toUpperCase().trim() !== t || expSelect.value !== exp;
+      return mySeq !== chainReqSeq ||
+        (tkEl.value || 'SPY').toUpperCase().trim() !== t || expSelect.value !== exp;
     }
     fetch(url)
       .then(function(r){ return r.json(); })
       .then(function(payload){
-        if (stale()) return;   // superseded by a newer ticker or expiry switch
+        if (stale()) return;   // superseded by a newer ticker, expiry, or same-identity refresh
         renderChain(payload);
       })
       .catch(function(){

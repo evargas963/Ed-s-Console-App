@@ -12860,7 +12860,7 @@ def _seed_strike_geometry_from_storage() -> None:
     seeded = 0
     for tk in tickers:
         try:
-            contracts, stored_spot = _latest_chain_and_spot(tk)
+            contracts, stored_spot, _stored_ts = _latest_chain_and_spot(tk)
         except Exception:
             continue
         if _learn_strike_geometry(tk, contracts, stored_spot):
@@ -13302,7 +13302,7 @@ def _radar_fallback_recompute() -> list[dict] | None:
         if tk in cached:
             continue
         try:
-            contracts, spot = _latest_chain_and_spot(tk)
+            contracts, spot, _stored_ts = _latest_chain_and_spot(tk)
             if not contracts or not spot:
                 continue
             # NO live quote per ticker here. The radar sweeps ~51 symbols; calling
@@ -14623,8 +14623,12 @@ def get_terrain(ticker: str = Query(default=DEFAULT_TICKER)):
     }
 
 
-def _latest_chain_and_spot(ticker: str) -> tuple[list | None, float | None]:
-    """Most recent stored chain + spot for a ticker (read-only, no Schwab call).
+def _latest_chain_and_spot(ticker: str) -> tuple[list | None, float | None, float | None]:
+    """Most recent stored chain + spot + its own row ts_utc for a ticker (read-only, no Schwab call).
+
+    The row's own `ts_utc` is returned so a caller overlaying fresher streamed fields onto
+    this snapshot (RC-557) can gate on "newer than THIS specific row", not merely "recent in
+    absolute terms" -- the same newer_than_ts precedence every other overlay call site uses.
 
     MEASURED 2026-07-20 — this query was the single worst latency in the app.
 
@@ -14650,7 +14654,7 @@ def _latest_chain_and_spot(ticker: str) -> tuple[list | None, float | None]:
     try:
         db = get_db()
     except Exception:
-        return None, None
+        return None, None, None
     con = _sqlite3.connect(f"file:{db.db_path}?mode=ro", uri=True, timeout=30.0)
     row = None
     try:
@@ -14660,7 +14664,7 @@ def _latest_chain_and_spot(ticker: str) -> tuple[list | None, float | None]:
         # legacy 5m rows still resolves instead of silently returning nothing.
         for tf in _STORED_CHAIN_TIMEFRAMES:
             row = con.execute(
-                "SELECT spot, option_chain_json FROM snapshots "
+                "SELECT spot, option_chain_json, ts_utc FROM snapshots "
                 "WHERE ticker=? AND timeframe=? "
                 "AND option_chain_json IS NOT NULL AND spot IS NOT NULL "
                 "ORDER BY ts_utc DESC LIMIT 1",
@@ -14671,11 +14675,11 @@ def _latest_chain_and_spot(ticker: str) -> tuple[list | None, float | None]:
     finally:
         con.close()
     if not row:
-        return None, None
+        return None, None, None
     try:
-        return json.loads(row["option_chain_json"]), float(row["spot"])
+        return json.loads(row["option_chain_json"]), float(row["spot"]), float(row["ts_utc"])
     except (ValueError, TypeError):
-        return None, None
+        return None, None, None
 
 
 @app.get("/api/analytics/light")
@@ -15737,6 +15741,9 @@ def get_chain(ticker: str = Query(default=DEFAULT_TICKER),
             c_resp, _gate_wait, _fetch_sec = _gated_safe_get_chain(
                 client, t, strike_range="ALL", from_date=d, to_date=d, priority=False)
             if c_resp is not None and c_resp.status_code == 200:
+                # This fetch's OWN as-of instant -- captured the moment the vendor's response
+                # is in hand, before any overlay -- is the correct `newer_than_ts` baseline.
+                _rest_fetch_ts = time.time()
                 c_json = c_resp.json()
                 spot, _spot_source, _spot_as_of = resolve_spot(t, chain_json=c_json)
                 contracts = flatten_chain_contracts(c_json)
@@ -15755,16 +15762,28 @@ def get_chain(ticker: str = Query(default=DEFAULT_TICKER),
                 # SQLite-replay+OrderFlowState reproduction) -- it simply never reached here.
                 # `_gamma_surface_contracts_with_stream_overlay` is the SAME faucet
                 # refresh_gamma_surface_from_stream already uses to freshen the terrain/
-                # gamma-surface path (ONE overlay mechanism, not a second one for Chain);
-                # `newer_than_ts=None` because this fetch has no PRIOR REST-baseline
-                # timestamp to compare against (it is itself the freshest REST read at the
-                # instant it returns) -- max_staleness_sec still bounds how old an overlaid
-                # streamed value may be. `stream_overlay_contracts` names how many contracts
-                # this response actually carries a streamed field for, so a caller (or a
-                # test) can tell a genuinely fresher chain from a REST-only one without
-                # inspecting timestamps by hand.
-                contracts, overlay_n = _gamma_surface_contracts_with_stream_overlay(
-                    t, contracts, newer_than_ts=None)
+                # gamma-surface path (ONE overlay mechanism, not a second one for Chain).
+                #
+                # A FOURTH independent review (2026-09-13), REPRODUCED: the first fix passed
+                # `newer_than_ts=None` here, reasoning "this fetch has no PRIOR REST-baseline
+                # timestamp to compare against" -- false. This fetch IS itself a REST baseline
+                # with its own as-of instant (`_rest_fetch_ts` above); passing None disabled
+                # the entire ordering guard `overlay_streamed_contract_fields` exists to
+                # enforce, leaving only the absolute `max_staleness_sec` bound -- which cannot
+                # tell "newer than this REST read" from "merely recent". Controlled
+                # reproduction: a streamed TOTAL_VOLUME=111 observed BEFORE this REST fetch
+                # (which itself returned totalVolume=333) still overlaid onto the response,
+                # replacing the newer REST value with the older streamed one, because nothing
+                # compared the streamed observation's timestamp against this fetch's own.
+                # Fixed by passing this fetch's own instant as `newer_than_ts`, the same
+                # precedence rule every other overlay call site in this file already applies.
+                #
+                # The OVERLAID result is for the RESPONSE only -- `persist_complete_chain_capture`
+                # below stores the PRE-overlay `contracts`, so the durable "complete REST
+                # capture" record (tier 1's own contract: a proven, complete, live REST read)
+                # is never silently blended with streamed fields it cannot itself timestamp.
+                response_contracts, overlay_n = _gamma_surface_contracts_with_stream_overlay(
+                    t, contracts, newer_than_ts=_rest_fetch_ts)
                 if returned_exps == [resolved_expiry]:
                     try:
                         persist_complete_chain_capture(
@@ -15776,7 +15795,7 @@ def get_chain(ticker: str = Query(default=DEFAULT_TICKER),
                                    t, resolved_expiry, e)
                     return JSONResponse({
                         "ticker": t, "spot": spot, "expiry": resolved_expiry,
-                        "contracts": contracts, "status": "ok" if contracts else "no_chain",
+                        "contracts": response_contracts, "status": "ok" if response_contracts else "no_chain",
                         "stream_overlay_contracts": overlay_n,
                         "scope": {"kind": "complete_single_expiry",
                                  "requested_expiry": resolved_expiry,
@@ -15786,10 +15805,10 @@ def get_chain(ticker: str = Query(default=DEFAULT_TICKER),
                 log.warning("chain: expiry scope mismatch for %s — requested %s, vendor "
                            "returned %s; NOT claiming completeness", t, resolved_expiry,
                            returned_exps)
-                if contracts:
+                if response_contracts:
                     return JSONResponse({
                         "ticker": t, "spot": spot, "expiry": resolved_expiry,
-                        "contracts": contracts, "status": "ok",
+                        "contracts": response_contracts, "status": "ok",
                         "stream_overlay_contracts": overlay_n,
                         "scope": {"kind": "expiry_scope_mismatch",
                                  "requested_expiry": resolved_expiry,
@@ -15833,7 +15852,7 @@ def get_chain(ticker: str = Query(default=DEFAULT_TICKER),
                                  "request, staleness stated above"},
             })
 
-    contracts, spot = _latest_chain_and_spot(t)
+    contracts, spot, stored_ts = _latest_chain_and_spot(t)
     if not contracts:
         return JSONResponse({"ticker": t, "spot": spot, "expiry": None, "contracts": [],
                             "status": "no_chain",
@@ -15843,8 +15862,11 @@ def get_chain(ticker: str = Query(default=DEFAULT_TICKER),
         if isinstance(ct, dict) and ct.get("expirationDate"):
             stored_expiry = str(ct["expirationDate"])[:10]
             break
+    # A FOURTH independent review (2026-09-13), REPRODUCED: same newer_than_ts=None ordering
+    # bug as the live-fetch tier above, here against a STORED snapshot's own row ts_utc
+    # (now returned by _latest_chain_and_spot) instead of a live fetch's instant.
     contracts, overlay_n = _gamma_surface_contracts_with_stream_overlay(
-        t, contracts, newer_than_ts=None)
+        t, contracts, newer_than_ts=stored_ts)
     return JSONResponse({
         "ticker": t, "spot": spot, "expiry": stored_expiry, "contracts": contracts,
         "stream_overlay_contracts": overlay_n,

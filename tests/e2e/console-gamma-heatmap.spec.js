@@ -1793,21 +1793,130 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     expect(await page.evaluate(() => window.EdStream.getDesiredAdditional())).toEqual(A);
   });
 
-  // Independent-review finding (2026-09-13), REPRODUCED: when the operator's selected expiry
-  // filter isn't present in the surface, the heatmap already fell back to showing every column
-  // instead of a blank grid -- but said NOTHING about it. The dropdown kept showing the
-  // requested (missing) expiry while the grid silently rendered exactly what "All Expirations"
-  // would have shown, with no way to tell the two apart. Fixed: the scope note now discloses
-  // the fallback by name.
-  test('a selected expiry absent from the surface is disclosed, not silently swapped for all columns', async ({ page }) => {
+  // Independent-review finding (2026-09-13), REPRODUCED, then a FOURTH review overturned the
+  // first fix's own test: falling back to every column when the selected expiry is missing
+  // avoided a blank grid, but silently SUBSTITUTED other expiries' data (and kept demanding
+  // streamed contracts for expiries the operator never asked to watch) -- the operator's own
+  // requirement is that this state reads UNAVAILABLE for the requested expiry, with demand
+  // cleared, never a silent substitution. This test enforces the CORRECTED requirement; the
+  // superseded "fell back to both real columns" assertion is gone.
+  test('a selected expiry absent from the surface reads unavailable and clears demand (no substitute expiries)', async ({ page }) => {
+    let demandCalls = [];
     await page.route('**/api/expiries*', (r) => r.fulfill({ status: 200, contentType: 'application/json',
       body: JSON.stringify({ expiries: ['2026-09-11', '2026-09-18', '2026-09-25'] }) }));
+    await page.route('**/api/streaming/active-option-contracts', (route) => {
+      let body = {}; try { body = JSON.parse(route.request().postData() || '{}'); } catch (e) {}
+      demandCalls.push(body.contracts || []);
+      return route.fulfill({ status: 200, contentType: 'application/json',
+        body: JSON.stringify({ accepted: true, contracts: body.contracts || [] }) });
+    });
     await page.goto('/console', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#view-heatmap .hcell').first()).toBeVisible();
 
     // '2026-09-25' is listed in /api/expiries but absent from SURFACE.expirations.
+    demandCalls = [];
     await page.locator('#expSel').selectOption('2026-09-25');
-    await expect(page.locator('#heatBody .hexp')).toHaveCount(2);   // fell back to both real columns
-    await expect(page.locator('#heatBody .scope-note')).toContainText('selected expiry 2026-09-25 not in this surface');
+    await expect(page.locator('#heatBody')).toContainText('Expiry 2026-09-25 unavailable');
+    await expect(page.locator('#heatBody .hexp')).toHaveCount(0);   // NOT a silent substitute grid
+    // The one demand call this selection can trigger clears everything -- no substitute expiry
+    // is ever streamed on the operator's behalf.
+    await expect.poll(() => demandCalls.length).toBeGreaterThan(0);
+    expect(demandCalls[demandCalls.length - 1]).toEqual([]);
+  });
+
+  test('recovers automatically once the requested expiry appears in a later surface poll', async ({ page }) => {
+    let currentSurface = SURFACE;   // SURFACE only has 2026-09-11/2026-09-18 -- 09-25 is initially missing
+    await page.route('**/api/expiries*', (r) => r.fulfill({ status: 200, contentType: 'application/json',
+      body: JSON.stringify({ expiries: ['2026-09-11', '2026-09-18', '2026-09-25'] }) }));
+    await page.route('**/api/options/gamma-surface*', (route) => route.fulfill({
+      status: 200, contentType: 'application/json', body: JSON.stringify(currentSurface) }));
+    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#view-heatmap .hcell').first()).toBeVisible();
+
+    await page.locator('#expSel').selectOption('2026-09-25');
+    await expect(page.locator('#heatBody')).toContainText('Expiry 2026-09-25 unavailable');
+
+    // The surface now genuinely includes the requested expiry -- a real vendor-side recovery.
+    currentSurface = Object.assign({}, SURFACE, {
+      expirations: SURFACE.expirations.concat([{ expiry: '2026-09-25', dte: 16 }]),
+      cells: SURFACE.cells.map((c) => Object.assign({}, c, { gex: c.gex.concat([777000]) })),
+    });
+    await page.evaluate(() => document.dispatchEvent(new CustomEvent('ed:refresh', { detail: { slow: true } })));
+    await expect(page.locator('#heatBody .hexp')).toHaveCount(1);
+    await expect(page.locator('#heatBody')).not.toContainText('unavailable');
+    await expect(page.locator('#heatBody .hexp .d')).toHaveText('09-25');
+  });
+
+  // A FOURTH independent review (2026-09-13), REPRODUCED: "confirmed" (the tooltip's
+  // "sub-second streaming updates active" claim) fired the instant setAdditionalContracts
+  // resolved with the server's own subscribe-request ACK -- a control-plane acceptance, never
+  // checked against whether the producer has actually delivered one real observation. Fixed:
+  // 'accepted' names the ACK; only a LATER surface poll's own `stream_overlay_contracts > 0`
+  // (real evidence a streamed field actually overlaid something) promotes it to 'observed',
+  // which is the only state whose tooltip claims streaming is actually active.
+  test('an accepted subscription is honestly disclosed as accepted, not claimed active, until real observed data arrives', async ({ page }) => {
+    let overlayCount = 0;
+    await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify(Object.assign({}, surfaceWithContracts(1, 3), { stream_overlay_contracts: overlayCount })),
+    }));
+    await page.route('**/api/streaming/active-option-contracts', (route) => {
+      const body = JSON.parse(route.request().postData() || '{}');
+      return route.fulfill({ status: 200, contentType: 'application/json',
+        body: JSON.stringify({ ok: true, contracts: body.contracts || [] }) });
+    });
+    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    const col = page.locator('.heat thead th.hexp.stream-demand');
+    await expect(col).toHaveCount(1);
+    // Accepted, but never overclaiming "active" while stream_overlay_contracts stays 0.
+    await expect(col).toHaveAttribute('title', /subscription accepted.*awaiting the first observed update/, { timeout: 3000 });
+    await expect(col).not.toHaveAttribute('title', /streaming updates observed/);
+
+    // A later poll's surface now carries real overlay evidence -- ONLY NOW may the tooltip
+    // claim streaming is actually active.
+    overlayCount = 2;
+    await page.evaluate(() => document.dispatchEvent(new CustomEvent('ed:refresh', { detail: { slow: true } })));
+    await expect(col).toHaveAttribute('title', /streaming updates observed for this column/, { timeout: 3000 });
+  });
+
+  // A FOURTH independent review (2026-09-13), REPRODUCED: at 244 visible contracts (2 columns
+  // x 61 strikes x call+put), a flat `.slice(0, 240)` over the column-interleaved symbol list
+  // cut mid-row -- excluding one strike's contracts in the SECOND column while every other
+  // cell in that same column stayed covered, with the column's own tooltip still claiming full
+  // coverage. Fixed: the cap drops whole trailing COLUMNS, and a capped column's own tooltip
+  // says so distinctly from an uncapped one's.
+  test('the streaming-demand cap drops whole columns, never a partial strike, and discloses exactly which columns', async ({ page }) => {
+    // 2 columns x 61 strikes x 2 sides = 244 contracts; column 0 alone is 122 (fits under
+    // 240), column 0 + column 1 is 244 (exceeds it) -- column 1 must be excluded WHOLESALE.
+    await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({
+      status: 200, contentType: 'application/json', body: JSON.stringify(surfaceWithContracts(2, 61)),
+    }));
+    const demandCalls = [];
+    await page.route('**/api/streaming/active-option-contracts', (route) => {
+      const body = JSON.parse(route.request().postData() || '{}');
+      demandCalls.push(body.contracts || []);
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, contracts: body.contracts || [] }) });
+    });
+    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.evaluate(() => window.EdShell.setScope('all'));   // demand follows every displayed column
+    await expect.poll(() => demandCalls.length).toBeGreaterThan(0);
+
+    const lastDemand = demandCalls[demandCalls.length - 1];
+    expect(lastDemand.length).toBeLessThanOrEqual(240);
+    // Every demanded symbol belongs to column 0 (its contracts are named "...X<col0-expiry>");
+    // NONE belong to column 1 -- a whole-column exclusion, not a strike sliced out of it.
+    const cols = await page.evaluate(() => {
+      const s = window.EdShell.getState();
+      return s;
+    });
+    const colTitles = await page.locator('.heat thead th.hexp').evaluateAll(
+      (ths) => ths.map((th) => ({ text: th.querySelector('.d')?.textContent, title: th.getAttribute('title') })));
+    expect(colTitles.length).toBe(2);
+    const cappedCol = colTitles.find((c) => /excluded by the 240-contract subscription-size safety limit/.test(c.title || ''));
+    const activeCol = colTitles.find((c) => c !== cappedCol);
+    expect(cappedCol).toBeTruthy();
+    expect(activeCol.title).not.toMatch(/excluded/);
+    // The scope note names the excluded expiry explicitly (not just a bare count).
+    await expect(page.locator('#heatBody .scope-note')).toContainText('excluded: ' + cappedCol.text.replace(/^(\d\d)-(\d\d)$/, '2026-$1-$2'));
   });
 });

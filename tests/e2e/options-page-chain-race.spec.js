@@ -73,3 +73,57 @@ test('a delayed old-expiry chain response cannot overwrite the newly-selected ex
     expect(chainRequests).toContain(EXP_A);
     expect(chainRequests).toContain(EXP_B);
   });
+
+// A fourth independent review (2026-09-13), REPRODUCED: the guard above proves the CURRENT
+// ticker/expiry selection matches, but two different requests for the SAME identity
+// (A -> B -> A: the first A request, and the third request issued after returning to A) are
+// indistinguishable to an equality check alone -- whichever resolves LAST wins, not whichever
+// was issued last. Fixed with an explicit monotonic request sequence (chainReqSeq in
+// options.html) so only the most-recently-ISSUED request for any identity may ever paint.
+test('A -> B -> A: a held first-A response cannot overwrite the fresh second-A response (state-authority review)',
+  async ({ page }) => {
+    await page.route('**/api/expiries*', (r) =>
+      r.fulfill({ status: 200, contentType: 'application/json',
+                  body: JSON.stringify({ expiries: [EXP_A, EXP_B] }) }));
+
+    let aCallCount = 0;
+    const chainRequests = [];
+    await page.route('**/api/chain*', async (route) => {
+      const url = new URL(route.request().url());
+      const exp = url.searchParams.get('expiry');
+      chainRequests.push(exp);
+      if (exp === EXP_A) {
+        aCallCount += 1;
+        if (aCallCount === 1) {
+          // The FIRST A request is held -- it resolves LATE, after the return-to-A request
+          // below has already resolved and painted the correct, newer value.
+          await new Promise((res) => setTimeout(res, 900));
+          return route.fulfill({ status: 200, contentType: 'application/json',
+                                 body: JSON.stringify(chainFor(EXP_A, 111)) });
+        }
+        // The SECOND A request (after A -> B -> A) resolves immediately with the real,
+        // current value.
+        return route.fulfill({ status: 200, contentType: 'application/json',
+                               body: JSON.stringify(chainFor(EXP_A, 333)) });
+      }
+      return route.fulfill({ status: 200, contentType: 'application/json',
+                             body: JSON.stringify(chainFor(EXP_B, 222)) });
+    });
+
+    await page.goto('/options');
+    await expect(page.locator('#exp-select')).toHaveValue(EXP_A);   // fires the first, held A request
+
+    await page.locator('#exp-select').selectOption(EXP_B);
+    await expect(page.locator('#m-spot')).toHaveText('222.00');
+
+    await page.locator('#exp-select').selectOption(EXP_A);   // fires the second, fast A request
+    await expect(page.locator('#m-spot')).toHaveText('333.00');
+
+    // Wait past the FIRST A request's deliberate 900ms delay.
+    await page.waitForTimeout(1300);
+
+    // Non-retrying snapshot: the held, stale first-A response must not have overwritten 333.
+    const spotText = await page.locator('#m-spot').textContent();
+    expect(spotText).toBe('333.00');
+    expect(aCallCount).toBe(2);
+  });

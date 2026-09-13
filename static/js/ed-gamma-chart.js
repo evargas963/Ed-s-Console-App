@@ -96,7 +96,15 @@
       ? profileSvg(bars, win, spot, terrain, lo, hi)
       : dotSvg(win, spot, terrain, lo, hi);
     host.innerHTML = legend + svg;
-    host.querySelectorAll('[data-strike]').forEach(function (el) {   // A: click a mark -> sync all panels
+    // Independent-review finding (2026-09-13), REPRODUCED: binding click listeners to EVERY
+    // `[data-strike]` element (both the tiny visible mark AND its invisible, larger hit
+    // target) put two overlapping elements in direct competition for the same click -- a
+    // real pointer (or Playwright's own actionability check) resolving to the visible one
+    // finds the invisible one intercepting on top of it, and vice versa, regardless of paint
+    // order. Fixed: only `.gmark-hit` (the invisible, generously-sized target) is ever
+    // click-bound; the visible `.gmark` mark itself is purely visual (still the one
+    // `applyChartHighlight` styles with `.csel` on selection).
+    host.querySelectorAll('.gmark-hit').forEach(function (el) {   // A: click a mark -> sync all panels
       el.style.cursor = 'pointer';
       // Independent-review finding (2026-09-13), REPRODUCED: this click always passed NO
       // expiry, unlike the heatmap (real per-column expiry) and Chain (the one displayed
@@ -124,6 +132,13 @@
   var W = 1000, H = 540, T = 12, B = 24, L = 52, R = 10;
   function yOf(p, lo, hi) { return T + (1 - (p - lo) / (hi - lo)) * (H - T - B); }
 
+  // Independent-review finding (2026-09-13), REPRODUCED: a level line (flip/call-wall/put-wall)
+  // drawn at the SAME price as a visible strike mark sits on top of it in SVG paint order and
+  // intercepted real pointer clicks meant for that mark -- not a test artifact (a real Playwright
+  // click on strike 102 hit the call-wall line drawn at that exact height, since the fixture's
+  // call_wall genuinely equals 102) but a real interaction defect for an actual mouse user too.
+  // These lines/labels have no click handler of their own; wrapped in a `pointer-events="none"`
+  // group so they are purely visual and never steal a click from whatever mark sits beneath them.
   function levelLines(terrain, lo, hi, x1, x2) {
     if (!terrain) return '';
     var out = '';
@@ -137,7 +152,7 @@
     line(terrain.gamma_flip, COL.flip, 'flip ' + fmt(terrain.gamma_flip), true);
     line(terrain.call_wall, COL.call, 'call wall ' + fmt(terrain.call_wall), false);
     line(terrain.put_wall, COL.put, 'put wall ' + fmt(terrain.put_wall), false);
-    return out;
+    return out ? '<g pointer-events="none">' + out + '</g>' : '';
   }
   function fmt(v){ return (v==null||isNaN(v))?'':Number(v).toFixed(2); }
 
@@ -148,7 +163,7 @@
       out += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + y + '" y2="' + y + '" stroke="' + COL.axis + '" stroke-width="0.5" opacity="0.5"/>' +
         '<text x="' + (L - 5) + '" y="' + (Number(y) + 3) + '" text-anchor="end" font-size="9">' + p.toFixed(2) + '</text>';
     }
-    return out;
+    return '<g pointer-events="none">' + out + '</g>';
   }
 
   function profileSvg(bars, win, spot, terrain, lo, hi) {
@@ -178,6 +193,16 @@
       var y = yOf(k, lo, hi), pos = v >= 0;
       s += '<rect class="gmark" data-strike="' + k + '" x="' + (pos ? cx : cx - w).toFixed(1) + '" y="' + (y - 3).toFixed(1) + '" width="' + w.toFixed(1) +
         '" height="6" fill="' + (pos ? COL.pos : COL.neg) + '" opacity="0.85"/>';
+      // A visible 6-unit-tall bar renders as ~2 real screen pixels in this panel's usual
+      // size -- a genuine click-target usability defect for a real pointer, not just a test
+      // artifact (independent-review finding, 2026-09-13: "real clicks can miss"). A
+      // SEPARATE, distinctly-classed (`gmark-hit`, not `gmark`) invisible, much taller hit
+      // target carries the click binding instead of sharing the visible mark's own class --
+      // two overlapping same-class elements competing for one pointer event intercepted each
+      // other regardless of paint order (reproduced with a real Playwright click); giving the
+      // hit target its OWN class makes it the one and only interactive element at this spot.
+      s += '<rect class="gmark-hit" data-strike="' + k + '" x="' + (cx - halfW).toFixed(1) + '" y="' + (y - 10).toFixed(1) +
+        '" width="' + (2 * halfW).toFixed(1) + '" height="20" fill="transparent"/>';
     });
     // biggest-magnitude label
     var top = win.slice().sort(function (a, b) { return Math.abs(b[1]) - Math.abs(a[1]); })[0];
@@ -204,6 +229,11 @@
       var pos = v >= 0, x = cx + (pos ? 1 : -1) * (rad + 10);
       s += '<circle class="gmark" data-strike="' + k + '" cx="' + x.toFixed(1) + '" cy="' + y.toFixed(1) + '" r="' + rad.toFixed(1) +
         '" fill="' + (pos ? COL.pos : COL.neg) + '" opacity="0.55" stroke="' + (pos ? COL.pos : COL.neg) + '"/>' +
+        // Same click-target widening as profileSvg's bars, on its own `gmark-hit` class (see
+        // that comment) -- a small-magnitude dot can shrink to a real-pointer-unfriendly few
+        // pixels; the invisible hit circle never shrinks below a usable minimum radius.
+        '<circle class="gmark-hit" data-strike="' + k + '" cx="' + x.toFixed(1) + '" cy="' + y.toFixed(1) + '" r="' + Math.max(rad, 10).toFixed(1) +
+        '" fill="transparent"/>' +
         '<text x="' + (pos ? x + rad + 4 : x - rad - 4).toFixed(1) + '" y="' + (y + 3).toFixed(1) + '" text-anchor="' + (pos ? 'start' : 'end') +
         '" font-size="9" fill="var(--ed-ink-2)">' + esc(usd(v)) + '</text>';
     });

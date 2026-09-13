@@ -7,9 +7,19 @@
  */
 const { test, expect } = require('@playwright/test');
 
-function ct(side, strike, sym, oi, vol, iv, delta) {
+function ct(side, strike, sym, oi, vol, iv, delta, expDate) {
   return { putCall: side, strikePrice: strike, symbol: sym, openInterest: oi, totalVolume: vol,
-    volatility: iv, delta: delta, gamma: 0.01, expirationDate: '2026-09-11' };
+    volatility: iv, delta: delta, gamma: 0.01, expirationDate: expDate || '2026-09-11' };
+}
+// Real OSI-style symbol (root padded to 6 + YYMMDD + C/P + 8-digit strike*1000), matching the
+// vendor's own verbatim format -- used where a test needs the symbol's OWN expirationDate to
+// genuinely vary with the requested expiry (V01 test-quality review, 2026-09-13: a prior
+// fixture hardcoded expirationDate to 2026-09-11 even in a 2026-09-18 response, and used a
+// non-native "FIXTURE_" placeholder symbol instead of a real OCC-shaped one).
+function occSymbol(root, isoExpiry, side, strike) {
+  const yymmdd = isoExpiry.replace(/-/g, '').slice(2);
+  const strikeStr = String(Math.round(strike * 1000)).padStart(8, '0');
+  return root.padEnd(6, ' ') + yymmdd + (side === 'PUT' ? 'P' : 'C') + strikeStr;
 }
 const CHAIN = { ticker: 'SPY', spot: 100, expiry: '2026-09-11', status: 'ok',
   scope: { kind: 'complete_single_expiry', completeness_basis: 'strike_range=ALL' },
@@ -101,42 +111,77 @@ test.describe('D — Gamma Chain subview', () => {
   // source inspection): the column headers never actually stuck to the top while scrolling --
   // confirmed the fix (a separate sticky-wrapped header table + a body table sharing one
   // <colgroup>) with a real, long ladder (far more strikes than fit the viewport at once).
-  test('column headers stay pinned to the top while scrolling a long ladder (state-authority review)', async ({ page }) => {
+  //
+  // A FOURTH independent review (2026-09-13) found this test checked only the FIRST header
+  // row and never verified column alignment between the two independent tables, or behaviour
+  // at a representative viewport size. Strengthened to check BOTH rows, column alignment
+  // against the body table, and a resized (smaller) viewport.
+  test('column headers stay pinned to the top, both rows, aligned to the body columns, at a representative size (state-authority review)', async ({ page }) => {
     const BIG = { ticker: 'SPY', spot: 100, expiry: '2026-09-11', status: 'ok',
       scope: { kind: 'complete_single_expiry', completeness_basis: 'strike_range=ALL' },
       contracts: Array.from({ length: 80 }, (_, i) => ct('CALL', 50 + i, 'SPY   260911C00' + (50 + i) + '000', 10, 10, 10, 0.1)) };
     await page.route('**/api/chain*', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(BIG) }));
+    await page.setViewportSize({ width: 900, height: 640 });   // a representative, not maximal, size
     await toChain(page);
     await expect(page.locator('#chainBody tbody tr')).toHaveCount(80);
 
-    const headerTop = () => page.locator('.chn-headwrap thead tr').first().boundingBox().then((b) => b.y);
+    const rowsTop = () => page.locator('.chn-headwrap thead tr').evaluateAll(
+      (trs) => trs.map((tr) => tr.getBoundingClientRect().top));
     const containerTop = await page.locator('#chainBody').boundingBox().then((b) => b.y);
 
     await page.evaluate(() => { document.getElementById('chainBody').scrollTop = 0; });
     await page.evaluate(() => { document.getElementById('chainBody').scrollTop = 1200; });
-    const y1 = await headerTop();
+    const y1 = await rowsTop();
     await page.evaluate(() => { document.getElementById('chainBody').scrollTop = 2600; });
-    const y2 = await headerTop();
+    const y2 = await rowsTop();
 
-    // Stuck: the same position at two different (large) scroll depths, and at the container's
-    // own top edge -- not silently scrolling away with the body content underneath it.
-    expect(Math.abs(y1 - y2)).toBeLessThan(2);
-    expect(Math.abs(y1 - containerTop)).toBeLessThan(15);
+    expect(y1.length).toBe(2);   // both header rows present
+    // Stuck: EACH row at the same position at two different (large) scroll depths.
+    expect(Math.abs(y1[0] - y2[0])).toBeLessThan(2);
+    expect(Math.abs(y1[1] - y2[1])).toBeLessThan(2);
+    // The first row sits at the container's own top edge; the second sits BELOW the first
+    // (stacked, not overlapping it).
+    expect(Math.abs(y1[0] - containerTop)).toBeLessThan(15);
+    expect(y1[1]).toBeGreaterThan(y1[0] + 5);
+
+    // Column alignment: the header table and the body table are unrelated table layouts
+    // sharing only a <colgroup> -- prove a header cell's left edge and width actually match
+    // its corresponding body column, not merely that both tables render.
+    const headCell = await page.locator('.chn-headtbl tbody, .chn-headtbl thead tr').last()
+      .locator('th').first().boundingBox();
+    const bodyCell = await page.locator('.chn-bodytbl tbody tr').first().locator('td').first().boundingBox();
+    expect(Math.abs(headCell.x - bodyCell.x)).toBeLessThan(1);
+    expect(Math.abs(headCell.width - bodyCell.width)).toBeLessThan(1);
+
+    await page.setViewportSize({ width: 1280, height: 800 });   // restore default
   });
 
-  test('a routine background refresh does not reset a manually-scrolled position', async ({ page }) => {
-    const BIG = { ticker: 'SPY', spot: 100, expiry: '2026-09-11', status: 'ok',
+  // A FOURTH independent review (2026-09-13) found this test waited a fixed 300ms without ever
+  // establishing that a refresh with CHANGED data actually completed -- it could pass simply
+  // because nothing re-rendered at all. Strengthened: the second chain response carries a
+  // DIFFERENT value (volume), and the test asserts that value actually reached the DOM before
+  // checking the scroll position was preserved.
+  test('a routine background refresh with changed data completes, and preserves a manually-scrolled position', async ({ page }) => {
+    let vol = 10;
+    const BIG = () => ({ ticker: 'SPY', spot: 100, expiry: '2026-09-11', status: 'ok',
       scope: { kind: 'complete_single_expiry', completeness_basis: 'strike_range=ALL' },
-      contracts: Array.from({ length: 80 }, (_, i) => ct('CALL', 50 + i, 'SPY   260911C00' + (50 + i) + '000', 10, 10, 10, 0.1)) };
-    await page.route('**/api/chain*', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(BIG) }));
+      contracts: Array.from({ length: 80 }, (_, i) => ct('CALL', 50 + i, 'SPY   260911C00' + (50 + i) + '000', 10, vol, 10, 0.1)) });
+    await page.route('**/api/chain*', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(BIG()) }));
     await toChain(page);
     await expect(page.locator('#chainBody tbody tr')).toHaveCount(80);
+    await expect(page.locator('#chainBody tbody tr').first().locator('td').nth(1)).toHaveText('10');
 
     await page.evaluate(() => { document.getElementById('chainBody').scrollTop = 1800; });
     const before = await page.evaluate(() => document.getElementById('chainBody').scrollTop);
-    // A routine background refresh (same ticker/expiry context) must not recentre the ladder.
+
+    // The NEXT chain fetch carries a genuinely different value -- proof a refresh actually
+    // completed comes from the DOM showing THIS new value, not merely from time having passed.
+    vol = 25;
     await page.evaluate(() => document.dispatchEvent(new CustomEvent('ed:refresh', { detail: { slow: true } })));
-    await page.waitForTimeout(300);
+    await expect(page.locator('#chainBody tbody tr').first().locator('td').nth(1)).toHaveText('25');
+
+    // A routine background refresh (same ticker/expiry context) must not recentre the ladder,
+    // even though it just genuinely re-rendered with new data.
     const after = await page.evaluate(() => document.getElementById('chainBody').scrollTop);
     expect(after).toBe(before);
   });
@@ -147,16 +192,25 @@ test.describe('D — Gamma Chain subview', () => {
   // DISTINGUISHABLE, expiry-keyed contracts and an assertion that the rendered ladder actually
   // changes to match each requested expiry -- this would fail if curExpiry()'s wiring broke and
   // the view kept showing a stale expiry's data after the dropdown moved.
+  //
+  // A FOURTH independent review (2026-09-13) found this test's OWN fixture still hardcoded
+  // `expirationDate: '2026-09-11'` (via ct()'s old fixed default) even inside the 2026-09-18
+  // response, and used a non-native "FIXTURE_"-prefixed symbol -- fixed with real per-expiry
+  // expirationDate values and genuine OCC-shaped symbols (occSymbol above) so contract identity
+  // itself is under real test, not just the strike number and a placeholder string.
   test('switching the expiry dropdown re-fetches and renders that expiry\'s own distinct contracts', async ({ page }) => {
     const EXP_A = '2026-09-11', EXP_B = '2026-09-18';
+    const symA = occSymbol('SPY', EXP_A, 'CALL', 100);
+    const symB = occSymbol('SPY', EXP_B, 'CALL', 200);
     await page.route('**/api/expiries*', (r) => r.fulfill({ status: 200, contentType: 'application/json',
       body: JSON.stringify({ expiries: [EXP_A, EXP_B] }) }));
     await page.route('**/api/chain*', (route) => {
       const exp = new URL(route.request().url()).searchParams.get('expiry') || EXP_A;
       const strike = exp === EXP_A ? 100 : 200;   // distinct strike AND distinct symbol per expiry
+      const sym = exp === EXP_A ? symA : symB;
       const body = { ticker: 'SPY', spot: strike, expiry: exp, status: 'ok',
         scope: { kind: 'complete_single_expiry', completeness_basis: 'strike_range=ALL' },
-        contracts: [ct('CALL', strike, 'SPY   FIXTURE_' + exp + 'C', 1, 1, 1, 0.1)] };
+        contracts: [ct('CALL', strike, sym, 1, 1, 1, 0.1, exp)] };   // expirationDate == exp, genuinely
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
     });
     await toChain(page);
@@ -166,7 +220,69 @@ test.describe('D — Gamma Chain subview', () => {
     await page.locator('#expSel').selectOption(EXP_B);
     await expect(page.locator('#chainBody .chn-head')).toContainText('SINGLE EXPIRY · ' + EXP_B);
     await expect(page.locator('#chainBody tbody tr td.k')).toHaveText('200');
-    await expect(page.locator('#chainBody tr[data-csym="SPY   FIXTURE_' + EXP_B + 'C"]')).toHaveCount(1);
-    await expect(page.locator('#chainBody tr[data-csym="SPY   FIXTURE_' + EXP_A + 'C"]')).toHaveCount(0);
+    await expect(page.locator('#chainBody tr[data-csym="' + symB + '"]')).toHaveCount(1);
+    await expect(page.locator('#chainBody tr[data-csym="' + symA + '"]')).toHaveCount(0);
+  });
+
+  // A FOURTH independent review (2026-09-13), NAMED as the same class of risk already fixed
+  // in the retained /options page (see options-page-chain-race.spec.js's own A->B->A test,
+  // which DOES fail on its pre-fix code): stillChain(tk, exp) proves the CURRENT identity
+  // matches, but two different requests issued at different times for the IDENTICAL
+  // (ticker, expiry) are indistinguishable to it -- whichever resolves LAST wins, not
+  // whichever was issued last. Unlike options.html, this loader already uses a real
+  // AbortController (makeCoalescedLoader), and in this Playwright mock harness that abort
+  // reliably prevents the held first-A response from ever resolving at all -- this test
+  // PASSES on both the pre- and post-fix code here (confirmed by direct comparison), so it
+  // is a regression/behavior test, not a proven fail-before/pass-after reproduction for
+  // THIS view. The fix (an explicit monotonic request sequence, _reqSeq) is still real
+  // defense-in-depth: AbortController does not GUARANTEE a stale fetch never resolves (a
+  // response already fully buffered before abort() is processed can still resolve in real
+  // browsers), and this sequence check makes correctness independent of that timing detail.
+  test('A -> B -> A: a held first-A response cannot overwrite the fresh second-A response (state-authority review)', async ({ page }) => {
+    const EXP_A = '2026-09-11', EXP_B = '2026-09-18';
+    const symA1 = occSymbol('SPY', EXP_A, 'CALL', 111);
+    const symA2 = occSymbol('SPY', EXP_A, 'CALL', 333);
+    let aCallCount = 0;
+    await page.route('**/api/expiries*', (r) => r.fulfill({ status: 200, contentType: 'application/json',
+      body: JSON.stringify({ expiries: [EXP_A, EXP_B] }) }));
+    await page.route('**/api/chain*', async (route) => {
+      const exp = new URL(route.request().url()).searchParams.get('expiry') || EXP_A;
+      if (exp === EXP_A) {
+        aCallCount += 1;
+        if (aCallCount === 1) {
+          // The FIRST A request is held -- resolves LATE, after the return-to-A request
+          // below has already resolved and painted the correct, newer value.
+          await new Promise((r) => setTimeout(r, 900));
+          const body = { ticker: 'SPY', spot: 111, expiry: EXP_A, status: 'ok',
+            scope: { kind: 'complete_single_expiry', completeness_basis: 'strike_range=ALL' },
+            contracts: [ct('CALL', 111, symA1, 1, 1, 1, 0.1, EXP_A)] };
+          return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+        }
+        const body = { ticker: 'SPY', spot: 333, expiry: EXP_A, status: 'ok',
+          scope: { kind: 'complete_single_expiry', completeness_basis: 'strike_range=ALL' },
+          contracts: [ct('CALL', 333, symA2, 1, 1, 1, 0.1, EXP_A)] };
+        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+      }
+      const body = { ticker: 'SPY', spot: 222, expiry: EXP_B, status: 'ok',
+        scope: { kind: 'complete_single_expiry', completeness_basis: 'strike_range=ALL' },
+        contracts: [ct('CALL', 222, occSymbol('SPY', EXP_B, 'CALL', 222), 1, 1, 1, 0.1, EXP_B)] };
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+    });
+    await toChain(page);   // fires the first, held A request
+    await expect(page.locator('#chainBody .chn-head')).toContainText(EXP_A);
+
+    await page.locator('#expSel').selectOption(EXP_B);
+    await expect(page.locator('#chainBody tbody tr td.k')).toHaveText('222');
+
+    await page.locator('#expSel').selectOption(EXP_A);   // fires the second, fast A request
+    await expect(page.locator('#chainBody tbody tr td.k')).toHaveText('333');
+
+    // Wait past the FIRST A request's deliberate 900ms delay.
+    await page.waitForTimeout(1300);
+
+    // Non-retrying snapshot: the held, stale first-A response must not have overwritten 333.
+    const strikeText = await page.locator('#chainBody tbody tr td.k').textContent();
+    expect(strikeText).toBe('333');
+    expect(aCallCount).toBeGreaterThanOrEqual(2);   // at least the two A requests under test
   });
 });

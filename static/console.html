@@ -195,15 +195,32 @@
   .sub-pane.on{display:block;height:100%}
   .sub-pane>.panel{height:100%}
   /* chain ladder (D) — full vendor chain, one expiry.
-     Independent-review finding (2026-09-13), REPRODUCED by direct browser measurement:
-     `position:sticky` on a <th> never engages in this engine (proven with the real table and a
-     minimal from-scratch reproduction) even though the identical container correctly sticks a
-     plain <div> -- so the header rows now live in their OWN small table inside a sticky
-     `.chn-headwrap` div, immediately followed by a second, separate body-only table; a shared
-     fixed-percentage <colgroup> (written by ed-gamma-chain.js) on both tables keeps every
-     column pixel-aligned between the two despite them being unrelated table layouts. */
+     Independent-review finding (2026-09-13), REPRODUCED by direct browser measurement, then
+     CORRECTED by a fourth review's challenge and a fresh, more precise measurement: the first
+     finding claimed sticky <th> "never engages in this engine" -- too broad, and wrong. A clean
+     single-row sticky <thead><tr> DOES stick correctly here (Chromium's TablesNG genuinely
+     supports it, confirmed in an isolated baseline page with zero app CSS). The real, narrower
+     defect, reproduced with a from-scratch minimal table in this exact container: a <thead>
+     with TWO stacked sticky rows (this ladder's "Calls/Strike/Puts" row plus its
+     "OI/Vol/IV%/..." column-label row) fails to stick EITHER row, regardless of colspan --
+     confirmed by isolating row count as the one variable that flips the result (1 sticky row:
+     sticks; 2 sticky rows in the same thead: neither sticks). Since this ladder genuinely needs
+     two visually distinct header rows, the two-row requirement itself -- not a blanket "sticky
+     tables don't work" -- is what rules out a single native <table><thead> here. The smallest
+     structure that still uses a native, unambiguously-supported primitive: ONE sticky element
+     (a plain <div>, proven to stick correctly in this same container) wraps a small, ordinary
+     (non-sticky) table holding both header rows for layout only, immediately followed by a
+     second, separate body-only table; a shared fixed-percentage <colgroup> (written by
+     ed-gamma-chain.js) keeps every column pixel-aligned between the two despite them being
+     unrelated table layouts. */
   .chn{width:100%;border-collapse:collapse;table-layout:fixed;font-family:var(--ed-sans);font-size:13px;font-variant-numeric:tabular-nums}
-  .chn-headwrap{position:sticky;top:0;z-index:2;background:var(--ed-panel-2)}
+  /* Independent-review finding (2026-09-13), REPRODUCED: the operator's own real (non-scripted)
+     scrolling left a ghost strip of body-row digits visible in a gap directly above the sticky
+     header, that a programmatic scrollTop-driven test never surfaced -- a real Chromium
+     compositing quirk where a sticky element repainted by ordinary invalidation (not its own
+     layer) can leave stale rasterized pixels behind it. `transform:translateZ(0)` promotes it
+     to its own compositing layer so it is always freshly composited, not repainted-and-hoped. */
+  .chn-headwrap{position:sticky;top:0;z-index:2;background:var(--ed-panel-2);transform:translateZ(0)}
   .chn th{background:var(--ed-panel-2);font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;
     color:var(--ed-ink-3);padding:7px 9px;border-bottom:1px solid var(--ed-edge);text-align:right}
   .chn th.mid{text-align:center;color:var(--ed-ink);background:var(--ed-panel-3);letter-spacing:.06em}
@@ -405,10 +422,14 @@
   .scbtn:hover{color:var(--ed-ink);border-color:var(--ed-edge-strong)}
   .scbtn.on{color:var(--ed-accent-2);background:var(--ed-accent-bg);border-color:var(--ed-accent-edge)}
   /* #3: per-panel window disclosure line — never let a clip be silent. Sticky so it stays visible
-     when the panel body auto-scrolls the spot strike into view. */
+     when the panel body auto-scrolls the spot strike into view.
+     Independent-review finding (2026-09-13), REPRODUCED: this purely informational, never-
+     clickable note (no click handler anywhere binds to it) could still sit over the Chart
+     panel's SVG marks below it and intercept real pointer clicks meant for them.
+     pointer-events:none makes it visual-only, as it always functionally was. */
   .scope-note{position:sticky;top:0;z-index:2;background:var(--ed-panel);font-family:var(--ed-mono);
     font-size:10px;color:var(--ed-ink-3);padding:4px 0 6px;margin:-2px 0 2px;display:flex;gap:8px;
-    align-items:baseline;flex-wrap:wrap;border-bottom:1px solid var(--ed-edge)}
+    align-items:baseline;flex-wrap:wrap;border-bottom:1px solid var(--ed-edge);pointer-events:none}
   .scope-note .clip{color:var(--ed-warn)}
   .chart-svg{width:100%;height:100%;display:block}
   .chart-svg text{font-family:var(--ed-mono);fill:var(--ed-ink-2)}
