@@ -17080,42 +17080,25 @@ def _liquidity_live_1m_overlay_bars(ticker: str) -> list[dict]:
     return out
 
 
-def _liquidity_spot_from_cache_any_expiry(ticker: str) -> Optional[float]:
-    """Best-effort spot from any cached /api/state row for this ticker (expiry may differ)."""
-    t = ticker.upper().strip()
-    for (tk, _), ent in _state_cache.items():
-        if tk != t:
-            continue
-        d = ent.get("ms_dict") or {}
-        s = d.get("spot")
-        if s is None:
-            continue
-        try:
-            sf = float(s)
-            if sf > 0:
-                return sf
-        except (TypeError, ValueError):
-            continue
-    return None
-
-
 def _liquidity_fusion_from_cache(
     ticker: str, expiry: Optional[str],
-) -> tuple[list[tuple[float, str]], Optional[float], str]:
-    """Pull options/EW key strikes from last /api/state cache hit for (ticker, expiry)."""
+) -> tuple[list[tuple[float, str]], str]:
+    """Pull options/EW key strikes from last /api/state cache hit for (ticker, expiry).
+
+    Deliberately returns no spot: _state_cache is an ungated, last-write-wins side cache
+    (RC spot-360-audit, 2026-09-14 -- see the call site), not resolve_spot()'s tiered
+    authority. A spot value read from it once round-tripped through a discarded local
+    (_cache_spot) at the call site; the dead capability is removed here, not just unused,
+    so it can't be silently wired back up by a future caller.
+    """
     t = ticker.upper().strip()
     e = (expiry or "").strip()
     if not e:
-        return [], None, "no_expiry"
+        return [], "no_expiry"
     ent = _state_cache.get((t, e))
     if not ent or not ent.get("ms_dict"):
-        return [], None, "cache_miss"
+        return [], "cache_miss"
     d = ent["ms_dict"]
-    spot_v = d.get("spot")
-    try:
-        spot_f = float(spot_v) if spot_v is not None else None
-    except (TypeError, ValueError):
-        spot_f = None
     pairs = [
         (d.get("kl_call_gamma_wall"), "GAMMA_CALL_WALL"),
         (d.get("kl_put_gamma_wall"), "GAMMA_PUT_WALL"),
@@ -17149,7 +17132,7 @@ def _liquidity_fusion_from_cache(
                 levels.append((p, tag))
         except (TypeError, ValueError):
             continue
-    return levels, spot_f, "fused" if levels else "fused_empty"
+    return levels, "fused" if levels else "fused_empty"
 
 
 def _liquidity_zone_tradeable_fields(zp: dict, spot: Optional[float]) -> None:
@@ -17246,13 +17229,20 @@ def get_liquidity_snapshot(
         if snap_raw == "live":
             extra = []
             if fusion and expiry:
-                extra, spot_for_zones, fusion_status = _liquidity_fusion_from_cache(ticker_upper, expiry)
+                extra, fusion_status = _liquidity_fusion_from_cache(ticker_upper, expiry)
             elif fusion and not expiry:
                 fusion_status = "no_expiry"
             else:
                 fusion_status = "disabled"
-            if spot_for_zones is None:
-                spot_for_zones = _liquidity_spot_from_cache_any_expiry(ticker_upper)
+            # RC spot-360-audit (2026-09-14, live RTH reproduction): spot_for_zones used to come
+            # from _state_cache (the /api/state cache -- last-write-wins, NO freshness gate) via
+            # _liquidity_fusion_from_cache / _liquidity_spot_from_cache_any_expiry: a THIRD spot
+            # producer next to resolve_spot()/live_market_plane. Reproduced live: this route
+            # served 759.725 off a cache entry 1061s (17.7 min) old while the header read 760.13
+            # at the same instant. resolve_spot() is THE spot authority for every other consumer
+            # in this file (RC-14); zone scoring must read the same one, not a stale side-cache
+            # keyed off whichever (ticker, expiry) /api/state happened to be called for last.
+            spot_for_zones, _, _ = resolve_spot(ticker_upper)
             _extra_for_build = list(extra) if fusion else []
             if spot_for_zones is not None and fusion:
                 _extra_for_build.append((spot_for_zones, "SPOT_LIVE"))

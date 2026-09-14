@@ -2527,11 +2527,6 @@ ROWS: tuple[Row, ...] = (
         justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (_liquidity_live_1m_overlay_bars).',
     ),
     Row(
-        file='server.py', derivation='_liquidity_spot_from_cache_any_expiry', disposition='ALLOWLISTED',
-        allowlist_id='mega1_sqlite_internal',
-        justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (_liquidity_spot_from_cache_any_expiry).',
-    ),
-    Row(
         file='server.py', derivation='_liquidity_zone_tradeable_fields', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (_liquidity_zone_tradeable_fields).',
