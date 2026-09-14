@@ -441,6 +441,14 @@
     font-family:var(--ed-sans);font-size:8.5px;line-height:1.05;color:var(--ed-ink-3);width:34px}
   .heat-vlegend .caps .t{color:var(--ed-pos-ink)} .heat-vlegend .caps .b{color:var(--ed-neg-ink)}
   .heat-vlegend .caps .m{color:var(--ed-ink-4);text-align:left}
+  /* OI/Volume are unsigned magnitudes (call+put) -- a cell can never render in the red/negative
+     half of the signed GEX/DEX scale above, so "Low" must not be labelled in that color against
+     a green-to-red bar; both ends read on the SAME single (green) hue, bright->dim. Reproduced
+     live: every populated OI/Volume cell rendered green-only while the legend beside it still
+     showed a green-to-red bar captioned "Low ..." in red ink, implying a color that measure can
+     structurally never produce. */
+  .heat-vlegend.unsigned .bar{background:linear-gradient(to bottom,var(--ed-pos),var(--ed-heat-zero))}
+  .heat-vlegend.unsigned .caps .b{color:var(--ed-ink-3)}
   .heat-banner{font-family:var(--ed-mono);font-size:10px;letter-spacing:.03em;padding:5px 10px;border-radius:5px;margin-bottom:8px}
   .heat-banner.stale{background:var(--ed-proxy-bg);color:var(--ed-stale);border:1px solid var(--ed-stale)}
   .heat-banner.ref{background:var(--ed-proxy-bg);color:var(--ed-proxy);border:1px dashed var(--ed-proxy)}

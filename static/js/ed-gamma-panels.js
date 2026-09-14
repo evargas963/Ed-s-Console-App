@@ -29,9 +29,17 @@
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
     return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]; }); }
 
+  // Delta/DEX and Open Interest fall back to displaying the SAME gamma `.sub-pane` (they have
+  // no dedicated pane of their own -- showSubPane()'s fallback rule), which is where Key
+  // Levels/GEX-by-Strike/PCR/the Options Flow tape all physically live. This check used to be
+  // 'gamma' only, from before dex/oi existed as real subviews; ed-gamma.js's own
+  // _isGammaFamilySubview was correctly generalized when they were added, but this sibling
+  // file's gate was not, leaving all four panels frozen (reproduced live, 2026-09-13: switching
+  // ticker while on Delta/DEX left Key Levels showing the PREVIOUS ticker's spot/flip/wall
+  // values) -- every check in this file must recognize all three, exactly like ed-gamma.js's.
   function isGamma() {
     var s = (window.EdShell && window.EdShell.getState()) || {};
-    return s.workspace === 'options' && s.subview === 'gamma';
+    return s.workspace === 'options' && (s.subview === 'gamma' || s.subview === 'dex' || s.subview === 'oi');
   }
   function ticker() { return ((window.EdShell && window.EdShell.getState()) || {}).ticker || 'SPY'; }
 
@@ -642,7 +650,15 @@
   var _structuresLoader = (typeof window !== 'undefined' && window.EdL1SseGuards && window.EdL1SseGuards.makeCoalescedLoader)
     ? window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadStructuresImpl(ticker(), (window.EdShell && window.EdShell.getExpiry && window.EdShell.getExpiry()), signal); })
     : { trigger: function () { loadStructuresImpl(ticker(), (window.EdShell && window.EdShell.getExpiry && window.EdShell.getExpiry())); }, reset: function () {} };
-  function loadStructures() { if (inStructures()) _structuresLoader.trigger(); }
+  // Keyed on ticker+expiry (ROUND 8 pattern, same as every other loader in this file) so a
+  // context change while a fetch is still in flight ABORTS it immediately instead of merely
+  // marking a trailing re-run pending -- an unkeyed trigger() left Structures frozen on the
+  // old ticker/expiry's placeholder until the abandoned request finally settled.
+  function loadStructures() {
+    if (!inStructures()) return;
+    var exp = (window.EdShell && window.EdShell.getExpiry && window.EdShell.getExpiry()) || '';
+    _structuresLoader.trigger(ticker() + '|' + exp);
+  }
 
   // ---------- Options Flow tape (operator field-inventory audit, 2026-09-13) ------------
   // The embedded tape widget on the Gamma pane (#ofBody) -- real native trade prints for

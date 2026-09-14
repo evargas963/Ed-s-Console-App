@@ -287,8 +287,14 @@ def test_K_vanna_cell_equals_call_vanna_minus_put_vanna_the_same_dealer_conventi
             if bucket.get("call_vanna") is None and bucket.get("put_vanna") is None:
                 continue
             row = [r for r in surface["cells"] if r["strike"] == float(k)][0]
-            expected = round(float((bucket.get("call_vanna") or 0.0) - (bucket.get("put_vanna") or 0.0)))
-            assert row["vanna"][col] == expected
+            # 2 decimals, not whole-unit rounding (fixed 2026-09-13: vanna's per-vol-point scale
+            # is far smaller than gex/dex's dollar magnitudes -- whole-unit rounding silently
+            # zeroed real values). A small tolerance absorbs BS-vanna's own intraday
+            # time-sensitivity (bs_vanna's t_years) between this call and project_gamma_surface's
+            # own internal call a moment earlier, the same reason test_vanna_charm_by_strike_v1.py
+            # already tolerates it.
+            expected = bucket["call_vanna"] - bucket["put_vanna"]
+            assert abs(row["vanna"][col] - expected) < 0.1
             checked += 1
     assert checked > 20
 

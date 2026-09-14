@@ -181,7 +181,7 @@ def tape_rows_for_symbol(
         mult = context.get("MULTIPLIER")
         trade, size = item.get("LAST_PRICE"), item.get("LAST_SIZE")
         premium = (float(trade) * float(size) * float(mult)
-                   if (trade is not None and size is not None and mult) else None)
+                   if (trade is not None and size is not None and mult is not None) else None)
         bid, ask = item.get("BID_PRICE"), item.get("ASK_PRICE")
         classification = "unknown"
         if trade is not None and bid is not None and ask is not None:
@@ -243,19 +243,33 @@ def book_heatmap_for_ticker(
     try:
         con.execute("PRAGMA query_only=ON")
         latest = con.execute(
-            "SELECT MAX(ts_recv) FROM stream_book_raw WHERE symbol = ? AND service IN ('NASDAQ_BOOK','NYSE_BOOK')",
-            (sym,),
+            "SELECT MAX(ts_recv) FROM stream_book_raw WHERE symbol = ? AND service IN (?, ?)",
+            (sym, "NASDAQ_BOOK", "NYSE_BOOK"),
         ).fetchone()
         latest_ts = latest[0] if latest else None
         if latest_ts is None:
             return {"ticker": sym, "available": False, "reason": "no book history captured for this ticker"}
         lower_bound = float(latest_ts) - max(1.0, float(minutes)) * 60.0
+        # DESC + LIMIT keeps the NEWEST max_rows rows in the window, then reversed below to
+        # oldest-first for the binning loop -- an earlier ASC+LIMIT form kept the OLDEST rows
+        # instead whenever a window's row count exceeded max_rows, silently pulling `until_ts`
+        # (and every rendered cell) well short of `latest_captured_ts` even though the payload's
+        # own metadata still correctly reported the true latest tick -- the exact "fabricated
+        # live illusion" this function's docstring says it must never produce.
+        # LIMIT max_rows+1: whether a (max_rows+1)-th row exists is what actually distinguishes
+        # "the window had exactly max_rows rows" from "more existed and were cut off" -- the
+        # earlier `len(rows) >= max_rows` check could never tell those apart (LIMIT already
+        # guarantees len(rows) <= max_rows, so it degenerates to `== max_rows`) and reported
+        # rows_capped:true on a window with no truncation at all.
         rows = con.execute(
             "SELECT ts_recv, native_json FROM stream_book_raw "
-            "WHERE symbol = ? AND service IN ('NASDAQ_BOOK','NYSE_BOOK') AND ts_recv >= ? "
-            "ORDER BY ts_recv ASC LIMIT ?",
-            (sym, lower_bound, int(max_rows)),
+            "WHERE symbol = ? AND service IN (?, ?) AND ts_recv >= ? "
+            "ORDER BY ts_recv DESC LIMIT ?",
+            (sym, "NASDAQ_BOOK", "NYSE_BOOK", lower_bound, int(max_rows) + 1),
         ).fetchall()
+        rows_capped = len(rows) > int(max_rows)
+        rows = rows[:int(max_rows)]
+        rows.reverse()
     except sqlite3.Error:
         return {"ticker": sym, "available": False, "reason": "database read failed"}
     finally:
@@ -279,7 +293,15 @@ def book_heatmap_for_ticker(
             continue
         bucket = min(n_buckets - 1, int((float(ts_recv) - t0) / bucket_sec))
         for leaf, price_key, side in (("BIDS", "BID_PRICE", "bid"), ("ASKS", "ASK_PRICE", "ask")):
-            for lvl in (item.get(leaf) or []):
+            levels = item.get(leaf)
+            # This vendor field is not reliably a list -- app.options.order_flow.state.
+            # push_book already normalizes the identical BIDS/ASKS leaf the same way for
+            # exactly this reason (a single-level book can arrive as one bare object).
+            if not isinstance(levels, list):
+                levels = [levels] if levels else []
+            for lvl in levels:
+                if not isinstance(lvl, dict):
+                    continue
                 px, vol = lvl.get(price_key), lvl.get("TOTAL_VOLUME")
                 if px is None or vol is None:
                     continue
@@ -300,7 +322,7 @@ def book_heatmap_for_ticker(
         "since_ts": t0, "until_ts": float(rows[-1][0]), "latest_captured_ts": float(latest_ts),
         "n_buckets": n_buckets, "bucket_sec": round(bucket_sec, 2),
         "price_min": min(prices_seen), "price_max": max(prices_seen),
-        "rows_scanned": len(rows), "rows_capped": len(rows) >= int(max_rows),
+        "rows_scanned": len(rows), "rows_capped": rows_capped,
         "cells": cell_list,
         "method": ("stream_book_raw NASDAQ_BOOK+NYSE_BOOK rows for this ticker, oldest-to-newest in "
                    "the window ending at the data's own latest captured tick, binned into n_buckets "

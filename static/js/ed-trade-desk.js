@@ -71,7 +71,7 @@
       ['Spread (pts)', num(d.spread_pts), classOf(cls, 'spread_pts')],
       ['Depth 1 imbalance', num(dep(1, 'imbalance'), 3), classOf(cls, 'depth.*.imbalance')],
     ];
-    var heroVal = imb == null ? '—' : (imb >= 0 ? '+' : '') + imb.toFixed(3);
+    var heroVal = (imb == null || isNaN(imb)) ? '—' : (imb >= 0 ? '+' : '') + num(imb, 3);
     var heroUnit = imb == null ? '' : (imb > 0.05 ? 'bid-heavy (depth 5)' : imb < -0.05 ? 'ask-heavy (depth 5)' : 'balanced (depth 5)');
     return stage(1, 'td-accent-blue', 'Detect — book microstructure', heroVal, heroUnit, imb > 0.05 ? 1 : imb < -0.05 ? -1 : 0, rows, 'LIVE', 'live');
   }
@@ -83,7 +83,7 @@
       return Math.abs((a.price || 0) - spot) - Math.abs((b.price || 0) - spot);
     });
     var nearest = sorted[0];
-    var rows = sorted.slice(1, 4).map(function (r) { return [r.label || r.id, num(r.price), r.evidence_tier]; });
+    var rows = sorted.slice(1, 6).map(function (r) { return [r.label || r.id, num(r.price), r.evidence_tier]; });
     var dist = isFinite(spot) && nearest ? nearest.price - spot : null;
     var heroVal = nearest ? (nearest.label || nearest.id) + ' ' + num(nearest.price) : '—';
     var heroUnit = dist != null ? (Math.abs(dist) < 0.005 ? 'at spot' : (dist > 0 ? num(Math.abs(dist)) + ' above spot' : num(Math.abs(dist)) + ' below spot')) : '';
@@ -92,9 +92,13 @@
 
   function confirmStage(d) {
     if (!d) return stage(3, 'td-accent-amber', 'Confirm — options regime', 'No regime', '', 0, [], null);
+    // Raw values only -- stage() escapes every row itself (double-escaping a value here turns
+    // a real "&" into the literal text "&amp;" on screen).
     var rows = [
-      ['Posture', esc(d.posture || '—')], ['Confidence', esc(d.confidence || '—')],
+      ['Posture', d.posture || '—'], ['Confidence', d.confidence || '—'],
       ['Call wall', num(d.call_wall)], ['Put wall', num(d.put_wall)],
+      ['Gamma flip', num(d.gamma_flip)], ['Max pain', num(d.max_pain)],
+      ['Net GEX @ spot', d.net_gex_at_spot != null ? (Number(d.net_gex_at_spot) / 1e6).toFixed(1) + 'M' : '—'],
     ];
     return stage(3, 'td-accent-amber', 'Confirm — options regime', d.regime || '—', '', 0, rows, d.confidence || null,
       d.confidence === 'TRUSTED' ? 'live' : 'warn');
@@ -155,7 +159,9 @@
       fetchJson('/api/order-flow/microstructure?ticker=' + encodeURIComponent(tk), signal),
       fetchJson('/api/levels?ticker=' + encodeURIComponent(tk), signal),
       fetchJson('/api/terrain?ticker=' + encodeURIComponent(tk), signal),
-      fetchJson('/api/liquidity-snapshot?ticker=' + encodeURIComponent(tk), signal),
+      // snapshot=live -- see ed-liquidity-map.js's identical comment; the endpoint's own
+      // default is a frozen pre-9:30ET snapshot, wrong for an "as of right now" synthesis page.
+      fetchJson('/api/liquidity-snapshot?ticker=' + encodeURIComponent(tk) + '&snapshot=live', signal),
     ]).then(function (results) {
       if (!stillRightNow(tk)) return;
       var detect = results[0], levelsD = results[1], terrain = results[2], snap = results[3];
@@ -168,6 +174,13 @@
         '<div class="notproven" style="margin-top:14px;">HOME PRESERVED — DECISION AUTHORITY NOT_PROVEN. ' +
         'This page assembles already-canonical Detect/Frame/Confirm signals and classifies them in plain English; it computes no new value and renders no Execute step. ' +
         'THE CALL and 1m/5m/15m/60m horizons remain excluded until ticker-universal evidence earns them.</div>';
+    }).catch(function (e) {
+      // Every sibling loader in this file (ed-order-flow.js, ed-order-flow-heatmap.js,
+      // ed-liquidity-map.js) ends in a .catch() that renders an honest fallback; this one
+      // didn't, so an exception while building the stage cards left the panel stuck on
+      // aria-busy/stale content with no visible failure state.
+      if (e && e.name === 'AbortError') return;
+      if (stillRightNow(tk)) h.innerHTML = '<div class="placeholder"><div class="sm">no console serving Right Now — one of its endpoints failed to render</div></div>';
     });
   }
   var _loader = (typeof window !== 'undefined' && window.EdL1SseGuards && window.EdL1SseGuards.makeCoalescedLoader)

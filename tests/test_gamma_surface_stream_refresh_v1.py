@@ -28,6 +28,52 @@ _CONTRACT_SYMBOL_B = _CONTRACTS[1]["symbol"]
 TK = ticker_storage_key("CRWD")
 
 
+def _cells_match_ignoring_vanna_drift(actual, expected, tol=0.1):
+    """Every field exact except `vanna`, tolerated within `tol`. bs_vanna's own t_years input
+    is genuinely intraday-time-sensitive (math_levels.py), so calling project_gamma_surface a
+    second time -- as every test in this file does, to build its own "expected" reference --
+    can legitimately drift a few hundredths from the value the code path under test computed a
+    moment earlier. This was invisible before 2026-09-13's vanna-rounding fix (whole-integer
+    rounding of a value in the hundreds/thousands absorbed drift this size); rounding to 2
+    decimals (matching /api/options/vanna-by-strike's own precision) made it visible here for
+    the first time. tests/test_vanna_charm_by_strike_v1.py and
+    tests/test_gamma_surface_projection_v1.py already tolerate the identical drift for the
+    identical reason."""
+    if len(actual) != len(expected):
+        return False
+    for a, e in zip(actual, expected):
+        if set(a.keys()) != set(e.keys()):
+            return False
+        for k in a:
+            if k != "vanna":
+                if a[k] != e[k]:
+                    return False
+                continue
+            if len(a[k]) != len(e[k]):
+                return False
+            for av, ev in zip(a[k], e[k]):
+                if av is None or ev is None:
+                    if av != ev:
+                        return False
+                elif abs(av - ev) >= tol:
+                    return False
+    return True
+
+
+def _surfaces_match_ignoring_vanna_drift(actual, expected, tol=0.1):
+    """Same tolerance as _cells_match_ignoring_vanna_drift, for a whole surface dict (every
+    key exact except `cells`, which gets the tolerant per-cell comparison)."""
+    if set(actual.keys()) != set(expected.keys()):
+        return False
+    for k in actual:
+        if k == "cells":
+            if not _cells_match_ignoring_vanna_drift(actual[k], expected[k], tol):
+                return False
+        elif actual[k] != expected[k]:
+            return False
+    return True
+
+
 def _clear_cache():
     with server._terrain_cache_lock:
         server._terrain_cache.pop(TK, None)
@@ -120,7 +166,8 @@ def test_no_change_when_the_streamed_value_is_too_stale(monkeypatch):
     assert refresh_gamma_surface_from_stream(_CONTRACT_SYMBOL, 100000.0) == "no_change"
     # the cache must be untouched -- still the original, un-overlaid projection
     with server._terrain_cache_lock:
-        assert server._terrain_cache[TK]["_gamma_surface"] == project_gamma_surface(_CONTRACTS, _SPOT)
+        assert _surfaces_match_ignoring_vanna_drift(
+            server._terrain_cache[TK]["_gamma_surface"], project_gamma_surface(_CONTRACTS, _SPOT))
 
 
 def test_a_fresh_streamed_update_recomputes_and_caches_the_overlaid_surface(monkeypatch):
@@ -146,7 +193,7 @@ def test_a_fresh_streamed_update_recomputes_and_caches_the_overlaid_surface(monk
         cached_per_strike = server._terrain_cache[TK]["_per_strike"]
     # the faucet's own cells/strikes/expirations must match the independently-computed
     # expectation exactly -- proves the wiring calls the SAME projection, not a reimplementation
-    assert cached["cells"] == expected_surface["cells"]
+    assert _cells_match_ignoring_vanna_drift(cached["cells"], expected_surface["cells"])
     assert cached["strikes"] == expected_surface["strikes"]
     assert cached["expirations"] == expected_surface["expirations"]
     assert cached["stream_overlay_contracts"] == 1
@@ -219,7 +266,8 @@ def test_a_streamed_value_older_than_the_rest_baseline_is_rejected(monkeypatch):
         lambda sym: {"gamma": 0.99, "gamma_ts_recv": now - 2.0})
     assert refresh_gamma_surface_from_stream(_CONTRACT_SYMBOL, now) == "no_change"
     with server._terrain_cache_lock:
-        assert server._terrain_cache[TK]["_gamma_surface"] == project_gamma_surface(contracts, _SPOT)
+        assert _surfaces_match_ignoring_vanna_drift(
+            server._terrain_cache[TK]["_gamma_surface"], project_gamma_surface(contracts, _SPOT))
 
 
 def test_repeated_eager_refreshes_never_compound_away_from_the_rest_baseline(monkeypatch):
@@ -246,7 +294,7 @@ def test_repeated_eager_refreshes_never_compound_away_from_the_rest_baseline(mon
     with server._terrain_cache_lock:
         cached = server._terrain_cache[TK]["_gamma_surface"]
         seq = cached["surface_seq"]
-    assert cached["cells"] == expected["cells"], (
+    assert _cells_match_ignoring_vanna_drift(cached["cells"], expected["cells"]), (
         "the second refresh must reflect ONLY gamma=0.22, not gamma=0.11 carried forward"
     )
     assert seq == 2, "surface_seq must advance on each successive publication"
@@ -468,7 +516,7 @@ def test_refreshing_b_does_not_undo_a_the_a_then_b_overwrite_reproduction(monkey
         after_a = server._terrain_cache[TK]["_gamma_surface"]
     overlaid_a_only, n_a = overlay_streamed_contract_fields(_CONTRACTS, {_ATM_CONTRACT_A: streamed_a})
     assert n_a == 1
-    assert after_a["cells"] == project_gamma_surface(overlaid_a_only, _SPOT)["cells"], (
+    assert _cells_match_ignoring_vanna_drift(after_a["cells"], project_gamma_surface(overlaid_a_only, _SPOT)["cells"]), (
         "A's own overlay must apply first")
     # Sanity the overlay is not vacuous: A's injected gamma (0.05, real OI=1606) must
     # actually move the published surface away from the untouched REST baseline.
@@ -488,7 +536,7 @@ def test_refreshing_b_does_not_undo_a_the_a_then_b_overwrite_reproduction(monkey
     expected_after_b = project_gamma_surface(overlaid_both, _SPOT)
     with server._terrain_cache_lock:
         after_b = server._terrain_cache[TK]["_gamma_surface"]
-    assert after_b["cells"] == expected_after_b["cells"], (
+    assert _cells_match_ignoring_vanna_drift(after_b["cells"], expected_after_b["cells"]), (
         "refreshing B must not undo A's already-applied fresh overlay -- THE defect "
         "as independently reproduced")
     assert after_b["stream_overlay_contracts"] == 2, (
@@ -530,7 +578,7 @@ def test_a_dropped_from_the_desired_set_no_longer_lingers_in_a_later_b_refresh(m
     expected = project_gamma_surface(overlaid_b_only, _SPOT)
     with server._terrain_cache_lock:
         cached = server._terrain_cache[TK]["_gamma_surface"]
-    assert cached["cells"] == expected["cells"], "A must not linger once it truly stops being desired"
+    assert _cells_match_ignoring_vanna_drift(cached["cells"], expected["cells"]), "A must not linger once it truly stops being desired"
     assert cached["stream_overlay_contracts"] == 1
     # Sanity: this is a REAL regression control only if A's lingering would have been
     # visible -- confirm A's own strike differs from the untouched-A expectation.

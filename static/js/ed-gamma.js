@@ -136,7 +136,13 @@
         return (c == null && p == null) ? null : (c || 0) + (p || 0);
       });
     }
-    return row[measure] || row.gex || [];
+    // NEVER fall back to a different measure's own array here -- a row whose `dex` field is
+    // genuinely absent/null for this strike (an absence the projection reports on purpose, see
+    // project_gamma_surface's own "absent from one expiry's own slice reports null, not zero"
+    // contract) must render as absent, not silently repaint that strike with its GEX dollars
+    // under a "Delta Exposure (DEX)" title -- a real, reproduced cross-measure mix an earlier
+    // `|| row.gex` fallback here allowed.
+    return row[measure] || [];
   }
 
   // The per-(strike, expiry) value a PRIOR rendered surface reported, for the
@@ -555,7 +561,8 @@
       volume: ['High<br>Volume', 'Low<br>Volume'],
     };
     var legendPair = MEASURE_LEGEND[measure] || MEASURE_LEGEND.gex;
-    var vlegend = '<div class="heat-vlegend"><span class="bar"></span>' +
+    var unsignedCls = (measure === 'oi' || measure === 'volume') ? ' unsigned' : '';
+    var vlegend = '<div class="heat-vlegend' + unsignedCls + '"><span class="bar"></span>' +
       '<span class="caps"><span class="t">' + legendPair[0] + '</span><span class="m">0</span>' +
       '<span class="b">' + legendPair[1] + '</span></span></div>';
     host.innerHTML = banner + note +

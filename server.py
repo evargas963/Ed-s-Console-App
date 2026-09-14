@@ -13750,7 +13750,7 @@ def _live_terrain_contracts_and_spot(tk: str) -> tuple[list | None, float | None
         payload = _terrain_cache.get(tk) or {}
         contracts = payload.get("_contracts_rest")
         spot = payload.get("_contracts_rest_spot")
-    if not contracts or not spot:
+    if not contracts or spot is None:
         return None, None
     return contracts, float(spot)
 
@@ -14244,7 +14244,14 @@ def project_gamma_surface(chain: list, spot: float) -> dict:
             # RC-276 already names elsewhere in this file -- call_oi/put_oi/call_volume/
             # put_volume, right below, are the genuinely-optional fields and correctly
             # keep their own None-preserving .get()).
-            vanna_row.append(_bf(bucket["call_vanna"] - bucket["put_vanna"]) if bucket is not None else None)
+            # NOT _bf: that helper rounds to the nearest WHOLE unit, correct for gex/dex's
+            # dollar magnitudes above but not for vanna's own much smaller per-vol-point scale
+            # (a real net vanna of 0.4 rounded to 0 loses sign and all magnitude). Rounded to 2
+            # decimals instead, matching /api/options/vanna-by-strike's own rounding of the
+            # identical call_vanna-put_vanna quantity from this same faucet -- reproduced live:
+            # the two endpoints showed materially different pictures of the same strike/vanna.
+            _vn = bucket["call_vanna"] - bucket["put_vanna"] if bucket is not None else None
+            vanna_row.append(round(_vn, 2) if _vn is not None else None)
             call_oi, put_oi = (bucket or {}).get("call_oi"), (bucket or {}).get("put_oi")
             oi_row.append({"call": _bf(call_oi), "put": _bf(put_oi)} if bucket is not None else {"call": None, "put": None})
             call_vol, put_vol = (bucket or {}).get("call_volume"), (bucket or {}).get("put_volume")

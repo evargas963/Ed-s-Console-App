@@ -104,9 +104,16 @@
   };
   function normalizeState() {   // restored state must be valid for the current NAV config
     if (!NAV[state.workspace]) state.workspace = 'options';
-    var subs = NAV[state.workspace].subs.map(function (s) { return s.id; });
-    if (subs.indexOf(state.subview) === -1) state.subview = subs[0];
-    var v = (NAV[state.workspace].views && NAV[state.workspace].views[state.subview]) || [];
+    var subDefs = NAV[state.workspace].subs;
+    var enabledIds = subDefs.filter(function (s) { return s.state !== 'na'; }).map(function (s) { return s.id; });
+    // Membership alone isn't enough: a sub can still be a real, listed id (subDefs still
+    // names it) while `state:'na'` now marks it disabled -- localStorage['ed_sub'] persists
+    // across a NAV reshuffle, so a returning user whose cached subview was demoted to `na`
+    // (several were, this pass) would otherwise restore onto a selected-but-disabled tab with
+    // no matching .sub-pane and no fallback outside Options, rendering that workspace blank.
+    if (enabledIds.indexOf(state.subview) === -1) state.subview = enabledIds[0] || subDefs[0].id;
+    var v0 = NAV[state.workspace].views && NAV[state.workspace].views[state.subview];
+    var v = Array.isArray(v0) ? v0 : [];
     var vids = v.map(function (x) { return x.id; });
     state.view = vids.indexOf(state.view) !== -1 ? state.view : (vids[0] || '');
     // A page reload restores `subview` from localStorage (ed_sub) but `measure` was never
@@ -155,7 +162,11 @@
 
   function renderViewbar() {
     var cfg = NAV[state.workspace];
-    var views = (cfg.views && cfg.views[state.subview]) || [];
+    // Array.isArray, not a truthy/`||` check: `cfg.views` being a plain object or array (both
+    // truthy, both able to resolve a lookup to something other than undefined -- see this
+    // block's own history, 2026-09-13) must never reach `.forEach` on anything but a real array.
+    var v0 = cfg.views && cfg.views[state.subview];
+    var views = Array.isArray(v0) ? v0 : [];
     var bar = document.getElementById('viewbar');
     var ctrls = bar.querySelector('.ctrls');
     // rebuild only the tab region, preserve the controls block
@@ -264,9 +275,12 @@
     // panels — the Chart main view AND the GEX-by-strike side panel, which is on screen for every
     // gamma view (heatmap included). So it shows for the whole gamma subview; the heatmap main view
     // itself ignores scope (it serves the server's strike_count-bounded window whole). Hidden
-    // entirely outside options/gamma.
+    // entirely outside options/gamma-family (dex/oi share this exact pane and are windowed the
+    // same way -- reuses MEASURE_BY_SUBVIEW as the one place that family is named, rather than
+    // hardcoding 'gamma'/'dex'/'oi' a further time; this control stayed hidden on dex/oi before,
+    // leaving no way to see or change an in-effect scope window there).
     var scp = document.getElementById('scopeCtl'); if (!scp) return;
-    scp.hidden = !(state.workspace === 'options' && state.subview === 'gamma');
+    scp.hidden = !(state.workspace === 'options' && !!MEASURE_BY_SUBVIEW[state.subview]);
     if (!scp.hidden) reflectScope();
   }
 
@@ -291,8 +305,14 @@
   function setWorkspace(ws) {
     if (!NAV[ws]) return;
     state.workspace = ws;
-    state.subview = (NAV[ws].subs[0] || {}).id || '';
-    var v = (NAV[ws].views && NAV[ws].views[state.subview]) || [];
+    // First ENABLED sub, not just subs[0] -- every workspace today happens to list its real
+    // tab first, but nothing enforced that; landing a workspace switch on a `state:'na'` tab
+    // would hit the exact same "selected but disabled, no matching pane" gap normalizeState()
+    // guards against on reload.
+    var firstEnabled = NAV[ws].subs.filter(function (s) { return s.state !== 'na'; })[0] || NAV[ws].subs[0] || {};
+    state.subview = firstEnabled.id || '';
+    var v0 = NAV[ws].views && NAV[ws].views[state.subview];
+    var v = Array.isArray(v0) ? v0 : [];
     state.view = (v[0] || {}).id || '';
     renderSubnav(); renderViewbar(); showPane(); syncAttrs();
   }
@@ -304,7 +324,8 @@
   var MEASURE_BY_SUBVIEW = { gamma: 'gex', dex: 'dex', oi: 'oi' };
   function setSubview(sv) {
     state.subview = sv;
-    var v = (NAV[state.workspace].views && NAV[state.workspace].views[sv]) || [];
+    var v0 = NAV[state.workspace].views && NAV[state.workspace].views[sv];
+    var v = Array.isArray(v0) ? v0 : [];
     state.view = (v[0] || {}).id || '';
     if (MEASURE_BY_SUBVIEW[sv]) setMeasure(MEASURE_BY_SUBVIEW[sv], /*fromSubview*/ true);
     renderSubnav(); renderViewbar(); syncAttrs();

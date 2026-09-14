@@ -56,24 +56,35 @@
       return;
     }
 
+    // One zone/level with a missing or non-numeric bound must never poison the shared scale
+    // for every other zone on the map -- isFinite() drops it instead of propagating NaN through
+    // Math.min/max into `lo`/`hi`, which would otherwise mis-position everything (every yPct()
+    // call, every band, every reference line, the spot marker) instead of just the bad entry.
     var lo = Infinity, hi = -Infinity;
-    zones.forEach(function (z) { lo = Math.min(lo, z.zone_low); hi = Math.max(hi, z.zone_high); });
-    refLines.forEach(function (l) { lo = Math.min(lo, l.value); hi = Math.max(hi, l.value); });
+    zones.forEach(function (z) {
+      if (isFinite(z.zone_low)) lo = Math.min(lo, z.zone_low);
+      if (isFinite(z.zone_high)) hi = Math.max(hi, z.zone_high);
+    });
+    refLines.forEach(function (l) { if (isFinite(l.value)) { lo = Math.min(lo, l.value); hi = Math.max(hi, l.value); } });
     if (isFinite(spot)) { lo = Math.min(lo, spot); hi = Math.max(hi, spot); }
+    if (!isFinite(lo) || !isFinite(hi)) {
+      h.innerHTML = '<div class="placeholder"><div class="sm">no usable zone/level bounds for ' + esc(tk) + '</div></div>';
+      return;
+    }
     var pad = (hi - lo) * 0.12 || 1;
     lo -= pad; hi += pad;
     var span = hi - lo || 1;
     function yPct(v) { return (1 - (v - lo) / span) * 100; }
 
     var mapH = 460;
-    var zonesHtml = zones.map(function (z) {
+    var zonesHtml = zones.filter(function (z) { return isFinite(z.zone_low) && isFinite(z.zone_high); }).map(function (z) {
       var top = yPct(z.zone_high), bottom = yPct(z.zone_low);
       var cls = z.zone_type === 'support_liquidity' ? 'support' : 'resistance';
       return '<div class="liqmap-zone ' + cls + '" style="top:' + top.toFixed(2) + '%;height:' + Math.max(0.6, bottom - top).toFixed(2) + '%;" ' +
         'title="' + esc(z.zone_type) + ' ' + num(z.zone_low) + '–' + num(z.zone_high) + ', confluence ' + esc(z.confluence_score) + '">' +
         '<span class="liqmap-zone-tag">' + esc(z.confluence_score) + '×</span></div>';
     }).join('');
-    var linesHtml = refLines.map(function (l) {
+    var linesHtml = refLines.filter(function (l) { return isFinite(l.value); }).map(function (l) {
       return '<div class="liqmap-line" style="top:' + yPct(l.value).toFixed(2) + '%;">' +
         '<span class="liqmap-line-label">' + esc(l.label) + ' ' + num(l.value) + '</span></div>';
     }).join('');
@@ -98,7 +109,10 @@
     if (!h || !stillMap(tk)) return;
     h.setAttribute('aria-busy', 'true');
     return Promise.all([
-      fetchJson('/api/liquidity-snapshot?ticker=' + encodeURIComponent(tk), signal),
+      // snapshot=live: the endpoint's OWN default is "premarket" -- a frozen before-9:30ET
+      // snapshot, not the current session. Omitting this silently showed a pre-market-only
+      // picture all day; snapshot_type is still echoed in the header badge either way.
+      fetchJson('/api/liquidity-snapshot?ticker=' + encodeURIComponent(tk) + '&snapshot=live', signal),
       fetchJson('/api/levels?ticker=' + encodeURIComponent(tk), signal),
     ]).then(function (results) {
       if (stillMap(tk)) render(h, tk, results[0], results[1]);

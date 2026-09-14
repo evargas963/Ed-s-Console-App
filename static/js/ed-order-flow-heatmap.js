@@ -66,7 +66,12 @@
       if (c.price < range.lo || c.price > range.hi) return;
       inRange = true;
       var row = Math.min(priceRows - 1, Math.max(0, Math.floor((c.price - range.lo) / priceStep)));
-      var idx = row * nBuckets + c.t;
+      // c.t is server-supplied; clamp it the same way `row` is clamped just above -- an
+      // out-of-range bucket index (an off-by-one boundary tick, or a stale response racing a
+      // `minutes` change) would otherwise land in the row directly above via integer overflow
+      // of `row*nBuckets+col`, painting a false hot cell in an unrelated price row.
+      var col = Math.min(nBuckets - 1, Math.max(0, c.t | 0));
+      var idx = row * nBuckets + col;
       bidGrid[idx] += c.bid || 0; askGrid[idx] += c.ask || 0;
     });
     var maxV = 1;
@@ -160,7 +165,10 @@
   function load() {
     if (!isHeatmap()) return;
     var tEl = document.getElementById('ofhTicker'); if (tEl) tEl.textContent = ticker().replace('$', '');
-    _loader.trigger(ticker());
+    // Key on ticker+minutes, not ticker alone -- clicking a different time-range button while
+    // the previous window's fetch is still in flight must ABORT it (a real context change),
+    // not just queue a trailing re-run behind it (what an unchanged key does).
+    _loader.trigger(ticker() + '|' + _minutes);
   }
 
   if (typeof document !== 'undefined') {
