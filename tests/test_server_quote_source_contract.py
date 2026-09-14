@@ -218,6 +218,46 @@ def test_tier_a_live_state_rest_bootstrap_row_uses_schwab_time_not_wall_clock(mo
     assert isinstance(out["server_received_ts"], float)
 
 
+def test_tier_a_live_state_retries_the_rest_bootstrap_after_an_early_get_client_failure(monkeypatch):
+    """LIVE operator-reproduced defect (2026-09-14, spot 360 audit round 2): a stale plane row
+    stuck at 2.9 hours old kept being served (quote_ingestion unchanged) across repeated real
+    requests, while /api/fast-quote -- which resolves get_client() independently on every
+    call -- succeeded immediately with a genuinely fresh price. Root cause: this function's
+    OWN earlier get_client() call (whose only job is deciding whether a token_invalid short-
+    circuit applies) sometimes raised even though Schwab auth was actually fine moments
+    later, and the old `and client` gate on the REST bootstrap below meant that ONE raise
+    permanently skipped ever trying again for this request -- with no retry, because
+    _memoized_quote_response was never even called. It resolves its own client when none is
+    supplied; this must let it try, not trust a client value this function decided not to
+    need for anything else."""
+    from fastapi import HTTPException
+
+    calls = {"n": 0}
+
+    def _flaky_get_client():
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise HTTPException(status_code=503, detail="transient")
+        return object()
+
+    monkeypatch.setattr(server._lmp, "get_quote", lambda _ticker: {
+        "spot": 999.0, "server_received_ts": 1.0,   # ancient -- must not be trusted
+        "quote_ingestion": "schwab_streaming_level_one",
+    })
+    monkeypatch.setattr(server._lmp, "next_fast_generation", lambda _ticker: 99)
+    monkeypatch.setattr(server, "get_client", _flaky_get_client)
+    monkeypatch.setattr(server, "_safe_get_quote_with_retry", lambda *_args, **_kwargs: _Resp())
+
+    out = server._tier_a_live_state_dict("SPY", None)
+
+    assert calls["n"] >= 2, "get_client must be retried, not abandoned after the first raise"
+    assert out["quote_ingestion"] == "rest_tier_a", (
+        f"expected a fresh REST bootstrap, got the stale plane row back "
+        f"(quote_ingestion={out.get('quote_ingestion')!r}, spot={out.get('spot')!r})"
+    )
+    assert out["quote_mid"] == 501.25
+
+
 def test_tier_a_live_state_falls_through_to_rest_when_the_plane_row_is_stale(monkeypatch):
     """Operator-reproduced defect (2026-09-14, spot 360 audit): this gate used to trust ANY
     plane row with a spot, however old -- if the streaming websocket silently stalled, the

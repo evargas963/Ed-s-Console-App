@@ -109,6 +109,15 @@
     svg.style.cursor = 'crosshair';
     svg.addEventListener('dragstart', function (e) { e.preventDefault(); });
     svg.addEventListener('mousedown', function (e) {
+      // CI-caught regression: a real click on a .gmark-hit (the strike-selection target
+      // every workspace's cross-panel sync depends on) used to reach setStrike() via the
+      // browser's native click event -- but this module's own mouseup handler re-renders
+      // the WHOLE innerHTML synchronously (for pan/pin), which detaches the very element
+      // mousedown just fired on before that native click ever dispatches, so the strike
+      // selection was silently lost. A click that starts on a strike mark is the mark's own
+      // click-to-select gesture, not this chart's pan/zoom/crosshair gesture -- let it
+      // proceed completely undisturbed.
+      if (e.target && e.target.closest && e.target.closest('.gmark-hit')) return;
       var p = clientToViewBox(svg, e.clientX, e.clientY);
       _dragState = { mode: (p.vx < L ? 'axis' : 'pan'), startVX: p.vx, startVY: p.vy, startLo: lo, startHi: hi, moved: false };
       e.preventDefault();

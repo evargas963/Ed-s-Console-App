@@ -6490,9 +6490,31 @@ def _tier_a_live_state_dict(ticker: str, expiry: Optional[str]) -> dict:
     # would already have fallen through to a fresher REST quote — reopening the exact
     # divergence this file's spot authority exists to prevent, just in the other direction.
     # An over-age row is now treated the same as no row: fall through to the REST bootstrap.
+    #
+    # Operator-reproduced defect, round 2 (LIVE, 2026-09-14): the pre-existing `and client`
+    # gate here silently abandoned this bootstrap whenever the EARLIER get_client() call (the
+    # try/except above, whose only job is a DIFFERENT question -- "is there a plane row to
+    # fall back on at all if auth is down") happened to raise -- leaving `client = None` with
+    # no retry, ever, for THIS request. Before this file had any freshness concept that was a
+    # harmless no-op (the plane was trusted regardless), so a transient auth hiccup was
+    # invisible. Now that a stale row is correctly rejected above, that same transient hiccup
+    # left the header STUCK: MEASURED live, a plane row 2.9 hours old kept being served
+    # (quote_ingestion: schwab_streaming_level_one, unchanged) across repeated requests, while
+    # /api/fast-quote -- which resolves get_client() itself, independently, on every call --
+    # succeeded immediately and returned a genuinely fresh price. _memoized_quote_response
+    # already resolves its own client when none is supplied; call it that way and let it
+    # retry, instead of trusting a client this function decided not to need for anything else.
     _row_fresh = bool(row) and _lmp.quote_is_fresh(row)
-    if (not row or row.get("spot") is None or not _row_fresh) and client:
-        q_resp = _memoized_quote_response(tkr, client=client)   # RC-112/W3-C8: one vendor faucet
+    if not row or row.get("spot") is None or not _row_fresh:
+        q_resp = None
+        try:
+            q_resp = _memoized_quote_response(tkr, client=client)   # RC-112/W3-C8: one vendor faucet
+        except HTTPException:
+            # get_client() failed again on this attempt too -- fall through to whatever `row`
+            # already holds (a stale-but-present plane row, honestly labelled by its own
+            # quote_ingestion/server_received_ts, or the "no_quote" fail-closed response
+            # below if there was never a row at all). Never a silent 500 for a display route.
+            pass
         if q_resp and q_resp.status_code == 200:
             q_json = q_resp.json()
             _node = q_json.get(tkr.upper()) or q_json.get(tkr) or {}
