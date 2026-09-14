@@ -12794,13 +12794,24 @@ def _terrain_loop() -> None:
         # the pre-enrolled board. A snapshot of the keys, never the live dict, since
         # another thread's concurrent _note_gamma_surface_demand write must not raise
         # "dictionary changed size during iteration" here.
-        _previewed = [tk for tk in list(_gamma_surface_demand.keys())
-                      if tk not in tickers and _gamma_surface_wanted(tk)]
+        _viewed_now = [tk for tk in list(_gamma_surface_demand.keys()) if _gamma_surface_wanted(tk)]
+        _previewed = [tk for tk in _viewed_now if tk not in tickers]
         # RC-146: a skip reason is only true for the cycle that recorded it. Cleared at the TOP
         # of every cycle so a pause that has ended cannot keep telling the operator to wait —
         # the branch below re-records it while, and only while, it still applies.
         _clear_terrain_skips()
-        if (tickers or _previewed) and _is_loggable_session():
+        # Operator-reproduced defect (2026-09-14, "the collection schedule must not block live
+        # viewing"): this whole cycle used to be gated on _is_loggable_session() -- the
+        # ARCHIVAL LOGGER's own RTH-only writing policy (RTH_ONLY, "only log during RTH + 30min
+        # pre/post buffer") -- so a ticker someone had open and was actively looking at got NO
+        # live refresh attempt at all outside that window, not even a try. "should the durable
+        # log be written" and "should an operator who is looking at this ticker right now see
+        # whatever is currently fetchable" are different questions; this loop answered both with
+        # the same switch. The enrolled board's full sweep stays RTH-gated (unchanged -- nobody
+        # is necessarily watching all 58 of them, and the morning-contention throttle below is
+        # itself an RTH-only concept), but active viewing demand now always gets a live attempt,
+        # whether the archival logger is in its window or not.
+        if _is_loggable_session():
             # During the morning wide-chain window (09:30-10:00 ET) SPY/QQQ/IWM already
             # take 100-strike gated fetches on the money path. Do not pile a full-universe
             # terrain sweep on top of that — refresh sentinels only until the window ends.
@@ -12842,6 +12853,20 @@ def _terrain_loop() -> None:
                 tickers = tickers + [tk for tk in _previewed if tk not in tickers]
             with concurrent.futures.ThreadPoolExecutor(max_workers=TERRAIN_WORKERS) as pool:
                 list(pool.map(_terrain_refresh_one, tickers))
+        elif _viewed_now:
+            # Outside the archival logger's window: the enrolled board's passive sweep does
+            # not run (unchanged), but every ticker someone actually has open right now still
+            # gets a real live attempt -- whatever Schwab is willing to return at this hour is
+            # what gets shown, honestly labelled by its own age/source, never withheld because
+            # the background WRITER happens to be off duty. The morning-contention throttle
+            # above is itself an RTH-only concept (it exists to share chain-fetch slots with
+            # the 09:30-10:00 ET wide-chain capture), so it does not apply here.
+            _terrain_cycle_n += 1
+            tickers = list(_viewed_now)
+            with concurrent.futures.ThreadPoolExecutor(max_workers=TERRAIN_WORKERS) as pool:
+                list(pool.map(_terrain_refresh_one, tickers))
+        else:
+            tickers = []
         elapsed = time.monotonic() - cycle_start
         # RC-165: publish the DELIVERED cycle so freshness is judged against reality, not the
         # sleep floor. This number was already computed and only logged; readers had no access
@@ -13505,6 +13530,15 @@ def get_terrain_strikes(ticker: str = Query(default=DEFAULT_TICKER)):
     from math_exposure_core import compute_exposures_by_strike as _cebs
 
     tk = ticker_storage_key(ticker or DEFAULT_TICKER)   # RC-126: SPX -> $SPX etc., ONE authority
+    # Operator-reproduced defect (2026-09-14, "the collection schedule must not block live
+    # viewing"): _note_gamma_surface_demand was only ever called from
+    # get_options_gamma_surface (the Heatmap grid's own route) -- GEX-by-Strike, the
+    # Positioning Migration panel, and the Chart view all read THIS route instead and never
+    # registered that anyone was watching. A ticker viewed only through one of those three
+    # screens could never reach _terrain_loop's `_previewed` set, so it never got a live
+    # refresh attempt regardless of enrollment. Every screen that shows this ticker's live
+    # terrain-derived data must register the same demand signal, not just one of them.
+    _note_gamma_surface_demand(tk)
 
     def _per_strike(contracts: list, spot: float) -> dict:
         def _scope(cts: list) -> list:

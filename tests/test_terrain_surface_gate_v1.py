@@ -299,6 +299,68 @@ def test_terrain_loop_refreshes_a_previewed_ticker_not_on_the_enrolled_board(mon
         "pre-enrolled board")
 
 
+def test_a_viewed_ticker_still_refreshes_outside_the_archival_loggers_window(monkeypatch):
+    """Operator-reproduced defect (2026-09-14, "the collection schedule must not block live
+    viewing"): _terrain_loop's entire refresh cycle -- enrolled board AND previewed/viewed
+    tickers alike -- used to be gated on _is_loggable_session(), which answers "should the
+    background LOGGER write a durable snapshot right now" (RTH_ONLY, "only log during RTH +
+    30min pre/post buffer"). That is a different question from "does an operator currently
+    looking at this ticker deserve a live refresh attempt". Reproduced live: $SPX, open in a
+    browser tab outside that window, showed today.all == [] with reason "no terrain snapshot
+    has been computed yet" forever, because _terrain_refresh_one was never even attempted for
+    it. The enrolled board's passive sweep staying RTH-gated is correct (nobody is necessarily
+    watching all of it); a ticker someone has open right now must not wait for the archival
+    logger's own schedule.
+    """
+    import threading
+
+    calls: list[str] = []
+
+    def proj(contracts, spot):
+        return {"expirations": [], "strikes": [], "cells": []}
+    _stub_terrain(monkeypatch, proj)
+    monkeypatch.setattr(server, "_seed_strike_geometry_from_storage", lambda: None)
+    monkeypatch.setattr(server, "_is_loggable_session", lambda: False)   # outside the logger's window
+    monkeypatch.setattr(server, "TERRAIN_REFRESH_SEC", 0.2)
+    real_refresh = server._terrain_refresh_one
+
+    def spy_refresh(tk, priority=False):
+        calls.append(tk)
+        return real_refresh(tk, priority=priority)
+    monkeypatch.setattr(server, "_terrain_refresh_one", spy_refresh)
+
+    enrolled_not_viewed_tk = server.ticker_storage_key("SPY")
+    viewed_tk = server.ticker_storage_key("$SPX")
+    with server._logger_lock:
+        prev_logger_tickers = list(server._logger_tickers)
+        server._logger_tickers[:] = [enrolled_not_viewed_tk]
+    server._gamma_surface_demand.pop(viewed_tk, None)
+    server._note_gamma_surface_demand(viewed_tk)   # someone has this ticker open right now
+
+    server._terrain_loop_running = True
+    t = threading.Thread(target=server._terrain_loop, daemon=True)
+    t.start()
+    try:
+        deadline = time.time() + 5.0
+        while time.time() < deadline and viewed_tk not in calls:
+            time.sleep(0.05)
+    finally:
+        server._terrain_loop_running = False
+        t.join(timeout=5.0)
+        with server._logger_lock:
+            server._logger_tickers[:] = prev_logger_tickers
+        server._gamma_surface_demand.pop(viewed_tk, None)
+
+    assert viewed_tk in calls, (
+        "a ticker someone is actively viewing right now must get a live refresh attempt even "
+        "outside the archival logger's own RTH-only window -- the logger's on/off switch must "
+        "not decide whether an operator looking at a chart right now sees fresh data")
+    assert enrolled_not_viewed_tk not in calls, (
+        "the enrolled board's passive full-universe sweep is correctly RTH-gated -- nobody is "
+        "necessarily watching all of it, so it must not run outside that window just because "
+        "one unrelated ticker has live view demand")
+
+
 def test_a_stream_observation_between_rest_fetch_and_computation_completion_is_admitted(monkeypatch):
     """Independent-review finding (2026-09-12), REPRODUCED against this exact production path
     before being fixed: 'I supplied REST data at time 400, a stream update at 401, and

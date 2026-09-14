@@ -219,8 +219,12 @@ def book_heatmap_for_ticker(
     persisted `stream_book_raw` rows the live `/api/order-flow/microstructure` ladder already
     reads (NASDAQ_BOOK + NYSE_BOOK, merged — the combined displayed liquidity across both
     venues, never one venue silently picked as "the" book) into a time x price grid, cell
-    value = summed native TOTAL_VOLUME. This is genuinely historical (a real time dimension),
-    which the live ladder's single current snapshot cannot show — the Bookmap-style view.
+    value = the LAST observed native TOTAL_VOLUME at that price within the bucket -- NOT a sum
+    across every captured tick (NASDAQ_BOOK/NYSE_BOOK messages are full-book snapshots, so an
+    unchanged resting level is re-transmitted every time any OTHER level moves; summing would
+    make brightness track retransmission frequency instead of actual displayed size). This is
+    genuinely historical (a real time dimension), which the live ladder's single current
+    snapshot cannot show — the Bookmap-style view.
 
     The window ends at the LATEST row actually captured for this ticker, never wall-clock
     `now()`: outside RTH (weekends, after-hours with no fresh ticks) "now" would show an
@@ -307,7 +311,16 @@ def book_heatmap_for_ticker(
                     continue
                 px = round(float(px), 2)
                 cell = cells.setdefault((bucket, px), {"bid": 0.0, "ask": 0.0})
-                cell[side] += float(vol)
+                # Operator-reproduced defect (2026-09-14): NASDAQ_BOOK/NYSE_BOOK messages are
+                # full-book snapshots, not deltas -- an UNCHANGED 100-share resting level gets
+                # re-transmitted (and re-captured into stream_book_raw) every time ANY other
+                # level in the book moves. Accumulating with `+=` turned "the same 100 shares,
+                # observed 10 times" into a displayed 1,000 -- brightness measured how often a
+                # level was retransmitted, not how much size actually sat there. `rows` is
+                # already oldest-to-newest (see the DESC+LIMIT+reverse() above), so a plain
+                # overwrite leaves each cell holding the LAST observed size at that price within
+                # the bucket -- a real captured value, never a sum across repeated observations.
+                cell[side] = float(vol)
                 prices_seen.add(px)
 
     if not prices_seen:
@@ -326,6 +339,8 @@ def book_heatmap_for_ticker(
         "cells": cell_list,
         "method": ("stream_book_raw NASDAQ_BOOK+NYSE_BOOK rows for this ticker, oldest-to-newest in "
                    "the window ending at the data's own latest captured tick, binned into n_buckets "
-                   "time columns x native BID_PRICE/ASK_PRICE rows; cell value = summed native "
-                   "TOTAL_VOLUME (displayed size only, both venues merged)."),
+                   "time columns x native BID_PRICE/ASK_PRICE rows; cell value = the LAST observed "
+                   "native TOTAL_VOLUME at that price within the bucket (displayed size only, both "
+                   "venues merged) -- never summed across repeated observations of the same resting "
+                   "size, which would measure retransmission frequency, not liquidity."),
     }

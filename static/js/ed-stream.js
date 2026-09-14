@@ -273,7 +273,25 @@
   }
   function getDesiredAdditional() { return _desiredAdditional.slice(); }
 
+  // Operator-reproduced defect (2026-09-14): AMD Book -> PLTR Trade Desk -> AMD Book left the
+  // live equity book subscription on PLTR while the Book screen kept showing AMD. Cause: THREE
+  // call sites (ed-order-flow.js, ed-trade-desk.js, and none at all in
+  // ed-order-flow-heatmap.js) each fire-and-forget setActiveTicker with their OWN private
+  // "have I already warmed this ticker" cache -- so switching screens (not just tickers) moved
+  // the real subscription without any of those private caches finding out. This module's own
+  // docstring already claims "the ONE streaming-control writer" for exactly this reason; the
+  // de-dup belongs here, once, not copied into every consumer. warmActiveTicker() is the ONE
+  // gate every equity-book-consuming view must call instead of keeping a local `_warmedFor`.
+  var _warmedTicker = null;
+  function warmActiveTicker(ticker) {
+    ticker = String(ticker || '').trim().toUpperCase();
+    if (!ticker || _warmedTicker === ticker) return;
+    _warmedTicker = ticker;
+    setActiveTicker(ticker);
+  }
+
   window.EdStream = { setActiveContract: setActiveContract, setActiveTicker: setActiveTicker,
+    warmActiveTicker: warmActiveTicker,
     setAdditionalContracts: setAdditionalContracts, getDesiredAdditional: getDesiredAdditional,
     status: status, getDesired: getDesired, acceptedForDesired: acceptedForDesired,
     controlState: controlState, clearDesired: clearDesired, gate: gate };

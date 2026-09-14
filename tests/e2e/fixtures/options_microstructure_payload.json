@@ -1,6 +1,7 @@
 {
   "ages": {
-    "book_age_sec": 23903.525,
+    "book_age_sec": 377851.424,
+    "book_stale": true,
     "quote_age_sec": null
   },
   "book_slope": {
@@ -9,6 +10,7 @@
   },
   "classification": {
     "ages.book_age_sec": "DERIVED",
+    "ages.book_stale": "DERIVED",
     "ages.quote_age_sec": "DERIVED",
     "book_slope": "DERIVED",
     "crossed": "DERIVED",
@@ -121,7 +123,7 @@
     "exchange_quote_ts": null,
     "n_ask_levels": 3,
     "n_bid_levels": 3,
-    "server_received_ts": 1789023903.524546,
+    "server_received_ts": 1789377851.4238908,
     "top_of_book_ask_leaf": "streaming.ASK_PRICE",
     "top_of_book_bid_leaf": "streaming.BID_PRICE"
   },

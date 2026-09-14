@@ -565,6 +565,38 @@ def test_strikes_payload_carries_server_side_sums(monkeypatch):
     assert ss["spot_basis"] == 100.0, "sums must be computed against the payload's own spot"
 
 
+def test_terrain_strikes_registers_viewing_demand(monkeypatch):
+    """Operator-reproduced defect (2026-09-14, "the collection schedule must not block live
+    viewing"): _note_gamma_surface_demand was only ever called from get_options_gamma_surface
+    (the Heatmap grid's own route). GEX-by-Strike, the Trade Desk Positioning Migration panel,
+    and the Chart view all read /api/terrain/strikes instead and never registered that anyone
+    was watching -- a ticker viewed only through one of those three screens could never reach
+    _terrain_loop's viewed-ticker set (see test_terrain_surface_gate_v1.py's companion test),
+    so it never got a live refresh attempt regardless of enrollment. Every screen that shows a
+    ticker's live terrain-derived data must register the same demand signal."""
+    import json
+
+    import server as srv
+
+    monkeypatch.setattr(srv, "terrain_cache_get", lambda tk: {
+        "_per_strike": {"all": [], "near": [], "far": []}, "spot": 100.0, "computed_ts_utc": 1.0,
+    })
+    monkeypatch.setattr(srv, "resolve_spot", lambda tk, **kw: (100.0, "schwab_quote_last", 1.0))
+    monkeypatch.setattr(srv, "latest_accrual_rows", lambda *a, **k: None)
+    tk = srv.ticker_storage_key("ZZDEMANDONLY")
+    srv._gamma_surface_demand.pop(tk, None)
+    try:
+        assert srv._gamma_surface_wanted(tk) is False, "must start with no recorded demand"
+        resp = srv.get_terrain_strikes(ticker="ZZDEMANDONLY")
+        json.loads(bytes(resp.body))   # a real, well-formed response — not the point of this test
+        assert srv._gamma_surface_wanted(tk) is True, (
+            "GET /api/terrain/strikes must register viewing demand for its ticker, the same as "
+            "/api/options/gamma-surface already does -- otherwise the terrain loop never learns "
+            "anyone is watching a ticker that only this route serves")
+    finally:
+        srv._gamma_surface_demand.pop(tk, None)
+
+
 def test_chart_level_titles_carry_session_scope_and_vendor_basis():
     """RC-305: /api/levels serves session_scope and vendor_basis on every row's provenance
     and the chart rendered the prices with neither qualifier. EXECUTED against the REAL

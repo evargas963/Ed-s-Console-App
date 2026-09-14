@@ -39,23 +39,45 @@ def _book(bid_price, bid_vol, ask_price, ask_vol, book_time_ms=0):
     }
 
 
-def test_real_levels_are_binned_by_time_bucket_and_price_verbatim(tmp_path):
+def test_repeated_unchanged_levels_do_not_inflate_the_cell(tmp_path):
+    """Operator-reproduced defect (2026-09-14): NASDAQ_BOOK/NYSE_BOOK messages are full-book
+    snapshots, not deltas -- an UNCHANGED 100-share level re-transmitted 10 times must still
+    read as 100, never as 1,000. The cell holds the LAST observed size in the bucket, not a
+    sum across every retransmission of the same resting size."""
+    db = tmp_path / "stream_capture.db"
+    _write_book_rows(db, [
+        (1000.0, "NASDAQ_BOOK", _book(100.00, 100, 100.05, 30)),
+        (1000.1, "NASDAQ_BOOK", _book(100.00, 100, 100.05, 30)),
+        (1000.2, "NASDAQ_BOOK", _book(100.00, 100, 100.05, 30)),
+    ])
+    d = book_heatmap_for_ticker(SYM, minutes=60, db_path=db)
+    assert d["available"] is True
+    assert d["rows_scanned"] == 3
+    cells = {(c["t"], c["price"]): c for c in d["cells"]}
+    assert cells[(0, 100.00)]["bid"] == 100.0   # not 300.0
+    assert cells[(0, 100.05)]["ask"] == 30.0    # not 90.0
+
+
+def test_a_changed_level_in_the_same_bucket_reads_as_its_latest_observed_size(tmp_path):
     db = tmp_path / "stream_capture.db"
     # A sub-1s gap lands both rows in the SAME bucket: bucket_sec floors at 1.0s (n_buckets=90
     # would otherwise make it a fraction of a second), and (1000.4-1000.0)/1.0 floors to 0.
     _write_book_rows(db, [
         (1000.0, "NASDAQ_BOOK", _book(100.00, 50, 100.05, 30)),
-        (1000.4, "NASDAQ_BOOK", _book(100.00, 20, 100.05, 10)),  # same bucket, same price -> sums
+        (1000.4, "NASDAQ_BOOK", _book(100.00, 20, 100.05, 10)),  # same bucket, same price -> latest wins
     ])
     d = book_heatmap_for_ticker(SYM, minutes=60, db_path=db)
     assert d["available"] is True
     assert d["rows_scanned"] == 2
     cells = {(c["t"], c["price"]): c for c in d["cells"]}
-    assert (0, 100.00) in cells and cells[(0, 100.00)]["bid"] == 70.0 and cells[(0, 100.00)]["ask"] == 0.0
-    assert (0, 100.05) in cells and cells[(0, 100.05)]["ask"] == 40.0 and cells[(0, 100.05)]["bid"] == 0.0
+    assert (0, 100.00) in cells and cells[(0, 100.00)]["bid"] == 20.0 and cells[(0, 100.00)]["ask"] == 0.0
+    assert (0, 100.05) in cells and cells[(0, 100.05)]["ask"] == 10.0 and cells[(0, 100.05)]["bid"] == 0.0
 
 
 def test_both_venues_are_merged_not_one_silently_picked(tmp_path):
+    """Same ts_recv for both venues: sqlite has no guaranteed row order for ties, so this
+    asserts the LAST-observed value is one of the two real per-venue sizes, never their sum
+    (300.00 -> {50,25} or {25,50} depending on read order, but never 75)."""
     db = tmp_path / "stream_capture.db"
     _write_book_rows(db, [
         (1000.0, "NASDAQ_BOOK", _book(100.00, 50, 100.05, 30)),
@@ -64,8 +86,8 @@ def test_both_venues_are_merged_not_one_silently_picked(tmp_path):
     d = book_heatmap_for_ticker(SYM, minutes=60, db_path=db)
     assert d["available"] is True and d["rows_scanned"] == 2
     cells = {(c["t"], c["price"]): c for c in d["cells"]}
-    assert cells[(0, 100.00)]["bid"] == 75.0
-    assert cells[(0, 100.05)]["ask"] == 45.0
+    assert cells[(0, 100.00)]["bid"] in (50.0, 25.0)
+    assert cells[(0, 100.05)]["ask"] in (30.0, 15.0)
 
 
 def test_window_anchors_to_the_datas_own_latest_row_never_wallclock_now(tmp_path):

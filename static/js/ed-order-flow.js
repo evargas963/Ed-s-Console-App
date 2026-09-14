@@ -26,14 +26,13 @@
   function host() { return document.getElementById('obBody'); }
   function stillBook(tk) { return isBook() && ticker() === tk; }
 
-  // Fire-and-forget, once per ticker -- setActiveTicker is documented last-writer-wins /
-  // safe to call repeatedly, but there is no reason to re-POST on every poll tick for the
-  // SAME ticker this view is already watching.
-  var _warmedFor = null;
+  // Operator-reproduced defect (2026-09-14): a PRIVATE "already warmed AMD" cache here could
+  // not see that Trade Desk moved the real subscription to PLTR in between -- AMD Book -> PLTR
+  // Trade Desk -> AMD Book left the live subscription stuck on PLTR while this screen still
+  // showed AMD. EdStream.warmActiveTicker is the ONE shared de-dup authority now (ed-stream.js);
+  // no view keeps its own copy of "did I already ask for this ticker".
   function warm(tk) {
-    if (_warmedFor === tk) return;
-    _warmedFor = tk;
-    if (window.EdStream && window.EdStream.setActiveTicker) window.EdStream.setActiveTicker(tk);
+    if (window.EdStream && window.EdStream.warmActiveTicker) window.EdStream.warmActiveTicker(tk);
   }
 
   function loadImpl(tk, signal) {
@@ -135,9 +134,15 @@
       : '<div class="sm" style="padding:4px 0;">no size-outlier candidates in the current displayed book</div>';
     var deferred = (d.deferred || []).join(' · ');
 
+    // Operator-reproduced defect (2026-09-14): this badge was a hardcoded literal, never gated
+    // on ages.book_age_sec even though the exact same number is displayed two lines below it in
+    // the Freshness section -- a book observation aged to 3,600s still rendered LIVE. book_stale
+    // is server-computed (app.options.order_flow.engine.compute_book_microstructure); this only
+    // reads the verdict.
+    var stale = ages.book_stale === true;
     h.innerHTML =
       '<div class="fl-head"><div class="fl-c"><span class="fl-lab">Ticker</span><span class="fl-sym">' + esc(tk) + '</span></div>' +
-      '<div class="fl-sub"><span class="fl-lab">Book</span><span class="fl-badge live">LIVE</span></div></div>' +
+      '<div class="fl-sub"><span class="fl-lab">Book</span><span class="fl-badge ' + (stale ? 'stale' : 'live') + '">' + (stale ? 'STALE' : 'LIVE') + '</span></div></div>' +
       '<div class="dom-wrap">' +
         '<div class="dom-ladder">' + ladderHtml(bidLevels, askLevels, wallSet) + midHtml + '</div>' +
         '<div class="dom-stats">' +
