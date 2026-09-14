@@ -18,6 +18,13 @@
   function ctTime(sec){try{return new Date(sec*1000).toLocaleTimeString('en-US',{hour12:false,hour:'2-digit',minute:'2-digit',timeZone:'America/Chicago'});}catch(e){return'';}}
   function isChart(){var s=(window.EdShell&&window.EdShell.getState())||{};return s.workspace==='options'&&s.subview==='gamma'&&s.view==='chart';}
   function ticker(){return((window.EdShell&&window.EdShell.getState())||{}).ticker||'SPY';}
+  // Mirrors server.py's SPOT_SOURCE_* constants -- short, human labels for the same strings
+  // resolve_spot() already stamps on every payload it produces.
+  var SPOT_SOURCE_LABEL = {
+    streaming_plane: 'streaming', schwab_quote_last: 'REST quote',
+    stored_snapshot: 'stored (stale)', chain_underlying: 'chain close', regular_close: 'session close',
+  };
+  function spotSourceLabel(s) { return s ? (SPOT_SOURCE_LABEL[s] || s) : null; }
 
   var _mode = 'profile';
   var COL = { pos: 'var(--ed-pos)', neg: 'var(--ed-neg)', spot: 'var(--ed-ink)', flip: 'var(--ed-accent)',
@@ -198,6 +205,14 @@
     var bars = (barsData && barsData.bars) || [];
     var srows = (strikesData && strikesData.today && strikesData.today.all) || [];
     var spot = Number((terrain && terrain.spot) != null ? terrain.spot : (strikesData && strikesData.spot));
+    // Operator directive (2026-09-14, spot 360 audit): every payload already carries WHICH
+    // spot authority answered it (resolve_spot's own design intent, "so a divergence is
+    // impossible to hide") -- this was computed server-side but never shown anywhere. Reading
+    // it here and rendering it below is how the NEXT divergence, if the plane/REST/stored
+    // hierarchy ever disagrees again, is visible on screen instead of requiring a screenshot
+    // comparison to notice.
+    var spotSource = (terrain && terrain.spot != null) ? terrain.spot_source
+      : (strikesData ? strikesData.spot_source : null);
     if (!bars.length && !srows.length) {
       host.innerHTML = '<div class="placeholder"><div class="sm">' +
         (barsData || strikesData ? 'no bars / per-strike gamma for this symbol' : 'no console serving /api/bars1m + /api/terrain/strikes') + '</div></div>';
@@ -236,7 +251,8 @@
     var legend = note + asofLine + '<div class="chart-legend">' +
       '<span><span class="sw" style="background:var(--ed-pos)"></span>+GEX</span>' +
       '<span><span class="sw" style="background:var(--ed-neg)"></span>−GEX</span>' +
-      '<span><span class="sw" style="background:var(--ed-ink)"></span>spot ' + (isFinite(spot) ? spot.toFixed(2) : '—') + '</span>' +
+      '<span><span class="sw" style="background:var(--ed-ink)"></span>spot ' + (isFinite(spot) ? spot.toFixed(2) : '—') +
+      (spotSourceLabel(spotSource) ? ' <span class="chart-spot-src">(' + esc(spotSourceLabel(spotSource)) + ')</span>' : '') + '</span>' +
       '<span><span class="sw" style="background:var(--ed-accent)"></span>flip</span>' +
       '<span class="chart-hint">drag plot to pan · drag price axis to rescale · scroll to zoom · click pins a readout · double-click resets</span></div>';
     _lastCtx = { bars: bars, win: win, spot: spot, terrain: terrain, legend: legend };

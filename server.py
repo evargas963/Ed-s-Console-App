@@ -655,6 +655,28 @@ def chain_underlying_spot(c_json: dict) -> float | None:
 
 #: Precedence for the ONE spot authority. Highest wins; every entry records where the
 #: number came from so a caller can never silently accept a lower-confidence source.
+#
+# Operator-reproduced defect (2026-09-14, "360 audit... spot can be a different number on
+# the gamma chart"): resolve_spot's OWN docstring has claimed "THE single spot authority"
+# since RC-14, and a real static lock (tests/test_spot_authority_v1.py::
+# test_every_vendor_quote_read_goes_through_the_memo) keeps every RAW REST vendor quote
+# fetch behind it. That lock is real and it worked -- for the REST world it covers. It
+# never covered live_market_plane (Layer A): that module is ALSO an authoritative,
+# internally-disciplined quote store (its own docstring: "authoritative in-process live
+# quote plane... Tier A GET /api/live/state, Tier B GET /api/analytics/light, and Tier C
+# _fetch_state/GET /api/state all read this plane"), fed primarily by the Schwab
+# **streaming** websocket, completely independent of resolve_spot's REST-polling
+# _memoized_quote_response/_quote_memo. Two individually well-governed producers, never
+# reconciled with each other, is what allowed this: resolve_spot's 9 call sites (terrain,
+# /api/terrain/strikes -- the Gamma Chart's own inputs -- and others) never saw a streaming
+# tick at all, while the header/analytics stack read the plane FIRST and only fell back to
+# the REST memo when the plane was empty. Both sides were locked against duplicating
+# THEMSELVES; nothing ever locked them against diverging from EACH OTHER. Fixed at the
+# root: the plane is now resolve_spot's own highest-precedence source (freshness-gated,
+# never trusted stale), so every caller of the one authority function converges on the
+# same number the header shows, instead of two parallel hierarchies that happened to
+# usually agree.
+SPOT_SOURCE_PLANE = "streaming_plane"          # live_market_plane.get_quote — the freshest real trade this process has seen
 SPOT_SOURCE_QUOTE = "schwab_quote_last"        # quotes.{SYM}.quote.lastPrice - a real trade
 SPOT_SOURCE_REGULAR_CLOSE = "regular_close"    # regularMarketLastPrice - a CLOSE, not a spot
 SPOT_SOURCE_CHAIN = "chain_underlying"         # chains.underlying.last (== close after hours)
@@ -828,14 +850,45 @@ def resolve_spot(ticker: str, *, chain_json: dict | None = None,
     the same instant (743.29 vs 742.49). Every consumer now calls this, and every payload
     carries the source, so a divergence is impossible to hide.
 
+    Operator-reproduced defect (2026-09-14): that fix only unified the REST-polling world.
+    live_market_plane (Layer A) is a SEPARATE, independently-governed live quote store fed
+    primarily by the Schwab streaming websocket, and the header/analytics stack (Tier A/B/C
+    -- GET /api/live/state, GET /api/analytics/light, _fetch_state) reads it directly,
+    bypassing this function entirely. Terrain/Gamma Chart's inputs go through this function
+    and never saw a streaming tick. Two disciplined producers that never checked each other
+    is exactly RC-14's shape one layer up. The plane is now this function's own
+    highest-precedence source (freshness-gated below), so header and terrain converge on
+    the SAME number instead of two parallel hierarchies that happened to usually agree.
+
     Precedence is by freshness and by matching what the operator SEES:
-      1. live Schwab quote (lastPrice -> mark) -- the console header's number
+      0. the live streaming plane (live_market_plane) -- the freshest real trade this
+         process has seen, when recent enough to trust
+      1. live Schwab quote (lastPrice -> mark) -- the console header's REST fallback
       2. the chain's own underlying node -- as fresh as the chain, no extra call
       3. the last stored snapshot -- explicitly stale, only when nothing better exists
     """
     tk = (ticker or "").upper().strip()
     if not tk:
         return None, "none", None
+
+    # 0. the streaming plane. Freshness-gated against the SAME boundary this file already
+    #    uses for "how old is too old for a quote" (_CARD_FRESHNESS_V1_QUOTE_STALE_SEC) --
+    #    a plane row this stale is no longer meaningfully "streaming"; falling through to
+    #    the REST leg below is more honest than serving a stopped stream as live.
+    try:
+        _plane_row = _lmp.get_quote(tk)
+    except Exception as e:
+        log.debug("resolve_spot plane leg failed for %s: %s", tk, e, exc_info=True)
+        _plane_row = None
+    if _plane_row:
+        _plane_spot = _plane_row.get("spot")
+        # quote_is_fresh is the SAME freshness contract live_market_plane's own
+        # merge_into_state/apply_l1_live_quote_overlay use — one function, not a duplicated
+        # age computation per file (the "or 0.0" this replaced was flagged, correctly, by
+        # this repo's own silent-zero governance gate: a missing timestamp defaulting to the
+        # epoch is exactly the pattern that gate exists to catch).
+        if _plane_spot and _plane_spot > 0 and _lmp.quote_is_fresh(_plane_row):
+            return float(_plane_spot), SPOT_SOURCE_PLANE, _plane_row.get("exchange_quote_ts")
 
     # 1. the only source that is a REAL TRADE. When the caller already fetched the quote
     #    (the hot _fetch_state path), reuse that node instead of a second round-trip — the
@@ -6014,6 +6067,23 @@ def _project_l1(ticker: str, expiry: Optional[str], *, reason: str = "unknown") 
     key = (tkr, expiry if expiry is not None else "__auto__")
     gen = _l1_next_generation(key)
     row = _lmp.get_quote(tkr)
+    # Operator-reproduced defect (2026-09-14, spot 360 audit): build_l1_context reads
+    # ctx.l0_row.spot verbatim with no staleness check and no resolve_spot fallback -- L1 is
+    # deliberately kept PURE (no chain/DB/ML/REST, see the comment two lines below), so the
+    # correction has to happen HERE, before the pure build, not inside it. A stalled stream's
+    # last tick would otherwise sit in every L1 build (GET /api/analytics/light and its SSE
+    # stream) indefinitely with no fallback at all -- worse than Tier C's old bug, which at
+    # least had a resolve_spot-derived value underneath before merge_into_state clobbered it.
+    # bid/ask/fast_generation_id are left as-is (a narrower, pre-existing staleness question
+    # this fix does not expand scope to cover); only the SPOT figure is corrected.
+    if row and not _lmp.quote_is_fresh(row):
+        _l1_spot, _l1_spot_source, _l1_spot_ts = resolve_spot(tkr)
+        if _l1_spot is not None:
+            row = dict(row)
+            row["spot"] = _l1_spot
+            row["spot_disp"] = f"{_l1_spot:.2f}"
+            row["quote_source_detail"] = dict(row.get("quote_source_detail") or {})
+            row["quote_source_detail"]["spot"] = _l1_spot_source
     ent = _resolve_l2_cache_entry_for_l1(tkr, expiry)
     l1_eval_wall_ts = time.time()
     inflight = _l2_refresh_in_progress_for_l1(tkr, expiry)
@@ -6413,7 +6483,15 @@ def _tier_a_live_state_dict(ticker: str, expiry: Optional[str]) -> dict:
                     "_endpoint": "/api/live/state",
                 }
             raise
-    if (not row or row.get("spot") is None) and client:
+    # Operator-reproduced defect (2026-09-14, spot 360 audit): this gate previously trusted
+    # ANY plane row with a spot, however old — if the streaming websocket silently stalled,
+    # the header kept painting that stopped price as live forever, with no fallback, while
+    # resolve_spot()'s OWN new plane leg (same _CARD_FRESHNESS_V1_QUOTE_STALE_SEC boundary)
+    # would already have fallen through to a fresher REST quote — reopening the exact
+    # divergence this file's spot authority exists to prevent, just in the other direction.
+    # An over-age row is now treated the same as no row: fall through to the REST bootstrap.
+    _row_fresh = bool(row) and _lmp.quote_is_fresh(row)
+    if (not row or row.get("spot") is None or not _row_fresh) and client:
         q_resp = _memoized_quote_response(tkr, client=client)   # RC-112/W3-C8: one vendor faucet
         if q_resp and q_resp.status_code == 200:
             q_json = q_resp.json()
@@ -15621,31 +15699,63 @@ async def api_watchlist_quotes(tickers: str = Query(default="")):
         return JSONResponse({"ok": True, "error": None, "quotes": {}})
 
     def _build() -> dict:
+        from market_context import resolve_chg_pct
+
+        # Operator-reproduced defect (2026-09-14, spot 360 audit): this route called
+        # schwab_client.safe_get_quotes directly — a RAW vendor call outside
+        # _memoized_quote_response AND outside live_market_plane, the two places every other
+        # spot consumer in this file converges through. The docstring's claim ("not a second
+        # quote authority: parsing... are the exact same functions") was true for the PARSER,
+        # not for the QUOTE ITSELF — the watchlist's SPY row and the Gamma Chart's SPY spot
+        # could come from two genuinely different Schwab round-trips seconds apart. Every
+        # ticker with a FRESH plane row now reuses it (zero extra vendor calls, and
+        # guaranteed identical to what every other screen shows); only tickers the plane
+        # cannot currently answer get a real vendor fetch, and that fetch is recorded back
+        # into the plane so the next reader of that ticker — watchlist or otherwise — sees
+        # the SAME value this one just fetched.
+        out: dict = {}
+        need_fetch: list[str] = []
+        for t in seen:
+            row = _lmp.get_quote(t)
+            if row and _lmp.quote_is_fresh(row) and row.get("spot") is not None:
+                out[t] = {
+                    "spot": row["spot"],
+                    "spot_disp": row.get("spot_disp") or f"{row['spot']:.2f}",
+                    "chg_pct": resolve_chg_pct(t, row.get("chg_pct")),
+                    "exchange_quote_ts": row.get("exchange_quote_ts"),
+                }
+            else:
+                need_fetch.append(t)
+        if not need_fetch:
+            return {"ok": True, "error": None, "quotes": out}
+
         try:
             client = get_client()
         except HTTPException as he:
             reason = "token_invalid" if _schwab_auth_http_unavailable(he) else "auth_unavailable"
-            log.warning("watchlist_quotes auth unavailable tickers=%s reason=%s", seen, reason)
-            return {"ok": False, "error": reason, "quotes": {}}
+            log.warning("watchlist_quotes auth unavailable tickers=%s reason=%s", need_fetch, reason)
+            # Tickers the plane already answered are still real and still served — only the
+            # ones that needed a vendor call are missing, exactly like the batch-partial
+            # contract this route's own docstring already promises for a per-symbol miss.
+            return {"ok": bool(out), "error": None if out else reason, "quotes": out}
         from schwab_client import safe_get_quotes
-        from market_context import resolve_chg_pct
 
         try:
-            resp = safe_get_quotes(client, seen)
+            resp = safe_get_quotes(client, need_fetch)
         except Exception as e:
-            log.warning("watchlist_quotes batch fetch failed tickers=%s: %s", seen, e)
-            return {"ok": False, "error": "vendor_call_failed", "quotes": {}}
+            log.warning("watchlist_quotes batch fetch failed tickers=%s: %s", need_fetch, e)
+            return {"ok": bool(out), "error": None if out else "vendor_call_failed", "quotes": out}
         if resp is None or getattr(resp, "status_code", None) != 200:
             status = getattr(resp, "status_code", None)
-            log.warning("watchlist_quotes batch fetch non-200 tickers=%s status=%s", seen, status)
-            return {"ok": False, "error": f"vendor_http_{status}", "quotes": {}}
+            log.warning("watchlist_quotes batch fetch non-200 tickers=%s status=%s", need_fetch, status)
+            return {"ok": bool(out), "error": None if out else f"vendor_http_{status}", "quotes": out}
         try:
             q_json = resp.json()
         except Exception as e:
-            log.warning("watchlist_quotes batch response unparseable tickers=%s: %s", seen, e)
-            return {"ok": False, "error": "malformed_vendor_response", "quotes": {}}
-        out: dict = {}
-        for t in seen:
+            log.warning("watchlist_quotes batch response unparseable tickers=%s: %s", need_fetch, e)
+            return {"ok": bool(out), "error": None if out else "malformed_vendor_response", "quotes": out}
+        server_received_ts = time.time()
+        for t in need_fetch:
             node = q_json.get(t) or q_json.get(t.upper()) or {}
             if not node:
                 continue
@@ -15653,12 +15763,28 @@ async def api_watchlist_quotes(tickers: str = Query(default="")):
             spot = pq.get("spot")
             if spot is None:
                 continue
+            chg_pct = resolve_chg_pct(t, pq.get("chg_pct"))
             out[t] = {
                 "spot": spot,
                 "spot_disp": f"{spot:.2f}",
-                "chg_pct": resolve_chg_pct(t, pq.get("chg_pct")),
+                "chg_pct": chg_pct,
                 "exchange_quote_ts": pq.get("quote_ts"),
             }
+            # Record into the plane so this fetch becomes the ONE answer every other
+            # consumer (resolve_spot, the header, Tier C, L1) sees too, not a value only
+            # this route ever knew about.
+            _lmp.record_quote(t, {
+                "ticker": t, "spot": float(spot), "spot_disp": f"{spot:.2f}",
+                "chg_pct": chg_pct, "exchange_quote_ts": pq.get("quote_ts"),
+                "quote_time_source": "schwab_rest_quote" if pq.get("quote_ts") is not None else "unavailable",
+                "server_received_ts": server_received_ts,
+                "quote_ingestion": "rest_watchlist_batch",
+                "fast_generation_id": _lmp.next_fast_generation(t),
+                "quote_source_detail": {
+                    "spot": pq.get("spot_source") or "unavailable_missing_last_and_mark",
+                    "carried_forward": False,
+                },
+            })
         return {"ok": True, "error": None, "quotes": out}
 
     loop = asyncio.get_event_loop()

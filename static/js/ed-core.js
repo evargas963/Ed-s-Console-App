@@ -626,9 +626,22 @@
   //      Ordering is the shared EdL1SseGuards monotonic l1_generation (+ _server_build_ts tie-
   //      break). Polling /api/live/state is a FALLBACK ONLY, so there is ONE source per truth. ----
   var _hdrGen = 0;                       // guards in-flight poll responses (latest-wins)
+  // Operator directive (2026-09-14, spot 360 audit): the source that answered THIS number
+  // was already on every payload (quote_ingestion / _quote_authority) but never surfaced —
+  // a hover tooltip, not new chrome, so the next divergence (if the plane/REST hierarchy
+  // ever disagrees again) is diagnosable on the spot the operator is already looking at,
+  // not something that needs a screenshot comparison to notice.
+  var QUOTE_INGESTION_LABEL = {
+    schwab_streaming_level_one: 'streaming', rest_tier_a: 'REST (header bootstrap)',
+    rest_watchlist_batch: 'REST (watchlist batch)', live_market_plane: 'streaming plane',
+  };
   function paintQuote(q) {
     var px = document.getElementById('hPx'), chg = document.getElementById('hChg'), ba = document.getElementById('hBidAsk');
-    if (px) px.textContent = q.spot_disp || fmt(q.spot);
+    if (px) {
+      px.textContent = q.spot_disp || fmt(q.spot);
+      var srcLbl = q.quoteIngestion ? (QUOTE_INGESTION_LABEL[q.quoteIngestion] || q.quoteIngestion) : '';
+      px.title = srcLbl ? ('spot source: ' + srcLbl) : '';
+    }
     if (ba) ba.textContent = fmt(q.bid) + ' × ' + fmt(q.ask);
     if (chg) {  // formatting only — sign/value are canonical
       if (q.chgPct !== undefined && q.chgPct !== null) {
@@ -750,7 +763,7 @@
       // STALE. Same reasoning the poll-fallback path already applies via streaming_healthy.
       var stale = !!p.l1_stale;
       paintQuote({ spot_disp: p.spot_disp, spot: p.spot, bid: p.bid, ask: p.ask,
-        chgPct: p.chg_pct,
+        chgPct: p.chg_pct, quoteIngestion: p.quote_ingestion || p._quote_authority,
         feedCls: stale ? 'stale' : '', feedLabel: stale ? 'STALE' : 'LIVE',
         ageLabel: ageMs != null ? ageMs + 'ms' : 'push' });
     });
@@ -822,7 +835,7 @@
           ? Math.round(d.streaming_plane.streaming_staleness_ms) + 'ms' : '—';
         var healthy = d.streaming_plane && d.streaming_plane.streaming_healthy;
         paintQuote({ spot_disp: d.spot_disp, spot: d.spot, bid: d.bid, ask: d.ask,
-          chgPct: d.chg_pct,
+          chgPct: d.chg_pct, quoteIngestion: d.quote_ingestion,
           feedCls: healthy ? '' : 'warn', feedLabel: healthy ? 'LIVE' : 'DEGRADED', ageLabel: age });
       })
       .catch(function () { if (g === _hdrGen) setFeed('stale', 'OFFLINE', 'no console'); });

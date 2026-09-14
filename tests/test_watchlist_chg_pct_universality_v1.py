@@ -206,7 +206,18 @@ def test_chg_pct_with_rest_backfill_resolves_via_rest_when_stream_and_row_are_bo
 def test_watchlist_quotes_route_reports_auth_failure_distinctly(monkeypatch):
     """The pre-review shape collapsed auth/vendor/transport failure into the SAME bare {}
     a genuinely-empty-coverage success would return -- indistinguishable. ok:false + a
-    reason must now be present."""
+    reason must now be present.
+
+    Operator-reproduced defect (2026-09-14, spot 360 audit): this route now checks
+    live_market_plane first (a real ticker WITH a fresh plane row is answered from it, no
+    vendor call needed) -- so real symbols like "SPY"/"QQQ" are no longer safe to use here:
+    whichever OTHER test in this same worker last populated their plane row would silently
+    pre-answer this request in the full suite (fails there, passed here in isolation before
+    this fix), even though this test has nothing to do with that other test's fixture. Fake,
+    reserved-for-this-test ticker symbols with an explicit clean slate remove the dependency
+    on suite-wide plane state entirely, the same isolation convention this file's own
+    plane-reuse tests already use."""
+    import live_market_plane as L
     import server as srv
     from fastapi import HTTPException
     from starlette.testclient import TestClient
@@ -214,14 +225,21 @@ def test_watchlist_quotes_route_reports_auth_failure_distinctly(monkeypatch):
     def _raise_auth_unavailable():
         raise HTTPException(status_code=503, detail="Schwab auth failed: token_invalid")
 
-    monkeypatch.setattr(srv, "get_client", _raise_auth_unavailable)
-    with TestClient(srv.app) as client:
-        r = client.get("/api/watchlist-quotes", params={"tickers": "SPY,QQQ"})
-        assert r.status_code == 200  # the route itself succeeds; failure is IN the payload
-        body = r.json()
-        assert body["ok"] is False
-        assert body["error"]
-        assert body["quotes"] == {}
+    tks = ["ZZWLAUTHFAIL1", "ZZWLAUTHFAIL2"]
+    for tk in tks:
+        L._by_ticker.pop(tk, None)
+    try:
+        monkeypatch.setattr(srv, "get_client", _raise_auth_unavailable)
+        with TestClient(srv.app) as client:
+            r = client.get("/api/watchlist-quotes", params={"tickers": ",".join(tks)})
+            assert r.status_code == 200  # the route itself succeeds; failure is IN the payload
+            body = r.json()
+            assert body["ok"] is False
+            assert body["error"]
+            assert body["quotes"] == {}
+    finally:
+        for tk in tks:
+            L._by_ticker.pop(tk, None)
 
 
 def test_watchlist_quotes_route_success_shape(monkeypatch):
@@ -243,6 +261,72 @@ def test_watchlist_quotes_route_success_shape(monkeypatch):
         assert body["error"] is None
         assert body["quotes"]["ZZZTEST"]["spot"] == 55.0
         assert body["quotes"]["ZZZTEST"]["chg_pct"] == 1.11
+
+
+def test_watchlist_quotes_reuses_a_fresh_plane_row_with_no_vendor_call(monkeypatch):
+    """Operator-reproduced defect (2026-09-14, spot 360 audit): this route called
+    schwab_client.safe_get_quotes directly, a RAW vendor call outside both
+    _memoized_quote_response and live_market_plane -- the watchlist's own SPY row and the
+    Gamma Chart's SPY spot could come from two different Schwab round-trips seconds apart.
+    A ticker with a fresh plane row must now be answered FROM the plane, with no vendor call
+    at all, guaranteeing the SAME number every other screen shows."""
+    import time as _t
+
+    import live_market_plane as L
+    import server as srv
+    from starlette.testclient import TestClient
+
+    tk = "ZZWLPLANE"
+    L._by_ticker[tk] = {"spot": 812.5, "spot_disp": "812.50", "chg_pct": 0.42,
+                         "exchange_quote_ts": 1_800_000_000.0, "server_received_ts": _t.time()}
+    called = {"n": 0}
+
+    def _boom(*_a, **_k):
+        called["n"] += 1
+        raise AssertionError("safe_get_quotes must not be called for a ticker the plane already answers")
+    try:
+        monkeypatch.setattr("schwab_client.safe_get_quotes", _boom)
+        with TestClient(srv.app) as client:
+            r = client.get("/api/watchlist-quotes", params={"tickers": tk})
+        body = r.json()
+        assert called["n"] == 0
+        assert body["ok"] is True
+        assert body["quotes"][tk]["spot"] == 812.5
+        assert body["quotes"][tk]["chg_pct"] == 0.42
+    finally:
+        L._by_ticker.pop(tk, None)
+
+
+def test_watchlist_quotes_records_a_fresh_fetch_into_the_plane(monkeypatch):
+    """The other half: a ticker the plane cannot answer still gets a real vendor fetch, and
+    that fetch is written back into the plane so the NEXT reader -- watchlist or any other
+    screen -- sees the same value this one just fetched, instead of a value only this route
+    ever knew about."""
+    import live_market_plane as L
+    import server as srv
+    from starlette.testclient import TestClient
+
+    class _FakeResp:
+        status_code = 200
+
+        def json(self):
+            return {"ZZWLRECORD": {"quote": {"lastPrice": 61.5, "netPercentChange": -0.2}}}
+
+    tk = "ZZWLRECORD"
+    L._by_ticker.pop(tk, None)
+    try:
+        monkeypatch.setattr(srv, "get_client", lambda: object())
+        monkeypatch.setattr("schwab_client.safe_get_quotes", lambda client, tickers: _FakeResp())
+        with TestClient(srv.app) as client:
+            r = client.get("/api/watchlist-quotes", params={"tickers": tk})
+        body = r.json()
+        assert body["quotes"][tk]["spot"] == 61.5
+        plane_row = L.get_quote(tk)
+        assert plane_row is not None and plane_row["spot"] == 61.5, (
+            "the fresh vendor fetch must be recorded into the plane, not kept private to this route"
+        )
+    finally:
+        L._by_ticker.pop(tk, None)
 
 
 def test_watchlist_quotes_route_no_invented_count_cap(monkeypatch):

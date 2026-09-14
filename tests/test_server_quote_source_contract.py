@@ -218,6 +218,27 @@ def test_tier_a_live_state_rest_bootstrap_row_uses_schwab_time_not_wall_clock(mo
     assert isinstance(out["server_received_ts"], float)
 
 
+def test_tier_a_live_state_falls_through_to_rest_when_the_plane_row_is_stale(monkeypatch):
+    """Operator-reproduced defect (2026-09-14, spot 360 audit): this gate used to trust ANY
+    plane row with a spot, however old -- if the streaming websocket silently stalled, the
+    header kept painting that stopped price as live forever, with no fallback, while
+    resolve_spot()'s own plane leg (same _CARD_FRESHNESS_V1_QUOTE_STALE_SEC boundary) would
+    already have fallen through to a fresher REST quote -- reopening the header-vs-terrain
+    divergence from the other direction."""
+    import time as _t
+
+    stale_row = {"spot": 999.0, "server_received_ts": _t.time() - (server._CARD_FRESHNESS_V1_QUOTE_STALE_SEC + 5.0)}
+    monkeypatch.setattr(server._lmp, "get_quote", lambda _ticker: dict(stale_row))
+    monkeypatch.setattr(server._lmp, "next_fast_generation", lambda _ticker: 99)
+    monkeypatch.setattr(server, "get_client", lambda: object())
+    monkeypatch.setattr(server, "_safe_get_quote_with_retry", lambda *_args, **_kwargs: _Resp())
+
+    out = server._tier_a_live_state_dict("SPY", None)
+
+    assert out["quote_ingestion"] == "rest_tier_a", "a stale plane row must not short-circuit the REST bootstrap"
+    assert out["quote_mid"] == 501.25, "the REST leg's own value must be what's actually served"
+
+
 def test_tier_a_lightweight_carries_the_tier_c_bundle_generation(monkeypatch):
     """PR #238 D-PCR identity: analytics_lightweight.analytics_version is the SAME entry-level
     generation every /api/analytics/state response reports (_attach_analytics_freshness_contract
