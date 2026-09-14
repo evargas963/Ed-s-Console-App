@@ -19,10 +19,14 @@
     'trade-desk': { title: 'TRADE DESK', subs: [
       { id: 'right-now', label: 'Right Now' }, { id: 'plan', label: 'Plan' },
       { id: 'expression', label: 'Expression', state: 'na' } ], views: [] },
+    // Book/DOM first (real, wired 2026-09-13 to /api/order-flow/microstructure); the rest stay
+    // `na` until they have their own real wiring -- Overview/Heatmap/Tape/Options Book/History
+    // were never anything but a labelled placeholder div, same as Book was before this pass.
     'order-flow': { title: 'ORDER FLOW', subs: [
-      { id: 'overview', label: 'Overview' }, { id: 'book', label: 'Book / DOM' },
-      { id: 'heatmap', label: 'Heatmap', state: 'na' }, { id: 'tape', label: 'Tape' },
-      { id: 'options-book', label: 'Options Book' }, { id: 'history', label: 'History' } ], views: [] },
+      { id: 'book', label: 'Book / DOM' },
+      { id: 'overview', label: 'Overview', state: 'na' }, { id: 'heatmap', label: 'Heatmap', state: 'na' },
+      { id: 'tape', label: 'Tape', state: 'na' }, { id: 'options-book', label: 'Options Book', state: 'na' },
+      { id: 'history', label: 'History', state: 'na' } ], views: [] },
     'options': { title: 'OPTIONS', subs: [
       { id: 'gamma', label: 'Gamma' }, { id: 'vanna', label: 'Vanna', note: 'AGG BY STRIKE' },
       { id: 'charm', label: 'Charm', note: 'AGG BY STRIKE' },
@@ -39,9 +43,13 @@
           { id: 'term', label: 'Term Structure', state: 'na' }, { id: 'analytics', label: 'Analytics', state: 'na' } ];
         return { gamma: gammaViews, dex: gammaViews, oi: gammaViews };
       })() },
+    // Levels first (real, reuses ed-gamma-levels.js's own /api/levels renderer verbatim,
+    // 2026-09-13); the rest stay `na` until they have their own real wiring.
     'liquidity': { title: 'LIQUIDITY', subs: [
-      { id: 'map', label: 'Map' }, { id: 'profile', label: 'Profile' }, { id: 'levels', label: 'Levels' },
-      { id: 'vwap', label: 'VWAP / Value' }, { id: 'session', label: 'Session' }, { id: 'history', label: 'History' } ], views: [] },
+      { id: 'levels', label: 'Levels' },
+      { id: 'map', label: 'Map', state: 'na' }, { id: 'profile', label: 'Profile', state: 'na' },
+      { id: 'vwap', label: 'VWAP / Value', state: 'na' }, { id: 'session', label: 'Session', state: 'na' },
+      { id: 'history', label: 'History', state: 'na' } ], views: [] },
     'desk': { title: 'DESK / RESEARCH', subs: [
       { id: 'radar', label: 'Radar' }, { id: 'brief', label: 'Brief' }, { id: 'dossier', label: 'Dossier' },
       { id: 'structures', label: 'Structures' }, { id: 'scenarios', label: 'Scenarios' },
@@ -162,15 +170,22 @@
       w.classList.toggle('on', w.getAttribute('data-ws-pane') === state.workspace);
     });
   }
-  // options subview panes (Gamma grid / Chain ladder / Flow) swap in the one options canvas; a
-  // subview with no dedicated pane falls back to the Gamma grid so the workspace is never blank.
+  // Subview panes (Gamma grid / Chain ladder / Flow, and now Liquidity / Order Flow / Trade
+  // Desk's own sub-panes) swap in the one workspace canvas; scoped to the CURRENT workspace's
+  // own <section data-ws-pane="..."> so two different workspaces reusing the same sub id (e.g.
+  // both Liquidity and Order Flow have a "history" sub) never resolve to the wrong pane. Within
+  // Options specifically, a subview with no dedicated pane still falls back to the Gamma grid
+  // so that workspace is never blank -- no other workspace has (or needs) that fallback.
   function showSubPane() {
-    var panes = document.querySelectorAll('.sub-pane'); if (!panes.length) return;
-    var target = (state.workspace === 'options') ? state.subview : null;
-    var hasOwn = target && document.querySelector('.sub-pane[data-sub-pane="' + target + '"]');
+    var wsSection = document.querySelector('.workspace[data-ws-pane="' + state.workspace + '"]');
+    var panes = wsSection ? wsSection.querySelectorAll('.sub-pane') : [];
+    if (!panes.length) return;
+    var target = state.subview;
+    var hasOwn = target && wsSection.querySelector('.sub-pane[data-sub-pane="' + target + '"]');
     panes.forEach(function (p) {
       var id = p.getAttribute('data-sub-pane');
-      p.classList.toggle('on', !!target && (id === target || (id === 'gamma' && !hasOwn)));
+      p.classList.toggle('on', !!target &&
+        (id === target || (state.workspace === 'options' && id === 'gamma' && !hasOwn)));
     });
     relabelExpiryDefault();   // the null-expiry label is subview-contextual (Chain = Default Expiry)
   }

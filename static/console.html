@@ -814,10 +814,49 @@
         </div>
       </section>
 
-      <!-- other workspaces: architectural homes preserved, honestly unimplemented -->
-      <section class="workspace" data-ws-pane="trade-desk"><div class="placeholder"><div class="big">Trade Desk — Right Now · Plan · Expression</div><div class="sm">Architectural home preserved. Detect → Frame → Confirm → Execute reasoning flow. THE CALL and 1m/5m/15m/60m horizons remain NOT_PROVEN and excluded until ticker-universal evidence earns them.</div><div class="notproven">HOME PRESERVED — DECISION AUTHORITY NOT_PROVEN</div></div></section>
-      <section class="workspace" data-ws-pane="order-flow"><div class="placeholder"><div class="big">Order Flow — Overview · Book/DOM · Heatmap · Tape · Options Book · History</div><div class="sm">Wires to /api/order-flow/microstructure, /api/order-flow/options-microstructure, /api/live/plane. Real book/depth/imbalance/freshness only. CVD / absorption / sweep NOT_PROVEN.</div></div></section>
-      <section class="workspace" data-ws-pane="liquidity"><div class="placeholder"><div class="big">Liquidity — Map · Profile · Levels · VWAP/Value · Session · History</div><div class="sm">Wires to /api/liquidity-snapshot (PDH/PDL/PDC/POC/VAH/VAL/ORB/VWAP±σ + fusion walls, tradeable_score) and /api/levels vwap_series. A visual liquidity map, not a table.</div></div></section>
+      <!-- TRADE DESK / RIGHT NOW — the one Detect->Frame->Confirm synthesis page (operator,
+           2026-09-13). Execute is deliberately absent; see ed-trade-desk.js's own docstring. -->
+      <section class="workspace" data-ws-pane="trade-desk">
+        <div class="sub-pane" data-sub-pane="right-now">
+          <div class="panel">
+            <div class="panel-h"><span class="hticker" id="tdTicker">SPX</span><span class="t">Right Now</span><span class="sub">detect · frame · confirm — one page, zero new math</span>
+              <div class="r"><span class="prov derived">SYNTHESIS</span></div></div>
+            <div class="panel-b" id="tdBody"><div class="placeholder"><div class="sm">Assembles /api/order-flow/microstructure, /api/levels and /api/terrain — the same canonical endpoints Order Flow, Liquidity and Options already read. Computes nothing new.</div></div></div>
+          </div>
+        </div>
+        <div class="sub-pane" data-sub-pane="plan">
+          <div class="panel">
+            <div class="panel-h"><span class="t">Plan</span></div>
+            <div class="panel-b"><div class="placeholder"><div class="sm">Not built yet.</div></div></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ORDER FLOW / BOOK · DOM — real L2 book microstructure for the underlying ticker
+           (operator, 2026-09-13). Other subs (Overview/Heatmap/Tape/Options Book/History) stay
+           `state:'na'` in ed-core.js's NAV until they have their own real wiring. -->
+      <section class="workspace" data-ws-pane="order-flow">
+        <div class="sub-pane" data-sub-pane="book">
+          <div class="panel">
+            <div class="panel-h"><span class="hticker" id="obTicker">SPX</span><span class="t">Book / DOM</span><span class="sub">top-of-book · depth · imbalance</span>
+              <div class="r"><span class="prov native">NASDAQ/NYSE BOOK</span></div></div>
+            <div class="panel-b" id="obBody"><div class="placeholder"><div class="sm">Real L2 book microstructure from /api/order-flow/microstructure — top-of-book/spread/depth/imbalance NATIVE/DERIVED; aggressor side deferred (Schwab exposes no native field).</div></div></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- LIQUIDITY / LEVELS — reuses the EXACT /api/levels renderer ed-gamma-levels.js already
+           built for Options > Gamma > Levels (operator, 2026-09-13). Other subs (Map/Profile/
+           VWAP-Value/Session/History) stay `state:'na'` until they have their own real wiring. -->
+      <section class="workspace" data-ws-pane="liquidity">
+        <div class="sub-pane" data-sub-pane="levels">
+          <div class="panel">
+            <div class="panel-h"><span class="hticker" id="lvlTicker">SPX</span><span class="t">Liquidity Levels</span><span class="sub">prior day · overnight · session</span>
+              <div class="r"><span class="prov native">LEVELS</span></div></div>
+            <div class="panel-b" id="lvlBody"><div class="placeholder"><div class="sm">Canonical price levels from /api/levels (PDH/PDL/PDC, POC/VAH/VAL, overnight, VWAP±σ) — vendor-derived, never a fabricated line.</div></div></div>
+          </div>
+        </div>
+      </section>
       <section class="workspace" data-ws-pane="desk"><div class="placeholder"><div class="big">Desk / Research — Radar · Brief · Dossier · Structures · Scenarios · Evidence · Replay · AI Research</div><div class="sm">Wires to /api/desk/* (all take as_of epoch — Knowledge-Time replay is real and temporally sealed). AI Research backend NOT_PROVEN.</div></div></section>
       <section class="workspace" data-ws-pane="portfolio"><div class="placeholder"><div class="big">Portfolio / Risk — Positions · Exposure · Risk · Scenarios</div><div class="sm">Architectural home preserved. No canonical positions/risk producer today.</div><div class="notproven">HOME PRESERVED — NOT_PROVEN</div></div></section>
       <section class="workspace" data-ws-pane="system"><div class="placeholder"><div class="big">System / Trust — Data Health · Feeds · Provenance · Models · Runtime</div><div class="sm">Can I trust what Ed Console is showing? Wires to /api/health, /api/build (process identity + code drift), /api/diagnostics/*, /api/governance/panel, /api/vol-observability, /api/release/current.</div></div></section>
@@ -857,5 +896,7 @@
 <script src="/static/js/ed-gamma-chain.js" defer></script>
 <script src="/static/js/ed-stream.js" defer></script>
 <script src="/static/js/ed-gamma-flow.js" defer></script>
+<script src="/static/js/ed-order-flow.js" defer></script>
+<script src="/static/js/ed-trade-desk.js" defer></script>
 </body>
 </html>

@@ -8,9 +8,15 @@
   function px(n, d) { return (n == null || isNaN(n)) ? '—' : Number(n).toFixed(d == null ? 2 : d); }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
     return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]; }); }
-  function isLevels() {
+  // Two homes render the SAME canonical /api/levels contract, same function, same host-id
+  // resolution pattern -- Options > Gamma > Levels (the original) and Liquidity > Levels
+  // (operator, 2026-09-13: "one page" work owes Liquidity a real view, not another
+  // placeholder). Never two renderers for one contract -- see this file's own docstring.
+  function activeHostId() {
     var s = (window.EdShell && window.EdShell.getState()) || {};
-    return s.workspace === 'options' && s.subview === 'gamma' && s.view === 'levels';
+    if (s.workspace === 'options' && s.subview === 'gamma' && s.view === 'levels') return 'levelsBody';
+    if (s.workspace === 'liquidity' && s.subview === 'levels') return 'lvlBody';
+    return null;
   }
   function ticker() { return ((window.EdShell && window.EdShell.getState()) || {}).ticker || 'SPY'; }
 
@@ -18,11 +24,12 @@
   // fires on every streamed gamma_surface_seq push, not just the 12s poll tick; a naive
   // per-call generation counter live-locks once pushes outrun the round trip. Context
   // invalidation is `stillLevels()`, checked at resolution time.
-  function stillLevels(tk) { return isLevels() && ticker() === tk; }
+  function stillLevels(tk) { return !!activeHostId() && ticker() === tk; }
   // ROUND 8 (2026-09-13): keyed on ticker so a held/slow fetch for an ABANDONED ticker is
   // aborted immediately once a different ticker is selected, instead of blocking it.
   function loadImpl(tk, signal) {
-    var host = document.getElementById('levelsBody');
+    var hostId = activeHostId();
+    var host = hostId && document.getElementById(hostId);
     if (!host || !stillLevels(tk)) return;
     host.setAttribute('aria-busy', 'true');
     return fetch('/api/levels?ticker=' + encodeURIComponent(tk), { cache: 'no-store', signal: signal })
