@@ -161,6 +161,95 @@
     return map;
   }
 
+  // ---- Repo-wide chart interaction standard, adapted for this surface's real shape ----
+  // ed-gamma-chart.js (SVG) and ed-order-flow-heatmap.js (canvas) both have a continuous
+  // price axis, so "axis-drag rescales, plot-drag pans, scroll zooms" maps onto a numeric
+  // view range. This grid is a plain DOM <table> with a CATEGORICAL expiry axis (columns are
+  // discrete dates, not a zoomable range) and a strike axis that is already governed by ONE
+  // canonical, shared, 3-level scope policy (EdShell scope: Auto/Wider/All -- every windowed
+  // gamma panel uses it, always centred on spot). Copy-pasting the canvas pattern here would
+  // fight that existing, already-validated design (RC comment above: a raw pixel/percent
+  // zoom collapsed the approved workstation once already). The genuinely missing capability
+  // is PAN: today the strike window always re-centres on live spot every render, with no way
+  // to look away from it. Wheel reuses the existing canonical scope levels (real zoom, no
+  // second parallel mechanism); drag on the strike axis pans the window to a manual centre
+  // that persists until reset -- the same persist-until-reset contract as _view elsewhere.
+  var _panAnchor = null, _panTicker = null;
+  var _dragState = null, _gridInteractionInstalled = false;
+  function installGridInteractionOnce() {
+    if (_gridInteractionInstalled || typeof document === 'undefined') return;
+    _gridInteractionInstalled = true;
+    document.addEventListener('mousemove', function (e) {
+      if (!_dragState) return;
+      var dy = e.clientY - _dragState.startY;
+      if (Math.abs(dy) > 3) _dragState.moved = true;
+      var rowsDelta = Math.round(dy / _dragState.rowPx);
+      if (rowsDelta === _dragState.lastRowsDelta) return;
+      _dragState.lastRowsDelta = rowsDelta;
+      var strikes = _dragState.strikes;
+      // Highest strike renders at the TOP (see the reversed row-order comment below), so
+      // dragging DOWN (grabbing a high strike and pulling it down) must reveal STILL HIGHER
+      // strikes -- the same "content follows the cursor" feel wireHeatmapInteraction uses.
+      var newIdx = Math.min(strikes.length - 1, Math.max(0, _dragState.startIdx + rowsDelta));
+      _panAnchor = strikes[newIdx];
+      _panTicker = _dragState.ticker;
+      rerenderGridFromCache();
+    });
+    document.addEventListener('mouseup', function () { _dragState = null; });
+  }
+  function rerenderGridFromCache() {
+    var h = document.getElementById('heatBody');
+    if (!h || !_lastSurface) return;
+    // A pan/reset changes nothing about the fetched surface, so its own revision key can
+    // coincidentally match what is already on screen (e.g. resetting back to a window spot
+    // hasn't actually moved away from) -- the SAME reason ed:theme/ed:expiry/ed:scope below
+    // already null this out before a presentation-only re-render, to bypass renderSurface's
+    // "rev === _lastRevision -> skip rebuild" fast path (REPRODUCED: double-click reset set
+    // _panAnchor back to null in memory but the table never visibly rebuilt without this).
+    _lastRevision = null;
+    renderSurface(h, _lastSurface);
+  }
+  function wireGridInteraction(host, strikes, rowSel, tk) {
+    installGridInteractionOnce();
+    var centerIdx = rowSel.idx.length ? rowSel.idx[Math.floor(rowSel.idx.length / 2)] : 0;
+    var rowPx = 24;
+    var firstRow = host.querySelector('tbody tr');
+    if (firstRow) { var r = firstRow.getBoundingClientRect(); if (r.height) rowPx = r.height; }
+    host.querySelectorAll('.hstrike, .hcorner').forEach(function (el) {
+      el.style.cursor = 'ns-resize';
+      el.setAttribute('draggable', 'false');
+      el.addEventListener('dragstart', function (e) { e.preventDefault(); });
+      el.addEventListener('mousedown', function (e) {
+        _dragState = { startY: e.clientY, rowPx: rowPx, strikes: strikes, startIdx: centerIdx,
+          lastRowsDelta: 0, moved: false, ticker: tk };
+        e.preventDefault();
+        e.stopPropagation();   // consistency with the GBS/Vanna/Charm/Migration copies of this
+                                // same pattern -- no click-to-select listener sits on .hstrike/
+                                // .hcorner today, but this defends the same way they already do
+                                // if one is ever added (independent-review finding).
+      });
+      el.addEventListener('dblclick', function (e) {
+        _panAnchor = null; _panTicker = null; rerenderGridFromCache(); e.stopPropagation();
+      });
+    });
+    var wrap = host.querySelector('.heat-wrap');
+    if (wrap) {
+      wrap.addEventListener('wheel', function (e) {
+        // .heat-wrap is itself overflow:auto (Wider/All available legitimately overflow it --
+        // console.html:406) so a plain wheel must keep scrolling it normally. Zoom only on
+        // ctrl/cmd+wheel, the same convention most chart tools use for exactly this reason.
+        if (!e.ctrlKey && !e.metaKey) return;
+        var ES = window.EdShell;
+        if (!ES || !ES.setScope || !ES.getScope) return;
+        e.preventDefault();
+        var order = ['auto', 'wider', 'all'];
+        var cur = order.indexOf(ES.getScope()); if (cur === -1) cur = 0;
+        var next = e.deltaY > 0 ? Math.min(order.length - 1, cur + 1) : Math.max(0, cur - 1);
+        if (next !== cur) ES.setScope(order[next]);   // dispatches ed:scope -> this module's own listener re-renders
+      }, { passive: false });
+    }
+  }
+
   // ---- render the grid from a canonical surface payload (no math) ----
   function renderSurface(host, surface) {
     // Independent-review finding (2026-09-12, state-authority review): "actual Schwab
@@ -192,6 +281,12 @@
       // a presentation-only re-render has nothing left to reuse and correctly falls back to
       // a fresh load() instead of resurrecting stale state.
       _lastSurface = null; _lastRevision = null;
+      // Independent-review finding, REPRODUCED: this branch invalidates every other piece of
+      // render state for the reason stated above, but left _panAnchor/_panTicker untouched --
+      // pan a strike, ticker goes briefly unavailable (delisted tick, no chain), becomes
+      // available again for the SAME ticker, and the stale manual pan silently reapplies
+      // instead of the window re-centering on live spot like every other invalidated field.
+      _panAnchor = null; _panTicker = null;
       // #1-A: even with no surface to draw, disclose the collection status honestly — a requested
       // symbol that is NOT on the board must read "not currently active for this symbol", never a
       // promised refresh. buildBanner is the ONE place that wording lives (warming/requested/board).
@@ -203,6 +298,9 @@
     }
     var exps = surface.expirations || [], strikes = surface.strikes || [], cells = surface.cells || [];
     var spot = Number(surface.spot);
+    // A manual strike-axis pan persists across re-renders of the SAME ticker (same contract
+    // as _view/_pin elsewhere); switching tickers has nothing meaningful to persist against.
+    if (_panTicker !== surface.ticker) { _panAnchor = null; _panTicker = surface.ticker; }
     var ES = window.EdShell;
     // #5: expiry filter (from the canonical /api/expiries dropdown) is PRESENTATION — it selects which
     // already-computed expiry column(s) to show; it never recomputes a value.
@@ -221,7 +319,7 @@
     //             structure), else every canonical column with expired ones labelled EXPIRED.
     // Selection only: every cell value is the API value; nothing is dropped from the payload, and the
     // counts (canonical vs shown) are disclosed in the header and the scope note.
-    var rowSel = (ES && ES.scopeSelect) ? ES.scopeSelect(strikes, spot)
+    var rowSel = (ES && ES.scopeSelect) ? ES.scopeSelect(strikes, _panAnchor != null ? _panAnchor : spot)
       : { idx: strikes.map(function (_s, i) { return i; }), shown: strikes.length, total: strikes.length };
     var allCols = exps.map(function (_e, ix) { return ix; });
     var unexpired = allCols.filter(function (ix) { return exps[ix].expired !== true; });
@@ -545,7 +643,10 @@
       (demandCapped ? ' · streaming demand capped at ' + MAX_DEMAND_CONTRACTS +
         ' contracts (subscription-size safety limit, untested at full scale)' +
         (cappedExps.length ? ' — excluded: ' + cappedExps.join(', ') : '') +
-        (partialExpsTxt.length ? ' — partially covered: ' + partialExpsTxt.join(', ') : '') : '');
+        (partialExpsTxt.length ? ' — partially covered: ' + partialExpsTxt.join(', ') : '') : '') +
+      // A manual pan is never silent: the strike window is not following live spot until the
+      // operator double-clicks the strike axis (or switches ticker) to resume auto-centring.
+      (_panAnchor != null ? ' · PANNED to ' + fmtStrike(_panAnchor) + ' — not following spot; double-click the strike axis to resume' : '');
     var note = (ES && ES.scopeNote) ? ES.scopeNote({ total: strikes.length, shown: rowSel.shown, extra: colsTxt }) : '';
     // the grid fills the panel; a compact vertical magnitude legend sits at its right edge (the
     // dollar value is printed in every cell — shade = |GEX$|), matching the approved reference.
@@ -578,6 +679,7 @@
         if (window.EdShell) window.EdShell.setStrike(Number(c.getAttribute('data-strike')), c.getAttribute('data-expiry'));
       });
     });
+    wireGridInteraction(host, strikes, rowSel, surface.ticker);
     // default the shared selection to the spot strike on first load, so Strike Detail and the
     // GEX-by-strike highlight are populated on arrival (like the approved reference) instead of an
     // empty placeholder. Never overrides a selection the operator has already made.

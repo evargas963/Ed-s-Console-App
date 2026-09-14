@@ -224,12 +224,99 @@
     return out;
   }
 
-  function migrationSection(strikesD, terrain, spot) {
-    if (!strikesD) return '';
+  // ---- Repo-wide chart interaction standard, adapted for this surface's real shape ----
+  // Same reasoning as GEX by Strike (ed-gamma-panels.js), which this panel reuses the exact
+  // bar-list grammar of: no continuous zoomable axis, strike window governed by the ONE
+  // canonical shared scope policy. The missing capability is PAN via the strike-label column;
+  // wheel reuses the canonical scope levels (gated to ctrl/cmd -- .gbs-scroll here is itself
+  // overflow:auto exactly like GEX by Strike's, so a plain wheel must keep scrolling it).
+  var _migPanAnchor = null, _migPanTicker = null;
+  var _migDragState = null, _migInteractionInstalled = false;
+  function installMigInteractionOnce() {
+    if (_migInteractionInstalled || typeof document === 'undefined') return;
+    _migInteractionInstalled = true;
+    document.addEventListener('mousemove', function (e) {
+      if (!_migDragState) return;
+      // Independent-review finding, REPRODUCED: #tdBody.innerHTML gets wholesale-replaced by
+      // loadImpl's success path on a real ticker switch, which can complete mid-drag and calls
+      // migrationSection() (and so _lastMig.tk) for the NEW ticker while this drag's closure
+      // still holds the OLD ticker's ascStrikes array. Without this check the drag would keep
+      // computing an index against the old strikes and paint it onto the new ticker's panel.
+      if (_lastMig && _migDragState.ticker !== _lastMig.tk) { _migDragState = null; return; }
+      var dy = e.clientY - _migDragState.startY;
+      if (Math.abs(dy) > 3) _migDragState.moved = true;
+      var rowsDelta = Math.round(dy / _migDragState.rowPx);
+      if (rowsDelta === _migDragState.lastRowsDelta) return;
+      _migDragState.lastRowsDelta = rowsDelta;
+      var strikes = _migDragState.strikes;
+      var newIdx = Math.min(strikes.length - 1, Math.max(0, _migDragState.startIdx + rowsDelta));
+      _migPanAnchor = strikes[newIdx];
+      _migPanTicker = _migDragState.ticker;
+      rerenderMigFromCache();
+    });
+    document.addEventListener('mouseup', function () { _migDragState = null; });
+  }
+  var _lastMig = null;   // { strikesD, terrain, spot, tk } -- exactly migrationSection's own inputs
+  function rerenderMigFromCache() {
+    if (!_lastMig) return;
+    var el = document.getElementById('tdMigration');
+    if (!el) return;
+    var html = migrationSection(_lastMig.strikesD, _lastMig.terrain, _lastMig.spot, _lastMig.tk);
+    var tmp = document.createElement('div');
+    tmp.innerHTML = html;
+    var fresh = tmp.firstElementChild;
+    if (fresh) {
+      el.replaceWith(fresh);
+      wireMigInteraction(fresh, _lastMig.ascStrikes, _lastMig.win, _lastMig.tk);
+      wireMigrationChips(host(), _lastMig.tk);
+    }
+  }
+  function wireMigInteraction(panel, ascStrikes, win, tk) {
+    installMigInteractionOnce();
+    if (!ascStrikes) return;   // the "no per-strike rows" placeholder branch has nothing to wire
+    var centerStrike = win.length ? win[Math.floor(win.length / 2)][0] : null;
+    var centerIdx = Math.max(0, ascStrikes.indexOf(centerStrike));
+    var rowPx = 24;
+    var firstRow = panel.querySelector('.gbs-row');
+    if (firstRow) { var r = firstRow.getBoundingClientRect(); if (r.height) rowPx = r.height; }
+    panel.querySelectorAll('.gbs-k').forEach(function (el) {
+      el.style.cursor = 'ns-resize';
+      el.setAttribute('draggable', 'false');
+      el.addEventListener('dragstart', function (e) { e.preventDefault(); });
+      el.addEventListener('mousedown', function (e) {
+        _migDragState = { startY: e.clientY, rowPx: rowPx, strikes: ascStrikes, startIdx: centerIdx,
+          lastRowsDelta: 0, moved: false, ticker: tk };
+        e.preventDefault();
+        e.stopPropagation();
+      });
+      el.addEventListener('dblclick', function (e) {
+        _migPanAnchor = null; _migPanTicker = null; rerenderMigFromCache(); e.stopPropagation();
+      });
+    });
+    var scroll = panel.querySelector('.gbs-scroll');
+    if (scroll) {
+      scroll.addEventListener('wheel', function (e) {
+        if (!e.ctrlKey && !e.metaKey) return;
+        var ES = window.EdShell;
+        if (!ES || !ES.setScope || !ES.getScope) return;
+        e.preventDefault();
+        var order = ['auto', 'wider', 'all'];
+        var cur = order.indexOf(ES.getScope()); if (cur === -1) cur = 0;
+        var next = e.deltaY > 0 ? Math.min(order.length - 1, cur + 1) : Math.max(0, cur - 1);
+        if (next !== cur) ES.setScope(order[next]);
+      }, { passive: false });
+    }
+  }
+
+  function migrationSection(strikesD, terrain, spot, tk) {
+    _lastMig = { strikesD: strikesD, terrain: terrain, spot: spot, tk: tk };
+    if (_migPanTicker !== tk) { _migPanAnchor = null; _migPanTicker = tk; }
+    if (!strikesD) return '<div class="td-panel" id="tdMigration"><h4>Positioning migration &amp; volume</h4>' +
+      '<div class="placeholder"><div class="sm">no per-strike gamma for this symbol yet</div></div></div>';
     var todayAll = (strikesD.today && strikesD.today[_migScope]) || [];
     if (!todayAll.length) {
       var why = strikesD.levels_stale_reason;
-      return '<div class="td-panel"><h4>Positioning migration &amp; volume</h4>' +
+      return '<div class="td-panel" id="tdMigration"><h4>Positioning migration &amp; volume</h4>' +
         '<div class="placeholder"><div class="sm">' +
         (why ? 'no per-strike rows — ' + esc(why) : 'no per-strike gamma for this symbol yet') +
         '</div></div></div>';
@@ -237,12 +324,15 @@
     var priorAll = (strikesD.prior && strikesD.prior[_migScope]) || [];
     var ghost = {}; priorAll.forEach(function (r) { ghost[r[0]] = r[1]; });
     var asc = todayAll.slice().sort(function (a, b) { return a[0] - b[0]; });
+    var ascStrikes = asc.map(function (r) { return r[0]; });
     var sel = (window.EdShell && window.EdShell.scopeSelect)
-      ? window.EdShell.scopeSelect(asc.map(function (r) { return r[0]; }), spot)
+      ? window.EdShell.scopeSelect(ascStrikes, _migPanAnchor != null ? _migPanAnchor : spot)
       : { idx: asc.map(function (_r, i) { return i; }), shown: asc.length, total: asc.length };
     var win = sel.idx.map(function (i) { return asc[i]; }).sort(function (a, b) { return b[0] - a[0]; });
     var note = (window.EdShell && window.EdShell.scopeNote)
       ? window.EdShell.scopeNote({ total: todayAll.length, shown: win.length }) : '';
+    if (_migPanAnchor != null) note += '<div class="gbs-allexp">PANNED to ' + num(_migPanAnchor, _migPanAnchor % 1 ? 2 : 0) +
+      ' — not following spot; double-click a strike label to resume</div>';
     var maxAbs = 1, maxVol = 1;
     win.forEach(function (r) {
       maxAbs = Math.max(maxAbs, Math.abs(r[1]), Math.abs(ghost[r[0]] || 0));
@@ -293,7 +383,11 @@
         ? '<div class="mig-vol-note stale">zero volume here is the SNAPSHOT, not the session — this chain is stale; see the source badge above</div>'
         : '<div class="mig-vol-note">no option volume yet this session — the counter resets at the new session and fills from the open</div>';
     }
-    return '<div class="td-panel"><h4>Positioning migration &amp; volume ' +
+    // Wiring itself must wait until this HTML is actually in the DOM (loadImpl assigns
+    // h.innerHTML after this function returns) -- cached here so loadImpl can wire it right
+    // after, and so a drag-triggered rerenderMigFromCache() computes the same window again.
+    _lastMig.ascStrikes = ascStrikes; _lastMig.win = win;
+    return '<div class="td-panel" id="tdMigration"><h4>Positioning migration &amp; volume ' +
       '<span class="mig-legend"><i class="sw" style="background:var(--ed-pos)"></i>+γ today ' +
       '<i class="sw" style="background:var(--ed-neg)"></i>-γ today ' +
       '<i class="sw ghostsw"></i>yesterday (ghost)</span></h4>' +
@@ -344,11 +438,13 @@
         '</span><span class="fl-meta">' + (isFinite(spot) ? 'spot ' + num(spot) : '') + '</span></div></div>' +
         '<div class="td-grid">' + detectStage(detect) + frameStage(levelsD, spot) + confirmStage(terrain) + '</div>' +
         contextSummary(terrain, snap, spot) +
-        migrationSection(strikesD, terrain, spot) +
+        migrationSection(strikesD, terrain, spot, tk) +
         '<div class="notproven" style="margin-top:14px;">HOME PRESERVED — DECISION AUTHORITY NOT_PROVEN. ' +
         'This page assembles already-canonical Detect/Frame/Confirm signals and classifies them in plain English; it computes no new value and renders no Execute step. ' +
         'THE CALL and 1m/5m/15m/60m horizons remain excluded until ticker-universal evidence earns them.</div>';
       wireMigrationChips(h, tk);
+      var migEl = document.getElementById('tdMigration');
+      if (migEl && _lastMig) wireMigInteraction(migEl, _lastMig.ascStrikes, _lastMig.win, tk);
     }).catch(function (e) {
       // Every sibling loader in this file (ed-order-flow.js, ed-order-flow-heatmap.js,
       // ed-liquidity-map.js) ends in a .catch() that renders an honest fallback; this one

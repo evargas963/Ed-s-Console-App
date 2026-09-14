@@ -43,7 +43,26 @@
   var _pin = null;             // {vx, vy} pinned crosshair in viewBox space, or null
   var _lastCtx = null;         // {bars, win, spot, terrain} from the last successful render
   var _viewTicker = null, _viewMode = null;   // domain resets only on a genuine context change
+  // Deep-research finding (operator directive, 2026-09-14): real TradingView gives its
+  // SECONDARY axis the same independent drag-to-rescale the primary axis gets (there, time is
+  // primary -- candle-keyed -- and price is secondary, with its own right-axis drag). This
+  // chart's bars are STRIKE-keyed (price is what the +GEX/-GEX profile actually plots against),
+  // so price is correctly the primary interactive axis here -- but time (the price-history
+  // line's own axis) never got the secondary-axis treatment at all: no pan, no rescale, always
+  // the full fetched bars1m window. _timeView mirrors _view's own contract exactly, just over
+  // bar INDICES instead of a price domain (bars are evenly index-spaced along x, not spaced by
+  // elapsed time -- see the x = x0 + i/(n-1)*(x1-x0) mapping below).
+  var _timeView = null;        // {loIdx, hiIdx} once the operator has zoomed/panned time; null = full window
 
+  // The time axis only has meaning in 'profile' mode: dotSvg draws no bars and no time-axis
+  // labels at all (verified -- it plots strikes around a fixed centerline, nothing time-keyed).
+  // profileSvg's own candles span x0=L to x1=xSplit-10, NOT the full W-L-R chart width --
+  // independent review, REPRODUCED: using the full width as the anchor denominator computed a
+  // fraction roughly half of the real one over most of the visible bar area, so a wheel-zoom
+  // "centered under the cursor" actually centered well to the left of it. Both interaction
+  // sites below (mousemove drag and wheel) must use this SAME width the renderer actually uses.
+  function timeAxisPlotWidth() { return Math.round(W * 0.60) - 10 - L; }
+  function isTimeAxisHit(vy) { return _mode === 'profile' && vy > H - B; }
   function clientToViewBox(svg, clientX, clientY) {
     var r = svg.getBoundingClientRect();
     return { vx: (clientX - r.left) / r.width * W, vy: (clientY - r.top) / r.height * H };
@@ -54,6 +73,20 @@
     // never rescale to a degenerate sliver -- a TradingView-style zoom still has a floor.
     if (hi - lo < 0.02) { var mid = (lo + hi) / 2; return { lo: mid - 0.01, hi: mid + 0.01 }; }
     return { lo: lo, hi: hi };
+  }
+  // Same floor/clamp contract as clampDomain, over integer bar indices into the FULL fetched
+  // array (never the already-windowed slice -- indices must stay meaningful across repeated
+  // zooms) instead of a continuous price range. At least 3 bars stay visible; bounds are
+  // rounded and pinned inside [0, totalLen-1] so a fast drag/wheel burst can never request a
+  // slice outside what was actually fetched.
+  function clampTimeDomain(loIdx, hiIdx, totalLen) {
+    if (!isFinite(loIdx) || !isFinite(hiIdx) || totalLen < 4) return null;
+    loIdx = Math.round(loIdx); hiIdx = Math.round(hiIdx);
+    if (hiIdx - loIdx < 3) { var mid = Math.round((loIdx + hiIdx) / 2); loIdx = mid - 1; hiIdx = mid + 2; }
+    if (loIdx < 0) { hiIdx -= loIdx; loIdx = 0; }
+    if (hiIdx > totalLen - 1) { loIdx -= (hiIdx - (totalLen - 1)); hiIdx = totalLen - 1; }
+    loIdx = Math.max(0, loIdx);
+    return { loIdx: loIdx, hiIdx: hiIdx };
   }
 
   var _interactionInstalled = false;
@@ -79,10 +112,19 @@
       if (_dragState.mode === 'pan') {
         var priceDelta = dy / plotH * span;
         _view = clampDomain(_dragState.startLo + priceDelta, _dragState.startHi + priceDelta);
-      } else {   // axis drag: rescale the domain around the price under the drag's START point
+      } else if (_dragState.mode === 'axis') {   // rescale the domain around the price under the drag's START point
         var anchor = priceAtVy(_dragState.startVY, _dragState.startLo, _dragState.startHi);
         var factor = Math.pow(1.006, dy);   // dragging down widens the range (zoom out)
         _view = clampDomain(anchor - (anchor - _dragState.startLo) * factor, anchor + (_dragState.startHi - anchor) * factor);
+      } else {   // time-axis drag: rescale the visible bar-index window, mirroring the price axis
+        var idxSpan = _dragState.startHiIdx - _dragState.startLoIdx, plotW = timeAxisPlotWidth();
+        var dx = p.vx - _dragState.startVX;
+        var tFactor = Math.pow(1.006, -dx);   // dragging right narrows (zoom in), left widens (zoom out)
+        var idxAnchor = _dragState.startLoIdx + (_dragState.startVX - L) / plotW * idxSpan;
+        _timeView = clampTimeDomain(
+          idxAnchor - (idxAnchor - _dragState.startLoIdx) * tFactor,
+          idxAnchor + (_dragState.startHiIdx - idxAnchor) * tFactor,
+          _dragState.fullLen);
       }
       rerenderFromCache();
     });
@@ -119,20 +161,42 @@
       // proceed completely undisturbed.
       if (e.target && e.target.closest && e.target.closest('.gmark-hit')) return;
       var p = clientToViewBox(svg, e.clientX, e.clientY);
-      _dragState = { mode: (p.vx < L ? 'axis' : 'pan'), startVX: p.vx, startVY: p.vy, startLo: lo, startHi: hi, moved: false };
+      // Bottom strip (below the plot, regardless of x) is the time axis -- checked first, the
+      // same "whole margin band, not just a corner" convention TradingView's own axes use, so
+      // the price-axis / time-axis corner never falls through to the wrong mode.
+      var fullLen = (_lastCtx && _lastCtx.bars) ? _lastCtx.bars.length : 0;
+      var curLoIdx = _timeView ? _timeView.loIdx : 0;
+      var curHiIdx = _timeView ? _timeView.hiIdx : Math.max(0, fullLen - 1);
+      var mode = isTimeAxisHit(p.vy) ? 'time-axis' : (p.vx < L ? 'axis' : 'pan');
+      _dragState = { mode: mode, startVX: p.vx, startVY: p.vy, startLo: lo, startHi: hi,
+        startLoIdx: curLoIdx, startHiIdx: curHiIdx, fullLen: fullLen, moved: false };
       e.preventDefault();
     });
     svg.addEventListener('wheel', function (e) {
       e.preventDefault();
       var p = clientToViewBox(svg, e.clientX, e.clientY);
-      var anchor = priceAtVy(p.vy, lo, hi);
-      var factor = e.deltaY > 0 ? 1.12 : (1 / 1.12);
-      _view = clampDomain(anchor - (anchor - lo) * factor, anchor + (hi - anchor) * factor);
+      // Hovering the time axis zooms TIME instead of price -- the same "hover the axis you
+      // want to zoom" convention real TradingView uses for its own (there, price) secondary
+      // axis, mirrored onto this chart's secondary axis.
+      if (isTimeAxisHit(p.vy)) {
+        var fullLen = (_lastCtx && _lastCtx.bars) ? _lastCtx.bars.length : 0;
+        var curLoIdx = _timeView ? _timeView.loIdx : 0;
+        var curHiIdx = _timeView ? _timeView.hiIdx : Math.max(0, fullLen - 1);
+        var idxSpan = curHiIdx - curLoIdx, plotW = timeAxisPlotWidth();
+        var idxAnchor = curLoIdx + (p.vx - L) / plotW * idxSpan;
+        var tFactor = e.deltaY > 0 ? 1.12 : (1 / 1.12);
+        _timeView = clampTimeDomain(
+          idxAnchor - (idxAnchor - curLoIdx) * tFactor, idxAnchor + (curHiIdx - idxAnchor) * tFactor, fullLen);
+      } else {
+        var anchor = priceAtVy(p.vy, lo, hi);
+        var factor = e.deltaY > 0 ? 1.12 : (1 / 1.12);
+        _view = clampDomain(anchor - (anchor - lo) * factor, anchor + (hi - anchor) * factor);
+      }
       rerenderFromCache();
     }, { passive: false });
     // Double-click resets to the auto-fit domain -- the operator's own escape hatch, the same
     // convention every TradingView-style chart uses, instead of a dead end once zoomed.
-    svg.addEventListener('dblclick', function () { _view = null; _pin = null; rerenderFromCache(); });
+    svg.addEventListener('dblclick', function () { _view = null; _pin = null; _timeView = null; rerenderFromCache(); });
   }
   function nearestBarAt(bars, vx, xLo, xHi) {
     if (!bars.length) return null;
@@ -146,7 +210,7 @@
     win.forEach(function (r) { var d = Math.abs(yOf(r[0], lo, hi) - vy); if (d < bestD) { bestD = d; best = r; } });
     return best;
   }
-  function crosshairSvg(lo, hi, mode) {
+  function crosshairSvg(lo, hi, mode, bars) {
     if (!_pin || !_lastCtx) return '';
     var vx = _pin.vx, vy = _pin.vy;
     var price = priceAtVy(vy, lo, hi);
@@ -157,7 +221,11 @@
     if (mode === 'profile') {
       var xSplit = Math.round(W * 0.60);
       if (vx < xSplit) {
-        var bar = nearestBarAt(_lastCtx.bars, vx, L, xSplit - 10);
+        // bars here is renderInto's own (possibly time-windowed) slice, NOT _lastCtx.bars --
+        // x-position maps to an index within whatever is actually visible, so a pin taken while
+        // zoomed into a narrow time window must resolve against that same visible slice or it
+        // would read back a bar many screens away from where the operator actually clicked.
+        var bar = nearestBarAt(bars, vx, L, xSplit - 10);
         if (bar) readLines.push('close ' + Number(bar.c).toFixed(2), ctTime(bar.t) + ' CT');
       } else {
         var srow = nearestStrikeAt(_lastCtx.win, vy, lo, hi);
@@ -230,7 +298,7 @@
     // A genuine context change (ticker or profile/dot mode) resets any operator zoom/pan/pin --
     // an old zoomed price window from SPY has no meaning once the ticker is AMD.
     var tk = ticker();
-    if (_viewTicker !== tk || _viewMode !== _mode) { _view = null; _pin = null; _viewTicker = tk; _viewMode = _mode; }
+    if (_viewTicker !== tk || _viewMode !== _mode) { _view = null; _pin = null; _timeView = null; _viewTicker = tk; _viewMode = _mode; }
     // #3: price domain over bars + a strikes window around spot. The window is the ONE shared Gamma
     // scope policy (EdShell.scopeSelect: a strike COUNT around spot — Auto 11 / Wider / All available,
     // shared with the heatmap and GEX-by-strike); srows is the current canonical input, disclosed below.
@@ -263,7 +331,14 @@
       '<span><span class="sw" style="background:var(--ed-ink)"></span>spot ' + (isFinite(spot) ? spot.toFixed(2) : '—') +
       (spotSourceLabel(spotSource) ? ' <span class="chart-spot-src">(' + esc(spotSourceLabel(spotSource)) + ')</span>' : '') + '</span>' +
       '<span><span class="sw" style="background:var(--ed-accent)"></span>flip</span>' +
-      '<span class="chart-hint">drag plot to pan · drag price axis to rescale · scroll to zoom · click pins a readout · double-click resets</span></div>';
+      '<span class="chart-hint">drag plot to pan · drag price or time axis to rescale · scroll to zoom (hover the time axis to zoom time) · click pins a readout · double-click resets</span></div>';
+      // The TIME PANNED/ZOOMED disclosure (see renderInto) is NOT built here: `legend` is
+      // cached once per real fetch in _lastCtx and reused verbatim by every interactive
+      // rerenderFromCache() call (pan/zoom/pin), so a condition on _timeView baked in at this
+      // point would freeze at whatever _timeView was at the LAST REAL FETCH, never reflecting
+      // an interactive drag/wheel that happens after it -- REPRODUCED live: dragging the time
+      // axis visibly narrowed the window but the note never appeared. renderInto re-evaluates
+      // it fresh on every call instead, the same way it already does for `lo`/`hi` under _view.
     _lastCtx = { bars: bars, win: win, spot: spot, terrain: terrain, legend: legend };
     renderInto(host, bars, win, spot, terrain, legend);
   }
@@ -271,6 +346,18 @@
   // by BOTH the real load path (auto-fit domain) and every pan/zoom/crosshair frame (cached
   // domain), so a drag never re-fetches network data to redraw.
   function renderInto(host, bars, win, spot, terrain, legend) {
+    // Time window applies FIRST -- everything below (auto-fit price domain when _view is null,
+    // the price line itself, the time-axis labels, crosshair bar lookup via _lastCtx.bars) must
+    // see only the currently-visible slice, the same way TradingView's own price auto-fits to
+    // whichever candles are actually on screen. Clamped against THIS call's bars.length, not
+    // trusted from whenever _timeView was set, so a shorter fetch after a ticker/mode switch
+    // (already null'd by the context-change reset above) or any other length drift can never
+    // index out of bounds.
+    if (_timeView && bars.length > 2) {
+      var loIdx = Math.max(0, Math.min(bars.length - 2, _timeView.loIdx));
+      var hiIdx = Math.max(loIdx + 1, Math.min(bars.length - 1, _timeView.hiIdx));
+      bars = bars.slice(loIdx, hiIdx + 1);
+    }
     var lo, hi;
     if (_view) { lo = _view.lo; hi = _view.hi; }
     else {
@@ -283,8 +370,14 @@
     var svg = (_mode === 'profile')
       ? profileSvg(bars, win, spot, terrain, lo, hi)
       : dotSvg(win, spot, terrain, lo, hi);
-    svg = svg.slice(0, -6) + crosshairSvg(lo, hi, _mode) + '</svg>';   // insert before the closing </svg>
-    host.innerHTML = legend + svg;
+    svg = svg.slice(0, -6) + crosshairSvg(lo, hi, _mode, bars) + '</svg>';   // insert before the closing </svg>
+    // A manual time pan/zoom is never silent (same discipline every other panel's own PANNED
+    // note uses) -- computed HERE, not in the cached `legend` string, specifically so an
+    // interactive drag/wheel (which only ever calls renderInto, never rebuilds legend) is
+    // reflected the instant it happens, not just on the next real data fetch.
+    var timePannedNote = _timeView
+      ? '<div class="chart-hint" style="color:var(--ed-accent-2);">TIME PANNED/ZOOMED — not the full fetched window; double-click resets</div>' : '';
+    host.innerHTML = legend + timePannedNote + svg;
     // Independent-review finding (2026-09-13), REPRODUCED: binding click listeners to EVERY
     // `[data-strike]` element (both the tiny visible mark AND its invisible, larger hit
     // target) put two overlapping elements in direct competition for the same click -- a

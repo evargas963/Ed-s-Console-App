@@ -31,7 +31,70 @@
       (z.interpretation_notes ? ' — ' + esc(z.interpretation_notes) : '') + '</div>';
   }
 
+  // ---- Repo-wide chart interaction standard: axis-drag rescales, plot-drag pans, scroll
+  // zooms, click-to-pin readout not hover, double-click resets. Unlike the strike-window
+  // panels (GEX by Strike, Positioning Migration, the gamma heatmap grid), this map has a
+  // genuinely continuous, unbounded price axis with no pre-existing scroll/click behaviour to
+  // protect -- the SAME contract as ed-gamma-chart.js (SVG) and ed-order-flow-heatmap.js
+  // (canvas), just applied to a DOM percent-positioned plot instead of pixels. No separate
+  // axis gutter exists here (no left-margin tick column), so the whole plot both pans (drag)
+  // and zooms (wheel, continuous -- .liqmap-wrap has no native scroll to preserve, unlike the
+  // .gbs-scroll/.heat-wrap panels, so a plain wheel is safe here without a modifier gate). ----
+  var _view = null, _viewTicker = null;
+  var _dragState = null, _interactionInstalled = false;
+  // Independent-review finding, REPRODUCED: unlike ed-gamma-chart.js's clampDomain, nothing
+  // here floored the zoomed span -- repeated wheel-in ticks (factor 1/1.12 each) shrink
+  // (hi-lo) toward zero with no floor, and `span = (hi-lo)||1` never catches it since span
+  // stays nonzero-but-tiny, so yPct blows up and every zone/line/spot renders at a garbage
+  // percentage. Applied to BOTH _view writers below, matching the chart's own discipline.
+  function clampPriceDomain(lo, hi) {
+    if (!isFinite(lo) || !isFinite(hi) || hi <= lo) return { lo: lo, hi: hi };
+    if (hi - lo < 0.02) { var mid = (lo + hi) / 2; return { lo: mid - 0.01, hi: mid + 0.01 }; }
+    return { lo: lo, hi: hi };
+  }
+  function installInteractionOnce() {
+    if (_interactionInstalled || typeof document === 'undefined') return;
+    _interactionInstalled = true;
+    document.addEventListener('mousemove', function (e) {
+      if (!_dragState) return;
+      var dy = e.clientY - _dragState.startY;
+      if (Math.abs(dy) > 2) _dragState.moved = true;
+      var span = _dragState.startHi - _dragState.startLo;
+      var priceDelta = dy / _dragState.height * span;   // DOM y grows downward, price grows upward
+      _view = clampPriceDomain(_dragState.startLo + priceDelta, _dragState.startHi + priceDelta);
+      rerenderLiqMapFromCache();
+    });
+    document.addEventListener('mouseup', function () { _dragState = null; });
+  }
+  var _lastLiq = null;   // { h, tk, snap, levels } -- render()'s own inputs, for a presentation-only redraw
+  function rerenderLiqMapFromCache() {
+    if (!_lastLiq) return;
+    render(_lastLiq.h, _lastLiq.tk, _lastLiq.snap, _lastLiq.levels);
+  }
+  function wireLiqMapInteraction(wrap, lo, hi) {
+    installInteractionOnce();
+    wrap.style.cursor = 'ns-resize';
+    wrap.setAttribute('draggable', 'false');
+    wrap.addEventListener('dragstart', function (e) { e.preventDefault(); });
+    wrap.addEventListener('mousedown', function (e) {
+      var r = wrap.getBoundingClientRect();
+      _dragState = { startY: e.clientY, startLo: lo, startHi: hi, height: r.height, moved: false };
+      e.preventDefault();
+    });
+    wrap.addEventListener('wheel', function (e) {
+      e.preventDefault();
+      var r = wrap.getBoundingClientRect();
+      var anchor = hi - (e.clientY - r.top) / r.height * (hi - lo);
+      var factor = e.deltaY > 0 ? 1.12 : (1 / 1.12);
+      _view = clampPriceDomain(anchor - (anchor - lo) * factor, anchor + (hi - anchor) * factor);
+      rerenderLiqMapFromCache();
+    }, { passive: false });
+    wrap.addEventListener('dblclick', function () { _view = null; rerenderLiqMapFromCache(); });
+  }
+
   function render(h, tk, snap, levels) {
+    _lastLiq = { h: h, tk: tk, snap: snap, levels: levels };
+    if (_viewTicker !== tk) { _view = null; _viewTicker = tk; }
     if (!snap || snap.zones === undefined) {
       h.innerHTML = '<div class="placeholder"><div class="sm">no console serving /api/liquidity-snapshot</div></div>';
       return;
@@ -72,8 +135,12 @@
       return;
     }
     var pad = (hi - lo) * 0.12 || 1;
-    lo -= pad; hi += pad;
-    var span = hi - lo || 1;
+    var autoLo = lo - pad, autoHi = hi + pad;
+    // A manual pan/zoom (_view) replaces the auto-fit range outright -- the operator's own
+    // framing IS the desired view, the same contract _view carries in the SVG/canvas charts.
+    // Double-click (wireLiqMapInteraction) clears it, returning to this auto-fit range.
+    if (_view) { lo = _view.lo; hi = _view.hi; } else { lo = autoLo; hi = autoHi; }
+    var span = (hi - lo) || 1;
     function yPct(v) { return (1 - (v - lo) / span) * 100; }
 
     var mapH = 460;
@@ -95,13 +162,19 @@
     var legendHtml =
       '<div class="fl-sec" style="margin-top:14px;"><div class="fl-sec-h">Zones (confluence-scored, /api/liquidity-snapshot)</div>' +
       (zones.length ? zones.map(zoneRow).join('') : '<div class="sm">no zones for this session yet</div>') + '</div>';
+    // A manual pan/zoom is never silent (same discipline every other panel's own note uses).
+    var panNote = _view ? '<div class="sm" style="color:var(--ed-ink-3);padding:2px 0 6px;">PANNED/ZOOMED ' +
+      num(lo) + '–' + num(hi) + ' — not auto-fit; double-click the map to resume</div>' : '';
 
     h.innerHTML =
       '<div class="fl-head"><div class="fl-c"><span class="fl-lab">Ticker</span><span class="fl-sym">' + esc(tk) + '</span></div>' +
       '<div class="fl-sub"><span class="fl-lab">Session</span><span class="fl-badge live">' + esc((snap.snapshot_type || '—').toUpperCase()) + '</span></div></div>' +
+      panNote +
       '<div class="liqmap-wrap-outer"><div class="liqmap-wrap" style="height:' + mapH + 'px;">' + zonesHtml + linesHtml + spotHtml + '</div></div>' +
       legendHtml +
       '<div class="fl-foot">Zones and reference levels come straight from /api/liquidity-snapshot and /api/levels — this view arranges them on a price axis and computes nothing new.</div>';
+    var wrap = h.querySelector('.liqmap-wrap');
+    if (wrap) wireLiqMapInteraction(wrap, lo, hi);
   }
 
   function loadImpl(tk, signal) {
@@ -118,7 +191,15 @@
       if (stillMap(tk)) render(h, tk, results[0], results[1]);
     }).catch(function (e) {
       if (e && e.name === 'AbortError') return;
-      if (stillMap(tk)) h.innerHTML = '<div class="placeholder"><div class="sm">no console serving /api/liquidity-snapshot</div></div>';
+      if (stillMap(tk)) {
+        // Independent-review finding, REPRODUCED: this branch used to set innerHTML directly,
+        // bypassing render() -- _lastLiq kept pointing at the last SUCCESSFUL render's data, so
+        // a drag/wheel/dblclick already in flight (delegated on `document`, not gated on this
+        // request's own outcome) would call rerenderLiqMapFromCache() and silently repaint the
+        // stale pre-error map right over this placeholder. Nothing left to redraw from now.
+        _lastLiq = null;
+        h.innerHTML = '<div class="placeholder"><div class="sm">no console serving /api/liquidity-snapshot</div></div>';
+      }
     });
   }
   var _loader = (typeof window !== 'undefined' && window.EdL1SseGuards && window.EdL1SseGuards.makeCoalescedLoader)
