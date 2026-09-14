@@ -2921,6 +2921,16 @@ ROWS: tuple[Row, ...] = (
         justification='Operator field-inventory audit (2026-09-13): reads the persisted native LEVELONE_OPTIONS stream rows (stream_options_quotes_raw.native_json) directly for one contract symbol, oldest to newest. A tick counts as a trade print only when it carries its OWN LAST_PRICE and TRADE_TIME_MILLIS together (a partial tick can bump LAST_SIZE alone with no fresh price, and must not mint a null-priced trade row); de-dupes on (TRADE_TIME_MILLIS, LAST_PRICE, LAST_SIZE); static contract context (STRIKE_TYPE/CONTRACT_TYPE/EXPIRATION_*/MULTIPLIER/UNDERLYING) is carried forward from whichever prior tick last reported it, since the vendor does not repeat it on every partial update. classification is a mechanical BID_PRICE/ASK_PRICE comparison against that same ticks own quote, never an aggressor-side (buy/sell) inference (tests/test_options_flow_tape_v1.py).',
     ),
     Row(
+        file='server.py', derivation='get_order_flow_book_heatmap', disposition='DERIVED',
+        producer_refs=('app/options/order_flow/history.py:book_heatmap_for_ticker',),
+        justification='Operator field-inventory audit (2026-09-13, "we do not have an order flow heatmap"): /api/order-flow/book-heatmap payload owner. Pure serializer over book_heatmap_for_ticker with a clamped minutes window [5,240]; no binning/aggregation of its own.',
+    ),
+    Row(
+        file='app/options/order_flow/history.py', derivation='book_heatmap_for_ticker', disposition='ALLOWLISTED',
+        allowlist_id='mega2_schwab_stream_l1',
+        justification='Operator field-inventory audit (2026-09-13): reads the persisted native NASDAQ_BOOK/NYSE_BOOK stream rows (stream_book_raw.native_json) directly for one underlying ticker, bins them into a time x price grid (cell = summed native BID_PRICE/ASK_PRICE TOTAL_VOLUME) — the historical, time-dimensioned counterpart to the live single-snapshot ladder api_order_flow_microstructure already serves from the SAME table. The window always ends at the latest row actually captured for this ticker, never wall-clock now, so a real prior session still renders honestly outside RTH. Fails closed (available:false + a plain reason) at every stage; never interpolates a cell between captured ticks.',
+    ),
+    Row(
         file='server.py', derivation='get_terrain_strikes._side_sums', disposition='ALLOWLISTED',
         allowlist_id='mega1_internal_helper',
         justification="Nested: sums the already-computed per-strike GEX$ and volume per side of the payload's OWN spot. One aggregator, one spot basis — the in-browser re-sum was killed because a client loop could straddle a different spot and broke silently on payload changes.",

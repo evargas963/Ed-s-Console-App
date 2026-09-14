@@ -258,6 +258,69 @@
   .fl-tag.unknown{background:var(--ed-panel-3);color:var(--ed-ink-4)}   /* served value the backend did not classify */
   .fl-foot{font-family:var(--ed-sans);font-size:10.5px;color:var(--ed-ink-4);padding:12px 2px 0;line-height:1.5}
 
+  /* Order Flow Book/DOM — a real per-level price ladder (d.depth_pressure), not a flat stat
+     list. Ask levels stack above the mid strip, bid levels below — the shape traders actually
+     scan a DOM ladder in. */
+  .dom-wrap{display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap}
+  .dom-ladder{flex:0 0 300px;border:1px solid var(--ed-edge);border-radius:var(--ed-r);background:var(--ed-panel-2);overflow:hidden}
+  .dom-side-label{font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ed-ink-4);padding:5px 10px 3px}
+  .dom-row{position:relative;display:grid;grid-template-columns:1fr 74px 60px;align-items:center;gap:8px;padding:2.5px 10px}
+  .dom-row .dom-bar-track{grid-column:1;height:15px;position:relative;background:var(--ed-panel-3);border-radius:2px;overflow:hidden}
+  .dom-row .dom-bar{position:absolute;top:0;bottom:0;border-radius:2px}
+  .dom-row.ask .dom-bar{right:0;background:var(--ed-neg)}
+  .dom-row.bid .dom-bar{left:0;background:var(--ed-pos)}
+  .dom-row.wall .dom-bar{box-shadow:0 0 0 1px var(--ed-warn) inset}
+  .dom-row .dom-px{grid-column:2;font-family:var(--ed-sans);font-size:12.5px;font-weight:700;text-align:right;font-variant-numeric:tabular-nums;color:var(--ed-ink)}
+  .dom-row.ask .dom-px{color:var(--ed-neg-ink)}
+  .dom-row.bid .dom-px{color:var(--ed-pos-ink)}
+  .dom-row .dom-sz{grid-column:3;font-family:var(--ed-sans);font-size:12px;text-align:right;font-variant-numeric:tabular-nums;color:var(--ed-ink-3)}
+  .dom-mid{display:flex;justify-content:space-between;gap:8px;padding:7px 10px;margin-top:2px;border-top:1px solid var(--ed-edge);background:var(--ed-panel-3);font-size:11.5px;color:var(--ed-ink-2);font-variant-numeric:tabular-nums}
+  .dom-stats{flex:1 1 320px;min-width:280px;display:flex;flex-direction:column;gap:14px}
+
+  /* Liquidity Map — a real vertical price map of /api/liquidity-snapshot's own confluence
+     zones + reference levels, spot marked from the SAME /api/levels spot every panel uses.
+     The console.html placeholder for this workspace named this exact shape: "a visual
+     liquidity map, not a table" (the table already exists at Liquidity > Levels). */
+  .liqmap-wrap-outer{display:flex;justify-content:center;padding:6px 0 4px}
+  .liqmap-wrap{position:relative;width:100%;max-width:360px;border-left:2px solid var(--ed-edge-strong)}
+  .liqmap-zone{position:absolute;left:0;right:0;background:rgba(35,192,107,.14);border-top:1px solid rgba(35,192,107,.55);border-bottom:1px solid rgba(35,192,107,.55)}
+  .liqmap-zone.resistance{background:rgba(229,72,77,.14);border-top-color:rgba(229,72,77,.55);border-bottom-color:rgba(229,72,77,.55)}
+  .liqmap-zone-tag{position:absolute;right:6px;top:1px;font-size:9.5px;font-weight:700;color:var(--ed-ink-2);background:var(--ed-panel-3);padding:0 4px;border-radius:2px}
+  .liqmap-line{position:absolute;left:-2px;right:0;border-top:1px dashed var(--ed-ink-4)}
+  .liqmap-line-label{position:absolute;left:8px;top:-8px;font-size:10px;color:var(--ed-ink-2);background:var(--ed-panel-2);padding:0 4px}
+  .liqmap-spot{position:absolute;left:-2px;right:0;border-top:2px solid var(--ed-warn)}
+  .liqmap-spot-label{position:absolute;right:8px;top:-9px;font-size:10.5px;font-weight:700;color:var(--ed-warn);background:var(--ed-panel-2);padding:0 4px}
+
+  /* Trade Desk / Right Now — numbered Detect/Frame/Confirm stage cards + a plain-English
+     Context Summary underneath. Each stage gets one HERO stat (the single number worth
+     scanning first) and a short supporting-row list, matching the "big number, then detail"
+     dashboard convention the operator's own reference mockups used — with real data. */
+  .td-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px}
+  .td-stage{border:1px solid var(--ed-edge);border-left:3px solid var(--ed-edge-strong);border-radius:var(--ed-r);
+    background:var(--ed-panel-2);padding:12px 14px;display:flex;flex-direction:column;gap:2px}
+  .td-stage.td-accent-blue{border-left-color:var(--ed-accent)}
+  .td-stage.td-accent-green{border-left-color:var(--ed-pos)}
+  .td-stage.td-accent-amber{border-left-color:var(--ed-warn)}
+  .td-stage-h{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+  .td-badge{width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+    font-size:11px;font-weight:700;color:#04101c;flex:0 0 auto;background:var(--ed-ink-3)}
+  .td-badge.td-accent-blue{background:var(--ed-accent-2)}
+  .td-badge.td-accent-green{background:var(--ed-pos-ink)}
+  .td-badge.td-accent-amber{background:var(--ed-warn)}
+  .td-stage-title{font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--ed-ink-2)}
+  .td-hero{font-family:var(--ed-sans);font-size:21px;font-weight:700;color:var(--ed-ink);
+    font-variant-numeric:tabular-nums;display:flex;align-items:baseline;gap:6px;padding:2px 0 8px;
+    border-bottom:1px solid var(--ed-edge-soft);margin-bottom:4px}
+  .td-hero .unit{font-size:11px;font-weight:500;color:var(--ed-ink-3)}
+  .td-hero .pos{color:var(--ed-pos-ink)}
+  .td-hero .neg{color:var(--ed-neg-ink)}
+  .td-context{border:1px solid var(--ed-edge);border-radius:var(--ed-r);background:var(--ed-panel-2);padding:12px 14px;margin-top:14px}
+  .td-context h4{margin:0 0 8px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--ed-ink-2)}
+  .td-ctx-row{display:flex;gap:12px;padding:5px 0;border-bottom:1px solid var(--ed-edge-soft);font-size:12.5px}
+  .td-ctx-row:last-child{border-bottom:none}
+  .td-ctx-row .lbl{color:var(--ed-ink-3);min-width:70px;flex:0 0 auto}
+  .td-ctx-row .val{color:var(--ed-ink);font-weight:600}
+
   /* gamma workspace layout — the heatmap is the HERO (dominant center), Key Levels a narrow right
      rail, and the bottom a subordinate supporting strip. Tight gaps/rhythm = terminal density. */
   .gamma-grid{display:grid;height:100%;gap:8px;
@@ -843,12 +906,34 @@
             <div class="panel-b" id="obBody"><div class="placeholder"><div class="sm">Real L2 book microstructure from /api/order-flow/microstructure — top-of-book/spread/depth/imbalance NATIVE/DERIVED; aggressor side deferred (Schwab exposes no native field).</div></div></div>
           </div>
         </div>
+        <div class="sub-pane" data-sub-pane="heatmap">
+          <div class="panel">
+            <div class="panel-h"><span class="hticker" id="ofhTicker">SPX</span><span class="t">Book Heatmap</span><span class="sub">displayed depth over time · NASDAQ/NYSE</span>
+              <div class="r">
+                <div class="chart-modes">
+                  <button type="button" class="cmode" data-ofh-minutes="15">15m</button>
+                  <button type="button" class="cmode on" data-ofh-minutes="60">60m</button>
+                  <button type="button" class="cmode" data-ofh-minutes="120">120m</button>
+                  <button type="button" class="cmode" data-ofh-minutes="240">240m</button>
+                </div>
+                <span class="prov native">STREAM_BOOK_RAW</span>
+              </div></div>
+            <div class="panel-b" id="ofhBody"><div class="placeholder"><div class="sm">Historical book depth from /api/order-flow/book-heatmap — real captured NASDAQ/NYSE book ticks binned by time x price, green=bid-dominant/red=ask-dominant, brightness=size. Never interpolated.</div></div></div>
+          </div>
+        </div>
       </section>
 
       <!-- LIQUIDITY / LEVELS — reuses the EXACT /api/levels renderer ed-gamma-levels.js already
            built for Options > Gamma > Levels (operator, 2026-09-13). Other subs (Map/Profile/
            VWAP-Value/Session/History) stay `state:'na'` until they have their own real wiring. -->
       <section class="workspace" data-ws-pane="liquidity">
+        <div class="sub-pane" data-sub-pane="map">
+          <div class="panel">
+            <div class="panel-h"><span class="hticker" id="liqmTicker">SPX</span><span class="t">Liquidity Map</span><span class="sub">confluence-scored zones · reference levels · spot</span>
+              <div class="r"><span class="prov derived">LIQUIDITY SNAPSHOT</span></div></div>
+            <div class="panel-b" id="liqmBody"><div class="placeholder"><div class="sm">A visual price map from /api/liquidity-snapshot's own confluence-scored support/resistance zones, plus prior-day/overnight reference levels and spot — never a fabricated line.</div></div></div>
+          </div>
+        </div>
         <div class="sub-pane" data-sub-pane="levels">
           <div class="panel">
             <div class="panel-h"><span class="hticker" id="lvlTicker">SPX</span><span class="t">Liquidity Levels</span><span class="sub">prior day · overnight · session</span>
@@ -897,6 +982,8 @@
 <script src="/static/js/ed-stream.js" defer></script>
 <script src="/static/js/ed-gamma-flow.js" defer></script>
 <script src="/static/js/ed-order-flow.js" defer></script>
+<script src="/static/js/ed-order-flow-heatmap.js" defer></script>
+<script src="/static/js/ed-liquidity-map.js" defer></script>
 <script src="/static/js/ed-trade-desk.js" defer></script>
 </body>
 </html>

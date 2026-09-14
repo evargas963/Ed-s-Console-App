@@ -67,6 +67,7 @@ ROUTES: dict[str, tuple[str, str | None]] = {
     '/api/options/gamma-surface': ('PRODUCER', 'server.py:project_gamma_surface'),
     '/api/options/tape': ('PRODUCER', 'server.py:get_options_tape'),
     '/api/options/vanna-by-strike': ('PRODUCER', 'server.py:get_vanna_by_strike'),
+    '/api/order-flow/book-heatmap': ('PRODUCER', 'server.py:get_order_flow_book_heatmap'),
     '/api/order-flow/microstructure': ('PRODUCER', 'server.py:api_order_flow_microstructure'),
     '/api/order-flow/options-microstructure': ('PRODUCER', 'server.py:api_order_flow_options_microstructure'),
     '/api/prediction/override': ('OPERATOR_INPUT', None),

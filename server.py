@@ -13881,6 +13881,28 @@ def get_options_tape(ticker: str = Query(default=DEFAULT_TICKER),
     })
 
 
+@app.get("/api/order-flow/book-heatmap")
+def get_order_flow_book_heatmap(ticker: str = Query(default=DEFAULT_TICKER),
+                                minutes: float = Query(default=60.0)):
+    """Historical book-depth heatmap for the underlying ticker's own NASDAQ/NYSE book (operator
+    field-inventory audit, 2026-09-13: "we don't have an order flow heatmap"). SERIALIZER, not a
+    second producer: delegates entirely to app.options.order_flow.history.book_heatmap_for_ticker,
+    which bins the SAME persisted stream_book_raw rows the live /api/order-flow/microstructure
+    ladder already reads into a time x price grid. Genuinely historical (a real time axis), which
+    the live ladder's one-snapshot view cannot show. The window always ends at the latest row
+    actually captured for this ticker, never wall-clock now — see that function's own docstring
+    for why. `minutes` is clamped to [5, 240] to bound one request's cost."""
+    from app.options.order_flow.history import book_heatmap_for_ticker
+
+    tk = ticker_storage_key(ticker or DEFAULT_TICKER)
+    try:
+        bounded_minutes = max(5.0, min(240.0, float(minutes)))
+    except (TypeError, ValueError):
+        bounded_minutes = 60.0
+    payload = book_heatmap_for_ticker(tk, minutes=bounded_minutes)
+    return JSONResponse(payload)
+
+
 #: RC-192/RC-199 FORCES (RE-LANDED 2026-08-02 after a worktree reset destroyed the
 #: uncommitted originals — RC-210): ΔOI/DEX from the two newest banked wide chains; the
 #: strip's GEX/OV rows come from the live strikes payload client-side; ΔOI and DEX need the

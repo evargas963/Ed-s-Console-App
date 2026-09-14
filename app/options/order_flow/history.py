@@ -205,3 +205,105 @@ def tape_rows_for_symbol(
             out.pop(0)   # keep only the most recent `bounded_limit` — cheaper than re-slicing every append
     out.reverse()   # newest-first for display
     return out
+
+
+def book_heatmap_for_ticker(
+    ticker: str,
+    *,
+    minutes: float = 60.0,
+    max_rows: int = 20000,
+    db_path: str | Path | None = None,
+) -> dict[str, Any]:
+    """Historical book-depth heatmap for one underlying ticker's own book (operator field-
+    inventory audit, 2026-09-13 — "we don't have an order flow heatmap"). Bins the SAME
+    persisted `stream_book_raw` rows the live `/api/order-flow/microstructure` ladder already
+    reads (NASDAQ_BOOK + NYSE_BOOK, merged — the combined displayed liquidity across both
+    venues, never one venue silently picked as "the" book) into a time x price grid, cell
+    value = summed native TOTAL_VOLUME. This is genuinely historical (a real time dimension),
+    which the live ladder's single current snapshot cannot show — the Bookmap-style view.
+
+    The window ends at the LATEST row actually captured for this ticker, never wall-clock
+    `now()`: outside RTH (weekends, after-hours with no fresh ticks) "now" would show an
+    honestly-empty grid even though real historical data exists a few hours earlier. Anchoring
+    to the data's own latest timestamp means a viewer always sees the most recent REAL
+    session's shape, labelled with its own real as-of time — never a fabricated live illusion.
+    Fails closed (available:false + a plain reason) at every stage; never returns a synthetic
+    or interpolated cell.
+    """
+    sym = ticker_storage_key(ticker) or str(ticker or "").strip().upper()
+    if not sym:
+        return {"ticker": ticker, "available": False, "reason": "empty ticker"}
+    path = resolve_stream_db_path(db_path)
+    if not path.is_file():
+        return {"ticker": sym, "available": False, "reason": "no stream capture database"}
+    try:
+        con = sqlite3.connect(f"file:{path.resolve().as_posix()}?mode=ro", uri=True)
+    except sqlite3.Error:
+        return {"ticker": sym, "available": False, "reason": "database unavailable"}
+    try:
+        con.execute("PRAGMA query_only=ON")
+        latest = con.execute(
+            "SELECT MAX(ts_recv) FROM stream_book_raw WHERE symbol = ? AND service IN ('NASDAQ_BOOK','NYSE_BOOK')",
+            (sym,),
+        ).fetchone()
+        latest_ts = latest[0] if latest else None
+        if latest_ts is None:
+            return {"ticker": sym, "available": False, "reason": "no book history captured for this ticker"}
+        lower_bound = float(latest_ts) - max(1.0, float(minutes)) * 60.0
+        rows = con.execute(
+            "SELECT ts_recv, native_json FROM stream_book_raw "
+            "WHERE symbol = ? AND service IN ('NASDAQ_BOOK','NYSE_BOOK') AND ts_recv >= ? "
+            "ORDER BY ts_recv ASC LIMIT ?",
+            (sym, lower_bound, int(max_rows)),
+        ).fetchall()
+    except sqlite3.Error:
+        return {"ticker": sym, "available": False, "reason": "database read failed"}
+    finally:
+        con.close()
+    if not rows:
+        return {"ticker": sym, "available": False, "reason": "no book rows in the requested window"}
+
+    t0 = float(rows[0][0])
+    span = float(rows[-1][0]) - t0 or 1.0
+    n_buckets = 90
+    bucket_sec = max(1.0, span / n_buckets)
+
+    cells: dict[tuple[int, float], dict[str, float]] = {}
+    prices_seen: set[float] = set()
+    for ts_recv, native_json in rows:
+        try:
+            item = json.loads(native_json)
+        except (TypeError, ValueError):
+            continue
+        if not isinstance(item, dict):
+            continue
+        bucket = min(n_buckets - 1, int((float(ts_recv) - t0) / bucket_sec))
+        for leaf, price_key, side in (("BIDS", "BID_PRICE", "bid"), ("ASKS", "ASK_PRICE", "ask")):
+            for lvl in (item.get(leaf) or []):
+                px, vol = lvl.get(price_key), lvl.get("TOTAL_VOLUME")
+                if px is None or vol is None:
+                    continue
+                px = round(float(px), 2)
+                cell = cells.setdefault((bucket, px), {"bid": 0.0, "ask": 0.0})
+                cell[side] += float(vol)
+                prices_seen.add(px)
+
+    if not prices_seen:
+        return {"ticker": sym, "available": False, "reason": "captured rows carried no populated price levels in this window"}
+
+    cell_list = sorted(
+        ({"t": k[0], "price": k[1], "bid": round(v["bid"], 1), "ask": round(v["ask"], 1)} for k, v in cells.items()),
+        key=lambda c: (c["t"], c["price"]),
+    )
+    return {
+        "ticker": sym, "available": True,
+        "since_ts": t0, "until_ts": float(rows[-1][0]), "latest_captured_ts": float(latest_ts),
+        "n_buckets": n_buckets, "bucket_sec": round(bucket_sec, 2),
+        "price_min": min(prices_seen), "price_max": max(prices_seen),
+        "rows_scanned": len(rows), "rows_capped": len(rows) >= int(max_rows),
+        "cells": cell_list,
+        "method": ("stream_book_raw NASDAQ_BOOK+NYSE_BOOK rows for this ticker, oldest-to-newest in "
+                   "the window ending at the data's own latest captured tick, binned into n_buckets "
+                   "time columns x native BID_PRICE/ASK_PRICE rows; cell value = summed native "
+                   "TOTAL_VOLUME (displayed size only, both venues merged)."),
+    }

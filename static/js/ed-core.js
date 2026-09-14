@@ -14,19 +14,30 @@
   var app = document.getElementById('app');
 
   // ---- 3-tier navigation config (workspace -> subnav -> views).
-  //      `state:'na'` marks a tab whose canonical capability is absent/partial. ----
+  //      `state:'na'` marks a tab whose canonical capability is absent/partial.
+  // A workspace with no view-tab family uses `Object.create(null)`, never a plain `[]` or
+  // `{}` -- reproduced live (2026-09-13): Liquidity's `views: []` made `cfg.views['map']`
+  // resolve to the INHERITED Array.prototype.map function (truthy) instead of undefined,
+  // the moment a sub was named 'map' -- renderViewbar's `views.forEach` then threw on every
+  // switch INTO Liquidity, and because the throw happened before showPane()/syncAttrs() ran,
+  // the workspace silently never became visible (state updated, DOM never did). A null-
+  // prototype object has no inherited properties to collide with, for this or any future
+  // sub id (map/filter/find/sort/... are all real Array.prototype methods). ----
   var NAV = {
     'trade-desk': { title: 'TRADE DESK', subs: [
       { id: 'right-now', label: 'Right Now' }, { id: 'plan', label: 'Plan' },
-      { id: 'expression', label: 'Expression', state: 'na' } ], views: [] },
+      { id: 'expression', label: 'Expression', state: 'na' } ], views: Object.create(null) },
     // Book/DOM first (real, wired 2026-09-13 to /api/order-flow/microstructure); the rest stay
     // `na` until they have their own real wiring -- Overview/Heatmap/Tape/Options Book/History
     // were never anything but a labelled placeholder div, same as Book was before this pass.
+    // Book/DOM + Heatmap real (2026-09-13); the rest stay `na` until they have their own real
+    // wiring -- Overview/Tape/Options Book/History were never anything but a labelled
+    // placeholder div, same as Book/Heatmap were before this pass.
     'order-flow': { title: 'ORDER FLOW', subs: [
-      { id: 'book', label: 'Book / DOM' },
-      { id: 'overview', label: 'Overview', state: 'na' }, { id: 'heatmap', label: 'Heatmap', state: 'na' },
+      { id: 'book', label: 'Book / DOM' }, { id: 'heatmap', label: 'Heatmap' },
+      { id: 'overview', label: 'Overview', state: 'na' },
       { id: 'tape', label: 'Tape', state: 'na' }, { id: 'options-book', label: 'Options Book', state: 'na' },
-      { id: 'history', label: 'History', state: 'na' } ], views: [] },
+      { id: 'history', label: 'History', state: 'na' } ], views: Object.create(null) },
     'options': { title: 'OPTIONS', subs: [
       { id: 'gamma', label: 'Gamma' }, { id: 'vanna', label: 'Vanna', note: 'AGG BY STRIKE' },
       { id: 'charm', label: 'Charm', note: 'AGG BY STRIKE' },
@@ -43,24 +54,26 @@
           { id: 'term', label: 'Term Structure', state: 'na' }, { id: 'analytics', label: 'Analytics', state: 'na' } ];
         return { gamma: gammaViews, dex: gammaViews, oi: gammaViews };
       })() },
-    // Levels first (real, reuses ed-gamma-levels.js's own /api/levels renderer verbatim,
-    // 2026-09-13); the rest stay `na` until they have their own real wiring.
+    // Map + Levels real (2026-09-13: Map is the "visual liquidity map, not a table" the
+    // original placeholder always named -- /api/liquidity-snapshot's own confluence-scored
+    // zones on a price axis; Levels reuses ed-gamma-levels.js's /api/levels renderer
+    // verbatim). The rest stay `na` until they have their own real wiring.
     'liquidity': { title: 'LIQUIDITY', subs: [
-      { id: 'levels', label: 'Levels' },
-      { id: 'map', label: 'Map', state: 'na' }, { id: 'profile', label: 'Profile', state: 'na' },
+      { id: 'map', label: 'Map' }, { id: 'levels', label: 'Levels' },
+      { id: 'profile', label: 'Profile', state: 'na' },
       { id: 'vwap', label: 'VWAP / Value', state: 'na' }, { id: 'session', label: 'Session', state: 'na' },
-      { id: 'history', label: 'History', state: 'na' } ], views: [] },
+      { id: 'history', label: 'History', state: 'na' } ], views: Object.create(null) },
     'desk': { title: 'DESK / RESEARCH', subs: [
       { id: 'radar', label: 'Radar' }, { id: 'brief', label: 'Brief' }, { id: 'dossier', label: 'Dossier' },
       { id: 'structures', label: 'Structures' }, { id: 'scenarios', label: 'Scenarios' },
       { id: 'evidence', label: 'Evidence' }, { id: 'replay', label: 'Replay' },
-      { id: 'ai-research', label: 'AI Research', state: 'na', note: 'NOT PROVEN' } ], views: [] },
+      { id: 'ai-research', label: 'AI Research', state: 'na', note: 'NOT PROVEN' } ], views: Object.create(null) },
     'portfolio': { title: 'PORTFOLIO / RISK', subs: [
       { id: 'positions', label: 'Positions', state: 'na' }, { id: 'exposure', label: 'Exposure', state: 'na' },
-      { id: 'risk', label: 'Risk', state: 'na' }, { id: 'scenarios', label: 'Scenarios', state: 'na' } ], views: [] },
+      { id: 'risk', label: 'Risk', state: 'na' }, { id: 'scenarios', label: 'Scenarios', state: 'na' } ], views: Object.create(null) },
     'system': { title: 'SYSTEM / TRUST', subs: [
       { id: 'data-health', label: 'Data Health' }, { id: 'feeds', label: 'Feeds' },
-      { id: 'provenance', label: 'Provenance' }, { id: 'models', label: 'Models' }, { id: 'runtime', label: 'Runtime' } ], views: [] }
+      { id: 'provenance', label: 'Provenance' }, { id: 'models', label: 'Models' }, { id: 'runtime', label: 'Runtime' } ], views: Object.create(null) }
   };
 
   function _ls(k, d) { try { var v = localStorage.getItem(k); return (v == null || v === '') ? d : v; } catch (e) { return d; } }

@@ -73,6 +73,28 @@
     return h + '</div>';
   }
 
+  // Real per-level DOM ladder from d.depth_pressure.{bid,ask} -- [{price,volume,cum}], best-
+  // first, up to OF_BOOK_DEPTH_DEEP (5) levels. This is genuine displayed-book data the first
+  // build of this view fetched but never rendered (only the aggregate depth.{1,3,5} totals
+  // were shown) -- the operator's "this sucks, it's just numbers" is fixed by using the level
+  // array that was already on the wire.
+  function ladderHtml(bidLevels, askLevels, wallSet) {
+    var maxVol = 0;
+    bidLevels.concat(askLevels).forEach(function (l) { if (l.volume > maxVol) maxVol = l.volume; });
+    maxVol = maxVol || 1;
+    function row(l, side) {
+      var w = Math.max(2, Math.round((l.volume / maxVol) * 100));
+      var isWall = wallSet[side + '@' + l.price];
+      return '<div class="dom-row ' + side + (isWall ? ' wall' : '') + '">' +
+        '<div class="dom-bar-track"><i class="dom-bar" style="width:' + w + '%"></i></div>' +
+        '<span class="dom-px">' + num(l.price) + '</span><span class="dom-sz">' + int(l.volume) + '</span></div>';
+    }
+    var asksHtml = askLevels.slice().reverse().map(function (l) { return row(l, 'ask'); }).join('');
+    var bidsHtml = bidLevels.map(function (l) { return row(l, 'bid'); }).join('');
+    return '<div class="dom-side-label">Ask</div>' + (asksHtml || '<div class="sm" style="padding:4px 8px;">no displayed asks</div>') + bidsHtml +
+      (bidsHtml ? '' : '<div class="sm" style="padding:4px 8px;">no displayed bids</div>') + '<div class="dom-side-label">Bid</div>';
+  }
+
   function render(h, tk, d) {
     if (!d || d.status === 'no_book') {
       h.innerHTML = '<div class="fl-head"><div class="fl-c"><span class="fl-lab">Ticker</span><span class="fl-sym">' + esc(tk) + '</span></div>' +
@@ -82,18 +104,24 @@
       return;
     }
     var tob = d.top_of_book || {}, depth = d.depth || {}, ages = d.ages || {}, cls = d.classification || {};
+    var dp = d.depth_pressure || {}, bidLevels = dp.bid || [], askLevels = dp.ask || [];
     function dep(n, side) { var x = depth[String(n)] || {}; return x[side]; }
     function bk(k) { return classOf(cls, k); }
+    var walls = d.wall_candidates || [];
+    var wallSet = {};
+    walls.forEach(function (w) { wallSet[w.side + '@' + w.price] = w; });
+
+    var midHtml = '<div class="dom-mid"><span>mid ' + num(d.mid) + '</span><span>spread ' + num(d.spread_pts) +
+      '</span><span>microprice ' + num(d.microprice) + '</span></div>';
+
     var rowsTob = [
-      ['Bid', num(tob.bid), bk('top_of_book.bid')], ['Ask', num(tob.ask), bk('top_of_book.ask')],
-      ['Bid size', int(tob.bid_size), bk('top_of_book.bid_size')], ['Ask size', int(tob.ask_size), bk('top_of_book.ask_size')],
+      ['Bid × size', num(tob.bid) + ' × ' + int(tob.bid_size), bk('top_of_book.bid')],
+      ['Ask × size', num(tob.ask) + ' × ' + int(tob.ask_size), bk('top_of_book.ask')],
     ];
-    var rowsBook = [
-      ['Mid', num(d.mid), bk('mid')], ['Microprice', num(d.microprice), bk('microprice')],
-      ['Spread (pts)', num(d.spread_pts), bk('spread_pts')],
-      ['Depth 1 · imbalance', num(dep(1, 'imbalance'), 3), bk('depth.*.imbalance')],
-      ['Depth 3 · imbalance', num(dep(3, 'imbalance'), 3), bk('depth.*.imbalance')],
-      ['Depth 5 · imbalance', num(dep(5, 'imbalance'), 3), bk('depth.*.imbalance')],
+    var rowsImb = [
+      ['Depth 1 imbalance', num(dep(1, 'imbalance'), 3), bk('depth.*.imbalance')],
+      ['Depth 3 imbalance', num(dep(3, 'imbalance'), 3), bk('depth.*.imbalance')],
+      ['Depth 5 imbalance', num(dep(5, 'imbalance'), 3), bk('depth.*.imbalance')],
       ['Bid total (5)', int(dep(5, 'bid_total')), bk('depth.*.bid_total')],
       ['Ask total (5)', int(dep(5, 'ask_total')), bk('depth.*.ask_total')],
     ];
@@ -101,16 +129,21 @@
       ['Book age', ages.book_age_sec != null ? Math.round(ages.book_age_sec) + 's' : '—', bk('ages.book_age_sec')],
       ['Quote age', ages.quote_age_sec != null ? Math.round(ages.quote_age_sec) + 's' : '—', bk('ages.quote_age_sec')],
     ];
-    var walls = d.wall_candidates || [];
     var wallsHtml = walls.length
       ? walls.map(function (w) { return '<div class="fl-row"><span class="k">' + esc(w.side || '—') + ' @ ' + num(w.price) +
-          '</span><span class="v">' + int(w.size) + '</span></div>'; }).join('')
+          '</span><span class="v">' + int(w.size) + ' <span class="sm">(' + num(w.median_mult, 1) + '× median)</span></span></div>'; }).join('')
       : '<div class="sm" style="padding:4px 0;">no size-outlier candidates in the current displayed book</div>';
     var deferred = (d.deferred || []).join(' · ');
+
     h.innerHTML =
       '<div class="fl-head"><div class="fl-c"><span class="fl-lab">Ticker</span><span class="fl-sym">' + esc(tk) + '</span></div>' +
       '<div class="fl-sub"><span class="fl-lab">Book</span><span class="fl-badge live">LIVE</span></div></div>' +
-      '<div class="fl-grid">' + section('Top of book', rowsTob) + section('Book microstructure', rowsBook) + section('Freshness', fresh) + '</div>' +
+      '<div class="dom-wrap">' +
+        '<div class="dom-ladder">' + ladderHtml(bidLevels, askLevels, wallSet) + midHtml + '</div>' +
+        '<div class="dom-stats">' +
+          section('Top of book', rowsTob) + section('Imbalance', rowsImb) + section('Freshness', fresh) +
+        '</div>' +
+      '</div>' +
       '<div class="fl-sec" style="margin-top:14px;"><div class="fl-sec-h">Wall candidates (size-outlier heuristic, displayed book only)</div>' + wallsHtml + '</div>' +
       '<div class="fl-foot">' + (deferred ? esc(deferred) + ' — ' : '') +
       'no signed buys/sells, CVD, or bull/bear verdict is canonical for the underlying; Schwab exposes no native aggressor field.</div>';
