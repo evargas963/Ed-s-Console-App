@@ -462,7 +462,14 @@
   function setTicker(sym) {
     state.ticker = (sym || '').toUpperCase();
     try { localStorage.setItem(TICKER_KEY, state.ticker); } catch (e) {}
-    ['hSym', 'aiCtxSym', 'mvTicker'].forEach(function (id) { var el = document.getElementById(id); if (el) el.textContent = state.ticker.replace('$', ''); });
+    ['hSym', 'aiCtxSym'].forEach(function (id) { var el = document.getElementById(id); if (el) el.textContent = state.ticker.replace('$', ''); });
+    // Every panel header ticker label shares .hticker (mvTicker, chTicker, flTicker, vnTicker,
+    // chmTicker, stTicker, and any future one) -- a hand-maintained id list here silently froze
+    // 5 of these 6 at their HTML placeholder ("SPX") the moment a panel was added without also
+    // updating this array (reproduced live: vanna-by-strike/charm-by-strike returned genuinely
+    // per-ticker data, e.g. a real TSLA spot/strikes, while their header still read "SPX").
+    // Selecting the whole class instead of naming ids makes this un-forgettable.
+    document.querySelectorAll('.hticker').forEach(function (el) { el.textContent = state.ticker.replace('$', ''); });
     var si = document.getElementById('symInput'); if (si) { si.value = state.ticker; buildSymList(); }   // the control reflects the ONE state
     document.querySelectorAll('.wl-row').forEach(function (r) {
       var s = r.querySelector('.wl-sym'); r.classList.toggle('sel', s && s.textContent === state.ticker.replace('$', ''));
