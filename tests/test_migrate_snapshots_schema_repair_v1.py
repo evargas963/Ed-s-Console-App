@@ -298,7 +298,10 @@ def test_post_apply_indexes_and_analyze_exist(tmp_path: Path) -> None:
     assert audit["success"] is True
     with _connect(db_path) as conn:
         index_names = {r["name"] for r in conn.execute("PRAGMA index_list(snapshots)").fetchall()}
-        assert {"idx_snap_ticker_tf_ts", "idx_snap_outcome_unfilled", "idx_snap_ts"} <= index_names
+        assert {
+            "idx_snap_ticker_tf_ts", "idx_snap_outcome_unfilled", "idx_snap_ts",
+            "idx_snap_similarity_zone_vwap",
+        } <= index_names
         assert conn.execute("SELECT COUNT(*) FROM sqlite_stat1 WHERE tbl = 'snapshots'").fetchone()[0] >= 1
 
 
