@@ -506,6 +506,7 @@
   .chart-legend{display:flex;gap:14px;font-family:var(--ed-mono);font-size:10px;color:var(--ed-ink-3);padding:2px 0 6px}
   .chart-asof{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:0 0 6px}
   .chart-legend .sw{display:inline-block;width:10px;height:10px;border-radius:2px;vertical-align:-1px;margin-right:4px}
+  .chart-hint{margin-left:auto;color:var(--ed-ink-3)}
 
   /* levels view (detailed canonical levels contract) */
   .lv{width:100%;border-collapse:collapse;font-family:var(--ed-mono);font-size:11px}
@@ -542,6 +543,43 @@
     color:var(--ed-ink-3);padding:7px 0 0;margin-top:6px;border-top:1px solid var(--ed-edge)}
   .gbs-scale .neg{color:var(--ed-neg-ink)} .gbs-scale .pos{color:var(--ed-pos-ink)}
   .gbs-row{min-height:25px}   /* real strike counts never shrink a bar row; All available scrolls */
+
+  /* Positioning migration & volume (Trade Desk > Right Now) -- today (solid, .gbs-bar) vs
+     yesterday (dashed outline, .mig-ghost) sharing the SAME diverging-from-spot-axis track as
+     GEX by Strike, ported from static/chart.html's gamma panel. */
+  .td-panel{border:1px solid var(--ed-edge);border-radius:var(--ed-r);background:var(--ed-panel-2);
+    padding:12px 14px;margin-top:14px}
+  .td-panel h4{margin:0 0 8px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;
+    color:var(--ed-ink-2);display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+  .mig-legend{display:flex;gap:10px;font-family:var(--ed-sans);font-size:10px;letter-spacing:0;
+    text-transform:none;color:var(--ed-ink-3)}
+  .mig-legend .sw{display:inline-block;width:9px;height:9px;border-radius:2px;vertical-align:-1px;margin-right:3px}
+  .mig-legend .ghostsw{background:transparent;border:1.5px dashed var(--ed-ink-3)}
+  .mig-chips{display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap}
+  .mig-chip{font-family:var(--ed-sans);font-size:10.5px;font-weight:600;letter-spacing:.04em;
+    padding:3px 9px;border-radius:var(--ed-r);border:1px solid var(--ed-edge-strong);
+    color:var(--ed-ink-3);cursor:pointer;user-select:none}
+  .mig-chip.on{color:var(--ed-ink);border-color:var(--ed-accent);background:var(--ed-accent-bg)}
+  .mig-top{margin-bottom:4px}
+  .mig-vol-note{font-family:var(--ed-sans);font-size:10.5px;color:var(--ed-ink-3);margin-top:2px}
+  .mig-vol-note.stale{color:var(--ed-stale)}
+  .mig-ghost{position:absolute;left:50%;top:0;bottom:0;box-sizing:border-box;background:transparent;
+    border:1.5px dashed var(--ed-ink-3)}
+  .mig-ghost.neg{transform:translateX(-100%)}
+  .mig-delta{width:64px;text-align:right;font-size:10.5px;font-variant-numeric:tabular-nums}
+  .mig-delta.pos{color:var(--ed-pos-ink)} .mig-delta.neg{color:var(--ed-neg-ink)}
+  .mig-row.mig-wall-call{box-shadow:inset 2px 0 0 var(--ed-neg)}
+  .mig-row.mig-wall-put{box-shadow:inset 2px 0 0 var(--ed-pos)}
+  .mig-mark{font-family:var(--ed-sans);font-size:8.5px;font-weight:700;letter-spacing:.05em;
+    padding:1px 5px;border-radius:3px;margin-left:4px;white-space:nowrap}
+  .mig-mark.spot{background:var(--ed-accent-bg);color:var(--ed-accent-2)}
+  .mig-mark.call{background:var(--ed-neg);color:#fff}
+  .mig-mark.put{background:var(--ed-pos);color:#fff}
+  .mig-coach{margin-top:10px;padding:8px 10px;border:1px solid var(--ed-edge);border-left:3px solid var(--ed-research);
+    border-radius:var(--ed-r);background:var(--ed-research-bg);font-family:var(--ed-sans);font-size:12px;
+    color:var(--ed-ink-2);line-height:1.5}
+  .mig-coach + .mig-coach{margin-top:6px;border-left-color:var(--ed-proxy);background:var(--ed-proxy-bg)}
+  .mig-coach b{display:block;color:var(--ed-ink);font-size:12.5px;margin-bottom:2px}
 
   /* REAL-DATA DENSITY REPAIR (2026-09-10): the approved workstation shows ~11 legible strike rows in
      the hero. Rows keep this height in every scope; All available scrolls the complete population. */

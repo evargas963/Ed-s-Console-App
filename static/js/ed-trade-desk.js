@@ -24,11 +24,12 @@
   function host() { return document.getElementById('tdBody'); }
   function stillRightNow(tk) { return isRightNow() && ticker() === tk; }
 
-  var _warmedFor = null;
+  // Operator-reproduced defect (2026-09-14): this file's own private "already warmed" cache
+  // could not see ed-order-flow.js's identical cache moving the subscription elsewhere (or vice
+  // versa) -- AMD Book -> PLTR Trade Desk -> AMD Book left the real subscription on PLTR.
+  // EdStream.warmActiveTicker is the ONE shared de-dup authority now (ed-stream.js).
   function warmBook(tk) {
-    if (_warmedFor === tk) return;
-    _warmedFor = tk;
-    if (window.EdStream && window.EdStream.setActiveTicker) window.EdStream.setActiveTicker(tk);
+    if (window.EdStream && window.EdStream.warmActiveTicker) window.EdStream.warmActiveTicker(tk);
   }
 
   function classOf(map, key) { var v = map ? map[key] : null; return (typeof v === 'string' && v) ? v : null; }
@@ -41,6 +42,21 @@
     return fetch(url, { cache: 'no-store', signal: signal })
       .then(function (r) { return r.ok ? r.json() : null; })
       .catch(function () { return null; });
+  }
+  var usd = function (n) {
+    if (n == null || isNaN(n)) return '—';
+    var a = Math.abs(n), s = n < 0 ? '-' : '';
+    if (a >= 1e9) return s + '$' + (a / 1e9).toFixed(1) + 'B';
+    if (a >= 1e6) return s + '$' + (a / 1e6).toFixed(1) + 'M';
+    if (a >= 1e3) return s + '$' + (a / 1e3).toFixed(1) + 'K';
+    return s + '$' + a.toFixed(0);
+  };
+  function fmtVol(n) {
+    if (n == null || isNaN(n)) return '—';
+    var a = Math.abs(Number(n));
+    if (a >= 1e6) return (a / 1e6).toFixed(1) + 'M';
+    if (a >= 1e3) return (a / 1e3).toFixed(1) + 'K';
+    return String(Math.round(a));
   }
 
   // ---- one stage card: numbered badge, title, one HERO stat, a short supporting-row list ----
@@ -66,14 +82,23 @@
     var tob = d.top_of_book || {}, depth = d.depth || {}, cls = d.classification || {};
     function dep(n, side) { var x = depth[String(n)] || {}; return x[side]; }
     var imb = dep(5, 'imbalance');
+    var ages = d.ages || {};
     var rows = [
       ['Bid × Ask', num(tob.bid) + ' × ' + num(tob.ask), classOf(cls, 'top_of_book.bid')],
       ['Spread (pts)', num(d.spread_pts), classOf(cls, 'spread_pts')],
       ['Depth 1 imbalance', num(dep(1, 'imbalance'), 3), classOf(cls, 'depth.*.imbalance')],
+      ['Book age', ages.book_age_sec != null ? Math.round(ages.book_age_sec) + 's' : '—', classOf(cls, 'ages.book_age_sec')],
     ];
     var heroVal = (imb == null || isNaN(imb)) ? '—' : (imb >= 0 ? '+' : '') + num(imb, 3);
     var heroUnit = imb == null ? '' : (imb > 0.05 ? 'bid-heavy (depth 5)' : imb < -0.05 ? 'ask-heavy (depth 5)' : 'balanced (depth 5)');
-    return stage(1, 'td-accent-blue', 'Detect — book microstructure', heroVal, heroUnit, imb > 0.05 ? 1 : imb < -0.05 ? -1 : 0, rows, 'LIVE', 'live');
+    // Operator-reproduced defect (2026-09-14): this badge was hardcoded 'LIVE' regardless of
+    // book_age_sec -- a book observation aged to 3,600s still rendered LIVE. ages.book_stale is
+    // server-computed (app.options.order_flow.engine.compute_book_microstructure), the SAME
+    // freshness boundary the rest of that engine already applies to top-of-book fields; this
+    // only reads the verdict, it does not invent its own threshold.
+    var stale = ages.book_stale === true;
+    return stage(1, 'td-accent-blue', 'Detect — book microstructure', heroVal, heroUnit, imb > 0.05 ? 1 : imb < -0.05 ? -1 : 0,
+      rows, stale ? 'STALE' : 'LIVE', stale ? 'stale' : 'live');
   }
 
   function frameStage(levelsD, spot) {
@@ -150,6 +175,151 @@
       '</div>';
   }
 
+  // ---- Positioning Migration & Volume: today's per-strike net GEX$ (solid) vs yesterday's
+  // (ghost outline), plus today's per-strike option volume -- the SAME real fields
+  // /api/terrain/strikes already serves to the GEX-by-Strike panel (today.{all,near,far} and
+  // prior.{all,near,far}, both [strike, net_gex_1pct$, volume] rows), ported from the legacy
+  // chart.html gamma panel's exact math. No new backend computation: this is a second, in-context
+  // rendering of an already-canonical endpoint, same as static/chart.html's own reuse of it. ----
+  var _migScope = 'all';   // 'all' | 'near' (<=7 DTE) | 'far' (monthly+) -- a DTE filter, distinct
+                             // from EdShell's own auto/wider/all row-DENSITY scope used below.
+  var _migGhost = true;
+  var MIG_SCOPES = [['all', 'ALL'], ['near', '≤7 DTE'], ['far', 'MONTHLY+']];
+
+  // Own badge class, deliberately NOT fl-tag/native|derived -- those hooks are this file's (and
+  // ed-gamma-panels.js's) provenance classification colors; a SPOT/wall price marker is a
+  // position label, not a provenance claim, and reusing them would misread as one.
+  function migTag(txt, cls) { return '<span class="mig-mark ' + cls + '">' + esc(txt) + '</span>'; }
+
+  function migrationCoach(withGhost, byVol, terrain) {
+    var out = '';
+    if (!withGhost.length) {
+      out += '<div class="mig-coach"><b>Migration view warming up</b>The first day-over-day comparison lands after the next wide morning capture.</div>';
+    } else {
+      var sPos = 0, wPos = 0, sPosY = 0, wPosY = 0;
+      withGhost.forEach(function (r) {
+        if (r.gx > 0) { sPos += r.k * r.gx; wPos += r.gx; }
+        if (r.gy > 0) { sPosY += r.k * r.gy; wPosY += r.gy; }
+      });
+      var wmT = wPos ? sPos / wPos : null, wmY = wPosY ? sPosY / wPosY : null;
+      var dir = (wmT != null && wmY != null)
+        ? (wmT - wmY > 0.15 ? 'UP the chain' : wmY - wmT > 0.15 ? 'DOWN the chain' : 'with little net drift')
+        : 'with no positive-gamma mass in view';
+      var sorted = withGhost.map(function (r) { return [r.k, r.gx - r.gy]; }).sort(function (a, b) { return b[1] - a[1]; });
+      var grew = sorted.filter(function (d) { return d[1] > 0; }).slice(0, 2).map(function (d) { return num(d[0], 0); }).join('/');
+      var shrank = sorted.filter(function (d) { return d[1] < 0; }).slice(-2).map(function (d) { return num(d[0], 0); }).join('/');
+      out += '<div class="mig-coach"><b>Positive gamma mass moved ' + esc(dir) + '</b>' +
+        (grew ? 'Grew most at ' + esc(grew) : 'No strike grew') +
+        (shrank ? '; shrank most at ' + esc(shrank) + '. ' : '. ') +
+        'Opened or closed? Tomorrow’s ΔOI confirms.</div>';
+    }
+    if (byVol.length) {
+      var kk = byVol.map(function (r) { return r.k; });
+      var cw = terrain && terrain.call_wall, pw = terrain && terrain.put_wall;
+      var loc = (cw != null && Math.min.apply(null, kk) > cw) ? 'ABOVE the call wall'
+        : (pw != null && Math.max.apply(null, kk) < pw) ? 'BELOW the put wall' : 'inside the wall range';
+      out += '<div class="mig-coach"><b>Heaviest option trading at ' + kk.map(function (k) { return num(k, 0); }).join('–') + '</b>' +
+        'That is ' + esc(loc) + '. Activity fact only — buyer/seller split stays unproven until the ΔOI test.</div>';
+    }
+    return out;
+  }
+
+  function migrationSection(strikesD, terrain, spot) {
+    if (!strikesD) return '';
+    var todayAll = (strikesD.today && strikesD.today[_migScope]) || [];
+    if (!todayAll.length) {
+      var why = strikesD.levels_stale_reason;
+      return '<div class="td-panel"><h4>Positioning migration &amp; volume</h4>' +
+        '<div class="placeholder"><div class="sm">' +
+        (why ? 'no per-strike rows — ' + esc(why) : 'no per-strike gamma for this symbol yet') +
+        '</div></div></div>';
+    }
+    var priorAll = (strikesD.prior && strikesD.prior[_migScope]) || [];
+    var ghost = {}; priorAll.forEach(function (r) { ghost[r[0]] = r[1]; });
+    var asc = todayAll.slice().sort(function (a, b) { return a[0] - b[0]; });
+    var sel = (window.EdShell && window.EdShell.scopeSelect)
+      ? window.EdShell.scopeSelect(asc.map(function (r) { return r[0]; }), spot)
+      : { idx: asc.map(function (_r, i) { return i; }), shown: asc.length, total: asc.length };
+    var win = sel.idx.map(function (i) { return asc[i]; }).sort(function (a, b) { return b[0] - a[0]; });
+    var note = (window.EdShell && window.EdShell.scopeNote)
+      ? window.EdShell.scopeNote({ total: todayAll.length, shown: win.length }) : '';
+    var maxAbs = 1, maxVol = 1;
+    win.forEach(function (r) {
+      maxAbs = Math.max(maxAbs, Math.abs(r[1]), Math.abs(ghost[r[0]] || 0));
+      maxVol = Math.max(maxVol, r[2] || 0);
+    });
+    var spotStrike = win.reduce(function (best, r) {
+      return (best == null || Math.abs(r[0] - spot) < Math.abs(best - spot)) ? r[0] : best; }, null);
+    var cw = terrain && terrain.call_wall, pw = terrain && terrain.put_wall;
+    var withGhost = [], byVolRows = [];
+    var rows = '';
+    win.forEach(function (r) {
+      var k = r[0], gx = Number(r[1]) || 0, vol = r[2], gy = ghost[k];
+      var hasGy = gy != null;
+      if (hasGy) withGhost.push({ k: k, gx: gx, gy: gy });
+      if (vol) byVolRows.push({ k: k, vol: vol });
+      var pos = gx >= 0, wToday = Math.min(100, Math.abs(gx) / maxAbs * 100);
+      var ghostBar = hasGy
+        ? '<i class="mig-ghost ' + (gy >= 0 ? 'pos' : 'neg') + '" style="width:' + Math.min(100, Math.abs(gy) / maxAbs * 100).toFixed(1) + '%"></i>' : '';
+      var delta = hasGy ? gx - gy : null;
+      var deltaHtml = delta == null ? '<span class="mig-delta"></span>'
+        : '<span class="mig-delta ' + (delta >= 0 ? 'pos' : 'neg') + '">' + (delta >= 0 ? '▲' : '▼') + usd(Math.abs(delta)) + '</span>';
+      var rowCls = 'gbs-row mig-row' + (k === spotStrike ? ' spot' : '') +
+        (cw != null && k === cw ? ' mig-wall-call' : '') + (pw != null && k === pw ? ' mig-wall-put' : '');
+      rows += '<div class="' + rowCls + '">' +
+        '<span class="gbs-k">' + num(k, k % 1 ? 2 : 0) + '</span>' +
+        '<span class="gbs-track mig-track"><i class="gbs-bar ' + (pos ? 'pos' : 'neg') + '" style="width:' + wToday.toFixed(1) + '%"></i>' +
+        (_migGhost ? ghostBar : '') + '</span>' +
+        '<span class="gbs-v ' + (pos ? 'pos' : 'neg') + '">' + usd(gx) + '</span>' +
+        (_migGhost ? deltaHtml : '') +
+        '<span class="gbs-vol" title="session volume">' + fmtVol(vol) + '</span>' +
+        (k === spotStrike ? migTag('SPOT', 'spot') : '') +
+        (cw != null && k === cw ? migTag('CALL WALL', 'call') : '') +
+        (pw != null && k === pw ? migTag('PUT WALL', 'put') : '') +
+        '</div>';
+    });
+    var byVolTop = byVolRows.slice().sort(function (a, b) { return b.vol - a.vol; }).slice(0, 2);
+    var scopeChips = '<div class="mig-chips">' + MIG_SCOPES.map(function (s) {
+      return '<span class="mig-chip' + (s[0] === _migScope ? ' on' : '') + '" data-mig-scope="' + s[0] + '">' + s[1] + '</span>';
+    }).join('') + '<span class="mig-chip' + (_migGhost ? ' on' : '') + '" data-mig-ghost="1">GHOST</span></div>';
+    // A zero here has TWO different causes and they are not the same fact: the session has
+    // genuinely traded nothing yet, or the chain behind these rows was read before it started
+    // trading and hasn't refreshed since (ported verbatim from static/chart.html's drawGamma,
+    // same /api/terrain/strikes staleness fields GEX-by-Strike's own badge already reads).
+    var totVol = win.reduce(function (a, r) { return a + (r[2] || 0); }, 0);
+    var volNote = '';
+    if (totVol <= 0) {
+      volNote = strikesD.levels_stale
+        ? '<div class="mig-vol-note stale">zero volume here is the SNAPSHOT, not the session — this chain is stale; see the source badge above</div>'
+        : '<div class="mig-vol-note">no option volume yet this session — the counter resets at the new session and fills from the open</div>';
+    }
+    return '<div class="td-panel"><h4>Positioning migration &amp; volume ' +
+      '<span class="mig-legend"><i class="sw" style="background:var(--ed-pos)"></i>+γ today ' +
+      '<i class="sw" style="background:var(--ed-neg)"></i>-γ today ' +
+      '<i class="sw ghostsw"></i>yesterday (ghost)</span></h4>' +
+      scopeChips + '<div class="mig-top">' + note + volNote + '</div>' +
+      '<div class="gbs-scroll"><div class="gbs">' + rows + '</div></div>' +
+      '<div class="gbs-scale"><span class="neg">−' + usd(maxAbs) + '</span><span>0</span><span class="pos">+' + usd(maxAbs) + '</span></div>' +
+      migrationCoach(withGhost, byVolTop, terrain) +
+      '</div>';
+  }
+
+  // Chip clicks re-trigger through the SAME coalesced loader as a ticker switch or refresh tick
+  // (see loadPcr()'s identical key-composition convention in ed-gamma-panels.js) -- a direct
+  // loadImpl(tk) call here would run a second, uncoalesced fetch alongside whatever the loader
+  // already has in flight, and whichever one resolved last would win regardless of which was
+  // actually the newest request.
+  function wireMigrationChips(h, tk) {
+    h.querySelectorAll('[data-mig-scope]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var s = b.getAttribute('data-mig-scope'); if (s === _migScope) return;
+        _migScope = s; retrigger();
+      });
+    });
+    var gh = h.querySelector('[data-mig-ghost]');
+    if (gh) gh.addEventListener('click', function () { _migGhost = !_migGhost; retrigger(); });
+  }
+
   function loadImpl(tk, signal) {
     var h = host();
     if (!h || !stillRightNow(tk)) return;
@@ -162,18 +332,23 @@
       // snapshot=live -- see ed-liquidity-map.js's identical comment; the endpoint's own
       // default is a frozen pre-9:30ET snapshot, wrong for an "as of right now" synthesis page.
       fetchJson('/api/liquidity-snapshot?ticker=' + encodeURIComponent(tk) + '&snapshot=live', signal),
+      // same endpoint GEX-by-Strike already reads (ed-gamma-panels.js loadGbsImpl) -- reused
+      // here, not recomputed, for the migration/volume section below.
+      fetchJson('/api/terrain/strikes?ticker=' + encodeURIComponent(tk), signal),
     ]).then(function (results) {
       if (!stillRightNow(tk)) return;
-      var detect = results[0], levelsD = results[1], terrain = results[2], snap = results[3];
+      var detect = results[0], levelsD = results[1], terrain = results[2], snap = results[3], strikesD = results[4];
       var spot = levelsD ? Number(levelsD.spot) : (terrain ? Number(terrain.spot) : NaN);
       h.innerHTML =
         '<div class="fl-head"><div class="fl-c"><span class="fl-lab">Right now</span><span class="fl-sym">' + esc(tk) +
         '</span><span class="fl-meta">' + (isFinite(spot) ? 'spot ' + num(spot) : '') + '</span></div></div>' +
         '<div class="td-grid">' + detectStage(detect) + frameStage(levelsD, spot) + confirmStage(terrain) + '</div>' +
         contextSummary(terrain, snap, spot) +
+        migrationSection(strikesD, terrain, spot) +
         '<div class="notproven" style="margin-top:14px;">HOME PRESERVED — DECISION AUTHORITY NOT_PROVEN. ' +
         'This page assembles already-canonical Detect/Frame/Confirm signals and classifies them in plain English; it computes no new value and renders no Execute step. ' +
         'THE CALL and 1m/5m/15m/60m horizons remain excluded until ticker-universal evidence earns them.</div>';
+      wireMigrationChips(h, tk);
     }).catch(function (e) {
       // Every sibling loader in this file (ed-order-flow.js, ed-order-flow-heatmap.js,
       // ed-liquidity-map.js) ends in a .catch() that renders an honest fallback; this one
@@ -186,10 +361,16 @@
   var _loader = (typeof window !== 'undefined' && window.EdL1SseGuards && window.EdL1SseGuards.makeCoalescedLoader)
     ? window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadImpl(ticker(), signal); })
     : { trigger: function () { loadImpl(ticker()); }, reset: function () {} };
+  // Every dimension that makes this "a different request" must be in the key -- ticker AND the
+  // migration section's own scope/ghost toggles -- or a toggle click queues behind an in-flight
+  // fetch for the OLD toggle state instead of aborting it (the exact bug class this session's
+  // audit found in loadStructures()/the order-flow heatmap's minute-range toggle).
+  function _loadKey() { return ticker() + '|mig=' + _migScope + '|ghost=' + (_migGhost ? 1 : 0); }
+  function retrigger() { if (isRightNow()) _loader.trigger(_loadKey()); }
   function load() {
     if (!isRightNow()) return;
     var tEl = document.getElementById('tdTicker'); if (tEl) tEl.textContent = ticker().replace('$', '');
-    _loader.trigger(ticker());
+    _loader.trigger(_loadKey());
   }
 
   if (typeof document !== 'undefined') {

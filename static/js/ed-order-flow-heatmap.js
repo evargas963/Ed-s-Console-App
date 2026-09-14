@@ -20,6 +20,79 @@
   function host() { return document.getElementById('ofhBody'); }
   function canvasEl() { return document.getElementById('ofhCanvas'); }
 
+  // ---- Repo-wide chart interaction standard (same contract as ed-gamma-chart.js: axis-drag
+  // rescales, plot-drag pans, wheel zooms around the cursor, a real click pins a crosshair
+  // readout instead of following hover, double-click resets). Second wiring of it, first on a
+  // canvas rather than an SVG -- geometry comes from CSS pixels via getBoundingClientRect()
+  // instead of a viewBox transform, everything else is the same contract. ----
+  var _view = null, _pin = null, _lastD = null, _viewTicker = null;
+  var _interactionInstalled = false, _dragState = null;
+  function clientToCanvas(canvas, clientX, clientY) {
+    var r = canvas.getBoundingClientRect();
+    return { px: clientX - r.left, py: clientY - r.top };
+  }
+  function installInteractionOnce() {
+    if (_interactionInstalled || typeof document === 'undefined') return;
+    _interactionInstalled = true;
+    document.addEventListener('mousemove', function (e) {
+      if (!_dragState) return;
+      var canvas = canvasEl();
+      if (!canvas) return;
+      var p = clientToCanvas(canvas, e.clientX, e.clientY);
+      if (Math.abs(p.py - _dragState.startPy) > 2 || Math.abs(p.px - _dragState.startPx) > 2) _dragState.moved = true;
+      var span = _dragState.startHi - _dragState.startLo, plotH = _dragState.plotH;
+      var dy = p.py - _dragState.startPy;
+      if (_dragState.mode === 'pan') {
+        var priceDelta = dy / plotH * span;   // canvas y grows downward; price grows upward
+        _view = { lo: _dragState.startLo + priceDelta, hi: _dragState.startHi + priceDelta };
+      } else {
+        var anchor = _dragState.startHi - (_dragState.startPy - _dragState.padTop) / plotH * span;
+        var factor = Math.pow(1.006, dy);
+        _view = { lo: anchor - (anchor - _dragState.startLo) * factor, hi: anchor + (_dragState.startHi - anchor) * factor };
+      }
+      rerenderFromCache();
+    });
+    document.addEventListener('mouseup', function (e) {
+      if (!_dragState) return;
+      if (!_dragState.moved) {
+        var canvas = canvasEl();
+        if (canvas) {
+          var p = clientToCanvas(canvas, e.clientX, e.clientY);
+          _pin = (_pin && Math.abs(_pin.px - p.px) < 0.5 && Math.abs(_pin.py - p.py) < 0.5) ? null : p;
+          rerenderFromCache();
+        }
+      }
+      _dragState = null;
+    });
+  }
+  function wireHeatmapInteraction(canvas, padLeft, padTop, plotW, plotH, lo, hi) {
+    installInteractionOnce();
+    canvas.setAttribute('draggable', 'false');
+    canvas.style.webkitUserDrag = 'none';
+    canvas.style.cursor = 'crosshair';
+    canvas.addEventListener('dragstart', function (e) { e.preventDefault(); });
+    canvas.addEventListener('mousedown', function (e) {
+      var p = clientToCanvas(canvas, e.clientX, e.clientY);
+      _dragState = { mode: (p.px < padLeft ? 'axis' : 'pan'), startPx: p.px, startPy: p.py,
+        startLo: lo, startHi: hi, padTop: padTop, plotH: plotH, moved: false };
+      e.preventDefault();
+    });
+    canvas.addEventListener('wheel', function (e) {
+      e.preventDefault();
+      var p = clientToCanvas(canvas, e.clientX, e.clientY);
+      var anchor = hi - (p.py - padTop) / plotH * (hi - lo);
+      var factor = e.deltaY > 0 ? 1.12 : (1 / 1.12);
+      _view = { lo: anchor - (anchor - lo) * factor, hi: anchor + (hi - anchor) * factor };
+      rerenderFromCache();
+    }, { passive: false });
+    canvas.addEventListener('dblclick', function () { _view = null; _pin = null; rerenderFromCache(); });
+  }
+  function rerenderFromCache() {
+    var h = host();
+    if (!h || !_lastD) return;
+    renderInto(h, _viewTicker, _lastD);
+  }
+
   function fmtCT(ts) {
     try {
       return new Date(ts * 1000).toLocaleTimeString('en-US', { timeZone: 'America/Chicago', hour: '2-digit', minute: '2-digit' });
@@ -51,11 +124,17 @@
       h.innerHTML = '<div class="placeholder"><div class="sm">' + esc((d && d.reason) || 'no book history for ' + tk) + '</div></div>';
       return;
     }
-    var range = tightRange(d.cells);
-    if (!range) {
+    if (_viewTicker !== tk) { _view = null; _pin = null; _viewTicker = tk; }
+    _lastD = d;
+    renderInto(h, tk, d);
+  }
+  function renderInto(h, tk, d) {
+    var autoRange = tightRange(d.cells);
+    if (!autoRange) {
       h.innerHTML = '<div class="placeholder"><div class="sm">rows were captured but carried no populated price levels</div></div>';
       return;
     }
+    var range = _view || autoRange;
     var priceRows = 48;
     var priceStep = (range.hi - range.lo) / priceRows || 0.01;
     var nBuckets = d.n_buckets || 90;
@@ -135,6 +214,26 @@
         var xx = padLeft + bucketIdx * colW;
         ctx.fillText(fmtCT(ts), Math.min(xx, padLeft + plotW - 34), padTop + plotH + 15);
       }
+      // click-to-pin crosshair -- never follows hover; stays put across the next redraw
+      // (pan/zoom/data refresh) until clicked again or the ticker changes.
+      if (_pin && _pin.px >= padLeft && _pin.px <= padLeft + plotW && _pin.py >= padTop && _pin.py <= padTop + plotH) {
+        var pinPrice = range.lo + (range.hi - range.lo) * (1 - (_pin.py - padTop) / plotH);
+        var pinCol = Math.min(nBuckets - 1, Math.max(0, Math.floor((_pin.px - padLeft) / colW)));
+        var pinTs = d.since_ts + pinCol * d.bucket_sec;
+        var pinRow = Math.min(priceRows - 1, Math.max(0, Math.floor((pinPrice - range.lo) / priceStep)));
+        var pinIdx = pinRow * nBuckets + pinCol;
+        var pinBid = bidGrid[pinIdx] || 0, pinAsk = askGrid[pinIdx] || 0;
+        ctx.strokeStyle = 'rgba(97,165,255,0.85)'; ctx.setLineDash([3, 2]); ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(padLeft, _pin.py); ctx.lineTo(padLeft + plotW, _pin.py); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(_pin.px, padTop); ctx.lineTo(_pin.px, padTop + plotH); ctx.stroke();
+        ctx.setLineDash([]);
+        var boxLines = [pinPrice.toFixed(2), fmtCT(pinTs) + ' CT', 'bid ' + Math.round(pinBid), 'ask ' + Math.round(pinAsk)];
+        var boxX = Math.min(_pin.px + 8, cw - 100), boxY = Math.max(padTop, Math.min(_pin.py - 8, padTop + plotH - boxLines.length * 12 - 8));
+        ctx.fillStyle = 'rgba(23,32,46,0.96)'; ctx.strokeStyle = 'rgba(97,165,255,0.9)';
+        ctx.fillRect(boxX, boxY, 96, boxLines.length * 12 + 8); ctx.strokeRect(boxX, boxY, 96, boxLines.length * 12 + 8);
+        ctx.fillStyle = '#f6f9fd'; ctx.font = '10px Inter, sans-serif'; ctx.textAlign = 'left';
+        boxLines.forEach(function (t, i) { ctx.fillText(t, boxX + 5, boxY + 13 + i * 12); });
+      }
     }
 
     var rowsInfo = d.rows_scanned + (d.rows_capped ? '+ (capped)' : '') + ' book ticks · ' +
@@ -143,14 +242,22 @@
     h.appendChild(canvas);
     var foot = document.createElement('div');
     foot.className = 'fl-foot';
-    foot.textContent = rowsInfo + ' — every cell traces to a real captured tick; nothing is interpolated between ticks.';
+    foot.textContent = rowsInfo + ' — every cell traces to a real captured tick; nothing is interpolated between ticks. ' +
+      'Drag the plot to pan, drag the price axis to rescale, scroll to zoom, click pins a readout, double-click resets.';
     h.appendChild(foot);
+    wireHeatmapInteraction(canvas, padLeft, padTop, plotW, plotH, range.lo, range.hi);
   }
 
   function loadImpl(tk, signal) {
     var h = host();
     if (!h || !stillHeatmap(tk)) return;
     h.setAttribute('aria-busy', 'true');
+    // Operator-reproduced defect (2026-09-14): opening this tab directly made NO book-
+    // subscription request of its own, so a fresh capture for this ticker depended entirely on
+    // some OTHER screen (Book/DOM, Trade Desk) having already asked for it. This view reads
+    // captured history, not the live ladder, but the history has nothing to bin until something
+    // asks the stream to start capturing this ticker's book -- so it must ask too.
+    if (window.EdStream && window.EdStream.warmActiveTicker) window.EdStream.warmActiveTicker(tk);
     return fetch('/api/order-flow/book-heatmap?ticker=' + encodeURIComponent(tk) + '&minutes=' + _minutes, { cache: 'no-store', signal: signal })
       .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
       .then(function (d) { if (stillHeatmap(tk)) render(h, tk, d); })

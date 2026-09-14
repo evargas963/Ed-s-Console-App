@@ -23,6 +23,148 @@
   var COL = { pos: 'var(--ed-pos)', neg: 'var(--ed-neg)', spot: 'var(--ed-ink)', flip: 'var(--ed-accent)',
     call: 'var(--ed-neg)', put: 'var(--ed-pos)', axis: 'var(--ed-edge)', ink3: 'var(--ed-ink-3)' };
 
+  // ---- Repo-wide chart interaction standard (operator directive: "chart interactions mirror
+  // TradingView... all charts should work the same way") -- FIRST wiring of it anywhere in the
+  // rebuilt console, on the one genuine chart here. Axis-drag (left of the price labels)
+  // RESCALES the visible price domain; plot-drag PANS it; a real click (not a drag) PINS a
+  // crosshair readout -- it does not follow the mouse on hover, and it stays pinned across the
+  // next data refresh until the operator clicks again or switches ticker/mode. Wheel zooms
+  // around the cursor's price, the same axis-rescale math as an axis-drag. This never fetches
+  // new data -- it only remaps the SAME already-rendered bars/strikes to a different pixel
+  // window, exactly like Options-workspace's own scopeSelect never invents a value either. */
+  var _view = null;            // {lo, hi} once the operator has zoomed/panned; null = auto-fit
+  var _pin = null;             // {vx, vy} pinned crosshair in viewBox space, or null
+  var _lastCtx = null;         // {bars, win, spot, terrain} from the last successful render
+  var _viewTicker = null, _viewMode = null;   // domain resets only on a genuine context change
+
+  function clientToViewBox(svg, clientX, clientY) {
+    var r = svg.getBoundingClientRect();
+    return { vx: (clientX - r.left) / r.width * W, vy: (clientY - r.top) / r.height * H };
+  }
+  function priceAtVy(vy, lo, hi) { return hi - (vy - T) / (H - T - B) * (hi - lo); }
+  function clampDomain(lo, hi) {
+    if (!isFinite(lo) || !isFinite(hi) || hi <= lo) return { lo: lo, hi: hi };
+    // never rescale to a degenerate sliver -- a TradingView-style zoom still has a floor.
+    if (hi - lo < 0.02) { var mid = (lo + hi) / 2; return { lo: mid - 0.01, hi: mid + 0.01 }; }
+    return { lo: lo, hi: hi };
+  }
+
+  var _interactionInstalled = false;
+  var _dragState = null;   // {mode:'pan'|'axis', startVY, startLo, startHi, moved}
+  function installInteractionOnce() {
+    if (_interactionInstalled || typeof document === 'undefined') return;
+    _interactionInstalled = true;
+    // liveSvg() is re-queried on every event rather than trusted from _dragState: every
+    // rerenderFromCache() call during a drag replaces #chartBody's innerHTML (a fresh SVG
+    // element), so a reference captured once at mousedown-time goes stale (detached, zero-size
+    // getBoundingClientRect) the moment the FIRST mousemove of that same drag repaints -- every
+    // coordinate computed from it after that point was NaN. Re-querying by id finds whichever
+    // SVG element is currently live, which is exactly what a drag gesture needs.
+    function liveSvg() { var h = document.getElementById('chartBody'); return h && h.querySelector('.chart-svg'); }
+    document.addEventListener('mousemove', function (e) {
+      if (!_dragState) return;
+      var svg = liveSvg();
+      if (!svg) return;
+      var p = clientToViewBox(svg, e.clientX, e.clientY);
+      if (Math.abs(p.vy - _dragState.startVY) > 2 || Math.abs(p.vx - _dragState.startVX) > 2) _dragState.moved = true;
+      var span = _dragState.startHi - _dragState.startLo, plotH = H - T - B;
+      var dy = p.vy - _dragState.startVY;
+      if (_dragState.mode === 'pan') {
+        var priceDelta = dy / plotH * span;
+        _view = clampDomain(_dragState.startLo + priceDelta, _dragState.startHi + priceDelta);
+      } else {   // axis drag: rescale the domain around the price under the drag's START point
+        var anchor = priceAtVy(_dragState.startVY, _dragState.startLo, _dragState.startHi);
+        var factor = Math.pow(1.006, dy);   // dragging down widens the range (zoom out)
+        _view = clampDomain(anchor - (anchor - _dragState.startLo) * factor, anchor + (_dragState.startHi - anchor) * factor);
+      }
+      rerenderFromCache();
+    });
+    document.addEventListener('mouseup', function (e) {
+      if (!_dragState) return;
+      if (!_dragState.moved) {
+        var svg = liveSvg();
+        if (svg) {
+          // a real click, not a drag -- PIN the crosshair here; it never just follows hover.
+          var p = clientToViewBox(svg, e.clientX, e.clientY);
+          _pin = (_pin && Math.abs(_pin.vx - p.vx) < 0.5 && Math.abs(_pin.vy - p.vy) < 0.5) ? null : p;   // click again to unpin
+          rerenderFromCache();
+        }
+      }
+      _dragState = null;
+    });
+  }
+  function wireChartInteraction(host, lo, hi) {
+    installInteractionOnce();
+    var svg = host.querySelector('.chart-svg');
+    if (!svg) return;
+    svg.setAttribute('draggable', 'false');
+    svg.style.webkitUserDrag = 'none';
+    svg.style.cursor = 'crosshair';
+    svg.addEventListener('dragstart', function (e) { e.preventDefault(); });
+    svg.addEventListener('mousedown', function (e) {
+      var p = clientToViewBox(svg, e.clientX, e.clientY);
+      _dragState = { mode: (p.vx < L ? 'axis' : 'pan'), startVX: p.vx, startVY: p.vy, startLo: lo, startHi: hi, moved: false };
+      e.preventDefault();
+    });
+    svg.addEventListener('wheel', function (e) {
+      e.preventDefault();
+      var p = clientToViewBox(svg, e.clientX, e.clientY);
+      var anchor = priceAtVy(p.vy, lo, hi);
+      var factor = e.deltaY > 0 ? 1.12 : (1 / 1.12);
+      _view = clampDomain(anchor - (anchor - lo) * factor, anchor + (hi - anchor) * factor);
+      rerenderFromCache();
+    }, { passive: false });
+    // Double-click resets to the auto-fit domain -- the operator's own escape hatch, the same
+    // convention every TradingView-style chart uses, instead of a dead end once zoomed.
+    svg.addEventListener('dblclick', function () { _view = null; _pin = null; rerenderFromCache(); });
+  }
+  function nearestBarAt(bars, vx, xLo, xHi) {
+    if (!bars.length) return null;
+    var frac = (vx - xLo) / (xHi - xLo);
+    var i = Math.round(frac * (bars.length - 1));
+    return bars[Math.max(0, Math.min(bars.length - 1, i))];
+  }
+  function nearestStrikeAt(win, vy, lo, hi) {
+    if (!win.length) return null;
+    var best = null, bestD = Infinity;
+    win.forEach(function (r) { var d = Math.abs(yOf(r[0], lo, hi) - vy); if (d < bestD) { bestD = d; best = r; } });
+    return best;
+  }
+  function crosshairSvg(lo, hi, mode) {
+    if (!_pin || !_lastCtx) return '';
+    var vx = _pin.vx, vy = _pin.vy;
+    var price = priceAtVy(vy, lo, hi);
+    var lines = '<g pointer-events="none">' +
+      '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + vy.toFixed(1) + '" y2="' + vy.toFixed(1) + '" stroke="var(--ed-accent-2)" stroke-width="1" stroke-dasharray="3 2"/>' +
+      '<line x1="' + vx.toFixed(1) + '" x2="' + vx.toFixed(1) + '" y1="' + T + '" y2="' + (H - B) + '" stroke="var(--ed-accent-2)" stroke-width="1" stroke-dasharray="3 2"/>';
+    var readLines = ['price ' + price.toFixed(2)];
+    if (mode === 'profile') {
+      var xSplit = Math.round(W * 0.60);
+      if (vx < xSplit) {
+        var bar = nearestBarAt(_lastCtx.bars, vx, L, xSplit - 10);
+        if (bar) readLines.push('close ' + Number(bar.c).toFixed(2), ctTime(bar.t) + ' CT');
+      } else {
+        var srow = nearestStrikeAt(_lastCtx.win, vy, lo, hi);
+        if (srow) readLines.push('strike ' + srow[0], 'GEX ' + usd(srow[1]));
+      }
+    } else {
+      var srow2 = nearestStrikeAt(_lastCtx.win, vy, lo, hi);
+      if (srow2) readLines.push('strike ' + srow2[0], 'GEX ' + usd(srow2[1]));
+    }
+    var boxX = Math.min(vx + 8, W - 118), boxY = Math.max(T, Math.min(vy - 8, H - B - readLines.length * 13 - 8));
+    lines += '<rect x="' + boxX.toFixed(1) + '" y="' + boxY.toFixed(1) + '" width="112" height="' + (readLines.length * 13 + 8) +
+      '" rx="3" fill="var(--ed-panel-3)" stroke="var(--ed-accent-2)" opacity="0.96"/>';
+    readLines.forEach(function (t, i) {
+      lines += '<text x="' + (boxX + 6).toFixed(1) + '" y="' + (boxY + 14 + i * 13).toFixed(1) + '" font-size="10" fill="var(--ed-ink)">' + esc(String(t)) + '</text>';
+    });
+    return lines + '</g>';
+  }
+  function rerenderFromCache() {
+    var host = document.getElementById('chartBody');
+    if (!host || !_lastCtx) return;
+    renderInto(host, _lastCtx.bars, _lastCtx.win, _lastCtx.spot, _lastCtx.terrain, _lastCtx.legend);
+  }
+
   // Coalesced load (see l1_sse_guards.js:makeCoalescedLoader) -- required because
   // `ed:refresh{slow}` now also fires on every streamed gamma_surface_seq push (ed-core.js),
   // not just the 12s poll tick; a naive per-call generation counter live-locks (never applies
@@ -61,6 +203,10 @@
         (barsData || strikesData ? 'no bars / per-strike gamma for this symbol' : 'no console serving /api/bars1m + /api/terrain/strikes') + '</div></div>';
       return;
     }
+    // A genuine context change (ticker or profile/dot mode) resets any operator zoom/pan/pin --
+    // an old zoomed price window from SPY has no meaning once the ticker is AMD.
+    var tk = ticker();
+    if (_viewTicker !== tk || _viewMode !== _mode) { _view = null; _pin = null; _viewTicker = tk; _viewMode = _mode; }
     // #3: price domain over bars + a strikes window around spot. The window is the ONE shared Gamma
     // scope policy (EdShell.scopeSelect: a strike COUNT around spot — Auto 11 / Wider / All available,
     // shared with the heatmap and GEX-by-strike); srows is the current canonical input, disclosed below.
@@ -91,10 +237,28 @@
       '<span><span class="sw" style="background:var(--ed-pos)"></span>+GEX</span>' +
       '<span><span class="sw" style="background:var(--ed-neg)"></span>−GEX</span>' +
       '<span><span class="sw" style="background:var(--ed-ink)"></span>spot ' + (isFinite(spot) ? spot.toFixed(2) : '—') + '</span>' +
-      '<span><span class="sw" style="background:var(--ed-accent)"></span>flip</span></div>';
+      '<span><span class="sw" style="background:var(--ed-accent)"></span>flip</span>' +
+      '<span class="chart-hint">drag plot to pan · drag price axis to rescale · scroll to zoom · click pins a readout · double-click resets</span></div>';
+    _lastCtx = { bars: bars, win: win, spot: spot, terrain: terrain, legend: legend };
+    renderInto(host, bars, win, spot, terrain, legend);
+  }
+  // Repaints from already-fetched data at a possibly operator-overridden [lo,hi] domain -- used
+  // by BOTH the real load path (auto-fit domain) and every pan/zoom/crosshair frame (cached
+  // domain), so a drag never re-fetches network data to redraw.
+  function renderInto(host, bars, win, spot, terrain, legend) {
+    var lo, hi;
+    if (_view) { lo = _view.lo; hi = _view.hi; }
+    else {
+      lo = Infinity; hi = -Infinity;
+      bars.forEach(function (b) { if (b.l != null) lo = Math.min(lo, b.l); if (b.h != null) hi = Math.max(hi, b.h); });
+      win.forEach(function (r) { lo = Math.min(lo, r[0]); hi = Math.max(hi, r[0]); });
+      if (!isFinite(lo) || !isFinite(hi) || lo === hi) { lo = (spot || 100) * 0.98; hi = (spot || 100) * 1.02; }
+      var pad = (hi - lo) * 0.04; lo -= pad; hi += pad;
+    }
     var svg = (_mode === 'profile')
       ? profileSvg(bars, win, spot, terrain, lo, hi)
       : dotSvg(win, spot, terrain, lo, hi);
+    svg = svg.slice(0, -6) + crosshairSvg(lo, hi, _mode) + '</svg>';   // insert before the closing </svg>
     host.innerHTML = legend + svg;
     // Independent-review finding (2026-09-13), REPRODUCED: binding click listeners to EVERY
     // `[data-strike]` element (both the tiny visible mark AND its invisible, larger hit
@@ -120,6 +284,7 @@
       });
     });
     applyChartHighlight(host);
+    wireChartInteraction(host, lo, hi);
   }
   function applyChartHighlight(host) {
     host = host || document.getElementById('chartBody'); if (!host) return;
