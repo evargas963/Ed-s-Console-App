@@ -216,6 +216,16 @@ def test_contention_metrics_preserve_operation_ticker_thread():
 
 
 def test_report_flags_ui_degraded_state_missing():
+    # PENDING /console CUTOVER (operator directive 2026-09-14): scan_ui_db_degraded_surfaces()
+    # greps static/index.html by path for a fixed token set (sqlite/db_contention/DB
+    # DEGRADED/the two legacy chip ids). None of them exist anywhere in the new console
+    # (confirmed by direct grep against static/console.html) -- the DB-contention/
+    # degraded-write operator indicator legacy shipped has no equivalent today. This
+    # assertion is still correct against the CURRENTLY-SHIPPED static/index.html and must
+    # flip (True->False, "not in"->"in" x2) in the SAME commit that actually renames
+    # console.html to index.html, not before -- doing it now would fail against content
+    # that hasn't changed yet. Flagged for the operator as a discovered, not-fixed gap;
+    # building a replacement indicator is out of scope for this cutover.
     from verification.db_sqlite_contention_impact_audit import (
         build_contention_impact_report,
         classify_contention_findings,

@@ -88,13 +88,12 @@ def test_fingerprint_identity_same_for_equivalent_payloads():
     assert srv._l1_payload_fingerprint(a) == srv._l1_payload_fingerprint(b)
 
 
-def test_index_html_declares_full_overlay_client_mode():
-    """Client documents full_overlay; fail if marker removed."""
-    index = ROOT / "static" / "index.html"
-    text = index.read_text(encoding="utf-8")
-    assert "ED_L1_TIER_B_SEMANTIC_MODE" in text
-    assert "full_overlay" in text
-    assert "renderTierBLight" in text
+# test_index_html_declares_full_overlay_client_mode was retired here (/console cutover,
+# operator directive 2026-09-14): it checked for a documentation marker + renderTierBLight in
+# legacy static/index.html, neither of which exists in the new console (grepped, zero
+# matches). The real contract this protected -- the server must never regress to ambiguous
+# projection-only SSE -- is enforced server-side, unaffected by the rename, by
+# test_not_projection_only_mode below.
 
 
 def test_not_projection_only_mode():

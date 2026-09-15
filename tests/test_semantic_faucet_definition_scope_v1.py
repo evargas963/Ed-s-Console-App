@@ -292,14 +292,20 @@ def test_every_level_shaped_payload_name_is_declared():
 
 def test_ui_surfaces_bind_the_renamed_names_and_never_the_collision_name():
     """End-to-end to the operator's screen: both static surfaces paint the declared names;
-    the two-definition name is extinct outside the RC-429 DB era machinery."""
-    console = (REPO / "static" / "index.html").read_text(encoding="utf-8")
+    the two-definition name is extinct outside the RC-429 DB era machinery.
+
+    The console half is repointed to static/js/ed-gamma-panels.js (/console cutover, operator
+    directive 2026-09-14): the new console's Key Levels rail reads the terrain-scope name
+    directly (d.absolute_gamma_strike), not legacy's kl_-prefixed overlay alias. kl_pin_
+    candidate / pin_candidate have NO consumer at all in the new console (grepped
+    static/js/*.js, zero matches) — the qualified pin claim, distinct from the raw
+    concentration, is a real gap flagged for the operator rather than asserted here."""
+    console = (REPO / "static" / "js" / "ed-gamma-panels.js").read_text(encoding="utf-8")
     chart = (REPO / "static" / "chart.html").read_text(encoding="utf-8")
-    assert "kl_absolute_gamma_strike" in console
-    assert "kl_pin_candidate" in console
+    assert "d.absolute_gamma_strike" in console
     assert "absolute_gamma_strike" in chart
     assert "'pin_candidate'" in chart
-    for surface, src in (("index.html", console), ("chart.html", chart)):
+    for surface, src in (("ed-gamma-panels.js", console), ("chart.html", chart)):
         assert "gamma_pin" not in src, (
             f"{surface} still binds the retired gamma_pin name — two definitions shared "
             f"it (RC-292); the UI must bind absolute_gamma_strike / pin_candidate / "

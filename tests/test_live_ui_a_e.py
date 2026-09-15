@@ -7,17 +7,20 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 
 
-def test_index_html_live_ui_transport_and_bundle_age():
-    html = (ROOT / "static" / "index.html").read_text(encoding="utf-8", errors="replace")
-    assert 'id="ed-transport-badge"' in html
-    assert 'id="data-bundle-freshness"' in html
-    assert "function _updateEdTransportBadge(" in html
-    assert "function _updateDecisionBundleAgeUI(" in html
-    assert "function _updateTierCLaneStaleMarkers(" in html
-    assert "function _updateLiveUiAe(" in html
-    assert "label = 'SSE STALE'" in html
-    assert "label = 'SSE LIVE'" in html
-    assert "Built <1s ago" in html or "Built ' + ageSec" in html
-    assert 'data-ed-tier-c="1"' in html
-    assert "data-lane-stale" in html
-    assert "sseStale" in html
+def test_transport_liveness_badge_survives_in_ed_core():
+    """The transport-liveness half of this test (a LIVE/STALE badge + age, driven off the
+    streaming-health flag) has a real equivalent. Repointed to static/js/ed-core.js (/console
+    cutover, operator directive 2026-09-14): setFeed()/paintQuote() paint #hFeedDot/#hFeed/
+    #hAge off the same streaming_healthy flag legacy's badge used, just LIVE/DEGRADED rather
+    than legacy's SSE LIVE/SSE STALE spelling.
+
+    The Tier-C decision-bundle-age half (data-bundle-freshness, _updateDecisionBundleAgeUI,
+    _updateTierCLaneStaleMarkers, data-ed-tier-c/data-lane-stale) has no equivalent — the new
+    console's simpler poll model has no Tier-C decision-bundle concept at all (grepped
+    static/js/*.js, zero matches for any of these names) — and is not reproduced here."""
+    core = (ROOT / "static" / "js" / "ed-core.js").read_text(encoding="utf-8")
+    assert "function setFeed(cls, label, age) {" in core
+    assert "getElementById('hFeedDot')" in core
+    assert "getElementById('hFeed')" in core
+    assert "getElementById('hAge')" in core
+    assert "feedLabel: healthy ? 'LIVE' : 'DEGRADED'" in core

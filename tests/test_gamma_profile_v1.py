@@ -375,9 +375,6 @@ def test_rc354_gsf_grc_wired_producer_to_consumer():
     for key in ('md["kl_gsf"]', 'md["kl_grc"]', 'md["kl_gsf_state"]', 'md["kl_gsf_state_disp"]'):
         assert key in srv, f"server must stamp {key} from the terrain book"
 
-    html = Path(__file__).resolve().parent.parent.joinpath("static", "index.html").read_text(encoding="utf-8")
-    assert "key: 'kl_gsf'" in html and "key: 'kl_grc'" in html
-    assert "Gamma Support Floor" in html and "Gamma Resistance Ceiling" in html
     chart = Path(__file__).resolve().parent.parent.joinpath("static", "chart.html").read_text(encoding="utf-8")
     assert "'gsf', 'GSF'" in chart and "'grc', 'GRC'" in chart
 
@@ -405,8 +402,6 @@ def test_rc357_zero_dte_share_wired_end_to_end():
     assert snap.zero_dte_gamma_share_pct is None
     srv = Path(__file__).resolve().parent.parent.joinpath("server.py").read_text(encoding="utf-8")
     assert 'md["kl_zero_dte_share"]' in srv
-    html = Path(__file__).resolve().parent.parent.joinpath("static", "index.html").read_text(encoding="utf-8")
-    assert "0DTE Gamma Share" in html and "kl_zero_dte_share" in html
 
 
 def test_rc358_25d_risk_reversal_front_expiry_and_fail_closed():
@@ -446,8 +441,6 @@ def test_rc358_rr25_wired_end_to_end():
     assert hasattr(snap, "rr_25d") and snap.rr_25d is None
     srv = Path(__file__).resolve().parent.parent.joinpath("server.py").read_text(encoding="utf-8")
     assert 'md["kl_rr25_pts"]' in srv and 'md["kl_rr25_dte"]' in srv
-    html = Path(__file__).resolve().parent.parent.joinpath("static", "index.html").read_text(encoding="utf-8")
-    assert "25Δ Risk Reversal" in html and "kl_rr25_pts" in html
 
 
 def test_rc362_net_vanna_math_and_fail_closed():
@@ -473,9 +466,6 @@ def test_rc362_vanna_wired_end_to_end():
     assert hasattr(snap, "vanna_agg") and snap.vanna_agg is None
     srv = Path(__file__).resolve().parent.parent.joinpath("server.py").read_text(encoding="utf-8")
     assert 'md["kl_vanna_net_dollars"]' in srv
-    html = Path(__file__).resolve().parent.parent.joinpath("static", "index.html").read_text(encoding="utf-8")
-    assert "Net Vanna" in html and "kl_vanna_net_dollars" in html
-    assert "/day" in html    # charm rate dollarized
 
 
 def test_rc361_net_dex_dollars_sign_model_and_fail_closed():
@@ -498,8 +488,6 @@ def test_rc361_dex_wired_end_to_end():
     assert hasattr(snap, "dex_dollars") and snap.dex_dollars is None
     srv = Path(__file__).resolve().parent.parent.joinpath("server.py").read_text(encoding="utf-8")
     assert 'md["kl_dex_net"]' in srv
-    html = Path(__file__).resolve().parent.parent.joinpath("static", "index.html").read_text(encoding="utf-8")
-    assert "Net DEX" in html and "kl_dex_net" in html
 
 
 def test_rc359_delta_oi_walls_build_unwind_and_fail_closed():
@@ -552,8 +540,14 @@ def test_rc359_doi_wired_end_to_end():
     for k in ('bank_daily_strike_oi(', 'prev_session_strike_oi(', 'md["kl_doi_call_strike"]',
               'md["kl_doi_put_strike"]', 'md["kl_doi_unwind_strike"]'):
         assert k in srv, f"server must wire {k}"
-    html = Path(__file__).resolve().parent.parent.joinpath("static", "index.html").read_text(encoding="utf-8")
-    assert "ΔOI Call Build" in html and "ΔOI Put Build" in html and "kl_doi_call_strike" in html
+    # The UI half of this test (a ΔOI ladder row in static/index.html) was retired here
+    # (/console cutover, operator directive 2026-09-14), alongside the same-shaped UI
+    # assertions in the GSF/GRC, 0DTE share, RR25, Vanna, and DEX tests above -- none of
+    # these six terrain metrics has any consumer in the new console (grepped static/js/*.js
+    # and static/console.html, zero matches for any of their labels/kl_ keys). The backend
+    # wiring above (server.py stamps the field) is real and unaffected either way. Flagged
+    # for the operator: six already-computed risk metrics currently have no UI consumer at
+    # all post-cutover, not fixed here.
 
 
 def test_rc354_iv_banking_upsert_last_write_wins(tmp_path):

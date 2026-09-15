@@ -138,19 +138,15 @@ def test_terrain_staleness_carries_the_token_countdown():
     assert "schwab_token_urgency" in live
 
 
-def test_visible_token_chip_binds_the_urgency_field():
-    """Surface-bound (RC-106 contract): #sb-token-warn must be painted FROM schwab_token_urgency
-    by one writer, and both terrain receive sites must call that writer."""
-    import re
-    src = (ROOT / "static" / "index.html").read_text(encoding="utf-8")
-    assert 'id="sb-token-warn"' in src, "the visible chip markup is gone"
-    i = src.find("function edPaintTokenWarn")
-    assert i > 0, "the one token-chip writer is gone"
-    body = re.sub(r"//.*$", "", src[i:i + 1600], flags=re.M)
-    assert "sb-token-warn" in body and "schwab_token_urgency" in body
-    assert src.count("edPaintTokenWarn(") >= 3, (
-        "both terrain receive sites must feed the chip (definition + 2 call sites)"
-    )
+# test_visible_token_chip_binds_the_urgency_field was retired here (/console cutover,
+# operator directive 2026-09-14): #sb-token-warn / edPaintTokenWarn / schwab_token_urgency
+# have zero consumer anywhere in the new console (grepped static/js/*.js and
+# static/console.html, zero matches). This is a REAL, operator-relevant capability loss, not
+# a presentation change — legacy's chip is the ONLY warning that the Schwab auth token is
+# about to expire (~7 days out); nothing in the new console tells the operator this today.
+# Flagged prominently for the operator; building a replacement is out of scope for this
+# cutover, but this one is worth prioritizing given the operational consequence of a silent
+# token expiry (Schwab capability goes fully UNAVAILABLE with no advance warning).
 
 
 # ── RC-146: a deliberate pause must not be reported as a malfunction, and a pre-open ─────────

@@ -575,27 +575,26 @@ def test_engine_emits_no_pool_language_anywhere_it_writes_notes():
 
 
 def test_ui_shows_no_pool_badges():
-    """Surface-bound: the Console Liquidity Map painted 'SELL LIQ' / 'BUY LIQ' — an operator
-    reading those sees a proven pool, which is the claim being demoted."""
+    """Surface-bound: an operator reading a liquidity zone label must never see a proven-pool
+    claim ('SELL LIQ' / 'BUY LIQ') — that claim was demoted to Support/Resistance (RC-153/156).
+
+    Repointed to static/js/ed-liquidity-map.js (/console cutover, operator directive
+    2026-09-14): the new console's Liquidity Map renders every zone as plain Support/
+    Resistance off zone_type alone (a simpler binary mapping, not legacy's ZONE_BADGE_MAP with
+    per-zone-type variants like LOW EXTREME/HIGH EXTREME) — the real invariant (no pool-claim
+    vocabulary at all) holds by construction rather than by a badge-map exclusion list."""
     import re
     from pathlib import Path
-    ui = (Path(__file__).resolve().parent.parent / "static" / "index.html").read_text(
+    ui = (Path(__file__).resolve().parent.parent / "static" / "js" / "ed-liquidity-map.js").read_text(
         encoding="utf-8")
-    # Strip // comments: the badge map's own comment quotes the retired labels to explain what
-    # was demoted, and a raw text search reads that explanation as the offence (the same trap
-    # RC-153's docstring set). Only code the browser executes can paint a badge.
     code = re.sub(r"^\s*//.*$", "", ui, flags=re.M)
     assert "SELL LIQ" not in code and "BUY LIQ" not in code, "the UI still paints pool badges"
     assert "sell_side_liquidity" not in code and "buy_side_liquidity" not in code, (
-        "the UI badge map still keys on the retired pool taxonomy"
+        "the UI still keys on the retired pool taxonomy"
     )
-    i = code.find("ZONE_BADGE_MAP")
-    assert i > 0, "the badge map is gone"
-    block = code[i:i + 700]
-    assert "low_extreme" in block and "high_extreme" in block, (
-        "the demoted zone types have no badge, so they would render via the raw-string fallback"
+    assert "zone_type === 'support_liquidity' ? 'Support' : 'Resistance'" in code, (
+        "the zone renderer no longer maps every zone to the demoted Support/Resistance label"
     )
-    assert "LOW EXTREME" in block and "HIGH EXTREME" in block
 
 
 # ── LP-01 Step 4 (RC-156): raw structure levels are OPERATOR-VISIBLE on Chart ────────────

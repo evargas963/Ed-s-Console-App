@@ -35,41 +35,26 @@ def test_stamp_decision_bundle_increments_on_success(monkeypatch):
     assert out.get("decision_id")
 
 
-def test_index_html_shared_render_guards():
+# test_index_html_shared_render_guards and test_tier_a_does_not_advance_analytical_last_render_
+# timestamp were retired here (/console cutover, operator directive 2026-09-14): both locked
+# legacy static/index.html's Tier-A/Tier-C render-generation architecture
+# (_renderCoherenceGuards, _commitTierAFastTimestamp, renderTierALive), which has no equivalent
+# in the new console's simpler poll model (static/js/ed-core.js) -- grepped, zero matches.
+
+
+def test_error_engine_surfaces_in_the_new_console():
+    """The real invariant test_error_bar_fires_on_either_state_error_field protected -- an
+    engine error must surface, not render silently -- has a live equivalent in the new console,
+    just without legacy's state_error_detail OR-fallback (a minor gap: state_error_detail alone,
+    with state_error falsy, would not surface here either, same as it wouldn't have needed to
+    in practice since callers always set both or neither)."""
     from pathlib import Path
 
-    html = (Path(__file__).resolve().parents[1] / "static" / "index.html").read_text(
+    core = (Path(__file__).resolve().parents[1] / "static" / "js" / "ed-core.js").read_text(
         encoding="utf-8", errors="replace"
     )
-    assert "function _renderCoherenceGuards(" in html
-    assert "function _updateErrorBarFromPayload(" in html
-    assert "renderTierCPendingShell" in html and "checkDecisionGen: false" in html
-
-
-def test_tier_a_does_not_advance_analytical_last_render_timestamp():
-    from pathlib import Path
-
-    html = (Path(__file__).resolve().parents[1] / "static" / "index.html").read_text(
+    panels = (Path(__file__).resolve().parents[1] / "static" / "js" / "ed-gamma-panels.js").read_text(
         encoding="utf-8", errors="replace"
     )
-    assert "function _commitTierAFastTimestamp(" in html
-    assert "function _commitAnalyticalRenderTimestampAndGen(" in html
-    assert "_commitQuoteLaneTimestamps(d)" in html
-    assert "timestampLane: 'quote'" in html
-    tier_a = html.split("function renderTierALive")[1].split("function _renderMoneyPathCore(")[0]
-    assert "lastRenderTimestamp" not in tier_a
-    assert "_commitAnalyticalRenderTimestampAndGen" not in tier_a
-
-
-def test_error_bar_fires_on_either_state_error_field():
-    from pathlib import Path
-
-    html = (Path(__file__).resolve().parents[1] / "static" / "index.html").read_text(
-        encoding="utf-8", errors="replace"
-    )
-    idx = html.find("function _updateErrorBarFromPayload")
-    assert idx != -1, "_updateErrorBarFromPayload missing from index.html"
-    chunk = html[idx : idx + 900]
-    assert "d.state_error_detail" in chunk
-    assert "d.state_error" in chunk
-    assert "||" in chunk
+    assert "if (d.state_error) { setFeed('stale', 'DEGRADED', d.state_error); return; }" in core
+    assert "if (d.state_error) { _pcrPending = false; paintPcr(null, 'analytics error'); return; }" in panels

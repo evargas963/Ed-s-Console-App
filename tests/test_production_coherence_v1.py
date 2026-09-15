@@ -50,20 +50,6 @@ def _code_only(src: str) -> str:
     return ast.unparse(tree).replace('"', "'")
 
 
-def _js_code_only(src: str) -> str:
-    """JS source with `//` line comments removed — same reason as _code_only.
-
-    This is not hypothetical: the comment that documents the removed `else { hzFusionOk = true; }`
-    fallback quotes it verbatim, so a raw-text control asserting that construct is gone reads its
-    own explanation and fails. Controls must see CODE.
-    """
-    out = []
-    for ln in src.splitlines():
-        i = ln.find("//")
-        out.append(ln if i < 0 else ln[:i])
-    return "\n".join(out)
-
-
 def _composition(
     *,
     produced,
@@ -420,12 +406,13 @@ def test_mc_emits_wall_clock_minutes_from_the_canonical_constant():
     assert out.horizon_minutes == 5, "a 5-bar horizon is ~5m fwd, never 25m"
 
 
-def test_the_ui_consumes_the_transported_minutes_and_holds_no_time_authority():
-    """CONTROL 5 (display half): the browser must not multiply bars by a constant of its own."""
-    ui = (ROOT / "static" / "index.html").read_text(encoding="utf-8", errors="replace")
-    assert "d.mc_horizon_minutes" in ui, "UI must read the transported wall-clock value"
-    assert "parseInt(d.mc_horizon, 10) * 5" not in ui, "the second time authority must be gone"
-    assert "(5-min MC steps)" not in ui, "on-screen text contradicted BAR_MINUTES=1"
+# test_the_ui_consumes_the_transported_minutes_and_holds_no_time_authority (CONTROL 5's
+# display half) was retired here (/console cutover, operator directive 2026-09-14): it checked
+# legacy static/index.html for a d.mc_horizon_minutes reader, but the new console's Trade Desk
+# explicitly defers all horizon signals as NOT_PROVEN ("THE CALL and 1m/5m/15m/60m horizons
+# remain excluded until ticker-universal evidence earns them" -- ed-trade-desk.js's own text) —
+# there is no MC-horizon display to hold this control against. CONTROL 5's backend half
+# (test_mc_emits_wall_clock_minutes_from_the_canonical_constant above) is unaffected.
 
 
 # ── CONTROL 6: weak fusion may not authorize a directional horizon ────────────────────────────
@@ -435,15 +422,17 @@ def test_setup_fusion_alone_cannot_light_a_directional_horizon():
 
     That fallback was not a rare edge: `horizon_fusion_available` is not a MarketState field, so it
     is absent from /api/state on every tick and the fallback was ALWAYS taken. The second assertion
-    proves that, so the first is not merely pinning text."""
+    proves that, so the first is not merely pinning text.
+
+    The UI half of this control (hzFusionOk / horizon_directional_authorized read in legacy
+    static/index.html) was retired here (/console cutover, operator directive 2026-09-14): the
+    new console has no per-horizon fusion-authorization chip at all (grepped static/js/*.js,
+    zero matches) — the field-level guarantee below (the fields exist and are the ones a
+    future consumer must use) is what remains real and checkable."""
     import market_state
 
-    ui = _js_code_only((ROOT / "static" / "index.html").read_text(encoding="utf-8", errors="replace"))
-    assert "hzFusionOk = true" not in ui, "the assume-authorized fallback must be gone"
-    assert "hzFusionOk = false" in ui, "a missing per-horizon map must withhold"
     assert "horizon_directional_authorized" in market_state.MarketState.__dataclass_fields__
     assert "horizon_fusion_available" in market_state.MarketState.__dataclass_fields__
-    assert "horizon_directional_authorized" in ui
 
 
 def test_stack_health_requires_the_transported_verdict_and_cannot_substitute():

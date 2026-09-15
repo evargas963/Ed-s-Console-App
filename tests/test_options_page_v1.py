@@ -43,10 +43,14 @@ def test_server_route_serves_the_page():
 
 
 def test_every_existing_nav_links_the_new_tab():
+    # The new console (soon to be static/index.html -- /console cutover, operator directive
+    # 2026-09-14) links Options via an SPA workspace switch (data-ws="options"), not an href
+    # or aria-selected attribute -- a third, real way to "link/mark the Options tab".
     for rel in ("static/index.html", "static/chart.html", "static/exposure.html",
                 "static/options.html"):
         src = (REPO / rel).read_text(encoding="utf-8")
-        assert 'href="/options"' in src or 'aria-selected="true">Options' in src, (
+        assert ('href="/options"' in src or 'aria-selected="true">Options' in src
+                or 'data-ws="options"' in src), (
             f"{rel} nav does not link/mark the Options tab")
 
 

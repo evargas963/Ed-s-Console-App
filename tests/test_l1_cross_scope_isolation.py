@@ -130,15 +130,23 @@ def test_e_auto_expiry_matches_empty_selected():
 # --- Regression: no global Tier B gen in client source --------------------------------------
 
 
-def test_no_global_l1_generation_mutable_in_index_html():
-    text = (ROOT / "static" / "index.html").read_text(encoding="utf-8")
-    assert "_l1GenByScope" in text
+def test_no_global_l1_generation_mutable_in_ed_core():
+    """Repointed to static/js/ed-core.js (/console cutover, operator directive 2026-09-14):
+    the real invariant (no single global mutable generation counter shared across every
+    ticker/scope) survives via ed-core.js's own scope-keyed dicts, just under different names
+    than legacy's _l1GenByScope (_l1Gen/_l1Ts here, passed per-ticker into
+    l1ApplyTierBLightMonotonic rather than suffixed -ByScope)."""
+    text = (ROOT / "static" / "js" / "ed-core.js").read_text(encoding="utf-8")
+    assert "_l1Gen = {}, _l1Ts = {}" in text
     assert "window._l1Gen =" not in text
     assert "window._l1Generation =" not in text
 
 
 def test_authority_and_identity_stores_keyed_by_scope_in_source():
-    text = (ROOT / "static" / "index.html").read_text(encoding="utf-8")
-    assert "_l1AuthorityByScope" in text
-    assert "_l1LastPaintedIdentityByScope" in text
-    assert "l1TierBPayloadMatchesActiveScope" in text
+    """Repointed to static/js/ed-core.js: openHeaderStream() passes state.ticker (the scope
+    key) into the shared l1ApplyTierBLightMonotonic guard alongside the scope-match checks,
+    the same invariant legacy's _l1AuthorityByScope / l1TierBPayloadMatchesActiveScope named
+    explicitly in their own identifiers."""
+    text = (ROOT / "static" / "js" / "ed-core.js").read_text(encoding="utf-8")
+    assert "l1PayloadMatchesActiveScope(p.ticker, p.selected_exp, state.ticker" in text
+    assert "l1ApplyTierBLightMonotonic(state.ticker, gen, _l1Gen, bts, _l1Ts)" in text

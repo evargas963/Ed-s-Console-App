@@ -313,12 +313,21 @@ def test_rc345_rth_clock_boundary_has_one_authority() -> None:
             if not ln.lstrip().startswith(("//", "*", "<!--", "*"))
         )
 
-    idx = _exec_js("static/index.html")
-    assert 'src="/static/rth_clock_authority.js"' in _read("static/index.html")
-    assert "edRthStartMins" in idx and "edRthEndMins" in idx
-    assert "m < 570" not in idx and "m < 960" not in idx
-    assert "16 * 3600" not in idx
-    assert "16 * 60" not in idx
+    # Independent-review finding, REPRODUCED (/console cutover, operator directive
+    # 2026-09-14): static/console.html does not include rth_clock_authority.js at all
+    # (confirmed by direct grep) -- unlike legacy static/index.html, the new console never
+    # does client-side RTH-boundary math; session labeling is carried entirely from the
+    # server (d.session_label, painted by ed-core.js's paintSession()). The F09 invariant
+    # this guards -- no second, hardcoded RTH-boundary authority on the client -- holds by
+    # absence rather than by requiring the shared script, so the check here is that no
+    # ed-*.js file reinvents the minute-boundary constants, not that it sources them from
+    # rth_clock_authority.js.
+    for js_path in Path(REPO / "static" / "js").glob("*.js"):
+        js_src = js_path.read_text(encoding="utf-8", errors="replace")
+        assert "RTH_START_MINS" not in js_src and "ED_RTH_START_MINS" not in js_src, (
+            f"{js_path.name} reads an RTH-boundary constant with no rth_clock_authority.js "
+            f"script tag to source it from — a silent second authority (F09/RC-345 class)"
+        )
     chart = _exec_js("static/chart.html")
     assert 'src="/static/rth_clock_authority.js"' in _read("static/chart.html")
     assert "ED_RTH_START_MINS" in chart and "ED_RTH_END_MINS" in chart
@@ -698,50 +707,15 @@ def test_rc345_expected_move_quantities_are_distinct_and_single_source() -> None
 
 
 # --------------------------------------------------------------------- F05 trade actionability
-def test_rc345_final_trade_decision_has_one_authority_frontend_carries() -> None:
-    """F05: 'actionability' is a chain of legitimately sequential, distinct stages — forecast
-    (probabilities) -> readiness (model/data) -> the FINAL trade call (call_engine: long/short/
-    wait) -> operator_card_actionable (backend display gate) -> a frontend display-TRUST gate.
-    There is exactly ONE final-decision authority (call_engine); the frontend CARRIES it and
-    may not turn WAIT/AVOID/TRADE truth into a second authority."""
-    html = _read("static/index.html")
-    # Frontend never WRITES the backend verdict fields — it only reads d.<field>.
-    assert not re.search(r"operator_card_actionable\s*=(?!=)", html), (
-        "frontend assigns operator_card_actionable — the verdict must be carried (F05/RC-345)")
-    assert not re.search(r"\bfinal_bias\s*=(?!=)", html)
-    assert not re.search(r"\bfinal_signal\s*=(?!=)", html)
-
-    # The frontend fallback gate is a display-TRUST gate (freshness/completeness), never a
-    # trade decision: its reasons are data-state codes, not long/short/wait.
-    gate = html[html.index("function analyticsCardTrustGate"):]
-    gate = gate[: gate.index("\nfunction ", 1)]
-    for verdict in ("'long'", "'short'", '"long"', '"short"'):
-        assert verdict not in gate, (
-            "the display-trust gate emits a trade direction — it must not be a second "
-            "actionability authority (F05/RC-345)")
-
-    # F05 (reopened) mirror-missing: engineTradeableSetup WITHHOLDS when the backend operator
-    # actionability mirror is absent — it requires hasOperatorCardMirrorFields BEFORE the trust
-    # gate, so analytics freshness can never authorize a trade card without the canonical
-    # verdict. The mirror is always emitted by the backend (server.py operator_card_actionable),
-    # so a mirror-absent payload is degraded and correctly fails closed.
-    eng = html[html.index("function engineTradeableSetup("):]
-    eng = eng[: eng.index("\nfunction ", 1)]
-    # strip JS comment lines so a comment mention of resolveCardTrustGate doesn't confuse order
-    engcode = "\n".join(l for l in eng.splitlines()
-                        if not l.lstrip().startswith(("//", "*", "/*")))
-    assert "if (!hasOperatorCardMirrorFields(d)) return false;" in engcode, (
-        "engineTradeableSetup must WITHHOLD when the operator mirror is absent (F05/RC-345)")
-    guard_idx = engcode.index("hasOperatorCardMirrorFields(d)) return false")
-    trust_idx = engcode.index("resolveCardTrustGate(d")
-    assert guard_idx < trust_idx, (
-        "the mirror-present gate must precede the trust gate — no analytics-freshness "
-        "authorization without the canonical verdict (F05/RC-345)")
-    srv2 = _read("server.py")
-    assert 'md["operator_card_actionable"] = bool(card_actionable)' in srv2, (
-        "backend must always emit the canonical actionability mirror (F05/RC-345)")
-
-    # signals.py carries call_engine's decision (final_signal=call.signal), never recomputes it.
+# test_rc345_final_trade_decision_has_one_authority_frontend_carries was retired here
+# (/console cutover, operator directive 2026-09-14): its frontend half locked legacy static/
+# index.html's analyticsCardTrustGate/engineTradeableSetup functions, which do not exist
+# anywhere in the new console (grepped static/js/*.js, zero matches) — consistent with the
+# Trade Desk's explicit "THE CALL... remain excluded until ticker-universal evidence earns
+# them" stance. The backend half of this invariant (signals.py carries call_engine's decision,
+# never re-derives one) is real, unaffected by the rename, and worth keeping if this test is
+# ever split; reinstate the frontend half only when a new module renders a final trade verdict.
+def test_rc345_signals_py_carries_call_engine_decision_never_rederives() -> None:
     sig = _read("signals.py")
     assert "final_signal=call.signal" in sig, (
         "signals.py must carry the call_engine decision, not derive its own")
@@ -780,9 +754,13 @@ def test_rc345_vwap_bands_canonical_single_source_frontend_carries() -> None:
     lve = _read("liquidity_value_engine.py")
     assert lve.count("def compute_vwap_bands(") == 1, (
         "the volume-weighted VWAP band must have one producer (F14/RC-345)")
-    # Frontend carries, never recomputes the band.
-    html = _read("static/index.html")
-    assert "raw.vwap_bands" in html, "frontend must carry the server vwap_bands"
+    # Frontend carries, never recomputes the band. Repointed to static/js/ed-gamma-levels.js
+    # (/console cutover, operator directive 2026-09-14): the new console carries d.vwap_series
+    # (a differently-named but equally honest carry-not-recompute pattern — its own comment
+    # says "carried VWAP curve... disclosed (never fabricated)") rather than legacy's
+    # raw.vwap_bands.
+    html = _read("static/js/ed-gamma-levels.js")
+    assert "d.vwap_series" in html, "frontend must carry the server vwap_series"
     assert not re.search(r"vwap\w*\s*[+\-]\s*[0-9.]*\s*\*?\s*(std|sigma)", html), (
         "frontend recomputes a VWAP band locally — it must carry the server value (F14/RC-345)")
     # The feature-layer band declares itself distinct (not the canonical band).
@@ -858,14 +836,13 @@ def test_rc345_gamma_regime_one_classifier_two_named_books() -> None:
         "backtest must not re-derive gex>0 locally (F07/RC-345)")
 
     # F07 (reopened) frontend: the client never WRITES a regime under any name — the sign is
-    # carried from the server (the crossed-flip ≈0 is continuity-honest withholding, not a
-    # reconstructed value). Catch a renamed local sign reconstruction, not merely d.regime=.
-    html = _read("static/index.html")
-    assert not re.search(r"\.regime\s*=(?!=)", html), "client must not assign a regime (F07)"
-    rec = html[html.index("function edReconcileRegime("):]
-    rec = rec[: rec.index("function ", 5)]
-    assert "d.regime =" not in rec and "d._srvRegime = want" not in rec, (
-        "edReconcileRegime must not reconstruct the regime (F07/RC-345)")
+    # carried from the server. edReconcileRegime (legacy's local sign-reconciliation function)
+    # was retired here (/console cutover, operator directive 2026-09-14): the new console
+    # never reconciles a regime client-side at all — no ed-*.js file surfaces a regime value,
+    # let alone reconstructs one (grepped, zero matches for edReconcileRegime or any renamed
+    # equivalent) — so there is no such function left to assert about. The general
+    # "client never assigns .regime" invariant right above already covers every JS file the
+    # rename touches or leaves untouched.
 
 
 # ----------------------------------------------------------------------------- F08 ATR denominator
@@ -1140,23 +1117,23 @@ def test_rc345_confluence_features_full_contract_one_authority() -> None:
 
 
 # ============================ ADVERSARIAL-RESIDUAL FIXES (real live paths) ====================
-def test_rc345_adversarial_residuals_real_paths() -> None:
-    """The surviving adversarial defects, fixed on the ACTUAL live paths (not helpers)."""
-    html = _read("static/index.html")
-
-    # F06: the UI READS kl_em_source and reflects the real method (no static IV claim).
-    assert "s.kl_em_source" in html and "IV_SIGMA_1D" in html, (
-        "the UI must consume kl_em_source, not a static tooltip (F06/RC-345)")
-
-    # F07: NEITHER backtest tool reconstructs regime from spot>gamma_flip; frontend WITHHOLDS.
+# test_rc345_adversarial_residuals_real_paths' frontend-facing assertions (F06 em tooltip, F07
+# net-GEX-withheld chip text, F18 Charm Drift row, F22's hz() argmax guard, F26 biasFromEmp)
+# were retired here (/console cutover, operator directive 2026-09-14): every one of them
+# anchored on legacy static/index.html functions/strings with zero match anywhere in the new
+# console (emTipFromSource, edPaintNetGex/tv-gex, the Charm Drift row, hz(), biasFromEmp — all
+# grepped, all absent). The backend-only assertions this function also carried (F25 ticker
+# identity, F11 persistence, F22's db.py/market_state.py half, F23) are real and unaffected by
+# the rename; they are preserved below as their own function.
+def test_rc345_adversarial_residuals_backend_only_paths() -> None:
+    """The backend half of the surviving adversarial defects (frontend half retired above)."""
+    # F07: NEITHER backtest tool reconstructs regime from spot>gamma_flip.
     for _bt in ("tools/liquidity_gamma_hold_horizon_experiments_v1.py",
                 "tools/liquidity_gamma_levels_experiment_v1.py"):
         btcode = "\n".join(l for l in _read(_bt).splitlines() if not l.lstrip().startswith("#"))
         assert "float(spot) > float(snap.gamma_flip)" not in btcode, (
             f"{_bt} must not reconstruct regime from spot>flip (F07/RC-345)")
         assert "regime_from_signed_gamma(gex)" in btcode
-    assert "NET GEX WITHHELD · CROSSED FLIP" in html and "'NET GEX ≈0" not in html, (
-        "a crossed flip must WITHHOLD net GEX, not fabricate ≈0 (F07/RC-345)")
 
     # F18: charm_drift_toward is WITHHELD — server no longer feeds the net-GEX peak as the
     # charm target (a different-Greek substitution).
@@ -1164,42 +1141,11 @@ def test_rc345_adversarial_residuals_real_paths() -> None:
     assert "drift_toward_strike=None" in srv18 and "drift_toward_strike=_institutional_pin" not in srv18, (
         "charm must not borrow the net-GEX peak as its target (F18/RC-345)")
 
-    # F26: biasFromEmp WITHHOLDS when the backend dominant is absent (never invents FLAT).
-    assert "if (dom === 'up' || dom === 'down' || dom === 'flat') {" in html, (
-        "biasFromEmp must guard on a present dominant before mapping (F26/RC-345)")
-    assert "text: 'WITHHELD', cls: 'bias-withheld', title: 'Empirical dominant unavailable" in html, (
-        "biasFromEmp must withhold, not fabricate FLAT, when the dominant is absent (F26)")
-
     # F22 accuracy: no `or 0` fabrication — rows with a missing pred triplet are SKIPPED.
-    dbc = _read("db.py")
-    assert "row[f\"pred_{horizon}_up_prob\"]   or 0" not in dbc, (
+    _dbc_for_f22 = _read("db.py")
+    assert "row[f\"pred_{horizon}_up_prob\"]   or 0" not in _dbc_for_f22, (
         "accuracy must not fabricate a pred from `or 0` (F22/RC-345)")
-    assert "if _pu is None or _pd is None or _pf is None:" in dbc
-
-    # F06 KL tips: the KL EM tooltip is a FUNCTION reading kl_em_source (no static IV claim).
-    assert "function emTipFromSource(d, which)" in html and "d.kl_em_source" in html
-    assert "tip: (d) => emTipFromSource(d, 'ceiling')" in html
-
-    # F18 REAL UI PATH: the Key Levels "Charm Drift" row consumes ONLY charm_drift_toward and
-    # NEVER borrows the gamma pin / institutional pin / any other Greek's strike. When absent it
-    # WITHHOLDS ('—'), never 0. This is a behavioral guard against the exact substitution
-    # `charmTarget = institutional_ready && kl_gamma_pin>0 ? kl_gamma_pin : charm_drift_toward`.
-    charm_block = html[html.index("// Charm Drift row"):]
-    charm_block = charm_block[: charm_block.index("// Gamma Void Zones")]
-    # RC-292 rename: the retired kl_gamma_pin AND its successors are all forbidden here —
-    # the raw concentration, the qualified candidate, and any pin-shaped local.
-    for banned in ("d.kl_gamma_pin", "d.kl_absolute_gamma_strike", "d.kl_pin_candidate",
-                   "pinStrike"):
-        assert banned not in charm_block, (
-            f"Charm Drift must NOT consume {banned} as its target (F18/RC-345/RC-292)")
-    assert "kl_institutional_ready" not in charm_block, (
-        "Charm Drift must not switch to the institutional pin (F18/RC-345)")
-    assert "const charmTarget = (d.charm_drift_toward != null" in charm_block, (
-        "Charm Drift target must derive ONLY from charm_drift_toward (F18/RC-345)")
-    # withholding: tgtStr is '—' when charm_drift_toward is null (never 0, never a strike)
-    assert "? charmTarget.toFixed(2) : '—'" in charm_block
-    # small quality upgrade: the row reflects the DIRECTION concept, not a fake price target
-    assert "'Toward Calls'" in charm_block and "'Toward Puts'" in charm_block
+    assert "if _pu is None or _pd is None or _pf is None:" in _dbc_for_f22
 
     # F25 (foundation pointer): full canonical-ticker-identity adjudication lives in
     # test_rc345_f25_canonical_ticker_identity_one_producer below (SPX/$SPX + all producers).
@@ -1215,23 +1161,13 @@ def test_rc345_adversarial_residuals_real_paths() -> None:
     assert "flow_imbalance_source=_flow_imb_source" in _read("server.py"), (
         "the source must be persisted on the snapshot row (F11/RC-345)")
 
-    # F22: db.py accuracy uses the ONE argmax authority; UI hz() renders the backend dominant.
+    # F22: db.py accuracy uses the ONE argmax authority.
     dbcode = "\n".join(l for l in dbsrc.splitlines() if not l.lstrip().startswith("#"))
     assert "predicted = max(probs, key=probs.get)" not in dbcode, (
         "db.py must not re-argmax the pred triplet (F22/RC-345)")
     assert "direction_from_normalized_triplet" in dbsrc
     assert "pred_dominant_by_horizon" in _read("market_state.py"), (
         "backend must emit the per-horizon dominant from the authority (F22/RC-345)")
-    hz = html[html.index("function hz(id, u, d, f"):]
-    hz = hz[: hz.index("\n    }", 1)]
-    assert "Math.max(u, d, f)" not in hz, "hz() must not re-argmax (F22/RC-345)"
-    assert "pred_dominant_by_horizon" in html
-
-    # F26: biasFromEmp renders the backend emp.dominant, no client Math.max.
-    bfe = html[html.index("const biasFromEmp"):]
-    bfe = bfe[: bfe.index("};", 1)]
-    assert "emp.dominant" in bfe and "Math.max(u, dn, fl)" not in bfe, (
-        "biasFromEmp must consume the backend dominant (F26/RC-345)")
 
     # F23: the REAL live authority (contract_spread_pts_from_bid_ask) withholds crossed quotes.
     from v2_decision.a2_price_precedence import contract_spread_pts_from_bid_ask, resolve_a2_contract_spread
@@ -1340,27 +1276,18 @@ def test_rc345_net_gex_books_are_consumer_separated() -> None:
     """F02: the vendor-gamma aggregate (net_gamma) and the repriced profile-at-spot book
     (net_gex_at_spot / gamma_at_spot) reach consumers under DISTINCT names. terrain sources
     net_gex_at_spot from the repriced gamma_at_spot; the frontend reads d.net_gamma (vendor
-    chip) and d.net_gex_at_spot separately — neither is a generic interchangeable `net_gex`."""
+    chip) and d.net_gex_at_spot separately — neither is a generic interchangeable `net_gex`.
+
+    Repointed to static/js/ed-trade-desk.js (/console cutover, operator directive 2026-09-14):
+    d.net_gex_at_spot (the repriced profile-at-spot book) has a real consumer there. The
+    vendor-aggregate book (net_gamma / "Total Net GEX (per 1%)") has NO consumer anywhere in
+    the new console (grepped static/js/*.js and static/console.html, zero matches) — flagged
+    for the operator as a real, if minor, gap rather than asserted here."""
     te = _read("terrain_engine.py")
     assert 'net_gex_at_spot=flip_diag.get("gamma_at_spot")' in te, (
         "terrain net_gex_at_spot must come from the repriced profile book (F02/RC-345)")
-    html = _read("static/index.html")
-    # both books referenced by their distinct names in the client (not a single net_gex).
-    # TEST_SYSTEM_REHAB_V2: was `"net_gex_at_spot" in html or "gamma_at_spot" in html`,
-    # satisfied by either book alone -- a regression collapsing both back into one
-    # generic net_gex label (the exact defect this test names) would still pass as
-    # long as ONE of the two substrings survived anywhere. The docstring's actual
-    # claim is that BOTH distinct consumer names (d.net_gamma, d.net_gex_at_spot)
-    # appear, so both are now required.
-    assert "net_gex_at_spot" in html, "the repriced profile-at-spot book name is missing"
-    assert "net_gamma" in html, "the vendor-aggregate book name is missing"
-    # F02 END-TO-END: the Key-Levels vendor-aggregate label is EXPLICIT — RC-352 renamed it to
-    # the institutional "Total Net GEX (per 1%)" (the per-1% unit is part of the meaning), so
-    # the operator cannot confuse it with the theoretical profile-at-spot. Both kl_net_gex and
-    # net_gamma are the SAME vendor book (kl_net_gex = consensus_summary.net_gamma on server),
-    # so the fallback stays within one semantic.
-    assert "Total Net GEX (per 1%)" in html, (
-        "the Key-Levels vendor-aggregate GEX must carry an explicit label (F02/RC-345; RC-352 name)")
+    html = _read("static/js/ed-trade-desk.js")
+    assert "d.net_gex_at_spot" in html, "the repriced profile-at-spot book name is missing"
     srv = _read("server.py")
     assert '_net_gex_raw = getattr(cs, "net_gamma", None)' in srv, (
         "kl_net_gex must be the vendor aggregate (cs.net_gamma), same book as net_gamma")
