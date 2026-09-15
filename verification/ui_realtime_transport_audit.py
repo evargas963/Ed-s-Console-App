@@ -988,7 +988,7 @@ def is_special_index_ticker(ticker: str) -> bool:
     raw = (ticker or "").strip().upper()
     key = ticker_storage_key(ticker)
     bare = {t.upper().lstrip("$") for t in SPECIAL_INDEX_TICKERS}
-    keys = {t.upper() for t in SPECIAL_INDEX_TICKERS} | {k.upper() for k in SPECIAL_INDEX_TICKERS}
+    keys = {t.upper() for t in SPECIAL_INDEX_TICKERS}
     return raw in bare or raw in keys or key.upper() in keys or key in SPECIAL_INDEX_TICKERS
 
 
