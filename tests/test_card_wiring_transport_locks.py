@@ -4,10 +4,13 @@ Defect classes locked (runtime-proven in the 2026-07-04 pre-RTH audit):
   1. Analytics-pool self-deadlock — _fetch_state ran its chain/quote futures on the
      same 4-worker analytics executor that runs _fetch_state itself; >=3 concurrent
      Tier C jobs parked every worker at .result() forever (py-spy proof).
-  2. Expiry carryover on ticker switch (client) — behavioral lock in
-     tests/e2e/ticker-switch-expiry-reset.spec.js; source lock here.
+  2. Expiry carryover on ticker switch (client) — source lock here; the e2e behavioral
+     companion (tests/e2e/ticker-switch-expiry-reset.spec.js) was retired 2026-09-15
+     (tested window.*/DOM ids absent from the current static/index.html — see the note
+     at Locks 2+3 below).
   3. Ordering-cursor scope (client) — gen-less quote/shell payloads must not advance
-     the money-path ordering cursor; behavioral lock in the same e2e spec.
+     the money-path ordering cursor; its own behavioral lock was retired alongside the
+     same e2e spec (see the note at Locks 2+3 below).
   4. SSE completed-fetch mirror parity — payloads broadcast after a completed
      _fetch_state must carry card_freshness_v1 + operator_card_* mirrors, matching
      REST and SSE cache-fanout.
@@ -498,8 +501,14 @@ def test_attach_block_stamps_operator_mirrors_functionally() -> None:
     assert isinstance(cf, dict) and cf.get("card_trust_state")
 
 
-# ── Locks 2 + 3 — client source guards (behavioral locks live in
-#    tests/e2e/ticker-switch-expiry-reset.spec.js) ───────────────────────────
+# ── Locks 2 + 3 — client source guards ────────────────────────────────────
+# The behavioral companion (tests/e2e/ticker-switch-expiry-reset.spec.js) was itself
+# retired 2026-09-15: every window.*/DOM id it exercised (__edTestHooks, #cv2-hd-ticker,
+# window.setActiveTicker, _edMplMonotonicGateReset, acceptMoneyPathPayload) was verified
+# absent from the current static/index.html (direct read + git HEAD, not assumed from a
+# prior triage's own notes) -- the whole file tested a page structure that no longer
+# exists. The ticker-switch/expiry-reset invariant itself stays covered below, against
+# the CURRENT ed-core.js.
 
 
 # test_client_ordering_cursor_commits_gen_bearing_only and
