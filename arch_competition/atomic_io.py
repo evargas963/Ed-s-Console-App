@@ -52,7 +52,11 @@ def write_text_atomically(
     fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=f"{path.name}.", suffix=".tmp")
     tmp_path = Path(tmp_name)
     try:
-        with os.fdopen(fd, "w", encoding=encoding) as handle:
+        # newline="\n": see write_json_file_atomically's comment above -- this sibling function
+        # was missed when that fix landed (2026-09-15), leaving this one write_text_atomically
+        # call site (calibration/edge_discovery.py) still exposed to the same platform-default
+        # CRLF flip on Windows.
+        with os.fdopen(fd, "w", encoding=encoding, newline="\n") as handle:
             handle.write(text)
             handle.flush()
             os.fsync(handle.fileno())
