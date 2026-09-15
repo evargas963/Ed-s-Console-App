@@ -484,8 +484,6 @@ def run_phase65(db_path: Path) -> dict[str, Any]:
             )
 
     # zone / vwap / regime
-    for r in rows:
-        pass
     by_z: dict[str, list[sqlite3.Row]] = defaultdict(list)
     by_v: dict[str, list[sqlite3.Row]] = defaultdict(list)
     by_rg: dict[str, list[sqlite3.Row]] = defaultdict(list)
