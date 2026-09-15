@@ -174,7 +174,10 @@
     if (newContext) { _pcrKey = key; _pcrTries = 0; _pcrPending = false; _pcrVer = null; _pcrSession = null; paintPcr(null, 'warming'); }
     if (newGen || newSession) { _pcrTries = 0; }
     _pcrTries++;
-    return fetch('/api/analytics/state?ticker=' + encodeURIComponent(tk) + (ex ? '&expiry=' + encodeURIComponent(ex) : ''), { cache: 'no-store', signal: signal })
+    // `_via=pcr`: see ed-alerts.js's identical tag on its own independent read of this same
+    // endpoint -- harmless and server-ignored, lets tooling/tests attribute each consumer's
+    // traffic separately instead of conflating two different read-cadence contracts.
+    return fetch('/api/analytics/state?ticker=' + encodeURIComponent(tk) + (ex ? '&expiry=' + encodeURIComponent(ex) : '') + '&_via=pcr', { cache: 'no-store', signal: signal })
       .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
       .then(function (d) {
         if (!stillPcrCtx(tk, ex)) return;

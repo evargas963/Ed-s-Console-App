@@ -48,7 +48,13 @@
   }
 
   function loadImpl(tk, signal) {
-    return fetchJson('/api/analytics/state?ticker=' + encodeURIComponent(tk), signal).then(function (d) {
+    // `_via=alerts`: a harmless, server-ignored tag (server.py's /api/analytics/state only
+    // declares ticker/symbol/expiry/force) so tooling/tests can attribute this independent
+    // periodic poll separately from ed-gamma-panels.js's own read-once-per-context PCR reader
+    // -- the two are DIFFERENT consumers of the SAME endpoint with DIFFERENT cadence contracts
+    // (this one intentionally polls on the shared ~12s slow tick; PCR does not), and without a
+    // tag their identical GETs are indistinguishable on the wire.
+    return fetchJson('/api/analytics/state?ticker=' + encodeURIComponent(tk) + '&_via=alerts', signal).then(function (d) {
       render(d, tk);
     }).catch(function (e) {
       if (e && e.name === 'AbortError') return;

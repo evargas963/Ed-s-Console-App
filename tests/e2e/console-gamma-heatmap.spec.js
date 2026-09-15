@@ -698,7 +698,11 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     const hits = [];
     let pending = true;   // first answer: Tier C still warming (pending shell, no pcr_val)
     await page.route('**/api/analytics/state**', (route) => {
-      const url = route.request().url(); hits.push(url);
+      const url = route.request().url();
+      // ed-alerts.js independently polls this same endpoint (its own `_via=alerts` tag) on
+      // its own ~12s cadence, unrelated to the PCR read-once-per-context contract under test
+      // here -- excluded so its traffic never inflates this test's own hit count.
+      if (!url.includes('_via=alerts')) hits.push(url);
       const body = pending ? { _tier: 'C_analytics', ticker: '$SPX', selected_exp: null, analytics_pending_shell: true, expiries: [], totals_rows: [] }
         : analyticsFor(url);
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
@@ -726,8 +730,11 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     PLANE.session = 'RTH'; PLANE.versions = Object.assign({}, BASE_VERSION);
     const hits = [];
     await page.route('**/api/analytics/state**', (route) => {
-      hits.push(route.request().url());
-      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(analyticsFor(route.request().url())) });
+      const url = route.request().url();
+      // see the D-PCR read-once test's identical note: ed-alerts.js's independent, unrelated
+      // ~12s poll of this same endpoint is excluded from this test's own hit count.
+      if (!url.includes('_via=alerts')) hits.push(url);
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(analyticsFor(url)) });
     });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#klPcr')).toHaveText('0.87');
@@ -753,8 +760,11 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     PLANE.session = 'RTH'; PLANE.versions = Object.assign({}, BASE_VERSION);
     const hits = [];
     await page.route('**/api/analytics/state**', (route) => {
-      hits.push(route.request().url());
-      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(analyticsFor(route.request().url())) });
+      const url = route.request().url();
+      // see the D-PCR read-once test's identical note: ed-alerts.js's independent, unrelated
+      // ~12s poll of this same endpoint is excluded from this test's own hit count.
+      if (!url.includes('_via=alerts')) hits.push(url);
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(analyticsFor(url)) });
     });
     const planeReads = [];
     await page.route('**/api/live/state**', (route) => {
