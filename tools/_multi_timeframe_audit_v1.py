@@ -237,7 +237,7 @@ def main() -> None:
 
     out = {
         "db_path": str(db_path),
-        "sqlite_tables_with_bar_or_candle_in_name": [t for t in tables if "bar" in t.lower() or "candle" in t.lower()],
+        "sqlite_tables_with_bar_or_candle_in_name": bar_tables,
         "price_like_tables": bar_tables,
         "timeframe_inventory_sql": "SELECT timeframe, COUNT(*) FROM snapshots GROUP BY timeframe ORDER BY timeframe",
         "timeframe_inventory": [{"timeframe": r["timeframe"], "row_count": int(r["row_count"])} for r in inv],
