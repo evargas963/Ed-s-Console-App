@@ -270,7 +270,7 @@ def run_meta(
                 if len(stacked) < 10:
                     continue
                 X = np.array(stacked)
-                y_meta = np.array(ys[: len(stacked)])
+                y_meta = np.array(ys)
                 meta_mdl = LogisticRegression(C=1.0, max_iter=1000, random_state=42)
                 meta_mdl.fit(X, y_meta)
                 out.mkdir(parents=True, exist_ok=True)
@@ -430,7 +430,6 @@ def main():
     hz = normalize_ml_horizon_slug(args.horizon)
 
     model_dir = Path(args.model_dir) if args.model_dir else MODEL_DIR
-    MODEL_DIR.mkdir(exist_ok=True)
 
     run_xgb_flag = not (args.lstm_only or args.transformer_only or args.meta_only or args.skip_xgb)
     run_lstm_flag = not (args.xgb_only or args.transformer_only or args.meta_only or args.skip_lstm)
