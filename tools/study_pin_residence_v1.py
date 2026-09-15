@@ -75,7 +75,6 @@ rv_lo = st.quantiles(rv_all, n=3)[0] if len(rv_all) > 10 else None
 
 def residence(pts, level, spot):
     """fraction of remaining minutes whose bar straddles/sits inside the band"""
-    lo, hi = level*(1-BAND/1), level*(1+BAND/1)
     lo, hi = level - spot*BAND, level + spot*BAND
     n = sum(1 for _,h,l,_ in pts if l <= hi and h >= lo)
     return n/len(pts)
