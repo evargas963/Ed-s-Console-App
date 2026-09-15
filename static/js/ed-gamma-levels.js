@@ -52,7 +52,6 @@
         '<div class="sm">' + esc((d && (d.degraded || []).join(', ')) || 'the levels snapshot is empty for this symbol') + '</div></div>';
       return;
     }
-    var now = (d.served_ts_utc || (Date.now() / 1000));
     // sort by price desc (like a levels ladder); spot marked
     var rows = levels.slice().sort(function (a, b) { return (b.price || 0) - (a.price || 0); });
     var spot = Number(d.spot);
