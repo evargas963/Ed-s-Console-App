@@ -434,60 +434,14 @@ def test_expanding_window_oof_folds_strict_temporal_order():
     assert expanding_window_oof_folds(days[:3]) == []
 
 
-def _routing_trap(monkeypatch, tmp_path, *, n_days, oof_rows_per_fold):
-    """Monkeypatched routing harness: records which model_dir scores which rows.
-    An overfit deployed base in out_dir can only contaminate the meta if out_dir
-    is ever used for assembly while folds exist — the trap asserts it never is."""
-    import ml_scheduler as ms
-
-    calls: list = []
-
-    def _fake_train_layers(fold_dir, ticker, db_path, tr_days, *, data_fp, hz):
-        fold_dir.mkdir(parents=True, exist_ok=True)
-        return True
-
-    def _fake_load_data(db_path, ticker=None, allowed_et_dates=None, ml_horizon_slug=None, **kw):
-        return list(allowed_et_dates or [])  # len() drives the flow only
-
-    def _fake_assemble(model_dir, ticker, db_path, rows_df, target_column, hz):
-        calls.append(str(model_dir))
-        n = oof_rows_per_fold if "fold" in str(model_dir) else 99
-        return [[0.5] * 3] * n, [0] * n
-
-    monkeypatch.setattr(ms, "_train_parallel_ml_stack_layers_into", _fake_train_layers)
-    monkeypatch.setattr(ms, "_assemble_meta_ml_layer_prob_vectors", _fake_assemble)
-    import ml_train
-
-    monkeypatch.setattr(ml_train, "load_data", _fake_load_data)
-    days = [f"2026-06-{d:02d}" for d in range(1, 1 + n_days)]
-    out_dir = tmp_path / "deployed"
-    out_dir.mkdir()
-    X, y, basis = ms._train_parallel_meta_oof(
-        out_dir, "SPY", "unused.db", ["row"] * 50, days, "outcome_dir_5c", "5c", data_fp=None,
-    )
-    return calls, basis, out_dir
-
-
-def test_oof_routing_never_scores_deployed_dir_when_folds_exist(monkeypatch, tmp_path):
-    calls, basis, out_dir = _routing_trap(monkeypatch, tmp_path, n_days=25, oof_rows_per_fold=8)
-    assert basis == "expanding_window_oof"
-    assert str(out_dir) not in calls, (
-        "deployed (potentially overfit, full-data) bases were scored for meta training "
-        "while OOF folds existed — in-sample leakage channel"
-    )
-    assert all("fold" in c for c in calls)
-
-
-def test_oof_infeasibility_routes_to_labeled_in_sample_no_folds(monkeypatch, tmp_path):
-    calls, basis, out_dir = _routing_trap(monkeypatch, tmp_path, n_days=3, oof_rows_per_fold=8)
-    assert basis == "in_sample_no_folds"
-    assert calls == [str(out_dir)], "no-folds fallback must use the deployed dir, labeled"
-
-
-def test_oof_starvation_routes_to_labeled_in_sample_fallback(monkeypatch, tmp_path):
-    calls, basis, out_dir = _routing_trap(monkeypatch, tmp_path, n_days=25, oof_rows_per_fold=1)
-    assert basis == "in_sample_fallback"
-    assert calls[-1] == str(out_dir), "starvation fallback must be the LAST assembly, labeled"
+# The parallel-path OOF routing contract this file used to re-prove here via its own
+# _routing_trap harness (never-score-deployed-dir-while-folds-exist / in_sample_no_folds /
+# in_sample_fallback, against the same ms._train_parallel_meta_oof) is already proven,
+# symmetrically for BOTH parallel and cascade, by tests/test_oof_stacker.py's
+# test_parallel_meta_trains_on_oof_fold_dirs_not_in_sample /
+# test_parallel_meta_falls_back_in_sample_when_no_folds /
+# test_parallel_meta_falls_back_when_oof_too_thin (plus their cascade counterparts, which
+# this file's harness never covered at all). Removed as a true duplicate 2026-09-15.
 
 
 def test_meta_missing_base_semantics_locked():
