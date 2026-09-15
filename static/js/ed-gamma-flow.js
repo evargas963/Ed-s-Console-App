@@ -24,7 +24,7 @@
   function cpOf(symbol) { var s = String(symbol || ''); return s.length >= 13 ? (s.charAt(12) === 'P' ? 'Put' : (s.charAt(12) === 'C' ? 'Call' : '—')) : '—'; }
 
   function host() { return document.getElementById('flowBody'); }
-  function set(label) { var el = document.getElementById('flTicker'); if (el) el.textContent = (st().ticker || 'SPY').replace('$', ''); }
+  function set() { var el = document.getElementById('flTicker'); if (el) el.textContent = (st().ticker || 'SPY').replace('$', ''); }
 
   // Independent-review finding (2026-09-12, state-authority review), REPRODUCED
   // ("Flow resurrection"): a ticker switch calls EdStream.clearDesired() then load();
