@@ -1259,6 +1259,7 @@ class OrderFlowEngine:
             "order_flow_direction": order_flow_direction,
             "order_flow_regime": order_flow_regime,
             "order_flow_readiness": order_flow_readiness,
+            "order_flow_readiness_rvol": _order_flow_readiness_rvol,
             "order_flow_verdict": of_verdict,
             "order_flow_verdict_color": of_verdict_color,
             "order_flow_arrow": of_arrow,
