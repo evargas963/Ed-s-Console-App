@@ -2506,6 +2506,14 @@ def _artifact_paths_relative(out_dir: Path, ticker: str, *, horizon_suffix: str 
     return rel
 
 
+def aggregate_all_horizons_exit_code(per_horizon_exit_codes) -> int:
+    """OR semantics for --all-horizons: any non-zero per-horizon exit fails the whole run."""
+    agg = 0
+    for code in per_horizon_exit_codes:
+        agg |= int(code)
+    return agg
+
+
 def run_once(
     wait: bool = False,
     force_retrain: bool = False,
@@ -4006,7 +4014,7 @@ if __name__ == "__main__":
                 preflip_candidate_root=_preflip_root,
                 ml_horizon_slug=str(_hz),
             )
-            agg_exit |= int(summary.get("exit_code", 0))
+            agg_exit = aggregate_all_horizons_exit_code((agg_exit, summary.get("exit_code", 0)))
             log.info("ml_scheduler --all-horizons: finished horizon %s (exit=%s)", _hz, summary.get("exit_code"))
         sys.exit(agg_exit)
     summary = run_once(

@@ -65,36 +65,9 @@ def test_l1_generation_assign_instrumentation_increments():
     assert after == before + 1
 
 
-def _tier_b_monotonic_accept(
-    gen_store: dict,
-    scope_key: str,
-    g: float,
-    *,
-    server_ts: float | None = None,
-    ts_store: dict | None = None,
-) -> bool:
-    """Mirror static/js/l1_sse_guards.js: reject strictly lower l1_generation for a scope."""
-    if g is None or not isinstance(g, (int, float)) or g != g:
-        return True
-    prev = gen_store.get(scope_key)
-    last_ts = ts_store.get(scope_key) if ts_store else None
-    if prev is not None and g < prev:
-        return False
-    if prev is not None and g == prev and ts_store is not None and server_ts is not None and last_ts is not None:
-        if server_ts < last_ts:
-            return False
-    gen_store[scope_key] = max(prev or 0, g)
-    if ts_store is not None and server_ts is not None and server_ts == server_ts:
-        base = last_ts if last_ts is not None else 0.0
-        ts_store[scope_key] = max(base, float(server_ts))
-    return True
-
-
-def test_sse_ordering_rejects_lower_generation_than_last_seen():
-    """Light check: client must not accept out-of-order lower generation (matches Playwright guards)."""
-    gen_store: dict = {}
-    ts_store: dict = {}
-    sk = "SPY|"
-    assert _tier_b_monotonic_accept(gen_store, sk, 5.0, server_ts=200.0, ts_store=ts_store) is True
-    assert _tier_b_monotonic_accept(gen_store, sk, 3.0, server_ts=300.0, ts_store=ts_store) is False
-    assert _tier_b_monotonic_accept(gen_store, sk, 6.0, server_ts=250.0, ts_store=ts_store) is True
+# Client-side out-of-order-generation rejection (static/js/l1_sse_guards.js's
+# l1ApplyTierBLightMonotonic) is proven against the REAL shipped JS by
+# tests/l1_sse_guards_node.mjs (run via test_l1_sse_guards_client.py), not mirrored here —
+# a hand-copied Python re-implementation of that guard used to live in this file and was
+# removed 2026-09-15 (same defect class as the mirror test_l1_remediation.py documents
+# retiring: testing a local copy proves nothing about the shipped client rule).

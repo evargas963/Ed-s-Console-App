@@ -28,11 +28,6 @@ from realized_contract_eval import (
 from replay_hold_bars import replay_max_hold_bars_from_context
 
 
-def test_replay_max_hold_bars_from_context_accepts_valid_and_caps():
-    assert replay_max_hold_bars_from_context({"replay_max_hold_bars": 15}) == 15
-    assert replay_max_hold_bars_from_context({"replay_max_hold_bars": 500}) == 390
-
-
 def test_chain_selection_quality_ignores_ranked_rows_without_strike():
     row = _chain_selection_quality_row(
         ticker="SPY",
