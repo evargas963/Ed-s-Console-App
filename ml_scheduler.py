@@ -920,7 +920,7 @@ def _write_meta_training_basis_manifest(
         "schema": "META_TRAINING_BASIS_MANIFEST_V1",
     }
     out_path = out_dir / f"meta_{ticker_storage_key(ticker)}_{hz}_training_manifest.json"
-    out_path.write_text(json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8")
+    out_path.write_text(json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8", newline="\n")
     return out_path
 
 
@@ -3779,7 +3779,7 @@ def run_once(
         log.warning("Feature cache / archive cleanup skipped: %s", ex)
 
     MODEL_DIR.mkdir(parents=True, exist_ok=True)
-    arch_target_path.write_text(json.dumps(arch_state, indent=2))
+    arch_target_path.write_text(json.dumps(arch_state, indent=2), encoding="utf-8", newline="\n")
     log.info("%s updated", arch_target_path.name)
     log.info("Training report appended to %s", TRAINING_REPORT_PATH)
 

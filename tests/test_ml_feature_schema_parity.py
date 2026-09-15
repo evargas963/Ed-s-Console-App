@@ -1672,6 +1672,19 @@ def test_compound_ablation_survivors_voided(monkeypatch, tmp_path):
     monkeypatch.setattr(sbe, "LEGACY_COMPOUND_REPORT_PATH", legacy)
     monkeypatch.setattr(sbe, "ABLATION_SURVIVOR_STATUS_PATH", status)
     monkeypatch.setattr(sbe, "_authoritative_ablation_report_path", lambda: None)
+    # 2026-09-15 finding: this test isolated the two paths above but NOT the three
+    # survivor-scope artifact paths void_compound_ablation_survivors also stamps VOID onto --
+    # those were hardcoded literals pointing at the REAL tracked reports/artifacts/survivor_*.json
+    # files, so every run of this test mutated them in place (and, on Windows, flipped their line
+    # endings, since the production write site had the same missing-newline="\n" bug fixed
+    # alongside this). None of this test's own assertions read survivor-scope artifact content, so
+    # tmp_path locations with nothing written to them (the function no-ops on a missing file) fully
+    # isolate it.
+    monkeypatch.setattr(sbe, "SURVIVOR_SCOPE_ARTIFACT_PATHS", (
+        tmp_path / "survivor_edge_probe.json",
+        tmp_path / "survivor_validation_run.json",
+        tmp_path / "survivor_inference_backtest.json",
+    ))
 
     void_compound_ablation_survivors(write_artifacts=True)
     assert compound_survivors_voided()

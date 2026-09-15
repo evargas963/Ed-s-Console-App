@@ -247,18 +247,18 @@ def main() -> int:
 
     dpr = reconcile_decision_path_registry(phase2.build_decision_path_registry())
     (ART / "DECISION_PATH_REGISTRY.json").write_text(
-        json.dumps(dpr, indent=2) + "\n", encoding="utf-8"
+        json.dumps(dpr, indent=2) + "\n", encoding="utf-8", newline="\n"
     )
 
     bypass = reconcile_bypass_register(phase2.build_universal_bypass_register(phase2._load_phase1_register()))
     (ART / "UNIVERSAL_BYPASS_REGISTER.json").write_text(
-        json.dumps(bypass, indent=2) + "\n", encoding="utf-8"
+        json.dumps(bypass, indent=2) + "\n", encoding="utf-8", newline="\n"
     )
 
     prod_like = _production_like_proof()
     blind = _blind_reconstruction_with_source(phase2)
     (ART / "BLIND_RECONSTRUCTION_TEST_RESULT.json").write_text(
-        json.dumps(blind, indent=2) + "\n", encoding="utf-8"
+        json.dumps(blind, indent=2) + "\n", encoding="utf-8", newline="\n"
     )
 
     inv = dpr.get("route_inventory_summary") or {}
@@ -310,7 +310,7 @@ def main() -> int:
         ],
     }
     (ART / "INSTITUTIONAL_AUDIT_PHASE3C_EVIDENCE.json").write_text(
-        json.dumps(evidence, indent=2) + "\n", encoding="utf-8"
+        json.dumps(evidence, indent=2) + "\n", encoding="utf-8", newline="\n"
     )
 
     print(
