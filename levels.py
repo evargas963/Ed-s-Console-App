@@ -29,12 +29,6 @@ def _fmt_level(x: float | None) -> str:
     return f"{x:.2f}"
 
 
-def _fmt_plain_2(x: float | None) -> str:
-    if x is None:
-        return "N/A"
-    return f"{x:.2f}"
-
-
 def to_display_rows(rows: List[ExposureRow]) -> List[DisplayRow]:
     # NOTE: ExposureRow net_gamma/net_delta use institutional aggregates when spot is known:
     #   - net_gamma = Σ net_gex_1pct (GEX$ per 1% move); else Σ net_gamma (γ×OI×mult)
@@ -111,9 +105,9 @@ def totals_to_df_rows(totals: List[TotalsRow]) -> list[dict]:
                 "Put OI (OI$)": _fmt_money_abbrev(t.put_oi),
                 "Net OI (Call - Put)": _fmt_money_abbrev(t.net_oi),
 
-                "Put/Call OI Ratio": _fmt_plain_2(t.pcr_oi),
-                "ATM Implied Vol": _fmt_plain_2(t.atm_iv),
-                "Skew (Call IV - Put IV)": _fmt_plain_2(t.skew_proxy),
+                "Put/Call OI Ratio": _fmt_level(t.pcr_oi),
+                "ATM Implied Vol": _fmt_level(t.atm_iv),
+                "Skew (Call IV - Put IV)": _fmt_level(t.skew_proxy),
             }
         )
     return out
