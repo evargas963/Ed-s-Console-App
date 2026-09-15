@@ -154,7 +154,7 @@ def main() -> int:
     cur = conn.execute(q, tuple(allowed) + (CANONICAL_TIMEFRAME, STREAM_5M_LOOKBACK))
     rows = cur.fetchall()
 
-    db = EdDB(str(args.db.resolve())) if not args.dry_run else EdDB(str(args.db.resolve()))
+    db = EdDB(str(args.db.resolve()))
 
     attempted = 0
     ok_full = 0
