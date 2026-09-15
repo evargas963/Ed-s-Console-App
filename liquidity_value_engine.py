@@ -1010,26 +1010,9 @@ def build_midday_snapshot(
         clusters = cluster_price_levels_into_zones(levels, ref, config, atr_val)
 
     # Value shift: compare today POC vs prev POC
-    value_state = "unchanged"
-    if poc and prev.get("pd_poc"):
-        d = (poc - prev["pd_poc"]) / prev["pd_poc"]
-        if d > 0.002:
-            value_state = "shifted_higher"
-        elif d < -0.002:
-            value_state = "shifted_lower"
-
-    vwap_relation = "at_value"
-    if vwap and poc:
-        if vwap > poc * 1.001:
-            vwap_relation = "above_value"
-        elif vwap < poc * 0.999:
-            vwap_relation = "below_value"
-
-    auction_interp = ""
-    if value_state == "shifted_higher" and vwap_relation == "above_value":
-        auction_interp = "bullish_acceptance"
-    elif value_state == "shifted_lower" and vwap_relation == "below_value":
-        auction_interp = "bearish_acceptance"
+    value_state, vwap_relation, auction_interp = _classify_value_state_and_vwap_relation(
+        poc, prev.get("pd_poc"), vwap
+    )
 
     zones = []
     for lo, hi, mid, tags, source_pairs in clusters:
@@ -1124,26 +1107,9 @@ def build_afternoon_snapshot(
         clusters = cluster_price_levels_into_zones(levels, ref, config, atr_val)
 
     # Value shift: compare today POC vs prev POC (same logic as midday)
-    value_state = "unchanged"
-    if poc and prev.get("pd_poc"):
-        d = (poc - prev["pd_poc"]) / prev["pd_poc"]
-        if d > 0.002:
-            value_state = "shifted_higher"
-        elif d < -0.002:
-            value_state = "shifted_lower"
-
-    vwap_relation = "at_value"
-    if vwap and poc:
-        if vwap > poc * 1.001:
-            vwap_relation = "above_value"
-        elif vwap < poc * 0.999:
-            vwap_relation = "below_value"
-
-    auction_interp = ""
-    if value_state == "shifted_higher" and vwap_relation == "above_value":
-        auction_interp = "bullish_acceptance"
-    elif value_state == "shifted_lower" and vwap_relation == "below_value":
-        auction_interp = "bearish_acceptance"
+    value_state, vwap_relation, auction_interp = _classify_value_state_and_vwap_relation(
+        poc, prev.get("pd_poc"), vwap
+    )
 
     # New value area: afternoon POC shifted vs morning
     new_value_area = False
@@ -1206,6 +1172,36 @@ def build_afternoon_snapshot(
         summary=summary,
         raw_levels=raw,
     )
+
+
+def _classify_value_state_and_vwap_relation(
+    poc: Optional[float], prev_pd_poc: Optional[float], vwap: Optional[float],
+) -> tuple[str, str, str]:
+    """Value-area shift + VWAP-vs-value relation + auction interpretation — the ONE
+    classification shared by the midday/afternoon/live snapshots (was copy-pasted
+    identically three times)."""
+    value_state = "unchanged"
+    if poc and prev_pd_poc:
+        d = (poc - prev_pd_poc) / prev_pd_poc if prev_pd_poc else 0
+        if d > 0.002:
+            value_state = "shifted_higher"
+        elif d < -0.002:
+            value_state = "shifted_lower"
+
+    vwap_relation = "at_value"
+    if vwap and poc:
+        if vwap > poc * 1.001:
+            vwap_relation = "above_value"
+        elif vwap < poc * 0.999:
+            vwap_relation = "below_value"
+
+    auction_interp = ""
+    if value_state == "shifted_higher" and vwap_relation == "above_value":
+        auction_interp = "bullish_acceptance"
+    elif value_state == "shifted_lower" and vwap_relation == "below_value":
+        auction_interp = "bearish_acceptance"
+
+    return value_state, vwap_relation, auction_interp
 
 
 def _last_rth_close_price(bars_norm: list, session_date: date, cutoff_dt: Optional[datetime]) -> Optional[float]:
@@ -1398,27 +1394,9 @@ def build_live_snapshot(
         atr_val = compute_atr_from_bars(bars_norm, session_date, cutoff, config.atr_period) if config.clustering_mode == "atr" else None
         clusters = cluster_price_levels_into_zones(levels, float(ref), config, atr_val)
 
-    value_state = "unchanged"
-    if poc and prev.get("pd_poc"):
-        d0 = prev["pd_poc"]
-        d = (poc - d0) / d0 if d0 else 0
-        if d > 0.002:
-            value_state = "shifted_higher"
-        elif d < -0.002:
-            value_state = "shifted_lower"
-
-    vwap_relation = "at_value"
-    if vwap and poc:
-        if vwap > poc * 1.001:
-            vwap_relation = "above_value"
-        elif vwap < poc * 0.999:
-            vwap_relation = "below_value"
-
-    auction_interp = ""
-    if value_state == "shifted_higher" and vwap_relation == "above_value":
-        auction_interp = "bullish_acceptance"
-    elif value_state == "shifted_lower" and vwap_relation == "below_value":
-        auction_interp = "bearish_acceptance"
+    value_state, vwap_relation, auction_interp = _classify_value_state_and_vwap_relation(
+        poc, prev.get("pd_poc"), vwap
+    )
 
     zones: list[Zone] = []
     for lo, hi, mid, tags, source_pairs in clusters:
