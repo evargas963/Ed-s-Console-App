@@ -66,6 +66,14 @@
   .live .dot.warn{background:var(--ed-warn)} .live .dot.stale{background:var(--ed-stale)}
   .sess{font-family:var(--ed-mono);font-size:11px;font-weight:600;letter-spacing:.06em}
   .sess.rth{color:var(--ed-live)} .sess.pre{color:var(--ed-warn)} .sess.ah{color:var(--ed-accent-2)} .sess.closed{color:var(--ed-ink-3)}
+  /* Proximity Alerts -- backend-driven (MarketState.rules_alerts via /api/analytics/state),
+     never fabricated client-side. Persistent across every workspace, matching the legacy
+     card's own always-visible placement; hidden entirely when there is nothing to show. */
+  #alertsStrip{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:7px 20px;
+    background:var(--ed-warn-bg,var(--ed-panel-2));border-bottom:1px solid var(--ed-edge)}
+  #alertsStrip[hidden]{display:none}
+  .alert-pill{font-family:var(--ed-mono);font-size:11px;font-weight:600;letter-spacing:.02em;
+    color:var(--ed-warn);border:1px solid var(--ed-warn);border-radius:999px;padding:3px 10px}
   .search{margin-left:auto;display:flex;align-items:center;gap:7px;background:var(--ed-panel);
     border:1px solid var(--ed-edge);border-radius:var(--ed-r);padding:6px 11px;width:280px;color:var(--ed-ink-3)}
   .search input{flex:1;background:none;border:none;outline:none;color:var(--ed-ink);font-family:var(--ed-sans);font-size:12px}
@@ -736,6 +744,17 @@
 
   <!-- ===== MAIN ===== -->
   <main>
+    <!-- Proximity Alerts -- wired to /api/analytics/state's rules_alerts (ed-alerts.js); hidden
+         when there is nothing to disclose. First child of <main> (not a sibling of it) so it
+         stays in the "main" grid area and persists across every workspace tab's own DOM
+         swaps -- #app's own grid-template-areas has exactly "rail header"/"rail main" with no
+         third slot, so a direct #app child here would auto-place into an implicit grid cell
+         with no defined position (independent-review finding, REPRODUCED live: rendered at
+         left:-211px, fully off-screen). -->
+    <div id="alertsStrip" hidden>
+      <span class="hkv"><span class="k">⚡ Proximity Alerts</span></span>
+      <div id="alertsList" style="display:flex;gap:8px;flex-wrap:wrap"></div>
+    </div>
     <!-- tier 2: workspace subnav -->
     <div class="subnav" id="subnav">
       <span class="wtitle" id="wsTitle">OPTIONS</span>
@@ -1032,5 +1051,6 @@
 <script src="/static/js/ed-order-flow-heatmap.js" defer></script>
 <script src="/static/js/ed-liquidity-map.js" defer></script>
 <script src="/static/js/ed-trade-desk.js" defer></script>
+<script src="/static/js/ed-alerts.js" defer></script>
 </body>
 </html>
