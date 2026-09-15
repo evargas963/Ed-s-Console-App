@@ -49,13 +49,16 @@
     _desired = contract;                              // this tab's intent (used by status())
     _accepted = false; _ctl = 'requested';            // POST in flight — not accepted until a validated ACK
     var token = gate ? gate.begin(contract) : null;   // client generation: a later begin supersedes this
-    var status = null;
+    // Named httpStatus, not `status` -- this function's own scope must never shadow the
+    // module-level status() export above (EdStream.status), a real footgun a future call
+    // to status(...) from inside this function would have silently hit as "not a function".
+    var httpStatus = null;
     return fetch('/api/streaming/active-option-contract', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contract: contract }),
     }).then(function (r) {
-      status = r.status;
-      return r.json().then(function (b) { return { networkError: false, status: status, body: b }; },
-                           function () { return { networkError: false, status: status, body: null }; });
+      httpStatus = r.status;
+      return r.json().then(function (b) { return { networkError: false, status: httpStatus, body: b }; },
+                           function () { return { networkError: false, status: httpStatus, body: null }; });
     }, function () {
       return { networkError: true, status: null, body: null };
     }).then(function (result) {
