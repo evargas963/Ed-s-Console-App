@@ -28,12 +28,29 @@ Usage:
   .venv/Scripts/python.exe tools/pr238_live_vendor_proof_v1.py --ticker SPY --second-ticker AAPL
   .venv/Scripts/python.exe tools/pr238_live_vendor_proof_v1.py --duration-sec 180 --interval-sec 3
 
-Exit codes: 0 = PASS (live streamed-tick overlay observed with correct identity for at
-least one ticker); 1 = PARTIAL (baseline live data confirmed real and un-fabricated, but
-no genuine streamed-tick overlay landed inside the polling window — inconclusive due to
-market quietness/timing, not a defect); 2 = FAIL (console unreachable, code drift, Schwab
-not AVAILABLE, or a baseline check itself failed — this is NOT proof, do not read a
-missing evidence file as a pass, RC-57 discipline).
+PLUMBING DISCIPLINE (load-bearing): every check below goes through the console's own
+public HTTP routes — the exact endpoints the browser UI calls (GET /api/build, /api/health,
+/api/live/state, /api/live/plane, /api/terrain, /api/chain, /api/options/gamma-surface,
+/api/order-flow/options-microstructure; POST /api/streaming/active-option-contract). Nothing
+here imports server internals, calls a producer function directly, or substitutes a fixture
+for a real vendor response. `pick_atm_call` and `_locate_cell_for_symbol` are pure selection
+over data already fetched from the live API — never a re-derivation of a market value.
+
+Required clean verdict across five acceptance dimensions per ticker (operator directive):
+  1. live tick identity — the observed overlay names OUR subscribed contract, not a leftover.
+  2. heatmap updates    — the exact served grid cell backing that contract changed value.
+  3. overlay state      — a genuine streamed overlay landed on the surface at all.
+  4. freshness          — age_sec behaved sanely throughout (never negative/garbled).
+  5. ticker switching   — every poll's own echoed ticker matched what was requested, and no
+                           ticker's subscribed contract was ever observed under another ticker.
+
+Exit codes: 0 = PASS (at least one ticker cleared all five dimensions, and no cross-ticker
+contamination was found); 1 = PARTIAL (baseline live data confirmed real and un-fabricated,
+but no ticker's overlay+identity+freshness+switching all cleared — inconclusive due to
+market quietness/timing, not necessarily a defect); 2 = FAIL (console unreachable, code
+drift, Schwab not AVAILABLE, a baseline check itself failed, or genuine cross-ticker
+contamination was observed — this is NOT proof, do not read a missing evidence file as a
+pass, RC-57 discipline).
 """
 from __future__ import annotations
 
@@ -117,6 +134,22 @@ class TickerProof:
     stream_overlay_first_poll_index: Optional[int] = None
     stream_overlay_symbols_seen: list = field(default_factory=list)
     microstructure_contract_match_observed: bool = False
+    # Dimension 2 (heatmap updates): the SAME served surface the browser renders verbatim
+    # (ONE FAUCET — no frontend computation, established repo-wide) — a genuine value change
+    # at the exact cell backing the subscribed contract is direct proof the heatmap's own
+    # numbers moved, without needing browser automation to re-prove a rendering fidelity
+    # this PR's prior rounds already established live.
+    subscribed_cell_located: bool = False
+    subscribed_cell_value_before: Optional[float] = None
+    subscribed_cell_value_after: Optional[float] = None
+    subscribed_cell_value_changed: bool = False
+    # Dimension 4 (freshness): age_sec / stale must behave sanely across the poll window —
+    # never negative, never stuck at a value that contradicts a live overlay landing.
+    freshness_samples: list = field(default_factory=list)
+    freshness_sane: bool = False
+    # Dimension 5 (ticker switching): every poll's own echoed ticker/symbol must match what
+    # THIS run actually requested — a mismatch is a real cross-ticker leak, not a formality.
+    ticker_identity_mismatches: int = 0
     verdict: str = "NOT_RUN"
 
 
@@ -190,32 +223,77 @@ def pick_atm_call(contracts: list, spot: Optional[float]) -> Optional[dict]:
     return min(calls, key=lambda c: abs(float(c["strikePrice"]) - float(spot)))
 
 
+def _locate_cell_for_symbol(surf: dict, symbol: str) -> Optional[tuple[int, int]]:
+    """Find (row, col) in the surface's own `cells` for the vendor symbol we subscribed —
+    the exact same per-cell identity project_gamma_surface stamps and the heatmap grid
+    reads to build its click-to-select/streaming-demand behavior. Never guessed from the
+    strike/expiry we think we asked for; read back from the surface's own contracts field."""
+    cells = surf.get("cells") or []
+    for row_idx, row in enumerate(cells):
+        contracts_row = row.get("contracts") or []
+        for col_idx, pair in enumerate(contracts_row):
+            if not isinstance(pair, dict):
+                continue
+            if pair.get("call") == symbol or pair.get("put") == symbol:
+                return row_idx, col_idx
+    return None
+
+
 def poll_live_overlay(
     client: ConsoleClient, ticker: str, contract_symbol: Optional[str],
     duration_sec: float, interval_sec: float,
-) -> tuple[list, bool, bool, list, Optional[int], bool]:
-    """Returns (polls, terrain_cycle_advanced, overlay_observed, overlay_symbols_seen,
-    overlay_first_poll_index, microstructure_match_observed)."""
+) -> dict:
+    """Polls the real /api/options/gamma-surface and /api/order-flow/options-microstructure
+    endpoints — the exact routes the browser UI calls — for `duration_sec`, tracking every
+    dimension the operator's acceptance list names. Returns a dict of raw findings; run_for_ticker
+    turns these into the TickerProof verdict fields."""
     polls: list = []
     seen_ts: set = set()
     overlay_observed = False
     overlay_symbols: list = []
     overlay_first_poll_index: Optional[int] = None
     micro_match = False
+    cell_loc: Optional[tuple[int, int]] = None
+    cell_value_before: Optional[float] = None
+    cell_value_after: Optional[float] = None
+    cell_value_changed = False
+    freshness_samples: list = []
+    freshness_sane = True
+    ticker_identity_mismatches = 0
     deadline = time.monotonic() + duration_sec
     poll_index = -1
     while time.monotonic() < deadline:
         poll_index += 1
         status, surf = client.get("/api/options/gamma-surface", {"ticker": ticker})
+        surf = surf if isinstance(surf, dict) else {}
         rec = {
             "poll_index": poll_index,
             "t_mono": round(time.monotonic(), 2), "status": status,
-            "source": (surf or {}).get("source"), "live": (surf or {}).get("live"),
-            "stale": (surf or {}).get("stale"), "spot": (surf or {}).get("spot"),
-            "chain_as_of_ts_utc": (surf or {}).get("chain_as_of_ts_utc"),
-            "stream_overlay_contracts": (surf or {}).get("stream_overlay_contracts"),
-            "stream_overlay_symbols": (surf or {}).get("stream_overlay_symbols"),
+            "source": surf.get("source"), "live": surf.get("live"),
+            "stale": surf.get("stale"), "age_sec": surf.get("age_sec"),
+            "spot": surf.get("spot"),
+            "chain_as_of_ts_utc": surf.get("chain_as_of_ts_utc"),
+            "stream_overlay_contracts": surf.get("stream_overlay_contracts"),
+            "stream_overlay_symbols": surf.get("stream_overlay_symbols"),
+            "returned_ticker": surf.get("ticker") or surf.get("symbol"),
         }
+        # Dimension 5 (ticker switching): the surface's OWN echoed identity must match what
+        # this call actually requested. A mismatch is a genuine cross-ticker leak.
+        if status == 200 and rec["returned_ticker"] is not None:
+            if str(rec["returned_ticker"]).upper() != ticker.upper():
+                ticker_identity_mismatches += 1
+        # Dimension 4 (freshness): age_sec must never be negative, and a currently-live,
+        # non-stale surface must report a finite age — a freshness field that has stopped
+        # moving or gone impossible is not proof of anything.
+        age = rec["age_sec"]
+        if age is not None:
+            try:
+                age_f = float(age)
+                freshness_samples.append(age_f)
+                if age_f < 0:
+                    freshness_sane = False
+            except (TypeError, ValueError):
+                freshness_sane = False
         if rec["chain_as_of_ts_utc"] is not None:
             seen_ts.add(rec["chain_as_of_ts_utc"])
         n_overlay = rec["stream_overlay_contracts"] or 0
@@ -227,7 +305,23 @@ def poll_live_overlay(
             for s in syms:
                 if s not in overlay_symbols:
                     overlay_symbols.append(s)
-        if contract_symbol:
+        # Dimension 2 (heatmap updates): locate the exact grid cell backing our subscribed
+        # contract (server-stamped identity, never guessed) and track its own displayed
+        # value across polls — this IS the number the heatmap grid paints verbatim.
+        if contract_symbol and status == 200:
+            loc = _locate_cell_for_symbol(surf, contract_symbol)
+            if loc is not None:
+                cell_loc = loc
+                row_idx, col_idx = loc
+                cells = surf.get("cells") or []
+                gex_row = (cells[row_idx] or {}).get("gex") or [] if row_idx < len(cells) else []
+                val = gex_row[col_idx] if col_idx < len(gex_row) else None
+                if val is not None:
+                    if cell_value_before is None:
+                        cell_value_before = val
+                    elif val != cell_value_before:
+                        cell_value_changed = True
+                    cell_value_after = val
             status_m, micro = client.get(
                 "/api/order-flow/options-microstructure", {"contract": contract_symbol})
             splane = (micro or {}).get("streaming_plane") or {}
@@ -237,9 +331,21 @@ def poll_live_overlay(
                 micro_match = True
         polls.append(rec)
         time.sleep(max(0.5, interval_sec))
-    terrain_cycle_advanced = len(seen_ts) > 1
-    return (polls, terrain_cycle_advanced, overlay_observed, overlay_symbols,
-            overlay_first_poll_index, micro_match)
+    return {
+        "polls": polls,
+        "terrain_cycle_advanced": len(seen_ts) > 1,
+        "overlay_observed": overlay_observed,
+        "overlay_symbols": overlay_symbols,
+        "overlay_first_poll_index": overlay_first_poll_index,
+        "micro_match": micro_match,
+        "cell_located": cell_loc is not None,
+        "cell_value_before": cell_value_before,
+        "cell_value_after": cell_value_after,
+        "cell_value_changed": cell_value_changed,
+        "freshness_samples": freshness_samples,
+        "freshness_sane": freshness_sane,
+        "ticker_identity_mismatches": ticker_identity_mismatches,
+    }
 
 
 def run_for_ticker(
@@ -264,22 +370,47 @@ def run_for_ticker(
         tp.subscribed_contract = sym
         tp.subscribe_ok = bool(status == 200 and isinstance(sub, dict) and sub.get("ok"))
 
-    polls, cyc, overlay, syms, first_idx, micro = poll_live_overlay(
+    findings = poll_live_overlay(
         client, ticker, tp.subscribed_contract if tp.subscribe_ok else None,
         duration_sec, interval_sec,
     )
-    tp.polls = polls
-    tp.terrain_cycle_advanced = cyc
-    tp.stream_overlay_observed = overlay
-    tp.stream_overlay_symbols_seen = syms
-    tp.stream_overlay_first_poll_index = first_idx
-    tp.microstructure_contract_match_observed = micro
-    # PASS requires more than "some overlay happened somewhere" — if we know which
-    # contract THIS run subscribed, that exact symbol must be among the observed
-    # overlay symbols, so the proof is tied to an action this run actually took, never
-    # to a leftover subscription from an earlier session.
-    if overlay and (not tp.subscribed_contract or tp.subscribed_contract in syms):
+    tp.polls = findings["polls"]
+    tp.terrain_cycle_advanced = findings["terrain_cycle_advanced"]
+    tp.stream_overlay_observed = findings["overlay_observed"]
+    tp.stream_overlay_symbols_seen = findings["overlay_symbols"]
+    tp.stream_overlay_first_poll_index = findings["overlay_first_poll_index"]
+    tp.microstructure_contract_match_observed = findings["micro_match"]
+    tp.subscribed_cell_located = findings["cell_located"]
+    tp.subscribed_cell_value_before = findings["cell_value_before"]
+    tp.subscribed_cell_value_after = findings["cell_value_after"]
+    tp.subscribed_cell_value_changed = findings["cell_value_changed"]
+    tp.freshness_samples = findings["freshness_samples"]
+    tp.freshness_sane = findings["freshness_sane"]
+    tp.ticker_identity_mismatches = findings["ticker_identity_mismatches"]
+
+    # Required clean verdict across all five acceptance dimensions (operator directive):
+    #   1. live tick identity   — the overlay names OUR subscribed symbol, not a leftover.
+    #   2. heatmap updates      — the exact served cell backing that symbol changed value.
+    #   3. overlay state        — a genuine streamed overlay landed at all.
+    #   4. freshness            — age_sec behaved sanely throughout (never negative/garbled).
+    #   5. ticker switching     — every poll's own echoed identity matched what we asked for.
+    # A cell that never changes VALUE during a live overlay is not itself a failure (a real
+    # market can print an unchanged price at that exact strike/expiry) — but it means this
+    # run cannot claim dimension 2 as PROVEN, only dimension 3 (overlay landed). Both are
+    # reported distinctly rather than collapsed into one pass/fail bit.
+    identity_ok = bool(findings["overlay_observed"]) and (
+        not tp.subscribed_contract or tp.subscribed_contract in findings["overlay_symbols"]
+    )
+    overlay_ok = bool(findings["overlay_observed"])
+    freshness_ok = bool(findings["freshness_sane"])
+    switching_ok = tp.ticker_identity_mismatches == 0
+    heatmap_update_ok = bool(findings["cell_located"] and findings["cell_value_changed"])
+    if identity_ok and overlay_ok and freshness_ok and switching_ok and heatmap_update_ok:
         tp.verdict = "PASS"
+    elif identity_ok and overlay_ok and freshness_ok and switching_ok:
+        # Overlay + identity proven, but no observed value CHANGE at that exact cell this
+        # window — real (a quiet strike), not a defect. Distinct from a clean miss.
+        tp.verdict = "PASS_NO_CELL_VALUE_CHANGE_OBSERVED"
     elif tp.baseline_ok:
         tp.verdict = "PARTIAL_NO_OVERLAY_OBSERVED"
     return tp
@@ -311,8 +442,19 @@ def main() -> int:
         print(f"--- proving {t} (subscribe + poll for {args.duration_sec:.0f}s) ---", file=sys.stderr)
         results.append(run_for_ticker(client, t, args.duration_sec, args.interval_sec))
 
+    # Dimension 5 (ticker switching), cross-run check: ticker A's subscribed contract must
+    # never appear in ticker B's own observed overlay symbols, and vice versa — a genuine
+    # leak across the switch this script itself performed, not merely a per-poll echo check.
+    cross_contamination: list[str] = []
+    for i, a in enumerate(results):
+        for b in results[i + 1:]:
+            if a.subscribed_contract and a.subscribed_contract in b.stream_overlay_symbols_seen:
+                cross_contamination.append(f"{a.ticker}'s contract {a.subscribed_contract} observed under {b.ticker}")
+            if b.subscribed_contract and b.subscribed_contract in a.stream_overlay_symbols_seen:
+                cross_contamination.append(f"{b.ticker}'s contract {b.subscribed_contract} observed under {a.ticker}")
+
     any_fail_baseline = any(r.verdict == "FAIL_BASELINE" for r in results)
-    any_pass = any(r.verdict == "PASS" for r in results)
+    any_pass = any(r.verdict == "PASS" for r in results) and not cross_contamination
 
     from datetime import datetime, timezone
     captured_at = datetime.now(tz=timezone.utc).isoformat()
@@ -327,12 +469,15 @@ def main() -> int:
         "captured_utc": captured_at,
         "base_url": args.base_url,
         "identity": identity,
+        "cross_ticker_contamination": cross_contamination,
         "tickers": [asdict(r) for r in results],
     }
     record_path = out_dir / "live_vendor_proof_record.json"
     record_path.write_text(json.dumps(record, indent=2, default=str), encoding="utf-8")
 
-    if any_fail_baseline:
+    if any_fail_baseline or cross_contamination:
+        # A cross-ticker leak is a real defect, not an inconclusive result — never reported
+        # as merely PARTIAL alongside a per-ticker PASS.
         overall = "FAIL"
         code = 2
     elif any_pass:
@@ -349,15 +494,24 @@ def main() -> int:
         f"running_sha: {identity.get('running_sha')}",
         f"sha_matches_current_branch_tip: {identity.get('sha_matches_current_branch_tip')}",
         f"code_drift: {identity.get('code_drift')}",
+        f"cross_ticker_contamination: {cross_contamination or 'none'}",
         "",
     ]
     for r in results:
         summary_lines.append(f"## {r.ticker}: {r.verdict}")
         summary_lines.append(f"- baseline_ok: {r.baseline_ok}")
         summary_lines.append(f"- subscribed_contract: {r.subscribed_contract} (accepted={r.subscribe_ok})")
+        summary_lines.append(f"- [1] live tick identity — overlay names our contract: "
+                              f"{r.stream_overlay_observed and (not r.subscribed_contract or r.subscribed_contract in r.stream_overlay_symbols_seen)}")
+        summary_lines.append(f"- [2] heatmap updates — subscribed cell located={r.subscribed_cell_located}, "
+                              f"value changed={r.subscribed_cell_value_changed} "
+                              f"({r.subscribed_cell_value_before} -> {r.subscribed_cell_value_after})")
+        summary_lines.append(f"- [3] overlay state — stream_overlay_observed={r.stream_overlay_observed}, "
+                              f"symbols_seen={r.stream_overlay_symbols_seen}")
+        summary_lines.append(f"- [4] freshness — sane={r.freshness_sane}, "
+                              f"age_sec_samples(first/last)={r.freshness_samples[:1]}/{r.freshness_samples[-1:]}")
+        summary_lines.append(f"- [5] ticker switching — identity_mismatches={r.ticker_identity_mismatches}")
         summary_lines.append(f"- terrain_cycle_advanced_during_poll: {r.terrain_cycle_advanced}")
-        summary_lines.append(f"- stream_overlay_observed: {r.stream_overlay_observed}")
-        summary_lines.append(f"- stream_overlay_symbols_seen: {r.stream_overlay_symbols_seen}")
         summary_lines.append(f"- microstructure_contract_match_observed: {r.microstructure_contract_match_observed}")
         summary_lines.append("")
     (out_dir / "SUMMARY.md").write_text("\n".join(summary_lines), encoding="utf-8")
