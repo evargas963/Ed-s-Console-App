@@ -53,12 +53,11 @@ def assert_training_lineage_matches_canonical(lineage: dict[str, Any] | None) ->
             f"canonical_feature_contract_version mismatch: expected {CANONICAL_FEATURE_CONTRACT_VERSION!r}, "
             f"got {lineage.get('canonical_feature_contract_version')!r}"
         )
-    if lineage.get("canonical_timeframe") not in (None, CANONICAL_FEATURE_TIMEFRAME):
-        if lineage.get("canonical_timeframe") != CANONICAL_FEATURE_TIMEFRAME:
-            raise TrainingCanonicalInputError(
-                f"canonical_timeframe mismatch: expected {CANONICAL_FEATURE_TIMEFRAME!r}, "
-                f"got {lineage.get('canonical_timeframe')!r}"
-            )
+    ct = lineage.get("canonical_timeframe")
+    if ct is not None and ct != CANONICAL_FEATURE_TIMEFRAME:
+        raise TrainingCanonicalInputError(
+            f"canonical_timeframe mismatch: expected {CANONICAL_FEATURE_TIMEFRAME!r}, got {ct!r}"
+        )
 
 
 def training_snapshot_for_sequence_encode(snapshot_row: dict[str, Any]) -> dict[str, Any]:
