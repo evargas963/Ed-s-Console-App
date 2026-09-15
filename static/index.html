@@ -491,6 +491,13 @@
   /* C: nearest-expiry (front) column emphasis — presentation only */
   .heat .hexp.col-front{background:var(--ed-panel-3);box-shadow:inset 0 -2px 0 var(--ed-accent-edge)}
   .heat .hcell.col-front{box-shadow:inset 1px 0 0 var(--ed-edge-strong),inset -1px 0 0 var(--ed-edge-strong)}
+  /* Always-live heatmap mandate (2026-09-15, operator directive), FINAL: every cell keeps
+     showing its real, valid, already-computed value regardless of stream state -- these
+     marks are DISCLOSURE ONLY, layered beside the value (never dimming/obscuring it, same
+     lesson as .recede above), so a trader can tell live from a held snapshot at a glance
+     without the number itself ever being withheld, narrowed, or replaced with '—'. */
+  .heat .hcell.state-partial{box-shadow:inset 0 0 0 1px var(--ed-warn)}
+  .heat .hcell.state-stale,.heat .hcell.state-unavailable{box-shadow:inset 0 0 0 1px var(--ed-stale)}
 
   /* main-panel view switching (Heatmap / Chart / Levels / Multi-Map) */
   .mvwrap{padding:0;position:relative}

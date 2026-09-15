@@ -420,11 +420,14 @@
     // ZERO contracts unconditionally -- a silent narrowing of the coverage objective that
     // the operator explicitly rejected as unjustified ("vendor-capacity uncertainty does
     // not explain away that application behavior"). Wider/All now demand exactly the
-    // columns they DISPLAY (viewCols), the same rule an explicit expiry filter already
-    // used. Auto's own measured, capacity-safe front-column-only policy (round 6's
-    // deliberately bounded DEFAULT-scope budget) is unchanged -- it was never the
-    // complaint, and nothing here reopens it.
-    var demandCols = expFilter ? viewCols : (scope === 'auto' && frontCol >= 0 ? [frontCol] : viewCols);
+    // columns they DISPLAY (viewCols), the same rule an explicit expiry filter already used.
+    //
+    // Always-live heatmap mandate (2026-09-15, operator directive), FINAL: "every visible
+    // heatmap cell must correspond to an exact option contract actively receiving streamed
+    // Schwab updates" -- Auto's own former front-column-only policy is retired; demand now
+    // always covers every currently-VIEWED column, in every scope, the same rule Wider/All
+    // and an explicit expiry filter already used.
+    var demandCols = viewCols;
     // Independent-review finding (2026-09-13), REPRODUCED: the column-header tooltip
     // claimed "sub-second streaming updates active for this column" the instant a column
     // was in `demandCols` -- but `demandCols` only names what THIS module ASKED for; the
@@ -436,76 +439,34 @@
     // synchronously default new demand to "pending" (never "active") until the response
     // actually confirms it, and patch the live column title in place once it resolves
     // (applyDemandTitles) rather than claiming a fresh column has already streamed anything.
-    // Deliberate, DISCLOSED safety ceiling on the number of symbols submitted in one
-    // active-option-contracts request -- extending real coverage to Wider/All (above) means
-    // a wide "All" configuration (many strikes x many expirations) could otherwise name
-    // thousands of contracts in a single POST. The true vendor-side subscription capacity
-    // at that scale has never been measured against live Schwab and remains its own
-    // NOT_PROVEN question (round 6); this cap does not silently avoid that question -- it
-    // states plainly what this client actually attempts and discloses (scope note below)
-    // whenever the true displayed coverage exceeds it, rather than either fabricating full
-    // coverage or silently submitting an unbounded request.
     //
-    // A FOURTH independent review (2026-09-13), REPRODUCED: a flat `.slice(0, cap)` over the
-    // flattened, column-interleaved symbol list cut mid-row at the boundary (244 visible
-    // contracts, cap 240 -- the last row's second column lost both its contracts while every
-    // OTHER cell in that same column stayed covered), yet the column header tooltip kept
-    // claiming that column was fully "active" with no per-column distinction. Fixed: cap by
-    // dropping whole trailing COLUMNS (in `demandCols`' own priority order) once the running
-    // total would exceed the ceiling, never by slicing through one -- `_cappedCols` names
-    // exactly which columns this excluded, so their own tooltip can honestly say so instead
-    // of claiming the same coverage as a column that was never cut.
-    //
-    // A SEVENTH independent review (2026-09-13), REPRODUCED: that column-dropping cap zeroed
-    // out a column ENTIRELY the instant it alone exceeded the ceiling -- concretely, a single
-    // explicitly-selected expiry with 121 strikes (242 contracts) submitted ZERO streaming
-    // demand, worse than useless for exactly the "I picked one expiry to watch" scenario an
-    // operator cares about most. Fixed: the ONE column that first crosses the ceiling is now
-    // given PARTIAL coverage -- as many WHOLE STRIKE ROWS (never one strike's call+put split
-    // across the cut) as fit in the remaining budget -- rather than being dropped outright;
-    // `_partialCols` names it distinctly from `_cappedCols` (a column excluded ENTIRELY,
-    // which can still happen for a column AFTER the one that already consumed the remaining
-    // budget) so its own tooltip discloses partial, not total, exclusion.
-    var MAX_DEMAND_CONTRACTS = 240;
-    var frontDemand = [], _cappedCols = {}, _partialCols = {}, _newSymbolsByCol = {};
+    // Always-live heatmap mandate (2026-09-15, operator directive), FINAL, RETIRES the prior
+    // MAX_DEMAND_CONTRACTS=240 client-side ceiling and the column-capping/partial-coverage
+    // machinery built around it: "the 240-contract ceiling is our current implementation
+    // limit unless you prove otherwise. Do not use it as an excuse to reduce the product...
+    // Stream every contract Schwab permits, manage subscriptions dynamically if necessary."
+    // That number was never a measured or vendor-documented limit (the comment it replaced
+    // said so plainly: "never been measured against live Schwab") -- it was this client
+    // guessing at a vendor constraint and pre-emptively shrinking the product to fit the
+    // guess. The real subscribe/unsubscribe reconciliation this demand feeds
+    // (app.options.order_flow.streaming.set_active_option_contracts, and the capture
+    // daemon's own per-symbol SUBS/ADD loop, _apply_extra_option_contract_subs) already
+    // manages an arbitrary, dynamically-changing symbol set with no batching wall of its
+    // own -- there was never an infrastructure reason for THIS module to pre-truncate before
+    // ever asking. Demand now names every visible contract, full stop; if Schwab itself
+    // refuses or throttles at some real scale, that will surface as those specific symbols
+    // never reaching 'live' (per-symbol evidence, see the render loop below) -- honest,
+    // proven, reportable fact, never a client-side guess standing in for one.
+    var frontDemand = [], _newSymbolsByCol = {};
     if (demandCols.length) {
       var byCol = _heatmapVisibleContractsByColumn(cells, rowSel, demandCols);
-      var seen = {}, total = 0;
+      var seen = {};
       for (var _bc = 0; _bc < byCol.length; _bc++) {
         var entry = byCol[_bc];
-        // This column's own rows, filtered to symbols not already claimed by an EARLIER
-        // column in this loop -- row grouping preserved, so a partial cut below can still
-        // never split one strike's own call+put pair.
-        var freshRows = entry.rows.map(function (r) { return r.filter(function (s) { return !seen[s]; }); })
-                                   .filter(function (r) { return r.length > 0; });
-        var freshCount = freshRows.reduce(function (n, r) { return n + r.length; }, 0);
-        if (total + freshCount <= MAX_DEMAND_CONTRACTS) {
-          freshRows.forEach(function (r) { r.forEach(function (s) { seen[s] = true; frontDemand.push(s); }); });
-          total += freshCount;
-          // The FULL symbol set for this column (both call and put, every visible row) --
-          // not just the fresh/deduped subset -- so this column's own 'observed' check
-          // below intersects against everything it actually covers.
-          _newSymbolsByCol[entry.col] = entry.symbols;
-          continue;
-        }
-        // Does not fully fit -- take as many WHOLE ROWS as remain in the budget.
-        var remaining = MAX_DEMAND_CONTRACTS - total, taken = [];
-        for (var _r = 0; _r < freshRows.length; _r++) {
-          var r = freshRows[_r];
-          if (r.length > remaining) break;
-          r.forEach(function (s) { seen[s] = true; frontDemand.push(s); taken.push(s); });
-          remaining -= r.length;
-        }
-        total = MAX_DEMAND_CONTRACTS - remaining;
-        if (taken.length) {
-          _partialCols[entry.col] = taken.length + '/' + entry.symbols.length;
-          _newSymbolsByCol[entry.col] = taken;   // 'observed' evidence checked only against what was actually demanded
-        } else {
-          _cappedCols[entry.col] = true;
-        }
+        entry.symbols.forEach(function (s) { if (!seen[s]) { seen[s] = true; frontDemand.push(s); } });
+        _newSymbolsByCol[entry.col] = entry.symbols;
       }
     }
-    var demandCapped = Object.keys(_cappedCols).length > 0 || Object.keys(_partialCols).length > 0;
     var demandedCols = Object.keys(_newSymbolsByCol).map(Number);
     _demandSymbolsByCol = _newSymbolsByCol;
     if (window.EdStream && window.EdStream.setAdditionalContracts) {
@@ -576,26 +537,14 @@
     var demandColSet = {}; demandCols.forEach(function (dc) { demandColSet[dc] = true; });
     viewCols.forEach(function (j) {
       var e = exps[j], expired = e.expired === true;
-      // A column the cap excluded ENTIRELY (`_cappedCols`) was NEVER actually demanded,
-      // whatever `demandColSet` says it was asked for. A PARTIALLY-covered column
-      // (`_partialCols`) WAS genuinely demanded, just not for every strike -- its own
-      // tooltip must say so distinctly from both a fully-excluded column and one the cap
-      // never touched at all. Excluded from `streamed`/`.stream-demand` the same as a fully
-      // capped column (not just `_cappedCols`): `applyDemandTitles` (a separate function
-      // with no access to this render's own `_partialCols` closure) patches EVERY
-      // `.stream-demand` th's title from the async accept/observed state the instant that
-      // promise resolves -- REPRODUCED clobbering this column's static "PARTIALLY covered"
-      // disclosure with a generic "subscription accepted" title the moment it fired, unless
-      // this column is excluded from that class the same way a fully-capped one already is.
-      var streamed = !!demandColSet[j] && !_cappedCols[j] && !_partialCols[j];
+      // Always-live heatmap mandate (2026-09-15, operator directive), FINAL: every visible
+      // column is demanded in full (no cap, no partial-coverage carve-out -- see demandCols
+      // above), so a column's tooltip only ever distinguishes expired vs the real
+      // accept/observed/rejected outcome (demandTitle), never a client-guessed capacity cut.
+      var streamed = !!demandColSet[j];
       var dte = expired ? 'EXPIRED' : (e.dte === 0) ? '0DTE' : (e.dte != null ? e.dte + 'DTE' : '');
       var title = expired
         ? 'this expiration has already expired — a prior-session column kept for reference, not current structure'
-        : _cappedCols[j]
-        ? 'streaming demand for this column was excluded by the ' + MAX_DEMAND_CONTRACTS + '-contract subscription-size safety limit — REST-cadence only'
-        : _partialCols[j]
-        ? 'streaming demand for this column was PARTIALLY covered (' + _partialCols[j] + ' contracts) by the ' +
-          MAX_DEMAND_CONTRACTS + '-contract subscription-size safety limit — remaining strikes REST-cadence only'
         : demandTitle(streamed, j);
       tbl += '<th class="hexp' + (j === frontCol ? ' col-front' : '') + (expired ? ' expired' : '') + (streamed ? ' stream-demand' : '') + '"' +
         ' data-col="' + j + '" title="' + escapeHtml(title) + '"' +
@@ -628,13 +577,43 @@
         // tooling that read a heatmap cell's value -- it now holds whichever measure is
         // selected (gex/dex/oi/volume), not literally GEX specifically.
         var v = mrow[j2];
+        // Always-live heatmap mandate (2026-09-15, operator directive), FINAL: "Always
+        // display the best valid data available... Never blank valid data, narrow the view,
+        // or choose what I am allowed to inspect." `row.stream[j2]` (server.py's
+        // _stamp_gamma_surface_cell_stream_state) is per-cell disclosure metadata ONLY -- it
+        // never decides whether a value is shown, only how it is LABELLED: 'live' (every
+        // existing leg confirmed fresh-streamed this cycle), 'partial' (at least one leg is,
+        // not all), 'stale' (desired/subscribed, has gone quiet -- the most recent valid
+        // computed value, honestly timestamped, not a fabrication), 'unavailable' (never
+        // desired yet -- e.g. a subscription still in flight). `v` itself (project_gamma_
+        // surface's own has_oi-gated value, unchanged/ONE FAUCET) is the ONLY thing that
+        // decides whether a number or the pre-existing "no usable OI" '—' renders (cellStyle,
+        // unchanged) -- streaming state is disclosed BESIDE that value, never in place of it.
+        // `liveState` is null only for a synthetic/legacy surface that never carries `stream`
+        // at all (see the file header comment); such a payload renders exactly as it always
+        // has, unlabelled.
+        var cellState = (row.stream || [])[j2];
+        var liveState = cellState ? cellState.state : null;
         var st = cellStyle(v, maxAbs, heat);
         var priorKey = row.strike + '|' + exps[j2].expiry;
         var justChanged = _priorSurfaceForFlash &&
           Object.prototype.hasOwnProperty.call(priorValues, priorKey) && priorValues[priorKey] !== v;
+        // "Never mislabel snapshot data as live": a non-live cell's title discloses exactly
+        // that, with its own last-confirmed age when one is known -- the SAME per-leg
+        // ts_recv/age_sec the API already carries, never fabricated here.
+        var snapshotAge = cellState && (cellState.call || cellState.put)
+          ? Math.max((cellState.call || {}).age_sec || 0, (cellState.put || {}).age_sec || 0) : null;
+        var stateTitle = liveState === 'live' ? ''
+          : liveState === 'partial' ? 'PARTIAL: only one side of this cell is confirmed live-streamed; the value shown is still the full computed figure'
+          : liveState === 'stale' ? ('SNAPSHOT: not currently confirmed live-streamed' +
+              (snapshotAge != null ? ' (last confirmed ' + Math.round(snapshotAge) + 's ago)' : '') + ' -- most recent valid computed value shown')
+          : liveState === 'unavailable' ? 'SNAPSHOT: streaming not yet confirmed for this contract -- most recent valid computed value shown'
+          : '';
         tbl += '<td class="hcell' + (j2 === frontCol ? ' col-front' : '') + (exps[j2].expired === true ? ' expired' : '') +
-          (justChanged ? ' flash-update' : '') +
+          (justChanged ? ' flash-update' : '') + (liveState ? ' state-' + liveState : '') +
           '" style="background:' + st.bg + ';color:' + st.fg + '" ' +
+          (liveState ? 'data-cell-state="' + liveState + '" ' : '') +
+          (stateTitle ? 'title="' + escapeHtml(stateTitle) + '" ' : '') +
           'data-strike="' + row.strike + '" data-expiry="' + escapeHtml(exps[j2].expiry) + '" data-gex="' + (v == null ? '' : v) + '">' +
           // Independent-review finding, REPRODUCED (live SPX, 2026-09-14): a cell with no
           // usable OI rendered as a BLANK td, visually indistinguishable from "still loading"
@@ -642,28 +621,23 @@
           // tell "no data here" from "nothing painted yet". A blank cell also hid the exact
           // defect this session found (Schwab's wide multi-expiry chain returning OI=0 for
           // every SPX contract): the grid looked merely quiet, not wrong. An explicit em dash
-          // makes absence a visible, deliberate statement, matching every other "—" =
-          // withheld/unavailable convention already used across this console.
+          // makes absence a visible, deliberate statement -- reserved for a cell with NO valid
+          // computed value at all (has_oi=false), never for one that merely is not currently
+          // confirmed live-streamed (that cell still shows its real, valid, honestly-labelled
+          // snapshot value, per the operator's final directive above).
           (st.empty ? '—' : formatMeasureValue(v, measure)) + '</td>';
       }
       tbl += '</tr>';
     });
     tbl += '</tbody></table>';
-    // #3: the ONE disclosure line — how many canonical strikes / expirations are on screen vs clipped
-    var cappedExps = Object.keys(_cappedCols).map(function (j) { return (exps[j] || {}).expiry; }).filter(Boolean);
-    // A SEVENTH independent review (2026-09-13): a column given PARTIAL coverage (its own
-    // strikes exceeded the remaining budget, so only a whole-row-aligned subset of it was
-    // demanded) is named separately from one excluded ENTIRELY -- collapsing the two into one
-    // "excluded" list would misreport a column that IS still genuinely streaming, in part.
-    var partialExpsTxt = Object.keys(_partialCols).map(function (j) {
-      return ((exps[j] || {}).expiry || '') + ' (' + _partialCols[j] + ' contracts)';
-    }).filter(Boolean);
+    // #3: the ONE disclosure line — how many canonical strikes / expirations are on screen.
+    // Always-live heatmap mandate (2026-09-15, operator directive), FINAL: the former
+    // "streaming demand capped at 240 contracts" disclosure is retired along with the cap
+    // itself (demandCols above) -- every visible column is demanded in full; per-cell
+    // live/partial/stale/unavailable disclosure (the render loop above) is now the honest
+    // signal for what is and is not actually confirmed live, not a client-guessed ceiling.
     var colsTxt = viewCols.length + ' of ' + exps.length + ' expirations' +
       (expiredHidden ? ' (' + expiredHidden + ' expired hidden in Auto)' : '') +
-      (demandCapped ? ' · streaming demand capped at ' + MAX_DEMAND_CONTRACTS +
-        ' contracts (subscription-size safety limit, untested at full scale)' +
-        (cappedExps.length ? ' — excluded: ' + cappedExps.join(', ') : '') +
-        (partialExpsTxt.length ? ' — partially covered: ' + partialExpsTxt.join(', ') : '') : '') +
       // A manual pan is never silent: the strike window is not following live spot until the
       // operator double-clicks the strike axis (or switches ticker) to resume auto-centring.
       (_panAnchor != null ? ' · PANNED to ' + fmtStrike(_panAnchor) + ' — not following spot; double-click the strike axis to resume' : '');

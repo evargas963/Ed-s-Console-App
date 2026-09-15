@@ -12481,6 +12481,100 @@ def _gamma_surface_contracts_with_stream_overlay(
         return contracts, 0, []
 
 
+def _leg_stream_ts_recv(greeks: dict | None) -> float | None:
+    """The freshest of a streamed contract's own per-field `_ts_recv` stamps (get_stream_greeks'
+    shape, app.options.order_flow.state), or None if `greeks` is absent/empty. Any one of these
+    fields ticking is evidence the contract is actively producing observations right now, so the
+    MAX (not a single hardcoded field) is the contract's own last-observed instant."""
+    if not greeks:
+        return None
+    candidates = [greeks.get(k) for k in
+                  ("gamma_ts_recv", "open_interest_ts_recv", "delta_ts_recv", "total_volume_ts_recv")]
+    candidates = [c for c in candidates if isinstance(c, (int, float))]
+    return max(candidates) if candidates else None
+
+
+def _stamp_gamma_surface_cell_stream_state(surface: dict, streamed: dict, overlay_symbols: set) -> None:
+    """Operator directive (2026-09-15, always-live heatmap mandate): attach per-leg (call/put)
+    and per-cell aggregate STREAM state to an already-projected gamma surface's cells, in place.
+
+    Pure disclosure/gating metadata layered on top of RC-80's single faucet — this NEVER touches
+    a cell's already-computed net_gex_1pct/etc value (project_gamma_surface/
+    compute_exposures_by_strike remains the sole exposure computation). It only annotates, per
+    leg, WHETHER that value is currently backed by a confirmed-fresh Schwab stream tick, so a
+    client can honestly render LIVE / PARTIAL / STALE / UNAVAILABLE instead of presenting every
+    REST-cadence cell as indistinguishable from a genuinely streamed one.
+
+    Per leg, `overlay_symbols` is the EXACT set _gamma_surface_contracts_with_stream_overlay (or
+    refresh_gamma_surface_from_stream's own equivalent) already decided passed this cycle's
+    REST-precedence + GAMMA_SURFACE_STREAM_STALENESS_SEC check for this specific symbol — reused
+    verbatim rather than re-deriving a second staleness policy:
+      'live'        — this symbol's tick was fresh enough to be overlaid THIS cycle.
+      'stale'       — the symbol IS currently desired/subscribed (present in `streamed`, which
+                      _desired_stream_greeks_for_ticker already filters to symbols matching this
+                      ticker) but its tick did not pass this cycle's check.
+      'unavailable' — no symbol for this leg (missing contract), or a symbol never desired at
+                      all — covers unsubscribed, missing, and mismatched-identity alike.
+
+    Cell aggregate, over whichever legs actually exist for this strike/expiry:
+      live        — every existing leg is 'live'.
+      partial     — at least one existing leg is 'live', not all.
+      stale       — no leg is 'live', at least one existing leg is 'stale'.
+      unavailable — every existing leg is 'unavailable' (or there are no legs at all)."""
+    now = time.time()
+    for cell in (surface.get("cells") or []):
+        contracts_row = cell.get("contracts") or []
+        state_row = []
+        for pair in contracts_row:
+            if not isinstance(pair, dict):
+                state_row.append(None)
+                continue
+            legs: dict = {}
+            leg_states: list[str] = []
+            for side in ("call", "put"):
+                sym = pair.get(side)
+                if not sym:
+                    continue
+                greeks = streamed.get(sym)
+                if sym in overlay_symbols:
+                    leg_state = "live"
+                elif sym in streamed:
+                    leg_state = "stale"
+                else:
+                    leg_state = "unavailable"
+                leg_states.append(leg_state)
+                ts_recv = _leg_stream_ts_recv(greeks)
+                legs[side] = {
+                    "symbol": sym, "state": leg_state, "ts_recv": ts_recv,
+                    "age_sec": (round(now - ts_recv, 1) if ts_recv is not None else None),
+                }
+            if not leg_states:
+                cell_state = "unavailable"
+            elif all(s == "live" for s in leg_states):
+                cell_state = "live"
+            elif any(s == "live" for s in leg_states):
+                cell_state = "partial"
+            elif any(s == "stale" for s in leg_states):
+                cell_state = "stale"
+            else:
+                cell_state = "unavailable"
+            legs["state"] = cell_state
+            state_row.append(legs)
+        cell["stream"] = state_row
+
+
+def _gamma_surface_cell_state_counts(surface: dict) -> dict:
+    """Tally the per-cell 'state' _stamp_gamma_surface_cell_stream_state already attached into
+    cheap surface-level counts — a client or test's one-field check instead of scanning every
+    cell. The four states are mutually exclusive per cell (see that function's docstring)."""
+    counts = {"live": 0, "partial": 0, "stale": 0, "unavailable": 0}
+    for cell in (surface.get("cells") or []):
+        for col in (cell.get("stream") or []):
+            if isinstance(col, dict) and col.get("state") in counts:
+                counts[col["state"]] += 1
+    return counts
+
+
 def refresh_gamma_surface_from_stream(contract_symbol: str, ts_recv: float) -> str:
     """Eagerly freshen a cached ticker's gamma surface AND per-strike view the instant a
     streamed L1 tick carries new GAMMA/DELTA/OPEN_INTEREST for its currently-active option
@@ -12549,6 +12643,13 @@ def refresh_gamma_surface_from_stream(contract_symbol: str, ts_recv: float) -> s
             return "no_change"
         new_surface = project_gamma_surface(overlaid, spot)
         new_per_strike = _per_strike_view_from_contracts(overlaid, spot)
+        _overlaid_syms_now = _overlaid_symbols(base_contracts, overlaid)
+        if new_surface is not None:
+            # Always-live heatmap mandate (2026-09-15): the eager per-tick refresh path gets
+            # the SAME per-cell stream-state stamp as the REST cycle (_terrain_refresh_one) --
+            # this is the path a genuinely fresh tick actually takes, so it is the one MOST
+            # likely to move a cell from 'stale'/'unavailable' into 'live'.
+            _stamp_gamma_surface_cell_stream_state(new_surface, streamed, set(_overlaid_syms_now))
         # RC-UI-2 latency label (independent-review finding 2026-09-12): this timestamp is the
         # instant the OVERLAID computation finished and was about to be offered for cache
         # publication — it is NOT when the browser received or rendered anything, and it
@@ -12561,7 +12662,7 @@ def refresh_gamma_surface_from_stream(contract_symbol: str, ts_recv: float) -> s
             # finding -- the count alone let one overlaid contract on an unrelated expiry
             # promote every OTHER currently-accepted column to 'observed' too. Named here so
             # a client can bind that promotion to the specific symbols actually freshened.
-            new_surface["stream_overlay_symbols"] = _overlaid_symbols(base_contracts, overlaid)
+            new_surface["stream_overlay_symbols"] = _overlaid_syms_now
             new_surface["stream_overlay_computed_ts_utc"] = applied_ts
             if ts_recv:
                 new_surface["stream_overlay_receipt_to_computed_ms"] = round((applied_ts - ts_recv) * 1000.0, 1)
@@ -12743,6 +12844,13 @@ def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
                 _overlaid_contracts, _overlay_n, _overlay_syms = _gamma_surface_contracts_with_stream_overlay(
                     tk, contracts, newer_than_ts=_rest_fetch_ts)
                 payload["_gamma_surface"] = project_gamma_surface(_overlaid_contracts, float(spot))
+                if payload["_gamma_surface"] is not None:
+                    # Always-live heatmap mandate (2026-09-15): stamp per-cell stream state on
+                    # EVERY cycle, even when _overlay_n == 0 -- a cell must still be told apart
+                    # as 'stale' (desired but not fresh) vs 'unavailable' (never desired) even
+                    # when nothing was fresh enough to overlay this particular cycle.
+                    _stamp_gamma_surface_cell_stream_state(
+                        payload["_gamma_surface"], _desired_stream_greeks_for_ticker(tk), set(_overlay_syms))
                 if _overlay_n:
                     # RC-UI-2/finding#2 fix (independent review, 2026-09-12, REPRODUCED): the
                     # heatmap and the Strike Detail / GEX-by-strike panel disagreed on the SAME
@@ -14502,6 +14610,14 @@ def get_options_gamma_surface(ticker: str = Query(default=DEFAULT_TICKER)):
         # own gamma_available signal (computed from the SAME per-cell _has_data gate the grid
         # itself renders from), not merely "did the live cache have a surface object at all".
         _gamma_available = surf.get("gamma_available", True)
+        # Always-live heatmap mandate (2026-09-15): `"live": True` above means "sourced from the
+        # live terrain pathway", NOT "currently backed by a confirmed-fresh Schwab stream tick"
+        # (a cold-stream surface still reaches here with cells stamped 'stale'/'unavailable' by
+        # _terrain_refresh_one/refresh_gamma_surface_from_stream). `stream_confirmed_live` and
+        # `cell_stream_state_counts` are the honest, per-cell-grounded signal for that question;
+        # the legacy "live" field's own meaning is left unchanged so existing consumers are not
+        # silently redefined underneath them.
+        _cell_state_counts = _gamma_surface_cell_state_counts(surf)
         return JSONResponse({
             "ticker": tk, "symbol": tk, "available": _gamma_available,
             # "reason" (not a new field name) -- ed-gamma.js's own unavailable-branch already
@@ -14509,6 +14625,8 @@ def get_options_gamma_surface(ticker: str = Query(default=DEFAULT_TICKER)):
             # existing frontend contract picks this up with no client-side change required.
             "reason": None if _gamma_available else surf.get("gamma_unavailable_reason"),
             "source": "terrain_live_cache", "live": True, "stale": stale,
+            "cell_stream_state_counts": _cell_state_counts,
+            "stream_confirmed_live": _cell_state_counts["live"] > 0,
             "degraded": live.get("levels_stale_reason") if stale else None,
             "spot": live.get("spot"), "spot_source": live.get("spot_source"),
             "chain_as_of_ts_utc": live.get("computed_ts_utc"),
@@ -14588,10 +14706,16 @@ def get_options_gamma_surface(ticker: str = Query(default=DEFAULT_TICKER)):
             et_date, s1, c1, ts1 = rows_t[0]
             spot1 = float(s1)
             surface = project_gamma_surface(json.loads(c1), spot1)
+            # Always-live heatmap mandate (2026-09-15): a banked-morning reference has no stream
+            # overlay input at all -- every leg on every cell stamps 'unavailable', consistent
+            # with "REST may bootstrap or recover the surface, but it cannot satisfy LIVE".
+            _stamp_gamma_surface_cell_stream_state(surface, {}, set())
             _age_sec = round(time.time() - float(ts1), 1) if ts1 is not None else None
             payload = {
                 "ticker": tk, "symbol": tk, "available": True,
                 "source": "banked_morning_reference", "live": False, "stale": True,
+                "cell_stream_state_counts": _gamma_surface_cell_state_counts(surface),
+                "stream_confirmed_live": False,
                 "warming": _warming, "requested": _requested, "on_board": _on_board,
                 "degraded": ("live terrain surface unavailable — showing banked morning wide "
                              "reference (morning spot + morning Greeks; NOT intraday, NOT proven complete)"),

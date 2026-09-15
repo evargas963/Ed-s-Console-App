@@ -65,6 +65,38 @@ function surfaceWithContracts(nExps, nStrikes) {
   });
   return Object.assign({}, SURFACE, { expirations: expirations, strikes: strikes, cells: cells });
 }
+// Always-live heatmap mandate (2026-09-15): a surface carrying the real per-cell `stream`
+// field server.py's _stamp_gamma_surface_cell_stream_state now stamps unconditionally on
+// every real /api/options/gamma-surface response. `perCol` is one entry per expiry column
+// for a single strike, each `{call, put}` naming that leg's state ('live'|'stale'|
+// 'unavailable', or omitted entirely for "no contract on this leg").
+function surfaceWithStreamState(perCol) {
+  var strike = 583;
+  var expirations = perCol.map(function (_, i) { return { expiry: '2026-09-1' + (1 + i), dte: i + 1 }; });
+  var contracts = perCol.map(function (legs, i) {
+    return { call: legs.call ? 'C' + i : null, put: legs.put ? 'P' + i : null };
+  });
+  function leg(state, sym) {
+    return { symbol: sym, state: state, ts_recv: state === 'live' ? Date.now() / 1000 : null,
+             age_sec: state === 'live' ? 1.0 : null };
+  }
+  var stream = perCol.map(function (legs, i) {
+    var states = [legs.call, legs.put].filter(Boolean);
+    var cellState = states.length === 0 ? 'unavailable'
+      : states.every(function (s) { return s === 'live'; }) ? 'live'
+      : states.some(function (s) { return s === 'live'; }) ? 'partial'
+      : states.some(function (s) { return s === 'stale'; }) ? 'stale' : 'unavailable';
+    var out = { state: cellState };
+    if (legs.call) out.call = leg(legs.call, 'C' + i);
+    if (legs.put) out.put = leg(legs.put, 'P' + i);
+    return out;
+  });
+  return Object.assign({}, SURFACE, {
+    expirations: expirations, strikes: [strike],
+    cells: [{ strike: strike, gex: perCol.map(function () { return 12345; }),
+              contracts: contracts, stream: stream }],
+  });
+}
 const TERRAIN = {
   ticker: '$SPX', spot: 583.41, gamma_flip: 582.90, call_wall: 586, put_wall: 580,
   absolute_gamma_strike: 583, net_gex_peak: 583, net_gex_at_spot: 2140000000,
@@ -460,11 +492,18 @@ test.describe('Ed Console shell + gamma heatmap', () => {
       route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ ok: false }) });
     });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
+    // Always-live heatmap mandate (2026-09-15) supersedes this count: Auto scope now demands
+    // EVERY visible column (see the "declares live-streaming demand for every visible
+    // column's contracts" test), not just the front one -- surfaceWithContracts(3, 3) has 3
+    // unexpired columns, all within them the demand set, so all 3 carry '.stream-demand'.
+    // The single POST's real 503 rejects the whole set at once, so every column's own
+    // tooltip reflects the identical real outcome; `.first()` below checks one as
+    // representative of all three.
     const col = page.locator('.heat thead th.hexp.stream-demand');
-    await expect(col).toHaveCount(1);
-    await expect(col).toHaveAttribute('title', /awaiting confirmation/);
-    await expect(col).toHaveAttribute('title', /NOT accepted by the server/, { timeout: 3000 });
-    await expect(col).not.toHaveAttribute('title', /streaming updates active/);
+    await expect(col).toHaveCount(3);
+    await expect(col.first()).toHaveAttribute('title', /awaiting confirmation/);
+    await expect(col.first()).toHaveAttribute('title', /NOT accepted by the server/, { timeout: 3000 });
+    await expect(col.first()).not.toHaveAttribute('title', /streaming updates active/);
   });
 
   test('Wider and All scope declare real streaming demand for what they display, not zero (2026-09-13, operator-directed)', async ({ page }) => {
@@ -648,6 +687,106 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(page.locator('.hcell.sel-strike')).toHaveCount(2);                 // both expiry cells at 583
     await expect(page.locator('.gbs-row.gbs-sel[data-strike="583"]')).toHaveCount(1);  // GEX-by-strike synced
     await expect(page.locator('#sdCtx')).toContainText('583');                       // Strike Detail loaded
+  });
+
+  test('always-live heatmap mandate: a confirmed-live cell renders its numeric value with no snapshot flag', async ({ page }) => {
+    await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify(surfaceWithStreamState([{ call: 'live', put: 'live' }])),
+    }));
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    const cell = page.locator('.hcell[data-strike="583"][data-expiry="2026-09-11"]');
+    await expect(cell).toHaveText('$12.3K');
+    await expect(cell).toHaveAttribute('data-cell-state', 'live');
+    await expect(cell).not.toHaveClass(/state-partial|state-stale|state-unavailable/);
+  });
+
+  test('always-live heatmap mandate: a stale cell (desired but not fresh) still shows its real value, honestly labelled as a snapshot -- never blanked', async ({ page }) => {
+    // Operator directive (2026-09-15), FINAL: "Never blank valid data... keep the latest
+    // valid timestamped GEX displayed when a contract is not actively updating."
+    await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify(surfaceWithStreamState([{ call: 'stale', put: 'stale' }])),
+    }));
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    const cell = page.locator('.hcell[data-strike="583"][data-expiry="2026-09-11"]');
+    await expect(cell).toHaveText('$12.3K');
+    await expect(cell).toHaveAttribute('data-cell-state', 'stale');
+    await expect(cell).toHaveAttribute('data-gex', '12345');
+    await expect(cell).toHaveClass(/state-stale/);
+    await expect(cell).toHaveAttribute('title', /SNAPSHOT/);
+    // never mislabelled as live
+    const cls = await cell.getAttribute('class');
+    expect(cls).not.toMatch(/state-live/);
+  });
+
+  test('always-live heatmap mandate: an unavailable/not-yet-confirmed cell still shows its real value, honestly labelled, never dashed', async ({ page }) => {
+    await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify(surfaceWithStreamState([{ call: 'unavailable', put: 'unavailable' }])),
+    }));
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    const cell = page.locator('.hcell[data-strike="583"][data-expiry="2026-09-11"]');
+    await expect(cell).toHaveText('$12.3K');
+    await expect(cell).toHaveAttribute('data-cell-state', 'unavailable');
+    await expect(cell).toHaveAttribute('title', /SNAPSHOT/);
+  });
+
+  test('always-live heatmap mandate: a cell with no valid computed value at all (has_oi=false) still renders — (unrelated to streaming, pre-existing behavior)', async ({ page }) => {
+    // The ONLY case that still renders '—': project_gamma_surface's own pre-existing
+    // has_oi-gated absence (a strike/expiry that genuinely never cleared the OI gate) --
+    // orthogonal to, and unchanged by, the streaming-state disclosure under test above.
+    const surf = surfaceWithStreamState([{ call: 'live', put: 'live' }]);
+    surf.cells[0].gex = [null];
+    await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({
+      status: 200, contentType: 'application/json', body: JSON.stringify(surf),
+    }));
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    const cell = page.locator('.hcell[data-strike="583"][data-expiry="2026-09-11"]');
+    await expect(cell).toHaveText('—');
+    await expect(cell).toHaveAttribute('data-cell-state', 'live');   // stream state is unrelated to has_oi absence
+  });
+
+  test('always-live heatmap mandate: a partial cell (one leg live, one not) shows the same value as fully live, visibly flagged distinct from fully live', async ({ page }) => {
+    await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify(surfaceWithStreamState([{ call: 'live', put: 'unavailable' }])),
+    }));
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    const cell = page.locator('.hcell[data-strike="583"][data-expiry="2026-09-11"]');
+    await expect(cell).toHaveText('$12.3K');   // ONE FAUCET: the already-computed value is not re-derived
+    await expect(cell).toHaveAttribute('data-cell-state', 'partial');
+    await expect(cell).toHaveClass(/state-partial/);
+  });
+
+  test('always-live heatmap mandate NEGATIVE CONTROL: a live cell that goes stale on the next refresh keeps its value but is relabelled from live to snapshot -- never silently kept as live', async ({ page }) => {
+    // Proves the label reacts to a real state TRANSITION (the stream being lost), not merely
+    // to a hand-picked static fixture -- the operator's own required negative control ("never
+    // mislabel snapshot data as live"), proven here at the frontend/render layer against a
+    // controlled state transition. The live-vendor equivalent (a REAL Schwab stream actually
+    // going quiet mid-session) is proven separately by the RTH live-vendor proof tooling,
+    // which this test cannot reach.
+    // surface_seq must advance between fetches (RC-UI-2 finding #1, this file's own earlier
+    // test): renderSurface() skips its table rebuild when the revision key -- built from
+    // REST-only fields PLUS surface_seq specifically so a stream-only change is still
+    // detected -- is unchanged. Omitting it here would test the fast-path skip, not the gate.
+    let live = true, seq = 1;
+    await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify(Object.assign(
+        surfaceWithStreamState([{ call: live ? 'live' : 'stale', put: live ? 'live' : 'stale' }]),
+        { surface_seq: seq })),
+    }));
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    const cell = page.locator('.hcell[data-strike="583"][data-expiry="2026-09-11"]');
+    await expect(cell).toHaveText('$12.3K');
+    await expect(cell).toHaveAttribute('data-cell-state', 'live');
+
+    live = false; seq = 2;   // the stream goes quiet -- no reload, no navigation, just the next refresh
+    await page.evaluate(() => document.dispatchEvent(new CustomEvent('ed:refresh', { detail: { slow: true } })));
+    await expect(cell).toHaveAttribute('data-cell-state', 'stale');
+    await expect(cell).toHaveText('$12.3K');   // the same valid value -- never blanked
+    await expect(cell).toHaveAttribute('title', /SNAPSHOT/);   // relabelled, not silently kept as live
   });
 
   test('stale/reference gamma surface fails stale visibly (no morning snapshot passed as live)', async ({ page }) => {
@@ -1300,7 +1439,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     expect(sent).toEqual(['SPY   260911C00583000', 'SPY   260911P00583000']);
   });
 
-  test('the heatmap declares live-streaming demand for its own visible front-column contracts (state-authority review)', async ({ page }) => {
+  test('the heatmap declares live-streaming demand for every visible column\'s contracts, not just the front column (state-authority review, superseded 2026-09-15)', async ({ page }) => {
     // Independent-review finding (2026-09-12, state-authority review), REPRODUCED: the
     // heatmap grid itself was never actually live -- only whatever ONE strike Strike
     // Detail had separately selected ever reached the streaming layer, so the rest of
@@ -1308,8 +1447,15 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     // surface cell now carries its own vendor OSI symbols (server.py's project_gamma_
     // surface); the heatmap declares its OWN demand for them through EdStream's
     // multi-owner additional-contracts slot ('heatmap', coexisting with Strike Detail's
-    // own 'default'-owner demand), bounded to the default Auto scope's visible strikes
-    // and only the FRONT (nearest-unexpired) expiry column.
+    // own 'default'-owner demand).
+    //
+    // Always-live heatmap mandate (2026-09-15, operator directive), SUPERSEDES this test's
+    // own prior "bounded to ... only the FRONT column" claim: "every visible heatmap cell
+    // must correspond to an exact option contract actively receiving streamed Schwab
+    // updates" -- a cell this module never demanded can never legitimately show
+    // live/partial (ed-gamma.js's own per-cell render gate), so Auto scope now demands
+    // EVERY visible column, the same rule Wider/All and an explicit expiry filter already
+    // used (see the "Wider and All scope declare real streaming demand" test above).
     const surfaceWithContracts = Object.assign({}, SURFACE, {
       cells: [
         { strike: 580, gex: [-90000, null],
@@ -1344,12 +1490,15 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect.poll(() => requests.length).toBeGreaterThan(0);
     const sent = requests[requests.length - 1].contracts.slice().sort();
-    // The front (nearest-unexpired, 2026-09-11) column's call+put for every visible
-    // strike -- the 2026-09-18 column's contracts must NOT appear (only the front
-    // column is bounded live-streamed; the rest stays REST-cadence).
+    // BOTH visible columns' call+put for every strike that has one -- 2026-09-11 (all
+    // three strikes) AND 2026-09-18 (580 has no contracts on that expiry in this fixture,
+    // 583/586 do). Every visible cell's own contracts are now demanded, not just the
+    // front column's.
     expect(sent).toEqual([
       'SPXW  260911C00580000', 'SPXW  260911C00583000', 'SPXW  260911C00586000',
       'SPXW  260911P00580000', 'SPXW  260911P00583000', 'SPXW  260911P00586000',
+      'SPXW  260918C00583000', 'SPXW  260918C00586000',
+      'SPXW  260918P00583000', 'SPXW  260918P00586000',
     ].sort());
 
     // Leaving the Gamma workspace must clear the heatmap's OWN demand (not keep the
@@ -1943,17 +2092,17 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   // cell in that same column stayed covered, with the column's own tooltip still claiming full
   // coverage. Fixed: the cap drops whole trailing COLUMNS, and a capped column's own tooltip
   // says so distinctly from an uncapped one's.
-  // A SEVENTH independent review (2026-09-13), REPRODUCED then repaired: this test used to
-  // require the SECOND column be excluded WHOLESALE once the running total crossed 240.
-  // That is no longer the corrected behavior for the column that FIRST crosses the ceiling --
-  // it now gets PARTIAL coverage (as many whole strike rows as fit) rather than being zeroed.
-  // Column 0 alone (122 contracts) still fits fully under budget and is untouched; column 1
-  // is the one that crosses the ceiling, so it is the one that must come back PARTIAL, never
-  // an outright drop -- proving the redesign, not the retired all-or-nothing behavior.
-  test('the streaming-demand cap partially covers the column that crosses the ceiling, never splitting one strike', async ({ page }) => {
-    // 2 columns x 61 strikes x 2 sides = 244 contracts; column 0 alone is 122 (fits under
-    // 240); column 0 + column 1 is 244 (exceeds it by 4) -- column 1 must come back with
-    // 118 of its own 122 contracts (59 whole strikes), never zero and never a split strike.
+  // Always-live heatmap mandate (2026-09-15, operator directive), FINAL, RETIRES the two
+  // tests this replaces ("the streaming-demand cap partially covers the column that crosses
+  // the ceiling..." and "a single explicitly-selected expiry with 242 contracts gets 240
+  // partial, never zero"): "The 240-contract ceiling is our current implementation limit
+  // unless you prove otherwise. Do not use it as an excuse to reduce the product... Stream
+  // every contract Schwab permits." The client-side cap and its capped/partial-column
+  // carve-out (MAX_DEMAND_CONTRACTS, _cappedCols, _partialCols) are removed outright, not
+  // just re-tuned -- a scope this large is no longer capped, split, or excluded at all.
+  test('a visible scope larger than the former 240-contract self-imposed ceiling is demanded in FULL, uncapped, unsplit', async ({ page }) => {
+    // 2 columns x 61 strikes x 2 sides = 244 contracts -- previously would have capped
+    // column 1 to a 118-contract partial; now both columns' contracts are demanded whole.
     await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({
       status: 200, contentType: 'application/json', body: JSON.stringify(surfaceWithContracts(2, 61)),
     }));
@@ -1968,61 +2117,14 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect.poll(() => demandCalls.length).toBeGreaterThan(0);
 
     const lastDemand = demandCalls[demandCalls.length - 1];
-    expect(lastDemand.length).toBeLessThanOrEqual(240);
-    expect(lastDemand.length).toBe(240);   // 122 (col 0, whole) + 118 (col 1, partial)
+    expect(lastDemand.length).toBe(244);   // the FULL set -- no cap, no split, no exclusion
     const col1Symbols = lastDemand.filter((s) => /X2026-09-12$/.test(s));
-    expect(col1Symbols.length).toBe(118);
-    // Never a split strike: 118 is even (59 whole call+put pairs), and every strike named
-    // in col1Symbols must appear as BOTH its call and put.
-    const strikesOf = (syms) => syms.map((s) => s.match(/^[CP](\d+)X/)[1]);
-    const col1Strikes = strikesOf(col1Symbols);
-    const counts = {};
-    col1Strikes.forEach((k) => { counts[k] = (counts[k] || 0) + 1; });
-    Object.values(counts).forEach((n) => expect(n).toBe(2));
+    expect(col1Symbols.length).toBe(122);   // column 1's own full 61 strikes x 2 sides
 
     const colTitles = await page.locator('.heat thead th.hexp').evaluateAll(
-      (ths) => ths.map((th) => ({ text: th.querySelector('.d')?.textContent, title: th.getAttribute('title') })));
+      (ths) => ths.map((th) => th.getAttribute('title')));
     expect(colTitles.length).toBe(2);
-    const partialCol = colTitles.find((c) => /PARTIALLY covered \(118\/122 contracts\)/.test(c.title || ''));
-    const fullCol = colTitles.find((c) => c !== partialCol);
-    expect(partialCol).toBeTruthy();
-    expect(fullCol.title).not.toMatch(/PARTIALLY|excluded/);
-    // The scope note names the partially-covered expiry explicitly, with its own count.
-    await expect(page.locator('#heatBody .scope-note')).toContainText(
-      'partially covered: ' + partialCol.text.replace(/^(\d\d)-(\d\d)$/, '2026-$1-$2') + ' (118/122 contracts)');
-  });
-
-  // A SEVENTH independent review (2026-09-13), REPRODUCED: the operator's own most-common
-  // case -- filtering to ONE specific expiry with more than 240 contracts (121 strikes x 2
-  // sides = 242) -- used to submit ZERO streaming demand, because the cap's only tool was
-  // dropping the whole (and only) column. This is the exact reproduction from that finding.
-  test('a single explicitly-selected expiry with 242 contracts gets 240 partial, never zero', async ({ page }) => {
-    await page.route('**/api/expiries*', (r) => r.fulfill({ status: 200, contentType: 'application/json',
-      body: JSON.stringify({ expiries: ['2026-09-11'] }) }));
-    await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({
-      status: 200, contentType: 'application/json', body: JSON.stringify(surfaceWithContracts(1, 121)),
-    }));
-    const demandCalls = [];
-    await page.route('**/api/streaming/active-option-contracts', (route) => {
-      const body = JSON.parse(route.request().postData() || '{}');
-      demandCalls.push(body.contracts || []);
-      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, contracts: body.contracts || [] }) });
-    });
-    await page.goto('/', { waitUntil: 'domcontentloaded' });
-    // Row visibility (which STRIKES show) is the scope policy, independent of the expiry
-    // filter (which COLUMN shows) -- 'all' is needed so all 121 strikes are actually visible
-    // rows, not just Auto's default ~11-around-spot window.
-    await page.evaluate(() => window.EdShell.setScope('all'));
-    await page.locator('#expSel').selectOption('2026-09-11');
-    await expect.poll(() => demandCalls.length).toBeGreaterThan(0);
-
-    const lastDemand = demandCalls[demandCalls.length - 1];
-    expect(lastDemand.length).toBe(240);   // NOT zero -- 120 whole strikes (240 contracts) of the 121
-    expect(lastDemand.length).not.toBe(0);
-
-    const col = page.locator('.heat thead th.hexp');
-    await expect(col).toHaveCount(1);
-    await expect(col).toHaveAttribute('title', /PARTIALLY covered \(240\/242 contracts\)/);
-    await expect(page.locator('#heatBody .scope-note')).toContainText('partially covered: 2026-09-11 (240/242 contracts)');
+    colTitles.forEach((t) => expect(t || '').not.toMatch(/PARTIALLY|excluded|safety limit/));
+    await expect(page.locator('#heatBody .scope-note')).not.toContainText('capped');
   });
 });

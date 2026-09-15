@@ -38,13 +38,21 @@ def _cells_match_ignoring_vanna_drift(actual, expected, tol=0.1):
     decimals (matching /api/options/vanna-by-strike's own precision) made it visible here for
     the first time. tests/test_vanna_charm_by_strike_v1.py and
     tests/test_gamma_surface_projection_v1.py already tolerate the identical drift for the
-    identical reason."""
+    identical reason.
+
+    Also ignores `stream` (always-live heatmap mandate, 2026-09-15): every "expected" reference
+    in this file calls the bare project_gamma_surface faucet directly, never through
+    _stamp_gamma_surface_cell_stream_state, so it never carries that key at all -- this
+    comparison is about the exposure-math faucet's own output, which that stamp never touches
+    (RC-80: still one producer, one computation), not about the orthogonal per-cell stream-state
+    disclosure layered on top of it."""
     if len(actual) != len(expected):
         return False
     for a, e in zip(actual, expected):
-        if set(a.keys()) != set(e.keys()):
+        a_keys = set(a.keys()) - {"stream"}
+        if a_keys != set(e.keys()):
             return False
-        for k in a:
+        for k in a_keys:
             if k != "vanna":
                 if a[k] != e[k]:
                     return False
