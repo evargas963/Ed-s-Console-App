@@ -4,6 +4,17 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Ed Console</title>
+<!-- Carried forward from legacy static/index.html during the /console cutover (operator
+     directive 2026-09-14): the PWA manifest and icons are a real, currently-served capability
+     with no equivalent here otherwise (install/pin identity would silently break without
+     them). The splash screen itself (axiom-splash.js/.css) is deliberately NOT carried
+     forward -- the operator approved retiring it. -->
+<link rel="icon" href="/static/icons/axiom.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="192x192" href="/static/icons/axiom-192.png">
+<link rel="icon" type="image/png" sizes="512x512" href="/static/icons/axiom-512.png">
+<link rel="apple-touch-icon" href="/static/icons/axiom-256.png">
+<link rel="manifest" href="/static/site.webmanifest">
+<meta name="theme-color" content="#0A1930">
 <script>/* window.EdTheme — the ONE canonical theme owner, loaded before CSS. Owns preference read,
    SYSTEM resolution, concrete data-theme assignment (first paint, no flash), OS-change handling,
    and the ed:theme presentation event. ed-core CONSUMES this owner; it does not re-implement the
