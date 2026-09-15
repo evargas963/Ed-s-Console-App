@@ -123,14 +123,6 @@ class OrderFlowState:
         # erased by the reset the same call triggered. The reset must happen BEFORE a new
         # observation is applied, never after, so a fresh value is never sacrificed to the
         # transition it arrived on.
-        # Operator finding (2026-09-11): this session-reset check used to run AFTER the
-        # volume/chg_pct writes below. On the FIRST update of a new RTH session, that order
-        # applied the fresh, genuinely-valid observation and then immediately discarded it:
-        # _clear_all_session_state_unlocked() wipes _stream_volume/_stream_chg_pct
-        # unconditionally, so the very update that should have seeded the new session was
-        # erased by the reset the same call triggered. The reset must happen BEFORE a new
-        # observation is applied, never after, so a fresh value is never sacrificed to the
-        # transition it arrived on.
         try:
             now_et_dt = now_et()
             current_date = now_et_dt.strftime("%Y-%m-%d")
