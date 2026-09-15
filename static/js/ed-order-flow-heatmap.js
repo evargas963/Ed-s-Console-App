@@ -31,6 +31,17 @@
     var r = canvas.getBoundingClientRect();
     return { px: clientX - r.left, py: clientY - r.top };
   }
+  // Same floor/clamp contract as ed-gamma-chart.js's clampDomain and
+  // ed-liquidity-map.js's clampPriceDomain (both independent-review findings,
+  // REPRODUCED, on this exact interaction pattern): unclamped, repeated wheel-in/
+  // axis-drag-in ticks shrink (hi-lo) toward zero with no floor. This is the same
+  // price-axis pan/zoom contract on a third surface (canvas here, vs SVG/DOM percent
+  // elsewhere) and needs the identical floor.
+  function clampPriceDomain(lo, hi) {
+    if (!isFinite(lo) || !isFinite(hi) || hi <= lo) return { lo: lo, hi: hi };
+    if (hi - lo < 0.02) { var mid = (lo + hi) / 2; return { lo: mid - 0.01, hi: mid + 0.01 }; }
+    return { lo: lo, hi: hi };
+  }
   function installInteractionOnce() {
     if (_interactionInstalled || typeof document === 'undefined') return;
     _interactionInstalled = true;
@@ -44,11 +55,11 @@
       var dy = p.py - _dragState.startPy;
       if (_dragState.mode === 'pan') {
         var priceDelta = dy / plotH * span;   // canvas y grows downward; price grows upward
-        _view = { lo: _dragState.startLo + priceDelta, hi: _dragState.startHi + priceDelta };
+        _view = clampPriceDomain(_dragState.startLo + priceDelta, _dragState.startHi + priceDelta);
       } else {
         var anchor = _dragState.startHi - (_dragState.startPy - _dragState.padTop) / plotH * span;
         var factor = Math.pow(1.006, dy);
-        _view = { lo: anchor - (anchor - _dragState.startLo) * factor, hi: anchor + (_dragState.startHi - anchor) * factor };
+        _view = clampPriceDomain(anchor - (anchor - _dragState.startLo) * factor, anchor + (_dragState.startHi - anchor) * factor);
       }
       rerenderFromCache();
     });
@@ -82,7 +93,7 @@
       var p = clientToCanvas(canvas, e.clientX, e.clientY);
       var anchor = hi - (p.py - padTop) / plotH * (hi - lo);
       var factor = e.deltaY > 0 ? 1.12 : (1 / 1.12);
-      _view = { lo: anchor - (anchor - lo) * factor, hi: anchor + (hi - anchor) * factor };
+      _view = clampPriceDomain(anchor - (anchor - lo) * factor, anchor + (hi - anchor) * factor);
       rerenderFromCache();
     }, { passive: false });
     canvas.addEventListener('dblclick', function () { _view = null; _pin = null; rerenderFromCache(); });
