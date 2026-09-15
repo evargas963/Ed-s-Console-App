@@ -184,11 +184,8 @@ def main() -> int:
             rank_raw = _ranking_diff(p, y)
             rank_cal = _ranking_diff(cp, y)
 
-            # cross ticker consistency
-            for t in allowed_tickers:
-                idx = [i for i, _ in enumerate(y) if (i < len(y) and True)]
-                # slice by ticker via second query for precision
-            # requery quickly from stored db-less arrays is hard; use counts concentration as proxy + decile slopes
+            # cross ticker consistency: requery from stored db-less arrays is hard, so use
+            # per-ticker counts concentration as a proxy + decile slopes.
             count_map = ticker_counts[hz if family == "move" else f"dir-{hz}"]
             total = sum(count_map.values()) or 1
             shares = [v / total for v in count_map.values()]
