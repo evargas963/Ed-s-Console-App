@@ -12593,6 +12593,7 @@ def _ticker_on_terrain_board(tk: str) -> bool:
         return tk in _logger_tickers or tk in CORE_TICKERS
 
 
+
 def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
     """Fetch one chain and compute terrain into the cache. Never raises.
 
@@ -13663,6 +13664,17 @@ def get_terrain_strikes(ticker: str = Query(default=DEFAULT_TICKER)):
                     vol_by_k[k] = vol_by_k.get(k, 0.0) + v
             out = []
             for k, b in exposures.items():
+                # Independent-review finding, REPRODUCED (live SPX, 2026-09-14): net_gex_1pct/
+                # call_gamma/put_gamma are pre-initialized to a real 0.0 by _strike_bucket, so
+                # bucket_metric/total_gamma_raw_at_strike returned a real float (never None)
+                # even for a strike where every contract failed the OI gate -- Schwab's SPX
+                # feed currently reports openInterest=0/stuck for every contract, so this drew
+                # a $0 bar indistinguishable from a strike genuinely measured at flat gamma.
+                # has_oi (math_exposure_core.py's own canonical signal) is checked FIRST, before
+                # either metric read, so a no-OI strike is skipped the same way RC-276's
+                # gamma-resolves-nowhere case already is below -- one exclusion rule, not two.
+                if not (isinstance(b, dict) and b.get("has_oi")):
+                    continue
                 g = bucket_metric(b, "net_gex_1pct")
                 if g is None:
                     g = total_gamma_raw_at_strike(b)
@@ -13911,6 +13923,13 @@ def get_vanna_by_strike(ticker: str = Query(default=DEFAULT_TICKER)):
     exposures, _diag = _cebs(contracts, spot=spot, require_oi=True)
     rows = []
     for k, b in exposures.items():
+        # Independent-review finding, REPRODUCED (live SPX, 2026-09-14): call_vanna/put_vanna
+        # are pre-initialized to a real 0.0 by _strike_bucket, so a strike where every contract
+        # failed the OI gate returned (0.0, 0.0) here -- neither None, so the `cv is None and
+        # pv is None` check never caught it and the row rendered a fabricated net_vanna of 0.0.
+        # has_oi (math_exposure_core.py's own canonical signal) is the real gate.
+        if not b.get("has_oi"):
+            continue
         cv, pv = b.get("call_vanna"), b.get("put_vanna")
         if cv is None and pv is None:
             continue
@@ -14358,6 +14377,8 @@ def project_gamma_surface(chain: list, spot: float) -> dict:
         return round(fv) if fv is not None else None
 
     cells = []
+    cells_with_data = 0
+    cells_total = 0
     for k in strikes:
         row = []
         dex_row = []
@@ -14366,25 +14387,39 @@ def project_gamma_surface(chain: list, spot: float) -> dict:
         vol_row = []
         contracts_row = []
         for col in expirations:
+            cells_total += 1
             bucket = per_expiry.get(col["expiry"], {}).get(k)
-            row.append(_bf(bucket.get("net_gex_1pct")) if bucket is not None else None)
-            dex_row.append(_bf(bucket.get("net_dex_dollars")) if bucket is not None else None)
+            # Independent-review finding, REPRODUCED (live SPX, 2026-09-14): `bucket is not
+            # None` was the ONLY gate here, but compute_exposures_by_strike creates a bucket
+            # for every strike/side/multiplier-valid contract BEFORE the require_oi filter
+            # runs -- a contract with a real strike and multiplier but zero/missing OI still
+            # gets a bucket, just one whose net_gex_1pct/net_dex_dollars never left their
+            # pre-initialized 0.0 default (nothing ever passed the OI gate to add to them).
+            # Schwab's live SPX chain feed is currently frozen/stuck server-side (a live,
+            # reproduced vendor incident -- SPY/QQQ unaffected through the identical code path
+            # at the same instant), so `bucket is not None` was true everywhere while the real
+            # numbers were a fabricated-looking 0.0 for a strike with genuinely no usable OI.
+            # has_oi (math_exposure_core.py's own canonical signal, set at the exact point OI
+            # actually contributes to the accumulation) is the fix, not a second, independent
+            # re-derivation of the same fact from call_oi/put_oi presence.
+            _has_data = bool(bucket is not None and bucket.get("has_oi"))
+            if _has_data:
+                cells_with_data += 1
+            row.append(_bf(bucket.get("net_gex_1pct")) if _has_data else None)
+            dex_row.append(_bf(bucket.get("net_dex_dollars")) if _has_data else None)
             # call_vanna/put_vanna are pre-initialized to a real 0.0 by _strike_bucket
-            # (compute_exposures_by_strike, math_exposure_core.py) -- the SAME "always a
-            # real accumulator, never absent" contract net_gex_1pct/net_dex_dollars
-            # already have, so this needs no None-guard or `or 0.0` fallback (a repo-wide
-            # static gate correctly flagged the earlier `.get(...) or 0.0` form here as
-            # indistinguishable-from-absence, the exact silent-zero-injection shape
-            # RC-276 already names elsewhere in this file -- call_oi/put_oi/call_volume/
-            # put_volume, right below, are the genuinely-optional fields and correctly
-            # keep their own None-preserving .get()).
+            # (compute_exposures_by_strike, math_exposure_core.py) -- the SAME accumulator
+            # shape net_gex_1pct/net_dex_dollars have, and the SAME _has_data gate above now
+            # applies here too (see that comment: a 0.0 default with no OI ever added to it
+            # is not a computed zero). call_oi/put_oi/call_volume/put_volume, right below, are
+            # the genuinely-optional fields and correctly keep their own None-preserving .get().
             # NOT _bf: that helper rounds to the nearest WHOLE unit, correct for gex/dex's
             # dollar magnitudes above but not for vanna's own much smaller per-vol-point scale
             # (a real net vanna of 0.4 rounded to 0 loses sign and all magnitude). Rounded to 2
             # decimals instead, matching /api/options/vanna-by-strike's own rounding of the
             # identical call_vanna-put_vanna quantity from this same faucet -- reproduced live:
             # the two endpoints showed materially different pictures of the same strike/vanna.
-            _vn = bucket["call_vanna"] - bucket["put_vanna"] if bucket is not None else None
+            _vn = bucket["call_vanna"] - bucket["put_vanna"] if _has_data else None
             vanna_row.append(round(_vn, 2) if _vn is not None else None)
             call_oi, put_oi = (bucket or {}).get("call_oi"), (bucket or {}).get("put_oi")
             oi_row.append({"call": _bf(call_oi), "put": _bf(put_oi)} if bucket is not None else {"call": None, "put": None})
@@ -14397,10 +14432,24 @@ def project_gamma_surface(chain: list, spot: float) -> dict:
             "oi": oi_row, "volume": vol_row, "contracts": contracts_row,
         })
 
+    # Operator directive (2026-09-14, live SPX reproduction): a grid where every single cell
+    # lacks usable OI is not merely "a lot of quiet cells" -- it means this ticker's exposure
+    # data is unavailable end to end, and that must be a surface-level fact the caller can
+    # check in one field, not something it has to infer by scanning every cell for None.
+    # contracts_used > 0 alone is not enough: a wide chain can have thousands of USED
+    # contracts (real strike/side/multiplier, real greeks) while still having zero cells with
+    # usable OI (exactly the live SPX case this was written from) -- gamma_available is
+    # gated on cells_with_data specifically, the same signal each cell's own _has_data used.
+    gamma_available = cells_with_data > 0
     return {
         "expirations": expirations, "strikes": strikes, "cells": cells,
         "contracts_total": total_contracts, "contracts_used": contracts_used,
         "contracts_excluded_malformed_expiry": excluded_malformed,
+        "gamma_available": gamma_available,
+        "gamma_unavailable_reason": (
+            None if gamma_available else
+            "no usable open interest in this chain (0 of {} strike×expiry cells)".format(cells_total)
+        ),
     }
 
 
@@ -14447,8 +14496,18 @@ def get_options_gamma_surface(ticker: str = Query(default=DEFAULT_TICKER)):
         # terrain_cache_get — serialize it verbatim, never a second age policy for the same truth.
         stale = bool(live.get("levels_stale"))
         strikes = surf.get("strikes") or []
+        # Operator directive (2026-09-14, live SPX reproduction): a surface with real strikes/
+        # contracts but zero cells carrying usable open interest is NOT "available" in any
+        # sense an operator cares about -- `available` now reflects project_gamma_surface's
+        # own gamma_available signal (computed from the SAME per-cell _has_data gate the grid
+        # itself renders from), not merely "did the live cache have a surface object at all".
+        _gamma_available = surf.get("gamma_available", True)
         return JSONResponse({
-            "ticker": tk, "symbol": tk, "available": True,
+            "ticker": tk, "symbol": tk, "available": _gamma_available,
+            # "reason" (not a new field name) -- ed-gamma.js's own unavailable-branch already
+            # reads surface.reason for the placeholder message; reusing it here means the
+            # existing frontend contract picks this up with no client-side change required.
+            "reason": None if _gamma_available else surf.get("gamma_unavailable_reason"),
             "source": "terrain_live_cache", "live": True, "stale": stale,
             "degraded": live.get("levels_stale_reason") if stale else None,
             "spot": live.get("spot"), "spot_source": live.get("spot_source"),
@@ -14509,15 +14568,27 @@ def get_options_gamma_surface(ticker: str = Query(default=DEFAULT_TICKER)):
         con = _sq.connect(f"file:{db.db_path}?mode=ro", uri=True, timeout=10.0)
         try:
             cand = con.execute(
-                "SELECT et_date, spot, chain_json FROM option_chain_morning_full "
+                "SELECT et_date, spot, chain_json, ts_utc FROM option_chain_morning_full "
                 "WHERE ticker=? ORDER BY et_date DESC LIMIT 12", (tk,)).fetchall()
         finally:
             con.close()
-        rows_t = [r for r in cand if r[0] and is_trading_day_et(str(r[0]))][:1]
+        # Operator directive (2026-09-14, SPX persisted-fallback hardening): a "morning
+        # reference" that silently reaches back past today's session is not a morning
+        # reference at all -- it is an unlabeled multi-day-old snapshot wearing the same
+        # "banked_morning_reference" name as a genuine same-day one. Require the row's own
+        # et_date to equal THIS session's ET date; anything older falls through to the
+        # explicit "unavailable" payload above rather than being served as if it were today's.
+        _today_et = now_et().strftime("%Y-%m-%d")
+        rows_t = [r for r in cand if r[0] and str(r[0]) == _today_et and is_trading_day_et(str(r[0]))][:1]
+        if not rows_t and any(r[0] and is_trading_day_et(str(r[0])) for r in cand):
+            payload["reason"] = ("no live terrain surface; a banked wide chain exists but is "
+                                  "from a prior session (not today's ET date) -- not served as "
+                                  "a morning reference to avoid presenting stale data as current")
         if rows_t:
-            et_date, s1, c1 = rows_t[0]
+            et_date, s1, c1, ts1 = rows_t[0]
             spot1 = float(s1)
             surface = project_gamma_surface(json.loads(c1), spot1)
+            _age_sec = round(time.time() - float(ts1), 1) if ts1 is not None else None
             payload = {
                 "ticker": tk, "symbol": tk, "available": True,
                 "source": "banked_morning_reference", "live": False, "stale": True,
@@ -14525,7 +14596,7 @@ def get_options_gamma_surface(ticker: str = Query(default=DEFAULT_TICKER)):
                 "degraded": ("live terrain surface unavailable — showing banked morning wide "
                              "reference (morning spot + morning Greeks; NOT intraday, NOT proven complete)"),
                 "et_date": et_date, "spot": spot1,
-                "chain_as_of_ts_utc": None, "spot_as_of_ts_utc": None, "age_sec": None,
+                "chain_as_of_ts_utc": ts1, "spot_as_of_ts_utc": ts1, "age_sec": _age_sec,
                 "chain_basis": "banked_morning", "complete": False,
                 "coverage": {"window": "banked_morning_wide", "strike_count": len(surface.get("strikes") or []),
                              "note": ("banked morning wide reference — strike-count bounded, not intraday "

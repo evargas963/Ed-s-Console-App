@@ -291,9 +291,21 @@
       // symbol that is NOT on the board must read "not currently active for this symbol", never a
       // promised refresh. buildBanner is the ONE place that wording lives (warming/requested/board).
       var b = surface ? buildBanner(surface) : '';
+      // Operator directive (2026-09-14, live SPX reproduction): buildBanner is gated on
+      // `!live || stale` -- a LIVE, non-stale surface that is unavailable because its chain
+      // genuinely has no usable open interest (surface.available === false with live === true)
+      // fell through buildBanner with nothing shown, leaving only the bare reason string with
+      // no indication of WHICH source produced it or WHEN it was observed. Stated explicitly
+      // here instead, using the same fields the live banner already carries.
+      var srcNote = (surface && surface.available === false && surface.live !== false)
+        ? '<div class="sm">source: ' + escapeHtml(surface.source || 'unknown') +
+          (surface.chain_as_of_ts_utc != null ? ' · chain as of ' + new Date(surface.chain_as_of_ts_utc * 1000).toLocaleTimeString() : '') +
+          (surface.spot_as_of_ts_utc != null ? ' · spot as of ' + new Date(surface.spot_as_of_ts_utc * 1000).toLocaleTimeString() : '') +
+          '</div>'
+        : '';
       host.innerHTML = b + '<div class="placeholder"><div class="big">Gamma surface unavailable</div>' +
         '<div class="sm">' + escapeHtml((surface && surface.reason) || 'no console / no banked wide chain for this symbol') +
-        '</div></div>';
+        '</div>' + srcNote + '</div>';
       return;
     }
     var exps = surface.expirations || [], strikes = surface.strikes || [], cells = surface.cells || [];
@@ -624,7 +636,15 @@
           (justChanged ? ' flash-update' : '') +
           '" style="background:' + st.bg + ';color:' + st.fg + '" ' +
           'data-strike="' + row.strike + '" data-expiry="' + escapeHtml(exps[j2].expiry) + '" data-gex="' + (v == null ? '' : v) + '">' +
-          (st.empty ? '' : formatMeasureValue(v, measure)) + '</td>';
+          // Independent-review finding, REPRODUCED (live SPX, 2026-09-14): a cell with no
+          // usable OI rendered as a BLANK td, visually indistinguishable from "still loading"
+          // or "outside the streamed window" -- an operator scanning the grid had no way to
+          // tell "no data here" from "nothing painted yet". A blank cell also hid the exact
+          // defect this session found (Schwab's wide multi-expiry chain returning OI=0 for
+          // every SPX contract): the grid looked merely quiet, not wrong. An explicit em dash
+          // makes absence a visible, deliberate statement, matching every other "—" =
+          // withheld/unavailable convention already used across this console.
+          (st.empty ? '—' : formatMeasureValue(v, measure)) + '</td>';
       }
       tbl += '</tr>';
     });

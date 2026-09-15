@@ -79,6 +79,14 @@ def test_A_cell_equals_canonical_faucet_per_expiry_slice():
         exposures_e, _ = compute_exposures_by_strike(_slice(chain, exp), spot=SPOT, require_oi=True)
         assert exposures_e, f"the real {exp} slice must yield OI-bearing strikes"
         for k, bucket in exposures_e.items():
+            # has_oi=False (2026-09-14 SPX honest-absence fix): a bucket can exist in
+            # require_oi=True's own output (created via the volume/side write that happens
+            # before the OI gate) with every accumulator still at its pre-initialized 0.0 --
+            # not a real computed value, so the surface correctly reports None there instead
+            # of this bucket's fabricated 0.0. Only a bucket that actually cleared the OI
+            # gate is a real number to compare against.
+            if not bucket.get("has_oi"):
+                continue
             assert _cell(surface, float(k), exp) == round(float(bucket["net_gex_1pct"]))
             checked += 1
     assert checked > 20   # a real book, not a handful of strikes
@@ -270,6 +278,8 @@ def test_K_dex_cell_equals_the_same_canonical_faucet_net_dex_dollars():
         exposures_e, _ = compute_exposures_by_strike(_slice(chain, exp), spot=SPOT, require_oi=True)
         col = [i for i, e in enumerate(surface["expirations"]) if e["expiry"] == exp][0]
         for k, bucket in exposures_e.items():
+            if not bucket.get("has_oi"):   # see test_A's own has_oi note
+                continue
             row = [r for r in surface["cells"] if r["strike"] == float(k)][0]
             assert row["dex"][col] == round(float(bucket["net_dex_dollars"]))
             checked += 1
@@ -284,6 +294,8 @@ def test_K_vanna_cell_equals_call_vanna_minus_put_vanna_the_same_dealer_conventi
         exposures_e, _ = compute_exposures_by_strike(_slice(chain, exp), spot=SPOT, require_oi=True)
         col = [i for i, e in enumerate(surface["expirations"]) if e["expiry"] == exp][0]
         for k, bucket in exposures_e.items():
+            if not bucket.get("has_oi"):   # see test_A's own has_oi note
+                continue
             if bucket.get("call_vanna") is None and bucket.get("put_vanna") is None:
                 continue
             row = [r for r in surface["cells"] if r["strike"] == float(k)][0]

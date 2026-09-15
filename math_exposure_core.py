@@ -142,6 +142,18 @@ class ExposureDiagnostics:
 def _strike_bucket(exposures_by_strike: Dict[float, dict], strike: float) -> dict:
     if strike not in exposures_by_strike:
         exposures_by_strike[strike] = {
+            # Operator directive (2026-09-14, live SPX reproduction): every accumulator below
+            # (call_gamma, net_gex_1pct, ...) is pre-initialized to a real 0.0 so mid-loop `+=`
+            # never needs a None-guard -- but that same 0.0 is indistinguishable from "every
+            # contract at this strike/expiry was skipped by the require_oi gate" to any reader
+            # who only looks at the accumulator itself (exactly the live SPX defect: Schwab's
+            # chain returned openInterest=0 for every contract, so nothing here was EVER wrong
+            # math, just a bucket that never had a chance to accumulate anything real). has_oi
+            # is the ONE canonical "did any contract actually clear the OI gate" signal -- every
+            # consumer of this bucket's dollar/gamma fields must check it before treating 0.0 as
+            # a computed value, not re-derive presence from call_oi/put_oi being non-None
+            # (equivalent today, but a second definition of the same fact is how these drift).
+            "has_oi": False,
             "call_oi": None,
             "put_oi": None,
             "call_oi_mult": 0.0,
@@ -269,6 +281,10 @@ def compute_exposures_by_strike(
             missing += 1
 
         used += 1
+        # The ONE canonical "did OI actually contribute here" signal (see _strike_bucket's own
+        # comment) -- exactly the condition every OI-gated accumulation below already shares.
+        if oi is not None:
+            b["has_oi"] = True
 
         if side == "CALL":
             if oi is not None:
