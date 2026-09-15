@@ -737,11 +737,8 @@ def detect_sweeps(
         if sp.index < len(candles) - 2:
             low_targets.append(sp.price)
 
-    # Add session high/low as targets (most recent swing might be the session extreme)
-    if session_high is not None and session_high not in high_targets:
-        # Only add if session high was set before the current bar
-        # (i.e., current bar hasn't yet made a new session high by more than a wick)
-        pass  # session high sweeps handled below
+    # Session high/low are handled as their own sweep targets below, not merged
+    # into high_targets/low_targets.
 
     # Check if last bar swept any swing high
     for target in high_targets:
