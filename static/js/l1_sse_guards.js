@@ -1,6 +1,8 @@
 /**
- * Shared L1 SSE + Tier B light guards (single source for monotonic l1_generation and scope keys).
- * Loaded before inline app script in index.html; exposed as globalThis.EdL1SseGuards for tests/diagnostics.
+ * Shared L1 SSE + Tier B light guards (single source for monotonic l1_generation and scope keys),
+ * plus a generic coalesced-async-trigger guard (makeCoalescedLoader) used by every push-driven
+ * view module. Loaded before inline app script in index.html; exposed as globalThis.EdL1SseGuards
+ * for tests/diagnostics.
  *
  * Ordering: l1_generation is authoritative for strict ordering. When generations match (reordered delivery),
  * _server_build_ts tie-break rejects strictly older snapshots so HTTP↔SSE cannot regress UI.
@@ -84,11 +86,107 @@
     return ck === sk;
   }
 
+  /**
+   * Coalesced "no overlap, nothing dropped" async trigger (RC-UI-1 round 7, 2026-09-13).
+   *
+   * Root cause this fixes: server.py's refresh_gamma_surface_from_stream pushes a
+   * `gamma_surface_seq` SSE event on every streamed publish — unboundedly frequent, not the
+   * 12s slow-poll tick it rides in on (ed-core.js dispatches it as `ed:refresh{slow:true,
+   * pushed:true}`, reusing the same event the slow poll uses). Every one of the six gamma
+   * view modules (heatmap, chart, levels, chain, flow, panels) responds to that event by
+   * calling its own load(): bump a per-module generation counter, start a fetch, and apply
+   * the response only if the counter still matches when it resolves. That guard is correct
+   * for invalidating a genuinely stale context (a ticker switch mid-flight) but fails once
+   * triggers arrive faster than the round trip: a new trigger bumps the counter before the
+   * PREVIOUS fetch can land, so that response is discarded on arrival — and since triggers
+   * never stop arriving under continuous streaming, no response's generation ever survives
+   * to be applied. Controlled reproduction (2026-09-13): 500ms triggers against a 750ms
+   * round trip left the display frozen at its starting value while incoming values advanced
+   * far past it, updating only once the triggers stopped and one response finally landed
+   * unopposed. Confirmed live-lock, not merely staleness.
+   *
+   * The fix is not a faster fetch or a slower trigger — it is making the trigger→fetch
+   * relationship itself correct under arbitrary trigger rates: never more than one fetch in
+   * flight per loader, and a trigger arriving mid-flight is coalesced into exactly one
+   * trailing re-run (never dropped, never piled up). That guarantees liveness — the loader
+   * always converges to the latest state as fast as the round trip allows. Deliberately not
+   * a fixed-rate throttle: throttling would reintroduce exactly the latency round 6 was
+   * built to remove.
+   *
+   * ROUND 8 EXTENSION (2026-09-13): the round-7 version coalesced EVERY trigger into the
+   * SAME in-flight slot regardless of what it was for — correct for repeated same-context
+   * triggers (the push-storm above) but wrong for a genuine CONTEXT CHANGE. Independent-
+   * review finding, REPRODUCED: switch ticker while the previous ticker's fetch is
+   * artificially delayed (or merely slow) — the new ticker's panel never loads until the
+   * OLD ticker's request finally settles, because a same-loader trigger for the new
+   * context was silently merged into "run once more when the old one finishes" instead of
+   * starting immediately. A held request for a context nobody wants anymore must never
+   * block the context the operator is actually asking for now.
+   *
+   * Fixed with the platform's own cancellation primitive (AbortController) rather than
+   * more bespoke flags: `trigger(key)` takes an opaque, comparable context key (e.g. a
+   * ticker string, or `ticker+'|'+expiry`). A trigger for the SAME key as the request
+   * already in flight still coalesces (unchanged round-7 behavior — needed so a push storm
+   * on an UNCHANGED context converges instead of live-locking). A trigger for a DIFFERENT
+   * key aborts the in-flight request for the old context and starts the new context's
+   * request immediately — it never waits for the old one. `run` receives the AbortSignal
+   * so it can pass it straight to `fetch`; callers must treat an AbortError in their
+   * `.catch` as "superseded, say nothing" rather than a real failure (rendering a false
+   * DEGRADED/unavailable state for a request the loader itself cancelled would be its own
+   * new defect). A caller with only one context can omit `key` — every call then compares
+   * `undefined === undefined` and the original single-context coalescing is unchanged.
+   *
+   * An in-flight request's own settle callback is generation-stamped (`myGen`) so an
+   * abort's asynchronous rejection — which can arrive AFTER a newer `start()` has already
+   * reassigned `inFlight`/`controller`/`currentKey` to the new context — never clobbers
+   * that newer request's state; a stale settle is a no-op.
+   *
+   * @param {function(AbortSignal=): (Promise|any)} run - performs one load for the current
+   *   context; receives an AbortSignal (undefined if AbortController is unavailable).
+   * @returns {{trigger: function(*=): void, reset: function(): void}}
+   *   trigger(key) requests a load for context `key`. reset() aborts any in-flight
+   *   request, drops any pending follow-up, and forgets in-flight state.
+   */
+  function makeCoalescedLoader(run) {
+    var inFlight = false, pending = false, currentKey, pendingKey, controller = null, gen = 0;
+    var hasAbort = typeof AbortController !== 'undefined';
+    function start(key) {
+      var myGen = ++gen;
+      inFlight = true; currentKey = key;
+      controller = hasAbort ? new AbortController() : null;
+      function settle() {
+        if (myGen !== gen) return;   // superseded by a later start() (context change) -- ignore
+        inFlight = false; controller = null;
+        if (pending) { pending = false; var k = pendingKey; pendingKey = undefined; start(k); }
+      }
+      var r;
+      try { r = run(controller && controller.signal); } catch (e) { settle(); throw e; }
+      if (r && typeof r.then === 'function') r.then(settle, settle);
+      else settle();
+    }
+    function trigger(key) {
+      if (!inFlight) { start(key); return; }
+      if (key === currentKey) { pending = true; pendingKey = key; return; }
+      // A different context wants to load while the OLD context's request is still
+      // outstanding: abort it (never just wait for it) and start the new one now.
+      if (controller) controller.abort();
+      pending = false; pendingKey = undefined;
+      start(key);   // bumps gen; the old in-flight's eventual settle() sees myGen !== gen and no-ops
+    }
+    function reset() {
+      if (controller) controller.abort();
+      gen++;   // invalidate any in-flight settle callback
+      inFlight = false; pending = false; pendingKey = undefined; controller = null;
+    }
+    return { trigger: trigger, reset: reset };
+  }
+
   g.EdL1SseGuards = {
     normL1ExpiryKey: normL1ExpiryKey,
     l1ApplyGenerationMonotonic: l1ApplyGenerationMonotonic,
     l1ApplyTierBLightMonotonic: l1ApplyTierBLightMonotonic,
     l1EnvelopeScopeMatches: l1EnvelopeScopeMatches,
     l1PayloadMatchesActiveScope: l1PayloadMatchesActiveScope,
+    makeCoalescedLoader: makeCoalescedLoader,
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

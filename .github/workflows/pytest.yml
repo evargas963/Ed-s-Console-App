@@ -125,20 +125,28 @@ jobs:
           # (Python 3.13 `os.process_cpu_count()` is what xdist `auto` reads).
           # Pin the worker count to the runner's nproc — same suite, more cores.
           echo "CI_CPUS nproc=$(nproc) cpu_count=$(python -c 'import os; print(os.cpu_count())') process_cpu_count=$(python -c 'import os; p=getattr(os,"process_cpu_count",None); print(p() if p else None)')"
-          # Overlap E2E with the pytest wave. MEASURED on 32235863378: E2E is
-          # 78 passed / 54.4s serial *before* pytest's 232s. Both exit codes decide
-          # this job directly. UNIVERSAL_QUANTITATIVE_CLOSURE_V1 (RC-542): the
+          # SEQUENTIAL, not overlapped (2026-09-15 reversal of the prior "overlap E2E with the
+          # pytest wave" optimization). That optimization was sized for the E2E suite AS IT WAS
+          # THEN: "78 passed / 54.4s serial *before* pytest's 232s" -- i.e. E2E was the SHORTER
+          # run and overlap was pure upside. The E2E suite has since grown to 207 tests and is
+          # now the LONGER-RUNNING half; backgrounding it alongside a `pytest -n $(nproc)` run
+          # that consumes every core on this 4-CPU runner starves Playwright's own real-time
+          # per-action timeouts, and this job was OBSERVED to run past its 45-minute ceiling and
+          # get force-cancelled twice in a row (runs 34931697740, 34957824709) with
+          # `npm run test:e2e` still alive at kill time -- not a deadlock, just resource
+          # starvation inflating E2E's wall-clock well past the budget. Each suite now gets the
+          # full runner to itself; a locally uncontended E2E run of this same suite completes in
+          # well under 15 minutes, so sequential is both correct and still comfortably within
+          # this job's 45-minute limit. UNIVERSAL_QUANTITATIVE_CLOSURE_V1 (RC-542): the
           # `.playwright_last_run_success` marker and tests/test_playwright_must_run.py
           # are retired — a tracked, hand-editable JSON stamp compared to file mtimes
           # was a proxy for the run this job already performs and reports exactly.
-          # Local `npm run test:all` stays serial.
+          # Local `npm run test:all` stays serial (unchanged by this).
           set +e
-          npm run test:e2e &
-          e2e_pid=$!
+          npm run test:e2e
+          e2e_rc=$?
           python -m pytest -n "$(nproc)" --dist loadfile --durations=20
           pytest_rc=$?
-          wait "$e2e_pid"
-          e2e_rc=$?
           set -e
           if [ "$e2e_rc" -ne 0 ]; then
             echo "Playwright E2E failed with ${e2e_rc}"

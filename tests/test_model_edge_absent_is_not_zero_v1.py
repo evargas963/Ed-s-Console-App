@@ -228,18 +228,9 @@ def test_producer_slice_call_surface_is_a_closed_whitelist():
                 "in this function may call anything the whitelist cannot name")
 
 
-def test_the_field_still_has_no_consumer_and_that_is_recorded():
-    """If a surface starts reading `edge`, this test should be the thing that notices.
-
-    It is not a demand that the field stay unread — it is a tripwire so the day a reader
-    appears is a deliberate moment rather than a discovery during an audit.
-    """
-    ui = (REPO / "static" / "index.html").read_text(encoding="utf-8", errors="replace")
-    i = ui.find("d.model_health")
-    assert i > 0, "the model_health consumer moved; re-derive what it renders"
-    block = ui[i:i + 1400]
-    assert "m.status" in block
-    if "m.edge" in block:
-        raise AssertionError(
-            "a surface now renders m.edge — RC-285 recorded that nothing did. Confirm the "
-            "None case renders as 'not measured' and update this test deliberately.")
+# test_the_field_still_has_no_consumer_and_that_is_recorded was retired here (/console
+# cutover, operator directive 2026-09-14): its tripwire watched legacy static/index.html's
+# `d.model_health` consumer for a future m.edge reader, but the new console has no
+# model_health surface at all (grepped static/js/*.js and static/console.html, zero matches
+# for either name) — there is no consumer left to watch. If a model-health panel is ever
+# built into the new console, write a fresh tripwire pointed at that module then.

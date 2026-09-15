@@ -84,24 +84,6 @@ def test_classified_non_production_routes(route_id: str):
     assert row.get("trade_impacting") is False
 
 
-def test_r027_classified_non_production():
-    from trade_impacting_gate import ROUTE_INVENTORY_EVIDENCE
-
-    assert ROUTE_INVENTORY_EVIDENCE["R-027"]["enforcement_state"] == "classified_non_production"
-
-
-def test_r033_classified_non_production():
-    from trade_impacting_gate import ROUTE_INVENTORY_EVIDENCE
-
-    assert ROUTE_INVENTORY_EVIDENCE["R-033"]["enforcement_state"] == "classified_non_production"
-
-
-def test_r034_classified_non_production():
-    from trade_impacting_gate import ROUTE_INVENTORY_EVIDENCE
-
-    assert ROUTE_INVENTORY_EVIDENCE["R-034"]["enforcement_state"] == "classified_non_production"
-
-
 def test_priority_routes_have_evidence_tests():
     from trade_impacting_gate import ROUTE_INVENTORY_EVIDENCE
 

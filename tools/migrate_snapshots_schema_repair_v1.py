@@ -32,6 +32,15 @@ REQUIRED_INDEXES = {
         "ON snapshots(ticker, timeframe, outcome_filled) WHERE outcome_filled = 0"
     ),
     "idx_snap_ts": "CREATE INDEX IF NOT EXISTS idx_snap_ts ON snapshots(ts_utc)",
+    # RC spot/gamma-360-audit (2026-09-14): get_similar_setups' tiers 1-4 without this index
+    # fall back to a full ticker+timeframe SCAN plus a temp b-tree sort (measured live: 5.7s
+    # on a 72k-row sample, 2ms with it -- see db.py's own copy of this comment for the full
+    # live-RTH reproduction). Declared here too so a schema repair run against a drifted DB
+    # never silently drops this performance fix by rebuilding indexes from an older list.
+    "idx_snap_similarity_zone_vwap": (
+        "CREATE INDEX IF NOT EXISTS idx_snap_similarity_zone_vwap "
+        "ON snapshots(ticker, timeframe, zone, vwap_side, ts_utc) WHERE outcome_1c IS NOT NULL"
+    ),
 }
 
 _CANONICAL_SNAPSHOTS_COLUMNS: list[dict[str, Any]] | None = None

@@ -21,11 +21,11 @@ class _FakeSnapshotOutput:
         self.raw_levels = raw_levels
 
 
-def _wire_common(monkeypatch, *, raw_levels, zones=None):
+def _wire_common(monkeypatch, *, raw_levels, zones=None, resolved_spot=None):
     monkeypatch.setattr(srv, "get_client", lambda: object())
     monkeypatch.setattr(srv, "_touch_tracked_ticker_view", lambda *a, **k: None)
-    monkeypatch.setattr(srv, "_liquidity_fusion_from_cache", lambda *a, **k: ([], None, "disabled"))
-    monkeypatch.setattr(srv, "_liquidity_spot_from_cache_any_expiry", lambda *a, **k: None)
+    monkeypatch.setattr(srv, "_liquidity_fusion_from_cache", lambda *a, **k: ([], "disabled"))
+    monkeypatch.setattr(srv, "resolve_spot", lambda *a, **k: (resolved_spot, None, None))
     monkeypatch.setattr(srv, "_liquidity_live_1m_overlay_bars", lambda *a, **k: None)
 
     import polling_adapter
@@ -82,7 +82,12 @@ def test_spot_used_for_scoring_reports_the_real_cached_spot_when_available(monke
     narrows a false claim, it does not remove the real value when one genuinely exists."""
     monkeypatch.setattr(srv, "get_client", lambda: object())
     monkeypatch.setattr(srv, "_touch_tracked_ticker_view", lambda *a, **k: None)
-    monkeypatch.setattr(srv, "_liquidity_fusion_from_cache", lambda *a, **k: ([], 456.78, "n/a"))
+    # RC spot-360-audit (2026-09-14): _liquidity_fusion_from_cache no longer returns a spot at
+    # all (the dead capability was removed, not just unused -- see its docstring); wall levels
+    # still come from the /api/state cache, but spot_for_zones comes from resolve_spot(), the
+    # ONE spot authority every other consumer in this file uses.
+    monkeypatch.setattr(srv, "_liquidity_fusion_from_cache", lambda *a, **k: ([], "n/a"))
+    monkeypatch.setattr(srv, "resolve_spot", lambda *a, **k: (456.78, "schwab_streaming_level_one", 0.0))
     monkeypatch.setattr(srv, "_liquidity_live_1m_overlay_bars", lambda *a, **k: None)
     import polling_adapter
     monkeypatch.setattr(

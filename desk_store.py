@@ -186,9 +186,15 @@ def _naive_text_to_utc_conservative(text: str) -> float | None:
     s = (text or "").strip()
     if not s:
         return None
+    # Drop a trailing fractional-seconds suffix (e.g. "13:02:27.123456") before matching —
+    # none of the formats below carry %f, and a naive strptime rejects any unconverted tail.
+    if "." in s:
+        head, _, tail = s.partition(".")
+        if tail[:6].isdigit():
+            s = head
     for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
         try:
-            dt = datetime.strptime(s[:len(fmt) + 4] if fmt.endswith("%S") else s, fmt)
+            dt = datetime.strptime(s, fmt)
         except ValueError:
             continue
         dt = dt.replace(tzinfo=timezone.utc) + timedelta(hours=_MAX_NAIVE_LAG_HOURS)

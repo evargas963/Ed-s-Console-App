@@ -264,6 +264,21 @@ def _per_strike_rows(exposures: dict, contracts: list[dict]) -> list[list]:
         sk = float_finite_or_none(k)
         if sk is None:                      # a NaN strike must never become a rendered bar
             continue
+        # Independent-review finding, REPRODUCED (live SPX, 2026-09-14): net_gex_1pct/
+        # call_gamma/put_gamma are pre-initialized to a real 0.0 by _strike_bucket, so
+        # bucket_metric/total_gamma_raw_at_strike below returned a real float (never None)
+        # even for a strike where every contract failed the OI gate -- Schwab's SPX feed
+        # returning openInterest=0/stuck for every contract drew a $0 bar here,
+        # indistinguishable from a strike genuinely measured at flat gamma (the exact panel
+        # this function feeds -- GEX by Strike -- was reproduced showing this live). has_oi
+        # (math_exposure_core.py's own canonical "did any contract clear the OI gate" signal)
+        # is checked before either metric read, one exclusion rule instead of two.
+        # isinstance-guarded the same way bucket_metric already is: some callers (the legacy
+        # per-strike WALLS map) still hand this a SimpleNamespace-shaped exposure with no
+        # has_oi field at all -- treated as "no OI signal", same as bucket_metric already
+        # treats a non-dict bucket as "no metric" two lines below.
+        if not (isinstance(b, dict) and b.get("has_oi")):
+            continue
         g = bucket_metric(b, "net_gex_1pct")
         if g is None:
             g = total_gamma_raw_at_strike(b)

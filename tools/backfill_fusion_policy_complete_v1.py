@@ -255,8 +255,7 @@ def main() -> int:
                 continue
 
             if hz_errs:
-                for h in hz_errs:
-                    summary["failure_categories"]["PER_HORIZON_STACK"] += 1
+                summary["failure_categories"]["PER_HORIZON_STACK"] += len(hz_errs)
 
             if not flat:
                 skipped += 1

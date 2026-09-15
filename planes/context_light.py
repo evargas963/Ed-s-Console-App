@@ -216,6 +216,11 @@ def build_l1_context(
         md = ent.get("ms_dict") or {}
 
     spot_f = _safe_float(ctx.l0_row.get("spot")) if ctx.l0_row else None
+    # Percent change travels the SAME L0 row spot already does, through the ONE
+    # market_context.resolve_chg_pct authority every other chg_pct caller uses (not a
+    # separate decision re-made here) — generic for whichever ticker this L1 build is for.
+    from market_context import resolve_chg_pct
+    chg_f = resolve_chg_pct(tkr, ctx.l0_row.get("chg_pct") if ctx.l0_row else None)
     l0_usable = (
         ctx.l0_row is not None
         and spot_f is not None
@@ -297,6 +302,7 @@ def build_l1_context(
         "structural_context_stale": structural_context_stale,
         "structural_context_age_sec": round(structural_age, 3) if structural_age is not None else None,
         "spot": spot_f,
+        "chg_pct": chg_f,
         "spot_anchors": {
             "vwap": vwap_f,
             "vwap_side": vwap_side,

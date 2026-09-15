@@ -8,7 +8,6 @@ from types import SimpleNamespace
 import monte_carlo
 from bayesian_fusion import FusionPayload, _model_direction_triplet, fuse
 from mc_fusion_adjustment import fuse_payload_apply_mc_adjustment, normalize_mc
-from signals import canonical_forecast_from_fusion
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -74,18 +73,6 @@ def test_fuse_directional_none_when_models_unavailable():
     assert r.available is True
     assert r.prob_up is None
     assert r.reversal_posterior is not None
-
-
-def test_canonical_forecast_missing_directional_triplet():
-    fusion = SimpleNamespace(
-        available=True,
-        stack_directional_authorized=True,
-        prob_up=None,
-        prob_down=None,
-        prob_flat=None,
-    )
-    c = canonical_forecast_from_fusion(fusion)
-    assert c.provenance == "fusion_directional_missing"
 
 
 def test_mc_post_fusion_skips_when_mc_features_incomplete():

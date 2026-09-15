@@ -173,7 +173,7 @@ def test_a_strike_with_no_resolvable_gamma_draws_no_bar():
 
 def test_a_measured_gamma_still_draws_its_bar():
     """Negative control: absence is refused, presence is not."""
-    rows = TE._per_strike_rows({500.0: {"net_gex_1pct": 1_234_567.0}}, [])
+    rows = TE._per_strike_rows({500.0: {"has_oi": True, "net_gex_1pct": 1_234_567.0}}, [])
     assert len(rows) == 1
     assert rows[0][0] == pytest.approx(500.0)
     assert rows[0][1] == pytest.approx(1_234_567.0, rel=1e-6)
@@ -181,8 +181,19 @@ def test_a_measured_gamma_still_draws_its_bar():
 
 def test_a_genuine_zero_gamma_still_draws_its_bar():
     """A strike measured at flat gamma is information and must remain on the chart."""
-    rows = TE._per_strike_rows({500.0: {"net_gex_1pct": 0.0}}, [])
+    rows = TE._per_strike_rows({500.0: {"has_oi": True, "net_gex_1pct": 0.0}}, [])
     assert len(rows) == 1 and rows[0][1] == pytest.approx(0.0)
+
+
+def test_a_strike_with_no_oi_at_all_draws_no_bar_even_with_a_nonzero_accumulator():
+    """RC-SPX (2026-09-14, live reproduction): has_oi=False must win even when the
+    pre-initialized accumulator field somehow carries a nonzero value -- has_oi is the ONE
+    signal every consumer checks, not a redundant belt-and-suspenders re-derivation from the
+    metric itself. This is the exact live SPX defect: a bucket that never cleared the OI gate
+    must never present its accumulator as a computed value, regardless of what that
+    accumulator happens to hold."""
+    rows = TE._per_strike_rows({500.0: {"has_oi": False, "net_gex_1pct": 1_234_567.0}}, [])
+    assert rows == [], f"drew a bar for a strike that never cleared the OI gate: {rows}"
 
 
 # ------------------------------------- a NULL bar volume is not zero traded volume ----

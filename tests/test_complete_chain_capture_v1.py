@@ -13,8 +13,10 @@ import json
 import sqlite3
 from pathlib import Path
 
+import calibration.complete_chain_capture as ccc
 from calibration.complete_chain_capture import (
     latest_complete_chain_capture,
+    nearest_complete_chain_capture,
     persist_complete_chain_capture,
 )
 
@@ -116,3 +118,63 @@ def test_corrupt_json_row_reads_as_none_not_an_exception(tmp_path):
     con.commit()
     con.close()
     assert latest_complete_chain_capture(db_path, "TSLA", _TSLA_EXPIRY) is None
+
+
+def test_nearest_memoizes_within_the_ttl_so_repeated_calls_never_touch_the_db(monkeypatch, tmp_path):
+    """MEASURED live via py-spy (2026-09-14, spot/gamma-360-audit): the streamed-greeks hook
+    calls this once PER CANDIDATE CONTRACT on every tick with zero caching -- opening a fresh
+    sqlite3 connection and json.loads()-ing the whole chain every single time, for data that
+    only changes when a NEW complete capture lands. The memo must make every call after the
+    first, for the same (db_path, ticker, cutoff), a pure cache hit -- zero DB opens."""
+    ccc._nearest_capture_memo.clear()
+    db_path = tmp_path / "cap.db"
+    persist_complete_chain_capture(
+        db_path, ticker="TSLA", expiry=_TSLA_EXPIRY, contracts=_TSLA_CONTRACTS,
+        spot=350.0, completeness_basis="strike_range=ALL", ts_utc=1000.0)
+
+    calls = {"n": 0}
+    real_connect = sqlite3.connect
+
+    def _counting_connect(*a, **k):
+        calls["n"] += 1
+        return real_connect(*a, **k)
+
+    monkeypatch.setattr(sqlite3, "connect", _counting_connect)
+    try:
+        first = nearest_complete_chain_capture(db_path, "TSLA", on_or_after_expiry="2000-01-01")
+        second = nearest_complete_chain_capture(db_path, "TSLA", on_or_after_expiry="2000-01-01")
+        third = nearest_complete_chain_capture(db_path, "TSLA", on_or_after_expiry="2000-01-01")
+    finally:
+        ccc._nearest_capture_memo.clear()
+    assert first is not None and second is not None and third is not None
+    assert first == second == third
+    assert calls["n"] == 1, f"expected exactly ONE real DB open across 3 calls, got {calls['n']}"
+
+
+def test_nearest_memo_self_heals_after_the_ttl_expires(monkeypatch, tmp_path):
+    """The memo must not wedge a stale answer forever -- once the TTL window elapses, the
+    next call re-reads the DB (picking up a NEW complete capture that landed meanwhile)."""
+    ccc._nearest_capture_memo.clear()
+    db_path = tmp_path / "cap.db"
+    persist_complete_chain_capture(
+        db_path, ticker="TSLA", expiry=_TSLA_EXPIRY, contracts=_TSLA_CONTRACTS,
+        spot=350.0, completeness_basis="strike_range=ALL", ts_utc=1000.0)
+
+    fake_now = [1_000_000.0]
+    monkeypatch.setattr(ccc.time, "monotonic", lambda: fake_now[0])
+    try:
+        first = nearest_complete_chain_capture(db_path, "TSLA", on_or_after_expiry="2000-01-01")
+        fake_now[0] += ccc._NEAREST_CAPTURE_MEMO_TTL_SEC + 1.0
+        real_connect = sqlite3.connect
+        calls = {"n": 0}
+
+        def _counting_connect(*a, **k):
+            calls["n"] += 1
+            return real_connect(*a, **k)
+
+        monkeypatch.setattr(sqlite3, "connect", _counting_connect)
+        second = nearest_complete_chain_capture(db_path, "TSLA", on_or_after_expiry="2000-01-01")
+    finally:
+        ccc._nearest_capture_memo.clear()
+    assert first is not None and second is not None
+    assert calls["n"] == 1, "expected the DB to be re-read once the TTL window elapsed"

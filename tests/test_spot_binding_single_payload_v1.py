@@ -1,6 +1,12 @@
 # institutional-synthetic-ok: these tests INJECT dual-age spot fallbacks / missing as_of
 # surfaces to prove the RC-225 / census #8 spot-binding lock BLOCKS — that is their purpose.
-"""RC-225: each screen binds spot from one declared payload field with as_of age visible."""
+"""RC-225: each screen binds spot from one declared payload field with as_of age visible.
+
+test_console_kills_last_price_quote_mid_fallback was retired here (/console cutover, operator
+directive 2026-09-14): it locked legacy static/index.html's own consoleSpot(d) function, which
+has no equivalent in the new console (static/js/ed-core.js reads a spot field inline per call
+site, not through one shared function) -- see tools/spot_binding_lock.py's
+console_binding_violations docstring for the full disposition."""
 from __future__ import annotations
 
 import sys
@@ -15,7 +21,6 @@ from tools.data_faucet_audit import audit_client  # noqa: E402
 
 CHART = ROOT / "static" / "chart.html"
 EXPOSURE = ROOT / "static" / "exposure.html"
-INDEX = ROOT / "static" / "index.html"
 
 
 def test_shipped_static_spot_binding_is_clean():
@@ -59,18 +64,6 @@ def test_exposure_kills_cycle_fallback():
     assert "terrain.spot" not in src
     assert "spotBindingAgeLabel" in src
     assert "spot_as_of_ts_utc" in src
-
-
-def test_console_kills_last_price_quote_mid_fallback():
-    src = INDEX.read_text(encoding="utf-8")
-    assert "d.spot ?? d.last_price ?? d.quote_mid" not in src
-    import re
-    m = re.search(r"function consoleSpot\(d\)\s*\{(.*?)\n\}", src, re.S)
-    assert m, "consoleSpot missing"
-    body = re.sub(r"//.*$", "", m.group(1), flags=re.M)
-    assert "last_price" not in body and "quote_mid" not in body
-    assert "parseFloat(d.spot)" in body
-    assert "data-price-freshness" in src
 
 
 def test_cycle_fallback_injection_screams():

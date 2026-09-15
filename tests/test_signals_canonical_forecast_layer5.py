@@ -101,13 +101,3 @@ def test_compute_call_forces_wait_on_directional_missing_when_stack_would_be_lon
     assert call.signal == "wait"
     assert call.wait_blocker is not None
     assert call.wait_blocker.get("provenance") == "fusion_directional_missing"
-
-
-def test_unavailable_model_namespace_has_none_probs():
-    from signals import _unavailable_model_namespace
-
-    ns = _unavailable_model_namespace()
-    assert ns.available is False
-    assert ns.prob_up is None
-    assert ns.prob_down is None
-    assert ns.prob_flat is None

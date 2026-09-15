@@ -62,7 +62,7 @@ def replay_max_hold_bars_for_setup(micro_regime: str, trade_type: str) -> int:
 
     Canonical 1m snapshots: one bar ≈ one minute of RTH cadence in the training table.
     """
-    from micro_structure import R_COMPRESSION, R_RANGE
+    from micro_structure import R_COMPRESSION
 
     if trade_type == "none":
         return TRADE_TYPE_HOLD_BARS["none"]  # 0 — no-trade signal short-circuits micro_regime
@@ -70,8 +70,6 @@ def replay_max_hold_bars_for_setup(micro_regime: str, trade_type: str) -> int:
         return MICRO_REGIME_HOLD_BARS_COMPRESSION  # 15 — compression overrides trade_type defaults
     if trade_type in TRADE_TYPE_HOLD_BARS:
         return TRADE_TYPE_HOLD_BARS[trade_type]
-    if micro_regime == R_RANGE:
-        return TRADE_TYPE_HOLD_BARS_DEFAULT
     return TRADE_TYPE_HOLD_BARS_DEFAULT
 
 

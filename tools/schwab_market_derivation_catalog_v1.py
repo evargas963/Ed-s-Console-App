@@ -329,8 +329,6 @@ class DerivationVisitor(ast.NodeVisitor):
                 sk: str | None = None
                 if isinstance(key, ast.Constant) and isinstance(key.value, str):
                     sk = key.value
-                elif isinstance(key, ast.Str):  # py<3.8 compat unused in 3.10+
-                    sk = key.s
                 if sk and sk in MARKET_GET_KEYS and len(node.args) >= 2:
                     default = node.args[1]
                     if _is_zeroish(default) or isinstance(

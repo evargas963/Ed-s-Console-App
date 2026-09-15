@@ -16,7 +16,7 @@ log = logging.getLogger(__name__)
 
 
 def _derive_bias_from_micro(micro, approaching_ceiling, approaching_floor,
-                             vwap_side, zone) -> tuple[str, str]:
+                             vwap_side) -> tuple[str, str]:
     """
     Convert micro regime + level context into a structural bias.
 
@@ -196,7 +196,6 @@ def compute_rules(inp: SignalInput, *, mvp_features: dict) -> RulesCard:
         approaching_ceiling=approaching_ceiling,
         approaching_floor=approaching_floor,
         vwap_side=mvp_vwap_side(mvp_features),
-        zone=mvp_zone(mvp_features),
     )
 
     # ── 1-min early warning / circuit breaker ─────────────────────────────────

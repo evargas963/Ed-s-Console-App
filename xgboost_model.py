@@ -177,13 +177,13 @@ def _fallback(reason: str) -> XGBoostOutput:
 # TRAINING DELEGATION
 # ══════════════════════════════════════════════════════════════════════════════
 
-def train(db_path: str = None, min_date: str = None) -> dict:
+def train() -> dict:
     """
     Trigger XGBoost training. Delegates to ml_train.py.
 
-    Args:
-        db_path:  override DB path (default: ml_train's default)
-        min_date: only train on data after this date (ISO format)
+    ml_train.main() parses its own arguments from sys.argv (--db, --ticker, --all,
+    --evaluate-only, ...); this wrapper does not accept db_path/min_date overrides
+    because ml_train.main() has no such parameters to receive them.
 
     Returns:
         dict with training results (accuracy, feature importance, etc.)

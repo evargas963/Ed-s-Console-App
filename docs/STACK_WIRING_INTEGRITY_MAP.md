@@ -9,6 +9,25 @@
 
 **`stack_integrity_v1` UI dispatch (STACK-WIRE-1):** Events with `authority_intact=False` → operator-visible degraded badge; `authority_intact=True` → info-tier (may be silent in UI).
 
+**2026-09-15 — four e2e behavioral specs retired, rows below not yet re-annotated per-row.** The
+`/console` → `/` cutover (2026-09-14) replaced `static/index.html`'s content; several rows in this
+map still cite behavioral proofs in `tests/e2e/find-liveui-6-direction-withhold.spec.js`,
+`issue18-card-render-behavioral.spec.js`, `stack-wire-3-ui-phase3-behavioral.spec.js`, and
+`stack-wire-4-cand-ui-fusion-gate.spec.js` — all four files were deleted 2026-09-15 after direct
+verification (file read + `git show HEAD`, not assumed) that every `window.*` helper and DOM id
+they exercised (`bundleDirectionWithheld`, `horizonDirectionWithheld`, `isFusionAuthoritative`,
+`effectiveDirection`, `computeSpreadGate`, `renderContextLayer`, `renderTimeframeSignalRow`, `THE
+CALL` / Decision Command Rail markup, etc.) is absent from the current `static/index.html`. Their
+Python static-guard companions (`test_find_liveui_6_v1.py`, `test_issue18_ui_contract.py`,
+`test_stack_wire_4_cand_ui_fusion_gate.py`) were already retired in the earlier legacy-test triage
+(commit `623574df`, 2026-09-14) with the stated reason "THE CALL and 1m/5m/15m/60m horizons remain
+excluded until ticker-universal evidence earns them" — a standing exclusion in
+`static/js/ed-trade-desk.js`'s own header comment, attributed there to the operator's own gate, not
+an oversight. The producer-side (`server.py`) rows these behavioral proofs paired with are
+unaffected; only the client-side "behavioral" citations below are now stale and should be read as
+historical, not current, coverage. `stack-wire-1/2/5-*.spec.js` and their producer-side tests are
+untouched by this note.
+
 ## Schema (required columns — use verbatim for new rows)
 
 | Column | Meaning |

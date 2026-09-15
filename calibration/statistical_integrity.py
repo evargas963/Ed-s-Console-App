@@ -105,20 +105,9 @@ def _gate_ok_for_value(val: Any, gate: dict[str, Any] | None) -> bool:
         return False
 
 
-def _edge_discovery_slice_gate(slice_row: dict[str, Any]) -> dict[str, Any]:
-    g = bucket_gate(int(slice_row.get("n") or 0), MIN_SAMPLES_STATISTICAL)
-    if slice_row.get("gate_sufficient") is False:
-        return {
-            **g,
-            "sufficient_sample": False,
-            "status": "insufficient_sample",
-        }
-    return g
-
-
-def _edge_discovery_bootstrap_gate(boot: dict[str, Any]) -> dict[str, Any]:
-    g = bucket_gate(int(boot.get("n") or 0), MIN_SAMPLES_STATISTICAL)
-    if boot.get("gate_sufficient") is False:
+def _edge_discovery_gate(row: dict[str, Any]) -> dict[str, Any]:
+    g = bucket_gate(int(row.get("n") or 0), MIN_SAMPLES_STATISTICAL)
+    if row.get("gate_sufficient") is False:
         return {
             **g,
             "sufficient_sample": False,
@@ -354,13 +343,13 @@ _EDGE_DISCOVERY_BOOTSTRAP_NUMERIC_KEYS = ("mean_delta", "ci95_low", "ci95_high")
 def verify_edge_discovery_no_numeric_leak(out: dict[str, Any]) -> bool:
     """Slice aggregates and naive Pearson must not report rates/means below MIN_SAMPLES_STATISTICAL."""
     for s in out.get("slices_all") or []:
-        g = _edge_discovery_slice_gate(s)
+        g = _edge_discovery_gate(s)
         for k in _EDGE_DISCOVERY_SLICE_NUMERIC_KEYS:
             if not _gate_ok_for_value(s.get(k), g):
                 return False
         for boot_key in ("bootstrap_actual_minus_long", "bootstrap_actual_minus_random"):
             boot = s.get(boot_key) or {}
-            bg = _edge_discovery_bootstrap_gate(boot)
+            bg = _edge_discovery_gate(boot)
             for k in _EDGE_DISCOVERY_BOOTSTRAP_NUMERIC_KEYS:
                 if not _gate_ok_for_value(boot.get(k), bg):
                     return False

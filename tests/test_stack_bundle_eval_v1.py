@@ -101,6 +101,10 @@ def test_pack_metrics_ok_at_min_samples_statistical():
     m = pack_metrics_for_probs("test", y, probs)
     assert m["n_rows_scored"] == n
     assert "multiclass_log_loss" in m
+    assert m["multiclass_log_loss"] < 1.0
+    assert m["balanced_accuracy"] >= 0.0
+    assert "confusion_matrix" in m
+    assert m["macro_f1"] >= 0.0
 
 
 def test_authority_policy_calibration_missing_ece_blocks_heuristic():

@@ -108,6 +108,11 @@ def test_model_probs_to_fusion_out_none_input():
     assert mp._model_probs_to_fusion_out(None, "wait") is None
 
 
+def test_run_unified_stack_ml_once_requires_inference_snapshot_v1():
+    with pytest.raises(ValueError, match="inference_snapshot_v1"):
+        mp.run_unified_stack_ml_once({"ticker": "SPY"}, "SPY", None, "wait")
+
+
 def test_model_probs_to_ui_output_fail_closed_on_partial_dict():
     out = mp._model_probs_to_ui_output({"up": 0.5, "down": 0.3}, approved=True)
     assert out["available"] is False

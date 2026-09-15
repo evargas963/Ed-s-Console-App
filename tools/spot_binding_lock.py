@@ -14,7 +14,6 @@ REPO = Path(__file__).resolve().parent.parent
 _SCAN = (
     "static/chart.html",
     "static/exposure.html",
-    "static/index.html",
 )
 
 # Silent dual-age shapes the mission kills.
@@ -99,6 +98,20 @@ def exposure_binding_violations(text: str) -> list[str]:
 
 
 def console_binding_violations(text: str) -> list[str]:
+    """Legacy static/index.html's OWN spot-binding shape (a single consoleSpot(d) function
+    reading one declared field, plus a #data-price-freshness age surface). Retained only for
+    the negative-control test that exercises this function directly against a synthetic
+    fixture (tests/test_spot_binding_single_payload_v1.py's
+    test_console_dual_field_injection_screams) -- NOT wired into scan_tracked_static() below
+    since the /console cutover (operator directive 2026-09-14). The new console has no single
+    named spot-authority function to check the same way (static/js/ed-core.js's paintQuote()
+    and every ed-*.js panel each read a spot field from their own already resolve_spot()-backed
+    endpoint response inline, per call site, not through one shared consoleSpot()-shaped
+    function) -- a real equivalent structural lock for that pattern is future work, not
+    reproduced here. Independent-review finding: fix
+    static/js/ed-trade-desk.js's own dual-response spot fallback (levelsD.spot : terrain.spot)
+    directly instead, since both of ITS sources are already resolve_spot()-backed server-side
+    and the fallback shape itself is what this lock exists to ban."""
     out: list[str] = []
     code = _strip_comments(text)
     if _CONSOLE_DUAL_FIELD_RE.search(code):

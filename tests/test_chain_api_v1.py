@@ -110,7 +110,7 @@ def test_chain_fails_closed_with_no_stored_chain(monkeypatch, tmp_path):
 
     _no_live_client(monkeypatch, srv)
     _fake_db(monkeypatch, srv, tmp_path)
-    monkeypatch.setattr(srv, "_latest_chain_and_spot", lambda t: (None, None))
+    monkeypatch.setattr(srv, "_latest_chain_and_spot", lambda t: (None, None, None))
     body = json.loads(srv.get_chain(ticker="ZZZZ", expiry=None).body)
     assert body["ticker"] == "ZZZZ"
     assert body["contracts"] == []
@@ -127,7 +127,7 @@ def test_chain_falls_back_to_stored_contracts_verbatim_on_live_failure(monkeypat
     _no_live_client(monkeypatch, srv)
     _fake_db(monkeypatch, srv, tmp_path)
     monkeypatch.setattr(srv, "_latest_chain_and_spot",
-                        lambda t: (_REAL_CONTRACTS, _REAL_SPOT))
+                        lambda t: (_REAL_CONTRACTS, _REAL_SPOT, 1_700_000_000.0))
     body = json.loads(srv.get_chain(ticker="SPY", expiry=None).body)
     assert body["contracts"] == _REAL_CONTRACTS   # byte-for-byte pass-through
     assert body["scope"]["kind"] == "stored_analytical_snapshot_fallback"
@@ -144,7 +144,7 @@ def test_chain_uppercases_and_strips_ticker(monkeypatch, tmp_path):
 
     def _spy(t):
         seen.append(t)
-        return None, None
+        return None, None, None
     monkeypatch.setattr(srv, "_latest_chain_and_spot", _spy)
     body = json.loads(srv.get_chain(ticker=" spy ", expiry=None).body)
     assert body["ticker"] == "SPY"
@@ -226,6 +226,366 @@ def test_chain_fractional_strikes_survive_vendor_to_api_unchanged(monkeypatch, t
     vendor_row = next(c for c in _TSLA_CONTRACTS if c["symbol"] == vendor_frac_symbol)
     api_row = next(c for c in body["contracts"] if c["symbol"] == vendor_frac_symbol)
     assert api_row == vendor_row, "no rounding, no coercion, no field loss on a real fractional strike"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Streamed-volume overlay (independent review, 2026-09-13)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _tsla_contracts_with_target_quote_time(native_ts):
+    """Deep-copy `_TSLA_CONTRACTS` with the target (first) contract's own `quoteTimeInLong`
+    pinned to `native_ts` (seconds; converted to the vendor's epoch-ms convention).
+
+    A FIFTH independent review (2026-09-13), REPRODUCED: overlay_streamed_contract_fields's
+    ordering guard now keys off each CONTRACT's own native `quoteTimeInLong`, never a
+    single shared REST-fetch instant (see that function's own fifth-review docstring
+    finding) -- so a test that wants to exercise "is a streamed value newer/older than the
+    REST baseline" must control THIS SPECIFIC contract's native quote time, not rely on
+    the fixture's own real (and irrelevantly ~16-day-old) captured value, and never resort
+    to an impossible future `ts_recv` to manufacture "newer" artificially. Returns
+    (contracts, target_contract) so callers compare unrelated fields against the actual
+    served base contract, not the unmodified fixture original."""
+    contracts = [dict(c) for c in _TSLA_CONTRACTS]
+    contracts[0]["quoteTimeInLong"] = native_ts * 1000.0
+    return contracts, contracts[0]
+
+
+def _push_streamed_volume(ofs_mod, target_symbol, underlying, streamed_volume, ts_recv):
+    """Shared setup: make `target_symbol` the currently-desired contract and push a real
+    TOTAL_VOLUME observation through push_level_one -> OrderFlowState with an EXPLICIT
+    ts_recv, so ordering relative to a REST fetch's own timestamp is deterministic (no
+    wall-clock races). Returns the (prior_contract, prior_contracts) to restore."""
+    from app.options.order_flow.state import push_level_one
+    prior_contract, prior_contracts = ofs_mod._active_option_contract, ofs_mod._active_option_contracts
+    ofs_mod._active_option_contract = target_symbol
+    ofs_mod._active_option_contracts = []
+    push_level_one(target_symbol, {
+        "key": target_symbol, "assetMainType": "OPTION", "UNDERLYING": underlying,
+        "TOTAL_VOLUME": streamed_volume,
+    }, ts_recv=ts_recv)
+    return prior_contract, prior_contracts
+
+
+def test_chain_overlays_streamed_volume_onto_the_rest_snapshot(monkeypatch, tmp_path):
+    """Independent-review finding (2026-09-13), REPRODUCED then FIXED: a controlled test
+    wrote a streamed TOTAL_VOLUME observation into SQLite, ran it through the REAL replay
+    path (push_level_one -> OrderFlowState), confirmed the in-memory state correctly
+    advanced, then hit the actual /api/chain route and got the REST-only volume back
+    unchanged -- the streamed value never reached this response at all. This route now
+    calls the SAME overlay faucet (_gamma_surface_contracts_with_stream_overlay ->
+    overlay_streamed_contract_fields) refresh_gamma_surface_from_stream already uses for
+    the terrain/gamma-surface path, so a genuinely fresher streamed volume overrides the
+    REST snapshot's own value for the exact contract it belongs to -- and only that one.
+
+    Uses the REAL TSLA fixture and the REAL push_level_one ingestion write (not a
+    reimplementation of the merge/freshness logic), exactly like
+    tests/test_streamed_greeks_hook_v1.py already does for the gamma-surface path.
+
+    A FOURTH independent review (2026-09-13): the ordering fix below (newer_than_ts is now
+    THIS fetch's own instant, not None) means a streamed observation must be newer than the
+    REST baseline it would override to legitimately overlay.
+
+    A FIFTH independent review (2026-09-13), REPRODUCED then repaired: this test used to
+    push with an impossible future-dated `ts_recv` (`time.time() + 10`) purely to dodge the
+    ordering guard. No future timestamp is needed: the target contract's own native
+    `quoteTimeInLong` is pinned to a REALISTIC 20-second-stale value (an illiquid strike
+    Schwab had not re-quoted recently, inside an otherwise-fresh chain response) via
+    `_tsla_contracts_with_target_quote_time`, so a plain, real, present-moment push is
+    already unambiguously newer than THIS contract's own last quote.
+    """
+    import json
+    import time
+
+    import app.options.order_flow.streaming as ofs
+    import server as srv
+
+    now = time.time()
+    contracts, target = _tsla_contracts_with_target_quote_time(now - 20.0)
+    target_symbol = target["symbol"]
+    rest_volume = target["totalVolume"]
+    streamed_volume = (rest_volume or 0) + 4321   # unambiguously different from the REST value
+    assert streamed_volume != rest_volume
+
+    prior_contract, prior_contracts = _push_streamed_volume(
+        ofs, target_symbol, "TSLA", streamed_volume, now)
+    try:
+        monkeypatch.setattr(srv, "get_client", lambda: object())
+        monkeypatch.setattr(srv, "_fetch_expiries_light", lambda t: [_TSLA_EXPIRY])
+        _fake_db(monkeypatch, srv, tmp_path)
+        c_json = _chain_json_for(contracts)
+        c_json["underlying"] = {"last": _TSLA_COMPLETE.get("spot")}
+        monkeypatch.setattr(srv, "_gated_safe_get_chain", _fake_gated_isolating_ALL(c_json, []))
+
+        body = json.loads(srv.get_chain(ticker="TSLA", expiry=None).body)
+    finally:
+        ofs._active_option_contract, ofs._active_option_contracts = prior_contract, prior_contracts
+        from app.options.order_flow.state import clear_symbol
+        clear_symbol(target_symbol)
+
+    assert body["scope"]["kind"] == "complete_single_expiry"
+    assert body.get("stream_overlay_contracts", 0) >= 1, "the response must disclose that a streamed field actually overlaid something"
+    overlaid = next(c for c in body["contracts"] if c["symbol"] == target_symbol)
+    assert overlaid["totalVolume"] == streamed_volume, (
+        f"streamed volume ({streamed_volume}) never reached /api/chain -- "
+        f"still serving the REST snapshot's own value ({overlaid['totalVolume']})"
+    )
+    # Every OTHER field on this exact contract, and every OTHER contract entirely, must be
+    # untouched -- this is a sparse overlay of one field on one contract, never a second
+    # exposure/formula path and never collateral change to unrelated rows.
+    for k, v in target.items():
+        if k == "totalVolume":
+            continue
+        assert overlaid[k] == v, f"unrelated field {k!r} was changed by the volume overlay"
+    other_symbol = next(c["symbol"] for c in _TSLA_CONTRACTS if c["symbol"] != target_symbol)
+    other_vendor = next(c for c in _TSLA_CONTRACTS if c["symbol"] == other_symbol)
+    other_api = next(c for c in body["contracts"] if c["symbol"] == other_symbol)
+    assert other_api == other_vendor, "a contract with no streamed data must be byte-for-byte untouched"
+
+
+def test_chain_does_not_let_an_older_streamed_volume_replace_a_newer_rest_value(monkeypatch, tmp_path):
+    """A FOURTH independent review (2026-09-13), REPRODUCED: `_gamma_surface_contracts_with_
+    stream_overlay` was called from this route with `newer_than_ts=None`, disabling the
+    ordering guard entirely -- a streamed TOTAL_VOLUME observed BEFORE this exact REST fetch
+    (concretely reported: streamed 111/gamma .01, four seconds old, replacing a newer REST
+    333/gamma .03) still overlaid onto the fresher REST snapshot, because only the absolute
+    `max_staleness_sec` bound was checked, never "is this actually newer than the specific
+    REST baseline it would replace." Fixed by capturing this fetch's own instant
+    (`_rest_fetch_ts`) and passing it as `newer_than_ts`.
+
+    A FIFTH independent review (2026-09-13), REPRODUCED: this test's original `time.time() -
+    10` push was a TEST ESCAPE, not a proof -- at ~10 seconds old it is rejected by the
+    PRE-EXISTING absolute `GAMMA_SURFACE_STREAM_STALENESS_SEC = 10.0` filter regardless of
+    whether the ordering guard does anything at all (independently confirmed: the identical
+    input produces the identical rejection against the pre-fix `445a464d` route). Repaired
+    to isolate the ordering guard specifically: the target contract's own native
+    `quoteTimeInLong` is pinned to "right now" (this REST response's own fresh quote for the
+    contract), and the streamed push is only 1 second older than THAT -- comfortably inside
+    the 10-second absolute-staleness window (so that filter alone would NOT reject it), yet
+    still genuinely older than this contract's own REST-reported observation, so a rejection
+    here can only be the ordering guard doing its job.
+    """
+    import json
+    import time
+
+    import app.options.order_flow.streaming as ofs
+    import server as srv
+
+    now = time.time()
+    contracts, target = _tsla_contracts_with_target_quote_time(now)
+    target_symbol = target["symbol"]
+    rest_volume = target["totalVolume"]
+    stale_streamed_volume = (rest_volume or 0) + 4321
+    assert stale_streamed_volume != rest_volume
+
+    prior_contract, prior_contracts = _push_streamed_volume(
+        ofs, target_symbol, "TSLA", stale_streamed_volume, now - 1.0)
+    try:
+        monkeypatch.setattr(srv, "get_client", lambda: object())
+        monkeypatch.setattr(srv, "_fetch_expiries_light", lambda t: [_TSLA_EXPIRY])
+        _fake_db(monkeypatch, srv, tmp_path)
+        c_json = _chain_json_for(contracts)
+        c_json["underlying"] = {"last": _TSLA_COMPLETE.get("spot")}
+        monkeypatch.setattr(srv, "_gated_safe_get_chain", _fake_gated_isolating_ALL(c_json, []))
+
+        body = json.loads(srv.get_chain(ticker="TSLA", expiry=None).body)
+    finally:
+        ofs._active_option_contract, ofs._active_option_contracts = prior_contract, prior_contracts
+        from app.options.order_flow.state import clear_symbol
+        clear_symbol(target_symbol)
+
+    assert body["scope"]["kind"] == "complete_single_expiry"
+    overlaid = next(c for c in body["contracts"] if c["symbol"] == target_symbol)
+    assert overlaid["totalVolume"] == rest_volume, (
+        f"a streamed volume OLDER than this fetch's own REST read ({stale_streamed_volume}) "
+        f"incorrectly replaced the newer REST value ({rest_volume}) -- got {overlaid['totalVolume']}"
+    )
+    assert body.get("stream_overlay_contracts", 0) == 0, (
+        "no contract should be counted as overlaid when the only streamed value available "
+        "predates this fetch's own REST baseline"
+    )
+
+
+def test_chain_persists_the_pre_overlay_rest_capture_not_the_blended_response(monkeypatch, tmp_path):
+    """A FOURTH independent review (2026-09-13), REPRODUCED: the persisted
+    complete_chain_captures row is this route's own durable "proven-complete, live
+    strike_range=ALL REST capture" record (see the module docstring's tier-1 definition) --
+    but persist_complete_chain_capture was called with the OVERLAID contracts, silently
+    blending a streamed field into a table whose whole contract is being a pure REST
+    snapshot, with no per-field provenance or streamed-timestamp column to tell a later
+    reader which value came from where. Fixed: the route persists the contracts exactly as
+    the vendor returned them; the overlay applies only to the JSON response.
+
+    A FIFTH independent review (2026-09-13): no impossible future `ts_recv` needed here --
+    see `_tsla_contracts_with_target_quote_time`'s docstring for why a realistically-stale
+    pinned native quote time makes a plain, present-moment push unambiguously newer.
+    """
+    import time
+
+    import app.options.order_flow.streaming as ofs
+    import server as srv
+    from calibration.complete_chain_capture import latest_complete_chain_capture
+
+    now = time.time()
+    contracts, target = _tsla_contracts_with_target_quote_time(now - 20.0)
+    target_symbol = target["symbol"]
+    rest_volume = target["totalVolume"]
+    streamed_volume = (rest_volume or 0) + 4321
+
+    prior_contract, prior_contracts = _push_streamed_volume(
+        ofs, target_symbol, "TSLA", streamed_volume, now)
+    try:
+        monkeypatch.setattr(srv, "get_client", lambda: object())
+        monkeypatch.setattr(srv, "_fetch_expiries_light", lambda t: [_TSLA_EXPIRY])
+        db_path = _fake_db(monkeypatch, srv, tmp_path)
+        c_json = _chain_json_for(contracts)
+        c_json["underlying"] = {"last": _TSLA_COMPLETE.get("spot")}
+        monkeypatch.setattr(srv, "_gated_safe_get_chain", _fake_gated_isolating_ALL(c_json, []))
+
+        srv.get_chain(ticker="TSLA", expiry=None)
+    finally:
+        ofs._active_option_contract, ofs._active_option_contracts = prior_contract, prior_contracts
+        from app.options.order_flow.state import clear_symbol
+        clear_symbol(target_symbol)
+
+    cap = latest_complete_chain_capture(db_path, "TSLA", _TSLA_EXPIRY)
+    assert cap is not None
+    persisted = next(c for c in cap["contracts"] if c["symbol"] == target_symbol)
+    assert persisted["totalVolume"] == rest_volume, (
+        f"the persisted capture must be the PURE REST value ({rest_volume}), not the "
+        f"response's own streamed-overlaid value ({persisted['totalVolume']}) -- the "
+        f"streamed overlay belongs to the response only, never to this durable REST record"
+    )
+
+
+def test_chain_streamed_overlay_reaches_the_route_over_real_http(monkeypatch, tmp_path):
+    """V04 (test-quality review, 2026-09-13): every other test in this section calls
+    server.get_chain directly. This one goes through the REAL FastAPI route registration
+    and HTTP/JSON round trip (TestClient), so a break in the route's own wiring (path,
+    Query() binding, response serialization) -- not just the handler body -- would be
+    caught, closing the specific "real HTTP" gap named in the fourth independent review.
+
+    A FIFTH independent review (2026-09-13): no impossible future `ts_recv` needed here --
+    see `_tsla_contracts_with_target_quote_time`'s docstring for why a realistically-stale
+    pinned native quote time makes a plain, present-moment push unambiguously newer.
+    """
+    import time
+
+    import app.options.order_flow.streaming as ofs
+    import server as srv
+    from starlette.testclient import TestClient
+
+    now = time.time()
+    contracts, target = _tsla_contracts_with_target_quote_time(now - 20.0)
+    target_symbol = target["symbol"]
+    rest_volume = target["totalVolume"]
+    streamed_volume = (rest_volume or 0) + 4321
+
+    monkeypatch.setattr(srv, "get_client", lambda: object())
+    monkeypatch.setattr(srv, "_fetch_expiries_light", lambda t: [_TSLA_EXPIRY])
+    _fake_db(monkeypatch, srv, tmp_path)
+    c_json = _chain_json_for(contracts)
+    c_json["underlying"] = {"last": _TSLA_COMPLETE.get("spot")}
+    monkeypatch.setattr(srv, "_gated_safe_get_chain", _fake_gated_isolating_ALL(c_json, []))
+
+    prior_contract = prior_contracts = None
+    try:
+        # The app's OWN startup (background stream resubscribe, logger threads, etc.) must
+        # run and settle BEFORE this test pushes its streamed observation and pins the
+        # active contract -- entering that startup sequence can otherwise clear
+        # _active_option_contract as "foreign" to whatever ticker context it initializes
+        # with, wiping this test's own setup before the request ever fires.
+        with TestClient(srv.app) as client:
+            prior_contract, prior_contracts = _push_streamed_volume(
+                ofs, target_symbol, "TSLA", streamed_volume, now)
+            r = client.get("/api/chain", params={"ticker": "TSLA"})
+    finally:
+        if prior_contract is not None or prior_contracts is not None:
+            ofs._active_option_contract, ofs._active_option_contracts = prior_contract, prior_contracts
+        from app.options.order_flow.state import clear_symbol
+        clear_symbol(target_symbol)
+
+    assert r.status_code == 200
+    body = r.json()
+    assert body["scope"]["kind"] == "complete_single_expiry"
+    overlaid = next(c for c in body["contracts"] if c["symbol"] == target_symbol)
+    assert overlaid["totalVolume"] == streamed_volume, (
+        "the streamed overlay must reach the client over the REAL HTTP route, "
+        f"not just the handler called directly -- got {overlaid['totalVolume']}"
+    )
+
+
+def test_chain_overlay_does_not_let_one_fresh_field_borrow_another_fields_freshness(monkeypatch, tmp_path):
+    """A FOURTH independent review (2026-09-13): "keep unrelated fields from borrowing
+    another field's freshness." overlay_streamed_contract_fields already checks each of
+    gamma/delta/open_interest/total_volume against ITS OWN ts_key independently (see
+    math_exposure_core.py's per-field loop) -- proven here at the route level with a
+    contract whose streamed GAMMA is fresh but whose streamed TOTAL_VOLUME is stale: gamma
+    must overlay, volume must not, on the SAME contract, SAME response.
+
+    A FIFTH independent review (2026-09-13): no impossible future `ts_recv` needed for the
+    "fresh" push. The target contract's own native `quoteTimeInLong` is pinned to `now - 5`
+    (this REST response's own contract quote, 5s stale) -- the stale volume push at
+    `now - 8` is genuinely older than that baseline (and still comfortably inside the
+    10-second absolute-staleness window, so that filter alone does not explain the
+    rejection); the fresh gamma push at plain `now` is genuinely newer than that same
+    baseline. Both pushes use real, already-elapsed wall-clock instants -- never a value
+    that has not happened yet.
+    """
+    import time
+
+    import app.options.order_flow.streaming as ofs
+    import server as srv
+    from app.options.order_flow.state import push_level_one, clear_symbol
+
+    now = time.time()
+    contracts, target = _tsla_contracts_with_target_quote_time(now - 5.0)
+    target_symbol = target["symbol"]
+    rest_volume = target["totalVolume"]
+    rest_gamma = target["gamma"]
+    fresh_gamma = round((rest_gamma or 0) + 0.05, 4)
+    stale_volume = (rest_volume or 0) + 4321
+
+    prior_contract, prior_contracts = ofs._active_option_contract, ofs._active_option_contracts
+    ofs._active_option_contract = target_symbol
+    ofs._active_option_contracts = []
+    try:
+        # One push with a volume timestamp OLDER than this contract's own native quote
+        # time (now - 5)...
+        push_level_one(target_symbol, {
+            "key": target_symbol, "assetMainType": "OPTION", "UNDERLYING": "TSLA",
+            "TOTAL_VOLUME": stale_volume,
+        }, ts_recv=now - 8)
+        # ...then a SECOND push adding a gamma NEWER than that same native quote time --
+        # the two fields' own ts_recv values are genuinely independent, not a single shared
+        # one, and neither is a future timestamp.
+        push_level_one(target_symbol, {
+            "key": target_symbol, "assetMainType": "OPTION", "UNDERLYING": "TSLA",
+            "GAMMA": fresh_gamma,
+        }, ts_recv=now)
+
+        monkeypatch.setattr(srv, "get_client", lambda: object())
+        monkeypatch.setattr(srv, "_fetch_expiries_light", lambda t: [_TSLA_EXPIRY])
+        _fake_db(monkeypatch, srv, tmp_path)
+        c_json = _chain_json_for(contracts)
+        c_json["underlying"] = {"last": _TSLA_COMPLETE.get("spot")}
+        monkeypatch.setattr(srv, "_gated_safe_get_chain", _fake_gated_isolating_ALL(c_json, []))
+
+        import json
+        body = json.loads(srv.get_chain(ticker="TSLA", expiry=None).body)
+    finally:
+        ofs._active_option_contract, ofs._active_option_contracts = prior_contract, prior_contracts
+        clear_symbol(target_symbol)
+
+    overlaid = next(c for c in body["contracts"] if c["symbol"] == target_symbol)
+    assert overlaid["gamma"] == fresh_gamma, "the genuinely fresh gamma must overlay"
+    assert overlaid["totalVolume"] == rest_volume, (
+        "the stale volume must NOT overlay just because gamma on the SAME contract did -- "
+        f"got {overlaid['totalVolume']}, expected the REST value {rest_volume}"
+    )
+    for k, v in target.items():
+        if k in ("totalVolume", "gamma"):
+            continue
+        assert overlaid[k] == v, f"unrelated field {k!r} was changed by the overlay"
 
 
 def test_chain_live_fetch_persists_the_complete_capture(monkeypatch, tmp_path):
@@ -359,7 +719,7 @@ def test_chain_live_fetch_non_200_falls_back_to_stored_snapshot(monkeypatch, tmp
     monkeypatch.setattr(srv, "_gated_safe_get_chain",
                         lambda *a, **k: (_FakeResp(502, {}), 0.0, 0.1))
     monkeypatch.setattr(srv, "_latest_chain_and_spot",
-                        lambda t: (_REAL_CONTRACTS, _REAL_SPOT))
+                        lambda t: (_REAL_CONTRACTS, _REAL_SPOT, 1_700_000_000.0))
     body = json.loads(srv.get_chain(ticker="SPY", expiry=None).body)
     assert body["scope"]["kind"] == "stored_analytical_snapshot_fallback"
     assert body["status"] == "ok"
@@ -379,7 +739,7 @@ def test_chain_live_fetch_exception_falls_back_to_stored_snapshot(monkeypatch, t
         raise RuntimeError("simulated vendor error")
     monkeypatch.setattr(srv, "_gated_safe_get_chain", _boom)
     monkeypatch.setattr(srv, "_latest_chain_and_spot",
-                        lambda t: (_REAL_CONTRACTS, _REAL_SPOT))
+                        lambda t: (_REAL_CONTRACTS, _REAL_SPOT, 1_700_000_000.0))
     body = json.loads(srv.get_chain(ticker="SPY", expiry=None).body)
     assert body["scope"]["kind"] == "stored_analytical_snapshot_fallback"
 

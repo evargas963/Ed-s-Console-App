@@ -79,10 +79,6 @@ def main() -> int:
     edge_positive_horizons = set(phase9r.get("edge_positive_horizons", []))
     excluded_hz = set(phase9r.get("excluded_horizons", []))
     thresholds = {}
-    for k, v in phase9r.get("filter_tests", {}).items():
-        _ = k, v
-    for k, v in phase9r.get("final_policy_rules", {}).items():
-        _ = k, v
     # Use Phase 9 selected thresholds from phase9_decision artifact for deterministic execution.
     phase9 = json.loads((ROOT / "data" / "phase9_decision_policy_v1.json").read_text(encoding="utf-8"))
     for k, v in phase9.get("thresholds_selected", {}).items():

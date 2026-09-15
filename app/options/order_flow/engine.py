@@ -736,6 +736,7 @@ def _microstructure_structural(cb: dict) -> dict:
             "liquidity_concentration": "DERIVED",
             "wall_candidates": "DERIVED-HEURISTIC (size-outlier convention; see wall_method)",
             "ages.book_age_sec": "DERIVED", "ages.quote_age_sec": "DERIVED",
+            "ages.book_stale": "DERIVED",
             "provenance.book_time_ms": "NATIVE", "provenance.exchange_quote_ts": "NATIVE",
             "provenance.server_received_ts": "DERIVED",
         },
@@ -783,9 +784,19 @@ def compute_book_microstructure(data: dict, *, now_ts: Optional[float] = None,
     prov["server_received_ts"] = now                # DERIVED (server wall clock at serialization)
     payload.pop("provenance_structural", None)
     payload["provenance"] = prov
+    book_age_sec = round(now - book_time_ms / 1000.0, 3) if book_time_ms else None
     payload["ages"] = {
-        "book_age_sec": round(now - book_time_ms / 1000.0, 3) if book_time_ms else None,
+        "book_age_sec": book_age_sec,
         "quote_age_sec": round(now - exch_ts, 3) if exch_ts else None,
+        # Operator-reproduced defect (2026-09-14): the Book/DOM screen and Trade Desk's Detect
+        # card both rendered a hardcoded "LIVE" badge whenever status != 'no_book', with no
+        # gate on book_age_sec at all -- a book observation aged to 3,600s (subscription long
+        # dead) still painted LIVE. book_age_sec was already computed and even displayed as a
+        # plain number beside that badge; nothing consumed it. Reuses the SAME per-field
+        # freshness boundary (OF_TOP_OF_BOOK_FIELD_STALE_SEC) this file already applies to
+        # individual top-of-book fields, so there is one freshness number for this book, not
+        # a second one invented on the client.
+        "book_stale": (book_age_sec is not None and book_age_sec > OF_TOP_OF_BOOK_FIELD_STALE_SEC),
     }
     return payload
 
@@ -1248,6 +1259,7 @@ class OrderFlowEngine:
             "order_flow_direction": order_flow_direction,
             "order_flow_regime": order_flow_regime,
             "order_flow_readiness": order_flow_readiness,
+            "order_flow_readiness_rvol": _order_flow_readiness_rvol,
             "order_flow_verdict": of_verdict,
             "order_flow_verdict_color": of_verdict_color,
             "order_flow_arrow": of_arrow,

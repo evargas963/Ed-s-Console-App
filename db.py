@@ -522,6 +522,9 @@ class SnapshotRow:
     msft_chg_pct:       Optional[float] = None
     amzn_chg_pct:       Optional[float] = None
     googl_chg_pct:      Optional[float] = None
+    goog_chg_pct:       Optional[float] = None  # RC-UI-3 (2026-09-12): GOOG is Alphabet's OWN
+    # class-C share, a distinct instrument from GOOGL (class A) with its own confluence
+    # weight in SPY_TOP/QQQ_TOP (market_context.py) -- it must not read GOOGL's column.
     avgo_chg_pct:       Optional[float] = None
     meta_chg_pct:       Optional[float] = None
     tsla_chg_pct:       Optional[float] = None
@@ -1220,6 +1223,7 @@ class EdDB:
                 msft_chg_pct        REAL,
                 amzn_chg_pct        REAL,
                 googl_chg_pct       REAL,
+                goog_chg_pct        REAL,
                 avgo_chg_pct        REAL,
                 meta_chg_pct        REAL,
                 tsla_chg_pct        REAL,
@@ -1444,6 +1448,13 @@ class EdDB:
                 WHERE outcome_filled = 0;
             CREATE INDEX IF NOT EXISTS idx_snap_ts
                 ON snapshots(ts_utc);
+            -- idx_snap_similarity_zone_vwap (get_similar_setups' hot-path index) is created
+            -- further down, guarded, after the legacy-column ALTER TABLE migration -- NOT
+            -- here. This executescript's own CREATE TABLE above already carries zone/vwap_side
+            -- for a fresh DB, but a pre-existing snapshots table missing either column made
+            -- this CREATE INDEX IF NOT EXISTS raise sqlite3.OperationalError: no such column:
+            -- zone and abort _init_db entirely (caught live by
+            -- test_migration_issue4_clears_v2_labels' minimal legacy fixture).
 
             -- ── Level cross events ────────────────────────────────────────────
             CREATE TABLE IF NOT EXISTS level_crosses (
@@ -2870,6 +2881,35 @@ class EdDB:
         if added:
             log.info(f"Schema migration: added {added} new columns to snapshots")
 
+        # RC spot/gamma-360-audit (2026-09-14): get_similar_setups' tiers 1-4 filter on
+        # (ticker, timeframe, zone, vwap_side, outcome_1c IS NOT NULL), then ORDER BY
+        # ts_utc DESC LIMIT n. idx_snap_ticker_tf_ts covers only (ticker, timeframe, ts_utc),
+        # so SQLite must walk the WHOLE ticker+timeframe partition in ts_utc order, reading
+        # every row's on-disk page (each row carries two large JSON blob columns -- reading
+        # them off disk costs the same whether or not they end up SELECTed) until it finds
+        # n_similar (500) matches on the far narrower zone+vwap_side+outcome_1c predicate.
+        # MEASURED live (406,532-row snapshots table, 72,285 SPY/1m rows): a single real
+        # get_similar_setups call took 11.1-13.8s -- run from 3-4 background threads on every
+        # analytics cycle, this is the dominant, proven source of the "app is slow" and "spot
+        # has latency" symptoms reported live during RTH (py-spy caught these threads parked
+        # here at the exact moments ordinary quote reads stalled 1-7s).
+        # Partial (WHERE outcome_1c IS NOT NULL, mirroring idx_snap_outcome_unfilled's own
+        # precedent) so the ~half of rows that can never qualify are never indexed at all, and
+        # ts_utc last so tier queries' ORDER BY ts_utc DESC LIMIT n is satisfied directly from
+        # the index without a separate sort step. Guarded (not in the executescript above):
+        # runs after the ALTER TABLE column-patch loop just above, so a legacy/minimal
+        # snapshots table genuinely missing zone or vwap_side skips the index instead of
+        # aborting _init_db (see the executescript's own note at this index's old location).
+        try:
+            with self._connect() as conn:
+                conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_snap_similarity_zone_vwap "
+                    "ON snapshots(ticker, timeframe, zone, vwap_side, ts_utc) "
+                    "WHERE outcome_1c IS NOT NULL"
+                )
+        except sqlite3.OperationalError:
+            pass  # zone/vwap_side not present on this schema
+
         for tbl in ("snapshots_1m_normalized",):
             try:
                 with self._connect() as conn:
@@ -2967,6 +3007,23 @@ class EdDB:
                     pass
 
         for col_name, col_type in (("logger_source", "TEXT"),):
+            for tbl in ("snapshots", "snapshots_1m_normalized"):
+                try:
+                    with self._connect() as conn:
+                        conn.execute(f"ALTER TABLE {tbl} ADD COLUMN {col_name} {col_type}")
+                    log.info("DB migration: added %s to %s", col_name, tbl)
+                except sqlite3.OperationalError:
+                    pass
+
+        # Independent-review finding (2026-09-12), REPRODUCED: market_context.py's
+        # SYMBOL_TO_SNAPSHOT_CHG_COL aliased GOOG onto this same googl_chg_pct column
+        # (there was no goog_chg_pct to point to), so every confluence recompute silently
+        # substituted GOOGL's change for GOOG's own -- double-counting GOOGL's move at both
+        # symbols' weights in SPY_TOP/QQQ_TOP and dropping GOOG's real, independently
+        # diverging price action entirely. GOOG is Alphabet's class-C share, a distinct
+        # instrument from GOOGL (class A); it gets its own column, same as every other
+        # constituent.
+        for col_name, col_type in (("goog_chg_pct", "REAL"),):
             for tbl in ("snapshots", "snapshots_1m_normalized"):
                 try:
                     with self._connect() as conn:

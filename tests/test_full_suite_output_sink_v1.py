@@ -186,7 +186,98 @@ def test_the_canonical_commands_route_through_the_sink():
     assert '"-m", "pytest", "-n", "auto", "--dist", "loadfile", "--durations=20"' in runner
 
     e2e = E2E_RUNNER.read_text(encoding="utf-8")
-    assert 'runWithFileSink("test:e2e", "npx", ["playwright", "test"]' in e2e
+    # Independent-review finding (2026-09-12), REPRODUCED and fixed, then found STILL
+    # BROKEN by a second independent review (2026-09-13): the first fix forwarded the
+    # caller's argv but still routed it through `npx` under `shell: true` (a joined
+    # command string re-parsed by a shell) with a hand-rolled quoting function that could
+    # not actually make that safe on this repo's real (Windows) host. The array must still
+    # start with the native Playwright CLI entry point (now resolved directly, not via
+    # npx) followed by "test", then the caller's OWN forwarded argv verbatim (no quoting
+    # function in between) under shell:false — see
+    # test_forwarded_selection_arguments_reach_the_native_playwright_cli below for the
+    # actual-behavior proof that this spawn mechanism cannot be shell-reinterpreted, not
+    # just this shape.
+    e2e_call_marker = 'runWithFileSink("test:e2e", process.execPath, [PLAYWRIGHT_CLI, "test", ...forwardedArgs]'
+    assert e2e_call_marker in e2e
+    assert "const forwardedArgs = process.argv.slice(2);" in e2e
+    assert "function shellQuoteArg" not in e2e, "the shell-reinterpretation risk this hand-rolled quoting could not close must be deleted, not re-quoted"
+    # the runWithFileSink call site for the actual Playwright invocation, up to its own
+    # closing `});`, must never opt into `shell: true` -- that is exactly the reinterpretation
+    # risk this round's fix removes (ensurePlaywrightReady()'s own OTHER, fixed-literal,
+    # no-forwarded-argv calls may still legitimately use shell:true to resolve npm/npx).
+    e2e_call_block = e2e.split(e2e_call_marker, 1)[1].split("});", 1)[0]
+    assert "shell" not in e2e_call_block, "the forwarded-argv Playwright invocation itself must never go through a shell"
     assert 'stdio: "inherit"' not in e2e.split("ensurePlaywrightReady();", 1)[1], (
         "the Playwright run itself must not inherit the terminal pipe"
     )
+
+
+def test_forwarded_selection_arguments_reach_the_native_playwright_cli(tmp_path):
+    """Independent-review finding (2026-09-12), REPRODUCED and fixed, then found STILL
+    BROKEN by a second independent review (2026-09-13): run-playwright-e2e.mjs used to
+    hardcode `["playwright", "test"]`, discarding any CLI selection arguments this runner
+    was itself invoked with. The 2026-09-12 fix forwarded the caller's argv but still
+    routed it through `npx` under `runWithFileSink(..., shell: true)` -- which joins the
+    whole command into ONE STRING and hands it to a shell to re-parse -- guarded only by a
+    hand-rolled `shellQuoteArg` that wrapped values in double quotes. That does not survive
+    POSIX `$(...)`/backtick substitution inside double quotes, and does not match cmd.exe's
+    own (unrelated) escaping rules on this repo's actual Windows host, so a forwarded
+    argument containing either could still be reinterpreted rather than forwarded verbatim.
+
+    The fix deletes the shell (and npx) from this path entirely: run-playwright-e2e.mjs now
+    resolves Playwright's own CLI entry point directly and spawns it with
+    `runWithFileSink(..., shell: false)`, i.e. `spawnSync(cmd, args, {stdio})` with NO shell
+    at all. This test proves the property that fix actually relies on -- not by
+    reimplementing or re-inspecting quoting logic (there is none left to inspect), but by
+    round-tripping a battery of arguments a shell WOULD mangle (a bare space, an embedded
+    double quote, POSIX `$(...)`/backtick command substitution, a Windows `%VAR%`
+    environment-variable reference, and shell control operators `;`, `|`, `&`) through the
+    exact `runWithFileSink` function run-playwright-e2e.mjs now calls, confirming every one
+    of them arrives at the child process byte-for-byte unchanged, in order, as SEPARATE
+    argv entries.
+    """
+    marker = tmp_path / "argv_dump.json"
+    log_path = tmp_path / "probe.log"
+    dangerous_args = [
+        "tests/e2e/some.spec.js",
+        "-g",
+        "shell structure",
+        "failed additional-contracts request (RC-UI-3)",
+        'a "quoted" name',
+        "$(touch PWNED_POSIX)",
+        "`touch PWNED_BACKTICK`",
+        "%WINDIR%",
+        "a;b|c&d",
+        "a^b",
+    ]
+    # The child just dumps the argv it actually received (everything after the `--`
+    # separator `node -e` uses to distinguish its own script from forwarded args) to a
+    # file -- proving receipt without relying on runWithFileSink's own log-file plumbing.
+    child_code = (
+        "const fs = require('fs');"
+        "fs.writeFileSync(process.env.ARGV_MARKER, JSON.stringify(process.argv.slice(1)));"
+    )
+    script = (
+        "import(" + json.dumps(RUNNER.as_uri()) + ").then(m => {\n"
+        "  const code = m.runWithFileSink(\n"
+        "    'argv-probe', process.execPath,\n"
+        "    ['-e', " + json.dumps(child_code) + ", '--', ..." + json.dumps(dangerous_args) + "],\n"
+        "    { logPath: " + json.dumps(str(log_path)) + ", shell: false,\n"
+        "      env: { ...process.env, ARGV_MARKER: " + json.dumps(str(marker)) + " } }\n"
+        "  );\n"
+        "  process.exit(code);\n"
+        "});\n"
+    )
+    r = subprocess.run(
+        [NODE, "-e", script], cwd=str(ROOT), capture_output=True, text=True, timeout=30,
+    )
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert marker.exists(), "child process never ran / never received its ARGV_MARKER env var\n" + r.stdout + r.stderr
+    got = json.loads(marker.read_text(encoding="utf-8"))
+    assert got == dangerous_args, (
+        f"an argument was reinterpreted in transit: got {got!r}, expected {dangerous_args!r}"
+    )
+    # No POSIX command substitution actually ran (would prove a real shell reparsed
+    # `$(touch ...)` / `` `touch ...` `` instead of forwarding it as an inert string).
+    assert not (ROOT / "PWNED_POSIX").exists(), "a shell executed $(...) inside a forwarded argument"
+    assert not (ROOT / "PWNED_BACKTICK").exists(), "a shell executed a backtick substitution inside a forwarded argument"

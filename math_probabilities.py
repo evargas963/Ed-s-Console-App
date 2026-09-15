@@ -1022,12 +1022,8 @@ def compute_iwm_confluence(
 
         if abs(spread) < 0.15:
             result["spy_iwm_divergence_label"] = "aligned"
-        elif spread > 0.5:
-            result["spy_iwm_divergence_label"] = "iwm_leading"
         elif spread > 0.15:
             result["spy_iwm_divergence_label"] = "iwm_leading"
-        elif spread < -0.5:
-            result["spy_iwm_divergence_label"] = "iwm_lagging"
         elif spread < -0.15:
             result["spy_iwm_divergence_label"] = "iwm_lagging"
         else:

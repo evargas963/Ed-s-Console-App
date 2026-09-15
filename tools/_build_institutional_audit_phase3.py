@@ -49,7 +49,7 @@ def main() -> int:
     spec.loader.exec_module(phase2)
     blind = phase2.run_blind_reconstruction_test()
     (ART / "BLIND_RECONSTRUCTION_TEST_RESULT.json").write_text(
-        json.dumps(blind, indent=2) + "\n", encoding="utf-8"
+        json.dumps(blind, indent=2) + "\n", encoding="utf-8", newline="\n"
     )
 
     i31_tests = _pytest_count("tests/decision_reconstruction/")
@@ -108,7 +108,7 @@ def main() -> int:
         )
 
     (ART / "INSTITUTIONAL_AUDIT_PHASE3_EVIDENCE.json").write_text(
-        json.dumps(evidence, indent=2) + "\n", encoding="utf-8"
+        json.dumps(evidence, indent=2) + "\n", encoding="utf-8", newline="\n"
     )
 
     print(

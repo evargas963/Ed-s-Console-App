@@ -1,0 +1,107 @@
+{
+  "captured_local": "Thu Sep 10 2026 08:52:07 GMT-0500 (Central Daylight Time)",
+  "viewport": "1920x1080",
+  "url": "http://127.0.0.1:8000/console",
+  "scopes": {
+    "Auto": {
+      "heat_rows_shown": 11,
+      "heat_cols_shown": 11,
+      "heat_expired_cols_shown": 0,
+      "heat_row_height_px": 46,
+      "heat_cell_font_px": 13.5,
+      "heat_scrolls": false,
+      "heat_scope_header": "213×34 canonical · 11×11 shown · spot 757.88 · LIVE·window 46s full",
+      "heat_scope_note": "Auto · 11 strikes around spot · 11 of 213 strikes · 11 of 34 expirations202 outside view — widen with Wider / All available",
+      "spot_row": "758",
+      "gbs_rows_shown": 11,
+      "gbs_scope_note": "Auto · 11 strikes around spot · 11 of 213 strikes202 outside view — widen with Wider / All available",
+      "gbs_row_height_px": 25,
+      "key_levels_status": "terrain · live",
+      "key_levels_status_title": "",
+      "body_horizontal_overflow": 0,
+      "screenshot": "console_rth_SPY_1920x1080_auto.png"
+    },
+    "Wider": {
+      "heat_rows_shown": 23,
+      "heat_cols_shown": 22,
+      "heat_expired_cols_shown": 0,
+      "heat_row_height_px": 31,
+      "heat_cell_font_px": 13.5,
+      "heat_scrolls": true,
+      "heat_scope_header": "213×34 canonical · 23×22 shown · spot 757.88 · LIVE·window 46s full",
+      "heat_scope_note": "Wider · 23 strikes around spot · 23 of 213 strikes · 22 of 34 expirations190 outside view — widen with Wider / All available",
+      "spot_row": "758",
+      "gbs_rows_shown": 23,
+      "gbs_scope_note": "Wider · 23 strikes around spot · 23 of 213 strikes190 outside view — widen with Wider / All available",
+      "gbs_row_height_px": 25,
+      "key_levels_status": "terrain · live",
+      "key_levels_status_title": "",
+      "body_horizontal_overflow": 0,
+      "screenshot": "console_rth_SPY_1920x1080_wider.png"
+    },
+    "All available": {
+      "heat_rows_shown": 213,
+      "heat_cols_shown": 34,
+      "heat_expired_cols_shown": 0,
+      "heat_row_height_px": 31,
+      "heat_cell_font_px": 13.5,
+      "heat_scrolls": true,
+      "heat_scope_header": "213×34 canonical · 213×34 shown · spot 757.88 · LIVE·window 46s full",
+      "heat_scope_note": "All available · all available strikes · 213 of 213 strikes · 34 of 34 expirations",
+      "spot_row": "758",
+      "gbs_rows_shown": 213,
+      "gbs_scope_note": "All available · all available strikes · 213 of 213 strikes",
+      "gbs_row_height_px": 25,
+      "key_levels_status": "terrain · live",
+      "key_levels_status_title": "",
+      "body_horizontal_overflow": 0,
+      "screenshot": "console_rth_SPY_1920x1080_all-available.png"
+    }
+  },
+  "build": {
+    "git_sha": "3d3d21c245dcbc6da85f115d1d9b458437e3ab6a",
+    "contract": "meet_or_exceed_v1",
+    "release_id": "rel-1bf95fb8c1a8e58dfcf5ac32",
+    "process_identity": {
+      "schema_version": "1",
+      "startup_git_sha": "3d3d21c245dcbc6da85f115d1d9b458437e3ab6a",
+      "startup_git_sha_short": "3d3d21c245dc",
+      "startup_git_dirty": false,
+      "startup_git_available": true,
+      "startup_identity_captured_at_utc": 1789044434.169816,
+      "process_started_at_utc": 1789044419.493682,
+      "process_id": 25056,
+      "package_build_id": "rel-1bf95fb8c1a8e58dfcf5ac32",
+      "identity_source": "git_startup_capture",
+      "identity_capture_error": null
+    },
+    "repository_state_now": {
+      "repo_head_now": "3d3d21c245dcbc6da85f115d1d9b458437e3ab6a"
+    },
+    "code_drift": {
+      "repo_moved_past_process": false,
+      "running_code": "3d3d21c245dcbc6da85f115d1d9b458437e3ab6a",
+      "checked_out_code": "3d3d21c245dcbc6da85f115d1d9b458437e3ab6a"
+    },
+    "git_sha_semantics": "startup_process_identity"
+  },
+  "surface_api": {
+    "ticker": "SPY",
+    "source": "terrain_live_cache",
+    "live": true,
+    "stale": false,
+    "session_date_et": "2026-09-10",
+    "prior_session": false,
+    "spot": 757.8795,
+    "strikes": 213,
+    "expirations": 34,
+    "expired_expirations": [],
+    "cells": 213
+  },
+  "strikes_api": {
+    "rows": 213,
+    "source": "terrain_live_cache",
+    "stale": false,
+    "age": 50.5
+  }
+}

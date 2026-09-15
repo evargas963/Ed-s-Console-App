@@ -69,16 +69,9 @@ def table_distance_stats(conn: sqlite3.Connection, table: str) -> dict[str, Any]
     nbd_null = int(
         conn.execute(f"SELECT COUNT(*) FROM {t} WHERE nearest_below_dist IS NULL").fetchone()[0]
     )
-    viol_a = int(
-        conn.execute(
-            f"SELECT COUNT(*) FROM {t} WHERE nearest_above_dist IS NOT NULL AND nearest_above_dist < 0"
-        ).fetchone()[0]
-    )
-    viol_b = int(
-        conn.execute(
-            f"SELECT COUNT(*) FROM {t} WHERE nearest_below_dist IS NOT NULL AND nearest_below_dist < 0"
-        ).fetchone()[0]
-    )
+    # SQL three-valued logic already excludes NULLs from "x < 0" (NULL < 0 is NULL, not TRUE),
+    # so "IS NOT NULL AND x < 0" is logically identical to "x < 0" — nad_neg/nbd_neg above ARE
+    # the non-null negative violation counts; no separate query needed.
     return {
         "table": t,
         "total_rows": total,
@@ -86,7 +79,7 @@ def table_distance_stats(conn: sqlite3.Connection, table: str) -> dict[str, Any]
         "nearest_below_dist_lt_0": nbd_neg,
         "nearest_above_dist_null": nad_null,
         "nearest_below_dist_null": nbd_null,
-        "non_null_negative_violations": {"nearest_above_dist": viol_a, "nearest_below_dist": viol_b},
+        "non_null_negative_violations": {"nearest_above_dist": nad_neg, "nearest_below_dist": nbd_neg},
     }
 
 

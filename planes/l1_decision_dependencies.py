@@ -135,6 +135,11 @@ L1_KNOWN_NON_MATERIAL_TOP_LEVEL_KEYS: Final[frozenset[str]] = frozenset(
         "mid_source",
         "spread_source",
         "spread_pts_source",
+        # RC (2026-09-11, live-preview finding): percent-change display attribute, same
+        # class as quote_mid/spread_source above — never a gamma/terrain/decision input,
+        # resolved by market_context.resolve_chg_pct and carried onto the L1 payload
+        # alongside spot purely for the header/watchlist to render.
+        "chg_pct",
     }
 )
 

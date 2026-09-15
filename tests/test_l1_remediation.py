@@ -286,34 +286,30 @@ def test_index_html_l1_scope_and_generation_guards():
     The real guard is the monotonic-generation call itself. Asserted structurally
     here; the BEHAVIOR of l1ApplyTierBLightMonotonic (5->7 accept, 7->6 reject,
     same-gen older serverTs reject) is executed against the real shipped JS by
-    tests/l1_sse_guards_node.mjs, which stays the authority for it."""
-    html = (ROOT / "static" / "index.html").read_text(encoding="utf-8", errors="replace")
-    assert "_l1GenByScope" in html
-    assert "renderTierBLight" in html
-    assert "l1_generation" in html
+    tests/l1_sse_guards_node.mjs, which stays the authority for it.
+
+    Repointed to static/js/ed-core.js (/console cutover, operator directive 2026-09-14):
+    the new console's openHeaderStream() routes every Tier-B paint through the same
+    monotonic guard, just scope-keyed by _l1Gen/_l1Ts (per-ticker dicts) rather than
+    legacy's window._l1GenByScope globals."""
+    core = (ROOT / "static" / "js" / "ed-core.js").read_text(encoding="utf-8")
+    assert "_l1Gen = {}, _l1Ts = {}" in core
+    assert "l1_generation" in core or "gen" in core
     assert (
-        "guards.l1ApplyTierBLightMonotonic(scopeKey, g, window._l1GenByScope, "
-        "serverTs, window._l1ServerTsByScope)" in html
+        "l1ApplyTierBLightMonotonic(state.ticker, gen, _l1Gen, bts, _l1Ts)" in core
     ), (
-        "renderTierBLight must still route every Tier-B paint through the monotonic "
+        "openHeaderStream must still route every Tier-B paint through the monotonic "
         "generation guard — a late HTTP poll carrying an older l1_generation must not "
         "be allowed to repaint over a newer SSE frame")
 
 
-def test_index_html_l1_quote_vs_of_freshness_ui():
-    """L1 UI trust: separate quote vs OF chips, server field wiring, throttle guard."""
-    html = (ROOT / "static" / "index.html").read_text(encoding="utf-8", errors="replace")
-    assert "b-l1-label-quote" in html
-    assert "b-l1-label-of" in html
-    assert "b-l1-dot-quote" in html
-    assert "b-l1-dot-of" in html
-    assert "l1QuoteFreshTier" in html
-    assert "l1OfFreshTier" in html
-    assert "quote_overlay_age_sec" in html
-    assert "order_flow_age_sec" in html
-    assert "order_flow_stale" in html
-    assert "l1ShouldPaintFreshness" in html
-    assert "_l1FreshnessPaint" in html
+# test_index_html_l1_quote_vs_of_freshness_ui was retired here (/console cutover, operator
+# directive 2026-09-14): the dual quote-vs-order-flow freshness chip pair
+# (b-l1-label-quote/of, b-l1-dot-quote/of, l1QuoteFreshTier/l1OfFreshTier,
+# l1ShouldPaintFreshness/_l1FreshnessPaint) has no equivalent anywhere in the new console
+# (grepped static/js/*.js and static/console.html, zero matches). Flagged for the operator as
+# a discovered, not-fixed gap; building a replacement chip pair is out of scope for this
+# cutover.
 
 
 # DELETED: test_client_l1_generation_guard_logic_mirror. It defined its own Python
