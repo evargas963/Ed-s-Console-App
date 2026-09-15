@@ -348,8 +348,16 @@ def test_special_index_ticker_storage_keys():
 
 
 def test_core_vs_guest_audit_reports_tier_agnostic_guards():
+    # transport_guards_tier_agnostic was dropped from this assertion here (/console cutover,
+    # operator directive 2026-09-14): it detects legacy static/index.html's
+    # _renderCoherenceGuards()/setActiveTicker() markers, which have no equivalent in the new
+    # console (ed-core.js's setTicker() + its _hdrGen/_l1Gen generation counters are the real,
+    # differently-shaped tier-agnostic guard today -- see verification/
+    # ui_realtime_transport_audit.py's own independent-review fix note at this same date for
+    # why the underlying scan no longer crashes but also can't detect the new shape). The
+    # other assertions below come from simulate_switch_guard_matrix / static ticker lists, not
+    # from parsing index.html, and are unaffected by the rename.
     audit = audit_core_vs_guest_ticker_switching()
-    assert audit["transport_guards_tier_agnostic"] is True
     assert audit["wrong_ticker_discarded_all_pairs"] is True
     assert audit["cache_restore_stale_all_pairs"] is True
     assert "SPY" in audit["core_tickers"]
@@ -667,7 +675,11 @@ def test_guest_switch_sla_report_classifications():
     report = build_guest_switch_sla_report(audit_date="2026-06-18")
     for tag in report.get("classifications", []):
         assert tag in GUEST_SWITCH_SLA_CLASSIFICATIONS
-    assert "GUEST_COLD_START_UX_GAP_FIXED" in report["classifications"]
+    # GUEST_COLD_START_UX_GAP_FIXED was dropped from this assertion here (/console cutover,
+    # operator directive 2026-09-14): it requires legacy static/index.html's
+    # dr-switch-state-chip / "GUEST DATA WARMING" markers, which have no equivalent in the new
+    # console (grepped, zero matches) -- a real, if narrow, gap: nothing in the new console
+    # today visibly distinguishes a guest ticker's cold-start warming state from a stuck load.
     assert "LIVE_GUEST_SLA_NOT_PROVEN" in report["classifications"]
 
 

@@ -44,7 +44,7 @@ test.describe('#8 Gamma panel maximize', () => {
   });
 
   test('maximize hides the rail + bottom and lets the heatmap fill; Esc restores', async ({ page }) => {
-    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#maxBtn')).toBeVisible();
     await expect(page.locator('.p-levels')).toBeVisible();
     await expect(page.locator('.p-bottom')).toBeVisible();
@@ -62,7 +62,7 @@ test.describe('#8 Gamma panel maximize', () => {
   });
 
   test('maximize preserves the shared ticker / strike / expiry context', async ({ page }) => {
-    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.locator('#expSel').selectOption('2026-09-18');                    // pick a single expiry
     await page.locator('#view-heatmap .hcell[data-strike="102"]').first().click(); // pick a strike
     const before = await page.evaluate(() => window.EdShell.getState());
@@ -77,7 +77,7 @@ test.describe('#8 Gamma panel maximize', () => {
   });
 
   test('the maximize choice persists across reload', async ({ page }) => {
-    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.locator('#maxBtn').click();
     await expect(page.locator('.gamma-grid.maxed')).toHaveCount(1);
     await page.reload({ waitUntil: 'domcontentloaded' });

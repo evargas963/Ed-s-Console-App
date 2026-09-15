@@ -78,7 +78,7 @@ test.describe('Options/Gamma Chart subview', () => {
 
   test('a real click on a Chart mark carries the workspace expiry through to Strike Detail\'s real native call/put identity (state-authority review)', async ({ page }) => {
     const { chainRequests, demandCalls } = await intercept(page);
-    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.locator('.vtab[data-view="chart"]').click();
     await page.locator('#expSel').selectOption('2026-09-18');
     await expect(page.locator('#chartBody .gmark').first()).toBeVisible();
@@ -111,7 +111,7 @@ test.describe('Options/Gamma Chart subview', () => {
 
   test('with no expiry filter set, a Chart click leaves selExpiry null (no invented expiry)', async ({ page }) => {
     await intercept(page);
-    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.locator('.vtab[data-view="chart"]').click();
     await expect(page.locator('#expSel')).toHaveValue('');
     await expect(page.locator('#chartBody .gmark').first()).toBeVisible();

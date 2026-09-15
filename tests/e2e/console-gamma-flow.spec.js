@@ -96,7 +96,7 @@ async function setup(page, ctx) {
 }
 
 async function selectCallAndOpenFlow(page) {
-  await page.goto('/console', { waitUntil: 'domcontentloaded' });
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
   await page.locator('#subnav .tab', { hasText: 'Chain' }).click();
   await expect(page.locator('#chainBody table.chn-bodytbl')).toBeVisible();
   await page.locator('#chainBody tr[data-csym="' + DESIRED + '"] td.chn-call').first().click();
@@ -107,7 +107,7 @@ async function selectCallAndOpenFlow(page) {
 test.describe('D — Gamma Flow subview (EdStream contract binding)', () => {
   test('no contract selected -> fail closed (Select a Call or Put contract), no subscription request', async ({ page }) => {
     const ctx = makeContext(); await setup(page, ctx);
-    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.locator('#subnav .tab', { hasText: 'Flow' }).click();
     await expect(page.locator('#flowBody')).toContainText('Select a Call or Put contract');
     expect(ctx.posts).toBe(0); expect(ctx.microGets).toBe(0);

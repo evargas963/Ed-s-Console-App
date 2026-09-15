@@ -47,7 +47,7 @@ test.describe('D — Gamma Levels view', () => {
   });
 
   test('renders the canonical /api/levels contract as a table', async ({ page }) => {
-    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     const lv = page.locator('#levelsBody');
     await expect(lv.locator('table.lv')).toBeVisible();
     await expect(lv.locator('.lv-row')).toHaveCount(3);
@@ -64,7 +64,7 @@ test.describe('D — Gamma Levels view', () => {
   });
 
   test('a level click highlights locally but NEVER writes selStrike (a level price is not a strike)', async ({ page }) => {
-    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     const before = await page.evaluate(() => window.EdShell.getState().selStrike);
     await page.locator('#levelsBody .lv-row', { hasText: 'Prior Day High' }).click();  // price 101.5
     await expect(page.locator('#levelsBody .lv-row.lv-sel')).toHaveCount(1);            // local highlight only

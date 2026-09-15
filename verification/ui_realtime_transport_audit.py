@@ -609,7 +609,16 @@ def audit_core_vs_guest_ticker_switching() -> dict[str, Any]:
         and "requestGeneration" in html
         and "is_base_money_path" not in html.split("function _renderCoherenceGuards(")[1].split("function _commitAnalyticalRenderTimestampAndGen")[0]
     )
-    set_active_body = html.split("function setActiveTicker(")[1].split("function _scheduleServerAnalyticsWarm")[0]
+    # Independent-review finding, REPRODUCED (/console cutover, operator directive
+    # 2026-09-14): this used to split() unconditionally on a legacy-only function name --
+    # static/index.html is now the new console's markup, which has no setActiveTicker()
+    # at all (its ticker-switch ownership guard lives in static/js/ed-core.js's setTicker()
+    # instead), so the unguarded split()[1] raised IndexError. Gated the same way
+    # guards_tier_agnostic already is just above, so absence reads as False, not a crash.
+    set_active_body = (
+        html.split("function setActiveTicker(")[1].split("function _scheduleServerAnalyticsWarm")[0]
+        if "function setActiveTicker(" in html else ""
+    )
     active_ticker_guest_safe = (
         "activeTicker = t" in set_active_body
         and "requestGeneration++" in set_active_body

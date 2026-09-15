@@ -14796,17 +14796,10 @@ def desk_page():
                         headers={"Cache-Control": "no-store, no-cache, must-revalidate"})
 
 
-@app.get("/console", response_class=HTMLResponse)
-def console_page():
-    """RC-UI-1 — rebuilt Ed Console workstation shell (institutional terminal, light + dark,
-    workspace rail + 3-tier nav + Options/Gamma workspace). Consumes existing canonical
-    endpoints only (no new producers, no independent semantic market computation). Served at a
-    dev route during migration; converges to `/` once legacy surfaces are superseded."""
-    p = static_dir / "console.html"
-    if not p.exists():
-        return HTMLResponse("<p>static/console.html not found</p>", status_code=404)
-    return HTMLResponse(p.read_text(encoding="utf-8"),
-                        headers={"Cache-Control": "no-store, no-cache, must-revalidate"})
+# RC-UI-1's dev route (/console) converged into `/` here (operator directive 2026-09-14):
+# static/console.html was renamed to static/index.html in this same commit, so the existing
+# `/` route above (root(), reading static_dir/index.html) now serves it directly. No
+# transitional dual-serving period -- /console is gone, not aliased.
 
 
 @app.get("/api/desk/radar")

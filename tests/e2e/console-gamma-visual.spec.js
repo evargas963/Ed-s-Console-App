@@ -82,7 +82,7 @@ for (const theme of THEMES) {
           localStorage.setItem('ed_view', 'heatmap'); localStorage.setItem('ed_rail_open', '1'); } catch (e) {}
       }, theme);
       await page.setViewportSize({ width: vp.w, height: vp.h });
-      await page.goto('/console', { waitUntil: 'domcontentloaded' });
+      await page.goto('/', { waitUntil: 'domcontentloaded' });
       // the heatmap is the hero: its cells must render, dense
       await expect(page.locator('#view-heatmap .hcell').first()).toBeVisible();
       expect(await page.locator('#view-heatmap .hcell').count()).toBeGreaterThan(60);

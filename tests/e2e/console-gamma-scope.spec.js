@@ -59,7 +59,7 @@ test.describe('#3 Gamma presentation-scope (view-window disclosure)', () => {
   });
 
   test('one control governs the workspace, labelled "All available" not "Full"', async ({ page }) => {
-    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     const ctl = page.locator('#scopeCtl');
     await expect(ctl).toBeVisible();                                   // shown for the gamma subview
     await expect(ctl.locator('.scbtn')).toHaveCount(3);
@@ -75,7 +75,7 @@ test.describe('#3 Gamma presentation-scope (view-window disclosure)', () => {
   });
 
   test('GEX-by-strike discloses the window and clip count; ALL AVAILABLE shows every canonical strike', async ({ page }) => {
-    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     const gbs = page.locator('#gbsBody');
     const note = gbs.locator('.scope-note');
     await expect(note).toBeVisible();
@@ -108,7 +108,7 @@ test.describe('#3 Gamma presentation-scope (view-window disclosure)', () => {
   });
 
   test('the Chart view also discloses its window and responds to the same control', async ({ page }) => {
-    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.locator('.vtab', { hasText: 'Chart' }).click();
     const chart = page.locator('#chartBody');
     await expect(chart.locator('.scope-note')).toContainText('of 41 strikes');
@@ -120,7 +120,7 @@ test.describe('#3 Gamma presentation-scope (view-window disclosure)', () => {
   });
 
   test('the scope choice persists across reloads (ed_scope)', async ({ page }) => {
-    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.locator('#scopeCtl .scbtn', { hasText: 'All available' }).click();
     await expect(page.locator('#gbsBody .scope-note')).toContainText('41 of 41 strikes');
     await page.reload({ waitUntil: 'domcontentloaded' });

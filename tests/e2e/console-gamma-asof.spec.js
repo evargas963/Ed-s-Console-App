@@ -53,7 +53,7 @@ test.describe('#4 per-panel source / as-of / freshness', () => {
 
   test('GEX-by-strike discloses its terrain source + as-of (not a global LIVE)', async ({ page }) => {
     await routes()(page);
-    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     const badge = page.locator('#gbsSrc .asof');
     await expect(badge).toBeVisible();
     await expect(badge).toContainText('terrain live');
@@ -62,7 +62,7 @@ test.describe('#4 per-panel source / as-of / freshness', () => {
 
   test('Strike Detail discloses the vendor chain scope', async ({ page }) => {
     await routes()(page);
-    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     // the spot strike is auto-selected on load -> Strike Detail loads the chain
     const badge = page.locator('#sdSrc .asof');
     await expect(badge).toContainText('vendor');
@@ -71,7 +71,7 @@ test.describe('#4 per-panel source / as-of / freshness', () => {
 
   test('the two panels show DIFFERENT source truths, not one merged status', async ({ page }) => {
     await routes()(page);
-    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#gbsSrc .asof')).toContainText('terrain live');
     await expect(page.locator('#sdSrc .asof')).toContainText('vendor');
     const gbs = await page.locator('#gbsSrc .asof').innerText();
@@ -81,7 +81,7 @@ test.describe('#4 per-panel source / as-of / freshness', () => {
 
   test('the Chart shows the price-bars clock AND the GEX levels clock separately', async ({ page }) => {
     await routes()(page);
-    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.locator('.vtab', { hasText: 'Chart' }).click();
     const asof = page.locator('#chartBody .chart-asof');
     await expect(asof).toContainText('price 1m');       // bars clock
@@ -92,7 +92,7 @@ test.describe('#4 per-panel source / as-of / freshness', () => {
     const staleStrikes = Object.assign({}, STRIKES, { levels_stale: true, levels_age_sec: 900,
       today_age_sec: 900, levels_stale_reason: 'levels loop paused' });
     await routes({ strikes: staleStrikes })(page);
-    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     const badge = page.locator('#gbsSrc .asof');
     await expect(badge).toHaveClass(/stale/);
     await expect(badge).toContainText('terrain live');

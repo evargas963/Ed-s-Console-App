@@ -52,7 +52,7 @@ test.describe('ticker / expiry / measure controls', () => {
   });
 
   test('controls are real dropdowns (value is the control, no SYM/EXPIRY/MEASURE chips)', async ({ page }) => {
-    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#symInput')).toBeVisible();   // #9: a typed instrument control, not a watchlist-bound select
     await expect(page.locator('#expSel')).toBeVisible();
     await expect(page.locator('#measureSel')).toBeVisible();
@@ -62,7 +62,7 @@ test.describe('ticker / expiry / measure controls', () => {
   });
 
   test('expiry options come from /api/expiries; All Expirations is the default', async ({ page }) => {
-    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     const opts = page.locator('#expSel option');
     await expect(opts).toHaveCount(1 + EXPS.length);           // All + each canonical expiry
     await expect(opts.first()).toHaveText('All Expirations');
@@ -70,7 +70,7 @@ test.describe('ticker / expiry / measure controls', () => {
   });
 
   test('selecting one expiry filters the heatmap to that column; All restores every column', async ({ page }) => {
-    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#view-heatmap .hexp')).toHaveCount(EXPS.length);   // All Expirations
     await page.locator('#expSel').selectOption('2026-09-12');
     await expect(page.locator('#view-heatmap .hexp')).toHaveCount(1);             // just the selected expiry
@@ -88,7 +88,7 @@ test.describe('ticker / expiry / measure controls', () => {
   }
 
   test('one symbol state: typed instrument -> header/watchlist/panels all move together', async ({ page }) => {
-    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#symInput')).toHaveValue('SPY');
     await typeSymbol(page, 'QQQ');
     await expect(page.locator('#hSym')).toHaveText('QQQ');                        // header
@@ -99,7 +99,7 @@ test.describe('ticker / expiry / measure controls', () => {
   });
 
   test('watchlist click keeps the instrument control synchronized', async ({ page }) => {
-    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.locator('.wl-row .wl-sym', { hasText: 'IWM' }).click();
     await expect(page.locator('#symInput')).toHaveValue('IWM');
     await expect(page.locator('#hSym')).toHaveText('IWM');
@@ -110,7 +110,7 @@ test.describe('ticker / expiry / measure controls', () => {
   // two responsibilities are separate: WATCHLIST = persistent symbols the operator monitors (explicit
   // add/remove); ACTIVE INSTRUMENT = any supported Schwab symbol analysed now (typed -> Enter).
   test('#9 ACTIVE INSTRUMENT is not watchlist membership: any typed symbol switches the workspace; the watchlist never changes', async ({ page }) => {
-    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     const wlBefore = await page.evaluate(() => localStorage.getItem('ed_watchlist_v1'));
     const rowsBefore = await page.locator('.wl-row').count();
     expect(rowsBefore).toBe(3);
@@ -143,7 +143,7 @@ test.describe('ticker / expiry / measure controls', () => {
   test('#9 ONE ticker state: watchlist click, typed entry, Gamma / Chain / Flow and the expiry filter resolve to the same instrument, no prior-symbol request afterwards', async ({ page }) => {
     const reqs = [];
     page.on('request', (r) => { const u = r.url(); if (u.includes('/api/')) reqs.push(u); });
-    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     await typeSymbol(page, 'AAPL');
     await expect(page.locator('#hSym')).toHaveText('AAPL');
     await page.locator('#expSel').selectOption('2026-09-12');                    // expiry context on AAPL

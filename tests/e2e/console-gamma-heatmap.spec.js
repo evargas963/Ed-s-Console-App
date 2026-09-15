@@ -139,7 +139,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   });
 
   test('shell structure: rail has all seven workspaces + 3-tier nav', async ({ page }) => {
-    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('.navitem[data-ws]')).toHaveCount(7);
     for (const ws of ['trade-desk', 'order-flow', 'options', 'liquidity', 'desk', 'portfolio', 'system']) {
       await expect(page.locator(`.navitem[data-ws="${ws}"]`)).toHaveCount(1);
@@ -156,7 +156,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
       status: 200, contentType: 'application/json',
       body: JSON.stringify(Object.assign({}, SURFACE, { chain_basis: 'dte<=45' })),
     }));
-    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('.heat-banner.degraded')).toContainText('NARROWED');
   });
 
@@ -188,7 +188,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
         })),
       });
     });
-    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     const cell = page.locator('.hcell[data-strike="583"][data-expiry="2026-09-11"]');
     await expect(cell).toHaveText('$1.0K');
 
@@ -223,7 +223,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
         })),
       });
     });
-    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     const changedCell = page.locator('.hcell[data-strike="583"][data-expiry="2026-09-11"]');
     const unchangedCell = page.locator('.hcell[data-strike="586"][data-expiry="2026-09-11"]');
     await expect(changedCell).toHaveText('$1.0K');
@@ -273,7 +273,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
         body: ': ok\n\nevent: gamma_surface_seq\ndata: {"scope":{"ticker":"SPY"},"surface_seq":2}\n\n',
       });
     });
-    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     const cell = page.locator('.hcell[data-strike="583"][data-expiry="2026-09-11"]');
     await expect(cell).toHaveText('$1.0K');
     // No document.dispatchEvent call anywhere above or below -- only the intercepted SSE
@@ -309,7 +309,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
         })),
       });
     });
-    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     const cell = page.locator('.hcell[data-strike="583"][data-expiry="2026-09-11"]');
     await expect(cell).toHaveText('$1.0K');   // the initial render (call 1)
 
@@ -369,7 +369,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
         })),
       });
     });
-    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     // The initial SPY load is now hung (spyGate not released yet). Switch to AAPL WHILE
     // it is still outstanding -- this must not be forced to wait for SPY's hung request.
     await page.locator('#symInput').fill('AAPL');
@@ -396,7 +396,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
       chainExpiryRequests.push(url.searchParams.get('expiry'));
       route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(CHAIN) });
     });
-    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.evaluate(() => window.EdShell.setStrike(583, '2026-09-18'));
     await expect.poll(() => chainExpiryRequests[chainExpiryRequests.length - 1]).toBe('2026-09-18');
     await page.evaluate(() => window.EdShell.setExpiry('2026-09-25'));
@@ -419,7 +419,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
         : { available: false, reason: 'not currently active for this symbol' };
       route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
     });
-    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     const cell = page.locator('.hcell[data-strike="583"][data-expiry="2026-09-11"]');
     await expect(cell).toHaveText('$1.0K');
 
@@ -459,7 +459,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
       await new Promise((r) => setTimeout(r, 300));
       route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ ok: false }) });
     });
-    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     const col = page.locator('.heat thead th.hexp.stream-demand');
     await expect(col).toHaveCount(1);
     await expect(col).toHaveAttribute('title', /awaiting confirmation/);
@@ -485,7 +485,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
       demandCalls.push(body.contracts || []);
       route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, contracts: body.contracts || [] }) });
     });
-    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect.poll(() => demandCalls.length).toBeGreaterThan(0);
     const autoContracts = demandCalls[demandCalls.length - 1].length;
 
@@ -508,7 +508,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     // [strike, net_gex_1pct$, session_volume]; the THIRD element was read into _lastGbs but
     // never rendered anywhere. STRIKES.today.all above already carries real volume numbers
     // (1200/5400/900) -- this proves they actually reach the DOM now.
-    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     const row583 = page.locator('.gbs-row[data-strike="583"]');
     await expect(row583.locator('.gbs-vol')).toHaveText('5.4K');   // fmtVol(5400)
     await expect(row583).toHaveAttribute('data-volume', '5400');
@@ -543,7 +543,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
         }),
       });
     });
-    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.locator('.hcell[data-strike="583"][data-expiry="2026-09-11"]').click();
     await expect(page.locator('#sdCtx')).toContainText('583');
     const callVolCell = page.locator('.sd tbody tr').first().locator('td').nth(2);   // Type, OI, Vol
@@ -592,7 +592,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(CHAIN) });
     });
 
-    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.locator('.hcell[data-strike="583"][data-expiry="2026-09-11"]').click();
     await expect(page.locator('#sdCtx')).toContainText('583');
     const netCell = page.locator('#sdBody .sd-net td').nth(4);   // Net, OI, Vol, Gamma, GEX$
@@ -623,7 +623,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   });
 
   test('heatmap renders canonical cells verbatim (value == formatted payload; sign -> colour)', async ({ page }) => {
-    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     const cell583 = page.locator('.hcell[data-strike="583"][data-expiry="2026-09-11"]');
     const cell586 = page.locator('.hcell[data-strike="586"][data-expiry="2026-09-11"]');
     await expect(cell583).toHaveText('$958.6K');   // E: formatting-only of 958600
@@ -658,7 +658,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
         degraded: 'live terrain surface unavailable — showing banked MORNING chain (reference only: morning spot + morning Greeks, NOT intraday)',
       })),
     }));
-    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     const banner = page.locator('.heat-banner.ref');
     await expect(banner).toBeVisible();
     await expect(banner).toContainText('MORNING REFERENCE');
@@ -669,7 +669,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   });
 
   test('persists workspace/view across reload (D: UI state, not market truth)', async ({ page }) => {
-    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.locator('.navitem[data-ws="system"]').click();
     await expect(page.locator('[data-ws-pane="system"]')).toBeVisible();
     await page.reload({ waitUntil: 'domcontentloaded' });
@@ -678,7 +678,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   });
 
   test('key levels rail reflects /api/terrain', async ({ page }) => {
-    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#klSpot')).toHaveText('583.41');
     await expect(page.locator('#klFlip')).toHaveText('582.90');
     await expect(page.locator('#klCall')).toHaveText('586.00');
@@ -703,7 +703,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
         : analyticsFor(url);
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
     });
-    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#klFlip')).toHaveText('582.90');          // rail is up (terrain)
     await expect(page.locator('#klPcr')).toHaveText('—');                 // warming: no value fabricated
     await expect(page.locator('#klPcrScope')).toHaveText('warming');
@@ -729,7 +729,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
       hits.push(route.request().url());
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(analyticsFor(route.request().url())) });
     });
-    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#klPcr')).toHaveText('0.87');
     await page.waitForTimeout(13000);                                      // > one slow tick, same generation, same session
     const settled = hits.length;
@@ -761,7 +761,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
       planeReads.push(route.request().url());
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(liveNow(route.request().url())) });
     });
-    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#klPcr')).toHaveText('0.87');
     // (1) ticker SPY, expiry A = 2026-09-18 (its entry is at generation 20) -> PCR A displayed
     await page.locator('#expSel').selectOption('2026-09-18');
@@ -827,7 +827,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     expect(stamped.expirations.filter((e) => e.expired).map((e) => e.expiry)).toEqual(['2026-09-09']);
     await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(stamped) }));
     await page.setViewportSize({ width: 1672, height: 941 });
-    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     const rows = page.locator('#heatBody .heat tbody tr');
     const cols = page.locator('#heatBody .heat thead .hexp');
     // canonical population disclosed; Auto viewport = 11 rows centred on spot 764.15 -> 759..769,
@@ -888,7 +888,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   });
 
   test('workspace switching + editable watchlist foundation', async ({ page }) => {
-    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.locator('.navitem[data-ws="system"]').click();
     await expect(page.locator('[data-ws-pane="system"]')).toBeVisible();
     await expect(page.locator('#subnav .wtitle')).toContainText('SYSTEM');
@@ -898,7 +898,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   });
 
   test('chart view: Price + GEX Profile and Dot Map render from canonical inputs', async ({ page }) => {
-    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.locator('.vtab[data-view="chart"]').click();
     await expect(page.locator('#view-chart')).toHaveClass(/on/);
     // profile mode (default): price line + signed profile bars + flip level line + spot
@@ -930,7 +930,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
         body: JSON.stringify({ spot: 222.22, spot_disp: '222.22', bid: 222, ask: 222.3,
           streaming_plane: { streaming_healthy: true, streaming_staleness_ms: 100 } }) });
     });
-    await page.goto('/console', { waitUntil: 'domcontentloaded' });   // init ticker SPY -> delayed 111.11
+    await page.goto('/', { waitUntil: 'domcontentloaded' });   // init ticker SPY -> delayed 111.11
     await page.evaluate(() => window.EdShell.setTicker('QQQ'));        // newer -> immediate 222.22
     await expect(page.locator('#hPx')).toHaveText('222.22');
     await page.waitForTimeout(1300);                                   // let the stale SPY response land
@@ -953,14 +953,14 @@ test.describe('Ed Console shell + gamma heatmap', () => {
         },
       }) + '\n\n',
     }));
-    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     // 601.23 comes only from env.payload; the /api/live/state poll fallback would show 583.41
     await expect(page.locator('#hPx')).toHaveText('601.23');
     await expect(page.locator('#hFeed')).toContainText('LIVE');
   });
 
   test('theme A/B: explicit dark and light selections persist across reload', async ({ page }) => {
-    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.evaluate(() => window.EdShell.setTheme('dark'));
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
     await page.reload({ waitUntil: 'domcontentloaded' });
@@ -973,14 +973,14 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   test('theme C: SYSTEM resolves to a concrete data-theme (follows the OS at load)', async ({ page }) => {
     await page.emulateMedia({ colorScheme: 'light' });
     await page.addInitScript(() => { try { localStorage.setItem('ed_theme', 'system'); } catch (e) {} });
-    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');   // SYSTEM + OS light -> light
   });
 
   test('theme SYSTEM follows LIVE OS changes; explicit ignores them (A-F)', async ({ page }) => {
     await page.emulateMedia({ colorScheme: 'dark' });
     await page.addInitScript(() => { try { localStorage.setItem('ed_theme', 'system'); } catch (e) {} });
-    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');     // A: SYSTEM + OS dark -> dark
     const cell = page.locator('.hcell[data-strike="583"][data-expiry="2026-09-11"]');
     await cell.click();
@@ -1008,7 +1008,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   });
 
   test('theme D/E/F: switch preserves values, sign mapping, and selection', async ({ page }) => {
-    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.evaluate(() => window.EdShell.setTheme('dark'));
     const cell = page.locator('.hcell[data-strike="583"][data-expiry="2026-09-11"]');
     const darkVal = (await cell.textContent()).trim();
@@ -1030,7 +1030,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   test('theme: ONE canonical owner (window.EdTheme) drives first-paint AND runtime resolution', async ({ page }) => {
     await page.emulateMedia({ colorScheme: 'dark' });
     await page.addInitScript(() => { try { localStorage.setItem('ed_theme', 'system'); } catch (e) {} });
-    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     // the owner exists and exposes the resolution API
     expect(await page.evaluate(() => !!(window.EdTheme && window.EdTheme.resolve && window.EdTheme.setPref && window.EdTheme.getPref))).toBe(true);
     // FIRST PAINT used the owner: data-theme === EdTheme.resolve(EdTheme.getPref())
@@ -1044,7 +1044,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
 
   test('theme screenshots: dark and light at 2560x1440 and 1920x1080, no h-overflow', async ({ page }) => {
     const path = require('path');
-    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     for (const theme of ['dark', 'light']) {
       await page.evaluate((t) => window.EdShell.setTheme(t), theme);
       for (const wh of [[2560, 1440], [1920, 1080]]) {
@@ -1066,7 +1066,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
       }
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, contract: body.contract, command_generation: 2 }) });
     });
-    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     const out = await page.evaluate(async () => {
       const A = 'AAA   260101C00100000', B = 'BBB   260101C00100000';
       const pa = window.EdStream.setActiveContract(A);   // client token 1
@@ -1083,7 +1083,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
       status: 409, contentType: 'application/json',
       body: JSON.stringify({ ok: false, superseded: true, contract: 'ZZZ', command_generation: 7 }),
     }));
-    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     const res = await page.evaluate(async () => window.EdStream.setActiveContract('ZZZ   260101C00100000'));
     expect(res.accepted).toBe(false);
     expect(res.reason).toBe('superseded_server');
@@ -1096,7 +1096,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
       const c = JSON.parse(route.request().postData() || '{}').contract;
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, contract: c, command_generation: postCount }) });
     });
-    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     const X = 'XXX   260101C00100000', Y = 'YYY   260101C00100000';
 
     // A selects X -> REQUEST ACCEPTED, but NOT active until the producer confirms (empty plane)
@@ -1130,7 +1130,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
       else body = { ok: true, ticker: 'SPY' };                           // exact 2xx + ok + matching ticker
       return route.fulfill({ status: status, contentType: 'application/json', body: JSON.stringify(body) });
     });
-    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     const run = () => page.evaluate(() => window.EdStream.setActiveTicker('SPY'));
     mode = 'missing'; expect((await run()).requestAccepted).toBe(false);   // missing ticker -> rejected
     mode = 'wrong';   expect((await run()).requestAccepted).toBe(false);   // mismatched ticker -> rejected
@@ -1141,7 +1141,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   });
 
   test('#1 perf: a large heatmap surface renders synchronously without pathological jank', async ({ page }) => {
-    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     const ms = await page.evaluate(() => {
       var host = document.getElementById('heatBody');
       var exps = [], strikes = [], cells = [];
@@ -1164,7 +1164,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   });
 
   test('#1 revision: DATA change rebuilds; STATUS change updates without rebuild (A-D)', async ({ page }) => {
-    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     const r = await page.evaluate(() => {
       var host = document.getElementById('heatBody');
       var R = window.EdGamma.renderSurface;
@@ -1213,7 +1213,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
         degraded: 'live terrain surface unavailable — showing banked morning wide reference',
       })),
     }));
-    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('.heat-banner.warming')).toContainText('LIVE SURFACE WARMING');
   });
 
@@ -1229,7 +1229,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
         reason: 'no live terrain surface and no banked wide chain',
       }),
     }));
-    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     var b = page.locator('.heat-banner').first();
     await expect(b).toContainText('NOT COLLECTING');
     await expect(b).toContainText('not currently active for this symbol');
@@ -1238,7 +1238,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
 
   test('responsive proof: 2560x1440 and 1920x1080 screenshots', async ({ page }) => {
     await page.setViewportSize({ width: 2560, height: 1440 });
-    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('.hcell').first()).toBeVisible();
     await page.screenshot({ path: path.join('test-results', 'console-gamma-2560x1440.png'), fullPage: false });
     await page.setViewportSize({ width: 1920, height: 1080 });
@@ -1281,7 +1281,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
       route.fulfill({ status: 200, contentType: 'application/json',
         body: JSON.stringify({ ok: true, contracts: body.contracts || [] }) });
     });
-    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.locator('.hcell[data-strike="583"][data-expiry="2026-09-11"]').click();
     await expect(page.locator('#sdCtx')).toContainText('583');
 
@@ -1331,7 +1331,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
         body: JSON.stringify({ ok: true, contracts: body.contracts || [] }) });
     });
 
-    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect.poll(() => requests.length).toBeGreaterThan(0);
     const sent = requests[requests.length - 1].contracts.slice().sort();
     // The front (nearest-unexpired, 2026-09-11) column's call+put for every visible
@@ -1373,7 +1373,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
       return route.fulfill({ status: 200, contentType: 'application/json',
         body: JSON.stringify({ ok: true, contracts: body.contracts || [] }) });
     });
-    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#sdCtx')).toContainText('583');   // background auto-select settled
 
     expect(requestCount).toBeGreaterThanOrEqual(1);
@@ -1432,7 +1432,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
       return route.fulfill({ status: 200, contentType: 'application/json',
         body: JSON.stringify({ ok: true, contracts: body.contracts || [] }) });
     });
-    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#sdCtx')).toContainText('583');   // background auto-select settled
     requestCount = 0;   // discard the auto-select's own settle-time request(s), if any
 
@@ -1519,7 +1519,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
       route.fulfill({ status: 200, contentType: 'application/json',
         body: JSON.stringify({ ok: true, contracts: body.contracts || [] }) });
     });
-    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
 
     // select strike 583 on SPY -- resolves immediately, its contracts are ACCEPTED into the
     // plural subscription (a real non-empty desired state, not the initial empty one)
@@ -1588,7 +1588,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
       route.fulfill({ status: 200, contentType: 'application/json',
         body: JSON.stringify({ ok: true, contracts: body.contracts || [] }) });
     });
-    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(200);   // let any unrelated page-load auto-request settle first
 
     const seenBeforeA = seen.length;
@@ -1637,7 +1637,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
       route.fulfill({ status: 200, contentType: 'application/json',
         body: JSON.stringify({ ok: true, contracts: body.contracts || [] }) });
     });
-    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(200);   // let any unrelated page-load auto-request settle first
 
     const acceptA = await page.evaluate((set) => window.EdStream.setAdditionalContracts(set), A);
@@ -1699,7 +1699,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
       return route.fulfill({ status: 200, contentType: 'application/json',
         body: JSON.stringify({ ok: true, contracts: body.contracts || [] }) });
     });
-    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(200);   // let any unrelated page-load auto-request settle first
 
     const pendingA = page.evaluate((set) => window.EdStream.setAdditionalContracts(set), A);
@@ -1762,7 +1762,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
       return route.fulfill({ status: 200, contentType: 'application/json',
         body: JSON.stringify({ ok: true, contracts: body.contracts || [] }) });
     });
-    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(200);
 
     const acceptA = await page.evaluate((set) => window.EdStream.setAdditionalContracts(set), A);
@@ -1810,7 +1810,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
       return route.fulfill({ status: 200, contentType: 'application/json',
         body: JSON.stringify({ accepted: true, contracts: body.contracts || [] }) });
     });
-    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#view-heatmap .hcell').first()).toBeVisible();
 
     // '2026-09-25' is listed in /api/expiries but absent from SURFACE.expirations.
@@ -1830,7 +1830,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
       body: JSON.stringify({ expiries: ['2026-09-11', '2026-09-18', '2026-09-25'] }) }));
     await page.route('**/api/options/gamma-surface*', (route) => route.fulfill({
       status: 200, contentType: 'application/json', body: JSON.stringify(currentSurface) }));
-    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#view-heatmap .hcell').first()).toBeVisible();
 
     await page.locator('#expSel').selectOption('2026-09-25');
@@ -1874,7 +1874,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
       return route.fulfill({ status: 200, contentType: 'application/json',
         body: JSON.stringify({ ok: true, contracts: body.contracts || [] }) });
     });
-    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     const col = page.locator('.heat thead th.hexp.stream-demand');
     await expect(col).toHaveCount(1);
     // Accepted, but never overclaiming "active" while no symbol has actually overlaid.
@@ -1910,7 +1910,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
       return route.fulfill({ status: 200, contentType: 'application/json',
         body: JSON.stringify({ ok: true, contracts: body.contracts || [] }) });
     });
-    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.locator('#scopeCtl .scbtn', { hasText: 'All available' }).click();
     const cols = page.locator('.heat thead th.hexp.stream-demand');
     await expect(cols).toHaveCount(2, { timeout: 3000 });
@@ -1953,7 +1953,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
       demandCalls.push(body.contracts || []);
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, contracts: body.contracts || [] }) });
     });
-    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.evaluate(() => window.EdShell.setScope('all'));   // demand follows every displayed column
     await expect.poll(() => demandCalls.length).toBeGreaterThan(0);
 
@@ -1998,7 +1998,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
       demandCalls.push(body.contracts || []);
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, contracts: body.contracts || [] }) });
     });
-    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     // Row visibility (which STRIKES show) is the scope policy, independent of the expiry
     // filter (which COLUMN shows) -- 'all' is needed so all 121 strikes are actually visible
     // rows, not just Auto's default ~11-around-spot window.

@@ -51,7 +51,7 @@ async function intercept(page) {
 }
 
 async function toChain(page) {
-  await page.goto('/console', { waitUntil: 'domcontentloaded' });
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
   await page.locator('#subnav .tab', { hasText: 'Chain' }).click();
   // the ladder now renders as two separate tables (header + body) so the header can genuinely
   // stick on scroll -- see ed-gamma-chain.js's chn-headwrap/chn-bodytbl split (2026-09-13).

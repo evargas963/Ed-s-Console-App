@@ -32,7 +32,7 @@ test.describe('proximity alerts strip', () => {
   });
 
   test('hidden when the backend reports no qualifying alerts', async ({ page }) => {
-    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#alertsStrip')).toBeHidden();
   });
 
@@ -42,7 +42,7 @@ test.describe('proximity alerts strip', () => {
       'ENGINE CRASH — TypeError: unrelated',
       'QQQ near put wall level',
     ] };
-    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#alertsStrip')).toBeVisible();
     await expect(page.locator('.alert-pill')).toHaveCount(2);
     await expect(page.locator('.alert-pill').nth(0)).toHaveText('SPY approaching call wall near 590');
@@ -52,7 +52,7 @@ test.describe('proximity alerts strip', () => {
 
   test('a ticker switch to a symbol with no alerts hides the strip again', async ({ page }) => {
     alertsBody = { rules_alerts: ['SPY near put wall level'] };
-    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#alertsStrip')).toBeVisible();
     alertsBody = { rules_alerts: [] };
     await page.locator('#symInput').fill('QQQ');

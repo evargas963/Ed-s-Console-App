@@ -35,7 +35,7 @@ def test_ed_stream_reuses_the_canonical_mechanism_not_a_new_owner():
 
 
 def test_shell_loads_the_shared_subscription_lib_before_ed_stream():
-    html = (ROOT / "static" / "console.html").read_text(encoding="utf-8")
+    html = (ROOT / "static" / "index.html").read_text(encoding="utf-8")
     i_sub = html.find("options_subscription.js")
     i_stream = html.find("ed-stream.js")
     assert i_sub != -1 and i_stream != -1 and i_sub < i_stream, \

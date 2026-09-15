@@ -291,7 +291,14 @@ _CLAIM_WORD = re.compile(r"resistance|support", re.I)
 #:      planted-defect control below proves.
 _CONDITIONAL = re.compile(
     r"while|BREACHED|breached|holds|NOT\b|not\s+(?:resistance|support)"
-    r"|(?:above|below)\s+spot|(?:above|below)\s+which|first\s+level\s+(?:above|below)",
+    r"|(?:above|below)\s+spot|(?:above|below)\s+which|first\s+level\s+(?:above|below)"
+    # New console's Key Levels rail (/console cutover, 2026-09-14): honestly-disclosed
+    # not-yet-computed rows share class="notproven" -- the same semantic exemption as a
+    # literal NOT\b, just carried on the markup's class attribute instead of its label
+    # text (independent-review finding: "Charm Resistance" -> "→ CHARM WALL" was flagged
+    # because its own badge text and both line-window neighbors happened to avoid the word
+    # "NOT" verbatim, even though the row is exactly as honestly disclosed as its siblings).
+    r'|class="notproven"',
     re.I,
 )
 

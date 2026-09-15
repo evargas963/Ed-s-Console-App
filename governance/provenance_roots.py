@@ -88,7 +88,6 @@ ROUTES: dict[str, tuple[str, str | None]] = {
     '/api/vol-observability': ('DIAGNOSTIC', None),
     '/api/watchlist-quotes': ('PRODUCER', 'server.py:api_watchlist_quotes'),
     '/chart': ('PAGE', None),
-    '/console': ('PAGE', None),
     '/desk': ('PAGE', None),
     '/exposure': ('PAGE', None),
     '/favicon.ico': ('PAGE', None),

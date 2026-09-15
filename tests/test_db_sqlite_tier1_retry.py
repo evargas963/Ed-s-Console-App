@@ -11,7 +11,6 @@ import pytest
 from db import EdDB, _sqlite_busy_or_locked
 
 ROOT = Path(__file__).resolve().parent.parent
-INDEX_HTML = ROOT / "static" / "index.html"
 
 
 @pytest.fixture
@@ -216,16 +215,14 @@ def test_contention_metrics_preserve_operation_ticker_thread():
 
 
 def test_report_flags_ui_degraded_state_missing():
-    # PENDING /console CUTOVER (operator directive 2026-09-14): scan_ui_db_degraded_surfaces()
-    # greps static/index.html by path for a fixed token set (sqlite/db_contention/DB
-    # DEGRADED/the two legacy chip ids). None of them exist anywhere in the new console
-    # (confirmed by direct grep against static/console.html) -- the DB-contention/
-    # degraded-write operator indicator legacy shipped has no equivalent today. This
-    # assertion is still correct against the CURRENTLY-SHIPPED static/index.html and must
-    # flip (True->False, "not in"->"in" x2) in the SAME commit that actually renames
-    # console.html to index.html, not before -- doing it now would fail against content
-    # that hasn't changed yet. Flagged for the operator as a discovered, not-fixed gap;
-    # building a replacement indicator is out of scope for this cutover.
+    # /console CUTOVER (operator directive 2026-09-14): scan_ui_db_degraded_surfaces() greps
+    # static/index.html by path for a fixed token set (sqlite/db_contention/DB DEGRADED/the
+    # two legacy chip ids). None of them exist anywhere in the new console (confirmed by
+    # direct grep) -- the DB-contention/degraded-write operator indicator legacy shipped has
+    # no equivalent today. This is not a stale test to update quietly: the classifier's own
+    # UI_DEGRADED_STATE_MISSING tag exists specifically to catch this, and now correctly
+    # fires. Flagged for the operator as a discovered, not-fixed gap; building a replacement
+    # indicator is out of scope for this cutover.
     from verification.db_sqlite_contention_impact_audit import (
         build_contention_impact_report,
         classify_contention_findings,
@@ -234,23 +231,21 @@ def test_report_flags_ui_degraded_state_missing():
     )
 
     ui = scan_ui_db_degraded_surfaces()
-    assert ui.get("operator_db_degraded_surface") is True
-    assert "ub-pill-db" in INDEX_HTML.read_text(encoding="utf-8")
-    assert "dr-db-contention-chip" in INDEX_HTML.read_text(encoding="utf-8")
+    assert ui.get("operator_db_degraded_surface") is False
     tags = classify_contention_findings(
         SqliteContentionMetrics(sqlite_lock_wait_count=1),
         ui_surfaces=ui,
         writer_map={"tier_c_reads_db": True},
         correlation={"offline_correlation_gap": True},
     )
-    assert "UI_DEGRADED_STATE_MISSING" not in tags
+    assert "UI_DEGRADED_STATE_MISSING" in tags
     report = build_contention_impact_report(
         audit_date="2026-06-18",
         log_text="",
         log_paths=[],
         db_path=None,
     )
-    assert "UI_DEGRADED_STATE_MISSING" not in report.get("classifications", [])
+    assert "UI_DEGRADED_STATE_MISSING" in report.get("classifications", [])
 
 
 def test_no_contention_operator_status_ok():

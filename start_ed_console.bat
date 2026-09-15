@@ -40,7 +40,7 @@ if errorlevel 1 (
     exit /b 1
 )
 
-echo  Starting server at http://localhost:8000/console
+echo  Starting server at http://localhost:8000/
 echo  Press Ctrl+C to stop.
 echo  (CWD set to script dir - token path resolves from app dir)
 echo  Ops panel /Run tasks/ click-to-run: ON  (localhost only unless ED_OPS_ALLOW_REMOTE=1)
@@ -128,7 +128,7 @@ set "PF86=%ProgramFiles(x86)%"
 set "EDGE_EXE=%PF86%\Microsoft\Edge\Application\msedge.exe"
 if not exist "%EDGE_EXE%" set "EDGE_EXE=%ProgramFiles%\Microsoft\Edge\Application\msedge.exe"
 
-REM Open Edge to the NEW UI (/console) once the server actually answers,
+REM Open Edge to the console UI (/) once the server actually answers,
 REM instead of a blind fixed-delay guess. See wait_for_ready_then_open.py
 REM (app root, not tools\ -- same RC-512 reasoning as above).
 REM
@@ -139,7 +139,7 @@ REM review finding (2026-09-12): a detached failure that prints to a window
 REM nobody is looking at is not a visible failure. Giving it a titled window
 REM (instead of "") keeps a genuine unhealthy/timeout warning on screen for the
 REM operator to see, since the exit code itself cannot reach this script.
-start "Ed Console - Browser Launch" "%VENV_PY%" "%~dp0wait_for_ready_then_open.py" http://localhost:8000/console "%EDGE_EXE%"
+start "Ed Console - Browser Launch" "%VENV_PY%" "%~dp0wait_for_ready_then_open.py" http://localhost:8000/ "%EDGE_EXE%"
 
 REM --timeout-graceful-shutdown: Ctrl+C must terminate even while browser tabs
 REM hold SSE streams open (uvicorn's default waits forever for them to close).

@@ -34,4 +34,6 @@ def test_gamma_surface_route_registered():
 
     paths = [getattr(route, "path", "") for route in srv.app.routes if hasattr(route, "path")]
     assert "/api/options/gamma-surface" in paths
-    assert "/console" in paths
+    # /console converged into `/` here (/console cutover, operator directive 2026-09-14) --
+    # the dev route is gone, not aliased; the new console is served at `/` (see root()).
+    assert "/" in paths

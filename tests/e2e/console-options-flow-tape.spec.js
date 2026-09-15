@@ -54,7 +54,7 @@ test.describe('Options Flow tape (Gamma pane, native trade prints)', () => {
   test('an empty tape discloses the reason, never a fabricated row', async ({ page }) => {
     await intercept(page, { ticker: 'SPY', available: false, rows: [],
       reason: 'no active/additional option contract selected for this ticker' });
-    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     const of = page.locator('#ofBody');
     await expect(of).toContainText('no active/additional option contract selected');
     await expect(of.locator('tbody tr:not(.of-empty)')).toHaveCount(0);
@@ -62,7 +62,7 @@ test.describe('Options Flow tape (Gamma pane, native trade prints)', () => {
 
   test('a real trade print renders every required schema column with native values, never fabricated buy/sell', async ({ page }) => {
     await intercept(page, { ticker: 'SPY', available: true, symbols: [TAPE_ROW.symbol], rows: [TAPE_ROW] });
-    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     const of = page.locator('#ofBody');
     await expect(of.locator('thead th')).toHaveText(
       ['Time', 'Symbol', 'Exp', 'Type', 'Strike', 'Bid×Size', 'Ask×Size', 'Trade', 'Size',
@@ -91,7 +91,7 @@ test.describe('Options Flow tape (Gamma pane, native trade prints)', () => {
     const atBid = { ...TAPE_ROW, ts_recv: TAPE_ROW.ts_recv + 1, trade: 1.17, classification: 'at_bid' };
     const atAsk = { ...TAPE_ROW, ts_recv: TAPE_ROW.ts_recv + 2, trade: 1.19, classification: 'at_ask' };
     await intercept(page, { ticker: 'SPY', available: true, symbols: [TAPE_ROW.symbol], rows: [atAsk, atBid] });
-    await page.goto('/console', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     const rows = page.locator('#ofBody tbody tr');
     await expect(rows).toHaveCount(2);
     await expect(rows.nth(0).locator('.of-cls')).toHaveText('at ask');   // newest-first
