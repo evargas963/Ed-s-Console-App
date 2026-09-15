@@ -87,7 +87,6 @@ def _classify(referrer: str, stem: str, text: str) -> str:
         if re.search(r"^\s*(?:from|import)\s+[\w.]*" + re.escape(stem) + r"\b", text, re.M) \
            or re.search(re.escape(stem) + r"\.py", text):
             return "CODE"
-        return "CODE"
     return "PROVENANCE"
 
 
