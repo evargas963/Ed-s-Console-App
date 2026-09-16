@@ -1,0 +1,68 @@
+table: gamma_surface_last_valid
+module: calibration/option_chain_morning_full.py
+
+motivation: >
+  Canonical GEX input-validity rules (operator directive, 2026-09-15). Live-reproduced:
+  Schwab returns internally self-contradictory greeks for some ITM contracts (delta pinned
+  to an exact boundary, gamma AND vega both exactly zero, alongside a real, plausible,
+  varying implied volatility) on both SPY/QQQ puts (2026-09-15 live capture) and SPY calls
+  (an existing repo fixture, tests/fixtures/real_spy_0dte_chain_with_poison.json, captured
+  on an earlier session) — a recurring vendor defect, not a one-off. math_exposure_core.
+  vendor_greeks_unavailable now correctly EXCLUDES such a contract from GEX/DEX/vanna
+  accumulation instead of it contributing a fabricated $0, but that leaves the affected
+  cell with no CURRENT value at all. The operator's rule: "If current inputs are invalid,
+  display the latest valid timestamped snapshot for that cell. Show — only if no valid
+  current or historical snapshot exists... current vendor failure must not erase previously
+  valid data" — including the SPX-style case where an entire surface's current cycle has
+  zero valid cells (a real OI outage). That value must also survive a process restart, not
+  just live in memory for the current process's lifetime.
+
+  This table is NOT a duplicate of the existing option_chain_accrual table (same module,
+  RC-159, 2026-07-30): that table persists the per-STRIKE aggregate net_gex_1pct$,
+  COLLAPSED ACROSS EVERY EXPIRY, as a time series (one row per observation instant) for the
+  Chart view's session gamma ladder. It cannot answer "what was strike 758's own 09-15
+  expiry cell" — only "what was strike 758's whole-book figure at this instant." The
+  Options/Gamma heatmap is a strike × EXPIRY grid; nothing existing persisted a value at
+  that per-cell granularity. This table is the per-cell analogue of the same durable-banking
+  idea option_chain_accrual already established, reusing the same database file and module
+  rather than introducing a new persistence mechanism.
+
+composition: >
+  One row per (ticker, strike, expiry) — ALWAYS-LATEST, not a time series (PRIMARY KEY is
+  exactly (ticker, strike, expiry); INSERT OR REPLACE overwrites in place). A snapshot
+  fallback only ever needs the newest known-good value for a cell, never a history of them,
+  so unlike option_chain_accrual this deliberately does not accumulate rows over time.
+  Columns: ticker (canonical storage key), strike, expiry (YYYY-MM-DD, the native
+  expirationDate this cell belongs to), gex (net_gex_1pct$), dex (net_dex_dollars), vanna
+  (call_vanna - put_vanna; may legitimately be NULL when IV/time-to-expiry was unavailable
+  even while gex/dex are real), captured_ts_utc (when THIS value was last confirmed valid —
+  the honest "how old is this snapshot" the UI discloses, never fabricated or advanced by
+  serving the snapshot itself).
+
+collection: >
+  Written from server._backfill_gex_cells_from_last_valid, called immediately after EVERY
+  successful project_gamma_surface computation in both live-terrain producers
+  (_terrain_refresh_one's ~60s REST cycle and refresh_gamma_surface_from_stream's eager
+  per-tick path) — the SAME canonical exposure faucet (math_exposure_core.
+  compute_exposures_by_strike) every GEX consumer already uses; this table stores only
+  values that faucet already produced, never a second computation. Only cells with a
+  CURRENTLY valid value (has_oi AND has_valid_gamma) are written; an invalid/absent cell
+  this cycle is read from, never written to, the table. Writes are batched (one transaction
+  per ticker per call, via executemany) and throttled to at most once per
+  GAMMA_LAST_VALID_DB_WRITE_FLOOR_SEC (20s) per ticker — an actively-streaming ticker's
+  eager refresh can fire far more often than that; this bounds real write volume regardless.
+  The in-memory _LAST_VALID_GEX_CELLS dict is the hot-path read/write cache; this table is
+  its durability checkpoint, lazily rehydrated into memory on a ticker's first use since the
+  current process started (once per process lifetime per ticker, not once per cycle).
+
+recommended_uses: >
+  Exactly one: server._backfill_gex_cells_from_last_valid reads it (via
+  load_gamma_surface_last_valid) to fill a currently-invalid or currently-absent gamma-
+  surface cell with its last confirmed-valid value, honestly labelled with its own
+  captured_ts_utc so the UI never presents a stale snapshot as freshly live (the per-cell
+  `stream` state disclosure, from the always-live heatmap mandate, is computed independently
+  and still correctly reports such a cell as 'stale'/'unavailable' even while its NUMBER
+  comes from this table). NOT a general-purpose historical GEX archive (it holds only the
+  latest value per cell, by design — option_chain_accrual is the time-series record, at its
+  own coarser per-strike-aggregate granularity) and NOT read by anything outside that one
+  backfill path.
