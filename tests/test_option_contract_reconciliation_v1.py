@@ -1362,25 +1362,29 @@ def test_multi_B_dropping_an_extra_symbol_unsubscribes_closes_and_prunes_state(
 
 def test_multi_C_two_extras_one_fails_the_other_still_reaches_steady_state(
         tmp_path, monkeypatch):
-    """Each extra symbol reconciles independently (per-symbol namespaced key, its own
-    call to the unchanged _reconcile_option_service) -- a vendor failure subscribing ONE
-    extra must not block another extra, or the primary, from reaching steady state.
+    """2026-09-16 rearchitecture (bounded vendor calls, audit finding #1): extras are no
+    longer reconciled one vendor call per symbol -- the whole added set goes through ONE
+    batched `*_add` call first, and only bisects into smaller calls when the VENDOR
+    actually rejects a batch. A symbol that is genuinely poisoned (rejected however it is
+    batched) must still be isolated and marked rejected without blocking any sibling
+    symbol from reaching steady state, and the primary contract must be unaffected either
+    way.
 
     Symbols reconcile in sorted order (MSFT before QQQ), and the primary (SPY) reconciles
-    first of all -- so by the time these two extras run, LEVELONE_OPTIONS already holds
-    SPY, meaning BOTH extras go through *_add (never *_subs). Failing `l1_option_add`
-    therefore reproduces "one extra's vendor call fails" under the REAL native-semantics
-    call path, not the old (now-incorrect) assumption that extras use *_subs."""
+    first of all -- so by the time the extras batch runs, LEVELONE_OPTIONS already holds
+    SPY, meaning the whole extras batch goes through *_add (never *_subs). The fake fails
+    any call whose symbol list CONTAINS QQQ, so the full 2-symbol batch fails first,
+    forcing bisection down to single-symbol calls -- MSFT alone then succeeds and QQQ
+    alone still fails, proving isolation happens via bisection, not a coincidence of call
+    ordering."""
     monkeypatch.setattr(rsc, "read_active_option_contract_signal", lambda: _SPY_CONTRACT)
     monkeypatch.setattr(rsc, "read_active_option_contracts_signal",
                         lambda: sorted([_QQQ_CONTRACT, _MSFT_CONTRACT]))
     stream = _FlakyOptionStream()
-    # fail_calls is name-keyed, and MSFT/QQQ share the SAME call name (l1_option_add) --
-    # a per-symbol override is needed to fail only QQQ's.
 
     async def _l1_add(syms):
         stream.calls.append(("l1_option_add", tuple(syms)))
-        if tuple(syms) == (_QQQ_CONTRACT,):
+        if _QQQ_CONTRACT in syms:
             raise RuntimeError("simulated vendor failure: l1_option_add")
         stream.held["LEVELONE_OPTIONS"] |= set(syms)
     stream.level_one_option_add = _l1_add
@@ -1388,23 +1392,36 @@ def test_multi_C_two_extras_one_fails_the_other_still_reaches_steady_state(
     writer = CaptureWriter(tmp_path / "cap.db", batch_rows=1, batch_sec=10.0)
     epoch_state: dict = {}
     contract_state: dict = {}
+    rejected_state: dict = {}
 
     async def go():
         return await _apply_active_option_contract_subs(
-            stream, contract_state, writer=writer, epoch_state=epoch_state)
+            stream, contract_state, writer=writer, epoch_state=epoch_state,
+            rejected_state=rejected_state)
     new_state = asyncio.run(go())
     writer.close()
 
     assert new_state["l1"] == _SPY_CONTRACT, "the primary contract must be unaffected"
-    assert new_state["l1:extra:" + _QQQ_CONTRACT] is None, (
-        "the failed extra stays unheld, retried next tick")
+    assert "l1:extra:" + _QQQ_CONTRACT not in new_state, (
+        "the rejected extra is not held, retried next tick")
     assert new_state["l1:extra:" + _MSFT_CONTRACT] == _MSFT_CONTRACT, (
-        "a sibling extra's vendor failure must not block this one"
+        "a sibling extra's vendor rejection must not block this one"
     )
+    # The vendor calls actually made: one full-batch attempt (rejected), then bisection
+    # down to two single-symbol calls -- never more than the poisoned set requires.
+    add_calls = [c[1] for c in stream.calls if c[0] == "l1_option_add"]
+    assert (_MSFT_CONTRACT, _QQQ_CONTRACT) in add_calls, "the full batch is tried first"
+    assert (_MSFT_CONTRACT,) in add_calls and (_QQQ_CONTRACT,) in add_calls, (
+        "a rejected batch bisects to isolate the poisoned symbol")
     # Genuine vendor membership, not just call bookkeeping: QQQ never landed, SPY+MSFT did.
     assert stream.held["LEVELONE_OPTIONS"] == {_SPY_CONTRACT, _MSFT_CONTRACT}
     assert "book:extra:" + _QQQ_CONTRACT not in new_state
     assert "book:extra:" + _MSFT_CONTRACT not in new_state
+    # The exact rejected identity is exposed, with the vendor's own error, not silently
+    # dropped -- this is what lets the API/UI fail QQQ's cells visibly.
+    assert _QQQ_CONTRACT in rejected_state
+    assert "simulated vendor failure" in rejected_state[_QQQ_CONTRACT]
+    assert _MSFT_CONTRACT not in rejected_state
 
 
 def test_multi_D_a_symbol_in_both_primary_and_plural_signals_is_reconciled_once(

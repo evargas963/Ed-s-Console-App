@@ -12534,7 +12534,8 @@ def _leg_stream_ts_recv(greeks: dict | None) -> float | None:
     return max(candidates) if candidates else None
 
 
-def _stamp_gamma_surface_cell_stream_state(surface: dict, streamed: dict, overlay_symbols: set) -> None:
+def _stamp_gamma_surface_cell_stream_state(surface: dict, streamed: dict, overlay_symbols: set,
+                                           rejected_symbols: "dict[str, str] | None" = None) -> None:
     """Operator directive (2026-09-15, always-live heatmap mandate): attach per-leg (call/put)
     and per-cell aggregate STREAM state to an already-projected gamma surface's cells, in place.
 
@@ -12542,17 +12543,22 @@ def _stamp_gamma_surface_cell_stream_state(surface: dict, streamed: dict, overla
     a cell's already-computed net_gex_1pct/etc value (project_gamma_surface/
     compute_exposures_by_strike remains the sole exposure computation). It only annotates, per
     leg, WHETHER that value is currently backed by a confirmed-fresh Schwab stream tick, so a
-    client can honestly render LIVE / PARTIAL / STALE / UNAVAILABLE instead of presenting every
-    REST-cadence cell as indistinguishable from a genuinely streamed one.
+    client can honestly render LIVE / PARTIAL / STALE / REJECTED / UNAVAILABLE instead of
+    presenting every REST-cadence cell as indistinguishable from a genuinely streamed one.
 
     Per leg, `overlay_symbols` is the EXACT set _gamma_surface_contracts_with_stream_overlay (or
     refresh_gamma_surface_from_stream's own equivalent) already decided passed this cycle's
     REST-precedence + GAMMA_SURFACE_STREAM_STALENESS_SEC check for this specific symbol — reused
-    verbatim rather than re-deriving a second staleness policy:
+    verbatim rather than re-deriving a second staleness policy. `rejected_symbols` (2026-09-16,
+    audit finding #6 — "fail the affected cells visibly", bounded-vendor-call reconciliation) is
+    the producer's own {symbol: vendor_error} map (streaming.read_producer_rejected_option_
+    contracts) — a symbol the vendor explicitly refused, not merely one not yet confirmed:
       'live'        — this symbol's tick was fresh enough to be overlaid THIS cycle.
       'stale'       — the symbol IS currently desired/subscribed (present in `streamed`, which
                       _desired_stream_greeks_for_ticker already filters to symbols matching this
                       ticker) but its tick did not pass this cycle's check.
+      'rejected'    — the vendor explicitly refused this contract's subscription; its own error
+                      is carried on the leg so the UI can disclose WHY, not just THAT.
       'unavailable' — no symbol for this leg (missing contract), or a symbol never desired at
                       all — covers unsubscribed, missing, and mismatched-identity alike.
 
@@ -12560,8 +12566,10 @@ def _stamp_gamma_surface_cell_stream_state(surface: dict, streamed: dict, overla
       live        — every existing leg is 'live'.
       partial     — at least one existing leg is 'live', not all.
       stale       — no leg is 'live', at least one existing leg is 'stale'.
+      rejected    — no leg is 'live' or 'stale', at least one existing leg is 'rejected'.
       unavailable — every existing leg is 'unavailable' (or there are no legs at all)."""
     now = time.time()
+    rejected_symbols = rejected_symbols or {}
     for cell in (surface.get("cells") or []):
         contracts_row = cell.get("contracts") or []
         state_row = []
@@ -12580,14 +12588,19 @@ def _stamp_gamma_surface_cell_stream_state(surface: dict, streamed: dict, overla
                     leg_state = "live"
                 elif sym in streamed:
                     leg_state = "stale"
+                elif sym in rejected_symbols:
+                    leg_state = "rejected"
                 else:
                     leg_state = "unavailable"
                 leg_states.append(leg_state)
                 ts_recv = _leg_stream_ts_recv(greeks)
-                legs[side] = {
+                leg_out = {
                     "symbol": sym, "state": leg_state, "ts_recv": ts_recv,
                     "age_sec": (round(now - ts_recv, 1) if ts_recv is not None else None),
                 }
+                if leg_state == "rejected":
+                    leg_out["rejected_reason"] = rejected_symbols.get(sym)
+                legs[side] = leg_out
             if not leg_states:
                 cell_state = "unavailable"
             elif all(s == "live" for s in leg_states):
@@ -12596,6 +12609,8 @@ def _stamp_gamma_surface_cell_stream_state(surface: dict, streamed: dict, overla
                 cell_state = "partial"
             elif any(s == "stale" for s in leg_states):
                 cell_state = "stale"
+            elif any(s == "rejected" for s in leg_states):
+                cell_state = "rejected"
             else:
                 cell_state = "unavailable"
             legs["state"] = cell_state
@@ -12606,13 +12621,61 @@ def _stamp_gamma_surface_cell_stream_state(surface: dict, streamed: dict, overla
 def _gamma_surface_cell_state_counts(surface: dict) -> dict:
     """Tally the per-cell 'state' _stamp_gamma_surface_cell_stream_state already attached into
     cheap surface-level counts — a client or test's one-field check instead of scanning every
-    cell. The four states are mutually exclusive per cell (see that function's docstring)."""
-    counts = {"live": 0, "partial": 0, "stale": 0, "unavailable": 0}
+    cell. The five states are mutually exclusive per cell (see that function's docstring)."""
+    counts = {"live": 0, "partial": 0, "stale": 0, "rejected": 0, "unavailable": 0}
     for cell in (surface.get("cells") or []):
         for col in (cell.get("stream") or []):
             if isinstance(col, dict) and col.get("state") in counts:
                 counts[col["state"]] += 1
     return counts
+
+
+def _gamma_surface_coverage_summary(surface: dict) -> dict:
+    """The ONE honest coverage verdict for a projected surface (2026-09-16, audit finding
+    #6: the prior `stream_confirmed_live` field was TRUE the instant even one cell was
+    'live' out of potentially hundreds, and the UI's actual "LIVE" label never even read
+    that field — it was keyed on `source == terrain_live_cache` alone, true for nearly
+    every live-pathway surface with NO per-cell coverage requirement at all).
+
+    Coverage is judged only over cells that HAVE a real contract identity (at least one of
+    call/put resolved to an actual OSI symbol) — a strike/expiry combination with no
+    contract at all was never a viewable data point, and counting it against the bar would
+    make `meets_live_requirement` false on nearly every real chain (different expiries
+    legitimately cover different strike ranges) for a reason that has nothing to do with
+    streaming health.
+
+    `meets_live_requirement` implements the operator's own already-recorded directive
+    (2026-09-15, "always-live heatmap mandate"): "every visible heatmap cell must
+    correspond to an exact option contract actively receiving streamed Schwab updates" —
+    literally 100% of cells-with-a-contract must be 'live', not merely "at least one cell
+    is". This is the ONE authority app-wide for whether a surface may honestly be labeled
+    LIVE; no other field or source-path check may make that claim."""
+    counts = {"live": 0, "partial": 0, "stale": 0, "rejected": 0, "unavailable": 0}
+    relevant = 0
+    for cell in (surface.get("cells") or []):
+        contracts_row = cell.get("contracts") or []
+        stream_row = cell.get("stream") or []
+        for j, col in enumerate(stream_row):
+            if not isinstance(col, dict):
+                continue          # no contract identity at all -- never a viewable data cell
+            pair = contracts_row[j] if j < len(contracts_row) else None
+            has_identity = bool(isinstance(pair, dict) and (pair.get("call") or pair.get("put")))
+            if not has_identity:
+                continue
+            relevant += 1
+            state = col.get("state")
+            if state in counts:
+                counts[state] += 1
+            else:
+                counts["unavailable"] += 1
+    live_pct = round(100.0 * counts["live"] / relevant, 1) if relevant else 0.0
+    return {
+        "total_visible_cells": relevant,
+        "live": counts["live"], "partial": counts["partial"], "stale": counts["stale"],
+        "rejected": counts["rejected"], "unavailable": counts["unavailable"],
+        "live_pct": live_pct,
+        "meets_live_requirement": relevant > 0 and counts["live"] == relevant,
+    }
 
 
 def refresh_gamma_surface_from_stream(contract_symbol: str, ts_recv: float) -> str:
@@ -12664,6 +12727,7 @@ def refresh_gamma_surface_from_stream(contract_symbol: str, ts_recv: float) -> s
             payload = _terrain_cache.get(tk) or {}
             base_contracts = payload.get("_contracts_rest")
             read_generation = payload.get("_contracts_rest_computed_ts")
+            prior_gamma_surface = payload.get("_gamma_surface")
         if not base_contracts:
             return "no_rest_baseline"
         from math_exposure_core import overlay_streamed_contract_fields
@@ -12698,9 +12762,38 @@ def refresh_gamma_surface_from_stream(contract_symbol: str, ts_recv: float) -> s
         spot, spot_source, spot_ts = resolve_spot(tk)
         if not spot:
             return "no_current_spot"
-        new_surface = project_gamma_surface(overlaid, spot)
-        new_per_strike = _per_strike_view_from_contracts(overlaid, spot)
         _overlaid_syms_now = _overlaid_symbols(base_contracts, overlaid)
+        # Audit finding #2 (2026-09-16): a streamed tick only ever freshens the specific
+        # contracts _desired_stream_greeks_for_ticker found newer data for -- each one
+        # belongs to exactly one expiry (an option symbol encodes its own expiry) -- so
+        # recomputing the FULL strike x expiry grid through compute_exposures_by_strike on
+        # every tick (measured ~1.95s at SPXW scale) recomputes N-1 unaffected expiries'
+        # worth of exposure math for nothing. Incrementally update only the expiries whose
+        # own contracts were actually overlaid this call, through the SAME canonical faucet
+        # (project_gamma_surface_update_expiry), falling back to one full recompute the
+        # instant that cannot be done SAFELY (no cached surface to update from, or a
+        # strike/expiry shape the incremental splice does not recognize) -- never a
+        # shape-mismatched or approximated surface.
+        new_surface = None
+        if prior_gamma_surface is not None:
+            _sym_to_exp = {ct.get("symbol"): str(ct.get("expirationDate") or "")[:10]
+                          for ct in overlaid if isinstance(ct, dict) and ct.get("symbol")}
+            affected_expiries = sorted({
+                _sym_to_exp[s] for s in _overlaid_syms_now
+                if s in _sym_to_exp and len(_sym_to_exp[s]) == 10
+            })
+            _incremental = prior_gamma_surface
+            for _exp in affected_expiries:
+                _updated = project_gamma_surface_update_expiry(_incremental, overlaid, spot, _exp)
+                if _updated is None:
+                    _incremental = None
+                    break
+                _incremental = _updated
+            if _incremental is not None and affected_expiries:
+                new_surface = _incremental
+        if new_surface is None:
+            new_surface = project_gamma_surface(overlaid, spot)
+        new_per_strike = _per_strike_view_from_contracts(overlaid, spot)
         if new_surface is not None:
             # ONE spot faucet (operator directive, 2026-09-15): stamp the EXACT resolve_spot
             # result this cycle used, same convention as _terrain_refresh_one's own stamp --
@@ -12715,7 +12808,10 @@ def refresh_gamma_surface_from_stream(contract_symbol: str, ts_recv: float) -> s
             # the SAME per-cell stream-state stamp as the REST cycle (_terrain_refresh_one) --
             # this is the path a genuinely fresh tick actually takes, so it is the one MOST
             # likely to move a cell from 'stale'/'unavailable' into 'live'.
-            _stamp_gamma_surface_cell_stream_state(new_surface, streamed, set(_overlaid_syms_now))
+            from app.options.order_flow.streaming import read_producer_rejected_option_contracts
+            _stamp_gamma_surface_cell_stream_state(
+                new_surface, streamed, set(_overlaid_syms_now),
+                read_producer_rejected_option_contracts())
             try:
                 # Best-effort enhancement -- a bug here must never block publishing an
                 # otherwise-genuinely-fresh eager refresh.
@@ -12930,8 +13026,10 @@ def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
                     # EVERY cycle, even when _overlay_n == 0 -- a cell must still be told apart
                     # as 'stale' (desired but not fresh) vs 'unavailable' (never desired) even
                     # when nothing was fresh enough to overlay this particular cycle.
+                    from app.options.order_flow.streaming import read_producer_rejected_option_contracts
                     _stamp_gamma_surface_cell_stream_state(
-                        payload["_gamma_surface"], _desired_stream_greeks_for_ticker(tk), set(_overlay_syms))
+                        payload["_gamma_surface"], _desired_stream_greeks_for_ticker(tk),
+                        set(_overlay_syms), read_producer_rejected_option_contracts())
                     try:
                         # Best-effort enhancement, like the overlay above -- a bug here must
                         # never take down an otherwise-freshly-computed, valid surface.
@@ -14702,6 +14800,75 @@ def _backfill_gex_cells_from_last_valid(tk: str, surface: dict) -> None:
     # this cycle) exactly as it was -- backfill found nothing to offer either.
 
 
+def _project_gamma_expiry_slice(chain: list, e: str, spot: float):
+    """Compute ONE expiry's strike-bucketed exposures through the canonical faucet
+    (extracted 2026-09-16 from project_gamma_surface, audit finding #2, so
+    project_gamma_surface_update_expiry can call the identical per-expiry logic on a
+    single expiry instead of duplicating a second computation). Returns
+    (exposures_e, sym_map, dte) or None if this expiry's slice is unusable (no native
+    schwab_expirationDate match, or empty) — the caller's job to decide what "unusable"
+    means for its own shape (project_gamma_surface skips it; the incremental update
+    falls back to a full recompute)."""
+    from math_exposure_core import compute_exposures_by_strike as _cebs
+    from numeric_contract import float_finite_or_none
+
+    slice_e, slice_src = _filter_contracts_by_selected_expiry(chain, e)
+    if slice_src != "schwab_expirationDate" or not slice_e:
+        return None
+    # THE canonical faucet — identical call the selected-expiry analytics path uses
+    exposures_e, _diag_e = _cebs(slice_e, spot=spot, require_oi=True)
+    dte: "int | None" = None
+    sym_map: dict[float, dict[str, str]] = {}
+    for ct in slice_e:  # native DTE for the column header, never inferred
+        if dte is None:
+            _d = ct.get("daysToExpiration")
+            if _d is not None:
+                try:
+                    dte = int(_d)
+                except (TypeError, ValueError):
+                    pass
+        side = (ct.get("putCall") or "").upper()
+        sym = ct.get("symbol")
+        # Same canonical vendor-numeric coercion compute_exposures_by_strike itself uses
+        # for this exact field (math_exposure_core._f -> float_finite_or_none) — a raw
+        # float() here would be a second, ad-hoc coercion authority for a Schwab vendor
+        # field.
+        _sk = float_finite_or_none(ct.get("strikePrice"))
+        if sym and side in ("CALL", "PUT") and _sk is not None:
+            sym_map.setdefault(_sk, {})[side.lower()] = str(sym)
+    return exposures_e, sym_map, dte, len(slice_e)
+
+
+def _gamma_surface_cell_fields(bucket: "dict | None", syms: "dict | None"):
+    """Shape ONE (strike, expiry) cell's gex/dex/vanna/oi/volume/contracts fields from its
+    compute_exposures_by_strike bucket (extracted 2026-09-16 alongside
+    _project_gamma_expiry_slice — see that function's docstring; this is the OTHER half
+    project_gamma_surface's per-cell loop used to inline, now shared with the incremental
+    update path so both produce byte-identical cells from the same bucket). Returns
+    (gex, dex, vanna, oi, volume, contracts, has_gex_data, has_oi) — see
+    project_gamma_surface's own inline comments (moved here verbatim) for why each gate
+    exists."""
+    from numeric_contract import float_finite_or_none
+
+    def _bf(v):
+        fv = float_finite_or_none(v)
+        return round(fv) if fv is not None else None
+
+    syms = syms or {}
+    _has_oi = bool(bucket is not None and bucket.get("has_oi"))
+    _has_gex_data = bool(_has_oi and bucket.get("has_valid_gamma"))
+    gex = _bf(bucket.get("net_gex_1pct")) if _has_gex_data else None
+    dex = _bf(bucket.get("net_dex_dollars")) if _has_gex_data else None
+    _vn = bucket["call_vanna"] - bucket["put_vanna"] if _has_gex_data else None
+    vanna = round(_vn, 2) if _vn is not None else None
+    call_oi, put_oi = (bucket or {}).get("call_oi"), (bucket or {}).get("put_oi")
+    oi = {"call": _bf(call_oi), "put": _bf(put_oi)} if bucket is not None else {"call": None, "put": None}
+    call_vol, put_vol = (bucket or {}).get("call_volume"), (bucket or {}).get("put_volume")
+    volume = {"call": _bf(call_vol), "put": _bf(put_vol)} if bucket is not None else {"call": None, "put": None}
+    contracts = {"call": syms.get("call"), "put": syms.get("put")}
+    return gex, dex, vanna, oi, volume, contracts, _has_gex_data, _has_oi
+
+
 def project_gamma_surface(chain: list, spot: float) -> dict:
     """PURE projection of a wide chain into a strike × expiry net_gex_1pct grid.
 
@@ -14711,9 +14878,6 @@ def project_gamma_surface(chain: list, spot: float) -> dict:
     helper). Because the faucet buckets each contract independently, summing per-expiry cells at
     a strike reconciles exactly to the full-book value at that strike (same spot). Contracts with
     malformed/missing native expiry are excluded and counted — never reassigned to a column."""
-    from math_exposure_core import compute_exposures_by_strike as _cebs
-    from numeric_contract import float_finite_or_none
-
     total_contracts = len(chain) if isinstance(chain, list) else 0
     expiries = _expiries_from_contracts(chain)
     valid_exp_keys = {str(e)[:10] for e in expiries}
@@ -14737,33 +14901,15 @@ def project_gamma_surface(chain: list, spot: float) -> dict:
     symbols_by_expiry: dict[str, dict[float, dict[str, str]]] = {}
     contracts_used = 0
     for e in expiries:
-        slice_e, slice_src = _filter_contracts_by_selected_expiry(chain, e)
-        if slice_src != "schwab_expirationDate" or not slice_e:
+        _slice = _project_gamma_expiry_slice(chain, e, spot)
+        if _slice is None:
             continue
-        # THE canonical faucet — identical call the selected-expiry analytics path uses
-        exposures_e, _diag_e = _cebs(slice_e, spot=spot, require_oi=True)
+        exposures_e, sym_map, dte, n_used = _slice
         per_expiry[e] = exposures_e
-        contracts_used += len(slice_e)
+        contracts_used += n_used
         for k in exposures_e.keys():
             strike_set.add(float(k))
-        sym_map: dict[float, dict[str, str]] = {}
-        for ct in slice_e:  # native DTE for the column header, never inferred
-            if e not in exp_dte:
-                _d = ct.get("daysToExpiration")
-                if _d is not None:
-                    try:
-                        exp_dte[e] = int(_d)
-                    except (TypeError, ValueError):
-                        pass
-            side = (ct.get("putCall") or "").upper()
-            sym = ct.get("symbol")
-            # Same canonical vendor-numeric coercion compute_exposures_by_strike itself
-            # uses for this exact field (math_exposure_core._f -> float_finite_or_none) --
-            # a raw float() here would be a second, ad-hoc coercion authority for a Schwab
-            # vendor field.
-            _sk = float_finite_or_none(ct.get("strikePrice"))
-            if sym and side in ("CALL", "PUT") and _sk is not None:
-                sym_map.setdefault(_sk, {})[side.lower()] = str(sym)
+        exp_dte[e] = dte
         symbols_by_expiry[e] = sym_map
 
     strikes = sorted(strike_set)
@@ -14780,76 +14926,37 @@ def project_gamma_surface(chain: list, spot: float) -> dict:
     # per-cell value (call_vanna - put_vanna, matching compute_net_vanna's +call/-put dealer
     # convention) is carried too, though today's UI surfaces Vanna aggregated by strike (its
     # own aggregate-only maturity today: see AGG_$_ONLY), not yet as a per-expiry column.
-    def _bf(v):
-        fv = float_finite_or_none(v)
-        return round(fv) if fv is not None else None
-
+    #
+    # Independent-review finding, REPRODUCED (live SPX, 2026-09-14): `bucket is not None`
+    # was once the ONLY gate here, but compute_exposures_by_strike creates a bucket for
+    # every strike/side/multiplier-valid contract BEFORE the require_oi filter runs -- a
+    # contract with a real strike and multiplier but zero/missing OI still gets a bucket,
+    # just one whose net_gex_1pct/net_dex_dollars never left their pre-initialized 0.0
+    # default. has_oi/has_valid_gamma (math_exposure_core.py's own canonical signals) are
+    # the fix — see _gamma_surface_cell_fields, which now owns this gating for both the
+    # full-surface and incremental-update paths.
     cells = []
     cells_with_data = 0
     cells_total = 0
     cells_with_oi_but_invalid_greeks = 0
     for k in strikes:
-        row = []
-        dex_row = []
-        vanna_row = []
-        oi_row = []
-        vol_row = []
-        contracts_row = []
+        row, dex_row, vanna_row, oi_row, vol_row, contracts_row = [], [], [], [], [], []
         for col in expirations:
             cells_total += 1
             bucket = per_expiry.get(col["expiry"], {}).get(k)
-            # Independent-review finding, REPRODUCED (live SPX, 2026-09-14): `bucket is not
-            # None` was the ONLY gate here, but compute_exposures_by_strike creates a bucket
-            # for every strike/side/multiplier-valid contract BEFORE the require_oi filter
-            # runs -- a contract with a real strike and multiplier but zero/missing OI still
-            # gets a bucket, just one whose net_gex_1pct/net_dex_dollars never left their
-            # pre-initialized 0.0 default (nothing ever passed the OI gate to add to them).
-            # Schwab's live SPX chain feed is currently frozen/stuck server-side (a live,
-            # reproduced vendor incident -- SPY/QQQ unaffected through the identical code path
-            # at the same instant), so `bucket is not None` was true everywhere while the real
-            # numbers were a fabricated-looking 0.0 for a strike with genuinely no usable OI.
-            # has_oi (math_exposure_core.py's own canonical signal, set at the exact point OI
-            # actually contributes to the accumulation) is the fix, not a second, independent
-            # re-derivation of the same fact from call_oi/put_oi presence.
-            #
-            # Operator directive (2026-09-15, canonical input-validity rules): has_oi alone is
-            # NOT enough to trust net_gex_1pct/net_dex_dollars/vanna -- live-reproduced 2026-
-            # 09-15: SPY/QQQ 0DTE ITM puts carry perfectly real OI while Schwab's own reported
-            # greeks for them are internally self-contradictory (delta=-1.0, gamma=0.0, vega=
-            # 0.0 alongside a real-looking IV) -- has_valid_gamma (math_exposure_core.py, set
-            # only when a contract's greeks actually passed vendor_greeks_unavailable/
-            # gamma_is_plausible AND contributed) is the independent, additional gate the
-            # gamma/delta-DERIVED fields need; OI/Volume below are untouched by it since they
-            # never depended on greeks at all.
-            _has_oi = bool(bucket is not None and bucket.get("has_oi"))
-            _has_gex_data = bool(_has_oi and bucket.get("has_valid_gamma"))
-            if _has_gex_data:
+            syms = symbols_by_expiry.get(col["expiry"], {}).get(k)
+            gex, dex, vanna, oi, volume, contracts, has_gex, has_oi = \
+                _gamma_surface_cell_fields(bucket, syms)
+            if has_gex:
                 cells_with_data += 1
-            elif _has_oi:
+            elif has_oi:
                 cells_with_oi_but_invalid_greeks += 1
-            row.append(_bf(bucket.get("net_gex_1pct")) if _has_gex_data else None)
-            dex_row.append(_bf(bucket.get("net_dex_dollars")) if _has_gex_data else None)
-            # call_vanna/put_vanna are pre-initialized to a real 0.0 by _strike_bucket
-            # (compute_exposures_by_strike, math_exposure_core.py) -- the SAME accumulator
-            # shape net_gex_1pct/net_dex_dollars have, and the SAME _has_gex_data gate above
-            # now applies here too (see that comment: a 0.0 default with no OI ever added to
-            # it is not a computed zero). call_oi/put_oi/call_volume/put_volume, right below,
-            # are the genuinely-optional fields and correctly keep their own None-preserving
-            # .get(), ungated by greeks validity (they never depended on greeks).
-            # NOT _bf: that helper rounds to the nearest WHOLE unit, correct for gex/dex's
-            # dollar magnitudes above but not for vanna's own much smaller per-vol-point scale
-            # (a real net vanna of 0.4 rounded to 0 loses sign and all magnitude). Rounded to 2
-            # decimals instead, matching /api/options/vanna-by-strike's own rounding of the
-            # identical call_vanna-put_vanna quantity from this same faucet -- reproduced live:
-            # the two endpoints showed materially different pictures of the same strike/vanna.
-            _vn = bucket["call_vanna"] - bucket["put_vanna"] if _has_gex_data else None
-            vanna_row.append(round(_vn, 2) if _vn is not None else None)
-            call_oi, put_oi = (bucket or {}).get("call_oi"), (bucket or {}).get("put_oi")
-            oi_row.append({"call": _bf(call_oi), "put": _bf(put_oi)} if bucket is not None else {"call": None, "put": None})
-            call_vol, put_vol = (bucket or {}).get("call_volume"), (bucket or {}).get("put_volume")
-            vol_row.append({"call": _bf(call_vol), "put": _bf(put_vol)} if bucket is not None else {"call": None, "put": None})
-            syms = symbols_by_expiry.get(col["expiry"], {}).get(k) or {}
-            contracts_row.append({"call": syms.get("call"), "put": syms.get("put")})
+            row.append(gex)
+            dex_row.append(dex)
+            vanna_row.append(vanna)
+            oi_row.append(oi)
+            vol_row.append(volume)
+            contracts_row.append(contracts)
         cells.append({
             "strike": k, "gex": row, "dex": dex_row, "vanna": vanna_row,
             "oi": oi_row, "volume": vol_row, "contracts": contracts_row,
@@ -14864,23 +14971,8 @@ def project_gamma_surface(chain: list, spot: float) -> dict:
     # usable OI (exactly the live SPX case this was written from) -- gamma_available is
     # gated on cells_with_data specifically, the same signal each cell's own _has_data used.
     gamma_available = cells_with_data > 0
-    # Operator directive (2026-09-15, canonical input-validity rules): the OLD single "no
-    # usable open interest" wording covered BOTH a real OI outage (SPX, 2026-09-14: the
-    # vendor reports zero OI) AND an invalid-greeks-only outage (SPY/QQQ 0DTE ITM puts,
-    # 2026-09-15: OI is real, the vendor's greeks for it are internally self-contradictory)
-    # as if they were the same fact -- an operator reading `gamma_unavailable_reason` could
-    # not tell "there is nothing here" from "there is real interest but Schwab's greeks for
-    # it are unusable right now". Both counts are diagnostic-only, never load-bearing for any
-    # gate (gamma_available/cells_with_data above are the actual authorities).
-    if gamma_available:
-        _reason = None
-    elif cells_with_oi_but_invalid_greeks > 0:
-        _reason = (
-            "real open interest exists but Schwab's own reported greeks for it are invalid "
-            "this cycle ({} of {} strike×expiry cells have OI with unusable greeks)"
-        ).format(cells_with_oi_but_invalid_greeks, cells_total)
-    else:
-        _reason = "no usable open interest in this chain (0 of {} strike×expiry cells)".format(cells_total)
+    _reason = _gamma_surface_unavailable_reason(gamma_available, cells_with_oi_but_invalid_greeks,
+                                                cells_total)
     return {
         "expirations": expirations, "strikes": strikes, "cells": cells,
         "contracts_total": total_contracts, "contracts_used": contracts_used,
@@ -14889,6 +14981,137 @@ def project_gamma_surface(chain: list, spot: float) -> dict:
         "gamma_unavailable_reason": _reason,
         "cells_total": cells_total,
         "cells_with_oi_but_invalid_greeks": cells_with_oi_but_invalid_greeks,
+    }
+
+
+def _gamma_surface_unavailable_reason(gamma_available: bool, cells_with_oi_but_invalid_greeks: int,
+                                      cells_total: int) -> "str | None":
+    """The ONE message for why a surface has no usable gamma this cycle (extracted
+    2026-09-16 alongside _project_gamma_expiry_slice/_gamma_surface_cell_fields so
+    project_gamma_surface_update_expiry reports identically to a full recompute).
+    Operator directive (2026-09-15, canonical input-validity rules): distinguishes a real
+    OI outage (SPX, 2026-09-14: the vendor reports zero OI) from an invalid-greeks-only
+    outage (SPY/QQQ 0DTE ITM puts, 2026-09-15: OI is real, Schwab's own greeks for it are
+    internally self-contradictory) — an operator reading this could not tell "there is
+    nothing here" from "there is real interest but Schwab's greeks for it are unusable
+    right now" before this split. Both counts are diagnostic-only, never load-bearing for
+    any gate (gamma_available/cells_with_data are the actual authorities)."""
+    if gamma_available:
+        return None
+    if cells_with_oi_but_invalid_greeks > 0:
+        return (
+            "real open interest exists but Schwab's own reported greeks for it are invalid "
+            "this cycle ({} of {} strike×expiry cells have OI with unusable greeks)"
+        ).format(cells_with_oi_but_invalid_greeks, cells_total)
+    return "no usable open interest in this chain (0 of {} strike×expiry cells)".format(cells_total)
+
+
+def project_gamma_surface_update_expiry(prior_surface: dict, chain: list, spot: float,
+                                        target_expiry: str) -> "dict | None":
+    """Incremental sibling of project_gamma_surface (2026-09-16, audit finding #2: a
+    streamed tick touches contracts belonging to exactly ONE expiry — an option symbol
+    encodes its own expiry — but the eager refresh path used to re-run the full
+    strike×expiry grid through compute_exposures_by_strike for EVERY expiry on every
+    single tick, measured at ~1.95s at SPXW scale. This recomputes ONLY `target_expiry`'s
+    strike slice, through the exact same canonical faucet
+    (_project_gamma_expiry_slice/_gamma_surface_cell_fields — never a second exposure
+    formula), and splices the result into a shallow COPY of `prior_surface`'s cells;
+    every other expiry's cells are the SAME objects, not recomputed or even re-touched.
+
+    `prior_surface` MUST be a surface project_gamma_surface (or this function) itself
+    produced from the SAME strike/expiry set `chain` implies — true by construction in
+    refresh_gamma_surface_from_stream, which builds both from the one REST-baseline
+    chain. `contracts_total`/`contracts_used`/`contracts_excluded_malformed_expiry` are
+    therefore copied verbatim from `prior_surface`: overlaying streamed fields onto an
+    unchanged contract list never changes which contracts exist, only some of their
+    field values, so those chain-shape counts cannot have moved.
+
+    Returns None — meaning "fall back to a full project_gamma_surface call" — whenever
+    incremental splicing cannot be done SAFELY: `target_expiry` is not an existing column
+    in `prior_surface` (a genuinely new expiry appearing must re-derive the sorted column
+    list), or the recomputed slice contains a strike `prior_surface` never carried (a new
+    strike appearing must re-derive the sorted row list). Both are rare — a REST cycle
+    within the last ~60s already re-derived the current strike/expiry set — and never
+    silently produce a shape-mismatched surface; the caller always has the safe full
+    recompute to fall back to."""
+    expirations = prior_surface.get("expirations") or []
+    col_idx = next((i for i, e in enumerate(expirations) if e.get("expiry") == target_expiry), None)
+    if col_idx is None:
+        return None
+    _slice = _project_gamma_expiry_slice(chain, target_expiry, spot)
+    if _slice is None:
+        return None
+    exposures_e, sym_map, dte, _n_used = _slice
+    prior_strikes = prior_surface.get("strikes") or []
+    strike_index = {k: i for i, k in enumerate(prior_strikes)}
+
+    prior_cells = prior_surface.get("cells") or []
+    if len(prior_cells) != len(prior_strikes):
+        return None     # shape already inconsistent -- do not compound it, fall back
+
+    cells_with_data = 0
+    cells_with_oi_but_invalid_greeks = 0
+    new_cells = list(prior_cells)   # shallow: untouched strike rows are the SAME objects
+    # Only strikes THIS expiry's slice actually names need a new row — the base REST chain
+    # (and therefore which (strike, expiry) pairs have any contract at all) is unchanged by
+    # a streamed overlay, so a strike absent from exposures_e/sym_map was equally absent
+    # last time and this column's value there is already, and stays, None. Rebuilding every
+    # strike's row unconditionally would touch (and reallocate) rows target_expiry never
+    # affected, defeating the identity-preservation this function exists to provide.
+    touched_strikes = set(exposures_e.keys()) | set(sym_map.keys())
+    if any(float(k) not in strike_index for k in touched_strikes):
+        return None    # a strike this expiry now reports that the prior surface never had
+    for k in touched_strikes:
+        i = strike_index[float(k)]
+        old_cell = prior_cells[i]
+        bucket = exposures_e.get(k)
+        syms = sym_map.get(k)
+        gex, dex, vanna, oi, volume, contracts, has_gex, has_oi = \
+            _gamma_surface_cell_fields(bucket, syms)
+        if has_gex:
+            cells_with_data += 1
+        elif has_oi:
+            cells_with_oi_but_invalid_greeks += 1
+        new_row = dict(old_cell)
+        for field, value in (("gex", gex), ("dex", dex), ("vanna", vanna),
+                             ("oi", oi), ("volume", volume), ("contracts", contracts)):
+            col = list(old_cell.get(field) or [])
+            if col_idx >= len(col):
+                return None      # column count disagrees with `expirations` -- fall back
+            col[col_idx] = value
+            new_row[field] = col
+        new_cells[i] = new_row
+
+    # Every OTHER column's own cells_with_data/cells_with_oi_but_invalid_greeks contribution
+    # is read back out of the UNTOUCHED cells this function never recomputed — a cheap scan
+    # over already-computed values, not exposure math, so this stays genuinely incremental.
+    other_cols_with_data = 0
+    other_cols_invalid_oi = 0
+    for j, e in enumerate(expirations):
+        if j == col_idx:
+            continue
+        for cell in new_cells:
+            gex_row = cell.get("gex") or []
+            oi_row = cell.get("oi") or []
+            if j < len(gex_row) and gex_row[j] is not None:
+                other_cols_with_data += 1
+            elif j < len(oi_row) and isinstance(oi_row[j], dict) and (
+                    oi_row[j].get("call") or oi_row[j].get("put")):
+                other_cols_invalid_oi += 1
+    total_cells_with_data = other_cols_with_data + cells_with_data
+    total_invalid_oi = other_cols_invalid_oi + cells_with_oi_but_invalid_greeks
+    cells_total = int(prior_surface.get("cells_total") or (len(new_cells) * len(expirations)))
+    gamma_available = total_cells_with_data > 0
+    return {
+        "expirations": expirations, "strikes": prior_strikes, "cells": new_cells,
+        "contracts_total": prior_surface.get("contracts_total"),
+        "contracts_used": prior_surface.get("contracts_used"),
+        "contracts_excluded_malformed_expiry": prior_surface.get("contracts_excluded_malformed_expiry"),
+        "gamma_available": gamma_available,
+        "gamma_unavailable_reason": _gamma_surface_unavailable_reason(
+            gamma_available, total_invalid_oi, cells_total),
+        "cells_total": cells_total,
+        "cells_with_oi_but_invalid_greeks": total_invalid_oi,
     }
 
 
@@ -14944,11 +15167,19 @@ def get_options_gamma_surface(ticker: str = Query(default=DEFAULT_TICKER)):
         # Always-live heatmap mandate (2026-09-15): `"live": True` above means "sourced from the
         # live terrain pathway", NOT "currently backed by a confirmed-fresh Schwab stream tick"
         # (a cold-stream surface still reaches here with cells stamped 'stale'/'unavailable' by
-        # _terrain_refresh_one/refresh_gamma_surface_from_stream). `stream_confirmed_live` and
-        # `cell_stream_state_counts` are the honest, per-cell-grounded signal for that question;
-        # the legacy "live" field's own meaning is left unchanged so existing consumers are not
-        # silently redefined underneath them.
-        _cell_state_counts = _gamma_surface_cell_state_counts(surf)
+        # _terrain_refresh_one/refresh_gamma_surface_from_stream).
+        #
+        # Audit finding #6 (2026-09-16), FIXED: `stream_confirmed_live` used to mean "at least
+        # one cell is live" (true with 1 of hundreds), and the field the UI actually rendered
+        # a "LIVE" label from (this response's own `source`/`live` above) required NO per-cell
+        # coverage at all -- a trader could see "LIVE" over a mostly stale/unavailable grid.
+        # `stream_confirmed_live` is REMOVED (dead, misleadingly named, never consumed) and
+        # replaced by `stream_coverage`, the ONE coverage verdict
+        # (_gamma_surface_coverage_summary) with exact live/partial/stale/rejected/unavailable
+        # counts and percentages, and `meets_live_requirement` gating the ONLY honest "LIVE"
+        # claim: 100% of cells carrying a real contract identity, not source-path identity or
+        # one live cell.
+        _coverage = _gamma_surface_coverage_summary(surf)
         return JSONResponse({
             "ticker": tk, "symbol": tk, "available": _gamma_available,
             # "reason" (not a new field name) -- ed-gamma.js's own unavailable-branch already
@@ -14956,8 +15187,8 @@ def get_options_gamma_surface(ticker: str = Query(default=DEFAULT_TICKER)):
             # existing frontend contract picks this up with no client-side change required.
             "reason": None if _gamma_available else surf.get("gamma_unavailable_reason"),
             "source": "terrain_live_cache", "live": True, "stale": stale,
-            "cell_stream_state_counts": _cell_state_counts,
-            "stream_confirmed_live": _cell_state_counts["live"] > 0,
+            "cell_stream_state_counts": _gamma_surface_cell_state_counts(surf),
+            "stream_coverage": _coverage,
             "degraded": live.get("levels_stale_reason") if stale else None,
             # ONE spot faucet (operator directive, 2026-09-15): prefer the spot stamped
             # directly ON THIS SURFACE (by _terrain_refresh_one's REST cycle OR the eager
@@ -15056,7 +15287,7 @@ def get_options_gamma_surface(ticker: str = Query(default=DEFAULT_TICKER)):
                 "ticker": tk, "symbol": tk, "available": True,
                 "source": "banked_morning_reference", "live": False, "stale": True,
                 "cell_stream_state_counts": _gamma_surface_cell_state_counts(surface),
-                "stream_confirmed_live": False,
+                "stream_coverage": _gamma_surface_coverage_summary(surface),
                 "warming": _warming, "requested": _requested, "on_board": _on_board,
                 "degraded": ("live terrain surface unavailable — showing banked morning wide "
                              "reference (morning spot + morning Greeks; NOT intraday, NOT proven complete)"),

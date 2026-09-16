@@ -198,8 +198,23 @@
     document.addEventListener('ed:view', load);       // fires on subview change too
     document.addEventListener('ed:ticker', load);
     document.addEventListener('ed:expiry', load);
-    document.addEventListener('ed:refresh', function (e) { if (e.detail && e.detail.slow) load(); });
-    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', load);
-    else load();
+    // Audit finding #4 (2026-09-16): initial hydration now comes SOLELY from ed-core.js's
+    // deferred ed:ticker/ed:view dispatch -- see that file's init() comment.
+    //
+    // Audit finding #5 (2026-09-16), FIXED: this used to also listen to the generic
+    // `ed:refresh{slow}` broadcast, refetching the COMPLETE vendor chain (every strike,
+    // both sides, strike_range=ALL) unconditionally every ~12s regardless of whether the
+    // Chain view was even the active view, and regardless of whether anything in the chain
+    // had actually changed. Replaced with an explicit, Chain-view-scoped, much slower
+    // cadence: this ladder shows EVERY contract's OI/Volume/IV/Delta, not just the handful
+    // the gamma heatmap's per-cell stream state already tracks, so there is no existing
+    // canonical per-cell live path for it to update through incrementally -- a full re-fetch
+    // is genuinely the only mechanism available today. The interval below is set to the
+    // wide-chain REST cycle's OWN real cadence (TERRAIN_REFRESH_SEC, ~60s server-side,
+    // documented at refresh_gamma_surface_from_stream's own docstring) rather than an
+    // arbitrary guess: refreshing faster than the producer itself recomputes would only
+    // ever re-serve the same response.
+    var CHAIN_REFRESH_MS = 60000;
+    setInterval(function () { if (isChain()) load(); }, CHAIN_REFRESH_MS);
   }
 })();

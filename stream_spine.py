@@ -154,12 +154,21 @@ CREATE INDEX IF NOT EXISTS idx_sbr_sym_ts ON stream_bars_raw(symbol, bar_start_m
 -- fails closed in both directions: the daemon republishes the claim the instant a close
 -- fails, and if the daemon cannot write at all the heartbeat goes stale and nothing is
 -- confirmed. The coverage rows remain the coverage HISTORY; this is the live assertion.
+-- `rejected_contracts_json` (bounded-vendor-call reconciliation, 2026-09-16): symbols the
+-- vendor explicitly refused on the most recent subscribe attempt, as {symbol: reason}. A
+-- symbol that is simply not-yet-attempted is absent from this map entirely, never a false
+-- "rejected" -- only a call that actually returned a non-zero response code for that exact
+-- symbol (isolated by bisection when it was rejected as part of a larger batch) is
+-- recorded here. Rides the same heartbeat row as claimed_coverage_json for the same
+-- reason: one producer-truth channel, one clock, fails closed the same way (a stale
+-- heartbeat means UNKNOWN, not "not rejected").
 CREATE TABLE IF NOT EXISTS stream_producer_heartbeat (
     id INTEGER PRIMARY KEY CHECK (id = 1),
     daemon_pid INTEGER,
     heartbeat_ts REAL NOT NULL,
     resolved_db_path TEXT NOT NULL,
-    claimed_coverage_json TEXT
+    claimed_coverage_json TEXT,
+    rejected_contracts_json TEXT
 );
 """
 
@@ -182,8 +191,8 @@ def read_producer_heartbeat(conn: sqlite3.Connection) -> "dict | None":
     returned `heartbeat_ts`, not this function."""
     try:
         row = conn.execute(
-            "SELECT daemon_pid, heartbeat_ts, resolved_db_path, claimed_coverage_json "
-            "FROM stream_producer_heartbeat WHERE id = 1").fetchone()
+            "SELECT daemon_pid, heartbeat_ts, resolved_db_path, claimed_coverage_json, "
+            "rejected_contracts_json FROM stream_producer_heartbeat WHERE id = 1").fetchone()
     except sqlite3.OperationalError:
         return None
     if row is None:
@@ -192,8 +201,33 @@ def read_producer_heartbeat(conn: sqlite3.Connection) -> "dict | None":
         claimed = json.loads(row[3]) if row[3] else None
     except (TypeError, ValueError):
         claimed = None      # unparseable claim is UNKNOWN, never confirmation
+    try:
+        rejected = json.loads(row[4]) if row[4] else None
+    except (TypeError, ValueError):
+        rejected = None      # unparseable rejection map is UNKNOWN, never confirmation
     return {"daemon_pid": row[0], "heartbeat_ts": row[1], "resolved_db_path": row[2],
-            "claimed_coverage": claimed}
+            "claimed_coverage": claimed, "rejected_contracts": rejected}
+
+
+def read_rejected_option_contracts(conn: sqlite3.Connection, *, stale_sec: float,
+                                   now: "float | None" = None) -> "dict[str, str]":
+    """PRODUCER-SIDE rejection identity: {symbol: reason} for every additional option
+    contract the vendor explicitly refused on its most recent subscribe attempt, per
+    `read_producer_heartbeat`'s own claim (never a second channel). A stale or absent
+    heartbeat yields {} -- unknown is never "not rejected", the same fail-closed rule
+    `read_open_coverage_symbols` applies to confirmed coverage. `stale_sec` is required
+    for the same reason it is required there: there is no correct ungated read."""
+    beat = read_producer_heartbeat(conn)
+    if beat is None:
+        return {}
+    hb_ts = beat.get("heartbeat_ts")
+    t = time.time() if now is None else now
+    if not isinstance(hb_ts, (int, float)) or (t - float(hb_ts)) > float(stale_sec):
+        return {}
+    rejected = beat.get("rejected_contracts")
+    if not isinstance(rejected, dict):
+        return {}
+    return {str(k): str(v) for k, v in rejected.items()}
 
 
 def read_open_coverage_symbols(conn: sqlite3.Connection,
@@ -599,6 +633,14 @@ class CaptureWriter:
         #: claim must not proceed until this + PRODUCER_CLAIM_TTL_SEC has passed, because
         #: until then a consumer can still confirm coverage from it.
         self._positive_claim_ts: "float | None" = None
+        #: Sticky last-published rejection map. `write_heartbeat` is called far more often
+        #: (every coverage-epoch open/close/retry) than the caller that actually knows the
+        #: current rejection set (the reconciler, on its own slower cadence) — if every one
+        #: of those more-frequent calls wrote `rejected_contracts=None` literally, each
+        #: would NULL OUT a standing rejection until the reconciler's next tick republished
+        #: it, a real gap a consumer could read as "no longer rejected" mid-window. Passing
+        #: None therefore means "unchanged", not "clear"; pass {} explicitly to clear it.
+        self._last_rejected_contracts: "dict[str, str] | None" = None
         self._closed = False
         self._conn = sqlite3.connect(str(p))
         try:
@@ -614,6 +656,9 @@ class CaptureWriter:
             if "claimed_coverage_json" not in hb_cols:
                 self._conn.execute("ALTER TABLE stream_producer_heartbeat "
                                    "ADD COLUMN claimed_coverage_json TEXT")
+            if "rejected_contracts_json" not in hb_cols:
+                self._conn.execute("ALTER TABLE stream_producer_heartbeat "
+                                   "ADD COLUMN rejected_contracts_json TEXT")
             self._conn.commit()
         except Exception:
             # Init failed after connect — close before the object is discarded so the
@@ -788,7 +833,8 @@ class CaptureWriter:
             raise CoverageWriteError(f"open_coverage_epoch({symbol},{service}): {e}") from e
 
     def write_heartbeat(self, *, pid: int | None = None, ts: float | None = None,
-                        claimed_coverage: "dict[str, list[int]] | None" = None) -> None:
+                        claimed_coverage: "dict[str, list[int]] | None" = None,
+                        rejected_contracts: "dict[str, str] | None" = None) -> None:
         """Producer identity/liveness signal written INTO the canonical stream_capture.db
         itself (PR214_RTH_DEFECT_REMEDIATION_FINAL_GAPS, Gap 2) -- not a separate
         checkout-relative status file. A consumer opening its OWN resolved db_path and
@@ -802,15 +848,20 @@ class CaptureWriter:
         p = pid if pid is not None else os.getpid()
         claim = None if claimed_coverage is None else json.dumps(
             {str(k): v for k, v in claimed_coverage.items()}, sort_keys=True)
+        if rejected_contracts is not None:
+            self._last_rejected_contracts = {str(k): str(v) for k, v in rejected_contracts.items()}
+        rejected = None if self._last_rejected_contracts is None else json.dumps(
+            self._last_rejected_contracts, sort_keys=True)
         try:
             self._conn.execute(
                 "INSERT INTO stream_producer_heartbeat(id, daemon_pid, heartbeat_ts, "
-                "resolved_db_path, claimed_coverage_json) "
-                "VALUES (1, ?, ?, ?, ?) "
+                "resolved_db_path, claimed_coverage_json, rejected_contracts_json) "
+                "VALUES (1, ?, ?, ?, ?, ?) "
                 "ON CONFLICT(id) DO UPDATE SET daemon_pid=excluded.daemon_pid, "
                 "heartbeat_ts=excluded.heartbeat_ts, resolved_db_path=excluded.resolved_db_path, "
-                "claimed_coverage_json=excluded.claimed_coverage_json",
-                (p, t, str(self.db_path), claim))
+                "claimed_coverage_json=excluded.claimed_coverage_json, "
+                "rejected_contracts_json=excluded.rejected_contracts_json",
+                (p, t, str(self.db_path), claim, rejected))
             self._conn.commit()
         except Exception as e:
             raise CoverageWriteError(f"write_heartbeat: {e}") from e

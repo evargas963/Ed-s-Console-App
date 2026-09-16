@@ -48,6 +48,7 @@ from stream_spine import (
     STREAM_DB_DEFAULT,
     read_open_coverage_symbols,
     read_producer_heartbeat,
+    read_rejected_option_contracts,
     resolve_stream_db_path,
     read_active_option_contract_signal,
     write_active_option_contract_signal,
@@ -1227,6 +1228,24 @@ def _read_producer_option_contracts() -> dict[str, list[str]]:
             stale_sec=STREAM_PRODUCER_HEARTBEAT_STALE_SEC)
     except Exception:   # noqa: BLE001 — diagnostics must never raise into a route
         return {s: [] for s in OPTION_PRODUCER_SERVICES}
+    finally:
+        con.close()
+
+
+def read_producer_rejected_option_contracts() -> "dict[str, str]":
+    """{symbol: vendor_error} for every additional option contract the capture daemon's
+    most recent batched subscribe attempt had the vendor explicitly REFUSE (2026-09-16,
+    bounded-vendor-call reconciliation — see capture.py's
+    _batch_subscribe_with_bisection). Fails closed to {} on any read problem or a stale/
+    absent producer heartbeat, same TTL and same DB-identity discipline as
+    _read_producer_option_contracts: unknown is never 'not rejected'."""
+    con = _open_capture_db_readonly()
+    if con is None:
+        return {}
+    try:
+        return read_rejected_option_contracts(con, stale_sec=STREAM_PRODUCER_HEARTBEAT_STALE_SEC)
+    except Exception:   # noqa: BLE001 — diagnostics must never raise into a route
+        return {}
     finally:
         con.close()
 

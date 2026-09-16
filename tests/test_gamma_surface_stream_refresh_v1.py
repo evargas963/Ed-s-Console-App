@@ -437,9 +437,10 @@ def test_a_rest_refresh_landing_mid_computation_is_not_overwritten_by_the_stale_
         lambda sym: {"gamma": 0.5, "gamma_ts_recv": now})
 
     orig_project = server.project_gamma_surface
+    orig_update_expiry = server.project_gamma_surface_update_expiry
     fresh_marker = {"expirations": [], "strikes": [], "cells": [], "marker": "FRESH_REST_GENERATION"}
 
-    def racing_project(contracts_arg, spot_arg):
+    def _simulate_race():
         # Simulate a REAL REST refresh landing WHILE this function computes, publishing a
         # newer generation before this function gets a chance to write its own (older) one.
         with server._terrain_cache_lock:
@@ -449,13 +450,27 @@ def test_a_rest_refresh_landing_mid_computation_is_not_overwritten_by_the_stale_
                 "_gamma_surface": fresh_marker,
                 "computed_ts_utc": time.time(),
             }
+
+    def racing_project(contracts_arg, spot_arg):
+        _simulate_race()
         return orig_project(contracts_arg, spot_arg)
 
+    def racing_update_expiry(prior_surface_arg, contracts_arg, spot_arg, expiry_arg):
+        # 2026-09-16 incremental-update path (audit finding #2): a prior _gamma_surface is
+        # already cached from _put_rest_baseline, so refresh_gamma_surface_from_stream now
+        # takes THIS path instead of the full project_gamma_surface -- the race must be
+        # simulated here too, or the CAS-race invariant this test exists to prove would go
+        # completely untested the instant the incremental path is available.
+        _simulate_race()
+        return orig_update_expiry(prior_surface_arg, contracts_arg, spot_arg, expiry_arg)
+
     monkeypatch.setattr(server, "project_gamma_surface", racing_project)
+    monkeypatch.setattr(server, "project_gamma_surface_update_expiry", racing_update_expiry)
     try:
         status = refresh_gamma_surface_from_stream(_CONTRACT_SYMBOL, now)
     finally:
         server.project_gamma_surface = orig_project
+        server.project_gamma_surface_update_expiry = orig_update_expiry
     assert status == "stale_baseline_superseded"
     with server._terrain_cache_lock:
         cached = server._terrain_cache[TK]
@@ -472,6 +487,12 @@ def test_never_raises_on_an_internal_error(monkeypatch):
         "app.options.order_flow.state.get_stream_greeks",
         lambda sym: {"gamma": 0.5, "gamma_ts_recv": time.time()})
     monkeypatch.setattr(server, "project_gamma_surface",
+                        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
+    # 2026-09-16 incremental-update path (audit finding #2): a prior _gamma_surface is
+    # already cached from _put_rest_baseline, so the code under test reaches
+    # project_gamma_surface_update_expiry, not project_gamma_surface directly -- both
+    # must independently prove the never-raises guarantee.
+    monkeypatch.setattr(server, "project_gamma_surface_update_expiry",
                         lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
     status = refresh_gamma_surface_from_stream(_CONTRACT_SYMBOL, time.time())
     assert status.startswith("error:")

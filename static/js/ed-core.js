@@ -284,6 +284,10 @@
     if (!scp.hidden) reflectScope();
   }
 
+  // Audit finding #4 (2026-09-16): suppresses syncAttrs()'s ed:view dispatch during init()'s
+  // own cold-boot pass -- see that dispatch's own comment for why.
+  var _booting = true;
+
   function syncAttrs() {
     app.setAttribute('data-workspace', state.workspace);
     app.setAttribute('data-subview', state.subview);
@@ -299,7 +303,17 @@
     showMainView();
     reflectScopeVisibility();
     renderRailChildren();
-    document.dispatchEvent(new CustomEvent('ed:view', { detail: Object.assign({}, state) }));
+    // Audit finding #4 (2026-09-16): init() below calls syncAttrs() AND setTicker() during
+    // the SAME cold-boot pass, each dispatching its own event (ed:view / ed:ticker) into
+    // every view module's now-live listener (see init()'s own comment on why this dispatch
+    // used to reach nobody). Every module treats ed:view and ed:ticker as equally sufficient
+    // triggers for a full reload, so firing BOTH during boot -- when neither the view nor the
+    // ticker has actually CHANGED from anything, there is simply no prior state yet -- causes
+    // a genuine duplicate hydration this fix exists to eliminate. `_booting` suppresses this
+    // dispatch only during that one initial pass; setTicker's OWN ed:ticker dispatch (below,
+    // unconditional) is the single signal every module hydrates from at cold start, and
+    // ed:view fires normally, exactly once per call, on every REAL subsequent view change.
+    if (!_booting) document.dispatchEvent(new CustomEvent('ed:view', { detail: Object.assign({}, state) }));
   }
 
   function setWorkspace(ws) {
@@ -772,12 +786,21 @@
     // manually dispatches that event proves rendering after delivery, not TIMELY delivery.
     // This reuses the ALREADY-OPEN SSE connection (no new daemon/connection) that server.py's
     // refresh_gamma_surface_from_stream now pushes a `gamma_surface_seq` event on the instant
-    // it publishes -- the browser reacts to the PUSH instead of waiting out the slow poll. The
-    // poll remains as the fallback path (SSE down/stalled), unchanged.
+    // it publishes -- the browser reacts to the PUSH instead of waiting out the slow poll.
+    //
+    // Audit finding #3 (2026-09-16), FIXED: this used to dispatch the SAME generic `ed:refresh`
+    // event the 12s poll fires -- every one of the ~11 modules that listen to `ed:refresh` for
+    // their OWN, largely UNRELATED endpoint (Chain, Alerts, Trade Desk, Liquidity Map, Order
+    // Flow, Flow, Levels) refetched on EVERY single streamed gamma tick, not just the ones that
+    // actually consume gamma-surface-derived data. A gamma-surface change now dispatches its
+    // own, narrower `ed:gamma-push` event, consumed only by the modules that actually read
+    // gamma-surface/per-strike data (ed-gamma.js, ed-gamma-panels.js's GEX-by-strike panel,
+    // ed-gamma-chart.js) -- the 12s poll's `ed:refresh{slow}` remains the ONLY thing that
+    // drives every other module's slower, session-cadence refresh.
     _sse.addEventListener('gamma_surface_seq', function (ev) {
       var env; try { env = JSON.parse(ev.data); } catch (e) { return; }
       if (!env || !env.scope || String(env.scope.ticker || '').toUpperCase() !== String(state.ticker || '').toUpperCase()) return;
-      document.dispatchEvent(new CustomEvent('ed:refresh', { detail: { slow: true, pushed: true } }));
+      document.dispatchEvent(new CustomEvent('ed:gamma-push', { detail: { surfaceSeq: env.surface_seq } }));
     });
     _sse.onerror = function () { _sseUp = false; };   // fall back to polling; the browser reconnects
   }
@@ -940,12 +963,29 @@
     });
     // initial ticker + header
     setTicker(state.ticker);
+    _booting = false;   // every REAL subsequent view/ticker change dispatches both events normally
     tickClock(); setInterval(tickClock, 1000);
     setInterval(liveTick, 3000);   // single scheduler drives header (fast) + gamma (slow)
   }
 
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
-  else init();
+  // Audit finding #4 (2026-09-16): every view module (ed-gamma.js, ed-gamma-panels.js, etc.)
+  // loads with `defer`, and per the HTML spec a deferred script executes AFTER parsing
+  // finishes, while `document.readyState` is already 'interactive' -- so `init()` used to
+  // ALWAYS take this file's own "not loading, run immediately" branch, firing `ed:ticker`/
+  // `ed:view` (setTicker/syncAttrs, below) before any LATER script tag had even executed,
+  // let alone registered its own `ed:ticker`/`ed:view` listener. Every view module's initial
+  // render therefore came from its OWN separate bottom-of-file self-call
+  // (`else load()`/`else loadAll()`), never from this dispatch -- two independent hydration
+  // mechanisms that happened to avoid colliding only because of that ordering coincidence,
+  // not because either one was designed to be the sole owner. `init()` now ALWAYS waits for
+  // `DOMContentLoaded`, which the HTML spec guarantees fires strictly after every deferred
+  // script has executed -- making this dispatch the one hydration trigger every module can
+  // reliably listen for, and letting each module's own self-call be removed (see those
+  // files) rather than duplicate it. `readyState === 'complete'` is the one case where
+  // DOMContentLoaded has already fired (a very late/dynamic script insertion) and must run
+  // immediately instead of waiting for an event that will never come again.
+  if (document.readyState === 'complete') init();
+  else document.addEventListener('DOMContentLoaded', init);
 
   // expose for view modules + tests (no trading logic here)
   window.EdShell = { getState: function () { return Object.assign({}, state); }, setTicker: setTicker,

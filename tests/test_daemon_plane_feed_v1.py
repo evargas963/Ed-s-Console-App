@@ -307,3 +307,61 @@ def test_producer_identity_e_missing_db_is_unknown_not_a_false_mismatch(tmp_path
     monkeypatch.delenv("STREAM_CAPTURE_DB_PATH", raising=False)
     diag = ofs.get_streaming_diagnostics()
     assert diag["stream_db_identity"]["identity_match"] is None
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 2026-09-16, audit finding #6 (bounded-vendor-call reconciliation): the producer's
+# rejected-contract map rides the SAME heartbeat row as claimed_coverage_json. These
+# prove the REAL CaptureWriter.write_heartbeat / read_producer_rejected_option_contracts
+# round trip: sticky-unless-explicit (a frequent claimed_coverage-only publish must not
+# wipe a standing rejection) and the same staleness fail-closed rule as coverage.
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_rejected_contracts_round_trip_through_the_real_heartbeat_row(tmp_path, monkeypatch):
+    db = _reset(tmp_path)
+    monkeypatch.setattr(ofs, "STREAM_DB_DEFAULT", db)
+    monkeypatch.delenv("STREAM_CAPTURE_DB_PATH", raising=False)
+    w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
+    w.write_heartbeat(rejected_contracts={"QQQ   260820C00450000": "RuntimeError: refused"})
+    w.close()
+    got = ofs.read_producer_rejected_option_contracts()
+    assert got == {"QQQ   260820C00450000": "RuntimeError: refused"}
+
+
+def test_rejected_contracts_are_sticky_across_a_claimed_coverage_only_publish(tmp_path, monkeypatch):
+    """A coverage-claim publish (open/close/retry) fires far more often than the
+    reconciler's own rejection update and never passes rejected_contracts — it must NOT
+    wipe a standing rejection back to {} in between (see CaptureWriter's own
+    _last_rejected_contracts docstring)."""
+    db = _reset(tmp_path)
+    monkeypatch.setattr(ofs, "STREAM_DB_DEFAULT", db)
+    monkeypatch.delenv("STREAM_CAPTURE_DB_PATH", raising=False)
+    w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
+    w.write_heartbeat(rejected_contracts={"BAD": "vendor refused"})
+    w.write_heartbeat(claimed_coverage={"LEVELONE_OPTIONS": [1]})   # no rejected_contracts kwarg
+    w.close()
+    assert ofs.read_producer_rejected_option_contracts() == {"BAD": "vendor refused"}
+
+
+def test_rejected_contracts_explicit_empty_dict_clears_it(tmp_path, monkeypatch):
+    db = _reset(tmp_path)
+    monkeypatch.setattr(ofs, "STREAM_DB_DEFAULT", db)
+    monkeypatch.delenv("STREAM_CAPTURE_DB_PATH", raising=False)
+    w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
+    w.write_heartbeat(rejected_contracts={"BAD": "vendor refused"})
+    w.write_heartbeat(rejected_contracts={})   # explicit clear
+    w.close()
+    assert ofs.read_producer_rejected_option_contracts() == {}
+
+
+def test_rejected_contracts_go_unknown_past_the_staleness_window(tmp_path, monkeypatch):
+    import time as _time
+    db = _reset(tmp_path)
+    monkeypatch.setattr(ofs, "STREAM_DB_DEFAULT", db)
+    monkeypatch.delenv("STREAM_CAPTURE_DB_PATH", raising=False)
+    w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
+    w.write_heartbeat(ts=_time.time() - (ofs.STREAM_PRODUCER_HEARTBEAT_STALE_SEC + 5.0),
+                      rejected_contracts={"BAD": "vendor refused"})
+    w.close()
+    assert ofs.read_producer_rejected_option_contracts() == {}, (
+        "a stale producer heartbeat must report unknown (empty), never a standing rejection")

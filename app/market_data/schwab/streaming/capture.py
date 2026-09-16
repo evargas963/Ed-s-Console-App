@@ -1108,31 +1108,77 @@ def _subs_or_add(contract_state: dict, svc_key: str, exclude_key: str, subs_fn, 
     return _op
 
 
+async def _batch_subscribe_with_bisection(op, symbols: "list[str]", *, on_admitted) -> "list[tuple[str, str]]":
+    """Subscribe `symbols` to the vendor in as FEW network round trips as possible
+    (2026-09-16, audit finding: the prior design issued one full WS round trip PER
+    symbol, serially, behind the stream's own lock — a 100+ contract view switch could
+    take 5-20+ seconds to fully reconcile, with earlier symbols live and later ones
+    silently unsubscribed the whole time). Schwab's own SUBS/ADD commands already accept
+    a comma-joined multi-symbol `keys` parameter (schwab-py `_service_op`) — this calls
+    the WHOLE list in ONE request first, which is the common case (N contracts, one round
+    trip, one ack).
+
+    Schwab's ack is all-or-nothing PER REQUEST (one response code for the whole batch),
+    so a rejected batch does not by itself say WHICH symbol was the problem. Rather than
+    impose an arbitrary ceiling to sidestep that, a rejected batch is BISECTED — split in
+    half and each half retried independently, recursively — until every rejection is
+    isolated to the exact symbol(s) that caused it, or the accepting subset is confirmed.
+    Worst case (every symbol rejected) costs O(N) calls; the ordinary case (the whole
+    batch, or a batch with no genuinely poisoned symbol, accepted) costs exactly ONE.
+
+    `on_admitted(list_of_symbols)` fires the instant a sub-batch is confirmed accepted,
+    BEFORE any further vendor call in this recursion — callers use it to mark those
+    symbols held immediately so a later sub-batch's SUBS-vs-ADD decision (`_subs_or_add`)
+    sees the update: once anything is confirmed held, every subsequent call in this same
+    reconciliation must use ADD, never a second SUBS (undefined/clobbering per the
+    installed SDK's own documented warning).
+
+    Returns the REJECTED symbols as (symbol, vendor_error) pairs; admitted symbols are
+    reported only via `on_admitted`, never in the return value, so a caller cannot process
+    a symbol twice."""
+    if not symbols:
+        return []
+    try:
+        await op(list(symbols))
+        on_admitted(list(symbols))
+        return []
+    except Exception as e:
+        if len(symbols) == 1:
+            return [(symbols[0], f"{type(e).__name__}: {e}")]
+        mid = len(symbols) // 2
+        left = await _batch_subscribe_with_bisection(op, symbols[:mid], on_admitted=on_admitted)
+        right = await _batch_subscribe_with_bisection(op, symbols[mid:], on_admitted=on_admitted)
+        return left + right
+
+
 async def _apply_extra_option_contract_subs(stream, contract_state: dict, extra_requested: set, *,
-                                            writer, epoch_state: dict | None) -> None:
+                                            writer, epoch_state: dict | None,
+                                            rejected_state: "dict[str, str] | None" = None) -> None:
     """Reconcile ADDITIONAL concurrently-desired symbols for LEVELONE_OPTIONS (RC-UI-3,
-    2026-09-12 multi-contract coverage), beside the one primary/pinned contract
-    `_apply_active_option_contract_subs` reconciles under the plain "l1" key. LEVELONE_
-    OPTIONS only — see EXTRA_OPTION_CONTRACT_SVC_KEY.
+    2026-09-12 multi-contract coverage; rearchitected 2026-09-16 for bounded vendor
+    calls), beside the one primary/pinned contract `_apply_active_option_contract_subs`
+    reconciles under the plain "l1" key. LEVELONE_OPTIONS only — see
+    EXTRA_OPTION_CONTRACT_SVC_KEY.
 
-    Deliberately reuses `_reconcile_option_service` UNCHANGED, once per extra symbol,
-    under a NAMESPACED key f"l1:extra:{symbol}" — fully independent of the primary key
-    and of every other extra symbol's key, so the causality-critical close-before-unsub-
-    before-sub-before-open ordering that function implements, and the ~1600 lines of
-    tests proving it, apply identically here with zero new state-machine code. Each
-    namespaced key always reconciles held==requested==the SAME symbol (never a switch
-    from one symbol to another within one key) — "add a contract" and "drop a contract"
-    are the only two transitions a key ever makes, which is exactly the subscribe/
-    unsubscribe halves _reconcile_option_service already implements. The actual vendor
-    subscribe call is `_subs_or_add`-wrapped (SUBS only if nothing else is held for
-    LEVELONE_OPTIONS at that instant, ADD otherwise — see its docstring).
+    2026-09-16 audit finding: the prior design called `_reconcile_option_service` once
+    PER symbol, each issuing its own single-symbol vendor round trip serially — genuinely
+    correct per-contract coverage-epoch truth, but O(N) network round trips for an N-
+    symbol change, blocking this poll tick for the entire duration. Fixed by SEPARATING
+    the two concerns `_reconcile_option_service` used to fuse: durable per-symbol
+    coverage-epoch bookkeeping (cheap sqlite writes, stays exactly as granular and
+    causally ordered as before — one epoch row per symbol, closed before any vendor
+    unsub, opened only after a confirmed vendor sub) from the VENDOR NETWORK CALL itself
+    (now issued ONCE for the whole added set and once for the whole removed set, via the
+    SDK's native multi-symbol SUBS/ADD/UNSUBS — see `_batch_subscribe_with_bisection`).
+    The causal invariant this preserves is the AGGREGATE form of the original per-symbol
+    one: every symbol's durable CLOSE lands before the shared vendor UNSUBS call that
+    actually drops it, and every symbol's durable OPEN happens only after the shared
+    vendor SUBS/ADD call that actually admits it — never the two-sided "vendor holds it
+    but no epoch exists" or "epoch open but vendor never confirmed" shapes.
 
-    `in_play` is the union of every symbol that still needs a reconcile call this tick:
-    desired extras, symbols contract_state still remembers holding, and symbols
-    epoch_state still has an open epoch or a pending close for — a symbol dropped from
-    the desired set must keep reconciling (to actually unsubscribe/close) until BOTH
-    dicts agree nothing is left, at which point its keys are pruned so contract_state/
-    epoch_state do not grow without bound over a long session."""
+    `in_play` is unchanged: the union of every symbol that still needs consideration this
+    tick — desired extras, symbols contract_state still remembers holding, and symbols
+    epoch_state still has an open epoch or a pending close for."""
     prefix = f"{EXTRA_OPTION_CONTRACT_SVC_KEY}:extra:"
     in_play: set[str] = {k[len(prefix):] for k in contract_state if k.startswith(prefix)}
     in_play |= set(extra_requested)
@@ -1145,17 +1191,118 @@ async def _apply_extra_option_contract_subs(stream, contract_state: dict, extra_
                     in_play.add(key[len(prefix):-len("_pending_close")])
             else:
                 in_play.add(key[len(prefix):])
+
+    # Retry any previously-failed durable closes first (cheap, per-key, no vendor call) —
+    # unchanged behavior, just hoisted out of the old per-symbol reconcile loop.
+    if writer is not None and epoch_state is not None:
+        for symbol in sorted(in_play):
+            _retry_pending_epoch_closes(writer, epoch_state, f"{prefix}{symbol}",
+                                        reason="retry_pending_close")
+
+    to_remove: "list[str]" = []
+    to_add: "list[str]" = []
+    for symbol in sorted(in_play):
+        held = contract_state.get(f"{prefix}{symbol}")
+        wanted = symbol in extra_requested
+        if held is not None and not wanted:
+            to_remove.append(symbol)
+        elif held is None and wanted:
+            to_add.append(symbol)
+        # held == wanted (both set or both clear): already correct, nothing to do.
+
+    # ---- REMOVAL: durable CLOSE first per symbol (unchanged causal rule), THEN ONE
+    # batched vendor UNSUBS call for every symbol whose close actually landed. ----
+    closed_ok: "list[str]" = []
+    for symbol in to_remove:
+        epoch_key = f"{prefix}{symbol}"
+        if writer is not None and epoch_state is not None:
+            closing_epoch_id = epoch_state.get(epoch_key)
+            surrender_published = _close_coverage_epoch_tracked(
+                writer, epoch_state, epoch_key, reason="active_contract_changed",
+                require_publish=True)
+            if (not surrender_published
+                    or _epoch_close_is_pending(epoch_state, epoch_key, closing_epoch_id)):
+                # Could not durably surrender this symbol's coverage this tick — leave its
+                # vendor subscription untouched (same fail-closed rule as the single-symbol
+                # CASE A) and retry next tick.
+                epoch_state[epoch_key] = closing_epoch_id
+                _discard_pending_close(epoch_state, epoch_key, closing_epoch_id)
+                _publish_coverage_claim(writer, epoch_state)
+                continue
+        closed_ok.append(symbol)
+    if closed_ok:
+        try:
+            await stream.level_one_option_unsubs(closed_ok)
+            for symbol in closed_ok:
+                contract_state[f"{prefix}{symbol}"] = None
+                if rejected_state is not None:
+                    rejected_state.pop(symbol, None)
+        except Exception as e:
+            # Durable coverage was already surrendered (published) for EVERY symbol in
+            # closed_ok, but the one shared vendor unsubscribe that was meant to make that
+            # true is now unconfirmed — the batched generalization of the single-symbol
+            # CASE C. Vendor state for this whole set is uncertain with no durable
+            # coverage backing it; force a stream recycle rather than guess which of them,
+            # if any, actually dropped.
+            raise OptionCoverageCompensationError(
+                f"{EXTRA_OPTION_CONTRACT_SERVICE_NAME}: durable coverage for {closed_ok} "
+                f"was closed but the batched vendor unsubscribe then failed "
+                f"({type(e).__name__}: {e}) — vendor state unconfirmed for "
+                f"{len(closed_ok)} contract(s) with coverage already surrendered; forcing "
+                f"stream recycle rather than continuing or fabricating an open epoch") from e
+
+    # ---- ADDITION: ONE (or bisected, on rejection) batched vendor SUBS/ADD call, THEN
+    # durable OPEN per symbol the vendor actually admitted. ----
+    if to_add:
+        op = _subs_or_add(contract_state, EXTRA_OPTION_CONTRACT_SVC_KEY, None,
+                          stream.level_one_option_subs, stream.level_one_option_add)
+        admitted_this_call: "list[str]" = []
+
+        def _mark_admitted(symbols: "list[str]") -> None:
+            for symbol in symbols:
+                contract_state[f"{prefix}{symbol}"] = symbol
+                admitted_this_call.append(symbol)
+
+        rejected = await _batch_subscribe_with_bisection(op, to_add, on_admitted=_mark_admitted)
+
+        for symbol in admitted_this_call:
+            epoch_key = f"{prefix}{symbol}"
+            if rejected_state is not None:
+                rejected_state.pop(symbol, None)
+            if writer is not None and epoch_state is not None:
+                _open_coverage_epoch_tracked(writer, epoch_state, epoch_key, symbol,
+                                             EXTRA_OPTION_CONTRACT_SERVICE_NAME,
+                                             reason="active_contract_set")
+                if epoch_state.get(epoch_key) is None:
+                    # Durable open failed — the vendor must not go on holding a
+                    # subscription with no coverage record behind it (same compensation
+                    # rule as the single-symbol path).
+                    try:
+                        await stream.level_one_option_unsubs([symbol])
+                    except Exception as e:
+                        raise OptionCoverageCompensationError(
+                            f"{EXTRA_OPTION_CONTRACT_SERVICE_NAME}: coverage-epoch open "
+                            f"failed for {symbol} AND the compensating unsubscribe also "
+                            f"failed ({type(e).__name__}: {e}) — vendor state uncertain "
+                            f"with no durable coverage; forcing stream recycle rather "
+                            f"than continuing") from e
+                    contract_state[epoch_key] = None
+
+        if rejected_state is not None:
+            for symbol, reason in rejected:
+                rejected_state[symbol] = reason
+                contract_state.pop(f"{prefix}{symbol}", None)
+            if rejected:
+                print(f"{EXTRA_OPTION_CONTRACT_SERVICE_NAME}: vendor REJECTED "
+                      f"{len(rejected)} of {len(to_add)} requested contract(s): "
+                      f"{[s for s, _ in rejected]}")
+
+    # Prune keys nothing references any more so state does not grow without bound.
     for symbol in sorted(in_play):
         epoch_key = f"{prefix}{symbol}"
-        want = symbol if symbol in extra_requested else None
-        held_now = await _reconcile_option_service(
-            stream, contract_state.get(epoch_key), want,
-            subs_fn=_subs_or_add(contract_state, EXTRA_OPTION_CONTRACT_SVC_KEY, epoch_key,
-                                 stream.level_one_option_subs, stream.level_one_option_add),
-            unsubs_fn=stream.level_one_option_unsubs,
-            writer=writer, epoch_state=epoch_state, epoch_key=epoch_key,
-            service_name=EXTRA_OPTION_CONTRACT_SERVICE_NAME)
-        fully_clear = held_now is None and want is None and (
+        held_now = contract_state.get(epoch_key)
+        wanted = symbol in extra_requested
+        fully_clear = held_now is None and not wanted and (
             epoch_state is None or (
                 epoch_state.get(epoch_key) is None
                 and not epoch_state.get(f"{epoch_key}_pending_close")))
@@ -1164,8 +1311,8 @@ async def _apply_extra_option_contract_subs(stream, contract_state: dict, extra_
             if epoch_state is not None:
                 epoch_state.pop(epoch_key, None)
                 epoch_state.pop(f"{epoch_key}_pending_close", None)
-        else:
-            contract_state[epoch_key] = held_now
+            if rejected_state is not None and not wanted:
+                rejected_state.pop(symbol, None)
 
 
 async def _apply_option_primary_role_transfer(stream, contract_state: dict, epoch_state: "dict | None", *,
@@ -1297,7 +1444,8 @@ async def _apply_option_primary_role_transfer(stream, contract_state: dict, epoc
 
 
 async def _apply_active_option_contract_subs(stream, contract_state: dict, *,
-                                             writer=None, epoch_state: dict | None = None) -> dict:
+                                             writer=None, epoch_state: dict | None = None,
+                                             rejected_state: "dict[str, str] | None" = None) -> dict:
     """Diff the server's requested active OPTION CONTRACT(s) against what is currently
     held, PER SERVICE (LEVELONE_OPTIONS and OPTIONS_BOOK reconciled independently — see
     _reconcile_option_service).
@@ -1382,13 +1530,15 @@ async def _apply_active_option_contract_subs(stream, contract_state: dict, *,
     if deferred_symbol is not None:
         extra_requested.add(deferred_symbol)
     await _apply_extra_option_contract_subs(
-        stream, contract_state, extra_requested, writer=writer, epoch_state=epoch_state)
+        stream, contract_state, extra_requested, writer=writer, epoch_state=epoch_state,
+        rejected_state=rejected_state)
     return contract_state
 
 
 async def _active_option_contract_poll_loop(get_stream, get_current, set_current,
                                             stop: asyncio.Event, writer=None,
                                             epoch_state: dict | None = None,
+                                            rejected_state: "dict[str, str] | None" = None,
                                             interval_sec: float = 1.0,
                                             request_recycle: asyncio.Event | None = None) -> None:
     """Fast poll of the active-option-contract signal — same shape and cadence as
@@ -1427,7 +1577,8 @@ async def _active_option_contract_poll_loop(get_stream, get_current, set_current
             continue
         try:
             new_cur = await _apply_active_option_contract_subs(
-                stream, get_current(), writer=writer, epoch_state=epoch_state)
+                stream, get_current(), writer=writer, epoch_state=epoch_state,
+                rejected_state=rejected_state)
             set_current(new_cur)
         except OptionCoverageCompensationError as e:
             # NOT an ordinary bad tick: vendor state uncertain AND no durable coverage.
@@ -1445,7 +1596,8 @@ async def _active_option_contract_poll_loop(get_stream, get_current, set_current
 
 def write_status(bus: MessageBus, health: HealthRegistry, writer: CaptureWriter,
                  stats: CaptureStats, max_qdepth: int,
-                 epoch_state: dict | None = None) -> None:
+                 epoch_state: dict | None = None,
+                 rejected_state: "dict[str, str] | None" = None) -> None:
     # PR214_RTH_DEFECT_REMEDIATION_FINAL_GAPS (Gap 2): the producer identity/liveness
     # signal now lives INSIDE stream_capture.db itself (write_heartbeat), on the SAME
     # cadence as this file-based status write -- one call site, one clock, not a second
@@ -1457,7 +1609,8 @@ def write_status(bus: MessageBus, health: HealthRegistry, writer: CaptureWriter,
     # writing go UNKNOWN rather than leaving its last claim standing indefinitely.
     try:
         writer.write_heartbeat(claimed_coverage=None if epoch_state is None
-                                else _claimed_coverage_from_epoch_state(epoch_state))
+                                else _claimed_coverage_from_epoch_state(epoch_state),
+                                rejected_contracts=rejected_state)
     except Exception as e:  # noqa: BLE001 — a heartbeat write failure must not kill the daemon's status loop
         print(f"write_heartbeat failed (continuing): {type(e).__name__}: {e}")
     STATUS_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -1866,6 +2019,11 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
     #: Durable coverage-epoch row ids for the CURRENTLY active option contract — mutated
     #: by _apply_active_option_contract_subs / _schwab_connect's reconnect-reapply.
     option_epoch_state: dict = {"l1": None, "book": None}
+    #: {symbol: vendor_error} for every additional contract the vendor explicitly
+    #: rejected on its most recent batched subscribe attempt (2026-09-16, bounded-vendor-
+    #: call reconciliation) — same lifecycle as option_epoch_state (persists across a
+    #: recycle within this daemon lifetime; a fresh daemon lifetime starts clean).
+    option_rejected_state: "dict[str, str]" = {}
     # PR214 premerge gap 4: the option poll loop sets this when a coverage-compensation
     # failure leaves vendor state uncertain with no durable coverage; the main loop below
     # treats it exactly like the half-open watchdog and recycles the stream.
@@ -1894,6 +2052,7 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
                 lambda: option_state["stream"], lambda: option_state["contract"],
                 lambda c: option_state.__setitem__("contract", c), stop,
                 writer=writer, epoch_state=option_epoch_state,
+                rejected_state=option_rejected_state,
                 request_recycle=option_recycle_request)))
         except BaseException:
             await _cancel_and_await(started, what="control-task construction failed")
@@ -1938,7 +2097,8 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
             await asyncio.sleep(STATUS_LOOP_INTERVAL_SEC)
             max_qdepth = max(max_qdepth, wsub.queue.qsize())
             write_status(bus, health, writer, stats, max_qdepth,
-                         epoch_state=option_epoch_state)
+                         epoch_state=option_epoch_state,
+                         rejected_state=option_rejected_state)
             # half-open watchdog: quiet LEVELONE past the bar -> rebuild stream
             age = (health.report().get("LEVELONE_EQUITIES") or {}).get("age_sec")
             seen = stats.per_service.get("LEVELONE_EQUITIES", 0) > 0  # caps-ok: diagnostic unseen-count; 0 means never seen
@@ -2130,7 +2290,8 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
         # Shutdown re-states the claim from the (now closed-out) epoch_state, so the final
         # persisted claim is "this producer holds nothing" rather than its last live one.
         write_status(bus, health, writer, stats, max_qdepth,
-                     epoch_state=option_epoch_state)
+                     epoch_state=option_epoch_state,
+                     rejected_state=option_rejected_state)
         writer.close()
         # Counters only below: safe to read once the connection is gone.
         print(json.dumps({

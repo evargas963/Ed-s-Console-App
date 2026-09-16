@@ -607,10 +607,17 @@
         // ts_recv/age_sec the API already carries, never fabricated here.
         var snapshotAge = cellState && (cellState.call || cellState.put)
           ? Math.max((cellState.call || {}).age_sec || 0, (cellState.put || {}).age_sec || 0) : null;
+        // Audit finding #6 (2026-09-16): a vendor-rejected contract must fail its cell
+        // VISIBLY, not read as indistinguishable from "simply never requested yet" --
+        // rejected_reason is the vendor's own error, carried on whichever leg was refused.
+        var rejectedReason = liveState === 'rejected'
+          ? ((cellState.call || {}).rejected_reason || (cellState.put || {}).rejected_reason) : null;
         var stateTitle = liveState === 'live' ? ''
           : liveState === 'partial' ? 'PARTIAL: only one side of this cell is confirmed live-streamed; the value shown is still the full computed figure'
           : liveState === 'stale' ? ('SNAPSHOT: not currently confirmed live-streamed' +
               (snapshotAge != null ? ' (last confirmed ' + Math.round(snapshotAge) + 's ago)' : '') + ' -- most recent valid computed value shown')
+          : liveState === 'rejected' ? ('REJECTED: the vendor refused this contract\'s subscription' +
+              (rejectedReason ? ' (' + rejectedReason + ')' : '') + ' -- most recent valid computed value shown')
           : liveState === 'unavailable' ? 'SNAPSHOT: streaming not yet confirmed for this contract -- most recent valid computed value shown'
           : '';
         tbl += '<td class="hcell' + (j2 === frontCol ? ' col-front' : '') + (exps[j2].expired === true ? ' expired' : '') +
@@ -847,7 +854,25 @@
     // explicitly null, which then passes the isFinite(spot) guard below as if it were real.
     var strikes = surface.strikes || [], exps = surface.expirations || [],
         spot = surface.spot == null ? NaN : Number(surface.spot);
-    var srcLabel = surface.source === 'terrain_live_cache' ? (surface.complete === false ? 'LIVE·window' : 'LIVE')
+    // Audit finding #6 (2026-09-16), FIXED: "LIVE" used to mean only "surface.source ==
+    // terrain_live_cache" -- true for nearly every live-pathway surface with NO per-cell
+    // coverage requirement at all, so the header could say LIVE while the grid underneath
+    // was mostly stale/unavailable. The word "LIVE" is now gated on the server's own
+    // coverage verdict (stream_coverage.meets_live_requirement, the operator's own "every
+    // visible cell must be actively streaming" directive) -- anything short of that
+    // discloses the real percentage instead of claiming a status the data does not meet.
+    var cov = surface.stream_coverage;
+    var liveWord;
+    if (cov === undefined) {
+      liveWord = 'LIVE';                          // payload predates stream_coverage entirely
+    } else if (!cov || cov.total_visible_cells === 0) {
+      liveWord = 'WARMING';                       // no contract identity confirmed yet
+    } else if (cov.meets_live_requirement) {
+      liveWord = 'LIVE';
+    } else {
+      liveWord = 'LIVE·' + cov.live_pct.toFixed(0) + '%';
+    }
+    var srcLabel = surface.source === 'terrain_live_cache' ? (liveWord + (surface.complete === false ? '·window' : ''))
       : surface.source === 'banked_morning_reference' ? 'REF·morning' : (surface.source || '');
     var age = surface.age_sec != null ? ' ' + Math.round(surface.age_sec) + 's' : '';
     var basis = (surface.coverage && surface.coverage.chain_basis) ? ' ' + surface.coverage.chain_basis : '';
@@ -857,7 +882,13 @@
       var shownCols = document.querySelectorAll('#heatBody .heat thead .hexp').length;
       var shown = (shownRows && shownCols) ? ' · ' + shownRows + '×' + shownCols + ' shown' : '';
       el.textContent = strikes.length + '×' + exps.length + ' canonical' + shown + ' · spot ' + (isFinite(spot) ? spot.toFixed(2) : '—') + ' · ' + srcLabel + age + basis;
-      el.title = (surface.coverage && surface.coverage.note) || '';
+      // Exact coverage breakdown on hover -- counts and percentages for live/partial/
+      // stale/rejected/unavailable, not just the headline word.
+      el.title = cov
+        ? ('coverage: ' + cov.live + ' live, ' + cov.partial + ' partial, ' + cov.stale +
+           ' stale, ' + cov.rejected + ' rejected, ' + cov.unavailable + ' unavailable of ' +
+           cov.total_visible_cells + ' visible cells (' + cov.live_pct + '% live)')
+        : ((surface.coverage && surface.coverage.note) || '');
     }
   }
   // ROOT-CAUSE FIX (2026-09-13, controlled reproduction confirmed): server.py pushes a
@@ -937,6 +968,10 @@
     document.addEventListener('ed:ticker', load);
     document.addEventListener('ed:view', load);
     document.addEventListener('ed:refresh', function (e) { if (e.detail && e.detail.slow) load(); });
+    // Audit finding #3 (2026-09-16): the heatmap's own timely-update path -- a streamed
+    // gamma-surface change now arrives on its own narrow event (see ed-core.js), not the
+    // generic ed:refresh broadcast every other module also listens to.
+    document.addEventListener('ed:gamma-push', function () { load(); });
     document.addEventListener('ed:strike', function () { applyStrikeHighlight(); });   // A: cross-panel sync
     document.addEventListener('ed:theme', function () {   // recolour: force a rebuild (revision is unchanged but the palette changed)
       var h = document.getElementById('heatBody'); if (h && _lastSurface) { _lastRevision = null; renderSurface(h, _lastSurface); }
@@ -956,8 +991,10 @@
       var h = document.getElementById('heatBody'); if (!h) return; _lastRevision = null;
       if (_lastSurface) renderSurface(h, _lastSurface); else load();
     });
-    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', load);
-    else load();
+    // Audit finding #4 (2026-09-16): initial hydration now comes SOLELY from ed-core.js's
+    // deferred ed:ticker/ed:view dispatch (see its own init() comment) -- this module's
+    // former self-call here duplicated that ownership and only avoided a double-fetch by
+    // the coincidence that ed-core's dispatch fired too early to reach this listener.
   }
 
   var _root = (typeof window !== 'undefined') ? window : (typeof globalThis !== 'undefined' ? globalThis : this);

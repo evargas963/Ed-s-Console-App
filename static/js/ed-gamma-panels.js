@@ -902,10 +902,21 @@
     // Independent-review finding (2026-09-12): "Strike Detail reads volume from /api/chain.
     // Its refresh handler does not reload that detail." loadAll() never included Strike
     // Detail, so a selected strike's OI/Vol/Gamma/Delta/IV froze at whatever they were when
-    // the strike was first clicked -- never refreshed by the slow poll OR the new SSE push
-    // (ed-core.js's gamma_surface_seq listener), even though the underlying chain/streamed
-    // data keeps moving. Reload it too, exactly like ed:expiry already does below, whenever a
-    // strike is currently selected.
+    // the strike was first clicked. Reload it too, exactly like ed:expiry already does below,
+    // whenever a strike is currently selected.
+    var sel = ((window.EdShell && window.EdShell.getState()) || {}).selStrike;
+    if (sel != null) loadStrike(sel, strikeDetailExpiry());
+  });
+  // Audit finding #3 (2026-09-16), FIXED: a streamed gamma-surface tick used to broadcast
+  // the SAME generic ed:refresh{slow} this file's 12s poll listener above reacts to, so
+  // EVERY endpoint loadAll() touches (terrain, PCR, vanna, charm, structures, order-flow
+  // tape -- none of them gamma-surface-tick-derived) refetched on every single streamed
+  // tick, not just the two pieces that actually ARE gamma-surface-derived (GEX-by-strike
+  // and a selected Strike Detail row, both backed by the SAME _per_strike cache
+  // server.py's refresh_gamma_surface_from_stream also refreshes). Those two now react to
+  // the narrow ed:gamma-push event instead; everything else stays on the 12s cadence above.
+  document.addEventListener('ed:gamma-push', function () {
+    loadGbs();
     var sel = ((window.EdShell && window.EdShell.getState()) || {}).selStrike;
     if (sel != null) loadStrike(sel, strikeDetailExpiry());
   });
@@ -925,6 +936,7 @@
     var sel = ((window.EdShell && window.EdShell.getState()) || {}).selStrike;
     if (sel != null) loadStrike(sel, strikeDetailExpiry());
   });
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', loadAll);
-  else loadAll();
+  // Audit finding #4 (2026-09-16): initial hydration now comes SOLELY from ed-core.js's
+  // deferred ed:ticker/ed:view dispatch -- see that file's init() comment and ed-gamma.js's
+  // identical removal.
 })();

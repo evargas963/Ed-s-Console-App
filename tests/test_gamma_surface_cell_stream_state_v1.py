@@ -116,7 +116,7 @@ def test_cell_state_counts_tallies_across_cells_and_columns():
     _stamp_gamma_surface_cell_stream_state(surf, streamed, {"AAA", "BBB"})
     counts = _gamma_surface_cell_state_counts(surf)
     # cell0: live (both legs live). cell1: stale (CCC desired, not overlaid). cell2: unavailable (DDD never desired).
-    assert counts == {"live": 1, "partial": 0, "stale": 1, "unavailable": 1}
+    assert counts == {"live": 1, "partial": 0, "stale": 1, "rejected": 0, "unavailable": 1}
 
 
 # ---------------------------------------------------------------------------
@@ -223,14 +223,17 @@ def test_dropped_contract_becomes_unavailable_not_lingering_stale(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# Endpoint: /api/options/gamma-surface exposes cell_stream_state_counts / stream_confirmed_live
+# Endpoint: /api/options/gamma-surface exposes cell_stream_state_counts / stream_coverage
 # ---------------------------------------------------------------------------
 
 def _call(tk):
     return json.loads(get_options_gamma_surface(tk).body)
 
 
-def test_endpoint_live_branch_reports_stream_confirmed_live_true_when_a_cell_is_live():
+def test_endpoint_reports_meets_live_requirement_true_when_every_visible_cell_is_live():
+    """2026-09-16 audit finding #6: LIVE requires 100% of cells WITH a contract identity to
+    be live -- a single-cell, single-contract surface where that one cell is live is the
+    trivial case where the bar and the old (wrong) >=1 threshold happen to coincide."""
     tk = ticker_storage_key("ZZZTEST1")
     surf = {"expirations": [{"expiry": "2026-09-11", "dte": 2}], "strikes": [10.0],
             "cells": [{"strike": 10.0, "gex": [1.0], "contracts": [{"call": "X", "put": None}]}],
@@ -242,7 +245,10 @@ def test_endpoint_live_branch_reports_stream_confirmed_live_true_when_a_cell_is_
                                       "spot_source": "last", "spot_as_of_ts_utc": time.time(), "chain_basis": "full"}
     try:
         d = _call(tk)
-        assert d["stream_confirmed_live"] is True
+        assert "stream_confirmed_live" not in d, (
+            "the dead, misleadingly-named field must be removed, not merely superseded")
+        assert d["stream_coverage"]["meets_live_requirement"] is True
+        assert d["stream_coverage"]["live_pct"] == 100.0
         assert d["cell_stream_state_counts"]["live"] == 1
     finally:
         with server._terrain_cache_lock:
@@ -250,7 +256,7 @@ def test_endpoint_live_branch_reports_stream_confirmed_live_true_when_a_cell_is_
         server._GAMMA_SURFACE_CACHE.pop(tk, None)
 
 
-def test_endpoint_live_branch_reports_stream_confirmed_live_false_when_no_cell_is_live():
+def test_endpoint_reports_meets_live_requirement_false_when_no_cell_is_live():
     tk = ticker_storage_key("ZZZTEST2")
     surf = {"expirations": [{"expiry": "2026-09-11", "dte": 2}], "strikes": [10.0],
             "cells": [{"strike": 10.0, "gex": [1.0], "contracts": [{"call": "X", "put": None}]}],
@@ -262,8 +268,69 @@ def test_endpoint_live_branch_reports_stream_confirmed_live_false_when_no_cell_i
                                       "spot_source": "last", "spot_as_of_ts_utc": time.time(), "chain_basis": "full"}
     try:
         d = _call(tk)
-        assert d["stream_confirmed_live"] is False
+        assert d["stream_coverage"]["meets_live_requirement"] is False
+        assert d["stream_coverage"]["live_pct"] == 0.0
         assert d["cell_stream_state_counts"]["unavailable"] == 1
+    finally:
+        with server._terrain_cache_lock:
+            server._terrain_cache.pop(tk, None)
+        server._GAMMA_SURFACE_CACHE.pop(tk, None)
+
+
+def test_endpoint_reports_meets_live_requirement_false_when_only_partial_coverage():
+    """The core of audit finding #6: MORE than zero live cells, but not ALL of them, must
+    still report meets_live_requirement=False -- the exact case the old >=1-cell threshold
+    got wrong (it would have reported confirmed-live here)."""
+    tk = ticker_storage_key("ZZZTEST_PARTIAL")
+    surf = {"expirations": [{"expiry": "2026-09-11", "dte": 2}], "strikes": [10.0, 11.0],
+            "cells": [
+                {"strike": 10.0, "gex": [1.0], "contracts": [{"call": "X", "put": None}]},
+                {"strike": 11.0, "gex": [1.0], "contracts": [{"call": "Y", "put": None}]},
+            ],
+            "contracts_total": 2, "contracts_used": 2, "contracts_excluded_malformed_expiry": 0,
+            "gamma_available": True}
+    # X is live-streaming; Y is desired but has never been confirmed fresh -- one of two
+    # visible cells is live, the other merely 'stale'.
+    _stamp_gamma_surface_cell_stream_state(
+        surf, {"X": {"gamma_ts_recv": time.time()}, "Y": {"gamma_ts_recv": time.time() - 999}}, {"X"})
+    with server._terrain_cache_lock:
+        server._terrain_cache[tk] = {"_gamma_surface": surf, "computed_ts_utc": time.time(), "spot": 10.0,
+                                      "spot_source": "last", "spot_as_of_ts_utc": time.time(), "chain_basis": "full"}
+    try:
+        d = _call(tk)
+        cov = d["stream_coverage"]
+        assert cov["total_visible_cells"] == 2
+        assert cov["live"] == 1 and cov["stale"] == 1
+        assert cov["live_pct"] == 50.0
+        assert cov["meets_live_requirement"] is False, (
+            "one live cell out of two must NOT satisfy the LIVE requirement"
+        )
+    finally:
+        with server._terrain_cache_lock:
+            server._terrain_cache.pop(tk, None)
+        server._GAMMA_SURFACE_CACHE.pop(tk, None)
+
+
+def test_rejected_contract_reports_a_distinct_state_not_generic_unavailable():
+    """2026-09-16 audit finding #6/#1: a vendor-rejected contract must be visibly
+    distinguishable from a merely never-requested one -- 'fail the affected cells
+    visibly', not silently lump it into 'unavailable' forever."""
+    tk = ticker_storage_key("ZZZTEST_REJECTED")
+    surf = {"expirations": [{"expiry": "2026-09-11", "dte": 2}], "strikes": [10.0],
+            "cells": [{"strike": 10.0, "gex": [None], "contracts": [{"call": "BADSYM", "put": None}]}],
+            "contracts_total": 1, "contracts_used": 1, "contracts_excluded_malformed_expiry": 0,
+            "gamma_available": False}
+    _stamp_gamma_surface_cell_stream_state(surf, {}, set(), {"BADSYM": "RuntimeError: refused"})
+    assert surf["cells"][0]["stream"][0]["state"] == "rejected"
+    assert surf["cells"][0]["stream"][0]["call"]["rejected_reason"] == "RuntimeError: refused"
+    with server._terrain_cache_lock:
+        server._terrain_cache[tk] = {"_gamma_surface": surf, "computed_ts_utc": time.time(), "spot": 10.0,
+                                      "spot_source": "last", "spot_as_of_ts_utc": time.time(), "chain_basis": "full"}
+    try:
+        d = _call(tk)
+        assert d["cell_stream_state_counts"]["rejected"] == 1
+        assert d["stream_coverage"]["rejected"] == 1
+        assert d["stream_coverage"]["meets_live_requirement"] is False
     finally:
         with server._terrain_cache_lock:
             server._terrain_cache.pop(tk, None)
@@ -293,7 +360,7 @@ def _seed_morning_full(path, ticker: str, et_date: str, ts_utc: float, spot: flo
     con.close()
 
 
-def test_banked_morning_reference_never_reports_stream_confirmed_live(tmp_path, monkeypatch):
+def test_banked_morning_reference_never_reports_meets_live_requirement(tmp_path, monkeypatch):
     # REST-only reference path (RC-UI-1 fallback) must never claim confirmed-live coverage --
     # "REST may bootstrap or recover the surface, but it cannot satisfy the LIVE state." Uses the
     # same real-tmp-sqlite-db pattern as tests/test_gamma_exposure_honest_absence_v1.py.
@@ -310,7 +377,7 @@ def test_banked_morning_reference_never_reports_stream_confirmed_live(tmp_path, 
     try:
         d = _call(tk)
         assert d["source"] == "banked_morning_reference"
-        assert d["stream_confirmed_live"] is False
+        assert d["stream_coverage"]["meets_live_requirement"] is False
         assert d["cell_stream_state_counts"]["live"] == 0
         assert d["cell_stream_state_counts"]["unavailable"] > 0
     finally:

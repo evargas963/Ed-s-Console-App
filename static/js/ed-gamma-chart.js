@@ -602,8 +602,14 @@
   document.addEventListener('ed:ticker', load);
   document.addEventListener('ed:scope', load);   // #3: re-window on a scope change
   document.addEventListener('ed:refresh', function (e) { if (e.detail && e.detail.slow) load(); });
+  // Audit finding #3 (2026-09-16): this widget's load() includes /api/terrain/strikes, a
+  // genuinely gamma-surface-derived aggregate -- react to the narrow push too, not only the
+  // 12s poll (see ed-core.js's ed:gamma-push dispatch).
+  document.addEventListener('ed:gamma-push', load);
   document.addEventListener('ed:strike', function () { applyChartHighlight(); });   // A: cross-panel sync
   document.addEventListener('ed:theme', load);   // re-render SVG for the new theme's tokens
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function () { bindModes(); load(); });
-  else { bindModes(); load(); }
+  // Audit finding #4 (2026-09-16): initial hydration now comes SOLELY from ed-core.js's
+  // deferred ed:ticker/ed:view dispatch (see that file's init() comment) -- bindModes() is
+  // pure DOM/button wiring with no data dependency, so it still runs immediately here.
+  bindModes();
 })();
