@@ -14566,6 +14566,20 @@ def _record_last_valid_gex_error(tk: str, op: str, exc: Exception) -> None:
     }
 
 
+def _clear_last_valid_gex_error(tk: str, op: str) -> None:
+    """Independent review, 2026-09-16: a ticker's /api/build persistence-error entry is meant
+    to disclose an UNRESOLVED problem, not a permanent scar -- a later successful hydrate/flush
+    for the SAME ticker must clear it, or the endpoint keeps reporting a since-recovered
+    failure as if it were still current (MEASURED live: a TSLA flush failed on
+    'database is locked', a later flush succeeded and persisted newer rows, and the error
+    entry never cleared). Historical observability is retained by the WARNING log line
+    _record_last_valid_gex_error already wrote at failure time (permanent in the log, unlike
+    this in-memory active-state dict) plus the INFO line logged here on recovery -- this
+    function only ever REMOVES a matching active entry, never fabricates or backdates one."""
+    if _LAST_VALID_GEX_CELLS_ERRORS.pop(tk, None) is not None:
+        log.info("gamma-surface last-valid DB %s recovered for %s -- clearing active error", op, tk)
+
+
 def _hydrate_last_valid_gex_cells(tk: str) -> dict[tuple[float, str], dict]:
     """Lazily rehydrates `tk`'s durable snapshot from the DB exactly once per process
     lifetime. Acquires _LAST_VALID_GEX_CELLS_LOCK only for the cheap in-memory bookkeeping;
@@ -14577,6 +14591,7 @@ def _hydrate_last_valid_gex_cells(tk: str) -> dict[tuple[float, str], dict]:
             return _LAST_VALID_GEX_CELLS.setdefault(tk, {})
     try:
         loaded = get_db().load_gamma_surface_last_valid(tk)
+        _clear_last_valid_gex_error(tk, "hydrate")
     except Exception as e:
         _record_last_valid_gex_error(tk, "hydrate", e)
         loaded = {}
@@ -14607,6 +14622,7 @@ def _flush_last_valid_gex_cells_to_db(tk: str) -> None:
     ]
     try:
         get_db().persist_gamma_surface_last_valid(ticker=tk, cells=cells)
+        _clear_last_valid_gex_error(tk, "flush")
     except Exception as e:
         _record_last_valid_gex_error(tk, "flush", e)
 
