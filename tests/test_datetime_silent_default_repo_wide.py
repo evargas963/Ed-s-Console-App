@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import re
-from datetime import datetime, timedelta
-from unittest.mock import MagicMock
 
 _DATETIME_DEFAULT_ZERO = re.compile(r"""\.get\(\s*["']datetime["']\s*,\s*0\s*\)""")
 
@@ -70,41 +68,6 @@ def test_fetch_price_levels_skips_candle_missing_datetime():
         {"open": 1.0, "high": 888.0, "low": 1.0, "close": 2.0, "volume": 50},
         source="schwab_pricehistory",
     ) is None, "the ONE vendor ingestion point accepted a candle with no datetime"
-
-
-def _retired_fetch_price_levels_candle_test():
-    from market_context import fetch_price_levels
-
-    from time_et import ET as et  # noqa: F401
-    yday = (datetime.now(et) - timedelta(days=1)).replace(
-        hour=11, minute=0, second=0, microsecond=0
-    )
-    dt_ms = int(yday.timestamp() * 1000)
-
-    valid = {
-        "datetime": dt_ms,
-        "open": 40.0,
-        "high": 50.0,
-        "low": 39.0,
-        "close": 45.0,
-        "volume": 1000,
-    }
-    poison = {
-        "open": 1.0,
-        "high": 888.0,
-        "low": 1.0,
-        "close": 2.0,
-        "volume": 50,
-    }
-
-    client = MagicMock()
-    resp = MagicMock()
-    resp.status_code = 200
-    resp.json.return_value = {"candles": [valid, poison]}
-    client.get_price_history.return_value = resp
-
-    pl = fetch_price_levels(client, "SPY")
-    assert pl.pdh == 50.0
 
 
 def test_candle_accumulator_seed_skips_missing_datetime():

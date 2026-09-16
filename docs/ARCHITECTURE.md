@@ -567,6 +567,21 @@ When a mission materially touches an area:
 
 The goal is meaningful architectural movement as ordinary work proceeds.
 
+**What a touched responsibility must expose for review.** Whatever module or boundary a change
+materially touches — regardless of whether it moves toward its target location this session —
+review needs four things made explicit, not inferred: its **behavior** (what it does, stated as
+observable input/output, not as its own implementation restated); its **ownership** (which module
+is the one canonical producer of the fact it computes or the state it holds — §5, "One faucet =
+one computation"); its **data semantics** (identity, freshness, provenance, and what a missing or
+stale value means, versus a genuine zero); and its **failure boundary** (what breaks when this
+responsibility fails, and — per §4 — what must NOT break: a capability failure degrades that
+capability, never the application shell around it). A responsibility can be given focused,
+passing tests and still be wrong at the boundary: proof that one module works is not proof that
+the modules it depends on, or that depend on it, work TOGETHER — a change that touches more than
+one responsibility needs both kinds of proof, module and connection. The full review structure
+this operationalizes is `governance/AGENT_OPERATING_PROCESS_V1.md` §8, requirement 8
+("Architecture judgment").
+
 ---
 
 ## 10. Required agent rule
@@ -579,9 +594,12 @@ Claude, Cursor, and any future implementation agent operate under this rule:
 > safe and cohesive. Do not create new structure that moves away from the target, and do not
 > preserve misplaced architecture merely because it exists today. Do not launch unrelated
 > repository-wide rewrites. If you determine that the canonical architecture is technically
-> wrong, impossible, or materially inferior for something encountered, raise the specific
-> evidence-based objection before implementing a competing design. The operator decides
-> architectural amendments; agents do not silently change the architecture.
+> wrong, impossible, or materially inferior for something encountered, say so with the evidence
+> and fix it — reversing a demonstrably bad target is expected engineering, not an amendment
+> that waits on permission (this restates AGENTS.md's Placement rule, the governing statement,
+> for a reader who starts here). What still needs the operator is a genuine product or business
+> tradeoff with no answer available in engineering evidence — not a disagreement the code and
+> its own behavior can settle.
 
 ---
 

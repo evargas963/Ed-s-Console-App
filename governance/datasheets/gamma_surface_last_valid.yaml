@@ -1,0 +1,120 @@
+table: gamma_surface_last_valid
+module: db.py (schema + read/write on db.EdDB); server.py owns only the in-memory runtime
+  cache and lock discipline built on top of it
+
+motivation: >
+  Canonical GEX input-validity rules (operator directive, 2026-09-15). Live-reproduced:
+  Schwab returns internally self-contradictory greeks for some ITM contracts (delta pinned
+  to an exact boundary, gamma AND vega both exactly zero, alongside a real, plausible,
+  varying implied volatility) on both SPY/QQQ puts (2026-09-15 live capture) and SPY calls
+  (an existing repo fixture, tests/fixtures/real_spy_0dte_chain_with_poison.json, captured
+  on an earlier session) — a recurring vendor defect, not a one-off. math_exposure_core.
+  vendor_greeks_unavailable now correctly EXCLUDES such a contract from GEX/DEX/vanna
+  accumulation instead of it contributing a fabricated $0, but that leaves the affected
+  cell with no CURRENT value at all. The operator's rule: "If current inputs are invalid,
+  display the latest valid timestamped snapshot for that cell. Show — only if no valid
+  current or historical snapshot exists... current vendor failure must not erase previously
+  valid data" — including the SPX-style case where an entire surface's current cycle has
+  zero valid cells (a real OI outage). That value must also survive a process restart, not
+  just live in memory for the current process's lifetime.
+
+  This table is NOT a duplicate of the existing option_chain_accrual table
+  (calibration/option_chain_morning_full.py, RC-159, 2026-07-30): that table persists the
+  per-STRIKE aggregate net_gex_1pct$, COLLAPSED ACROSS EVERY EXPIRY, as a time series (one
+  row per observation instant) for the Chart view's session gamma ladder. It cannot answer
+  "what was strike 758's own 09-15 expiry cell" — only "what was strike 758's whole-book
+  figure at this instant." The Options/Gamma heatmap is a strike × EXPIRY grid; nothing
+  existing persisted a value at that per-cell granularity. This table is the per-cell
+  analogue of the same durable-banking idea option_chain_accrual already established,
+  reusing the SAME database file (get_db().db_path) rather than introducing a new
+  persistence mechanism.
+
+  Module placement (operator directive, 2026-09-15, reviewed a FOURTH time): first placed in
+  calibration/option_chain_morning_full.py for code-reuse convenience (same DB writer
+  conventions) — wrong, that module's own docstring scopes it to "once-per-day morning
+  full-chain persist for GEX-R1 forward collection," a calibration/forward-collection concern
+  this table is not. Moved to server.py directly (raw sqlite3 connections + its own CREATE
+  TABLE) — also wrong: independent git review correctly rejected this as server.py
+  independently owning table creation/migration/persistence infrastructure that duplicates
+  db.py's actual job. db.EdDB is documented as "the main database interface for Ed Console"
+  and every other table's schema lives in its _init_schema, using one connection-configuration
+  convention (db.configure_sqlite_connection, WAL + busy_timeout). This table's schema and its
+  load_gamma_surface_last_valid/persist_gamma_surface_last_valid methods now live there, beside
+  every other table, and server.py calls them exactly like it calls every other DB read/write.
+  Server.py still owns the RUNTIME side (the in-memory write-through cache, the lock discipline
+  guarding it, when to hydrate/flush) — that is legitimately a server.py concern (what the live
+  heatmap shows this cycle); only the durable storage moved.
+
+composition: >
+  One row per (ticker, strike, expiry) — ALWAYS-LATEST, not a time series (PRIMARY KEY is
+  exactly (ticker, strike, expiry); INSERT OR REPLACE overwrites in place). A snapshot
+  fallback only ever needs the newest known-good value for a cell, never a history of them,
+  so unlike option_chain_accrual this deliberately does not accumulate rows over time.
+  Columns: ticker (canonical storage key), strike, expiry (YYYY-MM-DD, the native
+  expirationDate this cell belongs to), gex (net_gex_1pct$), dex (net_dex_dollars), vanna
+  (call_vanna - put_vanna; may legitimately be NULL when IV/time-to-expiry was unavailable
+  even while gex/dex are real), captured_ts_utc (when THIS value was last confirmed valid —
+  the honest "how old is this snapshot" the UI discloses, never fabricated or advanced by
+  serving the snapshot itself).
+
+collection: >
+  Written from server._backfill_gex_cells_from_last_valid, called immediately after EVERY
+  successful project_gamma_surface computation in both live-terrain producers
+  (_terrain_refresh_one's ~60s REST cycle and refresh_gamma_surface_from_stream's eager
+  per-tick path) — the SAME canonical exposure faucet (math_exposure_core.
+  compute_exposures_by_strike) every GEX consumer already uses; this table stores only
+  values that faucet already produced, never a second computation. Only cells with a
+  CURRENTLY valid value (has_oi AND has_valid_gamma) are written; an invalid/absent cell
+  this cycle is read from, never written to, the table. Writes are batched (one transaction
+  per ticker per call, via executemany) and throttled to at most once per
+  GAMMA_LAST_VALID_DB_WRITE_FLOOR_SEC (20s) per ticker — an actively-streaming ticker's
+  eager refresh can fire far more often than that; this bounds real write volume regardless.
+  The in-memory _LAST_VALID_GEX_CELLS dict is the hot-path read/write cache; this table is
+  its durability checkpoint, lazily rehydrated into memory on a ticker's first use since the
+  current process started (once per process lifetime per ticker, not once per cycle).
+
+  LOCK DISCIPLINE (operator directive, 2026-09-15): the DB read (hydrate) and DB write (flush)
+  both run with server.py's _LAST_VALID_GEX_CELLS_LOCK explicitly RELEASED -- an early draft
+  held that shared lock across the actual blocking SQLite I/O, a real anti-pattern (that lock
+  is contended by every ticker's terrain cycle and every eager stream refresh simultaneously)
+  regardless of any specific incident. CORRECTION (independent git review, 2026-09-15):
+  a prior version of this datasheet, and of the code's own comments, claimed this defect was
+  "a concrete, plausible mechanism" for a SPECIFIC previously-observed console hang, and that
+  fixing it closed that incident. That claim is WITHDRAWN: the process that had hung was
+  running a git commit that predates this table's existence entirely, so this code cannot have
+  caused that incident. The real cause of that specific hang is UNKNOWN. This lock
+  restructuring is retained purely as a correct fix to a genuine anti-pattern (a shared lock
+  must never be held across blocking disk I/O), not as an explanation for any past symptom.
+  db.EdDB.GAMMA_LAST_VALID_DB_TIMEOUT_SEC (3s) bounds how long a genuinely stuck DB can delay
+  this now-unlocked checkpoint.
+
+  OBSERVABILITY: a hydrate or flush failure is logged at WARNING (never DEBUG) and recorded
+  in server._LAST_VALID_GEX_CELLS_ERRORS keyed by ticker (op, error, ts_utc) -- restart
+  durability silently degrading to in-memory-only-this-session is a visible, queryable fact,
+  not a swallowed one, while still never blocking or failing the live gamma-surface response
+  itself.
+
+  DB CONTENTION OBSERVED (not proof of hang causation -- see CORRECTION above): the SAME
+  database file (data/ed_console.db) also serves db.fill_outcomes, a pre-existing, unrelated
+  write path that already logs its own sqlite_bg_write_slow WARNING when a single write
+  transaction runs long. During a live soak of the process after this lock fix, fill_outcomes
+  logged five such events in one session, one at 10085.2ms and three others in the 5-9s range
+  -- real, measured multi-second SQLite contention on this exact file, well past this table's
+  own 3s timeout. The running process served dozens of concurrent /api requests without a
+  stall through and immediately after every one of those events, and
+  _LAST_VALID_GEX_CELLS_ERRORS stayed empty throughout. This shows the fix design degrades
+  gracefully under a REAL contention event (a colliding write times out at 3s and records a
+  WARNING rather than blocking anything) -- it does NOT establish that this mechanism was ever
+  the cause of the specific hang referenced above, which remains unexplained.
+
+recommended_uses: >
+  Exactly one: server._backfill_gex_cells_from_last_valid reads it (via
+  db.EdDB.load_gamma_surface_last_valid) to fill a currently-invalid or currently-absent gamma-
+  surface cell with its last confirmed-valid value, honestly labelled with its own
+  captured_ts_utc so the UI never presents a stale snapshot as freshly live (the per-cell
+  `stream` state disclosure, from the always-live heatmap mandate, is computed independently
+  and still correctly reports such a cell as 'stale'/'unavailable' even while its NUMBER
+  comes from this table). NOT a general-purpose historical GEX archive (it holds only the
+  latest value per cell, by design — option_chain_accrual is the time-series record, at its
+  own coarser per-strike-aggregate granularity) and NOT read by anything outside that one
+  backfill path.

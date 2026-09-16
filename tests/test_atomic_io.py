@@ -33,3 +33,25 @@ def test_write_json_file_atomically_still_round_trips(tmp_path: Path):
     target = tmp_path / "artifact.json"
     write_json_file_atomically(target, {"ok": True, "n": 1})
     assert json.loads(target.read_text(encoding="utf-8")) == {"ok": True, "n": 1}
+
+
+def test_write_json_file_atomically_writes_lf_not_crlf(tmp_path: Path):
+    """The 2026-09-15 fix: os.fdopen's text mode must not apply the platform (Windows: CRLF)
+    default. read_text()'s universal-newline translation would mask this on a round trip --
+    only raw bytes on disk reveal it."""
+    target = tmp_path / "artifact.json"
+    write_json_file_atomically(target, {"a": 1, "b": 2}, indent=2)
+    raw = target.read_bytes()
+    assert b"\r\n" not in raw
+    assert b"\n" in raw
+
+
+def test_write_text_atomically_writes_lf_not_crlf(tmp_path: Path):
+    """Sibling of the JSON writer's LF fix -- was missed when that fix first landed,
+    leaving calibration/edge_discovery.py's write_text_atomically call still CRLF-exposed
+    on Windows. Regression test for that gap."""
+    target = tmp_path / "artifact.md"
+    write_text_atomically(target, "# hello\n\nbody\n")
+    raw = target.read_bytes()
+    assert b"\r\n" not in raw
+    assert b"\n" in raw

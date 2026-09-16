@@ -31,7 +31,6 @@ def test_rules_engine_range_regime_waits_when_vwap_side_none():
         approaching_ceiling=False,
         approaching_floor=False,
         vwap_side=None,
-        zone="pin_neutral",
     )
     assert sig == "wait"
     assert conv == "low"
@@ -44,6 +43,5 @@ def test_rules_engine_range_regime_long_only_when_vwap_above():
         approaching_ceiling=False,
         approaching_floor=False,
         vwap_side="above",
-        zone="pin_neutral",
     )
     assert sig == "long"

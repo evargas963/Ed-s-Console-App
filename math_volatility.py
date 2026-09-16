@@ -159,7 +159,7 @@ def session_bucket(et_hour: int, et_minute: int) -> str:
     if mins < 810:   return BUCKET_MIDDAY
     if mins < 900:   return BUCKET_AFTERNOON
     if mins < RTH_END_MINS:   return BUCKET_CLOSE
-    return BUCKET_MORNING
+    return BUCKET_CLOSE
 
 
 # VIX tier cuts — single authority shared between math_volatility.vix_bucket (SignalInput

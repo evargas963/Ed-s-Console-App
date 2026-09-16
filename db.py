@@ -522,6 +522,9 @@ class SnapshotRow:
     msft_chg_pct:       Optional[float] = None
     amzn_chg_pct:       Optional[float] = None
     googl_chg_pct:      Optional[float] = None
+    goog_chg_pct:       Optional[float] = None  # RC-UI-3 (2026-09-12): GOOG is Alphabet's OWN
+    # class-C share, a distinct instrument from GOOGL (class A) with its own confluence
+    # weight in SPY_TOP/QQQ_TOP (market_context.py) -- it must not read GOOGL's column.
     avgo_chg_pct:       Optional[float] = None
     meta_chg_pct:       Optional[float] = None
     tsla_chg_pct:       Optional[float] = None
@@ -921,10 +924,10 @@ class EdDB:
                 self._bootstrap_sql_guard_suppress = False
         log.info(f"EdDB initialized at {self.db_path}")
 
-    def _connect(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(str(self.db_path), timeout=30.0)
+    def _connect(self, *, timeout_sec: float = 30.0) -> sqlite3.Connection:
+        conn = sqlite3.connect(str(self.db_path), timeout=timeout_sec)
         conn.row_factory = sqlite3.Row
-        configure_sqlite_connection(conn)
+        configure_sqlite_connection(conn, busy_timeout_ms=int(timeout_sec * 1000))
         if not getattr(self, "_bootstrap_sql_guard_suppress", False):
             from db_safety import maybe_install_sql_guard_on_connection
 
@@ -1220,6 +1223,7 @@ class EdDB:
                 msft_chg_pct        REAL,
                 amzn_chg_pct        REAL,
                 googl_chg_pct       REAL,
+                goog_chg_pct        REAL,
                 avgo_chg_pct        REAL,
                 meta_chg_pct        REAL,
                 tsla_chg_pct        REAL,
@@ -1444,6 +1448,13 @@ class EdDB:
                 WHERE outcome_filled = 0;
             CREATE INDEX IF NOT EXISTS idx_snap_ts
                 ON snapshots(ts_utc);
+            -- idx_snap_similarity_zone_vwap (get_similar_setups' hot-path index) is created
+            -- further down, guarded, after the legacy-column ALTER TABLE migration -- NOT
+            -- here. This executescript's own CREATE TABLE above already carries zone/vwap_side
+            -- for a fresh DB, but a pre-existing snapshots table missing either column made
+            -- this CREATE INDEX IF NOT EXISTS raise sqlite3.OperationalError: no such column:
+            -- zone and abort _init_db entirely (caught live by
+            -- test_migration_issue4_clears_v2_labels' minimal legacy fixture).
 
             -- ── Level cross events ────────────────────────────────────────────
             CREATE TABLE IF NOT EXISTS level_crosses (
@@ -1507,8 +1518,84 @@ class EdDB:
                 computed_at         TEXT DEFAULT (datetime('now'))
             );
 
+            -- ── Options/Gamma heatmap restart-durable snapshot (operator directive,
+            -- 2026-09-15, canonical input-validity rules; DB ownership review, 2026-09-15,
+            -- fourth pass) ── Per (ticker, strike, expiry) last-known-VALID gex/dex/vanna, so
+            -- a genuine current-cycle vendor failure (invalid greeks, or a whole-surface OI
+            -- outage) can display the latest valid timestamped snapshot instead of erasing the
+            -- cell, and that snapshot survives a process restart. ALWAYS-LATEST, not a time
+            -- series (INSERT OR REPLACE on this exact primary key) -- a display-durability
+            -- checkpoint only ever needs the newest known-good value per cell, never a history.
+            -- Not a duplicate of option_chain_accrual (RC-159): that table is a per-STRIKE
+            -- aggregate collapsed across every expiry (a session gamma-ladder time series);
+            -- this table is the per-CELL (strike × expiry) analogue the Options/Gamma heatmap
+            -- grid actually needs, which nothing else in this schema persists at that
+            -- granularity. Owned here (schema + read/write), not by server.py independently
+            -- opening its own raw connections -- this IS the canonical database interface.
+            CREATE TABLE IF NOT EXISTS gamma_surface_last_valid (
+                ticker          TEXT NOT NULL,
+                strike          REAL NOT NULL,
+                expiry          TEXT NOT NULL,
+                gex             REAL,
+                dex             REAL,
+                vanna           REAL,
+                captured_ts_utc REAL NOT NULL,
+                PRIMARY KEY (ticker, strike, expiry)
+            );
+
             """)
         log.info("Schema initialized")
+
+    #: Best-effort durability checkpoint (operator directive, 2026-09-15, LOCK DISCIPLINE):
+    #: never a critical write, so a genuinely stuck DB should fail this fast and loudly rather
+    #: than tie up a caller for the class's normal 30s connection timeout. Callers (server.py)
+    #: must never hold their own lock across a call into either method below -- these open and
+    #: close their own connection per call, exactly like every other "ordinary write" in this
+    #: class (see the class docstring: tier-1 hot-path writes get _tier1_snapshot_write's
+    #: retry/lock discipline; this is not that -- it is throttled to roughly once per 20s per
+    #: ticker by the caller and degrades to in-memory-only-this-session on failure).
+    GAMMA_LAST_VALID_DB_TIMEOUT_SEC = 3.0
+
+    def load_gamma_surface_last_valid(self, ticker: str) -> dict[tuple[float, str], dict]:
+        """Every persisted last-known-valid gamma-surface cell for `ticker` -- the durable
+        backing for the Options/Gamma heatmap's in-memory last-valid cache, read once per
+        ticker to rehydrate it after a process restart. Raises on any real failure; the caller
+        decides how to log/record it (server.py's own _LAST_VALID_GEX_CELLS_ERRORS)."""
+        tk = ticker_storage_key(ticker)
+        with self._connect(timeout_sec=self.GAMMA_LAST_VALID_DB_TIMEOUT_SEC) as conn:
+            rows = conn.execute(
+                "SELECT strike, expiry, gex, dex, vanna, captured_ts_utc "
+                "FROM gamma_surface_last_valid WHERE ticker=?",
+                (tk,),
+            ).fetchall()
+        return {
+            (float(r["strike"]), str(r["expiry"])): {
+                "gex": r["gex"], "dex": r["dex"], "vanna": r["vanna"],
+                "captured_ts_utc": float(r["captured_ts_utc"]),
+            }
+            for r in rows
+        }
+
+    def persist_gamma_surface_last_valid(self, *, ticker: str, cells: list[dict]) -> None:
+        """Durably upsert the CURRENTLY-valid gamma-surface cells only -- one batched
+        transaction, never one write per cell. Raises on any real failure; the caller decides
+        how to log/record it. See GAMMA_LAST_VALID_DB_TIMEOUT_SEC's own note on why this uses a
+        short timeout rather than the class's normal 30s connection default."""
+        tk = ticker_storage_key(ticker)
+        if not tk or not cells:
+            return
+        rows = [
+            (tk, float(c["strike"]), str(c["expiry"]), c.get("gex"), c.get("dex"), c.get("vanna"),
+             float(c["captured_ts_utc"]))
+            for c in cells
+        ]
+        with self._connect(timeout_sec=self.GAMMA_LAST_VALID_DB_TIMEOUT_SEC) as conn:
+            conn.executemany(
+                "INSERT OR REPLACE INTO gamma_surface_last_valid "
+                "(ticker, strike, expiry, gex, dex, vanna, captured_ts_utc) VALUES (?,?,?,?,?,?,?)",
+                rows,
+            )
+            conn.commit()
 
     def _ensure_logging_universe_table(self):
         """Issue 22 — durable background-logging enrollment (additive schema)."""
@@ -2870,6 +2957,35 @@ class EdDB:
         if added:
             log.info(f"Schema migration: added {added} new columns to snapshots")
 
+        # RC spot/gamma-360-audit (2026-09-14): get_similar_setups' tiers 1-4 filter on
+        # (ticker, timeframe, zone, vwap_side, outcome_1c IS NOT NULL), then ORDER BY
+        # ts_utc DESC LIMIT n. idx_snap_ticker_tf_ts covers only (ticker, timeframe, ts_utc),
+        # so SQLite must walk the WHOLE ticker+timeframe partition in ts_utc order, reading
+        # every row's on-disk page (each row carries two large JSON blob columns -- reading
+        # them off disk costs the same whether or not they end up SELECTed) until it finds
+        # n_similar (500) matches on the far narrower zone+vwap_side+outcome_1c predicate.
+        # MEASURED live (406,532-row snapshots table, 72,285 SPY/1m rows): a single real
+        # get_similar_setups call took 11.1-13.8s -- run from 3-4 background threads on every
+        # analytics cycle, this is the dominant, proven source of the "app is slow" and "spot
+        # has latency" symptoms reported live during RTH (py-spy caught these threads parked
+        # here at the exact moments ordinary quote reads stalled 1-7s).
+        # Partial (WHERE outcome_1c IS NOT NULL, mirroring idx_snap_outcome_unfilled's own
+        # precedent) so the ~half of rows that can never qualify are never indexed at all, and
+        # ts_utc last so tier queries' ORDER BY ts_utc DESC LIMIT n is satisfied directly from
+        # the index without a separate sort step. Guarded (not in the executescript above):
+        # runs after the ALTER TABLE column-patch loop just above, so a legacy/minimal
+        # snapshots table genuinely missing zone or vwap_side skips the index instead of
+        # aborting _init_db (see the executescript's own note at this index's old location).
+        try:
+            with self._connect() as conn:
+                conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_snap_similarity_zone_vwap "
+                    "ON snapshots(ticker, timeframe, zone, vwap_side, ts_utc) "
+                    "WHERE outcome_1c IS NOT NULL"
+                )
+        except sqlite3.OperationalError:
+            pass  # zone/vwap_side not present on this schema
+
         for tbl in ("snapshots_1m_normalized",):
             try:
                 with self._connect() as conn:
@@ -2967,6 +3083,23 @@ class EdDB:
                     pass
 
         for col_name, col_type in (("logger_source", "TEXT"),):
+            for tbl in ("snapshots", "snapshots_1m_normalized"):
+                try:
+                    with self._connect() as conn:
+                        conn.execute(f"ALTER TABLE {tbl} ADD COLUMN {col_name} {col_type}")
+                    log.info("DB migration: added %s to %s", col_name, tbl)
+                except sqlite3.OperationalError:
+                    pass
+
+        # Independent-review finding (2026-09-12), REPRODUCED: market_context.py's
+        # SYMBOL_TO_SNAPSHOT_CHG_COL aliased GOOG onto this same googl_chg_pct column
+        # (there was no goog_chg_pct to point to), so every confluence recompute silently
+        # substituted GOOGL's change for GOOG's own -- double-counting GOOGL's move at both
+        # symbols' weights in SPY_TOP/QQQ_TOP and dropping GOOG's real, independently
+        # diverging price action entirely. GOOG is Alphabet's class-C share, a distinct
+        # instrument from GOOGL (class A); it gets its own column, same as every other
+        # constituent.
+        for col_name, col_type in (("goog_chg_pct", "REAL"),):
             for tbl in ("snapshots", "snapshots_1m_normalized"):
                 try:
                     with self._connect() as conn:

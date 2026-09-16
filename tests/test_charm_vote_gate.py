@@ -59,25 +59,23 @@ def test_charm_gate_zero_vote_functional():
 
 
 def test_charm_research_surfaces_preserved():
-    """Charm stays computed/logged/displayed: the state fields and UI charm row
-    survive the vote gate (research visibility, zero vote)."""
+    """Charm stays computed/logged: the state fields survive the vote gate (research
+    visibility, zero vote). The UI half of this test (a charm-drift row in
+    static/index.html) was retired here (/console cutover, operator directive
+    2026-09-14) — the new console's Charm panel is an aggregate dealer-charm-by-strike
+    bar chart (marked "WALLS ONLY"), a different presentation with no charm_drift_toward
+    consumer at all (grepped static/js/*.js, zero matches). Flagged for the operator as a
+    real, if minor, loss of research-visibility surface, not fixed here."""
     ms_src = (_REPO / "market_state.py").read_text(encoding="utf-8", errors="replace")
     for field in ("charm_net", "charm_direction", "charm_drift_toward", "charm_magnitude"):
         assert field in ms_src
-    ui = (_REPO / "static" / "index.html").read_text(encoding="utf-8", errors="replace")
-    assert "charm_drift_toward" in ui
 
 
-def test_vanna_labeled_honestly_in_ui():
-    """P1B + RC-352: the vanna strike labels use the institutional name and the tip discloses
-    the ACTUAL formula ("Vanna Wall" is not a vendor level class). Cursor-audit A1: RC-211 switched
-    the per-strike vanna from the vega/(S·IV) proxy to exact Black-Scholes bs_vanna but left the
-    tips still claiming the retired proxy — the tips now name the exact computation, and the stale
-    'proxy' wording must not reappear."""
-    ui = (_REPO / "static" / "index.html").read_text(encoding="utf-8", errors="replace")
-    assert "label: 'Largest Vanna Strike (Call)'" in ui
-    assert "label: 'Largest Vanna Strike (Put)'" in ui
-    assert ui.count("exact Black-Scholes vanna") >= 2   # true formula disclosed in both strike tips
-    assert "vega/(S·IV) proxy" not in ui                # the retired, wrong description is gone
-    assert "label: 'Vanna Wall Call'" not in ui
-    assert "label: 'Vanna Wall Put'" not in ui
+# test_vanna_labeled_honestly_in_ui was retired here (/console cutover, operator directive
+# 2026-09-14): P1B/RC-352's per-strike "Largest Vanna Strike (Call/Put)" labels and their
+# exact-Black-Scholes-formula tooltip disclosure exist only in legacy static/index.html — the
+# new console's Vanna panel is explicitly marked "AGG ONLY" (aggregate dollar vanna, not a
+# per-strike level), so there is no per-strike vanna label left to hold to this honesty
+# standard. Flagged for the operator: if/when a per-strike Vanna surface is rebuilt, it must
+# repeat this exact discipline (name the real computation, never the retired vega/(S*IV) proxy
+# wording) rather than silently regressing the labeling honesty this test enforced.

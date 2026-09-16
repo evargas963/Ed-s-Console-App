@@ -492,7 +492,15 @@ def test_inflections_and_oi_center_stay_analytics_not_structural_levels():
     rows = build_summary_rows(sel_ex, spot, windows=[5])
     assert rows[0].label == "CONSENSUS"
     assert rows[0].gamma_inflection == 734.0
-    assert rows[0].delta_inflection == 743.0
+    # Operator directive (2026-09-15, canonical input-validity rules): this fixture is named
+    # "with_poison" for exactly this reason -- it carries real captured SPY 0DTE contracts
+    # whose delta is internally self-contradictory (delta pinned to an exact boundary while
+    # gamma/vega are both exactly zero, despite a real-looking IV -- vendor_greeks_unavailable,
+    # math_exposure_core.py). Before that gate existed, those poisoned deltas were still
+    # accumulated into net_delta, shifting delta_inflection to 743.0; excluding them (the
+    # SAME canonical faucet delta_ok gate net_gex/net_dex already used) moves it to 734.0,
+    # converging with gamma_inflection now that both walk the same de-poisoned curve.
+    assert rows[0].delta_inflection == 734.0
     assert rows[0].oi_center == 750.0
     ms_src = Path("market_state.py").read_text(encoding="utf-8")
     nearest = ms_src.split("# Nearest above/below", 1)[1].split("for _lv, _ln in _all_lvls", 1)[0]

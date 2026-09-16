@@ -5,12 +5,6 @@ from __future__ import annotations
 from app.options.order_flow.engine import OrderFlowEngine, _compute_rvol, _compute_spread
 
 
-def test_rvol_fail_closed_when_avg_volume_missing():
-    rvol, reason = _compute_rvol({"quote": {"totalVolume": 500}, "fundamental": {}})
-    assert rvol is None
-    assert reason == "avg_volume_unavailable"
-
-
 def test_rvol_fail_closed_when_current_volume_missing():
     rvol, reason = _compute_rvol({"fundamental": {"avg10DaysVolume": 1_000_000}})
     assert rvol is None

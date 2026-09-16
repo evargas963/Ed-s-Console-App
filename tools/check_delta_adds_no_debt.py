@@ -395,6 +395,29 @@ def run_closure_command(cmd: str, wt: Path, timeout: int = 900) -> tuple[int, st
     return r.returncode, (r.stdout + r.stderr)[-800:]
 
 
+_NODE_CMD_RE = re.compile(r"^\s*(?:node|npm|npx)(?:\s|$)")
+
+
+def _ensure_node_modules(wt: Path) -> None:
+    """A `git worktree add` checkout carries only tracked files -- node_modules is gitignored,
+    so a node/npm/npx closure command would always fail here for a reason that has nothing to
+    do with whether the cited proof is real (RC-538 measurement: `npx playwright test ...`
+    exited 1 with ERR_MODULE_NOT_FOUND in exactly this worktree, while the same command passed
+    in the actual checkout). run_closure_command already avoids the equivalent gap for Python by
+    substituting `sys.executable` so the interpreter that already has every package installed is
+    reused instead of expecting a fresh venv in `wt`; this is the same fix for Node -- point `wt`
+    at THIS job's already-`npm ci`'d node_modules instead of requiring a second install (which
+    would also need network access this isolated worktree may not have)."""
+    target = wt / "node_modules"
+    source = REPO / "node_modules"
+    if target.exists() or not source.is_dir():
+        return
+    try:
+        target.symlink_to(source, target_is_directory=True)
+    except OSError:
+        pass  # best-effort: a node-based closure command fails honestly below if this didn't work
+
+
 def execute_closures(base_ref: str, cand_wt: Path) -> list[str]:
     """Run the first cited command of every row the delta closes, in the candidate tree.
     One line per failure (a row with no executable command fails too)."""
@@ -405,6 +428,8 @@ def execute_closures(base_ref: str, cand_wt: Path) -> list[str]:
         if not cmds:
             failures.append(f"{rc} closes with no CI-executable command (python/pytest/node/npm) in its evidence cell")
             continue
+        if _NODE_CMD_RE.match(cmds[0]):
+            _ensure_node_modules(cand_wt)
         code, tail = run_closure_command(cmds[0], cand_wt)
         print(f"closure {rc}: `{cmds[0][:120]}` -> exit {code}")
         if code != 0:

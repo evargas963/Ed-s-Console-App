@@ -1,22 +1,19 @@
-"""LIVE_UI_INTEGRITY_V1 — coherence headline, stack INVALID chip, lane-stale labels.
+"""LIVE_UI_INTEGRITY_V1 — render-coherence guard, Tier-C dedup, card-trust-gate harness.
 
-Mirrors client derivations in static/index.html (_refreshLiveUiIntegrityDerivations).
+The coherence-headline / stack INVALID chip / lane-stale-label DOM tests this file used to
+mirror against legacy static/index.html were retired (/console cutover, operator directive
+2026-09-14) — see the comment at their old location below for the full disposition.
 """
 
 from __future__ import annotations
 
-import re
 from pathlib import Path
 
 import importlib.util
 import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
-INDEX = ROOT / "static" / "index.html"
 HARNESS = ROOT / "tools" / "run_universal_card_fidelity_runtime.py"
-
-CARD_TRUST_REQUIRED_HORIZONS = ("1c", "5c", "15c", "60c")
-CARD_TRUST_REQUIRED_HORIZON_COUNT = 4
 
 
 def _load_harness_module():
@@ -55,8 +52,16 @@ def _full_trusted_card_payload(ticker: str = "SPY", **overrides) -> dict:
     return base
 
 
-def _html() -> str:
-    return INDEX.read_text(encoding="utf-8", errors="replace")
+# The following ~30 tests (and their _html()/_tv_deck_rule() helpers) were retired here
+# (/console cutover, operator directive 2026-09-14): all read legacy static/index.html for the
+# Terrain Command Deck / card-trust-gate / decision-command presentation (.tv-deck grid,
+# edPaintNetGex, coherence-headline, dr-trust-stack chips, horizon withhold reasons, Tier-C
+# dedup DOM hooks, DB-contention operator chips) -- none of it has any footprint in the new
+# console (confirmed by direct grep across static/js/*.js and static/console.html). The
+# harness-backed tests below (analytics_card_trust_gate / engine_tradeable_setup from
+# tools/run_universal_card_fidelity_runtime.py) and the pure-Python render-coherence-guard /
+# dedup / ticker-switch-classification tests are UNAFFECTED -- none of them read index.html at
+# all -- and are preserved as-is.
 
 
 def _derive_integrity(
@@ -104,281 +109,38 @@ def _freshness_pill_suffix(integrity: dict) -> str:
     return " · PRICE AHEAD" if integrity["slowStaleVsFast"] else ""
 
 
-def test_index_html_live_ui_integrity_dom_and_hook():
-    html = _html()
-    assert 'id="coherence-headline"' in html
-    assert 'id="dr-stack-mode-chip"' in html
-    assert 'id="dr-lane-stale-chip"' in html
-    assert "function _refreshLiveUiIntegrityDerivations(" in html
-    assert "function _updateCoherenceHeadline(" in html
-    assert "function _updateStackModeChip(" in html
-    assert "function _updateLaneStaleChip(" in html
-    ae = html.split("function _updateLiveUiAe(")[1].split("function _fastRolloutBump(")[0]
-    assert "_updateCoherenceHeadline(integrity)" in ae
-    assert "_updateStackModeChip(integrity)" in ae
-    assert "_updateLaneStaleChip(integrity)" in ae
-    assert "_updateDbContentionChip()" in ae
-    assert "_refreshLiveUiIntegrityDerivations(opts)" in ae
 
 
-def test_stack_mode_invalid_renders_dedicated_chip():
-    html = _html()
-    integrity = _derive_integrity(
-        last_fast_ts=0,
-        last_render_ts=0,
-        bundle_ts=0,
-        decision_generation_id=1,
-        tier_c_painted_at_gen=1,
-        pending_full_analytics=False,
-        stack_mode="INVALID",
-    )
-    label = _stack_mode_chip_label(integrity)
-    assert label == "STACK INVALID (fusion/MC prerequisites)"
-    assert "STACK INVALID (fusion/MC prerequisites)" in html
-    assert 'id="dr-stack-mode-chip"' in html
 
 
-def test_coherence_headline_shows_quote_and_bundle_ages():
-    html = _html()
-    assert "function _updateCoherenceHeadline(" in html
-    assert "Quote ' + quoteAge + ' · Bundle ' + bundleAge" in html
-    assert "function _formatLaneAgeSec(" in html
 
 
-def test_price_ahead_suffix_when_slow_stale_vs_fast():
-    html = _html()
-    integrity = _derive_integrity(
-        last_fast_ts=1000.0,
-        last_render_ts=900.0,
-        bundle_ts=980.0,
-        decision_generation_id=5,
-        tier_c_painted_at_gen=5,
-        pending_full_analytics=False,
-        stack_mode="FULL",
-    )
-    assert integrity["slowStaleVsFast"] is True
-    assert _freshness_pill_suffix(integrity) == " · PRICE AHEAD"
-    assert "window._priceAheadOfBundle = slowStaleVsFast" in html
-    assert "pillText += ' · PRICE AHEAD'" in html
 
 
-def test_lane_stale_chip_quote_ahead_vs_cards_painting():
-    html = _html()
-    quote = _derive_integrity(
-        last_fast_ts=2000.0,
-        last_render_ts=1000.0,
-        bundle_ts=1000.0,
-        decision_generation_id=3,
-        tier_c_painted_at_gen=3,
-        pending_full_analytics=False,
-        stack_mode="FULL",
-    )
-    assert _lane_stale_chip_label(quote) == "LANE STALE — QUOTE AHEAD"
-    assert "LANE STALE — QUOTE AHEAD" in html
-
-    gen = _derive_integrity(
-        last_fast_ts=1000.0,
-        last_render_ts=1000.0,
-        bundle_ts=1000.0,
-        decision_generation_id=10,
-        tier_c_painted_at_gen=5,
-        pending_full_analytics=False,
-        stack_mode="FULL",
-    )
-    assert _lane_stale_chip_label(gen) == "LANE STALE — CARDS PAINTING…"
-    assert "LANE STALE — CARDS PAINTING…" in html
 
 
-def test_invalid_chip_persists_when_liveready_false_for_other_reasons():
-    html = _html()
-    chip_fn = html.split("function _updateStackModeChip(")[1].split("function _updateLaneStaleChip(")[0]
-    assert "validation_passed" not in chip_fn
-    assert "liveReady" not in chip_fn
-    integrity = _derive_integrity(
-        last_fast_ts=0,
-        last_render_ts=0,
-        bundle_ts=0,
-        decision_generation_id=None,
-        tier_c_painted_at_gen=0,
-        pending_full_analytics=False,
-        stack_mode="INVALID",
-    )
-    assert _stack_mode_chip_label(integrity) is not None
 
 
-def test_dr_trust_stack_compliance_semantic_preserved():
-    """Operator 2026-06-10: the Readiness/trust rail block (dr-trust-*) was
-    retired — duplicative with the header chips (FRESH / STACK / SIGNALS /
-    STACK DEGRADED) and the signal-chain bar. Negative lock: the block and its
-    painters must stay removed; the dedicated stack-mode chip remains the
-    stack-health surface and stays independent of artifact compliance."""
-    html = _html()
-    for retired in ("dr-trust-live", "dr-trust-fresh", "dr-trust-stack",
-                    "dr-trust-policy", "dr-trust-edge", "dr-trust-block"):
-        assert retired not in html, f"{retired} must stay removed (retired rail block)"
-    assert 'id="dr-stack-mode-chip"' in html
 
 
-def test_coherence_updaters_only_invoked_from_live_ui_ae():
-    html = _html()
-    assert len(re.findall(r"function _updateLiveUiAe\(", html)) == 1
-    ae = html.split("function _updateLiveUiAe(")[1].split("function _fastRolloutBump(")[0]
-    for fn in (
-        "_updateCoherenceHeadline",
-        "_updateStackModeChip",
-        "_updateSignalsEngineFailChip",
-        "_updateLaneStaleChip",
-        "_updateStackIntegrityDegradedChip",
-        "_updateMhPromotionChip",
-        "_updateSessionBoundaryChip",
-    ):
-        assert ae.count(fn + "(integrity)") == 1
 
 
-def test_live_ui_b_stack_integrity_degraded_chip():
-    html = _html()
-    assert 'id="dr-stack-integrity-degraded-chip"' in html
-    assert "stack_integrity_v1" in html
-    assert "stackIntegrityDegraded" in html
-    assert "function _updateStackIntegrityDegradedChip(" in html
-    assert "STACK DEGRADED" in html
 
 
-def test_live_ui_e_mh_promotion_chip():
-    html = _html()
-    assert 'id="dr-mh-promotion-chip"' in html
-    assert "mh_promoted_directional" in html
-    assert "function _updateMhPromotionChip(" in html
-    assert "MH PROMOTED" in html
 
 
-def test_live_ui_g_session_boundary_chip():
-    html = _html()
-    assert 'id="dr-session-boundary-chip"' in html
-    assert "sessionBoundaryWarning" in html
-    assert "time_warning" in html
-    assert "function _updateSessionBoundaryChip(" in html
 
 
-def test_parse_conf_withholds_null_not_zero():
-    html = _html()
-    assert "return null" in html.split("function parseConf(")[1].split("function horizonRowMissing")[0]
-    assert "confPct == null" in html
-    assert "confidence withheld" in html
 
 
-def test_live_ui_a_no_canonical_probability_reads_in_js():
-    """LIVE-UI-A: lock the clean JS state — no consumer in static/index.html may read
-    canonical.probability_up / probability_down / probability_flat from the Tier C payload
-    without provenance gating. Today there are zero such reads (verified path-only); this
-    test prevents a future regression that adds a fake-0.333 surface by binding a card to
-    these placeholder fields. Provenance-gated reads (canonical_provenance, fusion_active
-    via isFusionAuthoritative) remain allowed.
-    """
-    html = _html()
-    # Direct JS attribute access patterns that would leak placeholder probs.
-    for pat in (
-        "canonical.probability_up",
-        "canonical.probability_down",
-        "canonical.probability_flat",
-        ".canonical_forecast.probability_up",
-        ".canonical_forecast.probability_down",
-        ".canonical_forecast.probability_flat",
-    ):
-        assert pat not in html, (
-            f"LIVE-UI-A regression: JS now reads {pat!r} — placeholder 1/3-each triplets "
-            "for non-tradable canonicals would leak as a real prob. Gate on "
-            "isFusionAuthoritative(d) / canonical_provenance, or use a provenance-aware helper."
-        )
 
 
-def test_live_ui_d_horizon_bias_discriminates_withhold_reason():
-    """LIVE-UI-D: per-horizon Bias cell must render distinct labels for tri-state withhold
-    sources (min_samples / no_data / data_quality / loading) instead of a single uniform
-    WAIT bucket. Producer (prediction_engine._pack_horizon_row) stamps emp.withhold_reason;
-    UI reads and maps to operator-visible labels with hover-titles explaining the reason.
-    """
-    html = _html()
-    # Helper function must exist and discriminate the documented reason codes.
-    assert "const biasFromEmp = (emp) =>" in html, "biasFromEmp helper missing"
-    helper_idx = html.index("const biasFromEmp = (emp) =>")
-    helper_end = html.index("\n    };", helper_idx) + 6
-    helper_body = html[helper_idx:helper_end]
-    # All four reason buckets must be handled distinctly.
-    assert "'min_samples'" in helper_body, "min_samples branch missing"
-    assert "'no_data'" in helper_body, "no_data branch missing"
-    assert "'data_quality'" in helper_body, "data_quality branch missing"
-    # Distinct operator-visible labels for each withhold bucket.
-    assert "'WITHHELD'" in helper_body, "WITHHELD label missing"
-    assert "'NO DATA'" in helper_body, "NO DATA label missing"
-    assert "'LOADING'" in helper_body, "LOADING fallback label missing"
-    # When probs ARE present, helper must return LONG/SHORT/FLAT (real verdict),
-    # never falling through to the withhold path.
-    assert "'LONG'" in helper_body and "'SHORT'" in helper_body and "'FLAT'" in helper_body
 
 
-def test_live_ui_d_bias_kv_passes_cls_and_title_for_withhold_reason():
-    """LIVE-UI-D: the per-horizon Bias addKV call must thread the metadata object so the
-    DOM cell carries the discriminator class + tooltip — otherwise the operator sees
-    'WITHHELD' but cannot tell which reason fired."""
-    html = _html()
-    # The addKV signature must accept opts (cls + title) and apply them.
-    addkv_idx = html.index("const addKV = (grid, k, v, opts) =>")
-    addkv_body = html[addkv_idx : html.index("\n    };", addkv_idx)]
-    assert "opts.cls" in addkv_body, "addKV must apply opts.cls to the value cell"
-    assert "opts.title" in addkv_body, "addKV must apply opts.title to the value cell"
-    # The Bias call site must pass the bm (biasMeta) object.
-    assert "addKV(grid, 'Bias', biasHz, { cls: bm.cls, title: bm.title })" in html, (
-        "Bias addKV call must pass bm.cls + bm.title — without this the discriminator is dropped"
-    )
 
 
-def test_live_ui_d_horizon_confidence_discriminates_missing_row():
-    """LIVE-UI-D sibling sweep: Horizon Confidence cell must distinguish 'missing assessment'
-    from 'present but null' — without this discriminator the operator sees '—' identically
-    for both states and can't tell whether to wait or whether the horizon is structurally
-    absent. Producer: market_state.build_market_state stamps row.missing + row.row_state
-    for missing assessments (mhap None fix @ beeb16e).
-    """
-    html = _html()
-    # The Horizon Confidence render must thread metadata (confMHMeta) for discrimination.
-    assert "addKV(grid, 'Horizon Confidence', confMH, confMHMeta)" in html, (
-        "Horizon Confidence cell must pass confMHMeta — otherwise missing-row reason is dropped"
-    )
-    # confMHMeta must discriminate the three states: present / missing-row / loading.
-    meta_idx = html.index("const confMHMeta = _confPresent")
-    meta_end = html.index(";", meta_idx)
-    meta_body = html[meta_idx:meta_end]
-    assert "Per-horizon supporting assessment confidence" in meta_body, "present-state tooltip missing"
-    assert "Horizon assessment missing" in meta_body, "missing-row tooltip missing"
-    assert "Horizon confidence not yet stamped" in meta_body or "No horizon row" in meta_body, (
-        "loading-state tooltip missing"
-    )
-    # The discriminator class must use bias-withheld for missing-row (matches Bias-cell
-    # withhold styling for visual consistency across the sibling cells).
-    assert "bias-withheld" in meta_body, "missing-row branch must apply bias-withheld class"
 
 
-def test_live_ui_a_no_dominant_prob_renders_in_js():
-    """LIVE-UI-A: market_state.py L1541-1556 was previously stamping placeholder 0.3333
-    into ms.dominant_prob for non-tradable canonicals. The producer is now gated. This
-    JS-side lock ensures no operator-visible surface renders dominant_prob as a number —
-    if a future card binds it, the test fires until the consumer adds a withhold check.
-    """
-    html = _html()
-    # dominant_dir (direction string) IS read at effectiveDirection — that's fine,
-    # producer convention sets it to "flat" for non-tradable (fail-closed display).
-    # dominant_prob (the numeric placeholder) must not be rendered as a real value.
-    for pat in (
-        "d.dominant_prob",
-        ".dominant_prob",
-        "dominantProb",
-    ):
-        assert pat not in html, (
-            f"LIVE-UI-A regression: JS now reads {pat!r} — even with the market_state gate, "
-            "this binding would render '0' or empty for withheld (None) values without an "
-            "explicit withhold helper. Add a withhold check or use a provenance-aware accessor."
-        )
 
 
 # ── UI transport fidelity (audit/ui-realtime-transport-fidelity) ─────────────
@@ -460,13 +222,6 @@ def test_should_discard_inflight_on_ticker_mismatch():
     assert reason == "ticker_mismatch"
 
 
-def test_ticker_switch_enters_analytics_loading_state_in_html():
-    html = _html()
-    fetch_fn = html.split("async function fetchState(")[1].split("async function pollStateFallback(")[0]
-    assert "ANALYTICS" in fetch_fn
-    assert "FETCHING" in fetch_fn
-    assert "loading-overlay" in fetch_fn
-    assert "willChange" in fetch_fn
 
 
 def test_duplicate_tier_c_payload_fingerprint_detects_repeat():
@@ -530,13 +285,6 @@ def test_audit_payload_metadata_flags_missing_generation_id():
     assert "decision_generation_id" in meta["missing_fields"]
 
 
-def test_rest_sse_metadata_contract_in_html_and_server():
-    html = _html()
-    server = (ROOT / "server.py").read_text(encoding="utf-8", errors="replace")
-    assert "decision_generation_id" in html
-    assert "_server_build_ts" in html
-    assert "_update_source" in html
-    assert "decision_generation_id" in server or "_server_build_ts" in server
 
 
 def test_sqlite_lock_event_counter_from_log_sample():
@@ -600,8 +348,16 @@ def test_special_index_ticker_storage_keys():
 
 
 def test_core_vs_guest_audit_reports_tier_agnostic_guards():
+    # transport_guards_tier_agnostic was dropped from this assertion here (/console cutover,
+    # operator directive 2026-09-14): it detects legacy static/index.html's
+    # _renderCoherenceGuards()/setActiveTicker() markers, which have no equivalent in the new
+    # console (ed-core.js's setTicker() + its _hdrGen/_l1Gen generation counters are the real,
+    # differently-shaped tier-agnostic guard today -- see verification/
+    # ui_realtime_transport_audit.py's own independent-review fix note at this same date for
+    # why the underlying scan no longer crashes but also can't detect the new shape). The
+    # other assertions below come from simulate_switch_guard_matrix / static ticker lists, not
+    # from parsing index.html, and are unaffected by the rename.
     audit = audit_core_vs_guest_ticker_switching()
-    assert audit["transport_guards_tier_agnostic"] is True
     assert audit["wrong_ticker_discarded_all_pairs"] is True
     assert audit["cache_restore_stale_all_pairs"] is True
     assert "SPY" in audit["core_tickers"]
@@ -609,11 +365,6 @@ def test_core_vs_guest_audit_reports_tier_agnostic_guards():
     assert "21" in audit["question_21_answer"] or "tier-agnostic" in audit["question_21_answer"]
 
 
-def test_set_active_ticker_does_not_branch_on_base_tier_in_html():
-    html = _html()
-    body = html.split("function setActiveTicker(")[1].split("function _scheduleServerAnalyticsWarm")[0]
-    assert "is_base_money_path" not in body
-    assert "is_guest_ticker" not in body
 
 
 def _sample_tier_c_payload(**overrides):
@@ -738,29 +489,8 @@ def test_core_and_guest_share_tier_c_dedup_rules(ticker):
     assert skip is True
 
 
-def test_index_html_tier_c_dedup_hooks_present():
-    html = _html()
-    assert "function _tierCCardRenderFingerprint(" in html
-    assert "function _shouldSkipTierCCardRender(" in html
-    assert "function _resetTierCCardRenderDedup(" in html
-    assert "function _commitTierCCardRenderFingerprint(" in html
-    assert "_shouldSkipTierCCardRender(d)" in html
-    assert "_resetTierCCardRenderDedup()" in html.split("function setActiveTicker(")[1]
-    assert "window._tierCCardRenderFingerprint = _tierCCardRenderFingerprint" in html
 
 
-def test_db_contention_operator_dom_and_client_hooks():
-    html = _html()
-    assert 'id="ub-pill-db"' in html
-    assert 'id="dr-db-contention-chip"' in html
-    assert "function paintDbContentionPill(" in html
-    assert "function pollDbContentionDiagnostics(" in html
-    assert "function startDbContentionPoll(" in html
-    assert "/api/diagnostics/sqlite-contention" in html
-    assert "not a model verdict" in html.lower()
-    paint_body = html.split("function paintDbContentionPill(")[1].split("let _dbContentionPollTid")[0]
-    assert "mhap_rows" not in paint_body
-    assert "final_bias" not in paint_body
 
 
 def test_db_degraded_coexists_with_lane_stale_integrity():
@@ -805,17 +535,6 @@ def test_core_and_guest_share_db_contention_surface_attach():
         assert "state" in op
 
 
-def test_switch_operator_states_dom_and_hooks():
-    html = _html()
-    assert 'id="dr-switch-state-chip"' in html
-    assert "function deriveSwitchOperatorState(" in html
-    assert "function paintSwitchStateChip(" in html
-    assert "GUEST DATA WARMING" in html
-    assert "wrong_ticker_payload_rejected_count" in html
-    assert "stale_generation_payload_rejected_count" in html
-    paint_body = html.split("function paintSwitchStateChip(")[1].split("function _bumpSwitchDiagRejection")[0]
-    assert "mhap_rows" not in paint_body
-    assert "final_bias" not in paint_body
 
 
 @pytest.mark.parametrize(
@@ -956,7 +675,11 @@ def test_guest_switch_sla_report_classifications():
     report = build_guest_switch_sla_report(audit_date="2026-06-18")
     for tag in report.get("classifications", []):
         assert tag in GUEST_SWITCH_SLA_CLASSIFICATIONS
-    assert "GUEST_COLD_START_UX_GAP_FIXED" in report["classifications"]
+    # GUEST_COLD_START_UX_GAP_FIXED was dropped from this assertion here (/console cutover,
+    # operator directive 2026-09-14): it requires legacy static/index.html's
+    # dr-switch-state-chip / "GUEST DATA WARMING" markers, which have no equivalent in the new
+    # console (grepped, zero matches) -- a real, if narrow, gap: nothing in the new console
+    # today visibly distinguishes a guest ticker's cold-start warming state from a stuck load.
     assert "LIVE_GUEST_SLA_NOT_PROVEN" in report["classifications"]
 
 
@@ -1026,12 +749,6 @@ def test_wrong_ticker_render_coherence_guard_blocks_before_card_paint():
     assert analytics_card_trust_gate(payload, active_ticker="SPY")["trusted"] is False
 
 
-def test_index_html_exports_card_trust_gate_helpers():
-    html = _html()
-    assert "window.analyticsCardTrustGate = analyticsCardTrustGate" in html
-    assert "window.engineTradeableSetup = engineTradeableSetup" in html
-    assert "window.paintUntrustedTimeframeCardRow = paintUntrustedTimeframeCardRow" in html
-    assert "window.render = render" in html
 
 
 def test_quote_plane_hypothetical_fields_do_not_affect_card_trust_gate():
@@ -1080,130 +797,23 @@ def test_client_ticker_cache_refresh_fail_closed_vs_syncing_non_cache():
 # These assert the CONTRACT (row 2 is explicitly sized), not the pixel outcome, which
 # only a browser can measure.
 
-def _tv_deck_rule() -> str:
-    html = _html()
-    i = html.find(".tv-deck { display:grid;")
-    assert i != -1, ".tv-deck grid rule not found in static/index.html"
-    return html[i : html.find("}", i)]
 
 
-def test_terrain_deck_row2_is_explicitly_sized_not_content_sized():
-    """A content-sized row 2 collapses because .tv-z is overflow:auto (min-content 0)."""
-    rule = _tv_deck_rule()
-    assert "grid-template-rows" in rule
-    rows = rule.split("grid-template-rows:")[1].split(";")[0]
-    assert "auto" not in rows, (
-        "row 2 must not be content-sized — it collapses the context tiles to header height: "
-        + rows.strip()
-    )
-    assert "min-content" not in rows, rows.strip()
-    assert "--tv-row2-h" in rows, "row 2 should come from the explicit --tv-row2-h token"
 
 
-def test_terrain_deck_is_twelve_columns():
-    """Concept A's tile weighting depends on a 12-track grid."""
-    assert "repeat(12,minmax(0,1fr))" in _tv_deck_rule()
 
 
 # ── TERRAIN v2 — NET GEX chip, pill tooltips, KDS/HVP/LVP (operator 2026-07-21:
 # "insert the gamma exposure whether it is positive or negative … tooltips at the
 # pills") ────────────────────────────────────────────────────────────────────
 
-def test_terrain_net_gex_chip_dom_and_render_wiring():
-    html = _html()
-    assert 'id="tv-gex"' in html
-    assert "function edFmtGex(" in html
-    assert "function edNetGexOf(" in html
-    # The chip is fed from the single painter; sign selects the regime colours.
-    assert "function edPaintNetGex(" in html
-    assert "chip.textContent = crossed ? 'NET GEX WITHHELD · CROSSED FLIP' : 'NET GEX ' + edFmtGex(g)" in html
-    assert ".tv-chip.gpos" in html and ".tv-chip.gneg" in html
-    # The dealer tile renders the same number formatted, not raw exponent.
-    assert "'NET GEX (1%)', edFmtGex(gas)" in html
 
 
-def test_terrain_net_gex_never_keeps_wrong_sign_across_flip():
-    """Bugbot 2026-07-21 (both findings): ONE painter drives BOTH NET GEX surfaces,
-    repainting on every cross-state CHANGE — so the header chip and the dealer tile
-    can never split, the chip cannot stick after an uncross, and no magnitude is ever
-    fabricated across the flip. RC-345 / F07: a live cross now WITHHOLDS (no client-side
-    profile, so the net GEX at the new spot is unknown) rather than fabricating a ≈0."""
-    html = _html()
-    painter = html.split("function edPaintNetGex(")[1].split("async function edLoadTerrain(")[0]
-    # Both surfaces painted from the single source, WITHHELD text on crossed (not a fake ≈0).
-    assert "getElementById('tv-gex')" in painter
-    assert "getElementById('tv-dealer-gex')" in painter
-    assert "NET GEX WITHHELD · CROSSED FLIP" in painter
-    assert "'— · crossed flip'" in painter
-    assert "≈0" not in painter, "a crossed flip must WITHHOLD, never fabricate a ≈0 (F07/RC-345)"
-    # Reconcile repaints on state CHANGE (both directions) BEFORE the regime
-    # early-return — the uncross path short-circuits there, which is exactly where
-    # the chip used to get stuck.
-    rec = html.split("function edReconcileRegime(")[1].split("function edPaintLadderSpot(")[0]
-    change_idx = rec.index("!!d._gexCrossed !== crossed")
-    # RC-345 / F07: the frontend no longer SUBSTITUTES the regime — `d.regime = want` is
-    # deleted, because the sign is owned by the backend (terrain_read._regime_for). The
-    # cross-state NET GEX repaint must still precede the presentation-only crossed
-    # early-return, so an uncross re-paints the chip instead of sticking (the original bug).
-    early_return_idx = rec.index("if (!!d._crossedFlip === crossed) return;")
-    assert change_idx < early_return_idx, "cross-state repaint must precede the crossed early-return"
-    assert "d.regime =" not in rec, "edReconcileRegime must never assign d.regime (F07/RC-345)"
-    # Fresh payload re-anchors the state; periphery re-applies after kv() rebuilds its row.
-    assert "d._gexCrossed = false;" in html
-    assert "'tv-dealer-gex'" in html
-    assert html.count("edPaintNetGex(d)") >= 3  # load, reconcile, periphery
 
 
-def test_terrain_level_set_includes_new_levels_each_with_tooltip():
-    html = _html()
-    body = html.split("function edLevelSet(")[1].split("function edRenderLevels(")[0]
-    for token in ("d.key_delta_strike", "d.hvp", "d.lvp",
-                  "'KEY DELTA'", "'HVP'", "'LVP'"):
-        assert token in body, token + " missing from edLevelSet"
-    # Every level entry carries a tip — the single source both surfaces render.
-    #
-    # RC-308: this read `body.count("tip:") >= 11`, a COUNT standing in for the property the
-    # test is named after. RC-132 (A3) then deleted the HVL row on purpose — it was the same
-    # metric as GAMMA PIN under a second name — leaving 10 entries, each with a tip, and a
-    # test called "each with tooltip" failing while every entry had one. A hard-coded count
-    # cannot tell a removed row from a missing tooltip. Count the entries instead.
-    entries = body.count("{ t: '")
-    assert entries >= 10, f"the level set collapsed to {entries} entries"
-    assert body.count("tip:") == entries, (
-        f"{entries} level entries but {body.count('tip:')} tips — every edLevelSet entry "
-        "needs exactly one tip, and the two surfaces render it from this single source")
 
 
-def test_terrain_tooltips_reach_both_surfaces_and_periphery():
-    html = _html()
-    # Ladder chips
-    assert "if (it.tip) chip.title = it.tip;" in html
-    # Levels table cell
-    assert "(r.tip ? ' title=\"' + r.tip + '\"' : '')" in html
-    # Periphery kv rows accept a 4th element rendered as a title on the key
-    assert "(r[3] ? ' title=\"' + r[3] + '\"' : '')" in html
 
 
-def test_terrain_header_pills_carry_static_tooltips():
-    html = _html()
-    i = html.find('id="tv-trust"')
-    assert i != -1 and 'title=' in html[html.rfind('<span', 0, i):html.find('>', i)]
-    j = html.find('id="tv-contracts"')
-    assert j != -1 and 'title=' in html[html.rfind('<span', 0, j):html.find('>', j)]
-    k = html.find('id="tv-gex"')
-    assert k != -1 and 'title=' in html[html.rfind('<span', 0, k):html.find('>', k)]
 
 
-def test_terrain_zone_spans_match_concept_a():
-    html = _html()
-    for cls, span in (
-        ("tv-z-radar", "span 2"), ("tv-z-ladder", "span 6"), ("tv-z-levels", "span 4"),
-        ("tv-z-session", "span 3"), ("tv-z-dealer", "span 3"),
-        ("tv-z-tape", "span 2"), ("tv-z-posture", "span 2"),
-    ):
-        i = html.find("." + cls + " ")
-        assert i != -1, cls + " rule missing"
-        assert span in html[i : html.find("}", i)], cls + " should be grid-column:" + span
-    # the radar tile is the only one spanning both rows
-    i = html.find(".tv-z-radar ")
-    assert "grid-row:span 2" in html[i : html.find("}", i)]

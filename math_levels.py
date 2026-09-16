@@ -1019,7 +1019,7 @@ def compute_gamma_support_levels(
     below = [(p, v) for p, v in profile if p < spot]
     prev_p, prev_v = float(spot), float(n_spot)
     for p, v in reversed(below):
-        if v <= target < prev_v or v <= target and prev_v > target:
+        if v <= target < prev_v:
             gsf = round(_cross(p, v, prev_p, prev_v), 2)
             break
         prev_p, prev_v = p, v
@@ -1027,7 +1027,7 @@ def compute_gamma_support_levels(
     above = [(p, v) for p, v in profile if p > spot]
     prev_p, prev_v = float(spot), float(n_spot)
     for p, v in above:
-        if v <= target < prev_v or v <= target and prev_v > target:
+        if v <= target < prev_v:
             grc = round(_cross(prev_p, prev_v, p, v), 2)
             break
         prev_p, prev_v = p, v

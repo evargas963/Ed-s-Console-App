@@ -181,12 +181,17 @@ def test_mhap_rows_confidence_none_not_zero_for_missing_assessment():
     assert ok_row["confidence"] is not None
 
 
-def test_dominant_prob_withheld_for_non_tradable_canonical_provenance():
+@patch("signals.compute_signals")
+def test_dominant_prob_withheld_for_non_tradable_canonical_provenance(mock_cs):
     """LIVE-UI-A: market_state must NOT stamp placeholder 0.333 into ms.dominant_prob
     when canonical_forecast carries non-tradable provenance (fusion_unavailable etc.).
     Producer convention: CanonicalForecast.dominant_probability() returns the placeholder
-    for non-tradable cases; the market_state gate at L1541-1556 (canonical_provenance_is_tradable)
-    must withhold it. dominant_dir is left as the producer's flat (fail-closed visible value).
+    for non-tradable cases; the market_state gate (canonical_provenance_is_tradable) must
+    withhold it. dominant_dir is left as the producer's flat (fail-closed visible value).
+
+    Calls the real build_market_state with a patched signals.compute_signals output
+    instead of hand-copying the production stamp path, so a regression in the real
+    market_state.py gate is what fails this test.
     """
     from signal_types import CanonicalForecast
 
@@ -199,18 +204,13 @@ def test_dominant_prob_withheld_for_non_tradable_canonical_provenance():
         confidence="low",
         provenance="fusion_unavailable",
     )
-    # Mirror the production stamp path (market_state.py L1541-1556):
-    from fusion_contract import canonical_provenance_is_tradable
-
-    _cf = cf_non_tradable
-    ms_dominant_prob = None
-    if _cf is not None:
-        if canonical_provenance_is_tradable(getattr(_cf, "provenance", None)):
-            ms_dominant_prob = round(_cf.dominant_probability(), 4)
-        else:
-            ms_dominant_prob = None
-    assert ms_dominant_prob is None, (
-        f"non-tradable canonical leaked placeholder 0.3333 into ms.dominant_prob: {ms_dominant_prob!r}"
+    out = _fake_compute_signals(None)
+    out.predictive = MagicMock(forward_direction="flat")
+    out.canonical_forecast = cf_non_tradable
+    mock_cs.return_value = out
+    ms = build_market_state(**_base_kwargs())
+    assert ms.dominant_prob is None, (
+        f"non-tradable canonical leaked placeholder 0.3333 into ms.dominant_prob: {ms.dominant_prob!r}"
     )
 
     # Regression: tradable canonical still stamps the real prob
@@ -222,15 +222,13 @@ def test_dominant_prob_withheld_for_non_tradable_canonical_provenance():
         confidence="medium",
         provenance="bayesian_fusion",
     )
-    _cf = cf_tradable
-    ms_dominant_prob = None
-    if _cf is not None:
-        if canonical_provenance_is_tradable(getattr(_cf, "provenance", None)):
-            ms_dominant_prob = round(_cf.dominant_probability(), 4)
-        else:
-            ms_dominant_prob = None
-    assert ms_dominant_prob == 0.65, (
-        f"tradable canonical dominant_prob did not pass through: {ms_dominant_prob!r}"
+    out = _fake_compute_signals(None)
+    out.predictive = MagicMock(forward_direction="up")
+    out.canonical_forecast = cf_tradable
+    mock_cs.return_value = out
+    ms = build_market_state(**_base_kwargs())
+    assert ms.dominant_prob == 0.65, (
+        f"tradable canonical dominant_prob did not pass through: {ms.dominant_prob!r}"
     )
 
 

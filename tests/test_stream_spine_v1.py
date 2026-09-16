@@ -22,6 +22,7 @@ from stream_spine import (
     print_msg,
     quote_msg,
     read_active_option_contract_signal,
+    read_active_option_contracts_signal,
     read_active_ticker_signal,
     write_active_option_contract_signal,
     write_active_ticker_signal,
@@ -310,6 +311,42 @@ def test_active_ticker_signal_round_trips(tmp_path):
     p = tmp_path / "stream_active_ticker.json"
     write_active_ticker_signal("spy", path=p)
     assert read_active_ticker_signal(path=p) == "SPY"
+
+
+@pytest.mark.parametrize("body", ["[]", "null", "42", '"just a string"', "true"])
+def test_active_option_contract_signal_malformed_root_is_none_not_raise(tmp_path, body):
+    """Independent-review finding (2026-09-12): _read_json_signal called `.get(value_key)`
+    directly on the parsed JSON root, raising AttributeError for any legal-JSON-but-
+    non-object content (a bare list, null, a number, a string, a bool) instead of the
+    documented fail-closed None. A corrupted or half-migrated signal file must never
+    crash the daemon's poll loop."""
+    p = tmp_path / "malformed.json"
+    p.write_text(body, encoding="utf-8")
+    assert read_active_option_contract_signal(path=p) is None
+
+
+def test_active_option_contract_signal_unreadable_bytes_is_none(tmp_path):
+    p = tmp_path / "not_json.json"
+    p.write_text("{not valid json", encoding="utf-8")
+    assert read_active_option_contract_signal(path=p) is None
+
+
+@pytest.mark.parametrize("body", ["[]", "null", "42", '"just a string"', "true"])
+def test_active_option_contracts_signal_malformed_root_is_empty_not_raise(tmp_path, body):
+    """PLURAL counterpart to the malformed-root test above (RC-UI-3, 2026-09-12) --
+    _read_json_list_signal had the identical bug: `.get(value_key)` on a non-dict root
+    raised AttributeError instead of returning []."""
+    p = tmp_path / "malformed_plural.json"
+    p.write_text(body, encoding="utf-8")
+    assert read_active_option_contracts_signal(path=p) == []
+
+
+def test_active_option_contracts_signal_non_list_value_is_empty(tmp_path):
+    """A well-formed object root whose value for the key is not a list (e.g. a stray
+    string left from hand-editing) must also fail closed to [], not raise or guess."""
+    p = tmp_path / "bad_value.json"
+    p.write_text('{"contract_symbols": "SPY   260820C00767000"}', encoding="utf-8")
+    assert read_active_option_contracts_signal(path=p) == []
 
 
 def test_active_ticker_signal_absent_is_none_not_a_guess(tmp_path):

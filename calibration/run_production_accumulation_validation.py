@@ -309,7 +309,7 @@ def run(out_db: Path) -> dict[str, Any]:
                 "n_decision_events": decision_events,
                 "base_ts_utc": BASE_TS,
                 "ts_step_sec": TS_STEP,
-                "tickers_rotated": ["SPY", "QQQ"],
+                "tickers_rotated": sorted(set(_TICKERS_ROT)),
             },
             "counts": {
                 "calibration_decision_log_total": n_total,

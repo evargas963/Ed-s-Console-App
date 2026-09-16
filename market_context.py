@@ -7,6 +7,7 @@ All results returned as a MarketContext dataclass — caller manages caching in 
 """
 
 from __future__ import annotations
+import functools
 import math
 import os
 from collections.abc import Mapping
@@ -295,6 +296,35 @@ def _last_traded_price(quote: dict, ext: dict, reg: dict) -> Optional[float]:
     return None
 
 
+def extract_pct_change(quote: dict, regular: dict, last: Optional[float]) -> Optional[float]:
+    """
+    ONE parser for a Schwab quote node's percent-change: quote.netPercentChange, then the
+    regular-session leaf, then a netChange/last derivation (external-key-ok: Schwab /quotes
+    leaves quotes.netPercentChange / regular.regularMarketPercentChange /
+    quotes.netChange / regular.regularMarketNetChange, per schwab_field_dictionary.csv).
+
+    Shared by _extract_quote below (SPY/QQQ/IWM/sectors/constituents/futures) and
+    server._parse_quote_node_session_fields (any other ticker) — the formula existed in
+    both files as two separately-maintained copies until this extraction (caught in
+    review); now there is exactly one, called from both.
+    """
+    from numeric_contract import float_finite_or_none as _fin
+    q = quote or {}
+    r = regular or {}
+    pct_chg = _fin(q.get("netPercentChange"))
+    if pct_chg is None:
+        pct_chg = _fin(r.get("regularMarketPercentChange"))
+    if pct_chg is not None:
+        return pct_chg  # already finite via the canonical reader above
+    net_chg = _fin(q.get("netChange"))
+    if net_chg is None:
+        net_chg = _fin(r.get("regularMarketNetChange"))
+    if net_chg is not None and last and (float(last) - net_chg) != 0:
+        # single source: finite netChange (a NaN change would produce a NaN pct)
+        return net_chg / (float(last) - net_chg) * 100.0
+    return None
+
+
 def _extract_quote(symbol: str, q_json: dict) -> tuple[Optional[float], Optional[float]]:
     """Return (last, chg_pct) from a single-ticker Schwab quote payload."""
     try:
@@ -304,19 +334,9 @@ def _extract_quote(symbol: str, q_json: dict) -> tuple[Optional[float], Optional
         reg = data.get("regular", {}) or {}
         last = _last_traded_price(quote, ext, reg)
         from numeric_contract import float_finite_or_none as _fin
-        pct_chg = _fin(quote.get("netPercentChange"))  # external-key-ok: Schwab /quotes leaf (quotes.netPercentChange in schwab_field_dictionary.csv)
-        if pct_chg is None:
-            pct_chg = _fin(reg.get("regularMarketPercentChange"))
-        net_chg = _fin(quote.get("netChange"))
-        if net_chg is None:
-            net_chg = _fin(reg.get("regularMarketNetChange"))
         if last:
             last = _fin(last)
-        if pct_chg is not None:
-            pass  # already finite via the canonical reader above
-        elif net_chg is not None and last and (last - net_chg) != 0:
-            # single source: finite netChange (a NaN change would produce a NaN pct)
-            pct_chg = net_chg / (last - net_chg) * 100.0
+        pct_chg = extract_pct_change(quote, reg, last)
         return last, pct_chg
     except Exception:
         return None, None
@@ -420,13 +440,22 @@ def _build_iwm_confluence(sectors: list) -> ConfluenceRead:
 
 
 # Snapshot column for each symbol used in confluence backfill / row recompute.
+#
+# Independent-review finding (2026-09-12), REPRODUCED: GOOG used to point at this same
+# googl_chg_pct column. GOOG (Alphabet class C) and GOOGL (Alphabet class A) are distinct
+# instruments with their own weights in SPY_TOP/QQQ_TOP below and can genuinely diverge
+# intraday -- aliasing GOOG onto GOOGL's column made snapshot_row_chg_map() report
+# out["GOOG"] == out["GOOGL"] always, so weighted_push_from_constituents() double-counted
+# GOOGL's move (once at each symbol's weight) and silently discarded GOOG's own. GOOG now
+# has its own db.py column (goog_chg_pct), written from its own quote, same as every other
+# constituent here.
 SYMBOL_TO_SNAPSHOT_CHG_COL: dict[str, str] = {
     "NVDA": "nvda_chg_pct",
     "AAPL": "aapl_chg_pct",
     "MSFT": "msft_chg_pct",
     "AMZN": "amzn_chg_pct",
     "GOOGL": "googl_chg_pct",
-    "GOOG": "googl_chg_pct",
+    "GOOG": "goog_chg_pct",
     "AVGO": "avgo_chg_pct",
     "META": "meta_chg_pct",
     "TSLA": "tsla_chg_pct",
@@ -512,8 +541,6 @@ def merged_snapshot_chg_map(
             continue
         col = SYMBOL_TO_SNAPSHOT_CHG_COL.get(s)
         if col is None or chg.get(s) is None:
-            chg[s] = fv
-        elif s == "GOOG":
             chg[s] = fv
     return chg
 
@@ -640,6 +667,35 @@ def _derive_session() -> str:
     return "Closed"
 
 
+def resolve_chg_pct(ticker: str, rest_chg_pct: Optional[float], *,
+                     stream_chg_pct_fn: Optional[Callable[[str], Optional[float]]] = None) -> Optional[float]:
+    """
+    ONE authority for percent-change source precedence, for ANY ticker: streaming wins
+    when present, REST-derived value is the fallback. Every caller that needs a ticker's
+    chg_pct (the sentinel fetch below, /api/fast-quote, /api/live/state, the L1/SSE
+    payload) goes through this single function so "which value wins" is decided once,
+    not re-implemented per call site.
+
+    stream_chg_pct_fn defaults to app.options.order_flow.state.get_stream_chg_pct
+    (imported lazily to avoid a hard dependency at module load); callers may inject a
+    fake for testing, same as fetch_market_context already does below.
+    """
+    fn = stream_chg_pct_fn
+    if fn is None:
+        try:
+            from app.options.order_flow.state import get_stream_chg_pct as fn
+        except Exception:
+            fn = None
+    if fn is not None:
+        try:
+            stream_chg = fn(ticker)
+            if stream_chg is not None:
+                return stream_chg
+        except Exception as e:
+            log.debug("resolve_chg_pct: stream_chg_pct_fn failed for %s: %s", ticker, e)
+    return rest_chg_pct
+
+
 def fetch_market_context(client, safe_get_quote_fn,
                          pcr: Optional[float] = None,
                          prev_pcr: Optional[float] = None,
@@ -662,13 +718,11 @@ def fetch_market_context(client, safe_get_quote_fn,
             errors.append(f"{sym}: {e}")
         return {}
 
-    def _chg_for(sym: str, rest_chg: Optional[float]) -> Optional[float]:
-        """Stream chg_pct primary; REST derivation fallback."""
-        if stream_chg_pct_fn:
-            stream_chg = stream_chg_pct_fn(sym)
-            if stream_chg is not None:
-                return stream_chg
-        return rest_chg
+    # NATIVE partial application (functools), not a hand-written forwarding function: the
+    # 8 call sites below only need stream_chg_pct_fn bound once, not a new function whose
+    # sole job is "call resolve_chg_pct with one argument already filled in" (caught in
+    # review — a forwarding function needs its own necessity proof; this doesn't).
+    _chg_for = functools.partial(resolve_chg_pct, stream_chg_pct_fn=stream_chg_pct_fn)
 
     # VIX — macro fear gauge; legacy ctx.vix semantics frozen (DUAL_GAUGE_HYBRID macro arm).
     vix_json = _fetch("$VIX")

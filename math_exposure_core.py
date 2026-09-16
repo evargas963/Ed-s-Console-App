@@ -51,14 +51,52 @@ def schwab_iv_to_sigma(iv: float | None) -> float | None:
     return iv / 100.0 if iv > 3.0 else iv
 
 
-def gamma_is_plausible(gamma: float | None, delta: float | None = None) -> bool:
+def vendor_greeks_unavailable(*, iv: float | None = None, gamma: float | None = None,
+                               delta: float | None = None, vega: float | None = None) -> bool:
+    """Operator directive (2026-09-15, canonical input-validity rules): True when Schwab's
+    OWN reported fields indicate this contract's greeks are NOT a genuine live computation --
+    never a fabricated $0, never accepted as a real zero.
+
+    Two independent tells, both read directly off the vendor's own wire fields (never a
+    strike-vs-spot moneyness judgment -- operator directive: no "was this genuinely deep
+    ITM" heuristic):
+
+    1. ``iv == MISSING_GREEK_SENTINEL`` (Schwab's documented -999 missing-greek marker on
+       `volatility`) means EVERY greek on this contract is invalid, not just IV itself --
+       "IV = -999 means invalid vendor Greeks. That contract must not contribute $0."
+
+    2. Internally self-contradictory output: `gamma` AND `vega` both EXACTLY 0.0 while
+       `delta` sits at an EXACT numeric boundary (|delta| == 1.0). In a genuine Black-
+       Scholes-consistent quote, gamma and vega share the identical zero-condition
+       (N'(d1) == 0) — they cannot be independently real, so a contract reporting both
+       exactly zero while ALSO reporting a real-looking bid/ask/last and a plausible IV
+       (live-reproduced 2026-09-15: SPY/QQQ 0DTE puts at/above spot showing delta=-1.0,
+       gamma=0.0, vega=0.0 alongside a smoothly-varying real-looking IV curve) is Schwab's
+       engine collapsing to a degenerate fallback, not a real deep-ITM/OTM measurement — a
+       genuinely near-zero-gamma contract's delta APPROACHES its boundary asymptotically,
+       it does not float-EQUAL it. Applied uniformly to every delta magnitude, never
+       conditioned on how far the strike sits from spot.
+    """
+    if iv is not None and iv == MISSING_GREEK_SENTINEL:
+        return True
+    if (gamma == 0.0 and vega == 0.0 and delta is not None and math.isfinite(delta)
+            and abs(abs(delta) - 1.0) < 1e-9):
+        return True
+    return False
+
+
+def gamma_is_plausible(gamma: float | None, delta: float | None = None, *,
+                        iv: float | None = None, vega: float | None = None) -> bool:
     """True when ``gamma`` is usable in OI-weighted gamma aggregation.
 
     Rejects: None, MISSING_GREEK_SENTINEL, non-finite, negative, above
-    ``GAMMA_PLAUSIBLE_MAX``, and non-near-zero gamma when ``|delta|`` is deep
-    ITM/OTM (``>= DELTA_DEEP_ABS_FOR_GAMMA``). OI-only metrics should still
-    include the contract when gamma is rejected.
+    ``GAMMA_PLAUSIBLE_MAX``, non-near-zero gamma when ``|delta|`` is deep
+    ITM/OTM (``>= DELTA_DEEP_ABS_FOR_GAMMA``), and (2026-09-15) anything
+    `vendor_greeks_unavailable` flags -- see that function's own docstring.
+    OI-only metrics should still include the contract when gamma is rejected.
     """
+    if vendor_greeks_unavailable(iv=iv, gamma=gamma, delta=delta, vega=vega):
+        return False
     if gamma is None or gamma == MISSING_GREEK_SENTINEL or not math.isfinite(gamma):
         return False
     if gamma < 0.0 or gamma > GAMMA_PLAUSIBLE_MAX:
@@ -142,6 +180,29 @@ class ExposureDiagnostics:
 def _strike_bucket(exposures_by_strike: Dict[float, dict], strike: float) -> dict:
     if strike not in exposures_by_strike:
         exposures_by_strike[strike] = {
+            # Operator directive (2026-09-14, live SPX reproduction): every accumulator below
+            # (call_gamma, net_gex_1pct, ...) is pre-initialized to a real 0.0 so mid-loop `+=`
+            # never needs a None-guard -- but that same 0.0 is indistinguishable from "every
+            # contract at this strike/expiry was skipped by the require_oi gate" to any reader
+            # who only looks at the accumulator itself (exactly the live SPX defect: Schwab's
+            # chain returned openInterest=0 for every contract, so nothing here was EVER wrong
+            # math, just a bucket that never had a chance to accumulate anything real). has_oi
+            # is the ONE canonical "did any contract actually clear the OI gate" signal -- every
+            # consumer of this bucket's dollar/gamma fields must check it before treating 0.0 as
+            # a computed value, not re-derive presence from call_oi/put_oi being non-None
+            # (equivalent today, but a second definition of the same fact is how these drift).
+            "has_oi": False,
+            # Operator directive (2026-09-15, canonical input-validity rules): has_oi answers
+            # "did any contract clear the OI gate"; has_valid_gamma answers the INDEPENDENT
+            # question "did any contract that cleared it ALSO report genuine, vendor-
+            # confirmed-usable greeks" (see vendor_greeks_unavailable). A contract can have
+            # real OI and simultaneously garbage greeks (live-reproduced: SPY/QQQ 0DTE ITM
+            # puts, real OI, delta=-1.0/gamma=0.0) -- conflating the two meant a genuinely
+            # invalid-greeks strike silently rendered as a computed $0 instead of an honest
+            # absence. Never re-derived from call_gamma/put_gamma being nonzero (a REAL
+            # position can net to a genuine zero too -- see net_gex_1pct's own honest-zero
+            # test coverage).
+            "has_valid_gamma": False,
             "call_oi": None,
             "put_oi": None,
             "call_oi_mult": 0.0,
@@ -262,13 +323,25 @@ def compute_exposures_by_strike(
 
         delta = _f(ct.get("delta"))
         gamma = _f(ct.get("gamma"))
-        delta_ok = delta is not None and delta != MISSING_GREEK_SENTINEL and math.isfinite(delta)
-        gamma_ok = gamma_is_plausible(gamma, delta)
+        # Hoisted (2026-09-15, canonical input-validity rules): iv/vega are now read ONCE,
+        # here, and shared by delta_ok/gamma_ok below AND the per-side vanna block further
+        # down (which used to re-read `volatility` a second time, independently, in each of
+        # the CALL/PUT branches -- two reads of the same field is how they could drift).
+        iv = _f(ct.get("volatility"))
+        vega = _f(ct.get("vega"))
+        _vendor_invalid = vendor_greeks_unavailable(iv=iv, gamma=gamma, delta=delta, vega=vega)
+        delta_ok = (delta is not None and delta != MISSING_GREEK_SENTINEL and math.isfinite(delta)
+                    and not _vendor_invalid)
+        gamma_ok = gamma_is_plausible(gamma, delta, iv=iv, vega=vega)
 
         if not delta_ok or not gamma_ok:
             missing += 1
 
         used += 1
+        # The ONE canonical "did OI actually contribute here" signal (see _strike_bucket's own
+        # comment) -- exactly the condition every OI-gated accumulation below already shares.
+        if oi is not None:
+            b["has_oi"] = True
 
         if side == "CALL":
             if oi is not None:
@@ -279,6 +352,7 @@ def compute_exposures_by_strike(
                 b["call_delta"] += delta * oi * mult
             if oi is not None and gamma_ok:
                 b["call_gamma"] += gamma * oi * mult
+                b["has_valid_gamma"] = True
             if oi is not None and spot is not None:
                 spt = float(spot)
                 b["call_oi_dollars"] += oi * mult * spt
@@ -289,8 +363,7 @@ def compute_exposures_by_strike(
                 # RC-211: exact BS vanna from the shared d1/d2 faucet (math_levels.bs_vanna,
                 # independently FD-verified). The prior vega/(S*sigma) shortcut dropped the
                 # -d2 factor: always positive, wrong sign below spot, wrong magnitude.
-                _iv = _f(ct.get("volatility"))
-                _iv_ok = _iv is not None and _iv > 0 and _iv != MISSING_GREEK_SENTINEL and math.isfinite(_iv)
+                _iv_ok = iv is not None and iv > 0 and iv != MISSING_GREEK_SENTINEL and math.isfinite(iv)
                 _T = _tte_memo(ct.get("expirationDate"))
                 if _iv_ok and _T is not None and _T > 0:
                     from math_levels import bs_vanna as _bsv
@@ -298,7 +371,7 @@ def compute_exposures_by_strike(
                     # inline _iv/100.0. Charm (compute_net_charm) and levels (_contract_inputs)
                     # already use schwab_iv_to_sigma; vanna alone re-encoded the raw conversion,
                     # breaking the single-authority guarantee and lacking the >3.0 units-flip guard.
-                    _sig = schwab_iv_to_sigma(_iv)
+                    _sig = schwab_iv_to_sigma(iv)
                     _vn = _bsv(spt, float(strike), _T, _sig) if _sig is not None else None
                     if _vn is not None:
                         b["call_vanna"] += _vn * oi * mult
@@ -311,6 +384,7 @@ def compute_exposures_by_strike(
                 b["put_delta"] += delta * oi * mult
             if oi is not None and gamma_ok:
                 b["put_gamma"] += gamma * oi * mult
+                b["has_valid_gamma"] = True
             if oi is not None and spot is not None:
                 spt = float(spot)
                 b["put_oi_dollars"] += oi * mult * spt
@@ -320,13 +394,12 @@ def compute_exposures_by_strike(
                     b["put_gex_1pct"] += gamma * oi * mult * spt * spt * 0.01   # $-GEX per 1% spot move
                 # RC-211: same exact-vanna faucet as the CALL side (vanna is IDENTICAL for
                 # calls and puts at a strike/expiry — any split comes from OI, never math).
-                _iv = _f(ct.get("volatility"))
-                _iv_ok = _iv is not None and _iv > 0 and _iv != MISSING_GREEK_SENTINEL and math.isfinite(_iv)
+                _iv_ok = iv is not None and iv > 0 and iv != MISSING_GREEK_SENTINEL and math.isfinite(iv)
                 _T = _tte_memo(ct.get("expirationDate"))
                 if _iv_ok and _T is not None and _T > 0:
                     from math_levels import bs_vanna as _bsv
                     # Cursor-audit F7: single IV-conversion authority (see CALL side above).
-                    _sig = schwab_iv_to_sigma(_iv)
+                    _sig = schwab_iv_to_sigma(iv)
                     _vn = _bsv(spt, float(strike), _T, _sig) if _sig is not None else None
                     if _vn is not None:
                         b["put_vanna"] += _vn * oi * mult
@@ -353,6 +426,119 @@ def compute_exposures_by_strike(
         greeks_missing=missing,
         note=note,
     )
+
+
+#: streamed-state key -> (chain contract field it overlays, that field's own freshness key).
+#: Native Schwab LEVELONE_OPTIONS fields (schwab-py's LevelOneOptionFields: DELTA=28, GAMMA=29,
+#: OPEN_INTEREST=9, TOTAL_VOLUME=8) map onto the SAME field names compute_exposures_by_strike
+#: already reads from a REST chain contract (`gamma`, `delta`, `openInterest`, `totalVolume`)
+#: -- this overlay changes no formula and adds no second computation path; it only lets these
+#: inputs be fresher than the chain snapshot they arrived in, for whichever contract is
+#: actively streaming. `total_volume` closes the "near-instant options volume" requirement:
+#: without it, a volume-only tick (no Greeks/OI change) never reached ANY display, since
+#: _per_strike's volume column and compute_exposures_by_strike's own call/put volume both read
+#: a contract's `totalVolume` directly, not the ticker-level ``_stream_volume`` cache.
+_STREAMED_GREEK_FIELDS: tuple[tuple[str, str, str], ...] = (
+    ("gamma", "gamma", "gamma_ts_recv"),
+    ("delta", "delta", "delta_ts_recv"),
+    ("open_interest", "openInterest", "open_interest_ts_recv"),
+    ("total_volume", "totalVolume", "total_volume_ts_recv"),
+)
+
+
+def overlay_streamed_contract_fields(
+    contracts: List[dict],
+    streamed_by_symbol: Dict[str, dict],
+    *,
+    newer_than_ts: float | None = None,
+    max_staleness_sec: float | None = None,
+    now: float | None = None,
+) -> tuple[List[dict], int]:
+    """Merge freshly-streamed GAMMA/DELTA/OPEN_INTEREST onto a base REST chain contract list,
+    matched by each contract's own `symbol` field (the same OSI-style option symbol the
+    streaming daemon subscribes and app.options.order_flow.state keys its per-symbol state by).
+
+    Sparse, non-destructive, and PURE (returns a new list; `contracts` and its dicts are never
+    mutated): a contract absent from `streamed_by_symbol`, or one whose streamed entry carries
+    none of the three fields, is passed through UNCHANGED (same dict, not a copy) -- only a
+    contract that actually gets at least one field overlaid is copied. This is the same "fill
+    fresher, never fabricate" discipline as live_market_plane's quote overlay, applied to the
+    exposure faucet's own inputs instead of a second exposure computation.
+
+    `newer_than_ts` is the FALLBACK precedence baseline, used only for a contract that
+    carries no native vendor observation time of its own (see `quoteTimeInLong` below) --
+    e.g. a test fixture or non-Schwab-shaped dict. Independent-review finding (2026-09-12):
+    "being received within ten seconds does not establish that a stream value is newer than
+    the REST input it replaces." A streamed value 8 seconds old is not "fresher" than a REST
+    snapshot fetched 2 seconds ago just because 8 < some absolute bound; it is fresher only
+    when it is more recent than the baseline it would override.
+
+    A FIFTH independent review (2026-09-13), REPRODUCED: a single scalar `newer_than_ts`
+    (the REST FETCH's own completion instant, the same for every contract in the response)
+    is the wrong baseline whenever the vendor's OWN report for a SPECIFIC contract already
+    lagged behind that instant -- Schwab's chain contracts each carry their own
+    `quoteTimeInLong` (epoch ms), and an illiquid strike can genuinely go un-requoted for
+    tens of seconds inside one otherwise-fresh chain response. Reproduced: REST fetch
+    completes "now", but this contract's own `quoteTimeInLong` is "now-30s" (its last real
+    quote); a stream tick for the SAME contract received at "now-1s" is genuinely newer than
+    what the vendor itself last reported for it -- yet comparing against the fetch's
+    completion instant ("now") wrongly rejected it as not-newer-enough. Fixed: each
+    contract's own native `quoteTimeInLong`, when present, IS this contract's precedence
+    baseline (never the shared fetch-completion instant); `newer_than_ts` only fills in for
+    a contract that has no native observation time to compare against.
+
+    `max_staleness_sec`, when given, is a SEPARATE, secondary absolute-age guard (relative
+    to `now`, defaulting to the real clock) -- a streamed value can be newer than a
+    long-stale baseline while still being, in absolute terms, too old for any consumer to
+    trust (e.g. the REST cycle itself has been down for an hour). Composable with
+    `newer_than_ts`; either, both, or neither may be supplied.
+
+    Returns (new_contracts, overlaid_count) -- the count is for tests and latency/coverage
+    diagnostics, never load-bearing for the projection itself.
+    """
+    if not contracts:
+        return [], 0
+    if not streamed_by_symbol:
+        return list(contracts), 0
+    if max_staleness_sec is not None and now is None:
+        import time as _time
+        now = _time.time()
+    out: List[dict] = []
+    overlaid = 0
+    for ct in contracts:
+        sym = ct.get("symbol") if isinstance(ct, dict) else None
+        streamed = streamed_by_symbol.get(sym) if sym else None
+        if not streamed:
+            out.append(ct)
+            continue
+        # This contract's OWN vendor-reported observation time, not the shared REST-fetch
+        # instant -- see the docstring's fifth-review finding. Schwab reports
+        # `quoteTimeInLong` in epoch milliseconds; `_ts_recv` values are epoch seconds.
+        native_qt = ct.get("quoteTimeInLong") if isinstance(ct, dict) else None
+        try:
+            native_baseline = float(native_qt) / 1000.0 if native_qt else None
+        except (TypeError, ValueError):
+            native_baseline = None
+        baseline = native_baseline if native_baseline is not None else newer_than_ts
+        new_ct = None
+        for streamed_key, chain_key, ts_key in _STREAMED_GREEK_FIELDS:
+            val = streamed.get(streamed_key)
+            if val is None:
+                continue
+            ts = streamed.get(ts_key)
+            if baseline is not None and (ts is None or ts <= baseline):
+                continue
+            if max_staleness_sec is not None and (ts is None or (now - ts) > max_staleness_sec):
+                continue
+            if new_ct is None:
+                new_ct = dict(ct)
+            new_ct[chain_key] = val
+        if new_ct is not None:
+            overlaid += 1
+            out.append(new_ct)
+        else:
+            out.append(ct)
+    return out, overlaid
 
 
 # ── Strike selection helpers ─────────────────────────────────────────────────

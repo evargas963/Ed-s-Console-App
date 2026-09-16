@@ -386,15 +386,15 @@
         emit_notifications: emitNotifications ? 'true' : 'false',
       });
       const url = '/api/governance/panel?' + params.toString();
-      let res;
+      let res, data;
       try {
         res = await fetch(url);
+        data = await res.json();
       } catch (e) {
         showBanner('err', 'Request failed: ' + esc(String(e)));
         $('load-meta').textContent = '';
         return;
       }
-      const data = await res.json();
 
       if (!data.ok) {
         showBanner('err', '<strong>Governed artifacts unavailable.</strong><br/>' + esc(data.error || 'unknown'));
@@ -448,14 +448,14 @@
             manual_intent: kind === 'cascade' ? intents.cascade : intents.parallel,
           };
         }
-        let res;
+        let res, out;
         try {
           res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+          out = await res.json();
         } catch (e) {
           $('action-out').textContent = String(e);
           return;
         }
-        const out = await res.json();
         $('action-out').textContent = JSON.stringify(out, null, 2);
         if (out.ok) loadPanel({ emitNotifications: false });
       }

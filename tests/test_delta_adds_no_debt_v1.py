@@ -353,6 +353,75 @@ def test_execute_closures_fails_the_failing_and_live_only_rows_and_passes_the_go
     assert [f.split(":")[0].split(" ")[0] for f in failures] == ["RC-9002", "RC-9003"], failures
 
 
+# ── node-based closure commands need node_modules, which a fresh worktree never has ────
+def test_ensure_node_modules_is_a_noop_when_repo_has_no_node_modules(tmp_path, monkeypatch):
+    monkeypatch.setattr(GATE, "REPO", tmp_path / "no_such_repo")
+    wt = tmp_path / "wt"
+    wt.mkdir()
+    GATE._ensure_node_modules(wt)  # must not raise
+    assert not (wt / "node_modules").exists()
+
+
+def test_ensure_node_modules_is_a_noop_when_the_worktree_already_has_one(tmp_path, monkeypatch):
+    repo = tmp_path / "repo"
+    (repo / "node_modules").mkdir(parents=True)
+    monkeypatch.setattr(GATE, "REPO", repo)
+    wt = tmp_path / "wt"
+    (wt / "node_modules").mkdir(parents=True)
+    (wt / "node_modules" / "marker.txt").write_text("preexisting", encoding="utf-8")
+    GATE._ensure_node_modules(wt)
+    assert (wt / "node_modules" / "marker.txt").read_text(encoding="utf-8") == "preexisting"
+
+
+def _platform_can_symlink(tmp_path) -> bool:
+    """CI runs this gate on ubuntu-latest, where an unprivileged symlink always works. An
+    ordinary (non-Developer-Mode, non-admin) Windows account cannot create one at all
+    (WinError 1314) -- that is a real local-sandbox limitation, not a defect in
+    _ensure_node_modules, so the behavioral test below is skipped rather than failed there."""
+    probe_target = tmp_path / "_symlink_probe_target"
+    probe_target.mkdir()
+    probe_link = tmp_path / "_symlink_probe_link"
+    try:
+        probe_link.symlink_to(probe_target, target_is_directory=True)
+    except OSError:
+        return False
+    return True
+
+
+def test_ensure_node_modules_links_the_repo_s_own_install_into_the_worktree(tmp_path, monkeypatch):
+    """RC-538 measurement: `git worktree add` carries only tracked files, and node_modules is
+    gitignored -- a node/npm/npx closure command always failed here for an environment reason
+    unrelated to whether the cited proof is real. This links the CALLER's already-`npm ci`'d
+    node_modules into the worktree, the same reuse run_closure_command already does for Python
+    via sys.executable, instead of requiring a second (possibly network-less) install."""
+    if not _platform_can_symlink(tmp_path):
+        import pytest
+        pytest.skip("this sandbox account cannot create symlinks (CI's ubuntu-latest runner can)")
+    repo = tmp_path / "repo"
+    (repo / "node_modules" / "@playwright").mkdir(parents=True)
+    (repo / "node_modules" / "@playwright" / "marker.txt").write_text("real install", encoding="utf-8")
+    monkeypatch.setattr(GATE, "REPO", repo)
+    wt = tmp_path / "wt"
+    wt.mkdir()
+    GATE._ensure_node_modules(wt)
+    linked = wt / "node_modules" / "@playwright" / "marker.txt"
+    assert linked.exists() and linked.read_text(encoding="utf-8") == "real install"
+
+
+def test_execute_closures_only_links_node_modules_for_a_node_prefixed_command(tmp_path, monkeypatch):
+    """A python-only delta must not pay any node-linking cost, and must not be blocked by one --
+    _ensure_node_modules is called strictly when the FIRST cited command needs it."""
+    python_row = "| RC-9101 | CLOSED | 2026-09-10 | 2026-09-11 | d | w -> ROOT | fixed. `python -c pass` |"
+    (tmp_path / "governance").mkdir()
+    (tmp_path / "governance" / "root_cause_log.md").write_text(python_row + "\n", encoding="utf-8")
+    monkeypatch.setattr(GATE, "_show", lambda ref, rel: "")
+    calls = []
+    monkeypatch.setattr(GATE, "_ensure_node_modules", lambda wt: calls.append(wt))
+    failures = GATE.execute_closures("origin/main", tmp_path)
+    assert failures == []
+    assert calls == [], "a python-only closure command must not trigger node_modules linking"
+
+
 # ── staging, proven against real git ──────────────────────────────────────────────────
 def _git(repo, *args):
     env = dict(os.environ, GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@t", GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@t")

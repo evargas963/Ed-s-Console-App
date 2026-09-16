@@ -137,16 +137,6 @@ def main():
     else:
         print("  => Some tickers lacked model blend (models unavailable?)")
 
-    # Miscalibration signal
-    _all_symmetric = True
-    for ticker, state, cap in results:
-        spot = state.get("spot") or state.get("spot_f")
-        u50, l50 = state.get("mc_upper_50"), state.get("mc_lower_50")
-        if spot and u50 and l50:
-            up_r, down_r = u50 - spot, spot - l50
-            if abs(up_r - down_r) > 0.5:
-                break
-
     print()
     if n_with_blend > 0:
         print("  DIRECTIONAL RESPONSIVENESS:")

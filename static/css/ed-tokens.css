@@ -1,0 +1,49 @@
+/* Ed Console design tokens — ONE semantic contract, TWO palettes (RC-UI-1).
+   Components consume ONLY the semantic --ed-* names; theme is a token-value swap, never a second
+   stylesheet or forked component. The effective theme is ALWAYS resolved to a single data-theme
+   value on <html> (light or dark) — by the first-paint guard and the one theme owner in ed-core —
+   so the CSS needs exactly two palette blocks and there is no duplicated light/dark definition.
+   Financial semantics never invert: --ed-pos/--ed-heat-pos are GREEN and --ed-neg/--ed-heat-neg
+   are RED in BOTH themes; blue is interaction; amber is warning/stale. */
+:root {
+  /* ---- shared, theme-independent ---- */
+  /* the approved reference uses ONE clean humanist sans (Inter) everywhere, with tabular figures
+     for numeric columns - there is no monospace in the design. Both roles resolve to Inter; numeric
+     alignment comes from font-variant-numeric: tabular-nums on the number-bearing elements. */
+  --ed-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --ed-mono: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --ed-r: 4px; --ed-r-lg: 6px;
+  --ed-rail-w: 56px; --ed-rail-w-open: 234px;
+  --ed-header-h: 58px; --ed-subnav-h: 44px; --ed-viewbar-h: 42px;
+  --ed-gap-xs: 4px; --ed-gap-sm: 8px; --ed-gap-md: 12px; --ed-gap-lg: 16px;
+}
+
+/* ================= DARK (approved primary) ================= */
+:root[data-theme="dark"] {
+  --ed-bg:#060a11; --ed-rail:#0a101a; --ed-header:#0c131d;
+  --ed-panel:#0f1622; --ed-panel-2:#17202e; --ed-panel-3:#202c3e;
+  --ed-edge:#324055; --ed-edge-soft:#212d3d; --ed-edge-strong:#465873;
+  --ed-ink:#f6f9fd; --ed-ink-2:#d3ddeb; --ed-ink-3:#a7b6c9; --ed-ink-4:#6a7b91;
+  --ed-accent:#3d8bfd; --ed-accent-2:#61a5ff; --ed-accent-bg:#12243d; --ed-accent-edge:#28517f;
+  --ed-pos:#23c06b; --ed-pos-ink:#3ddc84; --ed-neg:#e5484d; --ed-neg-ink:#ff6b6b;
+  --ed-live:#2ecc71; --ed-warn:#e9b949; --ed-stale:#d9822b; --ed-alert:#ff5d5d; --ed-quiet:#5f6f84;
+  --ed-native:#2ecc71; --ed-derived:#3d8bfd; --ed-proxy:#e9b949; --ed-research:#a86fe3;
+  --ed-native-bg:#10281b; --ed-derived-bg:#0f2338; --ed-proxy-bg:#2c2410; --ed-research-bg:#241635;
+  --ed-heat-pos:#23c06b; --ed-heat-neg:#e5484d; --ed-heat-zero:#121a25;
+  color-scheme: dark;
+}
+
+/* ================= LIGHT (professional light terminal — not generic SaaS white) ================= */
+:root[data-theme="light"] {
+  --ed-bg:#e4eaf2; --ed-rail:#dbe2eb; --ed-header:#dfe6ee;
+  --ed-panel:#f8fafc; --ed-panel-2:#eaeff4; --ed-panel-3:#d8e1ee;
+  --ed-edge:#aeb9ca; --ed-edge-soft:#c6cfdc; --ed-edge-strong:#8593aa;
+  --ed-ink:#08101b; --ed-ink-2:#2f3d53; --ed-ink-3:#4f5e74; --ed-ink-4:#828da0;
+  --ed-accent:#2f6fe0; --ed-accent-2:#1f5fd0; --ed-accent-bg:#dce7fb; --ed-accent-edge:#a6c2f0;
+  --ed-pos:#1a9e5c; --ed-pos-ink:#0f7a45; --ed-neg:#d63b3b; --ed-neg-ink:#b21e1e;
+  --ed-live:#16a34a; --ed-warn:#a9750a; --ed-stale:#b45309; --ed-alert:#cf2e2e; --ed-quiet:#8a94a4;
+  --ed-native:#0f7a45; --ed-derived:#1f5fd0; --ed-proxy:#8a6300; --ed-research:#6d28d9;
+  --ed-native-bg:#d8efe0; --ed-derived-bg:#dce7fb; --ed-proxy-bg:#f2e8cd; --ed-research-bg:#ebe0fb;
+  --ed-heat-pos:#1a9e5c; --ed-heat-neg:#d63b3b; --ed-heat-zero:#e6ebf1;
+  color-scheme: light;
+}

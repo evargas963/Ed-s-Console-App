@@ -121,6 +121,7 @@ def test_engineering_snapshot_maps_canonical_to_legacy():
     assert tab["zone"] == "pin_bull"
     assert tab["vwap_side"] == "above"
     assert tab["ticker"] == "SPY"
+    assert "liquidity_summary" not in tab
 
 
 def test_engineering_snapshot_includes_time_keys_when_as_of_ts_present():

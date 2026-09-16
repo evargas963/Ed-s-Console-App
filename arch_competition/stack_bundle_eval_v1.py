@@ -930,6 +930,15 @@ LEGACY_COMPOUND_REPORT_PATH = Path("reports/artifacts/feature_ablation_report.js
 ABLATION_LEAF_REPORT_PATH = Path("reports/artifacts/feature_ablation_report_leaf.json")
 ABLATION_REPORT_PATH = ABLATION_LEAF_REPORT_PATH
 ABLATION_SURVIVOR_STATUS_PATH = Path("reports/artifacts/ablation_survivor_status.json")
+# Per-anchor survivor artifacts void_compound_ablation_survivors stamps VOID onto. A module-level
+# constant (not inline literals in the function body) so a test can monkeypatch it the same way it
+# already does LEGACY_COMPOUND_REPORT_PATH/ABLATION_SURVIVOR_STATUS_PATH above -- without this, the
+# function always wrote the REAL tracked repo files on every test run, regardless of tmp_path.
+SURVIVOR_SCOPE_ARTIFACT_PATHS = (
+    Path("reports/artifacts/survivor_edge_probe.json"),
+    Path("reports/artifacts/survivor_validation_run.json"),
+    Path("reports/artifacts/survivor_inference_backtest.json"),
+)
 ABLATION_LEAF_FEATURE_GRAIN = "schwab_expanded_atomic"
 ABLATION_AUTHORITATIVE_GRAINS = frozenset(
     {"atomic_leaf_or_derived_column", "schwab_expanded_atomic"}
@@ -1201,7 +1210,10 @@ def void_compound_ablation_survivors(*, write_artifacts: bool = True) -> dict:
         return out
 
     ABLATION_SURVIVOR_STATUS_PATH.parent.mkdir(parents=True, exist_ok=True)
-    ABLATION_SURVIVOR_STATUS_PATH.write_text(json.dumps(out, indent=2), encoding="utf-8")
+    # newline="\n": Path.write_text on Windows otherwise translates every "\n" json.dumps emits
+    # into "\r\n" (os.linesep), silently violating .gitattributes' `eol: lf` for reports/** and
+    # leaving a tracked file that git shows as modified with an empty diff on every run.
+    ABLATION_SURVIVOR_STATUS_PATH.write_text(json.dumps(out, indent=2), encoding="utf-8", newline="\n")
     out["artifacts_stamped"].append(str(ABLATION_SURVIVOR_STATUS_PATH))
 
     legacy_report = _read_json_path(LEGACY_COMPOUND_REPORT_PATH)
@@ -1215,15 +1227,15 @@ def void_compound_ablation_survivors(*, write_artifacts: bool = True) -> dict:
         ss = legacy_report.get("survivor_summary")
         if isinstance(ss, dict):
             ss["confirm_pass_authority"] = "VOID"
-        LEGACY_COMPOUND_REPORT_PATH.write_text(json.dumps(legacy_report, indent=2), encoding="utf-8")
+        LEGACY_COMPOUND_REPORT_PATH.write_text(
+            json.dumps(legacy_report, indent=2), encoding="utf-8", newline="\n")
         out["artifacts_stamped"].append(str(LEGACY_COMPOUND_REPORT_PATH))
 
-    for rel in (
-        "reports/artifacts/survivor_edge_probe.json",
-        "reports/artifacts/survivor_validation_run.json",
-        "reports/artifacts/survivor_inference_backtest.json",
-    ):
-        p = Path(rel)
+    # SURVIVOR_SCOPE_ARTIFACT_PATHS (not inline literals): a test isolating this function's other
+    # two output paths via monkeypatch must be able to isolate these three the same way, or every
+    # run mutates the real tracked repo files (see test_ml_feature_schema_parity.py's own finding,
+    # 2026-09-15).
+    for p in SURVIVOR_SCOPE_ARTIFACT_PATHS:
         data = _read_json_path(p)
         if data is None:
             continue
@@ -1232,7 +1244,7 @@ def void_compound_ablation_survivors(*, write_artifacts: bool = True) -> dict:
         data["ready_for_full_retrain"] = False
         data["ready"] = False
         data["ready_for_production"] = False
-        p.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        p.write_text(json.dumps(data, indent=2), encoding="utf-8", newline="\n")
         out["artifacts_stamped"].append(str(p))
 
     return out

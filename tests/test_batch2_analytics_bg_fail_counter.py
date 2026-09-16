@@ -399,7 +399,13 @@ def test_start_ed_console_bat_opens_edge_not_chrome():
     assert "chrome.exe" not in bat.lower()
     assert ">>>" not in bat
     assert 'set "PF86=%ProgramFiles(x86)%"' in bat
-    assert 'start "" cmd /c "timeout /t 2 /nobreak >nul' in bat
+    # Operator finding (2026-09-11): a blind fixed 2s delay opened the browser whether or
+    # not the server was actually ready yet. Replaced with wait_for_ready_then_open.py,
+    # which polls the real URL and only opens once it answers (or reports a timeout
+    # distinctly -- see test_wait_for_ready_then_open_v1.py for that script's own
+    # behavioral proof). The launcher just needs to actually wire it in.
+    assert "timeout /t 2 /nobreak" not in bat, "the old blind fixed-delay browser-open must not return"
+    assert "wait_for_ready_then_open.py" in bat
     assert "ED_LIVE_ABLATION_EXPERIMENT" not in bat
 
 
@@ -427,33 +433,38 @@ def test_start_ed_console_bat_uses_repo_venv_python_not_bare_path_rc497():
 
 
 def test_start_ed_console_bat_fails_closed_when_port_8000_stays_occupied_rc497():
-    """RC-497: after the best-effort stop, the launcher PROVES port 8000 is free and
-    refuses (exit /b 1) if it is not, instead of launching a second uvicorn into an
-    occupied port. Proven two ways — the guard is present, and the launcher's ACTUAL
-    inline port-occupancy command is exercised against a bound and a free port."""
-    import re
+    """RC-497: the launcher refuses to launch a second uvicorn into an occupied port.
+
+    Operator finding (2026-09-11): the original mechanism (this same test, previously)
+    taskkill'd whatever PID held port 8000 with no ownership check, then merely reproved
+    the raw socket was free. Replaced with launcher_port_guard.py, which additionally
+    verifies the occupant IS an Ed Console server before ever touching it (see
+    test_launcher_port_guard_v1.py for that script's own unit-level negative controls).
+    This test proves the .bat actually WIRES that script in with a fail-closed refusal,
+    and runs the REAL script as a subprocess against a bound port (occupied by something
+    with no Ed Console command line -> exit 1, refuse) and a free port (-> exit 0,
+    proceed) -- behavioral proof at the process boundary, not a mock.
+    """
     import socket
     import subprocess
     import sys
 
-    bat = (Path(__file__).resolve().parent.parent / "start_ed_console.bat").read_text(encoding="utf-8")
+    root = Path(__file__).resolve().parent.parent
+    bat = (root / "start_ed_console.bat").read_text(encoding="utf-8")
 
-    # (a) the fail-closed guard exists: the occupancy probe, immediately followed by an
+    # (a) the fail-closed guard is wired in for port 8000, immediately followed by an
     #     errorlevel refusal that exits non-zero, plus the operator-facing block message.
-    assert "connect_ex(('127.0.0.1',8000))" in bat
-    tail = bat[bat.index("connect_ex(('127.0.0.1',8000))"):][:400]
+    assert "launcher_port_guard.py" in bat
+    idx = bat.index('launcher_port_guard.py" 8000')
+    tail = bat[idx:][:400]
     assert "if errorlevel 1" in tail
     assert "exit /b 1" in tail
-    assert "LAUNCH BLOCKED: port 8000 is still occupied" in bat
+    assert "LAUNCH BLOCKED: port 8000 is occupied" in bat
 
-    # (b) behavioral: run the launcher's OWN inline check (extracted verbatim) against a
-    #     bound port -> exit 1 (OCCUPIED => fail closed) and a free port -> exit 0
-    #     (FREE => proceed). The hard-wired 8000 is swapped for the test's own port so
-    #     the proof is independent of whatever the live desk is doing on 8000.
-    m = re.search(r'-c "(import socket,sys;[^"]+)"', bat)
-    assert m, "could not locate the launcher's inline port-occupancy check"
-    probe = m.group(1)
-    assert probe.count("8000") == 1, "probe must reference port 8000 exactly once for a clean swap"
+    # (b) behavioral: the real script, run as a subprocess (not imported/mocked), against
+    #     a bound port and a free port. The hard-wired 8000 is swapped for the test's own
+    #     port so the proof is independent of whatever the live desk is doing on 8000.
+    guard = str(root / "launcher_port_guard.py")
     venv_py = sys.executable  # virtualenv-parity gate guarantees this is the repo .venv python
 
     busy = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -461,14 +472,16 @@ def test_start_ed_console_bat_fails_closed_when_port_8000_stays_occupied_rc497()
     busy.listen()
     busy_port = busy.getsockname()[1]
     try:
-        occ = subprocess.run([venv_py, "-c", probe.replace("8000", str(busy_port))])
+        occ = subprocess.run([venv_py, guard, str(busy_port)], capture_output=True, text=True)
     finally:
         busy.close()
-    assert occ.returncode == 1, "launcher probe must report OCCUPIED (exit 1) on a bound port"
+    assert occ.returncode == 1, (
+        f"launcher_port_guard must report an unrecognized occupant as exit 1: {occ.stdout}"
+    )
 
     free = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     free.bind(("127.0.0.1", 0))
     free_port = free.getsockname()[1]
     free.close()
-    fr = subprocess.run([venv_py, "-c", probe.replace("8000", str(free_port))])
-    assert fr.returncode == 0, "launcher probe must report FREE (exit 0) on an unbound port"
+    fr = subprocess.run([venv_py, guard, str(free_port)], capture_output=True, text=True)
+    assert fr.returncode == 0, f"launcher_port_guard must report a free port as exit 0: {fr.stdout}"

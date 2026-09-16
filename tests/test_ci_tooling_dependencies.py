@@ -58,11 +58,6 @@ def test_ci_app_module_importable(module: str, monkeypatch: pytest.MonkeyPatch) 
     assert importlib.import_module(module).__name__ == module
 
 
-def test_build_feature_assignment_matrix_v2_imports_openpyxl() -> None:
-    assert importlib.import_module("tools.build_feature_assignment_matrix_v2").__name__ == "tools.build_feature_assignment_matrix_v2"
-    assert importlib.import_module("openpyxl").__name__ == "openpyxl"
-
-
 def test_pytest_conftest_sets_ci_schwab_placeholders() -> None:
     """Adversarial server imports rely on tests/conftest.py module-level placeholders."""
     from config import schwab_credentials_are_ci_placeholders

@@ -1,0 +1,81 @@
+{
+"_tier": "A_live",
+"ticker": "SPY",
+"selected_exp": null,
+"session_label": "RTH",
+"spot": 761.91,
+"bid": 761.89,
+"ask": 761.92,
+"spot_disp": "761.91",
+"bid_disp": "761.89",
+"ask_disp": "761.92",
+"quote_mid": 761.91,
+"mid_source": "schwab_streaming_mark",
+"spread": 3.937472929870026e-05,
+"spread_semantic": "dollar",
+"spread_pts": 0.03,
+"spread_source": "derived_bid_ask_fraction_schwab_mark_denom",
+"spread_pts_source": "derived_bid_ask_pts",
+"quote_source_detail": {
+"spot": "LAST_PRICE",
+"bid": "BID_PRICE",
+"ask": "ASK_PRICE",
+"mid": "schwab_streaming_mark",
+"spread": "schwab_bid_ask",
+"quote_ts": "QUOTE_TIME_MILLIS",
+"carried_forward": false,
+"previous_spot_available": true,
+"previous_bid_available": true,
+"previous_ask_available": true
+},
+"quote_ingestion": "schwab_streaming_level_one",
+"quote_time_source": "schwab_streaming_level_one",
+"server_received_ts": 1788967082.6614459,
+"exchange_quote_ts": 1788967081.623,
+"fast_generation_id": 11618,
+"_live_plane_fast_ts": 1788967081.623,
+"_server_build_ts": 1788967084.3687317,
+"_pipeline_ms": 0,
+"_endpoint": "/api/live/state",
+"streaming_plane": {
+"streaming_connected": true,
+"streaming_ticker": "SPY",
+"streaming_last_update_ts": 1788967083.688486,
+"streaming_staleness_ms": 680.260419845581,
+"streaming_healthy": true,
+"daemon_upstream_health": {
+"LEVELONE_EQUITIES": {
+"state": "RUNNING",
+"age_sec": 0.758
+}
+},
+"stream_db_identity": {
+"server_resolved_path": "<REPO>\\data\\stream_capture.db",
+"producer_heartbeat": {
+"daemon_pid": 10020,
+"heartbeat_ts": 1788967083.821743,
+"resolved_db_path": "<REPO>\\data\\stream_capture.db",
+"claimed_coverage": {
+"LEVELONE_OPTIONS": 389,
+"OPTIONS_BOOK": 390
+},
+"age_sec": 0.6269669532775879
+},
+"identity_match": true
+},
+"plane_quote_authority": "streaming"
+},
+"analytics_lightweight": {
+"vix": 16.58,
+"pcr_val": 2.227304708112651,
+"spy_chg_pct": -0.575095,
+"qqq_chg_pct": -0.47162982,
+"iwm_chg_pct": -1.15043947,
+"spy_last": 761.54,
+"qqq_last": 714.97,
+"iwm_last": 291.28,
+"dte_warn": "",
+"dte_color": "#9ca3af"
+},
+"_quote_authority": "live_market_plane"
+}

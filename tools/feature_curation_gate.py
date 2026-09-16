@@ -448,7 +448,7 @@ def run(tickers, null_thresh, cluster_thresh):
                 "models. This file is the clean candidate set + cluster map for that one pass.",
     }
     OUT.parent.mkdir(parents=True, exist_ok=True)
-    OUT.write_text(json.dumps(out, indent=2), encoding="utf-8")
+    OUT.write_text(json.dumps(out, indent=2), encoding="utf-8", newline="\n")
     return out
 
 
@@ -1895,7 +1895,7 @@ def _attach_experiment_integrity(report: dict, *, manifest: dict | None = None) 
 def _write_ablation_checkpoint(report_path: Path, report: dict) -> None:
     report_path.parent.mkdir(parents=True, exist_ok=True)
     tmp = report_path.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(report, indent=2), encoding="utf-8")
+    tmp.write_text(json.dumps(report, indent=2), encoding="utf-8", newline="\n")
     tmp.replace(report_path)
 
 
@@ -3028,10 +3028,10 @@ def stamp_primary_ablation_authority(
             if (prior.get("run_meta") or {}).get("status") == "complete" and not prior.get("dry_run"):
                 bak = out_path.with_name(out_path.stem + ".complete.bak" + out_path.suffix)
                 if not bak.is_file():
-                    bak.write_text(json.dumps(prior, indent=2), encoding="utf-8")
+                    bak.write_text(json.dumps(prior, indent=2), encoding="utf-8", newline="\n")
         except (OSError, json.JSONDecodeError, ValueError):
             pass
-    out_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
+    out_path.write_text(json.dumps(report, indent=2), encoding="utf-8", newline="\n")
     if not ablation_primary_pass_authority_active(ss, report=report):
         raise RuntimeError("stamp wrote but primary authority probe failed — report unreadable?")
     return report
@@ -3916,10 +3916,10 @@ def write_ablation_report(report: dict, path: Path | None = None) -> Path:
             prior = json.loads(out_path.read_text(encoding="utf-8"))
             if (prior.get("run_meta") or {}).get("status") == "complete" and not prior.get("dry_run"):
                 bak = out_path.with_name(out_path.stem + ".complete.bak" + out_path.suffix)
-                bak.write_text(json.dumps(prior, indent=2), encoding="utf-8")
+                bak.write_text(json.dumps(prior, indent=2), encoding="utf-8", newline="\n")
         except (OSError, json.JSONDecodeError, ValueError):
             pass
-    out_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
+    out_path.write_text(json.dumps(report, indent=2), encoding="utf-8", newline="\n")
     return out_path
 
 
@@ -3981,6 +3981,7 @@ def acquire_ablation_run_lock(*, run_kind: str = "primary") -> None:
             indent=2,
         ),
         encoding="utf-8",
+        newline="\n",
     )
 
 
@@ -4518,7 +4519,7 @@ def run_survivor_stack_refit_backtest(
         out["issues"].append("some_edge_cells_underpowered_see_base_model_cells")
     out["ready_for_production"] = bool(edge_powered) and len(better) == len(edge_powered)
     SURVIVOR_STACK_REFIT_BACKTEST_PATH.parent.mkdir(parents=True, exist_ok=True)
-    SURVIVOR_STACK_REFIT_BACKTEST_PATH.write_text(json.dumps(out, indent=2), encoding="utf-8")
+    SURVIVOR_STACK_REFIT_BACKTEST_PATH.write_text(json.dumps(out, indent=2), encoding="utf-8", newline="\n")
     return out
 
 
@@ -4641,7 +4642,7 @@ def run_survivor_validation_run(
         and all(c.get("parity_ok") for c in out["cells"])
     )
     SURVIVOR_VALIDATION_RUN_PATH.parent.mkdir(parents=True, exist_ok=True)
-    SURVIVOR_VALIDATION_RUN_PATH.write_text(json.dumps(out, indent=2), encoding="utf-8")
+    SURVIVOR_VALIDATION_RUN_PATH.write_text(json.dumps(out, indent=2), encoding="utf-8", newline="\n")
     return out
 
 
@@ -4765,7 +4766,7 @@ def run_survivor_edge_probe(
 
 def _write_survivor_edge_probe(payload: dict) -> Path:
     SURVIVOR_EDGE_PROBE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    SURVIVOR_EDGE_PROBE_PATH.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    SURVIVOR_EDGE_PROBE_PATH.write_text(json.dumps(payload, indent=2), encoding="utf-8", newline="\n")
     return SURVIVOR_EDGE_PROBE_PATH
 
 

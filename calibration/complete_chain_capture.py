@@ -233,6 +233,26 @@ def latest_complete_chain_capture(
             "contracts": contracts, "source": str(row[5])}
 
 
+#: RC spot/gamma-360-audit (2026-09-14, live RTH reproduction): this function opens a fresh
+#: sqlite3 connection AND json.loads()'s a full chain_json blob on EVERY call, with zero
+#: caching. It is called once PER CANDIDATE CONTRACT, on every streamed-greeks hook tick
+#: (app/options/order_flow/streaming.py's _contract_matches_underlying, the chain-aware
+#: root-mismatch fallback), whenever a contract's vendor root doesn't equal the ticker's own
+#: root (e.g. every SPXW/$SPX-style weekly-root contract, by design -- not a bug). Caught live
+#: via py-spy: the daemon-plane-feed-hook thread was parked inside this exact call chain
+#: (path.resolve() -> sqlite3.connect -> json.loads) on every one of 5 consecutive samples
+#: across 7 real seconds, and refresh_gamma_surface_from_stream's surface_seq (the incremental
+#: push this hook exists to drive) advanced only 4 times across the same ~4 minutes the
+#: periodic terrain cycle was separately measured to take -- the hook cannot keep up with a
+#: real contract-demand set, so the "live" gamma heatmap falls back to that slow cycle. The
+#: banked capture this reads changes at most a few times per session (a new COMPLETE capture
+#: lands, not a tick-by-tick event), so a short TTL memo removes the entire repeated cost
+#: (including the None/no-capture-yet case, which the old code re-paid on every single tick
+#: with no capture at all) while staying self-healing within one real trading session.
+_NEAREST_CAPTURE_MEMO_TTL_SEC: float = 30.0
+_nearest_capture_memo: dict[tuple[str, str, str], tuple[float, "dict[str, Any] | None"]] = {}
+
+
 def nearest_complete_chain_capture(
     db_path: Path | str, ticker: str, *, on_or_after_expiry: str
 ) -> dict[str, Any] | None:
@@ -240,13 +260,29 @@ def nearest_complete_chain_capture(
 
     Fail-closed: missing file/table/payload -> None. Does not invent a chain or
     substitute a narrower book. Expiry is the vendor date already stored on the row.
+
+    Short-TTL memoized (see _NEAREST_CAPTURE_MEMO_TTL_SEC's own comment) -- a real DB read
+    happens at most once per (db_path, ticker, cutoff) per TTL window, not once per caller.
     """
     path = Path(db_path)
-    if not path.is_file():
-        return None
     tk = ticker_storage_key(ticker)
     cutoff = str(on_or_after_expiry or "").strip()[:10]
     if not tk or not cutoff:
+        return None
+    memo_key = (str(path), tk, cutoff)
+    now = time.monotonic()
+    hit = _nearest_capture_memo.get(memo_key)
+    if hit is not None and (now - hit[0]) < _NEAREST_CAPTURE_MEMO_TTL_SEC:
+        return hit[1]
+    result = _nearest_complete_chain_capture_uncached(path, tk, cutoff)
+    _nearest_capture_memo[memo_key] = (now, result)
+    return result
+
+
+def _nearest_complete_chain_capture_uncached(
+    path: Path, tk: str, cutoff: str,
+) -> dict[str, Any] | None:
+    if not path.is_file():
         return None
     try:
         conn = sqlite3.connect(f"file:{path.resolve().as_posix()}?mode=ro", uri=True)

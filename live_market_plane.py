@@ -234,6 +234,41 @@ def get_quote(ticker: str) -> Optional[dict[str, Any]]:
         return dict(row) if row else None
 
 
+#: Operator-reproduced defect (2026-09-14, spot 360 audit): merge_into_state and
+#: apply_l1_live_quote_overlay below both overlaid this plane's spot/bid/ask onto an
+#: already-built analytical payload UNCONDITIONALLY, with no check on the row's own age --
+#: so a stalled streaming websocket kept clobbering a freshly, correctly resolve_spot()'d
+#: Tier C/L1 spot with an arbitrarily old plane value, every single build, forever. This is
+#: the ONE freshness boundary every plane consumer (this module's own overlays, and
+#: server.py's resolve_spot / _tier_a_live_state_dict) shares, so "how stale is too stale
+#: for this plane" can never again be answered three different ways in three files.
+PLANE_QUOTE_STALE_SEC: float = 30.0
+
+
+def quote_is_fresh(q: dict[str, Any]) -> bool:
+    """Is this plane row trustworthy as a LIVE value right now.
+
+    A row explicitly marked carried_forward (W3-C4/RC-121 — Schwab auth degraded, this is
+    the best available and everyone downstream is already seeing it under that label) is
+    exempt from the age check: it has already declared its own untrustworthiness via
+    quote_source_detail, which this function's callers carry through unchanged. Blocking it
+    here would not make it fresher — it would just make Tier C/L1 silently revert to a
+    DIFFERENT, unlabelled number while the header kept showing the labelled degraded one,
+    recreating the exact divergence this whole freshness gate exists to prevent.
+
+    Everything else must prove its own age: a missing server_received_ts cannot be assumed
+    fresh (fail closed, same as every other absence in this codebase).
+    """
+    qsd = q.get("quote_source_detail")
+    if isinstance(qsd, dict) and qsd.get("carried_forward"):
+        return True
+    received = _safe_float(q.get("server_received_ts"))
+    if received is None:
+        return False
+    age = time.time() - received
+    return age >= 0.0 and age < PLANE_QUOTE_STALE_SEC
+
+
 def merge_into_state(ms_dict: dict[str, Any], ticker: str) -> None:
     """
     Tier C only: overlay spot/bid/ask/display fields from the live plane onto an analytical ms_dict.
@@ -241,32 +276,51 @@ def merge_into_state(ms_dict: dict[str, Any], ticker: str) -> None:
 
     Does not write to Layer A storage (_by_ticker). For L1 read-path overlay, use
     apply_l1_live_quote_overlay (same field merge, explicit L1 contract).
+
+    A row older than PLANE_QUOTE_STALE_SEC is treated exactly like no row: the caller's own
+    already-computed spot (resolve_spot's, per _fetch_state's own "SINGLE SPOT AUTHORITY"
+    comment immediately before this is called) stands untouched, rather than being clobbered
+    by a stalled stream's last tick every single build.
     """
     q = get_quote(ticker)
     if not q:
         return
-    for k in (
-        "spot",
-        "bid",
-        "ask",
-        "spot_disp",
-        "bid_disp",
-        "ask_disp",
-        "quote_mid",
-        "mid_source",
-        "spread",
-        "spread_pts",
-        "spread_source",
-        "spread_pts_source",
-        "quote_ingestion",
-        # W3-C4 / RC-121: the provenance DETAIL travels with the quote it describes. Omitting
-        # it here meant Tier C payloads carried Layer A's spot while STRIPPING its degradation
-        # flags (carried_forward / schwab_auth_degraded) — the exact fields that say whether
-        # the number can be trusted.
-        "quote_source_detail",
-    ):
-        if k in q and q[k] is not None:
-            ms_dict[k] = q[k]
+    # PRICE fields only are freshness-gated: a stale row must not clobber _fetch_state's own
+    # resolve_spot-derived spot/bid/ask. chg_pct/exchange_quote_ts/fast_generation_id keep
+    # their PRE-EXISTING unconditional-overwrite contract below unchanged — that guarantee
+    # (a genuinely-absent percent-change must overwrite a stale one, never leave it standing)
+    # is a different, already-correct property this fix does not touch.
+    fresh = quote_is_fresh(q)
+    if fresh:
+        for k in (
+            "spot",
+            "bid",
+            "ask",
+            "spot_disp",
+            "bid_disp",
+            "ask_disp",
+            "quote_mid",
+            "mid_source",
+            "spread",
+            "spread_pts",
+            "spread_source",
+            "spread_pts_source",
+            "quote_ingestion",
+            # W3-C4 / RC-121: the provenance DETAIL travels with the quote it describes.
+            # Omitting it here meant Tier C payloads carried Layer A's spot while STRIPPING
+            # its degradation flags (carried_forward / schwab_auth_degraded) — the exact
+            # fields that say whether the number can be trusted.
+            "quote_source_detail",
+        ):
+            if k in q and q[k] is not None:
+                ms_dict[k] = q[k]
+    # chg_pct is deliberately OUTSIDE the sparse-overlay loop above: that loop only ever
+    # fills gaps (skips None), so a ticker whose percent-change genuinely went unavailable
+    # on the latest fetch would leave a STALE number sitting in ms_dict forever. record_quote
+    # replaces the whole plane row per fetch (never a merge), so "chg_pct" in q reflects the
+    # newest attempt's real verdict, including an honest None — overwrite unconditionally.
+    if "chg_pct" in q:
+        ms_dict["chg_pct"] = q["chg_pct"]
     fts = q.get("exchange_quote_ts")
     if fts is not None:
         ms_dict["_live_plane_fast_ts"] = fts
@@ -274,7 +328,11 @@ def merge_into_state(ms_dict: dict[str, Any], ticker: str) -> None:
     fg = q.get("fast_generation_id")
     if fg is not None:
         ms_dict["fast_generation_id"] = fg
-    ms_dict["_quote_authority"] = "live_market_plane"
+    # Claiming the plane as authority when its PRICE fields were just withheld for staleness
+    # would misattribute whatever spot ms_dict actually stands on (resolve_spot's, untouched
+    # above) to this plane instead.
+    if fresh:
+        ms_dict["_quote_authority"] = "live_market_plane"
 
 
 def apply_l1_live_quote_overlay(l1_payload: dict[str, Any], ticker: str) -> None:
@@ -287,33 +345,50 @@ def apply_l1_live_quote_overlay(l1_payload: dict[str, Any], ticker: str) -> None
 
     Reads from _by_ticker via get_quote; never writes Layer A storage. Layer A remains pure
     quote rows — L1 semantics (structural, OF, merge metadata) never flow into _by_ticker.
+
+    A row older than PLANE_QUOTE_STALE_SEC is treated exactly like no row: the cached L1
+    snapshot's own spot (already corrected at build time — see _project_l1) stands untouched
+    rather than being overwritten by a stalled stream's last tick on every cache-hit read.
     """
     q = get_quote(ticker)
     if not q:
         return
-    for k in (
-        "spot",
-        "bid",
-        "ask",
-        "spot_disp",
-        "bid_disp",
-        "ask_disp",
-        "quote_mid",
-        "mid_source",
-        "spread",
-        "spread_pts",
-        "spread_source",
-        "spread_pts_source",
-        "quote_ingestion",
-        "quote_source_detail",   # W3-C4 / RC-121: same carriage as merge_into_state
-    ):
-        if k in q and q[k] is not None:
-            l1_payload[k] = q[k]
+    # Same split as merge_into_state: PRICE fields are freshness-gated (the cached snapshot's
+    # own already-correct spot, set at build time by _project_l1, stands untouched), chg_pct
+    # keeps its pre-existing unconditional-overwrite contract below unchanged.
+    fresh = quote_is_fresh(q)
+    if fresh:
+        for k in (
+            "spot",
+            "bid",
+            "ask",
+            "spot_disp",
+            "bid_disp",
+            "ask_disp",
+            "quote_mid",
+            "mid_source",
+            "spread",
+            "spread_pts",
+            "spread_source",
+            "spread_pts_source",
+            "quote_ingestion",
+            "quote_source_detail",   # W3-C4 / RC-121: same carriage as merge_into_state
+        ):
+            if k in q and q[k] is not None:
+                l1_payload[k] = q[k]
+    # chg_pct OUTSIDE the loop, unconditional overwrite when present — see merge_into_state's
+    # comment. This is the path that most needed it: an L1 payload can be served from cache
+    # across many HTTP/SSE reads before the next rebuild, so a sparse (None-skipping) overlay
+    # here would let a stale percentage from the PREVIOUS build survive an interim fetch that
+    # genuinely came back without one — a truthfulness gap the sparse loop cannot close.
+    if "chg_pct" in q:
+        l1_payload["chg_pct"] = q["chg_pct"]
     fts = q.get("exchange_quote_ts")
     if fts is not None:
         l1_payload["_live_plane_fast_ts"] = fts
-    l1_payload["_quote_authority"] = "live_market_plane"
-    l1_payload["l1_live_overlay_applied"] = True
+    if fresh:
+        l1_payload["_quote_authority"] = "live_market_plane"
+        l1_payload["l1_live_overlay_applied"] = True
 
 
 def take_fresh_sse_quote_payload(ticker: str) -> Optional[dict[str, Any]]:

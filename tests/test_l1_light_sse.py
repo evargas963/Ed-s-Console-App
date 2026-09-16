@@ -41,6 +41,17 @@ def test_notify_enqueues_when_subscribed(monkeypatch):
     q = asyncio.Queue(maxsize=10)
     key = ("SPY", "__auto__")
     srv._l1_light_sse_clients.append((q, key))
+    # Independent review, 2026-09-16 (MEASURED live under -n auto --dist loadfile): a prior
+    # test in the SAME xdist worker can leave an item in this module-level, process-wide
+    # queue. The n0/n0+1 qsize check below only proves relative growth -- get_nowait() still
+    # pops FIFO order, so a leftover item ahead of this test's own fresh one made env["l1_
+    # generation"] raise KeyError instead of reading 42. Drain first so this test only ever
+    # observes what IT enqueued, not a queue it silently inherited.
+    while not srv._l1_sse_thread_queue.empty():
+        try:
+            srv._l1_sse_thread_queue.get_nowait()
+        except Exception:
+            break
     try:
         monkeypatch.setattr(
             srv,

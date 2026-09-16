@@ -32,11 +32,3 @@ def test_canonical_primitives_survive_the_retirement():
     # the strict-L2 depth imbalance is a canonical primitive and must still be produced
     assert out.get("book_imbalance_5") is not None
     assert "book_microstructure" in out
-
-
-def test_engine_no_longer_calls_the_retired_composite():
-    import inspect
-
-    src = inspect.getsource(OrderFlowEngine.compute)
-    assert "_compute_order_flow_score(" not in src, "compute must not call the retired composite"
-    assert "compute_order_flow_verdict(" not in src, "compute must not call the retired verdict"

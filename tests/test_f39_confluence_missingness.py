@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import ast
-import subprocess
 from pathlib import Path
 
 # TEST_SYSTEM_REHAB_V2 final remediation: `_py_files()` re-derived the same git-index
@@ -147,35 +146,11 @@ def test_f39_missing_confluence_is_none_not_zero_at_consumer():
             f"a dict-literal ms_dict.update writes {key!r} outside the typed mapper "
             "(F39/RC-365)")
 
-    html = (ROOT / "static" / "index.html").read_text(encoding="utf-8")
-    assert 'id="cf-push-val"' in html
-    start = html.find("// Weighted push")
-    assert start != -1
-    block = html[start : start + 400]
-    assert "d.cf_weighted_push" in block
-    assert "pushEl.textContent = pushDisp" in html
-    # Live consumer expressions from index.html (not a reconstructed proxy).
-    lines = [ln.strip() for ln in block.splitlines()]
-    raw_line = [ln for ln in lines if "const pushRaw" in ln][0]
-    push_line = [ln for ln in lines if ln.startswith("const push ") or ln.startswith("const push=")][0]
-    disp_line = [ln for ln in lines if "const pushDisp" in ln][0]
-    render = raw_line + "\n" + push_line + "\n" + disp_line + "\n"
-    script = (
-        "function renderPush(d){\n"
-        + render
-        + "  return pushDisp;\n"
-        + "}\n"
-        + "if (renderPush({cf_weighted_push: null}) !== '—') { console.error('absent'); process.exit(1); }\n"
-        + "if (renderPush({cf_weighted_push: 0}) !== '+0.00%') { console.error('neutral'); process.exit(1); }\n"
-        + "console.log('ok');\n"
-    )
-    proc = subprocess.run(
-        ["node", "-e", script],
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="strict",
-        check=False,
-    )
-    assert proc.returncode == 0, proc.stderr or proc.stdout
-    assert "ok" in proc.stdout
+    # The DOM-consumer tail (index.html's #cf-push-val / renderPush None-vs-0 rendering) was
+    # retired here (/console cutover, operator directive 2026-09-14): the new console does
+    # have a confluence/weighted_push CONCEPT (ed-trade-desk.js, ed-liquidity-map.js), but it
+    # is a different one -- liquidity-zone confluence_score, not this cross-asset
+    # cf_weighted_push -- and grepped static/js/*.js has no cf-push-val/cf_weighted_push
+    # consumer at all. The backend half above (the ONE producer / no second stamp site) is
+    # unaffected either way. If a cross-asset weighted-push consumer is ever built into the
+    # new console, write a fresh None-vs-0 rendering test against that call site.

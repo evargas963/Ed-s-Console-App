@@ -4,6 +4,7 @@ from __future__ import annotations
 import pytest
 
 from ml_horizon import ALL_GOVERNED_HORIZONS
+from ml_scheduler import aggregate_all_horizons_exit_code
 from training_outcome import TrainingOutcome, compute_run_exit_code, outcome_entry
 
 
@@ -75,7 +76,4 @@ def test_compute_run_exit_code_mixed_matrix():
 )
 def test_all_horizons_ors_exit_codes(per_horizon_exits, expected):
     assert len(per_horizon_exits) == len(ALL_GOVERNED_HORIZONS)
-    agg = 0
-    for code in per_horizon_exits:
-        agg |= int(code)
-    assert agg == expected
+    assert aggregate_all_horizons_exit_code(per_horizon_exits) == expected

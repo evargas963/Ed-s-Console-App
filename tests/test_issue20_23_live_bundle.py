@@ -73,46 +73,15 @@ def test_sse_broadcast_only_passes_full_tier_c_payload():
     assert "_schedule_sse_broadcast" in src
 
 
-def test_index_html_rejects_older_decision_generation():
-    html = (ROOT / "static" / "index.html").read_text(encoding="utf-8", errors="replace")
-    assert "_lastRenderedDecisionGen" in html
-    assert "decision_generation_id" in html
-    assert "_renderCoherenceGuards" in html and "reason: 'gen'" in html
-    assert "canonical snapshot" in html.lower() or "render(d) only" in html
-
-
-def test_index_html_render_return_gates_live_and_last_render_ts():
-    """Issue 24: gated render() return — do not bump _lastRenderTs when render() drops a frame."""
-    html = (ROOT / "static" / "index.html").read_text(encoding="utf-8", errors="replace")
-    assert "return true" in html and "return false" in html
-    # 7 render/paint-lane timestamp bumps, each on a did-render/did-paint success path:
-    # the 3 main render() lanes are behind _didRender / _didRenderPoll / _didRenderSse;
-    # the others bump only after a successful L1/merged/sidebar paint (one precedes `return true`).
-    # None fires on a dropped frame (Issue-24 invariant preserved). Count was stale at 6.
-    assert html.count("_lastRenderTs = Date.now()") == 7
-    for needle in ("if (_didRender) {", "if (_didRenderPoll) {", "if (_didRenderSse) {"):
-        assert needle in html, f"missing {needle!r}"
-
-
-def test_index_html_sse_badge_conn_on_open_live_after_payload():
-    """SSE badge: CONNECTING/CONN while handshake or socket-only; LIVE only after payload passes guards.
-
-    T4 structural alignment: Tier C money-path SSE entry is ingestMoneyPathSnapshot(snap, 'sse')
-    (was acceptAndScheduleMoneyPathRender(data, 'sse')). Ordering invariant unchanged:
-    _setSseUi('live', …) must still precede the money-path ingest entry inside es.onmessage.
-    """
-    html = (ROOT / "static" / "index.html").read_text(encoding="utf-8", errors="replace")
-    assert "_setSseUi('socket_open'" in html
-    assert "lbl.textContent = 'CONN'" in html
-    start = html.find("es.onmessage = (event)")
-    assert start != -1
-    needle = "ingestMoneyPathSnapshot(snap, 'sse'"
-    end = html.find(needle, start)
-    assert end != -1, "T4 money-path SSE entry must remain inside es.onmessage"
-    live_before_ingest = html[start:end]
-    assert "_setSseUi('live'" in live_before_ingest
-    assert "extractMoneyPathSnapshot(data)" in live_before_ingest
-    assert "acceptAndScheduleMoneyPathRender(data, 'sse'" not in live_before_ingest
+# test_index_html_rejects_older_decision_generation, test_index_html_render_return_gates_live_
+# and_last_render_ts, and test_index_html_sse_badge_conn_on_open_live_after_payload were
+# retired here (/console cutover, operator directive 2026-09-14): all three lock legacy static/
+# index.html's Tier-A/Tier-C money-path render-generation architecture
+# (_lastRenderedDecisionGen, _renderCoherenceGuards, ingestMoneyPathSnapshot), which has no
+# equivalent in the new console's simpler poll model (grepped static/js/*.js and
+# static/console.html, zero matches for any of these names). test_client_render_ordering_logic
+# above (a reconstructed proxy of the generation-comparison arithmetic, not a file read) is
+# unaffected and stays.
 
 
 def test_client_render_ordering_logic():

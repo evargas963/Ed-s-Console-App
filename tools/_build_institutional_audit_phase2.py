@@ -859,7 +859,7 @@ def main() -> int:
         "MATURITY_PROMOTION_RULES.json": promotion,
     }
     for name, doc in writes.items():
-        (ART / name).write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
+        (ART / name).write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8", newline="\n")
 
 
     print(

@@ -236,7 +236,6 @@ def main() -> int:
     print(f"Checking {len(tickers)} tickers: {', '.join(tickers)}")
     print()
 
-    _all_ok = True
     non_compliant = []
 
     for ticker in tickers:

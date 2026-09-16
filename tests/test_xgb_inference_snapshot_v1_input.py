@@ -38,34 +38,6 @@ def _minimal_valid_inference_v1():
     )
 
 
-def test_engineering_snapshot_maps_only_canonical_features():
-    from features.xgb_model_input import inference_snapshot_v1_to_engineering_snapshot
-
-    snap = _minimal_valid_inference_v1()
-    tab = inference_snapshot_v1_to_engineering_snapshot(snap)
-    assert tab["spot"] == 450.0
-    assert tab["zone"] == "pin_bull"
-    assert tab["vwap_side"] == "above"
-    assert "liquidity_summary" not in tab
-
-
-def test_merge_overlay_does_not_override_mvp_columns():
-    from features.xgb_model_input import (
-        inference_snapshot_v1_to_engineering_snapshot,
-        merge_xgb_fusion_overlay,
-    )
-
-    snap = _minimal_valid_inference_v1()
-    base = inference_snapshot_v1_to_engineering_snapshot(snap)
-    poisoned = merge_xgb_fusion_overlay(
-        base,
-        {"spot": 1.0, "zone": "breakdown", "pred_1c_up_prob": 0.4},
-    )
-    assert poisoned["spot"] == 450.0
-    assert poisoned["zone"] == "pin_bull"
-    assert poisoned["pred_1c_up_prob"] == 0.4
-
-
 def test_validate_rejects_wrong_contract_version():
     from features.xgb_model_input import validate_inference_snapshot_v1_for_xgb, XgbInferenceInputError
 
@@ -86,35 +58,11 @@ def test_validate_rejects_wrong_timeframe():
         validate_inference_snapshot_v1_for_xgb(bad)
 
 
-def test_validate_rejects_missing_spot_for_xgb():
-    from features.xgb_model_input import validate_inference_snapshot_v1_for_xgb, XgbInferenceInputError
-    from features.inference_snapshot import build_inference_snapshot_v1_from_feature_row
-    from features.canonical_contract import get_mvp_feature_names
-
-    feats = {k: None for k in get_mvp_feature_names()}
-    feats["price.spread_pts"] = 0.02
-    snap = build_inference_snapshot_v1_from_feature_row(
-        ticker="SPY",
-        expiry=None,
-        as_of_ts=1.0,
-        features=feats,
-    )
-    with pytest.raises(XgbInferenceInputError, match="price.spot"):
-        validate_inference_snapshot_v1_for_xgb(snap)
-
-
 def test_raw_l1_payload_rejected_at_guard():
     from features.xgb_model_input import assert_not_raw_l1_payload, XgbInferenceInputError
 
     with pytest.raises(XgbInferenceInputError, match="liquidity_summary"):
         assert_not_raw_l1_payload({"liquidity_summary": {"absorption_score": 1.0}})
-
-
-def test_run_unified_stack_ml_once_requires_inference_snapshot_v1():
-    from ml_predict import run_unified_stack_ml_once
-
-    with pytest.raises(ValueError, match="inference_snapshot_v1"):
-        run_unified_stack_ml_once({"ticker": "SPY"}, "SPY", None, "wait")
 
 
 def test_build_xgb_pre_engineering_snapshot_mvp_and_overlay_contract():

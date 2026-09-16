@@ -13,7 +13,6 @@ if str(ROOT) not in sys.path:
 import tools.clocks_tz_lock as L  # noqa: E402
 
 CHART = ROOT / "static" / "chart.html"
-INDEX = ROOT / "static" / "index.html"
 
 
 def test_shipped_static_has_no_bare_locale_dates():
@@ -33,12 +32,16 @@ def test_chart_binds_session_et_and_display_ct():
 
 
 def test_index_catch_path_is_ct_explicit():
-    src = INDEX.read_text(encoding="utf-8")
-    assert "toLocaleDateString('en-CA', { timeZone: 'America/Chicago' })" in src
-    remainder = src.replace(
-        "toLocaleDateString('en-CA', { timeZone: 'America/Chicago' })", ""
+    """Same invariant legacy's own test enforced (an explicit America/Chicago timeZone, never
+    a bare locale date) -- repointed to ed-core.js's tickClock() (/console cutover, operator
+    directive 2026-09-14), which uses 'en-US' rather than legacy's 'en-CA' locale spelling but
+    the same explicit-timeZone discipline."""
+    core = (ROOT / "static" / "js" / "ed-core.js").read_text(encoding="utf-8")
+    assert "toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: '2-digit', timeZone: 'America/Chicago' })" in core
+    remainder = core.replace(
+        "toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: '2-digit', timeZone: 'America/Chicago' })", ""
     )
-    assert "toLocaleDateString('en-CA')" not in remainder
+    assert "toLocaleDateString('en-US')" not in remainder
 
 
 def test_bare_locale_date_detector_screams():
