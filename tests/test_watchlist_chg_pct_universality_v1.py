@@ -102,7 +102,14 @@ def test_live_state_rest_backfill_survives_merge_into_state(monkeypatch):
         status_code = 200
 
         def json(self):
-            return {ticker: {"quote": {"netPercentChange": 7.77}}}
+            # ONE spot faucet (2026-09-16): a real Schwab quote node always carries lastPrice;
+            # this fixture used to omit it, which was harmless before _tier_a_live_state_dict
+            # called resolve_spot (spot came straight from the stale plane row instead) but now
+            # correctly makes resolve_spot's own quote_node leg find nothing, since that leg
+            # parses spot from this SAME node. Added so resolve_spot succeeds the same way a
+            # real REST quote would, keeping this test's actual subject (chg_pct backfill
+            # surviving the plane merge) isolated from the unrelated spot-authority path.
+            return {ticker: {"quote": {"netPercentChange": 7.77, "lastPrice": 55.0}}}
 
     monkeypatch.setattr(srv, "get_client", lambda: object())
     monkeypatch.setattr(srv, "_memoized_quote_response", lambda t, client=None: _FakeResp())

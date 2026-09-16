@@ -359,7 +359,13 @@
     // heatmap grid's _panAnchor) -- switching tickers has nothing meaningful to persist against.
     if (_gbsPanTicker !== tk) { _gbsPanAnchor = null; _gbsPanTicker = tk; }
     setGbsAsOf(d);
-    _lastGbs = { ticker: tk != null ? tk : ticker(), rows: (d && d.today && d.today.all) || [], spot: Number(d && d.spot) };
+    // Independent review, 2026-09-16 (CORRECTED): Number(d && d.spot) / Number(d.spot)
+    // fabricate a real, finite 0 whenever d is absent or d.spot is explicitly null
+    // (Number(null) === 0) -- absence must be checked before numeric conversion, not left to
+    // whatever Number() happens to do with it (see ed-gamma-chart.js's identical fix).
+    var _gbsSpotRaw = d ? d.spot : null;
+    var gbsSpot = (_gbsSpotRaw == null) ? NaN : Number(_gbsSpotRaw);
+    _lastGbs = { ticker: tk != null ? tk : ticker(), rows: (d && d.today && d.today.all) || [], spot: gbsSpot };
     _resyncStrikeDetailNetCell();
     var rows = d && d.today && d.today.all;
     if (!rows || !rows.length) {
@@ -367,7 +373,7 @@
         (d ? 'no banked per-strike gamma for this symbol' : 'no console serving /api/terrain/strikes') + '</div></div>';
       return;
     }
-    var spot = Number(d.spot);
+    var spot = gbsSpot;
     // #3: window around spot for readability (presentation), high strikes on top. The window is the
     // ONE shared Gamma scope policy (EdShell.scopeSelect: Auto 11 strikes around spot / Wider / All
     // available) — a COUNT, never a percentage (real SPY terrain is 216 strikes at $1 spacing; a

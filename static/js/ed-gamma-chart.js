@@ -291,7 +291,15 @@
     // below already render '-' and skip the spot line/label -- the same "no valid current
     // snapshot" treatment every other gamma surface in this app already uses, not a new
     // behavior. Never silently substitutes a different endpoint's number.
-    var spot = Number(terrain && terrain.spot);
+    // Independent review, 2026-09-16 (CORRECTED): Number(terrain && terrain.spot) fabricates
+    // a real, finite 0 whenever terrain is null/undefined OR terrain.spot itself is explicitly
+    // null (Number(null) === 0, Number(undefined) === NaN -- only one of the two absence
+    // shapes was ever caught). A fabricated 0 passes every isFinite(spot) guard below as if it
+    // were a genuine price, drawing a spot line/label at 0 instead of the intended '-'. Absence
+    // is checked explicitly BEFORE numeric conversion, not inferred from what Number() does to
+    // whatever falls out of it.
+    var _terrainSpotRaw = terrain ? terrain.spot : null;
+    var spot = (_terrainSpotRaw == null) ? NaN : Number(_terrainSpotRaw);
     // Operator directive (2026-09-14, spot 360 audit): every payload already carries WHICH
     // spot authority answered it (resolve_spot's own design intent, "so a divergence is
     // impossible to hide") -- this was computed server-side but never shown anywhere. Reading

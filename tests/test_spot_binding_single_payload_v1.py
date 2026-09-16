@@ -129,16 +129,107 @@ def test_ed_js_single_spot_source_is_clean():
     assert bad == [], bad
 
 
+def test_ed_js_dual_spot_fallback_survives_multiline():
+    """Independent review, 2026-09-16: 'detection that survives multiline expressions.' The
+    exact original bug, reformatted across several source lines (a Number(...) call wrapping a
+    multi-line ternary) -- the old per-line scanner could not see across this; the statement-
+    level scanner must."""
+    bad = L.ed_js_dual_spot_fallback_violations({
+        "f.js":
+            "var spot = Number(\n"
+            "  (terrain && terrain.spot) != null\n"
+            "    ? terrain.spot\n"
+            "    : (strikesData && strikesData.spot)\n"
+            ");\n",
+    })
+    assert any("terrain" in m and "strikesData" in m for m in bad), bad
+
+
+def test_ed_js_dual_spot_fallback_survives_aliasing():
+    """Independent review, 2026-09-16: 'detection that survives ... aliases.' Extracting .spot
+    into plain-named intermediate variables BEFORE the fallback leaves no literal '.spot' text
+    at the fallback site itself -- the lock must still trace each variable back to its source."""
+    bad = L.ed_js_dual_spot_fallback_violations({
+        "f.js":
+            "var t = terrain.spot;\n"
+            "var s = strikesData.spot;\n"
+            "var spot = t != null ? t : s;\n",
+    })
+    assert any("terrain" in m and "strikesData" in m for m in bad), bad
+
+
+def test_ed_js_dual_spot_fallback_survives_helper_mediated_fallback():
+    """Independent review, 2026-09-16: 'detection that survives ... helper-mediated fallback.'
+    No ?, :, ||, or ?? appears at the call site at all -- the fallback logic lives inside
+    pickFirst() -- but handing two different sources' spot to the SAME call is the same defect
+    under a different spelling."""
+    bad = L.ed_js_dual_spot_fallback_violations({
+        "f.js": "var spot = pickFirst(terrain.spot, strikesData.spot);\n",
+    })
+    assert any("terrain" in m and "strikesData" in m and "helper" in m for m in bad), bad
+    # And composed with aliasing -- both escapes stacked must still be caught together.
+    bad2 = L.ed_js_dual_spot_fallback_violations({
+        "f.js": "var t = terrain.spot;\nvar s = strikesData.spot;\nvar spot = pickFirst(t, s);\n",
+    })
+    assert any("terrain" in m and "strikesData" in m for m in bad2), bad2
+
+
+def test_spot_number_null_fabrication_screams():
+    """Independent review, 2026-09-16: 'Number(terrain && terrain.spot) fabricates zero when
+    terrain is null because Number(null) === 0.' Live in static/js/ed-gamma-chart.js,
+    ed-gamma-panels.js, and ed-gamma.js before this fix -- a fabricated, finite 0 passes every
+    isFinite(spot) guard as if it were a real price."""
+    bad = L.spot_number_null_fabrication_violations({
+        "f.js": "var spot = Number(terrain && terrain.spot);\n",
+    })
+    assert bad, bad
+    bad2 = L.spot_number_null_fabrication_violations({
+        "f.js": "var spot = Number(surface.spot);\n",
+    })
+    assert bad2, bad2
+
+
+def test_spot_number_null_fabrication_recognizes_the_actual_fix_as_clean():
+    """Negative control: the exact guarded shape this session's fixes now use
+    (`expr == null ? NaN : Number(expr)`) must NOT be re-flagged -- it is the fix, not the bug."""
+    bad = L.spot_number_null_fabrication_violations({
+        "f.js": "var spot = terrain && terrain.spot == null ? NaN : Number(terrain && terrain.spot);\n",
+    })
+    assert bad == [], bad
+    bad2 = L.spot_number_null_fabrication_violations({
+        "f.js": "var spot = surface.spot == null ? NaN : Number(surface.spot);\n",
+    })
+    assert bad2 == [], bad2
+
+
+def test_discover_frontend_execution_surfaces_is_dynamic_not_a_fixed_roster():
+    """Independent review, 2026-09-16: 'replace the fixed eight-file roster ... with discovery
+    of every shipped frontend JS/HTML execution surface.' Proves discovery actually walks the
+    tree: a file that did not exist at write time is still found."""
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        (root / "static" / "js").mkdir(parents=True)
+        (root / "static" / "js" / "ed-brand-new-panel.js").write_text("var x = 1;\n")
+        (root / "static" / "chart.html").write_text("<html></html>")
+        found = L.discover_frontend_execution_surfaces(root)
+    assert "static/js/ed-brand-new-panel.js" in found, found
+    assert "static/chart.html" in found, found
+
+
 def test_shipped_ed_js_spot_binding_is_clean():
     """The actual shipped file set, not a synthetic fixture -- proves the fixed
-    ed-gamma-chart.js (and every other ed-*.js this lock now scans) is clean today."""
+    ed-gamma-chart.js, ed-gamma-panels.js, ed-gamma.js (and every other discovered ed-*.js) is
+    clean today, on BOTH checks (dual-source fallback and Number-null-fabrication)."""
     files = {}
-    for rel in L._ED_JS_SPOT_FILES:
-        path = ROOT / rel
-        if path.is_file():
-            files[rel] = path.read_text(encoding="utf-8", errors="ignore")
-    bad = L.ed_js_dual_spot_fallback_violations(files)
-    assert bad == [], bad
+    for rel in L.discover_frontend_execution_surfaces(ROOT):
+        if rel.endswith(".js"):
+            path = ROOT / rel
+            if path.is_file():
+                files[rel] = path.read_text(encoding="utf-8", errors="ignore")
+    assert L.ed_js_dual_spot_fallback_violations(files) == []
+    assert L.spot_number_null_fabrication_violations(files) == []
 
 
 def test_exposure_fallback_injection_screams():

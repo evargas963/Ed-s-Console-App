@@ -309,7 +309,11 @@
       return;
     }
     var exps = surface.expirations || [], strikes = surface.strikes || [], cells = surface.cells || [];
-    var spot = Number(surface.spot);
+    // Independent review, 2026-09-16 (CORRECTED): Number(surface.spot) fabricates a real,
+    // finite 0 when surface.spot is explicitly null (Number(null) === 0), which then passes
+    // the isFinite(spot) guard below as if it were a genuine price (see ed-gamma-chart.js's
+    // identical fix). Absence checked explicitly before numeric conversion.
+    var spot = surface.spot == null ? NaN : Number(surface.spot);
     // A manual strike-axis pan persists across re-renders of the SAME ticker (same contract
     // as _view/_pin elsewhere); switching tickers has nothing meaningful to persist against.
     if (_panTicker !== surface.ticker) { _panAnchor = null; _panTicker = surface.ticker; }
@@ -838,7 +842,11 @@
     updateScope(surface);
   }
   function updateScope(surface) {   // lightweight: only the age/scope tag in the panel header
-    var strikes = surface.strikes || [], exps = surface.expirations || [], spot = Number(surface.spot);
+    // Independent review, 2026-09-16 (CORRECTED): see the identical fix in the sibling render
+    // function above -- Number(surface.spot) fabricates a real, finite 0 when surface.spot is
+    // explicitly null, which then passes the isFinite(spot) guard below as if it were real.
+    var strikes = surface.strikes || [], exps = surface.expirations || [],
+        spot = surface.spot == null ? NaN : Number(surface.spot);
     var srcLabel = surface.source === 'terrain_live_cache' ? (surface.complete === false ? 'LIVE·window' : 'LIVE')
       : surface.source === 'banked_morning_reference' ? 'REF·morning' : (surface.source || '');
     var age = surface.age_sec != null ? ' ' + Math.round(surface.age_sec) + 's' : '';

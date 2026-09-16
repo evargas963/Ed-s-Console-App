@@ -6604,15 +6604,29 @@ def _tier_a_live_state_dict(ticker: str, expiry: Optional[str]) -> dict:
     # outage still fails closed to no_quote below, never silently serves a stored snapshot.
     _rs_spot, _rs_source, _rs_ts = resolve_spot(tkr, quote_node=_quote_node_for_resolve, allow_stored=False)
     if _rs_spot is None:
-        # Structurally should not happen (identical precedence), but never let a live display
-        # route 500 or silently disagree with itself -- observable, not swallowed.
+        # Independent review, 2026-09-16 (CORRECTED): the first version of this fix fell back
+        # to row["spot"] here -- exactly the "a consumer independently selects/serves a second
+        # source when the ONE authority has nothing" pattern this whole change exists to ban,
+        # reintroduced by the fix itself. Structurally this branch should not fire (identical
+        # precedence to what built `row`), but "should not happen" is not a license to serve a
+        # value resolve_spot did not produce. Fail closed instead, the same contract every
+        # other resolve_spot-backed route in this file already uses.
         log.warning("Tier A live/state: resolve_spot found nothing for %s while row had a "
-                    "spot (%.4f) -- serving row's own value, this divergence should not "
-                    "happen given identical precedence and needs investigation.", tkr, float(row["spot"]))
-        spot_f = float(row["spot"])
-        _rs_source, _rs_ts = None, None
-    else:
-        spot_f = float(_rs_spot)
+                    "spot (%.4f) -- failing closed rather than serving row's own value, this "
+                    "divergence should not happen given identical precedence and needs "
+                    "investigation.", tkr, float(row["spot"]))
+        return {
+            "_tier": "A_live",
+            "ticker": tkr,
+            "selected_exp": expiry,
+            "session_label": sess,
+            "state_error": "no_quote",
+            "state_error_detail": "No live plane or REST quote available yet.",
+            "_server_build_ts": time.time(),
+            "_pipeline_ms": round((time.monotonic() - t0_mono) * 1000),
+            "_endpoint": "/api/live/state",
+        }
+    spot_f = float(_rs_spot)
     from numeric_contract import float_finite_or_none as _fin
     # single source: finite bid/ask (raw float() admitted NaN into spread AND the bid/ask
     # echoed into `out` below); canonical reader also removes the try/except.
@@ -14656,8 +14670,11 @@ def _backfill_gex_cells_from_last_valid(tk: str, surface: dict) -> None:
                 cells_with_data += 1
                 cells_with_oi_but_invalid_greeks += 1
     # Flush runs with NO lock held across the DB write (see _flush_last_valid_gex_cells_to_db's
-    # own LOCK DISCIPLINE note) -- the single fix for the hang hypothesis this whole review
-    # targets: a shared lock must never be held across blocking disk I/O.
+    # own LOCK DISCIPLINE note): a shared lock must never be held across blocking disk I/O.
+    # NOT_PROVEN (independent review, 2026-09-16): this is a correct fix to that anti-pattern on
+    # its own merits, not a proven explanation for any specific historical hang -- the process
+    # that hung ran code predating this table entirely, so this cannot have caused it. The
+    # actual cause of that hang is unresolved.
     if wrote_new:
         _flush_last_valid_gex_cells_to_db(tk)
     surface["gamma_available"] = cells_with_data > 0
