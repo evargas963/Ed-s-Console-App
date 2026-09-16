@@ -1,5 +1,6 @@
 table: gamma_surface_last_valid
-module: server.py
+module: db.py (schema + read/write on db.EdDB); server.py owns only the in-memory runtime
+  cache and lock discipline built on top of it
 
 motivation: >
   Canonical GEX input-validity rules (operator directive, 2026-09-15). Live-reproduced:
@@ -28,13 +29,21 @@ motivation: >
   reusing the SAME database file (get_db().db_path) rather than introducing a new
   persistence mechanism.
 
-  Module placement (operator directive, 2026-09-15, reviewed a THIRD time): first placed in
+  Module placement (operator directive, 2026-09-15, reviewed a FOURTH time): first placed in
   calibration/option_chain_morning_full.py for code-reuse convenience (same DB writer
-  conventions). On review that module's own docstring scopes it to "once-per-day morning
-  full-chain persist for GEX-R1 forward collection" — a calibration/forward-collection
-  concern this table is not. Moved to server.py: a runtime display-durability checkpoint
-  belongs beside its one caller, not inside a narrowly-scoped calibration module. Sharing a
-  database file does not require sharing a module.
+  conventions) — wrong, that module's own docstring scopes it to "once-per-day morning
+  full-chain persist for GEX-R1 forward collection," a calibration/forward-collection concern
+  this table is not. Moved to server.py directly (raw sqlite3 connections + its own CREATE
+  TABLE) — also wrong: independent git review correctly rejected this as server.py
+  independently owning table creation/migration/persistence infrastructure that duplicates
+  db.py's actual job. db.EdDB is documented as "the main database interface for Ed Console"
+  and every other table's schema lives in its _init_schema, using one connection-configuration
+  convention (db.configure_sqlite_connection, WAL + busy_timeout). This table's schema and its
+  load_gamma_surface_last_valid/persist_gamma_surface_last_valid methods now live there, beside
+  every other table, and server.py calls them exactly like it calls every other DB read/write.
+  Server.py still owns the RUNTIME side (the in-memory write-through cache, the lock discipline
+  guarding it, when to hydrate/flush) — that is legitimately a server.py concern (what the live
+  heatmap shows this cycle); only the durable storage moved.
 
 composition: >
   One row per (ticker, strike, expiry) — ALWAYS-LATEST, not a time series (PRIMARY KEY is
@@ -64,40 +73,43 @@ collection: >
   its durability checkpoint, lazily rehydrated into memory on a ticker's first use since the
   current process started (once per process lifetime per ticker, not once per cycle).
 
-  LOCK DISCIPLINE (operator directive, 2026-09-15, root-cause-the-hang review): the DB read
-  (hydrate) and DB write (flush) both run with _LAST_VALID_GEX_CELLS_LOCK explicitly
-  RELEASED -- an earlier version held that shared lock across the actual blocking SQLite
-  I/O, which is contended by every ticker's terrain cycle and every eager stream refresh
-  simultaneously; a single slow/locked write could have stalled all of them, a concrete,
-  plausible hang mechanism. GAMMA_LAST_VALID_DB_TIMEOUT_SEC (3s, down from an earlier 60s)
-  bounds how long a genuinely stuck DB can delay even this now-unlocked checkpoint.
+  LOCK DISCIPLINE (operator directive, 2026-09-15): the DB read (hydrate) and DB write (flush)
+  both run with server.py's _LAST_VALID_GEX_CELLS_LOCK explicitly RELEASED -- an early draft
+  held that shared lock across the actual blocking SQLite I/O, a real anti-pattern (that lock
+  is contended by every ticker's terrain cycle and every eager stream refresh simultaneously)
+  regardless of any specific incident. CORRECTION (independent git review, 2026-09-15):
+  a prior version of this datasheet, and of the code's own comments, claimed this defect was
+  "a concrete, plausible mechanism" for a SPECIFIC previously-observed console hang, and that
+  fixing it closed that incident. That claim is WITHDRAWN: the process that had hung was
+  running a git commit that predates this table's existence entirely, so this code cannot have
+  caused that incident. The real cause of that specific hang is UNKNOWN. This lock
+  restructuring is retained purely as a correct fix to a genuine anti-pattern (a shared lock
+  must never be held across blocking disk I/O), not as an explanation for any past symptom.
+  db.EdDB.GAMMA_LAST_VALID_DB_TIMEOUT_SEC (3s) bounds how long a genuinely stuck DB can delay
+  this now-unlocked checkpoint.
 
   OBSERVABILITY: a hydrate or flush failure is logged at WARNING (never DEBUG) and recorded
-  in _LAST_VALID_GEX_CELLS_ERRORS keyed by ticker (op, error, ts_utc) -- restart durability
-  silently degrading to in-memory-only-this-session is a visible, queryable fact, not a
-  swallowed one, while still never blocking or failing the live gamma-surface response
+  in server._LAST_VALID_GEX_CELLS_ERRORS keyed by ticker (op, error, ts_utc) -- restart
+  durability silently degrading to in-memory-only-this-session is a visible, queryable fact,
+  not a swallowed one, while still never blocking or failing the live gamma-surface response
   itself.
 
-  MEASURED VALIDATION (operator directive, 2026-09-15, "prove the DB work/locking cannot
-  contribute to the console hang"): the SAME database file (data/ed_console.db) also serves
-  db.fill_outcomes, a pre-existing, unrelated write path that already logs its own
-  sqlite_bg_write_slow WARNING when a single write transaction runs long. During a live soak
-  of the post-fix process, fill_outcomes logged five such events in one session, one at
-  10085.2ms and three others in the 5-9s range -- real, measured multi-second SQLite
-  contention on this exact file, well past this table's own 3s GAMMA_LAST_VALID_DB_TIMEOUT_SEC.
-  The running process served dozens of concurrent /api requests (terrain, gamma-surface,
-  live/state, watchlist-quotes, chain, tape) without a stall through and immediately after
-  every one of those events, and _LAST_VALID_GEX_CELLS_ERRORS stayed empty throughout. This is
-  the fix design working exactly as intended under a REAL, not hypothetical, contention event:
-  a colliding write would time out at 3s and record a WARNING, degrading this table to
-  in-memory-only for that cycle, never blocking the app-level lock (already released before any
-  DB call) or the HTTP response that triggered it. fill_outcomes itself was already isolated on
-  its own single-thread executor (server.py's _db_fill_outcomes_executor) before this session --
-  unrelated to and not modified by this table's fix.
+  DB CONTENTION OBSERVED (not proof of hang causation -- see CORRECTION above): the SAME
+  database file (data/ed_console.db) also serves db.fill_outcomes, a pre-existing, unrelated
+  write path that already logs its own sqlite_bg_write_slow WARNING when a single write
+  transaction runs long. During a live soak of the process after this lock fix, fill_outcomes
+  logged five such events in one session, one at 10085.2ms and three others in the 5-9s range
+  -- real, measured multi-second SQLite contention on this exact file, well past this table's
+  own 3s timeout. The running process served dozens of concurrent /api requests without a
+  stall through and immediately after every one of those events, and
+  _LAST_VALID_GEX_CELLS_ERRORS stayed empty throughout. This shows the fix design degrades
+  gracefully under a REAL contention event (a colliding write times out at 3s and records a
+  WARNING rather than blocking anything) -- it does NOT establish that this mechanism was ever
+  the cause of the specific hang referenced above, which remains unexplained.
 
 recommended_uses: >
   Exactly one: server._backfill_gex_cells_from_last_valid reads it (via
-  _load_gamma_surface_last_valid_from_db) to fill a currently-invalid or currently-absent gamma-
+  db.EdDB.load_gamma_surface_last_valid) to fill a currently-invalid or currently-absent gamma-
   surface cell with its last confirmed-valid value, honestly labelled with its own
   captured_ts_utc so the UI never presents a stale snapshot as freshly live (the per-cell
   `stream` state disclosure, from the always-live heatmap mandate, is computed independently

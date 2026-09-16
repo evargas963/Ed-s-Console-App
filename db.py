@@ -924,10 +924,10 @@ class EdDB:
                 self._bootstrap_sql_guard_suppress = False
         log.info(f"EdDB initialized at {self.db_path}")
 
-    def _connect(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(str(self.db_path), timeout=30.0)
+    def _connect(self, *, timeout_sec: float = 30.0) -> sqlite3.Connection:
+        conn = sqlite3.connect(str(self.db_path), timeout=timeout_sec)
         conn.row_factory = sqlite3.Row
-        configure_sqlite_connection(conn)
+        configure_sqlite_connection(conn, busy_timeout_ms=int(timeout_sec * 1000))
         if not getattr(self, "_bootstrap_sql_guard_suppress", False):
             from db_safety import maybe_install_sql_guard_on_connection
 
@@ -1518,8 +1518,84 @@ class EdDB:
                 computed_at         TEXT DEFAULT (datetime('now'))
             );
 
+            -- ── Options/Gamma heatmap restart-durable snapshot (operator directive,
+            -- 2026-09-15, canonical input-validity rules; DB ownership review, 2026-09-15,
+            -- fourth pass) ── Per (ticker, strike, expiry) last-known-VALID gex/dex/vanna, so
+            -- a genuine current-cycle vendor failure (invalid greeks, or a whole-surface OI
+            -- outage) can display the latest valid timestamped snapshot instead of erasing the
+            -- cell, and that snapshot survives a process restart. ALWAYS-LATEST, not a time
+            -- series (INSERT OR REPLACE on this exact primary key) -- a display-durability
+            -- checkpoint only ever needs the newest known-good value per cell, never a history.
+            -- Not a duplicate of option_chain_accrual (RC-159): that table is a per-STRIKE
+            -- aggregate collapsed across every expiry (a session gamma-ladder time series);
+            -- this table is the per-CELL (strike × expiry) analogue the Options/Gamma heatmap
+            -- grid actually needs, which nothing else in this schema persists at that
+            -- granularity. Owned here (schema + read/write), not by server.py independently
+            -- opening its own raw connections -- this IS the canonical database interface.
+            CREATE TABLE IF NOT EXISTS gamma_surface_last_valid (
+                ticker          TEXT NOT NULL,
+                strike          REAL NOT NULL,
+                expiry          TEXT NOT NULL,
+                gex             REAL,
+                dex             REAL,
+                vanna           REAL,
+                captured_ts_utc REAL NOT NULL,
+                PRIMARY KEY (ticker, strike, expiry)
+            );
+
             """)
         log.info("Schema initialized")
+
+    #: Best-effort durability checkpoint (operator directive, 2026-09-15, LOCK DISCIPLINE):
+    #: never a critical write, so a genuinely stuck DB should fail this fast and loudly rather
+    #: than tie up a caller for the class's normal 30s connection timeout. Callers (server.py)
+    #: must never hold their own lock across a call into either method below -- these open and
+    #: close their own connection per call, exactly like every other "ordinary write" in this
+    #: class (see the class docstring: tier-1 hot-path writes get _tier1_snapshot_write's
+    #: retry/lock discipline; this is not that -- it is throttled to roughly once per 20s per
+    #: ticker by the caller and degrades to in-memory-only-this-session on failure).
+    GAMMA_LAST_VALID_DB_TIMEOUT_SEC = 3.0
+
+    def load_gamma_surface_last_valid(self, ticker: str) -> dict[tuple[float, str], dict]:
+        """Every persisted last-known-valid gamma-surface cell for `ticker` -- the durable
+        backing for the Options/Gamma heatmap's in-memory last-valid cache, read once per
+        ticker to rehydrate it after a process restart. Raises on any real failure; the caller
+        decides how to log/record it (server.py's own _LAST_VALID_GEX_CELLS_ERRORS)."""
+        tk = ticker_storage_key(ticker)
+        with self._connect(timeout_sec=self.GAMMA_LAST_VALID_DB_TIMEOUT_SEC) as conn:
+            rows = conn.execute(
+                "SELECT strike, expiry, gex, dex, vanna, captured_ts_utc "
+                "FROM gamma_surface_last_valid WHERE ticker=?",
+                (tk,),
+            ).fetchall()
+        return {
+            (float(r["strike"]), str(r["expiry"])): {
+                "gex": r["gex"], "dex": r["dex"], "vanna": r["vanna"],
+                "captured_ts_utc": float(r["captured_ts_utc"]),
+            }
+            for r in rows
+        }
+
+    def persist_gamma_surface_last_valid(self, *, ticker: str, cells: list[dict]) -> None:
+        """Durably upsert the CURRENTLY-valid gamma-surface cells only -- one batched
+        transaction, never one write per cell. Raises on any real failure; the caller decides
+        how to log/record it. See GAMMA_LAST_VALID_DB_TIMEOUT_SEC's own note on why this uses a
+        short timeout rather than the class's normal 30s connection default."""
+        tk = ticker_storage_key(ticker)
+        if not tk or not cells:
+            return
+        rows = [
+            (tk, float(c["strike"]), str(c["expiry"]), c.get("gex"), c.get("dex"), c.get("vanna"),
+             float(c["captured_ts_utc"]))
+            for c in cells
+        ]
+        with self._connect(timeout_sec=self.GAMMA_LAST_VALID_DB_TIMEOUT_SEC) as conn:
+            conn.executemany(
+                "INSERT OR REPLACE INTO gamma_surface_last_valid "
+                "(ticker, strike, expiry, gex, dex, vanna, captured_ts_utc) VALUES (?,?,?,?,?,?,?)",
+                rows,
+            )
+            conn.commit()
 
     def _ensure_logging_universe_table(self):
         """Issue 22 — durable background-logging enrollment (additive schema)."""

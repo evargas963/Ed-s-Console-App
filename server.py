@@ -6505,6 +6505,7 @@ def _tier_a_live_state_dict(ticker: str, expiry: Optional[str]) -> dict:
     # already resolves its own client when none is supplied; call it that way and let it
     # retry, instead of trusting a client this function decided not to need for anything else.
     _row_fresh = bool(row) and _lmp.quote_is_fresh(row)
+    _quote_node_for_resolve = None
     if not row or row.get("spot") is None or not _row_fresh:
         q_resp = None
         try:
@@ -6518,6 +6519,7 @@ def _tier_a_live_state_dict(ticker: str, expiry: Optional[str]) -> dict:
         if q_resp and q_resp.status_code == 200:
             q_json = q_resp.json()
             _node = q_json.get(tkr.upper()) or q_json.get(tkr) or {}
+            _quote_node_for_resolve = _node
             pq = _parse_quote_node_session_fields(_node)
             spot_source = pq["spot_source"]
             spot = pq["spot"]
@@ -6588,7 +6590,29 @@ def _tier_a_live_state_dict(ticker: str, expiry: Optional[str]) -> dict:
             "_pipeline_ms": round((time.monotonic() - t0_mono) * 1000),
             "_endpoint": "/api/live/state",
         }
-    spot_f = float(row["spot"])
+    # ONE spot faucet (operator directive, 2026-09-15, repo-wide audit): this route used to
+    # decide spot purely from its OWN plane-then-REST precedence check (_row_fresh above) --
+    # a second, independently-coded implementation of resolve_spot's exact same precedence,
+    # not a call to it (resolve_spot's own docstring already documented this exact bypass as
+    # a known, unfixed gap: "the header/analytics stack... reads [the plane] directly,
+    # bypassing this function entirely"). The decision criteria are structurally identical
+    # (same _lmp.get_quote/_lmp.quote_is_fresh calls, same REST-quote fallback), so this call
+    # reuses the quote node already fetched above (no second vendor round-trip) and simply
+    # makes resolve_spot's own answer authoritative for the SERVED number, instead of trusting
+    # a parallel implementation that could theoretically diverge from it. allow_stored=False
+    # preserves this endpoint's existing "Tier A — live-only... no chain/DB" contract: an
+    # outage still fails closed to no_quote below, never silently serves a stored snapshot.
+    _rs_spot, _rs_source, _rs_ts = resolve_spot(tkr, quote_node=_quote_node_for_resolve, allow_stored=False)
+    if _rs_spot is None:
+        # Structurally should not happen (identical precedence), but never let a live display
+        # route 500 or silently disagree with itself -- observable, not swallowed.
+        log.warning("Tier A live/state: resolve_spot found nothing for %s while row had a "
+                    "spot (%.4f) -- serving row's own value, this divergence should not "
+                    "happen given identical precedence and needs investigation.", tkr, float(row["spot"]))
+        spot_f = float(row["spot"])
+        _rs_source, _rs_ts = None, None
+    else:
+        spot_f = float(_rs_spot)
     from numeric_contract import float_finite_or_none as _fin
     # single source: finite bid/ask (raw float() admitted NaN into spread AND the bid/ask
     # echoed into `out` below); canonical reader also removes the try/except.
@@ -6604,10 +6628,12 @@ def _tier_a_live_state_dict(ticker: str, expiry: Optional[str]) -> dict:
         "selected_exp": expiry,
         "session_label": sess,
         "spot": spot_f,
+        "spot_source": _rs_source,
+        "spot_as_of_ts_utc": _rs_ts,
         "chg_pct": chg_pct,
         "bid": bid,
         "ask": ask,
-        "spot_disp": row.get("spot_disp"),
+        "spot_disp": f"{spot_f:.2f}",
         "bid_disp": row.get("bid_disp"),
         "ask_disp": row.get("ask_disp"),
         "quote_mid": row.get("quote_mid"),
@@ -14474,24 +14500,35 @@ _GAMMA_SURFACE_CACHE: dict = {}
 #: exactly this class of problem (durable, always-latest, per-ticker banked observations) --
 #: not a second, disconnected persistence authority.
 #:
-#: Owned HERE, in server.py, not calibration/option_chain_morning_full.py (operator directive,
-#: 2026-09-15, THIRD pass, reviewing that placement): that module's own docstring scopes it to
-#: "once-per-day morning full-chain persist for GEX-R1 forward collection" -- a calibration/
-#: forward-collection concern. This table is a RUNTIME DISPLAY durability checkpoint (what
-#: value did the live heatmap last show), which is a server.py concern, not calibration data,
-#: even though it happens to share the SAME database file for exactly the reason RC-159
-#: already established (one durable store, not a proliferation of them). Sharing a database
-#: file does not require sharing a module.
+#: Schema + read/write owned by db.EdDB (operator directive, 2026-09-15, DB ownership review,
+#: FOURTH pass): first placed in calibration/option_chain_morning_full.py (wrong module -- that
+#: file's docstring scopes it to once-per-day morning full-chain persistence, a calibration/
+#: forward-collection concern), then moved to server.py directly (also wrong: server.py owning
+#: its own raw sqlite3 connections and CREATE TABLE duplicates db.py's actual job -- EdDB is
+#: "the main database interface for Ed Console" and every other table's schema/migration lives
+#: there, in ONE place, using ONE connection-configuration convention). The table and its
+#: load_gamma_surface_last_valid/persist_gamma_surface_last_valid methods now live in db.py
+#: beside every other table; server.py only calls get_db().load_gamma_surface_last_valid(...)/
+#: get_db().persist_gamma_surface_last_valid(...), the same way it calls every other DB read/
+#: write. This module still owns the RUNTIME (in-memory, per-process) side of the checkpoint --
+#: the write-through cache below, the lock discipline guarding it, and when to hydrate/flush --
+#: because that IS a server.py concern (what the live heatmap shows this cycle); only the
+#: durable storage itself moved.
 #:
-#: LOCK DISCIPLINE (operator directive, 2026-09-15, THIRD pass -- root-cause-the-hang finding):
-#: the FIRST version of this held _LAST_VALID_GEX_CELLS_LOCK across the actual blocking SQLite
-#: I/O (a 60s-timeout connect on the write side) -- a real, severe bug: that lock is shared
-#: across EVERY ticker's terrain cycle and EVERY eager stream refresh, so one slow/contended
-#: write could stall all of them simultaneously, a concrete, plausible mechanism for a
-#: whole-process hang. Fixed: the lock now only ever guards the in-memory dict; the DB read
-#: (hydrate) and DB write (flush) both happen with the lock released, and their own connect
-#: timeouts are short (GAMMA_LAST_VALID_DB_TIMEOUT_SEC) so a genuinely stuck DB fails this
-#: best-effort checkpoint fast rather than blocking anything.
+#: LOCK DISCIPLINE (operator directive, 2026-09-15): the first draft of this held
+#: _LAST_VALID_GEX_CELLS_LOCK across the actual blocking SQLite I/O on the write side -- a
+#: real anti-pattern regardless of any specific incident: that lock is shared across EVERY
+#: ticker's terrain cycle and EVERY eager stream refresh, so one slow/contended write could
+#: stall all of them simultaneously. Independent git review (2026-09-15) correctly rejected an
+#: earlier claim that this defect explained a SPECIFIC previously-observed console hang: the
+#: process that hung was running a commit that predates this table's existence entirely, so
+#: this code cannot have caused that incident -- that causal claim is withdrawn, and the
+#: incident's real cause remains unknown. This lock restructuring stands on its own merits as
+#: a correct fix to a genuine bug (a shared lock must never be held across blocking disk I/O),
+#: not as an explanation for any specific past symptom. The lock now only ever guards the
+#: in-memory dict; the DB read (hydrate) and DB write (flush) both happen with the lock
+#: released, and their own connect timeouts are short (db.EdDB.GAMMA_LAST_VALID_DB_TIMEOUT_SEC)
+#: so a genuinely stuck DB fails this best-effort checkpoint fast rather than blocking anything.
 #:
 #: OBSERVABILITY (operator directive, 2026-09-15, THIRD pass): "Database hydrate/flush
 #: failures must be observable and fail honestly; they may not be swallowed at debug level
@@ -14506,24 +14543,6 @@ _LAST_VALID_GEX_CELLS_HYDRATED: set[str] = set()
 _LAST_VALID_GEX_CELLS_DB_WRITE_TS: dict[str, float] = {}
 _LAST_VALID_GEX_CELLS_ERRORS: dict[str, dict] = {}
 GAMMA_LAST_VALID_DB_WRITE_FLOOR_SEC = 20.0
-#: Short on purpose (see LOCK DISCIPLINE above): this is a best-effort durability checkpoint,
-#: never a critical write. A real 60s timeout on a shared resource is exactly the shape of the
-#: hang hypothesis this fix addresses; failing this checkpoint in a few seconds and logging it
-#: loudly is strictly safer than making the live gamma path wait on it at all.
-GAMMA_LAST_VALID_DB_TIMEOUT_SEC = 3.0
-
-GAMMA_LAST_VALID_TABLE_SQL = """
-CREATE TABLE IF NOT EXISTS gamma_surface_last_valid (
-    ticker TEXT NOT NULL,
-    strike REAL NOT NULL,
-    expiry TEXT NOT NULL,
-    gex REAL,
-    dex REAL,
-    vanna REAL,
-    captured_ts_utc REAL NOT NULL,
-    PRIMARY KEY (ticker, strike, expiry)
-);
-"""
 
 
 def _record_last_valid_gex_error(tk: str, op: str, exc: Exception) -> None:
@@ -14531,64 +14550,6 @@ def _record_last_valid_gex_error(tk: str, op: str, exc: Exception) -> None:
     _LAST_VALID_GEX_CELLS_ERRORS[tk] = {
         "op": op, "error": f"{type(exc).__name__}: {exc}", "ts_utc": time.time(),
     }
-
-
-def _load_gamma_surface_last_valid_from_db(db_path, ticker: str) -> dict[tuple[float, str], dict]:
-    """Every persisted last-known-valid cell for `ticker` -- this IS _LAST_VALID_GEX_CELLS's
-    durable backing, read once per ticker to rehydrate it after a process restart. Raises on
-    any real failure (missing table is NOT a failure -- a cold DB before this table's first
-    write is the expected pre-existing-install state, not an error); the caller decides how to
-    log/record it. Never called while holding _LAST_VALID_GEX_CELLS_LOCK."""
-    import sqlite3
-    path = Path(db_path)
-    if not path.is_file():
-        return {}
-    tk = ticker_storage_key(ticker)
-    conn = sqlite3.connect(f"file:{path.resolve().as_posix()}?mode=ro", uri=True,
-                            timeout=GAMMA_LAST_VALID_DB_TIMEOUT_SEC)
-    try:
-        if not conn.execute(
-            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='gamma_surface_last_valid'"
-        ).fetchone():
-            return {}
-        rows = conn.execute(
-            "SELECT strike, expiry, gex, dex, vanna, captured_ts_utc "
-            "FROM gamma_surface_last_valid WHERE ticker=?",
-            (tk,),
-        ).fetchall()
-    finally:
-        conn.close()
-    return {
-        (float(strike), str(expiry)): {"gex": gex, "dex": dex, "vanna": vanna, "captured_ts_utc": float(ts)}
-        for strike, expiry, gex, dex, vanna, ts in rows
-    }
-
-
-def _persist_gamma_surface_last_valid_to_db(db_path, *, ticker: str, cells: list[dict]) -> None:
-    """Durably upsert the CURRENTLY-valid cells only -- one batched transaction, never one
-    write per cell. Raises on any real failure; the caller decides how to log/record it.
-    Never called while holding _LAST_VALID_GEX_CELLS_LOCK (see LOCK DISCIPLINE above)."""
-    import sqlite3
-    tk = ticker_storage_key(ticker)
-    if not tk or not cells:
-        return
-    rows = [
-        (tk, float(c["strike"]), str(c["expiry"]), c.get("gex"), c.get("dex"), c.get("vanna"),
-         float(c["captured_ts_utc"]))
-        for c in cells
-    ]
-    conn = sqlite3.connect(str(db_path), timeout=GAMMA_LAST_VALID_DB_TIMEOUT_SEC)
-    try:
-        conn.executescript(GAMMA_LAST_VALID_TABLE_SQL)
-        conn.commit()
-        conn.executemany(
-            "INSERT OR REPLACE INTO gamma_surface_last_valid "
-            "(ticker, strike, expiry, gex, dex, vanna, captured_ts_utc) VALUES (?,?,?,?,?,?,?)",
-            rows,
-        )
-        conn.commit()
-    finally:
-        conn.close()
 
 
 def _hydrate_last_valid_gex_cells(tk: str) -> dict[tuple[float, str], dict]:
@@ -14601,7 +14562,7 @@ def _hydrate_last_valid_gex_cells(tk: str) -> dict[tuple[float, str], dict]:
         if tk in _LAST_VALID_GEX_CELLS_HYDRATED:
             return _LAST_VALID_GEX_CELLS.setdefault(tk, {})
     try:
-        loaded = _load_gamma_surface_last_valid_from_db(get_db().db_path, tk)
+        loaded = get_db().load_gamma_surface_last_valid(tk)
     except Exception as e:
         _record_last_valid_gex_error(tk, "hydrate", e)
         loaded = {}
@@ -14631,7 +14592,7 @@ def _flush_last_valid_gex_cells_to_db(tk: str) -> None:
         for k, v in store_snapshot.items()
     ]
     try:
-        _persist_gamma_surface_last_valid_to_db(get_db().db_path, ticker=tk, cells=cells)
+        get_db().persist_gamma_surface_last_valid(ticker=tk, cells=cells)
     except Exception as e:
         _record_last_valid_gex_error(tk, "flush", e)
 

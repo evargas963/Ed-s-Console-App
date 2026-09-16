@@ -281,15 +281,24 @@
   function render(host, barsData, strikesData, terrain) {
     var bars = (barsData && barsData.bars) || [];
     var srows = (strikesData && strikesData.today && strikesData.today.all) || [];
-    var spot = Number((terrain && terrain.spot) != null ? terrain.spot : (strikesData && strikesData.spot));
+    // ONE spot faucet (operator directive, 2026-09-15, repo-wide audit): this used to fall
+    // back to strikesData.spot whenever terrain.spot was missing -- but /api/terrain/strikes
+    // and /api/terrain are two SEPARATE fetches, each independently resolved server-side, so
+    // that fallback could silently display a DIFFERENT observation generation's spot than the
+    // one the rest of this chart's overlays (flip/call-wall/put-wall, all sourced from
+    // `terrain`) were computed against. terrain is this chart's one canonical price-context
+    // payload; if it did not supply a spot this cycle, the existing isFinite(spot) guards
+    // below already render '-' and skip the spot line/label -- the same "no valid current
+    // snapshot" treatment every other gamma surface in this app already uses, not a new
+    // behavior. Never silently substitutes a different endpoint's number.
+    var spot = Number(terrain && terrain.spot);
     // Operator directive (2026-09-14, spot 360 audit): every payload already carries WHICH
     // spot authority answered it (resolve_spot's own design intent, "so a divergence is
     // impossible to hide") -- this was computed server-side but never shown anywhere. Reading
     // it here and rendering it below is how the NEXT divergence, if the plane/REST/stored
     // hierarchy ever disagrees again, is visible on screen instead of requiring a screenshot
     // comparison to notice.
-    var spotSource = (terrain && terrain.spot != null) ? terrain.spot_source
-      : (strikesData ? strikesData.spot_source : null);
+    var spotSource = terrain ? terrain.spot_source : null;
     if (!bars.length && !srows.length) {
       host.innerHTML = '<div class="placeholder"><div class="sm">' +
         (barsData || strikesData ? 'no bars / per-strike gamma for this symbol' : 'no console serving /api/bars1m + /api/terrain/strikes') + '</div></div>';

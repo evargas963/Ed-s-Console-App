@@ -140,6 +140,64 @@ def console_binding_violations(text: str) -> list[str]:
     return out
 
 
+_JS_SPOT_ACCESS_RE = re.compile(r"([A-Za-z_$][\w$]*)\.spot\b")
+
+
+def ed_js_dual_spot_fallback_violations(files: dict[str, str]) -> list[str]:
+    """Generalized RC-225 dual-age-fallback check for the rebuilt console's per-file spot
+    reads (static/js/ed-*.js). console_binding_violations's own docstring already named this
+    as a real gap ("a real equivalent structural lock for that pattern is future work, not
+    reproduced here") after fixing ed-trade-desk.js's own instance of it by hand -- this closes
+    that gap. No shared currentSpot()-shaped function exists in this architecture (each file
+    reads its own already-resolve_spot()-backed endpoint response inline, per call site), so
+    the chart/exposure-shaped scanners above cannot apply structurally, but the underlying
+    defect (a spot value chosen from whichever of two independently-fetched payloads happens
+    to be present -- which can reflect two different observation instants even when both trace
+    back to resolve_spot on the backend) can still occur, and did: static/js/ed-gamma-chart.js
+    read `(terrain && terrain.spot) != null ? terrain.spot : (strikesData && strikesData.spot)`
+    (independent git review, 2026-09-15) -- /api/terrain and /api/terrain/strikes are two
+    SEPARATE fetches, each independently resolved server-side. Fixed to read spot from exactly
+    one endpoint (terrain), letting the existing isFinite(spot) guards handle absence honestly
+    instead of silently substituting a different endpoint's number.
+
+    Flags any single line combining two DIFFERENT identifiers' `.spot` reads with a fallback
+    operator (?, :, ||, ??) -- a per-line heuristic, matching this codebase's own one-statement-
+    per-line style (confirmed against the actual bug above). Names both identifiers so a
+    genuine multi-source computation (rare, and should be reviewed either way, not silently
+    passed) is visible in the failure message rather than silently allowed."""
+    out: list[str] = []
+    for rel, text in files.items():
+        code = _strip_comments(text)
+        for i, line in enumerate(code.split("\n"), 1):
+            idents = {m.group(1) for m in _JS_SPOT_ACCESS_RE.finditer(line)}
+            if len(idents) < 2:
+                continue
+            if re.search(r"\?|\|\||\?\?|:", line):
+                out.append(
+                    f"{rel}:{i}: dual-source spot fallback on one line -- reads .spot from "
+                    f"{sorted(idents)}, combined with a fallback operator (RC-225)"
+                )
+    return out
+
+
+#: static/js/*.js files that read a `.spot` field from a server response at all (found by
+#: grepping the shipped tree, 2026-09-15) -- the actual set ed_js_dual_spot_fallback_violations
+#: scans. A NEW file that reads .spot must be added here for this lock to see it; that is a
+#: known, accepted limitation of this being a fixed list rather than a directory walk (a
+#: directory walk would also pick up test fixtures/vendored JS if any land under static/js/
+#: later -- an explicit list stays a deliberate, reviewable set).
+_ED_JS_SPOT_FILES = (
+    "static/js/ed-core.js",
+    "static/js/ed-gamma.js",
+    "static/js/ed-gamma-chart.js",
+    "static/js/ed-gamma-levels.js",
+    "static/js/ed-gamma-panels.js",
+    "static/js/ed-gamma-chain.js",
+    "static/js/ed-trade-desk.js",
+    "static/js/ed-liquidity-map.js",
+)
+
+
 def scan_tracked_static(repo: Path | None = None) -> list[str]:
     root = repo if repo is not None else REPO
     out: list[str] = []
@@ -154,4 +212,10 @@ def scan_tracked_static(repo: Path | None = None) -> list[str]:
             out.append(f"{rel}: missing")
             continue
         out.extend(scanners[rel](path.read_text(encoding="utf-8", errors="ignore")))
+    ed_js_files: dict[str, str] = {}
+    for rel in _ED_JS_SPOT_FILES:
+        path = root / rel
+        if path.is_file():
+            ed_js_files[rel] = path.read_text(encoding="utf-8", errors="ignore")
+    out.extend(ed_js_dual_spot_fallback_violations(ed_js_files))
     return out

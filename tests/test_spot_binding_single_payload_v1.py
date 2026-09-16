@@ -100,6 +100,47 @@ def test_console_dual_field_injection_screams():
     assert any("last_price" in m or "quote_mid" in m or "dual" in m for m in bad), bad
 
 
+def test_ed_js_dual_spot_fallback_injection_screams():
+    """Closes the gap console_binding_violations's own docstring named as future work: the
+    rebuilt console's ed-*.js files have no shared currentSpot()-shaped function, so the old
+    chart/exposure scanners cannot apply structurally, but the same defect they exist to ban
+    (a spot value chosen from whichever of two independently-fetched payloads happens to be
+    present) can still occur -- and did, in static/js/ed-gamma-chart.js (independent git
+    review, 2026-09-15). This exact line, taken from that bug before it was fixed, must
+    scream."""
+    bad = L.ed_js_dual_spot_fallback_violations({
+        "static/js/ed-gamma-chart.js":
+            "var spot = Number((terrain && terrain.spot) != null ? terrain.spot "
+            ": (strikesData && strikesData.spot));",
+    })
+    assert any("terrain" in m and "strikesData" in m for m in bad), bad
+
+
+def test_ed_js_single_spot_source_is_clean():
+    """Negative control: a single source's .spot read on its own (however it is guarded or
+    combined with other, non-.spot fallbacks) must never trip the dual-source lock -- it exists
+    to ban TWO DIFFERENT identifiers' .spot fields feeding one fallback, not any use of the
+    word at all."""
+    bad = L.ed_js_dual_spot_fallback_violations({
+        "static/js/ed-gamma-chart.js":
+            "var spot = Number(terrain && terrain.spot);\n"
+            "var x = terrain.spot != null ? terrain.spot : null;\n",
+    })
+    assert bad == [], bad
+
+
+def test_shipped_ed_js_spot_binding_is_clean():
+    """The actual shipped file set, not a synthetic fixture -- proves the fixed
+    ed-gamma-chart.js (and every other ed-*.js this lock now scans) is clean today."""
+    files = {}
+    for rel in L._ED_JS_SPOT_FILES:
+        path = ROOT / rel
+        if path.is_file():
+            files[rel] = path.read_text(encoding="utf-8", errors="ignore")
+    bad = L.ed_js_dual_spot_fallback_violations(files)
+    assert bad == [], bad
+
+
 def test_exposure_fallback_injection_screams():
     bad = L.exposure_binding_violations(
         "function currentSpot() { return liveSpot; }\n"
