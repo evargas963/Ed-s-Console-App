@@ -12623,9 +12623,28 @@ def refresh_gamma_surface_from_stream(contract_symbol: str, ts_recv: float) -> s
                 return "no_cached_ticker"
             payload = _terrain_cache.get(tk) or {}
             base_contracts = payload.get("_contracts_rest")
-            spot = payload.get("_contracts_rest_spot")
+            _rest_spot_fallback = payload.get("_contracts_rest_spot")
             read_generation = payload.get("_contracts_rest_computed_ts")
-        if not base_contracts or not spot:
+        if not base_contracts:
+            return "no_rest_baseline"
+        # ONE spot faucet (operator directive, 2026-09-15): "streamed GEX must use the
+        # canonical fresh spot, not the REST-cycle spot." This eager path used to read
+        # `_contracts_rest_spot` -- a value cached from the LAST wide-chain REST cycle
+        # (up to ~TERRAIN_REFRESH_SEC stale) -- even though the whole point of this function
+        # is that a streamed tick can be materially newer than that cycle. resolve_spot is
+        # the SAME single authority _terrain_refresh_one itself calls (RC-14): it already
+        # prioritizes the live streaming plane (live_market_plane) over any REST value, so a
+        # tick arriving after spot itself has moved recomputes GEX against the CURRENT price,
+        # not a stale snapshot -- never a second, independently-selected spot source.
+        spot, spot_source, spot_ts = resolve_spot(tk)
+        if spot is None:
+            # Last-resort degrade, never a silent second authority: only when the canonical
+            # resolver itself has nothing (no live plane, no REST quote, no stored snapshot)
+            # does this fall back to the REST cycle's own already-canonically-resolved spot.
+            spot = _rest_spot_fallback
+            spot_source = payload.get("spot_source")
+            spot_ts = payload.get("spot_as_of_ts_utc")
+        if not spot:
             return "no_rest_baseline"
         from math_exposure_core import overlay_streamed_contract_fields
         streamed = _desired_stream_greeks_for_ticker(tk)
@@ -12645,11 +12664,26 @@ def refresh_gamma_surface_from_stream(contract_symbol: str, ts_recv: float) -> s
         new_per_strike = _per_strike_view_from_contracts(overlaid, spot)
         _overlaid_syms_now = _overlaid_symbols(base_contracts, overlaid)
         if new_surface is not None:
+            # ONE spot faucet (operator directive, 2026-09-15): stamp the EXACT resolve_spot
+            # result this cycle used, same convention as _terrain_refresh_one's own stamp --
+            # a reader of this surface (by its own surface_seq generation) sees the identical
+            # value/source/as-of that actually produced these numbers, never a mix of "cells
+            # computed from a fresh plane tick" and "top-level spot field still showing the
+            # last REST cycle's number."
+            new_surface["spot"] = float(spot)
+            new_surface["spot_source"] = spot_source
+            new_surface["spot_as_of_ts_utc"] = spot_ts
             # Always-live heatmap mandate (2026-09-15): the eager per-tick refresh path gets
             # the SAME per-cell stream-state stamp as the REST cycle (_terrain_refresh_one) --
             # this is the path a genuinely fresh tick actually takes, so it is the one MOST
             # likely to move a cell from 'stale'/'unavailable' into 'live'.
             _stamp_gamma_surface_cell_stream_state(new_surface, streamed, set(_overlaid_syms_now))
+            try:
+                # Best-effort enhancement -- a bug here must never block publishing an
+                # otherwise-genuinely-fresh eager refresh.
+                _backfill_gex_cells_from_last_valid(tk, new_surface)
+            except Exception as _bf_e:  # institutional-swallow-ok: never load-bearing
+                log.debug("gex snapshot backfill skipped for %s: %s", tk, _bf_e)
         # RC-UI-2 latency label (independent-review finding 2026-09-12): this timestamp is the
         # instant the OVERLAID computation finished and was about to be offered for cache
         # publication — it is NOT when the browser received or rendered anything, and it
@@ -12845,12 +12879,27 @@ def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
                     tk, contracts, newer_than_ts=_rest_fetch_ts)
                 payload["_gamma_surface"] = project_gamma_surface(_overlaid_contracts, float(spot))
                 if payload["_gamma_surface"] is not None:
+                    # ONE spot faucet (operator directive, 2026-09-15): stamp the EXACT spot
+                    # value/source/as-of this cycle's `resolve_spot` call above already
+                    # resolved, onto the surface object itself -- so a reader of THIS surface
+                    # (this exact surface_seq generation) never has to separately ask "what
+                    # spot produced these numbers"; it travels with the generation, identical
+                    # to what every other resolve_spot consumer in this same cycle saw.
+                    payload["_gamma_surface"]["spot"] = float(spot)
+                    payload["_gamma_surface"]["spot_source"] = spot_source
+                    payload["_gamma_surface"]["spot_as_of_ts_utc"] = spot_ts
                     # Always-live heatmap mandate (2026-09-15): stamp per-cell stream state on
                     # EVERY cycle, even when _overlay_n == 0 -- a cell must still be told apart
                     # as 'stale' (desired but not fresh) vs 'unavailable' (never desired) even
                     # when nothing was fresh enough to overlay this particular cycle.
                     _stamp_gamma_surface_cell_stream_state(
                         payload["_gamma_surface"], _desired_stream_greeks_for_ticker(tk), set(_overlay_syms))
+                    try:
+                        # Best-effort enhancement, like the overlay above -- a bug here must
+                        # never take down an otherwise-freshly-computed, valid surface.
+                        _backfill_gex_cells_from_last_valid(tk, payload["_gamma_surface"])
+                    except Exception as _bf_e:  # institutional-swallow-ok: never load-bearing
+                        log.debug("gex snapshot backfill skipped for %s: %s", tk, _bf_e)
                 if _overlay_n:
                     # RC-UI-2/finding#2 fix (independent review, 2026-09-12, REPRODUCED): the
                     # heatmap and the Strike Detail / GEX-by-strike panel disagreed on the SAME
@@ -14401,6 +14450,135 @@ def get_exposure_book(ticker: str = Query(default=DEFAULT_TICKER)):
 # banked MORNING wide reference (one DB read, 5-min cache) — labelled stale/not-intraday, never live.
 _GAMMA_SURFACE_CACHE: dict = {}
 
+#: Operator directive (2026-09-15, canonical input-validity rules): "If current inputs are
+#: invalid, display the latest valid timestamped snapshot for that cell. Show — only if no
+#: valid current or historical snapshot exists... current vendor failure must not erase
+#: previously valid data." Per (ticker, strike, expiry) last-known-VALID gex/dex/vanna.
+#:
+#: MUST survive a process restart (operator directive, 2026-09-15, second pass): this
+#: in-memory dict is a WRITE-THROUGH CACHE of calibration.option_chain_morning_full's
+#: gamma_surface_last_valid table -- the SAME database file, SAME module, and SAME
+#: accrual-style conventions option_chain_accrual (RC-159) already established for exactly
+#: this class of problem (durable, always-latest, per-ticker banked observations), not a
+#: second, disconnected persistence authority. Reads stay in-memory (fast, no per-cell DB
+#: hit on every cycle); a ticker is lazily rehydrated from the DB on its first use since this
+#: process started, and updates are flushed back to the DB in one batched transaction per
+#: ticker, throttled the same way _accrue_chain_observation throttles its own writes
+#: (_GAMMA_LAST_VALID_DB_WRITE_FLOOR_SEC) so an actively-streaming ticker's eager per-tick
+#: refresh path does not turn into a write on every single tick.
+_LAST_VALID_GEX_CELLS: dict[str, dict[tuple[float, str], dict]] = {}
+_LAST_VALID_GEX_CELLS_LOCK = threading.Lock()
+_LAST_VALID_GEX_CELLS_HYDRATED: set[str] = set()
+_LAST_VALID_GEX_CELLS_DB_WRITE_TS: dict[str, float] = {}
+GAMMA_LAST_VALID_DB_WRITE_FLOOR_SEC = 20.0
+
+
+def _hydrate_last_valid_gex_cells(tk: str) -> dict[tuple[float, str], dict]:
+    """Caller must hold _LAST_VALID_GEX_CELLS_LOCK. Loads `tk`'s durable snapshot from the DB
+    exactly once per process lifetime (first access after a cold start); every later call for
+    an already-hydrated ticker is a pure in-memory dict lookup, same cost as before this
+    table existed."""
+    if tk in _LAST_VALID_GEX_CELLS_HYDRATED:
+        return _LAST_VALID_GEX_CELLS.setdefault(tk, {})
+    from calibration.option_chain_morning_full import load_gamma_surface_last_valid
+    try:
+        loaded = load_gamma_surface_last_valid(get_db().db_path, tk)
+    except Exception as e:  # institutional-swallow-ok: durability is best-effort, never load-bearing
+        log.debug("gamma-surface last-valid DB hydrate failed for %s: %s", tk, e)
+        loaded = {}
+    store = _LAST_VALID_GEX_CELLS.setdefault(tk, {})
+    for key, val in loaded.items():
+        store.setdefault(key, val)   # a same-process value (should not exist yet) always wins
+    _LAST_VALID_GEX_CELLS_HYDRATED.add(tk)
+    return store
+
+
+def _flush_last_valid_gex_cells_to_db(tk: str, store: dict[tuple[float, str], dict]) -> None:
+    """Caller must hold _LAST_VALID_GEX_CELLS_LOCK. Throttled durability checkpoint -- the
+    in-memory store is already the live source of truth for this process; this only makes
+    sure a LATER restart does not lose it. Best-effort: a failed/skipped flush leaves the
+    in-memory store (and therefore the live response) completely unaffected."""
+    now = time.time()
+    last = _LAST_VALID_GEX_CELLS_DB_WRITE_TS.get(tk, 0.0)
+    if now - last < GAMMA_LAST_VALID_DB_WRITE_FLOOR_SEC:
+        return
+    _LAST_VALID_GEX_CELLS_DB_WRITE_TS[tk] = now
+    from calibration.option_chain_morning_full import persist_gamma_surface_last_valid
+    cells = [
+        {"strike": k[0], "expiry": k[1], "gex": v["gex"], "dex": v["dex"], "vanna": v["vanna"],
+         "captured_ts_utc": v["captured_ts_utc"]}
+        for k, v in store.items()
+    ]
+    try:
+        persist_gamma_surface_last_valid(get_db().db_path, ticker=tk, cells=cells)
+    except Exception as e:  # institutional-swallow-ok: durability is best-effort, never load-bearing
+        log.debug("gamma-surface last-valid DB flush failed for %s: %s", tk, e)
+
+
+def _backfill_gex_cells_from_last_valid(tk: str, surface: dict) -> None:
+    """Canonical input-validity/data-authority fix (operator directive, 2026-09-15) -- the
+    ONE place a cell's gex/dex/vanna falls back to its last known valid snapshot instead of
+    a bare None, so the endpoint/heatmap never has to special-case this per-ticker (SPX
+    included) or in the presentation layer. Mutates `surface["cells"]` in place, then
+    recomputes `surface`'s own gamma_available/cells_with_data/gamma_unavailable_reason so a
+    ticker whose CURRENT cycle has zero valid cells (SPX, 2026-09-14/15: real OI outage or
+    all-invalid-greeks) but a real history still reports available=True from the snapshot.
+
+    Never invents a value: a cell with no prior valid snapshot AND no current one stays None
+    (the endpoint's existing '—' path). Never mutates a CURRENTLY valid cell -- backfill is
+    strictly additive to what would otherwise be absent, and a valid cell's own fresh value
+    always updates the store for the NEXT cycle that needs it, so a snapshot itself is never
+    re-stamped as a fresher snapshot (store writes only happen from real, current data)."""
+    expirations = surface.get("expirations") or []
+    exp_keys = [e.get("expiry") for e in expirations]
+    now = time.time()
+    with _LAST_VALID_GEX_CELLS_LOCK:
+        store = _hydrate_last_valid_gex_cells(tk)
+        cells_with_data = 0
+        cells_with_oi_but_invalid_greeks = 0
+        wrote_new = False
+        for cell in (surface.get("cells") or []):
+            strike = cell.get("strike")
+            gex_row, dex_row, vanna_row = cell.get("gex") or [], cell.get("dex") or [], cell.get("vanna") or []
+            snapshot_row = cell.setdefault("value_snapshot_ts_utc", [None] * len(exp_keys))
+            for j, exp in enumerate(exp_keys):
+                if j >= len(gex_row):
+                    continue
+                key = (strike, exp)
+                if gex_row[j] is not None:
+                    # Current, real data this cycle -- the ONE write path for this key. Vanna
+                    # can legitimately be None (no IV/TTE) even when gex/dex are real; stored
+                    # as-is, never fabricated on the way in.
+                    store[key] = {
+                        "gex": gex_row[j],
+                        "dex": dex_row[j] if j < len(dex_row) else None,
+                        "vanna": vanna_row[j] if j < len(vanna_row) else None,
+                        "captured_ts_utc": now,
+                    }
+                    cells_with_data += 1
+                    wrote_new = True
+                    continue
+                snap = store.get(key)
+                if snap is None:
+                    continue   # never valid, current or historical -- stays None ('—')
+                gex_row[j] = snap["gex"]
+                if j < len(dex_row):
+                    dex_row[j] = snap["dex"]
+                if j < len(vanna_row):
+                    vanna_row[j] = snap["vanna"]
+                snapshot_row[j] = snap["captured_ts_utc"]
+                cells_with_data += 1
+                cells_with_oi_but_invalid_greeks += 1
+        if wrote_new:
+            _flush_last_valid_gex_cells_to_db(tk, store)
+    surface["gamma_available"] = cells_with_data > 0
+    surface["cells_with_data"] = cells_with_data
+    surface["cells_with_oi_but_invalid_greeks"] = cells_with_oi_but_invalid_greeks
+    if cells_with_data > 0:
+        surface["gamma_unavailable_reason"] = None
+    # else: leave project_gamma_surface's own honest reason (no OI at all / invalid greeks
+    # this cycle) exactly as it was -- backfill found nothing to offer either.
+
 
 def project_gamma_surface(chain: list, spot: float) -> dict:
     """PURE projection of a wide chain into a strike × expiry net_gex_1pct grid.
@@ -14487,6 +14665,7 @@ def project_gamma_surface(chain: list, spot: float) -> dict:
     cells = []
     cells_with_data = 0
     cells_total = 0
+    cells_with_oi_but_invalid_greeks = 0
     for k in strikes:
         row = []
         dex_row = []
@@ -14510,24 +14689,38 @@ def project_gamma_surface(chain: list, spot: float) -> dict:
             # has_oi (math_exposure_core.py's own canonical signal, set at the exact point OI
             # actually contributes to the accumulation) is the fix, not a second, independent
             # re-derivation of the same fact from call_oi/put_oi presence.
-            _has_data = bool(bucket is not None and bucket.get("has_oi"))
-            if _has_data:
+            #
+            # Operator directive (2026-09-15, canonical input-validity rules): has_oi alone is
+            # NOT enough to trust net_gex_1pct/net_dex_dollars/vanna -- live-reproduced 2026-
+            # 09-15: SPY/QQQ 0DTE ITM puts carry perfectly real OI while Schwab's own reported
+            # greeks for them are internally self-contradictory (delta=-1.0, gamma=0.0, vega=
+            # 0.0 alongside a real-looking IV) -- has_valid_gamma (math_exposure_core.py, set
+            # only when a contract's greeks actually passed vendor_greeks_unavailable/
+            # gamma_is_plausible AND contributed) is the independent, additional gate the
+            # gamma/delta-DERIVED fields need; OI/Volume below are untouched by it since they
+            # never depended on greeks at all.
+            _has_oi = bool(bucket is not None and bucket.get("has_oi"))
+            _has_gex_data = bool(_has_oi and bucket.get("has_valid_gamma"))
+            if _has_gex_data:
                 cells_with_data += 1
-            row.append(_bf(bucket.get("net_gex_1pct")) if _has_data else None)
-            dex_row.append(_bf(bucket.get("net_dex_dollars")) if _has_data else None)
+            elif _has_oi:
+                cells_with_oi_but_invalid_greeks += 1
+            row.append(_bf(bucket.get("net_gex_1pct")) if _has_gex_data else None)
+            dex_row.append(_bf(bucket.get("net_dex_dollars")) if _has_gex_data else None)
             # call_vanna/put_vanna are pre-initialized to a real 0.0 by _strike_bucket
             # (compute_exposures_by_strike, math_exposure_core.py) -- the SAME accumulator
-            # shape net_gex_1pct/net_dex_dollars have, and the SAME _has_data gate above now
-            # applies here too (see that comment: a 0.0 default with no OI ever added to it
-            # is not a computed zero). call_oi/put_oi/call_volume/put_volume, right below, are
-            # the genuinely-optional fields and correctly keep their own None-preserving .get().
+            # shape net_gex_1pct/net_dex_dollars have, and the SAME _has_gex_data gate above
+            # now applies here too (see that comment: a 0.0 default with no OI ever added to
+            # it is not a computed zero). call_oi/put_oi/call_volume/put_volume, right below,
+            # are the genuinely-optional fields and correctly keep their own None-preserving
+            # .get(), ungated by greeks validity (they never depended on greeks).
             # NOT _bf: that helper rounds to the nearest WHOLE unit, correct for gex/dex's
             # dollar magnitudes above but not for vanna's own much smaller per-vol-point scale
             # (a real net vanna of 0.4 rounded to 0 loses sign and all magnitude). Rounded to 2
             # decimals instead, matching /api/options/vanna-by-strike's own rounding of the
             # identical call_vanna-put_vanna quantity from this same faucet -- reproduced live:
             # the two endpoints showed materially different pictures of the same strike/vanna.
-            _vn = bucket["call_vanna"] - bucket["put_vanna"] if _has_data else None
+            _vn = bucket["call_vanna"] - bucket["put_vanna"] if _has_gex_data else None
             vanna_row.append(round(_vn, 2) if _vn is not None else None)
             call_oi, put_oi = (bucket or {}).get("call_oi"), (bucket or {}).get("put_oi")
             oi_row.append({"call": _bf(call_oi), "put": _bf(put_oi)} if bucket is not None else {"call": None, "put": None})
@@ -14549,15 +14742,31 @@ def project_gamma_surface(chain: list, spot: float) -> dict:
     # usable OI (exactly the live SPX case this was written from) -- gamma_available is
     # gated on cells_with_data specifically, the same signal each cell's own _has_data used.
     gamma_available = cells_with_data > 0
+    # Operator directive (2026-09-15, canonical input-validity rules): the OLD single "no
+    # usable open interest" wording covered BOTH a real OI outage (SPX, 2026-09-14: the
+    # vendor reports zero OI) AND an invalid-greeks-only outage (SPY/QQQ 0DTE ITM puts,
+    # 2026-09-15: OI is real, the vendor's greeks for it are internally self-contradictory)
+    # as if they were the same fact -- an operator reading `gamma_unavailable_reason` could
+    # not tell "there is nothing here" from "there is real interest but Schwab's greeks for
+    # it are unusable right now". Both counts are diagnostic-only, never load-bearing for any
+    # gate (gamma_available/cells_with_data above are the actual authorities).
+    if gamma_available:
+        _reason = None
+    elif cells_with_oi_but_invalid_greeks > 0:
+        _reason = (
+            "real open interest exists but Schwab's own reported greeks for it are invalid "
+            "this cycle ({} of {} strike×expiry cells have OI with unusable greeks)"
+        ).format(cells_with_oi_but_invalid_greeks, cells_total)
+    else:
+        _reason = "no usable open interest in this chain (0 of {} strike×expiry cells)".format(cells_total)
     return {
         "expirations": expirations, "strikes": strikes, "cells": cells,
         "contracts_total": total_contracts, "contracts_used": contracts_used,
         "contracts_excluded_malformed_expiry": excluded_malformed,
         "gamma_available": gamma_available,
-        "gamma_unavailable_reason": (
-            None if gamma_available else
-            "no usable open interest in this chain (0 of {} strike×expiry cells)".format(cells_total)
-        ),
+        "gamma_unavailable_reason": _reason,
+        "cells_total": cells_total,
+        "cells_with_oi_but_invalid_greeks": cells_with_oi_but_invalid_greeks,
     }
 
 
@@ -14628,9 +14837,19 @@ def get_options_gamma_surface(ticker: str = Query(default=DEFAULT_TICKER)):
             "cell_stream_state_counts": _cell_state_counts,
             "stream_confirmed_live": _cell_state_counts["live"] > 0,
             "degraded": live.get("levels_stale_reason") if stale else None,
-            "spot": live.get("spot"), "spot_source": live.get("spot_source"),
+            # ONE spot faucet (operator directive, 2026-09-15): prefer the spot stamped
+            # directly ON THIS SURFACE (by _terrain_refresh_one's REST cycle OR the eager
+            # per-tick refresh_gamma_surface_from_stream, whichever produced this exact
+            # surface_seq generation) over the top-level terrain payload's own spot fields --
+            # the eager path can legitimately publish a NEWER resolve_spot value than the
+            # REST cycle's own `live.get("spot")` without the top-level fields having caught
+            # up, and this surface's own cells were computed from ITS stamp, not the top
+            # level's. Falls back to the top-level fields only for a surface predating this
+            # stamp (never expected in production, kept for defensive compatibility).
+            "spot": surf.get("spot", live.get("spot")),
+            "spot_source": surf.get("spot_source", live.get("spot_source")),
             "chain_as_of_ts_utc": live.get("computed_ts_utc"),
-            "spot_as_of_ts_utc": live.get("spot_as_of_ts_utc"),
+            "spot_as_of_ts_utc": surf.get("spot_as_of_ts_utc", live.get("spot_as_of_ts_utc")),
             "age_sec": live.get("levels_age_sec"),            # terrain's canonical age
             "refresh_active": live.get("levels_refresh_active"),
             "chain_basis": live.get("chain_basis"),

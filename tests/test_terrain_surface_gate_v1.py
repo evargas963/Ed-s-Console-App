@@ -82,9 +82,18 @@ def test_producer_gates_projection_on_demand(monkeypatch):
     # how many -- so the heatmap can bind 'observed' coverage to a specific column's own
     # demanded contracts (see _overlaid_symbols in server.py); empty here for the same
     # reason the count is zero.
+    # ONE spot faucet (2026-09-15): the SAME resolve_spot(t) call this cycle already made
+    # (stubbed above to (100.0, "stub", 0.0)) is now stamped onto the surface object itself,
+    # so a reader of this exact generation never has to ask a second source what spot
+    # produced it. Canonical input-validity rules (2026-09-15): _backfill_gex_cells_from_
+    # last_valid always stamps gamma_available/cells_with_data/cells_with_oi_but_invalid_
+    # greeks on every surface it touches (even this stubbed, cell-less one) -- 0/0/False for
+    # a surface with no cells at all, same as a real all-invalid outage would show.
     assert _cached_surface(tk) == {
         "expirations": [], "strikes": [], "cells": [], "stream_overlay_contracts": 0,
         "stream_overlay_symbols": [], "surface_seq": 1,
+        "spot": 100.0, "spot_source": "stub", "spot_as_of_ts_utc": 0.0,
+        "gamma_available": False, "cells_with_data": 0, "cells_with_oi_but_invalid_greeks": 0,
     }
 
     server._gamma_surface_demand.pop(tk, None)

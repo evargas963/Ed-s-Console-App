@@ -51,14 +51,52 @@ def schwab_iv_to_sigma(iv: float | None) -> float | None:
     return iv / 100.0 if iv > 3.0 else iv
 
 
-def gamma_is_plausible(gamma: float | None, delta: float | None = None) -> bool:
+def vendor_greeks_unavailable(*, iv: float | None = None, gamma: float | None = None,
+                               delta: float | None = None, vega: float | None = None) -> bool:
+    """Operator directive (2026-09-15, canonical input-validity rules): True when Schwab's
+    OWN reported fields indicate this contract's greeks are NOT a genuine live computation --
+    never a fabricated $0, never accepted as a real zero.
+
+    Two independent tells, both read directly off the vendor's own wire fields (never a
+    strike-vs-spot moneyness judgment -- operator directive: no "was this genuinely deep
+    ITM" heuristic):
+
+    1. ``iv == MISSING_GREEK_SENTINEL`` (Schwab's documented -999 missing-greek marker on
+       `volatility`) means EVERY greek on this contract is invalid, not just IV itself --
+       "IV = -999 means invalid vendor Greeks. That contract must not contribute $0."
+
+    2. Internally self-contradictory output: `gamma` AND `vega` both EXACTLY 0.0 while
+       `delta` sits at an EXACT numeric boundary (|delta| == 1.0). In a genuine Black-
+       Scholes-consistent quote, gamma and vega share the identical zero-condition
+       (N'(d1) == 0) — they cannot be independently real, so a contract reporting both
+       exactly zero while ALSO reporting a real-looking bid/ask/last and a plausible IV
+       (live-reproduced 2026-09-15: SPY/QQQ 0DTE puts at/above spot showing delta=-1.0,
+       gamma=0.0, vega=0.0 alongside a smoothly-varying real-looking IV curve) is Schwab's
+       engine collapsing to a degenerate fallback, not a real deep-ITM/OTM measurement — a
+       genuinely near-zero-gamma contract's delta APPROACHES its boundary asymptotically,
+       it does not float-EQUAL it. Applied uniformly to every delta magnitude, never
+       conditioned on how far the strike sits from spot.
+    """
+    if iv is not None and iv == MISSING_GREEK_SENTINEL:
+        return True
+    if (gamma == 0.0 and vega == 0.0 and delta is not None and math.isfinite(delta)
+            and abs(abs(delta) - 1.0) < 1e-9):
+        return True
+    return False
+
+
+def gamma_is_plausible(gamma: float | None, delta: float | None = None, *,
+                        iv: float | None = None, vega: float | None = None) -> bool:
     """True when ``gamma`` is usable in OI-weighted gamma aggregation.
 
     Rejects: None, MISSING_GREEK_SENTINEL, non-finite, negative, above
-    ``GAMMA_PLAUSIBLE_MAX``, and non-near-zero gamma when ``|delta|`` is deep
-    ITM/OTM (``>= DELTA_DEEP_ABS_FOR_GAMMA``). OI-only metrics should still
-    include the contract when gamma is rejected.
+    ``GAMMA_PLAUSIBLE_MAX``, non-near-zero gamma when ``|delta|`` is deep
+    ITM/OTM (``>= DELTA_DEEP_ABS_FOR_GAMMA``), and (2026-09-15) anything
+    `vendor_greeks_unavailable` flags -- see that function's own docstring.
+    OI-only metrics should still include the contract when gamma is rejected.
     """
+    if vendor_greeks_unavailable(iv=iv, gamma=gamma, delta=delta, vega=vega):
+        return False
     if gamma is None or gamma == MISSING_GREEK_SENTINEL or not math.isfinite(gamma):
         return False
     if gamma < 0.0 or gamma > GAMMA_PLAUSIBLE_MAX:
@@ -154,6 +192,17 @@ def _strike_bucket(exposures_by_strike: Dict[float, dict], strike: float) -> dic
             # a computed value, not re-derive presence from call_oi/put_oi being non-None
             # (equivalent today, but a second definition of the same fact is how these drift).
             "has_oi": False,
+            # Operator directive (2026-09-15, canonical input-validity rules): has_oi answers
+            # "did any contract clear the OI gate"; has_valid_gamma answers the INDEPENDENT
+            # question "did any contract that cleared it ALSO report genuine, vendor-
+            # confirmed-usable greeks" (see vendor_greeks_unavailable). A contract can have
+            # real OI and simultaneously garbage greeks (live-reproduced: SPY/QQQ 0DTE ITM
+            # puts, real OI, delta=-1.0/gamma=0.0) -- conflating the two meant a genuinely
+            # invalid-greeks strike silently rendered as a computed $0 instead of an honest
+            # absence. Never re-derived from call_gamma/put_gamma being nonzero (a REAL
+            # position can net to a genuine zero too -- see net_gex_1pct's own honest-zero
+            # test coverage).
+            "has_valid_gamma": False,
             "call_oi": None,
             "put_oi": None,
             "call_oi_mult": 0.0,
@@ -274,8 +323,16 @@ def compute_exposures_by_strike(
 
         delta = _f(ct.get("delta"))
         gamma = _f(ct.get("gamma"))
-        delta_ok = delta is not None and delta != MISSING_GREEK_SENTINEL and math.isfinite(delta)
-        gamma_ok = gamma_is_plausible(gamma, delta)
+        # Hoisted (2026-09-15, canonical input-validity rules): iv/vega are now read ONCE,
+        # here, and shared by delta_ok/gamma_ok below AND the per-side vanna block further
+        # down (which used to re-read `volatility` a second time, independently, in each of
+        # the CALL/PUT branches -- two reads of the same field is how they could drift).
+        iv = _f(ct.get("volatility"))
+        vega = _f(ct.get("vega"))
+        _vendor_invalid = vendor_greeks_unavailable(iv=iv, gamma=gamma, delta=delta, vega=vega)
+        delta_ok = (delta is not None and delta != MISSING_GREEK_SENTINEL and math.isfinite(delta)
+                    and not _vendor_invalid)
+        gamma_ok = gamma_is_plausible(gamma, delta, iv=iv, vega=vega)
 
         if not delta_ok or not gamma_ok:
             missing += 1
@@ -295,6 +352,7 @@ def compute_exposures_by_strike(
                 b["call_delta"] += delta * oi * mult
             if oi is not None and gamma_ok:
                 b["call_gamma"] += gamma * oi * mult
+                b["has_valid_gamma"] = True
             if oi is not None and spot is not None:
                 spt = float(spot)
                 b["call_oi_dollars"] += oi * mult * spt
@@ -305,8 +363,7 @@ def compute_exposures_by_strike(
                 # RC-211: exact BS vanna from the shared d1/d2 faucet (math_levels.bs_vanna,
                 # independently FD-verified). The prior vega/(S*sigma) shortcut dropped the
                 # -d2 factor: always positive, wrong sign below spot, wrong magnitude.
-                _iv = _f(ct.get("volatility"))
-                _iv_ok = _iv is not None and _iv > 0 and _iv != MISSING_GREEK_SENTINEL and math.isfinite(_iv)
+                _iv_ok = iv is not None and iv > 0 and iv != MISSING_GREEK_SENTINEL and math.isfinite(iv)
                 _T = _tte_memo(ct.get("expirationDate"))
                 if _iv_ok and _T is not None and _T > 0:
                     from math_levels import bs_vanna as _bsv
@@ -314,7 +371,7 @@ def compute_exposures_by_strike(
                     # inline _iv/100.0. Charm (compute_net_charm) and levels (_contract_inputs)
                     # already use schwab_iv_to_sigma; vanna alone re-encoded the raw conversion,
                     # breaking the single-authority guarantee and lacking the >3.0 units-flip guard.
-                    _sig = schwab_iv_to_sigma(_iv)
+                    _sig = schwab_iv_to_sigma(iv)
                     _vn = _bsv(spt, float(strike), _T, _sig) if _sig is not None else None
                     if _vn is not None:
                         b["call_vanna"] += _vn * oi * mult
@@ -327,6 +384,7 @@ def compute_exposures_by_strike(
                 b["put_delta"] += delta * oi * mult
             if oi is not None and gamma_ok:
                 b["put_gamma"] += gamma * oi * mult
+                b["has_valid_gamma"] = True
             if oi is not None and spot is not None:
                 spt = float(spot)
                 b["put_oi_dollars"] += oi * mult * spt
@@ -336,13 +394,12 @@ def compute_exposures_by_strike(
                     b["put_gex_1pct"] += gamma * oi * mult * spt * spt * 0.01   # $-GEX per 1% spot move
                 # RC-211: same exact-vanna faucet as the CALL side (vanna is IDENTICAL for
                 # calls and puts at a strike/expiry — any split comes from OI, never math).
-                _iv = _f(ct.get("volatility"))
-                _iv_ok = _iv is not None and _iv > 0 and _iv != MISSING_GREEK_SENTINEL and math.isfinite(_iv)
+                _iv_ok = iv is not None and iv > 0 and iv != MISSING_GREEK_SENTINEL and math.isfinite(iv)
                 _T = _tte_memo(ct.get("expirationDate"))
                 if _iv_ok and _T is not None and _T > 0:
                     from math_levels import bs_vanna as _bsv
                     # Cursor-audit F7: single IV-conversion authority (see CALL side above).
-                    _sig = schwab_iv_to_sigma(_iv)
+                    _sig = schwab_iv_to_sigma(iv)
                     _vn = _bsv(spt, float(strike), _T, _sig) if _sig is not None else None
                     if _vn is not None:
                         b["put_vanna"] += _vn * oi * mult

@@ -85,6 +85,22 @@ def _surfaces_match_ignoring_vanna_drift(actual, expected, tol=0.1):
 def _clear_cache():
     with server._terrain_cache_lock:
         server._terrain_cache.pop(TK, None)
+    # Canonical input-validity rules (2026-09-15): _LAST_VALID_GEX_CELLS is a module-level,
+    # cross-call snapshot store (by design -- it must survive the very cache pops this helper
+    # performs, in production). Cleared here too so ONE test's real backfilled values never
+    # leak into a LATER test's "expected" comparison, which calls project_gamma_surface
+    # directly and therefore never goes through backfill itself. _HYDRATED is cleared too so
+    # a later test's first backfill call re-hydrates (a real, but harmless and fail-closed-
+    # empty-for-this-ticker, DB read) rather than silently reusing this run's in-memory state.
+    with server._LAST_VALID_GEX_CELLS_LOCK:
+        server._LAST_VALID_GEX_CELLS.pop(TK, None)
+        server._LAST_VALID_GEX_CELLS_HYDRATED.discard(TK)
+        # Pre-throttled (not popped) -- this file's tests are about overlay/refresh semantics,
+        # not DB persistence (see test_canonical_gex_input_validity_v1.py for that proof), so
+        # the durability flush is deliberately kept quiet here: real backfill READS still run
+        # (harmless, read-only, fail-closed to {} for this synthetic ticker), but no test in
+        # this file writes rows into the real dev database.
+        server._LAST_VALID_GEX_CELLS_DB_WRITE_TS[TK] = time.time()
 
 
 def _put_rest_baseline(*, computed_ts_utc=None, contracts=None):
@@ -99,6 +115,22 @@ def _put_rest_baseline(*, computed_ts_utc=None, contracts=None):
             "computed_ts_utc": ts,
         }
     server._gamma_surface_seq.pop(TK, None)
+
+
+def _backfilled(surface):
+    """Canonical input-validity rules (2026-09-15): every production caller of
+    project_gamma_surface in this file's real code path (_terrain_refresh_one,
+    refresh_gamma_surface_from_stream) immediately runs the result through
+    _backfill_gex_cells_from_last_valid -- an "expected" surface built by calling
+    project_gamma_surface directly, as every test below does, must go through the SAME step
+    to be a true mirror of what the real path actually publishes (this real CRWD fixture can
+    itself carry the same vendor-invalid-greeks contracts the canonical gate now excludes;
+    a strike that has no valid value in THIS computation but does in the shared
+    _LAST_VALID_GEX_CELLS store -- already populated by the real call under test -- is
+    correctly backfilled in production and must be here too, or the comparison is against a
+    path production no longer takes)."""
+    server._backfill_gex_cells_from_last_valid(TK, surface)
+    return surface
 
 
 def _drain_l1_sse_thread_queue():
@@ -121,6 +153,15 @@ def _drain_l1_sse_thread_queue():
 
 
 def setup_function(_fn):
+    # Canonical input-validity rules (2026-09-15): _backfill_gex_cells_from_last_valid's DB
+    # hydration calls server.get_db() -- on this PROCESS's first-ever call, that pays a
+    # real, one-time schema-migration cost (can be tens to hundreds of ms). Paid HERE, before
+    # any timing-sensitive assertion, so it never lands inside the tiny real wall-clock gap
+    # these tests compare two independent bs_vanna(t_years) computations across (see
+    # _cells_match_ignoring_vanna_drift's own docstring on that pre-existing sensitivity) --
+    # otherwise the SAME real drift this file already tolerates can occasionally exceed the
+    # fixed 0.1 absolute tolerance purely because migration, not vanna math, ate the gap.
+    server.get_db()
     _clear_cache()
     _drain_l1_sse_thread_queue()
     # RC-UI-3 (2026-09-12): refresh_gamma_surface_from_stream now gathers streamed
@@ -159,6 +200,74 @@ def test_no_rest_baseline_when_the_cache_has_no_stored_contracts(monkeypatch):
     assert refresh_gamma_surface_from_stream(_CONTRACT_SYMBOL, 1.0) == "no_rest_baseline"
 
 
+# ---------------------------------------------------------------------------
+# ONE spot faucet (operator directive, 2026-09-15): "streamed GEX must use the canonical
+# fresh spot, not the REST-cycle spot." This is the eager path that most needs it -- a
+# streamed tick is exactly the case where spot itself may have moved since the last ~60s
+# REST cycle. resolve_spot (RC-14) is the single existing authority every other consumer in
+# this file (_terrain_refresh_one) already calls; these tests prove the eager refresh now
+# calls the SAME function fresh instead of reusing the REST-cycle-cached _contracts_rest_spot.
+# ---------------------------------------------------------------------------
+
+_REST_BASELINE_SPOT = _SPOT   # the REST cycle's own cached spot, from _put_rest_baseline
+
+
+def test_eager_refresh_uses_resolve_spot_not_the_stale_rest_cycle_spot(monkeypatch):
+    _put_rest_baseline(computed_ts_utc=time.time() - 10.0)
+    now = time.time()
+    live = {_CONTRACT_SYMBOL: {"gamma": 0.05, "gamma_ts_recv": now}}
+    monkeypatch.setattr("app.options.order_flow.state.get_stream_greeks", lambda sym: live.get(sym))
+    fresher_spot = _REST_BASELINE_SPOT * 1.10   # a spot that has clearly moved since the REST cycle
+    monkeypatch.setattr(server, "resolve_spot", lambda tk, **kw: (fresher_spot, "streaming_plane", now))
+
+    assert refresh_gamma_surface_from_stream(_CONTRACT_SYMBOL, now) == "ok"
+    with server._terrain_cache_lock:
+        surf = server._terrain_cache[TK]["_gamma_surface"]
+    overlaid, n = overlay_streamed_contract_fields(_CONTRACTS, {_CONTRACT_SYMBOL: {"gamma": 0.05, "gamma_ts_recv": now}})
+    assert n == 1
+    expected = _backfilled(project_gamma_surface(overlaid, fresher_spot))
+    assert _cells_match_ignoring_vanna_drift(surf["cells"], expected["cells"]), (
+        "the eager refresh must recompute against resolve_spot's fresh value, not the REST-cycle spot"
+    )
+    # Never computed from the stale REST-cycle spot -- a real, material difference (10%).
+    expected_from_stale = _backfilled(project_gamma_surface(overlaid, _REST_BASELINE_SPOT))
+    assert not _cells_match_ignoring_vanna_drift(surf["cells"], expected_from_stale["cells"]), (
+        "sanity: fresher_spot must be material enough that using the stale spot would visibly differ"
+    )
+
+
+def test_eager_refresh_stamps_the_resolved_spot_source_and_timestamp():
+    _put_rest_baseline(computed_ts_utc=time.time() - 10.0)
+    now = time.time()
+    live = {_CONTRACT_SYMBOL: {"gamma": 0.05, "gamma_ts_recv": now}}
+    import unittest.mock as _mock
+    with _mock.patch("app.options.order_flow.state.get_stream_greeks", lambda sym: live.get(sym)), \
+         _mock.patch.object(server, "resolve_spot", lambda tk, **kw: (321.5, "streaming_plane", now)):
+        assert refresh_gamma_surface_from_stream(_CONTRACT_SYMBOL, now) == "ok"
+    with server._terrain_cache_lock:
+        surf = server._terrain_cache[TK]["_gamma_surface"]
+    assert surf["spot"] == 321.5
+    assert surf["spot_source"] == "streaming_plane"
+    assert surf["spot_as_of_ts_utc"] == now
+
+
+def test_eager_refresh_falls_back_to_rest_cycle_spot_only_when_resolve_spot_has_nothing():
+    """resolve_spot returning nothing (no live plane, no REST quote, no stored snapshot -- a
+    genuinely cold ticker) degrades to the REST-cycle spot rather than aborting the refresh
+    entirely -- a last-resort fallback, not a second independently-chosen spot authority
+    (the value itself still originated from the SAME resolve_spot call the REST cycle made)."""
+    _put_rest_baseline(computed_ts_utc=time.time() - 10.0)
+    now = time.time()
+    live = {_CONTRACT_SYMBOL: {"gamma": 0.05, "gamma_ts_recv": now}}
+    import unittest.mock as _mock
+    with _mock.patch("app.options.order_flow.state.get_stream_greeks", lambda sym: live.get(sym)), \
+         _mock.patch.object(server, "resolve_spot", lambda tk, **kw: (None, "none", None)):
+        assert refresh_gamma_surface_from_stream(_CONTRACT_SYMBOL, now) == "ok"
+    with server._terrain_cache_lock:
+        surf = server._terrain_cache[TK]["_gamma_surface"]
+    assert surf["spot"] == _REST_BASELINE_SPOT
+
+
 def test_no_streamed_greeks_when_none_were_ever_observed(monkeypatch):
     _put_rest_baseline()
     monkeypatch.setattr(
@@ -193,7 +302,7 @@ def test_a_fresh_streamed_update_recomputes_and_caches_the_overlaid_surface(monk
 
     overlaid, n = overlay_streamed_contract_fields(_CONTRACTS, {_CONTRACT_SYMBOL: streamed})
     assert n == 1
-    expected_surface = project_gamma_surface(overlaid, _SPOT)
+    expected_surface = _backfilled(project_gamma_surface(overlaid, _SPOT))
     expected_per_strike = server._per_strike_view_from_contracts(overlaid, _SPOT)
 
     with server._terrain_cache_lock:
@@ -298,7 +407,7 @@ def test_repeated_eager_refreshes_never_compound_away_from_the_rest_baseline(mon
 
     overlaid, _ = overlay_streamed_contract_fields(
         _CONTRACTS, {_CONTRACT_SYMBOL: {"gamma": 0.22, "gamma_ts_recv": later}})
-    expected = project_gamma_surface(overlaid, _SPOT)
+    expected = _backfilled(project_gamma_surface(overlaid, _SPOT))
     with server._terrain_cache_lock:
         cached = server._terrain_cache[TK]["_gamma_surface"]
         seq = cached["surface_seq"]
@@ -524,7 +633,8 @@ def test_refreshing_b_does_not_undo_a_the_a_then_b_overwrite_reproduction(monkey
         after_a = server._terrain_cache[TK]["_gamma_surface"]
     overlaid_a_only, n_a = overlay_streamed_contract_fields(_CONTRACTS, {_ATM_CONTRACT_A: streamed_a})
     assert n_a == 1
-    assert _cells_match_ignoring_vanna_drift(after_a["cells"], project_gamma_surface(overlaid_a_only, _SPOT)["cells"]), (
+    assert _cells_match_ignoring_vanna_drift(
+        after_a["cells"], _backfilled(project_gamma_surface(overlaid_a_only, _SPOT))["cells"]), (
         "A's own overlay must apply first")
     # Sanity the overlay is not vacuous: A's injected gamma (0.05, real OI=1606) must
     # actually move the published surface away from the untouched REST baseline.
@@ -541,7 +651,7 @@ def test_refreshing_b_does_not_undo_a_the_a_then_b_overwrite_reproduction(monkey
     overlaid_both, n_both = overlay_streamed_contract_fields(
         _CONTRACTS, {_ATM_CONTRACT_A: streamed_a, _ATM_CONTRACT_B: streamed_b})
     assert n_both == 2
-    expected_after_b = project_gamma_surface(overlaid_both, _SPOT)
+    expected_after_b = _backfilled(project_gamma_surface(overlaid_both, _SPOT))
     with server._terrain_cache_lock:
         after_b = server._terrain_cache[TK]["_gamma_surface"]
     assert _cells_match_ignoring_vanna_drift(after_b["cells"], expected_after_b["cells"]), (
@@ -583,7 +693,7 @@ def test_a_dropped_from_the_desired_set_no_longer_lingers_in_a_later_b_refresh(m
     assert refresh_gamma_surface_from_stream(_ATM_CONTRACT_B, now + 0.01) == "ok"
     overlaid_b_only, n_b = overlay_streamed_contract_fields(_CONTRACTS, {_ATM_CONTRACT_B: streamed_b})
     assert n_b == 1
-    expected = project_gamma_surface(overlaid_b_only, _SPOT)
+    expected = _backfilled(project_gamma_surface(overlaid_b_only, _SPOT))
     with server._terrain_cache_lock:
         cached = server._terrain_cache[TK]["_gamma_surface"]
     assert _cells_match_ignoring_vanna_drift(cached["cells"], expected["cells"]), "A must not linger once it truly stops being desired"
