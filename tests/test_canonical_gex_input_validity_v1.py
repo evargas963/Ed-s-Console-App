@@ -390,8 +390,8 @@ def test_a_valid_cell_flushes_to_the_real_db_table_not_a_new_one():
     surface = _surf(100.0, "2026-09-15", 5000, dex=3000, vanna=1.2)
     server._backfill_gex_cells_from_last_valid(tk, surface)   # first write for this ticker -> never throttled
 
-    from calibration.option_chain_morning_full import load_gamma_surface_last_valid
-    rows = load_gamma_surface_last_valid(server.get_db().db_path, tk)
+    from server import _load_gamma_surface_last_valid_from_db
+    rows = _load_gamma_surface_last_valid_from_db(server.get_db().db_path, tk)
     assert rows[(100.0, "2026-09-15")]["gex"] == 5000
     assert rows[(100.0, "2026-09-15")]["dex"] == 3000
     assert rows[(100.0, "2026-09-15")]["vanna"] == 1.2

@@ -251,21 +251,25 @@ def test_eager_refresh_stamps_the_resolved_spot_source_and_timestamp():
     assert surf["spot_as_of_ts_utc"] == now
 
 
-def test_eager_refresh_falls_back_to_rest_cycle_spot_only_when_resolve_spot_has_nothing():
-    """resolve_spot returning nothing (no live plane, no REST quote, no stored snapshot -- a
-    genuinely cold ticker) degrades to the REST-cycle spot rather than aborting the refresh
-    entirely -- a last-resort fallback, not a second independently-chosen spot authority
-    (the value itself still originated from the SAME resolve_spot call the REST cycle made)."""
+def test_eager_refresh_fails_closed_never_falls_back_to_the_rest_cycle_spot(monkeypatch):
+    """Operator directive (2026-09-15, SECOND pass): "Remove the heatmap-local
+    _contracts_rest_spot fallback; a historical spot stamped on a completed surface may
+    remain provenance, but it must not become an alternate current-spot selector." When
+    resolve_spot (the ONE authority) has nothing -- no live plane, no REST quote, no stored
+    snapshot -- this refresh must fail closed, never silently substitute its own cached copy
+    of a past resolve_spot answer as a second spot source."""
     _put_rest_baseline(computed_ts_utc=time.time() - 10.0)
     now = time.time()
     live = {_CONTRACT_SYMBOL: {"gamma": 0.05, "gamma_ts_recv": now}}
-    import unittest.mock as _mock
-    with _mock.patch("app.options.order_flow.state.get_stream_greeks", lambda sym: live.get(sym)), \
-         _mock.patch.object(server, "resolve_spot", lambda tk, **kw: (None, "none", None)):
-        assert refresh_gamma_surface_from_stream(_CONTRACT_SYMBOL, now) == "ok"
+    monkeypatch.setattr("app.options.order_flow.state.get_stream_greeks", lambda sym: live.get(sym))
+    monkeypatch.setattr(server, "resolve_spot", lambda tk, **kw: (None, "none", None))
+
+    assert refresh_gamma_surface_from_stream(_CONTRACT_SYMBOL, now) == "no_current_spot"
     with server._terrain_cache_lock:
+        # The cache must still hold only the untouched REST baseline surface -- no eager
+        # write happened at all, so nothing here can have "fallen back" to anything.
         surf = server._terrain_cache[TK]["_gamma_surface"]
-    assert surf["spot"] == _REST_BASELINE_SPOT
+    assert surf.get("spot") is None, "the REST-cycle baseline in this fixture never stamped its own spot"
 
 
 def test_no_streamed_greeks_when_none_were_ever_observed(monkeypatch):
@@ -296,6 +300,7 @@ def test_a_fresh_streamed_update_recomputes_and_caches_the_overlaid_surface(monk
     monkeypatch.setattr(
         "app.options.order_flow.state.get_stream_greeks",
         lambda sym: streamed if sym == _CONTRACT_SYMBOL else None)
+    monkeypatch.setattr(server, "resolve_spot", lambda tk, **kw: (_SPOT, "stub", time.time()))
 
     status = refresh_gamma_surface_from_stream(_CONTRACT_SYMBOL, now)
     assert status == "ok"
@@ -349,6 +354,7 @@ def test_stream_overlay_symbols_names_only_the_contract_actually_freshened_not_e
         monkeypatch.setattr(
             "app.options.order_flow.state.get_stream_greeks",
             lambda sym: fresh if sym == _CONTRACT_SYMBOL_B else (stale if sym == _CONTRACT_SYMBOL else None))
+        monkeypatch.setattr(server, "resolve_spot", lambda tk, **kw: (_SPOT, "stub", time.time()))
 
         status = refresh_gamma_surface_from_stream(_CONTRACT_SYMBOL_B, now)
         assert status == "ok"
@@ -394,6 +400,7 @@ def test_repeated_eager_refreshes_never_compound_away_from_the_rest_baseline(mon
     baseline_ts = time.time() - 10.0
     _put_rest_baseline(computed_ts_utc=baseline_ts)
     now = time.time()
+    monkeypatch.setattr(server, "resolve_spot", lambda tk, **kw: (_SPOT, "stub", time.time()))
     monkeypatch.setattr(
         "app.options.order_flow.state.get_stream_greeks",
         lambda sym: {"gamma": 0.11, "gamma_ts_recv": now})
@@ -424,6 +431,7 @@ def test_a_rest_refresh_landing_mid_computation_is_not_overwritten_by_the_stale_
     baseline_ts = time.time() - 10.0
     _put_rest_baseline(computed_ts_utc=baseline_ts)
     now = time.time()
+    monkeypatch.setattr(server, "resolve_spot", lambda tk, **kw: (_SPOT, "stub", time.time()))
     monkeypatch.setattr(
         "app.options.order_flow.state.get_stream_greeks",
         lambda sym: {"gamma": 0.5, "gamma_ts_recv": now})
@@ -459,6 +467,7 @@ def test_a_rest_refresh_landing_mid_computation_is_not_overwritten_by_the_stale_
 
 def test_never_raises_on_an_internal_error(monkeypatch):
     _put_rest_baseline()
+    monkeypatch.setattr(server, "resolve_spot", lambda tk, **kw: (_SPOT, "stub", time.time()))
     monkeypatch.setattr(
         "app.options.order_flow.state.get_stream_greeks",
         lambda sym: {"gamma": 0.5, "gamma_ts_recv": time.time()})
@@ -516,6 +525,7 @@ def test_a_volume_only_streamed_update_reaches_both_per_strike_and_gamma_surface
     _put_rest_baseline(computed_ts_utc=baseline_ts)
     now = time.time()
     streamed = {"total_volume": 999999.0, "total_volume_ts_recv": now}
+    monkeypatch.setattr(server, "resolve_spot", lambda tk, **kw: (_SPOT, "stub", time.time()))
     monkeypatch.setattr(
         "app.options.order_flow.state.get_stream_greeks",
         lambda sym: streamed if sym == _CONTRACT_SYMBOL else None)
@@ -549,6 +559,7 @@ def test_rapid_successive_calls_are_never_silently_dropped(monkeypatch):
     baseline_ts = time.time() - 10.0
     _put_rest_baseline(computed_ts_utc=baseline_ts)
     now = time.time()
+    monkeypatch.setattr(server, "resolve_spot", lambda tk, **kw: (_SPOT, "stub", time.time()))
     monkeypatch.setattr(
         "app.options.order_flow.state.get_stream_greeks",
         lambda sym: {"gamma": 0.11, "gamma_ts_recv": now})
@@ -627,6 +638,7 @@ def test_refreshing_b_does_not_undo_a_the_a_then_b_overwrite_reproduction(monkey
     live = {_ATM_CONTRACT_A: streamed_a}
     monkeypatch.setattr(
         "app.options.order_flow.state.get_stream_greeks", lambda sym: live.get(sym))
+    monkeypatch.setattr(server, "resolve_spot", lambda tk, **kw: (_SPOT, "stub", time.time()))
 
     assert refresh_gamma_surface_from_stream(_ATM_CONTRACT_A, now_a) == "ok"
     with server._terrain_cache_lock:
@@ -683,6 +695,7 @@ def test_a_dropped_from_the_desired_set_no_longer_lingers_in_a_later_b_refresh(m
     live = {_ATM_CONTRACT_A: streamed_a, _ATM_CONTRACT_B: streamed_b}
     monkeypatch.setattr(
         "app.options.order_flow.state.get_stream_greeks", lambda sym: live.get(sym))
+    monkeypatch.setattr(server, "resolve_spot", lambda tk, **kw: (_SPOT, "stub", time.time()))
     assert refresh_gamma_surface_from_stream(_ATM_CONTRACT_A, now) == "ok"
 
     # A's coverage genuinely ends: no longer primary, never additional, and its live

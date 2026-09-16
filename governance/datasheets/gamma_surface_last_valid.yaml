@@ -1,5 +1,5 @@
 table: gamma_surface_last_valid
-module: calibration/option_chain_morning_full.py
+module: server.py
 
 motivation: >
   Canonical GEX input-validity rules (operator directive, 2026-09-15). Live-reproduced:
@@ -17,15 +17,24 @@ motivation: >
   zero valid cells (a real OI outage). That value must also survive a process restart, not
   just live in memory for the current process's lifetime.
 
-  This table is NOT a duplicate of the existing option_chain_accrual table (same module,
-  RC-159, 2026-07-30): that table persists the per-STRIKE aggregate net_gex_1pct$,
-  COLLAPSED ACROSS EVERY EXPIRY, as a time series (one row per observation instant) for the
-  Chart view's session gamma ladder. It cannot answer "what was strike 758's own 09-15
-  expiry cell" — only "what was strike 758's whole-book figure at this instant." The
-  Options/Gamma heatmap is a strike × EXPIRY grid; nothing existing persisted a value at
-  that per-cell granularity. This table is the per-cell analogue of the same durable-banking
-  idea option_chain_accrual already established, reusing the same database file and module
-  rather than introducing a new persistence mechanism.
+  This table is NOT a duplicate of the existing option_chain_accrual table
+  (calibration/option_chain_morning_full.py, RC-159, 2026-07-30): that table persists the
+  per-STRIKE aggregate net_gex_1pct$, COLLAPSED ACROSS EVERY EXPIRY, as a time series (one
+  row per observation instant) for the Chart view's session gamma ladder. It cannot answer
+  "what was strike 758's own 09-15 expiry cell" — only "what was strike 758's whole-book
+  figure at this instant." The Options/Gamma heatmap is a strike × EXPIRY grid; nothing
+  existing persisted a value at that per-cell granularity. This table is the per-cell
+  analogue of the same durable-banking idea option_chain_accrual already established,
+  reusing the SAME database file (get_db().db_path) rather than introducing a new
+  persistence mechanism.
+
+  Module placement (operator directive, 2026-09-15, reviewed a THIRD time): first placed in
+  calibration/option_chain_morning_full.py for code-reuse convenience (same DB writer
+  conventions). On review that module's own docstring scopes it to "once-per-day morning
+  full-chain persist for GEX-R1 forward collection" — a calibration/forward-collection
+  concern this table is not. Moved to server.py: a runtime display-durability checkpoint
+  belongs beside its one caller, not inside a narrowly-scoped calibration module. Sharing a
+  database file does not require sharing a module.
 
 composition: >
   One row per (ticker, strike, expiry) — ALWAYS-LATEST, not a time series (PRIMARY KEY is
@@ -55,9 +64,40 @@ collection: >
   its durability checkpoint, lazily rehydrated into memory on a ticker's first use since the
   current process started (once per process lifetime per ticker, not once per cycle).
 
+  LOCK DISCIPLINE (operator directive, 2026-09-15, root-cause-the-hang review): the DB read
+  (hydrate) and DB write (flush) both run with _LAST_VALID_GEX_CELLS_LOCK explicitly
+  RELEASED -- an earlier version held that shared lock across the actual blocking SQLite
+  I/O, which is contended by every ticker's terrain cycle and every eager stream refresh
+  simultaneously; a single slow/locked write could have stalled all of them, a concrete,
+  plausible hang mechanism. GAMMA_LAST_VALID_DB_TIMEOUT_SEC (3s, down from an earlier 60s)
+  bounds how long a genuinely stuck DB can delay even this now-unlocked checkpoint.
+
+  OBSERVABILITY: a hydrate or flush failure is logged at WARNING (never DEBUG) and recorded
+  in _LAST_VALID_GEX_CELLS_ERRORS keyed by ticker (op, error, ts_utc) -- restart durability
+  silently degrading to in-memory-only-this-session is a visible, queryable fact, not a
+  swallowed one, while still never blocking or failing the live gamma-surface response
+  itself.
+
+  MEASURED VALIDATION (operator directive, 2026-09-15, "prove the DB work/locking cannot
+  contribute to the console hang"): the SAME database file (data/ed_console.db) also serves
+  db.fill_outcomes, a pre-existing, unrelated write path that already logs its own
+  sqlite_bg_write_slow WARNING when a single write transaction runs long. During a live soak
+  of the post-fix process, fill_outcomes logged five such events in one session, one at
+  10085.2ms and three others in the 5-9s range -- real, measured multi-second SQLite
+  contention on this exact file, well past this table's own 3s GAMMA_LAST_VALID_DB_TIMEOUT_SEC.
+  The running process served dozens of concurrent /api requests (terrain, gamma-surface,
+  live/state, watchlist-quotes, chain, tape) without a stall through and immediately after
+  every one of those events, and _LAST_VALID_GEX_CELLS_ERRORS stayed empty throughout. This is
+  the fix design working exactly as intended under a REAL, not hypothetical, contention event:
+  a colliding write would time out at 3s and record a WARNING, degrading this table to
+  in-memory-only for that cycle, never blocking the app-level lock (already released before any
+  DB call) or the HTTP response that triggered it. fill_outcomes itself was already isolated on
+  its own single-thread executor (server.py's _db_fill_outcomes_executor) before this session --
+  unrelated to and not modified by this table's fix.
+
 recommended_uses: >
   Exactly one: server._backfill_gex_cells_from_last_valid reads it (via
-  load_gamma_surface_last_valid) to fill a currently-invalid or currently-absent gamma-
+  _load_gamma_surface_last_valid_from_db) to fill a currently-invalid or currently-absent gamma-
   surface cell with its last confirmed-valid value, honestly labelled with its own
   captured_ts_utc so the UI never presents a stale snapshot as freshly live (the per-cell
   `stream` state disclosure, from the always-live heatmap mandate, is computed independently

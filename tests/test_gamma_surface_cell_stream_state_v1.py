@@ -169,6 +169,7 @@ def test_eager_refresh_marks_the_ticking_contracts_own_cell_live(monkeypatch):
     now = time.time()
     live = {_CONTRACT_SYMBOL: {"gamma": 0.05, "gamma_ts_recv": now}}
     monkeypatch.setattr("app.options.order_flow.state.get_stream_greeks", lambda sym: live.get(sym))
+    monkeypatch.setattr(server, "resolve_spot", lambda tk, **kw: (_SPOT, "stub", time.time()))
 
     assert refresh_gamma_surface_from_stream(_CONTRACT_SYMBOL, now) == "ok"
     with server._terrain_cache_lock:

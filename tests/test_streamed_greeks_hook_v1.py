@@ -314,6 +314,7 @@ def test_hook_coalescing_avoids_the_real_per_call_cost_at_spxw_scale(tmp_path, m
             "_contracts_rest_computed_ts": _t.time() - 30.0,
         }
     srv._gamma_surface_seq.pop(tk, None)
+    monkeypatch.setattr(srv, "resolve_spot", lambda t, **kw: (spot, "stub", _t.time()))
     try:
         # Baseline: measure ONE real call's cost directly against the real consumer. A
         # prefilled dict is legitimate HERE -- this measures the projection/hook's own
@@ -653,6 +654,7 @@ def test_disabling_the_hook_leaves_no_fresh_multi_contract_publication(tmp_path,
             "_contracts_rest_computed_ts": time.time() - 30.0,
         }
     srv._gamma_surface_seq.pop(tk, None)
+    monkeypatch.setattr(srv, "resolve_spot", lambda t, **kw: (400.0, "stub", time.time()))
     try:
         monkeypatch.setattr("app.options.order_flow.state.get_stream_greeks",
                             lambda sym: {"gamma": 0.02, "gamma_ts_recv": time.time()} if sym == _CONTRACT_A else None)
@@ -763,6 +765,8 @@ def test_hook_fires_once_per_underlying_when_two_underlyings_qualify_in_one_tick
         }
     srv._gamma_surface_seq.pop(spy_tk, None)
     srv._gamma_surface_seq.pop(qqq_tk, None)
+    _spot_by_tk = {spy_tk: 400.0, qqq_tk: 300.0}
+    monkeypatch.setattr(srv, "resolve_spot", lambda t, **kw: (_spot_by_tk.get(t), "stub", time.time()))
     try:
         live = {_SPY_A: {"gamma": 0.05, "gamma_ts_recv": time.time()},
                 _SPY_B: {"gamma": 0.06, "gamma_ts_recv": time.time()},
