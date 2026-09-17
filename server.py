@@ -4619,9 +4619,16 @@ def _fetch_and_store_mkt_ctx(client, pcr=None, prev_pcr=None):
         if ctx.error:
             log.warning(f"fetch_market_context returned error: {ctx.error}")
     except Exception as e:
-        log.warning(f"fetch_market_context failed: {e}")
+        # No-fallback lock (2026-09-17): the previous `ctx = MarketContext()` here
+        # discarded the actual exception and produced an object whose fields (vix_regime,
+        # pcr_arrow, etc.) carry the SAME neutral-looking defaults as a genuine "no reading
+        # yet" state -- indistinguishable from real, valid-but-flat market data. Route the
+        # real failure through the same ctx.error disclosure channel
+        # fetch_market_context's own internal per-symbol soft-error path already uses.
+        _err = f"{type(e).__name__}: {e}"
+        log.warning(f"fetch_market_context failed: {_err}")
         from market_context import MarketContext
-        ctx = MarketContext()
+        ctx = MarketContext(error=f"mkt_ctx_fetch_exception: {_err}")
     with _cached_mkt_ctx_lock:
         _cached_mkt_ctx = ctx
         _cached_mkt_ctx_ts = mkt_ctx_fetch_started_wall_ts
@@ -13708,7 +13715,8 @@ def _terrain_loop() -> None:
         try:
             with _logger_lock:
                 tickers = list(_logger_tickers)
-        except Exception:
+        except Exception as e:
+            log.warning("terrain loop: dynamic ticker roster read failed, using CORE_TICKERS: %s", e)
             tickers = list(CORE_TICKERS)
         # Independent-review finding (2026-09-12, state-authority review), REPRODUCED: a
         # ticker merely PREVIEWED (never enrolled onto _logger_tickers -- see
@@ -13840,7 +13848,8 @@ def _seed_strike_geometry_from_storage() -> None:
     try:
         with _logger_lock:
             tickers = list(_logger_tickers)
-    except Exception:
+    except Exception as e:
+        log.warning("strike-geometry seed: dynamic ticker roster read failed, using CORE_TICKERS: %s", e)
         tickers = list(CORE_TICKERS)
     seeded = 0
     for tk in tickers:

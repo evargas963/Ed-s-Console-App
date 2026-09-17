@@ -589,19 +589,26 @@ def _apply_fb_00181_investigated_reclassification(raw_candidates: list[dict]) ->
         if c["id"] in ("FB-00271", "FB-00287", "FB-00288", "FB-00289"):
             ADJUDICATION[c["id"]] = (
                 "NOT_FALLBACK",
-                "Investigated 2026-09-17: `vol_ctx.market_iv_level if vol_ctx is not None "
-                "else mkt_ctx.vix` (and its 3 siblings) is the deliberately tested, "
-                "version-locked VOL_INPUT_CONTRACT 1.0.0 (ratified 2026-07-09) migration "
-                "shape -- tests/test_market_context_fetch_fail_closed.py's own "
-                "test_signalinput_vix_still_macro_vix_only structurally asserts this EXACT "
-                "source text must be present, documenting it as 'the vol_ctx=None fallback' "
-                "to mkt_ctx.vix, which carries the SAME underlying macro $VIX quote via an "
-                "older plumbing path (not an alternate/different vendor source). This is a "
-                "reviewed, in-progress internal migration compatibility shim with its own "
-                "dedicated governance and test suite (vol_observability.py, "
-                "features/replay_signal_input_v1.py, test_volatility_regime_fail_closed.py), "
-                "not an undisclosed substitution masking a genuine computation failure. "
-                "Repairing it would break an existing, deliberate structural lock.",
+                "RE-INVESTIGATED 2026-09-17 (superseding an earlier pass that cited a "
+                "structural test's assertion as if that were the proof -- tests are not "
+                "semantic authority; corrected per direct operator instruction). "
+                "Independently traced the actual source chain, not the test: server.py's "
+                "per-cycle vol_ctx construction (~line 7850-7867) sets "
+                "`vol_ctx = MarketVolContextV1(market_iv_level=_vol_vix_now, ...)` where "
+                "`_vol_vix_now = float(mkt_ctx.vix)` -- literally the same float value read "
+                "from the same single Schwab $VIX quote fetch inside "
+                "market_context.fetch_market_context (one call site, confirmed via grep: "
+                "no second vendor call, no alternate producer anywhere in the chain). "
+                "`vol_ctx.market_iv_level if vol_ctx is not None else mkt_ctx.vix` is "
+                "therefore reading the IDENTICAL underlying value through whichever of two "
+                "structurally-equivalent carriers a given caller populated -- not an "
+                "alternate/different vendor source standing in for a missing one, which is "
+                "what this rule class prohibits. The two direction/change siblings "
+                "(FB-00288 market_iv_direction, FB-00289 market_iv_change) don't even have a "
+                "mkt_ctx-side value to fall back to -- they degrade to a bare None when "
+                "vol_ctx is absent, the mandate's own required shape, not a substitution. "
+                "This finding does not depend on, and is not weakened by, the separate "
+                "structural test that happens to also assert this source shape.",
                 "none",
                 "market_state_rendering",
             )

@@ -1205,15 +1205,29 @@ def build_market_state(
 
     # ── 4. VIX / PCR — from mkt_ctx ─────────────────────────────────────────
     # No-fallback lock (2026-09-17): mkt_ctx is always a real MarketContext instance --
-    # _fetch_and_store_mkt_ctx (server.py) falls back to a fresh MarketContext() of its
-    # own on any fetch failure, never None or a partial object -- so these fields are
-    # provably always present; a getattr(...) default here can never fire.
-    # ms.vix specifically stays on getattr(): VOL_INPUT_CONTRACT 1.0.0's
-    # [REAL-GATE:VOL-CTX-SINGLE-SOURCE] lock (tests/test_market_context_fetch_fail_closed.py
-    # ::test_three_surfaces_consume_the_one_context) AST-counts bare `mkt_ctx.vix`
-    # attribute reads and requires EXACTLY the two ratified vol_ctx=None rollback sites
-    # further down -- a bare attribute read here would be a third, unblessed site.
-    ms.vix             = getattr(mkt_ctx, "vix", None)
+    # its ATTRIBUTES are always present (a getattr(...) default below can never fire
+    # for that reason) -- but a genuine fetch failure (server.py's
+    # _fetch_and_store_mkt_ctx) still produces one with every VALUE at its neutral-
+    # looking class default (vix_regime="—", pcr_arrow="→", etc.), which reads exactly
+    # like a real "flat market" reading if the failure isn't disclosed separately. Both
+    # fetch_market_context's own soft per-symbol error path and the hard-exception path
+    # set ctx.error; surface it here so a degraded mkt_ctx is never silently
+    # indistinguishable from a genuinely-computed neutral one.
+    if mkt_ctx.error:
+        ms.state_error = ms.state_error or "market_context_degraded"
+        ms.state_error_detail = ms.state_error_detail or mkt_ctx.error[:200]
+    # No-fallback lock (2026-09-17): ms.vix's own assignment (previously
+    # `getattr(mkt_ctx, "vix", None)`) was deleted outright, not merely simplified --
+    # confirmed via repo-wide grep that no code anywhere reads ms.vix; server.py always
+    # overwrites the served "vix" field from vol_ctx.market_iv_level
+    # (ms_dict["vix"] = vol_ctx.market_iv_level, VOL_INPUT_CONTRACT 1.0.0's single
+    # publish site) regardless of what this field held. The field stays declared on
+    # MarketState (Optional[float] = None) in case a future consumer is wired to it, but
+    # it is never assigned a value here, so it honestly reads None rather than a stale or
+    # duplicated mkt_ctx.vix read that nothing downstream trusts. This also removes the
+    # getattr() that existed only to stay invisible to the [REAL-GATE:VOL-CTX-SINGLE-SOURCE]
+    # AST read-counter in tests/test_market_context_fetch_fail_closed.py -- hiding a
+    # read from a checker is not a repair; deleting the unused read is.
     ms.vix_regime      = mkt_ctx.vix_regime
     ms.vix_color       = mkt_ctx.vix_color
     ms.vix_implication = mkt_ctx.vix_implication
