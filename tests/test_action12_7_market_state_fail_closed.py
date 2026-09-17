@@ -251,3 +251,48 @@ def test_market_state_source_imports_canonical_provenance_gate():
     assert "canonical_provenance_is_tradable" in body_src, (
         "canonical_provenance_is_tradable not used inside build_market_state — gate moved or removed"
     )
+
+
+@patch("signals.compute_signals", side_effect=_fake_compute_signals)
+def test_gex_magnitude_computation_failure_is_disclosed_not_guessed(_mock_cs, monkeypatch):
+    """No-fallback lock repair (2026-09-17, FB-00266): a genuine gex_magnitude_label failure
+    (the only realistic trigger is math_exposure_core's own import failing) used to be caught
+    and silently papered over by guessing a value off consensus_summary's own 'gex_magnitude'
+    attribute -- an attribute that does not exist upstream in practice, so the guess always
+    landed on the same hardcoded 'negligible' default either way, indistinguishable from a
+    genuinely-computed negligible reading. The failure must now be disclosed via
+    state_error/state_error_detail, not silently absorbed."""
+    import math_exposure_core
+
+    def _raise(_net_gex):
+        raise RuntimeError("synthetic gex_magnitude_label failure")
+
+    monkeypatch.setattr(math_exposure_core, "gex_magnitude_label", _raise)
+    consensus = MagicMock(bias_signal="Bullish", pin_strength="High", net_delta=1.0, net_gamma=2.0,
+                          gex_magnitude="large", dex_magnitude="large")
+    ms = build_market_state(**_base_kwargs(consensus_summary=consensus))
+    assert ms.state_error == "gex_magnitude_computation_failed"
+    assert "RuntimeError" in (ms.state_error_detail or "")
+    assert ms.gex_magnitude == "negligible", (
+        "the degraded value stays the documented safe default, but is now DISCLOSED via "
+        "state_error rather than silently guessed from an alternate source"
+    )
+
+
+@patch("signals.compute_signals", side_effect=_fake_compute_signals)
+def test_gex_magnitude_never_reads_a_guessed_alternate_source_on_failure(_mock_cs, monkeypatch):
+    """Proves the guess-from-consensus_summary path is gone entirely: even when
+    consensus_summary DOES carry a plausible-looking 'gex_magnitude' attribute, a
+    gex_magnitude_label failure must not read it -- only the disclosed default."""
+    import math_exposure_core
+
+    def _raise(_net_gex):
+        raise RuntimeError("synthetic failure")
+
+    monkeypatch.setattr(math_exposure_core, "gex_magnitude_label", _raise)
+    consensus = MagicMock(bias_signal="Bullish", pin_strength="High", net_delta=1.0, net_gamma=2.0,
+                          gex_magnitude="large", dex_magnitude="large")
+    ms = build_market_state(**_base_kwargs(consensus_summary=consensus))
+    assert ms.gex_magnitude != "large", (
+        "must not have read consensus_summary.gex_magnitude as a guessed substitute"
+    )

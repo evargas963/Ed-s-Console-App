@@ -1143,8 +1143,18 @@ def build_market_state(
         try:
             from math_exposure_core import gex_magnitude_label
             ms.gex_magnitude = gex_magnitude_label(_ng)
-        except Exception:
-            ms.gex_magnitude = str(getattr(consensus_summary, "gex_magnitude", "negligible") or "negligible")
+        except Exception as _gme:
+            # Fallback lock (2026-09-17): this used to guess a value off consensus_summary's
+            # own (nonexistent in practice -- gex_magnitude is computed downstream, never an
+            # upstream attribute) 'gex_magnitude' attribute, defaulting to the meaningful,
+            # valid-looking "negligible" either way -- a real computation failure (the ONLY
+            # realistic trigger here is gex_magnitude_label's own import failing) read
+            # identically to a genuinely-computed negligible reading. gex_magnitude_label
+            # itself never raises for a float/None input, so this branch fires only on a
+            # genuine system fault; disclose it explicitly rather than guessing.
+            ms.gex_magnitude = "negligible"
+            ms.state_error = ms.state_error or "gex_magnitude_computation_failed"
+            ms.state_error_detail = ms.state_error_detail or f"{type(_gme).__name__}: {_gme}"[:200]
         ms.dex_magnitude = str(getattr(consensus_summary, "dex_magnitude", "negligible") or "negligible")
     else:
         ms.bias_signal  = "Neutral"

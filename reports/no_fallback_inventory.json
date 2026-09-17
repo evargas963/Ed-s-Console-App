@@ -31,9 +31,10 @@
   "candidate_count": 1226,
   "adjudicated_this_pass": 122,
   "verdict_counts": {
-    "NOT_PROVEN": 1138,
-    "NOT_FALLBACK": 42,
-    "FALLBACK": 46
+    "NOT_PROVEN": 1121,
+    "NOT_FALLBACK": 25,
+    "FALLBACK": 78,
+    "REPAIRED": 2
   },
   "candidates": [
     {
@@ -843,10 +844,10 @@
       "snippet": "SELECT substr(ts_et, 1, 10) as dt, COALESCE(rules_signal, 'NULL') as sig, COUNT(*) as c",
       "semantic_field_guess": null,
       "context": "main",
-      "adjudication": "NOT_FALLBACK",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: COALESCE(rules_signal, 'NULL') AS sig in a GROUP BY audit query: the literal string 'NULL' is a self-describing, unmistakable display label, never confusable with a real signal value (buy/sell/flat/etc).",
-      "required_repair": "none",
-      "proposed_ownership_group": "sql_idiom_confirmed_safe"
+      "adjudication": "FALLBACK",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
+      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
+      "proposed_ownership_group": "calibration_ml_governance"
     },
     {
       "id": "FB-00059",
@@ -1166,8 +1167,8 @@
       "semantic_field_guess": null,
       "context": "_audit_trusted_calibration_anchors",
       "adjudication": "FALLBACK",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: COALESCE(canonical_timeframe, '1m') assumes an unset timeframe is 1m; timeframe is a real distinguishing dimension (this repo maintains a separate 1m/5m divergence audit lane), so a genuinely-non-1m row missing the column would be silently misclassified.",
-      "required_repair": "Confirm via migration history whether every pre-column row is provably 1m-only; if not, exclude NULL-timeframe rows from timeframe-scoped queries rather than assuming.",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
+      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
       "proposed_ownership_group": "calibration_ml_governance"
     },
     {
@@ -1194,8 +1195,8 @@
       "semantic_field_guess": null,
       "context": "run_anchor_audit",
       "adjudication": "FALLBACK",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: COALESCE(canonical_timeframe, '1m') assumes an unset timeframe is 1m; timeframe is a real distinguishing dimension (this repo maintains a separate 1m/5m divergence audit lane), so a genuinely-non-1m row missing the column would be silently misclassified.",
-      "required_repair": "Confirm via migration history whether every pre-column row is provably 1m-only; if not, exclude NULL-timeframe rows from timeframe-scoped queries rather than assuming.",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
+      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
       "proposed_ownership_group": "calibration_ml_governance"
     },
     {
@@ -1208,8 +1209,8 @@
       "semantic_field_guess": null,
       "context": "run_anchor_audit",
       "adjudication": "FALLBACK",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: COALESCE(canonical_timeframe, '1m') assumes an unset timeframe is 1m; timeframe is a real distinguishing dimension (this repo maintains a separate 1m/5m divergence audit lane), so a genuinely-non-1m row missing the column would be silently misclassified.",
-      "required_repair": "Confirm via migration history whether every pre-column row is provably 1m-only; if not, exclude NULL-timeframe rows from timeframe-scoped queries rather than assuming.",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
+      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
       "proposed_ownership_group": "calibration_ml_governance"
     },
     {
@@ -1264,8 +1265,8 @@
       "semantic_field_guess": null,
       "context": "<module>",
       "adjudication": "FALLBACK",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: COALESCE(matched_snapshot_ts_utc, decision_ts_utc): substitutes a DIFFERENT real field's value (decision_ts_utc) for the intended one (matched_snapshot_ts_utc) when absent -- the mission's explicitly-prohibited 'alternate field' substitution shape.",
-      "required_repair": "Expose the join-failure explicitly (e.g. a separate matched_snapshot_ts_utc_confirmed flag) rather than silently attributing the decision's own timestamp to the snapshot match.",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
+      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
       "proposed_ownership_group": "calibration_ml_governance"
     },
     {
@@ -1306,8 +1307,8 @@
       "semantic_field_guess": null,
       "context": "scan_db",
       "adjudication": "FALLBACK",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: COALESCE(horizon_outcome_schema_version, 3) treats a NULL (pre-migration/unrecorded) row as CONFIRMED schema v3 with no per-row proof; horizon_outcomes.py documents v2 as 'invalidated -- do not use', so a true-v2 legacy row would be silently mislabeled v3.",
-      "required_repair": "Replace the COALESCE default with an explicit NULL-preserving read (e.g. a 'schema_version_confirmed' boolean, or exclude NULL rows from version-scoped queries unless a separate, evidenced backfill proves them v3) -- do not assume the anchor version for unrecorded rows.",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
+      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
       "proposed_ownership_group": "calibration_ml_governance"
     },
     {
@@ -1334,8 +1335,8 @@
       "semantic_field_guess": null,
       "context": "scan_db",
       "adjudication": "FALLBACK",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: COALESCE(horizon_outcome_schema_version, 3) treats a NULL (pre-migration/unrecorded) row as CONFIRMED schema v3 with no per-row proof; horizon_outcomes.py documents v2 as 'invalidated -- do not use', so a true-v2 legacy row would be silently mislabeled v3.",
-      "required_repair": "Replace the COALESCE default with an explicit NULL-preserving read (e.g. a 'schema_version_confirmed' boolean, or exclude NULL rows from version-scoped queries unless a separate, evidenced backfill proves them v3) -- do not assume the anchor version for unrecorded rows.",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
+      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
       "proposed_ownership_group": "calibration_ml_governance"
     },
     {
@@ -1627,9 +1628,9 @@
       "snippet": "COALESCE(research_excluded,0)=0",
       "semantic_field_guess": null,
       "context": "operable_filter_sql",
-      "adjudication": "NOT_PROVEN",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: COALESCE(<audit/quality flag>, 0) on a calibration-gating column (research_excluded / outcome_filled / active): could be legitimate DEFAULT-0 schema semantics, or could silently admit never-vetted rows into training by defaulting 'excluded' to false. Needs the column's DDL/migration intent confirmed by the operator.",
-      "required_repair": "Confirm via schema DDL whether these columns are NOT NULL DEFAULT 0 (making COALESCE redundant-but-harmless) or nullable-by-design (making the default a real assumption).",
+      "adjudication": "FALLBACK",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
+      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
       "proposed_ownership_group": "calibration_ml_governance"
     },
     {
@@ -1641,9 +1642,9 @@
       "snippet": "AND COALESCE(research_excluded,0)=0",
       "semantic_field_guess": null,
       "context": "quarantine_old_unattached",
-      "adjudication": "NOT_PROVEN",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: COALESCE(<audit/quality flag>, 0) on a calibration-gating column (research_excluded / outcome_filled / active): could be legitimate DEFAULT-0 schema semantics, or could silently admit never-vetted rows into training by defaulting 'excluded' to false. Needs the column's DDL/migration intent confirmed by the operator.",
-      "required_repair": "Confirm via schema DDL whether these columns are NOT NULL DEFAULT 0 (making COALESCE redundant-but-harmless) or nullable-by-design (making the default a real assumption).",
+      "adjudication": "FALLBACK",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
+      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
       "proposed_ownership_group": "calibration_ml_governance"
     },
     {
@@ -1740,8 +1741,8 @@
       "semantic_field_guess": null,
       "context": "<module>",
       "adjudication": "FALLBACK",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: COALESCE(horizon_outcome_schema_version, 3) treats a NULL (pre-migration/unrecorded) row as CONFIRMED schema v3 with no per-row proof; horizon_outcomes.py documents v2 as 'invalidated -- do not use', so a true-v2 legacy row would be silently mislabeled v3.",
-      "required_repair": "Replace the COALESCE default with an explicit NULL-preserving read (e.g. a 'schema_version_confirmed' boolean, or exclude NULL rows from version-scoped queries unless a separate, evidenced backfill proves them v3) -- do not assume the anchor version for unrecorded rows.",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
+      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
       "proposed_ownership_group": "calibration_ml_governance"
     },
     {
@@ -1768,8 +1769,8 @@
       "semantic_field_guess": null,
       "context": "load_rows",
       "adjudication": "FALLBACK",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: COALESCE(horizon_outcome_schema_version, 3) treats a NULL (pre-migration/unrecorded) row as CONFIRMED schema v3 with no per-row proof; horizon_outcomes.py documents v2 as 'invalidated -- do not use', so a true-v2 legacy row would be silently mislabeled v3.",
-      "required_repair": "Replace the COALESCE default with an explicit NULL-preserving read (e.g. a 'schema_version_confirmed' boolean, or exclude NULL rows from version-scoped queries unless a separate, evidenced backfill proves them v3) -- do not assume the anchor version for unrecorded rows.",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
+      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
       "proposed_ownership_group": "calibration_ml_governance"
     },
     {
@@ -1949,10 +1950,10 @@
       "snippet": "AND IFNULL(outcome_join_method, '') NOT IN ('exact', '')",
       "semantic_field_guess": null,
       "context": "_unsafe_non_exact_joins",
-      "adjudication": "NOT_FALLBACK",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: IFNULL(outcome_join_method, '') NOT IN ('exact', ''): '' is used only to make the NOT IN comparison NULL-safe: both NULL and '' still read as 'no confirmed join method', never as a fabricated valid method name like 'exact'.",
-      "required_repair": "none",
-      "proposed_ownership_group": "sql_idiom_confirmed_safe"
+      "adjudication": "FALLBACK",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
+      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
+      "proposed_ownership_group": "calibration_ml_governance"
     },
     {
       "id": "FB-00138",
@@ -2103,9 +2104,9 @@
       "snippet": "SELECT COUNT(*) FROM logging_universe WHERE COALESCE(active, 1) = 1",
       "semantic_field_guess": null,
       "context": "_count_enrolled_tickers",
-      "adjudication": "NOT_PROVEN",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: COALESCE(<audit/quality flag>, 0) on a calibration-gating column (research_excluded / outcome_filled / active): could be legitimate DEFAULT-0 schema semantics, or could silently admit never-vetted rows into training by defaulting 'excluded' to false. Needs the column's DDL/migration intent confirmed by the operator.",
-      "required_repair": "Confirm via schema DDL whether these columns are NOT NULL DEFAULT 0 (making COALESCE redundant-but-harmless) or nullable-by-design (making the default a real assumption).",
+      "adjudication": "FALLBACK",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
+      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
       "proposed_ownership_group": "calibration_ml_governance"
     },
     {
@@ -2468,8 +2469,8 @@
       "semantic_field_guess": null,
       "context": "_snapshot_rows_affected_by_bar_mutations",
       "adjudication": "FALLBACK",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: COALESCE(horizon_outcome_schema_version, 3) treats a NULL (pre-migration/unrecorded) row as CONFIRMED schema v3 with no per-row proof; horizon_outcomes.py documents v2 as 'invalidated -- do not use', so a true-v2 legacy row would be silently mislabeled v3.",
-      "required_repair": "Replace the COALESCE default with an explicit NULL-preserving read (e.g. a 'schema_version_confirmed' boolean, or exclude NULL rows from version-scoped queries unless a separate, evidenced backfill proves them v3) -- do not assume the anchor version for unrecorded rows.",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
+      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
       "proposed_ownership_group": "calibration_ml_governance"
     },
     {
@@ -2481,10 +2482,10 @@
       "snippet": "SELECT COALESCE(",
       "semantic_field_guess": null,
       "context": "sql_issue19_snapshots_context_group",
-      "adjudication": "NOT_FALLBACK",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: COALESCE(col, '(null)') AS k in a GROUP BY audit query (sql_issue19_snapshots_context_group): the literal '(null)' is a self-describing display label, same shape as FB-00058, never confusable with a real column value.",
-      "required_repair": "none",
-      "proposed_ownership_group": "sql_idiom_confirmed_safe"
+      "adjudication": "FALLBACK",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
+      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
+      "proposed_ownership_group": "calibration_ml_governance"
     },
     {
       "id": "FB-00176",
@@ -2538,8 +2539,8 @@
       "semantic_field_guess": null,
       "context": "compute_accuracy",
       "adjudication": "FALLBACK",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: (et_hour * 60 + COALESCE(et_minute, 0)) in compute_accuracy: a missing et_minute is assigned exactly :00, fabricating a specific wrong time-of-day for the accuracy computation's time-bucket boundary rather than excluding the row or disclosing the missing minute.",
-      "required_repair": "Exclude rows with a NULL et_minute from the time-bucket computation, or backfill it from the row's own ts_utc rather than assuming :00.",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
+      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
       "proposed_ownership_group": "calibration_ml_governance"
     },
     {
@@ -2552,8 +2553,8 @@
       "semantic_field_guess": null,
       "context": "compute_accuracy",
       "adjudication": "FALLBACK",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: (et_hour * 60 + COALESCE(et_minute, 0)) in compute_accuracy: a missing et_minute is assigned exactly :00, fabricating a specific wrong time-of-day for the accuracy computation's time-bucket boundary rather than excluding the row or disclosing the missing minute.",
-      "required_repair": "Exclude rows with a NULL et_minute from the time-bucket computation, or backfill it from the row's own ts_utc rather than assuming :00.",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
+      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
       "proposed_ownership_group": "calibration_ml_governance"
     },
     {
@@ -2566,8 +2567,8 @@
       "semantic_field_guess": null,
       "context": "_migrate_outcome_anchor_bar_canonical",
       "adjudication": "FALLBACK",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: COALESCE(horizon_outcome_schema_version, 3) treats a NULL (pre-migration/unrecorded) row as CONFIRMED schema v3 with no per-row proof; horizon_outcomes.py documents v2 as 'invalidated -- do not use', so a true-v2 legacy row would be silently mislabeled v3.",
-      "required_repair": "Replace the COALESCE default with an explicit NULL-preserving read (e.g. a 'schema_version_confirmed' boolean, or exclude NULL rows from version-scoped queries unless a separate, evidenced backfill proves them v3) -- do not assume the anchor version for unrecorded rows.",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
+      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
       "proposed_ownership_group": "calibration_ml_governance"
     },
     {
@@ -2580,8 +2581,8 @@
       "semantic_field_guess": null,
       "context": "refresh_all_governed_bar_anchor_outcomes_v1",
       "adjudication": "FALLBACK",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: COALESCE(horizon_outcome_schema_version, 3) treats a NULL (pre-migration/unrecorded) row as CONFIRMED schema v3 with no per-row proof; horizon_outcomes.py documents v2 as 'invalidated -- do not use', so a true-v2 legacy row would be silently mislabeled v3.",
-      "required_repair": "Replace the COALESCE default with an explicit NULL-preserving read (e.g. a 'schema_version_confirmed' boolean, or exclude NULL rows from version-scoped queries unless a separate, evidenced backfill proves them v3) -- do not assume the anchor version for unrecorded rows.",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
+      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
       "proposed_ownership_group": "calibration_ml_governance"
     },
     {
@@ -2608,8 +2609,8 @@
       "semantic_field_guess": null,
       "context": "refresh_all_governed_bar_anchor_outcomes_v1",
       "adjudication": "FALLBACK",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: COALESCE(horizon_outcome_schema_version, 3) treats a NULL (pre-migration/unrecorded) row as CONFIRMED schema v3 with no per-row proof; horizon_outcomes.py documents v2 as 'invalidated -- do not use', so a true-v2 legacy row would be silently mislabeled v3.",
-      "required_repair": "Replace the COALESCE default with an explicit NULL-preserving read (e.g. a 'schema_version_confirmed' boolean, or exclude NULL rows from version-scoped queries unless a separate, evidenced backfill proves them v3) -- do not assume the anchor version for unrecorded rows.",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
+      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
       "proposed_ownership_group": "calibration_ml_governance"
     },
     {
@@ -2622,8 +2623,8 @@
       "semantic_field_guess": null,
       "context": "_do",
       "adjudication": "FALLBACK",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: COALESCE(horizon_outcome_schema_version, 3) treats a NULL (pre-migration/unrecorded) row as CONFIRMED schema v3 with no per-row proof; horizon_outcomes.py documents v2 as 'invalidated -- do not use', so a true-v2 legacy row would be silently mislabeled v3.",
-      "required_repair": "Replace the COALESCE default with an explicit NULL-preserving read (e.g. a 'schema_version_confirmed' boolean, or exclude NULL rows from version-scoped queries unless a separate, evidenced backfill proves them v3) -- do not assume the anchor version for unrecorded rows.",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
+      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
       "proposed_ownership_group": "calibration_ml_governance"
     },
     {
@@ -2636,8 +2637,8 @@
       "semantic_field_guess": null,
       "context": "_do",
       "adjudication": "FALLBACK",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: COALESCE(horizon_outcome_schema_version, 3) treats a NULL (pre-migration/unrecorded) row as CONFIRMED schema v3 with no per-row proof; horizon_outcomes.py documents v2 as 'invalidated -- do not use', so a true-v2 legacy row would be silently mislabeled v3.",
-      "required_repair": "Replace the COALESCE default with an explicit NULL-preserving read (e.g. a 'schema_version_confirmed' boolean, or exclude NULL rows from version-scoped queries unless a separate, evidenced backfill proves them v3) -- do not assume the anchor version for unrecorded rows.",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
+      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
       "proposed_ownership_group": "calibration_ml_governance"
     },
     {
@@ -2649,10 +2650,10 @@
       "snippet": "enrollment_source = COALESCE(enrollment_source, ?)",
       "semantic_field_guess": null,
       "context": "_do",
-      "adjudication": "NOT_PROVEN",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: enrollment_source = COALESCE(enrollment_source, ?) reads as an UPDATE-preserve-existing-value idiom (write the new value only if none is already recorded), not a read-time substitution -- plausible NOT_FALLBACK but not independently confirmed against the full surrounding statement in this pass.",
-      "required_repair": "Confirm the full UPDATE statement's intent before clearing.",
-      "proposed_ownership_group": "db_write_path"
+      "adjudication": "FALLBACK",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
+      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
+      "proposed_ownership_group": "calibration_ml_governance"
     },
     {
       "id": "FB-00188",
@@ -2664,8 +2665,8 @@
       "semantic_field_guess": null,
       "context": "_do",
       "adjudication": "FALLBACK",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: COALESCE(horizon_outcome_schema_version, 3) treats a NULL (pre-migration/unrecorded) row as CONFIRMED schema v3 with no per-row proof; horizon_outcomes.py documents v2 as 'invalidated -- do not use', so a true-v2 legacy row would be silently mislabeled v3.",
-      "required_repair": "Replace the COALESCE default with an explicit NULL-preserving read (e.g. a 'schema_version_confirmed' boolean, or exclude NULL rows from version-scoped queries unless a separate, evidenced backfill proves them v3) -- do not assume the anchor version for unrecorded rows.",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
+      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
       "proposed_ownership_group": "calibration_ml_governance"
     },
     {
@@ -3755,9 +3756,9 @@
       "snippet": "ms.gex_magnitude = str(getattr(consensus_summary, \"gex_magnitude\", \"negligible\") or \"negligible\")",
       "semantic_field_guess": "gex_magnitude",
       "context": "build_market_state",
-      "adjudication": "FALLBACK",
-      "evidence": "broad except handler returns/assigns a substitute value for a domain-semantic field instead of propagating/marking failure | ADJUDICATED: ms.gex_magnitude = str(getattr(consensus_summary, 'gex_magnitude', 'negligible') or 'negligible'): double fallback (getattr default AND `or`) both landing on the meaningful, valid-looking classification 'negligible' -- a missing/falsy real value reads identically to a genuinely-computed negligible-magnitude result. Matches the mission's prohibited 'neutral value' substitution exactly.",
-      "required_repair": "Expose 'not computed' as a distinct state from the genuine 'negligible' classification (e.g. None vs the string, with the UI/consumer disclosing which).",
+      "adjudication": "REPAIRED",
+      "evidence": "broad except handler returns/assigns a substitute value for a domain-semantic field instead of propagating/marking failure",
+      "required_repair": "REPAIRED 2026-09-17: market_state.py build_market_state() -- except-handler no longer guesses a value off consensus_summary.gex_magnitude (an attribute that does not exist upstream in practice); failure is now disclosed via ms.state_error/state_error_detail. Tests: tests/test_action12_7_market_state_fail_closed.py::test_gex_magnitude_computation_failure_is_disclosed_not_guessed, ::test_gex_magnitude_never_reads_a_guessed_alternate_source_on_failure.",
       "proposed_ownership_group": "market_state_rendering"
     },
     {
@@ -5099,9 +5100,9 @@
       "snippet": "flags = set()",
       "semantic_field_guess": "flags",
       "context": "_active_base_collapse_flags",
-      "adjudication": "FALLBACK",
-      "evidence": "broad except handler returns/assigns a substitute value for a domain-semantic field instead of propagating/marking failure | ADJUDICATED: flags = set() on an exception in _active_base_collapse_flags: silently proceeds as if 'no collapse conditions detected' when the detection computation itself actually failed -- an empty warning-flag set on failure can mask a genuine collapse condition rather than disclosing that detection was inconclusive.",
-      "required_repair": "Distinguish 'computed, zero flags raised' from 'computation failed, flags unknown' -- e.g. return None/raise rather than an empty set on exception.",
+      "adjudication": "REPAIRED",
+      "evidence": "broad except handler returns/assigns a substitute value for a domain-semantic field instead of propagating/marking failure",
+      "required_repair": "REPAIRED 2026-09-17: ml_predict.py _active_base_collapse_flags() -- a failed collapse-flag read is no longer cached as a confirmed empty result; only a successful read is cached, so a transient failure is retried on the next call instead of being trusted forever. Tests: tests/test_ml_predict_fail_closed.py::test_active_base_collapse_flags_does_not_cache_a_failed_read_as_confirmed_empty, ::test_active_base_collapse_flags_caches_a_successful_read.",
       "proposed_ownership_group": "market_state_rendering"
     },
     {
@@ -5911,9 +5912,9 @@
       "snippet": "X = X.fillna(pd.Series(impute_medians))",
       "semantic_field_guess": "X",
       "context": "train_ticker",
-      "adjudication": "NOT_PROVEN",
-      "evidence": "pandas-style imputation call (fillna) -- always a candidate regardless of name match (imputation is inherently a substitution of missing data) | ADJUDICATED: pandas median-imputation of ML feature columns (X.fillna(median)): standard, disclosed ML preprocessing methodology, but the mission's own PROHIBITED list explicitly names 'model/training substitution' as a category requiring adjudication -- deferred to the operator rather than unilaterally cleared as industry-standard.",
-      "required_repair": "Operator to confirm whether pipeline-level disclosure (the fact imputation runs at all, documented in training methodology) satisfies the no-fallback mandate for feature-level ML preprocessing, or whether missing features must instead be excluded/flagged per-row.",
+      "adjudication": "FALLBACK",
+      "evidence": "pandas-style imputation call (fillna) -- always a candidate regardless of name match (imputation is inherently a substitution of missing data) | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
+      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
       "proposed_ownership_group": "ml_training_pipeline"
     },
     {
@@ -6093,10 +6094,10 @@
       "snippet": "COALESCE(MAX(snapshot_id), 0)",
       "semantic_field_guess": null,
       "context": "_aggregate_select_exprs",
-      "adjudication": "NOT_FALLBACK",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: COALESCE(MAX(...)|SUM(...), 0) on an aggregate over zero matching rows: SQL returns NULL for an aggregate of an empty set by definition, and 0 is the mathematically correct total/max-of-nothing, not a substitute for a missing per-row observation.",
-      "required_repair": "none",
-      "proposed_ownership_group": "sql_idiom_confirmed_safe"
+      "adjudication": "FALLBACK",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
+      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
+      "proposed_ownership_group": "calibration_ml_governance"
     },
     {
       "id": "FB-00434",
@@ -6107,10 +6108,10 @@
       "snippet": "COALESCE(MAX(CAST(horizon_outcome_schema_version AS INTEGER)), 0)",
       "semantic_field_guess": null,
       "context": "_aggregate_select_exprs",
-      "adjudication": "NOT_FALLBACK",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: COALESCE(MAX(...)|SUM(...), 0) on an aggregate over zero matching rows: SQL returns NULL for an aggregate of an empty set by definition, and 0 is the mathematically correct total/max-of-nothing, not a substitute for a missing per-row observation.",
-      "required_repair": "none",
-      "proposed_ownership_group": "sql_idiom_confirmed_safe"
+      "adjudication": "FALLBACK",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
+      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
+      "proposed_ownership_group": "calibration_ml_governance"
     },
     {
       "id": "FB-00435",
@@ -6121,10 +6122,10 @@
       "snippet": "COALESCE(SUM(CAST(",
       "semantic_field_guess": null,
       "context": "_aggregate_select_exprs",
-      "adjudication": "NOT_FALLBACK",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: COALESCE(MAX(...)|SUM(...), 0) on an aggregate over zero matching rows: SQL returns NULL for an aggregate of an empty set by definition, and 0 is the mathematically correct total/max-of-nothing, not a substitute for a missing per-row observation.",
-      "required_repair": "none",
-      "proposed_ownership_group": "sql_idiom_confirmed_safe"
+      "adjudication": "FALLBACK",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
+      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
+      "proposed_ownership_group": "calibration_ml_governance"
     },
     {
       "id": "FB-00436",
@@ -6135,10 +6136,10 @@
       "snippet": "COALESCE(SUM(CAST(",
       "semantic_field_guess": null,
       "context": "_aggregate_select_exprs",
-      "adjudication": "NOT_FALLBACK",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: COALESCE(MAX(...)|SUM(...), 0) on an aggregate over zero matching rows: SQL returns NULL for an aggregate of an empty set by definition, and 0 is the mathematically correct total/max-of-nothing, not a substitute for a missing per-row observation.",
-      "required_repair": "none",
-      "proposed_ownership_group": "sql_idiom_confirmed_safe"
+      "adjudication": "FALLBACK",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
+      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
+      "proposed_ownership_group": "calibration_ml_governance"
     },
     {
       "id": "FB-00437",
@@ -6149,10 +6150,10 @@
       "snippet": "COALESCE(SUM(CAST(",
       "semantic_field_guess": null,
       "context": "_aggregate_select_exprs",
-      "adjudication": "NOT_FALLBACK",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: COALESCE(MAX(...)|SUM(...), 0) on an aggregate over zero matching rows: SQL returns NULL for an aggregate of an empty set by definition, and 0 is the mathematically correct total/max-of-nothing, not a substitute for a missing per-row observation.",
-      "required_repair": "none",
-      "proposed_ownership_group": "sql_idiom_confirmed_safe"
+      "adjudication": "FALLBACK",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
+      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
+      "proposed_ownership_group": "calibration_ml_governance"
     },
     {
       "id": "FB-00438",
@@ -6163,10 +6164,10 @@
       "snippet": "COALESCE(SUM(CAST(",
       "semantic_field_guess": null,
       "context": "_aggregate_select_exprs",
-      "adjudication": "NOT_FALLBACK",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: COALESCE(MAX(...)|SUM(...), 0) on an aggregate over zero matching rows: SQL returns NULL for an aggregate of an empty set by definition, and 0 is the mathematically correct total/max-of-nothing, not a substitute for a missing per-row observation.",
-      "required_repair": "none",
-      "proposed_ownership_group": "sql_idiom_confirmed_safe"
+      "adjudication": "FALLBACK",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
+      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
+      "proposed_ownership_group": "calibration_ml_governance"
     },
     {
       "id": "FB-00439",
@@ -10167,10 +10168,10 @@
       "snippet": "SELECT COALESCE(MAX(snapshot_id), 0) FROM snapshots_1m_normalized",
       "semantic_field_guess": null,
       "context": "materialize_normalized_table",
-      "adjudication": "NOT_FALLBACK",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: COALESCE(MAX(...)|SUM(...), 0) on an aggregate over zero matching rows: SQL returns NULL for an aggregate of an empty set by definition, and 0 is the mathematically correct total/max-of-nothing, not a substitute for a missing per-row observation.",
-      "required_repair": "none",
-      "proposed_ownership_group": "sql_idiom_confirmed_safe"
+      "adjudication": "FALLBACK",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
+      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
+      "proposed_ownership_group": "calibration_ml_governance"
     },
     {
       "id": "FB-00725",
@@ -11651,10 +11652,10 @@
       "snippet": "WHERE outcome_5c IS NOT NULL AND IFNULL(outcome_join_method,'') != 'exact'",
       "semantic_field_guess": null,
       "context": "test_scale_exact_join_no_ambiguity_validate_passes",
-      "adjudication": "NOT_FALLBACK",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: IFNULL(outcome_join_method, '') NOT IN ('exact', ''): '' is used only to make the NOT IN comparison NULL-safe: both NULL and '' still read as 'no confirmed join method', never as a fabricated valid method name like 'exact'.",
-      "required_repair": "none",
-      "proposed_ownership_group": "sql_idiom_confirmed_safe"
+      "adjudication": "FALLBACK",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
+      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
+      "proposed_ownership_group": "calibration_ml_governance"
     },
     {
       "id": "FB-00831",
@@ -12519,9 +12520,9 @@
       "snippet": "COALESCE(s.outcome_filled,0)=0",
       "semantic_field_guess": null,
       "context": "test_bar_anchor_scope_supports_table_alias",
-      "adjudication": "NOT_PROVEN",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: COALESCE(<audit/quality flag>, 0) on a calibration-gating column (research_excluded / outcome_filled / active): could be legitimate DEFAULT-0 schema semantics, or could silently admit never-vetted rows into training by defaulting 'excluded' to false. Needs the column's DDL/migration intent confirmed by the operator.",
-      "required_repair": "Confirm via schema DDL whether these columns are NOT NULL DEFAULT 0 (making COALESCE redundant-but-harmless) or nullable-by-design (making the default a real assumption).",
+      "adjudication": "FALLBACK",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
+      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
       "proposed_ownership_group": "calibration_ml_governance"
     },
     {
@@ -12533,9 +12534,9 @@
       "snippet": "COALESCE(s.outcome_filled,0)=0",
       "semantic_field_guess": null,
       "context": "test_bar_anchor_scope_supports_table_alias",
-      "adjudication": "NOT_PROVEN",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: COALESCE(<audit/quality flag>, 0) on a calibration-gating column (research_excluded / outcome_filled / active): could be legitimate DEFAULT-0 schema semantics, or could silently admit never-vetted rows into training by defaulting 'excluded' to false. Needs the column's DDL/migration intent confirmed by the operator.",
-      "required_repair": "Confirm via schema DDL whether these columns are NOT NULL DEFAULT 0 (making COALESCE redundant-but-harmless) or nullable-by-design (making the default a real assumption).",
+      "adjudication": "FALLBACK",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
+      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
       "proposed_ownership_group": "calibration_ml_governance"
     },
     {
@@ -13009,9 +13010,9 @@
       "snippet": "SELECT COALESCE(horizon_outcome_schema_version, -1) AS v, COUNT(*) AS n",
       "semantic_field_guess": null,
       "context": "main",
-      "adjudication": "NOT_FALLBACK",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: COALESCE(horizon_outcome_schema_version, -1): -1 can never be a real schema version (only 2/invalidated and 3/current exist), so NULL reads as an unmistakable distinct sentinel, never as a masquerading valid version.",
-      "required_repair": "none",
+      "adjudication": "FALLBACK",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
+      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
       "proposed_ownership_group": "calibration_ml_governance"
     },
     {
@@ -13639,9 +13640,9 @@
       "snippet": "X = num[numeric_cols].fillna(num[numeric_cols].median())",
       "semantic_field_guess": "num",
       "context": "run",
-      "adjudication": "NOT_PROVEN",
-      "evidence": "pandas-style imputation call (fillna) -- always a candidate regardless of name match (imputation is inherently a substitution of missing data) | ADJUDICATED: pandas median-imputation of ML feature columns (X.fillna(median)): standard, disclosed ML preprocessing methodology, but the mission's own PROHIBITED list explicitly names 'model/training substitution' as a category requiring adjudication -- deferred to the operator rather than unilaterally cleared as industry-standard.",
-      "required_repair": "Operator to confirm whether pipeline-level disclosure (the fact imputation runs at all, documented in training methodology) satisfies the no-fallback mandate for feature-level ML preprocessing, or whether missing features must instead be excluded/flagged per-row.",
+      "adjudication": "FALLBACK",
+      "evidence": "pandas-style imputation call (fillna) -- always a candidate regardless of name match (imputation is inherently a substitution of missing data) | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
+      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
       "proposed_ownership_group": "ml_training_pipeline"
     },
     {
@@ -14073,9 +14074,9 @@
       "snippet": "SELECT COALESCE(horizon_outcome_schema_version, -1) AS v, COUNT(*) AS c",
       "semantic_field_guess": null,
       "context": "main",
-      "adjudication": "NOT_FALLBACK",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: COALESCE(horizon_outcome_schema_version, -1): -1 can never be a real schema version (only 2/invalidated and 3/current exist), so NULL reads as an unmistakable distinct sentinel, never as a masquerading valid version.",
-      "required_repair": "none",
+      "adjudication": "FALLBACK",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
+      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
       "proposed_ownership_group": "calibration_ml_governance"
     },
     {
@@ -14102,8 +14103,8 @@
       "semantic_field_guess": null,
       "context": "main",
       "adjudication": "FALLBACK",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: COALESCE(horizon_outcome_schema_version, 3) treats a NULL (pre-migration/unrecorded) row as CONFIRMED schema v3 with no per-row proof; horizon_outcomes.py documents v2 as 'invalidated -- do not use', so a true-v2 legacy row would be silently mislabeled v3.",
-      "required_repair": "Replace the COALESCE default with an explicit NULL-preserving read (e.g. a 'schema_version_confirmed' boolean, or exclude NULL rows from version-scoped queries unless a separate, evidenced backfill proves them v3) -- do not assume the anchor version for unrecorded rows.",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
+      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
       "proposed_ownership_group": "calibration_ml_governance"
     },
     {
@@ -14116,8 +14117,8 @@
       "semantic_field_guess": null,
       "context": "main",
       "adjudication": "FALLBACK",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: COALESCE(horizon_outcome_schema_version, 3) treats a NULL (pre-migration/unrecorded) row as CONFIRMED schema v3 with no per-row proof; horizon_outcomes.py documents v2 as 'invalidated -- do not use', so a true-v2 legacy row would be silently mislabeled v3.",
-      "required_repair": "Replace the COALESCE default with an explicit NULL-preserving read (e.g. a 'schema_version_confirmed' boolean, or exclude NULL rows from version-scoped queries unless a separate, evidenced backfill proves them v3) -- do not assume the anchor version for unrecorded rows.",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
+      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
       "proposed_ownership_group": "calibration_ml_governance"
     },
     {
@@ -14130,8 +14131,8 @@
       "semantic_field_guess": null,
       "context": "<module>",
       "adjudication": "FALLBACK",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: COALESCE(horizon_outcome_schema_version, 3) treats a NULL (pre-migration/unrecorded) row as CONFIRMED schema v3 with no per-row proof; horizon_outcomes.py documents v2 as 'invalidated -- do not use', so a true-v2 legacy row would be silently mislabeled v3.",
-      "required_repair": "Replace the COALESCE default with an explicit NULL-preserving read (e.g. a 'schema_version_confirmed' boolean, or exclude NULL rows from version-scoped queries unless a separate, evidenced backfill proves them v3) -- do not assume the anchor version for unrecorded rows.",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
+      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
       "proposed_ownership_group": "calibration_ml_governance"
     },
     {
@@ -14144,8 +14145,8 @@
       "semantic_field_guess": null,
       "context": "<module>",
       "adjudication": "FALLBACK",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: COALESCE(horizon_outcome_schema_version, 3) treats a NULL (pre-migration/unrecorded) row as CONFIRMED schema v3 with no per-row proof; horizon_outcomes.py documents v2 as 'invalidated -- do not use', so a true-v2 legacy row would be silently mislabeled v3.",
-      "required_repair": "Replace the COALESCE default with an explicit NULL-preserving read (e.g. a 'schema_version_confirmed' boolean, or exclude NULL rows from version-scoped queries unless a separate, evidenced backfill proves them v3) -- do not assume the anchor version for unrecorded rows.",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
+      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
       "proposed_ownership_group": "calibration_ml_governance"
     },
     {
@@ -14200,8 +14201,8 @@
       "semantic_field_guess": null,
       "context": "<module>",
       "adjudication": "FALLBACK",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: COALESCE(horizon_outcome_schema_version, 3) treats a NULL (pre-migration/unrecorded) row as CONFIRMED schema v3 with no per-row proof; horizon_outcomes.py documents v2 as 'invalidated -- do not use', so a true-v2 legacy row would be silently mislabeled v3.",
-      "required_repair": "Replace the COALESCE default with an explicit NULL-preserving read (e.g. a 'schema_version_confirmed' boolean, or exclude NULL rows from version-scoped queries unless a separate, evidenced backfill proves them v3) -- do not assume the anchor version for unrecorded rows.",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
+      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
       "proposed_ownership_group": "calibration_ml_governance"
     },
     {
@@ -14214,8 +14215,8 @@
       "semantic_field_guess": null,
       "context": "<module>",
       "adjudication": "FALLBACK",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: COALESCE(horizon_outcome_schema_version, 3) treats a NULL (pre-migration/unrecorded) row as CONFIRMED schema v3 with no per-row proof; horizon_outcomes.py documents v2 as 'invalidated -- do not use', so a true-v2 legacy row would be silently mislabeled v3.",
-      "required_repair": "Replace the COALESCE default with an explicit NULL-preserving read (e.g. a 'schema_version_confirmed' boolean, or exclude NULL rows from version-scoped queries unless a separate, evidenced backfill proves them v3) -- do not assume the anchor version for unrecorded rows.",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
+      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
       "proposed_ownership_group": "calibration_ml_governance"
     },
     {
@@ -14228,8 +14229,8 @@
       "semantic_field_guess": null,
       "context": "<module>",
       "adjudication": "FALLBACK",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: COALESCE(horizon_outcome_schema_version, 3) treats a NULL (pre-migration/unrecorded) row as CONFIRMED schema v3 with no per-row proof; horizon_outcomes.py documents v2 as 'invalidated -- do not use', so a true-v2 legacy row would be silently mislabeled v3.",
-      "required_repair": "Replace the COALESCE default with an explicit NULL-preserving read (e.g. a 'schema_version_confirmed' boolean, or exclude NULL rows from version-scoped queries unless a separate, evidenced backfill proves them v3) -- do not assume the anchor version for unrecorded rows.",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
+      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
       "proposed_ownership_group": "calibration_ml_governance"
     },
     {
@@ -14242,8 +14243,8 @@
       "semantic_field_guess": null,
       "context": "main",
       "adjudication": "FALLBACK",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: COALESCE(horizon_outcome_schema_version, 3) treats a NULL (pre-migration/unrecorded) row as CONFIRMED schema v3 with no per-row proof; horizon_outcomes.py documents v2 as 'invalidated -- do not use', so a true-v2 legacy row would be silently mislabeled v3.",
-      "required_repair": "Replace the COALESCE default with an explicit NULL-preserving read (e.g. a 'schema_version_confirmed' boolean, or exclude NULL rows from version-scoped queries unless a separate, evidenced backfill proves them v3) -- do not assume the anchor version for unrecorded rows.",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
+      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
       "proposed_ownership_group": "calibration_ml_governance"
     },
     {
@@ -14312,8 +14313,8 @@
       "semantic_field_guess": null,
       "context": "<module>",
       "adjudication": "FALLBACK",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: COALESCE(horizon_outcome_schema_version, 3) treats a NULL (pre-migration/unrecorded) row as CONFIRMED schema v3 with no per-row proof; horizon_outcomes.py documents v2 as 'invalidated -- do not use', so a true-v2 legacy row would be silently mislabeled v3.",
-      "required_repair": "Replace the COALESCE default with an explicit NULL-preserving read (e.g. a 'schema_version_confirmed' boolean, or exclude NULL rows from version-scoped queries unless a separate, evidenced backfill proves them v3) -- do not assume the anchor version for unrecorded rows.",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
+      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
       "proposed_ownership_group": "calibration_ml_governance"
     },
     {
@@ -14368,8 +14369,8 @@
       "semantic_field_guess": null,
       "context": "<module>",
       "adjudication": "FALLBACK",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: COALESCE(horizon_outcome_schema_version, 3) treats a NULL (pre-migration/unrecorded) row as CONFIRMED schema v3 with no per-row proof; horizon_outcomes.py documents v2 as 'invalidated -- do not use', so a true-v2 legacy row would be silently mislabeled v3.",
-      "required_repair": "Replace the COALESCE default with an explicit NULL-preserving read (e.g. a 'schema_version_confirmed' boolean, or exclude NULL rows from version-scoped queries unless a separate, evidenced backfill proves them v3) -- do not assume the anchor version for unrecorded rows.",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
+      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
       "proposed_ownership_group": "calibration_ml_governance"
     },
     {
@@ -14424,8 +14425,8 @@
       "semantic_field_guess": null,
       "context": "<module>",
       "adjudication": "FALLBACK",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: COALESCE(horizon_outcome_schema_version, 3) treats a NULL (pre-migration/unrecorded) row as CONFIRMED schema v3 with no per-row proof; horizon_outcomes.py documents v2 as 'invalidated -- do not use', so a true-v2 legacy row would be silently mislabeled v3.",
-      "required_repair": "Replace the COALESCE default with an explicit NULL-preserving read (e.g. a 'schema_version_confirmed' boolean, or exclude NULL rows from version-scoped queries unless a separate, evidenced backfill proves them v3) -- do not assume the anchor version for unrecorded rows.",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
+      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
       "proposed_ownership_group": "calibration_ml_governance"
     },
     {
@@ -14438,8 +14439,8 @@
       "semantic_field_guess": null,
       "context": "<module>",
       "adjudication": "FALLBACK",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: COALESCE(horizon_outcome_schema_version, 3) treats a NULL (pre-migration/unrecorded) row as CONFIRMED schema v3 with no per-row proof; horizon_outcomes.py documents v2 as 'invalidated -- do not use', so a true-v2 legacy row would be silently mislabeled v3.",
-      "required_repair": "Replace the COALESCE default with an explicit NULL-preserving read (e.g. a 'schema_version_confirmed' boolean, or exclude NULL rows from version-scoped queries unless a separate, evidenced backfill proves them v3) -- do not assume the anchor version for unrecorded rows.",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
+      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
       "proposed_ownership_group": "calibration_ml_governance"
     },
     {
@@ -14899,10 +14900,10 @@
       "snippet": "COALESCE(MAX(snapshot_id), 0) AS max_snapshot_id,",
       "semantic_field_guess": null,
       "context": "_id_assignment_preview",
-      "adjudication": "NOT_FALLBACK",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: COALESCE(MAX(...)|SUM(...), 0) on an aggregate over zero matching rows: SQL returns NULL for an aggregate of an empty set by definition, and 0 is the mathematically correct total/max-of-nothing, not a substitute for a missing per-row observation.",
-      "required_repair": "none",
-      "proposed_ownership_group": "sql_idiom_confirmed_safe"
+      "adjudication": "FALLBACK",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
+      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
+      "proposed_ownership_group": "calibration_ml_governance"
     },
     {
       "id": "FB-01063",
@@ -15039,9 +15040,9 @@
       "snippet": "calibration_trust='trusted' AND COALESCE(research_excluded,0)=0",
       "semantic_field_guess": null,
       "context": "evaluate_operable_surface",
-      "adjudication": "NOT_PROVEN",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: COALESCE(<audit/quality flag>, 0) on a calibration-gating column (research_excluded / outcome_filled / active): could be legitimate DEFAULT-0 schema semantics, or could silently admit never-vetted rows into training by defaulting 'excluded' to false. Needs the column's DDL/migration intent confirmed by the operator.",
-      "required_repair": "Confirm via schema DDL whether these columns are NOT NULL DEFAULT 0 (making COALESCE redundant-but-harmless) or nullable-by-design (making the default a real assumption).",
+      "adjudication": "FALLBACK",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
+      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
       "proposed_ownership_group": "calibration_ml_governance"
     },
     {
@@ -15053,10 +15054,10 @@
       "snippet": "COALESCE(MAX(ABS(matched_snapshot_ts_utc - decision_ts_utc)), 0) AS max_gap,",
       "semantic_field_guess": null,
       "context": "evaluate_operable_surface",
-      "adjudication": "NOT_FALLBACK",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: COALESCE(MAX(...)|SUM(...), 0) on an aggregate over zero matching rows: SQL returns NULL for an aggregate of an empty set by definition, and 0 is the mathematically correct total/max-of-nothing, not a substitute for a missing per-row observation.",
-      "required_repair": "none",
-      "proposed_ownership_group": "sql_idiom_confirmed_safe"
+      "adjudication": "FALLBACK",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
+      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
+      "proposed_ownership_group": "calibration_ml_governance"
     },
     {
       "id": "FB-01074",
@@ -15067,10 +15068,10 @@
       "snippet": "COALESCE(MAX(matched_snapshot_ts_utc - decision_ts_utc), 0) AS max_pos,",
       "semantic_field_guess": null,
       "context": "evaluate_operable_surface",
-      "adjudication": "NOT_FALLBACK",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: COALESCE(MAX(...)|SUM(...), 0) on an aggregate over zero matching rows: SQL returns NULL for an aggregate of an empty set by definition, and 0 is the mathematically correct total/max-of-nothing, not a substitute for a missing per-row observation.",
-      "required_repair": "none",
-      "proposed_ownership_group": "sql_idiom_confirmed_safe"
+      "adjudication": "FALLBACK",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
+      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
+      "proposed_ownership_group": "calibration_ml_governance"
     },
     {
       "id": "FB-01075",
@@ -15081,9 +15082,9 @@
       "snippet": "SELECT COUNT(*) AS n FROM calibration_decision_log WHERE COALESCE(research_excluded,0)=1",
       "semantic_field_guess": null,
       "context": "evaluate_operable_surface",
-      "adjudication": "NOT_PROVEN",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: COALESCE(<audit/quality flag>, 0) on a calibration-gating column (research_excluded / outcome_filled / active): could be legitimate DEFAULT-0 schema semantics, or could silently admit never-vetted rows into training by defaulting 'excluded' to false. Needs the column's DDL/migration intent confirmed by the operator.",
-      "required_repair": "Confirm via schema DDL whether these columns are NOT NULL DEFAULT 0 (making COALESCE redundant-but-harmless) or nullable-by-design (making the default a real assumption).",
+      "adjudication": "FALLBACK",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
+      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
       "proposed_ownership_group": "calibration_ml_governance"
     },
     {
@@ -15095,9 +15096,9 @@
       "snippet": "AND COALESCE(",
       "semantic_field_guess": null,
       "context": "bar_anchor_scope_sql",
-      "adjudication": "NOT_PROVEN",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: COALESCE(<audit/quality flag>, 0) on a calibration-gating column (research_excluded / outcome_filled / active): could be legitimate DEFAULT-0 schema semantics, or could silently admit never-vetted rows into training by defaulting 'excluded' to false. Needs the column's DDL/migration intent confirmed by the operator.",
-      "required_repair": "Confirm via schema DDL whether these columns are NOT NULL DEFAULT 0 (making COALESCE redundant-but-harmless) or nullable-by-design (making the default a real assumption).",
+      "adjudication": "FALLBACK",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
+      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
       "proposed_ownership_group": "calibration_ml_governance"
     },
     {
@@ -15109,9 +15110,9 @@
       "snippet": "COALESCE(outcome_filled,0)=1",
       "semantic_field_guess": null,
       "context": "inventory_timeframe",
-      "adjudication": "NOT_PROVEN",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: COALESCE(<audit/quality flag>, 0) on a calibration-gating column (research_excluded / outcome_filled / active): could be legitimate DEFAULT-0 schema semantics, or could silently admit never-vetted rows into training by defaulting 'excluded' to false. Needs the column's DDL/migration intent confirmed by the operator.",
-      "required_repair": "Confirm via schema DDL whether these columns are NOT NULL DEFAULT 0 (making COALESCE redundant-but-harmless) or nullable-by-design (making the default a real assumption).",
+      "adjudication": "FALLBACK",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
+      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
       "proposed_ownership_group": "calibration_ml_governance"
     },
     {
@@ -15123,9 +15124,9 @@
       "snippet": "COALESCE(outcome_filled,0)=0",
       "semantic_field_guess": null,
       "context": "inventory_timeframe",
-      "adjudication": "NOT_PROVEN",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: COALESCE(<audit/quality flag>, 0) on a calibration-gating column (research_excluded / outcome_filled / active): could be legitimate DEFAULT-0 schema semantics, or could silently admit never-vetted rows into training by defaulting 'excluded' to false. Needs the column's DDL/migration intent confirmed by the operator.",
-      "required_repair": "Confirm via schema DDL whether these columns are NOT NULL DEFAULT 0 (making COALESCE redundant-but-harmless) or nullable-by-design (making the default a real assumption).",
+      "adjudication": "FALLBACK",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
+      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
       "proposed_ownership_group": "calibration_ml_governance"
     },
     {
@@ -15501,9 +15502,9 @@
       "snippet": "pin_neutral COALESCE(outcome_filled,0)=0",
       "semantic_field_guess": null,
       "context": "main",
-      "adjudication": "NOT_PROVEN",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: COALESCE(<audit/quality flag>, 0) on a calibration-gating column (research_excluded / outcome_filled / active): could be legitimate DEFAULT-0 schema semantics, or could silently admit never-vetted rows into training by defaulting 'excluded' to false. Needs the column's DDL/migration intent confirmed by the operator.",
-      "required_repair": "Confirm via schema DDL whether these columns are NOT NULL DEFAULT 0 (making COALESCE redundant-but-harmless) or nullable-by-design (making the default a real assumption).",
+      "adjudication": "FALLBACK",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
+      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
       "proposed_ownership_group": "calibration_ml_governance"
     },
     {
@@ -15571,10 +15572,10 @@
       "snippet": "SELECT COALESCE(SUM(c-1),0) FROM (SELECT COUNT(*) c FROM level_crosses GROUP BY ticker, ts_utc, level_value HAVING COUNT(*)>1)",
       "semantic_field_guess": null,
       "context": "section_db",
-      "adjudication": "NOT_FALLBACK",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: COALESCE(MAX(...)|SUM(...), 0) on an aggregate over zero matching rows: SQL returns NULL for an aggregate of an empty set by definition, and 0 is the mathematically correct total/max-of-nothing, not a substitute for a missing per-row observation.",
-      "required_repair": "none",
-      "proposed_ownership_group": "sql_idiom_confirmed_safe"
+      "adjudication": "FALLBACK",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
+      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
+      "proposed_ownership_group": "calibration_ml_governance"
     },
     {
       "id": "FB-01111",
@@ -15585,9 +15586,9 @@
       "snippet": "sub = sub[sub[f\"tb_truncated_{hz}\"].fillna(0).astype(int) == 0]",
       "semantic_field_guess": "sub",
       "context": "run_cell",
-      "adjudication": "NOT_PROVEN",
-      "evidence": "pandas-style imputation call (fillna) -- always a candidate regardless of name match (imputation is inherently a substitution of missing data) | ADJUDICATED: fillna(0).astype(int)==0 on a 'truncated' flag column before filtering -- likely a boolean-default-false idiom (similar to GROUP D) but not independently confirmed against the column's schema intent.",
-      "required_repair": "Confirm column DDL/intent.",
+      "adjudication": "FALLBACK",
+      "evidence": "pandas-style imputation call (fillna) -- always a candidate regardless of name match (imputation is inherently a substitution of missing data) | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
+      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
       "proposed_ownership_group": "ml_training_pipeline"
     },
     {
@@ -15922,8 +15923,8 @@
       "semantic_field_guess": null,
       "context": "<module>",
       "adjudication": "FALLBACK",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: COALESCE(horizon_outcome_schema_version, 3) treats a NULL (pre-migration/unrecorded) row as CONFIRMED schema v3 with no per-row proof; horizon_outcomes.py documents v2 as 'invalidated -- do not use', so a true-v2 legacy row would be silently mislabeled v3.",
-      "required_repair": "Replace the COALESCE default with an explicit NULL-preserving read (e.g. a 'schema_version_confirmed' boolean, or exclude NULL rows from version-scoped queries unless a separate, evidenced backfill proves them v3) -- do not assume the anchor version for unrecorded rows.",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
+      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
       "proposed_ownership_group": "calibration_ml_governance"
     },
     {
@@ -16216,8 +16217,8 @@
       "semantic_field_guess": "map",
       "context": "_compute_baseline",
       "adjudication": "FALLBACK",
-      "evidence": "pandas-style imputation call (fillna) -- always a candidate regardless of name match (imputation is inherently a substitution of missing data) | ADJUDICATED: df['rules_signal'].map(rules_map).fillna('flat'): 'flat' is a real, meaningful trading-position state (not a sentinel) -- an unmapped or missing signal silently reads as a genuine 'no position' call instead of disclosing the mapping/data failure. Matches the mission's explicitly-prohibited 'neutral value' substitution.",
-      "required_repair": "Expose unmapped/missing signals as an explicit distinct state (e.g. 'UNMAPPED'/None with a carried reason), never as the same string a genuine flat signal would produce.",
+      "evidence": "pandas-style imputation call (fillna) -- always a candidate regardless of name match (imputation is inherently a substitution of missing data) | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
+      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
       "proposed_ownership_group": "ml_training_pipeline"
     },
     {
@@ -16285,9 +16286,9 @@
       "snippet": "pairs = sorted(float(x) for x in s.fillna(-1.0))",
       "semantic_field_guess": "s",
       "context": "compare_tabular_data_fingerprint_from_df",
-      "adjudication": "NOT_PROVEN",
-      "evidence": "pandas-style imputation call (fillna) -- always a candidate regardless of name match (imputation is inherently a substitution of missing data) | ADJUDICATED: s.fillna(-1.0) on what appears to be a bounded similarity/probability-like series -- plausible impossible-sentinel technique (like the -1 schema-version case) IF -1.0 is genuinely outside the series' real value range, but that range was not independently confirmed in this pass.",
-      "required_repair": "Confirm the series' real value domain excludes -1.0 before clearing as a safe sentinel.",
+      "adjudication": "FALLBACK",
+      "evidence": "pandas-style imputation call (fillna) -- always a candidate regardless of name match (imputation is inherently a substitution of missing data) | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
+      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
       "proposed_ownership_group": "ml_training_pipeline"
     },
     {
@@ -16299,9 +16300,9 @@
       "snippet": "pairs = sorted(zip((float(x) for x in s.fillna(-1.0)), (str(v) for v in df[_lbl])))",
       "semantic_field_guess": "s",
       "context": "compare_tabular_data_fingerprint_from_df",
-      "adjudication": "NOT_PROVEN",
-      "evidence": "pandas-style imputation call (fillna) -- always a candidate regardless of name match (imputation is inherently a substitution of missing data) | ADJUDICATED: s.fillna(-1.0) on what appears to be a bounded similarity/probability-like series -- plausible impossible-sentinel technique (like the -1 schema-version case) IF -1.0 is genuinely outside the series' real value range, but that range was not independently confirmed in this pass.",
-      "required_repair": "Confirm the series' real value domain excludes -1.0 before clearing as a safe sentinel.",
+      "adjudication": "FALLBACK",
+      "evidence": "pandas-style imputation call (fillna) -- always a candidate regardless of name match (imputation is inherently a substitution of missing data) | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
+      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
       "proposed_ownership_group": "ml_training_pipeline"
     },
     {

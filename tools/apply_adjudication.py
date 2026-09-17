@@ -331,14 +331,103 @@ _mark(["FB-00522"], "NOT_FALLBACK",
       "none", "correct_failure_disclosure")
 
 
+# =============================================================================
+# OPERATOR CORRECTION (2026-09-17, independent review of the first pass): every
+# "confirmed-safe SQL idiom" classification above (aggregate-over-empty-set COALESCE,
+# self-describing display-label defaults, UPDATE-preserve-existing COALESCE) and every
+# "deferred to operator" ML-imputation classification is REJECTED. Operator ruling, verbatim:
+# "these are fallback candidates and cannot automatically pass" and "the operator did not
+# pre-authorize ML imputation." This session does not get to unilaterally clear a SQL
+# substitution or a pandas imputation call as safe -- every SQL_COALESCE_STYLE and every
+# IMPUTATION candidate is reclassified FALLBACK below, overriding every _mark() call above
+# that touched those two patterns (including the "-1 impossible sentinel" schema-version
+# case and the "(null)"/"'NULL'" audit-label case: under the mandate's own absolutist
+# wording -- "no other value may replace it" -- ANY COALESCE default is a replacement value,
+# regardless of how carefully chosen). The ONE exception is a genuine TEST FIXTURE
+# (FB-00884) exercising imputation behavior as test data, not a production/tooling
+# authorization -- left as NOT_FALLBACK, matching every other test-artifact classification
+# in this file, which the operator's correction did not address.
+def _repair_group_for(rel_path: str) -> str:
+    if rel_path.startswith(("lstm_", "ml_train", "ml_scheduler", "ml_predict", "train_",
+                             "transformer_", "training_cache", "tools/feature_curation_gate",
+                             "tools/research/")):
+        return "ml_training_pipeline"
+    if rel_path.startswith("server.py"):
+        return "market_data_server_core"
+    if rel_path.startswith("market_state.py"):
+        return "market_state_rendering"
+    return "calibration_ml_governance"
+
+
+def _apply_operator_correction_2026_09_17(raw_candidates: list[dict]) -> None:
+    for c in raw_candidates:
+        if c["id"] == "FB-00884":
+            continue  # test fixture, not a production/tooling authorization
+        if c["pattern"] in ("SQL_COALESCE_STYLE", "IMPUTATION"):
+            ADJUDICATION[c["id"]] = (
+                "FALLBACK",
+                "OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier "
+                "'confirmed-safe idiom' / 'deferred to operator' classification: 'these are "
+                "fallback candidates and cannot automatically pass' (SQL) / 'the operator "
+                "did not pre-authorize ML imputation' -- reclassified FALLBACK "
+                "unconditionally, matching tools/check_no_fallback_lock.py's own "
+                "unconditional R1/R2 rules after the same correction.",
+                "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/"
+                "NVL default and no imputed value may substitute for it, regardless of the "
+                "default's shape.",
+                _repair_group_for(c["file"]),
+            )
+
+
+#: id -> (repair_note, group). A REPAIRED entry overrides any FALLBACK verdict above --
+#: production code has actually been fixed and covered by a new regression test. This dict
+#: is the durable, re-runnable record of closed repairs; a fresh run of this script always
+#: reproduces REPAIRED status for these ids, so it can never be silently lost by re-running
+#: from the raw discovery file.
+REPAIRED: dict[str, tuple[str, str]] = {}
+
+
+def _mark_repaired(ids: list[str], repair_note: str, group: str) -> None:
+    for i in ids:
+        REPAIRED[i] = (repair_note, group)
+
+
+_mark_repaired(
+    ["FB-00266"],
+    "REPAIRED 2026-09-17: market_state.py build_market_state() -- except-handler no longer "
+    "guesses a value off consensus_summary.gex_magnitude (an attribute that does not exist "
+    "upstream in practice); failure is now disclosed via ms.state_error/state_error_detail. "
+    "Tests: tests/test_action12_7_market_state_fail_closed.py::"
+    "test_gex_magnitude_computation_failure_is_disclosed_not_guessed, "
+    "::test_gex_magnitude_never_reads_a_guessed_alternate_source_on_failure.",
+    "market_state_rendering")
+_mark_repaired(
+    ["FB-00362"],
+    "REPAIRED 2026-09-17: ml_predict.py _active_base_collapse_flags() -- a failed "
+    "collapse-flag read is no longer cached as a confirmed empty result; only a successful "
+    "read is cached, so a transient failure is retried on the next call instead of being "
+    "trusted forever. Tests: tests/test_ml_predict_fail_closed.py::"
+    "test_active_base_collapse_flags_does_not_cache_a_failed_read_as_confirmed_empty, "
+    "::test_active_base_collapse_flags_caches_a_successful_read.",
+    "market_state_rendering")
+
+
 def main() -> int:
     raw_path = REPO / "reports" / "no_fallback_discovery_raw.json"
     out_path = REPO / "reports" / "no_fallback_inventory.json"
     raw = json.loads(raw_path.read_text(encoding="utf-8"))
     candidates = raw["candidates"]
+    _apply_operator_correction_2026_09_17(candidates)
 
     applied = 0
     for c in candidates:
+        if c["id"] in REPAIRED:
+            repair_note, group = REPAIRED[c["id"]]
+            c["adjudication"] = "REPAIRED"
+            c["required_repair"] = repair_note
+            c["proposed_ownership_group"] = group
+            applied += 1
+            continue
         override = ADJUDICATION.get(c["id"])
         if override:
             verdict, evidence, repair, group = override

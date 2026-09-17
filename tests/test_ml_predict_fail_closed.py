@@ -375,6 +375,65 @@ def test_read_stack_layer_collapse_flags_missing_and_bad_json(tmp_path):
     assert mp.read_stack_layer_collapse_flags(tmp_path, "SPY", "1c") == {"xgb"}
 
 
+def test_active_base_collapse_flags_does_not_cache_a_failed_read_as_confirmed_empty(monkeypatch):
+    """No-fallback lock repair (2026-09-17, FB-00362): a failed collapse-flag read used to
+    be cached as an empty set, INDISTINGUISHABLE from a genuinely-confirmed 'checked, zero
+    collapsed bases' result, for the remaining lifetime of the process -- a transient read
+    failure silently became a permanent false 'all clear'. Proves the fix: the failure is
+    NOT cached, so the very next call retries rather than trusting the stale empty result."""
+    ticker, hz = "SPY", "1c"
+    monkeypatch.setattr(mp, "get_ml_infer_horizon_slug", lambda: hz)
+    rk = mp._model_registry_key(ticker, hz)
+    mp._collapse_flag_registry.pop(rk, None)
+
+    call_count = [0]
+
+    def _flaky_read(_model_dir, _ticker, _hz):
+        call_count[0] += 1
+        if call_count[0] == 1:
+            raise RuntimeError("synthetic transient failure")
+        return {"xgb"}
+
+    monkeypatch.setattr(mp, "read_stack_layer_collapse_flags", _flaky_read)
+    monkeypatch.setattr(mp, "_model_dir_for_ticker", lambda _t: "irrelevant")
+
+    first = mp._active_base_collapse_flags(ticker)
+    assert first == set(), "the failed call itself still degrades to empty for that one call"
+    assert rk not in mp._collapse_flag_registry, (
+        "a failed read must never be cached as a confirmed result"
+    )
+
+    second = mp._active_base_collapse_flags(ticker)
+    assert second == {"xgb"}, (
+        "the next call must RETRY the read (and see the real result) rather than reusing a "
+        "stale cached empty set from the earlier failure"
+    )
+    assert call_count[0] == 2, "the retry must have actually happened, not been served from a bad cache"
+
+
+def test_active_base_collapse_flags_caches_a_successful_read(monkeypatch):
+    """The other half of the same fix: a GENUINE successful read (including a genuine empty
+    result) is still cached normally -- this is not a blanket 'never cache' change."""
+    ticker, hz = "AAPL", "1c"
+    monkeypatch.setattr(mp, "get_ml_infer_horizon_slug", lambda: hz)
+    rk = mp._model_registry_key(ticker, hz)
+    mp._collapse_flag_registry.pop(rk, None)
+
+    call_count = [0]
+
+    def _confirmed_empty(_model_dir, _ticker, _hz):
+        call_count[0] += 1
+        return set()
+
+    monkeypatch.setattr(mp, "read_stack_layer_collapse_flags", _confirmed_empty)
+    monkeypatch.setattr(mp, "_model_dir_for_ticker", lambda _t: "irrelevant")
+
+    first = mp._active_base_collapse_flags(ticker)
+    second = mp._active_base_collapse_flags(ticker)
+    assert first == set() and second == set()
+    assert call_count[0] == 1, "a genuinely-confirmed empty result IS cached (no retry needed)"
+
+
 def test_ensemble_all_collapsed_returns_uniform(monkeypatch):
     tri = {"up": 0.4, "down": 0.3, "flat": 0.3}
     monkeypatch.setattr(mp, "_active_base_collapse_flags", lambda t: {"xgb", "lstm", "transformer"})

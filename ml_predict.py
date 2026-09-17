@@ -2289,13 +2289,21 @@ def _active_base_collapse_flags(ticker: str) -> set:
     cached = _collapse_flag_registry.get(rk)
     if cached is not None:
         return cached
-    # Best-effort: if the active bundle dir can't be resolved (e.g. strict-active-only with an
-    # incomplete bundle), fall back to "no collapse flags" — identical to prior combiner behavior.
+    # Fallback lock (2026-09-17): a failed read used to be cached as an empty set
+    # (_collapse_flag_registry[rk] = set()) INDISTINGUISHABLE from a genuinely-confirmed
+    # "checked, zero collapsed bases" result -- for the remaining lifetime of this process,
+    # every subsequent call for this (ticker, hz) silently reused that unproven "clean"
+    # verdict instead of ever retrying the read. Collapse flags exist to warn "don't trust
+    # this base's output"; caching a check-FAILURE as a check-PASS is exactly backward from
+    # the safety purpose of the flag. Only a SUCCESSFUL read is cached now; a failed read
+    # returns empty for this one call (unchanged immediate behavior — still best-effort, not
+    # a hard failure of the caller) but is retried on the next call rather than trusted
+    # forever.
     try:
         flags = read_stack_layer_collapse_flags(_model_dir_for_ticker(ticker), ticker, hz)
     except Exception as e:
         logger.debug("collapse-flag read skipped for %s: %s", ticker, e)
-        flags = set()
+        return set()
     _collapse_flag_registry[rk] = flags
     return flags
 

@@ -1415,28 +1415,73 @@ def check_single_stream_authority() -> list[Violation]:
 
 
 def check_no_fallback_lock() -> list[Violation]:
-    """REPO-WIDE NO-FALLBACK MECHANICAL LOCK (operator mandate 2026-09-17).
+    """REPO-WIDE NO-FALLBACK MECHANICAL LOCK — REGRESSION half (operator mandate 2026-09-17,
+    corrected 2026-09-17 after independent review rejected the first draft's self-authorized
+    exemptions).
 
     A semantic field may contain only the exact value defined by that field; a missing/
     stale/failed canonical source must expose that exact failure state, never a substitute.
-    This gate is diff-scoped (governance/no_fallback_registry.json + tools/
-    check_no_fallback_lock.py, same 'operator_quote co-staged' convention as
-    governance/level_faucets.json/RC-212) so it can be ENFORCED immediately without first
-    repairing every pre-existing violation the repo-wide census already found (tracked
-    separately in reports/no_fallback_inventory.json) — a commit that adds none of the
-    encoded fallback shapes passes; one that adds a new SQL COALESCE-on-a-non-aggregate,
-    an unauthorized pandas imputation call, an except-handler zero/empty substitution, a
-    JS ||/?? on a protected field, or a silent weakening of this lock itself, fails here,
-    in required CI, on the actual PR/merge diff. See tools/check_no_fallback_lock.py's own
-    module docstring for the full rule list (R1-R7) and why it is scoped this narrowly
-    rather than approximating the broader discovery scanner's candidate net.
+    NO EXEMPTION MECHANISM EXISTS: the first draft's governance/no_fallback_registry.json
+    (a self-authorized allowlist with a fabricated "operator_quote" pre-clearing ML
+    imputation and several SQL idioms) is deleted; every COALESCE/IFNULL/NVL and every
+    pandas imputation call added in a diff is unconditionally a violation.
+
+    This is the diff-scoped REGRESSION check only — it answers "does this diff add a NEW
+    instance of a banned shape," and passing it is explicitly NOT a claim the repository is
+    fallback-free (see check_no_fallback_baseline_census below for the actual repo-wide
+    state, which never reports clean while known violations remain). Diff-scoping lets this
+    be ENFORCED immediately without every pre-existing violation being repaired first — a
+    distinction the operator's own 2026-09-17 clarification requires explicitly ("the gate
+    may distinguish 'no new regression' from 'repository clean', but it must never call the
+    repository PASS while baseline violations remain").
+
+    See tools/check_no_fallback_lock.py's own module docstring for the full rule list
+    (R1-R9), the protected-field population (derived from the repo's own registered
+    producer censuses, not a hand-picked list), and the acknowledged limits (wrapper/alias
+    concealment, same-name/different-meaning collisions — not mechanically closed here,
+    same acknowledged gap check_one_producer.py's own docstring names for its domain).
     """
     out: list[Violation] = []
     try:
         sys.path.insert(0, str(REPO / "tools"))
         from check_no_fallback_lock import violations as _v
         for msg in _v():
-            out.append(Violation(REPO / "governance" / "no_fallback_registry.json", 0, msg))
+            out.append(Violation(REPO / "tools" / "check_no_fallback_lock.py", 0, msg))
+    except Exception as exc:                                        # noqa: BLE001
+        out.append(Violation(REPO / "tools" / "check_no_fallback_lock.py", 0,
+                             f"checker unavailable ({type(exc).__name__}: {exc}) — a gate "
+                             f"that cannot run is not a gate"))
+    return out
+
+
+def check_no_fallback_baseline_census() -> list[Violation]:
+    """REPO-WIDE NO-FALLBACK MECHANICAL LOCK — BASELINE CENSUS half (operator mandate
+    2026-09-17 clarification: never call the repository PASS while baseline violations
+    remain). ADVISORY (not ENFORCED — the count is currently nonzero by definition, so
+    ENFORCING it would block every commit repo-wide the same way RC-395/RC-391 already
+    measured an absolute-zero required check going permanently red and training people to
+    route around it; see tools/check_delta_adds_no_debt.py's own docstring for that history).
+    ADVISORY still means VISIBLE on every run of this gate and DRIVEN TO ZERO like every
+    other item on this repo's ratchet (tests_missing_explicit_assert, no_fake_defaults, ...)
+    — it is not a silent pass.
+
+    Reads reports/no_fallback_inventory.json's own verdict_counts; a missing or unreadable
+    inventory is itself reported as a violation (fail-closed), never as zero findings.
+    """
+    out: list[Violation] = []
+    try:
+        sys.path.insert(0, str(REPO / "tools"))
+        from check_no_fallback_lock import measure_baseline
+        m = measure_baseline()
+        if "error" in m:
+            out.append(Violation(REPO / "reports" / "no_fallback_inventory.json", 0, m["error"]))
+        elif m["fallback"] or m["not_proven"]:
+            out.append(Violation(
+                REPO / "reports" / "no_fallback_inventory.json", 0,
+                f"baseline census: {m['fallback']} confirmed FALLBACK, {m['not_proven']} "
+                f"NOT_PROVEN of {m['candidate_count']} candidates — the repository is not "
+                f"yet fallback-free; see reports/no_fallback_repair_plan.md for the grouped "
+                f"repair plan and reports/no_fallback_inventory.json for the full list."))
     except Exception as exc:                                        # noqa: BLE001
         out.append(Violation(REPO / "tools" / "check_no_fallback_lock.py", 0,
                              f"checker unavailable ({type(exc).__name__}: {exc}) — a gate "
@@ -3340,7 +3385,7 @@ CHECKS = [
     # declared in governance/retired_checks.md): prose matchers over residual text and a second
     # approval authority. RC-163's structural half is level_producers_have_consumers below.
     ("domain_faucet_registry", check_domain_faucet_registry, True),  # RC-212: one faucet per DOMAIN; greeks only at bs_*
-    ("no_fallback_lock", check_no_fallback_lock, True),  # operator mandate 2026-09-17: no fallback substitution for a missing/failed canonical field, diff-scoped, zero allowlist
+    ("no_fallback_lock", check_no_fallback_lock, True),  # operator mandate 2026-09-17: no fallback substitution for a missing/failed canonical field, diff-scoped REGRESSION check, zero allowlist
     ("phase2a_single_level_computation", check_phase2a_single_level_computation, True),  # Phase 2A: one computation + one materialization per (ticker, level_id, scope, generation)
     # RC-470: rc_document_without_resolve RETIRED (governance/retired_checks.md) -
     # backlog growth stays enforced by open_item_cap; same-day unfinished rows still
@@ -3424,6 +3469,13 @@ CHECKS = [
     # and static/. Reported, not enforced, because the tree carries orphans today; it binds
     # when the operator wires or retires them (the repo's promote-at-zero pattern).
     ("level_producers_have_consumers", check_level_producers_have_consumers, False),
+    # ADVISORY (not ENFORCED — nonzero by definition until the repair groups in
+    # reports/no_fallback_repair_plan.md are closed; see check_no_fallback_baseline_census's
+    # own docstring for why ENFORCING an absolute-zero census gate repeats the exact failure
+    # RC-395/RC-391 already measured and reverted from). VISIBLE and driven to zero like
+    # every other item on this ratchet, per operator mandate 2026-09-17 clarification: never
+    # silently reports the repository clean while it is not.
+    ("no_fallback_baseline_census", check_no_fallback_baseline_census, False),
     # RC-67: PROMOTED to directly ENFORCED. This was only ever blocking as a side effect of the
     # count-ratchet, so retiring the ratchet would have left fabricated neutrals unguarded — and a
     # fabricated 0.5 probability entering the decision path is the exact opposite of the quality
