@@ -33,6 +33,10 @@ test('a delayed old-expiry chain response cannot overwrite the newly-selected ex
     await page.route('**/api/expiries*', (r) =>
       r.fulfill({ status: 200, contentType: 'application/json',
                   body: JSON.stringify({ expiries: [EXP_A, EXP_B] }) }));
+    await page.route('**/api/spot*', (r) =>
+      r.fulfill({ status: 200, contentType: 'application/json',
+                  body: JSON.stringify({ ticker: 'SPY', spot: 650.25,
+                                         last_price_generation: 7 }) }));
 
     const chainRequests = [];
     await page.route('**/api/chain*', async (route) => {
@@ -58,7 +62,8 @@ test('a delayed old-expiry chain response cannot overwrite the newly-selected ex
     // independent loadChain() for B, which resolves immediately.
     await page.locator('#exp-select').selectOption(EXP_B);
     await expect(page.locator('#m-expiry')).toHaveText(EXP_B);
-    await expect(page.locator('#m-spot')).toHaveText('222.00');
+    await expect(page.locator('#m-spot')).toHaveText('650.25');
+    await expect(page.locator('#chain-body td.strike')).toHaveText('222.00');
 
     // Wait past A's deliberately delayed response.
     await page.waitForTimeout(1300);
@@ -68,7 +73,8 @@ test('a delayed old-expiry chain response cannot overwrite the newly-selected ex
     const expiryText = await page.locator('#m-expiry').textContent();
     const spotText = await page.locator('#m-spot').textContent();
     expect(expiryText).toBe(EXP_B);
-    expect(spotText).toBe('222.00');
+    expect(spotText).toBe('650.25');
+    await expect(page.locator('#chain-body td.strike')).toHaveText('222.00');
 
     expect(chainRequests).toContain(EXP_A);
     expect(chainRequests).toContain(EXP_B);
@@ -85,6 +91,10 @@ test('A -> B -> A: a held first-A response cannot overwrite the fresh second-A r
     await page.route('**/api/expiries*', (r) =>
       r.fulfill({ status: 200, contentType: 'application/json',
                   body: JSON.stringify({ expiries: [EXP_A, EXP_B] }) }));
+    await page.route('**/api/spot*', (r) =>
+      r.fulfill({ status: 200, contentType: 'application/json',
+                  body: JSON.stringify({ ticker: 'SPY', spot: 650.25,
+                                         last_price_generation: 7 }) }));
 
     let aCallCount = 0;
     const chainRequests = [];
@@ -114,16 +124,23 @@ test('A -> B -> A: a held first-A response cannot overwrite the fresh second-A r
     await expect(page.locator('#exp-select')).toHaveValue(EXP_A);   // fires the first, held A request
 
     await page.locator('#exp-select').selectOption(EXP_B);
-    await expect(page.locator('#m-spot')).toHaveText('222.00');
+    await expect(page.locator('#m-expiry')).toHaveText(EXP_B);
+    await expect(page.locator('#m-spot')).toHaveText('650.25');
+    await expect(page.locator('#chain-body td.strike')).toHaveText('222.00');
 
     await page.locator('#exp-select').selectOption(EXP_A);   // fires the second, fast A request
-    await expect(page.locator('#m-spot')).toHaveText('333.00');
+    await expect(page.locator('#m-expiry')).toHaveText(EXP_A);
+    await expect(page.locator('#m-spot')).toHaveText('650.25');
+    await expect(page.locator('#chain-body td.strike')).toHaveText('333.00');
 
     // Wait past the FIRST A request's deliberate 900ms delay.
     await page.waitForTimeout(1300);
 
     // Non-retrying snapshot: the held, stale first-A response must not have overwritten 333.
     const spotText = await page.locator('#m-spot').textContent();
-    expect(spotText).toBe('333.00');
+    const expiryText = await page.locator('#m-expiry').textContent();
+    expect(spotText).toBe('650.25');
+    expect(expiryText).toBe(EXP_A);
+    await expect(page.locator('#chain-body td.strike')).toHaveText('333.00');
     expect(aCallCount).toBe(2);
   });

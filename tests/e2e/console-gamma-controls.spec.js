@@ -153,6 +153,10 @@ test.describe('ticker / expiry / measure controls', () => {
     await expect(page.locator('#flTicker')).toHaveText('AAPL');
     await page.locator('#subnav .tab', { hasText: 'Gamma' }).click();
     await expect(page.locator('#mvTicker')).toHaveText('AAPL');
+    // Heatmap ATM auto-select schedules a 600ms delayed /api/options/tape (ed-gamma-panels
+    // scheduleDelayedOf). Drain that AAPL-era timer before the observation window starts so
+    // a legitimate still-on-AAPL tape fetch is not counted as a leftover after QQQ.
+    await page.waitForTimeout(650);
     // switch by WATCHLIST CLICK -> the same single state everywhere; nothing keeps asking for AAPL
     reqs.length = 0;
     await page.locator('.wl-row .wl-sym', { hasText: 'QQQ' }).click();
