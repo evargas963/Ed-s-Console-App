@@ -680,6 +680,25 @@ _mark_repaired(
     "tests/test_phase6_edge_discovery_governed_schema_version.py (a real anchored, "
     "full-outcome BAR_ANCHOR_V1 row is still loaded; structural proofs for both files).",
     "calibration_ml_governance")
+_mark_repaired(
+    ["FB-00129", "FB-00130", "FB-00132", "FB-00133", "FB-00134"],
+    "REPAIRED 2026-09-17: calibration/repair_canonical_1m_edge_carry_v1.py and its sibling "
+    "calibration/repair_canonical_1m_interior_gaps_v1.py both reported 0 for "
+    "rows_upserted/tickers_touched/governed_outcome_refresh_tickers/fill_outcomes_tickers "
+    "in their except-handlers on a batch-write failure. apply_repair_1m_bar_batch_writes "
+    "(calibration/repair_canonical_1m_shared.py) rolls back its single BEGIN IMMEDIATE "
+    "transaction on any exception, so these counts ARE durably zero -- but reporting a bare "
+    "0 collapses a crash into the same value a genuine no-op success would report, exactly "
+    "the mission's prohibited 'zero...placeholder' shape even though the number itself is "
+    "accurate: the field can no longer distinguish 'ran fine, nothing to touch' from "
+    "'crashed, transaction rolled back.' Changed all affected fields to None on failure -- "
+    "an explicit not-reported-due-to-failure marker distinct from either real outcome, "
+    "alongside the pre-existing rep['error'] string. Tests: "
+    "tests/test_repair_canonical_1m_edge_carry_v1.py and "
+    "tests/test_repair_canonical_1m_interior_gaps_v1.py each gained a "
+    "test_run_repair_failure_reports_none_not_zero_counts proving the None-on-failure shape "
+    "via a monkeypatched batch-writer that raises.",
+    "calibration_ml_governance")
 
 
 def main() -> int:
