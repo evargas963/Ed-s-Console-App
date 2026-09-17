@@ -628,7 +628,7 @@ _mark_repaired(
     ["FB-00081", "FB-00083", "FB-00084"],
     "REPAIRED 2026-09-17: calibration/anchor_audit.py's three canonical_timeframe filters "
     "no longer SQL-default a NULL canonical_timeframe to '1m' -- "
-    "calibration/schema.py's base CREATE TABLE IF NOT EXISTS calibration_decision_log "
+    "calibration/schema.py's base CREATE TABLE for the calibration decision-log table "
     "declares canonical_timeframe TEXT NOT NULL DEFAULT '1m' from inception, and the "
     "column is absent from _CALIBRATION_OPTIONAL_COLUMNS (the lazy ALTER TABLE ADD "
     "COLUMN migration list), so no code path can ever produce a row with a NULL value "
@@ -637,6 +637,22 @@ _mark_repaired(
     "tests/test_calibration_anchor_stability.py::test_no_fallback_lock_repair_2026_09_17_"
     "no_coalesce_left_in_anchor_audit_source (structural) plus the file's 2 pre-existing "
     "behavioral tests, both still green.",
+    "calibration_ml_governance")
+_mark_repaired(
+    ["FB-00088"],
+    "REPAIRED 2026-09-17: calibration/backfill_outcomes.py's re-sync join key no longer "
+    "unconditionally falls back from a missing matched_snapshot_ts_utc to decision_ts_utc. "
+    "matched_snapshot_ts_utc is a genuinely nullable column (pre-migration legacy rows never "
+    "had it recorded); substituting decision_ts_utc for it was an unproven guess that could "
+    "silently re-attach a legacy nearest-tolerance-matched row to the WRONG snapshot. The "
+    "repair only treats decision_ts_utc as the join key when outcome_join_method=='exact' "
+    "proves the two timestamps are equal (an actual computed fact, not a substitution, per "
+    "resolve_snapshot_for_backfill's own exact-match invariant); a legacy row whose original "
+    "match provenance is neither recorded nor provably exact is now skipped (new "
+    "resync_skipped_match_provenance_unrecorded stat) instead of guessed. Tests: "
+    "tests/test_backfill_outcomes_resync_provenance.py (4 new tests, including the exact "
+    "scenario -- a decoy snapshot present at decision_ts_utc -- that would have silently "
+    "attached the wrong outcome under the old guess).",
     "calibration_ml_governance")
 
 
