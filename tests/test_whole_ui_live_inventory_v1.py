@@ -107,13 +107,10 @@ def test_every_static_api_binding_is_inventoried() -> None:
     surfaces = set(inv["api_surfaces"])
     found = _static_api_paths()
     missing = sorted(found - surfaces)
-    extra_ok = {"/api/state"}  # alias may be comment-only
     assert missing == [], f"unrepresented UI API bindings: {missing}"
-    unused = sorted(surfaces - found - extra_ok)
-    # Unused inventory APIs are allowed only if they are still real market surfaces.
     assert "/api/watchlist-quotes" in surfaces
     assert "/api/spot" in surfaces
-    assert unused == [] or True  # inventory may list /api/state even if only commented
+    assert "/api/state" in surfaces
 
 
 def test_every_index_market_id_is_inventoried() -> None:
